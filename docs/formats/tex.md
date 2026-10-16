@@ -110,9 +110,12 @@ ACCESS source=<str> number=<u32>
 ## Implementation
 - `anno_formats::tex` (`TexFile::parse`, `Head`, `Texture::decode`, `decode_rle`), `anno_formats::inc` (`parse_access`).
 - Python reference: `tools/tex.py`.
+- RGBA conversion: `anno_assets::texture::to_rgba` (opaque index `i` → palette `[R, G, B, 255]`, RLE gap → `[0, 0, 0, 0]`; `color_key` not applied, OQ-021).
+- PNG export: `anno-extract tex <file.tex> <outdir>` → `<id>.png` per texture (8-bit RGBA) + `index.txt` (`<id>.png width= height= palette= format= name=`, or `ERROR <message>` for textures that do not decode).
 
 ## Tests
 - Corpus: `crates/formats/tests/tex_corpus.rs::{tex_corpus, inc_corpus}` — all figures marked P above unless noted (needs `ANNO1503_GAME_DIR`).
 - Round trip: whole files via `chunk_corpus` (container layer); `HEAD` field-by-field in `tex_corpus` and `tex::tests::head_round_trip`. Pixel re-encoding: not yet.
 - Unit: `tex::tests::{rle_two_rows, rle_rejects_overflow_and_wrong_height}`, `inc::tests::records`.
+- PNG export: `crates/tools/tests/extract.rs` — PNGs decode back to exactly `to_rgba` (synthetic on CI; `debug.tex`, `Felder.tex`, `fenster.tex` with `ANNO1503_GAME_DIR`).
 - Reference output: `anno-dump tex/inc` = `tools/tex.py dump/inc` on synthetic files (CI) and corpus samples (`agree_python.rs`, needs `ANNO1503_GAME_DIR`).

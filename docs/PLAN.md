@@ -35,10 +35,12 @@ Acceptance: `cargo test --workspace` green on CI without the game directory; loc
 Goal: render an original island/scenario from the original files on screen. This proves the asset pipeline and gives everything else a visual check.
 
 ### M1.1 Chunk container (`crates/formats::chunk`)
-- [ ] Port `tools/chunks.py` semantics: lenient 12-byte name (NUL-terminated, trailing garbage allowed), u32 LE size, recursive container detection, exact-fit rule.
-- [ ] Zero-copy reader (`&[u8]` slices), plus a writer. Round-trip test: parse → write → byte-identical for every file in the corpus.
-- [ ] Handle the `.scp` trailing bytes: parse root chunk, expose the remainder as `trailing: &[u8]`; open question logged.
-- [ ] Spec: `docs/formats/chunk-container.md`.
+- [x] Port `tools/chunks.py` semantics: lenient 12-byte name (NUL-terminated, trailing garbage allowed), u32 LE size, recursive container detection, exact-fit rule.
+- [x] Zero-copy reader (`&[u8]` slices), plus a writer. Round-trip test: parse → write → byte-identical for every file in the corpus.
+- [x] Handle the `.scp` trailing bytes: parse root chunk, expose the remainder as `trailing: &[u8]`; open question logged.
+- [x] Spec: `docs/formats/chunk-container.md`.
+
+Status M1.1 (2026-10-16): done. All 2,954 container files round-trip byte-identically (`chunk_corpus`). Findings: `.scp` trailer is 60 bytes in exactly the `INSEL5` islands (OQ-001); 22 name fields carry post-NUL bytes (OQ-008); `INSEL5` has a 12-byte prefix before its sub-chunks, so generic detection treats it as a leaf (OQ-013, to solve in M1.5).
 
 ### M1.2 Palettes and textures (`.tex`, `.inc`, `Anlagen.dat/COLORS`)
 - [ ] Decode `COLOR` (palette) and `TEXTURE` chunks in `.tex`; `ACCESS` in `.inc`. Determine pixel format from `Textures/debug.tex` and `ToolGfx/Felder.tex` (32×32 ground tiles per drkohler). Evidence: compare against drkohler's GFX Extractor output if obtainable; otherwise validate by rendering and eyeballing known UI textures.
@@ -132,7 +134,7 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 ## 7. Immediate next actions (do these first)
 
 1. ~~M0 in full.~~ Done 2026-10-16.
-2. M1.1 chunk container with corpus + round-trip tests (`tools/chunks.py` is the oracle).
+2. ~~M1.1 chunk container with corpus + round-trip tests.~~ Done 2026-10-16.
 3. M1.2 palette + texture decode; PNG export; look at the output.
 4. Start M2 Ghidra setup in parallel; first target `AnnoWelt.dll` tick loop and `AnnoFrame.dll` `CreateAnnoNetClientInstance` call graph.
 5. Human task: create the savegame corpus following M2.1 once an x86 Windows/Wine install is available.

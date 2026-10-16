@@ -8,7 +8,7 @@ Counts refer to GOG 2.0.0.5 (`game/app/`), from `docs/research/game-files-analys
 
 | Format | Files | Spec file | Status |
 |---|---|---|---|
-| Chunk container | `.sze`, `.scp` (root), `.tex`, `.inc`, `.zei`, `Anlagen.dat` | `chunk-container.md` | not yet written — container validated by `tools/chunks.py` (all files of these types parse; `.scp` see OQ-001) |
+| Chunk container | `.sze`, `.scp` (root), `.tex`, `.inc`, `.zei`, `Anlagen.dat` | [`chunk-container.md`](chunk-container.md) | partial — container layer complete, byte-identical round trip over the corpus; detection heuristic (OQ-013), `.scp` trailer (OQ-001) open |
 | Scenario | `Scenes/**/*.sze` (50) | `sze.md` | not yet written |
 | Island template | `Scenes/Islands/**/*.scp` (465) | `scp.md` | not yet written |
 | Textures | `*.tex` (1,214), `*.inc` (1,213) | `tex.md` | not yet written |

@@ -307,3 +307,79 @@ fn anno_dump_matches_inc_synthetic() {
         "{out}"
     );
 }
+
+/// A `COLORS/ENTRY` payload per `docs/formats/palette.md`.
+fn color_entry(id: u32, seed: u8, name: &[u8]) -> Vec<u8> {
+    let mut p = [0u32.to_le_bytes(), id.to_le_bytes()].concat();
+    p.extend_from_slice(b"BODY\0\0\x00\x04");
+    p.extend((0..=255u8).flat_map(|i| [i ^ seed, i.wrapping_mul(5), i.wrapping_add(seed), 0]));
+    p.extend_from_slice(b"NAME\0\0");
+    p.extend_from_slice(&u16::try_from(name.len()).expect("short").to_le_bytes());
+    p.extend_from_slice(name);
+    chunk("ENTRY", &p)
+}
+
+fn anlagen(entries: &[Vec<u8>]) -> Vec<u8> {
+    file(&[
+        chunk("COLORS", &entries.concat()),
+        chunk("ANLAGEN", &[0; 4]),
+    ])
+}
+
+#[test]
+fn anno_dump_matches_colors_synthetic() {
+    let test = "anno_dump_matches_colors_synthetic";
+    if !have_python(test) {
+        return;
+    }
+    let dir = synthetic_dir(test);
+    let good = anlagen(&[
+        color_entry(1, 0x33, b"Farbtabellen\\Gr\xe4ser01.PCX\0"),
+        color_entry(2, 0x00, b"Farbtabellen\\x.pcx\0"),
+    ]);
+    let mut bad_len = color_entry(1, 0, b"a.pcx\0");
+    bad_len[16 + 0x0E] = 1;
+    let mut inner_nul = color_entry(1, 0, b"a.pcx\0");
+    inner_nul[16 + 0x418] = 0;
+    let cases: [(&str, Vec<u8>, bool); 5] = [
+        ("good.dat", good, true),
+        ("no_colors.dat", file(&[chunk("ANLAGEN", &[0; 4])]), false),
+        ("body_len.dat", anlagen(&[bad_len]), false),
+        ("inner_nul.dat", anlagen(&[inner_nul]), false),
+        ("not_entry.dat", anlagen(&[chunk("OTHER", &[0; 4])]), false),
+    ];
+    for (name, bytes, ok) in cases {
+        let p = dir.join(name);
+        std::fs::write(&p, bytes).expect("write");
+        let out = agree("tex.py", &["colors"], &["colors"], std::slice::from_ref(&p));
+        assert_eq!(!out.contains("NOPARSE"), ok, "{name}: {out}");
+        if ok {
+            assert!(out.contains("COLORS entries=2\n"), "{out}");
+            assert!(
+                out.contains(r#"name="Farbtabellen\x5cGr\xe4ser01.PCX""#),
+                "{out}"
+            );
+            let full = agree("tex.py", &["colors", "--full"], &["colors", "--full"], &[p]);
+            // Entry 1 of table 1 is stored B=0x32 G=0x05 R=0x34, printed rrggbb.
+            assert!(full.contains("\n  P0 330033 340532 350a31 "), "{full}");
+        }
+    }
+}
+
+#[test]
+fn anno_dump_matches_colors_corpus() {
+    let test = "anno_dump_matches_colors_corpus";
+    let Some(dir) = game_dir(test) else { return };
+    if !have_python(test) {
+        return;
+    }
+    let anlagen = [dir.join("Anlagen.dat")];
+    let out = agree("tex.py", &["colors"], &["colors"], &anlagen);
+    assert!(out.contains("COLORS entries=440\n"), "{out}");
+    agree(
+        "tex.py",
+        &["colors", "--full"],
+        &["colors", "--full"],
+        &anlagen,
+    );
+}

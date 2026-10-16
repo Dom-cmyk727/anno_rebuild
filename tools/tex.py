@@ -3,6 +3,7 @@ Independent of crates/formats; spec: docs/formats/tex.md, docs/formats/palette.m
 
   tex.py dump [--full] <file>...   same output as `anno-dump tex [--full]`
   tex.py inc <file>...             same output as `anno-dump inc`
+  tex.py colors [--full] <Anlagen.dat>...  same output as `anno-dump colors [--full]`
 """
 import os, struct, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -114,11 +115,9 @@ def dump_tex(path, full):
     print(f'TEX palettes={n_pal} textures={len(es) - n_pal}')
     for kind, e in es:
         if kind == 'COLOR':
-            print(f"PALETTE id={e['id']} flag={e['flag']} rgb={fnv64(bytes(c for rgb in e['rgb'] for c in rgb))}")
+            print(f"PALETTE id={e['id']} flag={e['flag']} rgb={palette_hash(e['rgb'])}")
             if full:
-                for row in range(16):
-                    cells = ' '.join('%02x%02x%02x' % e['rgb'][row * 16 + i] for i in range(16))
-                    print(f'  P{row} {cells}')
+                for line in palette_lines(e['rgb']): print(line)
             continue
         try:
             px = decode(e)
@@ -139,6 +138,51 @@ def dump_tex(path, full):
             for y in range(e['height']):
                 cells = ''.join('..' if p is None else f'{p:02x}' for p in px[y * w:(y + 1) * w])
                 print(f'  R{y} {cells}')
+    return True
+
+def color_tables(buf):
+    """Anlagen.dat ANNO/COLORS/ENTRY -> [dict(id, flag, rgb, name)]. Raises Bad.
+    Layout: docs/formats/palette.md; mirrors anno_formats::colors."""
+    tree, _ = chunks.parse_file(buf)
+    if tree is None: raise Bad('no root chunk')
+    col = next((k for k in tree[0][3] or [] if k[0] == 'COLORS'), None)
+    if col is None: raise Bad('no ANNO/COLORS')
+    out = []
+    for name, off, sz, _ in col[3] or []:
+        if name != 'ENTRY': raise Bad('child is not ENTRY')
+        p = buf[off + 16:off + 16 + sz]
+        if len(p) < 0x419: raise Bad('entry too short')
+        u16 = lambda o: struct.unpack_from('<H', p, o)[0]
+        if p[8:12] != b'BODY' or u16(0x0c) != 0: raise Bad('no BODY record')
+        if u16(0x0e) != 1024: raise Bad('BODY length is not 1024')
+        if p[0x410:0x414] != b'NAME' or u16(0x414) != 0: raise Bad('no NAME record')
+        nm = p[0x418:]
+        if u16(0x416) != len(nm): raise Bad('NAME length does not end the entry')
+        if nm.find(0) != len(nm) - 1: raise Bad('NAME is not one NUL-terminated string')
+        flag, eid = struct.unpack_from('<II', p, 0)
+        rgb = [(p[0x10 + 4*i + 2], p[0x10 + 4*i + 1], p[0x10 + 4*i]) for i in range(256)]
+        out.append(dict(id=eid, flag=flag, rgb=rgb, name=nm))
+    return out
+
+def palette_lines(rgb):
+    for row in range(16):
+        yield f"  P{row} " + ' '.join('%02x%02x%02x' % rgb[row * 16 + i] for i in range(16))
+
+def palette_hash(rgb):
+    return fnv64(bytes(c for e in rgb for c in e))
+
+def dump_colors(path, full):
+    buf = open(path, 'rb').read()
+    print(f'# {path}')
+    try:
+        ts = color_tables(buf)
+    except Bad as e:
+        print(f'NOPARSE: {e}', file=sys.stderr); print('NOPARSE'); return False
+    print(f'COLORS entries={len(ts)}')
+    for t in ts:
+        print(f"COLORTABLE id={t['id']} flag={t['flag']} rgb={palette_hash(t['rgb'])} name={quote(t['name'])}")
+        if full:
+            for line in palette_lines(t['rgb']): print(line)
     return True
 
 def access_records(buf):
@@ -173,9 +217,10 @@ def dump_inc(path):
 if __name__ == '__main__':
     sys.stdout.reconfigure(newline='\n')  # same bytes as anno-dump on Windows too
     cmd, args = sys.argv[1:2], sys.argv[2:]
-    full = cmd == ['dump'] and args[:1] == ['--full']
+    full = cmd in (['dump'], ['colors']) and args[:1] == ['--full']
     files = args[1:] if full else args
-    if cmd not in (['dump'], ['inc']) or not files:
+    run = {'dump': lambda f: dump_tex(f, full), 'inc': dump_inc, 'colors': lambda f: dump_colors(f, full)}
+    if len(cmd) != 1 or cmd[0] not in run or not files:
         print(__doc__, file=sys.stderr); sys.exit(2)
-    ok = all([dump_tex(f, full) if cmd == ['dump'] else dump_inc(f) for f in files])
+    ok = all([run[cmd[0]](f) for f in files])
     sys.exit(0 if ok else 1)

@@ -4,6 +4,7 @@
 //! anno-dump chunks <file>...        chunk tree (same output as `tools/chunks.py tree`)
 //! anno-dump tex [--full] <file>...  palettes and textures (same as `tools/tex.py dump`)
 //! anno-dump inc <file>...           ACCESS records (same as `tools/tex.py inc`)
+//! anno-dump colors [--full] <Anlagen.dat>...  COLORS tables (same as `tools/tex.py colors`)
 //! anno-dump probe <path> <file>...   statistics over all chunks at a name path
 //! ```
 //!
@@ -12,17 +13,18 @@
 //! format and has no Python counterpart.
 //!
 //! The `tex`/`inc` text format is specified in `docs/formats/tex.md`
-//! ("Reference dump").
+//! ("Reference dump"), `colors` in `docs/formats/palette.md`.
 
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::process::ExitCode;
 
-use anno_formats::{chunk, inc, tex};
+use anno_formats::{chunk, colors, inc, tex};
 
 const USAGE: &str = "usage: anno-dump chunks <file>...\n       \
                      anno-dump tex [--full] <file>...\n       \
                      anno-dump inc <file>...\n       \
+                     anno-dump colors [--full] <Anlagen.dat>...\n       \
                      anno-dump probe <path> <file>...";
 
 fn main() -> ExitCode {
@@ -32,7 +34,9 @@ fn main() -> ExitCode {
         None => return usage(),
     };
     let (full, files) = match rest.split_first() {
-        Some((flag, files)) if cmd == "tex" && flag == "--full" => (true, files),
+        Some((flag, files)) if (cmd == "tex" || cmd == "colors") && flag == "--full" => {
+            (true, files)
+        }
         _ => (false, rest),
     };
     if cmd == "probe" {
@@ -50,6 +54,7 @@ fn main() -> ExitCode {
         "chunks" => dump_files(files, dump_chunks),
         "tex" => dump_files(files, |buf, out| dump_tex(buf, full, out)),
         "inc" => dump_files(files, dump_inc),
+        "colors" => dump_files(files, |buf, out| dump_colors(buf, full, out)),
         _ => usage(),
     }
 }
@@ -131,6 +136,47 @@ fn prefix_flag(prefix: &[u8; 8]) -> u32 {
     u32::from_le_bytes([prefix[0], prefix[1], prefix[2], prefix[3]])
 }
 
+/// FNV-1a 64 over the 256 entries as `R, G, B`, as 16 hex digits.
+fn palette_hash(p: &tex::Palette<'_>) -> String {
+    format!("{:016x}", fnv64((0..=255).flat_map(|i| p.rgb(i))))
+}
+
+/// The `--full` palette lines: `  P<row> <16 × rrggbb>`.
+fn palette_rows(p: &tex::Palette<'_>, out: &mut String) {
+    for row in 0..16u8 {
+        let cells: Vec<String> = (0..16u8).map(|i| hex(&p.rgb(row * 16 + i))).collect();
+        writeln!(out, "  P{row} {}", cells.join(" ")).expect("writing to a String");
+    }
+}
+
+fn dump_colors(buf: &[u8], full: bool, out: &mut String) -> bool {
+    let tables = match colors::parse_anlagen(buf) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("NOPARSE: {e}");
+            out.push_str("NOPARSE\n");
+            return false;
+        }
+    };
+    writeln!(out, "COLORS entries={}", tables.len()).expect("writing to a String");
+    for t in &tables {
+        let p = &t.palette;
+        writeln!(
+            out,
+            "COLORTABLE id={} flag={} rgb={} name={}",
+            p.id,
+            prefix_flag(p.prefix),
+            palette_hash(p),
+            quote(t.name)
+        )
+        .expect("writing to a String");
+        if full {
+            palette_rows(p, out);
+        }
+    }
+    true
+}
+
 fn dump_tex(buf: &[u8], full: bool, out: &mut String) -> bool {
     let file = match tex::TexFile::parse(buf) {
         Ok(f) => f,
@@ -163,21 +209,17 @@ fn dump_tex(buf: &[u8], full: bool, out: &mut String) -> bool {
     for name in order {
         if name == "COLOR" {
             let Some(p) = palettes.next() else { break };
-            let rgb = (0..=255).flat_map(|i| p.rgb(i));
             w(
                 out,
                 format_args!(
-                    "PALETTE id={} flag={} rgb={:016x}",
+                    "PALETTE id={} flag={} rgb={}",
                     p.id,
                     prefix_flag(p.prefix),
-                    fnv64(rgb)
+                    palette_hash(p)
                 ),
             );
             if full {
-                for row in 0..16u8 {
-                    let cells: Vec<String> = (0..16u8).map(|i| hex(&p.rgb(row * 16 + i))).collect();
-                    w(out, format_args!("  P{row} {}", cells.join(" ")));
-                }
+                palette_rows(p, out);
             }
         } else {
             let Some(t) = textures.next() else { break };

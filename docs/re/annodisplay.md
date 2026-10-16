@@ -116,9 +116,14 @@ So: level 3 = opaque (matches the gondola observation), 0/1/2 = 25/50/75 % cover
 - `0x1000e050` (picking): walks the stored triangle meshes, finds the triangle under a screen point with the smallest depth and interpolates the packed world coordinates — confirms that the ground is held as triangle meshes in screen space, not as tile sprites. **Confirmed.**
 - `0x1000edd0` / `0x1000d680`: the world is rendered into a grid of 128 × 128 px screen tiles (`0x80`), each with its own item lists; `0x1000d680` draws a tile's lists and, for the `A` formats, sorts items by a float key at item `+0x24` in **descending** order (painter's order, far first given smaller = nearer) before drawing. **Confirmed** (sort and tile size); that the key is the item depth is **likely**.
 
+## 7. Object kinds (`tHaus…` classes)
+`0x10025d30` creates the display object for a sprite set from a kind number passed by the caller: 0 `tHaus`, 1 `tHausBaum`, 2 and 6 `tHausGebaude`, 3 `tHausShadow` (`0x10006be0`), 4 `tHausFigur`, 5 `tHausStrasse`, 7 `tHausShip`, 8 `tHausGelaende`, 9 `tHausAnim`, 10 `tHausAnimWasser` (a `tHausAnim` whose only override is class id `0x60A`, `0x10004c40`). **Confirmed.**
+
+The kind is byte 2 of the 16-byte sprite-set prefix (`docs/formats/figuren.md`): `FigurenHeader.dat` sets have 4 (figures) and 7 (ships) among others; `Anlagen.dat` sets 0, 1, 2, 5, 8, 9, 10 (P, 2026-10-16: figures 1,233 × 4, 33 × 7; `Anlagen.dat` 14 × 10, exactly the water entries 2701–2709 and 2801–2802). **Likely** (the value sets match the factory's classes; the read of byte 2 into the factory call is not traced). Water entries and the sea lattice: `annowelt.md`, "Sea surface".
+
 ## Open
 - Which mode (A/B/C) each layer uses (static scenery vs. moving figures vs. UI); trace callers of `SetState(1|6, …)` (`tDrawTexture` slot `+0x6C`) in `AnnoFrame.dll`/`AnnoScene.dll`.
 - Depth units: how the float depth passed to the blitters relates to the camera depth (`0.000384615` per unit) — needed to scale the per-pixel `z` offsets against neighbouring sprites. Trace the depth argument in `0x10011e60` → item `+0x20/+0x24` → `0x1000d3d0`.
 - Meaning of the colour-table variant (`colour_param >> shift`, `0x200`-byte tables).
 - Which world point the game passes for buildings, figures and ships (`AnnoWelt.dll` callers of the segment's add-object slot).
-- How open water is drawn (terrain mesh excludes texture ids ≤ 10, see `annowelt.md`); candidates: `tHausAnimWasser` objects or a separate layer — **guess**.
+- Open water: answered in `annowelt.md` ("Sea surface": sprites of entry 2801 at 1.28 world units); what lies below texture-0 tiles is still open.

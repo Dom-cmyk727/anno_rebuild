@@ -12,7 +12,7 @@ Implementation: `anno_render::iso` (CPU reference renderer), `anno_render::scene
 |---|---|---|
 | Tile diamond (width × height) per zoom group | 84 × 42, 42 × 21, 20 × 10 | P: flat 1 × 1 `Anlagen.dat` sprites (grass, decals) measure 84 × 42/43, 42 × 21/22, 20 × 10 in groups 0, 1, 2; sprite width ≈ (w + h) · 42 for footprints w × h (e.g. palace 4 × 7: 462 px) |
 | Screen position of tile `(x, y)` | top vertex at `((x − y) · tw/2, (x + y) · th/2)`; island x runs right-down, y left-down | visual: islands render with coherent coasts and towns |
-| Ground | the tile diamond shows its `GroundCell` ([`insel.md`](../formats/insel.md)); diamond point with tile coordinates `(s, t)` ∈ [0, 1)² shows cell pixel `(32 s, 32 t)` before the cell rotation | P: of the 8 axis assignments × 2 rotation directions, this one has the lowest colour error across shared tile edges on a polar (84.6 vs ≥ 92.4) and a temperate island (87.6 vs ≥ 92.7) |
+| Ground | the tile diamond shows its `GroundCell` ([`insel.md`](../formats/insel.md)): tile position `(s, t)` shows `GroundCell::texel` — a 1/6 × 1/6 cell of the 256 × 256 texture, rotated `r` quarter turns | P: of the 8 axis assignments × 2 rotation directions, this one has the lowest colour error across shared tile edges on a polar (84.6 vs ≥ 92.4) and a temperate island (87.6 vs ≥ 92.7) |
 
 ## Objects
 
@@ -27,10 +27,25 @@ Implementation: `anno_render::iso` (CPU reference renderer), `anno_render::scene
 | Alpha | `A` formats: level 0/1/2/3 = 25/50/75/100 % opacity | D: `0x10018890` etc.; simplification: in the original's depth-writing mode `BSH_RGBAZ` blends only level 1 |
 
 ## Elevation
-- `HEIGHT[x, y]` is the height of tile corner `(x, y)`; tile `(x, y)` spans corners `(x, y)`, `(x+1, y)`, `(x, y+1)`, `(x+1, y+1)` (D: `AnnoWelt.dll` corner grid with stride width + 1, `0x100900c0`, `0x10084870`; the corner reading of `HEIGHT[x, y]` is likely). The renderer interpolates bilinearly inside a tile; the original splits the quad into two triangles (diagonal not traced) and adds per-corner Gouraud light (source not traced) — neither is reproduced.
+- `HEIGHT[x, y]` is the height of tile corner `(x, y)`; tile `(x, y)` spans corners `(x, y)`, `(x+1, y)`, `(x, y+1)`, `(x+1, y+1)` (D: `AnnoWelt.dll` corner grid with stride width + 1, `0x100900c0`, `0x10084870`; the corner reading of `HEIGHT[x, y]` is likely). Each tile is two triangles split along the fixed diagonal from corner `(x, y+1)` to `(x+1, y)` (D: `AnnoWelt.dll` `0x1009b920`, indices A,B,C and C,B,D); the renderer interpolates height inside each triangle. The original also shades each corner from the terrain normal (D: `0x100a03c0`, light vector not traced) — not reproduced.
 - One height unit = 0.04 world units (D: `AnnoWelt.dll` table `0x100E35E0`); one world unit up = 51.477 px at zoom group 0 (D: `AnnoFrame.dll` camera `0x10071d70`: scale 59.1633, tilt 29.53°). `iso::HEIGHT_LIFT` = 2.059 px per unit at group 0 (scaled by tile width for groups 1, 2). The same camera gives 83.67 × 41.24 px per tile at zoom 0, consistent with the 84 × 42 sprites.
 - Flat raised tiles (tried first) produce terraces and gaps; per-corner slopes remove them (visual). Ground samples also cover the pixel below them to close one-row gaps on steep slopes.
-- Open water (texture 0) and textures 1–10 are not part of the original's terrain mesh (D: `AnnoWelt.dll` `0x1009b920`); they are drawn by a path not yet found (OQ-026 b). The renderer still paints texture 0 in a flat placeholder colour.
+- Open water (texture 0) and textures 1–10 are not part of the original's terrain mesh (D: `AnnoWelt.dll` `0x1009b920`).
+
+## Water
+| Rule | Value | Evidence |
+|---|---|---|
+| Sea surface | animated sprites of `Anlagen.dat` entry 2801 (`MEER`, `Meer\Meer01_001.tga`, 64 `BSH_RGBWZ` frames, 3 × 3 footprint) | D: `AnnoWelt.dll` `0x1009f4c0`; P: entry 2801 as described |
+| Lattice | one sprite at tile `(x, y)` with `y` even and `x ≡ 2·((y/2) mod 2) (mod 4)` | D: `0x1009f4c0` |
+| Height | sea level 1.28 world units = 32 `HEIGHT` units (≈ 65.9 px at zoom 0), plus a small per-sprite offset (`(x mod 5)·0.01 − (y mod 3)·0.01357` world units, not applied) | D: `0x100E3A20`, set at `0x1009d010` |
+| Frame | `(5x + 3y) mod 32` at tick 0 (animation advances with the game tick, not reproduced) | D: formula confirmed; tick unit not traced |
+| Transparency | `BSH_RGBWZ` is a 50 % checkerboard, so the sea floor shows through | D: brush `0x100161c0`; that this produces the water look is likely |
+| Where | 8 × 8 tile chunks with a "sea" bit (`+0x32`, not traced). **Approximation:** chunks containing a non-land tile (corner average ≤ 19, the original's land classifier `0x100900c0`) | ? OQ-026 b |
+| Occlusion | the original depth-tests per pixel. **Approximation:** a water pixel is drawn only where the terrain under it (projected back onto the water plane) is below sea level, and only inside the island's tile area | ? |
+| Open-water ground | texture 0 has no terrain in the original, so nothing is known about what shows through the checkerboard there. **Approximation:** texture-0 ground and the checkerboard gaps above it are drawn in the average colour / neighbouring pixel of the sea sprite (`iso::water_colour`) | ? OQ-026 b |
+| Surf, rivers | ordinary placed objects (entries 2701–2709 via `FLUESSE`, e.g. `Brandung01`); not drawn yet (`FLUESSE` objects are not rendered) | D, P |
+
+Visual check 2026-10-16: `Dschungel/D_064x064_0001_0B.scp` at zoom groups 0 and 2 — clean waterline along the beach, shallows and reefs visible through the surface, no sawtooth coast.
 
 ## Scene composition (scenario view)
 `anno_render::scene`; used by `anno1503 --view` (window and `--png`).

@@ -16,15 +16,52 @@
 With the camera in [`annodisplay.md`](annodisplay.md) §5 (one world unit up = 51.477 px at zoom 0), one `HEIGHT` unit raises a vertex by **0.04 · 51.477 ≈ 2.06 px at zoom 0** (≈ 1.03 px at zoom 1, ≈ 0.51 px at zoom 2). The corpus maximum `HEIGHT` 208 is 8.32 world units ≈ 428 px at zoom 0. **Confirmed** arithmetic on confirmed constants; not yet checked against a screenshot.
 
 ## Terrain mesh builder
-`0x1009b920` builds the ground meshes for an 8 × 8 tile chunk from a per-chunk 9 × 9 array of 4-byte corner records at `+0x204`: `u16` `GFXID` of the tile at `+0`, corner height at `+2`, a byte used as the vertex light value at `+3`. `0x1009e740` fills `+0`/`+2` from the island's `GFXID` and corner-height grids (9th column and row from the neighbouring corners); where `+3` is filled is not traced. **Confirmed** (layout as used by both functions).
+`0x1009b920` builds the ground meshes for an 8 × 8 tile chunk from a per-chunk 9 × 9 array of 4-byte corner records at `+0x204`: `u16` `GFXID` of the tile at `+0`, corner height at `+2`, vertex light at `+3`. `0x1009e740` fills `+0`/`+2` from the island's `GFXID` and corner-height grids (9th column and row from the neighbouring corners); `+3` is filled by `0x100a03c0`, the function that then calls `0x1009b920` (see "Vertex light"). **Confirmed** (layout as used by all three functions).
 
-- Tiles are grouped by ground texture = **high byte of `GFXID`**; only tiles with texture **> 10** get triangles. Texture 0 (open water) and ids 1–10 are not part of the terrain mesh, so open water is drawn by some other path (OQ-026 b). **Confirmed** (the `> 10` test on the `GFXID` high byte); the water path itself is not found.
-- Vertex = (world x = tile x + island x offset, world up = `table[corner height]`, world z = tile y + island y offset, light byte, two further floats from `0x1007b030`/`0x1007b0f0` — presumably texture coordinates from the `GFXID` cell bits, **guess**). The scale factor for x and z is `0x100CB840` = 1.0: **one world unit per tile**. **Confirmed.**
-- A tile's corners are emitted as shared vertices (index reuse when neighbouring corners match); the triangle split of each tile quad is not yet read. Open.
+- Tiles are grouped by ground texture = **high byte of `GFXID`**; only tiles with texture **> 10** get triangles. Texture 0 (open water) is not part of the terrain mesh (P: no template uses ids 1–10). **Confirmed.** Water is drawn as sprites, see "Sea surface".
+- Vertex = (world x = tile x + island x offset, world up = `table[corner height]`, world z = tile y + island y offset, light byte, texture u, texture v). The scale factor for x and z is `0x100CB840` = 1.0: **one world unit per tile**. **Confirmed.**
+- Corners are emitted as shared vertices; a corner is reused from the left/upper neighbour when that tile has the same texture, the same `r`, the adjacent cell (`u + 1` resp. `v + 1`, tests `0x1007af70`/`0x1007afd0`) and the same corner height. **Confirmed.**
+
+### Triangle split
+Per tile six indices are written: `A, B, C` and `C, B, D` with `A` = corner (x, y), `B` = (x, y + 1), `C` = (x + 1, y), `D` = (x + 1, y + 1) (`0x1009b920`, index slots 0/1/2 and 3/4/5). The split diagonal is therefore **always B–C**, i.e. between corners (x, y + 1) and (x + 1, y); it does not depend on the heights. With the camera of `annodisplay.md` §5 at view rotation 0 these are the left and right vertices of the tile diamond, so the split is the horizontal screen diagonal: one triangle holds the top vertex `A`, the other the bottom vertex `D`. **Confirmed** (indices); the screen reading follows from the confirmed projection.
+
+### Texture coordinates
+`0x1007b030` (corner A), `0x1007b0f0` (B), `0x1007b1b0` (C), `0x1007b270` (D) read the `GFXID` low byte (`u` = bits 5–7, `v` = bits 2–4, `r` = bits 0–1) and a float table `T` at `0x100DCF44` = `[0, 1/6, 2/6, 3/6, 4/6, 5/6, 1]` (followed by `[0, 1/3, 2/3, 1]`, unused here; table in `.data`, no writer found). **Confirmed.**
+
+- **The cell is 1/6 of the texture, not 1/8**: a `Felder.tex` texture (all 147 are 256 × 256, P) is a 6 × 6 grid of cells of 42.67 px; `u`, `v` take the values 0–5 (P, 2026-10-16, first 120 `.scp` templates: 2,725,309 non-water tiles with `u` ≤ 5 and `v` ≤ 5, only 25 / 28 tiles with 6 or 7). The current 32-px cell assumption (`docs/formats/insel.md`, "Ground") is contradicted.
+- Output per corner, in cell units `(U, V)` where texture coordinate = `T[u + U]`, `T[v + V]`:
+
+| `r` | A (x, y) | C (x+1, y) | B (x, y+1) | D (x+1, y+1) |
+|---|---|---|---|---|
+| 0 | (0, 0) | (1, 0) | (0, 1) | (1, 1) |
+| 1 | (1, 0) | (1, 1) | (0, 0) | (0, 1) |
+| 2 | (1, 1) | (0, 1) | (1, 0) | (0, 0) |
+| 3 | (0, 1) | (0, 0) | (1, 1) | (1, 0) |
+
+  So `r` = 0 maps tile x → `U`, tile y → `V`; each `r` step maps tile point (s, t) ∈ [0, 1]² to cell point `(1 − t, s)` applied `r` times. **Confirmed.** That `U` is the texture's column (horizontal) axis and `V` its row is **likely** (texel addressing in the rasteriser `0x10016ae0`… not read).
+
+### Vertex light
+In `0x100a03c0` (called from the chunk builder `0x1009ebf0`), before it calls `0x1009b920`, for each of the 9 × 9 corners of a chunk: `0x1008e3d0` computes face normals of the two triangles of every tile in a 10 × 10 window from the corner heights (heights via a second table at `0x100E2D90` = `h · 0.04`, filled by `0x1007c760`; horizontal step 1.0, `0x100CA4E4`); the corner normal `n` is the sum of the adjacent face normals, normalised. Then (`0x100a064f`–`0x100a06e5`):
+
+`light = 1 − L · n`, `light = (light · 0.5 − 0.702621) · 1.15 + 0.702621`; if `light ≥ 1` → byte 255, else byte = `trunc(light · 255)`
+
+with constants `0x100C1278` = 1.0, `0x100C1288` = 0.5, `0x100CA528` = 0.702621 (double), `0x100CA520` = 1.15 (double), `0x100CA518` = 255.0. **Confirmed.** `L` is the first column (elements at `+0x13CC`, `+0x13DC`, `+0x13EC`) of a 4 × 4 float matrix that the caller passes in and `0x1009f465`–`0x1009f4a5` copies to `+0x13CC`; which matrix this is (camera or a light matrix) is not traced. The face-normal component order (`0x1008e6b0`…`0x1008e870`: `(dh₁, −1, dh₂ − dh₁)`-style vectors) was read only for the first two helpers. The rasteriser applies the byte as a Gouraud value (`annodisplay.md` §6).
+
+## Sea surface (open water)
+Open water is **not** terrain: it is a lattice of animated sprites of `Anlagen.dat` entry **2801** (`0xAF1`, `PRODTYPE` `MEER`, frames from `Meer\Meer01_001.tga`, 64 frames per zoom group, format `BSH_RGBWZ`, 3 × 3 footprint; entry 2802 = `Meer02`, the same layout) drawn over the sea floor. **Confirmed** (code + data):
+
+- `0x1009f4c0` (called from `0x1009f870` for each 8 × 8 tile chunk whose "sea" bit is set in the chunk header, `+0x32`; how that bit is set is not traced) fetches object 2801 and places one sprite at every `(x, z)` with `z` even and `x ≡ 2 · ((z / 2) mod 2) (mod 4)`, i.e. a staggered 4 × 2 tile lattice. **Confirmed.**
+- World height of each sprite: `sea = 2 · 16 · 0.04 = 1.28` world units (`0x100E3A20`, initialised by `0x1009cfb0`/`0x1009d010` from step `0x100CB8F4` = 0.04 and `0x100C127C` = 16), plus a small per-sprite offset `(x mod 5) · 0.01 − (z mod 3) · 0.01357` (`0x100C4DA0`, `0x100CC928`). 1.28 world units = **32 `HEIGHT` units**, ≈ 65.9 px above height 0 at zoom 0. **Confirmed.** This is above the coastal sea-floor heights 0/8/16, so the sea floor (ground textures `Meer*`, `RiffBoden*`, `Untiefen*`, …) lies under the water sprites.
+- Transparency: `BSH_RGBWZ` is drawn by the raster brushes (`annodisplay.md` §3, `W`) as a 50 % checkerboard (screen-door) with per-pixel depth; the floor shows through every second pixel. **Confirmed** for the format; the visual reading "semi-transparent water" is **likely**.
+- Animation: frame = `tick / (frame_count / 2) + ((5 · x + 3 · z) mod 32)` (frame count from the object, slot `+0x60`); passed with rotation 0 and colour parameter `0xC0` to `tDrawSegmentDD2` slot `+0xBC`. **Confirmed** formula; the unit of `tick` and the wrap of the frame index (presumably modulo the frame count inside `AnnoDisplay`) are not traced.
+- What is drawn under texture-0 tiles (no terrain triangles) is not established — the screen-door gaps would show whatever the tile cache is cleared to. Open.
+- Related constants derived from the same 0.04 step: `1.28 − 0.35 = 0.93` (`0x100E3A1C`), `1.28 − 0.5 = 0.78` (`0x100E3A18`); a second copy (`0x100E34D0` = 0.78) is the threshold in the walk/build classification `0x100900c0`/`0x10090350`: a tile counts as land when the average of its four corner heights exceeds `trunc(0.78 / 0.04)` = 19. **Confirmed** (code); its rendering relevance is none known.
+- Coastal surf, river and waterfall pieces are ordinary placed objects: entries 2701–2709 (`FLUSS`, `WASSERFALL`; `Fluss*`, `Meer_Fluss*`, `Brandung01` surf, `MeerWellen01`, `Gischt01`) are placed through the island `FLUESSE` record (P: 2708 `Brandung01` 3,742 placements in 150 templates); all water entries 2701–2709 and 2801–2802 have sprite-set prefix byte 2 = 10, the `tHausAnimWasser` kind (`annodisplay.md` §7). 2801/2802 never occur in island data (P), consistent with runtime placement.
+- `WPLANE` (43 occurrences in `Anlagen.dat`, inside `OBJECTPOS` payloads, read by `AnnoGame.dll` `0x10009240`) holds `n` × 52 bytes: `u32` flag + four world-space points (x, up, z) — small water quads of buildings (e.g. entry with planes at up = 0 and 0.7). Not the sea. **Confirmed** (layout of the observed payload), purpose **likely**.
 
 ## Open
-- Which diagonal splits a tile quad into two triangles, and the texture-coordinate mapping (`0x1007b030`, `0x1007b0f0`).
+- How the per-chunk "sea" bit (`+0x32`) is set (all chunks with any texture-0 tile?) and what is drawn below texture-0 tiles.
+- Unit of the animation tick; wrap of the frame index.
+- Which matrix supplies the light vector `L`; full face-normal component order.
 - Initial value of the last corner row/column; whether `HEIGHT` blocks at the island edge ever cover them.
-- Source of the per-corner light byte (slope shading?).
-- How open water and texture ids 1–10 are drawn.
-- The world position passed to `AnnoDisplay` for buildings and figures (callers of `tDrawSegmentDD2` slot `+0xBC`).
+- The world position passed to `AnnoDisplay` for buildings and figures (callers of `tDrawSegmentDD2` slot `+0xBC`); the object path in `0x1009f870` uses (tile x, `table[height byte]`, tile y) of the object's record.

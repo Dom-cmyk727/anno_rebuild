@@ -59,16 +59,18 @@ Order in templates: `INFO, HEIGHT…, GFXID…, GELAENDE…, FRUCHTBAR, [FLUESSE
 `HEIGHT` and `GFXID` blocks start at multiples of 32, are stored row of blocks by row of blocks (left to right, top to bottom), sit at the same positions in both records, and cover every tile exactly once. Re-encoding the assembled grids with these rules reproduces every `HEIGHT` and `GFXID` payload byte for byte (P, all 1,133 islands). `GELAENDE` and `PROD2` blocks use the same grid order (P).
 
 ## Ground
-A `GFXID` value selects a 32 × 32 pixel cell of a 256 × 256 ground texture in `Textures/Felder.tex` ([`tex.md`](tex.md); the textures are listed in the build script `Data/Felder.dat`):
+A `GFXID` value selects one cell of a **6 × 6** grid (cells of 256/6 ≈ 42.67 px) over a 256 × 256 ground texture in `Textures/Felder.tex` ([`tex.md`](tex.md); the textures are listed in the build script `Data/Felder.dat`):
 
 | Bits | Name | Meaning | Evidence |
 |---|---|---|---|
 | 15–8 | `texture` | `Felder.tex` `TEXTURE` id (11–157); 0 = open water, which has no ground texture | P: 13,402,214 tiles name a `Felder.tex` texture, 3,804,534 are 0, 36 name 205 (below); 141 of the 147 textures are used |
-| 7–5 | `u` | cell column, texture pixels `32 u … 32 u + 31` | P: horizontally adjacent tiles of one texture differ by ±32 or ±4 in the low byte; visual |
-| 4–2 | `v` | cell row | P, visual |
-| 1–0 | `r` | quarter turns: the pixel shown at cell position `(x, y)` is the texture pixel at `(32 u, 32 v) + T^r(x, y)` with `T(x, y) = (31 − y, x)` | visual: with `T` coasts and snow fields blend seamlessly; without rotation, or with the inverse turn, block seams appear (`Po_064x064_0008_Eskimo.scp`) |
+| 7–5 | `u` | cell column: texture `x` from `u/6` to `(u+1)/6` of the width; 0–5 (6 and 7 on 230 of 13.4 M tiles; clamped) | D: `AnnoWelt.dll` UV table `0x100DCF44` = [0, 1/6, …, 1], indexed `u` and `u+1` for the tile's corners (`docs/re/annowelt.md`); P: value range; seam error between neighbouring tiles is less than half that of 1/8 cells (Eskimo 34.2 vs 80.2, Piraten 37.8 vs 85.2, jungle 20.2 vs 55.0) |
+| 4–2 | `v` | cell row, as `u` | D, P |
+| 1–0 | `r` | quarter turns: tile position `(s, t)` ∈ [0, 1)² (`s` along tile x, `t` along tile y) shows cell position `T^r(s, t)` with `T(s, t) = (1 − t, s)`; corner (x, y) of the tile is cell corner (0, 0) for `r` = 0 | D: `AnnoWelt.dll` per-corner UV functions `0x1007b030`…`0x1007b270`; P: lowest seam error of all 16 axis/rotation variants |
 
-Visual check 2026-10-16 (`anno-extract insel`, top-down, `HEIGHT` not applied): `Po_064x064_0008_Eskimo.scp` shows snow fields, rocky shores and a shallow-water ring; the 256 × 256 main island of `0200Single/Single_01.sze` shows grassland, sand, rock ridges, lagoons and a continuous coast. Water tiles (texture 0) form the open sea around the shallow-water ring; the cell bits of water tiles still step like ground (value 0 = cell (0, 0) on an 8-tile grid), so the sea is probably drawn from a water texture or effect outside `Felder.tex` (OQ-024).
+Correction 2026-10-16: an earlier version of this spec gave 32 × 32 px cells (8 × 8 per texture), chosen by comparing axis and rotation variants that all used the wrong cell size; static analysis and the seam measurement above show 6 × 6.
+
+Visual check 2026-10-16 (`anno-extract insel`, top-down, `HEIGHT` not applied): `Po_064x064_0008_Eskimo.scp` shows snow fields, rocky shores and a shallow-water ring; the 256 × 256 main island of `0200Single/Single_01.sze` shows grassland, sand, rock ridges, lagoons and a continuous coast. Water tiles (texture 0) form the open sea around the shallow-water ring. The original draws the sea as animated sprites over the sea floor, not as ground ([`docs/render/iso.md`](../render/iso.md), "Water").
 
 One 3 × 3 patch names texture 205, which `Felder.tex` does not contain: in `Nord/N_256x256_0015_5B.scp` and the three scenarios that contain that island (`endless01.sze`, `00_1024_easyentry_01.sze`, `S01_12_01.sze`) (P, `ground_textures`).
 

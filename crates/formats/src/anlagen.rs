@@ -110,6 +110,15 @@ impl<'a> AnlagenFile<'a> {
         self.volumes.iter().find(|v| v.group == group)
     }
 
+    /// Footprint `(width, height)` in tiles of entry `id`: `HEAD` bytes 0
+    /// and 1 (spec: `docs/formats/anlagen.md`; evidence: 1 × 1 grass and
+    /// trees, 4 × 7 palace, 8 × 8 castle, and placed `PROD2` buildings do
+    /// not overlap once odd rotations swap it).
+    pub fn footprint(&self, id: u32) -> Option<(u8, u8)> {
+        let head = self.entry(id)?.record("HEAD")?;
+        Some((*head.first()?, *head.get(1)?))
+    }
+
     /// Entry with `id`.
     pub fn entry(&self, id: u32) -> Option<&Entry<'a>> {
         self.entries.iter().find(|e| e.id == id)

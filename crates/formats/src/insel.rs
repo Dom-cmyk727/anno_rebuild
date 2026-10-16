@@ -18,6 +18,8 @@
 //! - A `GFXID` value selects ground: `texture << 8 | u << 5 | v << 2 | r`,
 //!   a 32 × 32 cell `(u, v)` of a 256 × 256 `Textures/Felder.tex` texture,
 //!   turned by `r` quarter turns; texture 0 = open water ([`GroundCell`]).
+//! - `GELAENDE`, `PROD2`, `FLUESSE` blocks hold 6-byte items that place
+//!   `Anlagen.dat` objects ([`PlacedObject`]).
 
 use std::fmt;
 
@@ -311,6 +313,69 @@ impl GroundCell {
     }
 }
 
+/// Size of one item in `GELAENDE`, `PROD2` and `FLUESSE` blocks.
+pub const ITEM_LEN: usize = 6;
+
+/// One 6-byte block item: an `Anlagen.dat` object placed on the island
+/// (spec: `docs/formats/insel.md`, "Placed objects").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PlacedObject {
+    /// `ANLAGEN` entry id (bits 0–11 of the first `u16`).
+    pub anlage: u16,
+    /// Quarter turns (bits 14–15); odd values swap the footprint.
+    pub rotation: u8,
+    /// Bits 12–13 of the first `u16`; 0 in the whole corpus.
+    pub reserved: u8,
+    /// Second `u16`; mostly `0x3000`, meaning unknown (OQ-024).
+    pub state: u16,
+    /// Island tile of the footprint's top-left corner (block origin + item offset).
+    pub x: u16,
+    pub y: u16,
+}
+
+impl PlacedObject {
+    /// Parses one item of `block`.
+    pub fn parse(item: &[u8; ITEM_LEN], block: &Block<'_>) -> Self {
+        let id = u16::from_le_bytes([item[0], item[1]]);
+        Self {
+            anlage: id & 0x0FFF,
+            rotation: u8::try_from(id >> 14).expect("2 bits"),
+            reserved: u8::try_from((id >> 12) & 3).expect("2 bits"),
+            state: u16::from_le_bytes([item[2], item[3]]),
+            x: block.x + u16::from(item[4]),
+            y: block.y + u16::from(item[5]),
+        }
+    }
+
+    /// `(width, height)` on the island for an unrotated footprint `(w, h)`.
+    pub fn footprint(&self, w: u8, h: u8) -> (u8, u8) {
+        if self.rotation % 2 == 1 {
+            (h, w)
+        } else {
+            (w, h)
+        }
+    }
+}
+
+impl<'a> Island<'a> {
+    /// All items of the block records called `name` (`GELAENDE`, `PROD2`,
+    /// `FLUESSE`) in file order, duplicates included.
+    pub fn objects(&self, name: &str) -> Result<Vec<PlacedObject>, Error> {
+        let mut out = Vec::new();
+        for b in self.blocks(name)? {
+            let (items, rest) = b.data.as_chunks::<ITEM_LEN>();
+            if !rest.is_empty() {
+                return Err(Error::Bad {
+                    what: "item list length",
+                    offset: 0,
+                });
+            }
+            out.extend(items.iter().map(|i| PlacedObject::parse(i, &b)));
+        }
+        Ok(out)
+    }
+}
+
 /// All islands of an `.scp` or `.sze` buffer, in file order: `INSEL5`
 /// children of the root (`.scp`) or of `SCENE` (`.sze`), or one `INSEL4`
 /// island (legacy `.scp`).
@@ -421,6 +486,27 @@ mod tests {
         let r4 = (0..4).fold((3, 7), |(x, y), _| (31 - y, x));
         assert_eq!(r4, (3, 7), "four quarter turns are the identity");
         assert_eq!(GroundCell::from_gfx_id(0).texture, 0);
+    }
+
+    #[test]
+    fn placed_objects() {
+        // Fisher's hut 3978 = 0x0f8a, rotation 2 → 0x8f8a; state 0x3000; (0, 13)
+        // in the block at (32, 0).
+        let block = Block::parse(&[32, 0, 0, 0, 32, 32, 0x8a, 0x8f, 0, 0x30, 0, 13], 0).unwrap();
+        let objs: Vec<_> = block
+            .data
+            .as_chunks::<ITEM_LEN>()
+            .0
+            .iter()
+            .map(|i| PlacedObject::parse(i, &block))
+            .collect();
+        let o = objs[0];
+        assert_eq!(
+            (o.anlage, o.rotation, o.reserved, o.state, o.x, o.y),
+            (3978, 2, 0, 0x3000, 32, 13)
+        );
+        assert_eq!(o.footprint(3, 4), (3, 4));
+        assert_eq!(PlacedObject { rotation: 1, ..o }.footprint(3, 4), (4, 3));
     }
 
     #[test]

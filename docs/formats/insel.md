@@ -82,7 +82,7 @@ Each 6-byte item of `GELAENDE`, `PROD2` and `FLUESSE` places one `Anlagen.dat` o
 | Offset | Size | Type | Name | Meaning | Evidence |
 |---|---|---|---|---|---|
 | 0x00 | 2 | u16 | `id` | bits 0–11: `ANLAGEN` entry id; bits 12–13: 0; bits 14–15: `rotation` (quarter turns) | P: all 4,585,381 items name an existing `ANLAGEN` id; bits 12–13 always 0; the four rotation values all occur |
-| 0x02 | 2 | u16 | `state` | mostly `0x3000` (also `0x4000`, `0x5000`, `0x6000`, `0`, …); meaning ? OQ-024 | P |
+| 0x02 | 2 | u16 | `state` | `height << 8 \| phase`: high byte = the object's height in `HEIGHT` units (drawn at `height · 0.04` world units), low 6 bits = animation phase, bits 6–7 = 0. `0x3000` = height 48, phase 0 | D: `AnnoWelt.dll` loader `0x1007aa40`, saver `0x1007ac40`, drawing `0x1009f870`; P: height byte = terrain height at the top-left tile for 90 % of `GELAENDE`, 97 % of `PROD2`, 25 % of `FLUESSE` items (water objects keep their own level); bits 6–7 always 0 |
 | 0x04 | 1 | u8 | `x` | footprint's top-left tile, relative to the block origin; always inside the block | P |
 | 0x05 | 1 | u8 | `y` | | P |
 

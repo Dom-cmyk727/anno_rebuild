@@ -82,6 +82,17 @@ Goal: enough understanding of `AnnoWelt`/`AnnoGame`/`AnnoScene` to implement eco
 - [ ] For each recovered formula, write a differential-test fixture spec (inputs → expected outputs) so it can be executed later against the original on x86 Windows (`anno-diff`).
 - [ ] Evidence from the add-on debug build: `FileGame.dll` has a PDB path and source-file names; check whether it holds symbols or asserts that name functions.
 
+### M2.1 Savegame corpus (Spielstände) — needs the human with an x86 Windows/Wine install
+Scenario files show the *start* state only; savegames show how the running game stores live state (stocks, residents, carriers, timers, PRNG state, per-player data). They are the main ground truth for M3's state model and for differential tests.
+- [ ] **Human task:** run the original GOG 2.0.0.5 build and create Spielstände following a protocol, each with a short note of what was done and the values shown in the UI (gold, population per level, warehouse stock, game time):
+  - Baseline: start a known scenario (e.g. `Scenes/0010SingleEndlos/00_1024_easyentry_01.sze`), save immediately; save again after N minutes with no input (pure tick progression).
+  - Single-action pairs: save → one action → save (place one building, demolish it, change tax, load/unload a ship, found a settlement). One change per pair so a diff isolates its bytes.
+  - One mid/late-game save with a grown city and trade routes; one add-on (`ANNOADDON1`) save; one multiplayer save if the game allows it.
+- [ ] Locate where the game writes saves and in which format (OQ-020); confirm whether it is the same chunk container as `.sze`.
+- [ ] Storage: savegames stay out of git (they embed original scenario/island data); keep them in `saves/` (git-ignored) and commit only the protocol notes and findings in `docs/re/savegames.md` (file name, size, SHA-256, what was done, UI values).
+- [ ] `anno-diff save <a> <b>`: chunk-aware diff of two saves (changed chunks, then byte ranges), to map fields from the single-action pairs.
+- [ ] Cross-reference changed fields with the `SaveGame`/`RepairSavegame` code paths in `AnnoScene.dll`/`AnnoWelt.dll` (Ghidra).
+
 Acceptance M2: `docs/re/` has notes for tick loop, production, population, and fire; each with addresses and a fixture spec. No gameplay code yet.
 
 ## 4. Milestone M3 — Deterministic simulation (`crates/sim`)
@@ -92,7 +103,7 @@ Goal: headless simulation that loads a scenario and advances by ticks; faithful 
 - [ ] Command enum = the only way to mutate state (build, demolish, set production, trade route, move ship, …). Commands carry player id and target tick.
 - [ ] Seeded PRNG inside `sim` (e.g. `rand_pcg`), single source of randomness; expose state hash per tick (`blake3` or FNV over canonical serialization).
 - [ ] Implement subsystems in the order recovered in M2: production → carriers/roads → population/needs → taxes → ships/trade → fire → combat (last).
-- [ ] Savegame: load original `.sze` into state; write our own save format (versioned, explicit layout) and, if feasible, write original-compatible `.sze` for interop (stretch).
+- [ ] Savegame: load original `.sze` scenarios and original savegames (M2.1 corpus) into state; write our own save format (versioned, explicit layout) and, if feasible, write original-compatible `.sze` for interop (stretch).
 - [ ] Replay: record commands + seed; `anno-replay` CLI re-runs and compares per-tick hashes. Bisect helper for first divergent tick.
 
 Acceptance M3: a 1-hour headless run of an endless scenario produces identical hashes across Windows and Linux builds and across two runs. Production/population numbers match differential fixtures where executed.
@@ -124,7 +135,8 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 2. M1.1 chunk container with corpus + round-trip tests (`tools/chunks.py` is the oracle).
 3. M1.2 palette + texture decode; PNG export; look at the output.
 4. Start M2 Ghidra setup in parallel; first target `AnnoWelt.dll` tick loop and `AnnoFrame.dll` `CreateAnnoNetClientInstance` call graph.
-5. Human task (not Claude Code): contact millimarg (AnnoZone) for Amsel spec access; download AnnoZone file 9287; pull Azukee's DatEditor from Software Heritage into `docs/research/external/` (check licence before copying code — none stated, so treat as reference only).
+5. Human task: create the savegame corpus following M2.1 once an x86 Windows/Wine install is available.
+6. Human task (not Claude Code): contact millimarg (AnnoZone) for Amsel spec access; download AnnoZone file 9287; pull Azukee's DatEditor from Software Heritage into `docs/research/external/` (check licence before copying code — none stated, so treat as reference only).
 
 ## 8. Risks and how the plan handles them
 

@@ -5,3 +5,4 @@ target/
 cache/
 re/ghidra/
 __pycache__/
+saves/

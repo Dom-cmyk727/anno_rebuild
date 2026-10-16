@@ -6,5 +6,6 @@
 #![deny(unsafe_code)]
 
 pub mod chunk;
+pub mod colors;
 pub mod inc;
 pub mod tex;

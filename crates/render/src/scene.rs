@@ -17,7 +17,7 @@ use anno_assets::island::GroundTextures;
 use anno_formats::anlagen::AnlagenFile;
 use anno_formats::insel::Island;
 
-use crate::iso::{self, Canvas, DrawStats, HEIGHT_LIFT, Objects, SpriteCache, TILE, over};
+use crate::iso::{self, Canvas, DrawStats, HEIGHT_LIFT, Lift, Objects, SpriteCache, TILE, over};
 
 /// Room above an island's top vertex per zoom group: the largest sprite
 /// anchor height in `Anlagen.dat` (P: entry 1330, `anchor_y` 504 / 252 / 126
@@ -258,43 +258,89 @@ pub fn render_region(
         if island.gfx_ids().is_err() || island.heights().is_err() {
             stats.no_ground += 1;
         }
-        if layers.ground {
-            iso::draw_ground(&mut local, island, textures, group, HEIGHT_LIFT);
-        }
-        if let Some(t) = layers.water {
-            iso::draw_water(&mut local, island, anlagen, group, HEIGHT_LIFT, t, cache);
-            iso::draw_objects(
-                &mut local,
-                island,
-                anlagen,
-                &OBJECT_RECORDS,
-                Objects::Water,
-                group,
-                HEIGHT_LIFT,
-                t,
-                cache,
-            );
-        }
-        let s = if layers.objects {
-            iso::draw_objects(
-                &mut local,
-                island,
-                anlagen,
-                &OBJECT_RECORDS,
-                Objects::NotWater,
-                group,
-                HEIGHT_LIFT,
-                0,
-                cache,
-            )
-        } else {
-            DrawStats::default()
-        };
+        let s = draw_island(
+            &mut local,
+            island,
+            textures,
+            anlagen,
+            group,
+            HEIGHT_LIFT,
+            layers,
+            cache,
+        );
         composite(dst, &local, p.offset);
         stats.islands += 1;
         stats.objects.drawn += s.drawn;
         stats.objects.invisible += s.invisible;
         stats.objects.failed += s.failed;
+    }
+    stats
+}
+
+/// Draws the selected `layers` of one island into `canvas` (island-local
+/// screen coordinates), in the order the original's depth buffer implies:
+/// ground; water objects below sea level (surf); the sea surface; water
+/// objects above it (rivers); other objects. Returns the stats of the last
+/// step plus the water objects' drawn/failed counts.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_island(
+    canvas: &mut Canvas,
+    island: &Island<'_>,
+    textures: &GroundTextures,
+    anlagen: &AnlagenFile<'_>,
+    group: usize,
+    lift: Lift,
+    layers: Layers,
+    cache: &SpriteCache,
+) -> DrawStats {
+    let mut stats = DrawStats::default();
+    let mut add = |s: DrawStats| {
+        stats.drawn += s.drawn;
+        stats.invisible += s.invisible;
+        stats.failed += s.failed;
+    };
+    if layers.ground {
+        iso::draw_ground(canvas, island, textures, group, lift);
+    }
+    if let Some(t) = layers.water {
+        let draw = |c: &mut Canvas, which| {
+            iso::draw_objects(
+                c,
+                island,
+                anlagen,
+                &OBJECT_RECORDS,
+                which,
+                group,
+                lift,
+                t,
+                cache,
+            )
+        };
+        let below = draw(canvas, Objects::WaterBelowSea);
+        iso::draw_water(canvas, island, anlagen, group, lift, t, cache);
+        let above = draw(canvas, Objects::WaterAboveSea);
+        // Water objects are counted, invisible markers only once (below).
+        add(DrawStats {
+            invisible: 0,
+            ..below
+        });
+        add(DrawStats {
+            invisible: 0,
+            ..above
+        });
+    }
+    if layers.objects {
+        add(iso::draw_objects(
+            canvas,
+            island,
+            anlagen,
+            &OBJECT_RECORDS,
+            Objects::NotWater,
+            group,
+            lift,
+            0,
+            cache,
+        ));
     }
     stats
 }

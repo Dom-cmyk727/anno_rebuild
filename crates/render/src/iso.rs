@@ -299,14 +299,23 @@ const LAND_AVERAGE: i64 = 19;
 /// likely; P: all `BSH_RGBWZ` entries 2701–2708, 2801, 2802).
 pub const KIND_WATER: u8 = 10;
 
+/// `ANLAGEN` entry of surf (`Brandung01`): the only object whose animation
+/// phase the original overrides on load, with `(3y + 5x) mod 32` (D:
+/// `AnnoWelt.dll` `FLUESSE` loader `0x1007aa40`, test at `0x1007ab58`).
+/// Original value; to become content configuration (PLAN §0.1).
+pub const SURF_ANLAGE: u32 = 2708;
+
 /// Which placed objects [`draw_objects`] draws.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Objects {
     All,
     /// Everything except water objects (static layer).
     NotWater,
-    /// Only water objects (animated layer, drawn with the sea).
-    Water,
+    /// Water objects below sea level (surf on the sea floor), drawn before
+    /// the sea surface so it covers them with its checkerboard.
+    WaterBelowSea,
+    /// Water objects at or above sea level (rivers), drawn after the sea.
+    WaterAboveSea,
 }
 
 /// Decoded frames, shared between renders and threads. Key: `(ANLAGEN id,
@@ -411,12 +420,9 @@ fn blit_sprite(
 }
 
 /// Draws the placed objects of `records` (e.g. `["GELAENDE", "PROD2",
-/// "FLUESSE"]`), duplicates removed, at animation time `time_ms`.
-///
-/// Water objects (rivers, waterfalls, surf; [`KIND_WATER`]) are raised to
-/// the higher of the terrain and [`SEA_LEVEL`] — an approximation: surf is
-/// placed on the sea floor (heights 0–16) but belongs on the water surface;
-/// the original's object height is not traced (OQ-026).
+/// "FLUESSE"]`), duplicates removed, at animation time `time_ms`. Each
+/// object stands at its own height (`PlacedObject::height`, as the
+/// original), with its own animation phase (surf: `(3y + 5x) mod 32`).
 #[allow(clippy::too_many_arguments)]
 pub fn draw_objects(
     canvas: &mut Canvas,
@@ -429,9 +435,6 @@ pub fn draw_objects(
     time_ms: u64,
     cache: &SpriteCache,
 ) -> DrawStats {
-    let heights = island.heights().unwrap_or_default();
-    let iw = usize::from(island.width);
-    let ih = usize::from(island.height);
     let mut objs = BTreeSet::<PlacedObject>::new();
     for r in records {
         objs.extend(island.objects(r).unwrap_or_default());
@@ -458,14 +461,32 @@ pub fn draw_objects(
             continue;
         };
         let water = set.prefix.get(2) == Some(&KIND_WATER);
-        if (which == Objects::Water && !water) || (which == Objects::NotWater && water) {
+        let below = i64::from(o.height()) < SEA_LEVEL;
+        let wanted = match which {
+            Objects::All => true,
+            Objects::NotWater => !water,
+            Objects::WaterBelowSea => water && below,
+            Objects::WaterAboveSea => water && !below,
+        };
+        if !wanted {
             continue;
         }
         let Some(frames) = set.frame_sets.iter().find(|fs| fs.group == g) else {
             stats.failed += 1;
             continue;
         };
-        let k = frame_index(frames.frames.len(), animation(set), o.rotation, time_ms, 0);
+        let phase = if id == SURF_ANLAGE {
+            (3 * usize::from(o.y) + 5 * usize::from(o.x)) % 32
+        } else {
+            usize::from(o.phase())
+        };
+        let k = frame_index(
+            frames.frames.len(),
+            animation(set),
+            o.rotation,
+            time_ms,
+            phase,
+        );
         let Some(frame) = frames.frames.get(k) else {
             stats.failed += 1;
             continue;
@@ -479,20 +500,8 @@ pub fn draw_objects(
             2 * i32::from(o.x) + i32::from(w),
             2 * i32::from(o.y) + i32::from(h),
         );
-        // Height at the footprint centre, interpolated like the ground.
-        let mut z2 = if heights.is_empty() {
-            0
-        } else {
-            let (cx, cy) = (
-                usize::try_from(cx2 / 2).expect("fits"),
-                usize::try_from(cy2 / 2).expect("fits"),
-            );
-            let c = corners(&heights, iw, ih, cx, cy);
-            interpolate(c, i64::from(cx2 % 2), i64::from(cy2 % 2), 2)
-        };
-        if water {
-            z2 = z2.max(2 * SEA_LEVEL);
-        }
+        // The object's own height (doubled units, as the footprint centre).
+        let z2 = 2 * i64::from(o.height());
         let raise = lift.scaled(z2, 2, group);
         let (sx, sy) = ((cx2 - cy2) * tw / 4, (cx2 + cy2) * th / 4 - raise);
         // Shadow first: same frame index of the set's SHADOW, own anchor.

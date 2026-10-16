@@ -294,34 +294,17 @@ fn view(
         textures.set_water(c);
     }
     let mut canvas = iso::Canvas::for_island(island, group, anno_render::scene::margin(group));
-    iso::draw_ground(&mut canvas, island, &textures, group, lift);
     let cache = iso::SpriteCache::default();
-    let records = anno_render::scene::OBJECT_RECORDS;
-    iso::draw_water(&mut canvas, island, &anlagen, group, lift, 0, &cache);
-    let w = iso::draw_objects(
+    let stats = anno_render::scene::draw_island(
         &mut canvas,
         island,
+        &textures,
         &anlagen,
-        &records,
-        iso::Objects::Water,
         group,
         lift,
-        0,
+        anno_render::scene::Layers::ALL,
         &cache,
     );
-    let mut stats = iso::draw_objects(
-        &mut canvas,
-        island,
-        &anlagen,
-        &records,
-        iso::Objects::NotWater,
-        group,
-        lift,
-        0,
-        &cache,
-    );
-    stats.drawn += w.drawn;
-    stats.failed += w.failed;
     eprintln!(
         "{file}: island {index}: {} objects drawn, {} invisible, {} failed",
         stats.drawn, stats.invisible, stats.failed

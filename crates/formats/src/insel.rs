@@ -335,7 +335,8 @@ pub struct PlacedObject {
     pub rotation: u8,
     /// Bits 12–13 of the first `u16`; 0 in the whole corpus.
     pub reserved: u8,
-    /// Second `u16`; mostly `0x3000`, meaning unknown (OQ-024).
+    /// Second `u16`: `height << 8 | phase` (bits 6–7 always 0), see
+    /// [`PlacedObject::height`], [`PlacedObject::phase`].
     pub state: u16,
     /// Island tile of the footprint's top-left corner (block origin + item offset).
     pub x: u16,
@@ -354,6 +355,21 @@ impl PlacedObject {
             x: block.x + u16::from(item[4]),
             y: block.y + u16::from(item[5]),
         }
+    }
+
+    /// The object's height in `HEIGHT` units (high byte of `state`). D:
+    /// `AnnoWelt.dll` loader `0x1007aa40` / saver `0x1007ac40`; drawn at
+    /// `height · 0.04` world units (`0x1009f870`). P: equals the terrain
+    /// height at the top-left tile for 90 % of `GELAENDE` and 97 % of `PROD2`
+    /// items, but only 25 % of `FLUESSE` items (water objects keep their own
+    /// level, e.g. surf at 0).
+    pub fn height(&self) -> u8 {
+        self.state.to_be_bytes()[0]
+    }
+
+    /// Animation phase (low 6 bits of `state`); D: as [`PlacedObject::height`].
+    pub fn phase(&self) -> u8 {
+        self.state.to_le_bytes()[0] & 0x3F
     }
 
     /// `(width, height)` on the island for an unrotated footprint `(w, h)`.
@@ -520,6 +536,9 @@ mod tests {
             (o.anlage, o.rotation, o.reserved, o.state, o.x, o.y),
             (3978, 2, 0, 0x3000, 32, 13)
         );
+        assert_eq!((o.height(), o.phase()), (0x30, 0));
+        let p = PlacedObject { state: 0x1005, ..o };
+        assert_eq!((p.height(), p.phase()), (16, 5));
         assert_eq!(o.footprint(3, 4), (3, 4));
         assert_eq!(PlacedObject { rotation: 1, ..o }.footprint(3, 4), (4, 3));
     }

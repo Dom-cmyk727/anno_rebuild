@@ -2,18 +2,18 @@
 //! the M1.6 island viewer.
 //!
 //! ```text
-//! anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png <out.png>]
+//! anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png <out.png> [--time <ms>]]
 //! ```
 //!
 //! `--view` shows every island of a scenario (`.sze`) at its `INSEL5` world
 //! position, or the single island of a template (`.scp`), rendered with
-//! `anno_render::iso` (ground with elevation, `GELAENDE` + `PROD2` objects,
-//! shadows) and
+//! `anno_render::iso` (ground with elevation, animated sea, `GELAENDE` +
+//! `PROD2` + `FLUESSE` objects, shadows) and
 //! composed by `anno_render::scene` (rules: `docs/render/iso.md`).
 //!
 //! - Window (default): drag with the left mouse button, arrow keys or WASD to
 //!   pan; mouse wheel or `+` / `-` to switch zoom groups 2 (far) / 1 / 0
-//!   (near); `Esc` or `Q` quits. The scene is rendered lazily in 1024 × 1024
+//!   (near); `Esc` or `Q` quits; `Space` pauses the water animation. The scene is rendered lazily in 1024 × 1024
 //!   pixel chunks on all cores and cached per zoom group; progress goes to
 //!   stderr. Open sea is drawn in the island-water placeholder colour.
 //! - `--png <out.png>`: headless; writes the whole scene at `--group`
@@ -44,7 +44,7 @@ use anno_net as _;
 use anno_sim as _;
 use anno_ui as _;
 
-const USAGE: &str = "usage: anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png <out.png>]";
+const USAGE: &str = "usage: anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png <out.png> [--time <ms>]]";
 
 type BoxError = Box<dyn std::error::Error>;
 
@@ -54,6 +54,8 @@ struct Args {
     game_dir: Option<PathBuf>,
     group: Option<usize>,
     png: Option<PathBuf>,
+    /// Animation time for `--png`, in milliseconds.
+    time: u64,
 }
 
 fn parse_args(args: &[String]) -> Option<Args> {
@@ -62,6 +64,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
         game_dir: None,
         group: None,
         png: None,
+        time: 0,
     };
     let mut have_file = false;
     let mut it = args.iter();
@@ -75,6 +78,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
             "--game-dir" => out.game_dir = Some(PathBuf::from(value)),
             "--group" => out.group = Some(value.parse().ok().filter(|&g: &usize| g < 3)?),
             "--png" => out.png = Some(PathBuf::from(value)),
+            "--time" => out.time = value.parse().ok()?,
             _ => return None,
         }
     }
@@ -122,14 +126,18 @@ pub struct Scene<'a> {
     pub anlagen: AnlagenFile<'a>,
     /// Placements per zoom group, in draw order.
     pub layouts: [Vec<Placement>; 3],
+    /// Decoded sprite frames, shared by all renders and threads.
+    pub sprites: anno_render::iso::SpriteCache,
 }
 
 impl Scene<'_> {
-    /// Renders the scene region `rect` at `group` into a new canvas.
+    /// Renders `layers` of the scene region `rect` at `group` into a new
+    /// (transparent) canvas.
     pub fn render(
         &self,
         rect: scene::Rect,
         group: usize,
+        layers: scene::Layers,
     ) -> (anno_render::iso::Canvas, SceneStats) {
         let mut canvas = scene::blank(rect);
         let stats = scene::render_region(
@@ -139,6 +147,8 @@ impl Scene<'_> {
             &self.textures,
             &self.anlagen,
             group,
+            layers,
+            &self.sprites,
         );
         (canvas, stats)
     }
@@ -162,12 +172,13 @@ fn run(args: &Args) -> Result<bool, BoxError> {
         anlagen,
         layouts: [0, 1, 2].map(|g| scene::layout(&boxes, g)),
         islands,
+        sprites: anno_render::iso::SpriteCache::default(),
     };
     if scene.islands.is_empty() {
         return Err("no islands".into());
     }
     match &args.png {
-        Some(out) => write_scene_png(&scene, args.group.unwrap_or(2), out),
+        Some(out) => write_scene_png(&scene, args.group.unwrap_or(2), out, args.time),
         None => {
             viewer::run(&scene, args.group.unwrap_or(2))?;
             Ok(true)
@@ -176,7 +187,12 @@ fn run(args: &Args) -> Result<bool, BoxError> {
 }
 
 /// Headless `--png`: renders the whole scene at `group`.
-fn write_scene_png(scene: &Scene<'_>, group: usize, out: &Path) -> Result<bool, BoxError> {
+fn write_scene_png(
+    scene: &Scene<'_>,
+    group: usize,
+    out: &Path,
+    time: u64,
+) -> Result<bool, BoxError> {
     let rect = scene::scene_bounds(&scene.layouts[group]).ok_or("no islands")?;
     let bytes = i64::from(rect.w) * i64::from(rect.h) * 4;
     if bytes > 1 << 32 {
@@ -188,7 +204,11 @@ fn write_scene_png(scene: &Scene<'_>, group: usize, out: &Path) -> Result<bool, 
         )
         .into());
     }
-    let (canvas, stats) = scene.render(rect, group);
+    let layers = scene::Layers {
+        water: Some(time),
+        ..scene::Layers::ALL
+    };
+    let (canvas, stats) = scene.render(rect, group, layers);
     eprintln!(
         "{}: group {group} {}x{} px, {} islands drawn ({} without ground), objects {} drawn, {} invisible, {} failed",
         scene.name,

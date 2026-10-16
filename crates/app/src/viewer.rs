@@ -1,17 +1,20 @@
 //! Interactive scene window (`--view` without `--png`): `winit` window,
-//! `softbuffer` CPU blit, pan and zoom-group switching. The scene is rendered
-//! in [`CHUNK`]-sized squares of scene screen space, on all cores, and the
-//! chunks are cached per zoom group. Controls: see the crate docs.
+//! `softbuffer` CPU blit, pan and zoom-group switching. The static layers
+//! (ground; objects) are rendered in [`CHUNK`]-sized squares of scene screen
+//! space, on all cores, and cached per zoom group. The water layer (sea
+//! surface, rivers, surf) is redrawn every [`FRAME_MS`] for the visible
+//! part of each chunk, at the animation time, and composited between them.
+//! Controls: see the crate docs; Space pauses the animation.
 
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anno_assets::island::WATER;
-use anno_render::iso::TILE;
+use anno_render::iso::{Canvas, TILE, over};
 use anno_render::scene::{self, Rect};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -29,6 +32,17 @@ const CHUNK: i32 = 1024;
 const MAX_CHUNKS: usize = 160;
 /// Background (open sea): the island-water placeholder colour, 0RGB.
 const BACKGROUND: u32 = rgb(WATER[0], WATER[1], WATER[2]);
+/// Redraw interval while animating: the sea sprite's frame time (50 ms in
+/// its `ANIM` record); other water objects use their own frame times.
+const FRAME_MS: u64 = 50;
+
+/// Cached static layers of one chunk; empty vectors = no island overlaps.
+struct ChunkLayers {
+    /// Ground over [`BACKGROUND`], 0RGB.
+    ground: Vec<u32>,
+    /// Placed objects (except water objects), straight-alpha RGBA.
+    objects: Vec<[u8; 4]>,
+}
 
 const fn rgb(r: u8, g: u8, b: u8) -> u32 {
     (r as u32) << 16 | (g as u32) << 8 | b as u32
@@ -46,6 +60,10 @@ pub fn run(scene: &Scene<'_>, group: usize) -> Result<(), BoxError> {
         ),
         window: None,
         cache: BTreeMap::new(),
+        clock: Instant::now(),
+        paused_at: None,
+        next_frame: Instant::now(),
+        frames: (0, Duration::ZERO),
         drag: false,
         cursor: None,
         scroll: 0.0,
@@ -70,8 +88,14 @@ struct Viewer<'s, 'a> {
     /// Scene screen position (at `group`) shown in the window centre.
     cam: (f64, f64),
     window: Option<Gfx>,
-    /// `(group, chunk x, chunk y)` → 0RGB pixels; empty = background only.
-    cache: BTreeMap<(usize, i32, i32), Vec<u32>>,
+    /// `(group, chunk x, chunk y)` → static layers.
+    cache: BTreeMap<(usize, i32, i32), ChunkLayers>,
+    /// Animation clock; while paused, the time it was paused at.
+    clock: Instant,
+    paused_at: Option<Duration>,
+    next_frame: Instant,
+    /// Frames drawn and their summed draw time, for the stderr log.
+    frames: (u32, Duration),
     drag: bool,
     cursor: Option<(f64, f64)>,
     /// Accumulated wheel movement in lines.
@@ -80,6 +104,19 @@ struct Viewer<'s, 'a> {
 }
 
 impl ApplicationHandler for Viewer<'_, '_> {
+    fn about_to_wait(&mut self, el: &ActiveEventLoop) {
+        if self.paused_at.is_some() {
+            el.set_control_flow(ControlFlow::Wait);
+            return;
+        }
+        let now = Instant::now();
+        if now >= self.next_frame {
+            self.next_frame = now + Duration::from_millis(FRAME_MS);
+            self.redraw();
+        }
+        el.set_control_flow(ControlFlow::WaitUntil(self.next_frame));
+    }
+
     fn resumed(&mut self, el: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -117,6 +154,7 @@ impl ApplicationHandler for Viewer<'_, '_> {
                     Key::Named(NamedKey::ArrowDown) => self.pan(0.0, dy),
                     Key::Character(c) => match c.to_ascii_lowercase().as_str() {
                         "q" => el.exit(),
+                        " " => self.toggle_pause(),
                         "a" => self.pan(-dx, 0.0),
                         "d" => self.pan(dx, 0.0),
                         "w" => self.pan(0.0, -dy),
@@ -195,6 +233,20 @@ impl Viewer<'_, '_> {
         }
     }
 
+    /// Animation time in milliseconds.
+    fn time_ms(&self) -> u64 {
+        let t = self.paused_at.unwrap_or_else(|| self.clock.elapsed());
+        u64::try_from(t.as_millis()).unwrap_or(u64::MAX)
+    }
+
+    fn toggle_pause(&mut self) {
+        match self.paused_at.take() {
+            Some(t) => self.clock = Instant::now() - t,
+            None => self.paused_at = Some(self.clock.elapsed()),
+        }
+        self.redraw();
+    }
+
     fn pan(&mut self, dx: f64, dy: f64) {
         self.cam.0 += dx;
         self.cam.1 += dy;
@@ -245,6 +297,22 @@ impl Viewer<'_, '_> {
     }
 
     fn draw(&mut self) -> Result<(), BoxError> {
+        let started = Instant::now();
+        self.draw_frame()?;
+        self.frames.0 += 1;
+        self.frames.1 += started.elapsed();
+        if self.frames.0 == 100 {
+            eprintln!(
+                "zoom group {}: average frame {:.1} ms",
+                self.group,
+                self.frames.1.as_secs_f64() * 10.0
+            );
+            self.frames = (0, Duration::ZERO);
+        }
+        Ok(())
+    }
+
+    fn draw_frame(&mut self) -> Result<(), BoxError> {
         let (w, h) = self.view_size();
         let (wi, hi) = (i32::try_from(w)?, i32::try_from(h)?);
         // Scene screen position of the window's top-left pixel.
@@ -261,6 +329,7 @@ impl Viewer<'_, '_> {
         };
         let chunks = visible_chunks(view);
         self.fill_cache(&chunks);
+        let t = self.time_ms();
 
         let Some(gfx) = self.window.as_mut() else {
             return Ok(());
@@ -272,8 +341,43 @@ impl Viewer<'_, '_> {
         let mut buf = gfx.surface.buffer_mut()?;
         let group = self.group;
         blit(&mut buf, view, &chunks, |cx, cy| {
-            &self.cache[&(group, cx, cy)]
+            &self.cache[&(group, cx, cy)].ground
         });
+        // Water at the animation time, then the cached objects, per visible
+        // chunk part (water rendered in parallel).
+        let parts: Vec<Rect> = chunks
+            .iter()
+            .filter(|&&(cx, cy)| !self.cache[&(group, cx, cy)].ground.is_empty())
+            .filter_map(|&(cx, cy)| chunk_rect(cx, cy).intersect(view))
+            .collect();
+        let scene = self.scene;
+        let water: Vec<Canvas> = std::thread::scope(|s| {
+            let jobs: Vec<_> = parts
+                .iter()
+                .map(|&r| {
+                    s.spawn(move || {
+                        let layers = scene::Layers {
+                            ground: false,
+                            water: Some(t),
+                            objects: false,
+                        };
+                        scene.render(r, group, layers).0
+                    })
+                })
+                .collect();
+            jobs.into_iter()
+                .map(|j| j.join().expect("no panic"))
+                .collect()
+        });
+        for c in &water {
+            composite_rgba(&mut buf, view, c);
+        }
+        for &(cx, cy) in &chunks {
+            let layer = &self.cache[&(group, cx, cy)].objects;
+            if !layer.is_empty() {
+                composite_layer(&mut buf, view, chunk_rect(cx, cy), layer);
+            }
+        }
         buf.present()?;
         Ok(())
     }
@@ -388,37 +492,89 @@ fn blit<'c>(
     }
 }
 
-/// One chunk as 0RGB pixels over [`BACKGROUND`]; empty if no island
-/// overlaps it.
-fn render_chunk(scene: &Scene<'_>, group: usize, cx: i32, cy: i32) -> Vec<u32> {
-    let rect = Rect {
+/// Scene rectangle of chunk `(cx, cy)`.
+fn chunk_rect(cx: i32, cy: i32) -> Rect {
+    Rect {
         x: cx * CHUNK,
         y: cy * CHUNK,
         w: CHUNK,
         h: CHUNK,
+    }
+}
+
+/// `src` (opaque destination assumed) blended over a 0RGB pixel.
+fn over_rgb(dst: &mut u32, src: [u8; 4]) {
+    if src[3] == 0 {
+        return;
+    }
+    let [_, r, g, b] = dst.to_be_bytes();
+    let mut d = [r, g, b, 255];
+    over(&mut d, &src);
+    *dst = rgb(d[0], d[1], d[2]);
+}
+
+/// Composites a transparent canvas (scene coordinates) over `out`.
+fn composite_rgba(out: &mut [u32], view: Rect, c: &Canvas) {
+    let to_i32 = |n: usize| i32::try_from(n).expect("canvas fits i32");
+    let rect = Rect {
+        x: c.origin.0,
+        y: c.origin.1,
+        w: to_i32(c.width),
+        h: to_i32(c.height),
     };
+    composite_layer(out, view, rect, c.pixels.as_chunks::<4>().0);
+}
+
+/// Composites `layer` (RGBA pixels covering `rect`) over `out` within `view`.
+fn composite_layer(out: &mut [u32], view: Rect, rect: Rect, layer: &[[u8; 4]]) {
+    let Some(r) = rect.intersect(view) else {
+        return;
+    };
+    let idx = |v: i32| usize::try_from(v).expect("inside");
+    let (width, lw) = (idx(view.w), idx(rect.w));
+    for row in 0..r.h {
+        let d = idx(r.y + row - view.y) * width + idx(r.x - view.x);
+        let s = idx(r.y + row - rect.y) * lw + idx(r.x - rect.x);
+        for (dst, &src) in out[d..d + idx(r.w)].iter_mut().zip(&layer[s..s + idx(r.w)]) {
+            over_rgb(dst, src);
+        }
+    }
+}
+
+/// The static layers of one chunk; empty if no island overlaps it.
+fn render_chunk(scene: &Scene<'_>, group: usize, cx: i32, cy: i32) -> ChunkLayers {
+    let rect = chunk_rect(cx, cy);
     if !scene.layouts[group]
         .iter()
         .any(|p| p.bounds.intersect(rect).is_some())
     {
-        return Vec::new();
+        return ChunkLayers {
+            ground: Vec::new(),
+            objects: Vec::new(),
+        };
     }
-    let (canvas, _) = scene.render(rect, group);
-    let [br, bg, bb, _] = WATER;
-    canvas
+    let only = |ground, objects| scene::Layers {
+        ground,
+        water: None,
+        objects,
+    };
+    let (ground, _) = scene.render(rect, group, only(true, false));
+    let (objects, _) = scene.render(rect, group, only(false, true));
+    let ground = ground
         .pixels
         .as_chunks::<4>()
         .0
         .iter()
-        .map(|p| {
-            let a = u32::from(p[3]);
-            let mix = |c: u8, b: u8| {
-                let v = (u32::from(c) * a + u32::from(b) * (255 - a)) / 255;
-                u8::try_from(v).expect("<= 255")
-            };
-            rgb(mix(p[0], br), mix(p[1], bg), mix(p[2], bb))
+        .map(|&p| {
+            let mut px = BACKGROUND;
+            over_rgb(&mut px, p);
+            px
         })
-        .collect()
+        .collect();
+    ChunkLayers {
+        ground,
+        objects: objects.pixels.as_chunks::<4>().0.to_vec(),
+    }
 }
 
 #[cfg(test)]

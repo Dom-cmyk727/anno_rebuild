@@ -68,3 +68,37 @@ fn view_png_scenario() {
     // Islands cover part of the scene, the sea between them stays transparent.
     assert!(opaque > total / 10 && opaque < total, "{opaque} of {total}");
 }
+
+/// The water layer animates: two times give different images of the same
+/// size; the same time gives identical images (no hidden state).
+#[test]
+fn view_png_water_animates() {
+    let Some(dir) = std::env::var_os("ANNO1503_GAME_DIR").map(PathBuf::from) else {
+        eprintln!("skipping view_png_water_animates: ANNO1503_GAME_DIR not set");
+        return;
+    };
+    let render = |time: &str, name: &str| -> Vec<u8> {
+        let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+        let res = app()
+            .arg("--view")
+            .arg(dir.join("Scenes/Islands/Polar/Po_064x064_0008_Eskimo.scp"))
+            .arg("--game-dir")
+            .arg(&dir)
+            .args(["--group", "2", "--png"])
+            .arg(&out)
+            .args(["--time", time])
+            .output()
+            .expect("spawn");
+        assert!(
+            res.status.success(),
+            "{}",
+            String::from_utf8_lossy(&res.stderr)
+        );
+        std::fs::read(&out).expect("png")
+    };
+    let a = render("0", "water_t0.png");
+    let b = render("400", "water_t400.png");
+    let a2 = render("0", "water_t0_again.png");
+    assert_ne!(a, b, "water frames differ over time");
+    assert_eq!(a, a2, "rendering is deterministic for a given time");
+}

@@ -65,7 +65,14 @@ Decoding starts at `x = 0, y = 0` with every pixel transparent. A run advances `
 - the number of terminated rows (`0xFE` and the final `0xFF`) equals `height`;
 - `0xFF` is the last byte of `BODY`.
 
-Pixels not written by any run are transparent. The decoder accepts runs with `count = 0` (a pure skip); whether the corpus contains them, and how the original encoder splits long runs or wide gaps, has not been counted yet. Both matter for a byte-identical encoder.
+Pixels not written by any run are transparent. The decoder accepts any well-formed run sequence, including `count = 0` runs (a pure skip).
+
+**Encoder rules** (P: re-encoding the decoded pixels with these rules reproduces `BODY` byte for byte on all 5,029 RLE textures; 394,275 rows, 212 textures wider than 255):
+- `skip + count ≤ 253` for every run; 253 is the maximum of both fields in the corpus.
+- Every row is written out to `width`: a trailing transparent gap becomes an explicit `(gap, 0)` run (145,763 rows end with one). No row is empty — a fully transparent row is a sequence of skip runs.
+- A gap longer than 253 is split into `(253, 0)` runs, the remainder becoming the next run's `skip` (5,964 mid-row `count = 0` runs).
+- An opaque span is split greedily: the first run takes `253 − skip` pixels, each continuation run has `skip = 0` (59,601 such runs).
+- A gap of exactly 253 followed by opaque pixels is written `(253, 0)` then `(0, count)`, which the rules above produce without a special case.
 
 ## `.inc` layout
 `ACCESS` payload: a concatenation of records, each `"<source>,<number>"` followed by one NUL byte. `<source>` is a file name (Windows-1252, e.g. `image001.pcx`); `<number>` is decimal ASCII. The comma that splits them is the last one in the record.
@@ -108,14 +115,14 @@ ACCESS source=<str> number=<u32>
 (`<str>` quoted as above; `NOPARSE` if the layout differs.)
 
 ## Implementation
-- `anno_formats::tex` (`TexFile::parse`, `Head`, `Texture::decode`, `decode_rle`), `anno_formats::inc` (`parse_access`).
-- Python reference: `tools/tex.py`.
+- `anno_formats::tex` (`TexFile::parse`, `Head`, `Texture::decode`, `decode_rle`, `encode_rle`), `anno_formats::inc` (`parse_access`).
+- Python reference: `tools/tex.py` (`decode_rle`, `encode_rle`; `tex.py reencode <file>...` prints `<file> rle=<n> identical=<n>` and exits 1 unless all are identical).
 - RGBA conversion: `anno_assets::texture::to_rgba` (opaque index `i` → palette `[R, G, B, 255]`, RLE gap → `[0, 0, 0, 0]`; `color_key` not applied, OQ-021).
 - PNG export: `anno-extract tex <file.tex> <outdir>` → `<id>.png` per texture (8-bit RGBA) + `index.txt` (`<id>.png width= height= palette= format= name=`, or `ERROR <message>` for textures that do not decode).
 
 ## Tests
 - Corpus: `crates/formats/tests/tex_corpus.rs::{tex_corpus, inc_corpus}` — all figures marked P above unless noted (needs `ANNO1503_GAME_DIR`).
-- Round trip: whole files via `chunk_corpus` (container layer); `HEAD` field-by-field in `tex_corpus` and `tex::tests::head_round_trip`. Pixel re-encoding: not yet.
-- Unit: `tex::tests::{rle_two_rows, rle_rejects_overflow_and_wrong_height}`, `inc::tests::records`.
+- Round trip: whole files via `chunk_corpus` (container layer); `HEAD` field-by-field in `tex_corpus` and `tex::tests::head_round_trip`; RLE bodies `encode_rle(decode(BODY)) == BODY` for all 5,029 in `tex_corpus` (`TEX_RGB` bodies are the raw pixels).
+- Unit: `tex::tests::{rle_two_rows, rle_rejects_overflow_and_wrong_height, rle_encode_two_rows, rle_encode_splits_long_gaps_and_spans}`, `inc::tests::records`.
 - PNG export: `crates/tools/tests/extract.rs` — PNGs decode back to exactly `to_rgba` (synthetic on CI; `debug.tex`, `Felder.tex`, `fenster.tex` with `ANNO1503_GAME_DIR`).
-- Reference output: `anno-dump tex/inc` = `tools/tex.py dump/inc` on synthetic files (CI) and corpus samples (`agree_python.rs`, needs `ANNO1503_GAME_DIR`).
+- Reference output: `anno-dump tex/inc` = `tools/tex.py dump/inc` on synthetic files (CI) and corpus samples (`agree_python.rs`, needs `ANNO1503_GAME_DIR`). Encoder agreement: `encode_rle_matches_tex_py_synthetic` (CI) — a Rust-encoded body re-encodes identically in Python, a non-canonical one does not; on the corpus `tex.py reencode` reports 5,029 / 5,029 identical (run 2026-10-16).

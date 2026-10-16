@@ -1,12 +1,13 @@
 # Palettes
 
-**Status:** partial — layouts of `COLOR` (`.tex`) and `COLORS` (`Anlagen.dat`) are complete (P); colour byte order rests on one survey figure until the visual check; a few constant fields are unexplained (OQ-021, OQ-022).
+**Status:** partial — layouts of `COLOR` (`.tex`) and `COLORS` (`Anlagen.dat`, `FigurenHeader.dat`) are complete (P); colour byte order confirmed visually (M1.2/M1.3 checks); a few constant fields are unexplained (OQ-021, OQ-022).
 
 Both kinds of palette are 256 entries of `[B, G, R, 0]`, 1,024 bytes. They differ in the record around them.
 
 ## Files covered
 - `COLOR` chunks in `**/*.tex`: 1,427 palettes in 1,214 files (P, `tex_corpus`). Container layout around them: [`tex.md`](tex.md).
 - `ANNO/COLORS/ENTRY` in `Anlagen.dat`: 440 colour tables ("Farbtabellen") (P, `colors_corpus`).
+- `COLORS/ENTRY` records of `FigurenHeader.dat` entries: same `ENTRY` layout as `Anlagen.dat`, 0–3 tables per figure type, ids counting from 0 per entry (P, `figuren_corpus`; [`figuren.md`](figuren.md)).
 
 ## Palette layout (both kinds)
 256 entries of 4 bytes, entry 0 first. Offsets relative to the start of the palette.
@@ -20,7 +21,7 @@ Both kinds of palette are 256 entries of `[B, G, R, 0]`, 1,024 bytes. They diffe
 
 This is the Windows `RGBQUAD` order. Colour components are full 8-bit values, not 6-bit VGA values: the sea-tile average below (122) is already above 63, and `COLORS` entries contain `ff`.
 
-**Byte order evidence (P, M1.2 survey, not asserted in a test).** Averaging the decoded sea tiles (`Meer*.bmp` textures in `Textures/Felder.tex`) through their palette gives byte 0 = 122, byte 1 = 77, byte 2 = 33. Read as B, G, R that is a dark blue; read as R, G, B a brown. The visual check with `anno-extract tex` (open, M1.2) should confirm this on UI textures. For `COLORS` the order is assumed to be the same; nothing yet tests it independently.
+**Byte order evidence (P, M1.2 survey, not asserted in a test).** Averaging the decoded sea tiles (`Meer*.bmp` textures in `Textures/Felder.tex`) through their palette gives byte 0 = 122, byte 1 = 77, byte 2 = 33. Read as B, G, R that is a dark blue; read as R, G, B a brown. The visual check with `anno-extract tex` (2026-10-16) confirms it: sea tiles render blue, grass green, UI textures coherent. For `COLORS` the same order is confirmed by the figure sprites (`anno-extract figuren`, 2026-10-16), whose colour tables have this layout: mower, sheep, galleon and gondola render in plausible colours.
 
 ## `.tex` `COLOR`
 - 8-byte prefix (`flag`, `id`, see `tex.md`), then exactly one sub-chunk `BODY` (a generic chunk: 12-byte name field + `u32` size) of exactly 1,024 bytes holding the palette (P, all 1,427).

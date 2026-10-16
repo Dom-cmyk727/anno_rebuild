@@ -5,7 +5,7 @@
 ## Files covered
 - Globs: `Scenes/**/*.sze`, `Scenes/Islands/**/*.scp`, `**/*.tex`, `**/*.inc`, `**/*.zei`, `Anlagen.dat`
 - Count in GOG 2.0.0.5: 50 `.sze`, 465 `.scp`, 1,214 `.tex`, 1,213 `.inc`, 11 `.zei`, 1 `Anlagen.dat` = 2,954 files, 17,529 chunks (as detected by the reference heuristic)
-- Not covered: `FigurenHeader.dat` (different record layout, OQ-002), `Figuren*.dat` (raw sprite data, OQ-003)
+- Not covered by the generic reader: `FigurenHeader.dat` (its root size also counts the volume files, so the root exceeds the file; the records inside are ordinary chunks, see [`figuren.md`](figuren.md)), `Figuren*.dat` (raw pixel volumes)
 - Format-specific specs built on top: `sze.md`, `scp.md`, `tex.md`, `zei.md`, `anlagen.md` (not yet written)
 
 ## Identification

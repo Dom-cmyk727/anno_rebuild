@@ -1,6 +1,6 @@
 # Textures (`.tex`) and texture indices (`.inc`)
 
-**Status:** partial — every file parses and every texture decodes to its declared size (P); several `HEAD` fields and one prefix word are unexplained (OQ-021); byte-identical re-encoding of pixel data is not implemented yet.
+**Status:** partial — every file parses, every texture decodes to its declared size and re-encodes byte-identically (P); several `HEAD` fields and one prefix word are unexplained (OQ-021).
 
 ## Files covered
 - Globs: `**/*.tex`, `**/*.inc` (mainly `Textures/`, `ToolGfx/`)

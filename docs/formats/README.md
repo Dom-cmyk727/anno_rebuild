@@ -11,11 +11,11 @@ Counts refer to GOG 2.0.0.5 (`game/app/`), from `docs/research/game-files-analys
 | Chunk container | `.sze`, `.scp` (root), `.tex`, `.inc`, `.zei`, `Anlagen.dat` | [`chunk-container.md`](chunk-container.md) | partial — container layer complete, byte-identical round trip over the corpus; detection heuristic (OQ-013), `.scp` trailer (OQ-001) open |
 | Scenario | `Scenes/**/*.sze` (50) | `sze.md` | not yet written |
 | Island template | `Scenes/Islands/**/*.scp` (465) | `scp.md` | not yet written |
-| Textures | `*.tex` (1,214), `*.inc` (1,213) | [`tex.md`](tex.md) | partial — all files parse and decode; HEAD unknowns (OQ-021), no pixel re-encoder yet |
-| Palettes | `COLOR` in `.tex`, `COLORS` in `Anlagen.dat` | [`palette.md`](palette.md) | partial — `.tex` `COLOR` and `Anlagen.dat` `COLORS` layouts complete; byte order pending visual check, OQ-022 |
+| Textures | `*.tex` (1,214), `*.inc` (1,213) | [`tex.md`](tex.md) | partial — all files parse, decode and re-encode byte-identically; HEAD unknowns (OQ-021) |
+| Palettes | `COLOR` in `.tex`, `COLORS` in `Anlagen.dat` and `FigurenHeader.dat` | [`palette.md`](palette.md) | partial — layouts complete, BGR order confirmed visually; constant fields OQ-021, OQ-022 |
 | Fonts | `*.zei` (11) | `zei.md` | not yet written |
 | Buildings | `Anlagen.dat` (1) | `anlagen.md` | not yet written |
-| Figures / sprites | `FigurenHeader.dat`, `Figuren*.dat` (16) | `figuren.md` | not yet written |
+| Figures / sprites | `FigurenHeader.dat`, `Figuren*.dat` (16) | [`figuren.md`](figuren.md) | partial — index parses and round-trips byte-identically, all frames decode; record semantics, `z`/`level` open (OQ-023) |
 | Plain-text data | `Data/*.dat` (12, text ones), `Texte.dat` | `data-text.md` | not yet written |
 
 Third-party formats (`.wav` RIFF, `.bik` Bink, `.jpg`) get no spec; note only how the game uses them.

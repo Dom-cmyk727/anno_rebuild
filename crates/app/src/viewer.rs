@@ -4,7 +4,8 @@
 //! space, on all cores, and cached per zoom group. The water layer (sea
 //! surface, rivers, surf) is redrawn every [`FRAME_MS`] for the visible
 //! part of each chunk, at the animation time, and composited between them.
-//! Controls: see the crate docs; Space pauses the animation.
+//! Controls: see the crate docs; Space pauses the animation, `E` toggles
+//! the non-original enhanced water.
 
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
@@ -14,7 +15,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use anno_assets::island::WATER;
-use anno_render::iso::{Canvas, TILE, over};
+use anno_render::iso::{Canvas, TILE, WaterStyle, over};
 use anno_render::scene::{self, Rect};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -62,6 +63,7 @@ pub fn run(scene: &Scene<'_>, group: usize) -> Result<(), BoxError> {
         cache: BTreeMap::new(),
         clock: Instant::now(),
         paused_at: None,
+        water_style: WaterStyle::Original,
         next_frame: Instant::now(),
         frames: (0, Duration::ZERO),
         drag: false,
@@ -93,6 +95,8 @@ struct Viewer<'s, 'a> {
     /// Animation clock; while paused, the time it was paused at.
     clock: Instant,
     paused_at: Option<Duration>,
+    /// Sea style; `E` toggles the non-original enhanced water.
+    water_style: WaterStyle,
     next_frame: Instant,
     /// Frames drawn and their summed draw time, for the stderr log.
     frames: (u32, Duration),
@@ -155,6 +159,7 @@ impl ApplicationHandler for Viewer<'_, '_> {
                     Key::Character(c) => match c.to_ascii_lowercase().as_str() {
                         "q" => el.exit(),
                         " " => self.toggle_pause(),
+                        "e" => self.toggle_water(),
                         "a" => self.pan(-dx, 0.0),
                         "d" => self.pan(dx, 0.0),
                         "w" => self.pan(0.0, -dy),
@@ -226,8 +231,12 @@ impl Viewer<'_, '_> {
 
     fn update_title(&self) {
         if let Some(g) = &self.window {
+            let water = match self.water_style {
+                WaterStyle::Original => "",
+                WaterStyle::Enhanced => " — enhanced water (not original)",
+            };
             g.window.set_title(&format!(
-                "anno1503 — {} — zoom group {}",
+                "anno1503 — {} — zoom group {}{water}",
                 self.scene.name, self.group
             ));
         }
@@ -237,6 +246,15 @@ impl Viewer<'_, '_> {
     fn time_ms(&self) -> u64 {
         let t = self.paused_at.unwrap_or_else(|| self.clock.elapsed());
         u64::try_from(t.as_millis()).unwrap_or(u64::MAX)
+    }
+
+    fn toggle_water(&mut self) {
+        self.water_style = match self.water_style {
+            WaterStyle::Original => WaterStyle::Enhanced,
+            WaterStyle::Enhanced => WaterStyle::Original,
+        };
+        self.update_title();
+        self.redraw();
     }
 
     fn toggle_pause(&mut self) {
@@ -351,6 +369,7 @@ impl Viewer<'_, '_> {
             .filter_map(|&(cx, cy)| chunk_rect(cx, cy).intersect(view))
             .collect();
         let scene = self.scene;
+        let style = self.water_style;
         let water: Vec<Canvas> = std::thread::scope(|s| {
             let jobs: Vec<_> = parts
                 .iter()
@@ -360,6 +379,7 @@ impl Viewer<'_, '_> {
                             ground: false,
                             water: Some(t),
                             objects: false,
+                            water_style: style,
                         };
                         scene.render(r, group, layers).0
                     })
@@ -557,6 +577,7 @@ fn render_chunk(scene: &Scene<'_>, group: usize, cx: i32, cy: i32) -> ChunkLayer
         ground,
         water: None,
         objects,
+        water_style: WaterStyle::Original,
     };
     let (ground, _) = scene.render(rect, group, only(true, false));
     let (objects, _) = scene.render(rect, group, only(false, true));

@@ -102,3 +102,38 @@ fn view_png_water_animates() {
     assert_ne!(a, b, "water frames differ over time");
     assert_eq!(a, a2, "rendering is deterministic for a given time");
 }
+
+/// Enhanced water is opt-in: the default equals `--water original`, and
+/// `--water enhanced` changes the picture.
+#[test]
+fn view_png_enhanced_water_is_opt_in() {
+    let Some(dir) = std::env::var_os("ANNO1503_GAME_DIR").map(PathBuf::from) else {
+        eprintln!("skipping view_png_enhanced_water_is_opt_in: ANNO1503_GAME_DIR not set");
+        return;
+    };
+    let render = |water: Option<&str>, name: &str| -> Vec<u8> {
+        let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+        let mut cmd = app();
+        cmd.arg("--view")
+            .arg(dir.join("Scenes/Islands/Polar/Po_064x064_0008_Eskimo.scp"))
+            .arg("--game-dir")
+            .arg(&dir)
+            .args(["--group", "2", "--time", "300", "--png"])
+            .arg(&out);
+        if let Some(w) = water {
+            cmd.args(["--water", w]);
+        }
+        let res = cmd.output().expect("spawn");
+        assert!(
+            res.status.success(),
+            "{}",
+            String::from_utf8_lossy(&res.stderr)
+        );
+        std::fs::read(&out).expect("png")
+    };
+    let default = render(None, "water_default.png");
+    let original = render(Some("original"), "water_original.png");
+    let enhanced = render(Some("enhanced"), "water_enhanced.png");
+    assert_eq!(default, original);
+    assert_ne!(original, enhanced);
+}

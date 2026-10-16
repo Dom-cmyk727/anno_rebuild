@@ -3,6 +3,7 @@
 //!
 //! ```text
 //! anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png <out.png> [--time <ms>]]
+//!          [--water original|enhanced]
 //! ```
 //!
 //! `--view` shows every island of a scenario (`.sze`) at its `INSEL5` world
@@ -13,7 +14,8 @@
 //!
 //! - Window (default): drag with the left mouse button, arrow keys or WASD to
 //!   pan; mouse wheel or `+` / `-` to switch zoom groups 2 (far) / 1 / 0
-//!   (near); `Esc` or `Q` quits; `Space` pauses the water animation. The scene is rendered lazily in 1024 × 1024
+//!   (near); `Esc` or `Q` quits; `Space` pauses the water animation; `E` toggles
+//!   enhanced water (not in the original; off by default). The scene is rendered lazily in 1024 × 1024
 //!   pixel chunks on all cores and cached per zoom group; progress goes to
 //!   stderr. Open sea is drawn in the island-water placeholder colour.
 //! - `--png <out.png>`: headless; writes the whole scene at `--group`
@@ -44,7 +46,7 @@ use anno_net as _;
 use anno_sim as _;
 use anno_ui as _;
 
-const USAGE: &str = "usage: anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png <out.png> [--time <ms>]]";
+const USAGE: &str = "usage: anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png <out.png> [--time <ms>]] [--water original|enhanced]";
 
 type BoxError = Box<dyn std::error::Error>;
 
@@ -56,6 +58,8 @@ struct Args {
     png: Option<PathBuf>,
     /// Animation time for `--png`, in milliseconds.
     time: u64,
+    /// Sea style for `--png` (the window starts with `Original`, `E` toggles).
+    water: anno_render::iso::WaterStyle,
 }
 
 fn parse_args(args: &[String]) -> Option<Args> {
@@ -65,6 +69,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
         group: None,
         png: None,
         time: 0,
+        water: anno_render::iso::WaterStyle::Original,
     };
     let mut have_file = false;
     let mut it = args.iter();
@@ -79,6 +84,13 @@ fn parse_args(args: &[String]) -> Option<Args> {
             "--group" => out.group = Some(value.parse().ok().filter(|&g: &usize| g < 3)?),
             "--png" => out.png = Some(PathBuf::from(value)),
             "--time" => out.time = value.parse().ok()?,
+            "--water" => {
+                out.water = match value.as_str() {
+                    "original" => anno_render::iso::WaterStyle::Original,
+                    "enhanced" => anno_render::iso::WaterStyle::Enhanced,
+                    _ => return None,
+                }
+            }
             _ => return None,
         }
     }
@@ -178,7 +190,7 @@ fn run(args: &Args) -> Result<bool, BoxError> {
         return Err("no islands".into());
     }
     match &args.png {
-        Some(out) => write_scene_png(&scene, args.group.unwrap_or(2), out, args.time),
+        Some(out) => write_scene_png(&scene, args.group.unwrap_or(2), out, args.time, args.water),
         None => {
             viewer::run(&scene, args.group.unwrap_or(2))?;
             Ok(true)
@@ -192,6 +204,7 @@ fn write_scene_png(
     group: usize,
     out: &Path,
     time: u64,
+    water_style: anno_render::iso::WaterStyle,
 ) -> Result<bool, BoxError> {
     let rect = scene::scene_bounds(&scene.layouts[group]).ok_or("no islands")?;
     let bytes = i64::from(rect.w) * i64::from(rect.h) * 4;
@@ -206,6 +219,7 @@ fn write_scene_png(
     }
     let layers = scene::Layers {
         water: Some(time),
+        water_style,
         ..scene::Layers::ALL
     };
     let (canvas, stats) = scene.render(rect, group, layers);

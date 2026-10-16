@@ -389,7 +389,7 @@ fn blit_sprite(
     frame: &Frame,
     (sx, sy): (i32, i32),
     shadow: bool,
-    mut pixel: impl FnMut(i32, i32) -> bool,
+    mut pixel: impl FnMut(i32, i32, [u8; 4]) -> Option<[u8; 4]>,
 ) {
     let (ox, oy) = (
         sx - i32::from(frame.anchor_x),
@@ -408,14 +408,10 @@ fn blit_sprite(
             ox + i32::try_from(i % w).expect("fits"),
             oy + i32::try_from(i / w).expect("fits"),
         );
-        if !pixel(x, y) {
+        let Some(rgba) = pixel(x, y, [px[0], px[1], px[2], px[3]]) else {
             continue;
-        }
-        if shadow {
-            canvas.put(x, y, SHADOW);
-        } else {
-            canvas.put(x, y, [px[0], px[1], px[2], px[3]]);
-        }
+        };
+        canvas.put(x, y, if shadow { SHADOW } else { rgba });
     }
 }
 
@@ -513,9 +509,9 @@ pub fn draw_objects(
                 .and_then(|fs| fs.frames.get(k))
             && let Some(simg) = cache.get(anlagen, (id, 0, true, g, k), sf)
         {
-            blit_sprite(canvas, &simg, sf, (sx, sy), true, |_, _| true);
+            blit_sprite(canvas, &simg, sf, (sx, sy), true, |_, _, p| Some(p));
         }
-        blit_sprite(canvas, &img, frame, (sx, sy), false, |_, _| true);
+        blit_sprite(canvas, &img, frame, (sx, sy), false, |_, _, p| Some(p));
         stats.drawn += 1;
     }
     stats
@@ -546,6 +542,138 @@ pub fn water_colour(anlagen: &AnlagenFile<'_>) -> Option<[u8; 4]> {
     (n > 0).then(|| [avg(sum[0]), avg(sum[1]), avg(sum[2]), 255])
 }
 
+/// How the sea is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WaterStyle {
+    /// As the original (default).
+    #[default]
+    Original,
+    /// **Not in the original** (opt-in enhancement, docs/render/iso.md
+    /// "Enhanced water"): a slow swell on open water and breaking waves that
+    /// travel towards the shore along the depth gradient and foam out in
+    /// shallow water.
+    Enhanced,
+}
+
+/// Distance in tiles from each corner of the height grid (`w × h`) to the
+/// nearest corner at or above sea level (two-pass chamfer distance,
+/// 1 / √2 steps). Used by the enhanced water only.
+fn shore_distance(heights: &[u8], w: usize, h: usize) -> Vec<f32> {
+    const DIAG: f32 = std::f32::consts::SQRT_2;
+    let mut d: Vec<f32> = heights
+        .iter()
+        .map(|&z| {
+            if i64::from(z) >= SEA_LEVEL {
+                0.0
+            } else {
+                f32::INFINITY
+            }
+        })
+        .collect();
+    let at = |x: usize, y: usize| y * w + x;
+    for y in 0..h {
+        for x in 0..w {
+            let mut v = d[at(x, y)];
+            if x > 0 {
+                v = v.min(d[at(x - 1, y)] + 1.0);
+            }
+            if y > 0 {
+                v = v.min(d[at(x, y - 1)] + 1.0);
+                if x > 0 {
+                    v = v.min(d[at(x - 1, y - 1)] + DIAG);
+                }
+                if x + 1 < w {
+                    v = v.min(d[at(x + 1, y - 1)] + DIAG);
+                }
+            }
+            d[at(x, y)] = v;
+        }
+    }
+    for y in (0..h).rev() {
+        for x in (0..w).rev() {
+            let mut v = d[at(x, y)];
+            if x + 1 < w {
+                v = v.min(d[at(x + 1, y)] + 1.0);
+            }
+            if y + 1 < h {
+                v = v.min(d[at(x, y + 1)] + 1.0);
+                if x + 1 < w {
+                    v = v.min(d[at(x + 1, y + 1)] + DIAG);
+                }
+                if x > 0 {
+                    v = v.min(d[at(x - 1, y + 1)] + DIAG);
+                }
+            }
+            d[at(x, y)] = v;
+        }
+    }
+    d
+}
+
+/// Enhanced-water shading of one sea pixel: returns the colour and the foam
+/// amount (0–1). `shore` = distance to the shore in tiles, `pos` = position
+/// on the water plane in tiles. Crests are lines of equal phase
+/// `shore / λ + t · ω`, so as time passes they move to smaller distance,
+/// i.e. towards the beach, parallel to the coast whatever its shape. Not
+/// derived from the original; constants are tuned by eye.
+fn enhance(rgba: [u8; 4], shore: f32, (wx, wy): (f32, f32), time_ms: u64) -> ([u8; 4], f32) {
+    /// Breakers reach this far out (tiles from the shore).
+    const SURF_DEPTH: f32 = 4.5;
+    /// Distance between wave crests (tiles).
+    const WAVELENGTH: f32 = 1.4;
+    let depth = shore;
+    #[allow(clippy::cast_precision_loss)]
+    let t = (time_ms % 3_600_000) as f32;
+    // Open-water swell: two slow, crossing waves modulate brightness.
+    let swell = 0.5 * (0.55 * wx + 0.35 * wy - t * 0.0018).sin()
+        + 0.5 * (0.23 * wx - 0.41 * wy - t * 0.0011).sin();
+    let calm = (depth / SURF_DEPTH).min(1.0);
+    let brightness = 1.0 + 0.14 * swell * calm;
+    // Breakers: crests moving shorewards, broken up along the coast so they
+    // do not look like contour lines.
+    let wobble = 0.5 * (wx * 0.45).sin() + 0.35 * (wy * 0.65 + 1.7).sin();
+    let phase = depth / WAVELENGTH + t * 0.000_45 + wobble / std::f32::consts::TAU;
+    // Position within the wave cycle: 0 = crest front, rising towards the
+    // trailing foam behind it (seaward side).
+    let u = phase - phase.floor();
+    let crest = if u < 0.08 {
+        u / 0.08
+    } else {
+        (-(u - 0.08) * 7.0).exp()
+    };
+    // Break crests into segments that drift slowly along the coast.
+    let segments = (wx * 0.8 + wy * 0.5 + t * 0.000_35).sin() + 0.6 * (wx * 1.9 - wy * 1.3).sin();
+    let segment = ((segments + 0.4) / 1.2).clamp(0.0, 1.0);
+    let mut foam = 0.0;
+    if depth < SURF_DEPTH {
+        // Breakers grow and whiten as they approach the beach.
+        let near = (1.0 - depth / SURF_DEPTH).powf(0.8);
+        foam = crest * near * (0.35 + 0.65 * segment);
+        // Swash: the last wave running up and back on the sand.
+        if depth < 0.6 {
+            let swash = 0.5 + 0.5 * (t * 0.0028 + wx * 0.5 + wy * 0.3).sin();
+            foam = foam.max((1.0 - depth / 0.6) * 0.7 * swash);
+        }
+    }
+    let foam = foam.clamp(0.0, 1.0);
+    let channel = |c: u8, white: f32| -> u8 {
+        let v = f32::from(c) * brightness;
+        let v = v + (white - v) * foam;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let out = v.clamp(0.0, 255.0) as u8;
+        out
+    };
+    (
+        [
+            channel(rgba[0], 236.0),
+            channel(rgba[1], 244.0),
+            channel(rgba[2], 250.0),
+            rgba[3],
+        ],
+        foam,
+    )
+}
+
 /// Draws the animated sea surface at time `time_ms`: entry [`SEA_ANLAGE`]
 /// on the original's staggered lattice (`y` even and
 /// `x ≡ 2·((y/2) mod 2) (mod 4)`), raised to [`SEA_LEVEL`], animation phase
@@ -563,6 +691,7 @@ pub fn water_colour(anlagen: &AnlagenFile<'_>) -> Option<[u8; 4]> {
 /// filled with the neighbouring water pixel; animation speed comes from the
 /// sprite's `ANIM` record (the original's tick unit is not traced). Returns
 /// the number of sprites drawn.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_water(
     canvas: &mut Canvas,
     island: &Island<'_>,
@@ -570,6 +699,7 @@ pub fn draw_water(
     group: usize,
     lift: Lift,
     time_ms: u64,
+    style: WaterStyle,
     cache: &SpriteCache,
 ) -> usize {
     let (Ok(heights), Some(entry)) = (island.heights(), anlagen.entry(SEA_ANLAGE)) else {
@@ -606,6 +736,10 @@ pub fn draw_water(
         })
         .unwrap_or_default();
     let den = i64::from(tw) * i64::from(th);
+    let shore = match style {
+        WaterStyle::Enhanced => shore_distance(&heights, w, h),
+        WaterStyle::Original => Vec::new(),
+    };
     let mut drawn = 0;
     for y in (0..h).step_by(2) {
         for x in (2 * ((y / 2) % 2)..w).step_by(4) {
@@ -631,7 +765,7 @@ pub fn draw_water(
                 frame,
                 (sx, sy - raise),
                 false,
-                |px_x, px_y| {
+                |px_x, px_y, rgba| {
                     // Back onto the water plane: unraised screen point → tile
                     // coordinates (times den): x = px_x/tw + py/th, y = py/th − px_x/tw.
                     let yy = i64::from(px_y + raise);
@@ -641,21 +775,42 @@ pub fn draw_water(
                         usize::try_from(xn.div_euclid(den)),
                         usize::try_from(yn.div_euclid(den)),
                     ) else {
-                        return false;
+                        return None;
                     };
                     if tx >= w || ty >= h {
-                        return false;
+                        return None;
                     }
                     let c = corners(&heights, w, h, tx, ty);
-                    if interpolate(c, xn.rem_euclid(den), yn.rem_euclid(den), den)
-                        >= SEA_LEVEL * den
-                    {
-                        return false;
+                    let under = interpolate(c, xn.rem_euclid(den), yn.rem_euclid(den), den);
+                    if under >= SEA_LEVEL * den {
+                        return None;
                     }
-                    if open_water.get(ty * w + tx).copied().unwrap_or(false) {
+                    let open = open_water.get(ty * w + tx).copied().unwrap_or(false);
+                    let rgba = match style {
+                        WaterStyle::Original => rgba,
+                        WaterStyle::Enhanced => {
+                            // Shore distance, bilinear between the tile's corners.
+                            let at = |x: usize, y: usize| shore[y.min(h - 1) * w + x.min(w - 1)];
+                            let (fx, fy) = (
+                                xn.rem_euclid(den) as f32 / den as f32,
+                                yn.rem_euclid(den) as f32 / den as f32,
+                            );
+                            let dist = at(tx, ty) * (1.0 - fx) * (1.0 - fy)
+                                + at(tx + 1, ty) * fx * (1.0 - fy)
+                                + at(tx, ty + 1) * (1.0 - fx) * fy
+                                + at(tx + 1, ty + 1) * fx * fy;
+                            let pos = (xn as f32 / den as f32, yn as f32 / den as f32);
+                            let (shaded, foam) = enhance(rgba, dist, pos, time_ms);
+                            if foam > 0.25 {
+                                fill.push((px_x, px_y));
+                            }
+                            shaded
+                        }
+                    };
+                    if open {
                         fill.push((px_x, px_y));
                     }
-                    true
+                    Some(rgba)
                 },
             );
             // Open water has no sea floor to show through the checkerboard:

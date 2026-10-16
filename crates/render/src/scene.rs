@@ -17,7 +17,9 @@ use anno_assets::island::GroundTextures;
 use anno_formats::anlagen::AnlagenFile;
 use anno_formats::insel::Island;
 
-use crate::iso::{self, Canvas, DrawStats, HEIGHT_LIFT, Lift, Objects, SpriteCache, TILE, over};
+use crate::iso::{
+    self, Canvas, DrawStats, HEIGHT_LIFT, Lift, Objects, SpriteCache, TILE, WaterStyle, over,
+};
 
 /// Room above an island's top vertex per zoom group: the largest sprite
 /// anchor height in `Anlagen.dat` (P: entry 1330, `anchor_y` 504 / 252 / 126
@@ -208,6 +210,8 @@ pub struct Layers {
     pub ground: bool,
     pub water: Option<u64>,
     pub objects: bool,
+    /// Sea style; `Original` unless the user opts in.
+    pub water_style: WaterStyle,
 }
 
 impl Layers {
@@ -216,6 +220,7 @@ impl Layers {
         ground: true,
         water: Some(0),
         objects: true,
+        water_style: WaterStyle::Original,
     };
 }
 
@@ -317,7 +322,16 @@ pub fn draw_island(
             )
         };
         let below = draw(canvas, Objects::WaterBelowSea);
-        iso::draw_water(canvas, island, anlagen, group, lift, t, cache);
+        iso::draw_water(
+            canvas,
+            island,
+            anlagen,
+            group,
+            lift,
+            t,
+            layers.water_style,
+            cache,
+        );
         let above = draw(canvas, Objects::WaterAboveSea);
         // Water objects are counted, invisible markers only once (below).
         add(DrawStats {

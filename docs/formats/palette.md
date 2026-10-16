@@ -34,7 +34,7 @@ An `ENTRY` payload holds an 8-byte prefix and two **tagged records**: 4-byte ASC
 
 | Offset | Size | Type | Name | Meaning | Evidence |
 |---|---|---|---|---|---|
-| 0x000 | 4 | u32 | `flag` | 0 | P (`colors_corpus` asserts all 440); meaning ? OQ-022 |
+| 0x000 | 4 | u32 | `flag` | 0 in 439 tables, 4 in one (id 109, `Farbtabellen\Flagge01_01.PCX`) | P (`colors_corpus` asserts it); meaning ? OQ-022 |
 | 0x004 | 4 | u32 | `id` | 1…440: unique, ascending, equal to position + 1 | P |
 | 0x008 | 4 | ASCII | tag | `BODY` | P, all 440 |
 | 0x00C | 2 | u16 | — | 0 | P, all 440; meaning ? OQ-022 |
@@ -54,7 +54,7 @@ Which `TEXTURES` or `ANLAGEN` record refers to a colour table by `id` is not kno
 
 ## Open fields
 - `flag` in the `.tex` `COLOR` prefix (2 on 10 palettes in `ToolGfx/fenster*.tex`) — OQ-021 (e)
-- `COLORS` `flag`, the `u16` 0 before each record length, meaning of entries 0/1 — OQ-022
+- `COLORS` `flag` (4 on the one `Flagge` table), the `u16` 0 before each record length, meaning of entries 0/1 — OQ-022
 
 ## Reference dump
 - `anno-dump tex` prints one `PALETTE` line per `.tex` palette, see [`tex.md`](tex.md#reference-dump-anno-dump-tex-anno-dump-inc).

@@ -20,13 +20,13 @@ Goal: a workspace that builds on all targets with CI, before any game code.
 - [x] `docs/glossary.md`, `docs/open-questions.md`, `docs/formats/README.md` (template per format: magic, layout table, evidence, open fields).
 - [x] `fixtures/` with a small, hand-picked set of original files for tests **is not allowed** (redistribution). Instead: tests locate `game/app` via `ANNO1503_GAME_DIR` env var and skip with a clear message when absent. Document in CLAUDE.md.
 
-Status M0 (2026-10-16): `[~]` done locally, CI not yet run.
+Status M0 (2026-10-16): `[x]` done. First CI run (GitHub Actions run 38924950460) green on all jobs: lint, test ubuntu/windows, build macOS.
 - Workspace: 8 crates (`anno-formats`, `anno-assets`, `anno-sim`, `anno-net`, `anno-render`, `anno-ui`, `anno-tools`, binary `anno1503`); edition 2024; shared `[workspace.lints]`; `#![deny(unsafe_code)]` in formats/sim/net. No licence chosen yet (open decision for the owner).
 - `anno_formats::chunk` reader (zero-copy, mirrors `tools/chunks.py` incl. its name pattern and depth-6 heuristic, raw 12-byte name field kept for the M1.1 writer). Writer/round-trip remain M1.1.
 - `tools/chunks.py tree` and `anno-dump chunks` print the same tree format; `crates/tools/tests/agree_python.rs` diffs them on 10 sample files.
 - `crates/formats/tests/corpus.rs`: all 50 `.sze`, 1214 `.tex`, 1213 `.inc`, 11 `.zei`, `Anlagen.dat` parse exactly; 465 `.scp` parse root `ANNO`, 444 with trailing bytes. Passing locally with `ANNO1503_GAME_DIR=game/app`.
 - `cargo check` passes for `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu` from macOS; clippy `-D warnings` and fmt clean.
-- Open: the repo has no git history / GitHub remote yet, so the CI workflow (`.github/workflows/ci.yml`) has never run. M0 is `[x]` once it is green.
+- Repo: https://github.com/Dom-cmyk727/anno_rebuild (public), branch `main`.
 
 Acceptance: `cargo test --workspace` green on CI without the game directory; locally with `ANNO1503_GAME_DIR` set, the chunk corpus test passes on all `.sze/.tex/.inc/.zei` and `Anlagen.dat`.
 
@@ -131,7 +131,7 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 
 ## 7. Immediate next actions (do these first)
 
-1. M0 in full.
+1. ~~M0 in full.~~ Done 2026-10-16.
 2. M1.1 chunk container with corpus + round-trip tests (`tools/chunks.py` is the oracle).
 3. M1.2 palette + texture decode; PNG export; look at the output.
 4. Start M2 Ghidra setup in parallel; first target `AnnoWelt.dll` tick loop and `AnnoFrame.dll` `CreateAnnoNetClientInstance` call graph.

@@ -1,10 +1,12 @@
-//! `anno-extract tex`: PNGs decode back to exactly `anno_assets::texture::to_rgba`.
-//! Synthetic test runs everywhere; the corpus test needs `ANNO1503_GAME_DIR`.
+//! `anno-extract tex` / `figuren`: PNGs decode back to exactly
+//! `anno_assets::texture::to_rgba` / `anno_assets::figure::to_rgba`.
+//! Synthetic test runs everywhere; the corpus tests need `ANNO1503_GAME_DIR`.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anno_assets::texture;
+use anno_assets::{figure, texture};
+use anno_formats::figuren::{self, FigurenHeader};
 use anno_formats::tex::TexFile;
 
 fn chunk(name: &str, payload: &[u8]) -> Vec<u8> {
@@ -155,4 +157,82 @@ fn extract_corpus_samples() {
         let index = check(&dir.join(sample), &out.join(sample));
         assert!(!index.contains("ERROR"), "{sample}");
     }
+}
+
+/// Entries 101 (V + shadows), 1501 (Z), 1510 (AZ): every exported PNG equals
+/// `figure::to_rgba`, and the index has one line per frame.
+#[test]
+fn extract_figuren_corpus_samples() {
+    let Some(dir) = std::env::var_os("ANNO1503_GAME_DIR").map(PathBuf::from) else {
+        eprintln!("skipping extract_figuren_corpus_samples: ANNO1503_GAME_DIR not set");
+        return;
+    };
+    let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("extract_figuren");
+    let _ = std::fs::remove_dir_all(&out);
+    let ids = ["101", "1501", "1510"];
+    let res = Command::new(env!("CARGO_BIN_EXE_anno-extract"))
+        .arg("figuren")
+        .arg(&dir)
+        .arg(&out)
+        .args(ids)
+        .output()
+        .expect("spawn");
+    assert!(
+        res.status.success(),
+        "{}",
+        String::from_utf8_lossy(&res.stderr)
+    );
+    let buf = std::fs::read(dir.join("FigurenHeader.dat")).expect("header");
+    let header = FigurenHeader::parse(&buf).expect("parses");
+    let volumes: Vec<Vec<u8>> = (0..3)
+        .map(|g| {
+            (0..)
+                .map_while(|p| std::fs::read(dir.join(figuren::volume_file_name(g, p))).ok())
+                .flatten()
+                .collect()
+        })
+        .collect();
+    for id in ids {
+        let entry = header
+            .entries
+            .iter()
+            .find(|e| e.id.to_string() == id)
+            .expect("entry");
+        let mut frames = 0;
+        for (i, set) in entry.gfx.iter().enumerate() {
+            for (suffix, s) in [("", Some(set)), ("_shadow", set.shadow.as_deref())] {
+                for fs in s.map(|s| s.frame_sets.as_slice()).unwrap_or_default() {
+                    let volume = &volumes[usize::try_from(fs.group).unwrap()];
+                    for (k, f) in fs.frames.iter().enumerate() {
+                        frames += 1;
+                        // Every 7th frame keeps the test fast in debug builds.
+                        if frames % 7 != 1 {
+                            continue;
+                        }
+                        let want = figure::to_rgba(entry, f, volume).expect("decodes");
+                        let png = out
+                            .join(id)
+                            .join(format!("s{i}_g{}_{k}{suffix}.png", fs.group));
+                        assert_eq!(
+                            read_png(&png),
+                            (u32::from(want.width), u32::from(want.height), want.pixels),
+                            "{}",
+                            png.display()
+                        );
+                    }
+                }
+            }
+        }
+        let index = std::fs::read_to_string(out.join(id).join("index.txt")).expect("index");
+        assert_eq!(index.lines().count(), frames, "entry {id}");
+        assert!(!index.contains("ERROR"), "entry {id}");
+    }
+    let missing = Command::new(env!("CARGO_BIN_EXE_anno-extract"))
+        .arg("figuren")
+        .arg(&dir)
+        .arg(&out)
+        .arg("99999")
+        .output()
+        .expect("spawn");
+    assert!(!missing.status.success());
 }

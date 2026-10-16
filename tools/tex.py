@@ -4,6 +4,7 @@ Independent of crates/formats; spec: docs/formats/tex.md, docs/formats/palette.m
   tex.py dump [--full] <file>...   same output as `anno-dump tex [--full]`
   tex.py inc <file>...             same output as `anno-dump inc`
   tex.py colors [--full] <Anlagen.dat>...  same output as `anno-dump colors [--full]`
+  tex.py reencode <file>...        per file: `<file> rle=<n> identical=<n>` (RLE round trip)
 """
 import os, struct, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -95,6 +96,38 @@ def decode_rle(data, w, h):
     if y != h: raise Bad('row count differs from height')
     if i != len(data): raise Bad('bytes after end marker')
     return px
+
+RLE_MAX_RUN = 253  # largest skip + count of one run
+
+def encode_rle(px, w, h):
+    """Inverse of decode_rle, byte-identical to the original encoder (tex.md)."""
+    out = bytearray()
+    for y in range(h):
+        row = px[y * w:(y + 1) * w]; x = 0
+        while x < w:
+            gap = 0
+            while x + gap < w and row[x + gap] is None: gap += 1
+            x += gap
+            n = 0
+            while x + n < w and row[x + n] is not None: n += 1
+            while gap > RLE_MAX_RUN: out += bytes([RLE_MAX_RUN, 0]); gap -= RLE_MAX_RUN
+            if n == 0: out += bytes([gap, 0]); break
+            skip = gap
+            while n > 0:
+                c = min(n, RLE_MAX_RUN - skip)
+                out += bytes([skip, c]) + bytes(row[x:x + c]); x += c; n -= c; skip = 0
+        out.append(0xFE if y < h - 1 else 0xFF)
+    return bytes(out)
+
+def reencode(path):
+    try:
+        ts = [t for k, t in entries(open(path, 'rb').read())
+              if k == 'TEXTURE' and cstr(t['format']) in FORMATS_RLE]
+        same = sum(encode_rle(decode(t), t['width'], t['height']) == t['body'] for t in ts)
+    except Bad as e:
+        print(f'{path} ERROR {e}'); return False
+    print(f'{path} rle={len(ts)} identical={same}')
+    return same == len(ts)
 
 def decode(t):
     fmt = cstr(t['format'])
@@ -219,7 +252,8 @@ if __name__ == '__main__':
     cmd, args = sys.argv[1:2], sys.argv[2:]
     full = cmd in (['dump'], ['colors']) and args[:1] == ['--full']
     files = args[1:] if full else args
-    run = {'dump': lambda f: dump_tex(f, full), 'inc': dump_inc, 'colors': lambda f: dump_colors(f, full)}
+    run = {'dump': lambda f: dump_tex(f, full), 'inc': dump_inc, 'colors': lambda f: dump_colors(f, full),
+           'reencode': reencode}
     if len(cmd) != 1 or cmd[0] not in run or not files:
         print(__doc__, file=sys.stderr); sys.exit(2)
     ok = all([run[cmd[0]](f) for f in files])

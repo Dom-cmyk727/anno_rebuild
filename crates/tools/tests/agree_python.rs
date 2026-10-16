@@ -383,3 +383,62 @@ fn anno_dump_matches_colors_corpus() {
         &anlagen,
     );
 }
+
+#[test]
+fn encode_rle_matches_tex_py_synthetic() {
+    let test = "encode_rle_matches_tex_py_synthetic";
+    if !have_python(test) {
+        return;
+    }
+    let dir = synthetic_dir(test);
+    // 900×3: long gap + long span, fully transparent row, span ending at the
+    // right edge. Bodies from the Rust encoder must re-encode identically in
+    // tools/tex.py; the hand-made non-canonical body (empty row as a bare
+    // 0xFE) must not.
+    let (w, h) = (900, 3);
+    let index = |i: usize| u8::try_from(i % 200).expect("< 200");
+    let mut px = vec![None; 300];
+    px.extend((0..600).map(|i| Some(index(i))));
+    px.extend(vec![None; w]);
+    px.extend((0..w).map(|i| (i >= 400).then_some(index(i % 7))));
+    let body = anno_formats::tex::encode_rle(&px, w, h);
+    let canonical = file(&[
+        palette(0, 0, 0x5a),
+        texture(1, head(900, 3, 0, b"BSH_RGB", MAGENTA, (0, 0)), &body, None),
+    ]);
+    let other = file(&[
+        palette(0, 0, 0x5a),
+        texture(
+            1,
+            head(2, 2, 0, b"BSH_RGB", MAGENTA, (0, 0)),
+            &[0xFE, 0, 2, 1, 1, 0xFF],
+            None,
+        ),
+    ]);
+    let run_py = |name: &str, bytes: Vec<u8>| {
+        let p = dir.join(name);
+        std::fs::write(&p, bytes).expect("write");
+        let out = run(Command::new("python3")
+            .arg("-I")
+            .arg(script("tex.py"))
+            .arg("reencode")
+            .arg(&p));
+        (
+            out.0,
+            out.1
+                .trim_end()
+                .rsplit(' ')
+                .take(2)
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+    };
+    assert_eq!(
+        run_py("canonical.tex", canonical),
+        (Some(0), "identical=1 rle=1".to_string())
+    );
+    assert_eq!(
+        run_py("other.tex", other),
+        (Some(1), "identical=0 rle=1".to_string())
+    );
+}

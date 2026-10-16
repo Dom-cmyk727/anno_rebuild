@@ -10,6 +10,18 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done. Update this file a
 - Community: no usable open-source reimplementation exists. Most useful prior work: Amsel (millimarg, XML format specs, currently behind GitLab login; docs bundle on AnnoZone file 9287), DatEditor/Muto1503 (Azukee, `Anlagen.dat` parser + MinHook hooks, archived at Software Heritage). See `docs/research/community-landscape.md`.
 - Decisions: Rust (C++20 kept open for a co-developer, review at the M1 → M3 gate, `docs/adr/0000-implementation-language.md`); targets Windows + Linux x86_64; first visible milestone is formats + asset viewer; English docs; faithful core separated from QoL.
 
+## 0.1 Design goals: no hardcoded limits, scalability, moddability (owner decision 2026-10-16)
+
+The engine must not hardcode limits. Scalability and moddability are explicit goals, alongside faithfulness.
+
+- **Original limits are data, not code.** Counts and sizes from the original are defaults in data or config, never array sizes, fixed-width ids or `const` limits in the engine. Examples: number of building/figure types, island and map size, player count, goods types, zoom levels, rotations, animation frames, sea level, colour tables. The faithful ruleset reproduces the original values; mods and the QoL `rules` config may raise them.
+- **Formats vs. engine.** `crates/formats` keeps mirroring the original files exactly (a 12-bit `ANLAGEN` id in an island item, `u16` sizes, three zoom groups in the volumes); these are facts about the files. Engine-side types (`sim`, `render`, `assets`) must not inherit them as limits: widen ids and sizes when data enters the engine, and look up content by id/name in tables rather than by fixed indices.
+- **Content is loaded, not compiled in.** Buildings, figures, goods, production chains, textures and scenarios come from data the engine reads (original files first, mod overlays later) through one content registry. Special entries the engine needs (e.g. the sea sprite, `ANLAGEN` 2801) are referenced by configurable ids or names with the original values as defaults.
+- **Scales with content and map size.** No quadratic or fixed-capacity structures over all objects; spatial data in chunks; rendering and simulation cost proportional to what is visible or active; large maps, many islands and many players are a target, not an afterthought.
+- **Mod support is part of the architecture.** Plan for a mod format (overlay of original data plus new assets) and a load order; keep determinism. In multiplayer every peer must have identical content (content hash in the lockstep handshake, M4).
+- **Existing code to revisit** (written before this goal was set): `anno_render::iso::{TILE, SEA_ANLAGE, SEA_LEVEL, HEIGHT_LIFT}` and `scene::MARGIN` are constants; three zoom groups and four rotations are assumed in places. Move them into a render/content config with the original values as defaults when the content registry exists (M1.6/M3).
+- **Review rule:** every new `const` limit, fixed-size array or narrow id type in `sim`, `render`, `assets`, `net` or `ui` needs a reason in a comment and a path to make it configurable; prefer data-driven values.
+
 ## 1. Milestone M0 — Repository and tooling skeleton
 
 Goal: a workspace that builds on all targets with CI, before any game code.

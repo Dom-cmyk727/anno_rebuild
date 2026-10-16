@@ -80,9 +80,16 @@ Status M1.3 (2026-10-16): `[~]` reader, decoder, shadows, reference dump, PNG ex
 - [ ] Spec: `docs/formats/anlagen.md`.
 
 ### M1.5 Islands and scenarios (`.scp`, `.sze`)
-- [ ] Island: `INSEL4/5`, `INFO`, `HEIGHT`, `GFXID`, `GELAENDE`, `PROD2`, `FRUCHTBAR`, `BERGWERK2`, `OCCUR`, `ANBAU`, `DISCOVER`, `KONTORID`, `STAEDTE`, `LOCKED`. Start with `HEIGHT`/`GFXID`/`GELAENDE` (grid arrays; dimensions from file name `Po_064x064_…` and `INFO`).
+- [~] Island: `INSEL4/5`, `INFO`, `HEIGHT`, `GFXID`, `GELAENDE`, `PROD2`, `FRUCHTBAR`, `BERGWERK2`, `OCCUR`, `ANBAU`, `DISCOVER`, `KONTORID`, `STAEDTE`, `LOCKED`. Start with `HEIGHT`/`GFXID`/`GELAENDE` (grid arrays; dimensions from file name `Po_064x064_…` and `INFO`).
 - [ ] Scenario: `SCENE/{HEAD, MAIN, GUID, ALIASNAME, WARETYPE, SKTIMER, MONOPOL2, LIMITS, COMPPROFIL2, ROHSTOFF, SCHATZ, ERZE, BIGBROTHER, AUFTRAGTEXT, SPIELER, INSEL5, INSELLNK}`. Root `ANNO` vs `ANNOADDON1` gates add-on content.
 - [ ] Versioned chunk names (`INSEL4`→`INSEL5`, `PROD2`, `MONOPOL2`) → loader supports both where both occur in the corpus.
+
+Status M1.5 (2026-10-16): `[~]` islands structurally done; scenario records, plain-text data and record semantics open.
+- Islands: `anno_formats::insel` reads all 465 `.scp` templates (444 `INSEL5`, 21 legacy `INSEL4` where the records are root siblings) and the 668 islands in the 50 `.sze`. `INSEL5` head = world position, size, island number. `HEIGHT` (u8) and `GFXID` (u16) are stored in 32 × 32 blocks, row of blocks by row of blocks; assembled grids re-encode byte-identically for every island. `FRUCHTBAR` is a plain `width × height` byte grid. The island size comes from the head; two templates are misnamed (`D_080x080_0022/0023` are 64 × 64). Spec: `docs/formats/insel.md` (replaces the planned `scp.md`).
+- Reference dump: `anno-dump insel [--full]` = `tools/insel.py dump` on synthetic files (CI) and all 515 files.
+- Visual check: an island's `HEIGHT` grid renders as a coherent island without block seams.
+- Blocker for M1.6: what `GFXID` values select is unknown (OQ-024). Four candidate mappings were measured and rejected; the terrain graphics are most likely in `Anlagen.dat` (`ANLAGEN` sprite sets + three `TEXTURES` pixel volumes), so M1.4 comes next.
+- Open: `SCENE` records (`HEAD`, `MAIN`, `SPIELER`, …), plain-text data files, item layouts of `GELAENDE`/`PROD2`/`FLUESSE` and the other island records (OQ-024), `.scp` trailer (OQ-001).
 - [ ] Plain-text data: parsers for `Data/BGruppen.dat` (goods, prices), `Wachstum.dat`, `wegspeed.dat`, `Felder.dat`, `Texte.dat`. These are INI-like with `Key: value` lines and `[SECTION]` headers.
 - [ ] Specs: `docs/formats/scp.md`, `docs/formats/sze.md`, `docs/formats/data-text.md`.
 

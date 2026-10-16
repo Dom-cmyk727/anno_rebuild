@@ -1,17 +1,16 @@
 //! Island ground as a top-down RGBA image.
 //!
 //! Mapping (spec: `docs/formats/insel.md`, "Ground"): tile `(tx, ty)` covers
-//! `scale × scale` output pixels; output pixel `(i, j)` of the tile samples
-//! cell pixel `(i · 32 / scale, j · 32 / scale)` through
-//! `GroundCell::source_pixel` from the tile's `Textures/Felder.tex` texture
-//! and its palette. Open water (texture 0) becomes [`WATER`]; a texture id
+//! `scale × scale` output pixels; output pixel `(i, j)` of the tile shows
+//! `GroundCell::texel(i, j, scale)` of the tile's `Textures/Felder.tex`
+//! texture through its palette. Open water (texture 0) becomes [`WATER`]; a texture id
 //! missing from `Felder.tex` becomes [`MISSING`]. This is a top-down
 //! inspection view, not the game's isometric projection, and `HEIGHT` is
 //! not applied.
 
 use std::collections::BTreeMap;
 
-use anno_formats::insel::{CELL_PX, GroundCell, Island};
+use anno_formats::insel::{GroundCell, Island};
 use anno_formats::tex::{self, TexFile};
 
 use crate::texture::Rgba;
@@ -49,14 +48,14 @@ impl GroundTextures {
         Ok(Self { textures })
     }
 
-    /// Colour shown at `(x, y)` (`0..32` each) of a tile with ground `cell`.
-    pub fn cell_pixel(&self, cell: GroundCell, x: usize, y: usize) -> [u8; 4] {
+    /// Colour shown at tile position `(s/n, t/n)` of a tile with ground `cell`.
+    pub fn cell_pixel(&self, cell: GroundCell, s: usize, t: usize, n: usize) -> [u8; 4] {
         if cell.texture == 0 {
             return WATER;
         }
         match self.textures.get(&u32::from(cell.texture)) {
             Some(rgb) => {
-                let (sx, sy) = cell.source_pixel(x, y);
+                let (sx, sy) = cell.texel(s, t, n);
                 let [r, g, b] = rgb[sy * TEXTURE_PX + sx];
                 [r, g, b, 255]
             }
@@ -81,7 +80,7 @@ pub fn ground_top_down(
         let (tx, ty) = (t % w, t / w);
         for j in 0..s {
             for i in 0..s {
-                let px = textures.cell_pixel(cell, i * CELL_PX / s, j * CELL_PX / s);
+                let px = textures.cell_pixel(cell, i, j, s);
                 let o = ((ty * s + j) * out_w + tx * s + i) * 4;
                 pixels[o..o + 4].copy_from_slice(&px);
             }
@@ -154,8 +153,9 @@ mod tests {
         let island = Island::from_insel5(&payload, 0).unwrap();
         let img = ground_top_down(&island, &textures, 32).unwrap();
         assert_eq!((img.width, img.height), (96, 32));
-        // Output (0, 0) of tile 0 samples cell pixel (31, 0) → texture (32 + 31, 64).
-        let want = u8::try_from((32 + 31) ^ 64).unwrap();
+        // Output (0, 0) of tile 0 is tile position (0, 0) of 32 → rotated
+        // (31, 0) → texture x (32 + 31)·256/192 = 84, y 64·256/192 = 85.
+        let want = 84 ^ 85;
         assert_eq!(&img.pixels[0..4], &[0, 0, want, 255]);
         assert_eq!(&img.pixels[32 * 4..32 * 4 + 4], &WATER);
         assert_eq!(&img.pixels[64 * 4..64 * 4 + 4], &MISSING);

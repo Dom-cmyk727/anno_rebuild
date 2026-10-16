@@ -16,8 +16,9 @@
 //!   tile the island exactly.
 //! - `FRUCHTBAR`: one byte per tile, row-major, no blocks.
 //! - A `GFXID` value selects ground: `texture << 8 | u << 5 | v << 2 | r`,
-//!   a 32 × 32 cell `(u, v)` of a 256 × 256 `Textures/Felder.tex` texture,
-//!   turned by `r` quarter turns; texture 0 = open water ([`GroundCell`]).
+//!   cell `(u, v)` of a 6 × 6 grid over a 256 × 256 `Textures/Felder.tex`
+//!   texture, turned by `r` quarter turns; texture 0 = open water
+//!   ([`GroundCell`]).
 //! - `GELAENDE`, `PROD2`, `FLUESSE` blocks hold 6-byte items that place
 //!   `Anlagen.dat` objects ([`PlacedObject`]).
 
@@ -266,8 +267,13 @@ pub fn encode_blocks(grid: &[u8], width: usize, height: usize, cell: usize) -> V
     out
 }
 
-/// Edge length in pixels of a ground cell; a 256 × 256 texture holds 8 × 8.
-pub const CELL_PX: usize = 32;
+/// Ground cells per texture edge: a cell spans 1/6 of the texture (D:
+/// `AnnoWelt.dll` UV table `0x100DCF44` = [0, 1/6, …, 1]; P: `u`, `v` ≤ 5 on
+/// all but 230 of 13.4 M ground tiles; seam error between neighbouring tiles
+/// is less than half that of 1/8 cells).
+pub const CELLS_PER_TEXTURE: usize = 6;
+/// Edge length of a ground texture in pixels.
+pub const GROUND_TEXTURE_PX: usize = 256;
 
 /// The ground a `GFXID` value selects (spec: `docs/formats/insel.md`,
 /// "Ground"; evidence: corpus statistics and rendering, OQ-024).
@@ -275,11 +281,11 @@ pub const CELL_PX: usize = 32;
 pub struct GroundCell {
     /// `Textures/Felder.tex` texture id; 0 = open water (no texture).
     pub texture: u8,
-    /// Cell column (0–7) in the 256 × 256 texture.
+    /// Cell column (0–5; 3 bits, 6 and 7 occur on 230 tiles) in the texture.
     pub u: u8,
-    /// Cell row (0–7).
+    /// Cell row (0–5).
     pub v: u8,
-    /// Quarter turns (0–3), see [`GroundCell::source_pixel`].
+    /// Quarter turns (0–3), see [`GroundCell::texel`].
     pub rotation: u8,
 }
 
@@ -298,18 +304,21 @@ impl GroundCell {
         u16::from_le_bytes([self.u << 5 | self.v << 2 | self.rotation, self.texture])
     }
 
-    /// Pixel of the texture shown at `(x, y)` within the tile's cell
-    /// (`0..32` each): apply `(x, y) → (31 − y, x)` `rotation` times, then
-    /// offset by the cell origin `(32 u, 32 v)`.
-    pub fn source_pixel(self, x: usize, y: usize) -> (usize, usize) {
-        let (mut sx, mut sy) = (x, y);
+    /// Texture pixel shown at tile position `(s/n, t/n)` (`0 ≤ s, t < n`;
+    /// tile `x` runs along `s`, tile `y` along `t`): apply
+    /// `(s, t) → (n − 1 − t, s)` `rotation` times, then map the cell
+    /// `[u, u+1) × [v, v+1)` (in sixths of the texture) onto texture pixels.
+    /// Cells 6 and 7 (230 tiles) clamp to the texture edge.
+    pub fn texel(self, s: usize, t: usize, n: usize) -> (usize, usize) {
+        let (mut a, mut b) = (s, t);
         for _ in 0..self.rotation {
-            (sx, sy) = (CELL_PX - 1 - sy, sx);
+            (a, b) = (n - 1 - b, a);
         }
-        (
-            usize::from(self.u) * CELL_PX + sx,
-            usize::from(self.v) * CELL_PX + sy,
-        )
+        let px = |cell: u8, f: usize| {
+            let p = (usize::from(cell) * n + f) * GROUND_TEXTURE_PX / (CELLS_PER_TEXTURE * n);
+            p.min(GROUND_TEXTURE_PX - 1)
+        };
+        (px(self.u, a), px(self.v, b))
     }
 }
 
@@ -479,10 +488,16 @@ mod tests {
         let c = GroundCell::from_gfx_id(0x2c48);
         assert_eq!((c.texture, c.u, c.v, c.rotation), (44, 2, 2, 0));
         assert_eq!(c.to_gfx_id(), 0x2c48);
-        assert_eq!(c.source_pixel(0, 0), (64, 64));
+        // Cell (2, 2) starts at 2/6 of 256 = 85.33 → pixel 85; n = 6 steps per cell.
+        assert_eq!(c.texel(0, 0, 6), (85, 85));
+        assert_eq!(c.texel(5, 0, 6), (85 + 35, 85));
         let r1 = GroundCell { rotation: 1, ..c };
-        assert_eq!(r1.source_pixel(0, 0), (64 + 31, 64));
-        assert_eq!(r1.source_pixel(5, 9), (64 + 31 - 9, 64 + 5));
+        // (0, 0) → (n − 1, 0): the cell's right edge.
+        assert_eq!(r1.texel(0, 0, 6), (120, 85));
+        // (1, 3) → (6 − 1 − 3, 1) = (2, 1) → ((12 + 2)·256/36, (12 + 1)·256/36).
+        assert_eq!(r1.texel(1, 3, 6), (99, 92));
+        let edge = GroundCell { u: 7, ..c };
+        assert_eq!(edge.texel(5, 0, 6).0, 255, "cells 6, 7 clamp");
         let r4 = (0..4).fold((3, 7), |(x, y), _| (31 - y, x));
         assert_eq!(r4, (3, 7), "four quarter turns are the identity");
         assert_eq!(GroundCell::from_gfx_id(0).texture, 0);

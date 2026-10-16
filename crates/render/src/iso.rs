@@ -6,8 +6,9 @@
 //! measurements and visual checks, OQ-026):
 //! - Tile `(x, y)` is a diamond `TILE[group]` wide/high whose top vertex is
 //!   at screen `((x − y) · w/2, (x + y) · h/2)`.
-//! - Ground: the diamond shows its `GroundCell`; diamond point with tile
-//!   coordinates `(s, t)` ∈ [0, 1)² shows cell pixel `(32 s, 32 t)`.
+//! - Ground: the diamond shows its `GroundCell`; the point with tile
+//!   coordinates `(s, t)` ∈ [0, 1)² shows `GroundCell::texel` (cells are
+//!   1/6 of a 256 × 256 `Felder.tex` texture).
 //! - Objects: the sprite's anchor is put on the centre of the footprint
 //!   diamond. Frame = `rotation · animation frames` (first animation frame);
 //!   sets with a single rotation use frame 0.
@@ -16,8 +17,8 @@
 //! - Elevation: `HEIGHT` values are heights at tile corners (D: `AnnoWelt.dll`
 //!   per-corner grid; that `HEIGHT[x, y]` is corner `(x, y)` is likely) —
 //!   tile `(x, y)` spans the heights of `(x, y)`, `(x+1, y)`, `(x, y+1)`,
-//!   `(x+1, y+1)`, interpolated bilinearly (the original splits tiles into
-//!   two triangles, not traced) — and raise the ground by `height · lift`
+//!   `(x+1, y+1)` as two triangles split along the `(x, y+1)`–`(x+1, y)`
+//!   diagonal — and raise the ground by `height · lift`
 //!   pixels at zoom group 0; [`HEIGHT_LIFT`] is the original's scale.
 //! - Alpha levels blend (`anno_assets::figure::LEVEL_ALPHA`); shadow frames
 //!   darken to 5/8 before their sprite is drawn.
@@ -28,7 +29,7 @@ use anno_assets::building;
 use anno_assets::island::GroundTextures;
 use anno_assets::texture::Rgba;
 use anno_formats::anlagen::AnlagenFile;
-use anno_formats::insel::{CELL_PX, GroundCell, Island, PlacedObject};
+use anno_formats::insel::{GroundCell, Island, PlacedObject};
 
 /// Tile diamond `(width, height)` per zoom group (P: flat 1 × 1 `Anlagen.dat`
 /// sprites are 84 × 42/43, 42 × 21/22 and 20 × 10).
@@ -148,9 +149,17 @@ fn corners(heights: &[u8], w: usize, h: usize, x: usize, y: usize) -> [i64; 4] {
     [at(x, y), at(x + 1, y), at(x, y + 1), at(x + 1, y + 1)]
 }
 
-/// Bilinear height at `(i/n, j/n)` inside a tile, times `n²`.
+/// Height at tile position `(i/n, j/n)` (`i` along tile x, `j` along tile y),
+/// times `n`. The tile is two triangles split along the fixed diagonal from
+/// corner B `(x, y+1)` to C `(x+1, y)`: A-B-C for `i + j ≤ n`, C-B-D beyond
+/// (D: `AnnoWelt.dll` mesh builder `0x1009b920`, indices A,B,C and C,B,D).
 fn interpolate(c: [i64; 4], i: i64, j: i64, n: i64) -> i64 {
-    c[0] * (n - i) * (n - j) + c[1] * i * (n - j) + c[2] * (n - i) * j + c[3] * i * j
+    let [a, cc, b, d] = c;
+    if i + j <= n {
+        a * n + i * (cc - a) + j * (b - a)
+    } else {
+        d * n + (n - i) * (b - d) + (n - j) * (cc - d)
+    }
 }
 
 /// Draws every ground tile, back to front.
@@ -185,14 +194,15 @@ pub fn draw_ground(
                 for i in 0..n {
                     let px = i32::try_from((i - j) * i64::from(tw) / (2 * n)).expect("fits");
                     let py = i32::try_from((i + j) * i64::from(th) / (2 * n)).expect("fits");
-                    let up = lift.scaled(interpolate(c, i, j, n), n * n, group);
-                    let (cx, cy) = (
-                        usize::try_from(i * 32 / n).expect("fits"),
-                        usize::try_from(j * 32 / n).expect("fits"),
+                    let up = lift.scaled(interpolate(c, i, j, n), n, group);
+                    let (si, sj, sn) = (
+                        usize::try_from(i).expect("fits"),
+                        usize::try_from(j).expect("fits"),
+                        usize::try_from(n).expect("fits"),
                     );
                     // Cover the pixel below too: sample rows can skip a screen row on
                     // slopes; back-to-front order lets nearer tiles overdraw it.
-                    let rgba = textures.cell_pixel(cell, cx, cy);
+                    let rgba = textures.cell_pixel(cell, si, sj, sn);
                     canvas.put(sx + px, sy + py - up, rgba);
                     canvas.put(sx + px, sy + py - up + 1, rgba);
                 }
@@ -218,9 +228,8 @@ pub fn draw_ground(
                 if s2 < 0 || t2 < 0 || s2 >= full || t2 >= full {
                     continue;
                 }
-                let cx = usize::try_from(s2 * 32 / full).expect("in range");
-                let cy = usize::try_from(t2 * 32 / full).expect("in range");
-                let rgba = textures.cell_pixel(cell, cx.min(CELL_PX - 1), cy.min(CELL_PX - 1));
+                let to = |v: i32| usize::try_from(v).expect("in range");
+                let rgba = textures.cell_pixel(cell, to(s2), to(t2), to(full));
                 canvas.put(sx + px, sy + py, rgba);
             }
         }
@@ -312,7 +321,7 @@ pub fn draw_objects(
             let c = corners(&heights, iw, ih, cx, cy);
             lift.scaled(
                 interpolate(c, i64::from(cx2 % 2), i64::from(cy2 % 2), 2),
-                4,
+                2,
                 group,
             )
         };
@@ -372,15 +381,20 @@ mod tests {
         assert_eq!(corners(&h, 2, 2, 0, 0), [0, 10, 20, 30]);
         assert_eq!(corners(&h, 2, 2, 1, 1), [30, 30, 30, 30]);
         let c = [0, 10, 20, 30];
-        // Corners and centre, scaled by n² = 4.
-        assert_eq!(interpolate(c, 0, 0, 2), 0);
-        assert_eq!(interpolate(c, 2, 0, 2), 40);
-        assert_eq!(interpolate(c, 0, 2, 2), 80);
-        assert_eq!(interpolate(c, 1, 1, 2), 60); // (0 + 10 + 20 + 30) / 4 · 4
+        // c = [A, C, B, D] = [0, 10, 20, 30]; results scaled by n = 2.
+        assert_eq!(interpolate(c, 0, 0, 2), 0); // A
+        assert_eq!(interpolate(c, 2, 0, 2), 20); // C = 10
+        assert_eq!(interpolate(c, 0, 2, 2), 40); // B = 20
+        assert_eq!(interpolate(c, 2, 2, 2), 60); // D = 30
+        // The centre lies on the B–C diagonal: (B + C) / 2 = 15.
+        assert_eq!(interpolate(c, 1, 1, 2), 30);
+        // Off the diagonal the two triangles differ from bilinear blending.
+        assert_eq!(interpolate([0, 0, 0, 40], 3, 3, 4), 4 * 20); // C-B-D triangle
+        assert_eq!(interpolate([40, 0, 0, 0], 1, 1, 4), 4 * 20); // A-B-C triangle
         // Lift: 1 px per unit at group 0, half at group 1 (tile width 42).
         let lift = Lift { num: 1, den: 1 };
-        assert_eq!(lift.scaled(60, 4, 0), 15);
-        assert_eq!(lift.scaled(60, 4, 1), 7);
+        assert_eq!(lift.scaled(30, 2, 0), 15);
+        assert_eq!(lift.scaled(30, 2, 1), 7);
         assert_eq!(Lift::NONE.pixels(200, 0), 0);
     }
 

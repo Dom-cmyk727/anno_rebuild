@@ -7,5 +7,6 @@
 
 pub mod chunk;
 pub mod colors;
+pub mod figuren;
 pub mod inc;
 pub mod tex;

@@ -357,9 +357,123 @@ pub fn decode_rle(data: &[u8], width: usize, height: usize) -> Result<Vec<Option
     Ok(out)
 }
 
+/// Largest `skip + count` of one RLE run (P: maximum over the corpus; the
+/// markers `0xFE`/`0xFF` are never valid `skip` values).
+pub const RLE_MAX_RUN: usize = 253;
+
+/// Encodes `width × height` pixels (`None` = transparent) as `BSH_RGB` row
+/// RLE, byte-identical to the original encoder on all 5,029 RLE textures of
+/// the corpus (P, `tex_corpus`; rules in `docs/formats/tex.md`).
+///
+/// Per row: gaps longer than [`RLE_MAX_RUN`] emit `(253, 0)` runs first; an
+/// opaque span is split so that each run's `skip + count` is at most 253,
+/// continuation runs having `skip = 0`; a trailing gap is written as an
+/// explicit `(gap, 0)` run, so every row reaches `width`.
+pub fn encode_rle(px: &[Option<u8>], width: usize, height: usize) -> Vec<u8> {
+    assert_eq!(
+        px.len(),
+        width * height,
+        "pixel count is not width * height"
+    );
+    // Every value written below is at most RLE_MAX_RUN.
+    let byte = |n: usize| u8::try_from(n).expect("run length fits in u8");
+    let mut out = Vec::new();
+    for y in 0..height {
+        let row = &px[y * width..][..width];
+        let mut x = 0;
+        while x < width {
+            let mut gap = row[x..].iter().take_while(|p| p.is_none()).count();
+            x += gap;
+            let mut n = row[x..].iter().take_while(|p| p.is_some()).count();
+            while gap > RLE_MAX_RUN {
+                out.extend([byte(RLE_MAX_RUN), 0]);
+                gap -= RLE_MAX_RUN;
+            }
+            if n == 0 {
+                out.extend([byte(gap), 0]);
+                break;
+            }
+            let mut skip = gap;
+            while n > 0 {
+                let count = n.min(RLE_MAX_RUN - skip);
+                out.extend([byte(skip), byte(count)]);
+                out.extend(row[x..x + count].iter().flatten());
+                x += count;
+                n -= count;
+                skip = 0;
+            }
+        }
+        out.push(if y + 1 < height {
+            RLE_END_OF_ROW
+        } else {
+            RLE_END_OF_IMAGE
+        });
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rle_encode_two_rows() {
+        let px = [
+            None,
+            Some(7),
+            Some(8),
+            None,
+            Some(1),
+            Some(2),
+            Some(3),
+            Some(4),
+        ];
+        let data = encode_rle(&px, 4, 2);
+        assert_eq!(
+            data,
+            [
+                1,
+                2,
+                7,
+                8,
+                1,
+                0,
+                RLE_END_OF_ROW,
+                0,
+                4,
+                1,
+                2,
+                3,
+                4,
+                RLE_END_OF_IMAGE
+            ]
+        );
+        assert_eq!(decode_rle(&data, 4, 2).unwrap(), px);
+    }
+
+    #[test]
+    fn rle_encode_splits_long_gaps_and_spans() {
+        // 300 transparent, then 600 opaque: gap split (253,0)(47,…), span
+        // capped at skip + count = 253, continuations with skip 0.
+        let mut px = vec![None; 300];
+        px.extend((0..600).map(|i| Some((i % 200) as u8)));
+        let data = encode_rle(&px, 900, 1);
+        let runs: Vec<(u8, u8)> = {
+            let (mut i, mut v) = (0, Vec::new());
+            while data[i] != RLE_END_OF_IMAGE {
+                v.push((data[i], data[i + 1]));
+                i += 2 + usize::from(data[i + 1]);
+            }
+            v
+        };
+        assert_eq!(runs, [(253, 0), (47, 206), (0, 253), (0, 141)]);
+        assert_eq!(decode_rle(&data, 900, 1).unwrap(), px);
+        // Fully transparent row: explicit skip runs up to width.
+        assert_eq!(
+            encode_rle(&[None; 300], 300, 1),
+            [253, 0, 47, 0, RLE_END_OF_IMAGE]
+        );
+    }
 
     #[test]
     fn rle_two_rows() {

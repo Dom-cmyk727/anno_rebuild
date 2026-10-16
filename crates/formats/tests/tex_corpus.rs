@@ -6,7 +6,7 @@ mod common;
 use std::collections::BTreeMap;
 
 use anno_formats::inc;
-use anno_formats::tex::{PixelFormat, TexFile};
+use anno_formats::tex::{PixelFormat, TexFile, encode_rle};
 use common::{files_with_ext, game_dir};
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -19,6 +19,8 @@ struct Stats {
     named: usize,
     /// Palettes whose prefix starts with a non-zero u32.
     flagged_palettes: usize,
+    /// RLE textures whose body re-encodes byte-identically.
+    rle_reencoded: usize,
 }
 
 #[test]
@@ -76,6 +78,15 @@ fn tex_corpus() {
                 px.len(),
                 usize::from(tex.head.width) * usize::from(tex.head.height)
             );
+            if format.is_rle() {
+                let (w, h) = (usize::from(tex.head.width), usize::from(tex.head.height));
+                assert!(
+                    encode_rle(&px, w, h) == tex.body,
+                    "{ctx}: texture {} RLE re-encode differs",
+                    tex.id
+                );
+                s.rle_reencoded += 1;
+            }
             if format == PixelFormat::TexRgb {
                 assert!(tex.name.is_some(), "{ctx}: TEX_RGB without NAME");
             }
@@ -92,6 +103,7 @@ fn tex_corpus() {
             formats: formats(&[("BshRgb", 5028), ("BshRgbH", 1), ("TexRgb", 147)]),
             named: 147,
             flagged_palettes: 10,
+            rle_reencoded: 5029,
         }
     );
 }

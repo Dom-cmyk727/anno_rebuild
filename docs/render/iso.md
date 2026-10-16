@@ -38,14 +38,20 @@ Implementation: `anno_render::iso` (CPU reference renderer), `anno_render::scene
 | Sea surface | animated sprites of `Anlagen.dat` entry 2801 (`MEER`, `Meer\Meer01_001.tga`, 64 `BSH_RGBWZ` frames, 3 × 3 footprint) | D: `AnnoWelt.dll` `0x1009f4c0`; P: entry 2801 as described |
 | Lattice | one sprite at tile `(x, y)` with `y` even and `x ≡ 2·((y/2) mod 2) (mod 4)` | D: `0x1009f4c0` |
 | Height | sea level 1.28 world units = 32 `HEIGHT` units (≈ 65.9 px at zoom 0), plus a small per-sprite offset (`(x mod 5)·0.01 − (y mod 3)·0.01357` world units, not applied) | D: `0x100E3A20`, set at `0x1009d010` |
-| Frame | `(5x + 3y) mod 32` at tick 0 (animation advances with the game tick, not reproduced) | D: formula confirmed; tick unit not traced |
+| Frame | rotation 0; animation step `(time / 50 ms + (5x + 3y) mod 32) mod 16`: phase from the original, speed from the sprite's `ANIM` record (16 frames × 50 ms) | D: phase formula `0x1009f4c0`; the original's tick unit is not traced, so the `ANIM` duration is used |
 | Transparency | `BSH_RGBWZ` is a 50 % checkerboard, so the sea floor shows through | D: brush `0x100161c0`; that this produces the water look is likely |
 | Where | 8 × 8 tile chunks with a "sea" bit (`+0x32`, not traced). **Approximation:** chunks containing a non-land tile (corner average ≤ 19, the original's land classifier `0x100900c0`) | ? OQ-026 b |
 | Occlusion | the original depth-tests per pixel. **Approximation:** a water pixel is drawn only where the terrain under it (projected back onto the water plane) is below sea level, and only inside the island's tile area | ? |
 | Open-water ground | texture 0 has no terrain in the original, so nothing is known about what shows through the checkerboard there. **Approximation:** texture-0 ground and the checkerboard gaps above it are drawn in the average colour / neighbouring pixel of the sea sprite (`iso::water_colour`) | ? OQ-026 b |
-| Surf, rivers | ordinary placed objects (entries 2701–2709 via `FLUESSE`, e.g. `Brandung01`); not drawn yet (`FLUESSE` objects are not rendered) | D, P |
+| Surf, rivers | ordinary placed objects from `FLUESSE`: rivers 2701/2705–2707, waterfalls and river mouths 2702–2704, surf 2708 (`Brandung01`: an irregular water patch, 54 frames × 80 ms, creeping up the beach). Drawn in the water layer, after the sea, raised to the higher of terrain and sea level. **Approximation:** the original's object height is not traced; surf is placed on the sea floor (heights 0–16) but belongs on the water surface | D (display kind 10), P (counts, heights) |
 
 Visual check 2026-10-16: `Dschungel/D_064x064_0001_0B.scp` at zoom groups 0 and 2 — clean waterline along the beach, shallows and reefs visible through the surface, no sawtooth coast.
+
+## Animation and layers
+- A sprite set's `ANIM` record gives the animation: bytes 2–3 frames per animation, bytes 4–5 milliseconds per frame (bit 25 of the `u32` at 4 is a flag of unknown meaning). Frames per set = animation frames × 1 or × 4 rotations (P, all sets). Frame shown = `rotation · frames + (time / ms + phase) mod frames`; phase 0 for placed objects (the original's per-object phase is not traced), `(5x + 3y) mod 32` for the sea.
+- Only the water layer (sea, rivers, waterfalls, surf) is animated so far; other animated objects (e.g. mills, fires) show their first frame.
+- Layers per island, in order: ground; water at time `t`; other objects (`scene::Layers`). The viewer caches ground and objects per chunk and redraws the water layer for the visible area every 50 ms (about 20–30 ms per frame on the dev Mac, 2026-10-16).
+- Shadows are 37.5 % black drawn over the destination (= 5/8 brightness on opaque pixels), so they also work on a transparent object layer.
 
 ## Scene composition (scenario view)
 `anno_render::scene`; used by `anno1503 --view` (window and `--png`).

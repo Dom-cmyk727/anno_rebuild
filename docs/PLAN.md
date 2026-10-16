@@ -99,6 +99,9 @@ Status M1.5 (2026-10-16): `[~]` islands structurally done; scenario records, pla
 - [ ] Specs: `docs/formats/scp.md`, `docs/formats/sze.md`, `docs/formats/data-text.md`.
 
 ### M1.6 Viewer (`crates/render`, `crates/app`)
+Status M1.6 (2026-10-16): `[~]` offline isometric renderer works; window, camera, elevation, shadows open.
+- `anno_render::iso` (CPU) + `anno-extract view <game_dir> <file> <island> <out.png> [<group> [<lift>]]` render one island: ground from `Felder.tex` cells, `GELAENDE` + `PROD2` objects from `Anlagen.dat` with anchors on footprint centres, back-to-front order. Rules and evidence: `docs/render/iso.md`. Checked on a polar village, a forested island and a walled city (12,316 objects, none failed).
+- Open: `HEIGHT` needs sloped tiles before its scale can be calibrated (OQ-026); open water; shadows; animation; whole-scenario view (islands at their `INSEL5` world positions); interactive window (wgpu/winit) with pan/zoom; `app --view`.
 - [ ] wgpu + SDL2 (or winit) window, isometric tile renderer for ground (`Felder.tex`) using `HEIGHT`/`GFXID` from one `.scp`.
 - [ ] Draw placed buildings from a `.sze` scenario using Figuren sprites; correct draw order (painter's by iso depth); camera pan/zoom.
 - [ ] `app --view <file.sze|file.scp>` as the entry point. No gameplay.

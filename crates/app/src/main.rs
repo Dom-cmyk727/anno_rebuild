@@ -7,7 +7,8 @@
 //!
 //! `--view` shows every island of a scenario (`.sze`) at its `INSEL5` world
 //! position, or the single island of a template (`.scp`), rendered with
-//! `anno_render::iso` (ground + `GELAENDE` + `PROD2` objects, flat) and
+//! `anno_render::iso` (ground with elevation, `GELAENDE` + `PROD2` objects,
+//! shadows) and
 //! composed by `anno_render::scene` (rules: `docs/render/iso.md`).
 //!
 //! - Window (default): drag with the left mouse button, arrow keys or WASD to

@@ -25,7 +25,7 @@ The `FigurenHeader.dat` entry layout ([`figuren.md`](figuren.md)): 8-byte prefix
 
 | Record | Count | Notes | Evidence |
 |---|---|---|---|
-| `VERSION2`, `HEAD`, `PRODTYPE`, `PROD3`, `WARE`, `ROHSTOFF`, `WALKMASK`, `SHOTMASK`, `OWNMASK`, `HAEUSER` | 921 each | `HEAD` 52 bytes on the first entries; contents ? (M1.4) | P (counts) |
+| `VERSION2`, `HEAD`, `PRODTYPE`, `PROD3`, `WARE`, `ROHSTOFF`, `WALKMASK`, `SHOTMASK`, `OWNMASK`, `HAEUSER` | 921 each | `HEAD` bytes 0–1 = footprint width, height in tiles (grass/trees 1 × 1, palace 1380 4 × 7, castle 2223 8 × 8; confirmed by non-overlapping `PROD2` placements, [`insel.md`](insel.md)); rest of `HEAD` and the other records ? (M1.4) | P (counts), P + visual (footprint) |
 | `COLORS` | 891 | **list of `u32` colour-table ids** (1–3 ids, 4/8/12 bytes), not inline tables; ids are 1–440 = `ANNO/COLORS` table ids, or 0 = unused slot | P: 640 × 1, 195 × 2, 56 × 3 ids; no frame selects a 0 |
 | `INFRAMIN` 822, `OBJECTPOS` 426, `BAUSAMPLE` 409, `ENTRANCE` 326, `FIREPOS` 26, `FORSCHTYPE` 20, `HIGHMAP` 16 | | ? (M1.4) | P (counts) |
 
@@ -66,7 +66,7 @@ ENTRY …                               (exactly as `anno-dump figuren`, figuren
 `NOPARSE` if `ANNO/ANLAGEN` is missing or malformed.
 
 ## Implementation
-- `anno_formats::anlagen::AnlagenFile` (`colors`, `entries`, `entry_chunks`, `volumes`); entries are `figuren::Entry` with `palette_ids`.
+- `anno_formats::anlagen::AnlagenFile` (`colors`, `entries`, `entry_chunks`, `volumes`, `footprint`); entries are `figuren::Entry` with `palette_ids`.
 - `anno_formats::figuren::{FrameFormat::{RgbWZ, RgbZM, RgbAH}, decode_frame_clipped}`.
 - RGBA: `anno_assets::building::to_rgba`; PNG export: `anno-extract anlagen <Anlagen.dat> <outdir> <entry id>…` (layout as `anno-extract figuren`).
 - Python reference: `tools/figuren.py anlagen`.

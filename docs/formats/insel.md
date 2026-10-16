@@ -40,8 +40,8 @@ Order in templates: `INFO, HEIGHT…, GFXID…, GELAENDE…, FRUCHTBAR, [FLUESSE
 | `INFO` | 12 bytes; ? OQ-024 | P (size) |
 | `HEIGHT` | block (below), 1 byte per tile; values 0–208 (111 distinct); 0 on 97.9 % of border tiles | P |
 | `GFXID` | block, `u16` per tile; ground cell, see "Ground" | P + visual |
-| `GELAENDE`, `PROD2` | block header + `n` × 6-byte items (sparse), same 32 × 32 block grid as `HEIGHT` | P (all lengths 6 + 6n); item layout ? OQ-024 |
-| `FLUESSE` | block header with 8 × 8 blocks at multiples of 8, only non-empty blocks stored, + 6-byte items | P; ? OQ-024 |
+| `GELAENDE`, `PROD2` | block header + `n` × 6-byte items, same 32 × 32 block grid as `HEIGHT`; items place objects, see "Placed objects". `GELAENDE` = scenery (grass, bushes, trees, rocks, cliffs, ice floes), `PROD2` = built objects (roads, houses, walls, production) | P |
+| `FLUESSE` | block header with 8 × 8 blocks at multiples of 8, only non-empty blocks stored, + 6-byte placed-object items | P; what the river objects are ? OQ-024 |
 | `FRUCHTBAR` | `width × height` bytes, row-major, no blocks; values 0–10 | P (size asserted) |
 | `BERGWERK2`, `OCCUR`, `ANBAU`, `DISCOVER` (4), `KONTORID` (2), `DUERRE`, `LOCKED` (1), `NAME`, `HIRSCH`, `EVENTINSEL`, `STAEDTE` | ? OQ-024 | P (sizes) |
 
@@ -74,6 +74,20 @@ One 3 × 3 patch names texture 205, which `Felder.tex` does not contain: in `Nor
 
 Rejected before this was found (P, 2026-10-16): `GFXID >> 5` as a `FigurenHeader.dat` id, `GFXID` or `GFXID >> 5` as an `Anlagen.dat` `ANLAGEN` id, and `GFXID` as an index into `ANLAGEN` sprite-set frame ranges.
 
+## Placed objects
+Each 6-byte item of `GELAENDE`, `PROD2` and `FLUESSE` places one `Anlagen.dat` object ([`anlagen.md`](anlagen.md)):
+
+| Offset | Size | Type | Name | Meaning | Evidence |
+|---|---|---|---|---|---|
+| 0x00 | 2 | u16 | `id` | bits 0–11: `ANLAGEN` entry id; bits 12–13: 0; bits 14–15: `rotation` (quarter turns) | P: all 4,585,381 items name an existing `ANLAGEN` id; bits 12–13 always 0; the four rotation values all occur |
+| 0x02 | 2 | u16 | `state` | mostly `0x3000` (also `0x4000`, `0x5000`, `0x6000`, `0`, …); meaning ? OQ-024 | P |
+| 0x04 | 1 | u8 | `x` | footprint's top-left tile, relative to the block origin; always inside the block | P |
+| 0x05 | 1 | u8 | `y` | | P |
+
+Footprint: `ANLAGEN` `HEAD` bytes 0–1 (width, height), swapped for odd rotations. Evidence: after removing exact duplicate items, `PROD2` footprints overlap on 115 tiles with the swap and on 1,350 without it (P, `objects_corpus`); a top-down overlay of the 3,947 `PROD2` objects of `single32.sze` island 17 shows a walled town with a road grid, dense centre and farms, all on land (visual, 2026-10-16). `GELAENDE` footprints overlap on many tiles (scenery such as ice floes and cliffs), which is plausibly intended.
+
+Items: `GELAENDE` 4,475,412, `PROD2` 76,863, `FLUESSE` 33,106 (P). Exact duplicate items occur in the same block, mostly back to back: 97,041 in `GELAENDE`, 485 in `PROD2` (P); whether the engine places them twice is open (OQ-024).
+
 ## Reference dump
 `anno-dump insel [--full] <file>…` and `tools/insel.py dump [--full]` print, after `# <path>`:
 
@@ -96,11 +110,12 @@ ISLAND i=<k> version=<4|5> x= y= width= height= number= head=<hex> records=<NAME
 - Python reference: `tools/insel.py` (independent; uses `tools/chunks.py` for the container).
 
 ## Open fields
-- Open-water rendering, texture 205, `HEIGHT` units, `INFO`, item layouts of `GELAENDE`/`PROD2`/`FLUESSE`, all other records — OQ-024.
+- Open-water rendering, texture 205, `HEIGHT` units, `INFO`, item `state`, duplicate items, all other records — OQ-024.
 - `.scp` trailer — OQ-001.
 
 ## Tests
 - Corpus: `crates/formats/tests/insel_corpus.rs` (needs `ANNO1503_GAME_DIR`): 465 templates (21 `INSEL4`, 444 `INSEL5`) and 668 scenario islands; grids assemble, re-encode byte-identically, `FRUCHTBAR` is `width × height`, sparse blocks are 6-byte items on their grid, template heads are 0, island numbers unique per scenario, the two misnamed templates, 7,952,640 template tiles.
+- Placed objects: `objects_corpus.rs` (item counts, ids, duplicates, footprint overlaps); unit `insel::tests::placed_objects`.
 - Ground: `insel_corpus.rs::ground_textures` (texture ids, water count, the texture-205 patch).
 - Unit: `insel::tests::{insel5_grids, rejects_gaps_and_overlaps, ground_cells, islands_in_scp_and_insel4}`, `anno_assets::island::tests::renders_cells_water_and_missing`.
 - PNG export: `extract.rs::extract_insel_corpus_samples` (PNGs equal `ground_top_down`; `MISSING` only in the texture-205 template).

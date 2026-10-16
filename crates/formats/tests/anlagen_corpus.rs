@@ -115,6 +115,13 @@ fn anlagen_corpus() {
         );
     }
     assert_eq!(decoded, 6484 + 6452 + 6473);
-    let expect = [("BSH_RGBAZ", 26), ("BSH_RGBZ", 19), ("BSH_RGBZM", 6)];
+    // WZ: after the ×2 column expansion, 398 frames reach 1–2 columns past
+    // their width (110 by 1, 288 by 2); the original draws them unclipped.
+    let expect = [
+        ("BSH_RGBAZ", 26),
+        ("BSH_RGBWZ", 398),
+        ("BSH_RGBZ", 19),
+        ("BSH_RGBZM", 6),
+    ];
     assert_eq!(clipped, expect.map(|(k, n)| (k.to_string(), n)).into());
 }

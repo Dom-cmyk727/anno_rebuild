@@ -57,7 +57,7 @@ def color_table(p):
 
 def frame(raw):
     w, h, pal, u06 = struct.unpack_from('<4H', raw, 0)
-    ax, ay, off, ln, u20 = struct.unpack_from('<2H3I', raw, 0x14)
+    ax, ay, off, ln, u20 = struct.unpack_from('<2h3I', raw, 0x14)  # anchors are signed (re/annodisplay.md §4)
     return dict(width=w, height=h, palette=pal, u06=u06, format=raw[8:0x14], ax=ax, ay=ay,
                 offset=off, length=ln, u20=u20)
 
@@ -180,12 +180,15 @@ def decode(fmt, data, w, h):
         if levels: c &= 0x3F
         if i + c * bpp > len(data): raise Bad('truncated run')
         x += b
-        if y >= h or x + c > w: raise Bad('run outside image')
+        if y >= h: raise Bad('run outside image')
         for k in range(c):
+            # BSH_RGBWZ: stored pixel x lands on column 2x + (y & 1) (re/annodisplay.md §3)
+            col = 2 * (x + k) + (y & 1) if fmt == b'BSH_RGBWZ' else x + k
+            if col >= w: raise Bad('run outside image')
             if bpp == 0: v = (0, 0, 0)
             elif bpp == 1: v = (data[i + k], 0, level)
             else: v = (data[i + 2*k + 1], data[i + 2*k], level)
-            px[y * w + x + k] = v
+            px[y * w + col] = v
         i += c * bpp; x += c
     if y != h: raise Bad('row count differs from height')
     if i != len(data): raise Bad('bytes after end marker')

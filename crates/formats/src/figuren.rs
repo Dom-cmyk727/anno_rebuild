@@ -82,7 +82,8 @@ pub enum FrameFormat {
     RgbAZ,
     /// `BSH_ALPHA`: shadow coverage, runs without pixel bytes.
     Alpha,
-    /// `BSH_RGBWZ` (`Anlagen.dat` only): 2 bytes per pixel `[z, index]`; `W` unknown.
+    /// `BSH_RGBWZ` (`Anlagen.dat` only): 2 bytes per pixel `[z, index]`; rows
+    /// store every second column (checkerboard, see [`decode_frame`]).
     RgbWZ,
     /// `BSH_RGBZM` (`Anlagen.dat` only): 2 bytes per pixel `[z, index]`; `M` unknown.
     RgbZM,
@@ -135,9 +136,11 @@ pub struct Frame {
     pub unknown_06: u16,
     /// 0x08: format name, NUL-padded, e.g. `BSH_RGBV`.
     pub format_raw: [u8; 12],
-    /// 0x14, 0x16: anchor point; outside `width × height` for 783 frames (OQ-023).
-    pub anchor_x: u16,
-    pub anchor_y: u16,
+    /// 0x14, 0x16: anchor, the frame pixel that lands on the object's
+    /// projected world point; **signed** (D: `AnnoDisplay.dll` `0x1000ac80`
+    /// reads both as `short`; P: 735 `FigurenHeader.dat` frames are negative).
+    pub anchor_x: i16,
+    pub anchor_y: i16,
     /// 0x18: byte offset in the group's concatenated volume files.
     pub offset: u32,
     /// 0x1C: byte length of the pixel data; 0 = empty frame.
@@ -157,8 +160,8 @@ impl Frame {
             palette: u16_at(raw, 0x04),
             unknown_06: u16_at(raw, 0x06),
             format_raw,
-            anchor_x: u16_at(raw, 0x14),
-            anchor_y: u16_at(raw, 0x16),
+            anchor_x: i16::from_le_bytes([raw[0x14], raw[0x15]]),
+            anchor_y: i16::from_le_bytes([raw[0x16], raw[0x17]]),
             offset: u32_at(raw, 0x18),
             length: u32_at(raw, 0x1C),
             unknown_20: u32_at(raw, 0x20),
@@ -585,8 +588,11 @@ pub struct Pixel {
 ///
 /// Row RLE as `.tex` `BSH_RGB`: per row `(skip, count, data)` runs, `0xFE`
 /// ends a row, `0xFF` the image. `data` is `count × bytes_per_pixel` bytes;
-/// in `A` formats the count byte is `level << 6 | count`. Empty data is an
-/// empty (fully transparent) frame.
+/// in `A` formats the count byte is `level << 6 | count`. In `BSH_RGBWZ`
+/// skip and count are in stored pixels and stored pixel `x` of row `y` lands
+/// on column `2x + (y & 1)`; the other columns stay transparent (a 50 %
+/// screen door; the original's phase also depends on the frame's screen
+/// column, here assumed even). Empty data is an empty (fully transparent) frame.
 pub fn decode_frame(
     format: FrameFormat,
     data: &[u8],
@@ -647,16 +653,25 @@ fn decode(
             .ok_or(Error::BadPixels("truncated run"))?;
         i += count * bpp;
         x += usize::from(b);
-        if y >= height || (!clip && x + count > width) {
+        if y >= height {
             return Err(Error::BadPixels("run outside image"));
         }
-        let kept = count.min(width.saturating_sub(x));
-        dropped += count - kept;
-        for (k, dst) in out[y * width + x.min(width)..][..kept]
-            .iter_mut()
-            .enumerate()
-        {
-            *dst = Some(match bpp {
+        for k in 0..count {
+            // `BSH_RGBWZ` stores every second column: stored pixel `x` goes
+            // to column `2x + (y & 1)` (D: `AnnoDisplay.dll` `0x100161c0`).
+            let col = if format == FrameFormat::RgbWZ {
+                2 * (x + k) + (y & 1)
+            } else {
+                x + k
+            };
+            if col >= width {
+                if !clip {
+                    return Err(Error::BadPixels("run outside image"));
+                }
+                dropped += 1;
+                continue;
+            }
+            out[y * width + col] = Some(match bpp {
                 0 => Pixel::default(),
                 1 => Pixel {
                     index: px[k],
@@ -694,8 +709,8 @@ mod tests {
             palette: 1,
             unknown_06: 8,
             format_raw,
-            anchor_x: w / 2,
-            anchor_y: h,
+            anchor_x: i16::try_from(w / 2).unwrap(),
+            anchor_y: i16::try_from(h).unwrap(),
             offset,
             length,
             unknown_20: 0,
@@ -762,11 +777,19 @@ mod tests {
     fn clipped_decode_drops_overrun() {
         // Width 2; row 0 writes 3 pixels (one past the edge), row 1 is empty.
         let data = [0, 3, 0xa1, 1, 0xa2, 2, 0xa3, 3, 0xFE, 0xFF];
-        assert!(decode_frame(FrameFormat::RgbWZ, &data, 2, 2).is_err());
-        let (px, dropped) = decode_frame_clipped(FrameFormat::RgbWZ, &data, 2, 2).unwrap();
+        assert!(decode_frame(FrameFormat::RgbZ, &data, 2, 2).is_err());
+        let (px, dropped) = decode_frame_clipped(FrameFormat::RgbZ, &data, 2, 2).unwrap();
         assert_eq!(dropped, 1);
         let idx: Vec<_> = px.iter().map(|p| p.map(|p| (p.z, p.index))).collect();
         assert_eq!(idx, [Some((0xa1, 1)), Some((0xa2, 2)), None, None]);
+        // WZ: stored pixels go to every second column, phase = row parity.
+        let wz = [0, 2, 1, 7, 2, 8, 0xFE, 0, 1, 3, 9, 0xFF];
+        let px = decode_frame(FrameFormat::RgbWZ, &wz, 4, 2).unwrap();
+        let idx: Vec<_> = px.iter().map(|p| p.map(|p| p.index)).collect();
+        assert_eq!(
+            idx,
+            [Some(7), None, Some(8), None, None, Some(9), None, None]
+        );
         // A run starting beyond the edge drops entirely.
         let (_, dropped) =
             decode_frame_clipped(FrameFormat::RgbAH, &[3, 0x42, 7, 8, 0xFF], 2, 1).unwrap();

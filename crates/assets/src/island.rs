@@ -49,7 +49,8 @@ impl GroundTextures {
         Ok(Self { textures })
     }
 
-    fn pixel(&self, cell: GroundCell, x: usize, y: usize) -> [u8; 4] {
+    /// Colour shown at `(x, y)` (`0..32` each) of a tile with ground `cell`.
+    pub fn cell_pixel(&self, cell: GroundCell, x: usize, y: usize) -> [u8; 4] {
         if cell.texture == 0 {
             return WATER;
         }
@@ -80,7 +81,7 @@ pub fn ground_top_down(
         let (tx, ty) = (t % w, t / w);
         for j in 0..s {
             for i in 0..s {
-                let px = textures.pixel(cell, i * CELL_PX / s, j * CELL_PX / s);
+                let px = textures.cell_pixel(cell, i * CELL_PX / s, j * CELL_PX / s);
                 let o = ((ty * s + j) * out_w + tx * s + i) * 4;
                 pixels[o..o + 4].copy_from_slice(&px);
             }

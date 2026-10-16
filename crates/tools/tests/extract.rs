@@ -236,3 +236,55 @@ fn extract_figuren_corpus_samples() {
         .expect("spawn");
     assert!(!missing.status.success());
 }
+
+/// `anno-extract insel` on one template and one scenario: every PNG equals
+/// `island::ground_top_down`; the template with texture 205 shows `MISSING`.
+#[test]
+fn extract_insel_corpus_samples() {
+    use anno_assets::island::{self, GroundTextures};
+    use anno_formats::insel;
+    let Some(dir) = std::env::var_os("ANNO1503_GAME_DIR").map(PathBuf::from) else {
+        eprintln!("skipping extract_insel_corpus_samples: ANNO1503_GAME_DIR not set");
+        return;
+    };
+    let felder_path = dir.join("Textures/Felder.tex");
+    let felder_buf = std::fs::read(&felder_path).expect("Felder.tex");
+    let textures = GroundTextures::new(&TexFile::parse(&felder_buf).unwrap()).unwrap();
+    let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("extract_insel");
+    for (sample, missing) in [
+        ("Scenes/Islands/Nord/N_256x256_0015_5B.scp", true),
+        ("Scenes/0200Single/Single_01.sze", false),
+    ] {
+        let target = out.join(sample);
+        let _ = std::fs::remove_dir_all(&target);
+        let res = Command::new(env!("CARGO_BIN_EXE_anno-extract"))
+            .arg("insel")
+            .arg(dir.join(sample))
+            .arg(&felder_path)
+            .arg(&target)
+            .arg("2")
+            .output()
+            .expect("spawn");
+        assert!(
+            res.status.success(),
+            "{}",
+            String::from_utf8_lossy(&res.stderr)
+        );
+        let buf = std::fs::read(dir.join(sample)).unwrap();
+        let islands = insel::islands(&buf).unwrap();
+        let index = std::fs::read_to_string(target.join("index.txt")).unwrap();
+        assert_eq!(index.lines().count(), islands.len());
+        let mut saw_missing = false;
+        for (k, i) in islands.iter().enumerate() {
+            let want = island::ground_top_down(i, &textures, 2).unwrap();
+            saw_missing |= want.pixels.chunks(4).any(|p| p == island::MISSING);
+            let got = read_png(&target.join(format!("island{k}.png")));
+            assert_eq!(
+                got,
+                (u32::from(want.width), u32::from(want.height), want.pixels),
+                "{sample} island {k}"
+            );
+        }
+        assert_eq!(saw_missing, missing, "{sample}");
+    }
+}

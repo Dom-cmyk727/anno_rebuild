@@ -743,6 +743,22 @@ fn dump_insel(buf: &[u8], full: bool, out: &mut String) -> bool {
                     distinct.len(),
                     fnv64(bytes)
                 ));
+                let mut textures: Vec<u8> = gs
+                    .iter()
+                    .map(|&g| insel::GroundCell::from_gfx_id(g).texture)
+                    .filter(|&t| t != 0)
+                    .collect();
+                textures.sort_unstable();
+                textures.dedup();
+                let water = gs
+                    .iter()
+                    .filter(|&&g| insel::GroundCell::from_gfx_id(g).texture == 0)
+                    .count();
+                let list: Vec<String> = textures.iter().map(u8::to_string).collect();
+                w(format!(
+                    "  GROUND water={water} textures={}",
+                    list.join(",")
+                ));
                 if full {
                     let width = usize::from(i.width).max(1);
                     for (y, row) in hs.chunks(width).enumerate() {

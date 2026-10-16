@@ -3,6 +3,7 @@
 //! ```text
 //! anno-extract tex <file.tex> <outdir>
 //! anno-extract figuren <game_dir> <outdir> <entry id>...
+//! anno-extract insel <file.scp|file.sze> <Felder.tex> <outdir> [<px per tile>]
 //! ```
 //!
 //! `tex` writes every texture as `<outdir>/<id>.png` (8-bit RGBA, transparent
@@ -17,6 +18,11 @@
 //! `<outdir>/<entry>/index.txt` with one line per frame:
 //! `<file> width=<w> height=<h> format=<str> anchor=<x>,<y> palette=<i> table=<str|->`.
 //!
+//! `insel` renders the ground of every island in the file top-down as
+//! `<outdir>/island<i>.png` (`<px per tile>`, default 8, 1–32; mapping in
+//! `anno_assets::island`) and writes `<outdir>/index.txt`:
+//! `island<i>.png x=<x> y=<y> width=<w> height=<h> number=<n>`.
+//!
 //! Items that fail to decode are listed with `ERROR <message>` instead of a
 //! file name and make the exit code 1.
 
@@ -27,12 +33,15 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use anno_assets::figure;
+use anno_assets::island::{self, GroundTextures};
 use anno_assets::texture::{self, Rgba};
 use anno_formats::figuren::{self, FigurenHeader};
+use anno_formats::insel;
 use anno_formats::tex::TexFile;
 
 const USAGE: &str = "usage: anno-extract tex <file.tex> <outdir>\n       \
-                     anno-extract figuren <game_dir> <outdir> <entry id>...";
+                     anno-extract figuren <game_dir> <outdir> <entry id>...\n       \
+                     anno-extract insel <file.scp|file.sze> <Felder.tex> <outdir> [<px per tile>]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -40,6 +49,14 @@ fn main() -> ExitCode {
         [cmd, file, outdir] if cmd == "tex" => (file, extract_tex(file, Path::new(outdir))),
         [cmd, dir, outdir, ids @ ..] if cmd == "figuren" && !ids.is_empty() => {
             (dir, extract_figuren(Path::new(dir), Path::new(outdir), ids))
+        }
+        [cmd, file, felder, outdir, rest @ ..] if cmd == "insel" && rest.len() <= 1 => {
+            let Some(scale) = rest.first().map_or(Some(8), |s| s.parse().ok()) else {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            };
+            let out = extract_insel(file, felder, Path::new(outdir), scale);
+            (file, out)
         }
         _ => {
             eprintln!("{USAGE}");
@@ -161,6 +178,37 @@ fn extract_figuren(dir: &Path, outdir: &Path, ids: &[String]) -> Result<bool, Bo
         }
         std::fs::write(out.join("index.txt"), index)?;
     }
+    Ok(all_ok)
+}
+
+/// Returns `Ok(false)` if some islands could not be rendered.
+fn extract_insel(path: &str, felder: &str, outdir: &Path, scale: u16) -> Result<bool, BoxError> {
+    let buf = std::fs::read(path)?;
+    let islands = insel::islands(&buf)?;
+    let felder_buf = std::fs::read(felder)?;
+    let textures = GroundTextures::new(&TexFile::parse(&felder_buf)?)?;
+    std::fs::create_dir_all(outdir)?;
+    let (mut index, mut all_ok) = (String::new(), true);
+    for (k, i) in islands.iter().enumerate() {
+        let name = format!("island{k}.png");
+        let written = island::ground_top_down(i, &textures, scale)
+            .map_err(BoxError::from)
+            .and_then(|img| write_png(&outdir.join(&name), &img));
+        match written {
+            Ok(()) => write!(index, "{name}")?,
+            Err(e) => {
+                eprintln!("{path}: island {k}: {e}");
+                write!(index, "ERROR {e}")?;
+                all_ok = false;
+            }
+        }
+        writeln!(
+            index,
+            " x={} y={} width={} height={} number={}",
+            i.x, i.y, i.width, i.height, i.number
+        )?;
+    }
+    std::fs::write(outdir.join("index.txt"), index)?;
     Ok(all_ok)
 }
 

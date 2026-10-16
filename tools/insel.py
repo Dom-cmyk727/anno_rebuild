@@ -97,6 +97,9 @@ def dump(path, full):
         else:
             print(f"  GRID HEIGHT min={min(hs, default=0)} max={max(hs, default=0)} hash={fnv64(hs)}")
             print(f"  GRID GFXID distinct={len(set(gs))} hash={fnv64(b for g in gs for b in (g & 255, g >> 8))}")
+            # GFXID = texture << 8 | u << 5 | v << 2 | r; texture 0 = open water (insel.md, "Ground")
+            water = sum(1 for g in gs if g >> 8 == 0)
+            print(f"  GROUND water={water} textures={','.join(str(t) for t in sorted({g >> 8 for g in gs} - {0}))}")
             if full:
                 w = max(i['width'], 1)
                 for y in range(0, len(hs), w):

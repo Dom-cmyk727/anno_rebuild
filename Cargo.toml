@@ -24,3 +24,18 @@ unused_qualifications = "warn"
 dbg_macro = "warn"
 todo = "warn"
 cast_possible_truncation = "warn"
+
+# Pixel decoding and rendering are far too slow unoptimised for the corpus
+# tests (a scenario render took ~250 s); optimise those crates and all
+# dependencies even in dev/test builds. Binaries keep debug settings.
+[profile.dev.package.anno-formats]
+opt-level = 2
+
+[profile.dev.package.anno-assets]
+opt-level = 2
+
+[profile.dev.package.anno-render]
+opt-level = 2
+
+[profile.dev.package."*"]
+opt-level = 2

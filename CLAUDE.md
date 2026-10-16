@@ -8,6 +8,7 @@ A clean-room reimplementation of ANNO 1503 (Max Design / Sunflowers, 2002; GOG "
 The original game files are required at runtime and are **never** committed or redistributed. They live in `game/app/` (git-ignored).
 
 ## Ground rules
+- **Keep a C++20 port possible.** Rust is the current language, but a C++-oriented co-developer may continue the project and a C++20 migration is a live option (`docs/adr/0000-implementation-language.md`). Specs in `docs/` and language-neutral oracles (`tools/chunks.py`, documented `anno-dump` text output) are the source of truth; code must not be the only place a layout, formula or invariant is written down. No Rust-only magic (serde derives, layout-hiding macros) in `formats` or `sim`.
 - **Evidence only.** Every format field, constant or behaviour you implement must trace to one of: a parsed original file, a disassembled function (note module + address), or a documented community source (cite URL). Guesses go into `docs/open-questions.md`, not into code comments stated as fact.
 - **Determinism first.** Simulation code (`crates/sim`) uses integer/fixed-point arithmetic only, a seeded PRNG owned by the sim, no wall-clock time, no HashMap iteration order (use `BTreeMap`/`IndexMap`), no float in state that gets checksummed. Rendering, audio and UI are consumers of sim state and never mutate it.
 - **Separate crates by responsibility** (see layout below). `sim` must build and run headless with no SDL/wgpu dependency.

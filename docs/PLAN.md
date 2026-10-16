@@ -8,7 +8,7 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done. Update this file a
 - Original architecture: COM-like modules behind `Create…Instance` exports. Likely simulation core: `AnnoWelt.dll` (967 KB), `AnnoGame.dll` (server), `AnnoScene.dll` (scenario/savegame). Rendering: `AnnoDisplay.dll` (DirectDraw). Networking: `AnnoFrame.dll`, custom UDP over Winsock (no DirectPlay), with an "Async aufgetreten" desync path. RTTI class names survive in AnnoFrame, View, AnnoDisplay (`analysis/pe_symbols.json`).
 - Formats: one generic chunk container (12-byte name + u32 LE size + payload, nested) covers `.sze`, `.scp` (root only), `.tex`, `.inc`, `.zei`, `Anlagen.dat`. `tools/chunks.py` parses these and is the reference. `FigurenHeader.dat` uses key-value records inside ENTRY and needs its own reader. `Figuren*.dat` are raw RLE sprite data indexed by the header. `Data/*.dat`, `Texte.dat`, `BGruppen.dat` are plain text.
 - Community: no usable open-source reimplementation exists. Most useful prior work: Amsel (millimarg, XML format specs, currently behind GitLab login; docs bundle on AnnoZone file 9287), DatEditor/Muto1503 (Azukee, `Anlagen.dat` parser + MinHook hooks, archived at Software Heritage). See `docs/research/community-landscape.md`.
-- Decisions: Rust; targets Windows + Linux x86_64; first visible milestone is formats + asset viewer; English docs; faithful core separated from QoL.
+- Decisions: Rust (C++20 kept open for a co-developer, review at the M1 → M3 gate, `docs/adr/0000-implementation-language.md`); targets Windows + Linux x86_64; first visible milestone is formats + asset viewer; English docs; faithful core separated from QoL.
 
 ## 1. Milestone M0 — Repository and tooling skeleton
 
@@ -70,6 +70,8 @@ Status M1.1 (2026-10-16): done. All 2,954 container files round-trip byte-identi
 - [ ] wgpu + SDL2 (or winit) window, isometric tile renderer for ground (`Felder.tex`) using `HEIGHT`/`GFXID` from one `.scp`.
 - [ ] Draw placed buildings from a `.sze` scenario using Figuren sprites; correct draw order (painter's by iso depth); camera pan/zoom.
 - [ ] `app --view <file.sze|file.scp>` as the entry point. No gameplay.
+
+- [ ] **Language gate (end of M1):** review ADR 0000 with the co-developer before any `sim` code is written: stay in Rust, or port `formats` to C++20 against the existing oracles/corpus facts and continue there.
 
 Acceptance M1: `Scenes/0200Single/*.sze` scenarios render recognisably (terrain + buildings + ships). Every parser has corpus + round-trip tests. Specs exist for each format with evidence column filled.
 

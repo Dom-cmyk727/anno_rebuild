@@ -8,7 +8,7 @@
 use anno_formats::anlagen::AnlagenFile;
 use anno_formats::figuren::{self, Entry, Frame, FrameFormat};
 
-use crate::figure::Error;
+use crate::figure::{Error, pixel_alpha};
 use crate::texture::Rgba;
 
 /// Decodes `frame` of `entry` from the volume of zoom group `group`.
@@ -55,7 +55,7 @@ pub fn to_rgba(
             (Some(_), None) => [0, 0, 0, 255],
             (Some(p), Some(pal)) => {
                 let [r, g, b] = pal.rgb(p.index);
-                [r, g, b, 255]
+                [r, g, b, pixel_alpha(format, p.level)]
             }
         })
         .collect();

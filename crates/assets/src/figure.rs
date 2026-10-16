@@ -4,14 +4,28 @@
 //! frame with palette index `i` becomes `[R, G, B, 255]` from the entry's
 //! colour table `Frame::palette`; a covered pixel of a `BSH_ALPHA` shadow
 //! frame becomes `[0, 0, 0, 255]` (a coverage mask); uncovered pixels become
-//! `[0, 0, 0, 0]`. The `z` byte and the 2-bit `level` of `A` formats are
-//! **not** applied: their meaning is open (OQ-023).
+//! `[0, 0, 0, 0]`. The 2-bit `level` of `A` formats becomes the alpha
+//! ([`LEVEL_ALPHA`]); the `z` byte (a depth offset) is not applied.
 
 use std::fmt;
 
 use anno_formats::figuren::{self, Entry, Frame, FrameFormat};
 
 use crate::texture::Rgba;
+
+/// Opacity of the 2-bit `level` of `A` formats: 25 %, 50 %, 75 %, opaque
+/// (D: `AnnoDisplay.dll` `0x10018890`, `0x100193f0`, `0x100199a0`;
+/// `docs/re/annodisplay.md` §3).
+pub const LEVEL_ALPHA: [u8; 4] = [64, 128, 191, 255];
+
+/// Alpha of a decoded pixel of `format`.
+pub fn pixel_alpha(format: FrameFormat, level: u8) -> u8 {
+    if format.has_level() {
+        LEVEL_ALPHA[usize::from(level & 3)]
+    } else {
+        255
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -70,7 +84,7 @@ pub fn to_rgba(entry: &Entry<'_>, frame: &Frame, volume: &[u8]) -> Result<Rgba, 
             (Some(_), None) => [0, 0, 0, 255],
             (Some(p), Some(pal)) => {
                 let [r, g, b] = pal.rgb(p.index);
-                [r, g, b, 255]
+                [r, g, b, pixel_alpha(format, p.level)]
             }
         })
         .collect();

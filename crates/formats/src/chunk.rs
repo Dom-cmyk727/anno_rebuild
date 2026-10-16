@@ -15,8 +15,13 @@
 //! including its two heuristics: the name pattern `[A-Z][A-Z0-9_]{1,11}` and
 //! the nesting limit [`MAX_DEPTH`]. Both are parser choices, not proven
 //! properties of the original format.
+//!
+//! Writing ([`write_file`]) re-encodes the tree: chunks with children are
+//! rebuilt from their children, leaf payloads and name fields are copied
+//! verbatim. Every corpus file round-trips byte-identically
+//! (`tests/corpus.rs`). Spec: `docs/formats/chunk-container.md`.
 
-use std::fmt;
+use std::{fmt, io};
 
 /// Size of the name field in bytes.
 pub const NAME_LEN: usize = 12;
@@ -51,6 +56,34 @@ impl<'a> Chunk<'a> {
     pub fn size(&self) -> usize {
         self.payload.len()
     }
+
+    /// Length of this chunk when written: header plus re-encoded payload.
+    pub fn encoded_len(&self) -> usize {
+        HEADER_LEN + self.encoded_payload_len()
+    }
+
+    fn encoded_payload_len(&self) -> usize {
+        match &self.children {
+            Some(kids) => kids.iter().map(Chunk::encoded_len).sum(),
+            None => self.payload.len(),
+        }
+    }
+}
+
+/// Builds a name field for a new chunk: the name, then NUL padding.
+///
+/// Returns `None` if `name` does not match `[A-Z][A-Z0-9_]{1,11}`. Original
+/// files almost always pad with zeros (17,507 of 17,529 corpus chunks); the
+/// rest carry leftover bytes after the NUL, which only a parsed
+/// [`Chunk::name_field`] preserves.
+pub fn name_field(name: &str) -> Option<[u8; NAME_LEN]> {
+    let bytes = name.as_bytes();
+    if bytes.len() >= NAME_LEN || !valid_name(bytes) {
+        return None;
+    }
+    let mut field = [0u8; NAME_LEN];
+    field[..bytes.len()].copy_from_slice(bytes);
+    Some(field)
 }
 
 /// A parsed file: the top-level chunk sequence plus any bytes after it.
@@ -186,6 +219,31 @@ fn valid_name(name: &[u8]) -> bool {
     }
 }
 
+/// Writes a parsed (or constructed) file: its chunks, then the trailing bytes.
+pub fn write_file(file: &ChunkFile<'_>, out: &mut impl io::Write) -> io::Result<()> {
+    for chunk in &file.chunks {
+        write_chunk(chunk, out)?;
+    }
+    out.write_all(file.trailing)
+}
+
+/// Writes one chunk. If it has children, the payload is re-encoded from them
+/// and the size field recomputed; otherwise the payload is copied.
+pub fn write_chunk(chunk: &Chunk<'_>, out: &mut impl io::Write) -> io::Result<()> {
+    let size = u32::try_from(chunk.encoded_payload_len()).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("chunk {} payload exceeds u32::MAX bytes", chunk.name()),
+        )
+    })?;
+    out.write_all(chunk.name_field)?;
+    out.write_all(&size.to_le_bytes())?;
+    match &chunk.children {
+        Some(kids) => kids.iter().try_for_each(|kid| write_chunk(kid, out)),
+        None => out.write_all(chunk.payload),
+    }
+}
+
 /// Writes the chunk tree in the line format shared with `tools/chunks.py tree`:
 /// one `<indent>NAME off=<offset> size=<size>` line per chunk (two spaces per
 /// level), then `TRAILING off=<offset> len=<len>` if trailing bytes exist.
@@ -302,6 +360,59 @@ mod tests {
             })
         );
         assert_eq!(parse_file(&[0; 5]), Err(Error::Truncated { offset: 0 }));
+    }
+
+    fn round_trip(buf: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        write_file(&parse_file(buf).unwrap(), &mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn writes_back_identically() {
+        let inner = [chunk(b"HEAD", &[1, 2, 3, 4]), chunk(b"BODY", &[])].concat();
+        let mut buf = chunk(b"CHARSET", &inner);
+        buf[8] = 0xE0; // garbage after the NUL survives
+        buf.extend_from_slice(&[9, 9]); // so do trailing bytes
+        assert_eq!(round_trip(&buf), buf);
+    }
+
+    #[test]
+    fn rebuilds_container_from_children() {
+        let leaf = [0xAAu8; 4];
+        let other = [0xBBu8; 2];
+        let kid_name = name_field("HEIGHT").unwrap();
+        let root_name = name_field("INSEL5").unwrap();
+        let kid = Chunk {
+            name_field: &kid_name,
+            offset: 0,
+            payload: &leaf,
+            children: None,
+        };
+        // A stale payload on the parent is ignored when children are present.
+        let root = Chunk {
+            name_field: &root_name,
+            offset: 0,
+            payload: &other,
+            children: Some(vec![kid.clone(), kid]),
+        };
+        assert_eq!(root.encoded_len(), 16 + 2 * 20);
+        let mut out = Vec::new();
+        write_chunk(&root, &mut out).unwrap();
+        let expected = chunk(
+            b"INSEL5",
+            &[chunk(b"HEIGHT", &leaf), chunk(b"HEIGHT", &leaf)].concat(),
+        );
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn name_field_validates() {
+        assert_eq!(&name_field("ANNO").unwrap()[..5], b"ANNO\0");
+        assert_eq!(name_field("ANNOADDON1").unwrap()[10..], [0, 0]);
+        assert_eq!(name_field("anno"), None);
+        assert_eq!(name_field("A"), None);
+        assert_eq!(name_field("ABCDEFGHIJKL"), None); // no room for the NUL
     }
 
     #[test]

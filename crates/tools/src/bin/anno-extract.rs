@@ -29,8 +29,8 @@
 //! `figuren` (`<outdir>/<entry>/s<set>_g<group>_<k>[_shadow].png` + `index.txt`;
 //! `table=` names the global colour table; mapping in `anno_assets::building`).
 //!
-//! `view` renders one island isometrically (ground + `GELAENDE` + `PROD2`
-//! objects) with `anno_render::iso` at zoom group 0–2 (default 1) and lift
+//! `view` renders one island isometrically (ground, sea, `GELAENDE` +
+//! `PROD2` + `FLUESSE` objects) with `anno_render::iso` at zoom group 0–2 (default 1) and lift
 //! `n/d` px per height unit (default `iso::HEIGHT_LIFT`; `0/1` = flat).
 //!
 //! Items that fail to decode are listed with `ERROR <message>` instead of a
@@ -295,15 +295,33 @@ fn view(
     }
     let mut canvas = iso::Canvas::for_island(island, group, anno_render::scene::margin(group));
     iso::draw_ground(&mut canvas, island, &textures, group, lift);
-    iso::draw_water(&mut canvas, island, &anlagen, group, lift);
-    let stats = iso::draw_objects(
+    let cache = iso::SpriteCache::default();
+    let records = anno_render::scene::OBJECT_RECORDS;
+    iso::draw_water(&mut canvas, island, &anlagen, group, lift, 0, &cache);
+    let w = iso::draw_objects(
         &mut canvas,
         island,
         &anlagen,
-        &["GELAENDE", "PROD2"],
+        &records,
+        iso::Objects::Water,
         group,
         lift,
+        0,
+        &cache,
     );
+    let mut stats = iso::draw_objects(
+        &mut canvas,
+        island,
+        &anlagen,
+        &records,
+        iso::Objects::NotWater,
+        group,
+        lift,
+        0,
+        &cache,
+    );
+    stats.drawn += w.drawn;
+    stats.failed += w.failed;
     eprintln!(
         "{file}: island {index}: {} objects drawn, {} invisible, {} failed",
         stats.drawn, stats.invisible, stats.failed

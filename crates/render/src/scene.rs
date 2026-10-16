@@ -17,7 +17,7 @@ use anno_assets::island::GroundTextures;
 use anno_formats::anlagen::AnlagenFile;
 use anno_formats::insel::Island;
 
-use crate::iso::{self, Canvas, DrawStats, HEIGHT_LIFT, TILE};
+use crate::iso::{self, Canvas, DrawStats, HEIGHT_LIFT, Objects, SpriteCache, TILE, over};
 
 /// Room above an island's top vertex per zoom group: the largest sprite
 /// anchor height in `Anlagen.dat` (P: entry 1330, `anchor_y` 504 / 252 / 126
@@ -186,25 +186,6 @@ pub fn composite(dst: &mut Canvas, src: &Canvas, offset: (i32, i32)) {
     }
 }
 
-/// `dst = src over dst` for 8-bit straight-alpha RGBA.
-fn over(dst: &mut [u8; 4], src: &[u8; 4]) {
-    let a = u32::from(src[3]);
-    match a {
-        0 => {}
-        255 => *dst = *src,
-        _ => {
-            let da = u32::from(dst[3]);
-            // Output alpha and colour in units of 1/255², straight alpha.
-            let out_a = a * 255 + da * (255 - a);
-            for c in 0..3 {
-                let num = u32::from(src[c]) * a * 255 + u32::from(dst[c]) * da * (255 - a);
-                dst[c] = u8::try_from(num / out_a).expect("<= 255");
-            }
-            dst[3] = u8::try_from(out_a / 255).expect("<= 255");
-        }
-    }
-}
-
 /// Outcome of [`render_region`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SceneStats {
@@ -218,9 +199,33 @@ pub struct SceneStats {
     pub objects: DrawStats,
 }
 
+/// Layers [`render_region`] draws, in this order per island: ground; the
+/// sea surface and water objects (rivers, surf) at time `water` (ms); the
+/// other placed objects. A viewer caches the static layers and redraws
+/// only the water layer per frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Layers {
+    pub ground: bool,
+    pub water: Option<u64>,
+    pub objects: bool,
+}
+
+impl Layers {
+    /// Everything, water at time 0.
+    pub const ALL: Layers = Layers {
+        ground: true,
+        water: Some(0),
+        objects: true,
+    };
+}
+
+/// Object records drawn: scenery, built objects, rivers and surf.
+pub const OBJECT_RECORDS: [&str; 3] = ["GELAENDE", "PROD2", "FLUESSE"];
+
 /// Draws every island of `placements` that overlaps `dst` (whose `origin`
-/// is a scene screen position) with ground and `GELAENDE` + `PROD2` objects,
-/// raised by `iso::HEIGHT_LIFT`.
+/// is a scene screen position): the selected `layers`, raised by
+/// `iso::HEIGHT_LIFT`.
+#[allow(clippy::too_many_arguments)]
 pub fn render_region(
     dst: &mut Canvas,
     islands: &[Island<'_>],
@@ -228,6 +233,8 @@ pub fn render_region(
     textures: &GroundTextures,
     anlagen: &AnlagenFile<'_>,
     group: usize,
+    layers: Layers,
+    cache: &SpriteCache,
 ) -> SceneStats {
     let to_i32 = |n: usize| i32::try_from(n).expect("canvas fits i32");
     let region = Rect {
@@ -251,16 +258,38 @@ pub fn render_region(
         if island.gfx_ids().is_err() || island.heights().is_err() {
             stats.no_ground += 1;
         }
-        iso::draw_ground(&mut local, island, textures, group, HEIGHT_LIFT);
-        iso::draw_water(&mut local, island, anlagen, group, HEIGHT_LIFT);
-        let s = iso::draw_objects(
-            &mut local,
-            island,
-            anlagen,
-            &["GELAENDE", "PROD2"],
-            group,
-            HEIGHT_LIFT,
-        );
+        if layers.ground {
+            iso::draw_ground(&mut local, island, textures, group, HEIGHT_LIFT);
+        }
+        if let Some(t) = layers.water {
+            iso::draw_water(&mut local, island, anlagen, group, HEIGHT_LIFT, t, cache);
+            iso::draw_objects(
+                &mut local,
+                island,
+                anlagen,
+                &OBJECT_RECORDS,
+                Objects::Water,
+                group,
+                HEIGHT_LIFT,
+                t,
+                cache,
+            );
+        }
+        let s = if layers.objects {
+            iso::draw_objects(
+                &mut local,
+                island,
+                anlagen,
+                &OBJECT_RECORDS,
+                Objects::NotWater,
+                group,
+                HEIGHT_LIFT,
+                0,
+                cache,
+            )
+        } else {
+            DrawStats::default()
+        };
         composite(dst, &local, p.offset);
         stats.islands += 1;
         stats.objects.drawn += s.drawn;

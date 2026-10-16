@@ -1,0 +1,13 @@
+[package]
+name = "anno-assets"
+description = "Engine-ready assets decoded from original ANNO 1503 files"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+anno-formats.workspace = true
+
+[lints]
+workspace = true

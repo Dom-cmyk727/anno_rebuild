@@ -1,0 +1,26 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[workspace.dependencies]
+anno-formats = { path = "crates/formats" }
+anno-assets = { path = "crates/assets" }
+anno-sim = { path = "crates/sim" }
+anno-net = { path = "crates/net" }
+anno-render = { path = "crates/render" }
+anno-ui = { path = "crates/ui" }
+
+[workspace.lints.rust]
+rust_2018_idioms = { level = "warn", priority = -1 }
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+cast_possible_truncation = "warn"

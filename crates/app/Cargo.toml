@@ -1,0 +1,18 @@
+[package]
+name = "anno1503"
+description = "ANNO 1503 rebuild: binary wiring all crates together"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+anno-formats.workspace = true
+anno-assets.workspace = true
+anno-sim.workspace = true
+anno-net.workspace = true
+anno-render.workspace = true
+anno-ui.workspace = true
+
+[lints]
+workspace = true

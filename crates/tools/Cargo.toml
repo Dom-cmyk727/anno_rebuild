@@ -7,7 +7,12 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+anno-assets.workspace = true
 anno-formats.workspace = true
+png = "0.18.1"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+png = "0.18.1"

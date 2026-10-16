@@ -53,6 +53,14 @@ Visual check 2026-10-16: `Dschungel/D_064x064_0001_0B.scp` at zoom groups 0 and 
 - Layers per island, in order: ground; water at time `t`; other objects (`scene::Layers`). The viewer caches ground and objects per chunk and redraws the water layer for the visible area every 50 ms (about 20–30 ms per frame on the dev Mac, 2026-10-16).
 - Shadows are 37.5 % black drawn over the destination (= 5/8 brightness on opaque pixels), so they also work on a transparent object layer.
 
+## Enhanced water (not in the original, opt-in)
+Off by default; `E` in the viewer, `--water enhanced` for `--png`. Applies to sea pixels only (water layer), so cached ground and objects are unaffected. Constants are tuned by eye and are not derived from the original.
+- Shore distance: per island, a chamfer distance field (in tiles) from every height-grid corner at or above sea level, interpolated per pixel on the water plane.
+- Breakers: crest phase `distance / 1.4 + t · ω` (crests move towards the shore, parallel to the coast); sharp crest front with a foam trail; crests broken into slowly drifting segments; foam grows within 4.5 tiles of the shore; swash on the last 0.6 tile. Foam pixels also fill their checkerboard neighbour.
+- Swell: two slow crossing sine waves modulate the brightness of open water (± 14 %).
+- Cost: ≈ 12 % more for a full scenario render (`Single_01.sze`, group 2).
+- Tests: `crates/app/tests/view.rs::view_png_enhanced_water_is_opt_in`.
+
 ## Scene composition (scenario view)
 `anno_render::scene`; used by `anno1503 --view` (window and `--png`).
 

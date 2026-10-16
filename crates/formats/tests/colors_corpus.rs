@@ -23,7 +23,14 @@ fn colors_corpus() {
             i + 1,
             "ids are 1..=440 in order"
         );
-        assert_eq!(&t.palette.prefix[..4], &[0; 4], "entry {id}: flag");
+        // 0 everywhere except 4 on id 109, `Farbtabellen\Flagge01_01.PCX` (OQ-022).
+        let flag = &t.palette.prefix[..4];
+        if id == 109 {
+            assert_eq!(flag, &[4, 0, 0, 0], "entry {id}: flag");
+            assert_eq!(t.name_lossy(), "Farbtabellen\\Flagge01_01.PCX");
+        } else {
+            assert_eq!(flag, &[0; 4], "entry {id}: flag");
+        }
         assert!(
             t.palette.entries.iter().all(|e| e[3] == 0),
             "entry {id}: reserved byte"

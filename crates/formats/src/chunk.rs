@@ -149,6 +149,13 @@ pub fn parse_file(buf: &[u8]) -> Result<ChunkFile<'_>, Error> {
     })
 }
 
+/// Parses `data` as an exact chunk sequence, for payloads that the generic
+/// detection cannot see into (e.g. those with a fixed prefix). Offsets are
+/// relative to `data`. `None` if `data` is not exactly a chunk sequence.
+pub fn parse_chunks(data: &[u8]) -> Option<Vec<Chunk<'_>>> {
+    parse_seq(data, 0, data.len(), 1)
+}
+
 /// Parses `buf[start..end]` as an exact chunk sequence; `None` if it is not one.
 /// Offsets in the result are absolute within `buf`.
 fn parse_seq(buf: &[u8], start: usize, end: usize, depth: usize) -> Option<Vec<Chunk<'_>>> {

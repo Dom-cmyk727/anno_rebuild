@@ -274,11 +274,15 @@ fn parse_color<'a>(entry: &Chunk<'a>) -> Result<Palette<'a>, Error> {
             what: "COLOR/BODY",
             offset: entry.offset,
         })?;
-    let entries: &[[u8; 4]] = body.payload.as_chunks::<4>().0;
-    let entries = entries.try_into().map_err(|_| Error::BadSubChunk {
+    let bad_size = Error::BadSubChunk {
         what: "COLOR/BODY size",
         offset: entry.offset,
-    })?;
+    };
+    let (entries, rest) = body.payload.as_chunks::<4>();
+    if !rest.is_empty() {
+        return Err(bad_size);
+    }
+    let entries = entries.try_into().map_err(|_| bad_size)?;
     Ok(Palette {
         id,
         prefix,

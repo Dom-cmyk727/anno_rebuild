@@ -7,6 +7,7 @@
 //! anno-dump colors [--full] <Anlagen.dat>...  COLORS tables (same as `tools/tex.py colors`)
 //! anno-dump figuren [--full] <FigurenHeader.dat>...  figure index (same as `tools/figuren.py dump`)
 //! anno-dump frames <game_dir> <entry id>...  decoded frames (same as `tools/figuren.py frames`)
+//! anno-dump insel [--full] <file.scp|file.sze>...  islands (same as `tools/insel.py dump`)
 //! anno-dump probe <path> <file>...   statistics over all chunks at a name path
 //! ```
 //!
@@ -16,13 +17,13 @@
 //!
 //! The `tex`/`inc` text format is specified in `docs/formats/tex.md`
 //! ("Reference dump"), `colors` in `docs/formats/palette.md`, `figuren` and
-//! `frames` in `docs/formats/figuren.md`.
+//! `frames` in `docs/formats/figuren.md`, `insel` in `docs/formats/insel.md`.
 
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::process::ExitCode;
 
-use anno_formats::{chunk, colors, figuren, inc, tex};
+use anno_formats::{chunk, colors, figuren, inc, insel, tex};
 
 const USAGE: &str = "usage: anno-dump chunks <file>...\n       \
                      anno-dump tex [--full] <file>...\n       \
@@ -30,6 +31,7 @@ const USAGE: &str = "usage: anno-dump chunks <file>...\n       \
                      anno-dump colors [--full] <Anlagen.dat>...\n       \
                      anno-dump figuren [--full] <FigurenHeader.dat>...\n       \
                      anno-dump frames <game_dir> <entry id>...\n       \
+                     anno-dump insel [--full] <file.scp|file.sze>...\n       \
                      anno-dump probe <path> <file>...";
 
 fn main() -> ExitCode {
@@ -39,7 +41,9 @@ fn main() -> ExitCode {
         None => return usage(),
     };
     let (full, files) = match rest.split_first() {
-        Some((flag, files)) if matches!(cmd, "tex" | "colors" | "figuren") && flag == "--full" => {
+        Some((flag, files))
+            if matches!(cmd, "tex" | "colors" | "figuren" | "insel") && flag == "--full" =>
+        {
             (true, files)
         }
         _ => (false, rest),
@@ -67,6 +71,7 @@ fn main() -> ExitCode {
         "inc" => dump_files(files, dump_inc),
         "colors" => dump_files(files, |buf, out| dump_colors(buf, full, out)),
         "figuren" => dump_files(files, |buf, out| dump_figuren(buf, full, out)),
+        "insel" => dump_files(files, |buf, out| dump_insel(buf, full, out)),
         _ => usage(),
     }
 }
@@ -664,4 +669,119 @@ fn frame_line(
         quote(&f.format_raw)
     )?;
     Ok(px.is_some())
+}
+
+const BLOCK_RECORDS: [&str; 5] = ["HEIGHT", "GFXID", "GELAENDE", "PROD2", "FLUESSE"];
+
+/// The reason of an island error, without offsets (part of the reference format).
+fn reason(e: insel::Error) -> &'static str {
+    match e {
+        insel::Error::NoIsland => "no island",
+        insel::Error::Bad { what, .. } => what,
+    }
+}
+
+fn dump_insel(buf: &[u8], full: bool, out: &mut String) -> bool {
+    let islands = match insel::islands(buf) {
+        Ok(i) => i,
+        Err(e) => {
+            eprintln!("NOPARSE: {e}");
+            out.push_str("NOPARSE\n");
+            return false;
+        }
+    };
+    let mut ok = true;
+    let mut w = |line: String| {
+        out.push_str(&line);
+        out.push('\n');
+    };
+    w(format!("ISLANDS count={}", islands.len()));
+    for (k, i) in islands.iter().enumerate() {
+        let version = match i.version {
+            insel::Version::Insel4 => 4,
+            insel::Version::Insel5 => 5,
+        };
+        w(format!(
+            "ISLAND i={k} version={version} x={} y={} width={} height={} number={} head={} records={}",
+            i.x,
+            i.y,
+            i.width,
+            i.height,
+            i.number,
+            hex(i.head),
+            names(&i.records)
+        ));
+        let mut seen = Vec::new();
+        for r in &i.records {
+            if !BLOCK_RECORDS.contains(&r.name()) {
+                w(format!(
+                    "  RECORD {} size={} hash={:016x}",
+                    r.name(),
+                    r.size(),
+                    fnv64(r.payload.iter().copied())
+                ));
+            } else if !seen.contains(&r.name()) {
+                seen.push(r.name());
+            }
+        }
+        match (i.heights(), i.gfx_ids()) {
+            (Ok(hs), Ok(gs)) => {
+                let (lo, hi) = (
+                    hs.iter().min().copied().unwrap_or(0),
+                    hs.iter().max().copied().unwrap_or(0),
+                );
+                w(format!(
+                    "  GRID HEIGHT min={lo} max={hi} hash={:016x}",
+                    fnv64(hs.iter().copied())
+                ));
+                let mut distinct = gs.clone();
+                distinct.sort_unstable();
+                distinct.dedup();
+                let bytes = gs.iter().flat_map(|g| g.to_le_bytes());
+                w(format!(
+                    "  GRID GFXID distinct={} hash={:016x}",
+                    distinct.len(),
+                    fnv64(bytes)
+                ));
+                if full {
+                    let width = usize::from(i.width).max(1);
+                    for (y, row) in hs.chunks(width).enumerate() {
+                        w(format!("    H{y} {}", hex(row)));
+                    }
+                    for (y, row) in gs.chunks(width).enumerate() {
+                        let cells: Vec<String> = row.iter().map(|g| format!("{g:04x}")).collect();
+                        w(format!("    G{y} {}", cells.join("")));
+                    }
+                }
+            }
+            (h, g) => {
+                let e = h.err().or(g.err()).map(reason).unwrap_or_default();
+                w(format!("  GRID BAD {e}"));
+                ok = false;
+            }
+        }
+        for name in ["GELAENDE", "PROD2", "FLUESSE"]
+            .iter()
+            .filter(|n| seen.contains(n))
+        {
+            match i.blocks(name) {
+                Ok(bs) => {
+                    let items: usize = bs.iter().map(|b| b.data.len() / 6).sum();
+                    let bytes = bs
+                        .iter()
+                        .flat_map(|b| b.header_bytes().into_iter().chain(b.data.iter().copied()));
+                    w(format!(
+                        "  BLOCKS {name} count={} items={items} hash={:016x}",
+                        bs.len(),
+                        fnv64(bytes)
+                    ));
+                }
+                Err(e) => {
+                    w(format!("  BLOCKS {name} BAD {}", reason(e)));
+                    ok = false;
+                }
+            }
+        }
+    }
+    ok
 }

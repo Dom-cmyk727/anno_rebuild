@@ -601,3 +601,131 @@ fn anno_dump_matches_figuren_py_synthetic() {
     // AV level 3 pixel: hash covers (1, index, z, level).
     assert!(out.contains("format=\"BSH_RGBAV\" opaque=2 "), "{out}");
 }
+
+/// Every `.scp` and `.sze`, plus `--full` on one scenario.
+#[test]
+fn anno_dump_matches_insel_py_corpus() {
+    let test = "anno_dump_matches_insel_py_corpus";
+    let Some(dir) = game_dir(test) else { return };
+    if !have_python(test) {
+        return;
+    }
+    let mut files = Vec::new();
+    collect_ext(&dir.join("Scenes"), &["scp", "sze"], &mut files);
+    files.sort();
+    assert_eq!(files.len(), 515);
+    let out = agree("insel.py", &["dump"], &["insel"], &files);
+    assert_eq!(out.matches(" BAD").count(), 0);
+    let one = [dir.join("Scenes/0200Single/Single_01.sze")];
+    agree("insel.py", &["dump", "--full"], &["insel", "--full"], &one);
+}
+
+fn collect_ext(dir: &Path, exts: &[&str], out: &mut Vec<PathBuf>) {
+    for entry in std::fs::read_dir(dir).expect("readable dir") {
+        let path = entry.expect("dir entry").path();
+        let ext = path.extension().map(|e| e.to_ascii_lowercase());
+        if path.is_dir() {
+            collect_ext(&path, exts, out);
+        } else if exts.iter().any(|x| ext.as_deref() == Some(x.as_ref())) {
+            out.push(path);
+        }
+    }
+}
+
+/// One block record: header + cells.
+fn island_block(name: &str, x: u16, y: u16, w: u8, h: u8, cells: &[u8]) -> Vec<u8> {
+    let mut p = [x.to_le_bytes(), y.to_le_bytes()].concat();
+    p.extend_from_slice(&[w, h]);
+    p.extend_from_slice(cells);
+    chunk(name, &p)
+}
+
+#[test]
+fn anno_dump_matches_insel_py_synthetic() {
+    let test = "anno_dump_matches_insel_py_synthetic";
+    if !have_python(test) {
+        return;
+    }
+    let dir = synthetic_dir(test);
+    // 34 × 2 island: blocks 32×2 and 2×2; GFXID cells little-endian.
+    let heights: Vec<u8> = (0..68u8).collect();
+    let row = |y: usize, x0: usize, n: usize| heights[y * 34 + x0..y * 34 + x0 + n].to_vec();
+    let gfx = |hs: &[u8]| {
+        hs.iter()
+            .flat_map(|&v| [v, 0x80 | (v & 3)])
+            .collect::<Vec<u8>>()
+    };
+    let left = [row(0, 0, 32), row(1, 0, 32)].concat();
+    let right = [row(0, 32, 2), row(1, 32, 2)].concat();
+    let mut recs = vec![
+        chunk("INFO", &[1; 12]),
+        island_block("HEIGHT", 0, 0, 32, 2, &left),
+        island_block("HEIGHT", 32, 0, 2, 2, &right),
+        island_block("GFXID", 0, 0, 32, 2, &gfx(&left)),
+        island_block("GFXID", 32, 0, 2, 2, &gfx(&right)),
+        island_block("GELAENDE", 0, 0, 32, 2, &[1, 2, 3, 4, 5, 6]),
+        chunk("FRUCHTBAR", &[7; 68]),
+        island_block("FLUESSE", 8, 0, 8, 8, &[9; 12]),
+        chunk("NAME", b"Insel \xc4\0"),
+    ];
+    let head = |x: u16, n: u32| {
+        [
+            &x.to_le_bytes()[..],
+            &3u16.to_le_bytes(),
+            &34u16.to_le_bytes(),
+            &2u16.to_le_bytes(),
+            &n.to_le_bytes(),
+        ]
+        .concat()
+    };
+    let insel5 = |x, n, recs: &[Vec<u8>]| chunk("INSEL5", &[head(x, n), recs.concat()].concat());
+    let scp = chunk(
+        "ANNO",
+        &[chunk("WARETYPE", &[0; 4]), insel5(0, 0, &recs)].concat(),
+    );
+    let sze = chunk(
+        "ANNOADDON1",
+        &chunk(
+            "SCENE",
+            &[
+                chunk("HEAD", &[0; 8]),
+                insel5(100, 1, &recs),
+                insel5(200, 2, &recs),
+            ]
+            .concat(),
+        ),
+    );
+    // Gap: drop the second HEIGHT block.
+    recs.remove(2);
+    let gap = chunk("ANNO", &insel5(0, 0, &recs));
+    let mut insel4 = chunk("INSEL4", &[2, 0, 1, 0, 0, 0, 0, 0]);
+    insel4.extend(island_block("HEIGHT", 0, 0, 2, 1, &[5, 6]));
+    insel4.extend(island_block("GFXID", 0, 0, 2, 1, &[1, 0, 2, 0]));
+    insel4.extend(chunk("LOCKED", &[1]));
+    let files: Vec<PathBuf> = [
+        ("a.scp", scp),
+        ("b.sze", sze),
+        ("gap.scp", gap),
+        ("old.scp", chunk("ANNO", &insel4)),
+        ("bad.scp", b"not a chunk file".to_vec()),
+    ]
+    .into_iter()
+    .map(|(n, bytes)| {
+        let p = dir.join(n);
+        std::fs::write(&p, bytes).expect("write");
+        p
+    })
+    .collect();
+    let out = agree(
+        "insel.py",
+        &["dump", "--full"],
+        &["insel", "--full"],
+        &files,
+    );
+    assert!(out.contains("ISLANDS count=2\n"), "{out}");
+    assert!(out.contains("GRID BAD tile not covered"), "{out}");
+    assert!(out.contains("version=4 x=0 y=0 width=2 height=1"), "{out}");
+    assert!(out.contains("    G0 00010002\n"), "{out}");
+    assert!(out.contains("NOPARSE\n"), "{out}");
+    agree("insel.py", &["dump"], &["insel"], &files);
+}

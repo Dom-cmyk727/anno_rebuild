@@ -46,13 +46,13 @@ Same frame headers and RLE as figures ([`figuren.md`](figuren.md)). Format count
 
 | Format | Bytes per pixel | Count byte | Evidence |
 |---|---|---|---|
-| `BSH_RGBWZ` | 2, `[z, index]` | count | P: all 2,984 distinct ranges decode only this way; visual: river piece (2702, `Fluss01.PCX`) |
+| `BSH_RGBWZ` | 2, `[z, index]`, **every second column**: stored pixel `x` of row `y` lands on column `2x + (y & 1)` (50 % checkerboard) | count | D: `AnnoDisplay.dll` `0x100161c0` (`tBrushRasterDepth*`); P: stored rows end at ≈ width / 2 in all 2,984 ranges; visual: river piece (2702, `Fluss01.PCX`) |
 | `BSH_RGBZM` | 2, `[z, index]` | count | P; visual: cliff (1591) |
 | `BSH_RGBAH` | 1 | `level << 6 \| count` | P: all 120 decode only this way |
 
-Pair order `[z, index]` for `WZ`/`ZM` is confirmed visually only; the letters `W` (water?) and `M` are unexplained (OQ-023).
+Pair order `[z, index]`: `z` is a signed per-pixel depth offset (D: `AnnoDisplay.dll` `0x100178d0`). `M` = "melt": pixels at nearly equal depth to what is already drawn blend 50 % (D: `0x10017db0`). That `W` means water is a guess.
 
-**Rows past the width.** 51 distinct ranges (`BSH_RGBAZ` 26, `BSH_RGBZ` 19, `BSH_RGBZM` 6) contain rows whose runs end 1–16 pixels beyond `width`; their row count equals `height` and `0xFF` is their last byte, so the grammar holds (P). `figuren::decode_frame_clipped` drops the overrun pixels; what the original does with them is open (OQ-025). Figures have no such frames.
+**Rows past the width.** 51 distinct ranges (`BSH_RGBAZ` 26, `BSH_RGBZ` 19, `BSH_RGBZM` 6) contain rows whose runs end 1–16 pixels beyond `width`, and 398 `BSH_RGBWZ` ranges end 1–2 columns beyond it after the column expansion (110 by 1, 288 by 2); row count and end marker are exact (P). The original never consults the frame width and draws those pixels to the right of the frame box, clipped only by the viewport (D: `AnnoDisplay.dll` blitters, OQ-025 resolved). `figuren::decode_frame_clipped` drops them because a decoded frame image has fixed width; a renderer that wants them must place runs itself. Figures have no such frames.
 
 ## Reference dump
 `anno-dump anlagen [--full] <Anlagen.dat>` and `tools/figuren.py anlagen [--full]`:

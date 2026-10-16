@@ -88,8 +88,8 @@ Frame header (36 bytes):
 | 0x04 | 2 | u16 | `palette` | index into the entry's `COLORS` tables; 0–2, always in range | P (asserted); visual: sheep (entry 103) renders correctly only with table 1 `Schaf.PCX` |
 | 0x06 | 2 | u16 | `unknown_06` | 8 in all frames; plausibly bits per pixel | P; ? OQ-023 |
 | 0x08 | 12 | char | `format` | NUL-padded: `BSH_RGBV`, `BSH_RGBZ`, `BSH_RGBAV`, `BSH_RGBAZ`, `BSH_RGBH`, `BSH_ALPHA` | P |
-| 0x14 | 2 | u16 | `anchor_x` | e.g. `(width/2, height−4)` for the mower, waterline for the galleon; outside the frame for 783 frames | P (values); meaning ? OQ-023 |
-| 0x16 | 2 | u16 | `anchor_y` | | |
+| 0x14 | 2 | **i16** | `anchor_x` | the frame pixel placed on the object's projected world point; e.g. `(width/2, height−4)` for the mower, waterline for the galleon; outside the frame for 783 frames, negative for 735 | D: `AnnoDisplay.dll` `0x1000ac80` reads both as signed `short`; P (values) |
+| 0x16 | 2 | **i16** | `anchor_y` | | |
 | 0x18 | 4 | u32 | `offset` | byte offset in the group's concatenated volume files | P |
 | 0x1C | 4 | u32 | `length` | byte length; 0 for 5,697 frames = empty frame | P |
 | 0x20 | 4 | u32 | `unknown_20` | 0 in all frames | P |

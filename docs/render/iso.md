@@ -1,6 +1,8 @@
 # Isometric projection (island view)
 
-**Status:** draft — rules derived from sprite measurements and visual checks of rendered islands; not yet compared with screenshots of the original or with the `AnnoDisplay.dll` code. Open points in OQ-026.
+**Status:** draft — rules derived from sprite measurements, visual checks and static analysis of the original ([`docs/re/annodisplay.md`](../re/annodisplay.md), [`docs/re/annowelt.md`](../re/annowelt.md)); not yet compared with screenshots of the original. Open points in OQ-026.
+
+The original renders differently in structure: ground is a mesh of Gouraud-shaded, depth-buffered textured triangles, and sprites are depth-tested per pixel (`z` bytes are depth offsets). This renderer is a painter's-algorithm approximation that uses the same projection constants.
 
 Implementation: `anno_render::iso` (CPU reference renderer), `anno_render::scene` (scenario composition), `anno-extract view`, `anno1503 --view`.
 
@@ -18,12 +20,17 @@ Implementation: `anno_render::iso` (CPU reference renderer), `anno_render::scene
 |---|---|---|
 | Position | the sprite's anchor (`Frame::anchor_x/y`) lies on the centre of the footprint diamond | P: palace 4 × 7: anchor y 243 + half the diamond height 115.5 = 358.5 ≈ sprite height 359 (bottom vertex); flat 1 × 1 sprites have their anchor at the diamond centre (42, 21); visual: towns, rocks and trees stand on their tiles |
 | Frame | `rotation · animation frames` (first animation frame); `ANIM` u16 at offset 2 = animation frames; frames per set = animation frames × 1 or × 4 rotations | P: in all sets, total frames / (`ANIM` value) is 1 or 4; visual |
-| Draw order | ground first; objects by footprint far corner `x + w + y + h`, then `x` | visual (no wrong overlaps noticed); simplification, ? OQ-026 |
+| Draw order | ground first; objects by footprint far corner `x + w + y + h`, then `x` | visual; simplification of the original's per-pixel depth buffer (D: `AnnoDisplay.dll` §3), ? OQ-026 |
 | Invisible objects | entries without sprite sets (ids 1 and 2 on the islands checked) are skipped | P |
-| Shadows | not drawn yet | — |
+| Anchor | signed 16-bit; the frame pixel that lands on the projected object point | D: `AnnoDisplay.dll` `0x1000ac80` |
+| Shadows | the set's `SHADOW` frame with the same index, own anchor, drawn before the sprite; each covered pixel becomes `dst/2 + dst/8` (5/8 brightness), shadows compound | D: `0x10019f80` (`tBrushShadR`); the original also depth-tests them |
+| Alpha | `A` formats: level 0/1/2/3 = 25/50/75/100 % opacity | D: `0x10018890` etc.; simplification: in the original's depth-writing mode `BSH_RGBAZ` blends only level 1 |
 
 ## Elevation
-`HEIGHT` (0–208) is not applied by default. Raising flat tiles by `HEIGHT · lift` pixels (tried 1/2 and 1 px per unit) produces terraces and gaps along coasts, so elevation needs sloped tiles (heights per corner) before a scale can be chosen; see OQ-026.
+- `HEIGHT[x, y]` is the height of tile corner `(x, y)`; tile `(x, y)` spans corners `(x, y)`, `(x+1, y)`, `(x, y+1)`, `(x+1, y+1)` (D: `AnnoWelt.dll` corner grid with stride width + 1, `0x100900c0`, `0x10084870`; the corner reading of `HEIGHT[x, y]` is likely). The renderer interpolates bilinearly inside a tile; the original splits the quad into two triangles (diagonal not traced) and adds per-corner Gouraud light (source not traced) — neither is reproduced.
+- One height unit = 0.04 world units (D: `AnnoWelt.dll` table `0x100E35E0`); one world unit up = 51.477 px at zoom group 0 (D: `AnnoFrame.dll` camera `0x10071d70`: scale 59.1633, tilt 29.53°). `iso::HEIGHT_LIFT` = 2.059 px per unit at group 0 (scaled by tile width for groups 1, 2). The same camera gives 83.67 × 41.24 px per tile at zoom 0, consistent with the 84 × 42 sprites.
+- Flat raised tiles (tried first) produce terraces and gaps; per-corner slopes remove them (visual). Ground samples also cover the pixel below them to close one-row gaps on steep slopes.
+- Open water (texture 0) and textures 1–10 are not part of the original's terrain mesh (D: `AnnoWelt.dll` `0x1009b920`); they are drawn by a path not yet found (OQ-026 b). The renderer still paints texture 0 in a flat placeholder colour.
 
 ## Scene composition (scenario view)
 `anno_render::scene`; used by `anno1503 --view` (window and `--png`).

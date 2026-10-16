@@ -43,6 +43,7 @@ def print_tree(f):
     for line in tree_lines(t): print(line)
     if end < len(buf): print(f'TRAILING off={end} len={len(buf) - end}')
 if __name__ == '__main__':
+    sys.stdout.reconfigure(newline='\n')  # same bytes as anno-dump on Windows too
     # `chunks.py tree <file>...` prints the tree in the format of `anno-dump chunks`.
     if sys.argv[1:2] == ['tree']:
         for f in sys.argv[2:]: print_tree(f)

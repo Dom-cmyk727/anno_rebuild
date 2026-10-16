@@ -1,0 +1,7 @@
+game/
+*.exe
+*.bin
+target/
+cache/
+re/ghidra/
+__pycache__/

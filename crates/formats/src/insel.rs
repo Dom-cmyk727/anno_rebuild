@@ -15,6 +15,9 @@
 //!   at the right/bottom edge), stored row of blocks by row of blocks, and
 //!   tile the island exactly.
 //! - `FRUCHTBAR`: one byte per tile, row-major, no blocks.
+//! - A `GFXID` value selects ground: `texture << 8 | u << 5 | v << 2 | r`,
+//!   a 32 × 32 cell `(u, v)` of a 256 × 256 `Textures/Felder.tex` texture,
+//!   turned by `r` quarter turns; texture 0 = open water ([`GroundCell`]).
 
 use std::fmt;
 
@@ -261,6 +264,53 @@ pub fn encode_blocks(grid: &[u8], width: usize, height: usize, cell: usize) -> V
     out
 }
 
+/// Edge length in pixels of a ground cell; a 256 × 256 texture holds 8 × 8.
+pub const CELL_PX: usize = 32;
+
+/// The ground a `GFXID` value selects (spec: `docs/formats/insel.md`,
+/// "Ground"; evidence: corpus statistics and rendering, OQ-024).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GroundCell {
+    /// `Textures/Felder.tex` texture id; 0 = open water (no texture).
+    pub texture: u8,
+    /// Cell column (0–7) in the 256 × 256 texture.
+    pub u: u8,
+    /// Cell row (0–7).
+    pub v: u8,
+    /// Quarter turns (0–3), see [`GroundCell::source_pixel`].
+    pub rotation: u8,
+}
+
+impl GroundCell {
+    pub fn from_gfx_id(gfx: u16) -> Self {
+        let [low, texture] = gfx.to_le_bytes();
+        Self {
+            texture,
+            u: low >> 5,
+            v: (low >> 2) & 7,
+            rotation: low & 3,
+        }
+    }
+
+    pub fn to_gfx_id(self) -> u16 {
+        u16::from_le_bytes([self.u << 5 | self.v << 2 | self.rotation, self.texture])
+    }
+
+    /// Pixel of the texture shown at `(x, y)` within the tile's cell
+    /// (`0..32` each): apply `(x, y) → (31 − y, x)` `rotation` times, then
+    /// offset by the cell origin `(32 u, 32 v)`.
+    pub fn source_pixel(self, x: usize, y: usize) -> (usize, usize) {
+        let (mut sx, mut sy) = (x, y);
+        for _ in 0..self.rotation {
+            (sx, sy) = (CELL_PX - 1 - sy, sx);
+        }
+        (
+            usize::from(self.u) * CELL_PX + sx,
+            usize::from(self.v) * CELL_PX + sy,
+        )
+    }
+}
+
 /// All islands of an `.scp` or `.sze` buffer, in file order: `INSEL5`
 /// children of the root (`.scp`) or of `SCENE` (`.sze`), or one `INSEL4`
 /// island (legacy `.scp`).
@@ -356,6 +406,21 @@ mod tests {
         let isl = Island::from_insel5(&payload, 0).unwrap();
         assert!(isl.heights().is_err());
         assert!(isl.gfx_ids().is_ok());
+    }
+
+    #[test]
+    fn ground_cells() {
+        // 0x2c48: texture 44, low 0x48 = u 2, v 2, r 0.
+        let c = GroundCell::from_gfx_id(0x2c48);
+        assert_eq!((c.texture, c.u, c.v, c.rotation), (44, 2, 2, 0));
+        assert_eq!(c.to_gfx_id(), 0x2c48);
+        assert_eq!(c.source_pixel(0, 0), (64, 64));
+        let r1 = GroundCell { rotation: 1, ..c };
+        assert_eq!(r1.source_pixel(0, 0), (64 + 31, 64));
+        assert_eq!(r1.source_pixel(5, 9), (64 + 31 - 9, 64 + 5));
+        let r4 = (0..4).fold((3, 7), |(x, y), _| (31 - y, x));
+        assert_eq!(r4, (3, 7), "four quarter turns are the identity");
+        assert_eq!(GroundCell::from_gfx_id(0).texture, 0);
     }
 
     #[test]

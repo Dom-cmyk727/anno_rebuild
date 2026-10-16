@@ -113,3 +113,49 @@ fn insel_corpus() {
         assert_eq!(n.len(), len, "{ctx}: duplicate island number");
     }
 }
+
+/// Every `GFXID` names water (texture 0) or a `Textures/Felder.tex` texture,
+/// except one 3 × 3 patch of texture 205 (absent from `Felder.tex`) in
+/// `N_256x256_0015_5B.scp` and the three scenarios that contain that island.
+#[test]
+fn ground_textures() {
+    let Some(dir) = game_dir() else {
+        eprintln!("skipping ground_textures: ANNO1503_GAME_DIR not set");
+        return;
+    };
+    let felder = std::fs::read(dir.join("Textures/Felder.tex")).expect("Felder.tex");
+    let felder = anno_formats::tex::TexFile::parse(&felder).expect("parses");
+    let ids: std::collections::BTreeSet<u32> = felder.textures.iter().map(|t| t.id).collect();
+    let mut files = Vec::new();
+    files_with_ext(&dir.join("Scenes"), "scp", &mut files);
+    files_with_ext(&dir.join("Scenes"), "sze", &mut files);
+    let (mut water, mut ground, mut missing) = (0usize, 0usize, BTreeMap::<String, usize>::new());
+    let mut used = std::collections::BTreeSet::new();
+    for path in &files {
+        let buf = std::fs::read(path).expect("readable");
+        for i in insel::islands(&buf).expect("islands") {
+            for g in i.gfx_ids().expect("grid") {
+                let cell = insel::GroundCell::from_gfx_id(g);
+                if cell.texture == 0 {
+                    water += 1;
+                } else if ids.contains(&u32::from(cell.texture)) {
+                    ground += 1;
+                    used.insert(cell.texture);
+                } else {
+                    assert_eq!(cell.texture, 205, "{}", path.display());
+                    let name = path.file_name().unwrap().to_string_lossy().to_string();
+                    *missing.entry(name).or_default() += 1;
+                }
+            }
+        }
+    }
+    assert_eq!((water, ground), (3_804_534, 13_402_214));
+    assert_eq!((used.len(), ids.len()), (141, 147));
+    let expect = [
+        "00_1024_easyentry_01.sze",
+        "N_256x256_0015_5B.scp",
+        "S01_12_01.sze",
+        "endless01.sze",
+    ];
+    assert_eq!(missing, expect.map(|n| (n.to_string(), 9)).into());
+}

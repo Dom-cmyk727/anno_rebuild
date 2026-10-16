@@ -4,33 +4,12 @@
 //! (e.g. `game/app`); skips with a message otherwise. Expected counts are
 //! those of GOG 2.0.0.5 (`docs/research/game-files-analysis.md` §2–3).
 
-use std::path::{Path, PathBuf};
+mod common;
+
+use std::path::Path;
 
 use anno_formats::chunk;
-
-fn game_dir() -> Option<PathBuf> {
-    let dir = PathBuf::from(std::env::var_os("ANNO1503_GAME_DIR")?);
-    assert!(
-        dir.is_dir(),
-        "ANNO1503_GAME_DIR={} is not a directory",
-        dir.display()
-    );
-    Some(dir)
-}
-
-fn files_with_ext(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
-    for entry in std::fs::read_dir(dir).expect("readable game dir") {
-        let path = entry.expect("dir entry").path();
-        if path.is_dir() {
-            files_with_ext(&path, ext, out);
-        } else if path
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case(ext))
-        {
-            out.push(path);
-        }
-    }
-}
+use common::{files_with_ext, game_dir};
 
 /// Corpus facts accumulated over all parsed files.
 #[derive(Debug, Default, PartialEq, Eq)]

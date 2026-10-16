@@ -5,6 +5,7 @@
 //! `docs/formats/`.
 #![deny(unsafe_code)]
 
+pub mod anlagen;
 pub mod chunk;
 pub mod colors;
 pub mod figuren;

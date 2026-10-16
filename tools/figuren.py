@@ -8,7 +8,8 @@ import os, re, struct, sys
 
 NAME = re.compile(rb'[A-Z][A-Z0-9_]{1,11}$')
 FORMATS = {b'BSH_RGBV': (1, False), b'BSH_RGBH': (1, False), b'BSH_RGBZ': (2, False),
-           b'BSH_RGBAV': (1, True), b'BSH_RGBAZ': (2, True), b'BSH_ALPHA': (0, False)}
+           b'BSH_RGBAV': (1, True), b'BSH_RGBAZ': (2, True), b'BSH_ALPHA': (0, False),
+           b'BSH_RGBWZ': (2, False), b'BSH_RGBZM': (2, False), b'BSH_RGBAH': (1, True)}  # last three: Anlagen.dat only
 
 class Bad(Exception):
     pass

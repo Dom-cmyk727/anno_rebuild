@@ -82,6 +82,12 @@ pub enum FrameFormat {
     RgbAZ,
     /// `BSH_ALPHA`: shadow coverage, runs without pixel bytes.
     Alpha,
+    /// `BSH_RGBWZ` (`Anlagen.dat` only): 2 bytes per pixel `[z, index]`; `W` unknown.
+    RgbWZ,
+    /// `BSH_RGBZM` (`Anlagen.dat` only): 2 bytes per pixel `[z, index]`; `M` unknown.
+    RgbZM,
+    /// `BSH_RGBAH` (`Anlagen.dat` only): 1 byte per pixel; count byte carries a level.
+    RgbAH,
 }
 
 impl FrameFormat {
@@ -94,6 +100,9 @@ impl FrameFormat {
             b"BSH_RGBAV" => Some(Self::RgbAV),
             b"BSH_RGBAZ" => Some(Self::RgbAZ),
             b"BSH_ALPHA" => Some(Self::Alpha),
+            b"BSH_RGBWZ" => Some(Self::RgbWZ),
+            b"BSH_RGBZM" => Some(Self::RgbZM),
+            b"BSH_RGBAH" => Some(Self::RgbAH),
             _ => None,
         }
     }
@@ -102,14 +111,14 @@ impl FrameFormat {
     pub fn bytes_per_pixel(self) -> usize {
         match self {
             Self::Alpha => 0,
-            Self::RgbV | Self::RgbH | Self::RgbAV => 1,
-            Self::RgbZ | Self::RgbAZ => 2,
+            Self::RgbV | Self::RgbH | Self::RgbAV | Self::RgbAH => 1,
+            Self::RgbZ | Self::RgbAZ | Self::RgbWZ | Self::RgbZM => 2,
         }
     }
 
     /// True if the run count byte is `level << 6 | count`.
     pub fn has_level(self) -> bool {
-        matches!(self, Self::RgbAV | Self::RgbAZ)
+        matches!(self, Self::RgbAV | Self::RgbAZ | Self::RgbAH)
     }
 }
 
@@ -305,14 +314,21 @@ pub struct Entry<'a> {
     pub id: u32,
     /// All records in file order.
     pub records: Vec<Chunk<'a>>,
-    /// Parsed `COLORS` record (one table per `ENTRY` chunk inside it).
+    /// Parsed `COLORS` record when it holds colour tables (one per `ENTRY`
+    /// chunk inside it): `FigurenHeader.dat`.
     pub palettes: Vec<ColorTable<'a>>,
+    /// Parsed `COLORS` record when it is a list of `u32` colour-table ids
+    /// (`Anlagen.dat` `ANLAGEN`: 1–3 ids of the global `COLORS` tables, 0 =
+    /// unused slot). Frames select `palette_ids[frame.palette]`.
+    pub palette_ids: Vec<u32>,
     /// Parsed `HAEUSER` record.
     pub gfx: Vec<GfxSet<'a>>,
 }
 
 impl<'a> Entry<'a> {
-    fn parse(c: &Chunk<'a>) -> Result<Self, Error> {
+    /// Parses one `ENTRY` chunk (also used for `Anlagen.dat` `ANLAGEN`,
+    /// which has the same layout).
+    pub fn parse(c: &Chunk<'a>) -> Result<Self, Error> {
         let bad = |what| Error::Bad {
             what,
             offset: c.offset,
@@ -326,9 +342,18 @@ impl<'a> Entry<'a> {
             .ok_or(bad("ENTRY prefix"))?;
         let records = chunk::parse_chunks(rest).ok_or(bad("ENTRY records"))?;
         let mut palettes = Vec::new();
+        let mut palette_ids = Vec::new();
         let mut gfx = Vec::new();
         for r in &records {
             match r.name() {
+                // Shorter than one chunk header: an id list (`ANLAGEN`).
+                "COLORS" if !r.payload.is_empty() && r.payload.len() < HEADER_LEN => {
+                    let (ids, rest) = r.payload.as_chunks::<4>();
+                    if !rest.is_empty() {
+                        return Err(bad("COLORS id list"));
+                    }
+                    palette_ids = ids.iter().map(|b| u32::from_le_bytes(*b)).collect();
+                }
                 "COLORS" => {
                     for t in sub_entries(r.payload).ok_or(bad("COLORS"))? {
                         let table = colors::parse_entry(t.payload, t.offset)
@@ -350,6 +375,7 @@ impl<'a> Entry<'a> {
             id: u32_at(prefix, 4),
             records,
             palettes,
+            palette_ids,
             gfx,
         })
     }
@@ -375,6 +401,12 @@ impl<'a> Entry<'a> {
         let mut out = self.prefix.to_vec();
         for r in &self.records {
             let payload = match r.name() {
+                "COLORS" if !self.palette_ids.is_empty() => Some(
+                    self.palette_ids
+                        .iter()
+                        .flat_map(|i| i.to_le_bytes())
+                        .collect(),
+                ),
                 "COLORS" => Some(entries_bytes(
                     self.palettes.iter().map(ColorTable::to_bytes),
                 )),
@@ -561,9 +593,34 @@ pub fn decode_frame(
     width: usize,
     height: usize,
 ) -> Result<Vec<Option<Pixel>>, Error> {
+    decode(format, data, width, height, false).map(|(px, _)| px)
+}
+
+/// As [`decode_frame`], but a run that extends past `width` is accepted and
+/// its pixels beyond the right edge are dropped; returns the pixels and the
+/// number dropped. Needed for 51 `Anlagen.dat` frames whose rows overrun
+/// `width` by 1–16 pixels while row count and end marker are exact (P);
+/// whether the original clips them is unknown (OQ-025).
+pub fn decode_frame_clipped(
+    format: FrameFormat,
+    data: &[u8],
+    width: usize,
+    height: usize,
+) -> Result<(Vec<Option<Pixel>>, usize), Error> {
+    decode(format, data, width, height, true)
+}
+
+fn decode(
+    format: FrameFormat,
+    data: &[u8],
+    width: usize,
+    height: usize,
+    clip: bool,
+) -> Result<(Vec<Option<Pixel>>, usize), Error> {
     let mut out = vec![None; width * height];
+    let mut dropped = 0;
     if data.is_empty() {
-        return Ok(out);
+        return Ok((out, dropped));
     }
     let bpp = format.bytes_per_pixel();
     let (mut i, mut x, mut y) = (0, 0, 0);
@@ -590,10 +647,15 @@ pub fn decode_frame(
             .ok_or(Error::BadPixels("truncated run"))?;
         i += count * bpp;
         x += usize::from(b);
-        if y >= height || x + count > width {
+        if y >= height || (!clip && x + count > width) {
             return Err(Error::BadPixels("run outside image"));
         }
-        for (k, dst) in out[y * width + x..][..count].iter_mut().enumerate() {
+        let kept = count.min(width.saturating_sub(x));
+        dropped += count - kept;
+        for (k, dst) in out[y * width + x.min(width)..][..kept]
+            .iter_mut()
+            .enumerate()
+        {
             *dst = Some(match bpp {
                 0 => Pixel::default(),
                 1 => Pixel {
@@ -616,7 +678,7 @@ pub fn decode_frame(
     if i != data.len() {
         return Err(Error::BadPixels("bytes after end marker"));
     }
-    Ok(out)
+    Ok((out, dropped))
 }
 
 #[cfg(test)]
@@ -694,6 +756,21 @@ mod tests {
         );
         assert!(decode_frame(FrameFormat::RgbV, &[0, 3, 1, 1, 1, 0xFF], 2, 1).is_err());
         assert!(decode_frame(FrameFormat::RgbZ, &[0, 1, 9, 0xFF], 1, 1).is_err());
+    }
+
+    #[test]
+    fn clipped_decode_drops_overrun() {
+        // Width 2; row 0 writes 3 pixels (one past the edge), row 1 is empty.
+        let data = [0, 3, 0xa1, 1, 0xa2, 2, 0xa3, 3, 0xFE, 0xFF];
+        assert!(decode_frame(FrameFormat::RgbWZ, &data, 2, 2).is_err());
+        let (px, dropped) = decode_frame_clipped(FrameFormat::RgbWZ, &data, 2, 2).unwrap();
+        assert_eq!(dropped, 1);
+        let idx: Vec<_> = px.iter().map(|p| p.map(|p| (p.z, p.index))).collect();
+        assert_eq!(idx, [Some((0xa1, 1)), Some((0xa2, 2)), None, None]);
+        // A run starting beyond the edge drops entirely.
+        let (_, dropped) =
+            decode_frame_clipped(FrameFormat::RgbAH, &[3, 0x42, 7, 8, 0xFF], 2, 1).unwrap();
+        assert_eq!(dropped, 2);
     }
 
     #[test]

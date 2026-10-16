@@ -43,11 +43,11 @@ Goal: render an original island/scenario from the original files on screen. This
 Status M1.1 (2026-10-16): done. All 2,954 container files round-trip byte-identically (`chunk_corpus`). Findings: `.scp` trailer is 60 bytes in exactly the `INSEL5` islands (OQ-001); 22 name fields carry post-NUL bytes (OQ-008); `INSEL5` has a 12-byte prefix before its sub-chunks, so generic detection treats it as a leaf (OQ-013, to solve in M1.5).
 
 ### M1.2 Palettes and textures (`.tex`, `.inc`, `Anlagen.dat/COLORS`)
-- [ ] Decode `COLOR` (palette) and `TEXTURE` chunks in `.tex`; `ACCESS` in `.inc`. Determine pixel format from `Textures/debug.tex` and `ToolGfx/Felder.tex` (32×32 ground tiles per drkohler). Evidence: compare against drkohler's GFX Extractor output if obtainable; otherwise validate by rendering and eyeballing known UI textures.
-- [ ] Export to PNG via `anno-extract tex <file> <outdir>` for visual verification.
-- [ ] Spec: `docs/formats/tex.md`, `docs/formats/palette.md`.
+- [x] Decode `COLOR` (palette) and `TEXTURE` chunks in `.tex`; `ACCESS` in `.inc`. Determine pixel format from `Textures/debug.tex` and `ToolGfx/Felder.tex` (32×32 ground tiles per drkohler). Evidence: compare against drkohler's GFX Extractor output if obtainable; otherwise validate by rendering and eyeballing known UI textures.
+- [x] Export to PNG via `anno-extract tex <file> <outdir>` for visual verification.
+- [x] Spec: `docs/formats/tex.md`, `docs/formats/palette.md`.
 
-Status M1.2 (2026-10-16): `[~]` decoders, specs, reference dump and PNG export done; visual check open.
+Status M1.2 (2026-10-16): `[x]` decoders, specs, reference dump, PNG export, visual check and byte-identical RLE round trip done. Remaining unknowns (OQ-021, OQ-022) do not block decoding and move on with M1.3/M2.
 - Done: `anno_formats::tex` (palettes, `TEXTURE` HEAD/BODY/NAME, RLE + raw decode) and `anno_formats::inc` (`ACCESS` records). `tex_corpus`/`inc_corpus` pass on all 1,214 `.tex` and 1,213 `.inc`: 1,427 palettes, 5,176 textures (5,028 `BSH_RGB` RLE, 1 `BSH_RGBH` RLE, 147 `TEX_RGB` raw ground tiles), every `HEAD.palette_id` resolves, every texture decodes to exactly `width × height`, every `.inc` number is a `TEXTURE` id in the matching `.tex`.
 - Evidence summary: `COLOR`/`TEXTURE` payload = 8-byte prefix (`u32`, `u32 id`) + sub-chunks (so generic detection treats them as leaves, OQ-013). Palette = 256 × `[B, G, R, 0]`; byte order from sea tiles (`Meer*.bmp` in `Felder.tex` average B=122 G=77 R=33). RLE: per row `(skip, count, count × index)` runs, `0xFE` end of row, `0xFF` end of image.
 - Specs written: `docs/formats/tex.md` (incl. the `anno-dump tex/inc` reference format), `docs/formats/palette.md`.
@@ -55,7 +55,9 @@ Status M1.2 (2026-10-16): `[~]` decoders, specs, reference dump and PNG export d
 - PNG export: `anno-extract tex <file.tex> <outdir>` (RGBA via `anno_assets::texture::to_rgba`, `index.txt` per directory); `extract.rs` checks PNGs decode back exactly.
 - `Anlagen.dat/COLORS`: 440 colour tables decoded (`anno_formats::colors`, `anno-dump colors`, `tools/tex.py colors`); layout from `anno-dump probe` + two read-only scans on the corpus, recorded in `palette.md`. Unknowns: OQ-022.
 - Corpus run 2026-10-16 on the dev Mac (`cargo test --workspace --no-fail-fast` with `ANNO1503_GAME_DIR`): all corpus and agreement tests pass, incl. Rust = Python on every `.tex`, `.inc` and `Anlagen.dat` `COLORS`, and PNG round trip on the sample files. First run failed `colors_corpus` on the flag of table 109 (= 4), now recorded.
-- Open: visual check of the exported PNGs on a host with the game files (UI textures in `ToolGfx/`, sea tiles in `Textures/Felder.tex` should look blue — confirms BGR order); RLE re-encoder for byte-identical texture round trip; unknown fields in OQ-021.
+- Visual check 2026-10-16 on the dev Mac (game files present): `Felder.tex` sea tiles (`Meer01.bmp`) render blue, grass green, sand/sea transitions correct; `fenster.tex` UI (1024×768 menu backdrop, minimap frame, building icons) renders coherently with no row shift; the minimap frame's centre is alpha 0 (RLE gap). Confirms BGR palette order and the RLE grammar. `ToolGfx/Activate your ship.tex` exports nothing because it is an empty 16-byte container (one of the 338 empty files), not a decode failure.
+- RLE round trip: `anno_formats::tex::encode_rle` and `tools/tex.py encode_rle` reproduce all 5,029 RLE bodies byte for byte; encoder rules in `tex.md`. `.tex` files are now covered byte-identically at the container, `HEAD` and pixel level.
+- Open (non-blocking): unknown fields in OQ-021/OQ-022.
 
 ### M1.3 Figures / sprites (`FigurenHeader.dat`, `Figuren000..200.dat`)
 - [ ] Reader for `FigurenHeader.dat`: ENTRY records with 12-byte keys + u32 (`VERSION2`, `HEAD`, `BEWOHNTYPE`, `ROUTETYPE`, `LOGIC`, `PATH`, `COLORS`, `HAEUSER`, …). Per community notes each sprite header holds height, width, local palette id, tag, midpoint, data offset and length; first four bytes big-endian — **verify** against the file before trusting.
@@ -147,7 +149,7 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 
 1. ~~M0 in full.~~ Done 2026-10-16.
 2. ~~M1.1 chunk container with corpus + round-trip tests.~~ Done 2026-10-16.
-3. M1.2 palette + texture decode; PNG export; look at the output.
+3. ~~M1.2 palette + texture decode; PNG export; look at the output.~~ Done 2026-10-16.
 4. Start M2 Ghidra setup in parallel; first target `AnnoWelt.dll` tick loop and `AnnoFrame.dll` `CreateAnnoNetClientInstance` call graph.
 5. Human task: create the savegame corpus following M2.1 once an x86 Windows/Wine install is available.
 6. Human task (not Claude Code): contact millimarg (AnnoZone) for Amsel spec access; download AnnoZone file 9287; pull Azukee's DatEditor from Software Heritage into `docs/research/external/` (check licence before copying code — none stated, so treat as reference only).

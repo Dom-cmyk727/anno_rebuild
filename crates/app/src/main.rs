@@ -151,10 +151,15 @@ fn run(args: &Args) -> Result<bool, BoxError> {
     let anl_buf = std::fs::read(dir.join("Anlagen.dat"))?;
     let islands = insel::islands(&file_buf)?;
     let boxes: Vec<IslandBox> = islands.iter().map(IslandBox::of).collect();
+    let anlagen = AnlagenFile::parse(&anl_buf)?;
+    let mut textures = GroundTextures::new(&TexFile::parse(&felder_buf)?)?;
+    if let Some(c) = anno_render::iso::water_colour(&anlagen) {
+        textures.set_water(c);
+    }
     let scene = Scene {
         name: args.file.display().to_string(),
-        textures: GroundTextures::new(&TexFile::parse(&felder_buf)?)?,
-        anlagen: AnlagenFile::parse(&anl_buf)?,
+        textures,
+        anlagen,
         layouts: [0, 1, 2].map(|g| scene::layout(&boxes, g)),
         islands,
     };

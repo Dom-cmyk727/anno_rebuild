@@ -287,11 +287,15 @@ fn view(
     let islands = insel::islands(&buf)?;
     let island = islands.get(index).ok_or("no island with that index")?;
     let felder_buf = std::fs::read(dir.join("Textures/Felder.tex"))?;
-    let textures = GroundTextures::new(&TexFile::parse(&felder_buf)?)?;
+    let mut textures = GroundTextures::new(&TexFile::parse(&felder_buf)?)?;
     let anl_buf = std::fs::read(dir.join("Anlagen.dat"))?;
     let anlagen = AnlagenFile::parse(&anl_buf)?;
+    if let Some(c) = iso::water_colour(&anlagen) {
+        textures.set_water(c);
+    }
     let mut canvas = iso::Canvas::for_island(island, group, anno_render::scene::margin(group));
     iso::draw_ground(&mut canvas, island, &textures, group, lift);
+    iso::draw_water(&mut canvas, island, &anlagen, group, lift);
     let stats = iso::draw_objects(
         &mut canvas,
         island,

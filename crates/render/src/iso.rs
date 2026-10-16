@@ -369,6 +369,162 @@ pub fn draw_objects(
     stats
 }
 
+/// `ANLAGEN` entry of the open-sea surface (`MEER`, `Meer\Meer01_001.tga`,
+/// 64 `BSH_RGBWZ` frames; D: `AnnoWelt.dll` `0x1009f4c0`).
+pub const SEA_ANLAGE: u32 = 2801;
+/// Sea level in `HEIGHT` units: 1.28 world units / 0.04 (D: `AnnoWelt.dll`
+/// `0x100E3A20`, set at `0x1009d010`).
+pub const SEA_LEVEL: i64 = 32;
+/// A tile counts as land when the average of its corner heights exceeds
+/// this (D: `AnnoWelt.dll` classifier `0x100900c0`).
+const LAND_AVERAGE: i64 = 19;
+
+/// Average colour of the opaque pixels of the sea sprite's first frame
+/// (zoom group 0), used as the colour of open-water ground (texture 0),
+/// which the original does not draw as terrain (approximation, OQ-026 b).
+pub fn water_colour(anlagen: &AnlagenFile<'_>) -> Option<[u8; 4]> {
+    let entry = anlagen.entry(SEA_ANLAGE)?;
+    let frame = entry
+        .gfx
+        .first()?
+        .frame_sets
+        .iter()
+        .find(|fs| fs.group == 0)?
+        .frames
+        .first()?;
+    let img = building::to_rgba(anlagen, entry, 0, frame).ok()?;
+    let (mut sum, mut n) = ([0u64; 3], 0u64);
+    for px in img.pixels.chunks(4).filter(|p| p[3] != 0) {
+        for (s, &c) in sum.iter_mut().zip(px) {
+            *s += u64::from(c);
+        }
+        n += 1;
+    }
+    let avg = |s: u64| u8::try_from(s / n.max(1)).expect("average of u8");
+    (n > 0).then(|| [avg(sum[0]), avg(sum[1]), avg(sum[2]), 255])
+}
+
+/// Draws the animated sea surface at animation tick 0: entry
+/// [`SEA_ANLAGE`] on the original's staggered lattice (`y` even and
+/// `x ≡ 2·((y/2) mod 2) (mod 4)`), frame `(5x + 3y) mod 32`, raised to
+/// [`SEA_LEVEL`]. The frames are `BSH_RGBWZ` checkerboards, so the sea
+/// floor shows through every second pixel.
+///
+/// Approximations (OQ-026 b): the original's per-chunk "sea" flag is not
+/// traced, so lattice points are used in 8 × 8 chunks that contain a
+/// non-land tile; its depth buffer is replaced by drawing a water pixel only
+/// where the terrain under it (projected back onto the water plane) is
+/// below sea level; the sprite's anchor is put on lattice point `(x, y)`;
+/// the small per-sprite height offsets are ignored; over open water
+/// (texture 0, no sea floor) checkerboard gaps are filled with the
+/// neighbouring water pixel. Returns the number of sprites drawn.
+pub fn draw_water(
+    canvas: &mut Canvas,
+    island: &Island<'_>,
+    anlagen: &AnlagenFile<'_>,
+    group: usize,
+    lift: Lift,
+) -> usize {
+    let (Ok(heights), Some(entry)) = (island.heights(), anlagen.entry(SEA_ANLAGE)) else {
+        return 0;
+    };
+    let g = u32::try_from(group).expect("group");
+    let Some(frames) = entry
+        .gfx
+        .first()
+        .and_then(|set| set.frame_sets.iter().find(|fs| fs.group == g))
+    else {
+        return 0;
+    };
+    let (w, h) = (usize::from(island.width), usize::from(island.height));
+    let (tw, th) = TILE[group];
+    let raise = lift.scaled(SEA_LEVEL, 1, group);
+    // Chunks (8 × 8 tiles) that contain a non-land tile.
+    let (cw, ch) = (w.div_ceil(8), h.div_ceil(8));
+    let mut sea = vec![false; cw * ch];
+    for y in 0..h {
+        for x in 0..w {
+            let c = corners(&heights, w, h, x, y);
+            if c.iter().sum::<i64>() <= 4 * LAND_AVERAGE {
+                sea[(y / 8) * cw + x / 8] = true;
+            }
+        }
+    }
+    let den = i64::from(tw) * i64::from(th);
+    let open_water: Vec<bool> = island
+        .gfx_ids()
+        .map(|g| {
+            g.iter()
+                .map(|&v| GroundCell::from_gfx_id(v).texture == 0)
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut drawn = 0;
+    for y in (0..h).step_by(2) {
+        for x in (2 * ((y / 2) % 2)..w).step_by(4) {
+            if !sea[(y / 8) * cw + x / 8] {
+                continue;
+            }
+            let k = (5 * x + 3 * y) % 32 % frames.frames.len().max(1);
+            let Some(frame) = frames.frames.get(k) else {
+                continue;
+            };
+            let Ok(img) = building::to_rgba(anlagen, entry, g, frame) else {
+                continue;
+            };
+            let (xi, yi) = (
+                i32::try_from(x).expect("fits"),
+                i32::try_from(y).expect("fits"),
+            );
+            let (sx, sy) = tile_top(xi, yi, group);
+            let (ox, oy) = (
+                sx - i32::from(frame.anchor_x),
+                sy - raise - i32::from(frame.anchor_y),
+            );
+            let fw = usize::from(img.width);
+            for (i, px) in img.pixels.chunks(4).enumerate() {
+                if px[3] == 0 {
+                    continue;
+                }
+                let (dx, dy) = (
+                    i32::try_from(i % fw).expect("fits"),
+                    i32::try_from(i / fw).expect("fits"),
+                );
+                let (px_x, px_y) = (ox + dx, oy + dy);
+                // Back onto the water plane: unraised screen point → tile coordinates
+                // (times den): x = px_x/tw + py/th, y = py/th − px_x/tw.
+                let yy = i64::from(px_y + raise);
+                let (xn, yn) = (
+                    i64::from(px_x) * i64::from(th) + yy * i64::from(tw),
+                    yy * i64::from(tw) - i64::from(px_x) * i64::from(th),
+                );
+                let (tx, ty) = (xn.div_euclid(den), yn.div_euclid(den));
+                // Only inside the island's tile area.
+                let (Ok(tx), Ok(ty)) = (usize::try_from(tx), usize::try_from(ty)) else {
+                    continue;
+                };
+                if tx >= w || ty >= h {
+                    continue;
+                }
+                let c = corners(&heights, w, h, tx, ty);
+                let under = interpolate(c, xn.rem_euclid(den), yn.rem_euclid(den), den);
+                if under >= SEA_LEVEL * den {
+                    continue;
+                }
+                let rgba = [px[0], px[1], px[2], px[3]];
+                canvas.put(px_x, px_y, rgba);
+                // Open water (texture 0) has no sea floor to show through the
+                // checkerboard: fill the gap with the same pixel (approximation).
+                if open_water.get(ty * w + tx).copied().unwrap_or(false) {
+                    canvas.put(px_x + 1, px_y, rgba);
+                }
+            }
+            drawn += 1;
+        }
+    }
+    drawn
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

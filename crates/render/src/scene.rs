@@ -252,6 +252,7 @@ pub fn render_region(
             stats.no_ground += 1;
         }
         iso::draw_ground(&mut local, island, textures, group, HEIGHT_LIFT);
+        iso::draw_water(&mut local, island, anlagen, group, HEIGHT_LIFT);
         let s = iso::draw_objects(
             &mut local,
             island,

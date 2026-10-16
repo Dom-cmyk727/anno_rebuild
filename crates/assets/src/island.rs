@@ -25,6 +25,8 @@ const TEXTURE_PX: usize = 256;
 /// Decoded ground textures by id: RGB per pixel, row-major 256 × 256.
 pub struct GroundTextures {
     textures: BTreeMap<u32, Vec<[u8; 3]>>,
+    /// Colour for open water (texture 0); [`WATER`] unless set.
+    water: [u8; 4],
 }
 
 impl GroundTextures {
@@ -45,13 +47,22 @@ impl GroundTextures {
                 .collect();
             textures.insert(t.id, rgb);
         }
-        Ok(Self { textures })
+        Ok(Self {
+            textures,
+            water: WATER,
+        })
+    }
+
+    /// Sets the colour drawn for open water (texture 0), e.g. the average
+    /// colour of the sea sprite (`anno_render::iso::water_colour`).
+    pub fn set_water(&mut self, rgba: [u8; 4]) {
+        self.water = rgba;
     }
 
     /// Colour shown at tile position `(s/n, t/n)` of a tile with ground `cell`.
     pub fn cell_pixel(&self, cell: GroundCell, s: usize, t: usize, n: usize) -> [u8; 4] {
         if cell.texture == 0 {
-            return WATER;
+            return self.water;
         }
         match self.textures.get(&u32::from(cell.texture)) {
             Some(rgb) => {

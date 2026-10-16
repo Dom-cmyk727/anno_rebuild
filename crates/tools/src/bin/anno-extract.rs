@@ -30,7 +30,8 @@
 //! `table=` names the global colour table; mapping in `anno_assets::building`).
 //!
 //! `view` renders one island isometrically (ground + `GELAENDE` + `PROD2`
-//! objects) with `anno_render::iso` at zoom group 0–2 (default 1).
+//! objects) with `anno_render::iso` at zoom group 0–2 (default 1) and lift
+//! `n/d` px per height unit (default `iso::HEIGHT_LIFT`; `0/1` = flat).
 //!
 //! Items that fail to decode are listed with `ERROR <message>` instead of a
 //! file name and make the exit code 1.
@@ -67,14 +68,16 @@ fn main() -> ExitCode {
             let group = rest
                 .first()
                 .map_or(Some(1), |g| g.parse().ok().filter(|&g: &usize| g < 3));
-            let lift = rest.get(1).map_or(Some(anno_render::iso::Lift::NONE), |l| {
-                let (n, d) = l.split_once('/')?;
-                let den = d.parse().ok().filter(|&d: &i32| d > 0)?;
-                Some(anno_render::iso::Lift {
-                    num: n.parse().ok()?,
-                    den,
-                })
-            });
+            let lift = rest
+                .get(1)
+                .map_or(Some(anno_render::iso::HEIGHT_LIFT), |l| {
+                    let (n, d) = l.split_once('/')?;
+                    let den = d.parse().ok().filter(|&d: &i32| d > 0)?;
+                    Some(anno_render::iso::Lift {
+                        num: n.parse().ok()?,
+                        den,
+                    })
+                });
             let (Some(group), Some(lift), Ok(index)) = (group, lift, index.parse::<usize>()) else {
                 eprintln!("{USAGE}");
                 return ExitCode::from(2);
@@ -287,7 +290,7 @@ fn view(
     let textures = GroundTextures::new(&TexFile::parse(&felder_buf)?)?;
     let anl_buf = std::fs::read(dir.join("Anlagen.dat"))?;
     let anlagen = AnlagenFile::parse(&anl_buf)?;
-    let mut canvas = iso::Canvas::for_island(island, group, 400);
+    let mut canvas = iso::Canvas::for_island(island, group, anno_render::scene::margin(group));
     iso::draw_ground(&mut canvas, island, &textures, group, lift);
     let stats = iso::draw_objects(
         &mut canvas,

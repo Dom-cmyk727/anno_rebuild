@@ -13,11 +13,14 @@
 //!   sets with a single rotation use frame 0.
 //! - Draw order: ground, then objects by the depth of their footprint's far
 //!   corner (`x + w + y + h`), then by `x`.
-//! - Elevation (hypothesis, OQ-026): `HEIGHT` values are heights at tile
-//!   corners — tile `(x, y)` spans the heights of `(x, y)`, `(x+1, y)`,
-//!   `(x, y+1)`, `(x+1, y+1)`, interpolated bilinearly — and raise the
-//!   ground by `height · lift` pixels at zoom group 0 (scaled with the tile
-//!   width for other groups). `Lift::NONE` draws the flat projection.
+//! - Elevation: `HEIGHT` values are heights at tile corners (D: `AnnoWelt.dll`
+//!   per-corner grid; that `HEIGHT[x, y]` is corner `(x, y)` is likely) —
+//!   tile `(x, y)` spans the heights of `(x, y)`, `(x+1, y)`, `(x, y+1)`,
+//!   `(x+1, y+1)`, interpolated bilinearly (the original splits tiles into
+//!   two triangles, not traced) — and raise the ground by `height · lift`
+//!   pixels at zoom group 0; [`HEIGHT_LIFT`] is the original's scale.
+//! - Alpha levels blend (`anno_assets::figure::LEVEL_ALPHA`); shadow frames
+//!   darken to 5/8 before their sprite is drawn.
 
 use std::collections::BTreeSet;
 
@@ -58,14 +61,35 @@ impl Canvas {
         }
     }
 
-    fn put(&mut self, sx: i32, sy: i32, rgba: [u8; 4]) {
+    fn index(&self, sx: i32, sy: i32) -> Option<usize> {
         let (x, y) = (sx - self.origin.0, sy - self.origin.1);
-        if let (Ok(x), Ok(y)) = (usize::try_from(x), usize::try_from(y))
-            && x < self.width
-            && y < self.height
-        {
-            let o = (y * self.width + x) * 4;
+        match (usize::try_from(x), usize::try_from(y)) {
+            (Ok(x), Ok(y)) if x < self.width && y < self.height => Some((y * self.width + x) * 4),
+            _ => None,
+        }
+    }
+
+    /// Draws `rgba`, blending by its alpha (`src · a + dst · (255 − a)`).
+    fn put(&mut self, sx: i32, sy: i32, rgba: [u8; 4]) {
+        let Some(o) = self.index(sx, sy) else { return };
+        let a = u32::from(rgba[3]);
+        if a == 255 {
             self.pixels[o..o + 4].copy_from_slice(&rgba);
+            return;
+        }
+        for (dst, &src) in self.pixels[o..o + 3].iter_mut().zip(&rgba[..3]) {
+            let v = (u32::from(src) * a + u32::from(*dst) * (255 - a)) / 255;
+            *dst = u8::try_from(v).expect("blend fits u8");
+        }
+        self.pixels[o + 3] = self.pixels[o + 3].max(rgba[3]);
+    }
+
+    /// Shadow: `dst / 2 + dst / 8` per colour channel (D: `AnnoDisplay.dll`
+    /// `0x10019f80`); overlapping shadows compound.
+    fn shade(&mut self, sx: i32, sy: i32) {
+        let Some(o) = self.index(sx, sy) else { return };
+        for d in &mut self.pixels[o..o + 3] {
+            *d = *d / 2 + *d / 8;
         }
     }
 
@@ -84,6 +108,15 @@ pub fn tile_top(x: i32, y: i32, group: usize) -> (i32, i32) {
     let (tw, th) = TILE[group];
     ((x - y) * tw / 2, (x + y) * th / 2)
 }
+
+/// Pixels per `HEIGHT` unit at zoom group 0 used by the original: one unit
+/// is 0.04 world units (D: `AnnoWelt.dll` height table `0x100E35E0`) and a
+/// world unit of height is 51.477 px at zoom 1.0 (D: `AnnoFrame.dll` camera
+/// `0x10071d70`: scale 59.1633, tilt 29.53°), so ≈ 2.059 px.
+pub const HEIGHT_LIFT: Lift = Lift {
+    num: 2059,
+    den: 1000,
+};
 
 /// Pixels per `HEIGHT` unit at zoom group 0, as a fraction `num / den`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,7 +190,11 @@ pub fn draw_ground(
                         usize::try_from(i * 32 / n).expect("fits"),
                         usize::try_from(j * 32 / n).expect("fits"),
                     );
-                    canvas.put(sx + px, sy + py - up, textures.cell_pixel(cell, cx, cy));
+                    // Cover the pixel below too: sample rows can skip a screen row on
+                    // slopes; back-to-front order lets nearer tiles overdraw it.
+                    let rgba = textures.cell_pixel(cell, cx, cy);
+                    canvas.put(sx + px, sy + py - up, rgba);
+                    canvas.put(sx + px, sy + py - up + 1, rgba);
                 }
             }
         }
@@ -284,6 +321,29 @@ pub fn draw_objects(
             sx - i32::from(frame.anchor_x),
             sy - i32::from(frame.anchor_y),
         );
+        // Shadow first: same frame index of the set's SHADOW, own anchor.
+        let shadow = set.shadow.as_ref().and_then(|s| {
+            let sf = s
+                .frame_sets
+                .iter()
+                .find(|fs| fs.group == g)?
+                .frames
+                .get(k)?;
+            Some((sf, building::to_rgba(anlagen, entry, g, sf).ok()?))
+        });
+        if let Some((sf, simg)) = shadow {
+            let (sox, soy) = (sx - i32::from(sf.anchor_x), sy - i32::from(sf.anchor_y));
+            let sw = usize::from(simg.width);
+            for (i, px) in simg.pixels.chunks(4).enumerate() {
+                if px[3] != 0 {
+                    let (x, y) = (
+                        i32::try_from(i % sw).expect("fits"),
+                        i32::try_from(i / sw).expect("fits"),
+                    );
+                    canvas.shade(sox + x, soy + y);
+                }
+            }
+        }
         let fw = usize::from(img.width);
         for (i, px) in img.pixels.chunks(4).enumerate() {
             if px[3] == 0 {

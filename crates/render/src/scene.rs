@@ -17,13 +17,19 @@ use anno_assets::island::GroundTextures;
 use anno_formats::anlagen::AnlagenFile;
 use anno_formats::insel::Island;
 
-use crate::iso::{self, Canvas, DrawStats, Lift, TILE};
+use crate::iso::{self, Canvas, DrawStats, HEIGHT_LIFT, TILE};
 
 /// Room above an island's top vertex per zoom group: the largest sprite
 /// anchor height in `Anlagen.dat` (P: entry 1330, `anchor_y` 504 / 252 / 126
 /// in groups 0 / 1 / 2). An anchor lies on a footprint centre, at least half
 /// a tile below the top vertex, so no flat-drawn sprite reaches higher.
 pub const MARGIN: [i32; 3] = [504, 252, 126];
+
+/// Space above an island: [`MARGIN`] plus the largest elevation (`u8::MAX`
+/// height at [`HEIGHT_LIFT`]).
+pub fn margin(group: usize) -> i32 {
+    MARGIN[group] + HEIGHT_LIFT.pixels(u8::MAX, group)
+}
 
 /// A screen rectangle in pixels; `x`, `y` = top-left corner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,9 +123,9 @@ pub fn layout(boxes: &[IslandBox], group: usize) -> Vec<Placement> {
             let bottom = (w + h) * th / 2;
             let bounds = Rect {
                 x: offset.0 + left,
-                y: offset.1 - MARGIN[group],
+                y: offset.1 - margin(group),
                 w: w * tw / 2 - left,
-                h: bottom + MARGIN[group],
+                h: bottom + margin(group),
             };
             Placement {
                 index,
@@ -214,7 +220,7 @@ pub struct SceneStats {
 
 /// Draws every island of `placements` that overlaps `dst` (whose `origin`
 /// is a scene screen position) with ground and `GELAENDE` + `PROD2` objects,
-/// flat (`Lift::NONE`).
+/// raised by `iso::HEIGHT_LIFT`.
 pub fn render_region(
     dst: &mut Canvas,
     islands: &[Island<'_>],
@@ -245,14 +251,14 @@ pub fn render_region(
         if island.gfx_ids().is_err() || island.heights().is_err() {
             stats.no_ground += 1;
         }
-        iso::draw_ground(&mut local, island, textures, group, Lift::NONE);
+        iso::draw_ground(&mut local, island, textures, group, HEIGHT_LIFT);
         let s = iso::draw_objects(
             &mut local,
             island,
             anlagen,
             &["GELAENDE", "PROD2"],
             group,
-            Lift::NONE,
+            HEIGHT_LIFT,
         );
         composite(dst, &local, p.offset);
         stats.islands += 1;
@@ -287,9 +293,9 @@ mod tests {
             p[1].bounds,
             Rect {
                 x: 6 * 42 - 6 * 42,
-                y: 14 * 21 - MARGIN[0],
+                y: 14 * 21 - margin(0),
                 w: (8 + 6) * 42,
-                h: (8 + 6) * 21 + MARGIN[0],
+                h: (8 + 6) * 21 + margin(0),
             }
         );
         assert_eq!(p[0].offset, (0, 0));
@@ -297,9 +303,9 @@ mod tests {
             scene_bounds(&p),
             Some(Rect {
                 x: -4 * 42,
-                y: -MARGIN[0],
+                y: -margin(0),
                 w: 4 * 42 + 6 * 42 + 8 * 42,
-                h: 14 * 21 + 14 * 21 + MARGIN[0],
+                h: 14 * 21 + 14 * 21 + margin(0),
             })
         );
         assert_eq!(scene_bounds(&[]), None);
@@ -315,7 +321,7 @@ mod tests {
             (p.bounds.x - p.offset.0, p.bounds.w),
             (-2 * tw / 2, 9 * tw / 2)
         );
-        assert_eq!(p.bounds.h, 9 * th / 2 + MARGIN[1]);
+        assert_eq!(p.bounds.h, 9 * th / 2 + margin(1));
     }
 
     #[test]

@@ -358,14 +358,20 @@ fn view_corpus_samples() {
     };
     let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("view");
     std::fs::create_dir_all(&out).unwrap();
+    // Canvas: the island's tile diamonds at group 2 (20 × 10) plus
+    // `scene::margin(2)` above (docs/render/iso.md).
+    let size = |w: u32, h: u32| {
+        let margin = u32::try_from(anno_render::scene::margin(2)).unwrap();
+        ((w + h) * 10, (w + h) * 5 + margin)
+    };
     for (sample, index, group, size) in [
         (
             "Scenes/Islands/Polar/Po_064x064_0008_Eskimo.scp",
             "0",
             "2",
-            (1280, 1040),
+            size(64, 64),
         ),
-        ("Scenes/0200Single/Single_01.sze", "1", "2", (1600, 1200)),
+        ("Scenes/0200Single/Single_01.sze", "1", "2", size(80, 80)),
     ] {
         let png = out.join(format!("{}.png", sample.replace('/', "_")));
         let res = Command::new(env!("CARGO_BIN_EXE_anno-extract"))

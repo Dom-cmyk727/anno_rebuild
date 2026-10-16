@@ -13,9 +13,11 @@
 //!   sets with a single rotation use frame 0.
 //! - Draw order: ground, then objects by the depth of their footprint's far
 //!   corner (`x + w + y + h`), then by `x`.
-//! - Elevation: a tile is raised by `HEIGHT · lift` pixels at zoom group 0
-//!   (scaled with the tile width for other groups); the value of `lift` is
-//!   being determined (OQ-026). Tiles are flat diamonds, no slopes yet.
+//! - Elevation (hypothesis, OQ-026): `HEIGHT` values are heights at tile
+//!   corners — tile `(x, y)` spans the heights of `(x, y)`, `(x+1, y)`,
+//!   `(x, y+1)`, `(x+1, y+1)`, interpolated bilinearly — and raise the
+//!   ground by `height · lift` pixels at zoom group 0 (scaled with the tile
+//!   width for other groups). `Lift::NONE` draws the flat projection.
 
 use std::collections::BTreeSet;
 
@@ -95,8 +97,27 @@ impl Lift {
 
     /// Screen offset (upwards) of a tile with height `h` at `group`.
     pub fn pixels(self, h: u8, group: usize) -> i32 {
-        i32::from(h) * self.num * TILE[group].0 / (self.den * TILE[0].0)
+        self.scaled(i64::from(h), 1, group)
     }
+
+    /// Offset for the height `h_num / h_den`.
+    fn scaled(self, h_num: i64, h_den: i64, group: usize) -> i32 {
+        let num = h_num * i64::from(self.num) * i64::from(TILE[group].0);
+        let den = h_den * i64::from(self.den) * i64::from(TILE[0].0);
+        i32::try_from(num / den).expect("offset fits i32")
+    }
+}
+
+/// Corner heights of tile `(x, y)`: `[(x, y), (x+1, y), (x, y+1), (x+1, y+1)]`,
+/// clamped at the island edge.
+fn corners(heights: &[u8], w: usize, h: usize, x: usize, y: usize) -> [i64; 4] {
+    let at = |cx: usize, cy: usize| i64::from(heights[cy.min(h - 1) * w + cx.min(w - 1)]);
+    [at(x, y), at(x + 1, y), at(x, y + 1), at(x + 1, y + 1)]
+}
+
+/// Bilinear height at `(i/n, j/n)` inside a tile, times `n²`.
+fn interpolate(c: [i64; 4], i: i64, j: i64, n: i64) -> i64 {
+    c[0] * (n - i) * (n - j) + c[1] * i * (n - j) + c[2] * (n - i) * j + c[3] * i * j
 }
 
 /// Draws every ground tile, back to front.
@@ -112,8 +133,36 @@ pub fn draw_ground(
     };
     let (tw, th) = TILE[group];
     let w = usize::from(island.width);
+    let hgt = usize::from(island.height);
     let mut order: Vec<usize> = (0..gfx.len()).collect();
     order.sort_by_key(|&t| (t % w + t / w, t % w));
+    if lift != Lift::NONE {
+        // Forward mapping: walk the cell in tile space, oversampled so that
+        // steep slopes leave no holes.
+        let n = i64::from(2 * (tw + th));
+        for t in order {
+            let cell = GroundCell::from_gfx_id(gfx[t]);
+            let c = corners(&heights, w, hgt, t % w, t / w);
+            let (x, y) = (
+                i32::try_from(t % w).expect("fits"),
+                i32::try_from(t / w).expect("fits"),
+            );
+            let (sx, sy) = tile_top(x, y, group);
+            for j in 0..n {
+                for i in 0..n {
+                    let px = i32::try_from((i - j) * i64::from(tw) / (2 * n)).expect("fits");
+                    let py = i32::try_from((i + j) * i64::from(th) / (2 * n)).expect("fits");
+                    let up = lift.scaled(interpolate(c, i, j, n), n * n, group);
+                    let (cx, cy) = (
+                        usize::try_from(i * 32 / n).expect("fits"),
+                        usize::try_from(j * 32 / n).expect("fits"),
+                    );
+                    canvas.put(sx + px, sy + py - up, textures.cell_pixel(cell, cx, cy));
+                }
+            }
+        }
+        return;
+    }
     for t in order {
         let cell = GroundCell::from_gfx_id(gfx[t]);
         let (x, y) = (
@@ -165,6 +214,7 @@ pub fn draw_objects(
 ) -> DrawStats {
     let heights = island.heights().unwrap_or_default();
     let iw = usize::from(island.width);
+    let ih = usize::from(island.height);
     let mut objs = BTreeSet::<PlacedObject>::new();
     for r in records {
         objs.extend(island.objects(r).unwrap_or_default());
@@ -214,8 +264,21 @@ pub fn draw_objects(
             2 * i32::from(o.x) + i32::from(w),
             2 * i32::from(o.y) + i32::from(h),
         );
-        let under = usize::from(o.y + u16::from(h) / 2) * iw + usize::from(o.x + u16::from(w) / 2);
-        let raise = heights.get(under).map_or(0, |&z| lift.pixels(z, group));
+        // Height at the footprint centre, interpolated like the ground.
+        let raise = if heights.is_empty() {
+            0
+        } else {
+            let (cx, cy) = (
+                usize::try_from(cx2 / 2).expect("fits"),
+                usize::try_from(cy2 / 2).expect("fits"),
+            );
+            let c = corners(&heights, iw, ih, cx, cy);
+            lift.scaled(
+                interpolate(c, i64::from(cx2 % 2), i64::from(cy2 % 2), 2),
+                4,
+                group,
+            )
+        };
         let (sx, sy) = ((cx2 - cy2) * tw / 4, (cx2 + cy2) * th / 4 - raise);
         let (ox, oy) = (
             sx - i32::from(frame.anchor_x),
@@ -240,6 +303,26 @@ pub fn draw_objects(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn corner_heights_and_interpolation() {
+        // 2 × 2 heights: corners of tile (0, 0) are the four values; tile (1, 1)
+        // clamps to the island edge.
+        let h = [0u8, 10, 20, 30];
+        assert_eq!(corners(&h, 2, 2, 0, 0), [0, 10, 20, 30]);
+        assert_eq!(corners(&h, 2, 2, 1, 1), [30, 30, 30, 30]);
+        let c = [0, 10, 20, 30];
+        // Corners and centre, scaled by n² = 4.
+        assert_eq!(interpolate(c, 0, 0, 2), 0);
+        assert_eq!(interpolate(c, 2, 0, 2), 40);
+        assert_eq!(interpolate(c, 0, 2, 2), 80);
+        assert_eq!(interpolate(c, 1, 1, 2), 60); // (0 + 10 + 20 + 30) / 4 · 4
+        // Lift: 1 px per unit at group 0, half at group 1 (tile width 42).
+        let lift = Lift { num: 1, den: 1 };
+        assert_eq!(lift.scaled(60, 4, 0), 15);
+        assert_eq!(lift.scaled(60, 4, 1), 7);
+        assert_eq!(Lift::NONE.pixels(200, 0), 0);
+    }
 
     #[test]
     fn projection() {

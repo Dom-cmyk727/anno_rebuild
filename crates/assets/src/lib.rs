@@ -2,4 +2,5 @@
 //! [`anno_formats`].
 
 pub mod figure;
+pub mod island;
 pub mod texture;

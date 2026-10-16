@@ -47,10 +47,11 @@ Status M1.1 (2026-10-16): done. All 2,954 container files round-trip byte-identi
 - [ ] Export to PNG via `anno-extract tex <file> <outdir>` for visual verification.
 - [ ] Spec: `docs/formats/tex.md`, `docs/formats/palette.md`.
 
-Status M1.2 (2026-10-16): `[~]` decoders done, PNG export and specs open.
+Status M1.2 (2026-10-16): `[~]` decoders and specs done, PNG export and reference dump open.
 - Done: `anno_formats::tex` (palettes, `TEXTURE` HEAD/BODY/NAME, RLE + raw decode) and `anno_formats::inc` (`ACCESS` records). `tex_corpus`/`inc_corpus` pass on all 1,214 `.tex` and 1,213 `.inc`: 1,427 palettes, 5,176 textures (5,028 `BSH_RGB` RLE, 1 `BSH_RGBH` RLE, 147 `TEX_RGB` raw ground tiles), every `HEAD.palette_id` resolves, every texture decodes to exactly `width × height`, every `.inc` number is a `TEXTURE` id in the matching `.tex`.
 - Evidence summary: `COLOR`/`TEXTURE` payload = 8-byte prefix (`u32`, `u32 id`) + sub-chunks (so generic detection treats them as leaves, OQ-013). Palette = 256 × `[B, G, R, 0]`; byte order from sea tiles (`Meer*.bmp` in `Felder.tex` average B=122 G=77 R=33). RLE: per row `(skip, count, count × index)` runs, `0xFE` end of row, `0xFF` end of image.
-- Open: `anno-extract tex <file> <outdir>` PNG export (needs `png` crate in `crates/tools`) and a visual check; specs `docs/formats/tex.md` + `palette.md` (facts above, field table in `crates/formats/src/tex.rs`); `anno-dump` subcommand with a documented text format for the C++ oracle; RLE re-encoder for byte-identical texture round trip; unknown fields in OQ-021.
+- Specs written: `docs/formats/tex.md` (incl. the `anno-dump tex/inc` reference format), `docs/formats/palette.md`.
+- Open: `anno-extract tex <file> <outdir>` PNG export (needs `png` crate in `crates/tools`) and a visual check; `Anlagen.dat/COLORS`; implement `anno-dump tex/inc` + `tools/tex.py` (format already specified); RLE re-encoder for byte-identical texture round trip; unknown fields in OQ-021.
 
 ### M1.3 Figures / sprites (`FigurenHeader.dat`, `Figuren000..200.dat`)
 - [ ] Reader for `FigurenHeader.dat`: ENTRY records with 12-byte keys + u32 (`VERSION2`, `HEAD`, `BEWOHNTYPE`, `ROUTETYPE`, `LOGIC`, `PATH`, `COLORS`, `HAEUSER`, …). Per community notes each sprite header holds height, width, local palette id, tag, midpoint, data offset and length; first four bytes big-endian — **verify** against the file before trusting.

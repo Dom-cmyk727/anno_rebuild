@@ -12,7 +12,7 @@ Counts refer to GOG 2.0.0.5 (`game/app/`), from `docs/research/game-files-analys
 | Scenario | `Scenes/**/*.sze` (50) | `sze.md` | not yet written |
 | Island template | `Scenes/Islands/**/*.scp` (465) | `scp.md` | not yet written |
 | Textures | `*.tex` (1,214), `*.inc` (1,213) | [`tex.md`](tex.md) | partial — all files parse and decode; HEAD unknowns (OQ-021), no pixel re-encoder yet |
-| Palettes | `COLOR` in `.tex`, `COLORS` in `Anlagen.dat` | `palette.md` | not yet written |
+| Palettes | `COLOR` in `.tex`, `COLORS` in `Anlagen.dat` | [`palette.md`](palette.md) | partial — `.tex` palettes complete; `Anlagen.dat/COLORS` not decoded |
 | Fonts | `*.zei` (11) | `zei.md` | not yet written |
 | Buildings | `Anlagen.dat` (1) | `anlagen.md` | not yet written |
 | Figures / sprites | `FigurenHeader.dat`, `Figuren*.dat` (16) | `figuren.md` | not yet written |

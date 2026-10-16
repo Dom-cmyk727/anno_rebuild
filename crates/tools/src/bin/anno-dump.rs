@@ -4,7 +4,12 @@
 //! anno-dump chunks <file>...        chunk tree (same output as `tools/chunks.py tree`)
 //! anno-dump tex [--full] <file>...  palettes and textures (same as `tools/tex.py dump`)
 //! anno-dump inc <file>...           ACCESS records (same as `tools/tex.py inc`)
+//! anno-dump probe <path> <file>...   statistics over all chunks at a name path
 //! ```
+//!
+//! `probe` is an investigation aid for undecoded chunks (e.g.
+//! `ANNO/COLORS/ENTRY` in `Anlagen.dat`); its output is not a reference
+//! format and has no Python counterpart.
 //!
 //! The `tex`/`inc` text format is specified in `docs/formats/tex.md`
 //! ("Reference dump").
@@ -17,7 +22,8 @@ use anno_formats::{chunk, inc, tex};
 
 const USAGE: &str = "usage: anno-dump chunks <file>...\n       \
                      anno-dump tex [--full] <file>...\n       \
-                     anno-dump inc <file>...";
+                     anno-dump inc <file>...\n       \
+                     anno-dump probe <path> <file>...";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -29,6 +35,14 @@ fn main() -> ExitCode {
         Some((flag, files)) if cmd == "tex" && flag == "--full" => (true, files),
         _ => (false, rest),
     };
+    if cmd == "probe" {
+        return match rest.split_first() {
+            Some((path, files)) if !files.is_empty() => {
+                dump_files(files, |buf, out| probe(buf, path, out))
+            }
+            _ => usage(),
+        };
+    }
     if files.is_empty() {
         return usage();
     }
@@ -233,6 +247,135 @@ fn dump_inc(buf: &[u8], out: &mut String) -> bool {
     for r in records {
         writeln!(out, "ACCESS source={} number={}", quote(r.source), r.number)
             .expect("writing to a String");
+    }
+    true
+}
+
+/// All chunks reached by following the `/`-separated name path from the top level.
+fn find<'a>(chunks: &[chunk::Chunk<'a>], names: &[&str], acc: &mut Vec<chunk::Chunk<'a>>) {
+    let Some((first, rest)) = names.split_first() else {
+        return;
+    };
+    for c in chunks.iter().filter(|c| c.name() == *first) {
+        if rest.is_empty() {
+            acc.push(c.clone());
+        } else if let Some(kids) = &c.children {
+            find(kids, rest, acc);
+        }
+    }
+}
+
+/// `name:size` of each chunk in `seq`, comma-separated.
+fn seq_names(seq: &[chunk::Chunk<'_>]) -> String {
+    let names: Vec<String> = seq
+        .iter()
+        .map(|c| format!("{}:{}", c.name(), c.size()))
+        .collect();
+    names.join(",")
+}
+
+/// Prints `<key>×<count>` lines for the `limit` most frequent keys.
+fn histogram(out: &mut String, label: &str, counts: &std::collections::BTreeMap<String, usize>) {
+    let mut v: Vec<(&String, &usize)> = counts.iter().collect();
+    v.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+    for (k, n) in v.iter().take(20) {
+        writeln!(out, "{label} {k} x{n}").expect("writing to a String");
+    }
+    if v.len() > 20 {
+        writeln!(out, "{label} ... {} more distinct", v.len() - 20).expect("writing to a String");
+    }
+}
+
+/// Statistics over every chunk at `path`: payload sizes, child structure,
+/// the first offset at which the payload is an exact chunk sequence (a fixed
+/// prefix, as in `.tex` `COLOR`), sample bytes and per-`u32` value ranges
+/// over the first 64 bytes of the most common size.
+fn probe(buf: &[u8], path: &str, out: &mut String) -> bool {
+    use std::collections::{BTreeMap, BTreeSet};
+    let file = match chunk::parse_file(buf) {
+        Ok(f) => f,
+        Err(e) => {
+            writeln!(out, "NOPARSE {e}").expect("writing to a String");
+            return false;
+        }
+    };
+    let names: Vec<&str> = path.split('/').collect();
+    let mut hits = Vec::new();
+    find(&file.chunks, &names, &mut hits);
+    writeln!(out, "PROBE path={path} count={}", hits.len()).expect("writing to a String");
+    let Some(last) = hits.last() else {
+        return true;
+    };
+    let count = |f: &dyn Fn(&chunk::Chunk<'_>) -> String| {
+        let mut m = BTreeMap::new();
+        for c in &hits {
+            *m.entry(f(c)).or_insert(0usize) += 1;
+        }
+        m
+    };
+    histogram(out, "SIZE", &count(&|c| c.size().to_string()));
+    histogram(
+        out,
+        "CHILDREN",
+        &count(&|c| {
+            c.children
+                .as_deref()
+                .map_or_else(|| "leaf".to_string(), seq_names)
+        }),
+    );
+    histogram(
+        out,
+        "PREFIX",
+        &count(&|c| {
+            (0..c.size().min(64))
+                .find_map(|o| {
+                    chunk::parse_chunks(&c.payload[o..])
+                        .filter(|s| !s.is_empty())
+                        .map(|s| format!("{o} {}", seq_names(&s)))
+                })
+                .unwrap_or_else(|| "none".to_string())
+        }),
+    );
+    for (i, c) in [(0, &hits[0]), (hits.len() - 1, last)] {
+        let n = c.size().min(64);
+        writeln!(
+            out,
+            "SAMPLE i={i} off={} size={} head={}",
+            c.offset,
+            c.size(),
+            hex(&c.payload[..n])
+        )
+        .expect("writing to a String");
+    }
+    let mut sizes = BTreeMap::new();
+    for c in &hits {
+        *sizes.entry(c.size()).or_insert(0usize) += 1;
+    }
+    let (&size, &n) = sizes
+        .iter()
+        .max_by_key(|(s, n)| (**n, std::cmp::Reverse(**s)))
+        .expect("non-empty");
+    writeln!(out, "FIELDS size={size} entries={n}").expect("writing to a String");
+    for o in (0..size.min(64).saturating_sub(3)).step_by(4) {
+        let vals: BTreeSet<u32> = hits
+            .iter()
+            .filter(|c| c.size() == size)
+            .map(|c| {
+                u32::from_le_bytes([
+                    c.payload[o],
+                    c.payload[o + 1],
+                    c.payload[o + 2],
+                    c.payload[o + 3],
+                ])
+            })
+            .collect();
+        let (min, max) = (vals.first().expect("n > 0"), vals.last().expect("n > 0"));
+        let mut line = format!("U32 +0x{o:02x} distinct={} min={min} max={max}", vals.len());
+        if vals.len() <= 6 {
+            let list: Vec<String> = vals.iter().map(|v| format!("{v:#x}")).collect();
+            write!(line, " values={}", list.join(",")).expect("writing to a String");
+        }
+        writeln!(out, "{line}").expect("writing to a String");
     }
     true
 }

@@ -442,3 +442,162 @@ fn encode_rle_matches_tex_py_synthetic() {
         (Some(1), "identical=0 rle=1".to_string())
     );
 }
+
+/// `FigurenHeader.dat` (`--full`) and decoded frames of one entry per format.
+#[test]
+fn anno_dump_matches_figuren_py_corpus() {
+    let test = "anno_dump_matches_figuren_py_corpus";
+    let Some(dir) = game_dir(test) else { return };
+    if !have_python(test) {
+        return;
+    }
+    let header = [dir.join("FigurenHeader.dat")];
+    let out = agree(
+        "figuren.py",
+        &["dump", "--full"],
+        &["figuren", "--full"],
+        &header,
+    );
+    assert!(out.contains("FIGUREN entries=368 volumes=3\n"));
+    // Formats V, Z, AZ, AV, ALPHA (shadows of 101/103), H.
+    let ids = ["101", "103", "1510", "1539", "1546", "1574"];
+    let args: Vec<PathBuf> = std::iter::once(dir.clone())
+        .chain(ids.iter().map(PathBuf::from))
+        .collect();
+    let out = agree("figuren.py", &["frames"], &["frames"], &args);
+    assert_eq!(out.matches("pixels=BAD").count(), 0);
+}
+
+fn frame_header(w: u16, h: u16, format: &[u8], offset: u32, length: u32) -> Vec<u8> {
+    let mut raw = Vec::new();
+    for v in [w, h, 1, 8] {
+        raw.extend_from_slice(&v.to_le_bytes());
+    }
+    let mut fmt = [0u8; 12];
+    fmt[..format.len()].copy_from_slice(format);
+    raw.extend_from_slice(&fmt);
+    for v in [w / 2, h] {
+        raw.extend_from_slice(&v.to_le_bytes());
+    }
+    for v in [offset, length, 0] {
+        raw.extend_from_slice(&v.to_le_bytes());
+    }
+    raw
+}
+
+fn frame_set(group: u32, frames: &[Vec<u8>]) -> Vec<u8> {
+    let n = u32::try_from(frames.len()).expect("few frames");
+    let mut payload = [group.to_le_bytes(), n.to_le_bytes()].concat();
+    frames.iter().for_each(|f| payload.extend_from_slice(f));
+    chunk("TEXTURES", &payload)
+}
+
+#[test]
+fn anno_dump_matches_figuren_py_synthetic() {
+    let test = "anno_dump_matches_figuren_py_synthetic";
+    if !have_python(test) {
+        return;
+    }
+    let dir = synthetic_dir(test);
+    // Group 0 volume: one body per format, then a malformed V body.
+    let bodies: [(&[u8], &[u8], u16, u16); 7] = [
+        (b"BSH_RGBV", &[1, 2, 7, 8, 0xFE, 0, 3, 1, 2, 3, 0xFF], 3, 2),
+        (b"BSH_RGBZ", &[0, 1, 0xfb, 0x44, 0xFF], 1, 1),
+        (b"BSH_RGBAV", &[1, 0xC2, 5, 6, 0xFF], 3, 1),
+        (b"BSH_RGBAZ", &[0, 0x41, 9, 8, 0xFF], 1, 1),
+        (b"BSH_RGBH", &[0, 1, 9, 0xFF], 1, 1),
+        (b"BSH_ALPHA", &[1, 2, 0xFE, 0, 1, 0xFF], 3, 2),
+        (b"BSH_RGBV", &[0, 3, 1, 1, 1, 0xFF], 2, 1),
+    ];
+    let (mut vol, mut frames) = (Vec::new(), Vec::new());
+    for (fmt, body, w, h) in bodies {
+        let off = u32::try_from(vol.len()).expect("small");
+        let len = u32::try_from(body.len()).expect("small");
+        frames.push(frame_header(w, h, fmt, off, len));
+        vol.extend_from_slice(body);
+    }
+    // Empty frame and an unknown format.
+    frames.push(frame_header(4, 4, b"BSH_RGBV", 0, 0));
+    frames.push(frame_header(1, 1, b"XYZ", 0, 1));
+    std::fs::write(dir.join("Figuren000.dat"), &vol).expect("write");
+    std::fs::write(dir.join("Figuren100.dat"), [0, 1, 3, 0xFF]).expect("write");
+    std::fs::write(dir.join("Figuren200.dat"), []).expect("write");
+    let one = |g| {
+        frame_set(
+            g,
+            &[frame_header(
+                1,
+                1,
+                b"BSH_RGBV",
+                0,
+                if g == 1 { 4 } else { 0 },
+            )],
+        )
+    };
+    let mut shadow = vec![3, 0, 0, 0, 0, 0, 0, 0];
+    shadow.extend(chunk("BODY2", &[1; 44]));
+    shadow.extend(frame_set(0, &frames[5..6]));
+    let mut set = vec![4, 0, 4, 0, 0, 0, 0, 0, b'x', b'y', 0, 0, 0, 0, 0, 0];
+    set.extend(chunk("BODY2", &[0; 44]));
+    set.extend(chunk("GFXDATA", b"Gr\xe4s\\a.tga\0"));
+    set.extend(frame_set(0, &frames));
+    set.extend(one(1));
+    set.extend(one(2));
+    set.extend(chunk("SHADOW", &shadow));
+    let mut table = [0u32.to_le_bytes(), 0u32.to_le_bytes()].concat();
+    table.extend_from_slice(b"BODY\0\0\x00\x04");
+    table.extend((0..=255u8).flat_map(|i| [i, i ^ 0x5a, 255 - i, 0]));
+    table.extend_from_slice(b"NAME\0\0\x08\0\"b\\.pcx\0");
+    let e1 = entry(
+        "ENTRY",
+        0,
+        1,
+        &[
+            chunk("BEWOHNTYPE", b"EXPLOSION\0"),
+            chunk("COLORS", &[]),
+            chunk("HAEUSER", &[]),
+        ],
+    );
+    let e7 = entry(
+        "ENTRY",
+        0,
+        7,
+        &[
+            chunk("PATH", b"Maeher\\\0"),
+            chunk("COLORS", &chunk("ENTRY", &table)),
+            chunk("HAEUSER", &chunk("ENTRY", &set)),
+        ],
+    );
+    let mut buf = b"ANNO\0\0\0\0\0\0\0\0\x01\x02\x03\x04".to_vec();
+    buf.extend(chunk("FIGUREN", &[e1, e7].concat()));
+    for g in 0..3u32 {
+        buf.extend_from_slice(b"TEXTURES\0\0\0\0");
+        for v in [8 + g, g, 9] {
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+    std::fs::write(dir.join("FigurenHeader.dat"), &buf).expect("write");
+    let bad = dir.join("bad.dat");
+    std::fs::write(&bad, b"ANNO\0\0\0\0\0\0\0\0\0\0\0\0").expect("write");
+    let header = [dir.join("FigurenHeader.dat"), bad];
+    let out = agree(
+        "figuren.py",
+        &["dump", "--full"],
+        &["figuren", "--full"],
+        &header,
+    );
+    assert!(out.contains("NOPARSE\n"), "{out}");
+    assert!(out.contains(r#"name="\x22b\x5c.pcx""#), "{out}");
+    agree("figuren.py", &["dump"], &["figuren"], &header[..1]);
+    let args = [
+        dir.clone(),
+        PathBuf::from("7"),
+        PathBuf::from("1"),
+        PathBuf::from("99"),
+    ];
+    let out = agree("figuren.py", &["frames"], &["frames"], &args);
+    assert_eq!(out.matches("pixels=BAD").count(), 2, "{out}");
+    assert!(out.contains("ENTRY id=99 MISSING"), "{out}");
+    // AV level 3 pixel: hash covers (1, index, z, level).
+    assert!(out.contains("format=\"BSH_RGBAV\" opaque=2 "), "{out}");
+}

@@ -5,6 +5,8 @@
 //! anno-dump tex [--full] <file>...  palettes and textures (same as `tools/tex.py dump`)
 //! anno-dump inc <file>...           ACCESS records (same as `tools/tex.py inc`)
 //! anno-dump colors [--full] <Anlagen.dat>...  COLORS tables (same as `tools/tex.py colors`)
+//! anno-dump figuren [--full] <FigurenHeader.dat>...  figure index (same as `tools/figuren.py dump`)
+//! anno-dump frames <game_dir> <entry id>...  decoded frames (same as `tools/figuren.py frames`)
 //! anno-dump probe <path> <file>...   statistics over all chunks at a name path
 //! ```
 //!
@@ -13,18 +15,21 @@
 //! format and has no Python counterpart.
 //!
 //! The `tex`/`inc` text format is specified in `docs/formats/tex.md`
-//! ("Reference dump"), `colors` in `docs/formats/palette.md`.
+//! ("Reference dump"), `colors` in `docs/formats/palette.md`, `figuren` and
+//! `frames` in `docs/formats/figuren.md`.
 
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::process::ExitCode;
 
-use anno_formats::{chunk, colors, inc, tex};
+use anno_formats::{chunk, colors, figuren, inc, tex};
 
 const USAGE: &str = "usage: anno-dump chunks <file>...\n       \
                      anno-dump tex [--full] <file>...\n       \
                      anno-dump inc <file>...\n       \
                      anno-dump colors [--full] <Anlagen.dat>...\n       \
+                     anno-dump figuren [--full] <FigurenHeader.dat>...\n       \
+                     anno-dump frames <game_dir> <entry id>...\n       \
                      anno-dump probe <path> <file>...";
 
 fn main() -> ExitCode {
@@ -34,7 +39,7 @@ fn main() -> ExitCode {
         None => return usage(),
     };
     let (full, files) = match rest.split_first() {
-        Some((flag, files)) if (cmd == "tex" || cmd == "colors") && flag == "--full" => {
+        Some((flag, files)) if matches!(cmd, "tex" | "colors" | "figuren") && flag == "--full" => {
             (true, files)
         }
         _ => (false, rest),
@@ -47,6 +52,12 @@ fn main() -> ExitCode {
             _ => usage(),
         };
     }
+    if cmd == "frames" {
+        return match rest.split_first() {
+            Some((dir, ids)) if !ids.is_empty() => dump_frames(dir, ids),
+            _ => usage(),
+        };
+    }
     if files.is_empty() {
         return usage();
     }
@@ -55,6 +66,7 @@ fn main() -> ExitCode {
         "tex" => dump_files(files, |buf, out| dump_tex(buf, full, out)),
         "inc" => dump_files(files, dump_inc),
         "colors" => dump_files(files, |buf, out| dump_colors(buf, full, out)),
+        "figuren" => dump_files(files, |buf, out| dump_figuren(buf, full, out)),
         _ => usage(),
     }
 }
@@ -420,4 +432,236 @@ fn probe(buf: &[u8], path: &str, out: &mut String) -> bool {
         writeln!(out, "{line}").expect("writing to a String");
     }
     true
+}
+
+fn names(chunks: &[chunk::Chunk<'_>]) -> String {
+    chunks
+        .iter()
+        .map(chunk::Chunk::name)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn dump_figuren(buf: &[u8], full: bool, out: &mut String) -> bool {
+    let h = match figuren::FigurenHeader::parse(buf) {
+        Ok(h) => h,
+        Err(e) => {
+            eprintln!("NOPARSE: {e}");
+            out.push_str("NOPARSE\n");
+            return false;
+        }
+    };
+    let w = |out: &mut String, line: std::fmt::Arguments<'_>| {
+        out.write_fmt(line).expect("writing to a String");
+        out.push('\n');
+    };
+    w(
+        out,
+        format_args!(
+            "FIGUREN entries={} volumes={}",
+            h.entries.len(),
+            h.volumes.len()
+        ),
+    );
+    for v in &h.volumes {
+        w(
+            out,
+            format_args!(
+                "VOLUME group={} size={} frames={}",
+                v.group, v.size, v.frames
+            ),
+        );
+    }
+    for e in &h.entries {
+        w(
+            out,
+            format_args!(
+                "ENTRY id={} flag={} records={}",
+                e.id,
+                prefix_flag(e.prefix),
+                names(&e.records)
+            ),
+        );
+        for r in e
+            .records
+            .iter()
+            .filter(|r| !matches!(r.name(), "COLORS" | "HAEUSER"))
+        {
+            w(
+                out,
+                format_args!(
+                    "  RECORD {} size={} hash={:016x}",
+                    r.name(),
+                    r.size(),
+                    fnv64(r.payload.iter().copied())
+                ),
+            );
+        }
+        for (i, t) in e.palettes.iter().enumerate() {
+            let p = &t.palette;
+            w(
+                out,
+                format_args!(
+                    "  COLORTABLE i={i} id={} flag={} rgb={} name={}",
+                    p.id,
+                    prefix_flag(p.prefix),
+                    palette_hash(p),
+                    quote(t.name)
+                ),
+            );
+        }
+        for (i, g) in e.gfx.iter().enumerate() {
+            dump_gfx_set(out, &format!("SET i={i}"), "  ", g, full);
+        }
+    }
+    true
+}
+
+fn dump_gfx_set(out: &mut String, label: &str, indent: &str, g: &figuren::GfxSet<'_>, full: bool) {
+    let other = g
+        .records
+        .iter()
+        .filter(|r| !matches!(r.name(), "TEXTURES" | "SHADOW"));
+    let hash = fnv64(other.flat_map(|r| r.payload.iter().copied()));
+    writeln!(
+        out,
+        "{indent}{label} prefix={} records={} other={hash:016x}",
+        hex(g.prefix),
+        names(&g.records)
+    )
+    .expect("writing to a String");
+    for fs in &g.frame_sets {
+        let bytes = fs.to_bytes();
+        writeln!(
+            out,
+            "{indent}  TEXTURES group={} frames={} hash={:016x}",
+            fs.group,
+            fs.frames.len(),
+            fnv64(bytes)
+        )
+        .expect("writing to a String");
+        if full {
+            for (k, f) in fs.frames.iter().enumerate() {
+                writeln!(
+                    out,
+                    "{indent}    FRAME k={k} width={} height={} palette={} u06={} format={} anchor={},{} offset={} length={} u20={}",
+                    f.width, f.height, f.palette, f.unknown_06, quote(&f.format_raw), f.anchor_x, f.anchor_y, f.offset, f.length, f.unknown_20
+                )
+                .expect("writing to a String");
+            }
+        }
+    }
+    if let Some(s) = &g.shadow {
+        dump_gfx_set(out, "SHADOW", &format!("{indent}  "), s, full);
+    }
+}
+
+/// Group volumes: concatenated `Figuren<g><nn>.dat` contents.
+fn read_volume(dir: &std::path::Path, group: u32) -> std::io::Result<Vec<u8>> {
+    let mut data = Vec::new();
+    for part in 0.. {
+        match std::fs::read(dir.join(figuren::volume_file_name(group, part))) {
+            Ok(buf) => data.extend_from_slice(&buf),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && part > 0 => break,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(data)
+}
+
+/// For each requested entry id: one `FRAME` line per frame of every sprite
+/// set and shadow, with a hash over the decoded pixels.
+fn dump_frames(dir: &str, ids: &[String]) -> ExitCode {
+    let dir = std::path::Path::new(dir);
+    let run = || -> Result<(String, bool), Box<dyn std::error::Error>> {
+        let buf = std::fs::read(dir.join("FigurenHeader.dat"))?;
+        let h = figuren::FigurenHeader::parse(&buf)?;
+        let vols = (0..3)
+            .map(|g| read_volume(dir, g))
+            .collect::<Result<Vec<_>, _>>()?;
+        let (mut out, mut ok) = (String::new(), true);
+        for id in ids {
+            let Some(e) = h.entries.iter().find(|e| e.id.to_string() == *id) else {
+                writeln!(out, "ENTRY id={id} MISSING")?;
+                ok = false;
+                continue;
+            };
+            writeln!(out, "ENTRY id={id} sets={}", e.gfx.len())?;
+            for (i, g) in e.gfx.iter().enumerate() {
+                let sets = [(0, Some(g)), (1, g.shadow.as_deref())];
+                for (shadow, set) in sets {
+                    for fs in set.map(|s| s.frame_sets.as_slice()).unwrap_or_default() {
+                        for (k, f) in fs.frames.iter().enumerate() {
+                            write!(
+                                out,
+                                "FRAME set={i} shadow={shadow} group={} k={k} ",
+                                fs.group
+                            )?;
+                            ok &= frame_line(&vols, fs.group, f, &mut out)?;
+                        }
+                    }
+                }
+            }
+        }
+        Ok((out, ok))
+    };
+    match run() {
+        Ok((out, ok)) => {
+            let written = std::io::stdout().lock().write_all(out.as_bytes()).is_ok();
+            if ok && written {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        Err(e) => {
+            eprintln!("{}: {e}", dir.display());
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `width= height= format= opaque= pixels=` where `pixels` is FNV-1a 64 over
+/// `0` per transparent pixel and `1, index, z, level` per covered one, or `BAD`.
+fn frame_line(
+    vols: &[Vec<u8>],
+    group: u32,
+    f: &figuren::Frame,
+    out: &mut String,
+) -> Result<bool, std::fmt::Error> {
+    let range = usize::try_from(f.offset)
+        .ok()
+        .and_then(|s| Some(s..s.checked_add(usize::try_from(f.length).ok()?)?));
+    let data = usize::try_from(group)
+        .ok()
+        .and_then(|g| vols.get(g))
+        .zip(range)
+        .and_then(|(v, r)| v.get(r));
+    let px = match (f.format(), data) {
+        (Some(fmt), Some(d)) => {
+            figuren::decode_frame(fmt, d, usize::from(f.width), usize::from(f.height)).ok()
+        }
+        _ => None,
+    };
+    let (opaque, pixels) = match &px {
+        Some(px) => {
+            let bytes = px.iter().flat_map(|p| match p {
+                Some(p) => vec![1, p.index, p.z, p.level],
+                None => vec![0],
+            });
+            (
+                px.iter().flatten().count(),
+                format!("{:016x}", fnv64(bytes)),
+            )
+        }
+        None => (0, "BAD".to_string()),
+    };
+    writeln!(
+        out,
+        "width={} height={} format={} opaque={opaque} pixels={pixels}",
+        f.width,
+        f.height,
+        quote(&f.format_raw)
+    )?;
+    Ok(px.is_some())
 }

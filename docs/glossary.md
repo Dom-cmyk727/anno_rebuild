@@ -18,6 +18,7 @@ Sources abbreviated below: GFA = `docs/research/game-files-analysis.md`, CL = `d
 | Waren (sg. Ware) | goods, wares | Tradeable goods | `BGruppen.dat` (goods/prices per GFA), chunk `WARETYPE`, View.dll goods tooltips (GFA §1–3) |
 | WARETYPE | goods type | Goods type definitions/settings in a scenario (unconfirmed) | `.sze` chunk `SCENE/WARETYPE` (GFA §3) |
 | BGruppen | "B-groups" | Plain-text file with goods and prices (`Id` blocks per CL). What "B" abbreviates is unconfirmed. | `Data/BGruppen.dat` (GFA §2, CL §3) |
+| Farbtabelle (pl. Farbtabellen) | colour table | A 256-colour palette; the directory name in every `Anlagen.dat` `COLORS` entry name (`Farbtabellen\<file>.pcx`), i.e. the palettes were authored as PCX files | `Anlagen.dat` `COLORS/ENTRY` `NAME` (P, `docs/formats/palette.md`) |
 | Gelaende (Gelände) | terrain | Per-tile terrain classification of an island (unconfirmed) | Island chunk `GELAENDE` (GFA §3) |
 | Wachstum | growth | Population growth data (unconfirmed; PLAN links it with `VermehrTab`) | `Data/Wachstum.dat` (GFA §2) |
 | VermehrTab | multiplication/breeding table | Growth table field in `Anlagen.dat` per easy-player-boost patch (unconfirmed for GOG build) | `Anlagen.dat` field cited from community patch (PLAN M1.4) |
@@ -62,7 +63,7 @@ Chunk container per `tools/chunks.py` (12-byte name + u32 LE size + payload). Pa
 | `HEAD`, `MAIN`, `GUID`, `ALIASNAME`, `WARETYPE`, `SKTIMER`, `MONOPOL2`, `LIMITS`, `COMPPROFIL2`, `ROHSTOFF`, `SCHATZ`, `ERZE`, `BIGBROTHER`, `AUFTRAGTEXT`, `SPIELER`, `INSEL5`, `INSELLNK` | Children of `SCENE` in `.sze` ("excerpt" per GFA, list not exhaustive) |
 | `INSEL4`, `INSEL5` | Island data in `.scp` / `.sze` |
 | `INFO`, `HEIGHT`, `GFXID`, `GELAENDE`, `PROD2`, `FRUCHTBAR`, `BERGWERK2`, `OCCUR`, `ANBAU`, `DISCOVER`, `KONTORID`, `STAEDTE`, `LOCKED` | Island chunks (`.scp`, island sections of `.sze`) |
-| `COLORS` | `Anlagen.dat` (440 ENTRY) |
+| `COLORS` | `Anlagen.dat` (440 ENTRY, colour tables; layout in `docs/formats/palette.md`) |
 | `ANLAGEN` | `Anlagen.dat` (921 ENTRY) |
 | `TEXTURES` | `Anlagen.dat` (3×) |
 | `ENTRY` | `Anlagen.dat` (inside COLORS, ANLAGEN); `FigurenHeader.dat` (does not parse generically) |

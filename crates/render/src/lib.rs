@@ -2,3 +2,4 @@
 //! [`anno_assets`]; never mutates simulation state.
 
 pub mod iso;
+pub mod scene;

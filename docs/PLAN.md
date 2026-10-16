@@ -99,12 +99,13 @@ Status M1.5 (2026-10-16): `[~]` islands structurally done; scenario records, pla
 - [ ] Specs: `docs/formats/scp.md`, `docs/formats/sze.md`, `docs/formats/data-text.md`.
 
 ### M1.6 Viewer (`crates/render`, `crates/app`)
-Status M1.6 (2026-10-16): `[~]` offline isometric renderer works; window, camera, elevation, shadows open.
+Status M1.6 (2026-10-16): `[~]` offline isometric renderer and interactive viewer work; elevation, shadows, open water, ships open.
 - `anno_render::iso` (CPU) + `anno-extract view <game_dir> <file> <island> <out.png> [<group> [<lift>]]` render one island: ground from `Felder.tex` cells, `GELAENDE` + `PROD2` objects from `Anlagen.dat` with anchors on footprint centres, back-to-front order. Rules and evidence: `docs/render/iso.md`. Checked on a polar village, a forested island and a walled city (12,316 objects, none failed).
-- Open: `HEIGHT` needs sloped tiles before its scale can be calibrated (OQ-026); open water; shadows; animation; whole-scenario view (islands at their `INSEL5` world positions); interactive window (wgpu/winit) with pan/zoom; `app --view`.
-- [ ] wgpu + SDL2 (or winit) window, isometric tile renderer for ground (`Felder.tex`) using `HEIGHT`/`GFXID` from one `.scp`.
+- Viewer (2026-10-16): `anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group N] [--png <out.png>]`. `anno_render::scene` places every island at its `INSEL5` world position (rules in `docs/render/iso.md`, "Scene composition"); the window (`winit` 0.30.13 + `softbuffer` 0.4.8, CPU blit) pans by drag/arrows/WASD and switches zoom groups 2/1/0 by wheel or `+`/`-`, rendering 1,024 px chunks lazily on all cores. `--png` is headless; `Single_01.sze` at group 2: 15 islands, 69,256 objects drawn, 0 failed (integration test `crates/app/tests/view.rs`).
+- Open: `HEIGHT` needs sloped tiles before its scale can be calibrated (OQ-026); open water; shadows; animation; ships and figures; island draw order (OQ-026 f); GPU renderer (wgpu) once the CPU rules are settled.
+- [~] Window (winit + softbuffer, CPU) with the isometric ground renderer (`Felder.tex`, `GFXID`); `HEIGHT` not applied yet; wgpu later.
 - [ ] Draw placed buildings from a `.sze` scenario using Figuren sprites; correct draw order (painter's by iso depth); camera pan/zoom.
-- [ ] `app --view <file.sze|file.scp>` as the entry point. No gameplay.
+- [x] `app --view <file.sze|file.scp>` as the entry point. No gameplay.
 
 - [ ] **Language gate (end of M1):** review ADR 0000 with the co-developer before any `sim` code is written: stay in Rust, or port `formats` to C++20 against the existing oracles/corpus facts and continue there.
 

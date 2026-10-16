@@ -13,6 +13,9 @@ anno-sim.workspace = true
 anno-net.workspace = true
 anno-render.workspace = true
 anno-ui.workspace = true
+png = "0.18.1"
+softbuffer = "0.4.8"
+winit = "0.30.13"
 
 [lints]
 workspace = true

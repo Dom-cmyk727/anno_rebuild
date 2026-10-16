@@ -11,7 +11,7 @@ Sources abbreviated below: GFA = `docs/research/game-files-analysis.md`, CL = `d
 | Term | Literal English | Meaning in this project | Where it appears |
 |---|---|---|---|
 | Anlagen (sg. Anlage) | installations, facilities | Buildings and placeable objects; `ANLAGEN` holds 921 ENTRY records. Community classes `TAnlage*` (DatEditor). | `Anlagen.dat` (chunks COLORS, ANLAGEN, TEXTURES); `Texte.dat` section `[ANLAGEN]` (id → name) (GFA §2, PLAN M1.4) |
-| Figuren (sg. Figur) | figures | Sprite graphics (people, ships, buildings' graphics per community decoder); data in `Figuren*.dat`, indexed by `FigurenHeader.dat` | `FigurenHeader.dat`, `Figuren*.dat` (16 files) (GFA §2, CL §3) |
+| Figuren (sg. Figur) | figures | Animated sprite graphics (people, animals, ships, effects); 368 figure types in `FigurenHeader.dat`, pixel data in `Figuren<group><part>.dat` volumes, three zoom groups | `FigurenHeader.dat`, `Figuren*.dat` (16 files) (P, `docs/formats/figuren.md`) |
 | Welt | world | The game world; module believed to hold the simulation core (unconfirmed, inferred from exports/imports) | `AnnoWelt.dll` (exports AnnoWelt, GetAnnoInselFileData, RepairSavegame) (GFA §1) |
 | Insel | island | An island: terrain grid plus island-level data | Chunks `INSEL4`, `INSEL5`, `INSELLNK`; export `GetAnnoInselFileData`; `.scp` island templates (GFA §1, §3) |
 | INSELLNK | island link | Link/reference from a scenario to island data (unconfirmed) | `.sze` chunk `SCENE/INSELLNK` (GFA §3) |
@@ -31,8 +31,9 @@ Sources abbreviated below: GFA = `docs/research/game-files-analysis.md`, CL = `d
 | Fruchtbar | fertile | Fertility (which crops grow on an island) (unconfirmed) | Island chunk `FRUCHTBAR` (GFA §3) |
 | Anbau | cultivation | Cultivated/planted area or crops (unconfirmed) | Island chunk `ANBAU` (GFA §3) |
 | PROD | production | Production-related island data (unconfirmed) | Island chunk `PROD2` (GFA §3) |
-| Bewohner / BEWOHNTYPE | inhabitant / inhabitant type | Key in a figure header ENTRY; likely the resident class a figure belongs to (unconfirmed) | `FigurenHeader.dat` ENTRY key `BEWOHNTYPE` (GFA §3) |
-| HAEUSER (Häuser) | houses | Key in a figure header ENTRY (unconfirmed) | `FigurenHeader.dat` ENTRY key (PLAN M1.3) |
+| Bewohner / BEWOHNTYPE | inhabitant / inhabitant type | String record of a figure type, e.g. `MAEHER` (mower), `EXPLOSION`; probably the figure's type name (meaning of the values unconfirmed, OQ-023) | `FigurenHeader.dat` ENTRY record `BEWOHNTYPE` (P) |
+| HAEUSER (Häuser) | houses | Record of a figure type that holds its sprite sets (frame lists per zoom group, optional shadow); despite the name it is used for every figure, not only buildings | `FigurenHeader.dat` ENTRY record (P, `docs/formats/figuren.md`) |
+| Maeher (Mäher) | mower | Figure type of entry 101 (a worker with a scythe); used as the reference sprite for M1.3 | `FigurenHeader.dat` `BEWOHNTYPE`/`ROUTETYPE` `MAEHER` (P) |
 | Szene / SCENE | scene | A scenario (map + rules + players); also the savegame module | `.sze` chunk `SCENE`; `AnnoScene.dll` (exports AnnoScene, SaveGame, SceneCache, AnnoBigBrother) (GFA §1, §3) |
 | Spieler | player | Player definitions in a scenario | `.sze` chunk `SCENE/SPIELER` (GFA §3) |
 | Rohstoff | raw material | Raw-material settings in a scenario (unconfirmed) | `.sze` chunk `SCENE/ROHSTOFF` (GFA §3) |

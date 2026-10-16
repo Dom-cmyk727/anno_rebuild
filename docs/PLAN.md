@@ -75,10 +75,13 @@ Status M1.3 (2026-10-16): `[~]` reader, decoder, shadows, reference dump, PNG ex
 - Open (non-blocking for M1.6): meaning of `z`, `level`, `H`, anchors and of the records `VERSION2`, `HEAD`, `LOGIC`, `BODY2`, `ANIM`, `SOUND2`, `GFXDATA` (OQ-023); frame pixel re-encoder; Amsel cross-check (human task, §7).
 
 ### M1.4 Buildings (`Anlagen.dat/ANLAGEN`, 921 ENTRY)
-Findings so far (2026-10-16, not yet in code): `ANLAGEN` = 921 `ENTRY` (ids 1–3998, ascending) with the figure record layout (8-byte prefix + records `VERSION2`, `HEAD`, `PRODTYPE`, `PROD3`, `WARE`, `ROHSTOFF`, `WALKMASK`, `SHOTMASK`, `OWNMASK`, `HAEUSER`, `COLORS` (891), …); `HAEUSER` = 1,031 sprite sets in the `FigurenHeader.dat` layout (`BODY2`, `ANIM`, `GFXDATA`, `TEXTURES` × 3, optional `TITLE`/`SHADOW`). Their 9,633 frames per zoom group tile the three inline `TEXTURES` chunks exactly (offsets relative to the payload after `u32 group, u32 9633`). Frame formats include three not seen in figures: `BSH_RGBWZ` (3,528), `BSH_RGBZM` (912), `BSH_RGBAH` (120).
-- [ ] Decode ENTRY layout (size, footprint, gfx ids, production fields). Sources: Azukee's `AnlagenParser.cs` (class names `TAnlage*`, `THaus*` from IDA) via Software Heritage; `anno-1503-easy-player-boost/build_mod.py` for confirmed field offsets (production interval, coverage radius, `VermehrTab`).
+Status M1.4 (2026-10-16): `[~]` file structure, graphics and reference dump done; gameplay records open.
+- `anno_formats::anlagen` parses `Anlagen.dat` completely: 440 global colour tables, 921 `ANLAGEN` entries (ids 1–3998; figure entry layout; byte-identical re-encoding), 1,031 sprite sets (110 with shadow), three inline pixel volumes with 9,633 frames each that the frame ranges tile exactly. `ANLAGEN` `COLORS` = list of global table ids (OQ-022 d). New frame formats `BSH_RGBWZ`, `BSH_RGBZM` (2 bytes `[z, index]`) and `BSH_RGBAH` (1 byte + level); 51 frames have rows that overrun their width and decode only with clipping (OQ-025).
+- `anno-dump anlagen [--full]` = `tools/figuren.py anlagen`; `anno-extract anlagen` renders entries. Visual check: palace, castle, cliff, river piece.
+- Open: meaning of `HEAD`, `PRODTYPE`, `PROD3`, `WARE`, `ROHSTOFF`, the masks, `INFRAMIN`, `OBJECTPOS`, `BAUSAMPLE`, `ENTRANCE`, …; join with `Texte.dat` names; how scenario objects reference `ANLAGEN` ids (needed to place buildings in M1.6).
+- [~] Decode ENTRY layout (size, footprint, gfx ids, production fields). Sources: Azukee's `AnlagenParser.cs` (class names `TAnlage*`, `THaus*` from IDA) via Software Heritage; `anno-1503-easy-player-boost/build_mod.py` for confirmed field offsets (production interval, coverage radius, `VermehrTab`).
 - [ ] Join with `Texte.dat` `[ANLAGEN]` id→name for a readable dump (`anno-dump anlagen`).
-- [ ] Spec: `docs/formats/anlagen.md`.
+- [~] Spec: `docs/formats/anlagen.md`.
 
 ### M1.5 Islands and scenarios (`.scp`, `.sze`)
 - [~] Island: `INSEL4/5`, `INFO`, `HEIGHT`, `GFXID`, `GELAENDE`, `PROD2`, `FRUCHTBAR`, `BERGWERK2`, `OCCUR`, `ANBAU`, `DISCOVER`, `KONTORID`, `STAEDTE`, `LOCKED`. Start with `HEIGHT`/`GFXID`/`GELAENDE` (grid arrays; dimensions from file name `Po_064x064_…` and `INFO`).

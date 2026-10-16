@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 anno-assets.workspace = true
 anno-formats.workspace = true
+anno-render.workspace = true
 png = "0.18.1"
 
 [lints]

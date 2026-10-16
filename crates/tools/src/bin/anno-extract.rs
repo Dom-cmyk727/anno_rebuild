@@ -5,6 +5,7 @@
 //! anno-extract figuren <game_dir> <outdir> <entry id>...
 //! anno-extract insel <file.scp|file.sze> <Felder.tex> <outdir> [<px per tile>]
 //! anno-extract anlagen <Anlagen.dat> <outdir> <entry id>...
+//! anno-extract view <game_dir> <file.scp|file.sze> <island index> <out.png> [<zoom group> [<lift n/d>]]
 //! ```
 //!
 //! `tex` writes every texture as `<outdir>/<id>.png` (8-bit RGBA, transparent
@@ -28,6 +29,9 @@
 //! `figuren` (`<outdir>/<entry>/s<set>_g<group>_<k>[_shadow].png` + `index.txt`;
 //! `table=` names the global colour table; mapping in `anno_assets::building`).
 //!
+//! `view` renders one island isometrically (ground + `GELAENDE` + `PROD2`
+//! objects) with `anno_render::iso` at zoom group 0–2 (default 1).
+//!
 //! Items that fail to decode are listed with `ERROR <message>` instead of a
 //! file name and make the exit code 1.
 
@@ -49,7 +53,8 @@ use anno_formats::tex::TexFile;
 const USAGE: &str = "usage: anno-extract tex <file.tex> <outdir>\n       \
                      anno-extract figuren <game_dir> <outdir> <entry id>...\n       \
                      anno-extract insel <file.scp|file.sze> <Felder.tex> <outdir> [<px per tile>]\n       \
-                     anno-extract anlagen <Anlagen.dat> <outdir> <entry id>...";
+                     anno-extract anlagen <Anlagen.dat> <outdir> <entry id>...\n       \
+                     anno-extract view <game_dir> <file.scp|file.sze> <island index> <out.png> [<zoom group> [<lift n/d>]]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -57,6 +62,25 @@ fn main() -> ExitCode {
         [cmd, file, outdir] if cmd == "tex" => (file, extract_tex(file, Path::new(outdir))),
         [cmd, dir, outdir, ids @ ..] if cmd == "figuren" && !ids.is_empty() => {
             (dir, extract_figuren(Path::new(dir), Path::new(outdir), ids))
+        }
+        [cmd, dir, file, index, out, rest @ ..] if cmd == "view" && rest.len() <= 2 => {
+            let group = rest
+                .first()
+                .map_or(Some(1), |g| g.parse().ok().filter(|&g: &usize| g < 3));
+            let lift = rest.get(1).map_or(Some(anno_render::iso::Lift::NONE), |l| {
+                let (n, d) = l.split_once('/')?;
+                let den = d.parse().ok().filter(|&d: &i32| d > 0)?;
+                Some(anno_render::iso::Lift {
+                    num: n.parse().ok()?,
+                    den,
+                })
+            });
+            let (Some(group), Some(lift), Ok(index)) = (group, lift, index.parse::<usize>()) else {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            };
+            let out = view(Path::new(dir), file, index, Path::new(out), group, lift);
+            (file, out)
         }
         [cmd, file, outdir, ids @ ..] if cmd == "anlagen" && !ids.is_empty() => {
             (file, extract_anlagen(file, Path::new(outdir), ids))
@@ -244,6 +268,41 @@ fn extract_anlagen(path: &str, outdir: &Path, ids: &[String]) -> Result<bool, Bo
         std::fs::write(out.join("index.txt"), index)?;
     }
     Ok(all_ok)
+}
+
+/// Renders island `index` of `file`; `Ok(false)` if some drawable objects failed.
+fn view(
+    dir: &Path,
+    file: &str,
+    index: usize,
+    out: &Path,
+    group: usize,
+    lift: anno_render::iso::Lift,
+) -> Result<bool, BoxError> {
+    use anno_render::iso;
+    let buf = std::fs::read(file)?;
+    let islands = insel::islands(&buf)?;
+    let island = islands.get(index).ok_or("no island with that index")?;
+    let felder_buf = std::fs::read(dir.join("Textures/Felder.tex"))?;
+    let textures = GroundTextures::new(&TexFile::parse(&felder_buf)?)?;
+    let anl_buf = std::fs::read(dir.join("Anlagen.dat"))?;
+    let anlagen = AnlagenFile::parse(&anl_buf)?;
+    let mut canvas = iso::Canvas::for_island(island, group, 400);
+    iso::draw_ground(&mut canvas, island, &textures, group, lift);
+    let stats = iso::draw_objects(
+        &mut canvas,
+        island,
+        &anlagen,
+        &["GELAENDE", "PROD2"],
+        group,
+        lift,
+    );
+    eprintln!(
+        "{file}: island {index}: {} objects drawn, {} invisible, {} failed",
+        stats.drawn, stats.invisible, stats.failed
+    );
+    write_png(out, &canvas.into_rgba())?;
+    Ok(stats.failed == 0)
 }
 
 /// Returns `Ok(false)` if some islands could not be rendered.

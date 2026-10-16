@@ -347,3 +347,44 @@ fn extract_anlagen_corpus_samples() {
         assert_eq!(index.lines().count(), frames, "entry {id}");
     }
 }
+
+/// `anno-extract view`: renders islands without failed objects; the canvas
+/// size follows the projection (`docs/render/iso.md`).
+#[test]
+fn view_corpus_samples() {
+    let Some(dir) = std::env::var_os("ANNO1503_GAME_DIR").map(PathBuf::from) else {
+        eprintln!("skipping view_corpus_samples: ANNO1503_GAME_DIR not set");
+        return;
+    };
+    let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("view");
+    std::fs::create_dir_all(&out).unwrap();
+    for (sample, index, group, size) in [
+        (
+            "Scenes/Islands/Polar/Po_064x064_0008_Eskimo.scp",
+            "0",
+            "2",
+            (1280, 1040),
+        ),
+        ("Scenes/0200Single/Single_01.sze", "1", "2", (1600, 1200)),
+    ] {
+        let png = out.join(format!("{}.png", sample.replace('/', "_")));
+        let res = Command::new(env!("CARGO_BIN_EXE_anno-extract"))
+            .args(["view"])
+            .arg(&dir)
+            .arg(dir.join(sample))
+            .args([index])
+            .arg(&png)
+            .arg(group)
+            .output()
+            .expect("spawn");
+        let log = String::from_utf8_lossy(&res.stderr);
+        assert!(res.status.success(), "{sample}: {log}");
+        assert!(log.contains(" 0 failed"), "{log}");
+        let (w, h, px) = read_png(&png);
+        assert_eq!((w, h), size, "{sample}");
+        assert!(
+            px.chunks(4).filter(|p| p[3] == 255).count() > px.len() / 4 / 8,
+            "{sample}: mostly empty"
+        );
+    }
+}

@@ -31,6 +31,7 @@ name = "anno-render"
 version = "0.1.0"
 dependencies = [
  "anno-assets",
+ "anno-formats",
 ]
 
 [[package]]
@@ -43,6 +44,7 @@ version = "0.1.0"
 dependencies = [
  "anno-assets",
  "anno-formats",
+ "anno-render",
  "png",
 ]
 

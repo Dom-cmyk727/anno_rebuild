@@ -60,11 +60,19 @@ Status M1.2 (2026-10-16): `[x]` decoders, specs, reference dump, PNG export, vis
 - Open (non-blocking): unknown fields in OQ-021/OQ-022.
 
 ### M1.3 Figures / sprites (`FigurenHeader.dat`, `Figuren000..200.dat`)
-- [ ] Reader for `FigurenHeader.dat`: ENTRY records with 12-byte keys + u32 (`VERSION2`, `HEAD`, `BEWOHNTYPE`, `ROUTETYPE`, `LOGIC`, `PATH`, `COLORS`, `HAEUSER`, …). Per community notes each sprite header holds height, width, local palette id, tag, midpoint, data offset and length; first four bytes big-endian — **verify** against the file before trusting.
-- [ ] RLE decoder for `Figuren*.dat` sprite data. Hypothesis from mdcii/anno16_docs: 8-bit indexed, RLE with transparency runs, external palette. Confirm shape by decoding a known sprite (e.g. figure id 203 = carrier per AnnoZone) and rendering it.
-- [ ] Shadow/alpha maps ("BSH_ALPHA" greyscale per community) — decode once base sprites work.
-- [ ] `anno-extract figuren` dumps all sprites as PNG with an index JSON (id, size, midpoint, palette).
-- [ ] Spec: `docs/formats/figuren.md`. Cross-check with Amsel's spec once obtained (contact millimarg — see §7).
+- [x] Reader for `FigurenHeader.dat`: ENTRY records with 12-byte keys + u32 (`VERSION2`, `HEAD`, `BEWOHNTYPE`, `ROUTETYPE`, `LOGIC`, `PATH`, `COLORS`, `HAEUSER`, …). Per community notes each sprite header holds height, width, local palette id, tag, midpoint, data offset and length; first four bytes big-endian — **verify** against the file before trusting.
+- [x] RLE decoder for `Figuren*.dat` sprite data. Hypothesis from mdcii/anno16_docs: 8-bit indexed, RLE with transparency runs, external palette. Confirm shape by decoding a known sprite (e.g. figure id 203 = carrier per AnnoZone) and rendering it.
+- [x] Shadow/alpha maps ("BSH_ALPHA" greyscale per community) — decode once base sprites work.
+- [x] `anno-extract figuren` dumps all sprites as PNG with an index JSON (id, size, midpoint, palette).
+- [~] Spec: `docs/formats/figuren.md`. Cross-check with Amsel's spec once obtained (contact millimarg — see §7).
+
+Status M1.3 (2026-10-16): `[~]` reader, decoder, shadows, reference dump, PNG export and spec done; record semantics and the Amsel cross-check open.
+- Index: `anno_formats::figuren` reads `FigurenHeader.dat` completely — 368 figure types (`ENTRY`: 8-byte prefix + chunk records), 0–3 colour tables each (`Anlagen.dat` table layout), 1,288 sprite sets in `HAEUSER` (1,047 with `SHADOW`), 731,121 frame headers (36 bytes: size, colour table, format, anchor, volume offset/length) in three zoom groups of 243,707. Everything little-endian; the community "big-endian" claim does not hold (OQ-002 resolved). Byte-identical round trip of the whole file.
+- Volumes: `Figuren<g><nn>.dat` concatenated per zoom group; frame ranges tile each group exactly. The root `ANNO` size counts header file + all volumes; three trailing `TEXTURES` headers hold per-group size and frame count.
+- Pixels: `.tex` row RLE with 1 byte (`BSH_RGBV`, `BSH_RGBH`, `BSH_RGBAV`), 2 bytes `[z, index]` (`BSH_RGBZ`, `BSH_RGBAZ`) or 0 bytes (`BSH_ALPHA` shadow masks) per pixel; `A` formats carry a 2-bit level in the count byte (OQ-003 resolved). All 655,842 distinct frame ranges decode.
+- Reference dump: `anno-dump figuren [--full]` / `anno-dump frames` = `tools/figuren.py dump/frames` (synthetic on CI, corpus incl. the 743,672-line full dump and one entry per format).
+- PNG export: `anno-extract figuren <game_dir> <outdir> <entry id>…` with a text `index.txt` (same convention as `anno-extract tex` instead of JSON). Visual check 2026-10-16: mower (101), sheep (103), galleon (1501, zoom groups 0 and 2), gondola (1510) and shadow masks render correctly. Entry 203 is `BEWOHNTYPE TRAEGER` (carrier, colour table `Träger01.pcx`, 8 sprite sets) and renders as a carrier, matching the AnnoZone id — the community figure ids apply to this build.
+- Open (non-blocking for M1.6): meaning of `z`, `level`, `H`, anchors and of the records `VERSION2`, `HEAD`, `LOGIC`, `BODY2`, `ANIM`, `SOUND2`, `GFXDATA` (OQ-023); frame pixel re-encoder; Amsel cross-check (human task, §7).
 
 ### M1.4 Buildings (`Anlagen.dat/ANLAGEN`, 921 ENTRY)
 - [ ] Decode ENTRY layout (size, footprint, gfx ids, production fields). Sources: Azukee's `AnlagenParser.cs` (class names `TAnlage*`, `THaus*` from IDA) via Software Heritage; `anno-1503-easy-player-boost/build_mod.py` for confirmed field offsets (production interval, coverage radius, `VermehrTab`).

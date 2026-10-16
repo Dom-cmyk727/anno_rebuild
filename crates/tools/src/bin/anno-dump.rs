@@ -8,6 +8,7 @@
 //! anno-dump figuren [--full] <FigurenHeader.dat>...  figure index (same as `tools/figuren.py dump`)
 //! anno-dump frames <game_dir> <entry id>...  decoded frames (same as `tools/figuren.py frames`)
 //! anno-dump insel [--full] <file.scp|file.sze>...  islands (same as `tools/insel.py dump`)
+//! anno-dump anlagen [--full] <Anlagen.dat>...  ANLAGEN entries (same as `tools/figuren.py anlagen`)
 //! anno-dump probe <path> <file>...   statistics over all chunks at a name path
 //! ```
 //!
@@ -23,7 +24,7 @@ use std::fmt::Write as _;
 use std::io::Write as _;
 use std::process::ExitCode;
 
-use anno_formats::{chunk, colors, figuren, inc, insel, tex};
+use anno_formats::{anlagen, chunk, colors, figuren, inc, insel, tex};
 
 const USAGE: &str = "usage: anno-dump chunks <file>...\n       \
                      anno-dump tex [--full] <file>...\n       \
@@ -32,6 +33,7 @@ const USAGE: &str = "usage: anno-dump chunks <file>...\n       \
                      anno-dump figuren [--full] <FigurenHeader.dat>...\n       \
                      anno-dump frames <game_dir> <entry id>...\n       \
                      anno-dump insel [--full] <file.scp|file.sze>...\n       \
+                     anno-dump anlagen [--full] <Anlagen.dat>...\n       \
                      anno-dump probe <path> <file>...";
 
 fn main() -> ExitCode {
@@ -42,7 +44,8 @@ fn main() -> ExitCode {
     };
     let (full, files) = match rest.split_first() {
         Some((flag, files))
-            if matches!(cmd, "tex" | "colors" | "figuren" | "insel") && flag == "--full" =>
+            if matches!(cmd, "tex" | "colors" | "figuren" | "insel" | "anlagen")
+                && flag == "--full" =>
         {
             (true, files)
         }
@@ -72,6 +75,7 @@ fn main() -> ExitCode {
         "colors" => dump_files(files, |buf, out| dump_colors(buf, full, out)),
         "figuren" => dump_files(files, |buf, out| dump_figuren(buf, full, out)),
         "insel" => dump_files(files, |buf, out| dump_insel(buf, full, out)),
+        "anlagen" => dump_files(files, |buf, out| dump_anlagen(buf, full, out)),
         _ => usage(),
     }
 }
@@ -478,46 +482,91 @@ fn dump_figuren(buf: &[u8], full: bool, out: &mut String) -> bool {
         );
     }
     for e in &h.entries {
+        dump_entry(out, e, full);
+    }
+    true
+}
+
+/// The `ENTRY` block shared by `figuren` and `anlagen`.
+fn dump_entry(out: &mut String, e: &figuren::Entry<'_>, full: bool) {
+    let w = |out: &mut String, line: std::fmt::Arguments<'_>| {
+        out.write_fmt(line).expect("writing to a String");
+        out.push('\n');
+    };
+    w(
+        out,
+        format_args!(
+            "ENTRY id={} flag={} records={}",
+            e.id,
+            prefix_flag(e.prefix),
+            names(&e.records)
+        ),
+    );
+    for r in e
+        .records
+        .iter()
+        .filter(|r| !matches!(r.name(), "COLORS" | "HAEUSER"))
+    {
         w(
             out,
             format_args!(
-                "ENTRY id={} flag={} records={}",
-                e.id,
-                prefix_flag(e.prefix),
-                names(&e.records)
+                "  RECORD {} size={} hash={:016x}",
+                r.name(),
+                r.size(),
+                fnv64(r.payload.iter().copied())
             ),
         );
-        for r in e
-            .records
-            .iter()
-            .filter(|r| !matches!(r.name(), "COLORS" | "HAEUSER"))
-        {
-            w(
-                out,
-                format_args!(
-                    "  RECORD {} size={} hash={:016x}",
-                    r.name(),
-                    r.size(),
-                    fnv64(r.payload.iter().copied())
-                ),
-            );
+    }
+    if !e.palette_ids.is_empty() {
+        let ids: Vec<String> = e.palette_ids.iter().map(u32::to_string).collect();
+        w(out, format_args!("  COLORIDS ids={}", ids.join(",")));
+    }
+    for (i, t) in e.palettes.iter().enumerate() {
+        let p = &t.palette;
+        w(
+            out,
+            format_args!(
+                "  COLORTABLE i={i} id={} flag={} rgb={} name={}",
+                p.id,
+                prefix_flag(p.prefix),
+                palette_hash(p),
+                quote(t.name)
+            ),
+        );
+    }
+    for (i, g) in e.gfx.iter().enumerate() {
+        dump_gfx_set(out, &format!("SET i={i}"), "  ", g, full);
+    }
+}
+
+fn dump_anlagen(buf: &[u8], full: bool, out: &mut String) -> bool {
+    let file = match anlagen::AnlagenFile::parse(buf) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("NOPARSE: {e}");
+            out.push_str("NOPARSE\n");
+            return false;
         }
-        for (i, t) in e.palettes.iter().enumerate() {
-            let p = &t.palette;
-            w(
-                out,
-                format_args!(
-                    "  COLORTABLE i={i} id={} flag={} rgb={} name={}",
-                    p.id,
-                    prefix_flag(p.prefix),
-                    palette_hash(p),
-                    quote(t.name)
-                ),
-            );
-        }
-        for (i, g) in e.gfx.iter().enumerate() {
-            dump_gfx_set(out, &format!("SET i={i}"), "  ", g, full);
-        }
+    };
+    writeln!(
+        out,
+        "ANLAGEN entries={} volumes={}",
+        file.entries.len(),
+        file.volumes.len()
+    )
+    .expect("writing to a String");
+    for v in &file.volumes {
+        writeln!(
+            out,
+            "VOLUME group={} frames={} bytes={}",
+            v.group,
+            v.frames,
+            v.data.len()
+        )
+        .expect("writing to a String");
+    }
+    for e in &file.entries {
+        dump_entry(out, e, full);
     }
     true
 }

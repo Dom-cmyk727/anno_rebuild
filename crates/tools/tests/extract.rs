@@ -288,3 +288,62 @@ fn extract_insel_corpus_samples() {
         assert_eq!(saw_missing, missing, "{sample}");
     }
 }
+
+/// `anno-extract anlagen` on the palace (1380, `Z`), castle (2223, `AZ`),
+/// cliff (1591, `ZM`) and river piece (2702, `WZ`): PNGs equal
+/// `building::to_rgba`.
+#[test]
+fn extract_anlagen_corpus_samples() {
+    use anno_assets::building;
+    use anno_formats::anlagen::AnlagenFile;
+    let Some(dir) = std::env::var_os("ANNO1503_GAME_DIR").map(PathBuf::from) else {
+        eprintln!("skipping extract_anlagen_corpus_samples: ANNO1503_GAME_DIR not set");
+        return;
+    };
+    let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("extract_anlagen");
+    let _ = std::fs::remove_dir_all(&out);
+    let ids = ["1380", "2223", "1591", "2702"];
+    let res = Command::new(env!("CARGO_BIN_EXE_anno-extract"))
+        .arg("anlagen")
+        .arg(dir.join("Anlagen.dat"))
+        .arg(&out)
+        .args(ids)
+        .output()
+        .expect("spawn");
+    assert!(
+        res.status.success(),
+        "{}",
+        String::from_utf8_lossy(&res.stderr)
+    );
+    let buf = std::fs::read(dir.join("Anlagen.dat")).unwrap();
+    let file = AnlagenFile::parse(&buf).unwrap();
+    for id in ids {
+        let entry = file
+            .entries
+            .iter()
+            .find(|e| e.id.to_string() == id)
+            .unwrap();
+        let mut frames = 0;
+        for (i, set) in entry.gfx.iter().enumerate() {
+            for (suffix, s) in [("", Some(set)), ("_shadow", set.shadow.as_deref())] {
+                for fs in s.map(|s| s.frame_sets.as_slice()).unwrap_or_default() {
+                    for (k, f) in fs.frames.iter().enumerate() {
+                        frames += 1;
+                        let want = building::to_rgba(&file, entry, fs.group, f).expect("decodes");
+                        let png = out
+                            .join(id)
+                            .join(format!("s{i}_g{}_{k}{suffix}.png", fs.group));
+                        assert_eq!(
+                            read_png(&png),
+                            (u32::from(want.width), u32::from(want.height), want.pixels),
+                            "{}",
+                            png.display()
+                        );
+                    }
+                }
+            }
+        }
+        let index = std::fs::read_to_string(out.join(id).join("index.txt")).unwrap();
+        assert_eq!(index.lines().count(), frames, "entry {id}");
+    }
+}

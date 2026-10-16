@@ -3,6 +3,7 @@ Independent of crates/formats; spec: docs/formats/figuren.md.
 
   figuren.py dump [--full] <FigurenHeader.dat>...  same output as `anno-dump figuren [--full]`
   figuren.py frames <game_dir> <entry id>...       same output as `anno-dump frames`
+  figuren.py anlagen [--full] <Anlagen.dat>...     same output as `anno-dump anlagen [--full]`
 """
 import os, re, struct, sys
 
@@ -72,20 +73,28 @@ def gfx_set(payload, prefix_len):
             shadow = gfx_set(p, 8)
     return dict(prefix=payload[:prefix_len], records=rs, sets=sets, shadow=shadow)
 
+def entry(p):
+    """ENTRY payload (FigurenHeader.dat FIGUREN or Anlagen.dat ANLAGEN)."""
+    if len(p) < 8: raise Bad('ENTRY prefix')
+    flag, eid = struct.unpack_from('<II', p, 0)
+    rs = records(p, 8, len(p))
+    e = dict(flag=flag, id=eid, records=rs, palettes=[], ids=[], gfx=[])
+    for rn, rp in rs:
+        if rn == 'COLORS' and 0 < len(rp) < 16:  # ANLAGEN: u32 colour-table ids
+            if len(rp) % 4: raise Bad('COLORS id list')
+            e['ids'] = list(struct.unpack(f'<{len(rp) // 4}I', rp))
+        elif rn == 'COLORS': e['palettes'] = [color_table(t) for t in entries_of(rp)]
+        if rn == 'HAEUSER': e['gfx'] = [gfx_set(s, 16) for s in entries_of(rp)]
+    return e
+
 def parse(buf):
     if buf[:5] != b'ANNO\0' or buf[16:24] != b'FIGUREN\0': raise Bad('no ANNO/FIGUREN root')
     end = 32 + struct.unpack_from('<I', buf, 28)[0]
     if end > len(buf) or (len(buf) - end) % 24: raise Bad('bad FIGUREN size or volume headers')
     ents = []
     for n, p in records(buf, 32, end):
-        if n != 'ENTRY' or len(p) < 8: raise Bad('FIGUREN child is not ENTRY')
-        flag, eid = struct.unpack_from('<II', p, 0)
-        rs = records(p, 8, len(p))
-        e = dict(flag=flag, id=eid, records=rs, palettes=[], gfx=[])
-        for rn, rp in rs:
-            if rn == 'COLORS': e['palettes'] = [color_table(t) for t in entries_of(rp)]
-            if rn == 'HAEUSER': e['gfx'] = [gfx_set(s, 16) for s in entries_of(rp)]
-        ents.append(e)
+        if n != 'ENTRY': raise Bad('FIGUREN child is not ENTRY')
+        ents.append(entry(p))
     vols = []
     for q in range(end, len(buf), 24):
         if cstr(buf[q:q + 12]) != b'TEXTURES': raise Bad('bad volume header')
@@ -105,6 +114,19 @@ def dump_set(label, indent, g, full):
     if g['shadow'] is not None:
         dump_set('SHADOW', indent + '  ', g['shadow'], full)
 
+def dump_entry(e, full):
+    print(f"ENTRY id={e['id']} flag={e['flag']} records={','.join(n for n, _ in e['records'])}")
+    for n, p in e['records']:
+        if n not in ('COLORS', 'HAEUSER'):
+            print(f'  RECORD {n} size={len(p)} hash={fnv64(p)}')
+    if e['ids']:
+        print(f"  COLORIDS ids={','.join(map(str, e['ids']))}")
+    for i, t in enumerate(e['palettes']):
+        rgb = fnv64(b for c in t['rgb'] for b in c)
+        print(f"  COLORTABLE i={i} id={t['id']} flag={t['flag']} rgb={rgb} name={quote(t['name'])}")
+    for i, g in enumerate(e['gfx']):
+        dump_set(f'SET i={i}', '  ', g, full)
+
 def dump(path, full):
     print(f'# {path}')
     try:
@@ -115,15 +137,28 @@ def dump(path, full):
     for size, group, frames in vols:
         print(f'VOLUME group={group} size={size} frames={frames}')
     for e in ents:
-        print(f"ENTRY id={e['id']} flag={e['flag']} records={','.join(n for n, _ in e['records'])}")
-        for n, p in e['records']:
-            if n not in ('COLORS', 'HAEUSER'):
-                print(f'  RECORD {n} size={len(p)} hash={fnv64(p)}')
-        for i, t in enumerate(e['palettes']):
-            rgb = fnv64(b for c in t['rgb'] for b in c)
-            print(f"  COLORTABLE i={i} id={t['id']} flag={t['flag']} rgb={rgb} name={quote(t['name'])}")
-        for i, g in enumerate(e['gfx']):
-            dump_set(f'SET i={i}', '  ', g, full)
+        dump_entry(e, full)
+    return True
+
+def dump_anlagen(path, full):
+    print(f'# {path}')
+    try:
+        buf = open(path, 'rb').read()
+        top = records(buf, 16, 16 + struct.unpack_from('<I', buf, 12)[0])
+        anl = next((p for n, p in top if n == 'ANLAGEN'), None)
+        if buf[:5] != b'ANNO\0' or anl is None: raise Bad('no ANNO/ANLAGEN')
+        ents = []
+        for n, p in records(anl, 0, len(anl)):
+            if n != 'ENTRY': raise Bad('ANLAGEN child is not ENTRY')
+            ents.append(entry(p))
+        vols = [(struct.unpack_from('<II', p, 0), len(p) - 8) for n, p in top if n == 'TEXTURES']
+    except (Bad, struct.error) as e:
+        print(f'NOPARSE: {e}', file=sys.stderr); print('NOPARSE'); return False
+    print(f'ANLAGEN entries={len(ents)} volumes={len(vols)}')
+    for (group, frames), size in vols:
+        print(f'VOLUME group={group} frames={frames} bytes={size}')
+    for e in ents:
+        dump_entry(e, full)
     return True
 
 def decode(fmt, data, w, h):
@@ -203,6 +238,11 @@ if __name__ == '__main__':
         files = args[1:] if full else args
         if not files: print(__doc__, file=sys.stderr); sys.exit(2)
         ok = all([dump(f, full) for f in files])
+    elif cmd == ['anlagen']:
+        full = args[:1] == ['--full']
+        files = args[1:] if full else args
+        if not files: print(__doc__, file=sys.stderr); sys.exit(2)
+        ok = all([dump_anlagen(f, full) for f in files])
     elif cmd == ['frames'] and len(args) >= 2:
         ok = frames(args[0], args[1:])
     else:

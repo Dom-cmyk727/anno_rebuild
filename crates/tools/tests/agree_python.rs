@@ -729,3 +729,89 @@ fn anno_dump_matches_insel_py_synthetic() {
     assert!(out.contains("NOPARSE\n"), "{out}");
     agree("insel.py", &["dump"], &["insel"], &files);
 }
+
+/// `Anlagen.dat` with `--full`.
+#[test]
+fn anno_dump_matches_anlagen_py_corpus() {
+    let test = "anno_dump_matches_anlagen_py_corpus";
+    let Some(dir) = game_dir(test) else { return };
+    if !have_python(test) {
+        return;
+    }
+    let file = [dir.join("Anlagen.dat")];
+    let out = agree(
+        "figuren.py",
+        &["anlagen", "--full"],
+        &["anlagen", "--full"],
+        &file,
+    );
+    assert!(out.contains("ANLAGEN entries=921 volumes=3\n"));
+}
+
+#[test]
+fn anno_dump_matches_anlagen_py_synthetic() {
+    let test = "anno_dump_matches_anlagen_py_synthetic";
+    if !have_python(test) {
+        return;
+    }
+    let dir = synthetic_dir(test);
+    let mut table = [0u32.to_le_bytes(), 1u32.to_le_bytes()].concat();
+    table.extend_from_slice(b"BODY\0\0\x00\x04");
+    table.extend((0..=255u8).flat_map(|i| [i, 1, 2, 0]));
+    table.extend_from_slice(b"NAME\0\0\x06\0a.pcx\0");
+    let mut set = vec![0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    set.extend(chunk("BODY2", &[0; 44]));
+    for g in 0..3 {
+        set.extend(frame_set(g, &[frame_header(2, 1, b"BSH_RGBWZ", 0, 7)]));
+    }
+    let ids = [1u32, 0]
+        .iter()
+        .flat_map(|i| i.to_le_bytes())
+        .collect::<Vec<u8>>();
+    let e = entry(
+        "ENTRY",
+        0,
+        20,
+        &[
+            chunk("HEAD", &[9; 52]),
+            chunk("COLORS", &ids),
+            chunk("HAEUSER", &chunk("ENTRY", &set)),
+        ],
+    );
+    let vol = |g: u32| {
+        let mut p = [g.to_le_bytes(), 1u32.to_le_bytes()].concat();
+        p.extend_from_slice(&[0, 2, 0xfb, 5, 0xfa, 6, 0xFF]);
+        chunk("TEXTURES", &p)
+    };
+    let good = chunk(
+        "ANNO",
+        &[
+            chunk("COLORS", &chunk("ENTRY", &table)),
+            chunk("ANLAGEN", &e),
+            vol(0),
+            vol(1),
+            vol(2),
+        ]
+        .concat(),
+    );
+    let files: Vec<PathBuf> = [
+        ("Anlagen.dat", good),
+        ("bad.dat", chunk("ANNO", &chunk("COLORS", &[]))),
+    ]
+    .into_iter()
+    .map(|(n, bytes)| {
+        let p = dir.join(n);
+        std::fs::write(&p, bytes).expect("write");
+        p
+    })
+    .collect();
+    let out = agree(
+        "figuren.py",
+        &["anlagen", "--full"],
+        &["anlagen", "--full"],
+        &files,
+    );
+    assert!(out.contains("  COLORIDS ids=1,0\n"), "{out}");
+    assert!(out.contains("format=\"BSH_RGBWZ\""), "{out}");
+    assert!(out.contains("NOPARSE\n"), "{out}");
+}

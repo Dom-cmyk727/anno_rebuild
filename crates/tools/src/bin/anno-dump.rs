@@ -10,6 +10,8 @@
 //! anno-dump insel [--full] <file.scp|file.sze>...  islands (same as `tools/insel.py dump`)
 //! anno-dump anlagen [--full] <Anlagen.dat>...  ANLAGEN entries (same as `tools/figuren.py anlagen`)
 //! anno-dump sze [--full] <file.sze>...  players, ships, soldiers (same as `tools/sze.py dump`)
+//! anno-dump keyed <file>...          lines of keyed text files, e.g. `Data/BGruppen.dat` (same as `tools/text.py keyed`)
+//! anno-dump texte [--full] <Texte.dat>...  sections and building names (same as `tools/text.py texte`)
 //! anno-dump probe <path> <file>...   statistics over all chunks at a name path
 //! ```
 //!
@@ -20,13 +22,14 @@
 //! The `tex`/`inc` text format is specified in `docs/formats/tex.md`
 //! ("Reference dump"), `colors` in `docs/formats/palette.md`, `figuren` and
 //! `frames` in `docs/formats/figuren.md`, `insel` in `docs/formats/insel.md`,
-//! `sze` in `docs/formats/sze.md`.
+//! `sze` in `docs/formats/sze.md`, `keyed` and `texte` in
+//! `docs/formats/data-text.md`.
 
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::process::ExitCode;
 
-use anno_formats::{anlagen, chunk, colors, figuren, inc, insel, sze, tagged, tex};
+use anno_formats::{anlagen, chunk, colors, figuren, inc, insel, sze, tagged, tex, text};
 
 const USAGE: &str = "usage: anno-dump chunks <file>...\n       \
                      anno-dump tex [--full] <file>...\n       \
@@ -37,6 +40,8 @@ const USAGE: &str = "usage: anno-dump chunks <file>...\n       \
                      anno-dump insel [--full] <file.scp|file.sze>...\n       \
                      anno-dump anlagen [--full] <Anlagen.dat>...\n       \
                      anno-dump sze [--full] <file.sze>...\n       \
+                     anno-dump keyed <file>...\n       \
+                     anno-dump texte [--full] <Texte.dat>...\n       \
                      anno-dump probe <path> <file>...";
 
 fn main() -> ExitCode {
@@ -49,7 +54,7 @@ fn main() -> ExitCode {
         Some((flag, files))
             if matches!(
                 cmd,
-                "tex" | "colors" | "figuren" | "insel" | "anlagen" | "sze"
+                "tex" | "colors" | "figuren" | "insel" | "anlagen" | "sze" | "texte"
             ) && flag == "--full" =>
         {
             (true, files)
@@ -82,6 +87,8 @@ fn main() -> ExitCode {
         "insel" => dump_files(files, |buf, out| dump_insel(buf, full, out)),
         "anlagen" => dump_files(files, |buf, out| dump_anlagen(buf, full, out)),
         "sze" => dump_files(files, |buf, out| dump_sze(buf, full, out)),
+        "keyed" => dump_files(files, dump_keyed),
+        "texte" => dump_files(files, |buf, out| dump_texte(buf, full, out)),
         _ => usage(),
     }
 }
@@ -1012,6 +1019,116 @@ fn dump_nested(parent: &str, r: &tagged::Record<'_>, depth: usize, out: &mut Str
         )
         .expect("writing to a String");
         ok &= dump_nested(r.name, kid, depth + 1, out);
+    }
+    ok
+}
+
+/// Like [`quote`], but over all bytes (text lines have no NUL terminator).
+fn quote_all(raw: &[u8]) -> String {
+    let mut s = String::from("\"");
+    for &b in raw {
+        if (0x20..=0x7e).contains(&b) && b != b'"' && b != b'\\' {
+            s.push(char::from(b));
+        } else {
+            write!(s, "\\x{b:02x}").expect("writing to a String");
+        }
+    }
+    s.push('"');
+    s
+}
+
+/// `LINES` summary of a text file: line count, CR LF terminators, whether
+/// the file ends with a terminator.
+fn text_summary(lines: &[text::Line<'_>]) -> String {
+    let crlf = lines
+        .iter()
+        .filter(|l| l.ending == text::Ending::CrLf)
+        .count();
+    let final_nl = lines.last().is_some_and(|l| l.text.is_empty());
+    format!(
+        "LINES count={} crlf={crlf} final={}",
+        lines.len(),
+        u8::from(final_nl)
+    )
+}
+
+/// `keyed`: every non-blank line of a keyed text file.
+fn dump_keyed(buf: &[u8], out: &mut String) -> bool {
+    let lines = text::lines(buf);
+    writeln!(out, "{}", text_summary(&lines)).expect("writing to a String");
+    for (l, kind) in text::keyed(buf) {
+        let n = l.number;
+        match kind {
+            text::KeyedKind::Blank => continue,
+            text::KeyedKind::Section(name) => {
+                writeln!(out, "SECTION line={n} name={}", quote_all(name))
+            }
+            text::KeyedKind::Entry { key, value } => writeln!(
+                out,
+                "ENTRY line={n} key={} fields={} value={}",
+                quote_all(key),
+                text::fields(value).len(),
+                quote_all(value)
+            ),
+            text::KeyedKind::Other(t) => writeln!(out, "OTHER line={n} text={}", quote_all(t)),
+        }
+        .expect("writing to a String");
+    }
+    true
+}
+
+/// `texte`: sections of `Texte.dat` with line counts and hashes, the
+/// `[ANLAGEN]` names, and with `--full` every text line.
+fn dump_texte(buf: &[u8], full: bool, out: &mut String) -> bool {
+    let lines = text::lines(buf);
+    let t = text::Texte::parse(buf);
+    let w = |out: &mut String, line: std::fmt::Arguments<'_>| {
+        out.write_fmt(line).expect("writing to a String");
+        out.push('\n');
+    };
+    w(out, format_args!("{}", text_summary(&lines)));
+    w(
+        out,
+        format_args!(
+            "TEXTE sections={} preamble={}",
+            t.sections.len(),
+            t.preamble.len()
+        ),
+    );
+    let mut ok = true;
+    for s in &t.sections {
+        let hash = fnv64(
+            s.lines
+                .iter()
+                .flat_map(|l| l.iter().copied().chain(*b"\n")),
+        );
+        w(
+            out,
+            format_args!(
+                "SECTION line={} name={} lines={} hash={hash:016x}",
+                s.line,
+                quote_all(s.name),
+                s.lines.len()
+            ),
+        );
+        if s.name == b"ANLAGEN" {
+            for l in &s.lines {
+                match text::id_text(l) {
+                    Some((id, name)) => {
+                        w(out, format_args!("  ID id={id} text={}", quote_all(name)))
+                    }
+                    None => {
+                        w(out, format_args!("  ID BAD text={}", quote_all(l)));
+                        ok = false;
+                    }
+                }
+            }
+        }
+        if full {
+            for l in &s.lines {
+                w(out, format_args!("  L {}", quote_all(l)));
+            }
+        }
     }
     ok
 }

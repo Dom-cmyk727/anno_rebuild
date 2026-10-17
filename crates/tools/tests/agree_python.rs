@@ -985,3 +985,83 @@ fn anno_dump_matches_sze_py_synthetic() {
     assert_eq!(out.matches("NOPARSE\n").count(), 2, "{out}");
     agree("sze.py", &["dump"], &["sze"], &files);
 }
+
+/// The keyed `Data/` files (and the two tool batch files) and `Texte.dat`,
+/// with and without `--full`.
+#[test]
+fn anno_dump_matches_text_py_corpus() {
+    let test = "anno_dump_matches_text_py_corpus";
+    let Some(dir) = game_dir(test) else { return };
+    if !have_python(test) {
+        return;
+    }
+    let mut files = Vec::new();
+    collect_ext(&dir.join("Data"), &["dat", "bat"], &mut files);
+    files.retain(|f| !f.ends_with("Debug.dat")); // a Bink video
+    files.sort();
+    assert_eq!(files.len(), 12);
+    let out = agree("text.py", &["keyed"], &["keyed"], &files);
+    assert_eq!(out.matches("\nOTHER ").count(), 8, "{out}");
+    let texte = [dir.join("Texte.dat")];
+    let out = agree("text.py", &["texte"], &["texte"], &texte);
+    assert_eq!(out.matches("\n  ID id=").count(), 326);
+    agree(
+        "text.py",
+        &["texte", "--full"],
+        &["texte", "--full"],
+        &texte,
+    );
+}
+
+#[test]
+fn anno_dump_matches_text_py_synthetic() {
+    let test = "anno_dump_matches_text_py_synthetic";
+    if !have_python(test) {
+        return;
+    }
+    let dir = synthetic_dir(test);
+    let keyed =
+        b"; head\r\n[WAREN]  ; c\r\n  Id:\t\tEISENERZ\r\nName : \"a;b, c\" ; x\r\nProz: 1, 2,3\n\
+                  Pos  0, 0\r\nEndObj;\r\n[]\r\nKey:\r\n\xe4:1\r\nlast";
+    let texte = b"pre\r\n[ANLAGEN]\r\n104:Forest\r\nbad line\r\n007:B\xe4r\r\n[S:X]\r\nHi \"you\"\\n\r\n\r\n[END]\r\n";
+    let files: Vec<PathBuf> = [("keyed.dat", &keyed[..]), ("texte.dat", &texte[..])]
+        .into_iter()
+        .map(|(n, bytes)| {
+            let p = dir.join(n);
+            std::fs::write(&p, bytes).expect("write");
+            p
+        })
+        .collect();
+    let out = agree("text.py", &["keyed"], &["keyed"], &files[..1]);
+    for line in [
+        "LINES count=11 crlf=9 final=0\n",
+        "SECTION line=2 name=\"WAREN\"\n",
+        "ENTRY line=3 key=\"Id\" fields=1 value=\"EISENERZ\"\n",
+        "ENTRY line=4 key=\"Name\" fields=1 value=\"\\x22a;b, c\\x22\"\n",
+        "ENTRY line=5 key=\"Proz\" fields=3 value=\"1, 2,3\"\n",
+        "OTHER line=6 text=\"Pos  0, 0\"\n",
+        "OTHER line=7 text=\"EndObj\"\n",
+        "OTHER line=8 text=\"[]\"\n",
+        "ENTRY line=9 key=\"Key\" fields=0 value=\"\"\n",
+        "OTHER line=10 text=\"\\xe4:1\"\n",
+        "OTHER line=11 text=\"last\"\n",
+    ] {
+        assert!(out.contains(line), "{line}\n{out}");
+    }
+    let out = agree(
+        "text.py",
+        &["texte", "--full"],
+        &["texte", "--full"],
+        &files[1..],
+    );
+    for line in [
+        "TEXTE sections=3 preamble=1\n",
+        "  ID id=104 text=\"Forest\"\n  ID BAD text=\"bad line\"\n  ID id=7 text=\"B\\xe4r\"\n",
+        "SECTION line=6 name=\"S:X\" lines=2 ",
+        "  L \"Hi \\x22you\\x22\\x5cn\"\n  L \"\"\n",
+        "SECTION line=9 name=\"END\" lines=0 ",
+    ] {
+        assert!(out.contains(line), "{line}\n{out}");
+    }
+    agree("text.py", &["texte"], &["texte"], &files[1..]);
+}

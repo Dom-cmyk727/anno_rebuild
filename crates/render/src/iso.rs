@@ -983,6 +983,8 @@ pub struct Waves {
     pub swell_dir: [f32; 2],
     /// Distance between surf crests near the shore (tiles).
     pub surf_wavelength: f32,
+    /// How far (`HEIGHT` units) the swash runs up the beach at most.
+    pub runup: f32,
     /// Depth over which shallow water is tinted.
     pub tint_depth: f32,
     /// Distance between incoming crests (tiles).
@@ -1017,6 +1019,7 @@ impl Waves {
         // Crests run diagonally on screen (crest along the tile y axis).
         swell_dir: [0.96, 0.28],
         surf_wavelength: 1.8,
+        runup: 1.2,
         tint_depth: 8.0,
         wavelength: 2.6,
         period_ms: 3400.0,
@@ -1192,16 +1195,33 @@ pub(crate) fn wave_shade(
                 * (0.8 * line).max(0.3 * trail * smoothstep(0.25, 0.7, mottle));
         }
         if depth < w.swash_depth {
-            // Swash: after a surf crest reaches the beach a thin sheet runs
-            // up and fades.
-            let since = surf_phase - surf_phase.floor();
-            let burst = smoothstep(0.0, 0.05, since) * (-since * 3.0).exp();
-            let edge = smoothstep(w.swash_depth, 0.0, depth);
-            foam = foam.max(edge * burst * (0.35 + 0.4 * mottle));
+            // Swash: the moving water edge (`swash_runup`) carries a foam
+            // fringe.
+            let wet = depth + swash_runup(dist, (wx, wy), time_ms);
+            let fringe = smoothstep(1.2, 0.0, wet) * smoothstep(-0.4, 0.2, wet);
+            foam = foam.max(fringe * (0.45 + 0.4 * mottle));
         }
     }
     let tint = w.shallow_tint * smoothstep(w.tint_depth, 0.0, depth);
     (light, foam.clamp(0.0, 1.0), tint)
+}
+
+/// Swash run-up (`HEIGHT` units) at shore distance `dist` (tiles) and
+/// plane position `pos` (tiles): after each surf crest the water rushes up
+/// the beach and slowly draws back, so the enhanced waterline moves back
+/// and forth (not original). Uses the surf phase of [`wave_shade`].
+pub(crate) fn swash_runup(dist: f32, (wx, wy): (f32, f32), time_ms: u64) -> f32 {
+    let w = Waves::DEFAULT;
+    #[allow(clippy::cast_precision_loss)]
+    let t = (time_ms % 3_600_000) as f32;
+    let bend = 1.4 * noise3(wx * 0.12, wy * 0.12, t * 0.000_03)
+        + 0.5 * noise3(wx * 0.35 + 5.0, wy * 0.35, t * 0.000_05);
+    let surf_phase = dist / w.surf_wavelength + t / w.period_ms + 0.35 * bend;
+    let since = surf_phase - surf_phase.floor();
+    // Fast rush up, slow backwash.
+    let shape = smoothstep(0.0, 0.12, since) * (1.0 - smoothstep(0.12, 0.85, since));
+    let strength = 0.6 + 0.4 * noise3(wx * 0.3 + 1.7, wy * 0.3, t * 0.000_05);
+    w.runup * shape * strength
 }
 
 /// `rgba` tinted by `tint`, lit by `light` and whitened by `foam`, as

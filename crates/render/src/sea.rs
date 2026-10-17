@@ -419,7 +419,8 @@ pub fn water_field<'w>(
         let sea_chunk = iw.sea_chunk[(ty / 8) * iw.w.div_ceil(8) + tx / 8];
         let original_water = under < waterline && sea_chunk;
         let sd = waterline - smooth_height(&iw.heights, iw.w, iw.h, x, y);
-        if !sea_chunk || (!original_water && sd <= -edge) {
+        // Enhanced water runs up to `runup` above the waterline.
+        if !sea_chunk || (!original_water && sd <= -(edge + iso::Waves::DEFAULT.runup)) {
             cover[i] = 0;
             shore[i] = 0;
             depth[i] = 0;
@@ -572,6 +573,9 @@ pub fn shade_sea<P: SeaTarget>(
     };
     #[allow(clippy::cast_precision_loss)]
     let stepf = step as f32;
+    let raise_px = lift.scaled(SEA_LEVEL, 1, group);
+    #[allow(clippy::cast_precision_loss)]
+    let (twf, thf) = (TILE[group].0 as f32, TILE[group].1 as f32);
     for row in 0..rh {
         let sy = region.y + i32::try_from(row).expect("fits");
         for col in 0..rw {
@@ -586,8 +590,19 @@ pub fn shade_sea<P: SeaTarget>(
                 WaterStyle::Original if flags & 1 == 0 => continue,
                 WaterStyle::Original => 1.0,
                 WaterStyle::Enhanced => {
-                    let e = iso::Waves::DEFAULT.shore_edge;
-                    iso::smoothstep_pub(-e, e, sd)
+                    let w = iso::Waves::DEFAULT;
+                    // The waterline moves with the swash.
+                    let run = if sd < w.swash_depth {
+                        let (_, shore, _, _) = field(row * rw + col);
+                        let sx = region.x + i32::try_from(col).expect("fits");
+                        #[allow(clippy::cast_precision_loss)]
+                        let (px, py) = (sx as f32, (sy + raise_px) as f32);
+                        let pos = (px / twf + py / thf, py / thf - px / twf);
+                        iso::swash_runup(f32::from(shore) / SHORE_SCALE, pos, time_ms)
+                    } else {
+                        0.0
+                    };
+                    iso::smoothstep_pub(-w.shore_edge, w.shore_edge, sd + run)
                 }
             };
             if alpha <= 0.0 {

@@ -211,14 +211,25 @@ fn wave_shade(dist: f32, depth: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<
             foam = surge * near * segment * max(0.8 * line, 0.3 * trail * sstep(0.25, 0.7, mottle));
         }
         if depth < SWASH_DEPTH {
-            let since = surf_phase - floor(surf_phase);
-            let burst = sstep(0.0, 0.05, since) * exp(-since * 3.0);
-            let edge = sstep(SWASH_DEPTH, 0.0, depth);
-            foam = max(foam, edge * burst * (0.35 + 0.4 * mottle));
+            let wet = depth + swash_runup(dist, w, t);
+            let fringe = sstep(1.2, 0.0, wet) * sstep(-0.4, 0.2, wet);
+            foam = max(foam, fringe * (0.45 + 0.4 * mottle));
         }
     }
     let tint = SHALLOW_TINT * sstep(TINT_DEPTH, 0.0, depth);
     return vec3<f32>(light, clamp(foam, 0.0, 1.0), tint);
+}
+
+// iso::swash_runup
+const RUNUP: f32 = 1.2;
+fn swash_runup(dist: f32, w: vec2<f32>, t: f32) -> f32 {
+    let bend = 1.4 * noise3(w.x * 0.12, w.y * 0.12, t * 0.00003)
+        + 0.5 * noise3(w.x * 0.35 + 5.0, w.y * 0.35, t * 0.00005);
+    let surf_phase = dist / SURF_WAVELENGTH + t / PERIOD_MS + 0.35 * bend;
+    let since = surf_phase - floor(surf_phase);
+    let shape = sstep(0.0, 0.12, since) * (1.0 - sstep(0.12, 0.85, since));
+    let strength = 0.6 + 0.4 * noise3(w.x * 0.3 + 1.7, w.y * 0.3, t * 0.00005);
+    return RUNUP * shape * strength;
 }
 
 // iso::shade_apply
@@ -285,8 +296,14 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     // with a soft edge (sea::smooth_height).
     let sd = (f32(depth) - DEPTH_BIAS) / DEPTH_SCALE;
     var alpha = 1.0;
+    let pw = vec2<f32>(f32(px.x), f32(px.y) + frame.raise);
+    let wpos = vec2<f32>(pw.x / frame.tile_w + pw.y / frame.tile_h, pw.y / frame.tile_h - pw.x / frame.tile_w);
     if enhanced {
-        alpha = sstep(-SHORE_EDGE, SHORE_EDGE, sd);
+        var run = 0.0;
+        if sd < SWASH_DEPTH {
+            run = swash_runup(f32(shore) / SHORE_SCALE, wpos, frame.time_ms);
+        }
+        alpha = sstep(-SHORE_EDGE, SHORE_EDGE, sd + run);
     } else if (flags & 1u) == 0u {
         alpha = 0.0;
     }

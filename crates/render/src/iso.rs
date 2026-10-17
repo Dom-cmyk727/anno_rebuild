@@ -591,7 +591,7 @@ pub(crate) fn frame_index(
 
 /// Draws `img` with its anchor at screen point `(sx, sy)`, skipping sprites
 /// outside the canvas; `pixel` decides per pixel (screen x, y) whether to draw.
-pub(crate) fn blit_sprite(
+pub fn blit_sprite(
     canvas: &mut Canvas,
     img: &Rgba,
     frame: &Frame,
@@ -698,8 +698,17 @@ pub struct SpriteDraw<'f> {
     pub height: u8,
 }
 
+/// Columns a frame's rows may write to the right of its frame box: the
+/// original draws them (OQ-025), so culling widens the box by this much.
+/// P: the largest overrun in `Anlagen.dat` at any zoom group (asserted by
+/// `crates/render/tests/sprite_fidelity.rs`); figures have none. Data with
+/// larger overruns (mods) needs this raised or made a per-scene value
+/// computed from the frames.
+pub const OVERRUN_SLACK: i32 = 16;
+
 impl SpriteDraw<'_> {
-    /// Screen rectangle `(x, y, w, h)` the frame covers.
+    /// Screen rectangle `(x, y, w, h)` of the frame box (header width and
+    /// height, placed by the anchor).
     pub fn rect(&self) -> (i32, i32, i32, i32) {
         (
             self.anchor.0 - i32::from(self.frame.anchor_x),
@@ -707,6 +716,13 @@ impl SpriteDraw<'_> {
             i32::from(self.frame.width),
             i32::from(self.frame.height),
         )
+    }
+
+    /// [`SpriteDraw::rect`] widened by [`OVERRUN_SLACK`] to the right: the
+    /// area the decoded image can cover, for culling.
+    pub fn reach(&self) -> (i32, i32, i32, i32) {
+        let (x, y, w, h) = self.rect();
+        (x, y, w + OVERRUN_SLACK, h)
     }
 
     /// Whether this is a shadow (drawn as [`SHADOW`] where covered).
@@ -786,7 +802,7 @@ pub fn place_prepared<'a>(
                 anchor,
                 height: o.height(),
             };
-            let (x, y, w, h) = d.rect();
+            let (x, y, w, h) = d.reach();
             if visible(x, y, w, h) {
                 out.push(d);
             }
@@ -797,7 +813,7 @@ pub fn place_prepared<'a>(
             anchor,
             height: o.height(),
         };
-        let (x, y, w, h) = d.rect();
+        let (x, y, w, h) = d.reach();
         if visible(x, y, w, h) {
             out.push(d);
         }

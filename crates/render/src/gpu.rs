@@ -88,6 +88,11 @@ struct GpuSea {
     _textures: [Texture; 2],
 }
 
+/// Atlas layer, position and size of a frame image: `(layer, x, y, width,
+/// height)`. The image can be wider than its frame header
+/// (`iso::OVERRUN_SLACK`).
+type AtlasPlace = (u32, u32, u32, u32, u32);
+
 /// Sprite frames packed on demand into a growing texture array (shelf
 /// packing per layer).
 struct Atlas {
@@ -95,7 +100,8 @@ struct Atlas {
     bind: BindGroup,
     layers: u32,
     /// Where each frame lives: `(layer, x, y)`; `None` = cannot be drawn.
-    place: BTreeMap<SpriteKey, Option<(u32, u32, u32)>>,
+    /// Where each frame image lies in the atlas.
+    place: BTreeMap<SpriteKey, Option<AtlasPlace>>,
     /// Packing cursor: layer, x, y, height of the current shelf.
     cursor: (u32, u32, u32, u32),
 }
@@ -902,15 +908,15 @@ impl GpuFrame {
     ) -> u32 {
         let mut n = 0;
         for d in draws {
-            let Some((layer, ax, ay)) = self.atlas_place(scene, d) else {
+            let Some((layer, ax, ay, w, h)) = self.atlas_place(scene, d) else {
                 continue;
             };
-            let (x, y, w, h) = d.rect();
+            // Placed by the frame box, sized by the decoded image (which
+            // keeps pixels that rows write past the frame width).
+            let (x, y, _, _) = d.rect();
             for v in [x, y] {
                 bytes.extend(v.to_le_bytes());
             }
-            let w = u32::try_from(w).expect("positive");
-            let h = u32::try_from(h).expect("positive");
             // Bit 0 shadow, bits 8-15 object height, bit 16 depth-tested.
             let flags =
                 u32::from(d.is_shadow()) | u32::from(d.height) << 8 | u32::from(tested) << 16;
@@ -923,7 +929,7 @@ impl GpuFrame {
     }
 
     /// The atlas position of a sprite frame, packing it on first use.
-    fn atlas_place(&mut self, scene: &Scene<'_>, d: &SpriteDraw<'_>) -> Option<(u32, u32, u32)> {
+    fn atlas_place(&mut self, scene: &Scene<'_>, d: &SpriteDraw<'_>) -> Option<AtlasPlace> {
         if let Some(p) = self.atlas.as_ref().and_then(|a| a.place.get(&d.key)) {
             return *p;
         }
@@ -954,7 +960,7 @@ impl GpuFrame {
                     depth_or_array_layers: 1,
                 },
             );
-            Some((layer, x, y))
+            Some((layer, x, y, w, h))
         });
         if let Some(a) = self.atlas.as_mut() {
             a.place.insert(d.key, place);

@@ -2,8 +2,10 @@
 //!
 //! Mapping (spec: `docs/formats/anlagen.md`): as `crate::figure`, except
 //! that the colour table is the global `Anlagen.dat` table with id
-//! `entry.palette_ids[frame.palette]`, and pixels a row writes past the
-//! frame's width are dropped (`decode_frame_clipped`, OQ-025).
+//! `entry.palette_ids[frame.palette]`, and that pixels a row writes past the
+//! frame's width are kept: the image is widened to them
+//! (`decode_frame_extended`), as the original draws them to the right of
+//! the frame box (OQ-025). Rows and anchor are unchanged.
 
 use anno_formats::anlagen::AnlagenFile;
 use anno_formats::figuren::{self, Entry, Frame, FrameFormat};
@@ -26,7 +28,7 @@ pub fn to_rgba(
         .checked_add(len)
         .and_then(|end| volume.data.get(start..end))
         .ok_or(Error::OutsideVolume)?;
-    let (px, _) = figuren::decode_frame_clipped(
+    let (px, width) = figuren::decode_frame_extended(
         format,
         data,
         usize::from(frame.width),
@@ -60,7 +62,7 @@ pub fn to_rgba(
         })
         .collect();
     Ok(Rgba {
-        width: frame.width,
+        width: u16::try_from(width).map_err(|_| Error::OutsideVolume)?,
         height: frame.height,
         pixels,
     })

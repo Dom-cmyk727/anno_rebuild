@@ -195,7 +195,7 @@ Scenario files show the *start* state only; savegames show how the running game 
 
 Acceptance M2: `docs/re/` has notes for tick loop, production, population, and fire; each with addresses and a fixture spec. No gameplay code yet.
 
-Status M2 (2026-10-17): static analysis of all seven game modules (`tools/ghidra/DecompileAllPlus.java`, which also finds vtable-only functions). Notes with addresses, confidence labels and fixture specs:
+Status M2 (2026-10-17): acceptance met for the static part — tick loop, production, population and fire each have a note with addresses and a fixture spec; executing the fixtures against the original needs the x86 host (M2.1, human task). Static analysis of all seven game modules (`tools/ghidra/DecompileAllPlus.java`, which also finds vtable-only functions). Notes with addresses, confidence labels and fixture specs:
 - `docs/re/tick-loop.md`: frame-coupled loop, 1 tick = 2 game ms, speed 50–400 %, multiplayer 10 ms steps in 100 ms turns, MD5 state check every 60 s with snapshot resync; the simulation PRNG is a 2,048-entry table equal to MSVC `rand()` from seed 1 (verified), cursor seeded per game. OQ-005, OQ-006 resolved, OQ-007 mostly.
 - `docs/re/production.md`: buildings step every 500 ticks (verified), `PROD3` turned into integer rates at load, input-limited output, fields growing by stages, fertility from `Wachstum.dat`, market carts by fill level; `wegspeed.dat` is never read.
 - `docs/re/population.md`: `BGruppen.dat` loader and layouts, houses update every 2,500 ticks (verified), mood −2…+2 from food/goods/infrastructure, growth by `VermehrTab`, up/downgrade rules, taxes every 2,000 ticks; `Priority` is parsed but unused.

@@ -189,6 +189,55 @@ impl<'a> IslandLink<'a> {
     }
 }
 
+/// Size of a player `HEAD` record.
+pub const PLAYER_HEAD_LEN: usize = 108;
+
+/// The known fields of a player's `HEAD` record (108 bytes; D: `AnnoWelt.dll`
+/// player reader `0x1001d2b9`–`0x1001d430`, `docs/re/annoscene.md` §6; P:
+/// value ranges over the corpus). The record itself stays raw in
+/// [`Player::records`]; this is a view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayerHead<'a> {
+    /// 0x00, read as `u16` by the game: 8 and 11 human, 12 computer, 14
+    /// native peoples, 15 pirates, 16 Venetians, 17 god/gang, 2 player 31.
+    pub kind: u32,
+    /// 0x04: starting money (likely).
+    pub money: u32,
+    /// 0x08: name, up to the first NUL of 48 bytes (Windows-1252).
+    pub name: &'a [u8],
+    /// 0x38: 16-byte identity matched against network participants.
+    pub id: [u8; 16],
+    /// 0x4C: colour slot 1–8, `0xFF` = assigned at game start, 0 = none.
+    pub colour: u8,
+}
+
+impl<'a> PlayerHead<'a> {
+    pub fn parse(raw: &'a [u8]) -> Option<Self> {
+        if raw.len() != PLAYER_HEAD_LEN {
+            return None;
+        }
+        let name = &raw[0x08..0x38];
+        let len = name.iter().position(|&b| b == 0).unwrap_or(name.len());
+        Some(Self {
+            kind: u32_at(raw, 0),
+            money: u32_at(raw, 4),
+            name: &name[..len],
+            id: raw[0x38..0x48].try_into().expect("16 bytes"),
+            colour: raw[0x4C],
+        })
+    }
+
+    /// Human slot (types 8 and 11, treated alike by game start).
+    pub fn is_human(&self) -> bool {
+        matches!(self.kind, 8 | 11)
+    }
+
+    /// Computer opponent (type 12).
+    pub fn is_computer(&self) -> bool {
+        self.kind == 12
+    }
+}
+
 /// One `SPIELER` block.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Player<'a> {
@@ -225,6 +274,11 @@ impl<'a> Player<'a> {
         out.extend_from_slice(&self.index.to_le_bytes());
         tagged::write_records(&self.records, &mut out)?;
         Ok(out)
+    }
+
+    /// The `HEAD` record (header series only).
+    pub fn head(&self) -> Option<PlayerHead<'a>> {
+        tagged::find(&self.records, "HEAD").and_then(|r| PlayerHead::parse(r.payload))
     }
 
     /// The records called `name` (`SCHIFF`, `SOLDAT`) parsed as units.

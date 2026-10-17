@@ -243,3 +243,52 @@ fn scene_corpus() {
         assert_eq!(st.paths[path], n, "{path}");
     }
 }
+
+/// Player `HEAD` views: types, colours and their combinations
+/// (`docs/formats/sze.md`, "Players").
+#[test]
+fn player_heads() {
+    let Some(dir) = game_dir() else {
+        eprintln!("skipping player_heads: ANNO1503_GAME_DIR not set");
+        return;
+    };
+    let mut files = Vec::new();
+    files_with_ext(&dir.join("Scenes"), "sze", &mut files);
+    let mut combos = BTreeMap::<(u32, &str), usize>::new();
+    for path in &files {
+        let buf = std::fs::read(path).expect("readable");
+        let scene = Scene::parse(&buf).expect("scene");
+        for p in scene.players().expect("players") {
+            let Some(h) = p.head() else { continue };
+            let colour = match h.colour {
+                0 => "none",
+                1..=8 => "preset",
+                0xFF => "at start",
+                _ => "other",
+            };
+            *combos.entry((h.kind, colour)).or_default() += 1;
+            if p.index == 31 {
+                assert!(
+                    matches!(h.kind, 2 | 8) && h.colour == 0,
+                    "{}",
+                    path.display()
+                );
+            }
+        }
+    }
+    let expect = [
+        ((2, "none"), 47),
+        ((8, "at start"), 12),
+        ((8, "none"), 4),
+        ((8, "preset"), 28),
+        ((11, "at start"), 8),
+        ((11, "preset"), 1),
+        ((12, "at start"), 33),
+        ((12, "preset"), 47),
+        ((14, "none"), 80),
+        ((15, "none"), 41),
+        ((16, "none"), 26),
+        ((17, "at start"), 46),
+    ];
+    assert_eq!(combos, BTreeMap::from(expect));
+}

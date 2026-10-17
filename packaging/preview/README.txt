@@ -22,6 +22,11 @@ New in this build
 - Enhanced water (E) reworked after your video: no white blobs or grid
   stripes on the open sea, no lines along the coast; waves now roll in,
   curl, break into foam and wash up the beach; shallow water is turquoise.
+- Enhanced water (E): deep water now hides the sea floor smoothly, so the
+  tile-shaped edges between near-island water and deep sea are gone (E off
+  keeps the original look on purpose).
+- Zooming no longer stutters: sea images of all zoom levels are uploaded
+  to the GPU in the background.
 - The window title shows the renderer and the frames per second; the
   console prints a timing line every 2 seconds.
 

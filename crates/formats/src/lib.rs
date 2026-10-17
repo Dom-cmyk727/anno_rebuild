@@ -14,3 +14,4 @@ pub mod insel;
 pub mod sze;
 pub mod tagged;
 pub mod tex;
+pub mod text;

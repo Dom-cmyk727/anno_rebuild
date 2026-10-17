@@ -162,12 +162,14 @@ Status M1.6 (2026-10-17): `[~]` offline isometric renderer and interactive viewe
 - Viewer (2026-10-16): `anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group N] [--png <out.png>]`. `anno_render::scene` places every island at its `INSEL5` world position (rules in `docs/render/iso.md`, "Scene composition"); the window (`winit` 0.30.13 + `softbuffer` 0.4.8, CPU blit) pans by drag/arrows/WASD and switches zoom groups 2/1/0 by wheel or `+`/`-`, rendering 1,024 px chunks lazily on all cores. `--png` is headless; `Single_01.sze` at group 2: 15 islands, 69,256 objects drawn, 0 failed (integration test `crates/app/tests/view.rs`).
 - Open (2026-10-16 list, partly done since): `HEIGHT` needs sloped tiles before its scale can be calibrated (OQ-026); figures; island draw order (OQ-026 f).
 - [~] Window (winit + softbuffer, CPU) with the isometric ground renderer (`Felder.tex`, `GFXID`); `HEIGHT` not applied yet; wgpu later.
-- [~] Draw placed buildings and ships from a `.sze` scenario (buildings from `Anlagen.dat`, ships from Figuren sprites); correct draw order (painter's by iso depth); camera pan/zoom. Ships done 2026-10-17; figures (people, soldiers) open.
+- [x] Draw placed buildings, ships and soldiers from a `.sze` scenario (buildings from `Anlagen.dat`, units from Figuren sprites); draw order (painter's by iso depth); camera pan/zoom. Ships and soldiers done 2026-10-17; civilians/animals appear only at runtime (sim).
 - [x] `app --view <file.sze|file.scp>` as the entry point. No gameplay.
 
 - [ ] **Language gate (end of M1):** review ADR 0000 with the co-developer before any `sim` code is written: stay in Rust, or port `formats` to C++20 against the existing oracles/corpus facts and continue there.
 
 Acceptance M1: `Scenes/0200Single/*.sze` scenarios render recognisably (terrain + buildings + ships). Every parser has corpus + round-trip tests. Specs exist for each format with evidence column filled.
+
+Status M1 (2026-10-17): acceptance met except the language gate. All ten `0200Single` scenarios render with terrain, buildings, ships and soldiers (0 failed objects, every unit drawn); every parser (chunk, tex/inc, palettes, figures, Anlagen, islands, scenarios, tagged records, plain-text data) has corpus and round-trip tests and a Python oracle with identical output; specs exist for each format (`docs/formats/`), open fields linked to OQs. Fonts (`.zei`) added 2026-10-17 (`docs/formats/zei.md`); the language gate below is the owner's and co-developer's decision. M2 static analysis started 2026-10-17 (tick loop, production, population, fire/ships, scenario loader).
 
 ## 3. Milestone M2 — Reverse engineering of the simulation core
 

@@ -13,7 +13,7 @@ Counts refer to GOG 2.0.0.5 (`game/app/`), from `docs/research/game-files-analys
 | Island template | `Scenes/Islands/**/*.scp` (465), islands in `.sze` | [`insel.md`](insel.md) | partial — head, records and terrain grids complete with byte-identical re-encoding; `GFXID` meaning and most records open (OQ-024) |
 | Textures | `*.tex` (1,214), `*.inc` (1,213) | [`tex.md`](tex.md) | partial — all files parse, decode and re-encode byte-identically; HEAD unknowns (OQ-021) |
 | Palettes | `COLOR` in `.tex`, `COLORS` in `Anlagen.dat` and `FigurenHeader.dat` | [`palette.md`](palette.md) | partial — layouts complete, BGR order confirmed visually; constant fields OQ-021, OQ-022 |
-| Fonts | `*.zei` (11) | `zei.md` | not yet written |
+| Fonts | `*.zei` (11) | [`zei.md`](zei.md) | partial — layout and glyphs complete, byte-identical round trip; header sizes and level meaning open (OQ-031) |
 | Buildings | `Anlagen.dat` (1) | [`anlagen.md`](anlagen.md) | partial — complete parse, entry round trip, all frames decode and render; gameplay records not decoded |
 | Figures / sprites | `FigurenHeader.dat`, `Figuren*.dat` (16) | [`figuren.md`](figuren.md) | partial — index parses and round-trips byte-identically, all frames decode; record semantics, `z`/`level` open (OQ-023) |
 | Plain-text data | `Data/*.dat` (10 text ones + 2 `.bat`), `Texte.dat` | [`data-text.md`](data-text.md) | partial — line grammar of every file, byte-identical round trip; `Texte.dat` sections and `[ANLAGEN]` names decoded; record meaning open (OQ-029) |

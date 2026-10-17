@@ -814,6 +814,10 @@ pub struct Waves {
     pub shallow_tint: f32,
     /// Colour of shallow water (0–1 RGB).
     pub shallow_colour: [f32; 3],
+    /// Depth (`HEIGHT` units below sea level) where the sea floor starts to
+    /// fade out, and where it is hidden completely.
+    pub deep_from: f32,
+    pub deep_to: f32,
 }
 
 impl Waves {
@@ -825,7 +829,18 @@ impl Waves {
         swell: 0.07,
         shallow_tint: 0.3,
         shallow_colour: [0.36, 0.74, 0.76],
+        deep_from: 10.0,
+        deep_to: 28.0,
     };
+}
+
+/// How much of the sea floor deep water hides (0–1) at `depth` `HEIGHT`
+/// units below sea level ([`Waves::deep_from`] → [`Waves::deep_to`]). The
+/// terrain height is smooth across tiles, so this removes the tile-shaped
+/// edges between the original's floor textures in deep water.
+pub(crate) fn deep_water(depth: f32) -> f32 {
+    let w = Waves::DEFAULT;
+    smoothstep(w.deep_from, w.deep_to, depth)
 }
 
 /// Detail level of the enhanced water for tile width `tw` (pixels): 1 at

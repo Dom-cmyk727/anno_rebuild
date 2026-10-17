@@ -547,7 +547,7 @@ impl<'a> Scene<'a> {
                     canvas.pixels.as_chunks_mut::<4>().0,
                     w,
                     rect,
-                    |i| (field.cover[i], field.shore[i]),
+                    |i| (field.cover[i], field.shore[i], field.depth[i]),
                     pattern,
                     t,
                     layers.water_style,

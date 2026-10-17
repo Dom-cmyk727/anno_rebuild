@@ -132,8 +132,11 @@ const PERIOD_MS: f32 = 3000.0;
 const SWELL: f32 = 0.07;
 const SHALLOW_TINT: f32 = 0.3;
 const SHALLOW_COLOUR: vec3<f32> = vec3<f32>(0.36, 0.74, 0.76);
-// sea::SHORE_SCALE
+const DEEP_FROM: f32 = 10.0;
+const DEEP_TO: f32 = 28.0;
+// sea::SHORE_SCALE, sea::DEPTH_SCALE
 const SHORE_SCALE: f32 = 32.0;
+const DEPTH_SCALE: f32 = 8.0;
 
 // iso::wave_shade: (light, foam, tint) at shore distance `shore` (tiles),
 // plane position w (tiles), time t (ms), detail level 0..1.
@@ -187,10 +190,12 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     let under = textureLoad(under_tex, vec2<i32>(floor(pos.xy)), 0).rgb;
     var cover = 255u;
     var shore = 255u;
+    var depth = 255u;
     if (chunk.flags & 4u) != 0u {
         let f = textureLoad(field_tex, px - chunk.origin, 0);
         cover = f.r;
         shore = f.g;
+        depth = f.b;
     }
     if cover == 0u {
         return vec4<f32>(under, 1.0);
@@ -204,8 +209,13 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         filled = mix(filled, textureLoad(sea_filled, pi, frame.steps.y, 0), frame.frac);
     }
     var c = under * (1.0 - sprite.a) + sprite.rgb * sprite.a;
-    if cover > 1u {
-        c = mix(c, filled.rgb, f32(cover - 1u) / 254.0);
+    var open = f32(cover - 1u) / 254.0;
+    if enhanced {
+        // iso::deep_water
+        open = max(open, sstep(DEEP_FROM, DEEP_TO, f32(depth) / DEPTH_SCALE));
+    }
+    if open > 0.0 {
+        c = mix(c, filled.rgb, open);
     }
     if enhanced {
         let p = vec2<f32>(f32(px.x), f32(px.y) + frame.raise);

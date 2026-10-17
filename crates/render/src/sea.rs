@@ -35,6 +35,11 @@ pub const PERIOD_TILES: i32 = 16;
 /// `gpu.wgsl` uses the same scale.
 pub const SHORE_SCALE: f32 = 32.0;
 
+/// Water depths in [`WaterField::depth`] are stored in 1/8 `HEIGHT` units
+/// (255 = 31.9 units or more; sea level is 32). `gpu.wgsl` uses the same
+/// scale.
+pub const DEPTH_SCALE: f32 = 8.0;
+
 /// Passes of a 3 × 3 box blur over the shore distance field: the chamfer
 /// distance has octagonal contours with kinks at the tile corners, which
 /// showed as angular bands along the coast. Land stays 0.
@@ -199,6 +204,9 @@ pub struct WaterField {
     pub cover: Vec<u8>,
     /// Distance to the shore in 1/[`SHORE_SCALE`] tiles, 255 = far.
     pub shore: Vec<u8>,
+    /// Water depth (sea level minus terrain height, `HEIGHT` units) in
+    /// 1/[`DEPTH_SCALE`] units, 255 = deep or open sea, 0 = no sea.
+    pub depth: Vec<u8>,
 }
 
 /// Width in tiles over which an island's sea floor fades into open water
@@ -308,6 +316,7 @@ pub fn water_field<'w>(
     let n = usize::try_from(rect.w * rect.h).expect("non-negative");
     let mut cover = vec![255; n];
     let mut shore = vec![255; n];
+    let mut depth = vec![255; n];
     let (tw, th) = TILE[group];
     let den = i64::from(tw) * i64::from(th);
     let raise = lift.scaled(SEA_LEVEL, 1, group);
@@ -344,6 +353,7 @@ pub fn water_field<'w>(
                 if under >= SEA_LEVEL * den || !iw.sea_chunk[(ty / 8) * iw.w.div_ceil(8) + tx / 8] {
                     cover[i] = 0;
                     shore[i] = 0;
+                    depth[i] = 0;
                     continue;
                 }
                 #[allow(clippy::cast_precision_loss)]
@@ -354,11 +364,18 @@ pub fn water_field<'w>(
                 {
                     cover[i] = 1 + (o.clamp(0.0, 1.0) * 254.0).round() as u8;
                     shore[i] = (d * SHORE_SCALE).clamp(0.0, 255.0) as u8;
+                    let units = (SEA_LEVEL * den - under) as f32 / den as f32;
+                    depth[i] = (units * DEPTH_SCALE).clamp(0.0, 255.0) as u8;
                 }
             }
         }
     }
-    WaterField { rect, cover, shore }
+    WaterField {
+        rect,
+        cover,
+        shore,
+        depth,
+    }
 }
 
 /// A pixel the sea can be drawn onto.
@@ -409,16 +426,17 @@ fn lerp4(a: [u8; 4], b: [u8; 4], t: u32, scale: u32) -> [u8; 4] {
 
 /// Draws the sea over `out`, a block of `region.w × region.h` pixels with
 /// row stride `stride` showing scene rectangle `region` at `group`.
-/// `field(i)` returns `(cover, shore)` of pixel `i` of the region
+/// `field(i)` returns `(cover, shore, depth)` of pixel `i` of the region
 /// (row-major, `region.w` per row; see [`WaterField`]). `Original` draws
-/// the pattern step of `time_ms`; `Enhanced` also blends into the next step
-/// and adds the waves of `iso::wave_shade` (not in the original).
+/// the pattern step of `time_ms`; `Enhanced` also blends into the next
+/// step, hides the floor in deep water (`iso::deep_water`) and adds the
+/// waves of `iso::wave_shade` (not in the original).
 #[allow(clippy::too_many_arguments)]
 pub fn shade_sea<P: SeaTarget>(
     out: &mut [P],
     stride: usize,
     region: Rect,
-    field: impl Fn(usize) -> (u8, u8),
+    field: impl Fn(usize) -> (u8, u8, u8),
     pattern: &SeaPattern,
     time_ms: u64,
     style: WaterStyle,
@@ -458,7 +476,7 @@ pub fn shade_sea<P: SeaTarget>(
                         to_usize((sy - region.y).clamp(0, region.h - 1)),
                     );
                     // Land points too (shore 0), so foam reaches the beach.
-                    let (_, shore) = field(cy * rw + cx);
+                    let (_, shore, _) = field(cy * rw + cx);
                     #[allow(clippy::cast_precision_loss)]
                     let (px, py) = (sx as f32, (sy + raise) as f32);
                     let pos = (px / twf + py / thf, py / thf - px / twf);
@@ -472,7 +490,7 @@ pub fn shade_sea<P: SeaTarget>(
     for row in 0..rh {
         let sy = region.y + i32::try_from(row).expect("fits");
         for col in 0..rw {
-            let (cover, _) = field(row * rw + col);
+            let (cover, _, depth) = field(row * rw + col);
             if cover == 0 {
                 continue;
             }
@@ -486,8 +504,16 @@ pub fn shade_sea<P: SeaTarget>(
             let dst = &mut out[row * stride + col];
             let mut c = dst.rgba();
             over(&mut c, &sprite);
-            if cover > 1 {
-                c = lerp4(c, filled, u32::from(cover - 1), 254);
+            // Openness 0..=254; enhanced water also hides the floor where it
+            // is deep (smooth across tiles, unlike the floor textures).
+            let mut open = u32::from(cover - 1);
+            if style == WaterStyle::Enhanced {
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let deep = (iso::deep_water(f32::from(depth) / DEPTH_SCALE) * 254.0) as u32;
+                open = open.max(deep);
+            }
+            if open > 0 {
+                c = lerp4(c, filled, open, 254);
             }
             if style == WaterStyle::Enhanced {
                 let (gx, gy) = ((sx - gx0).div_euclid(step), (sy - gy0).div_euclid(step));

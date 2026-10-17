@@ -38,6 +38,7 @@ pub struct Chunk {
     /// Sea field (see [`sea::WaterField`]); empty = open sea everywhere.
     pub(crate) cover: Vec<u8>,
     pub(crate) shore: Vec<u8>,
+    pub(crate) depth: Vec<u8>,
     /// Some island here has water objects below / above sea level.
     pub(crate) water_below: bool,
     pub(crate) water_above: bool,
@@ -50,6 +51,7 @@ impl Chunk {
         objects: Vec::new(),
         cover: Vec::new(),
         shore: Vec::new(),
+        depth: Vec::new(),
         water_below: false,
         water_above: false,
     };
@@ -303,11 +305,11 @@ impl FrameRenderer {
                     let d = index(rows, r.x, r.y);
                     let field = |i: usize| {
                         if c.cover.is_empty() {
-                            return (255, 255);
+                            return (255, 255, 255);
                         }
                         let (x, y) = (i % to_usize(r.w), i / to_usize(r.w));
                         let s = chunk_index(cx, cy, r.x + to_i32(x), r.y + to_i32(y));
-                        (c.cover[s], c.shore[s])
+                        (c.cover[s], c.shore[s], c.depth[s])
                     };
                     sea::shade_sea(
                         &mut band[d..],
@@ -678,6 +680,7 @@ fn render_chunk(scene: &Scene<'_>, group: usize, cx: i32, cy: i32) -> Chunk {
         objects,
         cover: field.cover,
         shore: field.shore,
+        depth: field.depth,
         water_below,
         water_above,
     }

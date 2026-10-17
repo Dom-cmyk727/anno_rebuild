@@ -40,7 +40,7 @@ use crate::scene::{Rect, Scene, SpriteLayer};
 const ATLAS_SIZE: u32 = 2048;
 /// Chunks uploaded per frame at most; the rest show open sea until a later
 /// frame, so zooming never stalls on uploads.
-const UPLOADS_PER_FRAME: usize = 12;
+const UPLOADS_PER_FRAME: usize = 6;
 /// Bytes of one sprite instance (see `sprite_vs`).
 const INSTANCE_BYTES: u64 = 32;
 
@@ -70,7 +70,6 @@ struct GpuChunk {
 
 /// The sea pattern of one zoom group.
 struct GpuSea {
-    group: usize,
     size: (i32, i32),
     steps: usize,
     step_ms: u64,
@@ -107,7 +106,10 @@ pub struct GpuFrame {
     frame_uniform: Buffer,
     /// Offscreen texture of pass 1 and its size.
     under: Option<(Texture, TextureView, (u32, u32))>,
-    sea: Option<GpuSea>,
+    /// Sea patterns uploaded so far, by zoom group (kept, so that zooming
+    /// back does not upload them again), and the one in use.
+    seas: BTreeMap<usize, GpuSea>,
+    sea_group: Option<usize>,
     chunks: BTreeMap<ChunkKey, GpuChunk>,
     /// 1 × 1 stand-ins for unused bindings.
     dummy_color: TextureView,
@@ -351,10 +353,10 @@ impl GpuFrame {
         let dummy_field = upload_texture(
             &device,
             &queue,
-            TextureFormat::Rg8Uint,
+            TextureFormat::Rgba8Uint,
             one,
-            2,
-            &[&[255, 255]],
+            4,
+            &[&[255, 255, 255, 0]],
             false,
         )
         .1;
@@ -381,7 +383,8 @@ impl GpuFrame {
             sprite_pipe,
             frame_uniform,
             under: None,
-            sea: None,
+            seas: BTreeMap::new(),
+            sea_group: None,
             chunks: BTreeMap::new(),
             dummy_color,
             dummy_field,
@@ -500,6 +503,11 @@ impl GpuFrame {
         stats
     }
 
+    /// The sea pattern of the current zoom group.
+    fn sea(&self) -> Option<&GpuSea> {
+        self.sea_group.and_then(|g| self.seas.get(&g))
+    }
+
     fn ensure_under(&mut self, size: (u32, u32)) {
         if self.under.as_ref().is_some_and(|u| u.2 == size) {
             return;
@@ -523,10 +531,11 @@ impl GpuFrame {
     }
 
     fn ensure_sea(&mut self, scene: &Scene<'_>, group: usize) {
-        if self.sea.as_ref().is_some_and(|s| s.group == group) {
+        if self.seas.contains_key(&group) {
+            self.sea_group = Some(group);
             return;
         }
-        self.sea = None;
+        self.sea_group = None;
         let Some(p) = scene.sea(group) else {
             return;
         };
@@ -554,15 +563,18 @@ impl GpuFrame {
         };
         let (ts, vs) = up(&sprites);
         let (tf, vf) = up(&filled);
-        self.sea = Some(GpuSea {
+        self.sea_group = Some(group);
+        self.seas.insert(
             group,
-            size: (p.width, p.height),
-            steps: p.step_count(),
-            step_ms: p.step_ms,
-            sprite: vs,
-            filled: vf,
-            _textures: [ts, tf],
-        });
+            GpuSea {
+                size: (p.width, p.height),
+                steps: p.step_count(),
+                step_ms: p.step_ms,
+                sprite: vs,
+                filled: vf,
+                _textures: [ts, tf],
+            },
+        );
     }
 
     /// Uploads newly built visible chunks (at most [`UPLOADS_PER_FRAME`]),
@@ -633,13 +645,14 @@ impl GpuFrame {
             c.cover
                 .iter()
                 .zip(&c.shore)
-                .flat_map(|(&a, &b)| [a, b])
+                .zip(&c.depth)
+                .flat_map(|((&a, &b), &d)| [a, b, d, 0])
                 .collect()
         });
         // 0RGB little-endian = B, G, R, 0.
         let ground = view(TextureFormat::Bgra8Unorm, 4, ground, 1, &self.dummy_color);
         let objects = view(TextureFormat::Rgba8Unorm, 4, objects, 2, &self.dummy_color);
-        let field = view(TextureFormat::Rg8Uint, 2, field, 4, &self.dummy_field);
+        let field = view(TextureFormat::Rgba8Uint, 4, field, 4, &self.dummy_field);
         let uniform = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("chunk"),
             size: 16,
@@ -857,7 +870,7 @@ impl GpuFrame {
         style: WaterStyle,
         scene: &Scene<'_>,
     ) {
-        let (k0, k1, frac, size) = match &self.sea {
+        let (k0, k1, frac, size) = match self.sea() {
             Some(s) => {
                 let (k0, k1, frac) = steps_at(s.steps, s.step_ms, time_ms);
                 (k0, k1, frac, s.size)
@@ -893,7 +906,7 @@ impl GpuFrame {
     }
 
     fn frame_bind(&self, under: Option<&TextureView>) -> BindGroup {
-        let (sprite, filled) = match &self.sea {
+        let (sprite, filled) = match self.sea() {
             Some(s) => (&s.sprite, &s.filled),
             None => (&self.dummy_array, &self.dummy_array),
         };

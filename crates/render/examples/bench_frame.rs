@@ -6,7 +6,7 @@
 //! cargo run --release -p anno-render --features gpu --example bench_frame -- <game_dir> <file.sze|.scp>
 //!     [--threads n] [--res 1920x1080,2560x1440,3840x2160] [--groups 0,1,2]
 //!     [--styles original,enhanced] [--chunks blocking,async]
-//!     [--renderer cpu,gpu] [--check] [--at dx,dy] [--quick]
+//!     [--renderer cpu,gpu] [--check] [--island n] [--at dx,dy] [--t0 ms] [--quick]
 //! ```
 //!
 //! Per resolution, zoom group and water style, from a cold cache centred on
@@ -53,6 +53,10 @@ struct Options {
     check: bool,
     /// Camera offset from the largest island's centre, in pixels.
     at: (i32, i32),
+    /// Island to centre on (default: the largest).
+    island: Option<usize>,
+    /// Animation clock at the first frame (ms).
+    t0: u64,
     quick: bool,
 }
 
@@ -81,6 +85,8 @@ fn main() -> Result<(), BoxError> {
         renderers: vec![false],
         check: false,
         at: (0, 0),
+        island: None,
+        t0: 0,
         quick: false,
     };
     let mut it = args[2..].iter();
@@ -134,6 +140,8 @@ fn main() -> Result<(), BoxError> {
                     .collect::<Result<_, _>>()?;
             }
             "--check" => o.check = true,
+            "--t0" => o.t0 = value()?.parse()?,
+            "--island" => o.island = Some(value()?.parse()?),
             "--at" => {
                 let v = value()?;
                 let (x, y) = v.split_once(',').ok_or("--at dx,dy")?;
@@ -153,12 +161,13 @@ fn main() -> Result<(), BoxError> {
     if let Some(c) = iso::water_colour(&anlagen) {
         textures.set_water(c);
     }
-    let largest = islands
-        .iter()
-        .enumerate()
-        .max_by_key(|(_, i)| u32::from(i.width) * u32::from(i.height))
-        .map(|(k, _)| k)
-        .ok_or("no islands")?;
+    let largest = o.island.unwrap_or_else(|| {
+        islands
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, i)| u32::from(i.width) * u32::from(i.height))
+            .map_or(0, |(k, _)| k)
+    });
     let started = std::time::Instant::now();
     let scene = Scene::new(file.clone(), islands, textures, anlagen, iso::HEIGHT_LIFT);
     eprintln!(
@@ -225,6 +234,7 @@ fn main() -> Result<(), BoxError> {
                             centre,
                             frames: 120 / scale,
                             check: o.check,
+                            t0: o.t0,
                             threads: o.threads,
                         };
                         run(&scene, &config, gpu)?;
@@ -250,6 +260,7 @@ struct Config {
     /// Frames of the `static` path (others scale from it).
     frames: usize,
     check: bool,
+    t0: u64,
     threads: usize,
 }
 
@@ -273,7 +284,7 @@ fn run(
         let target = gpu.as_ref().map(|g| g.offscreen_target(size));
         let mut out = vec![0u32; usize::try_from(w * h)?];
         let mut cam = (c.centre.0 - w / 2, c.centre.1 - h / 2);
-        let mut time = 0u64;
+        let mut time = c.t0;
         let paths: [(&str, usize, (i32, i32)); 4] = [
             ("cold", 1, (0, 0)),
             ("static", c.frames, (0, 0)),

@@ -878,8 +878,15 @@ pub(crate) fn shore_distance(heights: &[u8], w: usize, h: usize) -> Vec<f32> {
 pub struct Waves {
     /// Tiles from the shore where coastal waves start.
     pub surf_zone: f32,
-    /// Tiles from the shore where crests break into foam.
-    pub break_zone: f32,
+    /// Water depth (`HEIGHT` units below the waterline) where waves start
+    /// to grow, where they break, and below which swash runs up the beach.
+    pub shoal_depth: f32,
+    pub break_depth: f32,
+    pub swash_depth: f32,
+    /// Direction the open-sea swell travels in (tile axes, unit length).
+    pub swell_dir: [f32; 2],
+    /// Depth over which shallow water is tinted.
+    pub tint_depth: f32,
     /// Distance between incoming crests (tiles).
     pub wavelength: f32,
     /// Time for one crest to follow the next (ms).
@@ -905,10 +912,15 @@ pub struct Waves {
 
 impl Waves {
     pub const DEFAULT: Waves = Waves {
-        surf_zone: 3.0,
-        break_zone: 1.6,
-        wavelength: 1.4,
-        period_ms: 3000.0,
+        surf_zone: 4.0,
+        shoal_depth: 12.0,
+        break_depth: 4.0,
+        swash_depth: 1.5,
+        // Crests run diagonally on screen (crest along the tile y axis).
+        swell_dir: [0.96, 0.28],
+        tint_depth: 8.0,
+        wavelength: 2.6,
+        period_ms: 3400.0,
         swell: 0.07,
         shallow_tint: 0.3,
         shallow_colour: [0.36, 0.74, 0.76],
@@ -981,20 +993,28 @@ fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
 
 /// Enhanced-water shading of one sea pixel (not original, opt-in): returns
 /// `(light, foam, tint)` — relative brightness change, foam amount (0–1)
-/// and shallow-water tint (0–1). `shore` = distance to the shore in tiles,
-/// `pos` = position on the water plane in tiles, `detail` = [`wave_detail`].
+/// and shallow-water tint (0–1). `dist` = distance to the shore in tiles
+/// over a heavily smoothed field (crests arrive in long curves instead of
+/// tracing every bulge of the coast), `depth` = water depth below the
+/// waterline in `HEIGHT` units (negative at the soft edge), `pos` =
+/// position on the water plane in tiles, `detail` = [`wave_detail`].
 ///
-/// Model:
+/// Model (revised 2026-10-17 after the owner found the waves flat, like
+/// sliding light reflections, with lines tracing every shoal):
 /// - Open water: a slow swell from two drifting layers of smooth value
 ///   noise (no regular stripes, no whitecaps).
-/// - Coast (inside `surf_zone`): crests of equal phase `shore / λ + t / T`
-///   travel towards the beach; slow noise bends them so they do not trace
-///   the shore exactly, and breaks them into segments. Crests brighten the
-///   water; inside `break_zone` they turn into mottled foam; at the beach a
-///   thin swash sheet runs up after each crest and fades.
-/// - Shallow water near the shore is tinted turquoise.
+/// - Coastal waves (within `surf_zone` tiles): crests of equal phase
+///   `dist / λ + t / T` run towards the beach. Each crest has a height
+///   profile — gentle back, rounded top, steep front — shaded as relief:
+///   the front facing the beach darker, the top bright, the back slightly
+///   lit. Waves grow as the water gets shallower (`shoal_depth` →
+///   `break_depth`) and break where it is shallower than `break_depth`:
+///   white crest, whitewater trailing behind it, decaying; at the beach a
+///   swash sheet runs up after each crest.
+/// - Shallow water is tinted turquoise by depth.
 pub(crate) fn wave_shade(
-    shore: f32,
+    dist: f32,
+    depth: f32,
     (wx, wy): (f32, f32),
     time_ms: u64,
     detail: f32,
@@ -1013,39 +1033,67 @@ pub(crate) fn wave_shade(
         t * 0.000_11,
     );
     let mut light = w.swell * 2.0 * (0.65 * s1 + 0.35 * s2 - 0.5);
-    let near = smoothstep(w.surf_zone, w.break_zone * 0.5, shore);
     let mut foam: f32 = 0.0;
+    let near = smoothstep(w.surf_zone, w.surf_zone * 0.5, dist);
     if near > 0.0 {
-        let bend = noise3(wx * 0.18, wy * 0.18, t * 0.000_05);
-        // A shorter-scale offset staggers neighbouring crest segments, so
-        // they reach the beach at different times.
-        let stagger = noise3(wx * 0.6 + 7.3, wy * 0.6, t * 0.000_04);
-        let phase = shore / w.wavelength + t / w.period_ms + 0.8 * bend + 0.5 * stagger;
+        // Swell from one direction, crests bent by slow noise. (Turning the
+        // crests towards each beach by mixing in the shore distance
+        // compressed the phase into bunches of thin lines at shoal edges.)
+        let bend = 1.4 * noise3(wx * 0.12, wy * 0.12, t * 0.000_03)
+            + 0.5 * noise3(wx * 0.35 + 5.0, wy * 0.35, t * 0.000_05);
+        let along = -(wx * w.swell_dir[0] + wy * w.swell_dir[1]);
+        let phase = along / w.wavelength + t / w.period_ms + bend;
         let u = phase - phase.floor();
-        // Gentle back, steep front just before the next phase.
-        let crest = smoothstep(0.55, 0.95, u) * (1.0 - smoothstep(0.95, 1.0, u));
-        // Crests come in separate pieces with calm water between them.
-        let segment = smoothstep(0.4, 0.62, noise3(wx * 0.32 + 3.1, wy * 0.32, t * 0.000_06));
-        let amp = near * segment;
-        light += 0.12 * amp * crest;
-        // Curl: a white line on the steep front just before it breaks.
-        let curl = smoothstep(0.88, 0.95, u)
-            * (1.0 - smoothstep(0.95, 0.985, u))
-            * smoothstep(w.break_zone * 1.6, w.break_zone, shore);
-        let fine = noise3(wx * 2.2, wy * 2.2, t * 0.0011);
+        // Height profile, crest at u = 0.9: gentle back, steep front.
+        let profile = |u: f32| {
+            let d = u - 0.9;
+            if d < 0.0 {
+                (-(d / 0.3).powi(2)).exp()
+            } else {
+                (-(d / 0.05).powi(2)).exp()
+            }
+        };
+        let height = profile(u);
+        // Slope towards the beach, scaled so the front is about −1.
+        let slope = (profile((u + 0.01).min(1.0)) - profile((u - 0.01).max(0.0))) * 2.5;
+        // Long crests with gentle variation along them.
+        let segment =
+            0.55 + 0.45 * smoothstep(0.3, 0.7, noise3(wx * 0.25 + 3.1, wy * 0.25, t * 0.000_05));
+        // Depth only gates softly (deep pockets inside the shallows must not
+        // draw rings); where waves break follows the smooth distance.
+        let shoal = smoothstep(w.shoal_depth, w.break_depth, depth);
+        // Waves break where the water becomes shallower than `break_depth`
+        // and run on as weakening bores over the flats.
+        let breaking = smoothstep(w.break_depth * 1.4, w.break_depth * 0.7, depth);
+        let bore = 1.0 - 0.7 * smoothstep(w.break_depth * 0.7, 0.3, depth);
+        // Waves grow while shoaling and lose height once broken.
+        let amp = near * segment * (0.35 + 0.65 * shoal) * (1.0 - 0.5 * breaking);
+        light += amp * (0.10 * slope + 0.10 * height);
+        let fine = noise3(wx * 2.0, wy * 2.0, t * 0.0009);
         let mottle = 0.55 + detail * (fine - 0.55);
-        let breaking = smoothstep(w.break_zone, w.break_zone * 0.3, shore);
-        foam = (breaking * amp * crest.powf(1.5) * smoothstep(0.3, 0.75, mottle) * 0.9)
-            .max(0.55 * amp * curl);
-        if shore < 0.7 {
-            let at_shore = phase - shore / w.wavelength;
+        if breaking > 0.0 {
+            // Waves break hardest where the depth crosses `break_depth`;
+            // beyond, on flats, they run on as weaker bores. Foam is a
+            // narrow line on the crest with a short whitewater trail.
+            // Crests break in pieces, not as one line.
+            let pieces = smoothstep(0.35, 0.6, noise3(wx * 0.5 + 9.0, wy * 0.5, t * 0.000_07));
+            let surge = breaking * bore * pieces;
+            let line = (-((u - 0.9) / 0.035).powi(2)).exp();
+            let behind = (0.9 - u).max(0.0);
+            let trail = (-behind * 14.0).exp() * smoothstep(0.25, 0.7, mottle);
+            foam = surge * near * segment * (0.8 * line).max(0.3 * trail);
+        }
+        if depth < w.swash_depth {
+            // Swash: after a crest reaches the beach a thin sheet runs up
+            // and fades.
+            let at_shore = phase;
             let since = at_shore - at_shore.floor();
             let burst = smoothstep(0.0, 0.05, since) * (-since * 3.0).exp();
-            let edge = (1.0 - shore / 0.7).powf(0.8);
-            foam = foam.max(edge * burst * (0.4 + 0.4 * mottle));
+            let edge = smoothstep(w.swash_depth, 0.0, depth);
+            foam = foam.max(edge * burst * (0.35 + 0.4 * mottle));
         }
     }
-    let tint = w.shallow_tint * smoothstep(2.2, 0.0, shore);
+    let tint = w.shallow_tint * smoothstep(w.tint_depth, 0.0, depth);
     (light, foam.clamp(0.0, 1.0), tint)
 }
 
@@ -1074,7 +1122,7 @@ pub(crate) fn shade_apply(rgba: [u8; 4], (light, foam, tint): (f32, f32, f32)) -
 /// and the foam.
 #[cfg(test)]
 fn enhance(rgba: [u8; 4], shore: f32, pos: (f32, f32), time_ms: u64) -> ([u8; 4], f32) {
-    let s = wave_shade(shore, pos, time_ms, 1.0);
+    let s = wave_shade(shore, shore * 4.0, pos, time_ms, 1.0);
     (shade_apply(rgba, s), s.1)
 }
 

@@ -41,9 +41,11 @@ pub const SHORE_SCALE: f32 = 32.0;
 pub const DEPTH_SCALE: f32 = 4.0;
 
 /// Passes of a 3 × 3 box blur over the shore distance field: the chamfer
-/// distance has octagonal contours with kinks at the tile corners, which
-/// showed as angular bands along the coast. Land stays 0.
-const SHORE_SMOOTHING: usize = 2;
+/// distance has octagonal contours with kinks at the tile corners, and it
+/// traces every bulge and shoal of the coast. Wave crests follow this
+/// field, so it is smoothed strongly (radius ≈ 3 tiles); breaking and tint
+/// follow the water depth instead. Land stays 0.
+const SHORE_SMOOTHING: usize = 10;
 
 /// [`iso::shore_distance`] smoothed by [`SHORE_SMOOTHING`] box-blur passes.
 fn smooth_shore(heights: &[u8], w: usize, h: usize) -> Vec<f32> {
@@ -558,11 +560,12 @@ pub fn shade_sea<P: SeaTarget>(
                         to_usize((sy - region.y).clamp(0, region.h - 1)),
                     );
                     // Land points too (shore 0), so foam reaches the beach.
-                    let (_, shore, _, _) = field(cy * rw + cx);
+                    let (_, shore, depth, _) = field(cy * rw + cx);
                     #[allow(clippy::cast_precision_loss)]
                     let (px, py) = (sx as f32, (sy + raise) as f32);
                     let pos = (px / twf + py / thf, py / thf - px / twf);
-                    iso::wave_shade(f32::from(shore) / SHORE_SCALE, pos, time_ms, detail)
+                    let depth = (f32::from(depth) - DEPTH_BIAS) / DEPTH_SCALE;
+                    iso::wave_shade(f32::from(shore) / SHORE_SCALE, depth, pos, time_ms, detail)
                 })
                 .collect()
         }

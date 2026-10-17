@@ -20,6 +20,15 @@ struct Frame {
     tile_h: f32,
     raise: f32,
     _pad: vec2<f32>,
+    // Wave simulation window (gpu_fluid.rs): origin in world cells, size,
+    // 1 = active, cells per tile.
+    fluid_origin: vec2<i32>,
+    fluid_size: i32,
+    fluid_on: u32,
+    fluid_cpt: f32,
+    _pad2: f32,
+    _pad3: f32,
+    _pad4: f32,
 }
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -29,6 +38,10 @@ struct Frame {
 @group(0) @binding(3) var sea_filled: texture_2d_array<f32>;
 // Terrain height seen at each view pixel (frame::TERRAIN_SCALE, 0xFFFF = none).
 @group(0) @binding(4) var terrain_view: texture_2d<u32>;
+// Wave simulation state (eta, u, v, foam), ring-buffer storage.
+@group(0) @binding(5) var fluid_tex: texture_2d<f32>;
+// Still-water depth per simulation cell (ring-buffer storage).
+@group(0) @binding(6) var fluid_depth: texture_2d<f32>;
 
 struct Chunk {
     origin: vec2<i32>,
@@ -278,6 +291,85 @@ fn slope_of(flags: u32) -> f32 {
     return f32(flags >> 2u) * 0.5;
 }
 
+// ---- Wave simulation sampling (gpu_fluid.rs, fluid.wgsl) ----
+
+fn fluid_load(c: vec2<i32>) -> vec4<f32> {
+    let n = frame.fluid_size;
+    return textureLoad(fluid_tex, vec2<i32>(wrap(c.x, n), wrap(c.y, n)), 0);
+}
+
+// Whether tile position w lies inside the simulated window (with a margin
+// for the 2 x 2 sample).
+fn fluid_inside(w: vec2<f32>) -> bool {
+    if frame.fluid_on == 0u {
+        return false;
+    }
+    let c = vec2<i32>(floor(w * frame.fluid_cpt - 0.5)) - frame.fluid_origin;
+    return c.x >= 1 && c.y >= 1 && c.x < frame.fluid_size - 2 && c.y < frame.fluid_size - 2;
+}
+
+struct FluidSample {
+    // surface elevation over the wet cells, its gradient per tile, foam
+    s: vec4<f32>,
+    // bilinear weight of the wet cells (0 = all dry)
+    wet: f32,
+}
+
+fn fluid_wet(c: vec2<i32>, eta: f32) -> f32 {
+    let n = frame.fluid_size;
+    let h = textureLoad(fluid_depth, vec2<i32>(wrap(c.x, n), wrap(c.y, n)), 0).r;
+    return select(0.0, 1.0, eta + h > 0.02);
+}
+
+// The simulated surface at tile position w: elevation interpolated from
+// the wet cells only (dry cells hold their bed), so the waterline follows
+// the precise pixel terrain plus the simulated water level.
+fn fluid_sample(w: vec2<f32>) -> FluidSample {
+    let c = w * frame.fluid_cpt - 0.5;
+    let c0 = vec2<i32>(floor(c));
+    let f = c - floor(c);
+    let a = fluid_load(c0);
+    let b = fluid_load(c0 + vec2<i32>(1, 0));
+    let d = fluid_load(c0 + vec2<i32>(0, 1));
+    let e = fluid_load(c0 + vec2<i32>(1, 1));
+    let wa = (1.0 - f.x) * (1.0 - f.y) * fluid_wet(c0, a.x);
+    let wb = f.x * (1.0 - f.y) * fluid_wet(c0 + vec2<i32>(1, 0), b.x);
+    let wd = (1.0 - f.x) * f.y * fluid_wet(c0 + vec2<i32>(0, 1), d.x);
+    let we = f.x * f.y * fluid_wet(c0 + vec2<i32>(1, 1), e.x);
+    let sw = wa + wb + wd + we;
+    let eta = (wa * a.x + wb * b.x + wd * d.x + we * e.x) / max(sw, 1e-6);
+    let foam = mix(mix(a.w, b.w, f.x), mix(d.w, e.w, f.x), f.y);
+    // Gradient over wet neighbours (dry ones take the wet mean).
+    let ea = select(eta, a.x, wa > 0.0);
+    let eb = select(eta, b.x, wb > 0.0);
+    let ed = select(eta, d.x, wd > 0.0);
+    let ee = select(eta, e.x, we > 0.0);
+    let gx = mix(eb - ea, ee - ed, f.y) * frame.fluid_cpt;
+    let gy = mix(ed - ea, ee - eb, f.x) * frame.fluid_cpt;
+    return FluidSample(vec4<f32>(eta, gx, gy, foam), sw);
+}
+
+// Shading (light, foam, tint) from the simulated surface: relief lit from
+// the screen's top left (the -x tile axis), elevation brightens crests,
+// foam from breaking, a foam edge where the swash runs up, depth tint.
+fn fluid_shade(fl: vec4<f32>, depth: f32, run: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<f32> {
+    let s1 = noise3(w.x * 0.22 + t * 0.00011, w.y * 0.22 - t * 0.00004, t * 0.00006);
+    let s2 = noise3(w.x * 0.55 - t * 0.00019, w.y * 0.55 + t * 0.00013, t * 0.00011);
+    var light = SWELL * (0.65 * s1 + 0.35 * s2 - 0.5);
+    // Relief: subtle on the open sea (long swell), stronger in the surf.
+    let k = mix(0.06, 0.16, sstep(12.0, 3.0, depth));
+    light += k * clamp(fl.y * 0.6, -1.0, 1.0) + 0.02 * clamp(fl.x, -2.0, 2.0);
+    let fine = noise3(w.x * 2.0, w.y * 2.0, t * 0.0009);
+    let mottle = 0.55 + detail * (fine - 0.55);
+    let froth = sstep(0.2, 0.75, mottle);
+    var foam = clamp(fl.w * 0.55, 0.0, 0.85) * (0.25 + 0.75 * froth);
+    let wet = depth + run;
+    let edge = sstep(0.8, 0.0, wet) * sstep(-0.2, 0.1, wet) * sstep(0.05, 0.6, fl.w);
+    foam = max(foam, edge * (0.3 + 0.5 * froth));
+    let tint = SHALLOW_TINT * sstep(TINT_DEPTH, 0.0, depth);
+    return vec3<f32>(light, clamp(foam, 0.0, 1.0), tint);
+}
+
 // iso::shade_apply
 fn shade_apply(c: vec3<f32>, s: vec3<f32>) -> vec3<f32> {
     let v = mix(c, SHALLOW_COLOUR, s.z) * (1.0 + s.x);
@@ -344,8 +436,17 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     var alpha = 1.0;
     let pw = vec2<f32>(f32(px.x), f32(px.y) + frame.raise);
     let wpos = vec2<f32>(pw.x / frame.tile_w + pw.y / frame.tile_h, pw.y / frame.tile_h - pw.x / frame.tile_w);
-    if enhanced {
-        var run = 0.0;
+    let use_fluid = enhanced && (flags & 2u) == 0u && fluid_inside(wpos);
+    var fl = vec4<f32>(0.0);
+    var run = 0.0;
+    if use_fluid {
+        // Water where the simulated surface lies above the pixel's terrain
+        // (wetting and drying in fluid.wgsl): the run-up is simulated.
+        let fs = fluid_sample(wpos);
+        fl = fs.s;
+        run = fl.x;
+        alpha = sstep(-0.5 * SHORE_EDGE, SHORE_EDGE, sd + run) * sstep(0.0, 0.2, fs.wet);
+    } else if enhanced {
         if sd < SWASH_DEPTH && (flags & 2u) == 0u {
             run = swash(f32(shore) / SHORE_SCALE, slope_of(flags), wpos, frame.time_ms).x;
         }
@@ -382,6 +483,8 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         let detail = sstep(24.0, 64.0, frame.tile_w);
         if (flags & 2u) != 0u {
             c = shade_apply(c, river_shade(w, sd, frame.time_ms));
+        } else if use_fluid {
+            c = shade_apply(c, fluid_shade(fl, sd, run, w, frame.time_ms, detail));
         } else {
             c = shade_apply(c, wave_shade(f32(shore) / SHORE_SCALE, sd, slope_of(flags), w, frame.time_ms, detail));
         }

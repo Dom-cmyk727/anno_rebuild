@@ -515,6 +515,27 @@ impl<'a> Scene<'a> {
         sea::water_field(rect, probe, water)
     }
 
+    /// Water depth for the wave simulation at world tile position
+    /// `(x, y)`: waterline minus the smooth terrain of the island there
+    /// (as the enhanced waterline), open sea (floor height 0) elsewhere.
+    /// Linear in the number of islands; a spatial index can replace the
+    /// scan for maps with many islands.
+    pub fn fluid_depth(&self, x: f32, y: f32) -> f32 {
+        #[allow(clippy::cast_precision_loss)]
+        let waterline = iso::WATERLINE as f32;
+        for (k, isl) in self.islands.iter().enumerate() {
+            let (lx, ly) = (x - f32::from(isl.x), y - f32::from(isl.y));
+            if lx < 0.0 || ly < 0.0 || lx >= f32::from(isl.width) || ly >= f32::from(isl.height) {
+                continue;
+            }
+            if let Some((_, heights)) = &self.objects[k].grids {
+                let (w, h) = (usize::from(isl.width), usize::from(isl.height));
+                return waterline - sea::smooth_height(heights, w, h, lx, ly);
+            }
+        }
+        waterline
+    }
+
     /// Terrain height (`HEIGHT` units) seen at scene pixel `(sx, sy)` of
     /// `rect` according to `probe`; `None` where no island ground is drawn.
     pub fn terrain_at(&self, probe: &SceneProbe, rect: Rect, sx: i32, sy: i32) -> Option<f32> {

@@ -44,6 +44,10 @@ The animation clock advances 16 ms per frame. `--quick` divides the frame counts
 
 ## Results
 
+### 2026-10-17 (3) — wave simulation, Apple M5 Pro (Metal), `Single_01.sze`
+
+3840 × 2160, GPU, async chunks, after 2 s warm-up, p50 ms: original water 1.8–3.0, enhanced water with the 1024² wave simulation 2.0–3.7 (≈ +1 ms); p99 ≤ 13 ms in all cases.
+
 ### 2026-10-17 (2) — GPU compositor, Apple M5 Pro (18 cores, Metal), `Single_01.sze`, commit 04f49c4
 
 After the colleague's second recording (Linux, 4K, high-end PC, CPU compositor: 20–49 fps, 17–47 ms per frame, islands slow to appear when zooming). Viewer mode (`async` chunks), frame time in ms, p50 / p99 (max), ranges over zoom groups 0–2:

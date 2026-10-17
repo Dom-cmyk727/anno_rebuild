@@ -240,7 +240,7 @@ pub const DEPTH_BIAS: f32 = 128.0;
 /// no overshoot; the original's triangles make the waterline straight
 /// between tile corners) plus fixed value noise of amplitude
 /// `Waves::shore_noise`, so beaches get bays and bulges.
-fn smooth_height(heights: &[u8], w: usize, h: usize, x: f32, y: f32) -> f32 {
+pub(crate) fn smooth_height(heights: &[u8], w: usize, h: usize, x: f32, y: f32) -> f32 {
     let weights = |t: f32| {
         let t2 = t * t;
         let t3 = t2 * t;

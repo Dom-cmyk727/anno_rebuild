@@ -32,7 +32,9 @@ use wgpu::{
 /// The wgpu version this module is built against (for callers' types).
 pub use wgpu;
 
+use crate::fluid::FluidConfig;
 use crate::frame::{CHUNK, Chunk, ChunkKey, FrameRenderer, NO_TERRAIN, chunk_rect, visible_chunks};
+use crate::gpu_fluid::FluidGpu;
 use crate::iso::{SEA_LEVEL, SpriteDraw, SpriteKey, TILE, WaterStyle};
 use crate::scene::{Rect, Scene, SpriteLayer};
 
@@ -119,6 +121,10 @@ pub struct GpuFrame {
     /// Terrain height per view pixel (`frame::TERRAIN_SCALE`, `NO_TERRAIN`).
     terrain: Option<(Texture, TextureView)>,
     dummy_terrain: TextureView,
+    /// Coastal wave simulation, created when enhanced water is first shown.
+    fluid: Option<FluidGpu>,
+    dummy_fluid: TextureView,
+    dummy_depth: TextureView,
     /// Sea patterns uploaded so far, by zoom group (kept, so that zooming
     /// back does not upload them again), and the one in use.
     seas: BTreeMap<usize, GpuSea>,
@@ -247,6 +253,8 @@ impl GpuFrame {
                 texture_entry(2, FLOAT, TextureViewDimension::D2Array),
                 texture_entry(3, FLOAT, TextureViewDimension::D2Array),
                 texture_entry(4, TextureSampleType::Uint, TextureViewDimension::D2),
+                texture_entry(5, FLOAT, TextureViewDimension::D2),
+                texture_entry(6, FLOAT, TextureViewDimension::D2),
             ],
         });
         let chunk_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -363,7 +371,7 @@ impl GpuFrame {
         );
         let frame_uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("frame"),
-            size: 64,
+            size: 96,
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -391,6 +399,26 @@ impl GpuFrame {
         let none = NO_TERRAIN.to_le_bytes();
         let dummy_terrain =
             upload_texture(&device, &queue, TERRAIN_FORMAT, one, 2, &[&none], false).1;
+        let dummy_depth = upload_texture(
+            &device,
+            &queue,
+            TextureFormat::R32Float,
+            one,
+            4,
+            &[&[0; 4]],
+            false,
+        )
+        .1;
+        let dummy_fluid = upload_texture(
+            &device,
+            &queue,
+            TextureFormat::Rgba32Float,
+            one,
+            16,
+            &[&[0; 16]],
+            false,
+        )
+        .1;
         let dummy_array = upload_texture(
             &device,
             &queue,
@@ -417,6 +445,9 @@ impl GpuFrame {
             under: None,
             terrain: None,
             dummy_terrain,
+            fluid: None,
+            dummy_fluid,
+            dummy_depth,
             seas: BTreeMap::new(),
             sea_group: None,
             chunks: BTreeMap::new(),
@@ -474,17 +505,46 @@ impl GpuFrame {
         stats.sprites_ms = ms(t);
 
         let t = Instant::now();
-        self.write_frame_uniform(view, group, time_ms, style, scene);
-        let frame_pass1 = self.frame_bind(None, None);
-        let frame_pass2 = self.frame_bind(
-            self.under.as_ref().map(|u| &u.1),
-            self.terrain.as_ref().map(|t| &t.1),
-        );
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame"),
             });
+        // Coastal wave simulation (enhanced water only).
+        let fluid_on = style == WaterStyle::Enhanced;
+        if fluid_on {
+            let fluid = self.fluid.get_or_insert_with(|| {
+                FluidGpu::new(&self.device, &self.queue, FluidConfig::DEFAULT)
+            });
+            #[allow(clippy::cast_precision_loss)]
+            let (tw, th) = (TILE[group].0 as f32, TILE[group].1 as f32);
+            #[allow(clippy::cast_precision_loss)]
+            let raise = scene.lift.scaled(SEA_LEVEL, 1, group) as f32;
+            #[allow(clippy::cast_precision_loss)]
+            let (px, py) = (
+                view.x as f32 + view.w as f32 / 2.0,
+                view.y as f32 + view.h as f32 / 2.0 + raise,
+            );
+            let centre = (px / tw + py / th, py / th - px / tw);
+            let threads =
+                std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get);
+            let depth = |x: f32, y: f32| scene.fluid_depth(x, y);
+            fluid.update(
+                &self.queue,
+                &mut encoder,
+                group,
+                centre,
+                time_ms,
+                &depth,
+                threads,
+            );
+        }
+        self.write_frame_uniform(view, group, time_ms, style, scene, fluid_on);
+        let frame_pass1 = self.frame_bind(None, None);
+        let frame_pass2 = self.frame_bind(
+            self.under.as_ref().map(|u| &u.1),
+            self.terrain.as_ref().map(|t| &t.1),
+        );
         let [r, g, b, _] = scene.textures.water();
         let clear = Color {
             r: f64::from(r) / 255.0,
@@ -1005,6 +1065,7 @@ impl GpuFrame {
         time_ms: u64,
         style: WaterStyle,
         scene: &Scene<'_>,
+        fluid_on: bool,
     ) {
         let (k0, k1, frac, size) = match self.sea() {
             Some(s) => {
@@ -1038,6 +1099,23 @@ impl GpuFrame {
         for v in [tw, th, raise, 0.0, 0.0] {
             u.extend(v.to_le_bytes());
         }
+        // Fluid window: origin (world cells), size, on, cells per tile,
+        // run-up gain.
+        let fw = self
+            .fluid
+            .as_ref()
+            .and_then(FluidGpu::window)
+            .filter(|_| fluid_on);
+        let (origin, n, cpt) = fw.map_or(((0, 0), 1, 1), |w| (w.origin, w.size, w.cells_per_tile));
+        for v in [origin.0, origin.1, n] {
+            u.extend(i32::try_from(v).expect("fits").to_le_bytes());
+        }
+        u.extend(u32::from(fw.is_some()).to_le_bytes());
+        #[allow(clippy::cast_precision_loss)]
+        #[allow(clippy::cast_precision_loss)]
+        for v in [cpt as f32, 0.0, 0.0, 0.0] {
+            u.extend(v.to_le_bytes());
+        }
         self.queue.write_buffer(&self.frame_uniform, 0, &u);
     }
 
@@ -1069,6 +1147,22 @@ impl GpuFrame {
                 wgpu::BindGroupEntry {
                     binding: 4,
                     resource: BindingResource::TextureView(terrain.unwrap_or(&self.dummy_terrain)),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: BindingResource::TextureView(
+                        self.fluid
+                            .as_ref()
+                            .map_or(&self.dummy_fluid, FluidGpu::state_view),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: BindingResource::TextureView(
+                        self.fluid
+                            .as_ref()
+                            .map_or(&self.dummy_depth, FluidGpu::depth_view),
+                    ),
                 },
             ],
         })
@@ -1124,8 +1218,27 @@ impl GpuFrame {
 
     /// The pixels of `texture` (`w × h`, 4 bytes each, in the texture's
     /// channel order), waiting for the GPU.
-    pub fn read_back(&self, texture: &Texture, (w, h): (u32, u32)) -> Vec<u8> {
-        let row = (4 * w).div_ceil(256) * 256;
+    pub fn read_back(&self, texture: &Texture, size: (u32, u32)) -> Vec<u8> {
+        self.read_back_bytes(texture, size, 4)
+    }
+
+    /// The texels of an `Rgba32Float` texture, waiting for the GPU.
+    pub fn read_back_rgba32f(&self, texture: &Texture, size: (u32, u32)) -> Vec<[f32; 4]> {
+        self.read_back_bytes(texture, size, 16)
+            .as_chunks::<16>()
+            .0
+            .iter()
+            .map(|b| {
+                std::array::from_fn(|c| {
+                    f32::from_le_bytes([b[4 * c], b[4 * c + 1], b[4 * c + 2], b[4 * c + 3]])
+                })
+            })
+            .collect()
+    }
+
+    /// The bytes of `texture` (`bpp` bytes per texel), waiting for the GPU.
+    fn read_back_bytes(&self, texture: &Texture, (w, h): (u32, u32), bpp: u32) -> Vec<u8> {
+        let row = (bpp * w).div_ceil(256) * 256;
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("read back"),
             size: u64::from(row) * u64::from(h),
@@ -1159,7 +1272,7 @@ impl GpuFrame {
         (0..to_usize(h))
             .flat_map(|y| {
                 let s = y * to_usize(row);
-                data[s..s + to_usize(4 * w)].to_vec()
+                data[s..s + to_usize(bpp * w)].to_vec()
             })
             .collect()
     }

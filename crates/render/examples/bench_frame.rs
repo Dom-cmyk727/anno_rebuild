@@ -6,7 +6,8 @@
 //! cargo run --release -p anno-render --features gpu --example bench_frame -- <game_dir> <file.sze|.scp>
 //!     [--threads n] [--res 1920x1080,2560x1440,3840x2160] [--groups 0,1,2]
 //!     [--styles original,enhanced] [--chunks blocking,async]
-//!     [--renderer cpu,gpu] [--check] [--island n] [--at dx,dy] [--t0 ms] [--quick]
+//!     [--renderer cpu,gpu] [--check] [--island n] [--at dx,dy] [--t0 ms]
+//!     [--warmup ms] [--quick]
 //! ```
 //!
 //! Per resolution, zoom group and water style, from a cold cache centred on
@@ -57,6 +58,9 @@ struct Options {
     island: Option<usize>,
     /// Animation clock at the first frame (ms).
     t0: u64,
+    /// Untimed frames (16 ms apart) before the paths, e.g. to let the
+    /// wave simulation develop.
+    warmup: u64,
     quick: bool,
 }
 
@@ -87,6 +91,7 @@ fn main() -> Result<(), BoxError> {
         at: (0, 0),
         island: None,
         t0: 0,
+        warmup: 0,
         quick: false,
     };
     let mut it = args[2..].iter();
@@ -141,6 +146,7 @@ fn main() -> Result<(), BoxError> {
             }
             "--check" => o.check = true,
             "--t0" => o.t0 = value()?.parse()?,
+            "--warmup" => o.warmup = value()?.parse()?,
             "--island" => o.island = Some(value()?.parse()?),
             "--at" => {
                 let v = value()?;
@@ -235,6 +241,7 @@ fn main() -> Result<(), BoxError> {
                             frames: 120 / scale,
                             check: o.check,
                             t0: o.t0,
+                            warmup: o.warmup,
                             threads: o.threads,
                         };
                         run(&scene, &config, gpu)?;
@@ -261,6 +268,7 @@ struct Config {
     frames: usize,
     check: bool,
     t0: u64,
+    warmup: u64,
     threads: usize,
 }
 
@@ -284,7 +292,24 @@ fn run(
         let target = gpu.as_ref().map(|g| g.offscreen_target(size));
         let mut out = vec![0u32; usize::try_from(w * h)?];
         let mut cam = (c.centre.0 - w / 2, c.centre.1 - h / 2);
-        let mut time = c.t0;
+        let mut time = c.t0.saturating_sub(c.warmup);
+        let view0 = Rect {
+            x: cam.0,
+            y: cam.1,
+            w,
+            h,
+        };
+        while time < c.t0 {
+            match (&mut gpu, &target) {
+                (Some(g), Some((_, tv))) => {
+                    g.render(&mut fr, scene, view0, c.group, time, c.style, tv);
+                }
+                _ => {
+                    fr.render(scene, view0, c.group, time, c.style, &mut out);
+                }
+            }
+            time += 16;
+        }
         let paths: [(&str, usize, (i32, i32)); 4] = [
             ("cold", 1, (0, 0)),
             ("static", c.frames, (0, 0)),

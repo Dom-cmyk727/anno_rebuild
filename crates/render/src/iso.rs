@@ -98,15 +98,10 @@ impl Canvas {
     }
 
     /// Draws `rgba` over the pixel (straight alpha, see [`over`]).
-    fn put(&mut self, sx: i32, sy: i32, rgba: [u8; 4]) {
+    pub(crate) fn put(&mut self, sx: i32, sy: i32, rgba: [u8; 4]) {
         let Some(o) = self.index(sx, sy) else { return };
         let dst: &mut [u8; 4] = (&mut self.pixels[o..o + 4]).try_into().expect("4 bytes");
         over(dst, &rgba);
-    }
-
-    fn get(&self, sx: i32, sy: i32) -> Option<[u8; 4]> {
-        let o = self.index(sx, sy)?;
-        self.pixels[o..o + 4].try_into().ok()
     }
 
     /// Whether the screen rectangle `(x, y, w, h)` touches the canvas.
@@ -160,7 +155,7 @@ impl Lift {
     }
 
     /// Offset for the height `h_num / h_den`.
-    fn scaled(self, h_num: i64, h_den: i64, group: usize) -> i32 {
+    pub(crate) fn scaled(self, h_num: i64, h_den: i64, group: usize) -> i32 {
         let num = h_num * i64::from(self.num) * i64::from(TILE[group].0);
         let den = h_den * i64::from(self.den) * i64::from(TILE[0].0);
         i32::try_from(num / den).expect("offset fits i32")
@@ -169,7 +164,7 @@ impl Lift {
 
 /// Corner heights of tile `(x, y)`: `[(x, y), (x+1, y), (x, y+1), (x+1, y+1)]`,
 /// clamped at the island edge.
-fn corners(heights: &[u8], w: usize, h: usize, x: usize, y: usize) -> [i64; 4] {
+pub(crate) fn corners(heights: &[u8], w: usize, h: usize, x: usize, y: usize) -> [i64; 4] {
     let at = |cx: usize, cy: usize| i64::from(heights[cy.min(h - 1) * w + cx.min(w - 1)]);
     [at(x, y), at(x + 1, y), at(x, y + 1), at(x + 1, y + 1)]
 }
@@ -178,7 +173,7 @@ fn corners(heights: &[u8], w: usize, h: usize, x: usize, y: usize) -> [i64; 4] {
 /// times `n`. The tile is two triangles split along the fixed diagonal from
 /// corner B `(x, y+1)` to C `(x+1, y)`: A-B-C for `i + j ≤ n`, C-B-D beyond
 /// (D: `AnnoWelt.dll` mesh builder `0x1009b920`, indices A,B,C and C,B,D).
-fn interpolate(c: [i64; 4], i: i64, j: i64, n: i64) -> i64 {
+pub(crate) fn interpolate(c: [i64; 4], i: i64, j: i64, n: i64) -> i64 {
     let [a, cc, b, d] = c;
     if i + j <= n {
         a * n + i * (cc - a) + j * (b - a)
@@ -320,7 +315,7 @@ pub const SEA_ANLAGE: u32 = 2801;
 pub const SEA_LEVEL: i64 = 32;
 /// A tile counts as land when the average of its corner heights exceeds
 /// this (D: `AnnoWelt.dll` classifier `0x100900c0`).
-const LAND_AVERAGE: i64 = 19;
+pub(crate) const LAND_AVERAGE: i64 = 19;
 
 /// Display kind of water objects: byte 2 of the sprite-set prefix is 10
 /// (`tHausAnimWasser`) exactly for sea, rivers, waterfalls and surf (D:
@@ -355,10 +350,15 @@ pub struct SpriteCache {
 }
 
 /// `(ANLAGEN id, sprite set, shadow, zoom group, frame index)`.
-type SpriteKey = (u32, usize, bool, u32, usize);
+pub(crate) type SpriteKey = (u32, usize, bool, u32, usize);
 
 impl SpriteCache {
-    fn get(&self, anlagen: &AnlagenFile<'_>, key: SpriteKey, frame: &Frame) -> Option<Arc<Rgba>> {
+    pub(crate) fn get(
+        &self,
+        anlagen: &AnlagenFile<'_>,
+        key: SpriteKey,
+        frame: &Frame,
+    ) -> Option<Arc<Rgba>> {
         if let Some(hit) = self.frames.lock().expect("no panic").get(&key) {
             return hit.clone();
         }
@@ -378,7 +378,7 @@ impl SpriteCache {
 /// animation, bytes 4–5 = milliseconds per frame (bit 25 of the u32 at 4 is
 /// a flag of unknown meaning). P: frames per set = animation frames × 1 or
 /// × 4 rotations in every set; durations 50–1000 ms.
-fn animation(set: &GfxSet<'_>) -> (usize, u64) {
+pub(crate) fn animation(set: &GfxSet<'_>) -> (usize, u64) {
     let anim = set
         .records
         .iter()
@@ -395,7 +395,7 @@ fn animation(set: &GfxSet<'_>) -> (usize, u64) {
 
 /// Frame index: rotation block `rotation · anim`, then the animation step
 /// `(time / ms + phase) mod anim` (no animation when `ms` is 0).
-fn frame_index(
+pub(crate) fn frame_index(
     total: usize,
     (anim, ms): (usize, u64),
     rotation: u8,
@@ -412,7 +412,7 @@ fn frame_index(
 
 /// Draws `img` with its anchor at screen point `(sx, sy)`, skipping sprites
 /// outside the canvas; `pixel` decides per pixel (screen x, y) whether to draw.
-fn blit_sprite(
+pub(crate) fn blit_sprite(
     canvas: &mut Canvas,
     img: &Rgba,
     frame: &Frame,
@@ -444,10 +444,54 @@ fn blit_sprite(
     }
 }
 
-/// Draws the placed objects of `records` (e.g. `["GELAENDE", "PROD2",
-/// "FLUESSE"]`), duplicates removed, at animation time `time_ms`. Each
-/// object stands at its own height (`PlacedObject::height`, as the
-/// original), with its own animation phase (surf: `(3y + 5x) mod 32`).
+/// A placed object with its footprint, ready to draw.
+pub type Prepared = (PlacedObject, (u8, u8));
+
+/// The placed objects of `records` (e.g. `["GELAENDE", "PROD2",
+/// "FLUESSE"]`) selected by `which`, duplicates removed, in draw order
+/// (back to front by the far corner of the footprint, then `x`). Objects
+/// whose entry is missing or has no sprite set are kept, so that drawing
+/// counts them.
+pub fn prepare_objects(
+    island: &Island<'_>,
+    anlagen: &AnlagenFile<'_>,
+    records: &[&str],
+    which: Objects,
+) -> Vec<Prepared> {
+    let mut objs = BTreeSet::<PlacedObject>::new();
+    for r in records {
+        objs.extend(island.objects(r).unwrap_or_default());
+    }
+    let mut list: Vec<Prepared> = objs
+        .into_iter()
+        .filter(|o| {
+            let set = anlagen
+                .entry(u32::from(o.anlage))
+                .and_then(|e| e.gfx.first());
+            let Some(set) = set else {
+                // Counted (failed or invisible) once, with the static objects.
+                return matches!(which, Objects::All | Objects::NotWater);
+            };
+            let water = set.prefix.get(2) == Some(&KIND_WATER);
+            let below = i64::from(o.height()) < SEA_LEVEL;
+            match which {
+                Objects::All => true,
+                Objects::NotWater => !water,
+                Objects::WaterBelowSea => water && below,
+                Objects::WaterAboveSea => water && !below,
+            }
+        })
+        .map(|o| {
+            let (fw, fh) = anlagen.footprint(u32::from(o.anlage)).unwrap_or((1, 1));
+            (o, o.footprint(fw, fh))
+        })
+        .collect();
+    list.sort_by_key(|(o, (w, h))| (o.x + u16::from(*w) + o.y + u16::from(*h), o.x));
+    list
+}
+
+/// Draws the placed objects of `records` selected by `which` at animation
+/// time `time_ms` ([`prepare_objects`], then [`draw_prepared`]).
 #[allow(clippy::too_many_arguments)]
 pub fn draw_objects(
     canvas: &mut Canvas,
@@ -460,22 +504,26 @@ pub fn draw_objects(
     time_ms: u64,
     cache: &SpriteCache,
 ) -> DrawStats {
-    let mut objs = BTreeSet::<PlacedObject>::new();
-    for r in records {
-        objs.extend(island.objects(r).unwrap_or_default());
-    }
-    let mut list: Vec<(PlacedObject, (u8, u8))> = objs
-        .into_iter()
-        .map(|o| {
-            let (fw, fh) = anlagen.footprint(u32::from(o.anlage)).unwrap_or((1, 1));
-            (o, o.footprint(fw, fh))
-        })
-        .collect();
-    list.sort_by_key(|(o, (w, h))| (o.x + u16::from(*w) + o.y + u16::from(*h), o.x));
+    let list = prepare_objects(island, anlagen, records, which);
+    draw_prepared(canvas, &list, anlagen, group, lift, time_ms, cache)
+}
+
+/// Draws prepared objects at animation time `time_ms`. Each object stands
+/// at its own height (`PlacedObject::height`, as the original), with its
+/// own animation phase (surf: `(3y + 5x) mod 32`).
+pub fn draw_prepared(
+    canvas: &mut Canvas,
+    list: &[Prepared],
+    anlagen: &AnlagenFile<'_>,
+    group: usize,
+    lift: Lift,
+    time_ms: u64,
+    cache: &SpriteCache,
+) -> DrawStats {
     let mut stats = DrawStats::default();
     let g = u32::try_from(group).expect("group");
     let (tw, th) = TILE[group];
-    for (o, (w, h)) in list {
+    for &(o, (w, h)) in list {
         let id = u32::from(o.anlage);
         let Some(entry) = anlagen.entry(id) else {
             stats.failed += 1;
@@ -485,17 +533,15 @@ pub fn draw_objects(
             stats.invisible += 1;
             continue;
         };
-        let water = set.prefix.get(2) == Some(&KIND_WATER);
-        let below = i64::from(o.height()) < SEA_LEVEL;
-        let wanted = match which {
-            Objects::All => true,
-            Objects::NotWater => !water,
-            Objects::WaterBelowSea => water && below,
-            Objects::WaterAboveSea => water && !below,
-        };
-        if !wanted {
-            continue;
-        }
+        // Footprint centre: tile (x + w/2, y + h/2), computed in doubled units.
+        let (cx2, cy2) = (
+            2 * i32::from(o.x) + i32::from(w),
+            2 * i32::from(o.y) + i32::from(h),
+        );
+        // The object's own height (doubled units, as the footprint centre).
+        let z2 = 2 * i64::from(o.height());
+        let raise = lift.scaled(z2, 2, group);
+        let (sx, sy) = ((cx2 - cy2) * tw / 4, (cx2 + cy2) * th / 4 - raise);
         let Some(frames) = set.frame_sets.iter().find(|fs| fs.group == g) else {
             stats.failed += 1;
             continue;
@@ -520,15 +566,6 @@ pub fn draw_objects(
             stats.failed += 1;
             continue;
         };
-        // Footprint centre: tile (x + w/2, y + h/2), computed in doubled units.
-        let (cx2, cy2) = (
-            2 * i32::from(o.x) + i32::from(w),
-            2 * i32::from(o.y) + i32::from(h),
-        );
-        // The object's own height (doubled units, as the footprint centre).
-        let z2 = 2 * i64::from(o.height());
-        let raise = lift.scaled(z2, 2, group);
-        let (sx, sy) = ((cx2 - cy2) * tw / 4, (cx2 + cy2) * th / 4 - raise);
         // Shadow first: same frame index of the set's SHADOW, own anchor.
         if let Some(s) = &set.shadow
             && let Some(sf) = s
@@ -587,7 +624,7 @@ pub enum WaterStyle {
 /// Distance in tiles from each corner of the height grid (`w × h`) to the
 /// nearest corner at or above sea level (two-pass chamfer distance,
 /// 1 / √2 steps). Used by the enhanced water only.
-fn shore_distance(heights: &[u8], w: usize, h: usize) -> Vec<f32> {
+pub(crate) fn shore_distance(heights: &[u8], w: usize, h: usize) -> Vec<f32> {
     const DIAG: f32 = std::f32::consts::SQRT_2;
     let mut d: Vec<f32> = heights
         .iter()
@@ -714,7 +751,7 @@ fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
 /// inside the break zone it turns into turbulent whitewater, and when it
 /// reaches the beach a foam sheet bursts out and decays until the next
 /// crest. Open water carries a slow swell and short-lived whitecaps.
-fn enhance(rgba: [u8; 4], shore: f32, (wx, wy): (f32, f32), time_ms: u64) -> ([u8; 4], f32) {
+pub(crate) fn wave_shade(shore: f32, (wx, wy): (f32, f32), time_ms: u64) -> (f32, f32) {
     let w = Waves::DEFAULT;
     #[allow(clippy::cast_precision_loss)]
     let t = (time_ms % 3_600_000) as f32;
@@ -772,7 +809,12 @@ fn enhance(rgba: [u8; 4], shore: f32, (wx, wy): (f32, f32), time_ms: u64) -> ([u
         let detail = noise3(wx * 6.0, wy * 6.0, t * 0.0012);
         foam = foam.max(calm * cap * (0.3 + 0.7 * detail) * 0.75);
     }
-    let foam = foam.clamp(0.0, 1.0);
+    (light, foam.clamp(0.0, 1.0))
+}
+
+/// `rgba` lit by `light` (relative brightness change) and whitened by
+/// `foam` (0..=1), as computed by [`wave_shade`].
+pub(crate) fn shade_apply(rgba: [u8; 4], light: f32, foam: f32) -> [u8; 4] {
     let brightness = 1.0 + light;
     let channel = |c: u8, white: f32| -> u8 {
         let v = f32::from(c) * brightness;
@@ -781,167 +823,19 @@ fn enhance(rgba: [u8; 4], shore: f32, (wx, wy): (f32, f32), time_ms: u64) -> ([u
         let out = v.clamp(0.0, 255.0) as u8;
         out
     };
-    (
-        [
-            channel(rgba[0], 236.0),
-            channel(rgba[1], 244.0),
-            channel(rgba[2], 250.0),
-            rgba[3],
-        ],
-        foam,
-    )
+    [
+        channel(rgba[0], 236.0),
+        channel(rgba[1], 244.0),
+        channel(rgba[2], 250.0),
+        rgba[3],
+    ]
 }
 
-/// Draws the animated sea surface at time `time_ms`: entry [`SEA_ANLAGE`]
-/// on the original's staggered lattice (`y` even and
-/// `x ≡ 2·((y/2) mod 2) (mod 4)`), raised to [`SEA_LEVEL`], animation phase
-/// `(5x + 3y) mod 32` (D: `AnnoWelt.dll` `0x1009f4c0`), rotation 0. The
-/// frames are `BSH_RGBWZ` checkerboards, so the sea floor shows through
-/// every second pixel.
-///
-/// Approximations (OQ-026 b): the original's per-chunk "sea" flag is not
-/// traced, so lattice points are used in 8 × 8 chunks that contain a
-/// non-land tile; its depth buffer is replaced by drawing a water pixel only
-/// where the terrain under it (projected back onto the water plane) is
-/// below sea level, inside the island's tile area; the sprite's anchor is
-/// put on lattice point `(x, y)`; the small per-sprite height offsets are
-/// ignored; over open water (texture 0, no sea floor) checkerboard gaps are
-/// filled with the neighbouring water pixel; animation speed comes from the
-/// sprite's `ANIM` record (the original's tick unit is not traced). Returns
-/// the number of sprites drawn.
-#[allow(clippy::too_many_arguments)]
-pub fn draw_water(
-    canvas: &mut Canvas,
-    island: &Island<'_>,
-    anlagen: &AnlagenFile<'_>,
-    group: usize,
-    lift: Lift,
-    time_ms: u64,
-    style: WaterStyle,
-    cache: &SpriteCache,
-) -> usize {
-    let (Ok(heights), Some(entry)) = (island.heights(), anlagen.entry(SEA_ANLAGE)) else {
-        return 0;
-    };
-    let g = u32::try_from(group).expect("group");
-    let Some(set) = entry.gfx.first() else {
-        return 0;
-    };
-    let Some(frames) = set.frame_sets.iter().find(|fs| fs.group == g) else {
-        return 0;
-    };
-    let anim = animation(set);
-    let (w, h) = (usize::from(island.width), usize::from(island.height));
-    let (tw, th) = TILE[group];
-    let raise = lift.scaled(SEA_LEVEL, 1, group);
-    // Chunks (8 × 8 tiles) that contain a non-land tile.
-    let cw = w.div_ceil(8);
-    let mut sea = vec![false; cw * h.div_ceil(8)];
-    for y in 0..h {
-        for x in 0..w {
-            let c = corners(&heights, w, h, x, y);
-            if c.iter().sum::<i64>() <= 4 * LAND_AVERAGE {
-                sea[(y / 8) * cw + x / 8] = true;
-            }
-        }
-    }
-    let open_water: Vec<bool> = island
-        .gfx_ids()
-        .map(|gs| {
-            gs.iter()
-                .map(|&v| GroundCell::from_gfx_id(v).texture == 0)
-                .collect()
-        })
-        .unwrap_or_default();
-    let den = i64::from(tw) * i64::from(th);
-    let shore = match style {
-        WaterStyle::Enhanced => shore_distance(&heights, w, h),
-        WaterStyle::Original => Vec::new(),
-    };
-    let mut drawn = 0;
-    for y in (0..h).step_by(2) {
-        for x in (2 * ((y / 2) % 2)..w).step_by(4) {
-            if !sea[(y / 8) * cw + x / 8] {
-                continue;
-            }
-            let k = frame_index(frames.frames.len(), anim, 0, time_ms, (5 * x + 3 * y) % 32);
-            let Some(frame) = frames.frames.get(k) else {
-                continue;
-            };
-            let Some(img) = cache.get(anlagen, (SEA_ANLAGE, 0, false, g, k), frame) else {
-                continue;
-            };
-            let (xi, yi) = (
-                i32::try_from(x).expect("fits"),
-                i32::try_from(y).expect("fits"),
-            );
-            let (sx, sy) = tile_top(xi, yi, group);
-            let mut fill = Vec::new();
-            blit_sprite(
-                canvas,
-                &img,
-                frame,
-                (sx, sy - raise),
-                false,
-                |px_x, px_y, rgba| {
-                    // Back onto the water plane: unraised screen point → tile
-                    // coordinates (times den): x = px_x/tw + py/th, y = py/th − px_x/tw.
-                    let yy = i64::from(px_y + raise);
-                    let xn = i64::from(px_x) * i64::from(th) + yy * i64::from(tw);
-                    let yn = yy * i64::from(tw) - i64::from(px_x) * i64::from(th);
-                    let (Ok(tx), Ok(ty)) = (
-                        usize::try_from(xn.div_euclid(den)),
-                        usize::try_from(yn.div_euclid(den)),
-                    ) else {
-                        return None;
-                    };
-                    if tx >= w || ty >= h {
-                        return None;
-                    }
-                    let c = corners(&heights, w, h, tx, ty);
-                    let under = interpolate(c, xn.rem_euclid(den), yn.rem_euclid(den), den);
-                    if under >= SEA_LEVEL * den {
-                        return None;
-                    }
-                    let open = open_water.get(ty * w + tx).copied().unwrap_or(false);
-                    let rgba = match style {
-                        WaterStyle::Original => rgba,
-                        WaterStyle::Enhanced => {
-                            // Shore distance, bilinear between the tile's corners.
-                            let at = |x: usize, y: usize| shore[y.min(h - 1) * w + x.min(w - 1)];
-                            let (fx, fy) = (
-                                xn.rem_euclid(den) as f32 / den as f32,
-                                yn.rem_euclid(den) as f32 / den as f32,
-                            );
-                            let dist = at(tx, ty) * (1.0 - fx) * (1.0 - fy)
-                                + at(tx + 1, ty) * fx * (1.0 - fy)
-                                + at(tx, ty + 1) * (1.0 - fx) * fy
-                                + at(tx + 1, ty + 1) * fx * fy;
-                            let pos = (xn as f32 / den as f32, yn as f32 / den as f32);
-                            let (shaded, foam) = enhance(rgba, dist, pos, time_ms);
-                            if foam > 0.25 {
-                                fill.push((px_x, px_y));
-                            }
-                            shaded
-                        }
-                    };
-                    if open {
-                        fill.push((px_x, px_y));
-                    }
-                    Some(rgba)
-                },
-            );
-            // Open water has no sea floor to show through the checkerboard:
-            // fill the gap right of each drawn pixel with the same colour.
-            for (fx, fy) in fill {
-                if let Some(c) = canvas.get(fx, fy) {
-                    canvas.put(fx + 1, fy, c);
-                }
-            }
-            drawn += 1;
-        }
-    }
-    drawn
+/// [`wave_shade`] applied to one pixel; returns the colour and the foam.
+#[cfg(test)]
+fn enhance(rgba: [u8; 4], shore: f32, pos: (f32, f32), time_ms: u64) -> ([u8; 4], f32) {
+    let (light, foam) = wave_shade(shore, pos, time_ms);
+    (shade_apply(rgba, light, foam), foam)
 }
 
 #[cfg(test)]

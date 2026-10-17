@@ -59,6 +59,25 @@ impl GroundTextures {
         self.water = rgba;
     }
 
+    /// The colour drawn for open water (texture 0).
+    pub fn water(&self) -> [u8; 4] {
+        self.water
+    }
+
+    /// Average colour of texture `id`; `None` if `Felder.tex` lacks it.
+    pub fn average(&self, id: u16) -> Option<[u8; 4]> {
+        let rgb = self.textures.get(&u32::from(id))?;
+        let mut sum = [0u64; 3];
+        for px in rgb {
+            for (s, &c) in sum.iter_mut().zip(px) {
+                *s += u64::from(c);
+            }
+        }
+        let n = u64::try_from(rgb.len()).expect("fits").max(1);
+        let avg = |s: u64| u8::try_from(s / n).expect("average of u8");
+        Some([avg(sum[0]), avg(sum[1]), avg(sum[2]), 255])
+    }
+
     /// Colour shown at tile position `(s/n, t/n)` of a tile with ground `cell`.
     pub fn cell_pixel(&self, cell: GroundCell, s: usize, t: usize, n: usize) -> [u8; 4] {
         if cell.texture == 0 {

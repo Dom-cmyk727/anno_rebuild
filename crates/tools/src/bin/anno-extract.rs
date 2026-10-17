@@ -282,10 +282,12 @@ fn view(
     group: usize,
     lift: anno_render::iso::Lift,
 ) -> Result<bool, BoxError> {
-    use anno_render::iso;
+    use anno_render::{iso, scene};
     let buf = std::fs::read(file)?;
-    let islands = insel::islands(&buf)?;
-    let island = islands.get(index).ok_or("no island with that index")?;
+    let island = insel::islands(&buf)?
+        .into_iter()
+        .nth(index)
+        .ok_or("no island with that index")?;
     let felder_buf = std::fs::read(dir.join("Textures/Felder.tex"))?;
     let mut textures = GroundTextures::new(&TexFile::parse(&felder_buf)?)?;
     let anl_buf = std::fs::read(dir.join("Anlagen.dat"))?;
@@ -293,18 +295,10 @@ fn view(
     if let Some(c) = iso::water_colour(&anlagen) {
         textures.set_water(c);
     }
-    let mut canvas = iso::Canvas::for_island(island, group, anno_render::scene::margin(group));
-    let cache = iso::SpriteCache::default();
-    let stats = anno_render::scene::draw_island(
-        &mut canvas,
-        island,
-        &textures,
-        &anlagen,
-        group,
-        lift,
-        anno_render::scene::Layers::ALL,
-        &cache,
-    );
+    let scene = scene::Scene::new(file.to_string(), vec![island], textures, anlagen, lift);
+    let rect = scene::scene_bounds(&scene.layouts[group]).ok_or("no island")?;
+    let (canvas, stats) = scene.render(rect, group, scene::Layers::ALL);
+    let stats = stats.objects;
     eprintln!(
         "{file}: island {index}: {} objects drawn, {} invisible, {} failed",
         stats.drawn, stats.invisible, stats.failed

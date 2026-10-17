@@ -17,9 +17,13 @@ use anno_assets::island::GroundTextures;
 use anno_formats::anlagen::AnlagenFile;
 use anno_formats::insel::Island;
 
+use std::sync::OnceLock;
+
 use crate::iso::{
-    self, Canvas, DrawStats, HEIGHT_LIFT, Lift, Objects, SpriteCache, TILE, WaterStyle, over,
+    self, Canvas, DrawStats, HEIGHT_LIFT, Lift, Objects, Prepared, SpriteCache, TILE, WaterStyle,
+    over,
 };
+use crate::sea::{self, SeaPattern, WaterField};
 
 /// Room above an island's top vertex per zoom group: the largest sprite
 /// anchor height in `Anlagen.dat` (P: entry 1330, `anchor_y` 504 / 252 / 126
@@ -201,25 +205,43 @@ pub struct SceneStats {
     pub objects: DrawStats,
 }
 
-/// Layers [`render_region`] draws, in this order per island: ground; the
-/// sea surface and water objects (rivers, surf) at time `water` (ms); the
-/// other placed objects. A viewer caches the static layers and redraws
-/// only the water layer per frame.
+/// Layers [`Scene::render`] draws, in this order: ground; water objects
+/// below sea level (surf on the sea floor); the sea surface (everywhere,
+/// also between islands); water objects at or above sea level (rivers);
+/// the other placed objects. Animated layers use `time_ms`. A viewer caches
+/// the static layers and redraws only the animated ones per frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Layers {
     pub ground: bool,
-    pub water: Option<u64>,
+    pub water_below: bool,
+    pub sea: bool,
+    pub water_above: bool,
     pub objects: bool,
+    pub time_ms: u64,
     /// Sea style; `Original` unless the user opts in.
     pub water_style: WaterStyle,
 }
 
 impl Layers {
-    /// Everything, water at time 0.
+    /// Everything, at time 0.
     pub const ALL: Layers = Layers {
         ground: true,
-        water: Some(0),
+        water_below: true,
+        sea: true,
+        water_above: true,
         objects: true,
+        time_ms: 0,
+        water_style: WaterStyle::Original,
+    };
+    /// Nothing; combine with struct update syntax.
+    pub const NONE: Layers = Layers {
+        ground: false,
+        water_below: false,
+        sea: false,
+        water_above: false,
+        objects: false,
+        time_ms: 0,
         water_style: WaterStyle::Original,
     };
 }
@@ -227,136 +249,218 @@ impl Layers {
 /// Object records drawn: scenery, built objects, rivers and surf.
 pub const OBJECT_RECORDS: [&str; 3] = ["GELAENDE", "PROD2", "FLUESSE"];
 
-/// Draws every island of `placements` that overlaps `dst` (whose `origin`
-/// is a scene screen position): the selected `layers`, raised by
-/// `iso::HEIGHT_LIFT`.
-#[allow(clippy::too_many_arguments)]
-pub fn render_region(
-    dst: &mut Canvas,
-    islands: &[Island<'_>],
-    placements: &[Placement],
-    textures: &GroundTextures,
-    anlagen: &AnlagenFile<'_>,
-    group: usize,
-    layers: Layers,
-    cache: &SpriteCache,
-) -> SceneStats {
-    let to_i32 = |n: usize| i32::try_from(n).expect("canvas fits i32");
-    let region = Rect {
-        x: dst.origin.0,
-        y: dst.origin.1,
-        w: to_i32(dst.width),
-        h: to_i32(dst.height),
-    };
-    let mut stats = SceneStats::default();
-    for p in placements {
-        let Some(r) = p.bounds.intersect(region) else {
+/// Average colour of the most common sea floor texture at the lowest
+/// `HEIGHT` of the islands' textured tiles. Islands carry deep sea
+/// floor textures (e.g. `Meer_Meer02.bmp`) around their land; using their
+/// colour for open water (texture 0, not drawn as terrain by the original;
+/// OQ-026 b) makes the open sea continue the island water without a seam.
+/// `None` if no island has textured ground.
+pub fn sea_floor_colour(islands: &[Island<'_>], textures: &GroundTextures) -> Option<[u8; 4]> {
+    let mut count = std::collections::BTreeMap::<(u8, u8), u64>::new();
+    for island in islands {
+        let (Ok(h), Ok(g)) = (island.heights(), island.gfx_ids()) else {
             continue;
         };
-        let island = &islands[p.index];
-        // Temporary canvas in the island's local screen coordinates.
-        let mut local = blank(Rect {
-            x: r.x - p.offset.0,
-            y: r.y - p.offset.1,
-            ..r
-        });
-        if island.gfx_ids().is_err() || island.heights().is_err() {
-            stats.no_ground += 1;
+        for (&z, &id) in h.iter().zip(&g) {
+            let tex = anno_formats::insel::GroundCell::from_gfx_id(id).texture;
+            if tex != 0 {
+                *count.entry((z, tex)).or_default() += 1;
+            }
         }
-        let s = draw_island(
-            &mut local,
-            island,
-            textures,
-            anlagen,
-            group,
-            HEIGHT_LIFT,
-            layers,
-            cache,
-        );
-        composite(dst, &local, p.offset);
-        stats.islands += 1;
-        stats.objects.drawn += s.drawn;
-        stats.objects.invisible += s.invisible;
-        stats.objects.failed += s.failed;
     }
-    stats
+    let lowest = count.keys().next()?.0;
+    // The most common texture at that height (ties: lowest id).
+    let (&(_, tex), _) = count
+        .iter()
+        .filter(|((z, _), _)| *z == lowest)
+        .max_by_key(|&(&(_, t), &k)| (k, std::cmp::Reverse(t)))?;
+    textures.average(u16::from(tex))
 }
 
-/// Draws the selected `layers` of one island into `canvas` (island-local
-/// screen coordinates), in the order the original's depth buffer implies:
-/// ground; water objects below sea level (surf); the sea surface; water
-/// objects above it (rivers); other objects. Returns the stats of the last
-/// step plus the water objects' drawn/failed counts.
-#[allow(clippy::too_many_arguments)]
-pub fn draw_island(
-    canvas: &mut Canvas,
-    island: &Island<'_>,
-    textures: &GroundTextures,
-    anlagen: &AnlagenFile<'_>,
-    group: usize,
-    lift: Lift,
-    layers: Layers,
-    cache: &SpriteCache,
-) -> DrawStats {
-    let mut stats = DrawStats::default();
-    let mut add = |s: DrawStats| {
-        stats.drawn += s.drawn;
-        stats.invisible += s.invisible;
-        stats.failed += s.failed;
-    };
-    if layers.ground {
-        iso::draw_ground(canvas, island, textures, group, lift);
+/// An island's placed objects split by layer, in draw order.
+struct IslandObjects {
+    below: Vec<Prepared>,
+    above: Vec<Prepared>,
+    other: Vec<Prepared>,
+}
+
+/// Everything needed to draw a scenario: its islands, ground textures,
+/// `Anlagen.dat`, island placements per zoom group, decoded sprites, the
+/// objects of each island sorted for drawing, and the sea pattern per zoom
+/// group (built on first use).
+pub struct Scene<'a> {
+    pub name: String,
+    pub islands: Vec<Island<'a>>,
+    pub textures: GroundTextures,
+    pub anlagen: AnlagenFile<'a>,
+    /// Placements per zoom group, in draw order.
+    pub layouts: [Vec<Placement>; 3],
+    /// Decoded sprite frames, shared by all renders and threads.
+    pub sprites: SpriteCache,
+    /// Elevation scale ([`HEIGHT_LIFT`] unless changed for inspection).
+    pub lift: Lift,
+    objects: Vec<IslandObjects>,
+    seas: [OnceLock<Option<SeaPattern>>; 3],
+}
+
+impl<'a> Scene<'a> {
+    /// Open water (texture 0) gets the colour of the deepest textured sea
+    /// floor of `islands` ([`sea_floor_colour`]) if there is one, else the
+    /// colour already set in `textures`.
+    pub fn new(
+        name: String,
+        islands: Vec<Island<'a>>,
+        mut textures: GroundTextures,
+        anlagen: AnlagenFile<'a>,
+        lift: Lift,
+    ) -> Self {
+        if let Some(c) = sea_floor_colour(&islands, &textures) {
+            textures.set_water(c);
+        }
+        let boxes: Vec<IslandBox> = islands.iter().map(IslandBox::of).collect();
+        let objects = islands
+            .iter()
+            .map(|i| {
+                let list = |which| iso::prepare_objects(i, &anlagen, &OBJECT_RECORDS, which);
+                IslandObjects {
+                    below: list(Objects::WaterBelowSea),
+                    above: list(Objects::WaterAboveSea),
+                    other: list(Objects::NotWater),
+                }
+            })
+            .collect();
+        Self {
+            name,
+            layouts: [0, 1, 2].map(|g| layout(&boxes, g)),
+            islands,
+            textures,
+            anlagen,
+            sprites: SpriteCache::default(),
+            lift,
+            objects,
+            seas: Default::default(),
+        }
     }
-    if let Some(t) = layers.water {
-        let draw = |c: &mut Canvas, which| {
-            iso::draw_objects(
-                c,
-                island,
-                anlagen,
-                &OBJECT_RECORDS,
-                which,
-                group,
-                lift,
-                t,
-                cache,
-            )
+
+    /// The sea pattern of `group`, rendered on first use.
+    pub fn sea(&self, group: usize) -> Option<&SeaPattern> {
+        self.seas[group]
+            .get_or_init(|| {
+                SeaPattern::new(
+                    &self.anlagen,
+                    group,
+                    self.lift,
+                    self.textures.water(),
+                    &self.sprites,
+                )
+            })
+            .as_ref()
+    }
+
+    /// Whether island `index` has water objects below / above sea level.
+    pub fn has_water_objects(&self, index: usize) -> (bool, bool) {
+        let o = &self.objects[index];
+        (!o.below.is_empty(), !o.above.is_empty())
+    }
+
+    /// Static sea data of `rect` at `group`.
+    pub fn water_field(&self, rect: Rect, group: usize) -> WaterField {
+        sea::water_field(rect, &self.islands, &self.layouts[group], group, self.lift)
+    }
+
+    /// Renders `layers` of the scene region `rect` at `group` into a new
+    /// canvas (transparent where nothing is drawn; with the sea layer the
+    /// whole region is covered).
+    pub fn render(&self, rect: Rect, group: usize, layers: Layers) -> (Canvas, SceneStats) {
+        let mut canvas = blank(rect);
+        let mut stats = SceneStats::default();
+        let t = layers.time_ms;
+        let mut add = |s: DrawStats| {
+            stats.objects.drawn += s.drawn;
+            stats.objects.invisible += s.invisible;
+            stats.objects.failed += s.failed;
         };
-        let below = draw(canvas, Objects::WaterBelowSea);
-        iso::draw_water(
-            canvas,
-            island,
-            anlagen,
-            group,
-            lift,
-            t,
-            layers.water_style,
-            cache,
-        );
-        let above = draw(canvas, Objects::WaterAboveSea);
-        // Water objects are counted, invisible markers only once (below).
-        add(DrawStats {
-            invisible: 0,
-            ..below
-        });
-        add(DrawStats {
-            invisible: 0,
-            ..above
-        });
+        let mut no_ground = 0;
+        let mut drawn = 0;
+        // Pass 1: ground and water objects under the sea surface.
+        // Pass 2: water objects above it and the other objects.
+        for pass in 0..2 {
+            for p in &self.layouts[group] {
+                let Some(r) = p.bounds.intersect(rect) else {
+                    continue;
+                };
+                let island = &self.islands[p.index];
+                let objects = &self.objects[p.index];
+                let first = pass == 0;
+                let wanted = if first {
+                    layers.ground || (layers.water_below && !objects.below.is_empty())
+                } else {
+                    (layers.water_above && !objects.above.is_empty()) || layers.objects
+                };
+                if !wanted {
+                    continue;
+                }
+                // Temporary canvas in the island's local screen coordinates.
+                let mut local = blank(Rect {
+                    x: r.x - p.offset.0,
+                    y: r.y - p.offset.1,
+                    ..r
+                });
+                let draw = |c: &mut Canvas, list: &[Prepared], time| {
+                    iso::draw_prepared(
+                        c,
+                        list,
+                        &self.anlagen,
+                        group,
+                        self.lift,
+                        time,
+                        &self.sprites,
+                    )
+                };
+                if first {
+                    drawn += 1;
+                    if layers.ground {
+                        if island.gfx_ids().is_err() || island.heights().is_err() {
+                            no_ground += 1;
+                        }
+                        iso::draw_ground(&mut local, island, &self.textures, group, self.lift);
+                    }
+                    if layers.water_below {
+                        add(draw(&mut local, &objects.below, t));
+                    }
+                } else {
+                    if layers.water_above {
+                        add(draw(&mut local, &objects.above, t));
+                    }
+                    if layers.objects {
+                        add(draw(&mut local, &objects.other, 0));
+                    }
+                }
+                composite(&mut canvas, &local, p.offset);
+            }
+            if pass == 0
+                && layers.sea
+                && let Some(pattern) = self.sea(group)
+            {
+                let field = self.water_field(rect, group);
+                let w = canvas.width;
+                sea::shade_sea(
+                    canvas.pixels.as_chunks_mut::<4>().0,
+                    w,
+                    rect,
+                    |i| (field.cover[i], field.shore[i]),
+                    pattern,
+                    t,
+                    layers.water_style,
+                    group,
+                    self.lift,
+                );
+            }
+        }
+        stats.islands = drawn;
+        stats.no_ground = no_ground;
+        (canvas, stats)
     }
-    if layers.objects {
-        add(iso::draw_objects(
-            canvas,
-            island,
-            anlagen,
-            &OBJECT_RECORDS,
-            Objects::NotWater,
-            group,
-            lift,
-            0,
-            cache,
-        ));
-    }
-    stats
 }
 
 #[cfg(test)]

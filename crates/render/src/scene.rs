@@ -394,6 +394,12 @@ impl<'a> Scene<'a> {
             .as_ref()
     }
 
+    /// The sea pattern of `group` if it has been rendered already (never
+    /// blocks).
+    pub fn sea_if_ready(&self, group: usize) -> Option<&SeaPattern> {
+        self.seas[group].get().and_then(Option::as_ref)
+    }
+
     /// Whether island `index` has water objects below / above sea level.
     pub fn has_water_objects(&self, index: usize) -> (bool, bool) {
         let o = &self.objects[index];

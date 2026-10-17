@@ -41,6 +41,10 @@ const ATLAS_SIZE: u32 = 2048;
 /// Chunks uploaded per frame at most; the rest show open sea until a later
 /// frame, so zooming never stalls on uploads.
 const UPLOADS_PER_FRAME: usize = 6;
+/// Animation steps of other zoom groups' sea patterns uploaded per frame
+/// (each 2 × up to 1344 × 672 RGBA at group 0, ≈ 7 MB), so that a zoom
+/// change never uploads a whole pattern at once.
+const SEA_STEPS_PER_FRAME: usize = 2;
 /// Bytes of one sprite instance (see `sprite_vs`).
 const INSTANCE_BYTES: u64 = 32;
 
@@ -72,6 +76,8 @@ struct GpuChunk {
 struct GpuSea {
     size: (i32, i32),
     steps: usize,
+    /// Animation steps uploaded so far (all = usable).
+    uploaded: usize,
     step_ms: u64,
     sprite: TextureView,
     filled: TextureView,
@@ -530,51 +536,105 @@ impl GpuFrame {
         self.under = Some((texture, view, size));
     }
 
+    /// Makes the sea pattern of `group` usable (uploading what is missing,
+    /// blocking) and uploads [`SEA_STEPS_PER_FRAME`] animation steps of the
+    /// other zoom groups' patterns that are already rendered, so a zoom
+    /// change finds them on the GPU.
     fn ensure_sea(&mut self, scene: &Scene<'_>, group: usize) {
-        if self.seas.contains_key(&group) {
-            self.sea_group = Some(group);
-            return;
-        }
         self.sea_group = None;
-        let Some(p) = scene.sea(group) else {
-            return;
-        };
+        if let Some(p) = scene.sea(group) {
+            self.upload_sea_steps(group, p, usize::MAX);
+            self.sea_group = Some(group);
+        }
+        let mut budget = SEA_STEPS_PER_FRAME;
+        for g in (0..TILE.len()).filter(|&g| g != group) {
+            if budget == 0 {
+                break;
+            }
+            if let Some(p) = scene.sea_if_ready(g) {
+                budget -= self.upload_sea_steps(g, p, budget);
+            }
+        }
+    }
+
+    /// Uploads up to `max` missing animation steps of `p` as the pattern of
+    /// `group`; returns the number uploaded.
+    fn upload_sea_steps(&mut self, group: usize, p: &crate::sea::SeaPattern, max: usize) -> usize {
         let size = (
             u32::try_from(p.width).expect("positive"),
             u32::try_from(p.height).expect("positive"),
         );
-        let (sprites, filled): (Vec<Vec<u8>>, Vec<Vec<u8>>) = (0..p.step_count())
-            .map(|k| {
-                let (s, f) = p.step_images(k);
-                (rgba_bytes(s), rgba_bytes(f))
-            })
-            .unzip();
-        let up = |layers: &[Vec<u8>]| {
-            let refs: Vec<&[u8]> = layers.iter().map(Vec::as_slice).collect();
-            upload_texture(
-                &self.device,
-                &self.queue,
-                TextureFormat::Rgba8Unorm,
-                size,
-                4,
-                &refs,
-                true,
-            )
-        };
-        let (ts, vs) = up(&sprites);
-        let (tf, vf) = up(&filled);
-        self.sea_group = Some(group);
-        self.seas.insert(
-            group,
-            GpuSea {
-                size: (p.width, p.height),
-                steps: p.step_count(),
-                step_ms: p.step_ms,
-                sprite: vs,
-                filled: vf,
-                _textures: [ts, tf],
-            },
-        );
+        if !self.seas.contains_key(&group) {
+            let layers = u32::try_from(p.step_count()).expect("fits");
+            let make = || {
+                let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("sea"),
+                    size: Extent3d {
+                        width: size.0,
+                        height: size.1,
+                        depth_or_array_layers: layers,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: TextureFormat::Rgba8Unorm,
+                    usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+                    view_formats: &[],
+                });
+                let view = texture.create_view(&wgpu::TextureViewDescriptor {
+                    dimension: Some(TextureViewDimension::D2Array),
+                    ..Default::default()
+                });
+                (texture, view)
+            };
+            let ((ts, vs), (tf, vf)) = (make(), make());
+            self.seas.insert(
+                group,
+                GpuSea {
+                    size: (p.width, p.height),
+                    steps: p.step_count(),
+                    step_ms: p.step_ms,
+                    uploaded: 0,
+                    sprite: vs,
+                    filled: vf,
+                    _textures: [ts, tf],
+                },
+            );
+        }
+        let sea = self.seas.get_mut(&group).expect("inserted");
+        let mut n = 0;
+        while sea.uploaded < sea.steps && n < max {
+            let k = sea.uploaded;
+            let (sprite, filled) = p.step_images(k);
+            for (texture, px) in sea._textures.iter().zip([sprite, filled]) {
+                self.queue.write_texture(
+                    TexelCopyTextureInfo {
+                        texture,
+                        mip_level: 0,
+                        origin: Origin3d {
+                            x: 0,
+                            y: 0,
+                            z: u32::try_from(k).expect("fits"),
+                        },
+                        aspect: TextureAspect::All,
+                    },
+                    &rgba_bytes(px),
+                    TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(4 * size.0),
+                        rows_per_image: Some(size.1),
+                    },
+                    Extent3d {
+                        width: size.0,
+                        height: size.1,
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
+            sea.uploaded += 1;
+            n += 1;
+        }
+        n
     }
 
     /// Uploads newly built visible chunks (at most [`UPLOADS_PER_FRAME`]),

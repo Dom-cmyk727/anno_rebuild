@@ -3,9 +3,10 @@
 //! camera paths and reports frame-time percentiles and the time per stage.
 //!
 //! ```text
-//! cargo run --release -p anno-render --example bench_frame -- <game_dir> <file.sze|.scp>
+//! cargo run --release -p anno-render --features gpu --example bench_frame -- <game_dir> <file.sze|.scp>
 //!     [--threads n] [--res 1920x1080,2560x1440,3840x2160] [--groups 0,1,2]
-//!     [--styles original,enhanced] [--chunks blocking,async] [--quick]
+//!     [--styles original,enhanced] [--chunks blocking,async]
+//!     [--renderer cpu,gpu] [--check] [--quick]
 //! ```
 //!
 //! Per resolution, zoom group and water style, from a cold cache centred on
@@ -20,7 +21,12 @@
 //! half the threads (`async`, as the viewer does; missing chunks show open
 //! sea). The animation clock advances 16 ms per frame (60 Hz); in `async`
 //! mode the benchmark does not wait between frames, so workers get less
-//! time than at a real 60 Hz and `missing` is an upper bound. Output: one
+//! time than at a real 60 Hz and `missing` is an upper bound.
+//!
+//! `--renderer gpu` composes on the graphics card (`anno_render::gpu`, as the
+//! viewer does when a GPU is available) into an offscreen target; frame time
+//! then includes waiting for the GPU. `--check` compares the first static
+//! frame of each configuration with the CPU path pixel by pixel. Output: one
 //! Markdown table (method: `docs/perf/README.md`).
 
 use std::path::Path;
@@ -29,7 +35,7 @@ use anno_assets::island::GroundTextures;
 use anno_formats::anlagen::AnlagenFile;
 use anno_formats::insel;
 use anno_formats::tex::TexFile;
-use anno_render::frame::{self, FrameRenderer, FrameStats};
+use anno_render::frame::{self, FrameRenderer};
 use anno_render::iso::{self, WaterStyle};
 use anno_render::scene::{Rect, Scene};
 
@@ -42,7 +48,21 @@ struct Options {
     styles: Vec<WaterStyle>,
     /// `false` = blocking, `true` = async.
     modes: Vec<bool>,
+    /// `false` = CPU, `true` = GPU.
+    renderers: Vec<bool>,
+    check: bool,
     quick: bool,
+}
+
+/// One measured frame: total time, chunk work and four renderer-specific
+/// stages (CPU: ground, water objects, sea, objects; GPU: uploads, sprites,
+/// encode, GPU wait).
+struct Row {
+    total: f64,
+    built: usize,
+    chunk_ms: f64,
+    missing: usize,
+    stages: [f64; 4],
 }
 
 fn main() -> Result<(), BoxError> {
@@ -56,6 +76,8 @@ fn main() -> Result<(), BoxError> {
         groups: vec![0, 1, 2],
         styles: vec![WaterStyle::Original, WaterStyle::Enhanced],
         modes: vec![false, true],
+        renderers: vec![false],
+        check: false,
         quick: false,
     };
     let mut it = args[2..].iter();
@@ -98,6 +120,17 @@ fn main() -> Result<(), BoxError> {
                     })
                     .collect::<Result<_, _>>()?;
             }
+            "--renderer" => {
+                o.renderers = value()?
+                    .split(',')
+                    .map(|s| match s {
+                        "cpu" => Ok(false),
+                        "gpu" => Ok(true),
+                        _ => Err(format!("unknown renderer {s}")),
+                    })
+                    .collect::<Result<_, _>>()?;
+            }
+            "--check" => o.check = true,
             "--quick" => o.quick = true,
             _ => return Err(format!("unknown option {a}").into()),
         }
@@ -132,64 +165,59 @@ fn main() -> Result<(), BoxError> {
             t.elapsed().as_secs_f64() * 1000.0
         );
     }
+    let mut gpu = if o.renderers.contains(&true) {
+        let (device, queue, name) = anno_render::gpu::headless_device().ok_or("no GPU adapter")?;
+        eprintln!("GPU: {name}");
+        Some((
+            anno_render::gpu::GpuFrame::new(device, queue, wgpu_format()),
+            name,
+        ))
+    } else {
+        None
+    };
     println!(
-        "{} — {} {} — {} threads{}\n",
+        "{} — {} {} — {} threads{}{}\n",
         file,
         std::env::consts::OS,
         std::env::consts::ARCH,
         o.threads,
+        gpu.as_ref()
+            .map_or(String::new(), |g| format!(" — GPU {}", g.1)),
         if o.quick { " — quick" } else { "" }
     );
     println!(
-        "| resolution | group | water | chunks | path | frames | p50 ms | p95 ms | p99 ms | max ms | ≤16.7 ms | built | chunk ms | missing | ground | water obj | sea | objects |"
+        "| resolution | group | water | renderer | chunks | path | frames | p50 ms | p95 ms | p99 ms | max ms | ≤16.7 ms | built | chunk ms | missing | stage 1 | stage 2 | stage 3 | stage 4 |"
     );
-    println!("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+    println!("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
     let scale = if o.quick { 4 } else { 1 };
     let o = &o;
     for &(w, h) in &o.resolutions {
         for &group in &o.groups {
             for &style in &o.styles {
-                for &async_chunks in &o.modes {
-                    let p = scene.layouts[group]
-                        .iter()
-                        .find(|p| p.index == largest)
-                        .ok_or("no placement")?;
-                    let centre = (p.bounds.x + p.bounds.w / 2, p.bounds.y + p.bounds.h / 2);
-                    std::thread::scope(|s| -> Result<(), BoxError> {
-                        let mut fr = FrameRenderer::new(o.threads);
-                        if async_chunks {
-                            let workers =
-                                frame::spawn_chunk_workers(s, &scene, o.threads.div_ceil(2));
-                            fr.set_workers(Some(workers));
-                        }
-                        let mut out = vec![0u32; usize::try_from(w * h)?];
-                        let mut cam = (centre.0 - w / 2, centre.1 - h / 2);
-                        let mut time = 0u64;
-                        let paths: [(&str, usize, (i32, i32)); 4] = [
-                            ("cold", 1, (0, 0)),
-                            ("static", 120 / scale, (0, 0)),
-                            ("pan slow", 240 / scale, (6, 3)),
-                            ("pan fast", 120 / scale, (48, 24)),
-                        ];
-                        for (name, n, (dx, dy)) in paths {
-                            let mut stats = Vec::with_capacity(n);
-                            for _ in 0..n {
-                                let view = Rect {
-                                    x: cam.0,
-                                    y: cam.1,
-                                    w,
-                                    h,
-                                };
-                                stats.push(fr.render(&scene, view, group, time, style, &mut out));
-                                time += 16;
-                                cam = (cam.0 + dx, cam.1 + dy);
-                            }
-                            let mode = if async_chunks { "async" } else { "blocking" };
-                            report(w, h, group, style, mode, name, &stats);
-                        }
-                        fr.set_workers(None);
-                        Ok(())
-                    })?;
+                for &use_gpu in &o.renderers {
+                    for &async_chunks in &o.modes {
+                        let p = scene.layouts[group]
+                            .iter()
+                            .find(|p| p.index == largest)
+                            .ok_or("no placement")?;
+                        let centre = (p.bounds.x + p.bounds.w / 2, p.bounds.y + p.bounds.h / 2);
+                        let gpu = if use_gpu {
+                            gpu.as_mut().map(|g| &mut g.0)
+                        } else {
+                            None
+                        };
+                        let config = Config {
+                            size: (w, h),
+                            group,
+                            style,
+                            async_chunks,
+                            centre,
+                            frames: 120 / scale,
+                            check: o.check,
+                            threads: o.threads,
+                        };
+                        run(&scene, &config, gpu)?;
+                    }
                 }
             }
         }
@@ -197,16 +225,154 @@ fn main() -> Result<(), BoxError> {
     Ok(())
 }
 
-fn report(
-    w: i32,
-    h: i32,
+/// Target format of the GPU benchmark (readable back as RGBA).
+fn wgpu_format() -> wgpu::TextureFormat {
+    wgpu::TextureFormat::Rgba8Unorm
+}
+
+struct Config {
+    size: (i32, i32),
     group: usize,
     style: WaterStyle,
-    mode: &str,
-    name: &str,
-    s: &[FrameStats],
-) {
-    let mut total: Vec<f64> = s.iter().map(|f| f.total_ms).collect();
+    async_chunks: bool,
+    centre: (i32, i32),
+    /// Frames of the `static` path (others scale from it).
+    frames: usize,
+    check: bool,
+    threads: usize,
+}
+
+/// Runs the camera paths of one configuration and prints its rows.
+fn run(
+    scene: &Scene<'_>,
+    c: &Config,
+    mut gpu: Option<&mut anno_render::gpu::GpuFrame>,
+) -> Result<(), BoxError> {
+    let (w, h) = c.size;
+    let size = (u32::try_from(w)?, u32::try_from(h)?);
+    std::thread::scope(|s| -> Result<(), BoxError> {
+        let mut fr = FrameRenderer::new(c.threads);
+        if c.async_chunks {
+            fr.set_workers(Some(frame::spawn_chunk_workers(
+                s,
+                scene,
+                c.threads.div_ceil(2),
+            )));
+        }
+        let target = gpu.as_ref().map(|g| g.offscreen_target(size));
+        let mut out = vec![0u32; usize::try_from(w * h)?];
+        let mut cam = (c.centre.0 - w / 2, c.centre.1 - h / 2);
+        let mut time = 0u64;
+        let paths: [(&str, usize, (i32, i32)); 4] = [
+            ("cold", 1, (0, 0)),
+            ("static", c.frames, (0, 0)),
+            ("pan slow", 2 * c.frames, (6, 3)),
+            ("pan fast", c.frames, (48, 24)),
+        ];
+        for (name, n, (dx, dy)) in paths {
+            let mut rows = Vec::with_capacity(n);
+            for i in 0..n {
+                let view = Rect {
+                    x: cam.0,
+                    y: cam.1,
+                    w,
+                    h,
+                };
+                let row = match (&mut gpu, &target) {
+                    (Some(g), Some((_, tv))) => {
+                        let st = g.render(&mut fr, scene, view, c.group, time, c.style, tv);
+                        let t = std::time::Instant::now();
+                        g.wait();
+                        let wait = t.elapsed().as_secs_f64() * 1000.0;
+                        Row {
+                            total: st.total_ms + wait,
+                            built: st.chunks_built,
+                            chunk_ms: st.chunks_ms,
+                            missing: st.chunks_missing,
+                            stages: [st.upload_ms, st.sprites_ms, st.encode_ms, wait],
+                        }
+                    }
+                    _ => {
+                        let st = fr.render(scene, view, c.group, time, c.style, &mut out);
+                        Row {
+                            total: st.total_ms,
+                            built: st.chunks_built,
+                            chunk_ms: st.chunks_ms,
+                            missing: st.chunks_missing,
+                            stages: [st.ground_ms, st.water_objects_ms, st.sea_ms, st.objects_ms],
+                        }
+                    }
+                };
+                rows.push(row);
+                if c.check
+                    && name == "static"
+                    && i == n - 1
+                    && let (Some(g), Some((tex, _))) = (&gpu, &target)
+                {
+                    compare(scene, c, view, time, g, tex)?;
+                }
+                time += 16;
+                cam = (cam.0 + dx, cam.1 + dy);
+            }
+            let mode = if c.async_chunks { "async" } else { "blocking" };
+            let renderer = if gpu.is_some() { "gpu" } else { "cpu" };
+            report(c, renderer, mode, name, &rows);
+        }
+        fr.set_workers(None);
+        Ok(())
+    })
+}
+
+/// Compares the GPU image of `view` with the CPU path (blocking chunks).
+fn compare(
+    scene: &Scene<'_>,
+    c: &Config,
+    view: Rect,
+    time: u64,
+    g: &anno_render::gpu::GpuFrame,
+    tex: &wgpu::Texture,
+) -> Result<(), BoxError> {
+    let size = (u32::try_from(view.w)?, u32::try_from(view.h)?);
+    let gpu_px = g.read_back(tex, size);
+    let mut cpu = FrameRenderer::new(c.threads);
+    let mut out = vec![0u32; usize::try_from(view.w * view.h)?];
+    cpu.render(scene, view, c.group, time, c.style, &mut out);
+    let (mut differ, mut max) = (0usize, 0u8);
+    for (p, q) in out.iter().zip(gpu_px.as_chunks::<4>().0) {
+        let [_, r, g, b] = p.to_be_bytes();
+        let d = [r.abs_diff(q[0]), g.abs_diff(q[1]), b.abs_diff(q[2])];
+        let m = d.into_iter().max().unwrap_or(0);
+        max = max.max(m);
+        if m > 2 {
+            differ += 1;
+        }
+    }
+    if let Some(dir) = std::env::var_os("BENCH_DUMP") {
+        let name = format!("g{}_{:?}", c.group, c.style);
+        let cpu_rgba: Vec<u8> = out
+            .iter()
+            .flat_map(|p| {
+                let [_, r, g, b] = p.to_be_bytes();
+                [r, g, b, 255]
+            })
+            .collect();
+        std::fs::write(Path::new(&dir).join(format!("{name}_cpu.rgba")), cpu_rgba)?;
+        std::fs::write(Path::new(&dir).join(format!("{name}_gpu.rgba")), &gpu_px)?;
+    }
+    eprintln!(
+        "check {}x{} group {} {:?}: {differ} of {} pixels differ by more than 2, max difference {max}",
+        view.w,
+        view.h,
+        c.group,
+        c.style,
+        out.len()
+    );
+    Ok(())
+}
+
+fn report(c: &Config, renderer: &str, mode: &str, name: &str, s: &[Row]) {
+    let (w, h, group) = (c.size.0, c.size.1, c.group);
+    let mut total: Vec<f64> = s.iter().map(|f| f.total).collect();
     total.sort_by(f64::total_cmp);
     let pct = |p: f64| {
         #[allow(
@@ -219,26 +385,26 @@ fn report(
     };
     #[allow(clippy::cast_precision_loss)]
     let n = s.len() as f64;
-    let mean = |f: fn(&FrameStats) -> f64| s.iter().map(f).sum::<f64>() / n;
-    let within = s.iter().filter(|f| f.total_ms <= 16.7).count();
-    let style = match style {
+    let mean = |f: &dyn Fn(&Row) -> f64| s.iter().map(f).sum::<f64>() / n;
+    let within = s.iter().filter(|f| f.total <= 16.7).count();
+    let style = match c.style {
         WaterStyle::Original => "original",
         WaterStyle::Enhanced => "enhanced",
     };
     println!(
-        "| {w}×{h} | {group} | {style} | {mode} | {name} | {} | {:.1} | {:.1} | {:.1} | {:.1} | {:.0} % | {} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} |",
+        "| {w}×{h} | {group} | {style} | {renderer} | {mode} | {name} | {} | {:.1} | {:.1} | {:.1} | {:.1} | {:.0} % | {} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} |",
         s.len(),
         pct(0.5),
         pct(0.95),
         pct(0.99),
         total.last().copied().unwrap_or(0.0),
         100.0 * f64::from(u32::try_from(within).unwrap_or(u32::MAX)) / n,
-        s.iter().map(|f| f.chunks_built).sum::<usize>(),
-        mean(|f| f.chunks_ms),
-        mean(|f| f64::from(u32::try_from(f.chunks_missing).unwrap_or(u32::MAX))),
-        mean(|f| f.ground_ms),
-        mean(|f| f.water_objects_ms),
-        mean(|f| f.sea_ms),
-        mean(|f| f.objects_ms),
+        s.iter().map(|f| f.built).sum::<usize>(),
+        mean(&|f| f.chunk_ms),
+        mean(&|f| f64::from(u32::try_from(f.missing).unwrap_or(u32::MAX))),
+        mean(&|f| f.stages[0]),
+        mean(&|f| f.stages[1]),
+        mean(&|f| f.stages[2]),
+        mean(&|f| f.stages[3]),
     );
 }

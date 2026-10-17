@@ -1065,3 +1065,79 @@ fn anno_dump_matches_text_py_synthetic() {
     }
     agree("text.py", &["texte"], &["texte"], &files[1..]);
 }
+
+/// Every `.zei`, with and without `--full`.
+#[test]
+fn anno_dump_matches_zei_py_corpus() {
+    let test = "anno_dump_matches_zei_py_corpus";
+    let Some(dir) = game_dir(test) else { return };
+    if !have_python(test) {
+        return;
+    }
+    let mut files = Vec::new();
+    collect_ext(&dir, &["zei"], &mut files);
+    files.sort();
+    assert_eq!(files.len(), 11);
+    let out = agree("zei.py", &["dump"], &["zei"], &files);
+    assert_eq!(out.matches("\nGLYPH ").count(), 11 * 224);
+    assert_eq!(out.matches(" BAD").count(), 0);
+    agree("zei.py", &["dump", "--full"], &["zei", "--full"], &files);
+}
+
+#[test]
+fn anno_dump_matches_zei_py_synthetic() {
+    let test = "anno_dump_matches_zei_py_synthetic";
+    if !have_python(test) {
+        return;
+    }
+    let dir = synthetic_dir(test);
+    let font = |glyphs: &[(u8, u32, &[u8])]| {
+        let mut head = vec![0u8; 16 + 256 * 8];
+        head[0] = 11;
+        head[2] = 3;
+        head[4] = 9; // reserved byte, printed
+        let mut body = Vec::new();
+        for &(code, width, data) in glyphs {
+            let o = 16 + 8 * usize::from(code);
+            head[o..o + 4].copy_from_slice(&width.to_le_bytes());
+            let len = u32::try_from(data.len()).unwrap();
+            head[o + 4..o + 8].copy_from_slice(&len.to_le_bytes());
+            body.extend_from_slice(data);
+        }
+        chunk(
+            "CHARSET",
+            &[chunk("HEAD", &head), chunk("BODY", &body)].concat(),
+        )
+    };
+    let good = font(&[
+        (b'A', 3, &[1, 2, 1, 2, 0xFE, 0xFE, 0, 1, 3, 0xFF]),
+        (b'B', 2, &[3, 0, 0xFF]),     // skip past the width: not widened
+        (b'C', 2, &[2, 1, 12, 0xFF]), // pixel past the width: widened, level ≥ 10
+        (b'D', 2, &[0, 5, 1, 0xFF]),  // truncated run: BAD
+    ]);
+    let files: Vec<PathBuf> = [
+        ("good.zei", good),
+        ("bad.zei", chunk("CHARSET", &chunk("HEAD", &[0; 4]))),
+    ]
+    .into_iter()
+    .map(|(n, bytes)| {
+        let p = dir.join(n);
+        std::fs::write(&p, bytes).expect("write");
+        p
+    })
+    .collect();
+    let out = agree("zei.py", &["dump", "--full"], &["zei", "--full"], &files);
+    for line in [
+        "CHARSET size_a=11 size_b=3 reserved=090000000000000000000000 glyphs=4\n",
+        "GLYPH code=65 width=3 length=10 image=3x3 ",
+        "  .12\n  ...\n  3..\n",
+        "GLYPH code=66 width=2 length=3 image=2x1 ",
+        "GLYPH code=67 width=2 length=4 image=3x1 ",
+        "  ..#\n",
+        "GLYPH code=68 width=2 length=4 BAD\n",
+        "NOPARSE\n",
+    ] {
+        assert!(out.contains(line), "{line}\n{out}");
+    }
+    agree("zei.py", &["dump"], &["zei"], &files);
+}

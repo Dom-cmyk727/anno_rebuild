@@ -12,6 +12,7 @@
 //! anno-dump sze [--full] <file.sze>...  players, ships, soldiers (same as `tools/sze.py dump`)
 //! anno-dump keyed <file>...          lines of keyed text files, e.g. `Data/BGruppen.dat` (same as `tools/text.py keyed`)
 //! anno-dump texte [--full] <Texte.dat>...  sections and building names (same as `tools/text.py texte`)
+//! anno-dump zei [--full] <file.zei>...  font glyphs (same as `tools/zei.py dump`)
 //! anno-dump probe <path> <file>...   statistics over all chunks at a name path
 //! ```
 //!
@@ -23,13 +24,13 @@
 //! ("Reference dump"), `colors` in `docs/formats/palette.md`, `figuren` and
 //! `frames` in `docs/formats/figuren.md`, `insel` in `docs/formats/insel.md`,
 //! `sze` in `docs/formats/sze.md`, `keyed` and `texte` in
-//! `docs/formats/data-text.md`.
+//! `docs/formats/data-text.md`, `zei` in `docs/formats/zei.md`.
 
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::process::ExitCode;
 
-use anno_formats::{anlagen, chunk, colors, figuren, inc, insel, sze, tagged, tex, text};
+use anno_formats::{anlagen, chunk, colors, figuren, inc, insel, sze, tagged, tex, text, zei};
 
 const USAGE: &str = "usage: anno-dump chunks <file>...\n       \
                      anno-dump tex [--full] <file>...\n       \
@@ -42,6 +43,7 @@ const USAGE: &str = "usage: anno-dump chunks <file>...\n       \
                      anno-dump sze [--full] <file.sze>...\n       \
                      anno-dump keyed <file>...\n       \
                      anno-dump texte [--full] <Texte.dat>...\n       \
+                     anno-dump zei [--full] <file.zei>...\n       \
                      anno-dump probe <path> <file>...";
 
 fn main() -> ExitCode {
@@ -54,7 +56,7 @@ fn main() -> ExitCode {
         Some((flag, files))
             if matches!(
                 cmd,
-                "tex" | "colors" | "figuren" | "insel" | "anlagen" | "sze" | "texte"
+                "tex" | "colors" | "figuren" | "insel" | "anlagen" | "sze" | "texte" | "zei"
             ) && flag == "--full" =>
         {
             (true, files)
@@ -89,6 +91,7 @@ fn main() -> ExitCode {
         "sze" => dump_files(files, |buf, out| dump_sze(buf, full, out)),
         "keyed" => dump_files(files, dump_keyed),
         "texte" => dump_files(files, |buf, out| dump_texte(buf, full, out)),
+        "zei" => dump_files(files, |buf, out| dump_zei(buf, full, out)),
         _ => usage(),
     }
 }
@@ -1123,6 +1126,64 @@ fn dump_texte(buf: &[u8], full: bool, out: &mut String) -> bool {
         if full {
             for l in &s.lines {
                 w(out, format_args!("  L {}", quote_all(l)));
+            }
+        }
+    }
+    ok
+}
+
+/// `zei`: one line per font and per glyph; with `--full` the glyph rows
+/// (`.` = empty, level digit otherwise).
+fn dump_zei(buf: &[u8], full: bool, out: &mut String) -> bool {
+    let cs = match zei::CharSet::parse(buf) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("NOPARSE: {e}");
+            out.push_str("NOPARSE\n");
+            return false;
+        }
+    };
+    let have: Vec<_> = cs.glyphs.iter().filter(|g| !g.data.is_empty()).collect();
+    writeln!(
+        out,
+        "CHARSET size_a={} size_b={} reserved={} glyphs={}",
+        cs.size_a,
+        cs.size_b,
+        hex(&cs.reserved),
+        have.len()
+    )
+    .expect("writing to a String");
+    let mut ok = true;
+    for g in have {
+        let (code, width, len) = (g.code, g.width, g.data.len());
+        match g.decode() {
+            Ok(img) => {
+                writeln!(
+                    out,
+                    "GLYPH code={code} width={width} length={len} image={}x{} hash={:016x}",
+                    img.width,
+                    img.height,
+                    fnv64(g.data.iter().copied())
+                )
+                .expect("writing to a String");
+                if full {
+                    for row in img.levels.chunks(img.width.max(1)) {
+                        let line: String = row
+                            .iter()
+                            .map(|v| match v {
+                                None => '.',
+                                Some(v) if *v < 10 => char::from(b'0' + v),
+                                Some(_) => '#',
+                            })
+                            .collect();
+                        writeln!(out, "  {line}").expect("writing to a String");
+                    }
+                }
+            }
+            Err(_) => {
+                writeln!(out, "GLYPH code={code} width={width} length={len} BAD")
+                    .expect("writing to a String");
+                ok = false;
             }
         }
     }

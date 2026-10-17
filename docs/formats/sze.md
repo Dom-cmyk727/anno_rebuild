@@ -108,7 +108,7 @@ Ships per figure: 1501: 29, 1502: 64, 1503: 38, 1504: 42, 1505: 25, 1506: 61, 15
 | 0x00 | 12 | | head | same layout as the `INSEL5` head: `u16 x, u16 y, u16 width, u16 height, u32 number` | P |
 | 0x0C | n | ASCII | `path` | NUL-terminated (exactly one NUL, at the end) path relative to `Scenes`, e.g. `islands\polar\po_080x080_dummy.scp` | P (all 229) |
 
-Every path names one of the 21 `INSEL4` `*_dummy.scp` templates (found case-insensitively) whose size equals the link's `width × height` (P, all 229). Island numbers are unique across a scenario's `INSEL5` and `INSELLNK` (P). Six climates occur (`polar`, `tundra`, `nord`, `steppe`, `praerie`, `dschungel`). Six add-on scenarios (the endless games `03`–`08`) have no `INSEL5` at all, so their islands come only from links. Which island the game places for a link (the dummy itself, or a random template of that climate and size) is open (OQ-028).
+Every path names one of the 21 `INSEL4` `*_dummy.scp` templates (found case-insensitively) whose size equals the link's `width × height` (P, all 229). Island numbers are unique across a scenario's `INSEL5` and `INSELLNK` (P). Six climates occur (`polar`, `tundra`, `nord`, `steppe`, `praerie`, `dschungel`). Six add-on scenarios (the endless games `03`–`08`) have no `INSEL5` at all, so their islands come only from links. Which island the game places for a link (the dummy itself, or a random template of that climate and size) is open (OQ-028). The dummies themselves are flat grass squares without coast or objects, which supports the second reading. The viewer draws a stand-in of the right climate and size (`docs/render/iso.md`, "Scene composition").
 
 ## Reference dump
 

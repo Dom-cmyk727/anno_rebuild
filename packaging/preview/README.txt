@@ -7,10 +7,21 @@ A clean-room reimplementation of ANNO 1503 in Rust (project milestone M1.6).
 This build is an island VIEWER, not the playable game yet: it reads the
 original game files and draws scenarios and islands isometrically (ground,
 terrain height, animated sea, rivers and surf, trees, rocks, buildings,
-shadows). No gameplay, no ships or people, no sound.
+shadows, ships). No gameplay, no people, no sound.
 
 New in this build
 -----------------
+- Ships: every ship a scenario places is drawn on the sea with its own
+  ship type. Sails and flags are still white; player colours come later.
+- Endless games (Scenes/0010SingleEndlos) open now. Their scenario files
+  only say "an island of this climate and size goes here"; the original
+  presumably picks the island when the game starts. Until we know how,
+  the viewer puts a real island of that climate and size there, always
+  the same one for the same map. So these islands are stand-ins and will
+  not match what the original shows.
+
+Earlier builds
+--------------
 - Enhanced water (E) is now a real-time wave simulation on the GPU:
   waves slow down and steepen in shallow water, bend around islands,
   break into foam that drifts with the water, and run up the beach and

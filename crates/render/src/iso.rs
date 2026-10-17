@@ -468,8 +468,62 @@ pub struct SpriteCache {
     frames: RwLock<BTreeMap<SpriteKey, Option<Arc<Rgba>>>>,
 }
 
-/// `(ANLAGEN id, sprite set, shadow, zoom group, frame index)`.
+/// `(ANLAGEN id, variant, shadow, zoom group, frame index)`; variant 0 =
+/// the frame as decoded, [`SMOOTHED`] = its 2 × 2 smoothed copy.
 pub type SpriteKey = (u32, usize, bool, u32, usize);
+
+/// [`SpriteKey`] variant: the frame averaged over 2 × 2 pixels
+/// (premultiplied alpha). Enhanced water uses it for river sprites, whose
+/// `BSH_RGBWZ` checkerboard otherwise shows as hatching (not original).
+pub const SMOOTHED: usize = 1;
+
+/// `img` averaged over each pixel's 2 × 2 neighbourhood (right and down,
+/// premultiplied alpha; outside the image counts as transparent).
+pub fn smooth_2x2(img: &Rgba) -> Rgba {
+    let (w, h) = (usize::from(img.width), usize::from(img.height));
+    let px = |x: usize, y: usize| -> [f32; 4] {
+        if x >= w || y >= h {
+            return [0.0; 4];
+        }
+        let o = (y * w + x) * 4;
+        let a = f32::from(img.pixels[o + 3]) / 255.0;
+        [
+            f32::from(img.pixels[o]) * a,
+            f32::from(img.pixels[o + 1]) * a,
+            f32::from(img.pixels[o + 2]) * a,
+            a,
+        ]
+    };
+    let mut pixels = Vec::with_capacity(img.pixels.len());
+    for y in 0..h {
+        for x in 0..w {
+            let mut s = [0.0f32; 4];
+            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                let p = px(x + dx, y + dy);
+                for c in 0..4 {
+                    s[c] += p[c] / 4.0;
+                }
+            }
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let q = |v: f32| v.round().clamp(0.0, 255.0) as u8;
+            if s[3] <= 0.0 {
+                pixels.extend([0; 4]);
+            } else {
+                pixels.extend([
+                    q(s[0] / s[3]),
+                    q(s[1] / s[3]),
+                    q(s[2] / s[3]),
+                    q(s[3] * 255.0),
+                ]);
+            }
+        }
+    }
+    Rgba {
+        width: img.width,
+        height: img.height,
+        pixels,
+    }
+}
 
 impl SpriteCache {
     /// The decoded frame `key` (`frame` = its header), decoded on first use.
@@ -482,10 +536,15 @@ impl SpriteCache {
         if let Some(hit) = self.frames.read().expect("no panic").get(&key) {
             return hit.clone();
         }
-        let entry = anlagen.entry(key.0)?;
-        let img = building::to_rgba(anlagen, entry, key.3, frame)
-            .ok()
-            .map(Arc::new);
+        let img = if key.1 == SMOOTHED {
+            self.get(anlagen, (key.0, 0, key.2, key.3, key.4), frame)
+                .map(|base| Arc::new(smooth_2x2(&base)))
+        } else {
+            let entry = anlagen.entry(key.0)?;
+            building::to_rgba(anlagen, entry, key.3, frame)
+                .ok()
+                .map(Arc::new)
+        };
         self.frames
             .write()
             .expect("no panic")
@@ -764,6 +823,7 @@ pub fn draw_prepared(
         lift,
         time_ms,
         cache,
+        0,
         |_, _, _| true,
     )
 }
@@ -779,6 +839,7 @@ pub fn draw_prepared_tested(
     lift: Lift,
     time_ms: u64,
     cache: &SpriteCache,
+    variant: usize,
     keep: impl Fn(i32, i32, u8) -> bool,
 ) -> DrawStats {
     let mut draws = Vec::new();
@@ -791,6 +852,11 @@ pub fn draw_prepared_tested(
         |x, y, w, h| canvas.overlaps(x, y, w, h),
         &mut draws,
     );
+    for d in &mut draws {
+        if !d.is_shadow() {
+            d.key.1 = variant;
+        }
+    }
     for d in draws {
         let Some(img) = cache.get(anlagen, d.key, d.frame) else {
             if !d.is_shadow() {
@@ -915,6 +981,8 @@ pub struct Waves {
     pub swash_depth: f32,
     /// Direction the open-sea swell travels in (tile axes, unit length).
     pub swell_dir: [f32; 2],
+    /// Distance between surf crests near the shore (tiles).
+    pub surf_wavelength: f32,
     /// Depth over which shallow water is tinted.
     pub tint_depth: f32,
     /// Distance between incoming crests (tiles).
@@ -948,6 +1016,7 @@ impl Waves {
         swash_depth: 1.5,
         // Crests run diagonally on screen (crest along the tile y axis).
         swell_dir: [0.96, 0.28],
+        surf_wavelength: 1.8,
         tint_depth: 8.0,
         wavelength: 2.6,
         period_ms: 3400.0,
@@ -1066,14 +1135,19 @@ pub(crate) fn wave_shade(
     let mut foam: f32 = 0.0;
     let near = smoothstep(w.surf_zone, w.surf_zone * 0.5, dist);
     if near > 0.0 {
-        // Swell from one direction, crests bent by slow noise. (Turning the
-        // crests towards each beach by mixing in the shore distance
-        // compressed the phase into bunches of thin lines at shoal edges.)
+        // Two wave systems, blended by amplitude (blending their phases
+        // compressed the crests into bunches of thin lines):
+        // - swell: from one direction (`swell_dir`), crests bent by noise;
+        // - surf: crests parallel to the shore on every side of an island,
+        //   travelling towards it — phase from the strongly smoothed shore
+        //   distance, so it follows the coastline, not every small bulge.
+        // The surf takes over towards the beach (`surf_blend`).
         let bend = 1.4 * noise3(wx * 0.12, wy * 0.12, t * 0.000_03)
             + 0.5 * noise3(wx * 0.35 + 5.0, wy * 0.35, t * 0.000_05);
         let along = -(wx * w.swell_dir[0] + wy * w.swell_dir[1]);
-        let phase = along / w.wavelength + t / w.period_ms + bend;
-        let u = phase - phase.floor();
+        let swell_phase = along / w.wavelength + t / w.period_ms + bend;
+        let surf_phase = dist / w.surf_wavelength + t / w.period_ms + 0.35 * bend;
+        let ws = smoothstep(w.surf_zone * 0.9, w.surf_zone * 0.35, dist);
         // Height profile, crest at u = 0.9: gentle back, steep front.
         let profile = |u: f32| {
             let d = u - 0.9;
@@ -1083,41 +1157,44 @@ pub(crate) fn wave_shade(
                 (-(d / 0.05).powi(2)).exp()
             }
         };
-        let height = profile(u);
-        // Slope towards the beach, scaled so the front is about −1.
-        let slope = (profile((u + 0.01).min(1.0)) - profile((u - 0.01).max(0.0))) * 2.5;
+        // (height, slope towards the travel direction, foam line, trail)
+        let crest = |phase: f32| {
+            let u = phase - phase.floor();
+            let height = profile(u);
+            let slope = (profile((u + 0.01).min(1.0)) - profile((u - 0.01).max(0.0))) * 2.5;
+            let line = (-((u - 0.9) / 0.035).powi(2)).exp();
+            let trail = (-(0.9 - u).max(0.0) * 14.0).exp();
+            [height, slope, line, trail]
+        };
+        let (cs, cf) = (crest(swell_phase), crest(surf_phase));
+        let mix = |k: usize| cs[k] * (1.0 - ws) + cf[k] * ws;
+        let (height, slope, line, trail) = (mix(0), mix(1), mix(2), mix(3));
         // Long crests with gentle variation along them.
         let segment =
             0.55 + 0.45 * smoothstep(0.3, 0.7, noise3(wx * 0.25 + 3.1, wy * 0.25, t * 0.000_05));
-        // Depth only gates softly (deep pockets inside the shallows must not
-        // draw rings); where waves break follows the smooth distance.
+        // Waves grow while shoaling, break where the water becomes
+        // shallower than `break_depth` and run on as weakening bores.
         let shoal = smoothstep(w.shoal_depth, w.break_depth, depth);
-        // Waves break where the water becomes shallower than `break_depth`
-        // and run on as weakening bores over the flats.
         let breaking = smoothstep(w.break_depth * 1.4, w.break_depth * 0.7, depth);
         let bore = 1.0 - 0.7 * smoothstep(w.break_depth * 0.7, 0.3, depth);
-        // Waves grow while shoaling and lose height once broken.
         let amp = near * segment * (0.35 + 0.65 * shoal) * (1.0 - 0.5 * breaking);
         light += amp * (0.10 * slope + 0.10 * height);
         let fine = noise3(wx * 2.0, wy * 2.0, t * 0.0009);
         let mottle = 0.55 + detail * (fine - 0.55);
         if breaking > 0.0 {
-            // Waves break hardest where the depth crosses `break_depth`;
-            // beyond, on flats, they run on as weaker bores. Foam is a
-            // narrow line on the crest with a short whitewater trail.
-            // Crests break in pieces, not as one line.
+            // A narrow foam line on the crest with a short whitewater
+            // trail, broken into pieces.
             let pieces = smoothstep(0.35, 0.6, noise3(wx * 0.5 + 9.0, wy * 0.5, t * 0.000_07));
             let surge = breaking * bore * pieces;
-            let line = (-((u - 0.9) / 0.035).powi(2)).exp();
-            let behind = (0.9 - u).max(0.0);
-            let trail = (-behind * 14.0).exp() * smoothstep(0.25, 0.7, mottle);
-            foam = surge * near * segment * (0.8 * line).max(0.3 * trail);
+            foam = surge
+                * near
+                * segment
+                * (0.8 * line).max(0.3 * trail * smoothstep(0.25, 0.7, mottle));
         }
         if depth < w.swash_depth {
-            // Swash: after a crest reaches the beach a thin sheet runs up
-            // and fades.
-            let at_shore = phase;
-            let since = at_shore - at_shore.floor();
+            // Swash: after a surf crest reaches the beach a thin sheet runs
+            // up and fades.
+            let since = surf_phase - surf_phase.floor();
             let burst = smoothstep(0.0, 0.05, since) * (-since * 3.0).exp();
             let edge = smoothstep(w.swash_depth, 0.0, depth);
             foam = foam.max(edge * burst * (0.35 + 0.4 * mottle));

@@ -143,6 +143,7 @@ const SHOAL_DEPTH: f32 = 12.0;
 const BREAK_DEPTH: f32 = 4.0;
 const SWASH_DEPTH: f32 = 1.5;
 const SWELL_DIR: vec2<f32> = vec2<f32>(0.96, 0.28);
+const SURF_WAVELENGTH: f32 = 1.8;
 const TINT_DEPTH: f32 = 8.0;
 const WAVELENGTH: f32 = 2.6;
 const PERIOD_MS: f32 = 3400.0;
@@ -166,6 +167,17 @@ fn profile(u: f32) -> f32 {
     return exp(-(d / 0.05) * (d / 0.05));
 }
 
+// iso::wave_shade crest: (height, slope, foam line, trail) at a phase.
+fn crest(phase: f32) -> vec4<f32> {
+    let u = phase - floor(phase);
+    let height = profile(u);
+    let slope = (profile(min(u + 0.01, 1.0)) - profile(max(u - 0.01, 0.0))) * 2.5;
+    let dl = (u - 0.9) / 0.035;
+    let line = exp(-dl * dl);
+    let trail = exp(-max(0.9 - u, 0.0) * 14.0);
+    return vec4<f32>(height, slope, line, trail);
+}
+
 // iso::wave_shade: (light, foam, tint).
 fn wave_shade(dist: f32, depth: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<f32> {
     let s1 = noise3(w.x * 0.22 + t * 0.00011, w.y * 0.22 - t * 0.00004, t * 0.00006);
@@ -177,10 +189,14 @@ fn wave_shade(dist: f32, depth: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<
         let bend = 1.4 * noise3(w.x * 0.12, w.y * 0.12, t * 0.00003)
             + 0.5 * noise3(w.x * 0.35 + 5.0, w.y * 0.35, t * 0.00005);
         let along = -dot(w, SWELL_DIR);
-        let phase = along / WAVELENGTH + t / PERIOD_MS + bend;
-        let u = phase - floor(phase);
-        let height = profile(u);
-        let slope = (profile(min(u + 0.01, 1.0)) - profile(max(u - 0.01, 0.0))) * 2.5;
+        let swell_phase = along / WAVELENGTH + t / PERIOD_MS + bend;
+        let surf_phase = dist / SURF_WAVELENGTH + t / PERIOD_MS + 0.35 * bend;
+        let ws = sstep(SURF_ZONE * 0.9, SURF_ZONE * 0.35, dist);
+        let c = mix(crest(swell_phase), crest(surf_phase), ws);
+        let height = c.x;
+        let slope = c.y;
+        let line = c.z;
+        let trail = c.w;
         let segment = 0.55 + 0.45 * sstep(0.3, 0.7, noise3(w.x * 0.25 + 3.1, w.y * 0.25, t * 0.00005));
         let shoal = sstep(SHOAL_DEPTH, BREAK_DEPTH, depth);
         let breaking = sstep(BREAK_DEPTH * 1.4, BREAK_DEPTH * 0.7, depth);
@@ -192,15 +208,10 @@ fn wave_shade(dist: f32, depth: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<
         if breaking > 0.0 {
             let pieces = sstep(0.35, 0.6, noise3(w.x * 0.5 + 9.0, w.y * 0.5, t * 0.00007));
             let surge = breaking * bore * pieces;
-            let dl = (u - 0.9) / 0.035;
-            let line = exp(-dl * dl);
-            let behind = max(0.9 - u, 0.0);
-            let trail = exp(-behind * 14.0) * sstep(0.25, 0.7, mottle);
-            foam = surge * near * segment * max(0.8 * line, 0.3 * trail);
+            foam = surge * near * segment * max(0.8 * line, 0.3 * trail * sstep(0.25, 0.7, mottle));
         }
         if depth < SWASH_DEPTH {
-            let at_shore = phase;
-            let since = at_shore - floor(at_shore);
+            let since = surf_phase - floor(surf_phase);
             let burst = sstep(0.0, 0.05, since) * exp(-since * 3.0);
             let edge = sstep(SWASH_DEPTH, 0.0, depth);
             foam = max(foam, edge * burst * (0.35 + 0.4 * mottle));

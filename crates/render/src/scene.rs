@@ -455,6 +455,12 @@ impl<'a> Scene<'a> {
             );
             for d in &mut out[start..] {
                 d.anchor = (d.anchor.0 + p.offset.0, d.anchor.1 + p.offset.1);
+                if layer == SpriteLayer::WaterAbove
+                    && style == WaterStyle::Enhanced
+                    && !d.is_shadow()
+                {
+                    d.key.1 = iso::SMOOTHED;
+                }
             }
         }
         out
@@ -666,6 +672,10 @@ impl<'a> Scene<'a> {
                             self.lift,
                             t,
                             &self.sprites,
+                            match layers.water_style {
+                                WaterStyle::Original => 0,
+                                WaterStyle::Enhanced => iso::SMOOTHED,
+                            },
                             keep,
                         ));
                     }

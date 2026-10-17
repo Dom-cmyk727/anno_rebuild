@@ -30,6 +30,28 @@ The project rebuilds ANNO 1503 faithfully **and** improves the engine beyond the
 - **How improvements are built:** as separate, selectable layers next to the faithful one (render styles, `rules` config), so the original behaviour stays reproducible and testable (CLAUDE.md "faithful core separate from improvements"). Which variant is the default is a per-feature owner decision; for water the owner leans towards the enhanced look.
 - **Evidence still applies to the faithful parts;** improvements are documented as such (what, why, tuning), with their own tests.
 
+## 0.3 Design goal: smooth, measured performance (owner decision 2026-10-17)
+
+Smooth gameplay at a high frame rate that scales with map size, player count and multiplayer is a requirement, and it is proven by measurement, not assumed.
+
+- **Targets (first draft, to be refined):** the frame time of the view stays under 16.7 ms (60 fps) at p99 at 1920 × 1080 and under 16.7 ms at p95 at 3840 × 2160 on a 4-core x86 desktop, in every zoom group and water style; no frame above 50 ms while panning; the simulation tick (M3) costs a fixed, measured share of the frame budget for the largest scenario with 8 players.
+- **Measured, reproducibly:** every performance-relevant subsystem gets a headless benchmark that runs the production code path and reports percentiles (p50/p95/p99/max) and per-stage times. First one: `crates/render/examples/bench_frame.rs` (view frames along scripted camera paths, configurable resolution, threads, zoom, water style, chunk mode). Method and results: [`docs/perf/README.md`](perf/README.md). The viewer shows fps in its title and prints the same stage breakdown.
+- **Rendering never blocks on content:** static content is built in the background and cached; a frame only composes and animates. The CPU renderer is the reference; a GPU path (wgpu) follows when the CPU numbers stop meeting the targets on weak hardware (measured with `--threads 4`).
+- **Simulation scales independently of rendering:** fixed tick decoupled from frame rate (M4), cost proportional to active entities, measured per tick with the same percentile reporting, including N headless peers (M4 test harness).
+- **Robustness:** benchmarks and their result tables are kept in `docs/perf/`; a regression of more than 20 % at p95 needs a reason in the commit.
+
+## 0.4 Design goal: asset fidelity, nothing lost (owner decision 2026-10-17)
+
+Every graphic and design asset of the original must come through the rebuild complete and unchanged, down to the smallest details (feet, armour, weapons, flags, shadows, animation frames).
+
+- **Decode, never redraw:** assets are decoded from the original files at runtime; nothing is approximated by hand. Decoders are byte-exact (round-trip tests over the whole corpus) and their pixel output is verified.
+- **Verify every asset, twice:** (1) per frame: decoded pixel count = covered pixels in the RLE stream, no truncation/clipping (frames that overrun their width, e.g. 51 + 398 `Anlagen` frames, are drawn unclipped as the original), every palette index mapped, every frame of every rotation and animation present; (2) visually and by pixel diff against reference captures of the original game (History Edition / GOG under Wine) for a stratified sample of every asset class — buildings, figures (soldiers with weapons and armour, civilians, animals), ships, UI, effects — with a written checklist of small details per class.
+- **Recorded, not trusted:** results go into `docs/assets/verification.md` (asset class, count, method, deviations); any deviation is a bug or an open question, never silently accepted. Improvements (e.g. enhanced water) are layers on top of the faithful asset, never edits to it.
+
+## 0.5 Known issues of the original (2026-10-17)
+
+[`docs/research/original-issues.md`](research/original-issues.md) lists the bugs, crashes, desync causes and design flaws of ANNO 1503 reported in patch notes and by the community (ISS-001…, each with sources and a rebuild implication: FIX, RULE, FAITHFUL or N/A). Every milestone that touches an affected system checks the list and records how each issue is handled; the multiplayer findings (desyncs from complexity and OS differences, fire spread) feed directly into M3/M4.
+
 ## 1. Milestone M0 — Repository and tooling skeleton
 
 Goal: a workspace that builds on all targets with CI, before any game code.
@@ -119,7 +141,8 @@ Status M1.5 (2026-10-16): `[~]` islands structurally done; scenario records, pla
 - [ ] Specs: `docs/formats/scp.md`, `docs/formats/sze.md`, `docs/formats/data-text.md`.
 
 ### M1.6 Viewer (`crates/render`, `crates/app`)
-Status M1.6 (2026-10-16): `[~]` offline isometric renderer and interactive viewer work; elevation, shadows, open water, ships open.
+Status M1.6 (2026-10-17): `[~]` offline isometric renderer and interactive viewer work; ships, figures and other animations open.
+- Performance and sea (2026-10-17, after the colleague's feedback "performance horrible, no fps, void between islands, rivers bad, water choppy" and his viewer recording): ground rasterised as two triangles per tile (477 → 25 ms per 1080p view); new frame pipeline `anno_render::frame` shared by viewer and benchmark (background chunk workers, per-pixel sea from a periodic pre-rendered pattern, row bands on all cores); sea everywhere on a world lattice (no void between islands); open-water floor colour from the scene's deepest sea-floor texture (open sea now RGB 24, 92, 140 vs 28, 89, 138 in the original); coastal staircase and island rectangles removed; fps in the window title, display-rate redraw, cross-faded enhanced water. Benchmark and results: `docs/perf/README.md`. Open: rivers (hard tile diamonds and seams), GPU path if weak hardware misses the targets.
 - Static analysis (2026-10-16, Ghidra 12.1.4 headless; `docs/re/annodisplay.md`, `docs/re/annowelt.md`): projection constants, per-corner heights (0.04 world units per `HEIGHT` unit ≈ 2.06 px at zoom 0), blitter semantics (signed `z` depth offsets, alpha levels, 5/8 shadows, `H`/`V`/`M`/`W` brushes, no width clipping), signed anchors. Applied: `BSH_RGBWZ` column expansion and `i16` anchors in `formats`; elevation with per-corner slopes at the original scale, alpha blending and shadows in `anno_render::iso`.
 - Coast and water (2026-10-16, after review of the window viewer): ground cells corrected from 1/8 to 1/6 of the texture and tiles split into two triangles (both from `AnnoWelt.dll`), removing the coast seams; sea surface from the original's `Meer01` sprites at sea level (`iso::draw_water`, with documented approximations). Open: surf and river objects (`FLUESSE`), water animation, terrain lighting.
 - Rivers, surf and animation (2026-10-16): `FLUESSE` objects (rivers, waterfalls, surf) drawn with the sea; the water layer animates from the sprites' `ANIM` records in the viewer (static ground/object layers cached, water redrawn every 50 ms, Space pauses) and via `--png --time`. Fixed a renderer slowdown from per-chunk work over whole islands (ground culling). Open: other animated objects, terrain lighting, open-water look of river channels.

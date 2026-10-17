@@ -6,7 +6,13 @@
 //! is drawn with sprite set 0 of its entry (ships: sails furled; soldiers:
 //! standing, 8 frames), frame `attr mod n` of each zoom group, and the same
 //! frame of the set's `SHADOW` if it has one; that `attr` is the facing is a
-//! hypothesis (OQ-027 d).
+//! hypothesis (OQ-027 d). Figures of the player-coloured types (soldiers,
+//! scouts, pack animals, flags: [`figure::PLAYER_COLOURED_TYPES`]) are
+//! decoded in their owner's colour ([`figure::recolour`]); the owner is
+//! the `SPIELER` index `p`, drawn in colour `colours[p]` — a stand-in, since
+//! the original assigns colours on its colour-selection screen and a
+//! scenario does not store them (OQ-027 f). Owners beyond the table keep
+//! the palette colours.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -61,11 +67,12 @@ pub struct UnitStats {
     pub failed_frames: usize,
 }
 
-/// Decoded frame per `(figure, shadow, group, frame index)`, shared by units
-/// of the same type and facing.
-type FrameCache = BTreeMap<(u16, bool, u32, usize), Option<DecodedFrame>>;
+/// Decoded frame per `(figure, shadow, group, frame index, colour)`, shared
+/// by units of the same type, facing and colour.
+type FrameCache = BTreeMap<(u16, bool, u32, usize, Option<[u8; 3]>), Option<DecodedFrame>>;
 
-/// The units of `kinds` of all players of `scene`, in file order.
+/// The units of `kinds` of all players of `scene`, in file order, with
+/// player colours from `colours` (e.g. [`figure::ORIGINAL_PLAYER_COLOURS`]).
 /// `read(group, offset, length)` returns `length` bytes from `offset` of a
 /// zoom group's concatenated figure volume (`Figuren<group><nn>.dat`), or
 /// `None`.
@@ -73,6 +80,7 @@ pub fn units(
     scene: &Scene<'_>,
     header: &FigurenHeader<'_>,
     kinds: &[UnitKind],
+    colours: &[[u8; 3]],
     mut read: impl FnMut(u32, u64, u64) -> Option<Vec<u8>>,
 ) -> Result<(Vec<UnitFrames>, UnitStats), sze::Error> {
     let mut stats = UnitStats::default();
@@ -91,31 +99,39 @@ pub fn units(
                     stats.missing += 1;
                     continue;
                 };
-                let mut frames_of =
-                    |sets: &[FrameSet], shadow: bool| -> Vec<Option<DecodedFrame>> {
-                        let groups = sets.iter().map(|fs| fs.group).max().map_or(0, |g| g + 1);
-                        (0..groups)
-                            .map(|g| {
-                                let fs = sets.iter().find(|fs| fs.group == g)?;
-                                if fs.frames.is_empty() {
-                                    return None;
-                                }
-                                let k = usize::from(unit.attr) % fs.frames.len();
-                                cache
-                                    .entry((unit.figure, shadow, g, k))
-                                    .or_insert_with(|| {
-                                        let f = &fs.frames[k];
-                                        let img = read(g, u64::from(f.offset), u64::from(f.length))
-                                            .and_then(|data| figure::decode(entry, f, &data).ok());
-                                        if img.is_none() {
-                                            stats.failed_frames += 1;
-                                        }
-                                        img.map(|img| (f.clone(), Arc::new(img)))
-                                    })
-                                    .clone()
-                            })
-                            .collect()
-                    };
+                let colour = figure::player_coloured(entry)
+                    .then(|| colours.get(usize::from(unit.owner)).copied())
+                    .flatten();
+                let mut frames_of = |sets: &[FrameSet],
+                                     shadow: bool|
+                 -> Vec<Option<DecodedFrame>> {
+                    let groups = sets.iter().map(|fs| fs.group).max().map_or(0, |g| g + 1);
+                    (0..groups)
+                        .map(|g| {
+                            let fs = sets.iter().find(|fs| fs.group == g)?;
+                            if fs.frames.is_empty() {
+                                return None;
+                            }
+                            let k = usize::from(unit.attr) % fs.frames.len();
+                            // Shadows are coverage masks: no colours.
+                            let colour = if shadow { None } else { colour };
+                            cache
+                                .entry((unit.figure, shadow, g, k, colour))
+                                .or_insert_with(|| {
+                                    let f = &fs.frames[k];
+                                    let img = read(g, u64::from(f.offset), u64::from(f.length))
+                                        .and_then(|data| {
+                                            figure::decode_coloured(entry, f, &data, colour).ok()
+                                        });
+                                    if img.is_none() {
+                                        stats.failed_frames += 1;
+                                    }
+                                    img.map(|img| (f.clone(), Arc::new(img)))
+                                })
+                                .clone()
+                        })
+                        .collect()
+                };
                 let frames = frames_of(&set.frame_sets, false);
                 let shadows = set
                     .shadow

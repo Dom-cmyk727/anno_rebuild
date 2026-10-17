@@ -340,7 +340,9 @@ fn load_units(dir: &Path, file_buf: &[u8], scene: &Scene<'_>) -> Result<Vec<Unit
         Some(data)
     };
     let kinds = [unit::UnitKind::Ship, unit::UnitKind::Soldier];
-    let (units, stats) = unit::units(&scenario, &header, &kinds, read)?;
+    // Owner p in colour p + 1 of the original: a stand-in (OQ-027 f).
+    let colours = anno_assets::figure::ORIGINAL_PLAYER_COLOURS;
+    let (units, stats) = unit::units(&scenario, &header, &kinds, &colours, read)?;
     if stats.missing + stats.failed_frames > 0 {
         eprintln!(
             "units: {} of {} without a figure, {} frames failed",

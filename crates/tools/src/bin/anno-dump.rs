@@ -1097,11 +1097,7 @@ fn dump_texte(buf: &[u8], full: bool, out: &mut String) -> bool {
     );
     let mut ok = true;
     for s in &t.sections {
-        let hash = fnv64(
-            s.lines
-                .iter()
-                .flat_map(|l| l.iter().copied().chain(*b"\n")),
-        );
+        let hash = fnv64(s.lines.iter().flat_map(|l| l.iter().copied().chain(*b"\n")));
         w(
             out,
             format_args!(

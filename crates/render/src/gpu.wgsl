@@ -210,10 +210,13 @@ fn wave_shade(dist: f32, depth: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<
             let surge = breaking * bore * pieces;
             foam = surge * near * segment * max(0.8 * line, 0.3 * trail * sstep(0.25, 0.7, mottle));
         }
-        if depth < SWASH_DEPTH {
-            let wet = depth + swash_runup(dist, w, t);
-            let fringe = sstep(1.2, 0.0, wet) * sstep(-0.4, 0.2, wet);
-            foam = max(foam, fringe * (0.45 + 0.4 * mottle));
+        if depth < SWASH_DEPTH + 1.0 {
+            let sw = swash(dist, w, t);
+            let wet = depth + sw.x;
+            let impact = sstep(0.0, 0.06, sw.y) * exp(-sw.y * 3.5);
+            let sheet = sstep(2.6, 0.0, wet) * sstep(-0.4, 0.3, wet);
+            let froth = sstep(0.2, 0.75, mottle);
+            foam = max(foam, impact * sheet * (0.35 + 0.6 * froth));
         }
     }
     let tint = SHALLOW_TINT * sstep(TINT_DEPTH, 0.0, depth);
@@ -229,15 +232,20 @@ fn river_shade(w: vec2<f32>, depth: f32, t: f32) -> vec3<f32> {
 }
 
 // iso::swash_runup
-const RUNUP: f32 = 1.2;
+const RUNUP: f32 = 1.7;
 fn swash_runup(dist: f32, w: vec2<f32>, t: f32) -> f32 {
+    return swash(dist, w, t).x;
+}
+
+// iso::swash: (run-up, time since impact).
+fn swash(dist: f32, w: vec2<f32>, t: f32) -> vec2<f32> {
     let bend = 1.4 * noise3(w.x * 0.12, w.y * 0.12, t * 0.00003)
         + 0.5 * noise3(w.x * 0.35 + 5.0, w.y * 0.35, t * 0.00005);
     let surf_phase = dist / SURF_WAVELENGTH + t / PERIOD_MS + 0.35 * bend;
     let since = surf_phase - floor(surf_phase);
     let shape = sstep(0.0, 0.12, since) * (1.0 - sstep(0.12, 0.85, since));
     let strength = 0.6 + 0.4 * noise3(w.x * 0.3 + 1.7, w.y * 0.3, t * 0.00005);
-    return RUNUP * shape * strength;
+    return vec2<f32>(RUNUP * shape * strength, since);
 }
 
 // iso::shade_apply

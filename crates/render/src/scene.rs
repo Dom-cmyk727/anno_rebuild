@@ -488,9 +488,7 @@ impl<'a> Scene<'a> {
             );
             for d in &mut out[start..] {
                 d.anchor = (d.anchor.0 + p.offset.0, d.anchor.1 + p.offset.1);
-                if layer == SpriteLayer::WaterAbove
-                    && style == WaterStyle::Enhanced
-                    && !d.is_shadow()
+                if layer != SpriteLayer::Objects && style == WaterStyle::Enhanced && !d.is_shadow()
                 {
                     d.key.1 = iso::SMOOTHED;
                 }
@@ -673,7 +671,23 @@ impl<'a> Scene<'a> {
                         }
                     }
                     if layers.water_below {
-                        add(draw(&mut local, objects.below_list(layers.water_style), t));
+                        // Enhanced water smooths the checkerboard of these
+                        // sprites too (river mouths below the waterline).
+                        let variant = match layers.water_style {
+                            WaterStyle::Original => 0,
+                            WaterStyle::Enhanced => iso::SMOOTHED,
+                        };
+                        add(iso::draw_prepared_tested(
+                            &mut local,
+                            objects.below_list(layers.water_style),
+                            &self.anlagen,
+                            group,
+                            self.lift,
+                            t,
+                            &self.sprites,
+                            variant,
+                            |_, _, _| true,
+                        ));
                     }
                 } else {
                     if layers.water_above {

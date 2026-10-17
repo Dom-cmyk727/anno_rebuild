@@ -260,6 +260,109 @@ pub fn id_text(line: &[u8]) -> Option<(u32, &[u8])> {
     ))
 }
 
+/// One `Key: value` entry of a keyed file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Entry<'a> {
+    /// 1-based line number.
+    pub line: usize,
+    pub key: &'a [u8],
+    pub value: &'a [u8],
+}
+
+/// The entries under every `[name]` header, in file order; `name` `None`
+/// selects the entries before the first header.
+pub fn section_entries<'a>(buf: &'a [u8], name: Option<&str>) -> Vec<Entry<'a>> {
+    let mut current: Option<&[u8]> = None;
+    let mut out = Vec::new();
+    for (l, kind) in keyed(buf) {
+        match kind {
+            KeyedKind::Section(s) => current = Some(s),
+            KeyedKind::Entry { key, value } if current == name.map(str::as_bytes) => {
+                out.push(Entry {
+                    line: l.number,
+                    key,
+                    value,
+                });
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Splits `entries` into records that each begin with key `start`; returns
+/// the entries before the first record and the records. Which key starts a
+/// record is a property of each file and section (`docs/formats/data-text.md`,
+/// "Records").
+pub fn split_records<'e, 'a>(
+    entries: &'e [Entry<'a>],
+    start: &str,
+) -> (&'e [Entry<'a>], Vec<&'e [Entry<'a>]>) {
+    let starts: Vec<usize> = entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.key == start.as_bytes())
+        .map(|(i, _)| i)
+        .collect();
+    let Some(&first) = starts.first() else {
+        return (entries, Vec::new());
+    };
+    let records = starts
+        .iter()
+        .zip(starts.iter().skip(1).chain([&entries.len()]))
+        .map(|(&a, &b)| &entries[a..b])
+        .collect();
+    (&entries[..first], records)
+}
+
+/// All integers of a value, separated by commas and/or whitespace; `None`
+/// if any token is not an integer. Unlike [`fields`] this also reads the
+/// one row in the corpus that lacks a comma (`Wachstum.dat` line 765,
+/// `100, 100, 100   10,    20,  50`); whether the original reads it so is
+/// open (OQ-029 g).
+pub fn ints(value: &[u8]) -> Option<Vec<i64>> {
+    value
+        .split(|&b| b == b',' || b == b' ' || b == b'\t')
+        .filter(|t| !t.is_empty())
+        .map(int)
+        .collect()
+}
+
+/// A decimal field (`-0.25`, `1.0`, `15`) as an exact integer in units of
+/// `10^-digits`; `None` if it is not a decimal or has more than `digits`
+/// fractional digits. The data files use at most two (`BGruppen.dat`
+/// `Menge`, `VermehrTab`), so `digits = 2` reads every one exactly, without
+/// floating point.
+pub fn fixed(field: &[u8], digits: u32) -> Option<i64> {
+    let (neg, body) = match field.strip_prefix(b"-") {
+        Some(rest) => (true, rest),
+        None => (false, field),
+    };
+    let (int_part, frac) = match body.iter().position(|&b| b == b'.') {
+        Some(i) => (&body[..i], &body[i + 1..]),
+        None => (body, &b""[..]),
+    };
+    let all_digits = |s: &[u8]| s.iter().all(u8::is_ascii_digit);
+    if int_part.is_empty() || !all_digits(int_part) || !all_digits(frac) {
+        return None;
+    }
+    if body.contains(&b'.') && frac.is_empty() {
+        return None;
+    }
+    let frac_len = u32::try_from(frac.len()).ok().filter(|&n| n <= digits)?;
+    let scale = 10i64.checked_pow(digits)?;
+    let whole: i64 = std::str::from_utf8(int_part).ok()?.parse().ok()?;
+    let part: i64 = if frac.is_empty() {
+        0
+    } else {
+        std::str::from_utf8(frac).ok()?.parse().ok()?
+    };
+    let value = whole
+        .checked_mul(scale)?
+        .checked_add(part.checked_mul(10i64.checked_pow(digits - frac_len)?)?)?;
+    Some(if neg { -value } else { value })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,6 +431,40 @@ mod tests {
         assert_eq!(int(b"0x3"), None);
         assert_eq!(quoted(b"\"a,b\""), Some(&b"a,b"[..]));
         assert_eq!(quoted(b"a"), None);
+    }
+
+    #[test]
+    fn records_and_decimals() {
+        let buf = b"Size: 6, 6\r\n[A]\r\nX: 0\r\nId: 1\r\nP: 2\r\nId: 3\r\n[B]\r\nId: 9\r\n[A]\r\nQ: 4\r\n";
+        let pre = section_entries(buf, None);
+        assert_eq!(pre.len(), 1);
+        assert_eq!(
+            (pre[0].line, pre[0].key, pre[0].value),
+            (1, &b"Size"[..], &b"6, 6"[..])
+        );
+        let a = section_entries(buf, Some("A"));
+        let keys: Vec<_> = a.iter().map(|e| e.key).collect();
+        assert_eq!(keys, [&b"X"[..], b"Id", b"P", b"Id", b"Q"]);
+        let (head, recs) = split_records(&a, "Id");
+        assert_eq!(head.len(), 1);
+        let lens: Vec<_> = recs.iter().map(|r| r.len()).collect();
+        assert_eq!(lens, [2, 2]);
+        assert_eq!(split_records(&a, "None").1.len(), 0);
+
+        assert_eq!(
+            ints(b"100, 100, 100   10,    20,  50"),
+            Some(vec![100, 100, 100, 10, 20, 50])
+        );
+        assert_eq!(ints(b"1, x"), None);
+        assert_eq!(ints(b""), Some(vec![]));
+        assert_eq!(fixed(b"-0.25", 2), Some(-25));
+        assert_eq!(fixed(b"0.4", 2), Some(40));
+        assert_eq!(fixed(b"15", 2), Some(1500));
+        assert_eq!(fixed(b"1.0", 1), Some(10));
+        assert_eq!(fixed(b"0.125", 2), None);
+        for bad in [&b""[..], b"-", b".5", b"5.", b"1.2.3", b"x", b"1e3", b"+1"] {
+            assert_eq!(fixed(bad, 2), None, "{bad:?}");
+        }
     }
 
     #[test]

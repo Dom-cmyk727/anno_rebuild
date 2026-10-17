@@ -41,3 +41,42 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace --all-targets
+
+  # C++20 (ADR 0001): Linux GCC, Linux Clang with ASan/UBSan, Windows MSVC.
+  # No game files on CI: corpus tests skip; tools/agree.py checks the
+  # synthetic fixtures against the Python references.
+  cpp:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-gcc
+            os: ubuntu-latest
+            preset: dev
+            cxx: g++
+          - name: linux-clang-asan
+            os: ubuntu-latest
+            preset: asan
+            cxx: clang++
+          - name: windows-msvc
+            os: windows-latest
+            preset: msvc
+    name: cpp (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    env:
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - run: cmake --preset ${{ matrix.preset }}
+      - run: cmake --build --preset ${{ matrix.preset }}
+      - run: ctest --preset ${{ matrix.preset }}
+
+  cpp-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned to the version used locally (formatting differs between versions).
+      - run: pip install clang-format==23.1.3
+      - run: find src -name '*.cpp' -o -name '*.hpp' | xargs clang-format --dry-run --Werror

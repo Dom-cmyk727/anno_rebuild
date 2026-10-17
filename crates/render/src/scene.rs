@@ -257,6 +257,12 @@ pub enum SpriteLayer {
     Objects,
 }
 
+/// Tolerance (`HEIGHT` units) of the river depth test: terrain up to this
+/// much above the object's height still shows its water. Tuning value; how
+/// the original's per-pixel `z` offsets of `BSH_RGBWZ` frames shift the
+/// test is not traced (OQ-026 b).
+pub const RIVER_TOLERANCE: f32 = 10.0;
+
 /// Object records drawn: scenery, built objects, rivers and surf.
 pub const OBJECT_RECORDS: [&str; 3] = ["GELAENDE", "PROD2", "FLUESSE"];
 
@@ -472,6 +478,30 @@ impl<'a> Scene<'a> {
         sea::water_field(rect, probe, water)
     }
 
+    /// Terrain height (`HEIGHT` units) seen at scene pixel `(sx, sy)` of
+    /// `rect` according to `probe`; `None` where no island ground is drawn.
+    pub fn terrain_at(&self, probe: &SceneProbe, rect: Rect, sx: i32, sy: i32) -> Option<f32> {
+        if sx < rect.x || sy < rect.y || sx >= rect.x + rect.w || sy >= rect.y + rect.h {
+            return None;
+        }
+        let i = usize::try_from((sy - rect.y) * rect.w + (sx - rect.x)).ok()?;
+        let island = probe.island[i];
+        if island == sea::NO_ISLAND {
+            return None;
+        }
+        let k = usize::try_from(island).ok()?;
+        let (_, heights) = self.objects[k].grids.as_ref()?;
+        let isl = &self.islands[k];
+        let [x, y] = probe.pos[i];
+        Some(iso::terrain_height(
+            heights,
+            usize::from(isl.width),
+            usize::from(isl.height),
+            x,
+            y,
+        ))
+    }
+
     /// The ground layer of `rect` at `group` and, per pixel, which island's
     /// terrain is seen there and at which tile position.
     pub fn ground_with_probe(&self, rect: Rect, group: usize) -> (Canvas, SceneProbe) {
@@ -528,6 +558,19 @@ impl<'a> Scene<'a> {
     /// canvas (transparent where nothing is drawn; with the sea layer the
     /// whole region is covered).
     pub fn render(&self, rect: Rect, group: usize, layers: Layers) -> (Canvas, SceneStats) {
+        self.render_with_terrain(rect, group, layers, None)
+    }
+
+    /// [`Scene::render`] with the terrain height seen at each scene pixel
+    /// given by `terrain` (e.g. from a chunk cache) instead of rasterising
+    /// the ground again for the river depth test.
+    pub fn render_with_terrain(
+        &self,
+        rect: Rect,
+        group: usize,
+        layers: Layers,
+        terrain: Option<&dyn Fn(i32, i32) -> Option<f32>>,
+    ) -> (Canvas, SceneStats) {
         let mut canvas = blank(rect);
         let mut stats = SceneStats::default();
         let t = layers.time_ms;
@@ -538,6 +581,7 @@ impl<'a> Scene<'a> {
         };
         let mut no_ground = 0;
         let mut drawn = 0;
+        let mut probe: Option<SceneProbe> = None;
         // Pass 1: ground and water objects under the sea surface.
         // Pass 2: water objects above it and the other objects.
         for pass in 0..2 {
@@ -594,7 +638,36 @@ impl<'a> Scene<'a> {
                     }
                 } else {
                     if layers.water_above {
-                        add(draw(&mut local, &objects.above, t));
+                        // Depth test against the terrain seen at each pixel,
+                        // as the original's depth buffer: river water shows
+                        // only where the bed lies below its surface.
+                        let off = p.offset;
+                        let probe = match terrain {
+                            Some(_) => None,
+                            None => Some(
+                                &*probe
+                                    .get_or_insert_with(|| self.ground_with_probe(rect, group).1),
+                            ),
+                        };
+                        let keep = |x: i32, y: i32, h: u8| {
+                            let (sx, sy) = (x + off.0, y + off.1);
+                            let z = match (terrain, probe) {
+                                (Some(f), _) => f(sx, sy),
+                                (None, Some(pr)) => self.terrain_at(pr, rect, sx, sy),
+                                (None, None) => None,
+                            };
+                            z.is_none_or(|z| z <= f32::from(h) + RIVER_TOLERANCE)
+                        };
+                        add(iso::draw_prepared_tested(
+                            &mut local,
+                            &objects.above,
+                            &self.anlagen,
+                            group,
+                            self.lift,
+                            t,
+                            &self.sprites,
+                            keep,
+                        ));
                     }
                     if layers.objects {
                         add(draw(&mut local, &objects.other, 0));

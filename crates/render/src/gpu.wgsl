@@ -27,11 +27,13 @@ struct Frame {
 @group(0) @binding(1) var under_tex: texture_2d<f32>;
 @group(0) @binding(2) var sea_sprite: texture_2d_array<f32>;
 @group(0) @binding(3) var sea_filled: texture_2d_array<f32>;
+// Terrain height seen at each view pixel (frame::TERRAIN_SCALE, 0xFFFF = none).
+@group(0) @binding(4) var terrain_view: texture_2d<u32>;
 
 struct Chunk {
     origin: vec2<i32>,
     size: i32,
-    // bit 0: ground, bit 1: objects, bit 2: water field
+    // bit 0: ground, bit 1: objects, bit 2: water field, bit 3: terrain
     flags: u32,
 }
 
@@ -39,6 +41,7 @@ struct Chunk {
 @group(1) @binding(1) var ground_tex: texture_2d<f32>;
 @group(1) @binding(2) var objects_tex: texture_2d<f32>;
 @group(1) @binding(3) var field_tex: texture_2d<u32>;
+@group(1) @binding(4) var terrain_chunk: texture_2d<u32>;
 
 // Scene pixel rectangle → clip space.
 fn to_clip(p: vec2<f32>) -> vec4<f32> {
@@ -74,6 +77,16 @@ fn ground_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     }
     let local = scene_px(pos) - chunk.origin;
     return vec4<f32>(textureLoad(ground_tex, local, 0).rgb, 1.0);
+}
+
+// Terrain height of the chunk pixel (flag bit 3: chunk has terrain).
+@fragment
+fn terrain_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<u32> {
+    if (chunk.flags & 8u) == 0u {
+        discard;
+    }
+    let local = scene_px(pos) - chunk.origin;
+    return vec4<u32>(textureLoad(terrain_chunk, local, 0).r, 0u, 0u, 0u);
 }
 
 @fragment
@@ -333,7 +346,15 @@ fn sprite_fs(in: SpriteOut) -> @location(0) vec4<f32> {
     if c.a == 0.0 {
         discard;
     }
-    if in.layer_shadow.y != 0u {
+    let flags = in.layer_shadow.y;
+    if (flags & 0x10000u) != 0u {
+        // scene::RIVER_TOLERANCE; depth test against the terrain.
+        let t = textureLoad(terrain_view, vec2<i32>(floor(in.pos.xy)), 0).r;
+        if t != 0xFFFFu && f32(t) / 64.0 > f32((flags >> 8u) & 0xFFu) + 10.0 {
+            discard;
+        }
+    }
+    if (flags & 1u) != 0u {
         // iso::SHADOW: 37.5 % black.
         return vec4<f32>(0.0, 0.0, 0.0, 96.0 / 255.0);
     }

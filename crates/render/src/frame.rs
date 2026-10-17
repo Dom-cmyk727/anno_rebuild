@@ -40,6 +40,9 @@ pub struct Chunk {
     pub(crate) shore: Vec<u8>,
     pub(crate) depth: Vec<u8>,
     pub(crate) flags: Vec<u8>,
+    /// Terrain height seen at each pixel in 1/[`TERRAIN_SCALE`] `HEIGHT`
+    /// units, [`NO_TERRAIN`] where no island ground is drawn; empty = none.
+    pub(crate) terrain: Vec<u16>,
     /// Some island here has water objects below / above sea level.
     pub(crate) water_below: bool,
     pub(crate) water_above: bool,
@@ -54,10 +57,16 @@ impl Chunk {
         shore: Vec::new(),
         depth: Vec::new(),
         flags: Vec::new(),
+        terrain: Vec::new(),
         water_below: false,
         water_above: false,
     };
 }
+
+/// Scale of [`Chunk::terrain`] (and the GPU terrain texture).
+pub const TERRAIN_SCALE: f32 = 64.0;
+/// [`Chunk::terrain`] where no island ground is drawn.
+pub const NO_TERRAIN: u16 = u16::MAX;
 
 /// Key of a cached chunk: `(zoom group, chunk x, chunk y)`.
 pub type ChunkKey = (usize, i32, i32);
@@ -288,7 +297,17 @@ impl FrameRenderer {
                 water_style: style,
                 ..Layers::NONE
             };
-            par_map(&parts, self.threads, |&r| scene.render(r, group, layers).0)
+            let terrain = |sx: i32, sy: i32| -> Option<f32> {
+                let (cx, cy) = (sx.div_euclid(CHUNK), sy.div_euclid(CHUNK));
+                let c = cache.get(&(group, cx, cy))?;
+                let v = *c.terrain.get(chunk_index(cx, cy, sx, sy))?;
+                (v != NO_TERRAIN).then(|| f32::from(v) / TERRAIN_SCALE)
+            };
+            par_map(&parts, self.threads, |&r| {
+                scene
+                    .render_with_terrain(r, group, layers, Some(&terrain))
+                    .0
+            })
         };
         let below = render_parts(true);
         composite_all(out, view, &below, self.threads);
@@ -671,6 +690,23 @@ fn render_chunk(scene: &Scene<'_>, group: usize, cx: i32, cy: i32) -> Chunk {
         objects.pixels.as_chunks::<4>().0.to_vec()
     };
     let field = scene.water_field_from(rect, &probe);
+    let terrain = (0..probe.island.len())
+        .map(|i| {
+            let (x, y) = (
+                rect.x + i32::try_from(i % to_usize(rect.w)).expect("fits"),
+                rect.y + i32::try_from(i / to_usize(rect.w)).expect("fits"),
+            );
+            scene
+                .terrain_at(&probe, rect, x, y)
+                .map_or(NO_TERRAIN, |z| {
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    let v = (z * TERRAIN_SCALE)
+                        .round()
+                        .clamp(0.0, f32::from(NO_TERRAIN - 1)) as u16;
+                    v
+                })
+        })
+        .collect();
     let (water_below, water_above) = islands
         .iter()
         .map(|&i| scene.has_water_objects(i))
@@ -682,6 +718,7 @@ fn render_chunk(scene: &Scene<'_>, group: usize, cx: i32, cy: i32) -> Chunk {
         shore: field.shore,
         depth: field.depth,
         flags: field.flags,
+        terrain,
         water_below,
         water_above,
     }

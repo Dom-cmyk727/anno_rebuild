@@ -635,6 +635,8 @@ pub struct SpriteDraw<'f> {
     pub key: SpriteKey,
     pub frame: &'f Frame,
     pub anchor: (i32, i32),
+    /// The object's height byte (`HEIGHT` units).
+    pub height: u8,
 }
 
 impl SpriteDraw<'_> {
@@ -723,6 +725,7 @@ pub fn place_prepared<'a>(
                 key: (id, 0, true, g, k),
                 frame: sf,
                 anchor,
+                height: o.height(),
             };
             let (x, y, w, h) = d.rect();
             if visible(x, y, w, h) {
@@ -733,6 +736,7 @@ pub fn place_prepared<'a>(
             key: (id, 0, false, g, k),
             frame,
             anchor,
+            height: o.height(),
         };
         let (x, y, w, h) = d.rect();
         if visible(x, y, w, h) {
@@ -752,6 +756,31 @@ pub fn draw_prepared(
     time_ms: u64,
     cache: &SpriteCache,
 ) -> DrawStats {
+    draw_prepared_tested(
+        canvas,
+        list,
+        anlagen,
+        group,
+        lift,
+        time_ms,
+        cache,
+        |_, _, _| true,
+    )
+}
+
+/// [`draw_prepared`], drawing a sprite pixel at canvas point `(x, y)` only
+/// where `keep(x, y, object height)` holds (a depth test).
+#[allow(clippy::too_many_arguments)]
+pub fn draw_prepared_tested(
+    canvas: &mut Canvas,
+    list: &[Prepared],
+    anlagen: &AnlagenFile<'_>,
+    group: usize,
+    lift: Lift,
+    time_ms: u64,
+    cache: &SpriteCache,
+    keep: impl Fn(i32, i32, u8) -> bool,
+) -> DrawStats {
     let mut draws = Vec::new();
     let mut stats = place_prepared(
         list,
@@ -770,8 +799,9 @@ pub fn draw_prepared(
             }
             continue;
         };
-        blit_sprite(canvas, &img, d.frame, d.anchor, d.is_shadow(), |_, _, p| {
-            Some(p)
+        let h = d.height;
+        blit_sprite(canvas, &img, d.frame, d.anchor, d.is_shadow(), |x, y, p| {
+            keep(x, y, h).then_some(p)
         });
     }
     stats

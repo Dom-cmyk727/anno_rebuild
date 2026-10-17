@@ -32,7 +32,7 @@ use wgpu::{
 /// The wgpu version this module is built against (for callers' types).
 pub use wgpu;
 
-use crate::frame::{CHUNK, Chunk, ChunkKey, FrameRenderer, chunk_rect, visible_chunks};
+use crate::frame::{CHUNK, Chunk, ChunkKey, FrameRenderer, NO_TERRAIN, chunk_rect, visible_chunks};
 use crate::iso::{SEA_LEVEL, SpriteDraw, SpriteKey, TILE, WaterStyle};
 use crate::scene::{Rect, Scene, SpriteLayer};
 
@@ -45,6 +45,8 @@ const UPLOADS_PER_FRAME: usize = 6;
 /// (each 2 × up to 1344 × 672 RGBA at group 0, ≈ 7 MB), so that a zoom
 /// change never uploads a whole pattern at once.
 const SEA_STEPS_PER_FRAME: usize = 2;
+/// Format of the terrain-height textures.
+const TERRAIN_FORMAT: TextureFormat = TextureFormat::R16Uint;
 /// Bytes of one sprite instance (see `sprite_vs`).
 const INSTANCE_BYTES: u64 = 32;
 
@@ -106,12 +108,17 @@ pub struct GpuFrame {
     chunk_layout: BindGroupLayout,
     atlas_layout: BindGroupLayout,
     ground_pipe: RenderPipeline,
+    /// Writes the terrain height seen at each pixel (river depth test).
+    terrain_pipe: RenderPipeline,
     objects_pipe: RenderPipeline,
     sea_pipe: RenderPipeline,
     sprite_pipe: RenderPipeline,
     frame_uniform: Buffer,
     /// Offscreen texture of pass 1 and its size.
     under: Option<(Texture, TextureView, (u32, u32))>,
+    /// Terrain height per view pixel (`frame::TERRAIN_SCALE`, `NO_TERRAIN`).
+    terrain: Option<(Texture, TextureView)>,
+    dummy_terrain: TextureView,
     /// Sea patterns uploaded so far, by zoom group (kept, so that zooming
     /// back does not upload them again), and the one in use.
     seas: BTreeMap<usize, GpuSea>,
@@ -239,6 +246,7 @@ impl GpuFrame {
                 texture_entry(1, FLOAT, TextureViewDimension::D2),
                 texture_entry(2, FLOAT, TextureViewDimension::D2Array),
                 texture_entry(3, FLOAT, TextureViewDimension::D2Array),
+                texture_entry(4, TextureSampleType::Uint, TextureViewDimension::D2),
             ],
         });
         let chunk_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -248,6 +256,7 @@ impl GpuFrame {
                 texture_entry(1, FLOAT, TextureViewDimension::D2),
                 texture_entry(2, FLOAT, TextureViewDimension::D2),
                 texture_entry(3, TextureSampleType::Uint, TextureViewDimension::D2),
+                texture_entry(4, TextureSampleType::Uint, TextureViewDimension::D2),
             ],
         });
         let atlas_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -329,6 +338,19 @@ impl GpuFrame {
             attributes: &instance_attrs,
         })];
         let ground_pipe = pipeline("ground", &chunk_pl, "chunk_vs", "ground_fs", &[], &opaque);
+        let terrain_target = [Some(ColorTargetState {
+            format: TERRAIN_FORMAT,
+            blend: None,
+            write_mask: ColorWrites::ALL,
+        })];
+        let terrain_pipe = pipeline(
+            "terrain",
+            &chunk_pl,
+            "chunk_vs",
+            "terrain_fs",
+            &[],
+            &terrain_target,
+        );
         let sea_pipe = pipeline("sea", &chunk_pl, "chunk_vs", "sea_fs", &[], &opaque);
         let objects_pipe = pipeline("objects", &chunk_pl, "chunk_vs", "objects_fs", &[], &alpha);
         let sprite_pipe = pipeline(
@@ -366,6 +388,9 @@ impl GpuFrame {
             false,
         )
         .1;
+        let none = NO_TERRAIN.to_le_bytes();
+        let dummy_terrain =
+            upload_texture(&device, &queue, TERRAIN_FORMAT, one, 2, &[&none], false).1;
         let dummy_array = upload_texture(
             &device,
             &queue,
@@ -384,11 +409,14 @@ impl GpuFrame {
             chunk_layout,
             atlas_layout,
             ground_pipe,
+            terrain_pipe,
             objects_pipe,
             sea_pipe,
             sprite_pipe,
             frame_uniform,
             under: None,
+            terrain: None,
+            dummy_terrain,
             seas: BTreeMap::new(),
             sea_group: None,
             chunks: BTreeMap::new(),
@@ -440,15 +468,18 @@ impl GpuFrame {
         let below = scene.sprites(view, group, time_ms, SpriteLayer::WaterBelow, style);
         let above = scene.sprites(view, group, time_ms, SpriteLayer::WaterAbove, style);
         let mut bytes = Vec::with_capacity((below.len() + above.len()) * 32);
-        let n_below = self.pack_sprites(scene, &below, &mut bytes);
-        let n_above = self.pack_sprites(scene, &above, &mut bytes);
+        let n_below = self.pack_sprites(scene, &below, false, &mut bytes);
+        let n_above = self.pack_sprites(scene, &above, true, &mut bytes);
         self.write_instances(&bytes);
         stats.sprites_ms = ms(t);
 
         let t = Instant::now();
         self.write_frame_uniform(view, group, time_ms, style, scene);
-        let frame_pass1 = self.frame_bind(None);
-        let frame_pass2 = self.frame_bind(self.under.as_ref().map(|u| &u.1));
+        let frame_pass1 = self.frame_bind(None, None);
+        let frame_pass2 = self.frame_bind(
+            self.under.as_ref().map(|u| &u.1),
+            self.terrain.as_ref().map(|t| &t.1),
+        );
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -467,6 +498,22 @@ impl GpuFrame {
             .collect();
         let instances = self.instances.as_ref();
         let atlas = self.atlas.as_ref().map(|a| &a.bind);
+        {
+            let terrain = &self.terrain.as_ref().expect("ensured").1;
+            let none = Color {
+                r: f64::from(NO_TERRAIN),
+                g: 0.0,
+                b: 0.0,
+                a: 0.0,
+            };
+            let mut pass = begin(&mut encoder, terrain, LoadOp::Clear(none));
+            pass.set_bind_group(0, &frame_pass1, &[]);
+            pass.set_pipeline(&self.terrain_pipe);
+            for bind in &chunk_binds {
+                pass.set_bind_group(1, *bind, &[]);
+                pass.draw(0..6, 0..1);
+            }
+        }
         {
             let under = &self.under.as_ref().expect("ensured").1;
             let mut pass = begin(&mut encoder, under, LoadOp::Clear(clear));
@@ -534,6 +581,22 @@ impl GpuFrame {
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         self.under = Some((texture, view, size));
+        let terrain = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("terrain"),
+            size: Extent3d {
+                width: size.0,
+                height: size.1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: TERRAIN_FORMAT,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let tv = terrain.create_view(&wgpu::TextureViewDescriptor::default());
+        self.terrain = Some((terrain, tv));
     }
 
     /// Makes the sea pattern of `group` usable (uploading what is missing,
@@ -714,6 +777,10 @@ impl GpuFrame {
         let ground = view(TextureFormat::Bgra8Unorm, 4, ground, 1, &self.dummy_color);
         let objects = view(TextureFormat::Rgba8Unorm, 4, objects, 2, &self.dummy_color);
         let field = view(TextureFormat::Rgba8Uint, 4, field, 4, &self.dummy_field);
+        let terrain = chunk
+            .filter(|c| !c.terrain.is_empty())
+            .map(|c| c.terrain.iter().flat_map(|v| v.to_le_bytes()).collect());
+        let terrain = view(TERRAIN_FORMAT, 2, terrain, 8, &self.dummy_terrain);
         let uniform = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("chunk"),
             size: 16,
@@ -746,6 +813,10 @@ impl GpuFrame {
                     binding: 3,
                     resource: BindingResource::TextureView(&field),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: BindingResource::TextureView(&terrain),
+                },
             ],
         });
         GpuChunk {
@@ -762,6 +833,7 @@ impl GpuFrame {
         &mut self,
         scene: &Scene<'_>,
         draws: &[SpriteDraw<'_>],
+        tested: bool,
         bytes: &mut Vec<u8>,
     ) -> u32 {
         let mut n = 0;
@@ -775,7 +847,10 @@ impl GpuFrame {
             }
             let w = u32::try_from(w).expect("positive");
             let h = u32::try_from(h).expect("positive");
-            for v in [w, h, ax, ay, layer, u32::from(d.is_shadow())] {
+            // Bit 0 shadow, bits 8-15 object height, bit 16 depth-tested.
+            let flags =
+                u32::from(d.is_shadow()) | u32::from(d.height) << 8 | u32::from(tested) << 16;
+            for v in [w, h, ax, ay, layer, flags] {
                 bytes.extend(v.to_le_bytes());
             }
             n += 1;
@@ -966,7 +1041,7 @@ impl GpuFrame {
         self.queue.write_buffer(&self.frame_uniform, 0, &u);
     }
 
-    fn frame_bind(&self, under: Option<&TextureView>) -> BindGroup {
+    fn frame_bind(&self, under: Option<&TextureView>, terrain: Option<&TextureView>) -> BindGroup {
         let (sprite, filled) = match self.sea() {
             Some(s) => (&s.sprite, &s.filled),
             None => (&self.dummy_array, &self.dummy_array),
@@ -990,6 +1065,10 @@ impl GpuFrame {
                 wgpu::BindGroupEntry {
                     binding: 3,
                     resource: BindingResource::TextureView(filled),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: BindingResource::TextureView(terrain.unwrap_or(&self.dummy_terrain)),
                 },
             ],
         })

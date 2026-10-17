@@ -1,0 +1,11 @@
+; head
+[WAREN]  ; c
+  Id:		EISENERZ
+Name : "a;b, c" ; x
+Proz: 1, 2,3
+Pos  0, 0
+EndObj;
+[]
+Key:
+ä:1
+last

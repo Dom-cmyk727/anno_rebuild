@@ -663,10 +663,21 @@ fn render_chunk(scene: &Scene<'_>, group: usize, cx: i32, cy: i32) -> Chunk {
         .filter(|p| p.bounds.intersect(rect).is_some())
         .map(|p| p.index)
         .collect();
-    if islands.is_empty() {
-        return Chunk::EMPTY;
-    }
     let only = |l: Layers| scene.render(rect, group, l).0;
+    if islands.is_empty() {
+        // Open sea; only units (ships) can add an objects layer.
+        if !scene.units_touch(rect, group) {
+            return Chunk::EMPTY;
+        }
+        let objects = only(Layers {
+            objects: true,
+            ..Layers::NONE
+        });
+        return Chunk {
+            objects: objects.pixels.as_chunks::<4>().0.to_vec(),
+            ..Chunk::EMPTY
+        };
+    }
     let water = scene.textures.water();
     let (ground, probe) = scene.ground_with_probe(rect, group);
     let ground = ground

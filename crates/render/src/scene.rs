@@ -12,12 +12,18 @@
 //!   then `x` (the simplification used for objects; OQ-026).
 //! - An island is rendered into a temporary canvas that covers only its
 //!   overlap with the target region, then composited source-over.
+//! - Units (ships) stand at their world position on the sea surface
+//!   ([`iso::SEA_LEVEL`]) and are drawn after all islands, back to front
+//!   by `x + y` ([`UnitSprite`]; order against island objects: OQ-026 f).
 
 use anno_assets::island::GroundTextures;
 use anno_formats::anlagen::AnlagenFile;
 use anno_formats::insel::Island;
 
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
+
+use anno_assets::texture::Rgba;
+use anno_formats::figuren::Frame;
 
 use crate::iso::{
     self, Canvas, DrawStats, HEIGHT_LIFT, Lift, Objects, Prepared, SpriteCache, SpriteDraw, TILE,
@@ -203,6 +209,8 @@ pub struct SceneStats {
     /// Summed over the drawn islands. An object that overlaps several
     /// regions is counted in each.
     pub objects: DrawStats,
+    /// Units drawn ([`Scene::units`]).
+    pub units: usize,
 }
 
 /// Layers [`Scene::render`] draws, in this order: ground; water objects
@@ -335,6 +343,29 @@ struct IslandData {
     water: OnceLock<Option<IslandWater>>,
 }
 
+/// A unit to draw (a ship of a scenario): world position in tiles and its
+/// decoded frame per zoom group (`None` where it has none).
+#[derive(Debug, Clone)]
+pub struct UnitSprite {
+    pub x: f32,
+    pub y: f32,
+    pub frames: Vec<Option<(Frame, Arc<Rgba>)>>,
+}
+
+impl UnitSprite {
+    /// Scene screen point of the frame anchor at `group`: the world point
+    /// projected as [`iso::tile_top`], raised to the sea surface.
+    pub fn anchor(&self, group: usize, lift: Lift) -> (i32, i32) {
+        let (tw, th) = TILE[group];
+        #[allow(clippy::cast_possible_truncation)]
+        let (sx, sy) = (
+            ((self.x - self.y) * tw as f32 / 2.0).round() as i32,
+            ((self.x + self.y) * th as f32 / 2.0).round() as i32,
+        );
+        (sx, sy - lift.scaled(iso::SEA_LEVEL, 1, group))
+    }
+}
+
 /// Everything needed to draw a scenario: its islands, ground textures,
 /// `Anlagen.dat`, island placements per zoom group, decoded sprites, the
 /// objects of each island sorted for drawing, and the sea pattern per zoom
@@ -350,6 +381,8 @@ pub struct Scene<'a> {
     pub sprites: SpriteCache,
     /// Elevation scale ([`HEIGHT_LIFT`] unless changed for inspection).
     pub lift: Lift,
+    /// Ships, drawn with the objects layer (empty unless set by the caller).
+    pub units: Vec<UnitSprite>,
     objects: Vec<IslandData>,
     seas: [OnceLock<Option<SeaPattern>>; 3],
 }
@@ -413,6 +446,7 @@ impl<'a> Scene<'a> {
             anlagen,
             sprites: SpriteCache::default(),
             lift,
+            units: Vec::new(),
             objects,
             seas: Default::default(),
         }
@@ -753,6 +787,9 @@ impl<'a> Scene<'a> {
                 }
                 composite(&mut canvas, &local, p.offset);
             }
+            if pass == 1 && layers.objects {
+                stats.units = self.draw_units(&mut canvas, group);
+            }
             if pass == 0
                 && layers.sea
                 && let Some(pattern) = self.sea(group)
@@ -782,6 +819,59 @@ impl<'a> Scene<'a> {
         stats.islands = drawn;
         stats.no_ground = no_ground;
         (canvas, stats)
+    }
+
+    /// Screen rectangle of unit `u` at `group`, if it has a frame there.
+    fn unit_rect(&self, u: &UnitSprite, group: usize) -> Option<Rect> {
+        let (frame, _) = u.frames.get(group)?.as_ref()?;
+        let anchor = u.anchor(group, self.lift);
+        Some(Rect {
+            x: anchor.0 - i32::from(frame.anchor_x),
+            y: anchor.1 - i32::from(frame.anchor_y),
+            w: i32::from(frame.width),
+            h: i32::from(frame.height),
+        })
+    }
+
+    /// Whether any unit is drawn into `rect` at `group`.
+    pub fn units_touch(&self, rect: Rect, group: usize) -> bool {
+        self.units.iter().any(|u| {
+            self.unit_rect(u, group)
+                .is_some_and(|r| r.intersect(rect).is_some())
+        })
+    }
+
+    /// Scene screen rectangle at `group` covering all islands and units;
+    /// `None` if there are neither.
+    pub fn bounds(&self, group: usize) -> Option<Rect> {
+        let units = self.units.iter().filter_map(|u| self.unit_rect(u, group));
+        scene_bounds(&self.layouts[group])
+            .into_iter()
+            .chain(units)
+            .reduce(Rect::union)
+    }
+
+    /// Draws the units that touch `canvas` at `group`, back to front by
+    /// `x + y`; returns how many were drawn.
+    fn draw_units(&self, canvas: &mut Canvas, group: usize) -> usize {
+        let mut order: Vec<&UnitSprite> = self.units.iter().collect();
+        order.sort_by(|a, b| (a.x + a.y).total_cmp(&(b.x + b.y)));
+        let mut drawn = 0;
+        for u in order {
+            let Some(Some((frame, img))) = u.frames.get(group) else {
+                continue;
+            };
+            let anchor = u.anchor(group, self.lift);
+            let (x, y) = (
+                anchor.0 - i32::from(frame.anchor_x),
+                anchor.1 - i32::from(frame.anchor_y),
+            );
+            if canvas.overlaps(x, y, i32::from(frame.width), i32::from(frame.height)) {
+                iso::blit_sprite(canvas, img, frame, anchor, false, |_, _, px| Some(px));
+                drawn += 1;
+            }
+        }
+        drawn
     }
 }
 
@@ -838,6 +928,20 @@ mod tests {
             (-2 * tw / 2, 9 * tw / 2)
         );
         assert_eq!(p.bounds.h, 9 * th / 2 + margin(1));
+    }
+
+    #[test]
+    fn unit_anchor_projects_world_point_onto_sea_surface() {
+        let u = UnitSprite {
+            x: 10.5,
+            y: 4.5,
+            frames: Vec::new(),
+        };
+        // Group 2 tile 20 × 10: ((x − y)·10, (x + y)·5).
+        assert_eq!(u.anchor(2, Lift::NONE), (60, 75));
+        // Sea surface 32 units at 2.059 px per unit and group 0, scaled by
+        // 20/84: 15 px.
+        assert_eq!(u.anchor(2, HEIGHT_LIFT), (60, 60));
     }
 
     #[test]

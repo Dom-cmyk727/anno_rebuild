@@ -1,6 +1,6 @@
 # ADR 0000: Implementation language — Rust now, C++20 kept open
 
-- **Status:** accepted, to be revisited at the M1 → M3 gate (see below)
+- **Status:** superseded by [ADR 0001](0001-cpp20.md) (owner decision 2026-10-17: C++20)
 - **Date:** 2026-10-16
 
 ## Context

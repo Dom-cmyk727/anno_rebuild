@@ -165,7 +165,7 @@ Status M1.6 (2026-10-17): `[~]` offline isometric renderer and interactive viewe
 - [x] Draw placed buildings, ships and soldiers from a `.sze` scenario (buildings from `Anlagen.dat`, units from Figuren sprites); draw order (painter's by iso depth); camera pan/zoom. Ships and soldiers done 2026-10-17; civilians/animals appear only at runtime (sim).
 - [x] `app --view <file.sze|file.scp>` as the entry point. No gameplay.
 
-- [ ] **Language gate (end of M1):** review ADR 0000 with the co-developer before any `sim` code is written: stay in Rust, or port `formats` to C++20 against the existing oracles/corpus facts and continue there.
+- [x] **Language gate (end of M1):** decided 2026-10-17: **C++20** ([ADR 0001](adr/0001-cpp20.md)). Port order: skeleton → `formats` + `anno-dump` (checked against the Python oracles) → `assets`/`render`/`app` → `sim` (M3) and `net` (M4) in C++ only. The Rust code stays as the reference until each part has a C++ counterpart.
 
 Acceptance M1: `Scenes/0200Single/*.sze` scenarios render recognisably (terrain + buildings + ships). Every parser has corpus + round-trip tests. Specs exist for each format with evidence column filled.
 

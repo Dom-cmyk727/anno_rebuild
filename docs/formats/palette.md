@@ -38,11 +38,11 @@ An `ENTRY` payload holds an 8-byte prefix and two **tagged records**: 4-byte ASC
 | 0x000 | 4 | u32 | `flag` | 0 in 439 tables, 4 in one (id 109, `Farbtabellen\Flagge01_01.PCX`) | P (`colors_corpus` asserts it); meaning ? OQ-022 |
 | 0x004 | 4 | u32 | `id` | 1…440: unique, ascending, equal to position + 1 | P |
 | 0x008 | 4 | ASCII | tag | `BODY` | P, all 440 |
-| 0x00C | 2 | u16 | — | 0 | P, all 440; meaning ? OQ-022 |
+| 0x00C | 2 | u16 | — | 0: the zero padding of the 6-byte record name `BODY\0\0` (tagged-record header, [`sze.md`](sze.md)) | P, all 440; OQ-022 b resolved |
 | 0x00E | 2 | u16 | `body_len` | 1,024 | P, all 440 |
 | 0x010 | 1,024 | | `palette` | 256 × `[B, G, R, 0]`, see above | P: reserved byte 0 in all 440 × 256 entries |
 | 0x410 | 4 | ASCII | tag | `NAME` | P, all 440 |
-| 0x414 | 2 | u16 | — | 0 | P, all 440; ? OQ-022 |
+| 0x414 | 2 | u16 | — | 0: padding of `NAME\0\0`, as above | P, all 440 |
 | 0x416 | 2 | u16 | `name_len` | length of `name` including its NUL; the entry ends right after `name` (entry size = 0x418 + `name_len`) | P, all 440 |
 | 0x418 | `name_len` | bytes | `name` | source colour-table file, Windows-1252, exactly one NUL at the end: always `Farbtabellen\<file>.pcx` (extension `.PCX` or `.pcx`), e.g. `Farbtabellen\Gräser01.PCX` | P, all 440 |
 

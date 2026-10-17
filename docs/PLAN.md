@@ -129,7 +129,7 @@ Status M1.4 (2026-10-16): `[~]` file structure, graphics and reference dump done
 
 ### M1.5 Islands and scenarios (`.scp`, `.sze`)
 - [~] Island: `INSEL4/5`, `INFO`, `HEIGHT`, `GFXID`, `GELAENDE`, `PROD2`, `FRUCHTBAR`, `BERGWERK2`, `OCCUR`, `ANBAU`, `DISCOVER`, `KONTORID`, `STAEDTE`, `LOCKED`. Start with `HEIGHT`/`GFXID`/`GELAENDE` (grid arrays; dimensions from file name `Po_064x064_…` and `INFO`).
-- [ ] Scenario: `SCENE/{HEAD, MAIN, GUID, ALIASNAME, WARETYPE, SKTIMER, MONOPOL2, LIMITS, COMPPROFIL2, ROHSTOFF, SCHATZ, ERZE, BIGBROTHER, AUFTRAGTEXT, SPIELER, INSEL5, INSELLNK}`. Root `ANNO` vs `ANNOADDON1` gates add-on content.
+- [~] Scenario: `SCENE/{HEAD, MAIN, GUID, ALIASNAME, WARETYPE, SKTIMER, MONOPOL2, LIMITS, COMPPROFIL2, ROHSTOFF, SCHATZ, ERZE, BIGBROTHER, AUFTRAGTEXT, SPIELER, INSEL5, INSELLNK}`. Root `ANNO` vs `ANNOADDON1` gates add-on content.
 - [ ] Versioned chunk names (`INSEL4`→`INSEL5`, `PROD2`, `MONOPOL2`) → loader supports both where both occur in the corpus.
 
 Status M1.5 (2026-10-16): `[~]` islands structurally done; scenario records, plain-text data and record semantics open.
@@ -138,9 +138,10 @@ Status M1.5 (2026-10-16): `[~]` islands structurally done; scenario records, pla
 - Visual check: an island's `HEIGHT` grid renders as a coherent island without block seams.
 - Ground (2026-10-16): `GFXID = texture << 8 | u << 5 | v << 2 | r` selects a rotated 32 × 32 cell of a 256 × 256 `Textures/Felder.tex` texture; texture 0 = open water (OQ-024 a). Found while starting M1.4: the `Anlagen.dat` mappings were rejected, the bit split against `Felder.tex` ids matched 13.4 M of 13.4 M non-water tiles except one 36-tile patch of the missing texture 205. `anno-extract insel` renders islands top-down; `Single_01.sze`'s main island and a polar template look right. The M1.6 viewer is no longer blocked for terrain; open water needs its own rendering.
 - Placed objects (2026-10-16): `GELAENDE` (scenery), `PROD2` (built objects) and `FLUESSE` items place `Anlagen.dat` objects — `u16 id | rotation << 14`, `u16 state`, `u8 x, u8 y`; footprint from `ANLAGEN` `HEAD` bytes 0–1, swapped for odd rotations. `Island::objects`, `AnlagenFile::footprint`; corpus test `objects_corpus`; a top-down overlay shows a walled town with roads on `single32.sze`. With ground + objects the M1.6 viewer has all island content it needs; still missing for drawing are the isometric projection rules (tile size, `HEIGHT` scale, sprite anchors vs. footprints).
-- Open: `SCENE` records (`HEAD`, `MAIN`, `SPIELER`, …), plain-text data files, item `state` and duplicate items, the other island records (OQ-024), `.scp` trailer (OQ-001).
+- Scenario (2026-10-17): `anno_formats::tagged` reads the record container inside `SPIELER` and `COMPPROFIL2` (6-byte NUL-padded name + `u16` length; long form `0xFF00` + `u16` in every add-on `STADT2`/`PROD`); the `Anlagen.dat` colour tables use the same header (OQ-022 b resolved). `anno_formats::sze` decodes players (two series per scenario), ships/soldiers (`u16 id, u16 figure, u8 owner, u8 attr, u16 0, f32 x, f32 y` + records: 327 ships of figures 1501–1509, 2,317 soldiers) and `INSELLNK` (island head + path of an `INSEL4` dummy template, 229 links in 9 add-on files, six endless games have only links). Corpus test `scene_corpus` re-encodes every level byte-identically; `anno-dump sze [--full]` = `tools/sze.py dump` on all 50 files and synthetic ones. Spec `docs/formats/sze.md`; open: OQ-027 (fields), OQ-028 (what a link resolves to).
+- Open: other `SCENE` records (`HEAD`, `MAIN`, …) and the content of player records, plain-text data files, item `state` and duplicate items, the other island records (OQ-024), `.scp` trailer (OQ-001).
 - [ ] Plain-text data: parsers for `Data/BGruppen.dat` (goods, prices), `Wachstum.dat`, `wegspeed.dat`, `Felder.dat`, `Texte.dat`. These are INI-like with `Key: value` lines and `[SECTION]` headers.
-- [ ] Specs: `docs/formats/scp.md`, `docs/formats/sze.md`, `docs/formats/data-text.md`.
+- [~] Specs: `docs/formats/sze.md` (partial; `scp.md` replaced by `insel.md`), `docs/formats/data-text.md`.
 
 ### M1.6 Viewer (`crates/render`, `crates/app`)
 Status M1.6 (2026-10-17): `[~]` offline isometric renderer and interactive viewer work; ships, figures and other animations open.

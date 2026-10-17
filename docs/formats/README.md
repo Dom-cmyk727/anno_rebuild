@@ -9,7 +9,7 @@ Counts refer to GOG 2.0.0.5 (`game/app/`), from `docs/research/game-files-analys
 | Format | Files | Spec file | Status |
 |---|---|---|---|
 | Chunk container | `.sze`, `.scp` (root), `.tex`, `.inc`, `.zei`, `Anlagen.dat` | [`chunk-container.md`](chunk-container.md) | partial — container layer complete, byte-identical round trip over the corpus; detection heuristic (OQ-013), `.scp` trailer (OQ-001) open |
-| Scenario | `Scenes/**/*.sze` (50) | `sze.md` | not yet written |
+| Scenario | `Scenes/**/*.sze` (50) | [`sze.md`](sze.md) | partial — `SCENE` chunk list, tagged records, players, ships/soldiers and island links decode and round-trip byte-identically; record contents open (OQ-027, OQ-028) |
 | Island template | `Scenes/Islands/**/*.scp` (465), islands in `.sze` | [`insel.md`](insel.md) | partial — head, records and terrain grids complete with byte-identical re-encoding; `GFXID` meaning and most records open (OQ-024) |
 | Textures | `*.tex` (1,214), `*.inc` (1,213) | [`tex.md`](tex.md) | partial — all files parse, decode and re-encode byte-identically; HEAD unknowns (OQ-021) |
 | Palettes | `COLOR` in `.tex`, `COLORS` in `Anlagen.dat` and `FigurenHeader.dat` | [`palette.md`](palette.md) | partial — layouts complete, BGR order confirmed visually; constant fields OQ-021, OQ-022 |

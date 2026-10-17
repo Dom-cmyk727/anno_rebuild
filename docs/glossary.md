@@ -14,7 +14,6 @@ Sources abbreviated below: GFA = `docs/research/game-files-analysis.md`, CL = `d
 | Figuren (sg. Figur) | figures | Animated sprite graphics (people, animals, ships, effects); 368 figure types in `FigurenHeader.dat`, pixel data in `Figuren<group><part>.dat` volumes, three zoom groups | `FigurenHeader.dat`, `Figuren*.dat` (16 files) (P, `docs/formats/figuren.md`) |
 | Welt | world | The game world; module believed to hold the simulation core (unconfirmed, inferred from exports/imports) | `AnnoWelt.dll` (exports AnnoWelt, GetAnnoInselFileData, RepairSavegame) (GFA §1) |
 | Insel | island | An island: terrain grid plus island-level data | Chunks `INSEL4`, `INSEL5`, `INSELLNK`; export `GetAnnoInselFileData`; `.scp` island templates (GFA §1, §3) |
-| INSELLNK | island link | Link/reference from a scenario to island data (unconfirmed) | `.sze` chunk `SCENE/INSELLNK` (GFA §3) |
 | Waren (sg. Ware) | goods, wares | Tradeable goods | `BGruppen.dat` (goods/prices per GFA), chunk `WARETYPE`, View.dll goods tooltips (GFA §1–3) |
 | WARETYPE | goods type | Goods type definitions/settings in a scenario (unconfirmed) | `.sze` chunk `SCENE/WARETYPE` (GFA §3) |
 | BGruppen | "B-groups" | Plain-text file with goods and prices (`Id` blocks per CL). What "B" abbreviates is unconfirmed. | `Data/BGruppen.dat` (GFA §2, CL §3) |
@@ -35,7 +34,12 @@ Sources abbreviated below: GFA = `docs/research/game-files-analysis.md`, CL = `d
 | HAEUSER (Häuser) | houses | Record of a figure type that holds its sprite sets (frame lists per zoom group, optional shadow); despite the name it is used for every figure, not only buildings | `FigurenHeader.dat` ENTRY record (P, `docs/formats/figuren.md`) |
 | Maeher (Mäher) | mower | Figure type of entry 101 (a worker with a scythe); used as the reference sprite for M1.3 | `FigurenHeader.dat` `BEWOHNTYPE`/`ROUTETYPE` `MAEHER` (P) |
 | Szene / SCENE | scene | A scenario (map + rules + players); also the savegame module | `.sze` chunk `SCENE`; `AnnoScene.dll` (exports AnnoScene, SaveGame, SceneCache, AnnoBigBrother) (GFA §1, §3) |
-| Spieler | player | Player definitions in a scenario | `.sze` chunk `SCENE/SPIELER` (GFA §3) |
+| Spieler | player | A player block in a scenario: `u32 0, u32 index`, then tagged records; listed twice (header series, state series) | `.sze` chunk `SCENE/SPIELER` (P, `docs/formats/sze.md`) |
+| Schiff | ship | A ship in a scenario: 16-byte unit prefix (id, figure, owner, position) + records | `SPIELER` record `SCHIFF` (P, `docs/formats/sze.md`) |
+| Soldat | soldier | A soldier/military unit, same layout as `SCHIFF` | `SPIELER` record `SOLDAT` (P, `docs/formats/sze.md`) |
+| Stadt (pl. Städte) | town | A town of a player (name in `HEAD2`, production `PROD`, statistics) (contents unconfirmed) | `SPIELER` record `STADT2` (P, `docs/formats/sze.md`) |
+| Esel | donkey | Record under a unit's `PRIVAT` (pack animal / cart?) (unconfirmed) | `PRIVAT/ESEL` (P, `docs/formats/sze.md`) |
+| Insel-Link / INSELLNK | island link | An island placed by reference to an `INSEL4` dummy template (position, size, number, path) | `.sze` chunk `SCENE/INSELLNK` (P, `docs/formats/sze.md`; resolution OQ-028) |
 | Rohstoff | raw material | Raw-material settings in a scenario (unconfirmed) | `.sze` chunk `SCENE/ROHSTOFF` (GFA §3) |
 | Schatz | treasure | Treasure placements/settings (unconfirmed) | `.sze` chunk `SCENE/SCHATZ` (GFA §3) |
 | Erze (sg. Erz) | ores | Ore deposit settings (unconfirmed) | `.sze` chunk `SCENE/ERZE` (GFA §3) |

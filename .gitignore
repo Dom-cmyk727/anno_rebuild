@@ -12,3 +12,4 @@ saves/
 *.mkv
 *.mov
 *.webm
+build/

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <anno/formats/bytes.hpp>
 #include <anno/formats/tex.hpp>
@@ -34,5 +35,9 @@ bool dump_chunks(Bytes buf, std::string& out);
 bool dump_tex(Bytes buf, bool full, std::string& out);
 bool dump_inc(Bytes buf, std::string& out);
 bool dump_colors(Bytes buf, bool full, std::string& out);
+bool dump_figuren(Bytes buf, bool full, std::string& out);
+bool dump_anlagen(Bytes buf, bool full, std::string& out);
+/// `frames <game_dir> <entry id>...`; returns the exit code.
+int dump_frames(const std::string& dir, const std::vector<std::string>& ids);
 
 } // namespace anno::dump

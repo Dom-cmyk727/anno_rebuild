@@ -1,8 +1,10 @@
 # anno_formats: readers and writers for the original file formats.
 # Specs: docs/formats/. Standard library only.
 add_library(anno_formats
+  src/anlagen.cpp
   src/chunk.cpp
   src/colors.cpp
+  src/figuren.cpp
   src/inc.cpp
   src/tex.cpp
 )
@@ -17,6 +19,8 @@ if(ANNO_BUILD_TESTS)
     tests/chunk_corpus_test.cpp
     tests/tex_test.cpp
     tests/tex_corpus_test.cpp
+    tests/figuren_corpus_test.cpp
+    tests/figuren_test.cpp
   )
   target_link_libraries(anno_formats_tests PRIVATE anno_formats anno_test_support doctest::doctest)
   anno_target_defaults(anno_formats_tests)

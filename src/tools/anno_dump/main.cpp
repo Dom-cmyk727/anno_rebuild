@@ -6,6 +6,9 @@
 //   anno-dump tex [--full] <file>...           palettes and textures (tools/tex.py dump)
 //   anno-dump inc <file>...                    ACCESS records (tools/tex.py inc)
 //   anno-dump colors [--full] <Anlagen.dat>... COLORS tables (tools/tex.py colors)
+//   anno-dump figuren [--full] <FigurenHeader.dat>... figure index (tools/figuren.py dump)
+//   anno-dump frames <game_dir> <entry id>...  decoded frames (tools/figuren.py frames)
+//   anno-dump anlagen [--full] <Anlagen.dat>... ANLAGEN entries (tools/figuren.py anlagen)
 //
 // Each file's output starts with `# <path>` (the path as given); lines end
 // with `\n` on every platform.
@@ -28,7 +31,10 @@ using anno::formats::Bytes;
 constexpr const char* kUsage = "usage: anno-dump chunks <file>...\n"
                                "       anno-dump tex [--full] <file>...\n"
                                "       anno-dump inc <file>...\n"
-                               "       anno-dump colors [--full] <Anlagen.dat>...\n";
+                               "       anno-dump colors [--full] <Anlagen.dat>...\n"
+                               "       anno-dump figuren [--full] <FigurenHeader.dat>...\n"
+                               "       anno-dump frames <game_dir> <entry id>...\n"
+                               "       anno-dump anlagen [--full] <Anlagen.dat>...\n";
 
 using DumpFn = bool (*)(Bytes, bool, std::string&);
 
@@ -50,6 +56,8 @@ const std::map<std::string, Command>& commands() {
         {"tex", {anno::dump::dump_tex, true}},
         {"inc", {inc, false}},
         {"colors", {anno::dump::dump_colors, true}},
+        {"figuren", {anno::dump::dump_figuren, true}},
+        {"anlagen", {anno::dump::dump_anlagen, true}},
     };
     return table;
 }
@@ -78,6 +86,10 @@ bool dump_chunks(Bytes buf, std::string& out) {
 
 int main(int argc, char** argv) {
     const std::vector<std::string> args(argv + 1, argv + argc);
+    if (args.size() >= 3 && args[0] == "frames") {
+        return anno::dump::dump_frames(args[1],
+                                       std::vector<std::string>(args.begin() + 2, args.end()));
+    }
     if (args.empty() || commands().count(args[0]) == 0) {
         std::fputs(kUsage, stderr);
         return 2;

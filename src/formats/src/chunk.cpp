@@ -163,9 +163,8 @@ Result<ChunkFile, Error> parse_file(Bytes buf) {
 }
 
 std::optional<std::vector<Chunk>> parse_chunks(Bytes data) {
-    if (data.empty()) {
-        return std::nullopt;
-    }
+    // An empty range is an empty sequence (as the Rust reader and
+    // tools/chunks.py parse).
     return parse_seq(data, 0, data.size(), 1);
 }
 

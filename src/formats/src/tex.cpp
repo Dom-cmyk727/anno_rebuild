@@ -113,10 +113,7 @@ Result<TexFile, std::string> TexFile::parse(Bytes buf) {
             return name + " shorter than its prefix";
         }
         const std::uint32_t flag = u32_le(e.payload, 0), id = u32_le(e.payload, 4);
-        // An empty rest is an empty sequence (as tools/tex.py).
-        const Bytes rest = e.payload.subspan(8);
-        auto subs = rest.empty() ? std::optional<std::vector<chunk::Chunk>>(std::in_place)
-                                 : chunk::parse_chunks(rest);
+        auto subs = chunk::parse_chunks(e.payload.subspan(8));
         if (!subs) {
             return std::string("entry body is not a chunk sequence");
         }

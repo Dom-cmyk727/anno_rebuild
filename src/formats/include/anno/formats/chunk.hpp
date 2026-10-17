@@ -72,7 +72,8 @@ struct Error {
 Result<ChunkFile, Error> parse_file(Bytes buf);
 
 /// Parses `data` as an exact chunk sequence (for payloads with a prefix that
-/// generic detection cannot see into); offsets relative to `data`.
+/// generic detection cannot see into); offsets relative to `data`. Empty
+/// data is an empty sequence.
 std::optional<std::vector<Chunk>> parse_chunks(Bytes data);
 
 /// A zero-padded name field for a new chunk; nullopt if `name` does not

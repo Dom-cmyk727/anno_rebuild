@@ -52,7 +52,7 @@ Same frame headers and RLE as figures ([`figuren.md`](figuren.md)). Format count
 
 Pair order `[z, index]`: `z` is a signed per-pixel depth offset (D: `AnnoDisplay.dll` `0x100178d0`). `M` = "melt": pixels at nearly equal depth to what is already drawn blend 50 % (D: `0x10017db0`). That `W` means water is a guess.
 
-**Rows past the width.** 51 distinct ranges (`BSH_RGBAZ` 26, `BSH_RGBZ` 19, `BSH_RGBZM` 6) contain rows whose runs end 1–16 pixels beyond `width`, and 398 `BSH_RGBWZ` ranges end 1–2 columns beyond it after the column expansion (110 by 1, 288 by 2); row count and end marker are exact (P). The original never consults the frame width and draws those pixels to the right of the frame box, clipped only by the viewport (D: `AnnoDisplay.dll` blitters, OQ-025 resolved). `figuren::decode_frame_clipped` drops them because a decoded frame image has fixed width; a renderer that wants them must place runs itself. Figures have no such frames.
+**Rows past the width.** 51 distinct ranges (`BSH_RGBAZ` 26, `BSH_RGBZ` 19, `BSH_RGBZM` 6) contain rows whose runs end 1–16 pixels beyond `width`, and 398 `BSH_RGBWZ` ranges end 1–2 columns beyond it after the column expansion (110 by 1, 288 by 2); row count and end marker are exact (P). The original never consults the frame width and draws those pixels to the right of the frame box, clipped only by the viewport (D: `AnnoDisplay.dll` blitters, OQ-025 resolved). `figuren::decode_frame_extended` keeps them by widening the decoded image (rows and anchor unchanged), and the renderer draws them (`docs/render/iso.md`, "Fidelity"); `decode_frame_clipped` drops them. Figures have no such frames.
 
 ## Reference dump
 `anno-dump anlagen [--full] <Anlagen.dat>` and `tools/figuren.py anlagen [--full]`:

@@ -8,13 +8,12 @@
 //! frame of the set's `SHADOW` if it has one; that `attr` is the facing is a
 //! hypothesis (OQ-027 d). Figures of the player-coloured types (soldiers,
 //! scouts, pack animals, flags: [`figure::PLAYER_COLOURED_TYPES`]) are
-//! decoded in their owner's colour ([`figure::recolour`]); the owner is
-//! the `SPIELER` index `p`, drawn in colour `colours[p]` — a stand-in, since
-//! the original assigns colours on its colour-selection screen and a
-//! scenario does not store them (OQ-027 f). Owners beyond the table keep
-//! the palette colours.
+//! decoded in their owner's colour ([`figure::recolour`]). A unit belongs
+//! to the `SPIELER` block that holds it (the unit's own owner byte is never
+//! read, D: `docs/re/annoscene.md` §7); the players' colours are assigned
+//! as at the start of a new single-player game ([`start_colours`]).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use anno_formats::figuren::{FigurenHeader, Frame, FrameSet};
@@ -71,8 +70,68 @@ pub struct UnitStats {
 /// by units of the same type, facing and colour.
 type FrameCache = BTreeMap<(u16, bool, u32, usize, Option<[u8; 3]>), Option<DecodedFrame>>;
 
+/// Player colours at the start of a new single-player game: colour slot
+/// (1–8) per player index, and the human slots the game removes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StartColours {
+    pub slots: BTreeMap<u32, u8>,
+    /// Human slots without a colour other than the first: deleted with
+    /// their objects at game start.
+    pub removed: BTreeSet<u32>,
+}
+
+/// The colour assignment of a new single-player game (D: `AnnoFrame.dll`
+/// game start `0x10029100` and colour screen `0x1001d180`,
+/// `docs/re/annoscene.md` §9): a `HEAD` colour 1–8 is kept; the first human
+/// slot (types 8, 11; never player 31) gets the colour the player picks on
+/// the colour screen — here, as a stand-in, the lowest colour of the pool —
+/// which leaves the pool; every other player still at `0xFF` is a human
+/// slot (removed), a computer (type 12: the lowest colour left in the pool)
+/// or another type (no colour). Preset computer colours stay in the pool,
+/// as in the original, so two players can share a colour.
+pub fn start_colours(scene: &Scene<'_>) -> Result<StartColours, sze::Error> {
+    let heads: Vec<(u32, sze::PlayerHead<'_>)> = scene
+        .players()?
+        .iter()
+        .filter(|p| p.index != 31)
+        .filter_map(|p| p.head().map(|h| (p.index, h)))
+        .collect();
+    let mut out = StartColours::default();
+    let mut pool: BTreeSet<u8> = (1..=8).collect();
+    let local = heads.iter().find(|(_, h)| h.is_human()).map(|(i, _)| *i);
+    for (index, h) in &heads {
+        if (1..=8).contains(&h.colour) {
+            out.slots.insert(*index, h.colour);
+            if Some(*index) == local {
+                pool.remove(&h.colour);
+            }
+        }
+    }
+    if let Some(i) = local
+        && !out.slots.contains_key(&i)
+        && let Some(c) = pool.pop_first()
+    {
+        out.slots.insert(i, c);
+    }
+    for (index, h) in &heads {
+        if h.colour != 0xFF || Some(*index) == local {
+            continue;
+        }
+        if h.is_human() {
+            out.removed.insert(*index);
+        } else if h.is_computer()
+            && let Some(c) = pool.pop_first()
+        {
+            out.slots.insert(*index, c);
+        }
+    }
+    Ok(out)
+}
+
 /// The units of `kinds` of all players of `scene`, in file order, with
-/// player colours from `colours` (e.g. [`figure::ORIGINAL_PLAYER_COLOURS`]).
+/// player colours from `palette` (e.g. [`figure::ORIGINAL_PLAYER_COLOURS`],
+/// slot `n` = `palette[n - 1]`) assigned by [`start_colours`]; units of
+/// removed human slots are left out.
 /// `read(group, offset, length)` returns `length` bytes from `offset` of a
 /// zoom group's concatenated figure volume (`Figuren<group><nn>.dat`), or
 /// `None`.
@@ -80,13 +139,22 @@ pub fn units(
     scene: &Scene<'_>,
     header: &FigurenHeader<'_>,
     kinds: &[UnitKind],
-    colours: &[[u8; 3]],
+    palette: &[[u8; 3]],
     mut read: impl FnMut(u32, u64, u64) -> Option<Vec<u8>>,
 ) -> Result<(Vec<UnitFrames>, UnitStats), sze::Error> {
     let mut stats = UnitStats::default();
     let mut cache = FrameCache::new();
     let mut out = Vec::new();
+    let start = start_colours(scene)?;
     for player in scene.players()? {
+        if start.removed.contains(&player.index) {
+            continue;
+        }
+        let player_colour = start
+            .slots
+            .get(&player.index)
+            .and_then(|&slot| palette.get(usize::from(slot) - 1))
+            .copied();
         for &kind in kinds {
             for unit in player.units(kind.record())? {
                 stats.units += 1;
@@ -100,7 +168,7 @@ pub fn units(
                     continue;
                 };
                 let colour = figure::player_coloured(entry)
-                    .then(|| colours.get(usize::from(unit.owner)).copied())
+                    .then_some(player_colour)
                     .flatten();
                 let mut frames_of = |sets: &[FrameSet],
                                      shadow: bool|

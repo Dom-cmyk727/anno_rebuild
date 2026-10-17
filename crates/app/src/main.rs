@@ -233,12 +233,15 @@ type LinkPlace = (u16, u16, u32);
 
 /// Stand-in islands for a scenario's `INSELLNK` records, with the link's
 /// world position and island number. A link names a placeholder template
-/// (`*_dummy.scp`: flat grass, no coast); the original presumably puts a
-/// real island of that climate and size there, which one is open (OQ-028).
-/// Until then the viewer takes a real template from the dummy's climate
-/// folder with the link's size: candidates sorted by file name, pick =
-/// island number mod count (our choice, deterministic). Falls back to the
-/// dummy if there is none.
+/// (`*_dummy.scp`: flat grass, no coast); the original replaces it at game
+/// start by a random real template of the same climate and size, never a
+/// `PIRAT` one, drawn with the world's random sequence from a per-game seed
+/// (D: `AnnoScene.dll` `0x10009e0f`, `0x10009550`; `docs/re/annoscene.md`
+/// §3–5). The viewer has no game seed, so it picks deterministically from
+/// the same candidates in the dummy's climate folder: sorted by file name,
+/// pick = island number mod count. Not yet applied: the original's further
+/// `INFO` conditions and its ore/raw-material distribution. Falls back to
+/// the dummy if there is none.
 fn linked_templates(dir: &Path, file_buf: &[u8]) -> Result<Vec<(LinkPlace, Vec<u8>)>, BoxError> {
     let Ok(scenario) = sze::Scene::parse(file_buf) else {
         return Ok(Vec::new());
@@ -276,7 +279,12 @@ fn stand_in(dummy: &Path, size: (u16, u16), number: u32) -> Result<Option<Vec<u8
             let n = p
                 .file_name()
                 .map(|n| n.to_string_lossy().to_ascii_lowercase());
-            n.is_some_and(|n| n.ends_with(".scp") && !n.contains("dummy") && n.contains(&tag))
+            n.is_some_and(|n| {
+                n.ends_with(".scp")
+                    && !n.contains("dummy")
+                    && !n.contains("pirat")
+                    && n.contains(&tag)
+            })
         })
         .collect();
     names.sort();
@@ -340,7 +348,7 @@ fn load_units(dir: &Path, file_buf: &[u8], scene: &Scene<'_>) -> Result<Vec<Unit
         Some(data)
     };
     let kinds = [unit::UnitKind::Ship, unit::UnitKind::Soldier];
-    // Owner p in colour p + 1 of the original: a stand-in (OQ-027 f).
+    // Colours as at a new single-player game start (`unit::start_colours`).
     let colours = anno_assets::figure::ORIGINAL_PLAYER_COLOURS;
     let (units, stats) = unit::units(&scenario, &header, &kinds, &colours, read)?;
     if stats.missing + stats.failed_frames > 0 {

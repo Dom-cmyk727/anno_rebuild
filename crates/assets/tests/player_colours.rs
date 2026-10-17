@@ -51,3 +51,62 @@ fn player_colour_corpus() {
         .expect("table 109");
     assert_eq!(hits(&flag.palette), 30);
 }
+
+/// Colours at game start over all scenarios (`unit::start_colours`).
+#[test]
+fn start_colours_corpus() {
+    let Some(dir) = game_dir() else {
+        eprintln!("skipping start_colours_corpus: ANNO1503_GAME_DIR not set");
+        return;
+    };
+    let mut files = Vec::new();
+    collect(&dir.join("Scenes"), &mut files);
+    files.sort();
+    let (mut removed, mut coloured, mut without_colour) = (0, 0, 0);
+    for f in &files {
+        let buf = std::fs::read(f).expect("readable");
+        let scene = anno_formats::sze::Scene::parse(&buf).expect("scene");
+        let start = anno_assets::unit::start_colours(&scene).expect("colours");
+        if f.ends_with("Single_24.sze") {
+            // All eight preset in the scenario (player 0 = colour 2).
+            let expect = [
+                (0, 2),
+                (1, 1),
+                (2, 6),
+                (3, 3),
+                (4, 4),
+                (5, 5),
+                (6, 8),
+                (7, 7),
+            ];
+            assert_eq!(start.slots, expect.into());
+        }
+        removed += start.removed.len();
+        coloured += start.slots.len();
+        // Every human or computer player that is not removed has a colour,
+        // unless the pool ran out.
+        for p in scene.players().expect("players") {
+            let Some(h) = p.head() else { continue };
+            if p.index != 31
+                && (h.is_human() || h.is_computer())
+                && !start.removed.contains(&p.index)
+                && !start.slots.contains_key(&p.index)
+                && h.colour != 0
+            {
+                without_colour += 1;
+            }
+        }
+    }
+    assert_eq!((coloured, removed, without_colour), (130, 0, 0));
+}
+
+fn collect(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    for e in std::fs::read_dir(dir).expect("dir") {
+        let p = e.expect("entry").path();
+        if p.is_dir() {
+            collect(&p, out);
+        } else if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("sze")) {
+            out.push(p);
+        }
+    }
+}

@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use anno_render::frame::FrameRenderer;
 use anno_render::gpu::GpuFrame;
 use anno_render::iso::{TILE, WaterStyle};
-use anno_render::scene::{self, Rect, Scene};
+use anno_render::scene::{Rect, Scene};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
@@ -60,7 +60,7 @@ const STAGES_GPU: [&str; 4] = ["uploads", "sprites", "encode", "present"];
 
 /// Opens the window and runs until it is closed.
 pub fn run(scene: &Scene<'_>, group: usize, renderer: Renderer) -> Result<(), BoxError> {
-    let bounds = scene::scene_bounds(&scene.layouts[group]).ok_or("no islands")?;
+    let bounds = scene.bounds(group).ok_or("no islands")?;
     let threads = std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get);
     let mut viewer = Viewer {
         scene,
@@ -403,7 +403,7 @@ impl Viewer<'_, '_> {
 
     /// Keeps the view centre inside the scene bounds.
     fn clamp(&mut self) {
-        if let Some(b) = scene::scene_bounds(&self.scene.layouts[self.group]) {
+        if let Some(b) = self.scene.bounds(self.group) {
             self.cam.0 = self
                 .cam
                 .0

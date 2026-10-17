@@ -23,7 +23,8 @@ fn bad_arguments_print_usage() {
 }
 
 /// `Single_01.sze` at zoom group 2: all 15 `INSEL5` islands are drawn with
-/// ground, no object fails, and the PNG has the scene size. (Measured
+/// ground, no object fails, all 5 ships are drawn, and the PNG has the scene
+/// size (islands and ships). (Measured
 /// 2026-10-16: 16,960 × 8,886 px, 69,256 objects drawn, 11,717 invisible.)
 #[test]
 fn view_png_scenario() {
@@ -48,7 +49,7 @@ fn view_png_scenario() {
         stderr.contains("15 islands drawn (0 without ground)"),
         "{stderr}"
     );
-    assert!(stderr.contains(", 0 failed"), "{stderr}");
+    assert!(stderr.contains(", 0 failed, 5 ships drawn"), "{stderr}");
 
     let dec = png::Decoder::new(std::io::BufReader::new(
         std::fs::File::open(&out).expect("png written"),

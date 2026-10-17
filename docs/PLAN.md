@@ -215,7 +215,7 @@ Goal: headless simulation that loads a scenario and advances by ticks; faithful 
 
 - [ ] State model: world, islands, tiles, buildings (Anlagen instances), figures (carriers, ships, residents), players, goods stockpiles. All integer/fixed-point. `#![deny(unsafe_code)]`, no floats in checksummed state.
 - [ ] Command enum = the only way to mutate state (build, demolish, set production, trade route, move ship, …). Commands carry player id and target tick.
-- [ ] Seeded PRNG inside `sim` (e.g. `rand_pcg`), single source of randomness; expose state hash per tick (`blake3` or FNV over canonical serialization).
+- [x] Seeded PRNG inside `sim`, single source of randomness; state hash over a canonical serialization (2026-10-18, `src/sim`, spec `docs/sim/core.md`): the original's world PRNG (MSVC `rand()` table, cursor; equal to the table in `AnnoWelt.dll`, fixture F6 values), the world clock (2 ms ticks), the original's single- and multiplayer step sizes as exact integer formulas, island sweep scheduling, FNV-1a 64 state hash. Reviewed adversarially against the disassembly (two bugs found and fixed: sweep cap, `+0x108` semantics).
 - [ ] Implement subsystems in the order recovered in M2: production → carriers/roads → population/needs → taxes → ships/trade → fire → combat (last).
 - [ ] Savegame: load original `.sze` scenarios and original savegames (M2.1 corpus) into state; write our own save format (versioned, explicit layout) and, if feasible, write original-compatible `.sze` for interop (stretch).
 - [ ] Replay: record commands + seed; `anno-replay` CLI re-runs and compares per-tick hashes. Bisect helper for first divergent tick.

@@ -67,6 +67,89 @@ pub fn to_rgba(entry: &Entry<'_>, frame: &Frame, volume: &[u8]) -> Result<Rgba, 
 /// bytes from `frame.offset` of the group's volume), for callers that read
 /// single frames instead of whole volumes.
 pub fn decode(entry: &Entry<'_>, frame: &Frame, data: &[u8]) -> Result<Rgba, Error> {
+    decode_coloured(entry, frame, data, None)
+}
+
+/// The eight player colours of the original, as RGB (D: `AnnoDisplay.dll`
+/// `0x1003be70`, eight `0x00RRGGBB` words; colour variant 0 there means "no
+/// recolouring"). Defaults: callers pass their own table, so more players
+/// or other colours are configuration (`docs/render/iso.md`, "Player
+/// colours").
+pub const ORIGINAL_PLAYER_COLOURS: [[u8; 3]; 8] = [
+    [0, 187, 255],
+    [255, 68, 0],
+    [255, 244, 10],
+    [0, 255, 176],
+    [255, 138, 0],
+    [47, 254, 41],
+    [248, 57, 255],
+    [255, 244, 222],
+];
+
+/// Figure types (`BEWOHNTYPE`) whose colour tables get player-colour
+/// variants: type numbers 97–111, 150 and 53 of the game's type-name table
+/// (D: `AnnoGame.dll` figure colour loader `0x10011570`, test at
+/// `0x100115b7`; names at `0x10024cb8`; number 112 has no name). 69 of the
+/// 368 figure entries; ships (`SHIP`, 113) are not among them.
+pub const PLAYER_COLOURED_TYPES: [&str; 17] = [
+    "ERKUNDER",
+    "TRAGTIER",
+    "SCHWERT",
+    "BOGEN",
+    "ARMBRUST",
+    "LANZE",
+    "MUSKETIER",
+    "KAVALARIE",
+    "GEWEHR",
+    "MEDICUS",
+    "BEDIENUNG",
+    "KANONIER",
+    "MOERSER",
+    "BELAGERTURM",
+    "KATAPULT",
+    "FLAGGE",
+    "ESEL",
+];
+
+/// Whether `entry` is drawn in its owner's colour ([`PLAYER_COLOURED_TYPES`]).
+pub fn player_coloured(entry: &Entry<'_>) -> bool {
+    entry
+        .record_str("BEWOHNTYPE")
+        .is_some_and(|t| PLAYER_COLOURED_TYPES.contains(&t.as_str()))
+}
+
+/// A palette colour in the variant for `player` (D: `AnnoDisplay.dll`
+/// `0x10007e60` and `0x10008980`, identical tests). A colour whose green
+/// dominates, `G² > trunc(1.5 · (R² + B²))`, becomes the player colour
+/// scaled by its brightness: `v = trunc(0.3333 · (R, G, B summed term by
+/// term))`, `w = min(trunc(3 · v), 255)`, each channel `player · w / 255`
+/// (integer division). Other colours stay. `0.3333` is the original's
+/// `f32` constant; the x87 products and sums of 8-bit values with it are
+/// exact in `f64`, so this reproduces the original bit for bit.
+pub fn recolour(rgb: [u8; 3], player: [u8; 3]) -> [u8; 3] {
+    let [r, g, b] = rgb.map(i64::from);
+    // Values ≤ 3 · 255², exact in f64; truncation toward zero as `__ftol`.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+    let t = ((r * r + b * b) as f64 * 1.5) as i64;
+    if g * g <= t {
+        return rgb;
+    }
+    let third = f64::from(0.3333_f32);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+    let v = (third * r as f64 + third * g as f64 + third * b as f64) as i64 & 0xFF;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+    let w = ((v as f64 * 3.0) as i64).min(255);
+    player.map(|c| u8::try_from(i64::from(c) * w / 255).expect("≤ 255"))
+}
+
+/// [`decode`] with the palette colours in `player`'s variant ([`recolour`]);
+/// `None` draws the palette as it is.
+pub fn decode_coloured(
+    entry: &Entry<'_>,
+    frame: &Frame,
+    data: &[u8],
+    player: Option<[u8; 3]>,
+) -> Result<Rgba, Error> {
     let format = frame.format().ok_or(Error::UnknownFormat)?;
     let px = figuren::decode_frame(
         format,
@@ -90,7 +173,8 @@ pub fn decode(entry: &Entry<'_>, frame: &Frame, data: &[u8]) -> Result<Rgba, Err
             (None, _) => [0, 0, 0, 0],
             (Some(_), None) => [0, 0, 0, 255],
             (Some(p), Some(pal)) => {
-                let [r, g, b] = pal.rgb(p.index);
+                let rgb = pal.rgb(p.index);
+                let [r, g, b] = player.map_or(rgb, |c| recolour(rgb, c));
                 [r, g, b, pixel_alpha(format, p.level)]
             }
         })
@@ -105,6 +189,22 @@ pub fn decode(entry: &Entry<'_>, frame: &Frame, data: &[u8]) -> Result<Rgba, Err
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recolour_rule() {
+        let blue = ORIGINAL_PLAYER_COLOURS[0];
+        // Pure green 255: v = trunc(0.3333 · 255) = 84, w = 252.
+        assert_eq!(recolour([0, 255, 0], blue), [0, 184, 252]);
+        // A darker marker shade scales the player colour down.
+        assert_eq!(recolour([0, 156, 0], blue), [0, 112, 153]);
+        // Grass-like green whose green does not dominate enough stays.
+        assert_eq!(recolour([100, 150, 80], blue), [100, 150, 80]);
+        // Boundary: G² must exceed trunc(1.5 · (R² + B²)).
+        assert_eq!(recolour([10, 12, 0], blue), [10, 12, 0]); // 144 > 150? no
+        assert_ne!(recolour([10, 13, 0], blue), [10, 13, 0]); // 169 > 150
+        assert_eq!(recolour([255, 0, 255], blue), [255, 0, 255]);
+        assert_eq!(recolour([0, 0, 0], blue), [0, 0, 0]);
+    }
     use anno_formats::figuren::FigurenHeader;
 
     fn rec(name: &str, payload: &[u8]) -> Vec<u8> {

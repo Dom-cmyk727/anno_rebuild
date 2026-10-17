@@ -121,7 +121,7 @@ Owner decision 2026-10-17: a real fluid simulation instead of parametric waves (
 | Ship order | ships are drawn after all islands, back to front by `x + y`; the scene bounds include them | simplification; matters only where a ship overlaps an island's sprites (OQ-026 f) |
 | Soldiers | each `SOLDAT` is drawn with sprite set 0 of its figure (8 standing frames), frame `attr mod 8`, its `SHADOW` frame first; the anchor lands on the world point raised to the terrain height there (the island's `HEIGHT` grid, interpolated over the tile's two triangles as the ground) | P: position, figure, sets; `attr` = facing is a hypothesis (OQ-027 d) |
 | Soldier order | drawn with their island's objects: a soldier on local tile `(tx, ty)` counts as a 1 × 1 footprint with the objects' sort key `(tx + 1 + ty + 1, tx)` and is drawn after the objects whose key is not larger | the objects' own order rule (OQ-026 c) |
-| Player colours | not applied: the pure-green entries `(0, g, 0)` of soldier and flag palettes are drawn as they are, so soldiers show neon-green sleeves, trousers and hat bands | the original recolours them per owner; how is open (OQ-027 f) |
+| Player colours | figures of the 17 player-coloured types (soldiers, scouts, pack animals, donkeys, flags; 69 figure entries) get their owner's colour: every palette colour whose green dominates (`G² > trunc(1.5 (R² + B²))`) becomes the player colour scaled by its brightness, exactly as the original (`anno_assets::figure::recolour`); colours from the original's table of eight. Owner `p` → colour `p + 1` is a stand-in (the original assigns colours on its colour-selection screen) | D: `docs/re/annodisplay.md` §8, `docs/re/annogame.md`; mapping OQ-027 f |
 
 Sizes measured with `anno1503 --view … --png`: `Single_01.sze` is 16,960 × 8,886 px at group 2 (15 islands, 69,256 objects drawn, 11,717 invisible, 0 failed) and 71,232 × 37,296 px at group 0, too large for one image. The window therefore renders the static layers lazily in chunks (`anno_render::frame`); `--png` refuses scenes above 4 GiB of RGBA.
 
@@ -133,7 +133,7 @@ Every sprite the renderer draws must reach the screen with all of its original p
 - **GPU vs CPU** (`bench_frame --renderer gpu --check`, `Single_24.sze`, 1920 × 1080): at groups 0, 1 and 2, no pixel of the GPU frame differs from the CPU frame by more than 1 per channel (blending rounding); all texture reads are exact `textureLoad`s, no filtering or scaling.
 - **Visual** (`--png --at … --size …`, magnified 5–10× with nearest-neighbour scaling): soldiers, cannons and ships at groups 0, 1, 2 keep weapons, helmets, rigging and wheel spokes; at group 2 details are single pixels and survive.
 
-Not covered yet: comparison against captures of the original game (PLAN §0.4 (2), needs an x86 host), player colours (OQ-027 f).
+Not covered yet: comparison against captures of the original game (PLAN §0.4 (2), needs an x86 host); the original's 16-bit colour quantisation (OQ-030). Player colours: rule and colours as the original (above); at group 2 the markers are single pixels and still show each army's colour.
 
 ## Visual checks (2026-10-17, ships)
 `anno1503 --view --png` on all ten `0200Single/*.sze` at group 2: every ship of each file drawn (1–10 per scenario, 31 in total), 0 objects failed. Close-ups with `--at <x>,<y> --size <w>x<h>` at groups 0 and 1 (`Single_01.sze`, `Single_24.sze`): hulls, rigging, flags and decorations intact, ships float on the sea next to the coast. Player colours on sails and flags are not applied yet (all white; OQ-027).

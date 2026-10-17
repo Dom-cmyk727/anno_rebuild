@@ -1,25 +1,58 @@
-// anno-dump: inspect original ANNO 1503 files.
+// anno-dump: inspect original ANNO 1503 files. The text formats are
+// specified in docs/formats/*.md ("Reference dump") and must equal the
+// output of the Python references in tools/ (checked by tools/agree.py).
 //
-//   anno-dump chunks <file>...   chunk tree (same output as `tools/chunks.py tree`)
+//   anno-dump chunks <file>...                 chunk tree (tools/chunks.py tree)
+//   anno-dump tex [--full] <file>...           palettes and textures (tools/tex.py dump)
+//   anno-dump inc <file>...                    ACCESS records (tools/tex.py inc)
+//   anno-dump colors [--full] <Anlagen.dat>... COLORS tables (tools/tex.py colors)
 //
-// Each file's output starts with `# <path>` (the path as given). Output uses
-// `\n` line ends on every platform, as the Python references.
+// Each file's output starts with `# <path>` (the path as given); lines end
+// with `\n` on every platform.
 #include <cstdio>
 #include <fstream>
-#include <functional>
 #include <iterator>
+#include <map>
+#include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <anno/formats/chunk.hpp>
 
+#include "dump.hpp"
+
 namespace {
 
-namespace chunk = anno::formats::chunk;
 using anno::formats::Bytes;
 
-constexpr std::string_view kUsage = "usage: anno-dump chunks <file>...\n";
+constexpr const char* kUsage = "usage: anno-dump chunks <file>...\n"
+                               "       anno-dump tex [--full] <file>...\n"
+                               "       anno-dump inc <file>...\n"
+                               "       anno-dump colors [--full] <Anlagen.dat>...\n";
+
+using DumpFn = bool (*)(Bytes, bool, std::string&);
+
+struct Command {
+    DumpFn fn;
+    bool takes_full;
+};
+
+bool chunks(Bytes b, bool, std::string& o) {
+    return anno::dump::dump_chunks(b, o);
+}
+bool inc(Bytes b, bool, std::string& o) {
+    return anno::dump::dump_inc(b, o);
+}
+
+const std::map<std::string, Command>& commands() {
+    static const std::map<std::string, Command> table = {
+        {"chunks", {chunks, false}},
+        {"tex", {anno::dump::dump_tex, true}},
+        {"inc", {inc, false}},
+        {"colors", {anno::dump::dump_colors, true}},
+    };
+    return table;
+}
 
 std::optional<std::vector<std::uint8_t>> read_file(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
@@ -29,15 +62,39 @@ std::optional<std::vector<std::uint8_t>> read_file(const std::string& path) {
     return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(in), {});
 }
 
-void put(const std::string& s) {
-    std::fwrite(s.data(), 1, s.size(), stdout);
+} // namespace
+
+namespace anno::dump {
+
+/// `chunks`: as `tools/chunks.py tree`, which prints `NOPARSE` for a file
+/// that is not a chunk file and still exits 0.
+bool dump_chunks(Bytes buf, std::string& out) {
+    auto f = formats::chunk::parse_file(buf);
+    out += f ? formats::chunk::tree(f.value()) : std::string("NOPARSE\n");
+    return true;
 }
 
-/// Runs `dump` on every file; returns the process exit code.
-int dump_files(const std::vector<std::string>& files,
-               const std::function<bool(Bytes, std::string&)>& dump) {
+} // namespace anno::dump
+
+int main(int argc, char** argv) {
+    const std::vector<std::string> args(argv + 1, argv + argc);
+    if (args.empty() || commands().count(args[0]) == 0) {
+        std::fputs(kUsage, stderr);
+        return 2;
+    }
+    const Command cmd = commands().at(args[0]);
+    std::size_t first = 1;
+    const bool full = cmd.takes_full && args.size() > 1 && args[1] == "--full";
+    if (full) {
+        first = 2;
+    }
+    if (args.size() <= first) {
+        std::fputs(kUsage, stderr);
+        return 2;
+    }
     int status = 0;
-    for (const auto& path : files) {
+    for (std::size_t i = first; i < args.size(); ++i) {
+        const std::string& path = args[i];
         auto buf = read_file(path);
         if (!buf) {
             std::fprintf(stderr, "%s: cannot read\n", path.c_str());
@@ -45,39 +102,10 @@ int dump_files(const std::vector<std::string>& files,
             continue;
         }
         std::string out = "# " + path + "\n";
-        if (!dump(*buf, out)) {
+        if (!cmd.fn(*buf, full, out)) {
             status = 1;
         }
-        put(out);
+        std::fwrite(out.data(), 1, out.size(), stdout);
     }
     return status;
-}
-
-/// `chunks`: as `tools/chunks.py tree`, which prints `NOPARSE` for a file
-/// that is not a chunk file and still exits 0.
-bool dump_chunks(Bytes buf, std::string& out) {
-    auto f = chunk::parse_file(buf);
-    if (!f) {
-        out += "NOPARSE\n";
-        return true;
-    }
-    out += chunk::tree(f.value());
-    return true;
-}
-
-} // namespace
-
-int main(int argc, char** argv) {
-    std::vector<std::string> args(argv + 1, argv + argc);
-    if (args.size() < 2) {
-        std::fputs(kUsage.data(), stderr);
-        return 2;
-    }
-    const std::string cmd = args[0];
-    const std::vector<std::string> files(args.begin() + 1, args.end());
-    if (cmd == "chunks") {
-        return dump_files(files, dump_chunks);
-    }
-    std::fputs(kUsage.data(), stderr);
-    return 2;
 }

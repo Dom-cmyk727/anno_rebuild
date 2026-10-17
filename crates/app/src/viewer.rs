@@ -1,17 +1,21 @@
-//! Interactive scene window (`--view` without `--png`): `winit` window,
-//! `softbuffer` CPU blit, pan and zoom-group switching. Frames come from
-//! `anno_render::frame::FrameRenderer` (cached static chunks, per-frame
-//! water and sea on all cores). The window redraws at the display's refresh
-//! rate while animating; the title shows frames per second and the average
-//! frame time, and stderr gets a per-stage breakdown every 2 seconds.
+//! Interactive scene window (`--view` without `--png`): `winit` window, pan
+//! and zoom-group switching. Static chunks come from
+//! `anno_render::frame::FrameRenderer` (built by background workers on half
+//! the cores); frames are composed either on the GPU
+//! (`anno_render::gpu::GpuFrame`, wgpu, presented with vsync) or on the CPU
+//! (`FrameRenderer::render` into a `softbuffer` window, all cores).
+//! `--renderer auto` (default) uses the GPU when one is available. The title
+//! shows the renderer, frames per second and the average frame time; stderr
+//! gets a per-stage breakdown every 2 seconds.
 //! Controls: see the crate docs; Space pauses the animation, `E` toggles
 //! the non-original enhanced water.
 
 use std::num::NonZeroU32;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anno_render::frame::{FrameRenderer, FrameStats};
+use anno_render::frame::FrameRenderer;
+use anno_render::gpu::GpuFrame;
 use anno_render::iso::{TILE, WaterStyle};
 use anno_render::scene::{self, Rect, Scene};
 use winit::application::ApplicationHandler;
@@ -25,19 +29,37 @@ use crate::BoxError;
 
 /// Refresh interval when the display does not report its rate (60 Hz).
 const DEFAULT_FRAME: Duration = Duration::from_micros(16_667);
+/// Retry interval while the window cannot be presented to (minimised or
+/// hidden).
+const OCCLUDED_RETRY: Duration = Duration::from_millis(100);
 /// Interval of the FPS display and the stderr breakdown.
 const REPORT: Duration = Duration::from_secs(2);
 
-/// Frame statistics since the last report.
+/// Which renderer composes the frames.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Renderer {
+    /// The GPU if one can be opened, else the CPU.
+    Auto,
+    Gpu,
+    Cpu,
+}
+
+/// Frame statistics since the last report: frames, summed and worst frame
+/// time, summed chunk time and summed renderer stages (see `STAGES_*`).
 #[derive(Default)]
 struct Meter {
     frames: u32,
-    sum: FrameStats,
+    total_ms: f64,
     worst_ms: f64,
+    chunks_ms: f64,
+    stages: [f64; 4],
 }
 
+const STAGES_CPU: [&str; 4] = ["ground", "water objects", "sea", "objects"];
+const STAGES_GPU: [&str; 4] = ["uploads", "sprites", "encode", "present"];
+
 /// Opens the window and runs until it is closed.
-pub fn run(scene: &Scene<'_>, group: usize) -> Result<(), BoxError> {
+pub fn run(scene: &Scene<'_>, group: usize, renderer: Renderer) -> Result<(), BoxError> {
     let bounds = scene::scene_bounds(&scene.layouts[group]).ok_or("no islands")?;
     let threads = std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get);
     let mut viewer = Viewer {
@@ -48,11 +70,13 @@ pub fn run(scene: &Scene<'_>, group: usize) -> Result<(), BoxError> {
             f64::from(bounds.y) + f64::from(bounds.h) / 2.0,
         ),
         window: None,
+        renderer,
         frames: FrameRenderer::new(threads),
         clock: Instant::now(),
         paused_at: None,
         water_style: WaterStyle::Original,
         interval: DEFAULT_FRAME,
+        occluded_until: None,
         next_frame: Instant::now(),
         meter: Meter::default(),
         meter_since: Instant::now(),
@@ -82,11 +106,24 @@ pub fn run(scene: &Scene<'_>, group: usize) -> Result<(), BoxError> {
     viewer.error.map_or(Ok(()), Err)
 }
 
+/// The window and how frames reach it.
 struct Gfx {
-    window: Rc<Window>,
-    // Kept alive for the surface.
-    _context: softbuffer::Context<Rc<Window>>,
-    surface: softbuffer::Surface<Rc<Window>, Rc<Window>>,
+    window: Arc<Window>,
+    backend: Backend,
+}
+
+enum Backend {
+    Cpu {
+        // Kept alive for the surface.
+        _context: softbuffer::Context<Arc<Window>>,
+        surface: softbuffer::Surface<Arc<Window>, Arc<Window>>,
+    },
+    Gpu {
+        surface: wgpu::Surface<'static>,
+        config: wgpu::SurfaceConfiguration,
+        frame: Box<GpuFrame>,
+        name: String,
+    },
 }
 
 struct Viewer<'s, 'a> {
@@ -95,6 +132,7 @@ struct Viewer<'s, 'a> {
     /// Scene screen position (at `group`) shown in the window centre.
     cam: (f64, f64),
     window: Option<Gfx>,
+    renderer: Renderer,
     frames: FrameRenderer,
     /// Animation clock; while paused, the time it was paused at.
     clock: Instant,
@@ -103,6 +141,9 @@ struct Viewer<'s, 'a> {
     water_style: WaterStyle,
     /// Redraw interval while animating (display refresh).
     interval: Duration,
+    /// Set while the GPU surface reports the window as occluded: no redraw
+    /// before this time.
+    occluded_until: Option<Instant>,
     next_frame: Instant,
     meter: Meter,
     meter_since: Instant,
@@ -121,6 +162,24 @@ impl ApplicationHandler for Viewer<'_, '_> {
             el.set_control_flow(ControlFlow::Wait);
             return;
         }
+        if self
+            .window
+            .as_ref()
+            .is_some_and(|g| matches!(g.backend, Backend::Gpu { .. }))
+        {
+            // Vsync paces the GPU path: acquiring the next surface texture
+            // waits for the display, so a redraw can always be requested,
+            // except while the window is occluded.
+            match self.occluded_until {
+                Some(t) if Instant::now() < t => el.set_control_flow(ControlFlow::WaitUntil(t)),
+                _ => {
+                    self.occluded_until = None;
+                    self.redraw();
+                    el.set_control_flow(ControlFlow::Wait);
+                }
+            }
+            return;
+        }
         let now = Instant::now();
         if now >= self.next_frame {
             self.next_frame = (self.next_frame + self.interval).max(now);
@@ -133,7 +192,7 @@ impl ApplicationHandler for Viewer<'_, '_> {
         if self.window.is_some() {
             return;
         }
-        match create_gfx(el) {
+        match create_gfx(el, self.renderer) {
             Ok(g) => {
                 if let Some(mhz) = g
                     .window
@@ -217,17 +276,64 @@ impl ApplicationHandler for Viewer<'_, '_> {
     }
 }
 
-fn create_gfx(el: &ActiveEventLoop) -> Result<Gfx, BoxError> {
+fn create_gfx(el: &ActiveEventLoop, renderer: Renderer) -> Result<Gfx, BoxError> {
     let attrs = Window::default_attributes()
         .with_title("anno1503")
         .with_inner_size(LogicalSize::new(1280.0, 800.0));
-    let window = Rc::new(el.create_window(attrs)?);
+    let window = Arc::new(el.create_window(attrs)?);
+    if renderer != Renderer::Cpu {
+        match create_gpu(&window) {
+            Ok(backend) => return Ok(Gfx { window, backend }),
+            Err(e) if renderer == Renderer::Auto => {
+                eprintln!("GPU renderer unavailable ({e}); using the CPU renderer");
+            }
+            Err(e) => return Err(e),
+        }
+    }
     let context = softbuffer::Context::new(window.clone())?;
     let surface = softbuffer::Surface::new(&context, window.clone())?;
     Ok(Gfx {
         window,
-        _context: context,
+        backend: Backend::Cpu {
+            _context: context,
+            surface,
+        },
+    })
+}
+
+/// Opens the high-performance GPU for `window`, presenting with vsync.
+fn create_gpu(window: &Arc<Window>) -> Result<Backend, BoxError> {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_with_display_handle_from_env(
+        Box::new(window.clone()),
+    ));
+    let surface = instance.create_surface(window.clone())?;
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        compatible_surface: Some(&surface),
+        ..Default::default()
+    }))?;
+    let info = adapter.get_info();
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        label: Some("anno1503"),
+        required_limits: adapter.limits(),
+        ..Default::default()
+    }))?;
+    let size = window.inner_size();
+    let mut config = surface
+        .get_default_config(&adapter, size.width.max(1), size.height.max(1))
+        .ok_or("the GPU cannot present to this window")?;
+    // Colours are written as stored (no sRGB conversion).
+    config.view_formats.push(config.format.remove_srgb_suffix());
+    config.present_mode = wgpu::PresentMode::AutoVsync;
+    surface.configure(&device, &config);
+    let frame = GpuFrame::new(device, queue, config.format);
+    let name = format!("{} ({:?})", info.name, info.backend);
+    eprintln!("GPU renderer: {name}");
+    Ok(Backend::Gpu {
         surface,
+        config,
+        frame: Box::new(frame),
+        name,
     })
 }
 
@@ -254,8 +360,12 @@ impl Viewer<'_, '_> {
             let fps = self.fps.map_or(String::new(), |(f, ms)| {
                 format!(" — {f:.0} fps ({ms:.1} ms/frame)")
             });
+            let renderer = match &g.backend {
+                Backend::Cpu { .. } => "CPU".to_string(),
+                Backend::Gpu { name, .. } => format!("GPU {name}"),
+            };
             g.window.set_title(&format!(
-                "anno1503 — {} — zoom group {}{water}{fps}",
+                "anno1503 — {} — zoom group {}{water} — {renderer}{fps}",
                 self.scene.name, self.group
             ));
         }
@@ -346,60 +456,118 @@ impl Viewer<'_, '_> {
         };
         let t = self.time_ms();
         let (group, style, scene) = (self.group, self.water_style, self.scene);
+        let animating = self.paused_at.is_none();
         let Some(gfx) = self.window.as_mut() else {
             return Ok(());
         };
-        let (Some(nw), Some(nh)) = (NonZeroU32::new(w), NonZeroU32::new(h)) else {
-            return Ok(());
+        let (total, chunks_ms, built, stages) = match &mut gfx.backend {
+            Backend::Cpu { surface, .. } => {
+                let (Some(nw), Some(nh)) = (NonZeroU32::new(w), NonZeroU32::new(h)) else {
+                    return Ok(());
+                };
+                surface.resize(nw, nh)?;
+                let mut buf = surface.buffer_mut()?;
+                let s = self.frames.render(scene, view, group, t, style, &mut buf);
+                buf.present()?;
+                (
+                    s.total_ms,
+                    s.chunks_ms,
+                    s.chunks_built,
+                    [s.ground_ms, s.water_objects_ms, s.sea_ms, s.objects_ms],
+                )
+            }
+            Backend::Gpu {
+                surface,
+                config,
+                frame,
+                ..
+            } => {
+                if (config.width, config.height) != (w, h) {
+                    (config.width, config.height) = (w, h);
+                    surface.configure(&frame.device, config);
+                }
+                let texture = match surface.get_current_texture() {
+                    wgpu::CurrentSurfaceTexture::Success(t)
+                    | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                        surface.configure(&frame.device, config);
+                        gfx.window.request_redraw();
+                        return Ok(());
+                    }
+                    wgpu::CurrentSurfaceTexture::Occluded => {
+                        self.occluded_until = Some(Instant::now() + OCCLUDED_RETRY);
+                        return Ok(());
+                    }
+                    wgpu::CurrentSurfaceTexture::Timeout
+                    | wgpu::CurrentSurfaceTexture::Validation => {
+                        gfx.window.request_redraw();
+                        return Ok(());
+                    }
+                };
+                let target = texture.texture.create_view(&wgpu::TextureViewDescriptor {
+                    format: Some(frame.view_format()),
+                    ..Default::default()
+                });
+                let s = frame.render(&mut self.frames, scene, view, group, t, style, &target);
+                let p = Instant::now();
+                gfx.window.pre_present_notify();
+                frame.queue.present(texture);
+                let present = p.elapsed().as_secs_f64() * 1000.0;
+                if animating || self.frames.busy() {
+                    gfx.window.request_redraw();
+                }
+                (
+                    s.total_ms + present,
+                    s.chunks_ms,
+                    s.chunks_built,
+                    [s.upload_ms, s.sprites_ms, s.encode_ms, present],
+                )
+            }
         };
-        gfx.surface.resize(nw, nh)?;
-        let mut buf = gfx.surface.buffer_mut()?;
-        let stats = self.frames.render(scene, view, group, t, style, &mut buf);
-        buf.present()?;
-        if stats.chunks_built > 0 {
-            eprintln!(
-                "zoom group {group}: {} chunk(s) rendered in {:.0} ms",
-                stats.chunks_built, stats.chunks_ms
-            );
+        if built > 0 {
+            eprintln!("zoom group {group}: {built} chunk(s) received");
         }
-        self.measure(&stats);
+        self.measure(total, chunks_ms, stages);
         Ok(())
     }
 
     /// Accumulates frame statistics; every [`REPORT`] updates the title and
     /// prints the per-stage averages.
-    fn measure(&mut self, s: &FrameStats) {
+    fn measure(&mut self, total_ms: f64, chunks_ms: f64, stages: [f64; 4]) {
         let m = &mut self.meter;
         m.frames += 1;
-        m.worst_ms = m.worst_ms.max(s.total_ms);
-        m.sum.chunks_built += s.chunks_built;
-        m.sum.chunks_ms += s.chunks_ms;
-        m.sum.ground_ms += s.ground_ms;
-        m.sum.water_objects_ms += s.water_objects_ms;
-        m.sum.sea_ms += s.sea_ms;
-        m.sum.objects_ms += s.objects_ms;
-        m.sum.total_ms += s.total_ms;
+        m.worst_ms = m.worst_ms.max(total_ms);
+        m.total_ms += total_ms;
+        m.chunks_ms += chunks_ms;
+        for (sum, v) in m.stages.iter_mut().zip(stages) {
+            *sum += v;
+        }
         let elapsed = self.meter_since.elapsed();
         if elapsed < REPORT {
             return;
         }
         let n = f64::from(m.frames);
         let fps = n / elapsed.as_secs_f64();
-        let avg = |v: f64| v / n;
+        let names = match self.window.as_ref().map(|g| &g.backend) {
+            Some(Backend::Gpu { .. }) => STAGES_GPU,
+            _ => STAGES_CPU,
+        };
+        let stages: Vec<String> = names
+            .iter()
+            .zip(m.stages)
+            .map(|(name, v)| format!("{name} {:.1}", v / n))
+            .collect();
         eprintln!(
             "zoom group {}: {fps:.1} fps, frame avg {:.1} ms / worst {:.1} ms \
-             (chunks {:.1}, ground {:.1}, water objects {:.1}, sea {:.1}, objects {:.1}; {} chunks cached)",
+             (chunks {:.1}, {}; {} chunks cached)",
             self.group,
-            avg(m.sum.total_ms),
+            m.total_ms / n,
             m.worst_ms,
-            avg(m.sum.chunks_ms),
-            avg(m.sum.ground_ms),
-            avg(m.sum.water_objects_ms),
-            avg(m.sum.sea_ms),
-            avg(m.sum.objects_ms),
+            m.chunks_ms / n,
+            stages.join(", "),
             self.frames.cached(),
         );
-        self.fps = Some((fps, avg(m.sum.total_ms)));
+        self.fps = Some((fps, m.total_ms / n));
         self.meter = Meter::default();
         self.meter_since = Instant::now();
         self.update_title();

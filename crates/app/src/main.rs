@@ -3,7 +3,7 @@
 //!
 //! ```text
 //! anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png <out.png> [--time <ms>]]
-//!          [--water original|enhanced]
+//!          [--water original|enhanced] [--renderer auto|gpu|cpu]
 //! ```
 //!
 //! `--view` shows every island of a scenario (`.sze`) at its `INSEL5` world
@@ -48,7 +48,7 @@ use anno_net as _;
 use anno_sim as _;
 use anno_ui as _;
 
-const USAGE: &str = "usage: anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png <out.png> [--time <ms>]] [--water original|enhanced]";
+const USAGE: &str = "usage: anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png <out.png> [--time <ms>]] [--water original|enhanced] [--renderer auto|gpu|cpu]";
 
 type BoxError = Box<dyn std::error::Error>;
 
@@ -62,6 +62,7 @@ struct Args {
     time: u64,
     /// Sea style for `--png` (the window starts with `Original`, `E` toggles).
     water: anno_render::iso::WaterStyle,
+    renderer: viewer::Renderer,
 }
 
 fn parse_args(args: &[String]) -> Option<Args> {
@@ -72,6 +73,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
         png: None,
         time: 0,
         water: anno_render::iso::WaterStyle::Original,
+        renderer: viewer::Renderer::Auto,
     };
     let mut have_file = false;
     let mut it = args.iter();
@@ -90,6 +92,14 @@ fn parse_args(args: &[String]) -> Option<Args> {
                 out.water = match value.as_str() {
                     "original" => anno_render::iso::WaterStyle::Original,
                     "enhanced" => anno_render::iso::WaterStyle::Enhanced,
+                    _ => return None,
+                }
+            }
+            "--renderer" => {
+                out.renderer = match value.as_str() {
+                    "auto" => viewer::Renderer::Auto,
+                    "gpu" => viewer::Renderer::Gpu,
+                    "cpu" => viewer::Renderer::Cpu,
                     _ => return None,
                 }
             }
@@ -156,7 +166,7 @@ fn run(args: &Args) -> Result<bool, BoxError> {
     match &args.png {
         Some(out) => write_scene_png(&scene, args.group.unwrap_or(2), out, args.time, args.water),
         None => {
-            viewer::run(&scene, args.group.unwrap_or(2))?;
+            viewer::run(&scene, args.group.unwrap_or(2), args.renderer)?;
             Ok(true)
         }
     }

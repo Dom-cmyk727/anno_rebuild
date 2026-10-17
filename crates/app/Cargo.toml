@@ -11,10 +11,12 @@ anno-formats.workspace = true
 anno-assets.workspace = true
 anno-sim.workspace = true
 anno-net.workspace = true
-anno-render.workspace = true
+anno-render = { workspace = true, features = ["gpu"] }
 anno-ui.workspace = true
 png = "0.18.1"
+pollster = "1.0.1"
 softbuffer = "0.4.8"
+wgpu = "30.0.1"
 winit = "0.30.13"
 
 [lints]

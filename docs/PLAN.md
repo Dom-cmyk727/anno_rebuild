@@ -22,6 +22,14 @@ The engine must not hardcode limits. Scalability and moddability are explicit go
 - **Existing code to revisit** (written before this goal was set): `anno_render::iso::{TILE, SEA_ANLAGE, SEA_LEVEL, HEIGHT_LIFT}` and `scene::MARGIN` are constants; three zoom groups and four rotations are assumed in places. Move them into a render/content config with the original values as defaults when the content registry exists (M1.6/M3).
 - **Review rule:** every new `const` limit, fixed-size array or narrow id type in `sim`, `render`, `assets`, `net` or `ui` needs a reason in a comment and a path to make it configurable; prefer data-driven values.
 
+## 0.2 Design goal: improve, not only rebuild (owner decision 2026-10-17)
+
+The project rebuilds ANNO 1503 faithfully **and** improves the engine beyond the original. Improvements are first-class goals, not afterthoughts.
+
+- **Visual target set by the owner:** water that looks smoother and livelier than the original, with **crashing waves on the open sea and along coastlines**. The original has no breakers (confirmed in a gameplay video, `docs/render/iso.md` "Reference"); the current `WaterStyle::Enhanced` (breakers rolling onto beaches, open-water swell) is the first step and is preferred by the owner over the original look. Next: waves that visibly break and crash (foam bursts, spray, whitecaps on open water), tuned against the colleague's viewer recording.
+- **How improvements are built:** as separate, selectable layers next to the faithful one (render styles, `rules` config), so the original behaviour stays reproducible and testable (CLAUDE.md "faithful core separate from improvements"). Which variant is the default is a per-feature owner decision; for water the owner leans towards the enhanced look.
+- **Evidence still applies to the faithful parts;** improvements are documented as such (what, why, tuning), with their own tests.
+
 ## 1. Milestone M0 — Repository and tooling skeleton
 
 Goal: a workspace that builds on all targets with CI, before any game code.

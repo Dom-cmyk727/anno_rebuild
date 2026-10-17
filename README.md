@@ -8,13 +8,13 @@ Current state: an **island viewer**. It reads the original files and draws scena
 
 **You need:** your own installed ANNO 1503 (GOG "A.D." edition). Below, *game folder* = the folder that contains `Anlagen.dat`.
 
-**1. Download** [`share/anno1503-preview-2026-10-17b.zip`](https://github.com/Dom-cmyk727/anno_rebuild/raw/main/share/anno1503-preview-2026-10-17b.zip) and unzip it anywhere.
+**1. Download** [`share/anno1503-preview-2026-10-17c.zip`](https://github.com/Dom-cmyk727/anno_rebuild/raw/main/share/anno1503-preview-2026-10-17c.zip) and unzip it anywhere.
 
 **2a. Windows 10/11:** double-click `start-viewer.bat` and enter your game folder when asked (e.g. `C:\GOG Games\ANNO 1503`).
 
 **2b. Linux (x86_64):**
 ```sh
-cd anno1503-preview-2026-10-17b
+cd anno1503-preview-2026-10-17c
 chmod +x start-viewer.sh linux/*
 ./start-viewer.sh "/path/to/ANNO 1503"
 ```
@@ -35,7 +35,8 @@ The game folder can be a Wine install (`…/drive_c/GOG Games/ANNO 1503`) or fil
 
 **Please report back**
 - Whether it starts; if not, the exact error text.
-- The fps shown in the window title and a few of the timing lines printed in the console every 2 seconds, per zoom level with `E` off and on, plus CPU, core count and screen resolution.
+- `benchmark-results.md` from `run-benchmark.bat` / `./run-benchmark.sh "/path/to/ANNO 1503"` (1–3 minutes, no window).
+- The fps shown in the window title (it also names the renderer: GPU or CPU) and a few of the timing lines printed in the console every 2 seconds, per zoom level with `E` off and on.
 - A short screen recording of the viewer with `E` on and off, ideally at a coastline zoomed in.
 - If possible, the same kind of coastline in the original game, for comparison.
 
@@ -46,6 +47,6 @@ The builds are cross-compiled on macOS and have not been run on Windows or Linux
 - Plan, status and goals: [`docs/PLAN.md`](docs/PLAN.md); project rules: [`CLAUDE.md`](CLAUDE.md).
 - File-format specs: [`docs/formats/`](docs/formats/); rendering rules: [`docs/render/iso.md`](docs/render/iso.md); reverse-engineering notes: [`docs/re/`](docs/re/).
 - Build: `cargo build --release`; run: `cargo run --release -p anno1503 -- --view <file.sze|file.scp> --game-dir <game folder>`.
-- Performance: `cargo run --release -p anno-render --example bench_frame -- <game folder> <file.sze>` (method and results: [`docs/perf/README.md`](docs/perf/README.md)).
+- Performance: `cargo run --release -p anno-render --features gpu --example bench_frame -- <game folder> <file.sze>` (method and results: [`docs/perf/README.md`](docs/perf/README.md)).
 - Preview package: `packaging/package-preview.sh <name>` (cross-compiles Windows and Linux builds into `share/`).
 - Tests that need the game files read `ANNO1503_GAME_DIR` and skip without it: `ANNO1503_GAME_DIR=<game folder> cargo test --workspace`.

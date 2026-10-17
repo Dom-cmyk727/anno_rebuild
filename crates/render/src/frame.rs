@@ -16,13 +16,13 @@
 //! ready yet shows open sea for a few frames, and a ring of chunks around
 //! the view is built ahead, so panning never waits for chunk rendering.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{self, Receiver};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 
-use crate::iso::{Canvas, WaterStyle, over};
+use crate::iso::{Canvas, TILE, WaterStyle, over};
 use crate::scene::{Layers, Rect, Scene};
 use crate::sea::{self, SeaTarget};
 
@@ -58,10 +58,41 @@ impl Chunk {
 /// Key of a cached chunk: `(zoom group, chunk x, chunk y)`.
 type ChunkKey = (usize, i32, i32);
 
-/// Background chunk builders: a job queue and a result queue.
+/// Work shared between the renderer and the chunk builders.
+#[derive(Default)]
+struct JobQueue {
+    /// Chunks to build, most wanted first; rewritten by every frame.
+    jobs: VecDeque<ChunkKey>,
+    /// Chunks being built right now.
+    busy: BTreeSet<ChunkKey>,
+    stop: bool,
+}
+
+/// Background chunk builders: a priority job list and a result queue.
 pub struct ChunkWorkers {
-    jobs: Sender<ChunkKey>,
+    queue: Arc<(Mutex<JobQueue>, Condvar)>,
     done: Receiver<(ChunkKey, Chunk)>,
+}
+
+impl ChunkWorkers {
+    /// Replaces the job list with `wanted` (in priority order) minus the
+    /// chunks being built; returns whether any work is queued or running.
+    fn submit(&self, wanted: impl Iterator<Item = ChunkKey>) -> bool {
+        let (lock, ready) = &*self.queue;
+        let mut q = lock.lock().expect("no panic");
+        let jobs: VecDeque<ChunkKey> = wanted.filter(|k| !q.busy.contains(k)).collect();
+        q.jobs = jobs;
+        ready.notify_all();
+        !q.jobs.is_empty() || !q.busy.is_empty()
+    }
+}
+
+impl Drop for ChunkWorkers {
+    fn drop(&mut self) {
+        let (lock, ready) = &*self.queue;
+        lock.lock().expect("no panic").stop = true;
+        ready.notify_all();
+    }
 }
 
 /// Starts `threads` chunk builders for `scene` in `scope`. They stop when
@@ -74,27 +105,35 @@ pub fn spawn_chunk_workers<'s, 'e, 'a>(
 where
     'a: 'e,
 {
-    let (jobs, job_rx) = mpsc::channel::<ChunkKey>();
+    let queue = Arc::new((Mutex::new(JobQueue::default()), Condvar::new()));
     let (done_tx, done) = mpsc::channel();
-    let job_rx = Arc::new(Mutex::new(job_rx));
     for _ in 0..threads.max(1) {
-        let (job_rx, done_tx) = (Arc::clone(&job_rx), done_tx.clone());
+        let (queue, done_tx) = (Arc::clone(&queue), done_tx.clone());
         scope.spawn(move || {
+            let (lock, ready) = &*queue;
             loop {
-                let job = job_rx.lock().expect("no panic").recv();
-                let Ok(key @ (group, cx, cy)) = job else {
-                    break;
+                let key @ (group, cx, cy) = {
+                    let mut q = lock.lock().expect("no panic");
+                    loop {
+                        if q.stop {
+                            return;
+                        }
+                        if let Some(k) = q.jobs.pop_front() {
+                            q.busy.insert(k);
+                            break k;
+                        }
+                        q = ready.wait(q).expect("no panic");
+                    }
                 };
-                if done_tx
-                    .send((key, render_chunk(scene, group, cx, cy)))
-                    .is_err()
-                {
-                    break;
+                let chunk = render_chunk(scene, group, cx, cy);
+                lock.lock().expect("no panic").busy.remove(&key);
+                if done_tx.send((key, chunk)).is_err() {
+                    return;
                 }
             }
         });
     }
-    ChunkWorkers { jobs, done }
+    ChunkWorkers { queue, done }
 }
 
 /// Time spent per stage of one frame, in milliseconds.
@@ -118,8 +157,8 @@ pub struct FrameStats {
 pub struct FrameRenderer {
     cache: BTreeMap<ChunkKey, Chunk>,
     workers: Option<ChunkWorkers>,
-    /// Chunks requested from the workers and not received yet.
-    pending: BTreeSet<ChunkKey>,
+    /// Whether the workers had chunks queued or in progress last frame.
+    pending: bool,
     /// Worker threads per stage.
     pub threads: usize,
     /// Chunks kept besides the visible ones (others of the current group
@@ -132,7 +171,7 @@ impl FrameRenderer {
         Self {
             cache: BTreeMap::new(),
             workers: None,
-            pending: BTreeSet::new(),
+            pending: false,
             threads: threads.max(1),
             spare_chunks: 48,
         }
@@ -141,12 +180,12 @@ impl FrameRenderer {
     /// Builds chunks with `workers` from now on (`None`: in the frame).
     pub fn set_workers(&mut self, workers: Option<ChunkWorkers>) {
         self.workers = workers;
-        self.pending.clear();
+        self.pending = false;
     }
 
     /// Whether chunks are still being built in the background.
     pub fn busy(&self) -> bool {
-        !self.pending.is_empty()
+        self.pending
     }
 
     /// Number of cached chunks.
@@ -306,7 +345,6 @@ impl FrameRenderer {
         };
         let mut received = 0;
         while let Ok((key, chunk)) = w.done.try_recv() {
-            self.pending.remove(&key);
             self.cache.insert(key, chunk);
             received += 1;
         }
@@ -316,35 +354,59 @@ impl FrameRenderer {
             w: view.w + 2 * CHUNK,
             h: view.h + 2 * CHUNK,
         });
-        for &(cx, cy) in visible.iter().chain(&ring) {
-            let key = (group, cx, cy);
-            if !self.cache.contains_key(&key) && self.pending.insert(key) {
-                // A send fails only when the workers are gone.
-                let _ = w.jobs.send(key);
+        let mut keep: BTreeSet<ChunkKey> = visible
+            .iter()
+            .chain(&ring)
+            .map(|&(cx, cy)| (group, cx, cy))
+            .collect();
+        // Once the current zoom group is (nearly) done, prepare the same
+        // area in the neighbouring zoom groups, so zooming shows islands at
+        // once.
+        let missing = |k: &(i32, i32)| !self.cache.contains_key(&(group, k.0, k.1));
+        if visible.iter().chain(&ring).filter(|k| missing(k)).count() <= self.threads {
+            for g in [group.checked_sub(1), Some(group + 1)]
+                .into_iter()
+                .flatten()
+            {
+                if g < TILE.len() {
+                    let other = zoomed_view(view, group, g);
+                    keep.extend(
+                        visible_chunks(other)
+                            .into_iter()
+                            .map(|(cx, cy)| (g, cx, cy)),
+                    );
+                }
             }
         }
-        self.trim(group, &ring);
+        // Visible chunks first, then the ring, then other zoom groups.
+        let mut order: Vec<ChunkKey> = keep.iter().copied().collect();
+        order.sort_by_key(|&(g, cx, cy)| (g != group, !visible.contains(&(cx, cy))));
+        self.pending = w.submit(order.into_iter().filter(|k| !self.cache.contains_key(k)));
+        self.trim(group, view, &keep);
         received
     }
 
-    /// Drops cached chunks beyond `keep.len() + spare_chunks`: other zoom
-    /// groups first, then those farthest from the middle of `keep`.
-    fn trim(&mut self, group: usize, keep: &[(i32, i32)]) {
-        let limit = keep.len() + self.spare_chunks;
-        if self.cache.len() <= limit {
+    /// Drops cached chunks outside `keep` beyond `spare_chunks`: other zoom
+    /// groups first, then those farthest from `view`.
+    fn trim(&mut self, group: usize, view: Rect, keep: &BTreeSet<ChunkKey>) {
+        if self.cache.len() <= keep.len() + self.spare_chunks {
             return;
         }
-        let centre = keep.get(keep.len() / 2).copied().unwrap_or((0, 0));
+        let centre = (
+            (view.x + view.w / 2).div_euclid(CHUNK),
+            (view.y + view.h / 2).div_euclid(CHUNK),
+        );
         let mut keys: Vec<(bool, i32, ChunkKey)> = self
             .cache
             .keys()
+            .filter(|k| !keep.contains(k))
             .map(|&k @ (g, cx, cy)| {
                 let dist = (cx - centre.0).abs() + (cy - centre.1).abs();
                 (g != group, dist, k)
             })
             .collect();
         keys.sort_unstable();
-        for (_, _, k) in keys.into_iter().skip(limit) {
+        for (_, _, k) in keys.into_iter().skip(self.spare_chunks) {
             self.cache.remove(&k);
         }
     }
@@ -361,8 +423,33 @@ impl FrameRenderer {
             ((group, cx, cy), render_chunk(scene, group, cx, cy))
         });
         self.cache.extend(built);
-        self.trim(group, wanted);
+        let keep = wanted.iter().map(|&(cx, cy)| (group, cx, cy)).collect();
+        let view = wanted
+            .first()
+            .map_or(chunk_rect(0, 0), |&(cx, cy)| chunk_rect(cx, cy));
+        self.trim(group, view, &keep);
         todo.len()
+    }
+}
+
+/// The rectangle of `view`'s size at zoom group `to` centred on the scene
+/// point that `view` centres on at group `from` (screen coordinates are
+/// linear in tile coordinates per group).
+pub fn zoomed_view(view: Rect, from: usize, to: usize) -> Rect {
+    let (cx, cy) = (
+        i64::from(view.x) + i64::from(view.w) / 2,
+        i64::from(view.y) + i64::from(view.h) / 2,
+    );
+    let scale =
+        |v: i64, a: i32, b: i32| i32::try_from(v * i64::from(b) / i64::from(a)).expect("fits");
+    let (x, y) = (
+        scale(cx, TILE[from].0, TILE[to].0),
+        scale(cy, TILE[from].1, TILE[to].1),
+    );
+    Rect {
+        x: x - view.w / 2,
+        y: y - view.h / 2,
+        ..view
     }
 }
 

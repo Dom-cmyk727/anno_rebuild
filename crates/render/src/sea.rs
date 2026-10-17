@@ -158,8 +158,8 @@ pub struct WaterField {
 /// value, not from the original (OQ-026 b).
 pub const BORDER_FADE_TILES: f32 = 8.0;
 
-/// Per-island inputs of [`water_field`].
-struct IslandWater {
+/// Per-island inputs of [`water_field`]; computed once per island.
+pub struct IslandWater {
     w: usize,
     h: usize,
     heights: Vec<u8>,
@@ -177,7 +177,8 @@ struct IslandWater {
 }
 
 impl IslandWater {
-    fn new(island: &Island<'_>) -> Option<Self> {
+    /// `None` if the island's `HEIGHT` or `GFXID` grid cannot be read.
+    pub fn new(island: &Island<'_>) -> Option<Self> {
         let (heights, gfx) = (island.heights().ok()?, island.gfx_ids().ok()?);
         let (w, h) = (usize::from(island.width), usize::from(island.height));
         let cw = w.div_ceil(8);
@@ -247,9 +248,10 @@ impl IslandWater {
 /// sea everywhere, except over the tiles of the islands in `placements`,
 /// where the terrain under each pixel (projected back onto the sea plane)
 /// decides, as the original's depth test would (approximation, OQ-026 b).
-pub fn water_field(
+/// `water(i)` gives the [`IslandWater`] of island `i`.
+pub fn water_field<'w>(
     rect: Rect,
-    islands: &[Island<'_>],
+    water: impl Fn(usize) -> Option<&'w IslandWater>,
     placements: &[Placement],
     group: usize,
     lift: Lift,
@@ -264,7 +266,7 @@ pub fn water_field(
         let Some(r) = p.bounds.intersect(rect) else {
             continue;
         };
-        let Some(iw) = IslandWater::new(&islands[p.index]) else {
+        let Some(iw) = water(p.index) else {
             continue;
         };
         for sy in r.y..r.y + r.h {

@@ -66,6 +66,12 @@ pub fn run(scene: &Scene<'_>, group: usize) -> Result<(), BoxError> {
     event_loop.set_control_flow(ControlFlow::Wait);
     // Chunk builders use half the cores; frames use all of them.
     std::thread::scope(|s| {
+        // Sea patterns of all zoom groups, built off the window thread.
+        for g in 0..TILE.len() {
+            s.spawn(move || {
+                scene.sea(g);
+            });
+        }
         let workers = anno_render::frame::spawn_chunk_workers(s, scene, threads.div_ceil(2));
         viewer.frames.set_workers(Some(workers));
         let result = event_loop.run_app(&mut viewer);

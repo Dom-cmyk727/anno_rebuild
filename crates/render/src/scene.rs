@@ -23,7 +23,7 @@ use crate::iso::{
     self, Canvas, DrawStats, HEIGHT_LIFT, Lift, Objects, Prepared, SpriteCache, TILE, WaterStyle,
     over,
 };
-use crate::sea::{self, SeaPattern, WaterField};
+use crate::sea::{self, IslandWater, SeaPattern, WaterField};
 
 /// Room above an island's top vertex per zoom group: the largest sprite
 /// anchor height in `Anlagen.dat` (P: entry 1330, `anchor_y` 504 / 252 / 126
@@ -277,11 +277,15 @@ pub fn sea_floor_colour(islands: &[Island<'_>], textures: &GroundTextures) -> Op
     textures.average(u16::from(tex))
 }
 
-/// An island's placed objects split by layer, in draw order.
-struct IslandObjects {
+/// Per-island data decoded once: placed objects split by layer in draw
+/// order, the `GFXID` and `HEIGHT` grids, and the sea inputs.
+struct IslandData {
     below: Vec<Prepared>,
     above: Vec<Prepared>,
     other: Vec<Prepared>,
+    /// `None` if a grid cannot be read (no ground drawn).
+    grids: Option<(Vec<u16>, Vec<u8>)>,
+    water: OnceLock<Option<IslandWater>>,
 }
 
 /// Everything needed to draw a scenario: its islands, ground textures,
@@ -299,7 +303,7 @@ pub struct Scene<'a> {
     pub sprites: SpriteCache,
     /// Elevation scale ([`HEIGHT_LIFT`] unless changed for inspection).
     pub lift: Lift,
-    objects: Vec<IslandObjects>,
+    objects: Vec<IslandData>,
     seas: [OnceLock<Option<SeaPattern>>; 3],
 }
 
@@ -322,10 +326,12 @@ impl<'a> Scene<'a> {
             .iter()
             .map(|i| {
                 let list = |which| iso::prepare_objects(i, &anlagen, &OBJECT_RECORDS, which);
-                IslandObjects {
+                IslandData {
                     below: list(Objects::WaterBelowSea),
                     above: list(Objects::WaterAboveSea),
                     other: list(Objects::NotWater),
+                    grids: i.gfx_ids().ok().zip(i.heights().ok()),
+                    water: OnceLock::new(),
                 }
             })
             .collect();
@@ -365,7 +371,13 @@ impl<'a> Scene<'a> {
 
     /// Static sea data of `rect` at `group`.
     pub fn water_field(&self, rect: Rect, group: usize) -> WaterField {
-        sea::water_field(rect, &self.islands, &self.layouts[group], group, self.lift)
+        let water = |i: usize| {
+            self.objects[i]
+                .water
+                .get_or_init(|| IslandWater::new(&self.islands[i]))
+                .as_ref()
+        };
+        sea::water_field(rect, water, &self.layouts[group], group, self.lift)
     }
 
     /// Renders `layers` of the scene region `rect` at `group` into a new
@@ -420,10 +432,18 @@ impl<'a> Scene<'a> {
                 if first {
                     drawn += 1;
                     if layers.ground {
-                        if island.gfx_ids().is_err() || island.heights().is_err() {
-                            no_ground += 1;
+                        match &objects.grids {
+                            Some((gfx, heights)) => iso::draw_ground_grids(
+                                &mut local,
+                                (usize::from(island.width), usize::from(island.height)),
+                                gfx,
+                                heights,
+                                &self.textures,
+                                group,
+                                self.lift,
+                            ),
+                            None => no_ground += 1,
                         }
-                        iso::draw_ground(&mut local, island, &self.textures, group, self.lift);
                     }
                     if layers.water_below {
                         add(draw(&mut local, &objects.below, t));

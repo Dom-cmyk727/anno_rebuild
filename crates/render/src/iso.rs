@@ -24,7 +24,7 @@
 //!   darken to 5/8 before their sprite is drawn.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use anno_assets::building;
 use anno_assets::island::GroundTextures;
@@ -193,17 +193,60 @@ pub fn draw_ground(
     let (Ok(gfx), Ok(heights)) = (island.gfx_ids(), island.heights()) else {
         return;
     };
-    let w = usize::from(island.width);
-    let hgt = usize::from(island.height);
-    let mut order: Vec<usize> = (0..gfx.len()).collect();
-    order.sort_by_key(|&t| (t % w + t / w, t % w));
+    let size = (usize::from(island.width), usize::from(island.height));
+    draw_ground_grids(canvas, size, &gfx, &heights, textures, group, lift);
+}
+
+/// [`draw_ground`] from an island's decoded `GFXID` and `HEIGHT` grids
+/// (`size` = width, height in tiles). Only tiles whose screen rectangle
+/// (raised by at most the highest corner) can touch the canvas are drawn,
+/// back to front by `(x + y, x)`.
+pub fn draw_ground_grids(
+    canvas: &mut Canvas,
+    (w, hgt): (usize, usize),
+    gfx: &[u16],
+    heights: &[u8],
+    textures: &GroundTextures,
+    group: usize,
+    lift: Lift,
+) {
+    if w == 0 || hgt == 0 || gfx.len() < w * hgt || heights.len() < w * hgt {
+        return;
+    }
     #[allow(clippy::cast_precision_loss)]
     let (tw, th, tw0) = (TILE[group].0 as f32, TILE[group].1 as f32, TILE[0].0 as f32);
     #[allow(clippy::cast_precision_loss)]
     let px_per_unit = lift.num as f32 / lift.den as f32 * tw / tw0;
+    // Tile (x, y) with u = x − y, v = x + y covers screen x in
+    // [(u − 1)·tw/2, (u + 1)·tw/2] and y in [v·th/2 − raise, (v + 2)·th/2].
+    let raise = f32::from(heights.iter().copied().max().unwrap_or(0)) * px_per_unit;
+    #[allow(clippy::cast_precision_loss)]
+    let (x0, y0) = (canvas.origin.0 as f32, canvas.origin.1 as f32);
+    #[allow(clippy::cast_precision_loss)]
+    let (x1, y1) = (x0 + canvas.width as f32, y0 + canvas.height as f32);
+    #[allow(clippy::cast_possible_truncation)]
+    let (umin, umax, vmin, vmax) = (
+        (2.0 * x0 / tw).floor() as i64 - 1,
+        (2.0 * x1 / tw).ceil() as i64 + 1,
+        (2.0 * y0 / th).floor() as i64 - 2,
+        (2.0 * (y1 + raise) / th).ceil() as i64 + 1,
+    );
+    let (wi, hi) = (
+        i64::try_from(w).expect("fits"),
+        i64::try_from(hgt).expect("fits"),
+    );
+    let mut order = Vec::new();
+    for v in vmin.max(0)..=vmax.min(wi + hi - 2) {
+        let xa = (v + umin + 1).div_euclid(2).max(v - hi + 1).max(0);
+        let xb = (v + umax).div_euclid(2).min(v).min(wi - 1);
+        for x in xa..=xb {
+            let t = usize::try_from((v - x) * wi + x).expect("inside");
+            order.push(t);
+        }
+    }
     for t in order {
         let cell = GroundCell::from_gfx_id(gfx[t]);
-        let c = corners(&heights, w, hgt, t % w, t / w);
+        let c = corners(heights, w, hgt, t % w, t / w);
         #[allow(clippy::cast_precision_loss)]
         let (x, y) = ((t % w) as f32, (t / w) as f32);
         #[allow(clippy::cast_precision_loss)]
@@ -346,7 +389,7 @@ pub enum Objects {
 /// sprite set, shadow, zoom group, frame index)`.
 #[derive(Default)]
 pub struct SpriteCache {
-    frames: Mutex<BTreeMap<SpriteKey, Option<Arc<Rgba>>>>,
+    frames: RwLock<BTreeMap<SpriteKey, Option<Arc<Rgba>>>>,
 }
 
 /// `(ANLAGEN id, sprite set, shadow, zoom group, frame index)`.
@@ -359,7 +402,7 @@ impl SpriteCache {
         key: SpriteKey,
         frame: &Frame,
     ) -> Option<Arc<Rgba>> {
-        if let Some(hit) = self.frames.lock().expect("no panic").get(&key) {
+        if let Some(hit) = self.frames.read().expect("no panic").get(&key) {
             return hit.clone();
         }
         let entry = anlagen.entry(key.0)?;
@@ -367,7 +410,7 @@ impl SpriteCache {
             .ok()
             .map(Arc::new);
         self.frames
-            .lock()
+            .write()
             .expect("no panic")
             .insert(key, img.clone());
         img
@@ -562,6 +605,26 @@ pub fn draw_prepared(
             stats.failed += 1;
             continue;
         };
+        // Skip objects outside the canvas before decoding: the frame headers
+        // give the drawn rectangles (as `blit_sprite`).
+        let shadow_frame = set.shadow.as_ref().and_then(|s| {
+            s.frame_sets
+                .iter()
+                .find(|fs| fs.group == g)
+                .and_then(|fs| fs.frames.get(k))
+        });
+        let touches = |f: &Frame| {
+            canvas.overlaps(
+                sx - i32::from(f.anchor_x),
+                sy - i32::from(f.anchor_y),
+                i32::from(f.width),
+                i32::from(f.height),
+            )
+        };
+        if !touches(frame) && !shadow_frame.is_some_and(touches) {
+            stats.drawn += 1;
+            continue;
+        }
         let Some(img) = cache.get(anlagen, (id, 0, false, g, k), frame) else {
             stats.failed += 1;
             continue;

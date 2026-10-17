@@ -198,74 +198,103 @@ pub fn draw_ground(
     let (Ok(gfx), Ok(heights)) = (island.gfx_ids(), island.heights()) else {
         return;
     };
-    let (tw, th) = TILE[group];
     let w = usize::from(island.width);
     let hgt = usize::from(island.height);
     let mut order: Vec<usize> = (0..gfx.len()).collect();
     order.sort_by_key(|&t| (t % w + t / w, t % w));
-    if lift != Lift::NONE {
-        // Forward mapping: walk the cell in tile space, oversampled so that
-        // steep slopes leave no holes.
-        let n = i64::from(2 * (tw + th));
-        for t in order {
-            let cell = GroundCell::from_gfx_id(gfx[t]);
-            let c = corners(&heights, w, hgt, t % w, t / w);
-            let (x, y) = (
-                i32::try_from(t % w).expect("fits"),
-                i32::try_from(t / w).expect("fits"),
-            );
-            let (sx, sy) = tile_top(x, y, group);
-            // Skip tiles whose screen box (diamond raised by its highest
-            // corner, +1 row for the gap fill) misses the canvas.
-            let top = lift.scaled(*c.iter().max().expect("4 corners"), 1, group);
-            if !canvas.overlaps(sx - tw / 2, sy - top, tw, th + top + 2) {
-                continue;
-            }
-            for j in 0..n {
-                for i in 0..n {
-                    let px = i32::try_from((i - j) * i64::from(tw) / (2 * n)).expect("fits");
-                    let py = i32::try_from((i + j) * i64::from(th) / (2 * n)).expect("fits");
-                    let up = lift.scaled(interpolate(c, i, j, n), n, group);
-                    let (si, sj, sn) = (
-                        usize::try_from(i).expect("fits"),
-                        usize::try_from(j).expect("fits"),
-                        usize::try_from(n).expect("fits"),
-                    );
-                    // Cover the pixel below too: sample rows can skip a screen row on
-                    // slopes; back-to-front order lets nearer tiles overdraw it.
-                    let rgba = textures.cell_pixel(cell, si, sj, sn);
-                    canvas.put(sx + px, sy + py - up, rgba);
-                    canvas.put(sx + px, sy + py - up + 1, rgba);
-                }
-            }
-        }
-        return;
-    }
+    #[allow(clippy::cast_precision_loss)]
+    let (tw, th, tw0) = (TILE[group].0 as f32, TILE[group].1 as f32, TILE[0].0 as f32);
+    #[allow(clippy::cast_precision_loss)]
+    let px_per_unit = lift.num as f32 / lift.den as f32 * tw / tw0;
     for t in order {
         let cell = GroundCell::from_gfx_id(gfx[t]);
-        let (x, y) = (
-            i32::try_from(t % w).expect("fits"),
-            i32::try_from(t / w).expect("fits"),
+        let c = corners(&heights, w, hgt, t % w, t / w);
+        #[allow(clippy::cast_precision_loss)]
+        let (x, y) = ((t % w) as f32, (t / w) as f32);
+        #[allow(clippy::cast_precision_loss)]
+        let screen = |cx: f32, cy: f32, h: i64| {
+            (
+                (cx - cy) * tw / 2.0,
+                (cx + cy) * th / 2.0 - h as f32 * px_per_unit,
+            )
+        };
+        // Corners A (x, y), C (x+1, y), B (x, y+1), D (x+1, y+1).
+        let a = screen(x, y, c[0]);
+        let cc = screen(x + 1.0, y, c[1]);
+        let b = screen(x, y + 1.0, c[2]);
+        let d = screen(x + 1.0, y + 1.0, c[3]);
+        let texel = |s: f32, tt: f32| {
+            const N: usize = 4096;
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let q = |v: f32| ((v * N as f32) as usize).min(N - 1);
+            textures.cell_pixel(cell, q(s), q(tt), N)
+        };
+        // The two triangles of the tile, split along B–C as the original.
+        raster_triangle(
+            canvas,
+            [a, b, cc],
+            [(0.0, 0.0), (0.0, 1.0), (1.0, 0.0)],
+            texel,
         );
-        let (sx, top) = tile_top(x, y, group);
-        let sy = top - lift.pixels(heights[t], group);
-        if !canvas.overlaps(sx - tw / 2, sy, tw, th) {
-            continue;
-        }
-        for py in 0..th {
-            for px in -tw / 2..tw / 2 {
-                // Tile coordinates of the pixel centre, scaled by 2·tw·th.
-                let (u, v) = (2 * px + 1, 2 * py + 1);
-                let s2 = u * th + v * tw; // = s · tw · th · 2
-                let t2 = v * tw - u * th;
-                let full = tw * th * 2;
-                if s2 < 0 || t2 < 0 || s2 >= full || t2 >= full {
-                    continue;
-                }
-                let to = |v: i32| usize::try_from(v).expect("in range");
-                let rgba = textures.cell_pixel(cell, to(s2), to(t2), to(full));
-                canvas.put(sx + px, sy + py, rgba);
+        raster_triangle(
+            canvas,
+            [cc, b, d],
+            [(1.0, 0.0), (0.0, 1.0), (1.0, 1.0)],
+            texel,
+        );
+    }
+}
+
+/// Fills a screen triangle (scene screen coordinates); each covered pixel
+/// centre gets `shade(s, t)` with `(s, t)` interpolated from `uv`. A planar
+/// triangle projects affinely, so this is exact; every pixel is drawn once.
+fn raster_triangle(
+    canvas: &mut Canvas,
+    v: [(f32, f32); 3],
+    uv: [(f32, f32); 3],
+    shade: impl Fn(f32, f32) -> [u8; 4],
+) {
+    let edge = |p: (f32, f32), q: (f32, f32), r: (f32, f32)| {
+        (q.0 - p.0) * (r.1 - p.1) - (q.1 - p.1) * (r.0 - p.0)
+    };
+    let area = edge(v[0], v[1], v[2]);
+    if area.abs() < 1e-6 {
+        return;
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    let (x0, x1, y0, y1) = (
+        v[0].0.min(v[1].0).min(v[2].0).floor() as i32,
+        v[0].0.max(v[1].0).max(v[2].0).ceil() as i32,
+        v[0].1.min(v[1].1).min(v[2].1).floor() as i32,
+        v[0].1.max(v[1].1).max(v[2].1).ceil() as i32,
+    );
+    if !canvas.overlaps(x0, y0, x1 - x0 + 1, y1 - y0 + 1) {
+        return;
+    }
+    let (cx0, cy0) = canvas.origin;
+    let (cw, ch) = (
+        i32::try_from(canvas.width).expect("fits"),
+        i32::try_from(canvas.height).expect("fits"),
+    );
+    // Small tolerance so shared edges leave no cracks.
+    let eps = -1e-3 * area.abs();
+    for py in y0.max(cy0)..=y1.min(cy0 + ch - 1) {
+        for px in x0.max(cx0)..=x1.min(cx0 + cw - 1) {
+            #[allow(clippy::cast_precision_loss)]
+            let p = (px as f32 + 0.5, py as f32 + 0.5);
+            let (w0, w1, w2) = (
+                edge(v[1], v[2], p) * area.signum(),
+                edge(v[2], v[0], p) * area.signum(),
+                edge(v[0], v[1], p) * area.signum(),
+            );
+            if w0 < eps || w1 < eps || w2 < eps {
+                continue;
             }
+            let n = area.abs();
+            let (b0, b1, b2) = (w0 / n, w1 / n, w2 / n);
+            let s = (b0 * uv[0].0 + b1 * uv[1].0 + b2 * uv[2].0).clamp(0.0, 1.0);
+            let t = (b0 * uv[0].1 + b1 * uv[1].1 + b2 * uv[2].1).clamp(0.0, 1.0);
+            canvas.put(px, py, shade(s, t));
         }
     }
 }

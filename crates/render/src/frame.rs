@@ -32,15 +32,15 @@ pub const CHUNK: i32 = 512;
 /// Cached static data of one chunk; empty vectors where nothing is drawn.
 pub struct Chunk {
     /// Ground, opaque `0RGB`; empty = no island ground (open-water colour).
-    ground: Vec<u32>,
+    pub(crate) ground: Vec<u32>,
     /// Objects except water objects, straight-alpha RGBA; empty = none.
-    objects: Vec<[u8; 4]>,
+    pub(crate) objects: Vec<[u8; 4]>,
     /// Sea field (see [`sea::WaterField`]); empty = open sea everywhere.
-    cover: Vec<u8>,
-    shore: Vec<u8>,
+    pub(crate) cover: Vec<u8>,
+    pub(crate) shore: Vec<u8>,
     /// Some island here has water objects below / above sea level.
-    water_below: bool,
-    water_above: bool,
+    pub(crate) water_below: bool,
+    pub(crate) water_above: bool,
 }
 
 impl Chunk {
@@ -56,7 +56,7 @@ impl Chunk {
 }
 
 /// Key of a cached chunk: `(zoom group, chunk x, chunk y)`.
-type ChunkKey = (usize, i32, i32);
+pub type ChunkKey = (usize, i32, i32);
 
 /// Work shared between the renderer and the chunk builders.
 #[derive(Default)]
@@ -193,6 +193,34 @@ impl FrameRenderer {
         self.cache.len()
     }
 
+    /// Brings the chunks of `view` at `group` up to date (built in the frame
+    /// or requested from the workers); returns the chunks built or received,
+    /// the time spent, and the visible chunks still missing.
+    pub fn update_chunks(
+        &mut self,
+        scene: &Scene<'_>,
+        view: Rect,
+        group: usize,
+    ) -> (usize, f64, usize) {
+        let t = Instant::now();
+        let chunks = visible_chunks(view);
+        let built = if self.workers.is_some() {
+            self.request_chunks(group, view, &chunks)
+        } else {
+            self.fill_cache(scene, group, &chunks)
+        };
+        let missing = chunks
+            .iter()
+            .filter(|&&(cx, cy)| !self.cache.contains_key(&(group, cx, cy)))
+            .count();
+        (built, t.elapsed().as_secs_f64() * 1000.0, missing)
+    }
+
+    /// The cached chunk `(group, cx, cy)`, if built.
+    pub(crate) fn chunk(&self, key: ChunkKey) -> Option<&Chunk> {
+        self.cache.get(&key)
+    }
+
     /// Draws `view` (scene screen rectangle at `group`) at `time_ms` into
     /// `out` (`view.w × view.h`, row-major).
     pub fn render(
@@ -208,19 +236,9 @@ impl FrameRenderer {
         let mut stats = FrameStats::default();
         let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
         let chunks = visible_chunks(view);
-
-        let t = Instant::now();
-        stats.chunks_built = if self.workers.is_some() {
-            self.request_chunks(group, view, &chunks)
-        } else {
-            self.fill_cache(scene, group, &chunks)
-        };
-        stats.chunks_ms = ms(t);
+        (stats.chunks_built, stats.chunks_ms, stats.chunks_missing) =
+            self.update_chunks(scene, view, group);
         let cache = &self.cache;
-        stats.chunks_missing = chunks
-            .iter()
-            .filter(|&&(cx, cy)| !cache.contains_key(&(group, cx, cy)))
-            .count();
         let empty = Chunk::EMPTY;
         let get = |cx: i32, cy: i32| cache.get(&(group, cx, cy)).unwrap_or(&empty);
         let water = rgb(scene.textures.water());

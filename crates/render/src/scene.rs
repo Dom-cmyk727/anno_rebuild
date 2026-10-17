@@ -20,8 +20,8 @@ use anno_formats::insel::Island;
 use std::sync::OnceLock;
 
 use crate::iso::{
-    self, Canvas, DrawStats, HEIGHT_LIFT, Lift, Objects, Prepared, SpriteCache, TILE, WaterStyle,
-    over,
+    self, Canvas, DrawStats, HEIGHT_LIFT, Lift, Objects, Prepared, SpriteCache, SpriteDraw, TILE,
+    WaterStyle, over,
 };
 use crate::sea::{self, IslandWater, SeaPattern, WaterField};
 
@@ -246,6 +246,17 @@ impl Layers {
     };
 }
 
+/// A layer of placed-object sprites ([`Scene::sprites`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpriteLayer {
+    /// Water objects below sea level (surf), drawn before the sea.
+    WaterBelow,
+    /// Water objects at or above sea level (rivers), drawn after the sea.
+    WaterAbove,
+    /// All other objects.
+    Objects,
+}
+
 /// Object records drawn: scenery, built objects, rivers and surf.
 pub const OBJECT_RECORDS: [&str; 3] = ["GELAENDE", "PROD2", "FLUESSE"];
 
@@ -367,6 +378,53 @@ impl<'a> Scene<'a> {
     pub fn has_water_objects(&self, index: usize) -> (bool, bool) {
         let o = &self.objects[index];
         (!o.below.is_empty(), !o.above.is_empty())
+    }
+
+    /// The sprites of `layer` that touch `rect` (scene screen coordinates at
+    /// `group`) at `time_ms`, in draw order (islands in layout order, each
+    /// island's objects in its order), anchors in scene coordinates.
+    pub fn sprites(
+        &self,
+        rect: Rect,
+        group: usize,
+        time_ms: u64,
+        layer: SpriteLayer,
+    ) -> Vec<SpriteDraw<'_>> {
+        let mut out = Vec::new();
+        for p in &self.layouts[group] {
+            if p.bounds.intersect(rect).is_none() {
+                continue;
+            }
+            let o = &self.objects[p.index];
+            let list = match layer {
+                SpriteLayer::WaterBelow => &o.below,
+                SpriteLayer::WaterAbove => &o.above,
+                SpriteLayer::Objects => &o.other,
+            };
+            let start = out.len();
+            iso::place_prepared(
+                list,
+                &self.anlagen,
+                group,
+                self.lift,
+                time_ms,
+                |x, y, w, h| {
+                    Rect {
+                        x: x + p.offset.0,
+                        y: y + p.offset.1,
+                        w,
+                        h,
+                    }
+                    .intersect(rect)
+                    .is_some()
+                },
+                &mut out,
+            );
+            for d in &mut out[start..] {
+                d.anchor = (d.anchor.0 + p.offset.0, d.anchor.1 + p.offset.1);
+            }
+        }
+        out
     }
 
     /// Static sea data of `rect` at `group`.

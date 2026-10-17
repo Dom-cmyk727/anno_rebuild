@@ -105,7 +105,7 @@ impl Canvas {
     }
 
     /// Whether the screen rectangle `(x, y, w, h)` touches the canvas.
-    fn overlaps(&self, x: i32, y: i32, w: i32, h: i32) -> bool {
+    pub fn overlaps(&self, x: i32, y: i32, w: i32, h: i32) -> bool {
         let (cx, cy) = self.origin;
         let (cw, ch) = (
             i32::try_from(self.width).expect("fits"),
@@ -393,10 +393,11 @@ pub struct SpriteCache {
 }
 
 /// `(ANLAGEN id, sprite set, shadow, zoom group, frame index)`.
-pub(crate) type SpriteKey = (u32, usize, bool, u32, usize);
+pub type SpriteKey = (u32, usize, bool, u32, usize);
 
 impl SpriteCache {
-    pub(crate) fn get(
+    /// The decoded frame `key` (`frame` = its header), decoded on first use.
+    pub fn get(
         &self,
         anlagen: &AnlagenFile<'_>,
         key: SpriteKey,
@@ -551,17 +552,46 @@ pub fn draw_objects(
     draw_prepared(canvas, &list, anlagen, group, lift, time_ms, cache)
 }
 
-/// Draws prepared objects at animation time `time_ms`. Each object stands
-/// at its own height (`PlacedObject::height`, as the original), with its
-/// own animation phase (surf: `(3y + 5x) mod 32`).
-pub fn draw_prepared(
-    canvas: &mut Canvas,
+/// One sprite to draw: its frame (header), the key of its decoded image
+/// in a [`SpriteCache`], and the screen point its anchor lands on.
+#[derive(Debug, Clone, Copy)]
+pub struct SpriteDraw<'f> {
+    pub key: SpriteKey,
+    pub frame: &'f Frame,
+    pub anchor: (i32, i32),
+}
+
+impl SpriteDraw<'_> {
+    /// Screen rectangle `(x, y, w, h)` the frame covers.
+    pub fn rect(&self) -> (i32, i32, i32, i32) {
+        (
+            self.anchor.0 - i32::from(self.frame.anchor_x),
+            self.anchor.1 - i32::from(self.frame.anchor_y),
+            i32::from(self.frame.width),
+            i32::from(self.frame.height),
+        )
+    }
+
+    /// Whether this is a shadow (drawn as [`SHADOW`] where covered).
+    pub fn is_shadow(&self) -> bool {
+        self.key.2
+    }
+}
+
+/// The sprites of prepared objects at animation time `time_ms`, in draw
+/// order (each object's shadow before the object), keeping only those for
+/// which `visible(x, y, w, h)` holds. Each object stands at its own height
+/// (`PlacedObject::height`, as the original), with its own animation phase
+/// (surf: `(3y + 5x) mod 32`).
+#[allow(clippy::too_many_arguments)]
+pub fn place_prepared<'a>(
     list: &[Prepared],
-    anlagen: &AnlagenFile<'_>,
+    anlagen: &'a AnlagenFile<'_>,
     group: usize,
     lift: Lift,
     time_ms: u64,
-    cache: &SpriteCache,
+    visible: impl Fn(i32, i32, i32, i32) -> bool,
+    out: &mut Vec<SpriteDraw<'a>>,
 ) -> DrawStats {
     let mut stats = DrawStats::default();
     let g = u32::try_from(group).expect("group");
@@ -584,7 +614,7 @@ pub fn draw_prepared(
         // The object's own height (doubled units, as the footprint centre).
         let z2 = 2 * i64::from(o.height());
         let raise = lift.scaled(z2, 2, group);
-        let (sx, sy) = ((cx2 - cy2) * tw / 4, (cx2 + cy2) * th / 4 - raise);
+        let anchor = ((cx2 - cy2) * tw / 4, (cx2 + cy2) * th / 4 - raise);
         let Some(frames) = set.frame_sets.iter().find(|fs| fs.group == g) else {
             stats.failed += 1;
             continue;
@@ -605,43 +635,68 @@ pub fn draw_prepared(
             stats.failed += 1;
             continue;
         };
-        // Skip objects outside the canvas before decoding: the frame headers
-        // give the drawn rectangles (as `blit_sprite`).
-        let shadow_frame = set.shadow.as_ref().and_then(|s| {
+        stats.drawn += 1;
+        // Shadow first: same frame index of the set's SHADOW, own anchor.
+        if let Some(sf) = set.shadow.as_ref().and_then(|s| {
             s.frame_sets
                 .iter()
                 .find(|fs| fs.group == g)
                 .and_then(|fs| fs.frames.get(k))
+        }) {
+            let d = SpriteDraw {
+                key: (id, 0, true, g, k),
+                frame: sf,
+                anchor,
+            };
+            let (x, y, w, h) = d.rect();
+            if visible(x, y, w, h) {
+                out.push(d);
+            }
+        }
+        let d = SpriteDraw {
+            key: (id, 0, false, g, k),
+            frame,
+            anchor,
+        };
+        let (x, y, w, h) = d.rect();
+        if visible(x, y, w, h) {
+            out.push(d);
+        }
+    }
+    stats
+}
+
+/// Draws prepared objects at animation time `time_ms` ([`place_prepared`]).
+pub fn draw_prepared(
+    canvas: &mut Canvas,
+    list: &[Prepared],
+    anlagen: &AnlagenFile<'_>,
+    group: usize,
+    lift: Lift,
+    time_ms: u64,
+    cache: &SpriteCache,
+) -> DrawStats {
+    let mut draws = Vec::new();
+    let mut stats = place_prepared(
+        list,
+        anlagen,
+        group,
+        lift,
+        time_ms,
+        |x, y, w, h| canvas.overlaps(x, y, w, h),
+        &mut draws,
+    );
+    for d in draws {
+        let Some(img) = cache.get(anlagen, d.key, d.frame) else {
+            if !d.is_shadow() {
+                stats.drawn -= 1;
+                stats.failed += 1;
+            }
+            continue;
+        };
+        blit_sprite(canvas, &img, d.frame, d.anchor, d.is_shadow(), |_, _, p| {
+            Some(p)
         });
-        let touches = |f: &Frame| {
-            canvas.overlaps(
-                sx - i32::from(f.anchor_x),
-                sy - i32::from(f.anchor_y),
-                i32::from(f.width),
-                i32::from(f.height),
-            )
-        };
-        if !touches(frame) && !shadow_frame.is_some_and(touches) {
-            stats.drawn += 1;
-            continue;
-        }
-        let Some(img) = cache.get(anlagen, (id, 0, false, g, k), frame) else {
-            stats.failed += 1;
-            continue;
-        };
-        // Shadow first: same frame index of the set's SHADOW, own anchor.
-        if let Some(s) = &set.shadow
-            && let Some(sf) = s
-                .frame_sets
-                .iter()
-                .find(|fs| fs.group == g)
-                .and_then(|fs| fs.frames.get(k))
-            && let Some(simg) = cache.get(anlagen, (id, 0, true, g, k), sf)
-        {
-            blit_sprite(canvas, &simg, sf, (sx, sy), true, |_, _, p| Some(p));
-        }
-        blit_sprite(canvas, &img, frame, (sx, sy), false, |_, _, p| Some(p));
-        stats.drawn += 1;
     }
     stats
 }

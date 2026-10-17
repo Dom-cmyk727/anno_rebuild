@@ -9,6 +9,16 @@ publish.workspace = true
 [dependencies]
 anno-assets.workspace = true
 anno-formats.workspace = true
+pollster = { version = "1.0.1", optional = true }
+wgpu = { version = "30.0.1", optional = true }
+
+[features]
+# GPU frame compositor (`gpu` module); off for headless builds and tests.
+gpu = ["dep:wgpu", "dep:pollster"]
+
+[[example]]
+name = "bench_frame"
+required-features = ["gpu"]
 
 [lints]
 workspace = true

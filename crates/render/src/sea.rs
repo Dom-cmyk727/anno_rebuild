@@ -120,6 +120,18 @@ impl SeaPattern {
         })
     }
 
+    /// Number of animation steps.
+    pub fn step_count(&self) -> usize {
+        self.steps.len()
+    }
+
+    /// Step `k`: the sprite-only and the open-water image, row-major
+    /// `width × height` straight-alpha RGBA.
+    pub fn step_images(&self, k: usize) -> (&[[u8; 4]], &[[u8; 4]]) {
+        let s = &self.steps[k];
+        (&s.sprite, &s.filled)
+    }
+
     /// Animation steps `(current, next)` at `time_ms` and the fraction of
     /// the way to the next one.
     pub fn steps_at(&self, time_ms: u64) -> (usize, usize, f32) {

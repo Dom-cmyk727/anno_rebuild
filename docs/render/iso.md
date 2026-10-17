@@ -53,6 +53,13 @@ Visual check 2026-10-16: `Dschungel/D_064x064_0001_0B.scp` at zoom groups 0 and 
 - Layers per island, in order: ground; water at time `t`; other objects (`scene::Layers`). The viewer caches ground and objects per chunk and redraws the water layer for the visible area every 50 ms (about 20–30 ms per frame on the dev Mac, 2026-10-16).
 - Shadows are 37.5 % black drawn over the destination (= 5/8 brightness on opaque pixels), so they also work on a transparent object layer.
 
+## Reference: gameplay video of the original (2026-10-17)
+Source: YouTube video `2I-T_8SAFuU` (Anno 1503 History Edition — the 2020 re-release of the same engine and data; differences from GOG 2.0.0.5 are possible), 7:50–12:00 at 1920 × 1080, analysed locally; no frames are kept in the repository.
+- **No breaking waves.** Coasts go from sand to translucent shallow water (sea floor visible, lighter near the shore) to deep blue; no foam lines on beaches, only a ship's wake. Confirms that the faithful water has no breakers and that `WaterStyle::Enhanced` is an addition.
+- **Water animates:** in a static camera shot, water pixels change ≈ 4 × as much as land pixels between frames 0.2 s apart (land change = compression noise).
+- **Loop period ≈ 0.8 s:** frame-to-frame difference of a water patch is smallest at 24 video frames (0.8 s at 30 fps) and largest around 12–16 frames. That matches 16 frames × 50 ms from the sea sprite's `ANIM` record, i.e. one animation step per `ANIM` ms, and rules out the double speed (0.4 s) that `tick / (ms / 2)` with a millisecond tick would give (OQ-026).
+- **Colour:** open sea averages RGB (28, 89, 138) in the video, ours (37, 107, 142) at zoom 0 — the original is darker and less green. Candidate cause: the colour parameter `0xC0` passed with every water sprite (selects a colour-table variant, not applied yet; `docs/re/annodisplay.md`). The original's water texture also looks finer and more sparkling.
+
 ## Enhanced water (not in the original, opt-in)
 Off by default; `E` in the viewer, `--water enhanced` for `--png`. Applies to sea pixels only (water layer), so cached ground and objects are unaffected. Constants are tuned by eye and are not derived from the original.
 - Shore distance: per island, a chamfer distance field (in tiles) from every height-grid corner at or above sea level, interpolated per pixel on the water plane.

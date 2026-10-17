@@ -220,6 +220,14 @@ fn wave_shade(dist: f32, depth: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<
     return vec3<f32>(light, clamp(foam, 0.0, 1.0), tint);
 }
 
+// iso::river_shade
+fn river_shade(w: vec2<f32>, depth: f32, t: f32) -> vec3<f32> {
+    let a = noise3(w.x * 1.1 + t * 0.00025, w.y * 1.1 + t * 0.00018, t * 0.0002);
+    let b = noise3(w.x * 2.7 - t * 0.0003, w.y * 2.7 + t * 0.00022, t * 0.00035);
+    let light = 0.07 * (0.6 * a + 0.4 * b - 0.5) * 2.0;
+    return vec3<f32>(light, 0.0, 0.15 * sstep(4.0, 0.0, depth));
+}
+
 // iso::swash_runup
 const RUNUP: f32 = 1.2;
 fn swash_runup(dist: f32, w: vec2<f32>, t: f32) -> f32 {
@@ -300,7 +308,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     let wpos = vec2<f32>(pw.x / frame.tile_w + pw.y / frame.tile_h, pw.y / frame.tile_h - pw.x / frame.tile_w);
     if enhanced {
         var run = 0.0;
-        if sd < SWASH_DEPTH {
+        if sd < SWASH_DEPTH && (flags & 2u) == 0u {
             run = swash_runup(f32(shore) / SHORE_SCALE, wpos, frame.time_ms);
         }
         alpha = sstep(-SHORE_EDGE, SHORE_EDGE, sd + run);
@@ -334,7 +342,11 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         let p = vec2<f32>(f32(px.x), f32(px.y) + frame.raise);
         let w = vec2<f32>(p.x / frame.tile_w + p.y / frame.tile_h, p.y / frame.tile_h - p.x / frame.tile_w);
         let detail = sstep(24.0, 64.0, frame.tile_w);
-        c = shade_apply(c, wave_shade(f32(shore) / SHORE_SCALE, sd, w, frame.time_ms, detail));
+        if (flags & 2u) != 0u {
+            c = shade_apply(c, river_shade(w, sd, frame.time_ms));
+        } else {
+            c = shade_apply(c, wave_shade(f32(shore) / SHORE_SCALE, sd, w, frame.time_ms, detail));
+        }
     }
     return vec4<f32>(mix(under, c, alpha), 1.0);
 }

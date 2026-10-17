@@ -226,7 +226,8 @@ pub struct WaterField {
     /// or open sea.
     pub depth: Vec<u8>,
     /// Bit 0: water in the original (terrain under the pixel, interpolated
-    /// as the original's triangles, below sea level).
+    /// as the original's triangles, below sea level). Bit 1: enhanced river
+    /// water (`depth` is then the river depth).
     pub flags: Vec<u8>,
 }
 
@@ -296,11 +297,31 @@ pub struct IslandWater {
     open: Vec<f32>,
     /// Shore distance per height corner in tiles.
     shore: Vec<f32>,
+    /// River surface level per height corner (`HEIGHT` units), `NaN` away
+    /// from rivers (enhanced water only, [`IslandWater::new`]).
+    river: Vec<f32>,
 }
+
+/// A river piece for [`IslandWater::new`]: tile `(x, y)`, footprint
+/// `(w, h)` in tiles, height byte.
+pub type RiverPiece = (u16, u16, u8, u8, u8);
+
+/// River surface above the river objects' height byte (`HEIGHT` units):
+/// river items lie ≈ 9 units below the surrounding terrain, and this level
+/// fills the painted riverbed (tuned visually, as `scene::RIVER_TOLERANCE`;
+/// OQ-026 b).
+pub const RIVER_LEVEL: f32 = 9.0;
+
+/// Openness (of 254) of enhanced river water: how much of the open-water
+/// colour covers the riverbed. Tuning value (not original).
+pub const RIVER_OPENNESS: u8 = 100;
 
 impl IslandWater {
     /// `None` if the island's `HEIGHT` or `GFXID` grid cannot be read.
-    pub fn new(island: &Island<'_>) -> Option<Self> {
+    /// `rivers`: the island's river pieces, whose footprints get a river
+    /// surface level (item height + [`RIVER_LEVEL`]) that is smoothed along
+    /// the river and spread one corner beyond it.
+    pub fn new(island: &Island<'_>, rivers: &[RiverPiece]) -> Option<Self> {
         let (heights, gfx) = (island.heights().ok()?, island.gfx_ids().ok()?);
         let (w, h) = (usize::from(island.width), usize::from(island.height));
         let cw = w.div_ceil(8);
@@ -346,14 +367,76 @@ impl IslandWater {
                 open[y * w + x] = (sum / 16.0).max(border);
             }
         }
+        // River level: average over the pieces covering each corner, then
+        // two passes of averaging with defined neighbours (smooth along
+        // the river, one corner beyond its footprints).
+        let (cw1, ch1) = (w, h);
+        let mut sum = vec![0.0f32; cw1 * ch1];
+        let mut n = vec![0.0f32; cw1 * ch1];
+        for &(x, y, fw, fh, z) in rivers {
+            for dy in 0..=usize::from(fh) {
+                for dx in 0..=usize::from(fw) {
+                    let (cx, cy) = (usize::from(x) + dx, usize::from(y) + dy);
+                    if cx < cw1 && cy < ch1 {
+                        sum[cy * cw1 + cx] += f32::from(z) + RIVER_LEVEL;
+                        n[cy * cw1 + cx] += 1.0;
+                    }
+                }
+            }
+        }
+        let mut river: Vec<f32> = sum
+            .iter()
+            .zip(&n)
+            .map(|(&s, &k)| if k > 0.0 { s / k } else { f32::NAN })
+            .collect();
+        for _ in 0..2 {
+            let prev = river.clone();
+            for y in 0..ch1 {
+                for x in 0..cw1 {
+                    let (mut s, mut k) = (0.0, 0.0);
+                    for yy in y.saturating_sub(1)..=(y + 1).min(ch1 - 1) {
+                        for xx in x.saturating_sub(1)..=(x + 1).min(cw1 - 1) {
+                            let v = prev[yy * cw1 + xx];
+                            if !v.is_nan() {
+                                s += v;
+                                k += 1.0;
+                            }
+                        }
+                    }
+                    if k > 0.0 {
+                        river[y * cw1 + x] = s / k;
+                    }
+                }
+            }
+        }
         Some(Self {
             w,
             h,
+            river,
             shore: smooth_shore(&heights, w, h),
             heights,
             sea_chunk,
             open,
         })
+    }
+
+    /// River surface level at tile `(tx, ty)` + `(fx, fy)`: bilinear over
+    /// the corners that have one; `None` away from rivers.
+    fn river_level(&self, tx: usize, ty: usize, fx: f32, fy: f32) -> Option<f32> {
+        let at = |x: usize, y: usize| self.river[y.min(self.h - 1) * self.w + x.min(self.w - 1)];
+        let (mut s, mut k) = (0.0, 0.0);
+        for (v, wt) in [
+            (at(tx, ty), (1.0 - fx) * (1.0 - fy)),
+            (at(tx + 1, ty), fx * (1.0 - fy)),
+            (at(tx, ty + 1), (1.0 - fx) * fy),
+            (at(tx + 1, ty + 1), fx * fy),
+        ] {
+            if !v.is_nan() {
+                s += v * wt;
+                k += wt;
+            }
+        }
+        (k > 0.25).then(|| s / k)
     }
 
     /// Bilinear value of a per-corner field at tile `(tx, ty)` + `(fx, fy)`.
@@ -418,7 +501,28 @@ pub fn water_field<'w>(
         );
         let sea_chunk = iw.sea_chunk[(ty / 8) * iw.w.div_ceil(8) + tx / 8];
         let original_water = under < waterline && sea_chunk;
-        let sd = waterline - smooth_height(&iw.heights, iw.w, iw.h, x, y);
+        let smooth = smooth_height(&iw.heights, iw.w, iw.h, x, y);
+        let sd = waterline - smooth;
+        // Enhanced river water (flag bit 1): river level over the smooth
+        // terrain, where no sea is.
+        if !original_water && sd <= 0.0 {
+            let level = iw.river_level(tx, ty, fx, fy);
+            if let Some(level) = level {
+                let rd = level - smooth;
+                if rd > -iso::Waves::DEFAULT.shore_edge {
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    {
+                        // River water shows its bed less than the sea
+                        // shallows (openness ≈ 0.4).
+                        cover[i] = 1 + RIVER_OPENNESS;
+                        shore[i] = 255;
+                        depth[i] = (DEPTH_BIAS + rd * DEPTH_SCALE).clamp(0.0, 255.0) as u8;
+                        flags[i] = 2;
+                    }
+                    continue;
+                }
+            }
+        }
         // Enhanced water runs up to `runup` above the waterline.
         if !sea_chunk || (!original_water && sd <= -(edge + iso::Waves::DEFAULT.runup)) {
             cover[i] = 0;
@@ -591,8 +695,8 @@ pub fn shade_sea<P: SeaTarget>(
                 WaterStyle::Original => 1.0,
                 WaterStyle::Enhanced => {
                     let w = iso::Waves::DEFAULT;
-                    // The waterline moves with the swash.
-                    let run = if sd < w.swash_depth {
+                    // The waterline moves with the swash (not on rivers).
+                    let run = if sd < w.swash_depth && flags & 2 == 0 {
                         let (_, shore, _, _) = field(row * rw + col);
                         let sx = region.x + i32::try_from(col).expect("fits");
                         #[allow(clippy::cast_precision_loss)]
@@ -655,7 +759,14 @@ pub fn shade_sea<P: SeaTarget>(
                     (s(p00) * (1.0 - fx) + s(p10) * fx) * (1.0 - fy)
                         + (s(p01) * (1.0 - fx) + s(p11) * fx) * fy
                 };
-                c = iso::shade_apply(c, (mix(|p| p.0), mix(|p| p.1), mix(|p| p.2)));
+                let shade = if flags & 2 == 0 {
+                    (mix(|p| p.0), mix(|p| p.1), mix(|p| p.2))
+                } else {
+                    #[allow(clippy::cast_precision_loss)]
+                    let (px, py) = (sx as f32, (sy + raise_px) as f32);
+                    iso::river_shade((px / twf + py / thf, py / thf - px / twf), sd, time_ms)
+                };
+                c = iso::shade_apply(c, shade);
             }
             if alpha < 1.0 {
                 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]

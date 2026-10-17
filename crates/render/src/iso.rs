@@ -1206,6 +1206,27 @@ pub(crate) fn wave_shade(
     (light, foam.clamp(0.0, 1.0), tint)
 }
 
+/// Enhanced river shading `(light, foam, tint)` at plane position `pos`
+/// (tiles) and river depth `depth` (`HEIGHT` units): no waves, a gentle
+/// shimmer drifting slowly, a faint turquoise tint where shallow.
+pub(crate) fn river_shade((wx, wy): (f32, f32), depth: f32, time_ms: u64) -> (f32, f32, f32) {
+    #[allow(clippy::cast_precision_loss)]
+    let t = (time_ms % 3_600_000) as f32;
+    let a = noise3(
+        wx * 1.1 + t * 0.000_25,
+        wy * 1.1 + t * 0.000_18,
+        t * 0.000_2,
+    );
+    let b = noise3(
+        wx * 2.7 - t * 0.000_3,
+        wy * 2.7 + t * 0.000_22,
+        t * 0.000_35,
+    );
+    let light = 0.07 * (0.6 * a + 0.4 * b - 0.5) * 2.0;
+    let tint = 0.15 * smoothstep(4.0, 0.0, depth);
+    (light, 0.0, tint)
+}
+
 /// Swash run-up (`HEIGHT` units) at shore distance `dist` (tiles) and
 /// plane position `pos` (tiles): after each surf crest the water rushes up
 /// the beach and slowly draws back, so the enhanced waterline moves back

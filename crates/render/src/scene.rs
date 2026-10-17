@@ -257,6 +257,11 @@ pub enum SpriteLayer {
     Objects,
 }
 
+/// `ANLAGEN` ids of river pieces (`Fluss*`; 2702–2704 are waterfalls and
+/// river mouths and keep their sprites). P: `docs/render/iso.md`, "Water".
+/// Original values; to become content configuration (PLAN §0.1).
+pub const RIVER_ANLAGEN: [u32; 4] = [2701, 2705, 2706, 2707];
+
 /// Tolerance (`HEIGHT` units) of the river depth test: terrain up to this
 /// much above the object's height still shows its water. Tuning value; how
 /// the original's per-pixel `z` offsets of `BSH_RGBWZ` frames shift the
@@ -268,6 +273,13 @@ pub const OBJECT_RECORDS: [&str; 3] = ["GELAENDE", "PROD2", "FLUESSE"];
 
 impl IslandData {
     /// Water objects below sea level for `style`.
+    fn above_list(&self, style: WaterStyle) -> &[Prepared] {
+        match style {
+            WaterStyle::Original => &self.above,
+            WaterStyle::Enhanced => &self.above_enhanced,
+        }
+    }
+
     fn below_list(&self, style: WaterStyle) -> &[Prepared] {
         match style {
             WaterStyle::Original => &self.below,
@@ -311,6 +323,11 @@ struct IslandData {
     /// `below` without the original's surf sprites, which the enhanced
     /// water replaces with its own surf.
     below_enhanced: Vec<Prepared>,
+    /// `above` without the river pieces, which the enhanced water draws
+    /// itself (`sea::IslandWater` river level).
+    above_enhanced: Vec<Prepared>,
+    /// River pieces for the enhanced river surface.
+    rivers: Vec<sea::RiverPiece>,
     above: Vec<Prepared>,
     other: Vec<Prepared>,
     /// `None` if a grid cannot be read (no ground drawn).
@@ -362,10 +379,26 @@ impl<'a> Scene<'a> {
                     .copied()
                     .filter(|(o, _)| u32::from(o.anlage) != iso::SURF_ANLAGE)
                     .collect();
+                let above = list(Objects::WaterAboveSea);
+                let is_river = |o: &anno_formats::insel::PlacedObject| {
+                    RIVER_ANLAGEN.contains(&u32::from(o.anlage))
+                };
+                let rivers = above
+                    .iter()
+                    .filter(|(o, _)| is_river(o))
+                    .map(|&(o, (w, h))| (o.x, o.y, w, h, o.height()))
+                    .collect();
+                let above_enhanced = above
+                    .iter()
+                    .copied()
+                    .filter(|(o, _)| !is_river(o))
+                    .collect();
                 IslandData {
                     below,
                     below_enhanced,
-                    above: list(Objects::WaterAboveSea),
+                    above_enhanced,
+                    rivers,
+                    above,
                     other: list(Objects::NotWater),
                     grids: i.gfx_ids().ok().zip(i.heights().ok()),
                     water: OnceLock::new(),
@@ -431,7 +464,7 @@ impl<'a> Scene<'a> {
             let o = &self.objects[p.index];
             let list = match layer {
                 SpriteLayer::WaterBelow => o.below_list(style),
-                SpriteLayer::WaterAbove => &o.above,
+                SpriteLayer::WaterAbove => o.above_list(style),
                 SpriteLayer::Objects => &o.other,
             };
             let start = out.len();
@@ -478,7 +511,7 @@ impl<'a> Scene<'a> {
         let water = |i: usize| {
             self.objects[i]
                 .water
-                .get_or_init(|| IslandWater::new(&self.islands[i]))
+                .get_or_init(|| IslandWater::new(&self.islands[i], &self.objects[i].rivers))
                 .as_ref()
         };
         sea::water_field(rect, probe, water)
@@ -666,7 +699,7 @@ impl<'a> Scene<'a> {
                         };
                         add(iso::draw_prepared_tested(
                             &mut local,
-                            &objects.above,
+                            objects.above_list(layers.water_style),
                             &self.anlagen,
                             group,
                             self.lift,

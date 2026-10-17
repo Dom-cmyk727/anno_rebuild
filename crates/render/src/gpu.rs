@@ -428,8 +428,8 @@ impl GpuFrame {
         stats.upload_ms = ms(t);
 
         let t = Instant::now();
-        let below = scene.sprites(view, group, time_ms, SpriteLayer::WaterBelow);
-        let above = scene.sprites(view, group, time_ms, SpriteLayer::WaterAbove);
+        let below = scene.sprites(view, group, time_ms, SpriteLayer::WaterBelow, style);
+        let above = scene.sprites(view, group, time_ms, SpriteLayer::WaterAbove, style);
         let mut bytes = Vec::with_capacity((below.len() + above.len()) * 32);
         let n_below = self.pack_sprites(scene, &below, &mut bytes);
         let n_above = self.pack_sprites(scene, &above, &mut bytes);

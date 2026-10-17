@@ -260,6 +260,16 @@ pub enum SpriteLayer {
 /// Object records drawn: scenery, built objects, rivers and surf.
 pub const OBJECT_RECORDS: [&str; 3] = ["GELAENDE", "PROD2", "FLUESSE"];
 
+impl IslandData {
+    /// Water objects below sea level for `style`.
+    fn below_list(&self, style: WaterStyle) -> &[Prepared] {
+        match style {
+            WaterStyle::Original => &self.below,
+            WaterStyle::Enhanced => &self.below_enhanced,
+        }
+    }
+}
+
 /// Average colour of the most common sea floor texture at the lowest
 /// `HEIGHT` of the islands' textured tiles. Islands carry deep sea
 /// floor textures (e.g. `Meer_Meer02.bmp`) around their land; using their
@@ -292,6 +302,9 @@ pub fn sea_floor_colour(islands: &[Island<'_>], textures: &GroundTextures) -> Op
 /// order, the `GFXID` and `HEIGHT` grids, and the sea inputs.
 struct IslandData {
     below: Vec<Prepared>,
+    /// `below` without the original's surf sprites, which the enhanced
+    /// water replaces with its own surf.
+    below_enhanced: Vec<Prepared>,
     above: Vec<Prepared>,
     other: Vec<Prepared>,
     /// `None` if a grid cannot be read (no ground drawn).
@@ -337,8 +350,15 @@ impl<'a> Scene<'a> {
             .iter()
             .map(|i| {
                 let list = |which| iso::prepare_objects(i, &anlagen, &OBJECT_RECORDS, which);
+                let below = list(Objects::WaterBelowSea);
+                let below_enhanced = below
+                    .iter()
+                    .copied()
+                    .filter(|(o, _)| u32::from(o.anlage) != iso::SURF_ANLAGE)
+                    .collect();
                 IslandData {
-                    below: list(Objects::WaterBelowSea),
+                    below,
+                    below_enhanced,
                     above: list(Objects::WaterAboveSea),
                     other: list(Objects::NotWater),
                     grids: i.gfx_ids().ok().zip(i.heights().ok()),
@@ -389,6 +409,7 @@ impl<'a> Scene<'a> {
         group: usize,
         time_ms: u64,
         layer: SpriteLayer,
+        style: WaterStyle,
     ) -> Vec<SpriteDraw<'_>> {
         let mut out = Vec::new();
         for p in &self.layouts[group] {
@@ -397,7 +418,7 @@ impl<'a> Scene<'a> {
             }
             let o = &self.objects[p.index];
             let list = match layer {
-                SpriteLayer::WaterBelow => &o.below,
+                SpriteLayer::WaterBelow => o.below_list(style),
                 SpriteLayer::WaterAbove => &o.above,
                 SpriteLayer::Objects => &o.other,
             };
@@ -504,7 +525,7 @@ impl<'a> Scene<'a> {
                         }
                     }
                     if layers.water_below {
-                        add(draw(&mut local, &objects.below, t));
+                        add(draw(&mut local, objects.below_list(layers.water_style), t));
                     }
                 } else {
                     if layers.water_above {

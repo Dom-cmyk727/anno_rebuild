@@ -795,29 +795,44 @@ pub(crate) fn shore_distance(heights: &[u8], w: usize, h: usize) -> Vec<f32> {
 }
 
 /// Tuning of the enhanced water. Not derived from the original; tuned by
-/// eye. Kept together so it can become configuration (PLAN §0.1, §0.2).
+/// eye against the colleague's recordings (2026-10-17). Kept together so it
+/// can become configuration (PLAN §0.1, §0.2). The WGSL port in `gpu.wgsl`
+/// mirrors these values.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Waves {
-    /// Tiles from the shore where incoming swell starts to grow (shoaling).
+    /// Tiles from the shore where coastal waves start.
     pub surf_zone: f32,
-    /// Tiles from the shore where crests break into whitewater.
+    /// Tiles from the shore where crests break into foam.
     pub break_zone: f32,
     /// Distance between incoming crests (tiles).
     pub wavelength: f32,
     /// Time for one crest to follow the next (ms).
     pub period_ms: f32,
-    /// Share of open sea covered by whitecaps (0 = none, 1 = all).
-    pub whitecaps: f32,
+    /// Brightness amplitude of the open-water swell.
+    pub swell: f32,
+    /// Strength of the turquoise tint of shallow water at the shoreline.
+    pub shallow_tint: f32,
+    /// Colour of shallow water (0–1 RGB).
+    pub shallow_colour: [f32; 3],
 }
 
 impl Waves {
     pub const DEFAULT: Waves = Waves {
-        surf_zone: 5.5,
-        break_zone: 2.6,
-        wavelength: 1.6,
-        period_ms: 2600.0,
-        whitecaps: 0.18,
+        surf_zone: 3.0,
+        break_zone: 1.6,
+        wavelength: 1.4,
+        period_ms: 3000.0,
+        swell: 0.07,
+        shallow_tint: 0.3,
+        shallow_colour: [0.36, 0.74, 0.76],
     };
+}
+
+/// Detail level of the enhanced water for tile width `tw` (pixels): 1 at
+/// zoom group 0, fading to 0 at group 2, where fine foam texture would be
+/// smaller than a few pixels and alias into patterns.
+pub(crate) fn wave_detail(tw: f32) -> f32 {
+    smoothstep(24.0, 64.0, tw)
 }
 
 /// Hash of an integer lattice point to `[0, 1)`.
@@ -860,100 +875,98 @@ fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
 }
 
 /// Enhanced-water shading of one sea pixel (not original, opt-in): returns
-/// the colour and the foam amount (0–1). `shore` = distance to the shore in
-/// tiles, `pos` = position on the water plane in tiles.
+/// `(light, foam, tint)` — relative brightness change, foam amount (0–1)
+/// and shallow-water tint (0–1). `shore` = distance to the shore in tiles,
+/// `pos` = position on the water plane in tiles, `detail` = [`wave_detail`].
 ///
-/// Model: crests of equal phase `shore / λ + t / T` travel towards the
-/// beach, parallel to the coast. Each wave has a steep shoreward face and a
-/// gentle back; inside the surf zone it grows (darker face, bright crest),
-/// inside the break zone it turns into turbulent whitewater, and when it
-/// reaches the beach a foam sheet bursts out and decays until the next
-/// crest. Open water carries a slow swell and short-lived whitecaps.
-pub(crate) fn wave_shade(shore: f32, (wx, wy): (f32, f32), time_ms: u64) -> (f32, f32) {
+/// Model:
+/// - Open water: a slow swell from two drifting layers of smooth value
+///   noise (no regular stripes, no whitecaps).
+/// - Coast (inside `surf_zone`): crests of equal phase `shore / λ + t / T`
+///   travel towards the beach; slow noise bends them so they do not trace
+///   the shore exactly, and breaks them into segments. Crests brighten the
+///   water; inside `break_zone` they turn into mottled foam; at the beach a
+///   thin swash sheet runs up after each crest and fades.
+/// - Shallow water near the shore is tinted turquoise.
+pub(crate) fn wave_shade(
+    shore: f32,
+    (wx, wy): (f32, f32),
+    time_ms: u64,
+    detail: f32,
+) -> (f32, f32, f32) {
     let w = Waves::DEFAULT;
     #[allow(clippy::cast_precision_loss)]
     let t = (time_ms % 3_600_000) as f32;
-    // Crests are bent and broken up along the coast so they do not follow
-    // the shore-distance contours exactly.
-    let wobble = 0.08 * (wx * 0.45).sin() + 0.06 * (wy * 0.65 + 1.7).sin();
-    let phase = shore / w.wavelength + t / w.period_ms + wobble;
-    // 0 = crest; just below 1 = the steep face ahead of the next crest.
-    let u = phase - phase.floor();
-    let height = (-u * 5.0).exp().max(smoothstep(0.86, 1.0, u));
-    let segment = smoothstep(0.25, 0.6, noise3(wx * 0.35, wy * 0.35, t * 0.000_12));
-    // Shoaling: waves grow from the surf zone to the break zone.
-    let grow = smoothstep(w.surf_zone, w.break_zone, shore) * (0.45 + 0.55 * segment);
-    let face = smoothstep(0.86, 0.98, u) * (1.0 - smoothstep(0.98, 1.0, u));
-    let mut light = -0.32 * grow * face + 0.2 * grow * (-u * 12.0).exp();
-    // Open-water swell: two slow, crossing waves.
-    let calm = smoothstep(w.break_zone, w.surf_zone * 1.5, shore);
-    light += calm
-        * 0.12
-        * (0.5 * (0.55 * wx + 0.35 * wy - t * 0.0018).sin()
-            + 0.5 * (0.23 * wx - 0.41 * wy - t * 0.0011).sin());
-    // Turbulence for whitewater and caps.
-    let churn = noise3(wx * 2.6, wy * 2.6, t * 0.0016);
+    let s1 = noise3(
+        wx * 0.22 + t * 0.000_11,
+        wy * 0.22 - t * 0.000_04,
+        t * 0.000_06,
+    );
+    let s2 = noise3(
+        wx * 0.55 - t * 0.000_19,
+        wy * 0.55 + t * 0.000_13,
+        t * 0.000_11,
+    );
+    let mut light = w.swell * 2.0 * (0.65 * s1 + 0.35 * s2 - 0.5);
+    let near = smoothstep(w.surf_zone, w.break_zone * 0.5, shore);
     let mut foam: f32 = 0.0;
-    // Breaking: the crest collapses into whitewater, thickest at the front,
-    // with a mottled trail behind it.
-    let breaking = smoothstep(w.break_zone, w.break_zone * 0.45, shore) * (0.5 + 0.5 * segment);
-    if breaking > 0.0 {
-        // Whitewater: a thick band behind the crest that thins out into
-        // mottled foam until the next wave.
-        let crest_foam = height.powf(1.2) * (0.6 + 0.6 * churn);
-        let trail = (-u * 1.6).exp() * smoothstep(0.35, 0.7, churn) * 0.75;
-        foam = foam.max(breaking * (crest_foam + trail));
+    if near > 0.0 {
+        let bend = noise3(wx * 0.18, wy * 0.18, t * 0.000_05);
+        let phase = shore / w.wavelength + t / w.period_ms + 0.8 * bend;
+        let u = phase - phase.floor();
+        // Gentle back, steep front just before the next phase.
+        let crest = smoothstep(0.55, 0.95, u) * (1.0 - smoothstep(0.95, 1.0, u));
+        let segment = smoothstep(0.3, 0.7, noise3(wx * 0.45, wy * 0.45, t * 0.000_08));
+        let amp = near * (0.35 + 0.65 * segment);
+        light += 0.12 * amp * crest;
+        // Curl: a white line on the steep front just before it breaks.
+        let curl = smoothstep(0.88, 0.95, u)
+            * (1.0 - smoothstep(0.95, 0.985, u))
+            * smoothstep(w.break_zone * 1.6, w.break_zone, shore);
+        let fine = noise3(wx * 2.2, wy * 2.2, t * 0.0011);
+        let mottle = 0.55 + detail * (fine - 0.55);
+        let breaking = smoothstep(w.break_zone, w.break_zone * 0.3, shore);
+        foam = (breaking * amp * crest.powf(0.5) * smoothstep(0.15, 0.6, mottle) * 1.3)
+            .max(0.75 * amp * curl);
+        if shore < 0.7 {
+            let at_shore = phase - shore / w.wavelength;
+            let since = at_shore - at_shore.floor();
+            let burst = smoothstep(0.0, 0.05, since) * (-since * 3.0).exp();
+            let edge = (1.0 - shore / 0.7).powf(0.8);
+            foam = foam.max(edge * burst * (0.5 + 0.5 * mottle));
+        }
     }
-    // Impact: when a crest reaches the beach a foam sheet bursts out and
-    // fades until the next one; the backwash drags it into streaks.
-    if shore < 1.3 {
-        let at_shore = phase - shore / w.wavelength;
-        let since = at_shore - at_shore.floor();
-        // Rises quickly on impact, then decays until the next crest.
-        let burst = smoothstep(0.0, 0.04, since) * (-since * 2.4).exp();
-        let streaks = smoothstep(0.25, 0.65, noise3(wx * 4.0, wy * 4.0, t * 0.0009));
-        let near = (1.0 - shore / 1.3).powf(0.7);
-        foam = foam.max(near * burst * (0.65 + 0.35 * streaks));
-    }
-    // Whitecaps on open water: foam on the crests of the swell where the
-    // (slowly changing) noise allows it, so caps stretch along the crests
-    // and come and go.
-    if calm > 0.0 {
-        let swell_crest = (0.55 * wx + 0.35 * wy - t * 0.0018).sin();
-        let on_crest = smoothstep(0.55, 0.95, swell_crest);
-        let cell = noise3(wx * 0.6, wy * 0.6, t * 0.000_16);
-        let threshold = 0.75 - 0.25 * w.whitecaps;
-        let cap = smoothstep(threshold - 0.04, threshold + 0.06, cell) * on_crest;
-        let detail = noise3(wx * 6.0, wy * 6.0, t * 0.0012);
-        foam = foam.max(calm * cap * (0.3 + 0.7 * detail) * 0.75);
-    }
-    (light, foam.clamp(0.0, 1.0))
+    let tint = w.shallow_tint * smoothstep(2.2, 0.0, shore);
+    (light, foam.clamp(0.0, 1.0), tint)
 }
 
-/// `rgba` lit by `light` (relative brightness change) and whitened by
-/// `foam` (0..=1), as computed by [`wave_shade`].
-pub(crate) fn shade_apply(rgba: [u8; 4], light: f32, foam: f32) -> [u8; 4] {
+/// `rgba` tinted by `tint`, lit by `light` and whitened by `foam`, as
+/// computed by [`wave_shade`].
+pub(crate) fn shade_apply(rgba: [u8; 4], (light, foam, tint): (f32, f32, f32)) -> [u8; 4] {
+    let w = Waves::DEFAULT;
     let brightness = 1.0 + light;
-    let channel = |c: u8, white: f32| -> u8 {
-        let v = f32::from(c) * brightness;
+    let channel = |c: u8, shallow: f32, white: f32| -> u8 {
+        let v = f32::from(c);
+        let v = (v + (shallow * 255.0 - v) * tint) * brightness;
         let v = v + (white - v) * foam;
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let out = v.clamp(0.0, 255.0) as u8;
         out
     };
     [
-        channel(rgba[0], 236.0),
-        channel(rgba[1], 244.0),
-        channel(rgba[2], 250.0),
+        channel(rgba[0], w.shallow_colour[0], 236.0),
+        channel(rgba[1], w.shallow_colour[1], 244.0),
+        channel(rgba[2], w.shallow_colour[2], 250.0),
         rgba[3],
     ]
 }
 
-/// [`wave_shade`] applied to one pixel; returns the colour and the foam.
+/// [`wave_shade`] applied to one pixel at full detail; returns the colour
+/// and the foam.
 #[cfg(test)]
 fn enhance(rgba: [u8; 4], shore: f32, pos: (f32, f32), time_ms: u64) -> ([u8; 4], f32) {
-    let (light, foam) = wave_shade(shore, pos, time_ms);
-    (shade_apply(rgba, light, foam), foam)
+    let s = wave_shade(shore, pos, time_ms, 1.0);
+    (shade_apply(rgba, s), s.1)
 }
 
 #[cfg(test)]

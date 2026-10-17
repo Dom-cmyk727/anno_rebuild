@@ -29,10 +29,47 @@ use crate::scene::{Placement, Rect};
 /// `16·tw × 16·th` (shifts `(16, −16)` and `(16, 16)` of [`iso::tile_top`]).
 pub const PERIOD_TILES: i32 = 16;
 
-/// Shore distances in [`WaterField::shore`] are stored in 1/16 tiles; 255 =
-/// 15.9 tiles or more (open sea; the enhanced waves are calm from
-/// `Waves::surf_zone · 1.5` = 8.25 tiles on).
-pub const SHORE_SCALE: f32 = 16.0;
+/// Shore distances in [`WaterField::shore`] are stored in 1/32 tiles (fine
+/// enough that crest lines do not step at zoom group 0); 255 = 7.97 tiles
+/// or more (open sea: the coastal waves end at `Waves::surf_zone`, 3 tiles).
+/// `gpu.wgsl` uses the same scale.
+pub const SHORE_SCALE: f32 = 32.0;
+
+/// Passes of a 3 × 3 box blur over the shore distance field: the chamfer
+/// distance has octagonal contours with kinks at the tile corners, which
+/// showed as angular bands along the coast. Land stays 0.
+const SHORE_SMOOTHING: usize = 2;
+
+/// [`iso::shore_distance`] smoothed by [`SHORE_SMOOTHING`] box-blur passes.
+fn smooth_shore(heights: &[u8], w: usize, h: usize) -> Vec<f32> {
+    let mut d = iso::shore_distance(heights, w, h);
+    for _ in 0..SHORE_SMOOTHING {
+        let prev = d.clone();
+        for y in 0..h {
+            for x in 0..w {
+                let i = y * w + x;
+                if prev[i] == 0.0 {
+                    continue;
+                }
+                let (mut sum, mut n) = (0.0, 0.0);
+                for yy in y.saturating_sub(1)..=(y + 1).min(h - 1) {
+                    for xx in x.saturating_sub(1)..=(x + 1).min(w - 1) {
+                        let v = prev[yy * w + xx];
+                        // Open sea beyond the island keeps growing.
+                        if v.is_finite() {
+                            sum += v;
+                            n += 1.0;
+                        }
+                    }
+                }
+                if n > 0.0 {
+                    d[i] = sum / n;
+                }
+            }
+        }
+    }
+    d
+}
 
 /// One animation step of the sea, `width × height` pixels, row-major.
 struct PatternStep {
@@ -239,7 +276,7 @@ impl IslandWater {
         Some(Self {
             w,
             h,
-            shore: iso::shore_distance(&heights, w, h),
+            shore: smooth_shore(&heights, w, h),
             heights,
             sea_chunk,
             open,
@@ -403,13 +440,14 @@ pub fn shade_sea<P: SeaTarget>(
     );
     let gw = to_usize((region.x + region.w - gx0).div_euclid(step) + 2);
     let gh = to_usize((region.y + region.h - gy0).div_euclid(step) + 2);
-    let grid: Vec<(f32, f32)> = match style {
+    let grid: Vec<(f32, f32, f32)> = match style {
         WaterStyle::Original => Vec::new(),
         WaterStyle::Enhanced => {
             let (tw, th) = TILE[group];
             let raise = lift.scaled(SEA_LEVEL, 1, group);
             #[allow(clippy::cast_precision_loss)]
             let (twf, thf) = (tw as f32, th as f32);
+            let detail = iso::wave_detail(twf);
             (0..gh)
                 .flat_map(|j| (0..gw).map(move |i| (i, j)))
                 .map(|(i, j)| {
@@ -419,14 +457,12 @@ pub fn shade_sea<P: SeaTarget>(
                         to_usize((sx - region.x).clamp(0, region.w - 1)),
                         to_usize((sy - region.y).clamp(0, region.h - 1)),
                     );
-                    let (cover, shore) = field(cy * rw + cx);
-                    if cover == 0 {
-                        return (0.0, 0.0);
-                    }
+                    // Land points too (shore 0), so foam reaches the beach.
+                    let (_, shore) = field(cy * rw + cx);
                     #[allow(clippy::cast_precision_loss)]
                     let (px, py) = (sx as f32, (sy + raise) as f32);
                     let pos = (px / twf + py / thf, py / thf - px / twf);
-                    iso::wave_shade(f32::from(shore) / SHORE_SCALE, pos, time_ms)
+                    iso::wave_shade(f32::from(shore) / SHORE_SCALE, pos, time_ms, detail)
                 })
                 .collect()
         }
@@ -467,11 +503,11 @@ pub fn shade_sea<P: SeaTarget>(
                     at(gx, gy + 1),
                     at(gx + 1, gy + 1),
                 );
-                let mix = |s: fn((f32, f32)) -> f32| {
+                let mix = |s: fn((f32, f32, f32)) -> f32| {
                     (s(p00) * (1.0 - fx) + s(p10) * fx) * (1.0 - fy)
                         + (s(p01) * (1.0 - fx) + s(p11) * fx) * fy
                 };
-                c = iso::shade_apply(c, mix(|p| p.0), mix(|p| p.1));
+                c = iso::shade_apply(c, (mix(|p| p.0), mix(|p| p.1), mix(|p| p.2)));
             }
             *dst = P::from_rgba(c);
         }

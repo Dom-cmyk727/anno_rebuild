@@ -217,6 +217,7 @@ impl FrameRenderer {
     }
 
     /// The cached chunk `(group, cx, cy)`, if built.
+    #[cfg_attr(not(feature = "gpu"), allow(dead_code))]
     pub(crate) fn chunk(&self, key: ChunkKey) -> Option<&Chunk> {
         self.cache.get(&key)
     }
@@ -280,6 +281,7 @@ impl FrameRenderer {
                 water_below: below,
                 water_above: !below,
                 time_ms,
+                water_style: style,
                 ..Layers::NONE
             };
             par_map(&parts, self.threads, |&r| scene.render(r, group, layers).0)

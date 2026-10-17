@@ -124,59 +124,56 @@ fn sstep(a: f32, b: f32, x: f32) -> f32 {
     return t * t * (3.0 - 2.0 * t);
 }
 
-// Waves::DEFAULT
-const SURF_ZONE: f32 = 5.5;
-const BREAK_ZONE: f32 = 2.6;
-const WAVELENGTH: f32 = 1.6;
-const PERIOD_MS: f32 = 2600.0;
-const WHITECAPS: f32 = 0.18;
+// Waves::DEFAULT (iso.rs)
+const SURF_ZONE: f32 = 3.0;
+const BREAK_ZONE: f32 = 1.6;
+const WAVELENGTH: f32 = 1.4;
+const PERIOD_MS: f32 = 3000.0;
+const SWELL: f32 = 0.07;
+const SHALLOW_TINT: f32 = 0.3;
+const SHALLOW_COLOUR: vec3<f32> = vec3<f32>(0.36, 0.74, 0.76);
+// sea::SHORE_SCALE
+const SHORE_SCALE: f32 = 32.0;
 
-// (light, foam) at shore distance `shore` (tiles), plane position w (tiles).
-fn wave_shade(shore: f32, w: vec2<f32>, t: f32) -> vec2<f32> {
-    let wobble = 0.08 * sin(w.x * 0.45) + 0.06 * sin(w.y * 0.65 + 1.7);
-    let phase = shore / WAVELENGTH + t / PERIOD_MS + wobble;
-    let u = phase - floor(phase);
-    let height = max(exp(-u * 5.0), sstep(0.86, 1.0, u));
-    let segment = sstep(0.25, 0.6, noise3(w.x * 0.35, w.y * 0.35, t * 0.00012));
-    let grow = sstep(SURF_ZONE, BREAK_ZONE, shore) * (0.45 + 0.55 * segment);
-    let face = sstep(0.86, 0.98, u) * (1.0 - sstep(0.98, 1.0, u));
-    var light = -0.32 * grow * face + 0.2 * grow * exp(-u * 12.0);
-    let calm = sstep(BREAK_ZONE, SURF_ZONE * 1.5, shore);
-    light += calm * 0.12 * (0.5 * sin(0.55 * w.x + 0.35 * w.y - t * 0.0018)
-        + 0.5 * sin(0.23 * w.x - 0.41 * w.y - t * 0.0011));
-    let churn = noise3(w.x * 2.6, w.y * 2.6, t * 0.0016);
+// iso::wave_shade: (light, foam, tint) at shore distance `shore` (tiles),
+// plane position w (tiles), time t (ms), detail level 0..1.
+fn wave_shade(shore: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<f32> {
+    let s1 = noise3(w.x * 0.22 + t * 0.00011, w.y * 0.22 - t * 0.00004, t * 0.00006);
+    let s2 = noise3(w.x * 0.55 - t * 0.00019, w.y * 0.55 + t * 0.00013, t * 0.00011);
+    var light = SWELL * 2.0 * (0.65 * s1 + 0.35 * s2 - 0.5);
+    let near = sstep(SURF_ZONE, BREAK_ZONE * 0.5, shore);
     var foam = 0.0;
-    let breaking = sstep(BREAK_ZONE, BREAK_ZONE * 0.45, shore) * (0.5 + 0.5 * segment);
-    if breaking > 0.0 {
-        let crest_foam = pow(height, 1.2) * (0.6 + 0.6 * churn);
-        let trail = exp(-u * 1.6) * sstep(0.35, 0.7, churn) * 0.75;
-        foam = max(foam, breaking * (crest_foam + trail));
+    if near > 0.0 {
+        let bend = noise3(w.x * 0.18, w.y * 0.18, t * 0.00005);
+        let phase = shore / WAVELENGTH + t / PERIOD_MS + 0.8 * bend;
+        let u = phase - floor(phase);
+        let crest = sstep(0.55, 0.95, u) * (1.0 - sstep(0.95, 1.0, u));
+        let segment = sstep(0.3, 0.7, noise3(w.x * 0.45, w.y * 0.45, t * 0.00008));
+        let amp = near * (0.35 + 0.65 * segment);
+        light += 0.12 * amp * crest;
+        let curl = sstep(0.88, 0.95, u) * (1.0 - sstep(0.95, 0.985, u))
+            * sstep(BREAK_ZONE * 1.6, BREAK_ZONE, shore);
+        let fine = noise3(w.x * 2.2, w.y * 2.2, t * 0.0011);
+        let mottle = 0.55 + detail * (fine - 0.55);
+        let breaking = sstep(BREAK_ZONE, BREAK_ZONE * 0.3, shore);
+        foam = max(breaking * amp * pow(crest, 0.5) * sstep(0.15, 0.6, mottle) * 1.3, 0.75 * amp * curl);
+        if shore < 0.7 {
+            let at_shore = phase - shore / WAVELENGTH;
+            let since = at_shore - floor(at_shore);
+            let burst = sstep(0.0, 0.05, since) * exp(-since * 3.0);
+            let edge = pow(1.0 - shore / 0.7, 0.8);
+            foam = max(foam, edge * burst * (0.5 + 0.5 * mottle));
+        }
     }
-    if shore < 1.3 {
-        let at_shore = phase - shore / WAVELENGTH;
-        let since = at_shore - floor(at_shore);
-        let burst = sstep(0.0, 0.04, since) * exp(-since * 2.4);
-        let streaks = sstep(0.25, 0.65, noise3(w.x * 4.0, w.y * 4.0, t * 0.0009));
-        let near = pow(1.0 - shore / 1.3, 0.7);
-        foam = max(foam, near * burst * (0.65 + 0.35 * streaks));
-    }
-    if calm > 0.0 {
-        let swell_crest = sin(0.55 * w.x + 0.35 * w.y - t * 0.0018);
-        let on_crest = sstep(0.55, 0.95, swell_crest);
-        let cell = noise3(w.x * 0.6, w.y * 0.6, t * 0.00016);
-        let threshold = 0.75 - 0.25 * WHITECAPS;
-        let cap = sstep(threshold - 0.04, threshold + 0.06, cell) * on_crest;
-        let detail = noise3(w.x * 6.0, w.y * 6.0, t * 0.0012);
-        foam = max(foam, calm * cap * (0.3 + 0.7 * detail) * 0.75);
-    }
-    return vec2<f32>(light, clamp(foam, 0.0, 1.0));
+    let tint = SHALLOW_TINT * sstep(2.2, 0.0, shore);
+    return vec3<f32>(light, clamp(foam, 0.0, 1.0), tint);
 }
 
 // iso::shade_apply
-fn shade_apply(c: vec3<f32>, light: f32, foam: f32) -> vec3<f32> {
-    let v = c * (1.0 + light);
+fn shade_apply(c: vec3<f32>, s: vec3<f32>) -> vec3<f32> {
+    let v = mix(c, SHALLOW_COLOUR, s.z) * (1.0 + s.x);
     let white = vec3<f32>(236.0, 244.0, 250.0) / 255.0;
-    return clamp(v + (white - v) * foam, vec3<f32>(0.0), vec3<f32>(1.0));
+    return clamp(v + (white - v) * s.y, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
 fn wrap(a: i32, m: i32) -> i32 {
@@ -213,8 +210,8 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     if enhanced {
         let p = vec2<f32>(f32(px.x), f32(px.y) + frame.raise);
         let w = vec2<f32>(p.x / frame.tile_w + p.y / frame.tile_h, p.y / frame.tile_h - p.x / frame.tile_w);
-        let s = wave_shade(f32(shore) / 16.0, w, frame.time_ms);
-        c = shade_apply(c, s.x, s.y);
+        let detail = sstep(24.0, 64.0, frame.tile_w);
+        c = shade_apply(c, wave_shade(f32(shore) / SHORE_SCALE, w, frame.time_ms, detail));
     }
     return vec4<f32>(c, 1.0);
 }

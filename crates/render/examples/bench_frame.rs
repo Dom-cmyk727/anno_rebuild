@@ -6,7 +6,7 @@
 //! cargo run --release -p anno-render --features gpu --example bench_frame -- <game_dir> <file.sze|.scp>
 //!     [--threads n] [--res 1920x1080,2560x1440,3840x2160] [--groups 0,1,2]
 //!     [--styles original,enhanced] [--chunks blocking,async]
-//!     [--renderer cpu,gpu] [--check] [--quick]
+//!     [--renderer cpu,gpu] [--check] [--at dx,dy] [--quick]
 //! ```
 //!
 //! Per resolution, zoom group and water style, from a cold cache centred on
@@ -51,6 +51,8 @@ struct Options {
     /// `false` = CPU, `true` = GPU.
     renderers: Vec<bool>,
     check: bool,
+    /// Camera offset from the largest island's centre, in pixels.
+    at: (i32, i32),
     quick: bool,
 }
 
@@ -78,6 +80,7 @@ fn main() -> Result<(), BoxError> {
         modes: vec![false, true],
         renderers: vec![false],
         check: false,
+        at: (0, 0),
         quick: false,
     };
     let mut it = args[2..].iter();
@@ -131,6 +134,11 @@ fn main() -> Result<(), BoxError> {
                     .collect::<Result<_, _>>()?;
             }
             "--check" => o.check = true,
+            "--at" => {
+                let v = value()?;
+                let (x, y) = v.split_once(',').ok_or("--at dx,dy")?;
+                o.at = (x.parse()?, y.parse()?);
+            }
             "--quick" => o.quick = true,
             _ => return Err(format!("unknown option {a}").into()),
         }
@@ -200,7 +208,10 @@ fn main() -> Result<(), BoxError> {
                             .iter()
                             .find(|p| p.index == largest)
                             .ok_or("no placement")?;
-                        let centre = (p.bounds.x + p.bounds.w / 2, p.bounds.y + p.bounds.h / 2);
+                        let centre = (
+                            p.bounds.x + p.bounds.w / 2 + o.at.0,
+                            p.bounds.y + p.bounds.h / 2 + o.at.1,
+                        );
                         let gpu = if use_gpu {
                             gpu.as_mut().map(|g| &mut g.0)
                         } else {

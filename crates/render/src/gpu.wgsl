@@ -179,28 +179,29 @@ fn crest(phase: f32) -> vec4<f32> {
 }
 
 // iso::wave_shade: (light, foam, tint).
-fn wave_shade(dist: f32, depth: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<f32> {
+fn wave_shade(dist: f32, depth: f32, beach_slope: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<f32> {
     let s1 = noise3(w.x * 0.22 + t * 0.00011, w.y * 0.22 - t * 0.00004, t * 0.00006);
     let s2 = noise3(w.x * 0.55 - t * 0.00019, w.y * 0.55 + t * 0.00013, t * 0.00011);
     var light = SWELL * 2.0 * (0.65 * s1 + 0.35 * s2 - 0.5);
     var foam = 0.0;
     let near = sstep(SURF_ZONE, SURF_ZONE * 0.5, dist);
     if near > 0.0 {
-        let bend = 1.4 * noise3(w.x * 0.12, w.y * 0.12, t * 0.00003)
-            + 0.5 * noise3(w.x * 0.35 + 5.0, w.y * 0.35, t * 0.00005);
+        let bend = surf_bend(w, t);
         let along = -dot(w, SWELL_DIR);
-        let swell_phase = along / WAVELENGTH + t / PERIOD_MS + bend;
-        let surf_phase = dist / SURF_WAVELENGTH + t / PERIOD_MS + 0.35 * bend;
+        let swell_phase = along / WAVELENGTH + surf_time(w, t) + bend;
+        let sp = surf_phase(dist, w, t);
+        let a = wave_height(floor(sp - 0.4), w);
         let ws = sstep(SURF_ZONE * 0.9, SURF_ZONE * 0.35, dist);
-        let c = mix(crest(swell_phase), crest(surf_phase), ws);
+        let c = crest(swell_phase) * (1.0 - ws) + crest(sp) * ws * (0.3 + 0.7 * a);
         let height = c.x;
         let slope = c.y;
         let line = c.z;
         let trail = c.w;
         let segment = 0.55 + 0.45 * sstep(0.3, 0.7, noise3(w.x * 0.25 + 3.1, w.y * 0.25, t * 0.00005));
-        let shoal = sstep(SHOAL_DEPTH, BREAK_DEPTH, depth);
-        let breaking = sstep(BREAK_DEPTH * 1.4, BREAK_DEPTH * 0.7, depth);
-        let bore = 1.0 - 0.7 * sstep(BREAK_DEPTH * 0.7, 0.3, depth);
+        let db = BREAK_DEPTH * (1.0 - ws) + ws * max(a * WAVE_HEIGHT / BREAKER_INDEX, 1.5);
+        let shoal = sstep(SHOAL_DEPTH, db, depth);
+        let breaking = sstep(db * 1.4, db * 0.7, depth);
+        let bore = 1.0 - 0.7 * sstep(db * 0.7, 0.3, depth);
         let amp = near * segment * (0.35 + 0.65 * shoal) * (1.0 - 0.5 * breaking);
         light += amp * (0.10 * slope + 0.10 * height);
         let fine = noise3(w.x * 2.0, w.y * 2.0, t * 0.0009);
@@ -211,9 +212,9 @@ fn wave_shade(dist: f32, depth: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<
             foam = surge * near * segment * max(0.8 * line, 0.3 * trail * sstep(0.25, 0.7, mottle));
         }
         if depth < SWASH_DEPTH + 1.0 {
-            let sw = swash(dist, w, t);
+            let sw = swash(dist, beach_slope, w, t);
             let wet = depth + sw.x;
-            let impact = sstep(0.0, 0.06, sw.y) * exp(-sw.y * 3.5);
+            let impact = sstep(0.0, 0.06, sw.y) * exp(-sw.y * 3.0) * (0.35 + 0.65 * sw.z);
             let sheet = sstep(2.6, 0.0, wet) * sstep(-0.4, 0.3, wet);
             let froth = sstep(0.2, 0.75, mottle);
             foam = max(foam, impact * sheet * (0.35 + 0.6 * froth));
@@ -231,21 +232,50 @@ fn river_shade(w: vec2<f32>, depth: f32, t: f32) -> vec3<f32> {
     return vec3<f32>(light, 0.0, 0.15 * sstep(4.0, 0.0, depth));
 }
 
-// iso::swash_runup
-const RUNUP: f32 = 1.7;
-fn swash_runup(dist: f32, w: vec2<f32>, t: f32) -> f32 {
-    return swash(dist, w, t).x;
+// iso::surf_time / surf_bend / surf_phase / wave_height / runup_height / swash
+const WAVE_HEIGHT: f32 = 6.0;
+const BREAKER_INDEX: f32 = 0.78;
+const RUNUP_GAIN: f32 = 1.6;
+const RUNUP_MAX_TILES: f32 = 2.0;
+fn surf_time(w: vec2<f32>, t: f32) -> f32 {
+    let c = t / PERIOD_MS;
+    return c + 0.6 * noise3(w.x * 0.08 + 2.3, w.y * 0.08, c * 0.3);
 }
-
-// iso::swash: (run-up, time since impact).
-fn swash(dist: f32, w: vec2<f32>, t: f32) -> vec2<f32> {
-    let bend = 1.4 * noise3(w.x * 0.12, w.y * 0.12, t * 0.00003)
+fn surf_bend(w: vec2<f32>, t: f32) -> f32 {
+    return 1.4 * noise3(w.x * 0.12, w.y * 0.12, t * 0.00003)
         + 0.5 * noise3(w.x * 0.35 + 5.0, w.y * 0.35, t * 0.00005);
-    let surf_phase = dist / SURF_WAVELENGTH + t / PERIOD_MS + 0.35 * bend;
-    let since = surf_phase - floor(surf_phase);
-    let shape = sstep(0.0, 0.12, since) * (1.0 - sstep(0.12, 0.85, since));
-    let strength = 0.6 + 0.4 * noise3(w.x * 0.3 + 1.7, w.y * 0.3, t * 0.00005);
-    return vec2<f32>(RUNUP * shape * strength, since);
+}
+fn surf_phase(dist: f32, w: vec2<f32>, t: f32) -> f32 {
+    return dist / SURF_WAVELENGTH + surf_time(w, t) + 0.35 * surf_bend(w, t);
+}
+fn wave_height(k: f32, w: vec2<f32>) -> f32 {
+    let group_env = noise3(w.x * 0.05 + k * 0.19, w.y * 0.05, 7.1);
+    let each = noise3(w.x * 0.3, w.y * 0.3, k * 1.37 + 0.5);
+    return (0.3 + 0.7 * sstep(0.2, 0.8, group_env)) * (0.45 + 0.55 * each);
+}
+fn runup_height(a: f32, slope: f32) -> f32 {
+    let h = a * WAVE_HEIGHT;
+    let tan_b = max(slope * 0.04, 0.004);
+    let xi = min(tan_b / sqrt(h * 0.04 / SURF_WAVELENGTH), 2.0);
+    return min(RUNUP_GAIN * xi * h, RUNUP_MAX_TILES * max(slope, 0.2));
+}
+// (run-up, time since impact, wave height)
+fn swash(dist: f32, slope: f32, w: vec2<f32>, t: f32) -> vec3<f32> {
+    let p = surf_phase(dist, w, t) - 0.9;
+    let k = floor(p);
+    let since = p - k;
+    let a = wave_height(k, w);
+    let up = 0.08 + 0.1 * a;
+    var shape = 0.0;
+    if since < up {
+        shape = sstep(0.0, up, since);
+    } else {
+        shape = pow(1.0 - min((since - up) / (0.85 - up), 1.0), 1.6);
+    }
+    return vec3<f32>(runup_height(a, slope) * shape, since, a);
+}
+fn slope_of(flags: u32) -> f32 {
+    return f32(flags >> 2u) * 0.5;
 }
 
 // iso::shade_apply
@@ -317,7 +347,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     if enhanced {
         var run = 0.0;
         if sd < SWASH_DEPTH && (flags & 2u) == 0u {
-            run = swash_runup(f32(shore) / SHORE_SCALE, wpos, frame.time_ms);
+            run = swash(f32(shore) / SHORE_SCALE, slope_of(flags), wpos, frame.time_ms).x;
         }
         alpha = sstep(-SHORE_EDGE, SHORE_EDGE, sd + run);
     } else if (flags & 1u) == 0u {
@@ -353,7 +383,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         if (flags & 2u) != 0u {
             c = shade_apply(c, river_shade(w, sd, frame.time_ms));
         } else {
-            c = shade_apply(c, wave_shade(f32(shore) / SHORE_SCALE, sd, w, frame.time_ms, detail));
+            c = shade_apply(c, wave_shade(f32(shore) / SHORE_SCALE, sd, slope_of(flags), w, frame.time_ms, detail));
         }
     }
     return vec4<f32>(mix(under, c, alpha), 1.0);

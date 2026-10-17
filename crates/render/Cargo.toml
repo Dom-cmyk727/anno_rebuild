@@ -16,6 +16,10 @@ wgpu = { version = "30.0.1", optional = true }
 # GPU frame compositor (`gpu` module); off for headless builds and tests.
 gpu = ["dep:wgpu", "dep:pollster"]
 
+[dev-dependencies]
+# Validates gpu.wgsl in tests without a GPU (same version as wgpu's).
+naga = { version = "30.0.1", features = ["wgsl-in"] }
+
 [[example]]
 name = "bench_frame"
 required-features = ["gpu"]

@@ -1199,3 +1199,20 @@ fn begin<'e>(
         multiview_mask: None,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    /// The shader parses and validates (catches WGSL errors without a GPU,
+    /// e.g. on CI).
+    #[test]
+    fn shader_is_valid_wgsl() {
+        let module = naga::front::wgsl::parse_str(include_str!("gpu.wgsl"))
+            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(include_str!("gpu.wgsl"))));
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    }
+}

@@ -101,6 +101,7 @@ version = "0.1.0"
 dependencies = [
  "anno-assets",
  "anno-formats",
+ "naga",
  "pollster",
  "wgpu",
 ]

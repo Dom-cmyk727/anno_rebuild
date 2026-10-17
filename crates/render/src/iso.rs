@@ -983,8 +983,13 @@ pub struct Waves {
     pub swell_dir: [f32; 2],
     /// Distance between surf crests near the shore (tiles).
     pub surf_wavelength: f32,
-    /// How far (`HEIGHT` units) the swash runs up the beach at most.
-    pub runup: f32,
+    /// Height of the largest surf waves (`HEIGHT` units), the breaker
+    /// index γ (waves break at depth H / γ), a gain on Hunt's run-up and
+    /// the largest horizontal run-up (tiles).
+    pub wave_height: f32,
+    pub breaker_index: f32,
+    pub runup_gain: f32,
+    pub runup_max_tiles: f32,
     /// Depth over which shallow water is tinted.
     pub tint_depth: f32,
     /// Distance between incoming crests (tiles).
@@ -1019,7 +1024,10 @@ impl Waves {
         // Crests run diagonally on screen (crest along the tile y axis).
         swell_dir: [0.96, 0.28],
         surf_wavelength: 1.8,
-        runup: 1.7,
+        wave_height: 6.0,
+        breaker_index: 0.78,
+        runup_gain: 1.6,
+        runup_max_tiles: 2.0,
         tint_depth: 8.0,
         wavelength: 2.6,
         period_ms: 3400.0,
@@ -1117,6 +1125,7 @@ fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
 pub(crate) fn wave_shade(
     dist: f32,
     depth: f32,
+    beach_slope: f32,
     (wx, wy): (f32, f32),
     time_ms: u64,
     detail: f32,
@@ -1145,11 +1154,12 @@ pub(crate) fn wave_shade(
         //   travelling towards it — phase from the strongly smoothed shore
         //   distance, so it follows the coastline, not every small bulge.
         // The surf takes over towards the beach (`surf_blend`).
-        let bend = 1.4 * noise3(wx * 0.12, wy * 0.12, t * 0.000_03)
-            + 0.5 * noise3(wx * 0.35 + 5.0, wy * 0.35, t * 0.000_05);
+        let bend = surf_bend((wx, wy), t);
         let along = -(wx * w.swell_dir[0] + wy * w.swell_dir[1]);
-        let swell_phase = along / w.wavelength + t / w.period_ms + bend;
-        let surf_phase = dist / w.surf_wavelength + t / w.period_ms + 0.35 * bend;
+        let swell_phase = along / w.wavelength + surf_time((wx, wy), t) + bend;
+        let surf_phase = surf_phase(dist, (wx, wy), t);
+        // Each surf crest has its own height (`wave_height`).
+        let a = wave_height((surf_phase - 0.4).floor(), (wx, wy));
         let ws = smoothstep(w.surf_zone * 0.9, w.surf_zone * 0.35, dist);
         // Height profile, crest at u = 0.9: gentle back, steep front.
         let profile = |u: f32| {
@@ -1170,16 +1180,20 @@ pub(crate) fn wave_shade(
             [height, slope, line, trail]
         };
         let (cs, cf) = (crest(swell_phase), crest(surf_phase));
-        let mix = |k: usize| cs[k] * (1.0 - ws) + cf[k] * ws;
+        let surf_amp = 0.3 + 0.7 * a;
+        let mix = |k: usize| cs[k] * (1.0 - ws) + cf[k] * ws * surf_amp;
         let (height, slope, line, trail) = (mix(0), mix(1), mix(2), mix(3));
         // Long crests with gentle variation along them.
         let segment =
             0.55 + 0.45 * smoothstep(0.3, 0.7, noise3(wx * 0.25 + 3.1, wy * 0.25, t * 0.000_05));
         // Waves grow while shoaling, break where the water becomes
         // shallower than `break_depth` and run on as weakening bores.
-        let shoal = smoothstep(w.shoal_depth, w.break_depth, depth);
-        let breaking = smoothstep(w.break_depth * 1.4, w.break_depth * 0.7, depth);
-        let bore = 1.0 - 0.7 * smoothstep(w.break_depth * 0.7, 0.3, depth);
+        // Surf waves break where the depth falls below H / γ (breaker
+        // index γ ≈ 0.78), so big waves break further out.
+        let db = w.break_depth * (1.0 - ws) + ws * (a * w.wave_height / w.breaker_index).max(1.5);
+        let shoal = smoothstep(w.shoal_depth, db, depth);
+        let breaking = smoothstep(db * 1.4, db * 0.7, depth);
+        let bore = 1.0 - 0.7 * smoothstep(db * 0.7, 0.3, depth);
         let amp = near * segment * (0.35 + 0.65 * shoal) * (1.0 - 0.5 * breaking);
         light += amp * (0.10 * slope + 0.10 * height);
         let fine = noise3(wx * 2.0, wy * 2.0, t * 0.0009);
@@ -1200,9 +1214,9 @@ pub(crate) fn wave_shade(
             // Foam only when a crest hits the beach: a wide, frothy sheet
             // at the moving water edge that fades while the water runs up
             // and draws back.
-            let (run, since) = swash(dist, (wx, wy), time_ms);
+            let (run, since, sa) = swash(dist, beach_slope, (wx, wy), time_ms);
             let wet = depth + run;
-            let impact = smoothstep(0.0, 0.06, since) * (-since * 3.5).exp();
+            let impact = smoothstep(0.0, 0.06, since) * (-since * 3.0).exp() * (0.35 + 0.65 * sa);
             let sheet = smoothstep(2.6, 0.0, wet) * smoothstep(-0.4, 0.3, wet);
             let froth = smoothstep(0.2, 0.75, mottle);
             foam = foam.max(impact * sheet * (0.35 + 0.6 * froth));
@@ -1233,28 +1247,76 @@ pub(crate) fn river_shade((wx, wy): (f32, f32), depth: f32, time_ms: u64) -> (f3
     (light, 0.0, tint)
 }
 
-/// Swash run-up (`HEIGHT` units) at shore distance `dist` (tiles) and
-/// plane position `pos` (tiles): after each surf crest the water rushes up
-/// the beach and slowly draws back, so the enhanced waterline moves back
-/// and forth (not original). Uses the surf phase of [`wave_shade`].
-pub(crate) fn swash_runup(dist: f32, pos: (f32, f32), time_ms: u64) -> f32 {
-    swash(dist, pos, time_ms).0
+/// Irregular surf clock (in wave periods): the period drifts smoothly over
+/// time and along the coast. Monotonic — the drift's rate stays below the
+/// base rate `1 / period_ms`.
+fn surf_time((wx, wy): (f32, f32), t: f32) -> f32 {
+    let c = t / Waves::DEFAULT.period_ms;
+    c + 0.6 * noise3(wx * 0.08 + 2.3, wy * 0.08, c * 0.3)
 }
 
-/// [`swash_runup`] and the time since the last crest hit the beach, as a
-/// fraction of the wave period (0 = impact).
-pub(crate) fn swash(dist: f32, (wx, wy): (f32, f32), time_ms: u64) -> (f32, f32) {
+/// Slow bending of the crests (tiles of phase).
+fn surf_bend((wx, wy): (f32, f32), t: f32) -> f32 {
+    1.4 * noise3(wx * 0.12, wy * 0.12, t * 0.000_03)
+        + 0.5 * noise3(wx * 0.35 + 5.0, wy * 0.35, t * 0.000_05)
+}
+
+/// Phase of the surf system: crests on lines of equal shore distance
+/// `dist`, travelling towards the shore; crest `k` passes when the phase is
+/// `k + 0.9`.
+fn surf_phase(dist: f32, pos: (f32, f32), t: f32) -> f32 {
+    dist / Waves::DEFAULT.surf_wavelength + surf_time(pos, t) + 0.35 * surf_bend(pos, t)
+}
+
+/// Relative height (≈ 0.15–1) of surf wave number `k` near `pos`: waves
+/// come in sets (a slow envelope over `k`), each wave varies randomly, and
+/// both vary smoothly along the coast. Deterministic.
+pub(crate) fn wave_height(k: f32, (wx, wy): (f32, f32)) -> f32 {
+    let set = noise3(wx * 0.05 + k * 0.19, wy * 0.05, 7.1);
+    let each = noise3(wx * 0.3, wy * 0.3, k * 1.37 + 0.5);
+    (0.3 + 0.7 * smoothstep(0.2, 0.8, set)) * (0.45 + 0.55 * each)
+}
+
+/// Vertical run-up (`HEIGHT` units) of a wave of relative height `a` on a
+/// beach of slope `slope` (`HEIGHT` units per tile), after Hunt's formula
+/// `R = ξ · H` with the Iribarren number `ξ = tan β / √(H / L)` (Hunt 1959;
+/// e.g. Battjes 1974). One `HEIGHT` unit is 0.04 world units and a tile one
+/// world unit (`docs/re/annowelt.md`). Flat beaches get long thin sheets,
+/// steep ones short high ones; the horizontal reach is capped at
+/// `runup_max_tiles`.
+pub(crate) fn runup_height(a: f32, slope: f32) -> f32 {
     let w = Waves::DEFAULT;
+    let h = a * w.wave_height;
+    let tan_b = (slope * 0.04).max(0.004);
+    let xi = (tan_b / (h * 0.04 / w.surf_wavelength).sqrt()).min(2.0);
+    (w.runup_gain * xi * h).min(w.runup_max_tiles * slope.max(0.2))
+}
+
+/// Swash at shore distance `dist` (tiles), beach slope `slope` and plane
+/// position `pos` (tiles): `(run-up in HEIGHT units, time since the wave
+/// reached the beach as a fraction of a period, relative wave height)`.
+/// The water rushes up quickly and draws back more slowly (gravity), so
+/// the enhanced waterline moves back and forth with every wave, by an
+/// amount that depends on that wave's height (not original).
+pub(crate) fn swash(dist: f32, slope: f32, pos: (f32, f32), time_ms: u64) -> (f32, f32, f32) {
     #[allow(clippy::cast_precision_loss)]
     let t = (time_ms % 3_600_000) as f32;
-    let bend = 1.4 * noise3(wx * 0.12, wy * 0.12, t * 0.000_03)
-        + 0.5 * noise3(wx * 0.35 + 5.0, wy * 0.35, t * 0.000_05);
-    let surf_phase = dist / w.surf_wavelength + t / w.period_ms + 0.35 * bend;
-    let since = surf_phase - surf_phase.floor();
-    // Fast rush up, slow backwash.
-    let shape = smoothstep(0.0, 0.12, since) * (1.0 - smoothstep(0.12, 0.85, since));
-    let strength = 0.6 + 0.4 * noise3(wx * 0.3 + 1.7, wy * 0.3, t * 0.000_05);
-    (w.runup * shape * strength, since)
+    let p = surf_phase(dist, pos, t) - 0.9;
+    let k = p.floor();
+    let since = p - k;
+    let a = wave_height(k, pos);
+    let up = 0.08 + 0.1 * a;
+    let shape = if since < up {
+        smoothstep(0.0, up, since)
+    } else {
+        (1.0 - ((since - up) / (0.85 - up)).min(1.0)).powf(1.6)
+    };
+    (runup_height(a, slope) * shape, since, a)
+}
+
+/// The run-up part of [`swash`].
+pub(crate) fn swash_runup(dist: f32, slope: f32, pos: (f32, f32), time_ms: u64) -> f32 {
+    swash(dist, slope, pos, time_ms).0
 }
 
 /// `rgba` tinted by `tint`, lit by `light` and whitened by `foam`, as
@@ -1282,7 +1344,7 @@ pub(crate) fn shade_apply(rgba: [u8; 4], (light, foam, tint): (f32, f32, f32)) -
 /// and the foam.
 #[cfg(test)]
 fn enhance(rgba: [u8; 4], shore: f32, pos: (f32, f32), time_ms: u64) -> ([u8; 4], f32) {
-    let s = wave_shade(shore, shore * 4.0, pos, time_ms, 1.0);
+    let s = wave_shade(shore, shore * 4.0, 1.0, pos, time_ms, 1.0);
     (shade_apply(rgba, s), s.1)
 }
 

@@ -227,7 +227,8 @@ pub struct WaterField {
     pub depth: Vec<u8>,
     /// Bit 0: water in the original (terrain under the pixel, interpolated
     /// as the original's triangles, below sea level). Bit 1: enhanced river
-    /// water (`depth` is then the river depth).
+    /// water (`depth` is then the river depth). Bits 2–7: beach slope near
+    /// the waterline in 1/2 `HEIGHT` units per tile ([`slope_of`]).
     pub flags: Vec<u8>,
 }
 
@@ -523,8 +524,18 @@ pub fn water_field<'w>(
                 }
             }
         }
-        // Enhanced water runs up to `runup` above the waterline.
-        if !sea_chunk || (!original_water && sd <= -(edge + iso::Waves::DEFAULT.runup)) {
+        // Beach slope (`HEIGHT` units per tile) near the waterline, for the
+        // swash run-up; enhanced water runs up to `runup_max_tiles`.
+        let slope = if sd > -12.0 && sd < iso::Waves::DEFAULT.swash_depth + 3.0 {
+            let e = 0.3;
+            let at = |x: f32, y: f32| smooth_height(&iw.heights, iw.w, iw.h, x, y);
+            let (gx, gy) = (at(x + e, y) - at(x - e, y), at(x, y + e) - at(x, y - e));
+            (gx * gx + gy * gy).sqrt() / (2.0 * e)
+        } else {
+            0.0
+        };
+        let run_max = iso::Waves::DEFAULT.runup_max_tiles * slope.max(0.2);
+        if !sea_chunk || (!original_water && sd <= -(edge + run_max)) {
             cover[i] = 0;
             shore[i] = 0;
             depth[i] = 0;
@@ -538,7 +549,9 @@ pub fn water_field<'w>(
             cover[i] = 1 + (o.clamp(0.0, 1.0) * 254.0).round() as u8;
             shore[i] = (d * SHORE_SCALE).clamp(0.0, 255.0) as u8;
             depth[i] = (DEPTH_BIAS + sd * DEPTH_SCALE).clamp(0.0, 255.0) as u8;
-            flags[i] = u8::from(original_water);
+            // Bits 2–7: beach slope in 1/2 units per tile.
+            let slope_q = (slope * 2.0).round().min(63.0) as u8;
+            flags[i] = u8::from(original_water) | slope_q << 2;
         }
     }
     WaterField {
@@ -548,6 +561,11 @@ pub fn water_field<'w>(
         depth,
         flags,
     }
+}
+
+/// Beach slope (`HEIGHT` units per tile) stored in water-field flags.
+pub fn slope_of(flags: u8) -> f32 {
+    f32::from(flags >> 2) * 0.5
 }
 
 /// A pixel the sea can be drawn onto.
@@ -665,12 +683,19 @@ pub fn shade_sea<P: SeaTarget>(
                         to_usize((sy - region.y).clamp(0, region.h - 1)),
                     );
                     // Land points too (shore 0), so foam reaches the beach.
-                    let (_, shore, depth, _) = field(cy * rw + cx);
+                    let (_, shore, depth, flags) = field(cy * rw + cx);
                     #[allow(clippy::cast_precision_loss)]
                     let (px, py) = (sx as f32, (sy + raise) as f32);
                     let pos = (px / twf + py / thf, py / thf - px / twf);
                     let depth = (f32::from(depth) - DEPTH_BIAS) / DEPTH_SCALE;
-                    iso::wave_shade(f32::from(shore) / SHORE_SCALE, depth, pos, time_ms, detail)
+                    iso::wave_shade(
+                        f32::from(shore) / SHORE_SCALE,
+                        depth,
+                        slope_of(flags),
+                        pos,
+                        time_ms,
+                        detail,
+                    )
                 })
                 .collect()
         }
@@ -702,7 +727,12 @@ pub fn shade_sea<P: SeaTarget>(
                         #[allow(clippy::cast_precision_loss)]
                         let (px, py) = (sx as f32, (sy + raise_px) as f32);
                         let pos = (px / twf + py / thf, py / thf - px / twf);
-                        iso::swash_runup(f32::from(shore) / SHORE_SCALE, pos, time_ms)
+                        iso::swash_runup(
+                            f32::from(shore) / SHORE_SCALE,
+                            slope_of(flags),
+                            pos,
+                            time_ms,
+                        )
                     } else {
                         0.0
                     };

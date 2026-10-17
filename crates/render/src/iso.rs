@@ -927,12 +927,16 @@ pub(crate) fn wave_shade(
     let mut foam: f32 = 0.0;
     if near > 0.0 {
         let bend = noise3(wx * 0.18, wy * 0.18, t * 0.000_05);
-        let phase = shore / w.wavelength + t / w.period_ms + 0.8 * bend;
+        // A shorter-scale offset staggers neighbouring crest segments, so
+        // they reach the beach at different times.
+        let stagger = noise3(wx * 0.6 + 7.3, wy * 0.6, t * 0.000_04);
+        let phase = shore / w.wavelength + t / w.period_ms + 0.8 * bend + 0.5 * stagger;
         let u = phase - phase.floor();
         // Gentle back, steep front just before the next phase.
         let crest = smoothstep(0.55, 0.95, u) * (1.0 - smoothstep(0.95, 1.0, u));
-        let segment = smoothstep(0.3, 0.7, noise3(wx * 0.45, wy * 0.45, t * 0.000_08));
-        let amp = near * (0.35 + 0.65 * segment);
+        // Crests come in separate pieces with calm water between them.
+        let segment = smoothstep(0.4, 0.62, noise3(wx * 0.32 + 3.1, wy * 0.32, t * 0.000_06));
+        let amp = near * segment;
         light += 0.12 * amp * crest;
         // Curl: a white line on the steep front just before it breaks.
         let curl = smoothstep(0.88, 0.95, u)

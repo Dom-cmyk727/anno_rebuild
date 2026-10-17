@@ -189,6 +189,21 @@ impl SeaPattern {
         (k, (k + 1) % n, frac)
     }
 
+    /// Premultiplied-alpha average (0–1) of the 2 × 2 pattern pixels at
+    /// `(sx, sy)` .. `(sx + 1, sy + 1)` of step image `img`.
+    fn smoothed(&self, img: &[[u8; 4]], sx: i32, sy: i32) -> [f32; 4] {
+        let mut sum = [0.0; 4];
+        for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+            let p = img[self.index(sx + dx, sy + dy)];
+            let a = f32::from(p[3]) / 255.0;
+            for c in 0..3 {
+                sum[c] += f32::from(p[c]) / 255.0 * a;
+            }
+            sum[3] += a;
+        }
+        sum.map(|v| v / 4.0)
+    }
+
     fn index(&self, sx: i32, sy: i32) -> usize {
         usize::try_from(sy.rem_euclid(self.height) * self.width + sx.rem_euclid(self.width))
             .expect("positive")
@@ -411,6 +426,25 @@ impl SeaTarget for u32 {
 /// the original (PLAN §0.1, §0.2).
 pub const SHADING_STEP: [i32; 3] = [4, 2, 2];
 
+/// Straight-alpha RGBA from premultiplied 0–1 values.
+fn unpremultiply(p: [f32; 4]) -> [u8; 4] {
+    let a = p[3];
+    let channel = |v: f32| {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let out = (v * 255.0).round().clamp(0.0, 255.0) as u8;
+        out
+    };
+    if a <= 0.0 {
+        return [0; 4];
+    }
+    [
+        channel(p[0] / a),
+        channel(p[1] / a),
+        channel(p[2] / a),
+        channel(a),
+    ]
+}
+
 fn lerp4(a: [u8; 4], b: [u8; 4], t: u32, scale: u32) -> [u8; 4] {
     let mix = |x: u8, y: u8| {
         let (x, y) = (u32::from(x), u32::from(y));
@@ -445,8 +479,6 @@ pub fn shade_sea<P: SeaTarget>(
 ) {
     let (k0, k1, frac) = pattern.steps_at(time_ms);
     let (a, b) = (&pattern.steps[k0], &pattern.steps[k1]);
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let blend = (frac * 256.0) as u32;
     let to_usize = |v: i32| usize::try_from(v).expect("non-negative");
     let (rw, rh) = (to_usize(region.w), to_usize(region.h));
     // Enhanced: (light, foam) on a grid aligned to multiples of `step` in
@@ -498,8 +530,15 @@ pub fn shade_sea<P: SeaTarget>(
             let i = pattern.index(sx, sy);
             let (mut sprite, mut filled) = (a.sprite[i], a.filled[i]);
             if style == WaterStyle::Enhanced {
-                sprite = lerp4(sprite, b.sprite[i], blend, 256);
-                filled = lerp4(filled, b.filled[i], blend, 256);
+                // 2 × 2 average of the pattern: the checkerboard of the sea
+                // sprite becomes a continuous surface; blended into the next
+                // animation step.
+                let smooth = |img: &[[u8; 4]]| pattern.smoothed(img, sx, sy);
+                let mix = |p: [f32; 4], q: [f32; 4]| -> [f32; 4] {
+                    std::array::from_fn(|c| p[c] + (q[c] - p[c]) * frac)
+                };
+                sprite = unpremultiply(mix(smooth(&a.sprite), smooth(&b.sprite)));
+                filled = unpremultiply(mix(smooth(&a.filled), smooth(&b.filled)));
             }
             let dst = &mut out[row * stride + col];
             let mut c = dst.rgba();

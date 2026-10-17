@@ -148,11 +148,12 @@ fn wave_shade(shore: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<f32> {
     var foam = 0.0;
     if near > 0.0 {
         let bend = noise3(w.x * 0.18, w.y * 0.18, t * 0.00005);
-        let phase = shore / WAVELENGTH + t / PERIOD_MS + 0.8 * bend;
+        let stagger = noise3(w.x * 0.6 + 7.3, w.y * 0.6, t * 0.00004);
+        let phase = shore / WAVELENGTH + t / PERIOD_MS + 0.8 * bend + 0.5 * stagger;
         let u = phase - floor(phase);
         let crest = sstep(0.55, 0.95, u) * (1.0 - sstep(0.95, 1.0, u));
-        let segment = sstep(0.3, 0.7, noise3(w.x * 0.45, w.y * 0.45, t * 0.00008));
-        let amp = near * (0.35 + 0.65 * segment);
+        let segment = sstep(0.4, 0.62, noise3(w.x * 0.32 + 3.1, w.y * 0.32, t * 0.00006));
+        let amp = near * segment;
         light += 0.12 * amp * crest;
         let curl = sstep(0.88, 0.95, u) * (1.0 - sstep(0.95, 0.985, u))
             * sstep(BREAK_ZONE * 1.6, BREAK_ZONE, shore);
@@ -183,6 +184,35 @@ fn wrap(a: i32, m: i32) -> i32 {
     return ((a % m) + m) % m;
 }
 
+fn pattern_px(p: vec2<i32>) -> vec2<i32> {
+    return vec2<i32>(wrap(p.x, frame.pattern_size.x), wrap(p.y, frame.pattern_size.y));
+}
+
+fn premul(c: vec4<f32>) -> vec4<f32> {
+    return vec4<f32>(c.rgb * c.a, c.a);
+}
+
+fn smoothed_sprite(p: vec2<i32>, layer: u32) -> vec4<f32> {
+    return (premul(textureLoad(sea_sprite, pattern_px(p), layer, 0))
+        + premul(textureLoad(sea_sprite, pattern_px(p + vec2<i32>(1, 0)), layer, 0))
+        + premul(textureLoad(sea_sprite, pattern_px(p + vec2<i32>(0, 1)), layer, 0))
+        + premul(textureLoad(sea_sprite, pattern_px(p + vec2<i32>(1, 1)), layer, 0))) / 4.0;
+}
+
+fn smoothed_filled(p: vec2<i32>, layer: u32) -> vec4<f32> {
+    return (premul(textureLoad(sea_filled, pattern_px(p), layer, 0))
+        + premul(textureLoad(sea_filled, pattern_px(p + vec2<i32>(1, 0)), layer, 0))
+        + premul(textureLoad(sea_filled, pattern_px(p + vec2<i32>(0, 1)), layer, 0))
+        + premul(textureLoad(sea_filled, pattern_px(p + vec2<i32>(1, 1)), layer, 0))) / 4.0;
+}
+
+fn unpremultiply(p: vec4<f32>) -> vec4<f32> {
+    if p.a <= 0.0 {
+        return vec4<f32>(0.0);
+    }
+    return vec4<f32>(p.rgb / p.a, p.a);
+}
+
 // The sea over the pass-1 result: sea::shade_sea.
 @fragment
 fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
@@ -205,8 +235,12 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     var filled = textureLoad(sea_filled, pi, frame.steps.x, 0);
     let enhanced = frame.enhanced != 0u;
     if enhanced {
-        sprite = mix(sprite, textureLoad(sea_sprite, pi, frame.steps.y, 0), frame.frac);
-        filled = mix(filled, textureLoad(sea_filled, pi, frame.steps.y, 0), frame.frac);
+        // sea::SeaPattern::smoothed: 2 x 2 premultiplied average (removes the
+        // checkerboard), blended into the next step.
+        let s = mix(smoothed_sprite(px, frame.steps.x), smoothed_sprite(px, frame.steps.y), frame.frac);
+        let f = mix(smoothed_filled(px, frame.steps.x), smoothed_filled(px, frame.steps.y), frame.frac);
+        sprite = unpremultiply(s);
+        filled = unpremultiply(f);
     }
     var c = under * (1.0 - sprite.a) + sprite.rgb * sprite.a;
     var open = f32(cover - 1u) / 254.0;

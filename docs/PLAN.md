@@ -28,6 +28,7 @@ The project rebuilds ANNO 1503 faithfully **and** improves the engine beyond the
 
 - **Visual target set by the owner:** water that looks smoother and livelier than the original, with **crashing waves on the open sea and along coastlines**. The original has no breakers (confirmed in a gameplay video, `docs/render/iso.md` "Reference"); the current `WaterStyle::Enhanced` (breakers rolling onto beaches, open-water swell) is the first step and is preferred by the owner over the original look. 2026-10-17: breaking waves added (shoaling, collapse into whitewater, foam burst on impact, backwash; whitecaps on open-water swell crests). Next: spray at impact, rocks and ships, smoother open water, tuning against the colleague's viewer recording.
 - **How improvements are built:** as separate, selectable layers next to the faithful one (render styles, `rules` config), so the original behaviour stays reproducible and testable (CLAUDE.md "faithful core separate from improvements"). Which variant is the default is a per-feature owner decision; for water the owner leans towards the enhanced look.
+- **Faithful mode stays faithful (owner decision 2026-10-17):** improvements such as hiding the sea floor in deep water apply only to the enhanced style; the original mode keeps the original look even where it shows the original's tile-shaped floor textures.
 - **Evidence still applies to the faithful parts;** improvements are documented as such (what, why, tuning), with their own tests.
 
 ## 0.3 Design goal: smooth, measured performance (owner decision 2026-10-17)

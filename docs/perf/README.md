@@ -44,6 +44,17 @@ The animation clock advances 16 ms per frame. `--quick` divides the frame counts
 
 ## Results
 
+### 2026-10-18 — C++ viewer, CPU path, Apple M5 Pro (18 cores), `Single_01.sze`
+`anno1503 --view` (C++, SDL3 window, release build, vsync at 120 Hz, window 2560 × 1600 pixels; chunk workers on 9 threads, frames on 18), average of the 2 s report after the chunks are built, original water:
+
+| group | frame avg / worst (ms) | ground | water objects | sea | objects |
+|---|---|---|---|---|---|
+| 2 | 3.9 / 4.5 | 0.3 | 1.5 | 1.8 | 0.2 |
+| 1 | 4.4 / 7.6 | 0.3 | 1.6 | 2.3 | 0.2 |
+| 0 | 4.5 / 4.9 | 0.3 | 1.7 | 2.3 | 0.2 |
+
+Same pipeline and pixels as the Rust CPU path (`docs/render/iso.md`, "Fidelity"); comparable to its 1080p/18-thread numbers above for 2 × the pixels. Not measured yet: a `bench_frame` port (panning, 4K, thread counts), Windows/Linux.
+
 ### 2026-10-17 (4) — wave simulation at 16 / 8 / 4 cells per tile
 
 GPU, async chunks, enhanced water, after 2 s warm-up, p50 / p99 ms: 3840 × 2160: 2.9–5.0 / ≤ 12.6; 1920 × 1080: 1.2–1.6 / ≤ 8.4 (window sized to the view, `dt` 1/120 s).

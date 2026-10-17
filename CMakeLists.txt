@@ -10,14 +10,34 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(ANNO_BUILD_TESTS "Build the test suites" ON)
 option(ANNO_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
+option(ANNO_BUILD_VIEWER "Build the windowed viewer (SDL3)" ON)
+option(ANNO_SYSTEM_SDL "Use an installed SDL3 instead of the pinned source" OFF)
 option(ANNO_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer (GCC/Clang)" OFF)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 include(AnnoWarnings)
 
+include(FetchContent)
+
+if(ANNO_BUILD_VIEWER)
+  if(ANNO_SYSTEM_SDL)
+    find_package(SDL3 REQUIRED CONFIG)
+  else()
+    # SDL 3.4.18 (2026-10-02), pinned; hash of the GitHub release asset.
+    set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+    set(SDL_STATIC ON CACHE BOOL "" FORCE)
+    set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+    set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(SDL3
+      URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz
+      URL_HASH SHA256=9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3
+      SYSTEM)
+    FetchContent_MakeAvailable(SDL3)
+  endif()
+endif()
+
 if(ANNO_BUILD_TESTS)
   enable_testing()
-  include(FetchContent)
   # doctest 2.4.11 (2023), pinned.
   FetchContent_Declare(doctest
     URL https://github.com/doctest/doctest/archive/refs/tags/v2.4.11.tar.gz
@@ -34,4 +54,5 @@ endif()
 add_subdirectory(src/formats)
 add_subdirectory(src/assets)
 add_subdirectory(src/render)
+add_subdirectory(src/app)
 add_subdirectory(src/tools)

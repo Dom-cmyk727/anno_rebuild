@@ -53,10 +53,12 @@ jobs:
           - name: linux-gcc
             os: ubuntu-latest
             preset: dev
+            cc: gcc
             cxx: g++
           - name: linux-clang-asan
             os: ubuntu-latest
             preset: asan
+            cc: clang
             cxx: clang++
           - name: windows-msvc
             os: windows-latest
@@ -64,11 +66,18 @@ jobs:
     name: cpp (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     env:
+      CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
     steps:
       - uses: actions/checkout@v4
       - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
+        # ninja; headers SDL3 needs for its X11/Wayland video and audio
+        # backends (SDL docs/README-linux.md).
+        run: >
+          sudo apt-get update && sudo apt-get install -y ninja-build
+          libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev
+          libxss-dev libxkbcommon-dev libdrm-dev libgbm-dev libegl1-mesa-dev libgl1-mesa-dev
+          libwayland-dev wayland-protocols libasound2-dev libpulse-dev libdbus-1-dev libudev-dev
       - run: cmake --preset ${{ matrix.preset }}
       - run: cmake --build --preset ${{ matrix.preset }}
       - run: ctest --preset ${{ matrix.preset }}

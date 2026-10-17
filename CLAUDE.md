@@ -33,7 +33,9 @@ anno1503/
     assets/                # decoded RGBA images, player colours, scenario units (anno::assets::*)
     test_support/          # game-dir and file helpers for tests
     tools/anno_dump/       # anno-dump (text output = the oracle contract)
-    (render, app, sim, net, ui follow — ADR 0001 port order)
+    render/                # isometric renderer, CPU path (GPU path follows)
+    app/                   # anno1503 binary: scene loading, --png, SDL3 window
+    (sim, net, ui follow — ADR 0001 port order)
   fixtures/synthetic/      # our own small test files shared by all implementations
   crates/                  # Rust reference implementation during the port (no new features)
     formats/               # original file formats: chunk container, Anlagen, Figuren, tex/inc, zei, sze, scp, Data/*.dat

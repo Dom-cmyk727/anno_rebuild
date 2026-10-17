@@ -52,7 +52,7 @@ The window title shows the renderer (GPU or CPU) and the frames per second; the 
 
 - Plan, status and goals: [`docs/PLAN.md`](docs/PLAN.md); project rules: [`CLAUDE.md`](CLAUDE.md).
 - File-format specs: [`docs/formats/`](docs/formats/); rendering rules: [`docs/render/iso.md`](docs/render/iso.md); reverse-engineering notes: [`docs/re/`](docs/re/).
-- **C++20 (main line):** `cmake --preset dev && cmake --build --preset dev && ctest --preset dev` (presets `release`, `asan`, `msvc` too). Ported so far: every file-format reader and `anno-dump`. Check `anno-dump` against the Python references: `python3 tools/agree.py --dump build/dev/src/tools/anno_dump/anno-dump [--game-dir <game folder>]`.
+- **C++20 (main line):** `cmake --preset dev && cmake --build --preset dev && ctest --preset dev` (presets `release`, `asan`, `msvc` too). Ported so far: every file-format reader, `anno-dump`, and the asset decoding (`src/assets`, pixel-identical to the Rust version, [`docs/render/assets.md`](docs/render/assets.md)). Check `anno-dump` against the Python references: `python3 tools/agree.py --dump build/dev/src/tools/anno_dump/anno-dump [--game-dir <game folder>]`.
 - **Rust reference (viewer, until the C++ viewer reaches parity):** build `cargo build --release`; run: `cargo run --release -p anno1503 -- --view <file.sze|file.scp> --game-dir <game folder> [--renderer auto|gpu|cpu]`.
 - Performance: `cargo run --release -p anno-render --features gpu --example bench_frame -- <game folder> <file.sze>` (method and results: [`docs/perf/README.md`](docs/perf/README.md)).
 - Preview package: `packaging/package-preview.sh <name>` (cross-compiles Windows and Linux builds into `share/`).

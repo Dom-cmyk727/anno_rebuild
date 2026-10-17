@@ -30,9 +30,10 @@ anno1503/
   CMakeLists.txt, CMakePresets.json   # C++20 build (presets: dev, release, asan, msvc)
   src/
     formats/               # original file formats (all ported; anno::formats::*)
+    assets/                # decoded RGBA images, player colours, scenario units (anno::assets::*)
     test_support/          # game-dir and file helpers for tests
     tools/anno_dump/       # anno-dump (text output = the oracle contract)
-    (assets, render, app, sim, net, ui follow — ADR 0001 port order)
+    (render, app, sim, net, ui follow — ADR 0001 port order)
   fixtures/synthetic/      # our own small test files shared by all implementations
   crates/                  # Rust reference implementation during the port (no new features)
     formats/               # original file formats: chunk container, Anlagen, Figuren, tex/inc, zei, sze, scp, Data/*.dat

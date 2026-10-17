@@ -32,4 +32,5 @@ if(ANNO_BUILD_TESTS)
 endif()
 
 add_subdirectory(src/formats)
+add_subdirectory(src/assets)
 add_subdirectory(src/tools)

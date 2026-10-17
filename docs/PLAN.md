@@ -168,7 +168,8 @@ Status M1.6 (2026-10-17): `[~]` offline isometric renderer and interactive viewe
 - [x] **Language gate (end of M1):** decided 2026-10-17: **C++20** ([ADR 0001](adr/0001-cpp20.md)). Port order: skeleton → `formats` + `anno-dump` (checked against the Python oracles) → `assets`/`render`/`app` → `sim` (M3) and `net` (M4) in C++ only. The Rust code stays as the reference until each part has a C++ counterpart.
   - [x] Skeleton (2026-10-17): CMake ≥ 3.25 with presets `dev`, `release`, `asan`, `msvc`; warnings as errors; doctest 2.4.11 (pinned, SHA-256 checked); `.clang-format`; CI jobs for Linux GCC, Linux Clang + ASan/UBSan, Windows MSVC and a clang-format check.
   - [x] `formats` + `anno-dump` (2026-10-17): every reader (chunk, tex/inc, palettes and COLORS, figures and frames, Anlagen, islands, tagged records, scenarios, plain-text data, fonts) ported to `src/formats`, 36 doctest cases (20.4 M assertions with the corpus). `anno-dump` has all twelve commands; `tools/agree.py` finds 38 of 38 cases byte-identical with the Python references on the synthetic fixtures and the whole corpus (CTest `anno_dump_agrees_with_python`).
-  - [ ] `assets`, `render` (WebGPU via `webgpu.h`), `app` viewer with the pixel-fidelity test.
+  - [x] `assets` (2026-10-17): textures, figure and building frames, player colours and the start-of-game colour assignment, scenario units, top-down island ground in `src/assets`; pixel-identical to the Rust reference on the whole corpus (five FNV-1a digests over 991,503 images, `docs/render/assets.md`).
+  - [ ] `render` (WebGPU via `webgpu.h`), `app` viewer with the pixel-fidelity test.
 
 Acceptance M1: `Scenes/0200Single/*.sze` scenarios render recognisably (terrain + buildings + ships). Every parser has corpus + round-trip tests. Specs exist for each format with evidence column filled.
 

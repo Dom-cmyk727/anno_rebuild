@@ -133,7 +133,7 @@ Every sprite the renderer draws must reach the screen with all of its original p
 - **GPU vs CPU** (`bench_frame --renderer gpu --check`, `Single_24.sze`, 1920 × 1080): at groups 0, 1 and 2, no pixel of the GPU frame differs from the CPU frame by more than 1 per channel (blending rounding); all texture reads are exact `textureLoad`s, no filtering or scaling.
 - **Visual** (`--png --at … --size …`, magnified 5–10× with nearest-neighbour scaling): soldiers, cannons and ships at groups 0, 1, 2 keep weapons, helmets, rigging and wheel spokes; at group 2 details are single pixels and survive.
 
-Not covered yet: comparison against captures of the original game (PLAN §0.4 (2), needs an x86 host); the original's 16-bit colour quantisation (OQ-030). Player colours: rule and colours as the original (above); at group 2 the markers are single pixels and still show each army's colour.
+Not covered yet: comparison against captures of the original game (PLAN §0.4 (2), needs an x86 host). The original's 16-bit colour quantisation is deliberately not reproduced: the 24-bit palette colours are the reference (owner decision 2026-10-17, OQ-030). Player colours: rule and colours as the original (above); at group 2 the markers are single pixels and still show each army's colour.
 
 ## Visual checks (2026-10-17, ships)
 `anno1503 --view --png` on all ten `0200Single/*.sze` at group 2: every ship of each file drawn (1–10 per scenario, 31 in total), 0 objects failed. Close-ups with `--at <x>,<y> --size <w>x<h>` at groups 0 and 1 (`Single_01.sze`, `Single_24.sze`): hulls, rigging, flags and decorations intact, ships float on the sea next to the coast. Player colours on sails and flags are not applied yet (all white; OQ-027).

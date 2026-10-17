@@ -2,11 +2,13 @@
 
 A clean-room reimplementation of ANNO 1503 (Max Design / Sunflowers, 2002) in Rust, for Windows and Linux: faithful to the original where it matters, improved where it helps (see `docs/PLAN.md`). It needs your own copy of the original game files; none are included here.
 
-Current state: an **island viewer**. It reads the original files and draws scenarios and islands isometrically (ground, terrain height, animated sea, rivers, surf, trees, buildings, shadows), with optional crashing waves. No gameplay, ships, people or sound yet.
+Current state: an **island viewer**. It reads the original files and draws scenarios and islands isometrically (ground, terrain height, animated sea across the whole map, rivers, surf, trees, buildings, shadows), with optional crashing waves. Frames are drawn on the GPU (Vulkan, DirectX 12 or Metal via wgpu) with a CPU fallback; map areas are prepared on all CPU cores in the background. No gameplay, ships, people or sound yet.
+
+**Latest preview (2026-10-17c):** GPU renderer (≈ 1–2 ms per 4K frame on the dev machine instead of 7–25 ms), about 8× faster map preparation and islands ready when zooming, reworked crashing waves (no white blobs, grid stripes or coastal lines; waves roll in, curl, break and wash up the beach; turquoise shallows), and a built-in benchmark.
 
 ## Test the preview (Windows / Linux)
 
-**You need:** your own installed ANNO 1503 (GOG "A.D." edition). Below, *game folder* = the folder that contains `Anlagen.dat`.
+**You need:** your own installed ANNO 1503 (GOG "A.D." edition) and an up-to-date graphics driver (Vulkan or DirectX 12; without one the viewer falls back to the slower CPU renderer). Below, *game folder* = the folder that contains `Anlagen.dat`.
 
 **1. Download** [`share/anno1503-preview-2026-10-17c.zip`](https://github.com/Dom-cmyk727/anno_rebuild/raw/main/share/anno1503-preview-2026-10-17c.zip) and unzip it anywhere.
 
@@ -15,7 +17,7 @@ Current state: an **island viewer**. It reads the original files and draws scena
 **2b. Linux (x86_64):**
 ```sh
 cd anno1503-preview-2026-10-17c
-chmod +x start-viewer.sh linux/*
+chmod +x start-viewer.sh run-benchmark.sh linux/*
 ./start-viewer.sh "/path/to/ANNO 1503"
 ```
 The game folder can be a Wine install (`…/drive_c/GOG Games/ANNO 1503`) or files extracted from the GOG installer with `innoextract`.
@@ -30,23 +32,27 @@ The game folder can be a Wine install (`…/drive_c/GOG Games/ANNO 1503`) or fil
 | `Space` | pause the water animation |
 | `Esc`, `Q` | quit |
 
-**4. Other maps (optional):** pass a scenario or island file as the second argument, e.g.
+The window title shows the renderer (GPU or CPU) and the frames per second; the console prints a timing line every 2 seconds.
+
+**4. Benchmark:** Windows: double-click `run-benchmark.bat`; Linux: `./run-benchmark.sh "/path/to/ANNO 1503"`. Runs 1–3 minutes without a window and writes `benchmark-results.md` next to the script.
+
+**5. Other maps (optional):** pass a scenario or island file as the second argument, e.g.
 `start-viewer.bat "C:\GOG Games\ANNO 1503" "C:\GOG Games\ANNO 1503\Scenes\Islands\Nord\N_128x128_0049_1B_Indianer.scp"`
 
 **Please report back**
 - Whether it starts; if not, the exact error text.
-- `benchmark-results.md` from `run-benchmark.bat` / `./run-benchmark.sh "/path/to/ANNO 1503"` (1–3 minutes, no window).
-- The fps shown in the window title (it also names the renderer: GPU or CPU) and a few of the timing lines printed in the console every 2 seconds, per zoom level with `E` off and on.
-- A short screen recording of the viewer with `E` on and off, ideally at a coastline zoomed in.
+- `benchmark-results.md` (step 4).
+- The renderer and fps shown in the window title and a few console timing lines, per zoom level with `E` off and on.
+- Whether panning and zooming feel smooth, and a short screen recording of a coastline zoomed in with `E` on and off.
 - If possible, the same kind of coastline in the original game, for comparison.
 
-The builds are cross-compiled on macOS and have not been run on Windows or Linux by us yet.
+**Known limitations:** rivers still look like blocky tile patches (next fix); only water is animated; the enhanced water is an optional improvement, not part of the original, and still being tuned. The builds are cross-compiled on macOS; the GPU path has not been run on Windows or Linux by us yet.
 
 ## For developers
 
 - Plan, status and goals: [`docs/PLAN.md`](docs/PLAN.md); project rules: [`CLAUDE.md`](CLAUDE.md).
 - File-format specs: [`docs/formats/`](docs/formats/); rendering rules: [`docs/render/iso.md`](docs/render/iso.md); reverse-engineering notes: [`docs/re/`](docs/re/).
-- Build: `cargo build --release`; run: `cargo run --release -p anno1503 -- --view <file.sze|file.scp> --game-dir <game folder>`.
+- Build: `cargo build --release`; run: `cargo run --release -p anno1503 -- --view <file.sze|file.scp> --game-dir <game folder> [--renderer auto|gpu|cpu]`.
 - Performance: `cargo run --release -p anno-render --features gpu --example bench_frame -- <game folder> <file.sze>` (method and results: [`docs/perf/README.md`](docs/perf/README.md)).
 - Preview package: `packaging/package-preview.sh <name>` (cross-compiles Windows and Linux builds into `share/`).
 - Tests that need the game files read `ANNO1503_GAME_DIR` and skip without it: `ANNO1503_GAME_DIR=<game folder> cargo test --workspace`.

@@ -15,3 +15,4 @@ pub mod sze;
 pub mod tagged;
 pub mod tex;
 pub mod text;
+pub mod zei;

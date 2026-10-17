@@ -49,7 +49,7 @@ fn view_png_scenario() {
         stderr.contains("15 islands drawn (0 without ground)"),
         "{stderr}"
     );
-    assert!(stderr.contains(", 0 failed, 5 ships drawn"), "{stderr}");
+    assert!(stderr.contains(", 0 failed, 5 units drawn"), "{stderr}");
 
     let dec = png::Decoder::new(std::io::BufReader::new(
         std::fs::File::open(&out).expect("png written"),
@@ -177,5 +177,5 @@ fn view_png_island_links() {
         stderr.contains("group 2 2400x1400 px, 9 islands drawn (0 without ground)"),
         "{stderr}"
     );
-    assert!(stderr.contains(", 0 failed, 1 ships drawn"), "{stderr}");
+    assert!(stderr.contains(", 0 failed, 1 units drawn"), "{stderr}");
 }

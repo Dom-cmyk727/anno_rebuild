@@ -13,8 +13,8 @@
 //! island of a template
 //! (`.scp`), rendered with
 //! `anno_render::iso` (ground with elevation, animated sea, `GELAENDE` +
-//! `PROD2` + `FLUESSE` objects, shadows, and a scenario's ships from
-//! `SPIELER/SCHIFF`) and composed by `anno_render::scene` (rules:
+//! `PROD2` + `FLUESSE` objects, shadows, and a scenario's ships and
+//! soldiers from `SPIELER/SCHIFF` and `SOLDAT`) and composed by `anno_render::scene` (rules:
 //! `docs/render/iso.md`).
 //!
 //! - Window (default): drag with the left mouse button, arrow keys or WASD to
@@ -30,7 +30,7 @@
 //!   `--size` pixels (default 1600x900) centred on world tile `(x, y)`, and
 //!   prints
 //!   one line to stderr:
-//!   `<file>: group <g> <w>x<h> px, <n> islands drawn (<k> without ground), objects <d> drawn, <i> invisible, <f> failed, <s> ships drawn`.
+//!   `<file>: group <g> <w>x<h> px, <n> islands drawn (<k> without ground), objects <d> drawn, <i> invisible, <f> failed, <u> units drawn` (ships and soldiers).
 //!   Exit code 1 if any object failed.
 //!
 //! The game directory (for `Textures/Felder.tex`, `Anlagen.dat` and, for
@@ -202,7 +202,8 @@ fn run(args: &Args) -> Result<bool, BoxError> {
         anlagen,
         anno_render::iso::HEIGHT_LIFT,
     );
-    scene.units = load_ships(&dir, &file_buf)?;
+    let units = load_units(&dir, &file_buf, &scene)?;
+    scene.units = units;
     if scene.islands.is_empty() {
         return Err("no islands".into());
     }
@@ -313,9 +314,10 @@ fn find_ci(base: &Path, rel: &str) -> Option<PathBuf> {
     Some(cur)
 }
 
-/// The ships of a scenario (none for an island template). Only the frames
-/// the ships use are read from the figure volumes.
-fn load_ships(dir: &Path, file_buf: &[u8]) -> Result<Vec<UnitSprite>, BoxError> {
+/// The ships and soldiers of a scenario (none for an island template);
+/// soldiers stand on the ground height of `scene` at their position. Only
+/// the frames the units use are read from the figure volumes.
+fn load_units(dir: &Path, file_buf: &[u8], scene: &Scene<'_>) -> Result<Vec<UnitSprite>, BoxError> {
     let Ok(scenario) = sze::Scene::parse(file_buf) else {
         return Ok(Vec::new());
     };
@@ -337,21 +339,41 @@ fn load_ships(dir: &Path, file_buf: &[u8]) -> Result<Vec<UnitSprite>, BoxError> 
         }
         Some(data)
     };
-    let (ships, stats) = unit::ships(&scenario, &header, read)?;
+    let kinds = [unit::UnitKind::Ship, unit::UnitKind::Soldier];
+    let (units, stats) = unit::units(&scenario, &header, &kinds, read)?;
     if stats.missing + stats.failed_frames > 0 {
         eprintln!(
-            "ships: {} of {} without a figure, {} frames failed",
-            stats.missing, stats.ships, stats.failed_frames
+            "units: {} of {} without a figure, {} frames failed",
+            stats.missing, stats.units, stats.failed_frames
         );
     }
-    Ok(ships
+    let mut off_land = 0;
+    let sprites = units
         .into_iter()
-        .map(|u| UnitSprite {
-            x: u.x,
-            y: u.y,
-            frames: u.frames,
+        .filter_map(|u| {
+            let z = match u.kind {
+                unit::UnitKind::Ship => None,
+                unit::UnitKind::Soldier => {
+                    let Some(z) = scene.ground_height(u.x, u.y) else {
+                        off_land += 1;
+                        return None;
+                    };
+                    Some(z)
+                }
+            };
+            Some(UnitSprite {
+                x: u.x,
+                y: u.y,
+                z,
+                frames: u.frames,
+                shadows: u.shadows,
+            })
         })
-        .collect())
+        .collect();
+    if off_land > 0 {
+        eprintln!("units: {off_land} soldiers outside every island, not drawn");
+    }
+    Ok(sprites)
 }
 
 /// Paths and sizes of the volume parts `Figuren<group><nn>.dat`, in order.
@@ -397,7 +419,7 @@ fn write_scene_png(
     };
     let (canvas, stats) = scene.render(rect, group, layers);
     eprintln!(
-        "{}: group {group} {}x{} px, {} islands drawn ({} without ground), objects {} drawn, {} invisible, {} failed, {} ships drawn",
+        "{}: group {group} {}x{} px, {} islands drawn ({} without ground), objects {} drawn, {} invisible, {} failed, {} units drawn",
         scene.name,
         rect.w,
         rect.h,

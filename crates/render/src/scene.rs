@@ -12,9 +12,11 @@
 //!   then `x` (the simplification used for objects; OQ-026).
 //! - An island is rendered into a temporary canvas that covers only its
 //!   overlap with the target region, then composited source-over.
-//! - Units (ships) stand at their world position on the sea surface
-//!   ([`iso::SEA_LEVEL`]) and are drawn after all islands, back to front
-//!   by `x + y` ([`UnitSprite`]; order against island objects: OQ-026 f).
+//! - Units ([`UnitSprite`]) stand at their world position. Ships float on
+//!   the sea surface ([`iso::SEA_LEVEL`]) and are drawn after all islands,
+//!   back to front by `x + y`. Soldiers stand on the ground (terrain height
+//!   at their position) and are drawn with their island's objects, in the
+//!   objects' back-to-front order, as a 1 × 1 footprint on their tile.
 
 use anno_assets::island::GroundTextures;
 use anno_formats::anlagen::AnlagenFile;
@@ -343,18 +345,24 @@ struct IslandData {
     water: OnceLock<Option<IslandWater>>,
 }
 
-/// A unit to draw (a ship of a scenario): world position in tiles and its
-/// decoded frame per zoom group (`None` where it has none).
+/// A unit to draw (a ship or soldier of a scenario): world position in
+/// tiles, the ground height it stands on (`None` = on the sea surface), and
+/// its decoded frame and shadow frame per zoom group (`None` where it has
+/// none).
 #[derive(Debug, Clone)]
 pub struct UnitSprite {
     pub x: f32,
     pub y: f32,
+    /// `HEIGHT` units; `None` for ships.
+    pub z: Option<f32>,
     pub frames: Vec<Option<(Frame, Arc<Rgba>)>>,
+    pub shadows: Vec<Option<(Frame, Arc<Rgba>)>>,
 }
 
 impl UnitSprite {
     /// Scene screen point of the frame anchor at `group`: the world point
-    /// projected as [`iso::tile_top`], raised to the sea surface.
+    /// projected as [`iso::tile_top`], raised to the ground height or the
+    /// sea surface.
     pub fn anchor(&self, group: usize, lift: Lift) -> (i32, i32) {
         let (tw, th) = TILE[group];
         #[allow(clippy::cast_possible_truncation)]
@@ -362,7 +370,34 @@ impl UnitSprite {
             ((self.x - self.y) * tw as f32 / 2.0).round() as i32,
             ((self.x + self.y) * th as f32 / 2.0).round() as i32,
         );
-        (sx, sy - lift.scaled(iso::SEA_LEVEL, 1, group))
+        let raise = match self.z {
+            // Height in 1/1024 units, so sloped ground lifts smoothly.
+            #[allow(clippy::cast_possible_truncation)]
+            Some(z) => lift.scaled((z * 1024.0).round() as i64, 1024, group),
+            None => lift.scaled(iso::SEA_LEVEL, 1, group),
+        };
+        (sx, sy - raise)
+    }
+
+    /// Draws shadow and frame at `group` with the anchor shifted by
+    /// `-offset` (into a canvas with other coordinates); returns whether the
+    /// frame touched the canvas.
+    fn draw(&self, canvas: &mut Canvas, group: usize, lift: Lift, offset: (i32, i32)) -> bool {
+        let Some(Some((frame, img))) = self.frames.get(group) else {
+            return false;
+        };
+        let a = self.anchor(group, lift);
+        let anchor = (a.0 - offset.0, a.1 - offset.1);
+        if let Some(Some((sf, simg))) = self.shadows.get(group) {
+            iso::blit_sprite(canvas, simg, sf, anchor, true, |_, _, px| Some(px));
+        }
+        let (x, y) = (
+            anchor.0 - i32::from(frame.anchor_x),
+            anchor.1 - i32::from(frame.anchor_y),
+        );
+        let hit = canvas.overlaps(x, y, i32::from(frame.width), i32::from(frame.height));
+        iso::blit_sprite(canvas, img, frame, anchor, false, |_, _, px| Some(px));
+        hit
     }
 }
 
@@ -698,17 +733,6 @@ impl<'a> Scene<'a> {
                     y: r.y - p.offset.1,
                     ..r
                 });
-                let draw = |c: &mut Canvas, list: &[Prepared], time| {
-                    iso::draw_prepared(
-                        c,
-                        list,
-                        &self.anlagen,
-                        group,
-                        self.lift,
-                        time,
-                        &self.sprites,
-                    )
-                };
                 if first {
                     drawn += 1;
                     if layers.ground {
@@ -782,13 +806,16 @@ impl<'a> Scene<'a> {
                         ));
                     }
                     if layers.objects {
-                        add(draw(&mut local, &objects.other, 0));
+                        let (s, units) =
+                            self.draw_island_objects(&mut local, p, &objects.other, group);
+                        add(s);
+                        stats.units += units;
                     }
                 }
                 composite(&mut canvas, &local, p.offset);
             }
             if pass == 1 && layers.objects {
-                stats.units = self.draw_units(&mut canvas, group);
+                stats.units += self.draw_units(&mut canvas, group);
             }
             if pass == 0
                 && layers.sea
@@ -821,6 +848,74 @@ impl<'a> Scene<'a> {
         (canvas, stats)
     }
 
+    /// Ground height (`HEIGHT` units) at world point `(x, y)`, from the
+    /// island whose rectangle contains it; `None` over open sea.
+    pub fn ground_height(&self, x: f32, y: f32) -> Option<f32> {
+        self.islands.iter().zip(&self.objects).find_map(|(i, o)| {
+            let (lx, ly) = (x - f32::from(i.x), y - f32::from(i.y));
+            let inside =
+                (0.0..f32::from(i.width)).contains(&lx) && (0.0..f32::from(i.height)).contains(&ly);
+            let (_, heights) = o.grids.as_ref().filter(|_| inside)?;
+            let (w, h) = (usize::from(i.width), usize::from(i.height));
+            Some(iso::terrain_height(heights, w, h, lx, ly))
+        })
+    }
+
+    /// Draws an island's objects (`list`, back to front) with the land units
+    /// standing on it interleaved: a unit on local tile `(tx, ty)` counts as
+    /// a 1 × 1 footprint, key `(tx + 1 + ty + 1, tx)`, and is drawn after
+    /// the objects whose key is not larger. Returns the object statistics
+    /// and the number of units drawn.
+    fn draw_island_objects(
+        &self,
+        local: &mut Canvas,
+        p: &Placement,
+        list: &[Prepared],
+        group: usize,
+    ) -> (DrawStats, usize) {
+        let island = &self.islands[p.index];
+        let (ix, iy) = (f32::from(island.x), f32::from(island.y));
+        let (w, h) = (f32::from(island.width), f32::from(island.height));
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let mut units: Vec<((u32, u32), &UnitSprite)> = self
+            .units
+            .iter()
+            .filter(|u| u.z.is_some())
+            .filter(|u| (ix..ix + w).contains(&u.x) && (iy..iy + h).contains(&u.y))
+            .map(|u| {
+                let (tx, ty) = ((u.x - ix) as u32, (u.y - iy) as u32);
+                ((tx + 1 + ty + 1, tx), u)
+            })
+            .collect();
+        units.sort_by_key(|(k, _)| *k);
+        let key = |(o, (fw, fh)): &Prepared| {
+            (
+                u32::from(o.x) + u32::from(*fw) + u32::from(o.y) + u32::from(*fh),
+                u32::from(o.x),
+            )
+        };
+        let mut stats = DrawStats::default();
+        let mut add = |s: DrawStats| {
+            stats.drawn += s.drawn;
+            stats.invisible += s.invisible;
+            stats.failed += s.failed;
+        };
+        let draw = |c: &mut Canvas, part: &[Prepared]| {
+            iso::draw_prepared(c, part, &self.anlagen, group, self.lift, 0, &self.sprites)
+        };
+        let (mut start, mut drawn) = (0, 0);
+        for (k, u) in units {
+            let end = start + list[start..].partition_point(|o| key(o) <= k);
+            add(draw(local, &list[start..end]));
+            start = end;
+            if u.draw(local, group, self.lift, p.offset) {
+                drawn += 1;
+            }
+        }
+        add(draw(local, &list[start..]));
+        (stats, drawn)
+    }
+
     /// Screen rectangle of unit `u` at `group`, if it has a frame there.
     fn unit_rect(&self, u: &UnitSprite, group: usize) -> Option<Rect> {
         let (frame, _) = u.frames.get(group)?.as_ref()?;
@@ -851,27 +946,15 @@ impl<'a> Scene<'a> {
             .reduce(Rect::union)
     }
 
-    /// Draws the units that touch `canvas` at `group`, back to front by
-    /// `x + y`; returns how many were drawn.
+    /// Draws the units on the sea surface (ships) that touch `canvas` at
+    /// `group`, back to front by `x + y`; returns how many were drawn.
     fn draw_units(&self, canvas: &mut Canvas, group: usize) -> usize {
-        let mut order: Vec<&UnitSprite> = self.units.iter().collect();
+        let mut order: Vec<&UnitSprite> = self.units.iter().filter(|u| u.z.is_none()).collect();
         order.sort_by(|a, b| (a.x + a.y).total_cmp(&(b.x + b.y)));
-        let mut drawn = 0;
-        for u in order {
-            let Some(Some((frame, img))) = u.frames.get(group) else {
-                continue;
-            };
-            let anchor = u.anchor(group, self.lift);
-            let (x, y) = (
-                anchor.0 - i32::from(frame.anchor_x),
-                anchor.1 - i32::from(frame.anchor_y),
-            );
-            if canvas.overlaps(x, y, i32::from(frame.width), i32::from(frame.height)) {
-                iso::blit_sprite(canvas, img, frame, anchor, false, |_, _, px| Some(px));
-                drawn += 1;
-            }
-        }
-        drawn
+        order
+            .into_iter()
+            .filter(|u| u.draw(canvas, group, self.lift, (0, 0)))
+            .count()
     }
 }
 
@@ -932,16 +1015,21 @@ mod tests {
 
     #[test]
     fn unit_anchor_projects_world_point_onto_sea_surface() {
-        let u = UnitSprite {
+        let mut u = UnitSprite {
             x: 10.5,
             y: 4.5,
+            z: None,
             frames: Vec::new(),
+            shadows: Vec::new(),
         };
         // Group 2 tile 20 × 10: ((x − y)·10, (x + y)·5).
         assert_eq!(u.anchor(2, Lift::NONE), (60, 75));
         // Sea surface 32 units at 2.059 px per unit and group 0, scaled by
         // 20/84: 15 px.
         assert_eq!(u.anchor(2, HEIGHT_LIFT), (60, 60));
+        // On the ground at height 16: half the sea-surface lift.
+        u.z = Some(16.0);
+        assert_eq!(u.anchor(2, HEIGHT_LIFT), (60, 68));
     }
 
     #[test]

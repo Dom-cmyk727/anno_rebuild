@@ -61,12 +61,17 @@ Source: YouTube video `2I-T_8SAFuU` (Anno 1503 History Edition — the 2020 re-r
 - **Colour:** open sea averages RGB (28, 89, 138) in the video, ours (37, 107, 142) at zoom 0 — the original is darker and less green. Candidate cause: the colour parameter `0xC0` passed with every water sprite (selects a colour-table variant, not applied yet; `docs/re/annodisplay.md`). The original's water texture also looks finer and more sparkling.
 
 ## Enhanced water (not in the original, opt-in)
-Off by default; `E` in the viewer, `--water enhanced` for `--png`. Applies to sea pixels only (water layer), so cached ground and objects are unaffected. Constants are tuned by eye and are not derived from the original.
+Off by default; `E` in the viewer, `--water enhanced` for `--png`. Applies to sea pixels only (water layer), so cached ground and objects are unaffected. Not derived from the original (which has no breakers, see "Reference"); the owner's target is crashing waves on coasts and open sea (PLAN §0.2). Tuning lives in `iso::Waves::DEFAULT` (to become configuration).
 - Shore distance: per island, a chamfer distance field (in tiles) from every height-grid corner at or above sea level, interpolated per pixel on the water plane.
-- Breakers: crest phase `distance / 1.4 + t · ω` (crests move towards the shore, parallel to the coast); sharp crest front with a foam trail; crests broken into slowly drifting segments; foam grows within 4.5 tiles of the shore; swash on the last 0.6 tile. Foam pixels also fill their checkerboard neighbour.
-- Swell: two slow crossing sine waves modulate the brightness of open water (± 14 %).
-- Cost: ≈ 12 % more for a full scenario render (`Single_01.sze`, group 2).
-- Tests: `crates/app/tests/view.rs::view_png_enhanced_water_is_opt_in`.
+- Incoming waves: crest phase `distance / 1.6 + t / 2600 ms` (crests travel towards the shore, parallel to the coast, slightly bent). Profile with a steep shoreward face and a gentle back.
+- Shoaling (5.5 → 2.6 tiles from shore): waves grow; darker face, bright crest.
+- Breaking (inside 2.6 tiles): the crest collapses into turbulent whitewater (animated value noise), a thick band thinning into a mottled foam trail; crests are broken into drifting segments.
+- Impact: when a crest reaches the beach, a foam sheet bursts over the last 1.3 tiles and decays until the next crest; backwash streaks.
+- Open sea: slow crossing swell (brightness ± 12 %); whitecaps on the swell crests where slowly changing noise allows, so they stretch along the crests and come and go (density `whitecaps` = 0.18).
+- Deterministic: a pure function of position and time (value noise from an integer hash), so `--png --time` is reproducible.
+- Cost: ≈ 12 % more for a full scenario render (`Single_01.sze`, group 2: 11.6 s vs 10.4 s).
+- Not yet: spray above the water at impact, wave interaction with rocks and ships, removing the tile-shaped patches of the open-water fill.
+- Tests: `iso::tests::wave_noise_is_deterministic_and_bounded`, `crates/app/tests/view.rs::view_png_enhanced_water_is_opt_in`.
 
 ## Scene composition (scenario view)
 `anno_render::scene`; used by `anno1503 --view` (window and `--png`).

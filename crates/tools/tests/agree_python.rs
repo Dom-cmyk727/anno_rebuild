@@ -815,3 +815,173 @@ fn anno_dump_matches_anlagen_py_synthetic() {
     assert!(out.contains("format=\"BSH_RGBWZ\""), "{out}");
     assert!(out.contains("NOPARSE\n"), "{out}");
 }
+
+/// Every `.sze`, with and without `--full`.
+#[test]
+fn anno_dump_matches_sze_py_corpus() {
+    let test = "anno_dump_matches_sze_py_corpus";
+    let Some(dir) = game_dir(test) else { return };
+    if !have_python(test) {
+        return;
+    }
+    let mut files = Vec::new();
+    collect_ext(&dir.join("Scenes"), &["sze"], &mut files);
+    files.sort();
+    assert_eq!(files.len(), 50);
+    let out = agree("sze.py", &["dump"], &["sze"], &files);
+    assert_eq!(out.matches("UNIT SCHIFF id=").count(), 327);
+    assert_eq!(out.matches("UNIT SOLDAT id=").count(), 2317);
+    let full = agree("sze.py", &["dump", "--full"], &["sze", "--full"], &files);
+    assert_eq!(full.matches("BAD").count(), 0);
+}
+
+/// One tagged record: 6-byte name, `u16` length (long form: `0xFF00`, then
+/// the `u16` length), payload.
+fn tagged(name: &str, long: bool, payload: &[u8]) -> Vec<u8> {
+    let mut out = vec![0; 6];
+    out[..name.len()].copy_from_slice(name.as_bytes());
+    if long {
+        out.extend_from_slice(&0xFF00u16.to_le_bytes());
+    }
+    let len = u16::try_from(payload.len()).expect("small payload");
+    out.extend_from_slice(&len.to_le_bytes());
+    out.extend_from_slice(payload);
+    out
+}
+
+#[test]
+fn anno_dump_matches_sze_py_synthetic() {
+    let test = "anno_dump_matches_sze_py_synthetic";
+    if !have_python(test) {
+        return;
+    }
+    let dir = synthetic_dir(test);
+    let unit = |id: u16, figure: u16, recs: &[u8]| {
+        let mut p = [id.to_le_bytes(), figure.to_le_bytes(), [1, 9], [0, 0]].concat();
+        p.extend_from_slice(&10.5f32.to_le_bytes());
+        p.extend_from_slice(&(-3.25f32).to_le_bytes());
+        p.extend_from_slice(recs);
+        p
+    };
+    let crew = tagged(
+        "CREW",
+        false,
+        &tagged(
+            "ENTRY",
+            false,
+            &[
+                [5, 0, 0xcd, 2, 1, 0].as_slice(),
+                &tagged("HEAD", false, &[1; 16]),
+            ]
+            .concat(),
+        ),
+    );
+    let ship = unit(
+        2,
+        1502,
+        &[
+            tagged("HEAD", false, &[0; 16]),
+            tagged(
+                "PRIVAT",
+                false,
+                &[tagged("NAME", false, b"Jana\0"), crew].concat(),
+            ),
+        ]
+        .concat(),
+    );
+    let stadt = [
+        [0u8, 0, 1, 2, 3, 4].as_slice(),
+        &tagged("HEAD2", false, &[0; 4]),
+        &tagged("PROD", true, &tagged("ENTRY", false, &[7; 3])),
+    ]
+    .concat();
+    let player = |index: u32, recs: &[u8]| {
+        [[0; 4], index.to_le_bytes()]
+            .concat()
+            .into_iter()
+            .chain(recs.iter().copied())
+            .collect::<Vec<u8>>()
+    };
+    let good = chunk(
+        "ANNOADDON1",
+        &chunk(
+            "SCENE",
+            &[
+                chunk("HEAD", &[0; 8]),
+                chunk(
+                    "INSELLNK",
+                    b"\x20\x00\x18\x00\x50\x00\x40\x00\x04\x00\x00\x00islands\\a\"b.scp\0",
+                ),
+                chunk(
+                    "INSELLNK",
+                    b"\x20\x00\x18\x00\x50\x00\x40\x00\x04\x00\x00\x00no nul",
+                ),
+                chunk("SPIELER", &player(0, &tagged("HEAD", false, &[3; 4]))),
+                chunk("SPIELER", &player(31, &[])),
+                chunk(
+                    "SPIELER",
+                    &player(
+                        0,
+                        &[
+                            tagged("SCHIFF", false, &ship),
+                            tagged("STADT2", true, &stadt),
+                            tagged("DIPL", false, b"not records"),
+                        ]
+                        .concat(),
+                    ),
+                ),
+                // Bad: name with garbage after the NUL, a unit shorter
+                // than its prefix, a payload past the end, a short block.
+                chunk("SPIELER", &player(1, b"HEAD\0x\x00\x00")),
+                chunk("SPIELER", &player(2, &tagged("SOLDAT", false, &[1; 6]))),
+                chunk("SPIELER", &player(3, b"HEAD\0\0\x09\x00ab")),
+                chunk("SPIELER", &[1, 2, 3]),
+            ]
+            .concat(),
+        ),
+    );
+    let files: Vec<PathBuf> = [
+        ("good.sze", good),
+        ("noscene.sze", chunk("ANNO", &chunk("HEAD", &[0; 8]))),
+        ("bad.sze", b"not a chunk file".to_vec()),
+    ]
+    .into_iter()
+    .map(|(n, bytes)| {
+        let p = dir.join(n);
+        std::fs::write(&p, bytes).expect("write");
+        p
+    })
+    .collect();
+    let out = agree("sze.py", &["dump", "--full"], &["sze", "--full"], &files);
+    assert!(
+        out.contains("SCENE edition=ANNOADDON1 children=10 players=7\n"),
+        "{out}"
+    );
+    assert!(
+        out.contains("  UNIT SCHIFF id=2 figure=1502 owner=1 attr=9 reserved=0 x=41280000 y=c0500000 records=HEAD,PRIVAT\n"),
+        "{out}"
+    );
+    assert!(
+        out.contains(
+            "LINK x=32 y=24 width=80 height=64 number=4 path=\"islands\\x5ca\\x22b.scp\"\nLINK BAD\n"
+        ),
+        "{out}"
+    );
+    assert!(out.contains("  RECORD STADT2 size=39 long=1 "), "{out}");
+    assert!(
+        out.contains("    PREFIX 000001020304\n    HEAD2 size=4 long=0 "),
+        "{out}"
+    );
+    assert!(out.contains("    PROD size=11 long=1 "), "{out}");
+    assert!(out.contains("          PREFIX 0500cd020100\n"), "{out}");
+    assert!(
+        out.contains("  RECORD DIPL size=11 long=0 hash=") && out.contains("    NESTED BAD\n"),
+        "{out}"
+    );
+    assert!(out.contains("PLAYER i=3 index=1 flag=0 BAD\n"), "{out}");
+    assert!(out.contains("  UNIT SOLDAT BAD\n"), "{out}");
+    assert!(out.contains("PLAYER i=5 index=3 flag=0 BAD\n"), "{out}");
+    assert!(out.contains("PLAYER i=6 BAD\n"), "{out}");
+    assert_eq!(out.matches("NOPARSE\n").count(), 2, "{out}");
+    agree("sze.py", &["dump"], &["sze"], &files);
+}

@@ -9,6 +9,7 @@
 //! anno-dump frames <game_dir> <entry id>...  decoded frames (same as `tools/figuren.py frames`)
 //! anno-dump insel [--full] <file.scp|file.sze>...  islands (same as `tools/insel.py dump`)
 //! anno-dump anlagen [--full] <Anlagen.dat>...  ANLAGEN entries (same as `tools/figuren.py anlagen`)
+//! anno-dump sze [--full] <file.sze>...  players, ships, soldiers (same as `tools/sze.py dump`)
 //! anno-dump probe <path> <file>...   statistics over all chunks at a name path
 //! ```
 //!
@@ -18,13 +19,14 @@
 //!
 //! The `tex`/`inc` text format is specified in `docs/formats/tex.md`
 //! ("Reference dump"), `colors` in `docs/formats/palette.md`, `figuren` and
-//! `frames` in `docs/formats/figuren.md`, `insel` in `docs/formats/insel.md`.
+//! `frames` in `docs/formats/figuren.md`, `insel` in `docs/formats/insel.md`,
+//! `sze` in `docs/formats/sze.md`.
 
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::process::ExitCode;
 
-use anno_formats::{anlagen, chunk, colors, figuren, inc, insel, tex};
+use anno_formats::{anlagen, chunk, colors, figuren, inc, insel, sze, tagged, tex};
 
 const USAGE: &str = "usage: anno-dump chunks <file>...\n       \
                      anno-dump tex [--full] <file>...\n       \
@@ -34,6 +36,7 @@ const USAGE: &str = "usage: anno-dump chunks <file>...\n       \
                      anno-dump frames <game_dir> <entry id>...\n       \
                      anno-dump insel [--full] <file.scp|file.sze>...\n       \
                      anno-dump anlagen [--full] <Anlagen.dat>...\n       \
+                     anno-dump sze [--full] <file.sze>...\n       \
                      anno-dump probe <path> <file>...";
 
 fn main() -> ExitCode {
@@ -44,8 +47,10 @@ fn main() -> ExitCode {
     };
     let (full, files) = match rest.split_first() {
         Some((flag, files))
-            if matches!(cmd, "tex" | "colors" | "figuren" | "insel" | "anlagen")
-                && flag == "--full" =>
+            if matches!(
+                cmd,
+                "tex" | "colors" | "figuren" | "insel" | "anlagen" | "sze"
+            ) && flag == "--full" =>
         {
             (true, files)
         }
@@ -76,6 +81,7 @@ fn main() -> ExitCode {
         "figuren" => dump_files(files, |buf, out| dump_figuren(buf, full, out)),
         "insel" => dump_files(files, |buf, out| dump_insel(buf, full, out)),
         "anlagen" => dump_files(files, |buf, out| dump_anlagen(buf, full, out)),
+        "sze" => dump_files(files, |buf, out| dump_sze(buf, full, out)),
         _ => usage(),
     }
 }
@@ -847,6 +853,165 @@ fn dump_insel(buf: &[u8], full: bool, out: &mut String) -> bool {
                 }
             }
         }
+    }
+    ok
+}
+
+/// `sze`: one line per `SCENE`, per `SPIELER` block, per record and per unit;
+/// with `--full` also every nested record (`docs/formats/sze.md`,
+/// "Reference dump").
+fn dump_sze(buf: &[u8], full: bool, out: &mut String) -> bool {
+    let scene = match sze::Scene::parse(buf) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("NOPARSE: {e}");
+            out.push_str("NOPARSE\n");
+            return false;
+        }
+    };
+    let edition = match scene.edition {
+        sze::Edition::Base => "ANNO",
+        sze::Edition::Addon => "ANNOADDON1",
+    };
+    let w = |out: &mut String, line: std::fmt::Arguments<'_>| {
+        out.write_fmt(line).expect("writing to a String");
+        out.push('\n');
+    };
+    let blocks: Vec<_> = scene.chunks("SPIELER").collect();
+    w(
+        out,
+        format_args!(
+            "SCENE edition={edition} children={} players={}",
+            scene.children.len(),
+            blocks.len()
+        ),
+    );
+    let mut ok = true;
+    for c in scene.chunks("INSELLNK") {
+        match sze::IslandLink::parse(c.payload, c.offset) {
+            Ok(l) => w(
+                out,
+                format_args!(
+                    "LINK x={} y={} width={} height={} number={} path={}",
+                    l.x,
+                    l.y,
+                    l.width,
+                    l.height,
+                    l.number,
+                    quote(l.path)
+                ),
+            ),
+            Err(_) => {
+                w(out, format_args!("LINK BAD"));
+                ok = false;
+            }
+        }
+    }
+    for (k, c) in blocks.iter().enumerate() {
+        let p = c.payload;
+        if p.len() < sze::PLAYER_PREFIX_LEN {
+            w(out, format_args!("PLAYER i={k} BAD"));
+            ok = false;
+            continue;
+        }
+        let player = match sze::Player::parse(p, c.offset + chunk::HEADER_LEN) {
+            Ok(player) => player,
+            Err(e) => {
+                eprintln!("NOPARSE: player {k}: {e}");
+                let flag = u32::from_le_bytes([p[0], p[1], p[2], p[3]]);
+                let index = u32::from_le_bytes([p[4], p[5], p[6], p[7]]);
+                w(
+                    out,
+                    format_args!("PLAYER i={k} index={index} flag={flag} BAD"),
+                );
+                ok = false;
+                continue;
+            }
+        };
+        w(
+            out,
+            format_args!(
+                "PLAYER i={k} index={} flag={} records={}",
+                player.index,
+                player.flag,
+                player.records.len()
+            ),
+        );
+        for r in &player.records {
+            w(
+                out,
+                format_args!(
+                    "  RECORD {} size={} long={} hash={:016x}",
+                    r.name,
+                    r.payload.len(),
+                    u8::from(r.long),
+                    fnv64(r.payload.iter().copied())
+                ),
+            );
+            if matches!(r.name, "SCHIFF" | "SOLDAT") {
+                match sze::Unit::parse(r.payload, 0) {
+                    Ok(u) => w(
+                        out,
+                        format_args!(
+                            "  UNIT {} id={} figure={} owner={} attr={} reserved={} x={:08x} y={:08x} records={}",
+                            r.name,
+                            u.id,
+                            u.figure,
+                            u.owner,
+                            u.attr,
+                            u.reserved,
+                            u.x_bits,
+                            u.y_bits,
+                            u.records
+                                .iter()
+                                .map(|r| r.name)
+                                .collect::<Vec<_>>()
+                                .join(",")
+                        ),
+                    ),
+                    Err(_) => {
+                        w(out, format_args!("  UNIT {} BAD", r.name));
+                        ok = false;
+                    }
+                }
+            }
+            if full {
+                ok &= dump_nested("SPIELER", r, 2, out);
+            }
+        }
+    }
+    ok
+}
+
+/// `--full`: the nested sequence of `r` (if any), indented by `depth`.
+fn dump_nested(parent: &str, r: &tagged::Record<'_>, depth: usize, out: &mut String) -> bool {
+    let Some(k) = sze::nested_prefix(parent, r.name) else {
+        return true;
+    };
+    let pad = "  ".repeat(depth);
+    let Some(kids) = r
+        .payload
+        .get(k..)
+        .and_then(|body| tagged::parse_records(body, 0).ok())
+    else {
+        writeln!(out, "{pad}NESTED BAD").expect("writing to a String");
+        return false;
+    };
+    if k > 0 {
+        writeln!(out, "{pad}PREFIX {}", hex(&r.payload[..k])).expect("writing to a String");
+    }
+    let mut ok = true;
+    for kid in &kids {
+        writeln!(
+            out,
+            "{pad}{} size={} long={} hash={:016x}",
+            kid.name,
+            kid.payload.len(),
+            u8::from(kid.long),
+            fnv64(kid.payload.iter().copied())
+        )
+        .expect("writing to a String");
+        ok &= dump_nested(r.name, kid, depth + 1, out);
     }
     ok
 }

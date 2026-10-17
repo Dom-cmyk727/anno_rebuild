@@ -9,6 +9,7 @@
 //   anno-dump figuren [--full] <FigurenHeader.dat>... figure index (tools/figuren.py dump)
 //   anno-dump frames <game_dir> <entry id>...  decoded frames (tools/figuren.py frames)
 //   anno-dump anlagen [--full] <Anlagen.dat>... ANLAGEN entries (tools/figuren.py anlagen)
+//   anno-dump insel [--full] <file.scp|file.sze>... islands (tools/insel.py dump)
 //
 // Each file's output starts with `# <path>` (the path as given); lines end
 // with `\n` on every platform.
@@ -34,7 +35,8 @@ constexpr const char* kUsage = "usage: anno-dump chunks <file>...\n"
                                "       anno-dump colors [--full] <Anlagen.dat>...\n"
                                "       anno-dump figuren [--full] <FigurenHeader.dat>...\n"
                                "       anno-dump frames <game_dir> <entry id>...\n"
-                               "       anno-dump anlagen [--full] <Anlagen.dat>...\n";
+                               "       anno-dump anlagen [--full] <Anlagen.dat>...\n"
+                               "       anno-dump insel [--full] <file.scp|file.sze>...\n";
 
 using DumpFn = bool (*)(Bytes, bool, std::string&);
 
@@ -58,6 +60,7 @@ const std::map<std::string, Command>& commands() {
         {"colors", {anno::dump::dump_colors, true}},
         {"figuren", {anno::dump::dump_figuren, true}},
         {"anlagen", {anno::dump::dump_anlagen, true}},
+        {"insel", {anno::dump::dump_insel, true}},
     };
     return table;
 }

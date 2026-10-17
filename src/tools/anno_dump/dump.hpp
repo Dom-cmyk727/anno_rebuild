@@ -37,6 +37,7 @@ bool dump_inc(Bytes buf, std::string& out);
 bool dump_colors(Bytes buf, bool full, std::string& out);
 bool dump_figuren(Bytes buf, bool full, std::string& out);
 bool dump_anlagen(Bytes buf, bool full, std::string& out);
+bool dump_insel(Bytes buf, bool full, std::string& out);
 /// `frames <game_dir> <entry id>...`; returns the exit code.
 int dump_frames(const std::string& dir, const std::vector<std::string>& ids);
 

@@ -25,7 +25,10 @@ template <class T, class E> class Result {
         assert(ok());
         return std::get<0>(v_);
     }
-    T&& value() && {
+    /// On a temporary, the value itself (moved out), not a reference: a
+    /// range-for over `f().value()` would otherwise dangle (C++20 does not
+    /// extend the temporary's lifetime there).
+    T value() && {
         assert(ok());
         return std::get<0>(std::move(v_));
     }

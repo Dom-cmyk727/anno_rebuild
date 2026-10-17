@@ -139,3 +139,43 @@ fn view_png_enhanced_water_is_opt_in() {
     assert_eq!(default, original);
     assert_ne!(original, enhanced);
 }
+
+/// An endless game whose islands are all `INSELLNK` links: each link gets a
+/// stand-in (a real template of its climate and size, OQ-028), and the
+/// `--at`/`--size` region renders with islands and no failed object.
+#[test]
+fn view_png_island_links() {
+    let Some(dir) = std::env::var_os("ANNO1503_GAME_DIR").map(PathBuf::from) else {
+        eprintln!("skipping view_png_island_links: ANNO1503_GAME_DIR not set");
+        return;
+    };
+    let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("view_endless_03.png");
+    let res = app()
+        .arg("--view")
+        .arg(dir.join("Scenes/0010SingleEndlos/03_1024_med_256.sze"))
+        .arg("--game-dir")
+        .arg(&dir)
+        .args([
+            "--group",
+            "2",
+            "--at",
+            "512,512",
+            "--size",
+            "2400x1400",
+            "--png",
+        ])
+        .arg(&out)
+        .output()
+        .expect("spawn");
+    let stderr = String::from_utf8_lossy(&res.stderr);
+    assert!(res.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("27 linked islands (INSELLNK) drawn as stand-ins"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("group 2 2400x1400 px, 9 islands drawn (0 without ground)"),
+        "{stderr}"
+    );
+    assert!(stderr.contains(", 0 failed, 1 ships drawn"), "{stderr}");
+}

@@ -8,7 +8,10 @@
 //! ```
 //!
 //! `--view` shows every island of a scenario (`.sze`) at its `INSEL5` world
-//! position, or the single island of a template (`.scp`), rendered with
+//! position (islands placed by `INSELLNK` as stand-ins: a real template of
+//! the same climate and size, until OQ-028 is resolved), or the single
+//! island of a template
+//! (`.scp`), rendered with
 //! `anno_render::iso` (ground with elevation, animated sea, `GELAENDE` +
 //! `PROD2` + `FLUESSE` objects, shadows, and a scenario's ships from
 //! `SPIELER/SCHIFF`) and composed by `anno_render::scene` (rules:
@@ -171,7 +174,22 @@ fn run(args: &Args) -> Result<bool, BoxError> {
     let file_buf = std::fs::read(&args.file)?;
     let felder_buf = std::fs::read(dir.join("Textures/Felder.tex"))?;
     let anl_buf = std::fs::read(dir.join("Anlagen.dat"))?;
-    let islands = insel::islands(&file_buf)?;
+    let linked = linked_templates(&dir, &file_buf)?;
+    let mut islands = insel::islands(&file_buf)?;
+    for (link, buf) in &linked {
+        let mut island = insel::islands(buf)?
+            .into_iter()
+            .next()
+            .ok_or("island template without an island")?;
+        (island.x, island.y, island.number) = (link.0, link.1, link.2);
+        islands.push(island);
+    }
+    if !linked.is_empty() {
+        eprintln!(
+            "{} linked islands (INSELLNK) drawn as stand-ins: real templates of the same climate and size (OQ-028)",
+            linked.len()
+        );
+    }
     let anlagen = AnlagenFile::parse(&anl_buf)?;
     let mut textures = GroundTextures::new(&TexFile::parse(&felder_buf)?)?;
     if let Some(c) = anno_render::iso::water_colour(&anlagen) {
@@ -207,6 +225,92 @@ fn run(args: &Args) -> Result<bool, BoxError> {
             Ok(true)
         }
     }
+}
+
+/// Position and number of an island link.
+type LinkPlace = (u16, u16, u32);
+
+/// Stand-in islands for a scenario's `INSELLNK` records, with the link's
+/// world position and island number. A link names a placeholder template
+/// (`*_dummy.scp`: flat grass, no coast); the original presumably puts a
+/// real island of that climate and size there, which one is open (OQ-028).
+/// Until then the viewer takes a real template from the dummy's climate
+/// folder with the link's size: candidates sorted by file name, pick =
+/// island number mod count (our choice, deterministic). Falls back to the
+/// dummy if there is none.
+fn linked_templates(dir: &Path, file_buf: &[u8]) -> Result<Vec<(LinkPlace, Vec<u8>)>, BoxError> {
+    let Ok(scenario) = sze::Scene::parse(file_buf) else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::new();
+    for link in scenario.island_links()? {
+        let rel = String::from_utf8_lossy(link.path);
+        let Some(dummy) = find_ci(&dir.join("Scenes"), &rel) else {
+            eprintln!("island link {}: {rel} not found, skipped", link.number);
+            continue;
+        };
+        let size = (link.width, link.height);
+        let buf = match stand_in(&dummy, size, link.number)? {
+            Some(buf) => buf,
+            None => std::fs::read(&dummy)?,
+        };
+        out.push(((link.x, link.y, link.number), buf));
+    }
+    Ok(out)
+}
+
+/// A real island template next to `dummy` (same folder, not a dummy) of
+/// `size`, chosen by `number` (see [`linked_templates`]).
+fn stand_in(dummy: &Path, size: (u16, u16), number: u32) -> Result<Option<Vec<u8>>, BoxError> {
+    let Some(folder) = dummy.parent() else {
+        return Ok(None);
+    };
+    // Template names carry the size as `_<w>x<h>_`; checked after loading
+    // because two templates are misnamed (insel.md).
+    let tag = format!("_{:03}x{:03}_", size.0, size.1);
+    let mut names: Vec<PathBuf> = std::fs::read_dir(folder)?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| {
+            let n = p
+                .file_name()
+                .map(|n| n.to_string_lossy().to_ascii_lowercase());
+            n.is_some_and(|n| n.ends_with(".scp") && !n.contains("dummy") && n.contains(&tag))
+        })
+        .collect();
+    names.sort();
+    if names.is_empty() {
+        return Ok(None);
+    }
+    let start = usize::try_from(number)? % names.len();
+    for k in 0..names.len() {
+        let buf = std::fs::read(&names[(start + k) % names.len()])?;
+        let fits = insel::islands(&buf)
+            .ok()
+            .and_then(|i| i.first().map(|i| (i.width, i.height) == size))
+            .unwrap_or(false);
+        if fits {
+            return Ok(Some(buf));
+        }
+    }
+    Ok(None)
+}
+
+/// Resolves a `\`-separated path below `base`, ignoring case per segment
+/// (the original ran on case-insensitive Windows file systems).
+fn find_ci(base: &Path, rel: &str) -> Option<PathBuf> {
+    let mut cur = base.to_path_buf();
+    for seg in rel.split('\\') {
+        cur = std::fs::read_dir(&cur)
+            .ok()?
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .find(|p| {
+                p.file_name()
+                    .is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(seg))
+            })?;
+    }
+    Some(cur)
 }
 
 /// The ships of a scenario (none for an island template). Only the frames

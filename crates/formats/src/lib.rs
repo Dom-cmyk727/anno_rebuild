@@ -11,4 +11,6 @@ pub mod colors;
 pub mod figuren;
 pub mod inc;
 pub mod insel;
+pub mod sze;
+pub mod tagged;
 pub mod tex;

@@ -8,17 +8,19 @@
 //! 0x000  u32      flag        0 (OQ-022)
 //! 0x004  u32      id          1..=440, unique, ascending
 //! 0x008  4 bytes  "BODY"      tag
-//! 0x00C  u16      0           (OQ-022)
+//! 0x00C  u16      0           name padding (see below)
 //! 0x00E  u16      1024        length of the palette
 //! 0x010  1024     palette     256 x [B, G, R, 0], as `.tex` COLOR/BODY
 //! 0x410  4 bytes  "NAME"      tag
-//! 0x414  u16      0           (OQ-022)
+//! 0x414  u16      0           name padding
 //! 0x416  u16      n           length of the name, including its NUL
 //! 0x418  n        name        `Farbtabellen\<file>.pcx`, NUL-terminated
 //! ```
 //!
-//! The two tagged records are not generic chunks (4-byte tag, no 12-byte
-//! name field), so the chunk reader sees `ENTRY` as a leaf.
+//! The two records are tagged records ([`crate::tagged`]: 6-byte NUL-padded
+//! name, `u16` length), not generic chunks, so the chunk reader sees `ENTRY`
+//! as a leaf. This module keeps the fixed layout above because all 440
+//! entries share it.
 
 use std::fmt;
 

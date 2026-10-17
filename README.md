@@ -2,21 +2,21 @@
 
 A clean-room reimplementation of ANNO 1503 (Max Design / Sunflowers, 2002) in Rust, for Windows and Linux: faithful to the original where it matters, improved where it helps (see `docs/PLAN.md`). It needs your own copy of the original game files; none are included here.
 
-Current state: an **island viewer**. It reads the original files and draws scenarios and islands isometrically (ground, terrain height, animated sea across the whole map, rivers, surf, trees, buildings, shadows, ships), with optional crashing waves. Frames are drawn on the GPU (Vulkan, DirectX 12 or Metal via wgpu) with a CPU fallback; map areas are prepared on all CPU cores in the background. No gameplay, people or sound yet; ships are shown where the scenario places them, without player colours; islands that endless games only link to are shown as stand-ins.
+Current state: an **island viewer**. It reads the original files and draws scenarios and islands isometrically (ground, terrain height, animated sea across the whole map, rivers, surf, trees, buildings, shadows, ships), with optional crashing waves. Frames are drawn on the GPU (Vulkan, DirectX 12 or Metal via wgpu) with a CPU fallback; map areas are prepared on all CPU cores in the background. No gameplay, civilians or sound yet; ships and soldiers are shown where the scenario places them (soldiers in player colours; which player gets which colour is a stand-in); islands that endless games only link to are shown as stand-ins.
 
-**Latest preview (2026-10-17f):** ships where the scenarios place them, and the endless games open (with stand-in islands of the right climate and size until we know which islands the original picks); earlier: real-time wave simulation on the GPU with `E` (waves shoal, refract around islands, break into moving foam and run up and down the beach); earlier: GPU renderer (≈ 1–2 ms per 4K frame on the dev machine instead of 7–25 ms), about 8× faster map preparation and islands ready when zooming, reworked crashing waves (no white blobs, grid stripes or coastal lines; waves roll in, curl, break and wash up the beach; turquoise shallows; deep water without tile edges), smooth zooming, and a built-in benchmark.
+**Latest preview (2026-10-17g):** soldiers on the ground in their owner's colour (player colours as the original), and a few building pixels that were cut off; earlier: ships where the scenarios place them, and the endless games open (with stand-in islands of the right climate and size until we know which islands the original picks); earlier: real-time wave simulation on the GPU with `E` (waves shoal, refract around islands, break into moving foam and run up and down the beach); earlier: GPU renderer (≈ 1–2 ms per 4K frame on the dev machine instead of 7–25 ms), about 8× faster map preparation and islands ready when zooming, reworked crashing waves (no white blobs, grid stripes or coastal lines; waves roll in, curl, break and wash up the beach; turquoise shallows; deep water without tile edges), smooth zooming, and a built-in benchmark.
 
 ## Test the preview (Windows / Linux)
 
 **You need:** your own installed ANNO 1503 (GOG "A.D." edition) and an up-to-date graphics driver (Vulkan or DirectX 12; without one the viewer falls back to the slower CPU renderer). Below, *game folder* = the folder that contains `Anlagen.dat`.
 
-**1. Download** [`share/anno1503-preview-2026-10-17f.zip`](https://github.com/Dom-cmyk727/anno_rebuild/raw/main/share/anno1503-preview-2026-10-17f.zip) and unzip it anywhere.
+**1. Download** [`share/anno1503-preview-2026-10-17g.zip`](https://github.com/Dom-cmyk727/anno_rebuild/raw/main/share/anno1503-preview-2026-10-17g.zip) and unzip it anywhere.
 
 **2a. Windows 10/11:** double-click `start-viewer.bat` and enter your game folder when asked (e.g. `C:\GOG Games\ANNO 1503`).
 
 **2b. Linux (x86_64):**
 ```sh
-cd anno1503-preview-2026-10-17f
+cd anno1503-preview-2026-10-17g
 chmod +x start-viewer.sh run-benchmark.sh linux/*
 ./start-viewer.sh "/path/to/ANNO 1503"
 ```

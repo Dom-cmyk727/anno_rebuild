@@ -7,10 +7,23 @@ A clean-room reimplementation of ANNO 1503 in Rust (project milestone M1.6).
 This build is an island VIEWER, not the playable game yet: it reads the
 original game files and draws scenarios and islands isometrically (ground,
 terrain height, animated sea, rivers and surf, trees, rocks, buildings,
-shadows, ships). No gameplay, no people, no sound.
+shadows, ships, soldiers). No gameplay, no civilians, no sound.
 
 New in this build
 -----------------
+- Soldiers: every soldier a scenario places stands on the ground with its
+  shadow, sorted in among buildings and trees (e.g. Single_24, the
+  campaign and the add-on scenarios).
+- Player colours: soldiers show their owner's colour, computed exactly as
+  the original does. Which player gets
+  which colour is chosen in the original's start screen; here player 1 gets
+  colour 1, player 2 colour 2, and so on.
+- Small pixel fixes: 462 building images had a few pixels past their
+  edge that the original draws and we cut off (pioneer houses,
+  plantations, streets, ...). They are drawn now.
+
+Earlier builds
+--------------
 - Ships: every ship a scenario places is drawn on the sea with its own
   ship type. Sails and flags are still white; player colours come later.
 - Endless games (Scenes/0010SingleEndlos) open now. Their scenario files
@@ -20,8 +33,6 @@ New in this build
   the same one for the same map. So these islands are stand-ins and will
   not match what the original shows.
 
-Earlier builds
---------------
 - Enhanced water (E) is now a real-time wave simulation on the GPU:
   waves slow down and steepen in shallow water, bend around islands,
   break into foam that drifts with the water, and run up the beach and

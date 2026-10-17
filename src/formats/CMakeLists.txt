@@ -9,6 +9,8 @@ add_library(anno_formats
   src/insel.cpp
   src/sze.cpp
   src/tagged.cpp
+  src/text.cpp
+  src/zei.cpp
   src/tex.cpp
 )
 target_include_directories(anno_formats PUBLIC include)
@@ -27,6 +29,7 @@ if(ANNO_BUILD_TESTS)
     tests/insel_corpus_test.cpp
     tests/sze_test.cpp
     tests/sze_corpus_test.cpp
+    tests/text_zei_test.cpp
   )
   target_link_libraries(anno_formats_tests PRIVATE anno_formats anno_test_support doctest::doctest)
   anno_target_defaults(anno_formats_tests)

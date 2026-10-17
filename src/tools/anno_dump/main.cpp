@@ -11,6 +11,9 @@
 //   anno-dump anlagen [--full] <Anlagen.dat>... ANLAGEN entries (tools/figuren.py anlagen)
 //   anno-dump insel [--full] <file.scp|file.sze>... islands (tools/insel.py dump)
 //   anno-dump sze [--full] <file.sze>...       players, ships, soldiers (tools/sze.py dump)
+//   anno-dump keyed <file>...                  keyed text lines (tools/text.py keyed)
+//   anno-dump texte [--full] <Texte.dat>...    sections and names (tools/text.py texte)
+//   anno-dump zei [--full] <file.zei>...       font glyphs (tools/zei.py dump)
 //
 // Each file's output starts with `# <path>` (the path as given); lines end
 // with `\n` on every platform.
@@ -38,7 +41,10 @@ constexpr const char* kUsage = "usage: anno-dump chunks <file>...\n"
                                "       anno-dump frames <game_dir> <entry id>...\n"
                                "       anno-dump anlagen [--full] <Anlagen.dat>...\n"
                                "       anno-dump insel [--full] <file.scp|file.sze>...\n"
-                               "       anno-dump sze [--full] <file.sze>...\n";
+                               "       anno-dump sze [--full] <file.sze>...\n"
+                               "       anno-dump keyed <file>...\n"
+                               "       anno-dump texte [--full] <Texte.dat>...\n"
+                               "       anno-dump zei [--full] <file.zei>...\n";
 
 using DumpFn = bool (*)(Bytes, bool, std::string&);
 
@@ -53,6 +59,9 @@ bool chunks(Bytes b, bool, std::string& o) {
 bool inc(Bytes b, bool, std::string& o) {
     return anno::dump::dump_inc(b, o);
 }
+bool keyed(Bytes b, bool, std::string& o) {
+    return anno::dump::dump_keyed(b, o);
+}
 
 const std::map<std::string, Command>& commands() {
     static const std::map<std::string, Command> table = {
@@ -64,6 +73,9 @@ const std::map<std::string, Command>& commands() {
         {"anlagen", {anno::dump::dump_anlagen, true}},
         {"insel", {anno::dump::dump_insel, true}},
         {"sze", {anno::dump::dump_sze, true}},
+        {"keyed", {keyed, false}},
+        {"texte", {anno::dump::dump_texte, true}},
+        {"zei", {anno::dump::dump_zei, true}},
     };
     return table;
 }

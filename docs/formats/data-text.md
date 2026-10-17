@@ -1,6 +1,6 @@
 # Plain-text data files (`Texte.dat`, `Data/*.dat`)
 
-**Status:** partial — the line grammar of every file is complete and round-trips byte-identically (P); `Texte.dat` sections and the `[ANLAGEN]` names are decoded (P). The record structure and meaning of the keyed files (goods and prices, growth tables, walk masks, …) are not decoded yet (OQ-029).
+**Status:** partial — the line grammar of every file is complete and round-trips byte-identically (P); `Texte.dat` sections and the `[ANLAGEN]` names are decoded (P); the record layouts of `BGruppen.dat`, `Wachstum.dat`, `wegspeed.dat` and `Felder.dat` are confirmed over the corpus (P). The meaning of most fields is open (OQ-029).
 
 ## Files covered
 
@@ -53,6 +53,21 @@ Values are comma-separated fields (split outside `"…"`, each trimmed): numbers
 
 (Line counts include the empty last line after the final CR LF.)
 
+## Records
+
+A keyed section is a flat list of entries; a record is a run of entries that begins with a start key and ends before the next one. The start key is a property of the file and section (table below), read with `text::split_records`. Numbers: integers are decimal with optional `-`; decimals occur only in `BGruppen.dat` (`Menge`, `VermehrTab`), with at most two fractional digits (61 with one, 6 with two), so `text::fixed(field, 2)` reads every one exactly in hundredths — no floating point reaches the simulation.
+
+| File, section | Start key | Layout (P) | Cross-check (P) | Meaning |
+|---|---|---|---|---|
+| `BGruppen.dat` `[WAREN]` | `Id` | 56 records; keys from `Id`, `IdSec`, `Forsch`, `BauFirst`, `BauLast`, `Preis`, `Bonus`, `PreisLevel`; 13 key patterns, most common `Id Preis` (25); `Preis` at most once, a positive integer, in 48 records | — | goods (`Id` = goods name such as `EISENERZ`) and their prices ? OQ-029 a |
+| `BGruppen.dat` `[BGRUPPE]` | `BGruppeNr`, inside it `Ware` | 5 population groups (`PIONIER` first); header `BGruppeNr Wohnmax BauFirst BauLast [NoUpgrade] [NoDowngrade] NahrungTab BedarfTab InfraTab VermehrTab` (`VermehrTab` = 5 decimals); then needs, each exactly `Ware Menge Priority Force` (47 in total; `Menge` decimal, `Priority` `HIGH`/`NORMAL`/`LOW`, `Force` `TRUE`/`FALSE`) | — | needs per population level ? OQ-029 a |
+| `BGruppen.dat` `[BAUSTUFEN]` | — (one entry each) | 31 `Stufe: <name>, <int>, <int>` (`INFRA_EVER, 0, 0` … `INFRA_STUFE_TRIUMPH, 4, 65000`), 5 `Wissen: <name>, <int>` | `BauFirst`/`BauLast` values name these stages | building stages ? OQ-029 a |
+| `Wachstum.dat` `[WACHSTUM]` | `Id` | `Size: 6, 6`, then 146 records: `Id`, six `Proz` rows of six integers 0–100; 46 add two `Klima`, 5 add six `Bridge` rows | every `Id` is a `Felder.tex` texture id (all except 116); the comment above a record names that texture's `.bmp`; 6 × 6 = the ground cells of a texture (`GFXID` `u`, `v`, [`insel.md`](insel.md)) | a value per ground cell, presumably growth in % ? OQ-029 b |
+| `wegspeed.dat` `[WALKMASK]` | `Ob` | 5 records `Ob Un Mask × 8`; each `Mask` exactly eight `0`/`1` digits | — | walkability by slope class (German comments) ? OQ-029 c |
+| `Felder.dat` `[TEXTURE]` | `Name` | after a header (`Path Size Storename Id Typ Table`), 147 records `Name [Table]` | 147 = the textures of `Felder.tex`, in the same order (source names differ only where textures were renamed, e.g. `Wiese012.bmp` / `Wiese012a.bmp`) | build list of `Felder.tex` (tool file) |
+
+One row breaks the comma rule: `Wachstum.dat` line 765 `Proz: 100, 100, 100   10,    20,  50` has five comma fields but six numbers. `text::ints` (commas and/or whitespace as separators) reads six; whether the original does is open (OQ-029 g).
+
 ## `Texte.dat`
 - Section headers `[NAME]` on a line of their own; names may contain `:` (`[STARTUP:PROFILE]`, `[TOOLTIP:BAUMENU_WEG]`). 118 sections, all names distinct, the last is `[END]` with no lines. No lines before the first header. No comments: `;` does not occur.
 - Every other line is a text, kept verbatim (2,250 lines including headers, 2,251 with the empty last one). Texts contain C format markers (`%s`) and the two characters `\n` as a line-break marker (`Version conflict!\n You can not …`).
@@ -81,10 +96,10 @@ SECTION line=<n> name="<quoted>" lines=<n> hash=<FNV-1a 64 of every line followe
 Quoting: printable ASCII except `"` and `\` as is, every other byte `\xHH`. Exit code 1 if an `[ANLAGEN]` line is not `<id>:<text>`.
 
 ## Open
-- Record structure and meaning of the keyed files: which key starts a record, units (`Preis`, `Proz`, `Mask` bits), how `Ob`/`Un` and `Klima`/`Bridge` are used — OQ-029.
+- Meaning of the keyed records: units (`Preis`, `Proz`, `Mask` bits), how `Ob`/`Un` and `Klima`/`Bridge` are used; the missing comma in `Wachstum.dat` line 765 — OQ-029.
 - How the game indexes the plain `Texte.dat` lists — OQ-029.
 
 ## Tests
-- Unit tests: `crates/formats/src/text.rs` (line round trip including LF and missing final terminator, keyed kinds, fields, `Texte.dat` sections, `id:text`).
-- Corpus tests: `crates/formats/tests/text_corpus.rs` (`keyed_corpus`, `texte_corpus`): byte-identical line round trip of all 11 files, the counts above, the `Felder.dat` anomaly, `[ANLAGEN]` ids against `Anlagen.dat`.
+- Unit tests: `crates/formats/src/text.rs` (line round trip including LF and missing final terminator, keyed kinds, fields, records, `ints`, exact decimals, `Texte.dat` sections, `id:text`).
+- Corpus tests: `crates/formats/tests/text_corpus.rs` (`keyed_corpus`, `texte_corpus`, `records_corpus`): byte-identical line round trip of all 11 files, the counts above, both anomalies, `[ANLAGEN]` ids against `Anlagen.dat`, the record layouts and their cross-checks against `Felder.tex`.
 - Reference tool output: `anno_dump_matches_text_py_corpus`, `anno_dump_matches_text_py_synthetic`.

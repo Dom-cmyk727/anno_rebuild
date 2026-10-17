@@ -107,7 +107,7 @@ Each scenario lists its players in two series (P, all 50):
 | 0x00 | 2 | u16 | `id` | unique among all units of a scenario | P |
 | 0x02 | 2 | u16 | `figure` | `FigurenHeader.dat` entry id; ships 1501–1509 (ship figures, colour tables `KleinesSchiff01` etc.), soldiers 251–818 | P (ids), visual (1502 extracted: a small ship) |
 | 0x04 | 1 | u8 | `owner` | equals the `index` of the `SPIELER` block that holds the unit | P (all 2,644); the game writes but never reads it: a unit belongs to the block that holds it (D, `annoscene.md` §7) |
-| 0x05 | 1 | u8 | `attr` | ships 0–14, soldiers 0–7; figure property `0x16`, used as a facing in 45° steps by one routine | D (`annoscene.md` §7); soldiers' facing likely, ships' 16-step facing a guess (OQ-027 d) |
+| 0x05 | 1 | u8 | `attr` | starting **facing**: ships in 16 steps of 22.5° (0 = −x, 4 = +y, 8 = +x, 12 = −y), soldiers in 8 steps; the loader passes it to the unit's property `0x16` | D: `AnnoWelt.dll` `0x1001e01d`–`0x1001e041` (ships, verified), `0x1001ddad` (soldiers); `docs/re/fire-and-ships.md` §3.3 |
 | 0x06 | 2 | u16 | | 0 | P (all) |
 | 0x08 | 4 | f32 | `x` | world tile position; a tile centre (`n + 0.5`) for 310 of 327 ships and 2,253 of 2,317 soldiers; `x` 6.5–991.9, `y` 10.5–978.5 | P |
 | 0x0C | 4 | f32 | `y` | | P |

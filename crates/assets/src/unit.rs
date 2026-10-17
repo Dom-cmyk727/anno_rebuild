@@ -5,8 +5,10 @@
 //! (`figure`, a `FigurenHeader.dat` entry) and its world position. Each unit
 //! is drawn with sprite set 0 of its entry (ships: sails furled; soldiers:
 //! standing, 8 frames), frame `attr mod n` of each zoom group, and the same
-//! frame of the set's `SHADOW` if it has one; that `attr` is the facing is a
-//! hypothesis (OQ-027 d). Figures of the player-coloured types (soldiers,
+//! frame of the set's `SHADOW` if it has one. `attr` is the starting facing
+//! (ships 16 steps, soldiers 8; D: `docs/re/fire-and-ships.md` §3.3); that
+//! frame `k` of a set shows facing `k` at the default view rotation is an
+//! assumption (the facing → frame mapping is not traced). Figures of the player-coloured types (soldiers,
 //! scouts, pack animals, flags: [`figure::PLAYER_COLOURED_TYPES`]) are
 //! decoded in their owner's colour ([`figure::recolour`]). A unit belongs
 //! to the `SPIELER` block that holds it (the unit's own owner byte is never

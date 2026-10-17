@@ -297,7 +297,7 @@ impl<'a> Player<'a> {
 /// 0x00  u16  id       unique within the scenario
 /// 0x02  u16  figure   FigurenHeader.dat entry id (ships 1501–1509)
 /// 0x04  u8   owner    = the SPIELER index of the block holding the unit
-/// 0x05  u8   attr     ships 0–14, soldiers 0–7; meaning open (OQ-027)
+/// 0x05  u8   attr     starting facing: ships 16 steps, soldiers 8 (D)
 /// 0x06  u16  0
 /// 0x08  f32  x        world tile position; tile centres (n + 0.5) for
 /// 0x0C  f32  y        310 of 327 ships and 2,253 of 2,317 soldiers

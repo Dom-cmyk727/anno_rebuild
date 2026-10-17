@@ -200,7 +200,7 @@ Status M2 (2026-10-17): static analysis of all seven game modules (`tools/ghidra
 - `docs/re/production.md`: buildings step every 500 ticks (verified), `PROD3` turned into integer rates at load, input-limited output, fields growing by stages, fertility from `Wachstum.dat`, market carts by fill level; `wegspeed.dat` is never read.
 - `docs/re/population.md`: `BGruppen.dat` loader and layouts, houses update every 2,500 ticks (verified), mood −2…+2 from food/goods/infrastructure, growth by `VermehrTab`, up/downgrade rules, taxes every 2,000 ticks; `Priority` is parsed but unused.
 - `docs/re/annoscene.md`: island links (OQ-028 resolved), player `HEAD` and colours, unit and record prefixes, the 24-bit long record header.
-- Fire and ships: in progress.
+- `docs/re/fire-and-ships.md`: fire (ignition risk from house counts every 12,500 units, damage ignition, spread every 9th burn step to one random side, extinguishing only by firefighters — fire stations do not lower ignition or spread), plague, volcano; ships (float movement over segments, turning phases, speed from hit points and load, `ROUTE`/`TRADE` layout); unit `attr` = starting facing (OQ-027 d resolved, verified). All randomness draws from the world table; only figure motion uses floats.
 Integer-only update paths except figure movement (floats): the rebuild's sim can be exactly deterministic. Fixture execution needs the x86 host (M2.1).
 
 ## 4. Milestone M3 — Deterministic simulation (`crates/sim`)

@@ -54,13 +54,20 @@ impl std::error::Error for Error {}
 /// Decodes `frame` of `entry`; `volume` is the concatenated volume data of
 /// the frame's zoom group.
 pub fn to_rgba(entry: &Entry<'_>, frame: &Frame, volume: &[u8]) -> Result<Rgba, Error> {
-    let format = frame.format().ok_or(Error::UnknownFormat)?;
     let start = usize::try_from(frame.offset).map_err(|_| Error::OutsideVolume)?;
     let len = usize::try_from(frame.length).map_err(|_| Error::OutsideVolume)?;
     let data = start
         .checked_add(len)
         .and_then(|end| volume.get(start..end))
         .ok_or(Error::OutsideVolume)?;
+    decode(entry, frame, data)
+}
+
+/// Decodes `frame` of `entry` from its pixel data alone (`frame.length`
+/// bytes from `frame.offset` of the group's volume), for callers that read
+/// single frames instead of whole volumes.
+pub fn decode(entry: &Entry<'_>, frame: &Frame, data: &[u8]) -> Result<Rgba, Error> {
+    let format = frame.format().ok_or(Error::UnknownFormat)?;
     let px = figuren::decode_frame(
         format,
         data,

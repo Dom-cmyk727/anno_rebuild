@@ -15,11 +15,13 @@
 //! - Window (default): drag with the left mouse button, arrow keys or WASD to
 //!   pan; mouse wheel or `+` / `-` to switch zoom groups 2 (far) / 1 / 0
 //!   (near); `Esc` or `Q` quits; `Space` pauses the water animation; `E` toggles
-//!   enhanced water (not in the original; off by default). The scene is rendered lazily in 1024 × 1024
-//!   pixel chunks on all cores and cached per zoom group; progress goes to
-//!   stderr. Open sea is drawn in the island-water placeholder colour.
+//!   enhanced water (not in the original; off by default). Static layers are
+//!   rendered lazily in chunks on all cores and cached
+//!   (`anno_render::frame`); the sea covers the whole view, also between
+//!   islands. The title shows frames per second; stderr gets a per-stage
+//!   frame-time breakdown.
 //! - `--png <out.png>`: headless; writes the whole scene at `--group`
-//!   (default 2) as an RGBA PNG (transparent outside the islands) and prints
+//!   (default 2) as an RGBA PNG and prints
 //!   one line to stderr:
 //!   `<file>: group <g> <w>x<h> px, <n> islands drawn (<k> without ground), objects <d> drawn, <i> invisible, <f> failed`.
 //!   Exit code 1 if any object failed.
@@ -37,9 +39,9 @@ use std::process::ExitCode;
 
 use anno_assets::island::GroundTextures;
 use anno_formats::anlagen::AnlagenFile;
-use anno_formats::insel::{self, Island};
+use anno_formats::insel;
 use anno_formats::tex::TexFile;
-use anno_render::scene::{self, IslandBox, Placement, SceneStats};
+use anno_render::scene::{self, Scene};
 
 // Link every crate so the workspace wiring is exercised from the start.
 use anno_net as _;
@@ -130,62 +132,24 @@ fn game_dir(args: &Args) -> Result<PathBuf, BoxError> {
         .ok_or_else(|| "game directory not found; pass --game-dir or set ANNO1503_GAME_DIR".into())
 }
 
-/// Everything the viewer draws, borrowed from the loaded file buffers.
-pub struct Scene<'a> {
-    pub name: String,
-    pub islands: Vec<Island<'a>>,
-    pub textures: GroundTextures,
-    pub anlagen: AnlagenFile<'a>,
-    /// Placements per zoom group, in draw order.
-    pub layouts: [Vec<Placement>; 3],
-    /// Decoded sprite frames, shared by all renders and threads.
-    pub sprites: anno_render::iso::SpriteCache,
-}
-
-impl Scene<'_> {
-    /// Renders `layers` of the scene region `rect` at `group` into a new
-    /// (transparent) canvas.
-    pub fn render(
-        &self,
-        rect: scene::Rect,
-        group: usize,
-        layers: scene::Layers,
-    ) -> (anno_render::iso::Canvas, SceneStats) {
-        let mut canvas = scene::blank(rect);
-        let stats = scene::render_region(
-            &mut canvas,
-            &self.islands,
-            &self.layouts[group],
-            &self.textures,
-            &self.anlagen,
-            group,
-            layers,
-            &self.sprites,
-        );
-        (canvas, stats)
-    }
-}
-
 fn run(args: &Args) -> Result<bool, BoxError> {
     let dir = game_dir(args)?;
     let file_buf = std::fs::read(&args.file)?;
     let felder_buf = std::fs::read(dir.join("Textures/Felder.tex"))?;
     let anl_buf = std::fs::read(dir.join("Anlagen.dat"))?;
     let islands = insel::islands(&file_buf)?;
-    let boxes: Vec<IslandBox> = islands.iter().map(IslandBox::of).collect();
     let anlagen = AnlagenFile::parse(&anl_buf)?;
     let mut textures = GroundTextures::new(&TexFile::parse(&felder_buf)?)?;
     if let Some(c) = anno_render::iso::water_colour(&anlagen) {
         textures.set_water(c);
     }
-    let scene = Scene {
-        name: args.file.display().to_string(),
+    let scene = Scene::new(
+        args.file.display().to_string(),
+        islands,
         textures,
         anlagen,
-        layouts: [0, 1, 2].map(|g| scene::layout(&boxes, g)),
-        islands,
-        sprites: anno_render::iso::SpriteCache::default(),
-    };
+        anno_render::iso::HEIGHT_LIFT,
+    );
     if scene.islands.is_empty() {
         return Err("no islands".into());
     }
@@ -218,7 +182,7 @@ fn write_scene_png(
         .into());
     }
     let layers = scene::Layers {
-        water: Some(time),
+        time_ms: time,
         water_style,
         ..scene::Layers::ALL
     };

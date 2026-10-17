@@ -35,10 +35,10 @@ pub const PERIOD_TILES: i32 = 16;
 /// `gpu.wgsl` uses the same scale.
 pub const SHORE_SCALE: f32 = 32.0;
 
-/// Water depths in [`WaterField::depth`] are stored in 1/8 `HEIGHT` units
-/// (255 = 31.9 units or more; sea level is 32). `gpu.wgsl` uses the same
-/// scale.
-pub const DEPTH_SCALE: f32 = 8.0;
+/// Water depths in [`WaterField::depth`] are stored in 1/4 `HEIGHT` units
+/// around [`DEPTH_BIAS`] (−32 … +31.75 units; sea level is 32). `gpu.wgsl`
+/// uses the same scale.
+pub const DEPTH_SCALE: f32 = 4.0;
 
 /// Passes of a 3 × 3 box blur over the shore distance field: the chamfer
 /// distance has octagonal contours with kinks at the tile corners, which
@@ -219,9 +219,57 @@ pub struct WaterField {
     pub cover: Vec<u8>,
     /// Distance to the shore in 1/[`SHORE_SCALE`] tiles, 255 = far.
     pub shore: Vec<u8>,
-    /// Water depth (sea level minus terrain height, `HEIGHT` units) in
-    /// 1/[`DEPTH_SCALE`] units, 255 = deep or open sea, 0 = no sea.
+    /// Signed water depth over the smooth terrain of the enhanced water
+    /// ([`smooth_depth`]), `128 + depth · DEPTH_SCALE`, clamped; 255 = deep
+    /// or open sea.
     pub depth: Vec<u8>,
+    /// Bit 0: water in the original (terrain under the pixel, interpolated
+    /// as the original's triangles, below sea level).
+    pub flags: Vec<u8>,
+}
+
+/// Bias of [`WaterField::depth`]: the byte value of depth 0.
+pub const DEPTH_BIAS: f32 = 128.0;
+
+/// Terrain height (`HEIGHT` units) of the enhanced waterline at tile
+/// position `(x, y)`: a cubic B-spline through the corner heights (smooth,
+/// no overshoot; the original's triangles make the waterline straight
+/// between tile corners) plus fixed value noise of amplitude
+/// `Waves::shore_noise`, so beaches get bays and bulges.
+fn smooth_height(heights: &[u8], w: usize, h: usize, x: f32, y: f32) -> f32 {
+    let weights = |t: f32| {
+        let t2 = t * t;
+        let t3 = t2 * t;
+        [
+            (1.0 - t).powi(3) / 6.0,
+            (3.0 * t3 - 6.0 * t2 + 4.0) / 6.0,
+            (-3.0 * t3 + 3.0 * t2 + 3.0 * t + 1.0) / 6.0,
+            t3 / 6.0,
+        ]
+    };
+    let (fx, fy) = (x.floor(), y.floor());
+    let (wx, wy) = (weights(x - fx), weights(y - fy));
+    #[allow(clippy::cast_possible_truncation)]
+    let (ix, iy) = (fx as i64, fy as i64);
+    let at = |cx: i64, cy: i64| {
+        let cx = usize::try_from(cx.max(0)).expect("non-negative").min(w - 1);
+        let cy = usize::try_from(cy.max(0)).expect("non-negative").min(h - 1);
+        f32::from(heights[cy * w + cx])
+    };
+    let mut v = 0.0;
+    for (j, wyj) in wy.iter().enumerate() {
+        for (i, wxi) in wx.iter().enumerate() {
+            let (di, dj) = (
+                i64::try_from(i).expect("< 4") - 1,
+                i64::try_from(j).expect("< 4") - 1,
+            );
+            v += wxi * wyj * at(ix + di, iy + dj);
+        }
+    }
+    let amp = iso::Waves::DEFAULT.shore_noise;
+    let n = (iso::noise3(x * 0.9, y * 0.9, 11.0) - 0.5) * 2.0 * amp
+        + (iso::noise3(x * 2.7, y * 2.7, 23.0) - 0.5) * 0.6 * amp;
+    v + n
 }
 
 /// Width in tiles over which an island's sea floor fades into open water
@@ -332,6 +380,7 @@ pub fn water_field<'w>(
     let mut cover = vec![255; n];
     let mut shore = vec![255; n];
     let mut depth = vec![255; n];
+    let mut flags = vec![1; n];
     let (tw, th) = TILE[group];
     let den = i64::from(tw) * i64::from(th);
     let raise = lift.scaled(SEA_LEVEL, 1, group);
@@ -365,22 +414,30 @@ pub fn water_field<'w>(
                 let (ix, iy) = (xn.rem_euclid(den), yn.rem_euclid(den));
                 let under =
                     iso::interpolate(iso::corners(&iw.heights, iw.w, iw.h, tx, ty), ix, iy, den);
-                if under >= SEA_LEVEL * den || !iw.sea_chunk[(ty / 8) * iw.w.div_ceil(8) + tx / 8] {
+                let sea_chunk = iw.sea_chunk[(ty / 8) * iw.w.div_ceil(8) + tx / 8];
+                let original_water = under < SEA_LEVEL * den && sea_chunk;
+                #[allow(clippy::cast_precision_loss)]
+                let (fx, fy) = (ix as f32 / den as f32, iy as f32 / den as f32);
+                #[allow(clippy::cast_precision_loss)]
+                let smooth = smooth_height(&iw.heights, iw.w, iw.h, tx as f32 + fx, ty as f32 + fy);
+                #[allow(clippy::cast_precision_loss)]
+                let sd = SEA_LEVEL as f32 - smooth;
+                let edge = iso::Waves::DEFAULT.shore_edge;
+                if !sea_chunk || (!original_water && sd <= -edge) {
                     cover[i] = 0;
                     shore[i] = 0;
                     depth[i] = 0;
+                    flags[i] = 0;
                     continue;
                 }
-                #[allow(clippy::cast_precision_loss)]
-                let (fx, fy) = (ix as f32 / den as f32, iy as f32 / den as f32);
                 let o = iw.bilinear(&iw.open, tx, ty, fx, fy);
                 let d = iw.bilinear(&iw.shore, tx, ty, fx, fy);
                 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                 {
                     cover[i] = 1 + (o.clamp(0.0, 1.0) * 254.0).round() as u8;
                     shore[i] = (d * SHORE_SCALE).clamp(0.0, 255.0) as u8;
-                    let units = (SEA_LEVEL * den - under) as f32 / den as f32;
-                    depth[i] = (units * DEPTH_SCALE).clamp(0.0, 255.0) as u8;
+                    depth[i] = (DEPTH_BIAS + sd * DEPTH_SCALE).clamp(0.0, 255.0) as u8;
+                    flags[i] = u8::from(original_water);
                 }
             }
         }
@@ -390,6 +447,7 @@ pub fn water_field<'w>(
         cover,
         shore,
         depth,
+        flags,
     }
 }
 
@@ -470,7 +528,7 @@ pub fn shade_sea<P: SeaTarget>(
     out: &mut [P],
     stride: usize,
     region: Rect,
-    field: impl Fn(usize) -> (u8, u8, u8),
+    field: impl Fn(usize) -> (u8, u8, u8, u8),
     pattern: &SeaPattern,
     time_ms: u64,
     style: WaterStyle,
@@ -508,7 +566,7 @@ pub fn shade_sea<P: SeaTarget>(
                         to_usize((sy - region.y).clamp(0, region.h - 1)),
                     );
                     // Land points too (shore 0), so foam reaches the beach.
-                    let (_, shore, _) = field(cy * rw + cx);
+                    let (_, shore, _, _) = field(cy * rw + cx);
                     #[allow(clippy::cast_precision_loss)]
                     let (px, py) = (sx as f32, (sy + raise) as f32);
                     let pos = (px / twf + py / thf, py / thf - px / twf);
@@ -522,8 +580,22 @@ pub fn shade_sea<P: SeaTarget>(
     for row in 0..rh {
         let sy = region.y + i32::try_from(row).expect("fits");
         for col in 0..rw {
-            let (cover, _, depth) = field(row * rw + col);
+            let (cover, _, depth, flags) = field(row * rw + col);
             if cover == 0 {
+                continue;
+            }
+            // Original: the original's waterline. Enhanced: the smooth
+            // waterline with a soft edge (`smooth_height`).
+            let sd = (f32::from(depth) - DEPTH_BIAS) / DEPTH_SCALE;
+            let alpha = match style {
+                WaterStyle::Original if flags & 1 == 0 => continue,
+                WaterStyle::Original => 1.0,
+                WaterStyle::Enhanced => {
+                    let e = iso::Waves::DEFAULT.shore_edge;
+                    iso::smoothstep_pub(-e, e, sd)
+                }
+            };
+            if alpha <= 0.0 {
                 continue;
             }
             let sx = region.x + i32::try_from(col).expect("fits");
@@ -541,14 +613,15 @@ pub fn shade_sea<P: SeaTarget>(
                 filled = unpremultiply(mix(smooth(&a.filled), smooth(&b.filled)));
             }
             let dst = &mut out[row * stride + col];
-            let mut c = dst.rgba();
+            let below = dst.rgba();
+            let mut c = below;
             over(&mut c, &sprite);
             // Openness 0..=254; enhanced water also hides the floor where it
             // is deep (smooth across tiles, unlike the floor textures).
             let mut open = u32::from(cover - 1);
             if style == WaterStyle::Enhanced {
                 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                let deep = (iso::deep_water(f32::from(depth) / DEPTH_SCALE) * 254.0) as u32;
+                let deep = (iso::deep_water(sd.max(0.0)) * 254.0) as u32;
                 open = open.max(deep);
             }
             if open > 0 {
@@ -573,6 +646,11 @@ pub fn shade_sea<P: SeaTarget>(
                         + (s(p01) * (1.0 - fx) + s(p11) * fx) * fy
                 };
                 c = iso::shade_apply(c, (mix(|p| p.0), mix(|p| p.1), mix(|p| p.2)));
+            }
+            if alpha < 1.0 {
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let t = (alpha * 256.0) as u32;
+                c = lerp4(below, c, t, 256);
             }
             *dst = P::from_rgba(c);
         }

@@ -136,7 +136,9 @@ const DEEP_FROM: f32 = 10.0;
 const DEEP_TO: f32 = 28.0;
 // sea::SHORE_SCALE, sea::DEPTH_SCALE
 const SHORE_SCALE: f32 = 32.0;
-const DEPTH_SCALE: f32 = 8.0;
+const DEPTH_SCALE: f32 = 4.0;
+const DEPTH_BIAS: f32 = 128.0;
+const SHORE_EDGE: f32 = 0.35;
 
 // iso::wave_shade: (light, foam, tint) at shore distance `shore` (tiles),
 // plane position w (tiles), time t (ms), detail level 0..1.
@@ -221,19 +223,33 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     var cover = 255u;
     var shore = 255u;
     var depth = 255u;
+    var flags = 1u;
     if (chunk.flags & 4u) != 0u {
         let f = textureLoad(field_tex, px - chunk.origin, 0);
         cover = f.r;
         shore = f.g;
         depth = f.b;
+        flags = f.a;
     }
     if cover == 0u {
+        return vec4<f32>(under, 1.0);
+    }
+    let enhanced = frame.enhanced != 0u;
+    // Original: the original's waterline; enhanced: the smooth waterline
+    // with a soft edge (sea::smooth_height).
+    let sd = (f32(depth) - DEPTH_BIAS) / DEPTH_SCALE;
+    var alpha = 1.0;
+    if enhanced {
+        alpha = sstep(-SHORE_EDGE, SHORE_EDGE, sd);
+    } else if (flags & 1u) == 0u {
+        alpha = 0.0;
+    }
+    if alpha <= 0.0 {
         return vec4<f32>(under, 1.0);
     }
     let pi = vec2<i32>(wrap(px.x, frame.pattern_size.x), wrap(px.y, frame.pattern_size.y));
     var sprite = textureLoad(sea_sprite, pi, frame.steps.x, 0);
     var filled = textureLoad(sea_filled, pi, frame.steps.x, 0);
-    let enhanced = frame.enhanced != 0u;
     if enhanced {
         // sea::SeaPattern::smoothed: 2 x 2 premultiplied average (removes the
         // checkerboard), blended into the next step.
@@ -246,7 +262,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     var open = f32(cover - 1u) / 254.0;
     if enhanced {
         // iso::deep_water
-        open = max(open, sstep(DEEP_FROM, DEEP_TO, f32(depth) / DEPTH_SCALE));
+        open = max(open, sstep(DEEP_FROM, DEEP_TO, max(sd, 0.0)));
     }
     if open > 0.0 {
         c = mix(c, filled.rgb, open);
@@ -257,7 +273,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         let detail = sstep(24.0, 64.0, frame.tile_w);
         c = shade_apply(c, wave_shade(f32(shore) / SHORE_SCALE, w, frame.time_ms, detail));
     }
-    return vec4<f32>(c, 1.0);
+    return vec4<f32>(mix(under, c, alpha), 1.0);
 }
 
 // ---- Sprites (water objects) from the atlas ----

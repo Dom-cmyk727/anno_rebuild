@@ -818,6 +818,13 @@ pub struct Waves {
     /// fade out, and where it is hidden completely.
     pub deep_from: f32,
     pub deep_to: f32,
+    /// Amplitude (`HEIGHT` units) of the fixed noise added to the smoothed
+    /// terrain that decides the enhanced waterline, so beaches get bays and
+    /// bulges instead of the straight tile-wise waterline.
+    pub shore_noise: f32,
+    /// Half width (`HEIGHT` units) of the soft edge of the enhanced
+    /// waterline.
+    pub shore_edge: f32,
 }
 
 impl Waves {
@@ -831,6 +838,8 @@ impl Waves {
         shallow_colour: [0.36, 0.74, 0.76],
         deep_from: 10.0,
         deep_to: 28.0,
+        shore_noise: 2.0,
+        shore_edge: 0.35,
     };
 }
 
@@ -865,7 +874,7 @@ fn hash3(x: i32, y: i32, z: i32) -> f32 {
 }
 
 /// Smooth value noise in `[0, 1)` (trilinear, smoothstep fade).
-fn noise3(x: f32, y: f32, z: f32) -> f32 {
+pub(crate) fn noise3(x: f32, y: f32, z: f32) -> f32 {
     let (fx, fy, fz) = (x.floor(), y.floor(), z.floor());
     #[allow(clippy::cast_possible_truncation)]
     let (ix, iy, iz) = (fx as i32, fy as i32, fz as i32);
@@ -881,6 +890,11 @@ fn noise3(x: f32, y: f32, z: f32) -> f32 {
         )
     };
     lerp(plane(0), plane(1), w)
+}
+
+/// [`smoothstep`] for the other render modules.
+pub(crate) fn smoothstep_pub(a: f32, b: f32, x: f32) -> f32 {
+    smoothstep(a, b, x)
 }
 
 /// `0` below `a`, `1` above `b`, smooth in between (also for `a > b`).

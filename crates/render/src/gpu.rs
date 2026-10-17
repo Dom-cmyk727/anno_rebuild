@@ -362,7 +362,7 @@ impl GpuFrame {
             TextureFormat::Rgba8Uint,
             one,
             4,
-            &[&[255, 255, 255, 0]],
+            &[&[255, 255, 255, 1]],
             false,
         )
         .1;
@@ -706,7 +706,8 @@ impl GpuFrame {
                 .iter()
                 .zip(&c.shore)
                 .zip(&c.depth)
-                .flat_map(|((&a, &b), &d)| [a, b, d, 0])
+                .zip(&c.flags)
+                .flat_map(|(((&a, &b), &d), &f)| [a, b, d, f])
                 .collect()
         });
         // 0RGB little-endian = B, G, R, 0.

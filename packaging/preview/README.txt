@@ -11,6 +11,11 @@ shadows). No gameplay, no ships or people, no sound.
 
 New in this build
 -----------------
+- Enhanced water (E) is now a real-time wave simulation on the GPU:
+  waves slow down and steepen in shallow water, bend around islands,
+  break into foam that drifts with the water, and run up the beach and
+  back. Give it a few seconds after starting or pressing E. Rivers are
+  smooth with soft banks, no waves.
 - The GPU draws the frames now (Vulkan, DirectX 12 or Metal via wgpu),
   presented in sync with your display. Measured on a 4K screen: 1-2 ms per
   frame on the developer's machine, before 7-25 ms on the CPU. Without a

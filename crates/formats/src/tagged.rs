@@ -11,11 +11,14 @@
 //! 0x08  length   payload
 //! ```
 //!
-//! Long form: if `length` is `0xFF00`, the real length is the `u16` at 0x08
-//! and the payload starts at 0x0A. It occurs only in `ANNOADDON1` scenarios,
-//! where every `STADT2` record and every `STADT2/PROD` record uses it
-//! (including a 22-byte `PROD`), and in no `ANNO` scenario; why the writer
-//! chose it is open (OQ-027).
+//! Long form: if `length` is `0xFF00` or more, its low byte is bits 16–23
+//! of the real length and the `u16` at 0x08 bits 0–15; the payload starts at
+//! 0x0A (D: `AnnoWelt.dll` record-header reader `0x100b4f50`, a 24-bit
+//! length escape). It occurs only in `ANNOADDON1` scenarios, where every
+//! `STADT2` and `STADT2/PROD` record uses it (high byte 0, including a
+//! 22-byte `PROD`): the add-on writers of these records reserve the long
+//! header before they know the length (D: `0x1001f3fd`, `0x1002f23f`;
+//! `docs/re/annoscene.md` §10).
 //!
 //! A record sequence is a payload that parses *exactly* into records. Some
 //! payloads hold a fixed prefix followed by a nested sequence (e.g. `SCHIFF`:
@@ -30,8 +33,11 @@ pub const NAME_LEN: usize = 6;
 pub const HEADER_LEN: usize = NAME_LEN + 2;
 /// Size of a record header in the long form.
 pub const LONG_HEADER_LEN: usize = HEADER_LEN + 2;
-/// `length` value that announces the long form.
+/// Smallest `length` value that announces the long form; values up to
+/// `0xFFFF` carry length bits 16–23 in their low byte.
 pub const LONG_MARKER: u16 = 0xFF00;
+/// Largest payload of the long form: 24-bit length.
+pub const MAX_LONG_LENGTH: u32 = 0xFF_FFFF;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -40,9 +46,9 @@ pub enum Error {
     /// The name field does not match the pattern above.
     InvalidName { offset: usize },
     /// The payload runs past the end of the sequence.
-    LengthOutOfBounds { offset: usize, length: u16 },
-    /// A record cannot be written: payload longer than `u16::MAX`, or a
-    /// short-form payload of exactly [`LONG_MARKER`] bytes.
+    LengthOutOfBounds { offset: usize, length: u32 },
+    /// A record cannot be written: payload longer than [`MAX_LONG_LENGTH`],
+    /// or a short-form payload of [`LONG_MARKER`] bytes or more.
     Unencodable { name: String, length: usize },
 }
 
@@ -102,17 +108,21 @@ pub fn parse_records(data: &[u8], base: usize) -> Result<Vec<Record<'_>>, Error>
             .get(off..off + HEADER_LEN)
             .ok_or(Error::Truncated { offset: at })?;
         let name = name_of(&header[..NAME_LEN]).ok_or(Error::InvalidName { offset: at })?;
-        let mut length = u16::from_le_bytes([header[6], header[7]]);
+        let field = u16::from_le_bytes([header[6], header[7]]);
         let mut start = off + HEADER_LEN;
-        let long = length == LONG_MARKER;
-        if long {
+        let long = field >= LONG_MARKER;
+        let length = if long {
             let ext = data
                 .get(start..start + 2)
                 .ok_or(Error::Truncated { offset: at })?;
-            length = u16::from_le_bytes([ext[0], ext[1]]);
             start += 2;
-        }
-        let end = start + usize::from(length);
+            u32::from(field & 0xFF) << 16 | u32::from(u16::from_le_bytes([ext[0], ext[1]]))
+        } else {
+            u32::from(field)
+        };
+        let end = start
+            + usize::try_from(length)
+                .map_err(|_| Error::LengthOutOfBounds { offset: at, length })?;
         let payload = data
             .get(start..end)
             .ok_or(Error::LengthOutOfBounds { offset: at, length })?;
@@ -161,15 +171,17 @@ pub fn write_record(
     if name_of(&field) != Some(name) {
         return Err(unencodable());
     }
-    let length = u16::try_from(payload.len()).map_err(|_| unencodable())?;
-    if !long && length == LONG_MARKER {
+    let length = u32::try_from(payload.len()).map_err(|_| unencodable())?;
+    if length > MAX_LONG_LENGTH || (!long && length >= u32::from(LONG_MARKER)) {
         return Err(unencodable());
     }
     out.extend_from_slice(&field);
     if long {
-        out.extend_from_slice(&LONG_MARKER.to_le_bytes());
+        let high = u16::try_from(length >> 16).expect("24-bit length");
+        out.extend_from_slice(&(LONG_MARKER | high).to_le_bytes());
     }
-    out.extend_from_slice(&length.to_le_bytes());
+    let low = u16::try_from(length & 0xFFFF).expect("16 bits");
+    out.extend_from_slice(&low.to_le_bytes());
     out.extend_from_slice(payload);
     Ok(())
 }
@@ -246,5 +258,14 @@ mod tests {
         assert!(write_record("x", false, &[], &mut out).is_err());
         assert!(write_record("BIG", false, &vec![0; 0xFF00], &mut out).is_err());
         assert!(write_record("BIG", true, &vec![0; 0xFF00], &mut out).is_ok());
+        // 24-bit lengths: the marker's low byte holds bits 16–23.
+        let mut big = Vec::new();
+        write_record("STADT2", true, &vec![7; 0x1_0005], &mut big).unwrap();
+        assert_eq!(&big[6..10], &[0x01, 0xFF, 0x05, 0x00]);
+        let recs = parse_records(&big, 0).unwrap();
+        assert_eq!((recs[0].long, recs[0].payload.len()), (true, 0x1_0005));
+        let mut again = Vec::new();
+        write_records(&recs, &mut again).unwrap();
+        assert_eq!(again, big);
     }
 }

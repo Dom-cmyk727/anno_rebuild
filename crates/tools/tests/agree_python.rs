@@ -936,6 +936,14 @@ fn anno_dump_matches_sze_py_synthetic() {
                 chunk("SPIELER", &player(2, &tagged("SOLDAT", false, &[1; 6]))),
                 chunk("SPIELER", &player(3, b"HEAD\0\0\x09\x00ab")),
                 chunk("SPIELER", &[1, 2, 3]),
+                // Long form with a 24-bit length (0x1_0002 bytes).
+                chunk(
+                    "SPIELER",
+                    &player(
+                        4,
+                        &[&b"QUEST\0\x01\xff\x02\x00"[..], &vec![5u8; 0x1_0002]].concat(),
+                    ),
+                ),
             ]
             .concat(),
         ),
@@ -954,7 +962,7 @@ fn anno_dump_matches_sze_py_synthetic() {
     .collect();
     let out = agree("sze.py", &["dump", "--full"], &["sze", "--full"], &files);
     assert!(
-        out.contains("SCENE edition=ANNOADDON1 children=10 players=7\n"),
+        out.contains("SCENE edition=ANNOADDON1 children=11 players=8\n"),
         "{out}"
     );
     assert!(
@@ -982,6 +990,10 @@ fn anno_dump_matches_sze_py_synthetic() {
     assert!(out.contains("  UNIT SOLDAT BAD\n"), "{out}");
     assert!(out.contains("PLAYER i=5 index=3 flag=0 BAD\n"), "{out}");
     assert!(out.contains("PLAYER i=6 BAD\n"), "{out}");
+    assert!(
+        out.contains("PLAYER i=7 index=4 flag=0 records=1\n  RECORD QUEST size=65538 long=1 "),
+        "{out}"
+    );
     assert_eq!(out.matches("NOPARSE\n").count(), 2, "{out}");
     agree("sze.py", &["dump"], &["sze"], &files);
 }

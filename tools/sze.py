@@ -44,11 +44,11 @@ def tagged(p):
         name = field.split(b'\0', 1)[0]
         if not NAME.fullmatch(name) or any(field[len(name):]):
             raise Bad(f'invalid record name at {o}')
-        ln, = struct.unpack_from('<H', p, o + 6)
-        start, long = o + 8, ln == LONG_MARKER
-        if long:
+        field, = struct.unpack_from('<H', p, o + 6)
+        start, long, ln = o + 8, field >= LONG_MARKER, field
+        if long:  # 24-bit length: marker low byte = bits 16-23 (sze.md)
             if len(p) - start < 2: raise Bad(f'truncated record header at {o}')
-            ln, = struct.unpack_from('<H', p, start)
+            ln = (field & 0xFF) << 16 | struct.unpack_from('<H', p, start)[0]
             start += 2
         if start + ln > len(p): raise Bad(f'record at {o} past end')
         out.append((name.decode(), long, p[start:start + ln]))

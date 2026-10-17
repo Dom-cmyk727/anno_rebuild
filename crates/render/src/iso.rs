@@ -610,52 +610,141 @@ fn shore_distance(heights: &[u8], w: usize, h: usize) -> Vec<f32> {
     d
 }
 
-/// Enhanced-water shading of one sea pixel: returns the colour and the foam
-/// amount (0–1). `shore` = distance to the shore in tiles, `pos` = position
-/// on the water plane in tiles. Crests are lines of equal phase
-/// `shore / λ + t · ω`, so as time passes they move to smaller distance,
-/// i.e. towards the beach, parallel to the coast whatever its shape. Not
-/// derived from the original; constants are tuned by eye.
+/// Tuning of the enhanced water. Not derived from the original; tuned by
+/// eye. Kept together so it can become configuration (PLAN §0.1, §0.2).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Waves {
+    /// Tiles from the shore where incoming swell starts to grow (shoaling).
+    pub surf_zone: f32,
+    /// Tiles from the shore where crests break into whitewater.
+    pub break_zone: f32,
+    /// Distance between incoming crests (tiles).
+    pub wavelength: f32,
+    /// Time for one crest to follow the next (ms).
+    pub period_ms: f32,
+    /// Share of open sea covered by whitecaps (0 = none, 1 = all).
+    pub whitecaps: f32,
+}
+
+impl Waves {
+    pub const DEFAULT: Waves = Waves {
+        surf_zone: 5.5,
+        break_zone: 2.6,
+        wavelength: 1.6,
+        period_ms: 2600.0,
+        whitecaps: 0.18,
+    };
+}
+
+/// Hash of an integer lattice point to `[0, 1)`.
+fn hash3(x: i32, y: i32, z: i32) -> f32 {
+    #[allow(clippy::cast_sign_loss)]
+    let mut h = (x as u32).wrapping_mul(0x8DA6_B343)
+        ^ (y as u32).wrapping_mul(0xD816_3841)
+        ^ (z as u32).wrapping_mul(0xCB1A_B31F);
+    h ^= h >> 13;
+    h = h.wrapping_mul(0x5BD1_E995);
+    h ^= h >> 15;
+    #[allow(clippy::cast_precision_loss)]
+    let v = (h & 0x00FF_FFFF) as f32 / 16_777_216.0;
+    v
+}
+
+/// Smooth value noise in `[0, 1)` (trilinear, smoothstep fade).
+fn noise3(x: f32, y: f32, z: f32) -> f32 {
+    let (fx, fy, fz) = (x.floor(), y.floor(), z.floor());
+    #[allow(clippy::cast_possible_truncation)]
+    let (ix, iy, iz) = (fx as i32, fy as i32, fz as i32);
+    let fade = |t: f32| t * t * (3.0 - 2.0 * t);
+    let (u, v, w) = (fade(x - fx), fade(y - fy), fade(z - fz));
+    let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+    let corner = |dx: i32, dy: i32, dz: i32| hash3(ix + dx, iy + dy, iz + dz);
+    let plane = |dz: i32| {
+        lerp(
+            lerp(corner(0, 0, dz), corner(1, 0, dz), u),
+            lerp(corner(0, 1, dz), corner(1, 1, dz), u),
+            v,
+        )
+    };
+    lerp(plane(0), plane(1), w)
+}
+
+/// `0` below `a`, `1` above `b`, smooth in between (also for `a > b`).
+fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
+    let t = ((x - a) / (b - a)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Enhanced-water shading of one sea pixel (not original, opt-in): returns
+/// the colour and the foam amount (0–1). `shore` = distance to the shore in
+/// tiles, `pos` = position on the water plane in tiles.
+///
+/// Model: crests of equal phase `shore / λ + t / T` travel towards the
+/// beach, parallel to the coast. Each wave has a steep shoreward face and a
+/// gentle back; inside the surf zone it grows (darker face, bright crest),
+/// inside the break zone it turns into turbulent whitewater, and when it
+/// reaches the beach a foam sheet bursts out and decays until the next
+/// crest. Open water carries a slow swell and short-lived whitecaps.
 fn enhance(rgba: [u8; 4], shore: f32, (wx, wy): (f32, f32), time_ms: u64) -> ([u8; 4], f32) {
-    /// Breakers reach this far out (tiles from the shore).
-    const SURF_DEPTH: f32 = 4.5;
-    /// Distance between wave crests (tiles).
-    const WAVELENGTH: f32 = 1.4;
-    let depth = shore;
+    let w = Waves::DEFAULT;
     #[allow(clippy::cast_precision_loss)]
     let t = (time_ms % 3_600_000) as f32;
-    // Open-water swell: two slow, crossing waves modulate brightness.
-    let swell = 0.5 * (0.55 * wx + 0.35 * wy - t * 0.0018).sin()
-        + 0.5 * (0.23 * wx - 0.41 * wy - t * 0.0011).sin();
-    let calm = (depth / SURF_DEPTH).min(1.0);
-    let brightness = 1.0 + 0.14 * swell * calm;
-    // Breakers: crests moving shorewards, broken up along the coast so they
-    // do not look like contour lines.
-    let wobble = 0.5 * (wx * 0.45).sin() + 0.35 * (wy * 0.65 + 1.7).sin();
-    let phase = depth / WAVELENGTH + t * 0.000_45 + wobble / std::f32::consts::TAU;
-    // Position within the wave cycle: 0 = crest front, rising towards the
-    // trailing foam behind it (seaward side).
+    // Crests are bent and broken up along the coast so they do not follow
+    // the shore-distance contours exactly.
+    let wobble = 0.08 * (wx * 0.45).sin() + 0.06 * (wy * 0.65 + 1.7).sin();
+    let phase = shore / w.wavelength + t / w.period_ms + wobble;
+    // 0 = crest; just below 1 = the steep face ahead of the next crest.
     let u = phase - phase.floor();
-    let crest = if u < 0.08 {
-        u / 0.08
-    } else {
-        (-(u - 0.08) * 7.0).exp()
-    };
-    // Break crests into segments that drift slowly along the coast.
-    let segments = (wx * 0.8 + wy * 0.5 + t * 0.000_35).sin() + 0.6 * (wx * 1.9 - wy * 1.3).sin();
-    let segment = ((segments + 0.4) / 1.2).clamp(0.0, 1.0);
-    let mut foam = 0.0;
-    if depth < SURF_DEPTH {
-        // Breakers grow and whiten as they approach the beach.
-        let near = (1.0 - depth / SURF_DEPTH).powf(0.8);
-        foam = crest * near * (0.35 + 0.65 * segment);
-        // Swash: the last wave running up and back on the sand.
-        if depth < 0.6 {
-            let swash = 0.5 + 0.5 * (t * 0.0028 + wx * 0.5 + wy * 0.3).sin();
-            foam = foam.max((1.0 - depth / 0.6) * 0.7 * swash);
-        }
+    let height = (-u * 5.0).exp().max(smoothstep(0.86, 1.0, u));
+    let segment = smoothstep(0.25, 0.6, noise3(wx * 0.35, wy * 0.35, t * 0.000_12));
+    // Shoaling: waves grow from the surf zone to the break zone.
+    let grow = smoothstep(w.surf_zone, w.break_zone, shore) * (0.45 + 0.55 * segment);
+    let face = smoothstep(0.86, 0.98, u) * (1.0 - smoothstep(0.98, 1.0, u));
+    let mut light = -0.32 * grow * face + 0.2 * grow * (-u * 12.0).exp();
+    // Open-water swell: two slow, crossing waves.
+    let calm = smoothstep(w.break_zone, w.surf_zone * 1.5, shore);
+    light += calm
+        * 0.12
+        * (0.5 * (0.55 * wx + 0.35 * wy - t * 0.0018).sin()
+            + 0.5 * (0.23 * wx - 0.41 * wy - t * 0.0011).sin());
+    // Turbulence for whitewater and caps.
+    let churn = noise3(wx * 2.6, wy * 2.6, t * 0.0016);
+    let mut foam: f32 = 0.0;
+    // Breaking: the crest collapses into whitewater, thickest at the front,
+    // with a mottled trail behind it.
+    let breaking = smoothstep(w.break_zone, w.break_zone * 0.45, shore) * (0.5 + 0.5 * segment);
+    if breaking > 0.0 {
+        // Whitewater: a thick band behind the crest that thins out into
+        // mottled foam until the next wave.
+        let crest_foam = height.powf(1.2) * (0.6 + 0.6 * churn);
+        let trail = (-u * 1.6).exp() * smoothstep(0.35, 0.7, churn) * 0.75;
+        foam = foam.max(breaking * (crest_foam + trail));
+    }
+    // Impact: when a crest reaches the beach a foam sheet bursts out and
+    // fades until the next one; the backwash drags it into streaks.
+    if shore < 1.3 {
+        let at_shore = phase - shore / w.wavelength;
+        let since = at_shore - at_shore.floor();
+        // Rises quickly on impact, then decays until the next crest.
+        let burst = smoothstep(0.0, 0.04, since) * (-since * 2.4).exp();
+        let streaks = smoothstep(0.25, 0.65, noise3(wx * 4.0, wy * 4.0, t * 0.0009));
+        let near = (1.0 - shore / 1.3).powf(0.7);
+        foam = foam.max(near * burst * (0.65 + 0.35 * streaks));
+    }
+    // Whitecaps on open water: foam on the crests of the swell where the
+    // (slowly changing) noise allows it, so caps stretch along the crests
+    // and come and go.
+    if calm > 0.0 {
+        let swell_crest = (0.55 * wx + 0.35 * wy - t * 0.0018).sin();
+        let on_crest = smoothstep(0.55, 0.95, swell_crest);
+        let cell = noise3(wx * 0.6, wy * 0.6, t * 0.000_16);
+        let threshold = 0.75 - 0.25 * w.whitecaps;
+        let cap = smoothstep(threshold - 0.04, threshold + 0.06, cell) * on_crest;
+        let detail = noise3(wx * 6.0, wy * 6.0, t * 0.0012);
+        foam = foam.max(calm * cap * (0.3 + 0.7 * detail) * 0.75);
     }
     let foam = foam.clamp(0.0, 1.0);
+    let brightness = 1.0 + light;
     let channel = |c: u8, white: f32| -> u8 {
         let v = f32::from(c) * brightness;
         let v = v + (white - v) * foam;
@@ -853,6 +942,25 @@ mod tests {
         assert_eq!(lift.scaled(30, 2, 0), 15);
         assert_eq!(lift.scaled(30, 2, 1), 7);
         assert_eq!(Lift::NONE.pixels(200, 0), 0);
+    }
+
+    #[test]
+    fn wave_noise_is_deterministic_and_bounded() {
+        for i in 0..200 {
+            let f = |v: i32| v as f32 * 0.37;
+            let n = noise3(f(i), f(i * 3), f(i * 7));
+            assert!((0.0..1.0).contains(&n));
+            assert_eq!(n, noise3(f(i), f(i * 3), f(i * 7)));
+        }
+        let water = [30, 90, 140, 255];
+        let (a, fa) = enhance(water, 0.3, (10.0, 4.0), 1234);
+        assert_eq!((a, fa), enhance(water, 0.3, (10.0, 4.0), 1234));
+        assert!((0.0..=1.0).contains(&fa));
+        // Waves move: the same spot differs over time.
+        let frames: Vec<_> = (0..20)
+            .map(|k| enhance(water, 1.0, (10.0, 4.0), k * 150).0)
+            .collect();
+        assert!(frames.windows(2).any(|w| w[0] != w[1]));
     }
 
     #[test]

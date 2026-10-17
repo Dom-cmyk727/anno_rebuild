@@ -2,7 +2,7 @@
 
 A clean-room reimplementation of ANNO 1503 (Max Design / Sunflowers, 2002) in Rust, for Windows and Linux: faithful to the original where it matters, improved where it helps (see `docs/PLAN.md`). It needs your own copy of the original game files; none are included here.
 
-Current state: an **island viewer**. It reads the original files and draws scenarios and islands isometrically (ground, terrain height, animated sea across the whole map, rivers, surf, trees, buildings, shadows), with optional crashing waves. Frames are drawn on the GPU (Vulkan, DirectX 12 or Metal via wgpu) with a CPU fallback; map areas are prepared on all CPU cores in the background. No gameplay, ships, people or sound yet.
+Current state: an **island viewer**. It reads the original files and draws scenarios and islands isometrically (ground, terrain height, animated sea across the whole map, rivers, surf, trees, buildings, shadows, ships), with optional crashing waves. Frames are drawn on the GPU (Vulkan, DirectX 12 or Metal via wgpu) with a CPU fallback; map areas are prepared on all CPU cores in the background. No gameplay, people or sound yet; ships are shown where the scenario places them, without player colours.
 
 **Latest preview (2026-10-17e):** real-time wave simulation on the GPU with `E` (waves shoal, refract around islands, break into moving foam and run up and down the beach); earlier: GPU renderer (≈ 1–2 ms per 4K frame on the dev machine instead of 7–25 ms), about 8× faster map preparation and islands ready when zooming, reworked crashing waves (no white blobs, grid stripes or coastal lines; waves roll in, curl, break and wash up the beach; turquoise shallows; deep water without tile edges), smooth zooming, and a built-in benchmark.
 

@@ -116,8 +116,13 @@ Owner decision 2026-10-17: a real fluid simulation instead of parametric waves (
 | Composition | each island is drawn into a temporary canvas covering only its overlap with the target region, then composited source-over (straight alpha) | implementation choice |
 | Templates (`.scp`) | one island at world tile `(0, 0)` (head position 0) | P |
 | Open sea | the sea surface covers the whole region, between islands too (see "Water") | approximation (OQ-026 b) |
+| Ships | each `SCHIFF` of a scenario ([`sze.md`](../formats/sze.md), "Units") is drawn with sprite set 0 of its `FigurenHeader.dat` entry (sails furled), frame `attr mod n` of the zoom group; the frame anchor lands on the world point `(x, y)` projected like a tile top vertex and raised to the sea surface (`SEA_LEVEL`, as the sea sprites) | P: position and figure; visual: anchors sit on the waterline of the hull (OQ-023 f). `attr` = facing is a hypothesis (OQ-027 d); the sea-surface height for ships is an approximation |
+| Ship order | ships are drawn after all islands, back to front by `x + y`; the scene bounds include them | simplification; matters only where a ship overlaps an island's sprites (OQ-026 f) |
 
 Sizes measured with `anno1503 --view … --png`: `Single_01.sze` is 16,960 × 8,886 px at group 2 (15 islands, 69,256 objects drawn, 11,717 invisible, 0 failed) and 71,232 × 37,296 px at group 0, too large for one image. The window therefore renders the static layers lazily in chunks (`anno_render::frame`); `--png` refuses scenes above 4 GiB of RGBA.
+
+## Visual checks (2026-10-17, ships)
+`anno1503 --view --png` on all ten `0200Single/*.sze` at group 2: every ship of each file drawn (1–10 per scenario, 31 in total), 0 objects failed. Close-ups with `--at <x>,<y> --size <w>x<h>` at groups 0 and 1 (`Single_01.sze`, `Single_24.sze`): hulls, rigging, flags and decorations intact, ships float on the sea next to the coast. Player colours on sails and flags are not applied yet (all white; OQ-027).
 
 ## Visual checks (2026-10-16)
 `anno-extract view`: `Polar/Po_064x064_0008_Eskimo.scp` (igloo village, rocks, ice floes, trading post, wrecks), `Nord/N_128x128_0001_4B_Piraten.scp` (forest, mountain ridges, village), `0201SingleAddOn/single32.sze` island 17 (walled city with plazas, palace, farms; 12,316 objects drawn, 0 failed). `anno1503 --view --png`: `0200Single/Single_01.sze` group 2 (all 15 islands in place, temperate islands in the middle, polar islands at the top and bottom).

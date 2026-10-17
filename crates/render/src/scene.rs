@@ -23,7 +23,7 @@ use crate::iso::{
     self, Canvas, DrawStats, HEIGHT_LIFT, Lift, Objects, Prepared, SpriteCache, SpriteDraw, TILE,
     WaterStyle, over,
 };
-use crate::sea::{self, IslandWater, SeaPattern, WaterField};
+use crate::sea::{self, IslandWater, SceneProbe, SeaPattern, WaterField};
 
 /// Room above an island's top vertex per zoom group: the largest sprite
 /// anchor height in `Anlagen.dat` (P: entry 1330, `anchor_y` 504 / 252 / 126
@@ -456,13 +456,72 @@ impl<'a> Scene<'a> {
 
     /// Static sea data of `rect` at `group`.
     pub fn water_field(&self, rect: Rect, group: usize) -> WaterField {
+        let (_, probe) = self.ground_with_probe(rect, group);
+        self.water_field_from(rect, &probe)
+    }
+
+    /// Static sea data of `rect` from the ground seen there (`probe`, from
+    /// [`Scene::ground_with_probe`]).
+    pub fn water_field_from(&self, rect: Rect, probe: &SceneProbe) -> WaterField {
         let water = |i: usize| {
             self.objects[i]
                 .water
                 .get_or_init(|| IslandWater::new(&self.islands[i]))
                 .as_ref()
         };
-        sea::water_field(rect, water, &self.layouts[group], group, self.lift)
+        sea::water_field(rect, probe, water)
+    }
+
+    /// The ground layer of `rect` at `group` and, per pixel, which island's
+    /// terrain is seen there and at which tile position.
+    pub fn ground_with_probe(&self, rect: Rect, group: usize) -> (Canvas, SceneProbe) {
+        let mut canvas = blank(rect);
+        let n = canvas.width * canvas.height;
+        let mut probe = SceneProbe {
+            island: vec![sea::NO_ISLAND; n],
+            pos: vec![[0.0; 2]; n],
+        };
+        for p in &self.layouts[group] {
+            let Some(r) = p.bounds.intersect(rect) else {
+                continue;
+            };
+            let island = &self.islands[p.index];
+            let Some((gfx, heights)) = &self.objects[p.index].grids else {
+                continue;
+            };
+            let mut local = blank(Rect {
+                x: r.x - p.offset.0,
+                y: r.y - p.offset.1,
+                ..r
+            });
+            let mut lp = iso::GroundProbe::for_canvas(&local);
+            iso::draw_ground_probed(
+                &mut local,
+                (usize::from(island.width), usize::from(island.height)),
+                gfx,
+                heights,
+                &self.textures,
+                group,
+                self.lift,
+                Some(&mut lp),
+            );
+            composite(&mut canvas, &local, p.offset);
+            let idx = u32::try_from(p.index).expect("fits");
+            for (k, pos) in lp.pos.iter().enumerate() {
+                if pos[0].is_nan() {
+                    continue;
+                }
+                let (lx, ly) = (
+                    i32::try_from(k % local.width).expect("fits"),
+                    i32::try_from(k / local.width).expect("fits"),
+                );
+                let (sx, sy) = (r.x + lx, r.y + ly);
+                let i = usize::try_from((sy - rect.y) * rect.w + (sx - rect.x)).expect("inside");
+                probe.island[i] = idx;
+                probe.pos[i] = *pos;
+            }
+        }
+        (canvas, probe)
     }
 
     /// Renders `layers` of the scene region `rect` at `group` into a new

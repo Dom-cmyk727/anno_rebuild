@@ -20,7 +20,7 @@ use anno_formats::insel::{GroundCell, Island};
 use crate::iso::{
     self, Canvas, LAND_AVERAGE, Lift, SEA_ANLAGE, SEA_LEVEL, SpriteCache, TILE, WaterStyle, over,
 };
-use crate::scene::{Placement, Rect};
+use crate::scene::Rect;
 
 /// Period of the sea lattice and its animation phase in world tiles, along
 /// `x` and `y`. A shift by `(p, p)` changes the phase `(5x + 3y) mod 32` by
@@ -364,82 +364,74 @@ impl IslandWater {
     }
 }
 
-/// The water field of `rect` (scene screen coordinates at `group`): open
-/// sea everywhere, except over the tiles of the islands in `placements`,
-/// where the terrain under each pixel (projected back onto the sea plane)
-/// decides, as the original's depth test would (approximation, OQ-026 b).
-/// `water(i)` gives the [`IslandWater`] of island `i`.
+/// The ground seen at each pixel of a scene rectangle: island index
+/// ([`NO_ISLAND`] where no ground was drawn) and the tile position of the
+/// visible terrain point (`iso::GroundProbe`).
+pub struct SceneProbe {
+    pub island: Vec<u32>,
+    pub pos: Vec<[f32; 2]>,
+}
+
+/// [`SceneProbe::island`] where no island ground is drawn.
+pub const NO_ISLAND: u32 = u32::MAX;
+
+/// The water field of `rect` (scene screen coordinates) from the ground seen
+/// at each pixel (`probe`): open sea where no island ground is drawn; else
+/// the original's water where the visible terrain point lies below
+/// [`iso::WATERLINE`] — the original's depth test of the sea sprites against
+/// the terrain — plus the smooth waterline of the enhanced water
+/// ([`smooth_height`]). `water(i)` gives the [`IslandWater`] of island `i`.
 pub fn water_field<'w>(
     rect: Rect,
+    probe: &SceneProbe,
     water: impl Fn(usize) -> Option<&'w IslandWater>,
-    placements: &[Placement],
-    group: usize,
-    lift: Lift,
 ) -> WaterField {
     let n = usize::try_from(rect.w * rect.h).expect("non-negative");
     let mut cover = vec![255; n];
     let mut shore = vec![255; n];
     let mut depth = vec![255; n];
     let mut flags = vec![1; n];
-    let (tw, th) = TILE[group];
-    let den = i64::from(tw) * i64::from(th);
-    let raise = lift.scaled(SEA_LEVEL, 1, group);
-    for p in placements {
-        let Some(r) = p.bounds.intersect(rect) else {
+    #[allow(clippy::cast_precision_loss)]
+    let waterline = iso::WATERLINE as f32;
+    let edge = iso::Waves::DEFAULT.shore_edge;
+    for i in 0..n {
+        let island = probe.island[i];
+        if island == NO_ISLAND {
+            continue;
+        }
+        let Some(iw) = water(usize::try_from(island).expect("fits")) else {
             continue;
         };
-        let Some(iw) = water(p.index) else {
+        let [x, y] = probe.pos[i];
+        let under = iso::terrain_height(&iw.heights, iw.w, iw.h, x, y);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let (tx, ty) = (
+            (x.max(0.0) as usize).min(iw.w - 1),
+            (y.max(0.0) as usize).min(iw.h - 1),
+        );
+        #[allow(clippy::cast_precision_loss)]
+        let (fx, fy) = (
+            (x - tx as f32).clamp(0.0, 1.0),
+            (y - ty as f32).clamp(0.0, 1.0),
+        );
+        let sea_chunk = iw.sea_chunk[(ty / 8) * iw.w.div_ceil(8) + tx / 8];
+        let original_water = under < waterline && sea_chunk;
+        let sd = waterline - smooth_height(&iw.heights, iw.w, iw.h, x, y);
+        if !sea_chunk || (!original_water && sd <= -edge) {
+            cover[i] = 0;
+            shore[i] = 0;
+            depth[i] = 0;
+            flags[i] = 0;
             continue;
-        };
-        for sy in r.y..r.y + r.h {
-            for sx in r.x..r.x + r.w {
-                // Island-local screen point on the sea plane → tile
-                // coordinates (times den): x = px/tw + py/th, y = py/th − px/tw.
-                let (lx, ly) = (
-                    i64::from(sx - p.offset.0),
-                    i64::from(sy - p.offset.1 + raise),
-                );
-                let xn = lx * i64::from(th) + ly * i64::from(tw);
-                let yn = ly * i64::from(tw) - lx * i64::from(th);
-                let (Ok(tx), Ok(ty)) = (
-                    usize::try_from(xn.div_euclid(den)),
-                    usize::try_from(yn.div_euclid(den)),
-                ) else {
-                    continue;
-                };
-                if tx >= iw.w || ty >= iw.h {
-                    continue;
-                }
-                let i = usize::try_from((sy - rect.y) * rect.w + (sx - rect.x)).expect("inside");
-                let (ix, iy) = (xn.rem_euclid(den), yn.rem_euclid(den));
-                let under =
-                    iso::interpolate(iso::corners(&iw.heights, iw.w, iw.h, tx, ty), ix, iy, den);
-                let sea_chunk = iw.sea_chunk[(ty / 8) * iw.w.div_ceil(8) + tx / 8];
-                let original_water = under < SEA_LEVEL * den && sea_chunk;
-                #[allow(clippy::cast_precision_loss)]
-                let (fx, fy) = (ix as f32 / den as f32, iy as f32 / den as f32);
-                #[allow(clippy::cast_precision_loss)]
-                let smooth = smooth_height(&iw.heights, iw.w, iw.h, tx as f32 + fx, ty as f32 + fy);
-                #[allow(clippy::cast_precision_loss)]
-                let sd = SEA_LEVEL as f32 - smooth;
-                let edge = iso::Waves::DEFAULT.shore_edge;
-                if !sea_chunk || (!original_water && sd <= -edge) {
-                    cover[i] = 0;
-                    shore[i] = 0;
-                    depth[i] = 0;
-                    flags[i] = 0;
-                    continue;
-                }
-                let o = iw.bilinear(&iw.open, tx, ty, fx, fy);
-                let d = iw.bilinear(&iw.shore, tx, ty, fx, fy);
-                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                {
-                    cover[i] = 1 + (o.clamp(0.0, 1.0) * 254.0).round() as u8;
-                    shore[i] = (d * SHORE_SCALE).clamp(0.0, 255.0) as u8;
-                    depth[i] = (DEPTH_BIAS + sd * DEPTH_SCALE).clamp(0.0, 255.0) as u8;
-                    flags[i] = u8::from(original_water);
-                }
-            }
+        }
+        let o = iw.bilinear(&iw.open, tx, ty, fx, fy);
+        let d = iw.bilinear(&iw.shore, tx, ty, fx, fy);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        {
+            cover[i] = 1 + (o.clamp(0.0, 1.0) * 254.0).round() as u8;
+            shore[i] = (d * SHORE_SCALE).clamp(0.0, 255.0) as u8;
+            depth[i] = (DEPTH_BIAS + sd * DEPTH_SCALE).clamp(0.0, 255.0) as u8;
+            flags[i] = u8::from(original_water);
         }
     }
     WaterField {

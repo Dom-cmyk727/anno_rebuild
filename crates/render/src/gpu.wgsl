@@ -162,13 +162,13 @@ fn wave_shade(shore: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<f32> {
         let fine = noise3(w.x * 2.2, w.y * 2.2, t * 0.0011);
         let mottle = 0.55 + detail * (fine - 0.55);
         let breaking = sstep(BREAK_ZONE, BREAK_ZONE * 0.3, shore);
-        foam = max(breaking * amp * pow(crest, 0.5) * sstep(0.15, 0.6, mottle) * 1.3, 0.75 * amp * curl);
+        foam = max(breaking * amp * pow(crest, 1.5) * sstep(0.3, 0.75, mottle) * 0.9, 0.55 * amp * curl);
         if shore < 0.7 {
             let at_shore = phase - shore / WAVELENGTH;
             let since = at_shore - floor(at_shore);
             let burst = sstep(0.0, 0.05, since) * exp(-since * 3.0);
             let edge = pow(1.0 - shore / 0.7, 0.8);
-            foam = max(foam, edge * burst * (0.5 + 0.5 * mottle));
+            foam = max(foam, edge * burst * (0.4 + 0.4 * mottle));
         }
     }
     let tint = SHALLOW_TINT * sstep(2.2, 0.0, shore);

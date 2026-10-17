@@ -65,8 +65,9 @@ fn view_png_scenario() {
         .filter(|p| p[3] == 255)
         .count();
     let total = buf.len() / 4;
-    // Islands cover part of the scene, the sea between them stays transparent.
-    assert!(opaque > total / 10 && opaque < total, "{opaque} of {total}");
+    // The sea covers the whole scene, also between the islands
+    // (`docs/render/iso.md`, "Scene composition").
+    assert_eq!(opaque, total, "{opaque} of {total}");
 }
 
 /// The water layer animates: two times give different images of the same

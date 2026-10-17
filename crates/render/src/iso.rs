@@ -173,6 +173,8 @@ pub(crate) fn corners(heights: &[u8], w: usize, h: usize, x: usize, y: usize) ->
 /// times `n`. The tile is two triangles split along the fixed diagonal from
 /// corner B `(x, y+1)` to C `(x+1, y)`: A-B-C for `i + j ≤ n`, C-B-D beyond
 /// (D: `AnnoWelt.dll` mesh builder `0x1009b920`, indices A,B,C and C,B,D).
+/// Integer form of [`terrain_height`], kept as its test oracle.
+#[cfg(test)]
 pub(crate) fn interpolate(c: [i64; 4], i: i64, j: i64, n: i64) -> i64 {
     let [a, cc, b, d] = c;
     if i + j <= n {
@@ -209,6 +211,63 @@ pub fn draw_ground_grids(
     textures: &GroundTextures,
     group: usize,
     lift: Lift,
+) {
+    draw_ground_probed(canvas, (w, hgt), gfx, heights, textures, group, lift, None);
+}
+
+/// Where the ground drawn at each canvas pixel lies: the tile position
+/// `(x, y)` (fractional, island tiles) of the visible terrain point, `NaN`
+/// where no ground was drawn. The terrain height there follows from
+/// [`terrain_height`]; this is what the original's depth buffer holds.
+pub struct GroundProbe {
+    pub pos: Vec<[f32; 2]>,
+}
+
+impl GroundProbe {
+    /// A probe for `canvas`, nothing drawn yet.
+    pub fn for_canvas(canvas: &Canvas) -> Self {
+        Self {
+            pos: vec![[f32::NAN; 2]; canvas.width * canvas.height],
+        }
+    }
+}
+
+/// Terrain height (`HEIGHT` units) at tile position `(x, y)`, interpolated
+/// over the tile's two triangles split along the diagonal from corner B
+/// `(x, y+1)` to C `(x+1, y)`, as the original (D: `AnnoWelt.dll` mesh
+/// builder `0x1009b920`, indices A,B,C and C,B,D).
+pub fn terrain_height(heights: &[u8], w: usize, h: usize, x: f32, y: f32) -> f32 {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let (tx, ty) = (
+        (x.max(0.0) as usize).min(w - 1),
+        (y.max(0.0) as usize).min(h - 1),
+    );
+    #[allow(clippy::cast_precision_loss)]
+    let (s, t) = (
+        (x - tx as f32).clamp(0.0, 1.0),
+        (y - ty as f32).clamp(0.0, 1.0),
+    );
+    #[allow(clippy::cast_precision_loss)]
+    let [a, c, b, d] = corners(heights, w, h, tx, ty).map(|v| v as f32);
+    if s + t <= 1.0 {
+        a + s * (c - a) + t * (b - a)
+    } else {
+        d + (1.0 - s) * (b - d) + (1.0 - t) * (c - d)
+    }
+}
+
+/// [`draw_ground_grids`], also recording the tile position of every drawn
+/// pixel in `probe` (same size as `canvas`).
+#[allow(clippy::too_many_arguments)]
+pub fn draw_ground_probed(
+    canvas: &mut Canvas,
+    (w, hgt): (usize, usize),
+    gfx: &[u16],
+    heights: &[u8],
+    textures: &GroundTextures,
+    group: usize,
+    lift: Lift,
+    mut probe: Option<&mut GroundProbe>,
 ) {
     if w == 0 || hgt == 0 || gfx.len() < w * hgt || heights.len() < w * hgt {
         return;
@@ -261,8 +320,14 @@ pub fn draw_ground_grids(
         let cc = screen(x + 1.0, y, c[1]);
         let b = screen(x, y + 1.0, c[2]);
         let d = screen(x + 1.0, y + 1.0, c[3]);
-        let texel = |s: f32, tt: f32| {
+        let (origin, cw) = (canvas.origin, canvas.width);
+        let mut texel = |px: i32, py: i32, s: f32, tt: f32| {
             const N: usize = 4096;
+            if let Some(p) = probe.as_deref_mut() {
+                let i = usize::try_from(py - origin.1).expect("inside") * cw
+                    + usize::try_from(px - origin.0).expect("inside");
+                p.pos[i] = [x + s, y + tt];
+            }
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let q = |v: f32| ((v * N as f32) as usize).min(N - 1);
             textures.cell_pixel(cell, q(s), q(tt), N)
@@ -272,25 +337,26 @@ pub fn draw_ground_grids(
             canvas,
             [a, b, cc],
             [(0.0, 0.0), (0.0, 1.0), (1.0, 0.0)],
-            texel,
+            &mut texel,
         );
         raster_triangle(
             canvas,
             [cc, b, d],
             [(1.0, 0.0), (0.0, 1.0), (1.0, 1.0)],
-            texel,
+            &mut texel,
         );
     }
 }
 
 /// Fills a screen triangle (scene screen coordinates); each covered pixel
-/// centre gets `shade(s, t)` with `(s, t)` interpolated from `uv`. A planar
-/// triangle projects affinely, so this is exact; every pixel is drawn once.
+/// centre `(px, py)` gets `shade(px, py, s, t)` with `(s, t)` interpolated
+/// from `uv`. A planar triangle projects affinely, so this is exact; every
+/// pixel is drawn once.
 fn raster_triangle(
     canvas: &mut Canvas,
     v: [(f32, f32); 3],
     uv: [(f32, f32); 3],
-    shade: impl Fn(f32, f32) -> [u8; 4],
+    mut shade: impl FnMut(i32, i32, f32, f32) -> [u8; 4],
 ) {
     let edge = |p: (f32, f32), q: (f32, f32), r: (f32, f32)| {
         (q.0 - p.0) * (r.1 - p.1) - (q.1 - p.1) * (r.0 - p.0)
@@ -332,7 +398,8 @@ fn raster_triangle(
             let (b0, b1, b2) = (w0 / n, w1 / n, w2 / n);
             let s = (b0 * uv[0].0 + b1 * uv[1].0 + b2 * uv[2].0).clamp(0.0, 1.0);
             let t = (b0 * uv[0].1 + b1 * uv[1].1 + b2 * uv[2].1).clamp(0.0, 1.0);
-            canvas.put(px, py, shade(s, t));
+            let c = shade(px, py, s, t);
+            canvas.put(px, py, c);
         }
     }
 }
@@ -356,6 +423,15 @@ pub const SEA_ANLAGE: u32 = 2801;
 /// Sea level in `HEIGHT` units: 1.28 world units / 0.04 (D: `AnnoWelt.dll`
 /// `0x100E3A20`, set at `0x1009d010`). Original value (PLAN §0.1).
 pub const SEA_LEVEL: i64 = 32;
+/// Waterline in `HEIGHT` units: terrain below it is under water. Not the
+/// sprites' height (`SEA_LEVEL`): the original's painted ground textures put
+/// the shore at 16.5 (P: over 12 island templates, ground pixels painted as
+/// water or wet transition make up ≥ 53 % at every height ≤ 16 and ≤ 8 %
+/// from 17 on), its land classifier counts a tile as land above an average
+/// of 19 (D: `0x100900c0`), and surf objects lie at heights 0 or 16 (P). How
+/// the original clips its sea sprites at 16 is not traced (likely the
+/// sprites' per-pixel `z` offsets; OQ-026 b).
+pub const WATERLINE: i64 = 16;
 /// A tile counts as land when the average of its corner heights exceeds
 /// this (D: `AnnoWelt.dll` classifier `0x100900c0`).
 pub(crate) const LAND_AVERAGE: i64 = 19;
@@ -517,7 +593,7 @@ pub fn prepare_objects(
                 return matches!(which, Objects::All | Objects::NotWater);
             };
             let water = set.prefix.get(2) == Some(&KIND_WATER);
-            let below = i64::from(o.height()) < SEA_LEVEL;
+            let below = i64::from(o.height()) < WATERLINE;
             match which {
                 Objects::All => true,
                 Objects::NotWater => !water,
@@ -747,7 +823,7 @@ pub(crate) fn shore_distance(heights: &[u8], w: usize, h: usize) -> Vec<f32> {
     let mut d: Vec<f32> = heights
         .iter()
         .map(|&z| {
-            if i64::from(z) >= SEA_LEVEL {
+            if i64::from(z) >= WATERLINE {
                 0.0
             } else {
                 f32::INFINITY
@@ -836,8 +912,8 @@ impl Waves {
         swell: 0.07,
         shallow_tint: 0.3,
         shallow_colour: [0.36, 0.74, 0.76],
-        deep_from: 10.0,
-        deep_to: 28.0,
+        deep_from: 4.0,
+        deep_to: 14.0,
         shore_noise: 2.0,
         shore_edge: 0.35,
     };
@@ -959,14 +1035,14 @@ pub(crate) fn wave_shade(
         let fine = noise3(wx * 2.2, wy * 2.2, t * 0.0011);
         let mottle = 0.55 + detail * (fine - 0.55);
         let breaking = smoothstep(w.break_zone, w.break_zone * 0.3, shore);
-        foam = (breaking * amp * crest.powf(0.5) * smoothstep(0.15, 0.6, mottle) * 1.3)
-            .max(0.75 * amp * curl);
+        foam = (breaking * amp * crest.powf(1.5) * smoothstep(0.3, 0.75, mottle) * 0.9)
+            .max(0.55 * amp * curl);
         if shore < 0.7 {
             let at_shore = phase - shore / w.wavelength;
             let since = at_shore - at_shore.floor();
             let burst = smoothstep(0.0, 0.05, since) * (-since * 3.0).exp();
             let edge = (1.0 - shore / 0.7).powf(0.8);
-            foam = foam.max(edge * burst * (0.5 + 0.5 * mottle));
+            foam = foam.max(edge * burst * (0.4 + 0.4 * mottle));
         }
     }
     let tint = w.shallow_tint * smoothstep(2.2, 0.0, shore);

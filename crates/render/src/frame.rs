@@ -649,20 +649,18 @@ fn render_chunk(scene: &Scene<'_>, group: usize, cx: i32, cy: i32) -> Chunk {
     }
     let only = |l: Layers| scene.render(rect, group, l).0;
     let water = scene.textures.water();
-    let ground = only(Layers {
-        ground: true,
-        ..Layers::NONE
-    })
-    .pixels
-    .as_chunks::<4>()
-    .0
-    .iter()
-    .map(|p| {
-        let mut px = water;
-        over(&mut px, p);
-        rgb(px)
-    })
-    .collect();
+    let (ground, probe) = scene.ground_with_probe(rect, group);
+    let ground = ground
+        .pixels
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|p| {
+            let mut px = water;
+            over(&mut px, p);
+            rgb(px)
+        })
+        .collect();
     let objects = only(Layers {
         objects: true,
         ..Layers::NONE
@@ -672,7 +670,7 @@ fn render_chunk(scene: &Scene<'_>, group: usize, cx: i32, cy: i32) -> Chunk {
     } else {
         objects.pixels.as_chunks::<4>().0.to_vec()
     };
-    let field = scene.water_field(rect, group);
+    let field = scene.water_field_from(rect, &probe);
     let (water_below, water_above) = islands
         .iter()
         .map(|&i| scene.has_water_objects(i))

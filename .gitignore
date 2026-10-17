@@ -6,3 +6,9 @@ cache/
 re/ghidra/
 __pycache__/
 saves/
+
+# Screen recordings / reference videos (may show original game assets)
+*.mp4
+*.mkv
+*.mov
+*.webm

@@ -7,6 +7,8 @@ add_library(anno_formats
   src/figuren.cpp
   src/inc.cpp
   src/insel.cpp
+  src/sze.cpp
+  src/tagged.cpp
   src/tex.cpp
 )
 target_include_directories(anno_formats PUBLIC include)
@@ -23,6 +25,8 @@ if(ANNO_BUILD_TESTS)
     tests/figuren_corpus_test.cpp
     tests/figuren_test.cpp
     tests/insel_corpus_test.cpp
+    tests/sze_test.cpp
+    tests/sze_corpus_test.cpp
   )
   target_link_libraries(anno_formats_tests PRIVATE anno_formats anno_test_support doctest::doctest)
   anno_target_defaults(anno_formats_tests)

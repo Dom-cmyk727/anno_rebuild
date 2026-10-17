@@ -11,17 +11,19 @@ shadows). No gameplay, no ships or people, no sound.
 
 New in this build
 -----------------
-- Much faster: frames are composed from cached chunks; new map areas are
-  prepared in the background (they show open sea for a moment instead of
-  freezing the window). Redraws at your display's refresh rate.
-- Frames per second in the window title. Every 2 seconds the console
-  (Windows: the black window; Linux: the terminal) prints a line like
-  "zoom group 1: 60.0 fps, frame avg 4.1 ms / worst 6.0 ms (...)".
-- The sea now covers the whole map, also between islands, and continues
-  seamlessly into the island water (no more dark void, no rectangles).
-- Smooth transition from shallow to deep water (no staircase at the coast);
-  the open-sea colour is now close to the original.
-- Enhanced water (E) blends smoothly between animation frames.
+- The GPU draws the frames now (Vulkan, DirectX 12 or Metal via wgpu),
+  presented in sync with your display. Measured on a 4K screen: 1-2 ms per
+  frame on the developer's machine, before 7-25 ms on the CPU. Without a
+  usable GPU the viewer falls back to the CPU renderer by itself
+  (force one with --renderer gpu or --renderer cpu).
+- Map areas are prepared on all CPU cores in the background, about 8x
+  faster than before; the area around the view and the neighbouring zoom
+  levels are prepared ahead, so zooming in shows islands at once.
+- Enhanced water (E) reworked after your video: no white blobs or grid
+  stripes on the open sea, no lines along the coast; waves now roll in,
+  curl, break into foam and wash up the beach; shallow water is turquoise.
+- The window title shows the renderer and the frames per second; the
+  console prints a timing line every 2 seconds.
 
 Requirements
 ------------
@@ -56,16 +58,26 @@ into whitewater, burst onto the beach as foam and wash back; whitecaps on
 the open sea. This is NOT in the original game; it is an optional
 improvement. The default shows the water as the original draws it.
 
+Benchmark
+---------
+Windows: double-click run-benchmark.bat.  Linux: ./run-benchmark.sh "<game folder>"
+It renders scripted camera paths without a window (GPU and CPU, 1080p to
+4K) and writes benchmark-results.md next to the script (1-3 minutes).
+
 Please report
 -------------
-- The fps in the title and a few of the console lines, for each zoom level,
-  with E off and on, plus your CPU, number of cores and screen resolution.
-- Whether panning is smooth, and a short recording if anything looks wrong.
+- benchmark-results.md.
+- The fps in the window title and a few of the console lines, for each
+  zoom level, with E off and on.
+- Whether panning and zooming feel smooth, and a short recording of the
+  enhanced water (E) at a coast.
 
 Command-line tools (windows\ or linux/)
 -------------------------------------
   anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group 0|1|2]
            [--png out.png [--time <ms>]] [--water original|enhanced]
+           [--renderer auto|gpu|cpu]
+  bench_frame <game dir> <file> [options]    frame benchmark (see above)
       --png renders the whole scene to an image without opening a window.
   anno-extract view|figuren|anlagen|tex|insel ...   export graphics to PNG
   anno-dump tex|figuren|anlagen|insel|colors|chunks ...   inspect file formats
@@ -76,6 +88,8 @@ Known limitations of this preview
 - Built by cross-compiling on macOS; not run on Windows or Linux by us.
   Please report any start-up problem with the exact error text.
 - Rivers still show as hard tile-shaped patches with seams (next fix).
+- The enhanced water is an improvement on the original, not part of it,
+  and still being tuned; E off shows the water as the original draws it.
 - Only water is animated so far; other animations, ships, people and the
   original's terrain lighting are missing.
 - Details and evidence: docs/PLAN.md, docs/render/iso.md, docs/perf/README.md

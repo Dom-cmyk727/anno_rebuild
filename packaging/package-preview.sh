@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds share/anno1503-preview-<name>.zip: Windows and Linux x86_64 binaries
-# (anno1503, anno-extract, anno-dump), start scripts, README and a source
+# (anno1503, anno-extract, anno-dump, bench_frame), start scripts, README and a source
 # snapshot of HEAD. No game files are included.
 #
 # Cross-compiles on any host with:
@@ -19,7 +19,9 @@ fi
 commit=$(git rev-parse --short HEAD)
 
 cargo build --release --target x86_64-pc-windows-gnu -p anno1503 -p anno-tools
+cargo build --release --target x86_64-pc-windows-gnu -p anno-render --features gpu --example bench_frame
 cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.28 -p anno1503 -p anno-tools
+cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.28 -p anno-render --features gpu --example bench_frame
 
 dir=anno1503-preview-$name
 out=target/package/$dir
@@ -30,10 +32,13 @@ for b in anno1503 anno-extract anno-dump; do
   cp "target/x86_64-unknown-linux-gnu/release/$b" "$out/linux/"
   chmod +x "$out/linux/$b"
 done
-for f in README.txt start-viewer.sh start-viewer.bat; do
+cp target/x86_64-pc-windows-gnu/release/examples/bench_frame.exe "$out/windows/"
+cp target/x86_64-unknown-linux-gnu/release/examples/bench_frame "$out/linux/"
+chmod +x "$out/linux/bench_frame"
+for f in README.txt start-viewer.sh start-viewer.bat run-benchmark.sh run-benchmark.bat; do
   sed "s/@NAME@/$name/g; s/@COMMIT@/$commit/g" "packaging/preview/$f" > "$out/$f"
 done
-chmod +x "$out/start-viewer.sh"
+chmod +x "$out/start-viewer.sh" "$out/run-benchmark.sh"
 git archive --format=zip -o "$out/anno1503-source.zip" HEAD -- . ':!share'
 
 mkdir -p share

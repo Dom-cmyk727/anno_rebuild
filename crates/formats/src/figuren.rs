@@ -599,21 +599,41 @@ pub fn decode_frame(
     width: usize,
     height: usize,
 ) -> Result<Vec<Option<Pixel>>, Error> {
-    decode(format, data, width, height, false).map(|(px, _)| px)
+    decode(format, data, width, height, false).map(|(px, _, _)| px)
 }
 
 /// As [`decode_frame`], but a run that extends past `width` is accepted and
 /// its pixels beyond the right edge are dropped; returns the pixels and the
 /// number dropped. Needed for 51 `Anlagen.dat` frames whose rows overrun
 /// `width` by 1–16 pixels while row count and end marker are exact (P);
-/// whether the original clips them is unknown (OQ-025).
+/// the original does not clip them (OQ-025 resolved); use
+/// [`decode_frame_extended`] to keep them.
 pub fn decode_frame_clipped(
     format: FrameFormat,
     data: &[u8],
     width: usize,
     height: usize,
 ) -> Result<(Vec<Option<Pixel>>, usize), Error> {
-    decode(format, data, width, height, true)
+    decode(format, data, width, height, true).map(|(px, dropped, _)| (px, dropped))
+}
+
+/// As [`decode_frame`], but the image is widened to the rightmost pixel any
+/// row writes, so that pixels past `width` are kept, as the original draws
+/// them to the right of the frame box (OQ-025, D: `AnnoDisplay.dll`
+/// blitters never consult the width). Returns the pixels and the image
+/// width (`>= width`); rows keep their place, so the frame anchor is
+/// unchanged.
+pub fn decode_frame_extended(
+    format: FrameFormat,
+    data: &[u8],
+    width: usize,
+    height: usize,
+) -> Result<(Vec<Option<Pixel>>, usize), Error> {
+    let (px, dropped, extent) = decode(format, data, width, height, true)?;
+    if dropped == 0 {
+        return Ok((px, width));
+    }
+    decode(format, data, extent, height, false).map(|(px, _, _)| (px, extent))
 }
 
 fn decode(
@@ -622,11 +642,11 @@ fn decode(
     width: usize,
     height: usize,
     clip: bool,
-) -> Result<(Vec<Option<Pixel>>, usize), Error> {
+) -> Result<(Vec<Option<Pixel>>, usize, usize), Error> {
     let mut out = vec![None; width * height];
-    let mut dropped = 0;
+    let (mut dropped, mut extent) = (0, width);
     if data.is_empty() {
-        return Ok((out, dropped));
+        return Ok((out, dropped, extent));
     }
     let bpp = format.bytes_per_pixel();
     let (mut i, mut x, mut y) = (0, 0, 0);
@@ -664,6 +684,7 @@ fn decode(
             } else {
                 x + k
             };
+            extent = extent.max(col + 1);
             if col >= width {
                 if !clip {
                     return Err(Error::BadPixels("run outside image"));
@@ -693,7 +714,7 @@ fn decode(
     if i != data.len() {
         return Err(Error::BadPixels("bytes after end marker"));
     }
-    Ok((out, dropped))
+    Ok((out, dropped, extent))
 }
 
 #[cfg(test)]
@@ -782,6 +803,13 @@ mod tests {
         assert_eq!(dropped, 1);
         let idx: Vec<_> = px.iter().map(|p| p.map(|p| (p.z, p.index))).collect();
         assert_eq!(idx, [Some((0xa1, 1)), Some((0xa2, 2)), None, None]);
+        // Extended: widened to 3 columns, nothing lost, rows in place.
+        let (px, w) = decode_frame_extended(FrameFormat::RgbZ, &data, 2, 2).unwrap();
+        assert_eq!(w, 3);
+        let idx: Vec<_> = px.iter().map(|p| p.map(|p| p.index)).collect();
+        assert_eq!(idx, [Some(1), Some(2), Some(3), None, None, None]);
+        let (_, w) = decode_frame_extended(FrameFormat::RgbZ, &[0, 1, 9, 9, 0xFF], 2, 1).unwrap();
+        assert_eq!(w, 2, "no overrun: width unchanged");
         // WZ: stored pixels go to every second column, phase = row parity.
         let wz = [0, 2, 1, 7, 2, 8, 0xFE, 0, 1, 3, 9, 0xFF];
         let px = decode_frame(FrameFormat::RgbWZ, &wz, 4, 2).unwrap();

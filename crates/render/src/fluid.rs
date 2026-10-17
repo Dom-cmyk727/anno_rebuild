@@ -49,7 +49,8 @@ pub const SWELL_COMPONENTS: usize = 8;
 /// kept together so they can become configuration (PLAN §0.1, §0.2).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FluidConfig {
-    /// Cells per side of the camera-local grid.
+    /// Largest number of cells per side of the camera-local grid; the
+    /// window covers the view ([`FluidConfig::window_size`]).
     pub size: u32,
     /// Cells per tile per zoom group (finer when zoomed in).
     pub cells_per_tile: [u32; 3],
@@ -104,20 +105,20 @@ pub struct FluidConfig {
 
 impl FluidConfig {
     pub const DEFAULT: FluidConfig = FluidConfig {
-        size: 1024,
-        cells_per_tile: [8, 4, 2],
+        size: 2048,
+        cells_per_tile: [16, 8, 4],
         depth_cap: 16.0,
         deep_speed: 3.0,
         min_depth: 0.5,
-        dt: 1.0 / 60.0,
-        max_steps: 6,
+        dt: 1.0 / 120.0,
+        max_steps: 12,
         damping: 0.05,
         friction: 0.04,
         break_ratio: 0.8,
         break_rate: 8.0,
         break_min_depth: 3.0,
         foam_gain: 1.5,
-        foam_decay: 2.5,
+        foam_decay: 1.6,
         force_depth: (10.0, 15.0),
         force_rate: 1.5,
         sponge_cells: 32,
@@ -130,6 +131,19 @@ impl FluidConfig {
         seed: 1503,
         recentre_cells: 64,
     };
+
+    /// Cells per side for a view spanning `span_tiles` tiles (screen width
+    /// / tile width + screen height / tile height) at zoom `group`: the
+    /// view plus room to recentre and the sponge on each side, rounded up
+    /// to 64, at most [`FluidConfig::size`].
+    pub fn window_size(&self, group: usize, span_tiles: f32) -> u32 {
+        #[allow(clippy::cast_precision_loss)]
+        let cells = span_tiles * self.cells_per_tile[group] as f32
+            + 2.0 * (self.recentre_cells + self.sponge_cells) as f32;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let n = (cells.ceil() as u32).div_ceil(64) * 64;
+        n.clamp(64, self.size)
+    }
 
     /// Gravity in tiles² / (s² · `HEIGHT` unit), from `deep_speed` at
     /// `depth_cap`.
@@ -240,8 +254,13 @@ pub struct FluidWindow {
 impl FluidWindow {
     /// A window of `cfg` at zoom `group` centred on tile position `centre`.
     pub fn new(cfg: &FluidConfig, group: usize, centre: (f32, f32)) -> Self {
+        Self::with_size(cfg, group, centre, cfg.size)
+    }
+
+    /// As [`FluidWindow::new`] with `size` cells per side.
+    pub fn with_size(cfg: &FluidConfig, group: usize, centre: (f32, f32), size: u32) -> Self {
         let mut w = Self {
-            size: i64::from(cfg.size),
+            size: i64::from(size),
             cells_per_tile: cfg.cells_per_tile[group],
             origin: (0, 0),
         };
@@ -471,9 +490,27 @@ impl FluidGrid {
             for x in r.x0..r.x1 {
                 let i = at(x, y);
                 let h = self.depth[i];
-                let [mut eta, u, v, mut foam] = mid[i];
+                let [mut eta, u, v, _] = mid[i];
                 let (l, up) = (at(x - 1, y), at(x, y - 1));
                 let (ul, vu) = (mid[l][1], mid[up][2]);
+                // Foam drifts with the flow (semi-Lagrangian): sampled where
+                // the water at this cell centre came from.
+                #[allow(clippy::cast_precision_loss)]
+                let cpt = self.window.cells_per_tile as f32;
+                #[allow(clippy::cast_precision_loss)]
+                let (bx, by) = (
+                    x as f32 - 0.5 * (u + ul) * dt * cpt,
+                    y as f32 - 0.5 * (v + vu) * dt * cpt,
+                );
+                let mut foam = {
+                    let (fx0, fy0) = (bx.floor(), by.floor());
+                    let (fx, fy) = (bx - fx0, by - fy0);
+                    #[allow(clippy::cast_possible_truncation)]
+                    let (ix, iy) = (fx0 as i64, fy0 as i64);
+                    let q = |a: i64, b: i64| mid[at(a, b)][3];
+                    (q(ix, iy) * (1.0 - fx) + q(ix + 1, iy) * fx) * (1.0 - fy)
+                        + (q(ix, iy + 1) * (1.0 - fx) + q(ix + 1, iy + 1) * fx) * fy
+                };
                 let flux = |vel: f32, from: usize, to: usize| {
                     vel * if vel > 0.0 { total(from) } else { total(to) }
                 };
@@ -498,6 +535,7 @@ impl FluidGrid {
                     foam += dt * c.swash_foam * speed;
                 }
                 foam *= decay;
+                foam = foam.max(0.0);
                 let f = self.force_factor(x, y, h, dt);
                 if f > 0.0 && h > WET {
                     let (fe, _, _) = forcing(&c, &self.comps, w.cell_centre(x, y), t);
@@ -525,6 +563,7 @@ mod tests {
     fn window_recentres_in_strips() {
         let cfg = FluidConfig {
             size: 64,
+            cells_per_tile: [8, 4, 2],
             ..FluidConfig::DEFAULT
         };
         let mut w = FluidWindow::new(&cfg, 0, (10.0, 10.0));

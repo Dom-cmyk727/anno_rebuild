@@ -166,9 +166,19 @@ fn eta_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let h = depth_at(x, y);
     let s = state_at(x, y);
     var eta = s.x;
-    var foam = s.w;
     let ul = state_at(x - 1, y).y;
     let vu = state_at(x, y - 1).z;
+    // Foam drifts with the flow (fluid.rs: semi-Lagrangian).
+    let bx = f32(x) - 0.5 * (s.y + ul) * dt * S.cpt;
+    let by = f32(y) - 0.5 * (s.z + vu) * dt * S.cpt;
+    let fx0 = floor(bx);
+    let fy0 = floor(by);
+    let ffx = bx - fx0;
+    let ffy = by - fy0;
+    let ix = i32(fx0);
+    let iy = i32(fy0);
+    var foam = (state_at(ix, iy).w * (1.0 - ffx) + state_at(ix + 1, iy).w * ffx) * (1.0 - ffy)
+        + (state_at(ix, iy + 1).w * (1.0 - ffx) + state_at(ix + 1, iy + 1).w * ffx) * ffy;
     let div = (flux(s.y, x, y, x + 1, y) - flux(ul, x - 1, y, x, y))
         + (flux(s.z, x, y, x, y + 1) - flux(vu, x, y - 1, x, y));
     eta -= dt * div / (1.0 / S.cpt);
@@ -189,6 +199,7 @@ fn eta_step(@builtin(global_invocation_id) id: vec3<u32>) {
         foam += dt * P.e.y * speed;
     }
     foam *= P.c.y;
+    foam = max(foam, 0.0);
     let f = force_factor(x, y, h);
     if f > 0.0 && h > WET {
         let fe = forcing(cell_centre(x, y), S.t).x;

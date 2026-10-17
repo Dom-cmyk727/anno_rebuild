@@ -44,6 +44,10 @@ The animation clock advances 16 ms per frame. `--quick` divides the frame counts
 
 ## Results
 
+### 2026-10-17 (4) — wave simulation at 16 / 8 / 4 cells per tile
+
+GPU, async chunks, enhanced water, after 2 s warm-up, p50 / p99 ms: 3840 × 2160: 2.9–5.0 / ≤ 12.6; 1920 × 1080: 1.2–1.6 / ≤ 8.4 (window sized to the view, `dt` 1/120 s).
+
 ### 2026-10-17 (3) — wave simulation, Apple M5 Pro (Metal), `Single_01.sze`
 
 3840 × 2160, GPU, async chunks, after 2 s warm-up, p50 ms: original water 1.8–3.0, enhanced water with the 1024² wave simulation 2.0–3.7 (≈ +1 ms); p99 ≤ 13 ms in all cases.

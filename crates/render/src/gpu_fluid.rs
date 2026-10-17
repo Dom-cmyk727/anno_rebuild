@@ -24,22 +24,120 @@ pub struct FluidGpu {
     comps: [SwellComponent; SWELL_COMPONENTS],
     window: Option<FluidWindow>,
     group: usize,
+    grid: Grid,
+    layout: wgpu::BindGroupLayout,
+    params: Buffer,
+    steps: Buffer,
+    align: u64,
+    vel_pipe: ComputePipeline,
+    eta_pipe: ComputePipeline,
+    /// Simulation time in seconds.
+    sim_t: f64,
+}
+
+/// Textures of a grid of `n × n` cells and their bind groups; recreated
+/// when the window size changes (viewport resize).
+struct Grid {
+    n: u32,
     /// State `(η, u, v, foam)`: texture 0 holds the current state after
     /// every step; texture 1 is the intermediate of pass A.
     states: [Texture; 2],
     views: [TextureView; 2],
     bathy: Texture,
     bathy_view: TextureView,
-    _params: Buffer,
-    steps: Buffer,
-    align: u64,
-    vel_pipe: ComputePipeline,
-    eta_pipe: ComputePipeline,
     /// Pass A reads 0 writes 1; pass B reads 1 writes 0.
     bind_a: BindGroup,
     bind_b: BindGroup,
-    /// Simulation time in seconds.
-    sim_t: f64,
+}
+
+impl Grid {
+    fn new(
+        device: &Device,
+        layout: &wgpu::BindGroupLayout,
+        params: &Buffer,
+        steps: &Buffer,
+        n: u32,
+    ) -> Self {
+        let size = Extent3d {
+            width: n,
+            height: n,
+            depth_or_array_layers: 1,
+        };
+        let state = || {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("fluid state"),
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: TextureFormat::Rgba32Float,
+                usage: TextureUsages::TEXTURE_BINDING
+                    | TextureUsages::STORAGE_BINDING
+                    | TextureUsages::COPY_DST
+                    | TextureUsages::COPY_SRC,
+                view_formats: &[],
+            })
+        };
+        let states = [state(), state()];
+        let views = [
+            states[0].create_view(&wgpu::TextureViewDescriptor::default()),
+            states[1].create_view(&wgpu::TextureViewDescriptor::default()),
+        ];
+        let bathy = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("fluid depth"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: TextureFormat::R32Float,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let bathy_view = bathy.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind = |src: &TextureView, dst: &TextureView| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("fluid"),
+                layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: params.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: steps,
+                            offset: 0,
+                            size: wgpu::BufferSize::new(STEP_BYTES),
+                        }),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: BindingResource::TextureView(src),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: BindingResource::TextureView(dst),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: BindingResource::TextureView(&bathy_view),
+                    },
+                ],
+            })
+        };
+        let bind_a = bind(&views[0], &views[1]);
+        let bind_b = bind(&views[1], &views[0]);
+        Self {
+            n,
+            states,
+            views,
+            bathy,
+            bathy_view,
+            bind_a,
+            bind_b,
+        }
+    }
 }
 
 fn tex_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
@@ -109,43 +207,6 @@ impl FluidGpu {
             })
         };
         let (vel_pipe, eta_pipe) = (pipe("vel_step"), pipe("eta_step"));
-        let n = cfg.size;
-        let size = Extent3d {
-            width: n,
-            height: n,
-            depth_or_array_layers: 1,
-        };
-        let state = || {
-            device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("fluid state"),
-                size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: TextureFormat::Rgba32Float,
-                usage: TextureUsages::TEXTURE_BINDING
-                    | TextureUsages::STORAGE_BINDING
-                    | TextureUsages::COPY_DST
-                    | TextureUsages::COPY_SRC,
-                view_formats: &[],
-            })
-        };
-        let states = [state(), state()];
-        let views = [
-            states[0].create_view(&wgpu::TextureViewDescriptor::default()),
-            states[1].create_view(&wgpu::TextureViewDescriptor::default()),
-        ];
-        let bathy = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("fluid depth"),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: TextureFormat::R32Float,
-            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let bathy_view = bathy.create_view(&wgpu::TextureViewDescriptor::default());
         let comps = swell_components(&cfg);
         let params = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("fluid params"),
@@ -161,73 +222,37 @@ impl FluidGpu {
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let bind = |src: &TextureView, dst: &TextureView| {
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("fluid"),
-                layout: &layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: params.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: BindingResource::Buffer(wgpu::BufferBinding {
-                            buffer: &steps,
-                            offset: 0,
-                            size: wgpu::BufferSize::new(STEP_BYTES),
-                        }),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: BindingResource::TextureView(src),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: BindingResource::TextureView(dst),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: BindingResource::TextureView(&bathy_view),
-                    },
-                ],
-            })
-        };
-        let bind_a = bind(&views[0], &views[1]);
-        let bind_b = bind(&views[1], &views[0]);
+        // Small until the first update sizes it to the view.
+        let grid = Grid::new(device, &layout, &params, &steps, 64);
         Self {
             cfg,
             comps,
             window: None,
             group: usize::MAX,
-            states,
-            views,
-            bathy,
-            bathy_view,
-            _params: params,
+            grid,
+            layout,
+            params,
             steps,
             align,
             vel_pipe,
             eta_pipe,
-            bind_a,
-            bind_b,
             sim_t: 0.0,
         }
     }
 
     /// The current state `(η, u, v, foam)` (ring-buffer storage).
     pub fn state_view(&self) -> &TextureView {
-        &self.views[0]
+        &self.grid.views[0]
     }
 
     /// Still-water depth per cell (ring-buffer storage, `R32Float`).
     pub fn depth_view(&self) -> &TextureView {
-        &self.bathy_view
+        &self.grid.bathy_view
     }
 
     /// The current state texture (for read-back in tests).
     pub fn state_texture(&self) -> &Texture {
-        &self.states[0]
+        &self.grid.states[0]
     }
 
     /// The window, once [`FluidGpu::update`] has run.
@@ -236,26 +261,34 @@ impl FluidGpu {
     }
 
     /// Brings the simulation to `time_ms` for a view at zoom `group`
-    /// centred on tile position `centre`: recentres the window (new cells
+    /// centred on tile position `centre` and spanning `span_tiles` tiles
+    /// (sizes the window, [`FluidConfig::window_size`]): recentres the window (new cells
     /// get depth `depth(x, y)` and the incoming swell, computed on
     /// `threads` CPU threads) and records the time steps into `encoder`.
     #[allow(clippy::too_many_arguments)]
     pub fn update(
         &mut self,
+        device: &Device,
         queue: &Queue,
         encoder: &mut CommandEncoder,
         group: usize,
         centre: (f32, f32),
+        span_tiles: f32,
         time_ms: u64,
         depth: &(dyn Fn(f32, f32) -> f32 + Sync),
         threads: usize,
     ) {
         #[allow(clippy::cast_precision_loss)]
         let target = time_ms as f64 / 1000.0;
+        let size = self.cfg.window_size(group, span_tiles);
+        if size != self.grid.n {
+            self.grid = Grid::new(device, &self.layout, &self.params, &self.steps, size);
+            self.window = None;
+        }
         let new_rects = match &mut self.window {
             Some(w) if self.group == group => w.recentre(centre, self.cfg.recentre_cells),
             _ => {
-                let w = FluidWindow::new(&self.cfg, group, centre);
+                let w = FluidWindow::with_size(&self.cfg, group, centre, size);
                 self.window = Some(w);
                 self.group = group;
                 self.sim_t = target;
@@ -299,7 +332,7 @@ impl FluidGpu {
         {
             self.sim_t += dt * n as f64;
         }
-        let groups = self.cfg.size.div_ceil(8);
+        let groups = self.grid.n.div_ceil(8);
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("fluid"),
             timestamp_writes: None,
@@ -307,10 +340,10 @@ impl FluidGpu {
         for k in 0..n {
             let off = u32::try_from(self.align * k).expect("fits");
             pass.set_pipeline(&self.vel_pipe);
-            pass.set_bind_group(0, &self.bind_a, &[off]);
+            pass.set_bind_group(0, &self.grid.bind_a, &[off]);
             pass.dispatch_workgroups(groups, groups, 1);
             pass.set_pipeline(&self.eta_pipe);
-            pass.set_bind_group(0, &self.bind_b, &[off]);
+            pass.set_bind_group(0, &self.grid.bind_b, &[off]);
             pass.dispatch_workgroups(groups, groups, 1);
         }
     }
@@ -408,8 +441,8 @@ impl FluidGpu {
                         extent,
                     );
                 };
-                write(&self.bathy, &db, 4);
-                write(&self.states[0], &sb, 16);
+                write(&self.grid.bathy, &db, 4);
+                write(&self.grid.states[0], &sb, 16);
             }
         }
     }
@@ -502,7 +535,17 @@ mod tests {
         // The first update creates the window at the current time.
         let mut enc =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        gpu.update(&queue, &mut enc, 0, (8.0, 8.0), time_ms, &depth, 2);
+        gpu.update(
+            &device,
+            &queue,
+            &mut enc,
+            0,
+            (8.0, 8.0),
+            0.0,
+            time_ms,
+            &depth,
+            2,
+        );
         queue.submit([enc.finish()]);
         #[allow(clippy::cast_possible_truncation)]
         let mut cpu = Some(FluidGrid::new(
@@ -517,7 +560,9 @@ mod tests {
             let mut enc =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
             let before = gpu.sim_t;
-            gpu.update(&queue, &mut enc, 0, centre, time_ms, &depth, 2);
+            gpu.update(
+                &device, &queue, &mut enc, 0, centre, 0.0, time_ms, &depth, 2,
+            );
             queue.submit([enc.finish()]);
             let w = gpu.window().expect("window");
             let g = cpu.get_or_insert_with(|| {

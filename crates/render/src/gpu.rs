@@ -529,11 +529,15 @@ impl GpuFrame {
             let threads =
                 std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get);
             let depth = |x: f32, y: f32| scene.fluid_depth(x, y);
+            #[allow(clippy::cast_precision_loss)]
+            let span = view.w as f32 / tw + view.h as f32 / th;
             fluid.update(
+                &self.device,
                 &self.queue,
                 &mut encoder,
                 group,
                 centre,
+                span,
                 time_ms,
                 &depth,
                 threads,

@@ -359,10 +359,13 @@ fn fluid_shade(fl: vec4<f32>, depth: f32, run: f32, w: vec2<f32>, t: f32, detail
     // Relief: subtle on the open sea (long swell), stronger in the surf.
     let k = mix(0.06, 0.16, sstep(12.0, 3.0, depth));
     light += k * clamp(fl.y * 0.6, -1.0, 1.0) + 0.02 * clamp(fl.x, -2.0, 2.0);
-    let fine = noise3(w.x * 2.0, w.y * 2.0, t * 0.0009);
+    // Foam texture: two scales of noise that churn quickly, so foam
+    // bubbles and tears instead of standing still.
+    let fine = 0.6 * noise3(w.x * 3.0, w.y * 3.0, t * 0.0025)
+        + 0.4 * noise3(w.x * 7.0 + 3.3, w.y * 7.0, t * 0.004);
     let mottle = 0.55 + detail * (fine - 0.55);
-    let froth = sstep(0.2, 0.75, mottle);
-    var foam = clamp(fl.w * 0.55, 0.0, 0.85) * (0.25 + 0.75 * froth);
+    let froth = sstep(0.25, 0.7, mottle);
+    var foam = clamp(fl.w * 0.6, 0.0, 0.9) * (0.15 + 0.85 * froth);
     let wet = depth + run;
     let edge = sstep(0.8, 0.0, wet) * sstep(-0.2, 0.1, wet) * sstep(0.05, 0.6, fl.w);
     foam = max(foam, edge * (0.3 + 0.5 * froth));

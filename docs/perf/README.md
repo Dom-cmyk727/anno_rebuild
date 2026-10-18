@@ -57,7 +57,7 @@ Both benchmarks with the same options, run one after the other: `--threads 8 --r
 | 2 | original | async | static | 3.3 / 3.7 | 2.7 / 3.3 |
 | 2 | original | async | pan fast | 4.2 / 5.5 | 3.6 / 4.4 |
 
-Chunk building (blocking cold frames: 39–56 ms in both) costs the same; per-frame stages are 5–25 % lower in C++ (same algorithms, same pixels). Single runs with background load: differences of a few tenths of a millisecond are noise.
+Over all 42 non-cold rows, C++ p50 is 0.71–0.98 × Rust's (median 0.90). By stage: sea 0.4–4.3 ms lower in C++; ground and objects within ±0.2 ms; water objects between 0.5 ms lower and 0.6 ms higher. Cold frames with blocking chunk building are about the same at groups 0 and 1 (C++ 39–56 ms, Rust 40–53 ms) but slower in C++ at group 2 (58 / 71 ms against 44 / 60 ms; chunk time 54 / 54 ms against 41 / 42 ms). Not yet explained; one candidate is that the C++ scene has the 5 ships (the Rust benchmark builds its scene without units), which adds an objects layer to open-sea chunks. The pixels of the two scenes are therefore not identical. Single runs with background load: differences of a few tenths of a millisecond are noise. To do: load units in the Rust benchmark or not in the C++ one, then repeat several runs.
 
 ### 2026-10-18 — C++ viewer, CPU path, Apple M5 Pro (18 cores), `Single_01.sze`
 `anno1503 --view` (C++, SDL3 window, release build, vsync at 120 Hz, window 2560 × 1600 pixels; chunk workers on 9 threads, frames on 18), average of the 2 s report after the chunks are built, original water:
@@ -68,7 +68,7 @@ Chunk building (blocking cold frames: 39–56 ms in both) costs the same; per-fr
 | 1 | 4.4 / 7.6 | 0.3 | 1.6 | 2.3 | 0.2 |
 | 0 | 4.5 / 4.9 | 0.3 | 1.7 | 2.3 | 0.2 |
 
-Same pipeline and pixels as the Rust CPU path (`docs/render/iso.md`, "Fidelity"); comparable to its 1080p/18-thread numbers above for 2 × the pixels. Not measured yet: a `bench_frame` port (panning, 4K, thread counts), Windows/Linux.
+Same pipeline and pixels as the Rust CPU path (`docs/render/iso.md`, "Fidelity"); comparable to its 1080p/18-thread numbers above for 2 × the pixels. The C++ `bench_frame` (section above) measures panning and other resolutions; not measured yet on Windows/Linux.
 
 ### 2026-10-17 (4) — wave simulation at 16 / 8 / 4 cells per tile
 

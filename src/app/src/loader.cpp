@@ -259,6 +259,7 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
         return to_utf8(file) + ": " + islands.error();
     }
     std::vector<insel::Island> all = std::move(islands).value();
+    out.file_islands = all.size();
     // Stand-in islands for INSELLNK records: a link names a placeholder
     // template (*_dummy.scp); the original replaces it at game start by a
     // random real template of the same climate and size, never a PIRAT one,

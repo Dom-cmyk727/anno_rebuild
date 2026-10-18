@@ -112,8 +112,11 @@ struct Units {
 
 /// The units of `kinds` of all players of `scene`, in file order, with
 /// player colours from `palette` (e.g. figure::kOriginalPlayerColours, slot
-/// n = palette[n - 1]) assigned by start_colours with palette.size() slots;
-/// units of removed human slots are left out.
+/// n = palette[n - 1]) assigned by start_colours with palette.size() slots
+/// (with fewer than the original's 8 colours, a preset colour beyond the
+/// palette is ignored: the first human then gets the lowest pool colour, a
+/// computer none; the Rust version kept the slot and drew the units
+/// uncoloured); units of removed human slots are left out.
 Result<Units, std::string> units(const formats::sze::Scene& scene,
                                  const formats::figuren::FigurenHeader& header,
                                  std::span<const UnitKind> kinds,

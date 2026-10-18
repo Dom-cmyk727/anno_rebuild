@@ -25,8 +25,9 @@ if(ANNO_BUILD_TESTS)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   anno_target_defaults(anno_app_tests)
   add_test(NAME anno_app_tests COMMAND anno_app_tests)
-  # Bad arguments print the usage (the exit code 2 is checked by app_test's
-  # parse_args tests; CTest's output match ignores exit codes).
+  # Bad arguments print the usage. CTest's output match ignores the exit
+  # code; app_test checks that parse_args rejects the input, and main maps a
+  # rejection to exit 2 (not tested automatically).
   add_test(NAME anno1503_usage COMMAND anno1503 --view x.sze --group 3)
   set_tests_properties(anno1503_usage PROPERTIES PASS_REGULAR_EXPRESSION "usage:")
 endif()

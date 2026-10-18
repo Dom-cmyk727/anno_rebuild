@@ -21,6 +21,9 @@ struct LoadedScene {
     std::unique_ptr<render::Scene> scene;
     /// Messages for the user (stand-ins, skipped links or units).
     std::vector<std::string> notes;
+    /// How many of scene->islands come from the file itself (the stand-ins
+    /// for INSELLNK links follow).
+    std::size_t file_islands = 0;
 };
 
 /// The game directory: `explicit_dir`, else `env_dir` (the value of

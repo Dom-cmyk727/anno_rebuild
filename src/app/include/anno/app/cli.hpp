@@ -49,5 +49,8 @@ std::optional<Args> parse_args(const std::vector<std::string>& args);
 std::filesystem::path utf8_path(const std::string& s);
 /// A path as a UTF-8 string.
 std::string to_utf8(const std::filesystem::path& p);
+/// The path in environment variable `name` (wide on Windows, so any
+/// character works); nullopt if unset or empty.
+std::optional<std::filesystem::path> env_path(const char* name);
 
 } // namespace anno::app

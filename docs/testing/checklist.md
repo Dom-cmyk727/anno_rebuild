@@ -4,7 +4,7 @@ What only a person with the right machine can check. Claude Code keeps this list
 
 ## For the owner (Mac), 2026-10-18
 
-1. **CI status** of the latest push: GitHub → Actions → workflow "CI" → newest run on `main`. Expected green: `cpp (linux-gcc)`, `cpp (linux-clang-asan)`, `cpp (windows-msvc)`, `cpp (macos-clang)`, `cpp-format`, and the Rust jobs `lint`, `test`, `build-macos`. The C++ code has only been compiled with Apple Clang and Homebrew Clang 22 here; GCC and MSVC are checked by CI only, so a red `linux-gcc` or `windows-msvc` job is the most likely surprise. If one is red, paste the first error lines into the chat.
+1. **CI status** of the latest push: GitHub → Actions → workflow "CI" → newest run on `main`. Until 2026-10-18 the C++ jobs on Linux and Windows had never passed. The Linux failures are reproduced and fixed: GCC sign-conversion errors, a missing include, SDL's XTest package. Both Linux jobs now pass in an Ubuntu 24.04 container. The Windows job failed at configure, probably because the preset pinned Visual Studio 2022; the pin is removed. That fix has not been tested: there is no Windows machine here. Claude can read the job results but not the logs (they need a login). If `cpp (windows-msvc)` is still red, open it and paste the first error lines into the chat. Expected green: `cpp (linux-gcc)`, `cpp (linux-clang-asan)`, `cpp (windows-msvc)`, `cpp (macos-clang)`, `cpp-format`, `lint`, `test`, `build-macos`.
 2. **C++ viewer on the Mac** (first look; the Rust viewer stays the reference until the C++ one has the GPU path):
    ```
    cd ~/Dev/anno1503

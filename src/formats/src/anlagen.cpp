@@ -27,11 +27,11 @@ Result<AnlagenFile, std::string> AnlagenFile::parse(Bytes buf) {
     if (anl == nullptr) {
         return std::string("Anlagen.dat: no ANLAGEN");
     }
-    auto entries = chunk::parse_chunks(anl->payload);
-    if (!entries) {
+    auto entry_list = chunk::parse_chunks(anl->payload);
+    if (!entry_list) {
         return std::string("Anlagen.dat: ANLAGEN is not a chunk sequence");
     }
-    out.entry_chunks = std::move(*entries);
+    out.entry_chunks = std::move(*entry_list);
     for (const auto& c : out.entry_chunks) {
         auto e = figuren::Entry::parse(c);
         if (!e) {

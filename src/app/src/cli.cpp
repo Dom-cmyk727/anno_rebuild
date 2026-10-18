@@ -1,4 +1,6 @@
 #include <charconv>
+#include <cstdlib>
+#include <string>
 #include <string_view>
 
 #include <anno/app/cli.hpp>
@@ -45,6 +47,19 @@ fs::path utf8_path(const std::string& s) {
 std::string to_utf8(const fs::path& p) {
     const std::u8string u = p.u8string();
     return std::string(u.begin(), u.end());
+}
+
+std::optional<fs::path> env_path(const char* name) {
+#ifdef _WIN32
+    const std::wstring wide(name, name + std::char_traits<char>::length(name));
+    const wchar_t* v = _wgetenv(wide.c_str());
+#else
+    const char* v = std::getenv(name);
+#endif
+    if (v == nullptr || *v == 0) {
+        return std::nullopt;
+    }
+    return fs::path(v);
 }
 
 std::optional<Args> parse_args(const std::vector<std::string>& args) {

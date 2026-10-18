@@ -1,5 +1,6 @@
 // anno_app_core: PNG output (always) and scene loading (needs
 // ANNO1503_GAME_DIR; skips otherwise).
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -125,7 +126,11 @@ TEST_CASE("scene loading: islands, links and units") {
 }
 
 TEST_CASE("game directory discovery") {
-    const fs::path root = fs::temp_directory_path() / "anno_app_test_gamedir";
+    // Unique per run, so parallel test runs (dev, asan) do not collide.
+    const fs::path root =
+        fs::temp_directory_path() /
+        ("anno_app_test_gamedir_" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::remove_all(root);
     fs::create_directories(root / "Scenes" / "x");
     std::ofstream(root / "Anlagen.dat").put('\0');

@@ -41,14 +41,14 @@ Result<IslandLink, std::string> IslandLink::parse(Bytes payload) {
     if (payload.size() < insel::kInsel5HeadLen) {
         return std::string("INSELLNK shorter than its prefix");
     }
-    const Bytes path = payload.subspan(insel::kInsel5HeadLen);
+    const Bytes raw_path = payload.subspan(insel::kInsel5HeadLen);
     // Exactly one NUL, at the end.
-    if (path.empty() || path.back() != 0 ||
-        std::find(path.begin(), path.end() - 1, std::uint8_t{0}) != path.end() - 1) {
+    if (raw_path.empty() || raw_path.back() != 0 ||
+        std::find(raw_path.begin(), raw_path.end() - 1, std::uint8_t{0}) != raw_path.end() - 1) {
         return std::string("INSELLNK: bad string");
     }
     return IslandLink{u16_le(payload, 0), u16_le(payload, 2), u16_le(payload, 4),
-                      u16_le(payload, 6), u32_le(payload, 8), path.first(path.size() - 1)};
+                      u16_le(payload, 6), u32_le(payload, 8), raw_path.first(raw_path.size() - 1)};
 }
 
 ByteBuffer IslandLink::to_bytes() const {
@@ -69,9 +69,9 @@ std::optional<PlayerHead> PlayerHead::parse(Bytes raw) {
     PlayerHead h;
     h.kind = u32_le(raw, 0);
     h.money = u32_le(raw, 4);
-    const Bytes name = raw.subspan(0x08, 0x30);
-    h.name = name.first(static_cast<std::size_t>(
-        std::find(name.begin(), name.end(), std::uint8_t{0}) - name.begin()));
+    const Bytes name_field = raw.subspan(0x08, 0x30);
+    h.name = name_field.first(static_cast<std::size_t>(
+        std::find(name_field.begin(), name_field.end(), std::uint8_t{0}) - name_field.begin()));
     std::copy_n(raw.begin() + 0x38, 16, h.id.begin());
     h.colour = raw[0x4C];
     return h;

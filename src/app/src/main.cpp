@@ -95,10 +95,8 @@ int run(const std::vector<std::string>& raw) {
         return 2;
     }
     const std::string name = anno::app::to_utf8(args->file);
-    const char* env = std::getenv("ANNO1503_GAME_DIR");
-    const auto dir = anno::app::find_game_dir(
-        args->game_dir, args->file,
-        env != nullptr ? std::optional<fs::path>(anno::app::utf8_path(env)) : std::nullopt);
+    const auto dir = anno::app::find_game_dir(args->game_dir, args->file,
+                                              anno::app::env_path("ANNO1503_GAME_DIR"));
     if (!dir) {
         std::fprintf(stderr, "%s: %s\n", name.c_str(), dir.error().c_str());
         return 1;

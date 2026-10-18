@@ -1,6 +1,9 @@
 // Synthetic tests of anno_assets (no game files needed).
 #include <array>
 #include <cstring>
+#include <filesystem>
+#include <map>
+#include <set>
 #include <string_view>
 
 #include <doctest/doctest.h>
@@ -9,10 +12,15 @@
 #include <anno/assets/figure.hpp>
 #include <anno/assets/island.hpp>
 #include <anno/assets/texture.hpp>
+#include <anno/assets/unit.hpp>
+#include <anno/formats/anlagen.hpp>
 #include <anno/formats/bytes.hpp>
 #include <anno/formats/figuren.hpp>
 #include <anno/formats/insel.hpp>
+#include <anno/formats/sze.hpp>
+#include <anno/formats/tagged.hpp>
 #include <anno/formats/tex.hpp>
+#include <anno/test/game_dir.hpp>
 
 namespace assets = anno::assets;
 namespace fig = anno::formats::figuren;
@@ -224,4 +232,137 @@ TEST_CASE("sprite and shadow frames to RGBA") {
                                            assets::figure::kOriginalPlayerColours[1]);
     REQUIRE(coloured);
     CHECK(coloured.value() == sprite.value());
+}
+
+namespace {
+
+/// A SPIELER chunk with only a HEAD record (kind, colour; docs/formats/sze.md).
+ByteBuffer player(std::uint32_t index, std::uint32_t kind, std::uint8_t colour) {
+    ByteBuffer head(anno::formats::sze::kPlayerHeadLen, 0);
+    for (int i = 0; i < 4; ++i) {
+        head[static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(kind >> (8 * i));
+    }
+    head[0x4C] = colour;
+    ByteBuffer payload;
+    put_u32(payload, 0);
+    put_u32(payload, index);
+    REQUIRE(anno::formats::tagged::write_record("HEAD", false, head, payload));
+    return rec("SPIELER", payload);
+}
+
+anno::assets::unit::StartColours colours(const std::vector<ByteBuffer>& players, std::uint32_t n) {
+    ByteBuffer scene;
+    for (const auto& p : players) {
+        append(scene, p);
+    }
+    const ByteBuffer buf = rec("ANNO", rec("SCENE", scene));
+    auto s = anno::formats::sze::Scene::parse(buf);
+    REQUIRE(s);
+    auto c = anno::assets::unit::start_colours(s.value(), n);
+    REQUIRE(c);
+    return c.value();
+}
+
+} // namespace
+
+TEST_CASE("start colours: removed humans, shared and exhausted pools") {
+    using Slots = std::map<std::uint32_t, std::uint8_t>;
+    // 8/11 human, 12 computer, 14 native peoples, 2 player 31.
+    const std::vector<ByteBuffer> players = {
+        player(0, 8, 0xFF),  // first human: lowest free colour (stand-in for the pick)
+        player(1, 11, 0xFF), // second human slot without colour: removed
+        player(2, 12, 3),    // preset computer colour: kept, stays in the pool
+        player(3, 12, 0xFF), // computer: lowest colour left
+        player(4, 14, 0xFF), // other type: no colour
+        player(5, 12, 0xFF), // computer: gets 3 too (shared with player 2)
+        player(31, 2, 0xFF), // skipped by every game-start loop
+    };
+    auto c = colours(players, 8);
+    CHECK(c.slots == Slots{{0, 1}, {2, 3}, {3, 2}, {5, 3}});
+    CHECK(c.removed == std::set<std::uint32_t>{1});
+    // Two colour slots: the preset 3 is out of range, the pool runs out.
+    c = colours(players, 2);
+    CHECK(c.slots == Slots{{0, 1}, {3, 2}});
+    CHECK(c.removed == std::set<std::uint32_t>{1});
+    // A human's preset colour leaves the pool.
+    c = colours({player(0, 8, 1), player(1, 12, 0xFF)}, 8);
+    CHECK(c.slots == Slots{{0, 1}, {1, 2}});
+    // 0xFF is never a slot, however many colours there are.
+    c = colours({player(0, 12, 0xFF), player(1, 12, 0xFF)}, 1000);
+    CHECK(c.slots == Slots{{0, 1}, {1, 2}});
+}
+
+TEST_CASE("building frames: palette id 0, widened rows, error kinds") {
+    const auto buf = anno::test::read_file(std::filesystem::path(ANNO_FIXTURES_DIR) /
+                                           "anlagen_synthetic" / "Anlagen.dat");
+    auto file = anno::formats::anlagen::AnlagenFile::parse(buf);
+    REQUIRE(file);
+    const fig::Entry* e = file.value().entry(20);
+    REQUIRE(e != nullptr);
+    fig::Frame f = e->gfx.at(0).frame_sets.at(0).frames.at(0);
+    // Colour table index 1 names id 0, which never matches a table.
+    auto r = assets::building::to_rgba(file.value(), *e, 0, f);
+    REQUIRE_FALSE(r);
+    CHECK(r.error().kind == assets::Error::Kind::MissingPalette);
+    // Index 0 names table 1. BSH_RGBWZ puts stored pixel x of row 0 on
+    // column 2x, so the two pixels land on columns 0 and 2 of a 2-wide frame:
+    // the image is widened to 3 columns (OQ-025).
+    f.palette = 0;
+    r = assets::building::to_rgba(file.value(), *e, 0, f);
+    REQUIRE(r);
+    CHECK(r.value().width == 3);
+    CHECK(r.value().height == 1);
+    const auto& pal = file.value().colors.at(0).palette;
+    const auto c5 = pal.rgb(5), c6 = pal.rgb(6);
+    CHECK(r.value().pixels == std::vector<std::uint8_t>{c5[0], c5[1], c5[2], 255, 0, 0, 0, 0, c6[0],
+                                                        c6[1], c6[2], 255});
+    // Unknown format; missing volume; data outside the volume.
+    fig::Frame bad = f;
+    bad.format_raw.fill(0);
+    CHECK(assets::building::to_rgba(file.value(), *e, 0, bad).error().kind ==
+          assets::Error::Kind::UnknownFormat);
+    CHECK(assets::building::to_rgba(file.value(), *e, 7, f).error().kind ==
+          assets::Error::Kind::OutsideVolume);
+    bad = f;
+    bad.length = 8;
+    CHECK(assets::building::to_rgba(file.value(), *e, 0, bad).error().kind ==
+          assets::Error::Kind::OutsideVolume);
+}
+
+TEST_CASE("texture without its palette; oversized ground") {
+    // A texture whose HEAD names palette 3, in a file without palettes.
+    ByteBuffer head = {1, 0, 1, 0, 3, 0, 8, 0, 0, 0};
+    append(head, std::string_view("TEX_RGB\0\0\0", 10));
+    append(head, ByteBuffer(16, 0));
+    const ByteBuffer texture = rec(
+        "TEXTURE", cat({ByteBuffer{0, 0, 0, 0, 9, 0, 0, 0}, rec("HEAD", head), rec("BODY", {7})}));
+    const ByteBuffer buf = rec("ANNO", texture);
+    auto file = anno::formats::tex::TexFile::parse(buf);
+    REQUIRE(file);
+    auto img = assets::to_rgba(file.value(), file.value().textures[0]);
+    REQUIRE_FALSE(img);
+    CHECK(img.error().kind == assets::Error::Kind::MissingTexturePalette);
+    CHECK(img.error().message() == "palette 3 not in file");
+    // Without a 256 × 256 texture nothing is loaded.
+    auto none = assets::island::GroundTextures::load(file.value());
+    REQUIRE(none);
+    CHECK_FALSE(none.value().average(9));
+    // A 2048-tile-wide island at 32 px per tile exceeds 65,535 pixels.
+    const std::uint16_t w = 2048;
+    ByteBuffer payload;
+    for (const std::uint16_t v : std::array<std::uint16_t, 4>{0, 0, w, 1}) {
+        put_u16(payload, v);
+    }
+    put_u32(payload, 0);
+    const ByteBuffer heights(w, 0), gfx(std::size_t{w} * 2, 0);
+    for (const auto& b : anno::formats::insel::encode_blocks(heights, w, 1, 1)) {
+        append(payload, rec("HEIGHT", b));
+    }
+    for (const auto& b : anno::formats::insel::encode_blocks(gfx, w, 1, 2)) {
+        append(payload, rec("GFXID", b));
+    }
+    auto island = anno::formats::insel::Island::from_insel5(payload);
+    REQUIRE(island);
+    CHECK_FALSE(assets::island::ground_top_down(island.value(), none.value(), 32));
+    CHECK(assets::island::ground_top_down(island.value(), none.value(), 1));
 }

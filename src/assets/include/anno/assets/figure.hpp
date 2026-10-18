@@ -13,6 +13,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -58,8 +59,11 @@ inline constexpr std::array<std::string_view, 17> kPlayerColouredTypes = {
     "MOERSER",   "BELAGERTURM", "KATAPULT", "FLAGGE",  "ESEL",
 };
 
-/// Whether `entry` is drawn in its owner's colour (kPlayerColouredTypes).
-bool player_coloured(const formats::figuren::Entry& entry);
+/// Whether `entry` is drawn in its owner's colour: its BEWOHNTYPE is one of
+/// `types` (default: the original's kPlayerColouredTypes; mods may pass
+/// their own list).
+bool player_coloured(const formats::figuren::Entry& entry,
+                     std::span<const std::string_view> types = kPlayerColouredTypes);
 
 /// A palette colour in the variant for `player` (D: AnnoDisplay.dll
 /// 0x10007e60 and 0x10008980, identical tests). A colour whose green

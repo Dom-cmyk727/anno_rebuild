@@ -10,10 +10,9 @@ std::uint8_t pixel_alpha(fig::FrameFormat format, std::uint8_t level) {
     return fig::has_level(format) ? kLevelAlpha[level & 3U] : std::uint8_t{255};
 }
 
-bool player_coloured(const fig::Entry& entry) {
+bool player_coloured(const fig::Entry& entry, std::span<const std::string_view> types) {
     const auto type = entry.record_str("BEWOHNTYPE");
-    return type && std::find(kPlayerColouredTypes.begin(), kPlayerColouredTypes.end(), *type) !=
-                       kPlayerColouredTypes.end();
+    return type && std::find(types.begin(), types.end(), *type) != types.end();
 }
 
 Rgb recolour(Rgb rgb, Rgb player) {

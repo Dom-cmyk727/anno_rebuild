@@ -12,13 +12,17 @@ std::string_view record_name(UnitKind kind) {
     return kind == UnitKind::Ship ? "SCHIFF" : "SOLDAT";
 }
 
-Result<StartColours, std::string> start_colours(const sze::Scene& scene, std::uint8_t colours) {
+Result<StartColours, std::string> start_colours(const sze::Scene& scene, std::uint32_t colours) {
+    // 0xFF is the "assign at game start" marker, never a slot.
+    colours = std::min<std::uint32_t>(colours, 0xFE);
     auto players = scene.players();
     if (!players) {
         return players.error();
     }
     std::vector<std::pair<std::uint32_t, sze::PlayerHead>> heads;
     for (const auto& p : players.value()) {
+        // Player 31 is skipped by every game-start loop (D: docs/re/annoscene.md
+        // §6–§9; OQ-027 b).
         if (p.index == 31) {
             continue;
         }
@@ -140,7 +144,8 @@ Result<Units, std::string> units(const sze::Scene& scene, const fig::FigurenHead
                                  std::span<const UnitKind> kinds,
                                  std::span<const figure::Rgb> palette, const VolumeReader& read) {
     Units out;
-    auto start = start_colours(scene);
+    auto start = start_colours(
+        scene, static_cast<std::uint32_t>(std::min<std::size_t>(palette.size(), 0xFE)));
     if (!start) {
         return start.error();
     }

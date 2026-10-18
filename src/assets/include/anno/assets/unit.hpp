@@ -94,9 +94,11 @@ struct StartColours {
 /// (type 12: the lowest colour left in the pool) or another type (no
 /// colour). Preset computer colours stay in the pool, as in the original, so
 /// two players can share a colour. `colours` is the number of colour slots
-/// (8 in the original).
+/// (8 in the original). HEAD stores the slot in one byte and 0xFF means
+/// "assign at game start", so at most 254 slots are possible; larger values
+/// are treated as 254.
 Result<StartColours, std::string> start_colours(const formats::sze::Scene& scene,
-                                                std::uint8_t colours = 8);
+                                                std::uint32_t colours = 8);
 
 /// Reads `length` bytes from `offset` of zoom group `group`'s concatenated
 /// figure volume (Figuren<group><nn>.dat), or nullopt.
@@ -110,8 +112,8 @@ struct Units {
 
 /// The units of `kinds` of all players of `scene`, in file order, with
 /// player colours from `palette` (e.g. figure::kOriginalPlayerColours, slot
-/// n = palette[n - 1]) assigned by start_colours; units of removed human
-/// slots are left out.
+/// n = palette[n - 1]) assigned by start_colours with palette.size() slots;
+/// units of removed human slots are left out.
 Result<Units, std::string> units(const formats::sze::Scene& scene,
                                  const formats::figuren::FigurenHeader& header,
                                  std::span<const UnitKind> kinds,

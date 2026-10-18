@@ -52,8 +52,10 @@ class GroundTextures {
     Colour water_ = kWater;
 };
 
-/// Renders the island's GFXID grid with `scale` pixels per tile (clamped to
-/// 1–32).
+/// Renders the island's GFXID grid with `scale` pixels per tile, clamped to
+/// 1–32 (a limit of this inspection view, as in the Rust tool, to keep images
+/// small; not from the original). Fails if the image would exceed 65,535
+/// pixels in either direction (Rgba holds u16 sizes; the Rust version panics).
 Result<Rgba, std::string> ground_top_down(const formats::insel::Island& island,
                                           const GroundTextures& textures, std::uint16_t scale);
 

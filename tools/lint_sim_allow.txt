@@ -1,0 +1,28 @@
+# Exceptions to tools/lint_sim.py (docs/sim/state.md §14.6), one per line:
+#   <path>:<regex>  # <reason>
+# The regex is searched in the flagged source line. Every entry needs a reason,
+# and an entry that matches nothing is an error, so the list cannot rot.
+# A new line here needs a reason a reviewer accepts.
+
+# --- production.hpp / production.cpp (predate the lint)
+# std::vector<bool> payload fields: the archives visit them through a local
+# bool per element (ar::bools), never through the proxy reference.
+src/sim/include/anno/sim/production.hpp:std::vector<bool> (?:line_on|unlocked);  # payload fields, visited through a local bool by ar::bools (docs/sim/state.md §9.3)
+# Mine::deposit is an index into Island::deposits, converted with
+# static_cast<std::uint64_t> at the archive boundary.
+src/sim/include/anno/sim/production.hpp:std::optional<std::size_t> deposit;  # index into Island::deposits, widened to u64 at the archive boundary (docs/sim/state.md §14.6)
+src/sim/src/production.cpp:std::vector<bool> working\(  # local scratch of one step, not state
+# The load-time conversion of the type data (x87 float to integer, in double
+# precision) is the only floating point in the sim; no state holds a float
+# (docs/sim/production.md, "Load-time conversion").
+src/sim/src/production.cpp:ftol\(double v\)  # load-time conversion of type data, no float in state
+src/sim/src/production.cpp:float f32_at\(  # load-time conversion: reads an f32 of Anlagen.dat
+src/sim/src/production.cpp:bit_cast<float>  # load-time conversion: reads an f32 of Anlagen.dat
+src/sim/src/production.cpp:float [TI]\d  # load-time conversion: f32 production times and rates
+src/sim/src/production.cpp:static_cast<double>  # load-time conversion in double precision (x87 sequence)
+
+# --- archive.hpp
+# The one byte view: a string's chars as u8, for hashing and writing (char and
+# std::uint8_t are both byte types, so the view aliases legally).
+src/sim/include/anno/sim/archive.hpp:reinterpret_cast<const std::uint8_t\*>  # byte view of a std::string for the archives (detail::bytes_of), no struct image
+src/sim/include/anno/sim/archive.hpp:std::size_t pos_  # read offset into a std::span (an in-memory index, not a field of any saved struct)

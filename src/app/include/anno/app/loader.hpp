@@ -23,11 +23,13 @@ struct LoadedScene {
     std::vector<std::string> notes;
 };
 
-/// The game directory: `explicit_dir`, else ANNO1503_GAME_DIR, else the
-/// nearest ancestor of `file` that contains Anlagen.dat.
+/// The game directory: `explicit_dir`, else `env_dir` (the value of
+/// ANNO1503_GAME_DIR, read by the caller), else the nearest ancestor of
+/// `file` that contains Anlagen.dat.
 formats::Result<std::filesystem::path, std::string>
 find_game_dir(const std::optional<std::filesystem::path>& explicit_dir,
-              const std::filesystem::path& file);
+              const std::filesystem::path& file,
+              const std::optional<std::filesystem::path>& env_dir);
 
 /// Resolves a `\`-separated path below `base`, ignoring case per segment
 /// (the original ran on case-insensitive Windows file systems).

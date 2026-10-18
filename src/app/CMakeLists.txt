@@ -2,6 +2,7 @@
 # the window-independent parts (scene loading, PNG output) so tests can use
 # them; the window needs SDL3 (ANNO_BUILD_VIEWER).
 add_library(anno_app_core
+  src/cli.cpp
   src/loader.cpp
   src/png.cpp
 )
@@ -24,7 +25,8 @@ if(ANNO_BUILD_TESTS)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   anno_target_defaults(anno_app_tests)
   add_test(NAME anno_app_tests COMMAND anno_app_tests)
-  # Bad arguments print the usage and exit with 2.
+  # Bad arguments print the usage (the exit code 2 is checked by app_test's
+  # parse_args tests; CTest's output match ignores exit codes).
   add_test(NAME anno1503_usage COMMAND anno1503 --view x.sze --group 3)
-  set_tests_properties(anno1503_usage PROPERTIES PASS_REGULAR_EXPRESSION "usage:" WILL_FAIL OFF)
+  set_tests_properties(anno1503_usage PROPERTIES PASS_REGULAR_EXPRESSION "usage:")
 endif()

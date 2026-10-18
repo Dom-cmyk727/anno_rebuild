@@ -53,6 +53,9 @@ std::uint32_t crc32(std::span<const std::uint8_t> data, std::uint32_t crc) {
 std::string write_png(const std::filesystem::path& path, std::uint32_t width, std::uint32_t height,
                       std::span<const std::uint8_t> rgba) {
     const std::size_t row = std::size_t{width} * 4;
+    if (width == 0 || height == 0) {
+        return "PNG images need a width and height of at least 1";
+    }
     if (rgba.size() != row * height) {
         return "pixel buffer does not match the image size";
     }

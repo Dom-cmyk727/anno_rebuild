@@ -3,9 +3,12 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <string>
+#include <vector>
 
 #include <doctest/doctest.h>
 
+#include <anno/app/cli.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/app/png.hpp>
 #include <anno/test/game_dir.hpp>
@@ -119,9 +122,57 @@ TEST_CASE("scene loading: islands, links and units") {
         noted = noted || n.find("stand-ins") != std::string::npos;
     }
     CHECK(noted);
-    // The game directory is found from a file below it.
-    const auto found =
-        anno::app::find_game_dir(*dir, *dir / "Scenes" / "0200Single" / "Single_01.sze");
+}
+
+TEST_CASE("game directory discovery") {
+    const fs::path root = fs::temp_directory_path() / "anno_app_test_gamedir";
+    fs::remove_all(root);
+    fs::create_directories(root / "Scenes" / "x");
+    std::ofstream(root / "Anlagen.dat").put('\0');
+    const fs::path file = root / "Scenes" / "x" / "a.sze";
+    // Explicit beats the environment, the environment beats the search.
+    CHECK(anno::app::find_game_dir(fs::path("E"), file, fs::path("V")).value() == fs::path("E"));
+    CHECK(anno::app::find_game_dir(std::nullopt, file, fs::path("V")).value() == fs::path("V"));
+    // The nearest ancestor holding Anlagen.dat.
+    const auto found = anno::app::find_game_dir(std::nullopt, file, std::nullopt);
     REQUIRE(found);
-    CHECK(found.value() == *dir);
+    CHECK(fs::equivalent(found.value(), root));
+    fs::remove(root / "Anlagen.dat");
+    CHECK_FALSE(anno::app::find_game_dir(std::nullopt, file, std::nullopt));
+    fs::remove_all(root);
+}
+
+TEST_CASE("command line") {
+    using anno::app::parse_args;
+    using V = std::vector<std::string>;
+    // Invalid input: no --view, odd count, bad values, unknown options.
+    for (const V& bad :
+         {V{}, V{"--view"}, V{"--view", "x.sze", "--group", "3"}, V{"--view", "x", "--bogus", "1"},
+          V{"--view", "x", "--size", "0x5"}, V{"--view", "x", "--size", "-5x5"},
+          V{"--view", "x", "--size", "10x"}, V{"--view", "x", "--size", "70000x10"},
+          V{"--view", "x", "--at", "1,2,3"}, V{"--view", "x", "--at", "2000000000,0"},
+          V{"--view", "x", "--time", "-1"}, V{"--view", "x", "--time", "+-1"},
+          V{"--view", "x", "--water", "nice"}, V{"--view", "x", "--renderer", "vulkan"}}) {
+        CHECK_FALSE(parse_args(bad));
+    }
+    const auto a = parse_args({"--view", "Single_01.sze", "--group", "+1", "--png", "o.png", "--at",
+                               "10,-4", "--size", "800x600", "--time", "1234", "--water",
+                               "enhanced", "--renderer", "cpu", "--game-dir", "g"});
+    REQUIRE(a);
+    CHECK(a->file == fs::path("Single_01.sze"));
+    CHECK(a->group == std::optional<std::size_t>(1));
+    CHECK(a->at == std::optional<std::pair<int, int>>({10, -4}));
+    CHECK(a->size == std::pair{800, 600});
+    CHECK(a->time == 1234);
+    CHECK(a->water == anno::render::WaterStyle::Enhanced);
+    CHECK(a->renderer == anno::app::Renderer::Cpu);
+    // Defaults as the Rust viewer.
+    const auto d = parse_args({"--view", "x.scp"});
+    REQUIRE(d);
+    CHECK_FALSE(d->group);
+    CHECK(d->size == std::pair{1600, 900});
+    CHECK(d->water == anno::render::WaterStyle::Original);
+    // UTF-8 paths round-trip.
+    const std::string umlaut = "Insel_\xc3\xa4.scp";
+    CHECK(anno::app::to_utf8(anno::app::utf8_path(umlaut)) == umlaut);
 }

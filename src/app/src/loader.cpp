@@ -1,11 +1,12 @@
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdio>
-#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <map>
 
+#include <anno/app/cli.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/assets/figure.hpp>
 #include <anno/assets/island.hpp>
@@ -50,7 +51,7 @@ std::optional<std::vector<std::uint8_t>> stand_in(const fs::path& dummy, std::ui
     std::vector<fs::path> names;
     std::error_code ec;
     for (const auto& e : fs::directory_iterator(dummy.parent_path(), ec)) {
-        const std::string n = lower(e.path().filename().string());
+        const std::string n = lower(to_utf8(e.path().filename()));
         if (n.ends_with(".scp") && n.find("dummy") == std::string::npos &&
             n.find("pirat") == std::string::npos && n.find(tag) != std::string::npos) {
             names.push_back(e.path());
@@ -185,12 +186,13 @@ Result<std::vector<render::UnitSprite>, std::string> load_units(const fs::path& 
 } // namespace
 
 Result<fs::path, std::string> find_game_dir(const std::optional<fs::path>& explicit_dir,
-                                            const fs::path& file) {
+                                            const fs::path& file,
+                                            const std::optional<fs::path>& env_dir) {
     if (explicit_dir) {
         return *explicit_dir;
     }
-    if (const char* env = std::getenv("ANNO1503_GAME_DIR")) {
-        return fs::path(env);
+    if (env_dir) {
+        return *env_dir;
     }
     std::error_code ec;
     fs::path p = fs::absolute(file, ec).parent_path();
@@ -215,7 +217,7 @@ std::optional<fs::path> find_ci(const fs::path& base, const std::string& rel) {
         std::optional<fs::path> next;
         std::error_code ec;
         for (const auto& e : fs::directory_iterator(cur, ec)) {
-            if (lower(e.path().filename().string()) == seg) {
+            if (lower(to_utf8(e.path().filename())) == seg) {
                 next = e.path();
                 break;
             }
@@ -231,30 +233,30 @@ std::optional<fs::path> find_ci(const fs::path& base, const std::string& rel) {
 
 Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path& file) {
     LoadedScene out;
-    auto load = [&](const fs::path& p) -> const std::vector<std::uint8_t>* {
+    // Island and AnlagenFile spans point into these buffers. `load` returns a
+    // span over a buffer's heap storage, which stays put when the outer
+    // vector grows or `out` is returned (moving a vector keeps its storage);
+    // pointers to the inner vectors themselves would not.
+    auto load = [&](const fs::path& p) -> std::optional<formats::Bytes> {
         auto b = read_all(p);
         if (!b) {
-            return nullptr;
+            return std::nullopt;
         }
         out.buffers.push_back(std::move(*b));
-        return &out.buffers.back();
+        return formats::Bytes(out.buffers.back());
     };
-    // Buffers keep their heap storage when the outer vector grows.
-    out.buffers.reserve(64);
-    const auto* file_buf = load(file);
-    if (file_buf == nullptr) {
-        return "cannot read " + file.string();
+    const auto file_bytes = load(file);
+    if (!file_bytes) {
+        return "cannot read " + to_utf8(file);
     }
-    const formats::Bytes file_bytes = *file_buf;
-    const auto* felder_buf = load(dir / "Textures" / "Felder.tex");
-    const auto* anl_buf = load(dir / "Anlagen.dat");
-    if (felder_buf == nullptr || anl_buf == nullptr) {
+    const auto felder_bytes = load(dir / "Textures" / "Felder.tex");
+    const auto anl_bytes = load(dir / "Anlagen.dat");
+    if (!felder_bytes || !anl_bytes) {
         return std::string("cannot read Textures/Felder.tex or Anlagen.dat in the game directory");
     }
-    const formats::Bytes felder_bytes = *felder_buf, anl_bytes = *anl_buf;
-    auto islands = insel::islands(file_bytes);
+    auto islands = insel::islands(*file_bytes);
     if (!islands) {
-        return file.string() + ": " + islands.error();
+        return to_utf8(file) + ": " + islands.error();
     }
     std::vector<insel::Island> all = std::move(islands).value();
     // Stand-in islands for INSELLNK records: a link names a placeholder
@@ -265,7 +267,7 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
     // picks deterministically from the same candidates: sorted by file name,
     // pick = island number mod count (OQ-028). Falls back to the dummy.
     std::size_t linked = 0;
-    if (auto scenario = formats::sze::Scene::parse(file_bytes)) {
+    if (auto scenario = formats::sze::Scene::parse(*file_bytes)) {
         auto links = scenario.value().island_links();
         if (!links) {
             return links.error();
@@ -283,7 +285,7 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
                 buf = read_all(*dummy);
             }
             if (!buf) {
-                return "cannot read " + dummy->string();
+                return "cannot read " + to_utf8(*dummy);
             }
             out.buffers.push_back(std::move(*buf));
             auto li = insel::islands(out.buffers.back());
@@ -303,11 +305,11 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
                             " linked islands (INSELLNK) drawn as stand-ins: real templates of the "
                             "same climate and size (OQ-028)");
     }
-    auto anlagen = formats::anlagen::AnlagenFile::parse(anl_bytes);
+    auto anlagen = formats::anlagen::AnlagenFile::parse(*anl_bytes);
     if (!anlagen) {
         return "Anlagen.dat: " + anlagen.error();
     }
-    auto felder = formats::tex::TexFile::parse(felder_bytes);
+    auto felder = formats::tex::TexFile::parse(*felder_bytes);
     if (!felder) {
         return "Felder.tex: " + felder.error();
     }
@@ -319,9 +321,9 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
         textures.value().set_water(*c);
     }
     out.scene =
-        std::make_unique<render::Scene>(file.string(), std::move(all), std::move(textures).value(),
+        std::make_unique<render::Scene>(to_utf8(file), std::move(all), std::move(textures).value(),
                                         std::move(anlagen).value(), render::kHeightLift);
-    auto units = load_units(dir, file_bytes, *out.scene, out.notes);
+    auto units = load_units(dir, *file_bytes, *out.scene, out.notes);
     if (!units) {
         return units.error();
     }

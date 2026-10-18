@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -57,6 +58,10 @@ class Viewer {
     std::optional<Clock::duration> paused_at_;
     render::WaterStyle water_ = render::WaterStyle::Original;
     bool running_ = true, dirty_ = true, drag_ = false;
+    /// Minimised or covered: no frames are composed.
+    bool hidden_ = false;
+    /// A fatal error that ended the loop.
+    std::string error_;
     std::optional<std::pair<double, double>> cursor_;
     double scroll_ = 0;
     // Statistics since the last report.
@@ -71,8 +76,17 @@ std::string Viewer::run() {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         return std::string("SDL_Init: ") + SDL_GetError();
     }
-    window_ = SDL_CreateWindow("anno1503", 1280, 800,
-                               SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    // 1280 × 800 logical size, as the Rust viewer: window sizes are pixels on
+    // Windows and X11 but points on macOS and Wayland, so scale by the
+    // display's content scale (1.0 where sizes are points; SDL
+    // docs/README-highdpi.md).
+    float scale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
+    if (!(scale > 0.0F)) {
+        scale = 1.0F;
+    }
+    window_ =
+        SDL_CreateWindow("anno1503", static_cast<int>(1280 * scale), static_cast<int>(800 * scale),
+                         SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (window_ == nullptr) {
         const std::string err = std::string("SDL_CreateWindow: ") + SDL_GetError();
         SDL_Quit();
@@ -85,10 +99,14 @@ std::string Viewer::run() {
         SDL_Quit();
         return err;
     }
-    // Vsync paces the frames; without it the loop still works, unpaced.
-    SDL_SetRenderVSync(renderer_, 1);
+    // Vsync paces the frames (SDL falls back to a simulated vsync where the
+    // backend has none, and while the window is hidden).
+    if (!SDL_SetRenderVSync(renderer_, 1)) {
+        std::fprintf(stderr, "SDL_SetRenderVSync: %s\n", SDL_GetError());
+    }
     update_title();
-    const unsigned hw = std::max(1U, std::thread::hardware_concurrency());
+    const unsigned hw =
+        (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);
     // Sea patterns of all zoom groups, built off the window thread.
     std::vector<std::thread> seas;
     for (std::size_t g = 0; g < render::kGroups; ++g) {
@@ -98,7 +116,7 @@ std::string Viewer::run() {
     frames_.set_workers(std::make_unique<render::ChunkWorkers>(scene_, (hw + 1) / 2));
     while (running_) {
         SDL_Event e;
-        const bool animating = !paused_at_ || frames_.busy();
+        const bool animating = (!paused_at_ || frames_.busy()) && !hidden_;
         if (!animating && !dirty_) {
             if (SDL_WaitEventTimeout(&e, 100)) {
                 handle(e);
@@ -122,7 +140,7 @@ std::string Viewer::run() {
     SDL_DestroyRenderer(renderer_);
     SDL_DestroyWindow(window_);
     SDL_Quit();
-    return {};
+    return error_;
 }
 
 void Viewer::handle(const SDL_Event& e) {
@@ -132,7 +150,18 @@ void Viewer::handle(const SDL_Event& e) {
         running_ = false;
         break;
     case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+        dirty_ = true;
+        break;
+    // No frames while nobody can see them (minimised or covered).
+    case SDL_EVENT_WINDOW_MINIMIZED:
+    case SDL_EVENT_WINDOW_OCCLUDED:
+    case SDL_EVENT_WINDOW_HIDDEN:
+        hidden_ = true;
+        break;
+    case SDL_EVENT_WINDOW_RESTORED:
+    case SDL_EVENT_WINDOW_SHOWN:
     case SDL_EVENT_WINDOW_EXPOSED:
+        hidden_ = false;
         dirty_ = true;
         break;
     case SDL_EVENT_KEY_DOWN: {
@@ -295,7 +324,7 @@ void Viewer::draw() {
         texture_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_XRGB8888,
                                      SDL_TEXTUREACCESS_STREAMING, w, h);
         if (texture_ == nullptr) {
-            std::fprintf(stderr, "SDL_CreateTexture: %s\n", SDL_GetError());
+            error_ = std::string("SDL_CreateTexture: ") + SDL_GetError();
             running_ = false;
             return;
         }
@@ -352,7 +381,8 @@ std::string run_viewer(const render::Scene& scene, std::size_t group) {
     if (!scene.bounds(group)) {
         return "no islands";
     }
-    const std::size_t threads = std::max(1U, std::thread::hardware_concurrency());
+    const std::size_t threads =
+        (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);
     Viewer v(scene, group, threads);
     return v.run();
 }

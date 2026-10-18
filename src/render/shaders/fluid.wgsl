@@ -36,8 +36,15 @@ struct Step {
 @group(0) @binding(3) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(4) var bathy: texture_2d<f32>;
 
+// Euclidean remainder (n > 0) with non-negative operands only: WGSL defines
+// % for negative operands, but backends that translate to GLSL (wgpu's GL
+// backend) inherit GLSL's undefined result, which llvmpipe got wrong for all
+// but powers of two (CI, 2026-10-18).
 fn wrapi(v: i32, n: i32) -> i32 {
-    return ((v % n) + n) % n;
+    if v >= 0 {
+        return v % n;
+    }
+    return n - 1 - (-(v + 1)) % n;
 }
 
 fn texel(x: i32, y: i32) -> vec2<i32> {

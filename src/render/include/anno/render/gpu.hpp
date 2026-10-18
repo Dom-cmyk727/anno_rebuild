@@ -59,6 +59,9 @@ struct GpuLimits {
     std::size_t uploads_per_frame = 6;
     /// Animation steps of other zoom groups' sea patterns uploaded per frame.
     std::size_t sea_steps_per_frame = 2;
+    /// Atlas layers at most (0 = the device's maxTextureArrayLayers; larger
+    /// values are clamped to it). When full, new sprite frames are dropped.
+    std::uint32_t max_atlas_layers = 0;
     /// Run the coastal wave simulation for enhanced water (false: the
     /// shader's analytic waves, as the Rust compositor without it).
     bool wave_simulation = true;

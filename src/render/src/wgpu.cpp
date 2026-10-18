@@ -316,7 +316,8 @@ void wait_idle(WGPUInstance instance, WGPUDevice device, WGPUQueue queue) {
         wgpuInstanceProcessEvents(instance);
         std::this_thread::yield();
     }
-    if (P::wait(p, instance, device)) {
+    // Answered (state 1): ours to free. Else abandoned: the callback frees it.
+    if (p->state.exchange(2) == 1) {
         delete p;
         return;
     }

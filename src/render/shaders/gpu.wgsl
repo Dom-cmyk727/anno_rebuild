@@ -380,8 +380,13 @@ fn shade_apply(c: vec3<f32>, s: vec3<f32>) -> vec3<f32> {
     return clamp(v + (white - v) * s.y, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
+// Euclidean remainder (m > 0) with non-negative operands only (see wrapi in
+// fluid.wgsl: GLSL leaves % with negative operands undefined).
 fn wrap(a: i32, m: i32) -> i32 {
-    return ((a % m) + m) % m;
+    if a >= 0 {
+        return a % m;
+    }
+    return m - 1 - (-(a + 1)) % m;
 }
 
 fn pattern_px(p: vec2<i32>) -> vec2<i32> {

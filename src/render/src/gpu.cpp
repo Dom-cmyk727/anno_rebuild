@@ -129,11 +129,19 @@ void write_layer(WGPUQueue q, WGPUTexture t, std::uint32_t layer, std::uint32_t 
     wgpuQueueWriteTexture(q, &dst, data, size, &lay, &ext);
 }
 
+/// Layers of a texture bound as a 2D array: at least 2. wgpu's GL backend
+/// creates a 1-layer texture as a plain 2D texture, which then does not
+/// match the shader's texture_2d_array (wrong sprites on llvmpipe/GL, CI
+/// 2026-10-18); the extra layer is never read.
+constexpr std::uint32_t array_layers(std::uint32_t n) {
+    return std::max(n, 2U);
+}
+
 /// A 2D texture (or array with `array`) filled from `data`.
 std::pair<Texture, TextureView> upload_texture(WGPUDevice d, WGPUQueue q, WGPUTextureFormat format,
                                                std::uint32_t w, std::uint32_t h, std::uint32_t bpp,
                                                const std::vector<std::uint8_t>& data, bool array) {
-    Texture t = make_texture(d, "upload", format, w, h, 1,
+    Texture t = make_texture(d, "upload", format, w, h, array ? array_layers(1) : 1,
                              WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst |
                                  WGPUTextureUsage_CopySrc);
     write_layer(q, t.get(), 0, 0, 0, w, h, bpp, data.data(), data.size());
@@ -323,7 +331,7 @@ struct GpuFrame::Impl {
             s.size = {p.width, p.height};
             s.steps = p.step_count();
             s.step_ms = p.step_ms;
-            const auto layers = static_cast<std::uint32_t>(p.step_count());
+            const auto layers = array_layers(static_cast<std::uint32_t>(p.step_count()));
             const auto usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
             s.sprite_t =
                 make_texture(dev(), "sea", WGPUTextureFormat_RGBA8Unorm, w, h, layers, usage);
@@ -489,6 +497,7 @@ struct GpuFrame::Impl {
 
     Atlas new_atlas(std::uint32_t layers, std::optional<Atlas> old) {
         Atlas a;
+        layers = array_layers(layers);
         a.texture = make_texture(dev(), "atlas", WGPUTextureFormat_RGBA8Unorm, limits.atlas_size,
                                  limits.atlas_size, layers,
                                  WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst |
@@ -747,6 +756,9 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     m.ref = std::make_unique<DeviceRef>(c);
     m.limits = limits;
     m.max_layers = std::max(device_limits.maxTextureArrayLayers, 1U);
+    if (limits.max_atlas_layers != 0) {
+        m.max_layers = std::min(m.max_layers, limits.max_atlas_layers);
+    }
     m.format = format;
     auto module = create_shader(c, shaders::compositor(), "gpu.wgsl");
     if (!module) {
@@ -935,8 +947,13 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
             wgpuRenderPassEncoderSetPipeline(p, m.sprite_pipe.get());
             wgpuRenderPassEncoderSetBindGroup(p, 1, m.empty_bind.get(), 0, nullptr);
             wgpuRenderPassEncoderSetBindGroup(p, 2, atlas, 0, nullptr);
-            wgpuRenderPassEncoderSetVertexBuffer(p, 0, m.instances.get(), 0, WGPU_WHOLE_SIZE);
-            wgpuRenderPassEncoderDraw(p, 6, n_above, 0, n_below);
+            // The above-water instances follow the below-water ones: bound
+            // at their offset, drawn from instance 0. A first instance of
+            // n_below (gpu.rs) needs base-instance support, which wgpu's GL
+            // backend may lack (the instances then start at 0: wrong sprites).
+            wgpuRenderPassEncoderSetVertexBuffer(
+                p, 0, m.instances.get(), std::uint64_t{n_below} * kInstanceBytes, WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderDraw(p, 6, n_above, 0, 0);
         }
         wgpuRenderPassEncoderSetPipeline(p, m.objects_pipe.get());
         draw_chunks(p);

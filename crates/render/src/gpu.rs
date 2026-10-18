@@ -249,7 +249,9 @@ impl GpuFrame {
         let format = format.remove_srgb_suffix();
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("gpu.wgsl"),
-            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("gpu.wgsl"))),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!(
+                "../../../src/render/shaders/gpu.wgsl"
+            ))),
         });
         let frame_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("frame"),
@@ -1329,8 +1331,14 @@ mod tests {
     /// e.g. on CI).
     #[test]
     fn shader_is_valid_wgsl() {
-        let module = naga::front::wgsl::parse_str(include_str!("gpu.wgsl"))
-            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(include_str!("gpu.wgsl"))));
+        let module =
+            naga::front::wgsl::parse_str(include_str!("../../../src/render/shaders/gpu.wgsl"))
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "{}",
+                        e.emit_to_string(include_str!("../../../src/render/shaders/gpu.wgsl"))
+                    )
+                });
         naga::valid::Validator::new(
             naga::valid::ValidationFlags::all(),
             naga::valid::Capabilities::all(),

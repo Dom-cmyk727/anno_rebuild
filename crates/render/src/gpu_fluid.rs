@@ -170,7 +170,9 @@ impl FluidGpu {
     pub fn new(device: &Device, queue: &Queue, cfg: FluidConfig) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("fluid.wgsl"),
-            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("fluid.wgsl"))),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!(
+                "../../../src/render/shaders/fluid.wgsl"
+            ))),
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("fluid"),
@@ -504,7 +506,7 @@ mod tests {
 
     #[test]
     fn fluid_shader_is_valid_wgsl() {
-        let src = include_str!("fluid.wgsl");
+        let src = include_str!("../../../src/render/shaders/fluid.wgsl");
         let module = naga::front::wgsl::parse_str(src)
             .unwrap_or_else(|e| panic!("{}", e.emit_to_string(src)));
         naga::valid::Validator::new(

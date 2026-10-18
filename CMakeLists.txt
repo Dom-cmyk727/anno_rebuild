@@ -11,6 +11,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(ANNO_BUILD_TESTS "Build the test suites" ON)
 option(ANNO_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 option(ANNO_BUILD_VIEWER "Build the windowed viewer (SDL3)" ON)
+option(ANNO_BUILD_GPU "Build the GPU renderer (wgpu-native, prebuilt)" ON)
 option(ANNO_SYSTEM_SDL "Use an installed SDL3 instead of the pinned source" OFF)
 option(ANNO_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer (GCC/Clang)" OFF)
 
@@ -18,6 +19,11 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 include(AnnoWarnings)
 
 include(FetchContent)
+include(EmbedFile)
+
+if(ANNO_BUILD_GPU)
+  include(WgpuNative)
+endif()
 
 if(ANNO_BUILD_VIEWER)
   if(ANNO_SYSTEM_SDL)

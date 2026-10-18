@@ -114,15 +114,29 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
         caps.formatCount == 0) {
         return std::string("the GPU cannot present to this window");
     }
-    // The preferred format (first), as wgpu's get_default_config.
-    b->format = caps.formats[0];
-    wgpuSurfaceCapabilitiesFreeMembers(caps);
-    b->view_format = linear(b->format);
-    if (b->view_format != WGPUTextureFormat_BGRA8Unorm &&
-        b->view_format != WGPUTextureFormat_RGBA8Unorm) {
-        return std::string("unsupported surface format");
+    // The first 8-bit BGRA/RGBA format in the surface's order of preference
+    // (wgpu's get_default_config takes the first; adapters may list 10-bit
+    // or float formats first, which the compositor does not write).
+    for (std::size_t i = 0; i < caps.formatCount; ++i) {
+        const WGPUTextureFormat lf = linear(caps.formats[i]);
+        if (lf == WGPUTextureFormat_BGRA8Unorm || lf == WGPUTextureFormat_RGBA8Unorm) {
+            b->format = caps.formats[i];
+            b->view_format = lf;
+            break;
+        }
     }
+    wgpuSurfaceCapabilitiesFreeMembers(caps);
+    if (b->format == WGPUTextureFormat_Undefined) {
+        return std::string("no 8-bit RGBA/BGRA surface format");
+    }
+    // Configuration errors only reach the uncaptured-error callback: catch
+    // them here so --renderer auto can fall back to the CPU.
+    wgpuDevicePushErrorScope(b->ctx.device.get(), WGPUErrorFilter_Validation);
     b->configure(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));
+    if (const std::string err = gpu::pop_error_scope(b->ctx.instance.get(), b->ctx.device.get());
+        !err.empty()) {
+        return "surface configuration: " + err;
+    }
     auto frame = gpu::GpuFrame::create(b->ctx, b->view_format);
     if (!frame) {
         return frame.error();
@@ -178,6 +192,18 @@ class Viewer {
     std::optional<Clock::duration> paused_at_;
     render::WaterStyle water_ = render::WaterStyle::Original;
     bool running_ = true, dirty_ = true, drag_ = false;
+    /// No frame before this time: the surface is occluded or timed out, or
+    /// the window has no pixels (the Rust viewer's occluded_until).
+    std::optional<Clock::time_point> retry_at_;
+    /// Consecutive frames whose surface texture was outdated or lost.
+    int surface_failures_ = 0;
+    /// Present the next frame on a reconfigured surface (it was suboptimal).
+    bool reconfigure_ = false;
+    bool present_error_shown_ = false;
+    void back_off() {
+        retry_at_ = Clock::now() + std::chrono::milliseconds(100);
+        dirty_ = true;
+    }
     /// Minimised or covered: no frames are composed.
     bool hidden_ = false;
     /// A fatal error that ended the loop.
@@ -267,16 +293,28 @@ std::string Viewer::run() {
     frames_.set_workers(std::make_unique<render::ChunkWorkers>(scene_, (hw + 1) / 2));
     while (running_) {
         SDL_Event e;
-        const bool animating = (!paused_at_ || frames_.busy()) && !hidden_;
-        if (!animating && !dirty_) {
-            if (SDL_WaitEventTimeout(&e, 100)) {
+        if (retry_at_ && Clock::now() >= *retry_at_) {
+            retry_at_.reset();
+        }
+        // Nothing is drawn while hidden or backing off; dirty_ stays set.
+        const bool can_draw = !hidden_ && !retry_at_;
+        const bool animating = (!paused_at_ || frames_.busy()) && can_draw;
+        if (!animating && !(dirty_ && can_draw)) {
+            int wait_ms = 100;
+            if (retry_at_) {
+                const auto left =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(*retry_at_ - Clock::now())
+                        .count();
+                wait_ms = static_cast<int>(std::clamp<long long>(left, 1, 100));
+            }
+            if (SDL_WaitEventTimeout(&e, wait_ms)) {
                 handle(e);
             }
         }
         while (running_ && SDL_PollEvent(&e)) {
             handle(e);
         }
-        if (running_ && (animating || dirty_)) {
+        if (running_ && can_draw && (animating || dirty_)) {
             dirty_ = false;
             draw();
         }
@@ -487,6 +525,14 @@ bool Viewer::on_gpu() const {
 }
 
 void Viewer::draw() {
+    int pw = 0, ph = 0;
+    SDL_GetWindowSizeInPixels(window_, &pw, &ph);
+    if (pw <= 0 || ph <= 0) {
+        // Minimised on some platforms without a minimise event: never
+        // configure a 0-sized surface; look again shortly.
+        back_off();
+        return;
+    }
     const auto [w, h] = view_size();
     // Scene screen position of the window's top-left pixel.
     const render::Rect view{static_cast<int>(std::lround(cam_x_ - w / 2.0)),
@@ -504,23 +550,47 @@ void Viewer::draw() {
 void Viewer::draw_gpu(render::Rect view) {
     GpuBackend& g = *gpu_;
     const auto w = static_cast<std::uint32_t>(view.w), h = static_cast<std::uint32_t>(view.h);
-    if (g.width != w || g.height != h) {
+    if (g.width != w || g.height != h || reconfigure_) {
         g.configure(w, h);
+        reconfigure_ = false;
     }
     WGPUSurfaceTexture st = WGPU_SURFACE_TEXTURE_INIT;
     wgpuSurfaceGetCurrentTexture(g.surface.get(), &st);
     const gpu::Texture texture(st.texture);
+    // wgpu-native's own status (wgpu.h): the window is not visible (macOS
+    // reports it until the window is first shown). Not in webgpu.h's enum,
+    // so compared before the switch.
+    if (static_cast<std::uint32_t>(st.status) ==
+        static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_Occluded)) {
+        back_off();
+        return;
+    }
     switch (st.status) {
     case WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal:
+        surface_failures_ = 0;
+        break;
     case WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal:
+        surface_failures_ = 0;
+        reconfigure_ = true;
         break;
     case WGPUSurfaceGetCurrentTextureStatus_Outdated:
     case WGPUSurfaceGetCurrentTextureStatus_Lost:
+        // Reconfigure and try again (as the Rust viewer); back off when it
+        // keeps happening, give up when it never recovers.
+        if (++surface_failures_ > 50) {
+            error_ = "the window surface stays outdated or lost";
+            running_ = false;
+            return;
+        }
         g.configure(w, h);
-        dirty_ = true;
+        if (surface_failures_ > 2) {
+            back_off();
+        } else {
+            dirty_ = true;
+        }
         return;
     case WGPUSurfaceGetCurrentTextureStatus_Timeout:
-        dirty_ = true;
+        back_off();
         return;
     default:
         error_ = "the window surface failed (status " + std::to_string(st.status) + ")";
@@ -533,7 +603,10 @@ void Viewer::draw_gpu(render::Rect view) {
     const gpu::TextureView target(wgpuTextureCreateView(texture.get(), &vd));
     const auto s = g.frame->render(frames_, scene_, view, group_, time_ms(), water_, target.get());
     const auto p = Clock::now();
-    wgpuSurfacePresent(g.surface.get());
+    if (wgpuSurfacePresent(g.surface.get()) != WGPUStatus_Success && !present_error_shown_) {
+        std::fprintf(stderr, "presenting the frame failed\n");
+        present_error_shown_ = true;
+    }
     const double present = std::chrono::duration<double, std::milli>(Clock::now() - p).count();
     if (s.chunks_built > 0) {
         std::fprintf(stderr, "zoom group %zu: %zu chunk(s) received\n", group_, s.chunks_built);

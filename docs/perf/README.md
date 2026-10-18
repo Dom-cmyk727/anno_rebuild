@@ -10,9 +10,9 @@ cargo run --release -p anno-render --features gpu --example bench_frame -- <game
     [--styles original,enhanced] [--chunks blocking,async] [--renderer cpu,gpu] \
     [--check] [--at dx,dy] [--quick]
 ```
-C++ (CPU path; GPU follows): `build/release/src/tools/bench_frame/bench_frame <game_dir> <file> [same options, --renderer cpu only]`. The preview package contains the Rust one as `bench_frame` with `run-benchmark.bat` / `run-benchmark.sh` (writes `benchmark-results.md`).
+C++: `build/release/src/tools/bench_frame/bench_frame <game_dir> <file> [same options]` (`--renderer gpu` and `--check` need a build with `ANNO_BUILD_GPU`, the default). The preview package contains the Rust one as `bench_frame` with `run-benchmark.bat` / `run-benchmark.sh` (writes `benchmark-results.md`).
 
-**What it runs:** the functions the viewer calls every frame, without a window: `FrameRenderer::render` into a `0RGB` buffer (`cpu`), or `GpuFrame::render` into an offscreen texture followed by waiting for the GPU (`gpu`). `--check` compares the first static frame of each configuration between GPU and CPU (pixels differing by more than 2 per channel, maximum difference); `BENCH_DUMP=<dir>` writes both images as raw RGBA. `--at dx,dy` moves the camera from the largest island's centre.
+**What it runs:** the functions the viewer calls every frame, without a window: `FrameRenderer::render` into a `0RGB` buffer (`cpu`), or `GpuFrame::render` into an offscreen texture followed by waiting for the GPU (`gpu`). `--check` compares the last static frame of each configuration between GPU and CPU (pixels differing by more than 2 per channel, maximum difference); the C++ one also reports GPU errors, a failed read-back, and frames that still lacked chunks (async mode: open sea there, not comparable). `BENCH_DUMP=<dir>` writes both images as raw RGBA. `--at dx,dy` moves the camera from the largest island's centre.
 
 **Camera paths:** per resolution, zoom group, water style and chunk mode, from a cold cache centred on the scenario's largest island:
 
@@ -43,6 +43,20 @@ The animation clock advances 16 ms per frame. `--quick` divides the frame counts
 **Simulating weaker PCs:** `--threads 4` limits frame stages and workers to 4 threads. Per-core speed still differs from the target hardware, so measure on the colleague's Windows/Linux PC as well (the viewer prints the same stage breakdown to stderr every 2 s and shows fps in its title).
 
 ## Results
+
+### 2026-10-18 — C++ GPU compositor (wgpu-native 29) vs Rust (wgpu 30), Apple M5 Pro (Metal), `Single_01.sze`
+`--res 3840x2160 --styles original,enhanced --chunks async --renderer gpu`, all zoom groups, run one after the other. Every C++ row fits 60 Hz in 98–100 % of frames (p99 ≤ 17.4 ms, max ≤ 19.4 ms). p50 in ms, Rust → C++:
+
+| group | water | static | pan slow | pan fast |
+|---|---|---|---|---|
+| 0 | original | 2.2 → 3.2 | 1.1 → 2.8 | 1.8 → 4.0 |
+| 0 | enhanced | 2.4 → 2.7 | 2.4 → 2.7 | 4.7 → 5.4 |
+| 1 | original | 1.2 → 1.7 | 1.2 → 1.7 | 1.2 → 4.0 |
+| 1 | enhanced | 2.9 → 4.0 | 2.9 → 4.0 | 5.3 → 6.3 |
+| 2 | original | 1.2 → 1.6 | 1.1 → 1.5 | 0.9 → 1.4 |
+| 2 | enhanced | 4.5 → 5.2 | 4.6 → 5.2 | 5.5 → 6.5 |
+
+The CPU stages (uploads, sprites, encode) are equal within 0.1 ms; the whole difference is in stage 4, waiting for the GPU (e.g. group 0, original, pan slow: 2.6 against 0.9 ms). Same shaders, passes and resources, so the likely cause is the library (wgpu-native 29 against wgpu 30 on Metal); not investigated yet. The first C++ version uploaded chunks byte by byte (about 3 M `push_back`s per 512² chunk, up to 6 per frame) and showed p95 of 14–19 ms and p99 up to 25 ms in static and panning rows; filling the upload buffers in place removed those spikes (numbers above).
 
 ### 2026-10-18 — C++ `bench_frame` vs Rust, Apple M5 Pro, `Single_01.sze`
 Both benchmarks with the same options, run one after the other: `--threads 8 --res 1920x1080 --chunks blocking,async --quick`, all zoom groups, both water styles; one other core was busy with a test run during both. The C++ benchmark loads the scene as the viewer does (5 ships added; same largest island). p50 / p99 in ms, Rust → C++ (selection; the full tables come from the commands above):

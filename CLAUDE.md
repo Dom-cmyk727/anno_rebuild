@@ -33,7 +33,7 @@ anno1503/
     assets/                # decoded RGBA images, player colours, scenario units (anno::assets::*)
     test_support/          # game-dir and file helpers for tests
     tools/anno_dump/       # anno-dump (text output = the oracle contract)
-    render/                # isometric renderer, CPU path (GPU path follows)
+    render/                # isometric renderer: CPU path, GPU compositor (wgpu-native), wave simulation
     app/                   # anno1503 binary: scene loading, --png, SDL3 window
     sim/                   # deterministic simulation core (docs/sim/core.md)
     tools/bench_frame/     # frame benchmark (docs/perf/README.md)
@@ -65,8 +65,8 @@ anno1503/
 ## Environment notes
 - Dev host right now: Apple Silicon MacBook (Apple Clang, CMake + Ninja from Homebrew). CI builds Windows (MSVC), Linux (GCC; Clang with ASan/UBSan). macOS only as a build check, never as a release target.
 - The original game cannot run on this host (32-bit x86 Windows). Differential tests against the original need an x86 Windows machine or Wine on x86 Linux; design them so they can run later from recorded fixtures (`fixtures/`).
-- Build: `cmake --preset dev && cmake --build --preset dev && ctest --preset dev`. The Rust reference still builds with the toolchain in `~/.cargo/bin` (`. "$HOME/.cargo/env"`).
-- **Tests that need original files** read `ANNO1503_GAME_DIR` (e.g. `ANNO1503_GAME_DIR=$PWD/game/app ctest --preset dev`) and skip with a message when it is unset. Never add original files to `fixtures/` or anywhere else in git; CI runs without them.
+- Build: `cmake --preset dev && cmake --build --preset dev && ctest --preset dev -j` (every doctest case is its own CTest test, so `-j` — all cores, CMake ≥ 3.29, else `-j <n>` — runs the long corpus cases side by side; corpus cases also split their files over `ANNO_TEST_THREADS` threads, default min(cores, 4)). The Rust reference still builds with the toolchain in `~/.cargo/bin` (`. "$HOME/.cargo/env"`).
+- **Tests that need original files** read `ANNO1503_GAME_DIR` (e.g. `ANNO1503_GAME_DIR=$PWD/game/app ctest --preset dev -j`) and skip with a message when it is unset. Never add original files to `fixtures/` or anywhere else in git; CI runs without them.
 - `innoextract` and `pefile` are available in the Linux VM used for analysis; Ghidra needs a JDK 17+ there.
 
 ## Definition of done for any task

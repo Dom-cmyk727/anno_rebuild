@@ -4,6 +4,11 @@ What only a person with the right machine can check. Claude Code keeps this list
 
 ## Results
 
+- 2026-10-18, owner, Mac (M5 Pro), C++ viewer on the GPU (`Single_01.sze`, groups 0 and 2, resizing):
+  - Starts on the GPU (`GPU renderer: Apple M5 Pro (Metal)`), 120 fps at 2560 × 1600 with 0.2–0.4 ms of CPU time per frame; worst frames 26–44 ms only in the second after a zoom change (chunk uploads).
+  - Lines with 8.8–70 fps: windows in which hardly anything was drawn (paused or in the background), not slow frames (their frame times are 0.2–0.4 ms).
+  - Found: ships look like pictures on the water (hard hull edge) → ships in the enhanced water (`docs/render/iso.md`), item 4 below.
+
 - 2026-10-18, owner, Mac (M5 Pro), C++ viewer `Single_01.sze`:
   - Original water: 97–120 fps at 2560 × 1600 (vsync cap 120), 3.8–4.4 ms per frame; chunks arrive in the background without hitches.
   - Enhanced water (`E`): the "sea" stage takes 12–17 ms, so 47–60 fps (groups 0 and 2). Expected: this is the CPU path; the GPU port moves it to the graphics card.
@@ -29,8 +34,9 @@ What only a person with the right machine can check. Claude Code keeps this list
    - resize the window, minimise and restore: the picture comes back, no error in the console;
    - `--renderer cpu` still works; `--renderer gpu` fails with a message only when no GPU is usable.
    Report anything that looks different from the Rust viewer (`cargo run --release -p anno1503 -- --view game/app/Scenes/0200Single/Single_01.sze`).
-3. **Decision: a C++ preview for the tester.** CI now builds the C++ viewer for Windows and Linux. To get it to the tester, Claude can either (a) build a Linux package here in Docker and leave Windows for later, or (b) add a CI step that uploads the Windows and Linux builds. Option (b) produces GitHub artifacts, which need a GitHub login to download; a public GitHub Release is the alternative. Publishing anything is your call. Please say (a), (b), or "Release".
-4. ~~Decision: GPU implementation~~ — wgpu-native (2026-10-18).
+3. ~~Decision: a C++ preview for the tester~~ — the zip in `share/` as before (owner, 2026-10-18): `share/anno1503-preview-2026-10-18a.zip`, built from the C++ code by `packaging/package-preview.sh`.
+4. **Ships in the water** (new 2026-10-18, enhanced water): zoom in fully on a ship with `E` on. The hull bottom should sink into the water with broken foam at the waterline and rise and fall with the waves; with `E` off the ship looks as before (as the original). Close-ups were sent in the session; tell Claude what looks wrong (too much or too little sinking, foam too bright, bobbing too strong).
+5. ~~Decision: GPU implementation~~ — wgpu-native (2026-10-18).
 
 ## For the tester (Windows / Linux PC)
 
@@ -39,7 +45,7 @@ What only a person with the right machine can check. Claude Code keeps this list
   ANNO_REQUIRE_GPU=1 ANNO1503_GAME_DIR=<game folder> ctest --preset release -j -R gpu
   ```
   (Windows PowerShell: `$env:ANNO_REQUIRE_GPU=1; $env:ANNO1503_GAME_DIR="<game folder>"; ctest --preset msvc -j 4 -R gpu`.) `ANNO_REQUIRE_GPU` makes a missing GPU a failure instead of a skip. Report the summary line and any failed test's output, and the GPU named in the first lines.
-- Nothing else new to run yet: there is no packaged C++ build. The latest preview is still `share/anno1503-preview-2026-10-17g.zip` (Rust build). A C++ preview follows once CI is green on Windows and Linux.
+- **New preview `share/anno1503-preview-2026-10-18a.zip`** (2026-10-18, first build from the C++ code): steps and what to report are in the README (section "Test the preview"). New: ships sit in the water with `E`. Please also report whether it starts at all (exact error text if not), the GPU named in the window title, and `benchmark-results.md`. Linux needs glibc 2.35 or newer (Ubuntu 22.04 or later).
 
 ## Later, needs an x86 Windows machine or Wine on x86 Linux
 

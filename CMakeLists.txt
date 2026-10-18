@@ -73,6 +73,9 @@ if(ANNO_BUILD_TESTS)
   function(anno_add_doctest target)
     doctest_discover_tests(${target} TEST_PREFIX "${target}." ${ARGN})
   endfunction()
+  add_test(NAME test_names_are_selectable
+           COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+                   -P ${CMAKE_SOURCE_DIR}/cmake/CheckTestNames.cmake)
   add_subdirectory(src/test_support)
 endif()
 

@@ -329,7 +329,7 @@ TEST_CASE("building frames: palette id 0, widened rows, error kinds") {
           assets::Error::Kind::OutsideVolume);
 }
 
-TEST_CASE("texture without its palette; oversized ground") {
+TEST_CASE("texture without its palette, oversized ground") {
     // A texture whose HEAD names palette 3, in a file without palettes.
     ByteBuffer head = {1, 0, 1, 0, 3, 0, 8, 0, 0, 0};
     append(head, std::string_view("TEX_RGB\0\0\0", 10));

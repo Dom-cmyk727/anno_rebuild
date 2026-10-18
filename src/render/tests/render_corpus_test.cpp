@@ -77,11 +77,16 @@ std::vector<std::string> digest_lines(const std::filesystem::path& dir) {
     }
     auto files = anno::test::files_with_ext(dir / "Scenes" / "0200Single", "sze");
     files.push_back(dir / "Scenes" / "Islands" / "Nord" / "N_064x064_0001_0B.scp");
-    // One scenario per task (the renders are independent; lines keep the
-    // file order).
-    const auto per_file = anno::test::parallel_indexed(files.size(), [&](std::size_t fi) {
+    // One render per task, four per scenario (whole map at group 2 in both
+    // water styles, a group 1 region in both): a few whole-map renders of the
+    // largest scenarios take most of the time, so splitting by scenario left
+    // most threads idle. Each task builds its own scene; the lines keep the
+    // file order.
+    constexpr std::size_t kCases = 4;
+    const auto per_case = anno::test::parallel_indexed(files.size() * kCases, [&](std::size_t ti) {
+        const std::size_t fi = ti / kCases;
+        const std::size_t ci = ti % kCases;
         const auto& p = files[fi];
-        std::vector<std::string> out;
         const auto buf = anno::test::read_file(p);
         auto anlagen = anno::formats::anlagen::AnlagenFile::parse(anl_buf).value();
         const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
@@ -128,38 +133,30 @@ std::vector<std::string> digest_lines(const std::filesystem::path& dir) {
             }
         }
         const std::string name = p.filename().string();
-        for (const auto& [time, style] :
-             {std::pair{std::uint64_t{0}, render::WaterStyle::Original},
-              std::pair{std::uint64_t{2500}, render::WaterStyle::Enhanced}}) {
+        const render::WaterStyle style =
+            ci % 2 == 0 ? render::WaterStyle::Original : render::WaterStyle::Enhanced;
+        render::Layers layers = render::Layers::all();
+        layers.water_style = style;
+        if (ci < 2) {
+            const std::uint64_t time = ci == 0 ? 0 : 2500;
             const auto rect = *scene.bounds(2);
-            render::Layers layers = render::Layers::all();
             layers.time_ms = time;
-            layers.water_style = style;
             const auto [c, st] = scene.render(rect, 2, layers);
-            out.push_back(name + " g2 t" + std::to_string(time) + " " + style_name(style) + " " +
-                          std::to_string(rect.w) + "x" + std::to_string(rect.h) + " " +
-                          hex(fnv(c.pixels)) + " drawn=" + std::to_string(st.objects.drawn) +
-                          " inv=" + std::to_string(st.objects.invisible) + " failed=" +
-                          std::to_string(st.objects.failed) + " units=" + std::to_string(st.units));
+            return name + " g2 t" + std::to_string(time) + " " + style_name(style) + " " +
+                   std::to_string(rect.w) + "x" + std::to_string(rect.h) + " " +
+                   hex(fnv(c.pixels)) + " drawn=" + std::to_string(st.objects.drawn) +
+                   " inv=" + std::to_string(st.objects.invisible) +
+                   " failed=" + std::to_string(st.objects.failed) +
+                   " units=" + std::to_string(st.units);
         }
         const auto b = *scene.bounds(1);
         const render::Rect rect{b.x + b.w / 2 - 800, b.y + b.h / 2 - 450, 1600, 900};
-        for (const auto style : {render::WaterStyle::Original, render::WaterStyle::Enhanced}) {
-            render::Layers layers = render::Layers::all();
-            layers.time_ms = 700;
-            layers.water_style = style;
-            const auto [c, st] = scene.render(rect, 1, layers);
-            out.push_back(name + " g1 region " + style_name(style) + " " + hex(fnv(c.pixels)) +
-                          " drawn=" + std::to_string(st.objects.drawn) +
-                          " units=" + std::to_string(st.units));
-        }
-        return out;
+        layers.time_ms = 700;
+        const auto [c, st] = scene.render(rect, 1, layers);
+        return name + " g1 region " + style_name(style) + " " + hex(fnv(c.pixels)) +
+               " drawn=" + std::to_string(st.objects.drawn) + " units=" + std::to_string(st.units);
     });
-    std::vector<std::string> out;
-    for (const auto& lines : per_file) {
-        out.insert(out.end(), lines.begin(), lines.end());
-    }
-    return out;
+    return per_case;
 }
 
 const std::vector<std::string> kExpected = {

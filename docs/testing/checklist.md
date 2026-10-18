@@ -20,6 +20,7 @@ What only a person with the right machine can check. Claude Code keeps this list
    cmake --preset release && cmake --build --preset release
    build/release/src/app/anno1503 --view game/app/Scenes/0200Single/Single_01.sze
    ```
+   Claude ran it briefly (2026-10-18): it starts on the GPU and holds 120 fps at 2560 × 1600 (0.4 ms per frame). The first version quit at once on macOS ("the window surface failed (status 196609)": the window was not visible yet); fixed. If you see that message, report it.
    Check:
    - stderr prints `GPU renderer: Apple M5 Pro (Metal)` and the title shows "GPU …" instead of "CPU";
    - the picture looks as with `--renderer cpu` (original water: identical within 1 per channel by the automated test);
@@ -33,7 +34,12 @@ What only a person with the right machine can check. Claude Code keeps this list
 
 ## For the tester (Windows / Linux PC)
 
-- Nothing new to run yet: there is no packaged C++ build. The latest preview is still `share/anno1503-preview-2026-10-17g.zip` (Rust build). A C++ preview follows once CI is green on Windows and Linux.
+- **GPU tests on a Windows or Linux PC with a graphics card** (new 2026-10-18). CI has no GPU, so the GPU tests only build there; they have run on the dev Mac (Metal) only. With the game files, a C++ build (`cmake --preset release && cmake --build --preset release`, on Windows the `msvc` preset) and:
+  ```
+  ANNO_REQUIRE_GPU=1 ANNO1503_GAME_DIR=<game folder> ctest --preset release -j -R gpu
+  ```
+  (Windows PowerShell: `$env:ANNO_REQUIRE_GPU=1; $env:ANNO1503_GAME_DIR="<game folder>"; ctest --preset msvc -j 4 -R gpu`.) `ANNO_REQUIRE_GPU` makes a missing GPU a failure instead of a skip. Report the summary line and any failed test's output, and the GPU named in the first lines.
+- Nothing else new to run yet: there is no packaged C++ build. The latest preview is still `share/anno1503-preview-2026-10-17g.zip` (Rust build). A C++ preview follows once CI is green on Windows and Linux.
 
 ## Later, needs an x86 Windows machine or Wine on x86 Linux
 

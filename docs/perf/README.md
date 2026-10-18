@@ -56,7 +56,18 @@ The animation clock advances 16 ms per frame. `--quick` divides the frame counts
 | 2 | original | 1.2 → 1.6 | 1.1 → 1.5 | 0.9 → 1.4 |
 | 2 | enhanced | 4.5 → 5.2 | 4.6 → 5.2 | 5.5 → 6.5 |
 
-The CPU stages (uploads, sprites, encode) are equal within 0.1 ms; the whole difference is in stage 4, waiting for the GPU (e.g. group 0, original, pan slow: 2.6 against 0.9 ms). Same shaders, passes and resources, so the likely cause is the library (wgpu-native 29 against wgpu 30 on Metal); not investigated yet. The first C++ version uploaded chunks byte by byte (about 3 M `push_back`s per 512² chunk, up to 6 per frame) and showed p95 of 14–19 ms and p99 up to 25 ms in static and panning rows; filling the upload buffers in place removed those spikes (numbers above).
+The CPU stages (uploads, sprites, encode) are equal within 0.1 ms; the whole difference was in stage 4, waiting for the GPU (e.g. group 0, original, pan slow: 2.6 against 0.9 ms). **Cause** (second review, measured): wgpu-native 29 uses wgpu-hal 29.0.3, whose Metal fence wait checks the command buffer in a loop with `thread::sleep(1 ms)` (`metal/device.rs`); wgpu-hal 30 (the Rust reference) waits on a condition variable. Patching the Rust build back to the 1 ms loop reproduced the gap. `GpuFrame::wait` now spins on non-blocking polls until `wgpuQueueOnSubmittedWorkDone` answers (`wait_idle`, `src/render/src/wgpu.cpp`). The viewer never waits per frame (vsync paces it), so only the benchmark's stage 4 and `--check` were affected. After the change, 3 runs each, medians, same options (machine load ≈ 8 from other work during both), p50 (stage 4) in ms, Rust → C++:
+
+| group | water | static | pan slow | pan fast |
+|---|---|---|---|---|
+| 0 | original | 1.7 (1.6) → 1.7 (1.9) | 1.4 (1.1) → 1.5 (1.4) | 2.2 (1.9) → 2.6 (2.2) |
+| 0 | enhanced | 2.5 (2.7) → 2.8 (2.9) | 2.7 (2.4) → 2.9 (2.8) | 5.3 (4.1) → 6.6 (5.0) |
+| 1 | original | 1.3 (1.0) → 1.4 (1.2) | 1.4 (1.0) → 1.5 (1.2) | 1.3 (1.0) → 1.5 (1.3) |
+| 1 | enhanced | 3.2 (3.0) → 3.6 (3.4) | 3.4 (3.0) → 3.9 (3.5) | 7.2 (6.1) → 7.0 (6.1) |
+| 2 | original | 1.5 (1.2) → 1.4 (1.1) | 1.4 (1.1) → 1.4 (1.1) | 1.2 (1.0) → 1.2 (1.0) |
+| 2 | enhanced | 6.2 (5.6) → 6.0 (5.5) | 7.1 (6.3) → 7.1 (6.4) | 8.1 (7.3) → 8.0 (7.0) |
+
+C++ is now within 0.5 ms of Rust except group 0 enhanced pan fast (+1.3 ms); not investigated further. The first C++ version uploaded chunks byte by byte (about 3 M `push_back`s per 512² chunk, up to 6 per frame) and showed p95 of 14–19 ms and p99 up to 25 ms in static and panning rows; filling the upload buffers in place removed those spikes (numbers above).
 
 ### 2026-10-18 — C++ `bench_frame` vs Rust, Apple M5 Pro, `Single_01.sze`
 Both benchmarks with the same options, run one after the other: `--threads 8 --res 1920x1080 --chunks blocking,async --quick`, all zoom groups, both water styles; one other core was busy with a test run during both. The C++ benchmark loads the scene as the viewer does (5 ships added; same largest island). p50 / p99 in ms, Rust → C++ (selection; the full tables come from the commands above):

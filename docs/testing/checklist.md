@@ -34,7 +34,7 @@ What only a person with the right machine can check. Claude Code keeps this list
 
 ## For the tester (Windows / Linux PC)
 
-- **GPU tests on a Windows or Linux PC with a graphics card** (new 2026-10-18). CI has no GPU, so the GPU tests only build there; they have run on the dev Mac (Metal) only. With the game files, a C++ build (`cmake --preset release && cmake --build --preset release`, on Windows the `msvc` preset) and:
+- **GPU tests on a Windows or Linux PC with a graphics card** (new 2026-10-18). So far they have run on the dev Mac (Metal) and on Linux with Mesa's software renderer (llvmpipe, Vulkan and GL; CI's Linux runners use it), never on a real Windows or Linux GPU (Vulkan, DirectX 12). With the game files, a C++ build (`cmake --preset release && cmake --build --preset release`, on Windows the `msvc` preset) and:
   ```
   ANNO_REQUIRE_GPU=1 ANNO1503_GAME_DIR=<game folder> ctest --preset release -j -R gpu
   ```

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cmath>
 
@@ -466,6 +467,132 @@ StepResult fur_trapper_step(Farm& f, const ProductionType& type, std::uint32_t t
     if (ratio < 128 && f.workers_out == 0 && rate != 0 && need != 0) {
         r.send_figure = 384 / rate >= f.raw / need;
     }
+    return r;
+}
+
+std::uint32_t deposit_remaining(const Deposit& d, bool deep) {
+    return d.reserve && !deep ? d.remaining - kDepositReserve : d.remaining;
+}
+
+std::uint32_t deposit_extract(Deposit& d, std::uint32_t rate, bool deep, bool depletes) {
+    if (d.reserve) {
+        if (deep || !depletes) {
+            return rate;
+        }
+        // Stop at the reserve: take remaining − reserve when the rate would
+        // reach into it (unsigned compare, 0x1006369f–0x100636a9).
+        const std::uint32_t take =
+            d.remaining - rate < kDepositReserve ? d.remaining - kDepositReserve : rate;
+        d.remaining -= take;
+        return take;
+    }
+    if (!depletes) {
+        return rate;
+    }
+    const std::uint32_t take = std::min(rate, d.remaining);
+    d.remaining -= take;
+    return take;
+}
+
+bool deposit_in_reach(const MineArea& area, std::int32_t x, std::int32_t y) {
+    // Half-width of the radius-7 circle per row beyond the footprint
+    // (emulated from 0x100787cb–0x10078805).
+    static constexpr std::array<std::int32_t, 8> kHalfWidth = {7, 7, 7, 6, 6, 5, 4, 2};
+    // Rows: above the footprint the distance is area.y − y, below it
+    // y − (area.y + h − 1); inside, it is not positive.
+    std::int32_t dy = area.y - y;
+    if (dy < 0) {
+        dy = 1 - static_cast<std::int32_t>(area.h) - dy;
+    }
+    if (dy > 7) {
+        return false;
+    }
+    dy = std::max(dy, 0);
+    std::int32_t dx = area.x - x;
+    if (dx < 0) {
+        dx = 1 - static_cast<std::int32_t>(area.w) - dx;
+    }
+    return dx <= kHalfWidth[static_cast<std::size_t>(dy)];
+}
+
+std::optional<std::size_t> find_deposit(std::span<const Deposit> deposits, const std::string& goods,
+                                        bool deep, const MineArea& area) {
+    std::optional<std::size_t> best;
+    for (std::size_t i = 0; i < deposits.size(); ++i) {
+        const Deposit& d = deposits[i];
+        if (d.goods != goods || !deposit_in_reach(area, d.x, d.y)) {
+            continue;
+        }
+        // The first candidate is taken as it is; later ones only if they
+        // hold more (0x100788f3–0x10078923).
+        if (!best || deposit_remaining(deposits[*best], deep) < deposit_remaining(d, deep)) {
+            best = i;
+        }
+    }
+    return best;
+}
+
+bool mine_is_deep(const ProductionType& type, std::uint32_t research_id) {
+    // Goods 1 is EISENERZ (docs/re/production.md §7); research 0x39 is
+    // TIEFE_ERZMINE.
+    const bool iron = !type.outputs.empty() && type.outputs[0] == "EISENERZ";
+    return !iron || research_id == 0x39;
+}
+
+StepResult mine_step(Mine& m, const ProductionType& type, std::uint32_t t,
+                     std::vector<Deposit>& deposits, const MineArea& area, bool depletes) {
+    StepResult r;
+    if (!gate(m.last, t)) {
+        return r;
+    }
+    r.stepped = true;
+    if (!m.switched_on) {
+        return r;
+    }
+    m.activity = static_cast<std::uint16_t>(m.activity * 63U >> 6);
+    r.made = {0};
+    const bool blocked_before = m.blocked;
+    auto report = [&](Status s, std::uint32_t repeat) {
+        r.status = s;
+        r.message = m.status.report(s, t, repeat);
+        m.blocked = true;
+        r.blocked_changed = !blocked_before;
+    };
+    if (m.out >= at(type.capacity, 0)) {
+        report(Status::StorageFull, kRepeatWorkshop);
+        return r;
+    }
+    if (!m.deposit || *m.deposit >= deposits.size()) {
+        report(Status::MissingInput, kRepeatMineMissing);
+        return r;
+    }
+    const std::uint32_t rate = at(type.output_per_step, 0);
+    Deposit& dep = deposits[*m.deposit];
+    const std::uint32_t left = deposit_remaining(dep, m.deep);
+    const std::uint32_t got = deposit_extract(dep, rate, m.deep, depletes);
+    // Search again when the step was short although something was left, or
+    // when this step used the rest up (0x1006df9a–0x1006dfac).
+    const bool short_step = got < rate && left != 0;
+    if (short_step || (got != 0 && rate >= left)) {
+        const std::string goods = type.outputs.empty() ? std::string() : type.outputs[0];
+        m.deposit = find_deposit(deposits, goods, m.deep, area);
+        const bool found = m.deposit && deposit_remaining(deposits[*m.deposit], m.deep) != 0;
+        if (!found && goods == "EISENERZ") {
+            // 0x15b when the deposit found still has deep ore, else 0x19.
+            const bool deep_left = m.deposit && deposit_remaining(deposits[*m.deposit], true) != 0;
+            r.notice = deep_left ? 0x15B : 0x19;
+        }
+    }
+    if (got == 0) {
+        report(Status::MissingInput, kRepeatMineMissing);
+        return r;
+    }
+    m.out += got;
+    m.activity = static_cast<std::uint16_t>(m.activity + (got << 4));
+    r.made = {got};
+    m.status.clear(0x0E);
+    m.blocked = false;
+    r.blocked_changed = blocked_before;
     return r;
 }
 

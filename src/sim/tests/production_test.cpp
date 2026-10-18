@@ -539,3 +539,113 @@ TEST_CASE("fur trapper: input before capacity, both repeat after 45,000 ticks") 
     }
     CHECK(at - first == 45000);
 }
+
+TEST_CASE("deposits: reserve, deep mining and the depletion setting") {
+    sim::Deposit d{"EISENERZ", 0, 0, 2000 * sim::kTon, true};
+    CHECK(sim::deposit_remaining(d, false) == 400 * sim::kTon);
+    CHECK(sim::deposit_remaining(d, true) == 2000 * sim::kTon);
+    // Deep with the reserve flag, or depletion off: the full rate, nothing used.
+    CHECK(sim::deposit_extract(d, 21, true, true) == 21);
+    CHECK(sim::deposit_extract(d, 21, false, false) == 21);
+    CHECK(d.remaining == 2000 * sim::kTon);
+    // Shallow: stops at the reserve.
+    d.remaining = sim::kDepositReserve + 10;
+    CHECK(sim::deposit_extract(d, 21, false, true) == 10);
+    CHECK(d.remaining == sim::kDepositReserve);
+    CHECK(sim::deposit_extract(d, 21, false, true) == 0);
+    // Without the reserve flag: min(rate, remaining), deep or not.
+    sim::Deposit e{"GOLD", 0, 0, 30, false};
+    CHECK(sim::deposit_remaining(e, false) == 30);
+    CHECK(sim::deposit_extract(e, 21, true, true) == 21);
+    CHECK(sim::deposit_extract(e, 21, true, true) == 9);
+    CHECK(e.remaining == 0);
+}
+
+TEST_CASE("deposits: reach is a circle of radius 7 around the footprint") {
+    const sim::MineArea a{10, 10, 3, 4};     // tiles x 10–12, y 10–13
+    CHECK(sim::deposit_in_reach(a, 11, 11)); // under the footprint
+    CHECK(sim::deposit_in_reach(a, 10, 3));  // 7 rows above
+    CHECK_FALSE(sim::deposit_in_reach(a, 10, 2));
+    CHECK(sim::deposit_in_reach(a, 10, 20)); // 7 rows below row 13
+    CHECK_FALSE(sim::deposit_in_reach(a, 10, 21));
+    CHECK(sim::deposit_in_reach(a, 3, 10)); // 7 columns left
+    CHECK_FALSE(sim::deposit_in_reach(a, 2, 10));
+    CHECK(sim::deposit_in_reach(a, 19, 10)); // 7 columns right of column 12
+    CHECK_FALSE(sim::deposit_in_reach(a, 20, 10));
+    // Row 7 beyond: half-width 2; row 5: 5.
+    CHECK(sim::deposit_in_reach(a, 8, 3));
+    CHECK_FALSE(sim::deposit_in_reach(a, 7, 3));
+    CHECK(sim::deposit_in_reach(a, 17, 18));
+    CHECK_FALSE(sim::deposit_in_reach(a, 18, 18));
+}
+
+TEST_CASE("deposits: the mine takes the fullest in reach, the first on a tie") {
+    const sim::MineArea a{10, 10, 3, 4};
+    std::vector<sim::Deposit> ds = {
+        {"GOLD", 11, 11, 3000 * sim::kTon, true},     // other goods
+        {"EISENERZ", 40, 40, 3000 * sim::kTon, true}, // out of reach
+        {"EISENERZ", 11, 9, 1800 * sim::kTon, true},  {"EISENERZ", 13, 9, 1900 * sim::kTon, true},
+        {"EISENERZ", 9, 9, 1900 * sim::kTon, true},
+    };
+    CHECK(sim::find_deposit(ds, "EISENERZ", false, a) == std::optional<std::size_t>{3});
+    CHECK(sim::find_deposit(ds, "SALZSTEIN", false, a) == std::nullopt);
+}
+
+TEST_CASE("mine: a shallow iron mine works its deposit down to the reserve") {
+    sim::ProductionType t;
+    t.kind = sim::BuildingClass::Mine;
+    t.outputs = {"EISENERZ"};
+    t.output_per_step = {21, 0};
+    t.capacity = {5 << 8, 0};
+    CHECK_FALSE(sim::mine_is_deep(t, 0));
+    CHECK(sim::mine_is_deep(t, 0x39));
+    std::vector<sim::Deposit> ds = {{"EISENERZ", 11, 11, sim::kDepositReserve + 30, true}};
+    const sim::MineArea a{10, 10, 3, 4};
+    sim::Mine m;
+    m.deep = false;
+    m.deposit = sim::find_deposit(ds, "EISENERZ", m.deep, a);
+    REQUIRE(m.deposit == std::optional<std::size_t>{0});
+    auto r = sim::mine_step(m, t, 500, ds, a, true);
+    CHECK(r.made[0] == 21);
+    CHECK(r.notice == 0);
+    // 9 left: a short step; the search finds nothing left, deep ore remains.
+    r = sim::mine_step(m, t, 1000, ds, a, true);
+    CHECK(r.made[0] == 9);
+    CHECK(r.notice == 0x15B);
+    CHECK(m.out == 30);
+    CHECK(m.activity == static_cast<std::uint16_t>((336 * 63 >> 6) + 144));
+    // Nothing left: "missing input".
+    r = sim::mine_step(m, t, 1500, ds, a, true);
+    CHECK(r.status == sim::Status::MissingInput);
+    CHECK(r.made[0] == 0);
+    CHECK(m.blocked);
+}
+
+TEST_CASE("mine: full storage first, no deposit, and no depletion") {
+    sim::ProductionType t;
+    t.kind = sim::BuildingClass::Mine;
+    t.outputs = {"GOLD"};
+    t.output_per_step = {21, 0};
+    t.capacity = {5 << 8, 0};
+    std::vector<sim::Deposit> ds = {{"GOLD", 0, 0, 10, false}};
+    const sim::MineArea a{0, 0, 3, 4};
+    sim::Mine m;
+    m.out = 1280;
+    auto r = sim::mine_step(m, t, 500, ds, a, true);
+    CHECK(r.status == sim::Status::StorageFull);
+    m.out = 0;
+    r = sim::mine_step(m, t, 1000, ds, a, true);
+    CHECK(r.status == sim::Status::MissingInput); // no deposit attached
+    // Depletion off: the full rate from any deposit, nothing used up.
+    m.deposit = 0;
+    for (std::uint32_t k = 3; k < 10; ++k) {
+        r = sim::mine_step(m, t, k * 500, ds, a, false);
+        CHECK(r.made[0] == 21);
+    }
+    CHECK(ds[0].remaining == 10);
+    // Depletion on: 10 left without a reserve; the search keeps the empty
+    // deposit, no notice for goods other than iron ore.
+    r = sim::mine_step(m, t, 5000, ds, a, true);
+    CHECK(r.made[0] == 10);
+    CHECK(r.notice == 0);
+}

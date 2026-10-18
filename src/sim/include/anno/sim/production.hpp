@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -115,6 +116,9 @@ struct StepResult {
     Status status = Status::None;
     /// Whether the status raises a player message (StatusTracker).
     bool message = false;
+    /// A player message id raised besides the status (mines: 0x19 / 0x15b
+    /// when an iron-ore deposit runs out); 0 if none.
+    std::uint16_t notice = 0;
     /// The "blocked" flag changed (the city is notified: city slot +0x18 →
     /// slot +0x168 with {type id, x, y, rotation, blocked}).
     bool blocked_changed = false;
@@ -217,6 +221,93 @@ StepResult farm_step(Farm& f, const ProductionType& type, std::uint32_t t);
 /// (0x10071da0(8), nearest animal of the input goods; float distances), done
 /// by the caller, before it sends job 0x0d.
 StepResult fur_trapper_step(Farm& f, const ProductionType& type, std::uint32_t t);
+
+/// An ore deposit (D: AnnoWelt.dll class 0x100637a0, vtable 0x100c7508):
+/// the remaining amount (+0x28, u32, 8.8; 2,000 t when created) and the
+/// reserve flag (+0x30, set when created): with it, a shallow mine keeps
+/// kDepositReserve untouched and a deep mine takes without using anything
+/// up. Goods: the deposit object's type goods (slot +0x84). Position: the
+/// island tile of the object.
+struct Deposit {
+    std::string goods;
+    std::int32_t x = 0, y = 0;
+    std::uint32_t remaining = 2000 * kTon;
+    bool reserve = true;
+};
+
+/// The part of a deposit a shallow mine leaves while the reserve flag is
+/// set: 0x64000 = 1,600 t (D: 0x10063650, 0x10063670).
+inline constexpr std::uint32_t kDepositReserve = 0x64000;
+
+/// What a mine can still take (slot +0x88, 0x10063650): remaining −
+/// kDepositReserve for a shallow mine with the reserve flag (u32, as the
+/// original), else remaining.
+std::uint32_t deposit_remaining(const Deposit& d, bool deep);
+
+/// Takes up to `rate` (slot +0x8c, 0x10063670); returns the amount taken.
+/// With `depletes` false (world setting 14, bit 1, OQ-035) nothing is used
+/// up and the full rate is returned. With the reserve flag, a deep mine
+/// always gets the full rate, a shallow one stops at the reserve. Without
+/// the flag: min(rate, remaining). u32 arithmetic as the original.
+std::uint32_t deposit_extract(Deposit& d, std::uint32_t rate, bool deep, bool depletes);
+
+/// The footprint a mine searches from: tile x, y and size w × h (by
+/// rotation; D: 0x1006ddf0 builds it from the building's position and the
+/// type's size).
+struct MineArea {
+    std::int32_t x = 0, y = 0;
+    std::uint32_t w = 0, h = 0;
+};
+
+/// Whether a deposit at tile (x, y) is in reach of `area`: within a circle
+/// of radius 7 around the footprint, half-widths 7, 7, 7, 6, 6, 5, 4, 2 for
+/// rows 0–7 tiles beyond it (D: table built at 0x100787cb, test at
+/// 0x10078899–0x100788f1). The original converts the object's float
+/// position to tiles first; positions here are tiles.
+bool deposit_in_reach(const MineArea& area, std::int32_t x, std::int32_t y);
+
+/// The deposit a mine takes (D: 0x100787c0): of the deposits of `goods` in
+/// reach, in island object order, the one with the largest
+/// deposit_remaining(deep); the first one on a tie. nullopt if none.
+std::optional<std::size_t> find_deposit(std::span<const Deposit> deposits, const std::string& goods,
+                                        bool deep, const MineArea& area);
+
+/// A mine (MINE) at runtime (D: class 0x1006e460, vtable 0x100c8990;
+/// fields +0x18 output, +0x1c activity, +0x20 switched on, +0x21 deep,
+/// +0x24 deposit).
+struct Mine {
+    std::uint16_t last = 0;
+    bool switched_on = true;
+    /// Deep mining: set when the type is attached (0x1006e270): for an iron
+    /// ore mine (output goods 1, EISENERZ) when the type's research id is
+    /// 0x39 (TIEFE_ERZMINE), for every other mine always.
+    bool deep = true;
+    bool blocked = false;
+    std::uint32_t out = 0; ///< output stock, 8.8
+    /// Activity average: a u16 in the original (+0x1c), kept 16-bit.
+    std::uint16_t activity = 0;
+    /// The deposit worked (index into the island's deposits); found when the
+    /// mine joins its city (0x1006ddf0).
+    std::optional<std::size_t> deposit;
+    StatusTracker status;
+};
+
+/// The deep flag for a mine of `type` (D: 0x1006e270): false only for an
+/// iron ore mine without the research id 0x39. `research_id` is the type's
+/// research id (type slot +0xec).
+bool mine_is_deep(const ProductionType& type, std::uint32_t research_id);
+
+/// One mine tick at world tick `t` (D: AnnoWelt.dll 0x1006def0). No
+/// suspension check (unlike the other buildings); the activity ages by
+/// 63/64; storage full is checked first (45,000 ticks), then the deposit
+/// (none or nothing taken: "missing input", 30,000 ticks). It takes up to
+/// rate0 from its deposit; when that was not a full step or the deposit is
+/// used up with it, the mine searches `deposits` again (find_deposit within
+/// `area`) and, if nothing is left and it mines EISENERZ, raises notice
+/// 0x15b (deep ore left) or 0x19. `depletes` is world setting 14, bit 1.
+/// The fill-level graphic (slot +0x11c) is not modelled.
+StepResult mine_step(Mine& m, const ProductionType& type, std::uint32_t t,
+                     std::vector<Deposit>& deposits, const MineArea& area, bool depletes);
 
 /// A growing tile object (field, forest): object id and phase byte (bits
 /// 0–5 counter, bit 6 parity, bit 7 kept; D: island tile grid +0x0c).

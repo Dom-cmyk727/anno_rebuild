@@ -78,8 +78,20 @@ Tests: bow-maker values (rate 9 per line, needs 8 and 4, 5 t): both lines make 4
 
 Tests: rate 26, need 25, 5 t (824): full and partial steps, a trapper out, input before capacity, the 45,000-tick repeat.
 
+**Mine** (`MINE`; `mine_step`, `Deposit`, `find_deposit`; D: `0x1006def0`, deposit class `0x100637a0`, `docs/re/production.md` §4.4):
+1. Gate and switch; no suspension check. Activity `· 63 >> 6`.
+2. "Storage full" (45,000 ticks) first; then no deposit means "missing input" (30,000 ticks).
+3. `left = deposit_remaining(deep)`, `got = deposit_extract(rate0, deep, depletes)`. If the step was short while something was left, or this step used the rest up, the mine searches again (`find_deposit`):
+   - the search covers a radius-7 circle around the footprint (half-widths 7, 7, 7, 6, 6, 5, 4, 2);
+   - it takes the deposit with the largest remaining amount, the first one on a tie.
+   - If nothing usable is found and the mine produces `EISENERZ`, notice `0x15b` (deep ore left) or `0x19` is raised.
+4. `got = 0`: "missing input". Otherwise `out += got`, `activity += got << 4` (u16), status cleared, unblocked.
+
+Deposits start with 2,000 t and the reserve flag. With the flag, a shallow mine stops at 1,600 t, and a deep mine takes without using anything up. Without the flag, a mine takes `min(rate, remaining)`. With `depletes` off (world setting 14 bit 1, OQ-035), nothing is used up. A mine is deep unless it is an iron ore mine without research `0x39` (`mine_is_deep`). Not modelled: the fill-level graphic stage (render only).
+
+Tests: deposit rules, the reach circle's edges, the choice among deposits, a shallow iron mine running down to the reserve (notice `0x15b`), full storage, no deposit, no depletion.
+
 **Not implemented yet:**
-- mines (deposit rules not traced);
 - the small farm, markets and carts, transport.
 
 Harvest amounts are open.

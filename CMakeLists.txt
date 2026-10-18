@@ -38,16 +38,23 @@ endif()
 
 if(ANNO_BUILD_TESTS)
   enable_testing()
-  # doctest 2.4.11 (2023), pinned.
+  # doctest 2.4.12, pinned. With libc++ 22 its implementation needs <cfloat>
+  # included first: see src/*/tests/main.cpp.
   FetchContent_Declare(doctest
-    URL https://github.com/doctest/doctest/archive/refs/tags/v2.4.11.tar.gz
-    URL_HASH SHA256=632ed2c05a7f53fa961381497bf8069093f0d6628c5f26286161fbd32a560186
+    URL https://github.com/doctest/doctest/archive/refs/tags/v2.4.12.tar.gz
+    URL_HASH SHA256=73381c7aa4dee704bd935609668cf41880ea7f19fa0504a200e13b74999c2d70
     # Header only: do not run doctest's own CMakeLists (it predates CMake 4).
     SOURCE_SUBDIR no-cmake)
   FetchContent_MakeAvailable(doctest)
   add_library(anno_doctest INTERFACE)
   add_library(doctest::doctest ALIAS anno_doctest)
   target_include_directories(anno_doctest SYSTEM INTERFACE ${doctest_SOURCE_DIR})
+  # Clang 22 reports doctest's __COUNTER__ under -Wpedantic at every TEST_CASE.
+  include(CheckCXXCompilerFlag)
+  check_cxx_compiler_flag(-Wno-c2y-extensions ANNO_HAVE_WNO_C2Y)
+  if(ANNO_HAVE_WNO_C2Y)
+    target_compile_options(anno_doctest INTERFACE -Wno-c2y-extensions)
+  endif()
   add_subdirectory(src/test_support)
 endif()
 

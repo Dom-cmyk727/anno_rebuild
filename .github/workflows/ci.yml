@@ -63,6 +63,12 @@ jobs:
           - name: windows-msvc
             os: windows-latest
             preset: msvc
+          # macOS is a development host only: build and test check.
+          - name: macos-clang
+            os: macos-latest
+            preset: dev
+            cc: clang
+            cxx: clang++
     name: cpp (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     env:
@@ -78,6 +84,8 @@ jobs:
           libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev
           libxss-dev libxkbcommon-dev libdrm-dev libgbm-dev libegl1-mesa-dev libgl1-mesa-dev
           libwayland-dev wayland-protocols libdecor-0-dev libasound2-dev libpulse-dev libdbus-1-dev libudev-dev
+      - if: runner.os == 'macOS'
+        run: brew install ninja
       - run: cmake --preset ${{ matrix.preset }}
       - run: cmake --build --preset ${{ matrix.preset }}
       - run: ctest --preset ${{ matrix.preset }}

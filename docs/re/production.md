@@ -8,7 +8,7 @@ Notation: "8.8" = unsigned fixed point with 256 = 1 ton. "Step" = one production
 
 ## 1. Time base and scheduling
 
-- **World time.** The world's tick (`AnnoWelt` `0x100ae040`, interface vtable `0x100ccd74` slot `+0xe8`) adds its argument `dt` to a 64-bit accumulator (`+0x100/+0x104`) and uses **`t = accumulator >> 1`** (32 bits, `+0x10c`) as the time for everything below. **Confirmed.** `dt` comes from `AnnoFrame`; its frame tick `0x1000ca90` sums the same kind of `dt` against `599999` and compares `GetTickCount()` sums, i.e. `dt` is in milliseconds at normal speed. So **one `t` unit = 2 ms** — **likely** (the path from the frame tick to world slot `+0xe8` and any game-speed scaling are not traced).
+- **World time.** The world's tick (`AnnoWelt` `0x100ae040`, world vtable `0x100ccdd8` slot `+0x84`; `0x100ccd74` is the unit registry, not the world, and `+0xe8` was a stale reading, corrected 2026-10-18) adds its argument `dt` to a 64-bit accumulator (`+0x100/+0x104`) and uses **`t = accumulator >> 1`** (32 bits, `+0x10c`) as the time for everything below. **Confirmed.** `dt` comes from `AnnoFrame`; its frame tick `0x1000ca90` sums the same kind of `dt` against `599999` and compares `GetTickCount()` sums, i.e. `dt` is in milliseconds at normal speed. So **one `t` unit = 2 ms** — **likely** (the path from the frame tick to world slot `+0xe8` and any game-speed scaling are not traced). The world's slot `+0x84` (not `+0xe8`) is the entry point.
 - **Order inside the world tick** (`0x100ae040`): all islands (`0x100a2e60` → island slot `+0xe4` = `0x1008b760`), then `0x100add90`, then three sub-systems at `+0x114` slot `+0x20`, `+0x118` slot `+0x24`, `+0x69c8` slot `+0x14`, then `0x1009d2a0`, `0x100ae140`. **Confirmed** (what the sub-systems are is not traced).
 - **Island tick** `0x1008b760`: walks its 8 × 8-tile chunks round-robin so that every chunk is visited once per **2000** `t` (growth, §4.1) and, in a second pass, once per **15000** `t` (island slot `+0x194`, not traced); then the city ring. **Confirmed.**
 - **City ring** `0x100969d0`: 16 city slots, round-robin, each city ticked about once per **50** `t` (count per call = `dt·16/50 + 1`, max 16). **Confirmed.** City tick = city vtable `0x100c2f40` slot `+0x50` = `0x1002d9a0`; first thing it does is the building scheduler.
@@ -248,7 +248,7 @@ out += got (u16); activity += got << 4 (u16); clear 0x0e; unblock
   - with the flag set and a shallow mine: if world setting 14 bit 1 is clear (`deposit+8 → +0x18 → +0x74(0x0e) & 2`), return `rate`. Otherwise take `rate`, or `remaining − 0x64000` when `remaining − rate < 0x64000` (unsigned), so the 1,600 t reserve is never touched.
   - without the flag: the same setting test; then `min(rate, remaining)`.
 
-So a shallow iron mine can use 400 t of a fresh deposit; deep iron mines and all other mines never use a flagged deposit up; and with setting 14 bit 1 clear, nothing runs out at all. What the setting is, who clears the flag, and whether files set other amounts are open (OQ-035).
+So a shallow iron mine can use 400 t of a fresh deposit; deep iron mines and all other mines never use a flagged deposit up; and with setting 14 bit 1 clear, nothing runs out at all. World setting 14 is the edition: bit 1 is the `ANNOADDON1` flag (AnnoScene `0x1000265e`–`0x1000268a` sets it from the root name; AnnoWelt `0x10063686` reads it), so depletion exists only in the add-on edition and is not an owner option (OQ-035 a, resolved 2026-10-18; residual doubt: `[deposit+8]` is the island). Who clears the reserve flag and whether files set other amounts are open (OQ-035 b, c).
 
 A second class (constructor `0x100637f0`, vtable `0x100c759c`, derived from it) returns goods `0x84` as a constant and starts with `0x7d0` (7.8 t). Its meaning is open.
 
@@ -262,7 +262,9 @@ if switch 0: age activity 0; made0 = line(0, rate0, need0, t)
     if made0 == 0 and counter0 < 1 and 384 / rate0 >= raw0 / need0:
         figure = this+0x118(job 0x2a, type+0xb4(0, 0), t); give it input goods 0
 if switch 1: age activity 1; made1 = line(1, rate1, need1, t)
-    kind = u16 table 0x100c8d48[island+0xb4() & 7]        # 107 107 for POLAR NORD DSCHUNGEL WUESTE, 110 TUNDRA, 109 PRAERIE STEPPE (and 7)
+    kind = u16 table 0x100c8d48[draw & 7]                 # draw = world PRNG: building+0x10 (city) -> slot +0x18 (island) -> slot +0x18 (world) -> slot +0xb4 = 0x100a1740 (AnnoWelt 0x1006f810-0x1006f838)
+                                                          # table 107 110 107 109 107 109 107 109: NOT the island climate (an earlier reading took slot +0xb4 for a climate getter;
+                                                          # 2026-10-18 correction). One draw per step with line 1 on, after the gate, before the limit tests below.
     i = kind − byte 0x100c8d58 (106); if byte 0x100c8d59[i] (limits 1 2 0 1 1 0 0 32) <= counter[i] − (made1 != 0): return
     if max_figures(0) <= counter1 + … + counter4: return
     if 384 / rate1 >= raw1 / need1: figure = this+0x118(job 0x2e, world figure type kind (… → +0x6c(kind)), t); give it input goods 1
@@ -283,7 +285,7 @@ Per step: if fewer than `max_figures(0)` carts (slots `+0x20/+0x24`) are out, se
 ## 5. Transport
 
 ### 5.1 Sending figures
-Base slot `+0x118` (`0x10072d20`, args job id, figure type, `t`): refused while flags bits 4/5 are set or the building has no reachable entrance (`0x10072b50`); creates the figure at the entrance through the island's figure factory (island slot `+0xa0`), links building ↔ figure ↔ island, creates the job object (figure slot `+0xa4`, factory `0x1003b0e0`: job `0x33` workshop carrier, vtable `0x100c45e8`; `0x34` market cart, `0x100c4568`; `0x29`/`0x2a`, `0x2b`, `0x2c`, `0x2d`/`0x2e`, `0x35`, `0x41` other workers) and assigns it. **Confirmed.** Jobs are lists of steps (step type codes 7 harvest, 9, 0xb "repeat while cargo < capacity", …), saved as `TASK`/`ENTRY` (`0x1005b7a0`/`0x1005b9a0`). **Likely.**
+Base slot `+0x118` (`0x10072d20`, args job id, figure type, `t`): refused while flags bits 4/5 are set or the building has no reachable entrance (`0x10072b50`); creates the figure at the entrance through the figure factory, which is **world** slot `+0xa0` (`0x100a34d0`, returns `[world+0x114]` = the unit registry; corrected 2026-10-18, it is not an island slot), links building ↔ figure ↔ island, creates the job object (figure slot `+0xa4`, factory `0x1003b0e0`: job `0x33` workshop carrier, vtable `0x100c45e8`; `0x34` market cart, `0x100c4568`; `0x29`/`0x2a`, `0x2b`, `0x2c`, `0x2d`/`0x2e`, `0x35`, `0x41` other workers) and assigns it. **Confirmed.** Jobs are lists of steps (step type codes 7 harvest, 9, 0xb "repeat while cargo < capacity", …), saved as `TASK`/`ENTRY` (`0x1005b7a0`/`0x1005b9a0`). **Likely.**
 
 Workshop input priority (slot `+0xd8`, `0x10068500`): for input goods `g`, `(stock + amount carried or reserved by the building's carriers) / need_per_step`; below 30 steps → `0x80`, below 60 → `0x60`, else −1. **Confirmed**; the workshop tick dispatches whenever the result is non-zero, so −1 also dispatches — how the job uses the value is open.
 
@@ -355,7 +357,7 @@ Units: stocks in 8.8 (256 = 1 t), time in steps (1 step = 500 `t`; expected 1 s 
 | F14 | Timing: measure wall-clock seconds for F2's 116 steps at normal game speed | expected 116 s if 1 step = 1 s |
 
 ## Open
-- Unit of `dt` (ms assumed) and game-speed scaling between `AnnoFrame` and world slot `+0xe8`; confirm with F14.
+- Unit of `dt` (ms assumed) and game-speed scaling between `AnnoFrame` and world slot `+0x84` (Advance); confirm with F14.
 - Flags bits 4/5 at building `+0x0c` (what suspends production); what slot `+0xc8`/`0x10072a60` changes (running cost switch?).
 - Running costs: confirm `PROD3` 0x00/0x02 as inactive/active cost and where they are charged.
 - Harvest amount per field and what a harvested field becomes (713 → ?); which code reads fertility (planting, growth chance); meaning of `Wachstum.dat` `Klima`/`Bridge` tables beyond being loaded (`0x10006a80`).

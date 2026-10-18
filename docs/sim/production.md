@@ -51,11 +51,11 @@ Fixtures F2–F5 and F7 are tests.
 **Status messages** (`StatusTracker`, D: `0x10072ed0`, `0x10072fb0`):
 - A lower code is ignored; a higher one starts the u16 status time.
 - A message is due once the condition has lasted the interval (45,000 ticks for the workshop and a full farm, 60,000 for a farm missing input, 30,000 for a mine). The time then becomes `t − interval`, so the message stays due on every later step.
-- Production clears codes 1–3 only if one of their icons is shown. Icons change only if a city-owner check passes (`0x10073010`: owner slot `+0xc4(3)` = 1; meaning open, OQ-033); otherwise the code stays (`StatusTracker::shows_icons`).
+- Production clears codes 1–3 only if one of their icons is shown. Icons change only if a city-owner check passes (`0x10073010`: owner slot `+0xc4(3)` = the player's Volk (people) number `+0x7a` equals 1, i.e. icons only for Volk 1, which human and computer-opponent seats have; OQ-033 resolved 2026-10-18, `StatusTracker::shows_icons` = owner Volk == 1, supplied by the player state, not a constant); otherwise the code stays (`StatusTracker::shows_icons`).
 - Not modelled: the checks `0x10071f40` / `0x10072390` that can turn a due message into code 3 (meaning open).
 
 **Weapons workshop** (`HANDWERKWAFFEN`: 1006 bows and crossbows, 1012 muskets and ship cannon, 1036 axes and lances; `weapons_workshop_step`; D: `0x10069550`, `docs/re/production.md` §4.1a). Two production lines, one per output, sharing the inputs:
-1. A line **works** when it is switched on and unlocked. Unlocked means the owner meets the output goods' requirement, set by the caller from the owner's state; likely research (OQ-034).
+1. A line **works** when it is switched on and unlocked. Unlocked means the owner meets the output goods' requirement, set by the caller from the owner's state: `WeaponsWorkshop::unlocked` = the goods' `Forsch` research id is 0, or bit 1 (researched) of that research id in the owner's research state (OQ-034 resolved 2026-10-18; weapon goods SCHWERT/RUESTUNG 1, LANZE 3, BOGEN 4, AXT 6, ARMBRUST 9, MUSKETE 12, KANONESHIP 38).
 2. No working line: stop after the gate. Otherwise each working line ages its activity (`· 127 >> 7`); then the suspension check.
 3. The input `ratio` and "missing input" are as for the workshop.
 4. Each line in order:
@@ -87,7 +87,7 @@ Tests: rate 26, need 25, 5 t (824): full and partial steps, a trapper out, input
    - If nothing usable is found and the mine produces `EISENERZ`, notice `0x15b` (deep ore left) or `0x19` is raised.
 4. `got = 0`: "missing input". Otherwise `out += got`, `activity += got << 4` (u16), status cleared, unblocked.
 
-Deposits start with 2,000 t and the reserve flag. With the flag, a shallow mine stops at 1,600 t, and a deep mine takes without using anything up. Without the flag, a mine takes `min(rate, remaining)`. With `depletes` off (world setting 14 bit 1, OQ-035), nothing is used up. A mine is deep unless it is an iron ore mine without research `0x39` (`mine_is_deep`). Not modelled: the fill-level graphic stage (render only).
+Deposits start with 2,000 t and the reserve flag. With the flag, a shallow mine stops at 1,600 t, and a deep mine takes without using anything up. Without the flag, a mine takes `min(rate, remaining)`. With `depletes` off (world setting 14 bit 1 = the `ANNOADDON1` edition flag, so depletion exists only in the add-on edition and is not an owner option; OQ-035 a, resolved), nothing is used up. A mine is deep unless it is an iron ore mine without research `0x39` (`mine_is_deep`). Not modelled: the fill-level graphic stage (render only).
 
 Tests: deposit rules, the reach circle's edges, the choice among deposits, a shallow iron mine running down to the reserve (notice `0x15b`), full storage, no deposit, no depletion.
 
@@ -98,11 +98,11 @@ Tests: deposit rules, the reach circle's edges, the choice among deposits, a sha
    - a step that would use nothing makes nothing;
    - the status is cleared unless the other line is switched on and full.
 3. Line 0 sends a worker when it made nothing, none is out, and `384 / rate ≥ raw / need`.
-4. Line 1 sends an animal of the climate's kind (`SmallFarmAnimals`: 107 for polar, north, jungle, desert; 110 tundra; 109 prairie, steppe). The kind may have at most its limit out (107: 2, 109: 1, 110: 1; a line that made something counts one fewer). All animals together are limited by `max_figures(0)` (3). The raw-stock rule applies as well.
+4. Line 1 sends an animal whose kind is a **world PRNG draw**, not a climate lookup: `kind = kind_by_draw[draw & 7]` (D `0x1006f810`–`0x1006f838`; table 107 110 107 109 107 109 107 109, `SmallFarmAnimals`), one draw per step in which line 1 is switched on, taken after the step gate and before the limit tests, through a `DrawRef` (the sim's `DrawSource`, `docs/sim/state.md` §7.4). *Status: this document is corrected; the code (`small_farm_step(climate)`, `kind_by_climate`) still has the old signature until stage S0 of `docs/sim/state.md`.* The kind may have at most its limit out (107: 2, 109: 1, 110: 1; a line that made something counts one fewer). All animals together are limited by `max_figures(0)` (3). The raw-stock rule applies as well.
 
 The 75,000-tick repeat exceeds the status helper's 16-bit elapsed time, so the message is never raised, in the original and here (ISS-150; a fix would be a `rules` option).
 
-Tests: 809's values; production, workers and animals per climate, the limits, a full line keeping the status, suspension, the message that never comes.
+Tests: 809's values; production, workers and animals per draw value (`draw & 7`), exactly one draw per step with line 1 on and none otherwise, the limits, a full line keeping the status, suspension, the message that never comes.
 
 **Not implemented yet:**
 - markets and carts, transport.

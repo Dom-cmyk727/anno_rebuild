@@ -4,19 +4,19 @@ A clean-room reimplementation of ANNO 1503 (Max Design / Sunflowers, 2002) for W
 
 Current state: an **island viewer**. It reads the original files and draws scenarios and islands isometrically (ground, terrain height, animated sea across the whole map, rivers, surf, trees, buildings, shadows, ships), with an optional real-time wave simulation. Frames are drawn on the GPU (Vulkan, DirectX 12, Metal or OpenGL via wgpu-native) with a CPU fallback. Map areas are prepared on all CPU cores in the background. No gameplay, civilians or sound yet; ships and soldiers are shown where the scenario places them (soldiers in player colours, assigned as at the start of a game; only the colour the human would pick is a stand-in); islands that endless games only link to are shown as stand-ins.
 
-**Latest preview (2026-10-18a):** the first preview built from the C++ version (same pictures as before, checked pixel by pixel); with `E` (enhanced water) ships now sit in the water: the bottom of the hull sinks in, foam marks the waterline, and the ships rise, fall and pitch with the simulated waves. Earlier (2026-10-17g): soldiers on the ground in their owner's colour (player colours as the original), and a few building pixels that were cut off; earlier: ships where the scenarios place them, and the endless games open (with stand-in islands of the right climate and size until we know which islands the original picks); earlier: real-time wave simulation on the GPU with `E` (waves shoal, refract around islands, break into moving foam and run up and down the beach); earlier: GPU renderer (≈ 1–2 ms per 4K frame on the dev machine instead of 7–25 ms), about 8× faster map preparation and islands ready when zooming, reworked crashing waves (no white blobs, grid stripes or coastal lines; waves roll in, curl, break and wash up the beach; turquoise shallows; deep water without tile edges), smooth zooming, and a built-in benchmark.
+**Latest preview (2026-10-18b):** with `E` (enhanced water) rivers run through their waterfalls and mouths into the sea as one water surface, and rocks and other objects in the water sink in at their base instead of floating on it. Earlier (2026-10-18a): the first preview built from the C++ version (same pictures as before, checked pixel by pixel); with `E` (enhanced water) ships now sit in the water: the bottom of the hull sinks in, foam marks the waterline, and the ships rise, fall and pitch with the simulated waves. Earlier (2026-10-17g): soldiers on the ground in their owner's colour (player colours as the original), and a few building pixels that were cut off; earlier: ships where the scenarios place them, and the endless games open (with stand-in islands of the right climate and size until we know which islands the original picks); earlier: real-time wave simulation on the GPU with `E` (waves shoal, refract around islands, break into moving foam and run up and down the beach); earlier: GPU renderer (≈ 1–2 ms per 4K frame on the dev machine instead of 7–25 ms), about 8× faster map preparation and islands ready when zooming, reworked crashing waves (no white blobs, grid stripes or coastal lines; waves roll in, curl, break and wash up the beach; turquoise shallows; deep water without tile edges), smooth zooming, and a built-in benchmark.
 
 ## Test the preview (Windows / Linux)
 
 **You need:** your own installed ANNO 1503 (GOG "A.D." edition), Windows 10/11 or Linux x86_64 with glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 or later), and an up-to-date graphics driver (Vulkan, DirectX 12 or OpenGL; without one the viewer falls back to the slower CPU renderer). Below, *game folder* = the folder that contains `Anlagen.dat`.
 
-**1. Download** [`share/anno1503-preview-2026-10-18a.zip`](https://github.com/Dom-cmyk727/anno_rebuild/raw/main/share/anno1503-preview-2026-10-18a.zip) and unzip it anywhere.
+**1. Download** [`share/anno1503-preview-2026-10-18b.zip`](https://github.com/Dom-cmyk727/anno_rebuild/raw/main/share/anno1503-preview-2026-10-18b.zip) and unzip it anywhere.
 
 **2a. Windows 10/11:** double-click `start-viewer.bat` and enter your game folder when asked (e.g. `C:\GOG Games\ANNO 1503`).
 
 **2b. Linux (x86_64):**
 ```sh
-cd anno1503-preview-2026-10-18a
+cd anno1503-preview-2026-10-18b
 chmod +x start-viewer.sh run-benchmark.sh linux/*
 ./start-viewer.sh "/path/to/ANNO 1503"
 ```

@@ -34,7 +34,7 @@ What only a person with the right machine can check. Claude Code keeps this list
    - resize the window, minimise and restore: the picture comes back, no error in the console;
    - `--renderer cpu` still works; `--renderer gpu` fails with a message only when no GPU is usable.
    Report anything that looks different from the Rust viewer (`cargo run --release -p anno1503 -- --view game/app/Scenes/0200Single/Single_01.sze`).
-3. ~~Decision: a C++ preview for the tester~~ — the zip in `share/` as before (owner, 2026-10-18): `share/anno1503-preview-2026-10-18a.zip`, built from the C++ code by `packaging/package-preview.sh`.
+3. ~~Decision: a C++ preview for the tester~~ — the zip in `share/` as before (owner, 2026-10-18): now `share/anno1503-preview-2026-10-18b.zip`, built from the C++ code by `packaging/package-preview.sh`.
 4. **Ships in the water** (new 2026-10-18, enhanced water): zoom in fully on a ship with `E` on. The hull bottom should sink into the water with broken foam at the waterline and rise and fall with the waves; with `E` off the ship looks as before (as the original). Close-ups were sent in the session; tell Claude what looks wrong (too much or too little sinking, foam too bright, bobbing too strong).
 5. ~~Decision: GPU implementation~~ — wgpu-native (2026-10-18).
 6. **Rivers into the sea, water against rocks** (new 2026-10-18, enhanced water `E`, after the tester's feedback "Übergang von Meer zu Flüssen sieht abgehakt und unnatürlich aus" and the owner's note about rocks floating on the water): look at river mouths and rocks at rivers and coasts (e.g. `Single_01.sze`, zoom 0, the river mouths of the big desert island in the middle-left). Expected: the river runs through its falls into the sea as one surface (shapes as the original's, no dark patches, no foam on rivers), rock bases sink into the water (foam only at the sea). Report what still looks wrong, with a screenshot.
@@ -46,7 +46,7 @@ What only a person with the right machine can check. Claude Code keeps this list
   ANNO_REQUIRE_GPU=1 ANNO1503_GAME_DIR=<game folder> ctest --preset release -j -R gpu
   ```
   (Windows PowerShell: `$env:ANNO_REQUIRE_GPU=1; $env:ANNO1503_GAME_DIR="<game folder>"; ctest --preset msvc -j 4 -R gpu`.) `ANNO_REQUIRE_GPU` makes a missing GPU a failure instead of a skip. Report the summary line and any failed test's output, and the GPU named in the first lines.
-- **New preview `share/anno1503-preview-2026-10-18a.zip`** (2026-10-18, first build from the C++ code): steps and what to report are in the README (section "Test the preview"). New: ships sit in the water with `E`. Please also report whether it starts at all (exact error text if not), the GPU named in the window title, and `benchmark-results.md`. Linux needs glibc 2.35 or newer (Ubuntu 22.04 or later).
+- **New preview `share/anno1503-preview-2026-10-18b.zip`** (2026-10-18): with `E`, river mouths (after your feedback "Übergang von Meer zu Flüssen sieht abgehakt und unnatürlich aus") and rocks in the water. Please look at the same places again and say whether the transition now looks natural. Earlier the same day: 2026-10-18a, the first build from the C++ code: steps and what to report are in the README (section "Test the preview"). New: ships sit in the water with `E`. Please also report whether it starts at all (exact error text if not), the GPU named in the window title, and `benchmark-results.md`. Linux needs glibc 2.35 or newer (Ubuntu 22.04 or later).
 
 ## Later, needs an x86 Windows machine or Wine on x86 Linux
 

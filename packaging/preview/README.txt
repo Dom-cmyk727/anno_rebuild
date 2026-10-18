@@ -12,6 +12,14 @@ civilians, no sound.
 
 New in this build
 -----------------
+- Enhanced water (E): rivers now run through their waterfalls and mouths
+  into the sea as one water surface (no dark patches with straight edges,
+  no hard line at the coast, no foam on rivers), after your feedback.
+- Enhanced water (E): rocks and other objects standing in water sink in at
+  their base instead of floating on it; foam only at the sea.
+
+Previous build (2026-10-18a)
+----------------------------
 - The whole viewer is now the C++ version: same pictures (checked pixel by
   pixel against the Rust version), same controls and options.
 - Ships sit IN the water with enhanced water (E): the lowest part of the

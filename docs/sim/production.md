@@ -68,8 +68,17 @@ Tests: bow-maker values (rate 9 per line, needs 8 and 4, 5 t): both lines make 4
 
 `HANDWERKDUAL` (`0x10068a70`) has the same fields but splits by the byte `+0x2c` (`split` and `128 − split`) and ignores the switches except for the activity. No entry of the GOG `Anlagen.dat` uses it, so it is documented (`docs/re/production.md` §4.1a) but not implemented.
 
+**Fur trapper** (`PELZJAEGER`, 824; `fur_trapper_step` on the `Farm` fields; D: `0x1006e5d0`, `docs/re/production.md` §4.2a):
+1. Gate, switch, aging (`· 255 >> 8`) and suspension as for the farm.
+2. While any trapper is out: nothing is made and no status is reported.
+3. Otherwise the input ratio is checked **before** the capacity (the workshop's order): "missing input" below 64, then "storage full". Both repeat after 45,000 ticks. Production as on the farm (`activity += made << 4`, u16).
+4. A trapper is due when none is out, the step did not run at the full ratio, and `384 / rate ≥ raw / need`; `max_figures` is not read.
+   - `send_figure` reports that condition. The original then needs a target from its radius search (`0x10071da0(8)`: the nearest animal of the input goods, with float distances), which the caller does.
+   - In practice the 384 test never fails, because a partial ratio means `raw < need`.
+
+Tests: rate 26, need 25, 5 t (824): full and partial steps, a trapper out, input before capacity, the 45,000-tick repeat.
+
 **Not implemented yet:**
-- `PELZJAEGER` (own tick `0x1006e5d0`);
 - mines (deposit rules not traced);
 - the small farm, markets and carts, transport.
 

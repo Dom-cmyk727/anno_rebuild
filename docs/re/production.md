@@ -168,6 +168,25 @@ dispatch (if max_w > 1 or nothing was made):
 
 Grain farm 811: `rate0` = 37, `need0` = 80 per step (P, §9). The condition `384/rate0 ≥ raw/need0` keeps the raw stock at about one and a half output-ton-times of work (**likely** reading).
 
+### 4.2a Fur trapper (`PELZJAEGER`, 824) — `0x1006e5d0` (read instruction by instruction 2026-10-18)
+The farm's fields (§4.2); its own tick on vtable `0x100c2bf0`. **Confirmed** (D, `tools/disasm.py`).
+
+```
+gate, switched_on, activity = activity * 255 >> 8, flags as in 4.2
+ratio = (any of the 5 worker slots +0x24..+0x34 set) ? 0 : 0x80     # setne/dec/and 0x80
+if ratio != 0:                                                       # else: no production, no status
+    ratio = min(ratio, min((raw << 7) / need0, 128))
+    if ratio < 64:            status 1 (45000 t), blocked             # input first, as the workshop
+    elif out >= cap0 (u16):   status 2 (45000 t), blocked
+    else: made = rate0 * ratio >> 7; out += made; activity += made << 4 (u16)
+          raw -= need0 * ratio >> 7; clear 0x0e; unblock
+if ratio < 0x80 and no worker slot is set and 384 / rate0 >= raw / need0:
+    target = 0x10071da0(8)          # nearest figure of the input goods in a radius from the building size and 8 (float distances)
+    if target: figure = this+0x118(job 0x0d, type+0xb4(0, 0), t); hand it the input goods (type+0xb0(0)) and the target
+```
+
+Differences from the farm: input before capacity; "missing input" repeats after 45,000 ticks instead of 60,000; nothing is made while any trapper is out (the farm only stops for a single-worker farm); `max_figures` is not read: at most one trapper is out. Since `ratio < 0x80` with no trapper out means `raw < need0`, `raw / need0` is 0 there and the 384 test never fails in practice. 824: rate 26, need 25, 5 t (P).
+
 ### 4.3 Growing fields and trees — island chunk scan `0x1008b5f0`
 Fields, forests and other `ROHSTWACHS`/`ROHSTDUERR` items are not buildings: they are tile objects in the island's 8-byte-per-tile grid (`+0x0c`: u16 object id at +0, phase byte at +3 = bits 0–5 counter, bit 6 parity, bit 7 kept). On every chunk visit (≥ every 2000 `t`, §1), for every tile whose object type has `P ≠ 0` (§2.3) (**confirmed**):
 

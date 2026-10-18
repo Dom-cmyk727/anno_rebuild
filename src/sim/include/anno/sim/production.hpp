@@ -26,7 +26,7 @@ enum class BuildingClass {
     TwoOutputWorkshop, ///< HANDWERKDUAL, PRODTYPE 12 (tick 0x10068a70; no entry uses it)
     WeaponsWorkshop,   ///< HANDWERKWAFFEN, PRODTYPE 17 (tick 0x10069550)
     Farm,              ///< PLANTAGE, WEIDETIER, STEINMETZ, SCHAFFARM, FISCHER (tick 0x1006ea90)
-    FurTrapper,        ///< PELZJAEGER (own tick 0x1006e5d0; not implemented)
+    FurTrapper,        ///< PELZJAEGER (own tick 0x1006e5d0)
     Mine,              ///< MINE
     SmallFarm,         ///< UNIVERSAL (two farm lines)
     Market,            ///< HAUPT, MARKT, KONTOR, MARKTKOMBI
@@ -206,6 +206,17 @@ struct Farm {
 
 /// One farm tick at world tick `t` (D: AnnoWelt.dll 0x1006ea90).
 StepResult farm_step(Farm& f, const ProductionType& type, std::uint32_t t);
+
+/// One fur trapper tick (PELZJAEGER, 824; D: AnnoWelt.dll 0x1006e5d0) on
+/// the farm's fields. Unlike the farm: nothing is made while any trapper is
+/// out; the input is checked before the capacity, as in the workshop, and
+/// "missing input" repeats after 45,000 ticks. A trapper is due only when
+/// none is out and the step did not run at the full ratio (128), and when
+/// 384 / rate ≥ raw / need; max_figures is not read. `send_figure` is that
+/// condition: the original then also needs a target from its radius search
+/// (0x10071da0(8), nearest animal of the input goods; float distances), done
+/// by the caller, before it sends job 0x0d.
+StepResult fur_trapper_step(Farm& f, const ProductionType& type, std::uint32_t t);
 
 /// A growing tile object (field, forest): object id and phase byte (bits
 /// 0–5 counter, bit 6 parity, bit 7 kept; D: island tile grid +0x0c).

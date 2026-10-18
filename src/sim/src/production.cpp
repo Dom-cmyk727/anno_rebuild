@@ -419,6 +419,56 @@ StepResult farm_step(Farm& f, const ProductionType& type, std::uint32_t t) {
     return r;
 }
 
+StepResult fur_trapper_step(Farm& f, const ProductionType& type, std::uint32_t t) {
+    StepResult r;
+    if (!gate(f.last, t)) {
+        return r;
+    }
+    r.stepped = true;
+    if (!f.switched_on) {
+        return r;
+    }
+    f.activity = static_cast<std::uint16_t>(f.activity * 255U >> 8);
+    if (f.suspended) {
+        return r;
+    }
+    const std::uint32_t rate = at(type.output_per_step, 0);
+    const std::uint32_t need = at(type.input_per_step, 0);
+    // The ratio starts at 0 while a trapper is out (no production), else at
+    // 128 (0x1006e637–0x1006e65f).
+    std::uint32_t ratio = f.workers_out > 0 ? 0 : 128;
+    std::uint32_t made = 0;
+    if (ratio != 0) {
+        if (need != 0) {
+            ratio = std::min(ratio, (f.raw << 7) / need);
+        }
+        if (ratio < 64) {
+            r.status = Status::MissingInput;
+        } else if (f.out >= at(type.capacity, 0)) {
+            r.status = Status::StorageFull;
+        } else {
+            made = rate * ratio >> 7;
+            f.out += made;
+            f.activity = static_cast<std::uint16_t>(f.activity + (made << 4));
+            f.raw -= std::min(f.raw, need * ratio >> 7);
+            f.status.clear(0x0E);
+            r.blocked_changed = f.blocked;
+            f.blocked = false;
+        }
+        if (r.status != Status::None) {
+            // Both codes repeat after 45,000 ticks (0x1006e862, 0x1006e8d4).
+            r.message = f.status.report(r.status, t, kRepeatWorkshop);
+            r.blocked_changed = !f.blocked;
+            f.blocked = true;
+        }
+    }
+    r.made = {made};
+    if (ratio < 128 && f.workers_out == 0 && rate != 0 && need != 0) {
+        r.send_figure = 384 / rate >= f.raw / need;
+    }
+    return r;
+}
+
 bool grow(GrowthTile& tile, const ProductionType& type, std::uint32_t t) {
     const std::uint32_t half = type.growth_period / 2;
     if (half == 0) {

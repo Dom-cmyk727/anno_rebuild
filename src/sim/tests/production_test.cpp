@@ -324,6 +324,9 @@ TEST_CASE("F1: production types of all Anlagen.dat entries") {
     CHECK(types.at(706).growth_period == 464);
     CHECK(types.at(706).display_rate0 == 6620);
     CHECK(types.at(824).kind == sim::BuildingClass::FurTrapper);
+    CHECK(rate(824)[0] == 26);
+    CHECK(need(824)[0] == 25);
+    CHECK(types.at(824).capacity[0] == 5U << 8);
     // HANDWERKWAFFEN (0x10069550): bow maker, gunsmith, weapon smith. No
     // entry uses HANDWERKDUAL (0x10068a70).
     for (const std::uint32_t id : {1006U, 1012U, 1036U}) {
@@ -451,4 +454,88 @@ TEST_CASE("weapons workshop: the gate, suspension and the u16 activity") {
     r = sim::weapons_workshop_step(w, big, 1000);
     CHECK(r.made[0] == 100);
     CHECK(w.activity[0] == 1082);
+}
+
+namespace {
+
+/// The fur trapper 824 (PELZJAEGER: furs from fur animals) with the values
+/// F1 checks: rate 26, need 25, 5 t.
+sim::ProductionType fur_trapper() {
+    sim::ProductionType t;
+    t.kind = sim::BuildingClass::FurTrapper;
+    t.outputs = {"PELZE"};
+    t.inputs = {"PELZTIER"};
+    t.output_per_step = {26, 0};
+    t.input_per_step = {25, 0};
+    t.capacity = {5 << 8, 0};
+    t.max_figures = {1, 0, 0};
+    return t;
+}
+
+} // namespace
+
+TEST_CASE("fur trapper: produces only while no trapper is out") {
+    const auto t = fur_trapper();
+    sim::Farm f;
+    f.raw = 100;
+    std::uint32_t now = 500;
+    // Full ratio: 26 made, 25 used, no trapper sent (ratio 128).
+    auto r = sim::fur_trapper_step(f, t, now);
+    CHECK(r.made[0] == 26);
+    CHECK(f.out == 26);
+    CHECK(f.raw == 75);
+    CHECK(f.activity == 416);
+    CHECK_FALSE(r.send_figure);
+    // A trapper out: nothing made, no status, no further trapper.
+    f.workers_out = 1;
+    r = sim::fur_trapper_step(f, t, now += 500);
+    CHECK(r.made[0] == 0);
+    CHECK(r.status == sim::Status::None);
+    CHECK_FALSE(r.send_figure);
+    CHECK(f.raw == 75);
+    CHECK(f.activity == 414); // 416 · 255 >> 8
+}
+
+TEST_CASE("fur trapper: partial steps and missing input send a trapper") {
+    auto t = fur_trapper();
+    t.max_figures = {0, 0, 0}; // not read by the trapper's dispatch
+    sim::Farm f;
+    f.raw = 20; // ratio (20 << 7) / 25 = 102
+    std::uint32_t now = 500;
+    auto r = sim::fur_trapper_step(f, t, now);
+    CHECK(r.made[0] == 20); // 26 · 102 >> 7
+    CHECK(f.raw == 1);      // 20 − (25 · 102 >> 7)
+    CHECK(r.send_figure);
+    r = sim::fur_trapper_step(f, t, now += 500);
+    CHECK(r.status == sim::Status::MissingInput);
+    CHECK(f.blocked);
+    CHECK(r.blocked_changed);
+    CHECK(r.send_figure);
+}
+
+TEST_CASE("fur trapper: input before capacity, both repeat after 45,000 ticks") {
+    const auto t = fur_trapper();
+    sim::Farm f;
+    f.out = 1280;
+    f.raw = 100;
+    std::uint32_t now = 500;
+    auto r = sim::fur_trapper_step(f, t, now);
+    CHECK(r.status == sim::Status::StorageFull);
+    CHECK_FALSE(r.send_figure); // full ratio: no trapper
+    // Full storage and too little input: the input is reported (the farm
+    // would report the storage).
+    f.raw = 5;
+    r = sim::fur_trapper_step(f, t, now += 500);
+    CHECK(r.status == sim::Status::MissingInput);
+    // The message is due after 45,000 ticks (the farm waits 60,000).
+    sim::Farm g;
+    std::uint32_t first = 500;
+    CHECK_FALSE(sim::fur_trapper_step(g, t, first).message);
+    bool due = false;
+    std::uint32_t at = first;
+    while (!due) {
+        at += 500;
+        due = sim::fur_trapper_step(g, t, at).message;
+    }
+    CHECK(at - first == 45000);
 }

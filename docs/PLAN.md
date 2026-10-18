@@ -217,6 +217,10 @@ Goal: headless simulation that loads a scenario and advances by ticks; faithful 
 - [ ] Command enum = the only way to mutate state (build, demolish, set production, trade route, move ship, …). Commands carry player id and target tick.
 - [x] Seeded PRNG inside `sim`, single source of randomness; state hash over a canonical serialization (2026-10-18, `src/sim`, spec `docs/sim/core.md`): the original's world PRNG (MSVC `rand()` table, cursor; equal to the table in `AnnoWelt.dll`, fixture F6 values), the world clock (2 ms ticks), the original's single- and multiplayer step sizes as exact integer formulas, island sweep scheduling, FNV-1a 64 state hash. Reviewed adversarially against the disassembly (two bugs found and fixed: sweep cap, `+0x108` semantics).
 - [ ] Implement subsystems in the order recovered in M2: production → carriers/roads → population/needs → taxes → ships/trade → fire → combat (last).
+  - [~] Production (2026-10-18, `docs/sim/production.md`):
+    - **Done:** building types from `Anlagen.dat` (load-time conversion in the original's exact x87 order), the step gate, workshop and farm steps, field and forest growth, warehouse stock, status messages and the "blocked" flag.
+    - **Checks:** fixtures F1–F8 and F10 are tests (F1 over all 921 entries). Two adversarial reviews against the disassembly; they corrected the RE note in several places (status semantics, u16 growth period, building classes).
+    - **Open:** two-output and weapons workshops, fur trapper, mines, small farm, markets and carts, transport, harvest amounts.
 - [ ] Savegame: load original `.sze` scenarios and original savegames (M2.1 corpus) into state; write our own save format (versioned, explicit layout) and, if feasible, write original-compatible `.sze` for interop (stretch).
 - [ ] Replay: record commands + seed; `anno-replay` CLI re-runs and compares per-tick hashes. Bisect helper for first divergent tick.
 

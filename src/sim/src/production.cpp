@@ -174,7 +174,9 @@ bool StatusTracker::report(Status s, std::uint32_t t, std::uint32_t repeat) {
     if (repeat > elapsed) {
         return false;
     }
-    icons = static_cast<std::uint8_t>(icons | (1U << static_cast<unsigned>(code)));
+    if (shows_icons) {
+        icons = static_cast<std::uint8_t>(icons | (1U << static_cast<unsigned>(code)));
+    }
     time = static_cast<std::uint16_t>(t - repeat);
     return true;
 }
@@ -334,7 +336,12 @@ bool grow(GrowthTile& tile, const ProductionType& type, std::uint32_t t) {
         return false;
     }
     const std::uint32_t counter = ((tile.phase & 0x3FU) + 1) & 63U;
-    if (counter % (1U << type.stage_shift) == 0 && counter >= (type.stages << type.stage_shift)) {
+    // As 0x1008b6a4–0x1008b6c2: shift masked to 5 bits, an 8-bit multiple-of
+    // test, a signed comparison with S << k.
+    const std::uint32_t k = type.stage_shift & 31U;
+    const auto mask = static_cast<std::uint8_t>((1U << k) - 1U);
+    const auto limit = static_cast<std::int32_t>(type.stages << k);
+    if ((counter & mask) == 0 && static_cast<std::int32_t>(counter) >= limit) {
         // Next growth object; counter and parity bit are cleared, bit 7 kept
         // (andb $0x80 at 0x1008b6ca).
         tile.object += 1;

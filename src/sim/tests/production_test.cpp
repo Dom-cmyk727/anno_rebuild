@@ -189,6 +189,17 @@ TEST_CASE("status messages: due after the interval, then on every report (0x1007
     s.clear(0x0E);
     CHECK(s.code == sim::Status::None);
     CHECK(s.icons == 0);
+    // The status time is 16 bits: 70,000 ticks later is 4,464 "elapsed".
+    sim::StatusTracker wrap;
+    wrap.report(sim::Status::MissingInput, 0, rep);
+    CHECK_FALSE(wrap.report(sim::Status::MissingInput, 70000, rep));
+    // Without the owner check, no icon is shown and the code is never cleared.
+    sim::StatusTracker ai;
+    ai.shows_icons = false;
+    ai.report(sim::Status::MissingInput, 0, rep);
+    CHECK(ai.report(sim::Status::MissingInput, rep, rep));
+    ai.clear(0x0E);
+    CHECK(ai.code == sim::Status::MissingInput);
     sim::StatusTracker quiet;
     quiet.report(sim::Status::MissingInput, 0, rep); // never raised: no icon
     quiet.clear(0x0E);

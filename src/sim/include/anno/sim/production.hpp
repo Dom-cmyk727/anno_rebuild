@@ -85,6 +85,11 @@ struct StatusTracker {
     Status code = Status::None;
     /// Icon bits: bit c is set when a message for code c was raised.
     std::uint8_t icons = 0;
+    /// Whether icons change at all: 0x10073010 first asks the city owner
+    /// (city +0x10 → slot +0x1c → slot +0xc4(3)) and returns unless that is
+    /// 1 — meaning not traced, possibly "human player" (OQ-033). Without
+    /// icons, clear() never drops the code.
+    bool shows_icons = true;
     std::uint16_t time = 0;
     /// Reports status `s` at `t`; whether a message is raised now. Not
     /// modelled: before raising, code 1 (for inputs that are not crops,

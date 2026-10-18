@@ -121,7 +121,7 @@ So production is **proportional**: with 50–100 % of one step's inputs in stock
 - `elapsed = (t − slot+0x124()) & 0xffff`. While `repeat > elapsed` nothing more happens, so a message is due only after the condition has lasted `repeat` ticks.
 - When due:
   - code 1, unless the input is a crop (goods 0x38–0x4b) or an animal (0x89–0x8d), calls `0x10071f40`; code 2 calls `0x10072390`. A zero result turns the status into code 3.
-  - Then `0x10073010(code, 1)` raises the icon/message, and the time is set to `t − repeat`, so the message stays due at every later report.
+  - Then `0x10073010(code, 1)` raises the icon/message, and the time is set to `t − repeat`, so the message stays due at every later report. `0x10073010(i, on)` sets icon bit `i` of `+0x0d` (bits 0–4) and replaces the icon objects. It does this only if the city owner's slot `+0xc4(3)` returns 1 (`0x1007302f`); otherwise it changes nothing (OQ-033).
 - Production calls `0x10072fb0(0x0e)`. If one of the icon bits 1–3 is set, it drops the current code (when it is 1, 2 or 3) and removes those icons (`0x10073010(i, 0)`).
 - The meaning of `0x10071f40` and `0x10072390` is open. **Confirmed** (control flow).
 
@@ -156,7 +156,7 @@ parity = (t / (P/2)) & 1
 if parity != stored bit 6:
     store parity; counter = (counter + 1) & 63
     if counter % 2^k == 0:
-        if counter >= S << k:  object id += 1;  counter = 0      # next growth object, e.g. 712 -> 713
+        if counter >= S << k:  object id += 1;  phase &= 0x80     # next growth object, e.g. 712 -> 713 (counter and parity bit cleared)
         notify island slot +0x188(position, 0xce)                 # redraw
 ```
 
@@ -198,7 +198,7 @@ Workshop input priority (slot `+0xd8`, `0x10068500`): for input goods `g`, `(sto
 The initial best score of the searcher (whether a raw-material building below 75 % fill can ever be chosen) is not traced (Open).
 
 ### 5.3 City (warehouse) stock — city vtable `0x100c2f40`
-Per goods number `g < 0x38`: 12-byte record at city `+0x334 + 12g`: u32 stock (8.8), u16 `+4` consumed by residents, u16 `+6` added, u16 `+8` removed, byte `+0xa` bit 0 sell/buy flag, byte `+0xb` trade-list index. Add (slot `+0x80`, `0x1002da50`): refused for `g > 0x37`, clipped so that stock ≤ **capacity** `+0x624`; remove (slot `+0x84`, `0x1002da90`) clipped at the stock; residents' consumption (slot `+0x88`, `0x1002dac0`) only for goods 0x1a–0x28. The capacity is the same for all goods. **Confirmed.** Savegame city `STADT2` (`0x1002e170`): `WARE` = 8-byte entries (u16 goods number, u16 tons, 4 bytes not used here) → stock = tons << 8; `HEAD2` u16 at offset 0x24 = capacity in tons, **0 → 50 t**; `BAUMAT` → `+0x48c + 8g`; `VK`/`EK` sell/buy lists; `PROD/ENTRY` = buildings (4-byte position + the building's own record). **Confirmed** (offsets from the stack layout). How the capacity changes with Kontor level is not traced (Open).
+Per goods number `g < 0x38`: 12-byte record at city `+0x334 + 12g`: u32 stock (8.8), u16 `+4` consumed by residents, u16 `+6` added, u16 `+8` removed, byte `+0xa` bit 0 sell/buy flag, byte `+0xb` trade-list index. Add (slot `+0x80`, `0x1002da50`): refused for `g > 0x37`; if stock + amount (u32) exceeds the **capacity** `+0x624`, the amount becomes capacity − stock (wrapping, so a stock above the capacity is lowered to it; `0x1002da7d`, corrected 2026-10-18); remove (slot `+0x84`, `0x1002da90`) clipped at the stock; residents' consumption (slot `+0x88`, `0x1002dac0`) only for goods 0x1a–0x28. The capacity is the same for all goods. **Confirmed.** Savegame city `STADT2` (`0x1002e170`): `WARE` = 8-byte entries (u16 goods number, u16 tons, 4 bytes not used here) → stock = tons << 8; `HEAD2` u16 at offset 0x24 = capacity in tons, **0 → 50 t**; `BAUMAT` → `+0x48c + 8g`; `VK`/`EK` sell/buy lists; `PROD/ENTRY` = buildings (4-byte position + the building's own record). **Confirmed** (offsets from the stack layout). How the capacity changes with Kontor level is not traced (Open).
 
 ### 5.4 Figures: capacity and speed
 `FigurenHeader.dat` figure type (`AnnoGame` `0x1000fe00`, vtable at `0x10021cf8`): `HEAD` f32 at 4 → `+0x10` (slot `+0x78(x)` returns `x · speed`), f32 at 0 → `+0x2c`; `LOGIC` byte 0x11 → `+0xf2` = `v << 8` (slot `+0x9c`). **Confirmed.** Reading: `+0xf2` = carry capacity (`TRAEGER` 203 = 3 t, market cart 220 = 5 t, most carriers 3 t; P) — **likely**; `HEAD` f32 4 = walking speed (carriers 0.012, market cart 0.016, camels 0.008; P) — **likely**, unit open. Harvest jobs loop "harvest" while cargo < the figure's capacity (`0x1005c260`, step type `0xb`) — **confirmed** for the loop, capacity source **likely**.

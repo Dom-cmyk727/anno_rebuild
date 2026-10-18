@@ -51,7 +51,7 @@ Fixtures F2–F5 and F7 are tests.
 **Status messages** (`StatusTracker`, D: `0x10072ed0`, `0x10072fb0`):
 - A lower code is ignored; a higher one starts the u16 status time.
 - A message is due once the condition has lasted the interval (45,000 ticks for the workshop and a full farm, 60,000 for a farm missing input, 30,000 for a mine). The time then becomes `t − interval`, so the message stays due on every later step.
-- Production clears codes 1–3 only if one of their icons is shown.
+- Production clears codes 1–3 only if one of their icons is shown. Icons change only if a city-owner check passes (`0x10073010`: owner slot `+0xc4(3)` = 1; meaning open, OQ-033); otherwise the code stays (`StatusTracker::shows_icons`).
 - Not modelled: the checks `0x10071f40` / `0x10072390` that can turn a due message into code 3 (meaning open).
 
 **Not implemented yet:**
@@ -75,7 +75,7 @@ On each chunk visit of a growing tile (at most every 2,000 ticks, `docs/sim/core
 - If `parity = (t / (P/2)) & 1` differs from phase bit 6: store it, and `counter = (counter + 1) & 63`.
 - When `counter` is a multiple of `2^k` and at least `S << k`: the object becomes the next id and the counter is reset.
 
-Then the phase is cleared except bit 7 (`andb $0x80`, `0x1008b6ca`). Grain field 712 → 713 after 20 flips of `t / 7750` (fixture F8, 155,000 ticks). A flip is lost if two happen between visits, and that happens in the original data: entries 356–364, 706 and four more, 754, 354 and 756 have `P/2` < 2,000 (smallest 125).
+When the object advances, the phase is cleared except bit 7 (`andb $0x80`, `0x1008b6ca`). The shift is masked to 5 bits, the multiple-of test is 8-bit and the comparison with `S << k` signed (`0x1008b6a4`–`0x1008b6c2`). Grain field 712 → 713 after 20 flips of `t / 7750` (fixture F8, 155,000 ticks). A flip is lost if two happen between visits, and that happens in the original data: entries 356–364, 706 and four more, 754, 354 and 756 have `P/2` < 2,000 (smallest 125).
 
 ## Warehouse (`CityStock`; D: `0x1002da50`, `0x1002da90`)
-One stock per goods number (0–0x37 in the original; the count is data), one capacity for all (savegame `HEAD2` u16 at 0x24 in tons, 0 → 50 t). Adding is clipped so that the stock does not exceed the capacity; removing is clipped at the stock. Fixture F10.
+One stock per goods number (0–0x37 in the original; the count is data), one capacity for all (savegame `HEAD2` u16 at 0x24 in tons, 0 → 50 t). Adding: if the stock plus the amount (u32) exceeds the capacity, the stock is set to the capacity; a stock already above it is lowered to it, and the returned amount wraps (D: `0x1002da7d`). Removing is clipped at the stock. Fixture F10.

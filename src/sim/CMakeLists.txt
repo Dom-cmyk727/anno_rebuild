@@ -9,7 +9,8 @@ anno_target_defaults(anno_sim SANITIZE_NO_RECOVER)
 
 if(ANNO_BUILD_TESTS)
   add_executable(anno_sim_tests tests/main.cpp tests/sim_test.cpp tests/production_test.cpp
-                 tests/archive_test.cpp)
+                 tests/archive_test.cpp tests/slot_list_test.cpp tests/scheduler_blocks_test.cpp
+                 tests/container_probe_test.cpp)
   target_link_libraries(anno_sim_tests PRIVATE anno_sim anno_test_support doctest::doctest)
   # The goldens (fixtures/synthetic/sim/goldens.txt, docs/sim/state.md §14.3).
   target_compile_definitions(anno_sim_tests PRIVATE

@@ -383,7 +383,7 @@ std::vector<Prepared> prepare_objects(const insel::Island& island,
             continue;
         }
         const auto fp =
-            anlagen.footprint(o.anlage).value_or(std::pair<std::uint8_t, std::uint8_t>{1, 1});
+            anlagen.footprint(o.anlage).value_or(std::pair{std::uint8_t{1}, std::uint8_t{1}});
         list.emplace_back(o, o.footprint(fp.first, fp.second));
     }
     std::stable_sort(list.begin(), list.end(), [](const Prepared& a, const Prepared& b) {

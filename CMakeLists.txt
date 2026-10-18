@@ -49,6 +49,9 @@ if(ANNO_BUILD_TESTS)
   add_library(anno_doctest INTERFACE)
   add_library(doctest::doctest ALIAS anno_doctest)
   target_include_directories(anno_doctest SYSTEM INTERFACE ${doctest_SOURCE_DIR})
+  # Include the real <ostream> instead of forward declarations (libc++ does
+  # this anyway; MSVC needs it to print std::string_view in assertions).
+  target_compile_definitions(anno_doctest INTERFACE DOCTEST_CONFIG_USE_STD_HEADERS)
   # Clang 22 reports doctest's __COUNTER__ under -Wpedantic at every TEST_CASE.
   include(CheckCXXCompilerFlag)
   check_cxx_compiler_flag(-Wno-c2y-extensions ANNO_HAVE_WNO_C2Y)

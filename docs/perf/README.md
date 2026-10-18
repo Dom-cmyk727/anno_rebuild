@@ -10,7 +10,7 @@ cargo run --release -p anno-render --features gpu --example bench_frame -- <game
     [--styles original,enhanced] [--chunks blocking,async] [--renderer cpu,gpu] \
     [--check] [--at dx,dy] [--quick]
 ```
-The preview package contains it as `bench_frame` with `run-benchmark.bat` / `run-benchmark.sh` (writes `benchmark-results.md`).
+C++ (CPU path; GPU follows): `build/release/src/tools/bench_frame/bench_frame <game_dir> <file> [same options, --renderer cpu only]`. The preview package contains the Rust one as `bench_frame` with `run-benchmark.bat` / `run-benchmark.sh` (writes `benchmark-results.md`).
 
 **What it runs:** the functions the viewer calls every frame, without a window: `FrameRenderer::render` into a `0RGB` buffer (`cpu`), or `GpuFrame::render` into an offscreen texture followed by waiting for the GPU (`gpu`). `--check` compares the first static frame of each configuration between GPU and CPU (pixels differing by more than 2 per channel, maximum difference); `BENCH_DUMP=<dir>` writes both images as raw RGBA. `--at dx,dy` moves the camera from the largest island's centre.
 
@@ -43,6 +43,21 @@ The animation clock advances 16 ms per frame. `--quick` divides the frame counts
 **Simulating weaker PCs:** `--threads 4` limits frame stages and workers to 4 threads. Per-core speed still differs from the target hardware, so measure on the colleague's Windows/Linux PC as well (the viewer prints the same stage breakdown to stderr every 2 s and shows fps in its title).
 
 ## Results
+
+### 2026-10-18 — C++ `bench_frame` vs Rust, Apple M5 Pro, `Single_01.sze`
+Both benchmarks with the same options, run one after the other: `--threads 8 --res 1920x1080 --chunks blocking,async --quick`, all zoom groups, both water styles; one other core was busy with a test run during both. The C++ benchmark loads the scene as the viewer does (5 ships added; same largest island). p50 / p99 in ms, Rust → C++ (selection; the full tables come from the commands above):
+
+| group | water | chunks | path | Rust p50 / p99 | C++ p50 / p99 |
+|---|---|---|---|---|---|
+| 0 | original | async | static | 3.0 / 3.9 | 2.6 / 3.0 |
+| 0 | original | async | pan fast | 4.9 / 5.1 | 3.5 / 4.4 |
+| 0 | enhanced | async | pan fast | 9.7 / 11.8 | 9.0 / 10.4 |
+| 1 | original | blocking | pan fast | 3.6 / 24.8 | 2.8 / 26.4 |
+| 1 | enhanced | async | static | 18.0 / 23.0 | 17.0 / 18.3 |
+| 2 | original | async | static | 3.3 / 3.7 | 2.7 / 3.3 |
+| 2 | original | async | pan fast | 4.2 / 5.5 | 3.6 / 4.4 |
+
+Chunk building (blocking cold frames: 39–56 ms in both) costs the same; per-frame stages are 5–25 % lower in C++ (same algorithms, same pixels). Single runs with background load: differences of a few tenths of a millisecond are noise.
 
 ### 2026-10-18 — C++ viewer, CPU path, Apple M5 Pro (18 cores), `Single_01.sze`
 `anno1503 --view` (C++, SDL3 window, release build, vsync at 120 Hz, window 2560 × 1600 pixels; chunk workers on 9 threads, frames on 18), average of the 2 s report after the chunks are built, original water:

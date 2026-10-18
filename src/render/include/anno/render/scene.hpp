@@ -15,6 +15,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -159,6 +160,9 @@ class Scene {
 
     /// The sea pattern of `group`, rendered on first use (thread-safe).
     const sea::SeaPattern* sea(std::size_t group) const;
+    /// The sea pattern of `group` if it has been rendered already (never
+    /// blocks).
+    [[nodiscard]] const sea::SeaPattern* sea_if_ready(std::size_t group) const;
     /// Whether island `index` has water objects below / above the waterline.
     [[nodiscard]] std::pair<bool, bool> has_water_objects(std::size_t index) const;
     /// The sprites of `layer` touching `rect` at time_ms, in draw order,
@@ -211,6 +215,8 @@ class Scene {
     struct SeaSlot {
         std::once_flag once;
         std::optional<sea::SeaPattern> pattern;
+        /// Set (release) once `pattern` is final; read by sea_if_ready.
+        std::atomic<bool> ready{false};
     };
 
     const sea::IslandWater* island_water(std::size_t i) const;

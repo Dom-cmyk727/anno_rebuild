@@ -195,7 +195,16 @@ const sea::SeaPattern* Scene::sea(std::size_t group) const {
     SeaSlot& s = seas_[group];
     std::call_once(s.once, [&] {
         s.pattern = sea::SeaPattern::build(anlagen, group, lift, textures.water(), sprites);
+        s.ready.store(true, std::memory_order_release);
     });
+    return s.pattern ? &*s.pattern : nullptr;
+}
+
+const sea::SeaPattern* Scene::sea_if_ready(std::size_t group) const {
+    const SeaSlot& s = seas_[group];
+    if (!s.ready.load(std::memory_order_acquire)) {
+        return nullptr;
+    }
     return s.pattern ? &*s.pattern : nullptr;
 }
 

@@ -33,6 +33,8 @@ if(ANNO_HAVE_WGPU)
   anno_embed_text(${_gen}/gpu_wgsl.cpp kGpuWgsl ${CMAKE_CURRENT_SOURCE_DIR}/shaders/gpu.wgsl)
   anno_embed_text(${_gen}/fluid_wgsl.cpp kFluidWgsl ${CMAKE_CURRENT_SOURCE_DIR}/shaders/fluid.wgsl)
   add_library(anno_render_gpu
+    src/gpu.cpp
+    src/gpu_fluid.cpp
     src/wgpu.cpp
     ${_gen}/gpu_wgsl.cpp
     ${_gen}/fluid_wgsl.cpp
@@ -43,7 +45,8 @@ if(ANNO_HAVE_WGPU)
   anno_target_defaults(anno_render_gpu)
   if(ANNO_BUILD_TESTS)
     add_executable(anno_render_gpu_tests tests/main.cpp tests/gpu_test.cpp)
-    target_link_libraries(anno_render_gpu_tests PRIVATE anno_render_gpu doctest::doctest)
+    target_link_libraries(anno_render_gpu_tests PRIVATE anno_render_gpu anno_test_support
+      doctest::doctest)
     anno_target_defaults(anno_render_gpu_tests)
     # One GPU case at a time: each opens its own device.
     anno_add_doctest(anno_render_gpu_tests PROPERTIES RESOURCE_LOCK gpu)

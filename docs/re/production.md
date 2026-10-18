@@ -68,6 +68,14 @@ After the table: for PRODTYPE 226/227 (`ROHSTWACHS`/`ROHSTDUERR`) with stage cou
 
 The floats (`T0`, `T1`, `I0`, `I1`, display rates) exist only in the file and in the load-time conversion; the simulation uses the integers. (Load-time float use: §8.)
 
+**Exact order (read 2026-10-18 at `0x10009627`–`0x10009717`):**
+- `q0 = 256/T0` stays on the FPU stack; `+0x210 = __ftol(q0 + 0.5)`.
+- `q1 = 256/T1'` is also stored to an f32 (`fsts 0x1c(%esp)`); `+0x212 = __ftol(q1 + 0.5)`.
+- `+0x202 = __ftol(q0 · I0)` with the unrounded `q0`; `+0x204 = __ftol(f32(q1) · I1)`.
+- So the table's "`trunc(I·256/T)`" is shorthand for these products.
+
+Results are stored with 16-bit moves, except the `T·128` values, which use 32-bit moves. The 24-bit-precision case is OQ-032. **Confirmed.**
+
 ### 2.4 Other `HEAD` fields used here
 `HEAD` loader `0x10009334`–`0x100094cd`: byte 0x10 → `+0x66` (stage count `S`; slot `+0x7c`), byte 0x18 → `+0x6e` (`k`; slot `+0x80`), byte 0x19 → `+0x77` (fertility influence, property `0x2e`, §4.2), bytes 3/4/5/6 → `+0x20/+0x1f/+0x1e/+0x21` and u16 8 → `+0x1c` = **build cost**: bricks, wood, tools, marble, gold (slot `+0xcc(0, goods)` returns the byte for goods 0x29–0x2c, `(1)` gold, `(2, i)` the `PROD3` running costs). **Confirmed** (offsets); "build cost" is **likely** (weaver: 300 gold, 3 tools, 4 wood; Kontor 350/5/12; P).
 

@@ -56,7 +56,10 @@ TEST_CASE("F2: weaver's hut with 5 t of wool") {
     const auto r = step(w, weaver, now);
     CHECK(r.made[0] == 0);
     CHECK(r.status == sim::Status::MissingInput);
-    CHECK(r.message);
+    // A message is only due after the condition has lasted 45,000 ticks.
+    CHECK_FALSE(r.message);
+    CHECK(r.blocked_changed);
+    CHECK(w.blocked);
 }
 
 TEST_CASE("F3: proportional production from less than one step of input") {
@@ -165,12 +168,31 @@ TEST_CASE("step gate: one step per 500 ticks, the timer advances by exactly 500"
     CHECK(r.made.empty());
 }
 
-TEST_CASE("status messages repeat only after the interval or on a new code") {
+TEST_CASE("status messages: due after the interval, then on every report (0x10072ed0)") {
     sim::StatusTracker s;
-    CHECK(s.report(sim::Status::MissingInput, 1000, sim::kRepeatWorkshop));
-    CHECK_FALSE(s.report(sim::Status::MissingInput, 2000, sim::kRepeatWorkshop));
-    CHECK(s.report(sim::Status::MissingInput, 1000 + sim::kRepeatWorkshop, sim::kRepeatWorkshop));
-    CHECK(s.report(sim::Status::StorageFull, 47000, sim::kRepeatWorkshop));
+    const std::uint32_t rep = sim::kRepeatWorkshop;
+    // A new (higher) code starts the time; no message before `rep` ticks.
+    CHECK_FALSE(s.report(sim::Status::MissingInput, 1000, rep));
+    CHECK(s.code == sim::Status::MissingInput);
+    CHECK_FALSE(s.report(sim::Status::MissingInput, 1000 + rep - 1, rep));
+    CHECK(s.report(sim::Status::MissingInput, 1000 + rep, rep));
+    CHECK(s.icons == 0b10);
+    // The time becomes t − rep: due again at every later report.
+    CHECK(s.report(sim::Status::MissingInput, 1000 + rep + 500, rep));
+    // A lower code is ignored; a higher one restarts the time.
+    CHECK_FALSE(s.report(sim::Status::None, 99999, rep));
+    CHECK_FALSE(s.report(sim::Status::StorageFull, 50000, rep));
+    CHECK(s.code == sim::Status::StorageFull);
+    // The time is 16 bits: elapsed wraps (50000 + 45000 − 65536).
+    CHECK(s.report(sim::Status::StorageFull, 50000 + rep, rep));
+    // Production clears codes 1–3 only if one of their icons is shown.
+    s.clear(0x0E);
+    CHECK(s.code == sim::Status::None);
+    CHECK(s.icons == 0);
+    sim::StatusTracker quiet;
+    quiet.report(sim::Status::MissingInput, 0, rep); // never raised: no icon
+    quiet.clear(0x0E);
+    CHECK(quiet.code == sim::Status::MissingInput);
 }
 
 TEST_CASE("F8: growing fields and forests") {
@@ -191,6 +213,23 @@ TEST_CASE("F8: growing fields and forests") {
     // 20 parity flips of t / 7750: the 20th flip happens at t = 155,000.
     CHECK(changed_at == 156000);
     CHECK((tile.phase & 0x3F) == 0);
+    // k = 0 (ROHSTDUERR-like, S = 5): advances after 5 flips; the parity bit
+    // is cleared with the counter (andb $0x80, 0x1008b6ca).
+    sim::ProductionType dry;
+    dry.growth_period = 1000;
+    dry.stages = 5;
+    dry.stage_shift = 0;
+    sim::GrowthTile d{714, 0x80};
+    int flips = 0;
+    for (std::uint32_t t = 500; flips < 10; t += 500) {
+        ++flips;
+        if (sim::grow(d, dry, t)) {
+            break;
+        }
+    }
+    CHECK(flips == 5);
+    CHECK(d.object == 715);
+    CHECK(d.phase == 0x80);
     // A type without a growth period never grows.
     sim::GrowthTile still{104, 0};
     CHECK_FALSE(sim::grow(still, sim::ProductionType{}, 999999));
@@ -203,6 +242,10 @@ TEST_CASE("F10: warehouse capacity") {
     CHECK(c.add(9, 300) == 100);
     CHECK(c.stock[9] == 12800);
     CHECK(c.add(sim::kOriginalWarehouseGoods, 5) == 0); // not a warehouse good
+    // A stock above the capacity is lowered to it (u32 wrap of cap − stock).
+    c.stock[3] = 13000;
+    CHECK(c.add(3, 10) == static_cast<std::uint32_t>(12800 - 13000));
+    CHECK(c.stock[3] == 12800);
     CHECK(c.remove(9, 20000) == 12800);
     CHECK(c.stock[9] == 0);
 }
@@ -249,6 +292,10 @@ TEST_CASE("F1: production types of all Anlagen.dat entries") {
     CHECK(types.at(712).display_rate0 == 49);
     CHECK(types.at(104).growth_period == 24000);
     CHECK(types.at(714).growth_period == 62000);
+    // u16 period: ROHSTDUERR 706 computes 66,000, stored as 464 (+0x1fe).
+    CHECK(types.at(706).growth_period == 464);
+    CHECK(types.at(706).display_rate0 == 6620);
+    CHECK(types.at(824).kind == sim::BuildingClass::FurTrapper);
     // The two entries whose integers would differ at x87 24-bit precision
     // (docs/sim/production.md): the 53/64-bit values.
     CHECK(need(1010)[1] == 6);
@@ -263,6 +310,7 @@ TEST_CASE("F1: production types of all Anlagen.dat entries") {
         }
         if (t.kind == sim::BuildingClass::Farm) {
             CHECK_MESSAGE(t.output_per_step[0] != 0, "farm " << id);
+            CHECK_MESSAGE(t.input_per_step[0] != 0, "farm " << id);
         }
     }
 }

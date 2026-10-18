@@ -30,7 +30,8 @@ Name looked up in the kind-`0x1e` table (1–416). Values used by production (P:
 | 3 | `MINE` | mine | 1203, 1205, 1206, 1210, 1212, 1214, 1216, 1217 |
 | 4, 8, 10 | `WEIDETIER`, `STEINMETZ`, `SCHAFFARM` | farm | 3011…, 803/804, 807 |
 | 5 | `JAGDHAUS` | own class | 805 |
-| 6, 16 | `FISCHER`, `PELZJAEGER` | farm variants | 810, 824 |
+| 6 | `FISCHER` | farm (same tick `0x1006ea90`) | 810 |
+| 16 | `PELZJAEGER` | own tick `0x1006e5d0` (vtable `0x100c2bf0`; corrected 2026-10-18) | 824 |
 | 9 | `UNIVERSAL` | two-line farm | 809 small farm |
 | 13, 14 | `STEINBRUCH`, `EISLOCH` | base (no own tick) | 1201, 1208, 1218, 1220 |
 | 17 | `HANDWERKWAFFEN` | two-output workshop | 1006, 1012, 1036 |
@@ -112,11 +113,21 @@ carriers_out = number of non-empty carrier slots
 if carriers_out < type.max_figures(0) and n_in > 0: send a carrier (job 0x33, figure type list[0], §5.1)
 ```
 
-So production is **proportional**: with 50–100 % of one step's inputs in stock, a reduced amount is made; below 50 % nothing. `out` is checked against the capacity only before the step, so it can exceed the capacity by up to one step. The "blocked" flag change is reported through city slot `+0x18` → slot `+0x168` (event `{type id, x, y, rotation}`). Status helper `0x10072ed0` (status code, `t`, repeat interval) raises the player message only when the code changes or the interval has passed; for code 1 it skips the message when the missing input is a field crop (goods 0x38–0x4b) or an animal (0x89–0x8d) (`0x10071f40`, code 2 `0x10072390`). **Confirmed.**
+So production is **proportional**: with 50–100 % of one step's inputs in stock, a reduced amount is made; below 50 % nothing. `out` is checked against the capacity only before the step, so it can exceed the capacity by up to one step. In both status paths, after the status call, the "blocked" flag (building `+0x0c` bit 3) is set if it was clear, and the city is notified through city slot `+0x18` → slot `+0x168` (event `{type id, x, y, rotation, blocked}`; `0x10068276`–`0x10068330`); production clears it and notifies likewise. **Confirmed.**
 
-`HANDWERKWAFFEN` (`0x10068a70`, vtable `0x100c2d1c`): the same, but the step's amount is split between two outputs by a byte at `+0x2c` (default `0x40` = half): output 0 gets `rate0 · (split·ratio >> 7) >> 7`, output 1 gets `rate1 · ((128 − split)·ratio >> 7) >> 7`; each output has its own full check and its own activity average. **Confirmed** (decompile), split semantics **likely**.
+**Status helper `0x10072ed0` (code, `t`, repeat, input index)** (corrected 2026-10-18; read instruction by instruction):
+- A lower code than the current one (`+0x0d >> 5`) is ignored.
+- A higher code stores the u16 time via slot `+0x120(t)` (workshop `+0x22`, farm `+0x20`) and the code.
+- `elapsed = (t − slot+0x124()) & 0xffff`. While `repeat > elapsed` nothing more happens, so a message is due only after the condition has lasted `repeat` ticks.
+- When due:
+  - code 1, unless the input is a crop (goods 0x38–0x4b) or an animal (0x89–0x8d), calls `0x10071f40`; code 2 calls `0x10072390`. A zero result turns the status into code 3.
+  - Then `0x10073010(code, 1)` raises the icon/message, and the time is set to `t − repeat`, so the message stays due at every later report.
+- Production calls `0x10072fb0(0x0e)`. If one of the icon bits 1–3 is set, it drops the current code (when it is 1, 2 or 3) and removes those icons (`0x10073010(i, 0)`).
+- The meaning of `0x10071f40` and `0x10072390` is open. **Confirmed** (control flow).
 
-### 4.2 Farm family (`PLANTAGE`, `WEIDETIER`, `STEINMETZ`, `SCHAFFARM`, `FISCHER`, `PELZJAEGER`) — `0x1006ea90`
+PRODTYPE 12 `HANDWERKDUAL` (`0x10068a70`, vtable `0x100c8150`; corrected 2026-10-18: `HANDWERKWAFFEN`, vtable `0x100c2d1c`, has its own tick `0x10069550`, not read): the same, but the step's amount is split between two outputs by a byte at `+0x2c` (default `0x40` = half): output 0 gets `rate0 · (split·ratio >> 7) >> 7`, output 1 gets `rate1 · ((128 − split)·ratio >> 7) >> 7`; each output has its own full check and its own activity average. **Confirmed** (decompile), split semantics **likely**.
+
+### 4.2 Farm family (`PLANTAGE`, `WEIDETIER`, `STEINMETZ`, `SCHAFFARM`, `FISCHER`) — `0x1006ea90`
 Fields: `+0x18` output, `+0x1a` reserved, `+0x1c` raw stock (harvested, filled by the workers via slot `+0xc0` = `0x1006ee70`), `+0x1e` activity, `+0x22` switched on, `+0x24…+0x34` up to 5 workers out. Per step (**confirmed**):
 
 ```
@@ -149,7 +160,14 @@ if parity != stored bit 6:
         notify island slot +0x188(position, 0xce)                 # redraw
 ```
 
-So an object advances to the next id after `S · 2^k` parity flips, i.e. after `S · 2^k · P/2 = T0 · 500` `t` (= `T0` seconds, likely): 712 grain field → 713 after 310 s, forest 104 → 105 after 480 s (P: `T0` values; arithmetic confirmed). Because only the parity is compared, a flip is lost if two happen between visits (`P/2 < 2000`); the corpus minimum among growing items is `P/2` = 7750 (712) (P). Ripe objects (713 `ROHSTOFF`, `WARE` = `GETREIDE`; 105, `WARE` = `BAUM`) are what the farm workers harvest (**likely**; harvest amount not traced, Open). `ROHSTDUERR` (714/715) is the drought variant (`k` = 0, `P` = 62 000) (P).
+So an object advances to the next id after `S · 2^k` parity flips, i.e. after `S · 2^k · P/2 = T0 · 500` `t` (= `T0` seconds, likely): 712 grain field → 713 after 310 s, forest 104 → 105 after 480 s (P: `T0` values; arithmetic confirmed). Because only the parity is compared, a flip is lost if two happen between visits (`P/2 < 2000`). That happens in the original data (corrected 2026-10-18; the earlier claim of a minimum of 7750 was wrong). `P` is a u16 (`movw` at `0x100088fd`, computed in u32), giving these small `P/2` values:
+- 125: entries 356–364;
+- 232: the `ROHSTDUERR` entries 706, 718, 726, 734, 738, whose 66,000 is stored as 464;
+- 500: entry 754;
+- 1,500: entry 354;
+- 1,750: entry 756.
+
+(P) Ripe objects (713 `ROHSTOFF`, `WARE` = `GETREIDE`; 105, `WARE` = `BAUM`) are what the farm workers harvest (**likely**; harvest amount not traced, Open). `ROHSTDUERR` (714/715) is the drought variant (`k` = 0, `P` = 62 000) (P).
 
 **Fertility.** `0x10084370` rebuilds the island's fertility nibble grid (`+0x18`, low 4 bits, 0–10 — the `FRUCHTBAR` scale) from `Wachstum.dat`: per tile `p = Proz[GFXID >> 2]` (the `Wachstum.dat` table built by `AnnoGame` `0x10006a80` indexed by texture id and cell `u`, `v` — the `GFXID` bits without rotation; exposed as game property `0x2e`); if the tile holds a raw-material object (PRODTYPE 225–256) whose `HEAD[0x19]` value `v ≠ 0`, `p` is blended towards `v` (`(p + 3v)/4` if `p < v`, else `(v + 3p)/4`); then `b = (p + 5) / 10`, and the stored value is `min(10, Σ w·b / 12)` over a 5 × 5 neighbourhood with per-climate weights at `0x100ca008` (25 bytes per climate; climate byte at island `+0xc0`). **Confirmed** (code + table). Which code reads fertility for planting or growth is not traced (Open).
 
@@ -188,7 +206,7 @@ Per goods number `g < 0x38`: 12-byte record at city `+0x334 + 12g`: u32 stock (8
 **`wegspeed.dat` is not read.** No module (`*.dll`, `1503Startup.exe`) contains the strings `wegspeed`, `speed`, `Mask` or a key `Un`; the only `Ob` is unrelated (P, byte search). The same holds for `Highmap.dat`. **Likely** (a file read through a computed name would still need its keys). Road speed, if any, is elsewhere (Open).
 
 ## 6. Status and running state that stops production (summary)
-Switched off (`+0x24`/`+0x22`/`+0x20` byte, set by slot `+0xc8` → `0x10072a60`), flags bit 4/5, output at capacity (status 2), inputs below half a step (status 1), deposit empty (mines), single-worker farm with the worker away. Status repeat intervals: 45000 `t` (workshop, full), 60000 `t` (farm, missing), 30000 `t` (mine, missing). **Confirmed.**
+Switched off (`+0x24`/`+0x22`/`+0x20` byte, set by slot `+0xc8` → `0x10072a60`), flags bit 4/5, output at capacity (status 2), inputs below half a step (status 1), deposit empty (mines), single-worker farm with the worker away. Status repeat intervals (time a condition must last before its message, §4.1): 45000 `t` (workshop; farm full), 60000 `t` (farm, missing), 30000 `t` (mine, missing). **Confirmed.**
 
 ## 7. Goods numbers and names
 
@@ -212,7 +230,7 @@ The goods number is the index into `AnnoGame`'s goods-name table (`0x10013be0`, 
 - `Texte.dat` `[WARE_*]` lists are positional over the named goods of a range: `[WARE_ROHSTOFF]` 21 = goods 1–6, 9–23; `[WARE_BEDARF]` 14 = 26–39; `[WARE_BAUMAT]` 4 = 41–44; `[WARE_WAFFEN]` 8 = 46–53; `[WARE_ANBAU]` 12 = 56–67; `[WARE_INFRA]` 14 = 76–89; `[WARE_SOLDAT]` 20 = 96–115; `[WARE_SCHIFF]` 8 = 122–129. P (counts and English names line up one by one, e.g. 12 `FLEISCH` = "Cattle"); the View code walks the goods table with kind `0x20` while reading these sections (`View` ~`0x10087880`) — **likely** (partly resolves OQ-029 f).
 
 ## 8. Floating point (determinism)
-- **Load time only, production data:** `AnnoGame` `0x100095c7`–`0x10009717` converts the `PROD3` floats with x87 `fmul`/`fdiv`/`fadd 0.5` and `__ftol` (`0x10016d60`, truncation) — constants 128.0 (`0x10021850`), 256.0 (`0x1002184c`), 0.5 (`0x100214ac`). The results are integers in the type object; production, growth, fertility and city stock code use no floats (**confirmed** for `0x100680b0`, `0x1006ea90`, `0x1006def0`, `0x1008b5f0`, `0x10084370`, `0x1002da50`; `0x1006f660`/`0x10068a70` decompile shows none). A rebuild should precompute the integers exactly from the file's binary floats (power-of-two products are exact; `256/T + 0.5` and `I·256/T` need care near integers) and check them against fixture F1.
+- **Load time only, production data:** `AnnoGame` `0x100095c7`–`0x10009717` converts the `PROD3` floats with x87 `fmul`/`fdiv`/`fadd 0.5` and `__ftol` (a 64-bit `fistp` returning the low 32 bits: non-finite values give 0; `0x10016d60`, truncation) — constants 128.0 (`0x10021850`), 256.0 (`0x1002184c`), 0.5 (`0x100214ac`). The results are integers in the type object; production, growth, fertility and city stock code use no floats (**confirmed** for `0x100680b0`, `0x1006ea90`, `0x1006def0`, `0x1008b5f0`, `0x10084370`, `0x1002da50`; `0x1006f660`/`0x10068a70` decompile shows none). A rebuild should precompute the integers exactly from the file's binary floats (power-of-two products are exact; `256/T + 0.5` and `I·256/T` need care near integers) and check them against fixture F1.
 - **Display only:** properties `0x454`, `0x455`, `0x468` and the per-minute value (`+0x20c`) as floats.
 - **Simulation-relevant floats:** figure types keep speed and other `LOGIC` values as floats (`AnnoGame` `0x1000fe00`–`0x10010394`; slot `+0x78` multiplies by the speed), and the road search callback converts float positions with `__ftol` (`AnnoWelt` `0x1005a914`/`0x1005a926`, `__ftol` = `0x100b5f90`, truncation). Figure movement is therefore float-based in the original; `AnnoWelt` has 584 `__ftol` calls and ~7,100 x87 instructions overall (P, `objdump` count). This is the determinism risk for transport.
 

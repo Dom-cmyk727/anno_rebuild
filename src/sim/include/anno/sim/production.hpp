@@ -22,9 +22,11 @@ inline constexpr std::uint32_t kTon = 256;
 /// Runtime class of a building type, by PRODTYPE (D: AnnoWelt.dll factory
 /// 0x10024010; docs/re/production.md §2.1, §3).
 enum class BuildingClass {
-    Workshop,          ///< HANDWERK
-    TwoOutputWorkshop, ///< HANDWERKWAFFEN (and PRODTYPE 12)
-    Farm,              ///< PLANTAGE, WEIDETIER, STEINMETZ, SCHAFFARM, FISCHER, PELZJAEGER
+    Workshop,          ///< HANDWERK (tick 0x100680b0)
+    TwoOutputWorkshop, ///< HANDWERKDUAL, PRODTYPE 12 (tick 0x10068a70; not implemented)
+    WeaponsWorkshop,   ///< HANDWERKWAFFEN (tick 0x10069550; not implemented)
+    Farm,              ///< PLANTAGE, WEIDETIER, STEINMETZ, SCHAFFARM, FISCHER (tick 0x1006ea90)
+    FurTrapper,        ///< PELZJAEGER (own tick 0x1006e5d0; not implemented)
     Mine,              ///< MINE
     SmallFarm,         ///< UNIVERSAL (two farm lines)
     Market,            ///< HAUPT, MARKT, KONTOR, MARKTKOMBI
@@ -52,7 +54,8 @@ struct ProductionType {
     std::vector<std::uint32_t> max_figures, figure_type_count;
     std::vector<std::uint32_t> figure_ids;
     /// Growth (ROHSTWACHS/ROHSTDUERR with more than one stage): stage count
-    /// S (HEAD[0x10]), shift k (HEAD[0x18]), period P in ticks (0 = none).
+    /// S (HEAD[0x10]), shift k (HEAD[0x18]), period P in ticks, a u16 as in
+    /// the original (type +0x1fe; 0 = none).
     std::uint32_t stages = 0, stage_shift = 0, growth_period = 0;
     /// Display rate of line 0 and 1 in 8.8 tons per minute (type +0x20c).
     std::uint32_t display_rate0 = 0, display_rate1 = 0;
@@ -72,13 +75,27 @@ enum class Status : std::uint8_t {
     StorageFull = 2,  ///< "storage full"
 };
 
-/// Raises a player message only when the code changes or the repeat
-/// interval has passed since the last message (D: 0x10072ed0).
+/// A building's status code, status icons and status time (D: building
+/// +0x0d bits 5–7 code, bits 0–4 icons; u16 time via slots +0x120/+0x124;
+/// helper 0x10072ed0, clear 0x10072fb0). A message is due only after a
+/// condition has lasted `repeat` ticks, and then on every later report (the
+/// time is set to t − repeat); a lower code than the current one is ignored;
+/// a higher one restarts the time.
 struct StatusTracker {
     Status code = Status::None;
-    std::uint32_t last_t = 0;
-    /// Records `s` at `t`; whether a message is raised.
+    /// Icon bits: bit c is set when a message for code c was raised.
+    std::uint8_t icons = 0;
+    std::uint16_t time = 0;
+    /// Reports status `s` at `t`; whether a message is raised now. Not
+    /// modelled: before raising, code 1 (for inputs that are not crops,
+    /// goods 0x38–0x4b, or animals, 0x89–0x8d) and code 2 call checks
+    /// (0x10071f40, 0x10072390) whose failure turns the message into code 3;
+    /// their meaning is not traced (docs/sim/production.md).
     bool report(Status s, std::uint32_t t, std::uint32_t repeat);
+    /// Clears the codes in `mask` (bit per code) whose icon is shown: if any
+    /// icon of the mask is set, each code of the mask is dropped if current,
+    /// and its icon removed (0x10072fb0; production calls it with 0x0e).
+    void clear(std::uint8_t mask);
 };
 
 /// Status message repeat intervals in ticks (D: docs/re/production.md §6).
@@ -93,6 +110,9 @@ struct StepResult {
     Status status = Status::None;
     /// Whether the status raises a player message (StatusTracker).
     bool message = false;
+    /// The "blocked" flag changed (the city is notified: city slot +0x18 →
+    /// slot +0x168 with {type id, x, y, rotation, blocked}).
+    bool blocked_changed = false;
     /// 8.8 output made (per output for two-output workshops).
     std::vector<std::uint32_t> made;
     /// The building sends a carrier / worker now.
@@ -130,9 +150,12 @@ struct Farm {
     std::uint16_t last = 0;
     bool switched_on = true;
     bool suspended = false;
+    bool blocked = false;
     std::uint32_t out = 0; ///< output stock, 8.8
     std::uint32_t raw = 0; ///< harvested raw stock, 8.8
-    std::uint32_t activity = 0;
+    /// Activity average: a u16 in the original (+0x1e, addw), which wraps for
+    /// farms averaging more than 16 per step; kept 16-bit to match.
+    std::uint16_t activity = 0;
     std::uint32_t workers_out = 0;
     StatusTracker status;
 };
@@ -163,10 +186,16 @@ struct CityStock {
     /// tons, 0 → 50 t).
     std::uint32_t capacity = 50 * kTon;
 
-    /// Adds up to `amount` of goods `g`, clipped so stock ≤ capacity; returns
-    /// what was added.
+    /// Adds `amount` of goods `g`; if the result would exceed the capacity,
+    /// the stock is set to the capacity instead (u32 arithmetic as the
+    /// original: a stock above the capacity is lowered to it). Returns the
+    /// amount the stock changed by, wrapped to u32 like the original's.
+    /// Goods numbers ≥ stock.size() are refused (as 0x1002da50 refuses
+    /// g ≥ 0x38).
     std::uint32_t add(std::uint32_t g, std::uint32_t amount);
     /// Removes up to `amount`, clipped at the stock; returns what was removed.
+    /// The original remover has no goods-number check; refusing goods ≥
+    /// stock.size() here is a bounds deviation.
     std::uint32_t remove(std::uint32_t g, std::uint32_t amount);
 };
 

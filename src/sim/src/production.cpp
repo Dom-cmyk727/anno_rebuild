@@ -11,14 +11,16 @@ namespace fig = formats::figuren;
 
 namespace {
 
-/// MSVC __ftol (x87 fistp with truncation): the value truncated toward
-/// zero, or the "integer indefinite" 0x80000000 when it is not finite or
-/// outside int32 (Intel SDM, FIST/FISTP).
+/// MSVC __ftol (AnnoGame.dll 0x10016d60): fistp to a 64-bit integer with
+/// truncation, returning its low 32 bits. Non-finite values and values
+/// outside int64 give the "integer indefinite" 0x8000000000000000, i.e. 0
+/// (Intel SDM, FISTP).
 std::uint32_t ftol(double v) {
-    if (!std::isfinite(v) || v >= 2147483648.0 || v <= -2147483649.0) {
-        return 0x80000000U;
+    if (!std::isfinite(v) || v >= 9223372036854775808.0 || v < -9223372036854775808.0) {
+        return 0;
     }
-    return static_cast<std::uint32_t>(static_cast<std::int32_t>(std::trunc(v)));
+    return static_cast<std::uint32_t>(
+        static_cast<std::uint64_t>(static_cast<std::int64_t>(std::trunc(v))));
 }
 
 /// The low 16 bits, as the loader stores most results (movw).
@@ -59,12 +61,18 @@ BuildingClass class_of(const std::string& p) {
     if (p == "HANDWERK") {
         return BuildingClass::Workshop;
     }
-    if (p == "HANDWERKWAFFEN") {
+    if (p == "HANDWERKDUAL") {
         return BuildingClass::TwoOutputWorkshop;
     }
+    if (p == "HANDWERKWAFFEN") {
+        return BuildingClass::WeaponsWorkshop;
+    }
     if (p == "PLANTAGE" || p == "WEIDETIER" || p == "STEINMETZ" || p == "SCHAFFARM" ||
-        p == "FISCHER" || p == "PELZJAEGER") {
+        p == "FISCHER") {
         return BuildingClass::Farm;
+    }
+    if (p == "PELZJAEGER") {
+        return BuildingClass::FurTrapper;
     }
     if (p == "MINE") {
         return BuildingClass::Mine;
@@ -108,8 +116,8 @@ production_type(const fig::Entry& entry) {
     // (x87 at 53-bit precision = double; docs/sim/production.md).
     const float T0 = f32_at(p, 0x08);
     float T1 = f32_at(p, 0x0c);
-    if (T1 == 0.0F) {
-        T1 = T0; // fcomps 0.0; equal → T1 = T0
+    if (!(T1 != 0.0F)) {
+        T1 = T0; // fcomps 0.0: equal or unordered (NaN) sets C3 → T1 = T0
     }
     const float I0 = f32_at(p, 0x10), I1 = f32_at(p, 0x14);
     t.time0_128 = ftol(static_cast<double>(T0) * 128.0);
@@ -134,26 +142,56 @@ production_type(const fig::Entry& entry) {
     }
     t.stages = (*head)[0x10];
     t.stage_shift = (*head)[0x18];
-    // Growth period (D: 0x100088b0) and the display rate derived from it
-    // (0x100096ad–0x100096db, 0xEA6000 = 15,360,000 = 60,000 · 256).
-    if (t.kind == BuildingClass::GrowingItem && t.stages > 1 && t.stage_shift < 31) {
-        const std::uint64_t div = (std::uint64_t{1} << t.stage_shift) * t.stages * 128;
-        t.growth_period = static_cast<std::uint32_t>(std::uint64_t{t.time0_128} * 1000 / div);
+    // Growth period (D: 0x100088b0): u32 arithmetic (shll masks the shift to
+    // 5 bits, imull/divl wrap), stored as u16. Then the display rate from it
+    // (0x100096ad–0x100096db: signed division of 0xEA6000 = 15,360,000 =
+    // 60,000 · 256), only when the u16 period is not 0.
+    if (t.kind == BuildingClass::GrowingItem && t.stages >= 2) {
+        const std::uint32_t div = ((1U << (t.stage_shift & 31U)) * t.stages) << 7;
+        if (div != 0) {
+            t.growth_period = low16((t.time0_128 * 1000U) / div);
+        }
         if (t.growth_period != 0) {
-            t.display_rate0 = low16(static_cast<std::uint32_t>(
-                15360000ULL / ((std::uint64_t{1} << t.stage_shift) * t.stages * t.growth_period)));
+            const auto d = static_cast<std::int32_t>((1U << (t.stage_shift & 31U)) * t.stages *
+                                                     t.growth_period);
+            if (d != 0) {
+                t.display_rate0 = low16(static_cast<std::uint32_t>(15360000 / d));
+            }
         }
     }
     return std::optional<ProductionType>(std::move(t));
 }
 
 bool StatusTracker::report(Status s, std::uint32_t t, std::uint32_t repeat) {
-    const bool raise = s != code || t - last_t >= repeat;
-    if (raise) {
-        code = s;
-        last_t = t;
+    if (s < code) {
+        return false;
     }
-    return raise;
+    if (s > code) {
+        time = static_cast<std::uint16_t>(t);
+        code = s;
+    }
+    const auto elapsed = static_cast<std::uint16_t>(static_cast<std::uint16_t>(t) - time);
+    if (repeat > elapsed) {
+        return false;
+    }
+    icons = static_cast<std::uint8_t>(icons | (1U << static_cast<unsigned>(code)));
+    time = static_cast<std::uint16_t>(t - repeat);
+    return true;
+}
+
+void StatusTracker::clear(std::uint8_t mask) {
+    if ((icons & mask & 0x1FU) == 0) {
+        return;
+    }
+    for (unsigned c = 0; c < 4; ++c) {
+        if ((mask & (1U << c)) == 0) {
+            continue;
+        }
+        if (static_cast<unsigned>(code) == c) {
+            code = Status::None;
+        }
+        icons = static_cast<std::uint8_t>(icons & ~(1U << c));
+    }
 }
 
 namespace {
@@ -210,10 +248,15 @@ StepResult workshop_step(Workshop& w, const ProductionType& type, std::uint32_t 
     r.made.assign(w.out.size(), 0);
     if (n_in > 0 && ratio < 64) {
         r.status = Status::MissingInput;
-        r.message = w.status.report(r.status, t, kRepeatWorkshop);
     } else if (w.out[0] >= at(type.capacity, 0)) {
         r.status = Status::StorageFull;
+    }
+    if (r.status != Status::None) {
         r.message = w.status.report(r.status, t, kRepeatWorkshop);
+        // The blocked flag is set (and the city told) on the transition
+        // (0x10068276–0x10068330).
+        r.blocked_changed = !w.blocked;
+        w.blocked = true;
     } else {
         const std::uint32_t made = at(type.output_per_step, 0) * ratio >> 7;
         w.out[0] += made;
@@ -222,7 +265,8 @@ StepResult workshop_step(Workshop& w, const ProductionType& type, std::uint32_t 
         for (std::size_t i = 0; i < n_in; ++i) {
             w.in[i] -= std::min(w.in[i], at(type.input_per_step, i) * ratio >> 7);
         }
-        w.status.code = Status::None;
+        w.status.clear(0x0E);
+        r.blocked_changed = w.blocked;
         w.blocked = false;
     }
     r.send_figure = w.carriers_out < at(type.max_figures, 0) && n_in > 0;
@@ -238,7 +282,7 @@ StepResult farm_step(Farm& f, const ProductionType& type, std::uint32_t t) {
     if (!f.switched_on) {
         return r;
     }
-    f.activity = f.activity * 255 >> 8;
+    f.activity = static_cast<std::uint16_t>(f.activity * 255U >> 8);
     if (f.suspended) {
         return r;
     }
@@ -261,9 +305,16 @@ StepResult farm_step(Farm& f, const ProductionType& type, std::uint32_t t) {
             f.raw -= std::min(f.raw, need * ratio >> 7);
             made = rate * ratio >> 7;
             f.out += made;
-            f.activity += made << 4;
-            f.status.code = Status::None;
+            f.activity = static_cast<std::uint16_t>(f.activity + (made << 4));
+            f.status.clear(0x0E);
+            r.blocked_changed = f.blocked;
+            f.blocked = false;
         }
+    }
+    if (r.status != Status::None) {
+        // As the workshop (D: 0x1006ecc9, 0x1006ed2a).
+        r.blocked_changed = !f.blocked;
+        f.blocked = true;
     }
     r.made = {made};
     if ((max_w > 1 || made == 0) && f.workers_out < max_w && rate != 0 && need != 0) {
@@ -282,26 +333,30 @@ bool grow(GrowthTile& tile, const ProductionType& type, std::uint32_t t) {
     if (parity == ((tile.phase >> 6) & 1U)) {
         return false;
     }
-    std::uint32_t counter = ((tile.phase & 0x3FU) + 1) & 63U;
-    bool changed = false;
+    const std::uint32_t counter = ((tile.phase & 0x3FU) + 1) & 63U;
     if (counter % (1U << type.stage_shift) == 0 && counter >= (type.stages << type.stage_shift)) {
+        // Next growth object; counter and parity bit are cleared, bit 7 kept
+        // (andb $0x80 at 0x1008b6ca).
         tile.object += 1;
-        counter = 0;
-        changed = true;
+        tile.phase = static_cast<std::uint8_t>(tile.phase & 0x80U);
+        return true;
     }
     tile.phase =
         static_cast<std::uint8_t>((tile.phase & 0x80U) | (std::uint32_t{parity} << 6U) | counter);
-    return changed;
+    return false;
 }
 
 std::uint32_t CityStock::add(std::uint32_t g, std::uint32_t amount) {
     if (g >= stock.size()) {
         return 0;
     }
-    const std::uint32_t room = stock[g] < capacity ? capacity - stock[g] : 0;
-    const std::uint32_t added = std::min(amount, room);
-    stock[g] += added;
-    return added;
+    // D: 0x1002da76–0x1002da85: if capacity < stock + amount (u32), amount =
+    // capacity − stock (u32, wraps when the stock is above the capacity).
+    if (capacity < stock[g] + amount) {
+        amount = capacity - stock[g];
+    }
+    stock[g] += amount;
+    return amount;
 }
 
 std::uint32_t CityStock::remove(std::uint32_t g, std::uint32_t amount) {

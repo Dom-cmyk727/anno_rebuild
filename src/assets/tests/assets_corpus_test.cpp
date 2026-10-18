@@ -2,8 +2,8 @@
 //
 // Digests: FNV-1a 64 over every decoded image in a fixed order (per image
 // u16 width LE, u16 height LE, the RGBA bytes; a failed image adds
-// FF FF FF FF). The expected values are those of the Rust reference
-// implementation (crates/assets, 2026-10-17), so the port is pixel-identical
+// FF FF FF FF). The expected values are printed by the Rust reference
+// (crates/assets/examples/digest.rs, 2026-10-17), so the port is pixel-identical
 // on the whole corpus; docs/render/assets.md lists the order and the counts.
 #include <algorithm>
 #include <array>

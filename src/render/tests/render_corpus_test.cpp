@@ -5,12 +5,14 @@
 // water at 2,500 ms) and a 1600 × 900 region at the centre at group 1 (both
 // styles at 700 ms), ships and soldiers included. Each line holds the
 // FNV-1a 64 digest of the RGBA canvas and the draw counts; the expected
-// lines are those of the Rust reference (crates/render, 2026-10-17), so the
+// lines are those of the Rust reference (crates/render/examples/digest_scene.rs
+// `scenes` and `frames`, 2026-10-17/18), so the
 // C++ renderer is pixel-identical to it (docs/render/iso.md, "Fidelity").
 // Set ANNO_PRINT_DIGESTS=1 to print the lines.
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <doctest/doctest.h>
@@ -236,7 +238,7 @@ TEST_CASE("frames (chunk cache and composition) match the Rust reference") {
     }
     // FrameRenderer with 4 threads, chunks built in the frame; a 1280 × 720
     // view at the centre of each zoom group, 0RGB words hashed as LE bytes.
-    // Expected: Rust reference (crates/render, 2026-10-17).
+    // Expected: crates/render/examples/digest_scene.rs frames.
     const std::vector<std::string> expected = {
         "Single_01.sze g2 t0 Original f435559f2e90bf6c",
         "Single_01.sze g2 t900 Original 56d4608c02dec8b8",
@@ -253,9 +255,9 @@ TEST_CASE("frames (chunk cache and composition) match the Rust reference") {
         "Single_24.sze g1 t0 Original a17a423d76e40c10",
         "Single_24.sze g1 t900 Original 9c02fbfb3767584d",
         "Single_24.sze g1 t900 Enhanced cb6ad0fe841fc554",
-        "Single_24.sze g0 t0 Original 84d6d908bfd83e6a",
-        "Single_24.sze g0 t900 Original 84d6d908bfd83e6a",
-        "Single_24.sze g0 t900 Enhanced 84d6d908bfd83e6a",
+        "Single_24.sze g0 t0 Original 6b07c0d4d77df178",
+        "Single_24.sze g0 t900 Original b9a7aaa3f213ac65",
+        "Single_24.sze g0 t900 Enhanced 56f35854554ef7ce",
     };
     const auto felder_buf = anno::test::read_file(*dir / "Textures" / "Felder.tex");
     const auto anl_buf = anno::test::read_file(*dir / "Anlagen.dat");
@@ -273,7 +275,9 @@ TEST_CASE("frames (chunk cache and composition) match the Rust reference") {
         render::FrameRenderer fr(4);
         for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{0}}) {
             const auto b = *scene.bounds(group);
-            const render::Rect view{b.x + b.w / 2 - 640, b.y + b.h / 2 - 360, 1280, 720};
+            // Single_24's centre at group 0 is all land: move to a coast.
+            const int dx = std::string_view(name) == "Single_24.sze" && group == 0 ? 2000 : 0;
+            const render::Rect view{b.x + b.w / 2 - 640 + dx, b.y + b.h / 2 - 360, 1280, 720};
             for (const auto& [time, style] :
                  {std::pair{std::uint64_t{0}, render::WaterStyle::Original},
                   std::pair{std::uint64_t{900}, render::WaterStyle::Original},

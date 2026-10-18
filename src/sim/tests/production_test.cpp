@@ -1,16 +1,21 @@
 // Production rules against the fixtures of docs/re/production.md §9 (F1–F8,
 // F10). F1 needs ANNO1503_GAME_DIR (Anlagen.dat); the others use the type
 // values F1 names, so they run everywhere.
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iterator>
 #include <map>
+#include <vector>
 
 #include <doctest/doctest.h>
 
 #include <anno/formats/anlagen.hpp>
 #include <anno/sim/production.hpp>
+#include <anno/sim/rng.hpp>
 #include <anno/test/game_dir.hpp>
 
 namespace sim = anno::sim;
@@ -672,6 +677,31 @@ sim::ProductionType small_farm() {
     return t;
 }
 
+/// A world PRNG whose every draw is `r` (a one-entry table).
+sim::WorldRng fixed_rng(std::uint16_t r) {
+    auto rng = sim::WorldRng::from_table({r});
+    REQUIRE(rng.has_value());
+    return *rng;
+}
+
+/// A draw source that returns a fixed sequence (cycling) and counts its
+/// calls. `values` must not be empty.
+struct CountingDraws {
+    std::vector<std::uint16_t> values;
+    std::size_t calls = 0;
+    std::uint16_t next() {
+        REQUIRE(!values.empty());
+        return values[calls++ % values.size()];
+    }
+};
+
+/// One small farm step at tick `now` whose draw (if taken) is `draw`.
+sim::StepResult small_farm_with(sim::SmallFarm& f, const sim::ProductionType& t,
+                                std::uint32_t now, std::uint16_t draw) {
+    auto rng = fixed_rng(draw);
+    return sim::small_farm_step(f, t, now, sim::DrawRef::of(rng));
+}
+
 } // namespace
 
 TEST_CASE("small farm: two farm lines, workers and animals") {
@@ -679,8 +709,8 @@ TEST_CASE("small farm: two farm lines, workers and animals") {
     auto f = sim::make_small_farm(t);
     f.raw = {200, 0};
     // Line 0 makes 13 from 128; line 1 has nothing: an animal of the
-    // climate's kind goes out (polar: 107), no line-0 worker (it made some).
-    auto r = sim::small_farm_step(f, t, 500, 0);
+    // draw's kind goes out (draw 0: 107), no line-0 worker (it made some).
+    auto r = small_farm_with(f, t, 500, 0);
     CHECK(r.made == std::vector<std::uint32_t>{13, 0});
     CHECK(f.raw == std::vector<std::uint32_t>{72, 0});
     CHECK(f.activity == std::vector<std::uint16_t>{208, 0});
@@ -689,20 +719,20 @@ TEST_CASE("small farm: two farm lines, workers and animals") {
     CHECK(r.animal_kind == 107);
     CHECK(r.status == sim::Status::MissingInput);
     // 72 left: ratio 72, 72 · 13 >> 7 = 7 made, all 72 used.
-    r = sim::small_farm_step(f, t, 1000, 0);
+    r = small_farm_with(f, t, 1000, 0);
     CHECK(r.made == std::vector<std::uint32_t>{7, 0});
     CHECK(f.raw[0] == 0);
     CHECK_FALSE(r.send_figure);
     // Line 0 now misses its input too: its worker is due.
-    r = sim::small_farm_step(f, t, 1500, 0);
+    r = small_farm_with(f, t, 1500, 0);
     CHECK(r.made == std::vector<std::uint32_t>{0, 0});
     CHECK(r.send_figure);
     // A line-0 worker out: no second one.
     f.figures_out[0] = 1;
-    CHECK_FALSE(sim::small_farm_step(f, t, 2000, 0).send_figure);
-    // Tundra: kind 110, one at a time; prairie: 109.
-    CHECK(sim::small_farm_step(f, t, 2500, 1).animal_kind == 110);
-    CHECK(sim::small_farm_step(f, t, 3000, 3).animal_kind == 109);
+    CHECK_FALSE(small_farm_with(f, t, 2000, 0).send_figure);
+    // Draw 1: kind 110, one at a time; draw 3: 109.
+    CHECK(small_farm_with(f, t, 2500, 1).animal_kind == 110);
+    CHECK(small_farm_with(f, t, 3000, 3).animal_kind == 109);
 }
 
 TEST_CASE("small farm: animal limits per kind and in total") {
@@ -711,17 +741,17 @@ TEST_CASE("small farm: animal limits per kind and in total") {
     f.line_on[0] = false;
     // Kind 107 (counter 1) allows 2 out.
     f.figures_out = {0, 2, 0, 0, 0};
-    CHECK_FALSE(sim::small_farm_step(f, t, 500, 0).send_animal);
+    CHECK_FALSE(small_farm_with(f, t, 500, 0).send_animal);
     // A step that made something counts one fewer: 100 grass, ratio 128.
     f.raw[1] = 100;
-    auto r = sim::small_farm_step(f, t, 1000, 0);
+    auto r = small_farm_with(f, t, 1000, 0);
     CHECK(r.made[1] == 4);
     CHECK(f.raw[1] == 50);
     CHECK(r.send_animal);
     // All animals together are limited by max_figures(0) = 3.
     f.figures_out = {0, 1, 0, 1, 1};
     f.raw[1] = 0;
-    CHECK_FALSE(sim::small_farm_step(f, t, 1500, 0).send_animal);
+    CHECK_FALSE(small_farm_with(f, t, 1500, 0).send_animal);
 }
 
 TEST_CASE("small farm: a full line keeps the status, suspension ages both lines") {
@@ -731,19 +761,19 @@ TEST_CASE("small farm: a full line keeps the status, suspension ages both lines"
     f.raw = {0, 100};
     // Line 0 full ("storage full", blocked), line 1 produces but does not
     // clear the status, since line 0 is switched on and full.
-    auto r = sim::small_farm_step(f, t, 500, 0);
+    auto r = small_farm_with(f, t, 500, 0);
     CHECK(r.made == std::vector<std::uint32_t>{0, 4});
     CHECK(f.blocked);
     CHECK(f.status.code == sim::Status::StorageFull);
     // Line 0 switched off: line 1 clears it.
     f.line_on[0] = false;
-    r = sim::small_farm_step(f, t, 1000, 0);
+    r = small_farm_with(f, t, 1000, 0);
     CHECK_FALSE(f.blocked);
     CHECK(r.blocked_changed);
     // Suspended: both lines age, even the one switched off.
     f.suspended = true;
     f.activity = {256, 256};
-    r = sim::small_farm_step(f, t, 1500, 0);
+    r = small_farm_with(f, t, 1500, 0);
     CHECK(r.made.empty());
     CHECK(f.activity == std::vector<std::uint16_t>{255, 255});
 }
@@ -758,9 +788,331 @@ TEST_CASE("small farm: missing input never raises its message") {
     f.line_on[1] = false;
     bool any = false;
     for (std::uint32_t k = 1; k <= 400; ++k) { // 200,000 ticks
-        const auto r = sim::small_farm_step(f, t, k * 500, 0);
+        const auto r = small_farm_with(f, t, k * 500, 0);
         any = any || r.message;
         CHECK(r.status == sim::Status::MissingInput);
     }
     CHECK_FALSE(any);
+}
+
+TEST_CASE("small farm draws once per step with line 1 on") {
+    const auto t = small_farm();
+    // Draws 1, 0, 3, 2: kinds 110, 107, 109, 107 (the table is indexed by the
+    // draw, nothing else), exactly one draw per step although both lines work.
+    CountingDraws d{{1, 0, 3, 2}, 0};
+    const auto draw = sim::DrawRef::of(d);
+    auto f = sim::make_small_farm(t);
+    f.raw = {1000, 0};
+    const std::uint16_t kinds[] = {110, 107, 109, 107};
+    for (std::uint32_t k = 1; k <= 4; ++k) {
+        const auto r = sim::small_farm_step(f, t, k * 500, draw);
+        CHECK(d.calls == k);
+        CHECK(r.send_animal);
+        CHECK(r.animal_kind == kinds[k - 1]);
+    }
+
+    // The draw is taken before the limit tests and whatever they say: kind 107
+    // (counter 1) at its limit of 2, then all animals at max_figures(0) = 3,
+    // then a full output store on line 1 (the line step reports first).
+    {
+        CountingDraws one{{0}, 0};
+        auto g = sim::make_small_farm(t);
+        g.line_on[0] = false;
+        g.figures_out = {0, 2, 0, 0, 0};
+        CHECK_FALSE(sim::small_farm_step(g, t, 500, sim::DrawRef::of(one)).send_animal);
+        CHECK(one.calls == 1);
+        g.figures_out = {0, 1, 0, 1, 1};
+        CHECK_FALSE(sim::small_farm_step(g, t, 1000, sim::DrawRef::of(one)).send_animal);
+        CHECK(one.calls == 2);
+        g.figures_out = {0, 0, 0, 0, 0};
+        g.out[1] = 4 << 8;
+        const auto r = sim::small_farm_step(g, t, 1500, sim::DrawRef::of(one));
+        CHECK(r.status == sim::Status::StorageFull);
+        CHECK(one.calls == 3);
+    }
+
+    // Line 1 alone (line 0 off): still one draw per step.
+    CountingDraws solo{{5}, 0};
+    auto g = sim::make_small_farm(t);
+    g.line_on[0] = false;
+    for (std::uint32_t k = 1; k <= 3; ++k) {
+        sim::small_farm_step(g, t, k * 500, sim::DrawRef::of(solo));
+        CHECK(solo.calls == k);
+    }
+}
+
+TEST_CASE("small farm no draw when line 1 off or gated or suspended") {
+    const auto t = small_farm();
+    CountingDraws d{{0}, 0};
+    const auto draw = sim::DrawRef::of(d);
+
+    // Gated: the step gate is closed before the draw (and before everything).
+    auto f = sim::make_small_farm(t);
+    CHECK_FALSE(sim::small_farm_step(f, t, 499, draw).stepped);
+    CHECK(d.calls == 0);
+    // Positive control: the same farm one tick later takes exactly one draw,
+    // and the gate that follows (last is now 500) takes none.
+    CHECK(sim::small_farm_step(f, t, 500, draw).stepped);
+    CHECK(d.calls == 1);
+    CHECK_FALSE(sim::small_farm_step(f, t, 600, draw).stepped);
+    CHECK(d.calls == 1);
+
+    // Line 1 switched off (line 0 works): no draw.
+    d.calls = 0;
+    auto g = sim::make_small_farm(t);
+    g.line_on[1] = false;
+    g.raw = {200, 0};
+    CHECK(sim::small_farm_step(g, t, 500, draw).stepped);
+    CHECK(d.calls == 0);
+
+    // Both lines off: the step runs the gate only.
+    auto h = sim::make_small_farm(t);
+    h.line_on = {false, false};
+    CHECK(sim::small_farm_step(h, t, 500, draw).stepped);
+    CHECK(d.calls == 0);
+
+    // Suspended: both lines age and the step ends before the draw.
+    auto s = sim::make_small_farm(t);
+    s.suspended = true;
+    CHECK(sim::small_farm_step(s, t, 500, draw).stepped);
+    CHECK(d.calls == 0);
+}
+
+TEST_CASE("small farm kind is kind_by_draw indexed by draw modulo table size") {
+    const auto t = small_farm();
+    // The original table: 107 110 107 109 107 109 107 109, index = draw % 8
+    // (the original's draw & 7), for draws above 7 and the largest u16 too.
+    const std::uint16_t original[] = {107, 110, 107, 109, 107, 109, 107, 109};
+    for (std::uint32_t draw = 0; draw < 24; ++draw) {
+        auto f = sim::make_small_farm(t);
+        const auto r = small_farm_with(f, t, 500, static_cast<std::uint16_t>(draw));
+        CHECK(r.send_animal);
+        CHECK(r.animal_kind == original[draw % 8]);
+    }
+    {
+        auto f = sim::make_small_farm(t);
+        CHECK(small_farm_with(f, t, 500, 65535).animal_kind == 109); // 65535 % 8 = 7
+    }
+    {
+        auto f = sim::make_small_farm(t);
+        CHECK(small_farm_with(f, t, 500, 65528).animal_kind == 107); // 65528 % 8 = 0
+    }
+
+    // A 3-entry table: the modulus is the table size, not 8.
+    sim::SmallFarmAnimals three;
+    three.kind_by_draw = {107, 109, 110};
+    const std::uint16_t expect[] = {107, 109, 110, 107, 109, 110, 107, 109};
+    for (std::uint16_t draw = 0; draw < 8; ++draw) {
+        auto f = sim::make_small_farm(t);
+        auto rng = fixed_rng(draw);
+        const auto r = sim::small_farm_step(f, t, 500, sim::DrawRef::of(rng), three);
+        CHECK(r.send_animal);
+        CHECK(r.animal_kind == expect[draw]);
+    }
+    {
+        auto f = sim::make_small_farm(t);
+        auto rng = fixed_rng(65534); // 65534 % 3 = 2
+        CHECK(sim::small_farm_step(f, t, 500, sim::DrawRef::of(rng), three).animal_kind == 110);
+    }
+    {
+        // Draws above 255 use all 16 bits: 300 % 3 = 0 (its low byte, 44, would give 2).
+        auto f = sim::make_small_farm(t);
+        auto rng = fixed_rng(300);
+        CHECK(sim::small_farm_step(f, t, 500, sim::DrawRef::of(rng), three).animal_kind == 107);
+    }
+    {
+        // A table of 11 kinds (107..117, a counter each, a limit each): the
+        // draw is the full unsigned 16-bit value, reduced modulo 11.
+        sim::SmallFarmAnimals eleven;
+        eleven.kind_by_draw.clear();
+        for (std::uint16_t i = 0; i < 11; ++i) {
+            eleven.kind_by_draw.push_back(static_cast<std::uint16_t>(107 + i));
+        }
+        eleven.limit.assign(12, 32);
+        const std::uint16_t draws[] = {0, 10, 11, 255, 256, 40000, 65535};
+        for (const std::uint16_t draw : draws) {
+            auto f = sim::make_small_farm(t, eleven);
+            auto rng = fixed_rng(draw);
+            const auto r = sim::small_farm_step(f, t, 500, sim::DrawRef::of(rng), eleven);
+            CHECK(r.send_animal);
+            CHECK(r.animal_kind == 107 + draw % 11); // 40000 % 11 = 4, 65535 % 11 = 8
+        }
+    }
+    // A one-entry table: every draw picks that kind.
+    sim::SmallFarmAnimals one;
+    one.kind_by_draw = {110};
+    for (const std::uint16_t draw : std::initializer_list<std::uint16_t>{0, 1, 7, 12345}) {
+        auto f = sim::make_small_farm(t);
+        auto rng = fixed_rng(draw);
+        CHECK(sim::small_farm_step(f, t, 500, sim::DrawRef::of(rng), one).animal_kind == 110);
+    }
+}
+
+TEST_CASE("small farm animal data is the draw table and its limits") {
+    // The kind selects the counter and the limit (counter = kind - base):
+    // draw 3 -> kind 109 (counter 3, limit 1), draw 1 -> kind 110 (counter 4,
+    // limit 1), draw 0 -> kind 107 (counter 1, limit 2).
+    const auto t = small_farm();
+    auto f = sim::make_small_farm(t);
+    f.figures_out = {0, 1, 0, 1, 0};
+    CHECK_FALSE(small_farm_with(f, t, 500, 3).send_animal); // 109: 1 out, limit 1
+    CHECK(small_farm_with(f, t, 1000, 1).send_animal);      // 110: none out
+    CHECK(small_farm_with(f, t, 1500, 0).send_animal);      // 107: 1 out, limit 2
+    // The original data.
+    const sim::SmallFarmAnimals a;
+    CHECK(a.base == 106);
+    CHECK(a.kind_by_draw == std::vector<std::uint16_t>{107, 110, 107, 109, 107, 109, 107, 109});
+    CHECK(a.limit == std::vector<std::uint8_t>{1, 2, 0, 1, 1, 0, 0, 32});
+}
+
+TEST_CASE("small farm kinds follow the original world PRNG table") {
+    // Trace test: the real 2048-entry table (msvc rand from seed 1) through a
+    // default WorldRng, one fresh farm per step. The draws run over the whole
+    // u16 range; the expected kind is the original's table lookup `& 7`,
+    // computed here from the independent msvc_rand_sequence.
+    const auto t = small_farm();
+    const auto table = sim::msvc_rand_sequence(2048, 1);
+    const std::uint16_t original[] = {107, 110, 107, 109, 107, 109, 107, 109};
+    sim::WorldRng rng;
+    bool above_255 = false;
+    for (std::size_t k = 1; k <= 200; ++k) {
+        auto f = sim::make_small_farm(t);
+        f.line_on[0] = false;
+        const auto r = sim::small_farm_step(f, t, 500, sim::DrawRef::of(rng));
+        above_255 = above_255 || table[k] > 255;
+        CHECK(r.send_animal);
+        CHECK(r.animal_kind == original[table[k] & 7U]);
+        CHECK(rng.cursor() == k);
+    }
+    CHECK(above_255);
+}
+
+TEST_CASE("small farm tables that cannot give a kind still consume the draw") {
+    const auto t = small_farm();
+    // The config validation rejects these tables; the step is fail-closed.
+    {
+        // An empty table: one draw, nothing sent, no division by zero.
+        sim::SmallFarmAnimals none;
+        none.kind_by_draw.clear();
+        CountingDraws d{{3}, 0};
+        auto f = sim::make_small_farm(t, none);
+        const auto r = sim::small_farm_step(f, t, 500, sim::DrawRef::of(d), none);
+        CHECK(d.calls == 1);
+        CHECK(r.stepped);
+        CHECK_FALSE(r.send_animal);
+    }
+    {
+        // A kind below base (100 < 106): one draw, nothing sent.
+        sim::SmallFarmAnimals low;
+        low.kind_by_draw = {100};
+        CountingDraws d{{0}, 0};
+        auto f = sim::make_small_farm(t, low);
+        CHECK(f.figures_out.size() == 5);
+        const auto r = sim::small_farm_step(f, t, 500, sim::DrawRef::of(d), low);
+        CHECK(d.calls == 1);
+        CHECK_FALSE(r.send_animal);
+    }
+    {
+        // A kind without a limit entry (limit has 3 entries, kind 110 needs index 4).
+        sim::SmallFarmAnimals short_limit;
+        short_limit.limit = {1, 2, 0};
+        CountingDraws d{{1}, 0}; // 110
+        auto f = sim::make_small_farm(t, short_limit);
+        const auto r = sim::small_farm_step(f, t, 500, sim::DrawRef::of(d), short_limit);
+        CHECK(d.calls == 1);
+        CHECK_FALSE(r.send_animal);
+    }
+}
+
+TEST_CASE("small farm counters follow the animal table") {
+    const auto t = small_farm();
+    // The original data needs the original five counters.
+    CHECK(sim::make_small_farm(t).figures_out.size() == 5);
+    // A modded table with a kind at base + 6 gets seven counters and can send it.
+    sim::SmallFarmAnimals wide;
+    wide.kind_by_draw = {112};
+    wide.limit[6] = 2; // the default table allows none of this kind
+    auto f = sim::make_small_farm(t, wide);
+    CHECK(f.figures_out.size() == 7);
+    CountingDraws d{{0}, 0};
+    const auto r = sim::small_farm_step(f, t, 500, sim::DrawRef::of(d), wide);
+    CHECK(r.send_animal);
+    CHECK(r.animal_kind == 112);
+    // A farm built for the original data cannot hold that counter: the draw is
+    // consumed and nothing is sent (no out-of-bounds access).
+    auto g = sim::make_small_farm(t);
+    CountingDraws e{{0}, 0};
+    const auto s = sim::small_farm_step(g, t, 500, sim::DrawRef::of(e), wide);
+    CHECK(e.calls == 1);
+    CHECK_FALSE(s.send_animal);
+}
+
+TEST_CASE("small farm: total animal limit does not count the worker") {
+    const auto t = small_farm();
+    auto f = sim::make_small_farm(t);
+    f.line_on[0] = false;
+    // Counter 0 is line 0's worker: counters 1..4 hold 2 animals, max_figures(0)
+    // is 3, so another animal is allowed (a sum over 0..4 would be 3).
+    f.figures_out = {1, 1, 0, 1, 0};
+    CountingDraws d{{0}, 0}; // kind 107: counter 1 holds 1 of 2
+    CHECK(sim::small_farm_step(f, t, 500, sim::DrawRef::of(d)).send_animal);
+    // Three animals out: no more.
+    f.figures_out = {0, 1, 0, 1, 1};
+    CHECK_FALSE(sim::small_farm_step(f, t, 1000, sim::DrawRef::of(d)).send_animal);
+}
+
+TEST_CASE("small farm: animals need the raw-stock rule 384 / rate >= raw / need") {
+    const auto t = small_farm();
+    // Line 1: rate 4, need 50: 384 / 4 = 96. A line with 5000 grass uses 50 and
+    // keeps 4950 (99 batches, more than 96): no animal while it is well stocked.
+    auto f = sim::make_small_farm(t);
+    f.line_on[0] = false;
+    f.raw[1] = 5000;
+    CountingDraws d{{0}, 0};
+    const auto full = sim::small_farm_step(f, t, 500, sim::DrawRef::of(d));
+    CHECK(full.made[1] == 4);
+    CHECK(f.raw[1] == 4950);
+    CHECK(full.status == sim::Status::None);
+    CHECK(d.calls == 1);
+    CHECK_FALSE(full.send_animal);
+    // Positive control: 4000 grass leaves 3950 (79 batches, within 96).
+    auto g = sim::make_small_farm(t);
+    g.line_on[0] = false;
+    g.raw[1] = 4000;
+    const auto less = sim::small_farm_step(g, t, 500, sim::DrawRef::of(d));
+    CHECK(g.raw[1] == 3950);
+    CHECK(less.send_animal);
+}
+
+TEST_CASE("small farm: an inconsistent farm does nothing and takes no draw") {
+    const auto t = small_farm();
+    CountingDraws d{{0}, 0};
+    const auto draw = sim::DrawRef::of(d);
+    auto f = sim::make_small_farm(t);
+    f.out.pop_back(); // line_on has two entries, out one
+    auto r = sim::small_farm_step(f, t, 500, draw);
+    CHECK_FALSE(r.stepped);
+    CHECK_FALSE(r.send_animal);
+    auto g = sim::make_small_farm(t);
+    g.raw.push_back(0);
+    CHECK_FALSE(sim::small_farm_step(g, t, 500, draw).stepped);
+    auto h = sim::make_small_farm(t);
+    h.activity.clear();
+    CHECK_FALSE(sim::small_farm_step(h, t, 500, draw).stepped);
+    auto k = sim::make_small_farm(t);
+    k.figures_out.clear();
+    CHECK_FALSE(sim::small_farm_step(k, t, 500, draw).stepped);
+    CHECK(d.calls == 0);
+}
+
+TEST_CASE("a default DrawRef is safe and gives 0") {
+    const sim::DrawRef none;
+    CHECK(none() == 0);
+    CHECK(none() == 0);
+    // A farm stepped with it takes kind_by_draw[0] (107), without a crash.
+    const auto t = small_farm();
+    auto f = sim::make_small_farm(t);
+    const auto r = sim::small_farm_step(f, t, 500, none);
+    CHECK(r.send_animal);
+    CHECK(r.animal_kind == 107);
 }

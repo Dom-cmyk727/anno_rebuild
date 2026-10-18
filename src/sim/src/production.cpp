@@ -470,14 +470,24 @@ StepResult fur_trapper_step(Farm& f, const ProductionType& type, std::uint32_t t
     return r;
 }
 
-SmallFarm make_small_farm(const ProductionType& type) {
+SmallFarm make_small_farm(const ProductionType& type, const SmallFarmAnimals& animals) {
     SmallFarm f;
     const std::size_t lines = std::max<std::size_t>(type.outputs.size(), 1);
     f.line_on.assign(lines, true);
     f.out.assign(lines, 0);
     f.raw.assign(lines, 0);
     f.activity.assign(lines, 0);
-    f.figures_out.assign(5, 0);
+    // The original has five counters (+0x2a–+0x2e: line 0's workers and four
+    // animal kinds); a modded table that can pick a kind further up gets the
+    // counters it needs.
+    std::size_t counters = 5;
+    for (const std::uint16_t kind : animals.kind_by_draw) {
+        if (kind >= animals.base) {
+            counters =
+                std::max(counters, static_cast<std::size_t>(kind - animals.base) + std::size_t{1});
+        }
+    }
+    f.figures_out.assign(counters, 0);
     return f;
 }
 
@@ -537,8 +547,15 @@ bool wants_raw(std::uint32_t rate, std::uint32_t need, std::uint32_t raw) {
 } // namespace
 
 StepResult small_farm_step(SmallFarm& f, const ProductionType& type, std::uint32_t t,
-                           std::uint32_t climate, const SmallFarmAnimals& animals) {
+                           DrawRef draw, const SmallFarmAnimals& animals) {
     StepResult r;
+    // The per-line vectors have one size and there is a counter for line 0
+    // (SmallFarm invariant); a farm that breaks it does nothing, so no index
+    // below can leave its vector.
+    if (f.out.size() != f.line_on.size() || f.raw.size() != f.line_on.size() ||
+        f.activity.size() != f.line_on.size() || f.figures_out.empty()) {
+        return r;
+    }
     if (!gate(f.last, t)) {
         return r;
     }
@@ -565,24 +582,38 @@ StepResult small_farm_step(SmallFarm& f, const ProductionType& type, std::uint32
         r.blocked_changed = f.blocked != blocked_before;
         return r;
     };
+    // The original tests only the low 16 bits of what a line made (0x1006f739,
+    // 0x1006f857); made <= rate, so the difference from the full u32 is
+    // unreachable.
+    const auto made_any = [](std::uint32_t made) { return static_cast<std::uint16_t>(made) != 0; };
     if (on(0)) {
         age(0);
         const std::uint32_t made = small_farm_line(f, type, 0, t, r);
         r.made[0] = made;
-        if (made == 0 && f.figures_out[0] < 1 &&
+        if (!made_any(made) && f.figures_out[0] < 1 &&
             wants_raw(at(type.output_per_step, 0), at(type.input_per_step, 0), f.raw[0])) {
             r.send_figure = true;
         }
     }
-    if (on(1) && f.out.size() > 1) {
+    if (on(1)) {
         age(1);
         const std::uint32_t made = small_farm_line(f, type, 1, t, r);
         r.made[1] = made;
-        if (animals.kind_by_climate.empty()) {
+        // The draw is taken here, once, whatever the limits say (D
+        // 0x1006f810–0x1006f838): after the line step, before the limit tests.
+        const std::uint16_t drawn = draw();
+        // The next three returns are defensive: the config validation
+        // rejects an empty table and kinds outside base..base+counters. The
+        // original reads outside its tables there; here the draw is consumed
+        // and nothing is sent (fail-closed deviation, docs/sim/state.md F21).
+        if (animals.kind_by_draw.empty()) {
             return done();
         }
         const std::uint16_t kind =
-            animals.kind_by_climate[(climate & 7U) % animals.kind_by_climate.size()];
+            animals.kind_by_draw[static_cast<std::size_t>(drawn) % animals.kind_by_draw.size()];
+        if (kind < animals.base) {
+            return done();
+        }
         const std::size_t idx = static_cast<std::size_t>(kind - animals.base);
         if (idx >= f.figures_out.size() || idx >= animals.limit.size()) {
             return done();
@@ -590,7 +621,7 @@ StepResult small_farm_step(SmallFarm& f, const ProductionType& type, std::uint32
         // A line that made something counts one animal fewer (0x1006f855–
         // 0x1006f86b); signed as the original.
         const std::int64_t out_now =
-            static_cast<std::int64_t>(f.figures_out[idx]) - (made != 0 ? 1 : 0);
+            static_cast<std::int64_t>(f.figures_out[idx]) - (made_any(made) ? 1 : 0);
         if (static_cast<std::int64_t>(animals.limit[idx]) <= out_now) {
             return done();
         }

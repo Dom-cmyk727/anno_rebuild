@@ -217,13 +217,35 @@ struct Farm {
 /// One farm tick at world tick `t` (D: AnnoWelt.dll 0x1006ea90).
 StepResult farm_step(Farm& f, const ProductionType& type, std::uint32_t t);
 
-/// The small farm's animal choice for line 1 (D: AnnoWelt.dll table at
-/// 0x100c8d48): the world figure kind per island climate (8 entries, climate
-/// & 7), the kind of counter 0 (`base`; counter i counts kind base + i), and
-/// how many animals of each counter may be out at once. Data with the
+/// A source of world PRNG draws without a dependency on the generator (D:
+/// docs/sim/state.md §4.2, §7.4): a context pointer and a function. The
+/// driver forwards to its DrawSource, tests to a WorldRng (DrawRef::of). The
+/// call returns the next u16 draw. A default-constructed DrawRef is a
+/// precondition violation by the driver (there is no draw to give), but it is
+/// fail-safe, not undefined: it returns 0 and never touches the generator.
+struct DrawRef {
+    static std::uint16_t none(void* /*ctx*/) { return 0; }
+    void* ctx = nullptr;
+    std::uint16_t (*fn)(void*) = &DrawRef::none;
+    std::uint16_t operator()() const { return fn != nullptr ? fn(ctx) : std::uint16_t{0}; }
+    /// A DrawRef over any object with `std::uint16_t next()` (WorldRng); `s`
+    /// must outlive the reference.
+    template <class Source>
+    static DrawRef of(Source& s) {
+        return DrawRef{&s, [](void* c) {
+                           return static_cast<std::uint16_t>(static_cast<Source*>(c)->next());
+                       }};
+    }
+};
+
+/// The small farm's animal choice for line 1 (D: AnnoWelt.dll 0x1006f810–
+/// 0x1006f838, table at 0x100c8d48): the world figure kind picked by a world
+/// PRNG draw (NOT the island climate; 8 entries, the original's `draw & 7` is
+/// `draw % size`), the kind of counter 0 (`base`; counter i counts kind base +
+/// i), and how many animals of each counter may be out at once. Data with the
 /// original values as defaults.
 struct SmallFarmAnimals {
-    std::vector<std::uint16_t> kind_by_climate = {107, 110, 107, 109, 107, 109, 107, 109};
+    std::vector<std::uint16_t> kind_by_draw = {107, 110, 107, 109, 107, 109, 107, 109};
     std::uint16_t base = 106;
     std::vector<std::uint8_t> limit = {1, 2, 0, 1, 1, 0, 0, 32};
 };
@@ -232,6 +254,14 @@ struct SmallFarmAnimals {
 /// 0x1006ff80, vtable 0x100c8d60; fields +0x18/+0x1a outputs, +0x1c/+0x1e
 /// activity, +0x24/+0x26 raw stocks, +0x2a–+0x2e figure counters,
 /// +0x2f/+0x30 line switches).
+///
+/// Invariant (kept by make_small_farm; the config validation and the load
+/// path of docs/sim/state.md §3.1 must reject a violation): `line_on`, `out`,
+/// `raw` and `activity` have the same size (one entry per line, two for a
+/// UNIVERSAL type), and `figures_out` has at least one counter plus one per
+/// animal kind the animal table can pick (`kind - base` < `figures_out.size()`).
+/// small_farm_step does nothing at all (no step, no draw) on a SmallFarm that
+/// violates the size part, instead of reading out of bounds.
 struct SmallFarm {
     std::uint16_t last = 0;
     std::vector<bool> line_on;
@@ -246,8 +276,12 @@ struct SmallFarm {
     StatusTracker status;
 };
 
-/// A small farm sized for `type` (one line per output, five counters).
-SmallFarm make_small_farm(const ProductionType& type);
+/// A small farm sized for `type` (one line per output) and `animals`: the
+/// figure counters are the original five (+0x2a–+0x2e, the default), or more
+/// when the table can pick a kind with `kind - base` of 5 or more (a modded
+/// table), so every kind it can pick has a counter.
+SmallFarm make_small_farm(const ProductionType& type,
+                          const SmallFarmAnimals& animals = SmallFarmAnimals{});
 
 /// One small farm tick at world tick `t` (D: AnnoWelt.dll 0x1006f660, line
 /// step 0x1006f440). Each switched-on line works like a farm line against
@@ -255,11 +289,18 @@ SmallFarm make_small_farm(const ProductionType& type);
 /// after 75,000 ticks); a step that would use nothing makes nothing; the
 /// status is cleared unless the other line is switched on and full. Line 0
 /// sends a worker when it made nothing and none is out; line 1 sends an
-/// animal of the island climate's kind within that kind's limit and
+/// animal and needs exactly one world PRNG draw per step in which it is
+/// switched on (after the step gate and the suspension test, before the
+/// limit tests; D 0x1006f810–0x1006f838): the kind is
+/// `animals.kind_by_draw[draw % size]`, limited by that kind's limit and by
 /// max_figures(0) over all animals. Both also need 384 / rate ≥ raw / need.
-/// `climate` is the island's climate (D: island slot +0xb4, & 7).
-StepResult small_farm_step(SmallFarm& f, const ProductionType& type, std::uint32_t t,
-                           std::uint32_t climate,
+/// `draw` is called exactly once in such a step and never otherwise (not
+/// gated, not suspended, line 1 off or absent). An empty table or a kind below
+/// `base` (or beyond the counters or limits) still consumes the draw and sends
+/// nothing: fail-closed where the original reads outside its tables; the
+/// config validation (docs/sim/state.md §3.1) rejects such tables, so these
+/// returns are defensive only.
+StepResult small_farm_step(SmallFarm& f, const ProductionType& type, std::uint32_t t, DrawRef draw,
                            const SmallFarmAnimals& animals = SmallFarmAnimals{});
 
 /// One fur trapper tick (PELZJAEGER, 824; D: AnnoWelt.dll 0x1006e5d0) on

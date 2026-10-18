@@ -241,7 +241,9 @@ TEST_CASE("GPU frames match the CPU path (game files)") {
         return;
     }
     // Same scenes and views as the CPU frame digests (render_corpus_test),
-    // with ships and soldiers (sprites with shadows).
+    // with ships and soldiers loaded (the views hold water sprites but no
+    // shadowed or translucent ones: none reach the GPU sprite path in the
+    // 0200Single corpus; review 2026-10-18).
     // Original water: within 1 per channel of the CPU path (blending
     // rounding; docs/render/iso.md "Fidelity"). Enhanced water is not
     // compared with the CPU: the GPU shades it with the wave simulation, the
@@ -275,6 +277,7 @@ TEST_CASE("GPU frames match the CPU path (game files)") {
                 const auto st =
                     g.render(on_gpu, *scene, view, group, time, style, target.second.get());
                 CHECK(st.chunks_missing == 0);
+                CHECK(st.wave_simulation == (style == render::WaterStyle::Enhanced));
                 sprites += st.sprites;
                 const auto px = g.read_back(target.first.get(), kW, kH);
                 REQUIRE(px.size() == out.size() * 4);
@@ -356,9 +359,229 @@ TEST_CASE("GPU frames: atlas growth, odd sizes and spread uploads (game files)")
     CHECK_FALSE(gpu::GpuFrame::create(*ctx, WGPUTextureFormat_BGRA8UnormSrgb));
 }
 
+TEST_CASE("enhanced water without the wave simulation stays close to the CPU path (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        return;
+    }
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    limits.wave_simulation = false;
+    constexpr int kW = 1280, kH = 720;
+    for (const char* name : {"Single_01.sze", "Single_24.sze"}) {
+        const Loaded loaded = load_scene(*dir, name);
+        const auto& scene = loaded.scene;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE(made);
+        gpu::GpuFrame& g = *made.value();
+        const auto target = g.offscreen_target(kW, kH);
+        render::FrameRenderer cpu(4), on_gpu(4);
+        for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{0}}) {
+            const render::Rect view = digest_view(*scene, name, group, kW, kH);
+            for (const std::uint64_t time : {std::uint64_t{925}, std::uint64_t{1900}}) {
+                std::vector<std::uint32_t> out(std::size_t{kW} * kH);
+                cpu.render(*scene, view, group, time, render::WaterStyle::Enhanced, out.data());
+                g.render(on_gpu, *scene, view, group, time, render::WaterStyle::Enhanced,
+                         target.second.get());
+                const auto px = g.read_back(target.first.get(), kW, kH);
+                REQUIRE(px.size() == out.size() * 4);
+                const auto [max, differ] = difference(out, px);
+                MESSAGE("" << name << " group " << group << " t" << time << ": max " << max << ", "
+                           << differ << " pixels > 2");
+                // Shoreline pixels differ (steep alpha edge amplifies float
+                // differences of the swash); the rest must match.
+                CHECK(differ <= out.size() / 50);
+            }
+        }
+        CHECK(g.errors() == 0);
+    }
+}
+
+TEST_CASE("the wave simulation shows on screen (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        return;
+    }
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    // Same frame with and without the simulation: they must differ (the
+    // simulation is sampled), and only where the sea is.
+    constexpr int kW = 1280, kH = 720;
+    const char* name = "Single_24.sze";
+    const Loaded loaded = load_scene(*dir, name);
+    const auto& scene = loaded.scene;
+    gpu::GpuLimits on, off;
+    on.uploads_per_frame = off.uploads_per_frame = SIZE_MAX;
+    off.wave_simulation = false;
+    auto a = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, on);
+    auto b = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, off);
+    REQUIRE(a);
+    REQUIRE(b);
+    const auto ta = a.value()->offscreen_target(kW, kH);
+    const auto tb = b.value()->offscreen_target(kW, kH);
+    render::FrameRenderer fa(4), fb(4);
+    const render::Rect view = digest_view(*scene, name, 1, kW, kH);
+    for (std::uint64_t t = 1000; t <= 1000 + 33 * 30; t += 33) {
+        const auto st = a.value()->render(fa, *scene, view, 1, t, render::WaterStyle::Enhanced,
+                                          ta.second.get());
+        CHECK(st.wave_simulation);
+    }
+    b.value()->render(fb, *scene, view, 1, 1000 + 33 * 30, render::WaterStyle::Enhanced,
+                      tb.second.get());
+    const auto pa = a.value()->read_back(ta.first.get(), kW, kH);
+    const auto pb = b.value()->read_back(tb.first.get(), kW, kH);
+    REQUIRE(pa.size() == pb.size());
+    std::size_t differ = 0;
+    for (std::size_t i = 0; i < pa.size(); i += 4) {
+        int m = 0;
+        for (std::size_t k = 0; k < 3; ++k) {
+            m = std::max(m, std::abs(int{pa[i + k]} - int{pb[i + k]}));
+        }
+        differ += m > 8 ? 1U : 0U;
+    }
+    MESSAGE("pixels differing with/without the simulation: " << differ);
+    CHECK(differ > 10000);
+    CHECK(a.value()->errors() == 0);
+}
+
+namespace {
+
+struct FluidRun {
+    gpu::Context& ctx;
+    gpu::FluidGpu& g;
+    const anno::render::fluid::DepthFn& depth;
+    void operator()(std::size_t group, std::pair<float, float> centre, float span,
+                    std::uint64_t time_ms) const {
+        WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
+        const gpu::CommandEncoder enc(wgpuDeviceCreateCommandEncoder(ctx.device.get(), &ed));
+        g.update(enc.get(), group, centre, span, time_ms, depth, 2);
+        WGPUCommandBufferDescriptor cd = WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
+        const gpu::CommandBuffer cmd(wgpuCommandEncoderFinish(enc.get(), &cd));
+        const WGPUCommandBuffer raw = cmd.get();
+        wgpuQueueSubmit(ctx.queue.get(), 1, &raw);
+    }
+};
+
+/// Largest |GPU − CPU| over the state of `g` and the largest |u|, |v|.
+std::pair<float, float> compare_state(gpu::Context& ctx, gpu::FluidGpu& g,
+                                      const anno::render::fluid::FluidGrid& cpu, std::uint32_t n) {
+    auto frame = gpu::GpuFrame::create(ctx, WGPUTextureFormat_RGBA8Unorm);
+    REQUIRE(frame);
+    const auto bytes = frame.value()->read_back(g.state_texture(), n, n, 16);
+    REQUIRE(bytes.size() == cpu.state.size() * 16);
+    float max = 0.0F, flow = 0.0F;
+    for (std::size_t i = 0; i < cpu.state.size(); ++i) {
+        for (std::size_t c = 0; c < 4; ++c) {
+            float v = 0.0F;
+            std::memcpy(&v, bytes.data() + 16 * i + 4 * c, 4);
+            max = std::max(max, std::abs(v - cpu.state[i][c]));
+            if (c == 1 || c == 2) {
+                flow = std::max(flow, std::abs(v));
+            }
+        }
+    }
+    return {max, flow};
+}
+
+} // namespace
+
+TEST_CASE("the GPU wave solver: time stepping, skip-ahead, time going back, group change") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    namespace fluid = anno::render::fluid;
+    fluid::FluidConfig cfg;
+    cfg.size = 64;
+    cfg.cells_per_tile = {4, 2, 4};
+    cfg.recentre_cells = 4;
+    const fluid::DepthFn depth = [](float x, float y) {
+        return 16.0F - 2.0F * std::max(x - 2.0F, 0.0F) + 0.3F * std::sin(y * 0.7F);
+    };
+    auto made = gpu::FluidGpu::create(*ctx, cfg);
+    REQUIRE(made);
+    gpu::FluidGpu& g = made.value();
+    const FluidRun run{*ctx, g, depth};
+    const double dt = cfg.dt;
+    run(0, {8.0F, 8.0F}, 0.0F, 1000);
+    CHECK(g.sim_time() == doctest::Approx(1.0));
+    // Normal frame: within one step behind the target, never ahead.
+    run(0, {8.0F, 8.0F}, 0.0F, 1033);
+    CHECK(g.sim_time() <= 1.033 + 1e-9);
+    CHECK(g.sim_time() > 1.033 - dt);
+    // Far behind: skips ahead, ends within one step of the target.
+    run(0, {8.0F, 8.0F}, 0.0F, 61000);
+    CHECK(g.sim_time() <= 61.0 + 1e-9);
+    CHECK(g.sim_time() > 61.0 - dt);
+    // Time went back: restarts there.
+    run(0, {8.0F, 8.0F}, 0.0F, 5000);
+    CHECK(g.sim_time() <= 5.0 + 1e-9);
+    CHECK(g.sim_time() > 5.0 - dt);
+    // Another zoom group: a new window with that group's cells per tile,
+    // filled at the target time.
+    run(1, {8.0F, 8.0F}, 0.0F, 7000);
+    REQUIRE(g.window());
+    CHECK(g.window()->cells_per_tile == 2);
+    CHECK(g.sim_time() == doctest::Approx(7.0));
+    fluid::FluidGrid cpu(cfg, *g.window(), depth, static_cast<float>(g.sim_time()));
+    const auto [max, flow] = compare_state(*ctx, g, cpu, 64);
+    MESSAGE("group-change max " << max);
+    CHECK(max < 1e-4F);
+    CHECK(ctx->errors->load() == 0);
+}
+
+TEST_CASE("the GPU wave solver resizes its window and keeps matching the CPU") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    namespace fluid = anno::render::fluid;
+    fluid::FluidConfig cfg;
+    cfg.size = 100; // not a multiple of 8 or 64: partial workgroups
+    cfg.cells_per_tile = {4, 4, 4};
+    cfg.recentre_cells = 4;
+    cfg.sponge_cells = 8;
+    const fluid::DepthFn depth = [](float x, float y) {
+        return 16.0F - 2.0F * std::max(x - 6.0F, 0.0F) + 0.3F * std::sin(y * 0.7F);
+    };
+    auto made = gpu::FluidGpu::create(*ctx, cfg);
+    REQUIRE(made);
+    gpu::FluidGpu& g = made.value();
+    const FluidRun run{*ctx, g, depth};
+    std::uint64_t time_ms = 1000;
+    // Small first (64), then a larger view: window 100 (clamped to size).
+    run(0, {8.0F, 8.0F}, 0.0F, time_ms);
+    REQUIRE(g.window());
+    CHECK(g.window()->size == 64);
+    time_ms += 33;
+    run(0, {8.0F, 8.0F}, 60.0F, time_ms);
+    REQUIRE(g.window());
+    CHECK(g.window()->size == 100);
+    fluid::FluidGrid cpu(cfg, *g.window(), depth, static_cast<float>(g.sim_time()));
+    for (int frame = 0; frame < 60; ++frame) {
+        const double before = g.sim_time();
+        time_ms += 33;
+        run(0, {8.0F, 8.0F}, 60.0F, time_ms);
+        for (double t = before; t + 1e-9 < g.sim_time();) {
+            t += static_cast<double>(cfg.dt);
+            cpu.step(static_cast<float>(t));
+        }
+    }
+    const auto [max, flow] = compare_state(*ctx, g, cpu, 100);
+    MESSAGE("max " << max << ", largest flow " << flow);
+    CHECK(max < 1e-2F);
+    // The sea moved (u, v are 0 in a still sea; η alone holds the bed −h).
+    CHECK(flow > 0.05F);
+    CHECK(ctx->errors->load() == 0);
+}
+
 TEST_CASE("the GPU wave solver matches the CPU reference") {
-    // Port of gpu_fluid::tests::gpu_matches_cpu_reference: a beach, 40
-    // frames with a recentre after 20, state within 0.01 of FluidGrid.
     auto ctx = device_or_skip();
     if (!ctx) {
         return;
@@ -372,34 +595,23 @@ TEST_CASE("the GPU wave solver matches the CPU reference") {
         return 16.0F - 2.0F * std::max(x - 2.0F, 0.0F) + 0.3F * std::sin(y * 0.7F);
     };
     auto made = gpu::FluidGpu::create(*ctx, cfg);
-    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    REQUIRE(made);
     gpu::FluidGpu& g = made.value();
-    const WGPUDevice d = ctx->device.get();
-    const WGPUQueue q = ctx->queue.get();
-    auto run = [&](std::pair<float, float> centre, std::uint64_t time_ms) {
-        WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
-        const gpu::CommandEncoder enc(wgpuDeviceCreateCommandEncoder(d, &ed));
-        g.update(enc.get(), 0, centre, 0.0F, time_ms, depth, 2);
-        WGPUCommandBufferDescriptor cd = WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
-        const gpu::CommandBuffer cmd(wgpuCommandEncoderFinish(enc.get(), &cd));
-        const WGPUCommandBuffer raw = cmd.get();
-        wgpuQueueSubmit(q, 1, &raw);
-    };
+    const FluidRun run{*ctx, g, depth};
     std::uint64_t time_ms = 1000;
-    // The first update creates the window at the current time.
-    run({8.0F, 8.0F}, time_ms);
-    REQUIRE(g.window());
+    run(0, {8.0F, 8.0F}, 0.0F, time_ms);
+    const double t0 = g.sim_time();
     std::optional<fluid::FluidGrid> cpu;
     cpu.emplace(cfg, *g.window(), depth, static_cast<float>(g.sim_time()));
+    // The initial state, to show the sea changed.
+    const fluid::FluidGrid initial = *cpu;
     for (int frame = 0; frame < 40; ++frame) {
-        // Move the view after 20 frames so new strips are filled.
         const std::pair<float, float> centre =
             frame < 20 ? std::pair{8.0F, 8.0F} : std::pair{10.0F, 9.5F};
         const double before = g.sim_time();
-        run(centre, time_ms);
+        run(0, centre, 0.0F, time_ms);
         const fluid::FluidWindow w = *g.window();
         if (!(cpu->window == w)) {
-            // Same strips as the GPU fill.
             fluid::FluidWindow old = cpu->window;
             const auto rects = old.recentre(centre, cfg.recentre_cells);
             cpu->window = old;
@@ -411,23 +623,217 @@ TEST_CASE("the GPU wave solver matches the CPU reference") {
             t += static_cast<double>(cfg.dt);
             cpu->step(static_cast<float>(t));
         }
+        if (frame == 20) {
+            // Right after the recentre: the new strips match closely.
+            const auto [m20, f20] = compare_state(*ctx, g, *cpu, 64);
+            MESSAGE("after the recentre: max " << m20);
+            CHECK(m20 < 1e-3F);
+        }
         time_ms += 33;
     }
-    auto frame = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
-    REQUIRE(frame);
-    const auto bytes = frame.value()->read_back(g.state_texture(), 64, 64, 16);
-    REQUIRE(bytes.size() == cpu->state.size() * 16);
-    float max = 0.0F, largest = 0.0F;
-    for (std::size_t i = 0; i < cpu->state.size(); ++i) {
-        for (std::size_t c = 0; c < 4; ++c) {
-            float v = 0.0F;
-            std::memcpy(&v, bytes.data() + 16 * i + 4 * c, 4);
-            max = std::max(max, std::abs(v - cpu->state[i][c]));
-            largest = std::max(largest, std::abs(cpu->state[i][c]));
-        }
+    // The simulation advanced with the clock (40 frames × 33 ms).
+    CHECK(g.sim_time() - t0 > 1.2);
+    float changed = 0.0F;
+    for (std::size_t i = 0; i < initial.state.size(); ++i) {
+        changed = std::max(changed, std::abs(cpu->state[i][1] - initial.state[i][1]));
     }
-    MESSAGE("max difference " << max << ", largest state value " << largest);
+    CHECK(changed > 0.01F);
+    const auto [max, flow] = compare_state(*ctx, g, *cpu, 64);
     CHECK(max < 1e-2F);
-    // The waves moved: a still sea would make the comparison trivial.
-    CHECK(largest > 0.1F);
+}
+
+TEST_CASE("read_back reports a failed copy") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
+    REQUIRE(made);
+    const auto t = made.value()->offscreen_target(16, 16);
+    const auto before = made.value()->errors();
+    // Larger than the texture: the copy is invalid.
+    const auto px = made.value()->read_back(t.first.get(), 32, 32);
+    CHECK(px.empty());
+    CHECK(made.value()->errors() > before);
+}
+
+TEST_CASE("a frame recorded with errors is counted, not submitted") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        return;
+    }
+    const Loaded loaded = load_scene(*dir, "Single_01.sze");
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
+    REQUIRE(made);
+    WGPUTextureDescriptor desc = WGPU_TEXTURE_DESCRIPTOR_INIT;
+    desc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc;
+    desc.dimension = WGPUTextureDimension_2D;
+    desc.size = {64, 64, 1};
+    desc.format = WGPUTextureFormat_BGRA8Unorm;
+    desc.mipLevelCount = 1;
+    desc.sampleCount = 1;
+    const gpu::Texture t(wgpuDeviceCreateTexture(ctx->device.get(), &desc));
+    WGPUTextureViewDescriptor vd = WGPU_TEXTURE_VIEW_DESCRIPTOR_INIT;
+    const gpu::TextureView v(wgpuTextureCreateView(t.get(), &vd));
+    render::FrameRenderer frames(2);
+    made.value()->render(frames, *loaded.scene, {0, 0, 64, 64}, 2, 0, render::WaterStyle::Original,
+                         v.get());
+    // The RGBA8 pipelines cannot draw into a BGRA8 target: wgpu-native 29
+    // aborts when such a command buffer is submitted; it must be dropped
+    // and counted instead.
+    CHECK(made.value()->errors() > 0);
+}
+
+TEST_CASE("atlas growth keeps earlier sprites, first frame at a late sea step (game files)") {
+    const auto dir = anno::test::game_dir();
+    auto ctx = device_or_skip();
+    if (!dir || !ctx) {
+        return;
+    }
+    const char* name = "Single_24.sze";
+    const Loaded loaded = load_scene(*dir, name);
+    const auto& scene = loaded.scene;
+    gpu::GpuLimits limits;
+    limits.atlas_size = 256;
+    limits.uploads_per_frame = SIZE_MAX;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    constexpr int kW = 1280, kH = 720;
+    const auto target = g.offscreen_target(kW, kH);
+    render::FrameRenderer cpu(4), on_gpu(4);
+    // Group 2 fills layer 0, group 1 grows the atlas, group 2 again reads
+    // the copied layer. Times late in the animation cycle: the first frame
+    // of a group must have the whole pattern.
+    int k = 0;
+    for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{2}}) {
+        const std::uint64_t time = 2450 + 1000 * static_cast<std::uint64_t>(k++);
+        const render::Rect view = digest_view(*scene, name, group, kW, kH);
+        std::vector<std::uint32_t> out(std::size_t{kW} * kH);
+        cpu.render(*scene, view, group, time, render::WaterStyle::Original, out.data());
+        g.render(on_gpu, *scene, view, group, time, render::WaterStyle::Original,
+                 target.second.get());
+        const auto px = g.read_back(target.first.get(), kW, kH);
+        REQUIRE(px.size() == out.size() * 4);
+        const auto [max, differ] = difference(out, px);
+        MESSAGE("group " << group << " t" << time << ": max " << max << ", " << differ);
+        CHECK(max <= 1);
+    }
+    CHECK(g.errors() == 0);
+}
+
+TEST_CASE("uploads spread over frames: stand-ins first, then the real chunks (game files)") {
+    const auto dir = anno::test::game_dir();
+    auto ctx = device_or_skip();
+    if (!dir || !ctx) {
+        return;
+    }
+    const char* name = "Single_24.sze";
+    const Loaded loaded = load_scene(*dir, name);
+    const auto& scene = loaded.scene;
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = 1;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    constexpr int kW = 1001, kH = 601;
+    const auto target = g.offscreen_target(kW, kH);
+    render::FrameRenderer cpu(4), on_gpu(4);
+    const render::Rect view = digest_view(*scene, name, 1, kW, kH);
+    std::vector<std::uint32_t> out(std::size_t{kW} * kH);
+    cpu.render(*scene, view, 1, 0, render::WaterStyle::Original, out.data());
+    g.render(on_gpu, *scene, view, 1, 0, render::WaterStyle::Original, target.second.get());
+    const auto first = g.read_back(target.first.get(), kW, kH);
+    const auto [max0, differ0] = difference(out, first);
+    MESSAGE("first frame: max " << max0 << ", " << differ0);
+    // One chunk per frame: the first frame is incomplete (stand-ins).
+    CHECK(differ0 > 0);
+    for (int f = 0; f < 12; ++f) {
+        g.render(on_gpu, *scene, view, 1, 0, render::WaterStyle::Original, target.second.get());
+    }
+    const auto px = g.read_back(target.first.get(), kW, kH);
+    const auto [max, differ] = difference(out, px);
+    MESSAGE("after 13 frames: max " << max << ", " << differ);
+    CHECK(max <= 1);
+    CHECK(g.errors() == 0);
+}
+
+TEST_CASE("a frame can be destroyed with GPU work in flight (game files)") {
+    const auto dir = anno::test::game_dir();
+    auto ctx = device_or_skip();
+    if (!dir || !ctx) {
+        return;
+    }
+    const Loaded loaded = load_scene(*dir, "Single_24.sze");
+    for (int round = 0; round < 3; ++round) {
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
+        REQUIRE(made);
+        render::FrameRenderer frames(4);
+        auto t = made.value()->offscreen_target(1920, 1080);
+        const auto view = digest_view(*loaded.scene, "Single_24.sze", 0, 1920, 1080);
+        for (std::uint64_t f = 0; f < 4; ++f) {
+            made.value()->render(frames, *loaded.scene, view, 0, 1000 + 500 * f,
+                                 render::WaterStyle::Enhanced, t.second.get());
+        }
+        // No wait: frame, fluid, atlas and target go while the GPU works.
+        made.value().reset();
+        t.second.reset();
+        t.first.reset();
+    }
+    poll(*ctx, true);
+    CHECK(ctx->errors->load() == 0);
+}
+
+TEST_CASE("stand-in chunks show the open sea (game files)") {
+    const auto dir = anno::test::game_dir();
+    auto ctx = device_or_skip();
+    if (!dir || !ctx) {
+        return;
+    }
+    // Single_01's digest views are open sea: a stand-in looks exactly like
+    // the built chunk there.
+    const char* name = "Single_01.sze";
+    const Loaded loaded = load_scene(*dir, name);
+    const auto& scene = loaded.scene;
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = 1;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    constexpr int kW = 1280, kH = 720;
+    const auto target = g.offscreen_target(kW, kH);
+    render::FrameRenderer cpu(4), on_gpu(4);
+    const render::Rect view = digest_view(*scene, name, 1, kW, kH);
+    std::vector<std::uint32_t> out(std::size_t{kW} * kH);
+    cpu.render(*scene, view, 1, 300, render::WaterStyle::Original, out.data());
+    g.render(on_gpu, *scene, view, 1, 300, render::WaterStyle::Original, target.second.get());
+    const auto px = g.read_back(target.first.get(), kW, kH);
+    const auto [max, differ] = difference(out, px);
+    MESSAGE("first frame with stand-ins: max " << max << ", " << differ);
+    CHECK(max <= 1);
+}
+
+TEST_CASE("device errors after every device owner is gone (use-after-free regression)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    std::pair<gpu::Texture, gpu::TextureView> t;
+    {
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
+        REQUIRE(made);
+        t = made.value()->offscreen_target(16, 16);
+    }
+    ctx.reset();
+    // A validation error on an object of the (released) device.
+    WGPUTextureViewDescriptor vd = WGPU_TEXTURE_VIEW_DESCRIPTOR_INIT;
+    vd.format = WGPUTextureFormat_R32Float;
+    // Before the fix the device's error callback wrote to the freed counter
+    // (ASan: heap-use-after-free in on_uncaptured).
+    const gpu::TextureView bad(wgpuTextureCreateView(t.first.get(), &vd));
+    CHECK(t.first);
 }

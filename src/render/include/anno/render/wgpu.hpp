@@ -77,22 +77,26 @@ using ErrorCount = std::shared_ptr<std::atomic<std::uint64_t>>;
 
 /// An instance, adapter, device and queue.
 struct Context {
+    /// First, so it is destroyed last. The device's error callback holds a
+    /// raw pointer to the counter; context_for also keeps a reference for the
+    /// whole process, because GPU objects (textures, views) keep the device
+    /// alive after every Context and DeviceRef is gone.
+    ErrorCount errors = std::make_shared<std::atomic<std::uint64_t>>(0);
     Instance instance;
     Adapter adapter;
     Device device;
     Queue queue;
     /// "<adapter name> (<backend>)".
     std::string name;
-    ErrorCount errors = std::make_shared<std::atomic<std::uint64_t>>(0);
 };
 
 /// Owned references to a context's instance, device and queue (and its
 /// error count), so a renderer stays valid when the Context is moved.
 struct DeviceRef {
+    ErrorCount errors;
     Instance instance;
     Device device;
     Queue queue;
-    ErrorCount errors;
     explicit DeviceRef(const Context& c);
     DeviceRef(const DeviceRef& o);
     DeviceRef& operator=(const DeviceRef&) = delete;
@@ -130,6 +134,14 @@ formats::Result<ShaderModule, std::string> create_shader(WGPUInstance instance, 
 /// Pops the device's error scope and waits for the answer: empty if the
 /// scope saw no error, else the message (also when no answer came).
 std::string pop_error_scope(WGPUInstance instance, WGPUDevice device);
+
+/// Waits until the work submitted to `queue` is done. Spins on non-blocking
+/// polls (yielding) instead of wgpuDevicePoll(wait): wgpu-native 29's Metal
+/// wait sleeps in 1 ms steps (wgpu-hal 29 metal/device.rs; wgpu-hal 30
+/// waits on a condition variable), which added up to 1 ms to every waited
+/// frame (docs/perf/README.md). Falls back to the blocking poll after
+/// kWaitRounds rounds.
+void wait_idle(WGPUInstance instance, WGPUDevice device, WGPUQueue queue);
 
 /// Maps `buffer` for reading and waits until it is mapped (or failed);
 /// false on failure.

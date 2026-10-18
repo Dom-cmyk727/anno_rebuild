@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <anno/render/gpu_fluid.hpp>
+#include <anno/render/iso.hpp>
 #include <anno/render/shaders.hpp>
 
 namespace anno::render::gpu {
@@ -129,9 +130,28 @@ formats::Result<FluidGpu, std::string> FluidGpu::create(const Context& c, fluid:
 
 formats::Result<FluidGpu, std::string> FluidGpu::create(const DeviceRef& dev,
                                                         fluid::FluidConfig cfg) {
+    const WGPUDevice d = dev.device.get();
+    WGPULimits limits = WGPU_LIMITS_INIT;
+    wgpuDeviceGetLimits(d, &limits);
+    // The window texture, the per-step uniform ring and the zoom groups
+    // must fit the device and the renderer (FluidConfig is data, PLAN §0.1).
+    if (cfg.size < 64 || cfg.size > limits.maxTextureDimension2D) {
+        return "fluid window size " + std::to_string(cfg.size) + " outside 64.." +
+               std::to_string(limits.maxTextureDimension2D);
+    }
+    if (cfg.cells_per_tile.size() < kGroups ||
+        std::find(cfg.cells_per_tile.begin(), cfg.cells_per_tile.end(), 0U) !=
+            cfg.cells_per_tile.end()) {
+        return std::string("fluid cells_per_tile needs a non-zero entry per zoom group");
+    }
+    const std::uint64_t align_bytes =
+        std::max<std::uint64_t>(limits.minUniformBufferOffsetAlignment, kStepBytes);
+    const std::uint64_t ring = align_bytes * std::max(cfg.max_steps, 1U);
+    if (ring > limits.maxBufferSize || ring > UINT32_MAX) {
+        return "fluid max_steps " + std::to_string(cfg.max_steps) + " too large for the device";
+    }
     FluidGpu f;
     f.ref_ = std::make_unique<DeviceRef>(dev);
-    const WGPUDevice d = dev.device.get();
     auto module = create_shader(dev.instance.get(), d, shaders::fluid(), "fluid.wgsl");
     if (!module) {
         return module.error();
@@ -173,10 +193,8 @@ formats::Result<FluidGpu, std::string> FluidGpu::create(const DeviceRef& dev,
     f.params_ = uniform_buffer(d, "fluid params", kParamsBytes);
     const auto pb = params_bytes(cfg, f.comps_);
     wgpuQueueWriteBuffer(dev.queue.get(), f.params_.get(), 0, pb.data(), pb.size());
-    WGPULimits limits = WGPU_LIMITS_INIT;
-    wgpuDeviceGetLimits(d, &limits);
-    f.align_ = std::max<std::uint64_t>(limits.minUniformBufferOffsetAlignment, kStepBytes);
-    f.steps_ = uniform_buffer(d, "fluid steps", f.align_ * std::max(cfg.max_steps, 1U));
+    f.align_ = align_bytes;
+    f.steps_ = uniform_buffer(d, "fluid steps", ring);
     f.cfg_ = std::move(cfg);
     // Small until the first update sizes it to the view.
     f.grid_ = f.make_grid(64);

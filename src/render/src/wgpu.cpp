@@ -2,7 +2,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <mutex>
 #include <string_view>
+#include <thread>
+#include <vector>
 
 #include <anno/render/wgpu.hpp>
 
@@ -178,7 +181,15 @@ formats::Result<Context, std::string> context_for(Instance instance, WGPUSurface
     desc.label = sv("anno1503");
     desc.requiredLimits = &limits;
     desc.uncapturedErrorCallbackInfo.callback = on_uncaptured;
-    // The counter outlives the device: the Context and every DeviceRef hold it.
+    // The callback may fire as long as any object of the device exists, which
+    // can outlive the Context and every DeviceRef: keep the counter for the
+    // process (one small allocation per device; reachable, so no leak report).
+    {
+        static std::mutex keep_mutex;
+        static std::vector<ErrorCount> keep;
+        const std::lock_guard<std::mutex> lock(keep_mutex);
+        keep.push_back(c.errors);
+    }
     desc.uncapturedErrorCallbackInfo.userdata1 = c.errors.get();
     desc.deviceLostCallbackInfo.mode = WGPUCallbackMode_AllowSpontaneous;
     desc.deviceLostCallbackInfo.callback = on_lost;
@@ -287,6 +298,30 @@ std::string pop_error_scope(WGPUInstance instance, WGPUDevice device) {
         return r->value.message.empty() ? std::string("error") : r->value.message;
     }
     return {};
+}
+
+void wait_idle(WGPUInstance instance, WGPUDevice device, WGPUQueue queue) {
+    using P = Pending<WGPUQueueWorkDoneStatus>;
+    WGPUQueueWorkDoneCallbackInfo cb = WGPU_QUEUE_WORK_DONE_CALLBACK_INFO_INIT;
+    cb.mode = WGPUCallbackMode_AllowProcessEvents;
+    cb.callback = [](WGPUQueueWorkDoneStatus status, WGPUStringView, void* u1, void*) {
+        static_cast<P*>(u1)->value = status;
+        P::finish(u1);
+    };
+    auto* p = new P;
+    cb.userdata1 = p;
+    wgpuQueueOnSubmittedWorkDone(queue, cb);
+    for (int i = 0; i < kWaitRounds && p->state.load() != 1; ++i) {
+        wgpuDevicePoll(device, 0U, nullptr);
+        wgpuInstanceProcessEvents(instance);
+        std::this_thread::yield();
+    }
+    if (P::wait(p, instance, device)) {
+        delete p;
+        return;
+    }
+    // No answer yet (a very long frame): block (p is freed by its callback).
+    wgpuDevicePoll(device, 1U, nullptr);
 }
 
 bool map_read(WGPUInstance instance, WGPUDevice device, WGPUBuffer buffer, std::size_t size) {

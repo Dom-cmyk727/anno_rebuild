@@ -46,6 +46,8 @@ struct GpuStats {
     double total_ms = 0;
     /// Animated sprites drawn (water objects below and above the waterline).
     std::size_t sprites = 0;
+    /// The coastal wave simulation ran for this frame (enhanced water).
+    bool wave_simulation = false;
 };
 
 /// Tuning of the compositor (Rust constants; data, PLAN §0.1).
@@ -104,11 +106,14 @@ class GpuFrame {
     /// read back.
     std::pair<Texture, TextureView> offscreen_target(std::uint32_t w, std::uint32_t h) const;
     /// The bytes of `texture` (w × h × bpp, rows packed), waiting for the
-    /// GPU; empty if the read-back failed.
+    /// GPU; empty if the read-back failed (an invalid copy is counted in
+    /// errors(), not submitted).
     std::vector<std::uint8_t> read_back(WGPUTexture texture, std::uint32_t w, std::uint32_t h,
                                         std::uint32_t bpp = 4) const;
     [[nodiscard]] WGPUTextureFormat format() const;
-    /// Uncaptured errors of the device so far (Context::errors).
+    /// Errors of the device so far (Context::errors): uncaptured ones and
+    /// command buffers dropped because recording them failed (render()
+    /// then draws nothing).
     [[nodiscard]] std::uint64_t errors() const;
 
   private:

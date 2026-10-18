@@ -194,6 +194,9 @@ struct GpuFrame::Impl {
     /// Own references to the device (the Context may move or go away).
     std::unique_ptr<DeviceRef> ref;
     GpuLimits limits;
+    /// The device's maxTextureArrayLayers (atlas growth stops there).
+    std::uint32_t max_layers = 1;
+    bool atlas_full_reported = false;
     WGPUTextureFormat format = WGPUTextureFormat_RGBA8Unorm;
     ShaderModule module;
     BindGroupLayout frame_layout, chunk_layout, atlas_layout, empty_layout;
@@ -249,6 +252,24 @@ struct GpuFrame::Impl {
 
     WGPUDevice dev() const { return ref->device.get(); }
     WGPUQueue queue() const { return ref->queue.get(); }
+
+    /// Finishes `enc` and submits it, unless recording raised a validation
+    /// error: wgpu-native 29 aborts the process when an invalid command
+    /// buffer is submitted, so the error is counted (errors()) and the work
+    /// dropped instead. False if nothing was submitted.
+    bool submit(WGPUCommandEncoder enc, const char* what) const {
+        WGPUCommandBufferDescriptor cd = WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
+        wgpuDevicePushErrorScope(dev(), WGPUErrorFilter_Validation);
+        CommandBuffer cmd(wgpuCommandEncoderFinish(enc, &cd));
+        if (const std::string err = pop_error_scope(ref->instance.get(), dev()); !err.empty()) {
+            std::fprintf(stderr, "%s not submitted: %s\n", what, err.c_str());
+            ref->errors->fetch_add(1);
+            return false;
+        }
+        const WGPUCommandBuffer raw = cmd.get();
+        wgpuQueueSubmit(queue(), 1, &raw);
+        return true;
+    }
 
     RenderPipeline pipeline(std::string_view label, WGPUPipelineLayout pl, std::string_view vs,
                             std::string_view fs, const WGPUVertexBufferLayout* buffers,
@@ -481,10 +502,7 @@ struct GpuFrame::Impl {
             dst.texture = a.texture.get();
             const WGPUExtent3D ext = {limits.atlas_size, limits.atlas_size, old->layers};
             wgpuCommandEncoderCopyTextureToTexture(enc.get(), &src, &dst, &ext);
-            WGPUCommandBufferDescriptor cd = WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
-            CommandBuffer cmd(wgpuCommandEncoderFinish(enc.get(), &cd));
-            const WGPUCommandBuffer raw = cmd.get();
-            wgpuQueueSubmit(queue(), 1, &raw);
+            submit(enc.get(), "atlas copy");
             a.place = std::move(old->place);
             a.cursor = old->cursor;
         }
@@ -501,8 +519,9 @@ struct GpuFrame::Impl {
     }
 
     /// Room for w × h texels: shelf packing, growing the array by one layer
-    /// (copying the old layers) when full.
-    std::array<std::uint32_t, 3> atlas_alloc(std::uint32_t w, std::uint32_t h) {
+    /// (copying the old layers) when full; nullopt when the device's layer
+    /// limit is reached (no eviction yet, as the Rust compositor).
+    std::optional<std::array<std::uint32_t, 3>> atlas_alloc(std::uint32_t w, std::uint32_t h) {
         if (!atlas) {
             atlas = new_atlas(1, std::nullopt);
         }
@@ -517,13 +536,21 @@ struct GpuFrame::Impl {
             ++layer;
             x = y = shelf = 0;
         }
+        if (layer >= max_layers) {
+            if (!atlas_full_reported) {
+                std::fprintf(stderr, "sprite atlas full (%u layers of %u²): sprites dropped\n",
+                             max_layers, size);
+                atlas_full_reported = true;
+            }
+            return std::nullopt;
+        }
         atlas->cursor = {layer, x + w, y, std::max(shelf, h)};
         if (layer >= atlas->layers) {
             std::optional<Atlas> old = std::move(atlas);
             atlas.reset();
             atlas = new_atlas(layer + 1, std::move(old));
         }
-        return {layer, x, y};
+        return std::array<std::uint32_t, 3>{layer, x, y};
     }
 
     /// The atlas position of a sprite frame, packing it on first use.
@@ -537,10 +564,12 @@ struct GpuFrame::Impl {
         if (const auto img = scene.sprites.get(scene.anlagen, d.key, *d.frame)) {
             const std::uint32_t w = img->width, h = img->height;
             if (w != 0 && h != 0 && w <= limits.atlas_size && h <= limits.atlas_size) {
-                const auto [layer, x, y] = atlas_alloc(w, h);
-                write_layer(queue(), atlas->texture.get(), layer, x, y, w, h, 4, img->pixels.data(),
-                            img->pixels.size());
-                place = Place{layer, x, y, w, h};
+                if (const auto at = atlas_alloc(w, h)) {
+                    const auto [layer, x, y] = *at;
+                    write_layer(queue(), atlas->texture.get(), layer, x, y, w, h, 4,
+                                img->pixels.data(), img->pixels.size());
+                    place = Place{layer, x, y, w, h};
+                }
             }
         }
         if (atlas) {
@@ -717,6 +746,7 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     Impl& m = *f->impl_;
     m.ref = std::make_unique<DeviceRef>(c);
     m.limits = limits;
+    m.max_layers = std::max(device_limits.maxTextureArrayLayers, 1U);
     m.format = format;
     auto module = create_shader(c, shaders::compositor(), "gpu.wgsl");
     if (!module) {
@@ -853,6 +883,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     // Coastal wave simulation (enhanced water only).
     const bool fluid_on = style == WaterStyle::Enhanced && m.limits.wave_simulation &&
                           m.update_fluid(enc.get(), scene, view, group, time_ms);
+    stats.wave_simulation = fluid_on;
     m.write_frame_uniform(view, group, time_ms, style, scene, fluid_on);
     const BindGroup pass1 = m.frame_bind(nullptr, nullptr);
     const BindGroup pass2 = m.frame_bind(m.under_v.get(), m.terrain_v.get());
@@ -912,17 +943,14 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         wgpuRenderPassEncoderEnd(p);
         wgpuRenderPassEncoderRelease(p);
     }
-    WGPUCommandBufferDescriptor cd = WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
-    CommandBuffer cmd(wgpuCommandEncoderFinish(enc.get(), &cd));
-    const WGPUCommandBuffer raw = cmd.get();
-    wgpuQueueSubmit(m.queue(), 1, &raw);
+    m.submit(enc.get(), "frame");
     stats.encode_ms = ms_since(t);
     stats.total_ms = ms_since(start);
     return stats;
 }
 
 void GpuFrame::wait() const {
-    wgpuDevicePoll(impl_->dev(), 1U, nullptr);
+    wait_idle(impl_->ref->instance.get(), impl_->dev(), impl_->queue());
 }
 
 std::pair<Texture, TextureView> GpuFrame::offscreen_target(std::uint32_t w, std::uint32_t h) const {
@@ -948,10 +976,9 @@ std::vector<std::uint8_t> GpuFrame::read_back(WGPUTexture texture, std::uint32_t
     dst.layout.rowsPerImage = h;
     const WGPUExtent3D ext = {w, h, 1};
     wgpuCommandEncoderCopyTextureToBuffer(enc.get(), &src, &dst, &ext);
-    WGPUCommandBufferDescriptor cd = WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
-    CommandBuffer cmd(wgpuCommandEncoderFinish(enc.get(), &cd));
-    const WGPUCommandBuffer raw = cmd.get();
-    wgpuQueueSubmit(impl_->queue(), 1, &raw);
+    if (!impl_->submit(enc.get(), "read-back")) {
+        return {};
+    }
     if (!map_read(impl_->ref->instance.get(), impl_->dev(), buf.get(), std::size_t{row} * h)) {
         return {};
     }

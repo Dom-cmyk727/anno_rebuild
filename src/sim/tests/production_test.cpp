@@ -696,8 +696,8 @@ struct CountingDraws {
 };
 
 /// One small farm step at tick `now` whose draw (if taken) is `draw`.
-sim::StepResult small_farm_with(sim::SmallFarm& f, const sim::ProductionType& t,
-                                std::uint32_t now, std::uint16_t draw) {
+sim::StepResult small_farm_with(sim::SmallFarm& f, const sim::ProductionType& t, std::uint32_t now,
+                                std::uint16_t draw) {
     auto rng = fixed_rng(draw);
     return sim::small_farm_step(f, t, now, sim::DrawRef::of(rng));
 }

@@ -230,8 +230,7 @@ struct DrawRef {
     std::uint16_t operator()() const { return fn != nullptr ? fn(ctx) : std::uint16_t{0}; }
     /// A DrawRef over any object with `std::uint16_t next()` (WorldRng); `s`
     /// must outlive the reference.
-    template <class Source>
-    static DrawRef of(Source& s) {
+    template <class Source> static DrawRef of(Source& s) {
         return DrawRef{&s, [](void* c) {
                            return static_cast<std::uint16_t>(static_cast<Source*>(c)->next());
                        }};

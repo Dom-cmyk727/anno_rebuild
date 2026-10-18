@@ -546,8 +546,8 @@ bool wants_raw(std::uint32_t rate, std::uint32_t need, std::uint32_t raw) {
 
 } // namespace
 
-StepResult small_farm_step(SmallFarm& f, const ProductionType& type, std::uint32_t t,
-                           DrawRef draw, const SmallFarmAnimals& animals) {
+StepResult small_farm_step(SmallFarm& f, const ProductionType& type, std::uint32_t t, DrawRef draw,
+                           const SmallFarmAnimals& animals) {
     StepResult r;
     // The per-line vectors have one size and there is a counter for line 0
     // (SmallFarm invariant); a farm that breaks it does nothing, so no index

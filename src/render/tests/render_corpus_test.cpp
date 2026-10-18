@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <doctest/doctest.h>
@@ -224,6 +225,30 @@ const std::vector<std::string> kExpected = {
     "N_064x064_0001_0B.scp g1 region Enhanced f24622877f58bc18 drawn=930 units=0",
 };
 
+// Lines that differ on MSVC's UCRT: the enhanced water calls std::exp and
+// std::pow (iso.cpp), which UCRT rounds differently in the last bit from
+// Apple's libm and glibc (as for the wave solver, fluid_test.cpp). Measured
+// 2026-10-18 on Windows 11 26H2 with MSVC 19.44; the Rust reference on the
+// same machine (Rust 1.99.1, x86_64-pc-windows-msvc, `digest_scene scenes`)
+// prints the same line, so C++ = Rust holds on UCRT too. Every other line,
+// including the enhanced lines of scenes with rivers, is identical there.
+// Fallback if more libms diverge: libm-free exp/pow in the enhanced water
+// (docs/render/iso.md, "Fidelity").
+const std::vector<std::pair<std::size_t, std::string>> kUcrt = {
+    {33, "Single_16.sze g2 t2500 Enhanced 7200x4051 b744196ec08d7b3e drawn=8743 inv=239 failed=0 "
+         "units=3"},
+};
+
+std::vector<std::string> expected_lines() {
+    std::vector<std::string> out = kExpected;
+#if defined(_MSC_VER)
+    for (const auto& [i, line] : kUcrt) {
+        out.at(i) = line;
+    }
+#endif
+    return out;
+}
+
 } // namespace
 
 TEST_CASE("scene renders match the Rust reference") {
@@ -238,9 +263,10 @@ TEST_CASE("scene renders match the Rust reference") {
             std::printf("%s\n", l.c_str());
         }
     }
-    REQUIRE(lines.size() == kExpected.size());
+    const std::vector<std::string> expected = expected_lines();
+    REQUIRE(lines.size() == expected.size());
     for (std::size_t i = 0; i < lines.size(); ++i) {
-        CHECK(lines[i] == kExpected[i]);
+        CHECK(lines[i] == expected[i]);
     }
 }
 

@@ -162,9 +162,10 @@ TEST_CASE("fluid beach is stable, breaks and runs up") {
 // match the Rust example bit for bit on the same C library. Expected
 // digests per libm (the forcing digest identifies it): Apple macOS (Apple
 // Silicon, 2026-10-18) and glibc 2.39 (aarch64 and x86_64 alike, Rust 1.75
-// and g++ 13, fluid review 2026-10-18). Other C libraries (MSVC's UCRT) may
-// round those functions differently in the last bit; there the state is
-// checked against the Rust values with a tolerance only.
+// and g++ 13, fluid review 2026-10-18), MSVC's UCRT (Windows 11 26H2, MSVC
+// 19.44 and Rust 1.99.1 x86_64-pc-windows-msvc, 2026-10-18). Other C
+// libraries may round those functions differently in the last bit; there
+// the state is checked against the Rust values with a tolerance only.
 TEST_CASE("fluid matches the Rust reference") {
     const FluidConfig cfg = small({4, 4, 4});
     const fluid::Swell comps = fluid::swell_components(cfg);
@@ -249,13 +250,16 @@ TEST_CASE("fluid matches the Rust reference") {
     // swell, forcing, init, step300, filled, step600 of digest_fluid.rs.
     const std::array<std::uint64_t, 6> digests = {fnv_f32(swell), fnv_f32(samples), init,
                                                   step300,        filled,           step600};
-    const std::array<std::array<std::uint64_t, 6>, 2> known = {{
+    const std::array<std::array<std::uint64_t, 6>, 3> known = {{
         // Apple macOS libm.
         {0x7a4c'207a'7612'c9a9ULL, 0x182b'7b0a'a2d6'41d1ULL, 0x0522'553a'cc2d'39b4ULL,
          0x1543'fb50'aa43'8ec3ULL, 0x7561'931c'd434'1886ULL, 0x811b'61d2'476f'2784ULL},
         // glibc 2.39.
         {0x7a4c'207a'7612'c9a9ULL, 0x4c75'2188'16a7'48e2ULL, 0x2c14'2892'd0bb'57c0ULL,
          0xb2e1'ba66'd842'60c6ULL, 0x8a51'7b3c'a127'9ecdULL, 0x5c79'6f1d'58ea'4fabULL},
+        // MSVC's UCRT.
+        {0x7a4c'207a'7612'c9a9ULL, 0xfefe'eb84'81cd'9f7bULL, 0x8859'adee'c077'd750ULL,
+         0xea77'ca18'908e'904aULL, 0xc49e'31f3'2dc3'0afaULL, 0xf34f'05b6'901d'6dddULL},
     }};
     std::string printed;
     for (const std::uint64_t d : digests) {
@@ -265,10 +269,11 @@ TEST_CASE("fluid matches the Rust reference") {
     }
     MESSAGE("digests" << printed);
     CHECK(digests[0] == known[0][0]);
-#if defined(__APPLE__) || defined(__GLIBC__)
+#if defined(__APPLE__) || defined(__GLIBC__) || defined(_MSC_VER)
     // A known libm: bit-identical with the Rust reference on it.
     const auto* table = digests[1] == known[0][1]   ? &known[0]
                         : digests[1] == known[1][1] ? &known[1]
+                        : digests[1] == known[2][1] ? &known[2]
                                                     : nullptr;
     REQUIRE_MESSAGE(table != nullptr, "forcing digest of an unknown libm: add its Rust digests");
     CHECK(digests == *table);

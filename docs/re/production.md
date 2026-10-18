@@ -34,7 +34,8 @@ Name looked up in the kind-`0x1e` table (1–416). Values used by production (P:
 | 16 | `PELZJAEGER` | own tick `0x1006e5d0` (vtable `0x100c2bf0`; corrected 2026-10-18) | 824 |
 | 9 | `UNIVERSAL` | two-line farm | 809 small farm |
 | 13, 14 | `STEINBRUCH`, `EISLOCH` | base (no own tick) | 1201, 1208, 1218, 1220 |
-| 17 | `HANDWERKWAFFEN` | two-output workshop | 1006, 1012, 1036 |
+| 12 | `HANDWERKDUAL` | two-output workshop (split byte) | none (no entry of the GOG `Anlagen.dat` names it, P) |
+| 17 | `HANDWERKWAFFEN` | two-line weapons workshop | 1006 bows/crossbows, 1012 muskets/ship cannon, 1036 axes/lances |
 | 33–36 | `HAUPT`, `MARKT`, `KONTOR`, `MARKTKOMBI` | market/Kontor | 1301, 1302 |
 | 225–227 | `ROHSTOFF`, `ROHSTWACHS`, `ROHSTDUERR` | scenery items (no building) | 712 grain field (growing), 713 ripe grain, 714/715 dry field, 104/105 forest |
 
@@ -125,7 +126,26 @@ So production is **proportional**: with 50–100 % of one step's inputs in stock
 - Production calls `0x10072fb0(0x0e)`. If one of the icon bits 1–3 is set, it drops the current code (when it is 1, 2 or 3) and removes those icons (`0x10073010(i, 0)`).
 - The meaning of `0x10071f40` and `0x10072390` is open. **Confirmed** (control flow).
 
-PRODTYPE 12 `HANDWERKDUAL` (`0x10068a70`, vtable `0x100c8150`; corrected 2026-10-18: `HANDWERKWAFFEN`, vtable `0x100c2d1c`, has its own tick `0x10069550`, not read): the same, but the step's amount is split between two outputs by a byte at `+0x2c` (default `0x40` = half): output 0 gets `rate0 · (split·ratio >> 7) >> 7`, output 1 gets `rate1 · ((128 − split)·ratio >> 7) >> 7`; each output has its own full check and its own activity average. **Confirmed** (decompile), split semantics **likely**.
+### 4.1a Two-output workshops: `HANDWERKDUAL` and `HANDWERKWAFFEN` (read instruction by instruction 2026-10-18)
+Both are built by constructor `0x100693c0` (size `0x38`): outputs `+0x18`/`+0x1a` (u16), inputs `+0x20`/`+0x22`, activity per line `+0x24`/`+0x26` (u16), line switches `+0x2a`/`+0x2b` (both 1 after construction, `movw $0x101`), split byte `+0x2c` (`0x40`), carrier slots `+0x30`/`+0x34`. PRODTYPE 12 gets vtable `0x100c8150`, 17 `0x100c2d1c` (§3). Both vtables' input priority (`+0xd8`) is the base class's `0x10072870`: like the workshop's `0x10068500` (§5.1) but from the stock alone (`stock / need` below 30 → `0x80`, below 60 → `0x60`, else −1), never 0, so a carrier goes whenever a slot is free. Both ticks share the workshop's gate, suspension test, input ratio, "missing input" path (code 1, 45,000 t), carrier rule, consumption and status clearing (§4.1), with these differences. **Confirmed** (D; disassembled with capstone, `tools/disasm.py`).
+
+**`HANDWERKDUAL` tick `0x10068a70`** (no entry uses it; documented, not implemented):
+- The tick returns after the gate when both switches are 0. Each switched-on line ages its activity (`· 127 >> 7`). The switches gate nothing else.
+- Every line is checked against the output-0 capacity `+0xc0`, not its own. A line that is not full makes `rate_j · (s_j · ratio >> 7) >> 7`, with `s_0 = split` and `s_1 = 128 − split`. The activity grows by `made << 4` (u16).
+- A full line reports code 2 (45,000 t) and sets the blocked flag.
+- The inputs are used up with the full `ratio` as soon as one line made something (`0x10068d16`).
+
+**`HANDWERKWAFFEN` tick `0x10069550`** (implemented, `weapons_workshop_step`):
+- Line *j* **works** when its switch is on and its output goods `g = type+0xac(j)` is available to the owner (`0x10069580`–`0x10069640`):
+  - `owner = city+0x10 → slot +0x1c`;
+  - `b = byte at (owner → slot +0x6c → slot +0x08) + 0x18 + 26·g`;
+  - available if `b = 0`, or if `owner → slot +0xbc → slot +0x08(b)` has bit 1 set.
+  - The meaning of the requirement is **likely** research (OQ-034).
+- No working line: the tick returns after the gate. Only working lines age their activity.
+- The split byte is **not** read. A working line gets the share `0x40` when the other line works, else `0x80`. It is computed as `(((other ? 1 : 0) − 1) & 0x40) + 0x40` on the low byte (`0x1006973d`, `0x10069824`), and that low byte does not depend on the register's upper bits.
+- `made = rate_j · ((share · ratio >> 7) & 0xff) >> 7`, against the output-0 capacity as in DUAL. A full line reports code 2 and sets the blocked flag whether it works or not. A free line that does not work does nothing.
+- If line 0 is full and line 1 produces, the blocked flag is set and cleared in the same step, so the city is notified twice.
+
 
 ### 4.2 Farm family (`PLANTAGE`, `WEIDETIER`, `STEINMETZ`, `SCHAFFARM`, `FISCHER`) — `0x1006ea90`
 Fields: `+0x18` output, `+0x1a` reserved, `+0x1c` raw stock (harvested, filled by the workers via slot `+0xc0` = `0x1006ee70`), `+0x1e` activity, `+0x22` switched on, `+0x24…+0x34` up to 5 workers out. Per step (**confirmed**):

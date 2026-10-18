@@ -9,7 +9,7 @@ anno_target_defaults(anno_sim)
 
 if(ANNO_BUILD_TESTS)
   add_executable(anno_sim_tests tests/main.cpp tests/sim_test.cpp tests/production_test.cpp)
-  target_link_libraries(anno_sim_tests PRIVATE anno_sim doctest::doctest)
+  target_link_libraries(anno_sim_tests PRIVATE anno_sim anno_test_support doctest::doctest)
   anno_target_defaults(anno_sim_tests)
   anno_add_doctest(anno_sim_tests)
 endif()

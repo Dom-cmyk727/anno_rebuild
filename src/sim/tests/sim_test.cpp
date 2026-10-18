@@ -15,6 +15,7 @@
 #include <anno/sim/hash.hpp>
 #include <anno/sim/rng.hpp>
 #include <anno/sim/world.hpp>
+#include <anno/test/game_dir.hpp>
 
 namespace sim = anno::sim;
 
@@ -257,12 +258,12 @@ TEST_CASE("pe_bytes refuses truncated and non-PE input") {
 }
 
 TEST_CASE("the generated table equals the one in AnnoWelt.dll") {
-    const char* env = std::getenv("ANNO1503_GAME_DIR");
-    if (env == nullptr) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    std::ifstream in(std::filesystem::path(env) / "AnnoWelt.dll", std::ios::binary);
+    std::ifstream in(*dir / "AnnoWelt.dll", std::ios::binary);
     REQUIRE(in);
     const std::vector<std::uint8_t> pe(std::istreambuf_iterator<char>(in), {});
     const auto bytes = pe_bytes(pe, 0x100cb8f8U, 4096);

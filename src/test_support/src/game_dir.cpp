@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
+#include <stdexcept>
 
 #include <anno/test/game_dir.hpp>
 
@@ -12,7 +13,33 @@ std::optional<std::filesystem::path> game_dir() {
     if (dir == nullptr || *dir == '\0') {
         return std::nullopt;
     }
-    return std::filesystem::path(dir);
+    const std::filesystem::path path(dir);
+    if (const std::string problem = game_dir_problem(path); !problem.empty()) {
+        throw std::runtime_error("ANNO1503_GAME_DIR=" + path.string() + ": " + problem +
+                                 ". Point it at the installed game (the folder with "
+                                 "Anlagen.dat), or unset it to skip the game-file tests.");
+    }
+    return path;
+}
+
+std::string game_dir_problem(const std::filesystem::path& dir) {
+    std::error_code ec;
+    if (!std::filesystem::exists(dir, ec)) {
+        return "the folder does not exist";
+    }
+    if (!std::filesystem::is_directory(dir, ec)) {
+        return "not a folder";
+    }
+    if (std::filesystem::is_regular_file(dir / "Anlagen.dat", ec)) {
+        return {};
+    }
+    // Installers sometimes add a folder level; name it.
+    for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+        if (e.is_directory(ec) && std::filesystem::is_regular_file(e.path() / "Anlagen.dat", ec)) {
+            return "no Anlagen.dat here, but in " + e.path().string();
+        }
+    }
+    return "no Anlagen.dat: not the game folder";
 }
 
 namespace {

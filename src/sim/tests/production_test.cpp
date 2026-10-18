@@ -11,6 +11,7 @@
 
 #include <anno/formats/anlagen.hpp>
 #include <anno/sim/production.hpp>
+#include <anno/test/game_dir.hpp>
 
 namespace sim = anno::sim;
 
@@ -262,12 +263,12 @@ TEST_CASE("F10: warehouse capacity") {
 }
 
 TEST_CASE("F1: production types of all Anlagen.dat entries") {
-    const char* env = std::getenv("ANNO1503_GAME_DIR");
-    if (env == nullptr) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    std::ifstream in(std::filesystem::path(env) / "Anlagen.dat", std::ios::binary);
+    std::ifstream in(*dir / "Anlagen.dat", std::ios::binary);
     const std::vector<std::uint8_t> buf(std::istreambuf_iterator<char>(in), {});
     auto file = anno::formats::anlagen::AnlagenFile::parse(buf);
     REQUIRE(file);

@@ -135,6 +135,14 @@ def main():
     ap.add_argument('--game-dir', default=os.environ.get('ANNO1503_GAME_DIR'))
     a = ap.parse_args()
     game = Path(a.game_dir) if a.game_dir else None
+    if game and not (game / 'Anlagen.dat').is_file():
+        # The same check as anno::test::game_dir (src/test_support).
+        problem = ('the folder does not exist' if not game.exists() else
+                   'not a folder' if not game.is_dir() else
+                   'no Anlagen.dat: not the game folder')
+        print(f'game directory {game}: {problem}. Point it at the installed game '
+              '(the folder with Anlagen.dat), or unset ANNO1503_GAME_DIR for the fixtures only.')
+        return 1
     only = set(filter(None, a.commands.split(',')))
     failed = checked = 0
     for cmd, script, py_args, dump_args, paths in cases(game):

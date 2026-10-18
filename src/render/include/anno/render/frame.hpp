@@ -63,7 +63,9 @@ using ChunkKey = std::tuple<std::size_t, int, int>;
 Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy);
 
 /// Background chunk builders: a priority job list and a result queue. The
-/// scene must outlive them; they stop when this is destroyed.
+/// scene must outlive them. Destroying them stops the builders and waits for
+/// the chunks in progress (at most one per thread; the Rust version waits at
+/// the end of the viewer's thread scope instead).
 class ChunkWorkers {
   public:
     ChunkWorkers(const Scene& scene, std::size_t threads);

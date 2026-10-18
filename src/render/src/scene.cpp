@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <map>
 #include <numeric>
@@ -125,14 +126,14 @@ std::pair<int, int> UnitSprite::anchor(std::size_t group, Lift lift) const {
 
 bool UnitSprite::draw(Canvas& canvas, std::size_t group, Lift lift,
                       std::pair<int, int> offset) const {
-    if (group >= frames.size() || !frames[group]) {
+    if (group >= frames.size() || !frames[group] || !frames[group]->image) {
         return false;
     }
     const UnitFrame& f = *frames[group];
     const auto a = anchor(group, lift);
     const std::pair<int, int> at{a.first - offset.first, a.second - offset.second};
     auto all = [](int, int, Px px) -> std::optional<Px> { return px; };
-    if (group < shadows.size() && shadows[group]) {
+    if (group < shadows.size() && shadows[group] && shadows[group]->image) {
         blit_sprite(canvas, *shadows[group]->image, shadows[group]->frame, at, true, all);
     }
     const int left = at.first - f.frame.anchor_x, top = at.second - f.frame.anchor_y;
@@ -325,6 +326,10 @@ std::pair<Canvas, SceneStats> Scene::render(Rect rect, std::size_t group, Layers
 std::pair<Canvas, SceneStats>
 Scene::render_with_terrain(Rect rect, std::size_t group, Layers layers,
                            const std::function<std::optional<float>(int, int)>* terrain) const {
+    assert(group < kGroups);
+    if (terrain != nullptr && !*terrain) {
+        terrain = nullptr; // an empty callback means "none"
+    }
     Canvas canvas = blank(rect);
     SceneStats stats;
     const std::uint64_t t = layers.time_ms;

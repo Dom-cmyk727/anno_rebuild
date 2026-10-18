@@ -111,7 +111,7 @@ inline constexpr std::array<std::string_view, 3> kObjectRecords = {"GELAENDE", "
 std::optional<Px> sea_floor_colour(std::span<const formats::insel::Island> islands,
                                    const assets::island::GroundTextures& textures);
 
-/// A decoded frame and its image.
+/// A decoded frame and its image (a null image is skipped when drawing).
 struct UnitFrame {
     formats::figuren::Frame frame;
     std::shared_ptr<const Rgba> image;
@@ -133,7 +133,8 @@ struct UnitSprite {
 };
 
 /// Everything needed to draw a scenario. Islands and Anlagen.dat refer to
-/// the caller's file buffers, which must outlive the scene.
+/// the caller's file buffers, which must outlive the scene. Every `group`
+/// argument must be < kGroups (callers validate user input).
 class Scene {
   public:
     /// Open water gets sea_floor_colour() if there is one, else the colour

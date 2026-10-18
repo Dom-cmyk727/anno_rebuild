@@ -1,9 +1,12 @@
 // Synthetic tests of anno_render (no game files needed).
+#include <limits>
+
 #include <doctest/doctest.h>
 
 #include <anno/render/frame.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/scene.hpp>
+#include <anno/render/sea.hpp>
 
 namespace render = anno::render;
 using render::Rect;
@@ -164,4 +167,33 @@ TEST_CASE("numeric helpers follow the documented semantics") {
     CHECK(render::total_less(-0.0F, 0.0F));
     CHECK_FALSE(render::total_less(0.0F, -0.0F));
     CHECK(render::fmaxf(std::numeric_limits<float>::quiet_NaN(), 1.0F) == 1.0F);
+}
+
+TEST_CASE("water field of an island without land: NaN distances become 0") {
+    // All corners below the waterline: the shore distance is +inf everywhere,
+    // and bilinear blending at a tile corner gives inf · 0 = NaN. Rust's
+    // `as u8` turns that into 0; the C++ port must too (no undefined cast).
+    render::sea::IslandWater iw;
+    iw.w = iw.h = 8;
+    iw.heights.assign(64, 0);
+    iw.sea_chunk.assign(1, true);
+    iw.open.assign(64, 0.0F);
+    iw.shore.assign(64, std::numeric_limits<float>::infinity());
+    iw.river.assign(64, std::numeric_limits<float>::quiet_NaN());
+    render::sea::SceneProbe probe{{0}, {{4.0F, 4.0F}}};
+    const auto f =
+        render::sea::water_field(Rect{0, 0, 1, 1}, probe, [&iw](std::size_t) { return &iw; });
+    CHECK(f.shore[0] == 0);
+    CHECK(f.cover[0] == 1);
+    CHECK((f.flags[0] & 1) == 1);
+}
+
+TEST_CASE("canvas to image refuses sizes an Rgba cannot hold") {
+    render::Canvas c = render::blank(Rect{0, 0, 70000, 1});
+    CHECK_FALSE(c.to_rgba());
+    c = render::blank(Rect{0, 0, 3, 2});
+    const auto img = c.to_rgba();
+    REQUIRE(img);
+    CHECK(img->width == 3);
+    CHECK(img->height == 2);
 }

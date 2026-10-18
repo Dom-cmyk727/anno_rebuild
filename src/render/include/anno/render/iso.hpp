@@ -70,7 +70,9 @@ struct Canvas {
     /// Whether the screen rectangle (x, y, w, h) touches the canvas.
     [[nodiscard]] bool overlaps(int x, int y, int w, int h) const;
     [[nodiscard]] std::optional<std::size_t> index(int sx, int sy) const;
-    [[nodiscard]] Rgba to_rgba() const;
+    /// The canvas as an image; nullopt if it is wider or higher than an Rgba
+    /// can be (65,535 px; the Rust version panics there).
+    [[nodiscard]] std::optional<Rgba> to_rgba() const;
 };
 
 /// A shadow pixel: 37.5 % black over the destination, the original's

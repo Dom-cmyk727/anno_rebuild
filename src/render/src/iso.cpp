@@ -67,7 +67,11 @@ bool Canvas::overlaps(int x, int y, int w, int h) const {
     return x < cx + cw && x + w > cx && y < cy + ch && y + h > cy;
 }
 
-Rgba Canvas::to_rgba() const {
+std::optional<Rgba> Canvas::to_rgba() const {
+    constexpr std::size_t max = 0xFFFF;
+    if (width > max || height > max) {
+        return std::nullopt;
+    }
     return Rgba{static_cast<std::uint16_t>(width), static_cast<std::uint16_t>(height), pixels};
 }
 
@@ -263,7 +267,7 @@ Rgba smooth_2x2(const Rgba& img) {
         return {static_cast<float>(img.pixels[o]) * a, static_cast<float>(img.pixels[o + 1]) * a,
                 static_cast<float>(img.pixels[o + 2]) * a, a};
     };
-    auto q = [](float v) { return static_cast<std::uint8_t>(clampf(roundf(v), 0.0F, 255.0F)); };
+    auto q = [](float v) { return sat_cast<std::uint8_t>(clampf(roundf(v), 0.0F, 255.0F)); };
     Rgba out{img.width, img.height, {}};
     out.pixels.reserve(img.pixels.size());
     constexpr std::array<std::pair<std::size_t, std::size_t>, 4> taps = {
@@ -696,7 +700,7 @@ Px shade_apply(Px rgba, Shade s) {
         float v = static_cast<float>(c);
         v = (v + (shallow * 255.0F - v) * s.tint) * brightness;
         v = v + (white - v) * s.foam;
-        return static_cast<std::uint8_t>(clampf(v, 0.0F, 255.0F));
+        return sat_cast<std::uint8_t>(clampf(v, 0.0F, 255.0F));
     };
     return {channel(rgba[0], w.shallow_colour[0], 236.0F),
             channel(rgba[1], w.shallow_colour[1], 244.0F),

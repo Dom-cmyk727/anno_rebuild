@@ -1,7 +1,10 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <exception>
 #include <functional>
+#include <optional>
 
 #include <anno/render/frame.hpp>
 #include <anno/render/sea.hpp>
@@ -187,10 +190,9 @@ Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy) {
         const int x = rect.x + static_cast<int>(i % to_size(rect.w));
         const int y = rect.y + static_cast<int>(i / to_size(rect.w));
         const auto z = scene.terrain_at(probe, rect, x, y);
-        c.terrain.push_back(
-            z ? static_cast<std::uint16_t>(
-                    clampf(roundf(*z * kTerrainScale), 0.0F, static_cast<float>(kNoTerrain - 1)))
-              : kNoTerrain);
+        c.terrain.push_back(z ? sat_cast<std::uint16_t>(clampf(roundf(*z * kTerrainScale), 0.0F,
+                                                               static_cast<float>(kNoTerrain - 1)))
+                              : kNoTerrain);
     }
     for (const std::size_t i : islands) {
         const auto [below, above] = scene.has_water_objects(i);
@@ -231,10 +233,19 @@ void ChunkWorkers::run() {
             busy_.insert(key);
         }
         const auto [group, cx, cy] = key;
-        Chunk chunk = render_chunk(scene_, group, cx, cy);
+        std::optional<Chunk> chunk;
+        try {
+            chunk = render_chunk(scene_, group, cx, cy);
+        } catch (const std::exception& e) {
+            // E.g. out of memory: the chunk stays missing (open sea) and is
+            // requested again; the worker keeps running.
+            std::fprintf(stderr, "chunk (%zu, %d, %d) failed: %s\n", group, cx, cy, e.what());
+        }
         const std::lock_guard lock(mutex_);
         busy_.erase(key);
-        done_.emplace_back(key, std::move(chunk));
+        if (chunk) {
+            done_.emplace_back(key, std::move(*chunk));
+        }
     }
 }
 

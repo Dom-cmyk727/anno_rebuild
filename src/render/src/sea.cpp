@@ -205,31 +205,31 @@ std::optional<IslandWater> IslandWater::build(const insel::Island& island,
     IslandWater out;
     out.heights = std::move(hr).value();
     const std::vector<std::uint16_t> gfx = std::move(gr).value();
-    const std::size_t w = island.width, h = island.height;
-    out.w = w;
-    out.h = h;
-    const std::size_t cw = (w + 7) / 8;
-    out.sea_chunk.assign(cw * ((h + 7) / 8), false);
-    for (std::size_t y = 0; y < h; ++y) {
-        for (std::size_t x = 0; x < w; ++x) {
-            const auto c = corners(out.heights, w, h, x, y);
+    const std::size_t iw_w = island.width, iw_h = island.height;
+    out.w = iw_w;
+    out.h = iw_h;
+    const std::size_t cw = (iw_w + 7) / 8;
+    out.sea_chunk.assign(cw * ((iw_h + 7) / 8), false);
+    for (std::size_t y = 0; y < iw_h; ++y) {
+        for (std::size_t x = 0; x < iw_w; ++x) {
+            const auto c = corners(out.heights, iw_w, iw_h, x, y);
             if (c[0] + c[1] + c[2] + c[3] <= 4 * kLandAverage) {
                 out.sea_chunk[(y / 8) * cw + x / 8] = true;
             }
         }
     }
     auto open_tile = [&](std::ptrdiff_t x, std::ptrdiff_t y) {
-        if (x >= 0 && y >= 0 && static_cast<std::size_t>(x) < w &&
-            static_cast<std::size_t>(y) < h) {
+        if (x >= 0 && y >= 0 && static_cast<std::size_t>(x) < iw_w &&
+            static_cast<std::size_t>(y) < iw_h) {
             const auto cell = insel::GroundCell::from_gfx_id(
-                gfx[static_cast<std::size_t>(y) * w + static_cast<std::size_t>(x)]);
+                gfx[static_cast<std::size_t>(y) * iw_w + static_cast<std::size_t>(x)]);
             return cell.texture == 0 ? 1.0F : 0.0F;
         }
         return 1.0F;
     };
-    out.open.assign(w * h, 0.0F);
-    for (std::size_t y = 0; y < h; ++y) {
-        for (std::size_t x = 0; x < w; ++x) {
+    out.open.assign(iw_w * iw_h, 0.0F);
+    for (std::size_t y = 0; y < iw_h; ++y) {
+        for (std::size_t x = 0; x < iw_w; ++x) {
             const auto xi = static_cast<std::ptrdiff_t>(x), yi = static_cast<std::ptrdiff_t>(y);
             float sum = 0.0F;
             for (std::ptrdiff_t dy = -2; dy < 2; ++dy) {
@@ -238,37 +238,38 @@ std::optional<IslandWater> IslandWater::build(const insel::Island& island,
                 }
             }
             // Fade the floor out towards the island border.
-            const std::size_t edge = std::min({x, y, w - 1 - x, h - 1 - y});
+            const std::size_t edge = std::min({x, y, iw_w - 1 - x, iw_h - 1 - y});
             const float border = 1.0F - fminf(static_cast<float>(edge) / kBorderFadeTiles, 1.0F);
-            out.open[y * w + x] = fmaxf(sum / 16.0F, border);
+            out.open[y * iw_w + x] = fmaxf(sum / 16.0F, border);
         }
     }
     // River level: average over the pieces covering each corner, then two
     // passes of averaging with defined neighbours.
-    std::vector<float> sum(w * h, 0.0F), n(w * h, 0.0F);
+    std::vector<float> sum(iw_w * iw_h, 0.0F), n(iw_w * iw_h, 0.0F);
     for (const auto& [x, y, fw, fh, z] : rivers) {
         for (std::size_t dy = 0; dy <= fh; ++dy) {
             for (std::size_t dx = 0; dx <= fw; ++dx) {
                 const std::size_t cx = std::size_t{x} + dx, cy = std::size_t{y} + dy;
-                if (cx < w && cy < h) {
-                    sum[cy * w + cx] += static_cast<float>(z) + kRiverLevel;
-                    n[cy * w + cx] += 1.0F;
+                if (cx < iw_w && cy < iw_h) {
+                    sum[cy * iw_w + cx] += static_cast<float>(z) + kRiverLevel;
+                    n[cy * iw_w + cx] += 1.0F;
                 }
             }
         }
     }
-    out.river.resize(w * h);
-    for (std::size_t i = 0; i < w * h; ++i) {
+    out.river.resize(iw_w * iw_h);
+    for (std::size_t i = 0; i < iw_w * iw_h; ++i) {
         out.river[i] = n[i] > 0.0F ? sum[i] / n[i] : std::numeric_limits<float>::quiet_NaN();
     }
     for (int pass = 0; pass < 2; ++pass) {
         const std::vector<float> prev = out.river;
-        for (std::size_t y = 0; y < h; ++y) {
-            for (std::size_t x = 0; x < w; ++x) {
+        for (std::size_t y = 0; y < iw_h; ++y) {
+            for (std::size_t x = 0; x < iw_w; ++x) {
                 float s = 0.0F, k = 0.0F;
-                for (std::size_t yy = y == 0 ? 0 : y - 1; yy <= std::min(y + 1, h - 1); ++yy) {
-                    for (std::size_t xx = x == 0 ? 0 : x - 1; xx <= std::min(x + 1, w - 1); ++xx) {
-                        const float v = prev[yy * w + xx];
+                for (std::size_t yy = y == 0 ? 0 : y - 1; yy <= std::min(y + 1, iw_h - 1); ++yy) {
+                    for (std::size_t xx = x == 0 ? 0 : x - 1; xx <= std::min(x + 1, iw_w - 1);
+                         ++xx) {
+                        const float v = prev[yy * iw_w + xx];
                         if (!std::isnan(v)) {
                             s += v;
                             k += 1.0F;
@@ -276,12 +277,12 @@ std::optional<IslandWater> IslandWater::build(const insel::Island& island,
                     }
                 }
                 if (k > 0.0F) {
-                    out.river[y * w + x] = s / k;
+                    out.river[y * iw_w + x] = s / k;
                 }
             }
         }
     }
-    out.shore = smooth_shore(out.heights, w, h);
+    out.shore = smooth_shore(out.heights, iw_w, iw_h);
     return out;
 }
 
@@ -325,7 +326,9 @@ WaterField water_field(Rect rect, const SceneProbe& probe,
                  std::vector<std::uint8_t>(n, 255), std::vector<std::uint8_t>(n, 1)};
     const float waterline = static_cast<float>(kWaterline);
     const float edge = kWaves.shore_edge;
-    auto byte = [](float v) { return static_cast<std::uint8_t>(clampf(v, 0.0F, 255.0F)); };
+    // sat_cast: NaN (e.g. inf · 0 in the shore field of an island without land)
+    // becomes 0, as Rust's `as u8`; a plain cast would be undefined.
+    auto byte = [](float v) { return sat_cast<std::uint8_t>(clampf(v, 0.0F, 255.0F)); };
     for (std::size_t i = 0; i < n; ++i) {
         const std::uint32_t island = probe.island[i];
         if (island == kNoIsland) {
@@ -393,7 +396,7 @@ WaterField water_field(Rect rect, const SceneProbe& probe,
 Px unpremultiply(std::array<float, 4> p) {
     const float a = p[3];
     auto channel = [](float v) {
-        return static_cast<std::uint8_t>(clampf(roundf(v * 255.0F), 0.0F, 255.0F));
+        return sat_cast<std::uint8_t>(clampf(roundf(v * 255.0F), 0.0F, 255.0F));
     };
     if (a <= 0.0F) {
         return {0, 0, 0, 0};

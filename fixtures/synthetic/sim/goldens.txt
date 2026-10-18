@@ -1,0 +1,13 @@
+# Golden hashes of the synthetic sim scenarios (docs/sim/state.md §14.3).
+#   <name> <stage> <stream_version> <value, 16 hex digits>
+# A golden is compared only when its stream_version equals kStateHashVersion; a
+# stale line fails with "re-baseline". Update protocol: run the sim tests with
+# ANNO_UPDATE_GOLDEN=1, paste the printed lines, and state in the commit message
+# which field-list or rule change caused it.
+#
+# G0: empty world, seed 1234, advance(10) x 1000; the checkpoints are the
+# state hash after 1, 100 and 1000 steps. Cross-checked against an independent
+# Python transcription of the hierarchical FNV-1a stream (header + clock_rng).
+g0_step1     S1 100 544877aa62f19438
+g0_step100   S1 100 5f8186fde7359bdd
+g0_step1000  S1 100 0c1979b83ac344ea

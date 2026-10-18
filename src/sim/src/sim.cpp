@@ -1,9 +1,12 @@
 #include <algorithm>
+#include <memory>
 #include <utility>
 
+#include <anno/sim/archive.hpp>
 #include <anno/sim/clock.hpp>
 #include <anno/sim/hash.hpp>
 #include <anno/sim/rng.hpp>
+#include <anno/sim/state_fields.hpp>
 #include <anno/sim/world.hpp>
 
 namespace anno::sim {
@@ -19,19 +22,38 @@ std::vector<std::uint16_t> msvc_rand_sequence(std::size_t n, std::uint32_t seed)
     return out;
 }
 
-WorldRng::WorldRng() : WorldRng(msvc_rand_sequence(kOriginalRngLength, 1)) {}
+namespace {
 
-WorldRng::WorldRng(std::vector<std::uint16_t> table) : table_(std::move(table)) {
+std::shared_ptr<const RngTable> make_table(std::vector<std::uint16_t> values) {
+    auto t = std::make_shared<RngTable>();
     StateHasher h;
-    for (const std::uint16_t v : table_) {
+    for (const std::uint16_t v : values) {
         h.u16(v);
     }
-    digest_ = h.value();
+    t->digest = h.value();
+    t->values = std::move(values);
+    return t;
 }
 
-// GCC 13 at -O3 reports a "potential null pointer dereference" in the
-// vector copy of WorldRng's (copying) move into the optional; the table is
-// non-empty here, so the warning is false. Silenced for this function only.
+/// The original table, built once and shared by every default generator
+/// (immutable after construction; function-local static initialisation is
+/// thread safe).
+const std::shared_ptr<const RngTable>& original_table() {
+    static const std::shared_ptr<const RngTable> table =
+        make_table(msvc_rand_sequence(kOriginalRngLength, 1));
+    return table;
+}
+
+} // namespace
+
+WorldRng::WorldRng() : table_(original_table()) {}
+
+// GCC 13 at -O3 once reported a "potential null pointer dereference" for the
+// WorldRng built here and moved into the optional (at that time the move
+// copied a std::vector table). WorldRng now holds a shared_ptr that is never
+// null, so the report may be gone; the suppression stays, for this function
+// only, until the linux-gcc-release job shows it unnecessary (it cannot be
+// checked on the MSVC host).
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wnull-dereference"
@@ -41,7 +63,7 @@ std::optional<WorldRng> WorldRng::from_table(std::vector<std::uint16_t> table,
     if (table.empty()) {
         return std::nullopt;
     }
-    WorldRng r(std::move(table));
+    WorldRng r(make_table(std::move(table)));
     r.set_cursor(cursor);
     return r;
 }
@@ -50,12 +72,28 @@ std::optional<WorldRng> WorldRng::from_table(std::vector<std::uint16_t> table,
 #endif
 
 std::uint16_t WorldRng::next() {
-    cursor_ = static_cast<std::uint32_t>((std::uint64_t{cursor_} + 1) % table_.size());
-    return table_[cursor_];
+    const std::vector<std::uint16_t>& v = table_->values;
+    cursor_ = static_cast<std::uint32_t>((std::uint64_t{cursor_} + 1) % v.size());
+    return v[cursor_];
 }
 
 void WorldRng::set_cursor(std::uint32_t value) {
-    cursor_ = static_cast<std::uint32_t>(value % table_.size());
+    cursor_ = static_cast<std::uint32_t>(value % table_->values.size());
+}
+
+std::uint32_t rng_mix(std::uint64_t seed, std::uint32_t slot) {
+    // splitmix64: state step 0x9e3779b97f4a7c15 per slot, then the finaliser.
+    std::uint64_t x = seed + 0x9e3779b97f4a7c15ULL * (std::uint64_t{slot} + 1);
+    std::uint64_t z = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+    z = z ^ (z >> 31);
+    return static_cast<std::uint32_t>(z);
+}
+
+WorldRng WorldRng::stream(std::uint64_t seed, std::uint32_t slot) const {
+    WorldRng r(table_);
+    r.set_cursor(rng_mix(seed, slot));
+    return r;
 }
 
 bool is_original_speed(std::uint32_t percent, bool multiplayer) {
@@ -100,7 +138,13 @@ std::uint64_t sweep_chunks(std::uint32_t chunks, std::uint16_t delta_tick, std::
     return std::min<std::uint64_t>(std::uint64_t{chunks} * delta_tick / period + 1, chunks);
 }
 
-std::uint64_t World::state_hash() const {
+std::uint64_t World::state_hash() const { return hash_state(*this, nullptr, 0); }
+
+std::uint64_t World::state_hash(HashTree& tree, std::uint32_t depth) const {
+    return hash_state(*this, &tree, depth);
+}
+
+std::uint64_t World::core_hash() const {
     StateHasher h;
     h.u64(clock.ms);
     h.u64(clock.last_tick);

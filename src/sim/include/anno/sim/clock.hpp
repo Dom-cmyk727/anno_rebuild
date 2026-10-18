@@ -33,15 +33,25 @@ struct WorldClock {
     [[nodiscard]] std::uint64_t game_seconds(std::uint64_t offset = 0) const {
         return tick() / 500 + offset;
     }
-    /// Advances by `game_ms` and returns the new tick. The original adds the
-    /// sign-extended i32 step to the counter; steps are never negative here.
-    /// Subsystems that run inside an advance (none yet) see last_tick as the
-    /// tick before it; it is set to the new tick at the end.
-    std::uint64_t advance(std::uint32_t game_ms) {
+    /// Starts an advance: adds `game_ms` to the counter and returns the new
+    /// tick. The original adds the sign-extended i32 step; steps are never
+    /// negative here. `last_tick` keeps the tick from before the advance, as
+    /// the original's +0x108 does while the subsystems run (D: 0x100ae040
+    /// stores the new tick at +0x10c first and +0x108 last).
+    std::uint64_t begin(std::uint32_t game_ms) {
         ms += game_ms;
-        // Subsystems run here, in the original's order (world.hpp).
-        last_tick = tick();
-        return last_tick;
+        return tick();
+    }
+    /// Ends an advance: `last_tick` becomes the current tick (D: 0x100ae126,
+    /// 0x100ae12d).
+    void end() { last_tick = tick(); }
+    /// begin(), then end(), with no subsystem in between: advances by
+    /// `game_ms` and returns the new tick. World::advance runs the subsystems
+    /// between the two calls (docs/sim/state.md §5.3).
+    std::uint64_t advance(std::uint32_t game_ms) {
+        const std::uint64_t new_tick = begin(game_ms);
+        end();
+        return new_tick;
     }
 };
 

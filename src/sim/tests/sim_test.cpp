@@ -7,15 +7,25 @@
 #include <fstream>
 #include <iterator>
 #include <set>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include <doctest/doctest.h>
 
+#include <anno/sim/archive.hpp>
 #include <anno/sim/clock.hpp>
+#include <anno/sim/draw.hpp>
+#include <anno/sim/field_count.hpp>
 #include <anno/sim/hash.hpp>
+#include <anno/sim/ids.hpp>
+#include <anno/sim/production.hpp>
 #include <anno/sim/rng.hpp>
+#include <anno/sim/state_fields.hpp>
 #include <anno/sim/world.hpp>
 #include <anno/test/game_dir.hpp>
+
+#include "golden.hpp"
 
 namespace sim = anno::sim;
 
@@ -272,4 +282,570 @@ TEST_CASE("the generated table equals the one in AnnoWelt.dll") {
     for (std::size_t i = 0; i < t.size(); ++i) {
         REQUIRE(static_cast<std::uint16_t>(bytes[2 * i] | bytes[2 * i + 1] << 8) == t[i]);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Stage S1 of docs/sim/state.md: ids, draw sites, the hierarchical state
+// hash over the field list, the shared PRNG table, the clock's begin/end.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ids: invalid by default, ordered, building ids pack island and serial") {
+    sim::IslandId none;
+    CHECK_FALSE(none.valid());
+    CHECK(sim::IslandId{0}.valid());
+    CHECK(sim::IslandId{0} != none);
+    CHECK(sim::IslandId{1} < sim::IslandId{2});
+    CHECK_FALSE(sim::BuildingId{}.valid());
+    CHECK(sim::BuildingId{0}.valid());
+    CHECK(sim::BuildingId{0xFFFFFFFFFFFFFFFFULL} == sim::BuildingId{});
+
+    const sim::BuildingId b = sim::make_building_id(sim::IslandId{3}, 77);
+    CHECK(b.v == (std::uint64_t{3} << 32) + 77);
+    CHECK(sim::island_of(b) == sim::IslandId{3});
+    CHECK(sim::serial_of(b) == 77);
+    // A full serial does not bleed into the island half.
+    const sim::BuildingId c = sim::make_building_id(sim::IslandId{1}, 0xFFFFFFFFU);
+    CHECK(c.v == 0x1FFFFFFFFULL);
+    CHECK(sim::island_of(c) == sim::IslandId{1});
+    CHECK(sim::serial_of(c) == 0xFFFFFFFFU);
+    // Ids of different islands are ordered by island first.
+    CHECK(sim::make_building_id(sim::IslandId{1}, 9) < sim::make_building_id(sim::IslandId{2}, 1));
+    CHECK(sim::make_building_id(sim::IslandId{2}, 1) < sim::make_building_id(sim::IslandId{2}, 2));
+
+    // City order is island, then city number; building order is city, list, slot.
+    const sim::CityRef c01{sim::IslandId{0}, sim::CityNo{1}};
+    const sim::CityRef c10{sim::IslandId{1}, sim::CityNo{0}};
+    CHECK(c01 < c10);
+    CHECK(c01 == sim::CityRef{sim::IslandId{0}, sim::CityNo{1}});
+    const sim::BuildingKey k1{c01, 2, 5};
+    const sim::BuildingKey k2{c01, 3, 0};
+    const sim::BuildingKey k3{c10, 0, 0};
+    CHECK(k1 < k2);
+    CHECK(k2 < k3);
+    CHECK(sim::BuildingKey{}.slot == sim::kNoSlot);
+    // Designated initialisers follow the member order, so they do not hide a
+    // swapped order of the members (a positional initialiser would reorder
+    // along with them). The two keys disagree between list and slot: the list
+    // decides first, the slot only breaks a tie; the city beats both.
+    const sim::BuildingKey low_list{.city = c01, .list = 1, .slot = 9};
+    const sim::BuildingKey high_list{.city = c01, .list = 2, .slot = 0};
+    const sim::BuildingKey same_list{.city = c01, .list = 2, .slot = 1};
+    const sim::BuildingKey next_city{.city = c10, .list = 0, .slot = 0};
+    CHECK(low_list < high_list);
+    CHECK(high_list > low_list);
+    CHECK(high_list < same_list);
+    CHECK(same_list < next_city);
+    CHECK(sim::BuildingKey{.city = c01, .list = 2, .slot = 1} == same_list);
+    CHECK(sim::TileXY{1, 2} < sim::TileXY{1, 3});
+    CHECK(sim::TileRect{1, 2, 3, 4} == sim::TileRect{1, 2, 3, 4});
+    const sim::IdCounters ids;
+    CHECK(ids.next_figure == 1);
+    CHECK(ids.next_event_seq == 1);
+}
+
+namespace {
+
+struct RecordingDraw final : sim::DrawSource {
+    std::uint16_t next(sim::DrawSite site) override {
+        sites.push_back(site);
+        return static_cast<std::uint16_t>(100 + sites.size());
+    }
+    std::vector<sim::DrawSite> sites;
+};
+
+} // namespace
+
+TEST_CASE("draw sources forward the site and the world stream") {
+    sim::WorldRng rng;
+    sim::GlobalDraw global(rng);
+    sim::WorldRng reference;
+    // The global source ignores the site and consumes the one world stream.
+    CHECK(global.next(sim::DrawSite::SmallFarmAnimal) == reference.next());
+    CHECK(global.next(sim::DrawSite::Event300) == reference.next());
+    CHECK(global.next(sim::DrawSite::Event750Gate) == reference.next());
+    CHECK(rng.cursor() == 3);
+    CHECK(rng.cursor() == reference.cursor());
+
+    // A SiteDraw gives production rules a DrawRef that names its site.
+    RecordingDraw rec;
+    sim::SiteDraw farm(rec, sim::DrawSite::SmallFarmAnimal);
+    const sim::DrawRef ref = sim::DrawRef::of(farm);
+    CHECK(ref() == 101);
+    CHECK(ref() == 102);
+    sim::SiteDraw ev(rec, sim::DrawSite::Event750Island);
+    CHECK(sim::DrawRef::of(ev)() == 103);
+    REQUIRE(rec.sites.size() == 3);
+    CHECK(rec.sites[0] == sim::DrawSite::SmallFarmAnimal);
+    CHECK(rec.sites[1] == sim::DrawSite::SmallFarmAnimal);
+    CHECK(rec.sites[2] == sim::DrawSite::Event750Island);
+    // Implemented sites first, the unported ones declared after.
+    // Every enumerator value is pinned: the order is the PRNG timeline
+    // manifest of docs/sim/state.md §6, and a reorder is a recorded bump.
+    CHECK(static_cast<int>(sim::DrawSite::SmallFarmAnimal) == 0);
+    CHECK(static_cast<int>(sim::DrawSite::Event300) == 1);
+    CHECK(static_cast<int>(sim::DrawSite::Event750Gate) == 2);
+    CHECK(static_cast<int>(sim::DrawSite::Event750Island) == 3);
+    CHECK(static_cast<int>(sim::DrawSite::CityRandomEvents) == 4);
+    CHECK(static_cast<int>(sim::DrawSite::WildlifeSweep) == 5);
+    CHECK(static_cast<int>(sim::DrawSite::Ai) == 6);
+    CHECK(static_cast<int>(sim::DrawSite::Count_) == 7);
+    CHECK(sim::DrawRecord{}.count == 0);
+}
+
+namespace {
+
+sim::World world_after(std::uint32_t seed, int steps, std::uint32_t step_ms) {
+    sim::World w(seed);
+    for (int i = 0; i < steps; ++i) {
+        w.advance(step_ms);
+    }
+    return w;
+}
+
+} // namespace
+
+TEST_CASE("core_hash equals the v1 golden") {
+    // core.md's five-field FNV-1a. The values come from an independent Python
+    // transcription (struct.pack of ms, last_tick, 2048, table digest, cursor).
+    CHECK(sim::World().core_hash() == 0x977a5cb1c2ae725dULL);
+    CHECK(world_after(1234, 1, 10).core_hash() == 0x65e3e2696c0396b0ULL);
+    CHECK(world_after(1234, 1000, 10).core_hash() == 0xc3ae91a5ed6087ffULL);
+    // The table digest itself (FNV-1a of the 2048 u16 values, little endian).
+    CHECK(sim::WorldRng().table_digest() == 0x1bf8daace9f69fabULL);
+    // The v1 hash is the five fields and nothing else.
+    sim::World w;
+    const std::uint64_t base = w.core_hash();
+    w.clock.ms = 1;
+    CHECK(w.core_hash() != base);
+    w = sim::World();
+    w.clock.last_tick = 1;
+    CHECK(w.core_hash() != base);
+    w = sim::World();
+    w.rng.next();
+    CHECK(w.core_hash() != base);
+    w = sim::World();
+    w.rng = *sim::WorldRng::from_table(sim::msvc_rand_sequence(2048, 2));
+    CHECK(w.core_hash() != base);
+}
+
+TEST_CASE("state_hash relational properties") {
+    const sim::World base(1234);
+    const std::uint64_t h = base.state_hash();
+    const sim::World same(1234);
+    CHECK(same.state_hash() == h);
+    const sim::World copy = base;
+    CHECK(copy.state_hash() == h);
+    CHECK(h != base.core_hash());
+
+    // Every field of the list moves the hash.
+    sim::World w = base;
+    w.clock.ms += 2;
+    CHECK(w.state_hash() != h);
+    w = base;
+    w.clock.last_tick += 1;
+    CHECK(w.state_hash() != h);
+    w = base;
+    w.rng.next();
+    CHECK(w.state_hash() != h);
+    w = base;
+    w.rng = *sim::WorldRng::from_table(sim::msvc_rand_sequence(2048, 2), 1234);
+    CHECK(w.state_hash() != h);
+    w = base;
+    w.rng = *sim::WorldRng::from_table(sim::msvc_rand_sequence(2047, 1), 1234);
+    CHECK(w.state_hash() != h);
+    // The hash depends on the state only, not on how it was reached.
+    sim::World a(1234), b(1234);
+    a.advance(5);
+    a.advance(5);
+    b.advance(10);
+    CHECK(a.state_hash() == b.state_hash());
+
+    // The scopes of stream 100: header, then clock_rng; the clock_rng scope
+    // is exactly the v1 five-field hash.
+    sim::HashTree tree;
+    CHECK(base.state_hash(tree, 0) == h);
+    CHECK(tree.root.hash == h);
+    REQUIRE(tree.root.children.size() == 2);
+    CHECK(tree.root.children[0].name == "header");
+    CHECK(tree.root.children[1].name == "clock_rng");
+    CHECK(tree.root.children[1].hash == base.core_hash());
+    sim::StateHasher header;
+    header.u32(sim::kStateHashVersion);
+    header.u32(sim::kPrngTimelineVersion);
+    CHECK(tree.root.children[0].hash == header.value());
+    sim::StateHasher root;
+    root.u64(header.value());
+    root.u64(base.core_hash());
+    CHECK(root.value() == h);
+    // The empty world, from the independent Python transcription of the stream.
+    CHECK(sim::World().state_hash() == 0x4d9dbe4683eebff3ULL);
+    CHECK(sim::kStateHashVersion == 100);
+    CHECK(sim::kPrngTimelineVersion == 1);
+}
+
+namespace {
+
+/// A value whose field list nests scopes three deep (the world itself only has
+/// top-level scopes until S2).
+struct Nested {
+    std::uint32_t a = 1;
+    std::uint8_t b = 2;
+};
+
+template <class A, sim::Same<Nested> S> void fields(A& a, S& s) {
+    a.u32(s.a);
+    a.scope("l0", [&] {
+        a.u8(s.b);
+        a.scope("l1", 4, [&] {
+            a.u8(s.b);
+            a.scope("l2", [&] { a.u8(s.b); });
+        });
+    });
+}
+
+} // namespace
+
+TEST_CASE("hash_state records the scopes down to the requested depth") {
+    const Nested value;
+    const std::uint64_t flat = sim::hash_state(value, nullptr, 0);
+    for (const std::uint32_t depth : {0U, 1U, 2U, 3U, 9U}) {
+        sim::HashTree tree;
+        INFO("depth " << depth);
+        CHECK(sim::hash_state(value, &tree, depth) == flat);
+        CHECK(tree.root.hash == flat);
+        REQUIRE(tree.root.children.size() == 1);
+        const sim::HashNode& l0 = tree.root.children[0];
+        CHECK(l0.name == "l0");
+        CHECK_FALSE(l0.indexed);
+        if (depth == 0) {
+            CHECK(l0.children.empty());
+            continue;
+        }
+        REQUIRE(l0.children.size() == 1);
+        const sim::HashNode& l1 = l0.children[0];
+        CHECK(l1.name == "l1");
+        CHECK(l1.indexed);
+        CHECK(l1.index == 4);
+        if (depth == 1) {
+            CHECK(l1.children.empty());
+            continue;
+        }
+        REQUIRE(l1.children.size() == 1);
+        CHECK(l1.children[0].name == "l2");
+        CHECK(l1.children[0].children.empty()); // the deepest scope has no children
+    }
+    // The hash of the world is the hash of the same helper.
+    const sim::World w(77);
+    sim::HashTree tree;
+    CHECK(sim::hash_state(w, &tree, 5) == w.state_hash());
+    CHECK(w.state_hash(tree, 5) == w.state_hash());
+    // The world's own scopes sit at level 0 only (S1), whatever the depth.
+    CHECK(tree.root.children.size() == 2);
+    for (const sim::HashNode& c : tree.root.children) {
+        CHECK(c.children.empty());
+    }
+}
+
+TEST_CASE("rng copy shares the table") {
+    const sim::WorldRng a;
+    sim::WorldRng b = a;
+    REQUIRE(a.shared_table());
+    CHECK(a.shared_table() == b.shared_table());
+    CHECK(a.table().data() == b.table().data());
+    // Default generators share one table; a custom table is its own.
+    const sim::WorldRng c;
+    CHECK(c.shared_table() == a.shared_table());
+    const auto custom = sim::WorldRng::from_table({5, 6, 7});
+    REQUIRE(custom);
+    CHECK(custom->shared_table() != a.shared_table());
+    const sim::WorldRng custom_copy = *custom;
+    CHECK(custom_copy.shared_table() == custom->shared_table());
+    // The cursor is per generator.
+    b.next();
+    b.next();
+    CHECK(a.cursor() == 0);
+    CHECK(b.cursor() == 2);
+    // A copy of a World shares the table, and advancing the copy leaves the
+    // original alone.
+    sim::World w1(7);
+    sim::World w2 = w1;
+    CHECK(w1.rng.shared_table() == w2.rng.shared_table());
+    const std::uint64_t before = w1.state_hash();
+    w2.advance(100);
+    w2.rng.next();
+    CHECK(w1.state_hash() == before);
+    CHECK(w2.state_hash() != before);
+}
+
+TEST_CASE("rng moved-from generator keeps its table") {
+    sim::WorldRng src;
+    const auto table = src.shared_table();
+    const sim::WorldRng dst = std::move(src);
+    CHECK(dst.shared_table() == table);
+    CHECK(src.shared_table() == table); // NOLINT(bugprone-use-after-move): intended
+    CHECK(src.size() == sim::kOriginalRngLength);
+    sim::WorldRng assigned = *sim::WorldRng::from_table({1, 2});
+    assigned = std::move(src);
+    CHECK(assigned.shared_table() == table);
+    CHECK(src.shared_table() == table); // NOLINT(bugprone-use-after-move): intended
+    CHECK(src.next() == dst.table()[1]);
+    // The same through a World move.
+    sim::World w(5);
+    const auto wt = w.rng.shared_table();
+    const sim::World moved = std::move(w);
+    CHECK(moved.rng.shared_table() == wt);
+    CHECK(w.rng.shared_table() == wt); // NOLINT(bugprone-use-after-move): intended
+}
+
+TEST_CASE("rng stream cursor mix is the defined function") {
+    // splitmix64 finaliser over seed + 0x9e3779b97f4a7c15 * (slot + 1), low 32
+    // bits. mix(0, 0) is the low half of the well-known first output of
+    // splitmix64 seeded with 0 (0xe220a8397b1dcdaf); the others are from an
+    // independent Python transcription.
+    CHECK(sim::rng_mix(0, 0) == 0x7b1dcdafU);
+    CHECK(sim::rng_mix(1, 0) == 0x89025cc1U);
+    CHECK(sim::rng_mix(1, 1) == 0x658eec67U);
+    CHECK(sim::rng_mix(0x123456789abcdef0ULL, 7) == 0x0916c5cbU);
+    CHECK(sim::rng_mix(0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFU) == 0x2de810ecU);
+    // The slot is part of the state step: neighbouring slots differ.
+    CHECK(sim::rng_mix(1, 0) != sim::rng_mix(1, 1));
+    CHECK(sim::rng_mix(1, 1) != sim::rng_mix(2, 1));
+
+    const sim::WorldRng base;
+    const sim::WorldRng s = base.stream(0, 0);
+    CHECK(s.cursor() == 0x7b1dcdafU % 2048);
+    CHECK(s.cursor() == 1455);
+    CHECK(s.shared_table() == base.shared_table());
+    CHECK(base.stream(1, 1).cursor() == 1127);
+    CHECK(base.stream(0x123456789abcdef0ULL, 7).cursor() == 1483);
+    // The stream continues like any generator from its start cursor.
+    sim::WorldRng t = base.stream(0, 0);
+    CHECK(t.next() == base.table()[1456]);
+    // A pure function: the base generator is untouched and the result repeats.
+    sim::WorldRng moving;
+    moving.next();
+    CHECK(moving.stream(9, 4).cursor() == base.stream(9, 4).cursor());
+    CHECK(moving.cursor() == 1);
+    // Any table length: the cursor is reduced modulo the length.
+    const auto three = sim::WorldRng::from_table({10, 20, 30});
+    REQUIRE(three);
+    CHECK(three->stream(0, 0).cursor() == 0x7b1dcdafU % 3);
+    CHECK(three->stream(1, 0).cursor() == 0x89025cc1U % 3);
+}
+
+TEST_CASE("clock begin end keeps last_tick") {
+    sim::WorldClock c;
+    // begin() adds the step and returns the new tick, last_tick stays: the
+    // subsystems of an advance see the tick from before it (D: 0x100ae040).
+    CHECK(c.begin(10) == 5);
+    CHECK(c.ms == 10);
+    CHECK(c.last_tick == 0);
+    CHECK(c.tick() == 5);
+    c.end();
+    CHECK(c.last_tick == 5);
+    CHECK(c.begin(3) == 6); // 13 ms -> tick 6
+    CHECK(c.last_tick == 5);
+    CHECK(c.begin(0) == 6); // a zero step is not special-cased
+    CHECK(c.last_tick == 5);
+    c.end();
+    CHECK(c.last_tick == 6);
+    // advance() is begin() then end().
+    sim::WorldClock d;
+    CHECK(d.advance(10) == 5);
+    CHECK(d.last_tick == 5);
+    CHECK(d.advance(0) == 5);
+    // The counter is 64 bits wide.
+    sim::WorldClock big;
+    big.ms = 0xFFFFFFFFULL;
+    CHECK(big.begin(2) == 0x80000000ULL);
+    CHECK(big.ms == 0x100000001ULL);
+}
+
+TEST_CASE("field count canary") {
+    // field_count<T>() is the number of members of an aggregate; fields(T)
+    // must name exactly that many. A member added without a line in the field
+    // list fails here (and the static_assert fails the build).
+    static_assert(sim::field_count<sim::WorldClock>() == 2);
+    static_assert(sim::field_count<sim::StateHeader>() == 2);
+    static_assert(sim::field_count<sim::IdCounters>() == 2);
+    static_assert(sim::field_count<sim::TileXY>() == 2);
+    static_assert(sim::field_count<sim::TileRect>() == 4);
+    static_assert(sim::field_count<sim::DrawRecord>() == 2);
+    // The real payloads of production.hpp, with vector (also vector<bool>),
+    // enum and nested-aggregate members: they get their fields() in S2, and
+    // the canary then compares this count with the primitives visited. Run
+    // on GCC and Clang by the CI matrix; a compiler that refuses the probe
+    // shows up here, in S1, not later.
+    static_assert(sim::field_count<sim::StatusTracker>() == 4);
+    static_assert(sim::field_count<sim::StepResult>() == 9);
+    static_assert(sim::field_count<sim::Workshop>() == 9);
+    static_assert(sim::field_count<sim::WeaponsWorkshop>() == 10);
+    static_assert(sim::field_count<sim::Farm>() == 9);
+    static_assert(sim::field_count<sim::SmallFarm>() == 9);
+    static_assert(sim::field_count<sim::SmallFarmAnimals>() == 3);
+    // The probe bound is a template argument; a type beyond it is refused.
+    static_assert(sim::field_count<sim::TileRect, 4>() == 4);
+    // World and WorldRng are not aggregates: they canary themselves with a
+    // structured binding next to their members (world.hpp, rng.hpp), which
+    // fails to compile when a member is added without extending it.
+    static_assert(std::is_void_v<decltype(sim::World::field_list_canary(
+                      std::declval<const sim::World&>()))>);
+    static_assert(std::is_void_v<decltype(sim::WorldRng::field_list_canary(
+                      std::declval<const sim::WorldRng&>()))>);
+
+    // The probe counts what it should: scalars, enums and nested aggregates.
+    struct Pair {
+        std::uint32_t a;
+        std::int32_t b;
+    };
+    struct Probe {
+        bool flag;
+        sim::DrawSite site;
+        std::uint16_t small;
+        Pair pair;
+        std::int64_t big;
+    };
+    struct Empty {};
+    static_assert(sim::field_count<Probe>() == 5);
+    static_assert(sim::field_count<Pair>() == 2);
+    static_assert(sim::field_count<Empty>() == 0);
+
+    auto primitives = [](const sim::TraceArchive& t) {
+        std::size_t n = 0;
+        for (const sim::TraceEntry& e : t.entries()) {
+            n += e.kind != sim::Prim::ScopeOpen && e.kind != sim::Prim::ScopeClose ? 1 : 0;
+        }
+        return n;
+    };
+    const sim::WorldClock clock;
+    sim::TraceArchive clock_trace;
+    fields(clock_trace, clock);
+    CHECK(primitives(clock_trace) == sim::field_count<sim::WorldClock>());
+    const sim::StateHeader header;
+    sim::TraceArchive header_trace;
+    fields(header_trace, header);
+    CHECK(primitives(header_trace) == sim::field_count<sim::StateHeader>());
+}
+
+TEST_CASE("world core stream layout round trip and rejects") {
+    sim::World w(1234);
+    w.advance(10);
+    w.advance(7);
+    sim::WriteArchive wa;
+    fields(wa, std::as_const(w));
+    const std::vector<std::uint8_t> bytes = wa.take();
+    // header: u32 100, u32 1; clock_rng: u64 ms, u64 last_tick, u64 2048,
+    // u64 table digest, u32 cursor.
+    REQUIRE(bytes.size() == 8 + 36);
+    CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 8) ==
+          std::vector<std::uint8_t>{100, 0, 0, 0, 1, 0, 0, 0});
+    CHECK(bytes[8] == 17); // ms = 17
+    CHECK(bytes[16] == 8); // last_tick = 8
+    CHECK(bytes[24] == 0);
+    CHECK(bytes[25] == 8); // 2048 = 0x0800
+    CHECK(bytes[40] == (1234 & 0xFF));
+    CHECK(bytes[41] == (1234 >> 8));
+
+    auto read_into = [](sim::World& target, const std::vector<std::uint8_t>& in) {
+        sim::ReadArchive r(in);
+        fields(r, target);
+        return r.failed() ? r.error() : (r.remaining() == 0 ? std::string() : "trailing");
+    };
+    SUBCASE("a fresh world reads it back to the same hash") {
+        sim::World other;
+        CHECK(read_into(other, bytes) == "");
+        CHECK(other.state_hash() == w.state_hash());
+        CHECK(other.clock.ms == 17);
+        CHECK(other.clock.last_tick == 8);
+        CHECK(other.rng.cursor() == 1234);
+        // save(load(save(w))) == save(w)
+        sim::WriteArchive again;
+        fields(again, std::as_const(other));
+        CHECK(again.data() == bytes);
+    }
+    SUBCASE("every prefix fails") {
+        for (std::size_t n = 0; n < bytes.size(); ++n) {
+            sim::World other;
+            const std::vector<std::uint8_t> prefix(bytes.begin(),
+                                                   bytes.begin() + static_cast<std::ptrdiff_t>(n));
+            CHECK(read_into(other, prefix) != "");
+        }
+    }
+    SUBCASE("another state hash version is refused") {
+        auto bad = bytes;
+        bad[0] = 101;
+        sim::World other;
+        const std::string err = read_into(other, bad);
+        CHECK(err.find("header") == 0);
+        CHECK(err.find("version") != std::string::npos);
+    }
+    SUBCASE("another PRNG timeline version is refused") {
+        auto bad = bytes;
+        bad[4] = 2;
+        sim::World other;
+        const std::string err = read_into(other, bad);
+        CHECK(err.find("header") == 0);
+        CHECK(err.find("timeline") != std::string::npos);
+    }
+    SUBCASE("a table of another size or digest is refused") {
+        auto bad = bytes;
+        bad[25] = 7; // size 0x0700
+        sim::World other;
+        std::string err = read_into(other, bad);
+        CHECK(err.find("clock_rng") == 0);
+        CHECK(err.find("table") != std::string::npos);
+        bad = bytes;
+        bad[32] ^= 1; // digest
+        err = read_into(other, bad);
+        CHECK(err.find("table") != std::string::npos);
+        // The same stream into a world with another table.
+        sim::World custom;
+        custom.rng = *sim::WorldRng::from_table(sim::msvc_rand_sequence(2048, 2));
+        CHECK(read_into(custom, bytes).find("table") != std::string::npos);
+    }
+    SUBCASE("a cursor outside the table is refused") {
+        auto bad = bytes;
+        bad[40] = 0;
+        bad[41] = 8; // 2048
+        sim::World other;
+        CHECK(read_into(other, bad).find("cursor") != std::string::npos);
+        bad[41] = 7; // 1792: fine
+        sim::World ok;
+        CHECK(read_into(ok, bad) == "");
+        CHECK(ok.rng.cursor() == 1792);
+    }
+}
+
+TEST_CASE("golden G0 empty world seed 1234 advance 10 ms x 1000") {
+    // The state hash after 1, 100 and 1000 steps, against
+    // fixtures/synthetic/sim/goldens.txt (stage S1, development version 100).
+    sim::World w(1234);
+    int done = 0;
+    for (const int checkpoint : {1, 100, 1000}) {
+        while (done < checkpoint) {
+            w.advance(10);
+            ++done;
+        }
+        const std::string name = "g0_step" + std::to_string(checkpoint);
+        std::string update_line;
+        const std::string problem =
+            anno::test::check_golden(name, "S1", w.state_hash(), update_line);
+        if (anno::test::update_mode()) {
+            MESSAGE("golden line: " << update_line);
+        }
+        INFO(name);
+        CHECK(problem == "");
+    }
+    // The stage of the golden is compared too: a test naming another stage
+    // than goldens.txt fails.
+    if (!anno::test::update_requested()) {
+        std::string line;
+        CHECK(anno::test::check_golden("g0_step1000", "S2", w.state_hash(), line) != "");
+        CHECK(anno::test::check_golden("g0_step1000", "S1", w.state_hash(), line) == "");
+        CHECK(anno::test::check_golden("g0_missing", "S1", w.state_hash(), line) != "");
+    }
+    // The clock is where the scenario puts it, whatever the golden says.
+    CHECK(w.clock.ms == 10000);
+    CHECK(w.clock.last_tick == 5000);
+    CHECK(w.rng.cursor() == 1234);
 }

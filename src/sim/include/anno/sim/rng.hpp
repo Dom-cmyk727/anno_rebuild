@@ -34,6 +34,13 @@ class WorldRng {
     /// empty table.
     static std::optional<WorldRng> from_table(std::vector<std::uint16_t> table,
                                               std::uint32_t cursor = 0);
+    // Moves copy: a moved-from generator must keep a non-empty table (the
+    // draw divides by its length).
+    WorldRng(const WorldRng&) = default;
+    WorldRng& operator=(const WorldRng&) = default;
+    WorldRng(WorldRng&& o) : WorldRng(static_cast<const WorldRng&>(o)) {}
+    WorldRng& operator=(WorldRng&& o) { return *this = static_cast<const WorldRng&>(o); }
+    ~WorldRng() = default;
 
     /// T[(cursor + 1) mod len]; the cursor moves to that index.
     std::uint16_t next();

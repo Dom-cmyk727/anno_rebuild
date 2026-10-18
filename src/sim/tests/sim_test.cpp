@@ -77,6 +77,13 @@ TEST_CASE("world PRNG: fixture F6") {
     auto other = sim::WorldRng::from_table(sim::msvc_rand_sequence(2048, 2));
     REQUIRE(other);
     CHECK(other->table_digest() != sim::WorldRng().table_digest());
+    // A moved-from generator still works (moves copy).
+    sim::WorldRng src;
+    const sim::WorldRng dst = std::move(src);
+    CHECK(src.next() == dst.table()[1]); // NOLINT(bugprone-use-after-move): intended
+    sim::WorldRng assigned;
+    assigned = std::move(src);
+    CHECK(src.size() == sim::kOriginalRngLength);
 }
 
 TEST_CASE("world clock: one tick is 2 ms") {
@@ -143,6 +150,7 @@ TEST_CASE("multiplayer step size and speeds") {
     CHECK_FALSE(sim::multiplayer_step_ms(400));
     CHECK(sim::is_original_speed(400, false));
     CHECK(sim::is_original_speed(0, false));
+    CHECK_FALSE(sim::is_original_speed(0, true));
     // A turn: 10 steps of 10 real ms; game time per turn at 100 % = 100 ms.
     const sim::Timing t;
     CHECK(t.mp_steps_per_turn * t.mp_step_real_ms == t.mp_turn_real_ms);
@@ -187,23 +195,49 @@ TEST_CASE("state hash: canonical and sensitive") {
 
 namespace {
 
-/// The bytes at virtual address `va` of a 32-bit PE image (section table
-/// lookup; PE/COFF specification), or empty if outside every section.
+/// The bytes at virtual address `va` of a PE32 image (section table
+/// lookup; PE/COFF specification), or empty if the file is not a PE32 image or
+/// the range is not fully inside one section's raw data. Every read is
+/// bounds-checked.
 std::vector<std::uint8_t> pe_bytes(const std::vector<std::uint8_t>& pe, std::uint32_t va,
                                    std::size_t n) {
-    auto u16 = [&](std::size_t o) { return static_cast<std::uint32_t>(pe[o] | pe[o + 1] << 8); };
-    auto u32 = [&](std::size_t o) { return u16(o) | u16(o + 2) << 16; };
-    const std::size_t nt = u32(0x3c);
+    bool ok = true;
+    auto u16 = [&](std::uint64_t o) -> std::uint32_t {
+        if (o + 2 > pe.size()) {
+            ok = false;
+            return 0;
+        }
+        return static_cast<std::uint32_t>(pe[o] | pe[o + 1] << 8);
+    };
+    auto u32 = [&](std::uint64_t o) { return u16(o) | u16(o + 2) << 16; };
+    if (u16(0) != 0x5A4D) { // "MZ"
+        return {};
+    }
+    const std::uint64_t nt = u32(0x3c);
+    if (u32(nt) != 0x00004550 || u16(nt + 24) != 0x10b || !ok) { // "PE\0\0", PE32
+        return {};
+    }
     const std::uint32_t sections = u16(nt + 6);
-    const std::size_t opt = nt + 24;
-    const std::uint32_t base = u32(opt + 28);
-    const std::size_t table = opt + u16(nt + 20);
-    const std::uint32_t rva = va - base;
-    for (std::uint32_t s = 0; s < sections; ++s) {
-        const std::size_t h = table + 40 * std::size_t{s};
-        const std::uint32_t vaddr = u32(h + 12), vsize = u32(h + 8), raw = u32(h + 20);
-        if (rva >= vaddr && rva + n <= vaddr + vsize) {
-            const std::size_t o = raw + (rva - vaddr);
+    const std::uint64_t opt = nt + 24;
+    const std::uint64_t base = u32(opt + 28);
+    const std::uint64_t table = opt + u16(nt + 20);
+    if (!ok || va < base) {
+        return {};
+    }
+    const std::uint64_t rva = va - base;
+    for (std::uint32_t k = 0; k < sections; ++k) {
+        const std::uint64_t h = table + 40 * std::uint64_t{k};
+        const std::uint64_t vaddr = u32(h + 12);
+        const std::uint64_t size = std::min(u32(h + 8), u32(h + 16)); // virtual, raw
+        const std::uint64_t raw = u32(h + 20);
+        if (!ok) {
+            return {};
+        }
+        if (rva >= vaddr && rva + n <= vaddr + size) {
+            const std::uint64_t o = raw + (rva - vaddr);
+            if (o + n > pe.size()) {
+                return {};
+            }
             return {pe.begin() + static_cast<std::ptrdiff_t>(o),
                     pe.begin() + static_cast<std::ptrdiff_t>(o + n)};
         }
@@ -212,6 +246,15 @@ std::vector<std::uint8_t> pe_bytes(const std::vector<std::uint8_t>& pe, std::uin
 }
 
 } // namespace
+
+TEST_CASE("pe_bytes refuses truncated and non-PE input") {
+    CHECK(pe_bytes({}, 0x10001000U, 4).empty());
+    CHECK(pe_bytes({'M', 'Z'}, 0x10001000U, 4).empty());
+    std::vector<std::uint8_t> junk(0x200, 0xFF);
+    junk[0] = 'M';
+    junk[1] = 'Z';
+    CHECK(pe_bytes(junk, 0x10001000U, 4).empty());
+}
 
 TEST_CASE("the generated table equals the one in AnnoWelt.dll") {
     const char* env = std::getenv("ANNO1503_GAME_DIR");

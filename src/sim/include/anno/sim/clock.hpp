@@ -61,11 +61,13 @@ struct Timing {
     std::uint32_t mp_turn_real_ms = 100;
 };
 
-/// Whether the original lets a player set `percent` (keys F5–F8, likely; D:
-/// AnnoFrame.dll 0x100071b0). 0 = pause, single-player only: in multiplayer
-/// the host pauses by stopping turns, no step runs. 400 % only in
-/// single-player (the key handler refuses it when net client slot +0xfc is
-/// non-zero, 0x100609c0 for tNetClientNet).
+/// Whether `percent` is a speed the original steps the world at: the speeds a
+/// player can set (keys F5–F8, likely; D: AnnoFrame.dll 0x100071b0), and 0
+/// (paused) in single-player, where a paused frame advances nothing. In
+/// multiplayer 0 is no step speed: the host pauses by stopping turns
+/// (0x1005e230), so no step runs. 400 % only in single-player (the key
+/// handler refuses it when net client slot +0xfc is non-zero, 0x100609c0 for
+/// tNetClientNet).
 bool is_original_speed(std::uint32_t percent, bool multiplayer);
 
 /// Game milliseconds of a single-player step for a frame of `frame_ms` real

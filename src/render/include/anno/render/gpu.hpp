@@ -65,6 +65,9 @@ struct GpuLimits {
     /// Atlas layers at most (0 = the device's maxTextureArrayLayers; larger
     /// values are clamped to it). When full, new sprite frames are dropped.
     std::uint32_t max_atlas_layers = 0;
+    /// Enhanced water: ships sink into the water with a moving waterline
+    /// and foam (not in the original; gpu.wgsl ship_in_water).
+    bool ship_waterline = true;
     /// Run the coastal wave simulation for enhanced water (false: the
     /// shader's analytic waves, as the Rust compositor without it).
     bool wave_simulation = true;
@@ -78,6 +81,8 @@ struct FrameUniform {
     float frac = 0, time_ms = 0;
     bool enhanced = false;
     float tile_w = 0, tile_h = 0, raise = 0;
+    /// Ships sit in the enhanced water (GpuLimits::ship_waterline).
+    bool ship_water = false;
     std::pair<std::int32_t, std::int32_t> fluid_origin{0, 0};
     std::int32_t fluid_size = 1;
     bool fluid_on = false;

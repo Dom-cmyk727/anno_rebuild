@@ -186,6 +186,7 @@ TEST_CASE("the frame uniform matches struct Frame in gpu.wgsl") {
     f.tile_w = 64.0F;
     f.tile_h = 32.0F;
     f.raise = 9.0F;
+    f.ship_water = true;
     f.fluid_origin = {-100, 200};
     f.fluid_size = 1024;
     f.fluid_on = true;
@@ -218,6 +219,7 @@ TEST_CASE("the frame uniform matches struct Frame in gpu.wgsl") {
     CHECK(f32_at(44) == 64.0F);
     CHECK(f32_at(48) == 32.0F);
     CHECK(f32_at(52) == 9.0F);
+    CHECK(f32_at(56) == 1.0F);
     CHECK(i32_at(64) == -100);
     CHECK(i32_at(68) == 200);
     CHECK(i32_at(72) == 1024);
@@ -967,4 +969,79 @@ TEST_CASE("ships drawn by the compositor match the CPU path (game files)") {
                                   << " views");
         CHECK(g.errors() == 0);
     }
+}
+
+TEST_CASE("enhanced water: ships sit in the water, only at the hull bottom (game files)") {
+    const auto dir = anno::test::game_dir();
+    auto ctx = device_or_skip();
+    if (!dir || !ctx) {
+        return;
+    }
+    // The same enhanced frame with and without ship_waterline: they differ,
+    // and only inside the ship's frame and in its lowest rows (the band
+    // under SHIP_BAND); the original water never changes.
+    const char* name = "Single_01.sze";
+    const Loaded loaded = load_scene(*dir, name);
+    const auto& scene = loaded.scene;
+    const render::UnitSprite* ship = nullptr;
+    for (const auto& u : scene->units) {
+        if (!u.z) {
+            ship = &u;
+            break;
+        }
+    }
+    REQUIRE(ship != nullptr);
+    gpu::GpuLimits on, off;
+    on.uploads_per_frame = off.uploads_per_frame = SIZE_MAX;
+    off.ship_waterline = false;
+    auto a = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, on);
+    auto b = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, off);
+    REQUIRE(a);
+    REQUIRE(b);
+    constexpr int kW = 640, kH = 480;
+    const auto ta = a.value()->offscreen_target(kW, kH);
+    const auto tb = b.value()->offscreen_target(kW, kH);
+    render::FrameRenderer fa(4, false), fb(4, false);
+    for (const std::size_t group : {std::size_t{0}, std::size_t{1}, std::size_t{2}}) {
+        const auto [ax, ay] = ship->anchor(group, scene->lift);
+        const render::Rect view{ax - kW / 2, ay - kH / 2, kW, kH};
+        const auto& f = ship->frames[group]->frame;
+        const auto* img = ship->frames[group]->image.get();
+        // The frame rectangle in the view, and the band's top row.
+        const int left = ax - f.anchor_x - view.x, top = ay - f.anchor_y - view.y;
+        const double band_top = top + f.anchor_y - 40.0 * render::kTile[group].h / 42.0;
+        for (const auto style : {render::WaterStyle::Enhanced, render::WaterStyle::Original}) {
+            const auto sa =
+                a.value()->render(fa, *scene, view, group, 2000, style, ta.second.get());
+            b.value()->render(fb, *scene, view, group, 2000, style, tb.second.get());
+            CHECK(sa.ships == 1);
+            const auto pa = a.value()->read_back(ta.first.get(), kW, kH);
+            const auto pb = b.value()->read_back(tb.first.get(), kW, kH);
+            REQUIRE(pa.size() == pb.size());
+            std::size_t differ = 0, outside = 0;
+            for (int y = 0; y < kH; ++y) {
+                for (int x = 0; x < kW; ++x) {
+                    const std::size_t i = (std::size_t(y) * kW + std::size_t(x)) * 4;
+                    if (pa[i] == pb[i] && pa[i + 1] == pb[i + 1] && pa[i + 2] == pb[i + 2]) {
+                        continue;
+                    }
+                    ++differ;
+                    const bool in_frame = x >= left && x < left + img->width && y >= top &&
+                                          y < top + img->height && y >= band_top;
+                    outside += in_frame ? 0U : 1U;
+                }
+            }
+            INFO("group " << group
+                          << (style == render::WaterStyle::Enhanced ? " enhanced" : " original")
+                          << ": " << differ << " pixels differ, " << outside
+                          << " outside the hull band");
+            if (style == render::WaterStyle::Enhanced) {
+                CHECK(differ > 20);
+            } else {
+                CHECK(differ == 0);
+            }
+            CHECK(outside == 0);
+        }
+    }
+    CHECK(a.value()->errors() == 0);
 }

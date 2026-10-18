@@ -19,7 +19,9 @@ struct Frame {
     tile_w: f32,
     tile_h: f32,
     raise: f32,
-    _pad: vec2<f32>,
+    // 1 = ships sit in the enhanced water (ship_in_water; GpuFrame only).
+    ship_water: f32,
+    _pad: f32,
     // Wave simulation window (gpu_fluid.rs): origin in world cells, size,
     // 1 = active, cells per tile.
     fluid_origin: vec2<i32>,
@@ -510,6 +512,7 @@ struct SpriteOut {
     @location(0) @interpolate(flat) src: vec2<i32>,
     @location(1) @interpolate(flat) dst: vec2<i32>,
     @location(2) @interpolate(flat) layer_shadow: vec2<u32>,
+    @location(3) @interpolate(flat) size: vec2<u32>,
 }
 
 @vertex
@@ -525,17 +528,146 @@ fn sprite_vs(
     out.src = vec2<i32>(src);
     out.dst = dst;
     out.layer_shadow = layer_shadow;
+    out.size = size;
     return out;
+}
+
+// ---- Ships in the water (enhanced water only; not in the original) ----
+// The ship frames show the whole hull down to the keel and lie on the water
+// like a picture. Enhanced water sinks the lowest band of the hull: per
+// pixel column the keel line is the lowest opaque pixel (rows above
+// SHIP_BAND over the frame anchor, i.e. rigging and bowsprit, never count);
+// hull pixels less than the draft above it are under water (tinted towards
+// the water below and faded into the sea), a foam line marks the waterline.
+// The waterline moves with the sea: with the wave simulation the ship rises
+// and falls with the surface elevation at its position and pitches with the
+// slope between bow and stern; without it a slow analytic swell. Tuning
+// (pixels at zoom group 0, scaled with the tile height), not evidence.
+const SHIP_DRAFT: f32 = 6.0;
+const SHIP_BAND: f32 = 40.0;
+const SHIP_FADE: f32 = 3.0;
+const SHIP_FOAM: f32 = 1.4;
+const SHIP_SKIRT: f32 = 3.0;
+
+// The lowest opaque row of column x of the frame at or below row y; -1 if
+// none.
+fn ship_keel(src: vec2<i32>, layer: u32, x: i32, y: i32, h: i32) -> i32 {
+    for (var r = h - 1; r >= y; r--) {
+        if textureLoad(atlas, src + vec2<i32>(x, r), layer, 0).a > 0.0 {
+            return r;
+        }
+    }
+    return -1;
+}
+
+// Surface elevation (pixels, up) at scene pixel p: the simulated surface
+// where the wave window covers it, else 0.
+fn surface_px(p: vec2<f32>) -> f32 {
+    let w = vec2<f32>(p.x / frame.tile_w + (p.y + frame.raise) / frame.tile_h,
+                      (p.y + frame.raise) / frame.tile_h - p.x / frame.tile_w);
+    if !fluid_inside(w) {
+        return 0.0;
+    }
+    // HEIGHT units to pixels: frame.raise is kSeaLevel (32) units.
+    return clamp(fluid_sample(w).s.x, -4.0, 4.0) * frame.raise / 32.0;
+}
+
+fn ship_in_water(c: vec4<f32>, in: SpriteOut, local: vec2<i32>) -> vec4<f32> {
+    let s = frame.tile_h / 42.0;
+    let anchor_y = f32(in.layer_shadow.y >> 18u);
+    if f32(local.y) < anchor_y - SHIP_BAND * s {
+        return c;
+    }
+    let layer = in.layer_shadow.x;
+    let h = i32(in.size.y);
+    // Pixels below the hull (transparent): only a short fade under the keel.
+    var keel = -1;
+    var below = 0.0;
+    if c.a == 0.0 {
+        let reach = i32(ceil(SHIP_SKIRT * s));
+        for (var r = local.y - 1; r >= max(local.y - reach, 0); r--) {
+            if textureLoad(atlas, in.src + vec2<i32>(local.x, r), layer, 0).a > 0.0 {
+                keel = r;
+                break;
+            }
+        }
+        if keel < 0 {
+            return c;
+        }
+        below = f32(local.y - keel);
+    } else {
+        keel = ship_keel(in.src, layer, local.x, local.y, h);
+        if keel < 0 {
+            return c;
+        }
+    }
+    let above_keel = f32(keel - local.y);
+    let t = frame.time_ms;
+    // Bow and stern a third of the frame width either side of the anchor.
+    let half = f32(in.size.x) / 3.0;
+    let centre = vec2<f32>(f32(in.dst.x) + f32(in.size.x) * 0.5, f32(in.dst.y) + anchor_y);
+    var lift = 0.0;
+    var slope = 0.0;
+    if frame.fluid_on != 0u {
+        let a = surface_px(centre - vec2<f32>(half, 0.0));
+        let b = surface_px(centre + vec2<f32>(half, 0.0));
+        lift = surface_px(centre);
+        slope = (b - a) / (2.0 * half);
+    } else {
+        lift = 1.0 * s * sin(t * 6.2831853 / PERIOD_MS + centre.x * 0.013 + centre.y * 0.021);
+    }
+    let fx = f32(local.x);
+    let x = fx - f32(in.size.x) * 0.5;
+    let ripple = s * (0.5 * sin(fx * 0.35 / s + t * 0.0021) + 0.3 * sin(fx * 0.9 / s - t * 0.0033));
+    let draft = SHIP_DRAFT * s;
+    // Depth below the surface (pixels; > 0 under water).
+    let d = draft + lift + slope * x + ripple - above_keel;
+    let water = textureLoad(under_tex, vec2<i32>(floor(in.pos.xy)), 0).rgb;
+    let foam_col = vec3<f32>(0.90, 0.95, 0.98);
+    // Foam patches: noise along the hull, drifting with time.
+    let n = noise3(fx * 0.5 / s, f32(local.y) * 0.25 / s + t * 0.0012, t * 0.0021);
+    if c.a == 0.0 {
+        // Under the keel: a little broken foam fading out, so the sunken
+        // hull has no hard lower edge.
+        let f = (1.0 - below / (SHIP_SKIRT * s)) * sstep(0.45, 0.8, n) * 0.35;
+        return vec4<f32>(foam_col, f);
+    }
+    var rgb = c.rgb;
+    var a = c.a;
+    if d > 0.0 {
+        // Under water: tinted towards the water and faded into the sea, with
+        // light ripples near the surface.
+        let k = 1.0 - exp(-d / (SHIP_FADE * s));
+        rgb = mix(rgb, water * 0.85, 0.6 * k);
+        let wave = 0.5 + 0.5 * sin(fx * 0.6 / s + t * 0.004 + 3.0 * n);
+        rgb = mix(rgb, foam_col, 0.18 * wave * (1.0 - sstep(0.0, draft, d)));
+        a = a * (1.0 - 0.92 * k);
+    }
+    // The waterline: broken foam, strongest at the surface.
+    let fw = 1.0 - sstep(0.0, SHIP_FOAM * s, abs(d - 0.3 * s));
+    let foam = fw * sstep(0.3, 0.7, n);
+    rgb = mix(rgb, foam_col, 0.7 * foam);
+    a = max(a, 0.8 * foam * c.a);
+    return vec4<f32>(rgb, a);
 }
 
 @fragment
 fn sprite_fs(in: SpriteOut) -> @location(0) vec4<f32> {
     let local = scene_px(in.pos) - in.dst;
     let c = textureLoad(atlas, in.src + local, in.layer_shadow.x, 0);
+    let flags = in.layer_shadow.y;
+    if (flags & 0x20000u) != 0u && frame.enhanced != 0u && frame.ship_water != 0.0 {
+        // Ships in enhanced water: also some transparent pixels (foam under
+        // the keel).
+        let w = ship_in_water(c, in, local);
+        if w.a == 0.0 {
+            discard;
+        }
+        return w;
+    }
     if c.a == 0.0 {
         discard;
     }
-    let flags = in.layer_shadow.y;
     if (flags & 0x10000u) != 0u {
         // scene::RIVER_TOLERANCE; depth test against the terrain.
         let t = textureLoad(terrain_view, vec2<i32>(floor(in.pos.xy)), 0).r;

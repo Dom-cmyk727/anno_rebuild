@@ -184,8 +184,8 @@ std::vector<std::uint8_t> frame_uniform_bytes(const FrameUniform& f) {
     u.f32(f.frac);
     u.f32(f.time_ms);
     u.u32(f.enhanced ? 1U : 0U);
-    // tile_w, tile_h, raise, then _pad (vec2, 8-aligned: offsets 56, 60).
-    for (const float v : {f.tile_w, f.tile_h, f.raise, 0.0F, 0.0F}) {
+    // tile_w, tile_h, raise, ship_water, _pad (offsets 44 to 63).
+    for (const float v : {f.tile_w, f.tile_h, f.raise, f.ship_water ? 1.0F : 0.0F, 0.0F}) {
         u.f32(v);
     }
     u.i32(f.fluid_origin.first);
@@ -728,6 +728,7 @@ struct GpuFrame::Impl {
         f.raise = static_cast<float>(scene.lift.scaled(kSeaLevel, 1, group));
         f.time_ms = static_cast<float>(time_ms % 3600000);
         f.enhanced = style == WaterStyle::Enhanced;
+        f.ship_water = limits.ship_waterline;
         // Fluid window: origin (world cells), size, on, cells per tile.
         if (fluid && fluid_on) {
             if (const auto w = fluid->window()) {

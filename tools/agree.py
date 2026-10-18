@@ -99,9 +99,33 @@ def cases(game):
     return c
 
 
-def run(cmd):
-    r = subprocess.run([str(a) for a in cmd], capture_output=True)
-    return r.returncode, r.stdout
+# Windows' CreateProcess takes at most 32,767 characters of command line
+# (WinError 206 beyond); a corpus case passes ~3,000 paths. Longer argument
+# lists are split into batches below this length, run one after another, and
+# their outputs joined. Both sides are split the same way, so the comparison
+# stays exact even for output that is not per file.
+ARGS_LIMIT = 24_000
+
+
+def batches(args):
+    out, cur, size = [], [], 0
+    for a in args:
+        n = len(str(a)) + 3
+        if cur and size + n > ARGS_LIMIT:
+            out.append(cur)
+            cur, size = [], 0
+        cur.append(a)
+        size += n
+    return out + [cur]
+
+
+def run(prefix, args):
+    code, stdout = 0, b''
+    for batch in batches(args):
+        r = subprocess.run([str(a) for a in (*prefix, *batch)], capture_output=True)
+        code = max(code, r.returncode)
+        stdout += r.stdout
+    return code, stdout
 
 
 def main():
@@ -117,8 +141,8 @@ def main():
         if only and cmd not in only:
             continue
         args = paths()
-        py = run([sys.executable, '-I', TOOLS / script, *py_args, *args])
-        cc = run([a.dump, *dump_args, *args])
+        py = run([sys.executable, '-I', TOOLS / script, *py_args], args)
+        cc = run([a.dump, *dump_args], args)
         checked += 1
         where = 'corpus' if game and any(str(game) in str(p) for p in args) else 'fixtures'
         label = f"{' '.join(dump_args)} ({where}, {len(args)} args)"

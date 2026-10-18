@@ -54,9 +54,21 @@ Fixtures F2–F5 and F7 are tests.
 - Production clears codes 1–3 only if one of their icons is shown. Icons change only if a city-owner check passes (`0x10073010`: owner slot `+0xc4(3)` = 1; meaning open, OQ-033); otherwise the code stays (`StatusTracker::shows_icons`).
 - Not modelled: the checks `0x10071f40` / `0x10072390` that can turn a due message into code 3 (meaning open).
 
+**Weapons workshop** (`HANDWERKWAFFEN`: 1006 bows and crossbows, 1012 muskets and ship cannon, 1036 axes and lances; `weapons_workshop_step`; D: `0x10069550`, `docs/re/production.md` §4.1a). Two production lines, one per output, sharing the inputs:
+1. A line **works** when it is switched on and unlocked. Unlocked means the owner meets the output goods' requirement, set by the caller from the owner's state; likely research (OQ-034).
+2. No working line: stop after the gate. Otherwise each working line ages its activity (`· 127 >> 7`); then the suspension check.
+3. The input `ratio` and "missing input" are as for the workshop.
+4. Each line in order:
+   - if its output is below the **output-0** capacity and the line works, it makes `rate_j · (share · ratio >> 7) >> 7`, with `share` 64 when both lines work and 128 when one does (generalised as `128 / working lines`). Its activity grows by `made << 4` (u16, wraps as in the original);
+   - if its output is at or above that capacity, "storage full" is reported (45,000 ticks) and the blocked flag set, whether the line works or not.
+5. If any line made something: the inputs are used up with the full `ratio`, the status is cleared and the blocked flag reset. A step with one full line and one producing line therefore sets and clears the flag; the original notifies the city twice, and `blocked_changed` reports the net change.
+6. A carrier is due as for the workshop.
+
+Tests: bow-maker values (rate 9 per line, needs 8 and 4, 5 t): both lines make 4 each, one line makes 9, and the cases above.
+
+`HANDWERKDUAL` (`0x10068a70`) has the same fields but splits by the byte `+0x2c` (`split` and `128 − split`) and ignores the switches except for the activity. No entry of the GOG `Anlagen.dat` uses it, so it is documented (`docs/re/production.md` §4.1a) but not implemented.
+
 **Not implemented yet:**
-- `HANDWERKDUAL` (two outputs, `0x10068a70`; split rule only "likely");
-- `HANDWERKWAFFEN` (`0x10069550`);
 - `PELZJAEGER` (own tick `0x1006e5d0`);
 - mines (deposit rules not traced);
 - the small farm, markets and carts, transport.

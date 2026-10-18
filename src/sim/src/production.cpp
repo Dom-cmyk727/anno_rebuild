@@ -222,6 +222,99 @@ Workshop make_workshop(const ProductionType& type) {
     return w;
 }
 
+WeaponsWorkshop make_weapons_workshop(const ProductionType& type) {
+    WeaponsWorkshop w;
+    const std::size_t lines = std::max<std::size_t>(type.outputs.size(), 1);
+    w.line_on.assign(lines, true);
+    w.unlocked.assign(lines, true);
+    w.out.assign(lines, 0);
+    w.in.assign(type.inputs.size(), 0);
+    w.activity.assign(lines, 0);
+    return w;
+}
+
+StepResult weapons_workshop_step(WeaponsWorkshop& w, const ProductionType& type, std::uint32_t t) {
+    StepResult r;
+    if (!gate(w.last, t)) {
+        return r;
+    }
+    r.stepped = true;
+    const std::size_t lines = w.out.size();
+    std::vector<bool> working(lines, false);
+    std::uint32_t n_working = 0;
+    for (std::size_t j = 0; j < lines; ++j) {
+        working[j] = j < w.line_on.size() && w.line_on[j] && j < w.unlocked.size() && w.unlocked[j];
+        n_working += working[j] ? 1 : 0;
+    }
+    if (n_working == 0) {
+        return r;
+    }
+    // Only working lines age their activity (0x10069644–0x1006968a).
+    for (std::size_t j = 0; j < lines; ++j) {
+        if (working[j]) {
+            w.activity[j] = static_cast<std::uint16_t>(w.activity[j] * 127 >> 7);
+        }
+    }
+    if (w.suspended) {
+        return r;
+    }
+    const std::size_t n_in = w.in.size();
+    std::uint32_t ratio = 128;
+    for (std::size_t i = 0; i < n_in; ++i) {
+        const std::uint32_t need = at(type.input_per_step, i);
+        // need 0: no limit, as in workshop_step (the original divides by it).
+        if (need != 0) {
+            ratio = std::min(ratio, (w.in[i] << 7) / need);
+        }
+    }
+    r.made.assign(lines, 0);
+    const bool blocked_before = w.blocked;
+    if (n_in > 0 && ratio < 64) {
+        r.status = Status::MissingInput;
+        r.message = w.status.report(r.status, t, kRepeatWorkshop);
+        w.blocked = true;
+    } else {
+        // Each working line's share of the step: the original computes
+        // (other line working ? 0x40 : 0x80) for its two lines
+        // (0x1006973d–0x10069746, 0x10069824–0x10069831); 128 / working
+        // lines is the same for two and extends it to other line counts.
+        const std::uint32_t share = 128 / n_working;
+        // Every line checks the output-0 capacity (type +0xc0), not its own.
+        const std::uint32_t cap = at(type.capacity, 0);
+        bool made_any = false;
+        for (std::size_t j = 0; j < lines; ++j) {
+            if (w.out[j] < cap) {
+                if (working[j]) {
+                    const std::uint32_t part = (share * ratio >> 7) & 0xFF;
+                    const std::uint32_t made = at(type.output_per_step, j) * part >> 7;
+                    w.out[j] += made;
+                    w.activity[j] = static_cast<std::uint16_t>(w.activity[j] + (made << 4));
+                    r.made[j] = made;
+                    made_any = true;
+                }
+            } else {
+                // Reported for every full line, working or not; the blocked
+                // flag is set (and the city told) on the transition.
+                r.status = Status::StorageFull;
+                r.message = w.status.report(Status::StorageFull, t, kRepeatWorkshop) || r.message;
+                w.blocked = true;
+            }
+        }
+        if (made_any) {
+            for (std::size_t i = 0; i < n_in; ++i) {
+                w.in[i] -= std::min(w.in[i], at(type.input_per_step, i) * ratio >> 7);
+            }
+            w.status.clear(0x0E);
+            w.blocked = false;
+        }
+    }
+    // Net change; a step in which one line is full and another produces sets
+    // and clears the flag, so the original notifies the city twice.
+    r.blocked_changed = w.blocked != blocked_before;
+    r.send_figure = w.carriers_out < at(type.max_figures, 0) && n_in > 0;
+    return r;
+}
+
 StepResult workshop_step(Workshop& w, const ProductionType& type, std::uint32_t t) {
     StepResult r;
     if (!gate(w.last, t)) {

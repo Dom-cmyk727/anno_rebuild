@@ -40,6 +40,22 @@ sim::StepResult step(sim::Workshop& w, const sim::ProductionType& t, std::uint32
     return sim::workshop_step(w, t, now);
 }
 
+/// The bow maker 1006 (HANDWERKWAFFEN: bows and crossbows from wood and
+/// ropes) with the values F1 checks: rate 9 per line, needs 8 and 4, 5 t.
+sim::ProductionType bow_maker() {
+    sim::ProductionType t = workshop_type(9, {8, 4}, 5);
+    t.kind = sim::BuildingClass::WeaponsWorkshop;
+    t.outputs = {"BOGEN", "ARMBRUST"};
+    t.output_per_step = {9, 9};
+    t.capacity = {5 << 8, 5 << 8};
+    return t;
+}
+
+sim::StepResult step(sim::WeaponsWorkshop& w, const sim::ProductionType& t, std::uint32_t& now) {
+    now += sim::kStepTicks;
+    return sim::weapons_workshop_step(w, t, now);
+}
+
 } // namespace
 
 TEST_CASE("F2: weaver's hut with 5 t of wool") {
@@ -308,6 +324,18 @@ TEST_CASE("F1: production types of all Anlagen.dat entries") {
     CHECK(types.at(706).growth_period == 464);
     CHECK(types.at(706).display_rate0 == 6620);
     CHECK(types.at(824).kind == sim::BuildingClass::FurTrapper);
+    // HANDWERKWAFFEN (0x10069550): bow maker, gunsmith, weapon smith. No
+    // entry uses HANDWERKDUAL (0x10068a70).
+    for (const std::uint32_t id : {1006U, 1012U, 1036U}) {
+        CHECK(types.at(id).kind == sim::BuildingClass::WeaponsWorkshop);
+        CHECK(types.at(id).outputs.size() == 2);
+    }
+    CHECK(rate(1006) == std::vector<std::uint32_t>{9, 9});
+    CHECK(need(1006) == std::vector<std::uint32_t>{8, 4});
+    CHECK(types.at(1006).capacity[0] == 5U << 8);
+    for (const auto& [id, t] : types) {
+        CHECK_MESSAGE(t.kind != sim::BuildingClass::TwoOutputWorkshop, "HANDWERKDUAL " << id);
+    }
     // The two entries whose integers would differ at x87 24-bit precision
     // (docs/sim/production.md): the 53/64-bit values.
     CHECK(need(1010)[1] == 6);
@@ -325,4 +353,102 @@ TEST_CASE("F1: production types of all Anlagen.dat entries") {
             CHECK_MESSAGE(t.input_per_step[0] != 0, "farm " << id);
         }
     }
+}
+
+TEST_CASE("weapons workshop: two lines share the step, one line takes all of it") {
+    const auto t = bow_maker();
+    auto w = sim::make_weapons_workshop(t);
+    REQUIRE(w.out.size() == 2);
+    w.in = {800, 800};
+    std::uint32_t now = 0;
+    // Both lines: 9 · (64 · 128 >> 7) >> 7 = 4 each; the inputs go in full.
+    auto r = step(w, t, now);
+    CHECK(r.made == std::vector<std::uint32_t>{4, 4});
+    CHECK(w.in == std::vector<std::uint32_t>{792, 796});
+    CHECK(w.activity == std::vector<std::uint16_t>{64, 64});
+    CHECK(r.send_figure);
+    // Line 1 locked: line 0 makes the full 9, line 1 keeps its activity.
+    w.unlocked[1] = false;
+    r = step(w, t, now);
+    CHECK(r.made == std::vector<std::uint32_t>{9, 0});
+    CHECK(w.out == std::vector<std::uint32_t>{13, 4});
+    CHECK(w.activity == std::vector<std::uint16_t>{63 + 144, 64});
+    CHECK(w.in == std::vector<std::uint32_t>{784, 792});
+    // Line 0 switched off as well: nothing happens after the gate.
+    w.line_on[0] = false;
+    r = step(w, t, now);
+    CHECK(r.stepped);
+    CHECK(r.made.empty());
+    CHECK(w.activity == std::vector<std::uint16_t>{207, 64});
+}
+
+TEST_CASE("weapons workshop: inputs limit both lines, nothing below half a step") {
+    const auto t = bow_maker();
+    auto w = sim::make_weapons_workshop(t);
+    w.in = {6, 100}; // 6 of 8 wood: ratio (6 << 7) / 8 = 96
+    std::uint32_t now = 0;
+    auto r = step(w, t, now);
+    // 9 · (64 · 96 >> 7) >> 7 = 9 · 48 >> 7 = 3; inputs 8 · 96 >> 7 = 6, 4 · 96 >> 7 = 3.
+    CHECK(r.made == std::vector<std::uint32_t>{3, 3});
+    CHECK(w.in == std::vector<std::uint32_t>{0, 97});
+    r = step(w, t, now);
+    CHECK(r.status == sim::Status::MissingInput);
+    CHECK(r.made == std::vector<std::uint32_t>{0, 0});
+    CHECK(w.blocked);
+    CHECK(r.blocked_changed);
+}
+
+TEST_CASE("weapons workshop: each line checks the output-0 capacity on its own") {
+    auto t = bow_maker();
+    t.capacity = {1280, 0}; // line 1 is checked against capacity 0 too
+    auto w = sim::make_weapons_workshop(t);
+    w.in = {800, 800};
+    w.out = {1280, 0};
+    std::uint32_t now = 0;
+    // Line 0 full: "storage full" is reported, line 1 still makes its half
+    // (the share counts working lines, not free ones), the inputs go in full
+    // and production clears the status and the blocked flag again.
+    auto r = step(w, t, now);
+    CHECK(r.status == sim::Status::StorageFull);
+    CHECK(r.made == std::vector<std::uint32_t>{0, 4});
+    CHECK(w.in == std::vector<std::uint32_t>{792, 796});
+    CHECK_FALSE(w.blocked);
+    CHECK_FALSE(r.blocked_changed);
+    // Both full: no production, nothing used, blocked.
+    w.out = {1280, 1280};
+    r = step(w, t, now);
+    CHECK(r.status == sim::Status::StorageFull);
+    CHECK(r.made == std::vector<std::uint32_t>{0, 0});
+    CHECK(w.in == std::vector<std::uint32_t>{792, 796});
+    CHECK(w.blocked);
+    CHECK(r.blocked_changed);
+    // A full line reports even when it is switched off.
+    w.line_on[1] = false;
+    w.out = {0, 1280};
+    r = step(w, t, now);
+    CHECK(r.status == sim::Status::StorageFull);
+    CHECK(r.made == std::vector<std::uint32_t>{9, 0});
+}
+
+TEST_CASE("weapons workshop: the gate, suspension and the u16 activity") {
+    const auto t = bow_maker();
+    auto w = sim::make_weapons_workshop(t);
+    w.in = {800, 800};
+    CHECK_FALSE(sim::weapons_workshop_step(w, t, 499).stepped);
+    w.suspended = true;
+    w.activity = {1280, 0};
+    auto r = sim::weapons_workshop_step(w, t, 500);
+    CHECK(r.stepped);
+    CHECK(r.made.empty());
+    CHECK(w.activity[0] == 1270); // aged before the suspension check
+    // The activity is 16-bit: it wraps as the original's addw. A made amount
+    // of 100 on one line: 65530 · 127 >> 7 = 65018, + 1600 = 66618 → 1082.
+    auto big = t;
+    big.output_per_step = {100, 100};
+    w.suspended = false;
+    w.line_on[1] = false;
+    w.activity = {65530, 0};
+    r = sim::weapons_workshop_step(w, big, 1000);
+    CHECK(r.made[0] == 100);
+    CHECK(w.activity[0] == 1082);
 }

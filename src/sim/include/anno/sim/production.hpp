@@ -23,8 +23,8 @@ inline constexpr std::uint32_t kTon = 256;
 /// 0x10024010; docs/re/production.md §2.1, §3).
 enum class BuildingClass {
     Workshop,          ///< HANDWERK (tick 0x100680b0)
-    TwoOutputWorkshop, ///< HANDWERKDUAL, PRODTYPE 12 (tick 0x10068a70; not implemented)
-    WeaponsWorkshop,   ///< HANDWERKWAFFEN (tick 0x10069550; not implemented)
+    TwoOutputWorkshop, ///< HANDWERKDUAL, PRODTYPE 12 (tick 0x10068a70; no entry uses it)
+    WeaponsWorkshop,   ///< HANDWERKWAFFEN, PRODTYPE 17 (tick 0x10069550)
     Farm,              ///< PLANTAGE, WEIDETIER, STEINMETZ, SCHAFFARM, FISCHER (tick 0x1006ea90)
     FurTrapper,        ///< PELZJAEGER (own tick 0x1006e5d0; not implemented)
     Mine,              ///< MINE
@@ -146,9 +146,48 @@ Workshop make_workshop(const ProductionType& type);
 /// One production tick at world tick `t` of a HANDWERK workshop (D:
 /// AnnoWelt.dll 0x100680b0). Production is proportional to the share of one
 /// step's inputs in stock (ratio of 128), nothing below half a step; the
-/// output may exceed its capacity by up to one step. HANDWERKWAFFEN (two
-/// outputs, 0x10068a70) is not implemented: its split rule is only "likely".
+/// output may exceed its capacity by up to one step.
 StepResult workshop_step(Workshop& w, const ProductionType& type, std::uint32_t t);
+
+/// A HANDWERKWAFFEN workshop (two production lines, e.g. 1006 bows and
+/// crossbows) at runtime (D: AnnoWelt.dll class 0x100693c0, vtable
+/// 0x100c2d1c; fields +0x18/+0x1a outputs, +0x20/+0x22 inputs, +0x24/+0x26
+/// activity, +0x2a/+0x2b line switches, +0x30/+0x34 carrier slots).
+struct WeaponsWorkshop {
+    std::uint16_t last = 0;
+    /// Per line: switched on (bytes +0x2a/+0x2b, both 1 after construction).
+    std::vector<bool> line_on;
+    /// Per line: the owner meets the output goods' requirement. In the
+    /// original a per-goods byte b of the owner's goods table (26 bytes per
+    /// goods, byte +0x18) is 0 or the owner's object +0xbc reports bit 1 for
+    /// b (0x10069580–0x100695cf); likely research (OQ-034). Set by the caller
+    /// from the owner's state.
+    std::vector<bool> unlocked;
+    bool suspended = false;
+    bool blocked = false;
+    std::vector<std::uint32_t> out; ///< output stock per line, 8.8
+    std::vector<std::uint32_t> in;  ///< input stock per input, 8.8
+    /// Activity average per line: a u16 in the original (+0x24/+0x26,
+    /// addw), kept 16-bit to match.
+    std::vector<std::uint16_t> activity;
+    std::uint32_t carriers_out = 0;
+    StatusTracker status;
+};
+
+/// A weapons workshop sized for `type` (one line per output; stocks and
+/// activity 0, every line switched on and unlocked).
+WeaponsWorkshop make_weapons_workshop(const ProductionType& type);
+
+/// One production tick at world tick `t` of a HANDWERKWAFFEN workshop (D:
+/// AnnoWelt.dll 0x10069550). A line works when it is switched on and
+/// unlocked. Inputs limit the step as in the workshop (ratio of 128). The
+/// step is shared by the working lines: with both, each makes rate · (64 ·
+/// ratio >> 7) >> 7, with one, that line makes the full step. Every line
+/// checks the output-0 capacity (type +0xc0) and reports "storage full" on
+/// its own; the inputs are used up in full as soon as any line made
+/// something. The split byte +0x2c of the class is not read here (only
+/// HANDWERKDUAL, 0x10068a70, uses it). docs/sim/production.md.
+StepResult weapons_workshop_step(WeaponsWorkshop& w, const ProductionType& type, std::uint32_t t);
 
 /// A farm (PLANTAGE family) at runtime (D: class at 0x1006f160).
 struct Farm {

@@ -245,7 +245,7 @@ StepResult weapons_workshop_step(WeaponsWorkshop& w, const ProductionType& type,
     std::uint32_t n_working = 0;
     for (std::size_t j = 0; j < lines; ++j) {
         working[j] = j < w.line_on.size() && w.line_on[j] && j < w.unlocked.size() && w.unlocked[j];
-        n_working += working[j] ? 1 : 0;
+        n_working += working[j] ? 1U : 0U;
     }
     if (n_working == 0) {
         return r;
@@ -580,7 +580,7 @@ StepResult mine_step(Mine& m, const ProductionType& type, std::uint32_t t,
         if (!found && goods == "EISENERZ") {
             // 0x15b when the deposit found still has deep ore, else 0x19.
             const bool deep_left = m.deposit && deposit_remaining(deposits[*m.deposit], true) != 0;
-            r.notice = deep_left ? 0x15B : 0x19;
+            r.notice = deep_left ? std::uint16_t{0x15B} : std::uint16_t{0x19};
         }
     }
     if (got == 0) {

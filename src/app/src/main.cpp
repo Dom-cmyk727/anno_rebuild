@@ -25,9 +25,9 @@
 //
 // The game directory is --game-dir, else ANNO1503_GAME_DIR, else the nearest
 // ancestor of the file that contains Anlagen.dat. Arguments are UTF-8 (wide
-// on Windows). The C++ build composes
-// frames on the CPU; --renderer gpu is refused until the GPU compositor is
-// ported (ADR 0001), auto uses the CPU.
+// on Windows). --renderer auto (default) composes on the GPU when one is
+// available (build option ANNO_BUILD_GPU), else on the CPU; gpu fails
+// without a GPU, cpu never uses it.
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
@@ -121,14 +121,8 @@ int run(const std::vector<std::string>& raw) {
         }
         return write_scene_png(scene, group, region, *args->png, args->time, args->water);
     }
-    if (args->renderer == Renderer::Gpu) {
-        std::fputs("the GPU renderer is not ported to the C++ build yet (ADR 0001); use "
-                   "--renderer cpu or auto\n",
-                   stderr);
-        return 1;
-    }
 #ifdef ANNO_WITH_VIEWER
-    const std::string err = anno::app::run_viewer(scene, args->group.value_or(2));
+    const std::string err = anno::app::run_viewer(scene, args->group.value_or(2), args->renderer);
     if (!err.empty()) {
         std::fprintf(stderr, "%s: %s\n", name.c_str(), err.c_str());
         return 1;

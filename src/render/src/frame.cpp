@@ -148,7 +148,7 @@ std::vector<Px> to_px(const Canvas& c) {
 
 } // namespace
 
-Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy) {
+Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool ships) {
     const Rect rect = chunk_rect(cx, cy);
     std::vector<std::size_t> islands;
     for (const auto& p : scene.layouts[group]) {
@@ -158,16 +158,21 @@ Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy) {
     }
     Layers objects_only = Layers::none();
     objects_only.objects = true;
+    objects_only.ships = ships;
     if (islands.empty()) {
         // Open sea; only units (ships) can add an objects layer.
-        if (!scene.units_touch(rect, group)) {
-            return {};
+        if (!scene.units_touch(rect, group, ships)) {
+            Chunk none;
+            none.ships = ships;
+            return none;
         }
         Chunk c;
+        c.ships = ships;
         c.objects = to_px(scene.render(rect, group, objects_only).first);
         return c;
     }
     Chunk c;
+    c.ships = ships;
     const Px water = scene.textures.water();
     auto [ground, probe] = scene.ground_with_probe(rect, group);
     c.ground.reserve(ground.width * ground.height);
@@ -222,6 +227,7 @@ ChunkWorkers::~ChunkWorkers() {
 void ChunkWorkers::run() {
     for (;;) {
         ChunkKey key;
+        bool ships = true;
         {
             std::unique_lock lock(mutex_);
             ready_.wait(lock, [this] { return stop_ || !jobs_.empty(); });
@@ -231,11 +237,12 @@ void ChunkWorkers::run() {
             key = jobs_.front();
             jobs_.pop_front();
             busy_.insert(key);
+            ships = ships_;
         }
         const auto [group, cx, cy] = key;
         std::optional<Chunk> chunk;
         try {
-            chunk = render_chunk(scene_, group, cx, cy);
+            chunk = render_chunk(scene_, group, cx, cy, ships);
         } catch (const std::exception& e) {
             // E.g. out of memory: the chunk stays missing (open sea) and is not
             // requested again; the worker keeps running.
@@ -251,8 +258,9 @@ void ChunkWorkers::run() {
     }
 }
 
-bool ChunkWorkers::submit(const std::vector<ChunkKey>& wanted) {
+bool ChunkWorkers::submit(const std::vector<ChunkKey>& wanted, bool ships) {
     const std::lock_guard lock(mutex_);
+    ships_ = ships;
     jobs_.clear();
     for (const auto& k : wanted) {
         if (!busy_.contains(k) && !failed_.contains(k)) {
@@ -268,7 +276,8 @@ std::vector<std::pair<ChunkKey, Chunk>> ChunkWorkers::take_done() {
     return std::exchange(done_, {});
 }
 
-FrameRenderer::FrameRenderer(std::size_t threads_) : threads(std::max<std::size_t>(threads_, 1)) {}
+FrameRenderer::FrameRenderer(std::size_t threads_, bool ships_in_chunks)
+    : threads(std::max<std::size_t>(threads_, 1)), ships_(ships_in_chunks) {}
 
 void FrameRenderer::set_workers(std::unique_ptr<ChunkWorkers> workers) {
     workers_ = std::move(workers);
@@ -436,6 +445,10 @@ std::size_t FrameRenderer::request_chunks(std::size_t group, Rect view,
                                           const std::vector<std::pair<int, int>>& visible) {
     std::size_t received = 0;
     for (auto& [key, chunk] : workers_->take_done()) {
+        // Workers shared with a renderer of the other ship setting: rebuilt.
+        if (chunk.ships != ships_) {
+            continue;
+        }
         cache_.insert_or_assign(key, std::move(chunk));
         ++received;
     }
@@ -482,7 +495,7 @@ std::size_t FrameRenderer::request_chunks(std::size_t group, Rect view,
             todo.push_back(k);
         }
     }
-    pending_ = workers_->submit(todo);
+    pending_ = workers_->submit(todo, ships_);
     trim(group, view, keep);
     return received;
 }
@@ -516,7 +529,7 @@ std::size_t FrameRenderer::fill_cache(const Scene& scene, std::size_t group,
         }
     }
     auto built = par_map(todo, threads, [&](const std::pair<int, int>& c) {
-        return render_chunk(scene, group, c.first, c.second);
+        return render_chunk(scene, group, c.first, c.second, ships_);
     });
     for (std::size_t i = 0; i < todo.size(); ++i) {
         cache_.insert_or_assign({group, todo[i].first, todo[i].second}, std::move(built[i]));

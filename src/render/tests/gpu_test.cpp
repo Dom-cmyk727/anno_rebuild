@@ -262,8 +262,8 @@ TEST_CASE("GPU frames match the CPU path (game files)") {
         REQUIRE_MESSAGE(made, (made ? "" : made.error()));
         gpu::GpuFrame& g = *made.value();
         const auto target = g.offscreen_target(kW, kH);
-        render::FrameRenderer cpu(4), on_gpu(4);
-        std::size_t sprites = 0;
+        render::FrameRenderer cpu(4), on_gpu(4, false);
+        std::size_t sprites = 0, ships = 0;
         for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{0}}) {
             const render::Rect view = digest_view(*scene, name, group, kW, kH);
             std::vector<std::uint8_t> enhanced;
@@ -279,6 +279,7 @@ TEST_CASE("GPU frames match the CPU path (game files)") {
                 CHECK(st.chunks_missing == 0);
                 CHECK(st.wave_simulation == (style == render::WaterStyle::Enhanced));
                 sprites += st.sprites;
+                ships += st.ships;
                 const auto px = g.read_back(target.first.get(), kW, kH);
                 REQUIRE(px.size() == out.size() * 4);
                 const auto [max, differ] = difference(out, px);
@@ -298,9 +299,9 @@ TEST_CASE("GPU frames match the CPU path (game files)") {
                 }
             }
         }
-        // Water objects and units were drawn from the atlas, so the check
+        // Water objects and ships were drawn from the atlas, so the check
         // is not vacuous (Single_01's views hold none: 0 there).
-        MESSAGE(std::string(name) << ": " << sprites << " sprites drawn");
+        MESSAGE(std::string(name) << ": " << sprites << " sprites, " << ships << " ships drawn");
         if (std::string_view(name) == "Single_24.sze") {
             CHECK(sprites > 0);
         }
@@ -331,7 +332,7 @@ TEST_CASE("GPU frames: atlas growth, odd sizes and spread uploads (game files)")
     gpu::GpuFrame& g = *made.value();
     constexpr int kW = 1001, kH = 601;
     const auto target = g.offscreen_target(kW, kH);
-    render::FrameRenderer cpu(4), on_gpu(4);
+    render::FrameRenderer cpu(4), on_gpu(4, false);
     for (const std::size_t group : {std::size_t{2}, std::size_t{1}}) {
         const render::Rect view = digest_view(*scene, name, group, kW, kH);
         std::vector<std::uint32_t> out(std::size_t{kW} * kH);
@@ -379,7 +380,7 @@ TEST_CASE("enhanced water without the wave simulation stays close to the CPU pat
         REQUIRE(made);
         gpu::GpuFrame& g = *made.value();
         const auto target = g.offscreen_target(kW, kH);
-        render::FrameRenderer cpu(4), on_gpu(4);
+        render::FrameRenderer cpu(4), on_gpu(4, false);
         for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{0}}) {
             const render::Rect view = digest_view(*scene, name, group, kW, kH);
             for (const std::uint64_t time : {std::uint64_t{925}, std::uint64_t{1900}}) {
@@ -426,7 +427,7 @@ TEST_CASE("the wave simulation shows on screen (game files)") {
     REQUIRE(b);
     const auto ta = a.value()->offscreen_target(kW, kH);
     const auto tb = b.value()->offscreen_target(kW, kH);
-    render::FrameRenderer fa(4), fb(4);
+    render::FrameRenderer fa(4, false), fb(4, false);
     const render::Rect view = digest_view(*scene, name, 1, kW, kH);
     for (std::uint64_t t = 1000; t <= 1000 + 33 * 30; t += 33) {
         const auto st = a.value()->render(fa, *scene, view, 1, t, render::WaterStyle::Enhanced,
@@ -685,7 +686,7 @@ TEST_CASE("a frame recorded with errors is counted, not submitted") {
     const gpu::Texture t(wgpuDeviceCreateTexture(ctx->device.get(), &desc));
     WGPUTextureViewDescriptor vd = WGPU_TEXTURE_VIEW_DESCRIPTOR_INIT;
     const gpu::TextureView v(wgpuTextureCreateView(t.get(), &vd));
-    render::FrameRenderer frames(2);
+    render::FrameRenderer frames(2, false);
     made.value()->render(frames, *loaded.scene, {0, 0, 64, 64}, 2, 0, render::WaterStyle::Original,
                          v.get());
     // The RGBA8 pipelines cannot draw into a BGRA8 target: wgpu-native 29
@@ -711,7 +712,7 @@ TEST_CASE("atlas growth keeps earlier sprites, first frame at a late sea step (g
     gpu::GpuFrame& g = *made.value();
     constexpr int kW = 1280, kH = 720;
     const auto target = g.offscreen_target(kW, kH);
-    render::FrameRenderer cpu(4), on_gpu(4);
+    render::FrameRenderer cpu(4), on_gpu(4, false);
     // Group 2 fills layer 0, group 1 grows the atlas, group 2 again reads
     // the copied layer. Times late in the animation cycle: the first frame
     // of a group must have the whole pattern.
@@ -748,7 +749,7 @@ TEST_CASE("uploads spread over frames: stand-ins first, then the real chunks (ga
     gpu::GpuFrame& g = *made.value();
     constexpr int kW = 1001, kH = 601;
     const auto target = g.offscreen_target(kW, kH);
-    render::FrameRenderer cpu(4), on_gpu(4);
+    render::FrameRenderer cpu(4), on_gpu(4, false);
     const render::Rect view = digest_view(*scene, name, 1, kW, kH);
     std::vector<std::uint32_t> out(std::size_t{kW} * kH);
     cpu.render(*scene, view, 1, 0, render::WaterStyle::Original, out.data());
@@ -780,7 +781,7 @@ TEST_CASE("a frame can be destroyed with GPU work in flight (game files)") {
     for (int round = 0; round < 3; ++round) {
         auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
         REQUIRE(made);
-        render::FrameRenderer frames(4);
+        render::FrameRenderer frames(4, false);
         auto t = made.value()->offscreen_target(1920, 1080);
         const auto view = digest_view(*loaded.scene, "Single_24.sze", 0, 1920, 1080);
         for (std::uint64_t f = 0; f < 4; ++f) {
@@ -814,7 +815,7 @@ TEST_CASE("stand-in chunks show the open sea (game files)") {
     gpu::GpuFrame& g = *made.value();
     constexpr int kW = 1280, kH = 720;
     const auto target = g.offscreen_target(kW, kH);
-    render::FrameRenderer cpu(4), on_gpu(4);
+    render::FrameRenderer cpu(4), on_gpu(4, false);
     const render::Rect view = digest_view(*scene, name, 1, kW, kH);
     std::vector<std::uint32_t> out(std::size_t{kW} * kH);
     cpu.render(*scene, view, 1, 300, render::WaterStyle::Original, out.data());
@@ -895,7 +896,7 @@ TEST_CASE("a full sprite atlas drops new sprites without errors (game files)") {
     gpu::GpuFrame& g = *made.value();
     constexpr int kW = 1280, kH = 720;
     const auto target = g.offscreen_target(kW, kH);
-    render::FrameRenderer cpu(4), on_gpu(4);
+    render::FrameRenderer cpu(4), on_gpu(4, false);
     const render::Rect view = digest_view(*scene, name, 1, kW, kH);
     std::vector<std::uint32_t> out(std::size_t{kW} * kH);
     cpu.render(*scene, view, 1, 0, render::WaterStyle::Original, out.data());
@@ -916,4 +917,54 @@ TEST_CASE("a full sprite atlas drops new sprites without errors (game files)") {
     CHECK(differ > 0);
     CHECK(differ * 100 < out.size());
     CHECK(g.errors() == 0);
+}
+
+TEST_CASE("ships drawn by the compositor match the CPU path (game files)") {
+    const auto dir = anno::test::game_dir();
+    auto ctx = device_or_skip();
+    if (!dir || !ctx) {
+        return;
+    }
+    // The GPU path draws ships each frame (chunks without them); the CPU
+    // path bakes them into the chunks after all island objects. Views
+    // centred on the first ships of two scenarios, all zoom groups.
+    for (const char* name : {"Single_01.sze", "Single_24.sze"}) {
+        const Loaded loaded = load_scene(*dir, name);
+        const auto& scene = loaded.scene;
+        gpu::GpuLimits limits;
+        limits.uploads_per_frame = SIZE_MAX;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE(made);
+        gpu::GpuFrame& g = *made.value();
+        constexpr int kW = 640, kH = 400;
+        const auto target = g.offscreen_target(kW, kH);
+        render::FrameRenderer cpu(4), on_gpu(4, false);
+        std::size_t ships = 0, checked = 0;
+        for (const auto& u : scene->units) {
+            if (u.z || checked >= 3) {
+                continue;
+            }
+            ++checked;
+            for (const std::size_t group : {std::size_t{0}, std::size_t{1}, std::size_t{2}}) {
+                const auto [ax, ay] = u.anchor(group, scene->lift);
+                const render::Rect view{ax - kW / 2, ay - kH / 2, kW, kH};
+                std::vector<std::uint32_t> out(std::size_t{kW} * kH);
+                cpu.render(*scene, view, group, 300, render::WaterStyle::Original, out.data());
+                const auto st = g.render(on_gpu, *scene, view, group, 300,
+                                         render::WaterStyle::Original, target.second.get());
+                ships += st.ships;
+                const auto px = g.read_back(target.first.get(), kW, kH);
+                REQUIRE(px.size() == out.size() * 4);
+                const auto [max, differ] = difference(out, px);
+                INFO(std::string(name) << " ship at " << u.x << "," << u.y << " group " << group
+                                       << ": max " << max << ", " << differ << " pixels > 2");
+                CHECK(st.ships > 0);
+                CHECK(max <= 1);
+            }
+        }
+        CHECK(checked > 0);
+        MESSAGE(std::string(name) << ": " << ships << " ship sprites over " << checked * 3
+                                  << " views");
+        CHECK(g.errors() == 0);
+    }
 }

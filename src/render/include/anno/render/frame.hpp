@@ -54,13 +54,16 @@ struct Chunk {
     std::vector<std::uint16_t> terrain;
     /// Some island here has water objects below / above the waterline.
     bool water_below = false, water_above = false;
+    /// Ships are drawn into `objects` (see render_chunk).
+    bool ships = true;
 };
 
 /// (zoom group, chunk x, chunk y).
 using ChunkKey = std::tuple<std::size_t, int, int>;
 
-/// The static data of one chunk.
-Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy);
+/// The static data of one chunk; with `ships` false the ships (units on
+/// the sea surface) are left out of the objects layer.
+Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool ships = true);
 
 /// Background chunk builders: a priority job list and a result queue. The
 /// scene must outlive them. Destroying them stops the builders and waits for
@@ -74,8 +77,9 @@ class ChunkWorkers {
     ChunkWorkers& operator=(const ChunkWorkers&) = delete;
 
     /// Replaces the job list with `wanted` (priority order) minus the chunks
-    /// being built; whether any work is queued or running.
-    bool submit(const std::vector<ChunkKey>& wanted);
+    /// being built, built with or without ships (render_chunk); whether any
+    /// work is queued or running.
+    bool submit(const std::vector<ChunkKey>& wanted, bool ships = true);
     /// Finished chunks since the last call.
     std::vector<std::pair<ChunkKey, Chunk>> take_done();
 
@@ -92,6 +96,7 @@ class ChunkWorkers {
     std::set<ChunkKey> failed_;
     std::vector<std::pair<ChunkKey, Chunk>> done_;
     bool stop_ = false;
+    bool ships_ = true;
     std::vector<std::thread> threads_;
 };
 
@@ -107,7 +112,10 @@ struct FrameStats {
 /// Renders frames of a Scene into 0RGB buffers.
 class FrameRenderer {
   public:
-    explicit FrameRenderer(std::size_t threads);
+    /// `ships_in_chunks` false: chunks leave the ships out (for the GPU
+    /// compositor, which draws them each frame); render() then omits them.
+    explicit FrameRenderer(std::size_t threads, bool ships_in_chunks = true);
+    [[nodiscard]] bool ships_in_chunks() const { return ships_; }
 
     /// Builds chunks with `workers` from now on (nullptr: in the frame).
     void set_workers(std::unique_ptr<ChunkWorkers> workers);
@@ -139,6 +147,7 @@ class FrameRenderer {
     std::map<ChunkKey, Chunk> cache_;
     std::unique_ptr<ChunkWorkers> workers_;
     bool pending_ = false;
+    bool ships_ = true;
 };
 
 /// The rectangle of view's size at group `to` centred on the scene point

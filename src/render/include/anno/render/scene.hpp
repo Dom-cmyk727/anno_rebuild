@@ -89,6 +89,9 @@ struct Layers {
     bool ground = false, water_below = false, sea = false, water_above = false, objects = false;
     std::uint64_t time_ms = 0;
     WaterStyle water_style = WaterStyle::Original;
+    /// With `objects`: also the ships (units on the sea surface, drawn after
+    /// all island objects). The GPU compositor draws them itself instead.
+    bool ships = true;
 
     static constexpr Layers all() {
         return {true, true, true, true, true, 0, WaterStyle::Original};
@@ -192,7 +195,8 @@ class Scene {
     /// Ground height at world point (x, y); nullopt over open sea.
     [[nodiscard]] std::optional<float> ground_height(float x, float y) const;
     /// Whether any unit is drawn into `rect` at `group`.
-    [[nodiscard]] bool units_touch(Rect rect, std::size_t group) const;
+    /// With `ships` false, units on the sea surface are not counted.
+    [[nodiscard]] bool units_touch(Rect rect, std::size_t group, bool ships = true) const;
     /// Scene rectangle covering all islands and units.
     [[nodiscard]] std::optional<Rect> bounds(std::size_t group) const;
 

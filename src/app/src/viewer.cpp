@@ -249,6 +249,8 @@ std::string Viewer::run() {
         auto g = create_gpu(window_, w, h);
         if (g) {
             gpu_ = std::move(g).value();
+            // The compositor draws the ships each frame: chunks without them.
+            frames_ = render::FrameRenderer(frames_.threads, false);
             std::fprintf(stderr, "GPU renderer: %s\n", gpu_->ctx.name.c_str());
         } else if (renderer_choice_ == Renderer::Gpu) {
             const std::string err = "GPU renderer: " + g.error();

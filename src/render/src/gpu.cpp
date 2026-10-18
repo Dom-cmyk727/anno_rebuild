@@ -248,6 +248,9 @@ struct GpuFrame::Impl {
         BindGroup bind;
         std::uint32_t layers = 0;
         std::map<SpriteKey, std::optional<Place>> place;
+        /// Unit frames (ships), keyed by their decoded image (shared by
+        /// the scene's units; only a cache key, never iterated).
+        std::map<const Rgba*, std::optional<Place>> unit_place;
         /// Packing cursor: layer, x, y, height of the current shelf.
         std::array<std::uint32_t, 4> cursor{};
     };
@@ -513,6 +516,7 @@ struct GpuFrame::Impl {
             wgpuCommandEncoderCopyTextureToTexture(enc.get(), &src, &dst, &ext);
             submit(enc.get(), "atlas copy");
             a.place = std::move(old->place);
+            a.unit_place = std::move(old->unit_place);
             a.cursor = old->cursor;
         }
         a.layers = layers;
@@ -562,6 +566,23 @@ struct GpuFrame::Impl {
         return std::array<std::uint32_t, 3>{layer, x, y};
     }
 
+    /// Packs `img` into the atlas; nullopt if it is empty, larger than a
+    /// layer, or the atlas is full.
+    std::optional<Place> pack_image(const Rgba& img) {
+        const std::uint32_t w = img.width, h = img.height;
+        if (w == 0 || h == 0 || w > limits.atlas_size || h > limits.atlas_size) {
+            return std::nullopt;
+        }
+        const auto at = atlas_alloc(w, h);
+        if (!at) {
+            return std::nullopt;
+        }
+        const auto [layer, x, y] = *at;
+        write_layer(queue(), atlas->texture.get(), layer, x, y, w, h, 4, img.pixels.data(),
+                    img.pixels.size());
+        return Place{layer, x, y, w, h};
+    }
+
     /// The atlas position of a sprite frame, packing it on first use.
     std::optional<Place> atlas_place(const Scene& scene, const SpriteDraw& d) {
         if (atlas) {
@@ -571,20 +592,74 @@ struct GpuFrame::Impl {
         }
         std::optional<Place> place;
         if (const auto img = scene.sprites.get(scene.anlagen, d.key, *d.frame)) {
-            const std::uint32_t w = img->width, h = img->height;
-            if (w != 0 && h != 0 && w <= limits.atlas_size && h <= limits.atlas_size) {
-                if (const auto at = atlas_alloc(w, h)) {
-                    const auto [layer, x, y] = *at;
-                    write_layer(queue(), atlas->texture.get(), layer, x, y, w, h, 4,
-                                img->pixels.data(), img->pixels.size());
-                    place = Place{layer, x, y, w, h};
-                }
-            }
+            place = pack_image(*img);
         }
         if (atlas) {
             atlas->place.insert_or_assign(d.key, place);
         }
         return place;
+    }
+
+    /// The atlas position of a unit frame image, packing it on first use.
+    std::optional<Place> unit_place(const Rgba& img) {
+        if (atlas) {
+            if (const auto it = atlas->unit_place.find(&img); it != atlas->unit_place.end()) {
+                return it->second;
+            }
+        }
+        std::optional<Place> place = pack_image(img);
+        if (atlas) {
+            atlas->unit_place.insert_or_assign(&img, place);
+        }
+        return place;
+    }
+
+    /// Appends instances for the ships in `view` (shadow, then frame; in
+    /// Scene::draw_units order) and returns their number. Bit 17 marks a
+    /// ship's frame, bits 18-31 hold its anchor row (the enhanced waterline,
+    /// ship_in_water in gpu.wgsl).
+    std::uint32_t pack_ships(const Scene& scene, Rect view, std::size_t group, Bytes& bytes) {
+        std::vector<const UnitSprite*> order;
+        for (const auto& u : scene.units) {
+            if (!u.z) {
+                order.push_back(&u);
+            }
+        }
+        std::stable_sort(order.begin(), order.end(), [](const UnitSprite* a, const UnitSprite* b) {
+            return total_less(a->x + a->y, b->x + b->y);
+        });
+        std::uint32_t n = 0;
+        auto add = [&](const UnitFrame& f, std::pair<int, int> at, std::uint32_t flags) {
+            const auto p = unit_place(*f.image);
+            if (!p) {
+                return;
+            }
+            const auto [layer, ax, ay, w, h] = *p;
+            const int left = at.first - f.frame.anchor_x, top = at.second - f.frame.anchor_y;
+            if (!Rect{left, top, static_cast<int>(w), static_cast<int>(h)}.intersect(view)) {
+                return;
+            }
+            bytes.i32(left);
+            bytes.i32(top);
+            for (const std::uint32_t v : {w, h, ax, ay, layer, flags}) {
+                bytes.u32(v);
+            }
+            ++n;
+        };
+        for (const UnitSprite* u : order) {
+            if (group >= u->frames.size() || !u->frames[group] || !u->frames[group]->image) {
+                continue;
+            }
+            const auto at = u->anchor(group, scene.lift);
+            if (group < u->shadows.size() && u->shadows[group] && u->shadows[group]->image) {
+                add(*u->shadows[group], at, 1U);
+            }
+            // Bits 18-31: the frame's anchor row (ship_in_water in gpu.wgsl).
+            const auto anchor_y = static_cast<std::uint32_t>(
+                std::clamp<int>(u->frames[group]->frame.anchor_y, 0, (1 << 14) - 1));
+            add(*u->frames[group], at, 1U << 17 | anchor_y << 18);
+        }
+        return n;
     }
 
     /// Appends one instance per drawable sprite of `draws` (packing new
@@ -884,8 +959,13 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     bytes.b.reserve((below.size() + above.size()) * kInstanceBytes);
     const std::uint32_t n_below = m.pack_sprites(scene, below, false, bytes);
     const std::uint32_t n_above = m.pack_sprites(scene, above, true, bytes);
+    // Ships are drawn here, after the cached objects, unless the chunks
+    // already hold them (a FrameRenderer with ships in its chunks).
+    const std::uint32_t n_ships =
+        frames.ships_in_chunks() ? 0 : m.pack_ships(scene, view, group, bytes);
     m.write_instances(bytes.b);
     stats.sprites = std::size_t{n_below} + n_above;
+    stats.ships = n_ships;
     stats.sprites_ms = ms_since(t);
 
     t = Clock::now();
@@ -957,6 +1037,16 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         }
         wgpuRenderPassEncoderSetPipeline(p, m.objects_pipe.get());
         draw_chunks(p);
+        // Ships last, as Scene::draw_units draws them after all objects.
+        if (m.instances && atlas != nullptr && n_ships > 0) {
+            wgpuRenderPassEncoderSetPipeline(p, m.sprite_pipe.get());
+            wgpuRenderPassEncoderSetBindGroup(p, 1, m.empty_bind.get(), 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(p, 2, atlas, 0, nullptr);
+            wgpuRenderPassEncoderSetVertexBuffer(p, 0, m.instances.get(),
+                                                 std::uint64_t{n_below + n_above} * kInstanceBytes,
+                                                 WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderDraw(p, 6, n_ships, 0, 0);
+        }
         wgpuRenderPassEncoderEnd(p);
         wgpuRenderPassEncoderRelease(p);
     }

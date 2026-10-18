@@ -46,6 +46,9 @@ struct GpuStats {
     double total_ms = 0;
     /// Animated sprites drawn (water objects below and above the waterline).
     std::size_t sprites = 0;
+    /// Ships drawn by the compositor (FrameRenderer without ships in its
+    /// chunks; their shadows included).
+    std::size_t ships = 0;
     /// The coastal wave simulation ran for this frame (enhanced water).
     bool wave_simulation = false;
 };

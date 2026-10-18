@@ -201,7 +201,8 @@ struct GpuFrame {};
 #endif
 
 void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
-    render::FrameRenderer fr(c.threads);
+    // The GPU compositor draws the ships itself: chunks without them.
+    render::FrameRenderer fr(c.threads, g == nullptr);
     if (c.async_chunks) {
         fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (c.threads + 1) / 2));
     }

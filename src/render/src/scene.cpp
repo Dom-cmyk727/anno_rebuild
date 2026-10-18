@@ -406,7 +406,7 @@ Scene::render_with_terrain(Rect rect, std::size_t group, Layers layers,
             }
             composite(canvas, local, p.offset);
         }
-        if (pass == 1 && layers.objects) {
+        if (pass == 1 && layers.objects && layers.ships) {
             stats.units += draw_units(canvas, group);
         }
         if (pass == 0 && layers.sea) {
@@ -489,8 +489,11 @@ std::optional<Rect> Scene::unit_rect(const UnitSprite& u, std::size_t group) con
     return Rect{a.first - f.anchor_x, a.second - f.anchor_y, f.width, f.height};
 }
 
-bool Scene::units_touch(Rect rect, std::size_t group) const {
+bool Scene::units_touch(Rect rect, std::size_t group, bool ships) const {
     return std::any_of(units.begin(), units.end(), [&](const UnitSprite& u) {
+        if (!ships && !u.z) {
+            return false;
+        }
         const auto r = unit_rect(u, group);
         return r && r->intersect(rect);
     });

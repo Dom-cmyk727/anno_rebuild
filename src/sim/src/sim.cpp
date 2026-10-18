@@ -29,6 +29,13 @@ WorldRng::WorldRng(std::vector<std::uint16_t> table) : table_(std::move(table)) 
     digest_ = h.value();
 }
 
+// GCC 13 at -O3 reports a "potential null pointer dereference" in the
+// vector copy of WorldRng's (copying) move into the optional; the table is
+// non-empty here, so the warning is false. Silenced for this function only.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnull-dereference"
+#endif
 std::optional<WorldRng> WorldRng::from_table(std::vector<std::uint16_t> table,
                                              std::uint32_t cursor) {
     if (table.empty()) {
@@ -38,6 +45,9 @@ std::optional<WorldRng> WorldRng::from_table(std::vector<std::uint16_t> table,
     r.set_cursor(cursor);
     return r;
 }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 std::uint16_t WorldRng::next() {
     cursor_ = static_cast<std::uint32_t>((std::uint64_t{cursor_} + 1) % table_.size());

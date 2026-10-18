@@ -55,6 +55,13 @@ jobs:
             preset: dev
             cc: gcc
             cxx: g++
+          # Optimised GCC: some warnings (-Wstringop-overflow) appear only
+          # at -O2/-O3, which the dev preset does not use.
+          - name: linux-gcc-release
+            os: ubuntu-latest
+            preset: release
+            cc: gcc
+            cxx: g++
           - name: linux-clang-asan
             os: ubuntu-latest
             preset: asan

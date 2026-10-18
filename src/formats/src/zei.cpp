@@ -91,6 +91,9 @@ Result<CharSet, std::string> CharSet::parse(Bytes buf) {
 
 ByteBuffer CharSet::head_bytes() const {
     ByteBuffer out;
+    // The whole HEAD up front (also keeps GCC 13 at -O3 from a false
+    // -Wstringop-overflow on the insert below).
+    out.reserve(4 + reserved.size() + 8 * glyphs.size());
     put_u16_le(out, size_a);
     put_u16_le(out, size_b);
     out.insert(out.end(), reserved.begin(), reserved.end());

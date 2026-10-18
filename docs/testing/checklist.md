@@ -2,6 +2,10 @@
 
 What only a person with the right machine can check. Claude Code keeps this list current; tick items off or note results next to them (date, machine, what you saw). Newest items first.
 
+## Open
+
+- **M3 stage S1, CI matrix (2026-10-19):** the S1 commits have been built and run on MSVC and, in WSL, on GCC 13.3 (also under ASan/UBSan without recovery); Clang and the CI jobs have not run. After pushing: `linux-gcc-release`, `linux-clang-asan` (the `asan` preset, including the CTest case `anno_sim_tests_ubsan_probe_is_caught_by_the_asan_gate`) and `macos-clang` must be green; if `linux-clang-asan` reports a finding in a suite other than `anno_sim_tests`, that suite was not yet built with `-fno-sanitize-recover=all` and the finding is old. Record the result in `docs/sim/state.md` §15 S1; stage S2 starts after that.
+
 ## Results
 
 - 2026-10-18, owner, Windows PC (Ryzen 7 9800X3D, 16 threads; RTX 4090, driver 617.14; Windows 11 Pro 26H2), C++ build `msvc` preset with the game files, `ANNO_REQUIRE_GPU=1`, `ctest -j 16`, `ANNO_TEST_THREADS=16`:

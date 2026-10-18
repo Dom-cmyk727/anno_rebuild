@@ -13,6 +13,10 @@ anno_target_defaults(anno_app_core)
 
 add_executable(anno1503 src/main.cpp)
 target_link_libraries(anno1503 PRIVATE anno_app_core)
+if(MINGW)
+  # The entry point is wmain (UTF-16 arguments, main.cpp).
+  target_link_options(anno1503 PRIVATE -municode)
+endif()
 anno_target_defaults(anno1503)
 if(ANNO_BUILD_VIEWER)
   target_sources(anno1503 PRIVATE src/viewer.cpp)

@@ -7,9 +7,11 @@
 #   - rustup targets x86_64-pc-windows-gnu and x86_64-unknown-linux-gnu
 #   - mingw-w64 (Windows linker), zig + cargo-zigbuild (Linux, glibc 2.28)
 #
-# Usage: packaging/package-preview.sh <name>      e.g. 2026-10-17b
+# Usage: packaging/package-preview-rust.sh <name>      e.g. 2026-10-17b
+# (Rust reference build; the preview packages come from the C++ build since
+# 2026-10-18: packaging/package-preview.sh.)
 set -eu
-name=${1:?usage: packaging/package-preview.sh <name>}
+name=${1:?usage: packaging/package-preview-rust.sh <name>}
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 if [ -n "$(git status --porcelain -- crates Cargo.toml Cargo.lock)" ]; then

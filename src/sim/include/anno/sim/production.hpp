@@ -29,7 +29,7 @@ enum class BuildingClass {
     Farm,              ///< PLANTAGE, WEIDETIER, STEINMETZ, SCHAFFARM, FISCHER (tick 0x1006ea90)
     FurTrapper,        ///< PELZJAEGER (own tick 0x1006e5d0)
     Mine,              ///< MINE
-    SmallFarm,         ///< UNIVERSAL (two farm lines)
+    SmallFarm,         ///< UNIVERSAL (two farm lines, tick 0x1006f660)
     Market,            ///< HAUPT, MARKT, KONTOR, MARKTKOMBI
     GrowingItem,       ///< ROHSTWACHS, ROHSTDUERR (tile objects, not buildings)
     Other,             ///< every other PRODTYPE (no production tick here)
@@ -108,6 +108,8 @@ struct StatusTracker {
 inline constexpr std::uint32_t kRepeatWorkshop = 45000;
 inline constexpr std::uint32_t kRepeatFarmMissing = 60000;
 inline constexpr std::uint32_t kRepeatMineMissing = 30000;
+/// "Missing input" of a small-farm line (D: 0x1006f572, 0x124f8).
+inline constexpr std::uint32_t kRepeatSmallFarmMissing = 75000;
 
 /// What one call of a production tick did.
 struct StepResult {
@@ -126,6 +128,10 @@ struct StepResult {
     std::vector<std::uint32_t> made;
     /// The building sends a carrier / worker now.
     bool send_figure = false;
+    /// Small farm line 1: an animal of world figure kind `animal_kind` is
+    /// sent now (job 0x2e).
+    bool send_animal = false;
+    std::uint16_t animal_kind = 0;
 };
 
 /// A HANDWERK workshop at runtime (D: fields of the class
@@ -210,6 +216,51 @@ struct Farm {
 
 /// One farm tick at world tick `t` (D: AnnoWelt.dll 0x1006ea90).
 StepResult farm_step(Farm& f, const ProductionType& type, std::uint32_t t);
+
+/// The small farm's animal choice for line 1 (D: AnnoWelt.dll table at
+/// 0x100c8d48): the world figure kind per island climate (8 entries, climate
+/// & 7), the kind of counter 0 (`base`; counter i counts kind base + i), and
+/// how many animals of each counter may be out at once. Data with the
+/// original values as defaults.
+struct SmallFarmAnimals {
+    std::vector<std::uint16_t> kind_by_climate = {107, 110, 107, 109, 107, 109, 107, 109};
+    std::uint16_t base = 106;
+    std::vector<std::uint8_t> limit = {1, 2, 0, 1, 1, 0, 0, 32};
+};
+
+/// A UNIVERSAL small farm (809) at runtime: two farm lines (D: class
+/// 0x1006ff80, vtable 0x100c8d60; fields +0x18/+0x1a outputs, +0x1c/+0x1e
+/// activity, +0x24/+0x26 raw stocks, +0x2a–+0x2e figure counters,
+/// +0x2f/+0x30 line switches).
+struct SmallFarm {
+    std::uint16_t last = 0;
+    std::vector<bool> line_on;
+    bool suspended = false;
+    bool blocked = false;
+    std::vector<std::uint32_t> out, raw; ///< per line, 8.8
+    /// Activity per line: u16 in the original, kept 16-bit.
+    std::vector<std::uint16_t> activity;
+    /// Figures out per counter: 0 = line 0's workers, 1–4 = animals of kind
+    /// SmallFarmAnimals::base + i (bytes +0x2a–+0x2e).
+    std::vector<std::uint32_t> figures_out;
+    StatusTracker status;
+};
+
+/// A small farm sized for `type` (one line per output, five counters).
+SmallFarm make_small_farm(const ProductionType& type);
+
+/// One small farm tick at world tick `t` (D: AnnoWelt.dll 0x1006f660, line
+/// step 0x1006f440). Each switched-on line works like a farm line against
+/// the output-0 capacity: capacity first, then the input ("missing input"
+/// after 75,000 ticks); a step that would use nothing makes nothing; the
+/// status is cleared unless the other line is switched on and full. Line 0
+/// sends a worker when it made nothing and none is out; line 1 sends an
+/// animal of the island climate's kind within that kind's limit and
+/// max_figures(0) over all animals. Both also need 384 / rate ≥ raw / need.
+/// `climate` is the island's climate (D: island slot +0xb4, & 7).
+StepResult small_farm_step(SmallFarm& f, const ProductionType& type, std::uint32_t t,
+                           std::uint32_t climate,
+                           const SmallFarmAnimals& animals = SmallFarmAnimals{});
 
 /// One fur trapper tick (PELZJAEGER, 824; D: AnnoWelt.dll 0x1006e5d0) on
 /// the farm's fields. Unlike the farm: nothing is made while any trapper is

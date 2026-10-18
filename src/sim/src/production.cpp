@@ -470,6 +470,145 @@ StepResult fur_trapper_step(Farm& f, const ProductionType& type, std::uint32_t t
     return r;
 }
 
+SmallFarm make_small_farm(const ProductionType& type) {
+    SmallFarm f;
+    const std::size_t lines = std::max<std::size_t>(type.outputs.size(), 1);
+    f.line_on.assign(lines, true);
+    f.out.assign(lines, 0);
+    f.raw.assign(lines, 0);
+    f.activity.assign(lines, 0);
+    f.figures_out.assign(5, 0);
+    return f;
+}
+
+namespace {
+
+/// One small-farm line (D: 0x1006f440(line, rate, need, t)); returns what
+/// it made.
+std::uint32_t small_farm_line(SmallFarm& f, const ProductionType& type, std::size_t line,
+                              std::uint32_t t, StepResult& r) {
+    const std::uint32_t cap = at(type.capacity, 0);
+    auto report = [&](Status s, std::uint32_t repeat) {
+        r.status = s;
+        r.message = f.status.report(s, t, repeat) || r.message;
+        f.blocked = true;
+    };
+    if (f.out[line] >= cap) {
+        report(Status::StorageFull, kRepeatWorkshop);
+        return 0;
+    }
+    const std::uint32_t rate = at(type.output_per_step, line);
+    const std::uint32_t need = at(type.input_per_step, line);
+    // need 0: no limit (the original divides by it; corpus test).
+    const std::uint32_t q = need == 0 ? 128 : (f.raw[line] << 7) / need;
+    if (q < 64) {
+        report(Status::MissingInput, kRepeatSmallFarmMissing);
+        return 0;
+    }
+    const std::uint32_t ratio = std::min<std::uint32_t>(q, 128);
+    const std::uint32_t used = ratio * need >> 7;
+    // A step that would use nothing makes nothing and reports nothing
+    // (0x1006f4b3, the u16 of the amount).
+    if ((used & 0xFFFF) == 0) {
+        return 0;
+    }
+    f.raw[line] -= std::min(f.raw[line], used);
+    const std::uint32_t made = ratio * rate >> 7;
+    f.out[line] += made;
+    f.activity[line] = static_cast<std::uint16_t>(f.activity[line] + (made << 4));
+    // The status is cleared unless the other line is switched on and full
+    // (0x1006f4da–0x1006f4f0).
+    const std::size_t other = line ^ 1U;
+    const bool other_blocks =
+        other < f.out.size() && f.out[other] >= cap && other < f.line_on.size() && f.line_on[other];
+    if (!other_blocks) {
+        f.status.clear(0x0E);
+        f.blocked = false;
+    }
+    return made;
+}
+
+/// 384 / rate ≥ raw / need: about one and a half output tons of raw stock
+/// in work (farm rule, 0x1006f75b–0x1006f779).
+bool wants_raw(std::uint32_t rate, std::uint32_t need, std::uint32_t raw) {
+    return rate != 0 && need != 0 && 384 / rate >= raw / need;
+}
+
+} // namespace
+
+StepResult small_farm_step(SmallFarm& f, const ProductionType& type, std::uint32_t t,
+                           std::uint32_t climate, const SmallFarmAnimals& animals) {
+    StepResult r;
+    if (!gate(f.last, t)) {
+        return r;
+    }
+    r.stepped = true;
+    const auto on = [&](std::size_t line) { return line < f.line_on.size() && f.line_on[line]; };
+    if (!on(0) && !on(1)) {
+        return r;
+    }
+    const auto age = [&](std::size_t line) {
+        if (line < f.activity.size()) {
+            f.activity[line] = static_cast<std::uint16_t>(f.activity[line] * 255U >> 8);
+        }
+    };
+    if (f.suspended) {
+        // Both lines age, switched on or not (0x1006f6ab–0x1006f6e2).
+        age(0);
+        age(1);
+        return r;
+    }
+    r.made.assign(f.out.size(), 0);
+    const bool blocked_before = f.blocked;
+    // Net change of the blocked flag; each set or clear notifies the city.
+    const auto done = [&]() -> StepResult {
+        r.blocked_changed = f.blocked != blocked_before;
+        return r;
+    };
+    if (on(0)) {
+        age(0);
+        const std::uint32_t made = small_farm_line(f, type, 0, t, r);
+        r.made[0] = made;
+        if (made == 0 && f.figures_out[0] < 1 &&
+            wants_raw(at(type.output_per_step, 0), at(type.input_per_step, 0), f.raw[0])) {
+            r.send_figure = true;
+        }
+    }
+    if (on(1) && f.out.size() > 1) {
+        age(1);
+        const std::uint32_t made = small_farm_line(f, type, 1, t, r);
+        r.made[1] = made;
+        if (animals.kind_by_climate.empty()) {
+            return done();
+        }
+        const std::uint16_t kind =
+            animals.kind_by_climate[(climate & 7U) % animals.kind_by_climate.size()];
+        const std::size_t idx = static_cast<std::size_t>(kind - animals.base);
+        if (idx >= f.figures_out.size() || idx >= animals.limit.size()) {
+            return done();
+        }
+        // A line that made something counts one animal fewer (0x1006f855–
+        // 0x1006f86b); signed as the original.
+        const std::int64_t out_now =
+            static_cast<std::int64_t>(f.figures_out[idx]) - (made != 0 ? 1 : 0);
+        if (static_cast<std::int64_t>(animals.limit[idx]) <= out_now) {
+            return done();
+        }
+        std::uint32_t animals_out = 0;
+        for (std::size_t i = 1; i < f.figures_out.size(); ++i) {
+            animals_out += f.figures_out[i];
+        }
+        if (at(type.max_figures, 0) <= animals_out) {
+            return done();
+        }
+        if (wants_raw(at(type.output_per_step, 1), at(type.input_per_step, 1), f.raw[1])) {
+            r.send_animal = true;
+            r.animal_kind = kind;
+        }
+    }
+    return done();
+}
+
 std::uint32_t deposit_remaining(const Deposit& d, bool deep) {
     return d.reserve && !deep ? d.remaining - kDepositReserve : d.remaining;
 }

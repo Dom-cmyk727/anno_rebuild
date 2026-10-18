@@ -327,6 +327,11 @@ TEST_CASE("F1: production types of all Anlagen.dat entries") {
     CHECK(rate(824)[0] == 26);
     CHECK(need(824)[0] == 25);
     CHECK(types.at(824).capacity[0] == 5U << 8);
+    CHECK(types.at(809).kind == sim::BuildingClass::SmallFarm);
+    CHECK(rate(809) == std::vector<std::uint32_t>{13, 4});
+    CHECK(need(809) == std::vector<std::uint32_t>{128, 50});
+    CHECK(types.at(809).capacity[0] == 4U << 8);
+    CHECK(types.at(809).max_figures[0] == 3);
     // HANDWERKWAFFEN (0x10069550): bow maker, gunsmith, weapon smith. No
     // entry uses HANDWERKDUAL (0x10068a70).
     for (const std::uint32_t id : {1006U, 1012U, 1036U}) {
@@ -648,4 +653,114 @@ TEST_CASE("mine: full storage first, no deposit, and no depletion") {
     r = sim::mine_step(m, t, 5000, ds, a, true);
     CHECK(r.made[0] == 10);
     CHECK(r.notice == 0);
+}
+
+namespace {
+
+/// The small farm 809 (UNIVERSAL: alcohol from potatoes, food from grass)
+/// with the values F1 checks: rates 13 and 4, needs 128 and 50, 4 t, at
+/// most 3 animals out.
+sim::ProductionType small_farm() {
+    sim::ProductionType t;
+    t.kind = sim::BuildingClass::SmallFarm;
+    t.outputs = {"ALKOHOL", "NAHRUNG"};
+    t.inputs = {"KARTOFFEL", "GRAS"};
+    t.output_per_step = {13, 4};
+    t.input_per_step = {128, 50};
+    t.capacity = {4 << 8, 4 << 8};
+    t.max_figures = {3, 0, 0};
+    return t;
+}
+
+} // namespace
+
+TEST_CASE("small farm: two farm lines, workers and animals") {
+    const auto t = small_farm();
+    auto f = sim::make_small_farm(t);
+    f.raw = {200, 0};
+    // Line 0 makes 13 from 128; line 1 has nothing: an animal of the
+    // climate's kind goes out (polar: 107), no line-0 worker (it made some).
+    auto r = sim::small_farm_step(f, t, 500, 0);
+    CHECK(r.made == std::vector<std::uint32_t>{13, 0});
+    CHECK(f.raw == std::vector<std::uint32_t>{72, 0});
+    CHECK(f.activity == std::vector<std::uint16_t>{208, 0});
+    CHECK_FALSE(r.send_figure);
+    CHECK(r.send_animal);
+    CHECK(r.animal_kind == 107);
+    CHECK(r.status == sim::Status::MissingInput);
+    // 72 left: ratio 72, 72 · 13 >> 7 = 7 made, all 72 used.
+    r = sim::small_farm_step(f, t, 1000, 0);
+    CHECK(r.made == std::vector<std::uint32_t>{7, 0});
+    CHECK(f.raw[0] == 0);
+    CHECK_FALSE(r.send_figure);
+    // Line 0 now misses its input too: its worker is due.
+    r = sim::small_farm_step(f, t, 1500, 0);
+    CHECK(r.made == std::vector<std::uint32_t>{0, 0});
+    CHECK(r.send_figure);
+    // A line-0 worker out: no second one.
+    f.figures_out[0] = 1;
+    CHECK_FALSE(sim::small_farm_step(f, t, 2000, 0).send_figure);
+    // Tundra: kind 110, one at a time; prairie: 109.
+    CHECK(sim::small_farm_step(f, t, 2500, 1).animal_kind == 110);
+    CHECK(sim::small_farm_step(f, t, 3000, 3).animal_kind == 109);
+}
+
+TEST_CASE("small farm: animal limits per kind and in total") {
+    const auto t = small_farm();
+    auto f = sim::make_small_farm(t);
+    f.line_on[0] = false;
+    // Kind 107 (counter 1) allows 2 out.
+    f.figures_out = {0, 2, 0, 0, 0};
+    CHECK_FALSE(sim::small_farm_step(f, t, 500, 0).send_animal);
+    // A step that made something counts one fewer: 100 grass, ratio 128.
+    f.raw[1] = 100;
+    auto r = sim::small_farm_step(f, t, 1000, 0);
+    CHECK(r.made[1] == 4);
+    CHECK(f.raw[1] == 50);
+    CHECK(r.send_animal);
+    // All animals together are limited by max_figures(0) = 3.
+    f.figures_out = {0, 1, 0, 1, 1};
+    f.raw[1] = 0;
+    CHECK_FALSE(sim::small_farm_step(f, t, 1500, 0).send_animal);
+}
+
+TEST_CASE("small farm: a full line keeps the status, suspension ages both lines") {
+    const auto t = small_farm();
+    auto f = sim::make_small_farm(t);
+    f.out = {1024, 0};
+    f.raw = {0, 100};
+    // Line 0 full ("storage full", blocked), line 1 produces but does not
+    // clear the status, since line 0 is switched on and full.
+    auto r = sim::small_farm_step(f, t, 500, 0);
+    CHECK(r.made == std::vector<std::uint32_t>{0, 4});
+    CHECK(f.blocked);
+    CHECK(f.status.code == sim::Status::StorageFull);
+    // Line 0 switched off: line 1 clears it.
+    f.line_on[0] = false;
+    r = sim::small_farm_step(f, t, 1000, 0);
+    CHECK_FALSE(f.blocked);
+    CHECK(r.blocked_changed);
+    // Suspended: both lines age, even the one switched off.
+    f.suspended = true;
+    f.activity = {256, 256};
+    r = sim::small_farm_step(f, t, 1500, 0);
+    CHECK(r.made.empty());
+    CHECK(f.activity == std::vector<std::uint16_t>{255, 255});
+}
+
+TEST_CASE("small farm: missing input never raises its message") {
+    // The repeat interval is 75,000 ticks, but the status helper measures
+    // the elapsed time in 16 bits ((t - time) & 0xffff, compared signed with
+    // the interval, 0x10072f1a-0x10072f22): it never reaches 75,000, so the
+    // original never raises this message. The status code is still set.
+    const auto t = small_farm();
+    auto f = sim::make_small_farm(t);
+    f.line_on[1] = false;
+    bool any = false;
+    for (std::uint32_t k = 1; k <= 400; ++k) { // 200,000 ticks
+        const auto r = sim::small_farm_step(f, t, k * 500, 0);
+        any = any || r.message;
+        CHECK(r.status == sim::Status::MissingInput);
+    }
+    CHECK_FALSE(any);
 }

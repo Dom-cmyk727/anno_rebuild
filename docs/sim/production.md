@@ -91,8 +91,21 @@ Deposits start with 2,000 t and the reserve flag. With the flag, a shallow mine 
 
 Tests: deposit rules, the reach circle's edges, the choice among deposits, a shallow iron mine running down to the reserve (notice `0x15b`), full storage, no deposit, no depletion.
 
+**Small farm** (`UNIVERSAL`, 809; `small_farm_step`, `SmallFarm`, `SmallFarmAnimals`; D: `0x1006f660`, line step `0x1006f440`, `docs/re/production.md` §4.5): two farm lines, line 0 with workers, line 1 with grazing animals.
+1. Gate; no switch on: stop. Suspended: both lines age (`· 255 >> 8`) and stop.
+2. Each switched-on line ages and runs the line step:
+   - the line step checks the output-0 capacity first ("storage full"), then the input ("missing input", repeat 75,000 ticks);
+   - a step that would use nothing makes nothing;
+   - the status is cleared unless the other line is switched on and full.
+3. Line 0 sends a worker when it made nothing, none is out, and `384 / rate ≥ raw / need`.
+4. Line 1 sends an animal of the climate's kind (`SmallFarmAnimals`: 107 for polar, north, jungle, desert; 110 tundra; 109 prairie, steppe). The kind may have at most its limit out (107: 2, 109: 1, 110: 1; a line that made something counts one fewer). All animals together are limited by `max_figures(0)` (3). The raw-stock rule applies as well.
+
+The 75,000-tick repeat exceeds the status helper's 16-bit elapsed time, so the message is never raised, in the original and here (ISS-150; a fix would be a `rules` option).
+
+Tests: 809's values; production, workers and animals per climate, the limits, a full line keeping the status, suspension, the message that never comes.
+
 **Not implemented yet:**
-- the small farm, markets and carts, transport.
+- markets and carts, transport.
 
 Harvest amounts are open.
 

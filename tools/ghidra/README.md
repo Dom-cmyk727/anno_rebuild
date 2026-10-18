@@ -8,6 +8,8 @@ Our own headless scripts for Ghidra 12.1.4; outputs go to `cache/ghidra/` (git-i
 | `DecompileAll.java <out.c>` | decompiles every function Ghidra's auto-analysis found |
 | `DecompileAllPlus.java <out.c>` | first creates functions at every pointer from data into code (vtables, jump tables), then decompiles all; finds the virtual methods that auto-analysis misses (AnnoDisplay: 1,534 functions instead of 934) |
 
+Without Ghidra (e.g. on Windows, where `rea`'s Ghidra path rejects 32-bit PE): `python tools/disasm.py <module.dll> <va>` disassembles one function with capstone (instruction level, no decompiler).
+
 Run from the repository root (JDK 17+; on the dev Mac Homebrew's `openjdk@21`):
 
 ```sh

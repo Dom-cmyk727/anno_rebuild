@@ -18,6 +18,10 @@
 // Each file's output starts with `# <path>` (the path as given); lines end
 // with `\n` on every platform.
 #include <cstdio>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -103,6 +107,11 @@ bool dump_chunks(Bytes buf, std::string& out) {
 } // namespace anno::dump
 
 int main(int argc, char** argv) {
+#ifdef _WIN32
+    // Lines end with \n on every platform (the oracle contract): no CRLF
+    // translation of stdout.
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
     const std::vector<std::string> args(argv + 1, argv + argc);
     if (args.size() >= 3 && args[0] == "frames") {
         return anno::dump::dump_frames(args[1],

@@ -2,6 +2,14 @@
 
 What only a person with the right machine can check. Claude Code keeps this list current; tick items off or note results next to them (date, machine, what you saw). Newest items first.
 
+## Results
+
+- 2026-10-18, owner, Mac (M5 Pro), C++ viewer `Single_01.sze`:
+  - Original water: 97–120 fps at 2560 × 1600 (vsync cap 120), 3.8–4.4 ms per frame; chunks arrive in the background without hitches.
+  - Enhanced water (`E`): the "sea" stage takes 12–17 ms, so 47–60 fps (groups 0 and 2). Expected: this is the CPU path; the GPU port moves it to the graphics card.
+  - Minimising and restoring works: the 1.5 fps line was taken while minimised.
+  - GPU decision: wgpu-native.
+
 ## For the owner (Mac), 2026-10-18
 
 1. **CI status:** nothing to do unless it turns red. Since commit `78065e4` (2026-10-18) every job is green for the first time: C++ on Linux (GCC; Clang + ASan/UBSan), Windows (MSVC) and macOS; formatting; the Rust jobs. Before that, the C++ Linux and Windows jobs had never passed. Claude now checks CI itself through the public GitHub API. When a build or test fails, CI publishes the first errors as annotations, which anyone can read.
@@ -20,7 +28,7 @@ What only a person with the right machine can check. Claude Code keeps this list
    - the title shows "CPU" and the frame rate, about 120 fps at 2560 × 1600 (measured 2026-10-18, `docs/perf/README.md`).
    Report anything that differs from the Rust viewer.
 3. **Decision: a C++ preview for the tester.** CI now builds the C++ viewer for Windows and Linux. To get it to the tester, Claude can either (a) build a Linux package here in Docker and leave Windows for later, or (b) add a CI step that uploads the Windows and Linux builds. Option (b) produces GitHub artifacts, which need a GitHub login to download; a public GitHub Release is the alternative. Publishing anything is your call. Please say (a), (b), or "Release".
-4. **Decision: GPU implementation** for the C++ renderer — wgpu-native (recommended: the same engine as the Rust viewer, prebuilt for Windows and Linux) or Dawn. Background: ADR 0001, "Decisions since". A one-word answer is enough.
+4. ~~Decision: GPU implementation~~ — wgpu-native (2026-10-18).
 
 ## For the tester (Windows / Linux PC)
 

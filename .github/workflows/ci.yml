@@ -106,7 +106,22 @@ jobs:
             msg=$(sed -e 's/%/%25/g' -e 's/\r//g' "$f" | awk '{printf "%s%%0A", $0}')
             echo "::error title=build errors::${msg}"
           done
-      - run: ctest --preset ${{ matrix.preset }}
+      - name: test
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --preset ${{ matrix.preset }} 2>&1 | tee test.log
+      - name: test failures as annotations
+        if: failure()
+        shell: bash
+        run: |
+          [ -f test.log ] || exit 0
+          grep -E "ERROR|FATAL|Failed|failed|FAIL |error|mismatch|values:|^ +(dump|python):|exit [0-9]" test.log | head -60 > fails.txt || true
+          split -l 12 fails.txt tpart_
+          for f in tpart_*; do
+            msg=$(sed -e 's/%/%25/g' -e 's/\r//g' "$f" | awk '{printf "%s%%0A", $0}')
+            echo "::error title=test failures::${msg}"
+          done
 
   cpp-format:
     runs-on: ubuntu-latest

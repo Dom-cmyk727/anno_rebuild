@@ -15,14 +15,14 @@ How original pixel data becomes 8-bit RGBA images, as implemented by `anno_asset
 
 ## Corpus check (GOG 2.0.0.5 files)
 
-`src/assets/tests/assets_corpus_test.cpp` decodes the sets below and folds every image into one FNV-1a 64 digest per set: per image `u16 width LE`, `u16 height LE`, the RGBA bytes; a failed image adds `FF FF FF FF`. The Rust reference produced the same digests (2026-10-17), so both implementations are pixel-identical on the whole corpus. Any change to a rule above must change a digest; update it here and in the test together, with the reason.
+`src/assets/tests/assets_corpus_test.cpp` decodes the sets below and folds every image into one FNV-1a 64 digest per set: per image `u16 width LE`, `u16 height LE`, the RGBA bytes; a failed image adds `FF FF FF FF`. The Rust reference produced the same digests (`cargo run --release -p anno-assets --example digest -- <game_dir>`, `crates/assets/examples/digest.rs`; 2026-10-17, re-run 2026-10-18), so both implementations are pixel-identical on the whole corpus. Any change to a rule above must change a digest; update it here and in the test together, with the reason.
 
 | Set (order) | Images | Failed | Digest |
 |---|---|---|---|
-| every texture of every `.tex` file (paths sorted) | 5,176 | 0 | `d4bba222e9fbf012` |
+| every texture of every `.tex` file (paths sorted; a file that does not parse adds the ASCII bytes `NOPARSE`) | 5,176 | 0 | `d4bba222e9fbf012` |
 | every frame of every `Anlagen.dat` sprite set, then its shadow (file order) | 28,899 | 0 | `4d53061488caa2b0` |
-| every figure frame (sets and shadows, file order); frames of player-coloured types also in colour 2 `(255, 68, 0)` | 943,446 | 0 | `7ea22e33731cbd26` |
-| ships and soldiers of every `.sze` (sorted; per unit kind, figure, x/y bits, then per frame `u32 offset` + image or `none`) | 14,883 (2,644 units) | 0 | `bb8c007fcecc115c` |
+| every figure frame (sets and shadows, file order); a frame of a player-coloured type is followed directly by its decode in colour 2 `(255, 68, 0)` | 943,446 | 0 | `7ea22e33731cbd26` |
+| ships and soldiers of every `.sze` (sorted paths; per unit: `u8` kind 0 = ship, 1 = soldier, `u16` figure, `u32` x and y float bits, then for each zoom group's frame and then each shadow frame `u32` offset + image, or the ASCII bytes `none`; then ASCII `\|`) | 14,883 (2,644 units) | 0 | `bb8c007fcecc115c` |
 | ground of every island of `Scenes/0200Single/*.sze`, 4 px per tile | 99 | 0 | `f3d27f9beafdc758` |
 
 Other corpus facts asserted there: 69 player-coloured figure entries (including 701, 718, 1543; no ship, not the thief 723); the green test hits 48 colours of the archer's (701) first table and 30 of `Anlagen.dat` table 109; at game start 130 colour slots are assigned over all scenarios, no human slot is removed, no human or computer player stays without a colour; `Single_24.sze` keeps its eight preset colours.

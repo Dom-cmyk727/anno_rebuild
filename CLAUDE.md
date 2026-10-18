@@ -35,7 +35,9 @@ anno1503/
     tools/anno_dump/       # anno-dump (text output = the oracle contract)
     render/                # isometric renderer, CPU path (GPU path follows)
     app/                   # anno1503 binary: scene loading, --png, SDL3 window
-    (sim, net, ui follow — ADR 0001 port order)
+    sim/                   # deterministic simulation core (docs/sim/core.md)
+    tools/bench_frame/     # frame benchmark (docs/perf/README.md)
+    (net, ui follow — ADR 0001 port order)
   fixtures/synthetic/      # our own small test files shared by all implementations
   crates/                  # Rust reference implementation during the port (no new features)
     formats/               # original file formats: chunk container, Anlagen, Figuren, tex/inc, zei, sze, scp, Data/*.dat
@@ -45,12 +47,13 @@ anno1503/
     render/                # isometric renderer, sprite batching (Rust reference: wgpu)
     ui/                    # menus, HUD, input → commands
     app/                   # binary: wires everything together
-    tools/                 # CLI: `anno-dump`, `anno-extract`, `anno-diff` (differential tests vs. original)
+    tools/                 # CLI: `anno-dump`, `anno-extract` (`anno-diff`, differential tests vs. the original, planned)
   docs/
     PLAN.md                # phased plan + status (this is the hand-over document)
     research/              # community-landscape.md, game-files-analysis.md
     formats/               # one spec per format as it is confirmed
     re/                    # Ghidra findings per module
+    testing/checklist.md   # open checks only a person can do (kept current)
     glossary.md
     open-questions.md
   tools/*.py               # Python references (chunks, tex, figuren, insel, sze, text, zei) + agree.py

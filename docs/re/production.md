@@ -210,8 +210,47 @@ So an object advances to the next id after `S · 2^k` parity flips, i.e. after `
 
 **Fertility.** `0x10084370` rebuilds the island's fertility nibble grid (`+0x18`, low 4 bits, 0–10 — the `FRUCHTBAR` scale) from `Wachstum.dat`: per tile `p = Proz[GFXID >> 2]` (the `Wachstum.dat` table built by `AnnoGame` `0x10006a80` indexed by texture id and cell `u`, `v` — the `GFXID` bits without rotation; exposed as game property `0x2e`); if the tile holds a raw-material object (PRODTYPE 225–256) whose `HEAD[0x19]` value `v ≠ 0`, `p` is blended towards `v` (`(p + 3v)/4` if `p < v`, else `(v + 3p)/4`); then `b = (p + 5) / 10`, and the stored value is `min(10, Σ w·b / 12)` over a 5 × 5 neighbourhood with per-climate weights at `0x100ca008` (25 bytes per climate; climate byte at island `+0xc0`). **Confirmed** (code + table). Which code reads fertility for planting or growth is not traced (Open).
 
-### 4.4 Mine (`MINE`) — `0x1006def0`
-Activity decays 63/64. If `out ≥ cap0` → status 2 (45000 t). Otherwise asks the deposit object at `+0x24` (found from the island's `BERGWERK2` deposits under the footprint, `0x1006ddf0`) for its remaining amount (slot `+0x88(deep)`) and extracts up to `rate0` (slot `+0x8c(rate0, deep)`); `out += got`, `activity += got << 4`. `got = 0` → status 1 (30000 t). When the deposit cannot deliver a full step and the mine produces `EISENERZ`, a player message is raised (ids `0x19` / `0x15b`). `deep` = 1 for non-iron mines; for iron mines it is set when the type's research id is `0x39` `TIEFE_ERZMINE` (`0x1006e270`). **Confirmed** (decompile); deposit amounts and the extraction rule live in the deposit class (not traced). `BERGWERK2/ENTRY`: u32 = x (bits 0–11), y (12–23), rotation (24–25, footprint 3 × 4 or 4 × 3, `0x10077e30`); every deposit tile marker is created with the value `0x10` (meaning open) (`0x10078960`) — **confirmed** (layout); how a deposit's kind (iron/gold/salt/gems) is stored is not traced.
+### 4.4 Mine (`MINE`) — `0x1006def0` (read instruction by instruction 2026-10-18)
+Fields: `+0x18` output, `+0x1c` activity (u16), `+0x20` switched on, `+0x21` deep, `+0x24` deposit object. **Confirmed** (D, `tools/disasm.py`; the earlier decompile reading is replaced by this).
+
+```
+gate; if not switched_on: return            # no suspension test (flags bits 4/5 are not read)
+activity = activity * 63 >> 6
+if out >= cap0 (u16):        status 2 (45000 t), blocked; return
+if deposit == 0:             status 1 (30000 t), blocked; return
+rate = type+0xe0(0); left = deposit+0x88(deep); got = deposit+0x8c(rate, deep)
+if (got < rate and left != 0) or (got != 0 and rate >= left):        # 0x1006df9a–0x1006dfac
+    if not find_again():                                             # 0x1006ddf0: deposit = best in reach, true if its +0x88(deep) != 0
+        if type+0xac(0) == 1 (EISENERZ):
+            player message 0x15b if the (new) deposit's +0x88(1) != 0, else 0x19   (via city+0x10 → +0x1c, → +0x18 → +0x18, slot +0xd0)
+if got == 0:                 status 1 (30000 t), blocked; return
+fill-level graphic: if flags bit 2 clear, stage = (out·(S−1) + cap/2) / cap, changed → slot +0x11c (render only)
+out += got (u16); activity += got << 4 (u16); clear 0x0e; unblock
+```
+
+**Deep** (`+0x21`, set when the type is attached, `0x1006e270`): for a mine whose output 0 is goods 1 (`EISENERZ`), `deep = (type+0xec research id == 0x39 TIEFE_ERZMINE)`; every other mine has `deep = 1`. When the city is attached, the mine looks up its deposit (`0x1006ddf0`). **Confirmed.**
+
+**Deposit lookup** `0x1006ddf0` → island (`city+0x18`) slot `+0x114` (`0x1008bec0`: island `+0x24`) → slot `+0x14` = `0x100787c0`, vtable `0x100c9b10`. It is called as `(rect, output goods 0, deep, island+0x28)`, where `rect` = the building's tile x, y and its size w × h by rotation (type slots `+0x50`/`+0x54`). The find:
+- queries the island objects in the rect grown by 7 tiles on each side (4th argument, slot `+0x08`, kind 1);
+- keeps those whose goods (slot `+0x84`) match;
+- converts each one's float position (slots `+0x54` x, `+0x5c` y, divided by the constant at `0x100c9b08`, `__ftol`) to tiles;
+- keeps those within a circle of radius 7 around the footprint: the row distance beyond the footprint is `dy` ≤ 7, and the column distance `dx` must not exceed the half-width `[7, 7, 7, 6, 6, 5, 4, 2][dy]`. The table is built by the loop `0x100787cb`–`0x10078805` and emulated exactly.
+- Of those it returns the one with the largest `+0x88(deep)`; the first one is taken unconditionally, a later one only if it holds strictly more.
+- The result is stored in `+0x24` even if it is empty.
+
+**Confirmed.**
+
+**Deposit class** (constructor `0x100637a0`, vtable `0x100c7508`; island-object base `0x100648a0`). It holds the remaining amount at `+0x28` (u32, 8.8; **`0x7d000` = 2,000 t** when created) and the reserve flag at `+0x30` (1 when created). **Confirmed.**
+- Goods (`+0x84`, `0x10063640`): the object type's slot `+0x80`.
+- `+0x88(deep)` (`0x10063650`): `remaining − 0x64000` if the flag is set and the mine is not deep, else `remaining`. 0x64000 is **1,600 t**.
+- `+0x8c(rate, deep)` (`0x10063670`):
+  - with the flag set and a deep mine: return `rate`, nothing used up.
+  - with the flag set and a shallow mine: if world setting 14 bit 1 is clear (`deposit+8 → +0x18 → +0x74(0x0e) & 2`), return `rate`. Otherwise take `rate`, or `remaining − 0x64000` when `remaining − rate < 0x64000` (unsigned), so the 1,600 t reserve is never touched.
+  - without the flag: the same setting test; then `min(rate, remaining)`.
+
+So a shallow iron mine can use 400 t of a fresh deposit; deep iron mines and all other mines never use a flagged deposit up; and with setting 14 bit 1 clear, nothing runs out at all. What the setting is, who clears the flag, and whether files set other amounts are open (OQ-035).
+
+A second class (constructor `0x100637f0`, vtable `0x100c759c`, derived from it) returns goods `0x84` as a constant and starts with `0x7d0` (7.8 t). Its meaning is open.
 
 ### 4.5 Small farm (`UNIVERSAL`) — `0x1006f660`
 Two independent farm lines (index 0 and 1, `0x1006f440`), each with its own raw stock, output, activity (255/256 decay) and switch; line 1's worker figure is chosen by island climate from a table at `0x100c8d48`. Jobs `0x2a` and `0x2e`. **Confirmed** (decompile), details of `0x1006f440` not read.

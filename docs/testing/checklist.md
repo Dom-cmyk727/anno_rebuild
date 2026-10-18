@@ -4,6 +4,12 @@ What only a person with the right machine can check. Claude Code keeps this list
 
 ## Results
 
+- 2026-10-18, owner, Windows PC (Ryzen 7 9800X3D, 16 threads; RTX 4090, driver 617.14; Windows 11 Pro 26H2), C++ build `msvc` preset with the game files, `ANNO_REQUIRE_GPU=1`, `ctest -j 16`, `ANNO_TEST_THREADS=16`:
+  - Build clean (warnings as errors). First run without game files in `game/app`: 37 game-file tests failed with "path not found" or follow-on errors (`bad variant access`), not a code fault.
+  - With the game files: **all 21 GPU tests pass on the RTX 4090 (Vulkan)** — the first run on a real Windows GPU.
+  - Two Windows-only test faults, fixed: `tools/agree.py` exceeded Windows' 32,767-character command line on the corpus cases (now batched; 38 of 38 agree); `Single_16` enhanced scene digest differs on MSVC's UCRT (`exp`/`pow` rounding; Rust gives the same line there), now a per-libm table (`docs/render/iso.md`, "Fidelity"). The wave solver's UCRT digests equal Rust's bit for bit (third table). After the fixes: 115 of 115 pass.
+  - Seen in the hardware report: the 2560 × 1440 @ 500 Hz monitor is attached to the CPU's integrated AMD graphics, the RTX 4090 drives the 1080p one. The tests render offscreen (unaffected); for the viewer, connect the main monitor to the 4090.
+
 - 2026-10-18, owner, Mac (M5 Pro), C++ viewer on the GPU (`Single_01.sze`, groups 0 and 2, resizing):
   - Starts on the GPU (`GPU renderer: Apple M5 Pro (Metal)`), 120 fps at 2560 × 1600 with 0.2–0.4 ms of CPU time per frame; worst frames 26–44 ms only in the second after a zoom change (chunk uploads).
   - Lines with 8.8–70 fps: windows in which hardly anything was drawn (paused or in the background), not slow frames (their frame times are 0.2–0.4 ms).
@@ -41,11 +47,11 @@ What only a person with the right machine can check. Claude Code keeps this list
 
 ## For the tester (Windows / Linux PC)
 
-- **GPU tests on a Windows or Linux PC with a graphics card** (new 2026-10-18). So far they have run on the dev Mac (Metal) and on Linux with Mesa's software renderer (llvmpipe, Vulkan and GL; CI's Linux runners use it), never on a real Windows or Linux GPU (Vulkan, DirectX 12). With the game files, a C++ build (`cmake --preset release && cmake --build --preset release`, on Windows the `msvc` preset) and:
+- ~~GPU tests on a Windows PC~~ — done 2026-10-18 on the owner's RTX 4090 (results above). Still open: **GPU tests on a Linux PC with a graphics card**, and a Windows PC with an AMD or Intel GPU (DirectX 12/Vulkan). Original instructions: So far they have run on the dev Mac (Metal) and on Linux with Mesa's software renderer (llvmpipe, Vulkan and GL; CI's Linux runners use it), never on a real Windows or Linux GPU (Vulkan, DirectX 12). With the game files, a C++ build (`cmake --preset release && cmake --build --preset release`, on Windows the `msvc` preset) and:
   ```
   ANNO_REQUIRE_GPU=1 ANNO1503_GAME_DIR=<game folder> ctest --preset release -j -R gpu
   ```
-  (Windows PowerShell: `$env:ANNO_REQUIRE_GPU=1; $env:ANNO1503_GAME_DIR="<game folder>"; ctest --preset msvc -j 4 -R gpu`.) `ANNO_REQUIRE_GPU` makes a missing GPU a failure instead of a skip. Report the summary line and any failed test's output, and the GPU named in the first lines.
+  (Windows PowerShell: `$env:ANNO_REQUIRE_GPU=1; $env:ANNO1503_GAME_DIR="<game folder>"; $env:ANNO_TEST_THREADS=$env:NUMBER_OF_PROCESSORS; ctest --preset msvc -j $env:NUMBER_OF_PROCESSORS -R gpu`; all hardware threads.) `ANNO_REQUIRE_GPU` makes a missing GPU a failure instead of a skip. Report the summary line and any failed test's output, and the GPU named in the first lines.
 - **New preview `share/anno1503-preview-2026-10-18b.zip`** (2026-10-18): with `E`, river mouths (after your feedback "Übergang von Meer zu Flüssen sieht abgehakt und unnatürlich aus") and rocks in the water. Please look at the same places again and say whether the transition now looks natural. Earlier the same day: 2026-10-18a, the first build from the C++ code: steps and what to report are in the README (section "Test the preview"). New: ships sit in the water with `E`. Please also report whether it starts at all (exact error text if not), the GPU named in the window title, and `benchmark-results.md`. Linux needs glibc 2.35 or newer (Ubuntu 22.04 or later).
 
 ## Later, needs an x86 Windows machine or Wine on x86 Linux

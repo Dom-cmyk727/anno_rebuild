@@ -31,11 +31,15 @@ template <class T> constexpr T sat_cast(float v) {
     return static_cast<T>(d);
 }
 
-/// The larger operand; if one is NaN, the other.
+/// The larger operand; if one is NaN, the other. Signed zeros: std::fmax
+/// may return either zero for max(+0, -0), and so may Rust's f32::max
+/// (both are IEEE maxNum); on x86_64 Linux they were seen to differ (Rust
+/// +0, C++ -0; fluid port review 2026-10-18). Only the sign of a zero
+/// differs, which compares equal but changes bitwise digests.
 inline float fmaxf(float a, float b) {
     return std::fmax(a, b);
 }
-/// The smaller operand; if one is NaN, the other.
+/// The smaller operand; if one is NaN, the other. Signed zeros: as fmaxf.
 inline float fminf(float a, float b) {
     return std::fmin(a, b);
 }

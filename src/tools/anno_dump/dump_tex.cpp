@@ -21,7 +21,7 @@ void dump_texture(const tex::Texture& t, bool full, std::string& out) {
     if (px) {
         formats::ByteBuffer flat;
         for (const auto& p : px.value()) {
-            flat.push_back(p ? 1 : 0);
+            flat.push_back(static_cast<std::uint8_t>(p ? 1 : 0));
             flat.push_back(p ? *p : 0);
             opaque += p ? 1U : 0U;
         }

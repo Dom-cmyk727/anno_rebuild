@@ -87,7 +87,25 @@ jobs:
       - if: runner.os == 'macOS'
         run: brew install ninja
       - run: cmake --preset ${{ matrix.preset }}
-      - run: cmake --build --preset ${{ matrix.preset }}
+      - name: build
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build --preset ${{ matrix.preset }} 2>&1 | tee build.log
+      # Job logs need a login to read; annotations do not. On failure, the
+      # first compiler errors become annotations (packed into a few, as the
+      # number of annotations per step is limited).
+      - name: compiler errors as annotations
+        if: failure()
+        shell: bash
+        run: |
+          [ -f build.log ] || exit 0
+          grep -E "error|warning C[0-9]{4}|Error" build.log | grep -v "^-- " | head -60 > errors.txt || true
+          split -l 12 errors.txt part_
+          for f in part_*; do
+            msg=$(sed -e 's/%/%25/g' -e 's/\r//g' "$f" | awk '{printf "%s%%0A", $0}')
+            echo "::error title=build errors::${msg}"
+          done
       - run: ctest --preset ${{ matrix.preset }}
 
   cpp-format:

@@ -80,7 +80,7 @@ std::string write_png(const std::filesystem::path& path, std::uint32_t width, st
     // Flushes `block` as a stored block; `last` sets BFINAL.
     auto flush = [&](bool last) {
         const auto n = static_cast<std::uint16_t>(block.size());
-        z.push_back(last ? 1 : 0);
+        z.push_back(static_cast<std::uint8_t>(last ? 1 : 0));
         z.push_back(static_cast<std::uint8_t>(n & 0xFF));
         z.push_back(static_cast<std::uint8_t>(n >> 8));
         z.push_back(static_cast<std::uint8_t>(~n & 0xFF));

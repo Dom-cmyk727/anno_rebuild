@@ -5,7 +5,7 @@ add_library(anno_sim src/sim.cpp src/production.cpp)
 target_include_directories(anno_sim PUBLIC include)
 target_link_libraries(anno_sim PUBLIC anno_formats)
 target_compile_features(anno_sim PUBLIC cxx_std_20)
-anno_target_defaults(anno_sim)
+anno_target_defaults(anno_sim SANITIZE_NO_RECOVER)
 
 if(ANNO_BUILD_TESTS)
   add_executable(anno_sim_tests tests/main.cpp tests/sim_test.cpp tests/production_test.cpp
@@ -14,14 +14,13 @@ if(ANNO_BUILD_TESTS)
   # The goldens (fixtures/synthetic/sim/goldens.txt, docs/sim/state.md §14.3).
   target_compile_definitions(anno_sim_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
-  anno_target_defaults(anno_sim_tests)
-  anno_add_doctest(anno_sim_tests)
+  anno_target_defaults(anno_sim_tests SANITIZE_NO_RECOVER)
+  anno_add_doctest(anno_sim_tests UBSAN_HALT)
 
   # tools/lint_sim.py: the mechanical part of the determinism rules (no
   # unordered containers, float, clock, rand, mutable globals ...; docs/sim/
   # state.md §14.6), and its own self-test. Named anno_sim_tests_* so that
   # `ctest -R anno_sim_tests` runs them with the sim tests.
-  #
   # Fail closed: in CI (the CI environment variable is set) a missing Python 3
   # fails the configuration instead of silently dropping the determinism gate;
   # elsewhere set -DANNO_REQUIRE_LINT=ON to get the same.
@@ -46,5 +45,18 @@ if(ANNO_BUILD_TESTS)
   else()
     message(WARNING "python3 not found: the lint_sim tests (the determinism gate) are NOT "
                     "registered; pass -DANNO_REQUIRE_LINT=ON to make this an error")
+  endif()
+
+  # The sanitizer gate's probe (asan preset only): a deliberate signed
+  # overflow. cmake/RunUbsanProbe.cmake runs it and requires that it printed
+  # its start marker, exited non-zero AND printed UBSan's signed-overflow
+  # report, so a crash, a missing runtime or a link problem cannot pass for
+  # a working gate (-fno-sanitize-recover=all, cmake/AnnoWarnings.cmake).
+  if(ANNO_SANITIZE AND NOT MSVC)
+    add_executable(anno_sim_ubsan_probe tests/ubsan_probe.cpp)
+    anno_target_defaults(anno_sim_ubsan_probe SANITIZE_NO_RECOVER)
+    add_test(NAME anno_sim_tests_ubsan_probe_is_caught_by_the_asan_gate
+             COMMAND ${CMAKE_COMMAND} -DPROBE=$<TARGET_FILE:anno_sim_ubsan_probe>
+                     -P ${PROJECT_SOURCE_DIR}/cmake/RunUbsanProbe.cmake)
   endif()
 endif()

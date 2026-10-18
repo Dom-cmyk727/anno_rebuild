@@ -68,10 +68,29 @@ if(ANNO_BUILD_TESTS)
   # test binary after each build), so `ctest -j` spreads the long corpus
   # cases over the cores instead of running each suite as one process.
   include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
-  # anno_add_doctest(<target> [PROPERTIES ...]): registers the cases of a
-  # doctest executable as "<target>.<case name>".
+  # anno_add_doctest(<target> [UBSAN_HALT] [PROPERTIES ...]): registers the
+  # cases of a doctest executable as "<target>.<case name>". UBSAN_HALT (asan
+  # preset only; for targets built with SANITIZE_NO_RECOVER) puts
+  # UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 into the environment of
+  # every case. A caller that sets its own ENVIRONMENT property after
+  # PROPERTIES wins over this one.
   function(anno_add_doctest target)
-    doctest_discover_tests(${target} TEST_PREFIX "${target}." ${ARGN})
+    set(extra ${ARGN})
+    list(FIND extra UBSAN_HALT halt_at)
+    if(NOT halt_at EQUAL -1)
+      list(REMOVE_AT extra ${halt_at})
+    endif()
+    if(NOT halt_at EQUAL -1 AND ANNO_SANITIZE AND NOT MSVC)
+      set(ubsan_env "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
+      list(FIND extra PROPERTIES props_at)
+      if(props_at EQUAL -1)
+        list(APPEND extra PROPERTIES ENVIRONMENT "${ubsan_env}")
+      else()
+        math(EXPR env_at "${props_at} + 1")
+        list(INSERT extra ${env_at} ENVIRONMENT "${ubsan_env}")
+      endif()
+    endif()
+    doctest_discover_tests(${target} TEST_PREFIX "${target}." ${extra})
   endfunction()
   add_test(NAME test_names_are_selectable
            COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_SOURCE_DIR}

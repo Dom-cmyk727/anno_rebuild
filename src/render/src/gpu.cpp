@@ -184,8 +184,9 @@ std::vector<std::uint8_t> frame_uniform_bytes(const FrameUniform& f) {
     u.f32(f.frac);
     u.f32(f.time_ms);
     u.u32(f.enhanced ? 1U : 0U);
-    // tile_w, tile_h, raise, ship_water, _pad (offsets 44 to 63).
-    for (const float v : {f.tile_w, f.tile_h, f.raise, f.ship_water ? 1.0F : 0.0F, 0.0F}) {
+    // tile_w, tile_h, raise, ship_water, objects_water (offsets 44 to 63).
+    for (const float v :
+         {f.tile_w, f.tile_h, f.raise, f.ship_water ? 1.0F : 0.0F, f.objects_water ? 1.0F : 0.0F}) {
         u.f32(v);
     }
     u.i32(f.fluid_origin.first);
@@ -218,8 +219,8 @@ struct GpuFrame::Impl {
     TextureView under_v, terrain_v;
     std::pair<std::uint32_t, std::uint32_t> under_size{0, 0};
     /// 1 × 1 stand-ins for unused bindings.
-    std::pair<Texture, TextureView> dummy_color, dummy_field, dummy_terrain, dummy_depth,
-        dummy_fluid, dummy_array;
+    std::pair<Texture, TextureView> dummy_color, dummy_field, dummy_terrain, dummy_base,
+        dummy_depth, dummy_fluid, dummy_array;
 
     struct Sea {
         std::pair<int, int> size{0, 0};
@@ -433,6 +434,10 @@ struct GpuFrame::Impl {
                 *o++ = chunk->flags[i];
             }
         }
+        std::optional<std::vector<std::uint8_t>> base;
+        if (chunk != nullptr && !chunk->base.empty()) {
+            base.emplace(chunk->base);
+        }
         if (chunk != nullptr && !chunk->terrain.empty()) {
             terrain.emplace(chunk->terrain.size() * 2);
             std::uint8_t* o = terrain->data();
@@ -449,6 +454,8 @@ struct GpuFrame::Impl {
         const WGPUTextureView fv =
             view(WGPUTextureFormat_RGBA8Uint, 4, field, 4, dummy_field.second.get());
         const WGPUTextureView tv = view(kTerrainFormat, 2, terrain, 8, dummy_terrain.second.get());
+        const WGPUTextureView bv =
+            view(WGPUTextureFormat_R8Uint, 1, base, 16, dummy_base.second.get());
         out.uniform =
             make_buffer(dev(), "chunk", 16, WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
         Bytes u;
@@ -457,8 +464,12 @@ struct GpuFrame::Impl {
         u.i32(kChunk);
         u.u32(flags);
         wgpuQueueWriteBuffer(queue(), out.uniform.get(), 0, u.b.data(), u.b.size());
-        const std::array entries = {buffer_entry(0, out.uniform.get(), 16), view_entry(1, gv),
-                                    view_entry(2, ov), view_entry(3, fv), view_entry(4, tv)};
+        const std::array entries = {buffer_entry(0, out.uniform.get(), 16),
+                                    view_entry(1, gv),
+                                    view_entry(2, ov),
+                                    view_entry(3, fv),
+                                    view_entry(4, tv),
+                                    view_entry(5, bv)};
         WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
         desc.label = sv("chunk");
         desc.layout = chunk_layout.get();
@@ -729,6 +740,7 @@ struct GpuFrame::Impl {
         f.time_ms = static_cast<float>(time_ms % 3600000);
         f.enhanced = style == WaterStyle::Enhanced;
         f.ship_water = limits.ship_waterline;
+        f.objects_water = limits.object_waterline;
         // Fluid window: origin (world cells), size, on, cells per tile.
         if (fluid && fluid_on) {
             if (const auto w = fluid->window()) {
@@ -855,7 +867,8 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
                {uniform_entry(0), texture_entry(1, kFloat, WGPUTextureViewDimension_2D),
                 texture_entry(2, kFloat, WGPUTextureViewDimension_2D),
                 texture_entry(3, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D),
-                texture_entry(4, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D)});
+                texture_entry(4, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D),
+                texture_entry(5, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D)});
     m.atlas_layout =
         layout(d, "atlas", {texture_entry(0, kFloat, WGPUTextureViewDimension_2DArray)});
     {
@@ -920,6 +933,7 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
         {static_cast<std::uint8_t>(kNoTerrain & 0xFF), static_cast<std::uint8_t>(kNoTerrain >> 8)},
         false);
     m.dummy_depth = upload_texture(d, q, WGPUTextureFormat_R32Float, 1, 1, 4, {0, 0, 0, 0}, false);
+    m.dummy_base = upload_texture(d, q, WGPUTextureFormat_R8Uint, 1, 1, 1, {255}, false);
     m.dummy_fluid = upload_texture(d, q, WGPUTextureFormat_RGBA32Float, 1, 1, 16,
                                    std::vector<std::uint8_t>(16, 0), false);
     m.dummy_array = upload_texture(d, q, WGPUTextureFormat_RGBA8Unorm, 1, 1, 4, {0, 0, 0, 0}, true);

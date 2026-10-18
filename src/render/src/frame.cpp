@@ -159,6 +159,9 @@ Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool s
     Layers objects_only = Layers::none();
     objects_only.objects = true;
     objects_only.ships = ships;
+    // Chunks for the GPU compositor (ships drawn there): with the object
+    // base plane for the water against objects.
+    objects_only.bases = !ships;
     if (islands.empty()) {
         // Open sea; only units (ships) can add an objects layer.
         if (!scene.units_touch(rect, group, ships)) {
@@ -181,11 +184,14 @@ Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool s
         over(px.data(), &ground.pixels[i * 4]);
         c.ground.push_back(rgb(px));
     }
-    c.objects = to_px(scene.render(rect, group, objects_only).first);
+    Canvas objects = scene.render(rect, group, objects_only).first;
+    c.objects = to_px(objects);
     if (std::all_of(c.objects.begin(), c.objects.end(), [](const Px& p) { return p[3] == 0; })) {
         c.objects.clear();
+    } else {
+        c.base = std::move(objects.base);
     }
-    auto field = scene.water_field_from(rect, probe);
+    auto field = scene.water_field_from(rect, probe, group);
     c.cover = std::move(field.cover);
     c.shore = std::move(field.shore);
     c.depth = std::move(field.depth);

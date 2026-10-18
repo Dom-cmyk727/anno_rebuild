@@ -354,10 +354,27 @@ WaterField water_field(Rect rect, const SceneProbe& probe,
             if (const auto level = iw->river_level(tx, ty, fx, fy)) {
                 const float rd = *level - smooth;
                 if (rd > -kWaves.shore_edge) {
+                    // Slope of the river surface (HEIGHT units per tile):
+                    // rapids where it falls steeply (waterfalls).
+                    auto level_at = [&](float px, float py) {
+                        const std::size_t ax =
+                            std::min(sat_cast<std::size_t>(fmaxf(px, 0.0F)), iw->w - 1);
+                        const std::size_t ay =
+                            std::min(sat_cast<std::size_t>(fmaxf(py, 0.0F)), iw->h - 1);
+                        return iw
+                            ->river_level(ax, ay, clampf(px - static_cast<float>(ax), 0.0F, 1.0F),
+                                          clampf(py - static_cast<float>(ay), 0.0F, 1.0F))
+                            .value_or(*level);
+                    };
+                    const float e = 0.5F;
+                    const float gx = level_at(x + e, y) - level_at(x - e, y);
+                    const float gy = level_at(x, y + e) - level_at(x, y - e);
+                    const float rslope = std::sqrt(gx * gx + gy * gy) / (2.0F * e);
+                    const auto q = sat_cast<std::uint8_t>(fminf(roundf(rslope * 2.0F), 63.0F));
                     f.cover[i] = 1 + kRiverOpenness;
                     f.shore[i] = 255;
                     f.depth[i] = byte(kDepthBias + rd * kDepthScale);
-                    f.flags[i] = 2;
+                    f.flags[i] = static_cast<std::uint8_t>(2U | std::uint32_t{q} << 2U);
                     continue;
                 }
             }

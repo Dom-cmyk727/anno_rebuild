@@ -62,6 +62,16 @@ struct Canvas {
     std::size_t width = 0, height = 0;
     std::pair<int, int> origin{0, 0};
     std::vector<std::uint8_t> pixels;
+    /// Optional (empty = not tracked): per pixel, how many rows the drawn
+    /// object pixel lies above that object's lowest pixel in its column
+    /// (0–254; 255 = no object). blit_sprite and composite keep it; the GPU
+    /// compositor uses it to let enhanced water meet objects standing in it
+    /// (docs/render/iso.md, "Water against objects").
+    std::vector<std::uint8_t> base;
+    /// Columns whose lowest pixel lies more than this many rows above the
+    /// frame anchor (the ground point) do not touch the ground (foliage,
+    /// rigging): base 255 there.
+    int base_band = 0;
 
     /// A canvas covering the whole island at `group`, with a margin above.
     static Canvas for_island(const formats::insel::Island& island, std::size_t group, int margin);
@@ -234,6 +244,20 @@ void blit_sprite(Canvas& canvas, const Rgba& img, const formats::figuren::Frame&
     }
     const std::size_t w = img.width;
     const std::size_t n = img.pixels.size() / 4;
+    // Lowest opaque row per column, for Canvas::base (objects, not shadows).
+    const bool track = !shadow && !canvas.base.empty();
+    std::vector<std::size_t> keel;
+    if (track) {
+        keel.assign(w, 0);
+        for (std::size_t i = 0; i < n; ++i) {
+            if (img.pixels[i * 4 + 3] != 0) {
+                keel[i % w] = i / w;
+            }
+        }
+    }
+    auto contact = [&](std::size_t col) {
+        return static_cast<int>(keel[col]) + canvas.base_band >= frame.anchor_y;
+    };
     for (std::size_t i = 0; i < n; ++i) {
         const std::uint8_t* px = &img.pixels[i * 4];
         if (px[3] == 0) {
@@ -246,6 +270,14 @@ void blit_sprite(Canvas& canvas, const Rgba& img, const formats::figuren::Frame&
             continue;
         }
         canvas.put(x, y, shadow ? kShadow : *rgba);
+        if (track) {
+            if (const auto o = canvas.index(x, y)) {
+                canvas.base[*o / 4] =
+                    contact(i % w)
+                        ? static_cast<std::uint8_t>(std::min<std::size_t>(keel[i % w] - i / w, 254))
+                        : 255;
+            }
+        }
     }
 }
 
@@ -400,7 +432,16 @@ struct Shade {
 };
 Shade wave_shade(float dist, float depth, float beach_slope, std::pair<float, float> pos,
                  std::uint64_t time_ms, float detail);
-Shade river_shade(std::pair<float, float> pos, float depth, std::uint64_t time_ms);
+/// Shore distance (tiles) of the sea look blended into rivers at the coast:
+/// calm water without surf. Tuning value (not original).
+inline constexpr float kRiverSeaDist = 3.0F;
+/// River-surface slope (HEIGHT units per tile) where rapids start and where
+/// they are full whitewater. Tuning values (not original).
+inline constexpr float kRapidsFrom = 5.0F;
+inline constexpr float kRapidsFull = 14.0F;
+/// Enhanced river water: a slow shimmer, faster and stronger where the river
+/// surface falls by more than kRapidsFrom HEIGHT units per tile; no foam.
+Shade river_shade(std::pair<float, float> pos, float depth, float slope, std::uint64_t time_ms);
 /// (run-up in HEIGHT units, time since the wave reached the beach as a
 /// fraction of a period, relative wave height).
 std::array<float, 3> swash(float dist, float slope, std::pair<float, float> pos,

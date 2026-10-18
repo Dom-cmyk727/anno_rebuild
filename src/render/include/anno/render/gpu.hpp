@@ -68,6 +68,10 @@ struct GpuLimits {
     /// Enhanced water: ships sink into the water with a moving waterline
     /// and foam (not in the original; gpu.wgsl ship_in_water).
     bool ship_waterline = true;
+    /// Enhanced water: objects standing in water (rocks, cliffs, piers...)
+    /// sink in at their base, with foam at the sea (gpu.wgsl
+    /// object_in_water; needs chunks with Chunk::base).
+    bool object_waterline = true;
     /// Run the coastal wave simulation for enhanced water (false: the
     /// shader's analytic waves, as the Rust compositor without it).
     bool wave_simulation = true;
@@ -83,6 +87,8 @@ struct FrameUniform {
     float tile_w = 0, tile_h = 0, raise = 0;
     /// Ships sit in the enhanced water (GpuLimits::ship_waterline).
     bool ship_water = false;
+    /// Water meets objects standing in it (GpuLimits::object_waterline).
+    bool objects_water = false;
     std::pair<std::int32_t, std::int32_t> fluid_origin{0, 0};
     std::int32_t fluid_size = 1;
     bool fluid_on = false;

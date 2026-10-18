@@ -97,7 +97,8 @@ struct WaterField {
     /// kDepthBias + depth · kDepthScale, clamped; 255 = deep or open sea.
     std::vector<std::uint8_t> depth;
     /// Bit 0: water in the original. Bit 1: enhanced river water. Bits 2–7:
-    /// beach slope in 1/2 HEIGHT units per tile (slope_of).
+    /// beach slope (sea) or river-surface slope (river) in 1/2 HEIGHT units
+    /// per tile (slope_of).
     std::vector<std::uint8_t> flags;
 };
 
@@ -312,7 +313,19 @@ void shade_sea(T out, std::size_t stride, Rect region, F&& field, const SeaPatte
                     shade = {blend(&Shade::light), blend(&Shade::foam), blend(&Shade::tint)};
                 } else {
                     const float px = static_cast<float>(sx), py = static_cast<float>(sy + raise);
-                    shade = river_shade({px / twf + py / thf, py / thf - px / twf}, sd, time_ms);
+                    const std::pair<float, float> pos{px / twf + py / thf, py / thf - px / twf};
+                    shade = river_shade(pos, sd, slope_of(flags), time_ms);
+                    // Near the sea the river takes on the sea's look
+                    // (Scene::blend_rivers_into_sea; the GPU uses the wave
+                    // simulation there when it runs).
+                    const float kb = fminf(static_cast<float>(f[1]) / 254.0F, 1.0F);
+                    if (kb < 1.0F) {
+                        const Shade s =
+                            wave_shade(kRiverSeaDist, sd, 0.0F, pos, time_ms, wave_detail(twf));
+                        shade = {s.light + (shade.light - s.light) * kb,
+                                 s.foam + (shade.foam - s.foam) * kb,
+                                 s.tint + (shade.tint - s.tint) * kb};
+                    }
                 }
                 c = shade_apply(c, shade);
             }

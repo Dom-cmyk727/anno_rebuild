@@ -56,6 +56,9 @@ struct Chunk {
     bool water_below = false, water_above = false;
     /// Ships are drawn into `objects` (see render_chunk).
     bool ships = true;
+    /// Canvas::base of `objects` (chunks without ships, for the GPU); empty
+    /// = none.
+    std::vector<std::uint8_t> base;
 };
 
 /// (zoom group, chunk x, chunk y).

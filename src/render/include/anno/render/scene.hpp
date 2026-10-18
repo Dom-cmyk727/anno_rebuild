@@ -92,6 +92,8 @@ struct Layers {
     /// With `objects`: also the ships (units on the sea surface, drawn after
     /// all island objects). The GPU compositor draws them itself instead.
     bool ships = true;
+    /// Track Canvas::base (object pixels' height above their lowest row).
+    bool bases = false;
 
     static constexpr Layers all() {
         return {true, true, true, true, true, 0, WaterStyle::Original};
@@ -105,6 +107,24 @@ enum class SpriteLayer { WaterBelow, WaterAbove, Objects };
 /// ANLAGEN ids of river pieces (Fluss*; P: docs/render/iso.md, "Water").
 /// Original values; to become content configuration (PLAN §0.1).
 inline constexpr std::array<std::uint32_t, 4> kRiverAnlagen = {2701, 2705, 2706, 2707};
+/// Waterfalls and river mouths (FLUESSE 2702–2704; P: docs/render/iso.md,
+/// "Water"). Enhanced water folds them into the river surface instead of
+/// drawing their sprites ("Rivers into the sea"); original water draws them.
+inline constexpr std::array<std::uint32_t, 3> kRiverFallAnlagen = {2702, 2703, 2704};
+/// Enhanced water: river depth (HEIGHT units) inside a waterfall or mouth
+/// shape, and the surface slope given to waterfalls for their rapids
+/// (iso::river_shade). Tuning values (not original).
+inline constexpr float kFallDepth = 3.0F;
+inline constexpr float kFallRapids = 12.0F;
+/// Pixels (zoom group 0) over which river water takes on the sea's look
+/// where they meet. Tuning value (not original).
+inline constexpr float kRiverBlend = 16.0F;
+/// Shallow sea pixels (under kSeamDepth HEIGHT units) in a gap of at most
+/// kRiverSeam pixels (zoom group 0) between river water and sea water join
+/// the river surface (no sand line between them). Tuning values (not
+/// original).
+inline constexpr float kRiverSeam = 4.0F;
+inline constexpr float kSeamDepth = 1.0F;
 /// Tolerance (HEIGHT units) of the river depth test. Tuning value (OQ-026 b).
 inline constexpr float kRiverTolerance = 10.0F;
 /// Object records drawn: scenery, built objects, rivers and surf.
@@ -175,7 +195,10 @@ class Scene {
                                                      WaterStyle style) const;
     /// Static sea data of `rect`.
     [[nodiscard]] sea::WaterField water_field(Rect rect, std::size_t group) const;
-    [[nodiscard]] sea::WaterField water_field_from(Rect rect, const sea::SceneProbe& probe) const;
+    /// Static sea data of `rect` from its ground probe at `group`; enhanced
+    /// river water includes the shapes of waterfalls and mouths.
+    [[nodiscard]] sea::WaterField water_field_from(Rect rect, const sea::SceneProbe& probe,
+                                                   std::size_t group) const;
     /// Water depth for the wave simulation at world tile (x, y).
     [[nodiscard]] float fluid_depth(float x, float y) const;
     /// Terrain height seen at scene pixel (sx, sy) of `rect`.
@@ -204,6 +227,10 @@ class Scene {
     struct IslandData {
         std::vector<Prepared> below, below_enhanced, above, above_enhanced, other;
         std::vector<sea::RiverPiece> rivers;
+        /// Waterfalls and mouths (kRiverFallAnlagen) under / at or above the
+        /// sea surface: their sprites in original water, river-water shapes
+        /// in enhanced water.
+        std::vector<Prepared> falls_below, falls_above;
         /// nullopt if a grid cannot be read (no ground drawn).
         std::optional<std::pair<std::vector<std::uint16_t>, std::vector<std::uint8_t>>> grids;
         std::unique_ptr<std::once_flag> water_once = std::make_unique<std::once_flag>();
@@ -224,6 +251,12 @@ class Scene {
     };
 
     const sea::IslandWater* island_water(std::size_t i) const;
+    /// Enhanced river water in the shapes of the waterfall and mouth
+    /// sprites (alpha masks of `falls` and `mouths`, rect-sized).
+    void apply_fall_masks(sea::WaterField& f, const Canvas& falls, const Canvas& mouths,
+                          std::size_t group) const;
+    /// River pixels near the sea: distance (shore byte) and cover blend.
+    void blend_rivers_into_sea(sea::WaterField& f, std::size_t group) const;
     std::pair<DrawStats, std::size_t> draw_island_objects(Canvas& local, const Placement& p,
                                                           std::span<const Prepared> list,
                                                           std::size_t group) const;

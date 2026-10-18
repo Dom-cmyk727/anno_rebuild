@@ -8,6 +8,11 @@
 // lines are those of the Rust reference (crates/render/examples/digest_scene.rs
 // `scenes` and `frames`, 2026-10-17/18), so the
 // C++ renderer is pixel-identical to it (docs/render/iso.md, "Fidelity").
+// Exception since 2026-10-18: the Enhanced lines of scenes with rivers come
+// from the C++ renderer itself, because enhanced rivers now run through the
+// waterfalls and mouths into the sea (docs/render/iso.md, "Rivers into the
+// sea"; the Rust reference gets no new features). Every Original line still
+// equals the Rust reference.
 // Set ANNO_PRINT_DIGESTS=1 to print the lines.
 #include <cstdio>
 #include <cstdlib>
@@ -159,17 +164,17 @@ std::vector<std::string> digest_lines(const std::filesystem::path& dir) {
 const std::vector<std::string> kExpected = {
     "Single_01.sze g2 t0 Original 16960x9170 2f0395814262894d drawn=69864 inv=11717 failed=0 "
     "units=5",
-    "Single_01.sze g2 t2500 Enhanced 16960x9170 17b0c9717b25ab6b drawn=69297 inv=11717 failed=0 "
+    "Single_01.sze g2 t2500 Enhanced 16960x9170 fb11e310887b474f drawn=69256 inv=11717 failed=0 "
     "units=5",
     "Single_01.sze g1 region Original f3c82ff0f061887a drawn=24371 units=0",
-    "Single_01.sze g1 region Enhanced 38fa6edcf261fb33 drawn=24115 units=0",
+    "Single_01.sze g1 region Enhanced 38fa6edcf261fb33 drawn=24110 units=0",
     "Single_05.sze g2 t0 Original 9040x3291 2ab607c8c9c0890b drawn=12628 inv=1240 failed=0 units=2",
     "Single_05.sze g2 t2500 Enhanced 9040x3291 84964184f8e64d2a drawn=12628 inv=1240 failed=0 "
     "units=2",
     "Single_05.sze g1 region Original c90b2060847e2a1f drawn=4603 units=0",
     "Single_05.sze g1 region Enhanced 7bc859ab6cbbe7d0 drawn=4603 units=0",
     "Single_06.sze g2 t0 Original 7280x4451 3f1ba536788d1526 drawn=13778 inv=3084 failed=0 units=3",
-    "Single_06.sze g2 t2500 Enhanced 7280x4451 42c0e9aef5355085 drawn=13639 inv=3084 failed=0 "
+    "Single_06.sze g2 t2500 Enhanced 7280x4451 342d5782975e6653 drawn=13626 inv=3084 failed=0 "
     "units=3",
     "Single_06.sze g1 region Original 81d690c94bbb0fc5 drawn=599 units=0",
     "Single_06.sze g1 region Enhanced 27da1a1ded12c916 drawn=599 units=0",
@@ -180,7 +185,7 @@ const std::vector<std::string> kExpected = {
     "Single_08.sze g1 region Enhanced 226bdaf64c2c1073 drawn=6670 units=0",
     "Single_10.sze g2 t0 Original 17440x9131 059c44e48f227c12 drawn=53212 inv=8756 failed=0 "
     "units=1",
-    "Single_10.sze g2 t2500 Enhanced 17440x9131 2ab3fec630bb615a drawn=52890 inv=8756 failed=0 "
+    "Single_10.sze g2 t2500 Enhanced 17440x9131 948197c29e175974 drawn=52883 inv=8756 failed=0 "
     "units=1",
     "Single_10.sze g1 region Original 13acfeb61e56be15 drawn=0 units=0",
     "Single_10.sze g1 region Enhanced 135943759028480b drawn=0 units=0",
@@ -191,10 +196,10 @@ const std::vector<std::string> kExpected = {
     "Single_12.sze g1 region Enhanced f75cd5ed42ab42b5 drawn=7295 units=0",
     "Single_14.sze g2 t0 Original 14080x9291 23b01ba36bfbcc8c drawn=47209 inv=9450 failed=0 "
     "units=3",
-    "Single_14.sze g2 t2500 Enhanced 14080x9291 9c1d747545eab453 drawn=47077 inv=9450 failed=0 "
+    "Single_14.sze g2 t2500 Enhanced 14080x9291 9ce6151b9c246aab drawn=47064 inv=9450 failed=0 "
     "units=3",
     "Single_14.sze g1 region Original 323ce1b9064247a3 drawn=16735 units=1",
-    "Single_14.sze g1 region Enhanced a5f9c1083372b79b drawn=16684 units=1",
+    "Single_14.sze g1 region Enhanced a5f9c1083372b79b drawn=16681 units=1",
     "Single_15.sze g2 t0 Original 9120x3611 5344dcbd6f6ded86 drawn=8216 inv=1082 failed=0 units=2",
     "Single_15.sze g2 t2500 Enhanced 9120x3611 8d72f483f5a43e1a drawn=8216 inv=1082 failed=0 "
     "units=2",
@@ -207,10 +212,10 @@ const std::vector<std::string> kExpected = {
     "Single_16.sze g1 region Enhanced 8a3caa97f52c354a drawn=1384 units=0",
     "Single_24.sze g2 t0 Original 7200x2811 768dbcffaa6380e2 drawn=24577 inv=2880 failed=0 "
     "units=541",
-    "Single_24.sze g2 t2500 Enhanced 7200x2811 3bb67eb647dd2d9d drawn=24411 inv=2880 failed=0 "
+    "Single_24.sze g2 t2500 Enhanced 7200x2811 688f059a31fdc06a drawn=24406 inv=2880 failed=0 "
     "units=541",
     "Single_24.sze g1 region Original 610c80610617b85a drawn=23697 units=0",
-    "Single_24.sze g1 region Enhanced 22b256621848c823 drawn=23531 units=0",
+    "Single_24.sze g1 region Enhanced 22b256621848c823 drawn=23526 units=0",
     "N_064x064_0001_0B.scp g2 t0 Original 1280x891 d73b254ebe87486f drawn=949 inv=338 failed=0 "
     "units=0",
     "N_064x064_0001_0B.scp g2 t2500 Enhanced 1280x891 5118c7e5cf5c0b0f drawn=930 inv=338 failed=0 "
@@ -260,7 +265,7 @@ TEST_CASE("frames (chunk cache and composition) match the Rust reference") {
         "Single_01.sze g0 t900 Enhanced 5298e2b2d0786b1f",
         "Single_24.sze g2 t0 Original e7894f5a1560f7d2",
         "Single_24.sze g2 t900 Original 154c9a87f81f5ff5",
-        "Single_24.sze g2 t900 Enhanced 349052c9e9383e0a",
+        "Single_24.sze g2 t900 Enhanced 1d48aebc57264478",
         "Single_24.sze g1 t0 Original a17a423d76e40c10",
         "Single_24.sze g1 t900 Original 9c02fbfb3767584d",
         "Single_24.sze g1 t900 Enhanced cb6ad0fe841fc554",

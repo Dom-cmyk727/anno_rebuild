@@ -21,7 +21,8 @@ struct Frame {
     raise: f32,
     // 1 = ships sit in the enhanced water (ship_in_water; GpuFrame only).
     ship_water: f32,
-    _pad: f32,
+    // 1 = water meets objects standing in it (object_in_water).
+    objects_water: f32,
     // Wave simulation window (gpu_fluid.rs): origin in world cells, size,
     // 1 = active, cells per tile.
     fluid_origin: vec2<i32>,
@@ -48,7 +49,8 @@ struct Frame {
 struct Chunk {
     origin: vec2<i32>,
     size: i32,
-    // bit 0: ground, bit 1: objects, bit 2: water field, bit 3: terrain
+    // bit 0: ground, bit 1: objects, bit 2: water field, bit 3: terrain,
+    // bit 4: object base plane (frame::Chunk::base)
     flags: u32,
 }
 
@@ -57,6 +59,9 @@ struct Chunk {
 @group(1) @binding(2) var objects_tex: texture_2d<f32>;
 @group(1) @binding(3) var field_tex: texture_2d<u32>;
 @group(1) @binding(4) var terrain_chunk: texture_2d<u32>;
+// Per object pixel: rows above the object's lowest pixel in its column
+// (255 = none or no ground contact; Canvas::base).
+@group(1) @binding(5) var base_tex: texture_2d<u32>;
 
 // Scene pixel rectangle → clip space.
 fn to_clip(p: vec2<f32>) -> vec4<f32> {
@@ -114,7 +119,70 @@ fn objects_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     if c.a == 0.0 {
         discard;
     }
+    if frame.enhanced != 0u && frame.objects_water != 0.0 && (chunk.flags & 16u) != 0u {
+        return object_in_water(c, local, pos);
+    }
     return c;
+}
+
+// ---- Water against objects (enhanced water only; not in the original) ----
+// Objects standing in water (rocks, cliffs, piers) were drawn over the water
+// like pictures, the water seemingly floating under them (owner, 2026-10-18).
+// Per object pixel the base plane gives its height above the object's lowest
+// pixel in that column; the water field at that lowest pixel gives the water
+// depth there. Pixels below the water level sink in (tinted and faded into
+// the water drawn underneath), a broken foam line marks the contact at the
+// sea, not on rivers (owner: foam only at the sea). Tuning values, not
+// evidence.
+const OBJ_MAX_DEPTH: f32 = 6.0;
+const OBJ_FADE: f32 = 2.5;
+const OBJ_FOAM: f32 = 1.2;
+
+fn object_in_water(c: vec4<f32>, local: vec2<i32>, pos: vec4<f32>) -> vec4<f32> {
+    let b = textureLoad(base_tex, local, 0).r;
+    if b >= 255u {
+        return c;
+    }
+    let foot = vec2<i32>(local.x, min(local.y + i32(b), chunk.size - 1));
+    var cover = 255u;
+    var depth = 255u;
+    var flags = 1u;
+    if (chunk.flags & 4u) != 0u {
+        let f = textureLoad(field_tex, foot, 0);
+        cover = f.r;
+        depth = f.b;
+        flags = f.a;
+    }
+    if cover == 0u {
+        return c;
+    }
+    let sd = (f32(depth) - DEPTH_BIAS) / DEPTH_SCALE;
+    if sd <= 0.0 {
+        return c;
+    }
+    let s = frame.tile_h / 42.0;
+    let t = frame.time_ms;
+    let fx = f32(local.x + chunk.origin.x);
+    // Water level above the foot in pixels (HEIGHT units x lift).
+    let level = min(sd, OBJ_MAX_DEPTH) * frame.raise / 32.0;
+    let ripple = s * (0.4 * sin(fx * 0.35 / s + t * 0.0021) + 0.25 * sin(fx * 0.9 / s - t * 0.0033));
+    let d = level + ripple - f32(b);
+    var rgb = c.rgb;
+    var a = c.a;
+    if d > 0.0 {
+        let k = 1.0 - exp(-d / (OBJ_FADE * s));
+        let water = textureLoad(under_tex, vec2<i32>(floor(pos.xy)), 0).rgb;
+        rgb = mix(rgb, water * 0.85, 0.55 * k);
+        a = a * (1.0 - 0.9 * k);
+    }
+    if (flags & 2u) == 0u {
+        let fw = 1.0 - sstep(0.0, OBJ_FOAM * s, abs(d - 0.3 * s));
+        let n = noise3(fx * 0.5 / s, f32(local.y + chunk.origin.y) * 0.25 / s + t * 0.0012, t * 0.0021);
+        let foam = fw * sstep(0.3, 0.7, n);
+        rgb = mix(rgb, vec3<f32>(0.90, 0.95, 0.98), 0.7 * foam);
+        a = max(a, 0.8 * foam * c.a);
+    }
+    return vec4<f32>(rgb, a);
 }
 
 // ---- Enhanced waves: port of iso::wave_shade (not original, opt-in) ----
@@ -240,14 +308,26 @@ fn wave_shade(dist: f32, depth: f32, beach_slope: f32, w: vec2<f32>, t: f32, det
 }
 
 // iso::river_shade
-fn river_shade(w: vec2<f32>, depth: f32, t: f32) -> vec3<f32> {
+// iso::river_shade (kRapidsFrom, kRapidsFull: rapids where the river
+// surface falls steeply).
+fn river_shade(w: vec2<f32>, depth: f32, slope: f32, t: f32) -> vec3<f32> {
     let a = noise3(w.x * 1.1 + t * 0.00025, w.y * 1.1 + t * 0.00018, t * 0.0002);
     let b = noise3(w.x * 2.7 - t * 0.0003, w.y * 2.7 + t * 0.00022, t * 0.00035);
-    let light = 0.07 * (0.6 * a + 0.4 * b - 0.5) * 2.0;
+    var light = 0.07 * (0.6 * a + 0.4 * b - 0.5) * 2.0;
+    let r = sstep(5.0, 14.0, slope);
+    if r > 0.0 {
+        // No foam on rivers (owner, 2026-10-18): a faster shimmer instead.
+        let s = noise3(w.x * 3.1 + t * 0.0013, w.y * 3.1 + t * 0.0011, t * 0.0009);
+        let u = noise3(w.x * 7.3 - t * 0.0021, w.y * 7.3 + t * 0.0017, t * 0.0016);
+        light += r * (0.05 + 0.16 * (0.6 * s + 0.4 * u - 0.5));
+    }
     return vec3<f32>(light, 0.0, 0.15 * sstep(4.0, 0.0, depth));
 }
 
 // iso::surf_time / surf_bend / surf_phase / wave_height / runup_height / swash
+// iso::kRiverSeaDist: shore distance (tiles) of the sea look blended into
+// rivers at the coast (calm water, no surf).
+const RIVER_SEA_DIST: f32 = 3.0;
 const WAVE_HEIGHT: f32 = 6.0;
 const BREAKER_INDEX: f32 = 0.78;
 const RUNUP_GAIN: f32 = 1.6;
@@ -492,7 +572,19 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         let w = vec2<f32>(p.x / frame.tile_w + p.y / frame.tile_h, p.y / frame.tile_h - p.x / frame.tile_w);
         let detail = sstep(24.0, 64.0, frame.tile_w);
         if (flags & 2u) != 0u {
-            c = shade_apply(c, river_shade(w, sd, frame.time_ms));
+            // Near the sea (shore = distance / kRiverBlend · 254) the river
+            // takes on the sea's look (Scene::blend_rivers_into_sea).
+            let rs = river_shade(w, sd, slope_of(flags), frame.time_ms);
+            let kb = min(f32(shore) / 254.0, 1.0);
+            var ss = rs;
+            if kb < 1.0 {
+                if fluid_inside(wpos) {
+                    ss = fluid_shade(fluid_sample(wpos).s, sd, 0.0, w, frame.time_ms, detail);
+                } else {
+                    ss = wave_shade(RIVER_SEA_DIST, sd, 0.0, w, frame.time_ms, detail);
+                }
+            }
+            c = shade_apply(c, mix(ss, rs, kb));
         } else if use_fluid {
             c = shade_apply(c, fluid_shade(fl, sd, run, w, frame.time_ms, detail));
         } else {

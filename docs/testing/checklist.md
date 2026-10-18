@@ -37,6 +37,7 @@ What only a person with the right machine can check. Claude Code keeps this list
 3. ~~Decision: a C++ preview for the tester~~ — the zip in `share/` as before (owner, 2026-10-18): `share/anno1503-preview-2026-10-18a.zip`, built from the C++ code by `packaging/package-preview.sh`.
 4. **Ships in the water** (new 2026-10-18, enhanced water): zoom in fully on a ship with `E` on. The hull bottom should sink into the water with broken foam at the waterline and rise and fall with the waves; with `E` off the ship looks as before (as the original). Close-ups were sent in the session; tell Claude what looks wrong (too much or too little sinking, foam too bright, bobbing too strong).
 5. ~~Decision: GPU implementation~~ — wgpu-native (2026-10-18).
+6. **Rivers into the sea, water against rocks** (new 2026-10-18, enhanced water `E`, after the tester's feedback "Übergang von Meer zu Flüssen sieht abgehakt und unnatürlich aus" and the owner's note about rocks floating on the water): look at river mouths and rocks at rivers and coasts (e.g. `Single_01.sze`, zoom 0, the river mouths of the big desert island in the middle-left). Expected: the river runs through its falls into the sea as one surface (shapes as the original's, no dark patches, no foam on rivers), rock bases sink into the water (foam only at the sea). Report what still looks wrong, with a screenshot.
 
 ## For the tester (Windows / Linux PC)
 

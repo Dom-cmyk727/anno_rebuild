@@ -683,13 +683,22 @@ Shade wave_shade(float dist, float depth, float beach_slope, std::pair<float, fl
     return {light, clampf(foam, 0.0F, 1.0F), tint};
 }
 
-Shade river_shade(std::pair<float, float> pos, float depth, std::uint64_t time_ms) {
+Shade river_shade(std::pair<float, float> pos, float depth, float slope, std::uint64_t time_ms) {
     const auto [wx, wy] = pos;
     const float t = time_f(time_ms);
     const float a = noise3(wx * 1.1F + t * 0.00025F, wy * 1.1F + t * 0.00018F, t * 0.0002F);
     const float b = noise3(wx * 2.7F - t * 0.0003F, wy * 2.7F + t * 0.00022F, t * 0.00035F);
-    const float light = 0.07F * (0.6F * a + 0.4F * b - 0.5F) * 2.0F;
+    float light = 0.07F * (0.6F * a + 0.4F * b - 0.5F) * 2.0F;
     const float tint = 0.15F * smoothstep(4.0F, 0.0F, depth);
+    // Rapids: a faster, stronger shimmer where the surface falls steeply
+    // (tuning, not original: falls were sprites before). No foam on rivers
+    // (owner, 2026-10-18: foam only at the sea).
+    const float r = smoothstep(kRapidsFrom, kRapidsFull, slope);
+    if (r > 0.0F) {
+        const float s = noise3(wx * 3.1F + t * 0.0013F, wy * 3.1F + t * 0.0011F, t * 0.0009F);
+        const float u = noise3(wx * 7.3F - t * 0.0021F, wy * 7.3F + t * 0.0017F, t * 0.0016F);
+        light += r * (0.05F + 0.16F * (0.6F * s + 0.4F * u - 0.5F));
+    }
     return {light, 0.0F, tint};
 }
 

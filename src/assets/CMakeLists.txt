@@ -23,5 +23,5 @@ if(ANNO_BUILD_TESTS)
   target_compile_definitions(anno_assets_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
   anno_target_defaults(anno_assets_tests)
-  add_test(NAME anno_assets_tests COMMAND anno_assets_tests)
+  anno_add_doctest(anno_assets_tests)
 endif()

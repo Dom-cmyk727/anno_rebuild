@@ -64,6 +64,15 @@ if(ANNO_BUILD_TESTS)
   if(ANNO_HAVE_WNO_C2Y)
     target_compile_options(anno_doctest INTERFACE -Wno-c2y-extensions)
   endif()
+  # Every TEST_CASE becomes its own CTest test (doctest's discovery runs the
+  # test binary after each build), so `ctest -j` spreads the long corpus
+  # cases over the cores instead of running each suite as one process.
+  include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
+  # anno_add_doctest(<target> [PROPERTIES ...]): registers the cases of a
+  # doctest executable as "<target>.<case name>".
+  function(anno_add_doctest target)
+    doctest_discover_tests(${target} TEST_PREFIX "${target}." ${ARGN})
+  endfunction()
   add_subdirectory(src/test_support)
 endif()
 

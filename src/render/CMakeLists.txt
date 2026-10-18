@@ -23,7 +23,7 @@ if(ANNO_BUILD_TESTS)
   )
   target_link_libraries(anno_render_tests PRIVATE anno_render anno_test_support doctest::doctest)
   anno_target_defaults(anno_render_tests)
-  add_test(NAME anno_render_tests COMMAND anno_render_tests)
+  anno_add_doctest(anno_render_tests)
 endif()
 
 # anno_render_gpu: the GPU compositor over wgpu-native (separate, so the CPU
@@ -45,6 +45,7 @@ if(ANNO_HAVE_WGPU)
     add_executable(anno_render_gpu_tests tests/main.cpp tests/gpu_test.cpp)
     target_link_libraries(anno_render_gpu_tests PRIVATE anno_render_gpu doctest::doctest)
     anno_target_defaults(anno_render_gpu_tests)
-    add_test(NAME anno_render_gpu_tests COMMAND anno_render_gpu_tests)
+    # One GPU case at a time: each opens its own device.
+    anno_add_doctest(anno_render_gpu_tests PROPERTIES RESOURCE_LOCK gpu)
   endif()
 endif()

@@ -27,6 +27,7 @@
 #include <anno/render/frame.hpp>
 #include <anno/render/scene.hpp>
 #include <anno/test/game_dir.hpp>
+#include <anno/test/parallel.hpp>
 
 namespace render = anno::render;
 namespace fig = anno::formats::figuren;
@@ -70,8 +71,11 @@ std::vector<std::string> digest_lines(const std::filesystem::path& dir) {
     }
     auto files = anno::test::files_with_ext(dir / "Scenes" / "0200Single", "sze");
     files.push_back(dir / "Scenes" / "Islands" / "Nord" / "N_064x064_0001_0B.scp");
-    std::vector<std::string> out;
-    for (const auto& p : files) {
+    // One scenario per task (the renders are independent; lines keep the
+    // file order).
+    const auto per_file = anno::test::parallel_indexed(files.size(), [&](std::size_t fi) {
+        const auto& p = files[fi];
+        std::vector<std::string> out;
         const auto buf = anno::test::read_file(p);
         auto anlagen = anno::formats::anlagen::AnlagenFile::parse(anl_buf).value();
         const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
@@ -143,6 +147,11 @@ std::vector<std::string> digest_lines(const std::filesystem::path& dir) {
                           " drawn=" + std::to_string(st.objects.drawn) +
                           " units=" + std::to_string(st.units));
         }
+        return out;
+    });
+    std::vector<std::string> out;
+    for (const auto& lines : per_file) {
+        out.insert(out.end(), lines.begin(), lines.end());
     }
     return out;
 }

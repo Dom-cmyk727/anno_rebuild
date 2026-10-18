@@ -110,7 +110,9 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          ctest --preset ${{ matrix.preset }} 2>&1 | tee test.log
+          # Each doctest case is its own test (anno_add_doctest): run them on
+          # the runner's cores (4 on the hosted Linux and Windows runners).
+          ctest --preset ${{ matrix.preset }} -j 4 2>&1 | tee test.log
       - name: test failures as annotations
         if: failure()
         shell: bash

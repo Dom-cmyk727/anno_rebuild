@@ -53,7 +53,8 @@ std::vector<std::string_view> split(std::string_view s, char sep) {
     std::vector<std::string_view> out;
     for (std::size_t start = 0;;) {
         const std::size_t k = s.find(sep, start);
-        out.push_back(s.substr(start, k == std::string_view::npos ? std::string_view::npos : k - start));
+        out.push_back(
+            s.substr(start, k == std::string_view::npos ? std::string_view::npos : k - start));
         if (k == std::string_view::npos) {
             return out;
         }
@@ -93,7 +94,8 @@ void report(const Config& c, const char* mode, const char* name, const std::vect
     }
     std::sort(total.begin(), total.end());
     auto pct = [&](double p) {
-        return total[static_cast<std::size_t>(std::lround((static_cast<double>(total.size()) - 1.0) * p))];
+        return total[static_cast<std::size_t>(
+            std::lround((static_cast<double>(total.size()) - 1.0) * p))];
     };
     const double n = static_cast<double>(s.size());
     auto mean = [&](auto f) {
@@ -106,19 +108,20 @@ void report(const Config& c, const char* mode, const char* name, const std::vect
     std::size_t built = 0, within = 0;
     for (const auto& r : s) {
         built += r.built;
-        within += r.total <= 16.7 ? 1 : 0;
+        within += r.total <= 16.7 ? 1U : 0U;
     }
-    std::printf("| %d×%d | %zu | %s | cpu | %s | %s | %zu | %.1f | %.1f | %.1f | %.1f | %.0f %% | %zu | "
-                "%.1f | %.1f | %.1f | %.1f | %.1f | %.1f |\n",
-                c.w, c.h, c.group, c.style == render::WaterStyle::Original ? "original" : "enhanced",
-                mode, name, s.size(), pct(0.5), pct(0.95), pct(0.99), total.back(),
-                100.0 * static_cast<double>(within) / n, built,
-                mean([](const Row& r) { return r.chunk_ms; }),
-                mean([](const Row& r) { return static_cast<double>(r.missing); }),
-                mean([](const Row& r) { return r.stages[0]; }),
-                mean([](const Row& r) { return r.stages[1]; }),
-                mean([](const Row& r) { return r.stages[2]; }),
-                mean([](const Row& r) { return r.stages[3]; }));
+    std::printf(
+        "| %d×%d | %zu | %s | cpu | %s | %s | %zu | %.1f | %.1f | %.1f | %.1f | %.0f %% | %zu | "
+        "%.1f | %.1f | %.1f | %.1f | %.1f | %.1f |\n",
+        c.w, c.h, c.group, c.style == render::WaterStyle::Original ? "original" : "enhanced", mode,
+        name, s.size(), pct(0.5), pct(0.95), pct(0.99), total.back(),
+        100.0 * static_cast<double>(within) / n, built,
+        mean([](const Row& r) { return r.chunk_ms; }),
+        mean([](const Row& r) { return static_cast<double>(r.missing); }),
+        mean([](const Row& r) { return r.stages[0]; }),
+        mean([](const Row& r) { return r.stages[1]; }),
+        mean([](const Row& r) { return r.stages[2]; }),
+        mean([](const Row& r) { return r.stages[3]; }));
 }
 
 void run(const render::Scene& scene, const Config& c) {
@@ -147,7 +150,10 @@ void run(const render::Scene& scene, const Config& c) {
         for (std::size_t i = 0; i < p.n; ++i) {
             const render::Rect view{cam.first, cam.second, c.w, c.h};
             const auto st = fr.render(scene, view, c.group, time, c.style, out.data());
-            rows.push_back(Row{st.total_ms, st.chunks_built, st.chunks_ms, st.chunks_missing,
+            rows.push_back(Row{st.total_ms,
+                               st.chunks_built,
+                               st.chunks_ms,
+                               st.chunks_missing,
                                {st.ground_ms, st.water_objects_ms, st.sea_ms, st.objects_ms}});
             time += 16;
             cam = {cam.first + p.dx, cam.second + p.dy};
@@ -256,9 +262,10 @@ int main(int argc, char** argv) {
         return 1;
     }
     const render::Scene& scene = *loaded.value().scene;
-    std::fprintf(stderr, "scene loaded in %.0f ms\n",
-                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started)
-                     .count());
+    std::fprintf(
+        stderr, "scene loaded in %.0f ms\n",
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started)
+            .count());
     for (const std::size_t g : o->groups) {
         const auto t = std::chrono::steady_clock::now();
         scene.sea(g);
@@ -271,7 +278,8 @@ int main(int argc, char** argv) {
         largest = *o->island;
     } else {
         std::uint32_t best = 0;
-        for (std::size_t k = 0; k < scene.islands.size(); ++k) {
+        // The file's own islands only, as the Rust benchmark (not stand-ins).
+        for (std::size_t k = 0; k < loaded.value().file_islands; ++k) {
             const std::uint32_t a = std::uint32_t{scene.islands[k].width} * scene.islands[k].height;
             // Rust max_by_key keeps the last maximum.
             if (a >= best) {
@@ -282,9 +290,10 @@ int main(int argc, char** argv) {
     }
     std::printf("%s — %u threads available — %zu threads%s\n\n", file.string().c_str(),
                 std::thread::hardware_concurrency(), o->threads, o->quick ? " — quick" : "");
-    std::printf("| resolution | group | water | renderer | chunks | path | frames | p50 ms | p95 ms | "
-                "p99 ms | max ms | ≤16.7 ms | built | chunk ms | missing | stage 1 | stage 2 | "
-                "stage 3 | stage 4 |\n");
+    std::printf(
+        "| resolution | group | water | renderer | chunks | path | frames | p50 ms | p95 ms | "
+        "p99 ms | max ms | ≤16.7 ms | built | chunk ms | missing | stage 1 | stage 2 | "
+        "stage 3 | stage 4 |\n");
     std::printf("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
     const std::size_t scale = o->quick ? 4 : 1;
     for (const auto& [w, h] : o->resolutions) {

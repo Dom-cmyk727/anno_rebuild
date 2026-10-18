@@ -23,7 +23,7 @@ void dump_texture(const tex::Texture& t, bool full, std::string& out) {
         for (const auto& p : px.value()) {
             flat.push_back(p ? 1 : 0);
             flat.push_back(p ? *p : 0);
-            opaque += p ? 1 : 0;
+            opaque += p ? 1U : 0U;
         }
         pixels = hex64(fnv64(flat));
     } else {

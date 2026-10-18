@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include <anno/formats/tex.hpp>
 #include <anno/formats/zei.hpp>
 

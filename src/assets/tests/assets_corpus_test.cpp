@@ -160,7 +160,7 @@ TEST_CASE("textures, buildings, figures, units and ground match the Rust referen
     std::size_t coloured_entries = 0;
     for (const auto& e : h.value().entries) {
         const bool coloured = assets::figure::player_coloured(e);
-        coloured_entries += coloured ? 1 : 0;
+        coloured_entries += coloured ? 1U : 0U;
         for (const auto& g : e.gfx) {
             for (const fig::GfxSet* s : with_shadow(g)) {
                 for (const auto& fs : s->frame_sets) {

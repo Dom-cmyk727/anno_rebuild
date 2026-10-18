@@ -40,7 +40,10 @@ impl Fnv {
         }
     }
     fn line(&self, name: &str) {
-        println!("{name} ok={} failed={} digest={:016x}", self.1, self.2, self.0);
+        println!(
+            "{name} ok={} failed={} digest={:016x}",
+            self.1, self.2, self.0
+        );
     }
 }
 

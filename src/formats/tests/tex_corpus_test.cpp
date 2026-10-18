@@ -28,7 +28,7 @@ TEST_CASE("tex corpus") {
         REQUIRE(f);
         const auto& file = f.value();
         ++files;
-        empty += file.palettes.empty() && file.textures.empty() ? 1 : 0;
+        empty += file.palettes.empty() && file.textures.empty() ? 1U : 0U;
         palettes += file.palettes.size();
         for (const auto& p : file.palettes) {
             if (p.flag != 0) {
@@ -45,7 +45,7 @@ TEST_CASE("tex corpus") {
             const auto fmt = t.head.format();
             REQUIRE(fmt);
             ++formats[*fmt];
-            named += t.name ? 1 : 0;
+            named += t.name ? 1U : 0U;
             CHECK(file.palette(t.head.palette_id) != nullptr);
             auto px = t.decode();
             REQUIRE(px);
@@ -84,7 +84,7 @@ TEST_CASE("inc corpus") {
         auto entries = anno::formats::inc::parse_access(buf);
         INFO(path.string());
         REQUIRE(entries);
-        empty += entries->empty() ? 1 : 0;
+        empty += entries->empty() ? 1U : 0U;
         records += entries->size();
         auto tex_path = path;
         tex_path.replace_extension("tex");
@@ -99,7 +99,7 @@ TEST_CASE("inc corpus") {
             return std::any_of(t.value().textures.begin(), t.value().textures.end(),
                                [&](const auto& x) { return x.id == e.number; });
         });
-        numbers_are_ids += all ? 1 : 0;
+        numbers_are_ids += all ? 1U : 0U;
     }
     CHECK(paths.size() == 1213);
     CHECK(empty == 340);
@@ -126,7 +126,7 @@ TEST_CASE("colors corpus") {
         // 0 everywhere except 4 on id 109, Farbtabellen\Flagge01_01.PCX (OQ-022 a).
         CHECK(t.palette.flag == (t.palette.id == 109 ? 4u : 0u));
         const auto& e = t.palette.entries;
-        magenta_at_1 += e[4] == 0xff && e[5] == 0 && e[6] == 0xff && e[7] == 0 ? 1 : 0;
+        magenta_at_1 += e[4] == 0xff && e[5] == 0 && e[6] == 0xff && e[7] == 0 ? 1U : 0U;
     }
     CHECK(magenta_at_1 == 287);
     // Byte-identical re-encoding of every ENTRY payload.

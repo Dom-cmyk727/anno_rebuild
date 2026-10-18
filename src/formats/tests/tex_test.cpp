@@ -33,7 +33,7 @@ TEST_CASE("RLE splits long gaps and spans") {
     }
     const ByteBuffer data = tex::encode_rle(px, 900, 1);
     std::vector<std::pair<int, int>> runs;
-    for (std::size_t i = 0; data[i] != 0xFF; i += 2 + data[i + 1]) {
+    for (std::size_t i = 0; data[i] != 0xFF; i += 2U + data[i + 1]) {
         runs.emplace_back(data[i], data[i + 1]);
     }
     CHECK(runs == std::vector<std::pair<int, int>>{{253, 0}, {47, 206}, {0, 253}, {0, 141}});

@@ -203,7 +203,7 @@ TEST_CASE("zei corpus") {
             anno::formats::tex::Pixels px(img.value().levels.begin(), img.value().levels.end());
             const auto enc =
                 anno::formats::tex::encode_rle(px, img.value().width, img.value().height);
-            reencoded += std::equal(enc.begin(), enc.end(), g.data.begin(), g.data.end()) ? 1 : 0;
+            reencoded += std::equal(enc.begin(), enc.end(), g.data.begin(), g.data.end()) ? 1U : 0U;
         }
         CHECK(rows.size() == 1);
     }

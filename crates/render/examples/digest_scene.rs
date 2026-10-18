@@ -148,7 +148,11 @@ fn frames(dir: &Path, felder_buf: &[u8], anl_buf: &[u8]) {
         for group in [2usize, 1, 0] {
             let b = scene.bounds(group).expect("bounds");
             // Single_24's centre at group 0 is all land: move to a coast.
-            let dx = if name == "Single_24.sze" && group == 0 { 2000 } else { 0 };
+            let dx = if name == "Single_24.sze" && group == 0 {
+                2000
+            } else {
+                0
+            };
             let view = Rect {
                 x: b.x + b.w / 2 - 640 + dx,
                 y: b.y + b.h / 2 - 360,

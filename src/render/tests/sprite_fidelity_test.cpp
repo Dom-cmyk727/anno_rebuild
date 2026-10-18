@@ -99,7 +99,7 @@ TEST_CASE("Anlagen.dat frames are pixel exact") {
                         fig::decode_frame_extended(*f.format(), data, f.width, f.height).value();
                     std::size_t coverage = 0;
                     for (const auto& p : ext.first) {
-                        coverage += p ? 1 : 0;
+                        coverage += p ? 1U : 0U;
                     }
                     const long covered = check_blit(img.value(), f, shadow);
                     if (covered < 0 || static_cast<std::size_t>(covered) != coverage) {
@@ -108,7 +108,7 @@ TEST_CASE("Anlagen.dat frames are pixel exact") {
                     }
                     ++t.frames;
                     t.pixels += coverage;
-                    t.widened += over > 0 ? 1 : 0;
+                    t.widened += over > 0 ? 1U : 0U;
                     t.max_overrun = std::max(t.max_overrun, over);
                     t.restored += fig::decode_frame_clipped(*f.format(), data, f.width, f.height)
                                       .value()

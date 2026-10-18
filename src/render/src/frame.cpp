@@ -237,7 +237,7 @@ void ChunkWorkers::run() {
         try {
             chunk = render_chunk(scene_, group, cx, cy);
         } catch (const std::exception& e) {
-            // E.g. out of memory: the chunk stays missing (open sea) and is
+            // E.g. out of memory: the chunk stays missing (open sea) and is not
             // requested again; the worker keeps running.
             std::fprintf(stderr, "chunk (%zu, %d, %d) failed: %s\n", group, cx, cy, e.what());
         }
@@ -245,6 +245,8 @@ void ChunkWorkers::run() {
         busy_.erase(key);
         if (chunk) {
             done_.emplace_back(key, std::move(*chunk));
+        } else {
+            failed_.insert(key);
         }
     }
 }
@@ -253,7 +255,7 @@ bool ChunkWorkers::submit(const std::vector<ChunkKey>& wanted) {
     const std::lock_guard lock(mutex_);
     jobs_.clear();
     for (const auto& k : wanted) {
-        if (!busy_.contains(k)) {
+        if (!busy_.contains(k) && !failed_.contains(k)) {
             jobs_.push_back(k);
         }
     }
@@ -286,7 +288,7 @@ FrameRenderer::update_chunks(const Scene& scene, Rect view, std::size_t group) {
         workers_ ? request_chunks(group, view, chunks) : fill_cache(scene, group, chunks);
     std::size_t missing = 0;
     for (const auto& [cx, cy] : chunks) {
-        missing += cache_.contains({group, cx, cy}) ? 0 : 1;
+        missing += cache_.contains({group, cx, cy}) ? 0U : 1U;
     }
     return {built, ms_since(t), missing};
 }
@@ -451,7 +453,7 @@ std::size_t FrameRenderer::request_chunks(std::size_t group, Rect view,
     std::size_t missing = 0;
     for (const auto* list : {&visible, &ring}) {
         for (const auto& [cx, cy] : *list) {
-            missing += cache_.contains({group, cx, cy}) ? 0 : 1;
+            missing += cache_.contains({group, cx, cy}) ? 0U : 1U;
         }
     }
     if (missing <= threads) {

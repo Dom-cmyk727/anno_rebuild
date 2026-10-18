@@ -16,7 +16,7 @@ namespace {
 std::string summary(const std::vector<text::Line>& ls) {
     std::size_t crlf = 0;
     for (const auto& l : ls) {
-        crlf += l.ending == text::Ending::CrLf ? 1 : 0;
+        crlf += l.ending == text::Ending::CrLf ? 1U : 0U;
     }
     const bool final_nl = !ls.empty() && ls.back().text.empty();
     return "LINES count=" + std::to_string(ls.size()) + " crlf=" + std::to_string(crlf) +
@@ -91,7 +91,7 @@ bool dump_zei(Bytes buf, bool full, std::string& out) {
     }
     std::size_t have = 0;
     for (const auto& g : cs.value().glyphs) {
-        have += g.data.empty() ? 0 : 1;
+        have += g.data.empty() ? 0U : 1U;
     }
     out += "CHARSET size_a=" + std::to_string(cs.value().size_a) +
            " size_b=" + std::to_string(cs.value().size_b) +

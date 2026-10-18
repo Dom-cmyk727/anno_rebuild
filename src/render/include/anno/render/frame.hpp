@@ -87,6 +87,9 @@ class ChunkWorkers {
     std::condition_variable ready_;
     std::deque<ChunkKey> jobs_;
     std::set<ChunkKey> busy_;
+    /// Chunks whose build threw: not requested again (a deterministic
+    /// failure would otherwise be retried every frame).
+    std::set<ChunkKey> failed_;
     std::vector<std::pair<ChunkKey, Chunk>> done_;
     bool stop_ = false;
     std::vector<std::thread> threads_;

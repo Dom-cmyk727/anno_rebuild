@@ -1,6 +1,6 @@
 # ANNO 1503 — known issues of the original (research as of 2026-10-17)
 
-Catalogue of bugs, crashes, design flaws and technical problems reported for the original game and its re-releases, so the rebuild can deal with each one deliberately. Every entry links only to pages that were actually opened for this research. Where a claim rests on a single forum post, a FAQ contributor or a reviewer's remark, the evidence level says so. Nothing here was checked against the binaries yet. Where an issue matters for the sim, the RE work in `docs/re/` should confirm the mechanism before we "fix" anything.
+Catalogue of bugs, crashes, design flaws and technical problems reported for the original game and its re-releases, so the rebuild can deal with each one deliberately. Every entry links only to pages that were actually opened for this research. Where a claim rests on a single forum post, a FAQ contributor or a reviewer's remark, the evidence level says so. Nothing here was checked against the binaries yet, except §15 (found in the disassembly). Where an issue matters for the sim, the RE work in `docs/re/` should confirm the mechanism before we "fix" anything.
 
 ## Method
 
@@ -18,6 +18,7 @@ Catalogue of bugs, crashes, design flaws and technical problems reported for the
   - **P (patch notes / official):** named in an official patch list, a developer statement or a developer blog.
   - **W (widely reported):** two or more independent sources.
   - **S (single report):** one forum post, one FAQ contributor or one reviewer.
+  - **D (disassembly):** found in the original binaries (module and address in `docs/re/`), not reported by players.
 - **Rebuild implication keys:**
   - **FIX:** always fixed in the rebuild.
   - **RULE:** configurable in the `rules` config (faithful default unless stated).
@@ -233,6 +234,12 @@ Steam threads (History Edition, app 2820110) are cited by full URL inline.
 | ISS-140 | CD 2 unreadable on some drives because of an error duplicating the master (Sunflowers confirmed, discs exchanged). Workaround: toggle DMA. The developer cited "~1%" of customers with serious problems (drivers plus the CD track error). | v1.00 German | P + W | GW-P1, GW-KL, GS-INT, TH-TECH | N/A. The rebuild must accept any install layout (CD copy, GOG, HE, Steam). |
 | ISS-141 | Game needs the CD to run. | retail | S | TH-TECH | N/A. No disc checks. |
 | ISS-142 | Copy protection type (SafeDisc etc.) for 1503: **not confirmed** by any opened source. | — | — | — | See "Not verified" (R-04). |
+
+## 15. Found in the disassembly
+
+| ID | Issue | Versions | Evidence | Sources | Rebuild implication |
+|---|---|---|---|---|---|
+| ISS-150 | The small farm's (`UNIVERSAL`, 809) "missing input" message never appears: its repeat interval is 75,000 ticks, but the status helper measures the elapsed time in 16 bits (≤ 65,535). The status code is still set. | GOG 2.0.0.5 | D | `docs/re/production.md` §4.5 (`AnnoWelt.dll` `0x1006f572`, `0x10072f1a`) | FAITHFUL by default (`small_farm_step`); RULE candidate: raise it (e.g. a wider timer or an interval ≤ 65,535). |
 
 ---
 

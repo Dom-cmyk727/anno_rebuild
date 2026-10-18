@@ -252,8 +252,30 @@ So a shallow iron mine can use 400 t of a fresh deposit; deep iron mines and all
 
 A second class (constructor `0x100637f0`, vtable `0x100c759c`, derived from it) returns goods `0x84` as a constant and starts with `0x7d0` (7.8 t). Its meaning is open.
 
-### 4.5 Small farm (`UNIVERSAL`) — `0x1006f660`
-Two independent farm lines (index 0 and 1, `0x1006f440`), each with its own raw stock, output, activity (255/256 decay) and switch; line 1's worker figure is chosen by island climate from a table at `0x100c8d48`. Jobs `0x2a` and `0x2e`. **Confirmed** (decompile), details of `0x1006f440` not read.
+### 4.5 Small farm (`UNIVERSAL`, 809) — `0x1006f660` (read instruction by instruction 2026-10-18)
+Fields (class `0x1006ff80`, size `0x48`): `+0x18`/`+0x1a` outputs, `+0x1c`/`+0x1e` activity (u16), `+0x24`/`+0x26` raw stocks, `+0x2a`–`+0x2e` figure counters (byte each: 0 = line-0 workers, 1–4 = animals of kind 106 + i), `+0x2f`/`+0x30` line switches. 809: alcohol from potatoes (rate 13, need 128) and food from grass (rate 4, need 50), 4 t, figure group 0 max 3 (P). **Confirmed** (D, `tools/disasm.py`).
+
+```
+gate; if both switches are 0: return
+if flags bit 4/5: age both activities (· 255 >> 8); return              # switched on or not
+if switch 0: age activity 0; made0 = line(0, rate0, need0, t)
+    if made0 == 0 and counter0 < 1 and 384 / rate0 >= raw0 / need0:
+        figure = this+0x118(job 0x2a, type+0xb4(0, 0), t); give it input goods 0
+if switch 1: age activity 1; made1 = line(1, rate1, need1, t)
+    kind = u16 table 0x100c8d48[island+0xb4() & 7]        # 107 107 for POLAR NORD DSCHUNGEL WUESTE, 110 TUNDRA, 109 PRAERIE STEPPE (and 7)
+    i = kind − byte 0x100c8d58 (106); if byte 0x100c8d59[i] (limits 1 2 0 1 1 0 0 32) <= counter[i] − (made1 != 0): return
+    if max_figures(0) <= counter1 + … + counter4: return
+    if 384 / rate1 >= raw1 / need1: figure = this+0x118(job 0x2e, world figure type kind (… → +0x6c(kind)), t); give it input goods 1
+```
+
+**Line step** `0x1006f440(line, rate, need, t)` (returns the amount made):
+- capacity first: `cap = type+0xc0` (output 0's, also for line 1); `out[line] ≥ cap` → status 2 (45,000 t), blocked, 0.
+- `q = (raw << 7) / need`; above 128 → 128; below 64 → status 1 with repeat **`0x124f8` = 75,000 t**, blocked, 0.
+- `used = ratio · need >> 7`; if its u16 is 0, return 0 without a status.
+- `raw −= used`; `made = ratio · rate >> 7`; `out += made`; `activity += made << 4` (u16).
+- The status is cleared (`0x10072fb0(0x0e)`) and the flag unblocked unless the **other** line is switched on and full (`0x1006f4da`–`0x1006f4f0`).
+
+**The 75,000 never comes due:** the status helper compares the interval signed with the elapsed time masked to 16 bits (`0x10072f1a`–`0x10072f22`). Since 75,000 > 65,535, the small farm never raises its "missing input" message (the status code is still set). **Confirmed** (D); ISS-150.
 
 ### 4.6 Market and Kontor — `0x1006b6d0`
 Per step: if fewer than `max_figures(0)` carts (slots `+0x20/+0x24`) are out, send one (figure list[0] = 220 market cart, job `0x34`); group 2 figures (e.g. ships' crews) are sent analogously. The building has no stock of its own: its add/remove slots (`+0xc0`, `+0xa8`) forward to the city (slots `+0x80`, `+0x84`). **Confirmed.**

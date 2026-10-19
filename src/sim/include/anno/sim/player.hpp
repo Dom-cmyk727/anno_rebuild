@@ -13,9 +13,10 @@
 // i64 (the original's i32, F15). The two per-player seams of the original (the
 // group table 0x10062a40 and the defeat pass 0x10020550) need the TickContext
 // and the SerialWorld of stage S7, so the table functions take them as
-// PlayerHooks: plain function pointers on a Player that stage S7 binds from
-// Seams::player_groups and Seams::defeat. Until then World::advance passes no
-// hook, which is the documented default of both seams (they do nothing).
+// PlayerHooks: plain function pointers on a Player that World::advance binds from
+// Seams::player_groups and Seams::defeat (stage S7, scheduler.cpp); a seam without
+// a function leaves its hook null, which is the documented default (it does
+// nothing).
 #pragma once
 
 #include <cstddef>

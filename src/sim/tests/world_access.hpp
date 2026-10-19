@@ -2,7 +2,8 @@
 // "WorldTestAccess"): the tests that perturb a field, corrupt a copy or install
 // configuration, rules, seams, a registry or the player table directly use it.
 // It exists from stage S3 (the first stage with private members); later stages
-// add members (the island table, stage S5; create and remove, stage S6).
+// add members (the island table, stage S5; create and remove, stage S6; the id
+// counters, the figure registry and the event queue, stage S7).
 #pragma once
 
 #include <memory>
@@ -23,6 +24,9 @@ struct WorldTestAccess {
     static Seams& seams(World& w) { return w.seams_; }
     static PlayerTable& players(World& w) { return w.players_; }
     static std::vector<std::optional<Island>>& islands(World& w) { return w.islands_; }
+    static IdCounters& ids(World& w) { return w.ids_; }
+    static FigureRegistry& figures(World& w) { return w.figures_; }
+    static EventQueue& events(World& w) { return w.events_; }
     static void set_types(World& w, std::shared_ptr<const TypeRegistry> t) {
         w.types_ = RegistryRef(std::move(t));
     }

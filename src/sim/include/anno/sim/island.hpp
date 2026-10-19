@@ -6,8 +6,8 @@
 // owner nibble ((u32 at +4) >> 25) & 0xf, the growth phase), the deposits of
 // its ore objects, the state of its incremental sweeps, the city ring, the
 // object manager, the drought and (S6) its cities with their buildings. The
-// scheduler that ticks an island is stage S7, so for now an island is state that
-// can be created, saved, loaded and hashed.
+// scheduler that ticks an island is stage S7 (island_tick.hpp, scheduler.cpp); the
+// growth sweep's tile body and the drought machine follow with stage S13.
 //
 // Tiles are stored as columns, so that a chunk digest is one linear pass. The
 // owner is a u32 (the original nibble is 4 bits, F3): city_slots and

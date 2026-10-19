@@ -1371,12 +1371,13 @@ TEST_CASE("players scope stream layout") {
     expected_player(one, *t.slots[31]);
     CHECK(one.v.size() == 65 + 8 + 8 + 65 + 8 + 130);
 
-    // The world stream has the table after settings and before the islands scope
-    // (stage S5: the u64 slot count 0 of a world without islands).
+    // The world stream has the table after the ids scope and before the islands scope
+    // (stage S5: the u64 slot count 0 of a world without islands), then the figures
+    // scope (39 bytes) and the events scope (8 bytes) of stage S7.
     sim::World w;
     sim::WorldTestAccess::players(w) = t;
     const std::vector<std::uint8_t> world = save_world(w);
-    constexpr std::ptrdiff_t kIslandsBytes = 8;
+    constexpr std::ptrdiff_t kIslandsBytes = 8 + 39 + 8;
     REQUIRE(world.size() > expected.v.size() + static_cast<std::size_t>(kIslandsBytes));
     CHECK(std::equal(expected.v.begin(), expected.v.end(),
                      world.end() - kIslandsBytes - static_cast<std::ptrdiff_t>(expected.v.size())));
@@ -1474,7 +1475,7 @@ TEST_CASE("every player field moves the players scope hash") {
         return out;
     };
     const auto base_scopes = scope_hashes(tree);
-    REQUIRE(base_scopes.size() == 5);
+    REQUIRE(base_scopes.size() == 8);
     for (const std::uint32_t slot : {0U, 3U, 31U}) {
         for (const auto& [name, mutate] : mutations) {
             INFO("slot " << slot << " field " << std::string(name));
@@ -1483,11 +1484,13 @@ TEST_CASE("every player field moves the players scope hash") {
             sim::HashTree t;
             CHECK(w.state_hash(t, 0) != base_hash);
             const auto s = scope_hashes(t);
-            CHECK(s[0] == base_scopes[0]);
-            CHECK(s[1] == base_scopes[1]);
-            CHECK(s[2] == base_scopes[2]);
-            CHECK(s[3] != base_scopes[3]);
-            CHECK(s[4] == base_scopes[4]);
+            for (std::size_t k = 0; k < s.size(); ++k) {
+                if (k == 4) {
+                    CHECK(s[k] != base_scopes[k]); // players
+                } else {
+                    CHECK(s[k] == base_scopes[k]);
+                }
+            }
         }
     }
     // The index.
@@ -1670,10 +1673,13 @@ TEST_CASE("players scope reads back and validates what it read") {
         // it: the remaining input would justify the count (one byte per absent
         // slot), but each slot is a whole Player in memory.
         const std::size_t table_size = save_table(w.players()).size();
-        REQUIRE(bytes.size() > table_size + 8);
+        // bytes ends with the players scope, the islands scope (u64 count 0) and the
+        // figures and events scopes of a world without either (39 + 8 bytes).
+        constexpr std::ptrdiff_t kTail = 39 + 8;
+        REQUIRE(bytes.size() > table_size + 8 + kTail);
         Stream s;
-        // bytes ends with the players scope and the islands scope (u64 count 0).
-        s.v.assign(bytes.begin(), bytes.end() - 8 - static_cast<std::ptrdiff_t>(table_size));
+        s.v.assign(bytes.begin(),
+                   bytes.end() - kTail - 8 - static_cast<std::ptrdiff_t>(table_size));
         s.u64(1ULL << 20);
         for (std::uint32_t i = 0; i < (1U << 20); ++i) {
             s.u8(0);
@@ -1681,6 +1687,7 @@ TEST_CASE("players scope reads back and validates what it read") {
         s.u16(0);
         s.u32(0);
         s.u64(0); // islands
+        s.v.insert(s.v.end(), bytes.end() - kTail, bytes.end());
         sim::World target(5);
         sim::WorldTestAccess::players(target) = full_table(target.config());
         const std::uint64_t before = target.state_hash();

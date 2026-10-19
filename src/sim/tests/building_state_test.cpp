@@ -681,9 +681,11 @@ TEST_CASE("save load save with buildings") {
         REQUIRE(
             sim::WorldTestAccess::create(w, 0, 0, record(k.weaver, 101 + 2 * i, 130), 777).ok());
     }
+    w.advance(10);
+    // The scheduler moves the cursor and the shared stamp of a visited city (stage
+    // S7), so the values to be saved are set after the advance.
     city_of(w, 0, 0).index.lists[4].cursor = 7;
     city_of(w, 0, 0).index.stamp = 123;
-    w.advance(10);
     REQUIRE(w.check_invariants() == "");
     const std::vector<std::uint8_t> bytes = w.save();
     sim::World back = load_world(k, bytes);

@@ -64,13 +64,22 @@
 # 5abc8c5991fc8060 (G0), 7c2245305285bf0c, 9b705a04c30cc9ee (G1 players),
 # 165885966beb933e, b90da0ebd5ee664b (S5 islands), ca798ff555639217 and
 # a65501648f2d746c (S6 G1).
-g0_step1     S1 104 405080950d896954
-g0_step100   S1 104 8f68f40bcb3663c9
-g0_step1000  S1 104 fc9aa4f73f270e67
-g1_players_step100 S4 104 35b307beecf1b6da
-g1_players_step700 S4 104 6a3d98b13ec4d16c
-s5_islands_create S5 104 e6ab5bce74c33ca3
-s5_islands_step100 S5 104 f583f962aecb12be
+# Re-baselined at stream version 105 (stage S7: the scopes ids, figures and events
+# were added, and World::advance now ticks the islands: the sweep cursors, the object
+# manager, the city ring, the city tick and the building scheduler move stamps and
+# cursors, so the step100 goldens of the island scenarios changed too). The
+# version-104 values were 405080950d896954, 8f68f40bcb3663c9, fc9aa4f73f270e67 (G0), 35b307beecf1b6da,
+# 6a3d98b13ec4d16c (G1 players), e6ab5bce74c33ca3, f583f962aecb12be (S5 islands), 78cd92b308be8829 and
+# b9f1161f3575b1fe (S6 G1). The values come from tools/sim_stream.py, which transcribes the new
+# scopes and the island tick (sweeps, object manager, ring, city tick, building
+# scheduler) independently of the C++ code.
+g0_step1 S1 105 e705a54199c43df1
+g0_step100 S1 105 221d8be796a5108c
+g0_step1000 S1 105 b1d87b9ff020a9fa
+g1_players_step100 S4 105 d78a0676218d01c7
+g1_players_step700 S4 105 794328dbb6a73d51
+s5_islands_create S5 105 7ff0bfae5f95af02
+s5_islands_step100 S5 105 1d998748f6990f83
 #
 # S6 G1 scenario (synthetic::g1_scenario: one player, island 0 with city 0 holding
 # the weaver with 5 t of wool at (110,110) and the grain farm with 5 t of raw
@@ -78,5 +87,22 @@ s5_islands_step100 S5 104 f583f962aecb12be
 # after World::create and after advance(10) x 100. tools/sim_stream.py transcribes
 # the city, the building lists and the Workshop and Farm payloads independently of
 # the C++ code; the registry digest of the synthetic types is its one literal.
-s6_g1_create S6 104 78cd92b308be8829
-s6_g1_step100 S6 104 b9f1161f3575b1fe
+s6_g1_create S6 105 9c0e107e4f9e93e7
+s6_g1_step100 S6 105 cf98c83f259a74f9
+#
+# S7 G1 (stage S7): the S6 G1 scenario run through the real scheduler (synthetic::
+# g1_scenario: the weaver with 5 t of wool and the grain farm with 5 t of raw material).
+# s7_g1_mp_checkpoints is the FNV-1a 64 of the state hashes at every 5000th tick of 20000
+# advances of 10 ms (multiplayer style), s7_g1_mp_end the hash after them (tick 100000),
+# s7_g1_events the hash of the UI events they produced (FigureSpawned and BlockedChanged
+# of both buildings), s7_g1_sp_end the hash after 2000 advances of an LCG-chosen 1 to 100 ms
+# (slice_test.cpp). Unlike the goldens above these four are SELF-BASELINED: they come from
+# the C++ (ANNO_UPDATE_GOLDEN) and detect change only, because tools/sim_stream.py does not
+# transcribe the production steps. The semantic asserts of the test hold the values to the
+# spec independently: the F2 and F6 states at tick 70000, the step counts and the
+# conservation of wool and raw material at every 5000th tick, the figure ids and ticks of
+# birth, the city stamp.
+s7_g1_mp_checkpoints S7 105 08a62c3b5ac3764f
+s7_g1_mp_end S7 105 dd794e005294c6d5
+s7_g1_events S7 105 d705f409820828d2
+s7_g1_sp_end S7 105 7b17d192d21d4670

@@ -441,8 +441,9 @@ struct CityStock {
     std::uint32_t capacity = 50 * kTon;
 
     /// Adds `amount` of goods `g`; if the result would exceed the capacity,
-    /// the stock is set to the capacity instead (u32 arithmetic as the
-    /// original: a stock above the capacity is lowered to it). Returns the
+    /// the stock is set to the capacity instead (a stock above the capacity is
+    /// lowered to it, as the original's wrapped u32 difference does; the sum
+    /// itself is formed in u64, F35). Returns the
     /// amount the stock changed by, wrapped to u32 like the original's.
     /// Goods numbers ≥ stock.size() are refused (as 0x1002da50 refuses
     /// g ≥ 0x38).

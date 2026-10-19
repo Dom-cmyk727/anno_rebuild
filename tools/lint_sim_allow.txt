@@ -32,6 +32,14 @@ src/sim/include/anno/sim/archive.hpp:std::size_t pos_  # read offset into a std:
 # discriminant of the payload, not a count or size.
 src/sim/include/anno/sim/events.hpp:kTileSubtype = 4;  # event subtype tag (D 0x100ade79), a discriminant not a count
 
+# --- draw.hpp / driver.cpp (stage S7)
+# The length of a per-site count table: derived from the DrawSite enumerators, not a
+# game count.
+src/sim/include/anno/sim/draw.hpp:kDrawSiteCount = static_cast<std::size_t>\(DrawSite::Count_\);  # table length derived from the enum, not a count of the game
+# Job codes of the figures a building sends (D: the unit job table, docs/sim/state.md
+# §4.9): discriminants of Figure::job, not counts or sizes.
+src/sim/src/driver.cpp:kJob(?:FurTrapper|SmallFarmAnimal) = 0x\w+;  # figure job code (D: unit job table), a discriminant not a count
+
 # --- building.hpp
 # The initial values of the flag byte +0x0e of a building (D: 0x86 in the base
 # constructor 0x100734c0, 0x82 for a house): byte values with an unknown meaning

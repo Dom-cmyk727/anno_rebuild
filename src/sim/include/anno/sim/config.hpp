@@ -34,6 +34,25 @@ namespace anno::sim {
 /// S3). It is never a type limit (slot ids are u32, see SlotList::grown_size).
 inline constexpr std::uint32_t kListSizeBound = 1U << 24;
 
+/// The most memory the slots of ONE list may take when a state is read (F35). A slot
+/// is one byte on the wire when empty but a whole std::optional<T> in memory (about
+/// 70 bytes for a Figure), so a hostile 16 MB stream of empty slots would make the
+/// reader allocate over a gigabyte; the count is therefore also bounded by this
+/// budget (state_fields.hpp, slot_list_fits_load_budget). A list the configuration
+/// allows but whose slots take more than the budget (2^24 slots of a Figure) can be
+/// saved but not loaded. Path to make it configurable: a load option that replaces
+/// this constant; like kListSizeBound it is not a header field.
+inline constexpr std::uint64_t kSlotListLoadBytes = std::uint64_t{256} << 20;
+
+/// How many UI events a world keeps for the host between two drain_events() calls
+/// unless the host sets another capacity (World::set_event_capacity). Reason: a
+/// headless host, a test, a replay or a bot that never drains must not grow the queue
+/// without bound over a long game (every blocked/status/notice/spawn event adds an
+/// entry, and every copy of a World, for example the net thread's checksum snapshot,
+/// copies the queue). Not state; the per-advance list SimOutput::events is unbounded
+/// by one advance only.
+inline constexpr std::uint64_t kHostEventCapacityDefault = std::uint64_t{1} << 16;
+
 /// Sanity bound for the slot tables SimConfig::island_slots, city_slots and
 /// player_slots (SimConfig::validate checks them against it). Reason: the
 /// loader sizes these tables, and the per-island and per-city containers that
@@ -354,7 +373,9 @@ struct Rules {
     /// D6, OQ-041.
     bool player_table_full_tick = false;
     /// D7, OQ-042: the 300 s event's centre only (the draw per island per gate
-    /// is kept); scripted droughts are O-51.
+    /// is kept); scripted droughts are O-51. A reserved value: what a random centre
+    /// is has not been decided (OQ-042), so Rules::validate rejects true until the
+    /// owner decides and it is implemented.
     bool drought_random_centre = false;
     /// D8, OQ-043.
     bool build_atomic = false;
@@ -383,7 +404,8 @@ struct Rules {
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed
-    /// or saved; spatial_order == Original0x10027000: O-7), any enum byte
+    /// or saved; spatial_order == Original0x10027000: O-7; drought_random_centre
+    /// == true: OQ-042), any enum byte
     /// outside its range (a value cast from a save or a config file may be
     /// anything) and events_max_dispatch == 0. Empty when valid.
     [[nodiscard]] std::string validate() const;

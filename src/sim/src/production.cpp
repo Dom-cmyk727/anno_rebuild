@@ -807,9 +807,12 @@ std::uint32_t CityStock::add(std::uint32_t g, std::uint32_t amount) {
     if (g >= stock.size()) {
         return 0;
     }
-    // D: 0x1002da76–0x1002da85: if capacity < stock + amount (u32), amount =
-    // capacity − stock (u32, wraps when the stock is above the capacity).
-    if (capacity < stock[g] + amount) {
+    // D: 0x1002da76–0x1002da85: if capacity < stock + amount, amount = capacity −
+    // stock (u32, wraps when the stock is above the capacity). The sum is formed in
+    // u64 here (F35): the original's u32 sum wraps for an amount near 2^32, which
+    // lowers the stock; no amount a game reaches is that large, so the two agree on
+    // every original state.
+    if (std::uint64_t{capacity} < std::uint64_t{stock[g]} + amount) {
         amount = capacity - stock[g];
     }
     stock[g] += amount;

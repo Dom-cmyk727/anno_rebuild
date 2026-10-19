@@ -183,10 +183,32 @@ inline std::size_t flat_offset(const sim::World& w, const char* name, std::size_
     return std::string::npos;
 }
 
+/// The size in the flat stream of the scopes that follow `islands` in a world
+/// without figures and events (stage S7): the figures scope (i64 hint, u32 cursor,
+/// u64 slot count, one empty slot byte, u16 stamp, two empty id lists = 8 + 4 + 8 +
+/// 1 + 2 + 8 + 8 = 39 bytes) and the events scope (the u64 count 0 = 8 bytes).
+inline constexpr std::size_t kTailBytes = 39 + 8;
+
+/// The flat stream of `w` with the bytes of its islands scope replaced by `table`;
+/// the scopes before it and the scopes after it (figures, events) stay as they are.
+inline std::vector<std::uint8_t> with_island_table(const sim::World& w,
+                                                   const std::vector<std::uint8_t>& table) {
+    const std::vector<std::uint8_t> flat = flat_stream(w);
+    const std::size_t from = flat_offset(w, "islands");
+    const std::size_t to = flat_offset(w, "figures");
+    REQUIRE(from != std::string::npos);
+    REQUIRE(to != std::string::npos);
+    std::vector<std::uint8_t> out(flat.begin(), flat.begin() + static_cast<std::ptrdiff_t>(from));
+    out.insert(out.end(), table.begin(), table.end());
+    out.insert(out.end(), flat.begin() + static_cast<std::ptrdiff_t>(to), flat.end());
+    return out;
+}
+
 /// The offset in the save frame of a byte at `flat` in the flat stream, which
 /// lies in the section with the 0-based index `section` (header 0, clock_rng 1,
-/// settings 2, players 3, islands 4): 4 magic + 4 + 4 versions + 1 table kind
-/// (the original table), then every section behind a u64 length.
+/// settings 2, ids 3, players 4, islands 5, figures 6, events 7): 4 magic + 4 + 4
+/// versions + 1 table kind (the original table), then every section behind a u64
+/// length.
 inline std::size_t frame_offset(std::size_t flat, std::size_t section) {
     return 13 + 8 * (section + 1) + flat;
 }

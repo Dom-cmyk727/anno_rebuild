@@ -1059,7 +1059,6 @@ TEST_CASE("rules validate rejects reserved values") {
     r.events_flush_after_figures = true;
     r.monopoly_every_30s = true;
     r.player_table_full_tick = true;
-    r.drought_random_centre = true;
     r.build_atomic = true;
     r.keep_empty_city = true;
     r.event750_keep_overshoot = true;
@@ -1067,6 +1066,12 @@ TEST_CASE("rules validate rejects reserved values") {
     r.free_build_cheat = true;
     r.enforce_research = true;
     CHECK(r.validate().empty());
+    // drought_random_centre is a reserved value (OQ-042): the owner has not decided what a
+    // random centre is, so an accepted option would silently do nothing.
+    r = sim::Rules{};
+    r.drought_random_centre = true;
+    CHECK(starts_with(r.validate(), "Rules.drought_random_centre:"));
+    CHECK(r.validate().find("reserved") != std::string::npos);
 }
 
 TEST_CASE("seams names validation and defaults") {
@@ -1305,7 +1310,9 @@ TEST_CASE("state stream header and settings scopes") {
     const std::vector<std::uint8_t> bytes = save_fields(w);
     // The whole stream, transcribed from docs/sim/state.md §9.3: header
     // (versions, SimConfig, Rules, registry digest, seam names), clock_rng,
-    // settings, players (32 absent slots, stamp, cursor), islands (slot count 0).
+    // settings, ids (next_figure, next_event_seq), players (32 absent slots, stamp,
+    // cursor), islands (slot count 0), figures (the registry of one empty slot) and
+    // events (count 0).
     Stream expected;
     expected.u32(sim::kStateHashVersion);
     expected.u32(sim::kPrngTimelineVersion);
@@ -1322,22 +1329,35 @@ TEST_CASE("state stream header and settings scopes") {
     expected.u64(w.rng.table_digest());
     expected.u32(0);
     expected_settings(expected);
+    expected.u64(1);  // ids: next_figure
+    expected.u64(1);  // ids: next_event_seq
     expected.u64(32); // players: slot count
     for (int i = 0; i < 32; ++i) {
         expected.u8(0); // an absent slot
     }
-    expected.u16(0); // stamp
-    expected.u32(0); // cursor
-    expected.u64(0); // islands: slot count
+    expected.u16(0);                     // stamp
+    expected.u32(0);                     // cursor
+    expected.u64(0);                     // islands: slot count
+    expected.u64(0xffffffffffffffffULL); // figures: hint -1
+    expected.u32(0);                     // cursor
+    expected.u64(1);                     // slot count
+    expected.u8(0);                      // the empty slot
+    expected.u16(0);                     // stamp
+    expected.u64(0);                     // expiry
+    expected.u64(0);                     // deferred
+    expected.u64(0);                     // events: count
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 104);
+    CHECK(sim::kStateHashVersion == 105);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);
     CHECK(scope_offset(w, "settings") == header_size + 36);
-    CHECK(scope_offset(w, "players") == header_size + 36 + 38);
-    CHECK(scope_offset(w, "islands") == header_size + 36 + 38 + 46);
-    CHECK(bytes.size() == header_size + 36 + 38 + 46 + 8);
+    CHECK(scope_offset(w, "ids") == header_size + 36 + 38);
+    CHECK(scope_offset(w, "players") == header_size + 36 + 38 + 16);
+    CHECK(scope_offset(w, "islands") == header_size + 36 + 38 + 16 + 46);
+    CHECK(scope_offset(w, "figures") == header_size + 36 + 38 + 16 + 46 + 8);
+    CHECK(scope_offset(w, "events") == header_size + 36 + 38 + 16 + 46 + 8 + 39);
+    CHECK(bytes.size() == header_size + 36 + 38 + 16 + 46 + 8 + 39 + 8);
 }
 
 TEST_CASE("state hash moves with every config rules settings and seam field") {
@@ -1345,17 +1365,23 @@ TEST_CASE("state hash moves with every config rules settings and seam field") {
     const std::uint64_t base_hash = base.state_hash();
     sim::HashTree base_tree;
     CHECK(base.state_hash(base_tree, 0) == base_hash);
-    REQUIRE(base_tree.root.children.size() == 5);
+    REQUIRE(base_tree.root.children.size() == 8);
     CHECK(base_tree.root.children[0].name == "header");
     CHECK(base_tree.root.children[1].name == "clock_rng");
     CHECK(base_tree.root.children[2].name == "settings");
-    CHECK(base_tree.root.children[3].name == "players");
-    CHECK(base_tree.root.children[4].name == "islands");
+    CHECK(base_tree.root.children[3].name == "ids");
+    CHECK(base_tree.root.children[4].name == "players");
+    CHECK(base_tree.root.children[5].name == "islands");
+    CHECK(base_tree.root.children[6].name == "figures");
+    CHECK(base_tree.root.children[7].name == "events");
     auto scope_hashes = [](const sim::World& w) {
         sim::HashTree t;
         static_cast<void>(w.state_hash(t, 0));
-        return std::vector<std::uint64_t>{t.root.children[0].hash, t.root.children[1].hash,
-                                          t.root.children[2].hash, t.root.children[3].hash};
+        std::vector<std::uint64_t> out;
+        for (const sim::HashNode& c : t.root.children) {
+            out.push_back(c.hash);
+        }
+        return out;
     };
     const auto base_scopes = scope_hashes(base);
     // Config, rules, registry and seams move the header scope only.
@@ -1366,9 +1392,9 @@ TEST_CASE("state hash moves with every config rules settings and seam field") {
         CHECK(w.state_hash() != base_hash);
         const auto s = scope_hashes(w);
         CHECK(s[0] != base_scopes[0]);
-        CHECK(s[1] == base_scopes[1]);
-        CHECK(s[2] == base_scopes[2]);
-        CHECK(s[3] == base_scopes[3]);
+        for (std::size_t k = 1; k < s.size(); ++k) {
+            CHECK(s[k] == base_scopes[k]);
+        }
     }
     for (const auto& [name, mutate] : rules_mutations()) {
         sim::World w = base;
@@ -1377,9 +1403,9 @@ TEST_CASE("state hash moves with every config rules settings and seam field") {
         CHECK(w.state_hash() != base_hash);
         const auto s = scope_hashes(w);
         CHECK(s[0] != base_scopes[0]);
-        CHECK(s[1] == base_scopes[1]);
-        CHECK(s[2] == base_scopes[2]);
-        CHECK(s[3] == base_scopes[3]);
+        for (std::size_t k = 1; k < s.size(); ++k) {
+            CHECK(s[k] == base_scopes[k]);
+        }
     }
     // Settings move the settings scope only.
     for (const auto& [name, mutate] : settings_mutations()) {
@@ -1388,10 +1414,13 @@ TEST_CASE("state hash moves with every config rules settings and seam field") {
         INFO("setting " << name);
         CHECK(w.state_hash() != base_hash);
         const auto s = scope_hashes(w);
-        CHECK(s[0] == base_scopes[0]);
-        CHECK(s[1] == base_scopes[1]);
-        CHECK(s[2] != base_scopes[2]);
-        CHECK(s[3] == base_scopes[3]);
+        for (std::size_t k = 0; k < s.size(); ++k) {
+            if (k == 2) {
+                CHECK(s[k] != base_scopes[k]);
+            } else {
+                CHECK(s[k] == base_scopes[k]);
+            }
+        }
     }
     static_assert(sim::field_count<sim::WorldSettings>() == 16);
     CHECK(settings_mutations().size() == sim::field_count<sim::WorldSettings>());

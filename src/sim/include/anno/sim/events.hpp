@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <utility>
 
@@ -58,9 +59,20 @@ struct EventQueue {
     /// sequence numbers are assigned in the serial merge phase only, in island
     /// order (docs/sim/state.md §2.1). The counter must exceed every queued
     /// sequence number (the loader checks it): a clash would drop the event.
-    void enqueue(IdCounters& ids, std::uint64_t tick, std::uint64_t delay, TimedEvent e) {
+    /// A sum that does not fit in u64 is cut at 2^64 - 1 ("never, or last"; F35:
+    /// a wrapped sum would fire the event at once). When the sequence numbers are
+    /// used up (`next_event_seq` at 2^64 - 1, a state the loader accepts) nothing
+    /// is queued and false is returned; the counter never wraps.
+    bool enqueue(IdCounters& ids, std::uint64_t tick, std::uint64_t delay, TimedEvent e) {
+        if (ids.next_event_seq == std::numeric_limits<std::uint64_t>::max()) {
+            return false;
+        }
         const std::uint64_t seq = ids.next_event_seq++;
-        q.emplace(EventKey{tick + delay, seq}, std::move(e));
+        const std::uint64_t due = delay > std::numeric_limits<std::uint64_t>::max() - tick
+                                      ? std::numeric_limits<std::uint64_t>::max()
+                                      : tick + delay;
+        q.emplace(EventKey{due, seq}, std::move(e));
+        return true;
     }
 
     /// Removes the first event, in queue order, of this kind with this tile;

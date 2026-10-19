@@ -340,6 +340,7 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         w.rng.set_cursor(spec.seed);
     }
     w.players_ = make_player_table(w.config_);
+    w.figures_ = make_figure_registry(w.config_);
     for (const Spec::PlayerSpec& ps : spec.players) {
         Player p = make_player(ps.id, w.config_);
         p.kind = ps.kind;

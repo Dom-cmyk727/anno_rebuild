@@ -14,6 +14,7 @@
 //   2 clock_rng  u64 clock.ms, u64 clock.last_tick, u64 rng.size,
 //                u64 rng.table_digest, u32 rng.cursor  (= core_hash)
 //   3 settings   the WorldSettings
+//   4 ids        u64 next_figure, u64 next_event_seq
 //   5 players    u64 slot count, then per slot (scope `player`, ordinal = slot)
 //                an optional Player, then u16 stamp, u32 cursor
 //   6 islands    u64 slot count, then per slot (scope `island`, ordinal = slot)
@@ -21,6 +22,11 @@
 //                whose cities are the scope `cities` (per slot a scope `city`
 //                with an optional City, whose building lists are the scopes
 //                `index` / `list` / `building`)
+//   7 figures    the FigureRegistry: i64 hint, u32 cursor, u64 slot count, per slot
+//                (scope `figure`, ordinal = slot) an optional Figure, u16 stamp,
+//                the expiry ids, the deferred ids
+//   8 events     the timed-event queue: u64 count, per event its key (u64 due, u64
+//                seq) and the TimedEvent
 // Not in the stream: the PRNG table itself (immutable, identified by its
 // size and digest; a custom table travels in the save frame, §9.5), the type
 // registry (its digest is in the header) and the seam functions (their names
@@ -43,6 +49,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <span>
@@ -56,7 +63,9 @@
 #include <anno/sim/clock.hpp>
 #include <anno/sim/config.hpp>
 #include <anno/sim/create.hpp>
+#include <anno/sim/events.hpp>
 #include <anno/sim/field_count.hpp>
+#include <anno/sim/figure.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/player.hpp>
 #include <anno/sim/rng.hpp>
@@ -616,13 +625,18 @@ template <class A, Same<Building> S> void fields(A& a, S& s) {
     ar::variant<kPayloadTags>(a, s.payload, [&](auto& alternative) { fields(a, alternative); });
 }
 
+/// Whether `n` slots of type T fit the load budget of one list (kSlotListLoadBytes).
+template <class T> [[nodiscard]] constexpr bool slot_list_fits_load_budget(std::uint64_t n) {
+    return n <= kSlotListLoadBytes / sizeof(std::optional<T>);
+}
+
 /// One building list (inside the scope `list` of its index): `i64 hint, u32 cursor,
 /// u64 slot_count`, then per slot (scope `building`, ordinal = slot) an optional
 /// Building. A slot is one byte on the wire when empty but a whole optional<Building>
 /// in memory, so the count is bounded by kListSizeBound (the largest list
-/// SimConfig::validate allows) before any slot is made, and the slots are made one
-/// at a time (the memory used tracks the bytes read). validate_cities then checks
-/// the structure (hint, cursor, at least one slot).
+/// SimConfig::validate allows) and by kSlotListLoadBytes before any slot is made, and
+/// the slots are made one at a time (the memory used tracks the bytes read).
+/// validate_cities then checks the structure (hint, cursor, at least one slot).
 template <class A, Same<BuildingList> S> void fields(A& a, S& s) {
     a.i64(s.hint);
     a.u32(s.cursor);
@@ -632,6 +646,11 @@ template <class A, Same<BuildingList> S> void fields(A& a, S& s) {
         if (!a.failed() && n > kListSizeBound) {
             a.fail("slot count " + std::to_string(n) + " is above the list limit " +
                    std::to_string(kListSizeBound));
+            n = 0;
+        }
+        if (!a.failed() && !slot_list_fits_load_budget<Building>(n)) {
+            a.fail("slot count " + std::to_string(n) + " is above the load budget of " +
+                   std::to_string(kSlotListLoadBytes) + " bytes per list");
             n = 0;
         }
         s.slots.clear();
@@ -830,6 +849,113 @@ template <class A, class V> void islands_io(A& a, V& islands, const SimConfig& c
     }
 }
 
+// ---- ids, figures and the event queue (stage S7)
+
+static_assert(field_count<IdCounters>() == 2,
+              "an IdCounters member needs a line in fields(IdCounters)");
+
+template <class A, Same<IdCounters> S> void fields(A& a, S& s) {
+    a.u64(s.next_figure);
+    a.u64(s.next_event_seq);
+}
+
+static_assert(field_count<Figure>() == 13, "a Figure member needs a line in fields(Figure)");
+
+template <class A, Same<Figure> S> void fields(A& a, S& s) {
+    a.u64(s.id.v);
+    a.u32(s.kind);
+    a.u32(s.owner.v);
+    a.u64(s.home.v);
+    a.u32(s.home_counter);
+    a.u32(s.job);
+    a.i32(s.pos.x);
+    a.i32(s.pos.y);
+    a.u32(s.cargo_goods);
+    a.u32(s.cargo_88);
+    a.u32(s.hp);
+    a.u32(s.born);
+    ar::opt(a, s.created_stamp, [&](auto& v) { a.u16(v); });
+    a.boolean(s.marked_for_delete);
+}
+
+/// The registry's slot list, like a building list: `i64 hint, u32 cursor, u64
+/// slot_count`, then per slot (scope `figure`, ordinal = slot) an optional Figure.
+/// A slot is one byte on the wire when empty but a whole optional<Figure> in
+/// memory, so the count is bounded by kListSizeBound and by kSlotListLoadBytes before
+/// any slot is made and the slots are made one at a time. validate_figures then
+/// checks the structure.
+template <class A, Same<SlotList<Figure>> S> void fields(A& a, S& s) {
+    a.i64(s.hint);
+    a.u32(s.cursor);
+    std::uint64_t n = s.slots.size();
+    a.count(n, 1);
+    if constexpr (A::kReading) {
+        if (!a.failed() && n > kListSizeBound) {
+            a.fail("slot count " + std::to_string(n) + " is above the list limit " +
+                   std::to_string(kListSizeBound));
+            n = 0;
+        }
+        if (!a.failed() && !slot_list_fits_load_budget<Figure>(n)) {
+            a.fail("slot count " + std::to_string(n) + " is above the load budget of " +
+                   std::to_string(kSlotListLoadBytes) + " bytes per list");
+            n = 0;
+        }
+        s.slots.clear();
+        for (std::uint64_t i = 0; i < n && !a.failed(); ++i) {
+            s.slots.emplace_back();
+            a.scope("figure", static_cast<std::uint32_t>(i),
+                    [&] { ar::opt(a, s.slots.back(), [&](auto& f) { fields(a, f); }); });
+        }
+    } else {
+        for (std::size_t i = 0; i < s.slots.size(); ++i) {
+            a.scope("figure", static_cast<std::uint32_t>(i),
+                    [&] { ar::opt(a, s.slots[i], [&](auto& f) { fields(a, f); }); });
+        }
+    }
+}
+
+// `by_id` is derived (rebuilt after a read) and is not in the stream.
+static_assert(field_count<FigureRegistry>() == 5,
+              "a FigureRegistry member needs a line in fields(FigureRegistry) or a derived note");
+
+template <class A, Same<FigureRegistry> S> void fields(A& a, S& s) {
+    fields(a, s.list);
+    a.u16(s.stamp);
+    ar::seq(a, s.expiry, 8, [&](auto& id) { a.u64(id.v); });
+    ar::seq(a, s.deferred, 8, [&](auto& id) { a.u64(id.v); });
+}
+
+template <> struct EnumInfo<EventKind> : ContiguousEnum<2> {};
+
+static_assert(field_count<TimedEvent>() == 7,
+              "a TimedEvent member needs a line in fields(TimedEvent)");
+
+template <class A, Same<TimedEvent> S> void fields(A& a, S& s) {
+    a.enumv(s.kind);
+    a.u32(s.subtype);
+    a.u32(s.value);
+    a.i32(s.tile.x);
+    a.i32(s.tile.y);
+    a.u64(s.target.v);
+    a.u32(s.attacker_kind);
+    a.u64(s.attacker.v);
+}
+
+static_assert(field_count<EventQueue>() == 1,
+              "an EventQueue member needs a line in fields(EventQueue)");
+
+/// The queue in key order: u64 count, then per event its key (u64 due, u64 seq) and
+/// the event (53 bytes at least). Reading requires strictly ascending keys.
+template <class A, Same<EventQueue> S> void fields(A& a, S& s) {
+    ar::map(
+        a, s.q, 53,
+        [&](auto& k) {
+            a.u64(k.first);
+            a.u64(k.second);
+        },
+        [&](auto& e) { fields(a, e); });
+}
+
 /// The hierarchical hash of any persistent value, with the scopes down to
 /// `depth` recorded in `tree` when it is not null. World::state_hash is this
 /// over the world; it is a template so the depth rule can be tested on values
@@ -927,7 +1053,27 @@ struct StateIO {
         });
     }
 
-    /// Section 4 (the `ids` section of §9.3 is not in the stream yet).
+    /// Section 4: the id counters. Reading rejects 0 (ids start at 1). The maximum
+    /// is accepted: it is the "used up" state a counter reaches after it handed out
+    /// 2^64 - 2 (the last valid id; 2^64 - 1 is the invalid id), and a counter in it
+    /// refuses further ids instead of wrapping (F35).
+    template <class A, class Ids> static void ids_section(A& a, Ids& ids) {
+        a.scope("ids", [&] {
+            fields(a, ids);
+            if constexpr (A::kReading) {
+                if (!a.failed() && ids.next_figure < 1) {
+                    a.fail("next_figure " + std::to_string(ids.next_figure) +
+                           " is not in 1 .. 2^64 - 1");
+                }
+                if (!a.failed() && ids.next_event_seq < 1) {
+                    a.fail("next_event_seq " + std::to_string(ids.next_event_seq) +
+                           " is not in 1 .. 2^64 - 1");
+                }
+            }
+        });
+    }
+
+    /// Section 5.
     template <class A, class Players, class Config>
     static void players_section(A& a, Players& players, const Config& config) {
         a.scope("players", [&] {
@@ -943,7 +1089,7 @@ struct StateIO {
         });
     }
 
-    /// Section 5. Reading validates the table against the configuration, the
+    /// Section 6. Reading validates the table against the configuration, the
     /// settings and the registry just read (validate_islands).
     template <class A, class W, class Islands, class Config, class Settings>
     static void islands_section(A& a, W& w, Islands& islands, const Config& config,
@@ -962,19 +1108,62 @@ struct StateIO {
         });
     }
 
+    /// Section 7: the figure registry. Reading rebuilds the id map (derived) and
+    /// validates the structure against the id counters just read.
+    template <class A, class Figures, class Ids>
+    static void figures_section(A& a, Figures& figures, const Ids& ids) {
+        a.scope("figures", [&] {
+            fields(a, figures);
+            if constexpr (A::kReading) {
+                if (!a.failed()) {
+                    rebuild_figure_index(figures);
+                    const std::string problem = validate_figures(figures, ids);
+                    if (!problem.empty()) {
+                        a.fail(problem);
+                    }
+                }
+            }
+        });
+    }
+
+    /// Section 8: the timed-event queue. Reading rejects a sequence number the id
+    /// counter has not handed out (a later enqueue could clash with it).
+    template <class A, class Events, class Ids>
+    static void events_section(A& a, Events& events, const Ids& ids) {
+        a.scope("events", [&] {
+            fields(a, events);
+            if constexpr (A::kReading) {
+                if (!a.failed()) {
+                    for (const auto& entry : events.q) {
+                        if (entry.first.second >= ids.next_event_seq) {
+                            a.fail("event sequence number " + std::to_string(entry.first.second) +
+                                   " is not below next_event_seq " +
+                                   std::to_string(ids.next_event_seq));
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     /// The scopes of the stream over the configuration, rules, settings, clock,
-    /// PRNG, players and islands to use: the world's own members when writing or
-    /// hashing, the read-side temporaries when reading (so one function defines
-    /// the order of the stream for all four archives).
+    /// PRNG, id counters, players, islands, figures and events to use: the world's
+    /// own members when writing or hashing, the read-side temporaries when reading
+    /// (so one function defines the order of the stream for all four archives).
     template <class A, class W, class Config, class RulesT, class Settings, class Clock, class Rng,
-              class Players, class Islands>
+              class Ids, class Players, class Islands, class Figures, class Events>
     static void scopes(A& a, W& w, Config& config, RulesT& rules, Settings& settings, Clock& clock,
-                       Rng& rng, Players& players, Islands& islands) {
+                       Rng& rng, Ids& ids, Players& players, Islands& islands, Figures& figures,
+                       Events& events) {
         header_section(a, w, config, rules);
         clock_rng_section(a, clock, rng);
         settings_section(a, settings);
+        ids_section(a, ids);
         players_section(a, players, config);
         islands_section(a, w, islands, config, settings);
+        figures_section(a, figures, ids);
+        events_section(a, events, ids);
     }
 
     template <class A, class W> static void world(A& a, W& w) {
@@ -988,9 +1177,13 @@ struct StateIO {
             WorldSettings settings = w.settings_;
             WorldClock clock = w.clock;
             WorldRng rng = w.rng;
+            IdCounters ids = w.ids_;
             PlayerTable players = w.players_;
             std::vector<std::optional<Island>> islands;
-            scopes(a, w, config, rules, settings, clock, rng, players, islands);
+            FigureRegistry figures = w.figures_;
+            EventQueue events = w.events_;
+            scopes(a, w, config, rules, settings, clock, rng, ids, players, islands, figures,
+                   events);
             if (!a.failed()) {
                 // The derived indexes (id map, footprint grids, counters) are not in
                 // the stream: rebuilt from the lists (docs/sim/state.md §9.1).
@@ -1004,11 +1197,15 @@ struct StateIO {
                 w.settings_ = settings;
                 w.clock = clock;
                 w.rng = rng;
+                w.ids_ = ids;
                 w.players_ = std::move(players);
                 w.islands_ = std::move(islands);
+                w.figures_ = std::move(figures);
+                w.events_ = std::move(events);
             }
         } else {
-            scopes(a, w, w.config_, w.rules_, w.settings_, w.clock, w.rng, w.players_, w.islands_);
+            scopes(a, w, w.config_, w.rules_, w.settings_, w.clock, w.rng, w.ids_, w.players_,
+                   w.islands_, w.figures_, w.events_);
         }
     }
 
@@ -1021,8 +1218,8 @@ struct StateIO {
                                                     Seams seams);
 };
 
-/// The world so far: scopes header, clock_rng, settings, players and islands (the
-/// order of §9.3).
+/// The world so far: scopes header, clock_rng, settings, ids, players, islands,
+/// figures and events (the order of §9.3).
 template <class A, Same<World> S> void fields(A& a, S& w) {
     StateIO::world(a, w);
 }

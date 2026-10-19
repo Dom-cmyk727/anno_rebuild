@@ -45,8 +45,8 @@ sim::Island& isl(sim::World& w, std::size_t slot) {
     return *sim::WorldTestAccess::islands(w)[slot];
 }
 
-/// The hashes of the top-level scopes of the world (header, clock_rng, settings,
-/// players, islands).
+/// The hashes of the top-level scopes of the world (header, clock_rng, settings, ids,
+/// players, islands, figures, events).
 std::vector<std::uint64_t> scope_hashes(const sim::World& w) {
     sim::HashTree t;
     static_cast<void>(w.state_hash(t, 0));
@@ -611,8 +611,9 @@ TEST_CASE("island fields are counted") {
 TEST_CASE("islands scope stream layout") {
     const sim::World w = make_world(syn::two_island_scenario());
     const std::vector<std::uint8_t> bytes = island_test::flat_stream(w);
-    // The scope is the last of the stream: u64 slot count, then per slot a presence
-    // byte and the island; the tiles of an island are 13 bytes each.
+    // The scope is followed only by the figures and the events scopes of a world
+    // without either: u64 slot count, then per slot a presence byte and the island;
+    // the tiles of an island are 13 bytes each.
     Stream want;
     want.u64(4);
     auto island = [&](const sim::Island& is, std::int32_t x0, std::int32_t y0, std::uint32_t wd,
@@ -679,12 +680,15 @@ TEST_CASE("islands scope stream layout") {
     island(*w.islands()[3], 300, 200, 30, 20, 1, 1);
     REQUIRE(bytes.size() > want.v.size());
     CHECK(std::equal(want.v.begin(), want.v.end(),
-                     bytes.end() - static_cast<std::ptrdiff_t>(want.v.size())));
+                     bytes.end() -
+                         static_cast<std::ptrdiff_t>(island_test::kTailBytes + want.v.size())));
     // 13 bytes per tile: the two islands hold 4096 + 600 tiles.
     CHECK(want.v.size() > (4096 + 600) * sim::kTileBytes);
     // The scope opens where the trace says.
-    CHECK(island_test::flat_offset(w, "islands") == bytes.size() - want.v.size());
-    CHECK(island_test::flat_offset(w, "island", 0) == bytes.size() - want.v.size() + 8);
+    const std::size_t scope_at = bytes.size() - island_test::kTailBytes - want.v.size();
+    CHECK(island_test::flat_offset(w, "islands") == scope_at);
+    CHECK(island_test::flat_offset(w, "island", 0) == scope_at + 8);
+    CHECK(island_test::flat_offset(w, "figures") == scope_at + want.v.size());
     CHECK(island_test::flat_offset(w, "island", 3) != std::string::npos);
     CHECK(island_test::flat_offset(w, "island", 4) == std::string::npos);
 }
@@ -814,17 +818,20 @@ TEST_CASE("island perturbation moves the hash") {
     const sim::World base = make_world(zero_island_scenario());
     const std::uint64_t base_hash = sim::World(base).state_hash();
     const std::vector<std::uint64_t> base_scopes = scope_hashes(base);
-    REQUIRE(base_scopes.size() == 5);
+    REQUIRE(base_scopes.size() == 8);
     for (const auto& [name, mutate] : mutations) {
         INFO("mutation " << name);
         sim::World w = base;
         mutate(isl(w, 2));
         CHECK(w.state_hash() != base_hash);
         const std::vector<std::uint64_t> s = scope_hashes(w);
-        for (std::size_t k = 0; k < 4; ++k) {
-            CHECK(s[k] == base_scopes[k]);
+        for (std::size_t k = 0; k < s.size(); ++k) {
+            if (k == 5) {
+                CHECK(s[k] != base_scopes[k]); // islands
+            } else {
+                CHECK(s[k] == base_scopes[k]);
+            }
         }
-        CHECK(s[4] != base_scopes[4]);
     }
     // The drought record, field by field, from a world that has one.
     sim::World with_drought = base;
@@ -861,17 +868,38 @@ TEST_CASE("island perturbation moves the hash") {
     CHECK(moved.state_hash() != base_hash);
 }
 
-TEST_CASE("advance leaves the islands alone") {
+TEST_CASE("advance ticks the islands but writes no tile") {
+    // Stage S7: advance ticks the islands (the sweep cursors, the object manager, the
+    // city ring: stamps and cursors move), but the growth sweep has no tile body
+    // before stage S13, so no tile column changes.
     sim::World w = make_world(syn::two_island_scenario());
     const std::vector<std::uint64_t> before = scope_hashes(w);
+    const sim::World created = w;
     for (int i = 0; i < 300; ++i) {
         w.advance(10);
     }
     const std::vector<std::uint64_t> after = scope_hashes(w);
-    CHECK(after[4] == before[4]); // islands
+    CHECK(after[5] != before[5]); // islands: the stamps and cursors moved
     CHECK(after[1] != before[1]); // clock
-    CHECK(after[3] != before[3]); // players: the table's stamp and cursor moved
-    CHECK(w.islands()[3]->tiles.cache_consistent());
+    CHECK(after[4] != before[4]); // players: the table's stamp and cursor moved
+    CHECK(after[0] == before[0]); // header
+    CHECK(after[2] == before[2]); // settings
+    CHECK(after[3] == before[3]); // ids: nothing was spawned
+    CHECK(after[6] == before[6]); // figures
+    CHECK(after[7] == before[7]); // events
+    for (std::size_t slot : {std::size_t{0}, std::size_t{3}}) {
+        const sim::TileLayer& now = w.islands()[slot]->tiles;
+        const sim::TileLayer& then = created.islands()[slot]->tiles;
+        REQUIRE(now.tile_count() == then.tile_count());
+        bool same = true;
+        for (std::uint64_t i = 0; i < now.tile_count(); ++i) {
+            same = same && now.object(i) == then.object(i) && now.phase(i) == then.phase(i) &&
+                   now.owner(i) == then.owner(i) && now.aux(i) == then.aux(i);
+        }
+        CHECK(same);
+        CHECK(now.cache_consistent());
+        CHECK(now.ignored_writes() == 0);
+    }
 }
 
 TEST_CASE("world copy is an independent snapshot with islands") {
@@ -1159,13 +1187,10 @@ TEST_CASE("islands scope refuses a slot count the table cannot hold") {
     // a count with the bytes to back it (a million zero bytes) is refused by the
     // table bound before a single slot is made.
     const sim::World none = make_world(syn::empty_scenario());
-    std::vector<std::uint8_t> bytes = island_test::flat_stream(none);
-    REQUIRE(bytes.size() > 8);
-    bytes.resize(bytes.size() - 8); // the slot count 0
     Stream count;
     count.u64(1000000);
-    bytes.insert(bytes.end(), count.v.begin(), count.v.end());
-    bytes.insert(bytes.end(), std::size_t{1000000}, std::uint8_t{0});
+    count.v.insert(count.v.end(), std::size_t{1000000}, std::uint8_t{0});
+    const std::vector<std::uint8_t> bytes = island_test::with_island_table(none, count.v);
     sim::World target(5);
     const std::string err = island_test::read_flat(target, bytes);
     CHECK(starts_with(err, "islands"));
@@ -1173,12 +1198,10 @@ TEST_CASE("islands scope refuses a slot count the table cannot hold") {
     CHECK(target.islands().empty());
     // The bound is the configuration's: 256 absent slots are a valid table, 257 are not.
     for (const std::uint64_t n : {std::uint64_t{256}, std::uint64_t{257}}) {
-        std::vector<std::uint8_t> b = island_test::flat_stream(none);
-        b.resize(b.size() - 8);
         Stream c;
         c.u64(n);
-        b.insert(b.end(), c.v.begin(), c.v.end());
-        b.insert(b.end(), static_cast<std::size_t>(n), std::uint8_t{0});
+        c.v.insert(c.v.end(), static_cast<std::size_t>(n), std::uint8_t{0});
+        const std::vector<std::uint8_t> b = island_test::with_island_table(none, c.v);
         sim::World t2(5);
         const std::string e = island_test::read_flat(t2, b);
         if (n == 256) {
@@ -1343,7 +1366,7 @@ TEST_CASE("islands scope reads back and validates what it read") {
             // ... and the frame says where in the file the failing section starts (the
             // byte offsets inside the message count from there).
             const std::size_t start =
-                island_test::frame_offset(island_test::flat_offset(w, "islands"), 4);
+                island_test::frame_offset(island_test::flat_offset(w, "islands"), 5);
             CHECK(contains(frame, "section islands (starts at file byte " + std::to_string(start) +
                                       "): "));
         }
@@ -2022,11 +2045,11 @@ TEST_CASE("load rejects tile dimensions beyond remaining bytes") {
     const std::size_t island0 = island_test::flat_offset(w, "island", 0);
     const std::size_t tiles0 = island_test::flat_offset(w, "tiles", 0);
     // The island scope starts with the presence byte, then u32 index, i32 x0, i32 y0.
-    const std::size_t w_at = island_test::frame_offset(island0 + 1 + 12, 4);
-    const std::size_t h_at = island_test::frame_offset(island0 + 1 + 16, 4);
-    const std::size_t tw_at = island_test::frame_offset(tiles0, 4);
-    const std::size_t th_at = island_test::frame_offset(tiles0 + 4, 4);
-    const std::size_t te_at = island_test::frame_offset(tiles0 + 8, 4);
+    const std::size_t w_at = island_test::frame_offset(island0 + 1 + 12, 5);
+    const std::size_t h_at = island_test::frame_offset(island0 + 1 + 16, 5);
+    const std::size_t tw_at = island_test::frame_offset(tiles0, 5);
+    const std::size_t th_at = island_test::frame_offset(tiles0 + 4, 5);
+    const std::size_t te_at = island_test::frame_offset(tiles0 + 8, 5);
     REQUIRE(island_test::get32(good, w_at) == 64);
     REQUIRE(island_test::get32(good, h_at) == 64);
     REQUIRE(island_test::get32(good, tw_at) == 64);
@@ -2063,7 +2086,7 @@ TEST_CASE("load rejects tile dimensions beyond remaining bytes") {
     {
         std::vector<std::uint8_t> bad = good;
         const std::size_t count_at =
-            island_test::frame_offset(island_test::flat_offset(w, "islands"), 4);
+            island_test::frame_offset(island_test::flat_offset(w, "islands"), 5);
         island_test::put32(bad, count_at, 0xFFFFFFFFU);
         island_test::put32(bad, count_at + 4, 0x00FFFFFFU);
         island_test::reseal(bad);

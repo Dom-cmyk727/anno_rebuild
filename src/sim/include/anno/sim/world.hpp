@@ -10,7 +10,9 @@
 // then `clock` and `rng` are public for tests.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <optional>
 #include <span>
@@ -20,7 +22,9 @@
 #include <anno/formats/result.hpp>
 #include <anno/sim/clock.hpp>
 #include <anno/sim/config.hpp>
+#include <anno/sim/events.hpp>
 #include <anno/sim/executor.hpp>
+#include <anno/sim/figure.hpp>
 #include <anno/sim/hash.hpp>
 #include <anno/sim/hash_tree.hpp>
 #include <anno/sim/island.hpp>
@@ -28,6 +32,7 @@
 #include <anno/sim/rng.hpp>
 #include <anno/sim/seams.hpp>
 #include <anno/sim/settings.hpp>
+#include <anno/sim/tick.hpp>
 #include <anno/sim/types.hpp>
 
 namespace anno::sim {
@@ -47,7 +52,10 @@ namespace anno::sim {
 // Stream at 104 (stage S6): each island gains the scope cities (after tiles): per
 // city slot a scope city with an optional City, whose building lists are the scopes
 // index / list / building.
-inline constexpr std::uint32_t kStateHashVersion = 104;
+// Stream at 105 (stage S7): new scope ids (after settings: u64 next_figure, u64
+// next_event_seq), new scopes figures (the FigureRegistry) and events (the timed-event
+// queue) after islands.
+inline constexpr std::uint32_t kStateHashVersion = 105;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;
@@ -57,6 +65,27 @@ inline constexpr std::uint32_t kPrngTimelineVersion = 1;
 
 struct StateIO;
 struct ScenarioSpec;
+
+/// The UI events waiting for the host. Not state (never hashed or saved); a World
+/// copy carries at most `capacity` events. A full queue drops its OLDEST event for
+/// each new one and counts it in `dropped`.
+struct HostEventQueue {
+    std::deque<SimEvent> events;
+    std::uint64_t capacity = kHostEventCapacityDefault;
+    std::uint64_t dropped = 0;
+
+    /// Drops the oldest events until at most `capacity` remain.
+    void trim() {
+        while (static_cast<std::uint64_t>(events.size()) > capacity) {
+            events.pop_front();
+            ++dropped;
+        }
+    }
+    void push(const SimEvent& e) {
+        events.push_back(e);
+        trim();
+    }
+};
 
 class World {
   public:
@@ -108,6 +137,29 @@ class World {
     [[nodiscard]] const Seams& seams() const { return seams_; }
     [[nodiscard]] const TypeRegistry& types() const { return *types_; }
     [[nodiscard]] const PlayerTable& players() const { return players_; }
+    /// The counters of the ids assigned in the serial merge (figures, event sequence
+    /// numbers).
+    [[nodiscard]] const IdCounters& ids() const { return ids_; }
+    /// The figure registry (stage S7: created by the merge of SpawnRequests; its tick
+    /// is stage S12).
+    [[nodiscard]] const FigureRegistry& figures() const { return figures_; }
+    /// The timed-event queue (stage S7: filled by the merge of EnqueueEvents; the
+    /// dispatch is stage S12).
+    [[nodiscard]] const EventQueue& events() const { return events_; }
+    /// What the last advance produced for the host (UI events of that advance, the
+    /// draws per site, the PRNG cursor before and after). Not state, not hashed.
+    [[nodiscard]] const SimOutput& last_output() const { return out_; }
+    /// The UI events since the last call, oldest first (the queue is emptied). Not
+    /// state, not hashed. At most event_capacity() events are kept between two calls;
+    /// when more arrive the oldest are dropped and counted in events_dropped().
+    [[nodiscard]] std::vector<SimEvent> drain_events();
+    /// The most UI events kept for drain_events() (default kHostEventCapacityDefault;
+    /// 0 keeps none). Lowering it drops the oldest queued events at once. Not state.
+    void set_event_capacity(std::uint64_t capacity);
+    [[nodiscard]] std::uint64_t event_capacity() const;
+    /// How many UI events were dropped for lack of capacity since the world was made
+    /// (the per-advance list SimOutput::events is never dropped). Not state.
+    [[nodiscard]] std::uint64_t events_dropped() const;
     /// The island table, slot order (null slots are unused slots).
     [[nodiscard]] const std::vector<std::optional<Island>>& islands() const { return islands_; }
     /// The island whose rectangle holds the world tile (x, y), or nullptr. The
@@ -144,14 +196,18 @@ class World {
     /// (state_fields.hpp) and to bump kStateHashVersion, so it cannot be left
     /// outside hash and save (docs/sim/state.md §14.4).
     static constexpr void field_list_canary(const World& w) {
+        // host_events_ and out_ are the host-facing output, deliberately not in the
+        // field list (not state).
         [[maybe_unused]] const auto& [clock_member, rng_member, settings_member, config_member,
-                                      rules_member, seams_member, types_member, players_member,
-                                      islands_member] = w;
+                                      rules_member, seams_member, types_member, ids_member,
+                                      players_member, islands_member, figures_member, events_member,
+                                      host_events_member, out_member] = w;
     }
 
     /// Advances the world by `game_ms` (original order, D: AnnoWelt.dll
     /// 0x100ae040: islands, timed events, figures, players, timers, 30 s and
-    /// 7.5 min events; only the clock and the player table (step 4) exist yet).
+    /// 7.5 min events; stage S7 has the islands (step 1, with the merge of their
+    /// effects) and the player table (step 4); steps 2, 3, 5, 6 and 7 are stage S12).
     /// `game_ms` == 0 is not special-cased: the original adds 0 and still runs
     /// every subsystem. Returns the new tick.
     std::uint64_t advance(std::uint32_t game_ms);
@@ -180,14 +236,21 @@ class World {
   private:
     friend struct StateIO;
     friend struct WorldTestAccess;
+    friend struct Scheduler;
 
     WorldSettings settings_;
     SimConfig config_;
     Rules rules_;
     Seams seams_;
     RegistryRef types_; // never null, also after a move (types.hpp)
+    IdCounters ids_;
     PlayerTable players_;
     std::vector<std::optional<Island>> islands_;
+    FigureRegistry figures_;
+    EventQueue events_;
+    // Not state (never hashed or saved): the host-facing output.
+    HostEventQueue host_events_;
+    SimOutput out_;
 };
 
 } // namespace anno::sim

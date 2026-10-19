@@ -347,6 +347,12 @@ std::string Rules::validate() const {
     if (events_max_dispatch == 0) {
         return bad(kOwner, "events_max_dispatch", "must be at least 1");
     }
+    if (drought_random_centre) {
+        // What a random centre is (which tiles, how many draws, which draw site) is the
+        // owner's decision (OQ-042); an option that is accepted and does nothing would
+        // make a host or a peer believe it changed the game.
+        return bad(kOwner, "drought_random_centre", "reserved: not implemented (OQ-042)");
+    }
     return {};
 }
 

@@ -8,7 +8,10 @@
 // (production.hpp), which the driver builds over a SiteDraw.
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include <anno/sim/rng.hpp>
 
@@ -58,6 +61,46 @@ struct GlobalDraw final : DrawSource {
     WorldRng& rng;
 };
 
+/// Telemetry: draws per site in one advance. Not state, not hashed.
+struct DrawRecord {
+    DrawSite site = DrawSite::SmallFarmAnimal;
+    std::uint32_t count = 0;
+};
+
+/// The number of draw sites (the length of a per-site count table).
+inline constexpr std::size_t kDrawSiteCount = static_cast<std::size_t>(DrawSite::Count_);
+
+/// A DrawSource that counts the draws per site and forwards them to another one
+/// (docs/sim/state.md §4.2, §6: the per-site telemetry of SimOutput::draws and
+/// Effects::draws, and the raw material of a later may_draw soundness check). The
+/// counts are not state. `inner` must outlive the counter.
+struct CountingDraw final : DrawSource {
+    explicit CountingDraw(DrawSource& source) : inner(source) {}
+    std::uint16_t next(DrawSite site) override {
+        const auto i = static_cast<std::size_t>(site);
+        if (i < kDrawSiteCount) {
+            ++counts[i];
+        }
+        return inner.next(site);
+    }
+    DrawSource& inner;
+    std::array<std::uint32_t, kDrawSiteCount> counts{};
+};
+
+/// The draws made between two readings of a counter, as records in site order
+/// (sites without a draw are left out).
+inline std::vector<DrawRecord>
+draw_records_between(const std::array<std::uint32_t, kDrawSiteCount>& before,
+                     const std::array<std::uint32_t, kDrawSiteCount>& after) {
+    std::vector<DrawRecord> out;
+    for (std::size_t i = 0; i < kDrawSiteCount; ++i) {
+        if (after[i] != before[i]) {
+            out.push_back(DrawRecord{static_cast<DrawSite>(i), after[i] - before[i]});
+        }
+    }
+    return out;
+}
+
 /// A DrawSource bound to one site, with the `next()` shape DrawRef::of
 /// expects: `SiteDraw d{source, DrawSite::SmallFarmAnimal}; DrawRef::of(d)`
 /// forwards a production rule's draw to `source.next(site)` (`d` must
@@ -67,12 +110,6 @@ struct SiteDraw {
     std::uint16_t next() { return source.next(site); }
     DrawSource& source;
     DrawSite site;
-};
-
-/// Telemetry: draws per site in one advance. Not state, not hashed.
-struct DrawRecord {
-    DrawSite site = DrawSite::SmallFarmAnimal;
-    std::uint32_t count = 0;
 };
 
 } // namespace anno::sim

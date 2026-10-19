@@ -6,13 +6,16 @@
 // (faithful where known, inert otherwise).
 //
 // Stage S3 declares the seam table and its names; the types the signatures
-// mention (TickContext, Island, City, Effects, SerialWorld, ...) arrive with
-// the stages that own them (S4..S7) and are only named here, which is enough
-// to declare the function pointer types. Signatures take contexts, never a
-// mutable World&. `ctx` carries the seam's own configuration (a recording seam
-// in a test, an AI's parameter block); it is NOT state: it is not hashed,
-// saved or copied deep, and a seam must not let anything behind it influence
-// sim state (a review item; the seam's name is what is hashed).
+// mention (TickContext, Island, City, Effects, SerialWorld, ...) are defined by
+// the stages that own them (Player S4, Island S5, City S6, TickContext, Effects
+// and SerialWorld S7, Command S8) and are only named here, which is enough to
+// declare the function pointer types. The scheduler calls city_pass,
+// wildlife_sweep, object_manager (S7), player_groups and defeat (bound to the
+// PlayerHooks of the player table, S7); the others are called by later stages. Signatures take
+// contexts, never a mutable World&. `ctx` carries the seam's own configuration (a recording seam in
+// a test, an AI's parameter block); it is NOT state: it is not hashed, saved or copied deep, and a
+// seam must not let anything behind it influence sim state (a review item; the seam's name is what
+// is hashed).
 #pragma once
 
 #include <cstddef>

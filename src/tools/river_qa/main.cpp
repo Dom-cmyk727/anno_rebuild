@@ -906,6 +906,15 @@ int main(int argc, char** argv) {
                 return 2;
             }
             opt.river.median_speed = f;
+        } else if (a == "--sea-less-scale" && i + 1 < argc) {
+            const std::string v = argv[++i];
+            char* end = nullptr;
+            const float f = std::strtof(v.c_str(), &end);
+            if (end == v.c_str() || *end != '\0' || !(f >= 0.0F)) {
+                std::fprintf(stderr, "--sea-less-scale: a number >= 0, not '%s'\n", v.c_str());
+                return 2;
+            }
+            opt.river.sea_less_speed_scale = f;
         } else if (a == "--discharge" && i + 1 < argc) {
             const std::string v = argv[++i];
             using D = render::river::RiverConfig::Discharge;
@@ -946,9 +955,11 @@ int main(int argc, char** argv) {
         std::fputs(
             "usage: river_qa <game_dir> [--groups 0,1,2] [--dump dir] [--per-island] "
             "[--max-mask-px N] [--flow [--flow-dump dir] [--discharge normalised|absolute|sourced] "
-            "[--reference fastest|median] [--median-speed t]] <file.sze|.scp>...\n"
+            "[--reference fastest|median] [--median-speed t] [--sea-less-scale s]] "
+            "<file.sze|.scp>...\n"
             "       river_qa <game_dir> --rect group,x,y,w,h --shade <dir> [--times t,t,..] "
-            "[--shade-gain x] <file>\n",
+            "[--shade-gain x] [--reference fastest|median] [--median-speed t] [--sea-less-scale s] "
+            "<file>\n",
             stderr);
         return 2;
     }
@@ -966,9 +977,13 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "%s: %s\n", file.string().c_str(), loaded.error().c_str());
             continue;
         }
-        const render::Scene& scene = *loaded.value().scene;
+        render::Scene& scene = *loaded.value().scene;
         const std::string name = anno::app::to_utf8(file.stem());
         if (rect) {
+            // The options that change the flow (OQ-065, OQ-067) apply to the picture as well.
+            scene.river_cfg.reference = opt.river.reference;
+            scene.river_cfg.median_speed = opt.river.median_speed;
+            scene.river_cfg.sea_less_speed_scale = opt.river.sea_less_speed_scale;
             if (const auto b = scene.bounds(rect_group)) {
                 std::fprintf(stderr, "%s group %zu: scene bounds x %d y %d w %d h %d\n",
                              name.c_str(), rect_group, b->x, b->y, b->w, b->h);

@@ -16,7 +16,8 @@
 //   Esc or Q quits; Space pauses the animation; E toggles enhanced water
 //   (not in the original; off by default); R toggles the river flow
 //   shading of enhanced water (--river-flow legacy|flow, flow by default;
-//   the GPU compositor draws the legacy look until its port, rivers.md S6).
+//   the GPU compositor shades it itself, its cost tier is automatic or set by
+//   ANNO_RIVER_QUALITY=low|medium|high, rivers.md 16).
 //   The title shows frames per
 //   second; stderr gets a per-stage frame-time breakdown.
 // - --png <out.png>: headless; writes the whole scene at --group (default

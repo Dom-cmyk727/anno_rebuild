@@ -145,9 +145,22 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
     // (ANNO_VIEW_LIMITS=default: the library defaults, for comparing frame times.)
     const char* limits_env = std::getenv("ANNO_VIEW_LIMITS");
     const bool library_defaults = limits_env != nullptr && std::string(limits_env) == "default";
-    auto frame =
-        gpu::GpuFrame::create(b->ctx, b->view_format,
-                              library_defaults ? gpu::GpuLimits{} : gpu::GpuLimits::interactive());
+    gpu::GpuLimits limits = library_defaults ? gpu::GpuLimits{} : gpu::GpuLimits::interactive();
+    // The cost tier of the river flow shading: automatic (High on a discrete GPU,
+    // measured on others) unless ANNO_RIVER_QUALITY says low, medium or high.
+    if (const char* q = std::getenv("ANNO_RIVER_QUALITY"); q != nullptr && *q != 0) {
+        const std::string v(q);
+        if (v == "low") {
+            limits.river_quality = render::RiverQuality::Low;
+        } else if (v == "medium") {
+            limits.river_quality = render::RiverQuality::Medium;
+        } else if (v == "high") {
+            limits.river_quality = render::RiverQuality::High;
+        } else if (v != "auto") {
+            std::fprintf(stderr, "ANNO_RIVER_QUALITY=%s not known (auto, low, medium, high)\n", q);
+        }
+    }
+    auto frame = gpu::GpuFrame::create(b->ctx, b->view_format, limits);
     if (!frame) {
         return frame.error();
     }
@@ -298,7 +311,14 @@ std::string Viewer::run() {
             const render::RiverFlowMode river_flow = frames_.river_flow;
             frames_ = render::FrameRenderer(frames_.threads, false);
             frames_.river_flow = river_flow;
-            std::fprintf(stderr, "GPU renderer: %s\n", gpu_->ctx.name.c_str());
+            const render::RiverQuality tier = gpu_->frame->river_quality();
+            std::fprintf(stderr, "GPU renderer: %s (river shading: %s)\n", gpu_->ctx.name.c_str(),
+                         tier == render::RiverQuality::High     ? "high"
+                         : tier == render::RiverQuality::Medium ? "medium"
+                                                                : "low");
+            if (const std::string& note = gpu_->frame->river_tier_note(); !note.empty()) {
+                std::fprintf(stderr, "%s\n", note.c_str());
+            }
         } else if (renderer_choice_ == Renderer::Gpu) {
             const std::string err = "GPU renderer: " + g.error();
             SDL_DestroyWindow(window_);

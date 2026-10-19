@@ -7,7 +7,10 @@
 //       [--styles original,enhanced] [--chunks blocking,async]
 //       [--renderer cpu,gpu] [--check] [--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick]
 //       [--zoom k] [--zoom-frames n] [--pace ms] [--spike ms] [--limits default|interactive]
-//       [--settle ms]
+//       [--settle ms] [--river-flow legacy|flow] [--river-quality auto|low|medium|high]
+//       [--river-pass]
+//   bench_frame --list-adapters
+//   bench_frame <game_dir> <file> --river-cost      (GPU cost of the river shading, synthetic)
 //
 // Per resolution, zoom group, water style and chunk mode, from a cold cache
 // centred on the largest island: cold (1 frame), static (120), pan slow (240,
@@ -30,6 +33,13 @@
 // than `--spike` ms (default 8) are listed with their phase breakdown. The
 // frame time of this path is the window thread's CPU time (the viewer does
 // not wait for the GPU); the GPU wait is listed separately.
+//
+// `--river-cost` prints the GPU cost per million river pixels of the river flow
+// shading at each tier (GpuFrame::measure_river_cost: a synthetic 1024 x 1024
+// view of pure river pixels). `--river-pass` times the sea pass of the real
+// frame with the legacy shimmer and with the flow shading (GPU timestamps) and
+// divides the difference by the visible river pixels. The adapter is chosen by
+// ANNO_GPU_ADAPTER (a number of --list-adapters or a part of its name).
 #include <algorithm>
 #include <charconv>
 #include <chrono>
@@ -80,6 +90,11 @@ struct Options {
     std::size_t settle_ms = 0;
     /// Enhanced rivers: the shading of the CPU path (--river-flow legacy|flow).
     render::RiverFlowMode river_flow = render::RiverFlowMode::Flow;
+    /// GpuLimits::river_quality (nullopt = automatic).
+    std::optional<render::RiverQuality> river_quality;
+    /// RiverConfig::light_gain (--river-gain): 1 = calibrated, larger shows the flow.
+    float river_gain = 1.0F;
+    bool river_cost = false, river_pass = false;
 };
 
 std::vector<std::string_view> split(std::string_view s, char sep) {
@@ -130,6 +145,7 @@ struct Config {
     double pace_ms = 2.0, spike_ms = 8.0;
     std::size_t settle_ms = 0;
     render::RiverFlowMode river_flow = render::RiverFlowMode::Flow;
+    bool river_pass = false;
 };
 
 void report(const Config& c, const char* renderer, const char* mode, const char* name,
@@ -177,7 +193,8 @@ namespace gpu = render::gpu;
 /// `missing`: chunks the GPU frame still lacked (async mode), which then
 /// show open sea and differ by design.
 void compare(const render::Scene& scene, const Config& c, render::Rect view, std::uint64_t time,
-             const gpu::GpuFrame& g, WGPUTexture tex, std::size_t missing) {
+             gpu::GpuFrame& g, render::FrameRenderer& gpu_frames, WGPUTexture tex,
+             WGPUTextureView tex_view, std::size_t missing) {
     const auto w = static_cast<std::uint32_t>(view.w), h = static_cast<std::uint32_t>(view.h);
     const std::vector<std::uint8_t> gpu_px = g.read_back(tex, w, h);
     const char* style = c.style == render::WaterStyle::Original ? "Original" : "Enhanced";
@@ -187,13 +204,62 @@ void compare(const render::Scene& scene, const Config& c, render::Rect view, std
         return;
     }
     render::FrameRenderer cpu(c.threads);
-    // The GPU compositor draws the legacy river look until its port (rivers.md
-    // S6), so the reference of this check is the CPU path's legacy look.
-    cpu.river_flow = render::RiverFlowMode::Legacy;
+    // The CPU path of the same river look (rivers.md S6: the GPU shades the
+    // flow lattice itself).
+    cpu.river_flow = c.river_flow;
+    // ... and of the tier the GPU used (Low and Medium differ from High by design).
+    cpu.river_quality = g.river_quality();
     std::vector<std::uint32_t> out(std::size_t{w} * h);
     cpu.render(scene, view, c.group, time, c.style, out.data());
+    // The same frame in the other river look on both paths: the CPU path
+    // quantises to 8 bits after every step of the sea (sprite, openness, shading)
+    // where the GPU keeps floats, so every sea pixel of the two differs by a
+    // level or two whatever the river look (the legacy look has the same offset).
+    // What the flow shading adds on each path (flow minus legacy) is compared
+    // too: that difference of differences leaves out the offset.
+    std::vector<std::uint32_t> out_other;
+    std::vector<std::uint8_t> gpu_other;
+    if (c.style == render::WaterStyle::Enhanced) {
+        const auto other = c.river_flow == render::RiverFlowMode::Flow
+                               ? render::RiverFlowMode::Legacy
+                               : render::RiverFlowMode::Flow;
+        cpu.river_flow = other;
+        out_other.resize(out.size());
+        cpu.render(scene, view, c.group, time, c.style, out_other.data());
+        gpu_frames.river_flow = other;
+        g.render(gpu_frames, scene, view, c.group, time, c.style, tex_view);
+        g.wait();
+        gpu_other = g.read_back(tex, w, h);
+        gpu_frames.river_flow = c.river_flow;
+        cpu.river_flow = c.river_flow;
+    }
     std::size_t differ = 0;
     int max = 0;
+    // River pixels (field flag bit 1): pure river (shore byte >= 254: no blend
+    // into the sea's look, no wave simulation, no 4/2/2 shading grid on the CPU)
+    // and the blend zone; counted pixels, those off by more than 2 and the
+    // largest difference.
+    struct RiverStat {
+        std::size_t n = 0, over2 = 0;
+        int max = 0;
+        /// Pixels per difference 0, 1, 2, 3, 4 and more.
+        std::array<std::size_t, 6> hist{};
+    } pure, blend, shading, shading_covered;
+    std::size_t covered = 0;
+    // What the flow shading adds (flow minus legacy) on each path at pixel i, the largest
+    // channel difference of the two.
+    auto shading_diff = [&](std::size_t i) {
+        int e = 0;
+        for (int k = 0; k < 3; ++k) {
+            const auto ku = static_cast<std::size_t>(k);
+            const int d_cpu = static_cast<int>((out[i] >> (16 - 8 * k)) & 0xFF) -
+                              static_cast<int>((out_other[i] >> (16 - 8 * k)) & 0xFF);
+            const int d_gpu = int{gpu_px[4 * i + ku]} - int{gpu_other[4 * i + ku]};
+            e = std::max(e, std::abs(d_gpu - d_cpu));
+        }
+        return e;
+    };
+    const bool have_other = !out_other.empty() && gpu_other.size() == gpu_px.size();
     for (std::size_t i = 0; i < out.size(); ++i) {
         int m = 0;
         for (int k = 0; k < 3; ++k) {
@@ -202,7 +268,60 @@ void compare(const render::Scene& scene, const Config& c, render::Rect view, std
         }
         max = std::max(max, m);
         differ += m > 2 ? 1U : 0U;
+        const int sx = view.x + static_cast<int>(i % w), sy = view.y + static_cast<int>(i / w);
+        const int cx = render::div_euclid(sx, render::kChunk),
+                  cy = render::div_euclid(sy, render::kChunk);
+        const render::Chunk* ch = cpu.chunk({c.group, cx, cy});
+        if (ch == nullptr || ch->field.empty()) {
+            continue;
+        }
+        const std::size_t f = (static_cast<std::size_t>(sy - cy * render::kChunk) *
+                                   static_cast<std::size_t>(render::kChunk) +
+                               static_cast<std::size_t>(sx - cx * render::kChunk)) *
+                              4;
+        if ((ch->field[f + 3] & 2U) == 0) {
+            continue;
+        }
+        // Pixels under an object (trees, rocks, ...): the GPU sinks objects that
+        // stand in water into it (object_in_water), the CPU path does not.
+        if (!ch->objects.empty() && ch->objects[f / 4][3] != 0) {
+            ++covered;
+            if (have_other && ch->field[f + 1] >= 254) {
+                // The water under the object is shaded the same on both paths even though the
+                // GPU sinks the object: the shading alone can be compared there too.
+                const int e = shading_diff(i);
+                ++shading_covered.n;
+                shading_covered.over2 += e > 2 ? 1U : 0U;
+                shading_covered.max = std::max(shading_covered.max, e);
+                ++shading_covered.hist[static_cast<std::size_t>(std::min(e, 5))];
+            }
+            continue;
+        }
+        RiverStat& rs = ch->field[f + 1] >= 254 ? pure : blend;
+        ++rs.n;
+        rs.over2 += m > 2 ? 1U : 0U;
+        rs.max = std::max(rs.max, m);
+        ++rs.hist[static_cast<std::size_t>(std::min(m, 5))];
+        if (&rs == &pure && have_other) {
+            const int e = shading_diff(i);
+            ++shading.n;
+            shading.over2 += e > 2 ? 1U : 0U;
+            shading.max = std::max(shading.max, e);
+            ++shading.hist[static_cast<std::size_t>(std::min(e, 5))];
+        }
     }
+    auto river_line = [](const char* what, const RiverStat& s) {
+        if (s.n == 0) {
+            return;
+        }
+        std::fprintf(
+            stderr, "  %s river pixels: %zu, %.3f %% within 2/255 (%zu off by more), max %d\n",
+            what, s.n, 100.0 * (1.0 - static_cast<double>(s.over2) / static_cast<double>(s.n)),
+            s.over2, s.max);
+        std::fprintf(stderr,
+                     "    difference 0 / 1 / 2 / 3 / 4 / more: %zu / %zu / %zu / %zu / %zu / %zu\n",
+                     s.hist[0], s.hist[1], s.hist[2], s.hist[3], s.hist[4], s.hist[5]);
+    };
     if (const char* dir = std::getenv("BENCH_DUMP")) {
         const std::string name = "g" + std::to_string(c.group) + "_" + style;
         std::vector<std::uint8_t> cpu_rgba;
@@ -226,6 +345,87 @@ void compare(const render::Scene& scene, const Config& c, render::Rect view, std
                  view.w, view.h, c.group, style, differ, out.size(), max,
                  missing > 0 ? " (chunks still missing on the GPU frame: not comparable)" : "",
                  static_cast<unsigned long long>(g.errors()));
+    river_line("pure", pure);
+    river_line("blend-zone", blend);
+    river_line("shading-only (flow minus legacy, both paths), pure", shading);
+    river_line("shading-only, under objects, pure", shading_covered);
+    if (covered > 0) {
+        std::fprintf(stderr,
+                     "  (%zu river pixels under objects are left out of the whole-pixel "
+                     "statistics: the GPU sinks objects standing in water, the CPU path does "
+                     "not)\n",
+                     covered);
+    }
+}
+
+/// The sea pass of the real frame with the legacy shimmer and with the flow
+/// shading, timed with GPU timestamps; the difference per million visible river
+/// pixels is the cost of the shading on this scene and device.
+void river_pass(const render::Scene& scene, const Config& c, gpu::GpuFrame& g,
+                render::FrameRenderer& fr, WGPUTextureView target, render::Rect view) {
+    std::uint64_t t = c.t0;
+    // Every visible chunk on the GPU (uploads are spread over frames).
+    for (int i = 0; i < 80; ++i) {
+        g.render(fr, scene, view, c.group, t, render::WaterStyle::Enhanced, target);
+        t += 16;
+    }
+    g.wait();
+    // Visible river pixels (field flag bit 1) from the CPU chunks.
+    std::size_t river_px = 0;
+    std::size_t river_chunks = 0;
+    for (const auto& [cx, cy] : render::visible_chunks(view)) {
+        const render::Chunk* ch = fr.chunk({c.group, cx, cy});
+        const auto r = render::chunk_rect(cx, cy).intersect(view);
+        if (ch == nullptr || ch->field.empty() || !r) {
+            continue;
+        }
+        river_chunks += ch->flow.empty() ? 0U : 1U;
+        for (int y = r->y; y < r->y + r->h; ++y) {
+            for (int x = r->x; x < r->x + r->w; ++x) {
+                const std::size_t f = (static_cast<std::size_t>(y - cy * render::kChunk) *
+                                           static_cast<std::size_t>(render::kChunk) +
+                                       static_cast<std::size_t>(x - cx * render::kChunk)) *
+                                      4;
+                river_px += (ch->field[f + 3] & 2U) != 0 ? 1U : 0U;
+            }
+        }
+    }
+    auto sea_ms = [&](render::RiverFlowMode mode) -> std::optional<double> {
+        fr.river_flow = mode;
+        std::vector<double> v;
+        for (int i = 0; i < 25; ++i) {
+            g.render(fr, scene, view, c.group, t, render::WaterStyle::Enhanced, target);
+            t += 16;
+            if (const auto ms = g.sea_pass_ms(); ms && i >= 3) {
+                v.push_back(*ms);
+            }
+        }
+        if (v.empty()) {
+            return std::nullopt;
+        }
+        std::sort(v.begin(), v.end());
+        return v[v.size() / 2];
+    };
+    std::printf(
+        "| view | group | tier | river px | chunks with flow | sea pass legacy ms | flow ms | "
+        "difference ms | per million river pixels |\n|---|---|---|---|---|---|---|---|---|\n");
+    for (int round = 0; round < 2; ++round) {
+        const auto legacy = sea_ms(render::RiverFlowMode::Legacy);
+        const auto flow = sea_ms(render::RiverFlowMode::Flow);
+        const char* tier = g.river_quality() == render::RiverQuality::High     ? "high"
+                           : g.river_quality() == render::RiverQuality::Medium ? "medium"
+                                                                               : "low";
+        if (!legacy || !flow) {
+            std::printf(
+                "| %dx%d | %zu | %s | %zu | %zu | no GPU timestamps on this device | | | |\n",
+                view.w, view.h, c.group, tier, river_px, river_chunks);
+            return;
+        }
+        const double mpx = static_cast<double>(river_px) / 1e6;
+        std::printf("| %dx%d | %zu | %s | %zu | %zu | %.3f | %.3f | %.3f | %.2f |\n", view.w,
+                    view.h, c.group, tier, river_px, river_chunks, *legacy, *flow, *flow - *legacy,
+                    mpx > 0 ? (*flow - *legacy) / mpx : 0.0);
+    }
 }
 #else
 namespace gpu {
@@ -396,6 +596,13 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
         frame(view0, time, true);
         std::this_thread::sleep_for(std::chrono::milliseconds(8));
     }
+#ifdef ANNO_BENCH_GPU
+    if (c.river_pass && g != nullptr) {
+        river_pass(scene, c, *g, fr, target->second.get(), view0);
+        fr.set_workers(nullptr);
+        return;
+    }
+#endif
     if (c.zoom_every > 0) {
         // The viewer renders the sea patterns of all groups on background
         // threads from the start; so does the zoom path.
@@ -434,7 +641,8 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
             rows.push_back(frame(view, time, true));
 #ifdef ANNO_BENCH_GPU
             if (c.check && g != nullptr && std::string_view(p.name) == "static" && i + 1 == p.n) {
-                compare(scene, c, view, time, *g, target->first.get(), rows.back().missing);
+                compare(scene, c, view, time, *g, fr, target->first.get(), target->second.get(),
+                        rows.back().missing);
             }
 #endif
             time += 16;
@@ -451,7 +659,10 @@ constexpr const char* kUsage =
     "[--styles original,enhanced] [--chunks blocking,async] [--renderer cpu,gpu] [--check] "
     "[--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick] [--zoom k] [--zoom-frames n] "
     "[--pace ms] [--spike ms] [--limits default|interactive] [--settle ms] "
-    "[--river-flow legacy|flow]\n";
+    "[--river-flow legacy|flow] [--river-quality auto|low|medium|high] [--river-gain x] "
+    "[--river-pass]\n"
+    "       bench_frame --list-adapters\n"
+    "       bench_frame <game_dir> <file> --river-cost\n";
 
 std::optional<Options> parse_options(const std::vector<std::string>& args) {
     Options o;
@@ -463,6 +674,14 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
         }
         if (a == "--check") {
             o.check = true;
+            continue;
+        }
+        if (a == "--river-cost") {
+            o.river_cost = true;
+            continue;
+        }
+        if (a == "--river-pass") {
+            o.river_pass = true;
             continue;
         }
         if (i + 1 >= args.size()) {
@@ -528,6 +747,17 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = v == "legacy" || v == "flow";
             o.river_flow =
                 v == "legacy" ? render::RiverFlowMode::Legacy : render::RiverFlowMode::Flow;
+        } else if (a == "--river-gain") {
+            ok = parse(v, o.river_gain) && o.river_gain >= 0.0F;
+        } else if (a == "--river-quality") {
+            ok = v == "auto" || v == "low" || v == "medium" || v == "high";
+            if (v == "low") {
+                o.river_quality = render::RiverQuality::Low;
+            } else if (v == "medium") {
+                o.river_quality = render::RiverQuality::Medium;
+            } else if (v == "high") {
+                o.river_quality = render::RiverQuality::High;
+            }
         } else if (a == "--limits") {
             ok = v == "default" || v == "interactive";
             o.interactive = v == "interactive";
@@ -559,6 +789,26 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
 
 int main(int argc, char** argv) {
     const std::vector<std::string> args(argv + 1, argv + argc);
+#ifdef ANNO_BENCH_GPU
+    if (args.size() == 1 && args[0] == "--list-adapters") {
+        const auto list = gpu::list_adapters();
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            const auto& a = list[i];
+            std::printf("%zu: %s (%s, %s, vendor 0x%04x)\n", i, a.name.c_str(),
+                        a.backend == WGPUBackendType_Vulkan   ? "Vulkan"
+                        : a.backend == WGPUBackendType_D3D12  ? "DirectX 12"
+                        : a.backend == WGPUBackendType_Metal  ? "Metal"
+                        : a.backend == WGPUBackendType_OpenGL ? "OpenGL"
+                                                              : "other",
+                        a.type == WGPUAdapterType_DiscreteGPU     ? "discrete"
+                        : a.type == WGPUAdapterType_IntegratedGPU ? "integrated"
+                        : a.type == WGPUAdapterType_CPU           ? "software"
+                                                                  : "unknown",
+                        a.vendor_id);
+        }
+        return list.empty() ? 1 : 0;
+    }
+#endif
     if (args.size() < 2) {
         std::fputs(kUsage, stderr);
         return 2;
@@ -569,12 +819,46 @@ int main(int argc, char** argv) {
         return 2;
     }
     const fs::path dir = args[0], file = args[1];
+#ifdef ANNO_BENCH_GPU
+    if (o->river_cost) {
+        auto cx = gpu::headless_context();
+        if (!cx) {
+            std::fprintf(stderr, "GPU: %s\n", cx.error().c_str());
+            return 1;
+        }
+        gpu::GpuLimits limits;
+        limits.river_quality = render::RiverQuality::High;
+        auto f = gpu::GpuFrame::create(cx.value(), WGPUTextureFormat_RGBA8Unorm, limits);
+        if (!f) {
+            std::fprintf(stderr, "GPU: %s\n", f.error().c_str());
+            return 1;
+        }
+        std::printf("%s (%s, timestamps %s)\n\n", cx.value().name.c_str(),
+                    cx.value().adapter_type == WGPUAdapterType_DiscreteGPU     ? "discrete"
+                    : cx.value().adapter_type == WGPUAdapterType_IntegratedGPU ? "integrated"
+                    : cx.value().adapter_type == WGPUAdapterType_CPU           ? "software"
+                                                                               : "unknown",
+                    cx.value().timestamps ? "yes" : "no: wall clock");
+        std::printf("| tier | ms for %.2f Mpx | ms per million river pixels |\n|---|---|---|\n",
+                    1.048576);
+        for (const auto& rc : f.value()->measure_river_cost(9)) {
+            std::printf("| %s | %.3f | %.3f |\n",
+                        !rc.quality                                   ? "legacy shimmer"
+                        : *rc.quality == render::RiverQuality::High   ? "high"
+                        : *rc.quality == render::RiverQuality::Medium ? "medium"
+                                                                      : "low",
+                        rc.ms, rc.ms_per_mpx);
+        }
+        return 0;
+    }
+#endif
     const auto started = std::chrono::steady_clock::now();
     auto loaded = anno::app::load_scene(dir, file);
     if (!loaded) {
         std::fprintf(stderr, "%s: %s\n", file.string().c_str(), loaded.error().c_str());
         return 1;
     }
+    loaded.value().scene->river_cfg.light_gain = o->river_gain;
     const render::Scene& scene = *loaded.value().scene;
     std::fprintf(
         stderr, "scene loaded in %.0f ms\n",
@@ -622,14 +906,18 @@ int main(int argc, char** argv) {
         ctx = std::move(c).value();
         std::fprintf(stderr, "GPU: %s\n", ctx->name.c_str());
         // One compositor for all configurations, as the Rust benchmark.
-        auto f = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm,
-                                       o->interactive ? gpu::GpuLimits::interactive()
-                                                      : gpu::GpuLimits{});
+        gpu::GpuLimits limits = o->interactive ? gpu::GpuLimits::interactive() : gpu::GpuLimits{};
+        limits.river_quality = o->river_quality;
+        limits.gpu_timing = o->river_pass;
+        auto f = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
         if (!f) {
             std::fprintf(stderr, "GPU: %s\n", f.error().c_str());
             return 1;
         }
         frame_gpu = std::move(f).value();
+        if (!frame_gpu->river_tier_note().empty()) {
+            std::fprintf(stderr, "%s\n", frame_gpu->river_tier_note().c_str());
+        }
     }
 #endif
     for (const auto& [w, h] : o->resolutions) {
@@ -662,6 +950,7 @@ int main(int argc, char** argv) {
                         c.check = o->check;
                         c.settle_ms = o->settle_ms;
                         c.river_flow = o->river_flow;
+                        c.river_pass = o->river_pass;
                         c.zoom_every = o->zoom_every;
                         c.zoom_frames = o->zoom_frames;
                         c.pace_ms = o->pace_ms;

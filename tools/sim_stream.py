@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Independent transcription of the simulation's state stream (docs/sim/state.md
-§9.3, stage S4): the registry digest of the empty registry and the state hash of
+§9.3, stage S5): the registry digest of the empty registry and the state hash of
 the empty world, from the spec and from the goods names in
 src/sim/src/goods_table.cpp, without any C++ code. Since stage S4 the stream has
 the players scope (32 slots, the table's stamp and cursor), whose cursor the
@@ -9,11 +9,17 @@ script advances with its own transcription of the player table tick
 g1_players_step700) is a populated table run with the full-tick rule: the script
 transcribes the per-player rules too (upkeep gate and booking, statistics decay,
 bankruptcy grace period), so MSVC, GCC and Clang agree on the player arithmetic.
+Since stage S5 the stream has the islands scope after players. The golden
+s5_islands_create / s5_islands_step100 is the synthetic two-island scenario
+(synthetic::two_island_scenario: two players, islands in slots 0 and 3, owner runs,
+objects, deposits, a terrain, an island size that is not a multiple of the chunk
+edge): the script builds the same tile columns and hashes them chunk by chunk, so
+the clipped edge chunks, the terrain digest and the deposit order are held to an
+independent reading of the spec.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
-                           (g0_step1, g0_step100, g0_step1000); exit 1 on a
-                           difference
+                           (g0_*, g1_*, s5_*); exit 1 on a difference
 
 The class table below is Appendix C (compare constants of the class ticks read
 from AnnoWelt.dll, see docs/re/production.md §10); the stream layout is the one
@@ -29,7 +35,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 102
+STATE_HASH_VERSION = 103
 PRNG_TIMELINE_VERSION = 1
 
 
@@ -146,8 +152,8 @@ def rules_bytes(full_tick=False):
             + u8(0) + u8(0) + u8(0))
 
 
-def settings_bytes():
-    return (u32(0) + u32(0) + u8(0) + u8(1) + u8(2) + u16(2550) + u8(1) + u32(0) + u32(0) + u8(0)
+def settings_bytes(width=0, height=0):
+    return (u32(width) + u32(height) + u8(0) + u8(1) + u8(2) + u16(2550) + u8(1) + u32(0) + u32(0) + u8(0)
             + u8(0) + u32(0) + u8(0) + u8(0) + u32(3) + u32(100))
 
 
@@ -231,6 +237,108 @@ def player_tick(p, t):
         p['defeat'] = False
 
 
+def table_run(slots, steps, step_ms):
+    """(slots, stamp, cursor) of a populated player table after `steps` advances of
+    `step_ms` from tick 0 with the default visit rule: min(d*32/50 + 1, 32) slots
+    from the cursor, each present one ticked, the cursor moving one slot per visit,
+    the stamp becoming the 16-bit tick."""
+    stamp, cursor, ms = 0, 0, 0
+    for _ in range(steps):
+        ms += step_ms
+        t = (ms >> 1) & M32
+        d = (t - stamp) & 0xFFFF
+        for _ in range(min(d * 32 // 50 + 1, 32)):
+            if cursor in slots:
+                player_tick(slots[cursor], t)
+            cursor = (cursor + 1) % 32
+        stamp = t & 0xFFFF
+    return slots, stamp, cursor
+
+
+# ---- islands (stage S5): the synthetic two-island scenario ----
+
+CHUNK_EDGE = 8
+NEUTRAL_OWNER = 15
+
+
+def terrain_digest(height, gfx, fertility):
+    d = (u64(len(height)) + bytes(height) + u64(len(gfx)) + b''.join(u16(v) for v in gfx)
+         + u64(len(fertility)) + bytes(fertility))
+    h = fnv(d)
+    return 1 if h == 0 else h
+
+
+def tiles_digest(w, h, tiles):
+    """tiles: a list of (object, phase, owner, aux) in row-major order. The scope
+    `tiles`: u32 w, u32 h, u32 chunk_edge, then the digest of every chunk (row-major
+    chunk order) over its in-bounds tiles (object u32, phase u8, owner u32, aux u32)."""
+    cx = (w + CHUNK_EDGE - 1) // CHUNK_EDGE
+    cy = (h + CHUNK_EDGE - 1) // CHUNK_EDGE
+    d = u32(w) + u32(h) + u32(CHUNK_EDGE)
+    for ky in range(cy):
+        for kx in range(cx):
+            c = b''
+            for y in range(ky * CHUNK_EDGE, min(h, (ky + 1) * CHUNK_EDGE)):
+                for x in range(kx * CHUNK_EDGE, min(w, (kx + 1) * CHUNK_EDGE)):
+                    o, ph, ow, ax = tiles[y * w + x]
+                    c += u32(o) + u8(ph) + u32(ow) + u32(ax)
+            d += u64(fnv(c))
+    return fnv(d)
+
+
+def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, terrain=None):
+    tiles = [[0, 0, NEUTRAL_OWNER, 0] for _ in range(w * h)]
+    at = 0
+    for owner, length in owner_runs:
+        for _ in range(length):
+            tiles[at][2] = owner
+            at += 1
+    for index, obj, phase in objects:
+        tiles[index][0] = obj
+        tiles[index][1] = phase
+    td = terrain_digest(*terrain) if terrain else 0
+    b = (u32(slot) + struct.pack('<i', x0) + struct.pack('<i', y0) + u32(w) + u32(h)
+         + u32(climate) + u32(1) + u64(td))
+    b += u16(0) + u32(0) * 4          # sweep
+    b += u16(0)                       # event300_stamp
+    b += u16(0) + u32(0)              # objmgr
+    b += u16(0) + u32(0)              # ring
+    b += u8(0)                        # no drought
+    b += u64(len(deposits))
+    for goods, x, y, remaining, reserve in deposits:
+        b += string(goods) + struct.pack('<i', x) + struct.pack('<i', y) + u32(remaining)
+        b += u8(1 if reserve else 0)
+    b += u64(0)                       # reserved_object_count
+    b += u64(tiles_digest(w, h, tiles))
+    return fnv(u8(1) + b)
+
+
+def two_island_scenario():
+    """synthetic::two_island_scenario(): (players, island digests by slot)."""
+    players = {0: new_player(0), 1: new_player(1, kind=12, money=25000, name=b'AI')}
+    height = [i % 7 for i in range(600)]
+    gfx = [(i * 3) & 0xFFFF for i in range(600)]
+    fertility = [i % 5 for i in range(600)]
+    islands = {
+        0: island_digest(0, 100, 100, 64, 64, 2, [(15, 128), (0, 64 * 62)],
+                         [(200, 1201, 0), (201, 1202, 3), (4095, 1203, 7)],
+                         [(b'EISENERZ', 110, 120, 2000 * 256, True)]),
+        3: island_digest(3, 300, 200, 30, 20, 6, [(1, 300)],
+                         [(0, 2001, 0), (599, 2002, 1)],
+                         [(b'GOLD', 301, 202, 123456, False),
+                          (b'STEINE', 329, 219, 2000 * 256, True)],
+                         (height, gfx, fertility)),
+    }
+    return players, islands
+
+
+def islands_digest(by_slot):
+    """The islands scope: u64 slot count (highest slot + 1), one child scope per slot
+    (an absent slot hashes as the single byte 0)."""
+    n = max(by_slot) + 1 if by_slot else 0
+    return fnv(u64(n) + b''.join(u64(by_slot.get(i, fnv(u8(0)))) for i in range(n)))
+
+
 def g1_slots():
     return {
         0: new_player(0, money=500, ua=300, ub=30, sa=1050, sb=210, name=b'Anno'),
@@ -257,13 +365,15 @@ def g1_after(steps, step_ms):
     return slots, stamp
 
 
-def state_hash(registry, cursor, ms, last_tick, players, full_tick=False):
+def state_hash(registry, cursor, ms, last_tick, players, full_tick=False, islands=None,
+               world=(0, 0)):
     header = (u32(STATE_HASH_VERSION) + u32(PRNG_TIMELINE_VERSION) + config_bytes()
               + rules_bytes(full_tick))
     header += u64(registry) + u64(22) + b''.join(string(b'default') for _ in range(22))
     clock_rng = u64(ms) + u64(last_tick) + u64(2048) + u64(rng_table_digest()) + u32(cursor)
-    return fnv(u64(fnv(header)) + u64(fnv(clock_rng)) + u64(fnv(settings_bytes()))
-               + u64(players))
+    islands = islands_digest({}) if islands is None else islands
+    return fnv(u64(fnv(header)) + u64(fnv(clock_rng)) + u64(fnv(settings_bytes(*world)))
+               + u64(players) + u64(islands))
 
 
 def values():
@@ -277,6 +387,15 @@ def values():
         slots, stamp = g1_after(steps, 500)
         out['g1_players_step%d' % steps] = state_hash(
             registry, 1234, 500 * steps, 500 * steps // 2, players_digest(stamp, 0, slots), True)
+    # S5: the synthetic two-island scenario, seed 1234, advance(10) x steps
+    players, islands = two_island_scenario()
+    isl = islands_digest(islands)
+    for steps in (0, 100):
+        slots, stamp, cursor = table_run(players, steps, 10)
+        key = 's5_islands_create' if steps == 0 else 's5_islands_step%d' % steps
+        out[key] = state_hash(registry, 1234, 10 * steps, 10 * steps // 2,
+                              players_digest(stamp, cursor, slots), islands=isl,
+                              world=(512, 512))
     return out
 
 

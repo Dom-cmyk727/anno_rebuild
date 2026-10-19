@@ -22,11 +22,20 @@
 // holds 34,889), Single_05, _08, _12, _15, _16 and N_064x064_0001_0B (no river
 // pieces), and the Single_01 frames.
 // Set ANNO_PRINT_DIGESTS=1 to print the lines.
+#include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <deque>
+#include <filesystem>
+#include <map>
+#include <mutex>
+#include <set>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -40,6 +49,7 @@
 #include <anno/formats/sze.hpp>
 #include <anno/formats/tex.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/render/river.hpp>
 #include <anno/render/scene.hpp>
 #include <anno/test/game_dir.hpp>
 #include <anno/test/parallel.hpp>
@@ -356,6 +366,8 @@ render::Scene load_islands(const std::filesystem::path& dir, const std::filesyst
     // The parsed files refer to their buffers, which must outlive the scene: keep them for
     // the test run (a deque does not move its elements).
     static std::deque<std::vector<std::uint8_t>> keep;
+    static std::mutex keep_mutex; // the corpus cases load scenes from several threads
+    const std::lock_guard lock(keep_mutex);
     keep.push_back(anno::test::read_file(dir / "Textures" / "Felder.tex"));
     const auto felder = anno::formats::tex::TexFile::parse(keep.back()).value();
     keep.push_back(anno::test::read_file(dir / "Anlagen.dat"));
@@ -472,5 +484,437 @@ TEST_CASE("enhanced river water covers the painted riverbed (river gaps)") {
         const RiverCover c = river_cover(scene, 1, view);
         CHECK(c.sprite > 5000);
         CHECK(c.far_from_water * 1000 <= c.sprite);
+    }
+}
+
+namespace {
+
+/// One island of the river flow corpus: the numbers of RiverFlow::build.
+struct FlowRow {
+    std::string name;
+    std::size_t island = 0, pieces = 0, bridges = 0;
+    render::river::FlowStats stats;
+    double mask_ms = 0;
+    std::size_t bad_cells = 0;
+    float max_speed = 0;
+};
+
+} // namespace
+
+TEST_CASE("river flow corpus: every island with rivers (rivers.md Q12)") {
+    // The S4 budget gate on the game files: all 72 island templates with rivers
+    // and the islands of the 0200Single / 0201SingleAddOn scenarios: no NaN,
+    // residual <= 1e-3 (no fallback to the Eikonal field), the discharge
+    // balanced, a flow that mostly runs down the distance to the outlets. The
+    // time limits here only catch a pathology (several seconds, a loaded CTest
+    // run); the budget (p95 <= 0.3 s, none above 1 s) is measured by
+    // `river_qa --flow` on a quiet machine (docs/render/rivers.md).
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    std::vector<std::filesystem::path> files;
+    for (const char* climate : {"Dschungel", "Nord", "Praerie", "Steppe", "Tundra"}) {
+        for (const auto& p :
+             anno::test::files_with_ext(*dir / "Scenes" / "Islands" / climate, "scp")) {
+            files.push_back(p);
+        }
+    }
+    const std::size_t templates = files.size();
+    for (const char* folder : {"0200Single", "0201SingleAddOn"}) {
+        for (const auto& p : anno::test::files_with_ext(*dir / "Scenes" / folder, "sze")) {
+            files.push_back(p);
+        }
+    }
+    const auto felder_buf = anno::test::read_file(*dir / "Textures" / "Felder.tex");
+    const auto anl_buf = anno::test::read_file(*dir / "Anlagen.dat");
+    const auto per_file = anno::test::parallel_indexed(files.size(), [&](std::size_t fi) {
+        std::vector<FlowRow> rows;
+        const auto buf = anno::test::read_file(files[fi]);
+        auto anlagen = anno::formats::anlagen::AnlagenFile::parse(anl_buf).value();
+        const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
+        auto textures = anno::assets::island::GroundTextures::load(felder).value();
+        if (const auto c = render::water_colour(anlagen)) {
+            textures.set_water(*c);
+        }
+        const render::Scene scene("", anno::formats::insel::islands(buf).value(),
+                                  std::move(textures), std::move(anlagen), render::kHeightLift);
+        render::river::RiverConfig cfg;
+        cfg.log_fallback = false;
+        for (std::size_t i = 0; i < scene.islands.size(); ++i) {
+            if (scene.river_piece_count(i) == 0) {
+                continue;
+            }
+            FlowRow row;
+            row.name = files[fi].stem().string();
+            row.island = i;
+            row.pieces = scene.river_pieces(i).size();
+            const auto t0 = std::chrono::steady_clock::now();
+            const render::river::RiverMask mask = scene.river_mask(i, cfg);
+            row.mask_ms =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+                    .count();
+            row.bridges = mask.bridges;
+            const render::river::RiverFlow flow = render::river::RiverFlow::build(mask, cfg);
+            row.stats = flow.stats();
+            for (const auto& c : flow.cells()) {
+                if (!std::isfinite(c.ux) || !std::isfinite(c.uy) || !std::isfinite(c.depth)) {
+                    ++row.bad_cells;
+                }
+                row.max_speed = std::max(row.max_speed, std::hypot(c.ux, c.uy));
+            }
+            rows.push_back(std::move(row));
+        }
+        return rows;
+    });
+    std::size_t islands = 0, template_islands = 0, sea_less = 0, bridges = 0;
+    double worst_flow_ms = 0;
+    std::vector<std::string> sea_less_list;
+    for (std::size_t fi = 0; fi < per_file.size(); ++fi) {
+        for (const FlowRow& r : per_file[fi]) {
+            ++islands;
+            template_islands += fi < templates ? 1U : 0U;
+            const auto& s = r.stats;
+            INFO(r.name << " island " << r.island);
+            CHECK(s.wet_cells > 0);
+            CHECK(s.non_finite == 0);
+            CHECK(r.bad_cells == 0);
+            CHECK(s.fallback_components == 0); // no river needed the Eikonal field
+            CHECK(s.residual <= 1e-3);
+            CHECK(s.flux_imbalance <= 1e-3);
+            CHECK(r.max_speed <= render::river::RiverConfig{}.speed_cap + 1e-4F);
+            CHECK(s.speed_p50 >= render::river::RiverConfig{}.speed_floor - 1e-4F);
+            CHECK(s.downstream_fraction >= 0.8F);
+            // Rivers with a sea face are the ones whose direction is not a guess
+            // (the others run to their own pseudo outlet): 86.5 % (a loop) and more on the corpus,
+            // the median island 99.6 %.
+            if (s.downstream_fraction_sea > 0.0F) {
+                CHECK(s.downstream_fraction_sea >= 0.85F);
+            }
+            // The speed scale (OQ-065): nothing sits on the cap (at most 0.4 % do) and
+            // the soft floor sets the speed of a minority of the cells (17 to 90 %, most
+            // of a network is tributary): a regression to the sea faces as the reference
+            // would put half of all cells on the cap.
+            CHECK(s.cap_fraction < 0.05F);
+            CHECK(s.floor_fraction < 0.95F);
+            CHECK(s.build_ms < 5000.0);
+            CHECK(r.mask_ms < 5000.0);
+            sea_less += s.sea_less_components;
+            bridges += r.bridges;
+            worst_flow_ms = std::max(worst_flow_ms, s.build_ms);
+            if (s.sea_less_components > 0) {
+                sea_less_list.push_back(r.name + "#" + std::to_string(r.island) + ": " +
+                                        std::to_string(s.sea_less_components) + " of " +
+                                        std::to_string(s.components));
+            }
+        }
+    }
+    // 72 island templates have rivers (docs/render/rivers.md 1.2), plus the
+    // scenarios' islands.
+    CHECK(template_islands == 72);
+    CHECK(islands > 72);
+    // A ratchet on the pseudo outlets (OQ-067): 136 of 257 rivers have no sea contact.
+    // More would mean that outlets were lost (the sea classification of the raster, the
+    // links at falls and mouths); fewer is an improvement to be written down in
+    // docs/render/rivers.md 14.3 and here.
+    CHECK(sea_less <= 136);
+    MESSAGE("islands " << islands << ", rivers without sea contact (decision D14) " << sea_less
+                       << ", fall/mouth bridges " << bridges << ", slowest flow build "
+                       << worst_flow_ms << " ms");
+    for (const auto& l : sea_less_list) {
+        MESSAGE("sea-less (pseudo outlet): " << l);
+    }
+}
+
+namespace {
+
+/// How well the river raster of one island (Scene::river_mask) agrees with the
+/// river the original draws, at zoom group 0 (the group the raster is built at).
+struct MaskFidelity {
+    /// Pixels of the original's river sprites (closed over the 50 % checkerboard, stray
+    /// pixels removed, depth-tested as the original; as river_qa's O) that lie kHalfCell
+    /// pixels inside the sprite (a cell is 10 x 5 px: half of it is the resolution of the
+    /// raster), and those of them whose terrain point is a wet cell of the raster.
+    /// Those that lie over sea cells are counted apart (inner_sea).
+    std::uint64_t inner = 0, inner_wet = 0, inner_sea = 0;
+    /// Wet cells that exist only through a sprite (kSprite): how many, and how many of
+    /// them project to a pixel within one pixel of a sprite pixel.
+    std::uint64_t sprite_cells = 0, sprite_cells_on_sprite = 0;
+    /// Wet cells (bridges excepted) and those with neither a sprite pixel nor drawn
+    /// enhanced river water within kHalfCell pixels of their pixel.
+    std::uint64_t wet_cells = 0, wet_cells_unsupported = 0;
+    std::size_t chunks = 0;
+};
+
+constexpr int kHalfCell = 6;
+
+MaskFidelity mask_fidelity(const render::Scene& scene, std::size_t island) {
+    MaskFidelity out;
+    const render::river::RiverConfig cfg;
+    const render::river::RiverMask mask = scene.river_mask(island, cfg);
+    const auto* iw = scene.island_water_info(island);
+    if (iw == nullptr || mask.nx() == 0) {
+        return out;
+    }
+    const render::Placement* place = nullptr;
+    for (const auto& p : scene.layouts[0]) {
+        if (p.index == island) {
+            place = &p;
+        }
+    }
+    if (place == nullptr) {
+        return out;
+    }
+    const auto off = place->offset;
+    const float lift_px = static_cast<float>(scene.lift.num) / static_cast<float>(scene.lift.den);
+    const float half_w = static_cast<float>(render::kTile[0].w) / 2.0F;
+    const float half_h = static_cast<float>(render::kTile[0].h) / 2.0F;
+    const float cf = static_cast<float>(mask.cells_per_tile());
+    // Scene pixel of the terrain point of island cell (cx, cy).
+    auto pixel_of = [&](std::int32_t cx, std::int32_t cy) {
+        const float x = (static_cast<float>(cx) + 0.5F) / cf,
+                    y = (static_cast<float>(cy) + 0.5F) / cf;
+        const float t = render::terrain_height(iw->heights, iw->w, iw->h, x, y);
+        return std::pair{off.first + static_cast<int>(std::floor((x - y) * half_w)),
+                         off.second + static_cast<int>(std::floor((x + y) * half_h - lift_px * t))};
+    };
+    // The chunks that hold wet cells (and their neighbours), so that a sprite the raster
+    // misses next to some water is still seen.
+    std::set<std::pair<int, int>> keys;
+    for (std::int32_t cy = mask.y0(); cy < mask.y0() + static_cast<std::int32_t>(mask.ny()); ++cy) {
+        for (std::int32_t cx = mask.x0(); cx < mask.x0() + static_cast<std::int32_t>(mask.nx());
+             ++cx) {
+            if (!mask.wet(cx, cy)) {
+                continue;
+            }
+            const auto [px, py] = pixel_of(cx, cy);
+            keys.emplace(render::div_euclid(px, render::kChunk),
+                         render::div_euclid(py, render::kChunk));
+        }
+    }
+    std::set<std::pair<int, int>> chunks;
+    for (const auto& [kx, ky] : keys) {
+        for (int dy = -1; dy <= 1; ++dy) {
+            for (int dx = -1; dx <= 1; ++dx) {
+                chunks.emplace(kx + dx, ky + dy);
+            }
+        }
+    }
+    out.chunks = chunks.size();
+    // Per chunk: bit 0 = closed sprite pixel, bit 1 = drawn enhanced river water.
+    std::map<std::pair<int, int>, std::vector<std::uint8_t>> sprite_of;
+    for (const auto& [kx, ky] : chunks) {
+        const render::Rect rect = render::chunk_rect(kx, ky);
+        const auto [ground, probe] = scene.ground_with_probe(rect, 0);
+        const render::Canvas sprites = scene.river_sprites(rect, probe, 0);
+        const auto field = scene.water_field_from(rect, probe, 0);
+        const auto w = static_cast<std::size_t>(rect.w), h = static_cast<std::size_t>(rect.h);
+        auto drawn = [&](int x, int y) {
+            return x >= 0 && y >= 0 && x < rect.w && y < rect.h &&
+                   sprites.pixels[(static_cast<std::size_t>(y) * w + static_cast<std::size_t>(x)) *
+                                      4 +
+                                  3] >= 128;
+        };
+        // As river_qa: a pixel is sprite when a pixel of its 3 x 3 neighbourhood is drawn
+        // and the 5 x 5 around that one holds at least four drawn pixels.
+        std::vector<std::uint8_t> sprite(w * h, 0);
+        for (int y = 0; y < rect.h; ++y) {
+            for (int x = 0; x < rect.w; ++x) {
+                if (!drawn(x, y)) {
+                    continue;
+                }
+                int near = 0;
+                for (int yy = y - 2; yy <= y + 2; ++yy) {
+                    for (int xx = x - 2; xx <= x + 2; ++xx) {
+                        near += drawn(xx, yy) ? 1 : 0;
+                    }
+                }
+                if (near < 4) {
+                    continue;
+                }
+                for (int yy = std::max(y - 1, 0); yy <= std::min(y + 1, rect.h - 1); ++yy) {
+                    for (int xx = std::max(x - 1, 0); xx <= std::min(x + 1, rect.w - 1); ++xx) {
+                        sprite[static_cast<std::size_t>(yy) * w + static_cast<std::size_t>(xx)] = 1;
+                    }
+                }
+            }
+        }
+        auto cell_wet = [&](std::size_t i) {
+            if (probe.island[i] != island) {
+                return false;
+            }
+            return mask.wet(static_cast<std::int32_t>(std::floor(probe.pos[i][0] * cf)),
+                            static_cast<std::int32_t>(std::floor(probe.pos[i][1] * cf)));
+        };
+        for (int y = kHalfCell; y < rect.h - kHalfCell; ++y) {
+            for (int x = kHalfCell; x < rect.w - kHalfCell; ++x) {
+                const auto i = static_cast<std::size_t>(y) * w + static_cast<std::size_t>(x);
+                bool inner = sprite[i] != 0;
+                for (int yy = y - kHalfCell; yy <= y + kHalfCell && inner; ++yy) {
+                    for (int xx = x - kHalfCell; xx <= x + kHalfCell; ++xx) {
+                        inner = inner && sprite[static_cast<std::size_t>(yy) * w +
+                                                static_cast<std::size_t>(xx)] != 0;
+                    }
+                }
+                if (inner) {
+                    // Sprites reach over the shore into the sea; the sea stays sea
+                    // (never river water over the original's water), so those pixels are
+                    // not the raster's to cover.
+                    const auto ccx = static_cast<std::int32_t>(std::floor(probe.pos[i][0] * cf));
+                    const auto ccy = static_cast<std::int32_t>(std::floor(probe.pos[i][1] * cf));
+                    const bool in_sea = probe.island[i] == island &&
+                                        (mask.flags_at(ccx, ccy) & render::river::kSea) != 0;
+                    if (in_sea) {
+                        ++out.inner_sea;
+                    } else {
+                        ++out.inner;
+                        out.inner_wet += cell_wet(i) ? 1U : 0U;
+                    }
+                }
+            }
+        }
+        for (std::size_t i = 0; i < sprite.size(); ++i) {
+            if ((field.flags[i] & 2U) != 0 && field.cover[i] != 0) {
+                sprite[i] = static_cast<std::uint8_t>(sprite[i] | 2U);
+            }
+        }
+        sprite_of.emplace(std::pair{kx, ky}, std::move(sprite));
+    }
+    // Cells that are wet only through a sprite must lie under a sprite pixel; and every
+    // wet cell must have a sprite or drawn river water about it.
+    auto near_bits = [&](int px, int py, int radius, std::uint8_t bits) {
+        for (int dy = -radius; dy <= radius; ++dy) {
+            for (int dx = -radius; dx <= radius; ++dx) {
+                const int qx = px + dx, qy = py + dy;
+                const int kx = render::div_euclid(qx, render::kChunk);
+                const int ky = render::div_euclid(qy, render::kChunk);
+                const auto it = sprite_of.find({kx, ky});
+                if (it == sprite_of.end()) {
+                    continue;
+                }
+                const render::Rect rect = render::chunk_rect(kx, ky);
+                if ((it->second[static_cast<std::size_t>(qy - rect.y) *
+                                    static_cast<std::size_t>(rect.w) +
+                                static_cast<std::size_t>(qx - rect.x)] &
+                     bits) != 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+    for (std::int32_t cy = mask.y0(); cy < mask.y0() + static_cast<std::int32_t>(mask.ny()); ++cy) {
+        for (std::int32_t cx = mask.x0(); cx < mask.x0() + static_cast<std::int32_t>(mask.nx());
+             ++cx) {
+            const std::uint8_t f = mask.flags_at(cx, cy);
+            if ((f & render::river::kWet) == 0 || (f & render::river::kBridge) != 0) {
+                continue;
+            }
+            const auto [px, py] = pixel_of(cx, cy);
+            ++out.wet_cells;
+            out.wet_cells_unsupported += near_bits(px, py, kHalfCell, 3) ? 0U : 1U;
+            if ((f & render::river::kSprite) != 0) {
+                ++out.sprite_cells;
+                out.sprite_cells_on_sprite += near_bits(px, py, 1, 1) ? 1U : 0U;
+            }
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("river raster agrees with the river the original draws (mask fidelity, rivers.md R1)") {
+    // The sprite-derived part of the raster (forward projection of the cells, the
+    // original's depth test, the closed 50 % checkerboard, the coverage window) is what
+    // the flow of S5 is drawn under: compare it with the sprites of the original at zoom
+    // group 0 and with the enhanced water the viewer draws.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const std::vector<std::filesystem::path> files = {
+        *dir / "Scenes" / "Islands" / "Dschungel" / "D_256x256_0045_5B.scp",
+        *dir / "Scenes" / "Islands" / "Nord" / "N_256x256_0002_2B.scp",
+        *dir / "Scenes" / "Islands" / "Praerie" / "Pr_128x128_0003_1B.scp",
+        *dir / "Scenes" / "0200Single" / "Single_01.sze"};
+    const auto rows = anno::test::parallel_indexed(files.size(), [&](std::size_t fi) {
+        const auto scene = load_islands(*dir, files[fi]);
+        std::vector<MaskFidelity> out;
+        for (std::size_t i = 0; i < scene.islands.size(); ++i) {
+            if (scene.river_piece_count(i) > 0) {
+                out.push_back(mask_fidelity(scene, i));
+            }
+        }
+        return out;
+    });
+    for (std::size_t fi = 0; fi < files.size(); ++fi) {
+        for (const MaskFidelity& r : rows[fi]) {
+            INFO(files[fi].filename().string());
+            auto pct = [](std::uint64_t a, std::uint64_t b) {
+                return 100.0 * static_cast<double>(a) /
+                       static_cast<double>(std::max<std::uint64_t>(b, 1));
+            };
+            MESSAGE(files[fi].filename().string()
+                    << ": chunks " << r.chunks << ", inner sprite px " << r.inner << " (+ "
+                    << r.inner_sea << " over sea) wet " << pct(r.inner_wet, r.inner)
+                    << " %, kSprite cells " << r.sprite_cells << " on a sprite "
+                    << pct(r.sprite_cells_on_sprite, r.sprite_cells) << " %, wet cells "
+                    << r.wet_cells << " unsupported " << pct(r.wet_cells_unsupported, r.wet_cells)
+                    << " %");
+            // Measured on the corpus: 98.9 to 100 %, 97.2 to 99.7 %, at most 0.32 %.
+            // The hand mutations of the review (no depth test, a window of one pixel,
+            // the fall and mouth shapes below the sea drawn depth-tested) all leave these
+            // bounds.
+            CHECK(r.inner > 100000);
+            CHECK(r.inner_wet * 1000 >= r.inner * 985);
+            CHECK(r.sprite_cells > 500);
+            CHECK(r.sprite_cells_on_sprite * 100 >= r.sprite_cells * 96);
+            CHECK(r.wet_cells_unsupported * 100 <= r.wet_cells);
+        }
+    }
+}
+
+TEST_CASE("river raster: built once per island on a worker, the same for every caller") {
+    // Scene::river_mask is a pure function of the scene (no cache, safe from any
+    // thread), so concurrent callers get identical rasters. S5 builds it once per
+    // island on a worker (rivers.md 3.1), never on the window thread.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto scene =
+        load_islands(*dir, *dir / "Scenes" / "Islands" / "Dschungel" / "D_256x256_0045_5B.scp");
+    REQUIRE(scene.river_piece_count(0) > 0);
+    const render::river::RiverConfig cfg;
+    std::vector<render::river::RiverMask> masks(4);
+    {
+        std::vector<std::thread> pool;
+        for (std::size_t k = 0; k < masks.size(); ++k) {
+            pool.emplace_back([&, k] { masks[k] = scene.river_mask(0, cfg); });
+        }
+        for (auto& t : pool) {
+            t.join();
+        }
+    }
+    CHECK(masks[0].wet_count() > 10000);
+    for (const auto& m : masks) {
+        CHECK(m.nx() == masks[0].nx());
+        CHECK(m.ny() == masks[0].ny());
+        CHECK(m.x0() == masks[0].x0());
+        CHECK(m.y0() == masks[0].y0());
+        CHECK(m.bridges == masks[0].bridges);
+        CHECK(m.flags == masks[0].flags);
+        CHECK(m.bed.size() == masks[0].bed.size());
+        bool same = m.bed.size() == masks[0].bed.size();
+        for (std::size_t i = 0; same && i < m.bed.size(); ++i) {
+            // level is NaN where there is none: compare bit patterns.
+            same = std::memcmp(&m.bed[i], &masks[0].bed[i], sizeof(float)) == 0 &&
+                   std::memcmp(&m.level[i], &masks[0].level[i], sizeof(float)) == 0;
+        }
+        CHECK(same);
     }
 }

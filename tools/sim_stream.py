@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Independent transcription of the simulation's state stream (docs/sim/state.md
-§9.3, stage S5): the registry digest of the empty registry and the state hash of
+§9.3, stage S6): the registry digest of the empty registry and the state hash of
 the empty world, from the spec and from the goods names in
 src/sim/src/goods_table.cpp, without any C++ code. Since stage S4 the stream has
 the players scope (32 slots, the table's stamp and cursor), whose cursor the
@@ -16,10 +16,18 @@ objects, deposits, a terrain, an island size that is not a multiple of the chunk
 edge): the script builds the same tile columns and hashes them chunk by chunk, so
 the clipped edge chunks, the terrain digest and the deposit order are held to an
 independent reading of the spec.
+Since stage S6 every island has the scope cities after tiles (per city slot a scope
+city with an optional City: the stock, the goods settings, the build goods, the
+trade lists and the scope index with one scope list per building list and one scope
+building per list slot). The S5 scenarios have one empty city per island; the
+script transcribes the city and, for the golden s6_g1_create, a weaver and a farm
+(the Workshop and Farm payloads). The registry digest of the synthetic registry
+(make_synthetic_types) is a literal taken from types_test, because transcribing the
+type table is out of scope here: everything else of that golden is independent.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
-                           (g0_*, g1_*, s5_*); exit 1 on a difference
+                           (g0_*, g1_*, s5_*, s6_*); exit 1 on a difference
 
 The class table below is Appendix C (compare constants of the class ticks read
 from AnnoWelt.dll, see docs/re/production.md §10); the stream layout is the one
@@ -35,7 +43,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 103
+STATE_HASH_VERSION = 104
 PRNG_TIMELINE_VERSION = 1
 
 
@@ -119,7 +127,7 @@ def registry_digest(names):
 
 
 def config_bytes():
-    b = b''.join(u32(x) for x in [256, 16, 15, 32, 31, 5, 28, 20, 32, 5, 65, 56, 0x29, 5, 2, 255,
+    b = b''.join(u32(x) for x in [256, 16, 15, 32, 31, 5, 28, 20, 32, 5, 65, 56, 0x29, 5, 2,
                                   8, 1, 10, 8])
     b += b''.join(u32(x) for x in [500, 50, 50, 250, 50, 5000, 2000, 15000, 7500, 300, 20, 450000,
                                    10, 30000])
@@ -286,7 +294,70 @@ def tiles_digest(w, h, tiles):
     return fnv(d)
 
 
-def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, terrain=None):
+# ---- cities and buildings (stage S6)
+
+CITY_SLOTS = 16
+WAREHOUSE_GOODS = 56
+BUILD_GOODS = 5
+TRADE_LISTS = 2
+LIST_COUNT = 6
+STATUS_NONE = u8(0) + u8(0) + u16(0)   # code, icons, time
+
+
+def list_digest(hint, cursor, slots):
+    """One building list: i64 hint, u32 cursor, u64 slot count, one child scope per
+    slot (an empty slot hashes as the single byte 0, a building as 1 + its bytes)."""
+    d = struct.pack('<q', hint) + u32(cursor) + u64(len(slots))
+    for b in slots:
+        d += u64(fnv(u8(1) + b) if b is not None else fnv(u8(0)))
+    return fnv(d)
+
+
+def index_digest(stamp, lists):
+    """The scope index: u16 stamp, u64 list count, one child scope per list."""
+    return fnv(u16(stamp) + u64(len(lists)) + b''.join(u64(x) for x in lists))
+
+
+def city_digest(number, owner, buildings_by_list=None, tick_stamp=0, stock=None):
+    """One present city. buildings_by_list: {list id: (hint, [bytes or None, ...])};
+    a list that is not given is a fresh one (hint -1, cursor 0, one empty slot)."""
+    buildings_by_list = buildings_by_list or {}
+    lists = []
+    for lid in range(LIST_COUNT):
+        hint, slots = buildings_by_list.get(lid, (-1, [None]))
+        lists.append(list_digest(hint, 0, slots))
+    stock = stock or [0] * WAREHOUSE_GOODS
+    b = u32(number) + u32(owner) + u16(tick_stamp)
+    b += u32(50 * 256) + u32s(stock)
+    b += u64(WAREHOUSE_GOODS) + b''.join(u8(0) + struct.pack('<i', -1)
+                                         for _ in range(WAREHOUSE_GOODS))
+    b += u64(BUILD_GOODS) + b''.join(u32(0) + u64(0) for _ in range(BUILD_GOODS))
+    b += u64(TRADE_LISTS) + b''.join(u64(0) for _ in range(TRADE_LISTS))
+    b += u64(index_digest(0, lists))
+    return fnv(u8(1) + b)
+
+
+def cities_digest(cities):
+    """The scope cities: u64 slot count, one child scope per slot."""
+    return fnv(u64(CITY_SLOTS) + b''.join(u64(cities.get(i, fnv(u8(0)))) for i in range(CITY_SLOTS)))
+
+
+def workshop_bytes(out, inn, activity=0):
+    return (u16(0) + u8(1) + u8(0) + u8(0) + u64(1) + u32(out) + u64(1) + u32(inn) + u64(1)
+            + u32(activity) + u32(0) + STATUS_NONE)
+
+
+def farm_bytes(out=0, raw=0):
+    return u16(0) + u8(1) + u8(0) + u8(0) + u32(out) + u32(raw) + u16(0) + u32(0) + STATUS_NONE
+
+
+def building_bytes(serial, island, type_id, x, y, byte0e, tag, payload):
+    return (u64((island << 32) + serial) + u32(type_id) + struct.pack('<i', x)
+            + struct.pack('<i', y) + u8(0) + u8(byte0e) + u8(0) + u8(tag) + payload)
+
+
+def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, terrain=None,
+                  cities=None, next_serial=1):
     tiles = [[0, 0, NEUTRAL_OWNER, 0] for _ in range(w * h)]
     at = 0
     for owner, length in owner_runs:
@@ -298,7 +369,7 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
         tiles[index][1] = phase
     td = terrain_digest(*terrain) if terrain else 0
     b = (u32(slot) + struct.pack('<i', x0) + struct.pack('<i', y0) + u32(w) + u32(h)
-         + u32(climate) + u32(1) + u64(td))
+         + u32(climate) + u32(next_serial) + u64(td))
     b += u16(0) + u32(0) * 4          # sweep
     b += u16(0)                       # event300_stamp
     b += u16(0) + u32(0)              # objmgr
@@ -310,6 +381,7 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
         b += u8(1 if reserve else 0)
     b += u64(0)                       # reserved_object_count
     b += u64(tiles_digest(w, h, tiles))
+    b += u64(cities_digest(cities or {}))
     return fnv(u8(1) + b)
 
 
@@ -322,12 +394,13 @@ def two_island_scenario():
     islands = {
         0: island_digest(0, 100, 100, 64, 64, 2, [(15, 128), (0, 64 * 62)],
                          [(200, 1201, 0), (201, 1202, 3), (4095, 1203, 7)],
-                         [(b'EISENERZ', 110, 120, 2000 * 256, True)]),
+                         [(b'EISENERZ', 110, 120, 2000 * 256, True)],
+                         cities={0: city_digest(0, 0)}),
         3: island_digest(3, 300, 200, 30, 20, 6, [(1, 300)],
                          [(0, 2001, 0), (599, 2002, 1)],
                          [(b'GOLD', 301, 202, 123456, False),
                           (b'STEINE', 329, 219, 2000 * 256, True)],
-                         (height, gfx, fertility)),
+                         (height, gfx, fertility), cities={1: city_digest(1, 1)}),
     }
     return players, islands
 
@@ -337,6 +410,29 @@ def islands_digest(by_slot):
     (an absent slot hashes as the single byte 0)."""
     n = max(by_slot) + 1 if by_slot else 0
     return fnv(u64(n) + b''.join(u64(by_slot.get(i, fnv(u8(0)))) for i in range(n)))
+
+
+# The registry digest of synthetic::make_synthetic_types() (the golden test in
+# building_state_test.cpp checks it);
+# a literal here because the type table is not transcribed by this script.
+SYNTHETIC_REGISTRY = 0x00D140F84BF28924
+
+
+def g1_scenario():
+    """synthetic::g1_scenario(): one player, island 0 (64 x 64 at 100,100) with city 0
+    holding the weaver (9001, 5 t of wool) at (110,110) and the grain farm (9002,
+    5 t of raw material) at (120,110), both in the production list L4: slot 0 and
+    slot 1 (the list grows from 1 to 10 with the second), hint 1."""
+    weaver = building_bytes(1, 0, 9001, 110, 110, 0x86, 1, workshop_bytes(0, 5 * 256))
+    farm = building_bytes(2, 0, 9002, 120, 110, 0x86, 3, farm_bytes(0, 5 * 256))
+    production = (1, [weaver, farm] + [None] * 8)
+    island = island_digest(
+        0, 100, 100, 64, 64, 2, [(15, 128), (0, 64 * 62)],
+        [(200, 1201, 0), (201, 1202, 3), (4095, 1203, 7), (10 * 64 + 10, 9001, 0),
+         (10 * 64 + 20, 9002, 0)],
+        [(b'EISENERZ', 110, 120, 2000 * 256, True)],
+        cities={0: city_digest(0, 0, {4: production})}, next_serial=3)
+    return {0: new_player(0)}, {0: island}
 
 
 def g1_slots():
@@ -396,6 +492,14 @@ def values():
         out[key] = state_hash(registry, 1234, 10 * steps, 10 * steps // 2,
                               players_digest(stamp, cursor, slots), islands=isl,
                               world=(512, 512))
+    # S6: the G1 scenario (a city with a weaver and a farm), seed 1234, advance(10) x steps
+    players, islands = g1_scenario()
+    isl = islands_digest(islands)
+    for steps in (0, 100):
+        slots, stamp, cursor = table_run(players if steps == 0 else g1_scenario()[0], steps, 10)
+        key = 's6_g1_create' if steps == 0 else 's6_g1_step%d' % steps
+        out[key] = state_hash(SYNTHETIC_REGISTRY, 1234, 10 * steps, 10 * steps // 2,
+                              players_digest(stamp, cursor, slots), islands=isl, world=(512, 512))
     return out
 
 

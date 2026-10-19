@@ -802,7 +802,8 @@ TEST_CASE("river flow: builds share no state, one thread or many") {
             const RiverFlow::Cell &a = g.cells()[i], &b = ref.cells()[i];
             if (a.cx != b.cx || a.cy != b.cy || a.ux != b.ux || a.uy != b.uy ||
                 a.depth != b.depth || a.river != b.river || a.slope != b.slope ||
-                a.flags != b.flags) {
+                a.flags != b.flags || a.turb != b.turb || a.wake != b.wake ||
+                a.froude != b.froude) {
                 return false;
             }
         }

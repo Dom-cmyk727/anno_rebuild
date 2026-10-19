@@ -159,6 +159,15 @@ struct Options {
     fs::path flow_dump;
     /// --flow-rivers FILE: one Markdown row per river (sea-less ones marked).
     fs::path flow_rivers;
+    /// --obstacles: survey the objects that stand in rivers (rivers.md 17.2).
+    bool obstacles = false;
+    /// --obstacle-list FILE: one row per object with at least half of its
+    /// footprint in river water.
+    fs::path obstacle_list;
+    /// --sprites ID,ID,.. --sprite-out DIR: the first frame of those Anlagen
+    /// entries (zoom group 0) as PNGs, for the obstacle review.
+    std::vector<std::uint32_t> sprite_ids;
+    fs::path sprite_out;
     render::river::RiverConfig river;
     std::size_t threads = std::max(1U, std::thread::hardware_concurrency());
 };
@@ -727,9 +736,9 @@ bool run_flow(const Options& opt, const fs::path& dir, const std::vector<fs::pat
         "| scene | island | pieces | mask cells | wet cells | rivers | ponds | outlet faces | "
         "sea-less | fallback | iters | levels | residual | imbalance | mask ms | flow ms | "
         "u mean | u p50 | u p95 | u max | downstream %% | downstream sea %% | floor %% | cap %% | "
-        "bbox tiles (x,y,w,h) |\n"
+        "bbox tiles (x,y,w,h) | objects used | dammed | hole cells | wake cells |\n"
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
-        "---|---|---|\n");
+        "---|---|---|---|---|---|---|\n");
     std::vector<double> flow_ms, mask_ms;
     std::vector<std::string> river_rows;
     double worst_residual = 0, worst_imbalance = 0;
@@ -771,7 +780,7 @@ bool run_flow(const Options& opt, const fs::path& dir, const std::vector<fs::pat
             std::printf(
                 "| %s | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %u | %u | %.2e | "
                 "%.2e | %.0f | %.0f | %.3f | %.3f | %.3f | %.3f | %.1f | %.1f | %.1f | %.1f | "
-                "%d,%d,%d,%d |\n",
+                "%d,%d,%d,%d | %zu | %zu | %zu | %zu |\n",
                 name.c_str(), i, scene.river_pieces(i).size(), std::size_t{mask.nx()} * mask.ny(),
                 st.wet_cells, st.components, st.ponds, st.outlet_faces, st.sea_less_components,
                 st.fallback_components, st.iterations, st.levels, st.residual, st.flux_imbalance,
@@ -782,8 +791,39 @@ bool run_flow(const Options& opt, const fs::path& dir, const std::vector<fs::pat
                 100.0 * static_cast<double>(st.downstream_fraction_sea),
                 100.0 * static_cast<double>(st.floor_fraction),
                 100.0 * static_cast<double>(st.cap_fraction), mask.x0() / cpt, mask.y0() / cpt,
-                static_cast<int>(mask.nx()) / cpt, static_cast<int>(mask.ny()) / cpt);
+                static_cast<int>(mask.nx()) / cpt, static_cast<int>(mask.ny()) / cpt,
+                static_cast<std::size_t>(std::count_if(mask.obstacles.begin(), mask.obstacles.end(),
+                                                       [](const river::ObstacleInfo& o) {
+                                                           return o.result ==
+                                                                  river::ObstacleInfo::Result::Hole;
+                                                       })),
+                static_cast<std::size_t>(std::count_if(mask.obstacles.begin(), mask.obstacles.end(),
+                                                       [](const river::ObstacleInfo& o) {
+                                                           return o.result ==
+                                                                  river::ObstacleInfo::Result::Dam;
+                                                       })),
+                st.hole_cells, st.wake_cells);
             std::fflush(stdout);
+            {
+                // The fastest water of the island (for the contact sheets of falls): the
+                // wet cell of the largest Froude number, in island tiles.
+                const river::RiverFlow::Cell* top = nullptr;
+                std::size_t supercritical = 0;
+                for (const auto& c : flow.cells()) {
+                    supercritical += c.froude > 1.0F ? 1U : 0U;
+                    if (top == nullptr || c.froude > top->froude) {
+                        top = &c;
+                    }
+                }
+                if (top != nullptr) {
+                    std::fprintf(
+                        stderr,
+                        "%s island %zu: Fr max %.2f at tile %.1f,%.1f, %zu cells with Fr > 1\n",
+                        name.c_str(), i, static_cast<double>(top->froude),
+                        (static_cast<double>(top->cx) + 0.5) / cpt,
+                        (static_cast<double>(top->cy) + 0.5) / cpt, supercritical);
+                }
+            }
             for (std::size_t r = 0; r < flow.rivers().size(); ++r) {
                 const river::RiverInfo& ri = flow.rivers()[r];
                 char row[256];
@@ -835,6 +875,134 @@ bool run_flow(const Options& opt, const fs::path& dir, const std::vector<fs::pat
     std::printf("budget gate (no NaN, residual <= 1e-3, p95 <= 0.3 s, max <= 1 s): %s\n",
                 pass ? "PASS" : "FAIL");
     return pass;
+}
+
+/// The survey behind RiverConfig::obstacle_ids (rivers.md 17.2): every ground
+/// object of at most obstacle_max_area tiles on an island with river pieces,
+/// by Anlagen id: how many there are, how many stand in river water (at least
+/// obstacle_min_wet of the footprint wet in the tile-space raster), their
+/// footprints. The list file has one row per such object (scene, island, tile,
+/// id, footprint, wet share) for the picture review.
+void run_obstacles(const Options& opt, const fs::path& dir, const std::vector<fs::path>& files) {
+    namespace river = render::river;
+    struct Tally {
+        std::size_t all = 0, in_river = 0, islands = 0;
+        std::map<std::pair<int, int>, std::size_t> sizes;
+        std::set<std::string> where;
+    };
+    std::map<std::uint32_t, Tally> by_id;
+    std::ofstream list;
+    if (!opt.obstacle_list.empty()) {
+        list.open(opt.obstacle_list);
+        list << "| scene | island | id | tile x,y | footprint | wet share |\n"
+                "|---|---|---|---|---|---|\n";
+    }
+    river::RiverConfig cfg = opt.river;
+    cfg.obstacles = false; // the survey looks at the water without holes
+    for (const auto& file : files) {
+        auto loaded = anno::app::load_scene(dir, file);
+        if (!loaded) {
+            std::fprintf(stderr, "%s: %s\n", file.string().c_str(), loaded.error().c_str());
+            continue;
+        }
+        const render::Scene& scene = *loaded.value().scene;
+        const std::string name = anno::app::to_utf8(file.stem());
+        for (std::size_t i = 0; i < scene.islands.size(); ++i) {
+            if (scene.river_piece_count(i) == 0) {
+                continue;
+            }
+            const river::RiverMask mask = scene.river_mask(i, cfg);
+            const auto c = static_cast<int>(mask.cells_per_tile());
+            std::set<std::uint32_t> seen;
+            for (const river::Obstacle& o : scene.island_objects(i, cfg.obstacle_max_area)) {
+                std::size_t wet = 0, total = 0;
+                for (int cy = o.y * c; cy < (o.y + o.h) * c; ++cy) {
+                    for (int cx = o.x * c; cx < (o.x + o.w) * c; ++cx) {
+                        ++total;
+                        wet += mask.wet(cx, cy) ? 1U : 0U;
+                    }
+                }
+                const double share =
+                    total > 0 ? static_cast<double>(wet) / static_cast<double>(total) : 0.0;
+                Tally& t = by_id[o.id];
+                ++t.all;
+                if (share >= static_cast<double>(cfg.obstacle_min_wet)) {
+                    ++t.in_river;
+                    ++t.sizes[{o.w, o.h}];
+                    t.where.insert(name);
+                    if (seen.insert(o.id).second) {
+                        ++t.islands;
+                    }
+                    if (list.is_open()) {
+                        char row[200];
+                        std::snprintf(row, sizeof row, "| %s | %zu | %u | %d,%d | %dx%d | %.2f |\n",
+                                      name.c_str(), i, o.id, o.x, o.y, o.w, o.h, share);
+                        list << row;
+                    }
+                }
+            }
+        }
+    }
+    std::printf(
+        "| Anlagen id | objects | in river (>= %.0f %% wet) | islands | footprints (count) | "
+        "scenes |\n|---|---|---|---|---|---|\n",
+        100.0 * static_cast<double>(cfg.obstacle_min_wet));
+    for (const auto& [id, t] : by_id) {
+        if (t.in_river == 0) {
+            continue;
+        }
+        std::string sizes;
+        for (const auto& [wh, n] : t.sizes) {
+            sizes += std::to_string(wh.first) + "x" + std::to_string(wh.second) + " (" +
+                     std::to_string(n) + ") ";
+        }
+        std::printf("| %u | %zu | %zu | %zu | %s| %zu |\n", id, t.all, t.in_river, t.islands,
+                    sizes.c_str(), t.where.size());
+    }
+}
+
+/// The first frame of the given Anlagen entries as PNGs (rivers.md 17.2).
+void run_sprites(const Options& opt, const fs::path& dir, const fs::path& file) {
+    auto loaded = anno::app::load_scene(dir, file);
+    if (!loaded) {
+        std::fprintf(stderr, "%s: %s\n", file.string().c_str(), loaded.error().c_str());
+        return;
+    }
+    const render::Scene& scene = *loaded.value().scene;
+    fs::create_directories(opt.sprite_out);
+    for (const std::uint32_t id : opt.sprite_ids) {
+        const auto* entry = scene.anlagen.entry(id);
+        if (entry == nullptr || entry->gfx.empty()) {
+            std::printf("%u: no sprite\n", id);
+            continue;
+        }
+        const auto& set = entry->gfx.front();
+        const anno::formats::figuren::FrameSet* fs0 = nullptr;
+        for (const auto& fset : set.frame_sets) {
+            if (fset.group == 0) {
+                fs0 = &fset;
+            }
+        }
+        if (fs0 == nullptr || fs0->frames.empty()) {
+            std::printf("%u: no frames\n", id);
+            continue;
+        }
+        const auto fp = scene.anlagen.footprint(id);
+        const render::SpriteKey key{id, 0, false, 0, 0};
+        const auto img = scene.sprites.get(scene.anlagen, key, fs0->frames[0]);
+        std::printf("%u: footprint %dx%d, %zu frames, first %ux%u\n", id, fp ? fp->first : 0,
+                    fp ? fp->second : 0, fs0->frames.size(), img ? img->width : 0U,
+                    img ? img->height : 0U);
+        if (img) {
+            const std::string err =
+                anno::app::write_png(opt.sprite_out / ("sprite_" + std::to_string(id) + ".png"),
+                                     static_cast<std::uint32_t>(img->width),
+                                     static_cast<std::uint32_t>(img->height), img->pixels);
+            if (!err.empty()) {
+                std::fprintf(stderr, "%s\n", err.c_str());
+            }
+        }
+    }
 }
 
 } // namespace
@@ -921,6 +1089,26 @@ int main(int argc, char** argv) {
             opt.river.discharge = v == "absolute"  ? D::Absolute
                                   : v == "sourced" ? D::Sourced
                                                    : D::Normalised;
+        } else if (a == "--no-obstacles") {
+            opt.river.obstacles = false;
+        } else if (a == "--no-wake") {
+            opt.river.wake = false;
+        } else if (a == "--thalweg") {
+            opt.river.thalweg_shift = true;
+        } else if (a == "--picard" && i + 1 < argc) {
+            opt.river.picard_iterations = static_cast<std::uint32_t>(std::stoul(argv[++i]));
+        } else if (a == "--obstacles") {
+            opt.obstacles = true;
+        } else if (a == "--sprites" && i + 1 < argc) {
+            for (const auto part : split(argv[++i], ',')) {
+                std::uint32_t id = 0;
+                std::from_chars(part.data(), part.data() + part.size(), id);
+                opt.sprite_ids.push_back(id);
+            }
+        } else if (a == "--sprite-out" && i + 1 < argc) {
+            opt.sprite_out = argv[++i];
+        } else if (a == "--obstacle-list" && i + 1 < argc) {
+            opt.obstacle_list = argv[++i];
         } else if (a == "--list") {
             opt.list = true;
         } else if (a == "--pieces") {
@@ -962,6 +1150,14 @@ int main(int argc, char** argv) {
             "<file>\n",
             stderr);
         return 2;
+    }
+    if (!opt.sprite_ids.empty()) {
+        run_sprites(opt, dir, files.front());
+        return 0;
+    }
+    if (opt.obstacles) {
+        run_obstacles(opt, dir, files);
+        return 0;
     }
     if (opt.flow) {
         return run_flow(opt, dir, files) ? 0 : 1;

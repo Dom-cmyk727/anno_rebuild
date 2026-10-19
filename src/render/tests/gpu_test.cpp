@@ -1276,9 +1276,23 @@ TEST_CASE("the WGSL source declares the river bindings the compositor binds") {
 TEST_CASE("the river parameter uniform matches struct RiverParams in gpu.wgsl") {
     render::RiverParams p = render::river::RiverConfig{}.params();
     p.quality = render::RiverQuality::Medium;
+    // Distinct values, so that two fields swapped in the bytes or the struct fail.
+    p.froude_from = 0.31F;
+    p.froude_to = 0.71F;
+    p.gravity = 12.5F;
+    p.depth_min = 2.5F;
+    p.aeration = 0.21F;
+    p.wake_dark = 0.07F;
+    p.wake_boost = 0.9F;
+    p.standing = 1.0F;
+    p.standing_amp = 0.033F;
+    p.standing_from = 0.41F;
+    p.standing_to = 0.81F;
+    p.standing_min = 0.5F;
+    p.standing_max = 2.2F;
     const auto b = gpu::river_params_bytes(p, 0.125F);
     REQUIRE(b.size() == gpu::kRiverParamsBytes);
-    CHECK(b.size() == 32 + 8 * 32);
+    CHECK(b.size() == 96 + 8 * 32);
     auto u32_at = [&](std::size_t o) {
         return std::uint32_t{b[o]} | std::uint32_t{b[o + 1]} << 8 | std::uint32_t{b[o + 2]} << 16 |
                std::uint32_t{b[o + 3]} << 24;
@@ -1297,9 +1311,26 @@ TEST_CASE("the river parameter uniform matches struct RiverParams in gpu.wgsl") 
     CHECK(f32_at(16) == p.shear_from);
     CHECK(f32_at(20) == p.shear_to);
     CHECK(f32_at(24) == render::kLowTapGain);
-    // The layers start at byte 32, 32 bytes each: scale, period, amplitude, fades, rapids.
+    // Stage S7 (bytes 32-95): the Froude rule, aeration, wake and standing waves.
+    CHECK(f32_at(32) == p.froude_from);
+    CHECK(f32_at(36) == p.froude_to);
+    CHECK(f32_at(40) == p.gravity);
+    CHECK(f32_at(44) == p.depth_min);
+    CHECK(f32_at(48) == p.aeration);
+    CHECK(f32_at(52) == p.wake_dark);
+    CHECK(f32_at(56) == p.wake_boost);
+    CHECK(f32_at(60) == p.standing);
+    CHECK(f32_at(64) == p.standing_amp);
+    CHECK(f32_at(68) == p.standing_from);
+    CHECK(f32_at(72) == p.standing_to);
+    CHECK(f32_at(76) == p.standing_min);
+    CHECK(f32_at(80) == p.standing_max);
+    for (std::size_t o = 84; o < 96; ++o) {
+        CHECK(b[o] == 0);
+    }
+    // The layers start at byte 96, 32 bytes each: scale, period, amplitude, fades, rapids.
     for (std::size_t i = 0; i < p.count; ++i) {
-        const std::size_t o = 32 + 32 * i;
+        const std::size_t o = 96 + 32 * i;
         CHECK(f32_at(o) == p.layers[i].scale);
         CHECK(f32_at(o + 4) == p.layers[i].period_ms);
         CHECK(f32_at(o + 8) == p.layers[i].amp);
@@ -1307,11 +1338,11 @@ TEST_CASE("the river parameter uniform matches struct RiverParams in gpu.wgsl") 
         CHECK(f32_at(o + 16) == p.layers[i].rapids);
     }
     // The rapids layer is the last of the default table, the glints fade with the detail.
-    CHECK(f32_at(32 + 32 * 3 + 16) == 1.0F);
-    CHECK(f32_at(32 + 32 * 2 + 12) == 1.0F);
-    CHECK(f32_at(32 + 32 * 0 + 12) == 0.0F);
+    CHECK(f32_at(96 + 32 * 3 + 16) == 1.0F);
+    CHECK(f32_at(96 + 32 * 2 + 12) == 1.0F);
+    CHECK(f32_at(96 + 32 * 0 + 12) == 0.0F);
     // Unused layers are zero.
-    for (std::size_t o = 32 + 32 * 4; o < b.size(); ++o) {
+    for (std::size_t o = 96 + 32 * 4; o < b.size(); ++o) {
         CHECK(b[o] == 0);
     }
     // More layers than the table holds are dropped, not written past it.
@@ -1489,7 +1520,8 @@ SyntheticRiver synthetic_river(std::uint32_t stride, bool with_flow, int cx = 0,
                 valid = 0.03F; // just above min_valid
             }
             render::river::set_texel(fp, i, j, speed * std::cos(a), speed * std::sin(a), valid,
-                                     0.1F + 0.4F * static_cast<float>(gi % 3) / 3.0F, 0.0F,
+                                     0.1F + 0.4F * static_cast<float>(gi % 3) / 3.0F,
+                                     0.8F * static_cast<float>(gj % 5) / 5.0F,
                                      32.0F + 2.0F * static_cast<float>(gi % 8), 8.0F,
                                      0.05F * static_cast<float>(gj % 16));
         }
@@ -1621,6 +1653,222 @@ TEST_CASE("river flow on the GPU: the shader draws what the CPU twin draws, at e
         }
         CHECK(g.errors() == 0);
     }
+}
+
+TEST_CASE(
+    "river flow on the GPU: the extras (wake, Froude rapids, aeration, standing waves) match the "
+    "CPU twin, and the standing waves are really drawn (synthetic)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    EmptyScene es = empty_scene();
+    es.scene->river_cfg.standing_waves = true;
+    const render::Scene& scene = *es.scene;
+    constexpr int kSide = render::kChunk;
+    const render::Rect view{0, 0, kSide, kSide};
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    limits.wave_simulation = false;
+    limits.river_quality = render::RiverQuality::High;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    const auto target = g.offscreen_target(kSide, kSide);
+    for (const std::size_t group : {std::size_t{0}, std::size_t{1}}) {
+        const SyntheticRiver syn = synthetic_river(scene.river_cfg.lattice_stride[group], true);
+        render::FrameRenderer frames(1, false);
+        frames.insert_chunk({group, 0, 0}, syn.chunk);
+        render::RiverParams params = scene.river_cfg.params();
+        params.quality = render::RiverQuality::High;
+        REQUIRE(params.standing == 1.0F);
+        for (const std::uint64_t t : {std::uint64_t{0}, std::uint64_t{700}}) {
+            g.render(frames, scene, view, group, t, render::WaterStyle::Enhanced,
+                     target.second.get());
+            const auto px = g.read_back(target.first.get(), kSide, kSide);
+            REQUIRE(px.size() == std::size_t{kSide} * kSide * 4);
+            const RiverCompare r =
+                compare_river_chunk(scene, syn.chunk, group, t, params, true, px);
+            MESSAGE("group " << group << " t " << t << ": " << 100.0 * r.within2()
+                             << " % within 2/255, max " << r.max);
+            CHECK(r.within2() >= 0.999);
+            CHECK(r.max <= 4);
+            // The standing waves are in the picture: the CPU twin without them is not it.
+            render::RiverParams without = params;
+            without.standing = 0.0F;
+            const RiverCompare off =
+                compare_river_chunk(scene, syn.chunk, group, t, without, true, px);
+            CHECK(off.within2() < 0.97);
+        }
+    }
+    CHECK(g.errors() == 0);
+}
+
+TEST_CASE(
+    "water against objects on a river: the waterline ripple follows the flow, as the CPU twin "
+    "says (synthetic)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene(1.0F);
+    const render::Scene& scene = *es.scene;
+    constexpr int kSide = render::kChunk;
+    const render::Rect view{0, 0, kSide, kSide};
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    limits.wave_simulation = false;
+    limits.river_quality = render::RiverQuality::High;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    const auto target = g.offscreen_target(kSide, kSide);
+    const std::size_t group = 0;
+    // A river everywhere, 6 units deep, a flow of (0.9, 0.3) tiles/s (about 53 px/s
+    // along the screen's x axis), and a red block standing in it: columns 64..447,
+    // rows 100..299, the base plane counting the rows above its lowest row.
+    const auto n = static_cast<std::size_t>(kSide);
+    render::Chunk chunk;
+    chunk.field.resize(n * n * 4);
+    for (std::size_t i = 0; i < n * n; ++i) {
+        chunk.field[i * 4] = 1;
+        chunk.field[i * 4 + 1] = 255;
+        chunk.field[i * 4 + 2] = static_cast<std::uint8_t>(128 + 6 * 4);
+        chunk.field[i * 4 + 3] = 2;
+    }
+    chunk.objects.assign(n * n, render::Px{0, 0, 0, 0});
+    chunk.base.assign(n * n, 255);
+    constexpr int kX0 = 64, kX1 = 448, kY0 = 100, kY1 = 300;
+    const render::Px red{220, 40, 40, 255};
+    for (int y = kY0; y < kY1; ++y) {
+        for (int x = kX0; x < kX1; ++x) {
+            chunk.objects[static_cast<std::size_t>(y) * n + static_cast<std::size_t>(x)] = red;
+            chunk.base[static_cast<std::size_t>(y) * n + static_cast<std::size_t>(x)] =
+                static_cast<std::uint8_t>(kY1 - 1 - y);
+        }
+    }
+    const float vx = 0.9F, vy = 0.3F;
+    {
+        render::river::FlowPlane& fp = chunk.flow;
+        const std::uint32_t stride = scene.river_cfg.lattice_stride[group];
+        fp.x0 = 0;
+        fp.y0 = 0;
+        fp.stride_px = stride;
+        fp.nx = fp.ny = static_cast<std::uint32_t>(kSide) / stride + 1;
+        const std::size_t count = std::size_t{fp.nx} * fp.ny;
+        fp.uv.assign(count * 2, 0);
+        fp.aux.assign(count * 4, 0);
+        fp.shear.assign(count, 0);
+        for (std::uint32_t j = 0; j < fp.ny; ++j) {
+            for (std::uint32_t i = 0; i < fp.nx; ++i) {
+                render::river::set_texel(fp, i, j, vx, vy, 1.0F, 0.0F, 0.0F, 32.0F, 8.0F, 0.0F);
+            }
+        }
+    }
+    const float vpx = (vx - vy) * 84.0F * 0.5F, vpy = (vx + vy) * 42.0F * 0.5F;
+    const float s = static_cast<float>(render::kTile[group].h) / 42.0F;
+    const float level =
+        6.0F * static_cast<float>(scene.lift.scaled(render::kSeaLevel, 1, group)) / 32.0F;
+    // The number of rows of every column of the block that the water covers (the
+    // pixels that differ clearly from the red), against what the ripple function
+    // says: the water covers the rows b < level + ripple above the foot.
+    auto covered = [&](const std::vector<std::uint8_t>& px, int x) {
+        int count = 0;
+        for (int y = kY0; y < kY1; ++y) {
+            const std::size_t i =
+                (static_cast<std::size_t>(y) * n + static_cast<std::size_t>(x)) * 4;
+            int d = 0;
+            for (std::size_t k = 0; k < 3; ++k) {
+                d = std::max(d, std::abs(int{px[i + k]} - int{red[k]}));
+            }
+            count += d > 12 ? 1 : 0;
+        }
+        return count;
+    };
+    auto expected = [&](int x, std::uint64_t t, bool flowing) {
+        const float fx = static_cast<float>(x), fy = static_cast<float>(kY1 - 1);
+        float ripple = s * (0.4F * std::sin(fx * 0.35F / s + static_cast<float>(t) * 0.0021F) +
+                            0.25F * std::sin(fx * 0.9F / s - static_cast<float>(t) * 0.0033F));
+        if (flowing) {
+            ripple = render::object_river_ripple(fx, fy, s, t, vpx, vpy);
+        }
+        // d = level + ripple - b > 0 is water; a pixel shows it from d of about 0.3.
+        return std::max(0.0F, std::ceil(level + ripple - 0.3F));
+    };
+    for (const std::uint64_t t : {std::uint64_t{300}, std::uint64_t{1100}, std::uint64_t{2300}}) {
+        render::FrameRenderer frames(1, false);
+        frames.insert_chunk({group, 0, 0}, chunk);
+        g.render(frames, scene, view, group, t, render::WaterStyle::Enhanced, target.second.get());
+        const auto px = g.read_back(target.first.get(), kSide, kSide);
+        REQUIRE(px.size() == n * n * 4);
+        int exact = 0, exact_legacy = 0, within = 0, total = 0;
+        double mean_rows = 0.0;
+        for (int x = kX0 + 4; x < kX1 - 4; ++x) {
+            const int c = covered(px, x);
+            exact += static_cast<float>(c) == expected(x, t, true) ? 1 : 0;
+            exact_legacy += static_cast<float>(c) == expected(x, t, false) ? 1 : 0;
+            within += std::fabs(static_cast<float>(c) - expected(x, t, true)) <= 1.0F ? 1 : 0;
+            mean_rows += c;
+            ++total;
+        }
+        mean_rows /= total;
+        MESSAGE("t " << t << ": of " << total << " columns " << exact
+                     << " have the covered rows of the flow ripple, " << exact_legacy
+                     << " those of the legacy one (" << within
+                     << " within a row of the flow's), mean " << mean_rows
+                     << " rows under water (level " << level << ")");
+        CHECK(mean_rows > level - 2.0);
+        CHECK(mean_rows < level + 2.0);
+        CHECK(static_cast<double>(within) >= 0.99 * total);
+        // (a column is exact when its covered rows are the ripple's: the pixel at the
+        // edge of the water shows it from d of about 0.3, which is not sharp)
+        CHECK(static_cast<double>(exact) >= 0.75 * total);
+        // The negative control: the legacy ripple is another picture on this flow.
+        CHECK(static_cast<double>(exact_legacy) < 0.6 * total);
+    }
+    // Legacy river mode: the old ripple, along the screen's x axis only.
+    {
+        render::FrameRenderer frames(1, false);
+        frames.river_flow = render::RiverFlowMode::Legacy;
+        frames.insert_chunk({group, 0, 0}, chunk);
+        const std::uint64_t t = 1100;
+        g.render(frames, scene, view, group, t, render::WaterStyle::Enhanced, target.second.get());
+        const auto px = g.read_back(target.first.get(), kSide, kSide);
+        int within = 0, total = 0;
+        for (int x = kX0 + 4; x < kX1 - 4; ++x) {
+            within += std::fabs(static_cast<float>(covered(px, x)) - expected(x, t, false)) <= 1.0F
+                          ? 1
+                          : 0;
+            ++total;
+        }
+        CHECK(static_cast<double>(within) >= 0.97 * total);
+    }
+    // A flow that stands still (zero velocity, but valid): the ripple does not drift,
+    // the picture of two instants one period apart is the same.
+    {
+        render::river::FlowPlane& fp = chunk.flow;
+        for (std::uint32_t j = 0; j < fp.ny; ++j) {
+            for (std::uint32_t i = 0; i < fp.nx; ++i) {
+                render::river::set_texel(fp, i, j, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 32.0F, 8.0F, 0.0F);
+            }
+        }
+        render::FrameRenderer frames(1, false);
+        frames.insert_chunk({group, 0, 0}, chunk);
+        g.render(frames, scene, view, group, 400, render::WaterStyle::Enhanced,
+                 target.second.get());
+        const auto a = g.read_back(target.first.get(), kSide, kSide);
+        g.render(frames, scene, view, group, 400 + 1600, render::WaterStyle::Enhanced,
+                 target.second.get());
+        const auto b = g.read_back(target.first.get(), kSide, kSide);
+        int differ = 0;
+        for (int x = kX0 + 4; x < kX1 - 4; ++x) {
+            differ += covered(a, x) != covered(b, x) ? 1 : 0;
+        }
+        // The water under the block also animates (the sea pattern); the covered rows of
+        // the block keep their count.
+        CHECK(differ <= 4);
+    }
+    CHECK(g.errors() == 0);
 }
 
 TEST_CASE("river flow on the GPU: every pixel samples the same global lattice, across chunks at "
@@ -2274,10 +2522,14 @@ TEST_CASE("river pixels on the GPU match the CPU path: the whole pixel and what 
                 CHECK(q.legacy.max <= 4);
                 // Under objects (38 % of the owner's river pixels at group 1 are covered, left out
                 // of the whole-pixel statistics): the water under them is shaded alike, but the
-                // object's own edge differs (measured 97.6-100 % within 2, max 11).
+                // object's own edge differs: the GPU sinks objects into the water (a CPU path
+                // without it) and since the hydraulic extras the waterline of an object in a
+                // river rides the flow (iso::object_river_ripple), where in the legacy look it
+                // is the old sine, so the flow-minus-legacy difference there is the edge's
+                // (measured 96-100 % within 2, max 41; before the extras 97.6-100 %, max 11).
                 if (q.shading_under_objects.n >= 500) {
-                    CHECK(q.shading_under_objects.within2() >= 0.97);
-                    CHECK(q.shading_under_objects.max <= 12);
+                    CHECK(q.shading_under_objects.within2() >= 0.94);
+                    CHECK(q.shading_under_objects.max <= 64);
                 }
                 CHECK(q.chunks_with_flow > 0);
             }

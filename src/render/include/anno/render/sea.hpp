@@ -253,6 +253,16 @@ inline RiverView river_view(std::size_t group, Lift lift) {
                 static_cast<float>(kTile[0].w)};
 }
 
+/// The look of a river pixel near the sea (Scene::blend_rivers_into_sea; rivers.md
+/// 6, Q8): the sea's shade where the shore byte says kb = 0 (the river's mouth),
+/// the river's where kb = 1; every component interpolates, so the aeration of the
+/// river (the sea has none) fades out with it as the light and the tint do.
+inline Shade river_sea_mix(const Shade& river, const Shade& sea, float kb) {
+    return {sea.light + (river.light - sea.light) * kb, sea.foam + (river.foam - sea.foam) * kb,
+            sea.tint + (river.tint - sea.tint) * kb,
+            sea.aeration + (river.aeration - sea.aeration) * kb};
+}
+
 /// The shade of an enhanced river pixel (scene pixel sx, sy): the flow shading
 /// where the lattice has a flow (valid >= rivers->min_valid), else the legacy
 /// shimmer at `legacy_pos` (the sea plane's tile position). `rivers` null =
@@ -399,7 +409,7 @@ void shade_sea_flow(T out, std::size_t stride, Rect region, F&& field, FL&& flow
                 };
                 Shade shade;
                 if ((flags & 2U) == 0) {
-                    shade = {blend(&Shade::light), blend(&Shade::foam), blend(&Shade::tint)};
+                    shade = {blend(&Shade::light), blend(&Shade::foam), blend(&Shade::tint), 0.0F};
                 } else {
                     const float px = static_cast<float>(sx), py = static_cast<float>(sy + raise);
                     const std::pair<float, float> pos{px / twf + py / thf, py / thf - px / twf};
@@ -415,9 +425,7 @@ void shade_sea_flow(T out, std::size_t stride, Rect region, F&& field, FL&& flow
                     if (kb < 1.0F) {
                         const Shade s =
                             wave_shade(kRiverSeaDist, sd, 0.0F, pos, time_ms, wave_detail(twf));
-                        shade = {s.light + (shade.light - s.light) * kb,
-                                 s.foam + (shade.foam - s.foam) * kb,
-                                 s.tint + (shade.tint - s.tint) * kb};
+                        shade = river_sea_mix(shade, s, kb);
                     }
                 }
                 c = shade_apply(c, shade);

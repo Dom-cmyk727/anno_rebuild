@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <charconv>
 #include <cstdlib>
 #include <string>
@@ -126,6 +127,31 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
                 return std::nullopt;
             }
             out.river_gain = *g;
+        } else if (a == "--river-extras") {
+            // standing, thalweg, picard:N, no-obstacles, no-wake (comma separated).
+            std::size_t from = 0;
+            while (from <= v.size()) {
+                const std::size_t to = std::min(v.find(',', from), v.size());
+                const std::string_view item = std::string_view(v).substr(from, to - from);
+                if (item == "standing") {
+                    out.river_standing = true;
+                } else if (item == "thalweg") {
+                    out.river_thalweg = true;
+                } else if (item == "no-obstacles") {
+                    out.river_obstacles = false;
+                } else if (item == "no-wake") {
+                    out.river_wake = false;
+                } else if (item.substr(0, 7) == "picard:") {
+                    const auto n = number<std::uint32_t>(item.substr(7));
+                    if (!n || *n == 0 || *n > 64) {
+                        return std::nullopt;
+                    }
+                    out.river_picard = *n;
+                } else {
+                    return std::nullopt;
+                }
+                from = to + 1;
+            }
         } else if (a == "--renderer") {
             if (v == "auto") {
                 out.renderer = Renderer::Auto;

@@ -680,7 +680,7 @@ Shade wave_shade(float dist, float depth, float beach_slope, std::pair<float, fl
         }
     }
     const float tint = w.shallow_tint * smoothstep(w.tint_depth, 0.0F, depth);
-    return {light, clampf(foam, 0.0F, 1.0F), tint};
+    return {light, clampf(foam, 0.0F, 1.0F), tint, 0.0F};
 }
 
 Shade river_shade(std::pair<float, float> pos, float depth, float slope, std::uint64_t time_ms) {
@@ -699,7 +699,7 @@ Shade river_shade(std::pair<float, float> pos, float depth, float slope, std::ui
         const float u = noise3(wx * 7.3F - t * 0.0021F, wy * 7.3F + t * 0.0017F, t * 0.0016F);
         light += r * (0.05F + 0.16F * (0.6F * s + 0.4F * u - 0.5F));
     }
-    return {light, 0.0F, tint};
+    return {light, 0.0F, tint, 0.0F};
 }
 
 float flow_psi(std::array<float, 2> x) {
@@ -743,7 +743,14 @@ Shade river_flow_shade(float px, float py, const FlowSample& f, float depth, flo
     constexpr float kProbe = 0.15F;
     const std::array<float, 2> x2{x[0] - kProbe, x[1]};
     const float psi = flow_psi(x);
-    const float rapids = smoothstep(kRapidsFrom, kRapidsFull, slope);
+    // Froude number of the flow over the pixel's water depth (E12); the rapids
+    // factor is the slope rule (the falls the artists painted) or the Froude
+    // rule (fast shallow reaches), whichever is stronger (rivers.md 2.8, D5).
+    const float speed = std::sqrt(u[0] * u[0] + u[1] * u[1]);
+    const float head = kHeightUnitTiles * std::max(depth, params.depth_min);
+    const float froude = speed / std::sqrt(params.gravity * head);
+    const float rapids = std::max(smoothstep(kRapidsFrom, kRapidsFull, slope),
+                                  smoothstep(params.froude_from, params.froude_to, froude));
     float light = 0.0F;
     const std::size_t n = std::min<std::size_t>(params.count, params.layers.size());
     for (std::size_t l = 0; l < n; ++l) {
@@ -758,6 +765,9 @@ Shade river_flow_shade(float px, float py, const FlowSample& f, float depth, flo
         float amp = layer.amp * shear_fade;
         if (layer.fades != 0.0F) {
             amp *= detail * (1.0F + f.turb);
+        }
+        if (layer.rapids != 0.0F) {
+            amp *= 1.0F + params.wake_boost * f.wake;
         }
         if (amp == 0.0F || (layer.rapids != 0.0F && rapids <= 0.0F)) {
             continue;
@@ -780,22 +790,69 @@ Shade river_flow_shade(float px, float py, const FlowSample& f, float depth, flo
             light += amp * (na - field(b)) / kProbe;
         }
     }
+    // The lee of an obstacle is darker (E: -wake_dark at full wake).
+    light -= params.wake_dark * f.wake;
+    // Standing waves (off by default, D3; E13): light bands with crests
+    // perpendicular to the flow and the wavelength of a gravity wave that
+    // stands in a stream of this speed, where the flow is nearly critical.
+    // Not advected. The phase is the absolute tile coordinate along the flow:
+    // coherent in a straight reach (the cascades, where Fr is high), aliased
+    // where the direction changes, so the amplitude fades with the shear as the
+    // layers do (rivers.md 17.5).
+    if (params.standing != 0.0F && speed > 1e-6F && froude > params.standing_from) {
+        const float lambda = clampf(6.2831853F * speed * speed / params.gravity,
+                                    params.standing_min, params.standing_max);
+        float phase = (x[0] * u[0] + x[1] * u[1]) / speed / lambda;
+        phase -= std::floor(phase);
+        const float fade =
+            1.0F - smoothstep(params.shear_from, params.shear_to, lambda / speed * f.shear);
+        light += params.standing_amp *
+                 smoothstep(params.standing_from, params.standing_to, froude) * fade *
+                 std::sin(6.2831853F * phase);
+    }
     const float tint = 0.15F * smoothstep(4.0F, 0.0F, depth);
-    return {light, 0.0F, tint};
+    return {light, 0.0F, tint, params.aeration * rapids};
+}
+
+float object_river_ripple(float fx, float fy, float s, std::uint64_t time_ms, float vpx,
+                          float vpy) {
+    const float t = time_f(time_ms);
+    std::array<float, 2> w{}, n1{}, n2{};
+    for (std::size_t k = 0; k < 2; ++k) {
+        float phi = t / kObjectRipplePeriodMs + 0.5F * static_cast<float>(k);
+        phi -= std::floor(phi);
+        w[k] = 1.0F - std::fabs(2.0F * phi - 1.0F);
+        const float shift = kObjectRipplePeriodMs * 0.001F * phi;
+        const float cx = fx - vpx * shift;
+        const float cy = fy - vpy * shift;
+        const float o = static_cast<float>(k);
+        n1[k] = noise3(cx * kObjectRippleFreq1 / s + o * 13.37F,
+                       cy * kObjectRippleFreq1 / s + o * 7.91F, 0.5F) -
+                0.5F;
+        n2[k] = noise3(cx * kObjectRippleFreq2 / s + o * 5.13F,
+                       cy * kObjectRippleFreq2 / s + o * 9.27F, 1.5F) -
+                0.5F;
+    }
+    // Variance-preserving blend of the two phases (as river_flow_shade, E18).
+    const float norm = std::sqrt(w[0] * w[0] + w[1] * w[1]);
+    return s * (kObjectRippleGain1 * ((w[0] * n1[0] + w[1] * n1[1]) / norm) +
+                kObjectRippleGain2 * ((w[0] * n2[0] + w[1] * n2[1]) / norm));
 }
 
 Px shade_apply(Px rgba, Shade s) {
     const Waves& w = kWaves;
     const float brightness = 1.0F + s.light;
-    auto channel = [&](std::uint8_t c, float shallow, float white) {
+    auto channel = [&](std::uint8_t c, float shallow, float aeration, float white) {
         float v = static_cast<float>(c);
-        v = (v + (shallow * 255.0F - v) * s.tint) * brightness;
+        v = v + (shallow * 255.0F - v) * s.tint;
+        v = v + (aeration * 255.0F - v) * s.aeration;
+        v = v * brightness;
         v = v + (white - v) * s.foam;
         return sat_cast<std::uint8_t>(clampf(v, 0.0F, 255.0F));
     };
-    return {channel(rgba[0], w.shallow_colour[0], 236.0F),
-            channel(rgba[1], w.shallow_colour[1], 244.0F),
-            channel(rgba[2], w.shallow_colour[2], 250.0F), rgba[3]};
+    return {channel(rgba[0], w.shallow_colour[0], kAerationColour[0], 236.0F),
+            channel(rgba[1], w.shallow_colour[1], kAerationColour[1], 244.0F),
+            channel(rgba[2], w.shallow_colour[2], kAerationColour[2], 250.0F), rgba[3]};
 }
 
 } // namespace anno::render

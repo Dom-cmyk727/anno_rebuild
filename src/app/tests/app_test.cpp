@@ -171,9 +171,31 @@ TEST_CASE("command line") {
     CHECK(a->time == 1234);
     CHECK(a->water == anno::render::WaterStyle::Enhanced);
     CHECK(a->renderer == anno::app::Renderer::Cpu);
+    // The hydraulic extras of enhanced rivers.
+    const auto e = parse_args({"--view", "x.scp", "--river-extras", "standing,thalweg,picard:6"});
+    REQUIRE(e);
+    CHECK(e->river_standing);
+    CHECK(e->river_thalweg);
+    CHECK(e->river_picard == 6);
+    CHECK(e->river_obstacles);
+    CHECK(e->river_wake);
+    const auto f = parse_args({"--view", "x.scp", "--river-extras", "no-obstacles,no-wake"});
+    REQUIRE(f);
+    CHECK_FALSE(f->river_obstacles);
+    CHECK_FALSE(f->river_wake);
+    CHECK_FALSE(f->river_standing);
+    for (const std::string& bad_extra :
+         {"picard:0", "picard:x", "picard:65", "foam", "standing,", "", "standing,,thalweg"}) {
+        CHECK_FALSE(parse_args({"--view", "x.scp", "--river-extras", bad_extra}));
+    }
     // Defaults as the Rust viewer.
     const auto d = parse_args({"--view", "x.scp"});
     REQUIRE(d);
+    CHECK_FALSE(d->river_standing);
+    CHECK_FALSE(d->river_thalweg);
+    CHECK(d->river_picard == 0);
+    CHECK(d->river_obstacles);
+    CHECK(d->river_wake);
     CHECK_FALSE(d->group);
     CHECK(d->size == std::pair{1600, 900});
     CHECK(d->water == anno::render::WaterStyle::Original);

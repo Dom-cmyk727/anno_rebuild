@@ -15,6 +15,193 @@ namespace {
 
 constexpr float kNaN = std::numeric_limits<float>::quiet_NaN();
 
+/// How far (tiles) around a hole the dam test looks for a way past it: a river
+/// wide enough to go around an object within this reach is not dammed by it.
+constexpr std::int32_t kDamReachTiles = 3;
+
+/// The number of components that the cells of `ring` (indices of the raster)
+/// fall into among the wet cells that are not holes (and, unless
+/// `through_candidates`, not in `candidate`, a sorted list), 4-connected inside
+/// the window [wx0, wx1) x [wy0, wy1) (island cells).
+std::size_t ring_components(const RiverMask& mask, const std::vector<std::size_t>& ring,
+                            const std::vector<std::size_t>& candidate, bool through_candidates,
+                            std::int32_t wx0, std::int32_t wy0, std::int32_t wx1,
+                            std::int32_t wy1) {
+    const auto w = static_cast<std::size_t>(wx1 - wx0), h = static_cast<std::size_t>(wy1 - wy0);
+    std::vector<std::int32_t> label(w * h, -1);
+    auto local = [&](std::size_t i) {
+        const auto x = static_cast<std::int32_t>(i % mask.nx()) + mask.x0();
+        const auto y = static_cast<std::int32_t>(i / mask.nx()) + mask.y0();
+        return std::pair{x, y};
+    };
+    auto passable = [&](std::int32_t x, std::int32_t y) {
+        if (x < wx0 || y < wy0 || x >= wx1 || y >= wy1) {
+            return false;
+        }
+        const std::size_t i = mask.index(x, y);
+        if (i == RiverMask::npos || (mask.flags[i] & kWet) == 0 || (mask.flags[i] & kHole) != 0) {
+            return false;
+        }
+        return through_candidates || !std::binary_search(candidate.begin(), candidate.end(), i);
+    };
+    std::int32_t next = 0;
+    std::vector<std::pair<std::int32_t, std::int32_t>> stack;
+    std::vector<std::int32_t> seen_ring;
+    for (const std::size_t r : ring) {
+        const auto [x, y] = local(r);
+        if (!passable(x, y)) {
+            continue;
+        }
+        const std::size_t at =
+            static_cast<std::size_t>(y - wy0) * w + static_cast<std::size_t>(x - wx0);
+        if (label[at] < 0) {
+            label[at] = next;
+            stack.assign(1, {x, y});
+            while (!stack.empty()) {
+                const auto [px, py] = stack.back();
+                stack.pop_back();
+                for (int d = 0; d < 4; ++d) {
+                    const std::int32_t qx = px + (d == 0 ? -1 : d == 1 ? 1 : 0);
+                    const std::int32_t qy = py + (d == 2 ? -1 : d == 3 ? 1 : 0);
+                    if (!passable(qx, qy)) {
+                        continue;
+                    }
+                    const std::size_t qa =
+                        static_cast<std::size_t>(qy - wy0) * w + static_cast<std::size_t>(qx - wx0);
+                    if (label[qa] < 0) {
+                        label[qa] = next;
+                        stack.emplace_back(qx, qy);
+                    }
+                }
+            }
+            ++next;
+        }
+        seen_ring.push_back(label[at]);
+    }
+    std::sort(seen_ring.begin(), seen_ring.end());
+    return static_cast<std::size_t>(std::unique(seen_ring.begin(), seen_ring.end()) -
+                                    seen_ring.begin());
+}
+
+/// Marks the wet cells under the qualifying objects as holes (rivers.md 2.6).
+void apply_obstacles(RiverMask& mask, std::span<const Obstacle> objects, const RiverConfig& cfg) {
+    const auto c = static_cast<std::int32_t>(mask.cells_per_tile());
+    const float cf = static_cast<float>(c);
+    for (const Obstacle& o : objects) {
+        ObstacleInfo info;
+        info.object = o;
+        info.radius =
+            std::sqrt(static_cast<float>(std::max(o.w, 0) * std::max(o.h, 0)) / 3.14159265F);
+        if (o.w <= 0 || o.h <= 0) {
+            mask.obstacles.push_back(info);
+            continue;
+        }
+        if (static_cast<std::uint32_t>(o.w) * static_cast<std::uint32_t>(o.h) >
+            cfg.obstacle_max_area) {
+            info.result = ObstacleInfo::Result::TooBig;
+            mask.obstacles.push_back(info);
+            continue;
+        }
+        // Wet share of the whole footprint.
+        std::size_t wet = 0, total = 0;
+        for (std::int32_t cy = o.y * c; cy < (o.y + o.h) * c; ++cy) {
+            for (std::int32_t cx = o.x * c; cx < (o.x + o.w) * c; ++cx) {
+                ++total;
+                wet += mask.wet(cx, cy) ? 1U : 0U;
+            }
+        }
+        info.wet_share = total > 0 ? static_cast<float>(wet) / static_cast<float>(total) : 0.0F;
+        if (info.wet_share < cfg.obstacle_min_wet) {
+            info.result = ObstacleInfo::Result::NotWet;
+            mask.obstacles.push_back(info);
+            continue;
+        }
+        // The hole: wet cells whose centre lies in the footprint shrunk about
+        // its centre.
+        const float mx = static_cast<float>(o.x) + 0.5F * static_cast<float>(o.w);
+        const float my = static_cast<float>(o.y) + 0.5F * static_cast<float>(o.h);
+        const float hw = 0.5F * static_cast<float>(o.w) * (1.0F - cfg.obstacle_shrink);
+        const float hh = 0.5F * static_cast<float>(o.h) * (1.0F - cfg.obstacle_shrink);
+        std::vector<std::size_t> candidate;
+        for (std::int32_t cy = o.y * c; cy < (o.y + o.h) * c; ++cy) {
+            for (std::int32_t cx = o.x * c; cx < (o.x + o.w) * c; ++cx) {
+                const float x = (static_cast<float>(cx) + 0.5F) / cf;
+                const float y = (static_cast<float>(cy) + 0.5F) / cf;
+                const std::size_t i = mask.index(cx, cy);
+                if (i != RiverMask::npos && (mask.flags[i] & kWet) != 0 &&
+                    (mask.flags[i] & kHole) == 0 && std::fabs(x - mx) <= hw &&
+                    std::fabs(y - my) <= hh) {
+                    candidate.push_back(i);
+                }
+            }
+        }
+        if (candidate.empty()) {
+            info.result = ObstacleInfo::Result::NoCells;
+            mask.obstacles.push_back(info);
+            continue;
+        }
+        std::sort(candidate.begin(), candidate.end());
+        // The way past the object must be at least obstacle_gap_cells wide: the test
+        // blocks the hole dilated by one cell less, so that a slit between the hole
+        // and a bank (or another hole) narrower than the gap counts as closed.
+        const auto grow = static_cast<std::int32_t>(std::max(cfg.obstacle_gap_cells, 1U) - 1U);
+        std::vector<std::size_t> blocked;
+        for (const std::size_t i : candidate) {
+            const auto x = static_cast<std::int32_t>(i % mask.nx()) + mask.x0();
+            const auto y = static_cast<std::int32_t>(i / mask.nx()) + mask.y0();
+            for (std::int32_t dy = -grow; dy <= grow; ++dy) {
+                for (std::int32_t dx = -grow; dx <= grow; ++dx) {
+                    const std::size_t j = mask.index(x + dx, y + dy);
+                    if (j != RiverMask::npos && (mask.flags[j] & kWet) != 0 &&
+                        (mask.flags[j] & kHole) == 0) {
+                        blocked.push_back(j);
+                    }
+                }
+            }
+        }
+        std::sort(blocked.begin(), blocked.end());
+        blocked.erase(std::unique(blocked.begin(), blocked.end()), blocked.end());
+        // The ring: wet cells beside what is blocked (8-neighbourhood), not in it.
+        std::vector<std::size_t> ring;
+        std::int32_t bx0 = std::numeric_limits<std::int32_t>::max(), by0 = bx0;
+        std::int32_t bx1 = std::numeric_limits<std::int32_t>::min(), by1 = bx1;
+        for (const std::size_t i : blocked) {
+            const auto x = static_cast<std::int32_t>(i % mask.nx()) + mask.x0();
+            const auto y = static_cast<std::int32_t>(i / mask.nx()) + mask.y0();
+            bx0 = std::min(bx0, x), bx1 = std::max(bx1, x + 1);
+            by0 = std::min(by0, y), by1 = std::max(by1, y + 1);
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    const std::size_t j = mask.index(x + dx, y + dy);
+                    if (j != RiverMask::npos && (mask.flags[j] & kWet) != 0 &&
+                        (mask.flags[j] & kHole) == 0 &&
+                        !std::binary_search(blocked.begin(), blocked.end(), j)) {
+                        ring.push_back(j);
+                    }
+                }
+            }
+        }
+        std::sort(ring.begin(), ring.end());
+        ring.erase(std::unique(ring.begin(), ring.end()), ring.end());
+        const std::int32_t reach = kDamReachTiles * c;
+        const std::size_t before = ring_components(mask, ring, blocked, true, bx0 - reach,
+                                                   by0 - reach, bx1 + reach, by1 + reach);
+        const std::size_t after = ring_components(mask, ring, blocked, false, bx0 - reach,
+                                                  by0 - reach, bx1 + reach, by1 + reach);
+        if (after > before) {
+            info.result = ObstacleInfo::Result::Dam;
+            mask.obstacles.push_back(info);
+            continue;
+        }
+        for (const std::size_t i : candidate) {
+            mask.flags[i] = static_cast<std::uint8_t>(mask.flags[i] | kHole);
+        }
+        info.result = ObstacleInfo::Result::Hole;
+        info.hole_cells = candidate.size();
+        mask.obstacles.push_back(info);
+    }
+}
+
 } // namespace
 
 RiverMask::RiverMask(std::uint32_t cells_per_tile, std::int32_t x0, std::int32_t y0,
@@ -79,7 +266,8 @@ void RiverMask::set_level(std::int32_t cx, std::int32_t cy, float surface) {
 
 RiverMask RiverMask::from_island(const sea::IslandWater& iw,
                                  std::span<const sea::RiverPiece> pieces,
-                                 std::span<const SpriteCover> covers, const RiverConfig& cfg) {
+                                 std::span<const SpriteCover> covers, const RiverConfig& cfg,
+                                 std::span<const Obstacle> obstacles) {
     const std::uint32_t c = std::max(cfg.cells_per_tile, 1U);
     // Tile rectangle of everything that can carry water, plus the margin.
     bool any = false;
@@ -364,6 +552,11 @@ RiverMask RiverMask::from_island(const sea::IslandWater& iw,
             }
         }
     }
+    // Objects standing in the river (last: bridges and links are made on the
+    // water without them; a hole never cuts a river in two).
+    if (cfg.obstacles && !obstacles.empty()) {
+        apply_obstacles(mask, obstacles, cfg);
+    }
     return mask;
 }
 
@@ -530,7 +723,36 @@ river::RiverMask Scene::river_mask(std::size_t index, const river::RiverConfig& 
                                                    : river::SpriteCover::Kind::Mouth,
             false);
     }
-    return river::RiverMask::from_island(*iw, d.rivers, covers, cfg);
+    // Objects that may stand in the river as obstacles (rivers.md 2.6, D4):
+    // the reviewed ids only; from_island applies the footprint rules.
+    std::vector<river::Obstacle> obstacles;
+    if (cfg.obstacles && !cfg.obstacle_ids.empty()) {
+        for (const river::Obstacle& o : island_objects(index, cfg.obstacle_max_area)) {
+            if (std::find(cfg.obstacle_ids.begin(), cfg.obstacle_ids.end(), o.id) !=
+                cfg.obstacle_ids.end()) {
+                obstacles.push_back(o);
+            }
+        }
+    }
+    return river::RiverMask::from_island(*iw, d.rivers, covers, cfg, obstacles);
+}
+
+std::vector<river::Obstacle> Scene::island_objects(std::size_t index,
+                                                   std::uint32_t max_area) const {
+    std::vector<river::Obstacle> out;
+    if (index >= objects_.size()) {
+        return out;
+    }
+    for (const Prepared& p : objects_[index].other) {
+        const int w = p.second.first, h = p.second.second;
+        if (w <= 0 || h <= 0 ||
+            static_cast<std::uint32_t>(w) * static_cast<std::uint32_t>(h) > max_area) {
+            continue;
+        }
+        out.push_back(
+            {p.first.anlage, static_cast<int>(p.first.x), static_cast<int>(p.first.y), w, h});
+    }
+    return out;
 }
 
 } // namespace anno::render

@@ -18,7 +18,12 @@ namespace anno::app {
 inline constexpr const char* kUsage =
     "usage: anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png "
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
-    "[--river-flow legacy|flow] [--river-gain <x>] [--renderer auto|gpu|cpu]\n";
+    "[--river-flow legacy|flow] [--river-gain <x>] [--river-extras <list>] "
+    "[--renderer auto|gpu|cpu]\n"
+    "  --river-extras: comma separated options of the hydraulic extras of enhanced rivers "
+    "(docs/render/rivers.md 17): standing (standing waves), thalweg (the speed in bends "
+    "moves toward the outer bank), picard:N (N Picard steps of the Manning law), "
+    "no-obstacles, no-wake\n";
 
 /// World tiles accepted by --at: INSEL5 positions are u16 (docs/formats/insel.md);
 /// the margin keeps every projected coordinate inside int range.
@@ -45,6 +50,12 @@ struct Args {
     /// Multiplier of the river flow's ripple light (1 = calibrated to the
     /// legacy shimmer; larger shows the flow more clearly).
     float river_gain = 1.0F;
+    /// The hydraulic extras (--river-extras; RiverConfig has the meaning of each):
+    /// standing waves, the thalweg shift and the Picard steps are off by default,
+    /// obstacles (rocks are holes of the flow) and their wakes on.
+    bool river_standing = false, river_thalweg = false;
+    std::uint32_t river_picard = 0;
+    bool river_obstacles = true, river_wake = true;
     Renderer renderer = Renderer::Auto;
 };
 

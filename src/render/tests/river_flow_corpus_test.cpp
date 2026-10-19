@@ -219,7 +219,10 @@ Q5Result q5_blocks(const render::Scene& scene, std::size_t group, const Region& 
             }
             mux /= ok;
             muy /= ok;
-            if (std::hypot(mux, muy) < 0.4) {
+            // The main stems: since the rocks of the Nord island are holes with wakes
+            // (stage S7) its stem runs at 0.3-0.4 tiles/s, so the limit is 0.3 (a shift of
+            // 0.6 px in the 50 ms of the test, found to 0.1 px).
+            if (std::hypot(mux, muy) < 0.3) {
                 continue;
             }
             const float dts = static_cast<float>(dt) * 0.001F;
@@ -774,6 +777,96 @@ TEST_CASE("the flow shading changes river pixels only and the legacy look stays 
     }
 }
 
+TEST_CASE(
+    "river mouths keep the look of the sea: the flow shading reaches the pixels at the sea by "
+    "their share of the river only (Q8, game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    // A river pixel within kRiverBlend of the sea has the shore byte kb * 254 and is the sea's
+    // look at kb = 0 and the river's at 1 (sea::river_sea_mix). On the islands with mouths
+    // (Praerie, Nord) the flow shading therefore changes a pixel by about kb times what it
+    // changes it far from the sea: in bands of the shore byte the mean difference between the
+    // flow and the legacy look (levels of 255) rises with the band and is small at the sea.
+    for (const std::size_t which : {std::size_t{4}, std::size_t{1}}) {
+        const auto l = load(*dir, kIslands[which].path);
+        const render::Scene& scene = *l->scene;
+        INFO(kIslands[which].name);
+        // The chunk with the most river pixels at the sea (shore byte 1-40).
+        const auto bounds = scene.bounds(1);
+        REQUIRE(bounds);
+        render::Rect best_rect{};
+        std::size_t best = 0;
+        for (const auto& [cx, cy] : render::visible_chunks(*bounds)) {
+            const render::Chunk c = render::render_chunk(scene, 1, cx, cy, false, true);
+            if (c.field.empty()) {
+                continue;
+            }
+            std::size_t at_sea = 0;
+            for (std::size_t i = 0; i < c.field.size() / 4; ++i) {
+                const std::uint8_t cover = c.field[i * 4], shore = c.field[i * 4 + 1],
+                                   flags = c.field[i * 4 + 3];
+                at_sea += (flags & 2U) != 0 && cover != 0 && shore >= 1 && shore <= 40 ? 1U : 0U;
+            }
+            if (at_sea > best) {
+                best = at_sea;
+                best_rect = render::chunk_rect(cx, cy);
+            }
+        }
+        MESSAGE("the chunk at (" << best_rect.x << ", " << best_rect.y << ") has " << best
+                                 << " river pixels at the sea");
+        if (best < 100) {
+            MESSAGE("(too few river pixels at the sea in this island's view)");
+            continue;
+        }
+        render::Layers layers = render::Layers::all();
+        layers.time_ms = 700;
+        layers.water_style = render::WaterStyle::Enhanced;
+        layers.river_flow = render::RiverFlowMode::Flow;
+        const auto flow = scene.render(best_rect, 1, layers).first;
+        layers.river_flow = render::RiverFlowMode::Legacy;
+        const auto legacy = scene.render(best_rect, 1, layers).first;
+        const auto probe = scene.ground_with_probe(best_rect, 1).second;
+        const auto field = scene.water_field_from(best_rect, probe, 1);
+        std::vector<int> pure, near_sea; // largest channel difference, shore byte 254 / 1-40
+        for (std::size_t p = 0; p < field.flags.size(); ++p) {
+            if ((field.flags[p] & 2U) == 0 || field.cover[p] == 0 || field.shore[p] == 0) {
+                continue;
+            }
+            int d = 0;
+            for (std::size_t k = 0; k < 3; ++k) {
+                d = std::max(d,
+                             std::abs(int{flow.pixels[p * 4 + k]} - int{legacy.pixels[p * 4 + k]}));
+            }
+            const std::uint8_t sh = field.shore[p];
+            if (sh >= 254) {
+                pure.push_back(d);
+            } else if (sh <= 40) {
+                near_sea.push_back(d);
+            }
+        }
+        REQUIRE(pure.size() > 1000);
+        REQUIRE(near_sea.size() > 100);
+        std::sort(pure.begin(), pure.end());
+        const int far_d = pure[pure.size() * 999 / 1000]; // the river look's own difference
+        const int near_max = *std::max_element(near_sea.begin(), near_sea.end());
+        double near_mean = 0.0;
+        for (const int d : near_sea) {
+            near_mean += d;
+        }
+        near_mean /= static_cast<double>(near_sea.size());
+        MESSAGE("flow against legacy: the 99.9th percentile far from the sea "
+                << far_d << " levels, at the sea (shore byte 1-40, " << near_sea.size()
+                << " pixels) at most " << near_max << ", mean " << near_mean);
+        // The shore byte 40 is 16 % of the river's look: the difference there is at most that
+        // share of the largest difference of the river (and a level or two of rounding).
+        CHECK(far_d > 12);
+        CHECK(near_max <= static_cast<int>(std::ceil(40.0 / 254.0 * far_d * 1.25)) + 2);
+    }
+}
+
 TEST_CASE("the apron of the flow lattice is a thin strip, its cost is reported (game files)") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
@@ -1224,13 +1317,16 @@ TEST_CASE("the light of the flow shading against the legacy shimmer on real rive
                                  << rows[i].ratio[0] << ", group 1 " << rows[i].ratio[1]
                                  << ", group 2 " << rows[i].ratio[2]);
         // The measured ranges (2026-10-19, five QA islands): 0.78-0.98 at group 0,
-        // 0.51-0.59 at group 1, 0.42-0.50 at group 2.
+        // 0.51-0.59 at group 1, 0.42-0.50 at group 2 before the hydraulic extras
+        // (stage S5); with them (turbulence raises the glints near banks, in bends
+        // and in the lee of rocks, the Froude rule adds streaks) 1.08-1.23, 0.66-0.87
+        // and 0.47-0.73.
         CHECK(rows[i].ratio[0] > 0.6);
-        CHECK(rows[i].ratio[0] < 1.2);
+        CHECK(rows[i].ratio[0] < 1.5);
         CHECK(rows[i].ratio[1] > 0.4);
-        CHECK(rows[i].ratio[1] < 0.8);
+        CHECK(rows[i].ratio[1] < 1.05);
         CHECK(rows[i].ratio[2] > 0.3);
-        CHECK(rows[i].ratio[2] < 0.65);
+        CHECK(rows[i].ratio[2] < 0.9);
         for (std::size_t g = 0; g < 3; ++g) {
             mean[g] += rows[i].ratio[g] / static_cast<double>(rows.size());
         }

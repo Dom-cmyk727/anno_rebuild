@@ -118,12 +118,16 @@ bool run_shade(const render::Scene& scene, std::size_t group, render::Rect view,
     const float raise_px = static_cast<float>(scene.lift.scaled(render::kSeaLevel, 1, group));
     for (const std::uint64_t t : times) {
         std::vector<std::uint8_t> img(w * h * 4, 255);
+        // The water as it is drawn (tint, light and aeration on a flat open-water colour,
+        // no sea pattern, no objects): the look of the shading alone.
+        std::vector<std::uint8_t> col(w * h * 4, 255);
         for (std::size_t j = 0; j < h; ++j) {
             for (std::size_t i = 0; i < w; ++i) {
                 const std::size_t o = j * w + i;
                 std::uint8_t* p = &img[o * 4];
                 if ((flags[o] & 2U) == 0) {
                     p[0] = 14, p[1] = 14, p[2] = 24;
+                    col[o * 4] = 14, col[o * 4 + 1] = 14, col[o * 4 + 2] = 24;
                     continue;
                 }
                 const float px = static_cast<float>(view.x + static_cast<int>(i));
@@ -135,8 +139,11 @@ bool run_shade(const render::Scene& scene, std::size_t group, render::Rect view,
                 float light;
                 bool legacy = false;
                 if (f.valid >= scene.river_cfg.min_valid) {
-                    light =
-                        render::river_flow_shade(px, py, f, sd, slope, t, detail, params, rv).light;
+                    const render::Shade sh =
+                        render::river_flow_shade(px, py, f, sd, slope, t, detail, params, rv);
+                    light = sh.light;
+                    const render::Px c = render::shade_apply({50, 105, 140, 255}, sh);
+                    col[o * 4] = c[0], col[o * 4 + 1] = c[1], col[o * 4 + 2] = c[2];
                 } else {
                     const float pyw = py + raise_px;
                     light = render::river_shade(
@@ -160,6 +167,10 @@ bool run_shade(const render::Scene& scene, std::size_t group, render::Rect view,
             std::fprintf(stderr, "%s\n", err.c_str());
             return false;
         }
+        std::snprintf(file, sizeof file, "%s_g%zu_t%05llu_colour.png", name.c_str(), group,
+                      static_cast<unsigned long long>(t));
+        static_cast<void>(anno::app::write_png(out / file, static_cast<std::uint32_t>(w),
+                                               static_cast<std::uint32_t>(h), col));
     }
     // Quiver: flow direction on screen (hue), speed (value), arrows.
     std::vector<std::uint8_t> img(w * h * 4, 255);
@@ -222,6 +233,37 @@ bool run_shade(const render::Scene& scene, std::size_t group, render::Rect view,
                                                                           static_cast<float>(k))));
                 }
             }
+        }
+    }
+    // Extras (stage S7): turbulence in red, wake in green, the Froude number
+    // (0 to 1.5) in blue, over the river pixels; legacy-shimmer pixels magenta.
+    {
+        std::vector<std::uint8_t> ex(w * h * 4, 255);
+        for (std::size_t o = 0; o < w * h; ++o) {
+            std::uint8_t* p = &ex[o * 4];
+            if ((flags[o] & 2U) == 0) {
+                p[0] = 14, p[1] = 14, p[2] = 24;
+                continue;
+            }
+            const render::FlowSample& f = flows[o];
+            if (f.valid < scene.river_cfg.min_valid) {
+                p[0] = 255, p[1] = 0, p[2] = 255;
+                continue;
+            }
+            const float sd =
+                (static_cast<float>(depth[o]) - render::sea::kDepthBias) / render::sea::kDepthScale;
+            const float head = render::kHeightUnitTiles * std::max(sd, scene.river_cfg.h_min);
+            const float fr = std::hypot(f.vx, f.vy) / std::sqrt(scene.river_cfg.gravity * head);
+            p[0] = static_cast<std::uint8_t>(std::clamp(f.turb, 0.0F, 1.0F) * 255.0F);
+            p[1] = static_cast<std::uint8_t>(std::clamp(f.wake, 0.0F, 1.0F) * 255.0F);
+            p[2] = static_cast<std::uint8_t>(std::clamp(fr / 1.5F, 0.0F, 1.0F) * 255.0F);
+        }
+        char xfile[256];
+        std::snprintf(xfile, sizeof xfile, "%s_g%zu_extras.png", name.c_str(), group);
+        const std::string xerr = anno::app::write_png(out / xfile, static_cast<std::uint32_t>(w),
+                                                      static_cast<std::uint32_t>(h), ex);
+        if (!xerr.empty()) {
+            std::fprintf(stderr, "%s\n", xerr.c_str());
         }
     }
     char file[256];

@@ -638,25 +638,29 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Area:** render / rivers / flow
 - **What:** the solver uses the linear conveyance form (one SPD solve, `K ~ h^(5/3)`); the true Manning form `K = k_M h^(5/3) / (nu sqrt(|grad phi| + eps))` by Picard iteration (`RiverConfig::picard_iterations`, guarded, falls back per river) is ill-conditioned exactly where the data is flat.
 - **Why it may change the feel:** slightly different speed split at braids and falls; at best a refinement of a model that has no original to compare with.
-- **Faithful default implemented:** linear conveyance (`picard_iterations` 0). **Rules option:** `RiverConfig::picard_iterations`, to be built in S7.
+- **Status (S7, 2026-10-19):** built, guarded (relative slope floor 0.05, damping 0.7, per-river fall back to the linear solution when it does not converge in the cap; `FlowStats::picard_fallbacks`). Two arms of 8 and 16 tiles: flux ratio 1.89 linear (ideal 2), 1.38 Picard (ideal 1.41). `anno1503 --river-extras picard:6`, `river_qa --flow --picard 6`.
+- **Faithful default implemented:** linear conveyance (`picard_iterations` 0). **Rules option:** `RiverConfig::picard_iterations`.
 
 ## OQ-072: Standing waves at falls and fast reaches (rivers.md D3)
 - **Status:** open, owner decides (not built, S7)
 - **Area:** render / rivers / shading
 - **What:** Froude-number light bands (E12, E13) where the flow is supercritical, i.e. at the foot of falls and rapids.
-- **Why it may change the feel:** more visible structure at falls. **Faithful default:** off (`RiverConfig::standing_waves`, not built).
+- **Why it may change the feel:** more visible structure at falls. **Faithful default:** off (`RiverConfig::standing_waves`).
+- **Status (S7, 2026-10-19):** built (`anno1503 --river-extras standing`). Limit found while building it: the crest phase is the absolute tile coordinate along the flow, coherent in a straight reach (the cascades, where Fr > 0.5) and aliased where the direction changes (the failure of the removed stretch, rivers.md 15.7), so the amplitude fades with the shear; a streamline-following phase needs a baked channel (a fourth lattice texture, S9). Look at it before deciding.
 
 ## OQ-073: Which objects are flow obstacles (rivers.md D4)
 - **Status:** open, owner decides (not built, S7)
 - **Area:** render / rivers / flow
 - **What:** rocks and cliffs in the water would deflect the flow and shed a wake; the data has no object categories (`WALKMASK` meaning unknown), so the rule is a footprint test (<= 16 tiles, >= 50 % wet) AND a short id list (`RiverConfig::obstacle_ids`, candidates 1502-1508, 1549-1551, 1572-1577, 1580, 1581, unverified) to be reviewed on contact sheets.
-- **Faithful default:** no obstacles until the list is reviewed.
+- **Status (S7, 2026-10-19):** built and **on**, the list reviewed by sprite sheets and in-scene crops (rivers.md 17.2): the rocks and cliffs 1502, 1503, 1505-1508, 1535, 1548-1551, 1553, 1555, 1557, 1558, 1560, 1561, 1572-1577, 1580, 1581 (25 ids; the design's candidates plus eight more rocks; vegetation, bridges, lookouts and buildings are out). `RiverConfig::obstacle_ids` / `--river-extras no-obstacles`. A rock whose hole would cut its river or leave a way under 3 cells (`obstacle_gap_cells`) is refused and counted (362 of 2,207 over the corpus). The footprint rule makes a rock on a bank a hole of its wet half (>= 50 % wet); large 3 x 3 cliffs make stair-stepped holes that their sprites hide. Decide: the list, whether low outcrops (1557, 1558) count, the 50 % rule.
+- **Faithful default:** the reviewed list, as section 12 D4 says.
 
 ## OQ-074: Whitewater at falls and rapids (rivers.md D5)
 - **Status:** open, owner decides (partly built)
 - **Area:** render / rivers / shading
 - **What:** owner 2026-10-18: no foam on rivers. S5 keeps the legacy slope rule for the rapids (`smoothstep(5, 14, slope)`, brighter and livelier light, no foam, no white) and advects it along the flow; Froude-driven streaks and an aeration tint toward (0.62, 0.82, 0.90) come with S7.
-- **Faithful default implemented:** no foam, never white. **Rules option:** the rapids layer is `LayerConfig::rapids` in `RiverConfig::layers` (amplitude, scale, period) and `RiverConfig::rapids_base`.
+- **Status (S7, 2026-10-19):** the Froude rule is built: the rapids factor is `max(slope rule, smoothstep(0.55, 0.95, Fr))` with `Fr = |u| / sqrt(g max(depth, h_min))`, so fast shallow reaches (3.7 % of the cells of `D_256x256_0045_5B`, all at falls) get the streaks as well as the painted falls; aeration `0.35 x` that factor tints toward (0.62, 0.82, 0.90), never white; no foam. The thresholds and the strength are tuning values (OQ-092).
+- **Faithful default implemented:** no foam, never white. **Rules option:** the rapids layer is `LayerConfig::rapids` in `RiverConfig::layers` (amplitude, scale, period), `RiverConfig::rapids_base`, `froude_from` / `froude_to` and `aeration`.
 
 ## OQ-075: River width and edge (rivers.md D6)
 - **Status:** open, owner decides (not built; the shipped gap fix is the default)
@@ -691,7 +695,8 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 ## OQ-080: Thalweg shift in bends (rivers.md D12)
 - **Status:** open, owner decides (not built, S7)
 - **Area:** render / rivers / flow
-- **What:** potential flow is fastest at the inner bank of a bend, the opposite of nature; the optional correction (E14, `thalweg_shift`) moves the maximum to the outer bank. **Faithful default:** off; the inner-bank maximum is documented and tested.
+- **What:** potential flow is fastest at the inner bank of a bend, the opposite of nature; the optional correction (E14, `thalweg_shift`) moves the maximum toward the outer bank. **Faithful default:** off; the inner-bank maximum is documented and tested.
+- **Status (S7, 2026-10-19):** built (`--river-extras thalweg`). **Finding:** with the specified `beta` 0.35 the correction evens a bend out but does not reverse it: on a quarter-circle bend 4 tiles wide (radii 6 and 10) the outer-core over inner-core speed is 0.86 off, 0.97 at beta 0.35, 1.19 at beta 0.9 (the maximum moves from 0.37 to 0.47 to 0.57 of the width); the slope of the factor is at most `2 beta / W`, less than the `1 / r` of the vortex, so an outer-bank maximum needs beta above 0.5 (`thalweg_beta` up to 0.9 is allowed). Decide: leave it off, or beta 0.35 (calmer inner bank) or 0.6-0.9 (outer bank). Contact sheets with the three come with S8.
 
 ## OQ-081: River plume: momentum from mouths into the wave simulation (rivers.md D15)
 - **Status:** open, owner decides (not built)
@@ -756,3 +761,24 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What:** a river chunk now creates 8 textures instead of 5 on the window thread when its planes are not pooled, and the plane pool grew from 120 to 192 planes (`kPoolPlanes` 8 x 24, up to about 72 MB more of pooled 1 MB planes). A/B runs (baseline build against the working tree, 2560 x 1369, `--zoom 6`, 9 pairs): p50 0.3 to 0.4 ms every time, p95 and p99 equal, max outliers of 8-20 ms in both builds (one 16.7 ms `create` for 2 chunks at a group change, the baseline has the same class of stall at 17.3 ms, so it cannot be attributed to S6). Whether to trade pool memory and pre-created lattice textures for fewer stalls is a tuning call.
 - **Why it may change the feel:** nothing visible; occasional frame-time outliers at zoom changes versus memory.
 - **Faithful default implemented:** as built (documented, within the budget). **Options:** pre-create a few flow lattice planes at startup, or lower the cap; re-measure with 20 or more repetitions first.
+
+## OQ-091: Wake strength and length: rocks slow the rivers they stand in (new, stage S7; rivers.md D4, 17)
+- **Status:** open, owner decides
+- **Area:** render / rivers / flow
+- **What:** the lee of an obstacle is slowed by `1 - wake_slow x wake` with `wake = exp(-t / L)`, `L = wake_length x a_eff` (defaults 0.6 and 8; the design's numbers, tuning values). A 1 x 1 boulder has `L` = 4.5 tiles, a 3 x 3 cliff 13.5 tiles. `N_256x256_0006_2B` has 48 rocks in its river: 5 % of its cells have a wake and the p95 speed fell from 0.441 to 0.343 tiles/s (the discharge reference does not change, the wakes alone do); its main stem now runs at 0.3-0.4 tiles/s (the Q5 main-stem limit of the corpus test went from 0.4 to 0.3). The slowing is a cheat (the discharge is not conserved in the lee, rivers.md 2.9); the darkening (0.06) and the streak boost (1.6) are not about speed.
+- **Why it may change the feel:** rivers with many rocks look slower and more varied; with `wake_slow` 0 only the direction changes around the rocks.
+- **Faithful default implemented:** the design's values. **Rules option:** `RiverConfig::wake`, `wake_length`, `wake_slow`, `--river-extras no-wake`.
+
+## OQ-092: Turbulence weights and the Froude rule make the default look livelier (new, stage S7; rivers.md 2.7, 17)
+- **Status:** open, owner decides
+- **Area:** render / rivers / shading
+- **What:** with the turbulence channel (bank shear, bends, rapids, wake; weights 0.35 / 0.5 per radian / 0.5, tuning values) raising the glint layers and the Froude rule adding streaks, the standard deviation of the river light over the legacy shimmer's is 1.08-1.23 / 0.66-0.87 / 0.47-0.73 at groups 0 / 1 / 2 (mean 1.17 / 0.74 / 0.57) on the five QA islands, against 0.78-0.98 / 0.51-0.59 / 0.42-0.50 before S7: 25-30 % livelier, still quiet at groups 1 and 2 (OQ-083). The aeration (0.35, toward (0.62, 0.82, 0.90)) is visible only at falls and fast shallow reaches (the Tundra island's fall is a band of lighter blue-green). The cost on the GPU is +1.3 % (RTX 4090 0.083 ms per million river pixels, iGPU 14.35 ms).
+- **Why it may change the feel:** how much the banks, bends and rocks stir the surface, how much of the rivers look aerated.
+- **Faithful default implemented:** the design's weights. **Rules option:** `RiverConfig::turb_*`, `froude_from`, `froude_to`, `aeration`, `wake_dark`, `wake_boost`, `light_gain`.
+
+## OQ-093: The ripple of objects standing in a river (new, stage S7; iso.md "Water against objects")
+- **Status:** open, owner decides
+- **Area:** render / gpu / rivers
+- **What:** the waterline ripple of a rock or a pier in a river was two fixed sines along the screen's x axis. With a river flow at its foot it is now two layers of value noise carried by the two-phase flow map along the screen velocity (`iso::object_river_ripple`, the legacy ripple's standard deviation 0.334 px at group 0): it drifts with the water. The sines could not be carried: blended by the flow-map weights they breathe by +-41 %. Without a flow (legacy mode, a pixel without lattice) the old sine stays. GPU only, as the feature is.
+- **Why it may change the feel:** the contact line of a rock moves with the river instead of oscillating in place.
+- **Faithful default implemented:** the noise ripple on rivers with a flow. **Rules option:** `R` (legacy river mode) keeps the old ripple; `GpuLimits::object_waterline` turns the whole feature off.

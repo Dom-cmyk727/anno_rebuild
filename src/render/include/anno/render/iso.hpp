@@ -426,10 +426,19 @@ float wave_height(float k, std::pair<float, float> pos);
 /// of `slope` (Hunt 1959, R = ξ · H).
 float runup_height(float a, float slope);
 
-/// (light, foam, tint) of an enhanced-water pixel.
+/// One HEIGHT unit in tiles (docs/render/iso.md, "Elevation": 0.04 world units).
+inline constexpr float kHeightUnitTiles = 0.04F;
+
+/// (light, foam, tint, aeration) of an enhanced-water pixel. Aeration is the
+/// mix toward kAerationColour of rapids (rivers.md 2.8, D5: never white, no
+/// foam on rivers); only the river flow shading sets it.
 struct Shade {
-    float light = 0, foam = 0, tint = 0;
+    float light = 0, foam = 0, tint = 0, aeration = 0;
 };
+/// The colour (0-1 per channel) that aerated river water turns toward: a light
+/// blue-green, between the shallow tint and the foam white (rivers.md 2.8).
+/// Tuning value.
+inline constexpr std::array<float, 3> kAerationColour = {0.62F, 0.82F, 0.90F};
 Shade wave_shade(float dist, float depth, float beach_slope, std::pair<float, float> pos,
                  std::uint64_t time_ms, float detail);
 /// Shore distance (tiles) of the sea look blended into rivers at the coast:
@@ -500,6 +509,17 @@ struct RiverParams {
     /// Constant brightening of a full rapids layer; the shear fade of
     /// layers (T |grad u| from `shear_from` to `shear_to`).
     float rapids_base = 0.05F, shear_from = 0.5F, shear_to = 1.5F;
+    /// Stage S7 (rivers.md 2.5-2.8; RiverConfig has the meaning of each): the
+    /// Froude number is |u| / sqrt(gravity * 0.04 * max(depth, depth_min))
+    /// from the baked velocity and the pixel's water depth (HEIGHT units); the
+    /// rapids factor is max(slope rule, smoothstep(froude_from, froude_to, Fr));
+    /// aeration, wake and standing waves follow.
+    float froude_from = 0.55F, froude_to = 0.95F, gravity = 14.0625F, depth_min = 1.5F;
+    float aeration = 0.35F, wake_dark = 0.06F, wake_boost = 0.6F;
+    /// Standing waves: off (0) or on (1), amplitude, Froude range, wavelength
+    /// range (tiles).
+    float standing = 0.0F, standing_amp = 0.05F, standing_from = 0.5F, standing_to = 1.0F;
+    float standing_min = 0.45F, standing_max = 2.5F;
     std::array<RiverLayer, kMaxRiverLayers> layers{};
 };
 
@@ -543,6 +563,23 @@ float flow_psi(std::array<float, 2> x);
 Shade river_flow_shade(float px, float py, const FlowSample& f, float depth, float slope,
                        std::uint64_t time_ms, float detail, const RiverParams& params,
                        const RiverView& view);
+
+/// Period (ms; divides 3,600,000, so the hourly wrap is seamless) of the flow map
+/// that carries the waterline ripple of objects standing in a river.
+inline constexpr float kObjectRipplePeriodMs = 1600.0F;
+/// The ripple (pixels) of the waterline of an object standing in a river
+/// (water against objects, docs/render/iso.md; twin of WGSL
+/// `object_river_ripple`): two layers of value noise (a cell of 10 and of 3.8
+/// pixels at zoom group 0, the sizes of the legacy ripple's two sines) carried
+/// by the two-phase flow map along the water's screen velocity (vpx, vpy) in
+/// pixels / s, so a crest drifts with the river exactly; the weights of the two
+/// phases blend variance-preserving as in river_flow_shade. (fx, fy) is the
+/// scene pixel of the object's column and of its foot, `s` the zoom group's
+/// scale (tile height / 42). The gains make its standard deviation that of the
+/// legacy ripple, 0.334 s pixels (0.4 and 0.25 times a sine).
+inline constexpr float kObjectRippleFreq1 = 0.1F, kObjectRippleFreq2 = 0.26F;
+inline constexpr float kObjectRippleGain1 = 1.9F, kObjectRippleGain2 = 1.2F;
+float object_river_ripple(float fx, float fy, float s, std::uint64_t time_ms, float vpx, float vpy);
 
 /// `rgba` tinted, lit and whitened by `s`.
 Px shade_apply(Px rgba, Shade s);

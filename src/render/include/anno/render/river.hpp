@@ -28,7 +28,7 @@
 namespace anno::render::river {
 
 /// One HEIGHT unit in tiles (docs/render/iso.md, "Elevation": 0.04 world units).
-inline constexpr float kUnitTiles = 0.04F;
+inline constexpr float kUnitTiles = kHeightUnitTiles;
 
 /// The largest lattice stride (pixels per texel) the GPU compositor can carry: its
 /// chunk flag word keeps the stride in bits 8-15 (gpu.hpp kChunkStrideShift), so 8
@@ -52,6 +52,12 @@ struct LayerConfig {
 /// shading equals the legacy shimmer's (+-20 %; test "the flow shading keeps
 /// the legacy shimmer's light variance").
 std::vector<LayerConfig> default_layers();
+
+/// The Anlagen ids that are flow obstacles by default (RiverConfig::
+/// obstacle_ids): rocks and cliffs that stand in rivers, reviewed on contact
+/// sheets (rivers.md 17.2, OQ-091). None is evidence of a category: the data
+/// has no object categories.
+std::vector<std::uint32_t> default_obstacle_ids();
 
 /// The tunables of the river model (PLAN 0.1: data, not constants). Every
 /// value below is a tuning value or derived (rivers.md 2); none is evidence
@@ -219,6 +225,76 @@ struct RiverConfig {
     /// owner, docs/open-questions.md).
     float light_gain = 1.0F;
 
+    // --- Stage S7: hydraulic extras (rivers.md 2.5-2.7, 17) ---
+
+    /// Gravity in tiles / s^2: the wave simulation's deep_speed^2 / (depth_cap *
+    /// kUnitTiles) = 3^2 / (16 * 0.04) (rivers.md 2.1, FluidConfig::gravity()
+    /// per HEIGHT unit over kUnitTiles; a test compares them). Froude number
+    /// Fr = |u| / sqrt(g h) (E12).
+    float gravity = 14.0625F;
+
+    /// Obstacles (rivers.md 2.6, D4): objects that stand in the river become
+    /// holes of the hydraulic domain. An object qualifies when its Anlagen id
+    /// is in obstacle_ids (the list reviewed on contact sheets, OQ-073), its
+    /// footprint has at most obstacle_max_area tiles and at least
+    /// obstacle_min_wet of the footprint's cells are wet. The hole is the wet
+    /// cells of the footprint shrunk by obstacle_shrink about its centre. An
+    /// object whose hole would cut its river in two (a dam), or leave a way
+    /// narrower than obstacle_gap_cells cells (a slit makes a jet), is left out
+    /// and counted (RiverMask::obstacles). false: no holes.
+    bool obstacles = true;
+    std::vector<std::uint32_t> obstacle_ids = default_obstacle_ids();
+    std::uint32_t obstacle_max_area = 16, obstacle_gap_cells = 3;
+    float obstacle_min_wet = 0.5F, obstacle_shrink = 0.15F;
+    /// Wake (lee) channel (rivers.md 2.6): a cell whose upstream trace of
+    /// wake_length * a_eff tiles (a_eff = radius of the disc with the
+    /// footprint's area) meets a hole gets wake = exp(-t / (wake_length *
+    /// a_eff)), t the distance to the hole; its speed is multiplied by
+    /// 1 - wake_slow * wake. false: no wake (the holes still deflect the flow).
+    bool wake = true;
+    float wake_length = 8.0F, wake_slow = 0.6F;
+
+    /// Turbulence (rivers.md 2.7, E16): the weights of the bank shear layer
+    /// (reaching turb_bank_tiles from the bank), the change of direction over
+    /// +-0.5 tile (per radian) and the rapids (Froude from turb_fr_from to
+    /// turb_fr_to). Tuning values.
+    float turb_bank = 0.35F, turb_bank_tiles = 0.4F, turb_bend = 0.5F, turb_rapids = 0.5F;
+    float turb_fr_from = 0.45F, turb_fr_to = 0.95F;
+
+    /// Picard refinement of the Manning conveyance (rivers.md 2.3, D1b): the
+    /// true law K = k_M h^(5/3) / (nu sqrt(|grad phi|)) by up to
+    /// picard_iterations further solves (0 = the linear conveyance, default).
+    /// Guarded: the slope is floored at picard_floor of the river's mean slope
+    /// (the data is flat in places), the update is damped by picard_relax, an
+    /// iteration that does not converge within picard_tolerance (relative change
+    /// of the potential) by the cap, or whose solve fails, leaves that river with
+    /// its linear solution (FlowStats::picard_fallbacks).
+    std::uint32_t picard_iterations = 0;
+    float picard_floor = 0.05F, picard_relax = 0.7F, picard_tolerance = 1e-3F;
+
+    /// Thalweg shift (rivers.md 2.5, E14, D12): in a bend the speed is moved
+    /// from the inner to the outer bank by 1 + thalweg_beta * tanh(|kappa| W) *
+    /// n_hat (kappa the curvature of the streamlines in 1/tile, W the width of
+    /// the channel, n_hat in [-1, 1] across the channel, positive towards the
+    /// outer bank), renormalised so that the mean over the cross-section
+    /// keeps. Off: potential flow, whose maximum sits at the inner bank.
+    bool thalweg_shift = false;
+    float thalweg_beta = 0.35F;
+
+    /// Shading of the extras (rivers.md 2.5, 2.6, 2.8), see RiverParams.
+    /// Streaks and aeration follow max(slope rule, Froude rule): Froude from
+    /// froude_from to froude_to; aeration is the strength of the tint toward
+    /// the aeration colour at full rapids (never white); a cell in a wake is
+    /// darkened by wake_dark and its streaks raised by wake_boost. Standing
+    /// waves (off by default, D3): light bands of amplitude standing_amp where
+    /// the Froude number reaches standing_from..standing_to, wavelength
+    /// 2 pi u^2 / g clamped to standing_min..standing_max tiles (E13).
+    float froude_from = 0.55F, froude_to = 0.95F;
+    float aeration = 0.35F, wake_dark = 0.06F, wake_boost = 0.6F;
+    bool standing_waves = false;
+    float standing_amp = 0.05F, standing_from = 0.5F, standing_to = 1.0F;
+    float standing_min = 0.45F, standing_max = 2.5F;
+
     /// Empty when the shading tables are consistent: every layer period
     /// divides 3,600,000 ms (the hourly time wrap), at most kMaxRiverLayers
     /// layers, one positive lattice stride per zoom group dividing the chunk
@@ -286,6 +362,33 @@ inline constexpr std::uint8_t kMouth = 4;   ///< inside a river-mouth sprite (27
 inline constexpr std::uint8_t kFall = 8;    ///< inside a waterfall sprite (2702)
 inline constexpr std::uint8_t kSprite = 16; ///< wet only through a sprite, not the terrain test
 inline constexpr std::uint8_t kBridge = 32; ///< channel carved across a gap at a fall or mouth
+inline constexpr std::uint8_t kHole =
+    64; ///< wet cell under an obstacle (an object in the river): no flow
+
+/// An object that may stand in the river as an obstacle (rivers.md 2.6): its
+/// Anlagen id and its footprint in island tiles, [x, x + w) x [y, y + h).
+struct Obstacle {
+    std::uint32_t id = 0;
+    int x = 0, y = 0, w = 1, h = 1;
+};
+
+/// What RiverMask::from_island made of an Obstacle.
+struct ObstacleInfo {
+    Obstacle object;
+    /// Fraction of the footprint's cells that are wet.
+    float wet_share = 0;
+    /// Hole cells set (0 when the object was not used).
+    std::size_t hole_cells = 0;
+    /// Radius (tiles) of the disc with the footprint's area (a_eff).
+    float radius = 0;
+    enum class Result : std::uint8_t {
+        Hole,    ///< used
+        NotWet,  ///< less of the footprint is wet than obstacle_min_wet
+        TooBig,  ///< footprint above obstacle_max_area
+        Dam,     ///< the hole would cut the river in two
+        NoCells, ///< the shrunk footprint holds no wet cell
+    } result = Result::NotWet;
+};
 
 /// What a river sprite contributes to the raster (computed by Scene from the
 /// sprite's alpha at zoom group 0; rivers.md R1).
@@ -355,10 +458,13 @@ class RiverMask {
     RiverMask(std::uint32_t cells_per_tile, std::int32_t x0, std::int32_t y0, std::uint32_t nx,
               std::uint32_t ny);
 
-    /// The raster of island `iw` from its river pieces and sprite covers.
+    /// The raster of island `iw` from its river pieces and sprite covers; the
+    /// objects of `obstacles` that qualify (RiverConfig::obstacles and its
+    /// rules; the caller selects by id) become holes (kHole) at the end.
     static RiverMask from_island(const sea::IslandWater& iw,
                                  std::span<const sea::RiverPiece> pieces,
-                                 std::span<const SpriteCover> covers, const RiverConfig& cfg);
+                                 std::span<const SpriteCover> covers, const RiverConfig& cfg,
+                                 std::span<const Obstacle> obstacles = {});
 
     [[nodiscard]] std::uint32_t cells_per_tile() const { return c_; }
     [[nodiscard]] std::int32_t x0() const { return x0_; }
@@ -388,6 +494,8 @@ class RiverMask {
     std::vector<float> level;
     /// Channels carved at falls and mouths by from_island.
     std::size_t bridges = 0;
+    /// What became of every object given to from_island.
+    std::vector<ObstacleInfo> obstacles;
 
   private:
     std::uint32_t c_ = 8;
@@ -434,6 +542,13 @@ struct FlowStats {
     float floor_fraction = 0, cap_fraction = 0;
     /// Non-finite values found in the result (must stay 0).
     std::size_t non_finite = 0;
+    /// Stage S7: hole cells (obstacles), cells with a wake, rivers solved with
+    /// the Picard refinement and rivers that kept the linear solution because
+    /// it did not converge or the solve failed, the largest number of Picard
+    /// steps, cells moved by the thalweg shift.
+    std::size_t hole_cells = 0, wake_cells = 0, picard_rivers = 0, picard_fallbacks = 0,
+                thalweg_cells = 0;
+    std::uint32_t picard_steps = 0;
     /// Wall time of build (diagnostic only; never part of the result).
     double build_ms = 0;
 };
@@ -465,14 +580,18 @@ class RiverFlow {
         std::uint32_t river = 0;
         /// Surface slope |grad Z| (HEIGHT units per tile).
         float slope = 0;
+        /// Stage S7: turbulence 0-1 (E16), wake 0-1 (2.6) and the Froude
+        /// number |u| / sqrt(g h) (E12).
+        float turb = 0, wake = 0, froude = 0;
         std::uint8_t flags = 0;
     };
     static constexpr std::uint32_t kPond = 0xFFFFFFFFU;
     /// Cell flags.
-    static constexpr std::uint8_t kOutlet = 1;   ///< has a sea-facing face
-    static constexpr std::uint8_t kFallback = 2; ///< Eikonal field (solve failed)
-    static constexpr std::uint8_t kPseudo = 4;   ///< pseudo outlet of a sea-less river
-    static constexpr std::uint8_t kSeaLess = 8;  ///< a cell of a river without sea contact
+    static constexpr std::uint8_t kOutlet = 1;    ///< has a sea-facing face
+    static constexpr std::uint8_t kFallback = 2;  ///< Eikonal field (solve failed)
+    static constexpr std::uint8_t kPseudo = 4;    ///< pseudo outlet of a sea-less river
+    static constexpr std::uint8_t kSeaLess = 8;   ///< a cell of a river without sea contact
+    static constexpr std::uint8_t kHoleCell = 16; ///< under an obstacle: u = 0, no flow through it
 
     struct Sample {
         std::array<float, 2> u{0, 0};
@@ -481,6 +600,8 @@ class RiverFlow {
         float valid = 0;
         /// River surface level (HEIGHT units), weighted the same way.
         float level = 0;
+        /// Turbulence and wake (0-1), weighted the same way.
+        float turb = 0, wake = 0;
     };
 
     /// The flow on `mask`. Pure and deterministic.

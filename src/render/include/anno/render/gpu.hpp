@@ -177,7 +177,7 @@ inline constexpr std::uint32_t kChunkStrideShift = 8;
 inline constexpr std::uint32_t kFlowVelocityBinding = 6, kFlowAuxBinding = 7, kFlowShearBinding = 8;
 inline constexpr std::uint32_t kRiverParamsBinding = 7;
 /// Bytes of the river parameter uniform (struct RiverParams in gpu.wgsl).
-inline constexpr std::size_t kRiverParamsBytes = 32 + 32 * kMaxRiverLayers;
+inline constexpr std::size_t kRiverParamsBytes = 96 + 32 * kMaxRiverLayers;
 /// The river parameter uniform of `p` (layers beyond kMaxRiverLayers dropped);
 /// `min_valid` is RiverConfig::min_valid.
 std::vector<std::uint8_t> river_params_bytes(const RiverParams& p, float min_valid);

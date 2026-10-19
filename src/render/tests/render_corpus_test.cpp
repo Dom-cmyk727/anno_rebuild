@@ -36,6 +36,19 @@
 // digests (test "legacy river shading reproduces the shimmer"). The lines
 // differ only in river pixels (checked by pixel comparison against the legacy
 // render in the river flow corpus test: no non-river pixel changes).
+// Fourth exception since 2026-10-19 (hydraulic extras, docs/render/rivers.md
+// section 17, stage S7): river pixels also carry the turbulence channel (the glints
+// rise near banks, in bends and in the lee of rocks), the Froude rule of the rapids
+// (streaks and the aeration tint where fast shallow water is near critical), the
+// darkening of wakes, and the rocks that stand in rivers are holes of the flow
+// (the flow goes around them); the Enhanced lines that contain river pixels changed
+// once more, the same set as in the third exception (Single_01 g2, Single_06 g2,
+// Single_10 g2, Single_14 g2, Single_24 g2, Single_24's g1 region, and the
+// Single_24 g2 and g1 frames) and nothing else: every Original line, every Enhanced
+// line without river pixels and the legacy river look (--river-flow legacy: the
+// test "legacy river shading reproduces the previous enhanced digests") are
+// unchanged, and the river flow corpus test finds no non-river pixel that differs
+// between the flow and the legacy look.
 // Set ANNO_PRINT_DIGESTS=1 to print the lines.
 #include <algorithm>
 #include <chrono>
@@ -204,7 +217,7 @@ digest_lines(const std::filesystem::path& dir, std::string_view only = {},
 const std::vector<std::string> kExpected = {
     "Single_01.sze g2 t0 Original 16960x9170 2f0395814262894d drawn=69864 inv=11717 failed=0 "
     "units=5",
-    "Single_01.sze g2 t2500 Enhanced 16960x9170 c173c978c6ae696b drawn=69256 inv=11717 failed=0 "
+    "Single_01.sze g2 t2500 Enhanced 16960x9170 1b627644cdcb463a drawn=69256 inv=11717 failed=0 "
     "units=5",
     "Single_01.sze g1 region Original f3c82ff0f061887a drawn=24371 units=0",
     "Single_01.sze g1 region Enhanced 38fa6edcf261fb33 drawn=24110 units=0",
@@ -214,7 +227,7 @@ const std::vector<std::string> kExpected = {
     "Single_05.sze g1 region Original c90b2060847e2a1f drawn=4603 units=0",
     "Single_05.sze g1 region Enhanced 7bc859ab6cbbe7d0 drawn=4603 units=0",
     "Single_06.sze g2 t0 Original 7280x4451 3f1ba536788d1526 drawn=13778 inv=3084 failed=0 units=3",
-    "Single_06.sze g2 t2500 Enhanced 7280x4451 0eda75c6891a3e3d drawn=13626 inv=3084 failed=0 "
+    "Single_06.sze g2 t2500 Enhanced 7280x4451 7091860c7033025f drawn=13626 inv=3084 failed=0 "
     "units=3",
     "Single_06.sze g1 region Original 81d690c94bbb0fc5 drawn=599 units=0",
     "Single_06.sze g1 region Enhanced 27da1a1ded12c916 drawn=599 units=0",
@@ -225,7 +238,7 @@ const std::vector<std::string> kExpected = {
     "Single_08.sze g1 region Enhanced 226bdaf64c2c1073 drawn=6670 units=0",
     "Single_10.sze g2 t0 Original 17440x9131 059c44e48f227c12 drawn=53212 inv=8756 failed=0 "
     "units=1",
-    "Single_10.sze g2 t2500 Enhanced 17440x9131 7151216672105309 drawn=52883 inv=8756 failed=0 "
+    "Single_10.sze g2 t2500 Enhanced 17440x9131 b4d15e6fef4dddcb drawn=52883 inv=8756 failed=0 "
     "units=1",
     "Single_10.sze g1 region Original 13acfeb61e56be15 drawn=0 units=0",
     "Single_10.sze g1 region Enhanced 135943759028480b drawn=0 units=0",
@@ -236,7 +249,7 @@ const std::vector<std::string> kExpected = {
     "Single_12.sze g1 region Enhanced f75cd5ed42ab42b5 drawn=7295 units=0",
     "Single_14.sze g2 t0 Original 14080x9291 23b01ba36bfbcc8c drawn=47209 inv=9450 failed=0 "
     "units=3",
-    "Single_14.sze g2 t2500 Enhanced 14080x9291 fe84bb91f57b406e drawn=47064 inv=9450 failed=0 "
+    "Single_14.sze g2 t2500 Enhanced 14080x9291 476b95046013b12c drawn=47064 inv=9450 failed=0 "
     "units=3",
     "Single_14.sze g1 region Original 323ce1b9064247a3 drawn=16735 units=1",
     "Single_14.sze g1 region Enhanced a5f9c1083372b79b drawn=16681 units=1",
@@ -252,10 +265,10 @@ const std::vector<std::string> kExpected = {
     "Single_16.sze g1 region Enhanced 8a3caa97f52c354a drawn=1384 units=0",
     "Single_24.sze g2 t0 Original 7200x2811 768dbcffaa6380e2 drawn=24577 inv=2880 failed=0 "
     "units=541",
-    "Single_24.sze g2 t2500 Enhanced 7200x2811 8cd51f3c175b9611 drawn=24406 inv=2880 failed=0 "
+    "Single_24.sze g2 t2500 Enhanced 7200x2811 e636c9dc0decba44 drawn=24406 inv=2880 failed=0 "
     "units=541",
     "Single_24.sze g1 region Original 610c80610617b85a drawn=23697 units=0",
-    "Single_24.sze g1 region Enhanced 5f8671f1b63761f6 drawn=23526 units=0",
+    "Single_24.sze g1 region Enhanced e0628666acefca8d drawn=23526 units=0",
     "N_064x064_0001_0B.scp g2 t0 Original 1280x891 d73b254ebe87486f drawn=949 inv=338 failed=0 "
     "units=0",
     "N_064x064_0001_0B.scp g2 t2500 Enhanced 1280x891 5118c7e5cf5c0b0f drawn=930 inv=338 failed=0 "
@@ -392,10 +405,10 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
         "Single_01.sze g0 t900 Enhanced 5298e2b2d0786b1f",
         "Single_24.sze g2 t0 Original e7894f5a1560f7d2",
         "Single_24.sze g2 t900 Original 154c9a87f81f5ff5",
-        "Single_24.sze g2 t900 Enhanced 1c4dd9c8aab9b746",
+        "Single_24.sze g2 t900 Enhanced 8a5e7a76f1f27ca4",
         "Single_24.sze g1 t0 Original a17a423d76e40c10",
         "Single_24.sze g1 t900 Original 9c02fbfb3767584d",
-        "Single_24.sze g1 t900 Enhanced c98bde27b8efb888",
+        "Single_24.sze g1 t900 Enhanced 1f8fcd55b85216c7",
         "Single_24.sze g0 t0 Original 6b07c0d4d77df178",
         "Single_24.sze g0 t900 Original b9a7aaa3f213ac65",
         "Single_24.sze g0 t900 Enhanced 56f35854554ef7ce",

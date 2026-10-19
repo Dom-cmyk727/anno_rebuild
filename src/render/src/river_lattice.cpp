@@ -34,6 +34,20 @@ std::vector<LayerConfig> default_layers() {
     };
 }
 
+std::vector<std::uint32_t> default_obstacle_ids() {
+    // Reviewed on sprite sheets and in-scene crops of every id that has at least
+    // half of a footprint of at most 16 tiles in river water somewhere in the
+    // corpus (river_qa --obstacles, rivers.md 17.2): the rocks and cliffs. The
+    // design's candidates (1502-1508, 1549-1551, 1572-1577, 1580, 1581) all are
+    // rocks; the review adds 1535, 1548, 1553, 1555, 1557, 1558, 1560, 1561 and
+    // drops nothing except what is not a rock: vegetation (ids below 1000, 1x1),
+    // the bridges 3956 / 3961, the lookouts 2536 / 2537, the crate 2530 and the
+    // block 3974, which water passes under or that are not in the water. No
+    // category of the data says so (OQ-073).
+    return {1502, 1503, 1505, 1506, 1507, 1508, 1535, 1548, 1549, 1550, 1551, 1553, 1555,
+            1557, 1558, 1560, 1561, 1572, 1573, 1574, 1575, 1576, 1577, 1580, 1581};
+}
+
 std::string RiverConfig::validate(std::uint32_t chunk_px, std::size_t groups) const {
     if (layers.size() > kMaxRiverLayers) {
         return "more than " + std::to_string(kMaxRiverLayers) + " river layers";
@@ -86,6 +100,44 @@ std::string RiverConfig::validate(std::uint32_t chunk_px, std::size_t groups) co
     if (!(shear_to > shear_from)) {
         return "shear_to must exceed shear_from";
     }
+    // Stage S7.
+    auto finite_in = [](float v, float lo, float hi) {
+        return std::isfinite(v) && v >= lo && v <= hi;
+    };
+    if (!(std::isfinite(gravity) && gravity > 0.0F)) {
+        return "gravity must be positive";
+    }
+    if (!(froude_to > froude_from) || !finite_in(froude_from, 0.0F, 100.0F) ||
+        !finite_in(froude_to, 0.0F, 100.0F)) {
+        return "froude_to must exceed froude_from (both non-negative)";
+    }
+    if (!(turb_fr_to > turb_fr_from) || !(turb_bank_tiles > 0.0F)) {
+        return "turb_fr_to must exceed turb_fr_from and turb_bank_tiles must be positive";
+    }
+    if (!finite_in(aeration, 0.0F, 1.0F) || !finite_in(wake_dark, 0.0F, 1.0F) ||
+        !finite_in(wake_boost, 0.0F, 100.0F) || !finite_in(wake_slow, 0.0F, 1.0F)) {
+        return "aeration, wake_dark and wake_slow must be 0..1, wake_boost non-negative";
+    }
+    if (!(wake_length > 0.0F) || !std::isfinite(wake_length)) {
+        return "wake_length must be positive";
+    }
+    if (!finite_in(obstacle_min_wet, 0.0F, 1.0F) || !finite_in(obstacle_shrink, 0.0F, 0.9F) ||
+        obstacle_gap_cells > 64) {
+        return "obstacle_min_wet must be 0..1, obstacle_shrink 0..0.9, obstacle_gap_cells 0..64";
+    }
+    if (!(standing_to > standing_from) || !(standing_min > 0.0F) ||
+        !(standing_max >= standing_min) || !std::isfinite(standing_amp)) {
+        return "standing waves: standing_to must exceed standing_from, 0 < standing_min <= "
+               "standing_max";
+    }
+    if (picard_iterations > 64 || !finite_in(picard_floor, 1e-6F, 1.0F) ||
+        !finite_in(picard_relax, 0.05F, 1.0F) || !(picard_tolerance > 0.0F)) {
+        return "picard: at most 64 iterations, picard_floor 1e-6..1, picard_relax 0.05..1";
+    }
+    if (!finite_in(thalweg_beta, 0.0F, 0.9F)) {
+        return "thalweg_beta must be 0..0.9 (a larger shift would reverse the flow at the inner "
+               "bank)";
+    }
     return {};
 }
 
@@ -94,6 +146,19 @@ RiverParams RiverConfig::params() const {
     p.rapids_base = rapids_base;
     p.shear_from = shear_from;
     p.shear_to = shear_to;
+    p.froude_from = froude_from;
+    p.froude_to = froude_to;
+    p.gravity = gravity;
+    p.depth_min = h_min;
+    p.aeration = aeration;
+    p.wake_dark = wake_dark;
+    p.wake_boost = wake_boost;
+    p.standing = standing_waves ? 1.0F : 0.0F;
+    p.standing_amp = standing_amp;
+    p.standing_from = standing_from;
+    p.standing_to = standing_to;
+    p.standing_min = standing_min;
+    p.standing_max = standing_max;
     p.count = static_cast<std::uint32_t>(std::min(layers.size(), kMaxRiverLayers));
     for (std::size_t i = 0; i < p.count; ++i) {
         const LayerConfig& l = layers[i];

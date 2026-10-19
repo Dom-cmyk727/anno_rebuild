@@ -1272,7 +1272,7 @@ river::FlowPlane Scene::flow_plane(Rect area, std::size_t group, const sea::Scen
                     shear2 += du * du + dv * dv;
                 }
             }
-            river::set_texel(plane, i, j, f.u[0], f.u[1], f.valid, 0.0F, 0.0F, f.level,
+            river::set_texel(plane, i, j, f.u[0], f.u[1], f.valid, f.turb, f.wake, f.level,
                              river_cfg.velocity_max, std::sqrt(shear2));
             any = true;
         }

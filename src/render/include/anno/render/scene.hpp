@@ -290,6 +290,12 @@ class Scene {
     /// window thread and never per chunk.
     [[nodiscard]] river::RiverMask river_mask(std::size_t index,
                                               const river::RiverConfig& cfg) const;
+    /// The objects of island `index` that could stand in a river: the ground
+    /// objects (not the water pieces) whose footprint has at most `max_area`
+    /// tiles, in draw order. river_mask uses the ones with an id in
+    /// RiverConfig::obstacle_ids; river_qa --obstacles lists them all.
+    [[nodiscard]] std::vector<river::Obstacle> island_objects(std::size_t index,
+                                                              std::uint32_t max_area) const;
     /// QA/debug: river, waterfall and mouth pieces of island `index`.
     [[nodiscard]] std::size_t river_piece_count(std::size_t index) const;
     /// Water depth for the wave simulation at world tile (x, y).

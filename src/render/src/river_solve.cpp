@@ -498,7 +498,7 @@ RiverFlow::Sample RiverFlow::sample(float tx, float ty) const {
     const float a = fx - flx, b = fy - fly;
     const auto ix = static_cast<std::int32_t>(flx), iy = static_cast<std::int32_t>(fly);
     Sample s;
-    float sum = 0.0F, ux = 0.0F, uy = 0.0F, level = 0.0F;
+    float sum = 0.0F, ux = 0.0F, uy = 0.0F, level = 0.0F, turb = 0.0F, wake = 0.0F;
     for (int dy = 0; dy < 2; ++dy) {
         for (int dx = 0; dx < 2; ++dx) {
             const std::size_t k = cell_at(ix + dx, iy + dy);
@@ -510,11 +510,15 @@ RiverFlow::Sample RiverFlow::sample(float tx, float ty) const {
             ux += w * cells_[k].ux;
             uy += w * cells_[k].uy;
             level += w * cells_[k].level;
+            turb += w * cells_[k].turb;
+            wake += w * cells_[k].wake;
         }
     }
     if (sum > 0.0F) {
         s.u = {ux / sum, uy / sum};
         s.level = level / sum;
+        s.turb = turb / sum;
+        s.wake = wake / sum;
     }
     s.valid = sum;
     return s;
@@ -548,6 +552,8 @@ RiverFlow::Sample RiverFlow::sample_extended(float tx, float ty) const {
     Sample out;
     out.u = {w * s.u[0] + (1.0F - w) * n.ux, w * s.u[1] + (1.0F - w) * n.uy};
     out.level = w * s.level + (1.0F - w) * n.level;
+    out.turb = w * s.turb + (1.0F - w) * n.turb;
+    out.wake = w * s.wake + (1.0F - w) * n.wake;
     out.valid = w + (1.0F - w) * fade;
     return out;
 }
@@ -610,10 +616,22 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
         net.level[i] = mask.level[mi];
         net.bed[i] = mask.bed[mi];
         net.flags[i] = mask.flags[mi];
+        st.hole_cells += (net.flags[i] & kHole) != 0 ? 1U : 0U;
+    }
+    // Obstacles (rivers.md 2.6): a hole is in the raster and the result but not
+    // in the graph: no face to or from it, so the water goes around.
+    auto is_hole = [&](std::int32_t id) {
+        return id >= 0 && (net.flags[static_cast<std::size_t>(id)] & kHole) != 0;
+    };
+    for (std::size_t i = 0; i < net.n; ++i) {
+        if (is_hole(static_cast<std::int32_t>(i))) {
+            continue;
+        }
         for (std::size_t d = 0; d < 4; ++d) {
             const std::int32_t nx = net.cx[i] + kDx[d], ny = net.cy[i] + kDy[d];
-            net.nb[4 * i + d] = id_at(nx, ny);
-            if (net.nb[4 * i + d] < 0 && (mask.flags_at(nx, ny) & kSea) != 0) {
+            const std::int32_t j = id_at(nx, ny);
+            net.nb[4 * i + d] = is_hole(j) ? -1 : j;
+            if (j < 0 && (mask.flags_at(nx, ny) & kSea) != 0) {
                 net.sea_face[i] = static_cast<std::uint8_t>(net.sea_face[i] | (1U << d));
                 ++st.outlet_faces;
             }
@@ -658,10 +676,16 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
     // a bank is a dry neighbour that is not sea (sea is an opening).
     net.dbank.assign(net.n, 1e9F);
     {
+        // An object in the river is not a bank: no roughness layer around it (the
+        // layer of a rough bank, 1 tile deep, would make a rock act as one 1.5 times
+        // as wide as it is: the potential flow of rivers.md E15 is the reference).
         auto bank_at = [&](std::int32_t cx, std::int32_t cy) {
             return id_at(cx, cy) < 0 && (mask.flags_at(cx, cy) & kSea) == 0;
         };
         for (std::size_t i = 0; i < net.n; ++i) {
+            if (is_hole(static_cast<std::int32_t>(i))) {
+                continue; // stays far: not part of the graph
+            }
             float best = 1e9F;
             for (int dy = -1; dy <= 1; ++dy) {
                 for (int dx = -1; dx <= 1; ++dx) {
@@ -674,7 +698,7 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
         }
         auto relax = [&](std::size_t i, std::int32_t dx, std::int32_t dy, float step) {
             const std::int32_t j = id_at(net.cx[i] + dx, net.cy[i] + dy);
-            if (j >= 0) {
+            if (j >= 0 && !is_hole(j) && !is_hole(static_cast<std::int32_t>(i))) {
                 net.dbank[i] =
                     std::min(net.dbank[i], net.dbank[static_cast<std::size_t>(j)] + step);
             }
@@ -746,6 +770,9 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
         std::vector<std::int32_t> stack, members;
         std::vector<std::uint8_t> seen(net.n, 0);
         for (std::size_t s = 0; s < net.n; ++s) {
+            seen[s] = is_hole(static_cast<std::int32_t>(s)) ? 1 : 0;
+        }
+        for (std::size_t s = 0; s < net.n; ++s) {
             if (seen[s]) {
                 continue;
             }
@@ -778,6 +805,14 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
         }
     }
     st.components = rivers.size();
+
+    // The obstacle cells (net indices), for the discharge reference.
+    std::vector<std::size_t> hole_cells;
+    for (std::size_t i = 0; i < net.n; ++i) {
+        if (is_hole(static_cast<std::int32_t>(i))) {
+            hole_cells.push_back(i);
+        }
+    }
 
     // --- per river: potential, fluxes, velocities ---
     std::vector<float> ux(net.n, 0.0F), uy(net.n, 0.0F), dgx(net.n, 0.0F), dgy(net.n, 0.0F);
@@ -1012,10 +1047,15 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
             b_total += v;
         }
 
+        // The linear operator is kept when the Picard refinement may need it.
+        Operator base;
+        if (cfg.picard_iterations > 0) {
+            base = a;
+        }
         Solver solver(std::move(a), cfg);
         std::vector<double> phi;
         const std::uint32_t its = solver.solve(b, phi, cfg.cg_tolerance, cfg.cg_max_iterations);
-        const double res = solver.residual(b, phi);
+        double res = solver.residual(b, phi);
         bool finite = true;
         for (const double v : phi) {
             finite = finite && std::isfinite(v);
@@ -1026,6 +1066,91 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
             st.levels = static_cast<std::uint32_t>(solver.levels());
         }
         st.iterations = std::max(st.iterations, std::min(its, cfg.cg_max_iterations));
+
+        // Picard refinement of the Manning conveyance (rivers.md 2.3, D1b):
+        // flux = K0 (dphi / sqrt|dphi|) instead of K0 dphi, i.e. every face
+        // conducts K0 / sqrt(slope), the slope in units of the river's mean face
+        // slope (phi has arbitrary units) and floored (the data is flat in
+        // places: the conductance stays within 1 / sqrt(floor) of K0). Damped,
+        // and guarded: no convergence within the cap, a failed solve or a
+        // non-finite potential leave the river with its linear solution.
+        bool picard_used = false;
+        std::vector<double> pic_g, pic_scale;
+        if (ok && cfg.picard_iterations > 0) {
+            ++st.picard_rivers;
+            const double floor_s = static_cast<double>(cfg.picard_floor);
+            const double relax = static_cast<double>(cfg.picard_relax);
+            std::vector<double> cur_g = base.g, cur_scale(m, 1.0), phi_k = phi;
+            bool converged = false, broken = false;
+            double last_res = res;
+            for (std::uint32_t it = 1; it <= cfg.picard_iterations && !converged && !broken; ++it) {
+                double sum = 0.0;
+                std::size_t count = 0;
+                for (std::size_t k = 0; k < m; ++k) {
+                    for (std::size_t d = 0; d < 4; ++d) {
+                        const std::int32_t lj = base.nb[4 * k + d];
+                        if (lj >= 0 && static_cast<std::size_t>(lj) > k) {
+                            sum += std::fabs(phi_k[k] - phi_k[static_cast<std::size_t>(lj)]);
+                            ++count;
+                        }
+                    }
+                }
+                const double sbar = count > 0 ? sum / static_cast<double>(count) : 0.0;
+                if (!(sbar > 0.0) || !std::isfinite(sbar)) {
+                    broken = true;
+                    break;
+                }
+                Operator op = base;
+                for (std::size_t k = 0; k < m; ++k) {
+                    for (std::size_t d = 0; d < 4; ++d) {
+                        const std::int32_t lj = base.nb[4 * k + d];
+                        if (lj < 0) {
+                            continue;
+                        }
+                        const double s = std::fabs(phi_k[k] - phi_k[static_cast<std::size_t>(lj)]);
+                        const double target =
+                            base.g[4 * k + d] / std::sqrt(std::max(s / sbar, floor_s));
+                        op.g[4 * k + d] = (1.0 - relax) * cur_g[4 * k + d] + relax * target;
+                    }
+                    if (base.sink[k] > 0.0) {
+                        const double target =
+                            1.0 / std::sqrt(std::max(std::fabs(phi_k[k]) / sbar, floor_s));
+                        const double scale = (1.0 - relax) * cur_scale[k] + relax * target;
+                        op.sink[k] = base.sink[k] * scale;
+                        cur_scale[k] = scale;
+                    }
+                }
+                op.finish();
+                cur_g = op.g;
+                Solver again(std::move(op), cfg);
+                std::vector<double> phi_new;
+                static_cast<void>(again.solve(b, phi_new, cfg.cg_tolerance, cfg.cg_max_iterations));
+                last_res = again.residual(b, phi_new);
+                bool fin = true;
+                double dn = 0.0, pn = 0.0;
+                for (std::size_t k = 0; k < m; ++k) {
+                    fin = fin && std::isfinite(phi_new[k]);
+                    dn += (phi_new[k] - phi_k[k]) * (phi_new[k] - phi_k[k]);
+                    pn += phi_new[k] * phi_new[k];
+                }
+                if (!fin || !(last_res <= cfg.residual_limit) || !(pn > 0.0)) {
+                    broken = true;
+                    break;
+                }
+                phi_k = std::move(phi_new);
+                st.picard_steps = std::max(st.picard_steps, it);
+                converged = std::sqrt(dn / pn) <= static_cast<double>(cfg.picard_tolerance);
+            }
+            if (converged && !broken) {
+                phi = std::move(phi_k);
+                res = last_res;
+                pic_g = std::move(cur_g);
+                pic_scale = std::move(cur_scale);
+                picard_used = true;
+            } else {
+                ++st.picard_fallbacks;
+            }
+        }
 
         std::vector<std::array<double, 2>> q(m, {0.0, 0.0});
         if (ok) {
@@ -1040,16 +1165,17 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
                     if (j >= 0) {
                         const auto lj =
                             static_cast<std::size_t>(local[static_cast<std::size_t>(j)]);
-                        f[d] = (phi[k] - phi[lj]) * 2.0 * net.K[i] *
-                               net.K[static_cast<std::size_t>(j)] /
-                               (net.K[i] + net.K[static_cast<std::size_t>(j)]);
+                        f[d] = picard_used ? (phi[k] - phi[lj]) * pic_g[4 * k + d]
+                                           : (phi[k] - phi[lj]) * 2.0 * net.K[i] *
+                                                 net.K[static_cast<std::size_t>(j)] /
+                                                 (net.K[i] + net.K[static_cast<std::size_t>(j)]);
                     } else if (((net.sea_face[i] >> d) & 1U) != 0) {
-                        f[d] = phi[k] * net.K[i];
+                        f[d] = phi[k] * net.K[i] * (picard_used ? pic_scale[k] : 1.0);
                         out_flux += f[d];
                     }
                 }
                 if ((cell_flags[i] & kPseudo) != 0) {
-                    out_flux += phi[k] * net.K[i];
+                    out_flux += phi[k] * net.K[i] * (picard_used ? pic_scale[k] : 1.0);
                 }
                 q[k] = {0.5 * (f[1] - f[0]), 0.5 * (f[3] - f[2])};
             }
@@ -1093,14 +1219,53 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
                     band_h[band] += static_cast<double>(net.h[static_cast<std::size_t>(cells[k])]);
                     ++band_n[band];
                 }
+                // An object stands in the cross-section it narrows: its cells keep
+                // their depth in the band of the nearest cell of this river
+                // (looked for within hole_reach cells), but pass no inflow. Left
+                // out, a rock in a two-tile river would be the narrowest section
+                // and set the speed of the whole river (a fix: obstacles change
+                // the flow around them, not the scale of the river).
+                std::vector<double> hole_h(max_band + 1, 0.0);
+                std::vector<std::size_t> hole_n(max_band + 1, 0);
+                constexpr std::int32_t kHoleReach = 16;
+                for (const std::size_t hc : hole_cells) {
+                    std::int32_t found = -1;
+                    for (std::int32_t r = 1; r <= kHoleReach && found < 0; ++r) {
+                        double nearest = 1e30;
+                        for (std::int32_t dy = -r; dy <= r; ++dy) {
+                            for (std::int32_t dx = -r; dx <= r; ++dx) {
+                                if (std::max(std::abs(dx), std::abs(dy)) != r) {
+                                    continue;
+                                }
+                                const std::int32_t j = id_at(net.cx[hc] + dx, net.cy[hc] + dy);
+                                if (j >= 0 && !is_hole(j) &&
+                                    net.comp[static_cast<std::size_t>(j)] ==
+                                        static_cast<std::int32_t>(ri)) {
+                                    const double dj = dist[static_cast<std::size_t>(
+                                        local[static_cast<std::size_t>(j)])];
+                                    if (dj < nearest) {
+                                        nearest = dj;
+                                        found = j;
+                                    }
+                                }
+                            }
+                        }
+                        if (found >= 0) {
+                            const auto band = static_cast<std::size_t>(std::floor(nearest));
+                            hole_h[band] += static_cast<double>(net.h[hc]);
+                            ++hole_n[band];
+                        }
+                    }
+                }
                 double best = 0.0;
                 std::size_t beyond = 0; // cells in bands beyond k
                 for (std::size_t k = max_band + 1; k-- > 0;) {
                     const std::size_t passed = beyond + band_n[k];
-                    if (band_n[k] >= cfg.out_min_cells && band_h[k] > 0.0 &&
+                    if (band_n[k] + hole_n[k] >= cfg.out_min_cells && band_h[k] + hole_h[k] > 0.0 &&
                         static_cast<double>(passed) >=
                             static_cast<double>(cfg.out_flux_share) * static_cast<double>(m)) {
-                        best = std::max(best, static_cast<double>(passed) / (delta * band_h[k]));
+                        best = std::max(best, static_cast<double>(passed) /
+                                                  (delta * (band_h[k] + hole_h[k])));
                     }
                     beyond = passed;
                 }
@@ -1297,9 +1462,215 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
         }
     }
 
+    // --- the nearest cell of a tile position (the post-processing below reads the
+    // finished field along lines: curvature, lateral sections, wake traces) ---
+    auto cell_of = [&](double tx, double ty) -> std::int32_t {
+        return id_at(static_cast<std::int32_t>(std::floor(tx * c)),
+                     static_cast<std::int32_t>(std::floor(ty * c)));
+    };
+    auto tile_x = [&](std::size_t i) { return (static_cast<double>(net.cx[i]) + 0.5) * delta; };
+    auto tile_y = [&](std::size_t i) { return (static_cast<double>(net.cy[i]) + 0.5) * delta; };
+    // A cell that conducts (not an obstacle).
+    auto flows = [&](std::int32_t id) { return id >= 0 && !is_hole(id); };
+
+    // --- thalweg shift (rivers.md 2.5, E14, D12; off by default): in a bend
+    // potential flow is fastest at the inner bank, rivers are fastest at the
+    // outer one (secondary flow). Each cell's speed is scaled by
+    // 1 + beta tanh(|kappa| W) n_hat, then by the mean of that factor over the
+    // lateral section through it, so the section keeps its mean speed.
+    if (cfg.thalweg_shift && cfg.thalweg_beta > 0.0F) {
+        const double span = 0.5;  // tiles, the curvature's finite difference
+        const double reach = 4.0; // tiles, the longest lateral section
+        const auto max_steps = static_cast<int>(reach * c);
+        auto unit_at = [&](double tx, double ty, std::array<double, 2>& e) {
+            const std::int32_t id = cell_of(tx, ty);
+            if (!flows(id) || net.comp[static_cast<std::size_t>(id)] < 0) {
+                return false;
+            }
+            const auto k = static_cast<std::size_t>(id);
+            const double sp = std::hypot(static_cast<double>(ux[k]), static_cast<double>(uy[k]));
+            if (sp < 1e-6) {
+                return false;
+            }
+            e = {static_cast<double>(ux[k]) / sp, static_cast<double>(uy[k]) / sp};
+            return true;
+        };
+        // Cells of the lateral section on one side: until the river ends.
+        auto side = [&](std::size_t i, double nx, double ny, double sign,
+                        std::vector<std::int32_t>& section) {
+            int n = 0;
+            for (; n < max_steps; ++n) {
+                const double d = delta * static_cast<double>(n + 1);
+                const std::int32_t id =
+                    cell_of(tile_x(i) + sign * nx * d, tile_y(i) + sign * ny * d);
+                if (!flows(id) || net.comp[static_cast<std::size_t>(id)] != net.comp[i]) {
+                    break;
+                }
+                section.push_back(id);
+            }
+            return (static_cast<double>(n) + 0.5) * delta; // to the bank face
+        };
+        std::vector<double> fac(net.n, 1.0);
+        for (std::size_t i = 0; i < net.n; ++i) {
+            if (net.comp[i] < 0 || is_hole(static_cast<std::int32_t>(i))) {
+                continue;
+            }
+            const double sp = std::hypot(static_cast<double>(ux[i]), static_cast<double>(uy[i]));
+            if (sp < 1e-6) {
+                continue;
+            }
+            const double ex = static_cast<double>(ux[i]) / sp, ey = static_cast<double>(uy[i]) / sp;
+            const double nlx = -ey, nly = ex; // left of the flow
+            std::array<double, 2> ep{}, em{};
+            double kappa = 0.0;
+            if (unit_at(tile_x(i) + span * ex, tile_y(i) + span * ey, ep) &&
+                unit_at(tile_x(i) - span * ex, tile_y(i) - span * ey, em)) {
+                kappa = ((ep[0] - em[0]) * nlx + (ep[1] - em[1]) * nly) / (2.0 * span);
+            }
+            if (kappa == 0.0) {
+                continue;
+            }
+            std::vector<std::int32_t> sec;
+            const double dl = side(i, nlx, nly, 1.0, sec), dr = side(i, nlx, nly, -1.0, sec);
+            const double w = dl + dr;
+            const double pos_left = (dr - dl) / w;
+            const double n_hat = kappa > 0.0 ? -pos_left : pos_left; // + toward the outer bank
+            fac[i] = 1.0 + static_cast<double>(cfg.thalweg_beta) * std::tanh(std::fabs(kappa) * w) *
+                               n_hat;
+        }
+        std::vector<float> nx_u = ux, ny_u = uy;
+        for (std::size_t i = 0; i < net.n; ++i) {
+            if (fac[i] == 1.0) {
+                continue;
+            }
+            const double sp = std::hypot(static_cast<double>(ux[i]), static_cast<double>(uy[i]));
+            const double nlx = -static_cast<double>(uy[i]) / sp,
+                         nly = static_cast<double>(ux[i]) / sp;
+            std::vector<std::int32_t> sec;
+            side(i, nlx, nly, 1.0, sec);
+            side(i, nlx, nly, -1.0, sec);
+            double mean = fac[i];
+            for (const std::int32_t id : sec) {
+                mean += fac[static_cast<std::size_t>(id)];
+            }
+            mean /= static_cast<double>(sec.size() + 1);
+            if (mean > 0.2) {
+                nx_u[i] = static_cast<float>(static_cast<double>(ux[i]) * fac[i] / mean);
+                ny_u[i] = static_cast<float>(static_cast<double>(uy[i]) * fac[i] / mean);
+                ++st.thalweg_cells;
+            }
+        }
+        ux = std::move(nx_u);
+        uy = std::move(ny_u);
+    }
+
+    // --- obstacles: no flow in a hole; the wake (lee) of an object slows the
+    // water behind it (rivers.md 2.6). A cell's wake is exp(-t / L) when the
+    // straight line traced from it against its own flow direction meets a hole
+    // after t tiles (the shadow of the object along the local flow; following the
+    // curved streamline instead would find only the one streamline that ends at
+    // the object), L = wake_length times the radius of the object, 0 otherwise.
+    std::vector<float> wake(net.n, 0.0F);
+    for (std::size_t i = 0; i < net.n; ++i) {
+        if (is_hole(static_cast<std::int32_t>(i))) {
+            ux[i] = uy[i] = 0.0F;
+        }
+    }
+    if (cfg.wake && st.hole_cells > 0) {
+        std::vector<float> hole_len(net.n, 0.0F); // wake length (tiles) of the hole's object
+        std::vector<std::uint8_t> near(net.n, 0);
+        double lmax = 0.0;
+        for (const ObstacleInfo& o : mask.obstacles) {
+            if (o.result != ObstacleInfo::Result::Hole) {
+                continue;
+            }
+            const double len = static_cast<double>(cfg.wake_length) * static_cast<double>(o.radius);
+            lmax = std::max(lmax, len);
+            const auto reach = static_cast<std::int32_t>(std::ceil(len * c));
+            const std::int32_t x0 = o.object.x * static_cast<std::int32_t>(c);
+            const std::int32_t y0 = o.object.y * static_cast<std::int32_t>(c);
+            const std::int32_t x1 = (o.object.x + o.object.w) * static_cast<std::int32_t>(c);
+            const std::int32_t y1 = (o.object.y + o.object.h) * static_cast<std::int32_t>(c);
+            for (std::int32_t y = y0 - reach; y < y1 + reach; ++y) {
+                for (std::int32_t x = x0 - reach; x < x1 + reach; ++x) {
+                    const std::int32_t id = id_at(x, y);
+                    if (id < 0) {
+                        continue;
+                    }
+                    near[static_cast<std::size_t>(id)] = 1;
+                    if (x >= x0 && x < x1 && y >= y0 && y < y1 && is_hole(id)) {
+                        hole_len[static_cast<std::size_t>(id)] = static_cast<float>(len);
+                    }
+                }
+            }
+        }
+        const double step = 0.5 * delta;
+        for (std::size_t i = 0; i < net.n; ++i) {
+            if (near[i] == 0 || net.comp[i] < 0 || is_hole(static_cast<std::int32_t>(i))) {
+                continue;
+            }
+            const double sp0 = std::hypot(static_cast<double>(ux[i]), static_cast<double>(uy[i]));
+            if (sp0 < 1e-6) {
+                continue;
+            }
+            const double dx = -static_cast<double>(ux[i]) / sp0 * step;
+            const double dy = -static_cast<double>(uy[i]) / sp0 * step;
+            double px = tile_x(i), py = tile_y(i), t = 0.0;
+            while (t <= lmax) {
+                px += dx;
+                py += dy;
+                t += step;
+                const std::int32_t id = cell_of(px, py);
+                if (id < 0) {
+                    break;
+                }
+                const auto k = static_cast<std::size_t>(id);
+                if (hole_len[k] > 0.0F) {
+                    const double len = static_cast<double>(hole_len[k]);
+                    if (t <= len) {
+                        wake[i] = static_cast<float>(std::exp(-t / len));
+                        ++st.wake_cells;
+                    }
+                    break;
+                }
+                if (net.comp[k] < 0) {
+                    break;
+                }
+            }
+        }
+        // One smoothing pass of the wake over the river (a wake edge that follows
+        // single cells would show the grid), then the lee is slower.
+        std::vector<float> sw = wake;
+        for (std::size_t i = 0; i < net.n; ++i) {
+            if (near[i] == 0 || net.comp[i] < 0) {
+                continue;
+            }
+            double wsum = 0.0, acc = 0.0;
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    const std::int32_t j = id_at(net.cx[i] + dx, net.cy[i] + dy);
+                    if (j < 0 || net.comp[static_cast<std::size_t>(j)] != net.comp[i]) {
+                        continue;
+                    }
+                    const double w = (dx == 0 ? 2.0 : 1.0) * (dy == 0 ? 2.0 : 1.0);
+                    wsum += w;
+                    acc += w * static_cast<double>(wake[static_cast<std::size_t>(j)]);
+                }
+            }
+            sw[i] = static_cast<float>(acc / wsum);
+        }
+        wake = std::move(sw);
+        for (std::size_t i = 0; i < net.n; ++i) {
+            const float slow = 1.0F - cfg.wake_slow * wake[i];
+            ux[i] *= slow;
+            uy[i] *= slow;
+        }
+    }
+
     // --- export ---
     out.cells_.resize(net.n);
-    std::vector<float> speeds(net.n);
+    std::vector<float> speeds;
+    speeds.reserve(net.n);
     double speed_sum = 0.0;
     for (std::size_t i = 0; i < net.n; ++i) {
         Cell& cell = out.cells_[i];
@@ -1312,19 +1683,61 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
         cell.river = net.comp[i] < 0 ? kPond : static_cast<std::uint32_t>(net.comp[i]);
         cell.slope = net.slope[i];
         cell.flags = cell_flags[i];
+        cell.wake = wake[i];
+        if (is_hole(static_cast<std::int32_t>(i))) {
+            cell.flags = static_cast<std::uint8_t>(cell.flags | RiverFlow::kHoleCell);
+        }
         if (!std::isfinite(cell.ux) || !std::isfinite(cell.uy)) {
             ++st.non_finite;
             cell.ux = cell.uy = 0.0F;
         }
-        speeds[i] = std::hypot(cell.ux, cell.uy);
-        speed_sum += speeds[i];
+        const float speed = std::hypot(cell.ux, cell.uy);
+        cell.froude = speed / std::sqrt(cfg.gravity * cell.depth);
+        if ((cell.flags & RiverFlow::kHoleCell) == 0) {
+            speeds.push_back(speed);
+            speed_sum += speed;
+        }
+    }
+    // --- turbulence (rivers.md 2.7, E16): the bank shear layer, the change of
+    // direction over +-0.5 tile (bends, confluences), the rapids (Froude) and
+    // the wake, each from a physical quantity of the solved field; used by the
+    // shading to raise the small layers. Ponds are calm.
+    for (std::size_t i = 0; i < net.n; ++i) {
+        Cell& cell = out.cells_[i];
+        if (net.comp[i] < 0 || (cell.flags & RiverFlow::kHoleCell) != 0) {
+            continue;
+        }
+        const double sdf = std::max(static_cast<double>(net.dbank[i]) - 0.5, 0.0) * delta;
+        float turb = cfg.turb_bank * smoothstep(cfg.turb_bank_tiles, 0.0F, static_cast<float>(sdf));
+        const float sp = std::hypot(cell.ux, cell.uy);
+        if (sp > 1e-4F) {
+            const float ex = cell.ux / sp, ey = cell.uy / sp;
+            const auto ahead = out.sample(static_cast<float>(tile_x(i)) + 0.5F * ex,
+                                          static_cast<float>(tile_y(i)) + 0.5F * ey);
+            const auto behind = out.sample(static_cast<float>(tile_x(i)) - 0.5F * ex,
+                                           static_cast<float>(tile_y(i)) - 0.5F * ey);
+            const float sa = std::hypot(ahead.u[0], ahead.u[1]);
+            const float sb = std::hypot(behind.u[0], behind.u[1]);
+            if (ahead.valid > 0.5F && behind.valid > 0.5F && sa > 1e-4F && sb > 1e-4F) {
+                // The angle between the two directions (atan2 of the cross and dot
+                // products: acos of a cosine near 1 turns rounding into 1e-3 rad).
+                const float cross = ahead.u[0] * behind.u[1] - ahead.u[1] * behind.u[0];
+                const float dot = ahead.u[0] * behind.u[0] + ahead.u[1] * behind.u[1];
+                turb += cfg.turb_bend * std::atan2(std::fabs(cross), dot);
+            }
+        }
+        turb += cfg.turb_rapids * smoothstep(cfg.turb_fr_from, cfg.turb_fr_to, cell.froude);
+        turb += cell.wake;
+        cell.turb = clampf(turb, 0.0F, 1.0F);
     }
     out.build_extension(cfg.extend_tiles);
     std::sort(speeds.begin(), speeds.end());
-    st.speed_mean = static_cast<float>(speed_sum / static_cast<double>(net.n));
-    st.speed_p50 = speeds[net.n / 2];
-    st.speed_p95 = speeds[std::min(net.n - 1, net.n * 95 / 100)];
-    st.speed_max = speeds.back();
+    if (!speeds.empty()) {
+        st.speed_mean = static_cast<float>(speed_sum / static_cast<double>(speeds.size()));
+        st.speed_p50 = speeds[speeds.size() / 2];
+        st.speed_p95 = speeds[std::min(speeds.size() - 1, speeds.size() * 95 / 100)];
+        st.speed_max = speeds.back();
+    }
     auto share = [](std::size_t good, std::size_t total) {
         return total > 0
                    ? static_cast<float>(static_cast<double>(good) / static_cast<double>(total))

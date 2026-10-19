@@ -573,6 +573,8 @@ TEST_CASE("river flow shading: the wave detail of the zoom group fades the fine 
 }
 
 TEST_CASE("river flow shading: rapids follow the surface slope and are lit by it") {
+    // A slow flow (Froude 0.2 over 5 units of water), so that only the slope
+    // rule makes rapids; the Froude rule has its own cases below.
     const river::RiverConfig cfg;
     const auto p = cfg.params();
     auto mean_light = [&](float slope) {
@@ -580,7 +582,7 @@ TEST_CASE("river flow shading: rapids follow the surface slope and are lit by it
         for (int j = 0; j < 60; ++j) {
             for (int i = 0; i < 60; ++i) {
                 v.push_back(static_cast<double>(
-                    light_at(p, uniform({2.0F, 0.0F}), static_cast<float>(i * 8) + 300.0F,
+                    light_at(p, uniform({0.3F, 0.0F}), static_cast<float>(i * 8) + 300.0F,
                              static_cast<float>(j * 8) + 900.0F, 500, slope)));
             }
         }

@@ -235,6 +235,12 @@ std::vector<std::uint8_t> river_params_bytes(const RiverParams& p, float min_val
     for (const float v : {min_valid, p.rapids_base, p.shear_from, p.shear_to, kLowTapGain, 0.0F}) {
         u.f32(v);
     }
+    // Stage S7: the Froude rule, aeration, wake and standing waves (gpu.wgsl RiverParams).
+    for (const float v : {p.froude_from, p.froude_to, p.gravity, p.depth_min, p.aeration,
+                          p.wake_dark, p.wake_boost, p.standing, p.standing_amp, p.standing_from,
+                          p.standing_to, p.standing_min, p.standing_max, 0.0F, 0.0F, 0.0F}) {
+        u.f32(v);
+    }
     for (std::size_t i = 0; i < kMaxRiverLayers; ++i) {
         const RiverLayer l = i < n ? p.layers[i] : RiverLayer{0.0F, 0.0F, 0.0F, 0.0F, 0.0F};
         for (const float v : {l.scale, l.period_ms, l.amp, l.fades, l.rapids, 0.0F, 0.0F, 0.0F}) {

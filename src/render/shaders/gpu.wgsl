@@ -76,6 +76,25 @@ struct RiverParams {
     // iso::kLowTapGain.
     low_tap_gain: f32,
     _p0: f32,
+    // Stage S7 (iso::RiverParams): Froude rule of the rapids, gravity in
+    // tiles/s^2, the least water depth (HEIGHT units) of the Froude number,
+    // aeration strength, wake darkening and streak boost, standing waves.
+    froude_from: f32,
+    froude_to: f32,
+    gravity: f32,
+    depth_min: f32,
+    aeration: f32,
+    wake_dark: f32,
+    wake_boost: f32,
+    standing: f32,
+    standing_amp: f32,
+    standing_from: f32,
+    standing_to: f32,
+    standing_min: f32,
+    standing_max: f32,
+    _p1: f32,
+    _p2: f32,
+    _p3: f32,
     layers: array<RiverLayer, 8>,
 }
 @group(0) @binding(7) var<uniform> river: RiverParams;
@@ -180,6 +199,45 @@ const OBJ_MAX_DEPTH: f32 = 6.0;
 const OBJ_FADE: f32 = 2.5;
 const OBJ_FOAM: f32 = 1.2;
 
+// iso::object_river_ripple: the ripple of an object's waterline on a river, two
+// layers of value noise carried along the flow by the two-phase flow map (period
+// iso::kObjectRipplePeriodMs, the two phases blended variance-preserving as in
+// the river shading), so that it drifts with the water. (fx, fy) is the scene
+// pixel of the column and its foot, (vpx, vpy) the flow in pixels / s.
+const OBJ_RIPPLE_PERIOD_MS: f32 = 1600.0;
+const OBJ_RIPPLE_FREQ1: f32 = 0.1;
+const OBJ_RIPPLE_FREQ2: f32 = 0.26;
+const OBJ_RIPPLE_GAIN1: f32 = 1.9;
+const OBJ_RIPPLE_GAIN2: f32 = 1.2;
+fn object_river_ripple(fx: f32, fy: f32, s: f32, t: f32, vpx: f32, vpy: f32) -> f32 {
+    var w = vec2<f32>(0.0);
+    var n1 = vec2<f32>(0.0);
+    var n2 = vec2<f32>(0.0);
+    for (var k = 0; k < 2; k++) {
+        var phi = t / OBJ_RIPPLE_PERIOD_MS + 0.5 * f32(k);
+        phi = phi - floor(phi);
+        let wk = 1.0 - abs(2.0 * phi - 1.0);
+        let shift = OBJ_RIPPLE_PERIOD_MS * 0.001 * phi;
+        let cx = fx - vpx * shift;
+        let cy = fy - vpy * shift;
+        let o = f32(k);
+        let a = noise3(cx * OBJ_RIPPLE_FREQ1 / s + o * 13.37, cy * OBJ_RIPPLE_FREQ1 / s + o * 7.91, 0.5) - 0.5;
+        let b = noise3(cx * OBJ_RIPPLE_FREQ2 / s + o * 5.13, cy * OBJ_RIPPLE_FREQ2 / s + o * 9.27, 1.5) - 0.5;
+        if k == 0 {
+            w.x = wk;
+            n1.x = a;
+            n2.x = b;
+        } else {
+            w.y = wk;
+            n1.y = a;
+            n2.y = b;
+        }
+    }
+    let norm = sqrt(w.x * w.x + w.y * w.y);
+    return s * (OBJ_RIPPLE_GAIN1 * ((w.x * n1.x + w.y * n1.y) / norm)
+        + OBJ_RIPPLE_GAIN2 * ((w.x * n2.x + w.y * n2.y) / norm));
+}
+
 fn object_in_water(c: vec4<f32>, local: vec2<i32>, pos: vec4<f32>) -> vec4<f32> {
     let b = textureLoad(base_tex, local, 0).r;
     if b >= 255u {
@@ -207,7 +265,17 @@ fn object_in_water(c: vec4<f32>, local: vec2<i32>, pos: vec4<f32>) -> vec4<f32> 
     let fx = f32(local.x + chunk.origin.x);
     // Water level above the foot in pixels (HEIGHT units x lift).
     let level = min(sd, OBJ_MAX_DEPTH) * frame.raise / 32.0;
-    let ripple = s * (0.4 * sin(fx * 0.35 / s + t * 0.0021) + 0.25 * sin(fx * 0.9 / s - t * 0.0033));
+    var ripple = s * (0.4 * sin(fx * 0.35 / s + t * 0.0021) + 0.25 * sin(fx * 0.9 / s - t * 0.0033));
+    if (flags & 2u) != 0u && frame.river_flow != 0.0 && (chunk.flags & 32u) != 0u {
+        // On a river the ripple drifts with the flow at the object's foot
+        // (iso::object_river_ripple); without a flow there the legacy ripple stays.
+        let fs = flow_at(foot);
+        if fs.valid >= river.min_valid {
+            let vpx = (fs.v.x - fs.v.y) * frame.tile_w * 0.5;
+            let vpy = (fs.v.x + fs.v.y) * frame.tile_h * 0.5;
+            ripple = object_river_ripple(fx, f32(foot.y + chunk.origin.y), s, t, vpx, vpy);
+        }
+    }
     let d = level + ripple - f32(b);
     var rgb = c.rgb;
     var a = c.a;
@@ -367,6 +435,8 @@ fn river_shade(w: vec2<f32>, depth: f32, slope: f32, t: f32) -> vec3<f32> {
 }
 
 // ---- River flow shading: port of iso::river_flow_shade / river::flow_at ----
+// river::kUnitTiles: one HEIGHT unit in tiles.
+const UNIT_TILES: f32 = 0.04;
 // The same operations in the same order as the CPU twin (rivers.md 8).
 
 struct FlowSample {
@@ -461,14 +531,19 @@ fn flow_layer_field(x: vec2<f32>, u: vec2<f32>, t: f32, layer: RiverLayer, psi: 
 // iso::river_flow_shade: (light, 0, tint) of an enhanced river pixel by
 // flow-map advection of the ripple layers along the baked velocity, on the
 // river's own water plane (E19). `px` is the scene pixel.
-fn river_flow_shade(px: vec2<f32>, f: FlowSample, depth: f32, slope: f32, t: f32, detail: f32) -> vec3<f32> {
+fn river_flow_shade(px: vec2<f32>, f: FlowSample, depth: f32, slope: f32, t: f32, detail: f32) -> vec4<f32> {
     let pyw = px.y + frame.river_lambda * f.level;
     let x = vec2<f32>(px.x / frame.tile_w + pyw / frame.tile_h, pyw / frame.tile_h - px.x / frame.tile_w);
     let u = f.v;
     let probe = 0.15;
     let x2 = vec2<f32>(x.x - probe, x.y);
     let psi = flow_psi(x);
-    let rapids = sstep(5.0, 14.0, slope);
+    // The Froude number over the pixel's depth (E12); the rapids factor is the
+    // slope rule or the Froude rule, whichever is stronger (rivers.md 2.8).
+    let speed = sqrt(u.x * u.x + u.y * u.y);
+    let head = UNIT_TILES * max(depth, river.depth_min);
+    let froude = speed / sqrt(river.gravity * head);
+    let rapids = max(sstep(5.0, 14.0, slope), sstep(river.froude_from, river.froude_to, froude));
     var light = 0.0;
     let n = min(river.count, MAX_RIVER_LAYERS);
     for (var l = 0u; l < n; l++) {
@@ -480,6 +555,9 @@ fn river_flow_shade(px: vec2<f32>, f: FlowSample, depth: f32, slope: f32, t: f32
         var amp = layer.amp * shear_fade;
         if layer.fades != 0.0 {
             amp = amp * (detail * (1.0 + f.turb));
+        }
+        if layer.rapids != 0.0 {
+            amp = amp * (1.0 + river.wake_boost * f.wake);
         }
         if amp == 0.0 || (layer.rapids != 0.0 && rapids <= 0.0) {
             continue;
@@ -493,7 +571,18 @@ fn river_flow_shade(px: vec2<f32>, f: FlowSample, depth: f32, slope: f32, t: f32
             light += amp * (na - flow_layer_field(x2, u, t, layer, psi)) / probe;
         }
     }
-    return vec3<f32>(light, 0.0, 0.15 * sstep(4.0, 0.0, depth));
+    // The lee of an obstacle is darker.
+    light -= river.wake_dark * f.wake;
+    // Standing waves (off by default; iso::river_flow_shade has the notes).
+    if river.standing != 0.0 && speed > 1e-6 && froude > river.standing_from {
+        let lambda = clamp(6.2831853 * speed * speed / river.gravity, river.standing_min, river.standing_max);
+        var phase = (x.x * u.x + x.y * u.y) / speed / lambda;
+        phase = phase - floor(phase);
+        let fade = 1.0 - sstep(river.shear_from, river.shear_to, lambda / speed * f.shear);
+        light += river.standing_amp * sstep(river.standing_from, river.standing_to, froude) * fade
+            * sin(6.2831853 * phase);
+    }
+    return vec4<f32>(light, 0.0, 0.15 * sstep(4.0, 0.0, depth), river.aeration * rapids);
 }
 
 // iso::surf_time / surf_bend / surf_phase / wave_height / runup_height / swash
@@ -627,11 +716,19 @@ fn fluid_shade(fl: vec4<f32>, depth: f32, run: f32, w: vec2<f32>, t: f32, detail
     return vec3<f32>(light, clamp(foam, 0.0, 1.0), tint);
 }
 
-// iso::shade_apply
-fn shade_apply(c: vec3<f32>, s: vec3<f32>) -> vec3<f32> {
-    let v = mix(c, SHALLOW_COLOUR, s.z) * (1.0 + s.x);
+// iso::shade_apply with the aeration of rapids (iso::kAerationColour; river
+// pixels only, 0 elsewhere: the mix by 0 leaves the colour as it was).
+const AERATION_COLOUR: vec3<f32> = vec3<f32>(0.62, 0.82, 0.90);
+fn shade_apply_aerated(c: vec3<f32>, s: vec3<f32>, aeration: f32) -> vec3<f32> {
+    let tinted = mix(c, SHALLOW_COLOUR, s.z);
+    let v = mix(tinted, AERATION_COLOUR, aeration) * (1.0 + s.x);
     let white = vec3<f32>(236.0, 244.0, 250.0) / 255.0;
     return clamp(v + (white - v) * s.y, vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
+// iso::shade_apply
+fn shade_apply(c: vec3<f32>, s: vec3<f32>) -> vec3<f32> {
+    return shade_apply_aerated(c, s, 0.0);
 }
 
 // Euclidean remainder (m > 0) with non-negative operands only (see wrapi in
@@ -748,7 +845,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
             // takes on the sea's look (Scene::blend_rivers_into_sea).
             // The flow shading where the chunk's lattice has a flow
             // (sea::river_pixel_shade), else the legacy shimmer.
-            var rs = vec3<f32>(0.0);
+            var rs = vec4<f32>(0.0);
             var flowing = false;
             if frame.river_flow != 0.0 && (chunk.flags & 32u) != 0u {
                 let fs = flow_at(px - chunk.origin);
@@ -758,10 +855,10 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
                 }
             }
             if !flowing {
-                rs = river_shade(w, sd, slope_of(flags), frame.time_ms);
+                rs = vec4<f32>(river_shade(w, sd, slope_of(flags), frame.time_ms), 0.0);
             }
             let kb = min(f32(shore) / 254.0, 1.0);
-            var ss = rs;
+            var ss = rs.xyz;
             if kb < 1.0 {
                 if fluid_inside(wpos) {
                     ss = fluid_shade(fluid_sample(wpos).s, sd, 0.0, w, frame.time_ms, detail);
@@ -769,7 +866,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
                     ss = wave_shade(RIVER_SEA_DIST, sd, 0.0, w, frame.time_ms, detail);
                 }
             }
-            c = shade_apply(c, mix(ss, rs, kb));
+            c = shade_apply_aerated(c, mix(ss, rs.xyz, kb), rs.w * kb);
         } else if use_fluid {
             c = shade_apply(c, fluid_shade(fl, sd, run, w, frame.time_ms, detail));
         } else {

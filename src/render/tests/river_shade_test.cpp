@@ -141,6 +141,16 @@ TEST_CASE("river shading config: the default tables are consistent and every che
         CHECK_FALSE(c.validate(512, 3).empty());
         c.lattice_stride = {8, 4, 0};
         CHECK_FALSE(c.validate(512, 3).empty());
+        // The GPU carries the stride in 8 bits: 256 and 512 divide the chunk but are refused
+        // (else the GPU would drop the lattice while the CPU draws it).
+        c.lattice_stride = {8, 4, 256};
+        CHECK_FALSE(c.validate(512, 3).empty());
+        c.lattice_stride = {512, 4, 4};
+        CHECK_FALSE(c.validate(512, 3).empty());
+        c.lattice_stride = {river::kMaxLatticeStride + 1, 4, 4};
+        CHECK_FALSE(c.validate(1024, 3).empty());
+        c.lattice_stride = {128, 64, 32};
+        CHECK(c.validate(512, 3).empty());
     }
     {
         river::RiverConfig c;
@@ -1342,4 +1352,115 @@ TEST_CASE("river configuration: the extension reach, the shear probe and the thr
     CHECK_FALSE(c.validate(512, 3).empty());
     c.flow_threads = 2;
     CHECK(c.validate(512, 3).empty());
+}
+
+namespace {
+
+/// The default parameters at tier `q`.
+render::RiverParams tier(render::RiverQuality q) {
+    render::RiverParams p = river::RiverConfig{}.params();
+    p.quality = q;
+    return p;
+}
+
+/// The default table without the layers that fade with the zoom group's wave
+/// detail (the glints and the whitewater streaks), at High: what Medium must
+/// draw.
+render::RiverParams without_fine_layers() {
+    river::RiverConfig cfg;
+    std::vector<river::LayerConfig> keep;
+    for (const river::LayerConfig& l : cfg.layers) {
+        if (!l.detail_fades) {
+            keep.push_back(l);
+        }
+    }
+    cfg.layers = keep;
+    return cfg.params();
+}
+
+} // namespace
+
+TEST_CASE("river quality: High is the reference look, Medium leaves out the layers that fade with "
+          "the zoom group's detail") {
+    const render::RiverParams high = tier(render::RiverQuality::High);
+    const render::RiverParams medium = tier(render::RiverQuality::Medium);
+    const render::RiverParams expected = without_fine_layers();
+    CHECK(render::RiverParams{}.quality == render::RiverQuality::High);
+    CHECK(high.quality == render::RiverQuality::High);
+    std::size_t differ = 0, equal_rapids = 0, n = 0;
+    for (int i = 0; i < 400; ++i) {
+        const float px = 300.0F + 37.0F * static_cast<float>(i);
+        const float py = 900.0F + 23.0F * static_cast<float>(i % 17);
+        const std::uint64_t t = 137U * static_cast<std::uint64_t>(i);
+        const render::FlowSample f = uniform({0.5F, -0.3F}, 32.0F, 0.2F);
+        for (const float slope : {0.0F, 20.0F}) {
+            const float m = light_at(medium, f, px, py, t, slope);
+            const float h = light_at(high, f, px, py, t, slope);
+            // Medium is exactly the table without the fine layers at High.
+            // (With slope the whitewater layer is among the fine ones.)
+            CHECK(m == light_at(expected, f, px, py, t, slope));
+            ++n;
+            differ += m != h ? 1U : 0U;
+            // Without detail the fine layers have no amplitude: the tiers agree.
+            const float m0 = light_at(medium, f, px, py, t, slope, 0.0F);
+            const float h0 = light_at(high, f, px, py, t, slope, 0.0F);
+            equal_rapids += m0 == h0 ? 1U : 0U;
+        }
+    }
+    // The glints and streaks are part of High.
+    CHECK(differ > n * 9 / 10);
+    CHECK(equal_rapids == n);
+}
+
+TEST_CASE("river quality: Low takes one noise tap per phase and keeps the light variance of "
+          "Medium") {
+    const render::RiverParams medium = tier(render::RiverQuality::Medium);
+    const render::RiverParams low = tier(render::RiverQuality::Low);
+    // Same layers as Medium (the fine ones are out), a different light.
+    {
+        const render::FlowSample f = uniform({0.4F, 0.2F});
+        bool differs = false;
+        for (int i = 0; i < 50; ++i) {
+            const float px = 300.0F + 91.0F * static_cast<float>(i);
+            differs = differs ||
+                      light_at(low, f, px, 900.0F, 500) != light_at(medium, f, px, 900.0F, 500);
+        }
+        CHECK(differs);
+    }
+    // The calibration of kLowTapGain: the standard deviation of Low within 12 %
+    // of Medium (0.97 measured), over the speeds and directions of a river.
+    for (const float speed : {0.12F, 0.5F, 0.9F}) {
+        double sd_low = 0, sd_med = 0, mean_low = 0;
+        int m = 0;
+        for (const std::array<float, 2> d : {std::array<float, 2>{1.0F, 0.0F},
+                                             {0.0F, 1.0F},
+                                             {0.7071F, 0.7071F},
+                                             {0.7071F, -0.7071F}}) {
+            for (std::uint64_t t = 0; t < 2400; t += 400) {
+                const render::FlowSample f = uniform({speed * d[0], speed * d[1]});
+                const Stat a = stat(patch_light(low, f, t));
+                sd_low += a.sd;
+                mean_low += a.mean;
+                sd_med += stat(patch_light(medium, f, t)).sd;
+                ++m;
+            }
+        }
+        sd_low /= m;
+        sd_med /= m;
+        mean_low /= m;
+        MESSAGE("speed " << speed << ": sd low " << sd_low << ", medium " << sd_med);
+        CHECK(sd_low / sd_med >= 0.88);
+        CHECK(sd_low / sd_med <= 1.12);
+        // The brightness does not drift: the noise is centred.
+        CHECK(std::fabs(mean_low) < 0.003);
+    }
+    // Bounded light at every tier.
+    for (const render::RiverQuality q :
+         {render::RiverQuality::Low, render::RiverQuality::Medium, render::RiverQuality::High}) {
+        const render::RiverParams p = tier(q);
+        for (const double v : patch_light(p, uniform({0.9F, 0.0F}), 777, 60, 11)) {
+            CHECK(std::isfinite(v));
+            CHECK(std::fabs(v) < 0.2);
+        }
+    }
 }

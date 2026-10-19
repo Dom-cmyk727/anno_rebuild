@@ -8,8 +8,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <thread>
 #include <vector>
@@ -29,7 +31,9 @@
 #include <anno/render/gpu.hpp>
 #include <anno/render/gpu_fluid.hpp>
 #include <anno/render/iso.hpp>
+#include <anno/render/river.hpp>
 #include <anno/render/scene.hpp>
+#include <anno/render/sea.hpp>
 #include <anno/render/shaders.hpp>
 #include <anno/render/wgpu.hpp>
 #include <anno/test/game_dir.hpp>
@@ -194,6 +198,8 @@ TEST_CASE("the frame uniform matches struct Frame in gpu.wgsl") {
     f.fluid_size = 1024;
     f.fluid_on = true;
     f.fluid_cpt = 16.0F;
+    f.river_flow = true;
+    f.river_lambda = 2.059F;
     const auto b = gpu::frame_uniform_bytes(f);
     REQUIRE(b.size() == 96);
     auto u32_at = [&](std::size_t o) {
@@ -228,6 +234,11 @@ TEST_CASE("the frame uniform matches struct Frame in gpu.wgsl") {
     CHECK(i32_at(72) == 1024);
     CHECK(u32_at(76) == 1);
     CHECK(f32_at(80) == 16.0F);
+    CHECK(f32_at(84) == 1.0F);
+    CHECK(f32_at(88) == 2.059F);
+    CHECK(f32_at(92) == 0.0F);
+    f.river_flow = false;
+    CHECK(gpu::frame_uniform_bytes(f)[84 + 3] == 0);
     // A zero-sized view is sent as 1 × 1 (the shader divides by it).
     f.view = {0, 0, 0, 0};
     const auto z = gpu::frame_uniform_bytes(f);
@@ -268,9 +279,6 @@ TEST_CASE("GPU frames match the CPU path (game files)") {
         gpu::GpuFrame& g = *made.value();
         const auto target = g.offscreen_target(kW, kH);
         render::FrameRenderer cpu(4), on_gpu(4, false);
-        // The GPU draws the legacy river look until its port (rivers.md S6): the
-        // CPU reference of an enhanced comparison does too.
-        cpu.river_flow = render::RiverFlowMode::Legacy;
         std::size_t sprites = 0, ships = 0;
         for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{0}}) {
             const render::Rect view = digest_view(*scene, name, group, kW, kH);
@@ -341,9 +349,6 @@ TEST_CASE("GPU frames: atlas growth, odd sizes and spread uploads (game files)")
     constexpr int kW = 1001, kH = 601;
     const auto target = g.offscreen_target(kW, kH);
     render::FrameRenderer cpu(4), on_gpu(4, false);
-    // The GPU draws the legacy river look until its port (rivers.md S6): the
-    // CPU reference of an enhanced comparison does too.
-    cpu.river_flow = render::RiverFlowMode::Legacy;
     for (const std::size_t group : {std::size_t{2}, std::size_t{1}}) {
         const render::Rect view = digest_view(*scene, name, group, kW, kH);
         std::vector<std::uint32_t> out(std::size_t{kW} * kH);
@@ -392,9 +397,6 @@ TEST_CASE("enhanced water without the wave simulation stays close to the CPU pat
         gpu::GpuFrame& g = *made.value();
         const auto target = g.offscreen_target(kW, kH);
         render::FrameRenderer cpu(4), on_gpu(4, false);
-        // The GPU draws the legacy river look until its port (rivers.md S6): the
-        // CPU reference of an enhanced comparison does too.
-        cpu.river_flow = render::RiverFlowMode::Legacy;
         for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{0}}) {
             const render::Rect view = digest_view(*scene, name, group, kW, kH);
             for (const std::uint64_t time : {std::uint64_t{925}, std::uint64_t{1900}}) {
@@ -727,9 +729,6 @@ TEST_CASE("atlas growth keeps earlier sprites, first frame at a late sea step (g
     constexpr int kW = 1280, kH = 720;
     const auto target = g.offscreen_target(kW, kH);
     render::FrameRenderer cpu(4), on_gpu(4, false);
-    // The GPU draws the legacy river look until its port (rivers.md S6): the
-    // CPU reference of an enhanced comparison does too.
-    cpu.river_flow = render::RiverFlowMode::Legacy;
     // Group 2 fills layer 0, group 1 grows the atlas, group 2 again reads
     // the copied layer. Times late in the animation cycle: the first frame
     // of a group must have the whole pattern.
@@ -767,9 +766,6 @@ TEST_CASE("uploads spread over frames: stand-ins first, then the real chunks (ga
     constexpr int kW = 1001, kH = 601;
     const auto target = g.offscreen_target(kW, kH);
     render::FrameRenderer cpu(4), on_gpu(4, false);
-    // The GPU draws the legacy river look until its port (rivers.md S6): the
-    // CPU reference of an enhanced comparison does too.
-    cpu.river_flow = render::RiverFlowMode::Legacy;
     const render::Rect view = digest_view(*scene, name, 1, kW, kH);
     std::vector<std::uint32_t> out(std::size_t{kW} * kH);
     cpu.render(*scene, view, 1, 0, render::WaterStyle::Original, out.data());
@@ -836,9 +832,6 @@ TEST_CASE("stand-in chunks show the open sea (game files)") {
     constexpr int kW = 1280, kH = 720;
     const auto target = g.offscreen_target(kW, kH);
     render::FrameRenderer cpu(4), on_gpu(4, false);
-    // The GPU draws the legacy river look until its port (rivers.md S6): the
-    // CPU reference of an enhanced comparison does too.
-    cpu.river_flow = render::RiverFlowMode::Legacy;
     const render::Rect view = digest_view(*scene, name, 1, kW, kH);
     std::vector<std::uint32_t> out(std::size_t{kW} * kH);
     cpu.render(*scene, view, 1, 300, render::WaterStyle::Original, out.data());
@@ -920,9 +913,6 @@ TEST_CASE("a full sprite atlas drops new sprites without errors (game files)") {
     constexpr int kW = 1280, kH = 720;
     const auto target = g.offscreen_target(kW, kH);
     render::FrameRenderer cpu(4), on_gpu(4, false);
-    // The GPU draws the legacy river look until its port (rivers.md S6): the
-    // CPU reference of an enhanced comparison does too.
-    cpu.river_flow = render::RiverFlowMode::Legacy;
     const render::Rect view = digest_view(*scene, name, 1, kW, kH);
     std::vector<std::uint32_t> out(std::size_t{kW} * kH);
     cpu.render(*scene, view, 1, 0, render::WaterStyle::Original, out.data());
@@ -965,9 +955,6 @@ TEST_CASE("ships drawn by the compositor match the CPU path (game files)") {
         constexpr int kW = 640, kH = 400;
         const auto target = g.offscreen_target(kW, kH);
         render::FrameRenderer cpu(4), on_gpu(4, false);
-        // The GPU draws the legacy river look until its port (rivers.md S6): the
-        // CPU reference of an enhanced comparison does too.
-        cpu.river_flow = render::RiverFlowMode::Legacy;
         std::size_t ships = 0, checked = 0;
         for (const auto& u : scene->units) {
             if (u.z || checked >= 3) {
@@ -1248,4 +1235,1116 @@ TEST_CASE("background chunk workers deliver chunks and free evicted ones off the
     CHECK(std::get<2>(frames.update_chunks(scene, last, 2)) == 0);
     // Destroying the workers with garbage queued is fine.
     frames.set_workers(nullptr);
+}
+
+// ---- The river flow on the GPU (docs/render/rivers.md 3.3, 8 and 16; stage S6) ----
+
+TEST_CASE("the WGSL source declares the river bindings the compositor binds") {
+    const std::string_view src = anno::render::shaders::compositor();
+    auto has = [&](const std::string& text) {
+        const bool found = src.find(text) != std::string_view::npos;
+        CHECK_MESSAGE(found, "gpu.wgsl lacks: " << text);
+        return found;
+    };
+    // Group 1: the three planes of the flow lattice, by the numbers gpu.cpp binds.
+    has("@group(1) @binding(" + std::to_string(gpu::kFlowVelocityBinding) +
+        ") var flow_uv: texture_2d<i32>;");
+    has("@group(1) @binding(" + std::to_string(gpu::kFlowAuxBinding) +
+        ") var flow_aux: texture_2d<u32>;");
+    has("@group(1) @binding(" + std::to_string(gpu::kFlowShearBinding) +
+        ") var flow_shear: texture_2d<u32>;");
+    // Group 0: the layer table, and its size is iso::kMaxRiverLayers.
+    has("@group(0) @binding(" + std::to_string(gpu::kRiverParamsBinding) +
+        ") var<uniform> river: RiverParams;");
+    has("const MAX_RIVER_LAYERS: u32 = " + std::to_string(render::kMaxRiverLayers) + "u;");
+    has("layers: array<RiverLayer, " + std::to_string(render::kMaxRiverLayers) + ">,");
+    // The chunk flags: bit 5 = lattice present, bits 8-15 the stride.
+    has("(chunk.flags & " + std::to_string(gpu::kChunkFlagFlow) + "u) != 0u");
+    has("(chunk.flags >> " + std::to_string(gpu::kChunkStrideShift) + "u) & 0xFFu");
+    // Where the compositor puts the layer table is a binding of the frame group
+    // (group 0), and the frame uniform keeps its size.
+    CHECK(gpu::kRiverParamsBinding == 7);
+    CHECK(gpu::kChunkFlagFlow == 32);
+    // The tiers are the enumerators the shader's `quality` compares with.
+    CHECK(static_cast<std::uint32_t>(render::RiverQuality::Low) == 0);
+    CHECK(static_cast<std::uint32_t>(render::RiverQuality::Medium) == 1);
+    CHECK(static_cast<std::uint32_t>(render::RiverQuality::High) == 2);
+    has("river.quality != 2u");
+    has("river.quality == 0u");
+}
+
+TEST_CASE("the river parameter uniform matches struct RiverParams in gpu.wgsl") {
+    render::RiverParams p = render::river::RiverConfig{}.params();
+    p.quality = render::RiverQuality::Medium;
+    const auto b = gpu::river_params_bytes(p, 0.125F);
+    REQUIRE(b.size() == gpu::kRiverParamsBytes);
+    CHECK(b.size() == 32 + 8 * 32);
+    auto u32_at = [&](std::size_t o) {
+        return std::uint32_t{b[o]} | std::uint32_t{b[o + 1]} << 8 | std::uint32_t{b[o + 2]} << 16 |
+               std::uint32_t{b[o + 3]} << 24;
+    };
+    auto f32_at = [&](std::size_t o) {
+        const std::uint32_t v = u32_at(o);
+        float x = 0;
+        std::memcpy(&x, &v, 4);
+        return x;
+    };
+    CHECK(u32_at(0) == p.count);
+    CHECK(u32_at(0) == 4);
+    CHECK(u32_at(4) == 1);
+    CHECK(f32_at(8) == 0.125F);
+    CHECK(f32_at(12) == p.rapids_base);
+    CHECK(f32_at(16) == p.shear_from);
+    CHECK(f32_at(20) == p.shear_to);
+    CHECK(f32_at(24) == render::kLowTapGain);
+    // The layers start at byte 32, 32 bytes each: scale, period, amplitude, fades, rapids.
+    for (std::size_t i = 0; i < p.count; ++i) {
+        const std::size_t o = 32 + 32 * i;
+        CHECK(f32_at(o) == p.layers[i].scale);
+        CHECK(f32_at(o + 4) == p.layers[i].period_ms);
+        CHECK(f32_at(o + 8) == p.layers[i].amp);
+        CHECK(f32_at(o + 12) == p.layers[i].fades);
+        CHECK(f32_at(o + 16) == p.layers[i].rapids);
+    }
+    // The rapids layer is the last of the default table, the glints fade with the detail.
+    CHECK(f32_at(32 + 32 * 3 + 16) == 1.0F);
+    CHECK(f32_at(32 + 32 * 2 + 12) == 1.0F);
+    CHECK(f32_at(32 + 32 * 0 + 12) == 0.0F);
+    // Unused layers are zero.
+    for (std::size_t o = 32 + 32 * 4; o < b.size(); ++o) {
+        CHECK(b[o] == 0);
+    }
+    // More layers than the table holds are dropped, not written past it.
+    render::RiverParams many = p;
+    many.count = 100;
+    CHECK(gpu::river_params_bytes(many, 0.0F).size() == gpu::kRiverParamsBytes);
+    const auto bm = gpu::river_params_bytes(many, 0.0F);
+    CHECK(std::uint32_t{bm[0]} == render::kMaxRiverLayers);
+}
+
+TEST_CASE("the automatic river tier is the highest one within the gate on what it adds to the "
+          "legacy shimmer") {
+    using Q = render::RiverQuality;
+    auto costs = [](double legacy, double low, double medium, double high) {
+        std::vector<gpu::RiverCost> c(4);
+        c[0].quality = std::nullopt;
+        c[0].ms_per_mpx = legacy;
+        c[1].quality = Q::Low;
+        c[1].ms_per_mpx = low;
+        c[2].quality = Q::Medium;
+        c[2].ms_per_mpx = medium;
+        c[3].quality = Q::High;
+        c[3].ms_per_mpx = high;
+        return c;
+    };
+    // This machine's RTX 4090: everything is far inside the gate.
+    CHECK(gpu::choose_river_quality(costs(0.040, 0.057, 0.066, 0.080), 1.0) == Q::High);
+    // The Ryzen iGPU (Vulkan, measured 2026-10-19): even Low adds 2.3 ms, so the floor.
+    CHECK(gpu::choose_river_quality(costs(8.11, 10.41, 12.14, 14.17), 1.0) == Q::Low);
+    // The gate is on the cost ADDED to the legacy shimmer: a heavy baseline does not count.
+    CHECK(gpu::choose_river_quality(costs(50.0, 50.2, 50.5, 50.9), 1.0) == Q::High);
+    // Exactly the gate passes; a hair over does not.
+    CHECK(gpu::choose_river_quality(costs(1.0, 1.4, 1.8, 2.0), 1.0) == Q::High);
+    CHECK(gpu::choose_river_quality(costs(1.0, 1.4, 1.8, 2.01), 1.0) == Q::Medium);
+    CHECK(gpu::choose_river_quality(costs(1.0, 1.4, 2.01, 2.5), 1.0) == Q::Low);
+    // The highest tier within the gate wins, whatever the order of the list.
+    auto shuffled = costs(1.0, 1.4, 1.8, 3.0);
+    std::reverse(shuffled.begin(), shuffled.end());
+    CHECK(gpu::choose_river_quality(shuffled, 1.0) == Q::Medium);
+    // No measurements: the floor (nothing is known to fit).
+    CHECK(gpu::choose_river_quality({}, 1.0) == Q::Low);
+    // A driver that reports no time gives zeros: unmeasured is never "free". The
+    // reference unmeasured: nothing qualifies, Low (not the dearest tier).
+    CHECK(gpu::choose_river_quality(costs(0.0, 0.0, 0.0, 0.0), 1.0) == Q::Low);
+    CHECK(gpu::choose_river_quality(costs(0.0, 0.5, 0.6, 0.7), 1.0) == Q::Low);
+    CHECK(gpu::choose_river_quality(costs(-1.0, 0.5, 0.6, 0.7), 1.0) == Q::Low);
+    // A tier unmeasured while the reference is fine is skipped, not chosen.
+    CHECK(gpu::choose_river_quality(costs(1.0, 1.4, 1.8, 0.0), 1.0) == Q::Medium);
+    CHECK(gpu::choose_river_quality(costs(1.0, 0.0, 0.0, 0.0), 1.0) == Q::Low);
+    CHECK(gpu::choose_river_quality(costs(1.0, 1.4, 1.8, std::nan("")), 1.0) == Q::Medium);
+    CHECK(gpu::choose_river_quality(costs(1.0, 1.4, 1.8, std::numeric_limits<double>::infinity()),
+                                    1.0) == Q::Medium);
+    // The measured flag itself.
+    gpu::RiverCost rc;
+    CHECK_FALSE(rc.measured());
+    rc.ms_per_mpx = 0.001;
+    CHECK(rc.measured());
+}
+
+TEST_CASE("ANNO_GPU_ADAPTER picks an adapter by index or by a part of the name (no device)") {
+    auto adapter = [](const char* name) {
+        gpu::AdapterInfo a;
+        a.name = name;
+        return a;
+    };
+    const std::vector<gpu::AdapterInfo> list = {
+        adapter("NVIDIA GeForce RTX 4090"), adapter("AMD Radeon(TM) Graphics"),
+        adapter("NVIDIA GeForce RTX 4090"), adapter("Microsoft Basic Render Driver")};
+    CHECK(gpu::pick_adapter("0", list) == 0);
+    CHECK(gpu::pick_adapter("3", list) == 3);
+    CHECK(gpu::pick_adapter("4", list) == std::nullopt); // past the end
+    CHECK(gpu::pick_adapter("radeon", list) == 1);       // case-insensitive part of the name
+    CHECK(gpu::pick_adapter("RTX", list) == 0);          // the first match
+    CHECK(gpu::pick_adapter("basic render", list) == 3);
+    CHECK(gpu::pick_adapter("intel", list) == std::nullopt);
+    CHECK(gpu::pick_adapter("", list) == std::nullopt);
+    CHECK(gpu::pick_adapter("0", {}) == std::nullopt);
+    // A number too large to parse is "no match", not an exception.
+    CHECK(gpu::pick_adapter("99999999999999999999", list) == std::nullopt);
+    CHECK(gpu::pick_adapter("18446744073709551616", list) == std::nullopt);
+    // All digits is an index, even where it could be part of a name ("4090" of an RTX 4090);
+    // digits mixed with letters are a name.
+    CHECK(gpu::pick_adapter("4090", list) == std::nullopt);
+    CHECK(gpu::pick_adapter("rtx 4090", list) == 0);
+    CHECK(gpu::pick_adapter("1x", list) == std::nullopt);
+}
+
+namespace {
+
+/// A scene without islands (the synthetic Anlagen.dat and the default ground
+/// textures): everything a compositor frame needs except content, which the
+/// tests inject as chunks.
+struct EmptyScene {
+    std::vector<std::uint8_t> anl_buf;
+    std::unique_ptr<render::Scene> scene;
+};
+
+/// `light_gain` multiplies the ripple light of the river flow shading (the
+/// default 1 keeps the calibrated +-2 % that is a level or two of 255; the tests
+/// use 10, a +-20 % light, so that a wrong flow direction or a wrong phase shows).
+EmptyScene empty_scene(float light_gain = 10.0F) {
+    EmptyScene out;
+    out.anl_buf = anno::test::read_file(std::filesystem::path(ANNO_FIXTURES_DIR) /
+                                        "anlagen_synthetic" / "Anlagen.dat");
+    auto anlagen = anno::formats::anlagen::AnlagenFile::parse(out.anl_buf);
+    REQUIRE(anlagen);
+    out.scene = std::make_unique<render::Scene>(
+        "synthetic", std::vector<anno::formats::insel::Island>{},
+        anno::assets::island::GroundTextures{}, std::move(anlagen).value(), render::kHeightLift);
+    out.scene->river_cfg.light_gain = light_gain;
+    return out;
+}
+
+/// What the synthetic chunk is made of: pure river pixels (no sea cover, far
+/// from any shore) whose depth varies from 0.5 to 4 HEIGHT units (the deep-water
+/// mix of the sea stays off), a band of rapids, and a flow lattice that varies
+/// everywhere: direction, speed, level, shear, turbulence, a hole without flow,
+/// a rim with half weight, and texels with a weight just below and just above
+/// RiverConfig::min_valid (0.02) so that the legacy fallback threshold is pinned.
+/// The lattice is one GLOBAL function of the texel (chunk key (cx, cy) shifts the
+/// texel index by the chunk's size in texels), so neighbouring chunks agree on
+/// their shared apron texels exactly, as the real bake does.
+struct SyntheticRiver {
+    render::Chunk chunk;
+    std::uint32_t stride = 4;
+};
+
+SyntheticRiver synthetic_river(std::uint32_t stride, bool with_flow, int cx = 0, int cy = 0) {
+    SyntheticRiver out;
+    out.stride = stride;
+    render::Chunk& c = out.chunk;
+    const auto n = static_cast<std::size_t>(render::kChunk);
+    c.field.resize(n * n * 4);
+    for (std::size_t y = 0; y < n; ++y) {
+        for (std::size_t x = 0; x < n; ++x) {
+            std::uint8_t* f = &c.field[(y * n + x) * 4];
+            f[0] = 1;                                             // cover
+            f[1] = 255;                                           // shore: far
+            f[2] = static_cast<std::uint8_t>(130 + (x * 7) % 15); // depth 0.5 .. 4 units
+            // river flag, slope 15 units/tile in a band (full rapids), else 0.
+            f[3] = static_cast<std::uint8_t>((y >= 300 && y < 360) ? (2 | (30 << 2)) : 2);
+        }
+    }
+    if (!with_flow) {
+        return out;
+    }
+    render::river::FlowPlane& fp = c.flow;
+    fp.x0 = cx * render::kChunk;
+    fp.y0 = cy * render::kChunk;
+    fp.stride_px = stride;
+    fp.nx = fp.ny = static_cast<std::uint32_t>(render::kChunk) / stride + 1;
+    const std::size_t count = std::size_t{fp.nx} * fp.ny;
+    fp.uv.assign(count * 2, 0);
+    fp.aux.assign(count * 4, 0);
+    fp.shear.assign(count, 0);
+    // The chunk's texel origin in the global lattice.
+    const std::uint32_t per_chunk = static_cast<std::uint32_t>(render::kChunk) / stride;
+    const std::uint32_t gx0 = static_cast<std::uint32_t>(cx) * per_chunk,
+                        gy0 = static_cast<std::uint32_t>(cy) * per_chunk;
+    for (std::uint32_t j = 0; j < fp.ny; ++j) {
+        for (std::uint32_t i = 0; i < fp.nx; ++i) {
+            const std::uint32_t gi = gx0 + i, gj = gy0 + j;
+            const float a =
+                0.045F * static_cast<float>(gi) + 0.031F * static_cast<float>(gj) + 0.7F;
+            const float speed = 0.12F + 0.85F * static_cast<float>(gi % 29) / 29.0F;
+            float valid = 1.0F;
+            const std::uint32_t k = 40 / (stride / 2 > 0 ? stride / 2 : 1);
+            if (gi >= k && gi < k + 10 && gj >= k && gj < k + 10) {
+                valid = 0.0F; // a hole: the legacy shimmer shows there
+            } else if (gi >= k - 1 && gi < k + 11 && gj >= k - 1 && gj < k + 11) {
+                valid = 0.5F; // a rim
+            } else if (gj >= k && gj < k + 10 && gi >= k + 13 && gi < k + 15) {
+                valid = 0.01F; // below min_valid: no flow here, the weight fades in around it
+            } else if (gj >= k && gj < k + 10 && gi >= k + 15 && gi < k + 17) {
+                valid = 0.03F; // just above min_valid
+            }
+            render::river::set_texel(fp, i, j, speed * std::cos(a), speed * std::sin(a), valid,
+                                     0.1F + 0.4F * static_cast<float>(gi % 3) / 3.0F, 0.0F,
+                                     32.0F + 2.0F * static_cast<float>(gi % 8), 8.0F,
+                                     0.05F * static_cast<float>(gj % 16));
+        }
+    }
+    return out;
+}
+
+struct RiverCompare {
+    std::size_t n = 0, over2 = 0;
+    int max = 0;
+    [[nodiscard]] double within2() const {
+        return n == 0 ? 0.0 : 1.0 - static_cast<double>(over2) / static_cast<double>(n);
+    }
+};
+
+/// The pixel the CPU path gives a pure river pixel of the synthetic chunk at
+/// scene pixel (sx, sy): the production shading (sea::river_pixel_shade, the
+/// flow lattice of the chunk, the legacy shimmer where it has no flow) applied
+/// to the open-water colour, with the waterline alpha. `flip` negates the
+/// velocity (the negative control).
+render::Px expected_river_pixel(const render::Scene& scene, const render::Chunk& chunk,
+                                std::size_t group, int sx, int sy, std::uint64_t time_ms,
+                                const render::RiverParams& params, bool flow_mode, bool flip) {
+    const auto n = static_cast<std::size_t>(render::kChunk);
+    const std::size_t i =
+        (static_cast<std::size_t>(sy) % n * n + static_cast<std::size_t>(sx) % n) * 4;
+    const std::uint8_t depth = chunk.field[i + 2], flags = chunk.field[i + 3];
+    const float sd =
+        (static_cast<float>(depth) - render::sea::kDepthBias) / render::sea::kDepthScale;
+    const float twf = static_cast<float>(render::kTile[group].w),
+                thf = static_cast<float>(render::kTile[group].h);
+    const int raise = scene.lift.scaled(render::kSeaLevel, 1, group);
+    const float px = static_cast<float>(sx), py = static_cast<float>(sy + raise);
+    const std::pair<float, float> pos{px / twf + py / thf, py / thf - px / twf};
+    render::FlowSample fs = render::river::flow_at(chunk.flow, sx, sy);
+    if (flip) {
+        fs.vx = -fs.vx;
+        fs.vy = -fs.vy;
+    }
+    const render::sea::RiverShading shading{&params, scene.river_cfg.min_valid};
+    const render::Shade sh = render::sea::river_pixel_shade(
+        flow_mode && !chunk.flow.empty() ? &shading : nullptr, fs, sx, sy, sd,
+        render::sea::slope_of(flags), time_ms, render::wave_detail(twf),
+        render::sea::river_view(group, scene.lift), pos);
+    return render::shade_apply(scene.textures.water(), sh);
+}
+
+/// GPU pixels of the 512 x 512 chunk at the origin against the CPU's
+/// expectation, on every third pixel.
+RiverCompare compare_river_chunk(const render::Scene& scene, const render::Chunk& chunk,
+                                 std::size_t group, std::uint64_t time_ms,
+                                 const render::RiverParams& params, bool flow_mode,
+                                 const std::vector<std::uint8_t>& gpu_px, bool flip = false) {
+    RiverCompare r;
+    const auto n = static_cast<std::size_t>(render::kChunk);
+    for (std::size_t y = 0; y < n; y += 3) {
+        for (std::size_t x = 0; x < n; x += 3) {
+            const render::Px e =
+                expected_river_pixel(scene, chunk, group, static_cast<int>(x), static_cast<int>(y),
+                                     time_ms, params, flow_mode, flip);
+            int m = 0;
+            for (std::size_t k = 0; k < 3; ++k) {
+                m = std::max(m, std::abs(int{e[k]} - int{gpu_px[(y * n + x) * 4 + k]}));
+            }
+            ++r.n;
+            r.over2 += m > 2 ? 1U : 0U;
+            r.max = std::max(r.max, m);
+        }
+    }
+    return r;
+}
+
+} // namespace
+
+TEST_CASE("river flow on the GPU: the shader draws what the CPU twin draws, at every zoom group, "
+          "tier and time (synthetic)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    constexpr int kSide = render::kChunk;
+    const render::Rect view{0, 0, kSide, kSide};
+    for (const render::RiverQuality q :
+         {render::RiverQuality::High, render::RiverQuality::Medium, render::RiverQuality::Low}) {
+        gpu::GpuLimits limits;
+        limits.uploads_per_frame = SIZE_MAX;
+        limits.wave_simulation = false;
+        limits.river_quality = q;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+        gpu::GpuFrame& g = *made.value();
+        CHECK(g.river_quality() == q);
+        const auto target = g.offscreen_target(kSide, kSide);
+        for (const std::size_t group : {std::size_t{0}, std::size_t{1}, std::size_t{2}}) {
+            // The lattice stride of the group (rivers.md 3.3: 8 / 4 / 4 px).
+            const std::uint32_t stride = scene.river_cfg.lattice_stride[group];
+            const SyntheticRiver syn = synthetic_river(stride, true);
+            render::FrameRenderer frames(1, false);
+            frames.insert_chunk({group, 0, 0}, syn.chunk);
+            render::RiverParams params = scene.river_cfg.params();
+            params.quality = q;
+            for (const std::uint64_t t : {std::uint64_t{0}, std::uint64_t{700}, std::uint64_t{1599},
+                                          std::uint64_t{3599950}, std::uint64_t{3600700}}) {
+                const auto st = g.render(frames, scene, view, group, t,
+                                         render::WaterStyle::Enhanced, target.second.get());
+                CHECK(st.river_chunks == 1);
+                CHECK(st.river_quality == q);
+                const auto px = g.read_back(target.first.get(), kSide, kSide);
+                REQUIRE(px.size() == std::size_t{kSide} * kSide * 4);
+                const RiverCompare r =
+                    compare_river_chunk(scene, syn.chunk, group, t, params, true, px);
+                MESSAGE("tier " << static_cast<int>(q) << " group " << group << " t " << t << ": "
+                                << r.n << " pixels, " << 100.0 * r.within2()
+                                << " % within 2/255, max " << r.max);
+                // Rounding of the 8-bit colour and the GPU's own arithmetic: the pixels
+                // agree within 2/255 on >= 99.9 %, none beyond 4 (rivers.md Q2).
+                CHECK(r.within2() >= 0.999);
+                CHECK(r.max <= 4);
+                // Negative control: with the flow reversed the CPU's expectation is
+                // another picture, so the check above would fail on a wrong direction.
+                if (t == 700) {
+                    const RiverCompare flipped =
+                        compare_river_chunk(scene, syn.chunk, group, t, params, true, px, true);
+                    CHECK(flipped.within2() < 0.6);
+                }
+            }
+        }
+        CHECK(g.errors() == 0);
+    }
+}
+
+TEST_CASE("river flow on the GPU: every pixel samples the same global lattice, across chunks at "
+          "non-zero keys and over their borders (synthetic)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    constexpr int kN = render::kChunk;
+    constexpr int kSide = 2 * kN;
+    const render::Rect view{0, 0, kSide, kSide};
+    for (const render::RiverQuality q : {render::RiverQuality::High, render::RiverQuality::Low}) {
+        gpu::GpuLimits limits;
+        limits.uploads_per_frame = SIZE_MAX;
+        limits.wave_simulation = false;
+        limits.river_quality = q;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+        gpu::GpuFrame& g = *made.value();
+        const auto target = g.offscreen_target(kSide, kSide);
+        render::RiverParams params = scene.river_cfg.params();
+        params.quality = q;
+        for (const std::size_t group : {std::size_t{0}, std::size_t{1}}) {
+            const std::uint32_t stride = scene.river_cfg.lattice_stride[group];
+            // Four chunks: (0,0) and the three at non-zero keys (1,0), (0,1), (1,1).
+            std::vector<SyntheticRiver> chunks;
+            render::FrameRenderer frames(1, false);
+            for (int cy = 0; cy < 2; ++cy) {
+                for (int cx = 0; cx < 2; ++cx) {
+                    chunks.push_back(synthetic_river(stride, true, cx, cy));
+                    frames.insert_chunk({group, cx, cy}, chunks.back().chunk);
+                }
+            }
+            for (const std::uint64_t t : {std::uint64_t{700}, std::uint64_t{1599}}) {
+                const auto st = g.render(frames, scene, view, group, t,
+                                         render::WaterStyle::Enhanced, target.second.get());
+                CHECK(st.river_chunks == 4);
+                const auto px = g.read_back(target.first.get(), kSide, kSide);
+                REQUIRE(px.size() == std::size_t{kSide} * kSide * 4);
+                // Every third pixel, plus every pixel within 3 of a chunk border.
+                std::size_t n = 0, over2 = 0, border_n = 0, border_over2 = 0;
+                int max_diff = 0;
+                for (int y = 0; y < kSide; ++y) {
+                    for (int x = 0; x < kSide; ++x) {
+                        const bool border = std::abs(x - kN) <= 3 || std::abs(y - kN) <= 3;
+                        if (!border && (x % 3 != 0 || y % 3 != 0)) {
+                            continue;
+                        }
+                        const SyntheticRiver& owner =
+                            chunks[static_cast<std::size_t>((y / kN) * 2 + x / kN)];
+                        const render::Px e = expected_river_pixel(scene, owner.chunk, group, x, y,
+                                                                  t, params, true, false);
+                        int m = 0;
+                        for (std::size_t k = 0; k < 3; ++k) {
+                            m = std::max(
+                                m,
+                                std::abs(int{e[k]} -
+                                         int{px[(std::size_t{static_cast<std::size_t>(y)} * kSide +
+                                                 static_cast<std::size_t>(x)) *
+                                                    4 +
+                                                k]}));
+                        }
+                        ++n;
+                        over2 += m > 2 ? 1U : 0U;
+                        max_diff = std::max(max_diff, m);
+                        if (border) {
+                            ++border_n;
+                            border_over2 += m > 2 ? 1U : 0U;
+                        }
+                    }
+                }
+                MESSAGE("tier " << static_cast<int>(q) << " group " << group << " t " << t << ": "
+                                << n << " pixels, " << over2 << " beyond 2/255 (" << border_over2
+                                << " of " << border_n << " at the borders), max " << max_diff);
+                CHECK(n > 0);
+                CHECK(static_cast<double>(over2) <= 0.001 * static_cast<double>(n));
+                // The borders are no different from the middle of a chunk.
+                CHECK(static_cast<double>(border_over2) <= 0.001 * static_cast<double>(border_n));
+                CHECK(max_diff <= 4);
+            }
+        }
+        CHECK(g.errors() == 0);
+    }
+}
+
+TEST_CASE("river flow on the GPU: the time wraps at the hour, and a very late time looks like the "
+          "same time into the hour (synthetic)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    constexpr int kSide = render::kChunk;
+    const render::Rect view{0, 0, kSide, kSide};
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    limits.wave_simulation = false;
+    limits.river_quality = render::RiverQuality::High;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    const auto target = g.offscreen_target(kSide, kSide);
+    const std::size_t group = 1;
+    const SyntheticRiver syn = synthetic_river(scene.river_cfg.lattice_stride[group], true);
+    render::FrameRenderer frames(1, false);
+    frames.insert_chunk({group, 0, 0}, syn.chunk);
+    auto image_at = [&](std::uint64_t t) {
+        g.render(frames, scene, view, group, t, render::WaterStyle::Enhanced, target.second.get());
+        return g.read_back(target.first.get(), kSide, kSide);
+    };
+    constexpr std::uint64_t kHour = 3600000;
+    for (const std::uint64_t t : {std::uint64_t{777}, std::uint64_t{1599}}) {
+        const auto base = image_at(t);
+        REQUIRE(base.size() == std::size_t{kSide} * kSide * 4);
+        // The same instant one hour, two hours and a hundred hours later: the shader
+        // gets time % 1 hour, so the picture is byte for byte the same. Without the
+        // wrap a time of 360,000,777 ms is rounded to a multiple of 32 ms in f32 and
+        // the layers (periods 640-2400 ms) jump.
+        for (const std::uint64_t hours : {std::uint64_t{1}, std::uint64_t{2}, std::uint64_t{100}}) {
+            CHECK(image_at(t + hours * kHour) == base);
+        }
+        // And a different instant is a different picture (the check above is not vacuous).
+        CHECK(image_at(t + 321) != base);
+    }
+    CHECK(g.errors() == 0);
+}
+
+TEST_CASE("river flow on the GPU: the legacy look is kept without flow, in legacy mode and in "
+          "original water (synthetic)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    constexpr int kSide = render::kChunk;
+    const render::Rect view{0, 0, kSide, kSide};
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    limits.wave_simulation = false;
+    limits.river_quality = render::RiverQuality::High;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    const auto target = g.offscreen_target(kSide, kSide);
+    const std::size_t group = 1;
+    const render::RiverParams params = scene.river_cfg.params();
+    // The lattice is there, the mode says legacy: every pixel is the shimmer.
+    {
+        const SyntheticRiver syn = synthetic_river(4, true);
+        render::FrameRenderer frames(1, false);
+        frames.river_flow = render::RiverFlowMode::Legacy;
+        frames.insert_chunk({group, 0, 0}, syn.chunk);
+        g.render(frames, scene, view, group, 900, render::WaterStyle::Enhanced,
+                 target.second.get());
+        const auto px = g.read_back(target.first.get(), kSide, kSide);
+        const RiverCompare r = compare_river_chunk(scene, syn.chunk, group, 900, params, false, px);
+        CHECK(r.within2() >= 0.999);
+        CHECK(r.max <= 4);
+        // (The shimmer's amplitude is pinned on real rivers, where it spans several levels:
+        // the Low and Medium test below; here it is a fraction of a level.)
+        // ... and it is not the flow look.
+        const RiverCompare as_flow =
+            compare_river_chunk(scene, syn.chunk, group, 900, params, true, px);
+        CHECK(as_flow.within2() < 0.9);
+    }
+    // No lattice in the chunk (a chunk built before its flow): the shimmer in flow mode too.
+    {
+        const SyntheticRiver syn = synthetic_river(4, false);
+        render::FrameRenderer frames(1, false);
+        frames.insert_chunk({group, 0, 0}, syn.chunk);
+        const auto st = g.render(frames, scene, view, group, 900, render::WaterStyle::Enhanced,
+                                 target.second.get());
+        CHECK(st.river_chunks == 0);
+        const auto px = g.read_back(target.first.get(), kSide, kSide);
+        const RiverCompare r = compare_river_chunk(scene, syn.chunk, group, 900, params, true, px);
+        CHECK(r.within2() >= 0.999);
+        CHECK(r.max <= 4);
+    }
+    // Original water ignores rivers and the river mode: the same image either way.
+    {
+        const SyntheticRiver syn = synthetic_river(4, true);
+        render::FrameRenderer flow_frames(1, false), legacy_frames(1, false);
+        legacy_frames.river_flow = render::RiverFlowMode::Legacy;
+        flow_frames.insert_chunk({group, 0, 0}, syn.chunk);
+        legacy_frames.insert_chunk({group, 0, 0}, syn.chunk);
+        g.render(flow_frames, scene, view, group, 900, render::WaterStyle::Original,
+                 target.second.get());
+        const auto a = g.read_back(target.first.get(), kSide, kSide);
+        g.render(legacy_frames, scene, view, group, 900, render::WaterStyle::Original,
+                 target.second.get());
+        const auto b = g.read_back(target.first.get(), kSide, kSide);
+        CHECK(a == b);
+        // Rivers are not water in the original (no sprites here): open water colour.
+        const render::Px water = scene.textures.water();
+        for (std::size_t i = 0; i < a.size(); i += 4 * 977) {
+            CHECK(std::abs(int{a[i]} - int{water[0]}) <= 1);
+            CHECK(std::abs(int{a[i + 1]} - int{water[1]}) <= 1);
+            CHECK(std::abs(int{a[i + 2]} - int{water[2]}) <= 1);
+        }
+    }
+    CHECK(g.errors() == 0);
+}
+
+TEST_CASE("river flow on the GPU: a chunk rebuilt with its flow is uploaded again, the textures of "
+          "the replaced one are reused (synthetic)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    constexpr int kSide = render::kChunk;
+    const render::Rect view{0, 0, kSide, kSide};
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    limits.wave_simulation = false;
+    limits.river_quality = render::RiverQuality::High;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    const auto target = g.offscreen_target(kSide, kSide);
+    const std::size_t group = 1;
+    render::FrameRenderer frames(1, false);
+    // Built before its flow: the legacy shimmer.
+    frames.insert_chunk({group, 0, 0}, synthetic_river(4, false).chunk);
+    auto st = g.render(frames, scene, view, group, 900, render::WaterStyle::Enhanced,
+                       target.second.get());
+    CHECK(st.chunks_uploaded == 1);
+    CHECK(st.river_chunks == 0);
+    const auto before = g.read_back(target.first.get(), kSide, kSide);
+    // The same frame again: nothing changed, nothing is uploaded.
+    st = g.render(frames, scene, view, group, 900, render::WaterStyle::Enhanced,
+                  target.second.get());
+    CHECK(st.chunks_uploaded == 0);
+    CHECK(g.read_back(target.first.get(), kSide, kSide) == before);
+    // Rebuilt with the flow (a new serial under the same key): uploaded again, and shown.
+    const SyntheticRiver rebuilt = synthetic_river(4, true);
+    const std::uint64_t serial_before = frames.chunk({group, 0, 0})->serial;
+    frames.insert_chunk({group, 0, 0}, rebuilt.chunk);
+    CHECK(frames.chunk({group, 0, 0})->serial != serial_before);
+    st = g.render(frames, scene, view, group, 900, render::WaterStyle::Enhanced,
+                  target.second.get());
+    CHECK(st.chunks_uploaded == 1);
+    CHECK(st.river_chunks == 1);
+    const auto after = g.read_back(target.first.get(), kSide, kSide);
+    CHECK(after != before);
+    const RiverCompare r = compare_river_chunk(scene, rebuilt.chunk, group, 900,
+                                               scene.river_cfg.params(), true, after);
+    CHECK(r.within2() >= 0.999);
+    // And back: a rebuild without a lattice drops it again.
+    frames.insert_chunk({group, 0, 0}, synthetic_river(4, false).chunk);
+    st = g.render(frames, scene, view, group, 900, render::WaterStyle::Enhanced,
+                  target.second.get());
+    CHECK(st.chunks_uploaded == 1);
+    CHECK(st.river_chunks == 0);
+    CHECK(g.read_back(target.first.get(), kSide, kSide) == before);
+    // Flow lattices of different sizes (strides 8 and 2) use their own textures.
+    for (const std::uint32_t stride : {8U, 2U, 4U}) {
+        frames.insert_chunk({group, 0, 0}, synthetic_river(stride, true).chunk);
+        st = g.render(frames, scene, view, group, 900, render::WaterStyle::Enhanced,
+                      target.second.get());
+        CHECK(st.river_chunks == 1);
+    }
+    // A lattice that does not belong to the chunk (another corner) is left out, not misread.
+    {
+        SyntheticRiver wrong = synthetic_river(4, true);
+        wrong.chunk.flow.x0 += 512;
+        frames.insert_chunk({group, 0, 0}, wrong.chunk);
+        st = g.render(frames, scene, view, group, 900, render::WaterStyle::Enhanced,
+                      target.second.get());
+        CHECK(st.river_chunks == 0);
+        // Nor one whose planes are short.
+        SyntheticRiver shorter = synthetic_river(4, true);
+        shorter.chunk.flow.aux.pop_back();
+        frames.insert_chunk({group, 0, 0}, shorter.chunk);
+        st = g.render(frames, scene, view, group, 900, render::WaterStyle::Enhanced,
+                      target.second.get());
+        CHECK(st.river_chunks == 0);
+    }
+    CHECK(g.errors() == 0);
+}
+
+TEST_CASE("river flow on the GPU: the cost is measured per tier, GPU timestamps when the device "
+          "has them, and the automatic tier follows the adapter") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    MESSAGE("adapter: " << ctx->name << ", timestamps "
+                        << std::string(ctx->timestamps ? "yes" : "no"));
+    gpu::GpuLimits fixed;
+    fixed.river_quality = render::RiverQuality::High;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, fixed);
+    REQUIRE(made);
+    const auto costs = made.value()->measure_river_cost(3);
+    REQUIRE(costs.size() == 4);
+    CHECK_FALSE(costs[0].quality.has_value());
+    CHECK(costs[1].quality == render::RiverQuality::Low);
+    CHECK(costs[2].quality == render::RiverQuality::Medium);
+    CHECK(costs[3].quality == render::RiverQuality::High);
+    for (const gpu::RiverCost& c : costs) {
+        MESSAGE((c.quality ? static_cast<int>(*c.quality) : -1)
+                << ": " << c.ms << " ms for " << c.megapixels << " Mpx = " << c.ms_per_mpx
+                << " ms per Mpx");
+        CHECK(std::isfinite(c.ms));
+        CHECK(c.ms > 0.0);
+        CHECK(c.megapixels == doctest::Approx(1.048576));
+        CHECK(c.ms_per_mpx == doctest::Approx(c.ms / c.megapixels));
+        CHECK(c.gpu_timestamps == ctx->timestamps);
+    }
+    // With a gate only what the choice needs is measured: the dearest tier first, stopping
+    // at the first that fits, and no Low after a failed Medium (the floor).
+    {
+        const auto fits = made.value()->measure_river_cost(2, 1.0e9);
+        REQUIRE(fits.size() == 2);
+        CHECK_FALSE(fits[0].quality.has_value());
+        CHECK(fits[1].quality == render::RiverQuality::High);
+        const auto none = made.value()->measure_river_cost(2, -1.0);
+        REQUIRE(none.size() == 3);
+        CHECK(none[1].quality == render::RiverQuality::High);
+        CHECK(none[2].quality == render::RiverQuality::Medium);
+    }
+    // The wall-clock budget: a spent budget drops the tier in progress and measures no
+    // more, and what is left never makes a tier look free (the choice is the floor).
+    {
+        const auto cut = made.value()->measure_river_cost(3, 1.0, 1.0e-9);
+        CHECK(cut.empty());
+        CHECK(gpu::choose_river_quality(cut, 1.0) == render::RiverQuality::Low);
+        const auto fine = made.value()->measure_river_cost(2, 1.0e9, 1.0e9);
+        CHECK(fine.size() == 2);
+        for (const gpu::RiverCost& c : fine) {
+            CHECK(c.measured());
+        }
+    }
+    // A given tier is kept, and nothing is measured for it.
+    CHECK(made.value()->river_quality() == render::RiverQuality::High);
+    CHECK(made.value()->river_costs().empty());
+    // The automatic choice: discrete adapters High without measuring, software adapters
+    // Low without measuring, the rest by the gate on the measurements it keeps.
+    auto autoq = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, {});
+    REQUIRE(autoq);
+    if (ctx->adapter_type == WGPUAdapterType_DiscreteGPU) {
+        CHECK(autoq.value()->river_quality() == render::RiverQuality::High);
+        CHECK(autoq.value()->river_costs().empty());
+    } else if (ctx->adapter_type == WGPUAdapterType_CPU) {
+        CHECK(autoq.value()->river_quality() == render::RiverQuality::Low);
+        CHECK(autoq.value()->river_costs().empty());
+    } else {
+        // The legacy shimmer and at least one tier; the choice is the one the gate gives.
+        CHECK(autoq.value()->river_costs().size() >= 2);
+        CHECK(autoq.value()->river_costs().size() <= 4);
+        CHECK_FALSE(autoq.value()->river_costs().front().quality.has_value());
+        CHECK(autoq.value()->river_quality() ==
+              gpu::choose_river_quality(autoq.value()->river_costs(), 1.0));
+    }
+    // A gate of zero and a huge one on a measured adapter: Low and High.
+    if (ctx->adapter_type != WGPUAdapterType_DiscreteGPU &&
+        ctx->adapter_type != WGPUAdapterType_CPU) {
+        gpu::GpuLimits tight, loose;
+        tight.river_gate_ms_per_mpx = -1.0;
+        loose.river_gate_ms_per_mpx = 1.0e9;
+        auto a = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, tight);
+        auto b = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, loose);
+        REQUIRE(a);
+        REQUIRE(b);
+        CHECK(a.value()->river_quality() == render::RiverQuality::Low);
+        CHECK(b.value()->river_quality() == render::RiverQuality::High);
+    }
+    CHECK(made.value()->errors() == 0);
+}
+
+TEST_CASE("the sea pass is timed with GPU timestamps when asked and the device can") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    gpu::GpuLimits limits;
+    limits.river_quality = render::RiverQuality::High;
+    limits.uploads_per_frame = SIZE_MAX;
+    limits.wave_simulation = false;
+    limits.gpu_timing = true;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    const auto target = g.offscreen_target(512, 512);
+    render::FrameRenderer frames(1, false);
+    frames.insert_chunk({1, 0, 0}, synthetic_river(4, true).chunk);
+    // Nothing rendered yet.
+    CHECK_FALSE(g.sea_pass_ms().has_value());
+    g.render(frames, *es.scene, {0, 0, 512, 512}, 1, 100, render::WaterStyle::Enhanced,
+             target.second.get());
+    // The first frame of a device may report no time (a driver that has not
+    // written its first timestamps yet: the AMD Vulkan driver gave 0); from the
+    // second frame on there is one.
+    const auto first = g.sea_pass_ms();
+    if (first) {
+        CHECK(*first > 0.0);
+    }
+    std::optional<double> ms;
+    for (std::uint64_t i = 0; i < 3; ++i) {
+        g.render(frames, *es.scene, {0, 0, 512, 512}, 1, 100 + 16 * i, render::WaterStyle::Enhanced,
+                 target.second.get());
+        ms = g.sea_pass_ms();
+    }
+    if (ctx->timestamps) {
+        REQUIRE(ms.has_value());
+        CHECK(*ms > 0.0);
+        CHECK(*ms < 1000.0);
+        // Read once: asking again without a new frame gives nothing.
+        CHECK_FALSE(g.sea_pass_ms().has_value());
+    } else {
+        CHECK_FALSE(ms.has_value());
+    }
+    // Without the option no timestamps are taken.
+    gpu::GpuLimits off = limits;
+    off.gpu_timing = false;
+    auto made2 = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, off);
+    REQUIRE(made2);
+    const auto t2 = made2.value()->offscreen_target(512, 512);
+    made2.value()->render(frames, *es.scene, {0, 0, 512, 512}, 1, 100, render::WaterStyle::Enhanced,
+                          t2.second.get());
+    CHECK_FALSE(made2.value()->sea_pass_ms().has_value());
+    CHECK(g.errors() == 0);
+}
+
+// ---- Q2 of rivers.md: the river pixels of real scenes, GPU against CPU (game files) ----
+
+namespace {
+
+/// A scene of one island file (Islands/<climate>/<name>.scp) without units.
+Loaded load_island_scene(const std::filesystem::path& dir, const std::string& rel) {
+    Loaded out;
+    const auto felder_buf = anno::test::read_file(dir / "Textures" / "Felder.tex");
+    out.anl_buf = anno::test::read_file(dir / "Anlagen.dat");
+    out.buf = anno::test::read_file(dir / "Scenes" / rel);
+    auto anlagen = anno::formats::anlagen::AnlagenFile::parse(out.anl_buf).value();
+    const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
+    auto textures = anno::assets::island::GroundTextures::load(felder).value();
+    if (const auto c = render::water_colour(anlagen)) {
+        textures.set_water(*c);
+    }
+    out.scene = std::make_unique<render::Scene>("", anno::formats::insel::islands(out.buf).value(),
+                                                std::move(textures), std::move(anlagen),
+                                                render::kHeightLift);
+    return out;
+}
+
+struct RiverQ2 {
+    /// Pure river pixels (no sea blend, none under an object): the whole pixel,
+    /// and what the flow shading adds on each path (flow minus legacy). `legacy` is
+    /// the whole pixel in the legacy shimmer look (the R key, chunks without flow).
+    /// `shading_under_objects` is the flow shading alone over the river pixels with
+    /// an object over them, which `raw` leaves out (the GPU sinks objects standing in
+    /// water, the CPU does not; the water under them is shaded the same on both).
+    RiverCompare raw, shading, legacy, shading_under_objects;
+    std::size_t under_objects = 0, blend_zone = 0, chunks_with_flow = 0;
+    /// Standard deviation of the 800 ms change of the legacy shimmer, GPU and CPU
+    /// (levels; only with river_q2's legacy_change).
+    double legacy_sd_gpu = 0, legacy_sd_cpu = 0;
+};
+
+/// Renders `view` on the GPU and on the CPU in the flow look and in the legacy
+/// look (the same time) and compares the river pixels of the sea field.
+RiverQ2 river_q2(const render::Scene& scene, gpu::GpuFrame& g, render::FrameRenderer& gpu_frames,
+                 render::FrameRenderer& cpu, WGPUTexture tex, WGPUTextureView tex_view,
+                 render::Rect view, std::size_t group, std::uint64_t time,
+                 bool legacy_change = false) {
+    const auto w = static_cast<std::uint32_t>(view.w), h = static_cast<std::uint32_t>(view.h);
+    auto render_both = [&](render::RiverFlowMode mode, std::vector<std::uint32_t>& cpu_px,
+                           std::vector<std::uint8_t>& gpu_px, std::uint64_t at = 0) {
+        const std::uint64_t time_ = at != 0 ? at : time;
+        cpu.river_flow = mode;
+        gpu_frames.river_flow = mode;
+        cpu_px.assign(std::size_t{w} * h, 0);
+        cpu.render(scene, view, group, time_, render::WaterStyle::Enhanced, cpu_px.data());
+        g.render(gpu_frames, scene, view, group, time_, render::WaterStyle::Enhanced, tex_view);
+        gpu_px = g.read_back(tex, w, h);
+    };
+    std::vector<std::uint32_t> cpu_flow, cpu_legacy;
+    std::vector<std::uint8_t> gpu_flow, gpu_legacy;
+    // Every chunk of the view on the GPU (uploads are spread over frames).
+    for (int i = 0; i < 3; ++i) {
+        g.render(gpu_frames, scene, view, group, time, render::WaterStyle::Enhanced, tex_view);
+    }
+    render_both(render::RiverFlowMode::Flow, cpu_flow, gpu_flow);
+    render_both(render::RiverFlowMode::Legacy, cpu_legacy, gpu_legacy);
+    REQUIRE(gpu_flow.size() == std::size_t{w} * h * 4);
+    REQUIRE(gpu_legacy.size() == gpu_flow.size());
+    RiverQ2 q;
+    std::vector<std::size_t> pure_pixels;
+    for (std::size_t i = 0; i < cpu_flow.size(); ++i) {
+        const int sx = view.x + static_cast<int>(i % w), sy = view.y + static_cast<int>(i / w);
+        const int cx = render::div_euclid(sx, render::kChunk),
+                  cy = render::div_euclid(sy, render::kChunk);
+        const render::Chunk* ch = cpu.chunk({group, cx, cy});
+        if (ch == nullptr || ch->field.empty()) {
+            continue;
+        }
+        const std::size_t f = (static_cast<std::size_t>(sy - cy * render::kChunk) *
+                                   static_cast<std::size_t>(render::kChunk) +
+                               static_cast<std::size_t>(sx - cx * render::kChunk)) *
+                              4;
+        if ((ch->field[f + 3] & 2U) == 0) {
+            continue;
+        }
+        const bool under_object = !ch->objects.empty() && ch->objects[f / 4][3] != 0;
+        if (!under_object && ch->field[f + 1] < 254) {
+            ++q.blend_zone;
+            continue;
+        }
+        int raw = 0, shade = 0, leg = 0;
+        for (int k = 0; k < 3; ++k) {
+            const auto ku = static_cast<std::size_t>(k);
+            const int c_flow = static_cast<int>((cpu_flow[i] >> (16 - 8 * k)) & 0xFF);
+            const int c_leg = static_cast<int>((cpu_legacy[i] >> (16 - 8 * k)) & 0xFF);
+            const int g_flow = int{gpu_flow[4 * i + ku]}, g_leg = int{gpu_legacy[4 * i + ku]};
+            raw = std::max(raw, std::abs(c_flow - g_flow));
+            leg = std::max(leg, std::abs(c_leg - g_leg));
+            shade = std::max(shade, std::abs((g_flow - g_leg) - (c_flow - c_leg)));
+        }
+        if (under_object) {
+            ++q.under_objects;
+            ++q.shading_under_objects.n;
+            q.shading_under_objects.over2 += shade > 2 ? 1U : 0U;
+            q.shading_under_objects.max = std::max(q.shading_under_objects.max, shade);
+            continue;
+        }
+        pure_pixels.push_back(i);
+        ++q.legacy.n;
+        q.legacy.over2 += leg > 2 ? 1U : 0U;
+        q.legacy.max = std::max(q.legacy.max, leg);
+        ++q.raw.n;
+        q.raw.over2 += raw > 2 ? 1U : 0U;
+        q.raw.max = std::max(q.raw.max, raw);
+        ++q.shading.n;
+        q.shading.over2 += shade > 2 ? 1U : 0U;
+        q.shading.max = std::max(q.shading.max, shade);
+    }
+    for (const auto& [cx, cy] : render::visible_chunks(view)) {
+        const render::Chunk* ch = cpu.chunk({group, cx, cy});
+        q.chunks_with_flow += ch != nullptr && !ch->flow.empty() ? 1U : 0U;
+    }
+    if (legacy_change && !pure_pixels.empty()) {
+        // The size of the legacy shimmer itself: the standard deviation of the change of the
+        // green channel of the pure river pixels over 800 ms (terrain and depth cancel; the
+        // light moves) on the GPU against the CPU. On real rivers it is about 1.2 levels
+        // (the GPU's rounding noise adds a few thousandths), so an amplitude that is 10 %
+        // off shows where a 2/255 tolerance per pixel would not.
+        std::vector<std::uint32_t> cpu_later;
+        std::vector<std::uint8_t> gpu_later;
+        render_both(render::RiverFlowMode::Legacy, cpu_later, gpu_later, time + 800);
+        double sg = 0, sg2 = 0, sc = 0, sc2 = 0;
+        for (const std::size_t i : pure_pixels) {
+            const double dg = static_cast<double>(gpu_later[4 * i + 1]) -
+                              static_cast<double>(gpu_legacy[4 * i + 1]);
+            const double dc = static_cast<double>((cpu_later[i] >> 8) & 0xFF) -
+                              static_cast<double>((cpu_legacy[i] >> 8) & 0xFF);
+            sg += dg;
+            sg2 += dg * dg;
+            sc += dc;
+            sc2 += dc * dc;
+        }
+        const double n = static_cast<double>(pure_pixels.size());
+        q.legacy_sd_gpu = std::sqrt(sg2 / n - (sg / n) * (sg / n));
+        q.legacy_sd_cpu = std::sqrt(sc2 / n - (sc / n) * (sc / n));
+    }
+    return q;
+}
+
+} // namespace
+
+TEST_CASE("river pixels on the GPU match the CPU path: the whole pixel and what the flow shading "
+          "adds (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    // The owner's canyon (D_256x256_0045_5B, group 1 at tile 152, 97) and one island of each
+    // other climate with rivers (the QA islands of rivers.md 10.2; the views of
+    // tools/river_qa), every zoom group and three times each.
+    struct Case {
+        const char* label;
+        const char* file;
+        int tx, ty;
+    };
+    const std::array cases = {
+        Case{"owner's canyon", "Islands/Dschungel/D_256x256_0045_5B.scp", 152, 97},
+        Case{"Nord island", "Islands/Nord/N_256x256_0006_2B.scp", 168, 84},
+        Case{"Steppe island", "Islands/Steppe/S_256x256_0004_3B_Orient.scp", 135, 157},
+        Case{"Tundra island", "Islands/Tundra/T_256x256_0008_2B_Po.scp", 136, 141},
+        Case{"Praerie island", "Islands/Praerie/Pr_128x128_0003_1B.scp", 67, 38},
+    };
+    std::size_t total_river = 0;
+    for (const Case& cs : cases) {
+        const Loaded loaded = load_island_scene(*dir, cs.file);
+        const render::Scene& scene = *loaded.scene;
+        gpu::GpuLimits limits;
+        limits.uploads_per_frame = SIZE_MAX;
+        limits.river_quality = render::RiverQuality::High;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+        gpu::GpuFrame& g = *made.value();
+        constexpr int kW = 1280, kH = 720;
+        const auto target = g.offscreen_target(kW, kH);
+        for (const std::size_t group : {std::size_t{0}, std::size_t{1}, std::size_t{2}}) {
+            const auto [px, py] = render::tile_top(cs.tx, cs.ty, group);
+            const render::Rect view{px - kW / 2, py - kH / 2, kW, kH};
+            render::FrameRenderer cpu(4), on_gpu(4, false);
+            for (const std::uint64_t time :
+                 {std::uint64_t{0}, std::uint64_t{700}, std::uint64_t{1600}}) {
+                const RiverQ2 q = river_q2(scene, g, on_gpu, cpu, target.first.get(),
+                                           target.second.get(), view, group, time);
+                MESSAGE(std::string(cs.label)
+                        << " group " << group << " t " << time << ": " << q.raw.n
+                        << " pure river pixels (" << q.under_objects << " under objects, "
+                        << q.blend_zone << " in the sea blend), whole pixel "
+                        << 100.0 * q.raw.within2() << " % within 2/255 max " << q.raw.max
+                        << "; flow shading alone " << 100.0 * q.shading.within2() << " % max "
+                        << q.shading.max << "; legacy look " << 100.0 * q.legacy.within2()
+                        << " % max " << q.legacy.max << "; shading under objects ("
+                        << q.shading_under_objects.n << " px) "
+                        << 100.0 * q.shading_under_objects.within2() << " % max "
+                        << q.shading_under_objects.max << ", " << q.chunks_with_flow
+                        << " chunks with flow");
+                total_river += q.raw.n;
+                if (q.raw.n < 500) {
+                    continue; // no river to speak of in this view
+                }
+                // What the flow shading adds to the picture: 99.9 % within 2/255, none beyond 4.
+                CHECK(q.shading.within2() >= 0.999);
+                CHECK(q.shading.max <= 4);
+                // The whole pixel: the CPU path rounds down after every step of the sea
+                // (sprite, openness, shading) where the GPU keeps floats, a level or two on
+                // every sea pixel in the legacy look as well (measured 99.4-99.97 % within 2, max
+                // 3).
+                CHECK(q.raw.within2() >= 0.99);
+                CHECK(q.raw.max <= 4);
+                // The legacy shimmer on the GPU (the R key; chunks still without flow) against
+                // the CPU's, on the same pixels: the same rounding offset, nothing more.
+                CHECK(q.legacy.within2() >= 0.99);
+                CHECK(q.legacy.max <= 4);
+                // Under objects (38 % of the owner's river pixels at group 1 are covered, left out
+                // of the whole-pixel statistics): the water under them is shaded alike, but the
+                // object's own edge differs (measured 97.6-100 % within 2, max 11).
+                if (q.shading_under_objects.n >= 500) {
+                    CHECK(q.shading_under_objects.within2() >= 0.97);
+                    CHECK(q.shading_under_objects.max <= 12);
+                }
+                CHECK(q.chunks_with_flow > 0);
+            }
+        }
+        CHECK(g.errors() == 0);
+    }
+    // The views have rivers: the test is not vacuous.
+    CHECK(total_river > 100000);
+}
+
+TEST_CASE("river pixels on the GPU match the CPU path at the Low and Medium tiers (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    // The owner's canyon at groups 0 and 1, the tiers an integrated GPU gets: the CPU
+    // reference follows the tier (FrameRenderer::river_quality), the same statistics as
+    // for High (bench_frame --check passes the GPU's tier to its CPU reference too).
+    const Loaded loaded = load_island_scene(*dir, "Islands/Dschungel/D_256x256_0045_5B.scp");
+    const render::Scene& scene = *loaded.scene;
+    constexpr int kW = 1280, kH = 720;
+    for (const render::RiverQuality q : {render::RiverQuality::Low, render::RiverQuality::Medium}) {
+        gpu::GpuLimits limits;
+        limits.uploads_per_frame = SIZE_MAX;
+        limits.river_quality = q;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+        gpu::GpuFrame& g = *made.value();
+        CHECK(g.river_quality() == q);
+        const auto target = g.offscreen_target(kW, kH);
+        for (const std::size_t group : {std::size_t{0}, std::size_t{1}}) {
+            const auto [px, py] = render::tile_top(152, 97, group);
+            const render::Rect view{px - kW / 2, py - kH / 2, kW, kH};
+            render::FrameRenderer cpu(4), on_gpu(4, false);
+            cpu.river_quality = q;
+            const RiverQ2 r = river_q2(scene, g, on_gpu, cpu, target.first.get(),
+                                       target.second.get(), view, group, 700, true);
+            MESSAGE("tier " << static_cast<int>(q) << " group " << group << ": " << r.raw.n
+                            << " pure river pixels, whole pixel " << 100.0 * r.raw.within2()
+                            << " % within 2/255 max " << r.raw.max << "; flow shading alone "
+                            << 100.0 * r.shading.within2() << " % max " << r.shading.max);
+            REQUIRE(r.raw.n > 1000);
+            CHECK(r.shading.within2() >= 0.999);
+            CHECK(r.shading.max <= 4);
+            CHECK(r.raw.within2() >= 0.99);
+            CHECK(r.raw.max <= 4);
+            CHECK(r.legacy.within2() >= 0.99);
+            MESSAGE("legacy shimmer, sd of the 800 ms change (green): GPU "
+                    << r.legacy_sd_gpu << " CPU " << r.legacy_sd_cpu);
+            REQUIRE(r.legacy_sd_cpu > 1.0);
+            CHECK(r.legacy_sd_gpu / r.legacy_sd_cpu == doctest::Approx(1.0).epsilon(0.03));
+            // The tier is not a no-op: against the High reference the shading differs.
+            render::FrameRenderer high(4);
+            std::vector<std::uint32_t> a(static_cast<std::size_t>(kW) * kH),
+                b(static_cast<std::size_t>(kW) * kH);
+            cpu.river_flow = render::RiverFlowMode::Flow;
+            cpu.render(scene, view, group, 700, render::WaterStyle::Enhanced, a.data());
+            high.render(scene, view, group, 700, render::WaterStyle::Enhanced, b.data());
+            if (group == 0) {
+                CHECK(a != b);
+            }
+        }
+        CHECK(g.errors() == 0);
+    }
 }

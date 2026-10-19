@@ -2,7 +2,8 @@
 # arithmetic in all state (docs/sim/core.md, docs/sim/state.md). Uses
 # anno_formats to read type data from the original files.
 add_library(anno_sim src/sim.cpp src/production.cpp src/config.cpp src/types.cpp
-            src/goods_table.cpp src/synthetic.cpp src/player.cpp)
+            src/goods_table.cpp src/synthetic.cpp src/player.cpp src/island.cpp src/scenario.cpp
+            src/save.cpp)
 target_include_directories(anno_sim PUBLIC include)
 target_link_libraries(anno_sim PUBLIC anno_formats)
 target_compile_features(anno_sim PUBLIC cxx_std_20)
@@ -12,7 +13,7 @@ if(ANNO_BUILD_TESTS)
   add_executable(anno_sim_tests tests/main.cpp tests/sim_test.cpp tests/production_test.cpp
                  tests/archive_test.cpp tests/slot_list_test.cpp tests/scheduler_blocks_test.cpp
                  tests/container_probe_test.cpp tests/config_test.cpp tests/types_test.cpp
-                 tests/player_test.cpp)
+                 tests/player_test.cpp tests/tile_hash_test.cpp tests/island_state_test.cpp)
   target_link_libraries(anno_sim_tests PRIVATE anno_sim anno_test_support doctest::doctest)
   # The goldens (fixtures/synthetic/sim/goldens.txt, docs/sim/state.md §14.3).
   target_compile_definitions(anno_sim_tests PRIVATE

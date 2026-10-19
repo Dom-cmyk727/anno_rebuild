@@ -6,7 +6,7 @@
 // of its function plus a kStateHashVersion bump and re-baselined goldens in
 // the same commit.
 //
-// Stream at kStateHashVersion 102 (stage S4), the scopes of §9.3 so far:
+// Stream at kStateHashVersion 103 (stage S5), the scopes of §9.3 so far:
 //   1 header     u32 kStateHashVersion, u32 kPrngTimelineVersion,
 //                SimConfig (declaration order; vectors as count + elements;
 //                small_farm_animals; layout), Rules (declaration order),
@@ -16,6 +16,9 @@
 //   3 settings   the WorldSettings
 //   5 players    u64 slot count, then per slot (scope `player`, ordinal = slot)
 //                an optional Player, then u16 stamp, u32 cursor
+//   6 islands    u64 slot count, then per slot (scope `island`, ordinal = slot)
+//                an optional Island, whose tile layer is the scope `tiles`
+//                (the cities scope of §9.3 follows with stage S6)
 // Not in the stream: the PRNG table itself (immutable, identified by its
 // size and digest; a custom table travels in the save frame, §9.5), the type
 // registry (its digest is in the header) and the seam functions (their names
@@ -32,18 +35,25 @@
 // A failed read leaves the target World unchanged: the configuration, rules,
 // settings, clock and PRNG cursor are read into temporaries and committed only
 // when the whole stream was read and validated (StateIO::world; the player table
-// too).
+// and the islands too). The islands scope is validated against the configuration,
+// the settings and the registry just read (validate_islands).
 #pragma once
 
 #include <cstdint>
+#include <memory>
+#include <optional>
+#include <span>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include <anno/formats/result.hpp>
 #include <anno/sim/archive.hpp>
 #include <anno/sim/clock.hpp>
 #include <anno/sim/config.hpp>
 #include <anno/sim/field_count.hpp>
+#include <anno/sim/island.hpp>
 #include <anno/sim/player.hpp>
 #include <anno/sim/rng.hpp>
 #include <anno/sim/seams.hpp>
@@ -337,6 +347,212 @@ template <class A, Same<PlayerTable> S> void fields(A& a, S& s) {
     a.u32(s.cursor);
 }
 
+// ---- islands scope
+
+static_assert(field_count<Deposit>() == 5, "a Deposit member needs a line in fields(Deposit)");
+
+template <class A, Same<Deposit> S> void fields(A& a, S& s) {
+    a.str(s.goods);
+    a.i32(s.x);
+    a.i32(s.y);
+    a.u32(s.remaining);
+    a.boolean(s.reserve);
+}
+
+static_assert(field_count<SweepState>() == 5,
+              "a SweepState member needs a line in fields(SweepState)");
+
+template <class A, Same<SweepState> S> void fields(A& a, S& s) {
+    a.u16(s.stamp);
+    a.u32(s.grow_x);
+    a.u32(s.grow_y);
+    a.u32(s.fauna_x);
+    a.u32(s.fauna_y);
+}
+
+static_assert(field_count<CityRing>() == 2, "a CityRing member needs a line in fields(CityRing)");
+
+template <class A, Same<CityRing> S> void fields(A& a, S& s) {
+    a.u16(s.stamp);
+    a.u32(s.cursor);
+}
+
+static_assert(field_count<ObjectManagerState>() == 2,
+              "an ObjectManagerState member needs a line in fields(ObjectManagerState)");
+
+template <class A, Same<ObjectManagerState> S> void fields(A& a, S& s) {
+    a.u16(s.stamp);
+    a.u32(s.cursor);
+}
+
+static_assert(field_count<Drought>() == 10, "a Drought member needs a line in fields(Drought)");
+
+template <class A, Same<Drought> S> void fields(A& a, S& s) {
+    a.u32(s.x);
+    a.u32(s.y);
+    a.u32(s.target_ring);
+    a.i32(s.ring);
+    a.u32(s.city_mask);
+    a.u8(s.phase);
+    a.u8(s.step);
+    a.u8(s.state);
+    a.u16(s.counter);
+    a.u16(s.stamp);
+}
+
+/// The one place where the archives differ in what they touch (docs/sim/state.md
+/// §9.2). A friend of TileLayer: the columns are moved in bulk, not through the
+/// setters (a read ends with every chunk dirty, which reset() leaves).
+struct TileIO {
+    template <class A, class T> static void columns(A& a, T& t) {
+        for (auto& v : t.object_) {
+            a.u32(v);
+        }
+        for (auto& v : t.phase_) {
+            a.u8(v);
+        }
+        for (auto& v : t.owner_) {
+            a.u32(v);
+        }
+        for (auto& v : t.aux_) {
+            a.u32(v);
+        }
+    }
+};
+
+/// The scope `tiles` of an island: `u32 width, u32 height, u32 chunk_edge`, then
+/// the four columns `object[]` (u32), `phase[]` (u8), `owner[]` (u32), `aux[]`
+/// (u32), each w · h elements (kTileBytes = 13 per tile). `x0`, `y0`, `w` and `h`
+/// are the island's own rectangle, which the island scope wrote just before; the
+/// layer's dimensions must equal them. Reading rejects before allocating:
+/// chunk_edge 0, more than kIslandTileBound tiles, or w · h · 13 > remaining()
+/// (in u64); the generic count check of ReadArchive does not cover the bulk
+/// columns. The hierarchical hash feeds the dimensions and, for every chunk in
+/// row-major chunk order, the cached chunk digest (u64) instead of the columns;
+/// the raw hash (and the write and trace archives) feed the columns, so the raw
+/// digest equals the FNV of the saved bytes.
+template <class A, class T>
+void tiles_io(A& a, T& t, std::int32_t x0, std::int32_t y0, std::uint32_t w, std::uint32_t h) {
+    std::uint32_t tw = t.width();
+    std::uint32_t th = t.height();
+    std::uint32_t edge = t.chunk_edge();
+    a.u32(tw);
+    a.u32(th);
+    a.u32(edge);
+    if constexpr (A::kReading) {
+        if (a.failed()) {
+            return;
+        }
+        if (tw != w || th != h) {
+            a.fail("tile layer " + std::to_string(tw) + " x " + std::to_string(th) +
+                   " differs from the island's " + std::to_string(w) + " x " + std::to_string(h));
+            return;
+        }
+        if (edge == 0) {
+            a.fail("chunk_edge is 0");
+            return;
+        }
+        const std::uint64_t tiles = std::uint64_t{tw} * th;
+        if (tiles > kIslandTileBound) {
+            a.fail("more than " + std::to_string(kIslandTileBound) + " tiles");
+            return;
+        }
+        if (tiles > a.remaining() / kTileBytes) {
+            a.fail("tile columns need " + std::to_string(tiles) + " x " +
+                   std::to_string(kTileBytes) + " bytes, " + std::to_string(a.remaining()) +
+                   " remain");
+            return;
+        }
+        if (!t.reset(x0, y0, tw, th, edge)) {
+            a.fail("the tile layer cannot be sized");
+            return;
+        }
+    }
+    if constexpr (std::is_same_v<A, HashArchive>) {
+        if (!a.raw()) {
+            for (std::uint64_t k = 0; k < t.chunk_count(); ++k) {
+                a.u64(t.chunk_digest(k));
+            }
+            return;
+        }
+    }
+    TileIO::columns(a, t);
+}
+
+// Island has no user-declared constructor on purpose (C++20), so that the canary
+// can count its members: index, tiles, terrain, climate, deposits, next_serial,
+// sweep, event300_stamp, drought, objmgr, ring, reserved_object_count.
+static_assert(field_count<Island>() == 12, "an Island member needs a line in fields(Island)");
+
+/// One island (docs/sim/state.md §9.3): `u32 index`, the rectangle `i32 x0, i32 y0,
+/// u32 w, u32 h`, `u32 climate, u32 next_serial, u64 terrain_digest` (0 if none),
+/// the sweep, `u16 event300_stamp`, the object manager, the ring, the optional
+/// drought, the deposits, `u64 reserved_object_count`, scope `tiles`. The terrain
+/// itself is not in the stream (its blobs travel in the save frame, §9.5): reading
+/// leaves a placeholder that carries the digest, and the frame replaces it by the
+/// verified blobs.
+template <class A, Same<Island> S> void fields(A& a, S& s) {
+    a.u32(s.index.v);
+    std::int32_t x0 = s.tiles.x0();
+    std::int32_t y0 = s.tiles.y0();
+    std::uint32_t w = s.tiles.width();
+    std::uint32_t h = s.tiles.height();
+    a.i32(x0);
+    a.i32(y0);
+    a.u32(w);
+    a.u32(h);
+    a.u32(s.climate);
+    a.u32(s.next_serial);
+    std::uint64_t terrain = s.terrain ? s.terrain->digest : 0;
+    a.u64(terrain);
+    if constexpr (A::kReading) {
+        if (!a.failed() && terrain != 0) {
+            auto placeholder = std::make_shared<Terrain>();
+            placeholder->digest = terrain;
+            s.terrain = std::move(placeholder);
+        } else {
+            s.terrain.reset();
+        }
+    }
+    fields(a, s.sweep);
+    a.u16(s.event300_stamp);
+    fields(a, s.objmgr);
+    fields(a, s.ring);
+    ar::opt(a, s.drought, [&](auto& d) { fields(a, d); });
+    // Smallest Deposit on the wire: u64 name length + 3 x 4 + 1 bytes.
+    ar::seq(a, s.deposits, 21, [&](auto& d) { fields(a, d); });
+    a.u64(s.reserved_object_count);
+    a.scope("tiles", [&] { tiles_io(a, s.tiles, x0, y0, w, h); });
+}
+
+/// The island table: `u64 slot count`, then per slot (scope `island`, ordinal =
+/// slot) an optional Island. On reading the count is bounded by
+/// SimConfig::island_slots (already read and validated) before any slot is made,
+/// because an absent slot is one byte on the wire but a whole optional<Island> in
+/// memory; validate_islands then checks the structure (StateIO::islands_section).
+template <class A, class V> void islands_io(A& a, V& islands, const SimConfig& cfg) {
+    std::uint64_t n = islands.size();
+    a.count(n, 1);
+    if constexpr (A::kReading) {
+        if (!a.failed() && n > cfg.island_slots) {
+            a.fail("slot count " + std::to_string(n) + " is above SimConfig.island_slots " +
+                   std::to_string(cfg.island_slots));
+            n = 0;
+        }
+        islands.clear();
+        for (std::uint64_t i = 0; i < n && !a.failed(); ++i) {
+            islands.emplace_back();
+            a.scope("island", static_cast<std::uint32_t>(i),
+                    [&] { ar::opt(a, islands.back(), [&](auto& is) { fields(a, is); }); });
+        }
+    } else {
+        for (std::size_t i = 0; i < islands.size(); ++i) {
+            a.scope("island", static_cast<std::uint32_t>(i),
+                    [&] { ar::opt(a, islands[i], [&](auto& is) { fields(a, is); }); });
+        }
+    }
+}
+
 /// The hierarchical hash of any persistent value, with the scopes down to
 /// `depth` recorded in `tree` when it is not null. World::state_hash is this
 /// over the world; it is a template so the depth rule can be tested on values
@@ -356,17 +572,16 @@ template <class T> std::uint64_t digest_of(const T& value) {
 }
 
 /// The access door of the field list to the private members of World (a
-/// friend of World, world.hpp): the world's own fields() calls it.
+/// friend of World, world.hpp): the world's own fields() calls it. The stream is
+/// five sections, one function each (the save frame writes and reads them one
+/// by one, §9.5); `scopes` is the flat stream of all five in order, which is what
+/// the hash and the field-list tests run.
 struct StateIO {
-    /// The scopes of the stream over the configuration, rules, settings, clock
-    /// and PRNG to use: the world's own members when writing or hashing, the
-    /// read-side temporaries when reading (so one function defines the order of
-    /// the stream for all four archives). `w` supplies the registry and the
-    /// seams, which are not in the stream.
-    template <class A, class W, class Config, class RulesT, class Settings, class Clock, class Rng,
-              class Players>
-    static void scopes(A& a, W& w, Config& config, RulesT& rules, Settings& settings, Clock& clock,
-                       Rng& rng, Players& players) {
+    /// Section 1. Reading validates what it just read (§3.1) before anything is
+    /// sized from it. `w` supplies the registry and the seams, which are not in
+    /// the stream.
+    template <class A, class W, class Config, class RulesT>
+    static void header_section(A& a, W& w, Config& config, RulesT& rules) {
         StateHeader header;
         a.scope("header", [&] {
             fields(a, header);
@@ -409,10 +624,19 @@ struct StateIO {
                 }
             }
         });
+    }
+
+    /// Section 2.
+    template <class A, class Clock, class Rng>
+    static void clock_rng_section(A& a, Clock& clock, Rng& rng) {
         a.scope("clock_rng", [&] {
             fields(a, clock);
             fields(a, rng);
         });
+    }
+
+    /// Section 3.
+    template <class A, class Settings> static void settings_section(A& a, Settings& settings) {
         a.scope("settings", [&] {
             fields(a, settings);
             if constexpr (A::kReading) {
@@ -424,6 +648,11 @@ struct StateIO {
                 }
             }
         });
+    }
+
+    /// Section 4 (the `ids` section of §9.3 is not in the stream yet).
+    template <class A, class Players, class Config>
+    static void players_section(A& a, Players& players, const Config& config) {
         a.scope("players", [&] {
             fields(a, players);
             if constexpr (A::kReading) {
@@ -435,6 +664,40 @@ struct StateIO {
                 }
             }
         });
+    }
+
+    /// Section 5. Reading validates the table against the configuration, the
+    /// settings and the registry just read (validate_islands).
+    template <class A, class W, class Islands, class Config, class Settings>
+    static void islands_section(A& a, W& w, Islands& islands, const Config& config,
+                                const Settings& settings) {
+        a.scope("islands", [&] {
+            islands_io(a, islands, config);
+            if constexpr (A::kReading) {
+                if (!a.failed()) {
+                    const std::string problem =
+                        validate_islands(islands, config, settings, *w.types_);
+                    if (!problem.empty()) {
+                        a.fail(problem);
+                    }
+                }
+            }
+        });
+    }
+
+    /// The scopes of the stream over the configuration, rules, settings, clock,
+    /// PRNG, players and islands to use: the world's own members when writing or
+    /// hashing, the read-side temporaries when reading (so one function defines
+    /// the order of the stream for all four archives).
+    template <class A, class W, class Config, class RulesT, class Settings, class Clock, class Rng,
+              class Players, class Islands>
+    static void scopes(A& a, W& w, Config& config, RulesT& rules, Settings& settings, Clock& clock,
+                       Rng& rng, Players& players, Islands& islands) {
+        header_section(a, w, config, rules);
+        clock_rng_section(a, clock, rng);
+        settings_section(a, settings);
+        players_section(a, players, config);
+        islands_section(a, w, islands, config, settings);
     }
 
     template <class A, class W> static void world(A& a, W& w) {
@@ -449,7 +712,8 @@ struct StateIO {
             WorldClock clock = w.clock;
             WorldRng rng = w.rng;
             PlayerTable players = w.players_;
-            scopes(a, w, config, rules, settings, clock, rng, players);
+            std::vector<std::optional<Island>> islands;
+            scopes(a, w, config, rules, settings, clock, rng, players, islands);
             if (!a.failed()) {
                 w.config_ = std::move(config);
                 w.rules_ = rules;
@@ -457,14 +721,24 @@ struct StateIO {
                 w.clock = clock;
                 w.rng = rng;
                 w.players_ = std::move(players);
+                w.islands_ = std::move(islands);
             }
         } else {
-            scopes(a, w, w.config_, w.rules_, w.settings_, w.clock, w.rng, w.players_);
+            scopes(a, w, w.config_, w.rules_, w.settings_, w.clock, w.rng, w.players_, w.islands_);
         }
     }
+
+    /// The save frame (docs/sim/state.md §9.5; save.cpp): "A3SV", u32 save version,
+    /// u32 kStateHashVersion, the PRNG table kind, the sections each with its
+    /// byte length in front, the terrain blobs, a trailing FNV-1a 64.
+    static std::vector<std::uint8_t> save(const World& w);
+    static formats::Result<World, std::string> load(std::span<const std::uint8_t> bytes,
+                                                    std::shared_ptr<const TypeRegistry> types,
+                                                    Seams seams);
 };
 
-/// The world so far: scopes header, clock_rng, settings and players (the order of §9.3).
+/// The world so far: scopes header, clock_rng, settings, players and islands (the
+/// order of §9.3).
 template <class A, Same<World> S> void fields(A& a, S& w) {
     StateIO::world(a, w);
 }

@@ -188,6 +188,11 @@ class HashArchive : public detail::Writer<HashArchive> {
         close();
     }
 
+    /// Raw mode: scopes are transparent (HashOptions::raw). Field lists that feed
+    /// derived digests instead of bulk data in hierarchical mode (the tile layer's
+    /// chunk digests, state_fields.hpp) feed the data itself in raw mode.
+    [[nodiscard]] bool raw() const { return raw_; }
+
     /// The digest of the root scope; fills the tree (root named "world") when
     /// one was requested. Call after every scope is closed. It does not
     /// consume the archive: a second call returns the same digest and fills
@@ -406,6 +411,19 @@ class ReadArchive {
         path_.push_back(PathItem{name.view, 0, false});
         f();
         path_.pop_back();
+    }
+
+    /// Skips `n` bytes (a length-prefixed section whose content another reader
+    /// handles); fails when fewer remain.
+    void skip(std::uint64_t n) {
+        if (failed_) {
+            return;
+        }
+        if (remaining() < n) {
+            fail("unexpected end of input");
+            return;
+        }
+        pos_ += static_cast<std::size_t>(n);
     }
 
     /// Latches `message` as the error unless one is already latched.

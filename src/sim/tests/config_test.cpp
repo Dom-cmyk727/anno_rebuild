@@ -1300,7 +1300,7 @@ TEST_CASE("state stream header and settings scopes") {
     const std::vector<std::uint8_t> bytes = save_fields(w);
     // The whole stream, transcribed from docs/sim/state.md §9.3: header
     // (versions, SimConfig, Rules, registry digest, seam names), clock_rng,
-    // settings, players (32 absent slots, stamp, cursor).
+    // settings, players (32 absent slots, stamp, cursor), islands (slot count 0).
     Stream expected;
     expected.u32(sim::kStateHashVersion);
     expected.u32(sim::kPrngTimelineVersion);
@@ -1323,14 +1323,16 @@ TEST_CASE("state stream header and settings scopes") {
     }
     expected.u16(0); // stamp
     expected.u32(0); // cursor
+    expected.u64(0); // islands: slot count
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 102);
+    CHECK(sim::kStateHashVersion == 103);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);
     CHECK(scope_offset(w, "settings") == header_size + 36);
     CHECK(scope_offset(w, "players") == header_size + 36 + 38);
-    CHECK(bytes.size() == header_size + 36 + 38 + 46);
+    CHECK(scope_offset(w, "islands") == header_size + 36 + 38 + 46);
+    CHECK(bytes.size() == header_size + 36 + 38 + 46 + 8);
 }
 
 TEST_CASE("state hash moves with every config rules settings and seam field") {
@@ -1338,11 +1340,12 @@ TEST_CASE("state hash moves with every config rules settings and seam field") {
     const std::uint64_t base_hash = base.state_hash();
     sim::HashTree base_tree;
     CHECK(base.state_hash(base_tree, 0) == base_hash);
-    REQUIRE(base_tree.root.children.size() == 4);
+    REQUIRE(base_tree.root.children.size() == 5);
     CHECK(base_tree.root.children[0].name == "header");
     CHECK(base_tree.root.children[1].name == "clock_rng");
     CHECK(base_tree.root.children[2].name == "settings");
     CHECK(base_tree.root.children[3].name == "players");
+    CHECK(base_tree.root.children[4].name == "islands");
     auto scope_hashes = [](const sim::World& w) {
         sim::HashTree t;
         static_cast<void>(w.state_hash(t, 0));

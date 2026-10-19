@@ -63,6 +63,36 @@ inline constexpr std::uint32_t kEntryTableBound = 1U << 12;
 /// raise it: change this constant (the products are formed in u64).
 inline constexpr std::uint32_t kWorldEdgeBound = 1U << 14;
 
+/// Sanity bound for the number of tiles of ONE island (TileLayer::reset refuses
+/// more, the world builder and the loader check it before sizing anything).
+/// Reason: a tile costs 13 bytes in the columns (docs/sim/state.md §9.2), so an
+/// island of w · h tiles with w and h up to kWorldEdgeBound (2^14) would ask for
+/// 3.5 GB from a single field of a hostile header. 2^26 tiles (8192 x 8192, about
+/// 870 MB of columns) is far above the originals (islands a few hundred tiles
+/// wide). It bounds one island, not the sum: what a whole scenario or save
+/// allocates is bounded by its input (the loader checks w · h · 13 against the
+/// bytes that remain) or, for World::create, by the world's own area, because the
+/// rectangles are checked inside the world and disjoint BEFORE any tile is
+/// allocated (validate_island_rects). The host that builds worlds from untrusted
+/// scenarios must still expect `std::bad_alloc` on a host that has less memory
+/// than the scenario's world needs. Path to raise it: change this constant; like
+/// the other bounds it is a build-time constant and not a header field
+/// (docs/sim/state.md §3.1, F27, F30). Raising it to 2^32 or more also needs
+/// wider tile indices (Slot, ScenarioSpec::TileObjectSpec::index), see the
+/// static_assert below.
+inline constexpr std::uint64_t kIslandTileBound = 1ULL << 26;
+static_assert(kIslandTileBound < kNoSlot,
+              "a tile index is a Slot (u32) and kNoSlot must stay unreachable: widen Slot, "
+              "TileObjectSpec::index and the ScenarioSpec fields before raising the bound");
+
+/// Whether a w x h island is within kIslandTileBound tiles: the one place the
+/// bound is compared (the layer, the scenario check, the validator and the
+/// stream reader all call it, so the edge is tested once: exactly the bound is
+/// accepted, one tile more is not). The product of two u32 edges fits u64.
+[[nodiscard]] constexpr bool island_tiles_within_bound(std::uint32_t w, std::uint32_t h) {
+    return std::uint64_t{w} * h <= kIslandTileBound;
+}
+
 /// The largest value of the saved Drought `step` and `phase` (u8): the drought
 /// gates compare them with drought_steps · chunk_edge and drought_phases, so a
 /// larger value could never be reached (docs/sim/state.md §5.8, §9.3). Path to

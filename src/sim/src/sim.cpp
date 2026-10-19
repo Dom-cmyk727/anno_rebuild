@@ -4,6 +4,7 @@
 
 #include <anno/sim/archive.hpp>
 #include <anno/sim/clock.hpp>
+#include <anno/sim/executor.hpp>
 #include <anno/sim/hash.hpp>
 #include <anno/sim/player.hpp>
 #include <anno/sim/rng.hpp>
@@ -156,6 +157,29 @@ std::uint64_t World::advance(std::uint32_t game_ms) {
     player_table_tick(players_, t, config_, rules_);
     clock.end();
     return tick;
+}
+
+const Island* World::island_at(std::int32_t x, std::int32_t y) const {
+    for (const std::optional<Island>& is : islands_) {
+        if (is.has_value() && is->tiles.contains(x, y)) {
+            return &*is;
+        }
+    }
+    return nullptr;
+}
+
+void World::prepare_hash(const Executor& ex) {
+    for (std::optional<Island>& is : islands_) {
+        if (is.has_value()) {
+            is->tiles.refresh(ex);
+        }
+    }
+}
+
+const Executor& serial_executor() {
+    // Stateless and immutable: safe to share between threads and worlds.
+    static const SerialExecutor executor;
+    return executor;
 }
 
 std::uint64_t World::state_hash() const {

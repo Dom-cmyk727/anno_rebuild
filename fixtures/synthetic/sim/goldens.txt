@@ -38,8 +38,21 @@
 # advance(500) x 100 and x 700. The values come from tools/sim_stream.py, which
 # transcribes the per-player rules independently of the C++ code, so MSVC, GCC and
 # Clang are held to the same player arithmetic.
-g0_step1     S1 102 3fdee3c748d59669
-g0_step100   S1 102 226f751ec17b7208
-g0_step1000  S1 102 290e5047c38aa562
-g1_players_step100 S4 102 8075f6b5a4e2f059
-g1_players_step700 S4 102 82f9d812fd30142f
+# Re-baselined at stream version 103 (stage S5: the islands scope was added after
+# players: for these worlds the u64 slot count 0). The version-102 values were
+# 3fdee3c748d59669, 226f751ec17b7208, 290e5047c38aa562 (G0) and 8075f6b5a4e2f059,
+# 82f9d812fd30142f (G1). The values come from tools/sim_stream.py.
+#
+# S5 islands: the synthetic two-island scenario (synthetic::two_island_scenario:
+# players in slots 0 and 1, islands in slots 0 and 3 with owner runs, scenery,
+# deposits and a terrain, the second one 30 x 20 tiles so its edge chunks are
+# clipped), seed 1234, the state hash right after World::create and after
+# advance(10) x 100. tools/sim_stream.py builds the same tile columns, hashes them
+# chunk by chunk and transcribes the island stream independently of the C++.
+g0_step1     S1 103 60b81fdd4baeefde
+g0_step100   S1 103 ac9733c2ce7dbbbb
+g0_step1000  S1 103 dc64b91713a86c61
+g1_players_step100 S4 103 155953213ed2068c
+g1_players_step700 S4 103 7b8ffbc1fd0e366e
+s5_islands_create S5 103 b1457eb7371e1c96
+s5_islands_step100 S5 103 a6a9966225df5573

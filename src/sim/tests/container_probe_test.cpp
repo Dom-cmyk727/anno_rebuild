@@ -1,16 +1,17 @@
 // Probe of the container shapes the state model builds on (docs/sim/state.md
 // §14.1, §15 S2): optional<variant<...>> of the real production payloads,
-// vectors of optionals of them, the slot list of those, and a stand-in with
-// the exact member shape of TileLayer and Island (default constructor, several
-// vectors including `mutable` ones, a nested optional<struct>, `reset(...)`).
+// vectors of optionals of them, the slot list of those, and the real TileLayer
+// (stage S5: default constructor, several vectors including `mutable` ones,
+// `reset(...)`) inside an island shape (a nested optional<struct>, a
+// shared_ptr<const>, vectors of optionals; its city part is still a stand-in).
 //
 // The point is the compiler, not the values: GCC 12/13 release builds under
 // `-Werror -Wnull-dereference -Wmaybe-uninitialized` are known to report false
 // positives on the first copies of these shapes, and this file finds them (and
 // the one place to work around them) before the stages that depend on the
 // shapes are written. The cases also run, so ASan/UBSan see the copies, moves
-// and growth. When the real `TileLayer`, `Island` and `Building` exist (S5,
-// S6) the same file is pointed at them.
+// and growth. Stage S5 pointed the file at the real `TileLayer`, `Terrain`,
+// `SweepState`, `Drought` and `CityRing`; `Building` and `City` follow with S6.
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -23,6 +24,7 @@
 #include <doctest/doctest.h>
 
 #include <anno/sim/ids.hpp>
+#include <anno/sim/island.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/slot_list.hpp>
 
@@ -261,134 +263,10 @@ std::uint64_t fingerprint(const std::vector<sim::SlotList<BuildingLike>>& lists)
 
 // ------------------------------------------------- tile layer and island shapes
 
-/// The member shape of `TileLayer` (island.hpp, S5): columns, a `mutable`
-/// digest cache, setters that dirty it, `reset(...)`.
-class TileLayerLike {
-  public:
-    TileLayerLike() = default;
-    TileLayerLike(std::int32_t x0, std::int32_t y0, std::uint32_t w, std::uint32_t h,
-                  std::uint32_t chunk_edge) {
-        reset(x0, y0, w, h, chunk_edge);
-    }
-    bool reset(std::int32_t x0, std::int32_t y0, std::uint32_t w, std::uint32_t h,
-               std::uint32_t chunk_edge) {
-        if (chunk_edge == 0 || static_cast<std::uint64_t>(w) * h > 0xffffffffULL) {
-            return false;
-        }
-        x0_ = x0;
-        y0_ = y0;
-        w_ = w;
-        h_ = h;
-        edge_ = chunk_edge;
-        const std::size_t tiles = static_cast<std::size_t>(w) * h;
-        object_.assign(tiles, 0);
-        phase_.assign(tiles, 0);
-        owner_.assign(tiles, 0);
-        aux_.assign(tiles, 0);
-        const std::size_t chunks = static_cast<std::size_t>(chunks_x()) * chunks_y();
-        digest_.assign(chunks, 0);
-        dirty_.assign(chunks, 1);
-        return true;
-    }
-    [[nodiscard]] std::uint32_t width() const { return w_; }
-    [[nodiscard]] std::uint32_t height() const { return h_; }
-    [[nodiscard]] std::uint32_t chunks_x() const {
-        return edge_ == 0 ? 0 : (w_ + edge_ - 1) / edge_;
-    }
-    [[nodiscard]] std::uint32_t chunks_y() const {
-        return edge_ == 0 ? 0 : (h_ + edge_ - 1) / edge_;
-    }
-    [[nodiscard]] bool contains(std::int32_t x, std::int32_t y) const {
-        return x >= x0_ && y >= y0_ && static_cast<std::int64_t>(x) - x0_ < w_ &&
-               static_cast<std::int64_t>(y) - y0_ < h_;
-    }
-    [[nodiscard]] std::uint32_t object(std::uint32_t idx) const { return object_.at(idx); }
-    void set_object(std::uint32_t idx, std::uint32_t v) {
-        object_.at(idx) = v;
-        mark(idx);
-    }
-    void set_phase(std::uint32_t idx, std::uint8_t v) {
-        phase_.at(idx) = v;
-        mark(idx);
-    }
-    void set_owner(std::uint32_t idx, std::uint32_t v) {
-        owner_.at(idx) = v;
-        mark(idx);
-    }
-    [[nodiscard]] std::uint64_t chunk_digest(std::uint32_t chunk) const {
-        if (chunk >= digest_.size()) {
-            return 0;
-        }
-        if (dirty_[chunk] != 0) {
-            digest_[chunk] = chunk_digest_uncached(chunk);
-            dirty_[chunk] = 0;
-        }
-        return digest_[chunk];
-    }
-    [[nodiscard]] std::uint64_t chunk_digest_uncached(std::uint32_t chunk) const {
-        Fp f;
-        if (edge_ == 0 || chunks_x() == 0) {
-            return f.h;
-        }
-        const std::uint32_t cx = chunk % chunks_x();
-        const std::uint32_t cy = chunk / chunks_x();
-        for (std::uint32_t y = cy * edge_; y < (cy + 1) * edge_ && y < h_; ++y) {
-            for (std::uint32_t x = cx * edge_; x < (cx + 1) * edge_ && x < w_; ++x) {
-                const std::size_t i = static_cast<std::size_t>(y) * w_ + x;
-                f.add(object_[i]);
-                f.add(phase_[i]);
-                f.add(owner_[i]);
-                f.add(aux_[i]);
-            }
-        }
-        return f.h;
-    }
+// The tile layer, the terrain, the sweep, the drought and the ring are the real
+// types of island.hpp since stage S5; the city part of the island is still a
+// stand-in (S6 replaces CityLike, BuildingIndexLike and the derived caches).
 
-  private:
-    void mark(std::uint32_t idx) {
-        if (edge_ == 0 || w_ == 0) {
-            return;
-        }
-        const std::uint32_t chunk = (idx / w_ / edge_) * chunks_x() + (idx % w_) / edge_;
-        if (chunk < dirty_.size()) {
-            dirty_[chunk] = 1;
-        }
-    }
-
-    std::int32_t x0_ = 0, y0_ = 0;
-    std::uint32_t w_ = 0, h_ = 0, edge_ = 0;
-    std::vector<std::uint32_t> object_;
-    std::vector<std::uint8_t> phase_;
-    std::vector<std::uint32_t> owner_;
-    std::vector<std::uint32_t> aux_;
-    mutable std::vector<std::uint64_t> digest_;
-    mutable std::vector<std::uint8_t> dirty_;
-};
-
-struct TerrainLike {
-    std::vector<std::uint8_t> height;
-    std::vector<std::uint16_t> gfx;
-    std::vector<std::uint8_t> fertility;
-    std::uint64_t digest = 0;
-};
-struct SweepLike {
-    std::uint16_t stamp = 0;
-    std::uint32_t grow_x = 0, grow_y = 0, fauna_x = 0, fauna_y = 0;
-};
-struct DroughtLike {
-    std::uint32_t x = 0, y = 0;
-    std::uint32_t target_ring = 6;
-    std::int32_t ring = 0;
-    std::uint32_t city_mask = 0;
-    std::uint8_t phase = 0, step = 0;
-    std::uint8_t state = 1;
-    std::uint16_t counter = 0;
-    std::uint16_t stamp = 0;
-};
-struct RingLike {
-    std::uint16_t stamp = 0;
-    std::uint32_t cursor = 0;
-};
 struct GoodsSettingLike {
     bool buy = false;
     std::uint32_t limit = 0;
@@ -416,27 +294,27 @@ struct CityLike {
 struct IslandLike {
     IslandLike() = default;
     sim::IslandId index;
-    TileLayerLike tiles;
-    std::shared_ptr<const TerrainLike> terrain;
+    sim::TileLayer tiles;
+    std::shared_ptr<const sim::Terrain> terrain;
     std::uint32_t climate = 0;
     std::vector<sim::Deposit> deposits;
     std::uint32_t next_serial = 1;
-    SweepLike sweep;
+    sim::SweepState sweep;
     std::uint16_t event300_stamp = 0;
-    std::optional<DroughtLike> drought;
-    RingLike ring;
+    std::optional<sim::Drought> drought;
+    sim::CityRing ring;
     std::vector<std::optional<CityLike>> cities;
     std::uint64_t reserved_object_count = 0;
     std::map<sim::BuildingId, sim::BuildingKey> by_id;
     std::vector<std::vector<std::uint32_t>> grids;
 };
 
-std::uint64_t fingerprint(const TileLayerLike& t) {
+std::uint64_t fingerprint(const sim::TileLayer& t) {
     Fp f;
     f.add(t.width());
     f.add(t.height());
-    const std::uint32_t chunks = t.chunks_x() * t.chunks_y();
-    for (std::uint32_t c = 0; c < chunks; ++c) {
+    const std::uint64_t chunks = t.chunk_count();
+    for (std::uint64_t c = 0; c < chunks; ++c) {
         f.add(t.chunk_digest(c));
     }
     return f.h;
@@ -523,7 +401,7 @@ IslandLike make_island(std::uint32_t seed, std::uint32_t cities, std::uint32_t p
         isl.tiles.set_phase(i, static_cast<std::uint8_t>(i));
         isl.tiles.set_owner(i, i % 16);
     }
-    auto terrain = std::make_shared<TerrainLike>();
+    auto terrain = std::make_shared<sim::Terrain>();
     terrain->height.assign(20U * 13U, 4);
     terrain->digest = 0xabcdef00U + seed;
     isl.terrain = terrain;
@@ -666,12 +544,12 @@ TEST_CASE("container shapes copy move emplace") {
 }
 
 TEST_CASE("container shapes of a tile layer stand-in") {
-    TileLayerLike empty;
+    sim::TileLayer empty;
     CHECK(empty.width() == 0);
     CHECK(empty.chunk_digest(0) == 0);
-    CHECK(fingerprint(empty) == fingerprint(TileLayerLike()));
+    CHECK(fingerprint(empty) == fingerprint(sim::TileLayer()));
 
-    TileLayerLike t;
+    sim::TileLayer t;
     REQUIRE(t.reset(-4, 7, 20, 13, 8));
     CHECK(t.chunks_x() == 3);
     CHECK(t.chunks_y() == 2);
@@ -683,12 +561,12 @@ TEST_CASE("container shapes of a tile layer stand-in") {
     const std::uint64_t written = fingerprint(t);
     CHECK(written != blank);
     // The cache agrees with the reference after writes and after copies.
-    const TileLayerLike copy(t);
+    const sim::TileLayer copy(t);
     for (std::uint32_t c = 0; c < 6; ++c) {
         CHECK(copy.chunk_digest(c) == copy.chunk_digest_uncached(c));
         CHECK(t.chunk_digest(c) == t.chunk_digest_uncached(c));
     }
-    TileLayerLike moved(std::move(t));
+    sim::TileLayer moved(std::move(t));
     CHECK(fingerprint(moved) == written);
     t = copy;
     CHECK(fingerprint(t) == written);
@@ -703,7 +581,7 @@ TEST_CASE("container shapes of a tile layer stand-in") {
     // Re-dimension and zero-fill.
     CHECK(t.reset(1, 2, 5, 5, 8));
     CHECK(t.chunks_x() == 1);
-    CHECK(fingerprint(t) == fingerprint(TileLayerLike(1, 2, 5, 5, 8)));
+    CHECK(fingerprint(t) == fingerprint(sim::TileLayer(1, 2, 5, 5, 8)));
 }
 
 TEST_CASE("container shapes of an island stand-in") {

@@ -1,5 +1,5 @@
-// Synthetic scenarios: small, code-built type data and, in later stages,
-// islands and cities, so the tests and the goldens need no game files
+// Synthetic scenarios: small, code-built type data, players and islands (and,
+// in later stages, cities), so the tests and the goldens need no game files
 // (spec: docs/sim/state.md §14.3; CI has none).
 //
 // The production types use the per-step values the original's Anlagen.dat
@@ -14,6 +14,7 @@
 
 #include <anno/formats/result.hpp>
 #include <anno/sim/ids.hpp>
+#include <anno/sim/scenario.hpp>
 #include <anno/sim/types.hpp>
 
 namespace anno::sim::synthetic {
@@ -45,5 +46,31 @@ struct SyntheticTypes {
 
 /// The registry of the types above on the original goods and class tables.
 formats::Result<SyntheticTypes, std::string> make_synthetic_types();
+
+/// The settings of the synthetic worlds: a 512 x 512 tile world, the add-on
+/// edition flag at its default (3), everything else as WorldSettings{}.
+WorldSettings synthetic_settings();
+
+/// An island of `w` x `h` tiles at world tile (x0, y0) in table slot `slot`,
+/// climate 2 (NORD), every tile neutral, nothing else. The builders below start
+/// from it.
+ScenarioSpec::IslandSpec plain_island(std::uint32_t slot, std::int32_t x0, std::int32_t y0,
+                                      std::uint32_t w, std::uint32_t h);
+
+/// A world with no player and no island (settings and seed only).
+ScenarioSpec empty_scenario(std::uint32_t seed = 1234);
+
+/// The island of the golden G1 (docs/sim/state.md §14.3) without its city and
+/// buildings, which stage S6 adds: one player (slot 0, 10000 gold) and one
+/// island 64 x 64 at (100,100), climate NORD, owner runs (two neutral rows, then
+/// city 0), a few scenery/growing tiles and an EISENERZ deposit at (110,120).
+ScenarioSpec basic_scenario(std::uint32_t seed = 1234);
+
+/// Two players (slots 0 and 1) and two islands: slot 0 as in basic_scenario and
+/// slot 3 (slots 1 and 2 stay null) 30 x 20 at (300,200), climate WUESTE, with
+/// terrain columns, two deposits and an owner run for city 1. The island
+/// rectangles are disjoint; 30 x 20 is not a multiple of the chunk edge 8 in
+/// either direction, which exercises the clipped edge chunks (A14, F20).
+ScenarioSpec two_island_scenario(std::uint32_t seed = 1234);
 
 } // namespace anno::sim::synthetic

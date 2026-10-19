@@ -460,16 +460,17 @@ TEST_CASE("state_hash relational properties") {
     b.advance(10);
     CHECK(a.state_hash() == b.state_hash());
 
-    // The scopes of stream 102: header, clock_rng, settings, players; the
+    // The scopes of stream 103: header, clock_rng, settings, players, islands; the
     // clock_rng scope is exactly the v1 five-field hash.
     sim::HashTree tree;
     CHECK(base.state_hash(tree, 0) == h);
     CHECK(tree.root.hash == h);
-    REQUIRE(tree.root.children.size() == 4);
+    REQUIRE(tree.root.children.size() == 5);
     CHECK(tree.root.children[0].name == "header");
     CHECK(tree.root.children[1].name == "clock_rng");
     CHECK(tree.root.children[2].name == "settings");
     CHECK(tree.root.children[3].name == "players");
+    CHECK(tree.root.children[4].name == "islands");
     CHECK(tree.root.children[1].hash == base.core_hash());
     // The header scope: the two versions, SimConfig, Rules, the registry digest
     // and the seam names, in one FNV-1a stream (docs/sim/state.md §9.3).
@@ -507,17 +508,22 @@ TEST_CASE("state_hash relational properties") {
     players.u16(0);
     players.u32(0);
     CHECK(tree.root.children[3].hash == players.value());
+    // The islands scope of a world without islands: the u64 slot count 0.
+    sim::StateHasher islands;
+    islands.u64(0);
+    CHECK(tree.root.children[4].hash == islands.value());
     sim::StateHasher root;
     root.u64(header.value());
     root.u64(base.core_hash());
     root.u64(settings.value());
     root.u64(players.value());
+    root.u64(islands.value());
     CHECK(root.value() == h);
     // The empty world, from the independent Python transcription of the stream
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
-    // names, clock_rng, settings, players).
-    CHECK(sim::World().state_hash() == 0xffaee268265e6101ULL);
-    CHECK(sim::kStateHashVersion == 102);
+    // names, clock_rng, settings, players, islands).
+    CHECK(sim::World().state_hash() == 0x47fe21a74c6e4fb6ULL);
+    CHECK(sim::kStateHashVersion == 103);
     CHECK(sim::kPrngTimelineVersion == 1);
 }
 
@@ -577,11 +583,11 @@ TEST_CASE("hash_state records the scopes down to the requested depth") {
     sim::HashTree tree;
     CHECK(sim::hash_state(w, &tree, 5) == w.state_hash());
     CHECK(w.state_hash(tree, 5) == w.state_hash());
-    // The world's top-level scopes are header, clock_rng, settings and players.
-    // Only players has children so far: one scope `player` per slot, indexed by
-    // the slot (S4, the first world scope that nests), recorded from depth 1 on
-    // and not at depth 0.
-    REQUIRE(tree.root.children.size() == 4);
+    // The world's top-level scopes are header, clock_rng, settings, players and
+    // islands. Only players has children in a world without islands: one scope
+    // `player` per slot, indexed by the slot (S4, the first world scope that
+    // nests), recorded from depth 1 on and not at depth 0.
+    REQUIRE(tree.root.children.size() == 5);
     for (const sim::HashNode& c : tree.root.children) {
         CHECK(c.children.size() == (c.name == "players" ? 32U : 0U));
     }
@@ -594,7 +600,7 @@ TEST_CASE("hash_state records the scopes down to the requested depth") {
     }
     sim::HashTree shallow;
     CHECK(w.state_hash(shallow, 0) == w.state_hash());
-    REQUIRE(shallow.root.children.size() == 4);
+    REQUIRE(shallow.root.children.size() == 5);
     CHECK(shallow.root.children[3].children.empty());
 }
 
@@ -786,17 +792,20 @@ TEST_CASE("world core stream layout round trip and rejects") {
     sim::WriteArchive wa;
     fields(wa, std::as_const(w));
     const std::vector<std::uint8_t> bytes = wa.take();
-    // header: u32 102, u32 1, then SimConfig, Rules, registry digest and seam
+    // header: u32 103, u32 1, then SimConfig, Rules, registry digest and seam
     // names (config_test.cpp pins those bytes); clock_rng: u64 ms, u64
     // last_tick, u64 2048, u64 table digest, u32 cursor (36 bytes); settings
     // (38 bytes, config_test.cpp); players: u64 32, 32 absent bytes, u16 stamp,
-    // u32 cursor (46 bytes). The clock_rng scope is found from the end.
+    // u32 cursor (46 bytes); islands: u64 0 (8 bytes). The clock_rng scope is
+    // found from the end.
     constexpr std::size_t kSettingsBytes = 38;
     constexpr std::size_t kPlayersBytes = 8 + 32 + 2 + 4;
-    REQUIRE(bytes.size() > 8 + 36 + kSettingsBytes + kPlayersBytes);
-    const std::size_t at = bytes.size() - kPlayersBytes - kSettingsBytes - 36; // clock_rng starts
+    constexpr std::size_t kIslandsBytes = 8;
+    REQUIRE(bytes.size() > 8 + 36 + kSettingsBytes + kPlayersBytes + kIslandsBytes);
+    const std::size_t at =
+        bytes.size() - kIslandsBytes - kPlayersBytes - kSettingsBytes - 36; // clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 8) ==
-          std::vector<std::uint8_t>{102, 0, 0, 0, 1, 0, 0, 0});
+          std::vector<std::uint8_t>{103, 0, 0, 0, 1, 0, 0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8
     CHECK(bytes[at + 16] == 0);
@@ -831,7 +840,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another state hash version is refused") {
         auto bad = bytes;
-        bad[0] = 103;
+        bad[0] = 104;
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);

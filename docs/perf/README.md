@@ -46,6 +46,10 @@ The animation clock advances 16 ms per frame. `--quick` divides the frame counts
 
 ## Results
 
+### 2026-10-19 — river flow build (stage S4), Windows 11, Ryzen 9 9800X3D, MSVC Release
+
+`river_qa --flow` (one island at a time, single thread per island; `docs/render/rivers.md` section 14): `RiverFlow::build` over the 106 islands with rivers (72 templates + the 13 scenarios): p50 11 ms, p95 44 ms, max 60 ms (the gate: p95 <= 0.3 s, none above 1 s); the tile-space raster `Scene::river_mask` (sprite covers at group 0): p50 30 ms, p95 84 ms, max 96 ms. Largest island 55,923 wet cells, 17-98 CG iterations, 5-7 multigrid levels, residual <= 1e-5. Both run on workers (nothing on the window thread yet); the zoom benchmark rows are unchanged (`bench_frame --zoom 6`, `Single_01.sze`, 2560 x 1369, enhanced: p50 0.3 ms, p95 1.4-1.5, p99 1.7-1.9 at all three groups, before and after).
+
 ### 2026-10-19 — zoom stutter, Windows 11, Ryzen 9 9800X3D (16 threads), RTX 4090 (Vulkan), commit 359b1ce + this work
 
 **Report (owner, enhanced water, 2560 × 1369 on a 500 Hz display):** average frames 0.3–0.7 ms but a worst frame of 100–132 ms in every report window that contains a zoom-group change; an earlier Linux log (RX 7900 XTX) showed 60–103 ms after chunk bursts.

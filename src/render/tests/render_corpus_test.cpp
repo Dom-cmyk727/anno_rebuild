@@ -13,9 +13,18 @@
 // waterfalls and mouths into the sea (docs/render/iso.md, "Rivers into the
 // sea"; the Rust reference gets no new features). Every Original line still
 // equals the Rust reference.
+// Second exception since 2026-10-19 (river gaps, docs/render/iso.md, "River
+// gaps"): the enhanced river water now covers the painted riverbed, so the
+// Enhanced lines of every scene with river pieces changed: Single_01, _06,
+// _10, _14 and _24 at group 2, Single_24's group 1 region and the Single_24
+// group 2 / group 1 frames. Unchanged: the group 1 regions of Single_01, _10
+// and _14 (`river_qa --rect` finds no river sprite pixel in them; Single_24's
+// holds 34,889), Single_05, _08, _12, _15, _16 and N_064x064_0001_0B (no river
+// pieces), and the Single_01 frames.
 // Set ANNO_PRINT_DIGESTS=1 to print the lines.
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -162,7 +171,7 @@ std::vector<std::string> digest_lines(const std::filesystem::path& dir) {
 const std::vector<std::string> kExpected = {
     "Single_01.sze g2 t0 Original 16960x9170 2f0395814262894d drawn=69864 inv=11717 failed=0 "
     "units=5",
-    "Single_01.sze g2 t2500 Enhanced 16960x9170 fb11e310887b474f drawn=69256 inv=11717 failed=0 "
+    "Single_01.sze g2 t2500 Enhanced 16960x9170 ba0b1101d9e6229f drawn=69256 inv=11717 failed=0 "
     "units=5",
     "Single_01.sze g1 region Original f3c82ff0f061887a drawn=24371 units=0",
     "Single_01.sze g1 region Enhanced 38fa6edcf261fb33 drawn=24110 units=0",
@@ -172,7 +181,7 @@ const std::vector<std::string> kExpected = {
     "Single_05.sze g1 region Original c90b2060847e2a1f drawn=4603 units=0",
     "Single_05.sze g1 region Enhanced 7bc859ab6cbbe7d0 drawn=4603 units=0",
     "Single_06.sze g2 t0 Original 7280x4451 3f1ba536788d1526 drawn=13778 inv=3084 failed=0 units=3",
-    "Single_06.sze g2 t2500 Enhanced 7280x4451 342d5782975e6653 drawn=13626 inv=3084 failed=0 "
+    "Single_06.sze g2 t2500 Enhanced 7280x4451 e3a111d08b078b4b drawn=13626 inv=3084 failed=0 "
     "units=3",
     "Single_06.sze g1 region Original 81d690c94bbb0fc5 drawn=599 units=0",
     "Single_06.sze g1 region Enhanced 27da1a1ded12c916 drawn=599 units=0",
@@ -183,7 +192,7 @@ const std::vector<std::string> kExpected = {
     "Single_08.sze g1 region Enhanced 226bdaf64c2c1073 drawn=6670 units=0",
     "Single_10.sze g2 t0 Original 17440x9131 059c44e48f227c12 drawn=53212 inv=8756 failed=0 "
     "units=1",
-    "Single_10.sze g2 t2500 Enhanced 17440x9131 948197c29e175974 drawn=52883 inv=8756 failed=0 "
+    "Single_10.sze g2 t2500 Enhanced 17440x9131 ec3566e92ecbcb5e drawn=52883 inv=8756 failed=0 "
     "units=1",
     "Single_10.sze g1 region Original 13acfeb61e56be15 drawn=0 units=0",
     "Single_10.sze g1 region Enhanced 135943759028480b drawn=0 units=0",
@@ -194,7 +203,7 @@ const std::vector<std::string> kExpected = {
     "Single_12.sze g1 region Enhanced f75cd5ed42ab42b5 drawn=7295 units=0",
     "Single_14.sze g2 t0 Original 14080x9291 23b01ba36bfbcc8c drawn=47209 inv=9450 failed=0 "
     "units=3",
-    "Single_14.sze g2 t2500 Enhanced 14080x9291 9ce6151b9c246aab drawn=47064 inv=9450 failed=0 "
+    "Single_14.sze g2 t2500 Enhanced 14080x9291 e78f231176506a9d drawn=47064 inv=9450 failed=0 "
     "units=3",
     "Single_14.sze g1 region Original 323ce1b9064247a3 drawn=16735 units=1",
     "Single_14.sze g1 region Enhanced a5f9c1083372b79b drawn=16681 units=1",
@@ -210,10 +219,10 @@ const std::vector<std::string> kExpected = {
     "Single_16.sze g1 region Enhanced 8a3caa97f52c354a drawn=1384 units=0",
     "Single_24.sze g2 t0 Original 7200x2811 768dbcffaa6380e2 drawn=24577 inv=2880 failed=0 "
     "units=541",
-    "Single_24.sze g2 t2500 Enhanced 7200x2811 688f059a31fdc06a drawn=24406 inv=2880 failed=0 "
+    "Single_24.sze g2 t2500 Enhanced 7200x2811 de09ab1e97a17170 drawn=24406 inv=2880 failed=0 "
     "units=541",
     "Single_24.sze g1 region Original 610c80610617b85a drawn=23697 units=0",
-    "Single_24.sze g1 region Enhanced 22b256621848c823 drawn=23526 units=0",
+    "Single_24.sze g1 region Enhanced febd87d511c3ec25 drawn=23526 units=0",
     "N_064x064_0001_0B.scp g2 t0 Original 1280x891 d73b254ebe87486f drawn=949 inv=338 failed=0 "
     "units=0",
     "N_064x064_0001_0B.scp g2 t2500 Enhanced 1280x891 5118c7e5cf5c0b0f drawn=930 inv=338 failed=0 "
@@ -288,10 +297,10 @@ TEST_CASE("frames (chunk cache and composition) match the Rust reference") {
         "Single_01.sze g0 t900 Enhanced 5298e2b2d0786b1f",
         "Single_24.sze g2 t0 Original e7894f5a1560f7d2",
         "Single_24.sze g2 t900 Original 154c9a87f81f5ff5",
-        "Single_24.sze g2 t900 Enhanced 1d48aebc57264478",
+        "Single_24.sze g2 t900 Enhanced 3ac692d3b0a5f43b",
         "Single_24.sze g1 t0 Original a17a423d76e40c10",
         "Single_24.sze g1 t900 Original 9c02fbfb3767584d",
-        "Single_24.sze g1 t900 Enhanced cb6ad0fe841fc554",
+        "Single_24.sze g1 t900 Enhanced 4d4a2f8226e38ad1",
         "Single_24.sze g0 t0 Original 6b07c0d4d77df178",
         "Single_24.sze g0 t900 Original b9a7aaa3f213ac65",
         "Single_24.sze g0 t900 Enhanced 56f35854554ef7ce",
@@ -337,5 +346,131 @@ TEST_CASE("frames (chunk cache and composition) match the Rust reference") {
     REQUIRE(lines.size() == expected.size());
     for (std::size_t i = 0; i < lines.size(); ++i) {
         CHECK(lines[i] == expected[i]);
+    }
+}
+
+namespace {
+
+/// The scene of one file without units (the river tests need islands only).
+render::Scene load_islands(const std::filesystem::path& dir, const std::filesystem::path& file) {
+    // The parsed files refer to their buffers, which must outlive the scene: keep them for
+    // the test run (a deque does not move its elements).
+    static std::deque<std::vector<std::uint8_t>> keep;
+    keep.push_back(anno::test::read_file(dir / "Textures" / "Felder.tex"));
+    const auto felder = anno::formats::tex::TexFile::parse(keep.back()).value();
+    keep.push_back(anno::test::read_file(dir / "Anlagen.dat"));
+    auto anlagen = anno::formats::anlagen::AnlagenFile::parse(keep.back()).value();
+    auto textures = anno::assets::island::GroundTextures::load(felder).value();
+    if (const auto c = render::water_colour(anlagen)) {
+        textures.set_water(*c);
+    }
+    keep.push_back(anno::test::read_file(file));
+    return render::Scene("", anno::formats::insel::islands(keep.back()).value(),
+                         std::move(textures), std::move(anlagen), render::kHeightLift);
+}
+
+/// Shares of the original's river sprite pixels (closed over the 50 % checkerboard) in
+/// `view` that have no enhanced water within `reach` pixels, and of pixels with no water
+/// at all, read from the same chunked field the viewer builds.
+struct RiverCover {
+    std::uint64_t sprite = 0, no_water = 0, far_from_water = 0;
+};
+
+RiverCover river_cover(const render::Scene& scene, std::size_t group, render::Rect view) {
+    RiverCover out;
+    const int reach = static_cast<int>(render::kTile[group].h) / 10 + 1;
+    const int cx0 = render::div_euclid(view.x, render::kChunk);
+    const int cy0 = render::div_euclid(view.y, render::kChunk);
+    const int cx1 = render::div_euclid(view.x + view.w - 1, render::kChunk);
+    const int cy1 = render::div_euclid(view.y + view.h - 1, render::kChunk);
+    for (int cy = cy0; cy <= cy1; ++cy) {
+        for (int cx = cx0; cx <= cx1; ++cx) {
+            const render::Rect rect = render::chunk_rect(cx, cy);
+            const auto [ground, probe] = scene.ground_with_probe(rect, group);
+            const render::Canvas sprites = scene.river_sprites(rect, probe, group);
+            const auto field = scene.water_field_from(rect, probe, group);
+            auto water = [&](int x, int y) {
+                // Out of the chunk counts as water (its neighbour decides).
+                if (x < 0 || y < 0 || x >= rect.w || y >= rect.h) {
+                    return true;
+                }
+                const auto i = static_cast<std::size_t>(y * rect.w + x);
+                const float sd = (static_cast<float>(field.depth[i]) - render::sea::kDepthBias) /
+                                 render::sea::kDepthScale;
+                return field.cover[i] != 0 && sd >= 0.0F;
+            };
+            auto drawn = [&](int x, int y) {
+                return x >= 0 && y >= 0 && x < rect.w && y < rect.h &&
+                       sprites.pixels[static_cast<std::size_t>(y * rect.w + x) * 4 + 3] >= 128;
+            };
+            const auto inside = rect.intersect(view);
+            if (!inside) {
+                continue;
+            }
+            for (int y = inside->y - rect.y; y < inside->y - rect.y + inside->h; ++y) {
+                for (int x = inside->x - rect.x; x < inside->x - rect.x + inside->w; ++x) {
+                    bool near = false;
+                    for (int dy = -1; dy <= 1 && !near; ++dy) {
+                        for (int dx = -1; dx <= 1; ++dx) {
+                            near = near || drawn(x + dx, y + dy);
+                        }
+                    }
+                    if (!near) {
+                        continue;
+                    }
+                    ++out.sprite;
+                    if (water(x, y)) {
+                        continue;
+                    }
+                    ++out.no_water;
+                    bool close = false;
+                    for (int dy = -reach; dy <= reach && !close; ++dy) {
+                        for (int dx = -reach; dx <= reach; ++dx) {
+                            close = close || water(x + dx, y + dy);
+                        }
+                    }
+                    out.far_from_water += close ? 0U : 1U;
+                }
+            }
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("enhanced river water covers the painted riverbed (river gaps)") {
+    // Owner report 2026-10-19: stretches of the painted bed showed brown, no water,
+    // in the enhanced mode (docs/render/iso.md, "River gaps"). The scene is the
+    // owner's screenshot: D_256x256_0045_5B at group 1 (view 2494 x 1355 at scene
+    // pixel (-96, 1934)), where 12 % of the original's river pixels were left
+    // without water within 3 px; Single_24 is a scenario with rivers at all groups.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    {
+        const auto scene =
+            load_islands(*dir, *dir / "Scenes" / "Islands" / "Dschungel" / "D_256x256_0045_5B.scp");
+        for (const auto& [group, view] :
+             {std::pair{std::size_t{1}, render::Rect{-96, 1934, 2494, 1355}},
+              std::pair{std::size_t{2}, render::Rect{-48, 967, 1247, 678}},
+              std::pair{std::size_t{0}, render::Rect{-192, 3868, 1600, 900}}}) {
+            const RiverCover c = river_cover(scene, group, view);
+            INFO("group " << group);
+            CHECK(c.sprite > 5000); // the view shows rivers
+            // Before the fix 5 to 12 % had no water within the reach.
+            CHECK(c.far_from_water * 1000 <= c.sprite); // at most 0.1 %
+            CHECK(c.no_water * 20 <= c.sprite);         // edge pixels at most 5 %
+        }
+    }
+    {
+        const auto scene = load_islands(*dir, *dir / "Scenes" / "0200Single" / "Single_24.sze");
+        const auto b = *scene.bounds(1);
+        const render::Rect view{b.x + b.w / 2 - 800, b.y + b.h / 2 - 450, 1600, 900};
+        const RiverCover c = river_cover(scene, 1, view);
+        CHECK(c.sprite > 5000);
+        CHECK(c.far_from_water * 1000 <= c.sprite);
     }
 }

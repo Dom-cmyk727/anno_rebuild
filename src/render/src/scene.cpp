@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <iterator>
 #include <map>
 #include <numeric>
 
@@ -187,6 +188,7 @@ Scene::Scene(std::string name_, std::vector<insel::Island> islands_,
         d.above = list(Objects::WaterAboveSea);
         for (const auto& p : d.above) {
             if (in(kRiverAnlagen, p.first)) {
+                d.river_sprites.push_back(p);
                 d.rivers.emplace_back(p.first.x, p.first.y, p.second.first, p.second.second,
                                       p.first.height());
             } else if (in(kRiverFallAnlagen, p.first)) {
@@ -271,35 +273,74 @@ sea::WaterField Scene::water_field(Rect rect, std::size_t group) const {
 
 namespace {
 
-/// Box blur of the alpha channel of `c` (radius r, two passes ≈ a tent).
-std::vector<float> blurred_alpha(const Canvas& c, int r) {
+/// Box blur of the alpha channel of `c` (radius r, two passes of a horizontal
+/// and a vertical box = a tent-like kernel; edge pixels repeat). Exact integer
+/// sums in sliding windows (the kernel weight is (2r+1)^4 · 255), so the cost
+/// per pixel does not grow with r and chunks without any alpha are free.
+/// `close`: every pixel with any alpha in its 3 x 3 neighbourhood counts as
+/// fully covered first (fills the holes of a 50 % checkerboard sprite).
+std::vector<float> blurred_alpha(const Canvas& c, int r, bool close = false) {
     const auto w = static_cast<int>(c.width), h = static_cast<int>(c.height);
-    std::vector<float> a(c.width * c.height), tmp(a.size());
+    std::vector<float> out(c.width * c.height, 0.0F);
+    std::vector<std::uint32_t> a(out.size());
+    bool any = false;
     for (std::size_t i = 0; i < a.size(); ++i) {
-        a[i] = static_cast<float>(c.pixels[i * 4 + 3]) / 255.0F;
+        a[i] = c.pixels[i * 4 + 3];
+        any = any || a[i] != 0;
     }
-    const float n = static_cast<float>(2 * r + 1);
+    if (!any) {
+        return out;
+    }
+    std::vector<std::uint32_t> tmp(a.size());
+    if (close) {
+        // 3 x 3 maximum as two 1-D maxima, then all-or-nothing.
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                const auto i = static_cast<std::size_t>(y * w + x);
+                tmp[i] = std::max({a[i], x > 0 ? a[i - 1] : 0U, x + 1 < w ? a[i + 1] : 0U});
+            }
+        }
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                const auto i = static_cast<std::size_t>(y * w + x);
+                const std::uint32_t m =
+                    std::max({tmp[i], y > 0 ? tmp[i - static_cast<std::size_t>(w)] : 0U,
+                              y + 1 < h ? tmp[i + static_cast<std::size_t>(w)] : 0U});
+                a[i] = m != 0 ? 255U : 0U;
+            }
+        }
+    }
+    // One box filter of radius r along a line of `count` samples starting at
+    // `first` with stride `step`, from `src` into `dst`.
+    auto line = [r](const std::vector<std::uint32_t>& src, std::vector<std::uint32_t>& dst,
+                    std::size_t first, std::size_t step, int count) {
+        auto at = [&](int k) {
+            return src[first + static_cast<std::size_t>(std::clamp(k, 0, count - 1)) * step];
+        };
+        std::uint32_t sum = 0;
+        for (int k = -r; k <= r; ++k) {
+            sum += at(k);
+        }
+        for (int x = 0; x < count; ++x) {
+            dst[first + static_cast<std::size_t>(x) * step] = sum;
+            sum += at(x + r + 1);
+            sum -= at(x - r);
+        }
+    };
     for (int pass = 0; pass < 2; ++pass) {
         for (int y = 0; y < h; ++y) {
-            for (int x = 0; x < w; ++x) {
-                float s = 0.0F;
-                for (int k = -r; k <= r; ++k) {
-                    s += a[static_cast<std::size_t>(y * w + std::clamp(x + k, 0, w - 1))];
-                }
-                tmp[static_cast<std::size_t>(y * w + x)] = s / n;
-            }
+            line(a, tmp, static_cast<std::size_t>(y) * static_cast<std::size_t>(w), 1, w);
         }
-        for (int y = 0; y < h; ++y) {
-            for (int x = 0; x < w; ++x) {
-                float s = 0.0F;
-                for (int k = -r; k <= r; ++k) {
-                    s += tmp[static_cast<std::size_t>(std::clamp(y + k, 0, h - 1) * w + x)];
-                }
-                a[static_cast<std::size_t>(y * w + x)] = s / n;
-            }
+        for (int x = 0; x < w; ++x) {
+            line(tmp, a, static_cast<std::size_t>(x), static_cast<std::size_t>(w), h);
         }
     }
-    return a;
+    const float n = static_cast<float>(2 * r + 1);
+    const float norm = 1.0F / (255.0F * n * n * n * n);
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        out[i] = static_cast<float>(a[i]) * norm;
+    }
+    return out;
 }
 
 /// Two-pass chamfer distance (1, √2) in place: 0 at the seeds, else large.
@@ -355,7 +396,7 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
     // the sea as one surface instead of ending at hard-edged sprite patches
     // (tester feedback 2026-10-18). Falls get rapids, mouths stay calm.
     // Original water ignores river pixels (flag bit 1) and draws the sprites.
-    Canvas falls = blank(rect), mouths = blank(rect);
+    Canvas falls = blank(rect), mouths = blank(rect), beds = blank(rect);
     bool any = false;
     for (const auto& p : layouts[group]) {
         const auto r = p.bounds.intersect(rect);
@@ -363,7 +404,7 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
             continue;
         }
         const auto& o = objects_[p.index];
-        if (o.falls_below.empty() && o.falls_above.empty()) {
+        if (o.falls_below.empty() && o.falls_above.empty() && o.river_sprites.empty()) {
             continue;
         }
         any = true;
@@ -375,6 +416,14 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
             return !z || *z <= static_cast<float>(h) + kRiverTolerance;
         };
         auto all = [](int, int, std::uint8_t) { return true; };
+        // The river pieces' own sprites (depth-tested as the original draws them)
+        // give the extent of the painted bed: the river water never ends short
+        // of it (apply_fall_masks, `beds`).
+        if (!o.river_sprites.empty()) {
+            Canvas local = blank(Rect{r->x - off.first, r->y - off.second, r->w, r->h});
+            draw_prepared_tested(local, o.river_sprites, anlagen, group, lift, 0, sprites, 0, keep);
+            composite(beds, local, off);
+        }
         for (const bool fall : {true, false}) {
             std::vector<Prepared> below, above;
             for (const auto& q : o.falls_below) {
@@ -397,21 +446,26 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
         }
     }
     if (any) {
-        apply_fall_masks(f, falls, mouths, group);
+        apply_fall_masks(f, falls, mouths, beds, group);
     }
     blend_rivers_into_sea(f, group);
     return f;
 }
 
 void Scene::apply_fall_masks(sea::WaterField& f, const Canvas& falls, const Canvas& mouths,
-                             std::size_t group) const {
+                             const Canvas& beds, std::size_t group) const {
     // Soft, rounded edges: about 4 px at zoom group 0.
     const int radius = std::max(1, static_cast<int>(kTile[group].h) / 10);
-    const std::vector<float> af = blurred_alpha(falls, radius), am = blurred_alpha(mouths, radius);
+    const std::vector<float> af = blurred_alpha(falls, radius), am = blurred_alpha(mouths, radius),
+                             ab = blurred_alpha(beds, radius, true);
     auto byte = [](float v) { return sat_cast<std::uint8_t>(clampf(v, 0.0F, 255.0F)); };
     for (std::size_t i = 0; i < f.flags.size(); ++i) {
         const float a = fmaxf(af[i], am[i]);
-        if (a <= 0.01F) {
+        // River pieces: the closed sprite mask, blurred, is 1 inside the bed
+        // and 0.5 on its edge; the depth is 0 there (kBedDepth per unit of
+        // alpha above it), so even a neck of a few pixels is full water.
+        const float bed = (ab[i] - kBedEdge) * kBedDepth;
+        if (a <= 0.01F && bed <= -0.5F) {
             continue;
         }
         const float sd = (static_cast<float>(f.depth[i]) - sea::kDepthBias) / sea::kDepthScale;
@@ -423,7 +477,8 @@ void Scene::apply_fall_masks(sea::WaterField& f, const Canvas& falls, const Canv
             continue; // the enhanced sea is here
         }
         // Depth from the mask: shallow at its edge (the soft waterline).
-        float rd = a * kFallDepth - 0.5F;
+        float rd = a > 0.01F ? a * kFallDepth - 0.5F : bed;
+        rd = fmaxf(rd, bed);
         std::uint32_t q = 0;
         if ((f.flags[i] & 2U) != 0) {
             rd = fmaxf(rd, sd);
@@ -551,6 +606,45 @@ void Scene::blend_rivers_into_sea(sea::WaterField& f, std::size_t group) const {
                                               (river - static_cast<float>(near_cover[i])) * k));
         }
     }
+}
+
+std::size_t Scene::river_piece_count(std::size_t index) const {
+    const auto& o = objects_[index];
+    return o.rivers.size() + o.falls_below.size() + o.falls_above.size();
+}
+
+Canvas Scene::river_sprites(Rect rect, const sea::SceneProbe& probe, std::size_t group) const {
+    Canvas out = blank(rect);
+    auto is_river = [](const Prepared& p) {
+        const auto id = p.first.anlage;
+        return std::find(kRiverAnlagen.begin(), kRiverAnlagen.end(), id) != kRiverAnlagen.end() ||
+               std::find(kRiverFallAnlagen.begin(), kRiverFallAnlagen.end(), id) !=
+                   kRiverFallAnlagen.end();
+    };
+    for (const auto& p : layouts[group]) {
+        const auto r = p.bounds.intersect(rect);
+        if (!r) {
+            continue;
+        }
+        const auto& o = objects_[p.index];
+        std::vector<Prepared> below, above;
+        std::copy_if(o.below.begin(), o.below.end(), std::back_inserter(below), is_river);
+        std::copy_if(o.above.begin(), o.above.end(), std::back_inserter(above), is_river);
+        if (below.empty() && above.empty()) {
+            continue;
+        }
+        const auto off = p.offset;
+        auto keep = [&](int x, int y, std::uint8_t h) {
+            const std::optional<float> z = terrain_at(probe, rect, x + off.first, y + off.second);
+            return !z || *z <= static_cast<float>(h) + kRiverTolerance;
+        };
+        auto all = [](int, int, std::uint8_t) { return true; };
+        Canvas local = blank(Rect{r->x - off.first, r->y - off.second, r->w, r->h});
+        draw_prepared_tested(local, below, anlagen, group, lift, 0, sprites, 0, all);
+        draw_prepared_tested(local, above, anlagen, group, lift, 0, sprites, 0, keep);
+        composite(out, local, off);
+    }
+    return out;
 }
 
 float Scene::fluid_depth(float x, float y) const {

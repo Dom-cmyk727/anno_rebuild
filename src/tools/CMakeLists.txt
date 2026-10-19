@@ -1,2 +1,3 @@
 add_subdirectory(anno_dump)
 add_subdirectory(bench_frame)
+add_subdirectory(river_qa)

@@ -189,10 +189,52 @@ float smooth_height(std::span<const std::uint8_t> heights, std::size_t w, std::s
             v += wx[i] * wy[j] * at(ix + di, iy + dj);
         }
     }
+    return v + height_noise(x, y);
+}
+
+float height_noise(float x, float y) {
     const float amp = kWaves.shore_noise;
-    const float n = (noise3(x * 0.9F, y * 0.9F, 11.0F) - 0.5F) * 2.0F * amp +
-                    (noise3(x * 2.7F, y * 2.7F, 23.0F) - 0.5F) * 0.6F * amp;
-    return v + n;
+    return (noise3(x * 0.9F, y * 0.9F, 11.0F) - 0.5F) * 2.0F * amp +
+           (noise3(x * 2.7F, y * 2.7F, 23.0F) - 0.5F) * 0.6F * amp;
+}
+
+float river_bed_height(std::span<const std::uint8_t> heights, std::size_t w, std::size_t h, float x,
+                       float y) {
+    // Catmull-Rom weights of the four corners around the position.
+    auto weights = [](float t) {
+        const float t2 = t * t;
+        const float t3 = t2 * t;
+        return std::array<float, 4>{(-t3 + 2.0F * t2 - t) * 0.5F,
+                                    (3.0F * t3 - 5.0F * t2 + 2.0F) * 0.5F,
+                                    (-3.0F * t3 + 4.0F * t2 + t) * 0.5F, (t3 - t2) * 0.5F};
+    };
+    const float fx = std::floor(x), fy = std::floor(y);
+    const auto wx = weights(x - fx), wy = weights(y - fy);
+    const auto ix = sat_cast<std::int64_t>(fx), iy = sat_cast<std::int64_t>(fy);
+    auto at = [&](std::int64_t cx, std::int64_t cy) {
+        const std::size_t ux =
+            std::min(static_cast<std::size_t>(std::max<std::int64_t>(cx, 0)), w - 1);
+        const std::size_t uy =
+            std::min(static_cast<std::size_t>(std::max<std::int64_t>(cy, 0)), h - 1);
+        return static_cast<float>(heights[uy * w + ux]);
+    };
+    float v = 0.0F, lo = 255.0F, hi = 0.0F;
+    for (std::size_t j = 0; j < 4; ++j) {
+        for (std::size_t i = 0; i < 4; ++i) {
+            const auto di = static_cast<std::int64_t>(i) - 1, dj = static_cast<std::int64_t>(j) - 1;
+            const float c = at(ix + di, iy + dj);
+            v += wx[i] * wy[j] * c;
+            // The four corners of the cell the position lies in bound the
+            // result (Catmull-Rom overshoots near steep steps).
+            if (i == 1 || i == 2) {
+                if (j == 1 || j == 2) {
+                    lo = std::min(lo, c);
+                    hi = std::max(hi, c);
+                }
+            }
+        }
+    }
+    return std::clamp(v, lo, hi);
 }
 
 std::optional<IslandWater> IslandWater::build(const insel::Island& island,
@@ -352,7 +394,12 @@ WaterField water_field(Rect rect, const SceneProbe& probe,
         // terrain, where no sea is.
         if (!original_water && sd <= 0.0F) {
             if (const auto level = iw->river_level(tx, ty, fx, fy)) {
-                const float rd = *level - smooth;
+                // The bed, not the waterline surface: the approximating B-spline
+                // lifts the floor of a one-corner-wide channel by up to the
+                // river depth and cut the water there.
+                const float bed = river_bed_height(iw->heights, iw->w, iw->h, x, y) +
+                                  height_noise(x, y) * kRiverBankNoise;
+                const float rd = *level - bed;
                 if (rd > -kWaves.shore_edge) {
                     // Slope of the river surface (HEIGHT units per tile):
                     // rapids where it falls steeply (waterfalls).

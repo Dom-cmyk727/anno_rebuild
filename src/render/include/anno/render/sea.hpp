@@ -44,6 +44,9 @@ inline constexpr float kBorderFadeTiles = 8.0F;
 /// River surface above the river objects' height byte (HEIGHT units),
 /// tuned visually (OQ-026 b).
 inline constexpr float kRiverLevel = 9.0F;
+/// Share of height_noise() on river banks (the sea's waterline uses all of
+/// it). Tuning value (not original).
+inline constexpr float kRiverBankNoise = 0.5F;
 /// Openness (of 254) of enhanced river water. Tuning value (not original).
 inline constexpr std::uint8_t kRiverOpenness = 100;
 /// Pixel step of the grid the enhanced waves are evaluated on, per zoom
@@ -106,6 +109,17 @@ struct WaterField {
 /// B-spline through the corner heights plus fixed value noise.
 float smooth_height(std::span<const std::uint8_t> heights, std::size_t w, std::size_t h, float x,
                     float y);
+
+/// The fixed value noise smooth_height adds (HEIGHT units).
+float height_noise(float x, float y);
+
+/// Bed height under river water at tile position (x, y): a Catmull-Rom
+/// surface through the corner heights, clamped to the four corners of the
+/// cell. Unlike smooth_height (an approximating B-spline, right for the
+/// waterline of the sea) it passes through every corner, so the floor of a
+/// channel one corner wide keeps its depth.
+float river_bed_height(std::span<const std::uint8_t> heights, std::size_t w, std::size_t h, float x,
+                       float y);
 
 /// A river piece: tile (x, y), footprint (w, h), height byte.
 using RiverPiece =

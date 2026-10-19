@@ -1,4 +1,5 @@
 // Synthetic tests of anno_render (no game files needed).
+#include <cmath>
 #include <limits>
 
 #include <doctest/doctest.h>
@@ -186,6 +187,52 @@ TEST_CASE("water field of an island without land: NaN distances become 0") {
     CHECK(f.shore[0] == 0);
     CHECK(f.cover[0] == 1);
     CHECK((f.flags[0] & 1) == 1);
+}
+
+TEST_CASE("river bed keeps the floor of a one-corner-wide channel") {
+    // River gaps (docs/render/iso.md, "River gaps"): a river piece's height byte
+    // is its lowest corner, the banks lie 16 units higher and the surface 9
+    // above the bed. The approximating B-spline of the sea's waterline
+    // (smooth_height) lifts the floor of a channel one corner wide by a third
+    // of the bank height (16 / 3 = 5.3 units; at a bend or a dead end, where
+    // the neighbours are banks on two axes, by (1 - (2/3)^2) * 16 = 8.9 units,
+    // the river depth: no water left); the bed surface passes through the
+    // corners.
+    constexpr std::size_t n = 12;
+    std::vector<std::uint8_t> h(n * n, 16);
+    for (std::size_t y = 0; y < n; ++y) {
+        h[y * n + 6] = 0; // the channel runs along y at x = 6
+    }
+    const float level = 9.0F;
+    for (float y = 3.0F; y < 8.0F; y += 0.5F) {
+        const float bspline =
+            render::sea::smooth_height(h, n, n, 6.0F, y) - render::sea::height_noise(6.0F, y);
+        CHECK(bspline == doctest::Approx(16.0F / 3.0F).epsilon(0.01));
+        CHECK(render::sea::river_bed_height(h, n, n, 6.0F, y) == doctest::Approx(0.0F));
+    }
+    {
+        std::vector<std::uint8_t> pit(n * n, 16);
+        pit[6 * n + 6] = 0;
+        const float bspline = render::sea::smooth_height(pit, n, n, 6.0F, 6.0F) -
+                              render::sea::height_noise(6.0F, 6.0F);
+        CHECK(bspline > level - 0.5F); // the surface is at the floor: dry
+        CHECK(render::sea::river_bed_height(pit, n, n, 6.0F, 6.0F) == doctest::Approx(0.0F));
+    }
+    // Through every corner, bounded by the four corners of the cell, and the
+    // channel is wet only near its axis.
+    for (std::size_t y = 2; y < 9; ++y) {
+        for (std::size_t x = 2; x < 9; ++x) {
+            CHECK(render::sea::river_bed_height(h, n, n, static_cast<float>(x),
+                                                static_cast<float>(y)) ==
+                  doctest::Approx(static_cast<float>(h[y * n + x])));
+        }
+    }
+    for (float x = 2.0F; x < 9.0F; x += 0.25F) {
+        const float bed = render::sea::river_bed_height(h, n, n, x, 5.5F);
+        CHECK(bed >= 0.0F);
+        CHECK(bed <= 16.0F);
+        CHECK((bed < level) == (std::fabs(x - 6.0F) < 0.6F));
+    }
 }
 
 TEST_CASE("canvas to image refuses sizes an Rgba cannot hold") {

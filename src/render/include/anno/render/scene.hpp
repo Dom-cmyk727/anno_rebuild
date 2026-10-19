@@ -125,6 +125,13 @@ inline constexpr float kRiverBlend = 16.0F;
 /// original).
 inline constexpr float kRiverSeam = 4.0F;
 inline constexpr float kSeamDepth = 1.0F;
+/// Enhanced river water never ends short of the painted riverbed, i.e. of the
+/// river sprites drawn with the original's depth test: the blurred alpha of
+/// their closed mask (the sprites are a 50 % checkerboard) is 1 inside and 0.5
+/// at the edge of the bed; the water depth floor is (alpha - kBedEdge) *
+/// kBedDepth HEIGHT units. Tuning values (not original).
+inline constexpr float kBedEdge = 0.5F;
+inline constexpr float kBedDepth = 4.0F;
 /// Tolerance (HEIGHT units) of the river depth test. Tuning value (OQ-026 b).
 inline constexpr float kRiverTolerance = 10.0F;
 /// Object records drawn: scenery, built objects, rivers and surf.
@@ -199,6 +206,22 @@ class Scene {
     /// river water includes the shapes of waterfalls and mouths.
     [[nodiscard]] sea::WaterField water_field_from(Rect rect, const sea::SceneProbe& probe,
                                                    std::size_t group) const;
+    /// QA/debug (tools/river_qa): the river, waterfall and river-mouth sprites
+    /// that original water draws in `rect` (depth-tested against `probe`, the
+    /// ground probe of `rect`, as render_with_terrain does), alpha > 0 where a
+    /// sprite covers the pixel. Enhanced water must carry water at all of them.
+    [[nodiscard]] Canvas river_sprites(Rect rect, const sea::SceneProbe& probe,
+                                       std::size_t group) const;
+    /// QA/debug: the per-island water inputs (river level, smooth terrain).
+    [[nodiscard]] const sea::IslandWater* island_water_info(std::size_t index) const {
+        return island_water(index);
+    }
+    /// QA/debug: the river pieces (kRiverAnlagen) of island `index`.
+    [[nodiscard]] std::span<const sea::RiverPiece> river_pieces(std::size_t index) const {
+        return objects_[index].rivers;
+    }
+    /// QA/debug: river, waterfall and mouth pieces of island `index`.
+    [[nodiscard]] std::size_t river_piece_count(std::size_t index) const;
     /// Water depth for the wave simulation at world tile (x, y).
     [[nodiscard]] float fluid_depth(float x, float y) const;
     /// Terrain height seen at scene pixel (sx, sy) of `rect`.
@@ -231,6 +254,9 @@ class Scene {
         /// sea surface: their sprites in original water, river-water shapes
         /// in enhanced water.
         std::vector<Prepared> falls_below, falls_above;
+        /// The river pieces' sprites (kRiverAnlagen, at or above the sea
+        /// surface): the extent of the painted riverbed (Scene::water_field_from).
+        std::vector<Prepared> river_sprites;
         /// nullopt if a grid cannot be read (no ground drawn).
         std::optional<std::pair<std::vector<std::uint16_t>, std::vector<std::uint8_t>>> grids;
         std::unique_ptr<std::once_flag> water_once = std::make_unique<std::once_flag>();
@@ -254,7 +280,7 @@ class Scene {
     /// Enhanced river water in the shapes of the waterfall and mouth
     /// sprites (alpha masks of `falls` and `mouths`, rect-sized).
     void apply_fall_masks(sea::WaterField& f, const Canvas& falls, const Canvas& mouths,
-                          std::size_t group) const;
+                          const Canvas& beds, std::size_t group) const;
     /// River pixels near the sea: distance (shore byte) and cover blend.
     void blend_rivers_into_sea(sea::WaterField& f, std::size_t group) const;
     std::pair<DrawStats, std::size_t> draw_island_objects(Canvas& local, const Placement& p,

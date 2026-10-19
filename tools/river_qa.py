@@ -17,6 +17,15 @@ components of O and of the enhanced river water).
       --only-rivers). Exit code 1 if any gap pixel remains and --max-gap-pct
       (default 0.1) is exceeded in a row.
 
+  tools/river_qa.py flow --exe build/msvc/src/tools/river_qa/Release/river_qa.exe       --game-dir game/app [--climates ...] [--scenarios ...] [--discharge normalised|absolute|sourced]       [--reference fastest|median] [--median-speed T] [--dump DIR] [--rivers FILE] [--out table.md] [files...]
+      the hydraulics check of docs/render/rivers.md (stage S4, Q12): the tile-space river
+      raster and the flow solved on it for every island with river pieces, one island at a
+      time (the build times are measured): sizes, rivers, ponds, outlets, rivers without sea
+      contact, fallbacks, iterations, residual, build times, speed statistics, share of the
+      flow running down the distance to the outlets, and the budget gate (no NaN, residual
+      <= 1e-3, p95 flow build <= 0.3 s, none above 1 s; exit code 1 when it fails). --dump
+      writes a PNG of the flow per island (hue = direction, brightness = speed, arrows).
+
   tools/river_qa.py shots --exe ... --app build/msvc/src/app/Release/anno1503.exe \
       --game-dir game/app --file Islands/Dschungel/D_256x256_0045_5B.scp \
       --group 1 --rect X,Y,W,H --out DIR
@@ -101,6 +110,38 @@ def measure(args):
     return 1 if bad else 0
 
 
+def flow(args):
+    files = list(args.files)
+    if args.climates:
+        files += island_files(args.game_dir, args.climates.split(','))
+    if args.scenarios:
+        files += scenario_files(args.game_dir, args.scenarios.split(','))
+    if not files:
+        sys.exit('no scene files')
+    cmd = [args.exe, args.game_dir, '--flow', '--discharge', args.discharge,
+           '--reference', args.reference]
+    if args.median_speed:
+        cmd += ['--median-speed', args.median_speed]
+    if args.dump:
+        cmd += ['--flow-dump', args.dump]
+    if args.rivers:
+        cmd += ['--flow-rivers', args.rivers]
+    # A command line holds about 32,000 characters on Windows: the files go in a list file.
+    import tempfile
+    with tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False) as lst:
+        lst.write(chr(10).join(files))
+    try:
+        res = subprocess.run(cmd + ['@' + lst.name], capture_output=True, text=True)
+    finally:
+        os.unlink(lst.name)
+    sys.stdout.write(res.stdout)
+    sys.stderr.write(res.stderr)
+    if args.out:
+        with open(args.out, 'w', encoding='utf-8') as f:
+            f.write(res.stdout)
+    return res.returncode
+
+
 def shots(args):
     from PIL import Image
     Image.MAX_IMAGE_PIXELS = None
@@ -158,6 +199,18 @@ def main():
     m.add_argument('--max-gap-pct', type=float, default=0.1)
     m.add_argument('--out')
     m.add_argument('files', nargs='*')
+    f = sub.add_parser('flow')
+    f.add_argument('--exe', required=True)
+    f.add_argument('--game-dir', required=True)
+    f.add_argument('--climates', default='')
+    f.add_argument('--scenarios', default='')
+    f.add_argument('--discharge', default='normalised')
+    f.add_argument('--reference', default='fastest')
+    f.add_argument('--median-speed', default='')
+    f.add_argument('--dump')
+    f.add_argument('--rivers', help='write one row per river (sea-less ones marked) to this file')
+    f.add_argument('--out')
+    f.add_argument('files', nargs='*')
     s = sub.add_parser('shots')
     s.add_argument('--exe', required=True)
     s.add_argument('--app', required=True)
@@ -167,7 +220,7 @@ def main():
     s.add_argument('--rect', required=True, help='x,y,w,h in scene pixels at that group')
     s.add_argument('--out', required=True)
     args = ap.parse_args()
-    sys.exit(measure(args) if args.cmd == 'measure' else shots(args))
+    sys.exit({'measure': measure, 'flow': flow, 'shots': shots}[args.cmd](args))
 
 
 if __name__ == '__main__':

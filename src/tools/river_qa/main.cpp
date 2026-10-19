@@ -31,12 +31,35 @@
 // original sprite with water green, enhanced river water only blue; each
 // mask pixel is the worst case of its s x s block).
 // Overlapping island rectangles count shared pixels twice (rare).
+//
+// --flow switches to the hydraulics check of docs/render/rivers.md (stage S4,
+// Q12): per island with river pieces it builds the tile-space river raster
+// (Scene::river_mask) and the flow on it (river::RiverFlow::build), one island
+// at a time so that the build times are not disturbed, and prints one row per
+// island: sizes, rivers, ponds, outlets, rivers without sea contact, fallbacks,
+// solver iterations/levels, the worst relative residual and flux imbalance, the
+// build times, speed statistics (mean / median / p95 / max, tiles per second)
+// and the share of cells flowing down the distance to the outlets. A summary
+// (p50 / p95 / max build time, the worst residual, non-finite values) closes
+// the table; the exit code is 1 when the S4 budget gate fails (a non-finite
+// value, residual > 1e-3, p95 flow time > 0.3 s, any flow time > 1 s).
+// Options: --discharge normalised|absolute|sourced, --reference fastest|median
+// and --median-speed <tiles/s> (the Normalised speed reference, OQ-065),
+// --flow-dump <dir> (a PNG per island: hue = flow direction, brightness =
+// speed, sea blue, arrows every 12 cells). The row also gives the share of
+// cells at the soft floor and on the cap, and the downstream share over the
+// rivers with a sea face only (the others are measured against their own
+// pseudo outlet, docs/render/rivers.md 14.3).
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <charconv>
+#include <chrono>
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -50,6 +73,7 @@
 #include <anno/app/loader.hpp>
 #include <anno/app/png.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/render/river.hpp>
 #include <anno/render/scene.hpp>
 
 namespace {
@@ -128,6 +152,12 @@ struct Options {
     /// Print the bounding box of every split or lost river component.
     bool list = false;
     std::uint64_t max_mask = 48ULL << 20;
+    /// Hydraulics check (rivers.md Q12) instead of the gap measurement.
+    bool flow = false;
+    fs::path flow_dump;
+    /// --flow-rivers FILE: one Markdown row per river (sea-less ones marked).
+    fs::path flow_rivers;
+    render::river::RiverConfig river;
     std::size_t threads = std::max(1U, std::thread::hardware_concurrency());
 };
 
@@ -574,6 +604,237 @@ std::vector<std::string_view> split(std::string_view s, char sep) {
     }
 }
 
+/// HSV (s = 1, hue in turns) to RGB bytes.
+std::array<std::uint8_t, 3> hsv(float h, float v) {
+    h = h - std::floor(h);
+    const float k = h * 6.0F;
+    const int i = static_cast<int>(k);
+    const float f = k - static_cast<float>(i);
+    const float q = 1.0F - f;
+    float r = 0, g = 0, b = 0;
+    switch (i % 6) {
+    case 0:
+        r = 1, g = f, b = 0;
+        break;
+    case 1:
+        r = q, g = 1, b = 0;
+        break;
+    case 2:
+        r = 0, g = 1, b = f;
+        break;
+    case 3:
+        r = 0, g = q, b = 1;
+        break;
+    case 4:
+        r = f, g = 0, b = 1;
+        break;
+    default:
+        r = 1, g = 0, b = q;
+        break;
+    }
+    auto byte = [v](float x) {
+        return static_cast<std::uint8_t>(std::clamp(x * v * 255.0F, 0.0F, 255.0F));
+    };
+    return {byte(r), byte(g), byte(b)};
+}
+
+/// A PNG of the flow: the mask raster at `zoom` pixels per cell, hue = flow
+/// direction (red = +x, green = +y of the tile axes), brightness = speed
+/// (full at 2 tiles/s), sea blue, dry dark grey, white arrows every 12 cells.
+void dump_flow(const render::river::RiverMask& mask, const render::river::RiverFlow& flow,
+               const fs::path& out, int zoom) {
+    const int w = static_cast<int>(mask.nx()) * zoom, h = static_cast<int>(mask.ny()) * zoom;
+    if (w <= 0 || h <= 0 || w > 12000 || h > 12000) {
+        return;
+    }
+    std::vector<std::uint8_t> img(static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 4,
+                                  255);
+    auto put = [&](int x, int y, std::array<std::uint8_t, 3> c) {
+        if (x < 0 || y < 0 || x >= w || y >= h) {
+            return;
+        }
+        std::uint8_t* p = &img[(static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+                                static_cast<std::size_t>(x)) *
+                               4];
+        p[0] = c[0], p[1] = c[1], p[2] = c[2], p[3] = 255;
+    };
+    for (std::uint32_t cy = 0; cy < mask.ny(); ++cy) {
+        for (std::uint32_t cx = 0; cx < mask.nx(); ++cx) {
+            const std::int32_t gx = mask.x0() + static_cast<std::int32_t>(cx);
+            const std::int32_t gy = mask.y0() + static_cast<std::int32_t>(cy);
+            std::array<std::uint8_t, 3> col = {28, 28, 28};
+            if ((mask.flags_at(gx, gy) & render::river::kSea) != 0) {
+                col = {20, 40, 110};
+            }
+            const std::size_t k = flow.cell_at(gx, gy);
+            if (k != render::river::RiverFlow::npos) {
+                const auto& c = flow.cells()[k];
+                const float sp = std::hypot(c.ux, c.uy);
+                const float hue = std::atan2(c.uy, c.ux) / 6.2831853F;
+                col = hsv(hue, std::clamp(0.25F + sp / 2.0F, 0.0F, 1.0F));
+                if ((c.flags & render::river::RiverFlow::kFallback) != 0) {
+                    col = {255, 255, 255};
+                }
+                // The pseudo outlet of a river without sea contact (its direction is a
+                // guess, OQ-067): magenta.
+                if ((c.flags & render::river::RiverFlow::kPseudo) != 0) {
+                    col = {255, 0, 255};
+                }
+            }
+            for (int dy = 0; dy < zoom; ++dy) {
+                for (int dx = 0; dx < zoom; ++dx) {
+                    put(static_cast<int>(cx) * zoom + dx, static_cast<int>(cy) * zoom + dy, col);
+                }
+            }
+        }
+    }
+    for (const auto& c : flow.cells()) {
+        if (c.cx % 12 != 0 || c.cy % 12 != 0) {
+            continue;
+        }
+        const float sp = std::hypot(c.ux, c.uy);
+        if (sp < 1e-4F) {
+            continue;
+        }
+        const float len = std::min(10.0F, 3.0F + 4.0F * sp) * static_cast<float>(zoom);
+        const float px = (static_cast<float>(c.cx - mask.x0()) + 0.5F) * static_cast<float>(zoom);
+        const float py = (static_cast<float>(c.cy - mask.y0()) + 0.5F) * static_cast<float>(zoom);
+        const float dx = c.ux / sp, dy = c.uy / sp;
+        for (float t = 0.0F; t <= len; t += 0.5F) {
+            put(static_cast<int>(px + dx * t), static_cast<int>(py + dy * t), {255, 255, 255});
+        }
+        for (float t = 0.0F; t <= len * 0.3F; t += 0.5F) {
+            put(static_cast<int>(px + dx * (len - t) - dy * t * 0.6F),
+                static_cast<int>(py + dy * (len - t) + dx * t * 0.6F), {255, 255, 255});
+            put(static_cast<int>(px + dx * (len - t) + dy * t * 0.6F),
+                static_cast<int>(py + dy * (len - t) - dx * t * 0.6F), {255, 255, 255});
+        }
+    }
+    fs::create_directories(out.parent_path());
+    const std::string err = anno::app::write_png(out, static_cast<std::uint32_t>(w),
+                                                 static_cast<std::uint32_t>(h), img);
+    if (!err.empty()) {
+        std::fprintf(stderr, "%s\n", err.c_str());
+    }
+}
+
+/// The S4 hydraulics check over `files`; whether the budget gate passes.
+bool run_flow(const Options& opt, const fs::path& dir, const std::vector<fs::path>& files) {
+    namespace river = render::river;
+    std::printf(
+        "| scene | island | pieces | mask cells | wet cells | rivers | ponds | outlet faces | "
+        "sea-less | fallback | iters | levels | residual | imbalance | mask ms | flow ms | "
+        "u mean | u p50 | u p95 | u max | downstream %% | downstream sea %% | floor %% | cap %% | "
+        "bbox tiles (x,y,w,h) |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+        "---|---|---|\n");
+    std::vector<double> flow_ms, mask_ms;
+    std::vector<std::string> river_rows;
+    double worst_residual = 0, worst_imbalance = 0;
+    std::size_t non_finite = 0, islands = 0, fallbacks = 0, sea_less = 0, nan_cells = 0;
+    for (const auto& file : files) {
+        auto loaded = anno::app::load_scene(dir, file);
+        if (!loaded) {
+            std::fprintf(stderr, "%s: %s\n", file.string().c_str(), loaded.error().c_str());
+            continue;
+        }
+        const render::Scene& scene = *loaded.value().scene;
+        const std::string name = anno::app::to_utf8(file.stem());
+        for (std::size_t i = 0; i < scene.islands.size(); ++i) {
+            if (scene.river_piece_count(i) == 0) {
+                continue;
+            }
+            const auto t0 = std::chrono::steady_clock::now();
+            const river::RiverMask mask = scene.river_mask(i, opt.river);
+            const auto t1 = std::chrono::steady_clock::now();
+            const river::RiverFlow flow = river::RiverFlow::build(mask, opt.river);
+            const auto t2 = std::chrono::steady_clock::now();
+            const auto ms = [](auto a, auto b) {
+                return std::chrono::duration<double, std::milli>(b - a).count();
+            };
+            const river::FlowStats& st = flow.stats();
+            const auto cpt = static_cast<int>(std::max(mask.cells_per_tile(), 1U));
+            ++islands;
+            mask_ms.push_back(ms(t0, t1));
+            flow_ms.push_back(ms(t1, t2));
+            worst_residual = std::max(worst_residual, st.residual);
+            worst_imbalance = std::max(worst_imbalance, st.flux_imbalance);
+            non_finite += st.non_finite;
+            fallbacks += st.fallback_components;
+            sea_less += st.sea_less_components;
+            for (const auto& c : flow.cells()) {
+                nan_cells +=
+                    (!std::isfinite(c.ux) || !std::isfinite(c.uy) || !std::isfinite(c.depth));
+            }
+            std::printf(
+                "| %s | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %u | %u | %.2e | "
+                "%.2e | %.0f | %.0f | %.3f | %.3f | %.3f | %.3f | %.1f | %.1f | %.1f | %.1f | "
+                "%d,%d,%d,%d |\n",
+                name.c_str(), i, scene.river_pieces(i).size(), std::size_t{mask.nx()} * mask.ny(),
+                st.wet_cells, st.components, st.ponds, st.outlet_faces, st.sea_less_components,
+                st.fallback_components, st.iterations, st.levels, st.residual, st.flux_imbalance,
+                mask_ms.back(), flow_ms.back(), static_cast<double>(st.speed_mean),
+                static_cast<double>(st.speed_p50), static_cast<double>(st.speed_p95),
+                static_cast<double>(st.speed_max),
+                100.0 * static_cast<double>(st.downstream_fraction),
+                100.0 * static_cast<double>(st.downstream_fraction_sea),
+                100.0 * static_cast<double>(st.floor_fraction),
+                100.0 * static_cast<double>(st.cap_fraction), mask.x0() / cpt, mask.y0() / cpt,
+                static_cast<int>(mask.nx()) / cpt, static_cast<int>(mask.ny()) / cpt);
+            std::fflush(stdout);
+            for (std::size_t r = 0; r < flow.rivers().size(); ++r) {
+                const river::RiverInfo& ri = flow.rivers()[r];
+                char row[256];
+                std::snprintf(row, sizeof row,
+                              "| %s | %zu | %zu | %zu | %s | %.1f,%.1f,%.1f,%.1f | %.1f,%.1f |",
+                              name.c_str(), i, r, ri.cells, ri.sea_less ? "sea-less" : "sea",
+                              static_cast<double>(ri.x0) / cpt, static_cast<double>(ri.y0) / cpt,
+                              static_cast<double>(ri.x1 + 1 - ri.x0) / cpt,
+                              static_cast<double>(ri.y1 + 1 - ri.y0) / cpt,
+                              static_cast<double>(ri.pseudo_cx) / cpt,
+                              static_cast<double>(ri.pseudo_cy) / cpt);
+                river_rows.emplace_back(row);
+            }
+            if (!opt.flow_dump.empty()) {
+                const int zoom =
+                    std::max(1, std::min(6, 3000 / static_cast<int>(std::max(mask.nx(), 1U))));
+                dump_flow(mask, flow, opt.flow_dump / (name + "_i" + std::to_string(i) + ".png"),
+                          zoom);
+            }
+        }
+    }
+    auto pct = [](std::vector<double> v, double p) {
+        if (v.empty()) {
+            return 0.0;
+        }
+        std::sort(v.begin(), v.end());
+        const double idx = p * static_cast<double>(v.size() - 1);
+        const auto lo = static_cast<std::size_t>(std::floor(idx));
+        const auto hi = static_cast<std::size_t>(std::ceil(idx));
+        return v[lo] + (v[hi] - v[lo]) * (idx - static_cast<double>(lo));
+    };
+    if (!opt.flow_rivers.empty()) {
+        std::ofstream out(opt.flow_rivers);
+        out << "| scene | island | river | cells | sea | bbox tiles (x,y,w,h) | pseudo outlet "
+               "tile (x,y), sea-less rivers only |\n|---|---|---|---|---|---|---|\n";
+        for (const std::string& row : river_rows) {
+            out << row << '\n';
+        }
+    }
+    const double p95 = pct(flow_ms, 0.95), mx = pct(flow_ms, 1.0);
+    std::printf("\nislands %zu, fallbacks %zu, sea-less rivers %zu, non-finite %zu (cells %zu)\n"
+                "flow build ms: p50 %.0f, p95 %.0f, max %.0f; mask build ms: p50 %.0f, p95 %.0f, "
+                "max %.0f\nworst residual %.3e, worst flux imbalance %.3e\n",
+                islands, fallbacks, sea_less, non_finite, nan_cells, pct(flow_ms, 0.5), p95, mx,
+                pct(mask_ms, 0.5), pct(mask_ms, 0.95), pct(mask_ms, 1.0), worst_residual,
+                worst_imbalance);
+    const bool pass =
+        non_finite == 0 && nan_cells == 0 && worst_residual <= 1e-3 && p95 <= 300.0 && mx <= 1000.0;
+    std::printf("budget gate (no NaN, residual <= 1e-3, p95 <= 0.3 s, max <= 1 s): %s\n",
+                pass ? "PASS" : "FAIL");
+    return pass;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -605,6 +866,35 @@ int main(int argc, char** argv) {
             rect = render::Rect{v[1], v[2], v[3], v[4]};
         } else if (a == "--rect-out" && i + 1 < argc) {
             rect_out = argv[++i];
+        } else if (a == "--flow") {
+            opt.flow = true;
+        } else if (a == "--flow-dump" && i + 1 < argc) {
+            opt.flow_dump = argv[++i];
+        } else if (a == "--flow-rivers" && i + 1 < argc) {
+            opt.flow_rivers = argv[++i];
+        } else if (a == "--reference" && i + 1 < argc) {
+            using R = render::river::RiverConfig::Reference;
+            const std::string v = argv[++i];
+            if (v != "fastest" && v != "median") {
+                std::fprintf(stderr, "--reference: fastest or median, not '%s'\n", v.c_str());
+                return 2;
+            }
+            opt.river.reference = v == "median" ? R::MedianCell : R::FastestSection;
+        } else if (a == "--median-speed" && i + 1 < argc) {
+            const std::string v = argv[++i];
+            char* end = nullptr;
+            const float f = std::strtof(v.c_str(), &end);
+            if (end == v.c_str() || *end != '\0' || !(f > 0.0F)) {
+                std::fprintf(stderr, "--median-speed: a positive number, not '%s'\n", v.c_str());
+                return 2;
+            }
+            opt.river.median_speed = f;
+        } else if (a == "--discharge" && i + 1 < argc) {
+            const std::string v = argv[++i];
+            using D = render::river::RiverConfig::Discharge;
+            opt.river.discharge = v == "absolute"  ? D::Absolute
+                                  : v == "sourced" ? D::Sourced
+                                                   : D::Normalised;
         } else if (a == "--list") {
             opt.list = true;
         } else if (a == "--pieces") {
@@ -615,15 +905,36 @@ int main(int argc, char** argv) {
             opt.max_mask = std::stoull(argv[++i]);
         } else if (dir.empty()) {
             dir = a;
+        } else if (a.size() > 1 && a[0] == '@') {
+            // @list: scene files, one path per line (a command line cannot
+            // hold the 440 files of the whole corpus on Windows).
+            std::ifstream list(a.substr(1));
+            if (!list) {
+                std::fprintf(stderr, "cannot read %s\n", a.c_str() + 1);
+                return 2;
+            }
+            for (std::string line; std::getline(list, line);) {
+                while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) {
+                    line.pop_back();
+                }
+                if (!line.empty()) {
+                    files.emplace_back(line);
+                }
+            }
         } else {
             files.emplace_back(a);
         }
     }
     if (dir.empty() || files.empty()) {
-        std::fputs("usage: river_qa <game_dir> [--groups 0,1,2] [--dump dir] [--per-island] "
-                   "[--max-mask-px N] <file.sze|.scp>...\n",
-                   stderr);
+        std::fputs(
+            "usage: river_qa <game_dir> [--groups 0,1,2] [--dump dir] [--per-island] "
+            "[--max-mask-px N] [--flow [--flow-dump dir] [--discharge normalised|absolute|sourced] "
+            "[--reference fastest|median] [--median-speed t]] <file.sze|.scp>...\n",
+            stderr);
         return 2;
+    }
+    if (opt.flow) {
+        return run_flow(opt, dir, files) ? 0 : 1;
     }
     std::printf("| scene | group | islands | O px | covered | edge px | gap px | gap %% | extra px "
                 "| O comps | "

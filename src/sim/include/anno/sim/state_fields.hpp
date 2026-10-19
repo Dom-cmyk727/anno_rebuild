@@ -6,7 +6,7 @@
 // of its function plus a kStateHashVersion bump and re-baselined goldens in
 // the same commit.
 //
-// Stream at kStateHashVersion 101 (stage S3), the scopes of §9.3 so far:
+// Stream at kStateHashVersion 102 (stage S4), the scopes of §9.3 so far:
 //   1 header     u32 kStateHashVersion, u32 kPrngTimelineVersion,
 //                SimConfig (declaration order; vectors as count + elements;
 //                small_farm_animals; layout), Rules (declaration order),
@@ -14,6 +14,8 @@
 //   2 clock_rng  u64 clock.ms, u64 clock.last_tick, u64 rng.size,
 //                u64 rng.table_digest, u32 rng.cursor  (= core_hash)
 //   3 settings   the WorldSettings
+//   5 players    u64 slot count, then per slot (scope `player`, ordinal = slot)
+//                an optional Player, then u16 stamp, u32 cursor
 // Not in the stream: the PRNG table itself (immutable, identified by its
 // size and digest; a custom table travels in the save frame, §9.5), the type
 // registry (its digest is in the header) and the seam functions (their names
@@ -24,11 +26,13 @@
 // stream goes on, so no later container is sized from an invalid configuration,
 // and compares the registry digest and the seam names with the world's own (the
 // world is given its registry and seams, they are not in the stream). The
-// settings scope is validated the same way (WorldSettings::validate).
+// settings scope is validated the same way (WorldSettings::validate), and the
+// players scope against the configuration just read (validate_players).
 //
 // A failed read leaves the target World unchanged: the configuration, rules,
 // settings, clock and PRNG cursor are read into temporaries and committed only
-// when the whole stream was read and validated (StateIO::world).
+// when the whole stream was read and validated (StateIO::world; the player table
+// too).
 #pragma once
 
 #include <cstdint>
@@ -40,6 +44,7 @@
 #include <anno/sim/clock.hpp>
 #include <anno/sim/config.hpp>
 #include <anno/sim/field_count.hpp>
+#include <anno/sim/player.hpp>
 #include <anno/sim/rng.hpp>
 #include <anno/sim/seams.hpp>
 #include <anno/sim/settings.hpp>
@@ -205,7 +210,7 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     fields(a, s.layout);
 }
 
-static_assert(field_count<Rules>() == 15, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<Rules>() == 17, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -223,6 +228,8 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.u32(s.interim_figure_return_ticks);
     a.boolean(s.free_build_cheat);
     a.boolean(s.enforce_research);
+    a.boolean(s.stat_decay_wide);
+    a.boolean(s.bankrupt_deadline_wrap_safe);
 }
 
 // ---- settings scope
@@ -247,6 +254,87 @@ template <class A, Same<WorldSettings> S> void fields(A& a, S& s) {
     a.boolean(s.prop13);
     a.u32(s.prop14);
     a.u32(s.speed_percent);
+}
+
+// ---- players scope
+
+static_assert(field_count<ResearchState>() == 2,
+              "a ResearchState member needs a line in fields(ResearchState)");
+
+template <class A, Same<ResearchState> S> void fields(A& a, S& s) {
+    ar::seq(a, s.state, 1, [&](auto& x) { a.u8(x); });
+    ar::seq(a, s.progress, 2, [&](auto& x) { a.u16(x); });
+}
+
+static_assert(field_count<Player>() == 20, "a Player member needs a line in fields(Player)");
+
+template <class A, Same<Player> S> void fields(A& a, S& s) {
+    a.u32(s.index.v);
+    a.u32(s.kind);
+    a.u32(s.volk);
+    a.i64(s.money);
+    a.u32(s.upkeep_a);
+    a.u32(s.upkeep_b);
+    a.u32(s.upkeep_rem);
+    a.u16(s.upkeep_stamp);
+    a.u32(s.stat_a);
+    a.u32(s.stat_b);
+    a.u32(s.flags);
+    a.u32(s.flags_a0);
+    a.u32(s.colour_slot);
+    a.u32(s.default_colour);
+    // An open byte (D: player +0x28d stores any value), so no enum validation: the
+    // byte is read and written as it is.
+    std::uint8_t state = static_cast<std::uint8_t>(s.state);
+    a.u8(state);
+    if constexpr (A::kReading) {
+        s.state = static_cast<PlayerState>(state);
+    }
+    a.u32(s.bankrupt_deadline);
+    a.boolean(s.defeat_pending);
+    a.boolean(s.free_build);
+    ar::seq(a, s.name, 1, [&](auto& x) { a.u8(x); });
+    fields(a, s.research);
+}
+
+static_assert(field_count<PlayerTable>() == 3,
+              "a PlayerTable member needs a line in fields(PlayerTable)");
+
+/// The slots, each in a scope `player` indexed by the slot (so a desync report
+/// can name "players/player[3]", docs/sim/state.md §9.4), then the table's own
+/// stamp and cursor. The structural facts (slot count, indices, research sizes,
+/// cursor) are checked by validate_players against the configuration; the
+/// caller runs it (StateIO::scopes).
+template <class A, Same<PlayerTable> S> void fields(A& a, S& s) {
+    std::uint64_t n = s.slots.size();
+    a.count(n, 1);
+    if constexpr (A::kReading) {
+        // A slot is one byte on the wire when absent but a whole Player in memory
+        // (about 150 bytes), so the remaining input does not bound the allocation
+        // as it does for a byte or word list. The count is bounded here by the
+        // table limit that SimConfig::validate applies to player_slots
+        // (kSlotTableBound) before any slot is made; validate_players then compares
+        // it with the configuration's own player_slots. Path to raise the limit:
+        // kSlotTableBound.
+        if (!a.failed() && n > kSlotTableBound) {
+            a.fail("slot count " + std::to_string(n) + " is above the table limit " +
+                   std::to_string(kSlotTableBound));
+            n = 0;
+        }
+        s.slots.clear();
+        for (std::uint64_t i = 0; i < n && !a.failed(); ++i) {
+            s.slots.emplace_back();
+            a.scope("player", static_cast<std::uint32_t>(i),
+                    [&] { ar::opt(a, s.slots.back(), [&](auto& p) { fields(a, p); }); });
+        }
+    } else {
+        for (std::size_t i = 0; i < s.slots.size(); ++i) {
+            a.scope("player", static_cast<std::uint32_t>(i),
+                    [&] { ar::opt(a, s.slots[i], [&](auto& p) { fields(a, p); }); });
+        }
+    }
+    a.u16(s.stamp);
+    a.u32(s.cursor);
 }
 
 /// The hierarchical hash of any persistent value, with the scopes down to
@@ -275,9 +363,10 @@ struct StateIO {
     /// read-side temporaries when reading (so one function defines the order of
     /// the stream for all four archives). `w` supplies the registry and the
     /// seams, which are not in the stream.
-    template <class A, class W, class Config, class RulesT, class Settings, class Clock, class Rng>
+    template <class A, class W, class Config, class RulesT, class Settings, class Clock, class Rng,
+              class Players>
     static void scopes(A& a, W& w, Config& config, RulesT& rules, Settings& settings, Clock& clock,
-                       Rng& rng) {
+                       Rng& rng, Players& players) {
         StateHeader header;
         a.scope("header", [&] {
             fields(a, header);
@@ -335,6 +424,17 @@ struct StateIO {
                 }
             }
         });
+        a.scope("players", [&] {
+            fields(a, players);
+            if constexpr (A::kReading) {
+                if (!a.failed()) {
+                    const std::string problem = validate_players(players, config);
+                    if (!problem.empty()) {
+                        a.fail(problem);
+                    }
+                }
+            }
+        });
     }
 
     template <class A, class W> static void world(A& a, W& w) {
@@ -348,21 +448,23 @@ struct StateIO {
             WorldSettings settings = w.settings_;
             WorldClock clock = w.clock;
             WorldRng rng = w.rng;
-            scopes(a, w, config, rules, settings, clock, rng);
+            PlayerTable players = w.players_;
+            scopes(a, w, config, rules, settings, clock, rng, players);
             if (!a.failed()) {
                 w.config_ = std::move(config);
                 w.rules_ = rules;
                 w.settings_ = settings;
                 w.clock = clock;
                 w.rng = rng;
+                w.players_ = std::move(players);
             }
         } else {
-            scopes(a, w, w.config_, w.rules_, w.settings_, w.clock, w.rng);
+            scopes(a, w, w.config_, w.rules_, w.settings_, w.clock, w.rng, w.players_);
         }
     }
 };
 
-/// The world so far: scopes header, clock_rng and settings (the order of §9.3).
+/// The world so far: scopes header, clock_rng, settings and players (the order of §9.3).
 template <class A, Same<World> S> void fields(A& a, S& w) {
     StateIO::world(a, w);
 }

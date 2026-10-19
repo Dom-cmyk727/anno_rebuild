@@ -5,6 +5,7 @@
 #include <anno/sim/archive.hpp>
 #include <anno/sim/clock.hpp>
 #include <anno/sim/hash.hpp>
+#include <anno/sim/player.hpp>
 #include <anno/sim/rng.hpp>
 #include <anno/sim/state_fields.hpp>
 #include <anno/sim/world.hpp>
@@ -138,10 +139,23 @@ std::uint64_t sweep_chunks(std::uint32_t chunks, std::uint16_t delta_tick, std::
     return std::min<std::uint64_t>(std::uint64_t{chunks} * delta_tick / period + 1, chunks);
 }
 
-World::World() : types_(TypeRegistry::empty()) {}
+World::World() : types_(TypeRegistry::empty()), players_(make_player_table(config_)) {}
 
-World::World(std::uint32_t seed) : types_(TypeRegistry::empty()) {
+World::World(std::uint32_t seed)
+    : types_(TypeRegistry::empty()), players_(make_player_table(config_)) {
     rng.set_cursor(seed);
+}
+
+std::uint64_t World::advance(std::uint32_t game_ms) {
+    // docs/sim/state.md §5.3. Steps 1 (islands), 2 (timed events), 3 (figures), 5
+    // (script timers), 6 (monopoly) and 7 (7.5 min event) belong to later stages.
+    const std::uint64_t tick = clock.begin(game_ms);
+    const auto t = static_cast<std::uint32_t>(tick);
+    // 4. the player table (D: 0x1009c4d0 via world +0x118). The per-player seams
+    // are not bound before stage S7 (player.hpp), so no hook is passed.
+    player_table_tick(players_, t, config_, rules_);
+    clock.end();
+    return tick;
 }
 
 std::uint64_t World::state_hash() const {

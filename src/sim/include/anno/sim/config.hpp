@@ -338,6 +338,16 @@ struct Rules {
     bool free_build_cheat = false;
     /// Refuse placing a type whose research is not done (O-30).
     bool enforce_research = false;
+    /// D21, OQ-057: the statistics decay stat · num / den in 64 bits instead of the
+    /// original's u32 product, which wraps from stat >= 41 297 763 (a statistic of
+    /// 50 000 000 then falls to 8 619 359). The quotient is capped at 0xFFFFFFFF.
+    bool stat_decay_wide = false;
+    /// D22, OQ-057: the bankruptcy deadline t + grace is compared as a signed 32-bit
+    /// difference (t − deadline > 0) and never takes the value 0 ("not running"; a
+    /// sum of exactly 2^32 becomes 1), so the grace period survives the u32 wrap of
+    /// the tick. The original compares unsigned: within the last grace_ticks
+    /// before 2^32 a player is declared bankrupt at once or the deadline lands on 0.
+    bool bankrupt_deadline_wrap_safe = false;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed

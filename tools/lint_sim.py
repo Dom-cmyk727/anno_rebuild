@@ -58,6 +58,7 @@ ALLOW_FILE = "tools/lint_sim_allow.txt"
 # constexpr integral variables that are named sentinels or versions, not counts.
 SENTINELS = {
     "kNoSlot",
+    "kNoColour",
     "kAppendIndex",
     "kStateHashVersion",
     "kPrngTimelineVersion",

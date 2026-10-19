@@ -20,6 +20,26 @@
 # the header. The values come from the independent Python transcription of the
 # stream (tools/sim_stream.py --check compares this file with it); with those six periods at 0 it reproduces the previous values
 # df6815f02263f93a, 5d751217d5462017 and c1396d71dd832d30.
-g0_step1     S1 101 de68b44067afbb2d
-g0_step100   S1 101 4eb4b429d76b7408
-g0_step1000  S1 101 9fb365627b32730f
+#
+# Re-baselined at stream version 102 (stage S4: the players scope was added
+# after settings: 32 empty slots, the table's stamp and cursor, which advance()
+# moves by min(d*32/50 + 1, 32) slots per call). The version-101 values were
+# de68b44067afbb2d, 4eb4b429d76b7408 and 9fb365627b32730f. The values come from
+# tools/sim_stream.py, which also transcribes the player table tick.
+# Re-baselined inside development version 102 (S4 review round, before S4 was
+# committed): the Player stream widened the two colour fields to u32, the Rules
+# gained stat_decay_wide and bankrupt_deadline_wrap_safe, and the player state is
+# an open byte. The values before this round were 41dfec871c88c973,
+# 1897d0324cd3f6aa and 259bd3549ee1a7fc.
+#
+# G1: a populated player table (six players: upkeep, decay with the u32 wrap, a
+# grace period that ends in bankruptcy, the neutral player, a defeated player and
+# an open state byte 8) in a world with Rules::player_table_full_tick, seed 1234,
+# advance(500) x 100 and x 700. The values come from tools/sim_stream.py, which
+# transcribes the per-player rules independently of the C++ code, so MSVC, GCC and
+# Clang are held to the same player arithmetic.
+g0_step1     S1 102 3fdee3c748d59669
+g0_step100   S1 102 226f751ec17b7208
+g0_step1000  S1 102 290e5047c38aa562
+g1_players_step100 S4 102 8075f6b5a4e2f059
+g1_players_step700 S4 102 82f9d812fd30142f

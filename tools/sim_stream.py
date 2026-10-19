@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """Independent transcription of the simulation's state stream (docs/sim/state.md
-§9.3, stage S3): the registry digest of the empty registry and the state hash of
+§9.3, stage S4): the registry digest of the empty registry and the state hash of
 the empty world, from the spec and from the goods names in
-src/sim/src/goods_table.cpp, without any C++ code.
+src/sim/src/goods_table.cpp, without any C++ code. Since stage S4 the stream has
+the players scope (32 slots, the table's stamp and cursor), whose cursor the
+script advances with its own transcription of the player table tick
+(min(d*32/50 + 1, 32) slots per advance). The golden G1 (g1_players_step100,
+g1_players_step700) is a populated table run with the full-tick rule: the script
+transcribes the per-player rules too (upkeep gate and booking, statistics decay,
+bankruptcy grace period), so MSVC, GCC and Clang agree on the player arithmetic.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
@@ -23,7 +29,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 101
+STATE_HASH_VERSION = 102
 PRNG_TIMELINE_VERSION = 1
 
 
@@ -130,9 +136,14 @@ def config_bytes():
     return b
 
 
-def rules_bytes():
-    return (u8(0) + u8(0) + u8(0) + u64(1 << 20) + bytes(6) + u8(0) + u8(0) + u32(0) + u8(0)
-            + u8(0))
+def rules_bytes(full_tick=False):
+    # slot_policy, spatial_order, events_drain_new, events_max_dispatch, six flags (flush,
+    # monopoly_every_30s, player_table_full_tick, drought centre, atomic, empty city),
+    # event750_keep_overshoot, prng_mode, interim_figure_return_ticks, free_build_cheat,
+    # enforce_research, stat_decay_wide, bankrupt_deadline_wrap_safe
+    flags = bytes([0, 0, 1 if full_tick else 0, 0, 0, 0])
+    return (u8(0) + u8(0) + u8(0) + u64(1 << 20) + flags + u8(0) + u8(0) + u32(0) + u8(0)
+            + u8(0) + u8(0) + u8(0))
 
 
 def settings_bytes():
@@ -148,18 +159,124 @@ def rng_table_digest():
     return fnv(b''.join(u16(v) for v in values))
 
 
-def state_hash(registry, cursor, ms, last_tick):
-    header = u32(STATE_HASH_VERSION) + u32(PRNG_TIMELINE_VERSION) + config_bytes() + rules_bytes()
+def player_table_after(steps, step_ms):
+    """(stamp, cursor) of the empty player table after `steps` advances of
+    `step_ms` game milliseconds from tick 0 (docs/sim/state.md §5.10: d is the
+    16-bit tick difference to the table's stamp, the count min(d*32/50 + 1, 32),
+    the cursor moves by the count modulo 32, the stamp becomes the 16-bit tick)."""
+    stamp, cursor, ms = 0, 0, 0
+    for _ in range(steps):
+        ms += step_ms
+        t = (ms >> 1) & 0xFFFFFFFF
+        d = (t - stamp) & 0xFFFF
+        cursor = (cursor + min(d * 32 // 50 + 1, 32)) % 32
+        stamp = t & 0xFFFF
+    return stamp, cursor
+
+
+def new_player(index, **over):
+    """A player with the original's initial values (docs/sim/state.md section 4.5)."""
+    p = dict(index=index, kind=8, volk=1, money=10000, ua=0, ub=0, rem=0, stamp=0, sa=0, sb=0,
+             flags=1, flags_a0=0, colour_slot=0, default_colour=0xFFFFFFFF, state=0, deadline=0,
+             defeat=False, free_build=False, name=b'')
+    p.update(over)
+    return p
+
+
+def player_bytes(p):
+    b = (u32(p['index']) + u32(p['kind']) + u32(p['volk']) + i64(p['money']) + u32(p['ua'])
+         + u32(p['ub']) + u32(p['rem']) + u16(p['stamp']) + u32(p['sa']) + u32(p['sb'])
+         + u32(p['flags']) + u32(p['flags_a0']) + u32(p['colour_slot'])
+         + u32(p['default_colour']) + u8(p['state']) + u32(p['deadline'])
+         + u8(1 if p['defeat'] else 0) + u8(1 if p['free_build'] else 0))
+    b += string(p['name'])
+    b += u64(65) + bytes(65)   # research state
+    b += u64(65) + bytes(130)  # research progress
+    return b
+
+
+def players_digest(stamp, cursor, slots=None):
+    """The players scope: u64 32, one child scope per slot (its digest is the FNV of
+    the presence byte and the player, an empty slot of the absent byte), u16 stamp,
+    u32 cursor."""
+    slots = slots or {}
+    digests = [fnv(u8(1) + player_bytes(slots[i])) if i in slots else fnv(u8(0))
+               for i in range(32)]
+    return fnv(u64(32) + b''.join(u64(d) for d in digests) + u16(stamp) + u32(cursor))
+
+
+M32 = (1 << 32) - 1
+
+
+def player_tick(p, t):
+    """One player's tick for the default configuration (docs/sim/state.md section 5.10:
+    upkeep gate 2000 on a 16-bit difference, sum over 15, decay 104/105 in u32,
+    bankruptcy at <= -3000 with a 150000-tick grace, neutral player 31); the hooks
+    do nothing."""
+    if ((t - p['stamp']) & 0xFFFF) >= 2000:
+        s = (p['ua'] + p['ub'] + p['rem']) & M32
+        p['money'] -= s // 15
+        p['rem'] = s % 15
+        p['stamp'] = t & 0xFFFF
+        p['sa'] = ((p['sa'] * 104) & M32) // 105
+        p['sb'] = ((p['sb'] * 104) & M32) // 105
+    if p['index'] != 31 and p['state'] == 0:
+        if p['money'] <= -3000:
+            if p['deadline'] == 0:
+                p['deadline'] = (t + 150000) & M32
+            elif t > p['deadline']:
+                p['state'] = 2
+        else:
+            p['deadline'] = 0
+        p['defeat'] = False
+
+
+def g1_slots():
+    return {
+        0: new_player(0, money=500, ua=300, ub=30, sa=1050, sb=210, name=b'Anno'),
+        1: new_player(1, money=-2990, ua=600, defeat=True),
+        2: new_player(2, ua=14, rem=7, sa=50000000, sb=40000000, stamp=1000, colour_slot=3),
+        4: new_player(4, money=100, ua=15, state=3, defeat=True),
+        7: new_player(7, money=-9999, state=8),
+        31: new_player(31, money=-9000, ua=150),
+    }
+
+
+def g1_after(steps, step_ms):
+    """(slots, stamp) of the G1 table after `steps` advances of `step_ms` game
+    milliseconds from tick 0 with the full-tick rule (every slot, in order, on each
+    advance; the cursor stays 0)."""
+    slots, stamp, ms = g1_slots(), 0, 0
+    for _ in range(steps):
+        ms += step_ms
+        t = (ms >> 1) & M32
+        for i in range(32):
+            if i in slots:
+                player_tick(slots[i], t)
+        stamp = t & 0xFFFF
+    return slots, stamp
+
+
+def state_hash(registry, cursor, ms, last_tick, players, full_tick=False):
+    header = (u32(STATE_HASH_VERSION) + u32(PRNG_TIMELINE_VERSION) + config_bytes()
+              + rules_bytes(full_tick))
     header += u64(registry) + u64(22) + b''.join(string(b'default') for _ in range(22))
     clock_rng = u64(ms) + u64(last_tick) + u64(2048) + u64(rng_table_digest()) + u32(cursor)
-    return fnv(u64(fnv(header)) + u64(fnv(clock_rng)) + u64(fnv(settings_bytes())))
+    return fnv(u64(fnv(header)) + u64(fnv(clock_rng)) + u64(fnv(settings_bytes()))
+               + u64(players))
 
 
 def values():
     registry = registry_digest(goods_names())
-    out = {'empty_registry': registry, 'empty_world': state_hash(registry, 0, 0, 0)}
+    out = {'empty_registry': registry,
+           'empty_world': state_hash(registry, 0, 0, 0, players_digest(0, 0))}
     for steps in (1, 100, 1000):  # G0: seed 1234, advance(10) x steps
-        out['g0_step%d' % steps] = state_hash(registry, 1234, 10 * steps, 10 * steps // 2)
+        out['g0_step%d' % steps] = state_hash(registry, 1234, 10 * steps, 10 * steps // 2,
+                                              players_digest(*player_table_after(steps, 10)))
+    for steps in (100, 700):  # G1: seed 1234, full-tick rule, advance(500) x steps
+        slots, stamp = g1_after(steps, 500)
+        out['g1_players_step%d' % steps] = state_hash(
+            registry, 1234, 500 * steps, 500 * steps // 2, players_digest(stamp, 0, slots), True)
     return out
 
 

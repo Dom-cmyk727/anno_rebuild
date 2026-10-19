@@ -22,7 +22,9 @@ if(ANNO_BUILD_TESTS)
     tests/main.cpp
     tests/render_corpus_test.cpp
     tests/render_test.cpp
+    tests/river_flow_corpus_test.cpp
     tests/river_flow_test.cpp
+    tests/river_shade_test.cpp
     tests/sprite_fidelity_test.cpp
   )
   target_link_libraries(anno_render_tests PRIVATE anno_render anno_test_support doctest::doctest)

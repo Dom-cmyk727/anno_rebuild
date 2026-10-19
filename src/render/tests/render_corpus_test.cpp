@@ -21,6 +21,21 @@
 // and _14 (`river_qa --rect` finds no river sprite pixel in them; Single_24's
 // holds 34,889), Single_05, _08, _12, _15, _16 and N_064x064_0001_0B (no river
 // pieces), and the Single_01 frames.
+// Third exception since 2026-10-19 (river flow shading, docs/render/rivers.md
+// section 15, stage S5): enhanced rivers are shaded by flow-map advection along
+// the solved flow (river_flow_shade) instead of the legacy shimmer that slides
+// along fixed axes, so the Enhanced lines that contain river pixels changed,
+// once, and only those: Single_01 g2 (the 4 river islands, mouths), Single_06
+// g2, Single_10 g2, Single_14 g2, Single_24 g2 and Single_24's g1 region
+// (34,889 river sprite pixels), and the Single_24 g2 and g1 frames (g0's view
+// centre has no river). Unchanged and still checked: every Original line
+// (the river path is enhanced-only), the Enhanced lines of scenes or views
+// without river pixels (Single_01's g1 region and frames, Single_05, _08,
+// _12, _15, _16, N_064x064_0001_0B, Single_24's g0 frame), and a run with
+// --river-flow legacy / Layers::river_flow = Legacy reproduces the previous
+// digests (test "legacy river shading reproduces the shimmer"). The lines
+// differ only in river pixels (checked by pixel comparison against the legacy
+// render in the river flow corpus test: no non-river pixel changes).
 // Set ANNO_PRINT_DIGESTS=1 to print the lines.
 #include <algorithm>
 #include <chrono>
@@ -78,7 +93,11 @@ const char* style_name(render::WaterStyle s) {
     return s == render::WaterStyle::Original ? "Original" : "Enhanced";
 }
 
-std::vector<std::string> digest_lines(const std::filesystem::path& dir) {
+/// The digest lines of the corpus; `only`: just the scenario with that file
+/// name; `river_flow`: how enhanced rivers are shaded.
+std::vector<std::string>
+digest_lines(const std::filesystem::path& dir, std::string_view only = {},
+             render::RiverFlowMode river_flow = render::RiverFlowMode::Flow) {
     const auto felder_buf = anno::test::read_file(dir / "Textures" / "Felder.tex");
     const auto anl_buf = anno::test::read_file(dir / "Anlagen.dat");
     const auto hbuf = anno::test::read_file(dir / "FigurenHeader.dat");
@@ -96,6 +115,9 @@ std::vector<std::string> digest_lines(const std::filesystem::path& dir) {
     }
     auto files = anno::test::files_with_ext(dir / "Scenes" / "0200Single", "sze");
     files.push_back(dir / "Scenes" / "Islands" / "Nord" / "N_064x064_0001_0B.scp");
+    if (!only.empty()) {
+        std::erase_if(files, [&](const auto& f) { return f.filename().string() != only; });
+    }
     // One render per task, four per scenario (whole map at group 2 in both
     // water styles, a group 1 region in both): a few whole-map renders of the
     // largest scenarios take most of the time, so splitting by scenario left
@@ -156,6 +178,7 @@ std::vector<std::string> digest_lines(const std::filesystem::path& dir) {
             ci % 2 == 0 ? render::WaterStyle::Original : render::WaterStyle::Enhanced;
         render::Layers layers = render::Layers::all();
         layers.water_style = style;
+        layers.river_flow = river_flow;
         if (ci < 2) {
             const std::uint64_t time = ci == 0 ? 0 : 2500;
             const auto rect = *scene.bounds(2);
@@ -181,7 +204,7 @@ std::vector<std::string> digest_lines(const std::filesystem::path& dir) {
 const std::vector<std::string> kExpected = {
     "Single_01.sze g2 t0 Original 16960x9170 2f0395814262894d drawn=69864 inv=11717 failed=0 "
     "units=5",
-    "Single_01.sze g2 t2500 Enhanced 16960x9170 ba0b1101d9e6229f drawn=69256 inv=11717 failed=0 "
+    "Single_01.sze g2 t2500 Enhanced 16960x9170 c173c978c6ae696b drawn=69256 inv=11717 failed=0 "
     "units=5",
     "Single_01.sze g1 region Original f3c82ff0f061887a drawn=24371 units=0",
     "Single_01.sze g1 region Enhanced 38fa6edcf261fb33 drawn=24110 units=0",
@@ -191,7 +214,7 @@ const std::vector<std::string> kExpected = {
     "Single_05.sze g1 region Original c90b2060847e2a1f drawn=4603 units=0",
     "Single_05.sze g1 region Enhanced 7bc859ab6cbbe7d0 drawn=4603 units=0",
     "Single_06.sze g2 t0 Original 7280x4451 3f1ba536788d1526 drawn=13778 inv=3084 failed=0 units=3",
-    "Single_06.sze g2 t2500 Enhanced 7280x4451 e3a111d08b078b4b drawn=13626 inv=3084 failed=0 "
+    "Single_06.sze g2 t2500 Enhanced 7280x4451 0eda75c6891a3e3d drawn=13626 inv=3084 failed=0 "
     "units=3",
     "Single_06.sze g1 region Original 81d690c94bbb0fc5 drawn=599 units=0",
     "Single_06.sze g1 region Enhanced 27da1a1ded12c916 drawn=599 units=0",
@@ -202,7 +225,7 @@ const std::vector<std::string> kExpected = {
     "Single_08.sze g1 region Enhanced 226bdaf64c2c1073 drawn=6670 units=0",
     "Single_10.sze g2 t0 Original 17440x9131 059c44e48f227c12 drawn=53212 inv=8756 failed=0 "
     "units=1",
-    "Single_10.sze g2 t2500 Enhanced 17440x9131 ec3566e92ecbcb5e drawn=52883 inv=8756 failed=0 "
+    "Single_10.sze g2 t2500 Enhanced 17440x9131 7151216672105309 drawn=52883 inv=8756 failed=0 "
     "units=1",
     "Single_10.sze g1 region Original 13acfeb61e56be15 drawn=0 units=0",
     "Single_10.sze g1 region Enhanced 135943759028480b drawn=0 units=0",
@@ -213,7 +236,7 @@ const std::vector<std::string> kExpected = {
     "Single_12.sze g1 region Enhanced f75cd5ed42ab42b5 drawn=7295 units=0",
     "Single_14.sze g2 t0 Original 14080x9291 23b01ba36bfbcc8c drawn=47209 inv=9450 failed=0 "
     "units=3",
-    "Single_14.sze g2 t2500 Enhanced 14080x9291 e78f231176506a9d drawn=47064 inv=9450 failed=0 "
+    "Single_14.sze g2 t2500 Enhanced 14080x9291 fe84bb91f57b406e drawn=47064 inv=9450 failed=0 "
     "units=3",
     "Single_14.sze g1 region Original 323ce1b9064247a3 drawn=16735 units=1",
     "Single_14.sze g1 region Enhanced a5f9c1083372b79b drawn=16681 units=1",
@@ -229,10 +252,10 @@ const std::vector<std::string> kExpected = {
     "Single_16.sze g1 region Enhanced 8a3caa97f52c354a drawn=1384 units=0",
     "Single_24.sze g2 t0 Original 7200x2811 768dbcffaa6380e2 drawn=24577 inv=2880 failed=0 "
     "units=541",
-    "Single_24.sze g2 t2500 Enhanced 7200x2811 de09ab1e97a17170 drawn=24406 inv=2880 failed=0 "
+    "Single_24.sze g2 t2500 Enhanced 7200x2811 8cd51f3c175b9611 drawn=24406 inv=2880 failed=0 "
     "units=541",
     "Single_24.sze g1 region Original 610c80610617b85a drawn=23697 units=0",
-    "Single_24.sze g1 region Enhanced febd87d511c3ec25 drawn=23526 units=0",
+    "Single_24.sze g1 region Enhanced 5f8671f1b63761f6 drawn=23526 units=0",
     "N_064x064_0001_0B.scp g2 t0 Original 1280x891 d73b254ebe87486f drawn=949 inv=338 failed=0 "
     "units=0",
     "N_064x064_0001_0B.scp g2 t2500 Enhanced 1280x891 5118c7e5cf5c0b0f drawn=930 inv=338 failed=0 "
@@ -267,7 +290,8 @@ std::vector<std::string> expected_lines() {
 
 } // namespace
 
-TEST_CASE("scene renders match the Rust reference") {
+TEST_CASE("scene renders match the recorded digests (the Rust reference's, except the enhanced "
+          "river lines)") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -286,7 +310,68 @@ TEST_CASE("scene renders match the Rust reference") {
     }
 }
 
-TEST_CASE("frames (chunk cache and composition) match the Rust reference") {
+TEST_CASE("legacy river shading reproduces the previous enhanced digests (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    // --river-flow legacy keeps river_shade bit for bit (rivers.md 6, 8): the
+    // Enhanced digests of every scenario with river pixels before the flow
+    // shading (the former expected lines, which were the Rust reference's
+    // before the river gap fix and this C++ renderer's after it), with the
+    // units drawn. [1] is the group 2 render, [3] the group 1 region; where the
+    // region has no river pixels its line did not change.
+    struct Old {
+        const char* file;
+        const char* g2;
+        const char* g1_region; ///< null: unchanged (the current expected line)
+    };
+    const std::vector<Old> old = {
+        {"Single_01.sze",
+         "Single_01.sze g2 t2500 Enhanced 16960x9170 ba0b1101d9e6229f drawn=69256 inv=11717 "
+         "failed=0 units=5",
+         nullptr},
+        {"Single_06.sze",
+         "Single_06.sze g2 t2500 Enhanced 7280x4451 e3a111d08b078b4b drawn=13626 inv=3084 "
+         "failed=0 units=3",
+         nullptr},
+        {"Single_10.sze",
+         "Single_10.sze g2 t2500 Enhanced 17440x9131 ec3566e92ecbcb5e drawn=52883 inv=8756 "
+         "failed=0 units=1",
+         nullptr},
+        {"Single_14.sze",
+         "Single_14.sze g2 t2500 Enhanced 14080x9291 e78f231176506a9d drawn=47064 inv=9450 "
+         "failed=0 units=3",
+         nullptr},
+        {"Single_24.sze",
+         "Single_24.sze g2 t2500 Enhanced 7200x2811 de09ab1e97a17170 drawn=24406 inv=2880 "
+         "failed=0 units=541",
+         "Single_24.sze g1 region Enhanced febd87d511c3ec25 drawn=23526 units=0"},
+    };
+    const std::vector<std::string> now = expected_lines();
+    for (const Old& o : old) {
+        INFO(o.file);
+        const auto legacy = digest_lines(*dir, o.file, render::RiverFlowMode::Legacy);
+        const auto flow = digest_lines(*dir, o.file);
+        REQUIRE(legacy.size() == 4);
+        CHECK(legacy[1] == o.g2);
+        const auto at = std::find_if(now.begin(), now.end(), [&](const std::string& line) {
+            return line.rfind(std::string(o.file) + " g1 region Enhanced", 0) == 0;
+        });
+        REQUIRE(at != now.end());
+        CHECK(legacy[3] == (o.g1_region != nullptr ? std::string(o.g1_region) : *at));
+        // The flow shading differs where rivers are in the view.
+        CHECK(flow[1] != legacy[1]);
+        CHECK((o.g1_region != nullptr) == (flow[3] != legacy[3]));
+        // Original water ignores the river mode.
+        CHECK(flow[0] == legacy[0]);
+        CHECK(flow[2] == legacy[2]);
+    }
+}
+
+TEST_CASE("frames (chunk cache and composition) match the recorded digests (the Rust reference's, "
+          "except the enhanced river frames)") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -307,55 +392,66 @@ TEST_CASE("frames (chunk cache and composition) match the Rust reference") {
         "Single_01.sze g0 t900 Enhanced 5298e2b2d0786b1f",
         "Single_24.sze g2 t0 Original e7894f5a1560f7d2",
         "Single_24.sze g2 t900 Original 154c9a87f81f5ff5",
-        "Single_24.sze g2 t900 Enhanced 3ac692d3b0a5f43b",
+        "Single_24.sze g2 t900 Enhanced 1c4dd9c8aab9b746",
         "Single_24.sze g1 t0 Original a17a423d76e40c10",
         "Single_24.sze g1 t900 Original 9c02fbfb3767584d",
-        "Single_24.sze g1 t900 Enhanced 4d4a2f8226e38ad1",
+        "Single_24.sze g1 t900 Enhanced c98bde27b8efb888",
         "Single_24.sze g0 t0 Original 6b07c0d4d77df178",
         "Single_24.sze g0 t900 Original b9a7aaa3f213ac65",
         "Single_24.sze g0 t900 Enhanced 56f35854554ef7ce",
     };
+    // With the legacy river shading the two Single_24 river frames are the
+    // previous enhanced digests (the flow shading changed those only; the
+    // Single_01 views and Single_24's group 0 view hold no river pixels).
+    std::vector<std::string> expected_legacy = expected;
+    expected_legacy[11] = "Single_24.sze g2 t900 Enhanced 3ac692d3b0a5f43b";
+    expected_legacy[14] = "Single_24.sze g1 t900 Enhanced 4d4a2f8226e38ad1";
     const auto felder_buf = anno::test::read_file(*dir / "Textures" / "Felder.tex");
     const auto anl_buf = anno::test::read_file(*dir / "Anlagen.dat");
-    std::vector<std::string> lines;
-    for (const char* name : {"Single_01.sze", "Single_24.sze"}) {
-        const auto buf = anno::test::read_file(*dir / "Scenes" / "0200Single" / name);
-        auto anlagen = anno::formats::anlagen::AnlagenFile::parse(anl_buf).value();
-        const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
-        auto textures = anno::assets::island::GroundTextures::load(felder).value();
-        if (const auto c = render::water_colour(anlagen)) {
-            textures.set_water(*c);
-        }
-        const render::Scene scene("", anno::formats::insel::islands(buf).value(),
-                                  std::move(textures), std::move(anlagen), render::kHeightLift);
-        render::FrameRenderer fr(4);
-        for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{0}}) {
-            const auto b = *scene.bounds(group);
-            // Single_24's centre at group 0 is all land: move to a coast.
-            const int dx = std::string_view(name) == "Single_24.sze" && group == 0 ? 2000 : 0;
-            const render::Rect view{b.x + b.w / 2 - 640 + dx, b.y + b.h / 2 - 360, 1280, 720};
-            for (const auto& [time, style] :
-                 {std::pair{std::uint64_t{0}, render::WaterStyle::Original},
-                  std::pair{std::uint64_t{900}, render::WaterStyle::Original},
-                  std::pair{std::uint64_t{900}, render::WaterStyle::Enhanced}}) {
-                std::vector<std::uint32_t> out(1280 * 720);
-                fr.render(scene, view, group, time, style, out.data());
-                std::vector<std::uint8_t> bytes;
-                bytes.reserve(out.size() * 4);
-                for (const std::uint32_t px : out) {
-                    for (int k = 0; k < 4; ++k) {
-                        bytes.push_back(static_cast<std::uint8_t>(px >> (8 * k)));
+    for (const render::RiverFlowMode mode :
+         {render::RiverFlowMode::Flow, render::RiverFlowMode::Legacy}) {
+        std::vector<std::string> lines;
+        for (const char* name : {"Single_01.sze", "Single_24.sze"}) {
+            const auto buf = anno::test::read_file(*dir / "Scenes" / "0200Single" / name);
+            auto anlagen = anno::formats::anlagen::AnlagenFile::parse(anl_buf).value();
+            const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
+            auto textures = anno::assets::island::GroundTextures::load(felder).value();
+            if (const auto c = render::water_colour(anlagen)) {
+                textures.set_water(*c);
+            }
+            const render::Scene scene("", anno::formats::insel::islands(buf).value(),
+                                      std::move(textures), std::move(anlagen), render::kHeightLift);
+            render::FrameRenderer fr(4);
+            fr.river_flow = mode;
+            for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{0}}) {
+                const auto b = *scene.bounds(group);
+                // Single_24's centre at group 0 is all land: move to a coast.
+                const int dx = std::string_view(name) == "Single_24.sze" && group == 0 ? 2000 : 0;
+                const render::Rect view{b.x + b.w / 2 - 640 + dx, b.y + b.h / 2 - 360, 1280, 720};
+                for (const auto& [time, style] :
+                     {std::pair{std::uint64_t{0}, render::WaterStyle::Original},
+                      std::pair{std::uint64_t{900}, render::WaterStyle::Original},
+                      std::pair{std::uint64_t{900}, render::WaterStyle::Enhanced}}) {
+                    std::vector<std::uint32_t> out(1280 * 720);
+                    fr.render(scene, view, group, time, style, out.data());
+                    std::vector<std::uint8_t> bytes;
+                    bytes.reserve(out.size() * 4);
+                    for (const std::uint32_t px : out) {
+                        for (int k = 0; k < 4; ++k) {
+                            bytes.push_back(static_cast<std::uint8_t>(px >> (8 * k)));
+                        }
                     }
+                    lines.push_back(std::string(name) + " g" + std::to_string(group) + " t" +
+                                    std::to_string(time) + " " + style_name(style) + " " +
+                                    hex(fnv(bytes)));
                 }
-                lines.push_back(std::string(name) + " g" + std::to_string(group) + " t" +
-                                std::to_string(time) + " " + style_name(style) + " " +
-                                hex(fnv(bytes)));
             }
         }
-    }
-    REQUIRE(lines.size() == expected.size());
-    for (std::size_t i = 0; i < lines.size(); ++i) {
-        CHECK(lines[i] == expected[i]);
+        const auto& want = mode == render::RiverFlowMode::Flow ? expected : expected_legacy;
+        REQUIRE(lines.size() == want.size());
+        for (std::size_t i = 0; i < lines.size(); ++i) {
+            CHECK(lines[i] == want[i]);
+        }
     }
 }
 

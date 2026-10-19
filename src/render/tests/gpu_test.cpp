@@ -268,6 +268,9 @@ TEST_CASE("GPU frames match the CPU path (game files)") {
         gpu::GpuFrame& g = *made.value();
         const auto target = g.offscreen_target(kW, kH);
         render::FrameRenderer cpu(4), on_gpu(4, false);
+        // The GPU draws the legacy river look until its port (rivers.md S6): the
+        // CPU reference of an enhanced comparison does too.
+        cpu.river_flow = render::RiverFlowMode::Legacy;
         std::size_t sprites = 0, ships = 0;
         for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{0}}) {
             const render::Rect view = digest_view(*scene, name, group, kW, kH);
@@ -338,6 +341,9 @@ TEST_CASE("GPU frames: atlas growth, odd sizes and spread uploads (game files)")
     constexpr int kW = 1001, kH = 601;
     const auto target = g.offscreen_target(kW, kH);
     render::FrameRenderer cpu(4), on_gpu(4, false);
+    // The GPU draws the legacy river look until its port (rivers.md S6): the
+    // CPU reference of an enhanced comparison does too.
+    cpu.river_flow = render::RiverFlowMode::Legacy;
     for (const std::size_t group : {std::size_t{2}, std::size_t{1}}) {
         const render::Rect view = digest_view(*scene, name, group, kW, kH);
         std::vector<std::uint32_t> out(std::size_t{kW} * kH);
@@ -386,6 +392,9 @@ TEST_CASE("enhanced water without the wave simulation stays close to the CPU pat
         gpu::GpuFrame& g = *made.value();
         const auto target = g.offscreen_target(kW, kH);
         render::FrameRenderer cpu(4), on_gpu(4, false);
+        // The GPU draws the legacy river look until its port (rivers.md S6): the
+        // CPU reference of an enhanced comparison does too.
+        cpu.river_flow = render::RiverFlowMode::Legacy;
         for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{0}}) {
             const render::Rect view = digest_view(*scene, name, group, kW, kH);
             for (const std::uint64_t time : {std::uint64_t{925}, std::uint64_t{1900}}) {
@@ -718,6 +727,9 @@ TEST_CASE("atlas growth keeps earlier sprites, first frame at a late sea step (g
     constexpr int kW = 1280, kH = 720;
     const auto target = g.offscreen_target(kW, kH);
     render::FrameRenderer cpu(4), on_gpu(4, false);
+    // The GPU draws the legacy river look until its port (rivers.md S6): the
+    // CPU reference of an enhanced comparison does too.
+    cpu.river_flow = render::RiverFlowMode::Legacy;
     // Group 2 fills layer 0, group 1 grows the atlas, group 2 again reads
     // the copied layer. Times late in the animation cycle: the first frame
     // of a group must have the whole pattern.
@@ -755,6 +767,9 @@ TEST_CASE("uploads spread over frames: stand-ins first, then the real chunks (ga
     constexpr int kW = 1001, kH = 601;
     const auto target = g.offscreen_target(kW, kH);
     render::FrameRenderer cpu(4), on_gpu(4, false);
+    // The GPU draws the legacy river look until its port (rivers.md S6): the
+    // CPU reference of an enhanced comparison does too.
+    cpu.river_flow = render::RiverFlowMode::Legacy;
     const render::Rect view = digest_view(*scene, name, 1, kW, kH);
     std::vector<std::uint32_t> out(std::size_t{kW} * kH);
     cpu.render(*scene, view, 1, 0, render::WaterStyle::Original, out.data());
@@ -821,6 +836,9 @@ TEST_CASE("stand-in chunks show the open sea (game files)") {
     constexpr int kW = 1280, kH = 720;
     const auto target = g.offscreen_target(kW, kH);
     render::FrameRenderer cpu(4), on_gpu(4, false);
+    // The GPU draws the legacy river look until its port (rivers.md S6): the
+    // CPU reference of an enhanced comparison does too.
+    cpu.river_flow = render::RiverFlowMode::Legacy;
     const render::Rect view = digest_view(*scene, name, 1, kW, kH);
     std::vector<std::uint32_t> out(std::size_t{kW} * kH);
     cpu.render(*scene, view, 1, 300, render::WaterStyle::Original, out.data());
@@ -902,6 +920,9 @@ TEST_CASE("a full sprite atlas drops new sprites without errors (game files)") {
     constexpr int kW = 1280, kH = 720;
     const auto target = g.offscreen_target(kW, kH);
     render::FrameRenderer cpu(4), on_gpu(4, false);
+    // The GPU draws the legacy river look until its port (rivers.md S6): the
+    // CPU reference of an enhanced comparison does too.
+    cpu.river_flow = render::RiverFlowMode::Legacy;
     const render::Rect view = digest_view(*scene, name, 1, kW, kH);
     std::vector<std::uint32_t> out(std::size_t{kW} * kH);
     cpu.render(*scene, view, 1, 0, render::WaterStyle::Original, out.data());
@@ -944,6 +965,9 @@ TEST_CASE("ships drawn by the compositor match the CPU path (game files)") {
         constexpr int kW = 640, kH = 400;
         const auto target = g.offscreen_target(kW, kH);
         render::FrameRenderer cpu(4), on_gpu(4, false);
+        // The GPU draws the legacy river look until its port (rivers.md S6): the
+        // CPU reference of an enhanced comparison does too.
+        cpu.river_flow = render::RiverFlowMode::Legacy;
         std::size_t ships = 0, checked = 0;
         for (const auto& u : scene->units) {
             if (u.z || checked >= 3) {

@@ -61,6 +61,14 @@ struct Chunk {
     /// Canvas::base of `objects` (chunks without ships, for the GPU); empty
     /// = none.
     std::vector<std::uint8_t> base;
+    /// The baked flow of enhanced rivers here (rivers.md 3.3); empty = this
+    /// chunk has no river flow (no river pixels, or the flow is not ready).
+    river::FlowPlane flow;
+    /// Islands whose flow was not ready when the chunk was built: it shows the
+    /// legacy river look on the correct mask until it is rebuilt (the window
+    /// thread never waits for a flow, rivers.md 3.1).
+    std::vector<std::uint32_t> flow_waiting;
+    [[nodiscard]] bool flow_pending() const { return !flow_waiting.empty(); }
 };
 
 /// (zoom group, chunk x, chunk y).
@@ -68,7 +76,14 @@ using ChunkKey = std::tuple<std::size_t, int, int>;
 
 /// The static data of one chunk; with `ships` false the ships (units on
 /// the sea surface) are left out of the objects layer.
-Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool ships = true);
+///
+/// Enhanced rivers: when the chunk touches an island with rivers it carries
+/// the baked flow lattice (Chunk::flow). With `wait_for_flow` the flow of such
+/// an island is built here if nobody has (blocking: headless, tests); without
+/// it a flow that is not ready is queued on the scene's flow builders and the
+/// chunk is tagged flow_pending (the background chunk workers).
+Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool ships = true,
+                   bool wait_for_flow = true);
 
 /// Background chunk builders: a priority job list and a result queue. The
 /// scene must outlive them. Destroying them stops the builders and waits for
@@ -144,13 +159,16 @@ class FrameRenderer {
     FrameStats render(const Scene& scene, Rect view, std::size_t group, std::uint64_t time_ms,
                       WaterStyle style, std::uint32_t* out);
 
+    /// Enhanced water: the river look render() draws (chunks carry the lattice
+    /// either way, so switching needs no rebuild).
+    RiverFlowMode river_flow = RiverFlowMode::Flow;
     /// Worker threads per stage.
     std::size_t threads;
     /// Chunks kept besides the visible ones.
     std::size_t spare_chunks = 48;
 
   private:
-    std::size_t request_chunks(std::size_t group, Rect view,
+    std::size_t request_chunks(const Scene& scene, std::size_t group, Rect view,
                                const std::vector<std::pair<int, int>>& visible);
     void trim(std::size_t group, Rect view, const std::set<ChunkKey>& keep);
     std::size_t fill_cache(const Scene& scene, std::size_t group,

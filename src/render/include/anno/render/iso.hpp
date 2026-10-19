@@ -447,6 +447,84 @@ Shade river_shade(std::pair<float, float> pos, float depth, float slope, std::ui
 std::array<float, 3> swash(float dist, float slope, std::pair<float, float> pos,
                            std::uint64_t time_ms);
 float swash_runup(float dist, float slope, std::pair<float, float> pos, std::uint64_t time_ms);
+/// How enhanced rivers are shaded (docs/render/rivers.md; --river-flow, key R):
+/// the legacy shimmer that slides along fixed axes, or the flow-map shading
+/// advected along the solved flow (stage S5, CPU reference path).
+enum class RiverFlowMode { Legacy, Flow };
+
+/// Layers of the river flow shading in RiverParams. The count is data
+/// (RiverConfig::layers); the array size is the compile-time bound of the
+/// uniform array of the GPU port (rivers.md 3.3: a WGSL uniform array needs a
+/// size; raising it is this constant plus the shader override).
+inline constexpr std::size_t kMaxRiverLayers = 8;
+
+/// One layer of the river flow shading, the twin of WGSL `RiverLayer`.
+struct RiverLayer {
+    /// Noise frequency (1/tile), period of the flow-map phase (ms; must divide
+    /// 3,600,000 so that the hourly time wrap is seamless), light amplitude.
+    /// (The design's stretch along the flow is not built: applied to the
+    /// island's tile coordinates it moves the noise coordinate by up to ten
+    /// times the geometry wherever the flow varies, i.e. aliases;
+    /// docs/render/rivers.md 15.7.)
+    float scale = 1.0F, period_ms = 1000.0F, amp = 0.0F;
+    /// 1: the amplitude follows the zoom group's wave detail (wave_detail).
+    float fades = 0.0F;
+    /// 1: a rapids layer: no emboss, the light is rapids(slope) * (rapids_base
+    /// + amp * 2 * (noise - 1/2)), as the legacy shimmer's fast layers.
+    float rapids = 0.0F;
+};
+
+/// The layer table and the scalars of the flow shading (the uniform buffer
+/// `river_params` of the GPU port).
+struct RiverParams {
+    std::uint32_t count = 0;
+    /// Constant brightening of a full rapids layer; the shear fade of
+    /// layers (T |grad u| from `shear_from` to `shear_to`).
+    float rapids_base = 0.05F, shear_from = 0.5F, shear_to = 1.5F;
+    std::array<RiverLayer, kMaxRiverLayers> layers{};
+};
+
+/// The river flow at a pixel, from the baked lattice (river::flow_at): the
+/// velocity (tiles / s along the tile axes), the turbulence and wake channels
+/// (0 until the hydraulic extras), the river surface level (HEIGHT units),
+/// the weight of valid texels (0 = no flow here: legacy shimmer) and the
+/// shear |grad u| (1/s).
+struct FlowSample {
+    float vx = 0, vy = 0, turb = 0, wake = 0, level = 0, valid = 0, shear = 0;
+};
+
+/// Per zoom group constants of the flow shading: tile size (pixels) and
+/// pixels per HEIGHT unit of the lift (E19: the pattern lives on the river's
+/// own water plane).
+struct RiverView {
+    float tw = 84.0F, th = 42.0F, lambda = 2.059F;
+};
+
+/// Phases of one layer at a point (rivers.md 2.8, E17): the two noise
+/// coordinates of the flow-map pair and their weights (sum 1).
+struct FlowPhases {
+    std::array<std::array<float, 2>, 2> c{};
+    std::array<float, 2> w{};
+};
+/// The flow-map phases of `layer` at water-plane position `x` (tiles) moving
+/// at velocity `u` (tiles / s), at `time_ms`. c[k] = (x - u T phi_k) s + o_k,
+/// d c_k / dt = -u s: a feature moves downstream with exactly u, and c_k
+/// changes by s per tile of x plus s T phi_k per tile / s of u.
+FlowPhases flow_phases(std::array<float, 2> x, std::array<float, 2> u, std::uint64_t time_ms,
+                       const RiverLayer& layer, float psi);
+/// The slow, position-dependent phase offset psi(x) = 1/2 noise(0.13 x) that
+/// keeps neighbouring places out of step (no global pulsing, E17).
+float flow_psi(std::array<float, 2> x);
+
+/// (light, 0, tint) of an enhanced river pixel by flow-map advection of the
+/// ripple layers along the solved velocity (stage S5; twin of the WGSL
+/// river_flow_shade of the GPU port). (px, py) are the scene pixel's
+/// coordinates as river_shade's callers use them (before the water-plane
+/// lift); `depth` and `slope` as for river_shade; `detail` is wave_detail.
+Shade river_flow_shade(float px, float py, const FlowSample& f, float depth, float slope,
+                       std::uint64_t time_ms, float detail, const RiverParams& params,
+                       const RiverView& view);
+
 /// `rgba` tinted, lit and whitened by `s`.
 Px shade_apply(Px rgba, Shade s);
 

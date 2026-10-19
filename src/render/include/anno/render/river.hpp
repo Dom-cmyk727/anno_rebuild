@@ -19,14 +19,32 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <vector>
 
+#include <anno/render/iso.hpp>
 #include <anno/render/sea.hpp>
 
 namespace anno::render::river {
 
 /// One HEIGHT unit in tiles (docs/render/iso.md, "Elevation": 0.04 world units).
 inline constexpr float kUnitTiles = 0.04F;
+
+/// One layer of the river flow shading (rivers.md 2.8), see iso::RiverLayer.
+struct LayerConfig {
+    float scale = 1.0F, period_ms = 1000.0F, amplitude = 0.0F;
+    /// The amplitude follows the zoom group's wave detail (0 at group 2).
+    bool detail_fades = false;
+    /// A rapids layer: lit by the surface slope, not an emboss ripple.
+    bool rapids = false;
+};
+
+/// The default layer table (rivers.md 2.8; tuning values, none is evidence):
+/// slow undulation, ripples, glints, and the whitewater streaks of falls.
+/// The amplitudes are calibrated so that the light variance of the flow
+/// shading equals the legacy shimmer's (+-20 %; test "the flow shading keeps
+/// the legacy shimmer's light variance").
+std::vector<LayerConfig> default_layers();
 
 /// The tunables of the river model (PLAN 0.1: data, not constants). Every
 /// value below is a tuning value or derived (rivers.md 2); none is evidence
@@ -150,7 +168,108 @@ struct RiverConfig {
 
     /// Print one line to stderr for every river that fell back.
     bool log_fallback = true;
+
+    // --- Stage S5: lattice bake and flow shading (rivers.md 3, 8) ---
+
+    /// Bake the flow lattice into chunks and let the enhanced path shade with
+    /// it. false: chunks carry none and enhanced rivers keep the legacy
+    /// shimmer (the viewer's --river-flow legacy / key R choose the look at
+    /// run time; this is the master switch of the work).
+    bool enabled = true;
+    /// Reach (tiles) of the extension beyond the wet cells (rivers.md R9): the
+    /// flow of the nearest wet cell with a weight fading from 1 to 0, so that
+    /// the soft edge, sprite-only pixels and the falls and mouth masks, which
+    /// reach a little past the raster, always find a flow. The extension grid
+    /// has (nx + 2 reach) x (ny + 2 reach) cells of 4 bytes per island, so
+    /// validate() caps the reach at kMaxExtendTiles (a 16-tile reach on the
+    /// largest raster is 17 MB); raise the constant to lift the cap.
+    float extend_tiles = 2.0F;
+    /// The velocity gradient (shear, 1/s) of a lattice texel is the forward
+    /// difference of the island's flow over this many tiles along each tile
+    /// axis (about two raster cells: smooth enough not to see the cell grid,
+    /// short enough to see a one-tile river's banks).
+    float shear_probe_tiles = 0.25F;
+    /// Threads of the flow builders (0 = automatic: a quarter of the hardware
+    /// threads, at least 1, at most 4: the solves are short and the window
+    /// thread and the chunk builders come first).
+    std::uint32_t flow_threads = 0;
+    /// Scene pixels per lattice texel at each zoom group; every stride must
+    /// divide the chunk size (render::kChunk). 8 / 4 / 4 px are 0.10 / 0.10 /
+    /// 0.20 tile at the original's tile widths. A thinner river would take 2.
+    std::vector<std::uint32_t> lattice_stride = {8, 4, 4};
+    /// Velocity range of the int16 lattice (tiles / s); 1/4096 resolution.
+    float velocity_max = 8.0F;
+    /// Below this weight of valid texels a pixel falls back to the legacy shimmer.
+    float min_valid = 0.02F;
+    /// Constant brightening of a full rapids layer and the shear fade of the
+    /// layers (T |grad u| from shear_from to shear_to), see RiverParams.
+    float rapids_base = 0.05F, shear_from = 0.5F, shear_to = 1.5F;
+    /// The layer table, at most kMaxRiverLayers.
+    std::vector<LayerConfig> layers = default_layers();
+    /// Multiplies the amplitude of the ripple layers (not the rapids): 1 keeps
+    /// the light variance of the legacy shimmer (the calibration, a design
+    /// rule); larger values make the flow easier to see (decision for the
+    /// owner, docs/open-questions.md).
+    float light_gain = 1.0F;
+
+    /// Empty when the shading tables are consistent: every layer period
+    /// divides 3,600,000 ms (the hourly time wrap), at most kMaxRiverLayers
+    /// layers, one positive lattice stride per zoom group dividing the chunk
+    /// size `chunk_px`, finite positive scales. Otherwise the first problem.
+    [[nodiscard]] std::string validate(std::uint32_t chunk_px, std::size_t groups) const;
+    /// The shading uniform of the table (layers beyond the maximum dropped).
+    [[nodiscard]] RiverParams params() const;
 };
+
+/// The baked flow of a rectangle of scene pixels at one zoom group (rivers.md
+/// 3.3, 8): a GLOBAL lattice, texel (i, j) at scene pixel (x0 + i * stride, y0
+/// + j * stride) (the texel stands for the pixel with that corner; a pixel
+/// samples at its centre, +0.5), so every chunk and every region reads the same
+/// texels at the same pixels: the texel value is a pure function of the probe
+/// pixel (the tile position the ground shows there) and the island's flow.
+struct FlowPlane {
+    std::int32_t x0 = 0, y0 = 0;
+    std::uint32_t stride_px = 4, nx = 0, ny = 0;
+    /// Tile size (pixels) of the zoom group the plane was baked at.
+    std::int32_t tile_w = 84, tile_h = 42;
+    /// 2 per texel: velocity along the tile axes, 1/4096 tiles / s.
+    std::vector<std::int16_t> uv;
+    /// 4 per texel: valid weight (0-255), turbulence, wake (0 until the
+    /// hydraulic extras), river surface level in kLevelStep HEIGHT units.
+    std::vector<std::uint8_t> aux;
+    /// 1 per texel: the shear |grad u| in kShearStep 1/s units (baked from the
+    /// island's flow, not from the neighbouring texels, so that it is smooth
+    /// over texel borders and equal in neighbouring chunks).
+    std::vector<std::uint8_t> shear;
+    [[nodiscard]] bool empty() const { return nx == 0 || ny == 0; }
+    [[nodiscard]] std::size_t texel(std::uint32_t i, std::uint32_t j) const {
+        return std::size_t{j} * nx + i;
+    }
+};
+/// Level resolution of FlowPlane::aux[3] (HEIGHT units per step), the
+/// velocity resolution of FlowPlane::uv (steps per tile / s) and the shear
+/// resolution of FlowPlane::shear (1/s per step).
+/// The level byte holds 255 steps = 127.5 HEIGHT units; the original's
+/// rivers top out at 121 (112 + the 9 of kRiverLevel), a mod with higher
+/// water would clip: widen the byte to 16 bits together with the GPU texture
+/// (S6) or raise the step. The shear byte holds up to 8 1/s; the shear fade
+/// (shear_to / period) is complete long before.
+inline constexpr float kLevelStep = 0.5F;
+inline constexpr float kVelocityScale = 4096.0F;
+inline constexpr float kShearStep = 1.0F / 32.0F;
+/// Upper bound of RiverConfig::extend_tiles (see there).
+inline constexpr float kMaxExtendTiles = 16.0F;
+
+/// Writes one texel (quantising); `valid` 0-1, `level` HEIGHT units, `shear`
+/// 1/s.
+void set_texel(FlowPlane& plane, std::uint32_t i, std::uint32_t j, float ux, float uy, float valid,
+               float turb, float wake, float level, float velocity_max, float shear = 0.0F);
+/// The flow at scene pixel (sx, sy): valid-weighted bilinear interpolation of
+/// the four texels around the pixel centre, (1-a)(1-b) weights times valid
+/// normalised by their sum (a texel with valid = 0 does not drag the vector
+/// or the shear to zero); valid = Sum of weight * valid (0 for pixels outside
+/// the plane).
+FlowSample flow_at(const FlowPlane& plane, int sx, int sy);
 
 /// Cell flags of a RiverMask.
 inline constexpr std::uint8_t kWet = 1;     ///< river water
@@ -332,6 +451,8 @@ class RiverFlow {
         float ux = 0, uy = 0;
         /// Hydraulic depth (tiles), after clamping and smoothing.
         float depth = 0;
+        /// River surface level (HEIGHT units) of the raster.
+        float level = 0;
         /// Index of the river the cell belongs to; kPond for ponds.
         std::uint32_t river = 0;
         /// Surface slope |grad Z| (HEIGHT units per tile).
@@ -350,6 +471,8 @@ class RiverFlow {
         /// Weight of the wet cells in the bilinear footprint (0-1); u is
         /// normalised by it, so a pixel at the rim still gets a full vector.
         float valid = 0;
+        /// River surface level (HEIGHT units), weighted the same way.
+        float level = 0;
     };
 
     /// The flow on `mask`. Pure and deterministic.
@@ -358,6 +481,13 @@ class RiverFlow {
     /// Velocity at tile position (tx, ty) (island tile coordinates): valid-
     /// weighted bilinear interpolation between the centres of the wet cells.
     [[nodiscard]] Sample sample(float tx, float ty) const;
+    /// sample() extended past the wet cells (rivers.md R9): where the
+    /// bilinear footprint holds fewer wet cells than a full one, the flow and
+    /// level of the nearest wet cell within `extend_tiles` (the RiverConfig
+    /// value the flow was built with) fill in, and `valid` rises to a weight
+    /// that fades from 1 at the cell to 0 at the reach. Equal to sample()
+    /// where that is already full. A pure function of the position.
+    [[nodiscard]] Sample sample_extended(float tx, float ty) const;
     [[nodiscard]] const FlowStats& stats() const { return stats_; }
     /// Wet cells in raster order (row by row).
     [[nodiscard]] std::span<const Cell> cells() const { return cells_; }
@@ -369,10 +499,18 @@ class RiverFlow {
     [[nodiscard]] std::uint32_t cells_per_tile() const { return c_; }
 
   private:
+    void build_extension(float extend_tiles);
     std::uint32_t c_ = 8;
     std::int32_t x0_ = 0, y0_ = 0;
     std::uint32_t nx_ = 0, ny_ = 0;
     std::vector<std::int32_t> grid_;
+    /// The extension (R9): the nearest wet cell of every cell within
+    /// extend_cells_ steps of the wet ones, over the bounding box grown by
+    /// that margin; -1 elsewhere.
+    std::int32_t ext_x0_ = 0, ext_y0_ = 0, extend_cells_ = 0;
+    std::uint32_t ext_nx_ = 0, ext_ny_ = 0;
+    float extend_tiles_ = 0;
+    std::vector<std::int32_t> ext_;
     std::vector<Cell> cells_;
     std::vector<RiverInfo> rivers_;
     FlowStats stats_;

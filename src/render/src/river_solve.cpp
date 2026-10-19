@@ -415,6 +415,82 @@ std::size_t RiverFlow::cell_at(std::int32_t cx, std::int32_t cy) const {
     return id < 0 ? npos : static_cast<std::size_t>(id);
 }
 
+void RiverFlow::build_extension(float extend_tiles) {
+    extend_tiles_ = extend_tiles;
+    extend_cells_ = static_cast<std::int32_t>(std::ceil(extend_tiles * static_cast<float>(c_)));
+    ext_.clear();
+    if (extend_cells_ <= 0 || cells_.empty()) {
+        return;
+    }
+    // The nearest wet cell of every cell within extend_cells_ of the wet ones
+    // (rivers.md R9): the 8-point sequential Euclidean distance transform
+    // (Danielsson's two-pass vector propagation) over the bounding box grown
+    // by that margin, carrying the id of the nearest source instead of its
+    // offset. Deterministic (fixed scan order); nearest to within a cell.
+    ext_x0_ = x0_ - extend_cells_;
+    ext_y0_ = y0_ - extend_cells_;
+    ext_nx_ = nx_ + 2 * static_cast<std::uint32_t>(extend_cells_);
+    ext_ny_ = ny_ + 2 * static_cast<std::uint32_t>(extend_cells_);
+    const auto w = static_cast<std::int32_t>(ext_nx_), h = static_cast<std::int32_t>(ext_ny_);
+    constexpr std::int32_t kFar = std::numeric_limits<std::int32_t>::max();
+    ext_.assign(std::size_t{ext_nx_} * ext_ny_, -1);
+    std::vector<std::int32_t> d2(ext_.size(), kFar);
+    for (std::size_t k = 0; k < cells_.size(); ++k) {
+        const std::size_t at = static_cast<std::size_t>(cells_[k].cy - ext_y0_) * ext_nx_ +
+                               static_cast<std::size_t>(cells_[k].cx - ext_x0_);
+        ext_[at] = static_cast<std::int32_t>(k);
+        d2[at] = 0;
+    }
+    // Cell (x, y) takes the source of its neighbour (nx, ny) when that one is nearer.
+    auto relax = [&](std::int32_t x, std::int32_t y, std::int32_t nx, std::int32_t ny) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+            return;
+        }
+        const std::int32_t src =
+            ext_[static_cast<std::size_t>(ny) * ext_nx_ + static_cast<std::size_t>(nx)];
+        if (src < 0) {
+            return;
+        }
+        const Cell& c = cells_[static_cast<std::size_t>(src)];
+        const std::int32_t dx = c.cx - ext_x0_ - x, dy = c.cy - ext_y0_ - y;
+        const std::int32_t dd = dx * dx + dy * dy;
+        const std::size_t at = static_cast<std::size_t>(y) * ext_nx_ + static_cast<std::size_t>(x);
+        if (dd < d2[at]) {
+            d2[at] = dd;
+            ext_[at] = src;
+        }
+    };
+    for (std::int32_t y = 0; y < h; ++y) {
+        for (std::int32_t x = 0; x < w; ++x) {
+            relax(x, y, x - 1, y);
+            relax(x, y, x, y - 1);
+            relax(x, y, x - 1, y - 1);
+            relax(x, y, x + 1, y - 1);
+        }
+        for (std::int32_t x = w - 1; x >= 0; --x) {
+            relax(x, y, x + 1, y);
+        }
+    }
+    for (std::int32_t y = h - 1; y >= 0; --y) {
+        for (std::int32_t x = w - 1; x >= 0; --x) {
+            relax(x, y, x + 1, y);
+            relax(x, y, x, y + 1);
+            relax(x, y, x + 1, y + 1);
+            relax(x, y, x - 1, y + 1);
+        }
+        for (std::int32_t x = 0; x < w; ++x) {
+            relax(x, y, x - 1, y);
+        }
+    }
+    // Beyond the reach there is no extension.
+    const std::int64_t reach2 = std::int64_t{extend_cells_} * extend_cells_;
+    for (std::size_t i = 0; i < ext_.size(); ++i) {
+        if (d2[i] != kFar && std::int64_t{d2[i]} > reach2) {
+            ext_[i] = -1;
+        }
+    }
+}
+
 RiverFlow::Sample RiverFlow::sample(float tx, float ty) const {
     const float cf = static_cast<float>(c_);
     const float fx = tx * cf - 0.5F, fy = ty * cf - 0.5F;
@@ -422,7 +498,7 @@ RiverFlow::Sample RiverFlow::sample(float tx, float ty) const {
     const float a = fx - flx, b = fy - fly;
     const auto ix = static_cast<std::int32_t>(flx), iy = static_cast<std::int32_t>(fly);
     Sample s;
-    float sum = 0.0F, ux = 0.0F, uy = 0.0F;
+    float sum = 0.0F, ux = 0.0F, uy = 0.0F, level = 0.0F;
     for (int dy = 0; dy < 2; ++dy) {
         for (int dx = 0; dx < 2; ++dx) {
             const std::size_t k = cell_at(ix + dx, iy + dy);
@@ -433,13 +509,47 @@ RiverFlow::Sample RiverFlow::sample(float tx, float ty) const {
             sum += w;
             ux += w * cells_[k].ux;
             uy += w * cells_[k].uy;
+            level += w * cells_[k].level;
         }
     }
     if (sum > 0.0F) {
         s.u = {ux / sum, uy / sum};
+        s.level = level / sum;
     }
     s.valid = sum;
     return s;
+}
+
+RiverFlow::Sample RiverFlow::sample_extended(float tx, float ty) const {
+    Sample s = sample(tx, ty);
+    if (s.valid >= 1.0F || ext_.empty()) {
+        return s;
+    }
+    const float cf = static_cast<float>(c_);
+    // The cell containing the point, and the nearest wet cell recorded there.
+    const std::int64_t cx = static_cast<std::int64_t>(std::floor(tx * cf));
+    const std::int64_t cy = static_cast<std::int64_t>(std::floor(ty * cf));
+    const std::int64_t x = cx - ext_x0_, y = cy - ext_y0_;
+    if (x < 0 || y < 0 || x >= ext_nx_ || y >= ext_ny_) {
+        return s;
+    }
+    const std::int32_t k =
+        ext_[static_cast<std::size_t>(y) * ext_nx_ + static_cast<std::size_t>(x)];
+    if (k < 0) {
+        return s;
+    }
+    const Cell& n = cells_[static_cast<std::size_t>(k)];
+    const float dx = (static_cast<float>(n.cx) + 0.5F) / cf - tx;
+    const float dy = (static_cast<float>(n.cy) + 0.5F) / cf - ty;
+    const float d = std::sqrt(dx * dx + dy * dy);
+    // 1 at the cell, 0 at the reach.
+    const float fade = smoothstep(extend_tiles_, 0.0F, d);
+    const float w = s.valid;
+    Sample out;
+    out.u = {w * s.u[0] + (1.0F - w) * n.ux, w * s.u[1] + (1.0F - w) * n.uy};
+    out.level = w * s.level + (1.0F - w) * n.level;
+    out.valid = w + (1.0F - w) * fade;
+    return out;
 }
 
 RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
@@ -1198,6 +1308,7 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
         cell.ux = ux[i];
         cell.uy = uy[i];
         cell.depth = net.h[i];
+        cell.level = net.level[i];
         cell.river = net.comp[i] < 0 ? kPond : static_cast<std::uint32_t>(net.comp[i]);
         cell.slope = net.slope[i];
         cell.flags = cell_flags[i];
@@ -1208,6 +1319,7 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
         speeds[i] = std::hypot(cell.ux, cell.uy);
         speed_sum += speeds[i];
     }
+    out.build_extension(cfg.extend_tiles);
     std::sort(speeds.begin(), speeds.end());
     st.speed_mean = static_cast<float>(speed_sum / static_cast<double>(net.n));
     st.speed_p50 = speeds[net.n / 2];

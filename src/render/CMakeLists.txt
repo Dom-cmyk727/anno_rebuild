@@ -6,6 +6,7 @@ add_library(anno_render
   src/frame.cpp
   src/iso.cpp
   src/river.cpp
+  src/river_lattice.cpp
   src/river_solve.cpp
   src/scene.cpp
   src/sea.cpp

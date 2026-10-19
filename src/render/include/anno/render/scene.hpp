@@ -95,6 +95,9 @@ struct Layers {
     bool ships = true;
     /// Track Canvas::base (object pixels' height above their lowest row).
     bool bases = false;
+    /// Enhanced water: how rivers are shaded (the flow shading is the
+    /// default; Legacy keeps the shimmer that slides along fixed axes).
+    RiverFlowMode river_flow = RiverFlowMode::Flow;
 
     static constexpr Layers all() {
         return {true, true, true, true, true, 0, WaterStyle::Original};
@@ -174,6 +177,7 @@ class Scene {
     Scene(std::string name, std::vector<formats::insel::Island> islands,
           assets::island::GroundTextures textures, formats::anlagen::AnlagenFile anlagen,
           Lift lift);
+    ~Scene();
     Scene(const Scene&) = delete;
     Scene& operator=(const Scene&) = delete;
 
@@ -188,6 +192,57 @@ class Scene {
     Lift lift;
     /// Ships and soldiers (empty unless set by the caller).
     std::vector<UnitSprite> units;
+    /// The river model and its shading (docs/render/rivers.md). Set before
+    /// the first render or river_flow call; not to be changed while chunks
+    /// are being built.
+    river::RiverConfig river_cfg;
+
+    /// The flow of island `index` (rivers.md 3.1: the raster, phase A, and
+    /// the solve, phase B): null for an island without rivers, when
+    /// river_cfg.enabled is false, or when the build failed. With `wait` the
+    /// caller builds it if nobody has (blocking; never on the window thread).
+    /// Without, a flow that is not ready yet is queued on the flow builders
+    /// (low priority threads, started on the first request) and `pending` is
+    /// set: draw the legacy look now and ask river_flow_done() later.
+    struct RiverFlowResult {
+        std::shared_ptr<const river::RiverFlow> flow;
+        bool pending = false;
+    };
+    [[nodiscard]] RiverFlowResult river_flow(std::size_t index, bool wait) const;
+    /// Queues every island with rivers on the flow builders (scene load).
+    void prefetch_river_flow() const;
+    /// Test hook (tests only): while paused the flow builders start no new
+    /// build (queued islands stay pending), so the "flow not ready" path can be
+    /// exercised deterministically.
+    void pause_river_flow_builders(bool pause) const;
+    /// Test hook (never set in production): called on the building thread
+    /// before the flow of an island is built; throwing makes that build fail,
+    /// which is the "failed" state (no flow, final, never pending).
+    std::function<void(std::size_t)> flow_build_fault;
+    /// Whether the river flow is on: river_cfg.enabled and a configuration that
+    /// passes RiverConfig::validate (checked once, at the first call; a refused
+    /// one is reported on stderr and leaves the rivers on the legacy look).
+    [[nodiscard]] bool river_active() const;
+    /// Whether island `index` has river pieces.
+    [[nodiscard]] bool has_river(std::size_t index) const {
+        return !objects_[index].rivers.empty();
+    }
+    /// The flow lattice (rivers.md 3.3) for the pixels of `area` at `group`:
+    /// the global lattice texels that cover `area` (texel pixels are multiples
+    /// of the group's stride), baked from the ground probes at their pixels.
+    /// `probe` is the ground probe of `probe_rect` (the chunk or region being
+    /// built); texel pixels outside it (the apron: one stride past the right
+    /// and bottom edge) get their own thin probes. Texels over islands without
+    /// a flow stay invalid; with `wait` false an island whose flow is not
+    /// ready adds that island to *waiting. An empty plane when no texel has a flow. A texel
+    /// is a pure function of its pixel and the island's flow, so neighbouring
+    /// chunks hold bit-identical texels where they overlap.
+    [[nodiscard]] river::FlowPlane flow_plane(Rect area, std::size_t group,
+                                              const sea::SceneProbe& probe, Rect probe_rect,
+                                              bool wait, std::vector<std::uint32_t>* waiting) const;
+    /// Whether island `index`'s flow is final (built, failed, or none): a
+    /// chunk that waited for it can be rebuilt. Never blocks, queues nothing.
+    [[nodiscard]] bool river_flow_done(std::size_t index) const;
 
     /// The sea pattern of `group`, rendered on first use (thread-safe).
     const sea::SeaPattern* sea(std::size_t group) const;
@@ -304,8 +359,19 @@ class Scene {
     [[nodiscard]] std::optional<Rect> unit_rect(const UnitSprite& u, std::size_t group) const;
     std::size_t draw_units(Canvas& canvas, std::size_t group) const;
 
+    struct FlowSlot;
+    struct FlowBuild;
+    void build_flow(std::size_t index) const;
+    void queue_flow(std::size_t index) const;
+    void start_flow_builders() const;
+
     mutable std::vector<IslandData> objects_;
     mutable std::array<SeaSlot, kGroups> seas_;
+    mutable std::vector<std::unique_ptr<FlowSlot>> flow_slots_;
+    mutable std::unique_ptr<FlowBuild> flow_build_;
+    mutable std::once_flag flow_build_once_;
+    mutable std::once_flag river_cfg_once_;
+    mutable bool river_cfg_ok_ = true;
 };
 
 } // namespace anno::render

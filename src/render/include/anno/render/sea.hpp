@@ -19,6 +19,7 @@
 #include <optional>
 #include <span>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include <anno/formats/anlagen.hpp>
@@ -234,11 +235,60 @@ template <class T, class F>
 void shade_sea(T out, std::size_t stride, Rect region, F&& field, const SeaPattern& pattern,
                std::uint64_t time_ms, WaterStyle style, std::size_t group, Lift lift);
 
+/// What shade_sea needs to draw enhanced rivers with the flow shading
+/// (rivers.md 8): the layer table and the weight of valid texels below which
+/// a pixel keeps the legacy shimmer.
+struct RiverShading {
+    const RiverParams* params = nullptr;
+    float min_valid = 0.02F;
+};
+
+/// The constants of the river water plane at `group` (rivers.md E19): the tile
+/// size and the pixels per HEIGHT unit of the lift (the lift scales with the
+/// zoom group's tile width).
+inline RiverView river_view(std::size_t group, Lift lift) {
+    const auto twf = static_cast<float>(kTile[group].w), thf = static_cast<float>(kTile[group].h);
+    return {twf, thf,
+            static_cast<float>(lift.num) / static_cast<float>(lift.den) * twf /
+                static_cast<float>(kTile[0].w)};
+}
+
+/// The shade of an enhanced river pixel (scene pixel sx, sy): the flow shading
+/// where the lattice has a flow (valid >= rivers->min_valid), else the legacy
+/// shimmer at `legacy_pos` (the sea plane's tile position). `rivers` null =
+/// the legacy shimmer.
+inline Shade river_pixel_shade(const RiverShading* rivers, const FlowSample& fs, int sx, int sy,
+                               float depth, float slope, std::uint64_t time_ms, float detail,
+                               const RiverView& view, std::pair<float, float> legacy_pos) {
+    if (rivers != nullptr && rivers->params != nullptr && fs.valid >= rivers->min_valid) {
+        return river_flow_shade(static_cast<float>(sx), static_cast<float>(sy), fs, depth, slope,
+                                time_ms, detail, *rivers->params, view);
+    }
+    return river_shade(legacy_pos, depth, slope, time_ms);
+}
+
+/// shade_sea with the river flow: flow(i) gives the FlowSample of region
+/// pixel i (called for enhanced river pixels only); `rivers` null = the
+/// legacy shimmer everywhere.
+template <class T, class F, class FL>
+void shade_sea_flow(T out, std::size_t stride, Rect region, F&& field, FL&& flow,
+                    const RiverShading* rivers, const SeaPattern& pattern, std::uint64_t time_ms,
+                    WaterStyle style, std::size_t group, Lift lift);
+
 // --- template definition ---
 
 template <class T, class F>
 void shade_sea(T out, std::size_t stride, Rect region, F&& field, const SeaPattern& pattern,
                std::uint64_t time_ms, WaterStyle style, std::size_t group, Lift lift) {
+    shade_sea_flow(
+        out, stride, region, std::forward<F>(field), [](std::size_t) { return FlowSample{}; },
+        nullptr, pattern, time_ms, style, group, lift);
+}
+
+template <class T, class F, class FL>
+void shade_sea_flow(T out, std::size_t stride, Rect region, F&& field, FL&& flow,
+                    const RiverShading* rivers, const SeaPattern& pattern, std::uint64_t time_ms,
+                    WaterStyle style, std::size_t group, Lift lift) {
     const auto [k0, k1, frac] = pattern.steps_at(time_ms);
     const auto [a_sprite, a_filled] = pattern.step_images(k0);
     const auto [b_sprite, b_filled] = pattern.step_images(k1);
@@ -251,6 +301,9 @@ void shade_sea(T out, std::size_t stride, Rect region, F&& field, const SeaPatte
     const int raise = lift.scaled(kSeaLevel, 1, group);
     const float twf = static_cast<float>(kTile[group].w);
     const float thf = static_cast<float>(kTile[group].h);
+    // The water plane of the flow shading (rivers.md E19).
+    const RiverView view = river_view(group, lift);
+    const float river_detail = wave_detail(twf);
     std::vector<Shade> grid;
     if (style == WaterStyle::Enhanced) {
         const float detail = wave_detail(twf);
@@ -350,7 +403,11 @@ void shade_sea(T out, std::size_t stride, Rect region, F&& field, const SeaPatte
                 } else {
                     const float px = static_cast<float>(sx), py = static_cast<float>(sy + raise);
                     const std::pair<float, float> pos{px / twf + py / thf, py / thf - px / twf};
-                    shade = river_shade(pos, sd, slope_of(flags), time_ms);
+                    // The flow shading where the lattice has a flow, else the
+                    // legacy shimmer.
+                    const FlowSample fs = rivers != nullptr ? flow(row * rw + col) : FlowSample{};
+                    shade = river_pixel_shade(rivers, fs, sx, sy, sd, slope_of(flags), time_ms,
+                                              river_detail, view, pos);
                     // Near the sea the river takes on the sea's look
                     // (Scene::blend_rivers_into_sea; the GPU uses the wave
                     // simulation there when it runs).

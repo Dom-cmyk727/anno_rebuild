@@ -702,6 +702,83 @@ Shade river_shade(std::pair<float, float> pos, float depth, float slope, std::ui
     return {light, 0.0F, tint};
 }
 
+float flow_psi(std::array<float, 2> x) {
+    return 0.5F * noise3(0.13F * x[0], 0.13F * x[1], 3.0F);
+}
+
+FlowPhases flow_phases(std::array<float, 2> x, std::array<float, 2> u, std::uint64_t time_ms,
+                       const RiverLayer& layer, float psi) {
+    // Hourly wrap: time_f is taken modulo 3,600,000 ms, so every period must
+    // divide it (RiverConfig validation), then t / T wraps by whole cycles.
+    const float t = time_f(time_ms);
+    const float seconds = layer.period_ms * 0.001F;
+    FlowPhases out;
+    for (std::size_t k = 0; k < 2; ++k) {
+        float phi = t / layer.period_ms + psi + 0.5F * static_cast<float>(k);
+        phi -= std::floor(phi);
+        out.w[k] = 1.0F - std::fabs(2.0F * phi - 1.0F);
+        // No stretch along the flow: x is an absolute island coordinate
+        // (100-250 tiles from the origin), a stretch about it would move the
+        // noise coordinate by (distance) x d(gain)/d(speed) x d(speed)/d(pixel),
+        // about ten times the geometry wherever the flow varies.
+        const float cx = x[0] - u[0] * seconds * phi;
+        const float cy = x[1] - u[1] * seconds * phi;
+        // The second phase samples another part of the noise field, so the
+        // cross-fade morphs the pattern instead of fading one into itself.
+        const float off = static_cast<float>(k);
+        out.c[k] = {cx * layer.scale + off * 13.37F, cy * layer.scale + off * 7.91F};
+    }
+    return out;
+}
+
+Shade river_flow_shade(float px, float py, const FlowSample& f, float depth, float slope,
+                       std::uint64_t time_ms, float detail, const RiverParams& params,
+                       const RiverView& view) {
+    // E19: the pattern lives on the river's own water plane, not on the sea
+    // plane: the pixel's tile position at the height of the river surface.
+    const float pyw = py + view.lambda * f.level;
+    const std::array<float, 2> x{px / view.tw + pyw / view.th, pyw / view.th - px / view.tw};
+    const std::array<float, 2> u{f.vx, f.vy};
+    // Light direction: the tile x axis (as fluid_shade), probe offset e.
+    constexpr float kProbe = 0.15F;
+    const std::array<float, 2> x2{x[0] - kProbe, x[1]};
+    const float psi = flow_psi(x);
+    const float rapids = smoothstep(kRapidsFrom, kRapidsFull, slope);
+    float light = 0.0F;
+    const std::size_t n = std::min<std::size_t>(params.count, params.layers.size());
+    for (std::size_t l = 0; l < n; ++l) {
+        const RiverLayer& layer = params.layers[l];
+        // Shear stretches a feature by T |grad u|: fade the layer out where the
+        // cycle would smear it (thin rivers, the margins, falls).
+        const float shear_fade = 1.0F - smoothstep(params.shear_from, params.shear_to,
+                                                   layer.period_ms * 0.001F * f.shear);
+        float amp = layer.amp * shear_fade;
+        if (layer.fades != 0.0F) {
+            amp *= detail * (1.0F + f.turb);
+        }
+        if (amp == 0.0F || (layer.rapids != 0.0F && rapids <= 0.0F)) {
+            continue;
+        }
+        // Variance-preserving blend of the two phases (E18) of the centred noise.
+        auto field = [&](const FlowPhases& ph) {
+            const float m0 = noise3(ph.c[0][0], ph.c[0][1], 0.5F) - 0.5F;
+            const float m1 = noise3(ph.c[1][0], ph.c[1][1], 0.5F) - 0.5F;
+            const float norm = std::sqrt(ph.w[0] * ph.w[0] + ph.w[1] * ph.w[1]);
+            return (ph.w[0] * m0 + ph.w[1] * m1) / norm;
+        };
+        const FlowPhases a = flow_phases(x, u, time_ms, layer, psi);
+        const float na = field(a);
+        if (layer.rapids != 0.0F) {
+            light += rapids * (params.rapids_base + amp * na);
+        } else {
+            const FlowPhases b = flow_phases(x2, u, time_ms, layer, psi);
+            light += amp * (na - field(b)) / kProbe;
+        }
+    }
+    const float tint = 0.15F * smoothstep(4.0F, 0.0F, depth);
+    return {light, 0.0F, tint};
+}
+
 Px shade_apply(Px rgba, Shade s) {
     const Waves& w = kWaves;
     const float brightness = 1.0F + s.light;

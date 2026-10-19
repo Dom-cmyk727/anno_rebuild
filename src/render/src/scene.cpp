@@ -1,15 +1,76 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <condition_variable>
+#include <cstdio>
+#include <deque>
+#include <exception>
 #include <iterator>
 #include <map>
+#include <mutex>
 #include <numeric>
+#include <thread>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <pthread.h>
+#include <sys/resource.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
+
+#include <anno/render/frame.hpp>
 #include <anno/render/scene.hpp>
 
 namespace anno::render {
 
 namespace insel = formats::insel;
+
+namespace {
+
+/// States of a FlowSlot.
+constexpr std::uint8_t kFlowIdle = 0, kFlowQueued = 1, kFlowReady = 2, kFlowFailed = 3;
+
+/// Background work yields to the window thread and the chunk builders: this
+/// thread only (a nice value is per thread on Linux but per process on macOS,
+/// the development host, where the QoS class is the per-thread equivalent).
+void lower_thread_priority() {
+#if defined(_WIN32)
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+#elif defined(__APPLE__)
+    pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+#elif defined(__linux__)
+    // The kernel's thread id is a task id, which setpriority takes.
+    const int rc = setpriority(PRIO_PROCESS, static_cast<id_t>(::syscall(SYS_gettid)), 5);
+    static_cast<void>(rc);
+#endif
+}
+
+} // namespace
+
+/// The flow of one island and how far its build is (rivers.md 3.1).
+struct Scene::FlowSlot {
+    std::once_flag once;
+    std::atomic<std::uint8_t> state{kFlowIdle};
+    /// Written once under `once`, published by `state` (release).
+    std::shared_ptr<const river::RiverFlow> flow;
+};
+
+/// The background builders of river flows: a queue of island indices.
+struct Scene::FlowBuild {
+    std::mutex mutex;
+    std::condition_variable wake;
+    std::deque<std::size_t> queue;
+    bool stop = false, paused = false;
+    std::vector<std::thread> threads;
+};
 
 int margin(std::size_t group) {
     return kMargin[group] + kHeightLift.pixels(255, group);
@@ -204,6 +265,7 @@ Scene::Scene(std::string name_, std::vector<insel::Island> islands_,
             d.grids = std::pair{std::move(gfx).value(), std::move(heights).value()};
         }
         objects_.push_back(std::move(d));
+        flow_slots_.push_back(std::make_unique<FlowSlot>());
     }
 }
 
@@ -811,14 +873,30 @@ Scene::render_with_terrain(Rect rect, std::size_t group, Layers layers,
         }
         if (pass == 0 && layers.sea) {
             if (const sea::SeaPattern* pattern = sea(group)) {
-                const sea::WaterField field = water_field(rect, group);
-                sea::shade_sea(
+                const auto field_probe = ground_with_probe(rect, group).second;
+                const sea::WaterField field = water_field_from(rect, field_probe, group);
+                // Enhanced rivers: the flow lattice of the region, built here
+                // (blocking: this is the headless path).
+                const bool flowing = layers.water_style == WaterStyle::Enhanced &&
+                                     layers.river_flow == RiverFlowMode::Flow && river_active();
+                const river::FlowPlane plane =
+                    flowing ? flow_plane(rect, group, field_probe, rect, true, nullptr)
+                            : river::FlowPlane{};
+                const RiverParams params = river_cfg.params();
+                const sea::RiverShading shading{&params, river_cfg.min_valid};
+                const auto rw = static_cast<std::size_t>(rect.w);
+                sea::shade_sea_flow(
                     sea::RgbaTarget{canvas.pixels.data()}, canvas.width, rect,
                     [&field](std::size_t i) {
                         return sea::FieldPx{field.cover[i], field.shore[i], field.depth[i],
                                             field.flags[i]};
                     },
-                    *pattern, t, layers.water_style, group, lift);
+                    [&plane, rect, rw](std::size_t i) {
+                        return river::flow_at(plane, rect.x + static_cast<int>(i % rw),
+                                              rect.y + static_cast<int>(i / rw));
+                    },
+                    flowing && !plane.empty() ? &shading : nullptr, *pattern, t, layers.water_style,
+                    group, lift);
             }
         }
     }
@@ -926,6 +1004,283 @@ std::size_t Scene::draw_units(Canvas& canvas, std::size_t group) const {
         }
     }
     return n;
+}
+
+Scene::~Scene() {
+    if (flow_build_) {
+        {
+            const std::lock_guard lock(flow_build_->mutex);
+            flow_build_->stop = true;
+        }
+        flow_build_->wake.notify_all();
+        for (auto& t : flow_build_->threads) {
+            t.join();
+        }
+    }
+}
+
+void Scene::build_flow(std::size_t index) const {
+    FlowSlot& slot = *flow_slots_[index];
+    std::call_once(slot.once, [&] {
+        try {
+            // Phase A (the raster) and phase B (the solve); the raster is only
+            // needed for the solve and freed here.
+            if (flow_build_fault) {
+                flow_build_fault(index);
+            }
+            const river::RiverMask mask = river_mask(index, river_cfg);
+            slot.flow =
+                std::make_shared<const river::RiverFlow>(river::RiverFlow::build(mask, river_cfg));
+            slot.state.store(kFlowReady, std::memory_order_release);
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "river flow of island %zu failed: %s\n", index, e.what());
+            slot.state.store(kFlowFailed, std::memory_order_release);
+        }
+    });
+}
+
+void Scene::start_flow_builders() const {
+    flow_build_ = std::make_unique<FlowBuild>();
+    // Threads: RiverConfig::flow_threads, else a quarter of the hardware
+    // threads (1-4): a solve is 10-60 ms, so a few threads clear a scene's
+    // islands in the first second without taking cores from the chunk
+    // builders and the window thread.
+    const unsigned hw = std::thread::hardware_concurrency();
+    const unsigned n =
+        river_cfg.flow_threads != 0 ? river_cfg.flow_threads : std::clamp(hw / 4, 1U, 4U);
+    FlowBuild* fb = flow_build_.get();
+    for (unsigned i = 0; i < n; ++i) {
+        fb->threads.emplace_back([this, fb] {
+            lower_thread_priority();
+            for (;;) {
+                std::size_t index = 0;
+                {
+                    std::unique_lock lock(fb->mutex);
+                    fb->wake.wait(lock,
+                                  [fb] { return fb->stop || (!fb->paused && !fb->queue.empty()); });
+                    if (fb->stop) {
+                        return;
+                    }
+                    index = fb->queue.front();
+                    fb->queue.pop_front();
+                }
+                build_flow(index);
+            }
+        });
+    }
+}
+
+void Scene::queue_flow(std::size_t index) const {
+    std::call_once(flow_build_once_, [this] { start_flow_builders(); });
+    {
+        const std::lock_guard lock(flow_build_->mutex);
+        flow_build_->queue.push_back(index);
+    }
+    flow_build_->wake.notify_one();
+}
+
+bool Scene::river_active() const {
+    if (!river_cfg.enabled) {
+        return false;
+    }
+    // The configuration is checked once, at its first use: a refused one
+    // leaves the enhanced rivers on the legacy look (a valid stride, a bounded
+    // extension grid and periods that divide the hour are what the shading
+    // and the lattice rely on).
+    std::call_once(river_cfg_once_, [this] {
+        const std::string problem = river_cfg.validate(kChunk, kGroups);
+        if (!problem.empty()) {
+            std::fprintf(stderr, "river configuration refused, rivers keep the legacy look: %s\n",
+                         problem.c_str());
+            river_cfg_ok_ = false;
+        }
+    });
+    return river_cfg_ok_;
+}
+
+Scene::RiverFlowResult Scene::river_flow(std::size_t index, bool wait) const {
+    if (!river_active() || !has_river(index)) {
+        return {};
+    }
+    FlowSlot& slot = *flow_slots_[index];
+    auto ready = [&]() -> std::optional<RiverFlowResult> {
+        switch (slot.state.load(std::memory_order_acquire)) {
+        case kFlowReady:
+            return RiverFlowResult{slot.flow, false};
+        case kFlowFailed:
+            return RiverFlowResult{};
+        default:
+            return std::nullopt;
+        }
+    };
+    if (const auto r = ready()) {
+        return *r;
+    }
+    if (wait) {
+        build_flow(index);
+        return ready().value_or(RiverFlowResult{});
+    }
+    std::uint8_t expected = kFlowIdle;
+    if (slot.state.compare_exchange_strong(expected, kFlowQueued, std::memory_order_acq_rel)) {
+        queue_flow(index);
+    }
+    if (const auto r = ready()) {
+        return *r;
+    }
+    return {nullptr, true};
+}
+
+void Scene::prefetch_river_flow() const {
+    for (std::size_t i = 0; i < islands.size(); ++i) {
+        if (river_active() && has_river(i)) {
+            static_cast<void>(river_flow(i, false));
+        }
+    }
+}
+
+void Scene::pause_river_flow_builders(bool pause) const {
+    // The builders (and their queue) exist from the first request on.
+    std::call_once(flow_build_once_, [this] { start_flow_builders(); });
+    {
+        const std::lock_guard lock(flow_build_->mutex);
+        flow_build_->paused = pause;
+    }
+    flow_build_->wake.notify_all();
+}
+
+bool Scene::river_flow_done(std::size_t index) const {
+    if (!river_active() || !has_river(index)) {
+        return true;
+    }
+    return flow_slots_[index]->state.load(std::memory_order_acquire) >= kFlowReady;
+}
+
+river::FlowPlane Scene::flow_plane(Rect area, std::size_t group, const sea::SceneProbe& probe,
+                                   Rect probe_rect, bool wait,
+                                   std::vector<std::uint32_t>* waiting) const {
+    river::FlowPlane plane;
+    if (!river_active() || area.w <= 0 || area.h <= 0 || group >= river_cfg.lattice_stride.size() ||
+        river_cfg.lattice_stride[group] == 0) {
+        return plane;
+    }
+    const std::uint32_t stride = river_cfg.lattice_stride[group];
+    const int s = static_cast<int>(stride);
+    const int i0 = div_euclid(area.x, s), i1 = div_euclid(area.x + area.w - 1, s);
+    const int j0 = div_euclid(area.y, s), j1 = div_euclid(area.y + area.h - 1, s);
+    // A pixel reads the texels floor(p / s) and the next one.
+    plane.x0 = i0 * s;
+    plane.y0 = j0 * s;
+    plane.stride_px = stride;
+    plane.nx = static_cast<std::uint32_t>(i1 - i0 + 2);
+    plane.ny = static_cast<std::uint32_t>(j1 - j0 + 2);
+    plane.tile_w = kTile[group].w;
+    plane.tile_h = kTile[group].h;
+    const std::size_t count = std::size_t{plane.nx} * plane.ny;
+    plane.uv.assign(count * 2, 0);
+    plane.aux.assign(count * 4, 0);
+    plane.shear.assign(count, 0);
+
+    // The pixels of all texels: [x0, x0 + (nx - 1) s] x [y0, y0 + (ny - 1) s].
+    const Rect need{plane.x0, plane.y0, static_cast<int>(plane.nx - 1) * s + 1,
+                    static_cast<int>(plane.ny - 1) * s + 1};
+    // What the given probe does not cover: thin strips (the apron), probed on
+    // their own. Disjoint: top and bottom across the whole width, left and
+    // right beside the probe.
+    struct Part {
+        Rect rect;
+        sea::SceneProbe probe;
+    };
+    std::vector<Part> extra;
+    auto add_strip = [&](Rect r) {
+        if (const auto c = r.intersect(need)) {
+            extra.push_back({*c, ground_with_probe(*c, group).second});
+        }
+    };
+    const int need_r = need.x + need.w, need_b = need.y + need.h;
+    const int probe_r = probe_rect.x + probe_rect.w, probe_b = probe_rect.y + probe_rect.h;
+    if (probe_rect.y > need.y) {
+        add_strip({need.x, need.y, need.w, probe_rect.y - need.y});
+    }
+    if (probe_b < need_b) {
+        add_strip({need.x, probe_b, need.w, need_b - probe_b});
+    }
+    const int mid_y0 = std::max(need.y, probe_rect.y), mid_y1 = std::min(need_b, probe_b);
+    if (mid_y1 > mid_y0) {
+        if (probe_rect.x > need.x) {
+            add_strip({need.x, mid_y0, probe_rect.x - need.x, mid_y1 - mid_y0});
+        }
+        if (probe_r < need_r) {
+            add_strip({probe_r, mid_y0, need_r - probe_r, mid_y1 - mid_y0});
+        }
+    }
+
+    std::vector<std::shared_ptr<const river::RiverFlow>> flows(islands.size());
+    std::vector<std::uint8_t> asked(islands.size(), 0);
+    bool any = false;
+    for (std::uint32_t j = 0; j < plane.ny; ++j) {
+        for (std::uint32_t i = 0; i < plane.nx; ++i) {
+            const int x = plane.x0 + static_cast<int>(i) * s,
+                      y = plane.y0 + static_cast<int>(j) * s;
+            std::uint32_t island = sea::kNoIsland;
+            std::array<float, 2> pos{0.0F, 0.0F};
+            auto from = [&](const sea::SceneProbe& p, Rect r) {
+                const auto k = static_cast<std::size_t>(y - r.y) * static_cast<std::size_t>(r.w) +
+                               static_cast<std::size_t>(x - r.x);
+                island = p.island[k];
+                pos = p.pos[k];
+            };
+            if (x >= probe_rect.x && x < probe_r && y >= probe_rect.y && y < probe_b) {
+                from(probe, probe_rect);
+            } else {
+                for (const Part& part : extra) {
+                    if (x >= part.rect.x && x < part.rect.x + part.rect.w && y >= part.rect.y &&
+                        y < part.rect.y + part.rect.h) {
+                        from(part.probe, part.rect);
+                        break;
+                    }
+                }
+            }
+            if (island == sea::kNoIsland || island >= islands.size() || !has_river(island)) {
+                continue;
+            }
+            if (asked[island] == 0) {
+                asked[island] = 1;
+                const RiverFlowResult r = river_flow(island, wait);
+                flows[island] = r.flow;
+                if (r.pending && waiting != nullptr) {
+                    waiting->push_back(island);
+                }
+            }
+            const auto& flow = flows[island];
+            if (!flow) {
+                continue;
+            }
+            const river::RiverFlow::Sample f = flow->sample_extended(pos[0], pos[1]);
+            if (f.valid <= 0.0F) {
+                continue;
+            }
+            // The shear |grad u|: the flow's forward differences along the tile
+            // axes (a pure function of the probe position, so neighbouring
+            // chunks agree and the value is smooth over texel borders).
+            const float dp = river_cfg.shear_probe_tiles;
+            const river::RiverFlow::Sample fx = flow->sample_extended(pos[0] + dp, pos[1]);
+            const river::RiverFlow::Sample fy = flow->sample_extended(pos[0], pos[1] + dp);
+            float shear2 = 0.0F;
+            for (const river::RiverFlow::Sample* g : {&fx, &fy}) {
+                if (g->valid > 0.0F) {
+                    const float du = (g->u[0] - f.u[0]) / dp, dv = (g->u[1] - f.u[1]) / dp;
+                    shear2 += du * du + dv * dv;
+                }
+            }
+            river::set_texel(plane, i, j, f.u[0], f.u[1], f.valid, 0.0F, 0.0F, f.level,
+                             river_cfg.velocity_max, std::sqrt(shear2));
+            any = true;
+        }
+    }
+    if (!any) {
+        return {};
+    }
+    return plane;
 }
 
 } // namespace anno::render

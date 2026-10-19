@@ -148,7 +148,8 @@ std::vector<Px> to_px(const Canvas& c) {
 
 } // namespace
 
-Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool ships) {
+Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool ships,
+                   bool wait_for_flow) {
     const Rect rect = chunk_rect(cx, cy);
     std::vector<std::size_t> islands;
     for (const auto& p : scene.layouts[group]) {
@@ -222,6 +223,14 @@ Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool s
         c.water_below = c.water_below || below;
         c.water_above = c.water_above || above;
     }
+    // The flow lattice of enhanced rivers (rivers.md 3.3).
+    if (scene.river_active() && std::any_of(islands.begin(), islands.end(),
+                                            [&](std::size_t i) { return scene.has_river(i); })) {
+        c.flow = scene.flow_plane(rect, group, probe, rect, wait_for_flow, &c.flow_waiting);
+        std::sort(c.flow_waiting.begin(), c.flow_waiting.end());
+        c.flow_waiting.erase(std::unique(c.flow_waiting.begin(), c.flow_waiting.end()),
+                             c.flow_waiting.end());
+    }
     return c;
 }
 
@@ -289,7 +298,7 @@ void ChunkWorkers::run() {
         const auto [group, cx, cy] = key;
         std::optional<Chunk> chunk;
         try {
-            chunk = render_chunk(scene_, group, cx, cy, ships);
+            chunk = render_chunk(scene_, group, cx, cy, ships, false);
         } catch (const std::exception& e) {
             // E.g. out of memory: the chunk stays missing (open sea) and is not
             // requested again; the worker keeps running.
@@ -341,7 +350,7 @@ FrameRenderer::update_chunks(const Scene& scene, Rect view, std::size_t group) {
     const auto t = Clock::now();
     const auto chunks = visible_chunks(view);
     const std::size_t built =
-        workers_ ? request_chunks(group, view, chunks) : fill_cache(scene, group, chunks);
+        workers_ ? request_chunks(scene, group, view, chunks) : fill_cache(scene, group, chunks);
     std::size_t missing = 0;
     for (const auto& [cx, cy] : chunks) {
         missing += cache_.contains({group, cx, cy}) ? 0U : 1U;
@@ -432,6 +441,10 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
     t = Clock::now();
     if (const sea::SeaPattern* pattern = scene.sea(group)) {
         const Lift lift = scene.lift;
+        const bool flowing = style == WaterStyle::Enhanced && river_flow == RiverFlowMode::Flow &&
+                             scene.river_active();
+        const RiverParams river_params = scene.river_cfg.params();
+        const sea::RiverShading shading{&river_params, scene.river_cfg.min_valid};
         par_bands(out, view, threads, [&](std::uint32_t* band, Rect rows) {
             for (const auto& [cx, cy] : chunks) {
                 const auto r = chunk_rect(cx, cy).intersect(rows);
@@ -452,8 +465,13 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
                                           4;
                     return {c.field[s], c.field[s + 1], c.field[s + 2], c.field[s + 3]};
                 };
-                sea::shade_sea(sea::XrgbTarget{band + d}, to_size(view.w), *r, field, *pattern,
-                               time_ms, style, group, lift);
+                auto flow = [&c, rw, rr](std::size_t i) -> FlowSample {
+                    return river::flow_at(c.flow, rr.x + static_cast<int>(i % rw),
+                                          rr.y + static_cast<int>(i / rw));
+                };
+                sea::shade_sea_flow(sea::XrgbTarget{band + d}, to_size(view.w), *r, field, flow,
+                                    flowing && !c.flow.empty() ? &shading : nullptr, *pattern,
+                                    time_ms, style, group, lift);
             }
         });
     }
@@ -489,7 +507,7 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
     return stats;
 }
 
-std::size_t FrameRenderer::request_chunks(std::size_t group, Rect view,
+std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group, Rect view,
                                           const std::vector<std::pair<int, int>>& visible) {
     std::size_t received = 0;
     for (auto& [key, chunk] : workers_->take_done()) {
@@ -537,9 +555,18 @@ std::size_t FrameRenderer::request_chunks(std::size_t group, Rect view,
     };
     std::stable_sort(order.begin(), order.end(),
                      [&](const ChunkKey& a, const ChunkKey& b) { return rank(a) < rank(b); });
+    // A chunk built while an island's river flow was not ready is rebuilt once
+    // the flow is: it stays in the cache (the legacy river look) until its
+    // replacement arrives.
+    auto stale = [&](const ChunkKey& k) {
+        const auto it = cache_.find(k);
+        return it != cache_.end() && it->second.flow_pending() &&
+               std::all_of(it->second.flow_waiting.begin(), it->second.flow_waiting.end(),
+                           [&](std::uint32_t i) { return scene.river_flow_done(i); });
+    };
     std::vector<ChunkKey> todo;
     for (const auto& k : order) {
-        if (!cache_.contains(k)) {
+        if (!cache_.contains(k) || stale(k)) {
             todo.push_back(k);
         }
     }

@@ -34,6 +34,7 @@
 #include <anno/formats/insel.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/rect.hpp>
+#include <anno/render/river.hpp>
 #include <anno/render/sea.hpp>
 
 namespace anno::render {
@@ -223,6 +224,17 @@ class Scene {
     [[nodiscard]] std::span<const sea::RiverPiece> river_pieces(std::size_t index) const {
         return objects_[index].rivers;
     }
+    /// The tile-space river raster of island `index` (rivers.md R1-R4): the
+    /// shipped enhanced-water criteria (river level over the Catmull-Rom bed,
+    /// the painted bed, waterfall and mouth shapes) sampled per cell. Not
+    /// cached; builds the sprite covers at zoom group 0 on every call
+    /// (30 ms p50, 84 ms p95, 96 ms max over the corpus). A pure function of
+    /// the scene: safe from any thread (SpriteCache is mutex guarded), the
+    /// same result for every caller. Call it once per island on a worker
+    /// (std::call_once, rivers.md 3.1) and share the result; never from the
+    /// window thread and never per chunk.
+    [[nodiscard]] river::RiverMask river_mask(std::size_t index,
+                                              const river::RiverConfig& cfg) const;
     /// QA/debug: river, waterfall and mouth pieces of island `index`.
     [[nodiscard]] std::size_t river_piece_count(std::size_t index) const;
     /// Water depth for the wave simulation at world tile (x, y).

@@ -16,6 +16,7 @@ namespace anno::app {
 
 /// Opens the window and runs until it is closed; an empty string on
 /// success, else the error.
-std::string run_viewer(const render::Scene& scene, std::size_t group, Renderer renderer);
+std::string run_viewer(const render::Scene& scene, std::size_t group, Renderer renderer,
+                       render::RiverFlowMode river_flow = render::RiverFlowMode::Flow);
 
 } // namespace anno::app

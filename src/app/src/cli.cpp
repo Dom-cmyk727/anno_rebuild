@@ -112,6 +112,20 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             } else {
                 return std::nullopt;
             }
+        } else if (a == "--river-flow") {
+            if (v == "legacy") {
+                out.river_flow = render::RiverFlowMode::Legacy;
+            } else if (v == "flow") {
+                out.river_flow = render::RiverFlowMode::Flow;
+            } else {
+                return std::nullopt;
+            }
+        } else if (a == "--river-gain") {
+            const auto g = number<float>(v);
+            if (!g || !(*g >= 0.0F) || *g > 1000.0F) {
+                return std::nullopt;
+            }
+            out.river_gain = *g;
         } else if (a == "--renderer") {
             if (v == "auto") {
                 out.renderer = Renderer::Auto;

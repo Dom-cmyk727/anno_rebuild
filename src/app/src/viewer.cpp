@@ -158,8 +158,10 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
 
 class Viewer {
   public:
-    Viewer(const render::Scene& scene, std::size_t group, std::size_t threads, Renderer renderer)
+    Viewer(const render::Scene& scene, std::size_t group, std::size_t threads, Renderer renderer,
+           render::RiverFlowMode river_flow)
         : scene_(scene), group_(group), frames_(threads), renderer_choice_(renderer) {
+        frames_.river_flow = river_flow;
         const auto b = *scene.bounds(group);
         cam_x_ = b.x + b.w / 2.0;
         cam_y_ = b.y + b.h / 2.0;
@@ -293,7 +295,9 @@ std::string Viewer::run() {
         if (g) {
             gpu_ = std::move(g).value();
             // The compositor draws the ships each frame: chunks without them.
+            const render::RiverFlowMode river_flow = frames_.river_flow;
             frames_ = render::FrameRenderer(frames_.threads, false);
+            frames_.river_flow = river_flow;
             std::fprintf(stderr, "GPU renderer: %s\n", gpu_->ctx.name.c_str());
         } else if (renderer_choice_ == Renderer::Gpu) {
             const std::string err = "GPU renderer: " + g.error();
@@ -350,6 +354,9 @@ std::string Viewer::run() {
         seas.emplace_back([this, g] { scene_.sea(g); });
     }
     // Chunk builders use half the cores; frames use all of them.
+    // Queue the river flows now (low priority threads): chunks that are built
+    // before a flow is ready show the legacy river look and are rebuilt.
+    scene_.prefetch_river_flow();
     frames_.set_workers(std::make_unique<render::ChunkWorkers>(scene_, (hw + 1) / 2));
     while (running_) {
         SDL_Event e;
@@ -473,6 +480,13 @@ void Viewer::handle(const SDL_Event& e) {
         case SDLK_E:
             water_ = water_ == render::WaterStyle::Original ? render::WaterStyle::Enhanced
                                                             : render::WaterStyle::Original;
+            update_title();
+            dirty_ = true;
+            break;
+        case SDLK_R:
+            frames_.river_flow = frames_.river_flow == render::RiverFlowMode::Flow
+                                     ? render::RiverFlowMode::Legacy
+                                     : render::RiverFlowMode::Flow;
             update_title();
             dirty_ = true;
             break;
@@ -601,6 +615,9 @@ void Viewer::update_title() {
     std::string title = "anno1503 — " + scene_.name + " — zoom group " + std::to_string(group_);
     if (water_ == render::WaterStyle::Enhanced) {
         title += " — enhanced water (not original)";
+        if (frames_.river_flow == render::RiverFlowMode::Legacy) {
+            title += " — legacy rivers";
+        }
     }
 #ifdef ANNO_VIEWER_GPU
     title += gpu_ ? " — GPU " + gpu_->ctx.name : std::string(" — CPU");
@@ -827,13 +844,14 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
 
 } // namespace
 
-std::string run_viewer(const render::Scene& scene, std::size_t group, Renderer renderer) {
+std::string run_viewer(const render::Scene& scene, std::size_t group, Renderer renderer,
+                       render::RiverFlowMode river_flow) {
     if (!scene.bounds(group)) {
         return "no islands";
     }
     const std::size_t threads =
         (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);
-    Viewer v(scene, group, threads, renderer);
+    Viewer v(scene, group, threads, renderer, river_flow);
     return v.run();
 }
 

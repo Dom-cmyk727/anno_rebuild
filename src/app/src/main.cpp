@@ -2,7 +2,8 @@
 //
 //   anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>]
 //            [--png <out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]]
-//            [--water original|enhanced] [--renderer auto|gpu|cpu]
+//            [--water original|enhanced] [--river-flow legacy|flow] [--river-gain <x>]
+//            [--renderer auto|gpu|cpu]
 //
 // --view shows every island of a scenario (.sze) at its INSEL5 world
 // position (INSELLNK islands as stand-ins of the same climate and size,
@@ -13,7 +14,10 @@
 // - Window (default): drag with the left mouse button, arrow keys or WASD to
 //   pan; mouse wheel or + / - to switch zoom groups 2 (far) / 1 / 0 (near);
 //   Esc or Q quits; Space pauses the animation; E toggles enhanced water
-//   (not in the original; off by default). The title shows frames per
+//   (not in the original; off by default); R toggles the river flow
+//   shading of enhanced water (--river-flow legacy|flow, flow by default;
+//   the GPU compositor draws the legacy look until its port, rivers.md S6).
+//   The title shows frames per
 //   second; stderr gets a per-stage frame-time breakdown.
 // - --png <out.png>: headless; writes the whole scene at --group (default
 //   2) as an RGBA PNG, or with --at <x>,<y> a region of --size pixels
@@ -54,7 +58,8 @@ using anno::render::WaterStyle;
 
 /// Headless --png: renders `region`, or the whole scene, at `group`.
 int write_scene_png(const anno::render::Scene& scene, std::size_t group, std::optional<Rect> region,
-                    const fs::path& out, std::uint64_t time, WaterStyle style) {
+                    const fs::path& out, std::uint64_t time, WaterStyle style,
+                    anno::render::RiverFlowMode river_flow) {
     const auto rect = region ? region : scene.bounds(group);
     if (!rect) {
         std::fprintf(stderr, "%s: no islands\n", scene.name.c_str());
@@ -72,6 +77,7 @@ int write_scene_png(const anno::render::Scene& scene, std::size_t group, std::op
     anno::render::Layers layers = anno::render::Layers::all();
     layers.time_ms = time;
     layers.water_style = style;
+    layers.river_flow = river_flow;
     const auto [canvas, st] = scene.render(*rect, group, layers);
     std::fprintf(stderr,
                  "%s: group %zu %dx%d px, %zu islands drawn (%zu without ground), objects %zu "
@@ -109,7 +115,8 @@ int run(const std::vector<std::string>& raw) {
     for (const auto& n : loaded.value().notes) {
         std::fprintf(stderr, "%s\n", n.c_str());
     }
-    const anno::render::Scene& scene = *loaded.value().scene;
+    anno::render::Scene& scene = *loaded.value().scene;
+    scene.river_cfg.light_gain = args->river_gain;
     if (args->png) {
         const std::size_t group = args->group.value_or(2);
         std::optional<Rect> region;
@@ -119,10 +126,12 @@ int run(const std::vector<std::string>& raw) {
             region = Rect{cx - args->size.first / 2, cy - args->size.second / 2, args->size.first,
                           args->size.second};
         }
-        return write_scene_png(scene, group, region, *args->png, args->time, args->water);
+        return write_scene_png(scene, group, region, *args->png, args->time, args->water,
+                               args->river_flow);
     }
 #ifdef ANNO_WITH_VIEWER
-    const std::string err = anno::app::run_viewer(scene, args->group.value_or(2), args->renderer);
+    const std::string err =
+        anno::app::run_viewer(scene, args->group.value_or(2), args->renderer, args->river_flow);
     if (!err.empty()) {
         std::fprintf(stderr, "%s: %s\n", name.c_str(), err.c_str());
         return 1;

@@ -18,7 +18,7 @@ namespace anno::app {
 inline constexpr const char* kUsage =
     "usage: anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png "
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
-    "[--renderer auto|gpu|cpu]\n";
+    "[--river-flow legacy|flow] [--river-gain <x>] [--renderer auto|gpu|cpu]\n";
 
 /// World tiles accepted by --at: INSEL5 positions are u16 (docs/formats/insel.md);
 /// the margin keeps every projected coordinate inside int range.
@@ -38,6 +38,13 @@ struct Args {
     std::optional<std::pair<int, int>> at;
     std::pair<int, int> size{1600, 900};
     render::WaterStyle water = render::WaterStyle::Original;
+    /// Enhanced water only: how rivers are shaded (docs/render/rivers.md). The
+    /// flow shading is the default; legacy keeps the shimmer that slides
+    /// along fixed axes. Key R in the viewer toggles it.
+    render::RiverFlowMode river_flow = render::RiverFlowMode::Flow;
+    /// Multiplier of the river flow's ripple light (1 = calibrated to the
+    /// legacy shimmer; larger shows the flow more clearly).
+    float river_gain = 1.0F;
     Renderer renderer = Renderer::Auto;
 };
 

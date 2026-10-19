@@ -400,7 +400,7 @@ Source: `docs/sim/state.md` §13 (rows D1..D18) and the decision-needed items of
 ## OQ-050: Unported class tick bodies are inert (spec D15, stand-in)
 - **Status:** open, owner decides
 - **Area:** simulation / buildings
-- **What:** houses, markets, public buildings, military, hunters, ships, doctors, schools and the castle do something after their gate in the original; the bodies are unread (`0x10076230`, `0x100702d0`, `0x10070c62` and the other class ticks). The gate periods observed (500, 2500 houses, 5000 stalls, 166) are carried as data only; nothing invents a period or a body.
+- **What:** houses, markets, public buildings, military, hunters, ships, doctors, schools and the castle do something after their gate in the original; the bodies are unread (`0x10076230`, `0x100702d0`, `0x10070c62` and the other class ticks). The gate periods (500, 2500 houses, 5000 stalls and the inn, 166 towers and cannon towers; the compare constants of every class tick are read, `docs/sim/state.md` Appendix C) are carried as data only; nothing invents a body.
 - **Why it may change the feel:** the hashed `last` fields and the future timeline of those classes move once real bodies arrive.
 - **Faithful default implemented:** inert (`TickKind::None`, `last` untouched).
 - **Rules option:** `ClassInfo::tick` per class (data).
@@ -482,6 +482,7 @@ Source: `docs/sim/state.md` §13 (rows D1..D18) and the decision-needed items of
   - The 4-byte quantities in `0x6e` (float scale const `0x100893e0`, divisor `0x10089140`) and the unit-position fixed-point conversion (O-47).
   - UI call sites per command type were recovered only for placement/demolish (tCursorAbriss, tCursorAnlageDefaultEdit, tCursorFigur/StadtPos); the other mappings are inferred from the handlers.
   - `0x73` clear path (goods == 0) and the meaning of the u16 fields `@4/@6` (amount versus price/limit) in the Kontor trade-list entry (O-14).
+  - What the type reader does with a `PROD3` record of another size than 68 bytes (branch `0x100094d2`-`0x1000972f` reads the 68-byte layout; every entry of Anlagen.dat has exactly 68), and with a `HEAD` record longer than the 56-byte buffer (`0x10009351`-`0x10009365`; none exists). The rebuild treats the first as "no production data" and the second as a cut, and refuses a ticking class without production data (state.md F25, F26).
 - **How to resolve:** each item names the address to read; none blocks M3 (every one has a seam or an inert default in `docs/sim/state.md` §12).
 
 ## OQ-055: Small farm animal kind: `draw & 7` versus `draw % size` (spec D19)

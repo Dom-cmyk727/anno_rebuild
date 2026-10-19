@@ -81,6 +81,28 @@ Results are stored with 16-bit moves, except the `T·128` values, which use 32-b
 ### 2.4 Other `HEAD` fields used here
 `HEAD` loader `0x10009334`–`0x100094cd`: byte 0x10 → `+0x66` (stage count `S`; slot `+0x7c`), byte 0x18 → `+0x6e` (`k`; slot `+0x80`), byte 0x19 → `+0x77` (fertility influence, property `0x2e`, §4.2), bytes 3/4/5/6 → `+0x20/+0x1f/+0x1e/+0x21` and u16 8 → `+0x1c` = **build cost**: bricks, wood, tools, marble, gold (slot `+0xcc(0, goods)` returns the byte for goods 0x29–0x2c, `(1)` gold, `(2, i)` the `PROD3` running costs). **Confirmed** (offsets); "build cost" is **likely** (weaver: 300 gold, 3 tools, 4 wood; Kontor 350/5/12; P).
 
+**`HEAD` byte table (read instruction by instruction 2026-10-19 for the type registry of `src/sim`, `0x10009334`–`0x100094cd`).** The record is read into a 56-byte stack buffer that is zeroed first (`rep stosd`, 14 dwords, `0x10009351`–`0x1000935a`), so a shorter record reads as zeros beyond its end (Anlagen.dat: 36 (5 entries), 44 (35), 48 (5), 52 (142) or 56 (734) bytes, never longer, P); `HEAD[k]` is `[esp+0x34+k]` after the read. **Confirmed** (code; the offsets of the table that were earlier "likely" through Ghidra stack names are now read from the instructions):
+
+| HEAD | Width | → type field | Meaning / getter |
+|---|---|---|---|
+| `[0]`, `[1]` | u8 | `+0x06`, `+0x07` | footprint width, height (`0x10009376`, `0x1000937d`) |
+| `[2]` | u8 | `+0x74` | no consumer found (O-21) |
+| `[3]` | u8 | `+0x20` | cost in ZIEGEL (goods `0x2b`) |
+| `[4]` | u8 | `+0x1f` | cost in HOLZ (goods `0x2a`) |
+| `[5]` | u8 | `+0x1e` | cost in WERKZEUG (goods `0x29`) |
+| `[6]` | u8 | `+0x21` | cost in MAMOR (goods `0x2c`) |
+| `[8..9]` | u16 | `+0x1c` | gold cost (`0x1000944d`–`0x10009452`) |
+| `[0x0a]` | u8 | `+0x7a` | rubble pattern (slot `+0x104`) |
+| `[0x10]` | u8 | `+0x66` | stage count `S` |
+| `[0x11]` | u8 | `+0x65` | action radius (market search radius, §3) |
+| `[0x18]` | u8 | `+0x6e` | shift `k` |
+| `[0x19]` | u8 | `+0x77` | fertility influence |
+| `[0x1c..0x1d]` | **u16** | `+0x12` | type flag word (`0x2000` coast, `0x1000` mountain, `0x4000` road/bridge; `0x100093bd`/`0x100093d7`, `movw`) |
+| `[0x2c..0x2d]` | u16 | `+0x70` | maximum hit points |
+| `[0x31]` | u8 | `+0x79` | can burn |
+
+The cost getter `0x1000a5a0` (case 0) returns `byte[type + goods − 0x0b] << 8`: goods `0x29` → `+0x1e` = `HEAD[5]`, `0x2a` → `+0x1f` = `HEAD[4]`, `0x2b` → `+0x20` = `HEAD[3]`, `0x2c` → `+0x21` = `HEAD[6]` (case 1 = gold `+0x1c`, case 2 = running cost `+0x21c + 2i`). The public-need mask getter `0x1000a600` reads the goods byte `WARE[0]` (type `+0x206`) and returns `1 << (g − 0x4c)` for `g` in `0x4c`–`0x5a`, except `0x51` → `0x30`, `0x53` → `0xc0`, `0x54` → `0x1c0` (0 otherwise). The width of the flag word (u16, not u32) is new; the model's `BuildingType::flags_word` reads it as such.
+
 ### 2.5 Getters (type vtable `0x1002185c`)
 `+0x5c` PRODTYPE · `+0x7c` `S` · `+0x80` `k` · `+0xac(i)` output goods · `+0xb0(i)` input goods · `+0xb4(g, j)` figure type object (via game slot `+0x6c`) · `+0xb8(g)` max figures · `+0xbc(g)` figure-type count · `+0xc0` output-0 capacity (8.8) · `+0xc8(i)` display rate · `+0xdc(1)` input count · `+0xe0(i)` output per step (`+0x210 + 2i`) · `+0xe4(i)` input per step (`+0x202 + 2i`) · `+0xe8` growth period `P` · `+0xec` research id. Property getter `+0x48` (`0x1000a860`) exposes the same data by id (`0x44c` inputs/step, `0x44d` input goods, `0x44e` output/step, `0x44f` capacities in tons, `0x451/0x453` figure lists, `0x454` `T0`/`T1` as floats `= +0x214/128`, `0x457` running costs, `0x468` display rates `/256`). **Confirmed.**
 
@@ -355,6 +377,13 @@ Units: stocks in 8.8 (256 = 1 t), time in steps (1 step = 500 `t`; expected 1 s 
 | F12 | Market and a grain farm with corn (goods 13 ≤ 25) at 900/1792 vs. 1400/1792 | score `((avail − 1344)·128)/448` (division truncates towards zero): −126 vs. 16 → the second is chosen; record whether the first is ever chosen when alone (initial best score) |
 | F13 | Load a savegame, then read `WARETYPE` mapping | every file number maps to the number with the same name (§7) |
 | F14 | Timing: measure wall-clock seconds for F2's 116 steps at normal game speed | expected 116 s if 1 step = 1 s |
+
+## 10. Additions from the S3 review round (2026-10-19)
+Read in the S3 review of the type registry; each is **D** (disassembly) unless stated.
+- **Name loops of the type reader** (`AnnoGame.dll` `0x10009240`): the WARE branch (`0x1000a156`-`0x1000a205`) and the ROHSTOFF branch read exactly two names each (the loops `cmp eax, 2` at `0x1000a1f4` and `0x1000a2e2`) and store the goods bytes at `+0x206+i` / `+0x200+i`. Names after the second are never looked up. Only the ROHSTOFF branch stores a count (`+0x1fb` = index + 1 of the last non-UNUSED name, `0x1000a2c9`-`0x1000a2cf`); the WARE branch has none. The corpus has exactly two names in all 921 records. The rebuild reads two names (`kWareRecordNames`).
+- **Stamp gates of the unported class ticks** (the compare constant of `(u16)(t - last) >= period`): `0x1006b4e0` (PublicService and School share it) `cmp dx, 0x1f4` at `0x1006b4ec` = 500, Hunter `0x10069f40` 500 at `0x10069f5d`, Whaler `0x10073720` 500 at `0x10073737`, Shipyard `0x10074e90` 500 at `0x10074ea1`, CannonTower `0x1006ab50` `0xa6` = 166 at `0x1006ab6a`. The shared tick at `0x1006b4e0` is 13 instructions and is the MARKTSTAND rule (add the period to `last` once the difference reaches it). The Castle tick `0x1006f1d0` has no stamp gate (byte counter at `+0x38`). The values are in `ClassInfo::gate_period`; `docs/sim/state.md` Appendix C lists them with the earlier ones.
+- **Name scans** (state.md F25): the PRODTYPE scan runs index `0..0x1a0` (`0x100097b7`, names `0x100138e0`), the research scan ends at `0x8f` (`0x10013cf0`), the goods scan covers `0..0x8e` (`0x10013be0`); a name that matches nothing leaves the loop without a store, so the field keeps 0 (UNUSED).
+- **HEAD buffer** (state.md F26): 14 dwords are zeroed (`rep stosd`, `0x10009351`) and the record is read into the 56-byte buffer (`0x10009365`).
 
 ## Open
 - Unit of `dt` (ms assumed) and game-speed scaling between `AnnoFrame` and world slot `+0x84` (Advance); confirm with F14.

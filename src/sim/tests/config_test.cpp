@@ -84,7 +84,7 @@ struct Stream {
 /// values of docs/sim/state.md §3.
 void expected_config(Stream& s) {
     for (const std::uint32_t x : {256U, 16U, 15U,   32U, 31U, 5U,   28U, 20U, 32U, 5U,
-                                  65U,  56U, 0x29U, 5U,  2U,  255U, 8U,  1U,  10U, 8U}) {
+                                  65U,  56U, 0x29U, 5U,  2U,   8U,  1U,  10U, 8U}) {
         s.u32(x); // island_slots .. city_pass_count
     }
     for (const std::uint32_t x : {500U, 50U, 50U, 250U, 50U, 5000U, 2000U, 15000U, 7500U, 300U, 20U,
@@ -230,7 +230,6 @@ std::vector<std::pair<const char*, ConfigMut>> config_mutations() {
     BUMP(build_goods_first);
     BUMP(build_goods_count);
     BUMP(trade_lists);
-    BUMP(trade_limit_max);
     BUMP(chunk_edge);
     BUMP(list_initial_size);
     BUMP(list_min_growth);
@@ -523,7 +522,6 @@ TEST_CASE("sim config defaults are the originals") {
     CHECK(c.build_goods_first == 0x29);
     CHECK(c.build_goods_count == 5);
     CHECK(c.trade_lists == 2);
-    CHECK(c.trade_limit_max == 255);
     CHECK(c.chunk_edge == 8);
     CHECK(c.list_initial_size == 1);
     CHECK(c.list_min_growth == 10);
@@ -568,7 +566,7 @@ TEST_CASE("sim config defaults are the originals") {
 }
 
 TEST_CASE("config digest changes with every field") {
-    static_assert(sim::field_count<sim::SimConfig>() == 51);
+    static_assert(sim::field_count<sim::SimConfig>() == 50);
     const sim::SimConfig base;
     const std::uint64_t base_digest = base.digest();
     CHECK(sim::SimConfig{}.digest() == base_digest);
@@ -739,6 +737,12 @@ TEST_CASE("config validate rejects each bad field") {
         rows.push_back({"list_min_growth", [v](sim::SimConfig& c) { c.list_min_growth = v; }});
         rows.push_back({"list_initial_size", [v](sim::SimConfig& c) { c.list_initial_size = v; }});
     }
+    // The null slots one city starts with (lists x list_initial_size, F34): a valid
+    // single-list size that no city can afford, and the first product above the bound
+    // (6 lists x 683 = 4098).
+    rows.push_back({"list_initial_size",
+                    [](sim::SimConfig& c) { c.list_initial_size = sim::kListSizeBound; }});
+    rows.push_back({"list_initial_size", [](sim::SimConfig& c) { c.list_initial_size = 683; }});
     // Periods compared with a 16-bit difference.
 #define PERIOD(f) rows.push_back({#f, [](sim::SimConfig& c) { c.f = 65536; }})
     PERIOD(upkeep_period);
@@ -852,8 +856,9 @@ TEST_CASE("config validate accepts the edges of each bound") {
     accepted("list_min_growth bound",
              [](sim::SimConfig& c) { c.list_min_growth = sim::kListSizeBound; });
     accepted("list_initial_size 1", [](sim::SimConfig& c) { c.list_initial_size = 1; });
-    accepted("list_initial_size bound",
-             [](sim::SimConfig& c) { c.list_initial_size = sim::kListSizeBound; });
+    // 6 lists x 682 = 4092 slots; the product bound is kEntryTableBound (4096).
+    accepted("list_initial_size at the per-city bound",
+             [](sim::SimConfig& c) { c.list_initial_size = 682; });
     accepted("periods 65535", [](sim::SimConfig& c) {
         c.upkeep_period = 65535;
         c.event300_gate_seconds = 65535;
@@ -1325,7 +1330,7 @@ TEST_CASE("state stream header and settings scopes") {
     expected.u32(0); // cursor
     expected.u64(0); // islands: slot count
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 103);
+    CHECK(sim::kStateHashVersion == 104);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);

@@ -4,6 +4,7 @@
 #include <utility>
 #include <vector>
 
+#include <anno/sim/create.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/scenario.hpp>
 #include <anno/sim/state_fields.hpp>
@@ -22,9 +23,13 @@ std::string idx_path(const char* what, std::size_t i) {
 /// The checks of one island of the scenario, with the scenario's own paths
 /// ("islands[0].deposits[1]: ..."). The rectangle against the world and against
 /// the other islands is checked by the caller on the rectangles alone
-/// (validate_island_rects), before anything is built.
+/// (validate_island_rects), before anything is built. `player_present[s]` is 1
+/// for a player slot the scenario fills. The footprints of the buildings (inside
+/// the island, free of each other) are create_building's: the build reports them
+/// with the same kind of path.
 std::string check_island_spec(const Spec::IslandSpec& is, std::size_t i, const SimConfig& cfg,
-                              const TypeRegistry& types) {
+                              const TypeRegistry& types,
+                              const std::vector<std::uint8_t>& player_present) {
     const std::string p = idx_path("islands", i);
     if (is.w == 0 || is.h == 0) {
         return p + ": the island rectangle is empty (" + std::to_string(is.w) + " x " +
@@ -42,6 +47,56 @@ std::string check_island_spec(const Spec::IslandSpec& is, std::size_t i, const S
     if (is.terrain && !terrain_matches(*is.terrain)) {
         return p + ".terrain: the digest does not match the columns (use make_terrain)";
     }
+    std::vector<std::uint8_t> city_present(cfg.city_slots, 0);
+    for (std::size_t k = 0; k < is.cities.size(); ++k) {
+        const Spec::CitySpec& cs = is.cities[k];
+        const std::string cp = p + ".cities[" + std::to_string(k) + "]";
+        if (!cs.no.valid() || cs.no.v >= cfg.city_slots) {
+            return cp + ".no: is not a slot below SimConfig.city_slots (" +
+                   std::to_string(cfg.city_slots) + ")";
+        }
+        if (cs.no.v == cfg.neutral_owner) {
+            return cp + ".no: " + std::to_string(cs.no.v) +
+                   " is SimConfig.neutral_owner, the owner value of nobody";
+        }
+        if (city_present[cs.no.v] != 0) {
+            return cp + ".no: city " + std::to_string(cs.no.v) + " is used twice";
+        }
+        city_present[cs.no.v] = 1;
+        if (!cs.owner.valid() || cs.owner.v >= player_present.size() ||
+            player_present[cs.owner.v] == 0) {
+            return cp + ".owner: there is no player in slot " +
+                   (cs.owner.valid() ? std::to_string(cs.owner.v) : std::string("(invalid)"));
+        }
+        if (cs.stock.has_value() && cs.stock->size() != cfg.warehouse_goods) {
+            return cp + ".stock: " + std::to_string(cs.stock->size()) +
+                   " entries, SimConfig.warehouse_goods is " + std::to_string(cfg.warehouse_goods);
+        }
+        for (std::size_t b = 0; b < cs.buildings.size(); ++b) {
+            const Spec::BuildingSpec& bs = cs.buildings[b];
+            const std::string bp = cp + ".buildings[" + std::to_string(b) + "]";
+            const BuildingType* ty = types.find(bs.type);
+            if (ty == nullptr || bs.type.v == 0) {
+                return bp + ".type: " + std::to_string(bs.type.v) +
+                       " is not a type of the registry";
+            }
+            if (bs.rotation > 3) {
+                return bp + ".rotation: " + std::to_string(bs.rotation) + " is not below 4";
+            }
+            if (!cfg.layout.list_for(ty->prodtype).has_value()) {
+                return bp + ".type: " + std::to_string(bs.type.v) + " (PRODTYPE " +
+                       std::to_string(ty->prodtype) +
+                       ") is not a building: it has no list in SimConfig.layout";
+            }
+            if (bs.payload.has_value()) {
+                const std::string problem =
+                    payload_problem(*bs.payload, *ty, types.class_info(ty->cls), cfg);
+                if (!problem.empty()) {
+                    return bp + ".payload: " + problem;
+                }
+            }
+        }
+    }
     std::uint64_t covered = 0;
     for (std::size_t r = 0; r < is.owner_runs.size(); ++r) {
         const auto& [owner, length] = is.owner_runs[r];
@@ -53,6 +108,12 @@ std::string check_island_spec(const Spec::IslandSpec& is, std::size_t i, const S
         if (covered > tiles) {
             return p + ".owner_runs[" + std::to_string(r) + "]: the runs cover more than the " +
                    std::to_string(tiles) + " tiles of the island";
+        }
+        // S6: an owner other than nobody is a city of the island (§9.6).
+        if (owner != cfg.neutral_owner && length > 0 &&
+            (owner >= city_present.size() || city_present[owner] == 0)) {
+            return p + ".owner_runs[" + std::to_string(r) + "]: owner " + std::to_string(owner) +
+                   " is not a city of the island (" + p + ".cities)";
         }
     }
     std::vector<std::uint32_t> seen;
@@ -84,9 +145,27 @@ std::string check_island_spec(const Spec::IslandSpec& is, std::size_t i, const S
     return {};
 }
 
-/// The island's content (§10 step 3): tiles from the owner runs and objects,
-/// deposits in file order. Touches only `out`.
-void build_island(const Spec::IslandSpec& is, const SimConfig& cfg, Island& out) {
+/// What create_building's refusal means for a scenario building, in words.
+std::string building_refusal(Reject r) {
+    switch (r) {
+    case Reject::OutOfIsland:
+        return "the footprint is not inside the island";
+    case Reject::Occupied:
+        return "the footprint overlaps another building";
+    case Reject::SerialExhausted:
+        return "the island has no building serial left";
+    default:
+        return "cannot be created (" + std::string(reject_name(r)) + ")";
+    }
+}
+
+/// The island's content (§10 steps 3 and 4): tiles from the owner runs and
+/// objects, deposits in file order, then the cities in ascending number and the
+/// buildings of each in file order through create_building at tick 0 (no cost
+/// charged, so the list slots follow file order, D 0x100264a0). Touches only
+/// `out`. Returns the first refusal as a message ("" when the island was built).
+std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, const SimConfig& cfg,
+                         const Rules& rules, const TypeRegistry& types, Island& out) {
     out.index = is.slot;
     static_cast<void>(out.tiles.reset(is.x0, is.y0, is.w, is.h, cfg.chunk_edge));
     out.climate = is.climate;
@@ -118,6 +197,43 @@ void build_island(const Spec::IslandSpec& is, const SimConfig& cfg, Island& out)
     }
     // sweep.stamp = the world tick at island init = 0 (D 0x1008c2e6); every other
     // stamp, cursor and counter starts at its default.
+
+    // Cities by number (the table slot is the number), then their buildings.
+    out.cities.assign(cfg.city_slots, std::nullopt);
+    std::vector<std::size_t> order(is.cities.size());
+    for (std::size_t k = 0; k < order.size(); ++k) {
+        order[k] = k;
+    }
+    std::sort(order.begin(), order.end(),
+              [&](std::size_t a, std::size_t b) { return is.cities[a].no < is.cities[b].no; });
+    for (const std::size_t k : order) {
+        const Spec::CitySpec& cs = is.cities[k];
+        City city = make_city(cs.no, cs.owner, cfg);
+        if (cs.stock.has_value()) {
+            city.stock.stock = *cs.stock;
+        }
+        out.cities[cs.no.v] = std::move(city);
+    }
+    for (const std::size_t k : order) {
+        const Spec::CitySpec& cs = is.cities[k];
+        City& city = *out.cities[cs.no.v];
+        for (std::size_t b = 0; b < cs.buildings.size(); ++b) {
+            const Spec::BuildingSpec& bs = cs.buildings[b];
+            PlacementRecord rec;
+            rec.type = bs.type;
+            rec.x = bs.x;
+            rec.y = bs.y;
+            rec.rotation = bs.rotation;
+            rec.byte0f = bs.byte0f;
+            const auto made = create_building(cfg, rules, types, out, city, rec, 0,
+                                              bs.payload.has_value() ? &*bs.payload : nullptr);
+            if (!made.ok()) {
+                return idx_path("islands", island_index) + ".cities[" + std::to_string(k) +
+                       "].buildings[" + std::to_string(b) + "]: " + building_refusal(made.error());
+            }
+        }
+    }
+    return {};
 }
 
 } // namespace
@@ -187,7 +303,7 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         table_size = std::max<std::uint64_t>(table_size, std::uint64_t{is.slot.v} + 1);
     }
     for (std::size_t i = 0; i < spec.islands.size(); ++i) {
-        problem = check_island_spec(spec.islands[i], i, config, *types);
+        problem = check_island_spec(spec.islands[i], i, config, *types, player_taken);
         if (!problem.empty()) {
             return problem;
         }
@@ -242,21 +358,28 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
     // island is built on `ex` (one island per job, each writing only its own entry)
     // and placed in table order.
     std::vector<Island> built(spec.islands.size());
+    std::vector<std::string> refused(spec.islands.size());
     const SimConfig& cfg = w.config_;
+    const Rules& build_rules = w.rules_;
+    const TypeRegistry& registry = *w.types_;
     parallel_for(ex, spec.islands.size(), [&](std::uint64_t i) {
         const auto k = static_cast<std::size_t>(i);
-        build_island(spec.islands[k], cfg, built[k]);
+        refused[k] = build_island(spec.islands[k], k, cfg, build_rules, registry, built[k]);
     });
+    for (const std::string& message : refused) {
+        if (!message.empty()) {
+            return message; // the first island in scenario order
+        }
+    }
     w.islands_.assign(static_cast<std::size_t>(table_size), std::nullopt);
     for (std::size_t i = 0; i < spec.islands.size(); ++i) {
         w.islands_[spec.islands[i].slot.v] = std::move(built[i]);
     }
 
-    // 5. The structural facts (§9.6) hold for what was built.
-    problem = validate_players(w.players_, w.config_);
-    if (problem.empty()) {
-        problem = validate_islands(w.islands_, w.config_, w.settings_, *w.types_);
-    }
+    // 5. The structural facts (§9.6) hold for what was built: the whole of
+    // check_invariants (players, islands, cities and buildings, footprints, the
+    // derived indexes).
+    problem = w.check_invariants();
     if (!problem.empty()) {
         return problem;
     }

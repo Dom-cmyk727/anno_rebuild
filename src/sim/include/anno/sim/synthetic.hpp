@@ -1,6 +1,6 @@
-// Synthetic scenarios: small, code-built type data, players and islands (and,
-// in later stages, cities), so the tests and the goldens need no game files
-// (spec: docs/sim/state.md §14.3; CI has none).
+// Synthetic scenarios: small, code-built type data, players, islands and cities
+// (stage S6), so the tests and the goldens need no game files (spec:
+// docs/sim/state.md §14.3; CI has none).
 //
 // The production types use the per-step values the original's Anlagen.dat
 // holds for the entries named in docs/re/production.md §9 (F1: weaver 6 / 11 /
@@ -60,17 +60,28 @@ ScenarioSpec::IslandSpec plain_island(std::uint32_t slot, std::int32_t x0, std::
 /// A world with no player and no island (settings and seed only).
 ScenarioSpec empty_scenario(std::uint32_t seed = 1234);
 
-/// The island of the golden G1 (docs/sim/state.md §14.3) without its city and
-/// buildings, which stage S6 adds: one player (slot 0, 10000 gold) and one
-/// island 64 x 64 at (100,100), climate NORD, owner runs (two neutral rows, then
-/// city 0), a few scenery/growing tiles and an EISENERZ deposit at (110,120).
+/// An empty city: number `no`, owned by player slot `owner`, no stock, no
+/// buildings.
+ScenarioSpec::CitySpec plain_city(std::uint32_t no, std::uint32_t owner);
+
+/// The island of the golden G1 (docs/sim/state.md §14.3) without its buildings
+/// (g1_scenario adds them): one player (slot 0, 10000 gold) and one island 64 x 64
+/// at (100,100), climate NORD, owner runs (two neutral rows, then city 0), a few
+/// scenery/growing tiles, an EISENERZ deposit at (110,120) and the empty city 0 of
+/// player 0. No building, so it works on the empty registry.
 ScenarioSpec basic_scenario(std::uint32_t seed = 1234);
 
 /// Two players (slots 0 and 1) and two islands: slot 0 as in basic_scenario and
 /// slot 3 (slots 1 and 2 stay null) 30 x 20 at (300,200), climate WUESTE, with
-/// terrain columns, two deposits and an owner run for city 1. The island
-/// rectangles are disjoint; 30 x 20 is not a multiple of the chunk edge 8 in
-/// either direction, which exercises the clipped edge chunks (A14, F20).
+/// terrain columns, two deposits, an owner run for city 1 and the empty city 1 of
+/// player 1. The island rectangles are disjoint; 30 x 20 is not a multiple of the
+/// chunk edge 8 in either direction, which exercises the clipped edge chunks (A14,
+/// F20).
 ScenarioSpec two_island_scenario(std::uint32_t seed = 1234);
+
+/// The scenario of the golden G1 (docs/sim/state.md §14.3): basic_scenario with
+/// the weaver (5 t of wool in its input store) at (110,110) and the grain farm
+/// (5 t of raw material) at (120,110) in city 0. Needs the synthetic registry.
+ScenarioSpec g1_scenario(const SyntheticTypes& types, std::uint32_t seed = 1234);
 
 } // namespace anno::sim::synthetic

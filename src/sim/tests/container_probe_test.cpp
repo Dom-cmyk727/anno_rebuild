@@ -2,8 +2,9 @@
 // §14.1, §15 S2): optional<variant<...>> of the real production payloads,
 // vectors of optionals of them, the slot list of those, and the real TileLayer
 // (stage S5: default constructor, several vectors including `mutable` ones,
-// `reset(...)`) inside an island shape (a nested optional<struct>, a
-// shared_ptr<const>, vectors of optionals; its city part is still a stand-in).
+// `reset(...)`) inside the real Island (stage S6: a nested optional<struct>, a
+// shared_ptr<const>, vectors of optionals, the cities with their building lists
+// and the derived index cache).
 //
 // The point is the compiler, not the values: GCC 12/13 release builds under
 // `-Werror -Wnull-dereference -Wmaybe-uninitialized` are known to report false
@@ -11,7 +12,8 @@
 // the one place to work around them) before the stages that depend on the
 // shapes are written. The cases also run, so ASan/UBSan see the copies, moves
 // and growth. Stage S5 pointed the file at the real `TileLayer`, `Terrain`,
-// `SweepState`, `Drought` and `CityRing`; `Building` and `City` follow with S6.
+// `SweepState`, `Drought` and `CityRing`; stage S6 at the real `Inert`, `Payload`,
+// `Building`, `BuildingIndex`, `City` and `Island`.
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -23,6 +25,8 @@
 
 #include <doctest/doctest.h>
 
+#include <anno/sim/building.hpp>
+#include <anno/sim/city.hpp>
 #include <anno/sim/ids.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/production.hpp>
@@ -44,27 +48,9 @@ struct Fp {
 
 // ------------------------------------------------------------ building shapes
 
-/// The `Inert` payload of building.hpp (S6): the members of the base class.
-struct InertLike {
-    std::uint16_t last = 0;
-    bool blocked = false;
-    bool suspended = false;
-    sim::StatusTracker status;
-};
-
-using PayloadLike = std::variant<InertLike, sim::Workshop, sim::WeaponsWorkshop, sim::Farm,
-                                 sim::SmallFarm, sim::Mine>;
-
-/// The members of `Building` (building.hpp, S6).
-struct BuildingLike {
-    sim::BuildingId id;
-    sim::TypeId type;
-    std::int32_t x = 0, y = 0;
-    std::uint8_t rotation = 0;
-    std::uint8_t byte0e = 0x86;
-    std::uint8_t byte0f = 0;
-    PayloadLike payload;
-};
+using InertLike = sim::Inert;
+using PayloadLike = sim::Payload;
+using BuildingLike = sim::Building;
 
 void fp_status(Fp& f, const sim::StatusTracker& s) {
     f.add(static_cast<std::uint64_t>(s.code));
@@ -263,51 +249,12 @@ std::uint64_t fingerprint(const std::vector<sim::SlotList<BuildingLike>>& lists)
 
 // ------------------------------------------------- tile layer and island shapes
 
-// The tile layer, the terrain, the sweep, the drought and the ring are the real
-// types of island.hpp since stage S5; the city part of the island is still a
-// stand-in (S6 replaces CityLike, BuildingIndexLike and the derived caches).
+// Since stage S6 the whole island is the real type: tile layer, terrain, sweep,
+// drought, ring, cities (stock, settings, building index with its lists) and the
+// derived index cache.
 
-struct GoodsSettingLike {
-    bool buy = false;
-    std::uint32_t limit = 0;
-    std::int32_t list_index = -1;
-};
-struct TradeEntryLike {
-    sim::GoodsId goods = 0;
-    std::uint32_t amount_88 = 0, price = 0;
-};
-struct BuildingIndexLike {
-    std::uint16_t stamp = 0;
-    std::vector<sim::SlotList<BuildingLike>> lists;
-    std::vector<std::uint32_t> service_counters;
-    std::vector<std::uint32_t> house_counts;
-};
-struct CityLike {
-    sim::CityNo number;
-    sim::PlayerId owner;
-    sim::CityStock stock;
-    BuildingIndexLike index;
-    std::uint16_t tick_stamp = 0;
-    std::vector<GoodsSettingLike> goods;
-    std::vector<std::vector<TradeEntryLike>> trade_lists;
-};
-struct IslandLike {
-    IslandLike() = default;
-    sim::IslandId index;
-    sim::TileLayer tiles;
-    std::shared_ptr<const sim::Terrain> terrain;
-    std::uint32_t climate = 0;
-    std::vector<sim::Deposit> deposits;
-    std::uint32_t next_serial = 1;
-    sim::SweepState sweep;
-    std::uint16_t event300_stamp = 0;
-    std::optional<sim::Drought> drought;
-    sim::CityRing ring;
-    std::vector<std::optional<CityLike>> cities;
-    std::uint64_t reserved_object_count = 0;
-    std::map<sim::BuildingId, sim::BuildingKey> by_id;
-    std::vector<std::vector<std::uint32_t>> grids;
-};
+using CityLike = sim::City;
+using IslandLike = sim::Island;
 
 std::uint64_t fingerprint(const sim::TileLayer& t) {
     Fp f;
@@ -334,8 +281,11 @@ std::uint64_t fingerprint(const CityLike& c) {
     f.add(c.goods.size());
     for (const auto& g : c.goods) {
         f.add(g.buy ? 1U : 0U);
-        f.add(g.limit);
         f.add(static_cast<std::uint32_t>(g.list_index));
+    }
+    for (const auto& b : c.build_goods) {
+        f.add(b.setting);
+        f.add(b.spent);
     }
     for (const auto& list : c.trade_lists) {
         f.add(list.size());
@@ -377,13 +327,15 @@ std::uint64_t fingerprint(const IslandLike& isl) {
         f.add(c ? fingerprint(*c) : 0);
     }
     f.add(isl.reserved_object_count);
-    for (const auto& [id, key] : isl.by_id) {
+    f.add(isl.next_serial);
+    f.add(isl.objmgr.cursor);
+    for (const auto& [id, key] : isl.cache.by_id) {
         f.add(id.v);
         f.add(key.list);
         f.add(key.slot);
     }
-    f.add(isl.grids.size());
-    for (const auto& g : isl.grids) {
+    f.add(isl.cache.grids.size());
+    for (const auto& g : isl.cache.grids) {
         fp_vec(f, g);
     }
     return f.h;
@@ -423,19 +375,22 @@ IslandLike make_island(std::uint32_t seed, std::uint32_t cities, std::uint32_t p
         city.index.house_counts.assign(5, c + 1);
         city.goods.resize(sim::kOriginalWarehouseGoods);
         city.goods[3].buy = true;
+        city.build_goods.resize(5);
+        city.build_goods[1].spent = 77 + c;
         city.trade_lists.resize(2);
         city.trade_lists[1].push_back({5, 256, 9});
         for (auto& list : city.index.lists) {
             for (std::uint32_t i = 0; i < per_list; ++i) {
                 const sim::Slot s = list.insert(make_building(k++), sim::SlotParams{});
                 const BuildingLike& b = *list.slots[s];
-                isl.by_id[b.id] = sim::BuildingKey{sim::CityRef{isl.index, city.number}, 0, s};
+                isl.cache.by_id[b.id] =
+                    sim::BuildingKey{sim::CityRef{isl.index, city.number}, 0, s};
             }
         }
     }
-    isl.grids.resize(6);
-    isl.grids[2].assign(20U * 13U, 0);
-    isl.grids[2][17] = 3;
+    isl.cache.grids.resize(6);
+    isl.cache.grids[2].assign(20U * 13U, 0);
+    isl.cache.grids[2][17] = 3;
     return isl;
 }
 

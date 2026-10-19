@@ -51,7 +51,10 @@ inline constexpr std::uint32_t kSlotTableBound = 1U << 16;
 /// multiplied by the number of cities or players the stream holds, so the bound
 /// is tighter. 2^12 is far above the originals (5 timers, 28 monopoly entries,
 /// 5 house groups, 65 research entries, 2 trade lists, 56 warehouse goods, 5
-/// build goods). Path to raise it: change this constant.
+/// build goods). It also bounds the null slots one city starts with, the number of
+/// lists times SimConfig::list_initial_size (the original has 6 x 1): a city is
+/// made from the config alone, in every city of a scenario, on worker threads.
+/// Path to raise it: change this constant.
 inline constexpr std::uint32_t kEntryTableBound = 1U << 12;
 
 /// Sanity bound for a world edge in tiles (WorldSettings::world_width and
@@ -109,7 +112,9 @@ constexpr bool valid_list_min_growth(std::uint32_t v) {
 }
 
 /// SimConfig::list_initial_size is valid when it is in 1..kListSizeBound (at
-/// least one element: check_invariants requires n >= 1, A7).
+/// least one element: check_invariants requires n >= 1, A7). SimConfig::validate
+/// bounds it further by the number of lists (kEntryTableBound for the slots of one
+/// city): this predicate is the bound of one list.
 constexpr bool valid_list_initial_size(std::uint32_t v) {
     return v >= 1 && v <= kListSizeBound;
 }
@@ -266,9 +271,6 @@ struct SimConfig {
     std::uint32_t build_goods_count = 5;
     /// Kontor sell/buy lists (D 0x73); commands carry the list as u32.
     std::uint32_t trade_lists = 2;
-    /// The Kontor goods limit is a byte in the original (D city+0x334+12g+0x0b);
-    /// stored as u32, values above this are rejected (BadValue).
-    std::uint32_t trade_limit_max = 255;
     /// Island sweep chunk edge in tiles (D 0x1008b760); also the drought grid
     /// (D 0x1008aeb0).
     std::uint32_t chunk_edge = 8;

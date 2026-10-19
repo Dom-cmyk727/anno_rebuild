@@ -3,9 +3,11 @@
 // (configuration, rules, settings, seams and the type registry; stage S3), the
 // player table (stage S4) and the islands with their tiles (stage S5; World::create
 // builds a world from a ScenarioSpec, save and load move it through the save
-// frame). Buildings and figures follow as their rules are recovered (PLAN M3,
-// docs/sim/state.md §15). Once commands exist they become the only way to change
-// it from outside; until then `clock` and `rng` are public for tests.
+// frame), the cities with their buildings (stage S6: World::create places them
+// in file order, check_invariants checks the structure and the derived indexes).
+// Figures follow as their rules are recovered (PLAN M3, docs/sim/state.md §15).
+// Once commands exist they become the only way to change it from outside; until
+// then `clock` and `rng` are public for tests.
 #pragma once
 
 #include <cstdint>
@@ -42,7 +44,10 @@ namespace anno::sim {
 // and the seam names; new scope settings.
 // Stream at 102 (stage S4): new scope players (after settings).
 // Stream at 103 (stage S5): new scope islands (after players).
-inline constexpr std::uint32_t kStateHashVersion = 103;
+// Stream at 104 (stage S6): each island gains the scope cities (after tiles): per
+// city slot a scope city with an optional City, whose building lists are the scopes
+// index / list / building.
+inline constexpr std::uint32_t kStateHashVersion = 104;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;
@@ -109,6 +114,29 @@ class World {
     /// rectangles are disjoint, so there is at most one; the lookup scans the
     /// table (a derived grid, D: world +0x130, is a later optimisation).
     [[nodiscard]] const Island* island_at(std::int32_t x, std::int32_t y) const;
+    /// The building with this id (the island named by the id, then its by_id
+    /// cache), or nullptr: a removed building is "gone", never an error.
+    [[nodiscard]] const Building* find_building(BuildingId id) const;
+    /// The building of city `city` on the world tile (x, y) in the lists named by
+    /// `list_mask` (the layout's lookup order); nullptr when there is none, or the
+    /// island, the city or the tile does not exist. These three delegate to the
+    /// Island members of the same names (island.hpp), which they locate.
+    [[nodiscard]] const Building* building_at(CityRef city, std::int32_t x, std::int32_t y,
+                                              std::uint32_t list_mask = ~0U) const;
+    /// Clears `out`, then appends the ids of the buildings of `city` in the masked
+    /// lists whose footprint shares a tile with `rect`, in the canonical order
+    /// (list in the layout's rect order, y, x, id; D2).
+    void rect_query(CityRef city, const TileRect& rect, std::uint32_t list_mask,
+                    std::vector<BuildingId>& out) const;
+    /// The structural facts and the derived-equals-recomputed facts of docs/sim/
+    /// state.md §9.6 that exist at this stage. Empty when they all hold, else one
+    /// message that names the first violation with its path ("islands[0].cities[1].
+    /// index.lists[4].slots[2].payload: ..."). It runs at the end of create() and
+    /// load(); tests run it after every step. Structure first (so the derived checks
+    /// never read a state the structure forbids): the configuration, the player
+    /// table, the islands and their cities and buildings (validate_islands), the
+    /// city owners, then the footprints and the derived indexes.
+    [[nodiscard]] std::string check_invariants() const;
 
     /// Compile-time canary (never called): binds every data member of World.
     /// A member added without extending this line fails to compile here,

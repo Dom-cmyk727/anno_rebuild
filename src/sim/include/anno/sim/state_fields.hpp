@@ -6,7 +6,7 @@
 // of its function plus a kStateHashVersion bump and re-baselined goldens in
 // the same commit.
 //
-// Stream at kStateHashVersion 103 (stage S5), the scopes of §9.3 so far:
+// Stream at kStateHashVersion 104 (stage S6), the scopes of §9.3 so far:
 //   1 header     u32 kStateHashVersion, u32 kPrngTimelineVersion,
 //                SimConfig (declaration order; vectors as count + elements;
 //                small_farm_animals; layout), Rules (declaration order),
@@ -17,8 +17,10 @@
 //   5 players    u64 slot count, then per slot (scope `player`, ordinal = slot)
 //                an optional Player, then u16 stamp, u32 cursor
 //   6 islands    u64 slot count, then per slot (scope `island`, ordinal = slot)
-//                an optional Island, whose tile layer is the scope `tiles`
-//                (the cities scope of §9.3 follows with stage S6)
+//                an optional Island, whose tile layer is the scope `tiles` and
+//                whose cities are the scope `cities` (per slot a scope `city`
+//                with an optional City, whose building lists are the scopes
+//                `index` / `list` / `building`)
 // Not in the stream: the PRNG table itself (immutable, identified by its
 // size and digest; a custom table travels in the save frame, §9.5), the type
 // registry (its digest is in the header) and the seam functions (their names
@@ -39,6 +41,7 @@
 // the settings and the registry just read (validate_islands).
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -52,6 +55,7 @@
 #include <anno/sim/archive.hpp>
 #include <anno/sim/clock.hpp>
 #include <anno/sim/config.hpp>
+#include <anno/sim/create.hpp>
 #include <anno/sim/field_count.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/player.hpp>
@@ -163,7 +167,7 @@ template <class A, Same<SmallFarmAnimals> S> void fields(A& a, S& s) {
     ar::seq(a, s.limit, 1, [&](auto& x) { a.u8(x); });
 }
 
-static_assert(field_count<SimConfig>() == 51,
+static_assert(field_count<SimConfig>() == 50,
               "a SimConfig member needs a line in fields(SimConfig)");
 
 template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
@@ -182,7 +186,6 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     a.u32(s.build_goods_first);
     a.u32(s.build_goods_count);
     a.u32(s.trade_lists);
-    a.u32(s.trade_limit_max);
     a.u32(s.chunk_edge);
     a.u32(s.list_initial_size);
     a.u32(s.list_min_growth);
@@ -479,18 +482,291 @@ void tiles_io(A& a, T& t, std::int32_t x0, std::int32_t y0, std::uint32_t w, std
     TileIO::columns(a, t);
 }
 
+// ---- cities and buildings (inside the islands scope, stage S6)
+
+template <> struct EnumInfo<Status> : ContiguousEnum<3> {};
+
+// `shows_icons` is derived (the driver sets it before every step, §7.1) and is not
+// in the stream.
+static_assert(field_count<StatusTracker>() == 4,
+              "a StatusTracker member needs a line in fields(StatusTracker) or a derived note");
+
+template <class A, Same<StatusTracker> S> void fields(A& a, S& s) {
+    a.enumv(s.code);
+    a.u8(s.icons);
+    a.u16(s.time);
+}
+
+static_assert(field_count<Inert>() == 4, "an Inert member needs a line in fields(Inert)");
+
+template <class A, Same<Inert> S> void fields(A& a, S& s) {
+    a.u16(s.last);
+    a.boolean(s.blocked);
+    a.boolean(s.suspended);
+    fields(a, s.status);
+}
+
+static_assert(field_count<Workshop>() == 9, "a Workshop member needs a line in fields(Workshop)");
+
+template <class A, Same<Workshop> S> void fields(A& a, S& s) {
+    a.u16(s.last);
+    a.boolean(s.switched_on);
+    a.boolean(s.suspended);
+    a.boolean(s.blocked);
+    u32_list(a, s.out);
+    u32_list(a, s.in);
+    u32_list(a, s.activity);
+    a.u32(s.carriers_out);
+    fields(a, s.status);
+}
+
+// `unlocked` is derived (refreshed from the owner's research before every step,
+// §7.1) and is not in the stream.
+static_assert(field_count<WeaponsWorkshop>() == 10,
+              "a WeaponsWorkshop member needs a line in fields(WeaponsWorkshop) or a derived note");
+
+template <class A, Same<WeaponsWorkshop> S> void fields(A& a, S& s) {
+    a.u16(s.last);
+    ar::bools(a, s.line_on);
+    a.boolean(s.suspended);
+    a.boolean(s.blocked);
+    u32_list(a, s.out);
+    u32_list(a, s.in);
+    ar::seq(a, s.activity, 2, [&](auto& x) { a.u16(x); });
+    a.u32(s.carriers_out);
+    fields(a, s.status);
+}
+
+static_assert(field_count<Farm>() == 9, "a Farm member needs a line in fields(Farm)");
+
+template <class A, Same<Farm> S> void fields(A& a, S& s) {
+    a.u16(s.last);
+    a.boolean(s.switched_on);
+    a.boolean(s.suspended);
+    a.boolean(s.blocked);
+    a.u32(s.out);
+    a.u32(s.raw);
+    a.u16(s.activity);
+    a.u32(s.workers_out);
+    fields(a, s.status);
+}
+
+static_assert(field_count<SmallFarm>() == 9,
+              "a SmallFarm member needs a line in fields(SmallFarm)");
+
+template <class A, Same<SmallFarm> S> void fields(A& a, S& s) {
+    a.u16(s.last);
+    ar::bools(a, s.line_on);
+    a.boolean(s.suspended);
+    a.boolean(s.blocked);
+    u32_list(a, s.out);
+    u32_list(a, s.raw);
+    ar::seq(a, s.activity, 2, [&](auto& x) { a.u16(x); });
+    u32_list(a, s.figures_out);
+    fields(a, s.status);
+}
+
+static_assert(field_count<Mine>() == 8, "a Mine member needs a line in fields(Mine)");
+
+template <class A, Same<Mine> S> void fields(A& a, S& s) {
+    a.u16(s.last);
+    a.boolean(s.switched_on);
+    a.boolean(s.deep);
+    a.boolean(s.blocked);
+    a.u32(s.out);
+    a.u16(s.activity);
+    // The deposit is an index into Island::deposits: a presence byte, then a u64 (the
+    // optional<size_t> is widened at the archive boundary).
+    bool has = s.deposit.has_value();
+    a.boolean(has);
+    std::uint64_t deposit = has ? static_cast<std::uint64_t>(*s.deposit) : 0;
+    if (has) {
+        a.u64(deposit);
+    }
+    if constexpr (A::kReading) {
+        if (!a.failed() && has) {
+            s.deposit = static_cast<std::size_t>(deposit);
+        } else {
+            s.deposit.reset();
+        }
+    }
+    fields(a, s.status);
+}
+
+static_assert(field_count<Building>() == 8, "a Building member needs a line in fields(Building)");
+
+/// The u8 tag of each Payload alternative in the stream: the PayloadTag values
+/// (Inert 0, Workshop 1, WeaponsWorkshop 2, Farm 3, SmallFarm 4, Mine 5), append-only.
+inline constexpr std::array<std::uint8_t, 6> kPayloadTags = {
+    static_cast<std::uint8_t>(PayloadTag::Inert),
+    static_cast<std::uint8_t>(PayloadTag::Workshop),
+    static_cast<std::uint8_t>(PayloadTag::WeaponsWorkshop),
+    static_cast<std::uint8_t>(PayloadTag::Farm),
+    static_cast<std::uint8_t>(PayloadTag::SmallFarm),
+    static_cast<std::uint8_t>(PayloadTag::Mine)};
+
+template <class A, Same<Building> S> void fields(A& a, S& s) {
+    a.u64(s.id.v);
+    a.u32(s.type.v);
+    a.i32(s.x);
+    a.i32(s.y);
+    a.u8(s.rotation);
+    a.u8(s.byte0e);
+    a.u8(s.byte0f);
+    ar::variant<kPayloadTags>(a, s.payload, [&](auto& alternative) { fields(a, alternative); });
+}
+
+/// One building list (inside the scope `list` of its index): `i64 hint, u32 cursor,
+/// u64 slot_count`, then per slot (scope `building`, ordinal = slot) an optional
+/// Building. A slot is one byte on the wire when empty but a whole optional<Building>
+/// in memory, so the count is bounded by kListSizeBound (the largest list
+/// SimConfig::validate allows) before any slot is made, and the slots are made one
+/// at a time (the memory used tracks the bytes read). validate_cities then checks
+/// the structure (hint, cursor, at least one slot).
+template <class A, Same<BuildingList> S> void fields(A& a, S& s) {
+    a.i64(s.hint);
+    a.u32(s.cursor);
+    std::uint64_t n = s.slots.size();
+    a.count(n, 1);
+    if constexpr (A::kReading) {
+        if (!a.failed() && n > kListSizeBound) {
+            a.fail("slot count " + std::to_string(n) + " is above the list limit " +
+                   std::to_string(kListSizeBound));
+            n = 0;
+        }
+        s.slots.clear();
+        for (std::uint64_t i = 0; i < n && !a.failed(); ++i) {
+            s.slots.emplace_back();
+            a.scope("building", static_cast<std::uint32_t>(i),
+                    [&] { ar::opt(a, s.slots.back(), [&](auto& b) { fields(a, b); }); });
+        }
+    } else {
+        for (std::size_t i = 0; i < s.slots.size(); ++i) {
+            a.scope("building", static_cast<std::uint32_t>(i),
+                    [&] { ar::opt(a, s.slots[i], [&](auto& b) { fields(a, b); }); });
+        }
+    }
+}
+
+// `service_counters` and `house_counts` are derived (rebuilt on load, compared with a
+// recomputation by check_invariants) and are not in the stream.
+static_assert(field_count<BuildingIndex>() == 4,
+              "a BuildingIndex member needs a line in fields(BuildingIndex) or a derived note");
+
+/// The scope `index` of a city: `u16 stamp`, `u64 list_count`, per list (scope `list`,
+/// ordinal = ListId) a BuildingList. A list is 20 bytes at least on the wire.
+template <class A, Same<BuildingIndex> S> void fields(A& a, S& s) {
+    a.scope("index", [&] {
+        a.u16(s.stamp);
+        std::uint64_t n = s.lists.size();
+        a.count(n, 20);
+        if constexpr (A::kReading) {
+            s.lists.clear();
+            for (std::uint64_t i = 0; i < n && !a.failed(); ++i) {
+                s.lists.emplace_back();
+                a.scope("list", static_cast<std::uint32_t>(i), [&] { fields(a, s.lists.back()); });
+            }
+        } else {
+            for (std::size_t i = 0; i < s.lists.size(); ++i) {
+                a.scope("list", static_cast<std::uint32_t>(i), [&] { fields(a, s.lists[i]); });
+            }
+        }
+    });
+}
+
+static_assert(field_count<CityStock>() == 2,
+              "a CityStock member needs a line in fields(CityStock)");
+
+template <class A, Same<CityStock> S> void fields(A& a, S& s) {
+    a.u32(s.capacity);
+    u32_list(a, s.stock);
+}
+
+static_assert(field_count<GoodsSetting>() == 2,
+              "a GoodsSetting member needs a line in fields(GoodsSetting)");
+
+template <class A, Same<GoodsSetting> S> void fields(A& a, S& s) {
+    a.boolean(s.buy);
+    a.i32(s.list_index);
+}
+
+static_assert(field_count<BuildGoods>() == 2,
+              "a BuildGoods member needs a line in fields(BuildGoods)");
+
+template <class A, Same<BuildGoods> S> void fields(A& a, S& s) {
+    a.u32(s.setting);
+    a.u64(s.spent);
+}
+
+static_assert(field_count<TradeEntry>() == 3,
+              "a TradeEntry member needs a line in fields(TradeEntry)");
+
+template <class A, Same<TradeEntry> S> void fields(A& a, S& s) {
+    a.u32(s.goods);
+    a.u32(s.amount_88);
+    a.u32(s.price);
+}
+
+static_assert(field_count<City>() == 8, "a City member needs a line in fields(City)");
+
+/// One city (docs/sim/state.md §9.3): `u32 number, u32 owner, u16 tick_stamp`, the
+/// stock (`u32 capacity`, u32 list), the goods settings, the build goods, the trade
+/// lists (a list of lists), then the scope `index`. The sizes of the config-sized
+/// containers are checked against the configuration by validate_cities.
+template <class A, Same<City> S> void fields(A& a, S& s) {
+    a.u32(s.number.v);
+    a.u32(s.owner.v);
+    a.u16(s.tick_stamp);
+    fields(a, s.stock);
+    ar::seq(a, s.goods, 9, [&](auto& g) { fields(a, g); });
+    ar::seq(a, s.build_goods, 12, [&](auto& g) { fields(a, g); });
+    ar::seq(a, s.trade_lists, 8,
+            [&](auto& list) { ar::seq(a, list, 12, [&](auto& e) { fields(a, e); }); });
+    fields(a, s.index);
+}
+
+/// The city table of an island (the scope `cities`): `u64 slot count`, then per slot
+/// (scope `city`, ordinal = slot) an optional City. On reading the count is bounded by
+/// kSlotTableBound before any slot is made (an absent slot is one byte on the wire
+/// but a whole optional<City> in memory, F29); validate_cities then compares it with
+/// SimConfig::city_slots.
+template <class A, class V> void cities_io(A& a, V& cities) {
+    std::uint64_t n = cities.size();
+    a.count(n, 1);
+    if constexpr (A::kReading) {
+        if (!a.failed() && n > kSlotTableBound) {
+            a.fail("slot count " + std::to_string(n) + " is above the table limit " +
+                   std::to_string(kSlotTableBound));
+            n = 0;
+        }
+        cities.clear();
+        for (std::uint64_t i = 0; i < n && !a.failed(); ++i) {
+            cities.emplace_back();
+            a.scope("city", static_cast<std::uint32_t>(i),
+                    [&] { ar::opt(a, cities.back(), [&](auto& c) { fields(a, c); }); });
+        }
+    } else {
+        for (std::size_t i = 0; i < cities.size(); ++i) {
+            a.scope("city", static_cast<std::uint32_t>(i),
+                    [&] { ar::opt(a, cities[i], [&](auto& c) { fields(a, c); }); });
+        }
+    }
+}
+
 // Island has no user-declared constructor on purpose (C++20), so that the canary
 // can count its members: index, tiles, terrain, climate, deposits, next_serial,
-// sweep, event300_stamp, drought, objmgr, ring, reserved_object_count.
-static_assert(field_count<Island>() == 12, "an Island member needs a line in fields(Island)");
+// sweep, event300_stamp, drought, objmgr, ring, cities, reserved_object_count, cache
+// (the derived index cache is not in the stream).
+static_assert(field_count<Island>() == 14,
+              "an Island member needs a line in fields(Island) or a derived note");
 
 /// One island (docs/sim/state.md §9.3): `u32 index`, the rectangle `i32 x0, i32 y0,
 /// u32 w, u32 h`, `u32 climate, u32 next_serial, u64 terrain_digest` (0 if none),
 /// the sweep, `u16 event300_stamp`, the object manager, the ring, the optional
-/// drought, the deposits, `u64 reserved_object_count`, scope `tiles`. The terrain
-/// itself is not in the stream (its blobs travel in the save frame, §9.5): reading
-/// leaves a placeholder that carries the digest, and the frame replaces it by the
-/// verified blobs.
+/// drought, the deposits, `u64 reserved_object_count`, scope `tiles`, scope `cities`
+/// (stage S6). The terrain itself is not in the stream (its blobs travel in the save frame, §9.5):
+/// reading leaves a placeholder that carries the digest, and the frame replaces it by the verified
+/// blobs.
 template <class A, Same<Island> S> void fields(A& a, S& s) {
     a.u32(s.index.v);
     std::int32_t x0 = s.tiles.x0();
@@ -523,6 +799,7 @@ template <class A, Same<Island> S> void fields(A& a, S& s) {
     ar::seq(a, s.deposits, 21, [&](auto& d) { fields(a, d); });
     a.u64(s.reserved_object_count);
     a.scope("tiles", [&] { tiles_io(a, s.tiles, x0, y0, w, h); });
+    a.scope("cities", [&] { cities_io(a, s.cities); });
 }
 
 /// The island table: `u64 slot count`, then per slot (scope `island`, ordinal =
@@ -715,6 +992,13 @@ struct StateIO {
             std::vector<std::optional<Island>> islands;
             scopes(a, w, config, rules, settings, clock, rng, players, islands);
             if (!a.failed()) {
+                // The derived indexes (id map, footprint grids, counters) are not in
+                // the stream: rebuilt from the lists (docs/sim/state.md §9.1).
+                for (std::optional<Island>& is : islands) {
+                    if (is.has_value()) {
+                        rebuild_island_index(*is, config, *w.types_);
+                    }
+                }
                 w.config_ = std::move(config);
                 w.rules_ = rules;
                 w.settings_ = settings;

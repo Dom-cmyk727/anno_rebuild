@@ -586,6 +586,7 @@ TEST_CASE("island hash parallel equals serial") {
         is.objects.push_back({i, 1000 + i % 50, static_cast<std::uint8_t>(i)});
     }
     spec.islands.push_back(is);
+    island_test::add_owner_cities(spec);
     const sim::World base = island_test::make_world(spec);
     // The reference hash comes from a copy: hashing fills the digest cache of the
     // world it runs on, and `base` must stay unhashed (every chunk dirty).
@@ -681,7 +682,8 @@ TEST_CASE("tiles scope byte layout and raw hash") {
     for (std::uint32_t i = 0; i < 6; ++i) {
         want.u32(0x33000000U + i);
     }
-    CHECK(want.v.size() == before_tiles + 12 + 6 * sim::kTileBytes);
+    want.u64(0); // the scope cities of stage S6: the slot count, no slot in this island
+    CHECK(want.v.size() == before_tiles + 12 + 6 * sim::kTileBytes + 8);
     sim::WriteArchive wa;
     fields(wa, std::as_const(is));
     CHECK(wa.data() == want.v);
@@ -698,7 +700,7 @@ TEST_CASE("tiles scope byte layout and raw hash") {
 
     // The hierarchical hash feeds the chunk digest in place of the columns: the
     // fields up to the tiles scope, then the u64 digest of the scope (dimensions
-    // and the digest of every chunk).
+    // and the digest of every chunk), then the u64 digest of the scope cities.
     sim::StateHasher tiles;
     tiles.u32(3);
     tiles.u32(2);
@@ -707,6 +709,9 @@ TEST_CASE("tiles scope byte layout and raw hash") {
     sim::StateHasher island;
     island.bytes(std::span<const std::uint8_t>(want.v.data(), before_tiles));
     island.u64(tiles.value());
+    sim::StateHasher cities;
+    cities.u64(0);
+    island.u64(cities.value());
     CHECK(island_test::hash_of(is) == island.value());
 }
 
@@ -752,7 +757,8 @@ TEST_CASE("tiles scope reads back and refuses what it cannot size") {
           std::size_t{25}, std::size_t{26}, std::size_t{260}}) {
         INFO("cut " << cut);
         sim::Island back;
-        sim::ReadArchive r(std::span<const std::uint8_t>(bytes.data(), bytes.size() - cut));
+        // The 8 bytes of the scope cities (the slot count) follow the tiles.
+        sim::ReadArchive r(std::span<const std::uint8_t>(bytes.data(), bytes.size() - 8 - cut));
         fields(r, back);
         REQUIRE(r.failed());
         CHECK(r.error().find("tile columns need 20 x 13 bytes") != std::string::npos);
@@ -760,7 +766,7 @@ TEST_CASE("tiles scope reads back and refuses what it cannot size") {
     // The tiles scope starts 4+4+4+4+4+4+4+8 (to the sweep) + 14 + 2 + 6 + 6 + 1 + 8 +
     // 8 bytes into the island: find it from the end instead (3 x 4 header, then
     // 20 x 13 column bytes).
-    const std::size_t tiles_at = bytes.size() - 12 - 20 * sim::kTileBytes;
+    const std::size_t tiles_at = bytes.size() - 8 - 12 - 20 * sim::kTileBytes;
     auto patched = [&](std::size_t at, std::uint32_t v) {
         std::vector<std::uint8_t> b = bytes;
         island_test::put32(b, at, v);

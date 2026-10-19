@@ -31,3 +31,9 @@ src/sim/include/anno/sim/archive.hpp:std::size_t pos_  # read offset into a std:
 # The subtype tag of a tile event (D 0x100ade79: cancel_tile accepts only 4); a
 # discriminant of the payload, not a count or size.
 src/sim/include/anno/sim/events.hpp:kTileSubtype = 4;  # event subtype tag (D 0x100ade79), a discriminant not a count
+
+# --- building.hpp
+# The initial values of the flag byte +0x0e of a building (D: 0x86 in the base
+# constructor 0x100734c0, 0x82 for a house): byte values with an unknown meaning
+# (O-38), not counts or sizes.
+src/sim/include/anno/sim/building.hpp:kByte0e(?:Default|House)  # initial value of the building flag byte +0x0e (D 0x100734c0), a byte value not a count

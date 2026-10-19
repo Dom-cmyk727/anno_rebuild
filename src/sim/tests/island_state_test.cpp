@@ -71,6 +71,7 @@ sim::ScenarioSpec zero_island_scenario() {
     spec.islands.push_back(is);
     spec.islands[0].deposits = {d, d};
     spec.islands[0].deposits[1].goods = "EISENERZ";
+    island_test::add_owner_cities(spec);
     return spec;
 }
 
@@ -258,6 +259,7 @@ TEST_CASE("owner runs expand to tiles") {
     // Runs: 3 tiles of city 2, an empty run, 4 of city 5; the last 5 tiles are neutral.
     is.owner_runs = {{2, 3}, {6, 0}, {5, 4}};
     spec.islands.push_back(is);
+    island_test::add_owner_cities(spec);
     {
         const sim::World w = make_world(spec);
         const sim::TileLayer& t = w.islands()[0]->tiles;
@@ -278,6 +280,7 @@ TEST_CASE("owner runs expand to tiles") {
     }
     SUBCASE("runs that fill the island exactly, and one more tile") {
         spec.islands[0].owner_runs = {{1, 5}, {2, 7}};
+        island_test::add_owner_cities(spec);
         const sim::World w = make_world(spec);
         CHECK(w.islands()[0]->tiles.owner(4) == 1);
         CHECK(w.islands()[0]->tiles.owner(5) == 2);
@@ -287,6 +290,7 @@ TEST_CASE("owner runs expand to tiles") {
     }
     SUBCASE("the neutral owner and the one below it are valid, one above is not") {
         spec.islands[0].owner_runs = {{14, 1}, {15, 1}};
+        island_test::add_owner_cities(spec);
         const sim::World w = make_world(spec);
         CHECK(w.islands()[0]->tiles.owner(0) == 14);
         CHECK(w.islands()[0]->tiles.owner(1) == 15);
@@ -305,6 +309,7 @@ TEST_CASE("owner column holds values above 65535") {
     sim::ScenarioSpec::IslandSpec is = syn::plain_island(0, 0, 0, 5, 2);
     is.owner_runs = {{65535, 1}, {65536, 1}, {3, 1}};
     spec.islands.push_back(is);
+    island_test::add_owner_cities(spec, sim::kSlotTableBound);
     const sim::World w = make_world(spec, cfg);
     const sim::TileLayer& t = w.islands()[0]->tiles;
     CHECK(t.owner(0) == 65535);
@@ -518,6 +523,7 @@ TEST_CASE("world create keeps the context it was given") {
     sim::ScenarioSpec spec = syn::basic_scenario();
     spec.settings.prop6 = 0x84;
     spec.players[0].id = sim::PlayerId{35};
+    spec.islands[0].cities[0].owner = sim::PlayerId{35};
     auto r = sim::World::create(spec, types.value().registry, cfg, rules, seams);
     REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
     const sim::World& w = r.value();
@@ -540,6 +546,7 @@ TEST_CASE("world create keeps the context it was given") {
                    "islands[0].slot: is not a slot below SimConfig.island_slots (8)"));
     spec.islands[0].slot = sim::IslandId{7};
     spec.players[0].id = sim::PlayerId{0};
+    spec.islands[0].cities[0].owner = sim::PlayerId{0};
     auto ok = sim::World::create(spec, types.value().registry, cfg, rules, seams);
     REQUIRE(ok.ok());
     CHECK(ok.value().islands().size() == 8);
@@ -554,6 +561,7 @@ TEST_CASE("world create does not depend on the executor") {
         is.objects = {{3, 100 + k, 1}};
         spec.islands.push_back(is);
     }
+    island_test::add_owner_cities(spec);
     const sim::World serial = make_world(spec);
     for (const unsigned threads : {1U, 2U, 8U}) {
         island_test::ThreadExecutor ex(threads);
@@ -571,7 +579,7 @@ TEST_CASE("world create does not depend on the executor") {
 TEST_CASE("island fields are counted") {
     // The canaries of state_fields.hpp, restated: a member added to a persistent
     // island type without a line in its fields() function fails the build there.
-    CHECK(sim::field_count<sim::Island>() == 12);
+    CHECK(sim::field_count<sim::Island>() == 14);
     CHECK(sim::field_count<sim::Drought>() == 10);
     CHECK(sim::field_count<sim::SweepState>() == 5);
     CHECK(sim::field_count<sim::CityRing>() == 2);
@@ -596,8 +604,8 @@ TEST_CASE("island fields are counted") {
     // index, x0, y0, w, h, climate, next_serial (7), terrain digest (1), sweep (5),
     // event300 (1), objmgr (2), ring (2), drought presence + 10, deposits count +
     // goods length + goods bytes + x + y + remaining + reserve (7), reserved (1),
-    // tiles: 3 dims + 6 x 4 columns.
-    CHECK(prims == 7 + 1 + 5 + 1 + 2 + 2 + 11 + 7 + 1 + 3 + 24);
+    // tiles: 3 dims + 6 x 4 columns, cities: the slot count (no slot in this island).
+    CHECK(prims == 7 + 1 + 5 + 1 + 2 + 2 + 11 + 7 + 1 + 3 + 24 + 1);
 }
 
 TEST_CASE("islands scope stream layout") {
@@ -608,7 +616,7 @@ TEST_CASE("islands scope stream layout") {
     Stream want;
     want.u64(4);
     auto island = [&](const sim::Island& is, std::int32_t x0, std::int32_t y0, std::uint32_t wd,
-                      std::uint32_t ht) {
+                      std::uint32_t ht, std::uint32_t city_no, std::uint32_t city_owner) {
         want.u8(1);
         want.u32(is.index.v);
         want.i32(x0);
@@ -654,11 +662,21 @@ TEST_CASE("islands scope stream layout") {
         for (std::uint64_t i = 0; i < is.tiles.tile_count(); ++i) {
             want.u32(is.tiles.aux(i));
         }
+        // The scope cities: 16 slots, the island's one city present.
+        want.u64(16);
+        for (std::uint32_t slot = 0; slot < 16; ++slot) {
+            if (slot == city_no) {
+                want.u8(1);
+                island_test::append_empty_city(want, city_no, city_owner);
+            } else {
+                want.u8(0);
+            }
+        }
     };
-    island(*w.islands()[0], 100, 100, 64, 64);
+    island(*w.islands()[0], 100, 100, 64, 64, 0, 0);
     want.u8(0);
     want.u8(0);
-    island(*w.islands()[3], 300, 200, 30, 20);
+    island(*w.islands()[3], 300, 200, 30, 20, 1, 1);
     REQUIRE(bytes.size() > want.v.size());
     CHECK(std::equal(want.v.begin(), want.v.end(),
                      bytes.end() - static_cast<std::ptrdiff_t>(want.v.size())));
@@ -698,19 +716,21 @@ TEST_CASE("islands scope hash tree names the island") {
     }
     REQUIRE(islands != nullptr);
     // One scope per table slot, present or not, indexed by the slot; the tiles
-    // of a present island are a child scope.
+    // and the cities of a present island are child scopes.
     REQUIRE(islands->children.size() == 4);
     for (std::size_t i = 0; i < 4; ++i) {
         CHECK(islands->children[i].name == "island");
         CHECK(islands->children[i].indexed);
         CHECK(islands->children[i].index == i);
     }
-    CHECK(islands->children[0].children.size() == 1);
+    CHECK(islands->children[0].children.size() == 2);
     CHECK(islands->children[1].children.empty());
     CHECK(islands->children[2].children.empty());
-    REQUIRE(islands->children[3].children.size() == 1);
+    REQUIRE(islands->children[3].children.size() == 2);
     CHECK(islands->children[3].children[0].name == "tiles");
     CHECK_FALSE(islands->children[3].children[0].indexed);
+    CHECK(islands->children[3].children[1].name == "cities");
+    CHECK_FALSE(islands->children[3].children[1].indexed);
     // An absent slot hashes as the single byte 0.
     sim::StateHasher absent;
     absent.u8(0);
@@ -884,6 +904,14 @@ struct ReadRow {
     const char* expect;
 };
 
+/// A re-dimensioned layer is all zero, and owner 0 is not a city of the island
+/// (stage S6): make every tile neutral so the rows below meet their own fact.
+void neutral_owners(sim::Island& is) {
+    for (std::uint64_t i = 0; i < is.tiles.tile_count(); ++i) {
+        is.tiles.set_owner(i, 15);
+    }
+}
+
 std::vector<ReadRow> invalid_island_rows() {
     return {
         {"index is not the slot", [](sim::World& w) { isl(w, 3).index = sim::IslandId{2}; },
@@ -909,12 +937,14 @@ std::vector<ReadRow> invalid_island_rows() {
         {"overlap",
          [](sim::World& w) {
              isl(w, 3).tiles.reset(163, 163, 30, 20, 8);
+             neutral_owners(isl(w, 3));
              isl(w, 3).deposits.clear();
          },
          "islands[3].tiles: the rectangle overlaps islands[0]"},
         {"overlap with the same rectangle",
          [](sim::World& w) {
              isl(w, 3).tiles.reset(100, 100, 64, 64, 8);
+             neutral_owners(isl(w, 3));
              isl(w, 3).deposits.clear();
          },
          "islands[3].tiles: the rectangle overlaps islands[0]"},
@@ -1314,8 +1344,8 @@ TEST_CASE("islands scope reads back and validates what it read") {
             // byte offsets inside the message count from there).
             const std::size_t start =
                 island_test::frame_offset(island_test::flat_offset(w, "islands"), 4);
-            CHECK(contains(frame, "section islands (starts at file byte " +
-                                      std::to_string(start) + "): "));
+            CHECK(contains(frame, "section islands (starts at file byte " + std::to_string(start) +
+                                      "): "));
         }
     }
     SUBCASE("the edges of every bound are accepted") {
@@ -1360,12 +1390,14 @@ TEST_CASE("islands scope reads back and validates what it read") {
             {"island at the world corner",
              [](sim::World& x) {
                  isl(x, 3).tiles.reset(482, 492, 30, 20, 8);
+                 neutral_owners(isl(x, 3));
                  isl(x, 3).deposits.clear();
                  isl(x, 3).objmgr.cursor = 0;
              }},
             {"island at the world origin",
              [](sim::World& x) {
                  isl(x, 3).tiles.reset(0, 0, 30, 20, 8);
+                 neutral_owners(isl(x, 3));
                  // Deposits on the top-left and bottom-right tiles of the rectangle.
                  isl(x, 3).deposits[0].x = 0;
                  isl(x, 3).deposits[0].y = 0;
@@ -1380,6 +1412,7 @@ TEST_CASE("islands scope reads back and validates what it read") {
             {"adjacent islands",
              [](sim::World& x) {
                  isl(x, 3).tiles.reset(164, 100, 30, 20, 8);
+                 neutral_owners(isl(x, 3));
                  isl(x, 3).deposits[0].x = 164;
                  isl(x, 3).deposits[0].y = 100;
                  isl(x, 3).deposits[1].x = 193;
@@ -1500,6 +1533,8 @@ TEST_CASE("world create checks the rectangles before it builds anything") {
         isl(w, 3).tiles.reset(0, 0, 512, 512, 8);
         isl(w, 3).deposits.clear();
         isl(w, 0).tiles.reset(0, 0, 512, 512, 8);
+        neutral_owners(isl(w, 3));
+        neutral_owners(isl(w, 0));
         const std::string err =
             sim::validate_islands(w.islands(), w.config(), w.settings(), w.types());
         CHECK(err ==
@@ -1527,6 +1562,7 @@ TEST_CASE("a drought record needs the city mask to hold the city slots") {
         sim::ScenarioSpec spec = syn::two_island_scenario();
         for (sim::ScenarioSpec::IslandSpec& is : spec.islands) {
             is.owner_runs.clear();
+            is.cities.clear();
         }
         sim::World w = make_world(spec, cfg);
         isl(w, 3).drought.emplace();
@@ -1695,6 +1731,7 @@ TEST_CASE("load refuses a damaged frame") {
     is.terrain = sim::make_terrain({1, 2, 3}, {4, 5}, {6, 7, 8, 9});
     is.owner_runs = {{1, 10}};
     spec.islands.push_back(is);
+    island_test::add_owner_cities(spec);
     const sim::World w = make_world(spec);
     const std::vector<std::uint8_t> good = w.save();
     REQUIRE(island_test::load_error(good) == "");
@@ -1744,7 +1781,8 @@ TEST_CASE("load refuses a damaged frame") {
         island_test::put32(bad, 8, sim::kStateHashVersion - 1);
         island_test::reseal(bad);
         const std::string err = island_test::load_error(bad);
-        CHECK(contains(err, "state stream version 102 is not supported"));
+        CHECK(contains(err, "state stream version " + std::to_string(sim::kStateHashVersion - 1) +
+                                " is not supported"));
     }
     SUBCASE("the PRNG table kind") {
         std::vector<std::uint8_t> bad = good;
@@ -1913,13 +1951,13 @@ TEST_CASE("load refuses a header whose config has a zero divisor before any cont
     const std::vector<std::uint8_t> good = w.save();
     // The header section starts at byte 21 (13 + its u64 length): u32 stream
     // version, u32 PRNG timeline version, then SimConfig. island_slots is its
-    // first field, building_div its 21st.
+    // first field, chunk_edge its 16th, building_div its 20th.
     constexpr std::size_t kConfig = 21 + 8;
     REQUIRE(island_test::get32(good, kConfig) == 256);
-    REQUIRE(island_test::get32(good, kConfig + 4 * 20) == 500);
+    REQUIRE(island_test::get32(good, kConfig + 4 * 19) == 500);
     SUBCASE("a zero divisor") {
         std::vector<std::uint8_t> bad = good;
-        island_test::put32(bad, kConfig + 4 * 20, 0);
+        island_test::put32(bad, kConfig + 4 * 19, 0);
         island_test::reseal(bad);
         const std::string err = island_test::load_error(bad);
         CHECK(contains(err, "SimConfig.building_div"));
@@ -1939,7 +1977,7 @@ TEST_CASE("load refuses a header whose config has a zero divisor before any cont
     }
     SUBCASE("a chunk edge of zero") {
         std::vector<std::uint8_t> bad = good;
-        island_test::put32(bad, kConfig + 4 * 16, 0);
+        island_test::put32(bad, kConfig + 4 * 15, 0);
         island_test::reseal(bad);
         CHECK(contains(island_test::load_error(bad), "SimConfig.chunk_edge"));
     }

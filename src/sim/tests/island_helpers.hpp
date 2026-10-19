@@ -55,6 +55,73 @@ struct Stream {
     }
 };
 
+/// The stream of an empty city (docs/sim/state.md §9.3, transcribed here from the
+/// text, not from the field list): number, owner, tick stamp; the stock (capacity
+/// 50 t, 56 goods of 0); 56 goods settings; 5 build goods; 2 empty trade lists; the
+/// index (stamp 0, 6 fresh lists of one empty slot: hint -1, cursor 0).
+inline void append_empty_city(Stream& s, std::uint32_t number, std::uint32_t owner) {
+    s.u32(number);
+    s.u32(owner);
+    s.u16(0);
+    s.u32(50 * 256);
+    s.u64(56);
+    for (int i = 0; i < 56; ++i) {
+        s.u32(0);
+    }
+    s.u64(56);
+    for (int i = 0; i < 56; ++i) {
+        s.boolean(false);
+        s.i32(-1);
+    }
+    s.u64(5);
+    for (int i = 0; i < 5; ++i) {
+        s.u32(0);
+        s.u64(0);
+    }
+    s.u64(2);
+    s.u64(0);
+    s.u64(0);
+    s.u16(0);
+    s.u64(6);
+    for (int i = 0; i < 6; ++i) {
+        s.u64(0xffffffffffffffffULL); // hint -1
+        s.u32(0);                     // cursor
+        s.u64(1);                     // slot count
+        s.u8(0);                      // the empty slot
+    }
+}
+
+/// Stage S6: a tile owner is a present city and a city's owner is a player.
+/// Gives every owner below `neutral` that an island's owner runs name (a run of
+/// length 0 names none) an empty city owned by the scenario's first player when the
+/// island has no city with that number, and a player in slot 0 when the scenario
+/// has no player. Idempotent; call it again after a test changed the runs.
+inline void add_owner_cities(sim::ScenarioSpec& spec, std::uint32_t neutral = 15) {
+    if (spec.players.empty()) {
+        sim::ScenarioSpec::PlayerSpec p;
+        p.id = sim::PlayerId{0};
+        spec.players.push_back(p);
+    }
+    const sim::PlayerId owner = spec.players.front().id;
+    for (sim::ScenarioSpec::IslandSpec& is : spec.islands) {
+        for (const auto& [run_owner, length] : is.owner_runs) {
+            if (run_owner >= neutral || length == 0) {
+                continue;
+            }
+            bool have = false;
+            for (const sim::ScenarioSpec::CitySpec& c : is.cities) {
+                have = have || c.no.v == run_owner;
+            }
+            if (!have) {
+                sim::ScenarioSpec::CitySpec c;
+                c.no = sim::CityNo{run_owner};
+                c.owner = owner;
+                is.cities.push_back(c);
+            }
+        }
+    }
+}
+
 /// World::create on the empty registry (the original goods table, no types),
 /// required to succeed.
 inline sim::World make_world(const sim::ScenarioSpec& spec, sim::SimConfig config = {},

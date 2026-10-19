@@ -25,6 +25,7 @@
 #include <vector>
 
 #include <anno/sim/archive.hpp>
+#include <anno/sim/create.hpp>
 #include <anno/sim/hash.hpp>
 #include <anno/sim/state_fields.hpp>
 #include <anno/sim/world.hpp>
@@ -255,6 +256,18 @@ formats::Result<World, std::string> StateIO::load(std::span<const std::uint8_t> 
     }
     if (r.remaining() != 0) {
         return "save: " + std::to_string(r.remaining()) + " bytes after the last blob";
+    }
+    // The derived indexes are not in the save: rebuilt from the lists, then the
+    // whole of check_invariants (structure, relations, derived equals recomputed)
+    // decides whether the frame describes a world the scheduler can run.
+    for (std::optional<Island>& is : w.islands_) {
+        if (is.has_value()) {
+            rebuild_island_index(*is, w.config_, *w.types_);
+        }
+    }
+    problem = w.check_invariants();
+    if (!problem.empty()) {
+        return "save: " + problem;
     }
     return w;
 }

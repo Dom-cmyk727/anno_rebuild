@@ -460,7 +460,7 @@ TEST_CASE("state_hash relational properties") {
     b.advance(10);
     CHECK(a.state_hash() == b.state_hash());
 
-    // The scopes of stream 103: header, clock_rng, settings, players, islands; the
+    // The scopes of stream 104: header, clock_rng, settings, players, islands; the
     // clock_rng scope is exactly the v1 five-field hash.
     sim::HashTree tree;
     CHECK(base.state_hash(tree, 0) == h);
@@ -522,8 +522,8 @@ TEST_CASE("state_hash relational properties") {
     // The empty world, from the independent Python transcription of the stream
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
     // names, clock_rng, settings, players, islands).
-    CHECK(sim::World().state_hash() == 0x47fe21a74c6e4fb6ULL);
-    CHECK(sim::kStateHashVersion == 103);
+    CHECK(sim::World().state_hash() == 0x0e868b4788e688ccULL);
+    CHECK(sim::kStateHashVersion == 104);
     CHECK(sim::kPrngTimelineVersion == 1);
 }
 
@@ -792,7 +792,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     sim::WriteArchive wa;
     fields(wa, std::as_const(w));
     const std::vector<std::uint8_t> bytes = wa.take();
-    // header: u32 103, u32 1, then SimConfig, Rules, registry digest and seam
+    // header: u32 104, u32 1, then SimConfig, Rules, registry digest and seam
     // names (config_test.cpp pins those bytes); clock_rng: u64 ms, u64
     // last_tick, u64 2048, u64 table digest, u32 cursor (36 bytes); settings
     // (38 bytes, config_test.cpp); players: u64 32, 32 absent bytes, u16 stamp,
@@ -805,7 +805,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     const std::size_t at =
         bytes.size() - kIslandsBytes - kPlayersBytes - kSettingsBytes - 36; // clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 8) ==
-          std::vector<std::uint8_t>{103, 0, 0, 0, 1, 0, 0, 0});
+          std::vector<std::uint8_t>{104, 0, 0, 0, 1, 0, 0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8
     CHECK(bytes[at + 16] == 0);
@@ -840,7 +840,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another state hash version is refused") {
         auto bad = bytes;
-        bad[0] = 104;
+        bad[0] = 105;
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);

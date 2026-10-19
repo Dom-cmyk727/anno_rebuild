@@ -2,7 +2,7 @@
 // "WorldTestAccess"): the tests that perturb a field, corrupt a copy or install
 // configuration, rules, seams, a registry or the player table directly use it.
 // It exists from stage S3 (the first stage with private members); later stages
-// add members (the island table, stage S5).
+// add members (the island table, stage S5; create and remove, stage S6).
 #pragma once
 
 #include <memory>
@@ -10,6 +10,8 @@
 #include <utility>
 #include <vector>
 
+#include <anno/formats/result.hpp>
+#include <anno/sim/create.hpp>
 #include <anno/sim/world.hpp>
 
 namespace anno::sim {
@@ -23,6 +25,21 @@ struct WorldTestAccess {
     static std::vector<std::optional<Island>>& islands(World& w) { return w.islands_; }
     static void set_types(World& w, std::shared_ptr<const TypeRegistry> t) {
         w.types_ = RegistryRef(std::move(t));
+    }
+    /// create_building on city `city` of island slot `island` with the world's own
+    /// configuration, rules and registry (stage S6). The island and the city must
+    /// exist.
+    static formats::Result<BuildingKey, Reject>
+    create(World& w, std::uint32_t island, std::uint32_t city, const PlacementRecord& rec,
+           std::uint32_t now = 0, const Payload* initial = nullptr) {
+        Island& is = *w.islands_[island];
+        return create_building(w.config_, w.rules_, *w.types_, is, *is.cities[city], rec, now,
+                               initial);
+    }
+    /// remove_building with the world's own configuration, registry and players.
+    static bool remove(World& w, const BuildingKey& key) {
+        return remove_building(w.config_, *w.types_, w.players_, *w.islands_[key.city.island.v],
+                               key);
     }
 };
 

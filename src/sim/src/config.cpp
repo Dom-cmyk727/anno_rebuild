@@ -174,6 +174,16 @@ std::string SimConfig::validate() const {
                    "must be in 1.." + std::to_string(kListSizeBound) + ", is " +
                        std::to_string(list_initial_size));
     }
+    // Every city starts with list_initial_size null slots in each of its lists (about
+    // 250 bytes a slot) before a single byte backs them, and World::create makes the
+    // cities of a scenario on worker threads, where bad_alloc must not be thrown: the
+    // slots of one city are bounded by kEntryTableBound (the original has 6 x 1).
+    if (std::uint64_t{layout.lists.size()} * list_initial_size > kEntryTableBound) {
+        return bad(kOwner, "list_initial_size",
+                   "lists x list_initial_size must be at most " + std::to_string(kEntryTableBound) +
+                       ", is " + std::to_string(layout.lists.size()) + " x " +
+                       std::to_string(list_initial_size));
+    }
     // Periods compared with a u16 difference: a larger one never opens its gate.
     const std::pair<const char*, std::uint32_t> stamp_periods[] = {
         {"upkeep_period", upkeep_period},

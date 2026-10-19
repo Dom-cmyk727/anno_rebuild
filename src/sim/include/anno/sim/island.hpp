@@ -1,12 +1,13 @@
-// Islands and their tiles (spec: docs/sim/state.md §4.8, §9.2, §9.6, stage S5).
+// Islands and their tiles (spec: docs/sim/state.md §4.8, §9.2, §9.6, stages S5
+// and S6).
 //
 // An island owns its tile layer (the original's 8-byte tile records of the
 // island object, D: AnnoWelt.dll island +0xc: u16 object id, flag bytes, the
 // owner nibble ((u32 at +4) >> 25) & 0xf, the growth phase), the deposits of
 // its ore objects, the state of its incremental sweeps, the city ring, the
-// object manager and the drought. Cities and their buildings follow with stage
-// S6; the scheduler that ticks an island is stage S7, so for now an island is
-// state that can be created, saved, loaded and hashed.
+// object manager, the drought and (S6) its cities with their buildings. The
+// scheduler that ticks an island is stage S7, so for now an island is state that
+// can be created, saved, loaded and hashed.
 //
 // Tiles are stored as columns, so that a chunk digest is one linear pass. The
 // owner is a u32 (the original nibble is 4 bits, F3): city_slots and
@@ -29,6 +30,7 @@
 #include <string>
 #include <vector>
 
+#include <anno/sim/city.hpp>
 #include <anno/sim/config.hpp>
 #include <anno/sim/executor.hpp>
 #include <anno/sim/ids.hpp>
@@ -233,6 +235,21 @@ struct Drought {
     std::uint16_t stamp = 0;
 };
 
+/// DERIVED, never saved or hashed (docs/sim/state.md §4.8, §9.1): rebuilt by
+/// rebuild_island_index (create.hpp) on load, kept up to date by
+/// create_building / remove_building, compared with a recomputation by
+/// World::check_invariants.
+struct IslandIndexCache {
+    /// Every building of the island by id, with the place it sits (city, list,
+    /// slot).
+    std::map<BuildingId, BuildingKey> by_id;
+    /// Per ListId: the serial of the building on each tile (row-major tile
+    /// index), 0 for none. Empty until the list holds a building, then
+    /// tile_count() entries: O(1) point lookup with no limit on the footprint's
+    /// height (F3: the original assumed at most 8 rows).
+    std::vector<std::vector<std::uint32_t>> grids;
+};
+
 struct Island {
     /// The slot in the world's island table.
     IslandId index;
@@ -252,14 +269,49 @@ struct Island {
     std::optional<Drought> drought;
     ObjectManagerState objmgr;
     CityRing ring;
+    /// Size SimConfig::city_slots; the slot is the city number (the owner value
+    /// written to tiles, SimConfig::neutral_owner = none). A slot is freed only by
+    /// demolishing the city (D9) and reused by a later founding.
+    std::vector<std::optional<City>> cities;
     /// Flames, plague, volcano and wildlife objects (O-12): 0 until ported; the
     /// slot keeps the stream stable.
     std::uint64_t reserved_object_count = 0;
+    /// Derived (see IslandIndexCache).
+    IslandIndexCache cache;
 
     /// Row-major tile index of the world tile (x, y), or kNoSlot when outside.
     [[nodiscard]] Slot tile_index(std::int32_t x, std::int32_t y) const {
         return tiles.index_of(x, y);
     }
+    /// The city in slot `no`, or nullptr (no such slot, or the slot is empty).
+    [[nodiscard]] const City* city(CityNo no) const {
+        return no.v < cities.size() && cities[no.v].has_value() ? &*cities[no.v] : nullptr;
+    }
+    [[nodiscard]] City* city(CityNo no) {
+        return no.v < cities.size() && cities[no.v].has_value() ? &*cities[no.v] : nullptr;
+    }
+
+    // ---- const queries (docs/sim/state.md §4.8). The World members of the same
+    // names locate the island and delegate here; City has the same set. They
+    // return the canonical order (D2). `layout` is the world's SimConfig::layout;
+    // an Island holds no configuration, so the lookup and rect orders and the
+    // list masks come in as an argument.
+
+    /// The building with this id (the by_id cache), or nullptr.
+    [[nodiscard]] const Building* find_building(BuildingId id) const;
+    /// The building of city `no` on the tile (x, y) in the lists of `list_mask`,
+    /// searched in layout.lookup_order (the first list with a building there
+    /// wins); nullptr when there is none or the tile is outside the island.
+    [[nodiscard]] const Building* building_at(const ListLayout& layout, CityNo no, std::int32_t x,
+                                              std::int32_t y, std::uint32_t list_mask = ~0U) const;
+    /// Clears `out`, then appends the ids of the buildings of city `no` in the
+    /// masked lists whose footprint shares a tile with `rect`: ordered by (list
+    /// position in layout.rect_order, y, x, id). The membership rule is the
+    /// original's (D: 0x10023380 accepts a building iff its footprint overlaps the
+    /// rectangle; the 8-row start bound of 0x100230d0 is not modelled, F3); the
+    /// order is D2. Allocation-free except for growing `out`.
+    void rect_query(const ListLayout& layout, CityNo no, const TileRect& rect,
+                    std::uint32_t list_mask, std::vector<BuildingId>& out) const;
     /// The island's rectangle in world tiles.
     [[nodiscard]] TileRect rect() const {
         return TileRect{tiles.x0(), tiles.y0(), tiles.width(), tiles.height()};
@@ -289,15 +341,22 @@ struct SlotRect {
                                                 const WorldSettings& settings);
 
 /// The structural facts of an island table that the scheduler and the loader
-/// rely on (docs/sim/state.md §9.6, the island part; S6 adds the city and
-/// building checks to World::check_invariants, which calls this): the table
+/// rely on (docs/sim/state.md §9.6; World::check_invariants calls this and adds
+/// the facts that need the player table and the derived indexes): the table
 /// has at most SimConfig::island_slots entries; per island the index is its
 /// slot, the rectangle is non-empty, inside the world (WorldSettings::world_width
 /// x world_height) and disjoint from every other island's (validate_island_rects),
 /// the tile layer has SimConfig::chunk_edge and at most kIslandTileBound tiles,
 /// the climate indexes SimConfig::monopoly_climate_mask, next_serial is at least
-/// 1, the tile owners are below SimConfig::neutral_owner or equal to it, the
-/// sweep positions are inside the island and multiples of chunk_edge (the
+/// 1, every tile owner is the number of a present city of the island or equal to
+/// SimConfig::neutral_owner (S6), the cities and their buildings are structurally
+/// sound (validate_cities in island.cpp: the city table has SimConfig::city_slots
+/// slots, every config-sized container of a city has its configured size, every
+/// list has at least one element with its hint in -1 .. n and its cursor below n,
+/// every building's type exists, its rotation is below 4, it sits in the list
+/// its type belongs to, its id names this island with a serial below next_serial,
+/// its payload matches its type, a mine's deposit index is inside the deposits),
+/// the sweep positions are inside the island and multiples of chunk_edge (the
 /// original starts them at 0 and advances them by the chunk edge), the ring
 /// cursor is inside city_slots, the object manager cursor is inside the deposits
 /// (0 without), every deposit is inside the rectangle with a goods name the

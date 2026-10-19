@@ -56,6 +56,13 @@ ScenarioSpec::IslandSpec plain_island(std::uint32_t slot, std::int32_t x0, std::
     return is;
 }
 
+ScenarioSpec::CitySpec plain_city(std::uint32_t no, std::uint32_t owner) {
+    ScenarioSpec::CitySpec c;
+    c.no = CityNo{no};
+    c.owner = PlayerId{owner};
+    return c;
+}
+
 ScenarioSpec empty_scenario(std::uint32_t seed) {
     ScenarioSpec spec;
     spec.settings = synthetic_settings();
@@ -77,6 +84,7 @@ ScenarioSpec basic_scenario(std::uint32_t seed) {
     d.x = 110;
     d.y = 120;
     is.deposits.push_back(d);
+    is.cities.push_back(plain_city(0, 0));
     spec.islands.push_back(std::move(is));
     return spec;
 }
@@ -113,7 +121,33 @@ ScenarioSpec two_island_scenario(std::uint32_t seed) {
     d2.x = 329;
     d2.y = 219;
     is.deposits = {d1, d2};
+    is.cities.push_back(plain_city(1, 1));
     spec.islands.push_back(std::move(is));
+    return spec;
+}
+
+ScenarioSpec g1_scenario(const SyntheticTypes& types, std::uint32_t seed) {
+    ScenarioSpec spec = basic_scenario(seed);
+    ScenarioSpec::CitySpec& city = spec.islands[0].cities[0];
+    ScenarioSpec::BuildingSpec weaver;
+    weaver.type = types.weaver;
+    weaver.x = 110;
+    weaver.y = 110;
+    {
+        Workshop w = make_workshop(types.registry->find(types.weaver)->prod);
+        w.in[0] = 5 * kTon; // 5 t of wool
+        weaver.payload = w;
+    }
+    ScenarioSpec::BuildingSpec farm;
+    farm.type = types.farm;
+    farm.x = 120;
+    farm.y = 110;
+    {
+        Farm f;
+        f.raw = 5 * kTon; // 5 t of raw material
+        farm.payload = f;
+    }
+    city.buildings = {weaver, farm};
     return spec;
 }
 

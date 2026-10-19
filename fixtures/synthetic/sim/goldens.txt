@@ -49,10 +49,34 @@
 # clipped), seed 1234, the state hash right after World::create and after
 # advance(10) x 100. tools/sim_stream.py builds the same tile columns, hashes them
 # chunk by chunk and transcribes the island stream independently of the C++.
-g0_step1     S1 103 60b81fdd4baeefde
-g0_step100   S1 103 ac9733c2ce7dbbbb
-g0_step1000  S1 103 dc64b91713a86c61
-g1_players_step100 S4 103 155953213ed2068c
-g1_players_step700 S4 103 7b8ffbc1fd0e366e
-s5_islands_create S5 103 b1457eb7371e1c96
-s5_islands_step100 S5 103 a6a9966225df5573
+# Re-baselined at stream version 104 (stage S6: every island gained the scope
+# cities after tiles: per city slot a scope city with an optional City, whose
+# building lists are the scopes index / list / building; the S5 scenarios now carry
+# one empty city per island, because a tile owner must be a present city). The
+# version-103 values were 60b81fdd4baeefde, ac9733c2ce7dbbbb, dc64b91713a86c61 (G0),
+# 155953213ed2068c, 7b8ffbc1fd0e366e (G1 players), b1457eb7371e1c96,
+# a6a9966225df5573 (S5 islands). The values come from tools/sim_stream.py, which
+# transcribes the city and the building streams.
+# Re-baselined again inside development version 104 (S6 review round, before S6 was
+# committed): SimConfig lost trade_limit_max and GoodsSetting lost `limit` (the original
+# has one signed byte, the trade-list index, city+12g+0x0b), which moves the header and
+# the city. The values before this round were 7cc4e1f6aeabc967, 879a86b9099c9452,
+# 5abc8c5991fc8060 (G0), 7c2245305285bf0c, 9b705a04c30cc9ee (G1 players),
+# 165885966beb933e, b90da0ebd5ee664b (S5 islands), ca798ff555639217 and
+# a65501648f2d746c (S6 G1).
+g0_step1     S1 104 405080950d896954
+g0_step100   S1 104 8f68f40bcb3663c9
+g0_step1000  S1 104 fc9aa4f73f270e67
+g1_players_step100 S4 104 35b307beecf1b6da
+g1_players_step700 S4 104 6a3d98b13ec4d16c
+s5_islands_create S5 104 e6ab5bce74c33ca3
+s5_islands_step100 S5 104 f583f962aecb12be
+#
+# S6 G1 scenario (synthetic::g1_scenario: one player, island 0 with city 0 holding
+# the weaver with 5 t of wool at (110,110) and the grain farm with 5 t of raw
+# material at (120,110) in the production list), seed 1234, the state hash right
+# after World::create and after advance(10) x 100. tools/sim_stream.py transcribes
+# the city, the building lists and the Workshop and Farm payloads independently of
+# the C++ code; the registry digest of the synthetic types is its one literal.
+s6_g1_create S6 104 78cd92b308be8829
+s6_g1_step100 S6 104 b9f1161f3575b1fe

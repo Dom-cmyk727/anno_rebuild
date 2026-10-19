@@ -4,8 +4,8 @@
 // the scenario adapter of stage S14 (the only code that touches the original
 // scenario formats), by the synthetic builders of the tests (synthetic.hpp), or
 // by a mod. Stage S5 has the part that exists: settings, the PRNG seed and
-// table, the players and the islands with their tiles, owners and deposits.
-// Cities and buildings (CitySpec, BuildingSpec) follow with stage S6.
+// table, the players and the islands with their tiles, owners and deposits; stage
+// S6 added the cities and their buildings (CitySpec, BuildingSpec).
 #pragma once
 
 #include <cstdint>
@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include <anno/sim/building.hpp>
 #include <anno/sim/ids.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/production.hpp>
@@ -57,6 +58,31 @@ struct ScenarioSpec {
         std::uint32_t object = 0;
         std::uint8_t phase = 0;
     };
+    /// A building placed at load (PROD2 record stand-in): created at tick 0
+    /// through create_building, no cost charged.
+    struct BuildingSpec {
+        TypeId type;
+        std::int32_t x = 0, y = 0;
+        std::uint8_t rotation = 0, byte0f = 0;
+        /// nullopt = the make_* default of the type's class (a mine finds its
+        /// deposit at attach); a given payload replaces it, keeps its stocks,
+        /// switches and `last`, and must satisfy payload_problem for the type.
+        std::optional<Payload> payload;
+    };
+    /// A city of an island. Cities are created in ascending number, so the world
+    /// does not depend on the order of the vector; the buildings of a city in file
+    /// order (PROD2 order = list slot order).
+    struct CitySpec {
+        /// The slot in Island::cities = the owner value written to tiles; below
+        /// SimConfig::city_slots and not SimConfig::neutral_owner.
+        CityNo no;
+        /// A player of `players`.
+        PlayerId owner;
+        /// The warehouse stock in 8.8 tons, exactly SimConfig::warehouse_goods
+        /// entries; nullopt = empty.
+        std::optional<std::vector<std::uint32_t>> stock;
+        std::vector<BuildingSpec> buildings;
+    };
     struct IslandSpec {
         /// The slot in the island table (INSELLNK order == slot order).
         IslandId slot;
@@ -68,6 +94,7 @@ struct ScenarioSpec {
         std::vector<std::pair<std::uint32_t, std::uint32_t>> owner_runs;
         std::vector<TileObjectSpec> objects;
         std::vector<DepositSpec> deposits;
+        std::vector<CitySpec> cities;
     };
     std::vector<PlayerSpec> players;
     /// The island table is as long as the highest slot + 1; unused slots stay null.

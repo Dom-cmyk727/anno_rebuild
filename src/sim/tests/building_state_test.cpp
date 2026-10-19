@@ -936,8 +936,8 @@ TEST_CASE("random create and remove follow the list model and keep the indexes")
             const auto [fw, fh] = sim::footprint(*k.registry->find(p.type), p.rotation);
             for (std::uint32_t dy = 0; dy < fh; ++dy) {
                 for (std::uint32_t dx = 0; dx < fw; ++dx) {
-                    const auto tile = layer.index_of(p.x + static_cast<int>(dx),
-                                                     p.y + static_cast<int>(dy));
+                    const auto tile =
+                        layer.index_of(p.x + static_cast<int>(dx), p.y + static_cast<int>(dy));
                     REQUIRE(tile != sim::kNoSlot);
                     objects[tile] = value;
                 }
@@ -945,9 +945,9 @@ TEST_CASE("random create and remove follow the list model and keep the indexes")
         };
         // Non-square types and every rotation: a removal that used the unturned footprint
         // would leave stale tiles, grid cells and objects behind.
-        const sim::TypeId types[] = {k.weaver, k.farm,         k.pioneer_house, k.kontor,
-                                     k.church, k.market_stall, k.barracks,      k.big_house,
-                                     k.tall_house};
+        const sim::TypeId types[] = {k.weaver,   k.farm,      k.pioneer_house,
+                                     k.kontor,   k.church,    k.market_stall,
+                                     k.barracks, k.big_house, k.tall_house};
         for (int step = 0; step < 600; ++step) {
             if (!live.empty() && rng.below(100) < 40) {
                 const std::size_t i = rng.below(static_cast<std::uint32_t>(live.size()));

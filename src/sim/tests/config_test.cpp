@@ -83,8 +83,8 @@ struct Stream {
 /// §9.3 row 1 for the original configuration: SimConfig, then Rules, with the
 /// values of docs/sim/state.md §3.
 void expected_config(Stream& s) {
-    for (const std::uint32_t x : {256U, 16U, 15U,   32U, 31U, 5U,   28U, 20U, 32U, 5U,
-                                  65U,  56U, 0x29U, 5U,  2U,   8U,  1U,  10U, 8U}) {
+    for (const std::uint32_t x : {256U, 16U, 15U, 32U, 31U, 5U, 28U, 20U, 32U, 5U, 65U, 56U, 0x29U,
+                                  5U, 2U, 8U, 1U, 10U, 8U}) {
         s.u32(x); // island_slots .. city_pass_count
     }
     for (const std::uint32_t x : {500U, 50U, 50U, 250U, 50U, 5000U, 2000U, 15000U, 7500U, 300U, 20U,

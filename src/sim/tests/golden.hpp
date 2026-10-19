@@ -77,7 +77,9 @@ inline bool in_ci() {
 }
 
 /// Whether differences are printed instead of failed: requested and not CI.
-inline bool update_mode() { return update_requested() && !in_ci(); }
+inline bool update_mode() {
+    return update_requested() && !in_ci();
+}
 
 /// Empty when `value` is the golden `name` at the current stream version and
 /// stage; otherwise the reason. With ANNO_UPDATE_GOLDEN=1 (outside CI) a

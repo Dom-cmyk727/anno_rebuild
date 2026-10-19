@@ -48,14 +48,18 @@ struct Big {
     std::uint64_t id = 0;
     std::array<std::uint8_t, 512> pad{};
 };
-template <class A, sim::Same<Big> S> void fields(A& a, S& s) { a.u64(s.id); }
+template <class A, sim::Same<Big> S> void fields(A& a, S& s) {
+    a.u64(s.id);
+}
 
 /// An element with a member that is derived on load and not in the stream.
 struct Cached {
     std::uint32_t a = 0;
     std::uint32_t cache = 0;
 };
-template <class A, sim::Same<Cached> S> void fields(A& a, S& s) { a.u32(s.a); }
+template <class A, sim::Same<Cached> S> void fields(A& a, S& s) {
+    a.u32(s.a);
+}
 
 /// An alternative whose construction throws (makes a variant valueless). The
 /// move constructor may throw too, so that libstdc++ does not build the new

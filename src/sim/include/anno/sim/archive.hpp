@@ -310,9 +310,7 @@ class TraceArchive : public detail::Writer<TraceArchive> {
         f();
         entries_.push_back(TraceEntry{Prim::ScopeClose, 0, 0, name.view, index});
     }
-    template <class F> void scope(ScopeName name, F&& f) {
-        scope(name, 0, std::forward<F>(f));
-    }
+    template <class F> void scope(ScopeName name, F&& f) { scope(name, 0, std::forward<F>(f)); }
     [[nodiscard]] const std::vector<TraceEntry>& entries() const { return entries_; }
     [[nodiscard]] const std::vector<std::uint8_t>& bytes_written() const { return bytes_; }
 
@@ -512,8 +510,7 @@ template <std::size_t I = 0, class Var> bool emplace_alternative(Var& v, std::si
 /// elements). `min_wire_bytes` is the smallest encoding of one element (the
 /// least the field list writes for it; default 1): a count that cannot fit
 /// the remaining input at that size fails before anything is allocated.
-template <class A, class V, class F>
-void seq(A& a, V& v, std::uint64_t min_wire_bytes, F&& f) {
+template <class A, class V, class F> void seq(A& a, V& v, std::uint64_t min_wire_bytes, F&& f) {
     std::uint64_t n = v.size();
     a.count(n, min_wire_bytes);
     if constexpr (A::kReading) {
@@ -627,8 +624,7 @@ template <auto Tags> constexpr bool tags_are_distinct() {
 ///     ar::variant<kTags>(a, s.var, [&](auto& alt) { ... });
 template <std::array Tags, class A, class Var, class F> void variant(A& a, Var& v, F&& f) {
     using V = std::remove_const_t<Var>;
-    static_assert(Tags.size() == std::variant_size_v<V>,
-                  "one tag per alternative of the variant");
+    static_assert(Tags.size() == std::variant_size_v<V>, "one tag per alternative of the variant");
     static_assert(tags_are_distinct<Tags>(), "variant tags must be pairwise distinct");
     static_assert(std::is_same_v<typename decltype(Tags)::value_type, std::uint8_t>,
                   "variant tags are u8");

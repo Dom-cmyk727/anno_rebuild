@@ -120,6 +120,16 @@ jobs:
           # Each doctest case is its own test (anno_add_doctest): run them on
           # the runner's cores (4 on the hosted Linux and Windows runners).
           ctest --preset ${{ matrix.preset }} -j 4 2>&1 | tee test.log
+      # The GPU parity tests (the WGSL port of the river shading, the compositor) skip
+      # themselves on a runner without an adapter: say so in the run summary instead
+      # of passing silently (docs/open-questions.md OQ-089 asks whether to install a
+      # software Vulkan driver, lavapipe, so that they run here).
+      - name: GPU tests need an adapter (loud skip)
+        shell: bash
+        run: |
+          if ctest --preset ${{ matrix.preset }} -V -R "the shared WGSL shaders compile" 2>&1 | grep -q "skipping:"; then
+            echo "::warning title=GPU tests skipped::no GPU adapter on this runner, the shader parity tests of the river flow (gpu_test.cpp) did not run (OQ-089)"
+          fi
       - name: test failures as annotations
         if: failure()
         shell: bash

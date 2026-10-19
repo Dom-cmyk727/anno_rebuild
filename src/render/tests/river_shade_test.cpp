@@ -127,7 +127,11 @@ TEST_CASE("river shading config: the default tables are consistent and every che
     }
     {
         river::RiverConfig c;
-        c.layers.assign(render::kMaxRiverLayers + 1, c.layers[0]);
+        // A copy first: assign(n, c.layers[0]) would pass a reference into the
+        // vector being reassigned, which libc++ (macOS) invalidates before it
+        // copies from it (CI cpp (macos-clang) failed on exactly this).
+        const river::LayerConfig first = c.layers[0];
+        c.layers.assign(render::kMaxRiverLayers + 1, first);
         CHECK_FALSE(c.validate(512, 3).empty());
         c.layers.pop_back();
         CHECK(c.validate(512, 3).empty());

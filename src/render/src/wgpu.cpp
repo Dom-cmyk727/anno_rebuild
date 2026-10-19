@@ -1,8 +1,13 @@
+#include <algorithm>
+#include <array>
 #include <atomic>
+#include <cctype>
+#include <charconv>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string_view>
 #include <thread>
 #include <vector>
@@ -124,7 +129,99 @@ WGPUBackendType backend_from_env() {
     return WGPUBackendType_Undefined;
 }
 
+/// The adapter named by ANNO_GPU_ADAPTER (index into list_adapters() order or
+/// a case-insensitive part of the name) on `instance`; null when unset or
+/// not found (reported on stderr).
+WGPUAdapter adapter_from_env(WGPUInstance instance) {
+    const char* v = std::getenv("ANNO_GPU_ADAPTER");
+    if (v == nullptr || *v == 0) {
+        return nullptr;
+    }
+    WGPUInstanceEnumerateAdapterOptions opts{};
+    opts.backends = WGPUInstanceBackend_All;
+    const std::size_t n = wgpuInstanceEnumerateAdapters(instance, &opts, nullptr);
+    std::vector<WGPUAdapter> all(n);
+    if (n > 0) {
+        wgpuInstanceEnumerateAdapters(instance, &opts, all.data());
+    }
+    std::vector<AdapterInfo> infos(all.size());
+    for (std::size_t i = 0; i < all.size(); ++i) {
+        WGPUAdapterInfo info = WGPU_ADAPTER_INFO_INIT;
+        if (wgpuAdapterGetInfo(all[i], &info) == WGPUStatus_Success) {
+            infos[i].name = str(info.device);
+            wgpuAdapterInfoFreeMembers(info);
+        }
+    }
+    const std::optional<std::size_t> picked = pick_adapter(v, infos);
+    WGPUAdapter pick = nullptr;
+    for (std::size_t i = 0; i < all.size(); ++i) {
+        if (picked && *picked == i) {
+            pick = all[i];
+        } else {
+            wgpuAdapterRelease(all[i]);
+        }
+    }
+    if (pick == nullptr) {
+        std::fprintf(stderr, "ANNO_GPU_ADAPTER=%s matches no adapter; using the default\n", v);
+    }
+    return pick;
+}
+
 } // namespace
+
+std::optional<std::size_t> pick_adapter(std::string_view want,
+                                        const std::vector<AdapterInfo>& adapters) {
+    if (want.empty()) {
+        return std::nullopt;
+    }
+    const bool numeric =
+        std::all_of(want.begin(), want.end(), [](unsigned char c) { return std::isdigit(c) != 0; });
+    if (numeric) {
+        // from_chars reports an overflow instead of throwing (no exceptions in this code base).
+        std::size_t index = 0;
+        const auto [end, ec] = std::from_chars(want.data(), want.data() + want.size(), index);
+        if (ec != std::errc{} || end != want.data() + want.size() || index >= adapters.size()) {
+            return std::nullopt;
+        }
+        return index;
+    }
+    auto lower = [](std::string s) {
+        std::transform(s.begin(), s.end(), s.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return s;
+    };
+    const std::string needle = lower(std::string(want));
+    for (std::size_t i = 0; i < adapters.size(); ++i) {
+        if (lower(adapters[i].name).find(needle) != std::string::npos) {
+            return i;
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<AdapterInfo> list_adapters() {
+    Instance instance(wgpuCreateInstance(nullptr));
+    std::vector<AdapterInfo> out;
+    if (!instance) {
+        return out;
+    }
+    WGPUInstanceEnumerateAdapterOptions opts{};
+    opts.backends = WGPUInstanceBackend_All;
+    const std::size_t n = wgpuInstanceEnumerateAdapters(instance.get(), &opts, nullptr);
+    std::vector<WGPUAdapter> all(n);
+    if (n > 0) {
+        wgpuInstanceEnumerateAdapters(instance.get(), &opts, all.data());
+    }
+    for (WGPUAdapter a : all) {
+        WGPUAdapterInfo info = WGPU_ADAPTER_INFO_INIT;
+        if (wgpuAdapterGetInfo(a, &info) == WGPUStatus_Success) {
+            out.push_back({str(info.device), info.backendType, info.adapterType, info.vendorID});
+            wgpuAdapterInfoFreeMembers(info);
+        }
+        wgpuAdapterRelease(a);
+    }
+    return out;
+}
 
 formats::Result<Context, std::string> headless_context() {
     Instance instance(wgpuCreateInstance(nullptr));
@@ -158,21 +255,28 @@ formats::Result<Context, std::string> context_for(Instance instance, WGPUSurface
         }
         PA::finish(u1);
     };
-    auto* ar = new PA;
-    acb.userdata1 = ar;
-    wgpuInstanceRequestAdapter(c.instance.get(), &opts, acb);
-    if (!PA::wait(ar, c.instance.get(), nullptr)) {
-        return std::string("no GPU adapter: no answer");
+    // A chosen adapter (no window surface: its presentation support is not checked).
+    WGPUAdapter chosen = compatible == nullptr ? adapter_from_env(c.instance.get()) : nullptr;
+    if (chosen != nullptr) {
+        c.adapter = Adapter(chosen);
+    } else {
+        auto* ar = new PA;
+        acb.userdata1 = ar;
+        wgpuInstanceRequestAdapter(c.instance.get(), &opts, acb);
+        if (!PA::wait(ar, c.instance.get(), nullptr)) {
+            return std::string("no GPU adapter: no answer");
+        }
+        const std::unique_ptr<PA> a(ar);
+        if (a->value.adapter == nullptr) {
+            return "no GPU adapter" +
+                   (a->value.message.empty() ? std::string() : ": " + a->value.message);
+        }
+        c.adapter = Adapter(a->value.adapter);
     }
-    const std::unique_ptr<PA> a(ar);
-    if (a->value.adapter == nullptr) {
-        return "no GPU adapter" +
-               (a->value.message.empty() ? std::string() : ": " + a->value.message);
-    }
-    c.adapter = Adapter(a->value.adapter);
     WGPUAdapterInfo info = WGPU_ADAPTER_INFO_INIT;
     if (wgpuAdapterGetInfo(c.adapter.get(), &info) == WGPUStatus_Success) {
         c.name = str(info.device) + " (" + backend_name(info.backendType) + ")";
+        c.adapter_type = info.adapterType;
         wgpuAdapterInfoFreeMembers(info);
     }
     WGPULimits limits = WGPU_LIMITS_INIT;
@@ -180,6 +284,13 @@ formats::Result<Context, std::string> context_for(Instance instance, WGPUSurface
     WGPUDeviceDescriptor desc = WGPU_DEVICE_DESCRIPTOR_INIT;
     desc.label = sv("anno1503");
     desc.requiredLimits = &limits;
+    // Timestamp queries time render passes on the GPU (GpuFrame::sea_pass_ms).
+    const std::array<WGPUFeatureName, 1> features = {WGPUFeatureName_TimestampQuery};
+    if (wgpuAdapterHasFeature(c.adapter.get(), WGPUFeatureName_TimestampQuery) != 0) {
+        desc.requiredFeatureCount = features.size();
+        desc.requiredFeatures = features.data();
+        c.timestamps = true;
+    }
     desc.uncapturedErrorCallbackInfo.callback = on_uncaptured;
     // The callback may fire as long as any object of the device exists, which
     // can outlive the Context and every DeviceRef: keep the counter for the
@@ -222,6 +333,7 @@ formats::Result<Context, std::string> context_for(Instance instance, WGPUSurface
     }
     c.device = Device(d->value.device);
     c.queue = Queue(wgpuDeviceGetQueue(c.device.get()));
+    c.timestamp_period_ns = c.timestamps ? wgpuQueueGetTimestampPeriod(c.queue.get()) : 0.0F;
     return c;
 }
 

@@ -748,6 +748,9 @@ Shade river_flow_shade(float px, float py, const FlowSample& f, float depth, flo
     const std::size_t n = std::min<std::size_t>(params.count, params.layers.size());
     for (std::size_t l = 0; l < n; ++l) {
         const RiverLayer& layer = params.layers[l];
+        if (params.quality != RiverQuality::High && layer.fades != 0.0F) {
+            continue;
+        }
         // Shear stretches a feature by T |grad u|: fade the layer out where the
         // cycle would smear it (thin rivers, the margins, falls).
         const float shear_fade = 1.0F - smoothstep(params.shear_from, params.shear_to,
@@ -770,6 +773,8 @@ Shade river_flow_shade(float px, float py, const FlowSample& f, float depth, flo
         const float na = field(a);
         if (layer.rapids != 0.0F) {
             light += rapids * (params.rapids_base + amp * na);
+        } else if (params.quality == RiverQuality::Low) {
+            light += amp * kLowTapGain * layer.scale * na;
         } else {
             const FlowPhases b = flow_phases(x2, u, time_ms, layer, psi);
             light += amp * (na - field(b)) / kProbe;

@@ -69,6 +69,11 @@ struct Chunk {
     /// thread never waits for a flow, rivers.md 3.1).
     std::vector<std::uint32_t> flow_waiting;
     [[nodiscard]] bool flow_pending() const { return !flow_waiting.empty(); }
+    /// A number that identifies this build of the chunk: every render_chunk()
+    /// result and every inserted chunk gets a new one (never 0), so a consumer
+    /// that keeps a copy (the GPU compositor's textures) sees that a chunk of
+    /// the same key was rebuilt (e.g. after its river flow arrived).
+    std::uint64_t serial = 0;
 };
 
 /// (zoom group, chunk x, chunk y).
@@ -155,6 +160,9 @@ class FrameRenderer {
                                                                std::size_t group);
     /// The cached chunk, if built.
     [[nodiscard]] const Chunk* chunk(const ChunkKey& key) const;
+    /// Puts `chunk` in the cache under `key` (tests and tools: a synthetic
+    /// chunk without a scene to build it from); it gets a new serial.
+    void insert_chunk(const ChunkKey& key, Chunk chunk);
     /// Draws `view` at time_ms into `out` (view.w × view.h, row-major 0RGB).
     FrameStats render(const Scene& scene, Rect view, std::size_t group, std::uint64_t time_ms,
                       WaterStyle style, std::uint32_t* out);
@@ -162,6 +170,11 @@ class FrameRenderer {
     /// Enhanced water: the river look render() draws (chunks carry the lattice
     /// either way, so switching needs no rebuild).
     RiverFlowMode river_flow = RiverFlowMode::Flow;
+    /// The cost tier of the flow shading render() uses (RiverParams::quality): High
+    /// is the reference look; the GPU compositor's automatic tier (GpuFrame::
+    /// river_quality) can be Medium or Low, which a CPU reference compared against
+    /// it must follow.
+    RiverQuality river_quality = RiverQuality::High;
     /// Worker threads per stage.
     std::size_t threads;
     /// Chunks kept besides the visible ones.

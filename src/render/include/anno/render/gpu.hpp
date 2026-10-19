@@ -20,8 +20,10 @@
 // compute pass before the render passes, as gpu.rs does.
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -69,6 +71,10 @@ struct GpuStats {
     std::size_t ships = 0;
     /// The coastal wave simulation ran for this frame (enhanced water).
     bool wave_simulation = false;
+    /// Enhanced rivers: the visible chunks that carry a flow lattice on the GPU,
+    /// and the cost tier the river shading ran at this frame.
+    std::size_t river_chunks = 0;
+    RiverQuality river_quality = RiverQuality::High;
 };
 
 /// Tuning of the compositor (Rust constants; data, PLAN §0.1).
@@ -112,6 +118,27 @@ struct GpuLimits {
     /// Run the coastal wave simulation for enhanced water (false: the
     /// shader's analytic waves, as the Rust compositor without it).
     bool wave_simulation = true;
+    /// The cost tier of the river flow shading (docs/render/rivers.md 4 and 16).
+    /// nullopt = automatic: High on a discrete adapter; on any other adapter the
+    /// highest tier whose measured added cost over the legacy shimmer
+    /// (GpuFrame::measure_river_cost, run once in GpuFrame::create) is at most
+    /// river_gate_ms_per_mpx, else Low; a
+    /// software adapter gets Low unmeasured.
+    std::optional<RiverQuality> river_quality;
+    /// The gate of the automatic tier: milliseconds of GPU time the flow shading
+    /// adds to the legacy shimmer per million river pixels. 1.0 keeps the river
+    /// pass of a view with a million river pixels (a third of a 4K screen; real
+    /// views have a few percent) within half the 2 ms frame of a 500 Hz monitor.
+    double river_gate_ms_per_mpx = 1.0;
+    /// Wall-clock budget (milliseconds) of the automatic tier's measurement in
+    /// GpuFrame::create, which blocks the calling thread once at startup. When it runs
+    /// out the tiers not finished are unmeasured and the choice is Low (the floor), so
+    /// a slow adapter never waits more than about this plus one pass. 0 = unlimited.
+    double river_measure_budget_ms = 500.0;
+    /// Time the sea pass with GPU timestamps (GpuFrame::sea_pass_ms) when the
+    /// device supports them. Costs two query writes and a 16-byte copy per
+    /// frame; for benchmarks.
+    bool gpu_timing = false;
 };
 
 /// Values of the frame uniform (struct Frame in gpu.wgsl).
@@ -130,9 +157,50 @@ struct FrameUniform {
     std::int32_t fluid_size = 1;
     bool fluid_on = false;
     float fluid_cpt = 1;
+    /// Enhanced rivers are shaded by the flow lattice (else the legacy shimmer),
+    /// and the pixels per HEIGHT unit of the lift (RiverView::lambda).
+    bool river_flow = false;
+    float river_lambda = 0;
 };
 /// Bytes of the frame uniform (96, little-endian, WGSL uniform layout).
 std::vector<std::uint8_t> frame_uniform_bytes(const FrameUniform& f);
+
+/// The binding contract of the river flow with gpu.wgsl (a test reads the
+/// shader's declarations and compares): chunk flag bit 5 = the chunk has a
+/// lattice, bits 8-15 its stride in pixels; group 1 bindings 6 (velocity,
+/// RG16Sint), 7 (valid / turbulence / wake / level, RGBA8Uint) and 8 (shear,
+/// R8Uint); group 0 binding 7 = the river parameters.
+inline constexpr std::uint32_t kChunkFlagFlow = 1U << 5;
+/// The stride field is 8 bits wide: river::kMaxLatticeStride (255) is its limit, enforced
+/// by RiverConfig::validate; widening it means moving to the free bits 16-31.
+inline constexpr std::uint32_t kChunkStrideShift = 8;
+inline constexpr std::uint32_t kFlowVelocityBinding = 6, kFlowAuxBinding = 7, kFlowShearBinding = 8;
+inline constexpr std::uint32_t kRiverParamsBinding = 7;
+/// Bytes of the river parameter uniform (struct RiverParams in gpu.wgsl).
+inline constexpr std::size_t kRiverParamsBytes = 32 + 32 * kMaxRiverLayers;
+/// The river parameter uniform of `p` (layers beyond kMaxRiverLayers dropped);
+/// `min_valid` is RiverConfig::min_valid.
+std::vector<std::uint8_t> river_params_bytes(const RiverParams& p, float min_valid);
+
+/// GPU cost of the river flow shading: one cost tier (nullopt = the legacy
+/// shimmer, for reference), the GPU milliseconds for `megapixels` of pure river
+/// pixels, per million, and how the time was taken. gpu_timestamps is false when
+/// the device has none or a reading failed (that pass then took the wall clock).
+/// A cost that is not a positive finite number is "unmeasured" (a driver that
+/// reports no time): it can never make a tier look cheap.
+struct RiverCost {
+    std::optional<RiverQuality> quality;
+    double ms = 0, megapixels = 0, ms_per_mpx = 0;
+    bool gpu_timestamps = false;
+    [[nodiscard]] bool measured() const { return std::isfinite(ms_per_mpx) && ms_per_mpx > 0.0; }
+};
+
+/// The tier the automatic choice takes from measurements (GpuFrame::measure_river_cost):
+/// the highest tier whose cost above the legacy shimmer's (the entry without a
+/// tier) is at most `gate_ms_per_mpx`; Low when none is (the floor). Unmeasured
+/// costs (RiverCost::measured) never qualify, and without a measured legacy
+/// reference nothing does: the answer is Low, never the dearest tier.
+RiverQuality choose_river_quality(const std::vector<RiverCost>& costs, double gate_ms_per_mpx);
 
 class GpuFrame {
   public:
@@ -162,6 +230,36 @@ class GpuFrame {
     [[nodiscard]] bool group_ready(const Scene& scene, std::size_t group) const;
     /// Waits until the GPU has finished all submitted work.
     void wait() const;
+    /// The tier the river flow shading runs at (GpuLimits::river_quality, or
+    /// the automatic choice made in create()).
+    [[nodiscard]] RiverQuality river_quality() const;
+    /// One line describing an automatic choice that was measured (adapter, gate,
+    /// the added cost per tier, or that the budget ran out); empty when the tier
+    /// was given or decided by the adapter type. For the caller to print.
+    [[nodiscard]] const std::string& river_tier_note() const;
+    /// The measurements behind an automatic choice (empty when the tier was
+    /// given or the adapter is discrete).
+    [[nodiscard]] const std::vector<RiverCost>& river_costs() const;
+    /// Renders a synthetic view of 1024 x 1024 pure river pixels (four chunks
+    /// with a flow lattice of full-amplitude, shear-free flow, zoom group 1,
+    /// the worst case of the shading) a few times per tier and returns the GPU
+    /// time per million river pixels: the legacy shimmer first, then Low,
+    /// Medium and High. GPU timestamps when the device has them, else the wall
+    /// clock around submit and wait. Blocks (tools and the automatic choice in
+    /// create(); never per frame).
+    /// With `stop_gate` (the automatic choice of create()) only the tiers needed to
+    /// choose are measured: the legacy shimmer, then High, Medium, Low until one
+    /// adds at most `stop_gate` ms per Mpx (Low is not measured after Medium
+    /// failed: it is the floor).
+    /// `budget_ms` (0 = none) bounds the wall-clock time: when it is spent the tier
+    /// in progress is dropped and the rest are not measured.
+    std::vector<RiverCost> measure_river_cost(std::size_t repeats = 5,
+                                              std::optional<double> stop_gate = std::nullopt,
+                                              double budget_ms = 0.0);
+    /// GPU time of the sea pass of the last render() in milliseconds (needs
+    /// GpuLimits::gpu_timing and a device with timestamp queries; waits for
+    /// the GPU); nullopt otherwise.
+    std::optional<double> sea_pass_ms();
     /// An offscreen target of `w × h` in the frame's format that can be
     /// read back.
     std::pair<Texture, TextureView> offscreen_target(std::uint32_t w, std::uint32_t h) const;

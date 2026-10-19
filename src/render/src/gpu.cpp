@@ -2,6 +2,7 @@
 #include <array>
 #include <bit>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -194,8 +195,51 @@ std::vector<std::uint8_t> frame_uniform_bytes(const FrameUniform& f) {
     u.i32(f.fluid_origin.second);
     u.i32(f.fluid_size);
     u.u32(f.fluid_on ? 1U : 0U);
-    for (const float v : {f.fluid_cpt, 0.0F, 0.0F, 0.0F}) {
+    for (const float v : {f.fluid_cpt, f.river_flow ? 1.0F : 0.0F, f.river_lambda, 0.0F}) {
         u.f32(v);
+    }
+    return std::move(u.b);
+}
+
+RiverQuality choose_river_quality(const std::vector<RiverCost>& costs, double gate_ms_per_mpx) {
+    // The gate is on what the flow shading adds to the legacy shimmer's pass (the
+    // measurement without a tier): the sea pass's own cost is there either way.
+    // A driver that reports no time gives a zero: that must not read as "free", so
+    // an unmeasured reference or tier never qualifies (Low is the answer).
+    double legacy_ms = 0.0;
+    bool have_legacy = false;
+    for (const RiverCost& rc : costs) {
+        if (!rc.quality && rc.measured()) {
+            legacy_ms = rc.ms_per_mpx;
+            have_legacy = true;
+        }
+    }
+    RiverQuality best = RiverQuality::Low;
+    if (!have_legacy) {
+        return best;
+    }
+    for (const RiverCost& rc : costs) {
+        if (rc.quality && rc.measured() && rc.ms_per_mpx - legacy_ms <= gate_ms_per_mpx &&
+            static_cast<std::uint32_t>(*rc.quality) > static_cast<std::uint32_t>(best)) {
+            best = *rc.quality;
+        }
+    }
+    return best;
+}
+
+std::vector<std::uint8_t> river_params_bytes(const RiverParams& p, float min_valid) {
+    Bytes u;
+    const auto n = static_cast<std::uint32_t>(std::min<std::size_t>(p.count, kMaxRiverLayers));
+    u.u32(n);
+    u.u32(static_cast<std::uint32_t>(p.quality));
+    for (const float v : {min_valid, p.rapids_base, p.shear_from, p.shear_to, kLowTapGain, 0.0F}) {
+        u.f32(v);
+    }
+    for (std::size_t i = 0; i < kMaxRiverLayers; ++i) {
+        const RiverLayer l = i < n ? p.layers[i] : RiverLayer{0.0F, 0.0F, 0.0F, 0.0F, 0.0F};
+        for (const float v : {l.scale, l.period_ms, l.amp, l.fades, l.rapids, 0.0F, 0.0F, 0.0F}) {
+            u.f32(v);
+        }
     }
     return std::move(u.b);
 }
@@ -215,13 +259,28 @@ struct GpuFrame::Impl {
     PipelineLayout chunk_pl, sprite_pl;
     RenderPipeline ground_pipe, terrain_pipe, objects_pipe, sea_pipe, sprite_pipe;
     Buffer frame_uniform;
+    /// The river flow shading's parameters (struct RiverParams in gpu.wgsl).
+    Buffer river_uniform;
+    /// The tier of the river flow shading, and the measurements behind an
+    /// automatic choice.
+    RiverQuality quality = RiverQuality::High;
+    std::vector<RiverCost> costs;
+    std::string tier_note;
+    /// Timestamp queries (the device has them and a timed pass asked): the
+    /// sea pass of render() or a measured pass writes two ticks.
+    bool timestamps = false;
+    float timestamp_period_ns = 0.0F;
+    QuerySet ts_set;
+    Buffer ts_resolve, ts_read;
+    WGPUPassTimestampWrites ts_writes = WGPU_PASS_TIMESTAMP_WRITES_INIT;
+    bool ts_recorded = false;
     /// Offscreen texture of pass 1 and its size; terrain height per pixel.
     Texture under_t, terrain_t;
     TextureView under_v, terrain_v;
     std::pair<std::uint32_t, std::uint32_t> under_size{0, 0};
     /// 1 × 1 stand-ins for unused bindings.
     std::pair<Texture, TextureView> dummy_color, dummy_field, dummy_terrain, dummy_base,
-        dummy_depth, dummy_fluid, dummy_array;
+        dummy_depth, dummy_fluid, dummy_array, dummy_flow_uv, dummy_flow_aux, dummy_flow_shear;
 
     struct Sea {
         std::pair<int, int> size{0, 0};
@@ -233,15 +292,22 @@ struct GpuFrame::Impl {
     std::map<std::size_t, Sea> seas;
     std::optional<std::size_t> sea_group;
 
-    /// A chunk plane's texture (512² texels of `format`) and its view.
+    /// A chunk plane's texture (512² texels of `format`, or a flow lattice's
+    /// size) and its view.
     struct Plane {
         WGPUTextureFormat format = WGPUTextureFormat_Undefined;
+        std::uint32_t w = 0, h = 0;
         Texture texture;
         TextureView view;
     };
     struct Chunk {
         BindGroup bind;
         bool real = false;
+        /// Chunk::serial of the CPU chunk uploaded (0 = a stand-in): another
+        /// serial under the same key means the chunk was rebuilt.
+        std::uint64_t serial = 0;
+        /// The chunk has a flow lattice on the GPU.
+        bool flow = false;
         std::vector<Plane> planes;
         Buffer uniform;
     };
@@ -253,7 +319,7 @@ struct GpuFrame::Impl {
     /// are overwritten completely on reuse, and GPU work still reading the
     /// old contents is ordered before those writes.
     std::vector<Plane> plane_pool;
-    static constexpr std::size_t kPoolPlanes = 5 * 24;
+    static constexpr std::size_t kPoolPlanes = 8 * 24;
 
     /// Drops the GPU chunk at `it`, keeping its planes for reuse.
     std::map<ChunkKey, Chunk>::iterator drop_chunk(std::map<ChunkKey, Chunk>::iterator it) {
@@ -438,30 +504,35 @@ struct GpuFrame::Impl {
         // nothing (per-texel loops here cost ~0.8 ms per chunk).
         static_assert(std::endian::native == std::endian::little);
         auto view = [&](WGPUTextureFormat fmt, std::uint32_t bpp, const void* data,
-                        std::size_t bytes, std::uint32_t bit,
-                        WGPUTextureView dummy) -> WGPUTextureView {
-            // A plane that does not cover the chunk is left out (a short
-            // write would be a validation error).
-            if (data == nullptr || bytes != std::size_t{n} * n * bpp) {
+                        std::size_t bytes, std::uint32_t bit, WGPUTextureView dummy,
+                        std::uint32_t pw, std::uint32_t ph) -> WGPUTextureView {
+            // A plane that does not cover the chunk (pw x ph texels, the chunk's
+            // size unless a flow lattice) is left out (a short write would be a
+            // validation error).
+            if (data == nullptr || bytes != std::size_t{pw} * ph * bpp) {
                 return dummy;
             }
             const auto c0 = Clock::now();
             Plane plane;
-            const auto pooled = std::find_if(plane_pool.begin(), plane_pool.end(),
-                                             [fmt](const Plane& p) { return p.format == fmt; });
+            const auto pooled =
+                std::find_if(plane_pool.begin(), plane_pool.end(), [&](const Plane& p) {
+                    return p.format == fmt && p.w == pw && p.h == ph;
+                });
             if (pooled != plane_pool.end()) {
                 plane = std::move(*pooled);
                 plane_pool.erase(pooled);
             } else {
                 plane.format = fmt;
+                plane.w = pw;
+                plane.h = ph;
                 plane.texture =
-                    make_texture(dev(), "upload", fmt, n, n, 1,
+                    make_texture(dev(), "upload", fmt, pw, ph, 1,
                                  WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst |
                                      WGPUTextureUsage_CopySrc);
                 plane.view = make_view(plane.texture.get(), false);
             }
             const auto c1 = Clock::now();
-            write_layer(queue(), plane.texture.get(), 0, 0, 0, n, n, bpp, data, bytes);
+            write_layer(queue(), plane.texture.get(), 0, 0, 0, pw, ph, bpp, data, bytes);
             up_create_ms += std::chrono::duration<double, std::milli>(c1 - c0).count();
             up_write_ms += ms_since(c1);
             flags |= bit;
@@ -483,14 +554,36 @@ struct GpuFrame::Impl {
         const auto [tp, tb] = plane(c.terrain);
         const auto [bp, bb] = plane(c.base);
         const WGPUTextureView gv =
-            view(WGPUTextureFormat_BGRA8Unorm, 4, gp, gb, 1, dummy_color.second.get());
+            view(WGPUTextureFormat_BGRA8Unorm, 4, gp, gb, 1, dummy_color.second.get(), n, n);
         const WGPUTextureView ov =
-            view(WGPUTextureFormat_RGBA8Unorm, 4, op, ob, 2, dummy_color.second.get());
+            view(WGPUTextureFormat_RGBA8Unorm, 4, op, ob, 2, dummy_color.second.get(), n, n);
         const WGPUTextureView fv =
-            view(WGPUTextureFormat_RGBA8Uint, 4, fp, fb, 4, dummy_field.second.get());
-        const WGPUTextureView tv = view(kTerrainFormat, 2, tp, tb, 8, dummy_terrain.second.get());
+            view(WGPUTextureFormat_RGBA8Uint, 4, fp, fb, 4, dummy_field.second.get(), n, n);
+        const WGPUTextureView tv =
+            view(kTerrainFormat, 2, tp, tb, 8, dummy_terrain.second.get(), n, n);
         const WGPUTextureView bv =
-            view(WGPUTextureFormat_R8Uint, 1, bp, bb, 16, dummy_base.second.get());
+            view(WGPUTextureFormat_R8Uint, 1, bp, bb, 16, dummy_base.second.get(), n, n);
+        // The river flow lattice (rivers.md 3.3): three planes of the lattice's
+        // size, valid only when they are consistent and start at the chunk's
+        // corner (the shader reads texel (i, j) at chunk pixel (i, j) * stride).
+        const river::FlowPlane& fl = c.flow;
+        const std::size_t texels = std::size_t{fl.nx} * fl.ny;
+        const bool has_flow = chunk != nullptr && fl.nx >= 2 && fl.ny >= 2 && fl.stride_px >= 1 &&
+                              fl.stride_px <= river::kMaxLatticeStride && fl.x0 == r.x &&
+                              fl.y0 == r.y && fl.uv.size() == texels * 2 &&
+                              fl.aux.size() == texels * 4 && fl.shear.size() == texels;
+        WGPUTextureView fuv = dummy_flow_uv.second.get(), fax = dummy_flow_aux.second.get(),
+                        fsh = dummy_flow_shear.second.get();
+        if (has_flow) {
+            fuv = view(WGPUTextureFormat_RG16Sint, 4, fl.uv.data(), fl.uv.size() * 2, 0, fuv, fl.nx,
+                       fl.ny);
+            fax = view(WGPUTextureFormat_RGBA8Uint, 4, fl.aux.data(), fl.aux.size(), 0, fax, fl.nx,
+                       fl.ny);
+            fsh = view(WGPUTextureFormat_R8Uint, 1, fl.shear.data(), fl.shear.size(), 0, fsh, fl.nx,
+                       fl.ny);
+            flags |= kChunkFlagFlow | fl.stride_px << kChunkStrideShift;
+        }
+        out.flow = has_flow;
         out.uniform =
             make_buffer(dev(), "chunk", 16, WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
         Bytes u;
@@ -504,7 +597,10 @@ struct GpuFrame::Impl {
                                     view_entry(2, ov),
                                     view_entry(3, fv),
                                     view_entry(4, tv),
-                                    view_entry(5, bv)};
+                                    view_entry(5, bv),
+                                    view_entry(kFlowVelocityBinding, fuv),
+                                    view_entry(kFlowAuxBinding, fax),
+                                    view_entry(kFlowShearBinding, fsh)};
         WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
         desc.label = sv("chunk");
         desc.layout = chunk_layout.get();
@@ -512,6 +608,7 @@ struct GpuFrame::Impl {
         desc.entries = entries.data();
         out.bind = BindGroup(wgpuDeviceCreateBindGroup(dev(), &desc));
         out.real = chunk != nullptr;
+        out.serial = chunk != nullptr ? chunk->serial : 0;
         return out;
     }
 
@@ -532,10 +629,13 @@ struct GpuFrame::Impl {
         const auto begin = Clock::now();
         for (const auto& key : keys) {
             const auto it = chunks.find(key);
-            if (it != chunks.end() && it->second.real) {
+            const render::Chunk* c = frames.chunk(key);
+            // A chunk on the GPU stays unless the CPU rebuilt it (another
+            // serial: its river flow arrived, rivers.md 15.6).
+            if (it != chunks.end() && it->second.real &&
+                (c == nullptr || it->second.serial == c->serial)) {
                 continue;
             }
-            const render::Chunk* c = frames.chunk(key);
             // Count and time budget: the first chunk always goes, so a
             // slow device still makes progress.
             const bool room = uploads < limits.uploads_per_frame &&
@@ -543,7 +643,21 @@ struct GpuFrame::Impl {
                                ms_since(begin) < limits.upload_budget_ms);
             if (c != nullptr && room) {
                 ++uploads;
-                chunks.insert_or_assign(key, upload_chunk(key, c));
+                Chunk fresh = upload_chunk(key, c);
+                if (it != chunks.end()) {
+                    // The replaced chunk's planes are reused by later uploads
+                    // (its bind group goes with it; queued GPU work keeps what it
+                    // reads alive).
+                    Chunk old = std::move(it->second);
+                    it->second = std::move(fresh);
+                    for (Plane& p : old.planes) {
+                        if (plane_pool.size() < kPoolPlanes) {
+                            plane_pool.push_back(std::move(p));
+                        }
+                    }
+                } else {
+                    chunks.emplace(key, std::move(fresh));
+                }
             } else if (it == chunks.end()) {
                 chunks.emplace(key, upload_chunk(key, nullptr));
             }
@@ -772,7 +886,7 @@ struct GpuFrame::Impl {
     }
 
     void write_frame_uniform(Rect view, std::size_t group, std::uint64_t time_ms, WaterStyle style,
-                             const Scene& scene, bool fluid_on) {
+                             const Scene& scene, bool fluid_on, bool river_flow) {
         FrameUniform f;
         f.view = view;
         if (const Sea* s = current_sea()) {
@@ -789,6 +903,8 @@ struct GpuFrame::Impl {
         f.enhanced = style == WaterStyle::Enhanced;
         f.ship_water = limits.ship_waterline;
         f.objects_water = limits.object_waterline;
+        f.river_flow = river_flow;
+        f.river_lambda = sea::river_view(group, scene.lift).lambda;
         // Fluid window: origin (world cells), size, on, cells per tile.
         if (fluid && fluid_on) {
             if (const auto w = fluid->window()) {
@@ -834,6 +950,57 @@ struct GpuFrame::Impl {
         return true;
     }
 
+    /// Creates the query set and buffers of the timed passes on first use;
+    /// false when the device has no timestamp queries.
+    bool ensure_timestamps() {
+        if (!timestamps) {
+            return false;
+        }
+        if (!ts_set) {
+            WGPUQuerySetDescriptor qd = WGPU_QUERY_SET_DESCRIPTOR_INIT;
+            qd.label = sv("timestamps");
+            qd.type = WGPUQueryType_Timestamp;
+            qd.count = 2;
+            ts_set = QuerySet(wgpuDeviceCreateQuerySet(dev(), &qd));
+            ts_resolve = make_buffer(dev(), "timestamps", 16,
+                                     WGPUBufferUsage_QueryResolve | WGPUBufferUsage_CopySrc);
+            ts_read = make_buffer(dev(), "timestamps read", 16,
+                                  WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead);
+            ts_writes.querySet = ts_set.get();
+            ts_writes.beginningOfPassWriteIndex = 0;
+            ts_writes.endOfPassWriteIndex = 1;
+        }
+        return static_cast<bool>(ts_set);
+    }
+
+    /// After the timed pass: resolves the two ticks and copies them to the
+    /// read-back buffer.
+    void resolve_timestamps(WGPUCommandEncoder enc) {
+        wgpuCommandEncoderResolveQuerySet(enc, ts_set.get(), 0, 2, ts_resolve.get(), 0);
+        wgpuCommandEncoderCopyBufferToBuffer(enc, ts_resolve.get(), 0, ts_read.get(), 0, 16);
+        ts_recorded = true;
+    }
+
+    /// The duration (ms) of the last timed pass; waits for the GPU.
+    std::optional<double> read_timestamps() {
+        if (!ts_recorded || !ts_read) {
+            return std::nullopt;
+        }
+        ts_recorded = false;
+        wait_idle(ref->instance.get(), dev(), queue());
+        if (!map_read(ref->instance.get(), dev(), ts_read.get(), 16)) {
+            return std::nullopt;
+        }
+        const auto* t =
+            static_cast<const std::uint64_t*>(wgpuBufferGetConstMappedRange(ts_read.get(), 0, 16));
+        std::optional<double> ms;
+        if (t != nullptr && t[1] > t[0]) {
+            ms = static_cast<double>(t[1] - t[0]) * static_cast<double>(timestamp_period_ns) * 1e-6;
+        }
+        wgpuBufferUnmap(ts_read.get());
+        return ms;
+    }
+
     BindGroup frame_bind(WGPUTextureView under, WGPUTextureView terrain) const {
         const Sea* s = current_sea();
         const WGPUTextureView sprite = s != nullptr ? s->sprite_v.get() : dummy_array.second.get();
@@ -846,6 +1013,7 @@ struct GpuFrame::Impl {
             view_entry(4, terrain != nullptr ? terrain : dummy_terrain.second.get()),
             view_entry(5, fluid ? fluid->state_view() : dummy_fluid.second.get()),
             view_entry(6, fluid ? fluid->depth_view() : dummy_depth.second.get()),
+            buffer_entry(kRiverParamsBinding, river_uniform.get(), kRiverParamsBytes),
         };
         WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
         desc.label = sv("frame");
@@ -858,7 +1026,8 @@ struct GpuFrame::Impl {
 
 namespace {
 
-WGPURenderPassEncoder begin(WGPUCommandEncoder enc, WGPUTextureView view, WGPUColor clear) {
+WGPURenderPassEncoder begin(WGPUCommandEncoder enc, WGPUTextureView view, WGPUColor clear,
+                            const WGPUPassTimestampWrites* timestamps = nullptr) {
     WGPURenderPassColorAttachment ca = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
     ca.view = view;
     ca.loadOp = WGPULoadOp_Clear;
@@ -867,6 +1036,7 @@ WGPURenderPassEncoder begin(WGPUCommandEncoder enc, WGPUTextureView view, WGPUCo
     WGPURenderPassDescriptor desc = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
     desc.colorAttachmentCount = 1;
     desc.colorAttachments = &ca;
+    desc.timestampWrites = timestamps;
     return wgpuCommandEncoderBeginRenderPass(enc, &desc);
 }
 
@@ -910,14 +1080,20 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
                 texture_entry(3, kFloat, WGPUTextureViewDimension_2DArray),
                 texture_entry(4, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D),
                 texture_entry(5, kFloat, WGPUTextureViewDimension_2D),
-                texture_entry(6, kFloat, WGPUTextureViewDimension_2D)});
-    m.chunk_layout =
-        layout(d, "chunk",
-               {uniform_entry(0), texture_entry(1, kFloat, WGPUTextureViewDimension_2D),
-                texture_entry(2, kFloat, WGPUTextureViewDimension_2D),
-                texture_entry(3, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D),
-                texture_entry(4, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D),
-                texture_entry(5, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D)});
+                texture_entry(6, kFloat, WGPUTextureViewDimension_2D),
+                uniform_entry(kRiverParamsBinding)});
+    m.chunk_layout = layout(
+        d, "chunk",
+        {uniform_entry(0), texture_entry(1, kFloat, WGPUTextureViewDimension_2D),
+         texture_entry(2, kFloat, WGPUTextureViewDimension_2D),
+         texture_entry(3, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D),
+         texture_entry(4, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D),
+         texture_entry(5, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D),
+         texture_entry(kFlowVelocityBinding, WGPUTextureSampleType_Sint,
+                       WGPUTextureViewDimension_2D),
+         texture_entry(kFlowAuxBinding, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D),
+         texture_entry(kFlowShearBinding, WGPUTextureSampleType_Uint,
+                       WGPUTextureViewDimension_2D)});
     m.atlas_layout =
         layout(d, "atlas", {texture_entry(0, kFloat, WGPUTextureViewDimension_2DArray)});
     {
@@ -972,6 +1148,10 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     }
     m.frame_uniform = make_buffer(d, "frame", kFrameUniformBytes,
                                   WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
+    m.river_uniform = make_buffer(d, "river", kRiverParamsBytes,
+                                  WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
+    m.timestamps = c.timestamps;
+    m.timestamp_period_ns = c.timestamp_period_ns;
     const WGPUQueue q = c.queue.get();
     m.dummy_color =
         upload_texture(d, q, WGPUTextureFormat_RGBA8Unorm, 1, 1, 4, {0, 0, 0, 0}, false);
@@ -986,6 +1166,57 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     m.dummy_fluid = upload_texture(d, q, WGPUTextureFormat_RGBA32Float, 1, 1, 16,
                                    std::vector<std::uint8_t>(16, 0), false);
     m.dummy_array = upload_texture(d, q, WGPUTextureFormat_RGBA8Unorm, 1, 1, 4, {0, 0, 0, 0}, true);
+    m.dummy_flow_uv =
+        upload_texture(d, q, WGPUTextureFormat_RG16Sint, 1, 1, 4, {0, 0, 0, 0}, false);
+    m.dummy_flow_aux =
+        upload_texture(d, q, WGPUTextureFormat_RGBA8Uint, 1, 1, 4, {0, 0, 0, 0}, false);
+    m.dummy_flow_shear = upload_texture(d, q, WGPUTextureFormat_R8Uint, 1, 1, 1, {0}, false);
+    {
+        const auto fill = river_params_bytes(RiverParams{}, 0.02F);
+        wgpuQueueWriteBuffer(q, m.river_uniform.get(), 0, fill.data(), fill.size());
+    }
+    // The tier of the river flow shading: given, or the highest the adapter
+    // affords (rivers.md 16: discrete adapters are High unmeasured, software
+    // adapters Low unmeasured, the rest measured against the gate).
+    if (limits.river_quality) {
+        m.quality = *limits.river_quality;
+    } else if (c.adapter_type == WGPUAdapterType_DiscreteGPU) {
+        m.quality = RiverQuality::High;
+    } else if (c.adapter_type == WGPUAdapterType_CPU) {
+        m.quality = RiverQuality::Low;
+    } else {
+        m.costs =
+            f->measure_river_cost(3, limits.river_gate_ms_per_mpx, limits.river_measure_budget_ms);
+        m.quality = choose_river_quality(m.costs, limits.river_gate_ms_per_mpx);
+        const auto tier_name = [](RiverQuality tier) {
+            return tier == RiverQuality::High     ? "high"
+                   : tier == RiverQuality::Medium ? "medium"
+                                                  : "low";
+        };
+        double legacy_ms = 0.0;
+        for (const RiverCost& rc : m.costs) {
+            if (!rc.quality && rc.measured()) {
+                legacy_ms = rc.ms_per_mpx;
+            }
+        }
+        m.tier_note = "river shading tier on " + c.name + ": " + tier_name(m.quality) + " (gate " +
+                      std::to_string(limits.river_gate_ms_per_mpx) + " ms per million river pixels";
+        bool unmeasured = legacy_ms <= 0.0;
+        for (const RiverCost& rc : m.costs) {
+            if (rc.quality && rc.measured() && legacy_ms > 0.0) {
+                char buf[64];
+                std::snprintf(buf, sizeof buf, "; %s +%.2f", tier_name(*rc.quality),
+                              rc.ms_per_mpx - legacy_ms);
+                m.tier_note += buf;
+            } else if (rc.quality) {
+                unmeasured = true;
+            }
+        }
+        if (unmeasured || m.costs.size() < 2) {
+            m.tier_note += "; not (fully) measured: budget spent or no time reported";
+        }
+        m.tier_note += ")";
+    }
     return f;
 }
 
@@ -1054,7 +1285,23 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                           m.update_fluid(enc.get(), scene, view, group, time_ms);
     stats.fluid_ms = ms_since(t_fluid);
     stats.wave_simulation = fluid_on;
-    m.write_frame_uniform(view, group, time_ms, style, scene, fluid_on);
+    const bool river_flow = style == WaterStyle::Enhanced &&
+                            frames.river_flow == RiverFlowMode::Flow && scene.river_active();
+    m.write_frame_uniform(view, group, time_ms, style, scene, fluid_on, river_flow);
+    {
+        RiverParams rp = scene.river_cfg.params();
+        rp.quality = m.quality;
+        const auto river_bytes = river_params_bytes(rp, scene.river_cfg.min_valid);
+        wgpuQueueWriteBuffer(m.queue(), m.river_uniform.get(), 0, river_bytes.data(),
+                             river_bytes.size());
+    }
+    stats.river_quality = m.quality;
+    for (const auto& [cx, cy] : visible) {
+        if (const auto it = m.chunks.find({group, cx, cy});
+            it != m.chunks.end() && it->second.flow) {
+            ++stats.river_chunks;
+        }
+    }
     const BindGroup pass1 = m.frame_bind(nullptr, nullptr);
     const BindGroup pass2 = m.frame_bind(m.under_v.get(), m.terrain_v.get());
     const Px water = scene.textures.water();
@@ -1096,8 +1343,9 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         wgpuRenderPassEncoderEnd(p);
         wgpuRenderPassEncoderRelease(p);
     }
+    const bool timed = m.limits.gpu_timing && m.ensure_timestamps();
     {
-        WGPURenderPassEncoder p = begin(enc.get(), target, clear);
+        WGPURenderPassEncoder p = begin(enc.get(), target, clear, timed ? &m.ts_writes : nullptr);
         wgpuRenderPassEncoderSetBindGroup(p, 0, pass2.get(), 0, nullptr);
         wgpuRenderPassEncoderSetPipeline(p, m.sea_pipe.get());
         draw_chunks(p);
@@ -1128,6 +1376,9 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         wgpuRenderPassEncoderEnd(p);
         wgpuRenderPassEncoderRelease(p);
     }
+    if (timed) {
+        m.resolve_timestamps(enc.get());
+    }
     m.submit(enc.get(), "frame");
     stats.encode_ms = ms_since(t);
     stats.total_ms = ms_since(start);
@@ -1148,6 +1399,171 @@ bool GpuFrame::group_ready(const Scene& scene, std::size_t group) const {
 
 void GpuFrame::wait() const {
     wait_idle(impl_->ref->instance.get(), impl_->dev(), impl_->queue());
+}
+
+RiverQuality GpuFrame::river_quality() const {
+    return impl_->quality;
+}
+
+const std::vector<RiverCost>& GpuFrame::river_costs() const {
+    return impl_->costs;
+}
+
+const std::string& GpuFrame::river_tier_note() const {
+    return impl_->tier_note;
+}
+
+std::optional<double> GpuFrame::sea_pass_ms() {
+    return impl_->read_timestamps();
+}
+
+std::vector<RiverCost> GpuFrame::measure_river_cost(std::size_t repeats,
+                                                    std::optional<double> stop_gate,
+                                                    double budget_ms) {
+    Impl& m = *impl_;
+    constexpr std::uint32_t kSide = 1024;
+    constexpr std::size_t kGroup = 1;
+    const auto n = static_cast<std::size_t>(kChunk);
+    // Four chunks of pure river pixels (cover 255, far from any shore, 5 units
+    // deep, no slope: no rapids) with a flow lattice of stride 4: a speed of
+    // 0.6 tiles/s turning slowly around, level 32 units, valid, no shear (the
+    // shear fade removes layers: this is the worst case of the shading).
+    render::Chunk syn;
+    syn.field.resize(n * n * 4);
+    for (std::size_t i = 0; i < n * n; ++i) {
+        syn.field[i * 4] = 255;
+        syn.field[i * 4 + 1] = 255;
+        syn.field[i * 4 + 2] = static_cast<std::uint8_t>(sea::kDepthBias + 20.0F);
+        syn.field[i * 4 + 3] = 2;
+    }
+    const std::uint32_t stride = 4;
+    river::FlowPlane& fp = syn.flow;
+    fp.stride_px = stride;
+    fp.nx = fp.ny = static_cast<std::uint32_t>(kChunk) / stride + 1;
+    fp.tile_w = kTile[kGroup].w;
+    fp.tile_h = kTile[kGroup].h;
+    fp.uv.assign(std::size_t{fp.nx} * fp.ny * 2, 0);
+    fp.aux.assign(std::size_t{fp.nx} * fp.ny * 4, 0);
+    fp.shear.assign(std::size_t{fp.nx} * fp.ny, 0);
+    for (std::uint32_t j = 0; j < fp.ny; ++j) {
+        for (std::uint32_t i = 0; i < fp.nx; ++i) {
+            const float a = 0.05F * static_cast<float>(i) + 0.03F * static_cast<float>(j);
+            river::set_texel(fp, i, j, 0.6F * std::cos(a), 0.6F * std::sin(a), 1.0F, 0.0F, 0.0F,
+                             32.0F, 8.0F, 0.0F);
+        }
+    }
+    std::vector<Impl::Chunk> quad;
+    for (int cy = 0; cy < 2; ++cy) {
+        for (int cx = 0; cx < 2; ++cx) {
+            fp.x0 = cx * kChunk;
+            fp.y0 = cy * kChunk;
+            quad.push_back(m.upload_chunk({kGroup, cx, cy}, &syn));
+        }
+    }
+    m.ensure_under(kSide, kSide);
+    const auto target = offscreen_target(kSide, kSide);
+    const BindGroup frame_bind = m.frame_bind(m.under_v.get(), m.terrain_v.get());
+    const bool stamps = m.ensure_timestamps();
+    FrameUniform fu;
+    fu.view = {0, 0, static_cast<int>(kSide), static_cast<int>(kSide)};
+    fu.enhanced = true;
+    fu.tile_w = static_cast<float>(kTile[kGroup].w);
+    fu.tile_h = static_cast<float>(kTile[kGroup].h);
+    fu.raise = static_cast<float>(kHeightLift.scaled(kSeaLevel, 1, kGroup));
+    fu.river_lambda = sea::river_view(kGroup, kHeightLift).lambda;
+    const double mpx = static_cast<double>(kSide) * kSide / 1e6;
+    const WGPUColor clear = {0, 0, 0, 1};
+    const auto started = Clock::now();
+    const auto over_budget = [&] { return budget_ms > 0.0 && ms_since(started) > budget_ms; };
+    // Set when a pass wanted GPU timestamps and had to use the wall clock.
+    bool fell_back = false;
+    // One pass; its GPU milliseconds (timestamps; the wall clock around submit
+    // and wait when the device has none or the reading gave nothing: a driver that
+    // reports no time is never "0 ms"). nullopt = the submit failed.
+    auto pass = [&](std::optional<RiverQuality> quality) -> std::optional<double> {
+        fu.river_flow = quality.has_value();
+        const auto u = frame_uniform_bytes(fu);
+        wgpuQueueWriteBuffer(m.queue(), m.frame_uniform.get(), 0, u.data(), u.size());
+        RiverParams rp = river::RiverConfig{}.params();
+        rp.quality = quality.value_or(RiverQuality::High);
+        const auto rb = river_params_bytes(rp, 0.02F);
+        wgpuQueueWriteBuffer(m.queue(), m.river_uniform.get(), 0, rb.data(), rb.size());
+        WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
+        CommandEncoder enc(wgpuDeviceCreateCommandEncoder(m.dev(), &ed));
+        WGPURenderPassEncoder p =
+            begin(enc.get(), target.second.get(), clear, stamps ? &m.ts_writes : nullptr);
+        wgpuRenderPassEncoderSetBindGroup(p, 0, frame_bind.get(), 0, nullptr);
+        wgpuRenderPassEncoderSetPipeline(p, m.sea_pipe.get());
+        for (const Impl::Chunk& c : quad) {
+            wgpuRenderPassEncoderSetBindGroup(p, 1, c.bind.get(), 0, nullptr);
+            wgpuRenderPassEncoderDraw(p, 6, 1, 0, 0);
+        }
+        wgpuRenderPassEncoderEnd(p);
+        wgpuRenderPassEncoderRelease(p);
+        if (stamps) {
+            m.resolve_timestamps(enc.get());
+        }
+        wait();
+        const auto t0 = Clock::now();
+        if (!m.submit(enc.get(), "river cost")) {
+            return std::nullopt;
+        }
+        if (stamps) {
+            if (const auto gpu_ms = m.read_timestamps()) {
+                return *gpu_ms;
+            }
+            fell_back = true;
+        }
+        wait();
+        return ms_since(t0);
+    };
+    std::vector<RiverCost> out;
+    // All tiers from the cheapest up; with a gate from the dearest down, stopping at
+    // the first that fits (and after Medium: Low is the floor whatever it costs),
+    // so the automatic choice on a slow adapter measures as little as possible.
+    std::array<std::optional<RiverQuality>, 4> tiers = {std::nullopt, RiverQuality::Low,
+                                                        RiverQuality::Medium, RiverQuality::High};
+    if (stop_gate) {
+        tiers = {std::nullopt, RiverQuality::High, RiverQuality::Medium, RiverQuality::Low};
+    }
+    for (const auto& tier : tiers) {
+        // Warm-up passes: an integrated GPU idles at a low clock and needs a few
+        // milliseconds of work to leave it. The wall-clock budget is checked before
+        // every pass; a tier it cuts short is dropped (unmeasured, never "free").
+        bool complete = true;
+        for (int i = 0; i < 3 && complete; ++i) {
+            complete = !over_budget() && pass(tier).has_value();
+        }
+        std::vector<double> times;
+        fell_back = false;
+        for (std::size_t i = 0; i < std::max<std::size_t>(repeats, 1) && complete; ++i) {
+            complete = !over_budget();
+            if (complete) {
+                const auto t = pass(tier);
+                complete = t.has_value();
+                if (t) {
+                    times.push_back(*t);
+                }
+            }
+        }
+        if (!complete || times.empty()) {
+            break;
+        }
+        std::sort(times.begin(), times.end());
+        RiverCost rc;
+        rc.quality = tier;
+        rc.ms = times[times.size() / 2];
+        rc.megapixels = mpx;
+        rc.ms_per_mpx = rc.ms / mpx;
+        rc.gpu_timestamps = stamps && !fell_back;
+        out.push_back(rc);
+        if (stop_gate && tier &&
+            (rc.ms_per_mpx - out.front().ms_per_mpx <= *stop_gate ||
+             *tier == RiverQuality::Medium)) {
+            break;
+        }
+    }
+    return out;
 }
 
 std::pair<Texture, TextureView> GpuFrame::offscreen_target(std::uint32_t w, std::uint32_t h) const {

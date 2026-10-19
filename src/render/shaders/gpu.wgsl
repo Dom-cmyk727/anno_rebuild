@@ -29,8 +29,11 @@ struct Frame {
     fluid_size: i32,
     fluid_on: u32,
     fluid_cpt: f32,
-    _pad2: f32,
-    _pad3: f32,
+    // 1 = enhanced rivers are shaded by the flow lattice (river_flow_shade),
+    // else the legacy shimmer; pixels per HEIGHT unit of the lift of the
+    // zoom group (iso::RiverView::lambda, the river's own water plane).
+    river_flow: f32,
+    river_lambda: f32,
     _pad4: f32,
 }
 
@@ -45,12 +48,44 @@ struct Frame {
 @group(0) @binding(5) var fluid_tex: texture_2d<f32>;
 // Still-water depth per simulation cell (ring-buffer storage).
 @group(0) @binding(6) var fluid_depth: texture_2d<f32>;
+// The layer table and scalars of the river flow shading (iso::RiverParams;
+// rivers.md 3.3). MAX_RIVER_LAYERS is iso::kMaxRiverLayers (a uniform array
+// needs a compile-time size; a test compares the two).
+const MAX_RIVER_LAYERS: u32 = 8u;
+struct RiverLayer {
+    scale: f32,
+    period_ms: f32,
+    amp: f32,
+    // 1 = the amplitude follows the zoom group's wave detail.
+    fades: f32,
+    // 1 = a whitewater layer, lit by the surface slope.
+    rapids: f32,
+    _p0: f32,
+    _p1: f32,
+    _p2: f32,
+}
+struct RiverParams {
+    count: u32,
+    // iso::RiverQuality: 0 low, 1 medium, 2 high.
+    quality: u32,
+    // Below this weight of valid lattice texels a pixel keeps the legacy shimmer.
+    min_valid: f32,
+    rapids_base: f32,
+    shear_from: f32,
+    shear_to: f32,
+    // iso::kLowTapGain.
+    low_tap_gain: f32,
+    _p0: f32,
+    layers: array<RiverLayer, 8>,
+}
+@group(0) @binding(7) var<uniform> river: RiverParams;
 
 struct Chunk {
     origin: vec2<i32>,
     size: i32,
     // bit 0: ground, bit 1: objects, bit 2: water field, bit 3: terrain,
-    // bit 4: object base plane (frame::Chunk::base)
+    // bit 4: object base plane (frame::Chunk::base), bit 5: river flow
+    // lattice (bindings 6 to 8), bits 8-15: the lattice stride in pixels
     flags: u32,
 }
 
@@ -62,6 +97,13 @@ struct Chunk {
 // Per object pixel: rows above the object's lowest pixel in its column
 // (255 = none or no ground contact; Canvas::base).
 @group(1) @binding(5) var base_tex: texture_2d<u32>;
+// The baked river flow of the chunk (river::FlowPlane; rivers.md 3.3): texel
+// (i, j) lies at chunk pixel (i, j) * stride. uv: velocity along the tile
+// axes in 1/4096 tiles/s; aux: valid, turbulence, wake (0-255) and the river
+// surface level in 1/2 HEIGHT units; shear: |grad u| in 1/32 1/s.
+@group(1) @binding(6) var flow_uv: texture_2d<i32>;
+@group(1) @binding(7) var flow_aux: texture_2d<u32>;
+@group(1) @binding(8) var flow_shear: texture_2d<u32>;
 
 // Scene pixel rectangle → clip space.
 fn to_clip(p: vec2<f32>) -> vec4<f32> {
@@ -324,6 +366,136 @@ fn river_shade(w: vec2<f32>, depth: f32, slope: f32, t: f32) -> vec3<f32> {
     return vec3<f32>(light, 0.0, 0.15 * sstep(4.0, 0.0, depth));
 }
 
+// ---- River flow shading: port of iso::river_flow_shade / river::flow_at ----
+// The same operations in the same order as the CPU twin (rivers.md 8).
+
+struct FlowSample {
+    v: vec2<f32>,
+    turb: f32,
+    wake: f32,
+    level: f32,
+    valid: f32,
+    shear: f32,
+}
+
+// river::flow_at: valid-weighted bilinear read of the four texels around the
+// centre of chunk pixel `local`.
+fn flow_at(local: vec2<i32>) -> FlowSample {
+    var out = FlowSample(vec2<f32>(0.0), 0.0, 0.0, 0.0, 0.0, 0.0);
+    let stride = f32((chunk.flags >> 8u) & 0xFFu);
+    let fx = (f32(local.x) + 0.5) / stride;
+    let fy = (f32(local.y) + 0.5) / stride;
+    let flx = floor(fx);
+    let fly = floor(fy);
+    let dims = vec2<f32>(textureDimensions(flow_uv));
+    if !(flx >= 0.0) || !(fly >= 0.0) || flx + 1.0 >= dims.x || fly + 1.0 >= dims.y {
+        return out;
+    }
+    let i0 = vec2<i32>(i32(flx), i32(fly));
+    let a = fx - flx;
+    let b = fy - fly;
+    var sum = 0.0;
+    var ux = 0.0;
+    var uy = 0.0;
+    var turb = 0.0;
+    var wake = 0.0;
+    var level = 0.0;
+    var shear = 0.0;
+    for (var dy = 0; dy < 2; dy++) {
+        for (var dx = 0; dx < 2; dx++) {
+            let t = i0 + vec2<i32>(dx, dy);
+            let aux = textureLoad(flow_aux, t, 0);
+            let uv = textureLoad(flow_uv, t, 0);
+            let sh = textureLoad(flow_shear, t, 0).r;
+            let v = f32(aux.r) / 255.0;
+            let wx = select(1.0 - a, a, dx != 0);
+            let wy = select(1.0 - b, b, dy != 0);
+            let w = wx * wy * v;
+            sum += w;
+            ux += w * f32(uv.x) / 4096.0;
+            uy += w * f32(uv.y) / 4096.0;
+            turb += w * f32(aux.g) / 255.0;
+            wake += w * f32(aux.b) / 255.0;
+            level += w * f32(aux.a) * 0.5;
+            shear += w * f32(sh) * 0.03125;
+        }
+    }
+    out.valid = sum;
+    if !(sum > 0.0) {
+        return out;
+    }
+    out.v = vec2<f32>(ux / sum, uy / sum);
+    out.turb = turb / sum;
+    out.wake = wake / sum;
+    out.level = level / sum;
+    out.shear = shear / sum;
+    return out;
+}
+
+// iso::flow_psi
+fn flow_psi(x: vec2<f32>) -> f32 {
+    return 0.5 * noise3(0.13 * x.x, 0.13 * x.y, 3.0);
+}
+
+// iso::flow_phases for phase k, and the centred noise at its coordinate:
+// (weight, noise).
+fn flow_phase_noise(x: vec2<f32>, u: vec2<f32>, t: f32, layer: RiverLayer, psi: f32, k: f32) -> vec2<f32> {
+    let seconds = layer.period_ms * 0.001;
+    var phi = t / layer.period_ms + psi + 0.5 * k;
+    phi = phi - floor(phi);
+    let w = 1.0 - abs(2.0 * phi - 1.0);
+    let cx = x.x - u.x * seconds * phi;
+    let cy = x.y - u.y * seconds * phi;
+    let n = noise3(cx * layer.scale + k * 13.37, cy * layer.scale + k * 7.91, 0.5) - 0.5;
+    return vec2<f32>(w, n);
+}
+
+// The variance-preserving blend of the two phases (E18) of one layer.
+fn flow_layer_field(x: vec2<f32>, u: vec2<f32>, t: f32, layer: RiverLayer, psi: f32) -> f32 {
+    let p0 = flow_phase_noise(x, u, t, layer, psi, 0.0);
+    let p1 = flow_phase_noise(x, u, t, layer, psi, 1.0);
+    let norm = sqrt(p0.x * p0.x + p1.x * p1.x);
+    return (p0.x * p0.y + p1.x * p1.y) / norm;
+}
+
+// iso::river_flow_shade: (light, 0, tint) of an enhanced river pixel by
+// flow-map advection of the ripple layers along the baked velocity, on the
+// river's own water plane (E19). `px` is the scene pixel.
+fn river_flow_shade(px: vec2<f32>, f: FlowSample, depth: f32, slope: f32, t: f32, detail: f32) -> vec3<f32> {
+    let pyw = px.y + frame.river_lambda * f.level;
+    let x = vec2<f32>(px.x / frame.tile_w + pyw / frame.tile_h, pyw / frame.tile_h - px.x / frame.tile_w);
+    let u = f.v;
+    let probe = 0.15;
+    let x2 = vec2<f32>(x.x - probe, x.y);
+    let psi = flow_psi(x);
+    let rapids = sstep(5.0, 14.0, slope);
+    var light = 0.0;
+    let n = min(river.count, MAX_RIVER_LAYERS);
+    for (var l = 0u; l < n; l++) {
+        let layer = river.layers[l];
+        if river.quality != 2u && layer.fades != 0.0 {
+            continue;
+        }
+        let shear_fade = 1.0 - sstep(river.shear_from, river.shear_to, layer.period_ms * 0.001 * f.shear);
+        var amp = layer.amp * shear_fade;
+        if layer.fades != 0.0 {
+            amp = amp * (detail * (1.0 + f.turb));
+        }
+        if amp == 0.0 || (layer.rapids != 0.0 && rapids <= 0.0) {
+            continue;
+        }
+        let na = flow_layer_field(x, u, t, layer, psi);
+        if layer.rapids != 0.0 {
+            light += rapids * (river.rapids_base + amp * na);
+        } else if river.quality == 0u {
+            light += amp * river.low_tap_gain * layer.scale * na;
+        } else {
+            light += amp * (na - flow_layer_field(x2, u, t, layer, psi)) / probe;
+        }
+    }
+    return vec3<f32>(light, 0.0, 0.15 * sstep(4.0, 0.0, depth));
+}
+
 // iso::surf_time / surf_bend / surf_phase / wave_height / runup_height / swash
 // iso::kRiverSeaDist: shore distance (tiles) of the sea look blended into
 // rivers at the coast (calm water, no surf).
@@ -574,7 +746,20 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         if (flags & 2u) != 0u {
             // Near the sea (shore = distance / kRiverBlend · 254) the river
             // takes on the sea's look (Scene::blend_rivers_into_sea).
-            let rs = river_shade(w, sd, slope_of(flags), frame.time_ms);
+            // The flow shading where the chunk's lattice has a flow
+            // (sea::river_pixel_shade), else the legacy shimmer.
+            var rs = vec3<f32>(0.0);
+            var flowing = false;
+            if frame.river_flow != 0.0 && (chunk.flags & 32u) != 0u {
+                let fs = flow_at(px - chunk.origin);
+                if fs.valid >= river.min_valid {
+                    rs = river_flow_shade(vec2<f32>(px), fs, sd, slope_of(flags), frame.time_ms, detail);
+                    flowing = true;
+                }
+            }
+            if !flowing {
+                rs = river_shade(w, sd, slope_of(flags), frame.time_ms);
+            }
             let kb = min(f32(shore) / 254.0, 1.0);
             var ss = rs;
             if kb < 1.0 {

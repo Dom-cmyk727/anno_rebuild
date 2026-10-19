@@ -452,6 +452,23 @@ float swash_runup(float dist, float slope, std::pair<float, float> pos, std::uin
 /// advected along the solved flow (stage S5, CPU reference path).
 enum class RiverFlowMode { Legacy, Flow };
 
+/// Cost tiers of the river flow shading (docs/render/rivers.md 4 and 16, decision
+/// D11). High: every layer, the ripple light as the slope of the noise (two
+/// taps per phase). Medium: the layers that fade with the zoom group's wave
+/// detail (the glints and the whitewater streaks) are left out. Low: Medium
+/// with one noise tap per phase (the noise itself, scaled to the light
+/// variance of the slope, instead of its slope). The numbers are the
+/// enumerators of the uniform's `quality` field (gpu.wgsl).
+enum class RiverQuality : std::uint32_t { Low = 0, Medium = 1, High = 2 };
+
+/// RiverQuality::Low: the light of a ripple layer is amp * kLowTapGain * scale *
+/// noise instead of amp * (noise(x) - noise(x - e)) / e: the slope of the
+/// value noise at scale s has the standard deviation of the noise times about
+/// this factor times s (calibrated by the test "river quality tiers": the
+/// light variance of Low stays within 25 % of High on a uniform flow).
+/// Tuning value (not evidence).
+inline constexpr float kLowTapGain = 1.8F;
+
 /// Layers of the river flow shading in RiverParams. The count is data
 /// (RiverConfig::layers); the array size is the compile-time bound of the
 /// uniform array of the GPU port (rivers.md 3.3: a WGSL uniform array needs a
@@ -478,6 +495,8 @@ struct RiverLayer {
 /// `river_params` of the GPU port).
 struct RiverParams {
     std::uint32_t count = 0;
+    /// The cost tier (RiverQuality; High = the reference look).
+    RiverQuality quality = RiverQuality::High;
     /// Constant brightening of a full rapids layer; the shear fade of
     /// layers (T |grad u| from `shear_from` to `shear_to`).
     float rapids_base = 0.05F, shear_from = 0.5F, shear_to = 1.5F;

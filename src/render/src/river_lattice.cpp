@@ -60,6 +60,10 @@ std::string RiverConfig::validate(std::uint32_t chunk_px, std::size_t groups) co
         if (s == 0 || chunk_px % s != 0) {
             return "every lattice stride must divide the chunk size";
         }
+        if (s > kMaxLatticeStride) {
+            return "every lattice stride must be at most " + std::to_string(kMaxLatticeStride) +
+                   " pixels (the GPU chunk flags hold it in 8 bits)";
+        }
     }
     // The int16 lattice holds +-32767 / kVelocityScale.
     if (!(velocity_max > 0.0F) || velocity_max * kVelocityScale > 32768.0F) {

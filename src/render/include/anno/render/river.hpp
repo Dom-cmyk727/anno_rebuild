@@ -30,6 +30,13 @@ namespace anno::render::river {
 /// One HEIGHT unit in tiles (docs/render/iso.md, "Elevation": 0.04 world units).
 inline constexpr float kUnitTiles = 0.04F;
 
+/// The largest lattice stride (pixels per texel) the GPU compositor can carry: its
+/// chunk flag word keeps the stride in bits 8-15 (gpu.hpp kChunkStrideShift), so 8
+/// bits. RiverConfig::validate refuses larger strides, so CPU and GPU never differ
+/// in whether a lattice is drawn. To lift it, widen the stride field (the flag word
+/// has bits 16-31 free) and raise this constant with the shader's decoding.
+inline constexpr std::uint32_t kMaxLatticeStride = 255;
+
 /// One layer of the river flow shading (rivers.md 2.8), see iso::RiverLayer.
 struct LayerConfig {
     float scale = 1.0F, period_ms = 1000.0F, amplitude = 0.0F;
@@ -215,7 +222,8 @@ struct RiverConfig {
     /// Empty when the shading tables are consistent: every layer period
     /// divides 3,600,000 ms (the hourly time wrap), at most kMaxRiverLayers
     /// layers, one positive lattice stride per zoom group dividing the chunk
-    /// size `chunk_px`, finite positive scales. Otherwise the first problem.
+    /// size `chunk_px` and are at most kMaxLatticeStride, finite positive scales.
+    /// Otherwise the first problem.
     [[nodiscard]] std::string validate(std::uint32_t chunk_px, std::size_t groups) const;
     /// The shading uniform of the table (layers beyond the maximum dropped).
     [[nodiscard]] RiverParams params() const;

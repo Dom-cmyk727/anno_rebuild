@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
 
@@ -52,6 +53,7 @@ using Device = Handle<WGPUDevice, wgpuDeviceRelease>;
 using Queue = Handle<WGPUQueue, wgpuQueueRelease>;
 using ShaderModule = Handle<WGPUShaderModule, wgpuShaderModuleRelease>;
 using Buffer = Handle<WGPUBuffer, wgpuBufferRelease>;
+using QuerySet = Handle<WGPUQuerySet, wgpuQuerySetRelease>;
 using Texture = Handle<WGPUTexture, wgpuTextureRelease>;
 using TextureView = Handle<WGPUTextureView, wgpuTextureViewRelease>;
 using BindGroup = Handle<WGPUBindGroup, wgpuBindGroupRelease>;
@@ -88,7 +90,34 @@ struct Context {
     Queue queue;
     /// "<adapter name> (<backend>)".
     std::string name;
+    /// Discrete, integrated, CPU (software) or unknown, as the adapter reports it.
+    WGPUAdapterType adapter_type = WGPUAdapterType_Unknown;
+    /// The device was created with timestamp queries (render passes can be
+    /// timed on the GPU; GpuFrame::sea_pass_ms), and the length of one tick in
+    /// nanoseconds.
+    bool timestamps = false;
+    float timestamp_period_ns = 0.0F;
 };
+
+/// One adapter the instance can open (list_adapters).
+struct AdapterInfo {
+    std::string name;
+    WGPUBackendType backend = WGPUBackendType_Undefined;
+    WGPUAdapterType type = WGPUAdapterType_Unknown;
+    std::uint32_t vendor_id = 0;
+};
+
+/// Every adapter of every backend on this machine (wgpu's enumeration), in
+/// the order ANNO_GPU_ADAPTER counts them. Empty when none (or the instance
+/// cannot be created).
+std::vector<AdapterInfo> list_adapters();
+
+/// The adapter ANNO_GPU_ADAPTER names among `adapters` (the order of
+/// list_adapters()): `want` is an index (a number outside the list, or too large
+/// to parse, matches nothing) or a case-insensitive part of a name (the first
+/// match). nullopt = none, the default adapter is used. No device needed.
+std::optional<std::size_t> pick_adapter(std::string_view want,
+                                        const std::vector<AdapterInfo>& adapters);
 
 /// Owned references to a context's instance, device and queue (and its
 /// error count), so a renderer stays valid when the Context is moved.
@@ -109,7 +138,9 @@ struct DeviceRef {
 };
 
 /// Opens the high-performance adapter without a surface and a device with
-/// the adapter's limits (as the Rust viewer). Uncaptured device errors are
+/// the adapter's limits (as the Rust viewer). ANNO_GPU_ADAPTER (a number from
+/// list_adapters(), or a case-insensitive part of an adapter name) picks
+/// another adapter, e.g. the integrated GPU for measurements. Uncaptured device errors are
 /// printed to stderr and counted (Context::errors; wgpu in Rust panics
 /// instead), a lost device is printed. WGPU_BACKEND (vulkan, metal, dx12,
 /// gl) picks the backend, as wgpu's *_from_env. The error names what failed

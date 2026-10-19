@@ -53,6 +53,9 @@ if(ANNO_HAVE_WGPU)
     add_executable(anno_render_gpu_tests tests/main.cpp tests/gpu_test.cpp)
     target_link_libraries(anno_render_gpu_tests PRIVATE anno_render_gpu anno_test_support
       doctest::doctest)
+    # Our own synthetic files (fixtures/synthetic): a scene without islands.
+    target_compile_definitions(anno_render_gpu_tests PRIVATE
+      ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
     anno_target_defaults(anno_render_gpu_tests)
     # One GPU case at a time: each opens its own device.
     anno_add_doctest(anno_render_gpu_tests PROPERTIES RESOURCE_LOCK gpu)

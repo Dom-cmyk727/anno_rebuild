@@ -148,8 +148,16 @@ std::vector<Px> to_px(const Canvas& c) {
 
 } // namespace
 
-Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool ships,
-                   bool wait_for_flow) {
+namespace {
+
+/// The next chunk serial (Chunk::serial): unique in the process.
+std::uint64_t next_serial() {
+    static std::atomic<std::uint64_t> counter{0};
+    return counter.fetch_add(1, std::memory_order_relaxed) + 1;
+}
+
+Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, bool ships,
+                        bool wait_for_flow) {
     const Rect rect = chunk_rect(cx, cy);
     std::vector<std::size_t> islands;
     for (const auto& p : scene.layouts[group]) {
@@ -231,6 +239,15 @@ Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool s
         c.flow_waiting.erase(std::unique(c.flow_waiting.begin(), c.flow_waiting.end()),
                              c.flow_waiting.end());
     }
+    return c;
+}
+
+} // namespace
+
+Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool ships,
+                   bool wait_for_flow) {
+    Chunk c = render_chunk_data(scene, group, cx, cy, ships, wait_for_flow);
+    c.serial = next_serial();
     return c;
 }
 
@@ -345,6 +362,11 @@ const Chunk* FrameRenderer::chunk(const ChunkKey& key) const {
     return it == cache_.end() ? nullptr : &it->second;
 }
 
+void FrameRenderer::insert_chunk(const ChunkKey& key, Chunk chunk) {
+    chunk.serial = next_serial();
+    cache_.insert_or_assign(key, std::move(chunk));
+}
+
 std::tuple<std::size_t, double, std::size_t>
 FrameRenderer::update_chunks(const Scene& scene, Rect view, std::size_t group) {
     const auto t = Clock::now();
@@ -443,7 +465,8 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
         const Lift lift = scene.lift;
         const bool flowing = style == WaterStyle::Enhanced && river_flow == RiverFlowMode::Flow &&
                              scene.river_active();
-        const RiverParams river_params = scene.river_cfg.params();
+        RiverParams river_params = scene.river_cfg.params();
+        river_params.quality = river_quality;
         const sea::RiverShading shading{&river_params, scene.river_cfg.min_valid};
         par_bands(out, view, threads, [&](std::uint32_t* band, Rect rows) {
             for (const auto& [cx, cy] : chunks) {

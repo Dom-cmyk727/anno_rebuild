@@ -138,7 +138,15 @@ std::uint64_t sweep_chunks(std::uint32_t chunks, std::uint16_t delta_tick, std::
     return std::min<std::uint64_t>(std::uint64_t{chunks} * delta_tick / period + 1, chunks);
 }
 
-std::uint64_t World::state_hash() const { return hash_state(*this, nullptr, 0); }
+World::World() : types_(TypeRegistry::empty()) {}
+
+World::World(std::uint32_t seed) : types_(TypeRegistry::empty()) {
+    rng.set_cursor(seed);
+}
+
+std::uint64_t World::state_hash() const {
+    return hash_state(*this, nullptr, 0);
+}
 
 std::uint64_t World::state_hash(HashTree& tree, std::uint32_t depth) const {
     return hash_state(*this, &tree, depth);

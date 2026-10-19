@@ -3,6 +3,7 @@
 // stocks are 8.8 fixed point (256 = 1 ton), time is the world tick t (2 ms).
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -61,6 +62,22 @@ struct ProductionType {
     /// Display rate of line 0 and 1 in 8.8 tons per minute (type +0x20c).
     std::uint32_t display_rate0 = 0, display_rate1 = 0;
 };
+
+/// The number of names the original reads from a WARE or a ROHSTOFF record
+/// (the loops `cmp eax, 2` at AnnoGame.dll 0x1000a1f4 and 0x1000a2e2). A fixed
+/// width of the type reader, mirrored here: a mod with more goods lines needs
+/// the reader, ProductionType and the production model widened together; raise
+/// this constant with them.
+inline constexpr std::size_t kWareRecordNames = 2;
+
+/// The goods names of a WARE or ROHSTOFF record (NUL-terminated strings): the
+/// first kWareRecordNames (two), as the original reads exactly two (AnnoGame.dll 0x1000a1f4,
+/// 0x1000a2e2; further names are ignored), up to the last one that is not
+/// UNUSED or empty. For ROHSTOFF this is the original's count (the index + 1
+/// of the last non-UNUSED name, 0x1000a2c9-0x1000a2cf); the WARE branch has no
+/// count, the cut is the rebuild's convention there. An UNUSED name before the
+/// last used one stays (it resolves to goods 0).
+std::vector<std::string> ware_names(formats::Bytes record);
 
 /// The production type of an Anlagen.dat ANLAGEN entry; nullopt if it has
 /// no PROD3 record of 68 bytes. The float → integer conversion follows the

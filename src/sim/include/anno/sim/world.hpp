@@ -1,16 +1,23 @@
 // The simulated world (spec: docs/sim/core.md, docs/sim/state.md). For now
-// the clock and the PRNG; islands, buildings, figures and players follow as
-// their rules are recovered (PLAN M3, docs/sim/state.md §15). Once commands
-// exist they become the only way to change it from outside; until then the
-// members are public for tests.
+// the clock, the PRNG and the immutable context a world is created with:
+// configuration, rules, settings, seams and the type registry (stage S3).
+// Islands, buildings, figures and players follow as their rules are recovered
+// (PLAN M3, docs/sim/state.md §15). Once commands exist they become the only
+// way to change it from outside; until then `clock` and `rng` are public for
+// tests.
 #pragma once
 
 #include <cstdint>
+#include <memory>
 
 #include <anno/sim/clock.hpp>
+#include <anno/sim/config.hpp>
 #include <anno/sim/hash.hpp>
 #include <anno/sim/hash_tree.hpp>
 #include <anno/sim/rng.hpp>
+#include <anno/sim/seams.hpp>
+#include <anno/sim/settings.hpp>
+#include <anno/sim/types.hpp>
 
 namespace anno::sim {
 
@@ -22,20 +29,33 @@ namespace anno::sim {
 // of them are re-baselined in the one commit that sets the value to 2. 1 is
 // the legacy core_hash. After S15 every field-list change is version 3, 4, ...
 // Stream at 100 (stage S1): header (the two versions), clock_rng.
-inline constexpr std::uint32_t kStateHashVersion = 100;
+// Stream at 101 (stage S3): header gains SimConfig, Rules, the registry digest
+// and the seam names; new scope settings.
+inline constexpr std::uint32_t kStateHashVersion = 101;
 /// The PRNG timeline: which original draw sites exist in the sim (docs/sim/
 /// state.md §6). Porting a site is a recorded bump, never a silent desync.
 inline constexpr std::uint32_t kPrngTimelineVersion = 1;
 
+struct StateIO;
+
 class World {
   public:
-    World() = default;
+    /// An empty world: the original configuration, default rules and settings,
+    /// no seams installed, and the empty type registry (docs/sim/state.md
+    /// §4.14). World::create (S5) builds the real ones.
+    World();
     /// A world whose PRNG cursor is `seed mod table size` (the host's game
     /// seed, D: AnnoFrame.dll 0x1009b978 → AnnoScene.dll 0x10002e40).
-    explicit World(std::uint32_t seed) { rng.set_cursor(seed); }
+    explicit World(std::uint32_t seed);
 
     WorldClock clock;
     WorldRng rng;
+
+    [[nodiscard]] const WorldSettings& settings() const { return settings_; }
+    [[nodiscard]] const SimConfig& config() const { return config_; }
+    [[nodiscard]] const Rules& rules() const { return rules_; }
+    [[nodiscard]] const Seams& seams() const { return seams_; }
+    [[nodiscard]] const TypeRegistry& types() const { return *types_; }
 
     /// Compile-time canary (never called): binds every data member of World.
     /// A member added without extending this line fails to compile here,
@@ -43,7 +63,8 @@ class World {
     /// (state_fields.hpp) and to bump kStateHashVersion, so it cannot be left
     /// outside hash and save (docs/sim/state.md §14.4).
     static constexpr void field_list_canary(const World& w) {
-        [[maybe_unused]] const auto& [clock_member, rng_member] = w;
+        [[maybe_unused]] const auto& [clock_member, rng_member, settings_member, config_member,
+                                      rules_member, seams_member, types_member] = w;
     }
 
     /// Advances the world by `game_ms` (original order, D: AnnoWelt.dll
@@ -62,6 +83,16 @@ class World {
     /// so the old golden stays checkable; state_hash() begins with the same
     /// five fields inside its clock_rng scope.
     [[nodiscard]] std::uint64_t core_hash() const;
+
+  private:
+    friend struct StateIO;
+    friend struct WorldTestAccess;
+
+    WorldSettings settings_;
+    SimConfig config_;
+    Rules rules_;
+    Seams seams_;
+    RegistryRef types_; // never null, also after a move (types.hpp)
 };
 
 } // namespace anno::sim

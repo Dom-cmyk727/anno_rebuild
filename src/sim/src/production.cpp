@@ -48,10 +48,16 @@ std::vector<std::string> names(formats::Bytes b) {
     return out;
 }
 
-/// Names up to the last one that is not UNUSED (the original's count, type
-/// +0x1fb = index + 1 of the last non-UNUSED name; D: AnnoGame.dll
-/// 0x10009240 ROHSTOFF branch).
+/// The first kWareRecordNames names, up to the last one that is not UNUSED (or
+/// empty). The count `index + 1 of the last non-UNUSED name` is what the
+/// ROHSTOFF branch stores (type +0x1fb, D: AnnoGame.dll 0x1000a2c9-0x1000a2cf);
+/// the WARE branch (0x1000a156-0x1000a205) stores no count, so for WARE this
+/// trailing cut is the rebuild's own convention (the goods bytes of an UNUSED
+/// name are 0 either way).
 std::vector<std::string> used(std::vector<std::string> v) {
+    if (v.size() > kWareRecordNames) {
+        v.resize(kWareRecordNames);
+    }
     while (!v.empty() && (v.back() == "UNUSED" || v.back().empty())) {
         v.pop_back();
     }
@@ -91,6 +97,10 @@ BuildingClass class_of(const std::string& p) {
 }
 
 } // namespace
+
+std::vector<std::string> ware_names(formats::Bytes record) {
+    return used(names(record));
+}
 
 formats::Result<std::optional<ProductionType>, std::string>
 production_type(const fig::Entry& entry) {

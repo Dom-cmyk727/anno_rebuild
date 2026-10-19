@@ -7,7 +7,19 @@
 #
 # G0: empty world, seed 1234, advance(10) x 1000; the checkpoints are the
 # state hash after 1, 100 and 1000 steps. Cross-checked against an independent
-# Python transcription of the hierarchical FNV-1a stream (header + clock_rng).
-g0_step1     S1 100 544877aa62f19438
-g0_step100   S1 100 5f8186fde7359bdd
-g0_step1000  S1 100 0c1979b83ac344ea
+# Python transcription of the hierarchical FNV-1a stream (header with SimConfig,
+# Rules, registry digest and seam names; clock_rng; settings).
+#
+# Re-baselined at stream version 101 (stage S3: the header scope gained the
+# configuration, the rules, the registry digest and the seam names, and the
+# settings scope was added). The version-100 values were 544877aa62f19438,
+# 5f8186fde7359bdd and 0c1979b83ac344ea.
+# Re-baselined again inside development version 101 (S3 review round): the class
+# table of the registry gained the gate periods of PublicService, School, Hunter,
+# Whaler, Shipyard (500) and CannonTower (166), which moves the registry digest in
+# the header. The values come from the independent Python transcription of the
+# stream (tools/sim_stream.py --check compares this file with it); with those six periods at 0 it reproduces the previous values
+# df6815f02263f93a, 5d751217d5462017 and c1396d71dd832d30.
+g0_step1     S1 101 de68b44067afbb2d
+g0_step100   S1 101 4eb4b429d76b7408
+g0_step1000  S1 101 9fb365627b32730f

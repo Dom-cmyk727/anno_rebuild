@@ -460,26 +460,50 @@ TEST_CASE("state_hash relational properties") {
     b.advance(10);
     CHECK(a.state_hash() == b.state_hash());
 
-    // The scopes of stream 100: header, then clock_rng; the clock_rng scope
-    // is exactly the v1 five-field hash.
+    // The scopes of stream 101: header, clock_rng, settings; the clock_rng
+    // scope is exactly the v1 five-field hash.
     sim::HashTree tree;
     CHECK(base.state_hash(tree, 0) == h);
     CHECK(tree.root.hash == h);
-    REQUIRE(tree.root.children.size() == 2);
+    REQUIRE(tree.root.children.size() == 3);
     CHECK(tree.root.children[0].name == "header");
     CHECK(tree.root.children[1].name == "clock_rng");
+    CHECK(tree.root.children[2].name == "settings");
     CHECK(tree.root.children[1].hash == base.core_hash());
+    // The header scope: the two versions, SimConfig, Rules, the registry digest
+    // and the seam names, in one FNV-1a stream (docs/sim/state.md §9.3).
+    sim::WriteArchive config_bytes;
+    fields(config_bytes, base.config());
+    sim::WriteArchive rules_bytes;
+    fields(rules_bytes, base.rules());
     sim::StateHasher header;
     header.u32(sim::kStateHashVersion);
     header.u32(sim::kPrngTimelineVersion);
+    header.bytes(config_bytes.data());
+    header.bytes(rules_bytes.data());
+    header.u64(base.types().digest());
+    header.u64(22); // 8 city passes + 14 other seams
+    for (int i = 0; i < 22; ++i) {
+        header.u64(7);
+        const std::uint8_t name[] = {'d', 'e', 'f', 'a', 'u', 'l', 't'};
+        header.bytes(name);
+    }
     CHECK(tree.root.children[0].hash == header.value());
+    sim::WriteArchive settings_bytes;
+    fields(settings_bytes, base.settings());
+    sim::StateHasher settings;
+    settings.bytes(settings_bytes.data());
+    CHECK(tree.root.children[2].hash == settings.value());
     sim::StateHasher root;
     root.u64(header.value());
     root.u64(base.core_hash());
+    root.u64(settings.value());
     CHECK(root.value() == h);
-    // The empty world, from the independent Python transcription of the stream.
-    CHECK(sim::World().state_hash() == 0x4d9dbe4683eebff3ULL);
-    CHECK(sim::kStateHashVersion == 100);
+    // The empty world, from the independent Python transcription of the stream
+    // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
+    // names, clock_rng, settings).
+    CHECK(sim::World().state_hash() == 0x968fede444d9fc4eULL);
+    CHECK(sim::kStateHashVersion == 101);
     CHECK(sim::kPrngTimelineVersion == 1);
 }
 
@@ -539,8 +563,9 @@ TEST_CASE("hash_state records the scopes down to the requested depth") {
     sim::HashTree tree;
     CHECK(sim::hash_state(w, &tree, 5) == w.state_hash());
     CHECK(w.state_hash(tree, 5) == w.state_hash());
-    // The world's own scopes sit at level 0 only (S1), whatever the depth.
-    CHECK(tree.root.children.size() == 2);
+    // The world's own scopes sit at level 0 only (S1, S3), whatever the depth:
+    // header, clock_rng, settings.
+    CHECK(tree.root.children.size() == 3);
     for (const sim::HashNode& c : tree.root.children) {
         CHECK(c.children.empty());
     }
@@ -688,8 +713,8 @@ TEST_CASE("field count canary") {
     // World and WorldRng are not aggregates: they canary themselves with a
     // structured binding next to their members (world.hpp, rng.hpp), which
     // fails to compile when a member is added without extending it.
-    static_assert(std::is_void_v<decltype(sim::World::field_list_canary(
-                      std::declval<const sim::World&>()))>);
+    static_assert(
+        std::is_void_v<decltype(sim::World::field_list_canary(std::declval<const sim::World&>()))>);
     static_assert(std::is_void_v<decltype(sim::WorldRng::field_list_canary(
                       std::declval<const sim::WorldRng&>()))>);
 
@@ -734,17 +759,21 @@ TEST_CASE("world core stream layout round trip and rejects") {
     sim::WriteArchive wa;
     fields(wa, std::as_const(w));
     const std::vector<std::uint8_t> bytes = wa.take();
-    // header: u32 100, u32 1; clock_rng: u64 ms, u64 last_tick, u64 2048,
-    // u64 table digest, u32 cursor.
-    REQUIRE(bytes.size() == 8 + 36);
+    // header: u32 101, u32 1, then SimConfig, Rules, registry digest and seam
+    // names (config_test.cpp pins those bytes); clock_rng: u64 ms, u64
+    // last_tick, u64 2048, u64 table digest, u32 cursor (36 bytes); settings
+    // (38 bytes, config_test.cpp). The clock_rng scope is found from the end.
+    constexpr std::size_t kSettingsBytes = 38;
+    REQUIRE(bytes.size() > 8 + 36 + kSettingsBytes);
+    const std::size_t at = bytes.size() - kSettingsBytes - 36; // where clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 8) ==
-          std::vector<std::uint8_t>{100, 0, 0, 0, 1, 0, 0, 0});
-    CHECK(bytes[8] == 17); // ms = 17
-    CHECK(bytes[16] == 8); // last_tick = 8
-    CHECK(bytes[24] == 0);
-    CHECK(bytes[25] == 8); // 2048 = 0x0800
-    CHECK(bytes[40] == (1234 & 0xFF));
-    CHECK(bytes[41] == (1234 >> 8));
+          std::vector<std::uint8_t>{101, 0, 0, 0, 1, 0, 0, 0});
+    CHECK(bytes[at] == 17);    // ms = 17
+    CHECK(bytes[at + 8] == 8); // last_tick = 8
+    CHECK(bytes[at + 16] == 0);
+    CHECK(bytes[at + 17] == 8); // 2048 = 0x0800
+    CHECK(bytes[at + 32] == (1234 & 0xFF));
+    CHECK(bytes[at + 33] == (1234 >> 8));
 
     auto read_into = [](sim::World& target, const std::vector<std::uint8_t>& in) {
         sim::ReadArchive r(in);
@@ -773,7 +802,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another state hash version is refused") {
         auto bad = bytes;
-        bad[0] = 101;
+        bad[0] = 102;
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);
@@ -789,13 +818,13 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("a table of another size or digest is refused") {
         auto bad = bytes;
-        bad[25] = 7; // size 0x0700
+        bad[at + 17] = 7; // size 0x0700
         sim::World other;
         std::string err = read_into(other, bad);
         CHECK(err.find("clock_rng") == 0);
         CHECK(err.find("table") != std::string::npos);
         bad = bytes;
-        bad[32] ^= 1; // digest
+        bad[at + 24] ^= 1; // digest
         err = read_into(other, bad);
         CHECK(err.find("table") != std::string::npos);
         // The same stream into a world with another table.
@@ -805,11 +834,11 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("a cursor outside the table is refused") {
         auto bad = bytes;
-        bad[40] = 0;
-        bad[41] = 8; // 2048
+        bad[at + 32] = 0;
+        bad[at + 33] = 8; // 2048
         sim::World other;
         CHECK(read_into(other, bad).find("cursor") != std::string::npos);
-        bad[41] = 7; // 1792: fine
+        bad[at + 33] = 7; // 1792: fine
         sim::World ok;
         CHECK(read_into(ok, bad) == "");
         CHECK(ok.rng.cursor() == 1792);
@@ -818,7 +847,9 @@ TEST_CASE("world core stream layout round trip and rejects") {
 
 TEST_CASE("golden G0 empty world seed 1234 advance 10 ms x 1000") {
     // The state hash after 1, 100 and 1000 steps, against
-    // fixtures/synthetic/sim/goldens.txt (stage S1, development version 100).
+    // fixtures/synthetic/sim/goldens.txt (stage S1, re-baselined at development
+    // version 101 by stage S3: the header gained the configuration and the
+    // settings scope).
     sim::World w(1234);
     int done = 0;
     for (const int checkpoint : {1, 100, 1000}) {

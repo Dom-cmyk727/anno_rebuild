@@ -76,6 +76,8 @@
 #include <anno/render/river.hpp>
 #include <anno/render/scene.hpp>
 
+#include "shade.hpp"
+
 namespace {
 
 namespace fs = std::filesystem;
@@ -842,6 +844,10 @@ int main(int argc, char** argv) {
     std::optional<render::Rect> rect;
     std::size_t rect_group = 0;
     fs::path rect_out;
+    // --shade DIR (with --rect): the flow shading of the rectangle as images at --times.
+    fs::path shade_dir;
+    std::vector<std::uint64_t> shade_times = {0};
+    float shade_gain = 1.0F;
     std::vector<fs::path> files;
     fs::path dir;
     for (int i = 1; i < argc; ++i) {
@@ -866,6 +872,17 @@ int main(int argc, char** argv) {
             rect = render::Rect{v[1], v[2], v[3], v[4]};
         } else if (a == "--rect-out" && i + 1 < argc) {
             rect_out = argv[++i];
+        } else if (a == "--shade" && i + 1 < argc) {
+            shade_dir = argv[++i];
+        } else if (a == "--shade-gain" && i + 1 < argc) {
+            shade_gain = std::strtof(argv[++i], nullptr);
+        } else if (a == "--times" && i + 1 < argc) {
+            shade_times.clear();
+            for (const auto part : split(argv[++i], ',')) {
+                std::uint64_t t = 0;
+                std::from_chars(part.data(), part.data() + part.size(), t);
+                shade_times.push_back(t);
+            }
         } else if (a == "--flow") {
             opt.flow = true;
         } else if (a == "--flow-dump" && i + 1 < argc) {
@@ -929,7 +946,9 @@ int main(int argc, char** argv) {
         std::fputs(
             "usage: river_qa <game_dir> [--groups 0,1,2] [--dump dir] [--per-island] "
             "[--max-mask-px N] [--flow [--flow-dump dir] [--discharge normalised|absolute|sourced] "
-            "[--reference fastest|median] [--median-speed t]] <file.sze|.scp>...\n",
+            "[--reference fastest|median] [--median-speed t]] <file.sze|.scp>...\n"
+            "       river_qa <game_dir> --rect group,x,y,w,h --shade <dir> [--times t,t,..] "
+            "[--shade-gain x] <file>\n",
             stderr);
         return 2;
     }
@@ -953,6 +972,12 @@ int main(int argc, char** argv) {
             if (const auto b = scene.bounds(rect_group)) {
                 std::fprintf(stderr, "%s group %zu: scene bounds x %d y %d w %d h %d\n",
                              name.c_str(), rect_group, b->x, b->y, b->w, b->h);
+            }
+            if (!shade_dir.empty()) {
+                std::printf("| scene | group | rect | river px | with flow | coverage "
+                            "|\n|---|---|---|---|---|---|\n");
+                run_shade(scene, rect_group, *rect, shade_times, shade_dir, name, shade_gain);
+                continue;
             }
             write_rect_masks(scene, rect_group, *rect, rect_out);
             continue;

@@ -78,6 +78,8 @@ struct Options {
     /// Render paced frames for this many ms before the paths (background
     /// work such as the wave simulation window needs wall-clock time).
     std::size_t settle_ms = 0;
+    /// Enhanced rivers: the shading of the CPU path (--river-flow legacy|flow).
+    render::RiverFlowMode river_flow = render::RiverFlowMode::Flow;
 };
 
 std::vector<std::string_view> split(std::string_view s, char sep) {
@@ -127,6 +129,7 @@ struct Config {
     std::size_t zoom_every = 0, zoom_frames = 240;
     double pace_ms = 2.0, spike_ms = 8.0;
     std::size_t settle_ms = 0;
+    render::RiverFlowMode river_flow = render::RiverFlowMode::Flow;
 };
 
 void report(const Config& c, const char* renderer, const char* mode, const char* name,
@@ -184,6 +187,9 @@ void compare(const render::Scene& scene, const Config& c, render::Rect view, std
         return;
     }
     render::FrameRenderer cpu(c.threads);
+    // The GPU compositor draws the legacy river look until its port (rivers.md
+    // S6), so the reference of this check is the CPU path's legacy look.
+    cpu.river_flow = render::RiverFlowMode::Legacy;
     std::vector<std::uint32_t> out(std::size_t{w} * h);
     cpu.render(scene, view, c.group, time, c.style, out.data());
     std::size_t differ = 0;
@@ -322,6 +328,7 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, std::size_t& group,
 void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
     // The GPU compositor draws the ships itself: chunks without them.
     render::FrameRenderer fr(c.threads, g == nullptr);
+    fr.river_flow = c.river_flow;
     if (c.async_chunks) {
         fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (c.threads + 1) / 2));
     }
@@ -443,7 +450,8 @@ constexpr const char* kUsage =
     "usage: bench_frame <game_dir> <file> [--threads n] [--res WxH,..] [--groups 0,1,2] "
     "[--styles original,enhanced] [--chunks blocking,async] [--renderer cpu,gpu] [--check] "
     "[--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick] [--zoom k] [--zoom-frames n] "
-    "[--pace ms] [--spike ms] [--limits default|interactive] [--settle ms]\n";
+    "[--pace ms] [--spike ms] [--limits default|interactive] [--settle ms] "
+    "[--river-flow legacy|flow]\n";
 
 std::optional<Options> parse_options(const std::vector<std::string>& args) {
     Options o;
@@ -516,6 +524,10 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = xy.size() == 2 && parse(xy[0], o.at.first) && parse(xy[1], o.at.second);
         } else if (a == "--settle") {
             ok = parse(v, o.settle_ms);
+        } else if (a == "--river-flow") {
+            ok = v == "legacy" || v == "flow";
+            o.river_flow =
+                v == "legacy" ? render::RiverFlowMode::Legacy : render::RiverFlowMode::Flow;
         } else if (a == "--limits") {
             ok = v == "default" || v == "interactive";
             o.interactive = v == "interactive";
@@ -649,6 +661,7 @@ int main(int argc, char** argv) {
                         c.threads = o->threads;
                         c.check = o->check;
                         c.settle_ms = o->settle_ms;
+                        c.river_flow = o->river_flow;
                         c.zoom_every = o->zoom_every;
                         c.zoom_frames = o->zoom_frames;
                         c.pace_ms = o->pace_ms;

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Independent transcription of the simulation's state stream (docs/sim/state.md
-§9.3, stage S6): the registry digest of the empty registry and the state hash of
+§9.3, stage S7): the registry digest of the empty registry and the state hash of
 the empty world, from the spec and from the goods names in
 src/sim/src/goods_table.cpp, without any C++ code. Since stage S4 the stream has
 the players scope (32 slots, the table's stamp and cursor), whose cursor the
@@ -24,6 +24,15 @@ script transcribes the city and, for the golden s6_g1_create, a weaver and a far
 (the Workshop and Farm payloads). The registry digest of the synthetic registry
 (make_synthetic_types) is a literal taken from types_test, because transcribing the
 type table is out of scope here: everything else of that golden is independent.
+Since stage S7 the stream has the scopes ids (after settings), figures and events
+(after islands), and World::advance ticks the islands: the script transcribes the
+island tick (the sweep cursors, the object manager, the city ring, the city tick and
+the building scheduler: stamps, cursors and visit counts, with the production gate
+asserted closed) for the horizon of the goldens s5_islands_step100 and
+s6_g1_step100, so the island state after 100 advances is held to an independent
+reading of the spec too. The G1 run of the spec (20 000 steps) is not transcribed:
+its goldens (s7_g1_*) come from the C++ and are protected by the semantic asserts of
+slice_test.cpp.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
@@ -43,7 +52,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 104
+STATE_HASH_VERSION = 105
 PRNG_TIMELINE_VERSION = 1
 
 
@@ -318,14 +327,17 @@ def index_digest(stamp, lists):
     return fnv(u16(stamp) + u64(len(lists)) + b''.join(u64(x) for x in lists))
 
 
-def city_digest(number, owner, buildings_by_list=None, tick_stamp=0, stock=None):
+def city_digest(number, owner, buildings_by_list=None, tick_stamp=0, stock=None,
+                index_stamp=0, cursors=None):
     """One present city. buildings_by_list: {list id: (hint, [bytes or None, ...])};
-    a list that is not given is a fresh one (hint -1, cursor 0, one empty slot)."""
+    a list that is not given is a fresh one (hint -1, cursor 0, one empty slot).
+    cursors: {list id: scheduler cursor}; index_stamp: the index's shared stamp."""
     buildings_by_list = buildings_by_list or {}
+    cursors = cursors or {}
     lists = []
     for lid in range(LIST_COUNT):
         hint, slots = buildings_by_list.get(lid, (-1, [None]))
-        lists.append(list_digest(hint, 0, slots))
+        lists.append(list_digest(hint, cursors.get(lid, 0), slots))
     stock = stock or [0] * WAREHOUSE_GOODS
     b = u32(number) + u32(owner) + u16(tick_stamp)
     b += u32(50 * 256) + u32s(stock)
@@ -333,7 +345,7 @@ def city_digest(number, owner, buildings_by_list=None, tick_stamp=0, stock=None)
                                          for _ in range(WAREHOUSE_GOODS))
     b += u64(BUILD_GOODS) + b''.join(u32(0) + u64(0) for _ in range(BUILD_GOODS))
     b += u64(TRADE_LISTS) + b''.join(u64(0) for _ in range(TRADE_LISTS))
-    b += u64(index_digest(0, lists))
+    b += u64(index_digest(index_stamp, lists))
     return fnv(u8(1) + b)
 
 
@@ -357,7 +369,8 @@ def building_bytes(serial, island, type_id, x, y, byte0e, tag, payload):
 
 
 def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, terrain=None,
-                  cities=None, next_serial=1):
+                  cities=None, next_serial=1, sweep=(0, 0, 0, 0, 0), e300=0, objmgr=(0, 0),
+                  ring=(0, 0)):
     tiles = [[0, 0, NEUTRAL_OWNER, 0] for _ in range(w * h)]
     at = 0
     for owner, length in owner_runs:
@@ -370,10 +383,10 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
     td = terrain_digest(*terrain) if terrain else 0
     b = (u32(slot) + struct.pack('<i', x0) + struct.pack('<i', y0) + u32(w) + u32(h)
          + u32(climate) + u32(next_serial) + u64(td))
-    b += u16(0) + u32(0) * 4          # sweep
-    b += u16(0)                       # event300_stamp
-    b += u16(0) + u32(0)              # objmgr
-    b += u16(0) + u32(0)              # ring
+    b += u16(sweep[0]) + b''.join(u32(v) for v in sweep[1:])   # sweep: stamp, grow x/y, fauna x/y
+    b += u16(e300)                    # event300_stamp
+    b += u16(objmgr[0]) + u32(objmgr[1])    # objmgr
+    b += u16(ring[0]) + u32(ring[1])        # ring
     b += u8(0)                        # no drought
     b += u64(len(deposits))
     for goods, x, y, remaining, reserve in deposits:
@@ -385,22 +398,113 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
     return fnv(u8(1) + b)
 
 
-def two_island_scenario():
-    """synthetic::two_island_scenario(): (players, island digests by slot)."""
+SCHEDULE = [5, 1, 4, 3, 2]   # ListLayout::original().schedule
+
+
+class IslandSim:
+    """The island tick of docs/sim/state.md sections 5.4 to 5.6 for the default
+    configuration, as far as the goldens need it: the two sweep cursors (the growth
+    chunk visit itself writes no tile before stage S13), the object manager over the
+    deposits, the city ring over 16 slots, and per present city the building
+    scheduler (stamp, cursor and visit count of the five scheduled lists) with the
+    city stamp. `cities` is {number: {list id: slot list}} where a slot is None (a
+    hole) or a building (anything else; its `last` is 0 in the goldens). The 300 s
+    event and the production steps are asserted not to happen within the horizon
+    (the gate of a building with last 0 opens at tick 500, the 300 s gate at tick
+    150000): a golden run that reached them would need more transcription."""
+
+    def __init__(self, w, h, n_deposits, cities):
+        self.w, self.h, self.n_deposits = w, h, n_deposits
+        self.chunks = ((w + CHUNK_EDGE - 1) // CHUNK_EDGE) * ((h + CHUNK_EDGE - 1) // CHUNK_EDGE)
+        self.sweep = [0, 0, 0, 0, 0]       # stamp, grow x, grow y, fauna x, fauna y
+        self.e300 = 0
+        self.objmgr = [0, 0]
+        self.ring = [0, 0]
+        self.cities = {no: {'lists': lists, 'cursor': {}, 'index_stamp': 0, 'tick_stamp': 0}
+                       for no, lists in cities.items()}
+
+    def step_cursor(self, x, y):
+        x += CHUNK_EDGE
+        if x >= self.w:
+            x = 0
+            y += CHUNK_EDGE
+            if y >= self.h:
+                y = 0
+        return x, y
+
+    def city_tick(self, c, t):
+        for lid in SCHEDULE:
+            slots = c['lists'].get(lid, [None])
+            n = len(slots)
+            d = (t - c['index_stamp']) & 0xFFFF
+            cur = c['cursor'].get(lid, 0)
+            for _ in range(min(d * n // 500 + 1, n)):
+                if slots[cur] is not None:
+                    assert (t - 0) & 0xFFFF < 500, 'a production step would run (not transcribed)'
+                cur = (cur + 1) % n
+            c['cursor'][lid] = cur
+        c['index_stamp'] = t & 0xFFFF
+        c['tick_stamp'] = t & 0xFFFF
+
+    def tick(self, t):
+        d = (t - self.sweep[0]) & 0xFFFF
+        n1 = min(self.chunks * d // 2000 + 1, self.chunks) if self.chunks else 0
+        n2 = min(self.chunks * d // 15000 + 1, self.chunks) if self.chunks else 0
+        for _ in range(n1):
+            self.sweep[1], self.sweep[2] = self.step_cursor(self.sweep[1], self.sweep[2])
+        for _ in range(n2):
+            self.sweep[3], self.sweep[4] = self.step_cursor(self.sweep[3], self.sweep[4])
+        n = self.n_deposits
+        d = (t - self.objmgr[0]) & 0xFFFF
+        for _ in range(min(d * n // 5000 + 1, n) if n else 0):
+            self.objmgr[1] = (self.objmgr[1] + 1) % n
+        self.objmgr[0] = t & 0xFFFF
+        d = (t - self.ring[0]) & 0xFFFF
+        for _ in range(min(d * CITY_SLOTS // 50 + 1, CITY_SLOTS)):
+            if self.ring[1] in self.cities:
+                self.city_tick(self.cities[self.ring[1]], t)
+            self.ring[1] = (self.ring[1] + 1) % CITY_SLOTS
+        self.ring[0] = t & 0xFFFF
+        assert (t // 500 - self.e300) & 0xFFFF < 300, 'the 300 s event would run (not transcribed)'
+        self.sweep[0] = t & 0xFFFF
+
+    def run(self, steps, step_ms):
+        ms = 0
+        for _ in range(steps):
+            ms += step_ms
+            self.tick((ms >> 1) & M32)
+
+
+def two_island_scenario(steps=0, step_ms=10):
+    """synthetic::two_island_scenario() after `steps` advances: (players, island
+    digests by slot)."""
     players = {0: new_player(0), 1: new_player(1, kind=12, money=25000, name=b'AI')}
     height = [i % 7 for i in range(600)]
     gfx = [(i * 3) & 0xFFFF for i in range(600)]
     fertility = [i % 5 for i in range(600)]
+    sim0 = IslandSim(64, 64, 1, {0: {}})
+    sim3 = IslandSim(30, 20, 2, {1: {}})
+    sim0.run(steps, step_ms)
+    sim3.run(steps, step_ms)
+
+    def state(sim):
+        return dict(sweep=tuple(sim.sweep), e300=sim.e300, objmgr=tuple(sim.objmgr),
+                    ring=tuple(sim.ring))
+
+    def city(sim, no, owner):
+        c = sim.cities[no]
+        return city_digest(no, owner, tick_stamp=c['tick_stamp'], index_stamp=c['index_stamp'],
+                           cursors=c['cursor'])
     islands = {
         0: island_digest(0, 100, 100, 64, 64, 2, [(15, 128), (0, 64 * 62)],
                          [(200, 1201, 0), (201, 1202, 3), (4095, 1203, 7)],
                          [(b'EISENERZ', 110, 120, 2000 * 256, True)],
-                         cities={0: city_digest(0, 0)}),
+                         cities={0: city(sim0, 0, 0)}, **state(sim0)),
         3: island_digest(3, 300, 200, 30, 20, 6, [(1, 300)],
                          [(0, 2001, 0), (599, 2002, 1)],
                          [(b'GOLD', 301, 202, 123456, False),
                           (b'STEINE', 329, 219, 2000 * 256, True)],
-                         (height, gfx, fertility), cities={1: city_digest(1, 1)}),
+                         (height, gfx, fertility), cities={1: city(sim3, 1, 1)}, **state(sim3)),
     }
     return players, islands
 
@@ -418,20 +522,26 @@ def islands_digest(by_slot):
 SYNTHETIC_REGISTRY = 0x00D140F84BF28924
 
 
-def g1_scenario():
-    """synthetic::g1_scenario(): one player, island 0 (64 x 64 at 100,100) with city 0
-    holding the weaver (9001, 5 t of wool) at (110,110) and the grain farm (9002,
-    5 t of raw material) at (120,110), both in the production list L4: slot 0 and
-    slot 1 (the list grows from 1 to 10 with the second), hint 1."""
+def g1_scenario(steps=0, step_ms=10):
+    """synthetic::g1_scenario() after `steps` advances: one player, island 0 (64 x 64
+    at 100,100) with city 0 holding the weaver (9001, 5 t of wool) at (110,110) and
+    the grain farm (9002, 5 t of raw material) at (120,110), both in the production
+    list L4: slot 0 and slot 1 (the list grows from 1 to 10 with the second), hint 1."""
     weaver = building_bytes(1, 0, 9001, 110, 110, 0x86, 1, workshop_bytes(0, 5 * 256))
     farm = building_bytes(2, 0, 9002, 120, 110, 0x86, 3, farm_bytes(0, 5 * 256))
     production = (1, [weaver, farm] + [None] * 8)
+    sim = IslandSim(64, 64, 1, {0: {4: production[1]}})
+    sim.run(steps, step_ms)
+    c = sim.cities[0]
     island = island_digest(
         0, 100, 100, 64, 64, 2, [(15, 128), (0, 64 * 62)],
         [(200, 1201, 0), (201, 1202, 3), (4095, 1203, 7), (10 * 64 + 10, 9001, 0),
          (10 * 64 + 20, 9002, 0)],
         [(b'EISENERZ', 110, 120, 2000 * 256, True)],
-        cities={0: city_digest(0, 0, {4: production})}, next_serial=3)
+        cities={0: city_digest(0, 0, {4: production}, tick_stamp=c['tick_stamp'],
+                               index_stamp=c['index_stamp'], cursors=c['cursor'])},
+        next_serial=3, sweep=tuple(sim.sweep), e300=sim.e300, objmgr=tuple(sim.objmgr),
+        ring=tuple(sim.ring))
     return {0: new_player(0)}, {0: island}
 
 
@@ -461,6 +571,14 @@ def g1_after(steps, step_ms):
     return slots, stamp
 
 
+def figures_digest():
+    """The empty figure registry: i64 hint -1, u32 cursor 0, u64 slot count 1 and its
+    child scope (an empty slot hashes as the single byte 0), u16 stamp, empty expiry
+    and deferred lists."""
+    return fnv(struct.pack('<q', -1) + u32(0) + u64(1) + u64(fnv(u8(0))) + u16(0) + u64(0)
+               + u64(0))
+
+
 def state_hash(registry, cursor, ms, last_tick, players, full_tick=False, islands=None,
                world=(0, 0)):
     header = (u32(STATE_HASH_VERSION) + u32(PRNG_TIMELINE_VERSION) + config_bytes()
@@ -468,8 +586,10 @@ def state_hash(registry, cursor, ms, last_tick, players, full_tick=False, island
     header += u64(registry) + u64(22) + b''.join(string(b'default') for _ in range(22))
     clock_rng = u64(ms) + u64(last_tick) + u64(2048) + u64(rng_table_digest()) + u32(cursor)
     islands = islands_digest({}) if islands is None else islands
+    ids = fnv(u64(1) + u64(1))          # next_figure, next_event_seq
+    events = fnv(u64(0))                # no timed events
     return fnv(u64(fnv(header)) + u64(fnv(clock_rng)) + u64(fnv(settings_bytes(*world)))
-               + u64(players) + u64(islands))
+               + u64(ids) + u64(players) + u64(islands) + u64(figures_digest()) + u64(events))
 
 
 def values():
@@ -484,19 +604,19 @@ def values():
         out['g1_players_step%d' % steps] = state_hash(
             registry, 1234, 500 * steps, 500 * steps // 2, players_digest(stamp, 0, slots), True)
     # S5: the synthetic two-island scenario, seed 1234, advance(10) x steps
-    players, islands = two_island_scenario()
-    isl = islands_digest(islands)
     for steps in (0, 100):
+        players, islands = two_island_scenario(steps)
+        isl = islands_digest(islands)
         slots, stamp, cursor = table_run(players, steps, 10)
         key = 's5_islands_create' if steps == 0 else 's5_islands_step%d' % steps
         out[key] = state_hash(registry, 1234, 10 * steps, 10 * steps // 2,
                               players_digest(stamp, cursor, slots), islands=isl,
                               world=(512, 512))
     # S6: the G1 scenario (a city with a weaver and a farm), seed 1234, advance(10) x steps
-    players, islands = g1_scenario()
-    isl = islands_digest(islands)
     for steps in (0, 100):
-        slots, stamp, cursor = table_run(players if steps == 0 else g1_scenario()[0], steps, 10)
+        players, islands = g1_scenario(steps)
+        isl = islands_digest(islands)
+        slots, stamp, cursor = table_run(players, steps, 10)
         key = 's6_g1_create' if steps == 0 else 's6_g1_step%d' % steps
         out[key] = state_hash(SYNTHETIC_REGISTRY, 1234, 10 * steps, 10 * steps // 2,
                               players_digest(stamp, cursor, slots), islands=isl, world=(512, 512))

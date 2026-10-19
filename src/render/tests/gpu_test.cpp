@@ -1942,7 +1942,11 @@ TEST_CASE("river flow on the GPU: the cost is measured per tier, GPU timestamps 
         REQUIRE(fits.size() == 2);
         CHECK_FALSE(fits[0].quality.has_value());
         CHECK(fits[1].quality == render::RiverQuality::High);
-        const auto none = made.value()->measure_river_cost(2, -1.0);
+        // A gate no measurement can meet. The cost is the difference to the legacy
+        // shimmer, so on a slow, noisy device (the macOS CI runner: ~18 ms per Mpx)
+        // a tier can measure more than 1 ms per Mpx *below* the baseline and meet
+        // a gate of -1; the choice then rightly stops early.
+        const auto none = made.value()->measure_river_cost(2, -1.0e9);
         REQUIRE(none.size() == 3);
         CHECK(none[1].quality == render::RiverQuality::High);
         CHECK(none[2].quality == render::RiverQuality::Medium);

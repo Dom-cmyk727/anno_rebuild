@@ -158,6 +158,28 @@ struct SceneProbe {
 };
 inline constexpr std::uint32_t kNoIsland = 0xFFFFFFFFU;
 
+/// The ground at tile position (x, y) as the water field sees it: terrain
+/// height, the tile and fraction, whether the original draws sea here and
+/// the enhanced waterline distance `sd` (HEIGHT units above the smooth
+/// terrain; sd > 0 = enhanced sea). Shared by water_field and the river
+/// flow raster (river.hpp), so both classify the same way.
+struct TileGround {
+    float under = 0, smooth = 0, sd = 0, fx = 0, fy = 0;
+    std::size_t tx = 0, ty = 0;
+    bool sea_chunk = false, original_water = false;
+};
+TileGround tile_ground(const IslandWater& iw, float x, float y);
+
+/// Enhanced river water at tile position (x, y) where the island has a river
+/// level: the surface level, the bed (Catmull-Rom plus half the shore noise)
+/// and the depth between them; nullopt where no level exists or the bed lies
+/// above the level by more than the soft edge. The caller checks the ground
+/// (not original water, sd <= 0), as water_field does.
+struct RiverPoint {
+    float level = 0, bed = 0, depth = 0;
+};
+std::optional<RiverPoint> river_point(const IslandWater& iw, float x, float y, const TileGround& g);
+
 /// The water field of `rect` from the ground seen at each pixel; water(i)
 /// gives the IslandWater of island i (nullptr if none).
 WaterField water_field(Rect rect, const SceneProbe& probe,

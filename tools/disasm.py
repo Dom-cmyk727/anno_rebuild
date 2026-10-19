@@ -3,7 +3,11 @@
   disasm.py <module.dll> <va-hex> [max_bytes]
 
 For hosts where Ghidra cannot load the 32-bit modules (Windows, CLAUDE.md);
-needs `pip install capstone pefile`. Prints address, bytes and instruction
+needs `pip install capstone pefile`: the packages must be importable by the
+interpreter that runs the tool, so `python -I tools/disasm.py ...` (isolated mode,
+which ignores the per-user site-packages that `pip install --user` fills) works only
+when they are installed in a virtual environment or the system site; otherwise leave
+`-I` out. Prints address, bytes and instruction
 from `va` until `max_bytes` (default 4096) or the first `ret` followed by
 int3/nop padding (the end of an MSVC 6 function; a function with code after
 an early `ret` and no padding is printed past its end, check the output).

@@ -191,11 +191,23 @@ Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool s
     } else {
         c.base = std::move(objects.base);
     }
-    auto field = scene.water_field_from(rect, probe, group);
-    c.cover = std::move(field.cover);
-    c.shore = std::move(field.shore);
-    c.depth = std::move(field.depth);
-    c.flags = std::move(field.flags);
+    const auto field = scene.water_field_from(rect, probe, group);
+    {
+        // The four planes have one entry per texel each; interleaved here,
+        // on the builder thread, so the window thread uploads them as is.
+        const std::size_t k = std::min(
+            {field.cover.size(), field.shore.size(), field.depth.size(), field.flags.size()});
+        if (k > 0) {
+            c.field.resize(k * 4);
+            std::uint8_t* o = c.field.data();
+            for (std::size_t i = 0; i < k; ++i) {
+                *o++ = field.cover[i];
+                *o++ = field.shore[i];
+                *o++ = field.depth[i];
+                *o++ = field.flags[i];
+            }
+        }
+    }
     c.terrain.reserve(probe.island.size());
     for (std::size_t i = 0; i < probe.island.size(); ++i) {
         const int x = rect.x + static_cast<int>(i % to_size(rect.w));
@@ -217,6 +229,7 @@ ChunkWorkers::ChunkWorkers(const Scene& scene, std::size_t threads) : scene_(sce
     for (std::size_t i = 0; i < std::max<std::size_t>(threads, 1); ++i) {
         threads_.emplace_back([this] { run(); });
     }
+    reaper_ = std::thread([this] { reap(); });
 }
 
 ChunkWorkers::~ChunkWorkers() {
@@ -225,9 +238,37 @@ ChunkWorkers::~ChunkWorkers() {
         stop_ = true;
     }
     ready_.notify_all();
+    garbage_ready_.notify_all();
     for (auto& t : threads_) {
         t.join();
     }
+    reaper_.join();
+}
+
+void ChunkWorkers::reap() {
+    for (;;) {
+        std::vector<Chunk> dead;
+        {
+            std::unique_lock lock(mutex_);
+            garbage_ready_.wait(lock, [this] { return stop_ || !garbage_.empty(); });
+            // Whatever is left when stopping is freed with the object.
+            if (stop_) {
+                return;
+            }
+            dead = std::exchange(garbage_, {});
+        }
+        // `dead` is freed here, outside the lock.
+    }
+}
+
+void ChunkWorkers::discard(std::vector<Chunk> chunks) {
+    {
+        const std::lock_guard lock(mutex_);
+        for (auto& c : chunks) {
+            garbage_.push_back(std::move(c));
+        }
+    }
+    garbage_ready_.notify_one();
 }
 
 void ChunkWorkers::run() {
@@ -403,12 +444,13 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
                 const int ccx = cx, ccy = cy;
                 const Rect rr = *r;
                 auto field = [&c, rw, ccx, ccy, rr](std::size_t i) -> sea::FieldPx {
-                    if (c.cover.empty()) {
+                    if (c.field.empty()) {
                         return {255, 255, 255, 1};
                     }
                     const std::size_t s = chunk_index(ccx, ccy, rr.x + static_cast<int>(i % rw),
-                                                      rr.y + static_cast<int>(i / rw));
-                    return {c.cover[s], c.shore[s], c.depth[s], c.flags[s]};
+                                                      rr.y + static_cast<int>(i / rw)) *
+                                          4;
+                    return {c.field[s], c.field[s + 1], c.field[s + 2], c.field[s + 3]};
                 };
                 sea::shade_sea(sea::XrgbTarget{band + d}, to_size(view.w), *r, field, *pattern,
                                time_ms, style, group, lift);
@@ -521,8 +563,18 @@ void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>&
         keys.emplace_back(g != group, std::abs(cx - ccx) + std::abs(cy - ccy), k);
     }
     std::sort(keys.begin(), keys.end());
+    // Freeing a chunk's ~4 MB of vectors costs a millisecond each: with
+    // background workers the evicted chunks are freed on their reaper thread.
+    std::vector<Chunk> dead;
     for (std::size_t i = spare_chunks; i < keys.size(); ++i) {
-        cache_.erase(std::get<2>(keys[i]));
+        const auto it = cache_.find(std::get<2>(keys[i]));
+        if (workers_) {
+            dead.push_back(std::move(it->second));
+        }
+        cache_.erase(it);
+    }
+    if (workers_ && !dead.empty()) {
+        workers_->discard(std::move(dead));
     }
 }
 

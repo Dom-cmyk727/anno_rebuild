@@ -224,6 +224,10 @@ const sea::SeaPattern* Scene::sea_if_ready(std::size_t group) const {
     return s.pattern ? &*s.pattern : nullptr;
 }
 
+bool Scene::sea_built(std::size_t group) const {
+    return seas_[group].ready.load(std::memory_order_acquire);
+}
+
 std::pair<bool, bool> Scene::has_water_objects(std::size_t index) const {
     const auto& o = objects_[index];
     return {!o.below.empty(), !o.above.empty()};

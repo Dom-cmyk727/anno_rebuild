@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -232,14 +233,37 @@ struct GpuFrame::Impl {
     std::map<std::size_t, Sea> seas;
     std::optional<std::size_t> sea_group;
 
+    /// A chunk plane's texture (512² texels of `format`) and its view.
+    struct Plane {
+        WGPUTextureFormat format = WGPUTextureFormat_Undefined;
+        Texture texture;
+        TextureView view;
+    };
     struct Chunk {
         BindGroup bind;
         bool real = false;
-        std::vector<Texture> textures;
-        std::vector<TextureView> views;
+        std::vector<Plane> planes;
         Buffer uniform;
     };
     std::map<ChunkKey, Chunk> chunks;
+    /// Planes of dropped chunks, reused by the next uploads: creating and
+    /// freeing textures of several megabytes makes the driver allocate and
+    /// free device memory blocks, which showed as sporadic stalls of
+    /// 10-20 ms on the window thread. Bounded (kPoolPlanes); the textures
+    /// are overwritten completely on reuse, and GPU work still reading the
+    /// old contents is ordered before those writes.
+    std::vector<Plane> plane_pool;
+    static constexpr std::size_t kPoolPlanes = 5 * 24;
+
+    /// Drops the GPU chunk at `it`, keeping its planes for reuse.
+    std::map<ChunkKey, Chunk>::iterator drop_chunk(std::map<ChunkKey, Chunk>::iterator it) {
+        for (Plane& p : it->second.planes) {
+            if (plane_pool.size() < kPoolPlanes) {
+                plane_pool.push_back(std::move(p));
+            }
+        }
+        return chunks.erase(it);
+    }
 
     /// (layer, x, y, width, height) of a frame image in the atlas.
     using Place = std::array<std::uint32_t, 5>;
@@ -256,6 +280,11 @@ struct GpuFrame::Impl {
         std::array<std::uint32_t, 4> cursor{};
     };
     std::optional<Atlas> atlas;
+    /// Per-frame phase timers of the sprite path (reset by render()).
+    double decode_ms = 0, atlas_ms = 0;
+    std::size_t sprites_new = 0;
+    /// Chunk upload phases: texture creation (or reuse from the pool), texel writes.
+    double up_create_ms = 0, up_write_ms = 0;
     Buffer instances;
     std::uint64_t instances_size = 0;
     /// The wave simulation, created on the first enhanced frame.
@@ -325,8 +354,11 @@ struct GpuFrame::Impl {
     }
 
     /// Uploads up to `max` missing animation steps of `p` as the pattern of
-    /// `group`; returns the number uploaded.
-    std::size_t upload_sea_steps(std::size_t group, const sea::SeaPattern& p, std::size_t max) {
+    /// `group` (stopping once `budget_ms` > 0 are spent, after at least one
+    /// step); returns the number uploaded.
+    std::size_t upload_sea_steps(std::size_t group, const sea::SeaPattern& p, std::size_t max,
+                                 double budget_ms = 0.0) {
+        const auto begin = Clock::now();
         const auto w = static_cast<std::uint32_t>(p.width),
                    h = static_cast<std::uint32_t>(p.height);
         auto it = seas.find(group);
@@ -348,6 +380,9 @@ struct GpuFrame::Impl {
         Sea& s = it->second;
         std::size_t n = 0;
         while (s.uploaded < s.steps && n < max) {
+            if (n > 0 && budget_ms > 0.0 && ms_since(begin) >= budget_ms) {
+                break;
+            }
             const auto k = s.uploaded;
             const auto [sprite, filled] = p.step_images(k);
             write_layer(queue(), s.sprite_t.get(), static_cast<std::uint32_t>(k), 0, 0, w, h, 4,
@@ -362,7 +397,8 @@ struct GpuFrame::Impl {
 
     /// Makes the sea pattern of `group` usable (uploading what is missing,
     /// blocking) and uploads a few steps of the other groups' patterns that
-    /// are already rendered, so a zoom change finds them on the GPU.
+    /// are already rendered (within the frame's upload time budget), so a
+    /// zoom change finds them on the GPU.
     void ensure_sea(const Scene& scene, std::size_t group) {
         sea_group.reset();
         if (const sea::SeaPattern* p = scene.sea(group)) {
@@ -370,12 +406,21 @@ struct GpuFrame::Impl {
             sea_group = group;
         }
         std::size_t budget = limits.sea_steps_per_frame;
+        const auto begin = Clock::now();
         for (std::size_t g = 0; g < kGroups && budget > 0; ++g) {
             if (g == group) {
                 continue;
             }
             if (const sea::SeaPattern* p = scene.sea_if_ready(g)) {
-                budget -= upload_sea_steps(g, *p, budget);
+                double left = 0.0;
+                if (limits.upload_budget_ms > 0.0) {
+                    left = limits.upload_budget_ms - ms_since(begin);
+                    if (left <= 0.0 && budget < limits.sea_steps_per_frame) {
+                        break;
+                    }
+                    left = std::max(left, 1e-6);
+                }
+                budget -= upload_sea_steps(g, *p, budget, left);
             }
         }
     }
@@ -387,75 +432,65 @@ struct GpuFrame::Impl {
         const auto n = static_cast<std::uint32_t>(kChunk);
         std::uint32_t flags = 0;
         Chunk out;
-        auto view = [&](WGPUTextureFormat fmt, std::uint32_t bpp,
-                        const std::optional<std::vector<std::uint8_t>>& data, std::uint32_t bit,
+        // The chunk's vectors are uploaded as they are: their element bytes
+        // are the texel bytes on a little-endian host (0RGB = B, G, R, 0;
+        // Px = R, G, B, A; u16 = low, high), so the window thread converts
+        // nothing (per-texel loops here cost ~0.8 ms per chunk).
+        static_assert(std::endian::native == std::endian::little);
+        auto view = [&](WGPUTextureFormat fmt, std::uint32_t bpp, const void* data,
+                        std::size_t bytes, std::uint32_t bit,
                         WGPUTextureView dummy) -> WGPUTextureView {
-            if (!data) {
+            // A plane that does not cover the chunk is left out (a short
+            // write would be a validation error).
+            if (data == nullptr || bytes != std::size_t{n} * n * bpp) {
                 return dummy;
             }
-            auto [t, v] = upload_texture(dev(), queue(), fmt, n, n, bpp, *data, false);
+            const auto c0 = Clock::now();
+            Plane plane;
+            const auto pooled = std::find_if(plane_pool.begin(), plane_pool.end(),
+                                             [fmt](const Plane& p) { return p.format == fmt; });
+            if (pooled != plane_pool.end()) {
+                plane = std::move(*pooled);
+                plane_pool.erase(pooled);
+            } else {
+                plane.format = fmt;
+                plane.texture =
+                    make_texture(dev(), "upload", fmt, n, n, 1,
+                                 WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst |
+                                     WGPUTextureUsage_CopySrc);
+                plane.view = make_view(plane.texture.get(), false);
+            }
+            const auto c1 = Clock::now();
+            write_layer(queue(), plane.texture.get(), 0, 0, 0, n, n, bpp, data, bytes);
+            up_create_ms += std::chrono::duration<double, std::milli>(c1 - c0).count();
+            up_write_ms += ms_since(c1);
             flags |= bit;
-            const WGPUTextureView raw = v.get();
-            out.textures.push_back(std::move(t));
-            out.views.push_back(std::move(v));
+            const WGPUTextureView raw = plane.view.get();
+            out.planes.push_back(std::move(plane));
             return raw;
         };
-        // Texel bytes written in place (a chunk is 512² texels: per-byte
-        // push_back cost milliseconds per chunk).
-        std::optional<std::vector<std::uint8_t>> ground, objects, field, terrain;
-        if (chunk != nullptr && !chunk->ground.empty()) {
-            ground.emplace(chunk->ground.size() * 4);
-            std::uint8_t* o = ground->data();
-            for (const std::uint32_t p : chunk->ground) {
-                *o++ = static_cast<std::uint8_t>(p);
-                *o++ = static_cast<std::uint8_t>(p >> 8);
-                *o++ = static_cast<std::uint8_t>(p >> 16);
-                *o++ = static_cast<std::uint8_t>(p >> 24);
-            }
-        }
-        if (chunk != nullptr && !chunk->objects.empty()) {
-            objects.emplace(chunk->objects.size() * 4);
-            std::uint8_t* o = objects->data();
-            for (const Px& p : chunk->objects) {
-                o = std::copy(p.begin(), p.end(), o);
-            }
-        }
-        if (chunk != nullptr && !chunk->cover.empty()) {
-            // Rust zips the four planes (shortest wins); they have one
-            // entry per texel each.
-            const std::size_t k = std::min({chunk->cover.size(), chunk->shore.size(),
-                                            chunk->depth.size(), chunk->flags.size()});
-            field.emplace(k * 4);
-            std::uint8_t* o = field->data();
-            for (std::size_t i = 0; i < k; ++i) {
-                *o++ = chunk->cover[i];
-                *o++ = chunk->shore[i];
-                *o++ = chunk->depth[i];
-                *o++ = chunk->flags[i];
-            }
-        }
-        std::optional<std::vector<std::uint8_t>> base;
-        if (chunk != nullptr && !chunk->base.empty()) {
-            base.emplace(chunk->base);
-        }
-        if (chunk != nullptr && !chunk->terrain.empty()) {
-            terrain.emplace(chunk->terrain.size() * 2);
-            std::uint8_t* o = terrain->data();
-            for (const std::uint16_t v : chunk->terrain) {
-                *o++ = static_cast<std::uint8_t>(v & 0xFF);
-                *o++ = static_cast<std::uint8_t>(v >> 8);
-            }
-        }
-        // 0RGB little-endian = B, G, R, 0.
+        auto plane = [&](const auto& vec) {
+            using T = typename std::decay_t<decltype(vec)>::value_type;
+            return std::pair<const void*, std::size_t>{
+                chunk != nullptr && !vec.empty() ? static_cast<const void*>(vec.data()) : nullptr,
+                vec.size() * sizeof(T)};
+        };
+        static const render::Chunk kNone;
+        const render::Chunk& c = chunk != nullptr ? *chunk : kNone;
+        const auto [gp, gb] = plane(c.ground);
+        const auto [op, ob] = plane(c.objects);
+        const auto [fp, fb] = plane(c.field);
+        const auto [tp, tb] = plane(c.terrain);
+        const auto [bp, bb] = plane(c.base);
         const WGPUTextureView gv =
-            view(WGPUTextureFormat_BGRA8Unorm, 4, ground, 1, dummy_color.second.get());
+            view(WGPUTextureFormat_BGRA8Unorm, 4, gp, gb, 1, dummy_color.second.get());
         const WGPUTextureView ov =
-            view(WGPUTextureFormat_RGBA8Unorm, 4, objects, 2, dummy_color.second.get());
+            view(WGPUTextureFormat_RGBA8Unorm, 4, op, ob, 2, dummy_color.second.get());
         const WGPUTextureView fv =
-            view(WGPUTextureFormat_RGBA8Uint, 4, field, 4, dummy_field.second.get());
-        const WGPUTextureView tv = view(kTerrainFormat, 2, terrain, 8, dummy_terrain.second.get());
+            view(WGPUTextureFormat_RGBA8Uint, 4, fp, fb, 4, dummy_field.second.get());
+        const WGPUTextureView tv = view(kTerrainFormat, 2, tp, tb, 8, dummy_terrain.second.get());
         const WGPUTextureView bv =
-            view(WGPUTextureFormat_R8Uint, 1, base, 16, dummy_base.second.get());
+            view(WGPUTextureFormat_R8Uint, 1, bp, bb, 16, dummy_base.second.get());
         out.uniform =
             make_buffer(dev(), "chunk", 16, WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
         Bytes u;
@@ -482,8 +517,8 @@ struct GpuFrame::Impl {
 
     /// Uploads newly built visible chunks (a few per frame), adds stand-ins
     /// for missing ones, and drops GPU chunks the CPU cache no longer holds.
-    void sync_chunks(const FrameRenderer& frames, std::size_t group,
-                     const std::vector<std::pair<int, int>>& visible) {
+    std::size_t sync_chunks(const FrameRenderer& frames, std::size_t group,
+                            const std::vector<std::pair<int, int>>& visible) {
         std::set<ChunkKey> keys;
         for (const auto& [cx, cy] : visible) {
             keys.insert({group, cx, cy});
@@ -491,22 +526,29 @@ struct GpuFrame::Impl {
         for (auto it = chunks.begin(); it != chunks.end();) {
             const bool keep =
                 it->second.real ? frames.chunk(it->first) != nullptr : keys.contains(it->first);
-            it = keep ? std::next(it) : chunks.erase(it);
+            it = keep ? std::next(it) : drop_chunk(it);
         }
         std::size_t uploads = 0;
+        const auto begin = Clock::now();
         for (const auto& key : keys) {
             const auto it = chunks.find(key);
             if (it != chunks.end() && it->second.real) {
                 continue;
             }
             const render::Chunk* c = frames.chunk(key);
-            if (c != nullptr && uploads < limits.uploads_per_frame) {
+            // Count and time budget: the first chunk always goes, so a
+            // slow device still makes progress.
+            const bool room = uploads < limits.uploads_per_frame &&
+                              (uploads == 0 || limits.upload_budget_ms <= 0.0 ||
+                               ms_since(begin) < limits.upload_budget_ms);
+            if (c != nullptr && room) {
                 ++uploads;
                 chunks.insert_or_assign(key, upload_chunk(key, c));
             } else if (it == chunks.end()) {
                 chunks.emplace(key, upload_chunk(key, nullptr));
             }
         }
+        return uploads;
     }
 
     Atlas new_atlas(std::uint32_t layers, std::optional<Atlas> old) {
@@ -602,9 +644,15 @@ struct GpuFrame::Impl {
             }
         }
         std::optional<Place> place;
-        if (const auto img = scene.sprites.get(scene.anlagen, d.key, *d.frame)) {
+        const auto t0 = Clock::now();
+        const auto img = scene.sprites.get(scene.anlagen, d.key, *d.frame);
+        const auto t1 = Clock::now();
+        decode_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
+        if (img) {
             place = pack_image(*img);
+            atlas_ms += ms_since(t1);
         }
+        ++sprites_new;
         if (atlas) {
             atlas->place.insert_or_assign(d.key, place);
         }
@@ -763,6 +811,7 @@ struct GpuFrame::Impl {
             auto made = FluidGpu::create(*ref, fluid::FluidConfig{});
             if (made) {
                 fluid.emplace(std::move(made).value());
+                fluid->set_background(limits.background_fluid);
             } else {
                 std::fprintf(stderr, "wave simulation unavailable: %s\n", made.error().c_str());
                 fluid_failed = true;
@@ -960,11 +1009,18 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     const auto w = static_cast<std::uint32_t>(std::max(view.w, 1));
     const auto h = static_cast<std::uint32_t>(std::max(view.h, 1));
 
+    m.decode_ms = m.atlas_ms = 0;
+    m.up_create_ms = m.up_write_ms = 0;
+    m.sprites_new = 0;
     auto t = Clock::now();
     m.ensure_under(w, h);
+    auto t_part = Clock::now();
     m.ensure_sea(scene, group);
+    stats.sea_ms = ms_since(t_part);
     const auto visible = visible_chunks(view);
-    m.sync_chunks(frames, group, visible);
+    t_part = Clock::now();
+    stats.chunks_uploaded = m.sync_chunks(frames, group, visible);
+    stats.chunk_sync_ms = ms_since(t_part);
     stats.upload_ms = ms_since(t);
 
     t = Clock::now();
@@ -979,6 +1035,11 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     const std::uint32_t n_ships =
         frames.ships_in_chunks() ? 0 : m.pack_ships(scene, view, group, bytes);
     m.write_instances(bytes.b);
+    stats.upload_create_ms = m.up_create_ms;
+    stats.upload_write_ms = m.up_write_ms;
+    stats.decode_ms = m.decode_ms;
+    stats.atlas_ms = m.atlas_ms;
+    stats.sprites_new = m.sprites_new;
     stats.sprites = std::size_t{n_below} + n_above;
     stats.ships = n_ships;
     stats.sprites_ms = ms_since(t);
@@ -988,8 +1049,10 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     ed.label = sv("frame");
     CommandEncoder enc(wgpuDeviceCreateCommandEncoder(m.dev(), &ed));
     // Coastal wave simulation (enhanced water only).
+    const auto t_fluid = Clock::now();
     const bool fluid_on = style == WaterStyle::Enhanced && m.limits.wave_simulation &&
                           m.update_fluid(enc.get(), scene, view, group, time_ms);
+    stats.fluid_ms = ms_since(t_fluid);
     stats.wave_simulation = fluid_on;
     m.write_frame_uniform(view, group, time_ms, style, scene, fluid_on);
     const BindGroup pass1 = m.frame_bind(nullptr, nullptr);
@@ -1069,6 +1132,18 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     stats.encode_ms = ms_since(t);
     stats.total_ms = ms_since(start);
     return stats;
+}
+
+bool GpuFrame::group_ready(const Scene& scene, std::size_t group) const {
+    if (!scene.sea_built(group)) {
+        return false;
+    }
+    if (scene.sea_if_ready(group) == nullptr) {
+        // No sea pattern for this group: nothing to upload.
+        return true;
+    }
+    const auto it = impl_->seas.find(group);
+    return it != impl_->seas.end() && it->second.uploaded >= it->second.steps;
 }
 
 void GpuFrame::wait() const {

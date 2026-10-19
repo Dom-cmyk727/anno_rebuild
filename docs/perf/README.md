@@ -25,6 +25,8 @@ C++: `build/release/src/tools/bench_frame/bench_frame <game_dir> <file> [same op
 
 The animation clock advances 16 ms per frame. `--quick` divides the frame counts by 4.
 
+**Zoom path (C++ only):** `--zoom k` replaces the four paths by one that behaves like fast mouse-wheel zooming. After 60 paced warm-up frames the zoom group changes every `k` frames (2, 1, 0, 1, 2, … around the window centre) for `--zoom-frames` frames (default 240), each frame paced to at least `--pace` ms (default 2, a 500 Hz display) so that the chunk workers and the wave-simulation setup get real time. As in the viewer, a zoom step waits until the target group's sea pattern is ready (`GpuFrame::group_ready`). The frame time of this path is the window thread's CPU time (the viewer never waits for the GPU; the wait is in its own column). Frames slower than `--spike` ms (default 8) are listed with the time of every phase: chunk receipt (`chunks`), sea pattern upload (`sea`), chunk uploads (`chunk sync`, of it texture creation `create` and texel writes `write`), sprite decoding (`decode`) and atlas packing, wave simulation (`fluid`), command recording and submission (`encode`), GPU wait. `--limits default|interactive` selects `GpuLimits{}` or `GpuLimits::interactive()` (what the viewer uses: time-budgeted chunk uploads, wave-simulation window set up in the background); `--settle ms` renders paced frames at the start of every path set so that background work has finished (for `--check`; the animation clock stands still meanwhile). The viewer has the same hook: `ANNO_VIEW_ZOOM_SCRIPT=<frames>,<seconds>[,enhanced]` zooms one group every `<frames>` drawn frames and quits after `<seconds>`; `ANNO_VIEW_LIMITS=default` runs it with the library defaults for comparison.
+
 **Chunk modes:**
 - `blocking`: missing chunks are built inside the frame, as headless renders do. This shows what chunk building costs.
 - `async`: chunks are built by background workers on half the threads, as in the viewer. Missing chunks show open sea. Frames run back to back without the 16 ms wait a real display has, so workers get less time than in the viewer and `missing` is an upper bound.
@@ -43,6 +45,44 @@ The animation clock advances 16 ms per frame. `--quick` divides the frame counts
 **Simulating weaker PCs:** `--threads 4` limits frame stages and workers to 4 threads. Per-core speed still differs from the target hardware, so measure on the colleague's Windows/Linux PC as well (the viewer prints the same stage breakdown to stderr every 2 s and shows fps in its title).
 
 ## Results
+
+### 2026-10-19 — zoom stutter, Windows 11, Ryzen 9 9800X3D (16 threads), RTX 4090 (Vulkan), commit 359b1ce + this work
+
+**Report (owner, enhanced water, 2560 × 1369 on a 500 Hz display):** average frames 0.3–0.7 ms but a worst frame of 100–132 ms in every report window that contains a zoom-group change; an earlier Linux log (RX 7900 XTX) showed 60–103 ms after chunk bursts.
+
+**Reproduction** (`bench_frame --zoom 6 --chunks async --renderer gpu --res 2560x1369`: GPU, a zoom step every 6 frames at a 2 ms pace, `01_1024_easy_256.sze`, camera on the largest island; window-thread CPU time per frame in ms; the machine was shared with other jobs, so tails of a few ms are noise):
+
+| water | state | p50 | p95 | p99 | max |
+|---|---|---|---|---|---|
+| enhanced | before | 6.7 (incl. GPU wait) | 137.5 | 167.7 | 608 (sea pattern build, a bench artefact) |
+| enhanced | after, library defaults (wave window built in the frame) | 1.0 | 184.5 | 316.7 | 511 |
+| enhanced | after, `GpuLimits::interactive()` | 0.3–0.6 | 1.0–3.3 | 2.0–6.1 | 3.7–27 |
+| original | before | 0.4 | 2.1 | 8.4 | 12 |
+| original | after | 0.4 | 1.0 | 1.9 | 3.4 |
+
+**Causes, found with per-phase timers (`GpuStats`, the slow-frame table of the zoom path):**
+1. **The wave simulation window was set up on the window thread (enhanced water): 95–145 ms at every zoom group change.** `FluidGpu::update` created the window of the new group and filled it inside the frame: depth sampling and the initial swell state of about 10⁶ cells on all cores, then 20 MB of `push_back`ed bytes and a grid of fresh textures. Cells per tile are 16 / 8 / 4 per group, so every switch rebuilds it. These are the 100–132 ms of the owner's log.
+2. **Chunk uploads on the window thread: 7–25 ms per frame after a burst** (6 chunks per frame): 0.8 ms per chunk converting its planes texel by texel (`*o++ = …` loops), 0.35 ms writing the texels, plus five textures created and later freed per chunk.
+3. **Evicted chunks were freed on the window thread: 10–11 ms** (`FrameRenderer::trim` destroying a dozen chunks of about 4 MB).
+4. **The sea pattern of the target zoom group was built or uploaded on first use: 100–1100 ms** (`Scene::sea` blocks in `call_once`; `GpuFrame` uploaded all steps of the current group at once). The viewer renders the patterns on threads from the start, so this only hit a zoom in the first seconds.
+5. **The `worst` figure was not honest.** It was the compositor's own timer plus `wgpuSurfacePresent`: acquiring the surface texture (where vsync waits), creating its view, the event loop and everything between frames were not in it, and nothing measured the gap between frames.
+
+**Fixes** (the window thread never waits for content; CPU reference path, digests and the original water are untouched):
+- `FluidGpu` background mode (`GpuLimits::background_fluid`, on in `GpuLimits::interactive()`): a new window is computed on a background thread straight into the textures' byte layout and written to the GPU in budgeted slices (`upload_budget_ms` 2 ms and 16 MiB per frame); a recentre computes its strips the same way. The previous window keeps simulating until the new one is complete; where it does not cover the view the shader uses the analytic waves (`fluid_inside`). A request for another group or size cancels the job in flight, so only the last one is finished. Finished and cancelled jobs are freed off the window thread, and the grid a window switch replaces is kept as the next window's textures (a window has about the same number of cells at every group, so no texture is created at zoom time). Blocking mode (the default) is unchanged; a test (`gpu_test.cpp`, "the wave solver sets its window up in the background without blocking frames") compares the background window with the CPU reference (max difference 0) at the first window, after a group change and after a recentre, and `bench_frame --check` gives the identical GPU image in both modes.
+- Chunks are uploaded as they are: the vectors' bytes are the texel bytes (`Chunk::field` now holds the four sea-field planes interleaved, built by the chunk workers), so the window thread converts nothing. Uploads stop after `upload_budget_ms` (1.0 in `interactive()`, at least one chunk per frame). The planes of dropped chunks are pooled and reused instead of destroyed and created (the driver allocated and freed device memory blocks, sporadic 10–20 ms stalls). Evicted CPU chunks go to a reaper thread of `ChunkWorkers` (`ChunkWorkers::discard`).
+- The viewer delays a zoom step until the target group's sea pattern is rendered and on the GPU (`GpuFrame::group_ready`, only noticeable in the first seconds); sea steps of the other groups are uploaded within the frame's time budget.
+- The viewer's `worst` is now the window thread's busy time over the whole of `draw()` (surface acquire excluded and reported on its own as the wait for the display), plus the worst gap between the starts of two consecutive frames; every gap over 30 ms is logged with the phases of the previous frame (`frame hitch: …`).
+
+**Result in the real window** (`anno1503 --view …/01_1024_easy_256.sze`, enhanced water, window 1280 × 800 on the 500 Hz display, scripted zoom: one step every 3–40 frames for 16–60 s):
+
+| limits | frames per second | hitches > 30 ms | worst busy frame | worst gap |
+|---|---|---|---|---|
+| library defaults (`ANNO_VIEW_LIMITS=default`) | 108–183 | 226 in 16 s | 50–122 ms | 53–164 ms |
+| `interactive()` | 494–501 | 1–2 (the first frame after the start: pipelines, sea pattern, first chunks, 36–44 ms) | 1.1–4.4 ms | 4.3–5.2 ms (11–16 ms in some windows while other jobs ran, once 125 ms between two frames outside `draw()` while the machine was busy) |
+
+At 3840 × 2160 the bench shows p50 0.5–1.2, p95 1.6–4.9, p99 2.6–9.3 ms and a maximum of 6.5–27 ms. What is left there is command recording (`wgpuCommandEncoderFinish` takes 2–9 ms with about 45 chunks of 5 textures each) and GPU memory events while other processes load the card; neither is specific to zooming.
+
+Not done: the first enhanced frame still creates the wave solver's pipelines on the window thread (3–9 ms, once); after a zoom change the coast shows the analytic waves for 0.1–0.4 s until the new simulation window is ready (listed as a decision for the owner in PLAN §7).
 
 ### 2026-10-18 — C++ GPU compositor (wgpu-native 29) vs Rust (wgpu 30), Apple M5 Pro (Metal), `Single_01.sze`
 `--res 3840x2160 --styles original,enhanced --chunks async --renderer gpu`, all zoom groups, run one after the other. Every C++ row fits 60 Hz in 98–100 % of frames (p99 ≤ 17.4 ms, max ≤ 19.4 ms). p50 in ms, Rust → C++:

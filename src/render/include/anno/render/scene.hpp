@@ -193,6 +193,9 @@ class Scene {
     /// The sea pattern of `group` if it has been rendered already (never
     /// blocks).
     [[nodiscard]] const sea::SeaPattern* sea_if_ready(std::size_t group) const;
+    /// Whether the sea pattern of `group` has been rendered (or turned out
+    /// to be missing: sea_if_ready is then null); never blocks.
+    [[nodiscard]] bool sea_built(std::size_t group) const;
     /// Whether island `index` has water objects below / above the waterline.
     [[nodiscard]] std::pair<bool, bool> has_water_objects(std::size_t index) const;
     /// The sprites of `layer` touching `rect` at time_ms, in draw order,

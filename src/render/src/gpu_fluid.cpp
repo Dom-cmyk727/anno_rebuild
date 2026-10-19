@@ -1,9 +1,13 @@
 #include <algorithm>
+#include <atomic>
+#include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <memory>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include <anno/render/gpu_fluid.hpp>
@@ -245,24 +249,32 @@ void FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<f
                       std::size_t threads) {
     const double target = static_cast<double>(time_ms) / 1000.0;
     const std::uint32_t size = cfg_.window_size(group, span_tiles);
-    if (size != grid_.n) {
-        grid_ = make_grid(size);
-        window_.reset();
-    }
-    std::vector<fluid::CellRect> new_rects;
-    if (window_ && group_ == group) {
-        new_rects = window_->recentre(centre, cfg_.recentre_cells);
+    if (background_) {
+        prepare_window(group, centre, size, target, depth, threads);
+        if (!window_) {
+            // No window yet: nothing to step.
+            return;
+        }
     } else {
-        window_ = fluid::FluidWindow::with_size(cfg_, group, centre, size);
-        group_ = group;
-        sim_t_ = target;
-        new_rects = {window_->rect()};
+        if (size != grid_.n) {
+            grid_ = make_grid(size);
+            window_.reset();
+        }
+        std::vector<fluid::CellRect> new_rects;
+        if (window_ && group_ == group) {
+            new_rects = window_->recentre(centre, cfg_.recentre_cells);
+        } else {
+            window_ = fluid::FluidWindow::with_size(cfg_, group, centre, size);
+            group_ = group;
+            sim_t_ = target;
+            new_rects = {window_->rect()};
+        }
+        const auto now = static_cast<float>(sim_t_);
+        for (const auto& r : new_rects) {
+            fill(*window_, r, depth, now, threads);
+        }
     }
     const fluid::FluidWindow window = *window_;
-    const auto now = static_cast<float>(sim_t_);
-    for (const auto& r : new_rects) {
-        fill(window, r, depth, now, threads);
-    }
     const auto dt = static_cast<double>(cfg_.dt);
     if (target < sim_t_) {
         // Time went back (pause, clock wrap): restart from here.
@@ -306,77 +318,313 @@ void FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<f
     wgpuComputePassEncoderRelease(pass);
 }
 
-void FluidGpu::fill(const fluid::FluidWindow& window, fluid::CellRect r,
-                    const fluid::DepthFn& depth, float t, std::size_t threads) const {
-    const auto w = static_cast<std::size_t>(r.x1 - r.x0);
-    const auto h = static_cast<std::size_t>(r.y1 - r.y0);
-    std::vector<float> d(w * h, 0.0F);
-    std::vector<fluid::Cell> s(w * h, fluid::Cell{});
-    const std::size_t rows = std::max<std::size_t>(
-        (h + std::max<std::size_t>(threads, 1) - 1) / std::max<std::size_t>(threads, 1), 1);
-    {
-        std::vector<std::jthread> pool;
-        for (std::size_t y0 = 0; y0 < h; y0 += rows) {
-            pool.emplace_back([&, y0] {
-                const std::size_t y1 = std::min(h, y0 + rows);
-                for (std::size_t i = y0 * w; i < y1 * w; ++i) {
-                    const std::int64_t x = r.x0 + static_cast<std::int64_t>(i % w);
-                    const std::int64_t y = r.y0 + static_cast<std::int64_t>(i / w);
-                    const auto [px, py] = window.cell_centre(x, y);
-                    d[i] = depth(px, py);
-                    s[i] = fluid::reset_cell(cfg_, comps_, window, {x, y}, t, d[i]);
-                }
-            });
-        }
+namespace {
+
+/// Depth and initial state of a rectangle of cells, in the storage layout of
+/// the textures (4 and 16 bytes per cell, little-endian floats, rows of
+/// `pw` cells).
+struct Piece {
+    /// Storage column and row of the first cell.
+    std::size_t sx = 0, sy = 0;
+    std::uint32_t pw = 0, ph = 0;
+    std::vector<std::uint8_t> depth, state;
+};
+
+/// [a0, a1) cut where it wraps around the ring storage of `n` cells.
+std::vector<std::pair<std::int64_t, std::int64_t>> ring_split(std::int64_t a0, std::int64_t a1,
+                                                              std::int64_t n) {
+    const std::int64_t s0 = ((a0 % n) + n) % n;
+    const std::int64_t len = a1 - a0;
+    std::vector<std::pair<std::int64_t, std::int64_t>> out;
+    if (s0 + len <= n) {
+        out.emplace_back(a0, a1);
+    } else {
+        out.emplace_back(a0, a0 + (n - s0));
+        out.emplace_back(a0 + (n - s0), a1);
     }
-    const std::int64_t n = window.size;
-    // Split the rectangle where it wraps around the storage.
-    auto split = [n](std::int64_t a0, std::int64_t a1) {
-        const std::int64_t s0 = ((a0 % n) + n) % n;
-        const std::int64_t len = a1 - a0;
-        std::vector<std::pair<std::int64_t, std::int64_t>> out;
-        if (s0 + len <= n) {
-            out.emplace_back(a0, a1);
-        } else {
-            out.emplace_back(a0, a0 + (n - s0));
-            out.emplace_back(a0 + (n - s0), a1);
-        }
-        return out;
-    };
-    for (const auto& [x0, x1] : split(r.x0, r.x1)) {
-        for (const auto& [y0, y1] : split(r.y0, r.y1)) {
-            const auto pw = static_cast<std::size_t>(x1 - x0);
-            const auto ph = static_cast<std::size_t>(y1 - y0);
-            std::vector<std::uint8_t> db, sb;
-            db.reserve(pw * ph * 4);
-            sb.reserve(pw * ph * 16);
-            for (std::int64_t y = y0; y < y1; ++y) {
-                const std::size_t row = static_cast<std::size_t>(y - r.y0) * w;
-                const auto col = static_cast<std::size_t>(x0 - r.x0);
-                for (std::size_t i = row + col; i < row + col + pw; ++i) {
-                    put_f32(db, d[i]);
-                    for (const float c : s[i]) {
-                        put_f32(sb, c);
+    return out;
+}
+
+/// The cells of `r` (new cells of `window`) as texture-ready pieces: depth
+/// from `depth` and the initial state at time `t`, computed on `threads`
+/// threads; the pieces stop early (and are incomplete) when `cancel` is set.
+std::vector<Piece> compute_pieces(const fluid::FluidConfig& cfg, const fluid::Swell& comps,
+                                  const fluid::FluidWindow& window, fluid::CellRect r,
+                                  const fluid::DepthFn& depth, float t, std::size_t threads,
+                                  const std::atomic<bool>* cancel) {
+    // The floats are written as they are in memory.
+    static_assert(std::endian::native == std::endian::little);
+    std::vector<Piece> out;
+    for (const auto& [x0, x1] : ring_split(r.x0, r.x1, window.size)) {
+        for (const auto& [y0, y1] : ring_split(r.y0, r.y1, window.size)) {
+            if (cancel != nullptr && cancel->load(std::memory_order_relaxed)) {
+                return out;
+            }
+            Piece p;
+            p.pw = static_cast<std::uint32_t>(x1 - x0);
+            p.ph = static_cast<std::uint32_t>(y1 - y0);
+            std::tie(p.sx, p.sy) = window.storage(x0, y0);
+            p.depth.resize(std::size_t{p.pw} * p.ph * 4);
+            p.state.resize(std::size_t{p.pw} * p.ph * 16);
+            const std::size_t rows = p.ph;
+            const std::size_t per = std::max<std::size_t>(
+                (rows + std::max<std::size_t>(threads, 1) - 1) / std::max<std::size_t>(threads, 1),
+                1);
+            std::vector<std::thread> pool;
+            const std::int64_t bx = x0, by = y0;
+            auto work = [&](std::size_t ra, std::size_t rb) {
+                for (std::size_t row = ra; row < rb; ++row) {
+                    if (cancel != nullptr && cancel->load(std::memory_order_relaxed)) {
+                        return;
+                    }
+                    const std::int64_t y = by + static_cast<std::int64_t>(row);
+                    for (std::size_t col = 0; col < p.pw; ++col) {
+                        const std::int64_t x = bx + static_cast<std::int64_t>(col);
+                        const auto [px, py] = window.cell_centre(x, y);
+                        const float d = depth(px, py);
+                        const fluid::Cell s = fluid::reset_cell(cfg, comps, window, {x, y}, t, d);
+                        const std::size_t i = row * p.pw + col;
+                        std::memcpy(p.depth.data() + i * 4, &d, 4);
+                        std::memcpy(p.state.data() + i * 16, s.data(), 16);
                     }
                 }
-            }
-            const auto [sx, sy] = window.storage(x0, y0);
-            auto write = [&](WGPUTexture tex, const std::vector<std::uint8_t>& data,
-                             std::uint32_t bpp) {
-                WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-                dst.texture = tex;
-                dst.origin = {static_cast<std::uint32_t>(sx), static_cast<std::uint32_t>(sy), 0};
-                WGPUTexelCopyBufferLayout lay = WGPU_TEXEL_COPY_BUFFER_LAYOUT_INIT;
-                lay.bytesPerRow = static_cast<std::uint32_t>(pw) * bpp;
-                lay.rowsPerImage = static_cast<std::uint32_t>(ph);
-                const WGPUExtent3D ext = {static_cast<std::uint32_t>(pw),
-                                          static_cast<std::uint32_t>(ph), 1};
-                wgpuQueueWriteTexture(ref_->queue.get(), &dst, data.data(), data.size(), &lay,
-                                      &ext);
             };
-            write(grid_.bathy.get(), db, 4);
-            write(grid_.states[0].get(), sb, 16);
+            for (std::size_t ra = 0; ra < rows; ra += per) {
+                const std::size_t rb = std::min(rows, ra + per);
+                if (ra + per >= rows) {
+                    // The last band on this thread.
+                    work(ra, rb);
+                } else {
+                    pool.emplace_back(work, ra, rb);
+                }
+            }
+            for (auto& th : pool) {
+                th.join();
+            }
+            out.push_back(std::move(p));
         }
+    }
+    return out;
+}
+
+/// Writes rows [r0, r1) of `p` into the depth and state textures.
+void write_rows(WGPUQueue q, WGPUTexture bathy, WGPUTexture state, const Piece& p, std::uint32_t r0,
+                std::uint32_t r1) {
+    auto write = [&](WGPUTexture tex, const std::vector<std::uint8_t>& data, std::uint32_t bpp) {
+        WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+        dst.texture = tex;
+        dst.origin = {static_cast<std::uint32_t>(p.sx), static_cast<std::uint32_t>(p.sy) + r0, 0};
+        WGPUTexelCopyBufferLayout lay = WGPU_TEXEL_COPY_BUFFER_LAYOUT_INIT;
+        lay.bytesPerRow = p.pw * bpp;
+        lay.rowsPerImage = r1 - r0;
+        const WGPUExtent3D ext = {p.pw, r1 - r0, 1};
+        const std::size_t offset = std::size_t{r0} * p.pw * bpp;
+        wgpuQueueWriteTexture(q, &dst, data.data() + offset, std::size_t{r1 - r0} * p.pw * bpp,
+                              &lay, &ext);
+    };
+    write(bathy, p.depth, 4);
+    write(state, p.state, 16);
+}
+
+} // namespace
+
+/// A window (or strips of new cells) being prepared off the window thread.
+struct FluidGpu::Job {
+    /// What the thread needs, copied so it never touches the FluidGpu.
+    fluid::FluidConfig cfg;
+    fluid::Swell comps{};
+    fluid::DepthFn depth;
+    /// The window to switch to; its group and size.
+    fluid::FluidWindow window;
+    std::size_t group = 0;
+    std::uint32_t size = 0;
+    /// A whole new grid (zoom group or size change, jump) or strips of new
+    /// cells written into the grid in use.
+    bool whole = false;
+    /// Simulation time (s) the cells are initialised at.
+    float t = 0.0F;
+    std::vector<fluid::CellRect> rects;
+    std::vector<Piece> pieces;
+    std::atomic<bool> done{false}, cancel{false};
+    std::thread thread;
+    /// Upload progress of a whole grid: the grid and the next piece / row.
+    std::optional<Grid> grid;
+    std::size_t next_piece = 0;
+    std::uint32_t next_row = 0;
+
+    Job() = default;
+    Job(const Job&) = delete;
+    Job& operator=(const Job&) = delete;
+    ~Job() {
+        cancel.store(true);
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+};
+
+FluidGpu::FluidGpu() = default;
+FluidGpu::~FluidGpu() = default;
+FluidGpu::FluidGpu(FluidGpu&&) noexcept = default;
+FluidGpu& FluidGpu::operator=(FluidGpu&&) noexcept = default;
+
+void FluidGpu::set_background(bool on) {
+    if (!on) {
+        // A job in flight belongs to the background mode: drop it (the
+        // window in use stays).
+        retire_job();
+    }
+    background_ = on;
+}
+
+namespace {
+
+/// Hands the data of a finished job to a short-lived thread that frees it:
+/// at 4K the pieces are tens of megabytes, and returning that memory to the
+/// system costs milliseconds the window thread must not spend.
+void free_in_background(std::vector<Piece>&& pieces) {
+    if (!pieces.empty()) {
+        std::thread([p = std::move(pieces)] {}).detach();
+    }
+}
+
+} // namespace
+
+void FluidGpu::retire_job() {
+    if (!job_) {
+        return;
+    }
+    // Cancelled, and joined later: a thread may be in the middle of
+    // allocating tens of megabytes, which the window thread must not wait for.
+    job_->cancel.store(true);
+    retired_.push_back(std::move(job_));
+}
+
+void FluidGpu::prepare_window(std::size_t group, std::pair<float, float> centre, std::uint32_t size,
+                              double target, const fluid::DepthFn& depth, std::size_t threads) {
+    // Cancelled jobs are freed once their threads have stopped.
+    std::erase_if(retired_, [](const std::unique_ptr<Job>& j) {
+        if (!j->done.load(std::memory_order_acquire)) {
+            return false;
+        }
+        free_in_background(std::move(j->pieces));
+        return true;
+    });
+    // 1. A window for another group or size makes the one being prepared
+    //    useless.
+    if (job_ && job_->whole && (job_->group != group || job_->size != size)) {
+        retire_job();
+    }
+    // 2. Upload a finished job (a whole grid over several frames).
+    if (job_ && job_->done.load(std::memory_order_acquire) && apply_job(*job_)) {
+        free_in_background(std::move(job_->pieces));
+        job_.reset();
+    }
+    if (job_) {
+        return;
+    }
+    // 3. Start the next one if the window has to change.
+    auto job = std::make_unique<Job>();
+    job->cfg = cfg_;
+    job->comps = comps_;
+    job->depth = depth;
+    if (!window_ || group != group_ || size != grid_.n) {
+        job->whole = true;
+        job->window = fluid::FluidWindow::with_size(cfg_, group, centre, size);
+        job->group = group;
+        job->size = size;
+        job->t = static_cast<float>(target);
+        job->rects = {job->window.rect()};
+    } else {
+        fluid::FluidWindow moved = *window_;
+        job->rects = moved.recentre(centre, cfg_.recentre_cells);
+        if (job->rects.empty()) {
+            return;
+        }
+        job->window = moved;
+        job->group = group_;
+        job->size = size;
+        // A jump (the whole window is new) still needs fresh cells for all
+        // of it: a new grid, so the one in use stays valid meanwhile.
+        job->whole = job->rects.size() == 1 && job->rects.front() == moved.rect();
+        job->t = static_cast<float>(job->whole ? target : sim_t_);
+    }
+    const std::size_t workers = std::max<std::size_t>(threads / 2, 1);
+    Job* j = job.get();
+    j->thread = std::thread([j, workers] {
+        for (const auto& r : j->rects) {
+            auto pieces =
+                compute_pieces(j->cfg, j->comps, j->window, r, j->depth, j->t, workers, &j->cancel);
+            for (auto& p : pieces) {
+                j->pieces.push_back(std::move(p));
+            }
+        }
+        j->done.store(true, std::memory_order_release);
+    });
+    job_ = std::move(job);
+}
+
+bool FluidGpu::apply_job(Job& j) {
+    const WGPUQueue q = ref_->queue.get();
+    if (!j.whole) {
+        for (const auto& p : j.pieces) {
+            write_rows(q, grid_.bathy.get(), grid_.states[0].get(), p, 0, p.ph);
+        }
+        window_ = j.window;
+        return true;
+    }
+    if (!j.grid) {
+        if (spare_ && spare_->n == j.size) {
+            // The whole grid is overwritten below; commands still reading the
+            // old contents are ordered before these writes.
+            j.grid = std::move(spare_);
+            spare_.reset();
+        } else {
+            j.grid = make_grid(j.size);
+        }
+    }
+    // Slices of at most 1 MiB until the byte or time budget of the frame is
+    // spent (the first slice always goes).
+    constexpr std::size_t kSlice = std::size_t{1} << 20;
+    const auto begin = std::chrono::steady_clock::now();
+    std::size_t budget = std::max<std::size_t>(upload_bytes_per_frame, 1);
+    bool first = true;
+    while (j.next_piece < j.pieces.size() && budget > 0) {
+        if (!first && upload_budget_ms > 0.0 &&
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin)
+                    .count() >= upload_budget_ms) {
+            break;
+        }
+        first = false;
+        const Piece& p = j.pieces[j.next_piece];
+        const std::size_t row_bytes = std::size_t{p.pw} * 20;
+        const auto rows = static_cast<std::uint32_t>(
+            std::clamp<std::size_t>(std::min(budget, kSlice) / row_bytes, 1, p.ph - j.next_row));
+        write_rows(q, j.grid->bathy.get(), j.grid->states[0].get(), p, j.next_row,
+                   j.next_row + rows);
+        j.next_row += rows;
+        budget -= std::min(budget, std::size_t{rows} * row_bytes);
+        if (j.next_row >= p.ph) {
+            ++j.next_piece;
+            j.next_row = 0;
+        }
+    }
+    if (j.next_piece < j.pieces.size()) {
+        return false;
+    }
+    spare_ = std::move(grid_);
+    grid_ = std::move(*j.grid);
+    window_ = j.window;
+    group_ = j.group;
+    sim_t_ = static_cast<double>(j.t);
+    return true;
+}
+
+void FluidGpu::fill(const fluid::FluidWindow& window, fluid::CellRect r,
+                    const fluid::DepthFn& depth, float t, std::size_t threads) const {
+    const WGPUQueue q = ref_->queue.get();
+    for (const auto& p : compute_pieces(cfg_, comps_, window, r, depth, t, threads, nullptr)) {
+        write_rows(q, grid_.bathy.get(), grid_.states[0].get(), p, 0, p.ph);
     }
 }
 

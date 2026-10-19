@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <optional>
 #include <string>
 #include <thread>
@@ -25,6 +26,8 @@ namespace {
 using Clock = std::chrono::steady_clock;
 /// Interval of the FPS display and the stderr breakdown.
 constexpr auto kReport = std::chrono::seconds(2);
+/// Frames that start this long (ms) after the previous one are reported.
+constexpr double kHitchMs = 30.0;
 constexpr std::array<const char*, 4> kStagesCpu = {"ground", "water objects", "sea", "objects"};
 constexpr std::array<const char*, 4> kStagesGpu = {"uploads", "sprites", "encode", "present"};
 
@@ -137,7 +140,14 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
         !err.empty()) {
         return "surface configuration: " + err;
     }
-    auto frame = gpu::GpuFrame::create(b->ctx, b->view_format);
+    // Interactive limits: chunk uploads and the wave simulation's window are
+    // spread over frames, the window thread never waits for content.
+    // (ANNO_VIEW_LIMITS=default: the library defaults, for comparing frame times.)
+    const char* limits_env = std::getenv("ANNO_VIEW_LIMITS");
+    const bool library_defaults = limits_env != nullptr && std::string(limits_env) == "default";
+    auto frame =
+        gpu::GpuFrame::create(b->ctx, b->view_format,
+                              library_defaults ? gpu::GpuLimits{} : gpu::GpuLimits::interactive());
     if (!frame) {
         return frame.error();
     }
@@ -169,10 +179,12 @@ class Viewer {
     void pan(double dx, double dy);
     void clamp();
     void zoom(int step, std::optional<std::pair<double, double>> anchor);
+    /// Whether zoom group `g` can be shown without waiting for content.
+    [[nodiscard]] bool group_ready(std::size_t g) const;
     void toggle_pause();
     [[nodiscard]] std::uint64_t time_ms() const;
     [[nodiscard]] std::pair<int, int> view_size() const;
-    void measure(double total_ms, double chunks_ms, const std::array<double, 4>& stages);
+    void measure(double chunks_ms, const std::array<double, 4>& stages);
 
     const render::Scene& scene_;
     std::size_t group_;
@@ -192,6 +204,13 @@ class Viewer {
     std::optional<Clock::duration> paused_at_;
     render::WaterStyle water_ = render::WaterStyle::Original;
     bool running_ = true, dirty_ = true, drag_ = false;
+    /// A zoom step waiting for the sea pattern of its group (only while the
+    /// patterns are still being rendered after the start).
+    struct PendingZoom {
+        int step = 0;
+        std::optional<std::pair<double, double>> anchor;
+    };
+    std::optional<PendingZoom> pending_zoom_;
     /// No frame before this time: the surface is occluded or timed out, or
     /// the window has no pixels (the Rust viewer's occluded_until).
     std::optional<Clock::time_point> retry_at_;
@@ -210,9 +229,33 @@ class Viewer {
     std::string error_;
     std::optional<std::pair<double, double>> cursor_;
     double scroll_ = 0;
+    // Test hook (not documented for players): ANNO_VIEW_ZOOM_SCRIPT=<frames>,<seconds>
+    // zooms one group step every <frames> drawn frames (2, 1, 0, 1, 2, ... like
+    // fast mouse-wheel zooming) and quits after <seconds>; the stderr report shows
+    // the frame times of the real window thread.
+    std::size_t script_every_ = 0;
+    double script_seconds_ = 0;
+    std::size_t script_frames_ = 0;
+    int script_dir_ = -1;
+    Clock::time_point script_start_ = Clock::now();
     // Statistics since the last report.
     std::size_t frames_n_ = 0;
     double total_ms_ = 0, worst_ms_ = 0, chunks_ms_ = 0;
+    // The whole of draw(), from its start to the end of the present call,
+    // less the wait for the display (acquiring the surface texture, which
+    // paces the frames with vsync): the time the window thread is busy.
+    Clock::time_point draw_start_ = Clock::now();
+    double display_wait_ms_ = 0, wait_sum_ms_ = 0, wait_worst_ms_ = 0;
+    /// The loop is animating (frames follow back to back); the gap between
+    /// two such frames' starts is a hitch if it is long.
+    bool frame_animating_ = false, last_animating_ = false;
+    std::optional<Clock::time_point> last_start_;
+    double gap_worst_ms_ = 0, last_busy_ms_ = 0, last_wait_ms_ = 0;
+    /// Handling the window events of the loop iteration that drew the frame.
+    double events_ms_ = 0, last_chunks_ms_ = 0;
+    std::array<double, 4> last_stages_{};
+    /// The end of the previous frame's draw() (after its measure()).
+    Clock::time_point last_end_ = Clock::now();
     std::array<double, 4> stages_{};
     Clock::time_point meter_since_ = Clock::now();
     std::optional<std::pair<double, double>> fps_;
@@ -284,6 +327,21 @@ std::string Viewer::run() {
         }
     }
     update_title();
+    if (const char* script = std::getenv("ANNO_VIEW_ZOOM_SCRIPT")) {
+        unsigned long every = 0;
+        double seconds = 0;
+        const bool enhanced = std::string(script).find("enhanced") != std::string::npos;
+        if (std::sscanf(script, "%lu,%lf", &every, &seconds) == 2 && every > 0 && seconds > 0) {
+            if (enhanced) {
+                water_ = render::WaterStyle::Enhanced;
+                update_title();
+            }
+            script_every_ = every;
+            script_seconds_ = seconds;
+            script_start_ = Clock::now();
+            script_dir_ = group_ > 0 ? -1 : 1;
+        }
+    }
     const unsigned hw =
         (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);
     // Sea patterns of all zoom groups, built off the window thread.
@@ -313,12 +371,34 @@ std::string Viewer::run() {
                 handle(e);
             }
         }
+        const auto events_start = Clock::now();
         while (running_ && SDL_PollEvent(&e)) {
             handle(e);
         }
+        events_ms_ = std::chrono::duration<double, std::milli>(Clock::now() - events_start).count();
         if (running_ && can_draw && (animating || dirty_)) {
             dirty_ = false;
+            if (pending_zoom_) {
+                const PendingZoom p = *pending_zoom_;
+                pending_zoom_.reset();
+                zoom(p.step, p.anchor);
+            }
+            frame_animating_ = animating;
             draw();
+            last_end_ = Clock::now();
+            if (script_every_ > 0) {
+                if (++script_frames_ % script_every_ == 0) {
+                    const auto next = static_cast<std::ptrdiff_t>(group_) + script_dir_;
+                    if (next < 0 || next >= static_cast<std::ptrdiff_t>(render::kGroups)) {
+                        script_dir_ = -script_dir_;
+                    }
+                    zoom(script_dir_, std::nullopt);
+                }
+                if (std::chrono::duration<double>(Clock::now() - script_start_).count() >
+                    script_seconds_) {
+                    running_ = false;
+                }
+            }
         }
     }
     frames_.set_workers(nullptr);
@@ -485,6 +565,14 @@ void Viewer::zoom(int step, std::optional<std::pair<double, double>> anchor) {
         return;
     }
     const auto g = static_cast<std::size_t>(next);
+    if (!group_ready(g)) {
+        // The group's sea pattern is still being rendered / uploaded (the
+        // first seconds after the start): zoom as soon as it is, instead of
+        // the frame waiting for it.
+        pending_zoom_ = PendingZoom{step, anchor};
+        dirty_ = true;
+        return;
+    }
     const auto [w, h] = view_size();
     const double dx = anchor ? anchor->first - w / 2.0 : 0.0;
     const double dy = anchor ? anchor->second - h / 2.0 : 0.0;
@@ -498,6 +586,15 @@ void Viewer::zoom(int step, std::optional<std::pair<double, double>> anchor) {
     clamp();
     update_title();
     dirty_ = true;
+}
+
+bool Viewer::group_ready(std::size_t g) const {
+#ifdef ANNO_VIEWER_GPU
+    if (gpu_) {
+        return gpu_->frame->group_ready(scene_, g);
+    }
+#endif
+    return scene_.sea_built(g);
 }
 
 void Viewer::update_title() {
@@ -527,6 +624,8 @@ bool Viewer::on_gpu() const {
 }
 
 void Viewer::draw() {
+    draw_start_ = Clock::now();
+    display_wait_ms_ = 0;
     int pw = 0, ph = 0;
     SDL_GetWindowSizeInPixels(window_, &pw, &ph);
     if (pw <= 0 || ph <= 0) {
@@ -557,7 +656,10 @@ void Viewer::draw_gpu(render::Rect view) {
         reconfigure_ = false;
     }
     WGPUSurfaceTexture st = WGPU_SURFACE_TEXTURE_INIT;
+    const auto acquire_start = Clock::now();
     wgpuSurfaceGetCurrentTexture(g.surface.get(), &st);
+    display_wait_ms_ =
+        std::chrono::duration<double, std::milli>(Clock::now() - acquire_start).count();
     const gpu::Texture texture(st.texture);
     // wgpu-native's own status (wgpu.h): the window is not visible (macOS
     // reports it until the window is first shown). Not in webgpu.h's enum,
@@ -615,7 +717,7 @@ void Viewer::draw_gpu(render::Rect view) {
     }
     tex_w_ = view.w;
     tex_h_ = view.h;
-    measure(s.total_ms + present, s.chunks_ms, {s.upload_ms, s.sprites_ms, s.encode_ms, present});
+    measure(s.chunks_ms, {s.upload_ms, s.sprites_ms, s.encode_ms, present});
 }
 #endif
 
@@ -640,14 +742,57 @@ void Viewer::draw_cpu(render::Rect view) {
     const auto s = frames_.render(scene_, view, group_, time_ms(), water_, buffer_.data());
     SDL_UpdateTexture(texture_, nullptr, buffer_.data(), w * 4);
     SDL_RenderTexture(renderer_, texture_, nullptr, nullptr);
+    const auto present_start = Clock::now();
     SDL_RenderPresent(renderer_);
+    // SDL's present waits for vsync.
+    display_wait_ms_ =
+        std::chrono::duration<double, std::milli>(Clock::now() - present_start).count();
     if (s.chunks_built > 0) {
         std::fprintf(stderr, "zoom group %zu: %zu chunk(s) received\n", group_, s.chunks_built);
     }
-    measure(s.total_ms, s.chunks_ms, {s.ground_ms, s.water_objects_ms, s.sea_ms, s.objects_ms});
+    measure(s.chunks_ms, {s.ground_ms, s.water_objects_ms, s.sea_ms, s.objects_ms});
 }
 
-void Viewer::measure(double total_ms, double chunks_ms, const std::array<double, 4>& stages) {
+void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
+    // The window thread's busy time: all of draw() (events excluded) from
+    // its start to the end of the present call, minus the wait for the
+    // display. Not just the compositor's own timer: acquiring the surface
+    // texture, creating its view and presenting count as well.
+    const auto now = Clock::now();
+    const double total_ms =
+        std::max(0.0, std::chrono::duration<double, std::milli>(now - draw_start_).count() -
+                          display_wait_ms_);
+    // Gap between the starts of two frames of the continuous animation: the
+    // true hitch (the vsync wait is in it, so it is one display interval
+    // when all is well).
+    if (last_start_ && last_animating_ && frame_animating_) {
+        const double gap =
+            std::chrono::duration<double, std::milli>(draw_start_ - *last_start_).count();
+        gap_worst_ms_ = std::max(gap_worst_ms_, gap);
+        if (gap > kHitchMs) {
+            std::fprintf(stderr,
+                         "frame hitch: %.1f ms since the previous frame started (this frame: busy "
+                         "%.1f ms, waiting for the display %.1f ms; previous frame: busy %.1f ms, "
+                         "waiting %.1f ms; %.1f ms from the end of that frame to the start of "
+                         "this one, of which %.1f ms handling window events; the previous frame's "
+                         "time went to chunks %.1f, %s %.1f, %s %.1f, %s %.1f, %s %.1f ms); "
+                         "zoom group %zu\n",
+                         gap, total_ms, display_wait_ms_, last_busy_ms_, last_wait_ms_,
+                         std::chrono::duration<double, std::milli>(draw_start_ - last_end_).count(),
+                         events_ms_, last_chunks_ms_, (on_gpu() ? kStagesGpu : kStagesCpu)[0],
+                         last_stages_[0], (on_gpu() ? kStagesGpu : kStagesCpu)[1], last_stages_[1],
+                         (on_gpu() ? kStagesGpu : kStagesCpu)[2], last_stages_[2],
+                         (on_gpu() ? kStagesGpu : kStagesCpu)[3], last_stages_[3], group_);
+        }
+    }
+    last_busy_ms_ = total_ms;
+    last_wait_ms_ = display_wait_ms_;
+    last_chunks_ms_ = chunks_ms;
+    last_stages_ = stages;
+    last_start_ = draw_start_;
+    last_animating_ = frame_animating_;
+    wait_sum_ms_ += display_wait_ms_;
+    wait_worst_ms_ = std::max(wait_worst_ms_, display_wait_ms_);
     ++frames_n_;
     worst_ms_ = std::max(worst_ms_, total_ms);
     total_ms_ += total_ms;
@@ -663,14 +808,18 @@ void Viewer::measure(double total_ms, double chunks_ms, const std::array<double,
     const double fps = n / std::chrono::duration<double>(elapsed).count();
     const auto& names = on_gpu() ? kStagesGpu : kStagesCpu;
     std::fprintf(stderr,
-                 "zoom group %zu, %dx%d px: %.1f fps, frame avg %.1f ms / worst %.1f ms (chunks "
+                 "zoom group %zu, %dx%d px: %.1f fps, frame avg %.1f ms / worst %.1f ms (busy time "
+                 "of the window thread per frame; waiting for the display: avg %.1f / worst %.1f); "
+                 "worst gap between frames %.1f ms (chunks "
                  "%.1f, %s %.1f, %s %.1f, %s %.1f, %s %.1f; %zu chunks cached)\n",
-                 group_, tex_w_, tex_h_, fps, total_ms_ / n, worst_ms_, chunks_ms_ / n, names[0],
-                 stages_[0] / n, names[1], stages_[1] / n, names[2], stages_[2] / n, names[3],
-                 stages_[3] / n, frames_.cached());
+                 group_, tex_w_, tex_h_, fps, total_ms_ / n, worst_ms_, wait_sum_ms_ / n,
+                 wait_worst_ms_, gap_worst_ms_, chunks_ms_ / n, names[0], stages_[0] / n, names[1],
+                 stages_[1] / n, names[2], stages_[2] / n, names[3], stages_[3] / n,
+                 frames_.cached());
     fps_ = std::pair{fps, total_ms_ / n};
     frames_n_ = 0;
     total_ms_ = worst_ms_ = chunks_ms_ = 0;
+    wait_sum_ms_ = wait_worst_ms_ = gap_worst_ms_ = 0;
     stages_ = {};
     meter_since_ = Clock::now();
     update_title();

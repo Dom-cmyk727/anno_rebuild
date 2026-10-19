@@ -2,6 +2,7 @@
 // has no GPU adapter (e.g. CI runners without one) and, for the frame
 // comparison, without the game files (ANNO1503_GAME_DIR).
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -10,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #include <doctest/doctest.h>
@@ -1092,4 +1094,134 @@ TEST_CASE("enhanced water meets objects standing in it (game files)") {
         }
     }
     CHECK(a.value()->errors() == 0);
+}
+
+namespace {
+
+/// Runs `run` once per `ms_step` until `done()` or `seconds` pass; true if done.
+template <class Run, class Done> bool poll_until(Run&& run, Done&& done, double seconds) {
+    const auto end = std::chrono::steady_clock::now() + std::chrono::duration<double>(seconds);
+    while (std::chrono::steady_clock::now() < end) {
+        run();
+        if (done()) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return false;
+}
+
+} // namespace
+
+TEST_CASE("the wave solver sets its window up in the background without blocking frames") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    namespace fluid = anno::render::fluid;
+    fluid::FluidConfig cfg;
+    cfg.size = 128;
+    cfg.cells_per_tile = {4, 2, 4};
+    cfg.recentre_cells = 8;
+    cfg.sponge_cells = 8;
+    const fluid::DepthFn depth = [](float x, float y) {
+        return 16.0F - 2.0F * std::max(x - 6.0F, 0.0F) + 0.3F * std::sin(y * 0.7F);
+    };
+    auto made = gpu::FluidGpu::create(*ctx, cfg);
+    REQUIRE(made);
+    gpu::FluidGpu& g = made.value();
+    g.set_background(true);
+    // A tiny budget: the window arrives over several frames.
+    g.upload_bytes_per_frame = 64 * 1024;
+    const FluidRun run{*ctx, g, depth};
+    const std::uint64_t time_ms = 4000;
+    // The first frame has no window yet and nothing to step.
+    run(0, {8.0F, 8.0F}, 20.0F, time_ms);
+    CHECK_FALSE(g.window());
+    CHECK(g.setting_up());
+    int frames = 1;
+    REQUIRE(poll_until(
+        [&] {
+            run(0, {8.0F, 8.0F}, 20.0F, time_ms);
+            ++frames;
+        },
+        [&] { return g.window().has_value(); }, 20.0));
+    // Uploaded over several frames (128² cells × 20 bytes in 64 KiB slices).
+    CHECK(frames > 3);
+    REQUIRE(g.window());
+    CHECK(g.window()->cells_per_tile == 4);
+    CHECK(g.window()->size == 128);
+    CHECK(g.sim_time() == doctest::Approx(4.0));
+    // Same time: the state is the freshly filled one, equal to the CPU's.
+    fluid::FluidGrid cpu(cfg, *g.window(), depth, static_cast<float>(g.sim_time()));
+    const auto [max0, flow0] = compare_state(*ctx, g, cpu, 128);
+    MESSAGE("background window: max " << max0);
+    CHECK(max0 < 1e-4F);
+    // Another zoom group: the old window keeps serving while the new one is
+    // prepared, then it is replaced.
+    run(1, {8.0F, 8.0F}, 20.0F, time_ms);
+    CHECK(g.setting_up());
+    REQUIRE(g.window());
+    if (g.window()->cells_per_tile == 4) {
+        MESSAGE("old window kept while the new one is prepared");
+    }
+    REQUIRE(poll_until(
+        [&] { run(1, {8.0F, 8.0F}, 20.0F, time_ms); },
+        [&] { return g.window() && g.window()->cells_per_tile == 2 && !g.setting_up(); }, 20.0));
+    CHECK(g.window()->cells_per_tile == 2);
+    fluid::FluidGrid cpu1(cfg, *g.window(), depth, static_cast<float>(g.sim_time()));
+    const auto [max1, flow1] = compare_state(*ctx, g, cpu1, 128);
+    MESSAGE("after the group change: max " << max1);
+    CHECK(max1 < 1e-4F);
+    // A recentre writes strips of new cells into the grid in use.
+    const fluid::FluidWindow before = *g.window();
+    REQUIRE(poll_until(
+        [&] { run(1, {14.0F, 8.0F}, 20.0F, time_ms); },
+        [&] { return g.window() && g.window()->origin != before.origin && !g.setting_up(); },
+        20.0));
+    fluid::FluidGrid cpu2(cfg, before, depth, static_cast<float>(g.sim_time()));
+    fluid::FluidWindow moved = before;
+    const auto rects = moved.recentre({14.0F, 8.0F}, cfg.recentre_cells);
+    cpu2.window = moved;
+    for (const auto& r : rects) {
+        cpu2.fill(r, depth, static_cast<float>(g.sim_time()));
+    }
+    CHECK(*g.window() == moved);
+    const auto [max2, flow2] = compare_state(*ctx, g, cpu2, 128);
+    MESSAGE("after the recentre: max " << max2);
+    CHECK(max2 < 1e-3F);
+    CHECK(ctx->errors->load() == 0);
+    // Destroying the solver with a job in flight waits for its thread.
+    run(0, {40.0F, 40.0F}, 20.0F, time_ms + 100);
+    CHECK(g.setting_up());
+}
+
+TEST_CASE("background chunk workers deliver chunks and free evicted ones off the window thread "
+          "(game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const Loaded loaded = load_scene(*dir, "Single_01.sze");
+    const auto& scene = *loaded.scene;
+    render::FrameRenderer frames(4, false);
+    frames.spare_chunks = 2;
+    frames.set_workers(std::make_unique<render::ChunkWorkers>(scene, 2));
+    // Pan across the scene so that chunks are built and evicted again and
+    // again; the cache stays bounded by the view, its ring and the spares.
+    const auto b = *scene.bounds(2);
+    std::size_t largest = 0;
+    for (int step = 0; step < 24; ++step) {
+        const render::Rect view{b.x + step * 300, b.y + step * 100, 1280, 720};
+        poll_until([&] { frames.update_chunks(scene, view, 2); },
+                   [&] { return std::get<2>(frames.update_chunks(scene, view, 2)) == 0; }, 30.0);
+        largest = std::max(largest, frames.cached());
+    }
+    // visible (≤ 3 × 2) + ring (≤ 5 × 4) + neighbouring groups + 2 spares.
+    CHECK(largest < 100);
+    const render::Rect last{b.x + 23 * 300, b.y + 23 * 100, 1280, 720};
+    CHECK(std::get<2>(frames.update_chunks(scene, last, 2)) == 0);
+    // Destroying the workers with garbage queued is fine.
+    frames.set_workers(nullptr);
 }

@@ -47,8 +47,10 @@ struct Chunk {
     std::vector<std::uint32_t> ground;
     /// Objects except water objects, straight-alpha RGBA; empty = none.
     std::vector<Px> objects;
-    /// Sea field (see sea::WaterField); empty = open sea everywhere.
-    std::vector<std::uint8_t> cover, shore, depth, flags;
+    /// Sea field (see sea::WaterField), four bytes per texel in the order
+    /// cover, shore, depth, flags (the GPU's RGBA8Uint texel, uploaded as
+    /// is); empty = open sea everywhere.
+    std::vector<std::uint8_t> field;
     /// Terrain height seen at each pixel in 1/kTerrainScale HEIGHT units,
     /// kNoTerrain where no ground is drawn; empty = none.
     std::vector<std::uint16_t> terrain;
@@ -85,13 +87,20 @@ class ChunkWorkers {
     bool submit(const std::vector<ChunkKey>& wanted, bool ships = true);
     /// Finished chunks since the last call.
     std::vector<std::pair<ChunkKey, Chunk>> take_done();
+    /// Takes chunks that are no longer needed and frees them on a
+    /// background thread (freeing a chunk's vectors takes about a
+    /// millisecond: the window thread must not).
+    void discard(std::vector<Chunk> chunks);
 
   private:
     void run();
+    void reap();
 
     const Scene& scene_;
     std::mutex mutex_;
-    std::condition_variable ready_;
+    std::condition_variable ready_, garbage_ready_;
+    std::vector<Chunk> garbage_;
+    std::thread reaper_;
     std::deque<ChunkKey> jobs_;
     std::set<ChunkKey> busy_;
     /// Chunks whose build threw: not requested again (a deterministic

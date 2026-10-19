@@ -6,6 +6,8 @@
 //       [--res 1920x1080,2560x1440,3840x2160] [--groups 0,1,2]
 //       [--styles original,enhanced] [--chunks blocking,async]
 //       [--renderer cpu,gpu] [--check] [--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick]
+//       [--zoom k] [--zoom-frames n] [--pace ms] [--spike ms] [--limits default|interactive]
+//       [--settle ms]
 //
 // Per resolution, zoom group, water style and chunk mode, from a cold cache
 // centred on the largest island: cold (1 frame), static (120), pan slow (240,
@@ -19,6 +21,15 @@
 // waiting for the GPU. `--check` compares the last static frame of each
 // configuration with the CPU path pixel by pixel and prints the result to
 // stderr (BENCH_DUMP=<dir> also writes both images as raw RGBA).
+//
+// `--zoom k` replaces the paths above by a zoom path: after a static warm-up
+// the zoom group changes every k frames (2, 1, 0, 1, 2, ... like the mouse
+// wheel; the scene point at the window centre stays fixed) for `--zoom-frames`
+// frames (default 240), each frame paced to at least `--pace` ms (default 2,
+// a 500 Hz display) so that the chunk workers get real time. Frames slower
+// than `--spike` ms (default 8) are listed with their phase breakdown. The
+// frame time of this path is the window thread's CPU time (the viewer does
+// not wait for the GPU); the GPU wait is listed separately.
 #include <algorithm>
 #include <charconv>
 #include <chrono>
@@ -60,6 +71,13 @@ struct Options {
     std::optional<std::size_t> island;
     std::uint64_t t0 = 0, warmup = 0;
     bool quick = false;
+    std::size_t zoom_every = 0, zoom_frames = 240;
+    double pace_ms = 2.0, spike_ms = 8.0;
+    /// GpuLimits::interactive() instead of the defaults.
+    bool interactive = false;
+    /// Render paced frames for this many ms before the paths (background
+    /// work such as the wave simulation window needs wall-clock time).
+    std::size_t settle_ms = 0;
 };
 
 std::vector<std::string_view> split(std::string_view s, char sep) {
@@ -87,6 +105,13 @@ struct Row {
     double chunk_ms = 0;
     std::size_t missing = 0;
     std::array<double, 4> stages{};
+    /// Zoom path: group, GPU wait and the compositor's phase timers.
+    std::size_t group = 0;
+    double wait = 0;
+    double sea = 0, sync = 0, decode = 0, atlas = 0, fluid = 0, encode = 0, sprites = 0;
+    std::size_t uploaded = 0, sprites_new = 0;
+    double create = 0, write = 0;
+    std::size_t frame_no = 0;
 };
 
 struct Config {
@@ -99,6 +124,9 @@ struct Config {
     std::uint64_t t0 = 0, warmup = 0;
     std::size_t threads = 1;
     bool check = false;
+    std::size_t zoom_every = 0, zoom_frames = 240;
+    double pace_ms = 2.0, spike_ms = 8.0;
+    std::size_t settle_ms = 0;
 };
 
 void report(const Config& c, const char* renderer, const char* mode, const char* name,
@@ -200,6 +228,97 @@ struct GpuFrame {};
 } // namespace gpu
 #endif
 
+/// The zoom path (see the header): wheel-like group switches every
+/// c.zoom_every frames, paced frames, a list of the slow frames.
+template <class Frame, class Ready>
+void run_zoom(const Config& c, Frame&& frame, Ready&& ready, std::size_t& group,
+              std::pair<int, int> cam, std::uint64_t time) {
+    using SC = std::chrono::steady_clock;
+    // Warm-up: static frames until the first group is built. The first
+    // frames carry the one-time costs (pipelines, first uploads); slow ones
+    // are listed after the table.
+    std::vector<Row> warm;
+    for (std::size_t i = 0; i < 60; ++i) {
+        Row r = frame(render::Rect{cam.first, cam.second, c.w, c.h}, time, true);
+        r.total -= r.wait;
+        r.frame_no = i;
+        warm.push_back(r);
+        std::this_thread::sleep_for(std::chrono::milliseconds(8));
+        time += 8;
+    }
+    // Group sequence as the wheel: 2, 1, 0, 1, 2, ...
+    static constexpr std::array<std::size_t, 4> kCycle = {2, 1, 0, 1};
+    std::size_t at = 0;
+    while (kCycle[at] != group) {
+        at = (at + 1) % kCycle.size();
+    }
+    std::vector<Row> rows;
+    const auto start = SC::now();
+    auto next = start;
+    // As the viewer: a zoom step waits until the sea pattern of its group is
+    // rendered and on the GPU (only in the first moments after the start).
+    bool switch_due = false;
+    std::size_t deferred = 0;
+    for (std::size_t i = 0; i < c.zoom_frames; ++i) {
+        if (i > 0 && i % c.zoom_every == 0) {
+            switch_due = true;
+        }
+        if (switch_due && !ready(kCycle[(at + 1) % kCycle.size()])) {
+            ++deferred;
+        } else if (switch_due) {
+            switch_due = false;
+            at = (at + 1) % kCycle.size();
+            const std::size_t to = kCycle[at];
+            // Keep the scene point at the window centre fixed.
+            const auto ot = render::kTile[group], nt = render::kTile[to];
+            const double cx = cam.first + c.w / 2.0, cy = cam.second + c.h / 2.0;
+            const double nx = cx * nt.w / ot.w, ny = cy * nt.h / ot.h;
+            cam = {static_cast<int>(std::lround(nx - c.w / 2.0)),
+                   static_cast<int>(std::lround(ny - c.h / 2.0))};
+            group = to;
+        }
+        const render::Rect view{cam.first, cam.second, c.w, c.h};
+        Row r = frame(view, time, true);
+        // Window-thread time only: the viewer does not wait for the GPU (the
+        // wait is still in the last stage column and in the `wait` column).
+        r.total -= r.wait;
+        r.frame_no = i;
+        rows.push_back(r);
+        // Pace like a display: the window thread sleeps out the rest of the
+        // frame interval (workers run meanwhile).
+        next += std::chrono::duration_cast<SC::duration>(
+            std::chrono::duration<double, std::milli>(c.pace_ms));
+        std::this_thread::sleep_until(next);
+        time = static_cast<std::uint64_t>(
+                   std::chrono::duration<double, std::milli>(SC::now() - start).count()) +
+               1000;
+    }
+    report(c, "zoom", c.async_chunks ? "async" : "blocking",
+           ("zoom/" + std::to_string(c.zoom_every)).c_str(), rows);
+    auto slow = [&](const char* title, const std::vector<Row>& list) {
+        std::printf("\n%s (> %.1f ms), %dx%d, %s, %s chunks:\n\n", title, c.spike_ms, c.w, c.h,
+                    c.style == render::WaterStyle::Original ? "original" : "enhanced",
+                    c.async_chunks ? "async" : "blocking");
+        std::printf("| # | group | total | chunks | built | uploaded | sea | chunk sync | create | "
+                    "write | sprites | decode | atlas | new sprites | fluid | encode | wait |\n");
+        std::printf("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+        for (const auto& r : list) {
+            if (r.total <= c.spike_ms) {
+                continue;
+            }
+            std::printf("| %zu | %zu | %.1f | %.1f | %zu | %zu | %.1f | %.1f | %.1f | %.1f | %.1f "
+                        "| %.1f | %.1f | %zu | %.1f | %.1f | %.1f |\n",
+                        r.frame_no, r.group, r.total, r.chunk_ms, r.built, r.uploaded, r.sea,
+                        r.sync, r.create, r.write, r.sprites, r.decode, r.atlas, r.sprites_new,
+                        r.fluid, r.encode, r.wait);
+        }
+    };
+    std::printf("\nzoom steps deferred until the target group was ready: %zu frames\n", deferred);
+    slow("slow warm-up frames", warm);
+    slow("slow frames of the zoom path", rows);
+    std::printf("\n");
+}
+
 void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
     // The GPU compositor draws the ships itself: chunks without them.
     render::FrameRenderer fr(c.threads, g == nullptr);
@@ -219,35 +338,78 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
 #endif
     // One frame on the selected renderer; measured GPU frames wait for the
     // card (warm-up frames do not, as the Rust benchmark).
+    std::size_t frame_group = c.group;
     auto frame = [&](render::Rect view, std::uint64_t t, bool wait_gpu) -> Row {
 #ifdef ANNO_BENCH_GPU
         if (g != nullptr) {
-            const auto st = g->render(fr, scene, view, c.group, t, c.style, target->second.get());
+            const auto st =
+                g->render(fr, scene, view, frame_group, t, c.style, target->second.get());
+            Row r{st.total_ms, st.chunks_built, st.chunks_ms, st.chunks_missing, {}};
+            r.group = frame_group;
+            r.sea = st.sea_ms;
+            r.sync = st.chunk_sync_ms;
+            r.decode = st.decode_ms;
+            r.atlas = st.atlas_ms;
+            r.fluid = st.fluid_ms;
+            r.encode = st.encode_ms;
+            r.sprites = st.sprites_ms;
+            r.uploaded = st.chunks_uploaded;
+            r.sprites_new = st.sprites_new;
+            r.create = st.upload_create_ms;
+            r.write = st.upload_write_ms;
             if (!wait_gpu) {
-                return Row{st.total_ms, st.chunks_built, st.chunks_ms, st.chunks_missing, {}};
+                return r;
             }
             const auto w0 = std::chrono::steady_clock::now();
             g->wait();
             const double wait =
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - w0)
                     .count();
-            return Row{st.total_ms + wait,
-                       st.chunks_built,
-                       st.chunks_ms,
-                       st.chunks_missing,
-                       {st.upload_ms, st.sprites_ms, st.encode_ms, wait}};
+            r.total = st.total_ms + wait;
+            r.wait = wait;
+            r.stages = {st.upload_ms, st.sprites_ms, st.encode_ms, wait};
+            return r;
         }
 #endif
         (void)wait_gpu;
-        const auto st = fr.render(scene, view, c.group, t, c.style, out.data());
-        return Row{st.total_ms,
-                   st.chunks_built,
-                   st.chunks_ms,
-                   st.chunks_missing,
-                   {st.ground_ms, st.water_objects_ms, st.sea_ms, st.objects_ms}};
+        const auto st = fr.render(scene, view, frame_group, t, c.style, out.data());
+        Row r{st.total_ms,
+              st.chunks_built,
+              st.chunks_ms,
+              st.chunks_missing,
+              {st.ground_ms, st.water_objects_ms, st.sea_ms, st.objects_ms}};
+        r.group = frame_group;
+        return r;
     };
     for (; time < c.t0; time += 16) {
         frame(view0, time, false);
+    }
+    // Paced frames in wall-clock time, so that background work finishes.
+    for (std::size_t waited = 0; waited < c.settle_ms; waited += 8) {
+        frame(view0, time, true);
+        std::this_thread::sleep_for(std::chrono::milliseconds(8));
+    }
+    if (c.zoom_every > 0) {
+        // The viewer renders the sea patterns of all groups on background
+        // threads from the start; so does the zoom path.
+        std::vector<std::thread> seas;
+        for (std::size_t grp = 0; grp < render::kGroups; ++grp) {
+            seas.emplace_back([&scene, grp] { scene.sea(grp); });
+        }
+        auto ready = [&](std::size_t grp) {
+#ifdef ANNO_BENCH_GPU
+            if (g != nullptr) {
+                return g->group_ready(scene, grp);
+            }
+#endif
+            return scene.sea_built(grp);
+        };
+        run_zoom(c, frame, ready, frame_group, cam, time);
+        for (auto& t : seas) {
+            t.join();
+        }
+        fr.set_workers(nullptr);
+        return;
     }
     struct Path {
         const char* name;
@@ -280,7 +442,8 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
 constexpr const char* kUsage =
     "usage: bench_frame <game_dir> <file> [--threads n] [--res WxH,..] [--groups 0,1,2] "
     "[--styles original,enhanced] [--chunks blocking,async] [--renderer cpu,gpu] [--check] "
-    "[--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick]\n";
+    "[--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick] [--zoom k] [--zoom-frames n] "
+    "[--pace ms] [--spike ms] [--limits default|interactive] [--settle ms]\n";
 
 std::optional<Options> parse_options(const std::vector<std::string>& args) {
     Options o;
@@ -351,6 +514,19 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
         } else if (a == "--at") {
             const auto xy = split(v, ',');
             ok = xy.size() == 2 && parse(xy[0], o.at.first) && parse(xy[1], o.at.second);
+        } else if (a == "--settle") {
+            ok = parse(v, o.settle_ms);
+        } else if (a == "--limits") {
+            ok = v == "default" || v == "interactive";
+            o.interactive = v == "interactive";
+        } else if (a == "--zoom") {
+            ok = parse(v, o.zoom_every) && o.zoom_every > 0;
+        } else if (a == "--zoom-frames") {
+            ok = parse(v, o.zoom_frames) && o.zoom_frames > 0;
+        } else if (a == "--pace") {
+            ok = parse(v, o.pace_ms);
+        } else if (a == "--spike") {
+            ok = parse(v, o.spike_ms);
         } else if (a == "--t0") {
             ok = parse(v, o.t0);
         } else if (a == "--warmup") {
@@ -434,7 +610,9 @@ int main(int argc, char** argv) {
         ctx = std::move(c).value();
         std::fprintf(stderr, "GPU: %s\n", ctx->name.c_str());
         // One compositor for all configurations, as the Rust benchmark.
-        auto f = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
+        auto f = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm,
+                                       o->interactive ? gpu::GpuLimits::interactive()
+                                                      : gpu::GpuLimits{});
         if (!f) {
             std::fprintf(stderr, "GPU: %s\n", f.error().c_str());
             return 1;
@@ -470,6 +648,11 @@ int main(int argc, char** argv) {
                         c.warmup = o->warmup;
                         c.threads = o->threads;
                         c.check = o->check;
+                        c.settle_ms = o->settle_ms;
+                        c.zoom_every = o->zoom_every;
+                        c.zoom_frames = o->zoom_frames;
+                        c.pace_ms = o->pace_ms;
+                        c.spike_ms = o->spike_ms;
                         gpu::GpuFrame* g = nullptr;
 #ifdef ANNO_BENCH_GPU
                         if (on_gpu) {

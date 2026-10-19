@@ -37,8 +37,26 @@ struct GpuStats {
     std::size_t chunks_built = 0;
     double chunks_ms = 0;
     std::size_t chunks_missing = 0;
-    /// Chunks, sea pattern and atlas uploads.
+    /// Chunks, sea pattern and atlas uploads (sea_ms + chunk_sync_ms + the
+    /// ensure_under check).
     double upload_ms = 0;
+    /// Of upload_ms: making the sea pattern of the group usable on the GPU.
+    double sea_ms = 0;
+    /// Of upload_ms: uploading chunks and dropping GPU chunks.
+    double chunk_sync_ms = 0;
+    /// Of chunk_sync_ms: creating textures, writing texels.
+    double upload_create_ms = 0, upload_write_ms = 0;
+    /// Chunks uploaded to the GPU this frame (real ones).
+    std::size_t chunks_uploaded = 0;
+    /// Of sprites_ms: decoding sprite frames not seen before (window thread).
+    double decode_ms = 0;
+    /// Of sprites_ms: packing frames into the atlas (writes, growth).
+    double atlas_ms = 0;
+    /// Sprite frames decoded or packed for the first time this frame.
+    std::size_t sprites_new = 0;
+    /// Of encode_ms: bringing the wave simulation up to date (window
+    /// (re)initialisation, depth sampling, uploads, step recording).
+    double fluid_ms = 0;
     /// Placing and packing the animated sprites.
     double sprites_ms = 0;
     /// Recording and submitting the commands.
@@ -60,6 +78,25 @@ struct GpuLimits {
     /// Chunks uploaded per frame at most; the rest show open sea until a
     /// later frame, so zooming never stalls on uploads.
     std::size_t uploads_per_frame = 6;
+    /// Time budget in milliseconds for the chunk uploads of one frame: once
+    /// it is spent, further chunks wait for the next frame (the first one
+    /// always goes). 0 = no time limit, only uploads_per_frame applies.
+    double upload_budget_ms = 0.0;
+    /// The coastal wave simulation sets up its window (depth sampling, the
+    /// initial state) on a background thread and uploads it over several
+    /// frames, so a zoom group change or a window jump never stalls the
+    /// window thread; until the new window is ready the previous one (or
+    /// the shader's analytic waves outside it) is shown. false: set up in
+    /// the frame (headless renders, tests).
+    bool background_fluid = false;
+    /// The limits for an interactive window: uploads and wave simulation
+    /// setup are spread over frames (upload_budget_ms 1.0, background_fluid).
+    [[nodiscard]] static GpuLimits interactive() {
+        GpuLimits l;
+        l.upload_budget_ms = 1.0;
+        l.background_fluid = true;
+        return l;
+    }
     /// Animation steps of other zoom groups' sea patterns uploaded per frame.
     std::size_t sea_steps_per_frame = 2;
     /// Atlas layers at most (0 = the device's maxTextureArrayLayers; larger
@@ -117,6 +154,12 @@ class GpuFrame {
     GpuStats render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                     std::uint64_t time_ms, WaterStyle style, WGPUTextureView target);
 
+    /// Whether `group` can be shown without the window thread waiting for
+    /// content: its sea pattern is rendered and fully on the GPU (render()
+    /// uploads the patterns of the other groups a few steps per frame once
+    /// they are rendered). Interactive callers delay a zoom change until it
+    /// is true.
+    [[nodiscard]] bool group_ready(const Scene& scene, std::size_t group) const;
     /// Waits until the GPU has finished all submitted work.
     void wait() const;
     /// An offscreen target of `w × h` in the frame's format that can be

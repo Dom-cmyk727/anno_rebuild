@@ -13,3 +13,6 @@ saves/
 *.mov
 *.webm
 build/
+
+# Claude Code worktrees of multi-agent runs
+.claude/worktrees/

@@ -574,15 +574,16 @@ Source: `docs/sim/state.md` §13 (rows D1..D18) and the decision-needed items of
 
 # Decisions for the owner (rivers)
 
-Source: `docs/render/rivers.md` §12 (rows D1..D16) and the hydraulics stage S4 (2026-10-19). Rule (owner): a deviation is **fix** when it is obviously unintended (removed, documented in `rivers.md`); **decision-needed** when it could change the look or feel: the default stated in `rivers.md` §12 is implemented behind an option and listed here. Every river speed is a model output ("plausible, not original"): the original data carries no discharge, no slope and no flow direction (`rivers.md` 1.2).
+Source: `docs/render/rivers.md` §12 (rows D1..D16), the hydraulics stage S4 and the shading stage S5 (2026-10-19; OQ-071 to OQ-083 below the S4 entries cover the rows not listed before). Rule (owner): a deviation is **fix** when it is obviously unintended (removed, documented in `rivers.md`); **decision-needed** when it could change the look or feel: the default stated in `rivers.md` §12 is implemented behind an option and listed here. Every river speed is a model output ("plausible, not original"): the original data carries no discharge, no slope and no flow direction (`rivers.md` 1.2).
 
 ## OQ-065: River speed scale: reference speed, soft floor, cap, bank profile (rivers.md D1)
-- **Status:** open, owner decides (no visible effect until the shading stage S5)
+- **Status:** open, owner decides (visible since the shading stage S5, CPU path; GPU in S6)
 - **Area:** render / rivers / flow
 - **What:** the flow field is a model with tuning values `RiverConfig::out_speed` 0.9 tiles/s (0.63 m/s), `speed_floor` 0.12, `speed_cap` 3.0, `fall_speed` 2.5, bank roughness `bank_roughness` 4 and `bank_width_tiles` 0.30 (the margin runs at 0.2 of the core), bed smoothing `bed_sigma_tiles` 0.75, depth range 1.5-12 units. Measured on the 106 islands of the corpus (`river_qa --flow`): the median speed of an island is 0.12-0.48 (typically 0.21; the floor is 0.12, because most of a network is tributary where the speed grows with the area upstream), the 95th percentile 0.19-2.5 (typically 0.94), the falls 2.5, the mean 0.14-0.69.
 - **What differs from rivers.md:** the Normalised discharge sets `out_speed` at the fastest cross-section that still passes half of the river's discharge (`RiverConfig::out_flux_share`), not at the sea faces: the original's mouth sprites are broad blobs (up to 15 tiles of sea face against a river 1.4 tiles wide), and measuring there made the river proper 2-3 times too fast and pinned half of all cells on the cap (first measurement, same island: median speed 2.8 tiles/s). A straight channel still has `out_speed` at its outlet.
 - **Consequence of the default reference (review S4):** only the fastest cross-section that carries at least half of the discharge gets `out_speed`; everything upstream scales down with the area drained, so most of a network sits at or near the floor. Over the 106 islands the floor sets the speed of 17-90 % of the cells of an island (median island 38 %, 42 % of all wet cells; 23 islands above 50 %; `D_256x256_0045_5B`: 73.5 %, its median is exactly 0.12), the cap of at most 0.4 %. On a 20 px tile (zoom group 2) 0.12-0.33 tiles/s is 2.4-6.6 px/s (5-13 px/s at group 1): slow flow that compresses the contrast between narrows and wide shallows. Any pinch that passes half of the discharge and is at least 4 cells wide also sets the scale (rivers.md 14.2).
 - **Option implemented:** `RiverConfig::reference = Reference::MedianCell` (viewer option follows with S8; `river_qa --flow --reference median [--median-speed T]`): the median cell of every river gets `median_speed` (0.4 tiles/s). Over the same 106 islands: the median island speed 0.40-0.66 (typically 0.43; 0.12-0.50 with the default), the 95th percentile 1.2-3.0 (median 1.8; 1.1), floor 15-41 % of the cells (median 20 %), cap up to 10.5 % (median 0.4 %; 7 islands above 5 %). Side-by-side contact sheets of the default and this option, same islands: `C:\Users\altin\Pictures\anno-rivers\S4\after_review` and `option_median_reference` (not in git); the S5/S6 sheets show both on the drawn river before the owner picks.
+- **Seen on the drawn river (review of S5, the owner's window of `D_256x256_0045_5B` at group 1):** 55 % of the river samples are at the soft floor (speed under 0.15 tiles/s; median 0.138, p95 0.82, p99 1.34, none above 2 tiles/s), about 5 px/s at group 1, so most of the river drifts nearly still and the contrast of narrows against wide shallows lives in the 0.8-1.3 tiles/s tails. Together with the quiet default light (OQ-083: the temporal change of a river pixel is the legacy's, 1.9 levels per 250 ms) this does not read as "faster in narrows, slower in wide shallows" at the defaults. Not decided here: `Reference::MedianCell` (median cell 0.4 tiles/s) and `--river-gain 4` are the options to compare on the sheets (`C:\Users\altin\Pictures\anno-rivers\S5\sheets`, gain 4 at group 1).
 - **Why it may change the feel:** rivers slower or faster overall; with the floor at 0.12 the slow tributaries still move.
 - **Faithful default implemented:** the values above (`rivers.md` §2.4 defaults, `Reference::FastestSection`); there is no original behaviour to be faithful to.
 - **Rules option:** `RiverConfig` (all fields); the viewer option follows with S8.
@@ -599,6 +600,7 @@ Source: `docs/render/rivers.md` §12 (rows D1..D16) and the hydraulics stage S4 
 - **Status:** open, owner decides
 - **Area:** render / rivers / flow
 - **What:** a connected piece of river without a face to the sea (136 of the 257 rivers over the 106 islands of the corpus, 81 of 159 in the 72 island templates; `river_qa --flow` and the corpus test list every island) has no outlet. It gets a pseudo outlet at its lowest surface level, then lowest bed (cells of a river-mouth sprite win over both): the cell and its neighbours within two steps (5 cells in a channel one cell wide, up to 13 in an open reach); the direction of its flow is therefore a guess where the data has flat tiers (95 % of the pieces have the sea level height). Most of them are the pieces left over where the data itself breaks (below). The "flows down the distance to the outlets" figure of `river_qa --flow` is measured against that same guess for them, so it cannot show a wrong-way stretch; over the rivers with a sea face it is 86.5-100 % (median island 99.6 %, column "downstream sea %"). The visible risk, once S5 draws, is flow running towards the head on a third of the rivers. The list of all 257 rivers with bounding boxes and pseudo outlets (`river_qa --flow --flow-rivers FILE`): `C:\Users\altin\Pictures\anno-rivers\S4\rivers_all.md` (not in git); the pseudo outlets are magenta in the contact sheets.
+- **Seen on the drawn river (review of S5):** in the owner's scene `D_256x256_0045_5B` the arrow picture of the sea-less pieces shows two streams flowing towards each other at a hidden junction (the left chain's lower stretch: the upstream part runs down to the left, the downstream part runs up towards it) and a dead-end pond that receives inflow from the bottom and turns towards its closed top; in the real frame this reads as water running into a wall. The sea-connected course elsewhere (a U-shaped meander in Tundra, an S-bend in Praerie, a hairpin in Steppe) follows one consistent line, so this is specific to the sea-less pieces. Crop of the left chain with the arrows: `C:\Users\altin\Pictures\anno-rivers\S5\owner_quiver_lower_left_chain.png` (the full window: `S5\light\gain1\owner_D0045_g1\D_256x256_0045_5B_g1_quiver.png`; the basin at the bottom right of the crop is OQ-070).
 - **Why it may change the feel:** a stretch that flows the wrong way round (towards its head) next to a data gap.
 - **Faithful default implemented:** lowest level, then lowest bed, mouths first (`RiverFlow::kPseudo` marks the cells).
 - **Rules option:** `RiverConfig::sea_less_speed_scale` (1 = flow as solved, default; 0 = still water; every cell of such a river carries `RiverFlow::kSeaLess` so that a renderer can fade it). Before S5 shows the flow by default: review the list with the owner and consider showing flow only on sea-connected and fall-linked rivers until this and OQ-068 are decided. Further candidates, not implemented: join the piece to the nearest river within 1-2 tiles (see OQ-068), or choose the end nearest to a sea-connected river.
@@ -620,9 +622,96 @@ Source: `docs/render/rivers.md` §12 (rows D1..D16) and the hydraulics stage S4 
 - **Rules option:** `RiverConfig::pond_swirl`, `pond_cells`.
 
 ## OQ-070: Mouth-sprite basins in the flow raster (review S4)
-- **Status:** open, owner decides (no visible effect until the shading stage S5)
+- **Status:** open, owner decides (visible since the shading stage S5, CPU path; GPU in S6)
 - **Area:** render / rivers / flow
 - **What:** the original's river-mouth sprites are broad blobs (up to about 6 x 3 tiles; roughly 10 % of the wet cells of `N_256x256_0002_2B`), and most of that area lies behind cliffs and forest in the render, so it is never visible. The whole blob is a wet flow domain: it runs at fall speed where the surface slope calls for it (the level falls steeply over it), it counts in the discharge bands, and five islands have more than 5 % of their cells at 2.35-2.5 tiles/s only because of it. The two lobes of a mouth fan point at each other on the short sea-contact stretch.
 - **Why it may change the feel:** fast, converging flow at every mouth, and the look of the mouth fan in the sea blend.
 - **Faithful default implemented:** the blob is part of the domain, as drawn by the shipped enhanced water (the gap fix and the mouth look are unchanged); `transition_passes` softens the speed across it (fix).
 - **Rules option:** none yet; candidates: limit the mouth-fan speed to the river speed, or drop wet cells that the depth test hides from the flow domain (raster only, nothing drawn changes). Decide with the S5/S6 sheets of `D_256x256_0045_5B` and the `Single_01` mouths in front of you.
+
+
+The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, and the decisions of stage S5 (2026-10-19). "Not built" means the feature itself comes with a later stage: its default is **off / the faithful behaviour**, so there is nothing to switch yet; the option is named here so the owner can decide before it is built.
+
+## OQ-071: Picard refinement of the Manning form (rivers.md D1b)
+- **Status:** open, owner decides (not built)
+- **Area:** render / rivers / flow
+- **What:** the solver uses the linear conveyance form (one SPD solve, `K ~ h^(5/3)`); the true Manning form `K = k_M h^(5/3) / (nu sqrt(|grad phi| + eps))` by Picard iteration (`RiverConfig::picard_iterations`, guarded, falls back per river) is ill-conditioned exactly where the data is flat.
+- **Why it may change the feel:** slightly different speed split at braids and falls; at best a refinement of a model that has no original to compare with.
+- **Faithful default implemented:** linear conveyance (`picard_iterations` 0). **Rules option:** `RiverConfig::picard_iterations`, to be built in S7.
+
+## OQ-072: Standing waves at falls and fast reaches (rivers.md D3)
+- **Status:** open, owner decides (not built, S7)
+- **Area:** render / rivers / shading
+- **What:** Froude-number light bands (E12, E13) where the flow is supercritical, i.e. at the foot of falls and rapids.
+- **Why it may change the feel:** more visible structure at falls. **Faithful default:** off (`RiverConfig::standing_waves`, not built).
+
+## OQ-073: Which objects are flow obstacles (rivers.md D4)
+- **Status:** open, owner decides (not built, S7)
+- **Area:** render / rivers / flow
+- **What:** rocks and cliffs in the water would deflect the flow and shed a wake; the data has no object categories (`WALKMASK` meaning unknown), so the rule is a footprint test (<= 16 tiles, >= 50 % wet) AND a short id list (`RiverConfig::obstacle_ids`, candidates 1502-1508, 1549-1551, 1572-1577, 1580, 1581, unverified) to be reviewed on contact sheets.
+- **Faithful default:** no obstacles until the list is reviewed.
+
+## OQ-074: Whitewater at falls and rapids (rivers.md D5)
+- **Status:** open, owner decides (partly built)
+- **Area:** render / rivers / shading
+- **What:** owner 2026-10-18: no foam on rivers. S5 keeps the legacy slope rule for the rapids (`smoothstep(5, 14, slope)`, brighter and livelier light, no foam, no white) and advects it along the flow; Froude-driven streaks and an aeration tint toward (0.62, 0.82, 0.90) come with S7.
+- **Faithful default implemented:** no foam, never white. **Rules option:** the rapids layer is `LayerConfig::rapids` in `RiverConfig::layers` (amplitude, scale, period) and `RiverConfig::rapids_base`.
+
+## OQ-075: River width and edge (rivers.md D6)
+- **Status:** open, owner decides (not built; the shipped gap fix is the default)
+- **Area:** render / rivers / mask
+- **What:** the drawn river keeps the original's width (`kBedEdge` 0.5, see `iso.md` "River gaps"); a wider soft edge (`edge_threshold` 0.40: shallow lobes filled, rivers a little wider than the sprites) belongs to the per-piece mask of S3, which was not built (S4 reused the shipped mask).
+- **Faithful default:** the original's width.
+
+## OQ-076: After a zoom change: analytic waves, cross-fade, snap or hold (rivers.md D8)
+- **Status:** open, owner decides (the stutter fix shipped with the analytic fallback; the cross-fade is not built)
+- **Area:** render / gpu / zoom
+- **What:** see `docs/perf/README.md` "2026-10-19 — zoom stutter": for 0.1-0.4 s after a zoom change the coast shows the analytic waves; a 250 ms cross-fade (default of the design), a snap, or holding the previous window are the alternatives. Rivers are not affected: they never use the wave simulation window.
+- **Faithful default:** analytic waves, no cross-fade yet.
+
+## OQ-077: Missing chunks: open sea or a stand-in from the nearest built zoom group (rivers.md D9)
+- **Status:** open, owner decides (not built)
+- **Area:** render / frame
+- **What:** a chunk that is not built yet draws open sea; the design option is the nearest built group's chunk. A chunk that waits for a river flow already draws the legacy river look on the correct mask (S5), not open sea.
+- **Faithful default:** open sea.
+
+## OQ-078: Legacy shimmer or flow shading by default in Enhanced water (rivers.md D10)
+- **Status:** implemented as the owner asked; confirm
+- **Area:** render / rivers / viewer
+- **What:** flow is the default of Enhanced water (`--river-flow flow`, key `R`); `--river-flow legacy` (also `bench_frame`) keeps the shimmer that slides along fixed axes, bit-identical to the previous renderer (test). **The GPU compositor shows the legacy look until S6**, so the owner sees the flow with `--renderer cpu` or in `--png`.
+- **Faithful default implemented:** flow on. **Rules option:** `--river-flow`, `Layers::river_flow`, `FrameRenderer::river_flow`.
+
+## OQ-079: RiverQuality Low / Medium / High (rivers.md D11)
+- **Status:** open, owner decides (not built, S6)
+- **Area:** render / gpu / rivers
+- **What:** High on a discrete adapter; on an integrated GPU (the owner's 500 Hz monitor is driven by the Ryzen iGPU) High only if the measured river pass is <= 1.0 ms per 1 M river pixels, else Medium (no whitewater layer) or Low (no light taps).
+- **Faithful default:** as stated; measured in S6.
+
+## OQ-080: Thalweg shift in bends (rivers.md D12)
+- **Status:** open, owner decides (not built, S7)
+- **Area:** render / rivers / flow
+- **What:** potential flow is fastest at the inner bank of a bend, the opposite of nature; the optional correction (E14, `thalweg_shift`) moves the maximum to the outer bank. **Faithful default:** off; the inner-bank maximum is documented and tested.
+
+## OQ-081: River plume: momentum from mouths into the wave simulation (rivers.md D15)
+- **Status:** open, owner decides (not built)
+- **Area:** render / rivers / sea
+- **What:** the river would push the sea's wave simulation at its mouth. **Faithful default:** off (render-only). The mouth blend (`kRiverBlend`, `kb`) is unchanged, as the owner likes it.
+
+## OQ-082: Tier 1: a dynamic shallow-water window over the same lattice (rivers.md D16)
+- **Status:** open, owner decides (not built, later)
+- **Area:** render / rivers / flow
+- **What:** a runtime Saint-Venant solver would overwrite the lattice; the contract (3.3) does not change. **Faithful default:** not built.
+
+## OQ-083: Strength of the river light and cycle times (new, stage S5; rivers.md 2.8, 15)
+- **Status:** open, owner decides
+- **Area:** render / rivers / shading
+- **What:** the layer table is calibrated to the legacy shimmer's light variance (standard deviation 0.018, brightness +-1.8 %) for a uniform flow at full wave detail, so that the average river brightness does not change. On real rivers the glints fade with the zoom group's wave detail (by design, the legacy shimmer has no such fade) and the shear fade removes layers near the banks, so the default is **quieter than the legacy shimmer at groups 1 and 2**: the standard deviation of the river light, flow over legacy, is 0.78-0.98 at group 0 (mean 0.89), 0.51-0.59 at group 1 (0.56) and 0.42-0.50 at group 2 (0.45) on the five QA islands (corpus test "the light of the flow shading against the legacy shimmer on real rivers"); the mean change of a river pixel over 250 ms is the same for legacy and flow in the owner's window (1.88 against 1.91 levels, 2.28 at gain 4). The motion is there (features move with the solved velocity: Q5 flat stems median angle error 4-9 degrees, speed ratio 0.90-1.07; all windows: the prediction beats standing still in 83 %, 63 % in the owner's canyon where the shear fade has taken most of the light) but at the default the owner will not see rivers "visibly flowing" more than before, and at groups 1 and 2 they are calmer. On the GPU path (the viewer's default renderer) nothing changes at all until S6. `RiverConfig::light_gain` (`--river-gain x`, `river_qa --shade-gain x`) multiplies the ripple layers (not the rapids layer): 1 (default, calibrated), 4 shows the structure clearly (sheets show both). Candidates, not implemented: calibrate the amplitude per zoom group on real river pixels, or let it compensate the detail fade; a lattice stride of 2 px at group 2, whose 0.2 x 0.4 tile texels are as wide as the banks of a river one tile wide (the slow layers then fade across the whole river). The cycle times 2400 / 1600 / 800 / 640 ms are the design's (they divide the hour). The design's stretch of the layers along the flow is not built (it aliased, rivers.md 15.7).
+- **Why it may change the feel:** how visible the flow is against how much the river's look changes from the original/legacy, and how calm distant rivers are.
+- **Faithful default implemented:** `light_gain` 1 (calibrated table, no compensation of the fades). **Rules option:** `RiverConfig::light_gain`, `layers`, `lattice_stride`.
+
+## OQ-084: Flow lattices on the GPU path before the GPU port (new, review of S5)
+- **Status:** open, owner decides (until S6 only)
+- **Area:** render / rivers / viewer
+- **What:** the viewer's GPU renderer does not read the flow lattice yet (S6), but the flow builders run and every river chunk bakes a lattice (+0.4-1.1 % of the chunk time, 100-180 ms of low-priority CPU at start, 13-19 MB for 3-4 river islands); a chunk built before its island's flow is built twice (the chunk worker never waits) and `GpuFrame` does not upload the rebuilt one. The cost is small and the waste ends with S6.
+- **Why it may change the feel:** nothing visible; start-up CPU and memory.
+- **Faithful default implemented:** leave as is until S6. **Alternative:** skip the bake and the prefetch while the GPU compositor is active (`RiverConfig::enabled` false for the GPU renderer, or a viewer switch).

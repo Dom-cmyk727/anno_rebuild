@@ -76,11 +76,11 @@ TEST_CASE("create stamps last and the status time with the placement tick") {
     // for the base, house, market and public classes it is `ret 4` (0x10037590), so an
     // Inert building keeps the status time 0 (a hashed field without a counterpart in
     // the original would be a phantom).
-    const std::vector<sim::TypeId> with_time = {k.weaver,    k.farm,      k.fur_trapper,
-                                                k.small_farm, k.bow_maker, k.iron_mine,
-                                                k.gold_mine, k.dual_workshop};
+    const std::vector<sim::TypeId> with_time = {k.weaver,     k.farm,         k.fur_trapper,
+                                                k.small_farm, k.bow_maker,    k.iron_mine,
+                                                k.gold_mine,  k.dual_workshop};
     const std::vector<sim::TypeId> without_time = {k.pioneer_house, k.kontor, k.market_stall,
-                                                   k.church,        k.barracks};
+                                                   k.church, k.barracks};
     int x = 101;
     for (const sim::TypeId t : with_time) {
         INFO("type " << t.v);
@@ -473,8 +473,8 @@ TEST_CASE("removing a turned building clears the turned footprint and nothing el
     // footprint it would leave stale tiles and grid cells on the turned one and wipe
     // the tile of a neighbour on the other.
     const Kit k = make_kit();
-    for (const std::uint8_t rot : {std::uint8_t{0}, std::uint8_t{1}, std::uint8_t{2},
-                                   std::uint8_t{3}}) {
+    for (const std::uint8_t rot :
+         {std::uint8_t{0}, std::uint8_t{1}, std::uint8_t{2}, std::uint8_t{3}}) {
         INFO("rotation " << int{rot});
         sim::World w = make_world(k, kit_scenario());
         const sim::BuildingType& house = *k.registry->find(k.big_house);
@@ -1029,13 +1029,22 @@ TEST_CASE("world create forwards the rotation and byte0f of a scenario building"
     CHECK(w.check_invariants() == "");
 }
 
+/// The first two cities of island 0 in the other order. A copy, not std::swap:
+/// GCC 13 at -O3 reports -Wmaybe-uninitialized for the moved-from
+/// optional<vector> inside std::swap of a CitySpec (the release CI job).
+static void swap_first_two_cities(sim::ScenarioSpec& spec) {
+    auto& cities = spec.islands[0].cities;
+    const std::vector<sim::ScenarioSpec::CitySpec> other = {cities[1], cities[0]};
+    cities = other;
+}
+
 TEST_CASE("world create makes cities in ascending number and keeps the file order inside") {
     const Kit k = make_kit();
     sim::ScenarioSpec spec = kit_scenario();
     // City 1 is listed before city 0; the serials follow the city number.
     spec.islands[0].cities[1].buildings = {place(k.weaver, 101, 101), place(k.farm, 103, 101)};
     spec.islands[0].cities[0].buildings = {place(k.church, 105, 101), place(k.weaver, 107, 101)};
-    std::swap(spec.islands[0].cities[0], spec.islands[0].cities[1]);
+    swap_first_two_cities(spec);
     REQUIRE(spec.islands[0].cities[0].no.v == 1);
     sim::World w = make_world(k, spec);
     CHECK(city_of(w, 0, 0).index.lists[1].slots[0]->id ==
@@ -1048,7 +1057,7 @@ TEST_CASE("world create makes cities in ascending number and keeps the file orde
           sim::make_building_id(sim::IslandId{0}, 4));
     // The result does not depend on the order of the cities in the scenario.
     sim::ScenarioSpec swapped = spec;
-    std::swap(swapped.islands[0].cities[0], swapped.islands[0].cities[1]);
+    swap_first_two_cities(swapped);
     CHECK(make_world(k, swapped).state_hash() == w.state_hash());
 }
 

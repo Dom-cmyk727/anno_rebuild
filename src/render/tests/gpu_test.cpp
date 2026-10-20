@@ -2583,3 +2583,135 @@ TEST_CASE("GPU stand-in chunks equal the CPU reference (synthetic)") {
         CHECK(go.errors() == 0);
     }
 }
+
+TEST_CASE("stand-in cover chooses the source group per part") {
+    const auto all = [](const render::ChunkKey&) { return true; };
+    for (std::size_t to = 0; to < render::kGroups; ++to) {
+        const auto order = render::stand_in_groups(to);
+        for (const auto& [cx, cy] : {std::pair{0, 0}, std::pair{1, 0}, std::pair{-1, 2}}) {
+            const render::Rect chunk = render::chunk_rect(cx, cy);
+            const auto full = render::stand_in_cover(cx, cy, to, all);
+            long long area = 0;
+            for (const auto& p : full) {
+                CHECK(p.from == order.front());
+                area += static_cast<long long>(p.span.dst.w) * p.span.dst.h;
+            }
+            CHECK(area == static_cast<long long>(render::kChunk) * render::kChunk);
+            // The first source chunk of the nearest group is missing: its part
+            // comes from the next group, the other parts stay.
+            const auto first = render::stand_in_spans(cx, cy, to, order.front()).front();
+            const render::ChunkKey gone{order.front(), first.src_cx, first.src_cy};
+            const auto part = render::stand_in_cover(
+                cx, cy, to, [&](const render::ChunkKey& k) { return k != gone; });
+            long long covered = 0;
+            bool fallback = false;
+            for (const auto& p : part) {
+                CHECK(p.span.dst.intersect(chunk) == p.span.dst);
+                covered += static_cast<long long>(p.span.dst.w) * p.span.dst.h;
+                if (p.from == order[1]) {
+                    fallback = true;
+                    CHECK(first.dst.intersect(p.span.dst) == p.span.dst);
+                } else {
+                    CHECK(p.from == order.front());
+                    CHECK(render::ChunkKey{p.from, p.span.src_cx, p.span.src_cy} != gone);
+                }
+            }
+            CHECK(fallback);
+            CHECK(covered == area);
+            // Nothing available anywhere: open sea.
+            CHECK(render::stand_in_cover(cx, cy, to, [](const render::ChunkKey&) {
+                      return false;
+                  }).empty());
+        }
+    }
+}
+
+TEST_CASE("GPU stand-in with a hole in the nearest group equals the CPU reference, and the real "
+          "chunk replaces it") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    for (std::size_t to = 0; to < render::kGroups; ++to) {
+        const auto order = render::stand_in_groups(to);
+        const auto hole = render::stand_in_spans(1, 0, to, order.front()).front();
+        const render::ChunkKey gone{order.front(), hole.src_cx, hole.src_cy};
+        gpu::GpuLimits limits;
+        limits.uploads_per_frame = 1;
+        limits.wave_simulation = false;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+        gpu::GpuFrame& g = *made.value();
+        render::FrameRenderer fr(1, false);
+        // Every source chunk of the two nearest groups but the hole.
+        for (const std::size_t from : {order[0], order[1]}) {
+            for (const auto& sp : render::stand_in_spans(1, 0, to, from)) {
+                if (render::ChunkKey{from, sp.src_cx, sp.src_cy} != gone) {
+                    fr.insert_chunk({from, sp.src_cx, sp.src_cy},
+                                    noise_land_chunk(from, sp.src_cx, sp.src_cy));
+                }
+            }
+        }
+        // The fallback group must cover the hole.
+        const auto cover = render::stand_in_cover(
+            1, 0, to, [&](const render::ChunkKey& k) { return fr.chunk(k) != nullptr; });
+        bool fallback = false;
+        for (const auto& p : cover) {
+            fallback = fallback || p.from == order[1];
+        }
+        CHECK(fallback);
+        // The sources reach the GPU at their own group, one view each.
+        for (const auto& p : cover) {
+            const render::Rect r = render::chunk_rect(p.span.src_cx, p.span.src_cy);
+            const auto t = g.offscreen_target(side, side);
+            for (int f = 0; f < 2; ++f) {
+                g.render(fr, scene, r, p.from, 0, render::WaterStyle::Original, t.second.get());
+            }
+        }
+        const render::Rect view{0, 0, 2 * render::kChunk, render::kChunk};
+        const auto target = g.offscreen_target(2 * side, side);
+        const auto st =
+            g.render(fr, scene, view, to, 0, render::WaterStyle::Original, target.second.get());
+        CHECK(st.stand_in_chunks == 1);
+        CHECK(st.stand_in_parts == cover.size());
+        const auto px = g.read_back(target.first.get(), 2 * side, side);
+        REQUIRE(px.size() == std::size_t{2} * side * side * 4);
+        const auto ref = render::stand_in_chunk(fr, to, 1, 0, scene.textures.water());
+        REQUIRE(ref);
+        std::size_t wrong = 0;
+        for (std::size_t y = 0; y < side; ++y) {
+            for (std::size_t x = 0; x < side; ++x) {
+                const render::Px e = land_pixel(*ref, y * side + x);
+                const std::size_t o = (y * 2 * side + side + x) * 4;
+                int m = 0;
+                for (std::size_t k = 0; k < 3; ++k) {
+                    m = std::max(m, std::abs(int{e[k]} - int{px[o + k]}));
+                }
+                wrong += m > 1 ? 1U : 0U;
+            }
+        }
+        MESSAGE("target group " << to << ": " << wrong << " pixels differ by more than 1");
+        CHECK(wrong == 0);
+        // The next frame uploads the real chunk: no stand-in, and the frame is
+        // the plain one (stand-ins off, same uploads).
+        const auto st2 =
+            g.render(fr, scene, view, to, 0, render::WaterStyle::Original, target.second.get());
+        CHECK(st2.stand_in_chunks == 0);
+        const auto after = g.read_back(target.first.get(), 2 * side, side);
+        gpu::GpuLimits off = limits;
+        off.stand_ins = false;
+        auto made_off = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, off);
+        REQUIRE(made_off);
+        gpu::GpuFrame& go = *made_off.value();
+        const auto target_off = go.offscreen_target(2 * side, side);
+        for (int f = 0; f < 3; ++f) {
+            go.render(fr, scene, view, to, 0, render::WaterStyle::Original,
+                      target_off.second.get());
+        }
+        CHECK(go.read_back(target_off.first.get(), 2 * side, side) == after);
+        CHECK(g.errors() == 0);
+    }
+}

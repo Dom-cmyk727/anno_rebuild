@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <mutex>
@@ -13,19 +14,46 @@
 
 namespace anno::test {
 
-/// Threads for parallel corpus work: ANNO_TEST_THREADS if set (≥ 1), else
-/// min(cores, 4). The default cap bounds memory: one whole-scene render of a
-/// large scenario holds a canvas of about 640 MB (Single_10, 17440 × 9131
-/// RGBA), and CTest may run other suites at the same time.
+/// Physical memory that is free right now, in bytes; 0 when the platform has
+/// no implementation (then test_threads() applies no memory bound). Windows:
+/// GlobalMemoryStatusEx().ullAvailPhys; Linux: MemAvailable of /proc/meminfo.
+std::uint64_t free_physical_bytes();
+
+/// Threads for parallel corpus work: ANNO_TEST_THREADS if set (>= 1), else
+/// min(cores, 4); in both cases at most (free physical memory / budget per
+/// thread), at least 1. One whole-scene render of a large scenario holds a
+/// canvas of about 640 MB (Single_10, 17440 x 9131 RGBA) and a worker needs
+/// about 1 GB with its scratch buffers, while CTest runs other suites (and, on
+/// a shared dev machine, other builds) at the same time: with
+/// ANNO_TEST_THREADS=16 on a 32 GB machine that is already busy, 16 workers
+/// would need more than the free RAM. The budget is ANNO_TEST_MB_PER_THREAD
+/// (default 1024; 0 switches the memory bound off, e.g. for a machine with a
+/// huge swap).
 inline std::size_t test_threads() {
+    std::size_t threads = 0;
     if (const char* v = std::getenv("ANNO_TEST_THREADS")) {
         const long n = std::strtol(v, nullptr, 10);
         if (n >= 1) {
-            return static_cast<std::size_t>(n);
+            threads = static_cast<std::size_t>(n);
         }
     }
-    const unsigned hw = std::thread::hardware_concurrency();
-    return std::clamp<std::size_t>(hw, 1, 4);
+    if (threads == 0) {
+        const unsigned hw = std::thread::hardware_concurrency();
+        threads = std::clamp<std::size_t>(hw, 1, 4);
+    }
+    std::uint64_t mb_per_thread = 1024;
+    if (const char* v = std::getenv("ANNO_TEST_MB_PER_THREAD")) {
+        const long n = std::strtol(v, nullptr, 10);
+        if (n >= 0) {
+            mb_per_thread = static_cast<std::uint64_t>(n);
+        }
+    }
+    const std::uint64_t free_bytes = free_physical_bytes();
+    if (mb_per_thread > 0 && free_bytes > 0) {
+        const std::uint64_t by_memory = free_bytes / (mb_per_thread * 1024 * 1024);
+        threads = std::min<std::size_t>(threads, std::max<std::uint64_t>(by_memory, 1));
+    }
+    return threads;
 }
 
 /// f(i) for i in [0, n) on up to test_threads() threads; results in index

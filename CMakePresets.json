@@ -36,9 +36,9 @@
     { "name": "msvc", "configurePreset": "msvc", "configuration": "Release" }
   ],
   "testPresets": [
-    { "name": "dev", "configurePreset": "dev", "output": { "outputOnFailure": true } },
-    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } },
-    { "name": "asan", "configurePreset": "asan", "output": { "outputOnFailure": true } },
-    { "name": "msvc", "configurePreset": "msvc", "configuration": "Release", "output": { "outputOnFailure": true } }
+    { "name": "dev", "configurePreset": "dev", "output": { "outputOnFailure": true, "outputLogFile": "${sourceDir}/build/${presetName}/Testing/ctest-output.log" } },
+    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true, "outputLogFile": "${sourceDir}/build/${presetName}/Testing/ctest-output.log" } },
+    { "name": "asan", "configurePreset": "asan", "output": { "outputOnFailure": true, "outputLogFile": "${sourceDir}/build/${presetName}/Testing/ctest-output.log" } },
+    { "name": "msvc", "configurePreset": "msvc", "configuration": "Release", "output": { "outputOnFailure": true, "outputLogFile": "${sourceDir}/build/${presetName}/Testing/ctest-output.log" } }
   ]
 }

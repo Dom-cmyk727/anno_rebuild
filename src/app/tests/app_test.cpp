@@ -177,6 +177,15 @@ TEST_CASE("command line") {
     CHECK_FALSE(d->group);
     CHECK(d->size == std::pair{1600, 900});
     CHECK(d->water == anno::render::WaterStyle::Original);
+    // The viewer shows the flow at gain 4 with the median-cell speed (OQ-083, OQ-065).
+    using Ref = anno::render::river::RiverConfig::Reference;
+    CHECK(d->river_gain == 4.0F);
+    CHECK(d->river_speed == Ref::MedianCell);
+    const auto f = parse_args({"--view", "x.scp", "--river-speed", "fastest", "--river-gain", "1"});
+    REQUIRE(f);
+    CHECK(f->river_speed == Ref::FastestSection);
+    CHECK(f->river_gain == 1.0F);
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--river-speed", "fast"}));
     // UTF-8 paths round-trip.
     const std::string umlaut = "Insel_\xc3\xa4.scp";
     CHECK(anno::app::to_utf8(anno::app::utf8_path(umlaut)) == umlaut);

@@ -12,13 +12,14 @@
 #include <vector>
 
 #include <anno/render/iso.hpp>
+#include <anno/render/river.hpp>
 
 namespace anno::app {
 
 inline constexpr const char* kUsage =
     "usage: anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png "
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
-    "[--river-flow legacy|flow] [--river-gain <x>] [--renderer auto|gpu|cpu]\n";
+    "[--river-flow legacy|flow] [--river-gain <x>] [--river-speed median|fastest] [--renderer auto|gpu|cpu]\n";
 
 /// World tiles accepted by --at: INSEL5 positions are u16 (docs/formats/insel.md);
 /// the margin keeps every projected coordinate inside int range.
@@ -43,8 +44,12 @@ struct Args {
     /// along fixed axes. Key R in the viewer toggles it.
     render::RiverFlowMode river_flow = render::RiverFlowMode::Flow;
     /// Multiplier of the river flow's ripple light (1 = calibrated to the
-    /// legacy shimmer; larger shows the flow more clearly).
-    float river_gain = 1.0F;
+    /// legacy shimmer; larger shows the flow more clearly). The viewer shows
+    /// 4 by default because 1 does not read as flow (OQ-083).
+    float river_gain = 4.0F;
+    /// What the river speed scale refers to (OQ-065): the median wet cell
+    /// (livelier, viewer default) or the fastest cross-section (the library default).
+    render::river::RiverConfig::Reference river_speed = render::river::RiverConfig::Reference::MedianCell;
     Renderer renderer = Renderer::Auto;
 };
 

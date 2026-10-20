@@ -3,6 +3,7 @@
 //   anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>]
 //            [--png <out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]]
 //            [--water original|enhanced] [--river-flow legacy|flow] [--river-gain <x>]
+//            [--river-speed median|fastest]
 //            [--renderer auto|gpu|cpu]
 //
 // --view shows every island of a scenario (.sze) at its INSEL5 world
@@ -118,6 +119,7 @@ int run(const std::vector<std::string>& raw) {
     }
     anno::render::Scene& scene = *loaded.value().scene;
     scene.river_cfg.light_gain = args->river_gain;
+    scene.river_cfg.reference = args->river_speed;
     if (args->png) {
         const std::size_t group = args->group.value_or(2);
         std::optional<Rect> region;

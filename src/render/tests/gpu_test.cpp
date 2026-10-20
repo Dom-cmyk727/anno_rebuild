@@ -2822,6 +2822,25 @@ TEST_CASE("a jump of the view by more than its size resets the velocity of the m
     t += std::chrono::milliseconds(10);
     fr.update_chunks(*es.scene, view, 1);
     CHECK(fr.velocity().first > 0.0);
+    // Each axis against its own size: a wide view, a vertical move larger than its
+    // height (but not its width) is a jump; one within its height is a drag.
+    render::FrameRenderer wide(1, false);
+    wide.clock = [&] { return t; };
+    render::Rect w{0, 0, 2 * render::kChunk, render::kChunk / 2};
+    for (int i = 0; i <= 40; ++i) {
+        w.y += i > 0 ? 20 : 0;
+        t += std::chrono::milliseconds(10);
+        wide.update_chunks(*es.scene, w, 1);
+    }
+    REQUIRE(wide.velocity().second > 1000.0);
+    w.y += w.h + 100;
+    t += std::chrono::milliseconds(10);
+    wide.update_chunks(*es.scene, w, 1);
+    CHECK(wide.velocity().second == 0.0);
+    w.y += w.h;
+    t += std::chrono::milliseconds(10);
+    wide.update_chunks(*es.scene, w, 1);
+    CHECK(wide.velocity().second > 0.0);
 }
 
 TEST_CASE("adjacent_keys: the view a zoom step would show, in both neighbouring groups") {
@@ -3010,7 +3029,9 @@ TEST_CASE("a plain pan: the margin of the group shown is uploaded ahead, so a ch
     const auto side = static_cast<std::uint32_t>(render::kChunk);
     gpu::GpuLimits limits;
     limits.wave_simulation = false;
-    limits.prefetch_chunks = 16;
+    // Room for exactly the ring of one chunk around a still one-chunk view (8):
+    // the neighbouring groups' chunks, built as well, must queue behind it.
+    limits.prefetch_chunks = 8;
     limits.prefetch_per_frame = 1;
     limits.chunk_fade_ms = 100;
     auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
@@ -3022,19 +3043,24 @@ TEST_CASE("a plain pan: the margin of the group shown is uploaded ahead, so a ch
     g.render(fr, scene, at, 1, 0, render::WaterStyle::Original, target.second.get());
     // The ring of one chunk around a still view, the current group only.
     const std::vector<render::ChunkKey> margin = fr.margin_keys();
-    CHECK(margin.size() == 8);
+    REQUIRE(margin.size() == limits.prefetch_chunks);
     for (const auto& k : margin) {
         CHECK(std::get<0>(k) == 1);
         fr.insert_chunk(k, noise_land_chunk(1, std::get<1>(k), std::get<2>(k)));
     }
+    const std::vector<render::ChunkKey> adjacent = fr.adjacent_keys();
+    REQUIRE(!adjacent.empty());
+    for (const auto& k : adjacent) {
+        fr.insert_chunk(k, noise_land_chunk(std::get<0>(k), std::get<1>(k), std::get<2>(k)));
+    }
     std::size_t prefetched = 0;
-    for (int f = 0; f < 12; ++f) {
+    for (int f = 0; f < 20; ++f) {
         const auto st = g.render(fr, scene, at, 1, static_cast<std::uint64_t>(16 * (f + 1)),
                                  render::WaterStyle::Original, target.second.get());
         CHECK(st.chunks_prefetched <= 1);
         prefetched += st.chunks_prefetched;
     }
-    // The margin first (the neighbouring groups have nothing built).
+    // Up to the cap, which the margin fills (the move below proves it is the margin).
     CHECK(prefetched == margin.size());
     // One chunk to the right: it is on the GPU already.
     const render::Rect next{render::kChunk, 0, render::kChunk, render::kChunk};
@@ -3057,6 +3083,13 @@ TEST_CASE("a plain pan: the margin of the group shown is uploaded ahead, so a ch
         wrong += m > 1 ? 1U : 0U;
     }
     CHECK(wrong == 0);
+    // A visible real chunk rebuilt (a new serial: its river flow arrived) swaps
+    // at once: nothing but itself was on screen there.
+    fr.insert_chunk({1, 1, 0}, noise_land_chunk(1, 7, 7));
+    const auto rebuilt =
+        g.render(fr, scene, next, 1, 416, render::WaterStyle::Original, target.second.get());
+    CHECK(rebuilt.chunks_uploaded == 1);
+    CHECK(rebuilt.chunks_fading == 0);
     CHECK(g.errors() == 0);
 }
 
@@ -3136,6 +3169,9 @@ TEST_CASE("a chunk dissolves in over its stand-in: linear in the fade, the stand
     const auto [st_b, px_b] = frame_at(1000);
     CHECK(st_b.chunks_fading == 1);
     CHECK(st_b.stand_in_chunks == 1);
+    // A quarter of the way: smoothstep(0.25) = 0.15625 of the chunk (linear 0.25).
+    const auto [st_q, px_q] = frame_at(1025);
+    CHECK(st_q.chunks_fading == 1);
     const auto [st_c, px_c] = frame_at(1050);
     CHECK(st_c.chunks_fading == 1);
     CHECK(st_c.stand_in_chunks == 1);
@@ -3168,6 +3204,9 @@ TEST_CASE("a chunk dissolves in over its stand-in: linear in the fade, the stand
             const double expect = 0.5 * s[k] + 0.5 * e[k];
             m = std::max(m, static_cast<int>(std::lround(
                                 std::abs(expect - static_cast<double>(px_c[i * 4 + k])))));
+            const double quarter = 0.84375 * s[k] + 0.15625 * e[k];
+            m = std::max(m, static_cast<int>(std::lround(
+                                std::abs(quarter - static_cast<double>(px_q[i * 4 + k])))));
         }
         mid_wrong += m > 2 ? 1U : 0U;
     }
@@ -3197,11 +3236,19 @@ TEST_CASE("open sea is counted by the area a stand-in leaves uncovered, inside t
     REQUIRE_MESSAGE(made, (made ? "" : made.error()));
     gpu::GpuFrame& g = *made.value();
     render::FrameRenderer fr(1, false);
+    // Chunk (0, 0) and most of (1, 0), one upload per frame: (1, 0) waits and
+    // stands in; its last 100 columns are outside the view.
+    const render::Rect view{0, 0, 2 * render::kChunk - 100, render::kChunk};
     // Only one of the group-1 chunks that chunk (1, 0) of group 2 shows exists,
-    // none of group 0: the cover has a hole.
+    // none of group 0: the cover has a hole. The one whose part reaches past the
+    // view's right edge, so that the part must be clipped to the view.
     const auto spans = render::stand_in_spans(1, 0, kTo, kFrom);
     REQUIRE(spans.size() > 1);
-    const auto& one = spans.front();
+    const auto past = std::find_if(spans.begin(), spans.end(), [&](const auto& sp) {
+        return sp.dst.x + sp.dst.w > view.x + view.w;
+    });
+    REQUIRE(past != spans.end());
+    const auto& one = *past;
     fr.insert_chunk({kFrom, one.src_cx, one.src_cy},
                     noise_land_chunk(kFrom, one.src_cx, one.src_cy));
     const render::Rect src = render::chunk_rect(one.src_cx, one.src_cy);
@@ -3210,9 +3257,6 @@ TEST_CASE("open sea is counted by the area a stand-in leaves uncovered, inside t
     for (int f = 0; f < 4; ++f) {
         g.render(fr, scene, src, kFrom, 0, render::WaterStyle::Original, src_target.second.get());
     }
-    // Chunk (0, 0) and most of (1, 0), one upload per frame: (1, 0) waits and
-    // stands in; its last 100 columns are outside the view.
-    const render::Rect view{0, 0, 2 * render::kChunk - 100, render::kChunk};
     const auto target = g.offscreen_target(static_cast<std::uint32_t>(view.w), side);
     const auto st =
         g.render(fr, scene, view, kTo, 0, render::WaterStyle::Original, target.second.get());
@@ -3233,6 +3277,20 @@ TEST_CASE("open sea is counted by the area a stand-in leaves uncovered, inside t
     CHECK(st.open_sea_chunks == 1);
     CHECK(st.open_sea_px == visible_px - covered);
     CHECK(g.errors() == 0);
+    // Stand-ins off: the whole visible part of the waiting chunk is open sea.
+    gpu::GpuLimits off = limits;
+    off.stand_ins = false;
+    auto made_off = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, off);
+    REQUIRE(made_off);
+    gpu::GpuFrame& go = *made_off.value();
+    render::FrameRenderer fr_off(1, false);
+    const auto target_off = go.offscreen_target(static_cast<std::uint32_t>(view.w), side);
+    const auto st_off = go.render(fr_off, scene, view, kTo, 0, render::WaterStyle::Original,
+                                  target_off.second.get());
+    CHECK(st_off.chunks_uploaded == 1);
+    CHECK(st_off.open_sea_chunks == 1);
+    CHECK(st_off.open_sea_px == visible_px);
+    CHECK(go.errors() == 0);
 }
 
 /// A chunk of a smooth world: the ground colour is a ramp of the world position in

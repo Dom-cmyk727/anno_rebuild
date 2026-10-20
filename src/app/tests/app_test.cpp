@@ -193,6 +193,10 @@ TEST_CASE("command line") {
     CHECK(la->lookahead_chunks == 2);
     CHECK_FALSE(parse_args({"--view", "x.scp", "--lookahead-chunks", "-1"}));
     CHECK_FALSE(parse_args({"--view", "x.scp", "--lookahead-chunks", "17"}));
+    CHECK(parse_args({"--view", "x.scp", "--lookahead-chunks", "16"}));
+    const auto ring = parse_args({"--view", "x.scp", "--lookahead-chunks", "0"});
+    REQUIRE(ring);
+    CHECK(ring->lookahead_chunks == 0);
     // UTF-8 paths round-trip.
     const std::string umlaut = "Insel_\xc3\xa4.scp";
     CHECK(anno::app::to_utf8(anno::app::utf8_path(umlaut)) == umlaut);

@@ -3,7 +3,13 @@
 // "river gaps" report of 2026-10-19).
 //
 //   river_qa <game_dir> [--groups 0,1,2] [--dump <dir>] [--per-island]
-//            [--max-mask-px N] <file.sze|.scp>...
+//            [--gap-patch N] [--max-mask-px N] <file.sze|.scp>...
+//
+// --gap-patch N sets RiverConfig::gap_patch_tiles (sea::patch_river_gaps, OQ-068)
+// for the measurement; the default is the library's 0 (patch off), the viewer's
+// default is 8. --per-island prints a header and one row per island and group
+// (the scene name carries _g<group>_i<island>). tools/river_qa.py gap-patch runs
+// the measurement with 0 and N and joins the rows.
 //
 // For every island that has river, waterfall or river-mouth pieces, the
 // islands's rectangle is processed in the viewer's own 512 x 512 chunks
@@ -160,6 +166,8 @@ struct Options {
     /// --flow-rivers FILE: one Markdown row per river (sea-less ones marked).
     fs::path flow_rivers;
     render::river::RiverConfig river;
+    /// --gap-patch: RiverConfig::gap_patch_tiles applied to every loaded scene.
+    float gap_patch = 0.0F;
     std::size_t threads = std::max(1U, std::thread::hardware_concurrency());
 };
 
@@ -438,12 +446,13 @@ Totals measure_island(const render::Scene& scene, std::size_t group, const rende
         }
     }
     if (opt.per_island) {
-        std::printf("| %s (s=%d) | %llu | %llu | %llu | %llu | %zu | %zu | %zu | %zu | %zu |\n",
-                    tag.c_str(), s, static_cast<unsigned long long>(tot.o),
-                    static_cast<unsigned long long>(tot.covered),
-                    static_cast<unsigned long long>(tot.gap),
-                    static_cast<unsigned long long>(tot.extra), tot.o_comps, tot.e_comps, tot.split,
-                    tot.lost, tot.gap_comps);
+        std::printf(
+            "| %s (s=%d) | %llu | %llu | %llu | %llu | %llu | %zu | %zu | %zu | %zu | %zu |\n",
+            tag.c_str(), s, static_cast<unsigned long long>(tot.o),
+            static_cast<unsigned long long>(tot.covered),
+            static_cast<unsigned long long>(tot.raw_gap - tot.gap),
+            static_cast<unsigned long long>(tot.gap), static_cast<unsigned long long>(tot.extra),
+            tot.o_comps, tot.e_comps, tot.split, tot.lost, tot.gap_comps);
     }
     return tot;
 }
@@ -925,6 +934,15 @@ int main(int argc, char** argv) {
             opt.list = true;
         } else if (a == "--pieces") {
             opt.pieces = true;
+        } else if (a == "--gap-patch" && i + 1 < argc) {
+            const std::string v = argv[++i];
+            char* end = nullptr;
+            const float f = std::strtof(v.c_str(), &end);
+            if (end == v.c_str() || *end != '\0' || !(f >= 0.0F)) {
+                std::fprintf(stderr, "--gap-patch: a number >= 0, not '%s'\n", v.c_str());
+                return 2;
+            }
+            opt.gap_patch = f;
         } else if (a == "--per-island") {
             opt.per_island = true;
         } else if (a == "--max-mask-px" && i + 1 < argc) {
@@ -954,7 +972,8 @@ int main(int argc, char** argv) {
     if (dir.empty() || files.empty()) {
         std::fputs(
             "usage: river_qa <game_dir> [--groups 0,1,2] [--dump dir] [--per-island] "
-            "[--max-mask-px N] [--flow [--flow-dump dir] [--discharge normalised|absolute|sourced] "
+            "[--gap-patch N] [--max-mask-px N] [--flow [--flow-dump dir] [--discharge "
+            "normalised|absolute|sourced] "
             "[--reference fastest|median] [--median-speed t] [--sea-less-scale s]] "
             "<file.sze|.scp>...\n"
             "       river_qa <game_dir> --rect group,x,y,w,h --shade <dir> [--times t,t,..] "
@@ -965,6 +984,11 @@ int main(int argc, char** argv) {
     }
     if (opt.flow) {
         return run_flow(opt, dir, files) ? 0 : 1;
+    }
+    if (opt.per_island) {
+        std::printf(
+            "| island | O px | covered | edge px | gap px | extra px | O comps | E comps | split | "
+            "lost | gap comps |\n|---|---|---|---|---|---|---|---|---|---|\n");
     }
     std::printf("| scene | group | islands | O px | covered | edge px | gap px | gap %% | extra px "
                 "| O comps | "
@@ -978,6 +1002,7 @@ int main(int argc, char** argv) {
             continue;
         }
         render::Scene& scene = *loaded.value().scene;
+        scene.river_cfg.gap_patch_tiles = opt.gap_patch; // before any island water is built
         const std::string name = anno::app::to_utf8(file.stem());
         if (rect) {
             // The options that change the flow (OQ-065, OQ-067) apply to the picture as well.

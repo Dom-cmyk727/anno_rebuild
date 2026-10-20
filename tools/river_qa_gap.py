@@ -268,6 +268,7 @@ def scaled_h(images):
 
 
 def gap_patch(args, island_files, all_islands):
+    args.exe = os.path.abspath(args.exe)  # a relative path with forward slashes fails on Windows
     files = island_files(args.game_dir, args.climates.split(',')) if args.climates \
         else all_islands(args.game_dir)
     if args.cache and os.path.isfile(args.cache):

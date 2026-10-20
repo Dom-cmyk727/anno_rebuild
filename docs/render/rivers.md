@@ -517,12 +517,16 @@ python tools/river_qa.py gap-patch --exe build/msvc/src/tools/river_qa/Release/r
 python tools/test_river_qa_gap.py --exe build/msvc/src/tools/river_qa/Release/river_qa.exe
 ```
 
-**Columns.** `E comps`: 8-connected components of the enhanced river water that touches the original's river sprites (the river networks as drawn; fewer means pieces were joined). `gap px`: original river-sprite pixels with no enhanced water within a few pixels (the owner's "brown bed, no water"). `extra px`: enhanced river water where the original draws no river sprite (water outside the painted bed). Each cell is `patch 0 -> patch 8`. A **regression** is: more components, more split or lost sprite components, more gap pixels, or `extra px` grown by more than 25 % of the island's original river pixels (`EXTRA_GROWTH_FRACTION` in `tools/river_qa_gap.py`: a survey flag, not a game rule; the rules are unit-tested in `tools/test_river_qa_gap.py`).
+**Columns.** `E comps`: 8-connected components of the enhanced river water that touches the original's river sprites (the river networks as drawn; fewer means pieces were joined). `gap px`: original river-sprite pixels with no enhanced water within a few pixels (the owner's "brown bed, no water"). `extra px`: enhanced river water where the original draws no river sprite (water outside the painted bed); `extra growth` is the gain of `extra px` as a share of the island's original river pixels (`O px`). `edge px` (summary only): gap pixels with water within a few pixels, which the `gap px` count ignores. `E comps` counts per island (all river networks of the island together), not per network. Each cell is `patch 0 -> patch 8`. A **regression** is: more components, more split or lost sprite components, more gap pixels, or `extra px` grown by more than 25 % of the island's original river pixels (`EXTRA_GROWTH_FRACTION` in `tools/river_qa_gap.py`: a survey flag with no evidence behind the 25 %, not a game rule; the largest growth measured is 19.5 %, so it cannot fire. Read the `extra growth` columns instead; the rules are unit-tested in `tools/test_river_qa_gap.py`).
 
-**Result over the islands that have river pieces:**
+**Result over the islands that have river pieces** (the cost of the patch, water outside the painted bed, comes first):
 
 ```
+scenes: tried 444, loaded 444, failed 0, with river pieces 72
 islands with river pieces: 72
+g0 water outside the painted bed, share of original river px: 6.5 % -> 17.5 % (largest growth 19.5 %, N_128x128_0005_1B_Piraten i0)
+g1 water outside the painted bed, share of original river px: 5.8 % -> 15.3 % (largest growth 17.1 %, N_128x128_0005_1B_Piraten i0)
+g2 water outside the painted bed, share of original river px: 4.7 % -> 11.4 % (largest growth 12.4 %, N_128x128_0005_1B_Piraten i0)
 islands with a regression (patch 8 against 0): 0
 g0 O px total: 34915444 -> 34915444
 g1 O px total: 9026661 -> 9026661
@@ -533,6 +537,9 @@ g2 E comps total: 338 -> 316
 g0 gap px total: 94 -> 0
 g1 gap px total: 0 -> 0
 g2 gap px total: 0 -> 0
+g0 edge px total: 87702 -> 56359
+g1 edge px total: 26083 -> 19738
+g2 edge px total: 10297 -> 9420
 g0 extra px total: 2254378 -> 6098976
 g1 extra px total: 521198 -> 1384508
 g2 extra px total: 102880 -> 250415
@@ -546,93 +553,94 @@ g2 lost total: 0 -> 0
 
 **Findings.**
 
-- **No regression by the rules above on any island.** No island gets more components, more split or lost sprite components, or more gap pixels. The largest growth of water outside the painted bed is 19 % of the island's original river pixels (`N_128x128_0049_1B_Indianer`).
-- **The patch removes the gaps that are left.** Gap pixels fall from 94 to 0 at group 0 (`D_256x256_0003_4B` 23 px, `D_256x256_0013_4B_Azteken` 23, `D_256x256_0015_5B_Afrika` 23, `N_128x128_0022_1B` 3, `N_256x256_0003_2B` 9, `N_256x256_0006_2B` 7, plus scenario variants); groups 1 and 2 have none before or after (the count ignores pixels with water within `th/10 + 1` px; those "edge" pixels fall from 26,083 to 19,738 at group 1). The one split sprite component (`D_256x256_0026_4B_Azteken`, group 0) is joined.
-- **Components: 8 of 72 islands lose components, 64 are unchanged, none gains** (group 1: 363 -> 339). Most rivers were already one water body; the patch matters on a minority.
-- **The cost is water outside the painted bed.** Over all islands the enhanced river water outside the original sprites grows from 5.8 % to 15.3 % of the original river pixels at group 1 (group 0: 2.25 -> 6.10 million px, group 1: 0.52 -> 1.38 million, group 2: 0.10 -> 0.25 million). The contact sheets show where: a thin fringe along the banks at every bend (the deepened trench corners reach about a pixel past the painted bed), not new branches or pools. Whether rivers that are a little wider at bends look right is the owner's call, because it changes the picture (OQ-068).
-- **The island count differs from the task text.** The tool finds 72 island templates (of 444 without dummies) with river pieces, not 106. The 106 may count something else (rivers, or islands in the 8-player scenarios); not resolved. The list used is every `.scp` under `Scenes/Islands` for which `Scene::river_piece_count` is non-zero.
+- **The cost is water outside the painted bed, on every island.** `extra px` grows on all 72 islands: from 5.8 % to 15.3 % of the original river pixels at group 1 (group 0: 6.5 -> 17.5 %, group 2: 4.7 -> 11.4 %), by 19.5 % of an island's original pixels at most (`N_128x128_0005_1B_Piraten`, group 0). In absolute pixels it grows 2.7 times over all islands at group 1 and up to 11.6 times on one (`N_256x256_0007_2B`: 3,125 -> 36,127 at group 1), because the original river pixels are the denominator and the painted bed is already large.
+- **No regression by the other rules on any island.** No island gets more components, more split or lost sprite components, or more gap pixels.
+- **The patch removes the gaps that are left.** Gap pixels fall from 94 to 0 at group 0 (`D_256x256_0003_4B` 23 px, `D_256x256_0013_4B_Azteken` 23, `D_256x256_0015_5B_Afrika` 23, `N_128x128_0022_1B` 3, `N_256x256_0003_2B` 9, `N_256x256_0006_2B` 7, plus scenario variants); groups 1 and 2 have none before or after (the count ignores pixels with water within `th/10 + 1` px; those "edge" pixels fall from 87,702 to 56,359 at group 0, 26,083 to 19,738 at group 1 and 10,297 to 9,420 at group 2). The one split sprite component (`D_256x256_0026_4B_Azteken`, group 0) is joined.
+- **Components: 8 of 72 islands lose components, 64 are unchanged, none gains** (group 1: 363 -> 339; counted per island, all networks together). Most rivers were already one water body; the patch matters on a minority.
+- **Where the extra water is** (sheets below): a thin fringe along the banks at every bend (the deepened trench corners reach about a pixel past the painted bed) and, on the largest growers, short extensions at the open ends of a river where the painted pieces stop: `N_256x256_0007_2B` and `N_256x256_0016_3B` show a blue tail at the source end (top) and at the lower-left end, a few tiles long at every group, that the unpatched water does not have (a few pixels at the top only). These are new water outside the original sprites, not new branches or pools. Whether this looks right is the owner's call, because it changes the picture (OQ-068).
+- **Coverage.** 444 scenes tried (every `.scp` under `Scenes/Islands` except the 21 dummy islands), 444 loaded, 0 failed, 72 with river pieces (one island each, so 72 islands); the 21 dummy islands were measured once separately: 0 with river pieces. The task text said 106 islands; the 50 scenarios (.sze under `Scenes`) place 112 islands with river pieces in 36 scenarios (group 0, measured once with `river_qa --groups 0`), which is not 106 either; neither number was reproduced as 106, and the gap-patch survey covers the island templates only, not the placed instances (whether the placed islands match their templates was not checked).
 - Variants of one template (Mongolen, Indianer, Piraten, Azteken, Afrika) repeat the same river and show the same numbers.
 
-**Contact sheets** of the five worst islands, in `C:/Users/altin/Pictures/anno-review/T6/`: `N_128x128_0016_1B`, `N_128x128_0014_1B`, `N_128x128_0019_2B`, `N_256x256_0006_2B`, `N_128x128_0049_1B_Indianer`. Ranking: regression count, then remaining gap pixels, then components beyond one per original component, then growth of water outside the bed; variants with the same component counts count once. Left column patch 0, right column patch 8, one row per zoom group, cropped to the river (red = gap, green = original sprite with water, blue = enhanced river water only, orange = sprite without water).
+**Contact sheets** (seven, in `C:/Users/altin/Pictures/anno-review/T6/`, file names `<island>_i0_gap-patch-8.png`). Ranking rule of the first five: regression count, then remaining gap pixels (none are left after the patch), then the largest growth of `extra px` as a share of the original river pixels (the cost of the patch), then components beyond one per original component; islands with the same pixel and component counts in every group count once: `N_128x128_0005_1B` (19.5 %), `N_128x128_0049_1B_Indianer` (19.1 %), `D_256x256_0003_4B` (18.5 %), `N_128x128_0010_1B` (18.3 %), `N_128x128_0007_1B` (18.2 %). Two more show the largest absolute multiplication of `extra px` (11.6 and 8.9 times at group 1): `N_256x256_0007_2B`, `N_256x256_0016_3B`; they have the end tails described above. Left column patch 0, right column patch 8, one row per zoom group, cropped to the river (red = gap, green = original sprite with water, blue = enhanced river water only, orange = sprite without water).
 
 **Open for the owner (OQ-068):** keep 8 as the viewer default (no gap pixels left, fewer split rivers, a slightly wider river at bends), choose a smaller `gap_patch_tiles`, or limit the trench deepening to the cells that are real gaps so that the fringe stays out (a render change, not part of this survey).
 
 **Full table** (one row per island template, `patch 0 -> patch 8`):
 
-| island | E comps g0 | E comps g1 | E comps g2 | gap px g0 | gap px g1 | gap px g2 | extra px g0 | extra px g1 | extra px g2 | regression |
-|---|---|---|---|---|---|---|---|---|---|---|
-| D_128x128_0006_3B i0 | 4 -> 4 | 4 -> 4 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 8240 -> 31672 | 1805 -> 7059 | 306 -> 1235 |  |
-| D_128x128_0022_1B i0 | 5 -> 5 | 4 -> 4 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 34666 -> 90078 | 7726 -> 20169 | 1390 -> 3575 |  |
-| D_128x128_0023_3B i0 | 17 -> 11 | 12 -> 7 | 10 -> 5 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 11792 -> 57716 | 2419 -> 12781 | 340 -> 2204 |  |
-| D_128x128_0024_4B i0 | 4 -> 3 | 5 -> 4 | 2 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 35566 -> 86171 | 8143 -> 19412 | 1551 -> 3419 |  |
-| D_128x128_0025_3B i0 | 4 -> 4 | 4 -> 4 | 4 -> 4 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 24401 -> 29431 | 5636 -> 6699 | 1176 -> 1288 |  |
-| D_128x128_0037_2B i0 | 7 -> 7 | 7 -> 7 | 6 -> 6 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 38293 -> 52395 | 9205 -> 12181 | 1902 -> 2317 |  |
-| D_128x128_0046_4B i0 | 4 -> 4 | 4 -> 4 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 3588 -> 11990 | 598 -> 2392 | 68 -> 288 |  |
-| D_128x128_0049_4B i0 | 6 -> 6 | 5 -> 5 | 4 -> 4 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 7196 -> 9715 | 1579 -> 2021 | 263 -> 287 |  |
-| D_256x256_0003_4B i0 | 1 -> 1 | 1 -> 1 | 1 -> 1 | 23 -> 0 | 0 -> 0 | 0 -> 0 | 56054 -> 141193 | 11868 -> 31101 | 2283 -> 5750 |  |
-| D_256x256_0013_4B_Azteken i0 | 1 -> 1 | 1 -> 1 | 1 -> 1 | 23 -> 0 | 0 -> 0 | 0 -> 0 | 56054 -> 141193 | 11868 -> 31101 | 2283 -> 5750 |  |
-| D_256x256_0015_5B_Afrika i0 | 7 -> 6 | 7 -> 6 | 7 -> 6 | 23 -> 0 | 0 -> 0 | 0 -> 0 | 67911 -> 180610 | 14981 -> 41168 | 2978 -> 7965 |  |
-| D_256x256_0026_4B_Azteken i0 | 2 -> 1 | 1 -> 1 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 12828 -> 88542 | 2645 -> 19616 | 393 -> 3322 |  |
-| D_256x256_0045_5B i0 | 16 -> 7 | 16 -> 7 | 15 -> 6 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 142657 -> 357469 | 33396 -> 82938 | 6539 -> 15666 |  |
-| N_128x128_0002_3B i0 | 9 -> 9 | 6 -> 6 | 3 -> 3 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 39240 -> 73060 | 8913 -> 16349 | 1642 -> 2604 |  |
-| N_128x128_0002_3B_Indianer i0 | 10 -> 10 | 9 -> 9 | 6 -> 6 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 51435 -> 92078 | 11858 -> 20780 | 2233 -> 3343 |  |
-| N_128x128_0005_1B i0 | 1 -> 1 | 1 -> 1 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 42549 -> 136272 | 10329 -> 31647 | 2103 -> 5880 |  |
-| N_128x128_0005_1B_Piraten i0 | 1 -> 1 | 1 -> 1 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 42549 -> 136272 | 10329 -> 31647 | 2103 -> 5880 |  |
-| N_128x128_0006_1B i0 | 5 -> 5 | 5 -> 5 | 6 -> 6 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 30612 -> 53970 | 7421 -> 12703 | 1583 -> 2461 |  |
-| N_128x128_0006_1B_Mongolen i0 | 7 -> 7 | 7 -> 7 | 7 -> 7 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 46691 -> 119099 | 11121 -> 27528 | 2271 -> 5120 |  |
-| N_128x128_0007_1B i0 | 9 -> 9 | 9 -> 9 | 8 -> 8 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 41801 -> 112627 | 9998 -> 26021 | 2089 -> 4913 |  |
-| N_128x128_0007_1B_Mongolen i0 | 9 -> 9 | 9 -> 9 | 8 -> 8 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 41801 -> 112627 | 9998 -> 26021 | 2089 -> 4913 |  |
-| N_128x128_0010_1B i0 | 8 -> 8 | 7 -> 7 | 9 -> 9 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 27556 -> 97301 | 6315 -> 22204 | 1183 -> 4089 |  |
-| N_128x128_0010_1BMongolen i0 | 8 -> 8 | 7 -> 7 | 9 -> 9 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 27556 -> 97301 | 6315 -> 22204 | 1183 -> 4089 |  |
-| N_128x128_0014_1B i0 | 13 -> 13 | 16 -> 16 | 9 -> 9 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 26007 -> 48389 | 6222 -> 11301 | 1313 -> 2177 |  |
-| N_128x128_0014_1B_Indianer i0 | 13 -> 13 | 16 -> 16 | 9 -> 9 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 26007 -> 48389 | 6222 -> 11301 | 1313 -> 2177 |  |
-| N_128x128_0015_1B i0 | 3 -> 3 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 35914 -> 81612 | 8658 -> 19174 | 1768 -> 3695 |  |
-| N_128x128_0015_1B_Piraten i0 | 3 -> 3 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 35914 -> 81612 | 8658 -> 19174 | 1768 -> 3695 |  |
-| N_128x128_0016_1B i0 | 8 -> 8 | 9 -> 9 | 23 -> 23 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 10847 -> 27327 | 2469 -> 5887 | 499 -> 922 |  |
-| N_128x128_0016_1BMongolen i0 | 8 -> 8 | 9 -> 9 | 23 -> 23 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 10847 -> 27324 | 2468 -> 5885 | 501 -> 924 |  |
-| N_128x128_0017_3B i0 | 5 -> 5 | 3 -> 3 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 11571 -> 24403 | 2473 -> 5059 | 422 -> 634 |  |
-| N_128x128_0017_3B_Indianer i0 | 5 -> 5 | 3 -> 3 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 11571 -> 24403 | 2473 -> 5059 | 422 -> 634 |  |
-| N_128x128_0019_2B i0 | 13 -> 13 | 9 -> 9 | 9 -> 9 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 7825 -> 27042 | 1695 -> 5653 | 354 -> 776 |  |
-| N_128x128_0019_2B_Indianer i0 | 13 -> 13 | 9 -> 9 | 9 -> 9 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 9025 -> 28248 | 1929 -> 5887 | 375 -> 798 |  |
-| N_128x128_0021_1B i0 | 8 -> 8 | 10 -> 10 | 7 -> 7 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 5939 -> 25697 | 1292 -> 5429 | 239 -> 705 |  |
-| N_128x128_0021_1B_Mongolen i0 | 8 -> 8 | 10 -> 10 | 7 -> 7 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 5939 -> 25697 | 1292 -> 5429 | 239 -> 705 |  |
-| N_128x128_0022_1B i0 | 2 -> 2 | 2 -> 2 | 1 -> 1 | 3 -> 0 | 0 -> 0 | 0 -> 0 | 12177 -> 29441 | 2512 -> 5933 | 458 -> 810 |  |
-| N_128x128_0022_1BPiraten i0 | 2 -> 2 | 2 -> 2 | 1 -> 1 | 3 -> 0 | 0 -> 0 | 0 -> 0 | 12177 -> 29441 | 2512 -> 5937 | 458 -> 810 |  |
-| N_128x128_0025_2B i0 | 1 -> 1 | 1 -> 1 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 17025 -> 22873 | 4055 -> 5258 | 797 -> 869 |  |
-| N_128x128_0029_2B i0 | 4 -> 4 | 5 -> 5 | 13 -> 13 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 16579 -> 24147 | 3848 -> 5387 | 762 -> 914 |  |
-| N_128x128_0029_2B_Indianer i0 | 4 -> 4 | 5 -> 5 | 13 -> 13 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 16579 -> 24147 | 3848 -> 5387 | 762 -> 914 |  |
-| N_128x128_0030_1B i0 | 3 -> 3 | 2 -> 2 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 3098 -> 9529 | 534 -> 1864 | 64 -> 206 |  |
-| N_128x128_0030_1B_Mongolen i0 | 3 -> 3 | 2 -> 2 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 3338 -> 9768 | 598 -> 1906 | 81 -> 217 |  |
-| N_128x128_0034_0B i0 | 5 -> 5 | 3 -> 3 | 3 -> 3 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 30665 -> 43123 | 7270 -> 9873 | 1535 -> 1764 |  |
-| N_128x128_0034_0BIndianer i0 | 5 -> 5 | 3 -> 3 | 3 -> 3 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 30665 -> 43123 | 7270 -> 9873 | 1535 -> 1764 |  |
-| N_128x128_0049_1B_Indianer i0 | 11 -> 11 | 10 -> 10 | 5 -> 5 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 63067 -> 133250 | 15378 -> 31215 | 3364 -> 6118 |  |
-| N_128x128_0050_3B_Indianer i0 | 5 -> 5 | 3 -> 3 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 11571 -> 24403 | 2473 -> 5059 | 422 -> 634 |  |
-| N_128x128_0068_2B_Piraten i0 | 2 -> 2 | 2 -> 2 | 1 -> 1 | 3 -> 0 | 0 -> 0 | 0 -> 0 | 12438 -> 28668 | 2554 -> 5791 | 459 -> 791 |  |
-| N_256x256_0002_2B i0 | 1 -> 1 | 2 -> 2 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 9584 -> 46824 | 1883 -> 10414 | 253 -> 1819 |  |
-| N_256x256_0003_2B i0 | 2 -> 2 | 3 -> 3 | 4 -> 4 | 9 -> 0 | 0 -> 0 | 0 -> 0 | 44622 -> 174750 | 9089 -> 38773 | 1597 -> 7092 |  |
-| N_256x256_0006_2B i0 | 7 -> 7 | 8 -> 8 | 10 -> 10 | 7 -> 0 | 0 -> 0 | 0 -> 0 | 29536 -> 58042 | 6390 -> 12168 | 1248 -> 1769 |  |
-| N_256x256_0007_2B i0 | 4 -> 2 | 6 -> 3 | 3 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 13078 -> 158508 | 3125 -> 36127 | 460 -> 6568 |  |
-| N_256x256_0011_2B_Mongolen i0 | 4 -> 4 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 38681 -> 141475 | 9086 -> 32160 | 1860 -> 5893 |  |
-| N_256x256_0012_3B_Mongolen i0 | 2 -> 2 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 19509 -> 147422 | 4286 -> 33443 | 741 -> 6098 |  |
-| N_256x256_0013_4B_Mongolen i0 | 1 -> 1 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 6145 -> 42876 | 1334 -> 9749 | 181 -> 1703 |  |
-| N_256x256_0014_2B_Piraten i0 | 6 -> 6 | 4 -> 4 | 6 -> 6 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 32262 -> 60985 | 7476 -> 13314 | 1519 -> 2052 |  |
-| N_256x256_0015_5B i0 | 2 -> 2 | 2 -> 2 | 3 -> 3 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 54662 -> 125491 | 13076 -> 28929 | 2650 -> 5283 |  |
-| N_256x256_0016_3B i0 | 5 -> 3 | 5 -> 2 | 4 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 17466 -> 163082 | 4172 -> 37215 | 693 -> 6805 |  |
-| N_256x256_0019_2B i0 | 4 -> 4 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 38850 -> 141668 | 9116 -> 32202 | 1860 -> 5894 |  |
-| Pr_128x128_0003_1B i0 | 3 -> 3 | 5 -> 5 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 34014 -> 83108 | 8158 -> 19303 | 1699 -> 3629 |  |
-| Pr_128x128_0008_2B_Indianer i0 | 2 -> 2 | 2 -> 2 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 36743 -> 85837 | 8816 -> 19961 | 1885 -> 3815 |  |
-| S_128x128_0003_2B i0 | 4 -> 4 | 5 -> 5 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 12745 -> 86596 | 2540 -> 19225 | 316 -> 3235 |  |
-| S_128x128_0003_2B_Beduinen i0 | 4 -> 4 | 5 -> 5 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 12745 -> 86596 | 2540 -> 19225 | 316 -> 3235 |  |
-| S_128x128_0009_0B i0 | 6 -> 5 | 6 -> 5 | 5 -> 4 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 47676 -> 73729 | 11166 -> 17168 | 2220 -> 3313 |  |
-| S_128x128_0009_0B_Orient i0 | 6 -> 5 | 6 -> 5 | 5 -> 4 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 47676 -> 73729 | 11166 -> 17168 | 2220 -> 3313 |  |
-| S_256x256_0003_2B i0 | 1 -> 1 | 1 -> 1 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 42549 -> 129923 | 9948 -> 29666 | 1884 -> 5315 |  |
-| S_256x256_0003_2B_Beduinen i0 | 1 -> 1 | 1 -> 1 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 42549 -> 129923 | 9948 -> 29666 | 1884 -> 5315 |  |
-| S_256x256_0004_3B_Orient i0 | 2 -> 2 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 120846 -> 298278 | 29055 -> 69198 | 6121 -> 13199 |  |
-| T_128x128_0040_3B_Po i0 | 2 -> 2 | 3 -> 3 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 15696 -> 20581 | 3605 -> 4553 | 708 -> 802 |  |
-| T_128x128_0053_1B_Po_Mongolen i0 | 2 -> 2 | 3 -> 3 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 15696 -> 20581 | 3605 -> 4553 | 708 -> 802 |  |
-| T_256x256_0002_2B i0 | 4 -> 4 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 38681 -> 141475 | 9086 -> 32160 | 1860 -> 5893 |  |
-| T_256x256_0005_1B_Po i0 | 3 -> 3 | 2 -> 2 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 37561 -> 178751 | 8603 -> 40373 | 1658 -> 7190 |  |
-| T_256x256_0008_2B_Po i0 | 8 -> 8 | 12 -> 12 | 15 -> 15 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 126985 -> 227908 | 30760 -> 53332 | 6478 -> 10372 |  |
+| island | E comps g0 | E comps g1 | E comps g2 | gap px g0 | gap px g1 | gap px g2 | extra px g0 | extra px g1 | extra px g2 | extra growth g0 | extra growth g1 | extra growth g2 | regression |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| D_128x128_0006_3B i0 | 4 -> 4 | 4 -> 4 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 8240 -> 31672 | 1805 -> 7059 | 306 -> 1235 | 14.0 % | 12.1 % | 8.6 % |  |
+| D_128x128_0022_1B i0 | 5 -> 5 | 4 -> 4 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 34666 -> 90078 | 7726 -> 20169 | 1390 -> 3575 | 13.8 % | 11.9 % | 8.4 % |  |
+| D_128x128_0023_3B i0 | 17 -> 11 | 12 -> 7 | 10 -> 5 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 11792 -> 57716 | 2419 -> 12781 | 340 -> 2204 | 15.7 % | 13.5 % | 9.7 % |  |
+| D_128x128_0024_4B i0 | 4 -> 3 | 5 -> 4 | 2 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 35566 -> 86171 | 8143 -> 19412 | 1551 -> 3419 | 11.8 % | 10.1 % | 6.8 % |  |
+| D_128x128_0025_3B i0 | 4 -> 4 | 4 -> 4 | 4 -> 4 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 24401 -> 29431 | 5636 -> 6699 | 1176 -> 1288 | 3.8 % | 3.1 % | 1.3 % |  |
+| D_128x128_0037_2B i0 | 7 -> 7 | 7 -> 7 | 6 -> 6 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 38293 -> 52395 | 9205 -> 12181 | 1902 -> 2317 | 3.3 % | 2.7 % | 1.5 % |  |
+| D_128x128_0046_4B i0 | 4 -> 4 | 4 -> 4 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 3588 -> 11990 | 598 -> 2392 | 68 -> 288 | 3.5 % | 2.9 % | 1.4 % |  |
+| D_128x128_0049_4B i0 | 6 -> 6 | 5 -> 5 | 4 -> 4 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 7196 -> 9715 | 1579 -> 2021 | 263 -> 287 | 1.0 % | 0.7 % | 0.2 % |  |
+| D_256x256_0003_4B i0 | 1 -> 1 | 1 -> 1 | 1 -> 1 | 23 -> 0 | 0 -> 0 | 0 -> 0 | 56054 -> 141193 | 11868 -> 31101 | 2283 -> 5750 | 18.5 % | 15.8 % | 11.5 % |  |
+| D_256x256_0013_4B_Azteken i0 | 1 -> 1 | 1 -> 1 | 1 -> 1 | 23 -> 0 | 0 -> 0 | 0 -> 0 | 56054 -> 141193 | 11868 -> 31101 | 2283 -> 5750 | 18.5 % | 15.8 % | 11.5 % |  |
+| D_256x256_0015_5B_Afrika i0 | 7 -> 6 | 7 -> 6 | 7 -> 6 | 23 -> 0 | 0 -> 0 | 0 -> 0 | 67911 -> 180610 | 14981 -> 41168 | 2978 -> 7965 | 14.8 % | 13.3 % | 10.6 % |  |
+| D_256x256_0026_4B_Azteken i0 | 2 -> 1 | 1 -> 1 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 12828 -> 88542 | 2645 -> 19616 | 393 -> 3322 | 11.0 % | 9.6 % | 6.9 % |  |
+| D_256x256_0045_5B i0 | 16 -> 7 | 16 -> 7 | 15 -> 6 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 142657 -> 357469 | 33396 -> 82938 | 6539 -> 15666 | 16.8 % | 14.9 % | 11.0 % |  |
+| N_128x128_0002_3B i0 | 9 -> 9 | 6 -> 6 | 3 -> 3 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 39240 -> 73060 | 8913 -> 16349 | 1642 -> 2604 | 7.7 % | 6.5 % | 3.4 % |  |
+| N_128x128_0002_3B_Indianer i0 | 10 -> 10 | 9 -> 9 | 6 -> 6 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 51435 -> 92078 | 11858 -> 20780 | 2233 -> 3343 | 6.8 % | 5.8 % | 2.9 % |  |
+| N_128x128_0005_1B i0 | 1 -> 1 | 1 -> 1 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 42549 -> 136272 | 10329 -> 31647 | 2103 -> 5880 | 19.5 % | 17.1 % | 12.4 % |  |
+| N_128x128_0005_1B_Piraten i0 | 1 -> 1 | 1 -> 1 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 42549 -> 136272 | 10329 -> 31647 | 2103 -> 5880 | 19.5 % | 17.1 % | 12.4 % |  |
+| N_128x128_0006_1B i0 | 5 -> 5 | 5 -> 5 | 6 -> 6 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 30612 -> 53970 | 7421 -> 12703 | 1583 -> 2461 | 10.3 % | 9.0 % | 6.1 % |  |
+| N_128x128_0006_1B_Mongolen i0 | 7 -> 7 | 7 -> 7 | 7 -> 7 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 46691 -> 119099 | 11121 -> 27528 | 2271 -> 5120 | 13.4 % | 11.7 % | 8.3 % |  |
+| N_128x128_0007_1B i0 | 9 -> 9 | 9 -> 9 | 8 -> 8 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 41801 -> 112627 | 9998 -> 26021 | 2089 -> 4913 | 18.2 % | 15.8 % | 11.3 % |  |
+| N_128x128_0007_1B_Mongolen i0 | 9 -> 9 | 9 -> 9 | 8 -> 8 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 41801 -> 112627 | 9998 -> 26021 | 2089 -> 4913 | 18.2 % | 15.8 % | 11.3 % |  |
+| N_128x128_0010_1B i0 | 8 -> 8 | 7 -> 7 | 9 -> 9 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 27556 -> 97301 | 6315 -> 22204 | 1183 -> 4089 | 18.3 % | 16.0 % | 12.0 % |  |
+| N_128x128_0010_1BMongolen i0 | 8 -> 8 | 7 -> 7 | 9 -> 9 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 27556 -> 97301 | 6315 -> 22204 | 1183 -> 4089 | 18.3 % | 16.0 % | 12.0 % |  |
+| N_128x128_0014_1B i0 | 13 -> 13 | 16 -> 16 | 9 -> 9 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 26007 -> 48389 | 6222 -> 11301 | 1313 -> 2177 | 12.6 % | 10.9 % | 7.4 % |  |
+| N_128x128_0014_1B_Indianer i0 | 13 -> 13 | 16 -> 16 | 9 -> 9 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 26007 -> 48389 | 6222 -> 11301 | 1313 -> 2177 | 12.6 % | 10.9 % | 7.4 % |  |
+| N_128x128_0015_1B i0 | 3 -> 3 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 35914 -> 81612 | 8658 -> 19174 | 1768 -> 3695 | 15.1 % | 13.5 % | 10.2 % |  |
+| N_128x128_0015_1B_Piraten i0 | 3 -> 3 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 35914 -> 81612 | 8658 -> 19174 | 1768 -> 3695 | 15.1 % | 13.5 % | 10.2 % |  |
+| N_128x128_0016_1B i0 | 8 -> 8 | 9 -> 9 | 23 -> 23 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 10847 -> 27327 | 2469 -> 5887 | 499 -> 922 | 3.7 % | 2.9 % | 1.5 % |  |
+| N_128x128_0016_1BMongolen i0 | 8 -> 8 | 9 -> 9 | 23 -> 23 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 10847 -> 27324 | 2468 -> 5885 | 501 -> 924 | 3.7 % | 2.9 % | 1.5 % |  |
+| N_128x128_0017_3B i0 | 5 -> 5 | 3 -> 3 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 11571 -> 24403 | 2473 -> 5059 | 422 -> 634 | 2.1 % | 1.7 % | 0.6 % |  |
+| N_128x128_0017_3B_Indianer i0 | 5 -> 5 | 3 -> 3 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 11571 -> 24403 | 2473 -> 5059 | 422 -> 634 | 2.1 % | 1.7 % | 0.6 % |  |
+| N_128x128_0019_2B i0 | 13 -> 13 | 9 -> 9 | 9 -> 9 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 7825 -> 27042 | 1695 -> 5653 | 354 -> 776 | 5.0 % | 4.0 % | 1.8 % |  |
+| N_128x128_0019_2B_Indianer i0 | 13 -> 13 | 9 -> 9 | 9 -> 9 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 9025 -> 28248 | 1929 -> 5887 | 375 -> 798 | 5.0 % | 4.0 % | 1.8 % |  |
+| N_128x128_0021_1B i0 | 8 -> 8 | 10 -> 10 | 7 -> 7 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 5939 -> 25697 | 1292 -> 5429 | 239 -> 705 | 5.1 % | 4.2 % | 2.0 % |  |
+| N_128x128_0021_1B_Mongolen i0 | 8 -> 8 | 10 -> 10 | 7 -> 7 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 5939 -> 25697 | 1292 -> 5429 | 239 -> 705 | 5.1 % | 4.2 % | 2.0 % |  |
+| N_128x128_0022_1B i0 | 2 -> 2 | 2 -> 2 | 1 -> 1 | 3 -> 0 | 0 -> 0 | 0 -> 0 | 12177 -> 29441 | 2512 -> 5933 | 458 -> 810 | 3.7 % | 2.8 % | 1.2 % |  |
+| N_128x128_0022_1BPiraten i0 | 2 -> 2 | 2 -> 2 | 1 -> 1 | 3 -> 0 | 0 -> 0 | 0 -> 0 | 12177 -> 29441 | 2512 -> 5937 | 458 -> 810 | 3.7 % | 2.8 % | 1.2 % |  |
+| N_128x128_0025_2B i0 | 1 -> 1 | 1 -> 1 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 17025 -> 22873 | 4055 -> 5258 | 797 -> 869 | 2.6 % | 2.1 % | 0.5 % |  |
+| N_128x128_0029_2B i0 | 4 -> 4 | 5 -> 5 | 13 -> 13 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 16579 -> 24147 | 3848 -> 5387 | 762 -> 914 | 3.2 % | 2.6 % | 1.0 % |  |
+| N_128x128_0029_2B_Indianer i0 | 4 -> 4 | 5 -> 5 | 13 -> 13 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 16579 -> 24147 | 3848 -> 5387 | 762 -> 914 | 3.2 % | 2.6 % | 1.0 % |  |
+| N_128x128_0030_1B i0 | 3 -> 3 | 2 -> 2 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 3098 -> 9529 | 534 -> 1864 | 64 -> 206 | 2.5 % | 2.0 % | 0.9 % |  |
+| N_128x128_0030_1B_Mongolen i0 | 3 -> 3 | 2 -> 2 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 3338 -> 9768 | 598 -> 1906 | 81 -> 217 | 2.5 % | 2.0 % | 0.8 % |  |
+| N_128x128_0034_0B i0 | 5 -> 5 | 3 -> 3 | 3 -> 3 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 30665 -> 43123 | 7270 -> 9873 | 1535 -> 1764 | 3.0 % | 2.5 % | 0.9 % |  |
+| N_128x128_0034_0BIndianer i0 | 5 -> 5 | 3 -> 3 | 3 -> 3 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 30665 -> 43123 | 7270 -> 9873 | 1535 -> 1764 | 3.0 % | 2.5 % | 0.9 % |  |
+| N_128x128_0049_1B_Indianer i0 | 11 -> 11 | 10 -> 10 | 5 -> 5 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 63067 -> 133250 | 15378 -> 31215 | 3364 -> 6118 | 19.1 % | 16.5 % | 11.6 % |  |
+| N_128x128_0050_3B_Indianer i0 | 5 -> 5 | 3 -> 3 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 11571 -> 24403 | 2473 -> 5059 | 422 -> 634 | 2.1 % | 1.7 % | 0.6 % |  |
+| N_128x128_0068_2B_Piraten i0 | 2 -> 2 | 2 -> 2 | 1 -> 1 | 3 -> 0 | 0 -> 0 | 0 -> 0 | 12438 -> 28668 | 2554 -> 5791 | 459 -> 791 | 3.4 % | 2.6 % | 1.1 % |  |
+| N_256x256_0002_2B i0 | 1 -> 1 | 2 -> 2 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 9584 -> 46824 | 1883 -> 10414 | 253 -> 1819 | 17.6 % | 15.4 % | 11.3 % |  |
+| N_256x256_0003_2B i0 | 2 -> 2 | 3 -> 3 | 4 -> 4 | 9 -> 0 | 0 -> 0 | 0 -> 0 | 44622 -> 174750 | 9089 -> 38773 | 1597 -> 7092 | 15.1 % | 13.3 % | 10.2 % |  |
+| N_256x256_0006_2B i0 | 7 -> 7 | 8 -> 8 | 10 -> 10 | 7 -> 0 | 0 -> 0 | 0 -> 0 | 29536 -> 58042 | 6390 -> 12168 | 1248 -> 1769 | 2.2 % | 1.8 % | 0.7 % |  |
+| N_256x256_0007_2B i0 | 4 -> 2 | 6 -> 3 | 3 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 13078 -> 158508 | 3125 -> 36127 | 460 -> 6568 | 16.4 % | 14.5 % | 11.2 % |  |
+| N_256x256_0011_2B_Mongolen i0 | 4 -> 4 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 38681 -> 141475 | 9086 -> 32160 | 1860 -> 5893 | 15.1 % | 13.1 % | 9.4 % |  |
+| N_256x256_0012_3B_Mongolen i0 | 2 -> 2 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 19509 -> 147422 | 4286 -> 33443 | 741 -> 6098 | 14.3 % | 12.6 % | 9.7 % |  |
+| N_256x256_0013_4B_Mongolen i0 | 1 -> 1 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 6145 -> 42876 | 1334 -> 9749 | 181 -> 1703 | 17.0 % | 14.9 % | 10.9 % |  |
+| N_256x256_0014_2B_Piraten i0 | 6 -> 6 | 4 -> 4 | 6 -> 6 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 32262 -> 60985 | 7476 -> 13314 | 1519 -> 2052 | 2.3 % | 1.8 % | 0.7 % |  |
+| N_256x256_0015_5B i0 | 2 -> 2 | 2 -> 2 | 3 -> 3 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 54662 -> 125491 | 13076 -> 28929 | 2650 -> 5283 | 9.7 % | 8.4 % | 5.7 % |  |
+| N_256x256_0016_3B i0 | 5 -> 3 | 5 -> 2 | 4 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 17466 -> 163082 | 4172 -> 37215 | 693 -> 6805 | 16.7 % | 14.8 % | 11.4 % |  |
+| N_256x256_0019_2B i0 | 4 -> 4 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 38850 -> 141668 | 9116 -> 32202 | 1860 -> 5894 | 15.1 % | 13.1 % | 9.4 % |  |
+| Pr_128x128_0003_1B i0 | 3 -> 3 | 5 -> 5 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 34014 -> 83108 | 8158 -> 19303 | 1699 -> 3629 | 15.6 % | 13.7 % | 9.6 % |  |
+| Pr_128x128_0008_2B_Indianer i0 | 2 -> 2 | 2 -> 2 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 36743 -> 85837 | 8816 -> 19961 | 1885 -> 3815 | 16.6 % | 14.5 % | 10.2 % |  |
+| S_128x128_0003_2B i0 | 4 -> 4 | 5 -> 5 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 12745 -> 86596 | 2540 -> 19225 | 316 -> 3235 | 14.5 % | 12.6 % | 9.0 % |  |
+| S_128x128_0003_2B_Beduinen i0 | 4 -> 4 | 5 -> 5 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 12745 -> 86596 | 2540 -> 19225 | 316 -> 3235 | 14.5 % | 12.6 % | 9.0 % |  |
+| S_128x128_0009_0B i0 | 6 -> 5 | 6 -> 5 | 5 -> 4 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 47676 -> 73729 | 11166 -> 17168 | 2220 -> 3313 | 12.3 % | 10.8 % | 7.9 % |  |
+| S_128x128_0009_0B_Orient i0 | 6 -> 5 | 6 -> 5 | 5 -> 4 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 47676 -> 73729 | 11166 -> 17168 | 2220 -> 3313 | 12.3 % | 10.8 % | 7.9 % |  |
+| S_256x256_0003_2B i0 | 1 -> 1 | 1 -> 1 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 42549 -> 129923 | 9948 -> 29666 | 1884 -> 5315 | 15.7 % | 13.6 % | 9.6 % |  |
+| S_256x256_0003_2B_Beduinen i0 | 1 -> 1 | 1 -> 1 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 42549 -> 129923 | 9948 -> 29666 | 1884 -> 5315 | 15.7 % | 13.6 % | 9.6 % |  |
+| S_256x256_0004_3B_Orient i0 | 2 -> 2 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 120846 -> 298278 | 29055 -> 69198 | 6121 -> 13199 | 17.5 % | 15.3 % | 11.1 % |  |
+| T_128x128_0040_3B_Po i0 | 2 -> 2 | 3 -> 3 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 15696 -> 20581 | 3605 -> 4553 | 708 -> 802 | 2.4 % | 1.8 % | 0.7 % |  |
+| T_128x128_0053_1B_Po_Mongolen i0 | 2 -> 2 | 3 -> 3 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 15696 -> 20581 | 3605 -> 4553 | 708 -> 802 | 2.4 % | 1.8 % | 0.7 % |  |
+| T_256x256_0002_2B i0 | 4 -> 4 | 2 -> 2 | 2 -> 2 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 38681 -> 141475 | 9086 -> 32160 | 1860 -> 5893 | 15.1 % | 13.1 % | 9.4 % |  |
+| T_256x256_0005_1B_Po i0 | 3 -> 3 | 2 -> 2 | 1 -> 1 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 37561 -> 178751 | 8603 -> 40373 | 1658 -> 7190 | 15.8 % | 13.7 % | 9.8 % |  |
+| T_256x256_0008_2B_Po i0 | 8 -> 8 | 12 -> 12 | 15 -> 15 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 126985 -> 227908 | 30760 -> 53332 | 6478 -> 10372 | 12.4 % | 10.7 % | 7.5 % |  |
 
 ## 14. Stage S4 as built (2026-10-19): hydraulics, CPU only
 

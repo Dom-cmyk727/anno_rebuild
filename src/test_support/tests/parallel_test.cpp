@@ -1,5 +1,8 @@
 // test_threads(): the ANNO_TEST_THREADS request is bounded by free memory.
+#include <atomic>
 #include <cstdlib>
+#include <new>
+#include <stdexcept>
 #include <string>
 
 #include <doctest/doctest.h>
@@ -33,6 +36,39 @@ TEST_CASE("test_threads is bounded by free physical memory") {
     const std::size_t n = anno::test::test_threads();
     CHECK(n >= 1);
     CHECK(n <= 64);
+    set_env("ANNO_TEST_THREADS", "");
+    set_env("ANNO_TEST_MB_PER_THREAD", "");
+}
+
+TEST_CASE("parallel_indexed runs an item again after std::bad_alloc and keeps the order") {
+    set_env("ANNO_TEST_THREADS", "4");
+    set_env("ANNO_TEST_MB_PER_THREAD", "0");
+    std::atomic<int> failures{0};
+    const auto out = anno::test::parallel_indexed(8, [&](std::size_t i) {
+        if (i % 3 == 0 && failures++ < 3) {
+            throw std::bad_alloc();
+        }
+        return static_cast<int>(i * i);
+    });
+    REQUIRE(out.size() == 8);
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        CHECK(out[i] == static_cast<int>(i * i));
+    }
+    set_env("ANNO_TEST_THREADS", "");
+    set_env("ANNO_TEST_MB_PER_THREAD", "");
+}
+
+TEST_CASE("parallel_indexed rethrows other exceptions") {
+    set_env("ANNO_TEST_THREADS", "2");
+    set_env("ANNO_TEST_MB_PER_THREAD", "0");
+    CHECK_THROWS_AS(anno::test::parallel_indexed(4,
+                                                 [](std::size_t i) -> int {
+                                                     if (i == 2) {
+                                                         throw std::runtime_error("x");
+                                                     }
+                                                     return 0;
+                                                 }),
+                    std::runtime_error);
     set_env("ANNO_TEST_THREADS", "");
     set_env("ANNO_TEST_MB_PER_THREAD", "");
 }

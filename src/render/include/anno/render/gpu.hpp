@@ -188,17 +188,22 @@ struct GpuLimits {
     /// Uploaded chunks are not counted (they are the content, bounded by the CPU
     /// cache). 0 = no idle planes are pre-created.
     std::size_t idle_plane_budget_mb = 256;
-    /// Chunks of the neighbouring zoom groups (the view a zoom step would show,
-    /// FrameRenderer::adjacent_keys) that may be on the GPU at once, uploaded
-    /// ahead when no visible chunk waits, prefetch_per_frame per frame. A pan
-    /// during a zoom then lands on real chunks instead of open sea. About 4 MB
-    /// of device memory each: the default 96 covers the two neighbours of a
-    /// 2560 x 1440 view with a ring (2 x 7 x 5 = 70) and some more; 0 = off
-    /// (headless renders, tests).
+    /// Chunks around the view that may be on the GPU at once, uploaded ahead when
+    /// no visible chunk waits, prefetch_per_frame per frame: first the margin of
+    /// the group shown (FrameRenderer::margin_keys: a plain pan then finds the
+    /// chunk entering the view already uploaded), then the neighbouring zoom
+    /// groups' views (FrameRenderer::adjacent_keys: a pan during a zoom lands on
+    /// real chunks instead of open sea). About 4 MB of device memory each. At
+    /// 2560 x 1440, standing, the margin ring is about 24 chunks and the two
+    /// neighbours' views with their rings about 2 x 35, so the default 96 holds
+    /// all of it; moving, the margin grows to about 40-60 and each neighbour's
+    /// view by up to 15, so the neighbours (queued last) are then only partly
+    /// ahead. 0 = off (headless renders, tests).
     std::size_t prefetch_chunks = 0;
     std::size_t prefetch_per_frame = 1;
-    /// A chunk that replaces its stand-in or the open sea (it was uploaded while
-    /// it was in view) is drawn over it with rising opacity for this many
+    /// A chunk that replaces the placeholder an earlier frame showed for it (its
+    /// stand-in or the open sea; not a chunk uploaded in the frame it comes into
+    /// view) is drawn over it with rising opacity for this many
     /// milliseconds of the animation clock (render()'s time_ms), so a swap is a
     /// short dissolve, not a pop. About the time an eye needs to follow a change
     /// without it reading as a jump; 0 = swap at once (headless renders, tests).

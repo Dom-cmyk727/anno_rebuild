@@ -2795,8 +2795,8 @@ TEST_CASE("prefetch: built chunks of the neighbouring groups are uploaded when n
     CHECK(g.errors() == 0);
 }
 
-TEST_CASE("a chunk that replaces the open sea dissolves in over chunk_fade_ms of the animation "
-          "clock") {
+TEST_CASE("a chunk that replaces the open sea it was shown as dissolves in over chunk_fade_ms of "
+          "the animation clock") {
     auto ctx = device_or_skip();
     if (!ctx) {
         return;
@@ -2804,31 +2804,48 @@ TEST_CASE("a chunk that replaces the open sea dissolves in over chunk_fade_ms of
     const EmptyScene es = empty_scene();
     const render::Scene& scene = *es.scene;
     const auto side = static_cast<std::uint32_t>(render::kChunk);
-    const render::Rect one{0, 0, render::kChunk, render::kChunk};
-    const render::Chunk land = noise_land_chunk(1, 0, 0);
+    // Two chunks side by side, one upload per frame: (0, 0) reaches the GPU in the
+    // first frame (nothing was shown there before: no fade), (1, 0) is shown as open
+    // sea in that frame and dissolves in when it arrives in the next.
+    const render::Rect two{0, 0, 2 * render::kChunk, render::kChunk};
+    const render::Chunk land = noise_land_chunk(1, 1, 0);
     gpu::GpuLimits limits;
     limits.wave_simulation = false;
+    limits.uploads_per_frame = 1;
+    limits.stand_ins = false;
     limits.chunk_fade_ms = 100;
     auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
     REQUIRE_MESSAGE(made, (made ? "" : made.error()));
     gpu::GpuFrame& g = *made.value();
     render::FrameRenderer fr(1, false);
-    fr.insert_chunk({1, 0, 0}, land);
-    const auto target = g.offscreen_target(side, side);
+    fr.insert_chunk({1, 0, 0}, noise_land_chunk(1, 0, 0));
+    fr.insert_chunk({1, 1, 0}, land);
+    const auto target = g.offscreen_target(2 * side, side);
+    // The pixels of chunk (1, 0), the right half.
     auto frame_at = [&](std::uint64_t t) {
         const auto st =
-            g.render(fr, scene, one, 1, t, render::WaterStyle::Original, target.second.get());
-        return std::pair{st, g.read_back(target.first.get(), side, side)};
+            g.render(fr, scene, two, 1, t, render::WaterStyle::Original, target.second.get());
+        const auto all = g.read_back(target.first.get(), 2 * side, side);
+        std::vector<std::uint8_t> right(std::size_t{side} * side * 4);
+        for (std::size_t y = 0; y < side; ++y) {
+            std::copy_n(all.begin() + static_cast<std::ptrdiff_t>((y * 2 * side + side) * 4),
+                        side * 4, right.begin() + static_cast<std::ptrdiff_t>(y * side * 4));
+        }
+        return std::pair{st, right};
     };
-    // The frame that uploads the chunk starts its fade: nothing of it yet.
-    const auto [st0, px0] = frame_at(1000);
+    // Both frames at one time: the open sea (the sea pattern) is the same in both.
+    const auto [st_first, px0] = frame_at(1000);
+    CHECK(st_first.chunks_uploaded == 1);
+    CHECK(st_first.chunks_fading == 0); // (0, 0) was not shown as anything before
+    CHECK(st_first.open_sea_chunks == 1);
+    // The frame that uploads (1, 0) starts its fade: nothing of it yet.
+    const auto [st0, px_start] = frame_at(1000);
     CHECK(st0.chunks_uploaded == 1);
     CHECK(st0.chunks_fading == 1);
     const auto [st1, px1] = frame_at(1050);
     CHECK(st1.chunks_fading == 1);
     const auto [st2, px2] = frame_at(1100);
     CHECK(st2.chunks_fading == 0);
-    const render::Px water = scene.textures.water();
     std::size_t n = 0, start_ok = 0, mid_between = 0, end_ok = 0;
     for (std::size_t i = 0; i < std::size_t{side} * side; ++i) {
         if (land.objects[i][3] != 0) {
@@ -2837,6 +2854,8 @@ TEST_CASE("a chunk that replaces the open sea dissolves in over chunk_fade_ms of
         const render::Px ground{static_cast<std::uint8_t>(land.ground[i] >> 16),
                                 static_cast<std::uint8_t>(land.ground[i] >> 8),
                                 static_cast<std::uint8_t>(land.ground[i]), 255};
+        // What the placeholder showed there: the open sea.
+        const render::Px water{px0[i * 4], px0[i * 4 + 1], px0[i * 4 + 2], 255};
         int span = 0;
         for (std::size_t k = 0; k < 3; ++k) {
             span = std::max(span, std::abs(int{ground[k]} - int{water[k]}));
@@ -2847,7 +2866,7 @@ TEST_CASE("a chunk that replaces the open sea dissolves in over chunk_fade_ms of
         ++n;
         int from_water = 0, from_ground = 0, end_off = 0, start_off = 0;
         for (std::size_t k = 0; k < 3; ++k) {
-            start_off = std::max(start_off, std::abs(int{px0[i * 4 + k]} - int{water[k]}));
+            start_off = std::max(start_off, std::abs(int{px_start[i * 4 + k]} - int{water[k]}));
             from_water = std::max(from_water, std::abs(int{px1[i * 4 + k]} - int{water[k]}));
             from_ground = std::max(from_ground, std::abs(int{px1[i * 4 + k]} - int{ground[k]}));
             end_off = std::max(end_off, std::abs(int{px2[i * 4 + k]} - int{ground[k]}));
@@ -2867,13 +2886,78 @@ TEST_CASE("a chunk that replaces the open sea dissolves in over chunk_fade_ms of
     REQUIRE(made2);
     gpu::GpuFrame& g2 = *made2.value();
     render::FrameRenderer fr2(1, false);
-    fr2.insert_chunk({1, 0, 0}, land);
-    const auto target2 = g2.offscreen_target(side, side);
-    const auto st =
-        g2.render(fr2, scene, one, 1, 1000, render::WaterStyle::Original, target2.second.get());
-    CHECK(st.chunks_fading == 0);
+    fr2.insert_chunk({1, 0, 0}, noise_land_chunk(1, 0, 0));
+    fr2.insert_chunk({1, 1, 0}, land);
+    const auto target2 = g2.offscreen_target(2 * side, side);
+    for (const std::uint64_t t : {1000U, 1000U}) {
+        const auto st =
+            g2.render(fr2, scene, two, 1, t, render::WaterStyle::Original, target2.second.get());
+        CHECK(st.chunks_uploaded == 1);
+        CHECK(st.chunks_fading == 0);
+    }
     CHECK(g.errors() == 0);
     CHECK(g2.errors() == 0);
+}
+
+TEST_CASE("a plain pan: the margin of the group shown is uploaded ahead, so a chunk coming into "
+          "view appears at once, without a placeholder or a dissolve") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    gpu::GpuLimits limits;
+    limits.wave_simulation = false;
+    limits.prefetch_chunks = 16;
+    limits.prefetch_per_frame = 1;
+    limits.chunk_fade_ms = 100;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    render::FrameRenderer fr(1, false);
+    const auto target = g.offscreen_target(side, side);
+    const render::Rect at{0, 0, render::kChunk, render::kChunk};
+    g.render(fr, scene, at, 1, 0, render::WaterStyle::Original, target.second.get());
+    // The ring of one chunk around a still view, the current group only.
+    const std::vector<render::ChunkKey> margin = fr.margin_keys();
+    CHECK(margin.size() == 8);
+    for (const auto& k : margin) {
+        CHECK(std::get<0>(k) == 1);
+        fr.insert_chunk(k, noise_land_chunk(1, std::get<1>(k), std::get<2>(k)));
+    }
+    std::size_t prefetched = 0;
+    for (int f = 0; f < 12; ++f) {
+        const auto st = g.render(fr, scene, at, 1, static_cast<std::uint64_t>(16 * (f + 1)),
+                                 render::WaterStyle::Original, target.second.get());
+        CHECK(st.chunks_prefetched <= 1);
+        prefetched += st.chunks_prefetched;
+    }
+    // The margin first (the neighbouring groups have nothing built).
+    CHECK(prefetched == margin.size());
+    // One chunk to the right: it is on the GPU already.
+    const render::Rect next{render::kChunk, 0, render::kChunk, render::kChunk};
+    const auto st =
+        g.render(fr, scene, next, 1, 400, render::WaterStyle::Original, target.second.get());
+    CHECK(st.chunks_uploaded == 0);
+    CHECK(st.placeholders == 0);
+    CHECK(st.chunks_fading == 0);
+    CHECK(st.open_sea_chunks == 0);
+    const auto px = g.read_back(target.first.get(), side, side);
+    const render::Chunk* shown = fr.chunk({1, 1, 0});
+    REQUIRE(shown != nullptr);
+    std::size_t wrong = 0;
+    for (std::size_t i = 0; i < std::size_t{side} * side; ++i) {
+        const render::Px e = land_pixel(*shown, i);
+        int m = 0;
+        for (std::size_t k = 0; k < 3; ++k) {
+            m = std::max(m, std::abs(int{e[k]} - int{px[i * 4 + k]}));
+        }
+        wrong += m > 1 ? 1U : 0U;
+    }
+    CHECK(wrong == 0);
+    CHECK(g.errors() == 0);
 }
 
 /// A chunk of a smooth world: the ground colour is a ramp of the world position in

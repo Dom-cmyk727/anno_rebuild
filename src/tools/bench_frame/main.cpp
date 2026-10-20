@@ -33,7 +33,9 @@
 // a 500 Hz display) so that the chunk workers get real time. Frames slower
 // than `--spike` ms (default 8) are listed with their phase breakdown. The
 // frame time of this path is the window thread's CPU time (the viewer does
-// not wait for the GPU); the GPU wait is listed separately.
+// not wait for the GPU); the GPU wait is listed separately. `--zoom 0` with
+// `--zoom-pan dx,dy` runs the same path as a plain pan without zoom steps (the
+// line "chunks dissolving in after the first second" should then say 0).
 //
 // `--stand-ins off` draws chunks that are not built yet as open sea (the
 // behaviour before the stand-in chunks of OQ-077); the default is the library's
@@ -163,6 +165,8 @@ struct Row {
     std::size_t stand = 0;
     /// Visible chunks that showed open sea: none built, no source in any group (GPU).
     std::size_t open = 0, open_built = 0;
+    /// Visible chunks drawn dissolving in over their placeholder (GPU).
+    std::size_t fading = 0;
     /// GPU: every window-thread step of the frame (GpuStats::steps, they add up
     /// to the compositor's total), and the counts behind the sync steps.
     std::vector<std::pair<std::string, double>> steps;
@@ -525,7 +529,7 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, Grab&&
     bool any_step = false;
     for (std::size_t i = 0; i < c.zoom_frames; ++i) {
         switched = false;
-        if (i > 0 && i % c.zoom_every == 0) {
+        if (c.zoom_every > 0 && i > 0 && i % c.zoom_every == 0) {
             switch_due = true;
         }
         if (switch_due && !ready(kCycle[(at + 1) % kCycle.size()])) {
@@ -706,6 +710,18 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, Grab&&
                     "of %zu, %zu chunk-frames in all (%zu built on the CPU, waiting for the "
                     "upload); longest run %zu frames / %.0f ms\n",
                     open_frames, rows.size(), open_chunks, open_built, longest, longest_ms);
+        // Dissolves after the first second (a cold start fills the view with them):
+        // on a plain pan none should happen, the margin is uploaded ahead.
+        std::size_t fade_frames = 0, fade_chunks = 0;
+        for (const auto& r : rows) {
+            if (r.wall_ms >= 1000.0 && r.fading > 0) {
+                ++fade_frames;
+                fade_chunks += r.fading;
+            }
+        }
+        std::printf("frames with chunks dissolving in after the first second: %zu (%zu "
+                    "chunk-frames)\n",
+                    fade_frames, fade_chunks);
     }
     if (c.zoom_every > 0) {
         // How long each zoom step's transient lasts (wall ms since the step's frame):
@@ -781,6 +797,7 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
             r.stand = st.stand_in_chunks;
             r.open = st.open_sea_chunks;
             r.open_built = st.open_sea_built;
+            r.fading = st.chunks_fading;
             r.fluid_setting_up = st.fluid_setting_up;
             r.sea = st.sea_ms;
             r.sync = st.chunk_sync_ms;
@@ -840,7 +857,8 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
         return;
     }
 #endif
-    if (c.zoom_every > 0) {
+    // A pan without zoom steps (--zoom 0 --zoom-pan dx,dy) runs the same path.
+    if (c.zoom_every > 0 || c.zoom_pan != std::pair{0, 0}) {
         // The viewer renders the sea patterns of all groups on background
         // threads from the start; so does the zoom path.
         std::vector<std::thread> seas;
@@ -1059,7 +1077,8 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = v == "default" || v == "interactive";
             o.interactive = v == "interactive";
         } else if (a == "--zoom") {
-            ok = parse(v, o.zoom_every) && o.zoom_every > 0;
+            // 0: no zoom steps (with --zoom-pan: a plain pan on the zoom path).
+            ok = parse(v, o.zoom_every);
         } else if (a == "--zoom-frames") {
             ok = parse(v, o.zoom_frames) && o.zoom_frames > 0;
         } else if (a == "--pop") {

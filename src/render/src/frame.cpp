@@ -634,10 +634,13 @@ std::vector<ChunkKey> FrameRenderer::plan_margin(Rect view, std::size_t group,
     }
     std::sort(queue.begin(), queue.end());
     adjacent_.clear();
+    margin_.clear();
     std::vector<ChunkKey> order;
     for (const auto& c : queue) {
         order.push_back(c.key);
-        if (c.rank == 2) {
+        if (c.rank == 1) {
+            margin_.push_back(c.key);
+        } else if (c.rank == 2) {
             adjacent_.push_back(c.key);
         }
     }

@@ -169,6 +169,10 @@ class FrameRenderer {
     /// for the view a zoom step would show (a ring included), nearest group
     /// first; empty without background workers. Not necessarily built yet.
     [[nodiscard]] const std::vector<ChunkKey>& adjacent_keys() const { return adjacent_; }
+    /// The chunks of the group shown that update_chunks keeps built around the
+    /// visible ones (the margin, grown in the direction of motion), the ones the
+    /// motion brings into view first at the front. Not necessarily built yet.
+    [[nodiscard]] const std::vector<ChunkKey>& margin_keys() const { return margin_; }
     /// The cached chunk, if built.
     [[nodiscard]] const Chunk* chunk(const ChunkKey& key) const;
     /// Puts `chunk` in the cache under `key` (tests and tools: a synthetic
@@ -212,7 +216,7 @@ class FrameRenderer {
     stand_in_retain(std::size_t group, const std::vector<std::pair<int, int>>& visible) const;
 
   private:
-    std::vector<ChunkKey> adjacent_;
+    std::vector<ChunkKey> adjacent_, margin_;
     /// Velocity of the view centre in scene pixels per second of the group shown
     /// (smoothed), the centre and time of the last update_chunks, and its group.
     double vx_ = 0, vy_ = 0;

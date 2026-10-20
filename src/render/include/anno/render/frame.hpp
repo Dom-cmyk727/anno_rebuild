@@ -275,7 +275,10 @@ std::vector<StandInPart> stand_in_cover(int cx, int cy, std::size_t to,
 /// The CPU reference of a stand-in: chunk (cx, cy) of `group` built from
 /// stand_in_cover over the chunks `frames` holds (pixels no group covers stay
 /// open sea of colour `open_water`). nullopt when there is none. The result carries no
-/// flow lattice and no serial. Cost: one pass over the planes, ~5 MB.
+/// flow lattice and no serial. The `base` plane (an object pixel's height
+/// above its lowest row, in rows of the source group) is copied texel by texel,
+/// so on a stand-in its values are in source-group rows, not scaled to the
+/// destination group; the GPU sampling does the same. Cost: one pass over the planes, ~5 MB.
 std::optional<Chunk> stand_in_chunk(const FrameRenderer& frames, std::size_t group, int cx, int cy,
                                     Px open_water);
 

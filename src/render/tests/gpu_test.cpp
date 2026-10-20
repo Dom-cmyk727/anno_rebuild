@@ -2609,6 +2609,100 @@ TEST_CASE("GPU stand-in chunks equal the CPU reference (synthetic)") {
     }
 }
 
+TEST_CASE("GPU stand-ins carry the sea field: cover 0 shows the open water, cover 255 the sea") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    constexpr std::size_t kTo = 1, kFrom = 2;
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    // Sea chunks without ground: the field alone decides (original water, flags
+    // bit 0 = sea drawn). Cover 255 and 0 in a checkerboard of 16 x 16 texels.
+    auto covered = [](int lx, int ly) { return (((lx / 16) + (ly / 16)) & 1) != 0; };
+    auto sea_chunk = [&] {
+        render::Chunk c;
+        const auto n = static_cast<std::size_t>(render::kChunk);
+        c.field.assign(n * n * 4, 0);
+        for (std::size_t y = 0; y < n; ++y) {
+            for (std::size_t x = 0; x < n; ++x) {
+                const std::size_t i = (y * n + x) * 4;
+                c.field[i] = covered(static_cast<int>(x), static_cast<int>(y)) ? 255 : 0;
+                c.field[i + 3] = 1;
+            }
+        }
+        return c;
+    };
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = 1;
+    limits.wave_simulation = false;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    render::FrameRenderer fr(1, false);
+    const auto spans = render::stand_in_spans(1, 0, kTo, kFrom);
+    REQUIRE(!spans.empty());
+    std::optional<render::Rect> src_view;
+    for (const auto& sp : spans) {
+        fr.insert_chunk({kFrom, sp.src_cx, sp.src_cy}, sea_chunk());
+        const render::Rect r = render::chunk_rect(sp.src_cx, sp.src_cy);
+        src_view = src_view ? src_view->unite(r) : r;
+    }
+    const auto source_target = g.offscreen_target(static_cast<std::uint32_t>(src_view->w),
+                                                  static_cast<std::uint32_t>(src_view->h));
+    for (int f = 0; f < 12; ++f) {
+        g.render(fr, scene, *src_view, kFrom, 0, render::WaterStyle::Original,
+                 source_target.second.get());
+    }
+    // Two destination chunks: (0, 0) uploads (an empty chunk), (1, 0) stands in.
+    const render::Rect view{0, 0, 2 * render::kChunk, render::kChunk};
+    const auto target = g.offscreen_target(2 * side, side);
+    const auto st =
+        g.render(fr, scene, view, kTo, 0, render::WaterStyle::Original, target.second.get());
+    REQUIRE(st.stand_in_chunks == 1);
+    const auto px = g.read_back(target.first.get(), 2 * side, side);
+    REQUIRE(px.size() == std::size_t{2} * side * side * 4);
+    const render::Px water = scene.textures.water();
+    std::size_t open_n = 0, open_wrong = 0, sea_n = 0, sea_same = 0;
+    for (const auto& sp : spans) {
+        for (int y = sp.dst.y; y < sp.dst.y + sp.dst.h; ++y) {
+            for (int x = sp.dst.x; x < sp.dst.x + sp.dst.w; ++x) {
+                const int sx =
+                    render::stand_in_source(x, render::kTile[kFrom].w, render::kTile[kTo].w);
+                const int sy =
+                    render::stand_in_source(y, render::kTile[kFrom].h, render::kTile[kTo].h);
+                const int lx = sx - sp.src_cx * render::kChunk;
+                const int ly = sy - sp.src_cy * render::kChunk;
+                REQUIRE((lx >= 0 && lx < render::kChunk && ly >= 0 && ly < render::kChunk));
+                const std::size_t o =
+                    (static_cast<std::size_t>(y) * 2 * side + static_cast<std::size_t>(x)) * 4;
+                int diff = 0;
+                for (std::size_t k = 0; k < 3; ++k) {
+                    diff = std::max(diff, std::abs(int{water[k]} - int{px[o + k]}));
+                }
+                if (covered(lx, ly)) {
+                    ++sea_n;
+                    sea_same += diff <= 1 ? 1U : 0U;
+                } else {
+                    ++open_n;
+                    open_wrong += diff > 1 ? 1U : 0U;
+                }
+            }
+        }
+    }
+    MESSAGE("open " << open_n << " (wrong " << open_wrong << "), sea " << sea_n
+                    << " (same as water " << sea_same << ")");
+    CHECK(open_n > 0);
+    CHECK(sea_n > 0);
+    // Where the source field has no cover the open water colour shows.
+    CHECK(open_wrong == 0);
+    // Where it has, the sea pattern is drawn over it: almost nowhere the plain
+    // water colour (the pattern has texture; a few texels may match by chance).
+    CHECK(sea_same * 10 < sea_n);
+    CHECK(g.errors() == 0);
+}
+
 TEST_CASE("stand-in cover chooses the source group per part") {
     const auto all = [](const render::ChunkKey&) { return true; };
     for (std::size_t to = 0; to < render::kGroups; ++to) {

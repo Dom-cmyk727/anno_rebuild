@@ -347,7 +347,7 @@ struct GpuFrame::Impl {
     /// cost 1-13 ms each on the window thread (the driver allocates device
     /// memory blocks), so a zoom step that uploads its first chunks stalled for
     /// that long. The window thread takes from here when the plane pool has
-    /// no match and never waits for the lock (try_lock); the thread keeps
+    /// no match (the lock is held only for a push or a pop); the thread keeps
     /// prewarm_chunks' worth ready, refilling as planes are taken.
     ///
     /// Texture creation takes wgpu-hal's device allocator lock, which the window
@@ -362,6 +362,9 @@ struct GpuFrame::Impl {
     std::atomic<bool> warm_token{false};
     std::atomic<bool> warm_paced{false};
     std::vector<Plane> warm_planes;
+    /// warm_planes per chunk-plane format (index of kChunkPlanes), kept at push
+    /// and pop so that choosing the scarcest format needs no scan under the lock.
+    std::array<std::size_t, 5> warm_count{};
     std::thread warm_thread;
     std::condition_variable warm_cv;
     bool warm_stop = false;
@@ -418,14 +421,9 @@ struct GpuFrame::Impl {
                 warm_token.store(false);
                 // The format that is the scarcest now (uploads take the five of
                 // a chunk alike, but a chunk without a plane takes fewer).
-                std::size_t pick = 0, fewest = warm_planes.size() + 1;
-                for (std::size_t k = 0; k < kChunkPlanes.size(); ++k) {
-                    const auto count = static_cast<std::size_t>(
-                        std::count_if(warm_planes.begin(), warm_planes.end(), [&](const Plane& q) {
-                            return q.format == kChunkPlanes[k].first;
-                        }));
-                    if (count < fewest) {
-                        fewest = count;
+                std::size_t pick = 0;
+                for (std::size_t k = 1; k < kChunkPlanes.size(); ++k) {
+                    if (warm_count[k] < warm_count[pick]) {
                         pick = k;
                     }
                 }
@@ -452,6 +450,7 @@ struct GpuFrame::Impl {
                 if (refused) {
                     return;
                 }
+                ++warm_count[pick];
                 warm_planes.push_back(std::move(p));
             }
         });
@@ -459,10 +458,10 @@ struct GpuFrame::Impl {
 
     /// Takes a pre-created plane of this format and size, if one is ready.
     bool take_warm(WGPUTextureFormat fmt, std::uint32_t w, std::uint32_t h, Plane& out) {
-        std::unique_lock lock(warm_mutex, std::try_to_lock);
-        if (!lock.owns_lock()) {
-            return false;
-        }
+        // The lock is held for a push or a pop only (the texture is created outside
+        // it), so waiting for it is microseconds; a try_lock lost to the thread's
+        // bookkeeping and sent the upload to create its own texture.
+        std::unique_lock lock(warm_mutex);
         const auto it = std::find_if(warm_planes.begin(), warm_planes.end(), [&](const Plane& p) {
             return p.format == fmt && p.w == w && p.h == h;
         });
@@ -470,6 +469,12 @@ struct GpuFrame::Impl {
             return false;
         }
         out = std::move(*it);
+        for (std::size_t k = 0; k < kChunkPlanes.size(); ++k) {
+            if (kChunkPlanes[k].first == fmt) {
+                --warm_count[k];
+                break;
+            }
+        }
         warm_planes.erase(it);
         ++planes_warm_taken;
         lock.unlock();

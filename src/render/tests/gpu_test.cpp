@@ -2352,3 +2352,234 @@ TEST_CASE("river pixels on the GPU match the CPU path at the Low and Medium tier
         CHECK(g.errors() == 0);
     }
 }
+
+// ---- Stand-in chunks (OQ-077) ----
+
+namespace {
+
+/// Land chunk of noise: every pixel of ground and objects differs from its
+/// neighbours (objects with alpha 0, 128 and 255), the sea field says land
+/// (cover 0), so a frame shows ground under objects and a wrong source pixel,
+/// a shifted mapping or a missing chunk changes it.
+render::Chunk noise_land_chunk(std::size_t group, int cx, int cy) {
+    render::Chunk c;
+    const auto n = static_cast<std::size_t>(render::kChunk);
+    c.ground.resize(n * n);
+    c.objects.resize(n * n);
+    c.field.assign(n * n * 4, 0);
+    for (std::size_t y = 0; y < n; ++y) {
+        for (std::size_t x = 0; x < n; ++x) {
+            const auto gx =
+                static_cast<std::int64_t>(cx) * render::kChunk + static_cast<std::int64_t>(x);
+            const auto gy =
+                static_cast<std::int64_t>(cy) * render::kChunk + static_cast<std::int64_t>(y);
+            auto h = static_cast<std::uint32_t>(gx * 73856093 ^ gy * 19349663 ^
+                                                static_cast<std::int64_t>(group) * 83492791);
+            h ^= h >> 13;
+            h *= 0x5BD1E995U;
+            h ^= h >> 15;
+            const std::size_t i = y * n + x;
+            c.ground[i] = h & 0xFFFFFFU;
+            const std::uint32_t g = h * 2654435761U;
+            const std::uint8_t a = (g >> 30) == 0 ? 0 : (g >> 30) == 1 ? 128 : 255;
+            c.objects[i] =
+                render::Px{static_cast<std::uint8_t>(g), static_cast<std::uint8_t>(g >> 8),
+                           static_cast<std::uint8_t>(g >> 16), a};
+        }
+    }
+    return c;
+}
+
+/// The pixel a frame shows over land: ground, then the objects over it.
+render::Px land_pixel(const render::Chunk& c, std::size_t i) {
+    render::Px p{static_cast<std::uint8_t>(c.ground[i] >> 16),
+                 static_cast<std::uint8_t>(c.ground[i] >> 8),
+                 static_cast<std::uint8_t>(c.ground[i]), 255};
+    render::over(p, c.objects[i]);
+    return p;
+}
+
+/// Chunk index of a scene coordinate, written out (floor division).
+int floor_chunk(int v) {
+    return v >= 0 ? v / render::kChunk : -((-v + render::kChunk - 1) / render::kChunk);
+}
+
+/// Inserts all chunks of `from` that chunk (cx, cy) of `to` shows.
+void insert_sources(render::FrameRenderer& fr, std::size_t to, int cx, int cy, std::size_t from) {
+    for (const auto& sp : render::stand_in_spans(cx, cy, to, from)) {
+        fr.insert_chunk({from, sp.src_cx, sp.src_cy}, noise_land_chunk(from, sp.src_cx, sp.src_cy));
+    }
+}
+
+} // namespace
+
+TEST_CASE("stand-in spans tile the destination chunk and map by the tile ratio of kTile") {
+    for (std::size_t to = 0; to < render::kGroups; ++to) {
+        for (const std::size_t from : render::stand_in_groups(to)) {
+            CHECK(from != to);
+            for (const auto& [cx, cy] : {std::pair{0, 0}, std::pair{1, 0}, std::pair{-1, 2},
+                                         std::pair{-3, -2}, std::pair{7, 5}}) {
+                const auto spans = render::stand_in_spans(cx, cy, to, from);
+                CHECK(!spans.empty());
+                const render::Rect chunk = render::chunk_rect(cx, cy);
+                long long area = 0;
+                for (const auto& sp : spans) {
+                    area += static_cast<long long>(sp.dst.w) * sp.dst.h;
+                    CHECK(sp.dst.intersect(chunk) == sp.dst);
+                    // Every pixel of a part reads the part's source chunk.
+                    for (int y = sp.dst.y; y < sp.dst.y + sp.dst.h; y += 7) {
+                        for (int x = sp.dst.x; x < sp.dst.x + sp.dst.w; x += 5) {
+                            const int sx = render::stand_in_source(x, render::kTile[from].w,
+                                                                   render::kTile[to].w);
+                            const int sy = render::stand_in_source(y, render::kTile[from].h,
+                                                                   render::kTile[to].h);
+                            const int chunk_x = floor_chunk(sx);
+                            CHECK(chunk_x == sp.src_cx);
+                            const int chunk_y = floor_chunk(sy);
+                            CHECK(chunk_y == sp.src_cy);
+                        }
+                    }
+                }
+                // The parts are disjoint (distinct source chunks) and cover the chunk.
+                CHECK(area == static_cast<long long>(render::kChunk) * render::kChunk);
+            }
+        }
+    }
+    CHECK(render::stand_in_source(100, render::kTile[0].w, render::kTile[1].w) ==
+          (2 * 100 + 1) * render::kTile[0].w / (2 * render::kTile[1].w));
+    CHECK(render::stand_in_groups(0).size() == render::kGroups - 1);
+    CHECK(render::stand_in_groups(1).front() == 0);
+}
+
+TEST_CASE("CPU reference: a missing chunk shows the scaled chunks of the nearest built group") {
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    constexpr std::size_t kTo = 1;
+    // Group 2 (tiles 2.1 times smaller) and group 0 (tiles twice as large).
+    for (const std::size_t from : {std::size_t{2}, std::size_t{0}}) {
+        render::FrameRenderer fr(2, false);
+        // Background workers: the first frame cannot have the chunk built yet.
+        fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, 1));
+        fr.stand_ins = true;
+        insert_sources(fr, kTo, 0, 0, from);
+        const render::Rect view = render::chunk_rect(0, 0);
+        std::vector<std::uint32_t> out(static_cast<std::size_t>(view.w) * view.h);
+        const auto st = fr.render(scene, view, kTo, 0, render::WaterStyle::Original, out.data());
+        CHECK(st.chunks_missing == 1);
+        std::size_t wrong = 0;
+        for (int y = 0; y < view.h; ++y) {
+            for (int x = 0; x < view.w; ++x) {
+                const auto i =
+                    static_cast<std::size_t>(y) * render::kChunk + static_cast<std::size_t>(x);
+                // The source pixel by the tile ratio of kTile at the pixel centre,
+                // written out here apart from the reference code.
+                const int sx = (2 * x + 1) * render::kTile[from].w / (2 * render::kTile[kTo].w);
+                const int sy = (2 * y + 1) * render::kTile[from].h / (2 * render::kTile[kTo].h);
+                const render::Chunk* src =
+                    fr.chunk({from, sx / render::kChunk, sy / render::kChunk});
+                REQUIRE(src != nullptr);
+                const render::Px e = land_pixel(
+                    *src, static_cast<std::size_t>(sy % render::kChunk) * render::kChunk +
+                              static_cast<std::size_t>(sx % render::kChunk));
+                const std::uint32_t px = out[i];
+                int m = std::abs(int{e[0]} - int((px >> 16) & 255));
+                m = std::max(m, std::abs(int{e[1]} - int((px >> 8) & 255)));
+                m = std::max(m, std::abs(int{e[2]} - int(px & 255)));
+                wrong += m > 1 ? 1U : 0U;
+            }
+        }
+        CHECK(wrong == 0);
+        // Off: the same frame is open sea.
+        render::FrameRenderer plain(2, false);
+        plain.set_workers(std::make_unique<render::ChunkWorkers>(scene, 1));
+        insert_sources(plain, kTo, 0, 0, from);
+        std::vector<std::uint32_t> sea(out.size());
+        plain.render(scene, view, kTo, 0, render::WaterStyle::Original, sea.data());
+        CHECK(sea != out);
+    }
+}
+
+TEST_CASE("GPU stand-in chunks equal the CPU reference (synthetic)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    constexpr std::size_t kTo = 1;
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    for (const std::size_t from : {std::size_t{2}, std::size_t{0}}) {
+        gpu::GpuLimits limits;
+        limits.uploads_per_frame = 1;
+        limits.wave_simulation = false;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+        gpu::GpuFrame& g = *made.value();
+        // Blocking chunks: the group's own chunks exist in the CPU cache, but one
+        // per frame reaches the GPU, so the other is drawn from the stand-in.
+        render::FrameRenderer fr(1, false);
+        insert_sources(fr, kTo, 1, 0, from);
+        // The sources on the GPU first: they were visible at their own group.
+        std::optional<render::Rect> src_view;
+        for (const auto& sp : render::stand_in_spans(1, 0, kTo, from)) {
+            const render::Rect r = render::chunk_rect(sp.src_cx, sp.src_cy);
+            src_view = src_view ? src_view->unite(r) : r;
+        }
+        REQUIRE(src_view);
+        const auto source_target = g.offscreen_target(static_cast<std::uint32_t>(src_view->w),
+                                                      static_cast<std::uint32_t>(src_view->h));
+        for (int f = 0; f < 12; ++f) {
+            g.render(fr, scene, *src_view, from, 0, render::WaterStyle::Original,
+                     source_target.second.get());
+        }
+        // Two destination chunks side by side: (0, 0) uploads, (1, 0) stands in.
+        const render::Rect view{0, 0, 2 * render::kChunk, render::kChunk};
+        const auto target = g.offscreen_target(2 * side, side);
+        const auto st =
+            g.render(fr, scene, view, kTo, 0, render::WaterStyle::Original, target.second.get());
+        CHECK(st.chunks_uploaded == 1);
+        CHECK(st.stand_in_chunks == 1);
+        CHECK(st.stand_in_parts == render::stand_in_spans(1, 0, kTo, from).size());
+        const auto px = g.read_back(target.first.get(), 2 * side, side);
+        REQUIRE(px.size() == std::size_t{2} * side * side * 4);
+        const auto ref = render::stand_in_chunk(fr, kTo, 1, 0, scene.textures.water());
+        REQUIRE(ref);
+        std::size_t wrong = 0;
+        int worst = 0;
+        for (std::size_t y = 0; y < side; ++y) {
+            for (std::size_t x = 0; x < side; ++x) {
+                const render::Px e = land_pixel(*ref, y * side + x);
+                const std::size_t o = (y * 2 * side + side + x) * 4;
+                int m = 0;
+                for (std::size_t k = 0; k < 3; ++k) {
+                    m = std::max(m, std::abs(int{e[k]} - int{px[o + k]}));
+                }
+                worst = std::max(worst, m);
+                wrong += m > 1 ? 1U : 0U;
+            }
+        }
+        MESSAGE("source group " << from << ": " << wrong << " pixels differ by more than 1, worst "
+                                << worst);
+        CHECK(wrong == 0);
+        CHECK(g.errors() == 0);
+        // Off: nothing is drawn from other groups.
+        gpu::GpuLimits off = limits;
+        off.stand_ins = false;
+        auto made_off = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, off);
+        REQUIRE(made_off);
+        gpu::GpuFrame& go = *made_off.value();
+        render::FrameRenderer fr2(1, false);
+        insert_sources(fr2, kTo, 1, 0, from);
+        const auto st_target = go.offscreen_target(static_cast<std::uint32_t>(src_view->w),
+                                                   static_cast<std::uint32_t>(src_view->h));
+        for (int f = 0; f < 12; ++f) {
+            go.render(fr2, scene, *src_view, from, 0, render::WaterStyle::Original,
+                      st_target.second.get());
+        }
+        const auto target2 = go.offscreen_target(2 * side, side);
+        const auto st2 =
+            go.render(fr2, scene, view, kTo, 0, render::WaterStyle::Original, target2.second.get());
+        CHECK(st2.stand_in_chunks == 0);
+        CHECK(go.errors() == 0);
+    }
+}

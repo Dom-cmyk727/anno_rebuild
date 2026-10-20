@@ -2748,9 +2748,20 @@ TEST_CASE("the steps of a GPU frame add up to its total, and the sync steps are 
               st.sync_scan_ms + st.sync_drop_ms + st.sync_real_ms + st.sync_placeholder_ms);
         CHECK(st.total_ms >= st.encode_ms);
     };
+    // An outside stopwatch around the call: the steps start at the call's own
+    // clock read, so this is what shows a region of render() that no step
+    // covers (the steps are laps of one clock, adding up by construction).
+    const auto call_start = std::chrono::steady_clock::now();
     const auto a =
         g.render(fr, scene, two, 1, 0, render::WaterStyle::Original, target.second.get());
+    const double call_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - call_start)
+            .count();
     check_sum(a);
+    // Slack for the thread being descheduled between the call and the first clock
+    // read inside it, on a loaded machine.
+    CHECK(a.total_ms <= call_ms + 0.05);
+    CHECK(a.total_ms >= call_ms - 25.0);
     CHECK(a.chunks_uploaded == 1);
     CHECK(a.placeholders == 1);
     CHECK(a.chunks_dropped == 0);

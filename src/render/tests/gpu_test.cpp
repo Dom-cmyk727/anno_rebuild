@@ -2715,3 +2715,60 @@ TEST_CASE("GPU stand-in with a hole in the nearest group equals the CPU referenc
         CHECK(g.errors() == 0);
     }
 }
+
+TEST_CASE("the steps of a GPU frame add up to its total, and the sync steps are counted") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    gpu::GpuLimits limits;
+    limits.wave_simulation = false;
+    // One chunk reaches the GPU per frame; the other visible one is a placeholder.
+    limits.uploads_per_frame = 1;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    render::FrameRenderer fr(1, false);
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    const render::Rect two{0, 0, 2 * render::kChunk, render::kChunk};
+    const render::Rect one{0, 0, render::kChunk, render::kChunk};
+    const auto target = g.offscreen_target(2 * side, side);
+    auto check_sum = [](const gpu::GpuStats& st) {
+        double sum = 0;
+        for (const auto& step : st.steps()) {
+            CHECK(step.ms >= 0.0);
+            sum += step.ms;
+        }
+        // The clock reads between two steps are the only difference.
+        CHECK(std::abs(sum - st.total_ms) <= 0.05 + 0.02 * st.total_ms);
+        // The coarse fields are sums of steps.
+        CHECK(st.chunk_sync_ms + 1e-6 >=
+              st.sync_scan_ms + st.sync_drop_ms + st.sync_real_ms + st.sync_placeholder_ms);
+        CHECK(st.total_ms >= st.encode_ms);
+    };
+    const auto a =
+        g.render(fr, scene, two, 1, 0, render::WaterStyle::Original, target.second.get());
+    check_sum(a);
+    CHECK(a.chunks_uploaded == 1);
+    CHECK(a.placeholders == 1);
+    CHECK(a.chunks_dropped == 0);
+    CHECK(a.stand_in_ms >= 0.0);
+    // Only the first chunk stays visible: the placeholder of the second is
+    // dropped (it has no planes to free), nothing is uploaded or made.
+    const auto b =
+        g.render(fr, scene, one, 1, 0, render::WaterStyle::Original, target.second.get());
+    check_sum(b);
+    CHECK(b.chunks_uploaded == 0);
+    CHECK(b.placeholders == 0);
+    CHECK(b.chunks_dropped == 1);
+    CHECK(b.planes_freed == 0);
+    // Nothing changed.
+    const auto c =
+        g.render(fr, scene, one, 1, 0, render::WaterStyle::Original, target.second.get());
+    check_sum(c);
+    CHECK(c.placeholders == 0);
+    CHECK(c.chunks_dropped == 0);
+    CHECK(g.errors() == 0);
+}

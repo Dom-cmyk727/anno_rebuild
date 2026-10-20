@@ -375,9 +375,11 @@ struct GpuFrame::Impl {
 
     /// Makes the piece buffer hold `slots` slots (slot 0 = the chunk itself) and
     /// writes `pieces` (slots * kPieceStride bytes) to it.
-    void write_pieces(const std::vector<std::uint8_t>& pieces) {
+    /// True when the buffer (and its bind group) had to be made or grown.
+    bool write_pieces(const std::vector<std::uint8_t>& pieces) {
         const std::size_t slots = pieces.size() / kPieceStride;
-        if (!piece_buffer || slots > piece_slots) {
+        const bool grown = !piece_buffer || slots > piece_slots;
+        if (grown) {
             std::size_t cap = std::max<std::size_t>(piece_slots, 16);
             while (cap < slots) {
                 cap *= 2;
@@ -394,23 +396,41 @@ struct GpuFrame::Impl {
             piece_bind = BindGroup(wgpuDeviceCreateBindGroup(dev(), &desc));
         }
         wgpuQueueWriteBuffer(queue(), piece_buffer.get(), 0, pieces.data(), pieces.size());
+        return grown;
     }
 
+    /// Of a frame's submit: command buffer finish, error scope pop, wgpuQueueSubmit
+    /// (milliseconds; the command buffer's release follows it).
+    struct SubmitTimes {
+        double finish = 0, scope = 0, queue = 0;
+    };
     /// Finishes `enc` and submits it, unless recording raised a validation
     /// error: wgpu-native 29 aborts the process when an invalid command
     /// buffer is submitted, so the error is counted (errors()) and the work
     /// dropped instead. False if nothing was submitted.
-    bool submit(WGPUCommandEncoder enc, const char* what) const {
+    bool submit(WGPUCommandEncoder enc, const char* what, SubmitTimes* times = nullptr) const {
         WGPUCommandBufferDescriptor cd = WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
+        auto t = Clock::now();
         wgpuDevicePushErrorScope(dev(), WGPUErrorFilter_Validation);
         CommandBuffer cmd(wgpuCommandEncoderFinish(enc, &cd));
+        if (times != nullptr) {
+            times->finish = ms_since(t);
+            t = Clock::now();
+        }
         if (const std::string err = pop_error_scope(ref->instance.get(), dev()); !err.empty()) {
             std::fprintf(stderr, "%s not submitted: %s\n", what, err.c_str());
             ref->errors->fetch_add(1);
             return false;
         }
+        if (times != nullptr) {
+            times->scope = ms_since(t);
+            t = Clock::now();
+        }
         const WGPUCommandBuffer raw = cmd.get();
         wgpuQueueSubmit(queue(), 1, &raw);
+        if (times != nullptr) {
+            times->queue = ms_since(t);
+        }
         return true;
     }
 
@@ -650,8 +670,10 @@ struct GpuFrame::Impl {
 
     /// Uploads newly built visible chunks (a few per frame), adds stand-ins
     /// for missing ones, and drops GPU chunks the CPU cache no longer holds.
+    /// Fills the drop, upload and placeholder timers and counters of `stats`
+    /// (the rest of the sync time is the scan).
     std::size_t sync_chunks(const FrameRenderer& frames, std::size_t group,
-                            const std::vector<std::pair<int, int>>& visible) {
+                            const std::vector<std::pair<int, int>>& visible, GpuStats& stats) {
         std::set<ChunkKey> keys;
         for (const auto& [cx, cy] : visible) {
             keys.insert({group, cx, cy});
@@ -659,7 +681,18 @@ struct GpuFrame::Impl {
         for (auto it = chunks.begin(); it != chunks.end();) {
             const bool keep =
                 it->second.real ? frames.chunk(it->first) != nullptr : keys.contains(it->first);
-            it = keep ? std::next(it) : drop_chunk(it);
+            if (keep) {
+                ++it;
+                continue;
+            }
+            const auto d0 = Clock::now();
+            const std::size_t kept = plane_pool.size();
+            const std::size_t planes = it->second.planes.size();
+            it = drop_chunk(it);
+            // Planes the pool had no room for were freed with the chunk, here.
+            stats.planes_freed += planes - (plane_pool.size() - kept);
+            ++stats.chunks_dropped;
+            stats.sync_drop_ms += ms_since(d0);
         }
         std::size_t uploads = 0;
         const auto begin = Clock::now();
@@ -679,6 +712,7 @@ struct GpuFrame::Impl {
                                ms_since(begin) < limits.upload_budget_ms);
             if (c != nullptr && room) {
                 ++uploads;
+                const auto u0 = Clock::now();
                 Chunk fresh = upload_chunk(key, c);
                 if (it != chunks.end()) {
                     // The replaced chunk's planes are reused by later uploads
@@ -694,8 +728,12 @@ struct GpuFrame::Impl {
                 } else {
                     chunks.emplace(key, std::move(fresh));
                 }
+                stats.sync_real_ms += ms_since(u0);
             } else if (it == chunks.end()) {
+                const auto p0 = Clock::now();
                 chunks.emplace(key, upload_chunk(key, nullptr));
+                ++stats.placeholders;
+                stats.sync_placeholder_ms += ms_since(p0);
             }
         }
         return uploads;
@@ -1281,8 +1319,18 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     Impl& m = *impl_;
     const auto start = Clock::now();
     GpuStats stats;
+    // Every step below ends with a lap: the time since the previous lap goes to
+    // the step, so the steps add up to total_ms (GpuStats::steps).
+    auto last = start;
+    auto lap = [&last]() {
+        const auto now = Clock::now();
+        const double ms = std::chrono::duration<double, std::milli>(now - last).count();
+        last = now;
+        return ms;
+    };
     std::tie(stats.chunks_built, stats.chunks_ms, stats.chunks_missing) =
         frames.update_chunks(scene, view, group);
+    stats.chunks_ms = lap();
     const auto w = static_cast<std::uint32_t>(std::max(view.w, 1));
     const auto h = static_cast<std::uint32_t>(std::max(view.h, 1));
 
@@ -1291,13 +1339,15 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     m.sprites_new = 0;
     auto t = Clock::now();
     m.ensure_under(w, h);
-    auto t_part = Clock::now();
+    stats.under_ms = lap();
     m.ensure_sea(scene, group);
-    stats.sea_ms = ms_since(t_part);
+    stats.sea_ms = lap();
     const auto visible = visible_chunks(view);
-    t_part = Clock::now();
-    stats.chunks_uploaded = m.sync_chunks(frames, group, visible);
-    stats.chunk_sync_ms = ms_since(t_part);
+    stats.visible_ms = lap();
+    stats.chunks_uploaded = m.sync_chunks(frames, group, visible, stats);
+    stats.chunk_sync_ms = lap();
+    stats.sync_scan_ms = std::max(0.0, stats.chunk_sync_ms - stats.sync_drop_ms -
+                                           stats.sync_real_ms - stats.sync_placeholder_ms);
     stats.upload_ms = ms_since(t);
 
     t = Clock::now();
@@ -1319,17 +1369,17 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     stats.sprites_new = m.sprites_new;
     stats.sprites = std::size_t{n_below} + n_above;
     stats.ships = n_ships;
-    stats.sprites_ms = ms_since(t);
+    stats.sprites_ms = lap();
 
     t = Clock::now();
     WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
     ed.label = sv("frame");
     CommandEncoder enc(wgpuDeviceCreateCommandEncoder(m.dev(), &ed));
+    stats.encoder_ms = lap();
     // Coastal wave simulation (enhanced water only).
-    const auto t_fluid = Clock::now();
     const bool fluid_on = style == WaterStyle::Enhanced && m.limits.wave_simulation &&
                           m.update_fluid(enc.get(), scene, view, group, time_ms);
-    stats.fluid_ms = ms_since(t_fluid);
+    stats.fluid_ms = lap();
     stats.wave_simulation = fluid_on;
     const bool river_flow = style == WaterStyle::Enhanced &&
                             frames.river_flow == RiverFlowMode::Flow && scene.river_active();
@@ -1352,6 +1402,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     const BindGroup pass2 = m.frame_bind(m.under_v.get(), m.terrain_v.get());
     const Px water = scene.textures.water();
     const WGPUColor clear = {water[0] / 255.0, water[1] / 255.0, water[2] / 255.0, 1.0};
+    stats.uniforms_ms = lap();
     // What to draw per chunk pass: every visible chunk (a stand-in chunk that is
     // not on the GPU yet draws open sea), then the parts of the other zoom
     // groups' chunks that stand in for the ones that are not (kind 1 pieces).
@@ -1372,10 +1423,12 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
             if (own != m.chunks.end() && own->second.real) {
                 continue;
             }
+            const auto c0 = Clock::now();
             const auto cover = stand_in_cover(cx, cy, group, [&](const ChunkKey& k) {
                 const auto src = m.chunks.find(k);
                 return src != m.chunks.end() && src->second.real;
             });
+            stats.stand_in_ms += ms_since(c0);
             for (const StandInPart& part : cover) {
                 const std::size_t from = part.from;
                 const StandInSpan& sp = part.span;
@@ -1401,7 +1454,9 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
             }
         }
     }
-    m.write_pieces(pieces);
+    stats.draws_ms = lap();
+    stats.pieces_realloc = m.write_pieces(pieces);
+    stats.pieces_ms = lap();
     const WGPUBindGroup atlas = m.atlas ? m.atlas->bind.get() : nullptr;
     auto draw_chunks = [&](WGPURenderPassEncoder p) {
         for (const Draw& d : draws) {
@@ -1470,7 +1525,13 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     if (timed) {
         m.resolve_timestamps(enc.get());
     }
-    m.submit(enc.get(), "frame");
+    stats.record_ms = lap();
+    Impl::SubmitTimes times;
+    m.submit(enc.get(), "frame", &times);
+    stats.finish_ms = times.finish;
+    stats.scope_ms = times.scope;
+    stats.queue_ms = times.queue;
+    stats.release_ms = std::max(0.0, lap() - times.finish - times.scope - times.queue);
     stats.encode_ms = ms_since(t);
     stats.total_ms = ms_since(start);
     return stats;

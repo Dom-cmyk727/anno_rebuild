@@ -27,7 +27,23 @@ using Clock = std::chrono::steady_clock;
 /// Interval of the FPS display and the stderr breakdown.
 constexpr auto kReport = std::chrono::seconds(2);
 /// Frames that start this long (ms) after the previous one are reported.
-constexpr double kHitchMs = 30.0;
+/// Overridable with ANNO_VIEW_HITCH_MS, for looking at smaller hitches.
+double hitch_ms() {
+    static const double v = [] {
+        double ms = 30.0;
+        if (const char* e = std::getenv("ANNO_VIEW_HITCH_MS"); e != nullptr) {
+            std::sscanf(e, "%lf", &ms);
+        }
+        return ms;
+    }();
+    return v;
+}
+/// One step of a frame on the window thread: the steps of a frame, laid end to
+/// end, add up to its busy time (see Viewer::measure).
+struct Step {
+    const char* name;
+    double ms;
+};
 constexpr std::array<const char*, 4> kStagesCpu = {"ground", "water objects", "sea", "objects"};
 constexpr std::array<const char*, 4> kStagesGpu = {"uploads", "sprites", "encode", "present"};
 
@@ -210,6 +226,10 @@ class Viewer {
     [[nodiscard]] std::uint64_t time_ms() const;
     [[nodiscard]] std::pair<int, int> view_size() const;
     void measure(double chunks_ms, const std::array<double, 4>& stages);
+    /// The steps of the frame being drawn (filled by draw_gpu / draw_cpu), the
+    /// end of the last one, and the previous frame's.
+    std::vector<Step> steps_, last_steps_;
+    Clock::time_point steps_end_ = Clock::now();
 
     const render::Scene& scene_;
     std::size_t group_;
@@ -698,15 +718,21 @@ void Viewer::draw() {
 void Viewer::draw_gpu(render::Rect view) {
     GpuBackend& g = *gpu_;
     const auto w = static_cast<std::uint32_t>(view.w), h = static_cast<std::uint32_t>(view.h);
+    steps_.clear();
+    auto since_ms = [](Clock::time_point a, Clock::time_point b) {
+        return std::chrono::duration<double, std::milli>(b - a).count();
+    };
     if (g.width != w || g.height != h || reconfigure_) {
         g.configure(w, h);
         reconfigure_ = false;
     }
     WGPUSurfaceTexture st = WGPU_SURFACE_TEXTURE_INIT;
     const auto acquire_start = Clock::now();
+    // Window size queries, the view rectangle and a surface (re)configuration.
+    steps_.push_back({"draw prologue", since_ms(draw_start_, acquire_start)});
     wgpuSurfaceGetCurrentTexture(g.surface.get(), &st);
-    display_wait_ms_ =
-        std::chrono::duration<double, std::milli>(Clock::now() - acquire_start).count();
+    const auto acquired = Clock::now();
+    display_wait_ms_ = since_ms(acquire_start, acquired);
     const gpu::Texture texture(st.texture);
     // wgpu-native's own status (wgpu.h): the window is not visible (macOS
     // reports it until the window is first shown). Not in webgpu.h's enum,
@@ -752,13 +778,22 @@ void Viewer::draw_gpu(render::Rect view) {
     vd.format = g.view_format;
     vd.dimension = WGPUTextureViewDimension_2D;
     const gpu::TextureView target(wgpuTextureCreateView(texture.get(), &vd));
+    const auto render_start = Clock::now();
+    steps_.push_back({"surface view", since_ms(acquired, render_start)});
     const auto s = g.frame->render(frames_, scene_, view, group_, time_ms(), water_, target.get());
     const auto p = Clock::now();
+    for (const auto& step : s.steps()) {
+        steps_.push_back({step.name, step.ms});
+    }
+    // Locals of render() destroyed on the way out (command encoder, bind groups).
+    steps_.push_back({"render exit", std::max(0.0, since_ms(render_start, p) - s.total_ms)});
     if (wgpuSurfacePresent(g.surface.get()) != WGPUStatus_Success && !present_error_shown_) {
         std::fprintf(stderr, "presenting the frame failed\n");
         present_error_shown_ = true;
     }
-    const double present = std::chrono::duration<double, std::milli>(Clock::now() - p).count();
+    steps_end_ = Clock::now();
+    const double present = since_ms(p, steps_end_);
+    steps_.push_back({"present", present});
     if (s.chunks_built > 0) {
         std::fprintf(stderr, "zoom group %zu: %zu chunk(s) received\n", group_, s.chunks_built);
     }
@@ -786,14 +821,29 @@ void Viewer::draw_cpu(render::Rect view) {
         tex_h_ = h;
         buffer_.assign(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), 0);
     }
+    steps_.clear();
+    auto since_ms = [](Clock::time_point a, Clock::time_point b) {
+        return std::chrono::duration<double, std::milli>(b - a).count();
+    };
+    const auto render_start = Clock::now();
+    steps_.push_back({"draw prologue", since_ms(draw_start_, render_start)});
     const auto s = frames_.render(scene_, view, group_, time_ms(), water_, buffer_.data());
+    const auto rendered = Clock::now();
+    const double known = s.chunks_ms + s.ground_ms + s.water_objects_ms + s.sea_ms + s.objects_ms;
+    steps_.push_back({"chunks", s.chunks_ms});
+    steps_.push_back({"ground", s.ground_ms});
+    steps_.push_back({"water objects", s.water_objects_ms});
+    steps_.push_back({"sea", s.sea_ms});
+    steps_.push_back({"objects", s.objects_ms});
+    steps_.push_back({"render other", std::max(0.0, since_ms(render_start, rendered) - known)});
     SDL_UpdateTexture(texture_, nullptr, buffer_.data(), w * 4);
     SDL_RenderTexture(renderer_, texture_, nullptr, nullptr);
     const auto present_start = Clock::now();
+    steps_.push_back({"texture copy", since_ms(rendered, present_start)});
     SDL_RenderPresent(renderer_);
+    steps_end_ = Clock::now();
     // SDL's present waits for vsync.
-    display_wait_ms_ =
-        std::chrono::duration<double, std::milli>(Clock::now() - present_start).count();
+    display_wait_ms_ = since_ms(present_start, steps_end_);
     if (s.chunks_built > 0) {
         std::fprintf(stderr, "zoom group %zu: %zu chunk(s) received\n", group_, s.chunks_built);
     }
@@ -809,6 +859,26 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
     const double total_ms =
         std::max(0.0, std::chrono::duration<double, std::milli>(now - draw_start_).count() -
                           display_wait_ms_);
+    // What is left after the last step: reporting a chunk count, mostly.
+    steps_.push_back({"tail", std::chrono::duration<double, std::milli>(now - steps_end_).count()});
+    // The steps of a frame add up to its busy time: the only part of the frame
+    // that is in none of them is the wait for the display (the surface texture
+    // acquire on the GPU, SDL's present on the CPU), which is not busy time.
+    auto describe = [](const std::vector<Step>& steps, double busy) {
+        std::string out;
+        double sum = 0;
+        char buf[96];
+        for (const Step& st : steps) {
+            sum += st.ms;
+            if (st.ms >= 0.05) {
+                std::snprintf(buf, sizeof buf, "%s%s %.2f", out.empty() ? "" : ", ", st.name,
+                              st.ms);
+                out += buf;
+            }
+        }
+        std::snprintf(buf, sizeof buf, "; sum %.2f ms, busy minus sum %.2f ms", sum, busy - sum);
+        return out + buf;
+    };
     // Gap between the starts of two frames of the continuous animation: the
     // true hitch (the vsync wait is in it, so it is one display interval
     // when all is well).
@@ -816,23 +886,21 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
         const double gap =
             std::chrono::duration<double, std::milli>(draw_start_ - *last_start_).count();
         gap_worst_ms_ = std::max(gap_worst_ms_, gap);
-        if (gap > kHitchMs) {
+        if (gap > hitch_ms()) {
             std::fprintf(stderr,
                          "frame hitch: %.1f ms since the previous frame started (this frame: busy "
                          "%.1f ms, waiting for the display %.1f ms; previous frame: busy %.1f ms, "
                          "waiting %.1f ms; %.1f ms from the end of that frame to the start of "
-                         "this one, of which %.1f ms handling window events; the previous frame's "
-                         "time went to chunks %.1f, %s %.1f, %s %.1f, %s %.1f, %s %.1f ms); "
-                         "zoom group %zu\n",
+                         "this one, of which %.1f ms handling window events); zoom group %zu\n"
+                         "  previous frame steps (ms): %s\n  this frame steps (ms): %s\n",
                          gap, total_ms, display_wait_ms_, last_busy_ms_, last_wait_ms_,
                          std::chrono::duration<double, std::milli>(draw_start_ - last_end_).count(),
-                         events_ms_, last_chunks_ms_, (on_gpu() ? kStagesGpu : kStagesCpu)[0],
-                         last_stages_[0], (on_gpu() ? kStagesGpu : kStagesCpu)[1], last_stages_[1],
-                         (on_gpu() ? kStagesGpu : kStagesCpu)[2], last_stages_[2],
-                         (on_gpu() ? kStagesGpu : kStagesCpu)[3], last_stages_[3], group_);
+                         events_ms_, group_, describe(last_steps_, last_busy_ms_).c_str(),
+                         describe(steps_, total_ms).c_str());
         }
     }
     last_busy_ms_ = total_ms;
+    last_steps_ = steps_;
     last_wait_ms_ = display_wait_ms_;
     last_chunks_ms_ = chunks_ms;
     last_stages_ = stages;

@@ -64,6 +64,60 @@ struct GpuStats {
     /// Recording and submitting the commands.
     double encode_ms = 0;
     double total_ms = 0;
+    /// The window-thread steps of render(), laid end to end: steps() lists them in
+    /// order and their sum is total_ms (the time between two steps is
+    /// charged to the step before it), so a hitch that shows in total_ms is
+    /// always in one of them. The coarse fields above are sums of these.
+    /// ensure_under (the offscreen sea targets) and visible_chunks.
+    double under_ms = 0, visible_ms = 0;
+    /// Of chunk_sync_ms: building the key set and deciding what stays, the GPU
+    /// chunks dropped (their planes go to the plane pool, which keeps a bounded
+    /// number; the rest is freed on this thread: chunks_dropped,
+    /// planes_freed), the real uploads (textures, texel writes, bind group;
+    /// chunks_uploaded) and the placeholder chunks made for chunks that are not
+    /// built or not uploaded yet (a uniform buffer and a bind group each;
+    /// placeholders).
+    double sync_scan_ms = 0, sync_drop_ms = 0, sync_real_ms = 0, sync_placeholder_ms = 0;
+    std::size_t chunks_dropped = 0, planes_freed = 0, placeholders = 0;
+    /// Of encode_ms: creating the command encoder; the frame and river uniforms
+    /// with the two frame bind groups; choosing the chunk draws (stand_in_ms of
+    /// it: the stand-in cover and the piece records); writing the piece buffer
+    /// (pieces_realloc: it grew, a new buffer and bind group were made);
+    /// recording the three passes; finishing the command buffer, popping the
+    /// validation error scope (it polls the device), wgpuQueueSubmit, and
+    /// releasing the command buffer.
+    double encoder_ms = 0, uniforms_ms = 0, draws_ms = 0, stand_in_ms = 0, pieces_ms = 0;
+    bool pieces_realloc = false;
+    double record_ms = 0, finish_ms = 0, scope_ms = 0, queue_ms = 0, release_ms = 0;
+    /// A step of render(): a name and its time on the window thread.
+    struct Step {
+        const char* name;
+        double ms;
+    };
+    /// The steps in the order they ran. Their sum is total_ms up to the clock
+    /// reads between two steps (below a microsecond).
+    [[nodiscard]] std::vector<Step> steps() const {
+        // chunk_sync_ms is not in the list: its parts are.
+        return {{"chunks", chunks_ms},
+                {"under", under_ms},
+                {"sea", sea_ms},
+                {"visible", visible_ms},
+                {"sync scan", sync_scan_ms},
+                {"sync drops", sync_drop_ms},
+                {"sync uploads", sync_real_ms},
+                {"sync placeholders", sync_placeholder_ms},
+                {"sprites", sprites_ms},
+                {"encoder", encoder_ms},
+                {"fluid", fluid_ms},
+                {"uniforms", uniforms_ms},
+                {"draws", draws_ms},
+                {"pieces", pieces_ms},
+                {"record", record_ms},
+                {"finish", finish_ms},
+                {"error scope", scope_ms},
+                {"queue submit", queue_ms},
+                {"cmd release", release_ms}};
+    }
     /// Animated sprites drawn (water objects below and above the waterline).
     std::size_t sprites = 0;
     /// Ships drawn by the compositor (FrameRenderer without ships in its

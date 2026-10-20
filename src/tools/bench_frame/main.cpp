@@ -142,6 +142,11 @@ struct Row {
     std::size_t frame_no = 0;
     /// Visible chunks drawn from another group's chunks (GPU).
     std::size_t stand = 0;
+    /// GPU: every window-thread step of the frame (GpuStats::steps, they add up
+    /// to the compositor's total), and the counts behind the sync steps.
+    std::vector<std::pair<std::string, double>> steps;
+    std::size_t dropped = 0, planes_freed = 0, placeholders = 0;
+    bool pieces_realloc = false;
 };
 
 struct Config {
@@ -538,6 +543,36 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, std::s
                         r.sync, r.create, r.write, r.sprites, r.decode, r.atlas, r.sprites_new,
                         r.fluid, r.encode, r.wait);
         }
+        // Every step of the slow frames (GPU): the steps add up to the compositor's
+        // total, so the time of a spike is named here.
+        bool any = false;
+        for (const auto& r : list) {
+            if (r.total <= c.spike_ms || r.steps.empty()) {
+                continue;
+            }
+            if (!any) {
+                std::printf("\nsteps of the slow frames (ms; steps below 0.05 left out; dropped "
+                            "= GPU chunks dropped, freed = planes freed on this thread, "
+                            "placeholders = chunks made without content, realloc = piece buffer "
+                            "grown):\n\n");
+                any = true;
+            }
+            double sum = 0;
+            std::string line;
+            char buf[96];
+            for (const auto& [name, ms] : r.steps) {
+                sum += ms;
+                if (ms >= 0.05) {
+                    std::snprintf(buf, sizeof buf, "%s%s %.2f", line.empty() ? "" : ", ",
+                                  name.c_str(), ms);
+                    line += buf;
+                }
+            }
+            std::printf("- #%zu (group %zu, total %.1f, wait %.1f): %s; sum %.2f; dropped %zu, "
+                        "freed %zu, placeholders %zu, realloc %s\n",
+                        r.frame_no, r.group, r.total, r.wait, line.c_str(), sum, r.dropped,
+                        r.planes_freed, r.placeholders, r.pieces_realloc ? "yes" : "no");
+        }
     };
     std::printf("\nzoom steps deferred until the target group was ready: %zu frames\n", deferred);
     {
@@ -604,6 +639,13 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
             r.sprites_new = st.sprites_new;
             r.create = st.upload_create_ms;
             r.write = st.upload_write_ms;
+            for (const auto& step : st.steps()) {
+                r.steps.emplace_back(step.name, step.ms);
+            }
+            r.dropped = st.chunks_dropped;
+            r.planes_freed = st.planes_freed;
+            r.placeholders = st.placeholders;
+            r.pieces_realloc = st.pieces_realloc;
             if (!wait_gpu) {
                 return r;
             }

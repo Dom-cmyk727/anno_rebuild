@@ -134,9 +134,8 @@ int run(const std::vector<std::string>& raw) {
                                args->river_flow);
     }
 #ifdef ANNO_WITH_VIEWER
-    const std::string err =
-        anno::app::run_viewer(scene, args->group.value_or(2), args->renderer, args->river_flow,
-                                 args->water);
+    const std::string err = anno::app::run_viewer(scene, args->group.value_or(2), args->renderer,
+                                                  args->river_flow, args->water);
     if (!err.empty()) {
         std::fprintf(stderr, "%s: %s\n", name.c_str(), err.c_str());
         return 1;

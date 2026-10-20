@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Claude Fable, the owner's "main" session). **Who reads it:** the executor session (Claude Sonnet with subagents). The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-Last update: 2026-10-20 (board created; status derived from `docs/PLAN.md` §7 and the local git state).
+Last update: 2026-10-20 b (T0 reviewed and accepted; T10 added for the digest-test flake; T1 is now the first READY task).
 
 ## 1. Protocol for the executor
 
@@ -33,13 +33,13 @@ Last update: 2026-10-20 (board created; status derived from `docs/PLAN.md` §7 a
 
 Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report says so), `REVIEW` (reported, orchestrator reviewing), `OWNER-CHECK` (waits for the owner's look), `DONE`, `BLOCKED`, `LATER`.
 
-### T0 — Re-run the gates on `main` and push · `READY` · first
+### T0 — Re-run the gates on `main` and push · `DONE` (reviewed 2026-10-20, see §4)
 - **Goal:** make `main` safe to push and push it, so CI runs on the three local commits.
 - **Do:** on `main` itself (no branch): full MSVC build, ctest with and without the game dir (16 threads), clang-format, the GCC 13 check in WSL for `src/sim`, `src/formats`, `src/test_support`. If everything is green: `git push origin main`, then watch the run with `gh run list --limit 1` / `gh run view <id>` until all jobs finish and record the result. If a gate fails: fix it in a small commit on `main` only when the fix is obvious and local (formatting, a warning); otherwise report `BLOCKED` with the output.
 - **Acceptance:** all CI jobs green (`linux-gcc`, `linux-gcc-release`, `linux-clang-asan`, `windows-msvc`, `macos-clang`, `cpp-format`, Rust jobs). Report the run id.
 - **Scope guard:** no functional changes.
 
-### T1 — Smooth zoom, step 1: no popping after a zoom step · `READY` · after T0 · `OWNER-CHECK` after the step
+### T1 — Smooth zoom, step 1: no popping after a zoom step · `READY` · first · `OWNER-CHECK` after the step
 - **Owner's complaint:** zooming in and out fast shows strange artifacts and feels clunky, like a performance gap; it must be smooth whatever the number of players or the progress of the game; and a larger zoom-out range is wanted.
 - **What was measured (2026-10-20, `ANNO_VIEW_ZOOM_SCRIPT=4,12`, enhanced water):** the window thread is fine (worst busy frame 2.8 ms, 250–330 fps) but every zoom step triggers new chunk builds ("zoom group N: 1–3 chunk(s) received"), and the step is an instant 2× jump of the tile size (`kTile` = 84×42, 42×21, 20×10). So the artifacts are most likely content popping in after the jump plus the hard step itself. Not confirmed against what the owner sees.
 - **Step 1 (this task):** after a zoom step, chunks of the new group that are not built yet must not show as empty/sea: draw the previous group's chunk content for that screen area, scaled by the tile ratio (2× or 0.5×), until the new chunk arrives, then swap. GPU path first (it is the viewer's default); the CPU path may keep the current behaviour if the cost is out of proportion, say so. Keep the scaling in the compositor (`src/render/src/gpu.cpp` / `gpu.wgsl`), not in the viewer. The swap must not produce a visible seam between a stand-in chunk and a built neighbour (same world alignment).
@@ -75,6 +75,11 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 - **Reviewers:** two, with the mutation checks and the GCC -O3 check. The `asan` preset cannot be configured in WSL (no cmake/ninja there); say in the report that ASan/UBSan is untested locally, CI's `linux-clang-asan` job covers it after the merge.
 - **Exit:** S1 can be driven only through `apply` and `advance`; `docs/sim/state.md` §15 S8 gets its "as implemented" note and review log entry like S0–S7 have.
 
+### T10 — Reproduce the digest-test flake under load · `READY` · `PARALLEL-OK` · small, tools/tests only
+- **Finding (T0 report):** in one full `ctest -j 16` run with `ANNO_TEST_THREADS=16`, `anno_render_tests.scene renders match the recorded digests …` failed; it passed alone and in two more full runs. The output was not kept (the CTest logs rotate; `LastTestsFailed.log` of 13:15 names it, nothing else survives). A digest test that fails under load is either memory exhaustion (31 GB RAM; that test alone renders up to 16 whole scenes of about 640 MB each while 15 other tests run) or a data race in the parallel scene renderer. The second would break determinism, so this is not allowed to stay unexplained.
+- **Do:** (1) run that test alone 3× with `ANNO_TEST_THREADS=16` while a parallel full ctest runs, with output captured (`ctest --preset msvc -R "recorded digests" --output-on-failure -O <scratch>/run<n>.log`), and note peak commit charge (Task Manager or `Get-Counter '\Memory\Committed Bytes'`); (2) if a failure shows a digest mismatch (not a crash or `bad_alloc`): report `BLOCKED` with the log at once, do not fix; (3) if it is memory: make the per-test thread cap in `src/test_support/include/anno/test/parallel.hpp` also bounded by free physical memory (threads ≤ free RAM / 1 GB, reason in a comment, env override kept) and add a CTest `PROCESSORS`/`RESOURCE_GROUPS` or memory property so the heavy corpus tests do not all run at once; (4) in any case make CTest keep the failing output: `ctest` with `--output-log` in the documented command (`CLAUDE.md` build line and the memory note's command) so a failure is never lost again.
+- **Acceptance:** either a captured mismatch (then stop) or a fix with three green full runs at `-j 16` and the peak commit charge before/after in the report.
+
 ### T8 — Sim stage S9: replay and session · `LATER` (after T7 is DONE)
 - Per `state.md` §15 S9 including `src/tools/sim_replay/`. Unlocked by the orchestrator.
 
@@ -83,4 +88,4 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 
 ## 4. Review log (orchestrator)
 
-(empty: nothing reported yet)
+- **T0 (2026-10-20, accepted).** Verified: `origin/main` = `7d24231`, CI run 39415500496 success on all ten jobs. Skipping the GCC check was correct (no sim/formats/test_support change in the pushed range). The report is committed on `main` as `71845d2` (not pushed, fine: report commits are docs commits on `main`, push them with the next task). Weak point: the one failed test run was not kept, so its cause is unknown; opened T10 instead of accepting "load-dependent flake".

@@ -2820,9 +2820,24 @@ TEST_CASE(
         g.render(fr, *es.scene, one, 0, 0, render::WaterStyle::Original, target.second.get());
     CHECK(st.chunks_uploaded == 1);
     CHECK(st.planes_warm >= 1);
-    // The thread makes up for the planes taken.
-    for (int i = 0; i < 2000 && g.warm_planes_ready() < 10; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    // After the first render() the thread is paced: a frame that uploaded
+    // something gives it no token (the window thread needs the driver's
+    // allocator then), so the planes taken are not made up for yet ...
+    const std::size_t taken = st.planes_warm;
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    CHECK(g.warm_planes_ready() == 10 - taken);
+    // ... and every quiet frame (nothing uploaded, no placeholder) lets it make
+    // one plane, no more.
+    for (std::size_t i = 0; i < taken; ++i) {
+        const std::size_t before = g.warm_planes_ready();
+        const auto quiet =
+            g.render(fr, *es.scene, one, 0, 0, render::WaterStyle::Original, target.second.get());
+        REQUIRE(quiet.chunks_uploaded == 0);
+        for (int k = 0; k < 2000 && g.warm_planes_ready() == before; ++k) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(60));
+        CHECK(g.warm_planes_ready() == before + 1);
     }
     CHECK(g.warm_planes_ready() == 10);
     CHECK(g.errors() == 0);

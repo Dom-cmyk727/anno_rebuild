@@ -345,7 +345,18 @@ struct GpuFrame::Impl {
     /// that long. The window thread takes from here when the plane pool has
     /// no match and never waits for the lock (try_lock); the thread keeps
     /// prewarm_chunks' worth ready, refilling as planes are taken.
+    ///
+    /// Texture creation takes wgpu-hal's device allocator lock, which the window
+    /// thread needs for every upload and every buffer it makes. So the thread
+    /// runs at normal priority (a lowered one would let it be descheduled while
+    /// holding the lock: a priority inversion on the window thread) and creates
+    /// one plane per quiet frame only: render() hands it a token at its end when
+    /// the frame uploaded nothing and made no placeholder. Until the first
+    /// render() it is unpaced, to fill the pool at start (and for headless users
+    /// that wait for warm_planes_ready() before rendering).
     std::mutex warm_mutex;
+    std::atomic<bool> warm_token{false};
+    std::atomic<bool> warm_paced{false};
     std::vector<Plane> warm_planes;
     std::thread warm_thread;
     std::condition_variable warm_cv;
@@ -378,17 +389,20 @@ struct GpuFrame::Impl {
             return;
         }
         warm_thread = std::thread([this] {
-            lower_thread_priority();
             const auto n = static_cast<std::uint32_t>(kChunk);
             const std::size_t target = limits.prewarm_chunks * kChunkPlanes.size();
             std::unique_lock lock(warm_mutex);
             while (true) {
                 // Refills as the window thread takes planes: the first uploads of
                 // each zoom group need a view's worth of chunks at once.
-                warm_cv.wait(lock, [&] { return warm_stop || warm_planes.size() < target; });
+                warm_cv.wait(lock, [&] {
+                    return warm_stop || (warm_planes.size() < target &&
+                                         (!warm_paced.load() || warm_token.load()));
+                });
                 if (warm_stop) {
                     return;
                 }
+                warm_token.store(false);
                 // The format that is the scarcest now (uploads take the five of
                 // a chunk alike, but a chunk without a plane takes fewer).
                 std::size_t pick = 0, fewest = warm_planes.size() + 1;
@@ -1432,6 +1446,9 @@ std::uint64_t GpuFrame::errors() const {
 GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                           std::uint64_t time_ms, WaterStyle style, WGPUTextureView target) {
     Impl& m = *impl_;
+    // From the first frame on the pre-creation is paced by quiet frames (a
+    // stricter condition for the thread, so no wake-up is needed).
+    m.warm_paced.store(true);
     const auto start = Clock::now();
     GpuStats stats;
     // Every step below ends with a lap: the time since the previous lap goes to
@@ -1652,6 +1669,19 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     stats.release_ms = std::max(0.0, lap() - times.finish - times.scope - times.queue);
     stats.encode_ms = ms_since(t);
     stats.total_ms = ms_since(start);
+    // A frame without uploads or placeholders lets the pre-creation thread make
+    // one plane (Impl::warm_mutex); a busy frame leaves the allocator alone.
+    if (m.limits.prewarm_chunks > 0) {
+        {
+            // Under the mutex, or the wake-up can be lost between the thread's
+            // predicate check and its wait; the thread holds it only briefly.
+            const std::lock_guard lock(m.warm_mutex);
+            if (stats.chunks_uploaded == 0 && stats.placeholders == 0) {
+                m.warm_token.store(true);
+                m.warm_cv.notify_one();
+            }
+        }
+    }
     return stats;
 }
 

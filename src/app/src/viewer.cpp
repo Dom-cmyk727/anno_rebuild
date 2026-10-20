@@ -189,6 +189,16 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
             std::fprintf(stderr, "ANNO_VIEW_STAND_INS=%s not known (on, off)\n", s);
         }
     }
+    // The background pre-creation of chunk texture planes (GpuLimits::prewarm_chunks);
+    // ANNO_VIEW_PREWARM=off creates them in the frame as before, for comparing.
+    if (const char* s = std::getenv("ANNO_VIEW_PREWARM"); s != nullptr && *s != 0) {
+        const std::string v(s);
+        if (v == "off") {
+            limits.prewarm_chunks = 0;
+        } else if (v != "on") {
+            std::fprintf(stderr, "ANNO_VIEW_PREWARM=%s not known (on, off)\n", s);
+        }
+    }
     // The cost tier of the river flow shading: automatic (High on a discrete GPU,
     // measured on others) unless ANNO_RIVER_QUALITY says low, medium or high.
     if (const char* q = std::getenv("ANNO_RIVER_QUALITY"); q != nullptr && *q != 0) {

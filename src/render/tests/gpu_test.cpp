@@ -2876,6 +2876,84 @@ TEST_CASE("a chunk that replaces the open sea dissolves in over chunk_fade_ms of
     CHECK(g2.errors() == 0);
 }
 
+/// A chunk of a smooth world: the ground colour is a ramp of the world position in
+/// tiles (red along x, green along y, 100 levels per tile, wrapping), the same for
+/// every zoom group, so a stand-in made from another group should match the chunk
+/// built for the group shown up to the other group's pixel size.
+render::Chunk ramp_chunk(std::size_t group, int cx, int cy) {
+    render::Chunk c;
+    const auto n = static_cast<std::size_t>(render::kChunk);
+    c.ground.resize(n * n);
+    for (std::size_t y = 0; y < n; ++y) {
+        for (std::size_t x = 0; x < n; ++x) {
+            // Pixel centre in tiles of this group.
+            const double wx =
+                (cx * render::kChunk + static_cast<double>(x) + 0.5) / render::kTile[group].w;
+            const double wy =
+                (cy * render::kChunk + static_cast<double>(y) + 0.5) / render::kTile[group].h;
+            const auto r = static_cast<std::uint32_t>(std::fmod(wx * 100.0, 256.0) + 256.0) & 255U;
+            const auto gch =
+                static_cast<std::uint32_t>(std::fmod(wy * 100.0, 256.0) + 256.0) & 255U;
+            c.ground[y * n + x] = (r << 16) | (gch << 8);
+        }
+    }
+    return c;
+}
+
+TEST_CASE("a stand-in lines up with the chunk it stands in for (a smooth world, no shift)") {
+    const EmptyScene es = empty_scene();
+    const auto n = static_cast<std::size_t>(render::kChunk);
+    for (std::size_t to = 0; to < render::kGroups; ++to) {
+        for (const std::size_t from : render::stand_in_groups(to)) {
+            render::FrameRenderer fr(1, false);
+            for (const auto& [cx, cy] : {std::pair{0, 0}, std::pair{1, 0}, std::pair{-1, 2}}) {
+                for (const auto& sp : render::stand_in_spans(cx, cy, to, from)) {
+                    fr.insert_chunk({from, sp.src_cx, sp.src_cy},
+                                    ramp_chunk(from, sp.src_cx, sp.src_cy));
+                }
+                const auto ref = render::stand_in_chunk(fr, to, cx, cy, es.scene->textures.water());
+                REQUIRE(ref);
+                const render::Chunk truth = ramp_chunk(to, cx, cy);
+                // The error allowed is the ramp across one source pixel: the stand-in
+                // shows the source pixel that contains the destination pixel's
+                // centre. Pixels near the wrap of the ramp are left out.
+                const double slope_x = 100.0 / render::kTile[from].w;
+                const double slope_y = 100.0 / render::kTile[from].h;
+                double bias_r = 0, bias_g = 0;
+                std::size_t counted = 0, worst_r = 0, worst_g = 0;
+                for (std::size_t i = 0; i < n * n; ++i) {
+                    const int tr = static_cast<int>((truth.ground[i] >> 16) & 255U);
+                    const int tg = static_cast<int>((truth.ground[i] >> 8) & 255U);
+                    const int sr = static_cast<int>((ref->ground[i] >> 16) & 255U);
+                    const int sg = static_cast<int>((ref->ground[i] >> 8) & 255U);
+                    if (tr < 24 || tr > 232 || tg < 24 || tg > 232) {
+                        continue;
+                    }
+                    ++counted;
+                    bias_r += sr - tr;
+                    bias_g += sg - tg;
+                    worst_r = std::max(worst_r, static_cast<std::size_t>(std::abs(sr - tr)));
+                    worst_g = std::max(worst_g, static_cast<std::size_t>(std::abs(sg - tg)));
+                }
+                REQUIRE(counted > n * n / 2);
+                bias_r /= static_cast<double>(counted);
+                bias_g /= static_cast<double>(counted);
+                INFO("to " << to << " from " << from << " chunk " << cx << "," << cy << " bias "
+                           << bias_r << "," << bias_g << " worst " << worst_r << "," << worst_g);
+                // Within one source pixel. The average shift is at most half a source
+                // pixel (half the ramp's step): at an exact 2x ratio (groups 0 and 1)
+                // the destination pixel's centre lies on the boundary of two source
+                // pixels and the rule picks the same side every time, a quarter of a
+                // destination pixel; a real misalignment would be a whole source pixel.
+                CHECK(static_cast<double>(worst_r) <= slope_x + 1.5);
+                CHECK(static_cast<double>(worst_g) <= slope_y + 1.5);
+                CHECK(std::abs(bias_r) <= 0.5 * slope_x + 0.3);
+                CHECK(std::abs(bias_g) <= 0.5 * slope_y + 0.3);
+            }
+        }
+    }
+}
+
 TEST_CASE("stand-in cover chooses the source group per part") {
     const auto all = [](const render::ChunkKey&) { return true; };
     for (std::size_t to = 0; to < render::kGroups; ++to) {

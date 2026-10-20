@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include <anno/sim/apply.hpp>
 #include <anno/sim/clock.hpp>
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
@@ -199,6 +200,13 @@ struct PlayerPassCtx {
     CountingDraw* draws = nullptr;
 };
 
+/// The context of the AI call (Seams::ai), bound to PlayerHooks::ai.
+struct AiCtx {
+    World* world = nullptr;
+    const TickContext* ctx = nullptr;
+    CountingDraw* draws = nullptr;
+};
+
 std::int64_t add_saturating(std::int64_t a, std::int64_t b) {
     if (b > 0 && a > std::numeric_limits<std::int64_t>::max() - b) {
         return std::numeric_limits<std::int64_t>::max();
@@ -240,6 +248,7 @@ struct Scheduler {
     static void release_counter(World& w, BuildingId home, std::uint32_t home_counter);
     static void merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t);
     static void run_player_pass(void* raw, Player& p);
+    static void run_ai(void* raw);
     static Island* island_of_id(World& w, IslandId id);
     static City* city_of_ref(World& w, CityRef ref);
 };
@@ -389,6 +398,28 @@ void Scheduler::run_player_pass(void* raw, Player& p) {
     merge(w, fx, c.ctx->tick, c.ctx->t);
 }
 
+void Scheduler::run_ai(void* raw) {
+    // docs/sim/state.md §5.10, A15: the AI reads the state through the SerialWorld,
+    // draws through the tick's DrawSource, writes its consequences to the Effects
+    // (merged right after the call, C2) and returns commands that are applied at once,
+    // in order, by the same code as a host command. Nobody logs them: a replay needs
+    // the same seam installed.
+    auto& c = *static_cast<AiCtx*>(raw);
+    World& w = *c.world;
+    Effects fx;
+    std::vector<Command> commands;
+    {
+        const SerialWorld serial(w.islands_, w.config_.layout, w.figures_, w.players_, fx);
+        const auto before = c.draws->counts;
+        w.seams_.ai.fn(w.seams_.ai.ctx, *c.ctx, serial, commands);
+        fx.draws = draw_records_between(before, c.draws->counts);
+    }
+    merge(w, fx, c.ctx->tick, c.ctx->t);
+    for (const Command& command : commands) {
+        static_cast<void>(Commands::apply(w, command, true));
+    }
+}
+
 std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
     // docs/sim/state.md §5.3. No early return for 0: the original adds 0 and still
     // runs every subsystem.
@@ -424,8 +455,8 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
     // 2. timed events (S12), 3. figures (S12).
     // 4. The player table (D: 0x1009c4d0 via world +0x118), with the two per-player
     // seams bound to the hooks of player_tick; a seam without a function is the
-    // documented default (does nothing), so its hook stays null. Seams::ai follows
-    // with stage S8.
+    // documented default (does nothing), so its hook stays null. Seams::ai is the
+    // table-level hook, called after the visits and before the stamp (A15).
     PlayerPassCtx groups_ctx{&w, &ctx, &w.seams_.player_groups, &draw};
     PlayerPassCtx defeat_ctx{&w, &ctx, &w.seams_.defeat, &draw};
     PlayerHooks hooks;
@@ -436,6 +467,11 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
     if (w.seams_.defeat.fn != nullptr) {
         hooks.defeat = &Scheduler::run_player_pass;
         hooks.defeat_ctx = &defeat_ctx;
+    }
+    AiCtx ai_ctx{&w, &ctx, &draw};
+    if (w.seams_.ai.fn != nullptr) {
+        hooks.ai = &Scheduler::run_ai;
+        hooks.ai_ctx = &ai_ctx;
     }
     player_table_tick(w.players_, t, w.config_, w.rules_, hooks);
     // 5. script timers, 6. monopoly, 7. the 7.5 min event (S12).

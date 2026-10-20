@@ -21,6 +21,7 @@
 
 #include <anno/formats/result.hpp>
 #include <anno/sim/clock.hpp>
+#include <anno/sim/command.hpp>
 #include <anno/sim/config.hpp>
 #include <anno/sim/events.hpp>
 #include <anno/sim/executor.hpp>
@@ -29,6 +30,7 @@
 #include <anno/sim/hash_tree.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/player.hpp>
+#include <anno/sim/reject.hpp>
 #include <anno/sim/rng.hpp>
 #include <anno/sim/seams.hpp>
 #include <anno/sim/settings.hpp>
@@ -181,6 +183,14 @@ class World {
     /// (list in the layout's rect order, y, x, id; D2).
     void rect_query(CityRef city, const TileRect& rect, std::uint32_t list_mask,
                     std::vector<BuildingId>& out) const;
+    /// Applies one command at the current tick, between two advances (docs/sim/
+    /// state.md §8). Total: any input yields a result, nothing throws. Validation is
+    /// pure: a rejected command changes no hashed state (the hash before equals the
+    /// hash after); it only queues a CommandRejected UI event for the host. The
+    /// commands the host stamped come in order, one call each; the AI seam's commands
+    /// are applied inside advance by the same code and are not logged by anyone.
+    ApplyResult apply(const Command& command);
+
     /// The structural facts and the derived-equals-recomputed facts of docs/sim/
     /// state.md §9.6 that exist at this stage. Empty when they all hold, else one
     /// message that names the first violation with its path ("islands[0].cities[1].
@@ -238,6 +248,7 @@ class World {
     friend struct StateIO;
     friend struct WorldTestAccess;
     friend struct Scheduler;
+    friend struct Commands;
 
     WorldClock clock_;
     WorldRng rng_;

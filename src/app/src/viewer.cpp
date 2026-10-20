@@ -44,6 +44,23 @@ struct Step {
     const char* name;
     double ms;
 };
+
+/// "name ms, name ms, ...; sum S ms, busy minus sum D ms" (steps below 0.05 ms
+/// left out of the list, not of the sum).
+std::string describe(const std::vector<Step>& steps, double busy) {
+    std::string out;
+    double sum = 0;
+    char buf[96];
+    for (const Step& st : steps) {
+        sum += st.ms;
+        if (st.ms >= 0.05) {
+            std::snprintf(buf, sizeof buf, "%s%s %.2f", out.empty() ? "" : ", ", st.name, st.ms);
+            out += buf;
+        }
+    }
+    std::snprintf(buf, sizeof buf, "; sum %.2f ms, busy minus sum %.2f ms", sum, busy - sum);
+    return out + buf;
+}
 constexpr std::array<const char*, 4> kStagesCpu = {"ground", "water objects", "sea", "objects"};
 constexpr std::array<const char*, 4> kStagesGpu = {"uploads", "sprites", "encode", "present"};
 
@@ -228,7 +245,7 @@ class Viewer {
     void measure(double chunks_ms, const std::array<double, 4>& stages);
     /// The steps of the frame being drawn (filled by draw_gpu / draw_cpu), the
     /// end of the last one, and the previous frame's.
-    std::vector<Step> steps_, last_steps_;
+    std::vector<Step> steps_, last_steps_, worst_steps_;
     Clock::time_point steps_end_ = Clock::now();
 
     const render::Scene& scene_;
@@ -864,21 +881,6 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
     // The steps of a frame add up to its busy time: the only part of the frame
     // that is in none of them is the wait for the display (the surface texture
     // acquire on the GPU, SDL's present on the CPU), which is not busy time.
-    auto describe = [](const std::vector<Step>& steps, double busy) {
-        std::string out;
-        double sum = 0;
-        char buf[96];
-        for (const Step& st : steps) {
-            sum += st.ms;
-            if (st.ms >= 0.05) {
-                std::snprintf(buf, sizeof buf, "%s%s %.2f", out.empty() ? "" : ", ", st.name,
-                              st.ms);
-                out += buf;
-            }
-        }
-        std::snprintf(buf, sizeof buf, "; sum %.2f ms, busy minus sum %.2f ms", sum, busy - sum);
-        return out + buf;
-    };
     // Gap between the starts of two frames of the continuous animation: the
     // true hitch (the vsync wait is in it, so it is one display interval
     // when all is well).
@@ -909,6 +911,9 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
     wait_sum_ms_ += display_wait_ms_;
     wait_worst_ms_ = std::max(wait_worst_ms_, display_wait_ms_);
     ++frames_n_;
+    if (total_ms > worst_ms_) {
+        worst_steps_ = steps_;
+    }
     worst_ms_ = std::max(worst_ms_, total_ms);
     total_ms_ += total_ms;
     chunks_ms_ += chunks_ms;
@@ -931,6 +936,8 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
                  wait_worst_ms_, gap_worst_ms_, chunks_ms_ / n, names[0], stages_[0] / n, names[1],
                  stages_[1] / n, names[2], stages_[2] / n, names[3], stages_[3] / n,
                  frames_.cached());
+    std::fprintf(stderr, "  steps of the worst frame (%.1f ms busy): %s\n", worst_ms_,
+                 describe(worst_steps_, worst_ms_).c_str());
     fps_ = std::pair{fps, total_ms_ / n};
     frames_n_ = 0;
     total_ms_ = worst_ms_ = chunks_ms_ = 0;

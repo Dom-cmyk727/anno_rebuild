@@ -8,7 +8,7 @@
 //       [--renderer cpu,gpu] [--check] [--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick]
 //       [--zoom k] [--zoom-frames n] [--pace ms] [--spike ms] [--limits default|interactive]
 //       [--settle ms] [--river-flow legacy|flow] [--river-quality auto|low|medium|high]
-//       [--river-pass]
+//       [--river-pass] [--stand-ins on|off] [--zoom-dump <dir>]
 //   bench_frame --list-adapters
 //   bench_frame <game_dir> <file> --river-cost      (GPU cost of the river shading, synthetic)
 //
@@ -33,6 +33,13 @@
 // than `--spike` ms (default 8) are listed with their phase breakdown. The
 // frame time of this path is the window thread's CPU time (the viewer does
 // not wait for the GPU); the GPU wait is listed separately.
+//
+// `--stand-ins off` draws chunks that are not built yet as open sea (the
+// behaviour before the stand-in chunks of OQ-077); the default is the library's
+// (on for the GPU compositor, off for the CPU path). `--zoom-dump <dir>` (GPU)
+// writes the first frames after zoom steps as raw RGBA (`zoom_<n>_g<group>_<w>x<h>.rgba`)
+// and prints, after the table, how many frames had chunks still missing and
+// how many of those were covered by stand-ins.
 //
 // `--river-cost` prints the GPU cost per million river pixels of the river flow
 // shading at each tier (GpuFrame::measure_river_cost: a synthetic 1024 x 1024
@@ -95,6 +102,10 @@ struct Options {
     /// RiverConfig::light_gain (--river-gain): 1 = calibrated, larger shows the flow.
     float river_gain = 1.0F;
     bool river_cost = false, river_pass = false;
+    /// GpuLimits::stand_ins / FrameRenderer::stand_ins (nullopt = library defaults).
+    std::optional<bool> stand_ins;
+    /// Directory for the frames after zoom steps (empty = none).
+    std::string zoom_dump;
 };
 
 std::vector<std::string_view> split(std::string_view s, char sep) {
@@ -129,6 +140,8 @@ struct Row {
     std::size_t uploaded = 0, sprites_new = 0;
     double create = 0, write = 0;
     std::size_t frame_no = 0;
+    /// Visible chunks drawn from another group's chunks (GPU).
+    std::size_t stand = 0;
 };
 
 struct Config {
@@ -146,6 +159,8 @@ struct Config {
     std::size_t settle_ms = 0;
     render::RiverFlowMode river_flow = render::RiverFlowMode::Flow;
     bool river_pass = false;
+    std::optional<bool> stand_ins;
+    std::string zoom_dump;
 };
 
 void report(const Config& c, const char* renderer, const char* mode, const char* name,
@@ -436,8 +451,8 @@ struct GpuFrame {};
 
 /// The zoom path (see the header): wheel-like group switches every
 /// c.zoom_every frames, paced frames, a list of the slow frames.
-template <class Frame, class Ready>
-void run_zoom(const Config& c, Frame&& frame, Ready&& ready, std::size_t& group,
+template <class Frame, class Ready, class Dump>
+void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, std::size_t& group,
               std::pair<int, int> cam, std::uint64_t time) {
     using SC = std::chrono::steady_clock;
     // Warm-up: static frames until the first group is built. The first
@@ -463,9 +478,10 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, std::size_t& group,
     auto next = start;
     // As the viewer: a zoom step waits until the sea pattern of its group is
     // rendered and on the GPU (only in the first moments after the start).
-    bool switch_due = false;
-    std::size_t deferred = 0;
+    bool switch_due = false, switched = false;
+    std::size_t deferred = 0, dumped = 0;
     for (std::size_t i = 0; i < c.zoom_frames; ++i) {
+        switched = false;
         if (i > 0 && i % c.zoom_every == 0) {
             switch_due = true;
         }
@@ -482,9 +498,13 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, std::size_t& group,
             cam = {static_cast<int>(std::lround(nx - c.w / 2.0)),
                    static_cast<int>(std::lround(ny - c.h / 2.0))};
             group = to;
+            switched = true;
         }
         const render::Rect view{cam.first, cam.second, c.w, c.h};
         Row r = frame(view, time, true);
+        if (switched && dumped < 8) {
+            dump(dumped++, group);
+        }
         // Window-thread time only: the viewer does not wait for the GPU (the
         // wait is still in the last stage column and in the `wait` column).
         r.total -= r.wait;
@@ -520,6 +540,22 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, std::size_t& group,
         }
     };
     std::printf("\nzoom steps deferred until the target group was ready: %zu frames\n", deferred);
+    {
+        // Frames with visible chunks not built, and how many of those frames drew
+        // stand-ins for some chunk (GPU; the frame right after a zoom step is the
+        // one that used to show open sea).
+        std::size_t missing = 0, covered = 0, after = 0, after_covered = 0;
+        for (std::size_t i = 0; i < rows.size(); ++i) {
+            const bool first = i > 0 && rows[i].group != rows[i - 1].group;
+            missing += rows[i].missing > 0 ? 1U : 0U;
+            covered += rows[i].missing > 0 && rows[i].stand > 0 ? 1U : 0U;
+            after += first && rows[i].missing > 0 ? 1U : 0U;
+            after_covered += first && rows[i].missing > 0 && rows[i].stand > 0 ? 1U : 0U;
+        }
+        std::printf("frames with chunks not built: %zu of %zu (%zu drew stand-ins); first frames "
+                    "after a zoom step with chunks not built: %zu (%zu drew stand-ins)\n",
+                    missing, rows.size(), covered, after, after_covered);
+    }
     slow("slow warm-up frames", warm);
     slow("slow frames of the zoom path", rows);
     std::printf("\n");
@@ -529,6 +565,9 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
     // The GPU compositor draws the ships itself: chunks without them.
     render::FrameRenderer fr(c.threads, g == nullptr);
     fr.river_flow = c.river_flow;
+    if (c.stand_ins && g == nullptr) {
+        fr.stand_ins = *c.stand_ins;
+    }
     if (c.async_chunks) {
         fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (c.threads + 1) / 2));
     }
@@ -553,6 +592,7 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
                 g->render(fr, scene, view, frame_group, t, c.style, target->second.get());
             Row r{st.total_ms, st.chunks_built, st.chunks_ms, st.chunks_missing, {}};
             r.group = frame_group;
+            r.stand = st.stand_in_chunks;
             r.sea = st.sea_ms;
             r.sync = st.chunk_sync_ms;
             r.decode = st.decode_ms;
@@ -618,7 +658,25 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
 #endif
             return scene.sea_built(grp);
         };
-        run_zoom(c, frame, ready, frame_group, cam, time);
+        auto dump = [&](std::size_t n, std::size_t grp) {
+#ifdef ANNO_BENCH_GPU
+            if (g == nullptr || c.zoom_dump.empty()) {
+                return;
+            }
+            const auto px = g->read_back(target->first.get(), static_cast<std::uint32_t>(c.w),
+                                         static_cast<std::uint32_t>(c.h));
+            const std::string name = c.zoom_dump + "/zoom_" + std::to_string(n) + "_g" +
+                                     std::to_string(grp) + "_" + std::to_string(c.w) + "x" +
+                                     std::to_string(c.h) + ".rgba";
+            std::ofstream f(name, std::ios::binary);
+            f.write(reinterpret_cast<const char*>(px.data()),
+                    static_cast<std::streamsize>(px.size()));
+#else
+            (void)n;
+            (void)grp;
+#endif
+        };
+        run_zoom(c, frame, ready, dump, frame_group, cam, time);
         for (auto& t : seas) {
             t.join();
         }
@@ -660,7 +718,7 @@ constexpr const char* kUsage =
     "[--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick] [--zoom k] [--zoom-frames n] "
     "[--pace ms] [--spike ms] [--limits default|interactive] [--settle ms] "
     "[--river-flow legacy|flow] [--river-quality auto|low|medium|high] [--river-gain x] "
-    "[--river-pass]\n"
+    "[--river-pass] [--stand-ins on|off] [--zoom-dump dir]\n"
     "       bench_frame --list-adapters\n"
     "       bench_frame <game_dir> <file> --river-cost\n";
 
@@ -758,6 +816,12 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             } else if (v == "high") {
                 o.river_quality = render::RiverQuality::High;
             }
+        } else if (a == "--stand-ins") {
+            ok = v == "on" || v == "off";
+            o.stand_ins = v == "on";
+        } else if (a == "--zoom-dump") {
+            ok = !v.empty();
+            o.zoom_dump = std::string(v);
         } else if (a == "--limits") {
             ok = v == "default" || v == "interactive";
             o.interactive = v == "interactive";
@@ -909,6 +973,9 @@ int main(int argc, char** argv) {
         gpu::GpuLimits limits = o->interactive ? gpu::GpuLimits::interactive() : gpu::GpuLimits{};
         limits.river_quality = o->river_quality;
         limits.gpu_timing = o->river_pass;
+        if (o->stand_ins) {
+            limits.stand_ins = *o->stand_ins;
+        }
         auto f = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
         if (!f) {
             std::fprintf(stderr, "GPU: %s\n", f.error().c_str());
@@ -955,6 +1022,8 @@ int main(int argc, char** argv) {
                         c.zoom_frames = o->zoom_frames;
                         c.pace_ms = o->pace_ms;
                         c.spike_ms = o->spike_ms;
+                        c.stand_ins = o->stand_ins;
+                        c.zoom_dump = o->zoom_dump;
                         gpu::GpuFrame* g = nullptr;
 #ifdef ANNO_BENCH_GPU
                         if (on_gpu) {

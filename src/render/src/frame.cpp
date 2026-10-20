@@ -561,13 +561,25 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
 std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group, Rect view,
                                           const std::vector<std::pair<int, int>>& visible) {
     std::size_t received = 0;
+    // A chunk replaced by its rebuild (the river flow arrived) is freed on the
+    // reaper thread, like the evicted ones: freeing its ~4 MB of vectors costs
+    // the window thread about a millisecond each.
+    std::vector<Chunk> replaced;
     for (auto& [key, chunk] : workers_->take_done()) {
         // Workers shared with a renderer of the other ship setting: rebuilt.
         if (chunk.ships != ships_) {
             continue;
         }
-        cache_.insert_or_assign(key, std::move(chunk));
+        if (const auto it = cache_.find(key); it != cache_.end()) {
+            replaced.push_back(std::move(it->second));
+            it->second = std::move(chunk);
+        } else {
+            cache_.emplace(key, std::move(chunk));
+        }
         ++received;
+    }
+    if (!replaced.empty()) {
+        workers_->discard(std::move(replaced));
     }
     const auto ring = visible_chunks(
         Rect{view.x - kChunk, view.y - kChunk, view.w + 2 * kChunk, view.h + 2 * kChunk});

@@ -1615,7 +1615,14 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
             if (!cover.empty()) {
                 ++stats.stand_in_chunks;
                 stats.stand_in_parts += cover.size();
+            } else {
+                ++stats.open_sea_chunks;
             }
+        }
+    } else {
+        for (const auto& [cx, cy] : visible) {
+            const auto own = m.chunks.find({group, cx, cy});
+            stats.open_sea_chunks += own == m.chunks.end() || !own->second.real ? 1U : 0U;
         }
     }
     stats.draws_ms = lap();

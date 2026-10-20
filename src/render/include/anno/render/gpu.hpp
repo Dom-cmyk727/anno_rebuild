@@ -132,6 +132,10 @@ struct GpuStats {
     /// are not built or not uploaded yet (GpuLimits::stand_ins), and the parts
     /// (draws) they took.
     std::size_t stand_in_chunks = 0, stand_in_parts = 0;
+    /// Visible chunks that show open sea because they are not on the GPU and no
+    /// zoom group has a chunk to stand in for them (or stand-ins are off): the
+    /// pop-in a pan during a zoom can show.
+    std::size_t open_sea_chunks = 0;
     /// A wave-window job (new group, size or strips) is being prepared in the
     /// background: the shader shows the previous window or, where it does not
     /// reach, the analytic waves (OQ-076).

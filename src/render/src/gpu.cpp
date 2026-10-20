@@ -269,6 +269,8 @@ struct GpuFrame::Impl {
     BindGroup empty_bind;
     PipelineLayout chunk_pl, sprite_pl;
     RenderPipeline ground_pipe, terrain_pipe, objects_pipe, sea_pipe, sprite_pipe;
+    /// Ground and sea with blending, for the draws of chunks fading in.
+    RenderPipeline ground_fade_pipe, sea_fade_pipe;
     Buffer frame_uniform;
     /// What each draw of a chunk shows (struct Piece in gpu.wgsl): slot 0 is the
     /// chunk itself (kind 0), the others are the parts of stand-ins drawn this
@@ -1442,14 +1444,20 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     vbl.attributeCount = attrs.size();
     vbl.attributes = attrs.data();
     wgpuDevicePushErrorScope(d, WGPUErrorFilter_Validation);
-    // Ground and sea blend by the draw's opacity (piece.transparent, 0 = opaque
-    // = a plain replacement): a chunk fading in is drawn over what it replaces.
-    m.ground_pipe =
-        m.pipeline("ground", m.chunk_pl.get(), "chunk_vs", "ground_fs", nullptr, 0, format, &alpha);
+    // Ground and sea are opaque; their variants for a chunk fading in blend by
+    // the draw's opacity (piece.transparent) over what it replaces. Only the
+    // fading draws use them: blending every draw would add two full-screen
+    // read-modify-write passes for a few chunks a second.
+    m.ground_pipe = m.pipeline("ground", m.chunk_pl.get(), "chunk_vs", "ground_fs", nullptr, 0,
+                               format, nullptr);
+    m.ground_fade_pipe = m.pipeline("ground fade", m.chunk_pl.get(), "chunk_vs", "ground_fs",
+                                    nullptr, 0, format, &alpha);
     m.terrain_pipe = m.pipeline("terrain", m.chunk_pl.get(), "chunk_vs", "terrain_fs", nullptr, 0,
                                 kTerrainFormat, nullptr);
     m.sea_pipe =
-        m.pipeline("sea", m.chunk_pl.get(), "chunk_vs", "sea_fs", nullptr, 0, format, &alpha);
+        m.pipeline("sea", m.chunk_pl.get(), "chunk_vs", "sea_fs", nullptr, 0, format, nullptr);
+    m.sea_fade_pipe =
+        m.pipeline("sea fade", m.chunk_pl.get(), "chunk_vs", "sea_fs", nullptr, 0, format, &alpha);
     m.objects_pipe = m.pipeline("objects", m.chunk_pl.get(), "chunk_vs", "objects_fs", nullptr, 0,
                                 format, &alpha);
     m.sprite_pipe =
@@ -1657,6 +1665,8 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     struct Draw {
         WGPUBindGroup bind;
         std::uint32_t piece_offset;
+        /// A chunk fading in: the blending variants of the ground and sea pipelines.
+        bool fading = false;
     };
     std::vector<Draw> draws;
     std::vector<std::uint8_t> pieces(kPieceStride, 0);
@@ -1759,15 +1769,22 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
             }
             b.u32(0);
             b.f32(tr->second);
-            draws.push_back({m.chunks.find(tr->first)->second.bind.get(), piece_record(b)});
+            draws.push_back({m.chunks.find(tr->first)->second.bind.get(), piece_record(b), true});
         }
     }
     stats.draws_ms = lap();
     stats.pieces_realloc = m.write_pieces(pieces);
     stats.pieces_ms = lap();
     const WGPUBindGroup atlas = m.atlas ? m.atlas->bind.get() : nullptr;
-    auto draw_chunks = [&](WGPURenderPassEncoder p) {
+    // `fade` (the ground and sea passes): the pipeline the fading draws switch to
+    // (they come last, so it is set once); nullptr = one pipeline for all.
+    auto draw_chunks = [&](WGPURenderPassEncoder p, WGPURenderPipeline fade = nullptr) {
+        bool fading = false;
         for (const Draw& d : draws) {
+            if (fade != nullptr && d.fading && !fading) {
+                wgpuRenderPassEncoderSetPipeline(p, fade);
+                fading = true;
+            }
             wgpuRenderPassEncoderSetBindGroup(p, 1, d.bind, 0, nullptr);
             wgpuRenderPassEncoderSetBindGroup(p, 2, m.piece_bind.get(), 1, &d.piece_offset);
             wgpuRenderPassEncoderDraw(p, 6, 1, 0, 0);
@@ -1786,7 +1803,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         WGPURenderPassEncoder p = begin(enc.get(), m.under_v.get(), clear);
         wgpuRenderPassEncoderSetBindGroup(p, 0, pass1.get(), 0, nullptr);
         wgpuRenderPassEncoderSetPipeline(p, m.ground_pipe.get());
-        draw_chunks(p);
+        draw_chunks(p, m.ground_fade_pipe.get());
         if (m.instances && atlas != nullptr && n_below > 0) {
             wgpuRenderPassEncoderSetPipeline(p, m.sprite_pipe.get());
             wgpuRenderPassEncoderSetBindGroup(p, 1, m.empty_bind.get(), 0, nullptr);
@@ -1802,7 +1819,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         WGPURenderPassEncoder p = begin(enc.get(), target, clear, timed ? &m.ts_writes : nullptr);
         wgpuRenderPassEncoderSetBindGroup(p, 0, pass2.get(), 0, nullptr);
         wgpuRenderPassEncoderSetPipeline(p, m.sea_pipe.get());
-        draw_chunks(p);
+        draw_chunks(p, m.sea_fade_pipe.get());
         if (m.instances && atlas != nullptr && n_above > 0) {
             wgpuRenderPassEncoderSetPipeline(p, m.sprite_pipe.get());
             wgpuRenderPassEncoderSetBindGroup(p, 1, m.empty_bind.get(), 0, nullptr);

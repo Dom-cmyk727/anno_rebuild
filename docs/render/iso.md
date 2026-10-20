@@ -169,6 +169,23 @@ With enhanced water the GPU compositor draws ships itself (after all island obje
 - **Foam:** a broken line along the waterline (noise drifting with time).
 All lengths are pixels at zoom group 0 scaled by the tile height; they are tuning, not evidence. Switch: `GpuLimits::ship_waterline` (frame uniform `ship_water`). The CPU path does not draw it (CPU enhanced water was already a simpler fallback). Tests: `gpu_test.cpp` "ships drawn by the compositor match the CPU path" (original water, all zoom groups, within 1 per channel) and "enhanced water: ships sit in the water, only at the hull bottom" (pixels change only inside the ship's frame below the band's top, never with original water). Not done yet: ships as obstacles in the wave simulation (bow wave, wake), which needs moving ships.
 
+## Stand-in chunks (zoom steps; OQ-077)
+A zoom step switches the tile size at once (`kTile`), and the chunks of the new group may not exist yet (built by background workers, then uploaded a few per frame). Until they do, the compositor draws the same screen area from the nearest zoom group whose chunks are on the GPU, scaled to the tile size shown, instead of open sea. The owner's switch for open sea is `GpuLimits::stand_ins = false`.
+
+| Rule | Value |
+|---|---|
+| Scale | per axis `kTile[from] / kTile[to]` (width and height separately): 2 between groups 0 and 1, 2.1 between 1 and 2; scene pixels are linear in tile coordinates per group, so this keeps the world alignment (up to the rounding of the tile sizes) |
+| Sampling | nearest neighbour at the pixel centre: source pixel `floor((2 p + 1) num / (2 den))`; `render::stand_in_source` (CPU reference) and `floor_div` in `gpu.wgsl` are the same integer rule |
+| Source group | `render::stand_in_groups(group)`: nearest first, the finer group at equal distance; the first one of which at least one needed chunk is on the GPU (CPU reference: in the cache). Parts whose source chunk is missing stay open sea |
+| Which chunks | visible chunks of the group shown that are not real on the GPU; O(visible missing x groups x chunks covered), at most `ceil(ratio) + 1` per axis |
+| Drawing | one draw per source chunk (`render::stand_in_spans`: the exact part of the destination chunk that source chunk shows, so nothing is drawn twice) in the four chunk passes (terrain, ground, sea, objects), with a `Piece` uniform at a dynamic offset (group 2); the source chunk's own textures are bound, nothing is copied or converted. The pieces are written into one buffer that grows as needed |
+| Kept | `FrameRenderer` keeps (does not evict) the cached chunks that would stand in for a visible chunk (only those already built) |
+| Rivers | no flow lattice is scaled: a river on a stand-in uses the legacy look on the stand-in's mask |
+| Animated layers | sea, water objects and ships are drawn at the group shown, never scaled |
+| Not done | cross-fade into the built chunk (the swap is instant); a part-wise fallback to the next group where the nearest has holes; prebuilding the neighbour group's GPU chunks (T4); the CPU viewer path draws open sea (the CPU reference exists, `FrameRenderer::stand_ins`, off by default, because per-frame resampling of ~5 MB per chunk is out of proportion for the fallback path) |
+
+Tests (`gpu_test.cpp`): "stand-in spans tile the destination chunk and map by the tile ratio of kTile", "CPU reference: a missing chunk shows the scaled chunks of the nearest built group" (noise chunks, pixels within 1 of an independently computed source pixel, from group 2 and from group 0), "GPU stand-in chunks equal the CPU reference (synthetic)" (within 1 per channel, both source groups; off = no stand-in drawn). Mutations killed: a shifted pixel centre in the shader and in the CPU rule.
+
 ## Scene composition (scenario view)
 `anno_render::scene`; used by `anno1503 --view` (window and `--png`).
 

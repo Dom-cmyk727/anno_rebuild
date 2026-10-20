@@ -673,10 +673,11 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Faithful default:** analytic waves, no cross-fade yet.
 
 ## OQ-077: Missing chunks: open sea or a stand-in from the nearest built zoom group (rivers.md D9)
-- **Status:** open, owner decides (not built)
-- **Area:** render / frame
+- **Status:** implemented as stand-in, owner to confirm (T1, 2026-10-20)
+- **Area:** render / frame / gpu
 - **What:** a chunk that is not built yet draws open sea; the design option is the nearest built group's chunk. A chunk that waits for a river flow already draws the legacy river look on the correct mask (S5), not open sea.
-- **Faithful default:** open sea.
+- **Implemented (T1):** a visible chunk that is not on the GPU yet (still being built, or waiting for its upload) draws the nearest zoom group's chunks that are, scaled by the compositor's shader to the tile size shown (`GpuLimits::stand_ins`, default on; viewer `ANNO_VIEW_STAND_INS=off`, `bench_frame --stand-ins off` for open sea). The ratio is derived from `kTile` per axis (2 between groups 0 and 1, 2.1 between 1 and 2), nearest neighbour at pixel centres, the same integer rule in `render::stand_in_source` (CPU reference, `FrameRenderer::stand_ins`, off by default so the digests stay) and in `gpu.wgsl` (`Piece`). Rivers on a stand-in use the legacy look on the stand-in's mask; sea, water objects and ships are drawn at the group shown as always. Details and limits: `docs/render/iso.md` "Stand-in chunks". Open for the owner: whether the scaled content (blurry when enlarged, aliased when shrunk) is preferred to open sea, and whether a cross-fade into the built chunk is wanted (not built).
+- **Faithful default:** open sea (`stand_ins` off).
 
 ## OQ-078: Legacy shimmer or flow shading by default in Enhanced water (rivers.md D10)
 - **Status:** implemented as the owner asked; confirm

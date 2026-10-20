@@ -1,6 +1,9 @@
+#include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <numeric>
+#include <tuple>
 
 #include <anno/render/sea.hpp>
 
@@ -237,8 +240,128 @@ float river_bed_height(std::span<const std::uint8_t> heights, std::size_t w, std
     return std::clamp(v, lo, hi);
 }
 
+/// Joins river pieces whose corner footprints are at most max_gap tiles apart
+/// (Kruskal over the pairs, shortest first, so only separate pieces are
+/// linked): a straight channel of corners, plus-shaped three corners wide,
+/// gets the interpolated river level (added to sum / n) and a bed carved
+/// kGapBedDepth below it in `heights`. Corners that already carry river are
+/// left alone.
+void patch_river_gaps(std::span<const RiverPiece> rivers, std::size_t w, std::size_t h,
+                      float max_gap, std::vector<std::uint8_t>& heights, std::vector<float>& sum,
+                      std::vector<float>& n) {
+    struct Link {
+        std::int64_t d2;
+        std::size_t a, b;
+        int ax, ay, bx, by;
+    };
+    struct Rect {
+        int x0, y0, x1, y1;
+    };
+    std::vector<Rect> r;
+    r.reserve(rivers.size());
+    for (const auto& [x, y, fw, fh, z] : rivers) {
+        (void)z;
+        r.push_back({x, y, x + fw, y + fh});
+    }
+    auto axis = [](int a0, int a1, int b0, int b1, int& pa, int& pb) {
+        if (b0 > a1) {
+            pa = a1, pb = b0;
+        } else if (a0 > b1) {
+            pa = a0, pb = b1;
+        } else {
+            pa = pb = (std::max(a0, b0) + std::min(a1, b1)) / 2;
+        }
+    };
+    const auto limit = static_cast<std::int64_t>(std::floor(max_gap * max_gap));
+    std::vector<Link> links;
+    for (std::size_t a = 0; a < r.size(); ++a) {
+        for (std::size_t b = a + 1; b < r.size(); ++b) {
+            Link l{0, a, b, 0, 0, 0, 0};
+            axis(r[a].x0, r[a].x1, r[b].x0, r[b].x1, l.ax, l.bx);
+            axis(r[a].y0, r[a].y1, r[b].y0, r[b].y1, l.ay, l.by);
+            const std::int64_t dx = l.bx - l.ax, dy = l.by - l.ay;
+            l.d2 = dx * dx + dy * dy;
+            if (l.d2 <= limit) {
+                links.push_back(l);
+            }
+        }
+    }
+    std::sort(links.begin(), links.end(), [](const Link& p, const Link& q) {
+        return std::tie(p.d2, p.a, p.b) < std::tie(q.d2, q.a, q.b);
+    });
+    std::vector<std::size_t> uf(r.size());
+    std::iota(uf.begin(), uf.end(), std::size_t{0});
+    auto find = [&](std::size_t v) {
+        while (uf[v] != v) {
+            uf[v] = uf[uf[v]];
+            v = uf[v];
+        }
+        return v;
+    };
+    // Pieces that touch or overlap are one river already.
+    for (std::size_t a = 0; a < r.size(); ++a) {
+        for (std::size_t b = a + 1; b < r.size(); ++b) {
+            if (r[a].x0 <= r[b].x1 && r[b].x0 <= r[a].x1 && r[a].y0 <= r[b].y1 &&
+                r[b].y0 <= r[a].y1) {
+                uf[find(a)] = find(b);
+            }
+        }
+    }
+    // The painted bed is a trench of corners at most level + 1 (the original's
+    // depth test: terrain <= object height + 10). The water test needs the bed
+    // under the level, so the trench corners at level + 1 (and the shallow
+    // ones) leave breaks in a one-corner-wide channel, which the original's
+    // sprites cover. Every trench corner gets at least kGapBedDepth of depth.
+    for (std::size_t i = 0; i < w * h; ++i) {
+        if (n[i] > 0.0F) {
+            const float level = sum[i] / n[i];
+            if (static_cast<float>(heights[i]) <= level + 1.0F) {
+                heights[i] = std::min(
+                    heights[i], static_cast<std::uint8_t>(std::max(level - kGapBedDepth, 0.0F)));
+            }
+        }
+    }
+    const std::vector<float> before = n;
+    for (const Link& l : links) {
+        if (find(l.a) == find(l.b)) {
+            continue;
+        }
+        uf[find(l.a)] = find(l.b);
+        const float za = static_cast<float>(std::get<4>(rivers[l.a])) + kRiverLevel;
+        const float zb = static_cast<float>(std::get<4>(rivers[l.b])) + kRiverLevel;
+        const int steps = std::max(std::abs(l.bx - l.ax), std::abs(l.by - l.ay));
+        for (int k = 0; k <= steps; ++k) {
+            const float t = steps == 0 ? 0.5F : static_cast<float>(k) / static_cast<float>(steps);
+            const int cx =
+                l.ax + static_cast<int>(std::lround(t * static_cast<float>(l.bx - l.ax)));
+            const int cy =
+                l.ay + static_cast<int>(std::lround(t * static_cast<float>(l.by - l.ay)));
+            const float level = za + t * (zb - za);
+            for (int oy = -1; oy <= 1; ++oy) {
+                for (int ox = -1; ox <= 1; ++ox) {
+                    const int px = cx + ox, py = cy + oy;
+                    if (std::abs(ox) + std::abs(oy) > 1 || px < 0 || py < 0 ||
+                        static_cast<std::size_t>(px) >= w || static_cast<std::size_t>(py) >= h) {
+                        continue;
+                    }
+                    const std::size_t i =
+                        static_cast<std::size_t>(py) * w + static_cast<std::size_t>(px);
+                    if (before[i] > 0.0F) {
+                        continue; // a river corner already
+                    }
+                    sum[i] += level;
+                    n[i] += 1.0F;
+                    const float bed = std::max(level - kGapBedDepth, 0.0F);
+                    heights[i] = std::min(heights[i], static_cast<std::uint8_t>(bed));
+                }
+            }
+        }
+    }
+}
+
 std::optional<IslandWater> IslandWater::build(const insel::Island& island,
-                                              std::span<const RiverPiece> rivers) {
+                                              std::span<const RiverPiece> rivers,
+                                              float gap_patch_tiles) {
     auto hr = island.heights();
     auto gr = island.gfx_ids();
     if (!hr || !gr) {
@@ -298,6 +421,9 @@ std::optional<IslandWater> IslandWater::build(const insel::Island& island,
                 }
             }
         }
+    }
+    if (gap_patch_tiles > 0.0F) {
+        patch_river_gaps(rivers, iw_w, iw_h, gap_patch_tiles, out.heights, sum, n);
     }
     out.river.resize(iw_w * iw_h);
     for (std::size_t i = 0; i < iw_w * iw_h; ++i) {

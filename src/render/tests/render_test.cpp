@@ -244,3 +244,49 @@ TEST_CASE("canvas to image refuses sizes an Rgba cannot hold") {
     CHECK(img->width == 3);
     CHECK(img->height == 2);
 }
+
+TEST_CASE("river gap patch: trench corners get depth, nearby pieces are joined (OQ-068)") {
+    constexpr std::size_t n = 24;
+    // Two 3 x 3 pieces of tier 32 on a plateau of 48, five tiles apart (corners
+    // 2..5 and 10..13 along x), plus a trench corner at level + 1 = 42 inside the first.
+    const std::vector<render::sea::RiverPiece> pieces = {{2, 8, 3, 3, 32}, {10, 8, 3, 3, 32}};
+    auto make = [&](std::vector<std::uint8_t>& h, std::vector<float>& sum,
+                    std::vector<float>& cnt) {
+        h.assign(n * n, 48);
+        sum.assign(n * n, 0.0F);
+        cnt.assign(n * n, 0.0F);
+        h[9 * n + 3] = 42;
+        for (const auto& [x, y, w, hh, z] : pieces) {
+            for (std::size_t dy = 0; dy <= hh; ++dy) {
+                for (std::size_t dx = 0; dx <= w; ++dx) {
+                    sum[(y + dy) * n + x + dx] += static_cast<float>(z) + render::sea::kRiverLevel;
+                    cnt[(y + dy) * n + x + dx] += 1.0F;
+                }
+            }
+        }
+    };
+    std::vector<std::uint8_t> h;
+    std::vector<float> sum, cnt;
+    make(h, sum, cnt);
+    // The gap (5 to 10: 5 tiles) is wider than 4, so no link; the trench is deepened.
+    render::sea::patch_river_gaps(pieces, n, n, 4.0F, h, sum, cnt);
+    CHECK(h[9 * n + 3] == 36); // level 41 - kGapBedDepth
+    CHECK(h[9 * n + 8] == 48); // the gap stays plateau
+    CHECK(cnt[9 * n + 8] == 0.0F);
+    // Within 6 tiles the pieces are joined: the corners between get a level
+    // between the two (here equal) and a carved bed.
+    make(h, sum, cnt);
+    render::sea::patch_river_gaps(pieces, n, n, 6.0F, h, sum, cnt);
+    for (std::size_t x = 6; x <= 9; ++x) {
+        CHECK(cnt[9 * n + x] > 0.0F);
+        CHECK(sum[9 * n + x] / cnt[9 * n + x] == doctest::Approx(41.0F));
+        CHECK(h[9 * n + x] <= 36);
+    }
+    // Pieces that touch (a shared corner column) are one river already: no carve.
+    const std::vector<render::sea::RiverPiece> touching = {{2, 8, 3, 3, 32}, {5, 8, 3, 3, 32}};
+    std::vector<std::uint8_t> h2(n * n, 48);
+    std::vector<float> s2(n * n, 0.0F), c2(n * n, 0.0F);
+    render::sea::patch_river_gaps(touching, n, n, 6.0F, h2, s2, c2);
+    CHECK(h2[9 * n + 4] == 48);
+    CHECK(c2[9 * n + 4] == 0.0F);
+}

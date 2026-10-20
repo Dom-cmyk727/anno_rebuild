@@ -126,6 +126,12 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
                 return std::nullopt;
             }
             out.river_gain = *g;
+        } else if (a == "--river-gap-patch") {
+            const auto g = number<float>(v);
+            if (!g || !(*g >= 0.0F) || *g > 64.0F) {
+                return std::nullopt;
+            }
+            out.river_gap_patch = *g;
         } else if (a == "--river-speed") {
             if (v == "median") {
                 out.river_speed = render::river::RiverConfig::Reference::MedianCell;

@@ -328,7 +328,9 @@ std::vector<SpriteDraw> Scene::sprites_in(Rect rect, std::size_t group, std::uin
 
 const sea::IslandWater* Scene::island_water(std::size_t i) const {
     IslandData& d = objects_[i];
-    std::call_once(*d.water_once, [&] { d.water = sea::IslandWater::build(islands[i], d.rivers); });
+    std::call_once(*d.water_once, [&] {
+        d.water = sea::IslandWater::build(islands[i], d.rivers, river_cfg.gap_patch_tiles);
+    });
     return d.water ? &*d.water : nullptr;
 }
 

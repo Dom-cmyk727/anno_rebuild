@@ -126,12 +126,30 @@ float river_bed_height(std::span<const std::uint8_t> heights, std::size_t w, std
 using RiverPiece =
     std::tuple<std::uint16_t, std::uint16_t, std::uint8_t, std::uint8_t, std::uint8_t>;
 
+/// Depth (HEIGHT units, level - bed) of the channel carved by patch_river_gaps;
+/// a river is about 9 deep.
+inline constexpr float kGapBedDepth = 5.0F;
+
+/// The gap patch of IslandWater::build (OQ-068), on the river level sums of
+/// the corners (`sum` / `n`, as built from the pieces; w x h corners) and the
+/// heights of the water's own copy: every trench corner (height at most level
+/// + 1, the original's depth test) is deepened to level - kGapBedDepth, and
+/// pieces whose footprints are at most max_gap tiles apart are joined by a
+/// channel (shortest gaps first) that adds its interpolated level to sum / n.
+void patch_river_gaps(std::span<const RiverPiece> rivers, std::size_t w, std::size_t h,
+                      float max_gap, std::vector<std::uint8_t>& heights, std::vector<float>& sum,
+                      std::vector<float>& n);
+
 /// Per-island inputs of water_field, computed once per island.
 class IslandWater {
   public:
     /// nullopt if the island's HEIGHT or GFXID grid cannot be read.
+    /// gap_patch_tiles > 0 joins river pieces whose footprints are at most that
+    /// many tiles apart (OQ-068): the corners between them get a river level and a
+    /// shallow carved bed in this copy of the heights (never in the island).
     static std::optional<IslandWater> build(const formats::insel::Island& island,
-                                            std::span<const RiverPiece> rivers);
+                                            std::span<const RiverPiece> rivers,
+                                            float gap_patch_tiles = 0.0F);
     /// River surface level at tile (tx, ty) + (fx, fy), nullopt away from
     /// rivers.
     [[nodiscard]] std::optional<float> river_level(std::size_t tx, std::size_t ty, float fx,

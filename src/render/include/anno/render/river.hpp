@@ -166,6 +166,11 @@ struct RiverConfig {
     /// little to measure the depth there: a shallow one would carry no flow).
     std::uint32_t bridge_half_width = 1;
     float bridge_min_depth = 3.0F;
+    /// Gaps in the river data (OQ-068): river pieces whose footprints are at
+    /// most this many tiles apart are joined by a channel in the drawn water
+    /// and in the flow raster (sea::IslandWater::build). 0 = off, the data as
+    /// the original has it (library default; the viewer shows 8).
+    float gap_patch_tiles = 0.0F;
 
     /// Rivers without sea contact drain to a pseudo outlet, a guess (OQ-067).
     /// Their solved velocities are multiplied by this: 1 = flow as solved

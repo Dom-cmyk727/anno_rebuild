@@ -181,6 +181,7 @@ TEST_CASE("command line") {
     using Ref = anno::render::river::RiverConfig::Reference;
     CHECK(d->river_gain == 4.0F);
     CHECK(d->river_speed == Ref::MedianCell);
+    CHECK(d->river_gap_patch == 8.0F);
     const auto f = parse_args({"--view", "x.scp", "--river-speed", "fastest", "--river-gain", "1"});
     REQUIRE(f);
     CHECK(f->river_speed == Ref::FastestSection);

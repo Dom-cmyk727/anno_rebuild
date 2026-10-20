@@ -79,6 +79,9 @@ struct GpuStats {
     /// placeholders).
     double sync_scan_ms = 0, sync_drop_ms = 0, sync_real_ms = 0, sync_placeholder_ms = 0;
     std::size_t chunks_dropped = 0, planes_freed = 0, placeholders = 0;
+    /// Planes of the real uploads that came from the background pre-creation
+    /// (GpuLimits::prewarm_chunks) instead of being created in the frame.
+    std::size_t planes_warm = 0;
     /// Of encode_ms: creating the command encoder; the frame and river uniforms
     /// with the two frame bind groups; choosing the chunk draws (stand_in_ms of
     /// it: the stand-in cover and the piece records); writing the piece buffer
@@ -153,12 +156,23 @@ struct GpuLimits {
     /// the shader's analytic waves outside it) is shown. false: set up in
     /// the frame (headless renders, tests).
     bool background_fluid = false;
+    /// Chunks' worth of texture planes (five 512 x 512 textures, about 4 MB
+    /// per chunk) that a background thread keeps ready: it creates them right
+    /// after the compositor is made and makes up for the ones uploads take.
+    /// Creating textures costs the window thread 1-18 ms for 2-3 chunks (the
+    /// driver allocates device memory), which a zoom step into a group with
+    /// nothing uploaded yet paid for. The default covers the visible chunks of
+    /// a 2560 x 1369 view at one group (24); a larger view or more groups held
+    /// at once take more. Memory use is this times 4 MB, on top of the chunks
+    /// uploaded; 0 = none (headless renders, tests).
+    std::size_t prewarm_chunks = 0;
     /// The limits for an interactive window: uploads and wave simulation
     /// setup are spread over frames (upload_budget_ms 1.0, background_fluid).
     [[nodiscard]] static GpuLimits interactive() {
         GpuLimits l;
         l.upload_budget_ms = 1.0;
         l.background_fluid = true;
+        l.prewarm_chunks = 24;
         return l;
     }
     /// A visible chunk that is not on the GPU yet (still being built, or waiting
@@ -332,6 +346,8 @@ class GpuFrame {
     std::vector<std::uint8_t> read_back(WGPUTexture texture, std::uint32_t w, std::uint32_t h,
                                         std::uint32_t bpp = 4) const;
     [[nodiscard]] WGPUTextureFormat format() const;
+    /// Pre-created chunk planes waiting for uploads (GpuLimits::prewarm_chunks).
+    [[nodiscard]] std::size_t warm_planes_ready() const;
     /// Errors of the device so far (Context::errors): uncaptured ones and
     /// command buffers dropped because recording them failed (render()
     /// then draws nothing).

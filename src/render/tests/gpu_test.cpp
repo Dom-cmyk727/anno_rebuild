@@ -2772,3 +2772,47 @@ TEST_CASE("the steps of a GPU frame add up to its total, and the sync steps are 
     CHECK(c.chunks_dropped == 0);
     CHECK(g.errors() == 0);
 }
+
+TEST_CASE(
+    "pre-created chunk planes are taken by the first uploads, and an early end joins the thread") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    {
+        // Ending the frame while the thread is still creating planes must not
+        // touch a released device.
+        gpu::GpuLimits busy;
+        busy.wave_simulation = false;
+        busy.prewarm_chunks = 64;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, busy);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    }
+    const EmptyScene es = empty_scene();
+    gpu::GpuLimits limits;
+    limits.wave_simulation = false;
+    limits.prewarm_chunks = 2;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    // The thread creates 2 chunks x 5 planes.
+    for (int i = 0; i < 2000 && g.warm_planes_ready() < 10; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    CHECK(g.warm_planes_ready() == 10);
+    render::FrameRenderer fr(1, false);
+    fr.insert_chunk({0, 0, 0}, noise_land_chunk(0, 0, 0));
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    const auto target = g.offscreen_target(side, side);
+    const render::Rect one{0, 0, render::kChunk, render::kChunk};
+    const auto st =
+        g.render(fr, *es.scene, one, 0, 0, render::WaterStyle::Original, target.second.get());
+    CHECK(st.chunks_uploaded == 1);
+    CHECK(st.planes_warm >= 1);
+    // The thread makes up for the planes taken.
+    for (int i = 0; i < 2000 && g.warm_planes_ready() < 10; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    CHECK(g.warm_planes_ready() == 10);
+    CHECK(g.errors() == 0);
+}

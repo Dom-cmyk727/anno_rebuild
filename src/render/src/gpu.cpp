@@ -3,9 +3,11 @@
 #include <bit>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
@@ -334,6 +336,104 @@ struct GpuFrame::Impl {
     std::vector<Plane> plane_pool;
     static constexpr std::size_t kPoolPlanes = 8 * 24;
 
+    /// Chunk planes created ahead of time by a background thread
+    /// (GpuLimits::prewarm_chunks): the first texture creations after start
+    /// cost 1-13 ms each on the window thread (the driver allocates device
+    /// memory blocks), so a zoom step that uploads its first chunks stalled for
+    /// that long. The window thread takes from here when the plane pool has
+    /// no match and never waits for the lock (try_lock); the thread keeps
+    /// prewarm_chunks' worth ready, refilling as planes are taken.
+    std::mutex warm_mutex;
+    std::vector<Plane> warm_planes;
+    std::thread warm_thread;
+    std::condition_variable warm_cv;
+    bool warm_stop = false;
+    std::size_t planes_warm_taken = 0;
+
+    ~Impl() {
+        {
+            const std::lock_guard lock(warm_mutex);
+            warm_stop = true;
+        }
+        warm_cv.notify_one();
+        if (warm_thread.joinable()) {
+            warm_thread.join();
+        }
+    }
+
+    /// The five full-size chunk planes (formats of upload_chunk).
+    static constexpr std::array<std::pair<WGPUTextureFormat, int>, 5> kChunkPlanes = {{
+        {WGPUTextureFormat_BGRA8Unorm, 4},
+        {WGPUTextureFormat_RGBA8Unorm, 4},
+        {WGPUTextureFormat_RGBA8Uint, 4},
+        {kTerrainFormat, 2},
+        {WGPUTextureFormat_R8Uint, 1},
+    }};
+
+    /// Starts the thread that creates `limits.prewarm_chunks` chunks' planes.
+    void start_prewarm() {
+        if (limits.prewarm_chunks == 0) {
+            return;
+        }
+        warm_thread = std::thread([this] {
+            const auto n = static_cast<std::uint32_t>(kChunk);
+            const std::size_t target = limits.prewarm_chunks * kChunkPlanes.size();
+            std::unique_lock lock(warm_mutex);
+            while (true) {
+                // Refills as the window thread takes planes: the first uploads of
+                // each zoom group need a view's worth of chunks at once.
+                warm_cv.wait(lock, [&] { return warm_stop || warm_planes.size() < target; });
+                if (warm_stop) {
+                    return;
+                }
+                // The format that is the scarcest now (uploads take the five of
+                // a chunk alike, but a chunk without a plane takes fewer).
+                std::size_t pick = 0, fewest = warm_planes.size() + 1;
+                for (std::size_t k = 0; k < kChunkPlanes.size(); ++k) {
+                    const auto count = static_cast<std::size_t>(
+                        std::count_if(warm_planes.begin(), warm_planes.end(), [&](const Plane& q) {
+                            return q.format == kChunkPlanes[k].first;
+                        }));
+                    if (count < fewest) {
+                        fewest = count;
+                        pick = k;
+                    }
+                }
+                lock.unlock();
+                Plane p;
+                p.format = kChunkPlanes[pick].first;
+                p.w = n;
+                p.h = n;
+                p.texture = make_texture(dev(), "upload", p.format, n, n, 1,
+                                         WGPUTextureUsage_TextureBinding |
+                                             WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
+                p.view = make_view(p.texture.get(), false);
+                lock.lock();
+                warm_planes.push_back(std::move(p));
+            }
+        });
+    }
+
+    /// Takes a pre-created plane of this format and size, if one is ready.
+    bool take_warm(WGPUTextureFormat fmt, std::uint32_t w, std::uint32_t h, Plane& out) {
+        std::unique_lock lock(warm_mutex, std::try_to_lock);
+        if (!lock.owns_lock()) {
+            return false;
+        }
+        const auto it = std::find_if(warm_planes.begin(), warm_planes.end(), [&](const Plane& p) {
+            return p.format == fmt && p.w == w && p.h == h;
+        });
+        if (it == warm_planes.end()) {
+            return false;
+        }
+        out = std::move(*it);
+        warm_planes.erase(it);
+        ++planes_warm_taken;
+        lock.unlock();
+        warm_cv.notify_one();
+        return true;
+    }
+
     /// Drops the GPU chunk at `it`, keeping its planes for reuse.
     std::map<ChunkKey, Chunk>::iterator drop_chunk(std::map<ChunkKey, Chunk>::iterator it) {
         for (Plane& p : it->second.planes) {
@@ -577,7 +677,7 @@ struct GpuFrame::Impl {
             if (pooled != plane_pool.end()) {
                 plane = std::move(*pooled);
                 plane_pool.erase(pooled);
-            } else {
+            } else if (!take_warm(fmt, pw, ph, plane)) {
                 plane.format = fmt;
                 plane.w = pw;
                 plane.h = ph;
@@ -1301,10 +1401,16 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
         }
         m.tier_note += ")";
     }
+    m.start_prewarm();
     return f;
 }
 
 GpuFrame::~GpuFrame() = default;
+
+std::size_t GpuFrame::warm_planes_ready() const {
+    const std::lock_guard lock(impl_->warm_mutex);
+    return impl_->warm_planes.size();
+}
 
 WGPUTextureFormat GpuFrame::format() const {
     return impl_->format;
@@ -1344,7 +1450,9 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     stats.sea_ms = lap();
     const auto visible = visible_chunks(view);
     stats.visible_ms = lap();
+    const std::size_t warm_before = m.planes_warm_taken;
     stats.chunks_uploaded = m.sync_chunks(frames, group, visible, stats);
+    stats.planes_warm = m.planes_warm_taken - warm_before;
     stats.chunk_sync_ms = lap();
     stats.sync_scan_ms = std::max(0.0, stats.chunk_sync_ms - stats.sync_drop_ms -
                                            stats.sync_real_ms - stats.sync_placeholder_ms);

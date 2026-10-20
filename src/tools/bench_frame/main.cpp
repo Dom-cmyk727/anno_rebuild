@@ -8,7 +8,7 @@
 //       [--renderer cpu,gpu] [--check] [--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick]
 //       [--zoom k] [--zoom-frames n] [--pace ms] [--spike ms] [--limits default|interactive]
 //       [--settle ms] [--river-flow legacy|flow] [--river-quality auto|low|medium|high]
-//       [--river-pass] [--stand-ins on|off] [--zoom-dump <dir>]
+//       [--river-pass] [--stand-ins on|off] [--prewarm chunks] [--zoom-dump <dir>]
 //   bench_frame --list-adapters
 //   bench_frame <game_dir> <file> --river-cost      (GPU cost of the river shading, synthetic)
 //
@@ -104,6 +104,8 @@ struct Options {
     bool river_cost = false, river_pass = false;
     /// GpuLimits::stand_ins / FrameRenderer::stand_ins (nullopt = library defaults).
     std::optional<bool> stand_ins;
+    /// GpuLimits::prewarm_chunks (nullopt = the limits' default).
+    std::optional<std::size_t> prewarm;
     /// Directory for the frames after zoom steps (empty = none).
     std::string zoom_dump;
 };
@@ -145,7 +147,7 @@ struct Row {
     /// GPU: every window-thread step of the frame (GpuStats::steps, they add up
     /// to the compositor's total), and the counts behind the sync steps.
     std::vector<std::pair<std::string, double>> steps;
-    std::size_t dropped = 0, planes_freed = 0, placeholders = 0;
+    std::size_t dropped = 0, planes_freed = 0, placeholders = 0, planes_warm = 0;
     bool pieces_realloc = false;
 };
 
@@ -569,9 +571,10 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, std::s
                 }
             }
             std::printf("- #%zu (group %zu, total %.1f, wait %.1f): %s; sum %.2f; dropped %zu, "
-                        "freed %zu, placeholders %zu, realloc %s\n",
+                        "freed %zu, placeholders %zu, warm planes %zu, realloc %s\n",
                         r.frame_no, r.group, r.total, r.wait, line.c_str(), sum, r.dropped,
-                        r.planes_freed, r.placeholders, r.pieces_realloc ? "yes" : "no");
+                        r.planes_freed, r.placeholders, r.planes_warm,
+                        r.pieces_realloc ? "yes" : "no");
         }
     };
     std::printf("\nzoom steps deferred until the target group was ready: %zu frames\n", deferred);
@@ -645,6 +648,7 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
             r.dropped = st.chunks_dropped;
             r.planes_freed = st.planes_freed;
             r.placeholders = st.placeholders;
+            r.planes_warm = st.planes_warm;
             r.pieces_realloc = st.pieces_realloc;
             if (!wait_gpu) {
                 return r;
@@ -760,7 +764,7 @@ constexpr const char* kUsage =
     "[--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick] [--zoom k] [--zoom-frames n] "
     "[--pace ms] [--spike ms] [--limits default|interactive] [--settle ms] "
     "[--river-flow legacy|flow] [--river-quality auto|low|medium|high] [--river-gain x] "
-    "[--river-pass] [--stand-ins on|off] [--zoom-dump dir]\n"
+    "[--river-pass] [--stand-ins on|off] [--prewarm chunks] [--zoom-dump dir]\n"
     "       bench_frame --list-adapters\n"
     "       bench_frame <game_dir> <file> --river-cost\n";
 
@@ -861,6 +865,10 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
         } else if (a == "--stand-ins") {
             ok = v == "on" || v == "off";
             o.stand_ins = v == "on";
+        } else if (a == "--prewarm") {
+            std::size_t n = 0;
+            ok = parse(v, n);
+            o.prewarm = n;
         } else if (a == "--zoom-dump") {
             ok = !v.empty();
             o.zoom_dump = std::string(v);
@@ -1015,6 +1023,9 @@ int main(int argc, char** argv) {
         gpu::GpuLimits limits = o->interactive ? gpu::GpuLimits::interactive() : gpu::GpuLimits{};
         limits.river_quality = o->river_quality;
         limits.gpu_timing = o->river_pass;
+        if (o->prewarm) {
+            limits.prewarm_chunks = *o->prewarm;
+        }
         if (o->stand_ins) {
             limits.stand_ins = *o->stand_ins;
         }
@@ -1024,6 +1035,18 @@ int main(int argc, char** argv) {
             return 1;
         }
         frame_gpu = std::move(f).value();
+        // The viewer's window is open for seconds before the first zoom: wait
+        // (5 s at most) for the background plane pre-creation, so the benchmark
+        // sees the state of a window that has been idle.
+        const auto warm_start = std::chrono::steady_clock::now();
+        while (frame_gpu->warm_planes_ready() < 5 * limits.prewarm_chunks &&
+               std::chrono::steady_clock::now() - warm_start < std::chrono::seconds(5)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        std::fprintf(
+            stderr, "pre-created planes ready: %zu after %.0f ms\n", frame_gpu->warm_planes_ready(),
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - warm_start)
+                .count());
         if (!frame_gpu->river_tier_note().empty()) {
             std::fprintf(stderr, "%s\n", frame_gpu->river_tier_note().c_str());
         }

@@ -22,6 +22,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <thread>
 #include <tuple>
@@ -179,11 +180,17 @@ class FrameRenderer {
     std::size_t threads;
     /// Chunks kept besides the visible ones.
     std::size_t spare_chunks = 48;
+    /// render() draws a visible chunk that is not built from the nearest zoom
+    /// group's chunks (stand_in_chunk) instead of open sea. Off by default: the
+    /// CPU path is the reference and the tests' digests; the GPU compositor has
+    /// its own switch (GpuLimits::stand_ins) and does the same on the card.
+    bool stand_ins = false;
 
   private:
     std::size_t request_chunks(const Scene& scene, std::size_t group, Rect view,
                                const std::vector<std::pair<int, int>>& visible);
-    void trim(std::size_t group, Rect view, const std::set<ChunkKey>& keep);
+    void trim(std::size_t group, Rect view, const std::set<ChunkKey>& keep,
+              const std::set<ChunkKey>& retain = {});
     std::size_t fill_cache(const Scene& scene, std::size_t group,
                            const std::vector<std::pair<int, int>>& wanted);
 
@@ -196,6 +203,55 @@ class FrameRenderer {
 /// The rectangle of view's size at group `to` centred on the scene point
 /// that `view` centres on at group `from`.
 Rect zoomed_view(Rect view, std::size_t from, std::size_t to);
+
+// ---- Stand-in chunks (open-questions OQ-077) ----
+//
+// A visible chunk that is not built yet (a zoom step to a group nobody has
+// built here, an upload still waiting) shows the same screen area of the
+// nearest zoom group whose chunks exist, scaled to the tile size of the group
+// shown: scene pixels are linear in tile coordinates per group, so the scale
+// of an axis is kTile[to] / kTile[from] there (2 between the first two groups
+// of the original, 2.1 between the next two: derived from kTile, never
+// written as a literal). The scaling is nearest-neighbour at pixel centres,
+// the same integer rule on the CPU reference (stand_in_chunk) and in the GPU
+// compositor (gpu.wgsl, Piece), and it keeps the world alignment: a stand-in
+// next to a built chunk shows the same ground at the same place, up to the
+// rounding of the tile sizes. Rivers keep the legacy look on the stand-in's
+// mask (no flow lattice is scaled); animated layers (water objects, sea,
+// ships) are drawn at the group shown as always.
+
+/// Source pixel (on one axis) that destination pixel `p` shows: the pixel
+/// containing the centre of `p` after scaling by num / den (the tile size of
+/// the source group over the one of the destination group on that axis),
+/// floor((2p + 1) * num / (2 den)).
+int stand_in_source(int p, int num, int den);
+
+/// The zoom groups whose chunks may stand in for a chunk of `group`, nearest
+/// first, the finer group (smaller index, larger tiles) first at equal
+/// distance. One entry per other group.
+std::vector<std::size_t> stand_in_groups(std::size_t group);
+
+/// The part of a destination chunk that one source chunk shows.
+struct StandInSpan {
+    /// Chunk of the source group.
+    int src_cx = 0, src_cy = 0;
+    /// Scene pixels (destination group) of the destination chunk whose centre
+    /// lies in that source chunk after scaling.
+    Rect dst;
+};
+/// The source chunks (group `from`) that chunk (cx, cy) of group `to` shows,
+/// with their parts of it; the parts tile the destination chunk exactly, row by
+/// row. O(chunks covered) = at most ceil(ratio) + 1 per axis.
+std::vector<StandInSpan> stand_in_spans(int cx, int cy, std::size_t to, std::size_t from);
+
+/// The CPU reference of a stand-in: chunk (cx, cy) of `group` built from the
+/// first group of stand_in_groups(group) of which `frames` holds at least one
+/// of the chunks it shows (pixels whose source chunk is missing stay open sea
+/// of colour `open_water`). nullopt when there is none. The result carries no
+/// flow lattice and no serial. Cost: one pass over the planes, ~5 MB.
+std::optional<Chunk> stand_in_chunk(const FrameRenderer& frames, std::size_t group, int cx, int cy,
+                                    Px open_water);
+
 /// Chunks (cx, cy) that overlap `view`, row by row.
 std::vector<std::pair<int, int>> visible_chunks(Rect view);
 /// Scene rectangle of chunk (cx, cy).

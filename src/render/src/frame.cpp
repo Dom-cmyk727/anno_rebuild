@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -388,9 +389,36 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
     std::tie(stats.chunks_built, stats.chunks_ms, stats.chunks_missing) =
         update_chunks(scene, view, group);
     static const Chunk empty;
+    // Visible chunks that are not built: the nearest group's chunks, scaled
+    // (stand_ins), else open sea.
+    std::map<std::pair<int, int>, Chunk> standing;
+    if (stand_ins) {
+        std::vector<std::pair<int, int>> missing;
+        for (const auto& [cx, cy] : chunks) {
+            if (!cache_.contains({group, cx, cy})) {
+                missing.emplace_back(cx, cy);
+            }
+        }
+        const Px open = scene.textures.water();
+        auto built = par_map(missing, threads, [&](const std::pair<int, int>& c) {
+            return stand_in_chunk(*this, group, c.first, c.second, open);
+        });
+        for (std::size_t i = 0; i < missing.size(); ++i) {
+            if (built[i]) {
+                standing.emplace(missing[i], std::move(*built[i]));
+            }
+        }
+    }
+    auto find = [&](int cx, int cy) -> const Chunk* {
+        if (const auto it = cache_.find({group, cx, cy}); it != cache_.end()) {
+            return &it->second;
+        }
+        const auto it = standing.find({cx, cy});
+        return it == standing.end() ? nullptr : &it->second;
+    };
     auto get = [&](int cx, int cy) -> const Chunk& {
-        const auto it = cache_.find({group, cx, cy});
-        return it == cache_.end() ? empty : it->second;
+        const Chunk* c = find(cx, cy);
+        return c != nullptr ? *c : empty;
     };
     const std::uint32_t water = rgb(scene.textures.water());
 
@@ -421,15 +449,15 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
     const std::function<std::optional<float>(int, int)> terrain =
         [&](int sx, int sy) -> std::optional<float> {
         const int cx = div_euclid(sx, kChunk), cy = div_euclid(sy, kChunk);
-        const auto it = cache_.find({group, cx, cy});
-        if (it == cache_.end()) {
+        const Chunk* c = find(cx, cy);
+        if (c == nullptr) {
             return std::nullopt;
         }
         const std::size_t i = chunk_index(cx, cy, sx, sy);
-        if (i >= it->second.terrain.size()) {
+        if (i >= c->terrain.size()) {
             return std::nullopt;
         }
-        const std::uint16_t v = it->second.terrain[i];
+        const std::uint16_t v = c->terrain[i];
         if (v == kNoTerrain) {
             return std::nullopt;
         }
@@ -594,11 +622,29 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
         }
     }
     pending_ = workers_->submit(todo, ships_);
-    trim(group, view, keep);
+    // The chunks that would stand in for a visible chunk still being built (the
+    // zoom group the view came from, the prebuilt neighbours) are kept, though
+    // nothing asks for them to be built: the eviction below ranks other groups'
+    // chunks by their distance in the current group's chunk coordinates, which
+    // says nothing about what shows through. Only chunks already built, so no
+    // more than (groups - 1) x the visible ones.
+    std::set<ChunkKey> retain;
+    for (const std::size_t from : stand_in_groups(group)) {
+        for (const auto& [cx, cy] : visible) {
+            for (const StandInSpan& span : stand_in_spans(cx, cy, group, from)) {
+                const ChunkKey k{from, span.src_cx, span.src_cy};
+                if (cache_.contains(k)) {
+                    retain.insert(k);
+                }
+            }
+        }
+    }
+    trim(group, view, keep, retain);
     return received;
 }
 
-void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>& keep) {
+void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>& keep,
+                         const std::set<ChunkKey>& retain) {
     if (cache_.size() <= keep.size() + spare_chunks) {
         return;
     }
@@ -606,7 +652,7 @@ void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>&
     const int ccy = div_euclid(view.y + view.h / 2, kChunk);
     std::vector<std::tuple<bool, int, ChunkKey>> keys;
     for (const auto& [k, c] : cache_) {
-        if (keep.contains(k)) {
+        if (keep.contains(k) || retain.contains(k)) {
             continue;
         }
         const auto [g, cx, cy] = k;
@@ -659,6 +705,147 @@ Rect zoomed_view(Rect view, std::size_t from, std::size_t to) {
     const int x = scale(cx, kTile[from].w, kTile[to].w);
     const int y = scale(cy, kTile[from].h, kTile[to].h);
     return {x - view.w / 2, y - view.h / 2, view.w, view.h};
+}
+
+int stand_in_source(int p, int num, int den) {
+    return static_cast<int>(
+        div_euclid<std::int64_t>((std::int64_t{2} * p + 1) * num, std::int64_t{2} * den));
+}
+
+std::vector<std::size_t> stand_in_groups(std::size_t group) {
+    std::vector<std::size_t> out;
+    for (std::size_t d = 1; d < kGroups; ++d) {
+        if (group >= d) {
+            out.push_back(group - d);
+        }
+        if (group + d < kGroups) {
+            out.push_back(group + d);
+        }
+    }
+    return out;
+}
+
+namespace {
+
+/// One axis of stand_in_spans: (source chunk, first and one past the last
+/// destination pixel) for destination chunk `c` of `kChunk` pixels.
+std::vector<std::array<int, 3>> stand_in_axis(int c, int num, int den) {
+    auto ceil_div = [](std::int64_t a, std::int64_t b) {
+        return div_euclid<std::int64_t>(a + b - 1, b);
+    };
+    const int d0 = c * kChunk, d1 = d0 + kChunk;
+    const int s0 = div_euclid(stand_in_source(d0, num, den), kChunk);
+    const int s1 = div_euclid(stand_in_source(d1 - 1, num, den), kChunk);
+    std::vector<std::array<int, 3>> out;
+    for (int s = s0; s <= s1; ++s) {
+        // The first destination pixel p whose centre maps to source pixel
+        // `source` or beyond: the smallest p with (2p + 1) num >= 2 den source.
+        const auto first = [&](std::int64_t source) {
+            return ceil_div(2 * std::int64_t{den} * source - num, 2 * std::int64_t{num});
+        };
+        const int lo = std::max<int>(d0, static_cast<int>(first(std::int64_t{s} * kChunk)));
+        const int hi = std::min<int>(d1, static_cast<int>(first((std::int64_t{s} + 1) * kChunk)));
+        if (hi > lo) {
+            out.push_back({s, lo, hi});
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+std::vector<StandInSpan> stand_in_spans(int cx, int cy, std::size_t to, std::size_t from) {
+    std::vector<StandInSpan> out;
+    if (to >= kGroups || from >= kGroups) {
+        return out;
+    }
+    const auto xs = stand_in_axis(cx, kTile[from].w, kTile[to].w);
+    const auto ys = stand_in_axis(cy, kTile[from].h, kTile[to].h);
+    for (const auto& y : ys) {
+        for (const auto& x : xs) {
+            out.push_back({x[0], y[0], Rect{x[1], y[1], x[2] - x[1], y[2] - y[1]}});
+        }
+    }
+    return out;
+}
+
+std::optional<Chunk> stand_in_chunk(const FrameRenderer& frames, std::size_t group, int cx, int cy,
+                                    Px open_water) {
+    for (const std::size_t from : stand_in_groups(group)) {
+        const auto spans = stand_in_spans(cx, cy, group, from);
+        struct Part {
+            const StandInSpan* span;
+            const Chunk* chunk;
+        };
+        std::vector<Part> parts;
+        for (const StandInSpan& sp : spans) {
+            if (const Chunk* c = frames.chunk({from, sp.src_cx, sp.src_cy})) {
+                parts.push_back({&sp, c});
+            }
+        }
+        if (parts.empty()) {
+            continue;
+        }
+        const auto n = to_size(kChunk);
+        const int nx = kTile[from].w, dx = kTile[group].w;
+        const int ny = kTile[from].h, dy = kTile[group].h;
+        Chunk out;
+        auto any = [&](auto member) {
+            return std::any_of(parts.begin(), parts.end(),
+                               [&](const Part& p) { return !(p.chunk->*member).empty(); });
+        };
+        if (any(&Chunk::ground)) {
+            out.ground.assign(n * n, rgb(open_water));
+        }
+        if (any(&Chunk::objects)) {
+            out.objects.assign(n * n, Px{0, 0, 0, 0});
+        }
+        if (any(&Chunk::field)) {
+            out.field.resize(n * n * 4);
+            for (std::size_t i = 0; i < n * n; ++i) {
+                out.field[i * 4] = out.field[i * 4 + 1] = out.field[i * 4 + 2] = 255;
+                out.field[i * 4 + 3] = 1;
+            }
+        }
+        if (any(&Chunk::terrain)) {
+            out.terrain.assign(n * n, kNoTerrain);
+        }
+        if (any(&Chunk::base)) {
+            out.base.assign(n * n, 255);
+        }
+        for (const Part& part : parts) {
+            const Chunk& src = *part.chunk;
+            out.water_below = out.water_below || src.water_below;
+            out.water_above = out.water_above || src.water_above;
+            const Rect r = part.span->dst;
+            for (int y = r.y; y < r.y + r.h; ++y) {
+                const int sy = stand_in_source(y, ny, dy);
+                for (int x = r.x; x < r.x + r.w; ++x) {
+                    const int sx = stand_in_source(x, nx, dx);
+                    const std::size_t d = chunk_index(cx, cy, x, y);
+                    const std::size_t s = chunk_index(part.span->src_cx, part.span->src_cy, sx, sy);
+                    if (!src.ground.empty()) {
+                        out.ground[d] = src.ground[s];
+                    }
+                    if (!src.objects.empty()) {
+                        out.objects[d] = src.objects[s];
+                    }
+                    if (!src.field.empty()) {
+                        std::copy_n(src.field.data() + s * 4, 4, out.field.data() + d * 4);
+                    }
+                    if (!src.terrain.empty()) {
+                        out.terrain[d] = src.terrain[s];
+                    }
+                    if (!src.base.empty()) {
+                        out.base[d] = src.base[s];
+                    }
+                }
+            }
+        }
+        out.ships = parts.front().chunk->ships;
+        return out;
+    }
+    return std::nullopt;
 }
 
 std::vector<std::pair<int, int>> visible_chunks(Rect view) {

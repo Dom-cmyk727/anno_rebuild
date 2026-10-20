@@ -6,8 +6,8 @@
 // frame), the cities with their buildings (stage S6: World::create places them
 // in file order, check_invariants checks the structure and the derived indexes).
 // Figures follow as their rules are recovered (PLAN M3, docs/sim/state.md §15).
-// Once commands exist they become the only way to change it from outside; until
-// then `clock` and `rng` are public for tests.
+// Since stage S8 the commands (apply) and advance are the only way to change it from
+// outside: the clock and the PRNG are private with const accessors.
 #pragma once
 
 #include <cstddef>
@@ -128,9 +128,10 @@ class World {
     /// only (a frame written from it is refused by load, and a debug build asserts).
     [[nodiscard]] std::vector<std::uint8_t> save() const;
 
-    WorldClock clock;
-    WorldRng rng;
-
+    /// The clock and the PRNG (stage S8: private; the world is changed only through
+    /// apply() and advance()). Const views for the host, the UI and the tests.
+    [[nodiscard]] const WorldClock& clock() const { return clock_; }
+    [[nodiscard]] const WorldRng& rng() const { return rng_; }
     [[nodiscard]] const WorldSettings& settings() const { return settings_; }
     [[nodiscard]] const SimConfig& config() const { return config_; }
     [[nodiscard]] const Rules& rules() const { return rules_; }
@@ -238,6 +239,8 @@ class World {
     friend struct WorldTestAccess;
     friend struct Scheduler;
 
+    WorldClock clock_;
+    WorldRng rng_;
     WorldSettings settings_;
     SimConfig config_;
     Rules rules_;

@@ -393,10 +393,10 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
     // docs/sim/state.md §5.3. No early return for 0: the original adds 0 and still
     // runs every subsystem.
     w.out_ = SimOutput{};
-    w.out_.rng_cursor_before = w.rng.cursor();
-    const std::uint64_t tick = w.clock.begin(game_ms);
+    w.out_.rng_cursor_before = w.rng_.cursor();
+    const std::uint64_t tick = w.clock_.begin(game_ms);
     const auto t = static_cast<std::uint32_t>(tick);
-    GlobalDraw global(w.rng);
+    GlobalDraw global(w.rng_);
     CountingDraw draw(global);
     const TickContext ctx{tick,
                           t,
@@ -439,8 +439,8 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
     }
     player_table_tick(w.players_, t, w.config_, w.rules_, hooks);
     // 5. script timers, 6. monopoly, 7. the 7.5 min event (S12).
-    w.clock.end();
-    w.out_.rng_cursor_after = w.rng.cursor();
+    w.clock_.end();
+    w.out_.rng_cursor_after = w.rng_.cursor();
     return tick;
 }
 

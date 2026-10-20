@@ -1283,9 +1283,9 @@ TEST_CASE("the figure birth keeps all 32 low bits of the tick") {
         INFO("tick " << first_tick);
         script.next = 0;
         sim::World w = make_world_with(k, merge_scenario(k), script_seams(&script));
-        w.clock.ms = first_tick * 2;
+        sim::WorldTestAccess::clock(w).ms = first_tick * 2;
         lap(w);
-        REQUIRE(w.clock.tick() == first_tick + 50);
+        REQUIRE(w.clock().tick() == first_tick + 50);
         REQUIRE(w.figures().list.slots[0].has_value());
         CHECK(w.figures().list.slots[0]->born == first_tick + 50);
     }
@@ -1301,10 +1301,10 @@ TEST_CASE("merge stamps events with the 64 bit tick and the figure's birth with 
     e.events = {ev};
     script.calls = {e};
     sim::World w = make_world_with(k, merge_scenario(k), script_seams(&script));
-    w.clock.ms = std::uint64_t{2} << 32; // tick 2^32
-    lap(w);                              // tick 2^32 + 50, whose low 32 bits are 50
+    sim::WorldTestAccess::clock(w).ms = std::uint64_t{2} << 32; // tick 2^32
+    lap(w); // tick 2^32 + 50, whose low 32 bits are 50
     const std::uint64_t tick = (std::uint64_t{1} << 32) + 50;
-    REQUIRE(w.clock.tick() == tick);
+    REQUIRE(w.clock().tick() == tick);
     CHECK(w.figures().list.slots[0]->born == 50);
     const std::vector<sim::SimEvent> ui = w.drain_events();
     REQUIRE(ui.size() == 1);
@@ -1653,7 +1653,7 @@ TEST_CASE("effects applied after the island ticks equal the synchronous applicat
     SyncModel model;
     for (int lapno = 0; lapno < laps; ++lapno) {
         lap(w);
-        const std::uint64_t tick = w.clock.tick();
+        const std::uint64_t tick = w.clock().tick();
         // Island order: island 0's buffer, then island 3's.
         model.apply(script.a[static_cast<std::size_t>(lapno)], tick);
         model.apply(script.b[static_cast<std::size_t>(lapno)], tick);
@@ -1848,7 +1848,7 @@ TEST_CASE("draw telemetry sums the draws per site over every merge and lists the
         }
     };
     sim::World w = make_world_with(k, merge_scenario(k), seams);
-    const std::uint32_t before = w.rng.cursor();
+    const std::uint32_t before = w.rng().cursor();
     lap(w);
     // Island 0 made 1 + 2 draws, island 3 made 3 + 2: 8 in all, summed per site and listed
     // in the order of the DrawSite enumerators (not the order of the merges).
@@ -1896,7 +1896,7 @@ TEST_CASE("player seam draws and effects are counted in the advance telemetry") 
         static_cast<void>(tc.draw.next(sim::DrawSite::Ai));
     };
     sim::World w = make_world_with(k, merge_scenario(k), seams);
-    const std::uint32_t before = w.rng.cursor();
+    const std::uint32_t before = w.rng().cursor();
     w.advance(10);
     REQUIRE(w.last_output().draws.size() == 1);
     CHECK(w.last_output().draws[0].site == sim::DrawSite::Ai);
@@ -2761,7 +2761,7 @@ TEST_CASE("G1 weaver and farm produce at the F2 and F6 rates through the real sc
     for (int step = 1; step <= 20000; ++step) {
         w.advance(10);
         if (step % 1000 == 0) {
-            const std::uint64_t tick = w.clock.tick();
+            const std::uint64_t tick = w.clock().tick();
             checkpoints.u64(w.state_hash());
             // The farm never has more workers out than max_figures (1).
             CHECK(farm_of(w).workers_out <= 1);
@@ -2801,7 +2801,7 @@ TEST_CASE("G1 weaver and farm produce at the F2 and F6 rates through the real sc
             CHECK(w.check_invariants() == "");
         }
     }
-    CHECK(w.clock.tick() == 100000);
+    CHECK(w.clock().tick() == 100000);
     // At tick 30000 the weaver has done 60 +- 3 steps (6 per step): the scheduler may delay
     // a step but never loses or doubles one.
     CHECK(t30000_out / 6 >= 57);
@@ -2840,7 +2840,7 @@ TEST_CASE("G1 weaver and farm produce at the F2 and F6 rates through the real sc
     }
     CHECK(blocked == 2);
     CHECK(spawned == 2);
-    CHECK(w.rng.cursor() == 1234); // no draw was made: no 300 s gate before tick 150000
+    CHECK(w.rng().cursor() == 1234); // no draw was made: no 300 s gate before tick 150000
     // Goldens (made by the C++; the semantic asserts above do not depend on them).
     check_golden_line("s7_g1_mp_checkpoints", checkpoints.value());
     check_golden_line("s7_g1_mp_end", w.state_hash());
@@ -2859,7 +2859,7 @@ TEST_CASE("G1 with single player style steps of 1 to 100 ms") {
             REQUIRE(w.check_invariants() == "");
         }
     }
-    const std::uint64_t tick = w.clock.tick();
+    const std::uint64_t tick = w.clock().tick();
     CHECK(tick > 40000);
     CHECK(tick < 60000);
     // About tick / 500 steps of the weaver (it has not run out of wool yet), never more than

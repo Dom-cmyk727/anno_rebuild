@@ -1059,7 +1059,7 @@ TEST_CASE("golden s6 G1 city with a weaver and a farm") {
     CHECK(city.index.lists[4].hint == 1);
     CHECK(city.index.lists[4].live() == 2);
     CHECK(w.check_invariants() == "");
-    CHECK(w.clock.ms == 1000);
+    CHECK(w.clock().ms == 1000);
 }
 
 TEST_CASE("city stream layout") {

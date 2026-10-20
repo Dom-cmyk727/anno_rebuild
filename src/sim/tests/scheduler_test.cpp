@@ -827,7 +827,7 @@ TEST_CASE("300 s event with property 6 bit 0x04 makes no draw and writes the sta
     Tick t(w, 150000);
     sim::event_300s(t.ctx, is, fx);
     CHECK(event_draws(t) == 0);
-    CHECK(w.rng.cursor() == 0);
+    CHECK(w.rng().cursor() == 0);
     CHECK(is.event300_stamp == 300);
     CHECK_FALSE(is.drought.has_value());
     // Other bits of property 6 do not suppress it (0x02 volcano, 0x08 city events).
@@ -854,7 +854,7 @@ TEST_CASE("300 s event draws once even when the climate or the cities rule out a
             Tick t(w, 150000);
             sim::event_300s(t.ctx, is, fx);
             CHECK(event_draws(t) == 1);
-            CHECK(w.rng.cursor() == 1);
+            CHECK(w.rng().cursor() == 1);
             CHECK(is.event300_stamp == 300);
             CHECK(is.drought.has_value() == (climate != 0 && cities != 0));
         }
@@ -1315,10 +1315,10 @@ TEST_CASE("advance zero ms still runs every subsystem") {
     install_pass_city(seams, 0, &log);
     install_fauna(seams, &log);
     sim::World w = make_world_with(k, cities_scenario(2), seams);
-    const std::uint64_t ms = w.clock.ms;
+    const std::uint64_t ms = w.clock().ms;
     CHECK(w.advance(0) == 0);
-    CHECK(w.clock.ms == ms);
-    CHECK(w.clock.last_tick == 0);
+    CHECK(w.clock().ms == ms);
+    CHECK(w.clock().last_tick == 0);
     // d = 0: one slot of the ring (city 0), one chunk of each sweep, one player slot.
     CHECK(log.count("city 0") == 1);
     CHECK(log.count("city 1") == 0);
@@ -1376,9 +1376,9 @@ TEST_CASE("the 300 s event runs inside advance at game second 300 with the world
     sim::ScenarioSpec spec = event_scenario(k, 1, 2, {5, 0, 0, 0});
     spec.islands[0].cities[0].buildings = {building_test::place(k.kontor, 121, 133)};
     sim::World w = make_world_with(k, spec, named_seams());
-    w.clock.ms = 2ULL * 149999; // the next advance of 2 ms is tick 150000
+    sim::WorldTestAccess::clock(w).ms = 2ULL * 149999; // the next advance of 2 ms is tick 150000
     w.advance(2);
-    CHECK(w.rng.cursor() == 1);
+    CHECK(w.rng().cursor() == 1);
     REQUIRE(island(w).drought.has_value());
     CHECK(island(w).drought->x == 120);
     CHECK(island(w).event300_stamp == 300);
@@ -1408,11 +1408,11 @@ TEST_CASE("draws of several islands are counted per site and consumed in table o
     spec.islands[1].cities[0].buildings = {building_test::place(k.kontor, 305, 205)};
     spec.islands[1].climate = 2;
     sim::World w = make_world_with(k, spec, named_seams());
-    w.clock.ms = 2ULL * 149999;
+    sim::WorldTestAccess::clock(w).ms = 2ULL * 149999;
     w.advance(2);
     CHECK(island(w, 0).drought.has_value());
     CHECK_FALSE(island(w, 3).drought.has_value());
     REQUIRE(w.last_output().draws.size() == 1);
     CHECK(w.last_output().draws[0].count == 2);
-    CHECK(w.rng.cursor() == 2);
+    CHECK(w.rng().cursor() == 2);
 }

@@ -148,7 +148,7 @@ World::World()
 World::World(std::uint32_t seed)
     : types_(TypeRegistry::empty()), players_(make_player_table(config_)),
       figures_(make_figure_registry(config_)) {
-    rng.set_cursor(seed);
+    rng_.set_cursor(seed);
 }
 
 const Island* World::island_at(std::int32_t x, std::int32_t y) const {
@@ -184,11 +184,11 @@ std::uint64_t World::state_hash(HashTree& tree, std::uint32_t depth) const {
 
 std::uint64_t World::core_hash() const {
     StateHasher h;
-    h.u64(clock.ms);
-    h.u64(clock.last_tick);
-    h.u64(rng.size());
-    h.u64(rng.table_digest());
-    h.u32(rng.cursor());
+    h.u64(clock_.ms);
+    h.u64(clock_.last_tick);
+    h.u64(rng_.size());
+    h.u64(rng_.table_digest());
+    h.u32(rng_.cursor());
     return h.value();
 }
 

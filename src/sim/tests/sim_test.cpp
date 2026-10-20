@@ -26,6 +26,7 @@
 #include <anno/test/game_dir.hpp>
 
 #include "golden.hpp"
+#include "world_access.hpp"
 
 namespace sim = anno::sim;
 
@@ -200,7 +201,7 @@ TEST_CASE("state hash: canonical and sensitive") {
     CHECK(w1.state_hash() != w2.state_hash());
     w2.advance(10);
     CHECK(w1.state_hash() == w2.state_hash());
-    w1.rng.next();
+    sim::WorldTestAccess::rng(w1).next();
     CHECK(w1.state_hash() != w2.state_hash());
 }
 
@@ -415,16 +416,16 @@ TEST_CASE("core_hash equals the v1 golden") {
     // The v1 hash is the five fields and nothing else.
     sim::World w;
     const std::uint64_t base = w.core_hash();
-    w.clock.ms = 1;
+    sim::WorldTestAccess::clock(w).ms = 1;
     CHECK(w.core_hash() != base);
     w = sim::World();
-    w.clock.last_tick = 1;
+    sim::WorldTestAccess::clock(w).last_tick = 1;
     CHECK(w.core_hash() != base);
     w = sim::World();
-    w.rng.next();
+    sim::WorldTestAccess::rng(w).next();
     CHECK(w.core_hash() != base);
     w = sim::World();
-    w.rng = *sim::WorldRng::from_table(sim::msvc_rand_sequence(2048, 2));
+    sim::WorldTestAccess::rng(w) = *sim::WorldRng::from_table(sim::msvc_rand_sequence(2048, 2));
     CHECK(w.core_hash() != base);
 }
 
@@ -439,19 +440,21 @@ TEST_CASE("state_hash relational properties") {
 
     // Every field of the list moves the hash.
     sim::World w = base;
-    w.clock.ms += 2;
+    sim::WorldTestAccess::clock(w).ms += 2;
     CHECK(w.state_hash() != h);
     w = base;
-    w.clock.last_tick += 1;
+    sim::WorldTestAccess::clock(w).last_tick += 1;
     CHECK(w.state_hash() != h);
     w = base;
-    w.rng.next();
+    sim::WorldTestAccess::rng(w).next();
     CHECK(w.state_hash() != h);
     w = base;
-    w.rng = *sim::WorldRng::from_table(sim::msvc_rand_sequence(2048, 2), 1234);
+    sim::WorldTestAccess::rng(w) =
+        *sim::WorldRng::from_table(sim::msvc_rand_sequence(2048, 2), 1234);
     CHECK(w.state_hash() != h);
     w = base;
-    w.rng = *sim::WorldRng::from_table(sim::msvc_rand_sequence(2047, 1), 1234);
+    sim::WorldTestAccess::rng(w) =
+        *sim::WorldRng::from_table(sim::msvc_rand_sequence(2047, 1), 1234);
     CHECK(w.state_hash() != h);
     // The hash depends on the state only, not on how it was reached.
     sim::World a(1234), b(1234);
@@ -655,10 +658,10 @@ TEST_CASE("rng copy shares the table") {
     // original alone.
     sim::World w1(7);
     sim::World w2 = w1;
-    CHECK(w1.rng.shared_table() == w2.rng.shared_table());
+    CHECK(w1.rng().shared_table() == w2.rng().shared_table());
     const std::uint64_t before = w1.state_hash();
     w2.advance(100);
-    w2.rng.next();
+    sim::WorldTestAccess::rng(w2).next();
     CHECK(w1.state_hash() == before);
     CHECK(w2.state_hash() != before);
 }
@@ -677,10 +680,10 @@ TEST_CASE("rng moved-from generator keeps its table") {
     CHECK(src.next() == dst.table()[1]);
     // The same through a World move.
     sim::World w(5);
-    const auto wt = w.rng.shared_table();
+    const auto wt = w.rng().shared_table();
     const sim::World moved = std::move(w);
-    CHECK(moved.rng.shared_table() == wt);
-    CHECK(w.rng.shared_table() == wt); // NOLINT(bugprone-use-after-move): intended
+    CHECK(moved.rng().shared_table() == wt);
+    CHECK(w.rng().shared_table() == wt); // NOLINT(bugprone-use-after-move): intended
 }
 
 TEST_CASE("rng stream cursor mix is the defined function") {
@@ -854,9 +857,9 @@ TEST_CASE("world core stream layout round trip and rejects") {
         sim::World other;
         CHECK(read_into(other, bytes) == "");
         CHECK(other.state_hash() == w.state_hash());
-        CHECK(other.clock.ms == 17);
-        CHECK(other.clock.last_tick == 8);
-        CHECK(other.rng.cursor() == 1234);
+        CHECK(other.clock().ms == 17);
+        CHECK(other.clock().last_tick == 8);
+        CHECK(other.rng().cursor() == 1234);
         // save(load(save(w))) == save(w)
         sim::WriteArchive again;
         fields(again, std::as_const(other));
@@ -899,7 +902,8 @@ TEST_CASE("world core stream layout round trip and rejects") {
         CHECK(err.find("table") != std::string::npos);
         // The same stream into a world with another table.
         sim::World custom;
-        custom.rng = *sim::WorldRng::from_table(sim::msvc_rand_sequence(2048, 2));
+        sim::WorldTestAccess::rng(custom) =
+            *sim::WorldRng::from_table(sim::msvc_rand_sequence(2048, 2));
         CHECK(read_into(custom, bytes).find("table") != std::string::npos);
     }
     SUBCASE("a cursor outside the table is refused") {
@@ -911,7 +915,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
         bad[at + 33] = 7; // 1792: fine
         sim::World ok;
         CHECK(read_into(ok, bad) == "");
-        CHECK(ok.rng.cursor() == 1792);
+        CHECK(ok.rng().cursor() == 1792);
     }
 }
 
@@ -947,7 +951,7 @@ TEST_CASE("golden G0 empty world seed 1234 advance 10 ms x 1000") {
         CHECK(anno::test::check_golden("g0_missing", "S1", w.state_hash(), line) != "");
     }
     // The clock is where the scenario puts it, whatever the golden says.
-    CHECK(w.clock.ms == 10000);
-    CHECK(w.clock.last_tick == 5000);
-    CHECK(w.rng.cursor() == 1234);
+    CHECK(w.clock().ms == 10000);
+    CHECK(w.clock().last_tick == 5000);
+    CHECK(w.rng().cursor() == 1234);
 }

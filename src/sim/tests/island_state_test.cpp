@@ -81,9 +81,9 @@ sim::ScenarioSpec zero_island_scenario() {
 
 TEST_CASE("world create builds the synthetic scenarios") {
     const sim::World w = make_world(syn::basic_scenario());
-    CHECK(w.clock.ms == 0);
-    CHECK(w.clock.last_tick == 0);
-    CHECK(w.rng.cursor() == 1234);
+    CHECK(w.clock().ms == 0);
+    CHECK(w.clock().last_tick == 0);
+    CHECK(w.rng().cursor() == 1234);
     REQUIRE(w.players().slots.size() == 32);
     REQUIRE(w.players().slots[0].has_value());
     CHECK(w.players().slots[0]->money == 10000);
@@ -140,7 +140,7 @@ TEST_CASE("world create builds the synthetic scenarios") {
 
 TEST_CASE("world create builds two islands with gaps in the table") {
     const sim::World w = make_world(syn::two_island_scenario(77));
-    CHECK(w.rng.cursor() == 77);
+    CHECK(w.rng().cursor() == 77);
     REQUIRE(w.islands().size() == 4);
     CHECK(w.islands()[0].has_value());
     CHECK_FALSE(w.islands()[1].has_value());
@@ -190,7 +190,7 @@ TEST_CASE("world create without islands and with an unused table") {
     const sim::World w = make_world(syn::empty_scenario(5));
     CHECK(w.islands().empty());
     CHECK(w.island_at(0, 0) == nullptr);
-    CHECK(w.rng.cursor() == 5);
+    CHECK(w.rng().cursor() == 5);
     CHECK(w.players().slots.size() == 32);
     for (const auto& p : w.players().slots) {
         CHECK_FALSE(p.has_value());
@@ -199,14 +199,14 @@ TEST_CASE("world create without islands and with an unused table") {
     CHECK(w.settings().world_width == 512);
     // The seed is taken modulo the table length.
     const sim::World big = make_world(syn::empty_scenario(2048 + 9));
-    CHECK(big.rng.cursor() == 9);
+    CHECK(big.rng().cursor() == 9);
     // A custom PRNG table.
     sim::ScenarioSpec spec = syn::empty_scenario(1234);
     spec.rng_table = sim::msvc_rand_sequence(100, 5);
     const sim::World custom = make_world(spec);
-    CHECK(custom.rng.size() == 100);
-    CHECK(custom.rng.cursor() == 34);
-    CHECK(custom.rng.table_digest() != w.rng.table_digest());
+    CHECK(custom.rng().size() == 100);
+    CHECK(custom.rng().cursor() == 34);
+    CHECK(custom.rng().table_digest() != w.rng().table_digest());
 }
 
 TEST_CASE("scenario players carry their fields into the table") {
@@ -1679,9 +1679,9 @@ TEST_CASE("save load save identical with islands") {
     sim::World back = island_test::load_world(bytes);
     CHECK(back.state_hash() == w.state_hash());
     CHECK(back.save() == bytes);
-    CHECK(back.clock.ms == w.clock.ms);
-    CHECK(back.clock.last_tick == w.clock.last_tick);
-    CHECK(back.rng.cursor() == w.rng.cursor());
+    CHECK(back.clock().ms == w.clock().ms);
+    CHECK(back.clock().last_tick == w.clock().last_tick);
+    CHECK(back.rng().cursor() == w.rng().cursor());
     REQUIRE(back.islands().size() == 4);
     CHECK_FALSE(back.islands()[1].has_value());
     const sim::Island& b = *back.islands()[3];
@@ -1726,15 +1726,15 @@ TEST_CASE("save load with a custom PRNG table and without islands") {
     CHECK(bytes[12] == 1);
     CHECK(island_test::get32(bytes, 13) == 100); // u64 count, low word
     sim::World back = island_test::load_world(bytes);
-    CHECK(back.rng.size() == 100);
-    CHECK(back.rng.cursor() == 34);
-    CHECK(back.rng.table_digest() == w.rng.table_digest());
+    CHECK(back.rng().size() == 100);
+    CHECK(back.rng().cursor() == 34);
+    CHECK(back.rng().table_digest() == w.rng().table_digest());
     CHECK(back.state_hash() == w.state_hash());
     CHECK(back.save() == bytes);
     // The draws agree.
     sim::World a = w;
     for (int i = 0; i < 5; ++i) {
-        CHECK(a.rng.next() == back.rng.next());
+        CHECK(sim::WorldTestAccess::rng(a).next() == sim::WorldTestAccess::rng(back).next());
     }
     // A world without islands, and the default empty world.
     const sim::World none = make_world(syn::empty_scenario(3));
@@ -1933,14 +1933,14 @@ TEST_CASE("a custom PRNG table of the original length is saved as custom") {
     sim::ScenarioSpec spec = syn::basic_scenario(77);
     spec.rng_table = sim::msvc_rand_sequence(2048, 99);
     const sim::World w = make_world(spec);
-    REQUIRE(w.rng.size() == 2048);
+    REQUIRE(w.rng().size() == 2048);
     const std::vector<std::uint8_t> bytes = w.save();
     CHECK(bytes[12] == 1);
     CHECK(island_test::get32(bytes, 13) == 2048);
     const sim::World back = island_test::load_world(bytes);
-    CHECK(back.rng.size() == 2048);
-    CHECK(back.rng.table_digest() == w.rng.table_digest());
-    CHECK(back.rng.cursor() == w.rng.cursor());
+    CHECK(back.rng().size() == 2048);
+    CHECK(back.rng().table_digest() == w.rng().table_digest());
+    CHECK(back.rng().cursor() == w.rng().cursor());
     CHECK(back.state_hash() == w.state_hash());
     CHECK(back.save() == bytes);
     // The original table, given explicitly, is the compact form.
@@ -2158,5 +2158,5 @@ TEST_CASE("golden s5 islands") {
     // The semantic side of the golden: the islands are as built, whatever the hash says.
     CHECK(w.islands()[3]->tiles.owner(299) == 1);
     CHECK(w.islands()[0]->tiles.object(4095) == 1203);
-    CHECK(w.clock.ms == 1000);
+    CHECK(w.clock().ms == 1000);
 }

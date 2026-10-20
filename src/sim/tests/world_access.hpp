@@ -18,6 +18,9 @@
 namespace anno::sim {
 
 struct WorldTestAccess {
+    static WorldClock& clock(World& w) { return w.clock_; }
+    static WorldRng& rng(World& w) { return w.rng_; }
+    static HostEventQueue& host_events(World& w) { return w.host_events_; }
     static SimConfig& config(World& w) { return w.config_; }
     static Rules& rules(World& w) { return w.rules_; }
     static WorldSettings& settings(World& w) { return w.settings_; }

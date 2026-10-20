@@ -22,6 +22,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -204,9 +205,9 @@ struct GpuLimits {
     /// A chunk that replaces the placeholder an earlier frame showed for it (its
     /// stand-in or the open sea; not a chunk uploaded in the frame it comes into
     /// view) is drawn over it with rising opacity for this many
-    /// milliseconds of the animation clock (render()'s time_ms), so a swap is a
-    /// short dissolve, not a pop. About the time an eye needs to follow a change
-    /// without it reading as a jump; 0 = swap at once (headless renders, tests).
+    /// milliseconds (GpuFrame::set_fade_clock: a steady clock, not the
+    /// animation time), so a swap is a short dissolve, not a pop. About the time an eye needs to
+    /// follow a change without it reading as a jump; 0 = swap at once (headless renders, tests).
     std::uint64_t chunk_fade_ms = 0;
     /// The limits for an interactive window: uploads and wave simulation
     /// setup are spread over frames (upload_budget_ms 1.0, background_fluid).
@@ -390,6 +391,11 @@ class GpuFrame {
     std::vector<std::uint8_t> read_back(WGPUTexture texture, std::uint32_t w, std::uint32_t h,
                                         std::uint32_t bpp = 4) const;
     [[nodiscard]] WGPUTextureFormat format() const;
+    /// The clock the chunk dissolves run on (GpuLimits::chunk_fade_ms), in
+    /// milliseconds: by default a steady clock of the compositor's own, not
+    /// render()'s animation time, which the viewer freezes on pause (a chunk
+    /// arriving then must still appear). Tests set a clock they step by hand.
+    void set_fade_clock(std::function<std::uint64_t()> clock);
     /// Pre-created chunk planes waiting for uploads (GpuLimits::prewarm_chunks).
     [[nodiscard]] std::size_t warm_planes_ready() const;
     /// Errors of the device so far (Context::errors): uncaptured ones and

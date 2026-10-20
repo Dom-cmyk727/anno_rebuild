@@ -2796,7 +2796,7 @@ TEST_CASE("prefetch: built chunks of the neighbouring groups are uploaded when n
 }
 
 TEST_CASE("a chunk that replaces the open sea it was shown as dissolves in over chunk_fade_ms of "
-          "the animation clock") {
+          "the fade clock, also while the animation clock is paused") {
     auto ctx = device_or_skip();
     if (!ctx) {
         return;
@@ -2821,10 +2821,14 @@ TEST_CASE("a chunk that replaces the open sea it was shown as dissolves in over 
     fr.insert_chunk({1, 0, 0}, noise_land_chunk(1, 0, 0));
     fr.insert_chunk({1, 1, 0}, land);
     const auto target = g.offscreen_target(2 * side, side);
-    // The pixels of chunk (1, 0), the right half.
+    std::uint64_t fade_clock = 0;
+    g.set_fade_clock([&] { return fade_clock; });
+    // The pixels of chunk (1, 0), the right half, at fade time t. The animation
+    // clock stands still at 1000 (the viewer paused): the fade does not follow it.
     auto frame_at = [&](std::uint64_t t) {
+        fade_clock = t;
         const auto st =
-            g.render(fr, scene, two, 1, t, render::WaterStyle::Original, target.second.get());
+            g.render(fr, scene, two, 1, 1000, render::WaterStyle::Original, target.second.get());
         const auto all = g.read_back(target.first.get(), 2 * side, side);
         std::vector<std::uint8_t> right(std::size_t{side} * side * 4);
         for (std::size_t y = 0; y < side; ++y) {

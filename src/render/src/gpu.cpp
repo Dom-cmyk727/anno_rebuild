@@ -6,6 +6,7 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -337,8 +338,15 @@ struct GpuFrame::Impl {
     /// old contents is ordered before those writes.
     std::vector<Plane> plane_pool;
     /// Chunks that replaced a stand-in or open sea and are still fading in: the
-    /// animation time (ms) their fade started at (GpuLimits::chunk_fade_ms).
+    /// time of fade_clock (ms) their fade started at (GpuLimits::chunk_fade_ms).
     std::map<ChunkKey, std::uint64_t> fading;
+    /// The clock of `fading` (GpuFrame::set_fade_clock): steady, not the
+    /// animation time.
+    std::function<std::uint64_t()> fade_clock = [] {
+        return static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch())
+                .count());
+    };
     /// The placeholders the chunks in `fading` replaced, drawn under them until
     /// their fade ends (the open sea they showed before the chunk arrived).
     std::map<ChunkKey, Chunk> fade_under;
@@ -831,7 +839,7 @@ struct GpuFrame::Impl {
     std::size_t sync_chunks(const FrameRenderer& frames, std::size_t group,
                             const std::vector<std::pair<int, int>>& visible,
                             const std::vector<ChunkKey>& margin,
-                            const std::vector<ChunkKey>& adjacent, std::uint64_t time_ms,
+                            const std::vector<ChunkKey>& adjacent, std::uint64_t fade_now,
                             GpuStats& stats) {
         std::set<ChunkKey> keys;
         for (const auto& [cx, cy] : visible) {
@@ -881,7 +889,7 @@ struct GpuFrame::Impl {
                 // plain pan) and a rebuild of a real chunk (its river flow) swap at
                 // once: nothing else was on screen there.
                 if (limits.chunk_fade_ms > 0 && it != chunks.end() && !it->second.real) {
-                    fading[key] = time_ms;
+                    fading[key] = fade_now;
                     // The placeholder (it has no planes, only its chunk uniform and
                     // bind group) keeps drawing the open sea under the dissolve, as
                     // it did in the frames before.
@@ -1528,6 +1536,10 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
 
 GpuFrame::~GpuFrame() = default;
 
+void GpuFrame::set_fade_clock(std::function<std::uint64_t()> clock) {
+    impl_->fade_clock = std::move(clock);
+}
+
 std::size_t GpuFrame::warm_planes_ready() const {
     const std::lock_guard lock(impl_->warm_mutex);
     return impl_->warm_planes.size();
@@ -1576,8 +1588,9 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     const auto visible = visible_chunks(view);
     stats.visible_ms = lap();
     const std::size_t warm_before = m.planes_warm_taken;
+    const std::uint64_t fade_now = m.fade_clock();
     stats.chunks_uploaded = m.sync_chunks(frames, group, visible, frames.margin_keys(),
-                                          frames.adjacent_keys(), time_ms, stats);
+                                          frames.adjacent_keys(), fade_now, stats);
     stats.planes_warm = m.planes_warm_taken - warm_before;
     stats.chunk_sync_ms = lap();
     stats.sync_scan_ms = std::max(0.0, stats.chunk_sync_ms - stats.sync_drop_ms -
@@ -1659,9 +1672,9 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         for (auto it = m.fading.begin(); it != m.fading.end();) {
             const auto c = m.chunks.find(it->first);
             const double progress =
-                time_ms <= it->second || m.limits.chunk_fade_ms == 0
+                fade_now <= it->second || m.limits.chunk_fade_ms == 0
                     ? 0.0
-                    : std::min(1.0, static_cast<double>(time_ms - it->second) /
+                    : std::min(1.0, static_cast<double>(fade_now - it->second) /
                                         static_cast<double>(m.limits.chunk_fade_ms));
             if (!shown.contains(it->first) || c == m.chunks.end() || !c->second.real ||
                 progress >= 1.0) {

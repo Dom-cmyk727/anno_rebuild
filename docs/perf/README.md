@@ -318,3 +318,46 @@ Reading: with stand-ins off the same binary also has runs with a max above 8 ms 
 - Cost of stand-ins: p50 unchanged (0.3 / 0.4 ms); p95 +0.0 at 1280x800, +0.2 ms at 2560x1440 groups 0 and 1 (1.0 to 1.2 ms), max within noise.
 - Prewarm on vs off: no difference outside noise in these medians. It is kept because it targets the first uploads into a group (10-19 ms texture creation seen before); this bench starts after the pre-created planes are ready (`pre-created planes ready: 120`), i.e. it measures the steady state the thread leaves, not the first seconds. The viewer's first zoom into an uncached group on the owner's machine is the case still to be checked by the owner (A/B with `ANNO_VIEW_PREWARM=off`).
 - Raw outputs: scratch files of the session (`bench/r<round>_<res>_si<on|off>_pw<0|24>.txt`, `loads.txt`), not in the repository.
+
+### 2026-10-20 - T1d: pan while zooming (margin, prefetch, cross-fade)
+
+**What the owner saw:** artifacts only when moving through the map while zooming. **Reproduced** with `bench_frame --zoom 60 --zoom-pan 4,2,400` (the view walks 4 x 2 scene pixels per frame, about 1600 px/s at 2.5 ms frames, reversing every 400 frames, a zoom step every 60 frames): with the T1c code, visible chunks with no source in any zoom group (open sea) in 9-86 of 1600 frames, runs up to 325 ms, and single frame pairs where 14-30 % of the pixels jump by more than 40 levels.
+
+**Cause, measured.** (1) A chunk takes 100-250 ms on one worker thread (blocking cold frame: 12 chunks 118-247 ms with 16 threads), so what the ring of one chunk does not cover arrives late; the queue was ordered by key, not by nearness; the neighbouring groups were only built once the current one was nearly done, and never uploaded, so a zoom step had no stand-in source for the part of the new view that had been off screen. (2) A chunk replacing its stand-in swapped in one frame. The 4.2 ms window-event frame and the `queue submit` spikes of 3.9-5.0 ms named in the board are **not** explained: `SDL_SetWindowTitle` per zoom step costs 0.03 ms (worst 0.09 ms), a wheel event does no per-event work that grows with anything (`group_ready` is a map lookup); they did not reproduce here.
+
+**Changes** (commits `T1d 5`, `T1d 1`, `T1d 2` of the branch): the margin around the view grows in the direction of motion by speed x (2 x the measured build time + 0.1 s), at most `FrameRenderer::max_lookahead_chunks` (3) chunks (`lookahead_rect`); the view a zoom step would show in each neighbouring group gets the same margin, always, queued behind the current group and nearest-first to the view as it will be; the compositor uploads those built chunks when no visible chunk waits (`GpuLimits::prefetch_chunks` 96, one per frame); a chunk that replaces a stand-in or the open sea dissolves in over `GpuLimits::chunk_fade_ms` (150 interactive, 0 elsewhere) on the animation clock (ground and sea pipelines blend by the piece record's `transparent`, terrain switches half-way, objects scale their alpha). Switches for comparing: `bench_frame --prefetch 0 --fade 0` is the T1c behaviour.
+
+**Measured** on `D_256x256_0045_5B`, enhanced, GPU async chunks, interactive limits, RTX 4090 + Ryzen 9800X3D, three runs per cell (rounds alternating the two configurations), CPU load read before each run 0-29 % (mostly 4-15 %). "pop" = the share of pixels that change by more than 40 levels between two consecutive frames of one group, the previous frame shifted by the pan (`--pop on`; the water's own motion stays below it); worst single frame pair per run.
+
+| res | pan | config | group | p50 / p95 / p99 / max ms (median of 3) | worst max | frames with open sea (median) | longest open-sea run ms (worst) | worst pop % of pixels (median / worst) | pairs above 0.5 % (median) |
+|---|---|---|---|---|---|---|---|---|---|
+| 1280x800 | 0,0 | T1c (no prefetch, no fade) | 0 | 0.2 / 0.4 / 2.3 / 3.0 | 151.6 | 8 | 16 | 17.91 / 18.69 | 9 |
+| 1280x800 | 0,0 | T1c (no prefetch, no fade) | 1 | 0.3 / 0.5 / 2.5 / 4.2 | 4.6 | 11 | 72 | 11.98 / 12.44 | 18 |
+| 1280x800 | 0,0 | T1c (no prefetch, no fade) | 2 | 0.3 / 0.5 / 2.5 / 4.3 | 4.5 | 0 | 0 | 10.10 / 10.10 | 16 |
+| 1280x800 | 0,0 | T1d defaults | 0 | 0.3 / 0.6 / 2.4 / 3.0 | 130.4 | 0 | 0 | 0.46 / 0.52 | 0 |
+| 1280x800 | 0,0 | T1d defaults | 1 | 0.3 / 1.8 / 2.5 / 4.3 | 667.3 | 0 | 0 | 0.46 / 0.49 | 0 |
+| 1280x800 | 0,0 | T1d defaults | 2 | 0.3 / 0.6 / 1.5 / 2.5 | 4.0 | 0 | 0 | 0.46 / 0.48 | 0 |
+| 1280x800 | 4,2 | T1c (no prefetch, no fade) | 0 | 0.3 / 1.8 / 2.5 / 4.3 | 4.3 | 33 | 73 | 27.86 / 30.50 | 64 |
+| 1280x800 | 4,2 | T1c (no prefetch, no fade) | 1 | 0.3 / 1.7 / 2.6 / 5.9 | 5.9 | 19 | 67 | 19.22 / 19.83 | 51 |
+| 1280x800 | 4,2 | T1c (no prefetch, no fade) | 2 | 0.3 / 2.0 / 4.0 / 4.4 | 4.5 | 9 | 13 | 12.35 / 17.14 | 86 |
+| 1280x800 | 4,2 | T1d defaults | 0 | 0.3 / 1.8 / 2.3 / 4.3 | 5.6 | 0 | 0 | 2.11 / 2.70 | 14 |
+| 1280x800 | 4,2 | T1d defaults | 1 | 0.3 / 2.3 / 3.8 / 4.4 | 5.7 | 0 | 0 | 1.48 / 1.76 | 9 |
+| 1280x800 | 4,2 | T1d defaults | 2 | 0.3 / 2.1 / 3.7 / 4.3 | 5.9 | 0 | 0 | 1.54 / 2.35 | 12 |
+| 2560x1440 | 0,0 | T1c (no prefetch, no fade) | 0 | 0.4 / 0.7 / 2.1 / 3.6 | 3.6 | 15 | 94 | 11.63 / 14.46 | 21 |
+| 2560x1440 | 0,0 | T1c (no prefetch, no fade) | 1 | 0.4 / 0.7 / 2.1 / 3.6 | 657.3 | 7 | 1783 | 10.25 / 10.25 | 17 |
+| 2560x1440 | 0,0 | T1c (no prefetch, no fade) | 2 | 0.4 / 0.7 / 2.1 / 3.6 | 3.7 | 0 | 0 | 7.18 / 7.18 | 18 |
+| 2560x1440 | 0,0 | T1d defaults | 0 | 0.4 / 1.0 / 2.1 / 2.6 | 2.8 | 0 | 0 | 1.38 / 1.39 | 7 |
+| 2560x1440 | 0,0 | T1d defaults | 1 | 0.4 / 1.1 / 2.1 / 3.0 | 3.6 | 0 | 0 | 1.40 / 1.41 | 6 |
+| 2560x1440 | 0,0 | T1d defaults | 2 | 0.4 / 1.2 / 2.1 / 2.7 | 2.7 | 0 | 0 | 1.27 / 1.28 | 6 |
+| 2560x1440 | 4,2 | T1c (no prefetch, no fade) | 0 | 0.5 / 2.1 / 3.4 / 4.7 | 5.1 | 48 | 267 | 14.30 / 14.30 | 89 |
+| 2560x1440 | 4,2 | T1c (no prefetch, no fade) | 1 | 0.5 / 2.1 / 3.3 / 6.7 | 9.3 | 31 | 77 | 18.02 / 18.02 | 88 |
+| 2560x1440 | 4,2 | T1c (no prefetch, no fade) | 2 | 0.5 / 2.1 / 3.3 / 5.9 | 6.7 | 23 | 325 | 18.01 / 18.01 | 89 |
+| 2560x1440 | 4,2 | T1d defaults | 0 | 0.6 / 1.9 / 2.8 / 4.8 | 4.9 | 0 | 0 | 1.48 / 1.56 | 18 |
+| 2560x1440 | 4,2 | T1d defaults | 1 | 0.6 / 2.0 / 2.8 / 4.5 | 4.5 | 0 | 0 | 1.34 / 1.34 | 15 |
+| 2560x1440 | 4,2 | T1d defaults | 2 | 0.5 / 1.9 / 2.7 / 4.7 | 4.7 | 0 | 0 | 1.44 / 1.48 | 16 |
+
+- **No pan:** open sea gone (0 frames; T1c: 8-15 frames, runs up to 94 ms, one 1783 ms run at 2560x1440 group 1 while the machine was at 20 % load); pop worst 10-18 % of pixels in one frame pair falls to 0.5 % (1280x800) and 1.4 % (2560x1440, bigger chunks arriving per frame).
+- **Pan 4,2 (about 1600 px/s):** open sea gone in all 36 runs; pop worst 12-31 % falls to 1.3-2.7 %; pairs above 0.5 % fall from 51-89 to 9-18. **Stated threshold:** no more than 3 % of the pixels jump between two frames of one group at this pan, 1.5 % without pan.
+- **Frame time:** window-thread max 4.3-5.9 ms in every median cell (acceptance 8 ms), p99 at most 3.8 ms; the T1d defaults add 0.1-0.2 ms at p95 for the prefetch uploads. Single-frame outliers of 130-667 ms occurred in four no-pan runs (two per configuration, so not caused by T1d; all with the per-frame read-back of `--pop`, which stalls the GPU queue) and are in the "worst max" column.
+- **Not covered:** a pan of 12,6 px per frame (about 5000 px/s) still shows open sea (hundreds of frames): chunk builds, 100-250 ms each, cannot keep up with a view crossing 1280 px in a quarter of a second; faster chunk building is the remaining lever (not in this task).
+- **Items not done:** 3 (rivers on a stand-in: the owner reports rivers "perfect"; river pixels are a small share of the pop) and 4 (wave window: 14-48 ms per zoom step, not reported by the owner; the dumped-frame metric shows no jump left that is not a chunk swap) were conditional on frames still showing them after items 1, 2 and 5; they do not, at the metric's resolution. Left open as OQ-091 / OQ-076.

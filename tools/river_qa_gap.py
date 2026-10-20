@@ -51,6 +51,11 @@ def regressions(before, after):
     return out
 
 
+def growth(before, after):
+    """Water outside the painted bed gained by the patch, as a share of the original river px."""
+    return (after['extra'] - before['extra']) / max(before['o'], 1)
+
+
 def join_runs(before, after):
     """{(scene, island): {group: (before_row, after_row)}} for keys present in both runs."""
     out = {}
@@ -63,21 +68,22 @@ def join_runs(before, after):
 
 def badness(groups):
     """Sort key, larger = worse: regressions first, then the gap pixels that remain after the
-    patch, then the components beyond one per original component."""
+    patch, then the largest growth of water outside the painted bed (share of the original
+    river pixels, the cost of the patch), then the components beyond one per original one."""
     reg = sum(len(regressions(b, a)) for b, a in groups.values())
     gap = sum(a['gap'] for b, a in groups.values())
     surplus = sum(max(a['e_comps'] - a['o_comps'], 0) for b, a in groups.values())
-    grown = max((a['extra'] - b['extra']) / max(b['o'], 1) for b, a in groups.values())
-    return (reg, gap, surplus, round(grown, 3))
+    grown = max(growth(b, a) for b, a in groups.values())
+    return (reg, gap, round(grown, 3), surplus)
 
 
 def worst_islands(joined, count):
-    """The `count` worst islands by badness; scenes with the same component counts in every
-    group (the same island template in several scenarios, e.g. the Mongolen and Indianer
+    """The `count` worst islands by badness; scenes with the same pixel and component counts in
+    every group (the same island template in several scenarios, e.g. the Mongolen and Indianer
     variants) count once."""
     out, seen = [], set()
     for key in sorted(joined, key=lambda k: badness(joined[k]), reverse=True):
-        sig = tuple((g, b['o_comps'], b['e_comps'], a['o_comps'], a['e_comps'])
+        sig = tuple((g, b['o'], b['o_comps'], b['e_comps'], b['extra'], a['e_comps'], a['extra'])
                     for g, (b, a) in sorted(joined[key].items()))
         if sig in seen:
             continue
@@ -98,6 +104,7 @@ def survey_table(joined):
     head = ['island']
     for name in ('E comps', 'gap px', 'extra px'):
         head += ['%s g%d' % (name, g) for g in groups]
+    head += ['extra growth g%d' % g for g in groups]
     head.append('regression')
     lines = ['| ' + ' | '.join(head) + ' |', '|' + '---|' * len(head)]
     for (scene, island), per in sorted(joined.items()):
@@ -105,6 +112,8 @@ def survey_table(joined):
         for field in ('e_comps', 'gap', 'extra'):
             for g in groups:
                 cells.append('%d -> %d' % (per[g][0][field], per[g][1][field]) if g in per else '')
+        for g in groups:
+            cells.append('%.1f %%' % (100 * growth(*per[g])) if g in per else '')
         why = ['g%d %s' % (g, '; '.join(regressions(b, a)))
                for g, (b, a) in sorted(per.items()) if regressions(b, a)]
         cells.append(', '.join(why))
@@ -112,12 +121,29 @@ def survey_table(joined):
     return '\n'.join(lines)
 
 
-def survey_summary(joined, patch):
+def survey_summary(joined, patch, coverage=None):
+    """Summary lines: coverage, the cost of the patch (water outside the painted bed) first, then
+    the regression count (rules in `regressions`) and the totals per field and group."""
     bad = [k for k, per in joined.items() if any(regressions(b, a) for b, a in per.values())]
-    out = ['islands with river pieces: %d' % len(joined),
-           'islands with a regression (patch %s against 0): %d' % (patch, len(bad))]
+    out = []
+    if coverage:
+        out.append('scenes: tried %(tried)d, loaded %(loaded)d, failed %(failed)d, '
+                   'with river pieces %(with-river)d' % coverage)
+    out.append('islands with river pieces: %d' % len(joined))
+    for g in group_ids(joined):
+        per = [p[g] for p in joined.values() if g in p]
+        o = sum(b['o'] for b, a in per)
+        b_extra = sum(b['extra'] for b, a in per)
+        a_extra = sum(a['extra'] for b, a in per)
+        top = max((growth(*p[g]), k) for k, p in joined.items() if g in p)
+        out.append('g%d water outside the painted bed, share of original river px: %.1f %% -> '
+                   '%.1f %% (largest growth %.1f %%, %s i%d)' % (
+                       g, 100 * b_extra / max(o, 1), 100 * a_extra / max(o, 1), 100 * top[0],
+                       top[1][0], top[1][1]))
+    out.append('islands with a regression (patch %s against 0): %d' % (patch, len(bad)))
     for field, name in (('o', 'O px'), ('e_comps', 'E comps'), ('gap', 'gap px'),
-                        ('extra', 'extra px'), ('split', 'split'), ('lost', 'lost')):
+                        ('edge', 'edge px'), ('extra', 'extra px'), ('split', 'split'),
+                        ('lost', 'lost')):
         for g in group_ids(joined):
             b = sum(per[g][0][field] for per in joined.values() if g in per)
             a = sum(per[g][1][field] for per in joined.values() if g in per)
@@ -125,11 +151,12 @@ def survey_summary(joined, patch):
     return '\n'.join(out)
 
 
-def save_runs(path, before, after):
+def save_runs(path, before, after, coverage=None):
     import json
     with open(path, 'w', encoding='utf-8') as f:
         json.dump({'before': {'%s|%d|%d' % k: v for k, v in before.items()},
-                   'after': {'%s|%d|%d' % k: v for k, v in after.items()}}, f)
+                   'after': {'%s|%d|%d' % k: v for k, v in after.items()},
+                   'coverage': coverage}, f)
 
 
 def load_runs(path):
@@ -141,11 +168,12 @@ def load_runs(path):
         scene, g, i = k.rsplit('|', 2)
         return (scene, int(g), int(i))
     return ({key(k): v for k, v in d['before'].items()},
-            {key(k): v for k, v in d['after'].items()})
+            {key(k): v for k, v in d['after'].items()}, d.get('coverage'))
 
 
 def run_per_island(exe, game_dir, files, patch, groups):
-    """river_qa --per-island over `files` (a list file: Windows command lines are short)."""
+    """river_qa --per-island over `files` (a list file: Windows command lines are short).
+    Returns (rows, coverage); coverage is the scene counts river_qa prints at the end."""
     import tempfile
     with tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False) as lst:
         lst.write(chr(10).join(files))
@@ -156,7 +184,18 @@ def run_per_island(exe, game_dir, files, patch, groups):
         os.unlink(lst.name)
     if res.returncode != 0:
         sys.exit('river_qa failed (%d): %s' % (res.returncode, res.stderr[-2000:]))
-    return parse_island_rows(res.stdout)
+    return parse_island_rows(res.stdout), parse_coverage(res.stderr)
+
+
+COVERAGE = re.compile(r'^scenes: tried (\d+) loaded (\d+) failed (\d+) with-river (\d+)$', re.M)
+
+
+def parse_coverage(stderr):
+    """{'tried', 'loaded', 'failed', 'with-river'} from river_qa's final stderr line."""
+    m = COVERAGE.search(stderr)
+    if not m:
+        raise ValueError('river_qa printed no scene coverage line')
+    return dict(zip(('tried', 'loaded', 'failed', 'with-river'), map(int, m.groups())))
 
 
 def find_scene(game_dir, scene):
@@ -232,16 +271,19 @@ def gap_patch(args, island_files, all_islands):
     files = island_files(args.game_dir, args.climates.split(',')) if args.climates \
         else all_islands(args.game_dir)
     if args.cache and os.path.isfile(args.cache):
-        before, after = load_runs(args.cache)
+        before, after, coverage = load_runs(args.cache)
     else:
-        before = run_per_island(args.exe, args.game_dir, files, 0, args.groups)
-        after = run_per_island(args.exe, args.game_dir, files, args.patch, args.groups)
+        before, cov0 = run_per_island(args.exe, args.game_dir, files, 0, args.groups)
+        after, cov1 = run_per_island(args.exe, args.game_dir, files, args.patch, args.groups)
+        if cov0 != cov1:
+            sys.exit('the two runs covered different scenes: %s against %s' % (cov0, cov1))
+        coverage = cov0
         if args.cache:
-            save_runs(args.cache, before, after)
+            save_runs(args.cache, before, after, coverage)
     joined = join_runs(before, after)
     if not joined:
         sys.exit('no island with river pieces found')
-    text = survey_summary(joined, args.patch) + '\n\n' + survey_table(joined)
+    text = survey_summary(joined, args.patch, coverage) + '\n\n' + survey_table(joined)
     print(text)
     if args.table:
         with open(args.table, 'w', encoding='utf-8', newline='\n') as f:

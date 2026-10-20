@@ -170,6 +170,27 @@ TEST_CASE("numeric helpers follow the documented semantics") {
     CHECK(render::fmaxf(std::numeric_limits<float>::quiet_NaN(), 1.0F) == 1.0F);
 }
 
+TEST_CASE("div_euclid at exact multiples of kChunk, and where a chunk index of -2 comes from") {
+    constexpr int k = render::kChunk;
+    CHECK(render::div_euclid(-k, k) == -1);
+    CHECK(render::rem_euclid(-k, k) == 0);
+    CHECK(render::div_euclid(-k - 1, k) == -2);
+    CHECK(render::rem_euclid(-k - 1, k) == k - 1);
+    CHECK(render::div_euclid(-1, k) == -1);
+    CHECK(render::div_euclid(0, k) == 0);
+    CHECK(render::div_euclid(k - 1, k) == 0);
+    CHECK(render::div_euclid(k, k) == 1);
+    // The T1 note "-2 instead of -1 for -512 / 512" came from a stand-in source, not from
+    // the division: the first pixel of destination chunk -1 (x = -512) reads the source
+    // group at the scaled coordinate, and that lies in source chunk -2 (zoom-in: kTile
+    // ratio 2, source = 2 * x + 1 = -1023). div_euclid(-1023, 512) == -2 is right.
+    const int src = render::stand_in_source(-k, render::kTile[0].w, render::kTile[1].w);
+    CHECK(src == -1023);
+    CHECK(render::div_euclid(src, k) == -2);
+    // The destination coordinate itself is chunk -1.
+    CHECK(render::div_euclid(-k, k) == -1);
+}
+
 TEST_CASE("water field of an island without land: NaN distances become 0") {
     // All corners below the waterline: the shore distance is +inf everywhere,
     // and bilinear blending at a tile corner gives inf · 0 = NaN. Rust's

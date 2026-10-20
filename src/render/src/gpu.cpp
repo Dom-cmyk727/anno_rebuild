@@ -3,9 +3,11 @@
 #include <bit>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
@@ -15,6 +17,8 @@
 #include <anno/render/gpu.hpp>
 #include <anno/render/gpu_fluid.hpp>
 #include <anno/render/shaders.hpp>
+
+#include "thread_priority.hpp"
 
 namespace anno::render::gpu {
 
@@ -244,6 +248,12 @@ std::vector<std::uint8_t> river_params_bytes(const RiverParams& p, float min_val
     return std::move(u.b);
 }
 
+/// struct Piece in gpu.wgsl: 4 x vec2<i32>, a u32 and padding.
+constexpr std::size_t kPieceBytes = 48;
+/// Distance of two pieces in the piece buffer: the dynamic offset alignment every
+/// WebGPU device guarantees (minUniformBufferOffsetAlignment is at most 256).
+constexpr std::size_t kPieceStride = 256;
+
 struct GpuFrame::Impl {
     /// Own references to the device (the Context may move or go away).
     std::unique_ptr<DeviceRef> ref;
@@ -253,12 +263,19 @@ struct GpuFrame::Impl {
     bool atlas_full_reported = false;
     WGPUTextureFormat format = WGPUTextureFormat_RGBA8Unorm;
     ShaderModule module;
-    BindGroupLayout frame_layout, chunk_layout, atlas_layout, empty_layout;
+    BindGroupLayout frame_layout, chunk_layout, atlas_layout, empty_layout, piece_layout;
     /// Bound at group 1 for the sprite draws, which use no chunk data.
     BindGroup empty_bind;
     PipelineLayout chunk_pl, sprite_pl;
     RenderPipeline ground_pipe, terrain_pipe, objects_pipe, sea_pipe, sprite_pipe;
     Buffer frame_uniform;
+    /// What each draw of a chunk shows (struct Piece in gpu.wgsl): slot 0 is the
+    /// chunk itself (kind 0), the others are the parts of stand-ins drawn this
+    /// frame, kPieceStride bytes apart (the dynamic offset's alignment). Grown
+    /// when a frame needs more; bound as group 2 of the chunk pipelines.
+    Buffer piece_buffer;
+    std::size_t piece_slots = 0;
+    BindGroup piece_bind;
     /// The river flow shading's parameters (struct RiverParams in gpu.wgsl).
     Buffer river_uniform;
     /// The tier of the river flow shading, and the measurements behind an
@@ -320,6 +337,150 @@ struct GpuFrame::Impl {
     /// old contents is ordered before those writes.
     std::vector<Plane> plane_pool;
     static constexpr std::size_t kPoolPlanes = 8 * 24;
+    /// plane_pool.size(), readable from the pre-creation thread (which keeps
+    /// the idle planes, pooled and pre-created, within GpuLimits::idle_plane_
+    /// budget_mb: the pool counts first, the thread fills the rest).
+    std::atomic<std::size_t> pool_planes{0};
+
+    /// Chunk planes created ahead of time by a background thread
+    /// (GpuLimits::prewarm_chunks): the first texture creations after start
+    /// cost 1-13 ms each on the window thread (the driver allocates device
+    /// memory blocks), so a zoom step that uploads its first chunks stalled for
+    /// that long. The window thread takes from here when the plane pool has
+    /// no match (the lock is held only for a push or a pop); the thread keeps
+    /// prewarm_chunks' worth ready, refilling as planes are taken.
+    ///
+    /// Texture creation takes wgpu-hal's device allocator lock, which the window
+    /// thread needs for every upload and every buffer it makes. So the thread
+    /// runs at normal priority (a lowered one would let it be descheduled while
+    /// holding the lock: a priority inversion on the window thread) and creates
+    /// one plane per quiet frame only: render() hands it a token at its end when
+    /// the frame uploaded nothing and made no placeholder. Until the first
+    /// render() it is unpaced, to fill the pool at start (and for headless users
+    /// that wait for warm_planes_ready() before rendering).
+    std::mutex warm_mutex;
+    std::atomic<bool> warm_token{false};
+    std::atomic<bool> warm_paced{false};
+    std::vector<Plane> warm_planes;
+    /// warm_planes per chunk-plane format (index of kChunkPlanes), kept at push
+    /// and pop so that choosing the scarcest format needs no scan under the lock.
+    std::array<std::size_t, 5> warm_count{};
+    std::thread warm_thread;
+    std::condition_variable warm_cv;
+    bool warm_stop = false;
+    std::size_t planes_warm_taken = 0;
+
+    ~Impl() {
+        {
+            const std::lock_guard lock(warm_mutex);
+            warm_stop = true;
+        }
+        warm_cv.notify_one();
+        if (warm_thread.joinable()) {
+            warm_thread.join();
+        }
+    }
+
+    /// The five full-size chunk planes (formats of upload_chunk).
+    static constexpr std::array<std::pair<WGPUTextureFormat, int>, 5> kChunkPlanes = {{
+        {WGPUTextureFormat_BGRA8Unorm, 4},
+        {WGPUTextureFormat_RGBA8Unorm, 4},
+        {WGPUTextureFormat_RGBA8Uint, 4},
+        {kTerrainFormat, 2},
+        {WGPUTextureFormat_R8Uint, 1},
+    }};
+
+    /// Starts the thread that creates `limits.prewarm_chunks` chunks' planes.
+    void start_prewarm() {
+        if (limits.prewarm_chunks == 0) {
+            return;
+        }
+        warm_thread = std::thread([this] {
+            const auto n = static_cast<std::uint32_t>(kChunk);
+            // A plane of the five formats is n x n x 3 bytes on average
+            // (4 + 4 + 4 + 2 + 1 bytes per texel over five planes).
+            const std::size_t plane_bytes = std::size_t{n} * n * 3;
+            const std::size_t budget_planes =
+                (limits.idle_plane_budget_mb << 20) / std::max<std::size_t>(plane_bytes, 1);
+            auto target_now = [&] {
+                const std::size_t pooled = pool_planes.load();
+                return std::min(limits.prewarm_chunks * kChunkPlanes.size(),
+                                budget_planes > pooled ? budget_planes - pooled : 0);
+            };
+            std::unique_lock lock(warm_mutex);
+            while (true) {
+                // Refills as the window thread takes planes: the first uploads of
+                // each zoom group need a view's worth of chunks at once.
+                warm_cv.wait(lock, [&] {
+                    return warm_stop || (warm_planes.size() < target_now() &&
+                                         (!warm_paced.load() || warm_token.load()));
+                });
+                if (warm_stop) {
+                    return;
+                }
+                warm_token.store(false);
+                // The format that is the scarcest now (uploads take the five of
+                // a chunk alike, but a chunk without a plane takes fewer).
+                std::size_t pick = 0;
+                for (std::size_t k = 1; k < kChunkPlanes.size(); ++k) {
+                    if (warm_count[k] < warm_count[pick]) {
+                        pick = k;
+                    }
+                }
+                lock.unlock();
+                Plane p;
+                p.format = kChunkPlanes[pick].first;
+                p.w = n;
+                p.h = n;
+                // wgpu-native returns a non-null handle with an error id when the
+                // device refuses a texture, so a null check cannot see it. The
+                // uncaptured-error counter is what changes (no error scope here:
+                // the scope stack is per device and the window thread's
+                // validation scopes would see this thread's). Any error counted
+                // meanwhile, from either thread, ends the pre-creation: the plane
+                // is dropped and the window thread creates textures itself, as
+                // before this thread existed.
+                const std::uint64_t errors_before = ref->errors->load();
+                p.texture = make_texture(dev(), "upload", p.format, n, n, 1,
+                                         WGPUTextureUsage_TextureBinding |
+                                             WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
+                p.view = make_view(p.texture.get(), false);
+                const bool refused = !p.texture || !p.view || ref->errors->load() != errors_before;
+                lock.lock();
+                if (refused) {
+                    return;
+                }
+                ++warm_count[pick];
+                warm_planes.push_back(std::move(p));
+            }
+        });
+    }
+
+    /// Takes a pre-created plane of this format and size, if one is ready.
+    bool take_warm(WGPUTextureFormat fmt, std::uint32_t w, std::uint32_t h, Plane& out) {
+        // The lock is held for a push or a pop only (the texture is created outside
+        // it), so waiting for it is microseconds; a try_lock lost to the thread's
+        // bookkeeping and sent the upload to create its own texture.
+        std::unique_lock lock(warm_mutex);
+        const auto it = std::find_if(warm_planes.begin(), warm_planes.end(), [&](const Plane& p) {
+            return p.format == fmt && p.w == w && p.h == h;
+        });
+        if (it == warm_planes.end()) {
+            return false;
+        }
+        out = std::move(*it);
+        for (std::size_t k = 0; k < kChunkPlanes.size(); ++k) {
+            if (kChunkPlanes[k].first == fmt) {
+                --warm_count[k];
+                break;
+            }
+        }
+        warm_planes.erase(it);
+        ++planes_warm_taken;
+        lock.unlock();
+        warm_cv.notify_one();
+        return true;
+    }
 
     /// Drops the GPU chunk at `it`, keeping its planes for reuse.
     std::map<ChunkKey, Chunk>::iterator drop_chunk(std::map<ChunkKey, Chunk>::iterator it) {
@@ -328,6 +489,7 @@ struct GpuFrame::Impl {
                 plane_pool.push_back(std::move(p));
             }
         }
+        pool_planes.store(plane_pool.size());
         return chunks.erase(it);
     }
 
@@ -360,21 +522,64 @@ struct GpuFrame::Impl {
     WGPUDevice dev() const { return ref->device.get(); }
     WGPUQueue queue() const { return ref->queue.get(); }
 
+    /// Makes the piece buffer hold `slots` slots (slot 0 = the chunk itself) and
+    /// writes `pieces` (slots * kPieceStride bytes) to it.
+    /// True when the buffer (and its bind group) had to be made or grown.
+    bool write_pieces(const std::vector<std::uint8_t>& pieces) {
+        const std::size_t slots = pieces.size() / kPieceStride;
+        const bool grown = !piece_buffer || slots > piece_slots;
+        if (grown) {
+            std::size_t cap = std::max<std::size_t>(piece_slots, 16);
+            while (cap < slots) {
+                cap *= 2;
+            }
+            piece_buffer = make_buffer(dev(), "pieces", cap * kPieceStride,
+                                       WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
+            piece_slots = cap;
+            const std::array entries = {buffer_entry(1, piece_buffer.get(), kPieceBytes)};
+            WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+            desc.label = sv("pieces");
+            desc.layout = piece_layout.get();
+            desc.entryCount = entries.size();
+            desc.entries = entries.data();
+            piece_bind = BindGroup(wgpuDeviceCreateBindGroup(dev(), &desc));
+        }
+        wgpuQueueWriteBuffer(queue(), piece_buffer.get(), 0, pieces.data(), pieces.size());
+        return grown;
+    }
+
+    /// Of a frame's submit: command buffer finish, error scope pop, wgpuQueueSubmit
+    /// (milliseconds; the command buffer's release follows it).
+    struct SubmitTimes {
+        double finish = 0, scope = 0, queue = 0;
+    };
     /// Finishes `enc` and submits it, unless recording raised a validation
     /// error: wgpu-native 29 aborts the process when an invalid command
     /// buffer is submitted, so the error is counted (errors()) and the work
     /// dropped instead. False if nothing was submitted.
-    bool submit(WGPUCommandEncoder enc, const char* what) const {
+    bool submit(WGPUCommandEncoder enc, const char* what, SubmitTimes* times = nullptr) const {
         WGPUCommandBufferDescriptor cd = WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
+        auto t = Clock::now();
         wgpuDevicePushErrorScope(dev(), WGPUErrorFilter_Validation);
         CommandBuffer cmd(wgpuCommandEncoderFinish(enc, &cd));
+        if (times != nullptr) {
+            times->finish = ms_since(t);
+            t = Clock::now();
+        }
         if (const std::string err = pop_error_scope(ref->instance.get(), dev()); !err.empty()) {
             std::fprintf(stderr, "%s not submitted: %s\n", what, err.c_str());
             ref->errors->fetch_add(1);
             return false;
         }
+        if (times != nullptr) {
+            times->scope = ms_since(t);
+            t = Clock::now();
+        }
         const WGPUCommandBuffer raw = cmd.get();
         wgpuQueueSubmit(queue(), 1, &raw);
+        if (times != nullptr) {
+            times->queue = ms_since(t);
+        }
         return true;
     }
 
@@ -521,7 +726,8 @@ struct GpuFrame::Impl {
             if (pooled != plane_pool.end()) {
                 plane = std::move(*pooled);
                 plane_pool.erase(pooled);
-            } else {
+                pool_planes.store(plane_pool.size());
+            } else if (!take_warm(fmt, pw, ph, plane)) {
                 plane.format = fmt;
                 plane.w = pw;
                 plane.h = ph;
@@ -614,8 +820,10 @@ struct GpuFrame::Impl {
 
     /// Uploads newly built visible chunks (a few per frame), adds stand-ins
     /// for missing ones, and drops GPU chunks the CPU cache no longer holds.
+    /// Fills the drop, upload and placeholder timers and counters of `stats`
+    /// (the rest of the sync time is the scan).
     std::size_t sync_chunks(const FrameRenderer& frames, std::size_t group,
-                            const std::vector<std::pair<int, int>>& visible) {
+                            const std::vector<std::pair<int, int>>& visible, GpuStats& stats) {
         std::set<ChunkKey> keys;
         for (const auto& [cx, cy] : visible) {
             keys.insert({group, cx, cy});
@@ -623,7 +831,18 @@ struct GpuFrame::Impl {
         for (auto it = chunks.begin(); it != chunks.end();) {
             const bool keep =
                 it->second.real ? frames.chunk(it->first) != nullptr : keys.contains(it->first);
-            it = keep ? std::next(it) : drop_chunk(it);
+            if (keep) {
+                ++it;
+                continue;
+            }
+            const auto d0 = Clock::now();
+            const std::size_t kept = plane_pool.size();
+            const std::size_t planes = it->second.planes.size();
+            it = drop_chunk(it);
+            // Planes the pool had no room for were freed with the chunk, here.
+            stats.planes_freed += planes - (plane_pool.size() - kept);
+            ++stats.chunks_dropped;
+            stats.sync_drop_ms += ms_since(d0);
         }
         std::size_t uploads = 0;
         const auto begin = Clock::now();
@@ -643,6 +862,7 @@ struct GpuFrame::Impl {
                                ms_since(begin) < limits.upload_budget_ms);
             if (c != nullptr && room) {
                 ++uploads;
+                const auto u0 = Clock::now();
                 Chunk fresh = upload_chunk(key, c);
                 if (it != chunks.end()) {
                     // The replaced chunk's planes are reused by later uploads
@@ -655,11 +875,16 @@ struct GpuFrame::Impl {
                             plane_pool.push_back(std::move(p));
                         }
                     }
+                    pool_planes.store(plane_pool.size());
                 } else {
                     chunks.emplace(key, std::move(fresh));
                 }
+                stats.sync_real_ms += ms_since(u0);
             } else if (it == chunks.end()) {
+                const auto p0 = Clock::now();
                 chunks.emplace(key, upload_chunk(key, nullptr));
+                ++stats.placeholders;
+                stats.sync_placeholder_ms += ms_since(p0);
             }
         }
         return uploads;
@@ -1097,7 +1322,15 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     m.atlas_layout =
         layout(d, "atlas", {texture_entry(0, kFloat, WGPUTextureViewDimension_2DArray)});
     {
-        const std::array layouts = {m.frame_layout.get(), m.chunk_layout.get()};
+        // Group 2 of the chunk pipelines: the piece (struct Piece in gpu.wgsl) of
+        // the draw, at a dynamic offset. Binding 1, so that its declaration does
+        // not share a (group, binding) pair with the sprite pipelines' atlas.
+        WGPUBindGroupLayoutEntry pe = uniform_entry(1);
+        pe.buffer.hasDynamicOffset = 1;
+        pe.buffer.minBindingSize = kPieceBytes;
+        m.piece_layout = layout(d, "piece", {pe});
+        const std::array layouts = {m.frame_layout.get(), m.chunk_layout.get(),
+                                    m.piece_layout.get()};
         WGPUPipelineLayoutDescriptor pd = WGPU_PIPELINE_LAYOUT_DESCRIPTOR_INIT;
         pd.label = sv("chunk");
         pd.bindGroupLayoutCount = layouts.size();
@@ -1148,6 +1381,8 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     }
     m.frame_uniform = make_buffer(d, "frame", kFrameUniformBytes,
                                   WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
+    // Slot 0 of the pieces: the chunk itself (all zero = kind 0).
+    m.write_pieces(std::vector<std::uint8_t>(kPieceStride, 0));
     m.river_uniform = make_buffer(d, "river", kRiverParamsBytes,
                                   WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
     m.timestamps = c.timestamps;
@@ -1217,10 +1452,16 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
         }
         m.tier_note += ")";
     }
+    m.start_prewarm();
     return f;
 }
 
 GpuFrame::~GpuFrame() = default;
+
+std::size_t GpuFrame::warm_planes_ready() const {
+    const std::lock_guard lock(impl_->warm_mutex);
+    return impl_->warm_planes.size();
+}
 
 WGPUTextureFormat GpuFrame::format() const {
     return impl_->format;
@@ -1233,10 +1474,24 @@ std::uint64_t GpuFrame::errors() const {
 GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                           std::uint64_t time_ms, WaterStyle style, WGPUTextureView target) {
     Impl& m = *impl_;
+    // From the first frame on the pre-creation is paced by quiet frames (a
+    // stricter condition for the thread, so no wake-up is needed).
+    m.warm_paced.store(true);
     const auto start = Clock::now();
     GpuStats stats;
+    // Every step below ends with a lap: the time since the previous lap goes to
+    // the step, so the steps add up to total_ms (GpuStats::steps).
+    auto last = start;
+    auto lap = [&last]() {
+        const auto now = Clock::now();
+        const double ms = std::chrono::duration<double, std::milli>(now - last).count();
+        last = now;
+        return ms;
+    };
+    frames.retain_stand_in_sources = m.limits.stand_ins;
     std::tie(stats.chunks_built, stats.chunks_ms, stats.chunks_missing) =
         frames.update_chunks(scene, view, group);
+    stats.chunks_ms = lap();
     const auto w = static_cast<std::uint32_t>(std::max(view.w, 1));
     const auto h = static_cast<std::uint32_t>(std::max(view.h, 1));
 
@@ -1245,13 +1500,17 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     m.sprites_new = 0;
     auto t = Clock::now();
     m.ensure_under(w, h);
-    auto t_part = Clock::now();
+    stats.under_ms = lap();
     m.ensure_sea(scene, group);
-    stats.sea_ms = ms_since(t_part);
+    stats.sea_ms = lap();
     const auto visible = visible_chunks(view);
-    t_part = Clock::now();
-    stats.chunks_uploaded = m.sync_chunks(frames, group, visible);
-    stats.chunk_sync_ms = ms_since(t_part);
+    stats.visible_ms = lap();
+    const std::size_t warm_before = m.planes_warm_taken;
+    stats.chunks_uploaded = m.sync_chunks(frames, group, visible, stats);
+    stats.planes_warm = m.planes_warm_taken - warm_before;
+    stats.chunk_sync_ms = lap();
+    stats.sync_scan_ms = std::max(0.0, stats.chunk_sync_ms - stats.sync_drop_ms -
+                                           stats.sync_real_ms - stats.sync_placeholder_ms);
     stats.upload_ms = ms_since(t);
 
     t = Clock::now();
@@ -1273,18 +1532,19 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     stats.sprites_new = m.sprites_new;
     stats.sprites = std::size_t{n_below} + n_above;
     stats.ships = n_ships;
-    stats.sprites_ms = ms_since(t);
+    stats.sprites_ms = lap();
 
     t = Clock::now();
     WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
     ed.label = sv("frame");
     CommandEncoder enc(wgpuDeviceCreateCommandEncoder(m.dev(), &ed));
+    stats.encoder_ms = lap();
     // Coastal wave simulation (enhanced water only).
-    const auto t_fluid = Clock::now();
     const bool fluid_on = style == WaterStyle::Enhanced && m.limits.wave_simulation &&
                           m.update_fluid(enc.get(), scene, view, group, time_ms);
-    stats.fluid_ms = ms_since(t_fluid);
+    stats.fluid_ms = lap();
     stats.wave_simulation = fluid_on;
+    stats.fluid_setting_up = fluid_on && m.fluid && m.fluid->setting_up();
     const bool river_flow = style == WaterStyle::Enhanced &&
                             frames.river_flow == RiverFlowMode::Flow && scene.river_active();
     m.write_frame_uniform(view, group, time_ms, style, scene, fluid_on, river_flow);
@@ -1306,16 +1566,66 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     const BindGroup pass2 = m.frame_bind(m.under_v.get(), m.terrain_v.get());
     const Px water = scene.textures.water();
     const WGPUColor clear = {water[0] / 255.0, water[1] / 255.0, water[2] / 255.0, 1.0};
-    std::vector<WGPUBindGroup> binds;
+    stats.uniforms_ms = lap();
+    // What to draw per chunk pass: every visible chunk (a stand-in chunk that is
+    // not on the GPU yet draws open sea), then the parts of the other zoom
+    // groups' chunks that stand in for the ones that are not (kind 1 pieces).
+    struct Draw {
+        WGPUBindGroup bind;
+        std::uint32_t piece_offset;
+    };
+    std::vector<Draw> draws;
+    std::vector<std::uint8_t> pieces(kPieceStride, 0);
     for (const auto& [cx, cy] : visible) {
         if (const auto it = m.chunks.find({group, cx, cy}); it != m.chunks.end()) {
-            binds.push_back(it->second.bind.get());
+            draws.push_back({it->second.bind.get(), 0});
         }
     }
+    if (m.limits.stand_ins) {
+        for (const auto& [cx, cy] : visible) {
+            const auto own = m.chunks.find({group, cx, cy});
+            if (own != m.chunks.end() && own->second.real) {
+                continue;
+            }
+            const auto c0 = Clock::now();
+            const auto cover = stand_in_cover(cx, cy, group, [&](const ChunkKey& k) {
+                const auto src = m.chunks.find(k);
+                return src != m.chunks.end() && src->second.real;
+            });
+            stats.stand_in_ms += ms_since(c0);
+            for (const StandInPart& part : cover) {
+                const std::size_t from = part.from;
+                const StandInSpan& sp = part.span;
+                const auto src = m.chunks.find({from, sp.src_cx, sp.src_cy});
+                Bytes b;
+                b.i32(sp.dst.x);
+                b.i32(sp.dst.y);
+                b.i32(sp.dst.x + sp.dst.w);
+                b.i32(sp.dst.y + sp.dst.h);
+                b.i32(kTile[from].w);
+                b.i32(kTile[from].h);
+                b.i32(kTile[group].w);
+                b.i32(kTile[group].h);
+                b.u32(1);
+                b.b.resize(kPieceStride, 0);
+                draws.push_back(
+                    {src->second.bind.get(), static_cast<std::uint32_t>(pieces.size())});
+                pieces.insert(pieces.end(), b.b.begin(), b.b.end());
+            }
+            if (!cover.empty()) {
+                ++stats.stand_in_chunks;
+                stats.stand_in_parts += cover.size();
+            }
+        }
+    }
+    stats.draws_ms = lap();
+    stats.pieces_realloc = m.write_pieces(pieces);
+    stats.pieces_ms = lap();
     const WGPUBindGroup atlas = m.atlas ? m.atlas->bind.get() : nullptr;
     auto draw_chunks = [&](WGPURenderPassEncoder p) {
-        for (const WGPUBindGroup b : binds) {
-            wgpuRenderPassEncoderSetBindGroup(p, 1, b, 0, nullptr);
+        for (const Draw& d : draws) {
+            wgpuRenderPassEncoderSetBindGroup(p, 1, d.bind, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(p, 2, m.piece_bind.get(), 1, &d.piece_offset);
             wgpuRenderPassEncoderDraw(p, 6, 1, 0, 0);
         }
     };
@@ -1379,9 +1689,28 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     if (timed) {
         m.resolve_timestamps(enc.get());
     }
-    m.submit(enc.get(), "frame");
+    stats.record_ms = lap();
+    Impl::SubmitTimes times;
+    m.submit(enc.get(), "frame", &times);
+    stats.finish_ms = times.finish;
+    stats.scope_ms = times.scope;
+    stats.queue_ms = times.queue;
+    stats.release_ms = std::max(0.0, lap() - times.finish - times.scope - times.queue);
     stats.encode_ms = ms_since(t);
     stats.total_ms = ms_since(start);
+    // A frame without uploads or placeholders lets the pre-creation thread make
+    // one plane (Impl::warm_mutex); a busy frame leaves the allocator alone.
+    if (m.limits.prewarm_chunks > 0) {
+        {
+            // Under the mutex, or the wake-up can be lost between the thread's
+            // predicate check and its wait; the thread holds it only briefly.
+            const std::lock_guard lock(m.warm_mutex);
+            if (stats.chunks_uploaded == 0 && stats.placeholders == 0) {
+                m.warm_token.store(true);
+                m.warm_cv.notify_one();
+            }
+        }
+    }
     return stats;
 }
 
@@ -1493,6 +1822,8 @@ std::vector<RiverCost> GpuFrame::measure_river_cost(std::size_t repeats,
         WGPURenderPassEncoder p =
             begin(enc.get(), target.second.get(), clear, stamps ? &m.ts_writes : nullptr);
         wgpuRenderPassEncoderSetBindGroup(p, 0, frame_bind.get(), 0, nullptr);
+        const std::uint32_t whole = 0;
+        wgpuRenderPassEncoderSetBindGroup(p, 2, m.piece_bind.get(), 1, &whole);
         wgpuRenderPassEncoderSetPipeline(p, m.sea_pipe.get());
         for (const Impl::Chunk& c : quad) {
             wgpuRenderPassEncoderSetBindGroup(p, 1, c.bind.get(), 0, nullptr);

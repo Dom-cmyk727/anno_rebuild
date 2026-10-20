@@ -64,6 +64,63 @@ struct GpuStats {
     /// Recording and submitting the commands.
     double encode_ms = 0;
     double total_ms = 0;
+    /// The window-thread steps of render(), laid end to end: steps() lists them in
+    /// order and their sum is total_ms (the time between two steps is
+    /// charged to the step before it), so a hitch that shows in total_ms is
+    /// always in one of them. The coarse fields above are sums of these.
+    /// ensure_under (the offscreen sea targets) and visible_chunks.
+    double under_ms = 0, visible_ms = 0;
+    /// Of chunk_sync_ms: building the key set and deciding what stays, the GPU
+    /// chunks dropped (their planes go to the plane pool, which keeps a bounded
+    /// number; the rest is freed on this thread: chunks_dropped,
+    /// planes_freed), the real uploads (textures, texel writes, bind group;
+    /// chunks_uploaded) and the placeholder chunks made for chunks that are not
+    /// built or not uploaded yet (a uniform buffer and a bind group each;
+    /// placeholders).
+    double sync_scan_ms = 0, sync_drop_ms = 0, sync_real_ms = 0, sync_placeholder_ms = 0;
+    std::size_t chunks_dropped = 0, planes_freed = 0, placeholders = 0;
+    /// Planes of the real uploads that came from the background pre-creation
+    /// (GpuLimits::prewarm_chunks) instead of being created in the frame.
+    std::size_t planes_warm = 0;
+    /// Of encode_ms: creating the command encoder; the frame and river uniforms
+    /// with the two frame bind groups; choosing the chunk draws (stand_in_ms of
+    /// it: the stand-in cover and the piece records); writing the piece buffer
+    /// (pieces_realloc: it grew, a new buffer and bind group were made);
+    /// recording the three passes; finishing the command buffer, popping the
+    /// validation error scope (it polls the device), wgpuQueueSubmit, and
+    /// releasing the command buffer.
+    double encoder_ms = 0, uniforms_ms = 0, draws_ms = 0, stand_in_ms = 0, pieces_ms = 0;
+    bool pieces_realloc = false;
+    double record_ms = 0, finish_ms = 0, scope_ms = 0, queue_ms = 0, release_ms = 0;
+    /// A step of render(): a name and its time on the window thread.
+    struct Step {
+        const char* name;
+        double ms;
+    };
+    /// The steps in the order they ran. Their sum is total_ms up to the clock
+    /// reads between two steps (below a microsecond).
+    [[nodiscard]] std::vector<Step> steps() const {
+        // chunk_sync_ms is not in the list: its parts are.
+        return {{"chunks", chunks_ms},
+                {"under", under_ms},
+                {"sea", sea_ms},
+                {"visible", visible_ms},
+                {"sync scan", sync_scan_ms},
+                {"sync drops", sync_drop_ms},
+                {"sync uploads", sync_real_ms},
+                {"sync placeholders", sync_placeholder_ms},
+                {"sprites", sprites_ms},
+                {"encoder", encoder_ms},
+                {"fluid", fluid_ms},
+                {"uniforms", uniforms_ms},
+                {"draws", draws_ms},
+                {"pieces", pieces_ms},
+                {"record", record_ms},
+                {"finish", finish_ms},
+                {"error scope", scope_ms},
+                {"queue submit", queue_ms},
+                {"cmd release", release_ms}};
+    }
     /// Animated sprites drawn (water objects below and above the waterline).
     std::size_t sprites = 0;
     /// Ships drawn by the compositor (FrameRenderer without ships in its
@@ -71,6 +128,14 @@ struct GpuStats {
     std::size_t ships = 0;
     /// The coastal wave simulation ran for this frame (enhanced water).
     bool wave_simulation = false;
+    /// Visible chunks drawn from another zoom group's chunks because their own
+    /// are not built or not uploaded yet (GpuLimits::stand_ins), and the parts
+    /// (draws) they took.
+    std::size_t stand_in_chunks = 0, stand_in_parts = 0;
+    /// A wave-window job (new group, size or strips) is being prepared in the
+    /// background: the shader shows the previous window or, where it does not
+    /// reach, the analytic waves (OQ-076).
+    bool fluid_setting_up = false;
     /// Enhanced rivers: the visible chunks that carry a flow lattice on the GPU,
     /// and the cost tier the river shading ran at this frame.
     std::size_t river_chunks = 0;
@@ -95,14 +160,38 @@ struct GpuLimits {
     /// the shader's analytic waves outside it) is shown. false: set up in
     /// the frame (headless renders, tests).
     bool background_fluid = false;
+    /// Chunks' worth of texture planes (five 512 x 512 textures, about 4 MB
+    /// per chunk) that a background thread keeps ready: it creates them right
+    /// after the compositor is made and makes up for the ones uploads take.
+    /// Creating textures costs the window thread 1-18 ms for 2-3 chunks (the
+    /// driver allocates device memory), which a zoom step into a group with
+    /// nothing uploaded yet paid for. The default covers the visible chunks of
+    /// a 2560 x 1369 view at one group (24); a larger view or more groups held
+    /// at once take more. Memory use is this times 4 MB, on top of the chunks
+    /// uploaded; 0 = none (headless renders, tests).
+    std::size_t prewarm_chunks = 0;
+    /// Device memory in MiB that idle chunk planes may hold at most: the pooled
+    /// planes of dropped chunks (bounded by their own count) and the pre-created
+    /// ones together; the pre-creation fills what the pool leaves. The default
+    /// is about 64 chunks' worth and covers prewarm_chunks (24 chunks, about
+    /// 94 MB) plus a pool of a view's chunks; raise it with prewarm_chunks.
+    /// Uploaded chunks are not counted (they are the content, bounded by the CPU
+    /// cache). 0 = no idle planes are pre-created.
+    std::size_t idle_plane_budget_mb = 256;
     /// The limits for an interactive window: uploads and wave simulation
     /// setup are spread over frames (upload_budget_ms 1.0, background_fluid).
     [[nodiscard]] static GpuLimits interactive() {
         GpuLimits l;
         l.upload_budget_ms = 1.0;
         l.background_fluid = true;
+        l.prewarm_chunks = 24;
         return l;
     }
+    /// A visible chunk that is not on the GPU yet (still being built, or waiting
+    /// for its upload) shows the nearest zoom group's chunks that are, scaled by
+    /// the compositor's shader to the tile size shown (frame.hpp, "Stand-in
+    /// chunks"; open-questions OQ-077), instead of open sea. false: open sea.
+    bool stand_ins = true;
     /// Animation steps of other zoom groups' sea patterns uploaded per frame.
     std::size_t sea_steps_per_frame = 2;
     /// Atlas layers at most (0 = the device's maxTextureArrayLayers; larger
@@ -269,6 +358,8 @@ class GpuFrame {
     std::vector<std::uint8_t> read_back(WGPUTexture texture, std::uint32_t w, std::uint32_t h,
                                         std::uint32_t bpp = 4) const;
     [[nodiscard]] WGPUTextureFormat format() const;
+    /// Pre-created chunk planes waiting for uploads (GpuLimits::prewarm_chunks).
+    [[nodiscard]] std::size_t warm_planes_ready() const;
     /// Errors of the device so far (Context::errors): uncaptured ones and
     /// command buffers dropped because recording them failed (render()
     /// then draws nothing).

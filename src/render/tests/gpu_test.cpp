@@ -2352,3 +2352,634 @@ TEST_CASE("river pixels on the GPU match the CPU path at the Low and Medium tier
         CHECK(g.errors() == 0);
     }
 }
+
+// ---- Stand-in chunks (OQ-077) ----
+
+namespace {
+
+/// Land chunk of noise: every pixel of ground and objects differs from its
+/// neighbours (objects with alpha 0, 128 and 255), the sea field says land
+/// (cover 0), so a frame shows ground under objects and a wrong source pixel,
+/// a shifted mapping or a missing chunk changes it.
+render::Chunk noise_land_chunk(std::size_t group, int cx, int cy) {
+    render::Chunk c;
+    const auto n = static_cast<std::size_t>(render::kChunk);
+    c.ground.resize(n * n);
+    c.objects.resize(n * n);
+    c.field.assign(n * n * 4, 0);
+    for (std::size_t y = 0; y < n; ++y) {
+        for (std::size_t x = 0; x < n; ++x) {
+            const auto gx =
+                static_cast<std::int64_t>(cx) * render::kChunk + static_cast<std::int64_t>(x);
+            const auto gy =
+                static_cast<std::int64_t>(cy) * render::kChunk + static_cast<std::int64_t>(y);
+            auto h = static_cast<std::uint32_t>(gx * 73856093 ^ gy * 19349663 ^
+                                                static_cast<std::int64_t>(group) * 83492791);
+            h ^= h >> 13;
+            h *= 0x5BD1E995U;
+            h ^= h >> 15;
+            const std::size_t i = y * n + x;
+            c.ground[i] = h & 0xFFFFFFU;
+            const std::uint32_t g = h * 2654435761U;
+            const std::uint8_t a = (g >> 30) == 0 ? 0 : (g >> 30) == 1 ? 128 : 255;
+            c.objects[i] =
+                render::Px{static_cast<std::uint8_t>(g), static_cast<std::uint8_t>(g >> 8),
+                           static_cast<std::uint8_t>(g >> 16), a};
+        }
+    }
+    return c;
+}
+
+/// The pixel a frame shows over land: ground, then the objects over it.
+render::Px land_pixel(const render::Chunk& c, std::size_t i) {
+    render::Px p{static_cast<std::uint8_t>(c.ground[i] >> 16),
+                 static_cast<std::uint8_t>(c.ground[i] >> 8),
+                 static_cast<std::uint8_t>(c.ground[i]), 255};
+    render::over(p, c.objects[i]);
+    return p;
+}
+
+/// Chunk index of a scene coordinate, written out (floor division).
+int floor_chunk(int v) {
+    return v >= 0 ? v / render::kChunk : -((-v + render::kChunk - 1) / render::kChunk);
+}
+
+/// Inserts all chunks of `from` that chunk (cx, cy) of `to` shows.
+void insert_sources(render::FrameRenderer& fr, std::size_t to, int cx, int cy, std::size_t from) {
+    for (const auto& sp : render::stand_in_spans(cx, cy, to, from)) {
+        fr.insert_chunk({from, sp.src_cx, sp.src_cy}, noise_land_chunk(from, sp.src_cx, sp.src_cy));
+    }
+}
+
+} // namespace
+
+TEST_CASE("stand-in spans tile the destination chunk and map by the tile ratio of kTile") {
+    for (std::size_t to = 0; to < render::kGroups; ++to) {
+        for (const std::size_t from : render::stand_in_groups(to)) {
+            CHECK(from != to);
+            for (const auto& [cx, cy] : {std::pair{0, 0}, std::pair{1, 0}, std::pair{-1, 2},
+                                         std::pair{-3, -2}, std::pair{7, 5}}) {
+                const auto spans = render::stand_in_spans(cx, cy, to, from);
+                CHECK(!spans.empty());
+                const render::Rect chunk = render::chunk_rect(cx, cy);
+                long long area = 0;
+                for (const auto& sp : spans) {
+                    area += static_cast<long long>(sp.dst.w) * sp.dst.h;
+                    CHECK(sp.dst.intersect(chunk) == sp.dst);
+                    // Every pixel of a part reads the part's source chunk.
+                    for (int y = sp.dst.y; y < sp.dst.y + sp.dst.h; y += 7) {
+                        for (int x = sp.dst.x; x < sp.dst.x + sp.dst.w; x += 5) {
+                            const int sx = render::stand_in_source(x, render::kTile[from].w,
+                                                                   render::kTile[to].w);
+                            const int sy = render::stand_in_source(y, render::kTile[from].h,
+                                                                   render::kTile[to].h);
+                            const int chunk_x = floor_chunk(sx);
+                            CHECK(chunk_x == sp.src_cx);
+                            const int chunk_y = floor_chunk(sy);
+                            CHECK(chunk_y == sp.src_cy);
+                        }
+                    }
+                }
+                // The parts are disjoint (distinct source chunks) and cover the chunk.
+                CHECK(area == static_cast<long long>(render::kChunk) * render::kChunk);
+            }
+        }
+    }
+    CHECK(render::stand_in_source(100, render::kTile[0].w, render::kTile[1].w) ==
+          (2 * 100 + 1) * render::kTile[0].w / (2 * render::kTile[1].w));
+    CHECK(render::stand_in_groups(0).size() == render::kGroups - 1);
+    CHECK(render::stand_in_groups(1).front() == 0);
+}
+
+TEST_CASE("CPU reference: a missing chunk shows the scaled chunks of the nearest built group") {
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    constexpr std::size_t kTo = 1;
+    // Group 2 (tiles 2.1 times smaller) and group 0 (tiles twice as large).
+    for (const std::size_t from : {std::size_t{2}, std::size_t{0}}) {
+        render::FrameRenderer fr(2, false);
+        // Background workers: the first frame cannot have the chunk built yet.
+        fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, 1));
+        fr.stand_ins = true;
+        insert_sources(fr, kTo, 0, 0, from);
+        const render::Rect view = render::chunk_rect(0, 0);
+        std::vector<std::uint32_t> out(static_cast<std::size_t>(view.w) * view.h);
+        const auto st = fr.render(scene, view, kTo, 0, render::WaterStyle::Original, out.data());
+        CHECK(st.chunks_missing == 1);
+        std::size_t wrong = 0;
+        for (int y = 0; y < view.h; ++y) {
+            for (int x = 0; x < view.w; ++x) {
+                const auto i =
+                    static_cast<std::size_t>(y) * render::kChunk + static_cast<std::size_t>(x);
+                // The source pixel by the tile ratio of kTile at the pixel centre,
+                // written out here apart from the reference code.
+                const int sx = (2 * x + 1) * render::kTile[from].w / (2 * render::kTile[kTo].w);
+                const int sy = (2 * y + 1) * render::kTile[from].h / (2 * render::kTile[kTo].h);
+                const render::Chunk* src =
+                    fr.chunk({from, sx / render::kChunk, sy / render::kChunk});
+                REQUIRE(src != nullptr);
+                const render::Px e = land_pixel(
+                    *src, static_cast<std::size_t>(sy % render::kChunk) * render::kChunk +
+                              static_cast<std::size_t>(sx % render::kChunk));
+                const std::uint32_t px = out[i];
+                int m = std::abs(int{e[0]} - int((px >> 16) & 255));
+                m = std::max(m, std::abs(int{e[1]} - int((px >> 8) & 255)));
+                m = std::max(m, std::abs(int{e[2]} - int(px & 255)));
+                wrong += m > 1 ? 1U : 0U;
+            }
+        }
+        CHECK(wrong == 0);
+        // Off: the same frame is open sea.
+        render::FrameRenderer plain(2, false);
+        plain.set_workers(std::make_unique<render::ChunkWorkers>(scene, 1));
+        insert_sources(plain, kTo, 0, 0, from);
+        std::vector<std::uint32_t> sea(out.size());
+        plain.render(scene, view, kTo, 0, render::WaterStyle::Original, sea.data());
+        CHECK(sea != out);
+    }
+}
+
+TEST_CASE(
+    "stand-in sources are kept only for visible chunks that are not built, and only when asked") {
+    constexpr std::size_t kTo = 1, kFrom = 2;
+    render::FrameRenderer fr(1, false);
+    insert_sources(fr, kTo, 1, 0, kFrom);
+    const auto spans = render::stand_in_spans(1, 0, kTo, kFrom);
+    REQUIRE(!spans.empty());
+    const std::vector<std::pair<int, int>> visible{{0, 0}, {1, 0}};
+    // Both switches off: the eviction is the old one.
+    CHECK(fr.stand_in_retain(kTo, visible).empty());
+    fr.retain_stand_in_sources = true;
+    auto kept = fr.stand_in_retain(kTo, visible);
+    CHECK(kept.size() == spans.size());
+    for (const auto& sp : spans) {
+        CHECK(kept.contains({kFrom, sp.src_cx, sp.src_cy}));
+    }
+    // The CPU path's own switch asks for them as well.
+    fr.retain_stand_in_sources = false;
+    fr.stand_ins = true;
+    CHECK(fr.stand_in_retain(kTo, visible).size() == spans.size());
+    // Once the chunk itself is built there is nothing to stand in for.
+    fr.insert_chunk({kTo, 1, 0}, noise_land_chunk(kTo, 1, 0));
+    CHECK(fr.stand_in_retain(kTo, {{1, 0}}).empty());
+}
+
+TEST_CASE("GPU stand-in chunks equal the CPU reference (synthetic)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    constexpr std::size_t kTo = 1;
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    for (const std::size_t from : {std::size_t{2}, std::size_t{0}}) {
+        gpu::GpuLimits limits;
+        limits.uploads_per_frame = 1;
+        limits.wave_simulation = false;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+        gpu::GpuFrame& g = *made.value();
+        // Blocking chunks: the group's own chunks exist in the CPU cache, but one
+        // per frame reaches the GPU, so the other is drawn from the stand-in.
+        render::FrameRenderer fr(1, false);
+        insert_sources(fr, kTo, 1, 0, from);
+        // The sources on the GPU first: they were visible at their own group.
+        std::optional<render::Rect> src_view;
+        for (const auto& sp : render::stand_in_spans(1, 0, kTo, from)) {
+            const render::Rect r = render::chunk_rect(sp.src_cx, sp.src_cy);
+            src_view = src_view ? src_view->unite(r) : r;
+        }
+        REQUIRE(src_view);
+        const auto source_target = g.offscreen_target(static_cast<std::uint32_t>(src_view->w),
+                                                      static_cast<std::uint32_t>(src_view->h));
+        for (int f = 0; f < 12; ++f) {
+            g.render(fr, scene, *src_view, from, 0, render::WaterStyle::Original,
+                     source_target.second.get());
+        }
+        // Two destination chunks side by side: (0, 0) uploads, (1, 0) stands in.
+        const render::Rect view{0, 0, 2 * render::kChunk, render::kChunk};
+        const auto target = g.offscreen_target(2 * side, side);
+        const auto st =
+            g.render(fr, scene, view, kTo, 0, render::WaterStyle::Original, target.second.get());
+        CHECK(st.chunks_uploaded == 1);
+        CHECK(st.stand_in_chunks == 1);
+        CHECK(st.stand_in_parts == render::stand_in_spans(1, 0, kTo, from).size());
+        const auto px = g.read_back(target.first.get(), 2 * side, side);
+        REQUIRE(px.size() == std::size_t{2} * side * side * 4);
+        const auto ref = render::stand_in_chunk(fr, kTo, 1, 0, scene.textures.water());
+        REQUIRE(ref);
+        std::size_t wrong = 0;
+        int worst = 0;
+        for (std::size_t y = 0; y < side; ++y) {
+            for (std::size_t x = 0; x < side; ++x) {
+                const render::Px e = land_pixel(*ref, y * side + x);
+                const std::size_t o = (y * 2 * side + side + x) * 4;
+                int m = 0;
+                for (std::size_t k = 0; k < 3; ++k) {
+                    m = std::max(m, std::abs(int{e[k]} - int{px[o + k]}));
+                }
+                worst = std::max(worst, m);
+                wrong += m > 1 ? 1U : 0U;
+            }
+        }
+        MESSAGE("source group " << from << ": " << wrong << " pixels differ by more than 1, worst "
+                                << worst);
+        CHECK(wrong == 0);
+        CHECK(g.errors() == 0);
+        // Off: nothing is drawn from other groups.
+        gpu::GpuLimits off = limits;
+        off.stand_ins = false;
+        auto made_off = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, off);
+        REQUIRE(made_off);
+        gpu::GpuFrame& go = *made_off.value();
+        render::FrameRenderer fr2(1, false);
+        insert_sources(fr2, kTo, 1, 0, from);
+        const auto st_target = go.offscreen_target(static_cast<std::uint32_t>(src_view->w),
+                                                   static_cast<std::uint32_t>(src_view->h));
+        for (int f = 0; f < 12; ++f) {
+            go.render(fr2, scene, *src_view, from, 0, render::WaterStyle::Original,
+                      st_target.second.get());
+        }
+        const auto target2 = go.offscreen_target(2 * side, side);
+        const auto st2 =
+            go.render(fr2, scene, view, kTo, 0, render::WaterStyle::Original, target2.second.get());
+        CHECK(st2.stand_in_chunks == 0);
+        CHECK(go.errors() == 0);
+    }
+}
+
+TEST_CASE("GPU stand-ins carry the sea field: cover 0 shows the open water, cover 255 the sea") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    constexpr std::size_t kTo = 1, kFrom = 2;
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    // Sea chunks without ground: the field alone decides (original water, flags
+    // bit 0 = sea drawn). Cover 255 and 0 in a checkerboard of 16 x 16 texels.
+    auto covered = [](int lx, int ly) { return (((lx / 16) + (ly / 16)) & 1) != 0; };
+    auto sea_chunk = [&] {
+        render::Chunk c;
+        const auto n = static_cast<std::size_t>(render::kChunk);
+        c.field.assign(n * n * 4, 0);
+        for (std::size_t y = 0; y < n; ++y) {
+            for (std::size_t x = 0; x < n; ++x) {
+                const std::size_t i = (y * n + x) * 4;
+                c.field[i] = covered(static_cast<int>(x), static_cast<int>(y)) ? 255 : 0;
+                c.field[i + 3] = 1;
+            }
+        }
+        return c;
+    };
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = 1;
+    limits.wave_simulation = false;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    render::FrameRenderer fr(1, false);
+    const auto spans = render::stand_in_spans(1, 0, kTo, kFrom);
+    REQUIRE(!spans.empty());
+    std::optional<render::Rect> src_view;
+    for (const auto& sp : spans) {
+        fr.insert_chunk({kFrom, sp.src_cx, sp.src_cy}, sea_chunk());
+        const render::Rect r = render::chunk_rect(sp.src_cx, sp.src_cy);
+        src_view = src_view ? src_view->unite(r) : r;
+    }
+    const auto source_target = g.offscreen_target(static_cast<std::uint32_t>(src_view->w),
+                                                  static_cast<std::uint32_t>(src_view->h));
+    for (int f = 0; f < 12; ++f) {
+        g.render(fr, scene, *src_view, kFrom, 0, render::WaterStyle::Original,
+                 source_target.second.get());
+    }
+    // Two destination chunks: (0, 0) uploads (an empty chunk), (1, 0) stands in.
+    const render::Rect view{0, 0, 2 * render::kChunk, render::kChunk};
+    const auto target = g.offscreen_target(2 * side, side);
+    const auto st =
+        g.render(fr, scene, view, kTo, 0, render::WaterStyle::Original, target.second.get());
+    REQUIRE(st.stand_in_chunks == 1);
+    const auto px = g.read_back(target.first.get(), 2 * side, side);
+    REQUIRE(px.size() == std::size_t{2} * side * side * 4);
+    const render::Px water = scene.textures.water();
+    std::size_t open_n = 0, open_wrong = 0, sea_n = 0, sea_same = 0;
+    for (const auto& sp : spans) {
+        for (int y = sp.dst.y; y < sp.dst.y + sp.dst.h; ++y) {
+            for (int x = sp.dst.x; x < sp.dst.x + sp.dst.w; ++x) {
+                const int sx =
+                    render::stand_in_source(x, render::kTile[kFrom].w, render::kTile[kTo].w);
+                const int sy =
+                    render::stand_in_source(y, render::kTile[kFrom].h, render::kTile[kTo].h);
+                const int lx = sx - sp.src_cx * render::kChunk;
+                const int ly = sy - sp.src_cy * render::kChunk;
+                REQUIRE((lx >= 0 && lx < render::kChunk && ly >= 0 && ly < render::kChunk));
+                const std::size_t o =
+                    (static_cast<std::size_t>(y) * 2 * side + static_cast<std::size_t>(x)) * 4;
+                int diff = 0;
+                for (std::size_t k = 0; k < 3; ++k) {
+                    diff = std::max(diff, std::abs(int{water[k]} - int{px[o + k]}));
+                }
+                if (covered(lx, ly)) {
+                    ++sea_n;
+                    sea_same += diff <= 1 ? 1U : 0U;
+                } else {
+                    ++open_n;
+                    open_wrong += diff > 1 ? 1U : 0U;
+                }
+            }
+        }
+    }
+    MESSAGE("open " << open_n << " (wrong " << open_wrong << "), sea " << sea_n
+                    << " (same as water " << sea_same << ")");
+    CHECK(open_n > 0);
+    CHECK(sea_n > 0);
+    // Where the source field has no cover the open water colour shows.
+    CHECK(open_wrong == 0);
+    // Where it has, the sea pattern is drawn over it: almost nowhere the plain
+    // water colour (the pattern has texture; a few texels may match by chance).
+    CHECK(sea_same * 10 < sea_n);
+    CHECK(g.errors() == 0);
+}
+
+TEST_CASE("stand-in cover chooses the source group per part") {
+    const auto all = [](const render::ChunkKey&) { return true; };
+    for (std::size_t to = 0; to < render::kGroups; ++to) {
+        const auto order = render::stand_in_groups(to);
+        for (const auto& [cx, cy] : {std::pair{0, 0}, std::pair{1, 0}, std::pair{-1, 2}}) {
+            const render::Rect chunk = render::chunk_rect(cx, cy);
+            const auto full = render::stand_in_cover(cx, cy, to, all);
+            long long area = 0;
+            for (const auto& p : full) {
+                CHECK(p.from == order.front());
+                area += static_cast<long long>(p.span.dst.w) * p.span.dst.h;
+            }
+            CHECK(area == static_cast<long long>(render::kChunk) * render::kChunk);
+            // The first source chunk of the nearest group is missing: its part
+            // comes from the next group, the other parts stay.
+            const auto first = render::stand_in_spans(cx, cy, to, order.front()).front();
+            const render::ChunkKey gone{order.front(), first.src_cx, first.src_cy};
+            const auto part = render::stand_in_cover(
+                cx, cy, to, [&](const render::ChunkKey& k) { return k != gone; });
+            long long covered = 0;
+            bool fallback = false;
+            for (const auto& p : part) {
+                CHECK(p.span.dst.intersect(chunk) == p.span.dst);
+                covered += static_cast<long long>(p.span.dst.w) * p.span.dst.h;
+                if (p.from == order[1]) {
+                    fallback = true;
+                    CHECK(first.dst.intersect(p.span.dst) == p.span.dst);
+                } else {
+                    CHECK(p.from == order.front());
+                    CHECK(render::ChunkKey{p.from, p.span.src_cx, p.span.src_cy} != gone);
+                }
+            }
+            CHECK(fallback);
+            CHECK(covered == area);
+            // Nothing available anywhere: open sea.
+            CHECK(render::stand_in_cover(cx, cy, to, [](const render::ChunkKey&) {
+                      return false;
+                  }).empty());
+        }
+    }
+}
+
+TEST_CASE("GPU stand-in with a hole in the nearest group equals the CPU reference, and the real "
+          "chunk replaces it") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    for (std::size_t to = 0; to < render::kGroups; ++to) {
+        const auto order = render::stand_in_groups(to);
+        const auto hole = render::stand_in_spans(1, 0, to, order.front()).front();
+        const render::ChunkKey gone{order.front(), hole.src_cx, hole.src_cy};
+        gpu::GpuLimits limits;
+        limits.uploads_per_frame = 1;
+        limits.wave_simulation = false;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+        gpu::GpuFrame& g = *made.value();
+        render::FrameRenderer fr(1, false);
+        // Every source chunk of the two nearest groups but the hole.
+        for (const std::size_t from : {order[0], order[1]}) {
+            for (const auto& sp : render::stand_in_spans(1, 0, to, from)) {
+                if (render::ChunkKey{from, sp.src_cx, sp.src_cy} != gone) {
+                    fr.insert_chunk({from, sp.src_cx, sp.src_cy},
+                                    noise_land_chunk(from, sp.src_cx, sp.src_cy));
+                }
+            }
+        }
+        // The fallback group must cover the hole.
+        const auto cover = render::stand_in_cover(
+            1, 0, to, [&](const render::ChunkKey& k) { return fr.chunk(k) != nullptr; });
+        bool fallback = false;
+        for (const auto& p : cover) {
+            fallback = fallback || p.from == order[1];
+        }
+        CHECK(fallback);
+        // The sources reach the GPU at their own group, one view each.
+        for (const auto& p : cover) {
+            const render::Rect r = render::chunk_rect(p.span.src_cx, p.span.src_cy);
+            const auto t = g.offscreen_target(side, side);
+            for (int f = 0; f < 2; ++f) {
+                g.render(fr, scene, r, p.from, 0, render::WaterStyle::Original, t.second.get());
+            }
+        }
+        const render::Rect view{0, 0, 2 * render::kChunk, render::kChunk};
+        const auto target = g.offscreen_target(2 * side, side);
+        const auto st =
+            g.render(fr, scene, view, to, 0, render::WaterStyle::Original, target.second.get());
+        CHECK(st.stand_in_chunks == 1);
+        CHECK(st.stand_in_parts == cover.size());
+        const auto px = g.read_back(target.first.get(), 2 * side, side);
+        REQUIRE(px.size() == std::size_t{2} * side * side * 4);
+        const auto ref = render::stand_in_chunk(fr, to, 1, 0, scene.textures.water());
+        REQUIRE(ref);
+        std::size_t wrong = 0;
+        for (std::size_t y = 0; y < side; ++y) {
+            for (std::size_t x = 0; x < side; ++x) {
+                const render::Px e = land_pixel(*ref, y * side + x);
+                const std::size_t o = (y * 2 * side + side + x) * 4;
+                int m = 0;
+                for (std::size_t k = 0; k < 3; ++k) {
+                    m = std::max(m, std::abs(int{e[k]} - int{px[o + k]}));
+                }
+                wrong += m > 1 ? 1U : 0U;
+            }
+        }
+        MESSAGE("target group " << to << ": " << wrong << " pixels differ by more than 1");
+        CHECK(wrong == 0);
+        // The next frame uploads the real chunk: no stand-in, and the frame is
+        // the plain one (stand-ins off, same uploads).
+        const auto st2 =
+            g.render(fr, scene, view, to, 0, render::WaterStyle::Original, target.second.get());
+        CHECK(st2.stand_in_chunks == 0);
+        const auto after = g.read_back(target.first.get(), 2 * side, side);
+        gpu::GpuLimits off = limits;
+        off.stand_ins = false;
+        auto made_off = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, off);
+        REQUIRE(made_off);
+        gpu::GpuFrame& go = *made_off.value();
+        const auto target_off = go.offscreen_target(2 * side, side);
+        for (int f = 0; f < 3; ++f) {
+            go.render(fr, scene, view, to, 0, render::WaterStyle::Original,
+                      target_off.second.get());
+        }
+        CHECK(go.read_back(target_off.first.get(), 2 * side, side) == after);
+        CHECK(g.errors() == 0);
+    }
+}
+
+TEST_CASE("the steps of a GPU frame add up to its total, and the sync steps are counted") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    gpu::GpuLimits limits;
+    limits.wave_simulation = false;
+    // One chunk reaches the GPU per frame; the other visible one is a placeholder.
+    limits.uploads_per_frame = 1;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    render::FrameRenderer fr(1, false);
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    const render::Rect two{0, 0, 2 * render::kChunk, render::kChunk};
+    const render::Rect one{0, 0, render::kChunk, render::kChunk};
+    const auto target = g.offscreen_target(2 * side, side);
+    auto check_sum = [](const gpu::GpuStats& st) {
+        double sum = 0;
+        for (const auto& step : st.steps()) {
+            CHECK(step.ms >= 0.0);
+            sum += step.ms;
+        }
+        // The clock reads between two steps are the only difference.
+        CHECK(std::abs(sum - st.total_ms) <= 0.05 + 0.02 * st.total_ms);
+        // The coarse fields are sums of steps.
+        CHECK(st.chunk_sync_ms + 1e-6 >=
+              st.sync_scan_ms + st.sync_drop_ms + st.sync_real_ms + st.sync_placeholder_ms);
+        CHECK(st.total_ms >= st.encode_ms);
+    };
+    // An outside stopwatch around the call: the steps start at the call's own
+    // clock read, so this is what shows a region of render() that no step
+    // covers (the steps are laps of one clock, adding up by construction).
+    const auto call_start = std::chrono::steady_clock::now();
+    const auto a =
+        g.render(fr, scene, two, 1, 0, render::WaterStyle::Original, target.second.get());
+    const double call_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - call_start)
+            .count();
+    check_sum(a);
+    // Slack for the thread being descheduled between the call and the first clock
+    // read inside it, on a loaded machine.
+    CHECK(a.total_ms <= call_ms + 0.05);
+    CHECK(a.total_ms >= call_ms - 25.0);
+    CHECK(a.chunks_uploaded == 1);
+    CHECK(a.placeholders == 1);
+    CHECK(a.chunks_dropped == 0);
+    CHECK(a.stand_in_ms >= 0.0);
+    // Only the first chunk stays visible: the placeholder of the second is
+    // dropped (it has no planes to free), nothing is uploaded or made.
+    const auto b =
+        g.render(fr, scene, one, 1, 0, render::WaterStyle::Original, target.second.get());
+    check_sum(b);
+    CHECK(b.chunks_uploaded == 0);
+    CHECK(b.placeholders == 0);
+    CHECK(b.chunks_dropped == 1);
+    CHECK(b.planes_freed == 0);
+    // Nothing changed.
+    const auto c =
+        g.render(fr, scene, one, 1, 0, render::WaterStyle::Original, target.second.get());
+    check_sum(c);
+    CHECK(c.placeholders == 0);
+    CHECK(c.chunks_dropped == 0);
+    CHECK(g.errors() == 0);
+}
+
+TEST_CASE("pre-created chunk planes stay within the idle plane budget") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    gpu::GpuLimits limits;
+    limits.wave_simulation = false;
+    limits.prewarm_chunks = 4; // 20 planes asked for
+    // 4 MiB of idle planes: planes are 512 x 512 x 3 bytes on average (786432
+    // bytes), so 5 fit.
+    limits.idle_plane_budget_mb = 4;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    for (int i = 0; i < 2000 && g.warm_planes_ready() < 5; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    CHECK(g.warm_planes_ready() == 5);
+    CHECK(g.errors() == 0);
+}
+
+TEST_CASE(
+    "pre-created chunk planes are taken by the first uploads, and an early end joins the thread") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    {
+        // Ending the frame while the thread is still creating planes must not
+        // touch a released device.
+        gpu::GpuLimits busy;
+        busy.wave_simulation = false;
+        busy.prewarm_chunks = 64;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, busy);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    }
+    const EmptyScene es = empty_scene();
+    gpu::GpuLimits limits;
+    limits.wave_simulation = false;
+    limits.prewarm_chunks = 2;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    // The thread creates 2 chunks x 5 planes.
+    for (int i = 0; i < 2000 && g.warm_planes_ready() < 10; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    CHECK(g.warm_planes_ready() == 10);
+    render::FrameRenderer fr(1, false);
+    fr.insert_chunk({0, 0, 0}, noise_land_chunk(0, 0, 0));
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    const auto target = g.offscreen_target(side, side);
+    const render::Rect one{0, 0, render::kChunk, render::kChunk};
+    const auto st =
+        g.render(fr, *es.scene, one, 0, 0, render::WaterStyle::Original, target.second.get());
+    CHECK(st.chunks_uploaded == 1);
+    CHECK(st.planes_warm >= 1);
+    // After the first render() the thread is paced: a frame that uploaded
+    // something gives it no token (the window thread needs the driver's
+    // allocator then), so the planes taken are not made up for yet ...
+    const std::size_t taken = st.planes_warm;
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    CHECK(g.warm_planes_ready() == 10 - taken);
+    // ... and every quiet frame (nothing uploaded, no placeholder) lets it make
+    // one plane, no more.
+    for (std::size_t i = 0; i < taken; ++i) {
+        const std::size_t before = g.warm_planes_ready();
+        const auto quiet =
+            g.render(fr, *es.scene, one, 0, 0, render::WaterStyle::Original, target.second.get());
+        REQUIRE(quiet.chunks_uploaded == 0);
+        for (int k = 0; k < 2000 && g.warm_planes_ready() == before; ++k) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(60));
+        CHECK(g.warm_planes_ready() == before + 1);
+    }
+    CHECK(g.warm_planes_ready() == 10);
+    CHECK(g.errors() == 0);
+}

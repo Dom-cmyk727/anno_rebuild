@@ -1086,8 +1086,10 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = v == "on" || v == "off";
             o.stand_ins = v == "on";
         } else if (a == "--lookahead-chunks") {
+            // The viewer's bound (anno::app::kMaxLookaheadChunks): far beyond it the
+            // margin's pixel reach no longer fits lookahead_rect's int rectangle.
             std::size_t n = 0;
-            ok = parse(v, n);
+            ok = parse(v, n) && n <= 16;
             o.lookahead = n;
         } else if (a == "--fade") {
             std::uint64_t n = 0;

@@ -1779,9 +1779,10 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                 ++stats.stand_in_chunks;
                 stats.stand_in_parts += cover.size();
             }
-            if (!real) {
+            {
                 // The parts are disjoint: what of the chunk's visible area they
-                // leave shows open sea (a hole in every group's cover, or all).
+                // leave shows open sea (a hole in every group's cover, or all;
+                // under a dissolving chunk it fades out over chunk_fade_ms).
                 std::uint64_t covered = 0;
                 for (const StandInPart& part : cover) {
                     if (const auto in = part.span.dst.intersect(view)) {

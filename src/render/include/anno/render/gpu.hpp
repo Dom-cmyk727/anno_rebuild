@@ -203,7 +203,11 @@ struct GpuLimits {
     /// neighbours' views with their rings about 2 x 35, so the default 96 holds
     /// all of it; moving, the margin grows to about 40-60 and each neighbour's
     /// view by up to 15, so the neighbours (queued last) are then only partly
-    /// ahead. 0 = off (headless renders, tests).
+    /// ahead. The count is of the chunks in those two lists that are on the GPU
+    /// (recounted over the lists in a frame that may prefetch); a chunk that
+    /// falls out of the lists stays uploaded as long as the CPU cache holds it,
+    /// so the bound on device memory for chunks is the CPU cache's (visible +
+    /// kept + FrameRenderer::spare_chunks). 0 = off (headless renders, tests).
     std::size_t prefetch_chunks = 0;
     std::size_t prefetch_per_frame = 1;
     /// A chunk that replaces the placeholder an earlier frame showed for it (its

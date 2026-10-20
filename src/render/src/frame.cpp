@@ -805,7 +805,8 @@ void FrameRenderer::track_velocity(Rect view, std::size_t group) {
         const double dx = cx - last_centre_->first, dy = cy - last_centre_->second;
         if (group != last_group_) {
             // A zoom step moves the centre by the cursor anchoring, not by a pan:
-            // keep the velocity, in the new group's pixels.
+            // keep the velocity, in the new group's pixels (also when the step
+            // comes with a jump: rescaled, the old velocity is no spike).
             vx_ *= static_cast<double>(kTile[group].w) / kTile[last_group_].w;
             vy_ *= static_cast<double>(kTile[group].h) / kTile[last_group_].h;
         } else if (std::abs(dx) > view.w || std::abs(dy) > view.h) {

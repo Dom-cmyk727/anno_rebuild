@@ -116,6 +116,8 @@ struct Chunk {
 // and none leaves the chunk. A stand-in has no river flow (the legacy look).
 // The products stay below 2^31 up to scene coordinates of about 12 million
 // pixels at the largest tile width (a map of 100,000 tiles).
+// Larger maps: split the product per axis into integer and remainder parts, or
+// take the centre in f32 per chunk (the CPU rule stand_in_source is the check).
 struct Piece {
     dst_min: vec2<i32>,
     dst_max: vec2<i32>,

@@ -794,10 +794,11 @@ Rect lookahead_rect(Rect view, double vx, double vy, double horizon_s, std::size
 }
 
 void FrameRenderer::track_velocity(Rect view, std::size_t group) {
-    const auto now = std::chrono::steady_clock::now();
+    const auto now = clock();
     const double cx = view.x + view.w / 2.0, cy = view.y + view.h / 2.0;
     if (last_centre_) {
         const double dt = std::chrono::duration<double>(now - last_time_).count();
+        const double dx = cx - last_centre_->first, dy = cy - last_centre_->second;
         if (group != last_group_) {
             // A zoom step moves the centre by the cursor anchoring, not by a pan:
             // keep the velocity, in the new group's pixels.
@@ -806,8 +807,8 @@ void FrameRenderer::track_velocity(Rect view, std::size_t group) {
         } else if (dt > 1e-4) {
             // Smoothed over about 150 ms: a mouse drag is noisy per frame.
             const double a = 1.0 - std::exp(-dt / 0.15);
-            vx_ += a * ((cx - last_centre_->first) / dt - vx_);
-            vy_ += a * ((cy - last_centre_->second) / dt - vy_);
+            vx_ += a * (dx / dt - vx_);
+            vy_ += a * (dy / dt - vy_);
         }
     }
     last_centre_ = std::pair{cx, cy};

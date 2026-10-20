@@ -2726,6 +2726,75 @@ TEST_CASE("lookahead_rect: a ring of one chunk, grown in the direction of motion
     const auto none = render::lookahead_rect(view, 1e6, 1e6, 0.3, 0);
     CHECK(none.w == still.w);
     CHECK(none.h == still.h);
+    // A fraction of a pixel rounds up: 1001 px/s for 0.3 s is 300.3 px, 301 more.
+    const auto frac = render::lookahead_rect(view, 1001, 0, 0.3, 3);
+    CHECK(frac.w == still.w + 301);
+    CHECK(frac.x == still.x);
+    // Left and down at once: the left side and the bottom grow, nothing else.
+    const auto left_down = render::lookahead_rect(view, -1000, 500, 0.3, 3);
+    CHECK(left_down.x == still.x - 300);
+    CHECK(left_down.w == still.w + 300);
+    CHECK(left_down.y == still.y);
+    CHECK(left_down.h == still.h + 150);
+    // The cap holds for the height as well.
+    const auto tall = render::lookahead_rect(view, 0, -1e6, 0.3, 2);
+    CHECK(tall.y == still.y - 2 * render::kChunk);
+    CHECK(tall.h == still.h + 2 * render::kChunk);
+    CHECK(tall.w == still.w);
+}
+
+TEST_CASE("the margin follows the view's velocity through update_chunks: leading side, shrinking "
+          "after a stop, the same speed after a zoom step") {
+    const EmptyScene es = empty_scene();
+    render::FrameRenderer fr(1, false);
+    auto t = std::chrono::steady_clock::time_point{};
+    fr.clock = [&] { return t; };
+    constexpr std::size_t kGroup = 1;
+    render::Rect view{0, 0, render::kChunk, render::kChunk};
+    const auto step = std::chrono::milliseconds(10);
+    auto move = [&](int dx, int dy, int frames) {
+        for (int i = 0; i < frames; ++i) {
+            view.x += dx;
+            view.y += dy;
+            t += step;
+            fr.update_chunks(*es.scene, view, kGroup);
+        }
+    };
+    // The margin chunks in the column `cx`.
+    auto column = [&](int cx) {
+        std::size_t n = 0;
+        for (const auto& k : fr.margin_keys()) {
+            n += std::get<1>(k) == cx ? 1U : 0U;
+        }
+        return n;
+    };
+    fr.update_chunks(*es.scene, view, kGroup);
+    // 50 px per 10 ms to the right: about 5000 px/s after the smoothing.
+    move(50, 0, 40);
+    const auto [vx, vy] = fr.velocity();
+    CHECK(vx > 4000.0);
+    CHECK(vx < 5001.0);
+    CHECK(std::abs(vy) < 1.0);
+    // The view covers chunks first..last; the plain ring is one more on each side.
+    // Moving right at ~5000 px/s for the 0.1 s horizon adds ~500 px on the right.
+    const int first = render::div_euclid(view.x, render::kChunk);
+    const int last = render::div_euclid(view.x + view.w - 1, render::kChunk);
+    CHECK(column(last + 2) > 0);
+    CHECK(column(first - 2) == 0);
+    // Standing still for two seconds: the velocity decays, the margin is the ring.
+    move(0, 0, 200);
+    CHECK(std::abs(fr.velocity().first) < 1.0);
+    CHECK(column(last + 2) == 0);
+    CHECK(column(last + 1) > 0);
+    // Moving again, then a zoom step to group 2: the same speed on screen, in
+    // group 2's pixels (the anchoring jump of the centre is not motion).
+    move(50, 0, 40);
+    const double before = fr.velocity().first;
+    const render::Rect zoomed = render::zoomed_view(view, kGroup, 2);
+    t += step;
+    fr.update_chunks(*es.scene, zoomed, 2);
+    const double ratio = static_cast<double>(render::kTile[2].w) / render::kTile[kGroup].w;
+    CHECK(fr.velocity().first == doctest::Approx(before * ratio).epsilon(1e-9));
 }
 
 TEST_CASE("adjacent_keys: the view a zoom step would show, in both neighbouring groups") {

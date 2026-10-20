@@ -220,6 +220,13 @@ class FrameRenderer {
     /// when both switches are off).
     [[nodiscard]] std::set<ChunkKey>
     stand_in_retain(std::size_t group, const std::vector<std::pair<int, int>>& visible) const;
+    /// The smoothed velocity of the view centre that sizes the margin, in scene
+    /// pixels per second of the group shown (x, y).
+    [[nodiscard]] std::pair<double, double> velocity() const { return {vx_, vy_}; }
+    /// The time source of the velocity (a steady clock; tests step it by hand).
+    std::function<std::chrono::steady_clock::time_point()> clock = [] {
+        return std::chrono::steady_clock::now();
+    };
 
   private:
     std::vector<ChunkKey> adjacent_, margin_;

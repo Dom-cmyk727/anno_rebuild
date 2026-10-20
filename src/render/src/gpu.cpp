@@ -1467,6 +1467,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         last = now;
         return ms;
     };
+    frames.retain_stand_in_sources = m.limits.stand_ins;
     std::tie(stats.chunks_built, stats.chunks_ms, stats.chunks_missing) =
         frames.update_chunks(scene, view, group);
     stats.chunks_ms = lap();

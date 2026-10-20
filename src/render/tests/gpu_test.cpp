@@ -2499,6 +2499,31 @@ TEST_CASE("CPU reference: a missing chunk shows the scaled chunks of the nearest
     }
 }
 
+TEST_CASE(
+    "stand-in sources are kept only for visible chunks that are not built, and only when asked") {
+    constexpr std::size_t kTo = 1, kFrom = 2;
+    render::FrameRenderer fr(1, false);
+    insert_sources(fr, kTo, 1, 0, kFrom);
+    const auto spans = render::stand_in_spans(1, 0, kTo, kFrom);
+    REQUIRE(!spans.empty());
+    const std::vector<std::pair<int, int>> visible{{0, 0}, {1, 0}};
+    // Both switches off: the eviction is the old one.
+    CHECK(fr.stand_in_retain(kTo, visible).empty());
+    fr.retain_stand_in_sources = true;
+    auto kept = fr.stand_in_retain(kTo, visible);
+    CHECK(kept.size() == spans.size());
+    for (const auto& sp : spans) {
+        CHECK(kept.contains({kFrom, sp.src_cx, sp.src_cy}));
+    }
+    // The CPU path's own switch asks for them as well.
+    fr.retain_stand_in_sources = false;
+    fr.stand_ins = true;
+    CHECK(fr.stand_in_retain(kTo, visible).size() == spans.size());
+    // Once the chunk itself is built there is nothing to stand in for.
+    fr.insert_chunk({kTo, 1, 0}, noise_land_chunk(kTo, 1, 0));
+    CHECK(fr.stand_in_retain(kTo, {{1, 0}}).empty());
+}
+
 TEST_CASE("GPU stand-in chunks equal the CPU reference (synthetic)") {
     auto ctx = device_or_skip();
     if (!ctx) {

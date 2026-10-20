@@ -638,15 +638,30 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
         }
     }
     pending_ = workers_->submit(todo, ships_);
+    const std::set<ChunkKey> retain = stand_in_retain(group, visible);
+    trim(group, view, keep, retain);
+    return received;
+}
+
+std::set<ChunkKey>
+FrameRenderer::stand_in_retain(std::size_t group,
+                               const std::vector<std::pair<int, int>>& visible) const {
     // The chunks that would stand in for a visible chunk still being built (the
     // zoom group the view came from, the prebuilt neighbours) are kept, though
-    // nothing asks for them to be built: the eviction below ranks other groups'
+    // nothing asks for them to be built: the eviction ranks other groups'
     // chunks by their distance in the current group's chunk coordinates, which
     // says nothing about what shows through. Only chunks already built, so no
-    // more than (groups - 1) x the visible ones.
+    // more than (groups - 1) x the missing visible ones; none when stand-ins are
+    // off (the eviction is then the one from before they existed).
     std::set<ChunkKey> retain;
-    for (const std::size_t from : stand_in_groups(group)) {
-        for (const auto& [cx, cy] : visible) {
+    if (!stand_ins && !retain_stand_in_sources) {
+        return retain;
+    }
+    for (const auto& [cx, cy] : visible) {
+        if (cache_.contains({group, cx, cy})) {
+            continue; // built: nothing to stand in for
+        }
+        for (const std::size_t from : stand_in_groups(group)) {
             for (const StandInSpan& span : stand_in_spans(cx, cy, group, from)) {
                 const ChunkKey k{from, span.src_cx, span.src_cy};
                 if (cache_.contains(k)) {
@@ -655,8 +670,7 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
             }
         }
     }
-    trim(group, view, keep, retain);
-    return received;
+    return retain;
 }
 
 void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>& keep,

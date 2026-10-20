@@ -186,6 +186,15 @@ class FrameRenderer {
     /// CPU path is the reference and the tests' digests; the GPU compositor has
     /// its own switch (GpuLimits::stand_ins) and does the same on the card.
     bool stand_ins = false;
+    /// Keep the built chunks of other zoom groups that would stand in for a
+    /// visible chunk still being built, past the eviction in update_chunks. Set
+    /// by GpuFrame::render from GpuLimits::stand_ins; also on with `stand_ins`.
+    /// Off, the eviction is the one from before stand-ins existed.
+    bool retain_stand_in_sources = false;
+    /// What update_chunks keeps beyond the visible chunks for the stand-ins of
+    /// the visible chunks that are not built (empty when both switches are off).
+    [[nodiscard]] std::set<ChunkKey>
+    stand_in_retain(std::size_t group, const std::vector<std::pair<int, int>>& visible) const;
 
   private:
     std::size_t request_chunks(const Scene& scene, std::size_t group, Rect view,

@@ -10,6 +10,8 @@ What only a person with the right machine can check. Claude Code keeps this list
 
 ## Results
 
+- 2026-10-20, owner, Windows PC (RTX 4090), `main` at 3c8876b (stand-in chunks after a zoom step, river defaults gain 4 / median speed / gap patch 8), canyon island `D_256x256_0045_5B`, enhanced water: "MUCH smoother and overall better now"; zooming with the wheel alone is "really smooth"; the rivers "look perfect now". Artifacts remain only when panning while zooming (new area without a built chunk in any group). Follow-up: T1d on the task board.
+
 - 2026-10-18, owner, Windows PC (Ryzen 7 9800X3D, 16 threads; RTX 4090, driver 617.14; Windows 11 Pro 26H2), C++ build `msvc` preset with the game files, `ANNO_REQUIRE_GPU=1`, `ctest -j 16`, `ANNO_TEST_THREADS=16`:
   - Build clean (warnings as errors). First run without game files in `game/app`: 37 game-file tests failed with "path not found" or follow-on errors (`bad variant access`), not a code fault.
   - With the game files: **all 21 GPU tests pass on the RTX 4090 (Vulkan)** — the first run on a real Windows GPU.

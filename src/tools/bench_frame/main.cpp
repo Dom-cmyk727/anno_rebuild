@@ -95,7 +95,8 @@ struct Options {
     bool quick = false;
     std::size_t zoom_every = 0, zoom_frames = 240;
     /// Zoom path: the view moves by this many scene pixels (of the group shown) per
-    /// frame, reversing every 90 frames: panning while zooming (--zoom-pan dx,dy).
+    /// frame, reversing every zoom_pan_period frames: panning while zooming
+    /// (--zoom-pan dx,dy).
     std::pair<int, int> zoom_pan{0, 0};
     /// Zoom path (GPU): compare consecutive frames of one group without a pan and
     /// report how many pixels jump (--pop): the pop of a chunk swap.
@@ -195,7 +196,8 @@ struct Config {
     bool check = false;
     std::size_t zoom_every = 0, zoom_frames = 240;
     /// Zoom path: the view moves by this many scene pixels (of the group shown) per
-    /// frame, reversing every 90 frames: panning while zooming (--zoom-pan dx,dy).
+    /// frame, reversing every zoom_pan_period frames: panning while zooming
+    /// (--zoom-pan dx,dy).
     std::pair<int, int> zoom_pan{0, 0};
     /// Zoom path (GPU): compare consecutive frames of one group without a pan and
     /// report how many pixels jump (--pop): the pop of a chunk swap.
@@ -557,7 +559,8 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, Grab&&
             last_step = i;
             ++steps;
         }
-        // Panning while zooming: the view walks one way for 90 frames, then back.
+        // Panning while zooming: the view walks one way for zoom_pan_period frames,
+        // then back.
         const int dir = (i / c.zoom_pan_period) % 2 == 0 ? 1 : -1;
         cam.first += dir * c.zoom_pan.first;
         cam.second += dir * c.zoom_pan.second;

@@ -181,8 +181,9 @@ class FrameRenderer {
     std::tuple<std::size_t, double, std::size_t> update_chunks(const Scene& scene, Rect view,
                                                                std::size_t group);
     /// The chunks of the neighbouring zoom groups that update_chunks keeps built
-    /// for the view a zoom step would show (a ring included), nearest group
-    /// first; empty without background workers. Not necessarily built yet.
+    /// for the view a zoom step would show (a ring included), both groups
+    /// interleaved, nearest to the view (as it will be in a moment) first. Not
+    /// necessarily built yet.
     [[nodiscard]] const std::vector<ChunkKey>& adjacent_keys() const { return adjacent_; }
     /// The chunks of the group shown that update_chunks keeps built around the
     /// visible ones (the margin, grown in the direction of motion), the ones the

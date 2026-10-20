@@ -834,6 +834,20 @@ struct GpuFrame::Impl {
         return out;
     }
 
+    /// Puts `fresh` in the place of `slot`. The replaced chunk's planes are reused
+    /// by later uploads (its bind group goes with it; queued GPU work keeps what
+    /// it reads alive).
+    void replace_chunk(Chunk& slot, Chunk fresh) {
+        Chunk old = std::move(slot);
+        slot = std::move(fresh);
+        for (Plane& p : old.planes) {
+            if (plane_pool.size() < kPoolPlanes) {
+                plane_pool.push_back(std::move(p));
+            }
+        }
+        pool_planes.store(plane_pool.size());
+    }
+
     /// Uploads newly built visible chunks (a few per frame), adds stand-ins
     /// for missing ones, and drops GPU chunks the CPU cache no longer holds.
     /// Fills the drop, upload and placeholder timers and counters of `stats`
@@ -898,17 +912,7 @@ struct GpuFrame::Impl {
                     fade_under.insert_or_assign(key, std::move(it->second));
                     it->second = std::move(fresh);
                 } else if (it != chunks.end()) {
-                    // The replaced chunk's planes are reused by later uploads
-                    // (its bind group goes with it; queued GPU work keeps what it
-                    // reads alive).
-                    Chunk old = std::move(it->second);
-                    it->second = std::move(fresh);
-                    for (Plane& p : old.planes) {
-                        if (plane_pool.size() < kPoolPlanes) {
-                            plane_pool.push_back(std::move(p));
-                        }
-                    }
-                    pool_planes.store(plane_pool.size());
+                    replace_chunk(it->second, std::move(fresh));
                 } else {
                     chunks.emplace(key, std::move(fresh));
                 }
@@ -954,7 +958,7 @@ struct GpuFrame::Impl {
                     const auto u0 = Clock::now();
                     Chunk fresh = upload_chunk(key, c);
                     if (it != chunks.end()) {
-                        it->second = std::move(fresh);
+                        replace_chunk(it->second, std::move(fresh));
                     } else {
                         chunks.emplace(key, std::move(fresh));
                         ++resident;

@@ -330,7 +330,11 @@ void ChunkWorkers::run() {
         // A failed build says nothing about how long a chunk takes.
         if (chunk) {
             const double took = ms_since(built_at);
-            build_ms_.store(0.8 * build_ms_.load() + 0.2 * took);
+            // Workers finish at the same time: a compare-exchange loop so no
+            // sample is lost between the load and the store.
+            double was = build_ms_.load();
+            while (!build_ms_.compare_exchange_weak(was, 0.8 * was + 0.2 * took)) {
+            }
         }
         const std::lock_guard lock(mutex_);
         busy_.erase(key);

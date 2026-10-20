@@ -1367,40 +1367,37 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         }
     }
     if (m.limits.stand_ins) {
-        const auto order = stand_in_groups(group);
         for (const auto& [cx, cy] : visible) {
             const auto own = m.chunks.find({group, cx, cy});
             if (own != m.chunks.end() && own->second.real) {
                 continue;
             }
-            for (const std::size_t from : order) {
-                std::size_t parts = 0;
-                for (const StandInSpan& sp : stand_in_spans(cx, cy, group, from)) {
-                    const auto src = m.chunks.find({from, sp.src_cx, sp.src_cy});
-                    if (src == m.chunks.end() || !src->second.real) {
-                        continue;
-                    }
-                    Bytes b;
-                    b.i32(sp.dst.x);
-                    b.i32(sp.dst.y);
-                    b.i32(sp.dst.x + sp.dst.w);
-                    b.i32(sp.dst.y + sp.dst.h);
-                    b.i32(kTile[from].w);
-                    b.i32(kTile[from].h);
-                    b.i32(kTile[group].w);
-                    b.i32(kTile[group].h);
-                    b.u32(1);
-                    b.b.resize(kPieceStride, 0);
-                    draws.push_back(
-                        {src->second.bind.get(), static_cast<std::uint32_t>(pieces.size())});
-                    pieces.insert(pieces.end(), b.b.begin(), b.b.end());
-                    ++parts;
-                }
-                if (parts > 0) {
-                    ++stats.stand_in_chunks;
-                    stats.stand_in_parts += parts;
-                    break;
-                }
+            const auto cover = stand_in_cover(cx, cy, group, [&](const ChunkKey& k) {
+                const auto src = m.chunks.find(k);
+                return src != m.chunks.end() && src->second.real;
+            });
+            for (const StandInPart& part : cover) {
+                const std::size_t from = part.from;
+                const StandInSpan& sp = part.span;
+                const auto src = m.chunks.find({from, sp.src_cx, sp.src_cy});
+                Bytes b;
+                b.i32(sp.dst.x);
+                b.i32(sp.dst.y);
+                b.i32(sp.dst.x + sp.dst.w);
+                b.i32(sp.dst.y + sp.dst.h);
+                b.i32(kTile[from].w);
+                b.i32(kTile[from].h);
+                b.i32(kTile[group].w);
+                b.i32(kTile[group].h);
+                b.u32(1);
+                b.b.resize(kPieceStride, 0);
+                draws.push_back(
+                    {src->second.bind.get(), static_cast<std::uint32_t>(pieces.size())});
+                pieces.insert(pieces.end(), b.b.begin(), b.b.end());
+            }
+            if (!cover.empty()) {
+                ++stats.stand_in_chunks;
+                stats.stand_in_parts += cover.size();
             }
         }
     }

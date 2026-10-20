@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -244,10 +245,27 @@ struct StandInSpan {
 /// row. O(chunks covered) = at most ceil(ratio) + 1 per axis.
 std::vector<StandInSpan> stand_in_spans(int cx, int cy, std::size_t to, std::size_t from);
 
-/// The CPU reference of a stand-in: chunk (cx, cy) of `group` built from the
-/// first group of stand_in_groups(group) of which `frames` holds at least one
-/// of the chunks it shows (pixels whose source chunk is missing stay open sea
-/// of colour `open_water`). nullopt when there is none. The result carries no
+/// As stand_in_spans for the destination pixels `region` only (the parts tile
+/// `region`).
+std::vector<StandInSpan> stand_in_spans_in(Rect region, std::size_t to, std::size_t from);
+
+/// A part of a stand-in and the zoom group its source chunk is in.
+struct StandInPart {
+    std::size_t from = 0;
+    StandInSpan span;
+};
+/// What chunk (cx, cy) of group `to` shows when it is not built: per part of
+/// it, the nearest group (stand_in_groups order) for which `has` says the
+/// source chunk exists. A part whose source chunk is missing in the nearest
+/// group is split by the source chunks of the next group, and so on; what no
+/// group covers is absent (open sea). The parts are disjoint. Shared by the
+/// CPU reference and the GPU compositor, so both choose alike.
+std::vector<StandInPart> stand_in_cover(int cx, int cy, std::size_t to,
+                                        const std::function<bool(const ChunkKey&)>& has);
+
+/// The CPU reference of a stand-in: chunk (cx, cy) of `group` built from
+/// stand_in_cover over the chunks `frames` holds (pixels no group covers stay
+/// open sea of colour `open_water`). nullopt when there is none. The result carries no
 /// flow lattice and no serial. Cost: one pass over the planes, ~5 MB.
 std::optional<Chunk> stand_in_chunk(const FrameRenderer& frames, std::size_t group, int cx, int cy,
                                     Px open_water);

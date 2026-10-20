@@ -728,12 +728,11 @@ std::vector<std::size_t> stand_in_groups(std::size_t group) {
 namespace {
 
 /// One axis of stand_in_spans: (source chunk, first and one past the last
-/// destination pixel) for destination chunk `c` of `kChunk` pixels.
-std::vector<std::array<int, 3>> stand_in_axis(int c, int num, int den) {
+/// destination pixel) for the destination pixels [d0, d1).
+std::vector<std::array<int, 3>> stand_in_axis(int d0, int d1, int num, int den) {
     auto ceil_div = [](std::int64_t a, std::int64_t b) {
         return div_euclid<std::int64_t>(a + b - 1, b);
     };
-    const int d0 = c * kChunk, d1 = d0 + kChunk;
     const int s0 = div_euclid(stand_in_source(d0, num, den), kChunk);
     const int s1 = div_euclid(stand_in_source(d1 - 1, num, den), kChunk);
     std::vector<std::array<int, 3>> out;
@@ -754,13 +753,13 @@ std::vector<std::array<int, 3>> stand_in_axis(int c, int num, int den) {
 
 } // namespace
 
-std::vector<StandInSpan> stand_in_spans(int cx, int cy, std::size_t to, std::size_t from) {
+std::vector<StandInSpan> stand_in_spans_in(Rect region, std::size_t to, std::size_t from) {
     std::vector<StandInSpan> out;
-    if (to >= kGroups || from >= kGroups) {
+    if (to >= kGroups || from >= kGroups || region.w <= 0 || region.h <= 0) {
         return out;
     }
-    const auto xs = stand_in_axis(cx, kTile[from].w, kTile[to].w);
-    const auto ys = stand_in_axis(cy, kTile[from].h, kTile[to].h);
+    const auto xs = stand_in_axis(region.x, region.x + region.w, kTile[from].w, kTile[to].w);
+    const auto ys = stand_in_axis(region.y, region.y + region.h, kTile[from].h, kTile[to].h);
     for (const auto& y : ys) {
         for (const auto& x : xs) {
             out.push_back({x[0], y[0], Rect{x[1], y[1], x[2] - x[1], y[2] - y[1]}});
@@ -769,83 +768,130 @@ std::vector<StandInSpan> stand_in_spans(int cx, int cy, std::size_t to, std::siz
     return out;
 }
 
-std::optional<Chunk> stand_in_chunk(const FrameRenderer& frames, std::size_t group, int cx, int cy,
-                                    Px open_water) {
-    for (const std::size_t from : stand_in_groups(group)) {
-        const auto spans = stand_in_spans(cx, cy, group, from);
-        struct Part {
-            const StandInSpan* span;
-            const Chunk* chunk;
-        };
-        std::vector<Part> parts;
-        for (const StandInSpan& sp : spans) {
-            if (const Chunk* c = frames.chunk({from, sp.src_cx, sp.src_cy})) {
-                parts.push_back({&sp, c});
-            }
+std::vector<StandInSpan> stand_in_spans(int cx, int cy, std::size_t to, std::size_t from) {
+    return stand_in_spans_in(chunk_rect(cx, cy), to, from);
+}
+
+std::vector<StandInPart> stand_in_cover(int cx, int cy, std::size_t to,
+                                        const std::function<bool(const ChunkKey&)>& has) {
+    std::vector<StandInPart> out;
+    std::vector<Rect> open{chunk_rect(cx, cy)};
+    for (const std::size_t from : stand_in_groups(to)) {
+        if (open.empty()) {
+            break;
         }
-        if (parts.empty()) {
-            continue;
-        }
-        const auto n = to_size(kChunk);
-        const int nx = kTile[from].w, dx = kTile[group].w;
-        const int ny = kTile[from].h, dy = kTile[group].h;
-        Chunk out;
-        auto any = [&](auto member) {
-            return std::any_of(parts.begin(), parts.end(),
-                               [&](const Part& p) { return !(p.chunk->*member).empty(); });
-        };
-        if (any(&Chunk::ground)) {
-            out.ground.assign(n * n, rgb(open_water));
-        }
-        if (any(&Chunk::objects)) {
-            out.objects.assign(n * n, Px{0, 0, 0, 0});
-        }
-        if (any(&Chunk::field)) {
-            out.field.resize(n * n * 4);
-            for (std::size_t i = 0; i < n * n; ++i) {
-                out.field[i * 4] = out.field[i * 4 + 1] = out.field[i * 4 + 2] = 255;
-                out.field[i * 4 + 3] = 1;
-            }
-        }
-        if (any(&Chunk::terrain)) {
-            out.terrain.assign(n * n, kNoTerrain);
-        }
-        if (any(&Chunk::base)) {
-            out.base.assign(n * n, 255);
-        }
-        for (const Part& part : parts) {
-            const Chunk& src = *part.chunk;
-            out.water_below = out.water_below || src.water_below;
-            out.water_above = out.water_above || src.water_above;
-            const Rect r = part.span->dst;
-            for (int y = r.y; y < r.y + r.h; ++y) {
-                const int sy = stand_in_source(y, ny, dy);
-                for (int x = r.x; x < r.x + r.w; ++x) {
-                    const int sx = stand_in_source(x, nx, dx);
-                    const std::size_t d = chunk_index(cx, cy, x, y);
-                    const std::size_t s = chunk_index(part.span->src_cx, part.span->src_cy, sx, sy);
-                    if (!src.ground.empty()) {
-                        out.ground[d] = src.ground[s];
-                    }
-                    if (!src.objects.empty()) {
-                        out.objects[d] = src.objects[s];
-                    }
-                    if (!src.field.empty()) {
-                        std::copy_n(src.field.data() + s * 4, 4, out.field.data() + d * 4);
-                    }
-                    if (!src.terrain.empty()) {
-                        out.terrain[d] = src.terrain[s];
-                    }
-                    if (!src.base.empty()) {
-                        out.base[d] = src.base[s];
-                    }
+        std::vector<Rect> next;
+        for (const Rect& region : open) {
+            for (const StandInSpan& sp : stand_in_spans_in(region, to, from)) {
+                if (has({from, sp.src_cx, sp.src_cy})) {
+                    out.push_back({from, sp});
+                } else {
+                    next.push_back(sp.dst);
                 }
             }
         }
-        out.ships = parts.front().chunk->ships;
-        return out;
+        open = std::move(next);
     }
-    return std::nullopt;
+    // Parts of one source chunk that join into a rectangle are one draw (a hole
+    // in the nearest group splits the regions of the next one).
+    for (bool merged = true; merged;) {
+        merged = false;
+        for (std::size_t i = 0; i < out.size() && !merged; ++i) {
+            for (std::size_t j = i + 1; j < out.size() && !merged; ++j) {
+                StandInPart& a = out[i];
+                const StandInPart& b = out[j];
+                if (a.from != b.from || a.span.src_cx != b.span.src_cx ||
+                    a.span.src_cy != b.span.src_cy) {
+                    continue;
+                }
+                Rect& ra = a.span.dst;
+                const Rect& rb = b.span.dst;
+                if (ra.y == rb.y && ra.h == rb.h && (ra.x + ra.w == rb.x || rb.x + rb.w == ra.x)) {
+                    ra = Rect{std::min(ra.x, rb.x), ra.y, ra.w + rb.w, ra.h};
+                    merged = true;
+                } else if (ra.x == rb.x && ra.w == rb.w &&
+                           (ra.y + ra.h == rb.y || rb.y + rb.h == ra.y)) {
+                    ra = Rect{ra.x, std::min(ra.y, rb.y), ra.w, ra.h + rb.h};
+                    merged = true;
+                }
+                if (merged) {
+                    out.erase(out.begin() + static_cast<std::ptrdiff_t>(j));
+                }
+            }
+        }
+    }
+    return out;
+}
+
+std::optional<Chunk> stand_in_chunk(const FrameRenderer& frames, std::size_t group, int cx, int cy,
+                                    Px open_water) {
+    const auto cover = stand_in_cover(
+        cx, cy, group, [&](const ChunkKey& k) { return frames.chunk(k) != nullptr; });
+    if (cover.empty()) {
+        return std::nullopt;
+    }
+    const auto n = to_size(kChunk);
+    Chunk out;
+    auto any = [&](auto member) {
+        return std::any_of(cover.begin(), cover.end(), [&](const StandInPart& p) {
+            return !(frames.chunk({p.from, p.span.src_cx, p.span.src_cy})->*member).empty();
+        });
+    };
+    if (any(&Chunk::ground)) {
+        out.ground.assign(n * n, rgb(open_water));
+    }
+    if (any(&Chunk::objects)) {
+        out.objects.assign(n * n, Px{0, 0, 0, 0});
+    }
+    if (any(&Chunk::field)) {
+        out.field.resize(n * n * 4);
+        for (std::size_t i = 0; i < n * n; ++i) {
+            out.field[i * 4] = out.field[i * 4 + 1] = out.field[i * 4 + 2] = 255;
+            out.field[i * 4 + 3] = 1;
+        }
+    }
+    if (any(&Chunk::terrain)) {
+        out.terrain.assign(n * n, kNoTerrain);
+    }
+    if (any(&Chunk::base)) {
+        out.base.assign(n * n, 255);
+    }
+    for (const StandInPart& part : cover) {
+        const Chunk& src = *frames.chunk({part.from, part.span.src_cx, part.span.src_cy});
+        const StandInSpan& span = part.span;
+        const int nx = kTile[part.from].w, dx = kTile[group].w;
+        const int ny = kTile[part.from].h, dy = kTile[group].h;
+        out.water_below = out.water_below || src.water_below;
+        out.water_above = out.water_above || src.water_above;
+        const Rect r = span.dst;
+        for (int y = r.y; y < r.y + r.h; ++y) {
+            const int sy = stand_in_source(y, ny, dy);
+            for (int x = r.x; x < r.x + r.w; ++x) {
+                const int sx = stand_in_source(x, nx, dx);
+                const std::size_t d = chunk_index(cx, cy, x, y);
+                const std::size_t s = chunk_index(span.src_cx, span.src_cy, sx, sy);
+                if (!src.ground.empty()) {
+                    out.ground[d] = src.ground[s];
+                }
+                if (!src.objects.empty()) {
+                    out.objects[d] = src.objects[s];
+                }
+                if (!src.field.empty()) {
+                    std::copy_n(src.field.data() + s * 4, 4, out.field.data() + d * 4);
+                }
+                if (!src.terrain.empty()) {
+                    out.terrain[d] = src.terrain[s];
+                }
+                if (!src.base.empty()) {
+                    out.base[d] = src.base[s];
+                }
+            }
+        }
+    }
+    out.ships =
+        frames.chunk({cover.front().from, cover.front().span.src_cx, cover.front().span.src_cy})
+            ->ships;
+    return out;
 }
 
 std::vector<std::pair<int, int>> visible_chunks(Rect view) {

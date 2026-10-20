@@ -140,6 +140,8 @@ struct GpuStats {
     std::size_t open_sea_built = 0;
     /// Chunks of the neighbouring zoom groups uploaded ahead (GpuLimits::prefetch_chunks).
     std::size_t chunks_prefetched = 0;
+    /// Chunks drawn fading in (GpuLimits::chunk_fade_ms).
+    std::size_t chunks_fading = 0;
     /// A wave-window job (new group, size or strips) is being prepared in the
     /// background: the shader shows the previous window or, where it does not
     /// reach, the analytic waves (OQ-076).
@@ -195,6 +197,12 @@ struct GpuLimits {
     /// (headless renders, tests).
     std::size_t prefetch_chunks = 0;
     std::size_t prefetch_per_frame = 1;
+    /// A chunk that replaces its stand-in or the open sea (it was uploaded while
+    /// it was in view) is drawn over it with rising opacity for this many
+    /// milliseconds of the animation clock (render()'s time_ms), so a swap is a
+    /// short dissolve, not a pop. About the time an eye needs to follow a change
+    /// without it reading as a jump; 0 = swap at once (headless renders, tests).
+    std::uint64_t chunk_fade_ms = 0;
     /// The limits for an interactive window: uploads and wave simulation
     /// setup are spread over frames (upload_budget_ms 1.0, background_fluid).
     [[nodiscard]] static GpuLimits interactive() {
@@ -203,6 +211,7 @@ struct GpuLimits {
         l.background_fluid = true;
         l.prewarm_chunks = 24;
         l.prefetch_chunks = 96;
+        l.chunk_fade_ms = 150;
         return l;
     }
     /// A visible chunk that is not on the GPU yet (still being built, or waiting

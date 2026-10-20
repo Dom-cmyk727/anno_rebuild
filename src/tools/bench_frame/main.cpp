@@ -9,7 +9,7 @@
 //       [--zoom k] [--zoom-frames n] [--pace ms] [--spike ms] [--limits default|interactive]
 //       [--settle ms] [--river-flow legacy|flow] [--river-quality auto|low|medium|high]
 //       [--river-pass] [--stand-ins on|off] [--prewarm chunks] [--zoom-dump <dir>]
-//       [--zoom-dump-after a,b,...] [--zoom-pan dx,dy[,frames]]
+//       [--zoom-dump-after a,b,...] [--zoom-pan dx,dy[,frames]] [--pop on|off]
 //   bench_frame --list-adapters
 //   bench_frame <game_dir> <file> --river-cost      (GPU cost of the river shading, synthetic)
 //
@@ -95,6 +95,9 @@ struct Options {
     /// Zoom path: the view moves by this many scene pixels (of the group shown) per
     /// frame, reversing every 90 frames: panning while zooming (--zoom-pan dx,dy).
     std::pair<int, int> zoom_pan{0, 0};
+    /// Zoom path (GPU): compare consecutive frames of one group without a pan and
+    /// report how many pixels jump (--pop): the pop of a chunk swap.
+    bool pop = false;
     /// Frames the pan walks one way before it reverses (--zoom-pan dx,dy[,frames]).
     std::size_t zoom_pan_period = 400;
     double pace_ms = 2.0, spike_ms = 8.0;
@@ -116,6 +119,8 @@ struct Options {
     std::optional<std::size_t> prewarm;
     /// GpuLimits::prefetch_chunks (nullopt = the limits' default).
     std::optional<std::size_t> prefetch;
+    /// GpuLimits::chunk_fade_ms (nullopt = the limits' default).
+    std::optional<std::uint64_t> fade;
     /// Directory for the frames after zoom steps (empty = none).
     std::string zoom_dump;
     /// Frames after a zoom step that --zoom-dump writes (0 = the step's own frame).
@@ -182,6 +187,9 @@ struct Config {
     /// Zoom path: the view moves by this many scene pixels (of the group shown) per
     /// frame, reversing every 90 frames: panning while zooming (--zoom-pan dx,dy).
     std::pair<int, int> zoom_pan{0, 0};
+    /// Zoom path (GPU): compare consecutive frames of one group without a pan and
+    /// report how many pixels jump (--pop): the pop of a chunk swap.
+    bool pop = false;
     /// Frames the pan walks one way before it reverses (--zoom-pan dx,dy[,frames]).
     std::size_t zoom_pan_period = 400;
     double pace_ms = 2.0, spike_ms = 8.0;
@@ -482,9 +490,9 @@ struct GpuFrame {};
 
 /// The zoom path (see the header): wheel-like group switches every
 /// c.zoom_every frames, paced frames, a list of the slow frames.
-template <class Frame, class Ready, class Dump>
-void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, std::size_t& group,
-              std::pair<int, int> cam, std::uint64_t time) {
+template <class Frame, class Ready, class Dump, class Grab>
+void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, Grab&& grab,
+              std::size_t& group, std::pair<int, int> cam, std::uint64_t time) {
     using SC = std::chrono::steady_clock;
     // Warm-up: static frames until the first group is built. The first
     // frames carry the one-time costs (pipelines, first uploads); slow ones
@@ -511,6 +519,9 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, std::s
     // rendered and on the GPU (only in the first moments after the start).
     bool switch_due = false, switched = false;
     std::size_t deferred = 0, steps = 0, last_step = 0;
+    std::vector<std::uint8_t> prev_px;
+    std::size_t pop_frames = 0, pop_over = 0, pop_worst_at = 0;
+    double pop_sum = 0, pop_worst = 0;
     bool any_step = false;
     for (std::size_t i = 0; i < c.zoom_frames; ++i) {
         switched = false;
@@ -541,6 +552,42 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, std::s
         cam.second += dir * c.zoom_pan.second;
         const render::Rect view{cam.first, cam.second, c.w, c.h};
         Row r = frame(view, time, true);
+        if (c.pop) {
+            // Consecutive frames of one group without a pan: what changes besides
+            // the water's own motion is a chunk swap (the pop this measures).
+            auto now_px = grab();
+            if (!prev_px.empty() && now_px.size() == prev_px.size() && !switched && i > 30) {
+                // The view moved by `pan` since the previous frame, so pixel (x, y) of
+                // this frame is (x + pan_x, y + pan_y) of the previous one (the
+                // overlap is compared; nothing else changed unless a chunk swapped).
+                const int px_ = dir * c.zoom_pan.first, py_ = dir * c.zoom_pan.second;
+                const int w = c.w, h = c.h;
+                std::size_t big = 0, counted = 0;
+                for (int y = std::max(0, -py_); y < std::min(h, h - py_); ++y) {
+                    for (int x = std::max(0, -px_); x < std::min(w, w - px_); ++x) {
+                        const std::size_t a = (static_cast<std::size_t>(y) * w + x) * 4;
+                        const std::size_t b =
+                            (static_cast<std::size_t>(y + py_) * w + (x + px_)) * 4;
+                        int d = 0;
+                        for (std::size_t q = 0; q < 3; ++q) {
+                            d = std::max(d, std::abs(int{now_px[a + q]} - int{prev_px[b + q]}));
+                        }
+                        big += d > 40 ? 1U : 0U;
+                        ++counted;
+                    }
+                }
+                const double frac = 100.0 * static_cast<double>(big) /
+                                    static_cast<double>(std::max<std::size_t>(counted, 1));
+                ++pop_frames;
+                pop_sum += frac;
+                pop_over += frac > 0.5 ? 1U : 0U;
+                if (frac > pop_worst) {
+                    pop_worst = frac;
+                    pop_worst_at = i;
+                }
+            }
+            prev_px = std::move(now_px);
+        }
         if (any_step && steps <= 8 &&
             std::find(c.zoom_dump_after.begin(), c.zoom_dump_after.end(), i - last_step) !=
                 c.zoom_dump_after.end()) {
@@ -560,6 +607,13 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, std::s
         time = static_cast<std::uint64_t>(
                    std::chrono::duration<double, std::milli>(SC::now() - start).count()) +
                1000;
+    }
+    if (c.pop) {
+        std::printf("swap pop: %zu frame pairs of one group compared, pixels changing by more "
+                    "than 40 levels: mean %.3f %%, worst %.3f %% (frame %zu), %zu pairs above "
+                    "0.5 %%\n",
+                    pop_frames, pop_frames > 0 ? pop_sum / static_cast<double>(pop_frames) : 0.0,
+                    pop_worst, pop_worst_at, pop_over);
     }
     report(c, "zoom", c.async_chunks ? "async" : "blocking",
            ("zoom/" + std::to_string(c.zoom_every)).c_str(), rows);
@@ -801,6 +855,16 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
 #endif
             return scene.sea_built(grp);
         };
+        // The frame as RGBA bytes (GPU), for --pop.
+        auto grab = [&]() -> std::vector<std::uint8_t> {
+#ifdef ANNO_BENCH_GPU
+            if (g != nullptr) {
+                return g->read_back(target->first.get(), static_cast<std::uint32_t>(c.w),
+                                    static_cast<std::uint32_t>(c.h));
+            }
+#endif
+            return {};
+        };
         auto dump = [&](std::size_t n, std::size_t after, std::size_t grp) {
 #ifdef ANNO_BENCH_GPU
             if (g == nullptr || c.zoom_dump.empty()) {
@@ -820,7 +884,7 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
             (void)grp;
 #endif
         };
-        run_zoom(c, frame, ready, dump, frame_group, cam, time);
+        run_zoom(c, frame, ready, dump, grab, frame_group, cam, time);
         for (auto& t : seas) {
             t.join();
         }
@@ -862,7 +926,8 @@ constexpr const char* kUsage =
     "[--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick] [--zoom k] [--zoom-frames n] "
     "[--pace ms] [--spike ms] [--limits default|interactive] [--settle ms] "
     "[--river-flow legacy|flow] [--river-quality auto|low|medium|high] [--river-gain x] "
-    "[--river-pass] [--stand-ins on|off] [--prewarm chunks] [--prefetch chunks] [--zoom-dump dir]\n"
+    "[--river-pass] [--stand-ins on|off] [--prewarm chunks] [--prefetch chunks] [--fade ms] "
+    "[--zoom-dump dir]\n"
     "       bench_frame --list-adapters\n"
     "       bench_frame <game_dir> <file> --river-cost\n";
 
@@ -963,6 +1028,10 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
         } else if (a == "--stand-ins") {
             ok = v == "on" || v == "off";
             o.stand_ins = v == "on";
+        } else if (a == "--fade") {
+            std::uint64_t n = 0;
+            ok = parse(v, n);
+            o.fade = n;
         } else if (a == "--prefetch") {
             std::size_t n = 0;
             ok = parse(v, n);
@@ -993,6 +1062,9 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = parse(v, o.zoom_every) && o.zoom_every > 0;
         } else if (a == "--zoom-frames") {
             ok = parse(v, o.zoom_frames) && o.zoom_frames > 0;
+        } else if (a == "--pop") {
+            ok = v == "on" || v == "off";
+            o.pop = v == "on";
         } else if (a == "--zoom-pan") {
             const auto parts = split(v, ',');
             ok = (parts.size() == 2 || parts.size() == 3) && parse(parts[0], o.zoom_pan.first) &&
@@ -1143,6 +1215,9 @@ int main(int argc, char** argv) {
         gpu::GpuLimits limits = o->interactive ? gpu::GpuLimits::interactive() : gpu::GpuLimits{};
         limits.river_quality = o->river_quality;
         limits.gpu_timing = o->river_pass;
+        if (o->fade) {
+            limits.chunk_fade_ms = *o->fade;
+        }
         if (o->prefetch) {
             limits.prefetch_chunks = *o->prefetch;
         }
@@ -1212,6 +1287,7 @@ int main(int argc, char** argv) {
                         c.spike_ms = o->spike_ms;
                         c.stand_ins = o->stand_ins;
                         c.zoom_pan = o->zoom_pan;
+                        c.pop = o->pop;
                         c.zoom_pan_period = o->zoom_pan_period;
                         c.zoom_dump = o->zoom_dump;
                         c.zoom_dump_after = o->zoom_dump_after;

@@ -2795,6 +2795,87 @@ TEST_CASE("prefetch: built chunks of the neighbouring groups are uploaded when n
     CHECK(g.errors() == 0);
 }
 
+TEST_CASE("a chunk that replaces the open sea dissolves in over chunk_fade_ms of the animation "
+          "clock") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    const render::Rect one{0, 0, render::kChunk, render::kChunk};
+    const render::Chunk land = noise_land_chunk(1, 0, 0);
+    gpu::GpuLimits limits;
+    limits.wave_simulation = false;
+    limits.chunk_fade_ms = 100;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    render::FrameRenderer fr(1, false);
+    fr.insert_chunk({1, 0, 0}, land);
+    const auto target = g.offscreen_target(side, side);
+    auto frame_at = [&](std::uint64_t t) {
+        const auto st =
+            g.render(fr, scene, one, 1, t, render::WaterStyle::Original, target.second.get());
+        return std::pair{st, g.read_back(target.first.get(), side, side)};
+    };
+    // The frame that uploads the chunk starts its fade: nothing of it yet.
+    const auto [st0, px0] = frame_at(1000);
+    CHECK(st0.chunks_uploaded == 1);
+    CHECK(st0.chunks_fading == 1);
+    const auto [st1, px1] = frame_at(1050);
+    CHECK(st1.chunks_fading == 1);
+    const auto [st2, px2] = frame_at(1100);
+    CHECK(st2.chunks_fading == 0);
+    const render::Px water = scene.textures.water();
+    std::size_t n = 0, start_ok = 0, mid_between = 0, end_ok = 0;
+    for (std::size_t i = 0; i < std::size_t{side} * side; ++i) {
+        if (land.objects[i][3] != 0) {
+            continue; // ground only
+        }
+        const render::Px ground{static_cast<std::uint8_t>(land.ground[i] >> 16),
+                                static_cast<std::uint8_t>(land.ground[i] >> 8),
+                                static_cast<std::uint8_t>(land.ground[i]), 255};
+        int span = 0;
+        for (std::size_t k = 0; k < 3; ++k) {
+            span = std::max(span, std::abs(int{ground[k]} - int{water[k]}));
+        }
+        if (span < 80) {
+            continue;
+        }
+        ++n;
+        int from_water = 0, from_ground = 0, end_off = 0, start_off = 0;
+        for (std::size_t k = 0; k < 3; ++k) {
+            start_off = std::max(start_off, std::abs(int{px0[i * 4 + k]} - int{water[k]}));
+            from_water = std::max(from_water, std::abs(int{px1[i * 4 + k]} - int{water[k]}));
+            from_ground = std::max(from_ground, std::abs(int{px1[i * 4 + k]} - int{ground[k]}));
+            end_off = std::max(end_off, std::abs(int{px2[i * 4 + k]} - int{ground[k]}));
+        }
+        start_ok += start_off <= 2 ? 1U : 0U;
+        mid_between += from_water > 5 && from_ground > 5 ? 1U : 0U;
+        end_ok += end_off <= 1 ? 1U : 0U;
+    }
+    REQUIRE(n > 1000);
+    CHECK(start_ok == n);
+    CHECK(mid_between * 100 >= n * 95);
+    CHECK(end_ok == n);
+    // Chunk_fade_ms 0 swaps at once.
+    gpu::GpuLimits plain = limits;
+    plain.chunk_fade_ms = 0;
+    auto made2 = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, plain);
+    REQUIRE(made2);
+    gpu::GpuFrame& g2 = *made2.value();
+    render::FrameRenderer fr2(1, false);
+    fr2.insert_chunk({1, 0, 0}, land);
+    const auto target2 = g2.offscreen_target(side, side);
+    const auto st =
+        g2.render(fr2, scene, one, 1, 1000, render::WaterStyle::Original, target2.second.get());
+    CHECK(st.chunks_fading == 0);
+    CHECK(g.errors() == 0);
+    CHECK(g2.errors() == 0);
+}
+
 TEST_CASE("stand-in cover chooses the source group per part") {
     const auto all = [](const render::ChunkKey&) { return true; };
     for (std::size_t to = 0; to < render::kGroups; ++to) {

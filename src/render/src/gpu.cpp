@@ -336,6 +336,9 @@ struct GpuFrame::Impl {
     /// are overwritten completely on reuse, and GPU work still reading the
     /// old contents is ordered before those writes.
     std::vector<Plane> plane_pool;
+    /// Chunks that replaced a stand-in or open sea and are still fading in: the
+    /// animation time (ms) their fade started at (GpuLimits::chunk_fade_ms).
+    std::map<ChunkKey, std::uint64_t> fading;
     static constexpr std::size_t kPoolPlanes = 8 * 24;
     /// plane_pool.size(), readable from the pre-creation thread (which keeps
     /// the idle planes, pooled and pre-created, within GpuLimits::idle_plane_
@@ -824,7 +827,8 @@ struct GpuFrame::Impl {
     /// (the rest of the sync time is the scan).
     std::size_t sync_chunks(const FrameRenderer& frames, std::size_t group,
                             const std::vector<std::pair<int, int>>& visible,
-                            const std::vector<ChunkKey>& prefetch, GpuStats& stats) {
+                            const std::vector<ChunkKey>& prefetch, std::uint64_t time_ms,
+                            GpuStats& stats) {
         std::set<ChunkKey> keys;
         for (const auto& [cx, cy] : visible) {
             keys.insert({group, cx, cy});
@@ -867,6 +871,11 @@ struct GpuFrame::Impl {
                 ++uploads;
                 const auto u0 = Clock::now();
                 Chunk fresh = upload_chunk(key, c);
+                // A chunk that was not real before dissolves in over what showed
+                // there (a rebuild of a real chunk, e.g. its river flow, does not).
+                if (limits.chunk_fade_ms > 0 && (it == chunks.end() || !it->second.real)) {
+                    fading[key] = time_ms;
+                }
                 if (it != chunks.end()) {
                     // The replaced chunk's planes are reused by later uploads
                     // (its bind group goes with it; queued GPU work keeps what it
@@ -1405,12 +1414,14 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     vbl.attributeCount = attrs.size();
     vbl.attributes = attrs.data();
     wgpuDevicePushErrorScope(d, WGPUErrorFilter_Validation);
-    m.ground_pipe = m.pipeline("ground", m.chunk_pl.get(), "chunk_vs", "ground_fs", nullptr, 0,
-                               format, nullptr);
+    // Ground and sea blend by the draw's opacity (piece.transparent, 0 = opaque
+    // = a plain replacement): a chunk fading in is drawn over what it replaces.
+    m.ground_pipe =
+        m.pipeline("ground", m.chunk_pl.get(), "chunk_vs", "ground_fs", nullptr, 0, format, &alpha);
     m.terrain_pipe = m.pipeline("terrain", m.chunk_pl.get(), "chunk_vs", "terrain_fs", nullptr, 0,
                                 kTerrainFormat, nullptr);
     m.sea_pipe =
-        m.pipeline("sea", m.chunk_pl.get(), "chunk_vs", "sea_fs", nullptr, 0, format, nullptr);
+        m.pipeline("sea", m.chunk_pl.get(), "chunk_vs", "sea_fs", nullptr, 0, format, &alpha);
     m.objects_pipe = m.pipeline("objects", m.chunk_pl.get(), "chunk_vs", "objects_fs", nullptr, 0,
                                 format, &alpha);
     m.sprite_pipe =
@@ -1545,7 +1556,8 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     const auto visible = visible_chunks(view);
     stats.visible_ms = lap();
     const std::size_t warm_before = m.planes_warm_taken;
-    stats.chunks_uploaded = m.sync_chunks(frames, group, visible, frames.adjacent_keys(), stats);
+    stats.chunks_uploaded =
+        m.sync_chunks(frames, group, visible, frames.adjacent_keys(), time_ms, stats);
     stats.planes_warm = m.planes_warm_taken - warm_before;
     stats.chunk_sync_ms = lap();
     stats.sync_scan_ms = std::max(0.0, stats.chunk_sync_ms - stats.sync_drop_ms -
@@ -1615,15 +1627,51 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     };
     std::vector<Draw> draws;
     std::vector<std::uint8_t> pieces(kPieceStride, 0);
+    // Chunks that replaced their stand-in or the open sea dissolve in: how
+    // transparent each still is (0.5 of the way, smoothstep). They are drawn
+    // after the stand-in (or the open sea) they replace, with that opacity.
+    std::map<ChunkKey, float> transparent;
+    if (!m.fading.empty()) {
+        std::set<ChunkKey> shown;
+        for (const auto& [cx, cy] : visible) {
+            shown.insert({group, cx, cy});
+        }
+        for (auto it = m.fading.begin(); it != m.fading.end();) {
+            const auto c = m.chunks.find(it->first);
+            const double progress =
+                time_ms <= it->second || m.limits.chunk_fade_ms == 0
+                    ? 0.0
+                    : std::min(1.0, static_cast<double>(time_ms - it->second) /
+                                        static_cast<double>(m.limits.chunk_fade_ms));
+            if (!shown.contains(it->first) || c == m.chunks.end() || !c->second.real ||
+                progress >= 1.0) {
+                it = m.fading.erase(it);
+                continue;
+            }
+            transparent[it->first] =
+                static_cast<float>(1.0 - progress * progress * (3.0 - 2.0 * progress));
+            ++it;
+        }
+        stats.chunks_fading = transparent.size();
+    }
+    auto piece_record = [&](Bytes& b) {
+        b.b.resize(kPieceStride, 0);
+        const auto offset = static_cast<std::uint32_t>(pieces.size());
+        pieces.insert(pieces.end(), b.b.begin(), b.b.end());
+        return offset;
+    };
     for (const auto& [cx, cy] : visible) {
-        if (const auto it = m.chunks.find({group, cx, cy}); it != m.chunks.end()) {
+        if (const auto it = m.chunks.find({group, cx, cy});
+            it != m.chunks.end() && !transparent.contains({group, cx, cy})) {
             draws.push_back({it->second.bind.get(), 0});
         }
     }
     if (m.limits.stand_ins) {
         for (const auto& [cx, cy] : visible) {
             const auto own = m.chunks.find({group, cx, cy});
-            if (own != m.chunks.end() && own->second.real) {
+            const bool real = own != m.chunks.end() && own->second.real;
+            const bool dissolving = real && transparent.contains({group, cx, cy});
+            if (real && !dissolving) {
                 continue;
             }
             const auto c0 = Clock::now();
@@ -1646,15 +1694,12 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                 b.i32(kTile[group].w);
                 b.i32(kTile[group].h);
                 b.u32(1);
-                b.b.resize(kPieceStride, 0);
-                draws.push_back(
-                    {src->second.bind.get(), static_cast<std::uint32_t>(pieces.size())});
-                pieces.insert(pieces.end(), b.b.begin(), b.b.end());
+                draws.push_back({src->second.bind.get(), piece_record(b)});
             }
             if (!cover.empty()) {
                 ++stats.stand_in_chunks;
                 stats.stand_in_parts += cover.size();
-            } else {
+            } else if (!real) {
                 ++stats.open_sea_chunks;
                 stats.open_sea_built += frames.chunk({group, cx, cy}) != nullptr ? 1U : 0U;
             }
@@ -1663,6 +1708,18 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         for (const auto& [cx, cy] : visible) {
             const auto own = m.chunks.find({group, cx, cy});
             stats.open_sea_chunks += own == m.chunks.end() || !own->second.real ? 1U : 0U;
+        }
+    }
+    // The dissolving chunks last: over the stand-in or open sea they replace.
+    for (const auto& [cx, cy] : visible) {
+        if (const auto tr = transparent.find({group, cx, cy}); tr != transparent.end()) {
+            Bytes b;
+            for (int i = 0; i < 8; ++i) {
+                b.i32(0);
+            }
+            b.u32(0);
+            b.f32(tr->second);
+            draws.push_back({m.chunks.find(tr->first)->second.bind.get(), piece_record(b)});
         }
     }
     stats.draws_ms = lap();

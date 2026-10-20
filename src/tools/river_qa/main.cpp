@@ -988,17 +988,22 @@ int main(int argc, char** argv) {
     if (opt.per_island) {
         std::printf(
             "| island | O px | covered | edge px | gap px | extra px | O comps | E comps | split | "
-            "lost | gap comps |\n|---|---|---|---|---|---|---|---|---|---|\n");
+            "lost | gap comps |\n|---|---|---|---|---|---|---|---|---|---|---|\n");
     }
     std::printf("| scene | group | islands | O px | covered | edge px | gap px | gap %% | extra px "
                 "| O comps | "
                 "E comps | split | lost | gap comps "
                 "|\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
     Totals all;
+    // Coverage of the run, printed to stderr at the end (tools/river_qa_gap.py reads it): a
+    // scene that fails to load is skipped, and the table alone would not show that.
+    std::size_t scenes_failed = 0;
+    std::size_t scenes_with_river = 0;
     for (const auto& file : files) {
         auto loaded = anno::app::load_scene(dir, file);
         if (!loaded) {
             std::fprintf(stderr, "%s: %s\n", file.string().c_str(), loaded.error().c_str());
+            ++scenes_failed;
             continue;
         }
         render::Scene& scene = *loaded.value().scene;
@@ -1025,6 +1030,7 @@ int main(int argc, char** argv) {
         if (opt.pieces) {
             print_pieces(scene, name);
         }
+        bool scene_has_river = false;
         for (const std::size_t g : opt.groups) {
             if (const auto b = scene.bounds(g)) {
                 std::fprintf(stderr, "%s group %zu: scene bounds x %d y %d w %d h %d\n",
@@ -1040,6 +1046,7 @@ int main(int argc, char** argv) {
                                          std::to_string(pl.index)));
             }
             all.add(t);
+            scene_has_river = scene_has_river || t.islands != 0;
             std::printf("| %s | %zu | %zu | %llu | %llu | %llu | %llu | %.2f | %llu | %zu | %zu | "
                         "%zu | %zu | %zu |\n",
                         name.c_str(), g, t.islands, static_cast<unsigned long long>(t.o),
@@ -1061,6 +1068,9 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "\n");
             }
         }
+        scenes_with_river += scene_has_river ? 1 : 0;
     }
+    std::fprintf(stderr, "scenes: tried %zu loaded %zu failed %zu with-river %zu\n", files.size(),
+                 files.size() - scenes_failed, scenes_failed, scenes_with_river);
     return 0;
 }

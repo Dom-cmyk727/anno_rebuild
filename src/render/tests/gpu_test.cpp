@@ -2797,6 +2797,33 @@ TEST_CASE("the margin follows the view's velocity through update_chunks: leading
     CHECK(fr.velocity().first == doctest::Approx(before * ratio).epsilon(1e-9));
 }
 
+TEST_CASE("a jump of the view by more than its size resets the velocity of the margin") {
+    const EmptyScene es = empty_scene();
+    render::FrameRenderer fr(1, false);
+    auto t = std::chrono::steady_clock::time_point{};
+    fr.clock = [&] { return t; };
+    render::Rect view{0, 0, render::kChunk, render::kChunk};
+    for (int i = 0; i <= 40; ++i) {
+        view.x += i > 0 ? 50 : 0;
+        t += std::chrono::milliseconds(10);
+        fr.update_chunks(*es.scene, view, 1);
+    }
+    REQUIRE(fr.velocity().first > 1000.0);
+    // A minimap click 5000 px away: without the reset that reads as about
+    // 37,000 px/s and pins the margin at its cap.
+    view.x += 5000;
+    view.y -= 3000;
+    t += std::chrono::milliseconds(10);
+    fr.update_chunks(*es.scene, view, 1);
+    CHECK(fr.velocity().first == 0.0);
+    CHECK(fr.velocity().second == 0.0);
+    // A move of exactly one view width is still a drag.
+    view.x += render::kChunk;
+    t += std::chrono::milliseconds(10);
+    fr.update_chunks(*es.scene, view, 1);
+    CHECK(fr.velocity().first > 0.0);
+}
+
 TEST_CASE("adjacent_keys: the view a zoom step would show, in both neighbouring groups") {
     const EmptyScene es = empty_scene();
     render::FrameRenderer fr(1, false);

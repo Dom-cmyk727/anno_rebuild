@@ -804,6 +804,12 @@ void FrameRenderer::track_velocity(Rect view, std::size_t group) {
             // keep the velocity, in the new group's pixels.
             vx_ *= static_cast<double>(kTile[group].w) / kTile[last_group_].w;
             vy_ *= static_cast<double>(kTile[group].h) / kTile[last_group_].h;
+        } else if (std::abs(dx) > view.w || std::abs(dy) > view.h) {
+            // More than a view in one update: a jump (a minimap click, a "go to"),
+            // not a drag. Counted as motion it would read D / 0.15 px/s whatever
+            // the frame time and pin the margin at its cap for a while.
+            vx_ = 0;
+            vy_ = 0;
         } else if (dt > 1e-4) {
             // Smoothed over about 150 ms: a mouse drag is noisy per frame.
             const double a = 1.0 - std::exp(-dt / 0.15);

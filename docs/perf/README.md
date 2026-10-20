@@ -199,3 +199,17 @@ Ranges span zoom groups 0–2. Findings:
 - **Before this work** (2026-10-16 viewer): a 1080p view took ≈ 500 ms of ground rendering per new chunk area and 8–30 ms of sea sprites per frame, redrawn at most every 50 ms.
 - **Against the targets (PLAN §0.3):** 1080p meets them in every case, including 4 threads. 4K with 18 threads meets them for original water; with 4 threads it misses at p99 for original water (≤ 22 ms) and clearly for enhanced water (≤ 48 ms).
 - **Next costs to cut:** (1) enhanced wave shading (`sea` stage; per grid point several noise and trigonometric evaluations) — cheaper wave function, coarser grid at group 2, or the GPU; (2) water objects (rivers, surf) are re-blitted as sprites every frame (up to 6 ms at 4K) — cache them per animation step like the sea; (3) chunk workers compete with frame threads while panning (`static` p99 > p50 while the ring is built) — lower worker priority. A GPU compositor (wgpu) would remove the per-pixel stages from the CPU entirely; decide after (1)–(3) are measured on the colleague's PC.
+
+### 2026-10-20 - stand-in chunks after a zoom step (T1, OQ-077), Windows 11, Ryzen 9 9800X3D, RTX 4090 (Vulkan), MSVC Release, branch task/T1-zoom-standin
+
+Method: `bench_frame <game_dir> 01_1024_easy_256.sze --zoom 6 --renderer gpu --chunks async --limits interactive --res 2560x1369 --styles enhanced`, window-thread CPU time per frame, five runs of each build alternated. Before = the build of `7d24231` (main); after = this branch. The machine was shared with two other builds and test runs (CPU load 11-100 % at the start of the runs), so the first four pairs are used (run 5 of both builds ran at 100 % load and is not comparable). Medians of the four runs, p50 / p95 / p99 / max in ms:
+
+| group | before | after |
+|---|---|---|
+| 0 | 0.4 / 1.6 / 2.1 / 3.4 | 0.5 / 1.9 / 3.4 / 10.6 |
+| 1 | 0.5 / 1.7 / 2.8 / 5.0 | 0.55 / 1.8 / 2.7 / 4.7 |
+| 2 | 0.5 / 1.7 / 3.3 / 7.7 | 0.55 / 1.8 / 2.4 / 5.2 |
+
+Run 5 (both builds at 100 % load): before 1.8 / 22.7 / 66 / 109 (group 0), after 0.8 / 6.3 / 26 / 49. The max of group 0 after (6.7-15.8 ms in three of four runs against 2.7-4.0 before, one 66 ms before) is the one-chunk upload write (the `write` column, 7.9 ms: the driver's texture write, which the before runs show in other groups as well); no new kind of slow frame appeared, and no slow frame is tied to a stand-in draw. The cost of the feature per frame is O(visible chunks not on the GPU) lookups plus one draw per source-chunk part per pass, only while chunks are missing.
+
+What the zoom path shows (printed by `bench_frame` after the table): frames with chunks not built 53 of 240 (group 0 start), 48 (group 1), 96 (group 2); of the first frames right after a zoom step with chunks not built, 8 of 9, 7 of 8 and 16 of 16 drew stand-ins; the others had no source chunk on the GPU for the missing area (zooming out shows area nobody has seen yet). `--stand-ins off` gives the old behaviour in the same binary. PNG pairs of the first frames after zoom steps: `C:/Users/altin/Pictures/anno-review/T1/` (`first_frame_after_zoom_out_*.png`: the island is open sea before, the scaled island after; `all_before` and `all_after`: the first eight frames after zoom steps of one run each; frames that were complete in both runs differ only by the animation).

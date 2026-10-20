@@ -281,3 +281,40 @@ Reading: with stand-ins off the same binary also has runs with a max above 8 ms 
 - **Retention (item 3).** `FrameRenderer::stand_in_retain` is empty unless stand-ins are on (`GpuLimits::stand_ins`, set on the renderer by `render()`, or the CPU switch) and only for visible chunks not built: with stand-ins off the eviction is the one from before the feature.
 - **Placeholders (item 4): not changed.** Measured in T1b: 12-18 placeholders in the first frame cost 0.13-0.32 ms in total (about 0.02 ms each), so they are not the hitch. Removing them is wrong as well: a placeholder draws the sea pattern through the chunk shader (a GPU-vs-CPU test of the open-sea case failed by up to 38 per channel when no placeholder was drawn). A slab would need a change of the chunk bind group layout for no measured gain.
 - **Console write (item 7).** The per-frame `chunk(s) received` line is gone (count in the periodic report). The owner's terminal is where this matters; the development runs wrote to a pipe. Owner check: run the viewer with the zoom as before and compare `worst` in the periodic lines.
+
+#### T1c idle-machine bench (replaces the loaded-machine table of T1b)
+
+`D_256x256_0045_5B`, enhanced, RTX 4090 + Ryzen 9800X3D, `bench_frame --zoom 6 --renderer gpu --chunks async --limits interactive --styles enhanced --res <res> --zoom-frames 480 --stand-ins on|off --prewarm 0|24`, one binary (`task/T1-zoom-standin` after the T1c commits, before this entry), five rounds, every round running both resolutions and the four configurations in turn. Nothing else of ours was running; the owner's game was closed. CPU load read just before each run (`Win32_Processor.LoadPercentage`, which includes the reading itself and background programs): 2-36 %, 40 of 40 runs below 20 % except four (27, 31, 35, 36 %), most 7-18 %. That is quiet but not the "below 10 %" the task asks for, so read the numbers as an idle machine with a few percent of background noise. Window-thread CPU time per frame, medians over five runs of p50 / p95 / p99 / max in ms; "runs with max > 8 ms" counts the five runs (worst max in brackets):
+
+| res | group | stand-ins | prewarm | p50 / p95 / p99 / max (medians of 5) | runs with max > 8 ms (worst max) |
+|---|---|---|---|---|---|
+| 1280x800 | 0 | off | off | 0.2 / 0.4 / 1.5 / 2.0 | 0 of 5 (3.0) |
+| 1280x800 | 0 | off | on | 0.3 / 0.4 / 1.5 / 2.0 | 0 of 5 (2.2) |
+| 1280x800 | 0 | on | off | 0.3 / 0.5 / 1.5 / 2.2 | 0 of 5 (2.3) |
+| 1280x800 | 0 | on | on | 0.3 / 0.5 / 1.6 / 2.2 | 0 of 5 (2.3) |
+| 1280x800 | 1 | off | off | 0.3 / 0.5 / 1.5 / 2.5 | 0 of 5 (2.6) |
+| 1280x800 | 1 | off | on | 0.3 / 0.5 / 1.5 / 2.2 | 0 of 5 (2.3) |
+| 1280x800 | 1 | on | off | 0.3 / 0.5 / 1.5 / 2.2 | 0 of 5 (2.6) |
+| 1280x800 | 1 | on | on | 0.3 / 0.5 / 1.5 / 2.2 | 0 of 5 (2.4) |
+| 1280x800 | 2 | off | off | 0.3 / 1.7 / 2.0 / 2.5 | 0 of 5 (6.1) |
+| 1280x800 | 2 | off | on | 0.3 / 1.6 / 1.9 / 2.5 | 0 of 5 (2.6) |
+| 1280x800 | 2 | on | off | 0.3 / 1.7 / 2.0 / 2.4 | 0 of 5 (3.2) |
+| 1280x800 | 2 | on | on | 0.3 / 1.7 / 2.0 / 2.4 | 0 of 5 (2.4) |
+| 2560x1440 | 0 | off | off | 0.4 / 1.0 / 1.7 / 2.7 | 0 of 5 (2.9) |
+| 2560x1440 | 0 | off | on | 0.4 / 1.0 / 1.8 / 2.4 | 0 of 5 (4.4) |
+| 2560x1440 | 0 | on | off | 0.4 / 1.2 / 2.0 / 3.0 | 0 of 5 (3.4) |
+| 2560x1440 | 0 | on | on | 0.4 / 1.2 / 1.9 / 2.6 | 0 of 5 (2.8) |
+| 2560x1440 | 1 | off | off | 0.4 / 0.9 / 1.7 / 2.5 | 0 of 5 (6.2) |
+| 2560x1440 | 1 | off | on | 0.4 / 1.0 / 1.8 / 3.0 | 1 of 5 (12.6) |
+| 2560x1440 | 1 | on | off | 0.4 / 1.2 / 2.0 / 2.7 | 0 of 5 (2.9) |
+| 2560x1440 | 1 | on | on | 0.4 / 1.2 / 1.9 / 2.6 | 0 of 5 (6.1) |
+| 2560x1440 | 2 | off | off | 0.4 / 1.0 / 1.8 / 2.0 | 0 of 5 (2.8) |
+| 2560x1440 | 2 | off | on | 0.4 / 1.0 / 1.8 / 2.3 | 0 of 5 (2.8) |
+| 2560x1440 | 2 | on | off | 0.4 / 1.1 / 2.0 / 3.1 | 0 of 5 (5.8) |
+| 2560x1440 | 2 | on | on | 0.4 / 1.1 / 2.0 / 2.7 | 0 of 5 (3.1) |
+
+- Acceptance "no busy frame above 8 ms after a zoom step": 119 of 120 runs meet it (max 2.0-6.2 ms); the one miss is 12.6 ms (2560x1440, group 1, stand-ins off, prewarm on), not reproduced in the other four runs of that configuration. The first frame of the program is outside the bench.
+- The earlier loaded-machine regression (group 0 p99/max 2.9/8.6 to 5.3/19.2 ms, group 2 3.4/7.0 to 9.1/19.1 ms) is **not present**: all medians of p99 are 1.5-2.0 ms and of max 2.0-3.1 ms. It was load.
+- Cost of stand-ins: p50 unchanged (0.3 / 0.4 ms); p95 +0.0 at 1280x800, +0.2 ms at 2560x1440 groups 0 and 1 (1.0 to 1.2 ms), max within noise.
+- Prewarm on vs off: no difference outside noise in these medians. It is kept because it targets the first uploads into a group (10-19 ms texture creation seen before); this bench starts after the pre-created planes are ready (`pre-created planes ready: 120`), i.e. it measures the steady state the thread leaves, not the first seconds. The viewer's first zoom into an uncached group on the owner's machine is the case still to be checked by the owner (A/B with `ANNO_VIEW_PREWARM=off`).
+- Raw outputs: scratch files of the session (`bench/r<round>_<res>_si<on|off>_pw<0|24>.txt`, `loads.txt`), not in the repository.

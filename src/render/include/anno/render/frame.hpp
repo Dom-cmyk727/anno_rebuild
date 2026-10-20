@@ -77,6 +77,12 @@ struct Chunk {
     /// that keeps a copy (the GPU compositor's textures) sees that a chunk of
     /// the same key was rebuilt (e.g. after its river flow arrived).
     std::uint64_t serial = 0;
+    /// The heap memory the chunk holds (its vectors' capacities), in bytes.
+    [[nodiscard]] std::size_t bytes() const {
+        auto of = [](const auto& v) { return v.capacity() * sizeof(v[0]); };
+        return of(ground) + of(objects) + of(field) + of(terrain) + of(base) + of(flow.uv) +
+               of(flow.aux) + of(flow.shear) + of(flow_waiting);
+    }
 };
 
 /// (zoom group, chunk x, chunk y).
@@ -161,6 +167,15 @@ class FrameRenderer {
     /// Whether chunks are still being built in the background.
     [[nodiscard]] bool busy() const { return pending_; }
     [[nodiscard]] std::size_t cached() const { return cache_.size(); }
+    /// The memory of the cached chunks (Chunk::bytes), O(cached chunks): for
+    /// tools and reports, not per frame in the viewer.
+    [[nodiscard]] std::size_t cached_bytes() const {
+        std::size_t n = 0;
+        for (const auto& [key, chunk] : cache_) {
+            n += chunk.bytes();
+        }
+        return n;
+    }
     /// Brings the chunks of `view` up to date; (built or received, ms spent,
     /// visible chunks still missing).
     std::tuple<std::size_t, double, std::size_t> update_chunks(const Scene& scene, Rect view,
@@ -196,9 +211,15 @@ class FrameRenderer {
     std::size_t spare_chunks = 48;
     /// Most chunks the margin around the view grows in the direction the view is
     /// moving (lookahead_rect). Each chunk-wide strip is (view height / kChunk + 2)
-    /// chunks of about 4 MB in the current group and in each neighbouring one, on
-    /// top of spare_chunks: 3 keeps that to a few hundred MB at 2560 x 1440 and
-    /// covers 1500 px of travel; 0 = a plain ring of one chunk.
+    /// chunks of up to 4.3 MB (a land chunk; sea chunks are far smaller) in the
+    /// current group and in each neighbouring one, on top of spare_chunks.
+    /// Counted for 2560 x 1440, three groups, cap 3: 144 chunks kept standing,
+    /// about 200-216 on a pan along one axis, 297 on a diagonal, plus 48 spare:
+    /// 0.8 / 1.1 / 1.5 GB at worst. Measured on Single_24.sze (the largest
+    /// scene) with a pan while zooming: peak 0.44-0.71 GB, mean 0.36-0.54 GB,
+    /// and cap 2 within 40 MB of cap 3 (docs/perf/README.md, T1e). 3 covers
+    /// 1500 px of travel; the viewer's --lookahead-chunks sets it; 0 = a plain
+    /// ring of one chunk.
     std::size_t max_lookahead_chunks = 3;
     /// render() draws a visible chunk that is not built from the nearest zoom
     /// group's chunks (stand_in_chunk) instead of open sea. Off by default: the

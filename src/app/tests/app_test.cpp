@@ -187,6 +187,12 @@ TEST_CASE("command line") {
     CHECK(f->river_speed == Ref::FastestSection);
     CHECK(f->river_gain == 1.0F);
     CHECK_FALSE(parse_args({"--view", "x.scp", "--river-speed", "fast"}));
+    CHECK(d->lookahead_chunks == 3);
+    const auto la = parse_args({"--view", "x.scp", "--lookahead-chunks", "2"});
+    REQUIRE(la);
+    CHECK(la->lookahead_chunks == 2);
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--lookahead-chunks", "-1"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--lookahead-chunks", "17"}));
     // UTF-8 paths round-trip.
     const std::string umlaut = "Insel_\xc3\xa4.scp";
     CHECK(anno::app::to_utf8(anno::app::utf8_path(umlaut)) == umlaut);

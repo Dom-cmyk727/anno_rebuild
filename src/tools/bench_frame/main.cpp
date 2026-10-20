@@ -123,6 +123,8 @@ struct Options {
     std::optional<std::size_t> prefetch;
     /// GpuLimits::chunk_fade_ms (nullopt = the limits' default).
     std::optional<std::uint64_t> fade;
+    /// FrameRenderer::max_lookahead_chunks (nullopt = the library default).
+    std::optional<std::size_t> lookahead;
     /// Directory for the frames after zoom steps (empty = none).
     std::string zoom_dump;
     /// Frames after a zoom step that --zoom-dump writes (0 = the step's own frame).
@@ -169,6 +171,8 @@ struct Row {
     std::size_t fading = 0;
     /// Pixels of the view showing open sea (GpuStats::open_sea_px).
     std::uint64_t open_px = 0;
+    /// The CPU chunk cache after the frame: chunks and bytes (outside `total`).
+    std::size_t cache_chunks = 0, cache_bytes = 0;
     /// GPU: every window-thread step of the frame (GpuStats::steps, they add up
     /// to the compositor's total), and the counts behind the sync steps.
     std::vector<std::pair<std::string, double>> steps;
@@ -203,6 +207,7 @@ struct Config {
     render::RiverFlowMode river_flow = render::RiverFlowMode::Flow;
     bool river_pass = false;
     std::optional<bool> stand_ins;
+    std::optional<std::size_t> lookahead;
     std::string zoom_dump;
     /// Frames after a zoom step that --zoom-dump writes (0 = the step's own frame).
     std::vector<std::size_t> zoom_dump_after{0};
@@ -732,6 +737,20 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, Grab&&
         std::printf("frames with chunks dissolving in after the first second: %zu (%zu "
                     "chunk-frames)\n",
                     fade_frames, fade_chunks);
+        // The resident CPU chunk cache (GPU path: sampled after every frame).
+        std::size_t peak_bytes = 0, peak_chunks = 0, sum_bytes = 0;
+        for (const auto& r : rows) {
+            peak_bytes = std::max(peak_bytes, r.cache_bytes);
+            peak_chunks = std::max(peak_chunks, r.cache_chunks);
+            sum_bytes += r.cache_bytes;
+        }
+        if (peak_chunks > 0) {
+            std::printf("CPU chunk cache: peak %.0f MB, mean %.0f MB, peak %zu chunks\n",
+                        static_cast<double>(peak_bytes) / 1048576.0,
+                        static_cast<double>(sum_bytes) / static_cast<double>(rows.size()) /
+                            1048576.0,
+                        peak_chunks);
+        }
     }
     if (c.zoom_every > 0) {
         // How long each zoom step's transient lasts (wall ms since the step's frame):
@@ -777,6 +796,9 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
     // The GPU compositor draws the ships itself: chunks without them.
     render::FrameRenderer fr(c.threads, g == nullptr);
     fr.river_flow = c.river_flow;
+    if (c.lookahead) {
+        fr.max_lookahead_chunks = *c.lookahead;
+    }
     if (c.stand_ins && g == nullptr) {
         fr.stand_ins = *c.stand_ins;
     }
@@ -809,6 +831,8 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
             r.open_built = st.open_sea_built;
             r.fading = st.chunks_fading;
             r.open_px = st.open_sea_px;
+            r.cache_chunks = fr.cached();
+            r.cache_bytes = fr.cached_bytes();
             r.fluid_setting_up = st.fluid_setting_up;
             r.sea = st.sea_ms;
             r.sync = st.chunk_sync_ms;
@@ -956,6 +980,7 @@ constexpr const char* kUsage =
     "[--pace ms] [--spike ms] [--limits default|interactive] [--settle ms] "
     "[--river-flow legacy|flow] [--river-quality auto|low|medium|high] [--river-gain x] "
     "[--river-pass] [--stand-ins on|off] [--prewarm chunks] [--prefetch chunks] [--fade ms] "
+    "[--lookahead-chunks n] "
     "[--zoom-dump dir]\n"
     "       bench_frame --list-adapters\n"
     "       bench_frame <game_dir> <file> --river-cost\n";
@@ -1057,6 +1082,10 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
         } else if (a == "--stand-ins") {
             ok = v == "on" || v == "off";
             o.stand_ins = v == "on";
+        } else if (a == "--lookahead-chunks") {
+            std::size_t n = 0;
+            ok = parse(v, n);
+            o.lookahead = n;
         } else if (a == "--fade") {
             std::uint64_t n = 0;
             ok = parse(v, n);
@@ -1321,6 +1350,7 @@ int main(int argc, char** argv) {
                         c.zoom_pan_period = o->zoom_pan_period;
                         c.zoom_dump = o->zoom_dump;
                         c.zoom_dump_after = o->zoom_dump_after;
+                        c.lookahead = o->lookahead;
                         gpu::GpuFrame* g = nullptr;
 #ifdef ANNO_BENCH_GPU
                         if (on_gpu) {

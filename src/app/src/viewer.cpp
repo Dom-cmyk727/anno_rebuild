@@ -301,6 +301,11 @@ class Viewer {
     /// Present the next frame on a reconfigured surface (it was suboptimal).
     bool reconfigure_ = false;
     bool present_error_shown_ = false;
+    /// Chunks received since the last periodic report. A console write on the
+    /// window thread is synchronous and can cost tens of milliseconds on a busy
+    /// machine, so nothing is printed per frame (hitch lines excepted: they are
+    /// printed in the frame after the hitch, outside its own busy time).
+    std::size_t chunks_received_ = 0;
     void back_off() {
         retry_at_ = Clock::now() + std::chrono::milliseconds(100);
         dirty_ = true;
@@ -831,9 +836,7 @@ void Viewer::draw_gpu(render::Rect view) {
     steps_end_ = Clock::now();
     const double present = since_ms(p, steps_end_);
     steps_.push_back({"present", present});
-    if (s.chunks_built > 0) {
-        std::fprintf(stderr, "zoom group %zu: %zu chunk(s) received\n", group_, s.chunks_built);
-    }
+    chunks_received_ += s.chunks_built; // reported with the periodic line, not per frame
     tex_w_ = view.w;
     tex_h_ = view.h;
     measure(s.chunks_ms, {s.upload_ms, s.sprites_ms, s.encode_ms, present});
@@ -881,9 +884,7 @@ void Viewer::draw_cpu(render::Rect view) {
     steps_end_ = Clock::now();
     // SDL's present waits for vsync.
     display_wait_ms_ = since_ms(present_start, steps_end_);
-    if (s.chunks_built > 0) {
-        std::fprintf(stderr, "zoom group %zu: %zu chunk(s) received\n", group_, s.chunks_built);
-    }
+    chunks_received_ += s.chunks_built; // reported with the periodic line, not per frame
     measure(s.chunks_ms, {s.ground_ms, s.water_objects_ms, s.sea_ms, s.objects_ms});
 }
 
@@ -958,6 +959,10 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
                  frames_.cached());
     std::fprintf(stderr, "  steps of the worst frame (%.1f ms busy): %s\n", worst_ms_,
                  describe(worst_steps_, worst_ms_).c_str());
+    if (chunks_received_ > 0) {
+        std::fprintf(stderr, "  chunk(s) received in this interval: %zu\n", chunks_received_);
+        chunks_received_ = 0;
+    }
     fps_ = std::pair{fps, total_ms_ / n};
     frames_n_ = 0;
     total_ms_ = worst_ms_ = chunks_ms_ = 0;

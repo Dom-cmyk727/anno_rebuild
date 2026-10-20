@@ -412,6 +412,12 @@ struct GpuFrame::Impl {
                                              WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
                 p.view = make_view(p.texture.get(), false);
                 lock.lock();
+                if (!p.texture || !p.view) {
+                    // The device refused (out of memory or lost): stop
+                    // pre-creating; the window thread creates textures itself
+                    // when the pool has none, as before this thread existed.
+                    return;
+                }
                 warm_planes.push_back(std::move(p));
             }
         });

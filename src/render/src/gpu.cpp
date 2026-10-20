@@ -18,6 +18,8 @@
 #include <anno/render/gpu_fluid.hpp>
 #include <anno/render/shaders.hpp>
 
+#include "thread_priority.hpp"
+
 namespace anno::render::gpu {
 
 namespace {
@@ -376,6 +378,7 @@ struct GpuFrame::Impl {
             return;
         }
         warm_thread = std::thread([this] {
+            lower_thread_priority();
             const auto n = static_cast<std::uint32_t>(kChunk);
             const std::size_t target = limits.prewarm_chunks * kChunkPlanes.size();
             std::unique_lock lock(warm_mutex);

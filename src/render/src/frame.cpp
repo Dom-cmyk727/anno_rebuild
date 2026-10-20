@@ -10,6 +10,8 @@
 #include <anno/render/frame.hpp>
 #include <anno/render/sea.hpp>
 
+#include "thread_priority.hpp"
+
 namespace anno::render {
 
 namespace {
@@ -273,6 +275,7 @@ ChunkWorkers::~ChunkWorkers() {
 }
 
 void ChunkWorkers::reap() {
+    lower_thread_priority();
     for (;;) {
         std::vector<Chunk> dead;
         {
@@ -299,6 +302,7 @@ void ChunkWorkers::discard(std::vector<Chunk> chunks) {
 }
 
 void ChunkWorkers::run() {
+    lower_thread_priority();
     for (;;) {
         ChunkKey key;
         bool ships = true;

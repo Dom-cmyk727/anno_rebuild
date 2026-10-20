@@ -11,23 +11,10 @@
 #include <numeric>
 #include <thread>
 
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-#else
-#include <pthread.h>
-#include <sys/resource.h>
-#include <sys/syscall.h>
-#include <unistd.h>
-#endif
-
 #include <anno/render/frame.hpp>
 #include <anno/render/scene.hpp>
+
+#include "thread_priority.hpp"
 
 namespace anno::render {
 
@@ -37,21 +24,6 @@ namespace {
 
 /// States of a FlowSlot.
 constexpr std::uint8_t kFlowIdle = 0, kFlowQueued = 1, kFlowReady = 2, kFlowFailed = 3;
-
-/// Background work yields to the window thread and the chunk builders: this
-/// thread only (a nice value is per thread on Linux but per process on macOS,
-/// the development host, where the QoS class is the per-thread equivalent).
-void lower_thread_priority() {
-#if defined(_WIN32)
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
-#elif defined(__APPLE__)
-    pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
-#elif defined(__linux__)
-    // The kernel's thread id is a task id, which setpriority takes.
-    const int rc = setpriority(PRIO_PROCESS, static_cast<id_t>(::syscall(SYS_gettid)), 5);
-    static_cast<void>(rc);
-#endif
-}
 
 } // namespace
 

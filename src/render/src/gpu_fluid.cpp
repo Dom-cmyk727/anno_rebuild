@@ -14,6 +14,8 @@
 #include <anno/render/iso.hpp>
 #include <anno/render/shaders.hpp>
 
+#include "thread_priority.hpp"
+
 namespace anno::render::gpu {
 
 namespace {
@@ -552,6 +554,7 @@ void FluidGpu::prepare_window(std::size_t group, std::pair<float, float> centre,
     const std::size_t workers = std::max<std::size_t>(threads / 2, 1);
     Job* j = job.get();
     j->thread = std::thread([j, workers] {
+        lower_thread_priority();
         for (const auto& r : j->rects) {
             auto pieces =
                 compute_pieces(j->cfg, j->comps, j->window, r, j->depth, j->t, workers, &j->cancel);

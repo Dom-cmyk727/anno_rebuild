@@ -179,6 +179,38 @@ TEST_CASE("command wire: encode then decode is the identity") {
     CHECK(sim::decode_turn_entry(Bytes{0, 0, 0, 0, 0, 0, 0, 0, 0x7a, 0, 4, 0, 1}).ok() == false);
 }
 
+TEST_CASE("command wire: turn entry prefixes and mutations") {
+    // Every prefix of a turn entry is an error, in particular the sizes 4..8 around the
+    // 8-byte entry header (a 7-byte input must not reach the record decoder).
+    for (const sim::Body& body : samples()) {
+        const sim::TurnEntry e{sim::Command{sim::PlayerId{3}, body}, 0x01020304U};
+        auto wire = sim::encode_turn_entry(e);
+        REQUIRE(wire.ok());
+        const Bytes w = wire.value();
+        for (std::size_t n = 0; n < w.size(); ++n) {
+            CHECK(!sim::decode_turn_entry(
+                       Bytes(w.begin(), w.begin() + static_cast<std::ptrdiff_t>(n)))
+                       .ok());
+        }
+        // Whatever a mutated entry decodes to encodes back to the same bytes.
+        for (std::size_t i = 0; i < w.size() && i < 64; ++i) {
+            for (int v = 0; v < 256; ++v) {
+                Bytes m = w;
+                m[i] = static_cast<std::uint8_t>(v);
+                auto r = sim::decode_turn_entry(m);
+                if (r.ok()) {
+                    auto again = sim::encode_turn_entry(r.value());
+                    REQUIRE(again.ok());
+                    CHECK(again.value() == m);
+                }
+            }
+        }
+    }
+    for (std::size_t n = 0; n <= 8; ++n) {
+        CHECK(!sim::decode_turn_entry(Bytes(n, 0)).ok());
+    }
+}
+
 TEST_CASE("command wire: decode rejects length and count lies") {
     // Shorter than the header.
     CHECK(!decodes({}));

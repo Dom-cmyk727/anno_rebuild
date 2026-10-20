@@ -16,22 +16,41 @@
 
 namespace anno::test {
 
-/// Physical memory that is free right now, in bytes; 0 when the platform has
-/// no implementation (then test_threads() applies no memory bound). Windows:
-/// GlobalMemoryStatusEx().ullAvailPhys; Linux: MemAvailable of /proc/meminfo.
-std::uint64_t free_physical_bytes();
+/// Memory that a new allocation can still get right now, in bytes; 0 when the
+/// platform has no implementation (then test_threads() applies no memory
+/// bound). Windows: the smaller of free physical memory and the headroom under
+/// the commit limit (GlobalMemoryStatusEx ullAvailPhys, ullAvailPageFile): a
+/// std::bad_alloc comes from the commit limit, not from free RAM. Linux:
+/// MemAvailable of /proc/meminfo.
+std::uint64_t free_memory_bytes();
 
 /// Memory one worker may need, in bytes: ANNO_TEST_MB_PER_THREAD (default
-/// 1024); 0 switches every memory bound off.
+/// 1024); 0 switches every memory bound off. An empty or non-numeric value is
+/// ignored (the default applies), so it cannot switch the bound off by accident.
 inline std::uint64_t memory_budget_bytes() {
     std::uint64_t mb = 1024;
     if (const char* v = std::getenv("ANNO_TEST_MB_PER_THREAD")) {
-        const long n = std::strtol(v, nullptr, 10);
-        if (n >= 0) {
+        char* end = nullptr;
+        const long n = std::strtol(v, &end, 10);
+        if (end != v && *end == '\0' && n >= 0) {
             mb = static_cast<std::uint64_t>(n);
         }
     }
     return mb * 1024 * 1024;
+}
+
+/// Seconds a worker waits for free memory before an item (default 120, env
+/// ANNO_TEST_MEM_WAIT_S; 0 = never wait). A worker that waited that long goes on
+/// anyway, so the wait can delay but never deadlock a test.
+inline unsigned memory_wait_seconds() {
+    if (const char* v = std::getenv("ANNO_TEST_MEM_WAIT_S")) {
+        char* end = nullptr;
+        const long n = std::strtol(v, &end, 10);
+        if (end != v && *end == '\0' && n >= 0) {
+            return static_cast<unsigned>(n);
+        }
+    }
+    return 120;
 }
 
 /// Threads for parallel corpus work: ANNO_TEST_THREADS if set (>= 1), else
@@ -58,7 +77,7 @@ inline std::size_t test_threads() {
         threads = std::clamp<std::size_t>(hw, 1, 4);
     }
     const std::uint64_t budget = memory_budget_bytes();
-    const std::uint64_t free_bytes = free_physical_bytes();
+    const std::uint64_t free_bytes = free_memory_bytes();
     if (budget > 0 && free_bytes > 0) {
         const std::uint64_t by_memory = free_bytes / budget;
         threads = std::min<std::size_t>(threads, std::max<std::uint64_t>(by_memory, 1));
@@ -77,7 +96,10 @@ inline std::size_t test_threads() {
 /// below the per-worker budget, and (b) an item that throws std::bad_alloc is
 /// run again after the pool finished, on one thread, up to 5 times with a
 /// pause (the other suites will have released memory by then). A bad_alloc is
-/// never a wrong result: only the allocation failed, f produced nothing.
+/// never a wrong result: only the allocation failed, f produced nothing. f must
+/// therefore have no side effects outside its return value (true for the
+/// callers: they render or parse into locals). std::bad_array_new_length is
+/// deterministic and is not retried.
 template <class F> auto parallel_indexed(std::size_t n, F f) {
     using R = decltype(f(std::size_t{0}));
     std::vector<R> out(n);
@@ -86,12 +108,16 @@ template <class F> auto parallel_indexed(std::size_t n, F f) {
     std::vector<std::size_t> retry;
     std::mutex error_mutex;
     const std::uint64_t budget = memory_budget_bytes();
+    const unsigned wait_polls = memory_wait_seconds() * 4; // 250 ms per poll
     auto wait_for_memory = [&](bool first) {
         if (first || budget == 0) {
             return; // the first worker always goes on: the call makes progress
         }
-        for (int i = 0; i < 480; ++i) {
-            const std::uint64_t free_bytes = free_physical_bytes();
+        // Note: the memory the other workers of this pool hold counts as used
+        // here, so a pool of big workers may wait for itself; the wait is
+        // bounded (memory_wait_seconds) and only delays the item.
+        for (unsigned i = 0; i < wait_polls; ++i) {
+            const std::uint64_t free_bytes = free_memory_bytes();
             if (free_bytes == 0 || free_bytes >= budget) {
                 return;
             }
@@ -107,6 +133,11 @@ template <class F> auto parallel_indexed(std::size_t n, F f) {
             }
             try {
                 out[i] = f(i);
+            } catch (const std::bad_array_new_length&) { // deterministic: no retry
+                const std::lock_guard<std::mutex> lock(error_mutex);
+                if (!error) {
+                    error = std::current_exception();
+                }
             } catch (const std::bad_alloc&) {
                 const std::lock_guard<std::mutex> lock(error_mutex);
                 retry.push_back(i);
@@ -131,6 +162,11 @@ template <class F> auto parallel_indexed(std::size_t n, F f) {
         for (int attempt = 0;; ++attempt) {
             try {
                 out[i] = f(i);
+                break;
+            } catch (const std::bad_array_new_length&) {
+                if (!error) {
+                    error = std::current_exception();
+                }
                 break;
             } catch (const std::bad_alloc&) {
                 if (attempt >= 4) {

@@ -28,7 +28,7 @@ TEST_CASE("test_threads is bounded by free physical memory") {
 
     // A budget larger than any machine's RAM leaves exactly one thread.
     set_env("ANNO_TEST_MB_PER_THREAD", "1000000000");
-    if (anno::test::free_physical_bytes() > 0) {
+    if (anno::test::free_memory_bytes() > 0) {
         CHECK(anno::test::test_threads() == 1);
     }
 
@@ -54,6 +54,34 @@ TEST_CASE("parallel_indexed runs an item again after std::bad_alloc and keeps th
     for (std::size_t i = 0; i < out.size(); ++i) {
         CHECK(out[i] == static_cast<int>(i * i));
     }
+    set_env("ANNO_TEST_THREADS", "");
+    set_env("ANNO_TEST_MB_PER_THREAD", "");
+}
+
+TEST_CASE("memory_budget_bytes ignores an empty or non-numeric value") {
+    set_env("ANNO_TEST_MB_PER_THREAD", "");
+    // Windows deletes the variable, POSIX keeps it empty: both give the default.
+    CHECK(anno::test::memory_budget_bytes() == 1024ull * 1024 * 1024);
+    set_env("ANNO_TEST_MB_PER_THREAD", "abc");
+    CHECK(anno::test::memory_budget_bytes() == 1024ull * 1024 * 1024);
+    set_env("ANNO_TEST_MB_PER_THREAD", "0");
+    CHECK(anno::test::memory_budget_bytes() == 0);
+    set_env("ANNO_TEST_MB_PER_THREAD", "2");
+    CHECK(anno::test::memory_budget_bytes() == 2ull * 1024 * 1024);
+    set_env("ANNO_TEST_MB_PER_THREAD", "");
+}
+
+TEST_CASE("parallel_indexed does not retry std::bad_array_new_length") {
+    set_env("ANNO_TEST_THREADS", "2");
+    set_env("ANNO_TEST_MB_PER_THREAD", "0");
+    std::atomic<int> calls{0};
+    CHECK_THROWS_AS(anno::test::parallel_indexed(1,
+                                                 [&](std::size_t) -> int {
+                                                     ++calls;
+                                                     throw std::bad_array_new_length();
+                                                 }),
+                    std::bad_array_new_length);
+    CHECK(calls.load() == 1);
     set_env("ANNO_TEST_THREADS", "");
     set_env("ANNO_TEST_MB_PER_THREAD", "");
 }

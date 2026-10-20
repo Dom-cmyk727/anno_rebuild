@@ -1,4 +1,6 @@
-// Free physical memory, for the thread bound in anno/test/parallel.hpp.
+// Free memory, for the thread bound in anno/test/parallel.hpp.
+#include <algorithm>
+
 #include "anno/test/parallel.hpp"
 
 #if defined(_WIN32)
@@ -15,14 +17,16 @@
 
 namespace anno::test {
 
-std::uint64_t free_physical_bytes() {
+std::uint64_t free_memory_bytes() {
 #if defined(_WIN32)
     MEMORYSTATUSEX status{};
     status.dwLength = sizeof(status);
     if (GlobalMemoryStatusEx(&status) == 0) {
         return 0;
     }
-    return status.ullAvailPhys;
+    // bad_alloc is raised when the commit limit is reached, which free RAM does
+    // not show (the pagefile counts); take the smaller headroom.
+    return std::min<std::uint64_t>(status.ullAvailPhys, status.ullAvailPageFile);
 #elif defined(__linux__)
     std::FILE* f = std::fopen("/proc/meminfo", "r");
     if (f == nullptr) {

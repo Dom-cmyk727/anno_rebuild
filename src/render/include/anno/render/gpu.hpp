@@ -136,6 +136,10 @@ struct GpuStats {
     /// zoom group has a chunk to stand in for them (or stand-ins are off): the
     /// pop-in a pan during a zoom can show.
     std::size_t open_sea_chunks = 0;
+    /// Of open_sea_chunks, the ones the CPU has built (waiting for their upload).
+    std::size_t open_sea_built = 0;
+    /// Chunks of the neighbouring zoom groups uploaded ahead (GpuLimits::prefetch_chunks).
+    std::size_t chunks_prefetched = 0;
     /// A wave-window job (new group, size or strips) is being prepared in the
     /// background: the shader shows the previous window or, where it does not
     /// reach, the analytic waves (OQ-076).
@@ -182,6 +186,15 @@ struct GpuLimits {
     /// Uploaded chunks are not counted (they are the content, bounded by the CPU
     /// cache). 0 = no idle planes are pre-created.
     std::size_t idle_plane_budget_mb = 256;
+    /// Chunks of the neighbouring zoom groups (the view a zoom step would show,
+    /// FrameRenderer::adjacent_keys) that may be on the GPU at once, uploaded
+    /// ahead when no visible chunk waits, prefetch_per_frame per frame. A pan
+    /// during a zoom then lands on real chunks instead of open sea. About 4 MB
+    /// of device memory each: the default 96 covers the two neighbours of a
+    /// 2560 x 1440 view with a ring (2 x 7 x 5 = 70) and some more; 0 = off
+    /// (headless renders, tests).
+    std::size_t prefetch_chunks = 0;
+    std::size_t prefetch_per_frame = 1;
     /// The limits for an interactive window: uploads and wave simulation
     /// setup are spread over frames (upload_budget_ms 1.0, background_fluid).
     [[nodiscard]] static GpuLimits interactive() {
@@ -189,6 +202,7 @@ struct GpuLimits {
         l.upload_budget_ms = 1.0;
         l.background_fluid = true;
         l.prewarm_chunks = 24;
+        l.prefetch_chunks = 96;
         return l;
     }
     /// A visible chunk that is not on the GPU yet (still being built, or waiting

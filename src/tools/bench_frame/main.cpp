@@ -9,7 +9,7 @@
 //       [--zoom k] [--zoom-frames n] [--pace ms] [--spike ms] [--limits default|interactive]
 //       [--settle ms] [--river-flow legacy|flow] [--river-quality auto|low|medium|high]
 //       [--river-pass] [--stand-ins on|off] [--prewarm chunks] [--zoom-dump <dir>]
-//       [--zoom-dump-after a,b,...] [--zoom-pan dx,dy]
+//       [--zoom-dump-after a,b,...] [--zoom-pan dx,dy[,frames]]
 //   bench_frame --list-adapters
 //   bench_frame <game_dir> <file> --river-cost      (GPU cost of the river shading, synthetic)
 //
@@ -95,6 +95,8 @@ struct Options {
     /// Zoom path: the view moves by this many scene pixels (of the group shown) per
     /// frame, reversing every 90 frames: panning while zooming (--zoom-pan dx,dy).
     std::pair<int, int> zoom_pan{0, 0};
+    /// Frames the pan walks one way before it reverses (--zoom-pan dx,dy[,frames]).
+    std::size_t zoom_pan_period = 400;
     double pace_ms = 2.0, spike_ms = 8.0;
     /// GpuLimits::interactive() instead of the defaults.
     bool interactive = false;
@@ -112,6 +114,8 @@ struct Options {
     std::optional<bool> stand_ins;
     /// GpuLimits::prewarm_chunks (nullopt = the limits' default).
     std::optional<std::size_t> prewarm;
+    /// GpuLimits::prefetch_chunks (nullopt = the limits' default).
+    std::optional<std::size_t> prefetch;
     /// Directory for the frames after zoom steps (empty = none).
     std::string zoom_dump;
     /// Frames after a zoom step that --zoom-dump writes (0 = the step's own frame).
@@ -153,7 +157,7 @@ struct Row {
     /// Visible chunks drawn from another group's chunks (GPU).
     std::size_t stand = 0;
     /// Visible chunks that showed open sea: none built, no source in any group (GPU).
-    std::size_t open = 0;
+    std::size_t open = 0, open_built = 0;
     /// GPU: every window-thread step of the frame (GpuStats::steps, they add up
     /// to the compositor's total), and the counts behind the sync steps.
     std::vector<std::pair<std::string, double>> steps;
@@ -178,6 +182,8 @@ struct Config {
     /// Zoom path: the view moves by this many scene pixels (of the group shown) per
     /// frame, reversing every 90 frames: panning while zooming (--zoom-pan dx,dy).
     std::pair<int, int> zoom_pan{0, 0};
+    /// Frames the pan walks one way before it reverses (--zoom-pan dx,dy[,frames]).
+    std::size_t zoom_pan_period = 400;
     double pace_ms = 2.0, spike_ms = 8.0;
     std::size_t settle_ms = 0;
     render::RiverFlowMode river_flow = render::RiverFlowMode::Flow;
@@ -530,7 +536,7 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, std::s
             ++steps;
         }
         // Panning while zooming: the view walks one way for 90 frames, then back.
-        const int dir = (i / 90) % 2 == 0 ? 1 : -1;
+        const int dir = (i / c.zoom_pan_period) % 2 == 0 ? 1 : -1;
         cam.first += dir * c.zoom_pan.first;
         cam.second += dir * c.zoom_pan.second;
         const render::Rect view{cam.first, cam.second, c.w, c.h};
@@ -625,11 +631,13 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, std::s
         // Open sea in the view: a visible chunk that is not on the GPU and has no
         // source in any zoom group. The longest run of such frames, in frames and
         // wall time, is what a viewer sees as a patch that pops in.
-        std::size_t open_frames = 0, run = 0, longest = 0, longest_at = 0, open_chunks = 0;
+        std::size_t open_frames = 0, run = 0, longest = 0, longest_at = 0, open_chunks = 0,
+                    open_built = 0;
         for (std::size_t i = 0; i < rows.size(); ++i) {
             if (rows[i].open > 0) {
                 ++open_frames;
                 open_chunks += rows[i].open;
+                open_built += rows[i].open_built;
                 if (++run > longest) {
                     longest = run;
                     longest_at = i;
@@ -641,8 +649,9 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, std::s
         const double longest_ms =
             longest > 0 ? rows[longest_at].wall_ms - rows[longest_at + 1 - longest].wall_ms : 0.0;
         std::printf("frames showing open sea (a visible chunk with no source in any group): %zu "
-                    "of %zu, %zu chunk-frames in all; longest run %zu frames / %.0f ms\n",
-                    open_frames, rows.size(), open_chunks, longest, longest_ms);
+                    "of %zu, %zu chunk-frames in all (%zu built on the CPU, waiting for the "
+                    "upload); longest run %zu frames / %.0f ms\n",
+                    open_frames, rows.size(), open_chunks, open_built, longest, longest_ms);
     }
     if (c.zoom_every > 0) {
         // How long each zoom step's transient lasts (wall ms since the step's frame):
@@ -717,6 +726,7 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
             r.group = frame_group;
             r.stand = st.stand_in_chunks;
             r.open = st.open_sea_chunks;
+            r.open_built = st.open_sea_built;
             r.fluid_setting_up = st.fluid_setting_up;
             r.sea = st.sea_ms;
             r.sync = st.chunk_sync_ms;
@@ -852,7 +862,7 @@ constexpr const char* kUsage =
     "[--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick] [--zoom k] [--zoom-frames n] "
     "[--pace ms] [--spike ms] [--limits default|interactive] [--settle ms] "
     "[--river-flow legacy|flow] [--river-quality auto|low|medium|high] [--river-gain x] "
-    "[--river-pass] [--stand-ins on|off] [--prewarm chunks] [--zoom-dump dir]\n"
+    "[--river-pass] [--stand-ins on|off] [--prewarm chunks] [--prefetch chunks] [--zoom-dump dir]\n"
     "       bench_frame --list-adapters\n"
     "       bench_frame <game_dir> <file> --river-cost\n";
 
@@ -953,6 +963,10 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
         } else if (a == "--stand-ins") {
             ok = v == "on" || v == "off";
             o.stand_ins = v == "on";
+        } else if (a == "--prefetch") {
+            std::size_t n = 0;
+            ok = parse(v, n);
+            o.prefetch = n;
         } else if (a == "--prewarm") {
             std::size_t n = 0;
             ok = parse(v, n);
@@ -981,8 +995,10 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = parse(v, o.zoom_frames) && o.zoom_frames > 0;
         } else if (a == "--zoom-pan") {
             const auto parts = split(v, ',');
-            ok = parts.size() == 2 && parse(parts[0], o.zoom_pan.first) &&
-                 parse(parts[1], o.zoom_pan.second);
+            ok = (parts.size() == 2 || parts.size() == 3) && parse(parts[0], o.zoom_pan.first) &&
+                 parse(parts[1], o.zoom_pan.second) &&
+                 (parts.size() == 2 ||
+                  (parse(parts[2], o.zoom_pan_period) && o.zoom_pan_period > 0));
         } else if (a == "--pace") {
             ok = parse(v, o.pace_ms);
         } else if (a == "--spike") {
@@ -1127,6 +1143,9 @@ int main(int argc, char** argv) {
         gpu::GpuLimits limits = o->interactive ? gpu::GpuLimits::interactive() : gpu::GpuLimits{};
         limits.river_quality = o->river_quality;
         limits.gpu_timing = o->river_pass;
+        if (o->prefetch) {
+            limits.prefetch_chunks = *o->prefetch;
+        }
         if (o->prewarm) {
             limits.prewarm_chunks = *o->prewarm;
         }
@@ -1193,6 +1212,7 @@ int main(int argc, char** argv) {
                         c.spike_ms = o->spike_ms;
                         c.stand_ins = o->stand_ins;
                         c.zoom_pan = o->zoom_pan;
+                        c.zoom_pan_period = o->zoom_pan_period;
                         c.zoom_dump = o->zoom_dump;
                         c.zoom_dump_after = o->zoom_dump_after;
                         gpu::GpuFrame* g = nullptr;

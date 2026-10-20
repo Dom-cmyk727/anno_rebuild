@@ -2703,6 +2703,98 @@ TEST_CASE("GPU stand-ins carry the sea field: cover 0 shows the open water, cove
     CHECK(g.errors() == 0);
 }
 
+TEST_CASE("lookahead_rect: a ring of one chunk, grown in the direction of motion up to a cap") {
+    const render::Rect view{100, 200, 1280, 800};
+    const auto still = render::lookahead_rect(view, 0, 0, 0.3, 3);
+    CHECK(still.x == view.x - render::kChunk);
+    CHECK(still.y == view.y - render::kChunk);
+    CHECK(still.w == view.w + 2 * render::kChunk);
+    CHECK(still.h == view.h + 2 * render::kChunk);
+    // 1000 px/s for 0.3 s: 300 px more on the side of motion only.
+    const auto right = render::lookahead_rect(view, 1000, 0, 0.3, 3);
+    CHECK(right.x == still.x);
+    CHECK(right.w == still.w + 300);
+    CHECK(right.y == still.y);
+    CHECK(right.h == still.h);
+    const auto up = render::lookahead_rect(view, 0, -500, 0.3, 3);
+    CHECK(up.y == still.y - 150);
+    CHECK(up.h == still.h + 150);
+    CHECK(up.x == still.x);
+    // Capped at max_chunks chunks, and 0 means the plain ring.
+    const auto capped = render::lookahead_rect(view, 1e6, 0, 0.3, 3);
+    CHECK(capped.w == still.w + 3 * render::kChunk);
+    const auto none = render::lookahead_rect(view, 1e6, 1e6, 0.3, 0);
+    CHECK(none.w == still.w);
+    CHECK(none.h == still.h);
+}
+
+TEST_CASE("adjacent_keys: the view a zoom step would show, in both neighbouring groups") {
+    const EmptyScene es = empty_scene();
+    render::FrameRenderer fr(1, false);
+    const render::Rect view{1000, 600, 1280, 800};
+    fr.update_chunks(*es.scene, view, 1);
+    const auto& keys = fr.adjacent_keys();
+    REQUIRE(!keys.empty());
+    std::set<render::ChunkKey> got(keys.begin(), keys.end());
+    CHECK(got.size() == keys.size());
+    for (const std::size_t g : {std::size_t{0}, std::size_t{2}}) {
+        const render::Rect next = render::zoomed_view(view, 1, g);
+        for (const auto& [cx, cy] : render::visible_chunks(next)) {
+            CHECK(got.contains({g, cx, cy}));
+        }
+    }
+    for (const auto& k : keys) {
+        CHECK(std::get<0>(k) != 1);
+    }
+    // At the first group there is no finer neighbour.
+    fr.update_chunks(*es.scene, view, 0);
+    for (const auto& k : fr.adjacent_keys()) {
+        CHECK(std::get<0>(k) == 1);
+    }
+}
+
+TEST_CASE("prefetch: built chunks of the neighbouring groups are uploaded when nothing waits, "
+          "one per frame, up to the cap") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    gpu::GpuLimits limits;
+    limits.wave_simulation = false;
+    limits.prefetch_chunks = 2;
+    limits.prefetch_per_frame = 1;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    render::FrameRenderer fr(1, false);
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    const render::Rect one{0, 0, render::kChunk, render::kChunk};
+    const auto target = g.offscreen_target(side, side);
+    // The visible chunk uploads; after that nothing waits.
+    gpu::GpuStats st;
+    for (int f = 0; f < 6; ++f) {
+        st = g.render(fr, *es.scene, one, 1, 0, render::WaterStyle::Original, target.second.get());
+    }
+    CHECK(st.chunks_uploaded == 0);
+    CHECK(st.chunks_prefetched == 0); // none of the neighbours' chunks is built
+    const std::vector<render::ChunkKey> keys = fr.adjacent_keys();
+    REQUIRE(keys.size() >= 3);
+    for (std::size_t i = 0; i < 3; ++i) {
+        fr.insert_chunk(keys[i], noise_land_chunk(std::get<0>(keys[i]), std::get<1>(keys[i]),
+                                                  std::get<2>(keys[i])));
+    }
+    std::size_t total = 0;
+    for (int f = 0; f < 5; ++f) {
+        st = g.render(fr, *es.scene, one, 1, 0, render::WaterStyle::Original, target.second.get());
+        CHECK(st.chunks_prefetched <= 1);
+        total += st.chunks_prefetched;
+    }
+    // The cap of two resident chunks of other groups holds although three are built.
+    CHECK(total == 2);
+    CHECK(g.errors() == 0);
+}
+
 TEST_CASE("stand-in cover chooses the source group per part") {
     const auto all = [](const render::ChunkKey&) { return true; };
     for (std::size_t to = 0; to < render::kGroups; ++to) {

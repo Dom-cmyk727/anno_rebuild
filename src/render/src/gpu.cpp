@@ -823,7 +823,8 @@ struct GpuFrame::Impl {
     /// Fills the drop, upload and placeholder timers and counters of `stats`
     /// (the rest of the sync time is the scan).
     std::size_t sync_chunks(const FrameRenderer& frames, std::size_t group,
-                            const std::vector<std::pair<int, int>>& visible, GpuStats& stats) {
+                            const std::vector<std::pair<int, int>>& visible,
+                            const std::vector<ChunkKey>& prefetch, GpuStats& stats) {
         std::set<ChunkKey> keys;
         for (const auto& [cx, cy] : visible) {
             keys.insert({group, cx, cy});
@@ -845,6 +846,7 @@ struct GpuFrame::Impl {
             stats.sync_drop_ms += ms_since(d0);
         }
         std::size_t uploads = 0;
+        bool waiting = false; // a visible chunk is not (yet) on the GPU
         const auto begin = Clock::now();
         for (const auto& key : keys) {
             const auto it = chunks.find(key);
@@ -855,6 +857,7 @@ struct GpuFrame::Impl {
                 (c == nullptr || it->second.serial == c->serial)) {
                 continue;
             }
+            waiting = true;
             // Count and time budget: the first chunk always goes, so a
             // slow device still makes progress.
             const bool room = uploads < limits.uploads_per_frame &&
@@ -885,6 +888,42 @@ struct GpuFrame::Impl {
                 chunks.emplace(key, upload_chunk(key, nullptr));
                 ++stats.placeholders;
                 stats.sync_placeholder_ms += ms_since(p0);
+            }
+        }
+        // Nothing visible is waiting: upload built chunks of the neighbouring zoom
+        // groups (the view a zoom step would show), a few per frame, so that after
+        // the step they are real chunks and the stand-ins have sources even for
+        // the part of the view that was off screen before it (a pan during a
+        // zoom). Bounded by GpuLimits::prefetch_chunks resident at once.
+        if (!waiting && uploads == 0 && limits.prefetch_chunks > 0) {
+            std::size_t resident = 0;
+            for (const auto& [key, chunk] : chunks) {
+                resident += chunk.real && std::get<0>(key) != group ? 1U : 0U;
+            }
+            std::size_t done = 0;
+            for (const auto& key : prefetch) {
+                if (resident >= limits.prefetch_chunks || done >= limits.prefetch_per_frame) {
+                    break;
+                }
+                const render::Chunk* c = frames.chunk(key);
+                if (c == nullptr) {
+                    continue;
+                }
+                const auto it = chunks.find(key);
+                if (it != chunks.end() && it->second.real && it->second.serial == c->serial) {
+                    continue;
+                }
+                const auto u0 = Clock::now();
+                Chunk fresh = upload_chunk(key, c);
+                if (it != chunks.end()) {
+                    it->second = std::move(fresh);
+                } else {
+                    chunks.emplace(key, std::move(fresh));
+                    ++resident;
+                }
+                ++done;
+                ++stats.chunks_prefetched;
+                stats.sync_real_ms += ms_since(u0);
             }
         }
         return uploads;
@@ -1506,7 +1545,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     const auto visible = visible_chunks(view);
     stats.visible_ms = lap();
     const std::size_t warm_before = m.planes_warm_taken;
-    stats.chunks_uploaded = m.sync_chunks(frames, group, visible, stats);
+    stats.chunks_uploaded = m.sync_chunks(frames, group, visible, frames.adjacent_keys(), stats);
     stats.planes_warm = m.planes_warm_taken - warm_before;
     stats.chunk_sync_ms = lap();
     stats.sync_scan_ms = std::max(0.0, stats.chunk_sync_ms - stats.sync_drop_ms -
@@ -1617,6 +1656,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                 stats.stand_in_parts += cover.size();
             } else {
                 ++stats.open_sea_chunks;
+                stats.open_sea_built += frames.chunk({group, cx, cy}) != nullptr ? 1U : 0U;
             }
         }
     } else {

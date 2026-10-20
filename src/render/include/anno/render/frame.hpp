@@ -15,6 +15,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -109,6 +110,9 @@ class ChunkWorkers {
     bool submit(const std::vector<ChunkKey>& wanted, bool ships = true);
     /// Finished chunks since the last call.
     std::vector<std::pair<ChunkKey, Chunk>> take_done();
+    /// Smoothed time one worker takes to build a chunk, in milliseconds (the
+    /// latency of a request that finds a free worker); 100 until the first chunk.
+    [[nodiscard]] double build_ms() const { return build_ms_.load(); }
     /// Takes chunks that are no longer needed and frees them on a
     /// background thread (freeing a chunk's vectors takes about a
     /// millisecond: the window thread must not).
@@ -129,6 +133,7 @@ class ChunkWorkers {
     /// failure would otherwise be retried every frame).
     std::set<ChunkKey> failed_;
     std::vector<std::pair<ChunkKey, Chunk>> done_;
+    std::atomic<double> build_ms_{100.0};
     bool stop_ = false;
     bool ships_ = true;
     std::vector<std::thread> threads_;
@@ -160,6 +165,10 @@ class FrameRenderer {
     /// visible chunks still missing).
     std::tuple<std::size_t, double, std::size_t> update_chunks(const Scene& scene, Rect view,
                                                                std::size_t group);
+    /// The chunks of the neighbouring zoom groups that update_chunks keeps built
+    /// for the view a zoom step would show (a ring included), nearest group
+    /// first; empty without background workers. Not necessarily built yet.
+    [[nodiscard]] const std::vector<ChunkKey>& adjacent_keys() const { return adjacent_; }
     /// The cached chunk, if built.
     [[nodiscard]] const Chunk* chunk(const ChunkKey& key) const;
     /// Puts `chunk` in the cache under `key` (tests and tools: a synthetic
@@ -181,6 +190,12 @@ class FrameRenderer {
     std::size_t threads;
     /// Chunks kept besides the visible ones.
     std::size_t spare_chunks = 48;
+    /// Most chunks the margin around the view grows in the direction the view is
+    /// moving (lookahead_rect). Each chunk-wide strip is (view height / kChunk + 2)
+    /// chunks of about 4 MB in the current group and in each neighbouring one, on
+    /// top of spare_chunks: 3 keeps that to a few hundred MB at 2560 x 1440 and
+    /// covers 1500 px of travel; 0 = a plain ring of one chunk.
+    std::size_t max_lookahead_chunks = 3;
     /// render() draws a visible chunk that is not built from the nearest zoom
     /// group's chunks (stand_in_chunk) instead of open sea. Off by default: the
     /// CPU path is the reference and the tests' digests; the GPU compositor has
@@ -197,6 +212,20 @@ class FrameRenderer {
     stand_in_retain(std::size_t group, const std::vector<std::pair<int, int>>& visible) const;
 
   private:
+    std::vector<ChunkKey> adjacent_;
+    /// Velocity of the view centre in scene pixels per second of the group shown
+    /// (smoothed), the centre and time of the last update_chunks, and its group.
+    double vx_ = 0, vy_ = 0;
+    std::optional<std::pair<double, double>> last_centre_;
+    std::chrono::steady_clock::time_point last_time_;
+    std::size_t last_group_ = 0;
+    void track_velocity(Rect view, std::size_t group);
+    /// The chunks to keep and to build, most urgent first (`keep` is filled
+    /// with them), and adjacent_: the visible chunks, the margin around them
+    /// grown in the direction of motion, and the neighbouring groups' views.
+    std::vector<ChunkKey> plan_margin(Rect view, std::size_t group,
+                                      const std::vector<std::pair<int, int>>& visible,
+                                      double horizon_s, std::set<ChunkKey>& keep);
     std::size_t request_chunks(const Scene& scene, std::size_t group, Rect view,
                                const std::vector<std::pair<int, int>>& visible);
     void trim(std::size_t group, Rect view, const std::set<ChunkKey>& keep,
@@ -213,6 +242,14 @@ class FrameRenderer {
 /// The rectangle of view's size at group `to` centred on the scene point
 /// that `view` centres on at group `from`.
 Rect zoomed_view(Rect view, std::size_t from, std::size_t to);
+
+/// The area whose chunks are kept built around `view`: a ring of one chunk, and
+/// where the view is moving (velocity vx, vy in scene pixels per second) the
+/// distance it covers in `horizon_s` seconds on that side, at most
+/// `max_chunks` chunks: the time to build a chunk (ChunkWorkers::build_ms) is
+/// long against how fast a view can be dragged, so what comes into view must be
+/// requested that much earlier.
+Rect lookahead_rect(Rect view, double vx, double vy, double horizon_s, std::size_t max_chunks);
 
 // ---- Stand-in chunks (open-questions OQ-077) ----
 //

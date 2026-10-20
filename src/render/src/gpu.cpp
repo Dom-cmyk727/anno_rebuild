@@ -421,15 +421,22 @@ struct GpuFrame::Impl {
                 p.format = kChunkPlanes[pick].first;
                 p.w = n;
                 p.h = n;
+                // wgpu-native returns a non-null handle with an error id when the
+                // device refuses a texture, so a null check cannot see it. The
+                // uncaptured-error counter is what changes (no error scope here:
+                // the scope stack is per device and the window thread's
+                // validation scopes would see this thread's). Any error counted
+                // meanwhile, from either thread, ends the pre-creation: the plane
+                // is dropped and the window thread creates textures itself, as
+                // before this thread existed.
+                const std::uint64_t errors_before = ref->errors->load();
                 p.texture = make_texture(dev(), "upload", p.format, n, n, 1,
                                          WGPUTextureUsage_TextureBinding |
                                              WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
                 p.view = make_view(p.texture.get(), false);
+                const bool refused = !p.texture || !p.view || ref->errors->load() != errors_before;
                 lock.lock();
-                if (!p.texture || !p.view) {
-                    // The device refused (out of memory or lost): stop
-                    // pre-creating; the window thread creates textures itself
-                    // when the pool has none, as before this thread existed.
+                if (refused) {
                     return;
                 }
                 warm_planes.push_back(std::move(p));

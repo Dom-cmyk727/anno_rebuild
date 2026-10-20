@@ -71,6 +71,10 @@ struct GpuStats {
     std::size_t ships = 0;
     /// The coastal wave simulation ran for this frame (enhanced water).
     bool wave_simulation = false;
+    /// Visible chunks drawn from another zoom group's chunks because their own
+    /// are not built or not uploaded yet (GpuLimits::stand_ins), and the parts
+    /// (draws) they took.
+    std::size_t stand_in_chunks = 0, stand_in_parts = 0;
     /// Enhanced rivers: the visible chunks that carry a flow lattice on the GPU,
     /// and the cost tier the river shading ran at this frame.
     std::size_t river_chunks = 0;
@@ -103,6 +107,11 @@ struct GpuLimits {
         l.background_fluid = true;
         return l;
     }
+    /// A visible chunk that is not on the GPU yet (still being built, or waiting
+    /// for its upload) shows the nearest zoom group's chunks that are, scaled by
+    /// the compositor's shader to the tile size shown (frame.hpp, "Stand-in
+    /// chunks"; open-questions OQ-077), instead of open sea. false: open sea.
+    bool stand_ins = true;
     /// Animation steps of other zoom groups' sea patterns uploaded per frame.
     std::size_t sea_steps_per_frame = 2;
     /// Atlas layers at most (0 = the device's maxTextureArrayLayers; larger

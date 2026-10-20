@@ -105,6 +105,46 @@ struct Chunk {
 @group(1) @binding(7) var flow_aux: texture_2d<u32>;
 @group(1) @binding(8) var flow_shear: texture_2d<u32>;
 
+// What one draw of a chunk shows (group 2, bound with a dynamic offset).
+// kind 0: the chunk itself, at its own place. kind 1: a stand-in
+// (frame.hpp, stand_in_spans): the chunk belongs to another zoom group and is
+// drawn into the scene rectangle dst_min..dst_max of the group shown, each
+// pixel taking the chunk pixel that holds its centre after scaling by
+// num / den per axis (the tile size of the chunk's group over the one shown):
+// floor((2 p + 1) num / (2 den)). The rectangle is exactly the part of the
+// destination chunk that lies in this source chunk, so no pixel is drawn twice
+// and none leaves the chunk. A stand-in has no river flow (the legacy look).
+// The products stay below 2^31 up to scene coordinates of about 12 million
+// pixels at the largest tile width (a map of 100,000 tiles).
+struct Piece {
+    dst_min: vec2<i32>,
+    dst_max: vec2<i32>,
+    num: vec2<i32>,
+    den: vec2<i32>,
+    kind: u32,
+    _p0: u32,
+    _p1: u32,
+    _p2: u32,
+}
+@group(2) @binding(1) var<uniform> piece: Piece;
+
+fn floor_div(a: i32, b: i32) -> i32 {
+    let q = a / b;
+    return select(q, q - 1, q * b > a);
+}
+
+// The texel of the chunk's textures that scene pixel `px` shows.
+fn chunk_local(px: vec2<i32>) -> vec2<i32> {
+    if piece.kind == 0u {
+        return px - chunk.origin;
+    }
+    let src = vec2<i32>(
+        floor_div((2 * px.x + 1) * piece.num.x, 2 * piece.den.x),
+        floor_div((2 * px.y + 1) * piece.num.y, 2 * piece.den.y),
+    );
+    return src - chunk.origin;
+}
+
 // Scene pixel rectangle → clip space.
 fn to_clip(p: vec2<f32>) -> vec4<f32> {
     let size = vec2<f32>(frame.view_size);
@@ -123,8 +163,13 @@ fn quad_corner(i: u32) -> vec2<f32> {
 
 @vertex
 fn chunk_vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-    let p = vec2<f32>(chunk.origin) + quad_corner(i) * f32(chunk.size);
-    return to_clip(p);
+    var lo = vec2<f32>(chunk.origin);
+    var size = vec2<f32>(f32(chunk.size));
+    if piece.kind != 0u {
+        lo = vec2<f32>(piece.dst_min);
+        size = vec2<f32>(piece.dst_max - piece.dst_min);
+    }
+    return to_clip(lo + quad_corner(i) * size);
 }
 
 // Scene pixel of a fragment.
@@ -137,7 +182,7 @@ fn ground_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     if (chunk.flags & 1u) == 0u {
         discard;
     }
-    let local = scene_px(pos) - chunk.origin;
+    let local = chunk_local(scene_px(pos));
     return vec4<f32>(textureLoad(ground_tex, local, 0).rgb, 1.0);
 }
 
@@ -147,7 +192,7 @@ fn terrain_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<u32> {
     if (chunk.flags & 8u) == 0u {
         discard;
     }
-    let local = scene_px(pos) - chunk.origin;
+    let local = chunk_local(scene_px(pos));
     return vec4<u32>(textureLoad(terrain_chunk, local, 0).r, 0u, 0u, 0u);
 }
 
@@ -156,13 +201,13 @@ fn objects_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     if (chunk.flags & 2u) == 0u {
         discard;
     }
-    let local = scene_px(pos) - chunk.origin;
+    let local = chunk_local(scene_px(pos));
     let c = textureLoad(objects_tex, local, 0);
     if c.a == 0.0 {
         discard;
     }
     if frame.enhanced != 0u && frame.objects_water != 0.0 && (chunk.flags & 16u) != 0u {
-        return object_in_water(c, local, pos);
+        return object_in_water(c, local, scene_px(pos), pos);
     }
     return c;
 }
@@ -180,10 +225,16 @@ const OBJ_MAX_DEPTH: f32 = 6.0;
 const OBJ_FADE: f32 = 2.5;
 const OBJ_FOAM: f32 = 1.2;
 
-fn object_in_water(c: vec4<f32>, local: vec2<i32>, pos: vec4<f32>) -> vec4<f32> {
+fn object_in_water(c: vec4<f32>, local: vec2<i32>, px: vec2<i32>, pos: vec4<f32>) -> vec4<f32> {
     let b = textureLoad(base_tex, local, 0).r;
     if b >= 255u {
         return c;
+    }
+    // Rows above the object's lowest pixel, in pixels of the group shown (a
+    // stand-in's base plane counts the rows of its own group).
+    var bs = f32(b);
+    if piece.kind != 0u {
+        bs = bs * f32(piece.den.y) / f32(piece.num.y);
     }
     let foot = vec2<i32>(local.x, min(local.y + i32(b), chunk.size - 1));
     var cover = 255u;
@@ -204,11 +255,11 @@ fn object_in_water(c: vec4<f32>, local: vec2<i32>, pos: vec4<f32>) -> vec4<f32> 
     }
     let s = frame.tile_h / 42.0;
     let t = frame.time_ms;
-    let fx = f32(local.x + chunk.origin.x);
+    let fx = f32(px.x);
     // Water level above the foot in pixels (HEIGHT units x lift).
     let level = min(sd, OBJ_MAX_DEPTH) * frame.raise / 32.0;
     let ripple = s * (0.4 * sin(fx * 0.35 / s + t * 0.0021) + 0.25 * sin(fx * 0.9 / s - t * 0.0033));
-    let d = level + ripple - f32(b);
+    let d = level + ripple - bs;
     var rgb = c.rgb;
     var a = c.a;
     if d > 0.0 {
@@ -219,7 +270,7 @@ fn object_in_water(c: vec4<f32>, local: vec2<i32>, pos: vec4<f32>) -> vec4<f32> 
     }
     if (flags & 2u) == 0u {
         let fw = 1.0 - sstep(0.0, OBJ_FOAM * s, abs(d - 0.3 * s));
-        let n = noise3(fx * 0.5 / s, f32(local.y + chunk.origin.y) * 0.25 / s + t * 0.0012, t * 0.0021);
+        let n = noise3(fx * 0.5 / s, f32(px.y) * 0.25 / s + t * 0.0012, t * 0.0021);
         let foam = fw * sstep(0.3, 0.7, n);
         rgb = mix(rgb, vec3<f32>(0.90, 0.95, 0.98), 0.7 * foam);
         a = max(a, 0.8 * foam * c.a);
@@ -682,7 +733,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     var depth = 255u;
     var flags = 1u;
     if (chunk.flags & 4u) != 0u {
-        let f = textureLoad(field_tex, px - chunk.origin, 0);
+        let f = textureLoad(field_tex, chunk_local(px), 0);
         cover = f.r;
         shore = f.g;
         depth = f.b;
@@ -750,7 +801,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
             // (sea::river_pixel_shade), else the legacy shimmer.
             var rs = vec3<f32>(0.0);
             var flowing = false;
-            if frame.river_flow != 0.0 && (chunk.flags & 32u) != 0u {
+            if frame.river_flow != 0.0 && (chunk.flags & 32u) != 0u && piece.kind == 0u {
                 let fs = flow_at(px - chunk.origin);
                 if fs.valid >= river.min_valid {
                     rs = river_flow_shade(vec2<f32>(px), fs, sd, slope_of(flags), frame.time_ms, detail);

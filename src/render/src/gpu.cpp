@@ -244,6 +244,12 @@ std::vector<std::uint8_t> river_params_bytes(const RiverParams& p, float min_val
     return std::move(u.b);
 }
 
+/// struct Piece in gpu.wgsl: 4 x vec2<i32>, a u32 and padding.
+constexpr std::size_t kPieceBytes = 48;
+/// Distance of two pieces in the piece buffer: the dynamic offset alignment every
+/// WebGPU device guarantees (minUniformBufferOffsetAlignment is at most 256).
+constexpr std::size_t kPieceStride = 256;
+
 struct GpuFrame::Impl {
     /// Own references to the device (the Context may move or go away).
     std::unique_ptr<DeviceRef> ref;
@@ -253,12 +259,19 @@ struct GpuFrame::Impl {
     bool atlas_full_reported = false;
     WGPUTextureFormat format = WGPUTextureFormat_RGBA8Unorm;
     ShaderModule module;
-    BindGroupLayout frame_layout, chunk_layout, atlas_layout, empty_layout;
+    BindGroupLayout frame_layout, chunk_layout, atlas_layout, empty_layout, piece_layout;
     /// Bound at group 1 for the sprite draws, which use no chunk data.
     BindGroup empty_bind;
     PipelineLayout chunk_pl, sprite_pl;
     RenderPipeline ground_pipe, terrain_pipe, objects_pipe, sea_pipe, sprite_pipe;
     Buffer frame_uniform;
+    /// What each draw of a chunk shows (struct Piece in gpu.wgsl): slot 0 is the
+    /// chunk itself (kind 0), the others are the parts of stand-ins drawn this
+    /// frame, kPieceStride bytes apart (the dynamic offset's alignment). Grown
+    /// when a frame needs more; bound as group 2 of the chunk pipelines.
+    Buffer piece_buffer;
+    std::size_t piece_slots = 0;
+    BindGroup piece_bind;
     /// The river flow shading's parameters (struct RiverParams in gpu.wgsl).
     Buffer river_uniform;
     /// The tier of the river flow shading, and the measurements behind an
@@ -359,6 +372,29 @@ struct GpuFrame::Impl {
 
     WGPUDevice dev() const { return ref->device.get(); }
     WGPUQueue queue() const { return ref->queue.get(); }
+
+    /// Makes the piece buffer hold `slots` slots (slot 0 = the chunk itself) and
+    /// writes `pieces` (slots * kPieceStride bytes) to it.
+    void write_pieces(const std::vector<std::uint8_t>& pieces) {
+        const std::size_t slots = pieces.size() / kPieceStride;
+        if (!piece_buffer || slots > piece_slots) {
+            std::size_t cap = std::max<std::size_t>(piece_slots, 16);
+            while (cap < slots) {
+                cap *= 2;
+            }
+            piece_buffer = make_buffer(dev(), "pieces", cap * kPieceStride,
+                                       WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
+            piece_slots = cap;
+            const std::array entries = {buffer_entry(1, piece_buffer.get(), kPieceBytes)};
+            WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+            desc.label = sv("pieces");
+            desc.layout = piece_layout.get();
+            desc.entryCount = entries.size();
+            desc.entries = entries.data();
+            piece_bind = BindGroup(wgpuDeviceCreateBindGroup(dev(), &desc));
+        }
+        wgpuQueueWriteBuffer(queue(), piece_buffer.get(), 0, pieces.data(), pieces.size());
+    }
 
     /// Finishes `enc` and submits it, unless recording raised a validation
     /// error: wgpu-native 29 aborts the process when an invalid command
@@ -1097,7 +1133,15 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     m.atlas_layout =
         layout(d, "atlas", {texture_entry(0, kFloat, WGPUTextureViewDimension_2DArray)});
     {
-        const std::array layouts = {m.frame_layout.get(), m.chunk_layout.get()};
+        // Group 2 of the chunk pipelines: the piece (struct Piece in gpu.wgsl) of
+        // the draw, at a dynamic offset. Binding 1, so that its declaration does
+        // not share a (group, binding) pair with the sprite pipelines' atlas.
+        WGPUBindGroupLayoutEntry pe = uniform_entry(1);
+        pe.buffer.hasDynamicOffset = 1;
+        pe.buffer.minBindingSize = kPieceBytes;
+        m.piece_layout = layout(d, "piece", {pe});
+        const std::array layouts = {m.frame_layout.get(), m.chunk_layout.get(),
+                                    m.piece_layout.get()};
         WGPUPipelineLayoutDescriptor pd = WGPU_PIPELINE_LAYOUT_DESCRIPTOR_INIT;
         pd.label = sv("chunk");
         pd.bindGroupLayoutCount = layouts.size();
@@ -1148,6 +1192,8 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     }
     m.frame_uniform = make_buffer(d, "frame", kFrameUniformBytes,
                                   WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
+    // Slot 0 of the pieces: the chunk itself (all zero = kind 0).
+    m.write_pieces(std::vector<std::uint8_t>(kPieceStride, 0));
     m.river_uniform = make_buffer(d, "river", kRiverParamsBytes,
                                   WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
     m.timestamps = c.timestamps;
@@ -1306,16 +1352,64 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     const BindGroup pass2 = m.frame_bind(m.under_v.get(), m.terrain_v.get());
     const Px water = scene.textures.water();
     const WGPUColor clear = {water[0] / 255.0, water[1] / 255.0, water[2] / 255.0, 1.0};
-    std::vector<WGPUBindGroup> binds;
+    // What to draw per chunk pass: every visible chunk (a stand-in chunk that is
+    // not on the GPU yet draws open sea), then the parts of the other zoom
+    // groups' chunks that stand in for the ones that are not (kind 1 pieces).
+    struct Draw {
+        WGPUBindGroup bind;
+        std::uint32_t piece_offset;
+    };
+    std::vector<Draw> draws;
+    std::vector<std::uint8_t> pieces(kPieceStride, 0);
     for (const auto& [cx, cy] : visible) {
         if (const auto it = m.chunks.find({group, cx, cy}); it != m.chunks.end()) {
-            binds.push_back(it->second.bind.get());
+            draws.push_back({it->second.bind.get(), 0});
         }
     }
+    if (m.limits.stand_ins) {
+        const auto order = stand_in_groups(group);
+        for (const auto& [cx, cy] : visible) {
+            const auto own = m.chunks.find({group, cx, cy});
+            if (own != m.chunks.end() && own->second.real) {
+                continue;
+            }
+            for (const std::size_t from : order) {
+                std::size_t parts = 0;
+                for (const StandInSpan& sp : stand_in_spans(cx, cy, group, from)) {
+                    const auto src = m.chunks.find({from, sp.src_cx, sp.src_cy});
+                    if (src == m.chunks.end() || !src->second.real) {
+                        continue;
+                    }
+                    Bytes b;
+                    b.i32(sp.dst.x);
+                    b.i32(sp.dst.y);
+                    b.i32(sp.dst.x + sp.dst.w);
+                    b.i32(sp.dst.y + sp.dst.h);
+                    b.i32(kTile[from].w);
+                    b.i32(kTile[from].h);
+                    b.i32(kTile[group].w);
+                    b.i32(kTile[group].h);
+                    b.u32(1);
+                    b.b.resize(kPieceStride, 0);
+                    draws.push_back(
+                        {src->second.bind.get(), static_cast<std::uint32_t>(pieces.size())});
+                    pieces.insert(pieces.end(), b.b.begin(), b.b.end());
+                    ++parts;
+                }
+                if (parts > 0) {
+                    ++stats.stand_in_chunks;
+                    stats.stand_in_parts += parts;
+                    break;
+                }
+            }
+        }
+    }
+    m.write_pieces(pieces);
     const WGPUBindGroup atlas = m.atlas ? m.atlas->bind.get() : nullptr;
     auto draw_chunks = [&](WGPURenderPassEncoder p) {
-        for (const WGPUBindGroup b : binds) {
-            wgpuRenderPassEncoderSetBindGroup(p, 1, b, 0, nullptr);
+        for (const Draw& d : draws) {
+            wgpuRenderPassEncoderSetBindGroup(p, 1, d.bind, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(p, 2, m.piece_bind.get(), 1, &d.piece_offset);
             wgpuRenderPassEncoderDraw(p, 6, 1, 0, 0);
         }
     };
@@ -1493,6 +1587,8 @@ std::vector<RiverCost> GpuFrame::measure_river_cost(std::size_t repeats,
         WGPURenderPassEncoder p =
             begin(enc.get(), target.second.get(), clear, stamps ? &m.ts_writes : nullptr);
         wgpuRenderPassEncoderSetBindGroup(p, 0, frame_bind.get(), 0, nullptr);
+        const std::uint32_t whole = 0;
+        wgpuRenderPassEncoderSetBindGroup(p, 2, m.piece_bind.get(), 1, &whole);
         wgpuRenderPassEncoderSetPipeline(p, m.sea_pipe.get());
         for (const Impl::Chunk& c : quad) {
             wgpuRenderPassEncoderSetBindGroup(p, 1, c.bind.get(), 0, nullptr);

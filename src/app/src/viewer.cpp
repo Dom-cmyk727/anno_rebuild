@@ -215,8 +215,9 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
 class Viewer {
   public:
     Viewer(const render::Scene& scene, std::size_t group, std::size_t threads, Renderer renderer,
-           render::RiverFlowMode river_flow)
-        : scene_(scene), group_(group), frames_(threads), renderer_choice_(renderer) {
+           render::RiverFlowMode river_flow, render::WaterStyle water)
+        : scene_(scene), group_(group), frames_(threads), renderer_choice_(renderer),
+          water_(water) {
         frames_.river_flow = river_flow;
         const auto b = *scene.bounds(group);
         cam_x_ = b.x + b.w / 2.0;
@@ -950,13 +951,13 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
 } // namespace
 
 std::string run_viewer(const render::Scene& scene, std::size_t group, Renderer renderer,
-                       render::RiverFlowMode river_flow) {
+                       render::RiverFlowMode river_flow, render::WaterStyle water) {
     if (!scene.bounds(group)) {
         return "no islands";
     }
     const std::size_t threads =
         (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);
-    Viewer v(scene, group, threads, renderer, river_flow);
+    Viewer v(scene, group, threads, renderer, river_flow, water);
     return v.run();
 }
 

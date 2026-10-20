@@ -1,6 +1,6 @@
 # ANNO 1503 Rebuild — project rules for Claude Code
 
-Read `docs/PLAN.md` before doing anything. It holds the phased plan, acceptance criteria and the current status. `docs/research/` holds the evidence gathered so far (community landscape, game-file analysis). Update `docs/PLAN.md` status when a milestone is reached.
+Read `docs/PLAN.md` before doing anything. It holds the phased plan, acceptance criteria and the current status. If you are the **executor session**, also read `docs/orchestration/TASKS.md` at the start of every task (the orchestrator session updates it) and report in `docs/orchestration/REPORTS.md`. `docs/research/` holds the evidence gathered so far (community landscape, game-file analysis). Update `docs/PLAN.md` status when a milestone is reached.
 
 ## What this project is
 A clean-room reimplementation of ANNO 1503 (Max Design / Sunflowers, 2002; GOG "A.D." 2.0.0.5 build, binaries dated 2006-07-21, 32-bit x86, MSVC 6) as a native 64-bit application for **Windows and Linux**, written in **C++20** (owner decision 2026-10-17, `docs/adr/0001-cpp20.md`; the earlier Rust code in `crates/` is the reference implementation until every part is ported, then removed). Goal: the same game, stable, with robust deterministic multiplayer, quality-of-life features and modern performance. macOS is a development host only, never a target.

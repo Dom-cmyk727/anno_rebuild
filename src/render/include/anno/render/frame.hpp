@@ -210,8 +210,14 @@ class FrameRenderer {
     /// by GpuFrame::render from GpuLimits::stand_ins; also on with `stand_ins`.
     /// Off, the eviction is the one from before stand-ins existed.
     bool retain_stand_in_sources = false;
+    /// Visible chunks that are built but that the GPU compositor still draws
+    /// over their stand-in (not uploaded yet, or dissolving in over it for
+    /// GpuLimits::chunk_fade_ms). Set by GpuFrame::render before update_chunks;
+    /// their stand-in sources are kept like those of chunks not built.
+    std::set<ChunkKey> shown_over_stand_in;
     /// What update_chunks keeps beyond the visible chunks for the stand-ins of
-    /// the visible chunks that are not built (empty when both switches are off).
+    /// the visible chunks that are not built or in shown_over_stand_in (empty
+    /// when both switches are off).
     [[nodiscard]] std::set<ChunkKey>
     stand_in_retain(std::size_t group, const std::vector<std::pair<int, int>>& visible) const;
 

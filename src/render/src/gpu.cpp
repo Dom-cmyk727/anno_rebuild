@@ -1579,6 +1579,19 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         return ms;
     };
     frames.retain_stand_in_sources = m.limits.stand_ins;
+    // The visible chunks this compositor still draws over a stand-in (as of the
+    // last frame: not uploaded, or dissolving in over it): the eviction in
+    // update_chunks keeps their stand-ins' sources until they are shown alone.
+    frames.shown_over_stand_in.clear();
+    if (m.limits.stand_ins) {
+        for (const auto& [cx, cy] : visible_chunks(view)) {
+            const ChunkKey key{group, cx, cy};
+            const auto it = m.chunks.find(key);
+            if (it == m.chunks.end() || !it->second.real || m.fading.contains(key)) {
+                frames.shown_over_stand_in.insert(key);
+            }
+        }
+    }
     std::tie(stats.chunks_built, stats.chunks_ms, stats.chunks_missing) =
         frames.update_chunks(scene, view, group);
     stats.chunks_ms = lap();

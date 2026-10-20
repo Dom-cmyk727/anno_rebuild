@@ -711,8 +711,8 @@ FrameRenderer::stand_in_retain(std::size_t group,
         return retain;
     }
     for (const auto& [cx, cy] : visible) {
-        if (cache_.contains({group, cx, cy})) {
-            continue; // built: nothing to stand in for
+        if (cache_.contains({group, cx, cy}) && !shown_over_stand_in.contains({group, cx, cy})) {
+            continue; // built and shown: nothing to stand in for
         }
         for (const std::size_t from : stand_in_groups(group)) {
             for (const StandInSpan& span : stand_in_spans(cx, cy, group, from)) {
@@ -777,7 +777,7 @@ std::size_t FrameRenderer::fill_cache(const Scene& scene, std::size_t group,
     }
     const Rect view =
         wanted.empty() ? chunk_rect(0, 0) : chunk_rect(wanted.front().first, wanted.front().second);
-    trim(group, view, keep);
+    trim(group, view, keep, stand_in_retain(group, wanted));
     return todo.size();
 }
 

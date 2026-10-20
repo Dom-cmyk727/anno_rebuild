@@ -2964,6 +2964,125 @@ TEST_CASE("a plain pan: the margin of the group shown is uploaded ahead, so a ch
     CHECK(g.errors() == 0);
 }
 
+TEST_CASE("a chunk dissolves in over its stand-in: linear in the fade, the stand-in's sources kept "
+          "with the cache at its eviction limit") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    constexpr std::size_t kTo = 1, kFrom = 2;
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = 1;
+    limits.wave_simulation = false;
+    limits.chunk_fade_ms = 100;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    std::uint64_t fade_clock = 0;
+    g.set_fade_clock([&] { return fade_clock; });
+    render::FrameRenderer fr(1, false);
+    // Nothing kept beyond what is visible or retained: a source that is not
+    // retained is evicted in the frame it stops being visible.
+    fr.spare_chunks = 0;
+    insert_sources(fr, kTo, 1, 0, kFrom);
+    const render::Chunk real = noise_land_chunk(kTo, 1, 0);
+    // The sources on the GPU first: they were visible at their own group.
+    std::optional<render::Rect> src_view;
+    for (const auto& sp : render::stand_in_spans(1, 0, kTo, kFrom)) {
+        const render::Rect r = render::chunk_rect(sp.src_cx, sp.src_cy);
+        src_view = src_view ? src_view->unite(r) : r;
+    }
+    REQUIRE(src_view);
+    const auto source_target = g.offscreen_target(static_cast<std::uint32_t>(src_view->w),
+                                                  static_cast<std::uint32_t>(src_view->h));
+    for (int f = 0; f < 12; ++f) {
+        g.render(fr, scene, *src_view, kFrom, 0, render::WaterStyle::Original,
+                 source_target.second.get());
+    }
+    // The chunks of the group shown, built (inserted after the frames above: with
+    // no spare chunks those frames evict everything they do not show).
+    fr.insert_chunk({kTo, 0, 0}, noise_land_chunk(kTo, 0, 0));
+    fr.insert_chunk({kTo, 1, 0}, real);
+    // The stand-in as the CPU reference draws it (before any eviction can happen).
+    const auto ref = render::stand_in_chunk(fr, kTo, 1, 0, scene.textures.water());
+    REQUIRE(ref);
+    const render::Rect view{0, 0, 2 * render::kChunk, render::kChunk};
+    const auto target = g.offscreen_target(2 * side, side);
+    auto frame_at = [&](std::uint64_t t) {
+        fade_clock = t;
+        const auto st =
+            g.render(fr, scene, view, kTo, 0, render::WaterStyle::Original, target.second.get());
+        const auto all = g.read_back(target.first.get(), 2 * side, side);
+        std::vector<std::uint8_t> right(std::size_t{side} * side * 4);
+        for (std::size_t y = 0; y < side; ++y) {
+            std::copy_n(all.begin() + static_cast<std::ptrdiff_t>((y * 2 * side + side) * 4),
+                        side * 4, right.begin() + static_cast<std::ptrdiff_t>(y * side * 4));
+        }
+        return std::pair{st, right};
+    };
+    auto sources_cached = [&] {
+        for (const auto& sp : render::stand_in_spans(1, 0, kTo, kFrom)) {
+            if (fr.chunk({kFrom, sp.src_cx, sp.src_cy}) == nullptr) {
+                return false;
+            }
+        }
+        return true;
+    };
+    // (0, 0) uploads; (1, 0) is built but waits: drawn as its stand-in.
+    const auto [st_a, px_a] = frame_at(1000);
+    CHECK(st_a.chunks_uploaded == 1);
+    CHECK(st_a.stand_in_chunks == 1);
+    CHECK(sources_cached());
+    // (1, 0) uploads and starts to dissolve in over its stand-in.
+    const auto [st_b, px_b] = frame_at(1000);
+    CHECK(st_b.chunks_fading == 1);
+    CHECK(st_b.stand_in_chunks == 1);
+    const auto [st_c, px_c] = frame_at(1050);
+    CHECK(st_c.chunks_fading == 1);
+    CHECK(st_c.stand_in_chunks == 1);
+    CHECK(sources_cached());
+    const auto [st_d, px_d] = frame_at(1100);
+    CHECK(st_d.chunks_fading == 0);
+    CHECK(st_d.stand_in_chunks == 0);
+    std::size_t standin_wrong = 0, start_wrong = 0, mid_wrong = 0, mid_n = 0, end_wrong = 0;
+    for (std::size_t i = 0; i < std::size_t{side} * side; ++i) {
+        const render::Px s = land_pixel(*ref, i);
+        const render::Px e = land_pixel(real, i);
+        int a = 0, b = 0, d = 0;
+        for (std::size_t k = 0; k < 3; ++k) {
+            a = std::max(a, std::abs(int{s[k]} - int{px_a[i * 4 + k]}));
+            b = std::max(b, std::abs(int{px_a[i * 4 + k]} - int{px_b[i * 4 + k]}));
+            d = std::max(d, std::abs(int{e[k]} - int{px_d[i * 4 + k]}));
+        }
+        standin_wrong += a > 1 ? 1U : 0U;
+        start_wrong += b > 1 ? 1U : 0U;
+        end_wrong += d > 1 ? 1U : 0U;
+        // Half-way (smoothstep at 0.5 = 0.5): the even mix of the two grounds where
+        // neither has an object over it (an object is composited over the mix, not
+        // mixed itself).
+        if (ref->objects[i][3] != 0 || real.objects[i][3] != 0) {
+            continue;
+        }
+        ++mid_n;
+        int m = 0;
+        for (std::size_t k = 0; k < 3; ++k) {
+            const double expect = 0.5 * s[k] + 0.5 * e[k];
+            m = std::max(m, static_cast<int>(std::lround(
+                                std::abs(expect - static_cast<double>(px_c[i * 4 + k])))));
+        }
+        mid_wrong += m > 2 ? 1U : 0U;
+    }
+    CHECK(standin_wrong == 0);
+    CHECK(start_wrong == 0);
+    REQUIRE(mid_n > 10000);
+    CHECK(mid_wrong == 0);
+    CHECK(end_wrong == 0);
+    CHECK(g.errors() == 0);
+}
+
 /// A chunk of a smooth world: the ground colour is a ramp of the world position in
 /// tiles (red along x, green along y, 100 levels per tile, wrapping), the same for
 /// every zoom group, so a stand-in made from another group should match the chunk

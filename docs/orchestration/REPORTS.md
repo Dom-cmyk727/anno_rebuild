@@ -218,3 +218,62 @@ Please say which, with and without each switch. Mapping to the measured causes: 
 - Left open / questions for the owner: a pan of about 5000 px/s (12,6 px per frame) still shows open sea (hundreds of frames): chunk builds of 100-250 ms cannot keep up with a view crossing 1280 px in a quarter of a second; faster chunk building is the remaining lever (a new task, not a margin). Memory: the margin and the neighbouring groups' views stay in the CPU cache (4 MB per chunk) and up to 96 prefetched chunks on the GPU (about 384 MB), both bounded by config values with reasons (`max_lookahead_chunks`, `prefetch_chunks`); the owner should confirm the 150 ms dissolve (`chunk_fade_ms`) feels right. T10b is still needed for a green `-j 8` ctest with the game dir.
 - Owner check (one line): `cd C:\Users\altin\anno1503-T1d\build\msvc\src\app\Release; $g = "C:\Users\altin\anno1503\game\app"; .\anno1503.exe --view "$g\Scenes\Islands\Dschungel\D_256x256_0045_5B.scp" --game-dir $g --water enhanced` — pan with the mouse while zooming with the wheel. What to report: which of the four artifact kinds remain (blank/flashing patches; hard cut-offs or seams; blurry turning sharp; shimmering water or rivers); if it still pops at your normal pan speed, say how fast you move.
 - Time spent / subagents used: inline, no subagents.
+
+## T1e — Pan while zooming: the T1d review findings — 2026-10-20 — status: FINISHED (OWNER-CHECK)
+- Branch: task/T1d-zoom-artifacts at fa1a6ba (12 commits on b0588c5: one per item 1-9, two for the reviewers' findings, one docs); worktree: C:\Users\altin\anno1503-T1d. Not pushed, not merged.
+- Built, per item:
+  1. `FrameRenderer::margin_keys()`; the compositor prefetches the margin of the group shown before the neighbouring groups' views (same cap and per-frame limit). A fade starts only over a placeholder an earlier frame drew (`it != end && !real`). **Defect found and fixed on the way:** with the placeholder replaced, nothing drew the open sea under a dissolve, so a fade from open sea started from the clear colour, not the sea pattern. The placeholder is now kept for the fade (`fade_under`) and drawn under the chunk. bench: `--zoom 0 --zoom-pan` is a plain pan; it counts the dissolves after the first second.
+  2. Fade clock: `GpuFrame::set_fade_clock`, a steady clock by default. The test holds the animation clock still.
+  3. Option 2 of the board: opaque ground and sea pipelines again, with blending variants only for the fading draws (they come last, so one switch per pass). No cost measurement: the cost is the pre-T1d one by construction.
+  4. `FrameRenderer::shown_over_stand_in`, set by GpuFrame before update_chunks: the visible chunks still drawn over a stand-in (not uploaded yet, or fading). Their sources are retained. The path without workers passes the retain to its trim as well.
+  5. Tests: "a chunk dissolves in over its stand-in…" (spare_chunks 0; the stand-in equals the CPU reference; within 2 levels at 1/4 = smoothstep 0.15625 and at 1/2; exact at the end); lookahead_rect at 1001 px/s, left+down, and the height cap; "the margin follows the view's velocity through update_chunks…" (an injected clock via `FrameRenderer::clock`; leading side, shrink after a stop, speed kept across a zoom step).
+  6. Velocity reset when the centre moves by more than the view's size on an axis (test: a wide view, each axis).
+  7. `open_sea_chunks` per uncovered area, `GpuStats::open_sea_px` (clipped to the view; includes the holes under a dissolving chunk).
+  8. Counted and measured numbers in the `max_lookahead_chunks` comment; `Chunk::bytes`, `FrameRenderer::cached_bytes`; `--lookahead-chunks` in the viewer (default 3, at most 16, cli test) and in bench_frame.
+  9. Nits: the pan-period comments, a CAS loop for `build_ms_`, the adjacent_keys doc, `replace_chunk` (prefetch pools the old planes). Deviation: `resident` is not a maintained counter. It is recounted over the margin and neighbour lists (their length, not every GPU chunk), only in frames that may prefetch. The prefetch_chunks comment now says that GPU chunk memory is bounded by the CPU cache.
+- Gates: msvc build warning-free; ctest without the game dir 616/616; with the game dir and 16 threads, 614/616: `scene renders match the recorded digests` and `rendered river pixels are the flow shading of the baked lattice…` threw `bad allocation` (T10), and both pass alone with -j 1. clang-format 23.1.3 clean over src; GCC 13 not run (render/app only); asan not run; agree.py n.a.
+- Evidence (docs/perf/README.md, "T1e"):
+  - **Plain pan**, 0 dissolves after the first second and 0 open sea:
+    - canyon 1280x800 at 1600 px/s;
+    - canyon 2560x1440, groups 0 and 2, at 1600 and 3200 px/s;
+    - Single_24 2560x1440, groups 0 and 2, at all three speeds.
+  - **Plain pan, only exception:** the canyon at 5000 px/s, group 0 (53 open-sea frames, 151 dissolve frames). This is build latency: nothing was built on the CPU.
+  - **Frame time:** max ≤ 6.5 ms everywhere. The prefetch uploads cost p95 at 1280x800 (0.4 → 1.7 ms).
+  - **Pan while zooming, open sea by area** (1280x800 canyon): 74-201 of 1600 frames show some open sea, up to 18 % of the view in one frame and up to one zoom interval long. T1d's "0 frames" was chunk-wise only.
+    - Not a T1e regression: a temporary T1d-order build gave 210-212 frames / 12-15 M px against 130-240 / 4-8 M px with T1e.
+    - All of it is unbuilt sources (T1f/T11).
+  - **Single_24, 2560x1440, zoom every 60 frames:** up to 27 % of the view.
+  - **CPU cache on Single_24:** peak 0.44-0.71 GB. `--lookahead-chunks` 2 vs 3 makes no measurable difference.
+  - **Mutation checks** (all failed as they should):
+    - stand-in retain off;
+    - retain without the fading keys;
+    - jump threshold ×100;
+    - in one build: margin/neighbour order swapped, a linear fade, the placeholder under the dissolve not drawn, and the covered parts not clipped to the view.
+- Reviewers (two, read-only, no builds):
+  - **A (code):** all items done. Found:
+    - stale docs: fixed in iso.md and the README;
+    - a possible starvation of the margin by the shared cap at 2560x1440: not seen in 12 bench runs, see above;
+    - the dissolving chunk's holes not counted: fixed;
+    - bench `--lookahead-chunks` unbounded (int overflow in lookahead_rect): bounded to 16;
+    - the cap no longer bounding residency: documented;
+    - the counter deviation: stated above.
+  - **B (tests):**
+    - margin-before-neighbours order untested: the cap now equals the margin and neighbours are built, so a swap fails;
+    - the curve was checked only at 1/2: 1/4 added;
+    - no rebuild-without-fade test: added;
+    - the clip to the view not exercised: the test now picks the part past the edge and adds stand-ins off;
+    - the jump test was square: now a wide view;
+    - CLI bounds: added.
+    - Its claim that the open-sea dissolve test cannot see `fade_under` is contradicted by the run before the fix (start check 0 of 63,667 pixels) and by the mutation.
+    - Not done: a real-clock test for the default fade clock (would be time-based); a sea-field (cover > 0) dissolve case.
+- Left open / questions:
+  - (a) The open sea by area during pan-while-zoom is the next lever after T1e. It is not fixable by the margin and needs faster chunk builds (T1f items 2-3, T11). The orchestrator may want an acceptance number per area for T1f/T11.
+  - (b) The owner should confirm the 150 ms dissolve.
+  - (c) The wave window rebuilds per zoom step for about 85 ms (bench transients). This is pre-existing (OQ-076).
+  - (d) T10b is still needed for a green `-j 16` with the game dir.
+- Also done this session: **T11 stage 0** (design) by a subagent in worktree `C:\Users\altin\anno1503-T11`, branch `task/T11-gpu-chunks` at f3546f7 (`docs/render/gpu-chunks.md`, report appended on that branch). Open questions C1-C5 are in the doc; C1 (compute pass instead of a blending render pass, for exact integer compositing) needs the orchestrator. T1f's profile was not started: it needs builds and benchmarks, and T1e owned the machine.
+- Owner check: `cd C:\Users\altin\anno1503-T1d\build\msvc\src\app\Release; $g = "C:\Users\altin\anno1503\game\app"; .\anno1503.exe --view "$g\Scenes\Islands\Dschungel\D_256x256_0045_5B.scp" --game-dir $g --water enhanced`. Please check:
+  - plain scrolling as smooth as on `main`, with no fading at the screen edges;
+  - pan while zooming: which of the four artifact kinds remain;
+  - pause (Space) while chunks arrive: they still appear.
+- Time spent / subagents used: inline for T1e; two read-only reviewer subagents; one subagent for T11 stage 0.

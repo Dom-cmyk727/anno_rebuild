@@ -189,6 +189,15 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
             std::fprintf(stderr, "ANNO_VIEW_STAND_INS=%s not known (on, off)\n", s);
         }
     }
+    // The pre-created planes cover a view's worth of chunks: the window's size in
+    // chunks (the same number at every zoom group, a chunk being kChunk screen
+    // pixels), never fewer than the interactive default. A later resize is not
+    // followed (OQ-093).
+    if (limits.prewarm_chunks > 0) {
+        limits.prewarm_chunks = std::max(
+            limits.prewarm_chunks,
+            render::visible_chunks({0, 0, static_cast<int>(w), static_cast<int>(h)}).size());
+    }
     // The background pre-creation of chunk texture planes (GpuLimits::prewarm_chunks);
     // ANNO_VIEW_PREWARM=off creates them in the frame as before, for comparing.
     if (const char* s = std::getenv("ANNO_VIEW_PREWARM"); s != nullptr && *s != 0) {

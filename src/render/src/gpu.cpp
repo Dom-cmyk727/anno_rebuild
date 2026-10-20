@@ -337,6 +337,10 @@ struct GpuFrame::Impl {
     /// old contents is ordered before those writes.
     std::vector<Plane> plane_pool;
     static constexpr std::size_t kPoolPlanes = 8 * 24;
+    /// plane_pool.size(), readable from the pre-creation thread (which keeps
+    /// the idle planes, pooled and pre-created, within GpuLimits::idle_plane_
+    /// budget_mb: the pool counts first, the thread fills the rest).
+    std::atomic<std::size_t> pool_planes{0};
 
     /// Chunk planes created ahead of time by a background thread
     /// (GpuLimits::prewarm_chunks): the first texture creations after start
@@ -390,13 +394,22 @@ struct GpuFrame::Impl {
         }
         warm_thread = std::thread([this] {
             const auto n = static_cast<std::uint32_t>(kChunk);
-            const std::size_t target = limits.prewarm_chunks * kChunkPlanes.size();
+            // A plane of the five formats is n x n x 3 bytes on average
+            // (4 + 4 + 4 + 2 + 1 bytes per texel over five planes).
+            const std::size_t plane_bytes = std::size_t{n} * n * 3;
+            const std::size_t budget_planes =
+                (limits.idle_plane_budget_mb << 20) / std::max<std::size_t>(plane_bytes, 1);
+            auto target_now = [&] {
+                const std::size_t pooled = pool_planes.load();
+                return std::min(limits.prewarm_chunks * kChunkPlanes.size(),
+                                budget_planes > pooled ? budget_planes - pooled : 0);
+            };
             std::unique_lock lock(warm_mutex);
             while (true) {
                 // Refills as the window thread takes planes: the first uploads of
                 // each zoom group need a view's worth of chunks at once.
                 warm_cv.wait(lock, [&] {
-                    return warm_stop || (warm_planes.size() < target &&
+                    return warm_stop || (warm_planes.size() < target_now() &&
                                          (!warm_paced.load() || warm_token.load()));
                 });
                 if (warm_stop) {
@@ -471,6 +484,7 @@ struct GpuFrame::Impl {
                 plane_pool.push_back(std::move(p));
             }
         }
+        pool_planes.store(plane_pool.size());
         return chunks.erase(it);
     }
 
@@ -707,6 +721,7 @@ struct GpuFrame::Impl {
             if (pooled != plane_pool.end()) {
                 plane = std::move(*pooled);
                 plane_pool.erase(pooled);
+                pool_planes.store(plane_pool.size());
             } else if (!take_warm(fmt, pw, ph, plane)) {
                 plane.format = fmt;
                 plane.w = pw;
@@ -855,6 +870,7 @@ struct GpuFrame::Impl {
                             plane_pool.push_back(std::move(p));
                         }
                     }
+                    pool_planes.store(plane_pool.size());
                 } else {
                     chunks.emplace(key, std::move(fresh));
                 }

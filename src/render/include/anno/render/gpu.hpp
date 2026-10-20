@@ -170,6 +170,14 @@ struct GpuLimits {
     /// at once take more. Memory use is this times 4 MB, on top of the chunks
     /// uploaded; 0 = none (headless renders, tests).
     std::size_t prewarm_chunks = 0;
+    /// Device memory in MiB that idle chunk planes may hold at most: the pooled
+    /// planes of dropped chunks (bounded by their own count) and the pre-created
+    /// ones together; the pre-creation fills what the pool leaves. The default
+    /// is about 64 chunks' worth and covers prewarm_chunks (24 chunks, about
+    /// 94 MB) plus a pool of a view's chunks; raise it with prewarm_chunks.
+    /// Uploaded chunks are not counted (they are the content, bounded by the CPU
+    /// cache). 0 = no idle planes are pre-created.
+    std::size_t idle_plane_budget_mb = 256;
     /// The limits for an interactive window: uploads and wave simulation
     /// setup are spread over frames (upload_budget_ms 1.0, background_fluid).
     [[nodiscard]] static GpuLimits interactive() {

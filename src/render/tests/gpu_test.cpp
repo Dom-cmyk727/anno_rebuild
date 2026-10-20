@@ -2809,6 +2809,28 @@ TEST_CASE("the steps of a GPU frame add up to its total, and the sync steps are 
     CHECK(g.errors() == 0);
 }
 
+TEST_CASE("pre-created chunk planes stay within the idle plane budget") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    gpu::GpuLimits limits;
+    limits.wave_simulation = false;
+    limits.prewarm_chunks = 4; // 20 planes asked for
+    // 4 MiB of idle planes: planes are 512 x 512 x 3 bytes on average (786432
+    // bytes), so 5 fit.
+    limits.idle_plane_budget_mb = 4;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    for (int i = 0; i < 2000 && g.warm_planes_ready() < 5; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    CHECK(g.warm_planes_ready() == 5);
+    CHECK(g.errors() == 0);
+}
+
 TEST_CASE(
     "pre-created chunk planes are taken by the first uploads, and an early end joins the thread") {
     auto ctx = device_or_skip();

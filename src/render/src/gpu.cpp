@@ -1492,6 +1492,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                           m.update_fluid(enc.get(), scene, view, group, time_ms);
     stats.fluid_ms = lap();
     stats.wave_simulation = fluid_on;
+    stats.fluid_setting_up = fluid_on && m.fluid && m.fluid->setting_up();
     const bool river_flow = style == WaterStyle::Enhanced &&
                             frames.river_flow == RiverFlowMode::Flow && scene.river_active();
     m.write_frame_uniform(view, group, time_ms, style, scene, fluid_on, river_flow);

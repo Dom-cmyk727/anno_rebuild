@@ -132,6 +132,10 @@ struct GpuStats {
     /// are not built or not uploaded yet (GpuLimits::stand_ins), and the parts
     /// (draws) they took.
     std::size_t stand_in_chunks = 0, stand_in_parts = 0;
+    /// A wave-window job (new group, size or strips) is being prepared in the
+    /// background: the shader shows the previous window or, where it does not
+    /// reach, the analytic waves (OQ-076).
+    bool fluid_setting_up = false;
     /// Enhanced rivers: the visible chunks that carry a flow lattice on the GPU,
     /// and the cost tier the river shading ran at this frame.
     std::size_t river_chunks = 0;

@@ -167,6 +167,8 @@ struct Row {
     std::size_t open = 0, open_built = 0;
     /// Visible chunks drawn dissolving in over their placeholder (GPU).
     std::size_t fading = 0;
+    /// Pixels of the view showing open sea (GpuStats::open_sea_px).
+    std::uint64_t open_px = 0;
     /// GPU: every window-thread step of the frame (GpuStats::steps, they add up
     /// to the compositor's total), and the counts behind the sync steps.
     std::vector<std::pair<std::string, double>> steps;
@@ -686,16 +688,20 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, Grab&&
         std::printf("frames with chunks not built: %zu of %zu (%zu drew stand-ins); first frames "
                     "after a zoom step with chunks not built: %zu (%zu drew stand-ins)\n",
                     missing, rows.size(), covered, after, after_covered);
-        // Open sea in the view: a visible chunk that is not on the GPU and has no
-        // source in any zoom group. The longest run of such frames, in frames and
-        // wall time, is what a viewer sees as a patch that pops in.
+        // Open sea in the view: part of a visible chunk that is not on the GPU and
+        // has no source in any zoom group (by area: a hole in a stand-in counts).
+        // The longest run of such frames, in frames and wall time, is what a
+        // viewer sees as a patch that pops in.
         std::size_t open_frames = 0, run = 0, longest = 0, longest_at = 0, open_chunks = 0,
                     open_built = 0;
+        std::uint64_t open_px = 0, open_px_worst = 0;
         for (std::size_t i = 0; i < rows.size(); ++i) {
             if (rows[i].open > 0) {
                 ++open_frames;
                 open_chunks += rows[i].open;
                 open_built += rows[i].open_built;
+                open_px += rows[i].open_px;
+                open_px_worst = std::max(open_px_worst, rows[i].open_px);
                 if (++run > longest) {
                     longest = run;
                     longest_at = i;
@@ -708,8 +714,12 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, Grab&&
             longest > 0 ? rows[longest_at].wall_ms - rows[longest_at + 1 - longest].wall_ms : 0.0;
         std::printf("frames showing open sea (a visible chunk with no source in any group): %zu "
                     "of %zu, %zu chunk-frames in all (%zu built on the CPU, waiting for the "
-                    "upload); longest run %zu frames / %.0f ms\n",
-                    open_frames, rows.size(), open_chunks, open_built, longest, longest_ms);
+                    "upload); longest run %zu frames / %.0f ms; open-sea pixels %llu in all, "
+                    "%.2f %% of the view at worst\n",
+                    open_frames, rows.size(), open_chunks, open_built, longest, longest_ms,
+                    static_cast<unsigned long long>(open_px),
+                    100.0 * static_cast<double>(open_px_worst) /
+                        (static_cast<double>(c.w) * static_cast<double>(c.h)));
         // Dissolves after the first second (a cold start fills the view with them):
         // on a plain pan none should happen, the margin is uploaded ahead.
         std::size_t fade_frames = 0, fade_chunks = 0;
@@ -798,6 +808,7 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
             r.open = st.open_sea_chunks;
             r.open_built = st.open_sea_built;
             r.fading = st.chunks_fading;
+            r.open_px = st.open_sea_px;
             r.fluid_setting_up = st.fluid_setting_up;
             r.sea = st.sea_ms;
             r.sync = st.chunk_sync_ms;

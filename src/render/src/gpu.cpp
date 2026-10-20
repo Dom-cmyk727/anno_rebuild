@@ -1729,6 +1729,18 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
             draws.push_back({under->second.bind.get(), 0});
         }
     }
+    // A visible chunk not on the GPU of which `covered` pixels inside the view
+    // are drawn from other groups: the rest of its visible area is open sea.
+    auto count_open_sea = [&](const ChunkKey& key, std::uint64_t covered) {
+        const auto in = chunk_rect(std::get<1>(key), std::get<2>(key)).intersect(view);
+        const std::uint64_t area =
+            in ? static_cast<std::uint64_t>(in->w) * static_cast<std::uint64_t>(in->h) : 0;
+        if (area > covered) {
+            ++stats.open_sea_chunks;
+            stats.open_sea_px += area - covered;
+            stats.open_sea_built += frames.chunk(key) != nullptr ? 1U : 0U;
+        }
+    };
     if (m.limits.stand_ins) {
         for (const auto& [cx, cy] : visible) {
             const auto own = m.chunks.find({group, cx, cy});
@@ -1762,15 +1774,26 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
             if (!cover.empty()) {
                 ++stats.stand_in_chunks;
                 stats.stand_in_parts += cover.size();
-            } else if (!real) {
-                ++stats.open_sea_chunks;
-                stats.open_sea_built += frames.chunk({group, cx, cy}) != nullptr ? 1U : 0U;
+            }
+            if (!real) {
+                // The parts are disjoint: what of the chunk's visible area they
+                // leave shows open sea (a hole in every group's cover, or all).
+                std::uint64_t covered = 0;
+                for (const StandInPart& part : cover) {
+                    if (const auto in = part.span.dst.intersect(view)) {
+                        covered +=
+                            static_cast<std::uint64_t>(in->w) * static_cast<std::uint64_t>(in->h);
+                    }
+                }
+                count_open_sea({group, cx, cy}, covered);
             }
         }
     } else {
         for (const auto& [cx, cy] : visible) {
             const auto own = m.chunks.find({group, cx, cy});
-            stats.open_sea_chunks += own == m.chunks.end() || !own->second.real ? 1U : 0U;
+            if (own == m.chunks.end() || !own->second.real) {
+                count_open_sea({group, cx, cy}, 0);
+            }
         }
     }
     // The dissolving chunks last: over the stand-in or open sea they replace.

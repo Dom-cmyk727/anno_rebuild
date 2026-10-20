@@ -133,10 +133,14 @@ struct GpuStats {
     /// are not built or not uploaded yet (GpuLimits::stand_ins), and the parts
     /// (draws) they took.
     std::size_t stand_in_chunks = 0, stand_in_parts = 0;
-    /// Visible chunks that show open sea because they are not on the GPU and no
-    /// zoom group has a chunk to stand in for them (or stand-ins are off): the
-    /// pop-in a pan during a zoom can show.
+    /// Visible chunks that show open sea somewhere in the view because they are
+    /// not on the GPU and no zoom group has a chunk to stand in for that part (a
+    /// hole in the cover counts; stand-ins off: the whole chunk): the pop-in a
+    /// pan during a zoom can show.
     std::size_t open_sea_chunks = 0;
+    /// The pixels of the view that show that open sea (the visible area of those
+    /// chunks the stand-in parts leave uncovered).
+    std::uint64_t open_sea_px = 0;
     /// Of open_sea_chunks, the ones the CPU has built (waiting for their upload).
     std::size_t open_sea_built = 0;
     /// Chunks of the neighbouring zoom groups uploaded ahead (GpuLimits::prefetch_chunks).

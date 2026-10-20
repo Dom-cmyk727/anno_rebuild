@@ -3179,6 +3179,62 @@ TEST_CASE("a chunk dissolves in over its stand-in: linear in the fade, the stand
     CHECK(g.errors() == 0);
 }
 
+TEST_CASE("open sea is counted by the area a stand-in leaves uncovered, inside the view") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    // Group 2 shown (the smallest tiles): its chunk (1, 0) shows parts of several
+    // group-1 chunks (1075 x 1075 group-1 pixels).
+    constexpr std::size_t kTo = 2, kFrom = 1;
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = 1;
+    limits.wave_simulation = false;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    render::FrameRenderer fr(1, false);
+    // Only one of the group-1 chunks that chunk (1, 0) of group 2 shows exists,
+    // none of group 0: the cover has a hole.
+    const auto spans = render::stand_in_spans(1, 0, kTo, kFrom);
+    REQUIRE(spans.size() > 1);
+    const auto& one = spans.front();
+    fr.insert_chunk({kFrom, one.src_cx, one.src_cy},
+                    noise_land_chunk(kFrom, one.src_cx, one.src_cy));
+    const render::Rect src = render::chunk_rect(one.src_cx, one.src_cy);
+    const auto src_target =
+        g.offscreen_target(static_cast<std::uint32_t>(src.w), static_cast<std::uint32_t>(src.h));
+    for (int f = 0; f < 4; ++f) {
+        g.render(fr, scene, src, kFrom, 0, render::WaterStyle::Original, src_target.second.get());
+    }
+    // Chunk (0, 0) and most of (1, 0), one upload per frame: (1, 0) waits and
+    // stands in; its last 100 columns are outside the view.
+    const render::Rect view{0, 0, 2 * render::kChunk - 100, render::kChunk};
+    const auto target = g.offscreen_target(static_cast<std::uint32_t>(view.w), side);
+    const auto st =
+        g.render(fr, scene, view, kTo, 0, render::WaterStyle::Original, target.second.get());
+    REQUIRE(st.stand_in_chunks == 1);
+    // Only the source that exists covers: the area of every span reading it (the
+    // parts of one source chunk may be merged into one draw), inside the view.
+    std::uint64_t covered = 0;
+    for (const auto& sp : spans) {
+        if (sp.src_cx == one.src_cx && sp.src_cy == one.src_cy) {
+            if (const auto in = sp.dst.intersect(view)) {
+                covered += static_cast<std::uint64_t>(in->w) * static_cast<std::uint64_t>(in->h);
+            }
+        }
+    }
+    const std::uint64_t visible_px = std::uint64_t{side - 100} * side;
+    REQUIRE(covered > 0);
+    REQUIRE(covered < visible_px);
+    CHECK(st.open_sea_chunks == 1);
+    CHECK(st.open_sea_px == visible_px - covered);
+    CHECK(g.errors() == 0);
+}
+
 /// A chunk of a smooth world: the ground colour is a ramp of the world position in
 /// tiles (red along x, green along y, 100 levels per tile, wrapping), the same for
 /// every zoom group, so a stand-in made from another group should match the chunk

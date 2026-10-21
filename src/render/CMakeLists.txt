@@ -8,6 +8,7 @@ add_library(anno_render
   src/frame_table.cpp
   src/iso.cpp
   src/profile.cpp
+  src/residency.cpp
   src/river.cpp
   src/river_lattice.cpp
   src/river_solve.cpp
@@ -27,6 +28,7 @@ if(ANNO_BUILD_TESTS)
     tests/main.cpp
     tests/render_corpus_test.cpp
     tests/render_test.cpp
+    tests/residency_test.cpp
     tests/river_flow_corpus_test.cpp
     tests/river_flow_test.cpp
     tests/river_shade_test.cpp

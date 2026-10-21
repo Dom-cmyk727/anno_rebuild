@@ -238,6 +238,28 @@ struct GpuLimits {
     /// Atlas layers at most (0 = the device's maxTextureArrayLayers; larger
     /// values are clamped to it). When full, new sprite frames are dropped.
     std::uint32_t max_atlas_layers = 0;
+    /// Device memory in MiB that the sprite atlas may use at most (whole layers
+    /// of atlas_size^2 texels; docs/render/gpu-chunks.md 4.3 rule 6, residency.hpp).
+    /// 0 = from the adapter: 512 on a discrete adapter, 256 otherwise, clamped to
+    /// the device's array layers and buffer size. Reason: WebGPU reports no memory
+    /// size; the largest original scenario needs 197 MiB for all three groups
+    /// (330 MiB with enhanced water's smoothed copies, estimated), so the discrete
+    /// default never evicts original content and the integrated one only other
+    /// groups' frames. An owner decision (open question C3 of gpu-chunks.md).
+    /// Not read by the compositor yet (stage 2).
+    std::size_t atlas_budget_mb = 0;
+    /// Texel bytes of sprite frames written into the atlas per frame at most
+    /// (the first waiting visible chunk always goes). 16 MiB: the wave
+    /// window's per-frame upload bound (GpuFluid), and above the largest
+    /// frame set of one chunk of the original scenarios (7.8 MiB, counted in
+    /// gpu-chunks.md section 2). Not read by the compositor yet (stage 2).
+    std::uint64_t atlas_upload_bytes_per_frame = 16ULL * 1024 * 1024;
+    /// Chunks whose draw lists are turned into planes on the GPU per frame at
+    /// most; the rest keep their placeholder or stand-in until a later frame. 6,
+    /// as uploads_per_frame: the bound on how many chunks change on screen per
+    /// frame and on the size of the frame's command encoder. Not read by the
+    /// compositor yet (stage 2).
+    std::size_t gpu_chunks_per_frame = 6;
     /// Enhanced water: ships sink into the water with a moving waterline
     /// and foam (not in the original; gpu.wgsl ship_in_water).
     bool ship_waterline = true;

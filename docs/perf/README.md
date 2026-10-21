@@ -441,3 +441,34 @@ On the canyon island at group 0, the warm mean per chunk is 50 ms on 1 thread, 5
 - **"100-250 ms per chunk" (T1d) is the 16-thread cold case.** One thread builds a chunk in 25-50 ms (p95 57-77). With 16 threads on 8 cores each chunk takes 1.6-2 times longer: SMT shares a core between two threads (8 threads: 1.2 times). Throughput still grows to 156-285 chunks/s. On a cold scene, the chunks with rivers also wait for the island's river flow solve: 84-151 ms on one thread, and every other builder blocks in its `call_once`. This shows as `flow` (23-37 ms mean at 16 threads cold) and as the 180-250 ms maxima. The viewer does not wait (`wait_for_flow` false): it delivers such chunks without the flow lattice and **builds them a second time** when the flow is ready. That is extra work in the first seconds, worth removing in item 3 (deliver the lattice separately).
 - **Not measured here:** the workers' below-normal priority against the window thread, and the queue. A chunk's latency in the viewer is its build time plus its place in the queue divided by throughput: 40 chunks queued take about 250 ms at 160 chunks/s.
 - **Compared with 2026-10-17** (5.7 ms per chunk on one thread, Apple M5 Pro, `Single_01.sze`, before the enhanced sea field): the field, terrain and flow stages added since then account for the growth.
+### 2026-10-21 - T1f item 2: exact shortcuts in the field and terrain stages (branch task/T1f-chunk-build-speed, 9b14840 for the numbers; 84ec121 adds only tests and named constants)
+
+**What changed.** Every output byte is identical: the digests are unchanged, and there is a golden digest from before the change in CI. Exactness was the owner's condition; the proof is in `docs/render/iso.md` "Water field: empty cells".
+- **Empty cells:** once per island, the tiles whose every position provably gets the empty water-field texel (no river nearby, and no sea in the block or every spline corner ≥ 31.1) are marked, and `water_field` writes the empty texel there without evaluating it. On the game's islands 37 % of all tiles are empty.
+- **Noise:** `height_noise` without the second noise plane, whose weight is exactly 0 at the integer z it uses.
+- **Samplers:** `smooth_height` and the noise sampled through per-tile and per-cell caches, with the same arithmetic.
+- **Terrain:** built per tile (`terrain_plane`) instead of `terrain_at` per pixel.
+- **River masks:** the fall, mouth and bed masks created and blurred only when a river sprite pixel reaches the chunk.
+
+**One thread, warm, mean ms per chunk** (same bench and chunks as item 1; background load 13-18 %)
+
+| scene | group | chunk before → after | field + terrain + flow before → after | sea field | river stages | terrain | ground (+ px) | objects |
+|---|---|---|---|---|---|---|---|---|
+| canyon | 0 | 50.1 → **29.1** | 34.2 (68 %) → 13.4 (46 %) | 24.2 → 6.5 | 6.3 → 4.3 | 3.6 → 2.4 | 7.0 | 8.6 |
+| canyon | 1 | 44.3 → 28.7 | 31.8 (72 %) → 16.4 (57 %) | 21.4 → 9.0 | 7.0 → 4.9 | 3.1 → 2.2 | 6.3 | 6.0 |
+| canyon | 2 | 28.2 → 19.5 | 19.7 (70 %) → 11.2 (57 %) | 10.8 → 5.3 | 6.8 → 4.5 | 1.8 → 1.2 | 4.2 | 4.1 |
+| `Single_24.sze` | 0 | 44.2 → **21.4** | 29.7 (67 %) → 7.0 (33 %) | 21.8 → 2.7 | 4.2 → 1.7 | 3.5 → 2.4 | 6.7 | 7.7 |
+| `Single_24.sze` | 1 | 39.3 → 23.0 | 28.1 (71 %) → 11.9 (52 %) | 19.9 → 7.0 | 4.8 → 2.5 | 3.1 → 2.2 | 5.9 | 5.1 |
+| `Single_24.sze` | 2 | 25.2 → 16.6 | 17.5 (69 %) → 8.9 (53 %) | 10.1 → 4.4 | 5.4 → 3.1 | 1.8 → 1.2 | 4.0 | 3.6 |
+
+**Against the targets** (owner, 2026-10-21: field + terrain at most 25 % of a chunk, a canyon land chunk at group 0 under 25 ms on one thread): **both missed.**
+- The canyon chunk at group 0 is 29.1 ms; `Single_24` is 21.4 ms.
+- Field + terrain is 33-57 % of a chunk.
+
+**What is left of the field is the sea and the coast inside the island grids:**
+- **Sea and coast pixels:** their depth byte needs the exact smooth height (spline plus noise) at every pixel, and it never saturates (at most 202). The beach band needs four more samples for the slope. No exact shortcut removes this; it is about 30-40 ns per pixel.
+- **River stages:** the blurs and chamfer distances run over the whole chunk where rivers meet the sea (up to 21 ms in single chunks).
+- **Remaining exact options:** blur and chamfer only within the bounding box of the river pixels plus their radius, about 2-3 ms on river chunks; SIMD for the band pixels.
+- **The full fix** is T11 §10.1 (the field on the GPU).
+
+**16 threads after the change: not measured yet.** During the run the machine was at 47-77 % load from a game, which invalidates the numbers, so they are not reported. To be rerun on an idle machine.

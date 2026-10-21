@@ -105,7 +105,13 @@ A tile (tx, ty) is marked when **both** hold:
      - **Not original water:** `terrain_height` is a convex combination of its tile's four corners, which are among the 16, so under ≥ 31 > 16.
      - `field_at` therefore returns the empty texel through `!original_water && sd ≤ −(edge + run_max)`.
 
-Pixels outside the island grid, and every unmarked tile, are evaluated in full as before. **Tests:** `water field: every position in an empty cell gets the empty texel` (synthetic, in CI: a ridge through the waterline and the threshold, a river over high ground; it also compares `water_field` with `field_at` per pixel; removing condition 1 or lowering the threshold to the waterline makes it fail). The game-file test `water field: empty cells hold on every island` covers every island template and the 0200Single / 0201SingleAddOn scenarios: 458 files, 11.8 M tiles, 4.33 M empty, 25 positions each, all empty. The scene digests are unchanged. A complete removal of the per-pixel field from the CPU is T11 §10.1 (a GPU field pass).
+Pixels outside the island grid, and every unmarked tile, are evaluated in full as before. **Tests:** `water field: every position in an empty cell gets the empty texel` (synthetic, in CI: a ridge through the waterline and the threshold, a river over high ground; it also compares `water_field` with `field_at` per pixel; removing condition 1 or lowering the threshold to the waterline makes it fail).
+
+Other CI tests:
+- `a tile is empty exactly when its 16 spline corners clear the threshold`: a plateau at 31 has no empty tile and one at 32 is all empty; one low corner unmarks exactly the 16 tiles that read it.
+- `the synthetic scene's digest is the one before the T1f speedups`: `tests/water_field_fixture.hpp`, two islands, pixels outside the grids. The digest was recorded with the sources of 7479a2a and is checked with and without the cell classes.
+
+The game-file test `water field: empty cells hold on every island` covers every island template and the 0200Single / 0201SingleAddOn scenarios: 458 files, 11.8 M tiles, 4.33 M empty, 108 M positions sampled once (now 9 per tile), all empty. The scene digests are unchanged. A complete removal of the per-pixel field from the CPU is T11 §10.1 (a GPU field pass).
 
 ## Wave simulation (enhanced water, GPU)
 Owner decision 2026-10-17: a real fluid simulation instead of parametric waves ("still looks too uniform"), built for bigger maps and robust multiplayer. Code: `crates/render/src/fluid.rs` (parameters, swell, window, CPU reference solver), `fluid.wgsl` (compute shader, same arithmetic), `gpu_fluid.rs` (host), sampled in `gpu.wgsl` (`fluid_sample`, `fluid_shade`).

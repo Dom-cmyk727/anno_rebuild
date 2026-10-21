@@ -1083,3 +1083,49 @@ TEST_CASE("water field: empty cells hold on every island (game files)") {
     CHECK(all.empty > 0);
     CHECK(all.wrong == 0);
 }
+TEST_CASE("terrain_plane equals terrain_at per pixel (game files)") {
+    // Chunk::terrain is built by Scene::terrain_plane (corners cached per tile);
+    // it must equal the quantised terrain_at of every pixel, as built before.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto buf =
+        anno::test::read_file(*dir / "Scenes" / "Islands" / "Dschungel" / "D_256x256_0045_5B.scp");
+    // The parsed files keep views into their buffers: the buffers outlive them.
+    const auto felder_buf = anno::test::read_file(*dir / "Textures" / "Felder.tex");
+    const auto anl_buf = anno::test::read_file(*dir / "Anlagen.dat");
+    const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
+    const render::Scene scene("", anno::formats::insel::islands(buf).value(),
+                              anno::assets::island::GroundTextures::load(felder).value(),
+                              anno::formats::anlagen::AnlagenFile::parse(anl_buf).value(),
+                              render::kHeightLift);
+    std::size_t pixels = 0, ground = 0, differ = 0;
+    for (std::size_t group = 0; group < render::kGroups; ++group) {
+        const auto b = scene.layouts[group].front().bounds;
+        for (const auto& [fx, fy] :
+             {std::pair{0.5, 0.5}, std::pair{0.3, 0.6}, std::pair{0.7, 0.2}}) {
+            const render::Rect rect{b.x + static_cast<int>(fx * b.w),
+                                    b.y + static_cast<int>(fy * b.h), 300, 200};
+            const auto probe = scene.ground_with_probe(rect, group).second;
+            const auto plane = scene.terrain_plane(probe);
+            REQUIRE(plane.size() == probe.island.size());
+            for (std::size_t i = 0; i < plane.size(); ++i) {
+                const int x = rect.x + static_cast<int>(i % 300);
+                const int y = rect.y + static_cast<int>(i / 300);
+                const auto z = scene.terrain_at(probe, rect, x, y);
+                const std::uint16_t want = z ? render::sat_cast<std::uint16_t>(render::clampf(
+                                                   roundf(*z * render::kTerrainScale), 0.0F,
+                                                   static_cast<float>(render::kNoTerrain - 1)))
+                                             : render::kNoTerrain;
+                ++pixels;
+                ground += want != render::kNoTerrain ? 1 : 0;
+                differ += plane[i] == want ? 0 : 1;
+            }
+        }
+    }
+    MESSAGE(pixels << " pixels, " << ground << " on the ground");
+    CHECK(ground > pixels / 2);
+    CHECK(differ == 0);
+}

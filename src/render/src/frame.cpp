@@ -227,15 +227,7 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, b
         }
     }
     stage.emplace(profile::Stage::terrain);
-    c.terrain.reserve(probe.island.size());
-    for (std::size_t i = 0; i < probe.island.size(); ++i) {
-        const int x = rect.x + static_cast<int>(i % to_size(rect.w));
-        const int y = rect.y + static_cast<int>(i / to_size(rect.w));
-        const auto z = scene.terrain_at(probe, rect, x, y);
-        c.terrain.push_back(z ? sat_cast<std::uint16_t>(clampf(roundf(*z * kTerrainScale), 0.0F,
-                                                               static_cast<float>(kNoTerrain - 1)))
-                              : kNoTerrain);
-    }
+    c.terrain = scene.terrain_plane(probe);
     stage.reset();
     for (const std::size_t i : islands) {
         const auto [below, above] = scene.has_water_objects(i);

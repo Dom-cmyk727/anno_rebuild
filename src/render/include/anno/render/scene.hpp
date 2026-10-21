@@ -271,6 +271,9 @@ class Scene {
     /// sprite covers the pixel. Enhanced water must carry water at all of them.
     [[nodiscard]] Canvas river_sprites(Rect rect, const sea::SceneProbe& probe,
                                        std::size_t group) const;
+    /// Chunk::terrain for the pixels of `probe`: terrain_at at each pixel in
+    /// 1/kTerrainScale HEIGHT units, kNoTerrain where no ground was drawn.
+    [[nodiscard]] std::vector<std::uint16_t> terrain_plane(const sea::SceneProbe& probe) const;
     /// QA/debug: the per-island water inputs (river level, smooth terrain).
     [[nodiscard]] const sea::IslandWater* island_water_info(std::size_t index) const {
         return island_water(index);

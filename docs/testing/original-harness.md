@@ -56,10 +56,32 @@ Candidates for the questions above; each needs its version, licence and reason b
 | Tool | Purpose | Why it might be needed | Status |
 |---|---|---|---|
 | dgVoodoo2 (ddraw wrapper) | windowed DirectDraw | if the game's window switch does not work | not installed; licence: check |
-| cnc-ddraw (ddraw wrapper) | windowed or stretched DirectDraw | alternative to the above | not installed; licence: check |
+| cnc-ddraw (ddraw wrapper) | **installed** (see 5.1) | windowed DirectDraw on the primary monitor | **installed 2026-10-21**, owner-approved |
 | Frida | hooks at the tick function | per-tick logs, if memory reads are not enough | not installed; not needed for stage 0 |
 | pywinauto | window control | only if the scripted input of section 3 is too brittle | not installed; not needed for stage 0 |
 | mss | screenshots | only if `PrintWindow` misses the DirectDraw window | not installed; not needed for stage 0 |
+
+### 5.1 cnc-ddraw (the DirectDraw wrapper, owner-approved 2026-10-21)
+
+The original renders through DirectDraw 7 in exclusive full-screen on the primary monitor, so a
+desktop capture of it was black (owner: the game flickered 800x600 and the cursor stayed on the
+primary). cnc-ddraw replaces the system `DDRAW.dll` with a local `ddraw.dll` next to the game
+(the application directory wins the DLL search), rendering into an ordinary window that a normal
+screen capture can read.
+
+- **Version:** v7.1.0.0 (released 2024-12-28).
+- **Download:** https://github.com/FunkyFr3sh/cnc-ddraw/releases/download/v7.1.0.0/cnc-ddraw.zip
+- **SHA-256 (cnc-ddraw.zip):** `0b13ab89a64c9918189b1dadd449ef6ed3cb3b7b19cabd96d8adbd95505bb908`
+- **Licence:** MIT (github.com/FunkyFr3sh/cnc-ddraw).
+- **Installed files** (into `C:nno1503-original\` only, never `game/app`, never git):
+  - `ddraw.dll` SHA-256 `85e0f7d530dfda134793a57cb3e76b0287dcc96892ee57162dd68f47283b03a9`
+  - `ddraw.ini` (configured, see below) and `Shaders\` (15 files, for the unused shader renderers).
+- **Configuration** (the global `[ddraw]` section of `ddraw.ini`; no Anno-specific section exists):
+  `windowed=true`, `width=1280`, `height=960`, `maintas=true`, `posX=100`, `posY=80` (on the
+  primary monitor, `\.\DISPLAY2`, x 0..2559), `renderer=gdi` (the most reliable for a screen
+  capture), `savesettings=0` (the window stays where it is put), `resizable=false`.
+- **Hash separation:** the game's 20 executables and DLLs stay byte-identical to `game/app`
+  (verified after install); `ddraw.dll`, `ddraw.ini` and `Shaders\` are the only added files.
 
 ## 6. Our side (what has to show the same view)
 

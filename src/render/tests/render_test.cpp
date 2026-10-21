@@ -570,6 +570,49 @@ TEST_CASE("water field: a tile is empty exactly when its 16 spline corners clear
     CHECK(marked(pit) == pit.w * pit.h - 16);
 }
 
+TEST_CASE("stand-ins across derived levels: spans tile the chunk and map by the exact tile ratio") {
+    const auto levels = render::ZoomLevels::with_derived(4);
+    REQUIRE(levels.size() == 7);
+    // The ratios are exact fractions: 2 between the first two groups, 2.1 then 2, and 2
+    // between derived levels (20 / 10 / 5 / ...).
+    CHECK(levels.ratio_w(2, 3) == std::pair{20 * 2, 20});
+    CHECK(levels.ratio_w(3, 4) == std::pair{20 * 4, 20 * 2});
+    CHECK(levels.ratio_w(0, 3) == std::pair{84 * 2, 20});
+    CHECK(levels.ancestor(6) == 2);
+    for (std::size_t to = 0; to < levels.size(); ++to) {
+        for (const std::size_t from : render::stand_in_groups(to, levels)) {
+            for (const auto& [cx, cy] : {std::pair{0, 0}, std::pair{-3, 2}, std::pair{5, -7}}) {
+                const auto spans = render::stand_in_spans(cx, cy, to, from, levels);
+                CHECK(!spans.empty());
+                long long area = 0;
+                const auto wr = levels.ratio_w(from, to);
+                const auto hr = levels.ratio_h(from, to);
+                // The source pixel written out: floor((2p + 1) * num / (2 * den)).
+                auto floor_div = [](long long a, long long d) {
+                    return a / d - (a % d < 0 ? 1 : 0);
+                };
+                for (const auto& sp : spans) {
+                    area += static_cast<long long>(sp.dst.w) * sp.dst.h;
+                    for (int y = sp.dst.y; y < sp.dst.y + sp.dst.h; y += 11) {
+                        for (int x = sp.dst.x; x < sp.dst.x + sp.dst.w; x += 13) {
+                            const long long sx =
+                                floor_div((2LL * x + 1) * wr.first, 2LL * wr.second);
+                            const long long sy =
+                                floor_div((2LL * y + 1) * hr.first, 2LL * hr.second);
+                            CHECK(floor_div(sx, render::kChunk) == sp.src_cx);
+                            CHECK(floor_div(sy, render::kChunk) == sp.src_cy);
+                            CHECK(sx == render::stand_in_source(x, wr.first, wr.second));
+                        }
+                    }
+                }
+                CHECK(area == static_cast<long long>(render::kChunk) * render::kChunk);
+            }
+        }
+    }
+    // Nearest first, the finer level first at equal distance.
+    CHECK(render::stand_in_groups(3, levels) == std::vector<std::size_t>{2, 4, 1, 5, 0, 6});
+}
+
 TEST_CASE("terrain_plane equals terrain_height per pixel across islands") {
     // Two islands whose pixels alternate in short runs on the same tiles: the
     // corner cache must not carry over from one island to the other.

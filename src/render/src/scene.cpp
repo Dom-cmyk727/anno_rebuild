@@ -242,7 +242,29 @@ Scene::Scene(std::string name_, std::vector<insel::Island> islands_,
     }
 }
 
+void Scene::set_levels(ZoomLevels levels) {
+    levels_ = std::move(levels);
+    derived_seas_.clear();
+    for (std::size_t i = levels_.built_count(); i < levels_.size(); ++i) {
+        derived_seas_.emplace_back();
+    }
+}
+
 const sea::SeaPattern* Scene::sea(std::size_t group) const {
+    if (group >= kGroups) {
+        // A derived level: the pattern of its source reduced once.
+        if (group >= levels_.size()) {
+            return nullptr;
+        }
+        SeaSlot& d = derived_seas_[group - levels_.built_count()];
+        std::call_once(d.once, [&] {
+            if (const sea::SeaPattern* src = sea(levels_[group].source)) {
+                d.pattern = sea::SeaPattern::reduced(*src);
+            }
+            d.ready.store(true, std::memory_order_release);
+        });
+        return d.pattern ? &*d.pattern : nullptr;
+    }
     SeaSlot& s = seas_[group];
     std::call_once(s.once, [&] {
         s.pattern = sea::SeaPattern::build(anlagen, group, lift, textures.water(), sprites);
@@ -252,15 +274,26 @@ const sea::SeaPattern* Scene::sea(std::size_t group) const {
 }
 
 const sea::SeaPattern* Scene::sea_if_ready(std::size_t group) const {
-    const SeaSlot& s = seas_[group];
-    if (!s.ready.load(std::memory_order_acquire)) {
+    const SeaSlot* s = nullptr;
+    if (group < kGroups) {
+        s = &seas_[group];
+    } else if (group < levels_.size()) {
+        s = &derived_seas_[group - levels_.built_count()];
+    } else {
         return nullptr;
     }
-    return s.pattern ? &*s.pattern : nullptr;
+    if (!s->ready.load(std::memory_order_acquire)) {
+        return nullptr;
+    }
+    return s->pattern ? &*s->pattern : nullptr;
 }
 
 bool Scene::sea_built(std::size_t group) const {
-    return seas_[group].ready.load(std::memory_order_acquire);
+    if (group < kGroups) {
+        return seas_[group].ready.load(std::memory_order_acquire);
+    }
+    return group < levels_.size() &&
+           derived_seas_[group - levels_.built_count()].ready.load(std::memory_order_acquire);
 }
 
 std::pair<bool, bool> Scene::has_water_objects(std::size_t index) const {
@@ -271,6 +304,9 @@ std::pair<bool, bool> Scene::has_water_objects(std::size_t index) const {
 std::vector<SpriteDraw> Scene::sprites_in(Rect rect, std::size_t group, std::uint64_t time_ms,
                                           SpriteLayer layer, WaterStyle style) const {
     std::vector<SpriteDraw> out;
+    if (group >= kGroups) {
+        return out; // no scene content at a derived level (set_levels)
+    }
     for (const auto& p : layouts[group]) {
         if (!p.bounds.intersect(rect)) {
             continue;
@@ -1152,6 +1188,9 @@ std::optional<Rect> Scene::unit_rect(const UnitSprite& u, std::size_t group) con
 }
 
 bool Scene::units_touch(Rect rect, std::size_t group, bool ships) const {
+    if (group >= kGroups) {
+        return false;
+    }
     return std::any_of(units.begin(), units.end(), [&](const UnitSprite& u) {
         if (!ships && !u.z) {
             return false;
@@ -1162,6 +1201,19 @@ bool Scene::units_touch(Rect rect, std::size_t group, bool ships) const {
 }
 
 std::optional<Rect> Scene::bounds(std::size_t group) const {
+    if (group >= kGroups) {
+        // The source level's rectangle reduced 2x, rounded outwards.
+        if (group >= levels_.size()) {
+            return std::nullopt;
+        }
+        const auto b = bounds(levels_[group].source);
+        if (!b) {
+            return std::nullopt;
+        }
+        const int x0 = div_euclid(b->x, 2), y0 = div_euclid(b->y, 2);
+        const int x1 = -div_euclid(-(b->x + b->w), 2), y1 = -div_euclid(-(b->y + b->h), 2);
+        return Rect{x0, y0, x1 - x0, y1 - y0};
+    }
     std::optional<Rect> r = scene_bounds(layouts[group]);
     for (const auto& u : units) {
         if (const auto ur = unit_rect(u, group)) {
@@ -1172,6 +1224,9 @@ std::optional<Rect> Scene::bounds(std::size_t group) const {
 }
 
 std::size_t Scene::draw_units(Canvas& canvas, std::size_t group) const {
+    if (group >= kGroups) {
+        return 0;
+    }
     std::vector<const UnitSprite*> order;
     for (const auto& u : units) {
         if (!u.z) {

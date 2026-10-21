@@ -256,6 +256,12 @@ class FrameRenderer {
     std::size_t threads;
     /// Chunks kept besides the visible ones.
     std::size_t spare_chunks = 48;
+    /// A derived zoom level whose whole scene is at most this many chunks is never
+    /// evicted (iso.md, stage 3): rebuilding one of its chunks from nothing needs
+    /// 4^k group-2 chunks built on the CPU (up to the whole scene, seconds of all
+    /// cores), while 16 chunks are about 70 MB. Raise it for more memory and an
+    /// instant overview at more levels.
+    std::size_t resident_level_chunks = 16;
     /// Most chunks the margin around the view grows in the direction the view is
     /// moving (lookahead_rect). Each chunk-wide strip is (view height / kChunk + 2)
     /// chunks of up to 4.3 MB (a land chunk; sea chunks are far smaller) in the
@@ -305,6 +311,11 @@ class FrameRenderer {
     std::chrono::steady_clock::time_point last_time_;
     std::size_t last_group_ = 0;
     ZoomLevels levels_ = ZoomLevels::original();
+    /// Chunks the whole scene covers at each level of levels_ (derived levels
+    /// only; 0 for the built ones), for the resident rule of trim().
+    std::vector<std::size_t> level_chunks_;
+    /// Takes the scene's zoom levels (and their chunk counts) when they changed.
+    void sync_levels(const Scene& scene);
     void track_velocity(Rect view, std::size_t group);
     /// The chunks to keep and to build, most urgent first (`keep` is filled
     /// with them), and adjacent_: the visible chunks, the margin around them

@@ -1258,8 +1258,9 @@ struct GpuFrame::Impl {
     /// ship_in_water in gpu.wgsl).
     std::uint32_t pack_ships(const Scene& scene, Rect view, std::size_t group, Bytes& bytes) {
         std::vector<const UnitSprite*> order;
+        // Units exist at the built levels only (a derived level has no frames of its own).
         for (const auto& u : scene.units) {
-            if (!u.z) {
+            if (!u.z && group < kGroups) {
                 order.push_back(&u);
             }
         }
@@ -1363,13 +1364,13 @@ struct GpuFrame::Impl {
         }
         f.tile_w = static_cast<float>(levels->tile_w(group));
         f.tile_h = static_cast<float>(levels->tile_h(group));
-        f.raise = static_cast<float>(scene.lift.scaled(kSeaLevel, 1, group));
+        f.raise = static_cast<float>(levels->lift_scaled(scene.lift, kSeaLevel, 1, group));
         f.time_ms = static_cast<float>(time_ms % 3600000);
         f.enhanced = style == WaterStyle::Enhanced;
         f.ship_water = limits.ship_waterline;
         f.objects_water = limits.object_waterline;
         f.river_flow = river_flow;
-        f.river_lambda = sea::river_view(group, scene.lift).lambda;
+        f.river_lambda = sea::river_view(group, scene.lift, *levels).lambda;
         // Fluid window: origin (world cells), size, on, cells per tile.
         if (fluid && fluid_on) {
             if (const auto w = fluid->window()) {
@@ -1907,7 +1908,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     stats.encoder_ms = lap();
     // Coastal wave simulation (enhanced water only).
     const bool fluid_on = style == WaterStyle::Enhanced && m.limits.wave_simulation &&
-                          m.update_fluid(enc.get(), scene, view, group, time_ms);
+                          group < kGroups && m.update_fluid(enc.get(), scene, view, group, time_ms);
     stats.fluid_ms = lap();
     stats.wave_simulation = fluid_on;
     stats.fluid_setting_up = fluid_on && m.fluid && m.fluid->setting_up();

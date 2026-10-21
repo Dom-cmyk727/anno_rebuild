@@ -63,6 +63,7 @@
 #include <anno/formats/insel.hpp>
 #include <anno/formats/sze.hpp>
 #include <anno/formats/tex.hpp>
+#include <anno/render/chunk_reduce.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/render/river.hpp>
 #include <anno/render/scene.hpp>
@@ -1131,4 +1132,146 @@ TEST_CASE("terrain_plane equals terrain_at per pixel (game files)") {
     MESSAGE(pixels << " pixels, " << ground << " on the ground");
     CHECK(ground > pixels / 2);
     CHECK(differ == 0);
+}
+
+// ---- Derived zoom levels (iso.md, "Continuous zoom, stage 3 design") ----
+
+TEST_CASE(
+    "derived levels: a chunk is the reduction of its four children, recursively (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto scene =
+        load_islands(*dir, *dir / "Scenes" / "Islands" / "Dschungel" / "D_256x256_0045_5B.scp");
+    scene.set_levels(render::ZoomLevels::with_derived(2));
+    REQUIRE(scene.levels().size() == 5);
+    const render::Px water = scene.textures.water();
+    const auto b = *scene.bounds(2);
+    const int cx0 = render::div_euclid(b.x + b.w / 2, render::kChunk) & ~3,
+              cy0 = render::div_euclid(b.y + b.h / 2, render::kChunk) & ~3;
+    std::vector<render::Chunk> l2;
+    for (int y = 0; y < 4; ++y) {
+        for (int x = 0; x < 4; ++x) {
+            l2.push_back(render::render_chunk(scene, 2, cx0 + x, cy0 + y, false, true));
+        }
+    }
+    auto quad_of = [](const std::vector<render::Chunk>& v, std::size_t stride, std::size_t x0,
+                      std::size_t y0) {
+        return render::ChunkQuad{&v[y0 * stride + x0], &v[y0 * stride + x0 + 1],
+                                 &v[(y0 + 1) * stride + x0], &v[(y0 + 1) * stride + x0 + 1]};
+    };
+    auto same = [](const render::Chunk& a, const render::Chunk& c) {
+        return a.ground == c.ground && a.objects == c.objects && a.field == c.field &&
+               a.terrain == c.terrain && a.base.empty() && c.base.empty();
+    };
+    std::vector<render::Chunk> l3;
+    for (std::size_t qy = 0; qy < 2; ++qy) {
+        for (std::size_t qx = 0; qx < 2; ++qx) {
+            const render::Chunk want =
+                render::reduce_chunks_2x(quad_of(l2, 4, 2 * qx, 2 * qy), water);
+            // Level 3 chunk (cx0 / 2 + qx, cy0 / 2 + qy), built through render_chunk.
+            const render::Chunk got =
+                render::render_chunk(scene, 3, cx0 / 2 + static_cast<int>(qx),
+                                     cy0 / 2 + static_cast<int>(qy), false, true);
+            CHECK(same(got, want));
+            CHECK(got.serial != 0);
+            l3.push_back(want);
+        }
+    }
+    const render::Chunk want4 = render::reduce_chunks_2x(quad_of(l3, 2, 0, 0), water);
+    const render::Chunk got4 = render::render_chunk(scene, 4, cx0 / 4, cy0 / 4, false, true);
+    CHECK(same(got4, want4));
+    CHECK_FALSE(got4.ground.empty()); // the island is in it
+}
+
+TEST_CASE(
+    "derived levels: the CPU frame draws, and is close to the reduced frame above (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto scene =
+        load_islands(*dir, *dir / "Scenes" / "Islands" / "Dschungel" / "D_256x256_0045_5B.scp");
+    scene.set_levels(render::ZoomLevels::with_derived(2));
+    const auto b3 = *scene.bounds(3);
+    constexpr int kW = 512, kH = 384;
+    const render::Rect v3{b3.x + b3.w / 2 - kW / 2, b3.y + b3.h / 2 - kH / 2, kW, kH};
+    const render::Rect v2{v3.x * 2, v3.y * 2, kW * 2, kH * 2};
+    render::FrameRenderer fr(4);
+    std::vector<std::uint32_t> f3(kW * kH), f2(static_cast<std::size_t>(kW) * 2 * kH * 2);
+    fr.render(scene, v3, 3, 0, render::WaterStyle::Original, f3.data());
+    fr.render(scene, v2, 2, 0, render::WaterStyle::Original, f2.data());
+    // The mean colour per channel of the level 3 frame against the 2 x 2 mean of the
+    // group 2 frame: the same picture reduced (the sea pattern and the chunks are
+    // reductions of group 2's; only rounding and the shading grid differ).
+    std::array<double, 3> m3{}, m2{};
+    for (int y = 0; y < kH; ++y) {
+        for (int x = 0; x < kW; ++x) {
+            const std::uint32_t p = f3[static_cast<std::size_t>(y * kW + x)];
+            for (int c = 0; c < 3; ++c) {
+                m3[static_cast<std::size_t>(c)] += (p >> (16 - 8 * c)) & 0xFFU;
+                for (int j = 0; j < 2; ++j) {
+                    for (int i = 0; i < 2; ++i) {
+                        const std::uint32_t q =
+                            f2[static_cast<std::size_t>((2 * y + j) * kW * 2 + 2 * x + i)];
+                        m2[static_cast<std::size_t>(c)] += ((q >> (16 - 8 * c)) & 0xFFU) / 4.0;
+                    }
+                }
+            }
+        }
+    }
+    for (std::size_t c = 0; c < 3; ++c) {
+        INFO("channel " << c << ": level 3 " << m3[c] / (kW * kH) << ", reduced group 2 "
+                        << m2[c] / (kW * kH));
+        CHECK(std::abs(m3[c] - m2[c]) / (kW * kH) < 6.0);
+    }
+}
+
+TEST_CASE("derived levels: a small level stays in the cache, a large one is trimmed (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto scene =
+        load_islands(*dir, *dir / "Scenes" / "Islands" / "Dschungel" / "D_256x256_0045_5B.scp");
+    scene.set_levels(render::ZoomLevels::with_derived(3));
+    const auto b5 = *scene.bounds(5);
+    render::FrameRenderer fr(4);
+    fr.spare_chunks = 0;
+    const render::Rect view5{b5.x, b5.y, b5.w, b5.h};
+    fr.update_chunks(scene, view5, 5);
+    const std::size_t level5 = fr.cached();
+    CHECK(level5 > 0);
+    // A view elsewhere at group 2 with nothing spare: level 5 (a handful of chunks
+    // for the whole scene) is below resident_level_chunks and stays.
+    const auto b2 = *scene.bounds(2);
+    fr.update_chunks(scene, render::Rect{b2.x, b2.y, 600, 600}, 2);
+    std::size_t kept = 0;
+    for (int cy = render::div_euclid(b5.y, render::kChunk);
+         cy <= render::div_euclid(b5.y + b5.h - 1, render::kChunk); ++cy) {
+        for (int cx = render::div_euclid(b5.x, render::kChunk);
+             cx <= render::div_euclid(b5.x + b5.w - 1, render::kChunk); ++cx) {
+            kept += fr.chunk({5, cx, cy}) != nullptr ? 1U : 0U;
+        }
+    }
+    CHECK(kept == level5);
+    // With the rule off the same sequence evicts them.
+    render::FrameRenderer off(4);
+    off.spare_chunks = 0;
+    off.resident_level_chunks = 0;
+    off.update_chunks(scene, view5, 5);
+    off.update_chunks(scene, render::Rect{b2.x, b2.y, 600, 600}, 2);
+    std::size_t kept_off = 0;
+    for (int cy = render::div_euclid(b5.y, render::kChunk);
+         cy <= render::div_euclid(b5.y + b5.h - 1, render::kChunk); ++cy) {
+        for (int cx = render::div_euclid(b5.x, render::kChunk);
+             cx <= render::div_euclid(b5.x + b5.w - 1, render::kChunk); ++cx) {
+            kept_off += off.chunk({5, cx, cy}) != nullptr ? 1U : 0U;
+        }
+    }
+    CHECK(kept_off < level5);
 }

@@ -4222,3 +4222,75 @@ TEST_CASE(
         CHECK(g.errors() == 0);
     }
 }
+
+// ---- Derived zoom levels in the GPU compositor ----
+
+TEST_CASE("GPU frames at derived levels match the CPU path, objects standing in water included "
+          "(game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    limits.wave_simulation = false;
+    constexpr int kW = 1001, kH = 601;
+    struct Case {
+        const char* name;
+        Loaded loaded;
+    };
+    std::vector<Case> cases;
+    cases.push_back(
+        {"canyon island", load_island_scene(*dir, "Islands/Dschungel/D_256x256_0045_5B.scp")});
+    cases.push_back({"Single_24", load_scene(*dir, "Single_24.sze")});
+    for (Case& cs : cases) {
+        render::Scene& scene = *cs.loaded.scene;
+        scene.set_levels(render::ZoomLevels::with_derived(3));
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+        gpu::GpuFrame& g = *made.value();
+        const auto target = g.offscreen_target(kW, kH);
+        // Ships are not drawn at a derived level yet (the sprite scale is a later commit):
+        // neither path has them, so the CPU chunks leave them out as the GPU's do.
+        render::FrameRenderer cpu(4, false), on_gpu(4, false);
+        for (const std::size_t level : {std::size_t{3}, std::size_t{4}, std::size_t{5}}) {
+            const auto b = *scene.bounds(level);
+            const render::Rect view{b.x + b.w / 2 - kW / 2, b.y + b.h / 2 - kH / 2, kW, kH};
+            for (const render::WaterStyle style :
+                 {render::WaterStyle::Original, render::WaterStyle::Enhanced}) {
+                std::vector<std::uint32_t> out(std::size_t{kW} * kH);
+                cpu.render(scene, view, level, 925, style, out.data());
+                // The chunks are uploaded a few per frame; a complete view after a few.
+                for (int f = 0; f < 4; ++f) {
+                    g.render(on_gpu, scene, view, level, 925, style, target.second.get());
+                }
+                const auto px = g.read_back(target.first.get(), kW, kH);
+                REQUIRE(px.size() == out.size() * 4);
+                const auto [max, differ] = difference(out, px);
+                MESSAGE(
+                    cs.name << " level " << level
+                            << (style == render::WaterStyle::Original ? " original" : " enhanced")
+                            << ": max " << max << ", " << differ << " pixels > 2");
+                if (style == render::WaterStyle::Original) {
+                    // 1 at the built groups; the derived sea pattern is smoothed from
+                    // a reduced pattern, so the GPU's interpolation can be 2 off.
+                    CHECK(max <= 3);
+                    CHECK(differ <= out.size() / 10000);
+                } else {
+                    // As the enhanced test at the built groups: shoreline pixels differ,
+                    // the rest matches; there are more of them per pixel at a far zoom
+                    // (2.5 % at level 5 against under 2 % at the built groups). Objects
+                    // standing in water have no base plane at a derived level on either
+                    // path, so they are drawn as pictures.
+                    CHECK(differ <= out.size() / 25);
+                }
+            }
+        }
+        CHECK(g.errors() == 0);
+    }
+}

@@ -26,6 +26,7 @@
 #include <anno/formats/insel.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/rect.hpp>
+#include <anno/render/zoom_levels.hpp>
 
 namespace anno::render::sea {
 
@@ -62,6 +63,13 @@ class SeaPattern {
     int width = 0, height = 0;
     /// Milliseconds per animation step (0 = static).
     std::uint64_t step_ms = 0;
+
+    /// The pattern of the next derived zoom level: every step image reduced 2x by
+    /// a box mean (the sprite image alpha-weighted as chunk objects are, the
+    /// filled one plainly). The pattern is periodic, so source texels beyond its
+    /// period wrap, and the period becomes ceil(period / 2): when the period is
+    /// odd the tiling drifts by half a pixel per period (iso.md, stage 3).
+    [[nodiscard]] static SeaPattern reduced(const SeaPattern& src);
 
     /// Renders the pattern of `group`; `water` is the open-water colour.
     /// nullopt if the sea entry or its frames of `group` are missing.
@@ -303,7 +311,8 @@ Px lerp4(Px a, Px b, std::uint32_t t, std::uint32_t scale);
 /// adds waves (not in the original).
 template <class T, class F>
 void shade_sea(T out, std::size_t stride, Rect region, F&& field, const SeaPattern& pattern,
-               std::uint64_t time_ms, WaterStyle style, std::size_t group, Lift lift);
+               std::uint64_t time_ms, WaterStyle style, std::size_t group, Lift lift,
+               const ZoomLevels& levels = ZoomLevels::original());
 
 /// What shade_sea needs to draw enhanced rivers with the flow shading
 /// (rivers.md 8): the layer table and the weight of valid texels below which
@@ -316,8 +325,10 @@ struct RiverShading {
 /// The constants of the river water plane at `group` (rivers.md E19): the tile
 /// size and the pixels per HEIGHT unit of the lift (the lift scales with the
 /// zoom group's tile width).
-inline RiverView river_view(std::size_t group, Lift lift) {
-    const auto twf = static_cast<float>(kTile[group].w), thf = static_cast<float>(kTile[group].h);
+inline RiverView river_view(std::size_t group, Lift lift,
+                            const ZoomLevels& levels = ZoomLevels::original()) {
+    const auto twf = static_cast<float>(levels.tile_w(group)),
+               thf = static_cast<float>(levels.tile_h(group));
     return {twf, thf,
             static_cast<float>(lift.num) / static_cast<float>(lift.den) * twf /
                 static_cast<float>(kTile[0].w)};
@@ -343,36 +354,38 @@ inline Shade river_pixel_shade(const RiverShading* rivers, const FlowSample& fs,
 template <class T, class F, class FL>
 void shade_sea_flow(T out, std::size_t stride, Rect region, F&& field, FL&& flow,
                     const RiverShading* rivers, const SeaPattern& pattern, std::uint64_t time_ms,
-                    WaterStyle style, std::size_t group, Lift lift);
+                    WaterStyle style, std::size_t group, Lift lift,
+                    const ZoomLevels& levels = ZoomLevels::original());
 
 // --- template definition ---
 
 template <class T, class F>
 void shade_sea(T out, std::size_t stride, Rect region, F&& field, const SeaPattern& pattern,
-               std::uint64_t time_ms, WaterStyle style, std::size_t group, Lift lift) {
+               std::uint64_t time_ms, WaterStyle style, std::size_t group, Lift lift,
+               const ZoomLevels& levels) {
     shade_sea_flow(
         out, stride, region, std::forward<F>(field), [](std::size_t) { return FlowSample{}; },
-        nullptr, pattern, time_ms, style, group, lift);
+        nullptr, pattern, time_ms, style, group, lift, levels);
 }
 
 template <class T, class F, class FL>
 void shade_sea_flow(T out, std::size_t stride, Rect region, F&& field, FL&& flow,
                     const RiverShading* rivers, const SeaPattern& pattern, std::uint64_t time_ms,
-                    WaterStyle style, std::size_t group, Lift lift) {
+                    WaterStyle style, std::size_t group, Lift lift, const ZoomLevels& levels) {
     const auto [k0, k1, frac] = pattern.steps_at(time_ms);
     const auto [a_sprite, a_filled] = pattern.step_images(k0);
     const auto [b_sprite, b_filled] = pattern.step_images(k1);
     const auto rw = static_cast<std::size_t>(region.w), rh = static_cast<std::size_t>(region.h);
-    const int step = kShadingStep[group];
+    const int step = kShadingStep[levels.ancestor(group)];
     const int gx0 = div_euclid(region.x, step) * step;
     const int gy0 = div_euclid(region.y, step) * step;
     const auto gw = static_cast<std::size_t>(div_euclid(region.x + region.w - gx0, step) + 2);
     const auto gh = static_cast<std::size_t>(div_euclid(region.y + region.h - gy0, step) + 2);
-    const int raise = lift.scaled(kSeaLevel, 1, group);
-    const float twf = static_cast<float>(kTile[group].w);
-    const float thf = static_cast<float>(kTile[group].h);
+    const int raise = levels.lift_scaled(lift, kSeaLevel, 1, group);
+    const float twf = static_cast<float>(levels.tile_w(group));
+    const float thf = static_cast<float>(levels.tile_h(group));
     // The water plane of the flow shading (rivers.md E19).
-    const RiverView view = river_view(group, lift);
+    const RiverView view = river_view(group, lift, levels);
     const float river_detail = wave_detail(twf);
     std::vector<Shade> grid;
     if (style == WaterStyle::Enhanced) {

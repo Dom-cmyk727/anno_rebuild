@@ -7,6 +7,7 @@
 #include <functional>
 #include <optional>
 
+#include <anno/render/chunk_reduce.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/render/profile.hpp>
 #include <anno/render/sea.hpp>
@@ -267,6 +268,27 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy,
 
 Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy,
                    const ChunkBuildOptions& options) {
+    const ZoomLevels& levels = scene.levels();
+    if (group >= levels.built_count() && group < levels.size()) {
+        // A derived level (iso.md, stage 3): the four chunks of the level above,
+        // each reduced 2x into a quadrant. They are built (recursively, down to
+        // the built level) and dropped as they are reduced: a derived chunk keeps
+        // no source alive, so a worker holds at most four chunks per level.
+        const std::size_t src = levels[group].source;
+        std::array<Chunk, 4> kids;
+        ChunkQuad quad{};
+        for (std::size_t q = 0; q < 4; ++q) {
+            kids[q] = render_chunk(scene, src, 2 * cx + static_cast<int>(q % 2),
+                                   2 * cy + static_cast<int>(q / 2), options);
+            quad[q] = &kids[q];
+        }
+        Chunk c = reduce_chunks_2x(quad, scene.textures.water());
+        // Water objects (waterfalls, animated sprites) are not drawn at a derived
+        // level: no scene content exists there to draw them from.
+        c.water_below = c.water_above = false;
+        c.serial = next_serial();
+        return c;
+    }
     Chunk c = render_chunk_data(scene, group, cx, cy, options);
     c.serial = next_serial();
     return c;
@@ -416,6 +438,7 @@ void FrameRenderer::insert_chunk(const ChunkKey& key, Chunk chunk) {
 
 std::tuple<std::size_t, double, std::size_t>
 FrameRenderer::update_chunks(const Scene& scene, Rect view, std::size_t group) {
+    sync_levels(scene);
     const auto t = Clock::now();
     const auto chunks = visible_chunks(view);
     std::size_t built = 0;
@@ -519,7 +542,7 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
     };
     auto render_parts = [&](bool below) {
         std::vector<Rect> parts;
-        for (const auto& [cx, cy] : chunks) {
+        for (const auto& [cx, cy] : group < kGroups ? chunks : decltype(chunks){}) {
             const Chunk& c = get(cx, cy);
             if (!(below ? c.water_below : c.water_above)) {
                 continue;
@@ -576,7 +599,7 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
                 };
                 sea::shade_sea_flow(sea::XrgbTarget{band + d}, to_size(view.w), *r, field, flow,
                                     flowing && !c.flow.empty() ? &shading : nullptr, *pattern,
-                                    time_ms, style, group, lift);
+                                    time_ms, style, group, lift, levels_);
             }
         });
     }
@@ -775,6 +798,10 @@ void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>&
             continue;
         }
         const auto [g, cx, cy] = k;
+        if (g < level_chunks_.size() && level_chunks_[g] > 0 &&
+            level_chunks_[g] <= resident_level_chunks) {
+            continue; // a small derived level stays for the scene's lifetime
+        }
         keys.emplace_back(g != group, std::abs(cx - ccx) + std::abs(cy - ccy), k);
     }
     std::sort(keys.begin(), keys.end());
@@ -790,6 +817,24 @@ void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>&
     }
     if (workers_ && !dead.empty()) {
         workers_->discard(std::move(dead));
+    }
+}
+
+void FrameRenderer::sync_levels(const Scene& scene) {
+    const ZoomLevels& l = scene.levels();
+    if (levels_.size() == l.size() && level_chunks_.size() == l.size()) {
+        return;
+    }
+    levels_ = l;
+    level_chunks_.assign(l.size(), 0);
+    for (std::size_t i = l.built_count(); i < l.size(); ++i) {
+        if (const auto b = scene.bounds(i)) {
+            const auto cx = static_cast<std::size_t>(div_euclid(b->x + b->w - 1, kChunk) -
+                                                     div_euclid(b->x, kChunk) + 1);
+            const auto cy = static_cast<std::size_t>(div_euclid(b->y + b->h - 1, kChunk) -
+                                                     div_euclid(b->y, kChunk) + 1);
+            level_chunks_[i] = cx * cy;
+        }
     }
 }
 

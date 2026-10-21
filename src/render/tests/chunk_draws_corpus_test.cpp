@@ -179,6 +179,9 @@ struct Outcome {
     bool pixels = true, base = true;
     std::size_t records = 0, missing = 0;
     bool binned_ok = true;
+    /// Every clip table entry lies inside the chunk (island bounds intersected
+    /// with it, gpu-chunks.md 3.3).
+    bool clips_ok = true;
     std::string detail;
 };
 
@@ -187,6 +190,10 @@ Outcome compare(const render::Scene& scene, Rect rect, std::size_t group, bool s
     const render::Canvas want = old_objects(scene, rect, group, ships);
     const render::ChunkDraws draws = scene.objects_draws(rect, group, ships, !ships);
     o.records = draws.object_count();
+    for (const Rect& c : draws.clips) {
+        o.clips_ok = o.clips_ok && c.w > 0 && c.h > 0 && c.x >= rect.x && c.y >= rect.y &&
+                     c.x + c.w <= rect.x + rect.w && c.y + c.h <= rect.y + rect.h;
+    }
     const render::Canvas got = render::replay(draws, scene.frame_table, &o.missing);
     o.pixels = got.pixels == want.pixels && got.width == want.width && got.height == want.height &&
                got.origin == want.origin;
@@ -243,12 +250,14 @@ TEST_CASE("chunk draw lists replay to the objects and base planes of Scene::rend
                     return compare(*scene, render::chunk_rect(cx, cy), group, ships,
                                    (i / variants) % 8 == 0);
                 });
-            std::size_t bad_pixels = 0, bad_base = 0, records = 0, missing = 0, bad_binned = 0;
+            std::size_t bad_pixels = 0, bad_base = 0, records = 0, missing = 0, bad_binned = 0,
+                        bad_clips = 0;
             std::string first_detail;
             for (const Outcome& o : results) {
                 bad_pixels += o.pixels ? 0U : 1U;
                 bad_base += o.base ? 0U : 1U;
                 bad_binned += o.binned_ok ? 0U : 1U;
+                bad_clips += o.clips_ok ? 0U : 1U;
                 if (!o.binned_ok && first_detail.empty()) {
                     first_detail = o.detail;
                 }
@@ -262,6 +271,7 @@ TEST_CASE("chunk draw lists replay to the objects and base planes of Scene::rend
             CHECK(bad_pixels == 0);
             CHECK(bad_base == 0);
             CHECK_MESSAGE(bad_binned == 0, first_detail);
+            CHECK(bad_clips == 0);
             CHECK(missing == 0);
             CHECK(records > 0);
         }

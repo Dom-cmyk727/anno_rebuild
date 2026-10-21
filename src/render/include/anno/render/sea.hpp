@@ -156,6 +156,8 @@ class IslandWater {
                                                    float fy) const;
     [[nodiscard]] float bilinear(std::span<const float> field, std::size_t tx, std::size_t ty,
                                  float fx, float fy) const;
+    /// Fills empty_cell from heights, sea_chunk and river (build calls it).
+    void classify_cells();
 
     std::size_t w = 0, h = 0;
     std::vector<std::uint8_t> heights;
@@ -167,6 +169,27 @@ class IslandWater {
     std::vector<float> shore;
     /// River surface level per corner, NaN away from rivers.
     std::vector<float> river;
+    /// Per tile: 1 where every position in the tile provably gets the empty
+    /// field texel (no sea, no river; docs/render/iso.md "Water field: empty
+    /// cells"), so water_field skips its per-pixel work there; else 0.
+    std::vector<std::uint8_t> empty_cell;
+};
+
+/// Waterline distance below which water_field computes no beach slope (sd in
+/// HEIGHT units).
+inline constexpr float kSlopeBand = 12.0F;
+/// Lowest of the 16 corner heights under a tile's smooth_height at which the
+/// tile is provably dry land far from the waterline (sd ≤ −kSlopeBand): the
+/// spline is at least its lowest corner, the noise at least −1.3 ·
+/// shore_noise, plus 0.5 for rounding (docs/render/iso.md "Water field:
+/// empty cells").
+inline constexpr float kEmptyLandHeight =
+    static_cast<float>(kWaterline) + kSlopeBand + 1.3F * kWaves.shore_noise + 0.5F;
+
+/// One texel of the water field (WaterField's four planes at one pixel).
+struct FieldTexel {
+    std::uint8_t cover = 0, shore = 0, depth = 0, flags = 0;
+    friend bool operator==(const FieldTexel&, const FieldTexel&) = default;
 };
 
 /// The ground seen at each pixel of a scene rectangle: island index
@@ -199,8 +222,13 @@ struct RiverPoint {
 };
 std::optional<RiverPoint> river_point(const IslandWater& iw, float x, float y, const TileGround& g);
 
+/// The water field texel at tile position (x, y) of island `iw`, evaluated
+/// in full (no empty-cell shortcut): the reference water_field must equal.
+FieldTexel field_at(const IslandWater& iw, float x, float y);
+
 /// The water field of `rect` from the ground seen at each pixel; water(i)
-/// gives the IslandWater of island i (nullptr if none).
+/// gives the IslandWater of island i (nullptr if none). Pixels in an empty
+/// cell (IslandWater::empty_cell) get the empty texel without evaluation.
 WaterField water_field(Rect rect, const SceneProbe& probe,
                        const std::function<const IslandWater*(std::size_t)>& water);
 

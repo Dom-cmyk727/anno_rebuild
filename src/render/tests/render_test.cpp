@@ -367,3 +367,80 @@ TEST_CASE("chunk profile: off without a sink, nested stages counted exclusively"
     }
     CHECK(t[profile::Stage::objects] == before);
 }
+
+TEST_CASE("water field: every position in an empty cell gets the empty texel") {
+    namespace sea = render::sea;
+    // A synthetic island: a ridge whose corners run through the waterline and
+    // the threshold (kEmptyLandHeight) in small steps, sea around it, and a
+    // river over high ground. Each condition of the proof is needed somewhere
+    // here: without the river check the river tiles fail, with a lower height
+    // threshold the tiles near the waterline fail.
+    sea::IslandWater iw;
+    iw.w = 48;
+    iw.h = 40;
+    iw.heights.resize(iw.w * iw.h);
+    for (std::size_t y = 0; y < iw.h; ++y) {
+        for (std::size_t x = 0; x < iw.w; ++x) {
+            // 0 at the left edge to 47 at the right, plus a 0-3 jitter.
+            const auto jitter = static_cast<std::uint8_t>((x * 7U + y * 13U) % 4U);
+            iw.heights[y * iw.w + x] = static_cast<std::uint8_t>(x + jitter);
+        }
+    }
+    // The 8 x 8 blocks up to x = 39 count as holding sea (an input here), the
+    // last column (x 40-47) not.
+    const std::size_t cw = (iw.w + 7) / 8;
+    iw.sea_chunk.assign(cw * ((iw.h + 7) / 8), true);
+    for (std::size_t by = 0; by < (iw.h + 7) / 8; ++by) {
+        iw.sea_chunk[by * cw + cw - 1] = false;
+    }
+    iw.open.assign(iw.w * iw.h, 0.5F);
+    iw.shore.assign(iw.w * iw.h, 1.0F);
+    iw.river.assign(iw.w * iw.h, std::numeric_limits<float>::quiet_NaN());
+    for (std::size_t x = 30; x < 46; ++x) {
+        // A river along row 20 over the high ground: level above the bed.
+        iw.river[20 * iw.w + x] = static_cast<float>(iw.heights[20 * iw.w + x]) + 9.0F;
+    }
+    iw.classify_cells();
+    std::size_t empty = 0, by_height = 0, by_block = 0, checked = 0, wrong = 0;
+    for (std::size_t ty = 0; ty < iw.h; ++ty) {
+        for (std::size_t tx = 0; tx < iw.w; ++tx) {
+            if (iw.empty_cell[ty * iw.w + tx] == 0) {
+                continue;
+            }
+            ++empty;
+            (iw.sea_chunk[(ty / 8) * cw + tx / 8] ? by_height : by_block) += 1;
+            for (const float fy : {0.0F, 0.2F, 0.45F, 0.7F, 0.9999F}) {
+                for (const float fx : {0.0F, 0.15F, 0.5F, 0.8F, 0.9999F}) {
+                    ++checked;
+                    const sea::FieldTexel t =
+                        sea::field_at(iw, static_cast<float>(tx) + fx, static_cast<float>(ty) + fy);
+                    wrong += t == sea::FieldTexel{} ? 0 : 1;
+                }
+            }
+        }
+    }
+    MESSAGE("empty cells " << empty << " (" << by_height << " by height, " << by_block
+                           << " without sea), " << checked << " positions");
+    CHECK(by_height > 0);
+    CHECK(by_block > 0);
+    CHECK(wrong == 0);
+    // The sea, the waterline and the river are not empty.
+    CHECK(iw.empty_cell[10 * iw.w + 2] == 0);
+    CHECK(iw.empty_cell[10 * iw.w + 16] == 0);
+    CHECK(iw.empty_cell[20 * iw.w + 35] == 0);
+    // water_field: empty cells written without evaluation, the rest as field_at.
+    render::Rect rect{0, 0, 64, 32};
+    sea::SceneProbe probe{std::vector<std::uint32_t>(64 * 32, 0),
+                          std::vector<std::array<float, 2>>(64 * 32)};
+    for (std::size_t i = 0; i < probe.pos.size(); ++i) {
+        probe.pos[i] = {0.3F + static_cast<float>(i % 64) * 0.73F,
+                        0.1F + static_cast<float>(i / 64) * 1.21F};
+    }
+    const auto f = sea::water_field(rect, probe, [&](std::size_t) { return &iw; });
+    std::size_t differ = 0;
+    for (std::size_t i = 0; i < probe.pos.size(); ++i) {
+        const sea::FieldTexel ref = sea::field_at(iw, probe.pos[i][0], probe.pos[i][1]);
+        differ += ref == sea::FieldTexel{f.cover[i], f.shore[i], f.depth[i], f.flags[i]} ? 0 : 1;
+    }
+    CHECK(differ == 0);
+}

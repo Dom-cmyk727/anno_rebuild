@@ -1014,3 +1014,72 @@ TEST_CASE("river raster: built once per island on a worker, the same for every c
         CHECK(same);
     }
 }
+
+TEST_CASE("water field: empty cells hold on every island (game files)") {
+    // The empty-cell proof (docs/render/iso.md "Water field: empty cells") on
+    // the real islands: every island template and the islands of the 0200Single
+    // and 0201SingleAddOn scenarios, 25 positions in every empty tile.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    std::vector<std::filesystem::path> files;
+    for (const char* climate : {"Dschungel", "Nord", "Praerie", "Steppe", "Tundra"}) {
+        for (const auto& p :
+             anno::test::files_with_ext(*dir / "Scenes" / "Islands" / climate, "scp")) {
+            files.push_back(p);
+        }
+    }
+    for (const char* folder : {"0200Single", "0201SingleAddOn"}) {
+        for (const auto& p : anno::test::files_with_ext(*dir / "Scenes" / folder, "sze")) {
+            files.push_back(p);
+        }
+    }
+    const auto felder_buf = anno::test::read_file(*dir / "Textures" / "Felder.tex");
+    const auto anl_buf = anno::test::read_file(*dir / "Anlagen.dat");
+    struct Count {
+        std::size_t tiles = 0, empty = 0, wrong = 0;
+    };
+    const auto per_file = anno::test::parallel_indexed(files.size(), [&](std::size_t fi) {
+        Count c;
+        const auto buf = anno::test::read_file(files[fi]);
+        auto anlagen = anno::formats::anlagen::AnlagenFile::parse(anl_buf).value();
+        const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
+        auto textures = anno::assets::island::GroundTextures::load(felder).value();
+        const render::Scene scene("", anno::formats::insel::islands(buf).value(),
+                                  std::move(textures), std::move(anlagen), render::kHeightLift);
+        for (std::size_t i = 0; i < scene.islands.size(); ++i) {
+            const render::sea::IslandWater* iw = scene.island_water_info(i);
+            if (iw == nullptr) {
+                continue;
+            }
+            c.tiles += iw->w * iw->h;
+            for (std::size_t ty = 0; ty < iw->h; ++ty) {
+                for (std::size_t tx = 0; tx < iw->w; ++tx) {
+                    if (iw->empty_cell[ty * iw->w + tx] == 0) {
+                        continue;
+                    }
+                    ++c.empty;
+                    for (const float fy : {0.0F, 0.25F, 0.5F, 0.75F, 0.9999F}) {
+                        for (const float fx : {0.0F, 0.25F, 0.5F, 0.75F, 0.9999F}) {
+                            const auto t = render::sea::field_at(*iw, static_cast<float>(tx) + fx,
+                                                                 static_cast<float>(ty) + fy);
+                            c.wrong += t == render::sea::FieldTexel{} ? 0 : 1;
+                        }
+                    }
+                }
+            }
+        }
+        return c;
+    });
+    Count all;
+    for (const auto& c : per_file) {
+        all.tiles += c.tiles;
+        all.empty += c.empty;
+        all.wrong += c.wrong;
+    }
+    MESSAGE(files.size() << " files, " << all.tiles << " tiles, " << all.empty << " empty");
+    CHECK(all.empty > 0);
+    CHECK(all.wrong == 0);
+}

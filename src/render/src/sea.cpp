@@ -451,7 +451,45 @@ std::optional<IslandWater> IslandWater::build(const insel::Island& island,
         }
     }
     out.shore = smooth_shore(out.heights, iw_w, iw_h);
+    out.classify_cells();
     return out;
+}
+
+void IslandWater::classify_cells() {
+    // Empty cells (docs/render/iso.md "Water field: empty cells"): no river
+    // level at the four corners river_level reads, and either no sea in the
+    // tile's 8 x 8 block or all 16 corners of smooth_height at least
+    // kEmptyLandHeight. Every position in such a tile gets the empty texel.
+    empty_cell.assign(w * h, 0);
+    const std::size_t cw = (w + 7) / 8;
+    auto corner = [&](std::ptrdiff_t x, std::ptrdiff_t y) {
+        const auto cx = static_cast<std::size_t>(
+            std::clamp<std::ptrdiff_t>(x, 0, static_cast<std::ptrdiff_t>(w) - 1));
+        const auto cy = static_cast<std::size_t>(
+            std::clamp<std::ptrdiff_t>(y, 0, static_cast<std::ptrdiff_t>(h) - 1));
+        return cy * w + cx;
+    };
+    for (std::size_t y = 0; y < h; ++y) {
+        for (std::size_t x = 0; x < w; ++x) {
+            const auto xi = static_cast<std::ptrdiff_t>(x), yi = static_cast<std::ptrdiff_t>(y);
+            if (!std::isnan(river[corner(xi, yi)]) || !std::isnan(river[corner(xi + 1, yi)]) ||
+                !std::isnan(river[corner(xi, yi + 1)]) ||
+                !std::isnan(river[corner(xi + 1, yi + 1)])) {
+                continue;
+            }
+            bool empty = !sea_chunk[(y / 8) * cw + x / 8];
+            if (!empty) {
+                std::uint8_t lo = 255;
+                for (std::ptrdiff_t dy = -1; dy <= 2; ++dy) {
+                    for (std::ptrdiff_t dx = -1; dx <= 2; ++dx) {
+                        lo = std::min(lo, heights[corner(xi + dx, yi + dy)]);
+                    }
+                }
+                empty = static_cast<float>(lo) >= kEmptyLandHeight;
+            }
+            empty_cell[y * w + x] = empty ? 1 : 0;
+        }
+    }
 }
 
 std::optional<float> IslandWater::river_level(std::size_t tx, std::size_t ty, float fx,
@@ -519,87 +557,100 @@ std::optional<RiverPoint> river_point(const IslandWater& iw, float x, float y,
     return RiverPoint{*level, bed, rd};
 }
 
+FieldTexel field_at(const IslandWater& iw_ref, float x, float y) {
+    const IslandWater* iw = &iw_ref;
+    const float edge = kWaves.shore_edge;
+    // sat_cast: NaN (e.g. inf · 0 in the shore field of an island without land)
+    // becomes 0, as Rust's `as u8`; a plain cast would be undefined.
+    auto byte = [](float v) { return sat_cast<std::uint8_t>(clampf(v, 0.0F, 255.0F)); };
+    const TileGround g = tile_ground(*iw, x, y);
+    const std::size_t tx = g.tx, ty = g.ty;
+    const float fx = g.fx, fy = g.fy;
+    const bool sea_chunk = g.sea_chunk;
+    const bool original_water = g.original_water;
+    const float sd = g.sd;
+    // Enhanced river water (flag bit 1): river level over the smooth
+    // terrain, where no sea is.
+    if (!original_water && sd <= 0.0F) {
+        if (const auto point = river_point(*iw, x, y, g)) {
+            const float rd = point->depth;
+            // Slope of the river surface (HEIGHT units per tile): rapids
+            // where it falls steeply (waterfalls).
+            auto level_at = [&](float px, float py) {
+                const std::size_t ax = std::min(sat_cast<std::size_t>(fmaxf(px, 0.0F)), iw->w - 1);
+                const std::size_t ay = std::min(sat_cast<std::size_t>(fmaxf(py, 0.0F)), iw->h - 1);
+                return iw
+                    ->river_level(ax, ay, clampf(px - static_cast<float>(ax), 0.0F, 1.0F),
+                                  clampf(py - static_cast<float>(ay), 0.0F, 1.0F))
+                    .value_or(point->level);
+            };
+            const float e = 0.5F;
+            const float gx = level_at(x + e, y) - level_at(x - e, y);
+            const float gy = level_at(x, y + e) - level_at(x, y - e);
+            const float rslope = std::sqrt(gx * gx + gy * gy) / (2.0F * e);
+            const auto q = sat_cast<std::uint8_t>(fminf(roundf(rslope * 2.0F), 63.0F));
+            return {static_cast<std::uint8_t>(1 + kRiverOpenness), 255,
+                    byte(kDepthBias + rd * kDepthScale),
+                    static_cast<std::uint8_t>(2U | std::uint32_t{q} << 2U)};
+        }
+    }
+    // Beach slope near the waterline, for the swash run-up.
+    float slope = 0.0F;
+    if (sd > -kSlopeBand && sd < kWaves.swash_depth + 3.0F) {
+        const float e = 0.3F;
+        auto at = [&](float px, float py) {
+            return smooth_height(iw->heights, iw->w, iw->h, px, py);
+        };
+        const float gx = at(x + e, y) - at(x - e, y), gy = at(x, y + e) - at(x, y - e);
+        slope = std::sqrt(gx * gx + gy * gy) / (2.0F * e);
+    }
+    const float run_max = kWaves.runup_max_tiles * fmaxf(slope, 0.2F);
+    if (!sea_chunk || (!original_water && sd <= -(edge + run_max))) {
+        return {};
+    }
+    const float o = iw->bilinear(iw->open, tx, ty, fx, fy);
+    const float d = iw->bilinear(iw->shore, tx, ty, fx, fy);
+    const auto slope_q = sat_cast<std::uint8_t>(fminf(roundf(slope * 2.0F), 63.0F));
+    return {static_cast<std::uint8_t>(
+                1 + sat_cast<std::uint8_t>(roundf(clampf(o, 0.0F, 1.0F) * 254.0F))),
+            byte(d * kShoreScale), byte(kDepthBias + sd * kDepthScale),
+            static_cast<std::uint8_t>((original_water ? 1U : 0U) | std::uint32_t{slope_q} << 2U)};
+}
+
 WaterField water_field(Rect rect, const SceneProbe& probe,
                        const std::function<const IslandWater*(std::size_t)>& water) {
     const auto n = static_cast<std::size_t>(rect.w * rect.h);
     WaterField f{rect, std::vector<std::uint8_t>(n, 255), std::vector<std::uint8_t>(n, 255),
                  std::vector<std::uint8_t>(n, 255), std::vector<std::uint8_t>(n, 1)};
-    const float edge = kWaves.shore_edge;
-    // sat_cast: NaN (e.g. inf · 0 in the shore field of an island without land)
-    // becomes 0, as Rust's `as u8`; a plain cast would be undefined.
-    auto byte = [](float v) { return sat_cast<std::uint8_t>(clampf(v, 0.0F, 255.0F)); };
+    // The island of the previous pixel: runs of pixels share one.
+    std::uint32_t last = kNoIsland;
+    const IslandWater* iw = nullptr;
     for (std::size_t i = 0; i < n; ++i) {
         const std::uint32_t island = probe.island[i];
         if (island == kNoIsland) {
             continue;
         }
-        const IslandWater* iw = water(island);
+        if (island != last) {
+            last = island;
+            iw = water(island);
+        }
         if (iw == nullptr) {
             continue;
         }
         const auto [x, y] = probe.pos[i];
-        const TileGround g = tile_ground(*iw, x, y);
-        const std::size_t tx = g.tx, ty = g.ty;
-        const float fx = g.fx, fy = g.fy;
-        const bool sea_chunk = g.sea_chunk;
-        const bool original_water = g.original_water;
-        const float sd = g.sd;
-        // Enhanced river water (flag bit 1): river level over the smooth
-        // terrain, where no sea is.
-        if (!original_water && sd <= 0.0F) {
-            if (const auto point = river_point(*iw, x, y, g)) {
-                const float rd = point->depth;
-                // Slope of the river surface (HEIGHT units per tile): rapids
-                // where it falls steeply (waterfalls).
-                auto level_at = [&](float px, float py) {
-                    const std::size_t ax =
-                        std::min(sat_cast<std::size_t>(fmaxf(px, 0.0F)), iw->w - 1);
-                    const std::size_t ay =
-                        std::min(sat_cast<std::size_t>(fmaxf(py, 0.0F)), iw->h - 1);
-                    return iw
-                        ->river_level(ax, ay, clampf(px - static_cast<float>(ax), 0.0F, 1.0F),
-                                      clampf(py - static_cast<float>(ay), 0.0F, 1.0F))
-                        .value_or(point->level);
-                };
-                const float e = 0.5F;
-                const float gx = level_at(x + e, y) - level_at(x - e, y);
-                const float gy = level_at(x, y + e) - level_at(x, y - e);
-                const float rslope = std::sqrt(gx * gx + gy * gy) / (2.0F * e);
-                const auto q = sat_cast<std::uint8_t>(fminf(roundf(rslope * 2.0F), 63.0F));
-                f.cover[i] = 1 + kRiverOpenness;
-                f.shore[i] = 255;
-                f.depth[i] = byte(kDepthBias + rd * kDepthScale);
-                f.flags[i] = static_cast<std::uint8_t>(2U | std::uint32_t{q} << 2U);
-                continue;
-            }
+        FieldTexel t;
+        // Inside the island an empty cell needs no evaluation (iso.md "Water
+        // field: empty cells"); the cell is the tile tile_ground would use.
+        if (!(x >= 0.0F && y >= 0.0F && x < static_cast<float>(iw->w) &&
+              y < static_cast<float>(iw->h) &&
+              iw->empty_cell[static_cast<std::size_t>(y) * iw->w + static_cast<std::size_t>(x)] !=
+                  0)) {
+            t = field_at(*iw, x, y);
         }
-        // Beach slope near the waterline, for the swash run-up.
-        float slope = 0.0F;
-        if (sd > -12.0F && sd < kWaves.swash_depth + 3.0F) {
-            const float e = 0.3F;
-            auto at = [&](float px, float py) {
-                return smooth_height(iw->heights, iw->w, iw->h, px, py);
-            };
-            const float gx = at(x + e, y) - at(x - e, y), gy = at(x, y + e) - at(x, y - e);
-            slope = std::sqrt(gx * gx + gy * gy) / (2.0F * e);
-        }
-        const float run_max = kWaves.runup_max_tiles * fmaxf(slope, 0.2F);
-        if (!sea_chunk || (!original_water && sd <= -(edge + run_max))) {
-            f.cover[i] = 0;
-            f.shore[i] = 0;
-            f.depth[i] = 0;
-            f.flags[i] = 0;
-            continue;
-        }
-        const float o = iw->bilinear(iw->open, tx, ty, fx, fy);
-        const float d = iw->bilinear(iw->shore, tx, ty, fx, fy);
-        f.cover[i] = static_cast<std::uint8_t>(
-            1 + sat_cast<std::uint8_t>(roundf(clampf(o, 0.0F, 1.0F) * 254.0F)));
-        f.shore[i] = byte(d * kShoreScale);
-        f.depth[i] = byte(kDepthBias + sd * kDepthScale);
-        const auto slope_q = sat_cast<std::uint8_t>(fminf(roundf(slope * 2.0F), 63.0F));
-        f.flags[i] =
-            static_cast<std::uint8_t>((original_water ? 1U : 0U) | std::uint32_t{slope_q} << 2U);
+        f.cover[i] = t.cover;
+        f.shore[i] = t.shore;
+        f.depth[i] = t.depth;
+        f.flags[i] = t.flags;
     }
     return f;
 }

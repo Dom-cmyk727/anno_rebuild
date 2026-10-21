@@ -46,12 +46,17 @@ enum class Renderer { Auto, Gpu, Cpu };
 
 /// How the wheel zooms (docs/render/iso.md "Continuous zoom"). Stepped is the
 /// original: three zoom groups, one step per wheel notch. Continuous scales the
-/// picture smoothly (GPU renderer; the CPU renderer stays stepped).
+/// picture smoothly (GPU renderer; the CPU renderer stays stepped). Continuous
+/// is the viewer default (owner decision 2026-10-21, OQ-095); stepped stays the
+/// faithful option.
 enum class ZoomMode { Stepped, Continuous };
 
 /// The zoom settings of the viewer.
 struct ZoomOptions {
-    ZoomMode mode = ZoomMode::Stepped;
+    ZoomMode mode = ZoomMode::Continuous;
+    /// --zoom-mode was given: only then is a continuous request that the renderer
+    /// cannot serve (CPU) reported; the default falls back silently.
+    bool mode_explicit = false;
     /// Continuous: the factor of one wheel notch (the keys + and - use its third
     /// power). About 10 % per notch is a slow, smooth zoom (owner proposal
     /// 2026-10-20); the owner tunes it.

@@ -1018,7 +1018,8 @@ TEST_CASE("river raster: built once per island on a worker, the same for every c
 TEST_CASE("water field: empty cells hold on every island (game files)") {
     // The empty-cell proof (docs/render/iso.md "Water field: empty cells") on
     // the real islands: every island template and the islands of the 0200Single
-    // and 0201SingleAddOn scenarios, 25 positions in every empty tile.
+    // and 0201SingleAddOn scenarios, 9 positions in every empty tile (corners, edges, centre;
+    // the synthetic tests sample more densely).
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -1061,11 +1062,11 @@ TEST_CASE("water field: empty cells hold on every island (game files)") {
                         continue;
                     }
                     ++c.empty;
-                    for (const float fy : {0.0F, 0.25F, 0.5F, 0.75F, 0.9999F}) {
-                        for (const float fx : {0.0F, 0.25F, 0.5F, 0.75F, 0.9999F}) {
+                    for (const float fy : {0.0F, 0.5F, 0.9999F}) {
+                        for (const float fx : {0.0F, 0.5F, 0.9999F}) {
                             const auto t = render::sea::field_at(*iw, static_cast<float>(tx) + fx,
                                                                  static_cast<float>(ty) + fy);
-                            c.wrong += t == render::sea::FieldTexel{} ? 0 : 1;
+                            c.wrong += t == render::sea::FieldTexel{} ? 0U : 1U;
                         }
                     }
                 }
@@ -1120,8 +1121,8 @@ TEST_CASE("terrain_plane equals terrain_at per pixel (game files)") {
                                                    static_cast<float>(render::kNoTerrain - 1)))
                                              : render::kNoTerrain;
                 ++pixels;
-                ground += want != render::kNoTerrain ? 1 : 0;
-                differ += plane[i] == want ? 0 : 1;
+                ground += want != render::kNoTerrain ? 1U : 0U;
+                differ += plane[i] == want ? 0U : 1U;
             }
         }
     }

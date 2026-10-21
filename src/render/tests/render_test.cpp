@@ -1,4 +1,5 @@
 // Synthetic tests of anno_render (no game files needed).
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -11,6 +12,8 @@
 #include <anno/render/profile.hpp>
 #include <anno/render/scene.hpp>
 #include <anno/render/sea.hpp>
+
+#include "water_field_fixture.hpp"
 
 namespace render = anno::render;
 using render::Rect;
@@ -415,7 +418,7 @@ TEST_CASE("water field: every position in an empty cell gets the empty texel") {
                     ++checked;
                     const sea::FieldTexel t =
                         sea::field_at(iw, static_cast<float>(tx) + fx, static_cast<float>(ty) + fy);
-                    wrong += t == sea::FieldTexel{} ? 0 : 1;
+                    wrong += t == sea::FieldTexel{} ? 0U : 1U;
                 }
             }
         }
@@ -441,7 +444,7 @@ TEST_CASE("water field: every position in an empty cell gets the empty texel") {
     std::size_t differ = 0;
     for (std::size_t i = 0; i < probe.pos.size(); ++i) {
         const sea::FieldTexel ref = sea::field_at(iw, probe.pos[i][0], probe.pos[i][1]);
-        differ += ref == sea::FieldTexel{f.cover[i], f.shore[i], f.depth[i], f.flags[i]} ? 0 : 1;
+        differ += ref == sea::FieldTexel{f.cover[i], f.shore[i], f.depth[i], f.flags[i]} ? 0U : 1U;
     }
     CHECK(differ == 0);
 }
@@ -454,7 +457,7 @@ TEST_CASE("noise3_at equals noise3 at an integer z, bit for bit") {
                 const float y = static_cast<float>(j) * 0.091F - 0.3F;
                 const float a = render::noise3(x, y, static_cast<float>(iz));
                 const float b = render::noise3_at(x, y, iz);
-                differ += std::memcmp(&a, &b, sizeof a) == 0 ? 0 : 1;
+                differ += std::memcmp(&a, &b, sizeof a) == 0 ? 0U : 1U;
                 ++n;
             }
         }
@@ -481,11 +484,141 @@ TEST_CASE("SmoothSampler equals smooth_height and height_noise, bit for bit") {
             const float x = static_cast<float>(k) * 0.091F + static_cast<float>(row % 5) * 0.37F;
             const float y = static_cast<float>(row) + static_cast<float>(k) * 0.013F;
             differ +=
-                same(s.smooth(x, y), sea::smooth_height(iw.heights, iw.w, iw.h, x, y)) ? 0 : 1;
-            differ += same(s.noise(x, y), sea::height_noise(x, y)) ? 0 : 1;
+                same(s.smooth(x, y), sea::smooth_height(iw.heights, iw.w, iw.h, x, y)) ? 0U : 1U;
+            differ += same(s.noise(x, y), sea::height_noise(x, y)) ? 0U : 1U;
             n += 2;
         }
     }
     CHECK(n > 30000);
+    CHECK(differ == 0);
+}
+TEST_CASE("water field: the synthetic scene's digest is the one before the T1f speedups") {
+    // Recorded with the sources of 7479a2a (tests/water_field_fixture.hpp): every
+    // shortcut must leave every byte as it was, classified or not.
+    constexpr std::uint64_t kGolden = 0x51aadd2b3bf2a795ULL;
+    namespace sea = render::sea;
+    auto s = render::test::field_scene();
+    auto water = [&](std::size_t i) -> const sea::IslandWater* {
+        return i < s.islands.size() ? &s.islands[i] : nullptr;
+    };
+    CHECK(render::test::field_digest(sea::water_field(s.rect, s.probe, water)) == kGolden);
+    std::size_t empty = 0;
+    for (auto& iw : s.islands) {
+        iw.classify_cells();
+        empty +=
+            static_cast<std::size_t>(std::count(iw.empty_cell.begin(), iw.empty_cell.end(), 1));
+    }
+    CHECK(empty > 0);
+    const auto f = sea::water_field(s.rect, s.probe, water);
+    CHECK(render::test::field_digest(f) == kGolden);
+    // Per pixel against field_at of the pixel's island: island changes, pixels
+    // without an island, the missing island, positions outside the grids.
+    std::size_t differ = 0, outside = 0;
+    for (std::size_t i = 0; i < s.probe.island.size(); ++i) {
+        const std::uint32_t island = s.probe.island[i];
+        sea::FieldTexel want{255, 255, 255, 1};
+        if (island < s.islands.size()) {
+            const auto& iw = s.islands[island];
+            const auto [x, y] = s.probe.pos[i];
+            want = sea::field_at(iw, x, y);
+            outside += x < 0.0F || y < 0.0F || x >= static_cast<float>(iw.w) ||
+                               y >= static_cast<float>(iw.h)
+                           ? 1U
+                           : 0U;
+        }
+        differ += want == sea::FieldTexel{f.cover[i], f.shore[i], f.depth[i], f.flags[i]} ? 0U : 1U;
+    }
+    CHECK(outside > 100);
+    CHECK(differ == 0);
+}
+
+TEST_CASE("water field: a tile is empty exactly when its 16 spline corners clear the threshold") {
+    namespace sea = render::sea;
+    auto plateau = [](std::uint8_t height) {
+        sea::IslandWater iw;
+        iw.w = 24;
+        iw.h = 16;
+        iw.heights.assign(iw.w * iw.h, height);
+        iw.sea_chunk.assign(((iw.w + 7) / 8) * ((iw.h + 7) / 8), true);
+        iw.open.assign(iw.w * iw.h, 0.5F);
+        iw.shore.assign(iw.w * iw.h, 1.0F);
+        iw.river.assign(iw.w * iw.h, std::numeric_limits<float>::quiet_NaN());
+        return iw;
+    };
+    auto marked = [](const sea::IslandWater& iw) {
+        return static_cast<std::size_t>(std::count(iw.empty_cell.begin(), iw.empty_cell.end(), 1));
+    };
+    // The threshold: 31 < kEmptyLandHeight = 31.1 <= 32.
+    auto low = plateau(31);
+    low.classify_cells();
+    CHECK(marked(low) == 0);
+    auto high = plateau(32);
+    high.classify_cells();
+    CHECK(marked(high) == high.w * high.h);
+    // One low corner (cx, cy) unmarks exactly the tiles whose smooth_height reads
+    // it: tx in [cx - 2, cx + 1], ty in [cy - 2, cy + 1].
+    auto pit = plateau(40);
+    constexpr std::size_t cx = 10, cy = 7;
+    pit.heights[cy * pit.w + cx] = 30;
+    pit.classify_cells();
+    for (std::size_t ty = 0; ty < pit.h; ++ty) {
+        for (std::size_t tx = 0; tx < pit.w; ++tx) {
+            const bool reads = tx + 2 >= cx && tx <= cx + 1 && ty + 2 >= cy && ty <= cy + 1;
+            CHECK_MESSAGE((pit.empty_cell[ty * pit.w + tx] == 0) == reads, tx << ", " << ty);
+        }
+    }
+    CHECK(marked(pit) == pit.w * pit.h - 16);
+}
+
+TEST_CASE("terrain_plane equals terrain_height per pixel across islands") {
+    // Two islands whose pixels alternate in short runs on the same tiles: the
+    // corner cache must not carry over from one island to the other.
+    std::vector<std::uint8_t> a(12 * 10), b(12 * 10);
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        a[i] = static_cast<std::uint8_t>((i * 7U) % 50U);
+        b[i] = static_cast<std::uint8_t>(200U - (i * 11U) % 90U);
+    }
+    render::sea::SceneProbe probe;
+    for (std::size_t i = 0; i < 4000; ++i) {
+        const std::size_t k = (i / 3) % 4;
+        probe.island.push_back(k == 3 ? render::sea::kNoIsland : static_cast<std::uint32_t>(k));
+        const float x = -1.0F + static_cast<float>(i % 160) * 0.09F;
+        const float y = -0.5F + static_cast<float>(i / 160) * 0.47F;
+        probe.pos.push_back({x, y});
+    }
+    const auto plane = render::terrain_plane(probe, [&](std::uint32_t island) {
+        // Island 2 has no ground.
+        return island == 0   ? render::TerrainGrid{&a, 12, 10}
+               : island == 1 ? render::TerrainGrid{&b, 12, 10}
+                             : render::TerrainGrid{};
+    });
+    REQUIRE(plane.size() == probe.island.size());
+    std::size_t differ = 0, ground = 0;
+    for (std::size_t i = 0; i < plane.size(); ++i) {
+        std::uint16_t want = render::kNoTerrain;
+        if (probe.island[i] < 2) {
+            const auto& h = probe.island[i] == 0 ? a : b;
+            const float z = render::terrain_height(h, 12, 10, probe.pos[i][0], probe.pos[i][1]);
+            want = render::sat_cast<std::uint16_t>(
+                render::clampf(roundf(z * render::kTerrainScale), 0.0F,
+                               static_cast<float>(render::kNoTerrain - 1)));
+            ++ground;
+        }
+        differ += plane[i] == want ? 0U : 1U;
+    }
+    CHECK(ground > 1000);
+    CHECK(differ == 0);
+}
+
+TEST_CASE("NoisePlane equals noise3_at, also at negative z and coordinates") {
+    std::size_t differ = 0;
+    for (const int iz : {-7, 11}) {
+        render::NoisePlane plane(iz);
+        for (int i = -500; i < 500; ++i) {
+            const float x = static_cast<float>(i) * 0.031F, y = static_cast<float>(i % 37) * -0.17F;
+            const float a = plane.at(x, y), b = render::noise3_at(x, y, iz);
+            differ += std::memcmp(&a, &b, sizeof a) == 0 ? 0U : 1U;
+        }
+    }
     CHECK(differ == 0);
 }

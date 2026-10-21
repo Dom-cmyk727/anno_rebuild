@@ -64,5 +64,7 @@ What only a person with the right machine can check. Claude Code keeps this list
 
 ## Later, needs an x86 Windows machine or Wine on x86 Linux
 
+**2026-10-21:** possible now on the owner's Windows 11 PC: task T15 (`docs/orchestration/TASKS.md`) runs these with a scripted harness against a copy of the original.
+
 - Fixtures F1–F9 in `docs/re/tick-loop.md` (game clock, speeds, PRNG cursor, multiplayer sync) against the original game. F6 (PRNG values) is already confirmed statically (the DLL's table bytes and the draw function), not yet by running the game.
 - Savegame corpus (PLAN M2.1).

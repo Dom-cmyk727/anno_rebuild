@@ -194,6 +194,7 @@ Goal: enough understanding of `AnnoWelt`/`AnnoGame`/`AnnoScene` to implement eco
 - [ ] Evidence from the add-on debug build: `FileGame.dll` has a PDB path and source-file names; check whether it holds symbols or asserts that name functions.
 
 ### M2.1 Savegame corpus (Spielstände) — needs the human with an x86 Windows/Wine install
+**2026-10-21:** the owner's Windows 11 PC (x86-64) runs the original; the corpus, fixtures F1-F9 and a pixel comparison of the renderer with the original are task T15 in `docs/orchestration/TASKS.md` (scripted by the executor, desktop sessions only with the owner's agreement, the game run from a copy outside the repo).
 Scenario files show the *start* state only; savegames show how the running game stores live state (stocks, residents, carriers, timers, PRNG state, per-player data). They are the main ground truth for M3's state model and for differential tests.
 - [ ] **Human task:** run the original GOG 2.0.0.5 build and create Spielstände following a protocol, each with a short note of what was done and the values shown in the UI (gold, population per level, warehouse stock, game time):
   - Baseline: start a known scenario (e.g. `Scenes/0010SingleEndlos/00_1024_easyentry_01.sze`), save immediately; save again after N minutes with no input (pure tick progression).

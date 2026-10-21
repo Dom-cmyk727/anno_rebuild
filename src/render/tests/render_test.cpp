@@ -1,6 +1,7 @@
 // Synthetic tests of anno_render (no game files needed).
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <limits>
 
 #include <doctest/doctest.h>
@@ -442,5 +443,22 @@ TEST_CASE("water field: every position in an empty cell gets the empty texel") {
         const sea::FieldTexel ref = sea::field_at(iw, probe.pos[i][0], probe.pos[i][1]);
         differ += ref == sea::FieldTexel{f.cover[i], f.shore[i], f.depth[i], f.flags[i]} ? 0 : 1;
     }
+    CHECK(differ == 0);
+}
+TEST_CASE("noise3_at equals noise3 at an integer z, bit for bit") {
+    std::size_t differ = 0, n = 0;
+    for (int iz : {-3, 0, 11, 23}) {
+        for (int j = -200; j < 200; ++j) {
+            for (int i = -200; i < 200; ++i) {
+                const float x = static_cast<float>(i) * 0.137F + 0.01F;
+                const float y = static_cast<float>(j) * 0.091F - 0.3F;
+                const float a = render::noise3(x, y, static_cast<float>(iz));
+                const float b = render::noise3_at(x, y, iz);
+                differ += std::memcmp(&a, &b, sizeof a) == 0 ? 0 : 1;
+                ++n;
+            }
+        }
+    }
+    CHECK(n == 640000);
     CHECK(differ == 0);
 }

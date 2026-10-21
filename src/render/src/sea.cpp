@@ -197,8 +197,9 @@ float smooth_height(std::span<const std::uint8_t> heights, std::size_t w, std::s
 
 float height_noise(float x, float y) {
     const float amp = kWaves.shore_noise;
-    return (noise3(x * 0.9F, y * 0.9F, 11.0F) - 0.5F) * 2.0F * amp +
-           (noise3(x * 2.7F, y * 2.7F, 23.0F) - 0.5F) * 0.6F * amp;
+    // noise3 at the integer z 11 and 23, bit for bit (noise3_at).
+    return (noise3_at(x * 0.9F, y * 0.9F, 11) - 0.5F) * 2.0F * amp +
+           (noise3_at(x * 2.7F, y * 2.7F, 23) - 0.5F) * 0.6F * amp;
 }
 
 float river_bed_height(std::span<const std::uint8_t> heights, std::size_t w, std::size_t h, float x,
@@ -625,6 +626,9 @@ WaterField water_field(Rect rect, const SceneProbe& probe,
     // The island of the previous pixel: runs of pixels share one.
     std::uint32_t last = kNoIsland;
     const IslandWater* iw = nullptr;
+    // An IslandWater not built by IslandWater::build may have no classes: no
+    // cell is empty then.
+    bool classified = false;
     for (std::size_t i = 0; i < n; ++i) {
         const std::uint32_t island = probe.island[i];
         if (island == kNoIsland) {
@@ -633,6 +637,7 @@ WaterField water_field(Rect rect, const SceneProbe& probe,
         if (island != last) {
             last = island;
             iw = water(island);
+            classified = iw != nullptr && iw->empty_cell.size() == iw->w * iw->h;
         }
         if (iw == nullptr) {
             continue;
@@ -641,7 +646,7 @@ WaterField water_field(Rect rect, const SceneProbe& probe,
         FieldTexel t;
         // Inside the island an empty cell needs no evaluation (iso.md "Water
         // field: empty cells"); the cell is the tile tile_ground would use.
-        if (!(x >= 0.0F && y >= 0.0F && x < static_cast<float>(iw->w) &&
+        if (!(classified && x >= 0.0F && y >= 0.0F && x < static_cast<float>(iw->w) &&
               y < static_cast<float>(iw->h) &&
               iw->empty_cell[static_cast<std::size_t>(y) * iw->w + static_cast<std::size_t>(x)] !=
                   0)) {

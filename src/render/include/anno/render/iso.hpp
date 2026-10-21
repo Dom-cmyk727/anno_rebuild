@@ -416,6 +416,10 @@ inline constexpr Waves kWaves = {
 float smoothstep(float a, float b, float x);
 /// Smooth value noise in [0, 1) (trilinear, smoothstep fade).
 float noise3(float x, float y, float z);
+/// noise3(x, y, iz) for an integer iz, bit for bit: the fade weight of the
+/// plane above is fade(0) = 0 and lerp(p0, p1, 0) = p0 + (p1 − p0) · 0 = p0,
+/// so that plane is not evaluated.
+float noise3_at(float x, float y, int iz);
 /// How much of the sea floor deep water hides (0–1) at `depth`.
 float deep_water(float depth);
 /// Detail level of the enhanced water for tile width `tw` (pixels).

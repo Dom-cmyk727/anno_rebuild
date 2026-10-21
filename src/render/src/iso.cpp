@@ -578,6 +578,15 @@ float noise3(float x, float y, float z) {
     return lerp(plane(0), plane(1), w);
 }
 
+float noise3_at(float x, float y, int iz) {
+    const float fx = std::floor(x), fy = std::floor(y);
+    const int ix = sat_cast<int>(fx), iy = sat_cast<int>(fy);
+    auto fade = [](float t) { return t * t * (3.0F - 2.0F * t); };
+    const float u = fade(x - fx), v = fade(y - fy);
+    auto corner = [&](int dx, int dy) { return hash3(ix + dx, iy + dy, iz); };
+    return lerp(lerp(corner(0, 0), corner(1, 0), u), lerp(corner(0, 1), corner(1, 1), u), v);
+}
+
 float wave_height(float k, std::pair<float, float> pos) {
     const float set = noise3(pos.first * 0.05F + k * 0.19F, pos.second * 0.05F, 7.1F);
     const float each = noise3(pos.first * 0.3F, pos.second * 0.3F, k * 1.37F + 0.5F);

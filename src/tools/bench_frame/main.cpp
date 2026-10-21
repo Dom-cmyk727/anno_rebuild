@@ -579,9 +579,9 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, Grab&&
                 std::size_t big = 0, counted = 0;
                 for (int y = std::max(0, -py_); y < std::min(h, h - py_); ++y) {
                     for (int x = std::max(0, -px_); x < std::min(w, w - px_); ++x) {
-                        const std::size_t a = (static_cast<std::size_t>(y) * w + x) * 4;
+                        const std::size_t a = static_cast<std::size_t>(y * w + x) * 4;
                         const std::size_t b =
-                            (static_cast<std::size_t>(y + py_) * w + (x + px_)) * 4;
+                            static_cast<std::size_t>((y + py_) * w + (x + px_)) * 4;
                         int d = 0;
                         for (std::size_t q = 0; q < 3; ++q) {
                             d = std::max(d, std::abs(int{now_px[a + q]} - int{prev_px[b + q]}));
@@ -827,7 +827,11 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
         if (g != nullptr) {
             const auto st =
                 g->render(fr, scene, view, frame_group, t, c.style, target->second.get());
-            Row r{st.total_ms, st.chunks_built, st.chunks_ms, st.chunks_missing, {}};
+            Row r;
+            r.total = st.total_ms;
+            r.built = st.chunks_built;
+            r.chunk_ms = st.chunks_ms;
+            r.missing = st.chunks_missing;
             r.group = frame_group;
             r.stand = st.stand_in_chunks;
             r.open = st.open_sea_chunks;
@@ -872,11 +876,12 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
 #endif
         (void)wait_gpu;
         const auto st = fr.render(scene, view, frame_group, t, c.style, out.data());
-        Row r{st.total_ms,
-              st.chunks_built,
-              st.chunks_ms,
-              st.chunks_missing,
-              {st.ground_ms, st.water_objects_ms, st.sea_ms, st.objects_ms}};
+        Row r;
+        r.total = st.total_ms;
+        r.built = st.chunks_built;
+        r.chunk_ms = st.chunks_ms;
+        r.missing = st.chunks_missing;
+        r.stages = {st.ground_ms, st.water_objects_ms, st.sea_ms, st.objects_ms};
         r.group = frame_group;
         return r;
     };

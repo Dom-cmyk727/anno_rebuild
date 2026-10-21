@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -39,6 +40,7 @@
 #include <anno/render/rect.hpp>
 #include <anno/render/river.hpp>
 #include <anno/render/sea.hpp>
+#include <anno/render/zoom_levels.hpp>
 
 namespace anno::render {
 
@@ -277,6 +279,14 @@ class Scene {
     /// chunk that waited for it can be rebuilt. Never blocks, queues nothing.
     [[nodiscard]] bool river_flow_done(std::size_t index) const;
 
+    /// The zoom levels the scene is drawn at: the three built groups and the
+    /// derived levels after them (default: the original three). Set before the
+    /// scene is shared with other threads. Scene content (layouts, objects,
+    /// units) exists for the built levels only; at a derived level `sea`, `bounds`
+    /// and the sprite lists answer from the level above (reduced or empty).
+    void set_levels(ZoomLevels levels);
+    [[nodiscard]] const ZoomLevels& levels() const { return levels_; }
+
     /// The sea pattern of `group`, rendered on first use (thread-safe).
     const sea::SeaPattern* sea(std::size_t group) const;
     /// The sea pattern of `group` if it has been rendered already (never
@@ -411,6 +421,9 @@ class Scene {
 
     mutable std::vector<IslandData> objects_;
     mutable std::array<SeaSlot, kGroups> seas_;
+    ZoomLevels levels_ = ZoomLevels::original();
+    /// The sea patterns of the derived levels (index level - built_count()).
+    mutable std::deque<SeaSlot> derived_seas_;
     mutable std::vector<std::unique_ptr<FlowSlot>> flow_slots_;
     mutable std::unique_ptr<FlowBuild> flow_build_;
     mutable std::once_flag flow_build_once_;

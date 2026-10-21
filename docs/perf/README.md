@@ -510,3 +510,93 @@ On the canyon island at group 0, the warm mean per chunk is 50 ms on 1 thread, 5
 | `Single_24` | 2 | 48.0 / 29.7 / 30.4 / **27.6** | 120.5 / 82.0 / 84.0 / **56.4** | 8.84 / 4.02 / 4.15 / **1.99** | 25.8 / 16.8 / 17.1 / **15.3** | 5.29 / 2.83 / 2.96 / **1.24** |
 
 **Result.** Item 2b takes the river stages from 2.7-6.4 ms to 2.0-4.0 ms at 16 threads (1.5-2.1 times less; 4.3 to 1.9 ms on one thread at group 2 of the canyon island) and the chunk mean by 3-14 %, most at group 2 where the river share is largest; the p95 at 16 threads falls most (canyon group 2: 104 to 69 ms, `Single_24` group 2: 84 to 56 ms), because the worst chunks are the river chunks. The 16-thread rows of the item 1 table (never measured idle before): 85-93 ms per chunk at group 0 against 39-51 ms after item 2, i.e. item 2 halved the chunk time also under SMT load, as it did on one thread. The 16-thread chunk time stays 1.7-1.9 times the one-thread time (SMT), as before.
+
+### 2026-10-21 - T3 stage 3 fix 1: the level is composed at scale <= 1 (cost of the finer grid), Windows 11, Ryzen 9 9800X3D, MSVC Release, branch task/T3-continuous-zoom
+
+`bench_frame <game> D_256x256_0045_5B.scp --renderer gpu --styles enhanced --res 1280x800,2560x1440 --groups 0,1,2 --scale-cost group:scale[:filter],...` (new): the grid of zoom group `group` composed for the window and resampled at `scale`, 60 frames after everything shown is built and uploaded; **GPU ms** are timestamps from the start of the first pass to the end of the last (the resample pass included: `GpuFrame::frame_gpu_ms`, new), p50 and max. Enhanced water, canyon island, 16 threads. The old rule composed on the level nearest in ratio (scale 0.69 .. 1.45, worst grid at 0.69); the new one at scale <= 1 (0.45 .. 1: worst grid at 0.95 x tile ratio: 0.475 between groups 0 and 1 and 1 and 2 / 2 and 3 for the ratio 2, 0.452 for 1 and 2). "Chunks shown" are the chunks the grid overlaps, "cached" the chunks in the cache, "missing" and "dropped" the sums over the 60 frames (a visible chunk trimmed would show as missing).
+
+**Adapter 0, NVIDIA GeForce RTX 4090 (Vulkan)**
+
+| window | point | grid | chunks shown | cached | missing | dropped | GPU ms p50 | GPU ms max |
+|---|---|---|---|---|---|---|---|---|
+| 1280x800 | old worst: group 1 at 0.69 | 1920x1216 | 12 | 52 | 0 | 0 | 0.14 | 0.14 |
+| 1280x800 | new worst: group 1 at 0.452 | 2880x1792 | 24 | 69 | 0 | 0 | 0.65 | 2.53 |
+| 1280x800 | new worst: group 2 at 0.475 | 2752x1728 | 24 | 83 | 0 | 0 | 0.68 | 2.46 |
+| 2560x1440 | old worst: group 1 at 0.69 | 3776x2112 | 40 | 92 | 0 | 0 | 0.79 | 2.78 |
+| 2560x1440 | old worst: group 2 at 0.69 | 3776x2112 | 40 | 121 | 0 | 0 | 0.96 | 2.27 |
+| 2560x1440 | new worst: group 1 at 0.452 | 5696x3200 | 84 | 181 | 0 | 0 | 2.16 | 3.57 |
+| 2560x1440 | new worst: group 2 at 0.475 | 5440x3072 | 84 | 200 | 0 | 0 | 2.81 | 4.69 |
+| 2560x1440 | magnified, area: group 0 at 1.414 | 1856x1024 | 12 | 52 | 0 | 0 | 0.13 | 0.13 |
+
+**Adapter 1, AMD Radeon(TM) Graphics, the iGPU (Vulkan)**
+
+| window | point | grid | chunks shown | cached | missing | dropped | GPU ms p50 | GPU ms max |
+|---|---|---|---|---|---|---|---|---|
+| 1280x800 | scale 1, group 0 (reference) | 1344x832 | 12 | 60 | 0 | 0 | 3.55 | 4.26 |
+| 1280x800 | old worst: group 1 at 0.69 | 1920x1216 | 12 | 90 | 0 | 0 | 8.05 | 8.66 |
+| 1280x800 | old worst: group 2 at 0.69 | 1920x1216 | 12 | 72 | 0 | 0 | 9.83 | 10.56 |
+| 1280x800 | new worst: group 1 at 0.452 | 2880x1792 | 24 | 160 | 0 | 0 | 17.37 | 22.39 |
+| 1280x800 | new worst: group 2 at 0.475 | 2752x1728 | 24 | 96 | 0 | 0 | 30.99 | 33.51 |
+| 2560x1440 | scale 1, group 0 (reference) | 2624x1472 | 18 | 88 | 0 | 0 | 13.39 | 14.07 |
+| 2560x1440 | old worst: group 1 at 0.69 | 3776x2112 | 40 | 210 | 0 | 0 | 31.84 | 34.79 |
+| 2560x1440 | old worst: group 2 at 0.69 | 3776x2112 | 40 | 140 | 0 | 0 | 72.14 | 75.97 |
+| 2560x1440 | new worst: group 1 at 0.452 | 5696x3200 | 84 | 378 | 0 | 0 | 101.75 | 105.88 |
+| 2560x1440 | new worst: group 2 at 0.475 | 5440x3072 | 84 | 252 | 0 | 0 | 194.63 | 198.68 |
+| 2560x1440 | magnified, area: group 0 at 1.414 | 1856x1024 | 12 | 60 | 0 | 0 | 7.82 | 8.14 |
+
+Reading: the cost follows the composed pixels (4.9 x at the worst point against 2.2 x before) and, in enhanced water, the sea shading per pixel, which is the iGPU's limit already at scale 1 (3.6 ms at 1280x800, 13.4 ms at 2560x1440). **On the RTX 4090 no frame passes 4.7 ms (the 8 ms line) at either window size; on the Radeon iGPU the worst point breaks it at both sizes (31 ms at 1280x800, 195 ms at 2560x1440 in group 2), while the old rule's worst point already broke it at 2560x1440 (72 ms) and was at 9.8 ms at 1280x800.** No chunk shown was missing or dropped in 60 frames (the cache held 1.5-4.5 x the chunks shown). Group 2 costs most because its sea shading per grid pixel is the dearest. `--zoom-max-upscale 1.45` restores the old grid for weak GPUs; an automatic choice from the measured cost is the follow-up the orchestrator may want (not built).
+
+### 2026-10-21 - T3 stage 3 fix 2: derived chunks are reduced from the cached chunks of the level above, Windows 11, Ryzen 9 9800X3D (16 threads), MSVC Release, branch task/T3-continuous-zoom
+
+`bench_frame <game> <file> --fill-time --derive old|cache --threads n --res 1920x1080` (new, CPU workers only): a 1920x1080 window at group 2 on the island is built until its chunks are cached (the prefetch goes on in the background, as in the viewer), then the same window is shown at levels 3, 4 and 5 in turn, each time starting at once; **ms until every chunk the window shows is cached**. `old` = every derived chunk builds its descendants from nothing and drops them (the first stage 3 build; `FrameRenderer::derive_from_cache = false`), `cache` = reduced from the cached children, the missing ones built and cached. 12 chunks shown at every step.
+
+| scene | threads | rule | group 2 ms | level 3 ms | level 4 ms | level 5 ms | zoom-out total (3 + 4 + 5) |
+|---|---|---|---|---|---|---|---|
+| canyon island | 1 | old | 868 | 1339 | 1588 | 1659 | 4586 |
+| canyon island | 1 | cache | 790 | 731 | 279 | 123 | 1133 |
+| canyon island | 16 | old | 260 | 655 | 728 | 339 | 1722 |
+| canyon island | 16 | cache | 352 | 60 | 52 | 51 | 163 |
+| `Single_24` | 1 | old | 550 | 1135 | 1429 | 1678 | 4242 |
+| `Single_24` | 1 | cache | 546 | 730 | 307 | 184 | 1221 |
+| `Single_24` | 16 | old | 265 | 451 | 497 | 512 | 1460 |
+| `Single_24` | 16 | cache | 236 | 91 | 89 | 13 | 193 |
+
+The first zoom-out is 3.5-4 x faster on one thread and 7.5-10 x on 16 (to 163 / 193 ms in all, the window thread never waits). The time falls with each level because the level above is cached from the step before and the prefetch of the neighbouring levels has built part of the children meanwhile. The cost: the cache holds the intermediate chunks (1311 chunks at level 5 on one thread on the canyon island, 221 on 16 threads where the trim has run: mostly open-sea chunks around the island that the prefetch ring of the derived levels asks for, a few KB each; `cached` is the cache size after the step, builds in all 2227-2548 over the whole run, counting these). Test: a zoom-out sweep from group 2 to level 5 on the canyon island builds no key twice while it stays cached, with workers and without (`render_corpus_test.cpp`).
+
+### 2026-10-21 - T3 stage 3 items (a)-(h): the continuous zoom sweep on both GPUs, Windows 11, Ryzen 9 9800X3D (16 threads), MSVC Release, branch task/T3-continuous-zoom
+
+`bench_frame <game> D_256x256_0045_5B.scp --renderer gpu --limits interactive --derived 5 --groups 0,1,2 --styles enhanced --res <WxH> --zoom-sweep <s>` (new): the continuous zoom as the viewer runs it, canyon island, enhanced water, interactive limits (1 ms upload budget, 250 ms wave fade, pre-created planes by `prewarm_plan`): tile width 42 out to the smallest level (0.5), in to the largest zoom (118.8), out again and back to 42, **6 s per leg** (24 s, 12000 frames at 500 Hz pacing), the target eased (120 ms), a pan of 300 screen pixels per second reversing every leg, the cursor off centre as anchor. Levels 0-2 are built, 3-7 derived. **Window thread ms** = the busy time of `GpuFrame::render` (what the viewer's busy time is made of); **GPU ms** = timestamps from the first pass to the end of the resample pass. Cold start: nothing is cached at the beginning.
+
+**Adapter 0, NVIDIA GeForce RTX 4090 (Vulkan), 1280x800** (frames above 8 ms: **1**, the first frame):
+
+| level | scale | frames | window thread ms p50 / p95 / p99 / max | GPU ms p50 / max | chunks shown (max) | cache MB (max) |
+|---|---|---|---|---|---|---|
+| 0 | 0.48 - 1.39 | 1170 | 0.41 / 0.87 / 2.58 / 2.83 | 0.46 / 3.21 | 28 | 192 |
+| 1 | 0.45 - 1.00 | 1854 | 0.47 / 1.26 / 2.23 / 8.39 | 0.32 / 1.39 | 35 | 613 |
+| 2 | 0.48 - 1.00 | 1693 | 0.49 / 1.65 / 2.80 / 3.88 | 0.31 / 5.47 | 30 | 456 |
+| 3 | 0.48 - 1.00 | 1703 | 0.45 / 0.76 / 1.46 / 2.85 | 0.35 / 2.38 | 30 | 258 |
+| 4 | 0.48 - 1.00 | 1698 | 0.45 / 0.67 / 0.92 / 2.36 | 0.41 / 2.66 | 28 | 243 |
+| 5 | 0.48 - 1.00 | 1701 | 0.46 / 0.73 / 0.98 / 2.48 | 0.42 / 2.30 | 28 | 201 |
+| 6 | 0.48 - 1.00 | 1698 | 0.47 / 0.98 / 1.14 / 2.33 | 0.42 / 2.06 | 28 | 201 |
+| 7 | 0.81 - 1.00 | 483 | 0.36 / 0.50 / 0.72 / 2.34 | 0.33 / 1.46 | 12 | 201 |
+
+**RTX 4090, 2560x1440** (frames above 8 ms: **0**): window thread p50 0.5 - 0.9 ms, p99 1.2 - 3.9 ms, max 7.3 ms (level 2); GPU p50 0.4 - 0.8 ms, max 4.6 ms; 84 chunks shown, cache up to 1124 MB at level 1.
+
+**Adapter 1, AMD Radeon(TM) Graphics, the iGPU (Vulkan), 1280x800**: window thread p50 0.3 - 0.5 ms, p99 0.6 - 2.1 ms, max 2.8 ms at every level but one frame (the first, 22 ms: the start group's sea steps are uploaded in it: `sea 20.15`); GPU p50 15 - 33 ms (enhanced water on the iGPU, 3.6 ms at scale 1 and 8 - 10 times the RTX's at every point: see fix 1), max 117 ms.
+**iGPU, 2560x1440** (0.4 s per leg, 800 frames: the frames take 80 - 100 ms of GPU each, so the zoom is far faster than real time): window thread p50 0.9 - 2.5 ms, p99 2.3 - 22 ms; 3 frames above 8 ms: the first (`sea` 20.7 ms) and two at level 1 whose time is `record` 17.5 - 18.5 ms, the wait of the command recording on a GPU that is 300 ms behind (a frame queue, not window-thread work); GPU p50 77 - 107 ms.
+
+**What the sweep found and what was fixed** (before, window thread max): `sync uploads` 10.9 ms (the owner's log), 16 ms on the iGPU: **a chunk uploaded a plane at a time under the 1 ms budget** (7 frames per chunk instead of 1; the picture is identical); `draws` 28 - 40 ms and `chunks` 8 - 11 ms at the deep levels: **stand-in sources limited to 8 x finer** (a level-7 chunk from level 0 was 16384 spans per frame); `chunks` 11 ms: **the chunk plan looks at 512 keys per frame**; `under` 15 - 36 ms on the iGPU: **offscreen targets made at the largest size seen** (+25 %, reused down to a third, viewport and scissor on the passes; an `under` texture is no longer made every 64 pixels of grid growth) and, found by the validation of that change, **a resample at scale 1 and offset 0 cut the rounded-up grid wrongly** (it was squeezed into the output whole; now cut); `fluid` 12 - 31 ms: **the wave window's new grid is made on the job's thread**; `sea` 22 - 28 ms of the first frame: **the sea patterns are built from the start of `run()`** (item (d); the upload of the start group's steps remains, 5 ms on the RTX 4090, 20 ms on the iGPU, once, in the first frame).
+
+**Pre-created planes (item (h), OQ-093), MB held** (`prewarm_plan`, 3.75 MiB per chunk, the chunks of the largest composed grid plus a ring of one chunk; the viewer's budget is 1 GiB on a discrete adapter, 256 MiB on the iGPU):
+
+| window | chunks wanted | RTX 4090 (1 GiB): chunks / MB | iGPU (256 MiB): chunks / MB |
+|---|---|---|---|
+| 1280x800 | 63 | 63 / 236 | 63 / 236 |
+| 2560x1440 | 150 | 150 / 562 | 68 / 255 |
+| 3840x2160 | 260 | 260 / 975 | 68 / 255 |
+
+A resize recomputes the target (`GpuFrame::set_prewarm_chunks`); the fixed 24 chunks (94 MB) the pre-creation held before were less than a third of the 2560x1440 window's grid.
+
+**Wave cross-fade cost (item (g), OQ-076)**: `Single_24`, group 1, enhanced water, GPU ms of the frame with the weight of the simulated waves held at 1 / 0.5 / 0 (`bench_frame --wave-fade-hold k --scale-cost 1:1.0`): RTX 4090 0.03 / 0.03 / 0.03 ms at 1280x800 and 0.14 / 0.16 / 0.14 ms at 2560x1440; iGPU 1.54 / 1.70 / 1.59 ms and 8.75 / 9.70 / 8.48 ms. The second shading of the sea is paid only during the 250 ms after a window switch: at most +0.02 ms (RTX 4090) and +1 ms (iGPU, 2560x1440) in those frames.
+
+**Not measured / limits**: the iGPU's 2560x1440 sweep is 15 x faster than real time (its GPU time per frame, not the window thread, is the limit); the real-time zoom of the owner on the iGPU at that size is GPU-bound (fix 1 cost table). Frames above 8 ms that remain on the window thread: the first frame (sea upload) of each run; nothing else on the RTX 4090.

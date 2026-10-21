@@ -73,6 +73,47 @@ class ZoomLevels {
     /// Appends a level (the derived levels of stage 3 use this).
     void push_back(const ZoomLevel& level) { levels_.push_back(level); }
 
+    /// The built level that level `i` descends from (itself when built).
+    [[nodiscard]] std::size_t ancestor(std::size_t i) const {
+        while (i < levels_.size() && levels_[i].derived) {
+            i = levels_[i].source;
+        }
+        return i;
+    }
+
+    /// The original levels plus `derived` levels, each the previous one reduced
+    /// 2x (tile size halved), after the last built level.
+    [[nodiscard]] static ZoomLevels with_derived(std::size_t derived) {
+        ZoomLevels l = original();
+        const std::size_t last = l.levels_.size() - 1;
+        for (std::size_t k = 1; k <= derived; ++k) {
+            l.levels_.push_back({l.levels_[last].w, l.levels_[last].h, static_cast<unsigned>(k),
+                                 true, l.levels_.size() - 1});
+        }
+        return l;
+    }
+
+    /// The number of derived levels after which a scene of `scene_w` x `scene_h`
+    /// pixels at the last built level fits a window of `win_w` x `win_h` pixels
+    /// (0 if it already fits there), at most `max_derived`.
+    [[nodiscard]] static std::size_t derived_to_fit(double scene_w, double scene_h, double win_w,
+                                                    double win_h, std::size_t max_derived) {
+        std::size_t k = 0;
+        while (k < max_derived && (scene_w > win_w || scene_h > win_h)) {
+            scene_w /= 2.0;
+            scene_h /= 2.0;
+            ++k;
+        }
+        return k;
+    }
+
+    /// `h_num / h_den` HEIGHT units of lift in pixels at level `i` (Lift::scaled
+    /// of the built ancestor, divided by the reduction).
+    [[nodiscard]] int lift_scaled(const Lift& lift, std::int64_t h_num, std::int64_t h_den,
+                                  std::size_t i) const {
+        return lift.scaled(h_num, h_den << levels_[i].shift, ancestor(i));
+    }
+
   private:
     static double scaled(int v, const ZoomLevel& l) {
         return static_cast<double>(v) / static_cast<double>(std::uint64_t{1} << l.shift);

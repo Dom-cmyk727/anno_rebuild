@@ -31,6 +31,7 @@
 
 #include <anno/render/chunk_reduce.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/render/resample.hpp>
 #include <anno/render/scene.hpp>
 #include <anno/render/wgpu.hpp>
 
@@ -218,6 +219,13 @@ struct GpuLimits {
     /// animation time), so a swap is a short dissolve, not a pop. About the time an eye needs to
     /// follow a change without it reading as a jump; 0 = swap at once (headless renders, tests).
     std::uint64_t chunk_fade_ms = 0;
+    /// Enhanced water with the wave simulation: after the simulation switches to a new
+    /// window (the first one, another zoom group or size) the sea is shaded with the
+    /// analytic waves and with the simulated ones and the two are mixed, the weight of
+    /// the simulation rising linearly from 0 to 1 over this many milliseconds of the fade
+    /// clock (OQ-076): the new window starts at rest and the waves would otherwise pop in.
+    /// The sea is shaded twice meanwhile (README: cost). 0 = no fade, as before.
+    std::uint64_t wave_fade_ms = 0;
     /// The limits for an interactive window: uploads and wave simulation
     /// setup are spread over frames (upload_budget_ms 1.0, background_fluid).
     [[nodiscard]] static GpuLimits interactive() {
@@ -227,6 +235,7 @@ struct GpuLimits {
         l.prewarm_chunks = 24;
         l.prefetch_chunks = 96;
         l.chunk_fade_ms = 150;
+        l.wave_fade_ms = 250;
         return l;
     }
     /// A visible chunk that is not on the GPU yet (still being built, or waiting
@@ -294,6 +303,36 @@ struct GpuLimits {
     bool gpu_timing = false;
 };
 
+/// How many chunks' worth of texture planes to pre-create for a window of `w` x `h` pixels
+/// (GpuLimits::prewarm_chunks, OQ-093): the chunks of the largest composed grid a window
+/// shows, plus a ring of one chunk around it, instead of a fixed number. The grid is the
+/// window over the smallest scale the continuous zoom composes at, 0.95 / 2.1 (iso.md
+/// "Choosing the level": at most 2.21 x the window per axis), rounded up to
+/// kResampleGridStep; a view of g pixels covers at most ceil(g / kChunk) + 1 chunks per axis.
+/// A chunk's planes are the five formats of the compositor, 512 x 512 x (4 + 4 + 4 + 2 + 1)
+/// bytes = 3.75 MiB. `chunks` is the wanted number limited to what `idle_plane_budget_mb`
+/// holds (the device memory idle planes may take at most: GpuLimits::idle_plane_budget_mb,
+/// whose reason is there); `mb` what `chunks` take.
+struct PrewarmPlan {
+    std::size_t wanted = 0, chunks = 0;
+    double mb = 0;
+};
+inline constexpr double kMaxGridRatio = 2.1 / 0.95;
+inline constexpr std::size_t kChunkPlaneBytes = std::size_t{512} * 512 * (4 + 4 + 4 + 2 + 1);
+[[nodiscard]] inline PrewarmPlan prewarm_plan(int w, int h,
+                                              std::size_t idle_plane_budget_mb = 256) {
+    auto per_axis = [](int v) {
+        const int g = (static_cast<int>(std::ceil(v * kMaxGridRatio)) + 2 + kResampleGridStep - 1) /
+                      kResampleGridStep * kResampleGridStep;
+        return static_cast<std::size_t>((g + 511) / 512 + 1 + 2); // + the ring on both sides
+    };
+    PrewarmPlan p;
+    p.wanted = per_axis(w) * per_axis(h);
+    p.chunks = std::min(p.wanted, (idle_plane_budget_mb << 20) / kChunkPlaneBytes);
+    p.mb = static_cast<double>(p.chunks * kChunkPlaneBytes) / (1024.0 * 1024.0);
+    return p;
+}
+
 /// Values of the frame uniform (struct Frame in gpu.wgsl).
 struct FrameUniform {
     Rect view;
@@ -314,6 +353,9 @@ struct FrameUniform {
     /// and the pixels per HEIGHT unit of the lift (RiverView::lambda).
     bool river_flow = false;
     float river_lambda = 0;
+    /// The weight of the simulated waves against the analytic ones (1 = only the
+    /// simulation, GpuLimits::wave_fade_ms).
+    float fluid_fade = 1;
 };
 /// Bytes of the frame uniform (96, little-endian, WGSL uniform layout).
 std::vector<std::uint8_t> frame_uniform_bytes(const FrameUniform& f);
@@ -355,56 +397,14 @@ struct RiverCost {
 /// reference nothing does: the answer is Low, never the dearest tier.
 RiverQuality choose_river_quality(const std::vector<RiverCost>& costs, double gate_ms_per_mpx);
 
-/// How a resample pass reads the composed scene grid (T3, docs/render/iso.md
-/// "Continuous zoom").
-enum class ResampleFilter : std::uint32_t {
-    /// The nearest scene pixel: sharp when magnifying (the pixel-art look).
-    Nearest = 0,
-    /// The four nearest scene pixels weighted by the position between them.
-    Bilinear = 1,
-    /// The mean of ceil(1 / scale) x ceil(1 / scale) nearest samples spread over
-    /// the output pixel's footprint: for scales below 1 (minifying), where
-    /// nearest would skip scene pixels and shimmer.
-    Box = 2,
-};
-
-/// A continuous zoom: the picture is composed on the scene grid of a zoom
-/// group, at one scene pixel per grid pixel, exactly as without a scale, and
-/// one extra pass resamples it onto the target (`scale` target pixels per grid
-/// pixel). The compositor, the chunks, the sea and the waves therefore never
-/// see a fractional scale (their exactness tests keep their meaning); a scale
-/// of 1 at offset 0 skips the pass altogether.
-struct Resample {
-    /// Target pixels per scene-grid pixel (> 0).
-    double scale = 1.0;
-    /// Where the target's left and top edge lie in the composed grid, in grid
-    /// pixels from the view's origin (>= 0, usually < 1: the fraction of the
-    /// camera position the integer view origin dropped).
-    double offset_x = 0.0, offset_y = 0.0;
-    ResampleFilter filter = ResampleFilter::Nearest;
-    [[nodiscard]] bool identity() const {
-        return scale == 1.0 && offset_x == 0.0 && offset_y == 0.0;
-    }
-};
-
-/// The scene-grid view and the Resample for an output of `out_w` x `out_h` pixels
-/// centred on the grid point (cx, cy) at `scale`: the integer rectangle that
-/// covers what the output shows (plus one pixel for the filters' reach), and the
-/// offset of the output's top-left corner in it.
-struct ResampledView {
-    Rect view;
-    Resample resample;
-};
-/// The grid is rounded up to a multiple of kResampleGridStep in each direction so
-/// that its size (and so the size of the textures composed into) stays the same
-/// while the camera or the scale moves a little. `scale` is limited to
-/// [1 / 64, 64] (a Box filter undersamples below 1 / 8 anyway) and raised when
-/// the grid would not fit `max_grid` pixels (default: the 8192 every WebGPU
-/// device offers as maxTextureDimension2D), so a very large window zooms in a
-/// little more than asked instead of failing to create its textures.
-inline constexpr int kResampleGridStep = 64;
-ResampledView resampled_view(double cx, double cy, std::uint32_t out_w, std::uint32_t out_h,
-                             double scale, ResampleFilter filter, std::uint32_t max_grid = 8192);
+// The resample pass's types (ResampleFilter, Resample, resampled_view, resample_filter_for)
+// live in resample.hpp, with the CPU model of the shader; named here as before.
+using render::kResampleGridStep;
+using render::Resample;
+using render::resample_filter_for;
+using render::resampled_view;
+using render::ResampledView;
+using render::ResampleFilter;
 
 class GpuFrame {
   public:
@@ -468,6 +468,10 @@ class GpuFrame {
     /// GpuLimits::gpu_timing and a device with timestamp queries; waits for
     /// the GPU); nullopt otherwise.
     std::optional<double> sea_pass_ms();
+    /// GPU time of the whole frame of the render() that the last sea_pass_ms()
+    /// read: from the start of its first pass to the end of its last one (the
+    /// resample pass of a continuous zoom included). nullopt without a reading.
+    [[nodiscard]] std::optional<double> frame_gpu_ms() const;
     /// An offscreen target of `w × h` in the frame's format that can be
     /// read back.
     std::pair<Texture, TextureView> offscreen_target(std::uint32_t w, std::uint32_t h) const;
@@ -489,6 +493,11 @@ class GpuFrame {
     void set_fade_clock(std::function<std::uint64_t()> clock);
     /// Pre-created chunk planes waiting for uploads (GpuLimits::prewarm_chunks).
     [[nodiscard]] std::size_t warm_planes_ready() const;
+    /// Changes the number of chunks' worth of planes the background pre-creation keeps
+    /// ready (GpuLimits::prewarm_chunks), e.g. after a window resize (prewarm_plan);
+    /// starts the pre-creation if the compositor was made without it, and 0 stops
+    /// refilling. Planes already made stay in use.
+    void set_prewarm_chunks(std::size_t chunks);
     /// Errors of the device so far (Context::errors): uncaptured ones and
     /// command buffers dropped because recording them failed (render()
     /// then draws nothing).

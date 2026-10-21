@@ -80,6 +80,9 @@ struct GpuBackend {
     /// Written as stored: a non-sRGB view of the surface texture.
     WGPUTextureFormat view_format = WGPUTextureFormat_Undefined;
     std::uint32_t width = 0, height = 0;
+    /// The idle plane budget of the pre-creation when it is on (0 = off): a resize
+    /// recomputes the number of chunks to keep ready from the window's size.
+    std::size_t prewarm_budget_mb = 0;
     std::unique_ptr<gpu::GpuFrame> frame;
 
     GpuBackend() = default;
@@ -190,14 +193,18 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
             std::fprintf(stderr, "ANNO_VIEW_STAND_INS=%s not known (on, off)\n", s);
         }
     }
-    // The pre-created planes cover a view's worth of chunks: the window's size in
-    // chunks (the same number at every zoom group, a chunk being kChunk screen
-    // pixels), never fewer than the interactive default. A later resize is not
-    // followed (OQ-093).
+    // The pre-created planes cover the largest composed grid of the window and a ring
+    // around it (gpu::prewarm_plan, OQ-093), bounded by the idle plane budget; a resize
+    // recomputes the number (draw_gpu).
     if (limits.prewarm_chunks > 0) {
-        limits.prewarm_chunks = std::max(
-            limits.prewarm_chunks,
-            render::visible_chunks({0, 0, static_cast<int>(w), static_cast<int>(h)}).size());
+        // The idle planes' budget (GpuLimits::idle_plane_budget_mb) is the VRAM the
+        // pre-creation may take: a discrete adapter has memory of its own (4 GiB and more:
+        // 1 GiB holds the 260 chunks a 3840 x 2160 window wants), an integrated one shares
+        // the system's, where 256 MiB stay.
+        if (b->ctx.adapter_type == WGPUAdapterType_DiscreteGPU) {
+            limits.idle_plane_budget_mb = std::max<std::size_t>(limits.idle_plane_budget_mb, 1024);
+        }
+        limits.prewarm_chunks = gpu::prewarm_plan(w, h, limits.idle_plane_budget_mb).chunks;
     }
     // The background pre-creation of chunk texture planes (GpuLimits::prewarm_chunks);
     // ANNO_VIEW_PREWARM=off creates them in the frame as before, for comparing.
@@ -209,6 +216,7 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
             std::fprintf(stderr, "ANNO_VIEW_PREWARM=%s not known (on, off)\n", s);
         }
     }
+    b->prewarm_budget_mb = limits.prewarm_chunks > 0 ? limits.idle_plane_budget_mb : 0;
     // The cost tier of the river flow shading: automatic (High on a discrete GPU,
     // measured on others) unless ANNO_RIVER_QUALITY says low, medium or high.
     if (const char* q = std::getenv("ANNO_RIVER_QUALITY"); q != nullptr && *q != 0) {
@@ -233,25 +241,27 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
 #endif
 
 #ifdef ANNO_VIEWER_GPU
-/// How the resample pass reads the composed grid at scale `s`: the mean of the
-/// covered pixels when reducing (nearest would skip pixels and shimmer), the
-/// nearest pixel when magnifying (the pixel-art look, as the stand-ins).
-/// ANNO_VIEW_RESAMPLE=nearest|bilinear|box forces one, for the owner's A/B.
+/// How the resample pass reads the composed grid at scale `s` (gpu::resample_filter_for):
+/// the mean of the covered pixels when reducing, bilinear when magnifying (the owner's
+/// choice at the stage 3 fix 1 look; nearest doubles every second to seventh row and
+/// column at a fractional scale). ANNO_VIEW_RESAMPLE=nearest|bilinear|box|area forces
+/// one, for the owner's A/B (area below scale 1 still becomes box).
 gpu::ResampleFilter resample_filter(double s) {
-    static const char* forced = std::getenv("ANNO_VIEW_RESAMPLE");
-    if (forced != nullptr) {
-        const std::string f = forced;
+    static const char* env = std::getenv("ANNO_VIEW_RESAMPLE");
+    std::optional<gpu::ResampleFilter> forced;
+    if (env != nullptr) {
+        const std::string f = env;
         if (f == "nearest") {
-            return gpu::ResampleFilter::Nearest;
-        }
-        if (f == "bilinear") {
-            return gpu::ResampleFilter::Bilinear;
-        }
-        if (f == "box") {
-            return gpu::ResampleFilter::Box;
+            forced = gpu::ResampleFilter::Nearest;
+        } else if (f == "bilinear") {
+            forced = gpu::ResampleFilter::Bilinear;
+        } else if (f == "box") {
+            forced = gpu::ResampleFilter::Box;
+        } else if (f == "area") {
+            forced = gpu::ResampleFilter::Area;
         }
     }
-    return s < 1.0 ? gpu::ResampleFilter::Box : gpu::ResampleFilter::Nearest;
+    return gpu::resample_filter_for(s, forced);
 }
 #endif
 
@@ -270,7 +280,24 @@ class Viewer {
         zoom_now_ = zoom_target_ = levels().tile_w(group);
     }
 
-    const render::ZoomLevels& levels() const { return frames_.levels(); }
+    const render::ZoomLevels& levels() const { return scene_.levels(); }
+
+    /// The smallest tile width the continuous zoom may show: --min-zoom, else the
+    /// width at which the whole scene fits the window, but never above group 2's
+    /// (the original's farthest view stays reachable on a small scene).
+    [[nodiscard]] double zoom_min_tile() const {
+        if (zoom_opt_.min_zoom > 0.0) {
+            return zoom_opt_.min_zoom;
+        }
+        const auto b = scene_.bounds(levels().built_count() - 1);
+        if (!b || b->w <= 0 || b->h <= 0) {
+            return 0.0;
+        }
+        const auto [w, h] = view_size();
+        const double last = levels().tile_w(levels().built_count() - 1);
+        return std::min(
+            last, last * std::min(w / static_cast<double>(b->w), h / static_cast<double>(b->h)));
+    }
 
     std::string run();
 
@@ -319,6 +346,8 @@ class Viewer {
     std::size_t group_;
     /// Scene screen position (at group_) shown in the window centre.
     double cam_x_ = 0, cam_y_ = 0;
+    /// The part of the camera the continuous zoom's anchoring moved (ZoomState::shift_x).
+    double zoom_shift_x_ = 0, zoom_shift_y_ = 0;
     ZoomOptions zoom_opt_;
     /// Continuous zoom is on (asked for, and the GPU renderer runs).
     bool continuous_ = false;
@@ -405,6 +434,27 @@ class Viewer {
 };
 
 std::string Viewer::run() {
+    // Sea patterns of all zoom levels, built off the window thread, the level shown first
+    // and from the very start: opening the window and the GPU context take hundreds of
+    // milliseconds, so the first frame finds the pattern it draws built (it used to build
+    // it itself: 20-28 ms in the owner's log, "sea 27.96").
+    std::vector<std::thread> seas;
+    struct JoinAtExit {
+        std::vector<std::thread>& threads;
+        ~JoinAtExit() {
+            for (auto& t : threads) {
+                if (t.joinable()) {
+                    t.join();
+                }
+            }
+        }
+    } join_seas{seas};
+    seas.emplace_back([this] { scene_.sea(group_); });
+    for (std::size_t g = 0; g < levels().size(); ++g) {
+        if (g != group_) {
+            seas.emplace_back([this, g] { scene_.sea(g); });
+        }
+    }
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         return std::string("SDL_Init: ") + SDL_GetError();
     }
@@ -502,11 +552,6 @@ std::string Viewer::run() {
     }
     const unsigned hw =
         (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);
-    // Sea patterns of all zoom groups, built off the window thread.
-    std::vector<std::thread> seas;
-    for (std::size_t g = 0; g < levels().built_count(); ++g) {
-        seas.emplace_back([this, g] { scene_.sea(g); });
-    }
     // Chunk builders use half the cores; frames use all of them.
     // Queue the river flows now (low priority threads): chunks that are built
     // before a flow is ready show the legacy river look and are rebuilt.
@@ -757,7 +802,10 @@ void Viewer::clamp() {
 
 void Viewer::zoom(int step, std::optional<std::pair<double, double>> anchor) {
     const auto next = static_cast<std::ptrdiff_t>(group_) + step;
-    if (next < 0 || next >= static_cast<std::ptrdiff_t>(levels().size())) {
+    // The stepped zoom is the original's three groups; the derived levels are for
+    // the continuous zoom.
+    const auto limit = continuous_ ? levels().size() : levels().built_count();
+    if (next < 0 || next >= static_cast<std::ptrdiff_t>(limit)) {
         return;
     }
     const auto g = static_cast<std::size_t>(next);
@@ -779,6 +827,8 @@ void Viewer::zoom(int step, std::optional<std::pair<double, double>> anchor) {
     const double px = (cam_x_ + dx) * rw, py = (cam_y_ + dy) * rh;
     cam_x_ = px - dx;
     cam_y_ = py - dy;
+    zoom_shift_x_ *= rw;
+    zoom_shift_y_ *= rh;
     group_ = g;
     // A stepped zoom in the continuous mode (the test script, a pending step)
     // lands on the group's own scale.
@@ -797,7 +847,7 @@ void Viewer::zoom_by(double factor, std::optional<std::pair<double, double>> anc
     const auto [w, h] = view_size();
     zoom_anchor_ =
         anchor ? std::pair{anchor->first - w / 2.0, anchor->second - h / 2.0} : std::pair{0.0, 0.0};
-    zoom_target_ = zoom_target_after(zoom_target_, factor, levels());
+    zoom_target_ = zoom_target_after(zoom_target_, factor, levels(), zoom_min_tile());
     dirty_ = true;
 }
 
@@ -821,29 +871,29 @@ void Viewer::zoom_tick() {
     s.anchor_y = zoom_anchor_.second;
     s.cam_x = cam_x_;
     s.cam_y = cam_y_;
+    s.shift_x = zoom_shift_x_;
+    s.shift_y = zoom_shift_y_;
     s.group = group_;
     const std::size_t before = group_;
     s = zoom_advance(
-        s, dt_ms, zoom_opt_.ease_ms, [this](std::size_t g) { return group_ready(g); }, levels());
+        s, dt_ms, zoom_opt_.ease_ms, [this](std::size_t g) { return group_ready(g); }, levels(),
+        zoom_opt_.max_upscale);
     zoom_now_ = s.now;
     cam_x_ = s.cam_x;
     cam_y_ = s.cam_y;
+    zoom_shift_x_ = s.shift_x;
+    zoom_shift_y_ = s.shift_y;
     group_ = s.group;
     if (group_ != before) {
         update_title();
     }
     clamp();
-    // Keep drawing while a nearer group is not ready yet (its sea pattern is still
-    // being built): the group is taken in the first frame it is.
-    std::size_t nearest = group_;
-    for (std::size_t g = 0; g < levels().size(); ++g) {
-        if (std::abs(std::log(zoom_now_ / levels().tile_w(g))) * kGroupSwitchBias <
-            std::abs(std::log(zoom_now_ / levels().tile_w(nearest)))) {
-            nearest = g;
-        }
-    }
+    // Keep drawing while a better level is not ready yet (its sea pattern is still
+    // being built): it is taken in the first frame it is.
+    const std::size_t wanted = zoom_level_for(
+        zoom_now_, group_, [](std::size_t) { return true; }, levels(), zoom_opt_.max_upscale);
     dirty_ = true;
-    if (zoom_now_ == zoom_target_ && nearest == group_) {
+    if (zoom_now_ == zoom_target_ && wanted == group_) {
         dirty_ = false;
     }
 }
@@ -904,6 +954,8 @@ void Viewer::draw() {
     if (gpu_) {
         if (continuous_) {
             zoom_tick();
+            // The margin's velocity follows the pan, not the zoom's own camera move.
+            frames_.motion_centre = std::pair{cam_x_ - zoom_shift_x_, cam_y_ - zoom_shift_y_};
             const double s = scale();
             const auto rv =
                 gpu::resampled_view(cam_x_, cam_y_, static_cast<std::uint32_t>(w),
@@ -931,6 +983,11 @@ void Viewer::draw_gpu(render::Rect view, const gpu::Resample* resample, int out_
     if (g.width != w || g.height != h || reconfigure_) {
         g.configure(w, h);
         reconfigure_ = false;
+        if (g.prewarm_budget_mb > 0 && g.frame) {
+            g.frame->set_prewarm_chunks(
+                gpu::prewarm_plan(static_cast<int>(w), static_cast<int>(h), g.prewarm_budget_mb)
+                    .chunks);
+        }
     }
     WGPUSurfaceTexture st = WGPU_SURFACE_TEXTURE_INIT;
     const auto acquire_start = Clock::now();

@@ -10,6 +10,7 @@ add_library(anno_render
   src/iso.cpp
   src/profile.cpp
   src/residency.cpp
+  src/resample.cpp
   src/river.cpp
   src/river_lattice.cpp
   src/river_solve.cpp

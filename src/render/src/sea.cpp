@@ -162,6 +162,53 @@ std::array<float, 4> SeaPattern::smoothed(std::span<const Px> img, int sx, int s
     return sum;
 }
 
+SeaPattern SeaPattern::reduced(const SeaPattern& src) {
+    SeaPattern out;
+    out.width = (src.width + 1) / 2;
+    out.height = (src.height + 1) / 2;
+    out.step_ms = src.step_ms;
+    // round(sum / count) to nearest, ties up.
+    auto mean = [](std::uint32_t sum, std::uint32_t count) {
+        return (2U * sum + count) / (2U * count);
+    };
+    const auto n = static_cast<std::size_t>(out.width) * static_cast<std::size_t>(out.height);
+    out.steps_.resize(src.steps_.size());
+    for (std::size_t k = 0; k < src.steps_.size(); ++k) {
+        out.steps_[k].sprite.resize(n);
+        out.steps_[k].filled.resize(n);
+        for (int y = 0; y < out.height; ++y) {
+            for (int x = 0; x < out.width; ++x) {
+                const auto d = static_cast<std::size_t>(y * out.width + x);
+                std::uint32_t a = 0, r = 0, g = 0, b = 0;
+                std::array<std::uint32_t, 3> f{};
+                for (int j = 0; j < 2; ++j) {
+                    for (int i = 0; i < 2; ++i) {
+                        const std::size_t s = src.index(2 * x + i, 2 * y + j);
+                        const Px& p = src.steps_[k].sprite[s];
+                        a += p[3];
+                        r += std::uint32_t{p[0]} * p[3];
+                        g += std::uint32_t{p[1]} * p[3];
+                        b += std::uint32_t{p[2]} * p[3];
+                        const Px& q = src.steps_[k].filled[s];
+                        for (std::size_t c = 0; c < 3; ++c) {
+                            f[c] += q[c];
+                        }
+                    }
+                }
+                out.steps_[k].sprite[d] = a == 0 ? Px{0, 0, 0, 0}
+                                                 : Px{static_cast<std::uint8_t>(mean(r, a)),
+                                                      static_cast<std::uint8_t>(mean(g, a)),
+                                                      static_cast<std::uint8_t>(mean(b, a)),
+                                                      static_cast<std::uint8_t>(mean(a, 4))};
+                out.steps_[k].filled[d] = Px{static_cast<std::uint8_t>(mean(f[0], 4)),
+                                             static_cast<std::uint8_t>(mean(f[1], 4)),
+                                             static_cast<std::uint8_t>(mean(f[2], 4)), 255};
+            }
+        }
+    }
+    return out;
+}
+
 std::size_t SeaPattern::index(int sx, int sy) const {
     return static_cast<std::size_t>(rem_euclid(sy, height) * width + rem_euclid(sx, width));
 }

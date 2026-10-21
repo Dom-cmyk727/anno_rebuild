@@ -1148,6 +1148,16 @@ TEST_CASE(
     scene.set_levels(render::ZoomLevels::with_derived(2));
     REQUIRE(scene.levels().size() == 5);
     const render::Px water = scene.textures.water();
+    if (const auto* p2 = scene.sea(2); p2 != nullptr) {
+        const auto* p3 = scene.sea(3);
+        REQUIRE(p3 != nullptr);
+        MESSAGE("sea pattern period at group 2: " << p2->width << " x " << p2->height
+                                                  << ", level 3: " << p3->width << " x "
+                                                  << p3->height);
+        CHECK(p3->width == (p2->width + 1) / 2);
+        CHECK(p3->height == (p2->height + 1) / 2);
+        CHECK(p3->step_count() == p2->step_count());
+    }
     const auto b = *scene.bounds(2);
     const int cx0 = render::div_euclid(b.x + b.w / 2, render::kChunk) & ~3,
               cy0 = render::div_euclid(b.y + b.h / 2, render::kChunk) & ~3;

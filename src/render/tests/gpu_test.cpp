@@ -4976,3 +4976,51 @@ TEST_CASE("offscreen targets shrink after the views have been small for offscree
     }
     CHECK(k.offscreen_bytes() == kept_bytes);
 }
+
+TEST_CASE("the scene grid is kept at the window floor when idle, never dropped") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    gpu::GpuLimits limits;
+    limits.offscreen_shrink_ms = 100;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    render::FrameRenderer fr(1, false);
+    // A resampled frame: window 1600 x 1000 composed at scale 0.5, so the grid is ~3200 x 2000.
+    const std::uint32_t win_w = 2560, win_h = 1440;
+    // The smallest composed scale (iso.md "Choosing the level"): the grid is 2.21 x the window.
+    const auto rv =
+        gpu::resampled_view(4000.0, 3000.0, win_w, win_h, 0.95 / 2.1, gpu::ResampleFilter::Box);
+    auto target = g.offscreen_target(win_w, win_h);
+    auto resampled = [&]() {
+        return g.render(fr, scene, rv.view, 2, 0, render::WaterStyle::Original, target.second.get(),
+                        &rv.resample);
+    };
+    auto window_only = [&]() {
+        auto t = g.offscreen_target(win_w, win_h);
+        return g.render(fr, scene,
+                        render::Rect{0, 0, static_cast<int>(win_w), static_cast<int>(win_h)}, 2, 0,
+                        render::WaterStyle::Original, t.second.get(), nullptr);
+    };
+    resampled();
+    const std::size_t big = g.offscreen_bytes();
+    CHECK(big > std::size_t{win_w} * win_h * 10); // a grid larger than the window, both targets
+    // Window-only frames: the grid shrinks after the timer, but only to the window floor (+25 %).
+    const std::size_t floor = std::size_t{win_w} * 5 / 4 * (win_h * 5 / 4) * (6 + 4);
+    const auto start = std::chrono::steady_clock::now();
+    while (g.offscreen_bytes() != floor &&
+           std::chrono::steady_clock::now() - start < std::chrono::seconds(10)) {
+        window_only();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    CHECK(g.offscreen_bytes() == floor); // the scene grid is still there, at the window floor
+    CHECK(floor < big);
+    // Re-grow: the first resampled frame after the idle spell builds the grid again.
+    resampled();
+    CHECK(g.offscreen_bytes() == big);
+    CHECK(g.errors() == 0);
+}

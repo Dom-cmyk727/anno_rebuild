@@ -743,26 +743,40 @@ struct GpuFrame::Impl {
 
     /// The offscreen scene grid of a resampled frame, `w` x `h` in the frame's
     /// format (the compositor's last pass writes it, the resample pass reads it).
-    void ensure_scene(std::uint32_t w, std::uint32_t h) {
-        if (w == 0) {
-            // Not resampling: the grid is given back once it has been idle for the shrink time.
-            if (scene_t && shrink_due(scene_size, 0, 0, scene_small)) {
-                scene_t = {};
-                scene_v = {};
-                scene_size = {0, 0};
-            }
+    /// Keeps the resample's scene grid: `need` is the composed grid when resampling (0 when
+    /// not), `win` the window's output size. The grid grows at once to hold `need`; once made it
+    /// is never dropped, only shrunk, and never below `win` (+25%), so the first zoom-out after
+    /// an idle spell re-grows the grid from the window and not from nothing (OQ-099; the re-grow
+    /// cost is in docs/perf/README.md). A shrink waits for GpuLimits::offscreen_shrink_ms of the
+    /// grid sitting above three times the needed area.
+    void ensure_scene(std::uint32_t need_w, std::uint32_t need_h, std::uint32_t win_w,
+                      std::uint32_t win_h) {
+        if (need_w > scene_size.first || need_h > scene_size.second) {
+            // Too small for this frame's grid: grow now (a quarter more, room for a wider zoom).
+            scene_small.reset();
+            const std::uint32_t gw = std::max(need_w, win_w) * 5 / 4;
+            const std::uint32_t gh = std::max(need_h, win_h) * 5 / 4;
+            scene_t =
+                make_texture(dev(), "scene grid", format, gw, gh, 1,
+                             WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding);
+            scene_v = make_view(scene_t.get(), false);
+            scene_size = {gw, gh};
             return;
         }
-        if (scene_t && fits(scene_size, w, h) && !shrink_due(scene_size, w, h, scene_small)) {
+        if (!scene_t) {
+            return; // never resampled: nothing to keep
+        }
+        // Fits. Shrink only after the idle timer, and only to the window floor (+25%).
+        const std::uint32_t want_w = std::max(need_w, win_w);
+        const std::uint32_t want_h = std::max(need_h, win_h);
+        if (!shrink_due(scene_size, want_w, want_h, scene_small)) {
             return;
         }
-        scene_small.reset();
-        w += w / 4;
-        h += h / 4;
-        scene_t = make_texture(dev(), "scene grid", format, w, h, 1,
+        const std::uint32_t sw = want_w * 5 / 4, sh = want_h * 5 / 4;
+        scene_t = make_texture(dev(), "scene grid", format, sw, sh, 1,
                                WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding);
         scene_v = make_view(scene_t.get(), false);
-        scene_size = {w, h};
+        scene_size = {sw, sh};
     }
 
     /// Uploads up to `max` missing animation steps of `p` as the pattern of
@@ -2146,7 +2160,10 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     auto t = Clock::now();
     m.ensure_under(w, h);
     const bool resampling = resample != nullptr && !resample->is_noop_for(view.w, view.h);
-    m.ensure_scene(resampling ? w : 0, resampling ? h : 0);
+    // The window's output size: the resample target when resampling, else the view (= the grid).
+    const std::uint32_t win_w = resampling && resample->out_w != 0 ? resample->out_w : w;
+    const std::uint32_t win_h = resampling && resample->out_h != 0 ? resample->out_h : h;
+    m.ensure_scene(resampling ? w : 0, resampling ? h : 0, win_w, win_h);
     stats.under_ms = lap();
     m.ensure_sea(scene, group);
     stats.sea_ms = lap();

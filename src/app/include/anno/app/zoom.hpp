@@ -8,6 +8,7 @@
 #include <functional>
 
 #include <anno/render/iso.hpp>
+#include <anno/render/zoom_levels.hpp>
 
 namespace anno::app {
 
@@ -29,10 +30,11 @@ inline constexpr double kZoomSnap = 1e-4;
 /// The wanted tile width after a wheel notch (or key) of `factor`, kept inside
 /// the range: from the last group's tile width / kZoomEndFactor to the first
 /// group's * kZoomEndFactor.
-[[nodiscard]] inline double zoom_target_after(double target, double factor) {
-    return std::clamp(target * factor,
-                      static_cast<double>(render::kTile[render::kGroups - 1].w) / kZoomEndFactor,
-                      static_cast<double>(render::kTile[0].w) * kZoomEndFactor);
+[[nodiscard]] inline double
+zoom_target_after(double target, double factor,
+                  const render::ZoomLevels& levels = render::ZoomLevels::original()) {
+    return std::clamp(target * factor, levels.tile_w(levels.size() - 1) / kZoomEndFactor,
+                      levels.tile_w(0) * kZoomEndFactor);
 }
 
 /// The state of a continuous zoom: the tile width in screen pixels shown (`now`)
@@ -47,8 +49,9 @@ struct ZoomState {
 };
 
 /// Screen pixels per scene pixel of the group shown.
-[[nodiscard]] inline double zoom_scale(const ZoomState& s) {
-    return s.now / static_cast<double>(render::kTile[s.group].w);
+[[nodiscard]] inline double
+zoom_scale(const ZoomState& s, const render::ZoomLevels& levels = render::ZoomLevels::original()) {
+    return s.now / levels.tile_w(s.group);
 }
 
 /// Advances the zoom by `dt_ms`: eases `now` towards `target` (in the logarithm:
@@ -58,8 +61,10 @@ struct ZoomState {
 /// `ready(group)`; the camera is converted by the tile ratio as Viewer::zoom
 /// does. The group is chosen also when the zoom is at rest, so a group that
 /// became ready later is taken then.
-[[nodiscard]] inline ZoomState zoom_advance(ZoomState s, double dt_ms, unsigned ease_ms,
-                                            const std::function<bool(std::size_t)>& ready) {
+[[nodiscard]] inline ZoomState
+zoom_advance(ZoomState s, double dt_ms, unsigned ease_ms,
+             const std::function<bool(std::size_t)>& ready,
+             const render::ZoomLevels& levels = render::ZoomLevels::original()) {
     if (s.now != s.target) {
         const double remaining = std::log(s.target / s.now);
         double next = s.target;
@@ -69,25 +74,22 @@ struct ZoomState {
         }
         // The point under the anchor stays where it is on the screen: p = cam + d / s
         // is fixed, so the camera moves by d (1 / s_old - 1 / s_new).
-        const double tile = static_cast<double>(render::kTile[s.group].w);
+        const double tile = levels.tile_w(s.group);
         const double s_old = s.now / tile, s_new = next / tile;
         s.cam_x += s.anchor_x * (1.0 / s_old - 1.0 / s_new);
         s.cam_y += s.anchor_y * (1.0 / s_old - 1.0 / s_new);
         s.now = next;
     }
-    auto distance = [&](std::size_t g) {
-        return std::abs(std::log(s.now / static_cast<double>(render::kTile[g].w)));
-    };
+    auto distance = [&](std::size_t g) { return std::abs(std::log(s.now / levels.tile_w(g))); };
     std::size_t best = s.group;
-    for (std::size_t g = 0; g < render::kGroups; ++g) {
+    for (std::size_t g = 0; g < levels.size(); ++g) {
         if (g != s.group && distance(g) * kGroupSwitchBias < distance(best) && ready(g)) {
             best = g;
         }
     }
     if (best != s.group) {
-        const auto ot = render::kTile[s.group], nt = render::kTile[best];
-        s.cam_x = s.cam_x * nt.w / ot.w;
-        s.cam_y = s.cam_y * nt.h / ot.h;
+        s.cam_x = s.cam_x * levels.tile_w(best) / levels.tile_w(s.group);
+        s.cam_y = s.cam_y * levels.tile_h(best) / levels.tile_h(s.group);
         s.group = best;
     }
     return s;

@@ -34,6 +34,7 @@
 #include <anno/render/iso.hpp>
 #include <anno/render/rect.hpp>
 #include <anno/render/scene.hpp>
+#include <anno/render/zoom_levels.hpp>
 
 namespace anno::render {
 
@@ -161,6 +162,10 @@ class FrameRenderer {
     /// compositor, which draws them each frame); render() then omits them.
     explicit FrameRenderer(std::size_t threads, bool ships_in_chunks = true);
     [[nodiscard]] bool ships_in_chunks() const { return ships_; }
+    /// The zoom levels the chunk keys' group index refers to (default: the
+    /// original three groups). Set before the first update_chunks.
+    [[nodiscard]] const ZoomLevels& levels() const { return levels_; }
+    void set_levels(ZoomLevels levels) { levels_ = std::move(levels); }
 
     /// Builds chunks with `workers` from now on (nullptr: in the frame).
     void set_workers(std::unique_ptr<ChunkWorkers> workers);
@@ -258,6 +263,7 @@ class FrameRenderer {
     std::optional<std::pair<double, double>> last_centre_;
     std::chrono::steady_clock::time_point last_time_;
     std::size_t last_group_ = 0;
+    ZoomLevels levels_ = ZoomLevels::original();
     void track_velocity(Rect view, std::size_t group);
     /// The chunks to keep and to build, most urgent first (`keep` is filled
     /// with them), and adjacent_: the visible chunks, the margin around them
@@ -280,7 +286,8 @@ class FrameRenderer {
 
 /// The rectangle of view's size at group `to` centred on the scene point
 /// that `view` centres on at group `from`.
-Rect zoomed_view(Rect view, std::size_t from, std::size_t to);
+Rect zoomed_view(Rect view, std::size_t from, std::size_t to,
+                 const ZoomLevels& levels = ZoomLevels::original());
 
 /// The area whose chunks are kept built around `view`: a ring of one chunk, and
 /// where the view is moving (velocity vx, vy in scene pixels per second) the
@@ -315,7 +322,8 @@ int stand_in_source(int p, int num, int den);
 /// The zoom groups whose chunks may stand in for a chunk of `group`, nearest
 /// first, the finer group (smaller index, larger tiles) first at equal
 /// distance. One entry per other group.
-std::vector<std::size_t> stand_in_groups(std::size_t group);
+std::vector<std::size_t> stand_in_groups(std::size_t group,
+                                         const ZoomLevels& levels = ZoomLevels::original());
 
 /// The part of a destination chunk that one source chunk shows.
 struct StandInSpan {
@@ -328,11 +336,13 @@ struct StandInSpan {
 /// The source chunks (group `from`) that chunk (cx, cy) of group `to` shows,
 /// with their parts of it; the parts tile the destination chunk exactly, row by
 /// row. O(chunks covered) = at most ceil(ratio) + 1 per axis.
-std::vector<StandInSpan> stand_in_spans(int cx, int cy, std::size_t to, std::size_t from);
+std::vector<StandInSpan> stand_in_spans(int cx, int cy, std::size_t to, std::size_t from,
+                                        const ZoomLevels& levels = ZoomLevels::original());
 
 /// As stand_in_spans for the destination pixels `region` only (the parts tile
 /// `region`).
-std::vector<StandInSpan> stand_in_spans_in(Rect region, std::size_t to, std::size_t from);
+std::vector<StandInSpan> stand_in_spans_in(Rect region, std::size_t to, std::size_t from,
+                                           const ZoomLevels& levels = ZoomLevels::original());
 
 /// A part of a stand-in and the zoom group its source chunk is in.
 struct StandInPart {
@@ -346,7 +356,8 @@ struct StandInPart {
 /// group covers is absent (open sea). The parts are disjoint. Shared by the
 /// CPU reference and the GPU compositor, so both choose alike.
 std::vector<StandInPart> stand_in_cover(int cx, int cy, std::size_t to,
-                                        const std::function<bool(const ChunkKey&)>& has);
+                                        const std::function<bool(const ChunkKey&)>& has,
+                                        const ZoomLevels& levels = ZoomLevels::original());
 
 /// The CPU reference of a stand-in: chunk (cx, cy) of `group` built from
 /// stand_in_cover over the chunks `frames` holds (pixels no group covers stay

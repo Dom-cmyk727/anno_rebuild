@@ -627,10 +627,10 @@ std::vector<ChunkKey> FrameRenderer::plan_margin(Rect view, std::size_t group,
     // it has nothing better to do.
     for (const std::size_t g : {group - 1, group + 1}) {
         // group − 1 wraps to SIZE_MAX for group 0 and is skipped.
-        if (g < kGroups) {
-            const Rect next = zoomed_view(view, group, g);
-            const double sx = static_cast<double>(kTile[g].w) / kTile[group].w;
-            const double sy = static_cast<double>(kTile[g].h) / kTile[group].h;
+        if (g < levels_.size()) {
+            const Rect next = zoomed_view(view, group, g, levels_);
+            const double sx = levels_.tile_w(g) / levels_.tile_w(group);
+            const double sy = levels_.tile_h(g) / levels_.tile_h(group);
             add(g,
                 visible_chunks(
                     lookahead_rect(next, vx_ * sx, vy_ * sy, horizon_s, max_lookahead_chunks)),
@@ -719,8 +719,8 @@ FrameRenderer::stand_in_retain(std::size_t group,
         if (cache_.contains({group, cx, cy}) && !shown_over_stand_in.contains({group, cx, cy})) {
             continue; // built and shown: nothing to stand in for
         }
-        for (const std::size_t from : stand_in_groups(group)) {
-            for (const StandInSpan& span : stand_in_spans(cx, cy, group, from)) {
+        for (const std::size_t from : stand_in_groups(group, levels_)) {
+            for (const StandInSpan& span : stand_in_spans(cx, cy, group, from, levels_)) {
                 const ChunkKey k{from, span.src_cx, span.src_cy};
                 if (cache_.contains(k)) {
                     retain.insert(k);
@@ -808,8 +808,8 @@ void FrameRenderer::track_velocity(Rect view, std::size_t group) {
             // A zoom step moves the centre by the cursor anchoring, not by a pan:
             // keep the velocity, in the new group's pixels (also when the step
             // comes with a jump: rescaled, the old velocity is no spike).
-            vx_ *= static_cast<double>(kTile[group].w) / kTile[last_group_].w;
-            vy_ *= static_cast<double>(kTile[group].h) / kTile[last_group_].h;
+            vx_ *= levels_.tile_w(group) / levels_.tile_w(last_group_);
+            vy_ *= levels_.tile_h(group) / levels_.tile_h(last_group_);
         } else if (std::abs(dx) > view.w || std::abs(dy) > view.h) {
             // More than a view in one update: a jump (a minimap click, a "go to"),
             // not a drag. Counted as motion it would read D / 0.15 px/s whatever
@@ -828,12 +828,14 @@ void FrameRenderer::track_velocity(Rect view, std::size_t group) {
     last_group_ = group;
 }
 
-Rect zoomed_view(Rect view, std::size_t from, std::size_t to) {
+Rect zoomed_view(Rect view, std::size_t from, std::size_t to, const ZoomLevels& levels) {
     const std::int64_t cx = std::int64_t{view.x} + std::int64_t{view.w} / 2;
     const std::int64_t cy = std::int64_t{view.y} + std::int64_t{view.h} / 2;
     auto scale = [](std::int64_t v, int a, int b) { return static_cast<int>(v * b / a); };
-    const int x = scale(cx, kTile[from].w, kTile[to].w);
-    const int y = scale(cy, kTile[from].h, kTile[to].h);
+    const auto [xn, xd] = levels.ratio_w(from, to);
+    const auto [yn, yd] = levels.ratio_h(from, to);
+    const int x = scale(cx, xn, xd);
+    const int y = scale(cy, yn, yd);
     return {x - view.w / 2, y - view.h / 2, view.w, view.h};
 }
 
@@ -842,13 +844,13 @@ int stand_in_source(int p, int num, int den) {
         div_euclid<std::int64_t>((std::int64_t{2} * p + 1) * num, std::int64_t{2} * den));
 }
 
-std::vector<std::size_t> stand_in_groups(std::size_t group) {
+std::vector<std::size_t> stand_in_groups(std::size_t group, const ZoomLevels& levels) {
     std::vector<std::size_t> out;
-    for (std::size_t d = 1; d < kGroups; ++d) {
+    for (std::size_t d = 1; d < levels.size(); ++d) {
         if (group >= d) {
             out.push_back(group - d);
         }
-        if (group + d < kGroups) {
+        if (group + d < levels.size()) {
             out.push_back(group + d);
         }
     }
@@ -883,13 +885,16 @@ std::vector<std::array<int, 3>> stand_in_axis(int d0, int d1, int num, int den) 
 
 } // namespace
 
-std::vector<StandInSpan> stand_in_spans_in(Rect region, std::size_t to, std::size_t from) {
+std::vector<StandInSpan> stand_in_spans_in(Rect region, std::size_t to, std::size_t from,
+                                           const ZoomLevels& levels) {
     std::vector<StandInSpan> out;
-    if (to >= kGroups || from >= kGroups || region.w <= 0 || region.h <= 0) {
+    if (to >= levels.size() || from >= levels.size() || region.w <= 0 || region.h <= 0) {
         return out;
     }
-    const auto xs = stand_in_axis(region.x, region.x + region.w, kTile[from].w, kTile[to].w);
-    const auto ys = stand_in_axis(region.y, region.y + region.h, kTile[from].h, kTile[to].h);
+    const auto [xn, xd] = levels.ratio_w(from, to);
+    const auto [yn, yd] = levels.ratio_h(from, to);
+    const auto xs = stand_in_axis(region.x, region.x + region.w, xn, xd);
+    const auto ys = stand_in_axis(region.y, region.y + region.h, yn, yd);
     for (const auto& y : ys) {
         for (const auto& x : xs) {
             out.push_back({x[0], y[0], Rect{x[1], y[1], x[2] - x[1], y[2] - y[1]}});
@@ -898,21 +903,23 @@ std::vector<StandInSpan> stand_in_spans_in(Rect region, std::size_t to, std::siz
     return out;
 }
 
-std::vector<StandInSpan> stand_in_spans(int cx, int cy, std::size_t to, std::size_t from) {
-    return stand_in_spans_in(chunk_rect(cx, cy), to, from);
+std::vector<StandInSpan> stand_in_spans(int cx, int cy, std::size_t to, std::size_t from,
+                                        const ZoomLevels& levels) {
+    return stand_in_spans_in(chunk_rect(cx, cy), to, from, levels);
 }
 
 std::vector<StandInPart> stand_in_cover(int cx, int cy, std::size_t to,
-                                        const std::function<bool(const ChunkKey&)>& has) {
+                                        const std::function<bool(const ChunkKey&)>& has,
+                                        const ZoomLevels& levels) {
     std::vector<StandInPart> out;
     std::vector<Rect> open{chunk_rect(cx, cy)};
-    for (const std::size_t from : stand_in_groups(to)) {
+    for (const std::size_t from : stand_in_groups(to, levels)) {
         if (open.empty()) {
             break;
         }
         std::vector<Rect> next;
         for (const Rect& region : open) {
-            for (const StandInSpan& sp : stand_in_spans_in(region, to, from)) {
+            for (const StandInSpan& sp : stand_in_spans_in(region, to, from, levels)) {
                 if (has({from, sp.src_cx, sp.src_cy})) {
                     out.push_back({from, sp});
                 } else {
@@ -956,7 +963,8 @@ std::vector<StandInPart> stand_in_cover(int cx, int cy, std::size_t to,
 std::optional<Chunk> stand_in_chunk(const FrameRenderer& frames, std::size_t group, int cx, int cy,
                                     Px open_water) {
     const auto cover = stand_in_cover(
-        cx, cy, group, [&](const ChunkKey& k) { return frames.chunk(k) != nullptr; });
+        cx, cy, group, [&](const ChunkKey& k) { return frames.chunk(k) != nullptr; },
+        frames.levels());
     if (cover.empty()) {
         return std::nullopt;
     }
@@ -994,8 +1002,8 @@ std::optional<Chunk> stand_in_chunk(const FrameRenderer& frames, std::size_t gro
         }
         const Chunk& src = *src_ptr;
         const StandInSpan& span = part.span;
-        const int nx = kTile[part.from].w, dx = kTile[group].w;
-        const int ny = kTile[part.from].h, dy = kTile[group].h;
+        const auto [nx, dx] = frames.levels().ratio_w(part.from, group);
+        const auto [ny, dy] = frames.levels().ratio_h(part.from, group);
         out.water_below = out.water_below || src.water_below;
         out.water_above = out.water_above || src.water_above;
         const Rect r = span.dst;

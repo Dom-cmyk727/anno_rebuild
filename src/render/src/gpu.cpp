@@ -327,6 +327,8 @@ struct GpuFrame::Impl {
     };
     std::map<std::size_t, Sea> seas;
     std::optional<std::size_t> sea_group;
+    /// The zoom levels of the FrameRenderer being drawn (set at the start of render()).
+    const ZoomLevels* levels = &ZoomLevels::original();
 
     /// A chunk plane's texture (512² texels of `format`, or a flow lattice's
     /// size) and its view.
@@ -1231,8 +1233,8 @@ struct GpuFrame::Impl {
             f.step1 = static_cast<std::uint32_t>(k1);
             f.pattern_size = s->size;
         }
-        f.tile_w = static_cast<float>(kTile[group].w);
-        f.tile_h = static_cast<float>(kTile[group].h);
+        f.tile_w = static_cast<float>(levels->tile_w(group));
+        f.tile_h = static_cast<float>(levels->tile_h(group));
         f.raise = static_cast<float>(scene.lift.scaled(kSeaLevel, 1, group));
         f.time_ms = static_cast<float>(time_ms % 3600000);
         f.enhanced = style == WaterStyle::Enhanced;
@@ -1271,8 +1273,8 @@ struct GpuFrame::Impl {
         if (!fluid) {
             return false;
         }
-        const float tw = static_cast<float>(kTile[group].w);
-        const float th = static_cast<float>(kTile[group].h);
+        const float tw = static_cast<float>(levels->tile_w(group));
+        const float th = static_cast<float>(levels->tile_h(group));
         const float raise = static_cast<float>(scene.lift.scaled(kSeaLevel, 1, group));
         const float px = static_cast<float>(view.x) + static_cast<float>(view.w) / 2.0F;
         const float py = static_cast<float>(view.y) + static_cast<float>(view.h) / 2.0F + raise;
@@ -1641,6 +1643,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                           std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
                           const Resample* resample) {
     Impl& m = *impl_;
+    m.levels = &frames.levels();
     // From the first frame on the pre-creation is paced by quiet frames (a
     // stricter condition for the thread, so no wake-up is needed).
     m.warm_paced.store(true);
@@ -1831,10 +1834,13 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                 continue;
             }
             const auto c0 = Clock::now();
-            const auto cover = stand_in_cover(cx, cy, group, [&](const ChunkKey& k) {
-                const auto src = m.chunks.find(k);
-                return src != m.chunks.end() && src->second.real;
-            });
+            const auto cover = stand_in_cover(
+                cx, cy, group,
+                [&](const ChunkKey& k) {
+                    const auto src = m.chunks.find(k);
+                    return src != m.chunks.end() && src->second.real;
+                },
+                *m.levels);
             stats.stand_in_ms += ms_since(c0);
             for (const StandInPart& part : cover) {
                 const std::size_t from = part.from;
@@ -1845,10 +1851,14 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                 b.i32(sp.dst.y);
                 b.i32(sp.dst.x + sp.dst.w);
                 b.i32(sp.dst.y + sp.dst.h);
-                b.i32(kTile[from].w);
-                b.i32(kTile[from].h);
-                b.i32(kTile[group].w);
-                b.i32(kTile[group].h);
+                // The scale from this group's pixels to the source's, per axis
+                // (numerators, then denominators; 84/42 = 2/1 for the first two).
+                const auto [wn, wd] = m.levels->ratio_w(from, group);
+                const auto [hn, hd] = m.levels->ratio_h(from, group);
+                b.i32(wn);
+                b.i32(hn);
+                b.i32(wd);
+                b.i32(hd);
                 b.u32(1);
                 draws.push_back({src->second.bind.get(), piece_record(b)});
             }

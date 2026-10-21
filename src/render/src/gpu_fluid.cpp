@@ -467,7 +467,16 @@ struct FluidGpu::Job {
 };
 
 FluidGpu::FluidGpu() = default;
-FluidGpu::~FluidGpu() = default;
+FluidGpu::~FluidGpu() {
+    // The background frees join their job threads, which may use this object. A moved-from
+    // object has no counter (the defaulted move constructor moves it).
+    if (!freeing_) {
+        return;
+    }
+    for (int n = freeing_->load(); n != 0; n = freeing_->load()) {
+        freeing_->wait(n);
+    }
+}
 FluidGpu::FluidGpu(FluidGpu&&) noexcept = default;
 FluidGpu& FluidGpu::operator=(FluidGpu&&) noexcept = default;
 
@@ -493,6 +502,19 @@ void free_in_background(std::vector<Piece>&& pieces) {
 
 } // namespace
 
+void FluidGpu::free_job_in_background(std::unique_ptr<Job> job) {
+    if (!job) {
+        return;
+    }
+    const auto count = freeing_;
+    count->fetch_add(1);
+    std::thread([j = std::move(job), count]() mutable {
+        j.reset(); // joins the job's thread, then frees its grid
+        count->fetch_sub(1);
+        count->notify_all();
+    }).detach();
+}
+
 void FluidGpu::retire_job() {
     if (!job_) {
         return;
@@ -506,13 +528,15 @@ void FluidGpu::retire_job() {
 void FluidGpu::prepare_window(std::size_t group, std::pair<float, float> centre, std::uint32_t size,
                               double target, const fluid::DepthFn& depth, std::size_t threads) {
     // Cancelled jobs are freed once their threads have stopped.
-    std::erase_if(retired_, [](const std::unique_ptr<Job>& j) {
-        if (!j->done.load(std::memory_order_acquire)) {
-            return false;
+    for (auto it = retired_.begin(); it != retired_.end();) {
+        if (!(*it)->done.load(std::memory_order_acquire)) {
+            ++it;
+            continue;
         }
-        free_in_background(std::move(j->pieces));
-        return true;
-    });
+        free_in_background(std::move((*it)->pieces));
+        free_job_in_background(std::move(*it));
+        it = retired_.erase(it);
+    }
     // 1. A window for another group or size makes the one being prepared
     //    useless.
     if (job_ && job_->whole && (job_->group != group || job_->size != size)) {

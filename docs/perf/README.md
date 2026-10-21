@@ -405,3 +405,39 @@ So T1d's "open sea 0 frames" held chunk-wise only: holes in the stand-in cover (
 The counted worst case at 2560x1440 (all chunks land chunks of 4.3 MB) is 0.8 / 1.1 / 1.5 GB standing / one axis / diagonal; the largest scene stays at 0.44-0.71 GB peak because sea chunks are small. Cap 2 against 3 differs by less than the run-to-run noise in memory (most of the cache is the 48 spare chunks and the neighbouring groups' views); the viewer's default stays 3, `--lookahead-chunks 2` exists for the owner.
 
 **Blend cost (item 3)** is not measured: the opaque pipelines are back for every draw but the fading ones (one pipeline switch per pass when a chunk fades), so the per-frame cost is the pre-T1d one by construction.
+
+### 2026-10-21 - T1f item 1: chunk build profile, Windows 11, Ryzen 9 9800X3D (8 cores, 16 threads), MSVC Release, branch task/T1f-chunk-build-speed (0f2583b)
+
+**Method.** `bench_frame <game> <scene> --chunk-profile 1,16 --groups 0,1,2`. It builds the 96 chunks nearest the centre of the largest island (60 at group 2, the whole island) with `render_chunk` as the viewer's workers do (no ships), but it waits for the river flow, and its threads run at normal priority (the viewer's workers run below normal and do not wait). Each configuration runs twice: once on a freshly loaded scene (cold: sprite decodes, the island water and the river flow solve happen on first use) and once more on the same scene (warm). Per-stage times come from `anno/render/profile.hpp`. The stages are exclusive, so they add up to the chunk's time (less than 1 % falls outside them). Background load was 8-27 % (desktop apps; the machine was not idle). Two runs agree within 3 %. All chunks contain land.
+
+**Warm, one thread: mean ms per chunk and the stages (mean ms; share of the chunk)**
+
+| scene | group | chunk mean / p95 | sea field | river sprites + fall masks + river blend + pack | terrain | flow + apron | **field + terrain + flow** | ground (+ px) | objects |
+|---|---|---|---|---|---|---|---|---|---|
+| canyon `D_256x256_0045_5B` | 0 | 50.1 / 66.3 | 24.2 | 6.3 | 3.6 | 0.2 | **34.2 (68 %)** | 7.0 (14 %) | 8.7 (17 %) |
+| canyon | 1 | 44.3 / 75.7 | 21.4 | 7.0 | 3.1 | 0.3 | **31.8 (72 %)** | 6.3 (14 %) | 6.0 (14 %) |
+| canyon | 2 | 28.2 / 76.5 | 10.8 | 6.8 | 1.8 | 0.3 | **19.7 (70 %)** | 4.2 (15 %) | 4.2 (15 %) |
+| `Single_24.sze` | 0 | 44.2 / 57.6 | 21.8 | 4.2 | 3.5 | 0.1 | **29.7 (67 %)** | 6.7 (15 %) | 7.7 (17 %) |
+| `Single_24.sze` | 1 | 39.3 / 56.8 | 19.9 | 4.8 | 3.1 | 0.3 | **28.1 (71 %)** | 5.9 (15 %) | 5.1 (13 %) |
+| `Single_24.sze` | 2 | 25.2 / 69.8 | 10.1 | 5.4 | 1.8 | 0.2 | **17.5 (69 %)** | 4.0 (16 %) | 3.6 (14 %) |
+
+**Threads and the cold scene (ms per chunk, chunks per second)**
+
+| scene | group | 1 thread warm p95 | 16 threads warm mean / p95 | 16 threads cold p95 / max | 16 threads warm chunks/s |
+|---|---|---|---|---|---|
+| canyon | 0 | 66.3 | 92.0 / 122.8 | 247.7 / 248.2 | 156 |
+| canyon | 1 | 75.7 | 81.5 / 130.2 | 251.3 / 252.1 | 180 |
+| canyon | 2 | 76.5 | 53.6 / 139.9 | 251.6 / 252.2 | 274 |
+| `Single_24.sze` | 0 | 57.6 | 85.1 / 105.1 | 185.7 / 186.7 | 176 |
+| `Single_24.sze` | 1 | 56.8 | 76.3 / 112.0 | 188.0 / 188.9 | 194 |
+| `Single_24.sze` | 2 | 69.8 | 47.8 / 117.2 | 178.5 / 179.0 | 285 |
+
+On the canyon island at group 0, the warm mean per chunk is 50 ms on 1 thread, 51 on 2, 54 on 4, 61 on 8 and 92 on 16. That is 20, 39, 73, 124 and 156 chunks/s.
+
+**What this says**
+- **The field, terrain and flow stages are 67-72 % of a chunk.** The sea field alone (`sea::water_field`) is 35-49 %. It does several spline evaluations per pixel: `tile_ground`, then `river_point` or the beach slope (4 more `smooth_height` or `river_level` taps). That is about 90 ns per pixel at group 0. The river stages (sprites, fall masks, the chamfer blend) add 4-7 ms, and `terrain_at` per pixel adds 2-4 ms. This confirms the orchestrator's main suspect. Item 2's target (at most 2 ms together) means removing about 30 ms per chunk at group 0.
+- **The ground pass is 14-16 % of a chunk** (`ground_with_probe` plus the conversion to `Chunk::ground`), below the 20 % of T11's C2 rule, so the ground pass (2b) stays after item 2. After item 2 the chunk would be about 18 ms at group 0, of which the ground would be about 40 % and the objects about 48 %.
+- **Sprite decoding is not a cost.** It is 0.1-0.7 ms per chunk on a cold scene and 0 warm. The objects (cull and blit) are 13-17 %; T11 moves them to the GPU.
+- **"100-250 ms per chunk" (T1d) is the 16-thread cold case.** One thread builds a chunk in 25-50 ms (p95 57-77). With 16 threads on 8 cores each chunk takes 1.6-2 times longer: SMT shares a core between two threads (8 threads: 1.2 times). Throughput still grows to 156-285 chunks/s. On a cold scene, the chunks with rivers also wait for the island's river flow solve: 84-151 ms on one thread, and every other builder blocks in its `call_once`. This shows as `flow` (23-37 ms mean at 16 threads cold) and as the 180-250 ms maxima. The viewer does not wait (`wait_for_flow` false): it delivers such chunks without the flow lattice and **builds them a second time** when the flow is ready. That is extra work in the first seconds, worth removing in item 3 (deliver the lattice separately).
+- **Not measured here:** the workers' below-normal priority against the window thread, and the queue. A chunk's latency in the viewer is its build time plus its place in the queue divided by throughput: 40 chunks queued take about 250 ms at 160 chunks/s.
+- **Compared with 2026-10-17** (5.7 ms per chunk on one thread, Apple M5 Pro, `Single_01.sze`, before the enhanced sea field): the field, terrain and flow stages added since then account for the growth.

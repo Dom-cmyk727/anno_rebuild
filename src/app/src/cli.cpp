@@ -146,6 +146,26 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
                 return std::nullopt;
             }
             out.lookahead_chunks = *n;
+        } else if (a == "--zoom-mode") {
+            if (v == "stepped") {
+                out.zoom.mode = ZoomMode::Stepped;
+            } else if (v == "continuous") {
+                out.zoom.mode = ZoomMode::Continuous;
+            } else {
+                return std::nullopt;
+            }
+        } else if (a == "--zoom-step") {
+            const auto f = number<double>(v);
+            if (!f || !(*f >= kMinZoomStep) || *f > kMaxZoomStep) {
+                return std::nullopt;
+            }
+            out.zoom.step = *f;
+        } else if (a == "--zoom-ease") {
+            const auto ms = number<unsigned>(v);
+            if (!ms || *ms > kMaxZoomEaseMs) {
+                return std::nullopt;
+            }
+            out.zoom.ease_ms = *ms;
         } else if (a == "--renderer") {
             if (v == "auto") {
                 out.renderer = Renderer::Auto;

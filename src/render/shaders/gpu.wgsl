@@ -1016,3 +1016,63 @@ fn sprite_fs(in: SpriteOut) -> @location(0) vec4<f32> {
     }
     return c;
 }
+
+// ---- Resample (T3, docs/render/iso.md "Continuous zoom"): the composed scene
+// grid onto the target at a scale. Its own group (3), unused by every other
+// entry point, so no (group, binding) pair is shared. Reads with textureLoad
+// only (the grid is an unfilterable-float texture), so the filters are done
+// here; the arithmetic is the same on every adapter.
+struct Scale {
+    // Target pixels per grid pixel; the grid position of the target's left/top
+    // edge; the filter (ResampleFilter); the grid's size; taps per axis (Box).
+    scale: f32,
+    off_x: f32,
+    off_y: f32,
+    mode: u32,
+    src_w: u32,
+    src_h: u32,
+    taps: u32,
+    _pad: u32,
+};
+@group(3) @binding(0) var<uniform> scale_u: Scale;
+@group(3) @binding(1) var scale_src: texture_2d<f32>;
+
+@vertex
+fn scale_vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+    // One triangle over the whole target: (0, 0), (2, 0), (0, 2) in unit space.
+    let p = vec2<f32>(f32((i << 1u) & 2u), f32(i & 2u));
+    return vec4<f32>(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0, 0.0, 1.0);
+}
+
+fn scale_texel(p: vec2<i32>) -> vec4<f32> {
+    let c = clamp(p, vec2<i32>(0, 0), vec2<i32>(i32(scale_u.src_w) - 1, i32(scale_u.src_h) - 1));
+    return textureLoad(scale_src, c, 0);
+}
+
+@fragment
+fn scale_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    // pos.xy is the target pixel's centre; src is its centre in grid pixels.
+    let src = vec2<f32>(scale_u.off_x, scale_u.off_y) + pos.xy / scale_u.scale;
+    if scale_u.mode == 1u {
+        let f = src - vec2<f32>(0.5, 0.5);
+        let i0 = vec2<i32>(floor(f));
+        let t = f - floor(f);
+        let a = mix(scale_texel(i0), scale_texel(i0 + vec2<i32>(1, 0)), t.x);
+        let b = mix(scale_texel(i0 + vec2<i32>(0, 1)), scale_texel(i0 + vec2<i32>(1, 1)), t.x);
+        return mix(a, b, t.y);
+    }
+    if scale_u.mode == 2u {
+        // The output pixel covers 1 / scale grid pixels per axis around src.
+        let n = i32(scale_u.taps);
+        let span = 1.0 / scale_u.scale;
+        var sum = vec4<f32>(0.0);
+        for (var j = 0; j < n; j = j + 1) {
+            for (var i = 0; i < n; i = i + 1) {
+                let d = (vec2<f32>(f32(i), f32(j)) + vec2<f32>(0.5, 0.5)) / f32(n) - vec2<f32>(0.5, 0.5);
+                sum = sum + scale_texel(vec2<i32>(floor(src + d * span)));
+            }
+        }
+        return sum / f32(n * n);
+    }
+    return scale_texel(vec2<i32>(floor(src)));
+}

@@ -11,6 +11,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -3670,4 +3671,366 @@ TEST_CASE(
     }
     CHECK(g.warm_planes_ready() == 10);
     CHECK(g.errors() == 0);
+}
+
+TEST_CASE("resampled_view covers the output and keeps the fraction of the camera") {
+    // Output 100 x 50 at scale 2 centred on (100.25, 60.75): the grid spans
+    // 75.25 .. 125.25 in x and 48.25 .. 73.25 in y.
+    const auto r = gpu::resampled_view(100.25, 60.75, 100, 50, 2.0, gpu::ResampleFilter::Bilinear);
+    CHECK(r.view.x == 75);
+    CHECK(r.view.y == 48);
+    CHECK(r.resample.offset_x == doctest::Approx(0.25));
+    CHECK(r.resample.offset_y == doctest::Approx(0.25));
+    CHECK(r.resample.scale == 2.0);
+    // The far edge (+ 1 pixel for the filters' reach) is inside the view.
+    CHECK(r.view.x + r.view.w >= 126 + 1);
+    CHECK(r.view.y + r.view.h >= 74 + 1);
+    CHECK_FALSE(r.resample.identity());
+    CHECK(gpu::Resample{}.identity());
+    // A zoom out: one output pixel per two grid pixels.
+    const auto o = gpu::resampled_view(0.0, 0.0, 64, 64, 0.5, gpu::ResampleFilter::Box);
+    CHECK(o.view.x == -64);
+    CHECK(o.view.w >= 128 + 1);
+    CHECK(o.resample.offset_x == 0.0);
+}
+
+TEST_CASE("resample pass: the scale, the offset and the filters (synthetic)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    gpu::GpuLimits limits;
+    limits.wave_simulation = false;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    constexpr std::size_t kGroup = 1;
+    render::FrameRenderer fr(1, false);
+    fr.insert_chunk({kGroup, 0, 0}, noise_land_chunk(kGroup, 0, 0));
+    constexpr std::uint32_t kGrid = 64;
+    // The grid as the compositor composes it, without a resample.
+    const render::Rect view{0, 0, static_cast<int>(kGrid), static_cast<int>(kGrid)};
+    const auto grid_target = g.offscreen_target(kGrid, kGrid);
+    for (int f = 0; f < 12; ++f) {
+        g.render(fr, scene, view, kGroup, 0, render::WaterStyle::Original,
+                 grid_target.second.get());
+    }
+    const auto grid = g.read_back(grid_target.first.get(), kGrid, kGrid);
+    REQUIRE(grid.size() == std::size_t{kGrid} * kGrid * 4);
+    auto at = [&](int x, int y, std::size_t k) {
+        x = std::clamp(x, 0, static_cast<int>(kGrid) - 1);
+        y = std::clamp(y, 0, static_cast<int>(kGrid) - 1);
+        return static_cast<int>(
+            grid[(static_cast<std::size_t>(y) * kGrid + static_cast<std::size_t>(x)) * 4 + k]);
+    };
+    // Renders the same view through `resample` into an output of `ow` x `oh`.
+    auto resampled = [&](std::uint32_t ow, std::uint32_t oh, const gpu::Resample& rs,
+                         const render::Rect& grid_view) {
+        const auto target = g.offscreen_target(ow, oh);
+        g.render(fr, scene, grid_view, kGroup, 0, render::WaterStyle::Original, target.second.get(),
+                 &rs);
+        return g.read_back(target.first.get(), ow, oh);
+    };
+    // Differences from `want(x, y, k)` over an `ow` x `oh` output.
+    auto worst = [&](const std::vector<std::uint8_t>& out, std::uint32_t ow, std::uint32_t oh,
+                     auto&& want) {
+        REQUIRE(out.size() == std::size_t{ow} * oh * 4);
+        int w = 0;
+        for (std::uint32_t y = 0; y < oh; ++y) {
+            for (std::uint32_t x = 0; x < ow; ++x) {
+                for (std::size_t k = 0; k < 3; ++k) {
+                    const int have = out[(std::size_t{y} * ow + x) * 4 + k];
+                    w = std::max(
+                        w, std::abs(have - want(static_cast<int>(x), static_cast<int>(y), k)));
+                }
+            }
+        }
+        return w;
+    };
+    // The grid is not flat: neighbouring pixels differ (else the tests prove nothing).
+    int steps = 0;
+    for (int x = 0; x + 1 < static_cast<int>(kGrid); ++x) {
+        steps += at(x, 10, 0) != at(x + 1, 10, 0) ? 1 : 0;
+    }
+    REQUIRE(steps > 20);
+    {
+        // Scale 2, nearest: every grid pixel becomes a 2 x 2 block.
+        gpu::Resample rs;
+        rs.scale = 2.0;
+        const auto out = resampled(2 * kGrid, 2 * kGrid, rs, view);
+        CHECK(worst(out, 2 * kGrid, 2 * kGrid,
+                    [&](int x, int y, std::size_t k) { return at(x / 2, y / 2, k); }) == 0);
+    }
+    {
+        // Scale 1 at offset (0.5, 0.5), nearest: the output pixel x shows the grid
+        // pixel floor(0.5 + x + 0.5) = x + 1 (the offset is the output's edge).
+        gpu::Resample rs;
+        rs.offset_x = 0.5;
+        rs.offset_y = 0.5;
+        const auto out = resampled(kGrid - 2, kGrid - 2, rs, view);
+        CHECK(worst(out, kGrid - 2, kGrid - 2,
+                    [&](int x, int y, std::size_t k) { return at(x + 1, y + 1, k); }) == 0);
+    }
+    {
+        // Scale 2, bilinear: the grid pixel centres are at (i + 0.5); the output
+        // pixel x has its centre at (x + 0.5) / 2 grid pixels, so it blends the
+        // grid pixels around f = (x + 0.5) / 2 - 0.5 = x / 2 - 0.25.
+        gpu::Resample rs;
+        rs.scale = 2.0;
+        rs.filter = gpu::ResampleFilter::Bilinear;
+        const auto out = resampled(2 * kGrid, 2 * kGrid, rs, view);
+        auto bilinear = [&](int x, int y, std::size_t k) {
+            const double fx = x / 2.0 - 0.25, fy = y / 2.0 - 0.25;
+            const int ix = static_cast<int>(std::floor(fx)), iy = static_cast<int>(std::floor(fy));
+            const double tx = fx - ix, ty = fy - iy;
+            const double top = at(ix, iy, k) * (1 - tx) + at(ix + 1, iy, k) * tx;
+            const double bottom = at(ix, iy + 1, k) * (1 - tx) + at(ix + 1, iy + 1, k) * tx;
+            return static_cast<int>(std::lround(top * (1 - ty) + bottom * ty));
+        };
+        CHECK(worst(out, 2 * kGrid, 2 * kGrid, bilinear) <= 1);
+    }
+    {
+        // Scale 0.5, box: the mean of the 2 x 2 grid pixels under each output pixel.
+        // The grid is composed on a view twice the size (the compositor's grid).
+        const render::Rect big{0, 0, 2 * static_cast<int>(kGrid), 2 * static_cast<int>(kGrid)};
+        const auto big_target = g.offscreen_target(2 * kGrid, 2 * kGrid);
+        for (int f = 0; f < 4; ++f) {
+            g.render(fr, scene, big, kGroup, 0, render::WaterStyle::Original,
+                     big_target.second.get());
+        }
+        const auto big_px = g.read_back(big_target.first.get(), 2 * kGrid, 2 * kGrid);
+        gpu::Resample rs;
+        rs.scale = 0.5;
+        rs.filter = gpu::ResampleFilter::Box;
+        const auto out = resampled(kGrid, kGrid, rs, big);
+        auto mean = [&](int x, int y, std::size_t k) {
+            int sum = 0;
+            for (int j = 0; j < 2; ++j) {
+                for (int i = 0; i < 2; ++i) {
+                    sum += big_px[(static_cast<std::size_t>(2 * y + j) * 2 * kGrid +
+                                   static_cast<std::size_t>(2 * x + i)) *
+                                      4 +
+                                  k];
+                }
+            }
+            return static_cast<int>(std::lround(sum / 4.0));
+        };
+        CHECK(worst(out, kGrid, kGrid, mean) <= 1);
+    }
+    CHECK(g.errors() == 0);
+}
+
+TEST_CASE("resample pass: an identity resample is the same picture as none (synthetic)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    gpu::GpuLimits limits;
+    limits.wave_simulation = false;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    render::FrameRenderer fr(1, false);
+    fr.insert_chunk({1, 0, 0}, noise_land_chunk(1, 0, 0));
+    const render::Rect view{0, 0, 48, 48};
+    const auto a = g.offscreen_target(48, 48);
+    const auto b = g.offscreen_target(48, 48);
+    const gpu::Resample none;
+    for (int f = 0; f < 6; ++f) {
+        g.render(fr, scene, view, 1, 0, render::WaterStyle::Original, a.second.get());
+        g.render(fr, scene, view, 1, 0, render::WaterStyle::Original, b.second.get(), &none);
+    }
+    const auto pa = g.read_back(a.first.get(), 48, 48), pb = g.read_back(b.first.get(), 48, 48);
+    REQUIRE(pa.size() == 48U * 48U * 4U);
+    CHECK(pa == pb);
+}
+TEST_CASE("resampled_view: negative positions, fractions, stable size, limits") {
+    // Negative camera: the origin is the floor, the offset the fraction in [0, 1).
+    const auto n = gpu::resampled_view(-10.3, -0.7, 64, 64, 1.0, gpu::ResampleFilter::Nearest);
+    CHECK(n.view.x == -43);
+    CHECK(n.view.y == -33);
+    CHECK(n.resample.offset_x == doctest::Approx(0.7));
+    CHECK(n.resample.offset_y == doctest::Approx(0.3));
+    // A fraction of at least a half: the floor, not the rounded origin (x0 = 75.75).
+    const auto f = gpu::resampled_view(100.75, 60.0, 100, 50, 2.0, gpu::ResampleFilter::Nearest);
+    CHECK(f.view.x == 75);
+    CHECK(f.resample.offset_x == doctest::Approx(0.75));
+    // For a sweep of positions and scales every output pixel's samples (the pixel
+    // centre, the bilinear neighbour, the box footprint's far side) lie inside
+    // the grid, and the grid's size is a multiple of the step.
+    std::set<std::pair<int, int>> sizes;
+    for (double cx = -40.0; cx < 40.0; cx += 7.31) {
+        for (const double s : {0.7, 0.9, 1.0, 1.37, 1.45}) {
+            const auto r =
+                gpu::resampled_view(cx, cx * 0.5 + 3.3, 130, 70, s, gpu::ResampleFilter::Box);
+            CHECK(r.view.w % gpu::kResampleGridStep == 0);
+            CHECK(r.view.h % gpu::kResampleGridStep == 0);
+            const double far_x = r.resample.offset_x + 130.0 / s;
+            const double far_y = r.resample.offset_y + 70.0 / s;
+            CHECK(far_x + 1.0 <= r.view.w);
+            CHECK(far_y + 1.0 <= r.view.h);
+            CHECK(r.resample.offset_x >= 0.0);
+            CHECK(r.resample.offset_x < 1.0);
+            sizes.insert({r.view.w, r.view.h});
+        }
+    }
+    // The grid does not change size with the camera at one scale (textures are not
+    // recreated while panning).
+    std::set<std::pair<int, int>> at_one_scale;
+    for (double cx = 0.0; cx < 30.0; cx += 0.37) {
+        const auto r = gpu::resampled_view(cx, 11.0 + cx, 130, 70, 1.37, gpu::ResampleFilter::Box);
+        at_one_scale.insert({r.view.w, r.view.h});
+    }
+    CHECK(at_one_scale.size() == 1);
+    // The scale is limited, and raised so that the grid fits max_grid.
+    const auto tiny = gpu::resampled_view(0.0, 0.0, 64, 64, 1e-12, gpu::ResampleFilter::Box);
+    CHECK(tiny.resample.scale == doctest::Approx(1.0 / 64.0));
+    const auto big = gpu::resampled_view(0.0, 0.0, 7680, 4320, 0.7, gpu::ResampleFilter::Box);
+    CHECK(big.view.w <= 8192);
+    CHECK(big.view.h <= 8192);
+    CHECK(big.resample.scale > 0.7);
+}
+
+TEST_CASE("resample pass: odd scales, unequal offsets, non-square, a dirty target (synthetic)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    gpu::GpuLimits limits;
+    limits.wave_simulation = false;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    constexpr std::size_t kGroup = 1;
+    render::FrameRenderer fr(1, false);
+    fr.insert_chunk({kGroup, 0, 0}, noise_land_chunk(kGroup, 0, 0));
+    // The composed grid of `view` (a plain render), settled.
+    auto compose = [&](const render::Rect& view) {
+        const auto w = static_cast<std::uint32_t>(view.w), h = static_cast<std::uint32_t>(view.h);
+        const auto t = g.offscreen_target(w, h);
+        for (int f = 0; f < 8; ++f) {
+            g.render(fr, scene, view, kGroup, 0, render::WaterStyle::Original, t.second.get());
+        }
+        return g.read_back(t.first.get(), w, h);
+    };
+    // The shader's arithmetic on the CPU (float, the same operations).
+    struct Case {
+        gpu::Resample rs;
+        std::uint32_t ow, oh;
+        render::Rect view;
+    };
+    auto expect = [&](const Case& c, const std::vector<std::uint8_t>& grid, std::uint32_t x,
+                      std::uint32_t y, std::size_t k) {
+        const int gw = c.view.w, gh = c.view.h;
+        auto texel = [&](int tx, int ty) {
+            tx = std::clamp(tx, 0, gw - 1);
+            ty = std::clamp(ty, 0, gh - 1);
+            return static_cast<double>(
+                grid[(static_cast<std::size_t>(ty) * static_cast<std::size_t>(gw) +
+                      static_cast<std::size_t>(tx)) *
+                         4 +
+                     k]);
+        };
+        const auto s = static_cast<float>(c.rs.scale);
+        const float sx = static_cast<float>(c.rs.offset_x) + (static_cast<float>(x) + 0.5F) / s;
+        const float sy = static_cast<float>(c.rs.offset_y) + (static_cast<float>(y) + 0.5F) / s;
+        if (c.rs.filter == gpu::ResampleFilter::Bilinear) {
+            const float fx = sx - 0.5F, fy = sy - 0.5F;
+            const int ix = static_cast<int>(std::floor(fx)), iy = static_cast<int>(std::floor(fy));
+            const double tx = static_cast<double>(fx) - ix, ty = static_cast<double>(fy) - iy;
+            const double top = texel(ix, iy) * (1 - tx) + texel(ix + 1, iy) * tx;
+            const double bottom = texel(ix, iy + 1) * (1 - tx) + texel(ix + 1, iy + 1) * tx;
+            return top * (1 - ty) + bottom * ty;
+        }
+        if (c.rs.filter == gpu::ResampleFilter::Box) {
+            const int n = std::clamp(static_cast<int>(std::ceil(1.0F / s)), 1, 8);
+            const float span = 1.0F / s;
+            double sum = 0;
+            for (int j = 0; j < n; ++j) {
+                for (int i = 0; i < n; ++i) {
+                    const float dx = (static_cast<float>(i) + 0.5F) / static_cast<float>(n) - 0.5F;
+                    const float dy = (static_cast<float>(j) + 0.5F) / static_cast<float>(n) - 0.5F;
+                    sum += texel(static_cast<int>(std::floor(sx + dx * span)),
+                                 static_cast<int>(std::floor(sy + dy * span)));
+                }
+            }
+            return sum / (n * n);
+        }
+        return texel(static_cast<int>(std::floor(sx)), static_cast<int>(std::floor(sy)));
+    };
+    // Renders `c` into a target first filled with an unrelated picture (a stale
+    // target must not show) and compares every channel, alpha included. The float
+    // arithmetic of the GPU may differ from the CPU's by an ulp, which moves a
+    // sample across a pixel edge in a handful of pixels: those are counted, and
+    // bounded, not forbidden.
+    auto run = [&](const Case& c, double allowed_bad_fraction, const char* name) {
+        const auto grid = compose(c.view);
+        const auto target = g.offscreen_target(c.ow, c.oh);
+        g.render(fr, scene, render::Rect{200, 200, static_cast<int>(c.ow), static_cast<int>(c.oh)},
+                 kGroup, 0, render::WaterStyle::Original, target.second.get());
+        g.render(fr, scene, c.view, kGroup, 0, render::WaterStyle::Original, target.second.get(),
+                 &c.rs);
+        const auto out = g.read_back(target.first.get(), c.ow, c.oh);
+        REQUIRE(out.size() == std::size_t{c.ow} * c.oh * 4);
+        std::size_t bad = 0;
+        double sum = 0;
+        for (std::uint32_t y = 0; y < c.oh; ++y) {
+            for (std::uint32_t x = 0; x < c.ow; ++x) {
+                // The output is 8 bit: the mean of the expected values is rounded, so a
+                // channel is right when it is within one level of the exact value.
+                double worst = 0;
+                for (std::size_t k = 0; k < 4; ++k) {
+                    const double want = expect(c, grid, x, y, k);
+                    worst =
+                        std::max(worst, std::abs(out[(std::size_t{y} * c.ow + x) * 4 + k] - want));
+                }
+                bad += worst > 1.0 + 1e-6 ? 1U : 0U;
+                sum += worst;
+            }
+        }
+        const double total = static_cast<double>(c.ow) * c.oh;
+        MESSAGE(name << ": " << bad << " of " << total << " pixels off by more than 1");
+        CHECK(static_cast<double>(bad) <= allowed_bad_fraction * total);
+        CHECK(sum / total < 0.6);
+        CHECK(g.errors() == 0);
+    };
+    // Odd scales: magnifying 1.37 (nearest and bilinear), reducing 0.63 (box,
+    // 2 taps over a span of 1.587), 0.3 (box, 4 taps), 1/3 (3 taps).
+    {
+        auto v = gpu::resampled_view(40.3, 38.6, 96, 40, 1.37, gpu::ResampleFilter::Nearest);
+        run({v.resample, 96, 40, v.view}, 0.01, "1.37 nearest, non-square output");
+        v = gpu::resampled_view(40.3, 38.6, 96, 40, 1.37, gpu::ResampleFilter::Bilinear);
+        run({v.resample, 96, 40, v.view}, 0.01, "1.37 bilinear");
+        v = gpu::resampled_view(120.4, 90.2, 70, 50, 0.63, gpu::ResampleFilter::Box);
+        run({v.resample, 70, 50, v.view}, 0.01, "0.63 box");
+        v = gpu::resampled_view(150.0, 150.0, 60, 40, 0.3, gpu::ResampleFilter::Box);
+        run({v.resample, 60, 40, v.view}, 0.01, "0.3 box (4 taps)");
+        v = gpu::resampled_view(150.0, 150.0, 60, 40, 1.0 / 3.0, gpu::ResampleFilter::Box);
+        run({v.resample, 60, 40, v.view}, 0.01, "1/3 box (3 taps)");
+    }
+    // Unequal offsets at scale 2: x and y must not be swapped; a grid that is not
+    // square (70 x 50) read to an output that is not (90 x 30).
+    {
+        gpu::Resample rs;
+        rs.scale = 2.0;
+        rs.offset_x = 0.75;
+        rs.offset_y = 0.25;
+        rs.filter = gpu::ResampleFilter::Nearest;
+        run({rs, 90, 30, render::Rect{3, 5, 70, 50}}, 0.002, "offsets (0.75, 0.25) at scale 2");
+        rs.filter = gpu::ResampleFilter::Bilinear;
+        run({rs, 90, 30, render::Rect{3, 5, 70, 50}}, 0.002, "offsets (0.75, 0.25), bilinear");
+    }
+    // The pass runs for an offset that is almost nothing (not the identity).
+    {
+        gpu::Resample rs;
+        rs.offset_x = 1e-9;
+        REQUIRE_FALSE(rs.identity());
+        run({rs, 40, 40, render::Rect{0, 0, 42, 42}}, 0.002, "offset 1e-9");
+    }
 }

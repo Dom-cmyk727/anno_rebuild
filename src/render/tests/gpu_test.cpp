@@ -4905,3 +4905,72 @@ TEST_CASE("GPU frames at derived levels match the CPU path, objects standing in 
         CHECK(g.errors() == 0);
     }
 }
+
+TEST_CASE("released upload holds are freed by the chunk workers, not by the caller") {
+    // The upload's last reference is handed to the workers' thread (FrameRenderer::release):
+    // it is freed once they have taken it, and not before.
+    const EmptyScene es = empty_scene();
+    render::FrameRenderer fr(1, false);
+    fr.set_workers(std::make_unique<render::ChunkWorkers>(*es.scene, 1));
+    auto chunk = std::make_shared<const render::Chunk>();
+    const std::weak_ptr<const render::Chunk> weak = chunk;
+    fr.release({std::move(chunk)});
+    const auto start = std::chrono::steady_clock::now();
+    while (!weak.expired() && std::chrono::steady_clock::now() - start < std::chrono::seconds(10)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    CHECK(weak.expired());
+    // Without workers the caller frees it, as before.
+    render::FrameRenderer plain(1, false);
+    auto other = std::make_shared<const render::Chunk>();
+    const std::weak_ptr<const render::Chunk> gone = other;
+    plain.release({std::move(other)});
+    CHECK(gone.expired());
+}
+
+TEST_CASE("offscreen targets shrink after the views have been small for offscreen_shrink_ms") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    // Targets 1.25 x the view, so a view of half the size is inside the 3 x rule for keeping
+    // them and below a third of their area: the shrink timer decides.
+    auto run = [&](gpu::GpuFrame& g, render::FrameRenderer& fr, std::uint32_t w, std::uint32_t h) {
+        const auto target = g.offscreen_target(w, h);
+        return g.render(fr, scene, render::Rect{0, 0, static_cast<int>(w), static_cast<int>(h)}, 2,
+                        0, render::WaterStyle::Original, target.second.get(), nullptr);
+    };
+    gpu::GpuLimits limits;
+    limits.offscreen_shrink_ms = 100;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    render::FrameRenderer fr(1, false);
+    run(g, fr, 800, 500);
+    const std::size_t big = g.offscreen_bytes();
+    CHECK(big >= std::size_t{1000} * 625 * 6);
+    run(g, fr, 400, 250);
+    CHECK(g.offscreen_bytes() == big); // the timer has only started
+    const auto start = std::chrono::steady_clock::now();
+    while (g.offscreen_bytes() == big &&
+           std::chrono::steady_clock::now() - start < std::chrono::seconds(10)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        run(g, fr, 400, 250);
+    }
+    CHECK(g.offscreen_bytes() < big / 2);
+    CHECK(g.errors() == 0);
+    // Off: the target is kept however long the views stay small.
+    limits.offscreen_shrink_ms = 0;
+    auto kept = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(kept);
+    gpu::GpuFrame& k = *kept.value();
+    run(k, fr, 800, 500);
+    const std::size_t kept_bytes = k.offscreen_bytes();
+    for (int i = 0; i < 30; ++i) {
+        run(k, fr, 400, 250);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    CHECK(k.offscreen_bytes() == kept_bytes);
+}

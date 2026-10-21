@@ -226,6 +226,12 @@ struct GpuLimits {
     /// clock (OQ-076): the new window starts at rest and the waves would otherwise pop in.
     /// The sea is shaded twice meanwhile (README: cost). 0 = no fade, as before.
     std::uint64_t wave_fade_ms = 0;
+    /// An offscreen target (the compositor's `under`, the resample's `scene` grid) is made
+    /// again at the size the views ask for once they have been below a third of its area for
+    /// this many milliseconds, so the memory of a zoom-in is given back after a zoom-out. A
+    /// zoom that comes back within the time keeps the target: making one again costs 15-36 ms
+    /// on an integrated adapter (the zoom sweep, docs/perf/README.md). 0 = never shrink.
+    std::uint64_t offscreen_shrink_ms = 3000;
     /// The limits for an interactive window: uploads and wave simulation
     /// setup are spread over frames (upload_budget_ms 1.0, background_fluid).
     [[nodiscard]] static GpuLimits interactive() {
@@ -493,6 +499,10 @@ class GpuFrame {
     void set_fade_clock(std::function<std::uint64_t()> clock);
     /// Pre-created chunk planes waiting for uploads (GpuLimits::prewarm_chunks).
     [[nodiscard]] std::size_t warm_planes_ready() const;
+    /// The memory of the offscreen targets (the compositor's `under` and terrain, the resample's
+    /// `scene` grid) as they are allocated now: GpuLimits::offscreen_shrink_ms says when they
+    /// shrink. Tools and the frame log, not per frame.
+    [[nodiscard]] std::size_t offscreen_bytes() const;
     /// Changes the number of chunks' worth of planes the background pre-creation keeps
     /// ready (GpuLimits::prewarm_chunks), e.g. after a window resize (prewarm_plan);
     /// starts the pre-creation if the compositor was made without it, and 0 stops

@@ -459,6 +459,12 @@ void FrameRenderer::set_workers(std::unique_ptr<ChunkWorkers> workers) {
     pending_ = false;
 }
 
+void FrameRenderer::release(std::vector<ChunkPtr> chunks) {
+    if (workers_) {
+        workers_->discard(std::move(chunks));
+    }
+}
+
 const Chunk* FrameRenderer::chunk(const ChunkKey& key) const {
     const auto it = cache_.find(key);
     return it == cache_.end() ? nullptr : it->second.get();

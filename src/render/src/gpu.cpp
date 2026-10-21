@@ -293,6 +293,8 @@ struct GpuFrame::Impl {
     Texture scene_t;
     TextureView scene_v;
     std::pair<std::uint32_t, std::uint32_t> scene_size{0, 0};
+    /// When the views asked for began to be below a third of the target's area (shrink_due).
+    std::optional<Clock::time_point> scene_small;
     /// Bound at group 1 for the sprite draws, which use no chunk data.
     BindGroup empty_bind;
     PipelineLayout chunk_pl, sprite_pl;
@@ -336,6 +338,7 @@ struct GpuFrame::Impl {
     Texture under_t, terrain_t;
     TextureView under_v, terrain_v;
     std::pair<std::uint32_t, std::uint32_t> under_size{0, 0};
+    std::optional<Clock::time_point> under_small;
     /// 1 × 1 stand-ins for unused bindings.
     std::pair<Texture, TextureView> dummy_color, dummy_field, dummy_terrain, dummy_base,
         dummy_depth, dummy_fluid, dummy_array, dummy_flow_uv, dummy_flow_aux, dummy_flow_shear;
@@ -389,6 +392,9 @@ struct GpuFrame::Impl {
     /// Ground, objects, field, terrain, base, and the three planes of the flow lattice.
     static constexpr std::size_t kUploadStages = 8;
     std::map<ChunkKey, Staged> staged;
+    /// Upload holds given up (dropped or finished): the chunk may be the last reference, and
+    /// its free is left to the chunk workers (FrameRenderer::release), not the window thread.
+    std::vector<std::shared_ptr<const render::Chunk>> released_holds;
     /// Planes of dropped chunks, reused by the next uploads: creating and
     /// freeing textures of several megabytes makes the driver allocate and
     /// free device memory blocks, which showed as sporadic stalls of
@@ -699,10 +705,28 @@ struct GpuFrame::Impl {
         return have.first >= w && have.second >= h && have.first <= 3 * w && have.second <= 3 * h;
     }
 
+    /// Whether an offscreen target of size `have` is to be made again for a view of w x h: the
+    /// view has been below a third of the target's area since `small` (the start of that run),
+    /// for GpuLimits::offscreen_shrink_ms. Starts or ends the run.
+    bool shrink_due(std::pair<std::uint32_t, std::uint32_t> have, std::uint32_t w, std::uint32_t h,
+                    std::optional<Clock::time_point>& small) const {
+        const bool below = 3 * std::uint64_t{w} * h < std::uint64_t{have.first} * have.second;
+        if (!below || limits.offscreen_shrink_ms == 0) {
+            small.reset();
+            return false;
+        }
+        if (!small) {
+            small = Clock::now();
+            return false;
+        }
+        return ms_since(*small) >= static_cast<double>(limits.offscreen_shrink_ms);
+    }
+
     void ensure_under(std::uint32_t w, std::uint32_t h) {
-        if (under_t && fits(under_size, w, h)) {
+        if (under_t && fits(under_size, w, h) && !shrink_due(under_size, w, h, under_small)) {
             return;
         }
+        under_small.reset();
         // Room to grow: a quarter more than asked, so a zoom that keeps widening the
         // grid does not recreate the textures at every step.
         w += w / 4;
@@ -720,9 +744,19 @@ struct GpuFrame::Impl {
     /// The offscreen scene grid of a resampled frame, `w` x `h` in the frame's
     /// format (the compositor's last pass writes it, the resample pass reads it).
     void ensure_scene(std::uint32_t w, std::uint32_t h) {
-        if (scene_t && fits(scene_size, w, h)) {
+        if (w == 0) {
+            // Not resampling: the grid is given back once it has been idle for the shrink time.
+            if (scene_t && shrink_due(scene_size, 0, 0, scene_small)) {
+                scene_t = {};
+                scene_v = {};
+                scene_size = {0, 0};
+            }
             return;
         }
+        if (scene_t && fits(scene_size, w, h) && !shrink_due(scene_size, w, h, scene_small)) {
+            return;
+        }
+        scene_small.reset();
         w += w / 4;
         h += h / 4;
         scene_t = make_texture(dev(), "scene grid", format, w, h, 1,
@@ -1007,6 +1041,7 @@ struct GpuFrame::Impl {
             done = stage_step(st);
         }
         Chunk out = finish_upload(key, std::move(st));
+        released_holds.push_back(std::move(found->second.hold));
         staged.erase(found);
         return out;
     }
@@ -1019,6 +1054,7 @@ struct GpuFrame::Impl {
             }
         }
         pool_planes.store(plane_pool.size());
+        released_holds.push_back(std::move(it->second.hold));
         staged.erase(it);
     }
 
@@ -2045,6 +2081,13 @@ void GpuFrame::set_prewarm_chunks(std::size_t chunks) {
     m.warm_cv.notify_one();
 }
 
+std::size_t GpuFrame::offscreen_bytes() const {
+    const Impl& m = *impl_;
+    // RGBA8 targets and the R16Uint terrain (4 + 2 bytes per texel under; 4 for the grid).
+    return m.under_size.first * m.under_size.second * (4 + 2) +
+           m.scene_size.first * m.scene_size.second * 4;
+}
+
 std::size_t GpuFrame::warm_planes_ready() const {
     const std::lock_guard lock(impl_->warm_mutex);
     return impl_->warm_planes.size();
@@ -2103,9 +2146,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     auto t = Clock::now();
     m.ensure_under(w, h);
     const bool resampling = resample != nullptr && !resample->is_noop_for(view.w, view.h);
-    if (resampling) {
-        m.ensure_scene(w, h);
-    }
+    m.ensure_scene(resampling ? w : 0, resampling ? h : 0);
     stats.under_ms = lap();
     m.ensure_sea(scene, group);
     stats.sea_ms = lap();
@@ -2115,6 +2156,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     const std::uint64_t fade_now = m.fade_clock();
     stats.chunks_uploaded = m.sync_chunks(frames, group, visible, frames.margin_keys(),
                                           frames.adjacent_keys(), fade_now, stats);
+    frames.release(std::exchange(m.released_holds, {}));
     stats.planes_warm = m.planes_warm_taken - warm_before;
     stats.chunk_sync_ms = lap();
     stats.sync_scan_ms = std::max(0.0, stats.chunk_sync_ms - stats.sync_drop_ms -

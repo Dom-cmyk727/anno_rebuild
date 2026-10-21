@@ -426,6 +426,27 @@ class Viewer {
 };
 
 std::string Viewer::run() {
+    // Sea patterns of all zoom levels, built off the window thread, the level shown first
+    // and from the very start: opening the window and the GPU context take hundreds of
+    // milliseconds, so the first frame finds the pattern it draws built (it used to build
+    // it itself: 20-28 ms in the owner's log, "sea 27.96").
+    std::vector<std::thread> seas;
+    struct JoinAtExit {
+        std::vector<std::thread>& threads;
+        ~JoinAtExit() {
+            for (auto& t : threads) {
+                if (t.joinable()) {
+                    t.join();
+                }
+            }
+        }
+    } join_seas{seas};
+    seas.emplace_back([this] { scene_.sea(group_); });
+    for (std::size_t g = 0; g < levels().size(); ++g) {
+        if (g != group_) {
+            seas.emplace_back([this, g] { scene_.sea(g); });
+        }
+    }
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         return std::string("SDL_Init: ") + SDL_GetError();
     }
@@ -523,11 +544,6 @@ std::string Viewer::run() {
     }
     const unsigned hw =
         (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);
-    // Sea patterns of all zoom groups, built off the window thread.
-    std::vector<std::thread> seas;
-    for (std::size_t g = 0; g < levels().size(); ++g) {
-        seas.emplace_back([this, g] { scene_.sea(g); });
-    }
     // Chunk builders use half the cores; frames use all of them.
     // Queue the river flows now (low priority threads): chunks that are built
     // before a flow is ready show the legacy river look and are rebuilt.

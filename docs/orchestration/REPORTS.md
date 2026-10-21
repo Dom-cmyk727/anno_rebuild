@@ -317,3 +317,57 @@ Please say which, with and without each switch. Mapping to the measured causes: 
   - clang-format: clean.
 - **Reviewers:** none for item 1. It is measurement code; the pixels are unchanged (digests).
 - **Next:** item 2 (island-level fields), starting with the sea field.
+## T1f item 2 — exact shortcuts in the field and terrain stages · `REVIEW` · 2026-10-21
+
+- **Owner decision 2026-10-21** (asked during the task): the plan "field per island and group, sliced per chunk" does not fit memory at group 0 (about 0.7 GB for the canyon island alone). The owner chose instead: exact shortcuts with a classification per island, by a conservative bound (pixels identical, the bound written in iso.md as a proof), and terrain per tile. Revised targets: field + terrain at most 25 % of a chunk, and a canyon land chunk at group 0 under 25 ms on one thread. The full removal is T11 §10.1. Options 2 (precompute at groups 1-2) and 3 (a coarser, inexact precompute) were rejected.
+- **Branch** `task/T1f-chunk-build-speed`, after item 1's commits, not pushed:
+
+  | commit | what |
+  |---|---|
+  | 7230884 | empty cells (`IslandWater::classify_cells`, `sea::field_at`, the proof in iso.md) |
+  | 726ee06 | `noise3_at` (noise without the zero-weight plane); the fix for an unclassified `IslandWater`, which 7230884 read out of bounds |
+  | b2d1994 | `terrain_plane`; river masks created only on sprite pixels |
+  | 9b14840 | `SmoothSampler` / `NoisePlane` caches |
+  | bd380ab | review: named noise weights, `static_assert`s on the proof's premises, `terrain_plane` as a free function |
+  | 84ec121 | review: a golden digest from 7479a2a, boundary, multi-island and terrain tests |
+  | c14ee6a | docs |
+
+- **Result** (one thread, warm, mean per chunk; `docs/perf/README.md` "T1f item 2"):
+
+  | scene, group | before (ms) | after (ms) | field + terrain + flow |
+  |---|---|---|---|
+  | canyon g0 | 50.1 | 29.1 | 68 % → 46 % |
+  | canyon g1 | 44.3 | 28.7 | 72 % → 57 % |
+  | canyon g2 | 28.2 | 19.5 | 70 % → 57 % |
+  | `Single_24` g0 | 44.2 | 21.4 | 67 % → 33 % |
+  | `Single_24` g1 | 39.3 | 23.0 | 71 % → 52 % |
+  | `Single_24` g2 | 25.2 | 16.6 | 69 % → 53 % |
+
+  - **Both targets missed.** The canyon at group 0 is 29.1 ms, not under 25; field + terrain is 33-57 %, not at most 25 %.
+  - **What is left:** sea and coast pixels inside the island grids, which need the exact smooth height for the depth byte (it never saturates). Also the river blurs and chamfers on chunks where rivers meet the sea.
+  - **Exact options left:** bounding-box blur and chamfer (about 2-3 ms on river chunks); SIMD for the band pixels.
+  - **The real fix** is T11 §10.1. The orchestrator decides whether to go further here or move to T11.
+- **Exactness evidence:**
+  - All scene and frame digests are unchanged.
+  - A synthetic golden digest recorded from the 7479a2a sources is checked in CI, with and without the cell classes.
+  - The empty-cell proof holds on every game island: 458 files, 4.33 M of 11.8 M tiles empty, all sampled positions empty.
+  - Bit-equality tests: `noise3_at`, `NoisePlane`, `SmoothSampler`, `terrain_plane` (synthetic and game files).
+  - Mutations, each caught by a test:
+    - the river check removed;
+    - the threshold at the waterline;
+    - 4 corners instead of 16;
+    - no noise term;
+    - the shortcut used outside the grid;
+    - samplers or terrain cache kept across islands.
+- **Reviewers** (two, read-only):
+  - **A (proof and code):** "no way for the outputs to differ, no new UB"; points 1-6 sound. It found constants not tied to the proof (the noise 1.3, `kBedEdge·kBedDepth`). Fixed in bd380ab with named constants and `static_assert`s. A stale comment is fixed too.
+  - **B (tests):** five mutations uncaught. The main gap was that CI compared `water_field` with `field_at`, which share one body. Fixed in 84ec121 (the golden digest, boundaries, multi-island, terrain across islands; all five now caught). The game-file test was reduced to 9 positions per tile for ASan.
+  - **Not done:** islands of width 1.
+- **Gates:**
+  - MSVC build: clean.
+  - ctest without the game dir: 627/627.
+  - ctest with the game dir: 627/627 at `-j 4`, `ANNO_TEST_THREADS=4`. At 16 the digest test hits `bad_alloc` while desktop apps hold about 32 GB of commit (T10b).
+  - GCC 13 and Clang 18 `-O3 -Werror` with the CI flags over all of `src`: clean.
+  - clang-format: clean.
+- **Not measured:** 16 threads after the change. The machine was at 47-77 % load (a game running), so those numbers are invalid and not reported. To be rerun on an idle machine.
+- **Next per the board:** item 3 (progressive delivery; the profile also found that the viewer builds every river chunk twice in the first seconds) and item 4 (`kChunk` 256) wait for the orchestrator's review of this.

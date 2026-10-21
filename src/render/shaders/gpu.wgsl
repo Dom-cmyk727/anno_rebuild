@@ -848,6 +848,10 @@ struct SpriteOut {
     @location(1) @interpolate(flat) dst: vec2<i32>,
     @location(2) @interpolate(flat) layer_shadow: vec2<u32>,
     @location(3) @interpolate(flat) size: vec2<u32>,
+    // A frame reduced by 2^shift (frame_size != 0): the frame's size and the source pixels
+    // before its first row/column in the first output pixel (see sprite_fs).
+    @location(4) @interpolate(flat) frame_size: vec2<u32>,
+    @location(5) @interpolate(flat) off: vec2<u32>,
 }
 
 @vertex
@@ -859,11 +863,15 @@ fn sprite_vs(
     @location(3) layer_shadow: vec2<u32>,
 ) -> SpriteOut {
     var out: SpriteOut;
-    out.pos = to_clip(vec2<f32>(dst) + quad_corner(i) * vec2<f32>(size));
-    out.src = vec2<i32>(src);
+    // Ordinary instances have 0 in the high halves of size and src.
+    let dsize = size & vec2<u32>(0xFFFFu, 0xFFFFu);
+    out.pos = to_clip(vec2<f32>(dst) + quad_corner(i) * vec2<f32>(dsize));
+    out.src = vec2<i32>(src & vec2<u32>(0xFFFFu, 0xFFFFu));
     out.dst = dst;
     out.layer_shadow = layer_shadow;
-    out.size = size;
+    out.size = dsize;
+    out.frame_size = size >> vec2<u32>(16u, 16u);
+    out.off = src >> vec2<u32>(16u, 16u);
     return out;
 }
 
@@ -986,9 +994,48 @@ fn ship_in_water(c: vec4<f32>, in: SpriteOut, local: vec2<i32>) -> vec4<f32> {
     return vec4<f32>(rgb, a);
 }
 
+// A frame of the built ancestor reduced by R = 2^shift (frame_size.x != 0): output pixel `local` covers the
+// frame pixels [local * R - off, local * R - off + R) per axis (transparent outside the
+// frame). The mean of the R x R pixels, premultiplied by alpha; for R > 8, 8 x 8
+// samples spread over the footprint. A shadow frame has a constant colour and the
+// coverage of its non-transparent pixels as alpha.
+fn sprite_reduced(in: SpriteOut, local: vec2<i32>) -> vec4<f32> {
+    let r = 1i << ((in.layer_shadow.y >> 18u) & 15u);
+    let n = min(r, 8i);
+    let origin = local * r - vec2<i32>(in.off);
+    let fsize = vec2<i32>(in.frame_size);
+    var rgb = vec3<f32>(0.0);
+    var alpha = 0.0;
+    var covered = 0.0;
+    for (var j = 0i; j < n; j = j + 1i) {
+        for (var i = 0i; i < n; i = i + 1i) {
+            let p = origin + vec2<i32>((2i * i + 1i) * r / (2i * n), (2i * j + 1i) * r / (2i * n));
+            if p.x < 0 || p.y < 0 || p.x >= fsize.x || p.y >= fsize.y {
+                continue;
+            }
+            let c = textureLoad(atlas, in.src + p, in.layer_shadow.x, 0);
+            rgb = rgb + c.rgb * c.a;
+            alpha = alpha + c.a;
+            covered = covered + select(0.0, 1.0, c.a > 0.0);
+        }
+    }
+    if alpha == 0.0 {
+        discard;
+    }
+    let count = f32(n * n);
+    if (in.layer_shadow.y & 1u) != 0u {
+        // iso::SHADOW: 37.5 % black, over the covered share of the output pixel.
+        return vec4<f32>(0.0, 0.0, 0.0, 96.0 / 255.0 * covered / count);
+    }
+    return vec4<f32>(rgb / alpha, alpha / count);
+}
+
 @fragment
 fn sprite_fs(in: SpriteOut) -> @location(0) vec4<f32> {
     let local = scene_px(in.pos) - in.dst;
+    if in.frame_size.x != 0u {
+        return sprite_reduced(in, local);
+    }
     let c = textureLoad(atlas, in.src + local, in.layer_shadow.x, 0);
     let flags = in.layer_shadow.y;
     if (flags & 0x20000u) != 0u && frame.enhanced != 0u && frame.ship_water != 0.0 {

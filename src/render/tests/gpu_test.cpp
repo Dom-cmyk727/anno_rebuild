@@ -3841,6 +3841,81 @@ TEST_CASE("resample pass: the scale, the offset and the filters (synthetic)") {
     CHECK(g.errors() == 0);
 }
 
+TEST_CASE(
+    "GPU ships at derived levels: the reduced frame, close to the reduced chunks (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    limits.wave_simulation = false;
+    auto loaded = load_scene(*dir, "Single_24.sze");
+    render::Scene& scene = *loaded.scene;
+    scene.set_levels(render::ZoomLevels::with_derived(3));
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    constexpr int kW = 200, kH = 150;
+    const auto target = g.offscreen_target(kW, kH);
+    // The CPU reference bakes the ships into the chunks (group 2, then reduced 2x per
+    // level); the compositor draws them per frame, each frame reduced by 2^shift.
+    render::FrameRenderer with_ships(4, true), without_ships(4, true), on_gpu(4, false);
+    std::size_t ships = 0;
+    for (const auto& u : scene.units) {
+        if (u.z || ships >= 3) {
+            continue;
+        }
+        ++ships;
+        const auto at = u.anchor(2, scene.lift);
+        for (const std::size_t level : {std::size_t{3}, std::size_t{4}, std::size_t{5}}) {
+            const int r = 1 << (level - 2);
+            const render::Rect view{at.first / r - kW / 2, at.second / r - kH / 2, kW, kH};
+            std::vector<std::uint32_t> cpu(std::size_t{kW} * kH), plain(cpu.size());
+            with_ships.render(scene, view, level, 925, render::WaterStyle::Original, cpu.data());
+            // The same view without the ships: the sea and land alone.
+            for (int f = 0; f < 4; ++f) {
+                g.render(on_gpu, scene, view, level, 925, render::WaterStyle::Original,
+                         target.second.get());
+            }
+            const auto px = g.read_back(target.first.get(), kW, kH);
+            REQUIRE(px.size() == cpu.size() * 4);
+            // Pixels whose colour differs by more than 24 in any channel.
+            std::size_t far = 0, ship_px = 0;
+            auto diff = [&](std::uint32_t c, const std::uint8_t* p) {
+                int m = 0;
+                for (int k = 0; k < 3; ++k) {
+                    m = std::max(m, std::abs(int((c >> (16 - 8 * k)) & 0xFFU) - int(p[k])));
+                }
+                return m;
+            };
+            for (std::size_t i = 0; i < cpu.size(); ++i) {
+                far += diff(cpu[i], &px[i * 4]) > 24 ? 1U : 0U;
+            }
+            // How many pixels of the CPU frame the ship changes: it is really there.
+            render::FrameRenderer bare(4, false);
+            bare.render(scene, view, level, 925, render::WaterStyle::Original, plain.data());
+            for (std::size_t i = 0; i < cpu.size(); ++i) {
+                std::uint8_t b[4] = {std::uint8_t(plain[i] >> 16), std::uint8_t(plain[i] >> 8),
+                                     std::uint8_t(plain[i]), 255};
+                ship_px += diff(cpu[i], b) > 24 ? 1U : 0U;
+            }
+            MESSAGE("ship " << ships << " level " << level << ": " << ship_px
+                            << " pixels differ from the bare view in the CPU frame, GPU vs CPU: "
+                            << far << " pixels > 24");
+            CHECK(ship_px >= 4);
+            CHECK(far <= std::max<std::size_t>(ship_px / 4, 6));
+        }
+    }
+    CHECK(ships > 0);
+    CHECK(g.errors() == 0);
+}
+
 TEST_CASE("derived levels: the box at scale 0.5 of a level equals the coarser level (synthetic)") {
     // iso.md "Choosing the level": a switch between two derived levels at scale 0.5
     // must not change the picture. The coarser level's chunk is the 2 x 2 reduction of
@@ -4375,6 +4450,10 @@ TEST_CASE("GPU frames at derived levels match the CPU path, objects standing in 
     for (Case& cs : cases) {
         render::Scene& scene = *cs.loaded.scene;
         scene.set_levels(render::ZoomLevels::with_derived(3));
+        // The ships are drawn per frame by the compositor (reduced) and baked into the CPU
+        // path's chunks: this case compares the terrain and the sea; the ships have their
+        // own test ("GPU ships at derived levels").
+        scene.units.clear();
         auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
         REQUIRE_MESSAGE(made, (made ? "" : made.error()));
         gpu::GpuFrame& g = *made.value();

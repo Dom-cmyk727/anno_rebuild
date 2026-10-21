@@ -35,6 +35,12 @@ double ms_since(Clock::time_point t) {
 constexpr WGPUTextureFormat kTerrainFormat = WGPUTextureFormat_R16Uint;
 /// Bytes of one sprite instance (see sprite_vs in gpu.wgsl).
 constexpr std::uint64_t kInstanceBytes = 32;
+/// A sprite instance whose `size` words carry the frame's size in their high halves is
+/// a frame of the built ancestor reduced by 2^shift, the shift in flag bits 18-21
+/// (struct SpriteOut and sprite_reduced in gpu.wgsl); ordinary instances have 0 there.
+/// Most halvings a ship is drawn at: 2^10 source pixels per output pixel, past which
+/// the frame (a few hundred pixels) is under one pixel. The shift is a 4-bit field.
+constexpr unsigned kMaxShipShift = 10;
 /// Bytes of the frame uniform (see Frame in gpu.wgsl).
 constexpr std::uint64_t kFrameUniformBytes = 96;
 
@@ -1268,9 +1274,20 @@ struct GpuFrame::Impl {
     /// ship_in_water in gpu.wgsl).
     std::uint32_t pack_ships(const Scene& scene, Rect view, std::size_t group, Bytes& bytes) {
         std::vector<const UnitSprite*> order;
-        // Units exist at the built levels only (a derived level has no frames of its own).
+        // Units have frames at the built levels only. At a derived level a ship is the
+        // frame of its built ancestor reduced by 2^shift (a box mean over the R x R
+        // source pixels of each output pixel, in the sprite shader: the picture a
+        // chunk reduction would make of it), at most kMaxShipShift halvings: beyond
+        // that a ship is under a pixel.
+        const bool derived =
+            levels != nullptr && group >= levels->built_count() && group < levels->size();
+        const std::size_t base = derived ? levels->ancestor(group) : group;
+        const unsigned shift = derived ? (*levels)[group].shift : 0U;
+        if (derived && shift > kMaxShipShift) {
+            return 0;
+        }
         for (const auto& u : scene.units) {
-            if (!u.z && group < kGroups) {
+            if (!u.z && base < kGroups) {
                 order.push_back(&u);
             }
         }
@@ -1285,6 +1302,29 @@ struct GpuFrame::Impl {
             }
             const auto [layer, ax, ay, w, h] = *p;
             const int left = at.first - f.frame.anchor_x, top = at.second - f.frame.anchor_y;
+            if (derived) {
+                // The output pixels the frame touches: floor(left / R) .. ceil((left + w) / R),
+                // the source origin of the first one is its pixel x R, the frame starts
+                // `off` source pixels into it (iso.md "Ships at a derived level").
+                const int r = 1 << shift;
+                const int x0 = div_euclid(left, r), y0 = div_euclid(top, r);
+                const int x1 = -div_euclid(-(left + static_cast<int>(w)), r);
+                const int y1 = -div_euclid(-(top + static_cast<int>(h)), r);
+                const int dw = x1 - x0, dh = y1 - y0;
+                if (!Rect{x0, y0, dw, dh}.intersect(view)) {
+                    return;
+                }
+                bytes.i32(x0);
+                bytes.i32(y0);
+                bytes.u32(static_cast<std::uint32_t>(dw) | w << 16);
+                bytes.u32(static_cast<std::uint32_t>(dh) | h << 16);
+                bytes.u32(ax | static_cast<std::uint32_t>(left - x0 * r) << 16);
+                bytes.u32(ay | static_cast<std::uint32_t>(top - y0 * r) << 16);
+                bytes.u32(layer);
+                bytes.u32((flags & 1U) | shift << 18);
+                ++n;
+                return;
+            }
             if (!Rect{left, top, static_cast<int>(w), static_cast<int>(h)}.intersect(view)) {
                 return;
             }
@@ -1296,17 +1336,17 @@ struct GpuFrame::Impl {
             ++n;
         };
         for (const UnitSprite* u : order) {
-            if (group >= u->frames.size() || !u->frames[group] || !u->frames[group]->image) {
+            if (base >= u->frames.size() || !u->frames[base] || !u->frames[base]->image) {
                 continue;
             }
-            const auto at = u->anchor(group, scene.lift);
-            if (group < u->shadows.size() && u->shadows[group] && u->shadows[group]->image) {
-                add(*u->shadows[group], at, 1U);
+            const auto at = u->anchor(base, scene.lift);
+            if (base < u->shadows.size() && u->shadows[base] && u->shadows[base]->image) {
+                add(*u->shadows[base], at, 1U);
             }
             // Bits 18-31: the frame's anchor row (ship_in_water in gpu.wgsl).
             const auto anchor_y = static_cast<std::uint32_t>(
-                std::clamp<int>(u->frames[group]->frame.anchor_y, 0, (1 << 14) - 1));
-            add(*u->frames[group], at, 1U << 17 | anchor_y << 18);
+                std::clamp<int>(u->frames[base]->frame.anchor_y, 0, (1 << 14) - 1));
+            add(*u->frames[base], at, 1U << 17 | anchor_y << 18);
         }
         return n;
     }

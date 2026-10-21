@@ -147,6 +147,7 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             }
             out.lookahead_chunks = *n;
         } else if (a == "--zoom-mode") {
+            out.zoom.mode_explicit = true;
             if (v == "stepped") {
                 out.zoom.mode = ZoomMode::Stepped;
             } else if (v == "continuous") {

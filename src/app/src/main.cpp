@@ -5,7 +5,7 @@
 //            [--water original|enhanced] [--river-flow legacy|flow] [--river-gain <x>]
 //            [--river-speed median|fastest] [--river-gap-patch <tiles>]
 //            [--renderer auto|gpu|cpu] [--lookahead-chunks <n>]
-//            [--zoom-mode stepped|continuous] [--zoom-step <factor>] [--zoom-ease <ms>]
+//            [--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>]
 //
 // --view shows every island of a scenario (.sze) at its INSEL5 world
 // position (INSELLNK islands as stand-ins of the same climate and size,
@@ -14,7 +14,10 @@
 // docs/render/iso.md).
 //
 // - Window (default): drag with the left mouse button, arrow keys or WASD to
-//   pan; mouse wheel or + / - to switch zoom groups 2 (far) / 1 / 0 (near);
+//   pan; mouse wheel zooms smoothly (--zoom-mode continuous, the default on the
+//   GPU renderer; Home or 0 back to the default zoom), + / - likewise; with
+//   --zoom-mode stepped (or the CPU renderer) they switch zoom groups
+//   2 (far) / 1 / 0 (near);
 //   Esc or Q quits; Space pauses the animation; E toggles enhanced water
 //   (not in the original; off by default); R toggles the river flow
 //   shading of enhanced water (--river-flow legacy|flow, flow by default;

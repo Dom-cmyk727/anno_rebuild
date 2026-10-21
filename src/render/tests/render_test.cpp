@@ -1,4 +1,5 @@
 // Synthetic tests of anno_render (no game files needed).
+#include <chrono>
 #include <cmath>
 #include <limits>
 
@@ -6,6 +7,7 @@
 
 #include <anno/render/frame.hpp>
 #include <anno/render/iso.hpp>
+#include <anno/render/profile.hpp>
 #include <anno/render/scene.hpp>
 #include <anno/render/sea.hpp>
 
@@ -310,4 +312,58 @@ TEST_CASE("river gap patch: trench corners get depth, nearby pieces are joined (
     render::sea::patch_river_gaps(touching, n, n, 6.0F, h2, s2, c2);
     CHECK(h2[9 * n + 4] == 48);
     CHECK(c2[9 * n + 4] == 0.0F);
+}
+
+namespace {
+
+/// Busy-waits `us` microseconds (the steady clock, not sleep: no scheduling).
+void spin(int us) {
+    const auto end = std::chrono::steady_clock::now() + std::chrono::microseconds(us);
+    while (std::chrono::steady_clock::now() < end) {
+    }
+}
+
+} // namespace
+
+TEST_CASE("chunk profile: off without a sink, nested stages counted exclusively") {
+    namespace profile = render::profile;
+    profile::Times t;
+    {
+        // Not attached: a scope records nothing.
+        const profile::Scope s(profile::Stage::objects);
+        spin(200);
+    }
+    profile::attach(&t);
+    const auto start = std::chrono::steady_clock::now();
+    {
+        const profile::Scope outer(profile::Stage::objects);
+        spin(500);
+        {
+            const profile::Scope inner(profile::Stage::decode);
+            spin(500);
+        }
+        spin(500);
+    }
+    const double elapsed =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    profile::attach(nullptr);
+    CHECK(t[profile::Stage::objects] >= 0.9);
+    CHECK(t[profile::Stage::decode] >= 0.45);
+    // Exclusive: the decode is not also counted in the objects.
+    CHECK(t[profile::Stage::objects] + t[profile::Stage::decode] <= elapsed);
+    double others = 0;
+    for (std::size_t i = 0; i < t.ms.size(); ++i) {
+        if (i != static_cast<std::size_t>(profile::Stage::objects) &&
+            i != static_cast<std::size_t>(profile::Stage::decode)) {
+            others += t.ms[i];
+        }
+    }
+    CHECK(others == 0.0);
+    // Detached again: nothing more is counted.
+    const double before = t[profile::Stage::objects];
+    {
+        const profile::Scope s(profile::Stage::objects);
+        spin(200);
+    }
+    CHECK(t[profile::Stage::objects] == before);
 }

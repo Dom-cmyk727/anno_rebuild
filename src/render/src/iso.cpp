@@ -6,6 +6,7 @@
 
 #include <anno/assets/building.hpp>
 #include <anno/render/iso.hpp>
+#include <anno/render/profile.hpp>
 
 namespace anno::render {
 
@@ -300,6 +301,7 @@ std::shared_ptr<const Rgba> SpriteCache::get(const formats::anlagen::AnlagenFile
             return it->second;
         }
     }
+    const profile::Scope stage(profile::Stage::decode);
     std::shared_ptr<const Rgba> img;
     const auto [id, variant, shadow, group, index] = key;
     if (variant == kSmoothed) {

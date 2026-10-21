@@ -12,6 +12,7 @@
 #include <thread>
 
 #include <anno/render/frame.hpp>
+#include <anno/render/profile.hpp>
 #include <anno/render/scene.hpp>
 
 #include "thread_priority.hpp"
@@ -301,6 +302,7 @@ std::vector<SpriteDraw> Scene::sprites_in(Rect rect, std::size_t group, std::uin
 const sea::IslandWater* Scene::island_water(std::size_t i) const {
     IslandData& d = objects_[i];
     std::call_once(*d.water_once, [&] {
+        const profile::Scope stage(profile::Stage::island_water);
         d.water = sea::IslandWater::build(islands[i], d.rivers, river_cfg.gap_patch_tiles);
     });
     return d.water ? &*d.water : nullptr;
@@ -429,8 +431,10 @@ void chamfer(std::vector<float>& d, std::size_t w, std::size_t h) {
 
 sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
                                         std::size_t group) const {
+    std::optional<profile::Scope> stage(std::in_place, profile::Stage::sea_field);
     sea::WaterField f =
         sea::water_field(rect, probe, [this](std::size_t i) { return island_water(i); });
+    stage.emplace(profile::Stage::river_sprites);
     // Enhanced river water takes the shapes of the waterfall and mouth
     // sprites (their alpha, softened): the river runs through the falls into
     // the sea as one surface instead of ending at hard-edged sprite patches
@@ -486,8 +490,10 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
         }
     }
     if (any) {
+        stage.emplace(profile::Stage::fall_masks);
         apply_fall_masks(f, falls, mouths, beds, group);
     }
+    stage.emplace(profile::Stage::river_blend);
     blend_rivers_into_sea(f, group);
     return f;
 }
@@ -996,6 +1002,7 @@ Scene::~Scene() {
 void Scene::build_flow(std::size_t index) const {
     FlowSlot& slot = *flow_slots_[index];
     std::call_once(slot.once, [&] {
+        const profile::Scope stage(profile::Stage::flow_solve);
         try {
             // Phase A (the raster) and phase B (the solve); the raster is only
             // needed for the solve and freed here.
@@ -1167,6 +1174,7 @@ river::FlowPlane Scene::flow_plane(Rect area, std::size_t group, const sea::Scen
     std::vector<Part> extra;
     auto add_strip = [&](Rect r) {
         if (const auto c = r.intersect(need)) {
+            const profile::Scope stage(profile::Stage::apron);
             extra.push_back({*c, ground_with_probe(*c, group).second});
         }
     };

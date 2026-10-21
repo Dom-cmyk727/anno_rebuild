@@ -24,6 +24,7 @@ using render::ChunkDrawsBuilder;
 using render::FrameId;
 using render::FrameKey;
 using render::FrameTable;
+using render::UnitFrameId;
 using render::ObjectRecord;
 using render::Px;
 using render::Rect;
@@ -272,7 +273,7 @@ TEST_CASE("frame table: dense ids, one entry per key, keel rows, undecodable fra
     const auto a = t.intern(FrameKey::building({7, 0, false, 1, 0}), make);
     const auto a2 = t.intern(FrameKey::building({7, 0, false, 1, 0}), make);
     const auto b = t.intern(FrameKey::building({7, 0, true, 1, 0}), make);
-    const auto u = t.intern(FrameKey::unit(0, 1, false), make);
+    const auto u = t.intern(FrameKey::unit({true, 3, 0, UnitFrameId::kNoColour}, 1, false), make);
     REQUIRE((a && a2 && b && u));
     CHECK(*a == 0);
     CHECK(*a2 == 0);
@@ -294,6 +295,36 @@ TEST_CASE("frame table: dense ids, one entry per key, keel rows, undecodable fra
     CHECK(t.size() == 3);
     const auto c = t.intern(FrameKey::building({9, 0, false, 1, 0}), make);
     CHECK(*c == 3);
+}
+
+TEST_CASE("frame table: units with the same frame identity share one id") {
+    FrameTable t;
+    const auto img = image(2, 2, [](int, int) { return Px{1, 2, 3, 255}; });
+    int made = 0;
+    auto make = [&] {
+        ++made;
+        return std::pair{header(2, 2, 0, 0), img};
+    };
+    const UnitFrameId red{true, 12, 3, 0xAA0000U};
+    const UnitFrameId blue{true, 12, 3, 0x0000AAU};
+    const UnitFrameId next{true, 12, 4, 0xAA0000U};
+    const auto a = t.intern(FrameKey::unit(red, 1, false), make);
+    const auto b = t.intern(FrameKey::unit(red, 1, false), make);
+    REQUIRE((a && b));
+    CHECK(*a == *b); // two identical soldiers
+    CHECK(made == 1);
+    // Colour, frame index, group and shadow each make a different frame.
+    CHECK(*t.intern(FrameKey::unit(blue, 1, false), make) != *a);
+    CHECK(*t.intern(FrameKey::unit(next, 1, false), make) != *a);
+    CHECK(*t.intern(FrameKey::unit(red, 2, false), make) != *a);
+    CHECK(*t.intern(FrameKey::unit(red, 1, true), make) != *a);
+    CHECK(t.size() == 5);
+    // Without an identity the decoded image is the identity.
+    const auto p = t.intern(FrameKey::unit_image(img.get(), 1, false), make);
+    const auto q = t.intern(FrameKey::unit_image(img.get(), 1, false), make);
+    REQUIRE((p && q));
+    CHECK(*p == *q);
+    CHECK(t.size() == 6);
 }
 
 TEST_CASE("frame table: threads interning the same keys agree on the ids") {

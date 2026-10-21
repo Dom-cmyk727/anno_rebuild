@@ -164,16 +164,18 @@ Result<std::vector<render::UnitSprite>, std::string> load_units(const fs::path& 
             }
         }
         render::UnitSprite s{u.x, u.y, z, {}, {}};
-        auto convert = [](const std::vector<std::optional<assets::unit::DecodedFrame>>& v) {
+        auto convert = [&u](const std::vector<std::optional<assets::unit::DecodedFrame>>& v,
+                            bool shadow) {
             std::vector<std::optional<render::UnitFrame>> r;
             for (const auto& f : v) {
-                r.push_back(f ? std::optional<render::UnitFrame>({f->frame, f->image})
+                r.push_back(f ? std::optional<render::UnitFrame>(
+                                    render::to_unit_frame(*f, u.figure, shadow))
                               : std::nullopt);
             }
             return r;
         };
-        s.frames = convert(u.frames);
-        s.shadows = convert(u.shadows);
+        s.frames = convert(u.frames, false);
+        s.shadows = convert(u.shadows, true);
         out.push_back(std::move(s));
     }
     if (off_land > 0) {

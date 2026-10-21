@@ -41,6 +41,11 @@ namespace anno::assets::unit {
 struct DecodedFrame {
     formats::figuren::Frame frame;
     std::shared_ptr<const Rgba> image;
+    /// The frame's index within its zoom group's frame set and the player
+    /// colour it was recoloured with (none for shadows and uncoloured figures):
+    /// with the unit's figure entry and the group they identify the frame.
+    std::uint32_t index = 0;
+    std::optional<figure::Rgb> colour;
 };
 
 /// Which SPIELER record a unit comes from.

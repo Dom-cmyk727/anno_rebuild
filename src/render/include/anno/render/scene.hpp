@@ -29,6 +29,7 @@
 #include <vector>
 
 #include <anno/assets/island.hpp>
+#include <anno/assets/unit.hpp>
 #include <anno/formats/anlagen.hpp>
 #include <anno/formats/figuren.hpp>
 #include <anno/formats/insel.hpp>
@@ -164,7 +165,22 @@ std::optional<Px> sea_floor_colour(std::span<const formats::insel::Island> islan
 struct UnitFrame {
     formats::figuren::Frame frame;
     std::shared_ptr<const Rgba> image;
+    /// Which frame this is; frames with the same identity share one entry in
+    /// the frame table (and one atlas copy). Unknown: keyed by the image.
+    UnitFrameId id;
 };
+
+/// The render form of a decoded unit frame of figure entry `figure`, with the
+/// identity that lets identical units share a frame-table entry.
+inline UnitFrame to_unit_frame(const assets::unit::DecodedFrame& f, std::uint16_t figure,
+                               bool shadow) {
+    std::uint32_t colour = UnitFrameId::kNoColour;
+    if (f.colour && !shadow) {
+        colour = std::uint32_t{(*f.colour)[0]} << 16U | std::uint32_t{(*f.colour)[1]} << 8U |
+                 (*f.colour)[2];
+    }
+    return {f.frame, f.image, UnitFrameId{true, figure, f.index, colour}};
+}
 
 /// A unit to draw: world position in tiles, the ground height it stands on
 /// (nullopt = on the sea surface), its frame and shadow per zoom group.

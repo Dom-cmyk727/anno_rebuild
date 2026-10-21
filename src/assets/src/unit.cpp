@@ -124,7 +124,8 @@ struct Decoder {
                 if (auto data = read(g, f.offset, f.length)) {
                     if (auto img = figure::decode(entry, f, *data, colour)) {
                         decoded =
-                            DecodedFrame{f, std::make_shared<const Rgba>(std::move(img).value())};
+                            DecodedFrame{f, std::make_shared<const Rgba>(std::move(img).value()),
+                                         static_cast<std::uint32_t>(k), colour};
                     }
                 }
                 if (!decoded) {

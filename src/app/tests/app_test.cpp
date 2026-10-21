@@ -199,15 +199,21 @@ TEST_CASE("command line") {
     const auto ring = parse_args({"--view", "x.scp", "--lookahead-chunks", "0"});
     REQUIRE(ring);
     CHECK(ring->lookahead_chunks == 0);
-    // The zoom options: stepped is the default; continuous with its factor and
-    // easing, each bounded.
-    CHECK(d->zoom.mode == anno::app::ZoomMode::Stepped);
+    // The zoom options: continuous is the default (OQ-095) and not "explicit";
+    // stepped is the faithful option; the factor and easing are each bounded.
+    CHECK(d->zoom.mode == anno::app::ZoomMode::Continuous);
+    CHECK_FALSE(d->zoom.mode_explicit);
+    const auto zs = parse_args({"--view", "x.scp", "--zoom-mode", "stepped"});
+    REQUIRE(zs);
+    CHECK(zs->zoom.mode == anno::app::ZoomMode::Stepped);
+    CHECK(zs->zoom.mode_explicit);
     CHECK(d->zoom.step == 1.1);
     CHECK(d->zoom.ease_ms == 120U);
     const auto zc = parse_args({"--view", "x.scp", "--zoom-mode", "continuous", "--zoom-step",
                                 "1.25", "--zoom-ease", "0"});
     REQUIRE(zc);
     CHECK(zc->zoom.mode == anno::app::ZoomMode::Continuous);
+    CHECK(zc->zoom.mode_explicit);
     CHECK(zc->zoom.step == 1.25);
     CHECK(zc->zoom.ease_ms == 0U);
     CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-mode", "smooth"}));

@@ -465,7 +465,7 @@ std::string Viewer::run() {
     }
 #endif
     continuous_ = zoom_opt_.mode == ZoomMode::Continuous && on_gpu();
-    if (zoom_opt_.mode == ZoomMode::Continuous && !continuous_) {
+    if (zoom_opt_.mode == ZoomMode::Continuous && zoom_opt_.mode_explicit && !continuous_) {
         std::fprintf(stderr, "--zoom-mode continuous needs the GPU renderer; zooming in steps\n");
     }
     if (!on_gpu()) {

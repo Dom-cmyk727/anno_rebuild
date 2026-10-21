@@ -231,6 +231,17 @@ TEST_CASE("command line") {
     CHECK(mz->zoom.min_zoom == 2.5);
     CHECK(mz->zoom.max_derived_levels == 3U);
     CHECK_FALSE(parse_args({"--view", "x.scp", "--min-zoom", "0.009"}));
+    // --zoom-max-upscale: 1 (default) .. 2.
+    CHECK(d->zoom.max_upscale == 1.0);
+    const auto mu = parse_args({"--view", "x.scp", "--zoom-max-upscale", "1.45"});
+    REQUIRE(mu);
+    CHECK(mu->zoom.max_upscale == 1.45);
+    CHECK(parse_args({"--view", "x.scp", "--zoom-max-upscale", "1"}));
+    CHECK(parse_args({"--view", "x.scp", "--zoom-max-upscale", "2"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-max-upscale", "0.99"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-max-upscale", "2.01"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-max-upscale", "nan"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-max-upscale", ""}));
     CHECK_FALSE(parse_args({"--view", "x.scp", "--min-zoom", "20.1"}));
     CHECK_FALSE(parse_args({"--view", "x.scp", "--min-zoom", "nan"}));
     CHECK(parse_args({"--view", "x.scp", "--min-zoom", "0.01"}));
@@ -248,8 +259,11 @@ TEST_CASE("zoom over derived levels: the range follows the last level and the mi
     CHECK(zoom_target_after(20.0, 0.0001, levels, 6.0) == 6.0);
     CHECK(zoom_target_after(20.0, 0.0001, levels, 1.0) == doctest::Approx(2.5 / kZoomEndFactor));
     CHECK(zoom_target_after(42.0, 1000.0, levels, 6.0) == doctest::Approx(84.0 * kZoomEndFactor));
-    // The level shown follows the zoom through the derived levels (nearest in ratio), and
-    // the scale stays inside 0.69 .. 1.45 at every width: the composed grid stays O(window).
+    // The level shown follows the zoom through the derived levels: the coarsest level
+    // whose tile width is at least the zoom, so the scale stays in [0.95 / 2.1, 1] at
+    // every width below group 0 (the widest ratio between two levels is 2.1, the coarser
+    // level is taken at 5 % below its tile width): the composed grid stays O(window),
+    // never magnified.
     ZoomState s;
     s.group = 1;
     s.now = s.target = 42.0;
@@ -258,12 +272,40 @@ TEST_CASE("zoom over derived levels: the range follows the last level and the mi
         s.target = zoom_target_after(s.target, 0.99, levels);
         s = zoom_advance(s, 8.0, 0, [](std::size_t) { return true; }, levels);
         const double sc = zoom_scale(s, levels);
-        lo = std::min(lo, sc);
+        // The last level is reduced further, down to its tile width / sqrt 2.
+        if (s.group + 1 < levels.size()) {
+            lo = std::min(lo, sc);
+        }
         hi = std::max(hi, sc);
     }
     CHECK(s.group == 5);
-    CHECK(lo > 0.68);
-    CHECK(hi < 1.46);
+    CHECK(lo >= 0.95 / 2.1 - 1e-9);
+    CHECK(hi <= 1.0 + 1e-9);
+    // And back out: the finer level is taken as soon as the scale would exceed 1.
+    double hi_up = 0.0;
+    for (int i = 0; i < 900; ++i) {
+        s.target = zoom_target_after(s.target, 1.01, levels);
+        s = zoom_advance(s, 8.0, 0, [](std::size_t) { return true; }, levels);
+        if (s.now <= levels.tile_w(0)) {
+            hi_up = std::max(hi_up, zoom_scale(s, levels));
+        }
+    }
+    CHECK(hi_up <= 1.0 + 1e-9);
+    CHECK(s.group == 0);
+    // Above group 0 magnifying cannot be avoided: up to sqrt 2, the first group only.
+    CHECK(zoom_scale(s, levels) == doctest::Approx(kZoomEndFactor));
+    // --zoom-max-upscale 1.45: the first stage 3 look, the finer level only past 1.45.
+    ZoomState old;
+    old.group = 1;
+    old.now = old.target = 42.0;
+    double hi_old = 0.0;
+    for (int i = 0; i < 900; ++i) {
+        old.target = zoom_target_after(old.target, 0.99, levels);
+        old = zoom_advance(old, 8.0, 0, [](std::size_t) { return true; }, levels, 1.45);
+        hi_old = std::max(hi_old, zoom_scale(old, levels));
+    }
+    CHECK(hi_old > 1.3);
+    CHECK(hi_old <= 1.45 + 1e-9);
 }
 
 TEST_CASE("zoom_args: the bounds of the zoom options are inclusive and exact") {
@@ -359,28 +401,38 @@ TEST_CASE("zoom_advance: easing covers 95 % in ease_ms, steps compose, 0 jumps, 
     CHECK(rest.now == s.now);
 }
 
-TEST_CASE("zoom_advance: the group switch has hysteresis, waits for ready, and is taken at rest") {
+TEST_CASE(
+    "zoom_advance: the level switch has hysteresis on the coarse side, waits for ready, bridges") {
     using namespace anno::app;
     const auto& kt = anno::render::kTile;
-    // The middle between groups 0 and 1 (tile widths 84 and 42), in the logarithm.
-    const double mid = std::sqrt(static_cast<double>(kt[0].w) * static_cast<double>(kt[1].w));
     auto at = [&](double w, std::size_t group, auto&& ready) {
         ZoomState s = zoom_state(w, group);
         return zoom_advance(s, 8.0, 120, ready).group;
     };
-    // Just on either side of the middle the shown group stays: the switch needs
-    // the zoom to be kGroupSwitchBias closer (in the logarithm) to the other.
-    CHECK(at(mid * 1.001, 1, kAllReady) == 1);
-    CHECK(at(mid / 1.001, 0, kAllReady) == 0);
-    // Far enough on the other side it switches.
-    CHECK(at(mid * 1.05, 1, kAllReady) == 0);
-    CHECK(at(mid / 1.05, 0, kAllReady) == 1);
-    // A group that is not ready is not taken.
-    CHECK(at(mid * 1.05, 1, [](std::size_t g) { return g != 0; }) == 1);
-    // At rest the group is chosen too: the zoom 1.3 times group 1's tile width is
-    // nearest group 1 itself, so a viewer left on group 0 comes back to it.
-    CHECK(at(42.0 * 1.3, 0, kAllReady) == 1);
-    // The ends: beyond group 0's tile width the nearest group is still 0.
+    // Group 1 (tile width 42) shows a zoom up to its own tile width, magnified never.
+    CHECK(at(42.0, 1, kAllReady) == 1);
+    CHECK(at(42.0 * 1.001, 1, kAllReady) == 0); // the scale would exceed 1: finer at once
+    CHECK(at(30.0, 1, kAllReady) == 1);         // 30 < 42: reduced, stays
+    // The coarser level is taken only once the zoom is 5 % below its tile width.
+    CHECK(at(20.0 / 0.95 * 1.001, 1, kAllReady) == 1); // 21.05 : group 2 (20) not yet
+    CHECK(at(20.0 / 0.95 * 0.999, 1, kAllReady) == 1); // fits 1.0 but not 0.95 * 20 = 19
+    CHECK(at(19.0 * 0.999, 1, kAllReady) == 2);
+    // ... and back: from group 2 the finer level is taken as the scale passes 1.
+    CHECK(at(19.5, 2, kAllReady) == 2);
+    CHECK(at(20.0 * 1.001, 2, kAllReady) == 1);
+    // A resting zoom does not flip between two levels (hysteresis band 19 .. 20).
+    CHECK(at(19.5, 1, kAllReady) == 1);
+    CHECK(at(19.5, 2, kAllReady) == 2);
+    // A coarser level that is not ready is waited for, the current one stays.
+    CHECK(at(15.0, 1, [](std::size_t g) { return g != 2; }) == 1);
+    // A finer level that is not ready is bridged by the next coarser one that is
+    // (magnified): zooming in from group 2 to 50 wants group 0.
+    CHECK(at(50.0, 2, [](std::size_t g) { return g != 0; }) == 1);
+    CHECK(at(50.0, 2, [](std::size_t g) { return g == 2; }) == 2);
+    CHECK(at(50.0, 2, kAllReady) == 0);
+    // At rest the level is chosen too: a viewer left on group 0 at 30 comes down to 1.
+    CHECK(at(30.0, 0, kAllReady) == 1);
+    // The ends: beyond group 0's tile width the first group is the only choice.
     CHECK(at(static_cast<double>(kt[0].w) * kZoomEndFactor, 0, kAllReady) == 0);
     // The wanted width is kept inside the range.
     CHECK(zoom_target_after(42.0, 1000.0) ==

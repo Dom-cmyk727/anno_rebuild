@@ -27,6 +27,7 @@
 #include <anno/formats/insel.hpp>
 #include <anno/formats/sze.hpp>
 #include <anno/formats/tex.hpp>
+#include <anno/render/chunk_reduce.hpp>
 #include <anno/render/fluid.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/render/gpu.hpp>
@@ -3824,6 +3825,74 @@ TEST_CASE("resample pass: the scale, the offset and the filters (synthetic)") {
     CHECK(g.errors() == 0);
 }
 
+TEST_CASE("derived levels: the box at scale 0.5 of a level equals the coarser level (synthetic)") {
+    // iso.md "Choosing the level": a switch between two derived levels at scale 0.5
+    // must not change the picture. The coarser level's chunk is the 2 x 2 reduction of
+    // the finer level's, the Box filter at 0.5 is the mean of the same 2 x 2 pixels,
+    // so over ground the two agree to the rounding of 8 bits. (Over objects they agree
+    // where the alpha is the same in the 2 x 2 block: alpha-over and the mean do not
+    // commute; the corpus test below has the island.)
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    EmptyScene es = empty_scene();
+    es.scene->set_levels(render::ZoomLevels::with_derived(2));
+    const render::Scene& scene = *es.scene;
+    gpu::GpuLimits limits;
+    limits.wave_simulation = false;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    constexpr std::size_t kFine = 3, kCoarse = 4;
+    constexpr std::uint32_t kN = 2 * render::kChunk;
+    std::vector<render::Chunk> fine;
+    for (int cy = 0; cy < 2; ++cy) {
+        for (int cx = 0; cx < 2; ++cx) {
+            render::Chunk c = noise_land_chunk(kFine, cx, cy);
+            c.objects.clear(); // ground only
+            fine.push_back(std::move(c));
+        }
+    }
+    const render::Chunk coarse = render::reduce_chunks_2x(
+        render::ChunkQuad{&fine[0], &fine[1], &fine[2], &fine[3]}, scene.textures.water());
+    render::FrameRenderer fr_fine(1, false), fr_coarse(1, false);
+    for (int i = 0; i < 4; ++i) {
+        fr_fine.insert_chunk({kFine, i % 2, i / 2}, fine[static_cast<std::size_t>(i)]);
+    }
+    fr_coarse.insert_chunk({kCoarse, 0, 0}, coarse);
+    auto frame = [&](render::FrameRenderer& fr, const render::Rect& view, std::size_t level,
+                     const gpu::Resample* rs, std::uint32_t ow, std::uint32_t oh) {
+        const auto t = g.offscreen_target(ow, oh);
+        for (int f = 0; f < 6; ++f) {
+            g.render(fr, scene, view, level, 0, render::WaterStyle::Original, t.second.get(), rs);
+        }
+        return g.read_back(t.first.get(), ow, oh);
+    };
+    const auto want = frame(fr_coarse, render::Rect{0, 0, render::kChunk, render::kChunk}, kCoarse,
+                            nullptr, render::kChunk, render::kChunk);
+    gpu::Resample rs;
+    rs.scale = 0.5;
+    rs.filter = gpu::ResampleFilter::Box;
+    const auto have = frame(fr_fine, render::Rect{0, 0, static_cast<int>(kN), static_cast<int>(kN)},
+                            kFine, &rs, render::kChunk, render::kChunk);
+    REQUIRE(have.size() == want.size());
+    int worst = 0;
+    std::size_t differ = 0;
+    for (std::size_t i = 0; i < want.size(); ++i) {
+        if (i % 4 == 3) {
+            continue;
+        }
+        const int d = std::abs(int{have[i]} - int{want[i]});
+        worst = std::max(worst, d);
+        differ += d > 1 ? 1U : 0U;
+    }
+    MESSAGE("levels 3 -> 4, ground: worst difference "
+            << worst << ", channels off by more than 1: " << differ);
+    CHECK(worst <= 1);
+    CHECK(g.errors() == 0);
+}
+
 TEST_CASE("resample pass: an identity resample is the same picture as none (synthetic)") {
     auto ctx = device_or_skip();
     if (!ctx) {
@@ -3950,6 +4019,28 @@ TEST_CASE("resample pass: odd scales, unequal offsets, non-square, a dirty targe
             const double bottom = texel(ix, iy + 1) * (1 - tx) + texel(ix + 1, iy + 1) * tx;
             return top * (1 - ty) + bottom * ty;
         }
+        if (c.rs.filter == gpu::ResampleFilter::Area) {
+            // The coverage-weighted mean of the grid pixels the footprint overlaps.
+            const float span = 1.0F / s;
+            const float lx = sx - 0.5F * span, hx = sx + 0.5F * span;
+            const float ly = sy - 0.5F * span, hy = sy + 0.5F * span;
+            const int x0 = static_cast<int>(std::floor(lx)), y0 = static_cast<int>(std::floor(ly));
+            const int x1 = std::max(static_cast<int>(std::ceil(hx)) - 1, x0);
+            const int y1 = std::max(static_cast<int>(std::ceil(hy)) - 1, y0);
+            double sum = 0;
+            for (int ty = y0; ty <= std::min(y1, y0 + 7); ++ty) {
+                const double wy = (std::min(hy, static_cast<float>(ty + 1)) -
+                                   std::max(ly, static_cast<float>(ty))) /
+                                  span;
+                for (int tx = x0; tx <= std::min(x1, x0 + 7); ++tx) {
+                    const double wx = (std::min(hx, static_cast<float>(tx + 1)) -
+                                       std::max(lx, static_cast<float>(tx))) /
+                                      span;
+                    sum += texel(tx, ty) * wx * wy;
+                }
+            }
+            return sum;
+        }
         if (c.rs.filter == gpu::ResampleFilter::Box) {
             const int n = std::clamp(static_cast<int>(std::ceil(1.0F / s)), 1, 8);
             const float span = 1.0F / s;
@@ -4009,6 +4100,16 @@ TEST_CASE("resample pass: odd scales, unequal offsets, non-square, a dirty targe
         run({v.resample, 96, 40, v.view}, 0.01, "1.37 nearest, non-square output");
         v = gpu::resampled_view(40.3, 38.6, 96, 40, 1.37, gpu::ResampleFilter::Bilinear);
         run({v.resample, 96, 40, v.view}, 0.01, "1.37 bilinear");
+        v = gpu::resampled_view(40.3, 38.6, 96, 40, 1.37, gpu::ResampleFilter::Area);
+        run({v.resample, 96, 40, v.view}, 0.01, "1.37 area");
+        // The owner's far zoom: group 2 magnified 1.13 (nearest doubled every 7th-8th
+        // row and column), and the small factors a zoom between two levels uses.
+        v = gpu::resampled_view(40.3, 38.6, 96, 40, 1.13, gpu::ResampleFilter::Area);
+        run({v.resample, 96, 40, v.view}, 0.01, "1.13 area");
+        v = gpu::resampled_view(60.9, 41.1, 80, 60, 1.01, gpu::ResampleFilter::Area);
+        run({v.resample, 80, 60, v.view}, 0.01, "1.01 area");
+        v = gpu::resampled_view(120.4, 90.2, 70, 50, 0.63, gpu::ResampleFilter::Area);
+        run({v.resample, 70, 50, v.view}, 0.01, "0.63 area (exact below 1 too)");
         v = gpu::resampled_view(120.4, 90.2, 70, 50, 0.63, gpu::ResampleFilter::Box);
         run({v.resample, 70, 50, v.view}, 0.01, "0.63 box");
         v = gpu::resampled_view(150.0, 150.0, 60, 40, 0.3, gpu::ResampleFilter::Box);
@@ -4027,6 +4128,8 @@ TEST_CASE("resample pass: odd scales, unequal offsets, non-square, a dirty targe
         run({rs, 90, 30, render::Rect{3, 5, 70, 50}}, 0.002, "offsets (0.75, 0.25) at scale 2");
         rs.filter = gpu::ResampleFilter::Bilinear;
         run({rs, 90, 30, render::Rect{3, 5, 70, 50}}, 0.002, "offsets (0.75, 0.25), bilinear");
+        rs.filter = gpu::ResampleFilter::Area;
+        run({rs, 90, 30, render::Rect{3, 5, 70, 50}}, 0.002, "offsets (0.75, 0.25), area");
     }
     // The pass runs for an offset that is almost nothing (not the identity).
     {

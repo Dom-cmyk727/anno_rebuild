@@ -313,13 +313,23 @@ struct GpuFrame::Impl {
     std::vector<RiverCost> costs;
     std::string tier_note;
     /// Timestamp queries (the device has them and a timed pass asked): the
-    /// sea pass of render() or a measured pass writes two ticks.
+    /// sea pass of render() or a measured pass writes ticks 0 and 1 (ts_writes);
+    /// render() writes tick 2 at the start of its first pass (ts_first) and tick 3
+    /// at the end of the resample pass (ts_last; without one the frame ends with
+    /// the sea pass, tick 1), so the whole frame is timed as well.
     bool timestamps = false;
     float timestamp_period_ns = 0.0F;
     QuerySet ts_set;
     Buffer ts_resolve, ts_read;
     WGPUPassTimestampWrites ts_writes = WGPU_PASS_TIMESTAMP_WRITES_INIT;
+    WGPUPassTimestampWrites ts_first = WGPU_PASS_TIMESTAMP_WRITES_INIT;
+    WGPUPassTimestampWrites ts_last = WGPU_PASS_TIMESTAMP_WRITES_INIT;
     bool ts_recorded = false;
+    /// Ticks resolved by the last timed render() (2 = the sea pass only, 3 or 4 = the
+    /// frame too) and the index of its last tick; the frame's GPU time as of the
+    /// last read_timestamps().
+    std::uint32_t ts_count = 2, ts_frame_end = 1;
+    std::optional<double> last_frame_ms;
     /// Offscreen texture of pass 1 and its size; terrain height per pixel.
     Texture under_t, terrain_t;
     TextureView under_v, terrain_v;
@@ -1426,24 +1436,34 @@ struct GpuFrame::Impl {
             WGPUQuerySetDescriptor qd = WGPU_QUERY_SET_DESCRIPTOR_INIT;
             qd.label = sv("timestamps");
             qd.type = WGPUQueryType_Timestamp;
-            qd.count = 2;
+            qd.count = 4;
             ts_set = QuerySet(wgpuDeviceCreateQuerySet(dev(), &qd));
-            ts_resolve = make_buffer(dev(), "timestamps", 16,
+            ts_resolve = make_buffer(dev(), "timestamps", 32,
                                      WGPUBufferUsage_QueryResolve | WGPUBufferUsage_CopySrc);
-            ts_read = make_buffer(dev(), "timestamps read", 16,
+            ts_read = make_buffer(dev(), "timestamps read", 32,
                                   WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead);
             ts_writes.querySet = ts_set.get();
             ts_writes.beginningOfPassWriteIndex = 0;
             ts_writes.endOfPassWriteIndex = 1;
+            ts_first.querySet = ts_set.get();
+            ts_first.beginningOfPassWriteIndex = 2;
+            ts_last.querySet = ts_set.get();
+            ts_last.endOfPassWriteIndex = 3;
         }
         return static_cast<bool>(ts_set);
     }
 
-    /// After the timed pass: resolves the two ticks and copies them to the
-    /// read-back buffer.
-    void resolve_timestamps(WGPUCommandEncoder enc) {
-        wgpuCommandEncoderResolveQuerySet(enc, ts_set.get(), 0, 2, ts_resolve.get(), 0);
-        wgpuCommandEncoderCopyBufferToBuffer(enc, ts_resolve.get(), 0, ts_read.get(), 0, 16);
+    /// After the timed pass: resolves the ticks (the two of the sea pass, or with
+    /// `frame_end` the four of render(): the frame ends at tick `frame_end`) and
+    /// copies them to the read-back buffer.
+    void resolve_timestamps(WGPUCommandEncoder enc, std::uint32_t frame_end = 0) {
+        // Only ticks that were written can be resolved: 0 and 1, then 2 (frame start),
+        // and 3 only when a resample pass wrote it.
+        ts_count = frame_end == 3 ? 4 : frame_end == 1 ? 3 : 2;
+        ts_frame_end = frame_end;
+        wgpuCommandEncoderResolveQuerySet(enc, ts_set.get(), 0, ts_count, ts_resolve.get(), 0);
+        wgpuCommandEncoderCopyBufferToBuffer(enc, ts_resolve.get(), 0, ts_read.get(), 0,
+                                             std::uint64_t{ts_count} * 8);
         ts_recorded = true;
     }
 
@@ -1454,14 +1474,22 @@ struct GpuFrame::Impl {
         }
         ts_recorded = false;
         wait_idle(ref->instance.get(), dev(), queue());
-        if (!map_read(ref->instance.get(), dev(), ts_read.get(), 16)) {
+        last_frame_ms.reset();
+        const std::uint64_t bytes = std::uint64_t{ts_count} * 8;
+        if (!map_read(ref->instance.get(), dev(), ts_read.get(), bytes)) {
             return std::nullopt;
         }
-        const auto* t =
-            static_cast<const std::uint64_t*>(wgpuBufferGetConstMappedRange(ts_read.get(), 0, 16));
+        const auto* t = static_cast<const std::uint64_t*>(
+            wgpuBufferGetConstMappedRange(ts_read.get(), 0, bytes));
         std::optional<double> ms;
+        auto span_ms = [&](std::uint64_t a, std::uint64_t b) {
+            return static_cast<double>(b - a) * static_cast<double>(timestamp_period_ns) * 1e-6;
+        };
         if (t != nullptr && t[1] > t[0]) {
-            ms = static_cast<double>(t[1] - t[0]) * static_cast<double>(timestamp_period_ns) * 1e-6;
+            ms = span_ms(t[0], t[1]);
+        }
+        if (t != nullptr && ts_count > 2 && t[ts_frame_end] > t[2]) {
+            last_frame_ms = span_ms(t[2], t[ts_frame_end]);
         }
         wgpuBufferUnmap(ts_read.get());
         return ms;
@@ -2096,9 +2124,11 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
             wgpuRenderPassEncoderDraw(p, 6, 1, 0, 0);
         }
     };
+    const bool timed = m.limits.gpu_timing && m.ensure_timestamps();
     {
         WGPURenderPassEncoder p =
-            begin(enc.get(), m.terrain_v.get(), {static_cast<double>(kNoTerrain), 0, 0, 0});
+            begin(enc.get(), m.terrain_v.get(), {static_cast<double>(kNoTerrain), 0, 0, 0},
+                  timed ? &m.ts_first : nullptr);
         wgpuRenderPassEncoderSetBindGroup(p, 0, pass1.get(), 0, nullptr);
         wgpuRenderPassEncoderSetPipeline(p, m.terrain_pipe.get());
         draw_chunks(p);
@@ -2120,7 +2150,6 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         wgpuRenderPassEncoderEnd(p);
         wgpuRenderPassEncoderRelease(p);
     }
-    const bool timed = m.limits.gpu_timing && m.ensure_timestamps();
     {
         // Pass 2 writes the target itself, or the scene grid a resample reads.
         WGPURenderPassEncoder p = begin(enc.get(), resampling ? m.scene_v.get() : target, clear,
@@ -2176,7 +2205,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         bd.entryCount = entries.size();
         bd.entries = entries.data();
         const BindGroup scale_bind(wgpuDeviceCreateBindGroup(m.dev(), &bd));
-        WGPURenderPassEncoder p = begin(enc.get(), target, clear);
+        WGPURenderPassEncoder p = begin(enc.get(), target, clear, timed ? &m.ts_last : nullptr);
         wgpuRenderPassEncoderSetPipeline(p, m.scale_pipe.get());
         wgpuRenderPassEncoderSetBindGroup(p, 0, m.empty_bind.get(), 0, nullptr);
         wgpuRenderPassEncoderSetBindGroup(p, 1, m.empty_bind.get(), 0, nullptr);
@@ -2187,7 +2216,8 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         wgpuRenderPassEncoderRelease(p);
     }
     if (timed) {
-        m.resolve_timestamps(enc.get());
+        // The frame ends with the resample pass (tick 3) or, without one, the sea pass.
+        m.resolve_timestamps(enc.get(), resampling ? 3U : 1U);
     }
     stats.record_ms = lap();
     Impl::SubmitTimes times;
@@ -2244,6 +2274,10 @@ const std::string& GpuFrame::river_tier_note() const {
 
 std::optional<double> GpuFrame::sea_pass_ms() {
     return impl_->read_timestamps();
+}
+
+std::optional<double> GpuFrame::frame_gpu_ms() const {
+    return impl_->last_frame_ms;
 }
 
 std::vector<RiverCost> GpuFrame::measure_river_cost(std::size_t repeats,

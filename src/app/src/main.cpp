@@ -7,6 +7,7 @@
 //            [--renderer auto|gpu|cpu] [--lookahead-chunks <n>]
 //            [--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>]
 //            [--min-zoom <tile width>] [--max-derived-levels <n>]
+//            [--zoom-max-upscale <factor>]
 //
 // --view shows every island of a scenario (.sze) at its INSEL5 world
 // position (INSELLNK islands as stand-ins of the same climate and size,

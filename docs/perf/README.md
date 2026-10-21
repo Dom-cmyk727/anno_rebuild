@@ -510,3 +510,38 @@ On the canyon island at group 0, the warm mean per chunk is 50 ms on 1 thread, 5
 | `Single_24` | 2 | 48.0 / 29.7 / 30.4 / **27.6** | 120.5 / 82.0 / 84.0 / **56.4** | 8.84 / 4.02 / 4.15 / **1.99** | 25.8 / 16.8 / 17.1 / **15.3** | 5.29 / 2.83 / 2.96 / **1.24** |
 
 **Result.** Item 2b takes the river stages from 2.7-6.4 ms to 2.0-4.0 ms at 16 threads (1.5-2.1 times less; 4.3 to 1.9 ms on one thread at group 2 of the canyon island) and the chunk mean by 3-14 %, most at group 2 where the river share is largest; the p95 at 16 threads falls most (canyon group 2: 104 to 69 ms, `Single_24` group 2: 84 to 56 ms), because the worst chunks are the river chunks. The 16-thread rows of the item 1 table (never measured idle before): 85-93 ms per chunk at group 0 against 39-51 ms after item 2, i.e. item 2 halved the chunk time also under SMT load, as it did on one thread. The 16-thread chunk time stays 1.7-1.9 times the one-thread time (SMT), as before.
+
+### 2026-10-21 - T3 stage 3 fix 1: the level is composed at scale <= 1 (cost of the finer grid), Windows 11, Ryzen 9 9800X3D, MSVC Release, branch task/T3-continuous-zoom
+
+`bench_frame <game> D_256x256_0045_5B.scp --renderer gpu --styles enhanced --res 1280x800,2560x1440 --groups 0,1,2 --scale-cost group:scale[:filter],...` (new): the grid of zoom group `group` composed for the window and resampled at `scale`, 60 frames after everything shown is built and uploaded; **GPU ms** are timestamps from the start of the first pass to the end of the last (the resample pass included: `GpuFrame::frame_gpu_ms`, new), p50 and max. Enhanced water, canyon island, 16 threads. The old rule composed on the level nearest in ratio (scale 0.69 .. 1.45, worst grid at 0.69); the new one at scale <= 1 (0.45 .. 1: worst grid at 0.95 x tile ratio: 0.475 between groups 0 and 1 and 1 and 2 / 2 and 3 for the ratio 2, 0.452 for 1 and 2). "Chunks shown" are the chunks the grid overlaps, "cached" the chunks in the cache, "missing" and "dropped" the sums over the 60 frames (a visible chunk trimmed would show as missing).
+
+**Adapter 0, NVIDIA GeForce RTX 4090 (Vulkan)**
+
+| window | point | grid | chunks shown | cached | missing | dropped | GPU ms p50 | GPU ms max |
+|---|---|---|---|---|---|---|---|---|
+| 1280x800 | old worst: group 1 at 0.69 | 1920x1216 | 12 | 52 | 0 | 0 | 0.14 | 0.14 |
+| 1280x800 | new worst: group 1 at 0.452 | 2880x1792 | 24 | 69 | 0 | 0 | 0.65 | 2.53 |
+| 1280x800 | new worst: group 2 at 0.475 | 2752x1728 | 24 | 83 | 0 | 0 | 0.68 | 2.46 |
+| 2560x1440 | old worst: group 1 at 0.69 | 3776x2112 | 40 | 92 | 0 | 0 | 0.79 | 2.78 |
+| 2560x1440 | old worst: group 2 at 0.69 | 3776x2112 | 40 | 121 | 0 | 0 | 0.96 | 2.27 |
+| 2560x1440 | new worst: group 1 at 0.452 | 5696x3200 | 84 | 181 | 0 | 0 | 2.16 | 3.57 |
+| 2560x1440 | new worst: group 2 at 0.475 | 5440x3072 | 84 | 200 | 0 | 0 | 2.81 | 4.69 |
+| 2560x1440 | magnified, area: group 0 at 1.414 | 1856x1024 | 12 | 52 | 0 | 0 | 0.13 | 0.13 |
+
+**Adapter 1, AMD Radeon(TM) Graphics, the iGPU (Vulkan)**
+
+| window | point | grid | chunks shown | cached | missing | dropped | GPU ms p50 | GPU ms max |
+|---|---|---|---|---|---|---|---|---|
+| 1280x800 | scale 1, group 0 (reference) | 1344x832 | 12 | 60 | 0 | 0 | 3.55 | 4.26 |
+| 1280x800 | old worst: group 1 at 0.69 | 1920x1216 | 12 | 90 | 0 | 0 | 8.05 | 8.66 |
+| 1280x800 | old worst: group 2 at 0.69 | 1920x1216 | 12 | 72 | 0 | 0 | 9.83 | 10.56 |
+| 1280x800 | new worst: group 1 at 0.452 | 2880x1792 | 24 | 160 | 0 | 0 | 17.37 | 22.39 |
+| 1280x800 | new worst: group 2 at 0.475 | 2752x1728 | 24 | 96 | 0 | 0 | 30.99 | 33.51 |
+| 2560x1440 | scale 1, group 0 (reference) | 2624x1472 | 18 | 88 | 0 | 0 | 13.39 | 14.07 |
+| 2560x1440 | old worst: group 1 at 0.69 | 3776x2112 | 40 | 210 | 0 | 0 | 31.84 | 34.79 |
+| 2560x1440 | old worst: group 2 at 0.69 | 3776x2112 | 40 | 140 | 0 | 0 | 72.14 | 75.97 |
+| 2560x1440 | new worst: group 1 at 0.452 | 5696x3200 | 84 | 378 | 0 | 0 | 101.75 | 105.88 |
+| 2560x1440 | new worst: group 2 at 0.475 | 5440x3072 | 84 | 252 | 0 | 0 | 194.63 | 198.68 |
+| 2560x1440 | magnified, area: group 0 at 1.414 | 1856x1024 | 12 | 60 | 0 | 0 | 7.82 | 8.14 |
+
+Reading: the cost follows the composed pixels (4.9 x at the worst point against 2.2 x before) and, in enhanced water, the sea shading per pixel, which is the iGPU's limit already at scale 1 (3.6 ms at 1280x800, 13.4 ms at 2560x1440). **On the RTX 4090 no frame passes 4.7 ms (the 8 ms line) at either window size; on the Radeon iGPU the worst point breaks it at both sizes (31 ms at 1280x800, 195 ms at 2560x1440 in group 2), while the old rule's worst point already broke it at 2560x1440 (72 ms) and was at 9.8 ms at 1280x800.** No chunk shown was missing or dropped in 60 frames (the cache held 1.5-4.5 x the chunks shown). Group 2 costs most because its sea shading per grid pixel is the dearest. `--zoom-max-upscale 1.45` restores the old grid for weak GPUs; an automatic choice from the measured cost is the follow-up the orchestrator may want (not built).

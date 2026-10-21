@@ -22,7 +22,7 @@ inline constexpr const char* kUsage =
     "[--river-flow legacy|flow] [--river-gain <x>] [--river-speed median|fastest] "
     "[--river-gap-patch <tiles>] [--renderer auto|gpu|cpu] [--lookahead-chunks <n>] "
     "[--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>] "
-    "[--min-zoom <tile width>] [--max-derived-levels <n>]\n";
+    "[--min-zoom <tile width>] [--max-derived-levels <n>] [--zoom-max-upscale <factor>]\n";
 
 /// World tiles accepted by --at: INSEL5 positions are u16 (docs/formats/insel.md);
 /// the margin keeps every projected coordinate inside int range.
@@ -49,6 +49,11 @@ inline constexpr unsigned kMaxZoomEaseMs = 2000;
 /// group-2 pixels, far beyond any map); raise it for larger maps.
 inline constexpr double kMinMinZoom = 0.01, kMaxMinZoom = 20.0;
 inline constexpr unsigned kMaxDerivedLevels = 24;
+/// --zoom-max-upscale: how far a level may be magnified before the finer one is
+/// composed (1 = never; 1.45 is the nearest-in-ratio look of the first stage 3
+/// build). The ratio between two levels is at most 2.1, so a larger factor would
+/// skip a level altogether.
+inline constexpr double kMinMaxUpscale = 1.0, kMaxMaxUpscale = 2.0;
 
 enum class Renderer { Auto, Gpu, Cpu };
 
@@ -76,6 +81,12 @@ struct ZoomOptions {
     /// window), and the most zoom levels derived below group 2.
     double min_zoom = 0.0;
     unsigned max_derived_levels = 8;
+    /// Continuous: the most a composed level is magnified (the picture is composed
+    /// on the coarsest level whose tile width is at least the zoom, so 1 = never;
+    /// above the first group's tile width magnifying cannot be avoided). Larger
+    /// values compose less and magnify more: for weak GPUs and the A/B against
+    /// the first stage 3 look (1.45).
+    double max_upscale = 1.0;
 };
 
 struct Args {

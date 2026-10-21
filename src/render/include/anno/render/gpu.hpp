@@ -366,6 +366,12 @@ enum class ResampleFilter : std::uint32_t {
     /// the output pixel's footprint: for scales below 1 (minifying), where
     /// nearest would skip scene pixels and shimmer.
     Box = 2,
+    /// The coverage-weighted mean of the scene pixels the output pixel's footprint
+    /// (1 / scale wide) overlaps: at scales of 1 and above (magnifying) at most
+    /// 2 x 2 pixels, so every output pixel is equally sharp and no row or column
+    /// is doubled, as with Nearest at a fractional scale. Also exact below 1 (up
+    /// to 8 pixels per axis), where Box is the cheaper choice.
+    Area = 3,
 };
 
 /// A continuous zoom: the picture is composed on the scene grid of a zoom
@@ -468,6 +474,10 @@ class GpuFrame {
     /// GpuLimits::gpu_timing and a device with timestamp queries; waits for
     /// the GPU); nullopt otherwise.
     std::optional<double> sea_pass_ms();
+    /// GPU time of the whole frame of the render() that the last sea_pass_ms()
+    /// read: from the start of its first pass to the end of its last one (the
+    /// resample pass of a continuous zoom included). nullopt without a reading.
+    [[nodiscard]] std::optional<double> frame_gpu_ms() const;
     /// An offscreen target of `w × h` in the frame's format that can be
     /// read back.
     std::pair<Texture, TextureView> offscreen_target(std::uint32_t w, std::uint32_t h) const;

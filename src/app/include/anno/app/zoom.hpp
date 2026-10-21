@@ -18,11 +18,12 @@ namespace anno::app {
 /// (upscaled) and group 2 (reduced). Reaching further out needs mips of the
 /// composed grid (T3 stage 3).
 inline constexpr double kZoomEndFactor = 1.4142135623730951;
-/// The zoom group is switched only when the logarithm of the ratio of the zoom
-/// to another group's tile width is smaller than the shown group's by this
-/// factor: hysteresis, so a zoom resting at the middle between two groups does
-/// not flip between them (each flip changes the chunks drawn).
-inline constexpr double kGroupSwitchBias = 1.05;
+/// The level shown is switched to a coarser one only once the zoom is this much
+/// below that level's tile width (5 %): hysteresis on the coarse side, so a zoom
+/// resting at a level's tile width does not flip between two levels (each flip
+/// changes the chunks drawn). The switch to the finer level has none: it is taken
+/// as soon as the scale would exceed the allowed magnification.
+inline constexpr double kLevelCoarseMargin = 0.95;
 /// Below this the easing treats the remaining distance (a logarithm) as zero:
 /// 0.01 % of a tile width, far below a pixel.
 inline constexpr double kZoomSnap = 1e-4;
@@ -57,17 +58,66 @@ zoom_scale(const ZoomState& s, const render::ZoomLevels& levels = render::ZoomLe
     return s.now / levels.tile_w(s.group);
 }
 
+/// The level to compose on at tile width `now`, from the `current` one (docs/render/iso.md
+/// "Continuous zoom"): the coarsest level whose tile width is at least `now`, so the
+/// composed grid is reduced (scale <= 1, the Box filter) and never magnified. The
+/// scale may reach `max_upscale` (>= 1, ZoomOptions::max_upscale; 1 = never
+/// magnified, 1.45 = the nearest-in-ratio look of the first stage 3 build) before
+/// the finer level is taken, and the coarser level is taken only once the scale on
+/// it is kLevelCoarseMargin of that. A finer level that is not `ready` is bridged by
+/// the next coarser one that is (magnified, with the Area filter), the current
+/// level at the latest; a coarser one that is not ready is waited for. Above the
+/// first level the first is the only choice.
+[[nodiscard]] inline std::size_t
+zoom_level_for(double now, std::size_t current, const std::function<bool(std::size_t)>& ready,
+               const render::ZoomLevels& levels = render::ZoomLevels::original(),
+               double max_upscale = 1.0) {
+    const std::size_t n = levels.size();
+    // Level g fits when the scale on it is at most max_upscale.
+    auto fits = [&](std::size_t g, double margin) {
+        return now <= max_upscale * margin * levels.tile_w(g);
+    };
+    std::size_t wanted = current;
+    if (!fits(current, 1.0)) {
+        // Too magnified: the coarsest level that fits, else the finest.
+        wanted = 0;
+        for (std::size_t g = current; g-- > 0;) {
+            if (fits(g, 1.0)) {
+                wanted = g;
+                break;
+            }
+        }
+    } else {
+        for (std::size_t g = n; g-- > current + 1;) {
+            if (fits(g, kLevelCoarseMargin)) {
+                wanted = g;
+                break;
+            }
+        }
+    }
+    // A coarser level that is not ready yet is waited for: the current one is
+    // reduced and complete. A finer level that is not ready yet is bridged by the
+    // next coarser one that is, magnified.
+    if (wanted > current) {
+        return ready(wanted) ? wanted : current;
+    }
+    for (std::size_t g = wanted; g <= current; ++g) {
+        if (g == current || ready(g)) {
+            return g;
+        }
+    }
+    return current;
+}
+
 /// Advances the zoom by `dt_ms`: eases `now` towards `target` (in the logarithm:
 /// the remaining distance shrinks by e^-3, 95 % covered, in `ease_ms`; 0 = at
-/// once), keeps the scene point under the anchor fixed, and switches to the zoom
-/// group whose tile width is nearest in ratio (with hysteresis) when
-/// `ready(group)`; the camera is converted by the tile ratio as Viewer::zoom
-/// does. The group is chosen also when the zoom is at rest, so a group that
-/// became ready later is taken then.
-[[nodiscard]] inline ZoomState
-zoom_advance(ZoomState s, double dt_ms, unsigned ease_ms,
-             const std::function<bool(std::size_t)>& ready,
-             const render::ZoomLevels& levels = render::ZoomLevels::original()) {
+/// once), keeps the scene point under the anchor fixed, and switches the level
+/// as zoom_level_for decides; the camera is converted by the tile ratio as
+/// Viewer::zoom does. The level is chosen also when the zoom is at rest, so a
+/// level that became ready later is taken then.
+[[nodiscard]] inline ZoomState zoom_advance(
+    ZoomState s, double dt_ms, unsigned ease_ms, const std::function<bool(std::size_t)>& ready,
+    const render::ZoomLevels& levels = render::ZoomLevels::original(), double max_upscale = 1.0) {
     if (s.now != s.target) {
         const double remaining = std::log(s.target / s.now);
         double next = s.target;
@@ -83,13 +133,7 @@ zoom_advance(ZoomState s, double dt_ms, unsigned ease_ms,
         s.cam_y += s.anchor_y * (1.0 / s_old - 1.0 / s_new);
         s.now = next;
     }
-    auto distance = [&](std::size_t g) { return std::abs(std::log(s.now / levels.tile_w(g))); };
-    std::size_t best = s.group;
-    for (std::size_t g = 0; g < levels.size(); ++g) {
-        if (g != s.group && distance(g) * kGroupSwitchBias < distance(best) && ready(g)) {
-            best = g;
-        }
-    }
+    const std::size_t best = zoom_level_for(s.now, s.group, ready, levels, max_upscale);
     if (best != s.group) {
         s.cam_x = s.cam_x * levels.tile_w(best) / levels.tile_w(s.group);
         s.cam_y = s.cam_y * levels.tile_h(best) / levels.tile_h(s.group);

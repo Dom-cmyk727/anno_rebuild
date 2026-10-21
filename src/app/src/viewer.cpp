@@ -235,8 +235,9 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
 #ifdef ANNO_VIEWER_GPU
 /// How the resample pass reads the composed grid at scale `s`: the mean of the
 /// covered pixels when reducing (nearest would skip pixels and shimmer), the
-/// nearest pixel when magnifying (the pixel-art look, as the stand-ins).
-/// ANNO_VIEW_RESAMPLE=nearest|bilinear|box forces one, for the owner's A/B.
+/// coverage-weighted mean (Area) when magnifying: equal-sized crisp pixels, where
+/// nearest doubles every second to seventh row and column at a fractional scale.
+/// ANNO_VIEW_RESAMPLE=nearest|bilinear|box|area forces one, for the owner's A/B.
 gpu::ResampleFilter resample_filter(double s) {
     static const char* forced = std::getenv("ANNO_VIEW_RESAMPLE");
     if (forced != nullptr) {
@@ -250,8 +251,11 @@ gpu::ResampleFilter resample_filter(double s) {
         if (f == "box") {
             return gpu::ResampleFilter::Box;
         }
+        if (f == "area") {
+            return gpu::ResampleFilter::Area;
+        }
     }
-    return s < 1.0 ? gpu::ResampleFilter::Box : gpu::ResampleFilter::Nearest;
+    return s < 1.0 ? gpu::ResampleFilter::Box : gpu::ResampleFilter::Area;
 }
 #endif
 
@@ -844,7 +848,8 @@ void Viewer::zoom_tick() {
     s.group = group_;
     const std::size_t before = group_;
     s = zoom_advance(
-        s, dt_ms, zoom_opt_.ease_ms, [this](std::size_t g) { return group_ready(g); }, levels());
+        s, dt_ms, zoom_opt_.ease_ms, [this](std::size_t g) { return group_ready(g); }, levels(),
+        zoom_opt_.max_upscale);
     zoom_now_ = s.now;
     cam_x_ = s.cam_x;
     cam_y_ = s.cam_y;
@@ -853,17 +858,12 @@ void Viewer::zoom_tick() {
         update_title();
     }
     clamp();
-    // Keep drawing while a nearer group is not ready yet (its sea pattern is still
-    // being built): the group is taken in the first frame it is.
-    std::size_t nearest = group_;
-    for (std::size_t g = 0; g < levels().size(); ++g) {
-        if (std::abs(std::log(zoom_now_ / levels().tile_w(g))) * kGroupSwitchBias <
-            std::abs(std::log(zoom_now_ / levels().tile_w(nearest)))) {
-            nearest = g;
-        }
-    }
+    // Keep drawing while a better level is not ready yet (its sea pattern is still
+    // being built): it is taken in the first frame it is.
+    const std::size_t wanted = zoom_level_for(
+        zoom_now_, group_, [](std::size_t) { return true; }, levels(), zoom_opt_.max_upscale);
     dirty_ = true;
-    if (zoom_now_ == zoom_target_ && nearest == group_) {
+    if (zoom_now_ == zoom_target_ && wanted == group_) {
         dirty_ = false;
     }
 }

@@ -10,6 +10,8 @@
 //       [--settle ms] [--river-flow legacy|flow] [--river-quality auto|low|medium|high]
 //       [--river-pass] [--stand-ins on|off] [--prewarm chunks] [--zoom-dump <dir>]
 //       [--zoom-dump-after a,b,...] [--zoom-pan dx,dy[,frames]] [--pop on|off]
+//   bench_frame <game_dir> <file> --renderer gpu --scale-cost group:scale[:filter],..
+//                                (GPU time of continuous zoom frames, compositor + resample)
 //   bench_frame --list-adapters
 //   bench_frame <game_dir> <file> --river-cost      (GPU cost of the river shading, synthetic)
 //
@@ -138,6 +140,13 @@ struct Options {
     /// about four 2560 x 1440 views at group 0 (24 chunks each), a few minutes on
     /// one thread at the measured 100-250 ms per chunk; 0 = all of the island.
     std::size_t chunk_limit = 96;
+    /// --scale-cost: the continuous zoom points to time (zoom group, scale, filter).
+    struct ScalePoint {
+        std::size_t group = 0;
+        double scale = 1.0;
+        std::string filter;
+    };
+    std::vector<ScalePoint> scale_cost;
 };
 
 std::vector<std::string_view> split(std::string_view s, char sep) {
@@ -989,6 +998,120 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
     fr.set_workers(nullptr);
 }
 
+#ifdef ANNO_BENCH_GPU
+/// --scale-cost g:scale[:filter],..: the GPU time of a continuous zoom frame (the
+/// compositor and the resample pass, from the start of the first pass to the end of
+/// the last, timestamps) for each point: the scene grid of zoom group g composed for
+/// the window at `scale`, resampled with `filter` (default as the viewer: box below
+/// 1, area from 1). Per point the chunks the grid shows, the chunks cached, the
+/// chunks missing and dropped over the measured frames (a visible chunk trimmed
+/// shows as missing), after a settle until everything is built and uploaded.
+int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, std::size_t island) {
+    auto filter_of = [](std::string_view s, double scale) {
+        if (s == "nearest") {
+            return gpu::ResampleFilter::Nearest;
+        }
+        if (s == "bilinear") {
+            return gpu::ResampleFilter::Bilinear;
+        }
+        if (s == "box") {
+            return gpu::ResampleFilter::Box;
+        }
+        if (s == "area") {
+            return gpu::ResampleFilter::Area;
+        }
+        return scale < 1.0 ? gpu::ResampleFilter::Box : gpu::ResampleFilter::Area;
+    };
+    auto name_of = [](gpu::ResampleFilter f) {
+        return f == gpu::ResampleFilter::Nearest    ? "nearest"
+               : f == gpu::ResampleFilter::Bilinear ? "bilinear"
+               : f == gpu::ResampleFilter::Box      ? "box"
+                                                    : "area";
+    };
+    const render::WaterStyle style = o.styles.front(); // --styles enhanced for the other
+    std::printf("| window | group | scale | filter | grid | chunks shown | cached | missing | "
+                "dropped | GPU ms p50 | GPU ms max | window thread ms p50 |\n"
+                "|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+    for (const auto& [w, h] : o.resolutions) {
+        for (const auto& pt : o.scale_cost) {
+            const render::Placement* p = nullptr;
+            for (const auto& q : scene.layouts[pt.group]) {
+                if (q.index == island) {
+                    p = &q;
+                }
+            }
+            if (p == nullptr) {
+                std::fputs("no placement for that island\n", stderr);
+                return 1;
+            }
+            const double cx = p->bounds.x + p->bounds.w / 2.0 + o.at.first;
+            const double cy = p->bounds.y + p->bounds.h / 2.0 + o.at.second;
+            const auto filter = filter_of(pt.filter, pt.scale);
+            const auto rv = gpu::resampled_view(cx, cy, static_cast<std::uint32_t>(w),
+                                                static_cast<std::uint32_t>(h), pt.scale, filter);
+            render::FrameRenderer fr(o.threads, false);
+            fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (o.threads + 1) / 2));
+            const auto target =
+                g.offscreen_target(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));
+            std::uint64_t t = 0;
+            auto frame = [&] {
+                const auto st = g.render(fr, scene, rv.view, pt.group, t, style,
+                                         target.second.get(), &rv.resample);
+                t += 16;
+                return st;
+            };
+            // Settle: until every shown chunk is built and uploaded (30 s at most).
+            const auto settle_start = std::chrono::steady_clock::now();
+            std::size_t quiet = 0;
+            while (quiet < 20 &&
+                   std::chrono::steady_clock::now() - settle_start < std::chrono::seconds(30)) {
+                const auto st = frame();
+                quiet = st.chunks_missing == 0 && st.chunks_uploaded == 0 && st.placeholders == 0
+                            ? quiet + 1
+                            : 0;
+                std::this_thread::sleep_for(std::chrono::milliseconds(8));
+            }
+            std::vector<double> gpu_ms, cpu_ms;
+            std::size_t missing = 0, dropped = 0, no_reading = 0;
+            for (int i = 0; i < 60; ++i) {
+                const auto st = frame();
+                missing += st.chunks_missing;
+                dropped += st.chunks_dropped;
+                cpu_ms.push_back(st.total_ms);
+                const auto sea = g.sea_pass_ms(); // waits for the GPU and reads the ticks
+                if (const auto ms = g.frame_gpu_ms(); sea && ms) {
+                    gpu_ms.push_back(*ms);
+                } else {
+                    ++no_reading;
+                }
+            }
+            auto pct = [](std::vector<double> v, double q) {
+                if (v.empty()) {
+                    return 0.0;
+                }
+                std::sort(v.begin(), v.end());
+                return v[static_cast<std::size_t>(
+                    std::lround(q * static_cast<double>(v.size() - 1)))];
+            };
+            std::printf("| %dx%d | %zu | %.3f | %s | %dx%d | %zu | %zu | %zu | %zu | ", w, h,
+                        pt.group, rv.resample.scale, name_of(filter), rv.view.w, rv.view.h,
+                        render::visible_chunks(rv.view).size(), fr.cached(), missing, dropped);
+            if (gpu_ms.empty()) {
+                std::printf("no GPU timestamps | | %.2f |\n", pct(cpu_ms, 0.5));
+            } else {
+                std::printf("%.2f | %.2f | %.2f |\n", pct(gpu_ms, 0.5), pct(gpu_ms, 1.0),
+                            pct(cpu_ms, 0.5));
+            }
+            if (no_reading > 0) {
+                std::fprintf(stderr, "%zu of 60 frames without a GPU reading\n", no_reading);
+            }
+            fr.set_workers(nullptr);
+        }
+    }
+    return 0;
+}
+#endif
+
 /// --chunk-profile: builds the chunks of island `island` per group, as the
 /// viewer's workers do (render_chunk without ships, the river flow waited for),
 /// on each thread count, from a freshly loaded scene (cold: sprite decodes, the
@@ -1133,6 +1256,8 @@ constexpr const char* kUsage =
     "[--river-pass] [--stand-ins on|off] [--prewarm chunks] [--prefetch chunks] [--fade ms] "
     "[--lookahead-chunks n] "
     "[--zoom-dump dir]\n"
+    "       bench_frame <game_dir> <file> --renderer gpu --scale-cost group:scale[:filter],.. "
+    "[--res ..] [--groups ..]\n"
     "       bench_frame <game_dir> <file> --chunk-profile threads,.. [--chunk-limit n] "
     "[--groups ..] [--island n]\n"
     "       bench_frame --list-adapters\n"
@@ -1221,6 +1346,19 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = v == "legacy" || v == "flow";
             o.river_flow =
                 v == "legacy" ? render::RiverFlowMode::Legacy : render::RiverFlowMode::Flow;
+        } else if (a == "--scale-cost") {
+            for (const auto item : split(v, ',')) {
+                const auto f = split(item, ':');
+                Options::ScalePoint pt;
+                ok = ok && (f.size() == 2 || f.size() == 3) && parse(f[0], pt.group) &&
+                     pt.group < render::kGroups && parse(f[1], pt.scale) && pt.scale > 0.0;
+                if (f.size() == 3) {
+                    pt.filter = std::string(f[2]);
+                    ok = ok && (pt.filter == "nearest" || pt.filter == "bilinear" ||
+                                pt.filter == "box" || pt.filter == "area");
+                }
+                o.scale_cost.push_back(pt);
+            }
         } else if (a == "--river-gain") {
             ok = parse(v, o.river_gain) && o.river_gain >= 0.0F;
         } else if (a == "--river-quality") {
@@ -1420,11 +1558,14 @@ int main(int argc, char** argv) {
     }
     std::printf("%s — %u threads available — %zu threads%s\n\n", file.string().c_str(),
                 std::thread::hardware_concurrency(), o->threads, o->quick ? " — quick" : "");
-    std::printf(
-        "| resolution | group | water | renderer | chunks | path | frames | p50 ms | p95 ms | "
-        "p99 ms | max ms | ≤16.7 ms | built | chunk ms | missing | stage 1 | stage 2 | "
-        "stage 3 | stage 4 |\n");
-    std::printf("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+    if (o->scale_cost.empty()) {
+        std::printf(
+            "| resolution | group | water | renderer | chunks | path | frames | p50 ms | p95 ms | "
+            "p99 ms | max ms | ≤16.7 ms | built | chunk ms | missing | stage 1 | stage 2 | "
+            "stage 3 | stage 4 |\n");
+        std::printf(
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+    }
     const std::size_t scale = o->quick ? 4 : 1;
 #ifdef ANNO_BENCH_GPU
     std::optional<gpu::Context> ctx;
@@ -1440,7 +1581,7 @@ int main(int argc, char** argv) {
         // One compositor for all configurations, as the Rust benchmark.
         gpu::GpuLimits limits = o->interactive ? gpu::GpuLimits::interactive() : gpu::GpuLimits{};
         limits.river_quality = o->river_quality;
-        limits.gpu_timing = o->river_pass;
+        limits.gpu_timing = o->river_pass || !o->scale_cost.empty();
         if (o->fade) {
             limits.chunk_fade_ms = *o->fade;
         }
@@ -1474,6 +1615,18 @@ int main(int argc, char** argv) {
         if (!frame_gpu->river_tier_note().empty()) {
             std::fprintf(stderr, "%s\n", frame_gpu->river_tier_note().c_str());
         }
+    }
+#endif
+#ifdef ANNO_BENCH_GPU
+    if (!o->scale_cost.empty()) {
+        if (!frame_gpu) {
+            std::fputs("--scale-cost needs --renderer gpu\n", stderr);
+            return 2;
+        }
+        for (const auto& pt : o->scale_cost) {
+            scene.sea(pt.group);
+        }
+        return scale_cost(scene, *o, *frame_gpu, largest);
     }
 #endif
     for (const auto& [w, h] : o->resolutions) {

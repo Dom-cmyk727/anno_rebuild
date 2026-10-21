@@ -173,6 +173,12 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
                 return std::nullopt;
             }
             out.zoom.max_derived_levels = *n;
+        } else if (a == "--zoom-max-upscale") {
+            const auto f = number<double>(v);
+            if (!f || !(*f >= kMinMaxUpscale) || *f > kMaxMaxUpscale) {
+                return std::nullopt;
+            }
+            out.zoom.max_upscale = *f;
         } else if (a == "--zoom-ease") {
             const auto ms = number<unsigned>(v);
             if (!ms || *ms > kMaxZoomEaseMs) {

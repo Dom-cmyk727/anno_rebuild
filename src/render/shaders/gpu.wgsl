@@ -1061,6 +1061,32 @@ fn scale_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         let b = mix(scale_texel(i0 + vec2<i32>(0, 1)), scale_texel(i0 + vec2<i32>(1, 1)), t.x);
         return mix(a, b, t.y);
     }
+    if scale_u.mode == 3u {
+        // Area: the footprint [src - span / 2, src + span / 2] per axis; every grid
+        // pixel it overlaps counts with the fraction of the footprint it covers.
+        let span = 1.0 / scale_u.scale;
+        let lo = src - vec2<f32>(0.5 * span);
+        let hi = src + vec2<f32>(0.5 * span);
+        let first = vec2<i32>(floor(lo));
+        let last = max(vec2<i32>(ceil(hi)) - vec2<i32>(1, 1), first);
+        var sum = vec4<f32>(0.0);
+        for (var j = 0; j < 8; j = j + 1) {
+            let y = first.y + j;
+            if y > last.y {
+                break;
+            }
+            let wy = (min(hi.y, f32(y + 1)) - max(lo.y, f32(y))) / span;
+            for (var i = 0; i < 8; i = i + 1) {
+                let x = first.x + i;
+                if x > last.x {
+                    break;
+                }
+                let wx = (min(hi.x, f32(x + 1)) - max(lo.x, f32(x))) / span;
+                sum = sum + scale_texel(vec2<i32>(x, y)) * (wx * wy);
+            }
+        }
+        return sum;
+    }
     if scale_u.mode == 2u {
         // The output pixel covers 1 / scale grid pixels per axis around src.
         let n = i32(scale_u.taps);

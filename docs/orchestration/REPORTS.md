@@ -442,3 +442,29 @@ Please say which, with and without each switch. Mapping to the measured causes: 
 - **Measurement** (idle machine, four builds, table in `docs/perf/README.md`): river stages 1.5-2.1 times less, chunk mean -3..-14 %, 16-thread p95 on river scenes down to 56-69 ms at group 2. The 16-thread rows of items 1 and 2 are in the same table.
 - **Gates:** MSVC clean; clang-format 23.1.3 clean; GCC 13.3 `-O3 -Werror` clean over `scene.cpp`, `render_test.cpp`. Clang only in CI. GPU tests ran (render + gpu suites) on this PC's default wgpu adapter, not named (to be named with `bench_frame --list-adapters` before the stage 3 measurements).
 - **Not started:** items 3 and 4 (wait for T3 stage 3's merge, per the order). Next: T3 stage 3 once PR #7 shows MERGED.
+
+## T3 stage 3 fix 1: the level is composed at scale <= 1, Area filter, --zoom-max-upscale — OWNER-CHECK (2026-10-21, branch task/T3-continuous-zoom, PR #9 open, head 0e62743)
+
+main (524223a) merged first. **Done (fix 1; fix 2 waits for the owner's look):**
+- **Level choice** (`zoom_level_for`, `zoom.hpp`): the coarsest level whose tile width is >= the zoom (scale <= 1, Box); the finer level as soon as the scale would exceed `--zoom-max-upscale` (default 1); the coarser one only at 5 % below its tile width (hysteresis on the coarse side only). A coarser level not ready is waited for; a finer level not ready is bridged by the next coarser ready one, magnified. Above group 0 (up to sqrt 2) the first group, magnified.
+- **`ResampleFilter::Area`** (coverage-weighted, <= 2 x 2 pixels at scale >= 1) in `scale_fs` and in the test's CPU model; the viewer default above 1 (Box below). `ANNO_VIEW_RESAMPLE=nearest|bilinear|box|area` for the A/B; bilinear stays one switch away.
+- **`--zoom-max-upscale <1..2>`** (default 1.0) with CLI tests (bounds, nan, empty).
+- **iso.md** "Choosing the level" + test "derived levels: the box at scale 0.5 of a level equals the coarser level" (levels 3 -> 4, ground): worst difference 1, no channel off by more than 1. Not exact over objects whose alpha varies inside a 2 x 2 block (alpha-over and the mean do not commute): stated in iso.md.
+- **Tests:** zoom sweep down and up in [0.95 / 2.1, 1] below group 0 (the 5 % is 0.95, not 1/1.05: 0.452 instead of 0.4535), 1.45 old look bounded by 1.45, switch rules (hysteresis, ready, bridge, rest). Area vs a CPU model at 1.37, 1.13, 1.01, 0.63 and unequal offsets: 0 pixels off by more than 1 of 2400-4800, **on adapter 0 (RTX 4090, Vulkan) and adapter 1 (Radeon iGPU, Vulkan)**; the whole GPU test exe (66 cases) passes on adapter 1, the suite under ctest on adapter 0. In the full ctest run 4 CPU render tests failed with bad allocation under load (the known memory-pressure flake); each passes alone.
+- **New measuring tools:** `GpuFrame::frame_gpu_ms()` (timestamp ticks 2/3: first pass start to last pass end, the resample pass included — this is item (a)), `bench_frame --renderer gpu --scale-cost group:scale[:filter],...`.
+- **Cost** (full tables in `docs/perf/README.md`; enhanced water, canyon island, GPU timestamps, p50): RTX 4090: worst point 2.8 ms at 2560x1440 (was 1.0), 0.7 ms at 1280x800, max 4.7 ms — under the 8 ms line. **Radeon iGPU: it breaks the line**: 1280x800 worst 31 ms (group 2 at 0.475; was 9.8 ms, which already broke 8), 2560x1440 195 ms (was 72). Even scale 1 costs 3.6 / 13.4 ms there (enhanced sea shading). Chunks: 84 shown / 200-378 cached at 2560x1440, **0 missing and 0 dropped in 60 frames** at every point (no visible chunk trimmed). Decision for you: automatic max-upscale from the measured cost (not built), or leave `--zoom-max-upscale 1.45` as the weak-GPU switch.
+- **CI of head 0e62743:** all jobs green (cpp-format, lint, linux-gcc, linux-gcc-release, linux-clang-asan with Clang -Werror, windows-msvc, build-macos, both test jobs) except macos-clang in one of its two runs, which failed only on the known flaky `river flow on the GPU ... automatic tier follows the adapter` (gpu_test.cpp:2001, T13); the other run passed. Local: MSVC Release, GCC 13 -O3 -Werror (WSL), clang-format 23.1.3.
+- **T1f PR #11** (chunk profile tolerance 1e-6 ms with the reason, the chamfer-window sentence in iso.md): pushed, CI pending when I wrote this; test passes locally.
+
+**Owner check** (exact commands; the viewer on the RTX 4090; zoom out slowly through 40 -> 25 -> 15 and look at pixel evenness):
+```
+cd C:\Users\altin\anno1503-T3\build\msvc\src\app\Release
+$g = "C:\Users\altin\anno1503\game\app"; $env:ANNO_GPU_ADAPTER = "0"
+.\anno1503.exe --view "$g\Scenes\Islands\Dschungel\D_256x256_0045_5B.scp" --game-dir $g --water enhanced
+# Bilinear instead of Area:
+$env:ANNO_VIEW_RESAMPLE = "bilinear"; .\anno1503.exe --view "$g\Scenes\Islands\Dschungel\D_256x256_0045_5B.scp" --game-dir $g --water enhanced
+# The old look (nearest, up to 1.45x):
+$env:ANNO_VIEW_RESAMPLE = "nearest"; .\anno1503.exe --view "$g\Scenes\Islands\Dschungel\D_256x256_0045_5B.scp" --game-dir $g --water enhanced --zoom-max-upscale 1.45
+Remove-Item Env:ANNO_VIEW_RESAMPLE
+```
+Questions: Area or bilinear as the magnifying default (Area is the default now)? Is the far zoom now even, and is the iGPU cost acceptable or should the cap be automatic? **Stopping here for your look; fix 2 (derived chunks from the cache) is next.**

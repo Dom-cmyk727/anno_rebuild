@@ -21,7 +21,8 @@ inline constexpr const char* kUsage =
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
     "[--river-flow legacy|flow] [--river-gain <x>] [--river-speed median|fastest] "
     "[--river-gap-patch <tiles>] [--renderer auto|gpu|cpu] [--lookahead-chunks <n>] "
-    "[--zoom-mode stepped|continuous] [--zoom-step <factor>] [--zoom-ease <ms>]\n";
+    "[--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>] "
+    "[--min-zoom <tile width>] [--max-derived-levels <n>]\n";
 
 /// World tiles accepted by --at: INSEL5 positions are u16 (docs/formats/insel.md);
 /// the margin keeps every projected coordinate inside int range.
@@ -41,6 +42,13 @@ inline constexpr double kMinZoomStep = 1.01, kMaxZoomStep = 2.0;
 /// Milliseconds accepted by --zoom-ease (0 = no easing, the zoom jumps to its
 /// target); beyond two seconds the picture lags the wheel visibly.
 inline constexpr unsigned kMaxZoomEaseMs = 2000;
+/// --min-zoom: the tile width in screen pixels the continuous zoom may reach at
+/// the far end (group 2 is 20, derived levels are below it); 0 = the scene fits
+/// the window. --max-derived-levels bounds the zoom levels reduced from group 2
+/// (each halves the tile size: 8 reach 0.08 px, a 512 px chunk then spans 131,072
+/// group-2 pixels, far beyond any map); raise it for larger maps.
+inline constexpr double kMinMinZoom = 0.01, kMaxMinZoom = 20.0;
+inline constexpr unsigned kMaxDerivedLevels = 24;
 
 enum class Renderer { Auto, Gpu, Cpu };
 
@@ -64,6 +72,10 @@ struct ZoomOptions {
     /// Continuous: milliseconds to cover 95 % of the way to the target (ease-out),
     /// 0 = at once. About a tenth of a second reads as smooth, not laggy.
     unsigned ease_ms = 120;
+    /// Continuous: the smallest tile width shown (0 = the whole scene fits the
+    /// window), and the most zoom levels derived below group 2.
+    double min_zoom = 0.0;
+    unsigned max_derived_levels = 8;
 };
 
 struct Args {

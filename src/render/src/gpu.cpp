@@ -736,7 +736,7 @@ struct GpuFrame::Impl {
         }
         std::size_t budget = limits.sea_steps_per_frame;
         const auto begin = Clock::now();
-        for (std::size_t g = 0; g < kGroups && budget > 0; ++g) {
+        for (std::size_t g = 0; g < scene.levels().size() && budget > 0; ++g) {
             if (g == group) {
                 continue;
             }

@@ -32,9 +32,12 @@ inline constexpr double kZoomSnap = 1e-4;
 /// group's * kZoomEndFactor.
 [[nodiscard]] inline double
 zoom_target_after(double target, double factor,
-                  const render::ZoomLevels& levels = render::ZoomLevels::original()) {
-    return std::clamp(target * factor, levels.tile_w(levels.size() - 1) / kZoomEndFactor,
-                      levels.tile_w(0) * kZoomEndFactor);
+                  const render::ZoomLevels& levels = render::ZoomLevels::original(),
+                  double min_tile = 0.0) {
+    // min_tile: the smallest tile width wanted (the scene fitting the window, or
+    // --min-zoom); never below what the last level can show.
+    const double lowest = std::max(levels.tile_w(levels.size() - 1) / kZoomEndFactor, min_tile);
+    return std::clamp(target * factor, lowest, levels.tile_w(0) * kZoomEndFactor);
 }
 
 /// The state of a continuous zoom: the tile width in screen pixels shown (`now`)

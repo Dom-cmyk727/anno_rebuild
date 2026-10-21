@@ -6,6 +6,7 @@
 //            [--river-speed median|fastest] [--river-gap-patch <tiles>]
 //            [--renderer auto|gpu|cpu] [--lookahead-chunks <n>]
 //            [--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>]
+//            [--min-zoom <tile width>] [--max-derived-levels <n>]
 //
 // --view shows every island of a scenario (.sze) at its INSEL5 world
 // position (INSELLNK islands as stand-ins of the same climate and size,
@@ -138,6 +139,27 @@ int run(const std::vector<std::string>& raw) {
                                args->river_flow);
     }
 #ifdef ANNO_WITH_VIEWER
+    if (args->zoom.mode == anno::app::ZoomMode::Continuous &&
+        args->renderer != anno::app::Renderer::Cpu) {
+        // Zoom levels below group 2, reduced from it, down to the smallest tile
+        // the window can ask for: --min-zoom, else the point where the scene fits
+        // a small window (the viewer stops at the actual window's fit).
+        if (const auto b = scene.bounds(2)) {
+            const auto& l = anno::render::ZoomLevels::original();
+            std::size_t n = 0;
+            if (args->zoom.min_zoom > 0.0) {
+                while (n < args->zoom.max_derived_levels &&
+                       l.tile_w(2) / static_cast<double>(std::uint64_t{1} << n) >
+                           args->zoom.min_zoom) {
+                    ++n;
+                }
+            } else {
+                n = anno::render::ZoomLevels::derived_to_fit(b->w, b->h, 640.0, 360.0,
+                                                             args->zoom.max_derived_levels);
+            }
+            scene.set_levels(anno::render::ZoomLevels::with_derived(n));
+        }
+    }
     const std::string err =
         anno::app::run_viewer(scene, args->group.value_or(2), args->renderer, args->river_flow,
                               args->water, args->lookahead_chunks, args->zoom);

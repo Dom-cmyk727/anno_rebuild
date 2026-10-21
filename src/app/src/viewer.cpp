@@ -270,7 +270,24 @@ class Viewer {
         zoom_now_ = zoom_target_ = levels().tile_w(group);
     }
 
-    const render::ZoomLevels& levels() const { return frames_.levels(); }
+    const render::ZoomLevels& levels() const { return scene_.levels(); }
+
+    /// The smallest tile width the continuous zoom may show: --min-zoom, else the
+    /// width at which the whole scene fits the window, but never above group 2's
+    /// (the original's farthest view stays reachable on a small scene).
+    [[nodiscard]] double zoom_min_tile() const {
+        if (zoom_opt_.min_zoom > 0.0) {
+            return zoom_opt_.min_zoom;
+        }
+        const auto b = scene_.bounds(levels().built_count() - 1);
+        if (!b || b->w <= 0 || b->h <= 0) {
+            return 0.0;
+        }
+        const auto [w, h] = view_size();
+        const double last = levels().tile_w(levels().built_count() - 1);
+        return std::min(
+            last, last * std::min(w / static_cast<double>(b->w), h / static_cast<double>(b->h)));
+    }
 
     std::string run();
 
@@ -504,7 +521,7 @@ std::string Viewer::run() {
         (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);
     // Sea patterns of all zoom groups, built off the window thread.
     std::vector<std::thread> seas;
-    for (std::size_t g = 0; g < levels().built_count(); ++g) {
+    for (std::size_t g = 0; g < levels().size(); ++g) {
         seas.emplace_back([this, g] { scene_.sea(g); });
     }
     // Chunk builders use half the cores; frames use all of them.
@@ -757,7 +774,10 @@ void Viewer::clamp() {
 
 void Viewer::zoom(int step, std::optional<std::pair<double, double>> anchor) {
     const auto next = static_cast<std::ptrdiff_t>(group_) + step;
-    if (next < 0 || next >= static_cast<std::ptrdiff_t>(levels().size())) {
+    // The stepped zoom is the original's three groups; the derived levels are for
+    // the continuous zoom.
+    const auto limit = continuous_ ? levels().size() : levels().built_count();
+    if (next < 0 || next >= static_cast<std::ptrdiff_t>(limit)) {
         return;
     }
     const auto g = static_cast<std::size_t>(next);
@@ -797,7 +817,7 @@ void Viewer::zoom_by(double factor, std::optional<std::pair<double, double>> anc
     const auto [w, h] = view_size();
     zoom_anchor_ =
         anchor ? std::pair{anchor->first - w / 2.0, anchor->second - h / 2.0} : std::pair{0.0, 0.0};
-    zoom_target_ = zoom_target_after(zoom_target_, factor, levels());
+    zoom_target_ = zoom_target_after(zoom_target_, factor, levels(), zoom_min_tile());
     dirty_ = true;
 }
 

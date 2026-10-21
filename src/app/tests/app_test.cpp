@@ -222,9 +222,48 @@ TEST_CASE("command line") {
     CHECK(parse_args({"--view", "x.scp", "--zoom-step", "2"}));
     CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-ease", "2001"}));
     CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-ease", "-5"}));
+    // --min-zoom and --max-derived-levels: the far end of the continuous zoom.
+    CHECK(d->zoom.min_zoom == 0.0);
+    CHECK(d->zoom.max_derived_levels == 8U);
+    const auto mz =
+        parse_args({"--view", "x.scp", "--min-zoom", "2.5", "--max-derived-levels", "3"});
+    REQUIRE(mz);
+    CHECK(mz->zoom.min_zoom == 2.5);
+    CHECK(mz->zoom.max_derived_levels == 3U);
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--min-zoom", "0.009"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--min-zoom", "20.1"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--min-zoom", "nan"}));
+    CHECK(parse_args({"--view", "x.scp", "--min-zoom", "0.01"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--max-derived-levels", "25"}));
+    CHECK(parse_args({"--view", "x.scp", "--max-derived-levels", "0"}));
     // UTF-8 paths round-trip.
     const std::string umlaut = "Insel_\xc3\xa4.scp";
     CHECK(anno::app::to_utf8(anno::app::utf8_path(umlaut)) == umlaut);
+}
+
+TEST_CASE("zoom over derived levels: the range follows the last level and the minimum tile") {
+    using namespace anno::app;
+    const auto levels = anno::render::ZoomLevels::with_derived(3); // tile widths 84 42 20 10 5 2.5
+    CHECK(zoom_target_after(20.0, 0.0001, levels) == doctest::Approx(2.5 / kZoomEndFactor));
+    CHECK(zoom_target_after(20.0, 0.0001, levels, 6.0) == 6.0);
+    CHECK(zoom_target_after(20.0, 0.0001, levels, 1.0) == doctest::Approx(2.5 / kZoomEndFactor));
+    CHECK(zoom_target_after(42.0, 1000.0, levels, 6.0) == doctest::Approx(84.0 * kZoomEndFactor));
+    // The level shown follows the zoom through the derived levels (nearest in ratio), and
+    // the scale stays inside 0.69 .. 1.45 at every width: the composed grid stays O(window).
+    ZoomState s;
+    s.group = 1;
+    s.now = s.target = 42.0;
+    double lo = 10.0, hi = 0.0;
+    for (int i = 0; i < 900; ++i) {
+        s.target = zoom_target_after(s.target, 0.99, levels);
+        s = zoom_advance(s, 8.0, 0, [](std::size_t) { return true; }, levels);
+        const double sc = zoom_scale(s, levels);
+        lo = std::min(lo, sc);
+        hi = std::max(hi, sc);
+    }
+    CHECK(s.group == 5);
+    CHECK(lo > 0.68);
+    CHECK(hi < 1.46);
 }
 
 TEST_CASE("zoom_args: the bounds of the zoom options are inclusive and exact") {

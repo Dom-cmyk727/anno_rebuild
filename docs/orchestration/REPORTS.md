@@ -500,3 +500,23 @@ Questions: Area or bilinear as the magnifying default (Area is the default now)?
 3. Confirm the copy's folder `C:\anno1503-original\` for all stages.
 
 **Note.** A `mkdir -p C:\anno1503-original` that the first attempt ran with the denied copy did not leave a folder (it was absent after the denial), so no cleanup is needed.
+
+## 2026-10-21 — T15 stage 0 smoke run complete (dgVoodoo2) — REVIEW (branch task/T15-original-harness, PR #13)
+
+Follows the earlier stage 0 design entry. The owner approved the smoke run and both wrappers (2026-10-21 r). Corrected display facts (2026-10-21 s): both monitors on the RTX 4090, the 2560x1440 @ 500 Hz one primary; the launcher's native 2560x1440 was exclusive full-screen on the primary (black capture), not the second monitor.
+
+**Result: the harness works end to end.**
+- **cnc-ddraw first (owner's order):** installed, but it rendered black and then `1503Startup.exe` (which runs the game in-process and persists natively) exited within ~3 s whenever cnc-ddraw's `ddraw.dll` was present. So cnc-ddraw does not run this game; removed.
+- **dgVoodoo2 v2.87.5 (freeware, SHA-256 in the design doc):** installed into `C:\anno1503-original\` only (`MS/x86/DDraw.dll`, `D3DImm.dll`, a configured `dgVoodoo.conf`); the game runs windowed on the primary monitor. The game's 20 files stay byte-identical to `game/app`.
+- **(a) Screenshot, not black:** `cache/orig/smoke-dgv-full/shot-114s.png` (git-ignored) is a running single-player scenario at 1024x768 — isometric coast, a ship, a trading post, the HUD (minimap, resource bar, gold 499,990) — captured by the script (BitBlt of the window rectangle; PrintWindow returns black for the D3D window). I looked at it (point 10): clean original render.
+- **(b) To a running scenario:** the owner clicked through the intros and menu; the window grew 800x600 -> 1024x768 on scenario load.
+- **(c) Module bases (32-bit, by walking the WOW64 PEB loader list over ReadProcessMemory — the Win32 module APIs show a 64-bit caller only the shim DLLs): `AnnoDisplay.dll` at its preferred base 0x10000000; `AnnoFrame.dll` 0x2300000, `AnnoScene.dll` 0x24b0000, `AnnoGame.dll` 0x2500000, `AnnoWelt.dll` 0x2530000-0x2560000 rebased** (they all prefer 0x10000000 and conflict). This answers the "do the DLLs load at their preferred bases" question: only the first (AnnoDisplay) does.
+- **(d) World tick:** `ReadProcessMemory` of a module's code bytes matches the file on disk, and the world-object vtable (`AnnoWelt base + 0xccdd8`) is found in the heap. **Partial:** the tick read back 0 and did not grow — the scenario was **paused** when the owner closed the run early. The locator now verifies the object by `tick == (ms counter >> 1)` (docs/re/tick-loop.md). Showing it grow needs one short run with the scenario unpaused (a stage-1 fixture regardless).
+- **(e) Close:** WM_CLOSE then taskkill of every process under the copy folder; no process left, hashes unchanged, across every run.
+
+**Harness:** `tools/orig/smoke.py` (standard library only; sends no input — the owner clicks). Committed in this branch (`b7e7a65`, `f7ba0bd`).
+
+**For the review / owner:**
+- The one open smoke point (d) the tick growing: I can do a ~40 s run where you start a scenario and press play/unpause, or leave it to stage 1 (the fixtures do this anyway). Your call.
+- dgVoodoo2 stays installed in the copy (the working wrapper). Nothing of it, or of the original's output, is in git.
+- Stage 1 (the M2 fixtures against the running original) is the next T15 stage; it builds on this harness.

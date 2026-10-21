@@ -19,6 +19,6 @@ namespace anno::app {
 std::string run_viewer(const render::Scene& scene, std::size_t group, Renderer renderer,
                        render::RiverFlowMode river_flow = render::RiverFlowMode::Flow,
                        render::WaterStyle water = render::WaterStyle::Original,
-                       std::size_t lookahead_chunks = 3);
+                       std::size_t lookahead_chunks = 3, ZoomOptions zoom = {});
 
 } // namespace anno::app

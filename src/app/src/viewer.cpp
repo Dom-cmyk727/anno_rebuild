@@ -231,17 +231,54 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
 }
 #endif
 
+#ifdef ANNO_VIEWER_GPU
+/// How the resample pass reads the composed grid at scale `s`: the mean of the
+/// covered pixels when reducing (nearest would skip pixels and shimmer), the
+/// nearest pixel when magnifying (the pixel-art look, as the stand-ins).
+/// ANNO_VIEW_RESAMPLE=nearest|bilinear|box forces one, for the owner's A/B.
+gpu::ResampleFilter resample_filter(double s) {
+    static const char* forced = std::getenv("ANNO_VIEW_RESAMPLE");
+    if (forced != nullptr) {
+        const std::string f = forced;
+        if (f == "nearest") {
+            return gpu::ResampleFilter::Nearest;
+        }
+        if (f == "bilinear") {
+            return gpu::ResampleFilter::Bilinear;
+        }
+        if (f == "box") {
+            return gpu::ResampleFilter::Box;
+        }
+    }
+    return s < 1.0 ? gpu::ResampleFilter::Box : gpu::ResampleFilter::Nearest;
+}
+#endif
+
+/// How far past the first and last zoom group's own tile width the continuous
+/// zoom may go: the geometric middle between two groups (a group's picture is
+/// scaled by at most this factor when the group shown is the nearest one), so
+/// the range ends half a group beyond group 0 (upscaled) and group 2 (reduced).
+/// Reaching further out needs mips of the composed grid (T3 stage 3).
+constexpr double kZoomEndFactor = 1.4142135623730951;
+/// The zoom group is switched only when the logarithm of the ratio of the zoom
+/// to another group's tile width is smaller than the shown group's by this
+/// factor: hysteresis, so a zoom resting at the middle between two groups does
+/// not flip between them (each flip changes the chunks drawn).
+constexpr double kGroupSwitchBias = 1.05;
+
 class Viewer {
   public:
     Viewer(const render::Scene& scene, std::size_t group, std::size_t threads, Renderer renderer,
-           render::RiverFlowMode river_flow, render::WaterStyle water, std::size_t lookahead_chunks)
-        : scene_(scene), group_(group), frames_(threads), renderer_choice_(renderer),
-          water_(water) {
+           render::RiverFlowMode river_flow, render::WaterStyle water, std::size_t lookahead_chunks,
+           ZoomOptions zoom)
+        : scene_(scene), group_(group), zoom_opt_(zoom), frames_(threads),
+          renderer_choice_(renderer), water_(water) {
         frames_.river_flow = river_flow;
         frames_.max_lookahead_chunks = lookahead_chunks;
         const auto b = *scene.bounds(group);
         cam_x_ = b.x + b.w / 2.0;
         cam_y_ = b.y + b.h / 2.0;
+        zoom_now_ = zoom_target_ = static_cast<double>(render::kTile[group].w);
     }
 
     std::string run();
@@ -251,13 +288,31 @@ class Viewer {
     void draw();
     void draw_cpu(render::Rect view);
 #ifdef ANNO_VIEWER_GPU
-    void draw_gpu(render::Rect view);
+    /// `view`: the scene grid composed (the window's rectangle, or with
+    /// `resample` the larger one resampled onto the window); `out_w` x `out_h`:
+    /// the window.
+    void draw_gpu(render::Rect view, const gpu::Resample* resample, int out_w, int out_h);
 #endif
     [[nodiscard]] bool on_gpu() const;
     void update_title();
     void pan(double dx, double dy);
     void clamp();
     void zoom(int step, std::optional<std::pair<double, double>> anchor);
+    /// Continuous zoom (docs/render/iso.md "Continuous zoom"): the wanted tile
+    /// width is multiplied by `factor` (clamped to the range), the point under
+    /// `anchor` (window pixels; none = the window centre) stays fixed.
+    void zoom_by(double factor, std::optional<std::pair<double, double>> anchor);
+    /// The wanted tile width set to `tile_w` (the reset key).
+    void zoom_to(double tile_w);
+    /// Moves the shown zoom towards the wanted one by the time since the last
+    /// call (ease-out), keeps the anchor fixed and switches the zoom group when
+    /// the zoom has moved closer to another group's tile width.
+    void zoom_tick();
+    [[nodiscard]] bool zoom_animating() const { return continuous_ && zoom_now_ != zoom_target_; }
+    /// Screen pixels per scene pixel of the group shown (1 when stepped).
+    [[nodiscard]] double scale() const {
+        return continuous_ ? zoom_now_ / static_cast<double>(render::kTile[group_].w) : 1.0;
+    }
     /// Whether zoom group `g` can be shown without waiting for content.
     [[nodiscard]] bool group_ready(std::size_t g) const;
     void toggle_pause();
@@ -273,6 +328,15 @@ class Viewer {
     std::size_t group_;
     /// Scene screen position (at group_) shown in the window centre.
     double cam_x_ = 0, cam_y_ = 0;
+    ZoomOptions zoom_opt_;
+    /// Continuous zoom is on (asked for, and the GPU renderer runs).
+    bool continuous_ = false;
+    /// Tile width in screen pixels shown now and wanted (continuous zoom): the
+    /// scale of the group shown is zoom_now_ / kTile[group_].w. The anchor is the
+    /// point kept fixed, as an offset from the window centre in pixels.
+    double zoom_now_ = 0, zoom_target_ = 0;
+    std::pair<double, double> zoom_anchor_{0.0, 0.0};
+    Clock::time_point zoom_tick_ = Clock::now();
     render::FrameRenderer frames_;
     Renderer renderer_choice_;
 #ifdef ANNO_VIEWER_GPU
@@ -411,6 +475,10 @@ std::string Viewer::run() {
         return "--renderer gpu: built without the GPU compositor (ANNO_BUILD_GPU)";
     }
 #endif
+    continuous_ = zoom_opt_.mode == ZoomMode::Continuous && on_gpu();
+    if (zoom_opt_.mode == ZoomMode::Continuous && !continuous_) {
+        std::fprintf(stderr, "--zoom-mode continuous needs the GPU renderer; zooming in steps\n");
+    }
     if (!on_gpu()) {
         renderer_ = SDL_CreateRenderer(window_, nullptr);
         if (renderer_ == nullptr) {
@@ -460,7 +528,7 @@ std::string Viewer::run() {
         }
         // Nothing is drawn while hidden or backing off; dirty_ stays set.
         const bool can_draw = !hidden_ && !retry_at_;
-        const bool animating = (!paused_at_ || frames_.busy()) && can_draw;
+        const bool animating = (!paused_at_ || frames_.busy() || zoom_animating()) && can_draw;
         if (!animating && !(dirty_ && can_draw)) {
             int wait_ms = 100;
             if (retry_at_) {
@@ -588,12 +656,29 @@ void Viewer::handle(const SDL_Event& e) {
         case SDLK_PLUS:
         case SDLK_EQUALS:
         case SDLK_KP_PLUS:
-            zoom(-1, std::nullopt);
+            if (continuous_) {
+                // A key press is a few wheel notches.
+                zoom_by(std::pow(zoom_opt_.step, 3.0), std::nullopt);
+            } else {
+                zoom(-1, std::nullopt);
+            }
             break;
         case SDLK_MINUS:
         case SDLK_UNDERSCORE:
         case SDLK_KP_MINUS:
-            zoom(1, std::nullopt);
+            if (continuous_) {
+                zoom_by(std::pow(zoom_opt_.step, -3.0), std::nullopt);
+            } else {
+                zoom(1, std::nullopt);
+            }
+            break;
+        case SDLK_HOME:
+        case SDLK_0:
+        case SDLK_KP_0:
+            // Back to the default zoom: group 1's own scale.
+            if (continuous_) {
+                zoom_to(static_cast<double>(render::kTile[1].w));
+            }
             break;
         default:
             break;
@@ -618,6 +703,14 @@ void Viewer::handle(const SDL_Event& e) {
         cursor_.reset();
         break;
     case SDL_EVENT_MOUSE_WHEEL:
+        if (continuous_) {
+            // Every notch, also a fraction of one (a precision wheel), is a
+            // factor of zoom_opt_.step; wheel up = closer.
+            zoom_by(
+                std::pow(zoom_opt_.step, static_cast<double>(e.wheel.y)),
+                std::pair<double, double>{e.wheel.mouse_x * density, e.wheel.mouse_y * density});
+            break;
+        }
         scroll_ += e.wheel.y;
         if (std::abs(scroll_) >= 1.0) {
             // Wheel up = closer = lower group.
@@ -697,6 +790,80 @@ void Viewer::zoom(int step, std::optional<std::pair<double, double>> anchor) {
     dirty_ = true;
 }
 
+void Viewer::zoom_by(double factor, std::optional<std::pair<double, double>> anchor) {
+    // Easing runs on the time since the last frame: a zoom that starts from rest
+    // starts its clock now (while one is under way the clock keeps running).
+    if (!zoom_animating()) {
+        zoom_tick_ = Clock::now();
+    }
+    const auto [w, h] = view_size();
+    zoom_anchor_ =
+        anchor ? std::pair{anchor->first - w / 2.0, anchor->second - h / 2.0} : std::pair{0.0, 0.0};
+    zoom_target_ =
+        std::clamp(zoom_target_ * factor,
+                   static_cast<double>(render::kTile[render::kGroups - 1].w) / kZoomEndFactor,
+                   static_cast<double>(render::kTile[0].w) * kZoomEndFactor);
+    dirty_ = true;
+}
+
+void Viewer::zoom_to(double tile_w) {
+    if (!zoom_animating()) {
+        zoom_tick_ = Clock::now();
+    }
+    zoom_anchor_ = {0.0, 0.0};
+    zoom_target_ = tile_w;
+    dirty_ = true;
+}
+
+void Viewer::zoom_tick() {
+    const auto now = Clock::now();
+    const double dt_ms = std::chrono::duration<double, std::milli>(now - zoom_tick_).count();
+    zoom_tick_ = now;
+    if (zoom_now_ == zoom_target_) {
+        return;
+    }
+    // Ease-out in the logarithm of the zoom (equal wheel notches move the
+    // picture equally fast at every scale): the remaining distance shrinks by
+    // e^-3 (95 % covered) in ease_ms.
+    const double remaining = std::log(zoom_target_ / zoom_now_);
+    double next = zoom_target_;
+    if (zoom_opt_.ease_ms > 0 && std::abs(remaining) > 1e-4) {
+        const double covered =
+            1.0 - std::exp(-3.0 * dt_ms / static_cast<double>(zoom_opt_.ease_ms));
+        next = zoom_now_ * std::exp(remaining * covered);
+    }
+    // The point under the anchor stays where it is on the screen: the camera
+    // (the scene point at the window centre) moves by the anchor's offset times
+    // the change of a screen pixel's size in scene pixels.
+    const double tile_now = static_cast<double>(render::kTile[group_].w);
+    const double s_old = zoom_now_ / tile_now, s_new = next / tile_now;
+    cam_x_ += zoom_anchor_.first * (1.0 / s_old - 1.0 / s_new);
+    cam_y_ += zoom_anchor_.second * (1.0 / s_old - 1.0 / s_new);
+    zoom_now_ = next;
+    // The group whose tile width is nearest in ratio shows the picture (its
+    // picture is then scaled by the least), once it is ready and the zoom is
+    // clearly closer to it than to the one shown.
+    auto distance = [&](std::size_t g) {
+        return std::abs(std::log(zoom_now_ / static_cast<double>(render::kTile[g].w)));
+    };
+    std::size_t best = group_;
+    for (std::size_t g = 0; g < render::kGroups; ++g) {
+        if (g != group_ && distance(g) * kGroupSwitchBias < distance(best) && group_ready(g)) {
+            best = g;
+        }
+    }
+    if (best != group_) {
+        // Screen coordinates are linear in tile coordinates per group (as zoom()).
+        const auto ot = render::kTile[group_], nt = render::kTile[best];
+        cam_x_ = cam_x_ * nt.w / ot.w;
+        cam_y_ = cam_y_ * nt.h / ot.h;
+        group_ = best;
+        update_title();
+    }
+    clamp();
+    dirty_ = true;
+}
+
 bool Viewer::group_ready(std::size_t g) const {
 #ifdef ANNO_VIEWER_GPU
     if (gpu_) {
@@ -752,7 +919,18 @@ void Viewer::draw() {
                             static_cast<int>(std::lround(cam_y_ - h / 2.0)), w, h};
 #ifdef ANNO_VIEWER_GPU
     if (gpu_) {
-        draw_gpu(view);
+        if (continuous_) {
+            zoom_tick();
+            const double s = scale();
+            const auto rv =
+                gpu::resampled_view(cam_x_, cam_y_, static_cast<std::uint32_t>(w),
+                                    static_cast<std::uint32_t>(h), s, resample_filter(s));
+            draw_gpu(rv.view, &rv.resample, w, h);
+            // A zoom still on its way draws the next frame at once.
+            dirty_ = dirty_ || zoom_animating();
+            return;
+        }
+        draw_gpu(view, nullptr, w, h);
         return;
     }
 #endif
@@ -760,9 +938,9 @@ void Viewer::draw() {
 }
 
 #ifdef ANNO_VIEWER_GPU
-void Viewer::draw_gpu(render::Rect view) {
+void Viewer::draw_gpu(render::Rect view, const gpu::Resample* resample, int out_w, int out_h) {
     GpuBackend& g = *gpu_;
-    const auto w = static_cast<std::uint32_t>(view.w), h = static_cast<std::uint32_t>(view.h);
+    const auto w = static_cast<std::uint32_t>(out_w), h = static_cast<std::uint32_t>(out_h);
     steps_.clear();
     auto since_ms = [](Clock::time_point a, Clock::time_point b) {
         return std::chrono::duration<double, std::milli>(b - a).count();
@@ -825,7 +1003,8 @@ void Viewer::draw_gpu(render::Rect view) {
     const gpu::TextureView target(wgpuTextureCreateView(texture.get(), &vd));
     const auto render_start = Clock::now();
     steps_.push_back({"surface view", since_ms(acquired, render_start)});
-    const auto s = g.frame->render(frames_, scene_, view, group_, time_ms(), water_, target.get());
+    const auto s =
+        g.frame->render(frames_, scene_, view, group_, time_ms(), water_, target.get(), resample);
     const auto p = Clock::now();
     for (const auto& step : s.steps()) {
         steps_.push_back({step.name, step.ms});
@@ -840,8 +1019,8 @@ void Viewer::draw_gpu(render::Rect view) {
     const double present = since_ms(p, steps_end_);
     steps_.push_back({"present", present});
     chunks_received_ += s.chunks_built; // reported with the periodic line, not per frame
-    tex_w_ = view.w;
-    tex_h_ = view.h;
+    tex_w_ = out_w;
+    tex_h_ = out_h;
     measure(s.chunks_ms, {s.upload_ms, s.sprites_ms, s.encode_ms, present});
 }
 #endif
@@ -979,13 +1158,13 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
 
 std::string run_viewer(const render::Scene& scene, std::size_t group, Renderer renderer,
                        render::RiverFlowMode river_flow, render::WaterStyle water,
-                       std::size_t lookahead_chunks) {
+                       std::size_t lookahead_chunks, ZoomOptions zoom) {
     if (!scene.bounds(group)) {
         return "no islands";
     }
     const std::size_t threads =
         (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);
-    Viewer v(scene, group, threads, renderer, river_flow, water, lookahead_chunks);
+    Viewer v(scene, group, threads, renderer, river_flow, water, lookahead_chunks, zoom);
     return v.run();
 }
 

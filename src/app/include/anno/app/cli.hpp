@@ -20,7 +20,8 @@ inline constexpr const char* kUsage =
     "usage: anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png "
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
     "[--river-flow legacy|flow] [--river-gain <x>] [--river-speed median|fastest] "
-    "[--river-gap-patch <tiles>] [--renderer auto|gpu|cpu] [--lookahead-chunks <n>]\n";
+    "[--river-gap-patch <tiles>] [--renderer auto|gpu|cpu] [--lookahead-chunks <n>] "
+    "[--zoom-mode stepped|continuous] [--zoom-step <factor>] [--zoom-ease <ms>]\n";
 
 /// World tiles accepted by --at: INSEL5 positions are u16 (docs/formats/insel.md);
 /// the margin keeps every projected coordinate inside int range.
@@ -33,7 +34,32 @@ inline constexpr int kMaxSizePx = 65535;
 /// 2560 x 1440 are several GB); a guard against a typo, not a design bound.
 inline constexpr std::size_t kMaxLookaheadChunks = 16;
 
+/// Wheel-notch factors accepted by --zoom-step: above 1 (a notch must zoom in)
+/// and at most 2 (about the ratio of two zoom groups: a notch then jumps a whole
+/// group); a guard against a typo, not a design bound.
+inline constexpr double kMinZoomStep = 1.01, kMaxZoomStep = 2.0;
+/// Milliseconds accepted by --zoom-ease (0 = no easing, the zoom jumps to its
+/// target); beyond two seconds the picture lags the wheel visibly.
+inline constexpr unsigned kMaxZoomEaseMs = 2000;
+
 enum class Renderer { Auto, Gpu, Cpu };
+
+/// How the wheel zooms (docs/render/iso.md "Continuous zoom"). Stepped is the
+/// original: three zoom groups, one step per wheel notch. Continuous scales the
+/// picture smoothly (GPU renderer; the CPU renderer stays stepped).
+enum class ZoomMode { Stepped, Continuous };
+
+/// The zoom settings of the viewer.
+struct ZoomOptions {
+    ZoomMode mode = ZoomMode::Stepped;
+    /// Continuous: the factor of one wheel notch (the keys + and - use its third
+    /// power). About 10 % per notch is a slow, smooth zoom (owner proposal
+    /// 2026-10-20); the owner tunes it.
+    double step = 1.1;
+    /// Continuous: milliseconds to cover 95 % of the way to the target (ease-out),
+    /// 0 = at once. About a tenth of a second reads as smooth, not laggy.
+    unsigned ease_ms = 120;
+};
 
 struct Args {
     std::filesystem::path file;
@@ -64,6 +90,7 @@ struct Args {
     /// built chunks grows ahead of a moving view. 3 is the library default;
     /// 2 saves memory (docs/perf/README.md, T1e), 0 is a plain ring.
     std::size_t lookahead_chunks = 3;
+    ZoomOptions zoom;
 };
 
 /// Parses option/value pairs; nullopt for anything invalid (print kUsage,

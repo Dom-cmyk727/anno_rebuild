@@ -5,6 +5,7 @@
 //            [--water original|enhanced] [--river-flow legacy|flow] [--river-gain <x>]
 //            [--river-speed median|fastest] [--river-gap-patch <tiles>]
 //            [--renderer auto|gpu|cpu] [--lookahead-chunks <n>]
+//            [--zoom-mode stepped|continuous] [--zoom-step <factor>] [--zoom-ease <ms>]
 //
 // --view shows every island of a scenario (.sze) at its INSEL5 world
 // position (INSELLNK islands as stand-ins of the same climate and size,
@@ -136,7 +137,7 @@ int run(const std::vector<std::string>& raw) {
 #ifdef ANNO_WITH_VIEWER
     const std::string err =
         anno::app::run_viewer(scene, args->group.value_or(2), args->renderer, args->river_flow,
-                              args->water, args->lookahead_chunks);
+                              args->water, args->lookahead_chunks, args->zoom);
     if (!err.empty()) {
         std::fprintf(stderr, "%s: %s\n", name.c_str(), err.c_str());
         return 1;

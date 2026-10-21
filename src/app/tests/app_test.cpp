@@ -197,6 +197,23 @@ TEST_CASE("command line") {
     const auto ring = parse_args({"--view", "x.scp", "--lookahead-chunks", "0"});
     REQUIRE(ring);
     CHECK(ring->lookahead_chunks == 0);
+    // The zoom options: stepped is the default; continuous with its factor and
+    // easing, each bounded.
+    CHECK(d->zoom.mode == anno::app::ZoomMode::Stepped);
+    CHECK(d->zoom.step == 1.1);
+    CHECK(d->zoom.ease_ms == 120U);
+    const auto zc = parse_args({"--view", "x.scp", "--zoom-mode", "continuous", "--zoom-step",
+                                "1.25", "--zoom-ease", "0"});
+    REQUIRE(zc);
+    CHECK(zc->zoom.mode == anno::app::ZoomMode::Continuous);
+    CHECK(zc->zoom.step == 1.25);
+    CHECK(zc->zoom.ease_ms == 0U);
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-mode", "smooth"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-step", "1.0"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-step", "2.5"}));
+    CHECK(parse_args({"--view", "x.scp", "--zoom-step", "2"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-ease", "2001"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-ease", "-5"}));
     // UTF-8 paths round-trip.
     const std::string umlaut = "Insel_\xc3\xa4.scp";
     CHECK(anno::app::to_utf8(anno::app::utf8_path(umlaut)) == umlaut);

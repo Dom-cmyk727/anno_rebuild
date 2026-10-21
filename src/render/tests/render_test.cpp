@@ -462,3 +462,30 @@ TEST_CASE("noise3_at equals noise3 at an integer z, bit for bit") {
     CHECK(n == 640000);
     CHECK(differ == 0);
 }
+TEST_CASE("SmoothSampler equals smooth_height and height_noise, bit for bit") {
+    namespace sea = render::sea;
+    sea::IslandWater iw;
+    iw.w = 40;
+    iw.h = 30;
+    iw.heights.resize(iw.w * iw.h);
+    for (std::size_t i = 0; i < iw.heights.size(); ++i) {
+        iw.heights[i] = static_cast<std::uint8_t>((i * 53U + i / 7U) % 60U);
+    }
+    sea::SmoothSampler s(iw);
+    std::size_t differ = 0, n = 0;
+    auto same = [](float a, float b) { return std::memcmp(&a, &b, sizeof a) == 0; };
+    // Rows of small steps (the cache holds), jumps between rows (it misses),
+    // and positions outside the grid (clamped corners).
+    for (int row = -3; row < 34; ++row) {
+        for (int k = -20; k < 460; ++k) {
+            const float x = static_cast<float>(k) * 0.091F + static_cast<float>(row % 5) * 0.37F;
+            const float y = static_cast<float>(row) + static_cast<float>(k) * 0.013F;
+            differ +=
+                same(s.smooth(x, y), sea::smooth_height(iw.heights, iw.w, iw.h, x, y)) ? 0 : 1;
+            differ += same(s.noise(x, y), sea::height_noise(x, y)) ? 0 : 1;
+            n += 2;
+        }
+    }
+    CHECK(n > 30000);
+    CHECK(differ == 0);
+}

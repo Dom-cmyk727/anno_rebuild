@@ -222,8 +222,26 @@ struct RiverPoint {
 };
 std::optional<RiverPoint> river_point(const IslandWater& iw, float x, float y, const TileGround& g);
 
+/// smooth_height and height_noise over one island's heights with the 16
+/// corner values of the last tile and the lattice hashes of the last noise
+/// cells kept: the same arithmetic in the same order, so the same bits.
+class SmoothSampler {
+  public:
+    explicit SmoothSampler(const IslandWater& iw) : iw_(&iw) {}
+    float smooth(float x, float y);
+    float noise(float x, float y);
+
+  private:
+    const IslandWater* iw_;
+    NoisePlane coarse_{11}, fine_{23};
+    std::int64_t cx_ = 0, cy_ = 0;
+    bool valid_ = false;
+    std::array<float, 16> corner_{};
+};
+
 /// The water field texel at tile position (x, y) of island `iw`, evaluated
-/// in full (no empty-cell shortcut): the reference water_field must equal.
+/// in full (no empty-cell shortcut, no sampler cache): the reference
+/// water_field must equal.
 FieldTexel field_at(const IslandWater& iw, float x, float y);
 
 /// The water field of `rect` from the ground seen at each pixel; water(i)

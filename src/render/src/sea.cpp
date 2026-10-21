@@ -526,7 +526,63 @@ float IslandWater::bilinear(std::span<const float> field, std::size_t tx, std::s
            at(tx, ty + 1) * (1.0F - fx) * fy + at(tx + 1, ty + 1) * fx * fy;
 }
 
-TileGround tile_ground(const IslandWater& iw, float x, float y) {
+float SmoothSampler::smooth(float x, float y) {
+    // smooth_height, term by term.
+    auto weights = [](float t) {
+        const float t2 = t * t;
+        const float t3 = t2 * t;
+        const float u = 1.0F - t;
+        return std::array<float, 4>{u * u * u / 6.0F, (3.0F * t3 - 6.0F * t2 + 4.0F) / 6.0F,
+                                    (-3.0F * t3 + 3.0F * t2 + 3.0F * t + 1.0F) / 6.0F, t3 / 6.0F};
+    };
+    const float fx = std::floor(x), fy = std::floor(y);
+    const auto wx = weights(x - fx), wy = weights(y - fy);
+    const auto ix = sat_cast<std::int64_t>(fx), iy = sat_cast<std::int64_t>(fy);
+    if (!valid_ || ix != cx_ || iy != cy_) {
+        const std::size_t w = iw_->w, h = iw_->h;
+        for (std::size_t j = 0; j < 4; ++j) {
+            for (std::size_t i = 0; i < 4; ++i) {
+                const auto di = static_cast<std::int64_t>(i) - 1,
+                           dj = static_cast<std::int64_t>(j) - 1;
+                const std::size_t ux =
+                    std::min(static_cast<std::size_t>(std::max<std::int64_t>(ix + di, 0)), w - 1);
+                const std::size_t uy =
+                    std::min(static_cast<std::size_t>(std::max<std::int64_t>(iy + dj, 0)), h - 1);
+                corner_[j * 4 + i] = static_cast<float>(iw_->heights[uy * w + ux]);
+            }
+        }
+        cx_ = ix;
+        cy_ = iy;
+        valid_ = true;
+    }
+    float v = 0.0F;
+    for (std::size_t j = 0; j < 4; ++j) {
+        for (std::size_t i = 0; i < 4; ++i) {
+            v += wx[i] * wy[j] * corner_[j * 4 + i];
+        }
+    }
+    return v + noise(x, y);
+}
+
+float SmoothSampler::noise(float x, float y) {
+    // height_noise, term by term.
+    const float amp = kWaves.shore_noise;
+    return (coarse_.at(x * 0.9F, y * 0.9F) - 0.5F) * 2.0F * amp +
+           (fine_.at(x * 2.7F, y * 2.7F) - 0.5F) * 0.6F * amp;
+}
+
+namespace {
+
+/// smooth_height and height_noise themselves (the reference of field_at).
+struct PlainSampler {
+    const IslandWater* iw;
+    [[nodiscard]] float smooth(float x, float y) const {
+        return smooth_height(iw->heights, iw->w, iw->h, x, y);
+    }
+    [[nodiscard]] static float noise(float x, float y) { return height_noise(x, y); }
+};
+
+template <class S> TileGround tile_ground_with(const IslandWater& iw, float x, float y, S& s) {
     TileGround g;
     g.under = terrain_height(iw.heights, iw.w, iw.h, x, y);
     g.tx = std::min(sat_cast<std::size_t>(fmaxf(x, 0.0F)), iw.w - 1);
@@ -535,13 +591,14 @@ TileGround tile_ground(const IslandWater& iw, float x, float y) {
     g.fy = clampf(y - static_cast<float>(g.ty), 0.0F, 1.0F);
     g.sea_chunk = iw.sea_chunk[(g.ty / 8) * ((iw.w + 7) / 8) + g.tx / 8];
     g.original_water = g.under < static_cast<float>(kWaterline) && g.sea_chunk;
-    g.smooth = smooth_height(iw.heights, iw.w, iw.h, x, y);
+    g.smooth = s.smooth(x, y);
     g.sd = static_cast<float>(kWaterline) - g.smooth;
     return g;
 }
 
-std::optional<RiverPoint> river_point(const IslandWater& iw, float x, float y,
-                                      const TileGround& g) {
+template <class S>
+std::optional<RiverPoint> river_point_with(const IslandWater& iw, float x, float y,
+                                           const TileGround& g, S& s) {
     const auto level = iw.river_level(g.tx, g.ty, g.fx, g.fy);
     if (!level) {
         return std::nullopt;
@@ -550,7 +607,7 @@ std::optional<RiverPoint> river_point(const IslandWater& iw, float x, float y,
     // the floor of a one-corner-wide channel by up to the river depth and cut
     // the water there.
     const float bed =
-        river_bed_height(iw.heights, iw.w, iw.h, x, y) + height_noise(x, y) * kRiverBankNoise;
+        river_bed_height(iw.heights, iw.w, iw.h, x, y) + s.noise(x, y) * kRiverBankNoise;
     const float rd = *level - bed;
     if (!(rd > -kWaves.shore_edge)) {
         return std::nullopt;
@@ -558,13 +615,45 @@ std::optional<RiverPoint> river_point(const IslandWater& iw, float x, float y,
     return RiverPoint{*level, bed, rd};
 }
 
-FieldTexel field_at(const IslandWater& iw_ref, float x, float y) {
+/// The samplers of one field evaluation: at the position and at the four
+/// positions of the beach slope (each kept apart, so every one of them moves
+/// in small steps from pixel to pixel and its cache holds).
+template <class S> struct FieldSamplers {
+    S centre, x_plus, x_minus, y_plus, y_minus;
+};
+
+template <class S>
+FieldTexel field_at_with(const IslandWater& iw_ref, float x, float y, FieldSamplers<S>& s);
+
+} // namespace
+
+TileGround tile_ground(const IslandWater& iw, float x, float y) {
+    PlainSampler s{&iw};
+    return tile_ground_with(iw, x, y, s);
+}
+
+std::optional<RiverPoint> river_point(const IslandWater& iw, float x, float y,
+                                      const TileGround& g) {
+    PlainSampler s{&iw};
+    return river_point_with(iw, x, y, g, s);
+}
+
+FieldTexel field_at(const IslandWater& iw, float x, float y) {
+    const PlainSampler p{&iw};
+    FieldSamplers<PlainSampler> s{p, p, p, p, p};
+    return field_at_with(iw, x, y, s);
+}
+
+namespace {
+
+template <class S>
+FieldTexel field_at_with(const IslandWater& iw_ref, float x, float y, FieldSamplers<S>& s) {
     const IslandWater* iw = &iw_ref;
     const float edge = kWaves.shore_edge;
     // sat_cast: NaN (e.g. inf · 0 in the shore field of an island without land)
     // becomes 0, as Rust's `as u8`; a plain cast would be undefined.
     auto byte = [](float v) { return sat_cast<std::uint8_t>(clampf(v, 0.0F, 255.0F)); };
-    const TileGround g = tile_ground(*iw, x, y);
+    const TileGround g = tile_ground_with(*iw, x, y, s.centre);
     const std::size_t tx = g.tx, ty = g.ty;
     const float fx = g.fx, fy = g.fy;
     const bool sea_chunk = g.sea_chunk;
@@ -573,7 +662,7 @@ FieldTexel field_at(const IslandWater& iw_ref, float x, float y) {
     // Enhanced river water (flag bit 1): river level over the smooth
     // terrain, where no sea is.
     if (!original_water && sd <= 0.0F) {
-        if (const auto point = river_point(*iw, x, y, g)) {
+        if (const auto point = river_point_with(*iw, x, y, g, s.centre)) {
             const float rd = point->depth;
             // Slope of the river surface (HEIGHT units per tile): rapids
             // where it falls steeply (waterfalls).
@@ -599,10 +688,8 @@ FieldTexel field_at(const IslandWater& iw_ref, float x, float y) {
     float slope = 0.0F;
     if (sd > -kSlopeBand && sd < kWaves.swash_depth + 3.0F) {
         const float e = 0.3F;
-        auto at = [&](float px, float py) {
-            return smooth_height(iw->heights, iw->w, iw->h, px, py);
-        };
-        const float gx = at(x + e, y) - at(x - e, y), gy = at(x, y + e) - at(x, y - e);
+        const float gx = s.x_plus.smooth(x + e, y) - s.x_minus.smooth(x - e, y),
+                    gy = s.y_plus.smooth(x, y + e) - s.y_minus.smooth(x, y - e);
         slope = std::sqrt(gx * gx + gy * gy) / (2.0F * e);
     }
     const float run_max = kWaves.runup_max_tiles * fmaxf(slope, 0.2F);
@@ -618,6 +705,8 @@ FieldTexel field_at(const IslandWater& iw_ref, float x, float y) {
             static_cast<std::uint8_t>((original_water ? 1U : 0U) | std::uint32_t{slope_q} << 2U)};
 }
 
+} // namespace
+
 WaterField water_field(Rect rect, const SceneProbe& probe,
                        const std::function<const IslandWater*(std::size_t)>& water) {
     const auto n = static_cast<std::size_t>(rect.w * rect.h);
@@ -629,6 +718,8 @@ WaterField water_field(Rect rect, const SceneProbe& probe,
     // An IslandWater not built by IslandWater::build may have no classes: no
     // cell is empty then.
     bool classified = false;
+    // The island's samplers (SmoothSampler: the same bits as field_at's).
+    std::optional<FieldSamplers<SmoothSampler>> samplers;
     for (std::size_t i = 0; i < n; ++i) {
         const std::uint32_t island = probe.island[i];
         if (island == kNoIsland) {
@@ -638,6 +729,11 @@ WaterField water_field(Rect rect, const SceneProbe& probe,
             last = island;
             iw = water(island);
             classified = iw != nullptr && iw->empty_cell.size() == iw->w * iw->h;
+            samplers.reset();
+            if (iw != nullptr) {
+                const SmoothSampler one(*iw);
+                samplers.emplace(FieldSamplers<SmoothSampler>{one, one, one, one, one});
+            }
         }
         if (iw == nullptr) {
             continue;
@@ -650,7 +746,7 @@ WaterField water_field(Rect rect, const SceneProbe& probe,
               y < static_cast<float>(iw->h) &&
               iw->empty_cell[static_cast<std::size_t>(y) * iw->w + static_cast<std::size_t>(x)] !=
                   0)) {
-            t = field_at(*iw, x, y);
+            t = field_at_with(*iw, x, y, *samplers);
         }
         f.cover[i] = t.cover;
         f.shore[i] = t.shore;

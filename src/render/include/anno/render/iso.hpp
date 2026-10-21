@@ -420,6 +420,19 @@ float noise3(float x, float y, float z);
 /// plane above is fade(0) = 0 and lerp(p0, p1, 0) = p0 + (p1 − p0) · 0 = p0,
 /// so that plane is not evaluated.
 float noise3_at(float x, float y, int iz);
+/// noise3_at(x, y, iz) for one iz with the four lattice hashes of the last
+/// cell kept: the same arithmetic, so the same bits; for callers that sample
+/// neighbouring positions in a row (the water field).
+class NoisePlane {
+  public:
+    explicit NoisePlane(int iz) : iz_(iz) {}
+    float at(float x, float y);
+
+  private:
+    int iz_ = 0, cx_ = 0, cy_ = 0;
+    bool valid_ = false;
+    std::array<float, 4> hash_{};
+};
 /// How much of the sea floor deep water hides (0–1) at `depth`.
 float deep_water(float depth);
 /// Detail level of the enhanced water for tile width `tw` (pixels).

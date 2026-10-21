@@ -507,3 +507,36 @@ TEST_CASE("--zoom-factor and --resample: the headless picture at a fractional sc
     CHECK_FALSE(parse_args({"--view", "x.scp", "--resample", "box"}));
     CHECK(parse_args({"--view", "x.scp", "--zoom-factor", "1"}));
 }
+
+TEST_CASE("zoom_advance: the camera move of a zoom at the cursor is not a pan (pan_centre)") {
+    using namespace anno::app;
+    const auto levels = anno::render::ZoomLevels::with_derived(3);
+    // A zoom out at an anchor 300 px right of the window centre: the camera moves, the
+    // pan centre (camera minus the zoom's displacement) stays where it was, also across
+    // the switches between levels (converted by the tile ratio like the camera).
+    ZoomState s = zoom_state(42.0, 1);
+    s.anchor_x = 300.0;
+    s.anchor_y = -120.0;
+    const auto pan0 = pan_centre(s);
+    const double cam0 = s.cam_x;
+    double moved = 0;
+    std::size_t switches = 0;
+    for (int i = 0; i < 600; ++i) {
+        const std::size_t before = s.group;
+        s.target = zoom_target_after(s.target, 0.99, levels);
+        s = zoom_advance(s, 8.0, 120, kAllReady, levels);
+        switches += s.group != before ? 1U : 0U;
+        // In the pixels of the group shown: the pan centre scales with the tile width.
+        const double k = levels.tile_w(s.group) / levels.tile_w(1);
+        CHECK(pan_centre(s).first == doctest::Approx(pan0.first * k).epsilon(1e-9));
+        CHECK(pan_centre(s).second == doctest::Approx(pan0.second * k).epsilon(1e-9));
+        moved = std::max(moved, std::abs(s.cam_x / k - cam0));
+    }
+    CHECK(switches >= 3);
+    // The camera did move (else the test proves nothing), by hundreds of group-1 pixels.
+    CHECK(moved > 100.0);
+    // A pan adds to the camera only: the pan centre follows it.
+    const auto before = pan_centre(s);
+    s.cam_x += 25.0;
+    CHECK(pan_centre(s).first == before.first + 25.0);
+}

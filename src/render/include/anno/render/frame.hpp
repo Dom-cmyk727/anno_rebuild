@@ -334,6 +334,13 @@ class FrameRenderer {
     /// when both switches are off).
     [[nodiscard]] std::set<ChunkKey>
     stand_in_retain(std::size_t group, const std::vector<std::pair<int, int>>& visible) const;
+    /// Where the user is panning to, in scene pixels of the group shown, when that is not
+    /// the centre of `view`: the continuous zoom moves the camera to keep the point under
+    /// the cursor fixed, and rounds the composed grid to the pixel grid, so the grid's
+    /// centre moves without a pan. The viewer sets the camera minus the zoom's own
+    /// displacement here before each update; the velocity of the margin follows it.
+    /// nullopt (the default): the centre of the view is the motion.
+    std::optional<std::pair<double, double>> motion_centre;
     /// The smoothed velocity of the view centre that sizes the margin, in scene
     /// pixels per second of the group shown (x, y).
     [[nodiscard]] std::pair<double, double> velocity() const { return {vx_, vy_}; }

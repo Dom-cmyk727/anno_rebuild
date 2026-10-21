@@ -2802,6 +2802,44 @@ TEST_CASE("the margin follows the view's velocity through update_chunks: leading
     CHECK(fr.velocity().first == doctest::Approx(before * ratio).epsilon(1e-9));
 }
 
+TEST_CASE("the margin's velocity follows motion_centre, not the centre of the view") {
+    const EmptyScene es = empty_scene();
+    render::FrameRenderer fr(1, false);
+    auto t = std::chrono::steady_clock::time_point{};
+    fr.clock = [&] { return t; };
+    constexpr std::size_t kGroup = 1;
+    render::Rect view{0, 0, render::kChunk, render::kChunk};
+    const auto step = std::chrono::milliseconds(10);
+    // The view's centre moves 50 px per 10 ms (a zoom at the cursor moves the camera,
+    // and the rounding of the composed grid its centre), the user pans nothing.
+    fr.motion_centre = std::pair{256.0, 256.0};
+    fr.update_chunks(*es.scene, view, kGroup);
+    for (int i = 0; i < 40; ++i) {
+        view.x += 50;
+        t += step;
+        fr.update_chunks(*es.scene, view, kGroup);
+    }
+    CHECK(std::abs(fr.velocity().first) < 1.0);
+    CHECK(std::abs(fr.velocity().second) < 1.0);
+    // The pan centre moves 30 px per 10 ms while the view stands still: that is motion.
+    double mx = 256.0;
+    for (int i = 0; i < 40; ++i) {
+        mx += 30.0;
+        fr.motion_centre = std::pair{mx, 256.0};
+        t += step;
+        fr.update_chunks(*es.scene, view, kGroup);
+    }
+    CHECK(fr.velocity().first > 2400.0);
+    CHECK(fr.velocity().first < 3001.0);
+    // Without it the view's centre is the motion, as before.
+    fr.motion_centre.reset();
+    for (int i = 0; i < 80; ++i) {
+        t += step;
+        fr.update_chunks(*es.scene, view, kGroup);
+    }
+    CHECK(std::abs(fr.velocity().first) < 5.0);
+}
+
 TEST_CASE("a jump of the view by more than its size resets the velocity of the margin") {
     const EmptyScene es = empty_scene();
     render::FrameRenderer fr(1, false);

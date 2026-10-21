@@ -338,6 +338,8 @@ class Viewer {
     std::size_t group_;
     /// Scene screen position (at group_) shown in the window centre.
     double cam_x_ = 0, cam_y_ = 0;
+    /// The part of the camera the continuous zoom's anchoring moved (ZoomState::shift_x).
+    double zoom_shift_x_ = 0, zoom_shift_y_ = 0;
     ZoomOptions zoom_opt_;
     /// Continuous zoom is on (asked for, and the GPU renderer runs).
     bool continuous_ = false;
@@ -801,6 +803,8 @@ void Viewer::zoom(int step, std::optional<std::pair<double, double>> anchor) {
     const double px = (cam_x_ + dx) * rw, py = (cam_y_ + dy) * rh;
     cam_x_ = px - dx;
     cam_y_ = py - dy;
+    zoom_shift_x_ *= rw;
+    zoom_shift_y_ *= rh;
     group_ = g;
     // A stepped zoom in the continuous mode (the test script, a pending step)
     // lands on the group's own scale.
@@ -843,6 +847,8 @@ void Viewer::zoom_tick() {
     s.anchor_y = zoom_anchor_.second;
     s.cam_x = cam_x_;
     s.cam_y = cam_y_;
+    s.shift_x = zoom_shift_x_;
+    s.shift_y = zoom_shift_y_;
     s.group = group_;
     const std::size_t before = group_;
     s = zoom_advance(
@@ -851,6 +857,8 @@ void Viewer::zoom_tick() {
     zoom_now_ = s.now;
     cam_x_ = s.cam_x;
     cam_y_ = s.cam_y;
+    zoom_shift_x_ = s.shift_x;
+    zoom_shift_y_ = s.shift_y;
     group_ = s.group;
     if (group_ != before) {
         update_title();
@@ -922,6 +930,8 @@ void Viewer::draw() {
     if (gpu_) {
         if (continuous_) {
             zoom_tick();
+            // The margin's velocity follows the pan, not the zoom's own camera move.
+            frames_.motion_centre = std::pair{cam_x_ - zoom_shift_x_, cam_y_ - zoom_shift_y_};
             const double s = scale();
             const auto rv =
                 gpu::resampled_view(cam_x_, cam_y_, static_cast<std::uint32_t>(w),

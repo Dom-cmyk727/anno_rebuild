@@ -49,8 +49,18 @@ struct ZoomState {
     double now = 0, target = 0;
     double anchor_x = 0, anchor_y = 0;
     double cam_x = 0, cam_y = 0;
+    /// How much of the camera's position is the zoom's doing (the anchoring moves the
+    /// camera towards the point under the cursor), in pixels of the group shown: the
+    /// camera minus this is where the user pans (pan_centre), which the chunk margin's
+    /// velocity follows.
+    double shift_x = 0, shift_y = 0;
     std::size_t group = 0;
 };
+
+/// The camera without the zoom's anchoring displacement.
+[[nodiscard]] inline std::pair<double, double> pan_centre(const ZoomState& s) {
+    return {s.cam_x - s.shift_x, s.cam_y - s.shift_y};
+}
 
 /// Screen pixels per scene pixel of the group shown.
 [[nodiscard]] inline double
@@ -156,14 +166,22 @@ zoom_level_for(double now, std::size_t current, const std::function<bool(std::si
         // is fixed, so the camera moves by d (1 / s_old - 1 / s_new).
         const double tile = levels.tile_w(s.group);
         const double s_old = s.now / tile, s_new = next / tile;
-        s.cam_x += s.anchor_x * (1.0 / s_old - 1.0 / s_new);
-        s.cam_y += s.anchor_y * (1.0 / s_old - 1.0 / s_new);
+        const double dx = s.anchor_x * (1.0 / s_old - 1.0 / s_new);
+        const double dy = s.anchor_y * (1.0 / s_old - 1.0 / s_new);
+        s.cam_x += dx;
+        s.cam_y += dy;
+        s.shift_x += dx;
+        s.shift_y += dy;
         s.now = next;
     }
     const std::size_t best = zoom_level_for(s.now, s.group, ready, levels, max_upscale);
     if (best != s.group) {
-        s.cam_x = s.cam_x * levels.tile_w(best) / levels.tile_w(s.group);
-        s.cam_y = s.cam_y * levels.tile_h(best) / levels.tile_h(s.group);
+        const double kx = levels.tile_w(best) / levels.tile_w(s.group);
+        const double ky = levels.tile_h(best) / levels.tile_h(s.group);
+        s.cam_x *= kx;
+        s.cam_y *= ky;
+        s.shift_x *= kx;
+        s.shift_y *= ky;
         s.group = best;
     }
     return s;

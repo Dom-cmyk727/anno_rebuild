@@ -13,6 +13,7 @@
 
 #include <anno/render/frame.hpp>
 #include <anno/render/profile.hpp>
+#include <anno/render/river_window.hpp>
 #include <anno/render/scene.hpp>
 
 #include "thread_priority.hpp"
@@ -357,17 +358,45 @@ namespace {
 /// per pixel does not grow with r and chunks without any alpha are free.
 /// `close`: every pixel with any alpha in its 3 x 3 neighbourhood counts as
 /// fully covered first (fills the holes of a 50 % checkerboard sprite).
-std::vector<float> blurred_alpha(const Canvas& c, int r, bool close = false) {
-    const auto w = static_cast<int>(c.width), h = static_cast<int>(c.height);
+} // namespace
+
+namespace detail {
+
+std::vector<float> blurred_alpha(const Canvas& c, int r, bool close, WindowOptions options) {
+    const auto cw = static_cast<int>(c.width), ch = static_cast<int>(c.height);
     std::vector<float> out(c.width * c.height, 0.0F);
-    std::vector<std::uint32_t> a(out.size());
-    bool any = false;
-    for (std::size_t i = 0; i < a.size(); ++i) {
-        a[i] = c.pixels[i * 4 + 3];
-        any = any || a[i] != 0;
+    int bx0 = cw, by0 = ch, bx1 = -1, by1 = -1;
+    for (int y = 0; y < ch; ++y) {
+        for (int x = 0; x < cw; ++x) {
+            if (c.pixels[static_cast<std::size_t>(y * cw + x) * 4 + 3] != 0) {
+                bx0 = std::min(bx0, x);
+                bx1 = std::max(bx1, x);
+                by0 = std::min(by0, y);
+                by1 = std::max(by1, y);
+            }
+        }
     }
-    if (!any) {
+    if (bx1 < 0) {
         return out;
+    }
+    // Only the bounding box of the alpha plus the reach of the filters can be
+    // non-zero (iso.md, "Bounded blur and chamfer"): the closing reaches 1 pixel,
+    // the two box passes in each direction r each, so the output reaches 2r (+ 1
+    // with the closing). The inputs of every pass reach less than that (a pass
+    // adds r), so the border of the window is zero in them, and the edge repeat of
+    // a line there equals the zeros it replaces. The window is clipped to the
+    // canvas, where the edge repeat is the real one.
+    const int margin =
+        options.bounded ? std::max(0, 2 * r + (close ? 1 : 0) - options.shrink) : cw + ch;
+    const int x0 = std::max(0, bx0 - margin), y0 = std::max(0, by0 - margin);
+    const int x1 = std::min(cw, bx1 + margin + 1), y1 = std::min(ch, by1 + margin + 1);
+    const int w = x1 - x0, h = y1 - y0;
+    std::vector<std::uint32_t> a(static_cast<std::size_t>(w) * static_cast<std::size_t>(h));
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            a[static_cast<std::size_t>(y * w + x)] =
+                c.pixels[static_cast<std::size_t>((y0 + y) * cw + x0 + x) * 4 + 3];
+        }
     }
     std::vector<std::uint32_t> tmp(a.size());
     if (close) {
@@ -415,11 +444,18 @@ std::vector<float> blurred_alpha(const Canvas& c, int r, bool close = false) {
     }
     const float n = static_cast<float>(2 * r + 1);
     const float norm = 1.0F / (255.0F * n * n * n * n);
-    for (std::size_t i = 0; i < a.size(); ++i) {
-        out[i] = static_cast<float>(a[i]) * norm;
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            out[static_cast<std::size_t>((y0 + y) * cw + x0 + x)] =
+                static_cast<float>(a[static_cast<std::size_t>(y * w + x)]) * norm;
+        }
     }
     return out;
 }
+
+} // namespace detail
+
+namespace {
 
 /// Two-pass chamfer distance (1, √2) in place: 0 at the seeds, else large.
 void chamfer(std::vector<float>& d, std::size_t w, std::size_t h) {
@@ -566,8 +602,9 @@ void Scene::apply_fall_masks(sea::WaterField& f, const Canvas& falls, const Canv
                              const Canvas& beds, std::size_t group) const {
     // Soft, rounded edges: about 4 px at zoom group 0.
     const int radius = std::max(1, static_cast<int>(kTile[group].h) / 10);
-    const std::vector<float> af = blurred_alpha(falls, radius), am = blurred_alpha(mouths, radius),
-                             ab = blurred_alpha(beds, radius, true);
+    const std::vector<float> af = detail::blurred_alpha(falls, radius, false),
+                             am = detail::blurred_alpha(mouths, radius, false),
+                             ab = detail::blurred_alpha(beds, radius, true);
     auto byte = [](float v) { return sat_cast<std::uint8_t>(clampf(v, 0.0F, 255.0F)); };
     for (std::size_t i = 0; i < f.flags.size(); ++i) {
         const float a = fmaxf(af[i], am[i]);
@@ -606,28 +643,67 @@ void Scene::apply_fall_masks(sea::WaterField& f, const Canvas& falls, const Canv
 }
 
 void Scene::blend_rivers_into_sea(sea::WaterField& f, std::size_t group) const {
+    detail::blend_rivers_into_sea(f, group);
+}
+
+void detail::blend_rivers_into_sea(sea::WaterField& f, std::size_t group, WindowOptions options) {
     // Where river water meets the sea, its look turns into the sea's over
     // kRiverBlend pixels (scaled with the zoom): distance to the nearest
-    // enhanced sea water (two-pass chamfer within the rect) and that
-    // water's cover. The shader and shade_sea mix river and sea shading by
-    // the distance stored in `shore` (river pixels; 255 = far).
-    const auto w = static_cast<std::size_t>(f.rect.w), h = static_cast<std::size_t>(f.rect.h);
+    // enhanced sea water (two-pass chamfer) and that water's cover. The
+    // shader and shade_sea mix river and sea shading by the distance stored in
+    // `shore` (river pixels; 255 = far).
+    //
+    // Everything below acts on river pixels and on sea pixels within `seam` of
+    // one, and only reads chamfer values below `reach` / `seam`. Those values
+    // depend on pixels within that many pixels (Chebyshev) only, so the passes
+    // run on the bounding box of the river pixels grown by `margin`, with the
+    // same results (iso.md, "Bounded blur and chamfer").
+    static_assert(kSeamDepth > 0.0F, "the seam seeds are a subset of the blend seeds");
+    const auto fw = static_cast<std::size_t>(f.rect.w), fh = static_cast<std::size_t>(f.rect.h);
     const float reach = kRiverBlend * static_cast<float>(kTile[group].h) / 42.0F;
+    const float seam = kRiverSeam * static_cast<float>(kTile[group].h) / 42.0F;
     constexpr float kFar = 1e9F;
+    std::size_t bx0 = fw, by0 = fh, bx1 = 0, by1 = 0;
+    bool rivers = false;
+    for (std::size_t y = 0; y < fh; ++y) {
+        for (std::size_t x = 0; x < fw; ++x) {
+            if ((f.flags[y * fw + x] & 2U) != 0) {
+                rivers = true;
+                bx0 = std::min(bx0, x);
+                bx1 = std::max(bx1, x);
+                by0 = std::min(by0, y);
+                by1 = std::max(by1, y);
+            }
+        }
+    }
+    if (!rivers) {
+        return;
+    }
+    // A seam pixel lies within `seam` of a river pixel and its sea seed within
+    // `seam` of it (both inclusive); a blended pixel's seed lies at a chamfer
+    // distance below `reach`, i.e. at most ceil(reach) - 1 pixels away.
+    const auto reachpx =
+        static_cast<std::size_t>(std::max(std::ceil(reach) - 1.0F, 2.0F * std::floor(seam)));
+    const std::size_t margin =
+        !options.bounded ? fw + fh
+                         : reachpx - std::min(reachpx, static_cast<std::size_t>(options.shrink));
+    const std::size_t x0 = bx0 > margin ? bx0 - margin : 0, y0 = by0 > margin ? by0 - margin : 0;
+    const std::size_t x1 = std::min(fw, bx1 + margin + 1), y1 = std::min(fh, by1 + margin + 1);
+    const std::size_t w = x1 - x0, h = y1 - y0;
+    auto at = [&](std::size_t i) { return (y0 + i / w) * fw + x0 + i % w; }; // window -> field
     std::vector<float> dist(w * h, kFar);
     std::vector<std::uint8_t> near_cover(w * h, 0);
-    bool rivers = false, sea = false;
+    bool sea = false;
     for (std::size_t i = 0; i < w * h; ++i) {
-        const float sd = (static_cast<float>(f.depth[i]) - sea::kDepthBias) / sea::kDepthScale;
-        if ((f.flags[i] & 2U) != 0) {
-            rivers = true;
-        } else if (f.cover[i] != 0 && sd > 0.0F) {
+        const std::size_t k = at(i);
+        const float sd = (static_cast<float>(f.depth[k]) - sea::kDepthBias) / sea::kDepthScale;
+        if ((f.flags[k] & 2U) == 0 && f.cover[k] != 0 && sd > 0.0F) {
             dist[i] = 0.0F;
-            near_cover[i] = f.cover[i];
+            near_cover[i] = f.cover[k];
             sea = true;
         }
     }
-    if (!rivers || !sea) {
+    if (!sea) {
         return;
     }
     auto relax = [&](std::size_t i, std::size_t j, float step) {
@@ -675,45 +751,45 @@ void Scene::blend_rivers_into_sea(sea::WaterField& f, std::size_t group) const {
     // water would turn transparent (a sand line between the two): they join
     // the river surface with the sea's look (shore 0), fully water.
     std::vector<float> to_river(w * h, kFar);
-    for (std::size_t i = 0; i < w * h; ++i) {
-        if ((f.flags[i] & 2U) != 0) {
-            to_river[i] = 0.0F;
-        }
-    }
-    chamfer(to_river, w, h);
-    // ... and to full sea water: only pixels in a narrow gap between the
-    // two are filled, the open shoreline stays as it is.
     std::vector<float> to_sea(w * h, kFar);
     for (std::size_t i = 0; i < w * h; ++i) {
-        const float sd = (static_cast<float>(f.depth[i]) - sea::kDepthBias) / sea::kDepthScale;
-        if ((f.flags[i] & 2U) == 0 && f.cover[i] != 0 && sd >= kSeamDepth) {
+        const std::size_t k = at(i);
+        if ((f.flags[k] & 2U) != 0) {
+            to_river[i] = 0.0F;
+        }
+        // ... and to full sea water: only pixels in a narrow gap between the
+        // two are filled, the open shoreline stays as it is.
+        const float sd = (static_cast<float>(f.depth[k]) - sea::kDepthBias) / sea::kDepthScale;
+        if ((f.flags[k] & 2U) == 0 && f.cover[k] != 0 && sd >= kSeamDepth) {
             to_sea[i] = 0.0F;
         }
     }
+    chamfer(to_river, w, h);
     chamfer(to_sea, w, h);
-    const float seam = kRiverSeam * static_cast<float>(kTile[group].h) / 42.0F;
     for (std::size_t i = 0; i < w * h; ++i) {
-        const float sd = (static_cast<float>(f.depth[i]) - sea::kDepthBias) / sea::kDepthScale;
-        if ((f.flags[i] & 2U) != 0 || f.cover[i] == 0 || sd >= kSeamDepth ||
+        const std::size_t k = at(i);
+        const float sd = (static_cast<float>(f.depth[k]) - sea::kDepthBias) / sea::kDepthScale;
+        if ((f.flags[k] & 2U) != 0 || f.cover[k] == 0 || sd >= kSeamDepth ||
             to_river[i] + to_sea[i] > seam) {
             continue;
         }
-        f.flags[i] = static_cast<std::uint8_t>((f.flags[i] & 1U) | 2U);
-        f.shore[i] = 0;
-        f.depth[i] = sat_cast<std::uint8_t>(
+        f.flags[k] = static_cast<std::uint8_t>((f.flags[k] & 1U) | 2U);
+        f.shore[k] = 0;
+        f.depth[k] = sat_cast<std::uint8_t>(
             clampf(sea::kDepthBias + kSeamDepth * sea::kDepthScale, 0.0F, 255.0F));
     }
     for (std::size_t i = 0; i < w * h; ++i) {
-        if ((f.flags[i] & 2U) == 0 || dist[i] >= reach) {
+        const std::size_t k = at(i);
+        if ((f.flags[k] & 2U) == 0 || dist[i] >= reach) {
             continue;
         }
-        const float k = dist[i] / reach;
-        f.shore[i] = sat_cast<std::uint8_t>(roundf(k * 254.0F));
-        if ((f.flags[i] & 1U) == 0) {
+        const float kk = dist[i] / reach;
+        f.shore[k] = sat_cast<std::uint8_t>(roundf(kk * 254.0F));
+        if ((f.flags[k] & 1U) == 0) {
             const float river = 1.0F + static_cast<float>(sea::kRiverOpenness);
-            f.cover[i] =
+            f.cover[k] =
                 sat_cast<std::uint8_t>(roundf(static_cast<float>(near_cover[i]) +
-                                              (river - static_cast<float>(near_cover[i])) * k));
+                                              (river - static_cast<float>(near_cover[i])) * kk));
         }
     }
 }

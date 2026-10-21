@@ -2,6 +2,7 @@
 # follows, ADR 0001). Consumes anno_assets; never mutates simulation state.
 find_package(Threads REQUIRED)
 add_library(anno_render
+  src/chunk_reduce.cpp
   src/fluid.cpp
   src/frame.cpp
   src/iso.cpp
@@ -19,6 +20,7 @@ anno_target_defaults(anno_render)
 
 if(ANNO_BUILD_TESTS)
   add_executable(anno_render_tests
+    tests/chunk_reduce_test.cpp
     tests/fluid_test.cpp
     tests/main.cpp
     tests/render_corpus_test.cpp

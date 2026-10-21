@@ -349,12 +349,17 @@ def pe_file_bytes(path: str, rva: int, size: int) -> bytes:
     raise RuntimeError(f"RVA {rva:#x} not in any section of {path}")
 
 
-def find_world_tick(pid: int, welt_base: int) -> tuple[int, int] | None:
-    """Scan the writable heap for the world object (first field = the AnnoWelt vtable); return
-    (object address, tick at +0x10c). Best effort: returns None if not found."""
+def find_world_candidates(pid: int, welt_base: int) -> tuple[list[dict], int | None]:
+    """Every heap location whose first DWORD is the AnnoWelt world vtable (welt_base + 0xccdd8),
+    with the 64-bit ms counter at +0x100, the DWORD at +0x108 and the tick at +0x10c of each.
+    A candidate is accepted only when its counter is non-zero and tick == counter >> 1
+    (docs/re/tick-loop.md): that rejects a stray match of the vtable value. Returns
+    (candidate list, the accepted object's address or None)."""
+    candidates: list[dict] = []
+    accepted: int | None = None
     handle = open_read(pid)
     if not handle:
-        return None
+        return candidates, None
     try:
         vtable = struct.pack("<I", welt_base + WELT_VTABLE_RVA)
         addr = 0
@@ -372,19 +377,59 @@ def find_world_tick(pid: int, welt_base: int) -> tuple[int, int] | None:
                     i = data.find(vtable)
                     while i != -1:
                         obj = region + i
-                        # The world object: tick (+0x10c) == the 64-bit ms counter (+0x100) >> 1
-                        # (docs/re/tick-loop.md). That check rejects a stray vtable-value match.
                         fields = read_memory(handle, obj + 0x100, 0x10)
                         if fields is not None:
                             counter = struct.unpack_from("<Q", fields, 0)[0]
-                            val = struct.unpack_from("<I", fields, WORLD_TICK_OFF - 0x100)[0]
-                            if val == (counter >> 1) and counter < (1 << 40):
-                                return obj, val
+                            at_108 = struct.unpack_from("<I", fields, 0x08)[0]
+                            tick = struct.unpack_from("<I", fields, WORLD_TICK_OFF - 0x100)[0]
+                            ok = counter != 0 and tick == (counter >> 1)
+                            candidates.append({"addr": hex(obj), "counter": counter, "at_0x108":
+                                               at_108, "tick": tick, "accepted": ok})
+                            if ok and accepted is None:
+                                accepted = obj
                         i = data.find(vtable, i + 4)
             addr = region + size
-        return None
+        return candidates, accepted
     finally:
         kernel32.CloseHandle(handle)
+
+
+def read_tick_fields(pid: int, obj: int) -> tuple[int, int, int] | None:
+    """(counter at +0x100, DWORD at +0x108, tick at +0x10c) of the world object."""
+    handle = open_read(pid)
+    if not handle:
+        return None
+    try:
+        fields = read_memory(handle, obj + 0x100, 0x10)
+        if fields is None:
+            return None
+        return (struct.unpack_from("<Q", fields, 0)[0], struct.unpack_from("<I", fields, 0x08)[0],
+                struct.unpack_from("<I", fields, WORLD_TICK_OFF - 0x100)[0])
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def enum_modules_toolhelp(pid: int) -> list[tuple[str, int, int]]:
+    """Cross-check of enum_modules: a 32-bit-module toolhelp snapshot (TH32CS_SNAPMODULE32)."""
+    out: list[tuple[str, int, int]] = []
+    snap = -1
+    for _ in range(50):
+        snap = kernel32.CreateToolhelp32Snapshot(0x00000010, pid)  # TH32CS_SNAPMODULE32
+        if snap != -1:
+            break
+        time.sleep(0.05)
+    if snap == -1:
+        return out
+    try:
+        entry = MODULEENTRY32W()
+        entry.dwSize = ctypes.sizeof(entry)
+        ok = kernel32.Module32FirstW(snap, ctypes.byref(entry))
+        while ok:
+            out.append((entry.szModule, int(entry.modBaseAddr or 0), int(entry.modBaseSize)))
+            ok = kernel32.Module32NextW(snap, ctypes.byref(entry))
+    finally:
+        kernel32.CloseHandle(snap)
+    return out
 
 
 def main() -> int:
@@ -400,6 +445,16 @@ def main() -> int:
     ap.add_argument("--arg", action="append", default=[])
     args = ap.parse_args()
 
+    # Physical pixels: GetWindowRect and BitBlt must match the game's real resolution 1:1 (stage 3
+    # compares pixels), whatever the desktop scaling is. PER_MONITOR_AWARE_V2 (-4), else the older
+    # system-DPI-aware call.
+    try:
+        user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+    except Exception:
+        try:
+            user32.SetProcessDPIAware()
+        except Exception:
+            pass
     os.makedirs(args.out, exist_ok=True)
     game_dir = os.path.abspath(args.game)
     exe = os.path.join(game_dir, args.launcher)
@@ -423,6 +478,8 @@ def main() -> int:
     else:
         log["window_found_s"] = round(time.time() - t0, 1)
         log["window"] = f"{win[1]} [{win[2]}x{win[3]}]"
+        dpi = user32.GetDpiForWindow(win[0]) or 96
+        log["primary_display_scaling_percent"] = round(dpi * 100 / 96)
         shots: list[dict] = []
         tick_reads: list[dict] = []
         best_shot = None
@@ -450,39 +507,80 @@ def main() -> int:
                         if best_shot is None or nb > best_shot["nonblack"]:
                             best_shot = rec
                 next_shot = now + args.shot_every
-            # Once a scenario is running, the world object exists: read its tick twice. The heap
-            # scan is heavy, so attempt it only every `scan_every` seconds.
+            # Once a scenario is running, the world object exists: locate it (all vtable matches,
+            # one accepted) and read its tick several times. The heap scan is heavy, so attempt it
+            # only every `scan_every` seconds.
             if not world_found and now >= next_scan:
                 next_scan = now + args.scan_every
                 for pid in pids_under(game_dir):
                     base = module_base(pid, "AnnoWelt.dll")
                     if not base:
                         continue
-                    found = find_world_tick(pid, base[0])
-                    if found:
-                        obj, tick1 = found
-                        time.sleep(3.0)
-                        handle = open_read(pid)
-                        again = read_memory(handle, obj + WORLD_TICK_OFF, 4)
-                        kernel32.CloseHandle(handle)
-                        tick2 = struct.unpack("<I", again)[0] if again else None
-                        tick_reads.append({"pid": pid, "welt_base": hex(base[0]),
-                                           "object": hex(obj), "tick1": tick1, "tick2": tick2,
-                                           "grew": tick2 is not None and tick2 > tick1})
+                    cands, accepted = find_world_candidates(pid, base[0])
+                    if not cands:
+                        continue
+                    entry = {"pid": pid, "welt_base": hex(base[0]),
+                             "vtable_value": hex(base[0] + WELT_VTABLE_RVA), "candidates": cands}
+                    if accepted is not None:
+                        reads = []
+                        for k in range(4):  # at least three, a few seconds apart
+                            if k:
+                                time.sleep(2.5)
+                            fv = read_tick_fields(pid, accepted)
+                            if fv:
+                                reads.append({"real_s": round(time.time() - t0, 3),
+                                              "counter": fv[0], "at_0x108": fv[1], "tick": fv[2],
+                                              "at_108_eq_tick": fv[1] == fv[2]})
+                        entry["object"] = hex(accepted)
+                        entry["reads"] = reads
+                        if len(reads) >= 2:
+                            dt = reads[-1]["real_s"] - reads[0]["real_s"]
+                            dtick = reads[-1]["tick"] - reads[0]["tick"]
+                            rate = dtick / dt if dt > 0 else 0.0
+                            entry["ticks_per_real_s"] = round(rate, 1)
+                            entry["implied_game_speed"] = round(rate / 500.0, 3)  # 500 ticks/s at 1x
+                            entry["grew"] = dtick > 0
                         world_found = True
+                    tick_reads.append(entry)
+                    if world_found:
                         break
             # Module bases, refreshed each loop so an early close keeps the last good set
             # (do the DLLs load at their preferred 0x10000000 base? AnnoDisplay does; the rest
             # share that base and rebase).
+            def want(n: str) -> bool:
+                low = n.lower()
+                return low.startswith("anno") or low in ("filegame.dll", "view.dll",
+                                                         "complogic.dll", "ddraw.dll", "d3dimm.dll")
+
             for pid in pids_under(game_dir):
-                cur = {}
-                for n, base, size in enum_modules(pid):
-                    low = n.lower()
-                    if low.startswith("anno") or low in ("filegame.dll", "view.dll",
-                                                         "complogic.dll", "ddraw.dll", "d3dimm.dll"):
-                        cur[n] = {"base": hex(base), "size": size}
-                if cur:
-                    anno_mods = cur
+                walk = [(n, b, s) for n, b, s in enum_modules(pid) if want(n)]
+                if not walk:
+                    continue
+                th = enum_modules_toolhelp(pid)
+                handle = open_read(pid)
+                mods = {}
+                for n, b, s in walk:
+                    rec = {"base": hex(b), "size": s}
+                    # Cross-check the base: the first page of a loaded image is mapped from the file,
+                    # so the 0x40 header bytes at the base must equal the file's first 0x40 bytes.
+                    path = os.path.join(game_dir, n)
+                    if os.path.exists(path):
+                        on_disk = open(path, "rb").read(0x40)
+                        in_mem = read_memory(handle, b, 0x40) if handle else None
+                        rec["header_matches_disk"] = in_mem == on_disk
+                    mods[n] = rec
+                if handle:
+                    kernel32.CloseHandle(handle)
+                anno_mods = {
+                    "method": "wow64_peb_walk (ReadProcessMemory on the 32-bit loader list)",
+                    "modules": mods,
+                    # The documented cross-check APIs do not see a WOW64 target's 32-bit modules from
+                    # a 64-bit caller, which is why the PEB walk is used; recorded for the trail.
+                    "toolhelp_snapmodule32_count": len([m for m in th if want(m[0])]),
+                    "note": "EnumProcessModulesEx(LIST_MODULES_32BIT) / TH32CS_SNAPMODULE32 return the "
+                            "64-bit shim view from a 64-bit caller; the per-module header_matches_disk "
+                            "flag is the real cross-check of each base.",
+                }
             time.sleep(1.0)
         log["screenshots"] = shots
         log["best_shot"] = best_shot

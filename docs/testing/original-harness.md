@@ -1,6 +1,6 @@
 # T15 stage 0: running the original game for comparison (design, REVIEW)
 
-Status: **design, static checks and the smoke run done (2026-10-21).** The game runs windowed through dgVoodoo2 on the primary monitor, a running scenario was screenshotted by the script, the 32-bit module bases were read, and the game closed with nothing left and the copy unchanged. One point is partial: the world tick was read but not yet shown growing (the scenario was paused when the owner closed the run). Host: Windows 11, Ryzen 9800X3D, RTX 4090, the 2560 x 1440 @ 500 Hz monitor primary (both monitors on the RTX 4090; the iGPU drives none, correction 2026-10-21 s).
+Status: **design, static checks and the smoke run done (2026-10-21).** The game runs through dgVoodoo2 (full-screen at its native resolution) on the primary monitor, a running scenario was screenshotted by the script at 1:1, the 32-bit module bases were read and each base cross-checked against the on-disk PE header, the world clock was located and read growing at 500 ticks/s (game speed 1.0), and the game closed with nothing left and the copy unchanged. Host: Windows 11, Ryzen 9800X3D, RTX 4090, the 2560 x 1440 @ 500 Hz monitor primary at 100 % scaling (both monitors on the RTX 4090; the iGPU drives none, correction 2026-10-21 s).
 
 ## 1. The copy (done, verified)
 
@@ -59,11 +59,15 @@ process under the copy folder) and hashes the copy. It sends **no input** (the o
    prefer 0x10000000 and conflict, so only the first keeps it). `binkw32.dll` 0x30000000,
    the dgVoodoo2 `DDraw.dll`/`D3DImm.dll` in the 0x6xxxxxxx range. The RE notes' "image base
    0x10000000 each" is the preferred base; at run time only AnnoDisplay gets it.
-4. **A memory read works:** `ReadProcessMemory` of a module's code bytes matches the file on disk,
-   and the world-object vtable (`AnnoWelt base + 0xccdd8`) is found in the heap. **Partial:** the
-   world tick read back 0 and did not grow — the scenario was paused when the owner closed the run
-   early. The locator now verifies the object by `tick == (ms counter >> 1)` (docs/re/tick-loop.md);
-   showing the tick grow needs one short run with the scenario unpaused (a stage-1 fixture anyway).
+4. **The world clock reads and grows.** `ReadProcessMemory` of a module's code bytes matches the
+   file on disk. The locator scans the heap for every DWORD equal to the world vtable
+   (`AnnoWelt base + 0xccdd8`) and accepts only a candidate whose ms counter (+0x100) is non-zero
+   and whose tick (+0x10c) == counter >> 1 (docs/re/tick-loop.md); in the unpaused run there was
+   exactly one such candidate (an earlier run accepted a stray all-zero match, now rejected). Read
+   four times, ~2.5 s apart, the tick grew 4063 -> 5314 -> 6563 -> 7814, i.e. **500.1 ticks per real
+   second = game speed 1.0** (the note's 500 ticks/s at 1x; 1 tick = 2 ms game time). The DWORD at
+   +0x108 equalled the tick (+0x10c) in every read. The candidate list, the reads with their real
+   times and the rate are in the run's `log.json`.
 5. **Clean close:** no process left under the copy folder; the game's 20 files stay byte-identical
    to `game/app` after every run.
 
@@ -76,7 +80,7 @@ Candidates for the questions above; each needs its version, licence and reason b
 
 | Tool | Purpose | Status |
 |---|---|---|
-| **dgVoodoo2** (ddraw wrapper) | windowed DirectDraw on the primary monitor | **installed and in use** (see 5.2): the game runs and renders through it |
+| **dgVoodoo2** (ddraw wrapper) | DirectDraw on the primary monitor (full-screen at native res) | **installed and in use** (see 5.2): the game runs and renders through it |
 | cnc-ddraw (ddraw wrapper) | windowed DirectDraw | **tried, removed** (see 5.1): it rendered black, then the game exited in ~3 s |
 | Frida | hooks at the tick function | not installed; not needed for stage 0 |
 | pywinauto | window control | not installed; not needed for stage 0 |
@@ -100,7 +104,7 @@ game; its files were **removed** from the copy. Recorded for the trail:
   - `ddraw.ini` (configured, see below) and `Shaders\` (15 files, for the unused shader renderers).
 - **Configuration** (the global `[ddraw]` section of `ddraw.ini`; no Anno-specific section exists):
   `windowed=true`, `width=1280`, `height=960`, `maintas=true`, `posX=100`, `posY=80` (on the
-  primary monitor, `\.\DISPLAY2`, x 0..2559), `renderer=gdi` (the most reliable for a screen
+  primary monitor, `\\.\DISPLAY2`, x 0..2559), `renderer=gdi` (the most reliable for a screen
   capture), `savesettings=0` (the window stays where it is put), `resizable=false`.
 - **Hash separation:** the game's 20 executables and DLLs stay byte-identical to `game/app`
   (verified after install); `ddraw.dll`, `ddraw.ini` and `Shaders\` are the only added files.
@@ -113,18 +117,33 @@ after cnc-ddraw failed; **the game runs, renders and is captured through it.**
 - **Version:** v2.87.5 (released 2026-09-15).
 - **Download:** https://github.com/dege-diosg/dgVoodoo2/releases/download/v2.87.5/dgVoodoo2_87_5.zip
 - **SHA-256 (dgVoodoo2_87_5.zip):** `5ffde6927f7355ca3fdd5d785b581256a8e6539fa13e395a891ade6ba1040850`
-- **Licence:** dgVoodoo2's own freeware licence (free for any use incl. commercial, redistribution
-  of the unmodified package allowed; dege, http://dege.fw.hu/dgVoodoo2/). The GitHub repo carries no
-  SPDX licence file; the terms are in the package's ReadMe links.
+- **Licence:** the package ships no licence text file; it links the terms through `Doc\Readme.url`
+  (`URL=http://dege.fw.hu/dgVoodoo2/ReadmeGeneral/`). That page, `Copyright (c) 2013-2026 Dege`,
+  states its redistribution rights verbatim (section "1. Redistribution rights"):
+  > You can freely ship your game or game mod with unmodified individual dgVoodoo components (files) included.
+  > If you want to host or re-distribute dgVoodoo as a standalone component for any reason then you must
+  > provide the original, unmodified .zip package. You cannot bundle dgVoodoo inside launchers or
+  > frameworks, for general use across multiple applications.
+  We ship nothing: the files stay in the local copy only, never in git, so this is use, not redistribution.
+  The page states no fee and no named licence (MIT/GPL/etc.); only these redistribution rules.
 - **Installed files** (into `C:\anno1503-original\` only, never `game/app`, never git), from
   `MS/x86/`: `DDraw.dll` and `D3DImm.dll` (the 32-bit DirectDraw wrappers), plus the configured
   `dgVoodoo.conf`. cnc-ddraw's `ddraw.dll`, `ddraw.ini` and `Shaders\` were removed first.
-- **Configuration** (`dgVoodoo.conf`): `FullScreenMode = false` (windowed on the primary),
-  `CaptureMouse = false` (the owner keeps the cursor), `dgVoodooWatermark = false` (clean capture);
-  the DirectX resolution is unforced (the game's 800 x 600 menu / 1024 x 768 in a scenario, windowed
-  top-left of the primary).
+- **Configuration** (`dgVoodoo.conf`): `FullScreenMode = false` was set but did **not** window this
+  title (the owner saw it full-screen); `CaptureMouse = false` (the owner keeps the cursor),
+  `dgVoodooWatermark = false` (clean capture); the DirectX resolution is unforced, so the game runs
+  at its own resolution (800 x 600 menu, 1024 x 768 in a scenario) full-screen, with no upscaling.
 - **Hash separation:** the game's 20 files stay byte-identical to `game/app`; `DDraw.dll`,
   `D3DImm.dll` and `dgVoodoo.conf` are the only added files.
+- **Scaling and 1:1 capture (stage 3 compares pixels):** the primary display is at **100 %**
+  scaling (96 DPI, 2560 x 1440). dgVoodoo2's DirectX `Resolution` is `unforced`, so it presents the
+  game's own back-buffer (800 x 600 at the menu, 1024 x 768 in a scenario) at that exact pixel size,
+  full-screen with no stretching or filtering (a scaled full-screen would be captured at the
+  monitor's 2560 x 1440 and blurred; the grab is 1024 x 768, so it is 1:1). The harness marks itself
+  per-monitor-DPI-aware and captures with a `BitBlt` of the window's physical rectangle, so the PNG
+  is 1:1 with the game's resolution (the scenario shot is 1024 x 768, the game's resolution; the
+  run records `primary_display_scaling_percent`). If the owner ever raises the desktop scaling,
+  keep dgVoodoo2's resolution unforced and the window unscaled for the pixel comparison.
 
 ## 6. Our side (what has to show the same view)
 
@@ -133,16 +152,22 @@ For stage 3 of T15 (the renderer comparison), the view is set in our renderer by
 ## 7. What is settled, and what is left
 
 Settled by the smoke run (owner-agreed, 2026-10-21): the copy at `C:\anno1503-original\` is used for
-all stages; the windowed wrapper is **dgVoodoo2** (cnc-ddraw does not run the game); the harness can
-launch, screenshot, read 32-bit modules and memory, and close cleanly without touching `game/app`.
+all stages; the wrapper is **dgVoodoo2** (cnc-ddraw does not run the game); the harness can
+launch, screenshot at 1:1, read 32-bit modules (cross-checked against the on-disk headers) and the
+world clock (growing at the expected rate), and close cleanly without touching `game/app`.
 
 Left for stage 1 (not blockers for the design):
-1. **Show the world tick growing:** one short run with the scenario **unpaused** (the smoke run's
-   scenario was paused when it was closed early). The locator is ready (`tick == ms counter >> 1`).
-2. **Scripted control** (menu navigation / camera / save-load by `SendInput`): only in a session the
+1. **Scripted control** (menu navigation / camera / save-load by `SendInput`): only in a session the
    owner agrees to; not needed for the fixtures that read memory.
-3. The M2 fixtures themselves (F1-F9, production, population) read the world clock, PRNG cursor and
+2. The M2 fixtures themselves (F1-F9, production, population) read the world clock, PRNG cursor and
    stocks from memory while a scenario runs; the smoke run proves the reads are possible.
+3. **True windowed mode is a nicety, not a need.** The game ran full-screen at its native resolution
+   (the owner's note); `FullScreenMode = false` in `dgVoodoo.conf` did not window this title. The
+   capture is still 1:1 (the screen was the game's native resolution, no upscaling; a scaled
+   full-screen would have been captured at the monitor's 2560 x 1440 and blurred). A true window
+   (less disruptive for the owner, the desktop stays put) can be chased later — a per-game CPL
+   profile, or `dgVoodooCpl.exe` run once against the copy — but stage 3's pixel comparison does not
+   need it.
 
 ## 8. Hashes of the copy (SHA-256, identical in `game/app`)
 

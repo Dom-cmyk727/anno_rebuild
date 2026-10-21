@@ -5,6 +5,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,7 @@
 #include <anno/app/cli.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/app/png.hpp>
+#include <anno/app/still.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/test/game_dir.hpp>
 
@@ -149,12 +151,57 @@ TEST_CASE("game directory discovery") {
     fs::remove_all(root);
 }
 
+TEST_CASE("derived zoom levels for --png: the level table, the bound and a derived picture") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto loaded = anno::app::load_scene(*dir, *dir / "Scenes" / "0200Single" / "Single_01.sze");
+    REQUIRE(loaded);
+    anno::render::Scene& scene = *loaded.value().scene;
+    CHECK(anno::app::set_derived_levels(scene, 2, 8).empty());
+    CHECK(scene.levels().size() == anno::render::kGroups);
+    CHECK(anno::app::set_derived_levels(scene, 5, 8).empty());
+    CHECK(scene.levels().size() == 6);
+    CHECK(scene.levels()[5].derived);
+    CHECK(scene.levels().ancestor(5) == 2);
+    CHECK(anno::app::set_derived_levels(scene, 10, 8).empty());
+    CHECK_FALSE(anno::app::set_derived_levels(scene, 11, 8).empty());
+    CHECK(scene.levels().size() == 11); // a refused group changes nothing
+    REQUIRE(anno::app::set_derived_levels(scene, 3, 8).empty());
+    const auto b = scene.bounds(3);
+    REQUIRE(b);
+    const anno::render::Rect view{b->x + b->w / 2 - 100, b->y + b->h / 2 - 60, 200, 120};
+    anno::render::FrameStats frames;
+    const auto a = anno::app::derived_view(scene, view, 3, anno::render::Layers::all(), frames);
+    REQUIRE(a);
+    CHECK(a->width == 200);
+    CHECK(a->height == 120);
+    CHECK(frames.chunks_built > 0);
+    // Opaque, and a picture rather than one colour.
+    std::set<std::uint32_t> colours;
+    std::size_t opaque = 0;
+    for (std::size_t i = 0; i + 3 < a->pixels.size(); i += 4) {
+        colours.insert(std::uint32_t{a->pixels[i]} << 16 | std::uint32_t{a->pixels[i + 1]} << 8 |
+                       a->pixels[i + 2]);
+        opaque += a->pixels[i + 3] == 255 ? 1 : 0;
+    }
+    CHECK(opaque == a->width * a->height);
+    CHECK(colours.size() > 8);
+    // The same view again is the same picture.
+    anno::render::FrameStats again;
+    const auto c = anno::app::derived_view(scene, view, 3, anno::render::Layers::all(), again);
+    REQUIRE(c);
+    CHECK(c->pixels == a->pixels);
+}
+
 TEST_CASE("command line") {
     using anno::app::parse_args;
     using V = std::vector<std::string>;
     // Invalid input: no --view, odd count, bad values, unknown options.
     for (const V& bad :
-         {V{}, V{"--view"}, V{"--view", "x.sze", "--group", "3"}, V{"--view", "x", "--bogus", "1"},
+         {V{}, V{"--view"}, V{"--view", "x.sze", "--group", "27"}, V{"--view", "x", "--bogus", "1"},
           V{"--view", "x", "--size", "0x5"}, V{"--view", "x", "--size", "-5x5"},
           V{"--view", "x", "--size", "10x"}, V{"--view", "x", "--size", "70000x10"},
           V{"--view", "x", "--at", "1,2,3"}, V{"--view", "x", "--at", "2000000000,0"},

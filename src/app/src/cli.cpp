@@ -78,7 +78,9 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             out.game_dir = utf8_path(v);
         } else if (a == "--group") {
             const auto g = number<std::size_t>(v);
-            if (!g || *g >= render::kGroups) {
+            // Groups 0-2 are built; the derived levels above them (--png) are checked
+            // against --max-derived-levels in main.
+            if (!g || *g >= render::kGroups + kMaxDerivedLevels) {
                 return std::nullopt;
             }
             out.group = g;

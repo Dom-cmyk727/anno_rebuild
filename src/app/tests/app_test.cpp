@@ -185,7 +185,7 @@ TEST_CASE("derived zoom levels for --png: the level table, the bound and a deriv
     for (std::size_t i = 0; i + 3 < a->pixels.size(); i += 4) {
         colours.insert(std::uint32_t{a->pixels[i]} << 16 | std::uint32_t{a->pixels[i + 1]} << 8 |
                        a->pixels[i + 2]);
-        opaque += a->pixels[i + 3] == 255 ? 1 : 0;
+        opaque += a->pixels[i + 3] == 255 ? 1U : 0U;
     }
     CHECK(opaque == a->width * a->height);
     CHECK(colours.size() > 8);

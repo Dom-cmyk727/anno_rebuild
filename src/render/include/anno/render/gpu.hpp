@@ -332,6 +332,49 @@ struct RiverCost {
 /// reference nothing does: the answer is Low, never the dearest tier.
 RiverQuality choose_river_quality(const std::vector<RiverCost>& costs, double gate_ms_per_mpx);
 
+/// How a resample pass reads the composed scene grid (T3, docs/render/iso.md
+/// "Continuous zoom").
+enum class ResampleFilter : std::uint32_t {
+    /// The nearest scene pixel: sharp when magnifying (the pixel-art look).
+    Nearest = 0,
+    /// The four nearest scene pixels weighted by the position between them.
+    Bilinear = 1,
+    /// The mean of ceil(1 / scale) x ceil(1 / scale) nearest samples spread over
+    /// the output pixel's footprint: for scales below 1 (minifying), where
+    /// nearest would skip scene pixels and shimmer.
+    Box = 2,
+};
+
+/// A continuous zoom: the picture is composed on the scene grid of a zoom
+/// group, at one scene pixel per grid pixel, exactly as without a scale, and
+/// one extra pass resamples it onto the target (`scale` target pixels per grid
+/// pixel). The compositor, the chunks, the sea and the waves therefore never
+/// see a fractional scale (their exactness tests keep their meaning); a scale
+/// of 1 at offset 0 skips the pass altogether.
+struct Resample {
+    /// Target pixels per scene-grid pixel (> 0).
+    double scale = 1.0;
+    /// Where the target's left and top edge lie in the composed grid, in grid
+    /// pixels from the view's origin (>= 0, usually < 1: the fraction of the
+    /// camera position the integer view origin dropped).
+    double offset_x = 0.0, offset_y = 0.0;
+    ResampleFilter filter = ResampleFilter::Nearest;
+    [[nodiscard]] bool identity() const {
+        return scale == 1.0 && offset_x == 0.0 && offset_y == 0.0;
+    }
+};
+
+/// The scene-grid view and the Resample for an output of `out_w` x `out_h` pixels
+/// centred on the grid point (cx, cy) at `scale`: the integer rectangle that
+/// covers what the output shows (plus one pixel for the filters' reach), and the
+/// offset of the output's top-left corner in it.
+struct ResampledView {
+    Rect view;
+    Resample resample;
+};
+ResampledView resampled_view(double cx, double cy, std::uint32_t out_w, std::uint32_t out_h,
+                             double scale, ResampleFilter filter);
+
 class GpuFrame {
   public:
     /// Pipelines for targets of `format` (a non-sRGB format: colours are
@@ -348,9 +391,13 @@ class GpuFrame {
     GpuFrame& operator=(const GpuFrame&) = delete;
 
     /// Composes `view` at `group` and `time_ms` into `target` (view.w ×
-    /// view.h, in the frame's format) and submits the commands.
+    /// view.h, in the frame's format) and submits the commands. With
+    /// `resample` (not the identity) `view` is the scene grid the picture is
+    /// composed on and `target` has the output's size: the grid is resampled
+    /// onto it by one extra pass (see Resample).
     GpuStats render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
-                    std::uint64_t time_ms, WaterStyle style, WGPUTextureView target);
+                    std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
+                    const Resample* resample = nullptr);
 
     /// Whether `group` can be shown without the window thread waiting for
     /// content: its sea pattern is rendered and fully on the GPU (render()

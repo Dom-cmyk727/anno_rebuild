@@ -254,6 +254,13 @@ constexpr std::size_t kPieceBytes = 48;
 /// Distance of two pieces in the piece buffer: the dynamic offset alignment every
 /// WebGPU device guarantees (minUniformBufferOffsetAlignment is at most 256).
 constexpr std::size_t kPieceStride = 256;
+/// Bytes of the resample uniform (struct Scale in gpu.wgsl): four 4-byte words
+/// of the scale, the offset and the filter, then the grid size, taps and padding.
+constexpr std::size_t kScaleBytes = 32;
+/// Most samples per axis of a Box resample: a scale down to 1/8 averages 64
+/// samples per output pixel (8 x 8); below that the picture would skip grid
+/// pixels again, and a smaller scale needs mips of the grid (T3 stage 3).
+constexpr std::uint32_t kMaxBoxTaps = 8;
 
 struct GpuFrame::Impl {
     /// Own references to the device (the Context may move or go away).
@@ -264,7 +271,16 @@ struct GpuFrame::Impl {
     bool atlas_full_reported = false;
     WGPUTextureFormat format = WGPUTextureFormat_RGBA8Unorm;
     ShaderModule module;
-    BindGroupLayout frame_layout, chunk_layout, atlas_layout, empty_layout, piece_layout;
+    BindGroupLayout frame_layout, chunk_layout, atlas_layout, empty_layout, piece_layout,
+        scale_layout;
+    /// The resample pass of a continuous zoom (struct Scale in gpu.wgsl): its
+    /// pipeline, uniform, and the offscreen scene grid it reads.
+    PipelineLayout scale_pl;
+    RenderPipeline scale_pipe;
+    Buffer scale_uniform;
+    Texture scene_t;
+    TextureView scene_v;
+    std::pair<std::uint32_t, std::uint32_t> scene_size{0, 0};
     /// Bound at group 1 for the sprite draws, which use no chunk data.
     BindGroup empty_bind;
     PipelineLayout chunk_pl, sprite_pl;
@@ -638,6 +654,18 @@ struct GpuFrame::Impl {
                          WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding);
         terrain_v = make_view(terrain_t.get(), false);
         under_size = {w, h};
+    }
+
+    /// The offscreen scene grid of a resampled frame, `w` x `h` in the frame's
+    /// format (the compositor's last pass writes it, the resample pass reads it).
+    void ensure_scene(std::uint32_t w, std::uint32_t h) {
+        if (scene_t && scene_size == std::pair{w, h}) {
+            return;
+        }
+        scene_t = make_texture(dev(), "scene grid", format, w, h, 1,
+                               WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding);
+        scene_v = make_view(scene_t.get(), false);
+        scene_size = {w, h};
     }
 
     /// Uploads up to `max` missing animation steps of `p` as the pattern of
@@ -1431,6 +1459,15 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
         pd.bindGroupLayoutCount = sl.size();
         pd.bindGroupLayouts = sl.data();
         m.sprite_pl = PipelineLayout(wgpuDeviceCreatePipelineLayout(d, &pd));
+        // The resample pass (group 3 of the module): uniform and the grid.
+        m.scale_layout = layout(
+            d, "scale", {uniform_entry(0), texture_entry(1, kFloat, WGPUTextureViewDimension_2D)});
+        const std::array scl = {m.empty_layout.get(), m.empty_layout.get(), m.empty_layout.get(),
+                                m.scale_layout.get()};
+        pd.label = sv("scale");
+        pd.bindGroupLayoutCount = scl.size();
+        pd.bindGroupLayouts = scl.data();
+        m.scale_pl = PipelineLayout(wgpuDeviceCreatePipelineLayout(d, &pd));
     }
     WGPUBlendState alpha{};
     alpha.color = {WGPUBlendOperation_Add, WGPUBlendFactor_SrcAlpha,
@@ -1466,11 +1503,15 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
                                 format, &alpha);
     m.sprite_pipe =
         m.pipeline("sprite", m.sprite_pl.get(), "sprite_vs", "sprite_fs", &vbl, 1, format, &alpha);
+    m.scale_pipe =
+        m.pipeline("scale", m.scale_pl.get(), "scale_vs", "scale_fs", nullptr, 0, format, nullptr);
     if (const std::string err = pop_error_scope(c.instance.get(), d); !err.empty()) {
         return "pipelines: " + err;
     }
     m.frame_uniform = make_buffer(d, "frame", kFrameUniformBytes,
                                   WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
+    m.scale_uniform =
+        make_buffer(d, "scale", kScaleBytes, WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
     // Slot 0 of the pieces: the chunk itself (all zero = kind 0).
     m.write_pieces(std::vector<std::uint8_t>(kPieceStride, 0));
     m.river_uniform = make_buffer(d, "river", kRiverParamsBytes,
@@ -1546,6 +1587,27 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     return f;
 }
 
+ResampledView resampled_view(double cx, double cy, std::uint32_t out_w, std::uint32_t out_h,
+                             double scale, ResampleFilter filter) {
+    // The output's left/top edge in grid pixels, and its far edge.
+    const double x0 = cx - static_cast<double>(out_w) / (2.0 * scale);
+    const double y0 = cy - static_cast<double>(out_h) / (2.0 * scale);
+    const double x1 = x0 + static_cast<double>(out_w) / scale;
+    const double y1 = y0 + static_cast<double>(out_h) / scale;
+    ResampledView r;
+    r.view.x = static_cast<int>(std::floor(x0));
+    r.view.y = static_cast<int>(std::floor(y0));
+    // One more pixel than the far edge needs: the bilinear filter reads the next
+    // pixel, and the box filter's footprint reaches half an output pixel past.
+    r.view.w = static_cast<int>(std::ceil(x1)) - r.view.x + 1;
+    r.view.h = static_cast<int>(std::ceil(y1)) - r.view.y + 1;
+    r.resample.scale = scale;
+    r.resample.offset_x = x0 - static_cast<double>(r.view.x);
+    r.resample.offset_y = y0 - static_cast<double>(r.view.y);
+    r.resample.filter = filter;
+    return r;
+}
+
 GpuFrame::~GpuFrame() = default;
 
 void GpuFrame::set_fade_clock(std::function<std::uint64_t()> clock) {
@@ -1566,7 +1628,8 @@ std::uint64_t GpuFrame::errors() const {
 }
 
 GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
-                          std::uint64_t time_ms, WaterStyle style, WGPUTextureView target) {
+                          std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
+                          const Resample* resample) {
     Impl& m = *impl_;
     // From the first frame on the pre-creation is paced by quiet frames (a
     // stricter condition for the thread, so no wake-up is needed).
@@ -1607,6 +1670,10 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     m.sprites_new = 0;
     auto t = Clock::now();
     m.ensure_under(w, h);
+    const bool resampling = resample != nullptr && !resample->identity();
+    if (resampling) {
+        m.ensure_scene(w, h);
+    }
     stats.under_ms = lap();
     m.ensure_sea(scene, group);
     stats.sea_ms = lap();
@@ -1857,7 +1924,9 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     }
     const bool timed = m.limits.gpu_timing && m.ensure_timestamps();
     {
-        WGPURenderPassEncoder p = begin(enc.get(), target, clear, timed ? &m.ts_writes : nullptr);
+        // Pass 2 writes the target itself, or the scene grid a resample reads.
+        WGPURenderPassEncoder p = begin(enc.get(), resampling ? m.scene_v.get() : target, clear,
+                                        timed ? &m.ts_writes : nullptr);
         wgpuRenderPassEncoderSetBindGroup(p, 0, pass2.get(), 0, nullptr);
         wgpuRenderPassEncoderSetPipeline(p, m.sea_pipe.get());
         draw_chunks(p, m.sea_fade_pipe.get());
@@ -1885,6 +1954,37 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                                                  WGPU_WHOLE_SIZE);
             wgpuRenderPassEncoderDraw(p, 6, n_ships, 0, 0);
         }
+        wgpuRenderPassEncoderEnd(p);
+        wgpuRenderPassEncoderRelease(p);
+    }
+    if (resampling) {
+        // The composed grid onto the target (struct Scale in gpu.wgsl).
+        Bytes u;
+        u.f32(static_cast<float>(resample->scale));
+        u.f32(static_cast<float>(resample->offset_x));
+        u.f32(static_cast<float>(resample->offset_y));
+        u.u32(static_cast<std::uint32_t>(resample->filter));
+        u.u32(w);
+        u.u32(h);
+        u.u32(std::clamp(static_cast<std::uint32_t>(std::ceil(1.0 / resample->scale)), 1U,
+                         kMaxBoxTaps));
+        u.u32(0);
+        wgpuQueueWriteBuffer(m.queue(), m.scale_uniform.get(), 0, u.b.data(), u.b.size());
+        const std::array entries = {buffer_entry(0, m.scale_uniform.get(), kScaleBytes),
+                                    view_entry(1, m.scene_v.get())};
+        WGPUBindGroupDescriptor bd = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+        bd.label = sv("scale");
+        bd.layout = m.scale_layout.get();
+        bd.entryCount = entries.size();
+        bd.entries = entries.data();
+        const BindGroup scale_bind(wgpuDeviceCreateBindGroup(m.dev(), &bd));
+        WGPURenderPassEncoder p = begin(enc.get(), target, clear);
+        wgpuRenderPassEncoderSetPipeline(p, m.scale_pipe.get());
+        wgpuRenderPassEncoderSetBindGroup(p, 0, m.empty_bind.get(), 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(p, 1, m.empty_bind.get(), 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(p, 2, m.empty_bind.get(), 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(p, 3, scale_bind.get(), 0, nullptr);
+        wgpuRenderPassEncoderDraw(p, 3, 1, 0, 0);
         wgpuRenderPassEncoderEnd(p);
         wgpuRenderPassEncoderRelease(p);
     }

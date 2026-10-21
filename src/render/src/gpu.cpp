@@ -925,7 +925,8 @@ struct GpuFrame::Impl {
             for (std::size_t k = 0; k < 4; ++k) {
                 b.u32(water[k]);
             }
-            std::copy(b.b.begin(), b.b.end(), slots.begin() + std::size_t{q} * kReduceSlot);
+            std::copy(b.b.begin(), b.b.end(),
+                      slots.begin() + static_cast<std::ptrdiff_t>(std::size_t{q} * kReduceSlot));
         }
         wgpuQueueWriteBuffer(queue(), reduce_uniform.get(), 0, slots.data(), slots.size());
         WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;

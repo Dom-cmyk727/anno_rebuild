@@ -160,8 +160,10 @@ std::uint64_t next_serial() {
     return counter.fetch_add(1, std::memory_order_relaxed) + 1;
 }
 
-Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, bool ships,
-                        bool wait_for_flow) {
+Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy,
+                        const ChunkBuildOptions& options) {
+    const bool ships = options.ships;
+    const bool wait_for_flow = options.wait_for_flow;
     const Rect rect = chunk_rect(cx, cy);
     std::vector<std::size_t> islands;
     for (const auto& p : scene.layouts[group]) {
@@ -169,26 +171,31 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, b
             islands.push_back(p.index);
         }
     }
-    Layers objects_only = Layers::none();
-    objects_only.objects = true;
-    objects_only.ships = ships;
     // Chunks for the GPU compositor (ships drawn there): with the object
     // base plane for the water against objects.
-    objects_only.bases = !ships;
+    const bool bases = !ships;
+    const bool gpu_list = options.builder == ChunkBuilder::GpuList;
     if (islands.empty()) {
         // Open sea; only units (ships) can add an objects layer.
-        if (!scene.units_touch(rect, group, ships)) {
-            Chunk none;
-            none.ships = ships;
-            return none;
-        }
         Chunk c;
         c.ships = ships;
-        c.objects = to_px(scene.render(rect, group, objects_only).first);
+        c.built_by = options.builder;
+        if (!scene.units_touch(rect, group, ships)) {
+            return c;
+        }
+        ChunkDraws draws = scene.objects_draws(rect, group, ships, bases, options.bin_px);
+        if (gpu_list) {
+            if (draws.object_count() > 0) {
+                c.draws = std::move(draws);
+            }
+        } else {
+            c.objects = to_px(replay(draws, scene.frame_table));
+        }
         return c;
     }
     Chunk c;
     c.ships = ships;
+    c.built_by = options.builder;
     const Px water = scene.textures.water();
     std::optional<profile::Scope> stage(std::in_place, profile::Stage::ground);
     auto [ground, probe] = scene.ground_with_probe(rect, group);
@@ -200,12 +207,22 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, b
         c.ground.push_back(rgb(px));
     }
     stage.emplace(profile::Stage::objects);
-    Canvas objects = scene.render(rect, group, objects_only).first;
-    c.objects = to_px(objects);
-    if (std::all_of(c.objects.begin(), c.objects.end(), [](const Px& p) { return p[3] == 0; })) {
-        c.objects.clear();
+    // The objects layer: the draw list of the chunk, replayed (Cpu) or kept for
+    // the compositor (GpuList).
+    ChunkDraws draws = scene.objects_draws(rect, group, ships, bases, options.bin_px);
+    if (gpu_list) {
+        if (draws.object_count() > 0) {
+            c.draws = std::move(draws);
+        }
     } else {
-        c.base = std::move(objects.base);
+        Canvas objects = replay(draws, scene.frame_table);
+        c.objects = to_px(objects);
+        if (std::all_of(c.objects.begin(), c.objects.end(),
+                        [](const Px& p) { return p[3] == 0; })) {
+            c.objects.clear();
+        } else {
+            c.base = std::move(objects.base);
+        }
     }
     stage.reset(); // water_field_from has its own stages
     const auto field = scene.water_field_from(rect, probe, group);
@@ -248,11 +265,19 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, b
 
 } // namespace
 
-Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool ships,
-                   bool wait_for_flow) {
-    Chunk c = render_chunk_data(scene, group, cx, cy, ships, wait_for_flow);
+Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy,
+                   const ChunkBuildOptions& options) {
+    Chunk c = render_chunk_data(scene, group, cx, cy, options);
     c.serial = next_serial();
     return c;
+}
+
+Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool ships,
+                   bool wait_for_flow) {
+    ChunkBuildOptions options;
+    options.ships = ships;
+    options.wait_for_flow = wait_for_flow;
+    return render_chunk(scene, group, cx, cy, options);
 }
 
 ChunkWorkers::ChunkWorkers(const Scene& scene, std::size_t threads) : scene_(scene) {
@@ -306,7 +331,7 @@ void ChunkWorkers::run() {
     lower_thread_priority();
     for (;;) {
         ChunkKey key;
-        bool ships = true;
+        ChunkBuildOptions options;
         {
             std::unique_lock lock(mutex_);
             ready_.wait(lock, [this] { return stop_ || !jobs_.empty(); });
@@ -316,13 +341,16 @@ void ChunkWorkers::run() {
             key = jobs_.front();
             jobs_.pop_front();
             busy_.insert(key);
-            ships = ships_;
+            options.ships = ships_;
+            options.wait_for_flow = false;
+            options.builder = builder_;
+            options.bin_px = bin_px_;
         }
         const auto [group, cx, cy] = key;
         std::optional<Chunk> chunk;
         const auto built_at = Clock::now();
         try {
-            chunk = render_chunk(scene_, group, cx, cy, ships, false);
+            chunk = render_chunk(scene_, group, cx, cy, options);
         } catch (const std::exception& e) {
             // E.g. out of memory: the chunk stays missing (open sea) and is not
             // requested again; the worker keeps running.
@@ -347,9 +375,12 @@ void ChunkWorkers::run() {
     }
 }
 
-bool ChunkWorkers::submit(const std::vector<ChunkKey>& wanted, bool ships) {
+bool ChunkWorkers::submit(const std::vector<ChunkKey>& wanted, bool ships, ChunkBuilder builder,
+                          std::uint32_t bin_px) {
     const std::lock_guard lock(mutex_);
     ships_ = ships;
+    builder_ = builder;
+    bin_px_ = bin_px;
     jobs_.clear();
     for (const auto& k : wanted) {
         if (!busy_.contains(k) && !failed_.contains(k)) {
@@ -661,7 +692,7 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
     std::vector<Chunk> replaced;
     for (auto& [key, chunk] : workers_->take_done()) {
         // Workers shared with a renderer of the other ship setting: rebuilt.
-        if (chunk.ships != ships_) {
+        if (chunk.ships != ships_ || chunk.built_by != chunk_builder) {
             continue;
         }
         if (const auto it = cache_.find(key); it != cache_.end()) {
@@ -695,7 +726,7 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
             todo.push_back(k);
         }
     }
-    pending_ = workers_->submit(todo, ships_);
+    pending_ = workers_->submit(todo, ships_, chunk_builder, bin_px);
     const std::set<ChunkKey> retain = stand_in_retain(group, visible);
     trim(group, view, keep, retain);
     return received;
@@ -771,7 +802,11 @@ std::size_t FrameRenderer::fill_cache(const Scene& scene, std::size_t group,
         }
     }
     auto built = par_map(todo, threads, [&](const std::pair<int, int>& c) {
-        return render_chunk(scene, group, c.first, c.second, ships_);
+        ChunkBuildOptions options;
+        options.ships = ships_;
+        options.builder = chunk_builder;
+        options.bin_px = bin_px;
+        return render_chunk(scene, group, c.first, c.second, options);
     });
     for (std::size_t i = 0; i < todo.size(); ++i) {
         cache_.insert_or_assign({group, todo[i].first, todo[i].second}, std::move(built[i]));

@@ -1023,6 +1023,125 @@ std::pair<DrawStats, std::size_t> Scene::draw_island_objects(Canvas& local, cons
     return {stats, drawn};
 }
 
+ChunkDraws Scene::objects_draws(Rect rect, std::size_t group, bool ships, bool bases,
+                                std::uint32_t bin_px) const {
+    assert(group < kGroups);
+    // render_with_terrain's setup for Layers::objects: the base band of the
+    // chunk canvas and of every island's local canvas.
+    ChunkDrawsBuilder out(rect, group, bases, bases ? static_cast<int>(kTile[group].h) * 6 / 10 : 0,
+                          bin_px);
+    const std::uint32_t track = bases ? object_flags::kTrackBase : 0U;
+    // Canvas::overlaps of a canvas covering `c`.
+    auto overlaps = [](const Rect& c, int x, int y, int w, int h) {
+        return x < c.x + c.w && x + w > c.x && y < c.y + c.h && y + h > c.y;
+    };
+    // The sprites of `list` (placed as draw_prepared does: time 0, kept when
+    // the island's local canvas `local` can see them) as records.
+    auto emit_list = [&](std::span<const Prepared> list, std::pair<int, int> offset,
+                         const Rect& local) {
+        std::vector<SpriteDraw> draws;
+        place_prepared(
+            list, anlagen, group, lift, 0,
+            [&](int x, int y, int w, int h) { return overlaps(local, x, y, w, h); }, draws);
+        for (const SpriteDraw& d : draws) {
+            // A frame that cannot be decoded is left out, as draw_prepared does.
+            const auto id = frame_table.intern_building(anlagen, sprites, d.key, *d.frame);
+            if (!id) {
+                continue;
+            }
+            const bool shadow = d.is_shadow();
+            out.add(ObjectRecord{d.anchor.first + offset.first - d.frame->anchor_x,
+                                 d.anchor.second + offset.second - d.frame->anchor_y, *id,
+                                 (shadow ? object_flags::kShadow : track) |
+                                     std::uint32_t{d.height} << object_flags::kHeightShift,
+                                 0, 0, 0});
+        }
+    };
+    // UnitSprite::draw: the shadow, then the frame, in scene coordinates;
+    // `canvas` is the canvas blit_sprite would draw into.
+    auto emit_unit = [&](const UnitSprite& u, const Rect& canvas) {
+        if (group >= u.frames.size() || !u.frames[group] || !u.frames[group]->image) {
+            return;
+        }
+        const auto a = u.anchor(group, lift);
+        auto add = [&](const UnitFrame& f, bool shadow) {
+            const int x = a.first - f.frame.anchor_x, y = a.second - f.frame.anchor_y;
+            if (!overlaps(canvas, x, y, f.image->width, f.image->height)) {
+                return;
+            }
+            const auto id =
+                frame_table.intern(f.id.known ? FrameKey::unit(f.id, group, shadow)
+                                              : FrameKey::unit_image(f.image.get(), group, shadow),
+                                   [&] { return std::pair{f.frame, f.image}; });
+            if (id) {
+                out.add(ObjectRecord{x, y, *id, shadow ? object_flags::kShadow : track, 0, 0, 0});
+            }
+        };
+        if (group < u.shadows.size() && u.shadows[group] && u.shadows[group]->image) {
+            add(*u.shadows[group], true);
+        }
+        add(*u.frames[group], false);
+    };
+    for (const auto& p : layouts[group]) {
+        const auto r = p.bounds.intersect(rect);
+        if (!r) {
+            continue;
+        }
+        out.begin_island(*r);
+        const Rect local{r->x - p.offset.first, r->y - p.offset.second, r->w, r->h};
+        // draw_island_objects: the island's soldiers are merged into its
+        // objects by the key of their 1 x 1 footprint.
+        const auto& island = islands[p.index];
+        const std::span<const Prepared> list = objects_[p.index].other;
+        const float ix = static_cast<float>(island.x), iy = static_cast<float>(island.y);
+        const float w = static_cast<float>(island.width), h = static_cast<float>(island.height);
+        using Key = std::pair<std::uint32_t, std::uint32_t>;
+        std::vector<std::pair<Key, const UnitSprite*>> on;
+        for (const auto& u : units) {
+            if (!u.z || !(u.x >= ix && u.x < ix + w) || !(u.y >= iy && u.y < iy + h)) {
+                continue;
+            }
+            const auto tx = sat_cast<std::uint32_t>(u.x - ix),
+                       ty = sat_cast<std::uint32_t>(u.y - iy);
+            on.emplace_back(Key{tx + 1 + ty + 1, tx}, &u);
+        }
+        std::stable_sort(on.begin(), on.end(),
+                         [](const auto& a, const auto& b) { return a.first < b.first; });
+        auto key = [](const Prepared& o) {
+            return Key{std::uint32_t{o.first.x} + o.second.first + o.first.y + o.second.second,
+                       o.first.x};
+        };
+        std::size_t start = 0;
+        for (const auto& [k, u] : on) {
+            const auto it =
+                std::partition_point(list.begin() + static_cast<std::ptrdiff_t>(start), list.end(),
+                                     [&](const Prepared& o) { return key(o) <= k; });
+            const auto end = static_cast<std::size_t>(it - list.begin());
+            emit_list(list.subspan(start, end - start), p.offset, local);
+            start = end;
+            emit_unit(*u, *r);
+        }
+        emit_list(list.subspan(start), p.offset, local);
+    }
+    if (ships) {
+        // draw_units: after all islands, straight onto the chunk canvas.
+        out.begin_unclipped();
+        std::vector<const UnitSprite*> order;
+        for (const auto& u : units) {
+            if (!u.z) {
+                order.push_back(&u);
+            }
+        }
+        std::stable_sort(order.begin(), order.end(), [](const UnitSprite* a, const UnitSprite* b) {
+            return total_less(a->x + a->y, b->x + b->y);
+        });
+        for (const UnitSprite* u : order) {
+            emit_unit(*u, rect);
+        }
+    }
+    return out.finish(frame_table);
+}
+
 std::optional<Rect> Scene::unit_rect(const UnitSprite& u, std::size_t group) const {
     if (group >= u.frames.size() || !u.frames[group]) {
         return std::nullopt;

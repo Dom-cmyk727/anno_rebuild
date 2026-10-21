@@ -299,3 +299,21 @@ Please say which, with and without each switch. Mapping to the measured causes: 
 - **Found on the way, not changed:** compiled *without* `ANNO_VIEWER_GPU`, Clang reports three unused private fields in `viewer.cpp` (`surface_failures_`, `reconfigure_`, `present_error_shown_`, `-Wunused-private-field`). Every CI configuration builds the viewer with wgpu, so CI does not hit it. A viewer build without wgpu on Clang would fail. A small `[[maybe_unused]]` or `#ifdef` fix is possible if wanted.
 - **Housekeeping:** the T1d worktree was removed (`git worktree remove`). The branch is kept until CI on `main` is green.
 - **Reviewers:** none spawned. The change is mechanical, about 40 lines, and CI is the acceptance.
+## T1f item 1 — chunk build profile · reported 2026-10-21 (item 2 continues without waiting, per the Order)
+
+- **Branch:** `task/T1f-chunk-build-speed` (worktree `C:\Users\altin\anno1503-T1f`). Commits: a8d0d21 (the profiler `anno/render/profile.hpp`, stage scopes in `render_chunk` / `water_field_from` / `flow_plane` / `SpriteCache`, a test), 0f2583b (`bench_frame --chunk-profile threads,.. [--chunk-limit n]`), 7479a2a (the table in `docs/perf/README.md`, "2026-10-21 - T1f item 1"). Not pushed.
+- **Result** (one thread, warm, mean per chunk: canyon 50 / 44 / 28 ms at groups 0 / 1 / 2, `Single_24` 44 / 39 / 25 ms):
+  - **Field + terrain + flow stages: 67-72 % of a chunk.** The sea field (`sea::water_field`, per-pixel spline taps) alone is 35-49 %, the river stages 4-7 ms, `terrain_at` 2-4 ms. This is the orchestrator's suspect, confirmed. Item 2's 2 ms target means removing about 30 ms per chunk at group 0.
+  - **Ground: 14-16 %, below the 20 % of T11's C2**, so the ground pass (2b) stays after item 2, as decided. Note: after item 2 the ground would be about 40 % of the remaining ~18 ms and the objects about 48 %.
+  - **Sprite decode: 0.1-0.7 ms cold, 0 warm.** It is not a cost. Objects (cull and blit) are 13-17 %.
+  - **T1d's "100-250 ms" is the 16-thread cold case.** SMT makes each chunk 1.6-2 times slower at 16 threads (1.2 times at 8). The rest is chunks with rivers waiting in `call_once` for the island's river flow solve (84-151 ms), which gives maxima of 180-250 ms. Throughput at 16 threads is 156-285 chunks/s warm.
+  - **Found:** the viewer's workers do not wait for the flow (`wait_for_flow` false). They deliver a river chunk without its lattice and **build it again** when the flow is ready, so the first seconds on a river island cost about twice the work. Candidate for item 3 (deliver the lattice separately).
+- **Not measured:** the workers' below-normal priority against the window thread (the bench has no window thread), and queue latency (the viewer side). The machine had 8-27 % background load (desktop apps). Two runs agree within 3 %.
+- **Gates:**
+  - MSVC build: clean.
+  - ctest without the game dir: 618/618.
+  - ctest with the game dir at -j 16: 617/618. `scene renders match the recorded digests` hit `bad_alloc` even alone at `ANNO_TEST_THREADS=16`, because desktop apps held about 32 GB of commit (11 GB free). With `ANNO_TEST_THREADS=4` it passes, 45/45 digests (T10b).
+  - GCC 13 and Clang 18 (`-O3`, the CI flags, `-Werror`): every file in `src`, clean.
+  - clang-format: clean.
+- **Reviewers:** none for item 1. It is measurement code; the pixels are unchanged (digests).
+- **Next:** item 2 (island-level fields), starting with the sea field.

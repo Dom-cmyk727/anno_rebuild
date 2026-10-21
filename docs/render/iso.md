@@ -91,6 +91,28 @@ Reworked 2026-10-17 after the colleague's review recording, which showed white b
 - Not yet: spray above the water at impact, wave interaction with rocks and ships; shore distance across islands (each island's field ends at its rectangle).
 - Tests: `iso::tests::wave_noise_is_deterministic_and_bounded`, `crates/app/tests/view.rs::view_png_enhanced_water_is_opt_in`; visual comparison with `bench_frame --check` dumps (`BENCH_DUMP`).
 
+### Water field: empty cells (T1f, 2026-10-21)
+The water field (`sea::water_field`) is evaluated per pixel at the pixel's tile position (x, y) (`sea::field_at`), about 90 ns at group 0, and was 35-49 % of a chunk build (`docs/perf/README.md`, "T1f item 1"). Large parts of an island provably get the **empty texel** (cover, shore, depth, flags all 0). Once per island (`IslandWater::classify_cells`, in `IslandWater::build`; the field depends on (x, y) only, not on the zoom group), each tile is marked in `IslandWater::empty_cell` (one byte per tile). `water_field` writes the empty texel for a pixel whose position lies inside the island (0 ≤ x < w, 0 ≤ y < h) in a marked tile, without evaluating it. The pixels are identical; this is a proof, not a tolerance.
+
+A tile (tx, ty) is marked when **both** hold:
+1. **No river level at the four corners** (tx, ty), (tx+1, ty), (tx, ty+1), (tx+1, ty+1) (clamped to the grid, as `river_level` reads them): all are NaN. Then `river_level` returns nothing for any (fx, fy) (no tap has weight), so `river_point` returns nothing and the river branch of `field_at` is never taken.
+2. **No sea**, either
+   - (a) the tile's 8 × 8 block has no sea (`sea_chunk` false). `field_at` then returns the empty texel through `!sea_chunk`, whatever the depth; or
+   - (b) the lowest of the 16 corners (tx−1 … tx+2) × (ty−1 … ty+2) (clamped) that `smooth_height` reads is at least `kEmptyLandHeight` = kWaterline + kSlopeBand + 1.3 · shore_noise + 0.5 = 16 + 12 + 2.6 + 0.5 = 31.1. In that case:
+     - **Spline:** the cubic B-spline weights are non-negative for t ∈ [0, 1) (u³/6, (3t³ − 6t² + 4)/6 ≥ 1/6, (−3t³ + 3t² + 3t + 1)/6 ≥ 1/6, t³/6) and sum to 1, so the spline is a convex combination of the 16 corners and at least their minimum. The float rounding of 16 products of values ≤ 255 is below 0.001.
+     - **Noise:** `height_noise` = (n₁ − 0.5) · 2 · amp + (n₂ − 0.5) · 0.6 · amp, with `noise3` values in [0, 1]. `hash3` is in [0, 1), and the lerps with fade weights in [0, 1] stay inside the range of their inputs up to an ulp. So the noise is at least −1.3 · amp = −2.6.
+     - **Result:** smooth ≥ 31.1 − 2.6 − 0.001 > 28, so sd = 16 − smooth < −12 = −kSlopeBand. No beach slope is computed (slope 0, run_max = 0.4).
+     - **Not original water:** `terrain_height` is a convex combination of its tile's four corners, which are among the 16, so under ≥ 31 > 16.
+     - `field_at` therefore returns the empty texel through `!original_water && sd ≤ −(edge + run_max)`.
+
+Pixels outside the island grid, and every unmarked tile, are evaluated in full as before. **Tests:** `water field: every position in an empty cell gets the empty texel` (synthetic, in CI: a ridge through the waterline and the threshold, a river over high ground; it also compares `water_field` with `field_at` per pixel; removing condition 1 or lowering the threshold to the waterline makes it fail).
+
+Other CI tests:
+- `a tile is empty exactly when its 16 spline corners clear the threshold`: a plateau at 31 has no empty tile and one at 32 is all empty; one low corner unmarks exactly the 16 tiles that read it.
+- `the synthetic scene's digest is the one before the T1f speedups`: `tests/water_field_fixture.hpp`, two islands, pixels outside the grids. The digest was recorded with the sources of 7479a2a and is checked with and without the cell classes.
+
+The game-file test `water field: empty cells hold on every island` covers every island template and the 0200Single / 0201SingleAddOn scenarios: 458 files, 11.8 M tiles, 4.33 M empty, 108 M positions sampled once (now 9 per tile), all empty. The scene digests are unchanged. A complete removal of the per-pixel field from the CPU is T11 §10.1 (a GPU field pass).
+
 ## Wave simulation (enhanced water, GPU)
 Owner decision 2026-10-17: a real fluid simulation instead of parametric waves ("still looks too uniform"), built for bigger maps and robust multiplayer. Code: `crates/render/src/fluid.rs` (parameters, swell, window, CPU reference solver), `fluid.wgsl` (compute shader, same arithmetic), `gpu_fluid.rs` (host), sampled in `gpu.wgsl` (`fluid_sample`, `fluid_shade`).
 

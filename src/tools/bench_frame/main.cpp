@@ -53,6 +53,7 @@
 // divides the difference by the visible river pixels. The adapter is chosen by
 // ANNO_GPU_ADAPTER (a number of --list-adapters or a part of its name).
 #include <algorithm>
+#include <atomic>
 #include <charconv>
 #include <chrono>
 #include <cmath>
@@ -66,6 +67,7 @@
 
 #include <anno/app/loader.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/render/profile.hpp>
 #include <anno/render/scene.hpp>
 #ifdef ANNO_BENCH_GPU
 #include <fstream>
@@ -130,6 +132,12 @@ struct Options {
     std::string zoom_dump;
     /// Frames after a zoom step that --zoom-dump writes (0 = the step's own frame).
     std::vector<std::size_t> zoom_dump_after{0};
+    /// --chunk-profile: the builder thread counts to profile (empty = the frame paths).
+    std::vector<std::size_t> profile_threads;
+    /// --chunk-limit: the chunks nearest the island's centre that are built. 96 is
+    /// about four 2560 x 1440 views at group 0 (24 chunks each), a few minutes on
+    /// one thread at the measured 100-250 ms per chunk; 0 = all of the island.
+    std::size_t chunk_limit = 96;
 };
 
 std::vector<std::string_view> split(std::string_view s, char sep) {
@@ -981,6 +989,141 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
     fr.set_workers(nullptr);
 }
 
+/// --chunk-profile: builds the chunks of island `island` per group, as the
+/// viewer's workers do (render_chunk without ships, the river flow waited for),
+/// on each thread count, from a freshly loaded scene (cold: sprite decodes, the
+/// island water and the river flow solved on first use) and again on the same
+/// scene (warm), and prints the time per stage (anno/render/profile.hpp).
+int chunk_profile(const fs::path& dir, const fs::path& file, const Options& o, std::size_t island) {
+    namespace profile = render::profile;
+    struct Record {
+        double total = 0;
+        profile::Times stages;
+        bool land = false;
+    };
+    auto pct = [](std::vector<double> v, double p) {
+        if (v.empty()) {
+            return 0.0;
+        }
+        std::sort(v.begin(), v.end());
+        const auto k = static_cast<std::size_t>(p * static_cast<double>(v.size() - 1) + 0.5);
+        return v[std::min(k, v.size() - 1)];
+    };
+    std::printf("%s, island %zu, %u hardware threads\n\n", file.string().c_str(), island,
+                std::thread::hardware_concurrency());
+    for (const std::size_t group : o.groups) {
+        for (const std::size_t threads : o.profile_threads) {
+            auto loaded = anno::app::load_scene(dir, file);
+            if (!loaded) {
+                std::fprintf(stderr, "%s: %s\n", file.string().c_str(), loaded.error().c_str());
+                return 1;
+            }
+            loaded.value().scene->river_cfg.light_gain = o.river_gain;
+            const render::Scene& scene = *loaded.value().scene;
+            const auto place =
+                std::find_if(scene.layouts[group].begin(), scene.layouts[group].end(),
+                             [&](const render::Placement& p) { return p.index == island; });
+            if (place == scene.layouts[group].end()) {
+                std::fprintf(stderr, "island %zu is not in group %zu\n", island, group);
+                return 1;
+            }
+            const render::Rect b = place->bounds;
+            auto floor_div = [](int a, int d) { return a >= 0 ? a / d : -((-a + d - 1) / d); };
+            std::vector<std::pair<int, int>> keys;
+            for (int cy = floor_div(b.y, render::kChunk);
+                 cy <= floor_div(b.y + b.h - 1, render::kChunk); ++cy) {
+                for (int cx = floor_div(b.x, render::kChunk);
+                     cx <= floor_div(b.x + b.w - 1, render::kChunk); ++cx) {
+                    keys.emplace_back(cx, cy);
+                }
+            }
+            // Nearest the island's centre first (ties in row order: deterministic).
+            const double mx = b.x + b.w / 2.0, my = b.y + b.h / 2.0;
+            auto dist = [&](const std::pair<int, int>& k) {
+                const double x = (k.first + 0.5) * render::kChunk - mx;
+                const double y = (k.second + 0.5) * render::kChunk - my;
+                return x * x + y * y;
+            };
+            std::stable_sort(keys.begin(), keys.end(),
+                             [&](const auto& a, const auto& c) { return dist(a) < dist(c); });
+            if (o.chunk_limit != 0 && keys.size() > o.chunk_limit) {
+                keys.resize(o.chunk_limit);
+            }
+            for (const char* pass : {"cold", "warm"}) {
+                std::vector<Record> records(keys.size());
+                std::atomic<std::size_t> next{0};
+                const auto start = std::chrono::steady_clock::now();
+                std::vector<std::thread> pool;
+                for (std::size_t t = 0; t < threads; ++t) {
+                    pool.emplace_back([&] {
+                        for (;;) {
+                            const std::size_t i = next.fetch_add(1);
+                            if (i >= keys.size()) {
+                                return;
+                            }
+                            Record& r = records[i];
+                            profile::attach(&r.stages);
+                            const auto t0 = std::chrono::steady_clock::now();
+                            const render::Chunk c = render::render_chunk(
+                                scene, group, keys[i].first, keys[i].second, false, true);
+                            r.total = std::chrono::duration<double, std::milli>(
+                                          std::chrono::steady_clock::now() - t0)
+                                          .count();
+                            profile::attach(nullptr);
+                            r.land = !c.ground.empty();
+                        }
+                    });
+                }
+                for (auto& t : pool) {
+                    t.join();
+                }
+                const double wall = std::chrono::duration<double, std::milli>(
+                                        std::chrono::steady_clock::now() - start)
+                                        .count();
+                std::vector<double> totals;
+                profile::Times sum, worst;
+                double other = 0;
+                for (const auto& r : records) {
+                    if (!r.land) {
+                        continue;
+                    }
+                    totals.push_back(r.total);
+                    double staged = 0;
+                    for (std::size_t s = 0; s < sum.ms.size(); ++s) {
+                        sum.ms[s] += r.stages.ms[s];
+                        worst.ms[s] = std::max(worst.ms[s], r.stages.ms[s]);
+                        staged += r.stages.ms[s];
+                    }
+                    other += r.total - staged;
+                }
+                const double n = std::max<double>(1.0, static_cast<double>(totals.size()));
+                double mean_total = 0;
+                for (const double v : totals) {
+                    mean_total += v / n;
+                }
+                std::printf("### group %zu, %zu thread(s), %s: %zu chunks (%zu with land) in "
+                            "%.0f ms, %.1f chunks/s\n\n",
+                            group, threads, pass, keys.size(), totals.size(), wall,
+                            1000.0 * static_cast<double>(keys.size()) / wall);
+                std::printf("land chunk: mean %.1f ms, p50 %.1f, p95 %.1f, max %.1f\n\n",
+                            mean_total, pct(totals, 0.5), pct(totals, 0.95), pct(totals, 1.0));
+                std::printf("| stage | mean ms | share | max ms |\n|---|---|---|---|\n");
+                for (std::size_t s = 0; s < sum.ms.size(); ++s) {
+                    std::printf("| %.*s | %.2f | %.1f %% | %.1f |\n",
+                                static_cast<int>(profile::kStageNames[s].size()),
+                                profile::kStageNames[s].data(), sum.ms[s] / n,
+                                mean_total > 0 ? 100.0 * sum.ms[s] / n / mean_total : 0.0,
+                                worst.ms[s]);
+                }
+                std::printf("| outside the stages | %.2f | %.1f %% | |\n\n", other / n,
+                            mean_total > 0 ? 100.0 * other / n / mean_total : 0.0);
+                std::fflush(stdout);
+            }
+        }
+    }
+    return 0;
+}
+
 constexpr const char* kUsage =
     "usage: bench_frame <game_dir> <file> [--threads n] [--res WxH,..] [--groups 0,1,2] "
     "[--styles original,enhanced] [--chunks blocking,async] [--renderer cpu,gpu] [--check] "
@@ -990,6 +1133,8 @@ constexpr const char* kUsage =
     "[--river-pass] [--stand-ins on|off] [--prewarm chunks] [--prefetch chunks] [--fade ms] "
     "[--lookahead-chunks n] "
     "[--zoom-dump dir]\n"
+    "       bench_frame <game_dir> <file> --chunk-profile threads,.. [--chunk-limit n] "
+    "[--groups ..] [--island n]\n"
     "       bench_frame --list-adapters\n"
     "       bench_frame <game_dir> <file> --river-cost\n";
 
@@ -1108,6 +1253,15 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             std::size_t n = 0;
             ok = parse(v, n);
             o.prewarm = n;
+        } else if (a == "--chunk-profile") {
+            o.profile_threads.clear();
+            for (const auto s : split(v, ',')) {
+                std::size_t n = 0;
+                ok = ok && parse(s, n) && n > 0;
+                o.profile_threads.push_back(n);
+            }
+        } else if (a == "--chunk-limit") {
+            ok = parse(v, o.chunk_limit);
         } else if (a == "--zoom-dump") {
             ok = !v.empty();
             o.zoom_dump = std::string(v);
@@ -1260,6 +1414,9 @@ int main(int argc, char** argv) {
                 largest = k;
             }
         }
+    }
+    if (!o->profile_threads.empty()) {
+        return chunk_profile(dir, file, *o, largest);
     }
     std::printf("%s — %u threads available — %zu threads%s\n\n", file.string().c_str(),
                 std::thread::hardware_concurrency(), o->threads, o->quick ? " — quick" : "");

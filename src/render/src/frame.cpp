@@ -8,6 +8,7 @@
 #include <optional>
 
 #include <anno/render/frame.hpp>
+#include <anno/render/profile.hpp>
 #include <anno/render/sea.hpp>
 
 #include "thread_priority.hpp"
@@ -189,13 +190,16 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, b
     Chunk c;
     c.ships = ships;
     const Px water = scene.textures.water();
+    std::optional<profile::Scope> stage(std::in_place, profile::Stage::ground);
     auto [ground, probe] = scene.ground_with_probe(rect, group);
+    stage.emplace(profile::Stage::ground_px);
     c.ground.reserve(ground.width * ground.height);
     for (std::size_t i = 0; i < ground.width * ground.height; ++i) {
         Px px = water;
         over(px.data(), &ground.pixels[i * 4]);
         c.ground.push_back(rgb(px));
     }
+    stage.emplace(profile::Stage::objects);
     Canvas objects = scene.render(rect, group, objects_only).first;
     c.objects = to_px(objects);
     if (std::all_of(c.objects.begin(), c.objects.end(), [](const Px& p) { return p[3] == 0; })) {
@@ -203,8 +207,10 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, b
     } else {
         c.base = std::move(objects.base);
     }
+    stage.reset(); // water_field_from has its own stages
     const auto field = scene.water_field_from(rect, probe, group);
     {
+        const profile::Scope pack(profile::Stage::field_pack);
         // The four planes have one entry per texel each; interleaved here,
         // on the builder thread, so the window thread uploads them as is.
         const std::size_t k = std::min(
@@ -220,15 +226,9 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, b
             }
         }
     }
-    c.terrain.reserve(probe.island.size());
-    for (std::size_t i = 0; i < probe.island.size(); ++i) {
-        const int x = rect.x + static_cast<int>(i % to_size(rect.w));
-        const int y = rect.y + static_cast<int>(i / to_size(rect.w));
-        const auto z = scene.terrain_at(probe, rect, x, y);
-        c.terrain.push_back(z ? sat_cast<std::uint16_t>(clampf(roundf(*z * kTerrainScale), 0.0F,
-                                                               static_cast<float>(kNoTerrain - 1)))
-                              : kNoTerrain);
-    }
+    stage.emplace(profile::Stage::terrain);
+    c.terrain = scene.terrain_plane(probe);
+    stage.reset();
     for (const std::size_t i : islands) {
         const auto [below, above] = scene.has_water_objects(i);
         c.water_below = c.water_below || below;
@@ -237,6 +237,7 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, b
     // The flow lattice of enhanced rivers (rivers.md 3.3).
     if (scene.river_active() && std::any_of(islands.begin(), islands.end(),
                                             [&](std::size_t i) { return scene.has_river(i); })) {
+        const profile::Scope flow(profile::Stage::flow);
         c.flow = scene.flow_plane(rect, group, probe, rect, wait_for_flow, &c.flow_waiting);
         std::sort(c.flow_waiting.begin(), c.flow_waiting.end());
         c.flow_waiting.erase(std::unique(c.flow_waiting.begin(), c.flow_waiting.end()),

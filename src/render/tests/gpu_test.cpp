@@ -2463,7 +2463,8 @@ TEST_CASE("CPU reference: a missing chunk shows the scaled chunks of the nearest
         fr.stand_ins = true;
         insert_sources(fr, kTo, 0, 0, from);
         const render::Rect view = render::chunk_rect(0, 0);
-        std::vector<std::uint32_t> out(static_cast<std::size_t>(view.w) * view.h);
+        std::vector<std::uint32_t> out(static_cast<std::size_t>(view.w) *
+                                       static_cast<std::size_t>(view.h));
         const auto st = fr.render(scene, view, kTo, 0, render::WaterStyle::Original, out.data());
         CHECK(st.chunks_missing == 1);
         std::size_t wrong = 0;
@@ -3411,6 +3412,25 @@ TEST_CASE("stand-in cover chooses the source group per part") {
                   }).empty());
         }
     }
+}
+
+TEST_CASE("the CPU stand-in chunk: none without a source, the ships flag from its sources") {
+    constexpr std::size_t kTo = 1;
+    const auto order = render::stand_in_groups(kTo);
+    REQUIRE(!order.empty());
+    render::FrameRenderer fr(1, false);
+    // Nothing cached in any group: no cover, open sea.
+    CHECK_FALSE(render::stand_in_chunk(fr, kTo, 1, 0, render::Px{1, 2, 3, 255}));
+    for (const auto& sp : render::stand_in_spans(1, 0, kTo, order.front())) {
+        render::Chunk c = noise_land_chunk(order.front(), sp.src_cx, sp.src_cy);
+        c.ships = false; // not the default, so a copy that was dropped shows
+        fr.insert_chunk({order.front(), sp.src_cx, sp.src_cy}, std::move(c));
+    }
+    const auto in = render::stand_in_chunk(fr, kTo, 1, 0, render::Px{1, 2, 3, 255});
+    REQUIRE(in);
+    CHECK_FALSE(in->ships);
+    CHECK(in->ground.size() ==
+          static_cast<std::size_t>(render::kChunk) * static_cast<std::size_t>(render::kChunk));
 }
 
 TEST_CASE("GPU stand-in with a hole in the nearest group equals the CPU reference, and the real "

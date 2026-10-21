@@ -1240,6 +1240,78 @@ TEST_CASE(
     }
 }
 
+TEST_CASE(
+    "derived levels: a zoom-out sweep builds every chunk once while it stays cached (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    // Group 2, then levels 3, 4, 5 in turn, each showing the whole scene: the chunks of
+    // a level are reduced from the cached chunks of the level above (shared, not copied)
+    // and only the missing children are built, then cached like any chunk. Nothing is
+    // evicted (spare_chunks large), so no key may be built twice: the sweep used to
+    // rebuild the group-2 chunks of the whole scene for each level (4^(k-2) per chunk).
+    for (const bool workers : {false, true}) {
+        auto scene =
+            load_islands(*dir, *dir / "Scenes" / "Islands" / "Dschungel" / "D_256x256_0045_5B.scp");
+        scene.set_levels(render::ZoomLevels::with_derived(3));
+        render::FrameRenderer fr(4);
+        fr.spare_chunks = 100000;
+        if (workers) {
+            fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, 4));
+        }
+        std::vector<std::size_t> shown;
+        for (const std::size_t level :
+             {std::size_t{2}, std::size_t{3}, std::size_t{4}, std::size_t{5}}) {
+            const auto b = *scene.bounds(level);
+            const render::Rect view{b.x, b.y, b.w, b.h};
+            std::size_t missing = 1;
+            for (int i = 0; i < 20000 && (missing != 0 || fr.busy()); ++i) {
+                missing = std::get<2>(fr.update_chunks(scene, view, level));
+                if (workers) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                }
+            }
+            REQUIRE(missing == 0);
+            std::size_t n = 0;
+            for (int cy = render::div_euclid(b.y, render::kChunk);
+                 cy <= render::div_euclid(b.y + b.h - 1, render::kChunk); ++cy) {
+                for (int cx = render::div_euclid(b.x, render::kChunk);
+                     cx <= render::div_euclid(b.x + b.w - 1, render::kChunk); ++cx) {
+                    n += fr.chunk({level, cx, cy}) != nullptr ? 1U : 0U;
+                }
+            }
+            shown.push_back(n);
+        }
+        // Every chunk in the cache was built exactly once, at every level.
+        std::size_t group2 = 0, over = 0, total = 0;
+        for (std::size_t level = 2; level <= 5; ++level) {
+            const auto b = *scene.bounds(level);
+            for (int cy = render::div_euclid(b.y, render::kChunk) - 2;
+                 cy <= render::div_euclid(b.y + b.h - 1, render::kChunk) + 2; ++cy) {
+                for (int cx = render::div_euclid(b.x, render::kChunk) - 2;
+                     cx <= render::div_euclid(b.x + b.w - 1, render::kChunk) + 2; ++cx) {
+                    const std::size_t n = fr.chunk_builds({level, cx, cy});
+                    over += n > 1 ? 1U : 0U;
+                    total += n;
+                    group2 += level == 2 ? n : 0U;
+                }
+            }
+        }
+        MESSAGE((workers ? "workers" : "blocking")
+                << ": chunks shown per level 2..5 = " << shown[0] << ", " << shown[1] << ", "
+                << shown[2] << ", " << shown[3] << "; builds in all " << total << ", of group 2 "
+                << group2 << ", keys built more than once " << over);
+        CHECK(over == 0);
+        CHECK(group2 >= shown[0]);
+        // Group 2 holds the shown chunks and the children of the level 3 chunks shown: the
+        // old sweep built 4^(k-2) group-2 chunks for each chunk shown at level k.
+        CHECK(group2 <= shown[0] + 4 * shown[1]);
+        fr.set_workers(nullptr);
+    }
+}
+
 TEST_CASE("derived levels: a small level stays in the cache, a large one is trimmed (game files)") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
@@ -1254,20 +1326,26 @@ TEST_CASE("derived levels: a small level stays in the cache, a large one is trim
     fr.spare_chunks = 0;
     const render::Rect view5{b5.x, b5.y, b5.w, b5.h};
     fr.update_chunks(scene, view5, 5);
-    const std::size_t level5 = fr.cached();
+    // The chunks of level 5 (the levels below it that were built on the way are cached
+    // too, as ordinary chunks).
+    auto cached_at_5 = [&](const render::FrameRenderer& f) {
+        std::size_t n = 0;
+        for (int cy = render::div_euclid(b5.y, render::kChunk);
+             cy <= render::div_euclid(b5.y + b5.h - 1, render::kChunk); ++cy) {
+            for (int cx = render::div_euclid(b5.x, render::kChunk);
+                 cx <= render::div_euclid(b5.x + b5.w - 1, render::kChunk); ++cx) {
+                n += f.chunk({5, cx, cy}) != nullptr ? 1U : 0U;
+            }
+        }
+        return n;
+    };
+    const std::size_t level5 = cached_at_5(fr);
     CHECK(level5 > 0);
     // A view elsewhere at group 2 with nothing spare: level 5 (a handful of chunks
     // for the whole scene) is below resident_level_chunks and stays.
     const auto b2 = *scene.bounds(2);
     fr.update_chunks(scene, render::Rect{b2.x, b2.y, 600, 600}, 2);
-    std::size_t kept = 0;
-    for (int cy = render::div_euclid(b5.y, render::kChunk);
-         cy <= render::div_euclid(b5.y + b5.h - 1, render::kChunk); ++cy) {
-        for (int cx = render::div_euclid(b5.x, render::kChunk);
-             cx <= render::div_euclid(b5.x + b5.w - 1, render::kChunk); ++cx) {
-            kept += fr.chunk({5, cx, cy}) != nullptr ? 1U : 0U;
-        }
-    }
+    const std::size_t kept = cached_at_5(fr);
     CHECK(kept == level5);
     // With the rule off the same sequence evicts them.
     render::FrameRenderer off(4);
@@ -1275,13 +1353,6 @@ TEST_CASE("derived levels: a small level stays in the cache, a large one is trim
     off.resident_level_chunks = 0;
     off.update_chunks(scene, view5, 5);
     off.update_chunks(scene, render::Rect{b2.x, b2.y, 600, 600}, 2);
-    std::size_t kept_off = 0;
-    for (int cy = render::div_euclid(b5.y, render::kChunk);
-         cy <= render::div_euclid(b5.y + b5.h - 1, render::kChunk); ++cy) {
-        for (int cx = render::div_euclid(b5.x, render::kChunk);
-             cx <= render::div_euclid(b5.x + b5.w - 1, render::kChunk); ++cx) {
-            kept_off += off.chunk({5, cx, cy}) != nullptr ? 1U : 0U;
-        }
-    }
+    const std::size_t kept_off = cached_at_5(off);
     CHECK(kept_off < level5);
 }

@@ -147,6 +147,8 @@ struct Options {
         std::string filter;
     };
     std::vector<ScalePoint> scale_cost;
+    /// --fill-time: the first zoom-out (levels 3-5 from group 2), and --derive old|cache.
+    bool fill_time = false, derive_from_cache = true;
 };
 
 std::vector<std::string_view> split(std::string_view s, char sep) {
@@ -998,6 +1000,80 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
     fr.set_workers(nullptr);
 }
 
+/// --fill-time: the first zoom-out. A window of `--res` (the first) at group 2 on the
+/// island is built with `--threads` chunk workers (until its chunks are cached; the
+/// prefetch goes on, as in the viewer); then the same window
+/// is shown at levels 3, 4 and 5 in turn (derived, centred on the same scene point) and
+/// the wall time until every shown chunk is cached is printed per level, with the
+/// chunks built on the way (`--derive old` = every derived chunk builds its descendants
+/// from nothing, as the first stage 3 build did; `cache` = from the cached chunks).
+int fill_time(const render::Scene& scene, const Options& o, std::size_t island) {
+    const auto [w, h] = o.resolutions.front();
+    const render::Placement* p = nullptr;
+    for (const auto& q : scene.layouts[2]) {
+        if (q.index == island) {
+            p = &q;
+        }
+    }
+    if (p == nullptr) {
+        std::fputs("no placement for that island\n", stderr);
+        return 1;
+    }
+    render::FrameRenderer fr(o.threads, false);
+    fr.derive_from_cache = o.derive_from_cache;
+    fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, o.threads));
+    // The sea patterns are not needed to build chunks.
+    const render::Rect v2{p->bounds.x + p->bounds.w / 2 - w / 2,
+                          p->bounds.y + p->bounds.h / 2 - h / 2, w, h};
+    // Until every chunk the view shows is cached; the prefetch (neighbouring levels, the
+    // margin) goes on in the background, as it does while the owner zooms: the next step
+    // starts at once, with whatever the prefetch has done by then.
+    auto settle = [&](render::Rect view, std::size_t level) {
+        const auto t0 = std::chrono::steady_clock::now();
+        std::size_t missing = 1;
+        while (missing != 0) {
+            missing = std::get<2>(fr.update_chunks(scene, view, level));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            if (std::chrono::steady_clock::now() - t0 > std::chrono::minutes(10)) {
+                break;
+            }
+        }
+        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+            .count();
+    };
+    auto builds = [&] {
+        std::size_t n = 0;
+        // Keys seen by the cache: every level, a generous range around the view.
+        for (std::size_t level = 0; level < scene.levels().size(); ++level) {
+            for (int cy = -64; cy < 64; ++cy) {
+                for (int cx = -64; cx < 64; ++cx) {
+                    n += fr.chunk_builds({level, cx, cy});
+                }
+            }
+        }
+        return n;
+    };
+    std::printf(
+        "| threads | derive | step | window | chunks shown | ms | chunks built in all | cached |\n"
+        "|---|---|---|---|---|---|---|---|\n");
+    const double ms2 = settle(v2, 2);
+    std::printf("| %zu | %s | group 2 | %dx%d | %zu | %.0f | %zu | %zu |\n", o.threads,
+                o.derive_from_cache ? "cache" : "old", w, h, render::visible_chunks(v2).size(), ms2,
+                builds(), fr.cached());
+    render::Rect view = v2;
+    std::size_t from = 2;
+    for (const std::size_t level : {std::size_t{3}, std::size_t{4}, std::size_t{5}}) {
+        view = render::zoomed_view(view, from, level, scene.levels());
+        from = level;
+        const double ms = settle(view, level);
+        std::printf("| %zu | %s | level %zu | %dx%d | %zu | %.0f | %zu | %zu |\n", o.threads,
+                    o.derive_from_cache ? "cache" : "old", level, w, h,
+                    render::visible_chunks(view).size(), ms, builds(), fr.cached());
+    }
+    fr.set_workers(nullptr);
+    return 0;
+}
+
 #ifdef ANNO_BENCH_GPU
 /// --scale-cost g:scale[:filter],..: the GPU time of a continuous zoom frame (the
 /// compositor and the resample pass, from the start of the first pass to the end of
@@ -1260,6 +1336,8 @@ constexpr const char* kUsage =
     "[--res ..] [--groups ..]\n"
     "       bench_frame <game_dir> <file> --chunk-profile threads,.. [--chunk-limit n] "
     "[--groups ..] [--island n]\n"
+    "       bench_frame <game_dir> <file> --fill-time [--derive old|cache] [--threads n] "
+    "[--res WxH]\n"
     "       bench_frame --list-adapters\n"
     "       bench_frame <game_dir> <file> --river-cost\n";
 
@@ -1281,6 +1359,10 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
         }
         if (a == "--river-pass") {
             o.river_pass = true;
+            continue;
+        }
+        if (a == "--fill-time") {
+            o.fill_time = true;
             continue;
         }
         if (i + 1 >= args.size()) {
@@ -1346,6 +1428,9 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = v == "legacy" || v == "flow";
             o.river_flow =
                 v == "legacy" ? render::RiverFlowMode::Legacy : render::RiverFlowMode::Flow;
+        } else if (a == "--derive") {
+            ok = v == "old" || v == "cache";
+            o.derive_from_cache = v == "cache";
         } else if (a == "--scale-cost") {
             for (const auto item : split(v, ',')) {
                 const auto f = split(item, ':');
@@ -1526,6 +1611,9 @@ int main(int argc, char** argv) {
         return 1;
     }
     loaded.value().scene->river_cfg.light_gain = o->river_gain;
+    if (o->fill_time) {
+        loaded.value().scene->set_levels(render::ZoomLevels::with_derived(3));
+    }
     const render::Scene& scene = *loaded.value().scene;
     std::fprintf(
         stderr, "scene loaded in %.0f ms\n",
@@ -1555,6 +1643,9 @@ int main(int argc, char** argv) {
     }
     if (!o->profile_threads.empty()) {
         return chunk_profile(dir, file, *o, largest);
+    }
+    if (o->fill_time) {
+        return fill_time(scene, *o, largest);
     }
     std::printf("%s — %u threads available — %zu threads%s\n\n", file.string().c_str(),
                 std::thread::hardware_concurrency(), o->threads, o->quick ? " — quick" : "");

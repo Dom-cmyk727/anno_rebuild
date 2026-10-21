@@ -545,3 +545,20 @@ On the canyon island at group 0, the warm mean per chunk is 50 ms on 1 thread, 5
 | 2560x1440 | magnified, area: group 0 at 1.414 | 1856x1024 | 12 | 60 | 0 | 0 | 7.82 | 8.14 |
 
 Reading: the cost follows the composed pixels (4.9 x at the worst point against 2.2 x before) and, in enhanced water, the sea shading per pixel, which is the iGPU's limit already at scale 1 (3.6 ms at 1280x800, 13.4 ms at 2560x1440). **On the RTX 4090 no frame passes 4.7 ms (the 8 ms line) at either window size; on the Radeon iGPU the worst point breaks it at both sizes (31 ms at 1280x800, 195 ms at 2560x1440 in group 2), while the old rule's worst point already broke it at 2560x1440 (72 ms) and was at 9.8 ms at 1280x800.** No chunk shown was missing or dropped in 60 frames (the cache held 1.5-4.5 x the chunks shown). Group 2 costs most because its sea shading per grid pixel is the dearest. `--zoom-max-upscale 1.45` restores the old grid for weak GPUs; an automatic choice from the measured cost is the follow-up the orchestrator may want (not built).
+
+### 2026-10-21 - T3 stage 3 fix 2: derived chunks are reduced from the cached chunks of the level above, Windows 11, Ryzen 9 9800X3D (16 threads), MSVC Release, branch task/T3-continuous-zoom
+
+`bench_frame <game> <file> --fill-time --derive old|cache --threads n --res 1920x1080` (new, CPU workers only): a 1920x1080 window at group 2 on the island is built until its chunks are cached (the prefetch goes on in the background, as in the viewer), then the same window is shown at levels 3, 4 and 5 in turn, each time starting at once; **ms until every chunk the window shows is cached**. `old` = every derived chunk builds its descendants from nothing and drops them (the first stage 3 build; `FrameRenderer::derive_from_cache = false`), `cache` = reduced from the cached children, the missing ones built and cached. 12 chunks shown at every step.
+
+| scene | threads | rule | group 2 ms | level 3 ms | level 4 ms | level 5 ms | zoom-out total (3 + 4 + 5) |
+|---|---|---|---|---|---|---|---|
+| canyon island | 1 | old | 868 | 1339 | 1588 | 1659 | 4586 |
+| canyon island | 1 | cache | 790 | 731 | 279 | 123 | 1133 |
+| canyon island | 16 | old | 260 | 655 | 728 | 339 | 1722 |
+| canyon island | 16 | cache | 352 | 60 | 52 | 51 | 163 |
+| `Single_24` | 1 | old | 550 | 1135 | 1429 | 1678 | 4242 |
+| `Single_24` | 1 | cache | 546 | 730 | 307 | 184 | 1221 |
+| `Single_24` | 16 | old | 265 | 451 | 497 | 512 | 1460 |
+| `Single_24` | 16 | cache | 236 | 91 | 89 | 13 | 193 |
+
+The first zoom-out is 3.5-4 x faster on one thread and 7.5-10 x on 16 (to 163 / 193 ms in all, the window thread never waits). The time falls with each level because the level above is cached from the step before and the prefetch of the neighbouring levels has built part of the children meanwhile. The cost: the cache holds the intermediate chunks (1311 chunks at level 5 on one thread on the canyon island, 221 on 16 threads where the trim has run: mostly open-sea chunks around the island that the prefetch ring of the derived levels asks for, a few KB each; `cached` is the cache size after the step, builds in all 2227-2548 over the whole run, counting these). Test: a zoom-out sweep from group 2 to level 5 on the canyon island builds no key twice while it stays cached, with workers and without (`render_corpus_test.cpp`).

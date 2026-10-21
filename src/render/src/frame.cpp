@@ -864,10 +864,16 @@ std::vector<ChunkJob> FrameRenderer::plan_jobs(const std::vector<ChunkKey>& want
                                                std::set<ChunkKey>& keep) const {
     std::vector<ChunkJob> jobs;
     std::set<ChunkKey> seen;
+    // A key of a deep level has 4^k descendants and the plan is made every frame on the
+    // window thread: it looks at this many keys at most (a level 6 view with nothing built
+    // took 9-11 ms before this), the most urgent first; the rest follow in the frames after
+    // as the workers finish. 512 keys are more than the workers (up to half the cores,
+    // each busy for 20-100 ms per chunk) can take on in the frames between two plans.
+    constexpr std::size_t kPlanKeys = 512;
     // Depth first: the children of a derived chunk are jobs before it, so the first
     // chunk wanted is the first to be complete.
     std::function<void(const ChunkKey&)> need = [&](const ChunkKey& key) {
-        if (!seen.insert(key).second) {
+        if (seen.size() >= kPlanKeys || !seen.insert(key).second) {
             return;
         }
         keep.insert(key);
@@ -1027,7 +1033,11 @@ int stand_in_source(int p, int num, int den) {
 std::vector<std::size_t> stand_in_groups(std::size_t group, const ZoomLevels& levels) {
     std::vector<std::size_t> out;
     for (std::size_t d = 1; d < levels.size(); ++d) {
-        if (group >= d) {
+        // A chunk of a finer source level than kMaxStandInReduction x the tile width is
+        // covered by that ratio squared source chunks (a level-7 chunk from level 0: 16384
+        // spans, each looked up in the cache every frame: 30 ms of the window thread in the
+        // zoom sweep with nothing built at the deep levels). The levels between serve.
+        if (group >= d && levels.tile_w(group - d) <= kMaxStandInReduction * levels.tile_w(group)) {
             out.push_back(group - d);
         }
         if (group + d < levels.size()) {

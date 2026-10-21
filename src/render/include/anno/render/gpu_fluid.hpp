@@ -38,6 +38,10 @@ class FluidGpu {
     [[nodiscard]] WGPUTexture state_texture() const { return grid_.states[0].get(); }
     /// The window, once update() has run.
     [[nodiscard]] std::optional<fluid::FluidWindow> window() const { return window_; }
+    /// Counts the windows the simulation has switched to (the first one, a new zoom group
+    /// or size; not a recentring of the same group): the compositor starts the cross-fade
+    /// from the analytic waves when it changes (GpuLimits::wave_fade_ms).
+    [[nodiscard]] std::uint64_t window_serial() const { return window_serial_; }
     /// Simulation time in seconds.
     [[nodiscard]] double sim_time() const { return sim_t_; }
     [[nodiscard]] const fluid::FluidConfig& config() const { return cfg_; }
@@ -108,6 +112,7 @@ class FluidGpu {
     fluid::FluidConfig cfg_;
     fluid::Swell comps_{};
     std::optional<fluid::FluidWindow> window_;
+    std::uint64_t window_serial_ = 0;
     std::size_t group_ = SIZE_MAX;
     BindGroupLayout layout_;
     Buffer params_, steps_;

@@ -249,6 +249,12 @@ class FrameRenderer {
     [[nodiscard]] const std::vector<ChunkKey>& margin_keys() const { return margin_; }
     /// The cached chunk, if built.
     [[nodiscard]] const Chunk* chunk(const ChunkKey& key) const;
+    /// The same chunk with shared ownership (null if not cached): a consumer that
+    /// works on it over several frames (the GPU upload, plane by plane) keeps it alive.
+    [[nodiscard]] ChunkPtr chunk_shared(const ChunkKey& key) const {
+        const auto it = cache_.find(key);
+        return it == cache_.end() ? nullptr : it->second;
+    }
     /// How many times the chunk under `key` was put in the cache as new (received
     /// from a worker or built in update_chunks; not inserted by insert_chunk): a
     /// chunk that stays cached is built once (stage 3 fix 2, tests). The rebuild of a
@@ -425,9 +431,13 @@ Rect lookahead_rect(Rect view, double vx, double vy, double horizon_s, std::size
 /// floor((2p + 1) * num / (2 den)).
 int stand_in_source(int p, int num, int den);
 
+/// The most a stand-in source level may be finer than the level it stands in for, in tile
+/// width: 8 (a chunk is then covered by at most 8 x 8 source chunks).
+inline constexpr double kMaxStandInReduction = 8.0;
 /// The zoom groups whose chunks may stand in for a chunk of `group`, nearest
 /// first, the finer group (smaller index, larger tiles) first at equal
-/// distance. One entry per other group.
+/// distance: one entry per other group, except the finer ones more than
+/// kMaxStandInReduction x its tile width (their cover would take hundreds of spans).
 std::vector<std::size_t> stand_in_groups(std::size_t group,
                                          const ZoomLevels& levels = ZoomLevels::original());
 

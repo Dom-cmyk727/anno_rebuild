@@ -206,7 +206,7 @@ std::vector<std::uint8_t> frame_uniform_bytes(const FrameUniform& f) {
     u.i32(f.fluid_origin.second);
     u.i32(f.fluid_size);
     u.u32(f.fluid_on ? 1U : 0U);
-    for (const float v : {f.fluid_cpt, f.river_flow ? 1.0F : 0.0F, f.river_lambda, 0.0F}) {
+    for (const float v : {f.fluid_cpt, f.river_flow ? 1.0F : 0.0F, f.river_lambda, f.fluid_fade}) {
         u.f32(v);
     }
     return std::move(u.b);
@@ -374,6 +374,21 @@ struct GpuFrame::Impl {
         Buffer uniform;
     };
     std::map<ChunkKey, Chunk> chunks;
+    /// A chunk upload in progress, one plane per step (GpuLimits::upload_budget_ms): the
+    /// CPU chunk it uploads (held, the cache may drop it meanwhile), the planes made so far
+    /// and the next one. The chunk shows its placeholder or stand-in until it is whole.
+    struct Staged {
+        std::shared_ptr<const render::Chunk> hold;
+        const render::Chunk* chunk = nullptr;
+        Chunk out;
+        std::uint32_t flags = 0;
+        std::array<WGPUTextureView, 8> views{};
+        std::size_t next = 0;
+        bool has_flow = false;
+    };
+    /// Ground, objects, field, terrain, base, and the three planes of the flow lattice.
+    static constexpr std::size_t kUploadStages = 8;
+    std::map<ChunkKey, Staged> staged;
     /// Planes of dropped chunks, reused by the next uploads: creating and
     /// freeing textures of several megabytes makes the driver allocate and
     /// free device memory blocks, which showed as sporadic stalls of
@@ -427,6 +442,9 @@ struct GpuFrame::Impl {
     std::condition_variable warm_cv;
     bool warm_stop = false;
     std::size_t planes_warm_taken = 0;
+    /// The pre-creation's target in chunks (GpuLimits::prewarm_chunks at the start,
+    /// GpuFrame::set_prewarm_chunks later).
+    std::atomic<std::size_t> prewarm_target{0};
 
     ~Impl() {
         {
@@ -450,7 +468,7 @@ struct GpuFrame::Impl {
 
     /// Starts the thread that creates `limits.prewarm_chunks` chunks' planes.
     void start_prewarm() {
-        if (limits.prewarm_chunks == 0) {
+        if (prewarm_target.load() == 0 || warm_thread.joinable()) {
             return;
         }
         warm_thread = std::thread([this] {
@@ -462,7 +480,7 @@ struct GpuFrame::Impl {
                 (limits.idle_plane_budget_mb << 20) / std::max<std::size_t>(plane_bytes, 1);
             auto target_now = [&] {
                 const std::size_t pooled = pool_planes.load();
-                return std::min(limits.prewarm_chunks * kChunkPlanes.size(),
+                return std::min(prewarm_target.load() * kChunkPlanes.size(),
                                 budget_planes > pooled ? budget_planes - pooled : 0);
             };
             std::unique_lock lock(warm_mutex);
@@ -576,6 +594,8 @@ struct GpuFrame::Impl {
     /// The wave simulation, created on the first enhanced frame.
     std::optional<FluidGpu> fluid;
     bool fluid_failed = false;
+    /// The window serial the cross-fade has seen, and the fade-clock time (ms) it changed.
+    std::uint64_t fluid_seen_serial = 0, fluid_arrival = 0;
 
     WGPUDevice dev() const { return ref->device.get(); }
     WGPUQueue queue() const { return ref->queue.get(); }
@@ -668,10 +688,25 @@ struct GpuFrame::Impl {
         return RenderPipeline(wgpuDeviceCreateRenderPipeline(dev(), &desc));
     }
 
+    /// Whether a texture of `have` can serve a view of `w` x `h`: it is at least that big
+    /// and not wastefully so (3 x). The offscreen targets are made at the size of the
+    /// largest view seen and the passes draw into the corner (viewport and scissor), so the
+    /// composed grid of a continuous zoom, which changes size with the scale in steps of
+    /// kResampleGridStep, does not make new textures every few frames (15-36 ms each on an
+    /// integrated adapter, the `under` step of the zoom sweep).
+    static bool fits(std::pair<std::uint32_t, std::uint32_t> have, std::uint32_t w,
+                     std::uint32_t h) {
+        return have.first >= w && have.second >= h && have.first <= 3 * w && have.second <= 3 * h;
+    }
+
     void ensure_under(std::uint32_t w, std::uint32_t h) {
-        if (under_t && under_size == std::pair{w, h}) {
+        if (under_t && fits(under_size, w, h)) {
             return;
         }
+        // Room to grow: a quarter more than asked, so a zoom that keeps widening the
+        // grid does not recreate the textures at every step.
+        w += w / 4;
+        h += h / 4;
         under_t = make_texture(dev(), "under", format, w, h, 1,
                                WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding);
         under_v = make_view(under_t.get(), false);
@@ -685,9 +720,11 @@ struct GpuFrame::Impl {
     /// The offscreen scene grid of a resampled frame, `w` x `h` in the frame's
     /// format (the compositor's last pass writes it, the resample pass reads it).
     void ensure_scene(std::uint32_t w, std::uint32_t h) {
-        if (scene_t && scene_size == std::pair{w, h}) {
+        if (scene_t && fits(scene_size, w, h)) {
             return;
         }
+        w += w / 4;
+        h += h / 4;
         scene_t = make_texture(dev(), "scene grid", format, w, h, 1,
                                WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding);
         scene_v = make_view(scene_t.get(), false);
@@ -766,127 +803,223 @@ struct GpuFrame::Impl {
         }
     }
 
-    Chunk upload_chunk(const ChunkKey& key, const render::Chunk* chunk) {
-        const auto [g, cx, cy] = key;
-        (void)g;
-        const Rect r = chunk_rect(cx, cy);
-        const auto n = static_cast<std::uint32_t>(kChunk);
-        std::uint32_t flags = 0;
-        Chunk out;
-        // The chunk's vectors are uploaded as they are: their element bytes
-        // are the texel bytes on a little-endian host (0RGB = B, G, R, 0;
-        // Px = R, G, B, A; u16 = low, high), so the window thread converts
-        // nothing (per-texel loops here cost ~0.8 ms per chunk).
+    /// One plane of a chunk made on the GPU and written: a texture from the pool or the
+    /// pre-created ones, else a new one. The bytes are uploaded as they are: their element
+    /// bytes are the texel bytes on a little-endian host (0RGB = B, G, R, 0; Px = R, G, B, A;
+    /// u16 = low, high), so the window thread converts nothing (per-texel loops here cost
+    /// ~0.8 ms per chunk). A plane that does not cover the chunk (pw x ph texels, the chunk's
+    /// size unless a flow lattice) is left out: `dummy` (a short write would be a validation
+    /// error).
+    WGPUTextureView stage_view(Staged& st, WGPUTextureFormat fmt, std::uint32_t bpp,
+                               const void* data, std::size_t bytes, std::uint32_t bit,
+                               WGPUTextureView dummy, std::uint32_t pw, std::uint32_t ph) {
         static_assert(std::endian::native == std::endian::little);
-        auto view = [&](WGPUTextureFormat fmt, std::uint32_t bpp, const void* data,
-                        std::size_t bytes, std::uint32_t bit, WGPUTextureView dummy,
-                        std::uint32_t pw, std::uint32_t ph) -> WGPUTextureView {
-            // A plane that does not cover the chunk (pw x ph texels, the chunk's
-            // size unless a flow lattice) is left out (a short write would be a
-            // validation error).
-            if (data == nullptr || bytes != std::size_t{pw} * ph * bpp) {
-                return dummy;
-            }
-            const auto c0 = Clock::now();
-            Plane plane;
-            const auto pooled =
-                std::find_if(plane_pool.begin(), plane_pool.end(), [&](const Plane& p) {
-                    return p.format == fmt && p.w == pw && p.h == ph;
-                });
-            if (pooled != plane_pool.end()) {
-                plane = std::move(*pooled);
-                plane_pool.erase(pooled);
-                pool_planes.store(plane_pool.size());
-            } else if (!take_warm(fmt, pw, ph, plane)) {
-                plane.format = fmt;
-                plane.w = pw;
-                plane.h = ph;
-                plane.texture =
-                    make_texture(dev(), "upload", fmt, pw, ph, 1,
-                                 WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst |
-                                     WGPUTextureUsage_CopySrc);
-                plane.view = make_view(plane.texture.get(), false);
-            }
-            const auto c1 = Clock::now();
-            write_layer(queue(), plane.texture.get(), 0, 0, 0, pw, ph, bpp, data, bytes);
-            up_create_ms += std::chrono::duration<double, std::milli>(c1 - c0).count();
-            up_write_ms += ms_since(c1);
-            flags |= bit;
-            const WGPUTextureView raw = plane.view.get();
-            out.planes.push_back(std::move(plane));
-            return raw;
-        };
-        auto plane = [&](const auto& vec) {
-            using T = typename std::decay_t<decltype(vec)>::value_type;
-            return std::pair<const void*, std::size_t>{
-                chunk != nullptr && !vec.empty() ? static_cast<const void*>(vec.data()) : nullptr,
-                vec.size() * sizeof(T)};
-        };
+        if (data == nullptr || bytes != std::size_t{pw} * ph * bpp) {
+            return dummy;
+        }
+        const auto c0 = Clock::now();
+        Plane plane;
+        const auto pooled = std::find_if(plane_pool.begin(), plane_pool.end(), [&](const Plane& p) {
+            return p.format == fmt && p.w == pw && p.h == ph;
+        });
+        if (pooled != plane_pool.end()) {
+            plane = std::move(*pooled);
+            plane_pool.erase(pooled);
+            pool_planes.store(plane_pool.size());
+        } else if (!take_warm(fmt, pw, ph, plane)) {
+            plane.format = fmt;
+            plane.w = pw;
+            plane.h = ph;
+            plane.texture = make_texture(dev(), "upload", fmt, pw, ph, 1,
+                                         WGPUTextureUsage_TextureBinding |
+                                             WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
+            plane.view = make_view(plane.texture.get(), false);
+        }
+        const auto c1 = Clock::now();
+        write_layer(queue(), plane.texture.get(), 0, 0, 0, pw, ph, bpp, data, bytes);
+        up_create_ms += std::chrono::duration<double, std::milli>(c1 - c0).count();
+        up_write_ms += ms_since(c1);
+        st.flags |= bit;
+        const WGPUTextureView raw = plane.view.get();
+        st.out.planes.push_back(std::move(plane));
+        return raw;
+    }
+
+    /// The start of an upload of `chunk` (null: a placeholder with no planes) under `key`.
+    Staged begin_upload(const ChunkKey& key, const render::Chunk* chunk,
+                        std::shared_ptr<const render::Chunk> hold) {
+        Staged st;
+        st.hold = std::move(hold);
+        st.chunk = chunk;
+        st.views = {dummy_color.second.get(),    dummy_color.second.get(),
+                    dummy_field.second.get(),    dummy_terrain.second.get(),
+                    dummy_base.second.get(),     dummy_flow_uv.second.get(),
+                    dummy_flow_aux.second.get(), dummy_flow_shear.second.get()};
+        // The river flow lattice (rivers.md 3.3): three planes of the lattice's size, valid
+        // only when they are consistent and start at the chunk's corner (the shader reads
+        // texel (i, j) at chunk pixel (i, j) * stride).
         static const render::Chunk kNone;
         const render::Chunk& c = chunk != nullptr ? *chunk : kNone;
-        const auto [gp, gb] = plane(c.ground);
-        const auto [op, ob] = plane(c.objects);
-        const auto [fp, fb] = plane(c.field);
-        const auto [tp, tb] = plane(c.terrain);
-        const auto [bp, bb] = plane(c.base);
-        const WGPUTextureView gv =
-            view(WGPUTextureFormat_BGRA8Unorm, 4, gp, gb, 1, dummy_color.second.get(), n, n);
-        const WGPUTextureView ov =
-            view(WGPUTextureFormat_RGBA8Unorm, 4, op, ob, 2, dummy_color.second.get(), n, n);
-        const WGPUTextureView fv =
-            view(WGPUTextureFormat_RGBA8Uint, 4, fp, fb, 4, dummy_field.second.get(), n, n);
-        const WGPUTextureView tv =
-            view(kTerrainFormat, 2, tp, tb, 8, dummy_terrain.second.get(), n, n);
-        const WGPUTextureView bv =
-            view(WGPUTextureFormat_R8Uint, 1, bp, bb, 16, dummy_base.second.get(), n, n);
-        // The river flow lattice (rivers.md 3.3): three planes of the lattice's
-        // size, valid only when they are consistent and start at the chunk's
-        // corner (the shader reads texel (i, j) at chunk pixel (i, j) * stride).
         const river::FlowPlane& fl = c.flow;
+        const Rect r = chunk_rect(std::get<1>(key), std::get<2>(key));
         const std::size_t texels = std::size_t{fl.nx} * fl.ny;
-        const bool has_flow = chunk != nullptr && fl.nx >= 2 && fl.ny >= 2 && fl.stride_px >= 1 &&
-                              fl.stride_px <= river::kMaxLatticeStride && fl.x0 == r.x &&
-                              fl.y0 == r.y && fl.uv.size() == texels * 2 &&
-                              fl.aux.size() == texels * 4 && fl.shear.size() == texels;
-        WGPUTextureView fuv = dummy_flow_uv.second.get(), fax = dummy_flow_aux.second.get(),
-                        fsh = dummy_flow_shear.second.get();
-        if (has_flow) {
-            fuv = view(WGPUTextureFormat_RG16Sint, 4, fl.uv.data(), fl.uv.size() * 2, 0, fuv, fl.nx,
-                       fl.ny);
-            fax = view(WGPUTextureFormat_RGBA8Uint, 4, fl.aux.data(), fl.aux.size(), 0, fax, fl.nx,
-                       fl.ny);
-            fsh = view(WGPUTextureFormat_R8Uint, 1, fl.shear.data(), fl.shear.size(), 0, fsh, fl.nx,
-                       fl.ny);
-            flags |= kChunkFlagFlow | fl.stride_px << kChunkStrideShift;
+        st.has_flow = chunk != nullptr && fl.nx >= 2 && fl.ny >= 2 && fl.stride_px >= 1 &&
+                      fl.stride_px <= river::kMaxLatticeStride && fl.x0 == r.x && fl.y0 == r.y &&
+                      fl.uv.size() == texels * 2 && fl.aux.size() == texels * 4 &&
+                      fl.shear.size() == texels;
+        return st;
+    }
+
+    /// Makes the next plane of the upload; true when all are made.
+    bool stage_step(Staged& st) {
+        const auto n = static_cast<std::uint32_t>(kChunk);
+        static const render::Chunk kNone;
+        const render::Chunk& c = st.chunk != nullptr ? *st.chunk : kNone;
+        auto plane = [&](const auto& vec) {
+            using T = typename std::decay_t<decltype(vec)>::value_type;
+            return std::pair<const void*, std::size_t>{st.chunk != nullptr && !vec.empty()
+                                                           ? static_cast<const void*>(vec.data())
+                                                           : nullptr,
+                                                       vec.size() * sizeof(T)};
+        };
+        switch (st.next) {
+        case 0: {
+            const auto [p, b] = plane(c.ground);
+            st.views[0] = stage_view(st, WGPUTextureFormat_BGRA8Unorm, 4, p, b, 1,
+                                     dummy_color.second.get(), n, n);
+            break;
         }
-        out.flow = has_flow;
-        out.flags = flags;
+        case 1: {
+            const auto [p, b] = plane(c.objects);
+            st.views[1] = stage_view(st, WGPUTextureFormat_RGBA8Unorm, 4, p, b, 2,
+                                     dummy_color.second.get(), n, n);
+            break;
+        }
+        case 2: {
+            const auto [p, b] = plane(c.field);
+            st.views[2] = stage_view(st, WGPUTextureFormat_RGBA8Uint, 4, p, b, 4,
+                                     dummy_field.second.get(), n, n);
+            break;
+        }
+        case 3: {
+            const auto [p, b] = plane(c.terrain);
+            st.views[3] =
+                stage_view(st, kTerrainFormat, 2, p, b, 8, dummy_terrain.second.get(), n, n);
+            break;
+        }
+        case 4: {
+            const auto [p, b] = plane(c.base);
+            st.views[4] = stage_view(st, WGPUTextureFormat_R8Uint, 1, p, b, 16,
+                                     dummy_base.second.get(), n, n);
+            break;
+        }
+        case 5:
+            if (st.has_flow) {
+                const river::FlowPlane& fl = c.flow;
+                st.views[5] = stage_view(st, WGPUTextureFormat_RG16Sint, 4, fl.uv.data(),
+                                         fl.uv.size() * 2, 0, st.views[5], fl.nx, fl.ny);
+            }
+            break;
+        case 6:
+            if (st.has_flow) {
+                const river::FlowPlane& fl = c.flow;
+                st.views[6] = stage_view(st, WGPUTextureFormat_RGBA8Uint, 4, fl.aux.data(),
+                                         fl.aux.size(), 0, st.views[6], fl.nx, fl.ny);
+            }
+            break;
+        default:
+            if (st.has_flow) {
+                const river::FlowPlane& fl = c.flow;
+                st.views[7] = stage_view(st, WGPUTextureFormat_R8Uint, 1, fl.shear.data(),
+                                         fl.shear.size(), 0, st.views[7], fl.nx, fl.ny);
+                st.flags |= kChunkFlagFlow | fl.stride_px << kChunkStrideShift;
+            }
+            break;
+        }
+        return ++st.next >= kUploadStages;
+    }
+
+    /// The uniform and the bind group of a chunk whose planes are all made.
+    Chunk finish_upload(const ChunkKey& key, Staged&& st) {
+        const Rect r = chunk_rect(std::get<1>(key), std::get<2>(key));
+        Chunk out = std::move(st.out);
+        out.flow = st.has_flow;
+        out.flags = st.flags;
         out.uniform =
             make_buffer(dev(), "chunk", 16, WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
         Bytes u;
         u.i32(r.x);
         u.i32(r.y);
         u.i32(kChunk);
-        u.u32(flags);
+        u.u32(st.flags);
         wgpuQueueWriteBuffer(queue(), out.uniform.get(), 0, u.b.data(), u.b.size());
         const std::array entries = {buffer_entry(0, out.uniform.get(), 16),
-                                    view_entry(1, gv),
-                                    view_entry(2, ov),
-                                    view_entry(3, fv),
-                                    view_entry(4, tv),
-                                    view_entry(5, bv),
-                                    view_entry(kFlowVelocityBinding, fuv),
-                                    view_entry(kFlowAuxBinding, fax),
-                                    view_entry(kFlowShearBinding, fsh)};
+                                    view_entry(1, st.views[0]),
+                                    view_entry(2, st.views[1]),
+                                    view_entry(3, st.views[2]),
+                                    view_entry(4, st.views[3]),
+                                    view_entry(5, st.views[4]),
+                                    view_entry(kFlowVelocityBinding, st.views[5]),
+                                    view_entry(kFlowAuxBinding, st.views[6]),
+                                    view_entry(kFlowShearBinding, st.views[7])};
         WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
         desc.label = sv("chunk");
         desc.layout = chunk_layout.get();
         desc.entryCount = entries.size();
         desc.entries = entries.data();
         out.bind = BindGroup(wgpuDeviceCreateBindGroup(dev(), &desc));
-        out.real = chunk != nullptr;
-        out.serial = chunk != nullptr ? chunk->serial : 0;
+        out.real = st.chunk != nullptr;
+        out.serial = st.chunk != nullptr ? st.chunk->serial : 0;
         return out;
+    }
+
+    /// The whole upload at once (placeholders, tests, the default limits).
+    Chunk upload_chunk(const ChunkKey& key, const render::Chunk* chunk) {
+        Staged st = begin_upload(key, chunk, nullptr);
+        while (!stage_step(st)) {
+        }
+        return finish_upload(key, std::move(st));
+    }
+
+    /// The upload of the cached chunk `hold` under `key`, a plane at a time: planes are made
+    /// until `limits.upload_budget_ms` since `begin` is spent (at least one per call), so one
+    /// frame's upload work is bounded in milliseconds, not only in chunks; the finished chunk,
+    /// or nullopt when more frames are needed. A chunk rebuilt meanwhile (another object under
+    /// the key) starts over; its planes made so far go back to the pool.
+    std::optional<Chunk> advance_upload(const ChunkKey& key,
+                                        std::shared_ptr<const render::Chunk> hold,
+                                        Clock::time_point begin) {
+        auto found = staged.find(key);
+        if (found != staged.end() && found->second.hold != hold) {
+            drop_staged(found);
+            found = staged.end();
+        }
+        if (found == staged.end()) {
+            const render::Chunk* raw = hold.get();
+            found = staged.emplace(key, begin_upload(key, raw, std::move(hold))).first;
+        }
+        Staged& st = found->second;
+        bool done = false;
+        for (bool first = true; !done; first = false) {
+            if (!first && ms_since(begin) >= limits.upload_budget_ms) {
+                return std::nullopt;
+            }
+            done = stage_step(st);
+        }
+        Chunk out = finish_upload(key, std::move(st));
+        staged.erase(found);
+        return out;
+    }
+
+    /// Forgets an upload in progress; its planes are reused.
+    void drop_staged(std::map<ChunkKey, Staged>::iterator it) {
+        for (Plane& p : it->second.out.planes) {
+            if (plane_pool.size() < kPoolPlanes) {
+                plane_pool.push_back(std::move(p));
+            }
+        }
+        pool_planes.store(plane_pool.size());
+        staged.erase(it);
     }
 
     /// The chunk at `r` of a derived level: the four chunks of `src` (index
@@ -1047,8 +1180,23 @@ struct GpuFrame::Impl {
             ++stats.chunks_dropped;
             stats.sync_drop_ms += ms_since(d0);
         }
+        // Uploads in progress are forgotten when nothing asks for the chunk any more (visible,
+        // or in the margin and the neighbouring groups' views that are uploaded ahead).
+        const std::set<ChunkKey> ahead(margin.begin(), margin.end());
+        const std::set<ChunkKey> next_group(adjacent.begin(), adjacent.end());
+        for (auto it = staged.begin(); it != staged.end();) {
+            if (keys.contains(it->first) || ahead.contains(it->first) ||
+                next_group.contains(it->first)) {
+                ++it;
+            } else {
+                const auto next = std::next(it);
+                drop_staged(it);
+                it = next;
+            }
+        }
         std::size_t uploads = 0;
-        bool waiting = false; // a visible chunk is not (yet) on the GPU
+        bool waiting = false;       // a visible chunk is not (yet) on the GPU
+        bool partial_spent = false; // a chunk's upload was cut short by the time budget
         const auto begin = Clock::now();
         for (const auto& key : keys) {
             const auto it = chunks.find(key);
@@ -1062,13 +1210,32 @@ struct GpuFrame::Impl {
             waiting = true;
             // Count and time budget: the first chunk always goes, so a
             // slow device still makes progress.
-            const bool room = uploads < limits.uploads_per_frame &&
+            const bool room = !partial_spent && uploads < limits.uploads_per_frame &&
                               (uploads == 0 || limits.upload_budget_ms <= 0.0 ||
                                ms_since(begin) < limits.upload_budget_ms);
             if (c != nullptr && room) {
-                ++uploads;
                 const auto u0 = Clock::now();
-                Chunk fresh = upload_chunk(key, c);
+                // With a time budget the chunk is uploaded a plane at a time, over as many
+                // frames as that takes; it shows its placeholder or stand-in meanwhile.
+                std::optional<Chunk> got;
+                if (limits.upload_budget_ms > 0.0) {
+                    got = advance_upload(key, frames.chunk_shared(key), begin);
+                } else {
+                    got = upload_chunk(key, c);
+                }
+                if (!got) {
+                    partial_spent = true;
+                    if (it == chunks.end()) {
+                        const auto p0 = Clock::now();
+                        chunks.emplace(key, upload_chunk(key, nullptr));
+                        ++stats.placeholders;
+                        stats.sync_placeholder_ms += ms_since(p0);
+                    }
+                    stats.sync_real_ms += ms_since(u0);
+                    continue;
+                }
+                ++uploads;
+                Chunk fresh = std::move(*got);
                 // A chunk dissolves in only over what an earlier frame showed in its
                 // place: its placeholder (a stand-in or the open sea). A chunk that
                 // reaches the GPU in the frame it comes into view (the edge of a
@@ -1112,9 +1279,11 @@ struct GpuFrame::Impl {
                 }
             }
             std::size_t done = 0;
+            bool spent = false; // the time budget ended a partial upload
             for (const auto* list : lists) {
                 for (const auto& key : *list) {
-                    if (resident >= limits.prefetch_chunks || done >= limits.prefetch_per_frame) {
+                    if (spent || resident >= limits.prefetch_chunks ||
+                        done >= limits.prefetch_per_frame) {
                         break;
                     }
                     const render::Chunk* c = frames.chunk(key);
@@ -1126,7 +1295,19 @@ struct GpuFrame::Impl {
                         continue;
                     }
                     const auto u0 = Clock::now();
-                    Chunk fresh = upload_chunk(key, c);
+                    std::optional<Chunk> got;
+                    if (limits.upload_budget_ms > 0.0) {
+                        got = advance_upload(key, frames.chunk_shared(key), begin);
+                    } else {
+                        got = upload_chunk(key, c);
+                    }
+                    if (!got) {
+                        // More frames are needed; the budget is spent for this one.
+                        stats.sync_real_ms += ms_since(u0);
+                        spent = true;
+                        break;
+                    }
+                    Chunk fresh = std::move(*got);
                     if (it != chunks.end()) {
                         replace_chunk(it->second, std::move(fresh));
                     } else {
@@ -1420,6 +1601,18 @@ struct GpuFrame::Impl {
         // Fluid window: origin (world cells), size, on, cells per tile.
         if (fluid && fluid_on) {
             if (const auto w = fluid->window()) {
+                // A new window starts the cross-fade from the analytic waves.
+                const std::uint64_t now = fade_clock();
+                if (fluid->window_serial() != fluid_seen_serial) {
+                    fluid_seen_serial = fluid->window_serial();
+                    fluid_arrival = now;
+                }
+                f.fluid_fade =
+                    limits.wave_fade_ms == 0 || now >= fluid_arrival + limits.wave_fade_ms
+                        ? 1.0F
+                        : static_cast<float>(
+                              static_cast<double>(now - std::min(now, fluid_arrival)) /
+                              static_cast<double>(limits.wave_fade_ms));
                 f.fluid_origin = {static_cast<std::int32_t>(w->origin.first),
                                   static_cast<std::int32_t>(w->origin.second)};
                 f.fluid_size = static_cast<std::int32_t>(w->size);
@@ -1524,7 +1717,11 @@ struct GpuFrame::Impl {
         if (t != nullptr && t[1] > t[0]) {
             ms = span_ms(t[0], t[1]);
         }
-        if (t != nullptr && ts_count > 2 && t[ts_frame_end] > t[2]) {
+        // A reading of seconds is a counter that wrapped or a driver that gave a wrong tick
+        // (seen on an integrated adapter: 1.2e8 ms): no reading.
+        constexpr double kMaxFrameMs = 10000.0;
+        if (t != nullptr && ts_count > 2 && t[ts_frame_end] > t[2] &&
+            span_ms(t[2], t[ts_frame_end]) < kMaxFrameMs) {
             last_frame_ms = span_ms(t[2], t[ts_frame_end]);
         }
         wgpuBufferUnmap(ts_read.get());
@@ -1827,6 +2024,7 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
         }
         m.tier_note += ")";
     }
+    m.prewarm_target.store(m.limits.prewarm_chunks);
     m.start_prewarm();
     return f;
 }
@@ -1835,6 +2033,16 @@ GpuFrame::~GpuFrame() = default;
 
 void GpuFrame::set_fade_clock(std::function<std::uint64_t()> clock) {
     impl_->fade_clock = std::move(clock);
+}
+
+void GpuFrame::set_prewarm_chunks(std::size_t chunks) {
+    Impl& m = *impl_;
+    {
+        const std::lock_guard lock(m.warm_mutex);
+        m.prewarm_target.store(chunks);
+    }
+    m.start_prewarm();
+    m.warm_cv.notify_one();
 }
 
 std::size_t GpuFrame::warm_planes_ready() const {
@@ -1894,7 +2102,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     m.sprites_new = 0;
     auto t = Clock::now();
     m.ensure_under(w, h);
-    const bool resampling = resample != nullptr && !resample->identity();
+    const bool resampling = resample != nullptr && !resample->is_noop_for(view.w, view.h);
     if (resampling) {
         m.ensure_scene(w, h);
     }
@@ -2134,6 +2342,9 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         WGPURenderPassEncoder p =
             begin(enc.get(), m.terrain_v.get(), {static_cast<double>(kNoTerrain), 0, 0, 0},
                   timed ? &m.ts_first : nullptr);
+        wgpuRenderPassEncoderSetViewport(p, 0.0F, 0.0F, static_cast<float>(w),
+                                         static_cast<float>(h), 0.0F, 1.0F);
+        wgpuRenderPassEncoderSetScissorRect(p, 0, 0, w, h);
         wgpuRenderPassEncoderSetBindGroup(p, 0, pass1.get(), 0, nullptr);
         wgpuRenderPassEncoderSetPipeline(p, m.terrain_pipe.get());
         draw_chunks(p);
@@ -2142,6 +2353,9 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     }
     {
         WGPURenderPassEncoder p = begin(enc.get(), m.under_v.get(), clear);
+        wgpuRenderPassEncoderSetViewport(p, 0.0F, 0.0F, static_cast<float>(w),
+                                         static_cast<float>(h), 0.0F, 1.0F);
+        wgpuRenderPassEncoderSetScissorRect(p, 0, 0, w, h);
         wgpuRenderPassEncoderSetBindGroup(p, 0, pass1.get(), 0, nullptr);
         wgpuRenderPassEncoderSetPipeline(p, m.ground_pipe.get());
         draw_chunks(p, m.ground_fade_pipe.get());
@@ -2159,6 +2373,9 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         // Pass 2 writes the target itself, or the scene grid a resample reads.
         WGPURenderPassEncoder p = begin(enc.get(), resampling ? m.scene_v.get() : target, clear,
                                         timed ? &m.ts_writes : nullptr);
+        wgpuRenderPassEncoderSetViewport(p, 0.0F, 0.0F, static_cast<float>(w),
+                                         static_cast<float>(h), 0.0F, 1.0F);
+        wgpuRenderPassEncoderSetScissorRect(p, 0, 0, w, h);
         wgpuRenderPassEncoderSetBindGroup(p, 0, pass2.get(), 0, nullptr);
         wgpuRenderPassEncoderSetPipeline(p, m.sea_pipe.get());
         draw_chunks(p, m.sea_fade_pipe.get());

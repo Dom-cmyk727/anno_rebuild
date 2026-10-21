@@ -80,6 +80,9 @@ struct GpuBackend {
     /// Written as stored: a non-sRGB view of the surface texture.
     WGPUTextureFormat view_format = WGPUTextureFormat_Undefined;
     std::uint32_t width = 0, height = 0;
+    /// The idle plane budget of the pre-creation when it is on (0 = off): a resize
+    /// recomputes the number of chunks to keep ready from the window's size.
+    std::size_t prewarm_budget_mb = 0;
     std::unique_ptr<gpu::GpuFrame> frame;
 
     GpuBackend() = default;
@@ -190,14 +193,18 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
             std::fprintf(stderr, "ANNO_VIEW_STAND_INS=%s not known (on, off)\n", s);
         }
     }
-    // The pre-created planes cover a view's worth of chunks: the window's size in
-    // chunks (the same number at every zoom group, a chunk being kChunk screen
-    // pixels), never fewer than the interactive default. A later resize is not
-    // followed (OQ-093).
+    // The pre-created planes cover the largest composed grid of the window and a ring
+    // around it (gpu::prewarm_plan, OQ-093), bounded by the idle plane budget; a resize
+    // recomputes the number (draw_gpu).
     if (limits.prewarm_chunks > 0) {
-        limits.prewarm_chunks = std::max(
-            limits.prewarm_chunks,
-            render::visible_chunks({0, 0, static_cast<int>(w), static_cast<int>(h)}).size());
+        // The idle planes' budget (GpuLimits::idle_plane_budget_mb) is the VRAM the
+        // pre-creation may take: a discrete adapter has memory of its own (4 GiB and more:
+        // 1 GiB holds the 260 chunks a 3840 x 2160 window wants), an integrated one shares
+        // the system's, where 256 MiB stay.
+        if (b->ctx.adapter_type == WGPUAdapterType_DiscreteGPU) {
+            limits.idle_plane_budget_mb = std::max<std::size_t>(limits.idle_plane_budget_mb, 1024);
+        }
+        limits.prewarm_chunks = gpu::prewarm_plan(w, h, limits.idle_plane_budget_mb).chunks;
     }
     // The background pre-creation of chunk texture planes (GpuLimits::prewarm_chunks);
     // ANNO_VIEW_PREWARM=off creates them in the frame as before, for comparing.
@@ -209,6 +216,7 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
             std::fprintf(stderr, "ANNO_VIEW_PREWARM=%s not known (on, off)\n", s);
         }
     }
+    b->prewarm_budget_mb = limits.prewarm_chunks > 0 ? limits.idle_plane_budget_mb : 0;
     // The cost tier of the river flow shading: automatic (High on a discrete GPU,
     // measured on others) unless ANNO_RIVER_QUALITY says low, medium or high.
     if (const char* q = std::getenv("ANNO_RIVER_QUALITY"); q != nullptr && *q != 0) {
@@ -975,6 +983,11 @@ void Viewer::draw_gpu(render::Rect view, const gpu::Resample* resample, int out_
     if (g.width != w || g.height != h || reconfigure_) {
         g.configure(w, h);
         reconfigure_ = false;
+        if (g.prewarm_budget_mb > 0 && g.frame) {
+            g.frame->set_prewarm_chunks(
+                gpu::prewarm_plan(static_cast<int>(w), static_cast<int>(h), g.prewarm_budget_mb)
+                    .chunks);
+        }
     }
     WGPUSurfaceTexture st = WGPU_SURFACE_TEXTURE_INIT;
     const auto acquire_start = Clock::now();

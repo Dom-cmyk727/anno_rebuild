@@ -617,7 +617,11 @@ TEST_CASE("stand-ins across derived levels: spans tile the chunk and map by the 
         }
     }
     // Nearest first, the finer level first at equal distance.
-    CHECK(render::stand_in_groups(3, levels) == std::vector<std::size_t>{2, 4, 1, 5, 0, 6});
+    // Level 0 is 8.4 x the tile width of level 3: too fine to stand in (kMaxStandInReduction).
+    CHECK(render::stand_in_groups(3, levels) == std::vector<std::size_t>{2, 4, 1, 5, 6});
+    CHECK(render::stand_in_groups(6, levels) == std::vector<std::size_t>{5, 4, 3});
+    // At the built groups every other group stays a source (84 / 20 = 4.2).
+    CHECK(render::stand_in_groups(2) == std::vector<std::size_t>{1, 0});
 }
 
 TEST_CASE("water field: islands one tile wide or high classify and evaluate like the rest") {

@@ -1,8 +1,8 @@
-#include <anno/render/resample.hpp>
-
 #include <algorithm>
 #include <array>
 #include <cmath>
+
+#include <anno/render/resample.hpp>
 
 namespace anno::render {
 
@@ -34,9 +34,10 @@ ResampledView resampled_view(double cx, double cy, std::uint32_t out_w, std::uin
     r.resample.offset_x = x0 - static_cast<double>(r.view.x);
     r.resample.offset_y = y0 - static_cast<double>(r.view.y);
     r.resample.filter = filter;
+    r.resample.out_w = out_w;
+    r.resample.out_h = out_h;
     return r;
 }
-
 
 namespace {
 
@@ -72,9 +73,8 @@ Texel resample_pixel(const Fetch& fetch, int grid_w, int grid_h, const Resample&
         return mix(a, b, ty);
     }
     case ResampleFilter::Box: {
-        const int n = static_cast<int>(
-            std::clamp<std::uint32_t>(static_cast<std::uint32_t>(std::ceil(1.0 / rs.scale)), 1U,
-                                      kMaxBoxTaps));
+        const int n = static_cast<int>(std::clamp<std::uint32_t>(
+            static_cast<std::uint32_t>(std::ceil(1.0 / rs.scale)), 1U, kMaxBoxTaps));
         const float span = 1.0F / scale;
         Texel sum{};
         for (int j = 0; j < n; ++j) {
@@ -105,9 +105,9 @@ Texel resample_pixel(const Fetch& fetch, int grid_w, int grid_h, const Resample&
         const int limit = static_cast<int>(kMaxBoxTaps);
         for (int j = 0; j < limit && y0 + j <= y1; ++j) {
             const int ty = y0 + j;
-            const float wy = (std::min(hy, static_cast<float>(ty + 1)) -
-                              std::max(ly, static_cast<float>(ty))) /
-                             span;
+            const float wy =
+                (std::min(hy, static_cast<float>(ty + 1)) - std::max(ly, static_cast<float>(ty))) /
+                span;
             for (int i = 0; i < limit && x0 + i <= x1; ++i) {
                 const int tx = x0 + i;
                 const float wx = (std::min(hx, static_cast<float>(tx + 1)) -
@@ -161,8 +161,9 @@ void cpu_resample(const std::uint8_t* grid, int grid_w, int grid_h, const Resamp
 void cpu_resample(const std::uint32_t* grid, int grid_w, int grid_h, const Resample& rs,
                   std::uint32_t out_w, std::uint32_t out_h, std::uint32_t* out) {
     auto fetch = [&](int x, int y) {
-        const std::uint32_t p = grid[static_cast<std::size_t>(y) * static_cast<std::size_t>(grid_w) +
-                                     static_cast<std::size_t>(x)];
+        const std::uint32_t p =
+            grid[static_cast<std::size_t>(y) * static_cast<std::size_t>(grid_w) +
+                 static_cast<std::size_t>(x)];
         return Texel{static_cast<float>((p >> 16) & 0xFFU), static_cast<float>((p >> 8) & 0xFFU),
                      static_cast<float>(p & 0xFFU), 255.0F};
     };

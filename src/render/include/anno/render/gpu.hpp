@@ -219,6 +219,13 @@ struct GpuLimits {
     /// animation time), so a swap is a short dissolve, not a pop. About the time an eye needs to
     /// follow a change without it reading as a jump; 0 = swap at once (headless renders, tests).
     std::uint64_t chunk_fade_ms = 0;
+    /// Enhanced water with the wave simulation: after the simulation switches to a new
+    /// window (the first one, another zoom group or size) the sea is shaded with the
+    /// analytic waves and with the simulated ones and the two are mixed, the weight of
+    /// the simulation rising linearly from 0 to 1 over this many milliseconds of the fade
+    /// clock (OQ-076): the new window starts at rest and the waves would otherwise pop in.
+    /// The sea is shaded twice meanwhile (README: cost). 0 = no fade, as before.
+    std::uint64_t wave_fade_ms = 0;
     /// The limits for an interactive window: uploads and wave simulation
     /// setup are spread over frames (upload_budget_ms 1.0, background_fluid).
     [[nodiscard]] static GpuLimits interactive() {
@@ -228,6 +235,7 @@ struct GpuLimits {
         l.prewarm_chunks = 24;
         l.prefetch_chunks = 96;
         l.chunk_fade_ms = 150;
+        l.wave_fade_ms = 250;
         return l;
     }
     /// A visible chunk that is not on the GPU yet (still being built, or waiting
@@ -295,6 +303,36 @@ struct GpuLimits {
     bool gpu_timing = false;
 };
 
+/// How many chunks' worth of texture planes to pre-create for a window of `w` x `h` pixels
+/// (GpuLimits::prewarm_chunks, OQ-093): the chunks of the largest composed grid a window
+/// shows, plus a ring of one chunk around it, instead of a fixed number. The grid is the
+/// window over the smallest scale the continuous zoom composes at, 0.95 / 2.1 (iso.md
+/// "Choosing the level": at most 2.21 x the window per axis), rounded up to
+/// kResampleGridStep; a view of g pixels covers at most ceil(g / kChunk) + 1 chunks per axis.
+/// A chunk's planes are the five formats of the compositor, 512 x 512 x (4 + 4 + 4 + 2 + 1)
+/// bytes = 3.75 MiB. `chunks` is the wanted number limited to what `idle_plane_budget_mb`
+/// holds (the device memory idle planes may take at most: GpuLimits::idle_plane_budget_mb,
+/// whose reason is there); `mb` what `chunks` take.
+struct PrewarmPlan {
+    std::size_t wanted = 0, chunks = 0;
+    double mb = 0;
+};
+inline constexpr double kMaxGridRatio = 2.1 / 0.95;
+inline constexpr std::size_t kChunkPlaneBytes = std::size_t{512} * 512 * (4 + 4 + 4 + 2 + 1);
+[[nodiscard]] inline PrewarmPlan prewarm_plan(int w, int h,
+                                              std::size_t idle_plane_budget_mb = 256) {
+    auto per_axis = [](int v) {
+        const int g = (static_cast<int>(std::ceil(v * kMaxGridRatio)) + 2 + kResampleGridStep - 1) /
+                      kResampleGridStep * kResampleGridStep;
+        return static_cast<std::size_t>((g + 511) / 512 + 1 + 2); // + the ring on both sides
+    };
+    PrewarmPlan p;
+    p.wanted = per_axis(w) * per_axis(h);
+    p.chunks = std::min(p.wanted, (idle_plane_budget_mb << 20) / kChunkPlaneBytes);
+    p.mb = static_cast<double>(p.chunks * kChunkPlaneBytes) / (1024.0 * 1024.0);
+    return p;
+}
+
 /// Values of the frame uniform (struct Frame in gpu.wgsl).
 struct FrameUniform {
     Rect view;
@@ -315,6 +353,9 @@ struct FrameUniform {
     /// and the pixels per HEIGHT unit of the lift (RiverView::lambda).
     bool river_flow = false;
     float river_lambda = 0;
+    /// The weight of the simulated waves against the analytic ones (1 = only the
+    /// simulation, GpuLimits::wave_fade_ms).
+    float fluid_fade = 1;
 };
 /// Bytes of the frame uniform (96, little-endian, WGSL uniform layout).
 std::vector<std::uint8_t> frame_uniform_bytes(const FrameUniform& f);
@@ -452,6 +493,11 @@ class GpuFrame {
     void set_fade_clock(std::function<std::uint64_t()> clock);
     /// Pre-created chunk planes waiting for uploads (GpuLimits::prewarm_chunks).
     [[nodiscard]] std::size_t warm_planes_ready() const;
+    /// Changes the number of chunks' worth of planes the background pre-creation keeps
+    /// ready (GpuLimits::prewarm_chunks), e.g. after a window resize (prewarm_plan);
+    /// starts the pre-creation if the compositor was made without it, and 0 stops
+    /// refilling. Planes already made stay in use.
+    void set_prewarm_chunks(std::size_t chunks);
     /// Errors of the device so far (Context::errors): uncaptured ones and
     /// command buffers dropped because recording them failed (render()
     /// then draws nothing).

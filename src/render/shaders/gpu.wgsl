@@ -34,7 +34,9 @@ struct Frame {
     // zoom group (iso::RiverView::lambda, the river's own water plane).
     river_flow: f32,
     river_lambda: f32,
-    _pad4: f32,
+    // The weight of the simulated waves against the analytic ones, 0..1 (GpuLimits::
+    // wave_fade_ms: 250 ms after a window switch, OQ-076); 1 = only the simulation.
+    fluid_fade: f32,
 }
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -730,9 +732,23 @@ fn unpremultiply(p: vec4<f32>) -> vec4<f32> {
     return vec4<f32>(p.rgb / p.a, p.a);
 }
 
-// The sea over the pass-1 result: sea::shade_sea.
+// The sea over the pass-1 result: sea::shade_sea. After a wave window switch the sea is
+// shaded twice for GpuLimits::wave_fade_ms, with the analytic waves and with the simulated
+// ones, and the two colours are mixed by the weight of the simulation: the waves never
+// pop in (OQ-076).
 @fragment
 fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    if frame.fluid_on == 0u || frame.fluid_fade >= 1.0 {
+        return sea_shade(pos, true);
+    }
+    let analytic = sea_shade(pos, false);
+    if frame.fluid_fade <= 0.0 {
+        return analytic;
+    }
+    return mix(analytic, sea_shade(pos, true), frame.fluid_fade);
+}
+
+fn sea_shade(pos: vec4<f32>, allow_fluid: bool) -> vec4<f32> {
     let px = scene_px(pos);
     let under = textureLoad(under_tex, vec2<i32>(floor(pos.xy)), 0).rgb;
     var cover = 255u;
@@ -756,7 +772,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     var alpha = 1.0;
     let pw = vec2<f32>(f32(px.x), f32(px.y) + frame.raise);
     let wpos = vec2<f32>(pw.x / frame.tile_w + pw.y / frame.tile_h, pw.y / frame.tile_h - pw.x / frame.tile_w);
-    let use_fluid = enhanced && (flags & 2u) == 0u && fluid_inside(wpos);
+    let use_fluid = allow_fluid && enhanced && (flags & 2u) == 0u && fluid_inside(wpos);
     var fl = vec4<f32>(0.0);
     var run = 0.0;
     if use_fluid {
@@ -821,7 +837,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
             let kb = min(f32(shore) / 254.0, 1.0);
             var ss = rs;
             if kb < 1.0 {
-                if fluid_inside(wpos) {
+                if allow_fluid && fluid_inside(wpos) {
                     ss = fluid_shade(fluid_sample(wpos).s, sd, 0.0, w, frame.time_ms, detail);
                 } else {
                     ss = wave_shade(RIVER_SEA_DIST, sd, 0.0, w, frame.time_ms, detail);

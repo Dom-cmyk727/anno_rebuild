@@ -64,8 +64,17 @@ struct Resample {
     /// camera position the integer view origin dropped).
     double offset_x = 0.0, offset_y = 0.0;
     ResampleFilter filter = ResampleFilter::Nearest;
+    /// The size of the output (resampled_view sets it; 0 = not stated). The grid of a
+    /// view is rounded up to kResampleGridStep, so at scale 1 and offset 0 the grid is
+    /// still larger than the output and must be cut, not drawn onto it whole.
+    std::uint32_t out_w = 0, out_h = 0;
     [[nodiscard]] bool identity() const {
         return scale == 1.0 && offset_x == 0.0 && offset_y == 0.0;
+    }
+    /// Whether a grid of `grid_w` x `grid_h` pixels is the output as it is.
+    [[nodiscard]] bool is_noop_for(int grid_w, int grid_h) const {
+        return identity() && (out_w == 0 || static_cast<int>(out_w) == grid_w) &&
+               (out_h == 0 || static_cast<int>(out_h) == grid_h);
     }
 };
 
@@ -87,7 +96,6 @@ struct ResampledView {
 inline constexpr int kResampleGridStep = 64;
 ResampledView resampled_view(double cx, double cy, std::uint32_t out_w, std::uint32_t out_h,
                              double scale, ResampleFilter filter, std::uint32_t max_grid = 8192);
-
 
 /// The resample pass on the CPU, the arithmetic of `scale_fs` in gpu.wgsl in float, in the
 /// same order: `grid` (RGBA8, `grid_w` x `grid_h`, row-major) onto an `out_w` x `out_h`

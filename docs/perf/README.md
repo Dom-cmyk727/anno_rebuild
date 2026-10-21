@@ -472,3 +472,26 @@ On the canyon island at group 0, the warm mean per chunk is 50 ms on 1 thread, 5
 - **The full fix** is T11 §10.1 (the field on the GPU).
 
 **16 threads after the change: not measured yet.** During the run the machine was at 47-77 % load from a game, which invalidates the numbers, so they are not reported. To be rerun on an idle machine.
+
+### 2026-10-21 - T11 stage 1: the CPU builder "build the list, replay it" against `main`, Windows 11, Ryzen 9 9800X3D (16 threads), MSVC Release
+
+**Method.** `bench_frame <game> <scene> --chunk-profile 1,16 --groups 0,1,2` on `main` (f583e9d) and on `task/T11-gpu-chunks` (the stage 1 code with the unit-key fix), one run each, same machine, not idle (background load of desktop apps), so differences under about 5 % are noise. Warm rows (the same scene after a cold pass). The branch builds every chunk's objects as a draw list and replays it (`render_chunk`, `ChunkBuilder::Cpu`).
+
+**Warm: objects stage and chunk mean (ms per land chunk), main -> branch**
+
+| scene | group | threads | objects stage | chunk mean |
+|---|---|---|---|---|
+| canyon `D_256x256_0045_5B` | 0 | 1 | 8.67 -> 6.95 (-20 %) | 29.9 -> 28.1 (-6 %) |
+| canyon `D_256x256_0045_5B` | 0 | 16 | 12.81 -> 11.37 (-11 %) | 51.2 -> 50.3 (-2 %) |
+| canyon `D_256x256_0045_5B` | 1 | 1 | 6.02 -> 5.29 (-12 %) | 29.3 -> 29.1 (-1 %) |
+| canyon `D_256x256_0045_5B` | 1 | 16 | 9.12 -> 8.25 (-10 %) | 52.1 -> 50.0 (-4 %) |
+| canyon `D_256x256_0045_5B` | 2 | 1 | 4.19 -> 3.97 (-5 %) | 20.1 -> 20.1 (+0 %) |
+| canyon `D_256x256_0045_5B` | 2 | 16 | 6.75 -> 6.34 (-6 %) | 36.5 -> 35.1 (-4 %) |
+| `Single_24.sze` | 0 | 1 | 7.78 -> 6.22 (-20 %) | 22.1 -> 20.7 (-6 %) |
+| `Single_24.sze` | 0 | 16 | 11.86 -> 10.28 (-13 %) | 39.4 -> 37.8 (-4 %) |
+| `Single_24.sze` | 1 | 1 | 5.24 -> 4.69 (-10 %) | 23.7 -> 23.5 (-1 %) |
+| `Single_24.sze` | 1 | 16 | 8.02 -> 7.59 (-5 %) | 42.7 -> 43.6 (+2 %) |
+| `Single_24.sze` | 2 | 1 | 4.14 -> 3.48 (-16 %) | 21.2 -> 17.0 (-20 %) |
+| `Single_24.sze` | 2 | 16 | 5.70 -> 5.68 (-0 %) | 30.1 -> 30.1 (+0 %) |
+
+**Result.** The objects stage is not slower anywhere: 0.4-20 % faster, most at group 0 on one thread (-20 %), because the keel of a frame is now computed once per frame in the table instead of once per blit; with 16 workers the gain shrinks to 0-13 %, which is the per-draw shared lock on the frame table and the memory traffic showing, but still below `main`. The chunk mean moves by -6 % .. +2 %. The 5 % threshold of the review is not exceeded, so the two suspected costs (the bins computed for the `Cpu` builder, ids per draw under the shared lock) stay as they are; they are cheap next to the keel saving. Re-measure when stage 2a changes the builder.

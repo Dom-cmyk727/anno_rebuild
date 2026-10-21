@@ -24,11 +24,11 @@ using render::ChunkDrawsBuilder;
 using render::FrameId;
 using render::FrameKey;
 using render::FrameTable;
-using render::UnitFrameId;
 using render::ObjectRecord;
 using render::Px;
 using render::Rect;
 using render::Rgba;
+using render::UnitFrameId;
 namespace flags = render::object_flags;
 
 namespace {

@@ -163,12 +163,14 @@ digest_lines(const std::filesystem::path& dir, std::string_view only = {},
                 }
                 render::UnitSprite sprite{u.x, u.y, z, {}, {}};
                 for (const auto& f : u.frames) {
-                    sprite.frames.push_back(
-                        f ? std::optional<render::UnitFrame>(render::to_unit_frame(*f, u.figure, false)) : std::nullopt);
+                    sprite.frames.push_back(f ? std::optional<render::UnitFrame>(
+                                                    render::to_unit_frame(*f, u.figure, false))
+                                              : std::nullopt);
                 }
                 for (const auto& f : u.shadows) {
-                    sprite.shadows.push_back(
-                        f ? std::optional<render::UnitFrame>(render::to_unit_frame(*f, u.figure, true)) : std::nullopt);
+                    sprite.shadows.push_back(f ? std::optional<render::UnitFrame>(
+                                                     render::to_unit_frame(*f, u.figure, true))
+                                               : std::nullopt);
                 }
                 scene.units.push_back(std::move(sprite));
             }

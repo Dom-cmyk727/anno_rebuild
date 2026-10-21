@@ -1069,10 +1069,10 @@ ChunkDraws Scene::objects_draws(Rect rect, std::size_t group, bool ships, bool b
             if (!overlaps(canvas, x, y, f.image->width, f.image->height)) {
                 return;
             }
-            const auto id = frame_table.intern(
-                f.id.known ? FrameKey::unit(f.id, group, shadow)
-                           : FrameKey::unit_image(f.image.get(), group, shadow),
-                [&] { return std::pair{f.frame, f.image}; });
+            const auto id =
+                frame_table.intern(f.id.known ? FrameKey::unit(f.id, group, shadow)
+                                              : FrameKey::unit_image(f.image.get(), group, shadow),
+                                   [&] { return std::pair{f.frame, f.image}; });
             if (id) {
                 out.add(ObjectRecord{x, y, *id, shadow ? object_flags::kShadow : track, 0, 0, 0});
             }

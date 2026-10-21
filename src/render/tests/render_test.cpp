@@ -570,6 +570,49 @@ TEST_CASE("water field: a tile is empty exactly when its 16 spline corners clear
     CHECK(marked(pit) == pit.w * pit.h - 16);
 }
 
+TEST_CASE("water field: islands one tile wide or high classify and evaluate like the rest") {
+    // The spline reads 16 corners around a tile and clamps at the grid; on a
+    // grid one tile wide every neighbour is a clamp. Classified or not, every
+    // pixel must be field_at of its position (item 2 left this case out).
+    namespace sea = render::sea;
+    for (const bool tall : {true, false}) {
+        for (const std::uint8_t base : {std::uint8_t{20}, std::uint8_t{45}}) {
+            sea::IslandWater iw;
+            iw.w = tall ? 1 : 18;
+            iw.h = tall ? 18 : 1;
+            iw.heights.resize(iw.w * iw.h);
+            for (std::size_t i = 0; i < iw.heights.size(); ++i) {
+                iw.heights[i] = static_cast<std::uint8_t>(base + (i % 5 == 0 ? 0U : 12U));
+            }
+            iw.sea_chunk.assign(((iw.w + 7) / 8) * ((iw.h + 7) / 8), true);
+            iw.open.assign(iw.w * iw.h, 0.5F);
+            iw.shore.assign(iw.w * iw.h, 1.0F);
+            iw.river.assign(iw.w * iw.h, std::numeric_limits<float>::quiet_NaN());
+            const render::Rect rect{0, 0, 48, 48};
+            sea::SceneProbe probe{std::vector<std::uint32_t>(48 * 48, 0),
+                                  std::vector<std::array<float, 2>>(48 * 48)};
+            for (std::size_t i = 0; i < probe.pos.size(); ++i) {
+                probe.pos[i] = {-1.0F + static_cast<float>(i % 48) * (tall ? 0.05F : 0.45F),
+                                -1.0F + static_cast<float>(i / 48) * (tall ? 0.45F : 0.05F)};
+            }
+            auto water = [&](std::size_t) { return &iw; };
+            const auto before = sea::water_field(rect, probe, water);
+            iw.classify_cells();
+            const auto after = sea::water_field(rect, probe, water);
+            std::size_t differ = 0;
+            for (std::size_t i = 0; i < probe.pos.size(); ++i) {
+                const sea::FieldTexel want = sea::field_at(iw, probe.pos[i][0], probe.pos[i][1]);
+                differ += want == sea::FieldTexel{after.cover[i], after.shore[i], after.depth[i],
+                                                  after.flags[i]}
+                              ? 0U
+                              : 1U;
+            }
+            CHECK(differ == 0);
+            CHECK(render::test::field_digest(before) == render::test::field_digest(after));
+        }
+    }
+}
+
 TEST_CASE("terrain_plane equals terrain_height per pixel across islands") {
     // Two islands whose pixels alternate in short runs on the same tiles: the
     // corner cache must not carry over from one island to the other.

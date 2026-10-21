@@ -495,3 +495,18 @@ On the canyon island at group 0, the warm mean per chunk is 50 ms on 1 thread, 5
 | `Single_24.sze` | 2 | 16 | 5.70 -> 5.68 (-0 %) | 30.1 -> 30.1 (+0 %) |
 
 **Result.** The objects stage is not slower anywhere: 0.4-20 % faster, most at group 0 on one thread (-20 %), because the keel of a frame is now computed once per frame in the table instead of once per blit; with 16 workers the gain shrinks to 0-13 %, which is the per-draw shared lock on the frame table and the memory traffic showing, but still below `main`. The chunk mean moves by -6 % .. +2 %. The 5 % threshold of the review is not exceeded, so the two suspected costs (the bins computed for the `Cpu` builder, ids per draw under the shared lock) stay as they are; they are cheap next to the keel saving. Re-measure when stage 2a changes the builder.
+
+### 2026-10-21 - T1f item 2b and the 16-thread rerun of the item 1 / item 2 tables, Windows 11, Ryzen 9 9800X3D, MSVC Release
+
+**Method.** `bench_frame <game> <scene> --chunk-profile 1,16 --groups 0,1,2`, four builds run one after the other on an idle machine (3-5 % background load, no game running): item 1 (0f2583b, no shortcuts), item 2 (bd380ab, exact empty cells and terrain), `main` daaa849 (item 2 plus T11 stage 1, the baseline of 2b) and item 2b (this branch). Warm rows, mean ms per land chunk; "river" is river sprites + fall masks + river blend (the stages 2b touches). One run each; differences under about 5 % are noise.
+
+| scene | group | 16 threads, chunk mean: item 1 / item 2 / main / **2b** | 16 threads p95: item 1 / item 2 / main / **2b** | river stages, 16 threads: item 1 / item 2 / main / **2b** | 1 thread chunk mean: item 1 / item 2 / main / **2b** | river stages, 1 thread: item 1 / item 2 / main / **2b** |
+|---|---|---|---|---|---|---|
+| canyon | 0 | 92.7 / 50.7 / 50.6 / **47.0** | 125.6 / 95.1 / 100.0 / **94.1** | 9.41 / 6.08 / 6.44 / **3.96** | 52.1 / 29.8 / 28.1 / **26.4** | 6.18 / 4.07 / 4.04 / **2.32** |
+| canyon | 1 | 82.0 / 51.0 / 50.0 / **48.3** | 125.3 / 99.1 / 98.1 / **87.7** | 10.27 / 6.68 / 6.47 / **3.99** | 45.4 / 29.7 / 28.7 / **26.6** | 6.82 / 4.67 / 4.64 / **2.53** |
+| canyon | 2 | 50.9 / 35.7 / 35.6 / **30.9** | 129.6 / 102.8 / 104.4 / **69.0** | 10.37 / 6.07 / 6.15 / **2.95** | 28.7 / 20.2 / 19.8 / **17.4** | 6.71 / 4.34 / 4.25 / **1.93** |
+| `Single_24` | 0 | 84.9 / 39.1 / 39.1 / **37.6** | 108.6 / 79.1 / 79.6 / **76.9** | 8.12 / 2.74 / 2.74 / **2.13** | 45.4 / 22.0 / 20.6 / **20.2** | 4.01 / 1.49 / 1.46 / **1.14** |
+| `Single_24` | 1 | 76.3 / 43.6 / 41.8 / **40.3** | 106.9 / 74.5 / 72.2 / **59.4** | 8.74 / 3.66 / 3.49 / **2.07** | 40.6 / 23.5 / 23.2 / **21.8** | 4.73 / 2.23 / 2.21 / **1.19** |
+| `Single_24` | 2 | 48.0 / 29.7 / 30.4 / **27.6** | 120.5 / 82.0 / 84.0 / **56.4** | 8.84 / 4.02 / 4.15 / **1.99** | 25.8 / 16.8 / 17.1 / **15.3** | 5.29 / 2.83 / 2.96 / **1.24** |
+
+**Result.** Item 2b takes the river stages from 2.7-6.4 ms to 2.0-4.0 ms at 16 threads (1.5-2.1 times less; 4.3 to 1.9 ms on one thread at group 2 of the canyon island) and the chunk mean by 3-14 %, most at group 2 where the river share is largest; the p95 at 16 threads falls most (canyon group 2: 104 to 69 ms, `Single_24` group 2: 84 to 56 ms), because the worst chunks are the river chunks. The 16-thread rows of the item 1 table (never measured idle before): 85-93 ms per chunk at group 0 against 39-51 ms after item 2, i.e. item 2 halved the chunk time also under SMT load, as it did on one thread. The 16-thread chunk time stays 1.7-1.9 times the one-thread time (SMT), as before.

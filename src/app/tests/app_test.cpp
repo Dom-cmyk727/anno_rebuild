@@ -440,3 +440,44 @@ TEST_CASE(
     CHECK(zoom_target_after(42.0, 0.001) ==
           doctest::Approx(static_cast<double>(kt[anno::render::kGroups - 1].w) / kZoomEndFactor));
 }
+
+TEST_CASE("zoom_advance: the zoom is held while the next coarser level is not ready") {
+    using namespace anno::app;
+    const auto levels = anno::render::ZoomLevels::with_derived(3); // 84 42 20 10 5 2.5
+    // Group 2 (tile 20), zooming out for a long time with levels 0..2 ready only: the
+    // zoom stops where level 3 (tile 10) would be taken, 0.95 x 10, so the scale on
+    // group 2 stays at 0.475 and the composed grid at 2.1 x the window per axis.
+    ZoomState s = zoom_state(20.0, 2);
+    const auto only_built = [](std::size_t g) { return g <= 2; };
+    s.target = 1.0;
+    for (int i = 0; i < 400; ++i) {
+        s = zoom_advance(s, 8.0, 120, only_built, levels);
+    }
+    CHECK(s.group == 2);
+    CHECK(s.now == doctest::Approx(0.95 * 10.0));
+    CHECK(zoom_scale(s, levels) == doctest::Approx(0.475));
+    CHECK(zoom_hold_floor(2, only_built, levels, 1.0) == doctest::Approx(9.5));
+    // Level 3 becomes ready: it is taken, and the zoom runs on to its own hold at level 4.
+    const auto up_to_3 = [](std::size_t g) { return g <= 3; };
+    for (int i = 0; i < 400; ++i) {
+        s = zoom_advance(s, 8.0, 120, up_to_3, levels);
+    }
+    CHECK(s.group == 3);
+    CHECK(s.now == doctest::Approx(0.95 * 5.0));
+    // Zooming in is never held, and neither is the last level or a ready next level.
+    CHECK(zoom_hold_floor(5, only_built, levels, 1.0) == 0.0);
+    CHECK(zoom_hold_floor(2, kAllReady, levels, 1.0) == 0.0);
+    s.target = 18.0;
+    for (int i = 0; i < 400; ++i) {
+        s = zoom_advance(s, 8.0, 120, only_built, levels);
+    }
+    CHECK(s.now == doctest::Approx(18.0));
+    // A coarser level that fits but is not ready: the coarsest ready one in between.
+    ZoomState t = zoom_state(12.0, 1);
+    CHECK(zoom_advance(t, 8.0, 0, [](std::size_t g) { return g <= 2; }, levels).group == 2);
+    t = zoom_state(9.0, 1);
+    CHECK(zoom_advance(t, 8.0, 0, [](std::size_t g) { return g <= 2; }, levels).group == 2);
+    CHECK(zoom_advance(t, 8.0, 0, [](std::size_t g) { return g <= 3; }, levels).group == 3);
+    // The 8192 limit of the grid: a window the hold alone would not keep within it gets
+    // its scale raised by resampled_view (gpu_test: "resampled_view: ... limits").
+}

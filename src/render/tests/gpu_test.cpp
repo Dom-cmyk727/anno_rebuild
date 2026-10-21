@@ -3676,6 +3676,22 @@ TEST_CASE(
     CHECK(g.errors() == 0);
 }
 
+TEST_CASE("resample_filter_for: bilinear magnifies, box reduces, area below 1 becomes box") {
+    using F = gpu::ResampleFilter;
+    CHECK(gpu::resample_filter_for(1.0) == F::Bilinear);
+    CHECK(gpu::resample_filter_for(1.45) == F::Bilinear);
+    CHECK(gpu::resample_filter_for(0.999) == F::Box);
+    CHECK(gpu::resample_filter_for(0.3) == F::Box);
+    // Forced (ANNO_VIEW_RESAMPLE): taken as asked.
+    CHECK(gpu::resample_filter_for(1.2, F::Area) == F::Area);
+    CHECK(gpu::resample_filter_for(1.2, F::Nearest) == F::Nearest);
+    CHECK(gpu::resample_filter_for(0.5, F::Nearest) == F::Nearest);
+    CHECK(gpu::resample_filter_for(0.5, F::Bilinear) == F::Bilinear);
+    // ... except Area below 1, which reads 8 pixels per axis at most (scale >= 1/7).
+    CHECK(gpu::resample_filter_for(0.99, F::Area) == F::Box);
+    CHECK(gpu::resample_filter_for(0.1, F::Area) == F::Box);
+}
+
 TEST_CASE("resampled_view covers the output and keeps the fraction of the camera") {
     // Output 100 x 50 at scale 2 centred on (100.25, 60.75): the grid spans
     // 75.25 .. 125.25 in x and 48.25 .. 73.25 in y.
@@ -4027,7 +4043,7 @@ TEST_CASE("resample pass: odd scales, unequal offsets, non-square, a dirty targe
             const int x0 = static_cast<int>(std::floor(lx)), y0 = static_cast<int>(std::floor(ly));
             const int x1 = std::max(static_cast<int>(std::ceil(hx)) - 1, x0);
             const int y1 = std::max(static_cast<int>(std::ceil(hy)) - 1, y0);
-            double sum = 0;
+            double sum = 0, wsum = 0;
             for (int ty = y0; ty <= std::min(y1, y0 + 7); ++ty) {
                 const double wy = (std::min(hy, static_cast<float>(ty + 1)) -
                                    std::max(ly, static_cast<float>(ty))) /
@@ -4037,9 +4053,10 @@ TEST_CASE("resample pass: odd scales, unequal offsets, non-square, a dirty targe
                                        std::max(lx, static_cast<float>(tx))) /
                                       span;
                     sum += texel(tx, ty) * wx * wy;
+                    wsum += wx * wy;
                 }
             }
-            return sum;
+            return sum / std::max(wsum, 1e-6);
         }
         if (c.rs.filter == gpu::ResampleFilter::Box) {
             const int n = std::clamp(static_cast<int>(std::ceil(1.0F / s)), 1, 8);
@@ -4110,6 +4127,10 @@ TEST_CASE("resample pass: odd scales, unequal offsets, non-square, a dirty targe
         run({v.resample, 80, 60, v.view}, 0.01, "1.01 area");
         v = gpu::resampled_view(120.4, 90.2, 70, 50, 0.63, gpu::ResampleFilter::Area);
         run({v.resample, 70, 50, v.view}, 0.01, "0.63 area (exact below 1 too)");
+        // A footprint wider than the 8 pixels per axis the shader reads: renormalised, so
+        // the picture does not darken (the model is the same sum over 8 x 8 pixels).
+        v = gpu::resampled_view(150.0, 150.0, 60, 40, 0.1, gpu::ResampleFilter::Area);
+        run({v.resample, 60, 40, v.view}, 0.01, "0.1 area (8 x 8 pixels read, renormalised)");
         v = gpu::resampled_view(120.4, 90.2, 70, 50, 0.63, gpu::ResampleFilter::Box);
         run({v.resample, 70, 50, v.view}, 0.01, "0.63 box");
         v = gpu::resampled_view(150.0, 150.0, 60, 40, 0.3, gpu::ResampleFilter::Box);

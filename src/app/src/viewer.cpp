@@ -233,29 +233,27 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
 #endif
 
 #ifdef ANNO_VIEWER_GPU
-/// How the resample pass reads the composed grid at scale `s`: the mean of the
-/// covered pixels when reducing (nearest would skip pixels and shimmer), the
-/// coverage-weighted mean (Area) when magnifying: equal-sized crisp pixels, where
-/// nearest doubles every second to seventh row and column at a fractional scale.
-/// ANNO_VIEW_RESAMPLE=nearest|bilinear|box|area forces one, for the owner's A/B.
+/// How the resample pass reads the composed grid at scale `s` (gpu::resample_filter_for):
+/// the mean of the covered pixels when reducing, bilinear when magnifying (the owner's
+/// choice at the stage 3 fix 1 look; nearest doubles every second to seventh row and
+/// column at a fractional scale). ANNO_VIEW_RESAMPLE=nearest|bilinear|box|area forces
+/// one, for the owner's A/B (area below scale 1 still becomes box).
 gpu::ResampleFilter resample_filter(double s) {
-    static const char* forced = std::getenv("ANNO_VIEW_RESAMPLE");
-    if (forced != nullptr) {
-        const std::string f = forced;
+    static const char* env = std::getenv("ANNO_VIEW_RESAMPLE");
+    std::optional<gpu::ResampleFilter> forced;
+    if (env != nullptr) {
+        const std::string f = env;
         if (f == "nearest") {
-            return gpu::ResampleFilter::Nearest;
-        }
-        if (f == "bilinear") {
-            return gpu::ResampleFilter::Bilinear;
-        }
-        if (f == "box") {
-            return gpu::ResampleFilter::Box;
-        }
-        if (f == "area") {
-            return gpu::ResampleFilter::Area;
+            forced = gpu::ResampleFilter::Nearest;
+        } else if (f == "bilinear") {
+            forced = gpu::ResampleFilter::Bilinear;
+        } else if (f == "box") {
+            forced = gpu::ResampleFilter::Box;
+        } else if (f == "area") {
+            forced = gpu::ResampleFilter::Area;
         }
     }
-    return s < 1.0 ? gpu::ResampleFilter::Box : gpu::ResampleFilter::Area;
+    return gpu::resample_filter_for(s, forced);
 }
 #endif
 

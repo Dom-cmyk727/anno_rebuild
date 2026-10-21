@@ -22,7 +22,10 @@ inline constexpr const char* kUsage =
     "[--river-flow legacy|flow] [--river-gain <x>] [--river-speed median|fastest] "
     "[--river-gap-patch <tiles>] [--renderer auto|gpu|cpu] [--lookahead-chunks <n>] "
     "[--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>] "
-    "[--min-zoom <tile width>] [--max-derived-levels <n>] [--zoom-max-upscale <factor>]\n";
+    "[--min-zoom <tile width>] [--max-derived-levels <n>] [--zoom-max-upscale <factor>]\n"
+    "environment: ANNO_GPU_ADAPTER=<index> (bench_frame --list-adapters), "
+    "ANNO_VIEW_RESAMPLE=nearest|bilinear|box|area (the continuous zoom's magnifying filter; "
+    "default bilinear above scale 1, box below)\n";
 
 /// World tiles accepted by --at: INSEL5 positions are u16 (docs/formats/insel.md);
 /// the margin keeps every projected coordinate inside int range.

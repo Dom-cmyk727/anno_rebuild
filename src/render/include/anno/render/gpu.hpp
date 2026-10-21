@@ -369,10 +369,24 @@ enum class ResampleFilter : std::uint32_t {
     /// The coverage-weighted mean of the scene pixels the output pixel's footprint
     /// (1 / scale wide) overlaps: at scales of 1 and above (magnifying) at most
     /// 2 x 2 pixels, so every output pixel is equally sharp and no row or column
-    /// is doubled, as with Nearest at a fractional scale. Also exact below 1 (up
-    /// to 8 pixels per axis), where Box is the cheaper choice.
+    /// is doubled, as with Nearest at a fractional scale. Below 1 it is exact down
+    /// to a scale of 1/7 (8 pixels per axis: the shader's loop limit); below that
+    /// the weights are renormalised over the 8 x 8 pixels read (no darkening, but
+    /// the picture undersamples again), so the viewer takes Box below 1.
     Area = 3,
 };
+
+/// The filter of the viewer's resample pass at `scale`: Box below 1 (reducing),
+/// Bilinear from 1 (magnifying; the owner's choice at the stage 3 fix 1 look,
+/// OQ-095 item 5). `forced` (ANNO_VIEW_RESAMPLE, the owner's A/B) overrides it, except
+/// that Area below 1 becomes Box: Area reads at most 8 pixels per axis.
+inline ResampleFilter resample_filter_for(double scale,
+                                          std::optional<ResampleFilter> forced = std::nullopt) {
+    if (forced) {
+        return *forced == ResampleFilter::Area && scale < 1.0 ? ResampleFilter::Box : *forced;
+    }
+    return scale < 1.0 ? ResampleFilter::Box : ResampleFilter::Bilinear;
+}
 
 /// A continuous zoom: the picture is composed on the scene grid of a zoom
 /// group, at one scene pixel per grid pixel, exactly as without a scale, and

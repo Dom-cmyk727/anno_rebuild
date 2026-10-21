@@ -484,3 +484,19 @@ Questions: Area or bilinear as the magnifying default (Area is the default now)?
 **For the review / decisions:** (1) `--zoom-max-upscale`, the hold and the cross-fade are all defaults-on in the interactive limits; the owner has not yet seen the cross-fade or the ships at the far levels. (2) The iGPU's compositor cost (fix 1) is untouched: T14. (3) Derived-level ships beyond 10 halvings are not drawn. (4) `FluidGpu` must not be moved while a window job runs (the job thread uses it): it is created in place; noted in the code. (5) `bench_frame --fill-time` shows the cache variant builds more chunks in all (the prefetch ring of the derived levels asks for open-sea chunks of the whole scene's neighbourhood: cheap, a few KB each).
 
 **Owner check** (the T3 build; zoom with the wheel through the far levels and watch the ships and the coast waves after each level change): `cd C:\Users\altin\anno1503-T3\build\msvc\src\app\Release; $g = "C:\Users\altin\anno1503\game\app"; $env:ANNO_GPU_ADAPTER = "0"; .\anno1503.exe --view "$g\Scenes\0200Single\Single_24.sze" --game-dir $g --water enhanced`. T11 stage 2a and T14 can start when PR #9 is merged.
+
+## 2026-10-21 — T15 stage 0 (design and static checks; smoke run waits for the owner) — REVIEW (branch task/T15-original-harness, from main 792afa3)
+
+**Done.**
+- The original game folder is copied to `C:\anno1503-original\` (63 entries, outside the repository), after the owner's explicit go-ahead ("try blocked T15 stage 0 again"). The first attempt was denied by the auto-mode classifier; the retry, on the owner's instruction, went through. The copy's 20 executables and DLLs have the same SHA-256 as in `game/app` (list in `docs/testing/original-harness.md`, section 8). `game/app` was not written to.
+- Static checks from `analysis/pe_symbols.json` (no game code run): `1503Startup.exe` imports only KERNEL32, USER32, GDI32; `AnnoDisplay.dll` imports `DDRAW.dll` through `DirectDrawCreateEx`, so the original renders through DirectDraw 7. Community notes give a `/w` window switch and DxWnd (ISS-014, not verified here), and the registry key `HKCU\Software\Max-Design\Anno1503` with `SCREENMODE` 0-4; the key is not on this PC yet.
+- The design `docs/testing/original-harness.md` (commit `07e5ea6`): the harness methods (standard library and `ctypes` only: `CreateProcess`, `PrintWindow`, `EnumProcessModules`, `ReadProcessMemory`, `SendInput` only in agreed sessions); the smoke run's steps (launch, one screenshot, one memory value, close, hash again); the third-party candidates (dgVoodoo2, cnc-ddraw, Frida, pywinauto, mss), none installed.
+
+**Not done: the smoke run.** Starting the game takes the desktop's focus, which needs the owner's agreement (rule (c)). Not started. Also not done: the scripted control, the savegame and fixture stages, and `tools/orig/`.
+
+**Needs the owner (the three questions of section 7 of the design):**
+1. Agree to the smoke run now: it shows the game on the desktop for under 5 minutes; it sends no input; it ends with the game's close or `taskkill` on the recorded PIDs.
+2. Which windowed method if the game's own `/w` switch does not work on this copy: dgVoodoo2 or cnc-ddraw (each needs a yes; licence check first).
+3. Confirm the copy's folder `C:\anno1503-original\` for all stages.
+
+**Note.** A `mkdir -p C:\anno1503-original` that the first attempt ran with the denied copy did not leave a folder (it was absent after the denial), so no cleanup is needed.

@@ -1,6 +1,6 @@
 # T15 stage 0: running the original game for comparison (design, REVIEW)
 
-Status: **design and static checks done; the smoke run is not done** (it starts the game and takes the desktop's focus, so it needs the owner's agreement, rule (c) of T15). Date: 2026-10-21. Host: Windows 11, Ryzen 9800X3D, RTX 4090 and Radeon iGPU (the 500 Hz monitor is on the iGPU).
+Status: **design, static checks and the smoke run done (2026-10-21).** The game runs windowed through dgVoodoo2 on the primary monitor, a running scenario was screenshotted by the script, the 32-bit module bases were read, and the game closed with nothing left and the copy unchanged. One point is partial: the world tick was read but not yet shown growing (the scenario was paused when the owner closed the run). Host: Windows 11, Ryzen 9800X3D, RTX 4090, the 2560 x 1440 @ 500 Hz monitor primary (both monitors on the RTX 4090; the iGPU drives none, correction 2026-10-21 s).
 
 ## 1. The copy (done, verified)
 
@@ -35,39 +35,61 @@ All of this uses the Python standard library (`ctypes`) and Windows calls; nothi
 
 Failure handling: each step has a timeout; a missing window or a value outside the expected range stops the script and writes the screenshot taken at that moment.
 
-## 4. Stage 0 smoke run, the plan (not run)
+## 4. Stage 0 smoke run (done 2026-10-21; `tools/orig/smoke.py`)
 
-What runs, for how long, how to stop (rule (c)):
+The run: `python -I tools/orig/smoke.py --game C:\anno1503-original --out cache/orig/smoke-<tag> --hold <s>`.
+It launches the copy, re-finds and foregrounds the game window, screenshots it (BitBlt of the
+on-screen rectangle) every `--shot-every` seconds, enumerates the 32-bit modules, scans the heap
+for the world object and reads its tick, then closes the game (WM_CLOSE, then taskkill of every
+process under the copy folder) and hashes the copy. It sends **no input** (the owner clicks).
 
-1. Start `C:\anno1503-original\1503Startup.exe` (no arguments) and wait for its window (at most 60 s).
-2. Take one screenshot of the game's window (PNG, `cache/orig/smoke-<time>/`).
-3. Read the world tick at `AnnoWelt.dll` base + `0xccdd8` pointer chain once a game is running (needs a scenario loaded; the first run uses the launcher's own menu, so the value is read only if a scenario is running), and compare it with a second read a few seconds later (it must grow).
-4. Close the game with its window's close button or `taskkill /PID <pid>`; check that no child process is left.
-5. Hash the copy again and compare with `game/app`.
+**Results (owner-run, RTX 4090, primary monitor):**
 
-Duration: under 5 minutes. Stop: the game's own close, or `taskkill` on the recorded PIDs. Nothing is typed into other windows; the script sends no input in this smoke run.
+1. **It renders and is captured.** `cache/orig/smoke-dgv-full/shot-114s.png` is a running
+   single-player scenario at 1024 x 768 (isometric coast, a ship, a trading post, the full HUD:
+   minimap, resource bar, gold 499,990) — the original game through dgVoodoo2, screenshotted by the
+   script. (cnc-ddraw first produced black and then made the game exit in ~3 s; dgVoodoo2 runs it.
+   See 5.1 / 5.2.) First frames are black (the Max Design intro), then content.
+2. **The owner reaches a scenario** by clicking the intros and menu (the window grows from 800 x 600
+   to 1024 x 768 when the scenario loads).
+3. **Module bases** (32-bit, by walking the WOW64 PEB loader list over `ReadProcessMemory`, since
+   the Win32 module APIs show a 64-bit caller only the shim DLLs): `AnnoDisplay.dll` loads at its
+   preferred base **0x10000000**; `AnnoFrame.dll` (0x2300000), `AnnoScene.dll` (0x24b0000),
+   `AnnoGame.dll` (0x2500000) and `AnnoWelt.dll` (0x2530000-0x2560000) are **rebased** (they all
+   prefer 0x10000000 and conflict, so only the first keeps it). `binkw32.dll` 0x30000000,
+   the dgVoodoo2 `DDraw.dll`/`D3DImm.dll` in the 0x6xxxxxxx range. The RE notes' "image base
+   0x10000000 each" is the preferred base; at run time only AnnoDisplay gets it.
+4. **A memory read works:** `ReadProcessMemory` of a module's code bytes matches the file on disk,
+   and the world-object vtable (`AnnoWelt base + 0xccdd8`) is found in the heap. **Partial:** the
+   world tick read back 0 and did not grow — the scenario was paused when the owner closed the run
+   early. The locator now verifies the object by `tick == (ms counter >> 1)` (docs/re/tick-loop.md);
+   showing the tick grow needs one short run with the scenario unpaused (a stage-1 fixture anyway).
+5. **Clean close:** no process left under the copy folder; the game's 20 files stay byte-identical
+   to `game/app` after every run.
 
-**Needs the owner's yes:** the smoke run takes the focus and shows the game on the desktop. I will not start it until you agree.
+Stop: the game's own close, or `taskkill` on the recorded PIDs (the script does the latter at the
+end). Nothing is typed into other windows.
 
 ## 5. Third-party tools (none installed; owner decides each)
 
 Candidates for the questions above; each needs its version, licence and reason before installation, and nothing of them goes into git:
 
-| Tool | Purpose | Why it might be needed | Status |
-|---|---|---|---|
-| dgVoodoo2 (ddraw wrapper) | windowed DirectDraw | if the game's window switch does not work | not installed; licence: check |
-| cnc-ddraw (ddraw wrapper) | **installed** (see 5.1) | windowed DirectDraw on the primary monitor | **installed 2026-10-21**, owner-approved |
-| Frida | hooks at the tick function | per-tick logs, if memory reads are not enough | not installed; not needed for stage 0 |
-| pywinauto | window control | only if the scripted input of section 3 is too brittle | not installed; not needed for stage 0 |
-| mss | screenshots | only if `PrintWindow` misses the DirectDraw window | not installed; not needed for stage 0 |
+| Tool | Purpose | Status |
+|---|---|---|
+| **dgVoodoo2** (ddraw wrapper) | windowed DirectDraw on the primary monitor | **installed and in use** (see 5.2): the game runs and renders through it |
+| cnc-ddraw (ddraw wrapper) | windowed DirectDraw | **tried, removed** (see 5.1): it rendered black, then the game exited in ~3 s |
+| Frida | hooks at the tick function | not installed; not needed for stage 0 |
+| pywinauto | window control | not installed; not needed for stage 0 |
+| mss | screenshots | not installed (BitBlt of the window rectangle works) |
 
-### 5.1 cnc-ddraw (the DirectDraw wrapper, owner-approved 2026-10-21)
+### 5.1 cnc-ddraw (tried first, removed)
 
-The original renders through DirectDraw 7 in exclusive full-screen on the primary monitor, so a
-desktop capture of it was black (owner: the game flickered 800x600 and the cursor stayed on the
-primary). cnc-ddraw replaces the system `DDRAW.dll` with a local `ddraw.dll` next to the game
-(the application directory wins the DLL search), rendering into an ordinary window that a normal
-screen capture can read.
+The original renders through DirectDraw 7, natively in exclusive full-screen on the primary
+monitor, so a desktop capture of it was black. cnc-ddraw was tried first (owner's order). It
+loaded (its window appeared), but **rendered black and then the game process exited within ~3 s**
+(confirmed: `1503Startup.exe`, which runs the game in-process and persists natively, exits a few
+seconds after start whenever cnc-ddraw's `ddraw.dll` is present). So cnc-ddraw does not run this
+game; its files were **removed** from the copy. Recorded for the trail:
 
 - **Version:** v7.1.0.0 (released 2024-12-28).
 - **Download:** https://github.com/FunkyFr3sh/cnc-ddraw/releases/download/v7.1.0.0/cnc-ddraw.zip
@@ -83,15 +105,44 @@ screen capture can read.
 - **Hash separation:** the game's 20 executables and DLLs stay byte-identical to `game/app`
   (verified after install); `ddraw.dll`, `ddraw.ini` and `Shaders\` are the only added files.
 
+### 5.2 dgVoodoo2 (installed, in use)
+
+dgVoodoo2 wraps DirectDraw/Direct3D over D3D11/12 far more completely than cnc-ddraw. Installed
+after cnc-ddraw failed; **the game runs, renders and is captured through it.**
+
+- **Version:** v2.87.5 (released 2026-09-15).
+- **Download:** https://github.com/dege-diosg/dgVoodoo2/releases/download/v2.87.5/dgVoodoo2_87_5.zip
+- **SHA-256 (dgVoodoo2_87_5.zip):** `5ffde6927f7355ca3fdd5d785b581256a8e6539fa13e395a891ade6ba1040850`
+- **Licence:** dgVoodoo2's own freeware licence (free for any use incl. commercial, redistribution
+  of the unmodified package allowed; dege, http://dege.fw.hu/dgVoodoo2/). The GitHub repo carries no
+  SPDX licence file; the terms are in the package's ReadMe links.
+- **Installed files** (into `C:\anno1503-original\` only, never `game/app`, never git), from
+  `MS/x86/`: `DDraw.dll` and `D3DImm.dll` (the 32-bit DirectDraw wrappers), plus the configured
+  `dgVoodoo.conf`. cnc-ddraw's `ddraw.dll`, `ddraw.ini` and `Shaders\` were removed first.
+- **Configuration** (`dgVoodoo.conf`): `FullScreenMode = false` (windowed on the primary),
+  `CaptureMouse = false` (the owner keeps the cursor), `dgVoodooWatermark = false` (clean capture);
+  the DirectX resolution is unforced (the game's 800 x 600 menu / 1024 x 768 in a scenario, windowed
+  top-left of the primary).
+- **Hash separation:** the game's 20 files stay byte-identical to `game/app`; `DDraw.dll`,
+  `D3DImm.dll` and `dgVoodoo.conf` are the only added files.
+
 ## 6. Our side (what has to show the same view)
 
 For stage 3 of T15 (the renderer comparison), the view is set in our renderer by `--png --group <g> --at <x>,<y> --size <w>x<h>` (the derived levels too, from the T3 follow-up). The camera position and zoom group of the original are taken from its memory or from the screen, and the same values go to `--at` and `--group`. The mapping between the original's camera and our tile coordinates is part of stage 3 (OQ-026).
 
-## 7. Open questions for the owner
+## 7. What is settled, and what is left
 
-1. May the harness use `C:\anno1503-original\` (the copy) for all stages?
-2. Agree to the smoke run in section 4 now (it shows the game on the desktop, under 5 minutes)?
-3. Which windowed method, if the game's own switch does not work: dgVoodoo2 or cnc-ddraw (each needs your yes)?
+Settled by the smoke run (owner-agreed, 2026-10-21): the copy at `C:\anno1503-original\` is used for
+all stages; the windowed wrapper is **dgVoodoo2** (cnc-ddraw does not run the game); the harness can
+launch, screenshot, read 32-bit modules and memory, and close cleanly without touching `game/app`.
+
+Left for stage 1 (not blockers for the design):
+1. **Show the world tick growing:** one short run with the scenario **unpaused** (the smoke run's
+   scenario was paused when it was closed early). The locator is ready (`tick == ms counter >> 1`).
+2. **Scripted control** (menu navigation / camera / save-load by `SendInput`): only in a session the
+   owner agrees to; not needed for the fixtures that read memory.
+3. The M2 fixtures themselves (F1-F9, production, population) read the world clock, PRNG cursor and
+   stocks from memory while a scenario runs; the smoke run proves the reads are possible.
 
 ## 8. Hashes of the copy (SHA-256, identical in `game/app`)
 

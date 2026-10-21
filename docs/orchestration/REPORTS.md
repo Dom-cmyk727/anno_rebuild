@@ -277,3 +277,4 @@ Please say which, with and without each switch. Mapping to the measured causes: 
   - pan while zooming: which of the four artifact kinds remain;
   - pause (Space) while chunks arrive: they still appear.
 - Time spent / subagents used: inline for T1e; two read-only reviewer subagents; one subagent for T11 stage 0.
+- **Owner check result (2026-10-21):** "the blue squares still appear, overall it improved a bit." The blue squares are the open sea of unbuilt chunks (finding (a)): expected after T1e, the lever is T1f/T11. The owner did not comment on the 150 ms dissolve or on pause. The viewer log shows no steady-state hitch: 500 fps (the 500 Hz cap), with a busy time of at most 3.7 ms. There were only one-off frames: the first frame's sea at 28.9 ms (start-up), a 93 ms gap of window events with a 9 ms draw prologue (the window was resized to 2560x1369), and a few 8-10 ms gaps that were spent waiting for the display.

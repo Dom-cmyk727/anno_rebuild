@@ -12,6 +12,10 @@
 //       [--zoom-dump-after a,b,...] [--zoom-pan dx,dy[,frames]] [--pop on|off]
 //   bench_frame <game_dir> <file> --renderer gpu --scale-cost group:scale[:filter],..
 //                                (GPU time of continuous zoom frames, compositor + resample)
+//   bench_frame <game_dir> <file> --derived n --groups 2,3,..,2+n ...   (the paths above at the
+//                                derived zoom levels after group 2: each is the level above reduced 2x)
+//   bench_frame <game_dir> <file> --fill-time [--derive old|cache] [--threads n] [--res WxH]
+//                                (the first zoom-out: ms until the window's chunks are cached, levels 3-5)
 //   bench_frame --list-adapters
 //   bench_frame <game_dir> <file> --river-cost      (GPU cost of the river shading, synthetic)
 //
@@ -149,6 +153,8 @@ struct Options {
     std::vector<ScalePoint> scale_cost;
     /// --fill-time: the first zoom-out (levels 3-5 from group 2), and --derive old|cache.
     bool fill_time = false, derive_from_cache = true;
+    /// --derived n: n derived zoom levels after group 2 (the groups 3.. of --groups).
+    std::size_t derived = 0;
 };
 
 std::vector<std::string_view> split(std::string_view s, char sep) {
@@ -924,7 +930,7 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
         // The viewer renders the sea patterns of all groups on background
         // threads from the start; so does the zoom path.
         std::vector<std::thread> seas;
-        for (std::size_t grp = 0; grp < render::kGroups; ++grp) {
+        for (std::size_t grp = 0; grp < scene.levels().size(); ++grp) {
             seas.emplace_back([&scene, grp] { scene.sea(grp); });
         }
         auto ready = [&](std::size_t grp) {
@@ -998,6 +1004,32 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
                rows);
     }
     fr.set_workers(nullptr);
+}
+
+/// The bounds of island `island` at zoom level `group` of the scene: its placement at
+/// the built level, and at a derived level that rectangle reduced by 2^shift, rounded
+/// outwards (as Scene::bounds does for the whole scene).
+std::optional<render::Rect> island_bounds(const render::Scene& scene, std::size_t group,
+                                          std::size_t island) {
+    const render::ZoomLevels& levels = scene.levels();
+    if (group >= levels.size()) {
+        return std::nullopt;
+    }
+    const std::size_t base = levels.ancestor(group);
+    if (base >= render::kGroups) {
+        return std::nullopt;
+    }
+    for (const auto& q : scene.layouts[base]) {
+        if (q.index != island) {
+            continue;
+        }
+        const int r = 1 << levels[group].shift;
+        const int x0 = render::div_euclid(q.bounds.x, r), y0 = render::div_euclid(q.bounds.y, r);
+        const int x1 = -render::div_euclid(-(q.bounds.x + q.bounds.w), r);
+        const int y1 = -render::div_euclid(-(q.bounds.y + q.bounds.h), r);
+        return render::Rect{x0, y0, x1 - x0, y1 - y0};
+    }
+    return std::nullopt;
 }
 
 /// --fill-time: the first zoom-out. A window of `--res` (the first) at group 2 on the
@@ -1110,18 +1142,13 @@ int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                 "|---|---|---|---|---|---|---|---|---|---|---|---|\n");
     for (const auto& [w, h] : o.resolutions) {
         for (const auto& pt : o.scale_cost) {
-            const render::Placement* p = nullptr;
-            for (const auto& q : scene.layouts[pt.group]) {
-                if (q.index == island) {
-                    p = &q;
-                }
-            }
-            if (p == nullptr) {
+            const auto b = island_bounds(scene, pt.group, island);
+            if (!b) {
                 std::fputs("no placement for that island\n", stderr);
                 return 1;
             }
-            const double cx = p->bounds.x + p->bounds.w / 2.0 + o.at.first;
-            const double cy = p->bounds.y + p->bounds.h / 2.0 + o.at.second;
+            const double cx = b->x + b->w / 2.0 + o.at.first;
+            const double cy = b->y + b->h / 2.0 + o.at.second;
             const auto filter = filter_of(pt.filter, pt.scale);
             const auto rv = gpu::resampled_view(cx, cy, static_cast<std::uint32_t>(w),
                                                 static_cast<std::uint32_t>(h), pt.scale, filter);
@@ -1336,6 +1363,8 @@ constexpr const char* kUsage =
     "[--res ..] [--groups ..]\n"
     "       bench_frame <game_dir> <file> --chunk-profile threads,.. [--chunk-limit n] "
     "[--groups ..] [--island n]\n"
+    "       bench_frame <game_dir> <file> --renderer cpu,gpu --derived n --groups 0,..,2+n "
+    "(derived zoom levels after group 2)\n"
     "       bench_frame <game_dir> <file> --fill-time [--derive old|cache] [--threads n] "
     "[--res WxH]\n"
     "       bench_frame --list-adapters\n"
@@ -1385,7 +1414,8 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             o.groups.clear();
             for (const auto g : split(v, ',')) {
                 std::size_t n = 0;
-                ok = ok && parse(g, n) && n < render::kGroups;
+                // A derived level (--derived) is checked once all options are read.
+                ok = ok && parse(g, n);
                 o.groups.push_back(n);
             }
         } else if (a == "--styles") {
@@ -1428,6 +1458,8 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = v == "legacy" || v == "flow";
             o.river_flow =
                 v == "legacy" ? render::RiverFlowMode::Legacy : render::RiverFlowMode::Flow;
+        } else if (a == "--derived") {
+            ok = parse(v, o.derived) && o.derived <= 24;
         } else if (a == "--derive") {
             ok = v == "old" || v == "cache";
             o.derive_from_cache = v == "cache";
@@ -1436,7 +1468,7 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
                 const auto f = split(item, ':');
                 Options::ScalePoint pt;
                 ok = ok && (f.size() == 2 || f.size() == 3) && parse(f[0], pt.group) &&
-                     pt.group < render::kGroups && parse(f[1], pt.scale) && pt.scale > 0.0;
+                     parse(f[1], pt.scale) && pt.scale > 0.0;
                 if (f.size() == 3) {
                     pt.filter = std::string(f[2]);
                     ok = ok && (pt.filter == "nearest" || pt.filter == "bilinear" ||
@@ -1611,8 +1643,19 @@ int main(int argc, char** argv) {
         return 1;
     }
     loaded.value().scene->river_cfg.light_gain = o->river_gain;
-    if (o->fill_time) {
-        loaded.value().scene->set_levels(render::ZoomLevels::with_derived(3));
+    if (o->fill_time || o->derived > 0) {
+        loaded.value().scene->set_levels(render::ZoomLevels::with_derived(
+            std::max<std::size_t>(o->derived, o->fill_time ? 3 : 0)));
+    }
+    for (const std::size_t g : o->groups) {
+        if (g >= loaded.value().scene->levels().size() ||
+            (!o->profile_threads.empty() && g >= render::kGroups)) {
+            std::fprintf(stderr,
+                         "--groups %zu: no such zoom level (%zu levels; --derived n adds "
+                         "levels after group 2; --chunk-profile needs built groups)\n",
+                         g, loaded.value().scene->levels().size());
+            return 2;
+        }
     }
     const render::Scene& scene = *loaded.value().scene;
     std::fprintf(
@@ -1725,13 +1768,8 @@ int main(int argc, char** argv) {
             for (const auto style : o->styles) {
                 for (const bool on_gpu : o->renderers) {
                     for (const bool async_chunks : o->modes) {
-                        const render::Placement* p = nullptr;
-                        for (const auto& q : scene.layouts[group]) {
-                            if (q.index == largest) {
-                                p = &q;
-                            }
-                        }
-                        if (p == nullptr) {
+                        const auto b = island_bounds(scene, group, largest);
+                        if (!b) {
                             std::fputs("no placement for that island\n", stderr);
                             return 1;
                         }
@@ -1741,8 +1779,7 @@ int main(int argc, char** argv) {
                         c.group = group;
                         c.style = style;
                         c.async_chunks = async_chunks;
-                        c.centre = {p->bounds.x + p->bounds.w / 2 + o->at.first,
-                                    p->bounds.y + p->bounds.h / 2 + o->at.second};
+                        c.centre = {b->x + b->w / 2 + o->at.first, b->y + b->h / 2 + o->at.second};
                         c.frames = 120 / scale;
                         c.t0 = o->t0;
                         c.warmup = o->warmup;

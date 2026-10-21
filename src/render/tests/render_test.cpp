@@ -354,8 +354,14 @@ TEST_CASE("chunk profile: off without a sink, nested stages counted exclusively"
     profile::attach(nullptr);
     CHECK(t[profile::Stage::objects] >= 0.9);
     CHECK(t[profile::Stage::decode] >= 0.45);
-    // Exclusive: the decode is not also counted in the objects.
-    CHECK(t[profile::Stage::objects] + t[profile::Stage::decode] <= elapsed);
+    // Exclusive: the decode is not also counted in the objects. The stage times are
+    // converted to milliseconds per interval and summed, `elapsed` once, so with no
+    // clock tick between the start and the first scope the sum can exceed `elapsed`
+    // by the rounding of those conversions (it failed once on MSVC, passed on a rerun
+    // of the same commit): compare with a tolerance far below the 1.5 ms of spinning
+    // and far above a double's rounding, 1e-6 ms.
+    constexpr double kRoundingMs = 1e-6;
+    CHECK(t[profile::Stage::objects] + t[profile::Stage::decode] <= elapsed + kRoundingMs);
     double others = 0;
     for (std::size_t i = 0; i < t.ms.size(); ++i) {
         if (i != static_cast<std::size_t>(profile::Stage::objects) &&

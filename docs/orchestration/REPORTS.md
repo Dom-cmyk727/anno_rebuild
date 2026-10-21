@@ -520,3 +520,31 @@ Follows the earlier stage 0 design entry. The owner approved the smoke run and b
 - The one open smoke point (d) the tick growing: I can do a ~40 s run where you start a scenario and press play/unpause, or leave it to stage 1 (the fixtures do this anyway). Your call.
 - dgVoodoo2 stays installed in the copy (the working wrapper). Nothing of it, or of the original's output, is in git.
 - Stage 1 (the M2 fixtures against the running original) is the next T15 stage; it builds on this harness.
+
+## 2026-10-21 — T15 stage 0 close-out (world clock grows, cross-checks) — REVIEW (branch task/T15-original-harness, PR #13)
+
+Follows the stage 0 smoke report. The orchestrator's close-out (2026-10-21 t): the locator must list every vtable match and accept only a real one, read the tick ≥3 times with real times and a rate, cross-check the module bases, fix the doc, and state the display scaling / 1:1 capture.
+
+**One close-out commit (`02374ed`), `tools/orig/smoke.py` + `docs/testing/original-harness.md`, and one owner run (unpaused scenario).**
+
+**(1a/1b) World clock — the owner's unpaused run (`cache/orig/smoke-dgv-tick/log.json`, not git).** `AnnoWelt.dll` base `0x2530000`, world vtable value `0x25fcdd8`. The heap scan found **one** match of that value, and it was accepted (non-zero counter, `tick == counter >> 1`):
+
+| read | real time (s) | counter (+0x100) | +0x108 | tick (+0x10c) | +0x108 == tick |
+|---|---|---|---|---|---|
+| locate | — | 8008 | 4004 | 4004 | yes |
+| 1 | 30.376 | 8127 | 4063 | 4063 | yes |
+| 2 | 32.876 | 10628 | 5314 | 5314 | yes |
+| 3 | 35.377 | 13127 | 6563 | 6563 | yes |
+| 4 | 37.877 | 15629 | 7814 | 7814 | yes |
+
+Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = game speed 1.0** (the RE note's 500 ticks/s at 1x; 1 tick = 2 ms game time, `docs/re/tick-loop.md`). `tick == counter >> 1` and `+0x108 == +0x10c` held in every read. (An earlier paused run had accepted an all-zero stray match; the non-zero-counter rule rejects it now.)
+
+**(1c) Module bases (and cross-check).** By walking the 32-bit PEB loader list over `ReadProcessMemory` (the Win32 32-bit-module APIs — `EnumProcessModulesEx(LIST_MODULES_32BIT)`, `TH32CS_SNAPMODULE32` — return the 64-bit shim view / nothing from a 64-bit caller; recorded). Each base is cross-checked by reading the 0x40 header bytes at the base and comparing with the DLL file on disk (the first page is mapped from the file); **all match** (`header_matches_disk: true`). A run's bases (they vary by ASLR each launch): `AnnoDisplay.dll` at its preferred **0x10000000**; `AnnoFrame.dll`, `AnnoScene.dll`, `AnnoGame.dll`, `AnnoWelt.dll` rebased (they all prefer 0x10000000 and conflict, so only the first keeps it); `binkw32.dll` 0x30000000; the dgVoodoo2 `DDraw.dll`/`D3DImm.dll` in the 0x6xxxxxxx range.
+
+**(1d) Doc fixes:** the lost `\a` (`C:\anno1503-original\`), `\.\DISPLAY2`, and dgVoodoo2's licence quoted verbatim from the page its `Doc\Readme.url` links (section "1. Redistribution rights", `Copyright (c) 2013-2026 Dege`): shipping a game with unmodified dgVoodoo files is allowed; standalone redistribution must be the original unmodified .zip; no bundling in launchers/frameworks. We ship nothing (local copy only, never git), so this is use, not redistribution.
+
+**(1e) Scaling / 1:1 capture:** the primary display is at **100 %** (96 DPI, 2560 x 1440). The harness marks itself per-monitor-DPI-aware and `BitBlt`s the window's physical rectangle; the scenario shot is **1024 x 768 = the game's own resolution**, so 1:1 with no scaling. **Correction (owner's note):** the game ran **full-screen at its native resolution**, not bordered-windowed — `FullScreenMode = false` did not window this title; the capture is still 1:1 (a scaled full-screen would have been grabbed at 2560 x 1440 and blurred). A true window is a later nicety (per-game CPL profile), not a stage-3 need.
+
+**(2) The screenshot** (point 10): `shot-064s.png`, 1024 x 768, a running scenario — isometric forest coast, a ship, a trading post, the Workshops build menu, minimap, gold 499,980 (counting down as time passes). I looked at it: clean 1:1 original render. Close: no process left; the game's 20 files stay byte-identical to `game/app`.
+
+**Left for stage 1:** scripted input (`SendInput`, owner-agreed sessions); the M2 fixtures that read the clock/PRNG/stocks from memory (the clock read is proven); optionally true windowed mode. Nothing of the original's output is in git (under `cache/orig/`). I will not start stage 1 until PR #13 is merged.

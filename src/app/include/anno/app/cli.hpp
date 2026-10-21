@@ -12,6 +12,7 @@
 #include <vector>
 
 #include <anno/render/iso.hpp>
+#include <anno/render/resample.hpp>
 #include <anno/render/river.hpp>
 
 namespace anno::app {
@@ -23,6 +24,8 @@ inline constexpr const char* kUsage =
     "[--river-gap-patch <tiles>] [--renderer auto|gpu|cpu] [--lookahead-chunks <n>] "
     "[--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>] "
     "[--min-zoom <tile width>] [--max-derived-levels <n>] [--zoom-max-upscale <factor>]\n"
+    "(--png only: [--zoom-factor <scale>] [--resample nearest|bilinear|box|area], the picture "
+    "composed at --group and resampled by the CPU model of the GPU pass)\n"
     "environment: ANNO_GPU_ADAPTER=<index> (bench_frame --list-adapters), "
     "ANNO_VIEW_RESAMPLE=nearest|bilinear|box|area (the continuous zoom's magnifying filter; "
     "default bilinear above scale 1, box below)\n";
@@ -52,6 +55,8 @@ inline constexpr unsigned kMaxZoomEaseMs = 2000;
 /// group-2 pixels, far beyond any map); raise it for larger maps.
 inline constexpr double kMinMinZoom = 0.01, kMaxMinZoom = 20.0;
 inline constexpr unsigned kMaxDerivedLevels = 24;
+/// --zoom-factor: output pixels per group pixel; resampled_view limits it to 1/64 .. 64.
+inline constexpr double kMinZoomFactor = 1.0 / 64.0, kMaxZoomFactor = 64.0;
 /// --zoom-max-upscale: how far a level may be magnified before the finer one is
 /// composed (1 = never; 1.45 is the nearest-in-ratio look of the first stage 3
 /// build). The ratio between two levels is at most 2.1, so a larger factor would
@@ -97,6 +102,12 @@ struct Args {
     std::optional<std::filesystem::path> game_dir;
     std::optional<std::size_t> group;
     std::optional<std::filesystem::path> png;
+    /// --png --zoom-factor: the picture is composed at --group and resampled by this
+    /// many output pixels per group pixel (the continuous zoom's pass, on the CPU:
+    /// the headless reference at a fractional scale); 1 = no resampling.
+    double zoom_factor = 1.0;
+    /// --resample: the filter of that pass (default: render::resample_filter_for).
+    std::optional<render::ResampleFilter> resample;
     std::uint64_t time = 0;
     std::optional<std::pair<int, int>> at;
     std::pair<int, int> size{1600, 900};

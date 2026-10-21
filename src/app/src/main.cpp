@@ -1,7 +1,8 @@
 // anno1503: the rebuild's entry point; for now the M1.6 island viewer.
 //
 //   anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>]
-//            [--png <out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]]
+//            [--png <out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]
+//                              [--zoom-factor <scale>] [--resample nearest|bilinear|box|area]]
 //            [--water original|enhanced] [--river-flow legacy|flow] [--river-gain <x>]
 //            [--river-speed median|fastest] [--river-gap-patch <tiles>]
 //            [--renderer auto|gpu|cpu] [--lookahead-chunks <n>]
@@ -67,7 +68,8 @@ using anno::render::WaterStyle;
 /// Headless --png: renders `region`, or the whole scene, at `group`.
 int write_scene_png(const anno::render::Scene& scene, std::size_t group, std::optional<Rect> region,
                     const fs::path& out, std::uint64_t time, WaterStyle style,
-                    anno::render::RiverFlowMode river_flow) {
+                    anno::render::RiverFlowMode river_flow, double zoom_factor,
+                    std::optional<anno::render::ResampleFilter> filter) {
     const auto rect = region ? region : scene.bounds(group);
     if (!rect) {
         std::fprintf(stderr, "%s: no islands\n", scene.name.c_str());
@@ -86,7 +88,27 @@ int write_scene_png(const anno::render::Scene& scene, std::size_t group, std::op
     layers.time_ms = time;
     layers.water_style = style;
     layers.river_flow = river_flow;
-    const auto [canvas, st] = scene.render(*rect, group, layers);
+    // --zoom-factor: `rect` is the picture (in output pixels); the grid it shows is composed
+    // at `group` and resampled by the CPU model of the GPU pass (the reference at a
+    // fractional scale, iso.md "Continuous zoom").
+    std::optional<anno::render::ResampledView> zoomed;
+    if (zoom_factor != 1.0 || filter) {
+        zoomed = anno::render::resampled_view(
+            rect->x + rect->w / 2.0, rect->y + rect->h / 2.0, static_cast<std::uint32_t>(rect->w),
+            static_cast<std::uint32_t>(rect->h), zoom_factor,
+            anno::render::resample_filter_for(zoom_factor, filter));
+    }
+    auto [canvas, st] = scene.render(zoomed ? zoomed->view : *rect, group, layers);
+    if (zoomed) {
+        anno::render::Canvas shown;
+        shown.width = static_cast<std::size_t>(rect->w);
+        shown.height = static_cast<std::size_t>(rect->h);
+        shown.pixels.resize(shown.width * shown.height * 4);
+        anno::render::cpu_resample(canvas.pixels.data(), zoomed->view.w, zoomed->view.h,
+                                   zoomed->resample, static_cast<std::uint32_t>(rect->w),
+                                   static_cast<std::uint32_t>(rect->h), shown.pixels.data());
+        canvas = std::move(shown);
+    }
     std::fprintf(stderr,
                  "%s: group %zu %dx%d px, %zu islands drawn (%zu without ground), objects %zu "
                  "drawn, %zu invisible, %zu failed, %zu units drawn\n",
@@ -137,7 +159,7 @@ int run(const std::vector<std::string>& raw) {
                           args->size.second};
         }
         return write_scene_png(scene, group, region, *args->png, args->time, args->water,
-                               args->river_flow);
+                               args->river_flow, args->zoom_factor, args->resample);
     }
 #ifdef ANNO_WITH_VIEWER
     if (args->zoom.mode == anno::app::ZoomMode::Continuous &&

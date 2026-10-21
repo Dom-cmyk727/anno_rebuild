@@ -263,10 +263,6 @@ constexpr std::size_t kPieceStride = 256;
 /// Bytes of the resample uniform (struct Scale in gpu.wgsl): four 4-byte words
 /// of the scale, the offset and the filter, then the grid size, taps and padding.
 constexpr std::size_t kScaleBytes = 32;
-/// Most samples per axis of a Box resample: a scale down to 1/8 averages 64
-/// samples per output pixel (8 x 8); below that the picture would skip grid
-/// pixels again, and a smaller scale needs mips of the grid (T3 stage 3).
-constexpr std::uint32_t kMaxBoxTaps = 8;
 
 struct GpuFrame::Impl {
     /// Own references to the device (the Context may move or go away).
@@ -1833,37 +1829,6 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     }
     m.start_prewarm();
     return f;
-}
-
-ResampledView resampled_view(double cx, double cy, std::uint32_t out_w, std::uint32_t out_h,
-                             double scale, ResampleFilter filter, std::uint32_t max_grid) {
-    // The grid's size is out / scale plus the filters' reach plus the rounding up to
-    // kResampleGridStep (at most 2 + kResampleGridStep): the smallest scale that
-    // fits max_grid.
-    constexpr double kSlack = 2.0 + kResampleGridStep;
-    const double fit = static_cast<double>(std::max(out_w, out_h)) /
-                       std::max(static_cast<double>(max_grid) - kSlack, 1.0);
-    scale = std::clamp(std::max(scale, fit), 1.0 / 64.0, 64.0);
-    // The output's left/top edge in grid pixels, and its far edge.
-    const double x0 = cx - static_cast<double>(out_w) / (2.0 * scale);
-    const double y0 = cy - static_cast<double>(out_h) / (2.0 * scale);
-    const double x1 = x0 + static_cast<double>(out_w) / scale;
-    const double y1 = y0 + static_cast<double>(out_h) / scale;
-    ResampledView r;
-    r.view.x = static_cast<int>(std::floor(x0));
-    r.view.y = static_cast<int>(std::floor(y0));
-    // One more pixel than the far edge needs: the bilinear filter reads the next
-    // pixel, and the box filter's footprint reaches half an output pixel past.
-    auto round_up = [](int v) {
-        return (v + kResampleGridStep - 1) / kResampleGridStep * kResampleGridStep;
-    };
-    r.view.w = round_up(static_cast<int>(std::ceil(x1)) - r.view.x + 1);
-    r.view.h = round_up(static_cast<int>(std::ceil(y1)) - r.view.y + 1);
-    r.resample.scale = scale;
-    r.resample.offset_x = x0 - static_cast<double>(r.view.x);
-    r.resample.offset_y = y0 - static_cast<double>(r.view.y);
-    r.resample.filter = filter;
-    return r;
 }
 
 GpuFrame::~GpuFrame() = default;

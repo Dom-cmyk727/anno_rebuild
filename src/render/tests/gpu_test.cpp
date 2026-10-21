@@ -3916,6 +3916,89 @@ TEST_CASE(
     CHECK(g.errors() == 0);
 }
 
+TEST_CASE("cpu_resample is the resample pass: GPU equals it on real views (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    limits.wave_simulation = false;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    struct Case {
+        const char* name;
+        Loaded loaded;
+    };
+    std::vector<Case> cases;
+    cases.push_back(
+        {"canyon island", load_island_scene(*dir, "Islands/Dschungel/D_256x256_0045_5B.scp")});
+    cases.push_back({"Single_24", load_scene(*dir, "Single_24.sze")});
+    constexpr std::uint32_t kW = 400, kH = 300;
+    for (Case& cs : cases) {
+        render::Scene& scene = *cs.loaded.scene;
+        const auto b = *scene.bounds(2);
+        render::FrameRenderer cpu(4, false), on_gpu(4, false);
+        for (const double scale : {0.8, 1.3}) {
+            for (const auto filter : {gpu::ResampleFilter::Nearest, gpu::ResampleFilter::Bilinear,
+                                      gpu::ResampleFilter::Box, gpu::ResampleFilter::Area}) {
+                const auto rv = gpu::resampled_view(
+                    b.x + b.w / 2.0, b.y + b.h / 2.0, kW, kH, scale,
+                    scale < 1.0 && filter == gpu::ResampleFilter::Area ? gpu::ResampleFilter::Box
+                                                                       : filter);
+                const auto gw = static_cast<std::uint32_t>(rv.view.w);
+                const auto gh = static_cast<std::uint32_t>(rv.view.h);
+                const auto grid_t = g.offscreen_target(gw, gh);
+                const auto out_t = g.offscreen_target(kW, kH);
+                for (int f = 0; f < 4; ++f) {
+                    g.render(on_gpu, scene, rv.view, 2, 925, render::WaterStyle::Original,
+                             grid_t.second.get());
+                }
+                const auto grid = g.read_back(grid_t.first.get(), gw, gh);
+                for (int f = 0; f < 2; ++f) {
+                    g.render(on_gpu, scene, rv.view, 2, 925, render::WaterStyle::Original,
+                             out_t.second.get(), &rv.resample);
+                }
+                const auto have = g.read_back(out_t.first.get(), kW, kH);
+                std::vector<std::uint8_t> want(std::size_t{kW} * kH * 4);
+                render::cpu_resample(grid.data(), rv.view.w, rv.view.h, rv.resample, kW, kH,
+                                     want.data());
+                REQUIRE(have.size() == want.size());
+                int worst = 0;
+                std::size_t off = 0;
+                for (std::size_t i = 0; i < want.size(); ++i) {
+                    const int d = std::abs(int{have[i]} - int{want[i]});
+                    worst = std::max(worst, d);
+                    off += d > 1 ? 1U : 0U;
+                }
+                // The CPU path end to end: the CPU frame of the same grid, resampled on the CPU.
+                std::vector<std::uint32_t> cpu_grid(std::size_t{gw} * gh),
+                    cpu_out(std::size_t{kW} * kH);
+                cpu.render(scene, rv.view, 2, 925, render::WaterStyle::Original, cpu_grid.data());
+                render::cpu_resample(cpu_grid.data(), rv.view.w, rv.view.h, rv.resample, kW, kH,
+                                     cpu_out.data());
+                const auto [max, differ] = difference(cpu_out, have);
+                MESSAGE(cs.name << " scale " << scale << " filter " << static_cast<int>(filter)
+                                << ": GPU vs cpu_resample(GPU grid) worst " << worst << ", " << off
+                                << " channels > 1; GPU vs the CPU path max " << max << ", "
+                                << differ << " pixels > 2");
+                // The same grid: the model is the shader up to float rounding at a pixel edge.
+                CHECK(worst <= 1);
+                // The CPU path's grid differs from the GPU's as in the plain frames (max 3).
+                CHECK(max <= 3);
+                CHECK(differ <= cpu_out.size() / 1000);
+            }
+        }
+    }
+    CHECK(g.errors() == 0);
+}
+
 TEST_CASE("derived levels: the box at scale 0.5 of a level equals the coarser level (synthetic)") {
     // iso.md "Choosing the level": a switch between two derived levels at scale 0.5
     // must not change the picture. The coarser level's chunk is the 2 x 2 reduction of

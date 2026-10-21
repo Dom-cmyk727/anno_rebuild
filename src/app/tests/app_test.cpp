@@ -481,3 +481,29 @@ TEST_CASE("zoom_advance: the zoom is held while the next coarser level is not re
     // The 8192 limit of the grid: a window the hold alone would not keep within it gets
     // its scale raised by resampled_view (gpu_test: "resampled_view: ... limits").
 }
+
+TEST_CASE("--zoom-factor and --resample: the headless picture at a fractional scale") {
+    using anno::app::parse_args;
+    const auto d = parse_args({"--view", "x.scp", "--png", "o.png"});
+    REQUIRE(d);
+    CHECK(d->zoom_factor == 1.0);
+    CHECK_FALSE(d->resample.has_value());
+    const auto z = parse_args(
+        {"--view", "x.scp", "--png", "o.png", "--zoom-factor", "1.3", "--resample", "area"});
+    REQUIRE(z);
+    CHECK(z->zoom_factor == 1.3);
+    CHECK(z->resample == anno::render::ResampleFilter::Area);
+    for (const char* f : {"nearest", "bilinear", "box", "area"}) {
+        CHECK(parse_args({"--view", "x.scp", "--png", "o.png", "--resample", f}));
+    }
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--png", "o.png", "--resample", "lanczos"}));
+    CHECK(parse_args({"--view", "x.scp", "--png", "o.png", "--zoom-factor", "0.015625"}));
+    CHECK(parse_args({"--view", "x.scp", "--png", "o.png", "--zoom-factor", "64"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--png", "o.png", "--zoom-factor", "0.015"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--png", "o.png", "--zoom-factor", "64.5"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--png", "o.png", "--zoom-factor", "nan"}));
+    // The headless options need --png.
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-factor", "1.3"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--resample", "box"}));
+    CHECK(parse_args({"--view", "x.scp", "--zoom-factor", "1"}));
+}

@@ -12,10 +12,16 @@
 //       [--zoom-dump-after a,b,...] [--zoom-pan dx,dy[,frames]] [--pop on|off]
 //   bench_frame <game_dir> <file> --renderer gpu --scale-cost group:scale[:filter],..
 //                                (GPU time of continuous zoom frames, compositor + resample)
+//   bench_frame <game_dir> <file> --zoom-factor f [--resample nearest|bilinear|box|area] ...
+//                                (every frame composes the grid of the group and resamples it
+//                                to the window at f output pixels per grid pixel; CPU:
+//                                cpu_resample)
 //   bench_frame <game_dir> <file> --derived n --groups 2,3,..,2+n ...   (the paths above at the
-//                                derived zoom levels after group 2: each is the level above reduced 2x)
+//                                derived zoom levels after group 2: each is the level above reduced
+//                                2x)
 //   bench_frame <game_dir> <file> --fill-time [--derive old|cache] [--threads n] [--res WxH]
-//                                (the first zoom-out: ms until the window's chunks are cached, levels 3-5)
+//                                (the first zoom-out: ms until the window's chunks are cached,
+//                                levels 3-5)
 //   bench_frame --list-adapters
 //   bench_frame <game_dir> <file> --river-cost      (GPU cost of the river shading, synthetic)
 //
@@ -74,6 +80,7 @@
 #include <anno/app/loader.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/render/profile.hpp>
+#include <anno/render/resample.hpp>
 #include <anno/render/scene.hpp>
 #ifdef ANNO_BENCH_GPU
 #include <fstream>
@@ -155,6 +162,11 @@ struct Options {
     bool fill_time = false, derive_from_cache = true;
     /// --derived n: n derived zoom levels after group 2 (the groups 3.. of --groups).
     std::size_t derived = 0;
+    /// --zoom-factor f [--resample filter]: every frame composes the grid of the group
+    /// and resamples it onto the window at f output pixels per grid pixel (GPU: the
+    /// resample pass; CPU: render::cpu_resample, in the frame's time).
+    double zoom_factor = 1.0;
+    std::optional<render::ResampleFilter> resample;
 };
 
 std::vector<std::string_view> split(std::string_view s, char sep) {
@@ -210,6 +222,8 @@ struct Row {
 };
 
 struct Config {
+    double zoom_factor = 1.0;
+    std::optional<render::ResampleFilter> resample;
     int w = 0, h = 0;
     std::size_t group = 0;
     render::WaterStyle style = render::WaterStyle::Original;
@@ -847,11 +861,21 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
     // One frame on the selected renderer; measured GPU frames wait for the
     // card (warm-up frames do not, as the Rust benchmark).
     std::size_t frame_group = c.group;
+    std::vector<std::uint32_t> grid_buffer;
     auto frame = [&](render::Rect view, std::uint64_t t, bool wait_gpu) -> Row {
+        // --zoom-factor: the grid composed for the window at the factor, then resampled.
+        std::optional<render::ResampledView> zoomed;
+        if (c.zoom_factor != 1.0 || c.resample) {
+            zoomed = render::resampled_view(view.x + view.w / 2.0, view.y + view.h / 2.0,
+                                            static_cast<std::uint32_t>(c.w),
+                                            static_cast<std::uint32_t>(c.h), c.zoom_factor,
+                                            render::resample_filter_for(c.zoom_factor, c.resample));
+        }
+        const render::Rect grid_view = zoomed ? zoomed->view : view;
 #ifdef ANNO_BENCH_GPU
         if (g != nullptr) {
-            const auto st =
-                g->render(fr, scene, view, frame_group, t, c.style, target->second.get());
+            const auto st = g->render(fr, scene, grid_view, frame_group, t, c.style,
+                                      target->second.get(), zoomed ? &zoomed->resample : nullptr);
             Row r;
             r.total = st.total_ms;
             r.built = st.chunks_built;
@@ -900,9 +924,24 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
         }
 #endif
         (void)wait_gpu;
-        const auto st = fr.render(scene, view, frame_group, t, c.style, out.data());
+        double resample_ms = 0;
+        render::FrameStats st;
+        if (zoomed) {
+            grid_buffer.resize(static_cast<std::size_t>(grid_view.w) *
+                               static_cast<std::size_t>(grid_view.h));
+            st = fr.render(scene, grid_view, frame_group, t, c.style, grid_buffer.data());
+            const auto t0 = std::chrono::steady_clock::now();
+            render::cpu_resample(grid_buffer.data(), grid_view.w, grid_view.h, zoomed->resample,
+                                 static_cast<std::uint32_t>(c.w), static_cast<std::uint32_t>(c.h),
+                                 out.data());
+            resample_ms =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+                    .count();
+        } else {
+            st = fr.render(scene, view, frame_group, t, c.style, out.data());
+        }
         Row r;
-        r.total = st.total_ms;
+        r.total = st.total_ms + resample_ms;
         r.built = st.chunks_built;
         r.chunk_ms = st.chunks_ms;
         r.missing = st.chunks_missing;
@@ -1363,6 +1402,8 @@ constexpr const char* kUsage =
     "[--res ..] [--groups ..]\n"
     "       bench_frame <game_dir> <file> --chunk-profile threads,.. [--chunk-limit n] "
     "[--groups ..] [--island n]\n"
+    "       bench_frame <game_dir> <file> --zoom-factor f [--resample nearest|bilinear|box|area] "
+    "[--renderer cpu,gpu] [--groups ..]\n"
     "       bench_frame <game_dir> <file> --renderer cpu,gpu --derived n --groups 0,..,2+n "
     "(derived zoom levels after group 2)\n"
     "       bench_frame <game_dir> <file> --fill-time [--derive old|cache] [--threads n] "
@@ -1458,6 +1499,14 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = v == "legacy" || v == "flow";
             o.river_flow =
                 v == "legacy" ? render::RiverFlowMode::Legacy : render::RiverFlowMode::Flow;
+        } else if (a == "--zoom-factor") {
+            ok = parse(v, o.zoom_factor) && o.zoom_factor >= 1.0 / 64.0 && o.zoom_factor <= 64.0;
+        } else if (a == "--resample") {
+            ok = v == "nearest" || v == "bilinear" || v == "box" || v == "area";
+            o.resample = v == "nearest"    ? render::ResampleFilter::Nearest
+                         : v == "bilinear" ? render::ResampleFilter::Bilinear
+                         : v == "box"      ? render::ResampleFilter::Box
+                                           : render::ResampleFilter::Area;
         } else if (a == "--derived") {
             ok = parse(v, o.derived) && o.derived <= 24;
         } else if (a == "--derive") {
@@ -1788,6 +1837,8 @@ int main(int argc, char** argv) {
                         c.settle_ms = o->settle_ms;
                         c.river_flow = o->river_flow;
                         c.river_pass = o->river_pass;
+                        c.zoom_factor = o->zoom_factor;
+                        c.resample = o->resample;
                         c.zoom_every = o->zoom_every;
                         c.zoom_frames = o->zoom_frames;
                         c.pace_ms = o->pace_ms;

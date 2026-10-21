@@ -1588,7 +1588,14 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
 }
 
 ResampledView resampled_view(double cx, double cy, std::uint32_t out_w, std::uint32_t out_h,
-                             double scale, ResampleFilter filter) {
+                             double scale, ResampleFilter filter, std::uint32_t max_grid) {
+    // The grid's size is out / scale plus the filters' reach plus the rounding up to
+    // kResampleGridStep (at most 2 + kResampleGridStep): the smallest scale that
+    // fits max_grid.
+    constexpr double kSlack = 2.0 + kResampleGridStep;
+    const double fit = static_cast<double>(std::max(out_w, out_h)) /
+                       std::max(static_cast<double>(max_grid) - kSlack, 1.0);
+    scale = std::clamp(std::max(scale, fit), 1.0 / 64.0, 64.0);
     // The output's left/top edge in grid pixels, and its far edge.
     const double x0 = cx - static_cast<double>(out_w) / (2.0 * scale);
     const double y0 = cy - static_cast<double>(out_h) / (2.0 * scale);
@@ -1599,8 +1606,11 @@ ResampledView resampled_view(double cx, double cy, std::uint32_t out_w, std::uin
     r.view.y = static_cast<int>(std::floor(y0));
     // One more pixel than the far edge needs: the bilinear filter reads the next
     // pixel, and the box filter's footprint reaches half an output pixel past.
-    r.view.w = static_cast<int>(std::ceil(x1)) - r.view.x + 1;
-    r.view.h = static_cast<int>(std::ceil(y1)) - r.view.y + 1;
+    auto round_up = [](int v) {
+        return (v + kResampleGridStep - 1) / kResampleGridStep * kResampleGridStep;
+    };
+    r.view.w = round_up(static_cast<int>(std::ceil(x1)) - r.view.x + 1);
+    r.view.h = round_up(static_cast<int>(std::ceil(y1)) - r.view.y + 1);
     r.resample.scale = scale;
     r.resample.offset_x = x0 - static_cast<double>(r.view.x);
     r.resample.offset_y = y0 - static_cast<double>(r.view.y);

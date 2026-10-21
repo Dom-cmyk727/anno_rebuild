@@ -1,6 +1,7 @@
 // anno_app_core: PNG output (always) and scene loading (needs
 // ANNO1503_GAME_DIR; skips otherwise).
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -12,6 +13,7 @@
 #include <anno/app/cli.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/app/png.hpp>
+#include <anno/app/zoom.hpp>
 #include <anno/test/game_dir.hpp>
 
 namespace fs = std::filesystem;
@@ -217,4 +219,127 @@ TEST_CASE("command line") {
     // UTF-8 paths round-trip.
     const std::string umlaut = "Insel_\xc3\xa4.scp";
     CHECK(anno::app::to_utf8(anno::app::utf8_path(umlaut)) == umlaut);
+}
+
+TEST_CASE("zoom_args: the bounds of the zoom options are inclusive and exact") {
+    using anno::app::parse_args;
+    CHECK(parse_args({"--view", "x.scp", "--zoom-step", "1.01"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-step", "1.009"}));
+    CHECK(parse_args({"--view", "x.scp", "--zoom-ease", "2000"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-ease", "2001"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-step", "nan"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-step", "inf"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--zoom-step", ""}));
+    const auto back =
+        parse_args({"--view", "x.scp", "--zoom-mode", "continuous", "--zoom-mode", "stepped"});
+    REQUIRE(back);
+    CHECK(back->zoom.mode == anno::app::ZoomMode::Stepped);
+}
+
+namespace {
+
+anno::app::ZoomState zoom_state(double now, std::size_t group) {
+    anno::app::ZoomState s;
+    s.now = s.target = now;
+    s.group = group;
+    s.cam_x = 1000.0;
+    s.cam_y = 700.0;
+    return s;
+}
+
+const auto kAllReady = [](std::size_t) { return true; };
+
+/// The scene point under the screen offset (ax, ay) from the window centre, in
+/// the scene pixels of group 0 (the same for every group): cam + a / scale,
+/// converted by the tile ratio.
+std::pair<double, double> scene_point(const anno::app::ZoomState& s) {
+    const double k = static_cast<double>(anno::render::kTile[0].w) /
+                     static_cast<double>(anno::render::kTile[s.group].w);
+    const double sc = anno::app::zoom_scale(s);
+    return {(s.cam_x + s.anchor_x / sc) * k, (s.cam_y + s.anchor_y / sc) * k};
+}
+
+} // namespace
+
+TEST_CASE("zoom_advance: the point under the anchor stays fixed, also across a group switch") {
+    using namespace anno::app;
+    ZoomState s = zoom_state(42.0, 1);
+    s.anchor_x = 300.0;
+    s.anchor_y = -120.0;
+    const auto before = scene_point(s);
+    // Zoom out in small steps to the end of the range, through the switch to group 2.
+    s.target = zoom_target_after(s.target, 0.0001);
+    std::size_t switches = 0;
+    for (int i = 0; i < 400; ++i) {
+        const std::size_t g = s.group;
+        s = zoom_advance(s, 8.0, 120, kAllReady);
+        switches += s.group != g ? 1U : 0U;
+        const auto p = scene_point(s);
+        // Integer tile ratios differ from the exact scale ratio by the tile size's
+        // rounding only through the conversion, which the ratio keeps exact.
+        CHECK(p.first == doctest::Approx(before.first).epsilon(1e-9));
+        CHECK(p.second == doctest::Approx(before.second).epsilon(1e-9));
+    }
+    CHECK(switches == 1);
+    CHECK(s.group == 2);
+    CHECK(s.now == s.target);
+}
+
+TEST_CASE("zoom_advance: easing covers 95 % in ease_ms, steps compose, 0 jumps, rest stays") {
+    using namespace anno::app;
+    ZoomState s = zoom_state(42.0, 1);
+    s.target = 42.0 * 1.3;
+    const double start = std::log(s.target / s.now);
+    // One step of the whole ease time: e^-3 of the distance is left.
+    const ZoomState one = zoom_advance(s, 120.0, 120, kAllReady);
+    CHECK(std::log(one.target / one.now) / start == doctest::Approx(std::exp(-3.0)).epsilon(1e-9));
+    // The exponential composes: two half steps equal one whole.
+    ZoomState two = zoom_advance(s, 60.0, 120, kAllReady);
+    two = zoom_advance(two, 60.0, 120, kAllReady);
+    CHECK(two.now == doctest::Approx(one.now).epsilon(1e-12));
+    // No time, no move; ease 0 jumps to the target at once.
+    CHECK(zoom_advance(s, 0.0, 120, kAllReady).now == s.now);
+    CHECK(zoom_advance(s, 5.0, 0, kAllReady).now == s.target);
+    // Far from the target it converges monotonically and lands exactly (the snap).
+    double last = s.now;
+    for (int i = 0; i < 200 && s.now != s.target; ++i) {
+        s = zoom_advance(s, 8.0, 120, kAllReady);
+        CHECK(s.now >= last);
+        last = s.now;
+    }
+    CHECK(s.now == s.target);
+    // At rest nothing moves (the camera stays).
+    const ZoomState rest = zoom_advance(s, 8.0, 120, kAllReady);
+    CHECK(rest.cam_x == s.cam_x);
+    CHECK(rest.now == s.now);
+}
+
+TEST_CASE("zoom_advance: the group switch has hysteresis, waits for ready, and is taken at rest") {
+    using namespace anno::app;
+    const auto& kt = anno::render::kTile;
+    // The middle between groups 0 and 1 (tile widths 84 and 42), in the logarithm.
+    const double mid = std::sqrt(static_cast<double>(kt[0].w) * static_cast<double>(kt[1].w));
+    auto at = [&](double w, std::size_t group, auto&& ready) {
+        ZoomState s = zoom_state(w, group);
+        return zoom_advance(s, 8.0, 120, ready).group;
+    };
+    // Just on either side of the middle the shown group stays: the switch needs
+    // the zoom to be kGroupSwitchBias closer (in the logarithm) to the other.
+    CHECK(at(mid * 1.001, 1, kAllReady) == 1);
+    CHECK(at(mid / 1.001, 0, kAllReady) == 0);
+    // Far enough on the other side it switches.
+    CHECK(at(mid * 1.05, 1, kAllReady) == 0);
+    CHECK(at(mid / 1.05, 0, kAllReady) == 1);
+    // A group that is not ready is not taken.
+    CHECK(at(mid * 1.05, 1, [](std::size_t g) { return g != 0; }) == 1);
+    // At rest the group is chosen too: the zoom 1.3 times group 1's tile width is
+    // nearest group 1 itself, so a viewer left on group 0 comes back to it.
+    CHECK(at(42.0 * 1.3, 0, kAllReady) == 1);
+    // The ends: beyond group 0's tile width the nearest group is still 0.
+    CHECK(at(static_cast<double>(kt[0].w) * kZoomEndFactor, 0, kAllReady) == 0);
+    // The wanted width is kept inside the range.
+    CHECK(zoom_target_after(42.0, 1000.0) ==
+          doctest::Approx(static_cast<double>(kt[0].w) * kZoomEndFactor));
+    CHECK(zoom_target_after(42.0, 0.001) ==
+          doctest::Approx(static_cast<double>(kt[anno::render::kGroups - 1].w) / kZoomEndFactor));
 }

@@ -372,8 +372,16 @@ struct ResampledView {
     Rect view;
     Resample resample;
 };
+/// The grid is rounded up to a multiple of kResampleGridStep in each direction so
+/// that its size (and so the size of the textures composed into) stays the same
+/// while the camera or the scale moves a little. `scale` is limited to
+/// [1 / 64, 64] (a Box filter undersamples below 1 / 8 anyway) and raised when
+/// the grid would not fit `max_grid` pixels (default: the 8192 every WebGPU
+/// device offers as maxTextureDimension2D), so a very large window zooms in a
+/// little more than asked instead of failing to create its textures.
+inline constexpr int kResampleGridStep = 64;
 ResampledView resampled_view(double cx, double cy, std::uint32_t out_w, std::uint32_t out_h,
-                             double scale, ResampleFilter filter);
+                             double scale, ResampleFilter filter, std::uint32_t max_grid = 8192);
 
 class GpuFrame {
   public:

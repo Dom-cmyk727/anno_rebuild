@@ -12,6 +12,7 @@
 #include <thread>
 #include <vector>
 
+#include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
 #ifdef ANNO_VIEWER_GPU
 #include <anno/render/gpu.hpp>
@@ -253,18 +254,6 @@ gpu::ResampleFilter resample_filter(double s) {
     return s < 1.0 ? gpu::ResampleFilter::Box : gpu::ResampleFilter::Nearest;
 }
 #endif
-
-/// How far past the first and last zoom group's own tile width the continuous
-/// zoom may go: the geometric middle between two groups (a group's picture is
-/// scaled by at most this factor when the group shown is the nearest one), so
-/// the range ends half a group beyond group 0 (upscaled) and group 2 (reduced).
-/// Reaching further out needs mips of the composed grid (T3 stage 3).
-constexpr double kZoomEndFactor = 1.4142135623730951;
-/// The zoom group is switched only when the logarithm of the ratio of the zoom
-/// to another group's tile width is smaller than the shown group's by this
-/// factor: hysteresis, so a zoom resting at the middle between two groups does
-/// not flip between them (each flip changes the chunks drawn).
-constexpr double kGroupSwitchBias = 1.05;
 
 class Viewer {
   public:
@@ -748,8 +737,11 @@ void Viewer::toggle_pause() {
 }
 
 void Viewer::pan(double dx, double dy) {
-    cam_x_ += dx;
-    cam_y_ += dy;
+    // Screen pixels to scene pixels of the group shown: at scale s a drag of d
+    // screen pixels moves the picture by d (the point under the cursor follows it).
+    const double s = scale();
+    cam_x_ += dx / s;
+    cam_y_ += dy / s;
     clamp();
     dirty_ = true;
 }
@@ -785,6 +777,9 @@ void Viewer::zoom(int step, std::optional<std::pair<double, double>> anchor) {
     cam_x_ = px - dx;
     cam_y_ = py - dy;
     group_ = g;
+    // A stepped zoom in the continuous mode (the test script, a pending step)
+    // lands on the group's own scale.
+    zoom_now_ = zoom_target_ = static_cast<double>(render::kTile[g].w);
     clamp();
     update_title();
     dirty_ = true;
@@ -799,10 +794,7 @@ void Viewer::zoom_by(double factor, std::optional<std::pair<double, double>> anc
     const auto [w, h] = view_size();
     zoom_anchor_ =
         anchor ? std::pair{anchor->first - w / 2.0, anchor->second - h / 2.0} : std::pair{0.0, 0.0};
-    zoom_target_ =
-        std::clamp(zoom_target_ * factor,
-                   static_cast<double>(render::kTile[render::kGroups - 1].w) / kZoomEndFactor,
-                   static_cast<double>(render::kTile[0].w) * kZoomEndFactor);
+    zoom_target_ = zoom_target_after(zoom_target_, factor);
     dirty_ = true;
 }
 
@@ -819,51 +811,39 @@ void Viewer::zoom_tick() {
     const auto now = Clock::now();
     const double dt_ms = std::chrono::duration<double, std::milli>(now - zoom_tick_).count();
     zoom_tick_ = now;
-    if (zoom_now_ == zoom_target_) {
-        return;
-    }
-    // Ease-out in the logarithm of the zoom (equal wheel notches move the
-    // picture equally fast at every scale): the remaining distance shrinks by
-    // e^-3 (95 % covered) in ease_ms.
-    const double remaining = std::log(zoom_target_ / zoom_now_);
-    double next = zoom_target_;
-    if (zoom_opt_.ease_ms > 0 && std::abs(remaining) > 1e-4) {
-        const double covered =
-            1.0 - std::exp(-3.0 * dt_ms / static_cast<double>(zoom_opt_.ease_ms));
-        next = zoom_now_ * std::exp(remaining * covered);
-    }
-    // The point under the anchor stays where it is on the screen: the camera
-    // (the scene point at the window centre) moves by the anchor's offset times
-    // the change of a screen pixel's size in scene pixels.
-    const double tile_now = static_cast<double>(render::kTile[group_].w);
-    const double s_old = zoom_now_ / tile_now, s_new = next / tile_now;
-    cam_x_ += zoom_anchor_.first * (1.0 / s_old - 1.0 / s_new);
-    cam_y_ += zoom_anchor_.second * (1.0 / s_old - 1.0 / s_new);
-    zoom_now_ = next;
-    // The group whose tile width is nearest in ratio shows the picture (its
-    // picture is then scaled by the least), once it is ready and the zoom is
-    // clearly closer to it than to the one shown.
-    auto distance = [&](std::size_t g) {
-        return std::abs(std::log(zoom_now_ / static_cast<double>(render::kTile[g].w)));
-    };
-    std::size_t best = group_;
-    for (std::size_t g = 0; g < render::kGroups; ++g) {
-        if (g != group_ && distance(g) * kGroupSwitchBias < distance(best) && group_ready(g)) {
-            best = g;
-        }
-    }
-    if (best != group_) {
-        // Screen coordinates are linear in tile coordinates per group (as zoom()).
-        const auto ot = render::kTile[group_], nt = render::kTile[best];
-        cam_x_ = cam_x_ * nt.w / ot.w;
-        cam_y_ = cam_y_ * nt.h / ot.h;
-        group_ = best;
+    ZoomState s;
+    s.now = zoom_now_;
+    s.target = zoom_target_;
+    s.anchor_x = zoom_anchor_.first;
+    s.anchor_y = zoom_anchor_.second;
+    s.cam_x = cam_x_;
+    s.cam_y = cam_y_;
+    s.group = group_;
+    const std::size_t before = group_;
+    s = zoom_advance(s, dt_ms, zoom_opt_.ease_ms, [this](std::size_t g) { return group_ready(g); });
+    zoom_now_ = s.now;
+    cam_x_ = s.cam_x;
+    cam_y_ = s.cam_y;
+    group_ = s.group;
+    if (group_ != before) {
         update_title();
     }
     clamp();
+    // Keep drawing while a nearer group is not ready yet (its sea pattern is still
+    // being built): the group is taken in the first frame it is.
+    std::size_t nearest = group_;
+    for (std::size_t g = 0; g < render::kGroups; ++g) {
+        if (std::abs(std::log(zoom_now_ / static_cast<double>(render::kTile[g].w))) *
+                kGroupSwitchBias <
+            std::abs(std::log(zoom_now_ / static_cast<double>(render::kTile[nearest].w)))) {
+            nearest = g;
+        }
+    }
     dirty_ = true;
+    if (zoom_now_ == zoom_target_ && nearest == group_) {
+        dirty_ = false;
+    }
 }
-
 bool Viewer::group_ready(std::size_t g) const {
 #ifdef ANNO_VIEWER_GPU
     if (gpu_) {

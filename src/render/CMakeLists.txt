@@ -5,6 +5,7 @@ add_library(anno_render
   src/fluid.cpp
   src/frame.cpp
   src/iso.cpp
+  src/profile.cpp
   src/river.cpp
   src/river_lattice.cpp
   src/river_solve.cpp

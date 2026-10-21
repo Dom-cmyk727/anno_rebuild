@@ -71,6 +71,18 @@ std::vector<Placement> layout(std::span<const IslandBox> boxes, std::size_t grou
 std::optional<Rect> scene_bounds(std::span<const Placement> placements);
 /// A transparent canvas covering `rect`.
 Canvas blank(Rect rect);
+
+/// One island's height grid as terrain_plane reads it (heights nullptr: the
+/// island has no ground).
+struct TerrainGrid {
+    const std::vector<std::uint8_t>* heights = nullptr;
+    std::size_t w = 0, h = 0;
+};
+/// Chunk::terrain for the pixels of `probe`: terrain_height at each pixel's
+/// position on its island (grid(i)), in 1/kTerrainScale HEIGHT units,
+/// kNoTerrain where no ground was drawn.
+std::vector<std::uint16_t> terrain_plane(const sea::SceneProbe& probe,
+                                         const std::function<TerrainGrid(std::uint32_t)>& grid);
 /// Composites src source-over onto dst; src's point (sx, sy) lands on dst's
 /// point (sx + offset.first, sy + offset.second).
 void composite(Canvas& dst, const Canvas& src, std::pair<int, int> offset);
@@ -271,6 +283,9 @@ class Scene {
     /// sprite covers the pixel. Enhanced water must carry water at all of them.
     [[nodiscard]] Canvas river_sprites(Rect rect, const sea::SceneProbe& probe,
                                        std::size_t group) const;
+    /// Chunk::terrain for the pixels of `probe`: terrain_at at each pixel in
+    /// 1/kTerrainScale HEIGHT units, kNoTerrain where no ground was drawn.
+    [[nodiscard]] std::vector<std::uint16_t> terrain_plane(const sea::SceneProbe& probe) const;
     /// QA/debug: the per-island water inputs (river level, smooth terrain).
     [[nodiscard]] const sea::IslandWater* island_water_info(std::size_t index) const {
         return island_water(index);

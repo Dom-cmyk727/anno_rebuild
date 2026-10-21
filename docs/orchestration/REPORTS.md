@@ -218,7 +218,7 @@ Please say which, with and without each switch. Mapping to the measured causes: 
 - Left open / questions for the owner: a pan of about 5000 px/s (12,6 px per frame) still shows open sea (hundreds of frames): chunk builds of 100-250 ms cannot keep up with a view crossing 1280 px in a quarter of a second; faster chunk building is the remaining lever (a new task, not a margin). Memory: the margin and the neighbouring groups' views stay in the CPU cache (4 MB per chunk) and up to 96 prefetched chunks on the GPU (about 384 MB), both bounded by config values with reasons (`max_lookahead_chunks`, `prefetch_chunks`); the owner should confirm the 150 ms dissolve (`chunk_fade_ms`) feels right. T10b is still needed for a green `-j 8` ctest with the game dir.
 - Owner check (one line): `cd C:\Users\altin\anno1503-T1d\build\msvc\src\app\Release; $g = "C:\Users\altin\anno1503\game\app"; .\anno1503.exe --view "$g\Scenes\Islands\Dschungel\D_256x256_0045_5B.scp" --game-dir $g --water enhanced` — pan with the mouse while zooming with the wheel. What to report: which of the four artifact kinds remain (blank/flashing patches; hard cut-offs or seams; blurry turning sharp; shimmering water or rivers); if it still pops at your normal pan speed, say how fast you move.
 - Time spent / subagents used: inline, no subagents.
-
+<<<<<<< HEAD
 ## T11 stage 0 — design — REVIEW — 2026-10-20 — status: FINISHED
 - Branch: task/T11-gpu-chunks at c749591 (design commit; this report is the next commit); worktree: C:\Users\altin\anno1503-T11. Docs only, no code.
 - Built: `docs/render/gpu-chunks.md` (sections 0 summary, 1 what exists with file:line, 2 measured numbers, 3 (a) draw list: 32-byte objects and ground records, clip table, bins, 4 (b) residency: frame ids, frame table, hot/static layer classes, layer-granular LRU, pinning, budget, 5 (c) passes: objects + base by an exact binned compute pass, ground + terrain by a render pass, plane usages, 6 (d) scheduling, 7 (e) CPU reference, stage-1 replay proof, GPU = CPU tests, synthetic scene, 8 (f) fallback switch, 9 (g) limits table, 10 (h) later extensions, 11 stages, 12 open questions C1-C5).
@@ -228,3 +228,155 @@ Please say which, with and without each switch. Mapping to the measured causes: 
 - Deviations from the task text, for review: (1) the objects and base planes are designed as a binned compute pass that repeats the CPU's integer `over` bit for bit, not as the blending render pass the entry names: fixed-function blending rounds where the CPU floors, so compounding shadows and shadows over translucent sprites drift by up to 1 per layer, and the per-island local canvas with its `base` reset cannot be repeated without an intermediate target per island (doc 5.1; the render pass is kept as the alternative, C1); (2) iso.md has no "Blitting" section, the doc cites the blitter code and iso.md "Objects"/"Fidelity"; (3) the CPU blitter does not implement `z` depth, `M` or `H`/`V` semantics (painter's approximation, OQ-026), so the GPU reproduces the blitter and the record only reserves a `depth` field; (4) the ground's GPU pass saves little until T1f item 2 removes the per-chunk probe (C2).
 - Left open / questions (candidates, no OQ numbers assigned; highest on main OQ-095): C1 compute vs blending pass (orchestrator); C2 ground in stage 2 or after T1f item 2 (orchestrator, T1f profile); C3 `atlas_budget_mb` default 512 discrete / 256 integrated (owner, a limit default); C4 switch names `--chunk-build cpu|gpu` (the entry's `--chunks gpu` collides with `--chunks blocking,async`) and `ANNO_VIEW_GPU_CHUNKS` (orchestrator); C5 whether WGSL compilers contract the ground's edge functions into FMAs (stage 2 measurement; decides the ground tolerance).
 - Time spent / subagents used: inline, no subagents; counting script at C:\Users\altin\AppData\Local\Temp\claude\C--Users-altin-anno1503\359b08b8-e128-41ac-ba6d-3278c074d82d\scratchpad\count_frames.py (not committed).
+## T1e — Pan while zooming: the T1d review findings — 2026-10-20 — status: FINISHED (OWNER-CHECK)
+- Branch: task/T1d-zoom-artifacts at fa1a6ba (12 commits on b0588c5: one per item 1-9, two for the reviewers' findings, one docs); worktree: C:\Users\altin\anno1503-T1d. Not pushed, not merged.
+- Built, per item:
+  1. `FrameRenderer::margin_keys()`; the compositor prefetches the margin of the group shown before the neighbouring groups' views (same cap and per-frame limit). A fade starts only over a placeholder an earlier frame drew (`it != end && !real`). **Defect found and fixed on the way:** with the placeholder replaced, nothing drew the open sea under a dissolve, so a fade from open sea started from the clear colour, not the sea pattern. The placeholder is now kept for the fade (`fade_under`) and drawn under the chunk. bench: `--zoom 0 --zoom-pan` is a plain pan; it counts the dissolves after the first second.
+  2. Fade clock: `GpuFrame::set_fade_clock`, a steady clock by default. The test holds the animation clock still.
+  3. Option 2 of the board: opaque ground and sea pipelines again, with blending variants only for the fading draws (they come last, so one switch per pass). No cost measurement: the cost is the pre-T1d one by construction.
+  4. `FrameRenderer::shown_over_stand_in`, set by GpuFrame before update_chunks: the visible chunks still drawn over a stand-in (not uploaded yet, or fading). Their sources are retained. The path without workers passes the retain to its trim as well.
+  5. Tests: "a chunk dissolves in over its stand-in…" (spare_chunks 0; the stand-in equals the CPU reference; within 2 levels at 1/4 = smoothstep 0.15625 and at 1/2; exact at the end); lookahead_rect at 1001 px/s, left+down, and the height cap; "the margin follows the view's velocity through update_chunks…" (an injected clock via `FrameRenderer::clock`; leading side, shrink after a stop, speed kept across a zoom step).
+  6. Velocity reset when the centre moves by more than the view's size on an axis (test: a wide view, each axis).
+  7. `open_sea_chunks` per uncovered area, `GpuStats::open_sea_px` (clipped to the view; includes the holes under a dissolving chunk).
+  8. Counted and measured numbers in the `max_lookahead_chunks` comment; `Chunk::bytes`, `FrameRenderer::cached_bytes`; `--lookahead-chunks` in the viewer (default 3, at most 16, cli test) and in bench_frame.
+  9. Nits: the pan-period comments, a CAS loop for `build_ms_`, the adjacent_keys doc, `replace_chunk` (prefetch pools the old planes). Deviation: `resident` is not a maintained counter. It is recounted over the margin and neighbour lists (their length, not every GPU chunk), only in frames that may prefetch. The prefetch_chunks comment now says that GPU chunk memory is bounded by the CPU cache.
+- Gates: msvc build warning-free; ctest without the game dir 616/616; with the game dir and 16 threads, 614/616: `scene renders match the recorded digests` and `rendered river pixels are the flow shading of the baked lattice…` threw `bad allocation` (T10), and both pass alone with -j 1. clang-format 23.1.3 clean over src; GCC 13 not run (render/app only); asan not run; agree.py n.a.
+- Evidence (docs/perf/README.md, "T1e"):
+  - **Plain pan**, 0 dissolves after the first second and 0 open sea:
+    - canyon 1280x800 at 1600 px/s;
+    - canyon 2560x1440, groups 0 and 2, at 1600 and 3200 px/s;
+    - Single_24 2560x1440, groups 0 and 2, at all three speeds.
+  - **Plain pan, only exception:** the canyon at 5000 px/s, group 0 (53 open-sea frames, 151 dissolve frames). This is build latency: nothing was built on the CPU.
+  - **Frame time:** max ≤ 6.5 ms everywhere. The prefetch uploads cost p95 at 1280x800 (0.4 → 1.7 ms).
+  - **Pan while zooming, open sea by area** (1280x800 canyon): 74-201 of 1600 frames show some open sea, up to 18 % of the view in one frame and up to one zoom interval long. T1d's "0 frames" was chunk-wise only.
+    - Not a T1e regression: a temporary T1d-order build gave 210-212 frames / 12-15 M px against 130-240 / 4-8 M px with T1e.
+    - All of it is unbuilt sources (T1f/T11).
+  - **Single_24, 2560x1440, zoom every 60 frames:** up to 27 % of the view.
+  - **CPU cache on Single_24:** peak 0.44-0.71 GB. `--lookahead-chunks` 2 vs 3 makes no measurable difference.
+  - **Mutation checks** (all failed as they should):
+    - stand-in retain off;
+    - retain without the fading keys;
+    - jump threshold ×100;
+    - in one build: margin/neighbour order swapped, a linear fade, the placeholder under the dissolve not drawn, and the covered parts not clipped to the view.
+- Reviewers (two, read-only, no builds):
+  - **A (code):** all items done. Found:
+    - stale docs: fixed in iso.md and the README;
+    - a possible starvation of the margin by the shared cap at 2560x1440: not seen in 12 bench runs, see above;
+    - the dissolving chunk's holes not counted: fixed;
+    - bench `--lookahead-chunks` unbounded (int overflow in lookahead_rect): bounded to 16;
+    - the cap no longer bounding residency: documented;
+    - the counter deviation: stated above.
+  - **B (tests):**
+    - margin-before-neighbours order untested: the cap now equals the margin and neighbours are built, so a swap fails;
+    - the curve was checked only at 1/2: 1/4 added;
+    - no rebuild-without-fade test: added;
+    - the clip to the view not exercised: the test now picks the part past the edge and adds stand-ins off;
+    - the jump test was square: now a wide view;
+    - CLI bounds: added.
+    - Its claim that the open-sea dissolve test cannot see `fade_under` is contradicted by the run before the fix (start check 0 of 63,667 pixels) and by the mutation.
+    - Not done: a real-clock test for the default fade clock (would be time-based); a sea-field (cover > 0) dissolve case.
+- Left open / questions:
+  - (a) The open sea by area during pan-while-zoom is the next lever after T1e. It is not fixable by the margin and needs faster chunk builds (T1f items 2-3, T11). The orchestrator may want an acceptance number per area for T1f/T11.
+  - (b) The owner should confirm the 150 ms dissolve.
+  - (c) The wave window rebuilds per zoom step for about 85 ms (bench transients). This is pre-existing (OQ-076).
+  - (d) T10b is still needed for a green `-j 16` with the game dir.
+- Also done this session: **T11 stage 0** (design) by a subagent in worktree `C:\Users\altin\anno1503-T11`, branch `task/T11-gpu-chunks` at f3546f7 (`docs/render/gpu-chunks.md`, report appended on that branch). Open questions C1-C5 are in the doc; C1 (compute pass instead of a blending render pass, for exact integer compositing) needs the orchestrator. T1f's profile was not started: it needs builds and benchmarks, and T1e owned the machine.
+- Owner check: `cd C:\Users\altin\anno1503-T1d\build\msvc\src\app\Release; $g = "C:\Users\altin\anno1503\game\app"; .\anno1503.exe --view "$g\Scenes\Islands\Dschungel\D_256x256_0045_5B.scp" --game-dir $g --water enhanced`. Please check:
+  - plain scrolling as smooth as on `main`, with no fading at the screen edges;
+  - pan while zooming: which of the four artifact kinds remain;
+  - pause (Space) while chunks arrive: they still appear.
+- Time spent / subagents used: inline for T1e; two read-only reviewer subagents; one subagent for T11 stage 0.
+- **Owner check result (2026-10-21):** "the blue squares still appear, overall it improved a bit." The blue squares are the open sea of unbuilt chunks (finding (a)): expected after T1e, the lever is T1f/T11. The owner did not comment on the 150 ms dissolve or on pause. The viewer log shows no steady-state hitch: 500 fps (the 500 Hz cap), with a busy time of at most 3.7 ms. There were only one-off frames: the first frame's sea at 28.9 ms (start-up), a 93 ms gap of window events with a 9 ms draw prologue (the window was resized to 2560x1369), and a few 8-10 ms gaps that were spent waiting for the display.
+  - Follow-up from the owner: "fade feels fine, chunks appear while paused. terrain seems a bit behind in rendering while zooming in and out." The 150 ms dissolve and the pause are confirmed. Terrain lagging during a zoom step matches the build latency of the new group's chunks: stand-ins show until the real chunks arrive, plus the wave-window rebuild of about 85 ms per step (finding (c), OQ-076). T1f/T11 address the first and T3 (continuous zoom) changes the shape of the second. The T1e owner check is complete.
+
+## T12 — CI on `main` red: render warnings-as-errors · `REVIEW` · 2026-10-21
+
+- **Branch:** `task/T12-ci-render-warnings` (2bdd73c, 208932f), pushed. **PR #2** (not merged). **CI run 39552937214 on the PR: all 10 jobs green** (linux-gcc, linux-gcc-release, linux-clang-asan, macos-clang, windows-msvc, cpp-format, build-macos, both Rust test jobs, lint).
+- **Built:**
+  1. `stand_in_chunk` (`frame.cpp`): the ships line now takes the pointer and guards it (GCC -O3 `-Wnull-dereference`). The plane check (`any`) and the copy loop dereferenced the same lookup unguarded and are guarded too. Comment: the cover's sources are cached by construction.
+  2. `gpu_test.cpp:2466`: `size_t * int` now casts both factors.
+  3. **Three more errors hidden behind the first one**, in `bench_frame/main.cpp` from T1d/T1e: two `size_t * int` in the pop metric, and two `Row{...}` initialisers that left trailing members out (`-Wmissing-field-initializers` on GCC and Clang). The rows are now filled by member.
+- **Test:** new "the CPU stand-in chunk: none without a source, the ships flag from its sources". It checks for no stand-in with an empty cache. With sources whose `ships` is false (the non-default value), it checks the stand-in has `ships == false`, so a dropped copy shows. It is a CPU test that runs in CI without a GPU.
+- **Gates (exact commands):**
+  - MSVC: `cmake --preset msvc; cmake --build --preset msvc`, 0 warnings.
+  - ctest without the game dir: 617/617.
+  - ctest with the game dir at `-j 16`: 614/617. Failing: `scene renders match the recorded digests`, `legacy river shading reproduces the previous enhanced digests` and `anno_dump_agrees_with_python`. All three pass alone with `ctest -R`. This is the load/memory problem of T10b (`agree` is new on that list).
+  - clang-format 23.1.3 on the changed files: clean.
+  - GCC: in WSL, `g++-13` with the CI's flags (`-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Wold-style-cast -Wcast-align -Wnull-dereference -ffp-contract=off -Werror`), compiling only (`-c -o /dev/null`) **every `.cpp` under `src/`** (106 files). Includes come from `src/*/include`, and the deps (wgpu-native, SDL3, doctest) from `build/msvc/_deps`. It ran with `-DANNO_WITH_VIEWER -DANNO_VIEWER_GPU -DANNO_BENCH_GPU`, because without them the viewer and GPU branches are not compiled. Clean.
+  - Clang: the same files and flags with Ubuntu's `clang++-18`. WSL has no clang and no sudo, so the `.deb` packages were unpacked into `~/clang18` (`apt-get download clang-18 libclang-cpp18 libllvm18 libclang-common-18-dev libclang1-18 llvm-18-linker-tools libgc1 libobjc4 libobjc-13-dev` + `dpkg -x`). Clean.
+  - The script is `gcc_check.sh` in the session scratchpad. Worth turning into `tools/check_unix_warnings.sh` for §1 point 9 if the orchestrator wants it.
+- **Found on the way, not changed:** compiled *without* `ANNO_VIEWER_GPU`, Clang reports three unused private fields in `viewer.cpp` (`surface_failures_`, `reconfigure_`, `present_error_shown_`, `-Wunused-private-field`). Every CI configuration builds the viewer with wgpu, so CI does not hit it. A viewer build without wgpu on Clang would fail. A small `[[maybe_unused]]` or `#ifdef` fix is possible if wanted.
+- **Housekeeping:** the T1d worktree was removed (`git worktree remove`). The branch is kept until CI on `main` is green.
+- **Reviewers:** none spawned. The change is mechanical, about 40 lines, and CI is the acceptance.
+## T1f item 1 — chunk build profile · reported 2026-10-21 (item 2 continues without waiting, per the Order)
+
+- **Branch:** `task/T1f-chunk-build-speed` (worktree `C:\Users\altin\anno1503-T1f`). Commits: a8d0d21 (the profiler `anno/render/profile.hpp`, stage scopes in `render_chunk` / `water_field_from` / `flow_plane` / `SpriteCache`, a test), 0f2583b (`bench_frame --chunk-profile threads,.. [--chunk-limit n]`), 7479a2a (the table in `docs/perf/README.md`, "2026-10-21 - T1f item 1"). Not pushed.
+- **Result** (one thread, warm, mean per chunk: canyon 50 / 44 / 28 ms at groups 0 / 1 / 2, `Single_24` 44 / 39 / 25 ms):
+  - **Field + terrain + flow stages: 67-72 % of a chunk.** The sea field (`sea::water_field`, per-pixel spline taps) alone is 35-49 %, the river stages 4-7 ms, `terrain_at` 2-4 ms. This is the orchestrator's suspect, confirmed. Item 2's 2 ms target means removing about 30 ms per chunk at group 0.
+  - **Ground: 14-16 %, below the 20 % of T11's C2**, so the ground pass (2b) stays after item 2, as decided. Note: after item 2 the ground would be about 40 % of the remaining ~18 ms and the objects about 48 %.
+  - **Sprite decode: 0.1-0.7 ms cold, 0 warm.** It is not a cost. Objects (cull and blit) are 13-17 %.
+  - **T1d's "100-250 ms" is the 16-thread cold case.** SMT makes each chunk 1.6-2 times slower at 16 threads (1.2 times at 8). The rest is chunks with rivers waiting in `call_once` for the island's river flow solve (84-151 ms), which gives maxima of 180-250 ms. Throughput at 16 threads is 156-285 chunks/s warm.
+  - **Found:** the viewer's workers do not wait for the flow (`wait_for_flow` false). They deliver a river chunk without its lattice and **build it again** when the flow is ready, so the first seconds on a river island cost about twice the work. Candidate for item 3 (deliver the lattice separately).
+- **Not measured:** the workers' below-normal priority against the window thread (the bench has no window thread), and queue latency (the viewer side). The machine had 8-27 % background load (desktop apps). Two runs agree within 3 %.
+- **Gates:**
+  - MSVC build: clean.
+  - ctest without the game dir: 618/618.
+  - ctest with the game dir at -j 16: 617/618. `scene renders match the recorded digests` hit `bad_alloc` even alone at `ANNO_TEST_THREADS=16`, because desktop apps held about 32 GB of commit (11 GB free). With `ANNO_TEST_THREADS=4` it passes, 45/45 digests (T10b).
+  - GCC 13 and Clang 18 (`-O3`, the CI flags, `-Werror`): every file in `src`, clean.
+  - clang-format: clean.
+- **Reviewers:** none for item 1. It is measurement code; the pixels are unchanged (digests).
+- **Next:** item 2 (island-level fields), starting with the sea field.
+## T1f item 2 — exact shortcuts in the field and terrain stages · `REVIEW` · 2026-10-21
+
+- **Owner decision 2026-10-21** (asked during the task): the plan "field per island and group, sliced per chunk" does not fit memory at group 0 (about 0.7 GB for the canyon island alone). The owner chose instead: exact shortcuts with a classification per island, by a conservative bound (pixels identical, the bound written in iso.md as a proof), and terrain per tile. Revised targets: field + terrain at most 25 % of a chunk, and a canyon land chunk at group 0 under 25 ms on one thread. The full removal is T11 §10.1. Options 2 (precompute at groups 1-2) and 3 (a coarser, inexact precompute) were rejected.
+- **Branch** `task/T1f-chunk-build-speed`, after item 1's commits, not pushed:
+
+  | commit | what |
+  |---|---|
+  | 7230884 | empty cells (`IslandWater::classify_cells`, `sea::field_at`, the proof in iso.md) |
+  | 726ee06 | `noise3_at` (noise without the zero-weight plane); the fix for an unclassified `IslandWater`, which 7230884 read out of bounds |
+  | b2d1994 | `terrain_plane`; river masks created only on sprite pixels |
+  | 9b14840 | `SmoothSampler` / `NoisePlane` caches |
+  | bd380ab | review: named noise weights, `static_assert`s on the proof's premises, `terrain_plane` as a free function |
+  | 84ec121 | review: a golden digest from 7479a2a, boundary, multi-island and terrain tests |
+  | c14ee6a | docs |
+
+- **Result** (one thread, warm, mean per chunk; `docs/perf/README.md` "T1f item 2"):
+
+  | scene, group | before (ms) | after (ms) | field + terrain + flow |
+  |---|---|---|---|
+  | canyon g0 | 50.1 | 29.1 | 68 % → 46 % |
+  | canyon g1 | 44.3 | 28.7 | 72 % → 57 % |
+  | canyon g2 | 28.2 | 19.5 | 70 % → 57 % |
+  | `Single_24` g0 | 44.2 | 21.4 | 67 % → 33 % |
+  | `Single_24` g1 | 39.3 | 23.0 | 71 % → 52 % |
+  | `Single_24` g2 | 25.2 | 16.6 | 69 % → 53 % |
+
+  - **Both targets missed.** The canyon at group 0 is 29.1 ms, not under 25; field + terrain is 33-57 %, not at most 25 %.
+  - **What is left:** sea and coast pixels inside the island grids, which need the exact smooth height for the depth byte (it never saturates). Also the river blurs and chamfers on chunks where rivers meet the sea.
+  - **Exact options left:** bounding-box blur and chamfer (about 2-3 ms on river chunks); SIMD for the band pixels.
+  - **The real fix** is T11 §10.1. The orchestrator decides whether to go further here or move to T11.
+- **Exactness evidence:**
+  - All scene and frame digests are unchanged.
+  - A synthetic golden digest recorded from the 7479a2a sources is checked in CI, with and without the cell classes.
+  - The empty-cell proof holds on every game island: 458 files, 4.33 M of 11.8 M tiles empty, all sampled positions empty.
+  - Bit-equality tests: `noise3_at`, `NoisePlane`, `SmoothSampler`, `terrain_plane` (synthetic and game files).
+  - Mutations, each caught by a test:
+    - the river check removed;
+    - the threshold at the waterline;
+    - 4 corners instead of 16;
+    - no noise term;
+    - the shortcut used outside the grid;
+    - samplers or terrain cache kept across islands.
+- **Reviewers** (two, read-only):
+  - **A (proof and code):** "no way for the outputs to differ, no new UB"; points 1-6 sound. It found constants not tied to the proof (the noise 1.3, `kBedEdge·kBedDepth`). Fixed in bd380ab with named constants and `static_assert`s. A stale comment is fixed too.
+  - **B (tests):** five mutations uncaught. The main gap was that CI compared `water_field` with `field_at`, which share one body. Fixed in 84ec121 (the golden digest, boundaries, multi-island, terrain across islands; all five now caught). The game-file test was reduced to 9 positions per tile for ASan.
+  - **Not done:** islands of width 1.
+- **Gates:**
+  - MSVC build: clean.
+  - ctest without the game dir: 627/627.
+  - ctest with the game dir: 627/627 at `-j 4`, `ANNO_TEST_THREADS=4`. At 16 the digest test hits `bad_alloc` while desktop apps hold about 32 GB of commit (T10b).
+  - GCC 13 and Clang 18 `-O3 -Werror` with the CI flags over all of `src`: clean.
+  - clang-format: clean.
+- **Not measured:** 16 threads after the change. The machine was at 47-77 % load (a game running), so those numbers are invalid and not reported. To be rerun on an idle machine.
+- **Next per the board:** item 3 (progressive delivery; the profile also found that the viewer builds every river chunk twice in the first seconds) and item 4 (`kChunk` 256) wait for the orchestrator's review of this.

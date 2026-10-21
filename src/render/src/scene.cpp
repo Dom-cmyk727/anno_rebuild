@@ -12,6 +12,7 @@
 #include <thread>
 
 #include <anno/render/frame.hpp>
+#include <anno/render/profile.hpp>
 #include <anno/render/scene.hpp>
 
 #include "thread_priority.hpp"
@@ -301,6 +302,7 @@ std::vector<SpriteDraw> Scene::sprites_in(Rect rect, std::size_t group, std::uin
 const sea::IslandWater* Scene::island_water(std::size_t i) const {
     IslandData& d = objects_[i];
     std::call_once(*d.water_once, [&] {
+        const profile::Scope stage(profile::Stage::island_water);
         d.water = sea::IslandWater::build(islands[i], d.rivers, river_cfg.gap_patch_tiles);
     });
     return d.water ? &*d.water : nullptr;
@@ -429,14 +431,39 @@ void chamfer(std::vector<float>& d, std::size_t w, std::size_t h) {
 
 sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
                                         std::size_t group) const {
+    std::optional<profile::Scope> stage(std::in_place, profile::Stage::sea_field);
     sea::WaterField f =
         sea::water_field(rect, probe, [this](std::size_t i) { return island_water(i); });
+    stage.emplace(profile::Stage::river_sprites);
     // Enhanced river water takes the shapes of the waterfall and mouth
     // sprites (their alpha, softened): the river runs through the falls into
     // the sea as one surface instead of ending at hard-edged sprite patches
     // (tester feedback 2026-10-18). Falls get rapids, mouths stay calm.
     // Original water ignores river pixels (flag bit 1) and draws the sprites.
-    Canvas falls = blank(rect), mouths = blank(rect), beds = blank(rect);
+    // The three masks are created on the first sprite pixel that reaches them:
+    // compositing a transparent canvas changes nothing, and with all three
+    // blank apply_fall_masks changes nothing either (af = am = ab = 0 gives
+    // a = 0 and bed = -kBedEdge * kBedDepth = -2 <= -0.5 at every pixel), so a
+    // chunk without river sprite pixels skips both.
+    static_assert((0.0F - kBedEdge) * kBedDepth <= -0.5F,
+                  "blank masks must leave apply_fall_masks without effect");
+    Canvas falls, mouths, beds;
+    auto add = [&](Canvas& mask, const Canvas& local, std::pair<int, int> off) {
+        bool opaque = false;
+        for (std::size_t k = 3; k < local.pixels.size(); k += 4) {
+            if (local.pixels[k] != 0) {
+                opaque = true;
+                break;
+            }
+        }
+        if (!opaque) {
+            return;
+        }
+        if (mask.pixels.empty()) {
+            mask = blank(rect);
+        }
+        composite(mask, local, off);
+    };
     bool any = false;
     for (const auto& p : layouts[group]) {
         const auto r = p.bounds.intersect(rect);
@@ -462,7 +489,7 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
         if (!o.river_sprites.empty()) {
             Canvas local = blank(Rect{r->x - off.first, r->y - off.second, r->w, r->h});
             draw_prepared_tested(local, o.river_sprites, anlagen, group, lift, 0, sprites, 0, keep);
-            composite(beds, local, off);
+            add(beds, local, off);
         }
         for (const bool fall : {true, false}) {
             std::vector<Prepared> below, above;
@@ -482,12 +509,19 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
             Canvas local = blank(Rect{r->x - off.first, r->y - off.second, r->w, r->h});
             draw_prepared_tested(local, below, anlagen, group, lift, 0, sprites, 0, all);
             draw_prepared_tested(local, above, anlagen, group, lift, 0, sprites, 0, keep);
-            composite(fall ? falls : mouths, local, off);
+            add(fall ? falls : mouths, local, off);
         }
     }
-    if (any) {
+    if (any && !(falls.pixels.empty() && mouths.pixels.empty() && beds.pixels.empty())) {
+        stage.emplace(profile::Stage::fall_masks);
+        for (Canvas* mask : {&falls, &mouths, &beds}) {
+            if (mask->pixels.empty()) {
+                *mask = blank(rect);
+            }
+        }
         apply_fall_masks(f, falls, mouths, beds, group);
     }
+    stage.emplace(profile::Stage::river_blend);
     blend_rivers_into_sea(f, group);
     return f;
 }
@@ -719,6 +753,63 @@ std::optional<float> Scene::terrain_at(const sea::SceneProbe& probe, Rect rect, 
     }
     const auto& isl = islands[island];
     return terrain_height(g->second, isl.width, isl.height, probe.pos[i][0], probe.pos[i][1]);
+}
+
+std::vector<std::uint16_t> Scene::terrain_plane(const sea::SceneProbe& probe) const {
+    return render::terrain_plane(probe, [this](std::uint32_t island) {
+        const auto& g = objects_[island].grids;
+        return TerrainGrid{g ? &g->second : nullptr, islands[island].width, islands[island].height};
+    });
+}
+
+std::vector<std::uint16_t> terrain_plane(const sea::SceneProbe& probe,
+                                         const std::function<TerrainGrid(std::uint32_t)>& grid) {
+    // terrain_at and the quantisation of Chunk::terrain per pixel, with the
+    // island and the tile's corners looked up once per run instead of per
+    // pixel; the arithmetic is terrain_height's, so the values are identical.
+    std::vector<std::uint16_t> out(probe.island.size(), kNoTerrain);
+    std::uint32_t island = sea::kNoIsland;
+    const std::vector<std::uint8_t>* heights = nullptr;
+    std::size_t w = 0, h = 0;
+    std::size_t ctx = 0, cty = 0;
+    bool cached = false;
+    float a = 0, cc = 0, b = 0, d = 0;
+    for (std::size_t i = 0; i < probe.island.size(); ++i) {
+        if (probe.island[i] == sea::kNoIsland) {
+            continue;
+        }
+        if (probe.island[i] != island) {
+            island = probe.island[i];
+            const TerrainGrid g = grid(island);
+            heights = g.heights;
+            w = g.w;
+            h = g.h;
+            cached = false;
+        }
+        if (heights == nullptr) {
+            continue;
+        }
+        const auto [x, y] = probe.pos[i];
+        const std::size_t tx = std::min(sat_cast<std::size_t>(fmaxf(x, 0.0F)), w - 1);
+        const std::size_t ty = std::min(sat_cast<std::size_t>(fmaxf(y, 0.0F)), h - 1);
+        if (!cached || tx != ctx || ty != cty) {
+            const auto c = corners(*heights, w, h, tx, ty);
+            a = static_cast<float>(c[0]);
+            cc = static_cast<float>(c[1]);
+            b = static_cast<float>(c[2]);
+            d = static_cast<float>(c[3]);
+            ctx = tx;
+            cty = ty;
+            cached = true;
+        }
+        const float s = clampf(x - static_cast<float>(tx), 0.0F, 1.0F);
+        const float t = clampf(y - static_cast<float>(ty), 0.0F, 1.0F);
+        const float z = s + t <= 1.0F ? a + s * (cc - a) + t * (b - a)
+                                      : d + (1.0F - s) * (b - d) + (1.0F - t) * (cc - d);
+        out[i] = sat_cast<std::uint16_t>(
+            clampf(roundf(z * kTerrainScale), 0.0F, static_cast<float>(kNoTerrain - 1)));
+    }
+    return out;
 }
 
 std::pair<Canvas, sea::SceneProbe> Scene::ground_with_probe(Rect rect, std::size_t group) const {
@@ -996,6 +1087,7 @@ Scene::~Scene() {
 void Scene::build_flow(std::size_t index) const {
     FlowSlot& slot = *flow_slots_[index];
     std::call_once(slot.once, [&] {
+        const profile::Scope stage(profile::Stage::flow_solve);
         try {
             // Phase A (the raster) and phase B (the solve); the raster is only
             // needed for the solve and freed here.
@@ -1167,6 +1259,7 @@ river::FlowPlane Scene::flow_plane(Rect area, std::size_t group, const sea::Scen
     std::vector<Part> extra;
     auto add_strip = [&](Rect r) {
         if (const auto c = r.intersect(need)) {
+            const profile::Scope stage(profile::Stage::apron);
             extra.push_back({*c, ground_with_probe(*c, group).second});
         }
     };

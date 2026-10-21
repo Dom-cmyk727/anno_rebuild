@@ -156,6 +156,8 @@ class IslandWater {
                                                    float fy) const;
     [[nodiscard]] float bilinear(std::span<const float> field, std::size_t tx, std::size_t ty,
                                  float fx, float fy) const;
+    /// Fills empty_cell from heights, sea_chunk and river (build calls it).
+    void classify_cells();
 
     std::size_t w = 0, h = 0;
     std::vector<std::uint8_t> heights;
@@ -167,6 +169,33 @@ class IslandWater {
     std::vector<float> shore;
     /// River surface level per corner, NaN away from rivers.
     std::vector<float> river;
+    /// Per tile: 1 where every position in the tile provably gets the empty
+    /// field texel (no sea, no river; docs/render/iso.md "Water field: empty
+    /// cells"), so water_field skips its per-pixel work there; else 0.
+    std::vector<std::uint8_t> empty_cell;
+};
+
+/// Waterline distance below which water_field computes no beach slope (sd in
+/// HEIGHT units).
+inline constexpr float kSlopeBand = 12.0F;
+/// Weights of height_noise's two octaves: each adds (n − 0.5) · weight ·
+/// shore_noise with n in [0, 1], so the sum is at least −(coarse + fine) / 2 ·
+/// shore_noise (the bound kEmptyLandHeight relies on).
+inline constexpr float kNoiseCoarseWeight = 2.0F;
+inline constexpr float kNoiseFineWeight = 0.6F;
+/// Lowest of the 16 corner heights under a tile's smooth_height at which the
+/// tile is provably dry land far from the waterline (sd ≤ −kSlopeBand): the
+/// spline is at least its lowest corner, the noise at least −(coarse + fine) /
+/// 2 · shore_noise (−2.6), plus 0.5 for rounding (docs/render/iso.md "Water
+/// field: empty cells").
+inline constexpr float kEmptyLandHeight =
+    static_cast<float>(kWaterline) + kSlopeBand +
+    0.5F * (kNoiseCoarseWeight + kNoiseFineWeight) * kWaves.shore_noise + 0.5F;
+
+/// One texel of the water field (WaterField's four planes at one pixel).
+struct FieldTexel {
+    std::uint8_t cover = 0, shore = 0, depth = 0, flags = 0;
+    friend bool operator==(const FieldTexel&, const FieldTexel&) = default;
 };
 
 /// The ground seen at each pixel of a scene rectangle: island index
@@ -199,8 +228,31 @@ struct RiverPoint {
 };
 std::optional<RiverPoint> river_point(const IslandWater& iw, float x, float y, const TileGround& g);
 
+/// smooth_height and height_noise over one island's heights with the 16
+/// corner values of the last tile and the lattice hashes of the last noise
+/// cells kept: the same arithmetic in the same order, so the same bits.
+class SmoothSampler {
+  public:
+    explicit SmoothSampler(const IslandWater& iw) : iw_(&iw) {}
+    float smooth(float x, float y);
+    float noise(float x, float y);
+
+  private:
+    const IslandWater* iw_;
+    NoisePlane coarse_{11}, fine_{23};
+    std::int64_t cx_ = 0, cy_ = 0;
+    bool valid_ = false;
+    std::array<float, 16> corner_{};
+};
+
+/// The water field texel at tile position (x, y) of island `iw`, evaluated
+/// in full (no empty-cell shortcut, no sampler cache): the reference
+/// water_field must equal.
+FieldTexel field_at(const IslandWater& iw, float x, float y);
+
 /// The water field of `rect` from the ground seen at each pixel; water(i)
-/// gives the IslandWater of island i (nullptr if none).
+/// gives the IslandWater of island i (nullptr if none). Pixels in an empty
+/// cell (IslandWater::empty_cell) get the empty texel without evaluation.
 WaterField water_field(Rect rect, const SceneProbe& probe,
                        const std::function<const IslandWater*(std::size_t)>& water);
 

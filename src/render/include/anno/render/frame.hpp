@@ -15,6 +15,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -76,6 +77,12 @@ struct Chunk {
     /// that keeps a copy (the GPU compositor's textures) sees that a chunk of
     /// the same key was rebuilt (e.g. after its river flow arrived).
     std::uint64_t serial = 0;
+    /// The heap memory the chunk holds (its vectors' capacities), in bytes.
+    [[nodiscard]] std::size_t bytes() const {
+        auto of = [](const auto& v) { return v.capacity() * sizeof(v[0]); };
+        return of(ground) + of(objects) + of(field) + of(terrain) + of(base) + of(flow.uv) +
+               of(flow.aux) + of(flow.shear) + of(flow_waiting);
+    }
 };
 
 /// (zoom group, chunk x, chunk y).
@@ -109,6 +116,9 @@ class ChunkWorkers {
     bool submit(const std::vector<ChunkKey>& wanted, bool ships = true);
     /// Finished chunks since the last call.
     std::vector<std::pair<ChunkKey, Chunk>> take_done();
+    /// Smoothed time one worker takes to build a chunk, in milliseconds (the
+    /// latency of a request that finds a free worker); 100 until the first chunk.
+    [[nodiscard]] double build_ms() const { return build_ms_.load(); }
     /// Takes chunks that are no longer needed and frees them on a
     /// background thread (freeing a chunk's vectors takes about a
     /// millisecond: the window thread must not).
@@ -129,6 +139,7 @@ class ChunkWorkers {
     /// failure would otherwise be retried every frame).
     std::set<ChunkKey> failed_;
     std::vector<std::pair<ChunkKey, Chunk>> done_;
+    std::atomic<double> build_ms_{100.0};
     bool stop_ = false;
     bool ships_ = true;
     std::vector<std::thread> threads_;
@@ -156,10 +167,28 @@ class FrameRenderer {
     /// Whether chunks are still being built in the background.
     [[nodiscard]] bool busy() const { return pending_; }
     [[nodiscard]] std::size_t cached() const { return cache_.size(); }
+    /// The memory of the cached chunks (Chunk::bytes), O(cached chunks): for
+    /// tools and reports, not per frame in the viewer.
+    [[nodiscard]] std::size_t cached_bytes() const {
+        std::size_t n = 0;
+        for (const auto& [key, chunk] : cache_) {
+            n += chunk.bytes();
+        }
+        return n;
+    }
     /// Brings the chunks of `view` up to date; (built or received, ms spent,
     /// visible chunks still missing).
     std::tuple<std::size_t, double, std::size_t> update_chunks(const Scene& scene, Rect view,
                                                                std::size_t group);
+    /// The chunks of the neighbouring zoom groups that update_chunks keeps built
+    /// for the view a zoom step would show (a ring included), both groups
+    /// interleaved, nearest to the view (as it will be in a moment) first. Not
+    /// necessarily built yet.
+    [[nodiscard]] const std::vector<ChunkKey>& adjacent_keys() const { return adjacent_; }
+    /// The chunks of the group shown that update_chunks keeps built around the
+    /// visible ones (the margin, grown in the direction of motion), the ones the
+    /// motion brings into view first at the front. Not necessarily built yet.
+    [[nodiscard]] const std::vector<ChunkKey>& margin_keys() const { return margin_; }
     /// The cached chunk, if built.
     [[nodiscard]] const Chunk* chunk(const ChunkKey& key) const;
     /// Puts `chunk` in the cache under `key` (tests and tools: a synthetic
@@ -181,6 +210,18 @@ class FrameRenderer {
     std::size_t threads;
     /// Chunks kept besides the visible ones.
     std::size_t spare_chunks = 48;
+    /// Most chunks the margin around the view grows in the direction the view is
+    /// moving (lookahead_rect). Each chunk-wide strip is (view height / kChunk + 2)
+    /// chunks of up to 4.3 MB (a land chunk; sea chunks are far smaller) in the
+    /// current group and in each neighbouring one, on top of spare_chunks.
+    /// Counted for 2560 x 1440, three groups, cap 3: 144 chunks kept standing,
+    /// about 200-216 on a pan along one axis, 297 on a diagonal, plus 48 spare:
+    /// 0.8 / 1.1 / 1.5 GB at worst. Measured on Single_24.sze (the largest
+    /// scene) with a pan while zooming: peak 0.44-0.71 GB, mean 0.36-0.54 GB,
+    /// and cap 2 within 40 MB of cap 3 (docs/perf/README.md, T1e). 3 covers
+    /// 1500 px of travel; the viewer's --lookahead-chunks sets it; 0 = a plain
+    /// ring of one chunk.
+    std::size_t max_lookahead_chunks = 3;
     /// render() draws a visible chunk that is not built from the nearest zoom
     /// group's chunks (stand_in_chunk) instead of open sea. Off by default: the
     /// CPU path is the reference and the tests' digests; the GPU compositor has
@@ -191,12 +232,39 @@ class FrameRenderer {
     /// by GpuFrame::render from GpuLimits::stand_ins; also on with `stand_ins`.
     /// Off, the eviction is the one from before stand-ins existed.
     bool retain_stand_in_sources = false;
+    /// Visible chunks that are built but that the GPU compositor still draws
+    /// over their stand-in (not uploaded yet, or dissolving in over it for
+    /// GpuLimits::chunk_fade_ms). Set by GpuFrame::render before update_chunks;
+    /// their stand-in sources are kept like those of chunks not built.
+    std::set<ChunkKey> shown_over_stand_in;
     /// What update_chunks keeps beyond the visible chunks for the stand-ins of
-    /// the visible chunks that are not built (empty when both switches are off).
+    /// the visible chunks that are not built or in shown_over_stand_in (empty
+    /// when both switches are off).
     [[nodiscard]] std::set<ChunkKey>
     stand_in_retain(std::size_t group, const std::vector<std::pair<int, int>>& visible) const;
+    /// The smoothed velocity of the view centre that sizes the margin, in scene
+    /// pixels per second of the group shown (x, y).
+    [[nodiscard]] std::pair<double, double> velocity() const { return {vx_, vy_}; }
+    /// The time source of the velocity (a steady clock; tests step it by hand).
+    std::function<std::chrono::steady_clock::time_point()> clock = [] {
+        return std::chrono::steady_clock::now();
+    };
 
   private:
+    std::vector<ChunkKey> adjacent_, margin_;
+    /// Velocity of the view centre in scene pixels per second of the group shown
+    /// (smoothed), the centre and time of the last update_chunks, and its group.
+    double vx_ = 0, vy_ = 0;
+    std::optional<std::pair<double, double>> last_centre_;
+    std::chrono::steady_clock::time_point last_time_;
+    std::size_t last_group_ = 0;
+    void track_velocity(Rect view, std::size_t group);
+    /// The chunks to keep and to build, most urgent first (`keep` is filled
+    /// with them), and adjacent_: the visible chunks, the margin around them
+    /// grown in the direction of motion, and the neighbouring groups' views.
+    std::vector<ChunkKey> plan_margin(Rect view, std::size_t group,
+                                      const std::vector<std::pair<int, int>>& visible,
+                                      double horizon_s, std::set<ChunkKey>& keep);
     std::size_t request_chunks(const Scene& scene, std::size_t group, Rect view,
                                const std::vector<std::pair<int, int>>& visible);
     void trim(std::size_t group, Rect view, const std::set<ChunkKey>& keep,
@@ -213,6 +281,14 @@ class FrameRenderer {
 /// The rectangle of view's size at group `to` centred on the scene point
 /// that `view` centres on at group `from`.
 Rect zoomed_view(Rect view, std::size_t from, std::size_t to);
+
+/// The area whose chunks are kept built around `view`: a ring of one chunk, and
+/// where the view is moving (velocity vx, vy in scene pixels per second) the
+/// distance it covers in `horizon_s` seconds on that side, at most
+/// `max_chunks` chunks: the time to build a chunk (ChunkWorkers::build_ms) is
+/// long against how fast a view can be dragged, so what comes into view must be
+/// requested that much earlier.
+Rect lookahead_rect(Rect view, double vx, double vy, double horizon_s, std::size_t max_chunks);
 
 // ---- Stand-in chunks (open-questions OQ-077) ----
 //

@@ -22,6 +22,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -132,6 +133,20 @@ struct GpuStats {
     /// are not built or not uploaded yet (GpuLimits::stand_ins), and the parts
     /// (draws) they took.
     std::size_t stand_in_chunks = 0, stand_in_parts = 0;
+    /// Visible chunks that show open sea somewhere in the view because they are
+    /// not on the GPU and no zoom group has a chunk to stand in for that part (a
+    /// hole in the cover counts; stand-ins off: the whole chunk): the pop-in a
+    /// pan during a zoom can show.
+    std::size_t open_sea_chunks = 0;
+    /// The pixels of the view that show that open sea (the visible area of those
+    /// chunks the stand-in parts leave uncovered).
+    std::uint64_t open_sea_px = 0;
+    /// Of open_sea_chunks, the ones the CPU has built (waiting for their upload).
+    std::size_t open_sea_built = 0;
+    /// Chunks of the neighbouring zoom groups uploaded ahead (GpuLimits::prefetch_chunks).
+    std::size_t chunks_prefetched = 0;
+    /// Chunks drawn fading in (GpuLimits::chunk_fade_ms).
+    std::size_t chunks_fading = 0;
     /// A wave-window job (new group, size or strips) is being prepared in the
     /// background: the shader shows the previous window or, where it does not
     /// reach, the analytic waves (OQ-076).
@@ -178,6 +193,30 @@ struct GpuLimits {
     /// Uploaded chunks are not counted (they are the content, bounded by the CPU
     /// cache). 0 = no idle planes are pre-created.
     std::size_t idle_plane_budget_mb = 256;
+    /// Chunks around the view that may be on the GPU at once, uploaded ahead when
+    /// no visible chunk waits, prefetch_per_frame per frame: first the margin of
+    /// the group shown (FrameRenderer::margin_keys: a plain pan then finds the
+    /// chunk entering the view already uploaded), then the neighbouring zoom
+    /// groups' views (FrameRenderer::adjacent_keys: a pan during a zoom lands on
+    /// real chunks instead of open sea). About 4 MB of device memory each. At
+    /// 2560 x 1440, standing, the margin ring is about 24 chunks and the two
+    /// neighbours' views with their rings about 2 x 35, so the default 96 holds
+    /// all of it; moving, the margin grows to about 40-60 and each neighbour's
+    /// view by up to 15, so the neighbours (queued last) are then only partly
+    /// ahead. The count is of the chunks in those two lists that are on the GPU
+    /// (recounted over the lists in a frame that may prefetch); a chunk that
+    /// falls out of the lists stays uploaded as long as the CPU cache holds it,
+    /// so the bound on device memory for chunks is the CPU cache's (visible +
+    /// kept + FrameRenderer::spare_chunks). 0 = off (headless renders, tests).
+    std::size_t prefetch_chunks = 0;
+    std::size_t prefetch_per_frame = 1;
+    /// A chunk that replaces the placeholder an earlier frame showed for it (its
+    /// stand-in or the open sea; not a chunk uploaded in the frame it comes into
+    /// view) is drawn over it with rising opacity for this many
+    /// milliseconds (GpuFrame::set_fade_clock: a steady clock, not the
+    /// animation time), so a swap is a short dissolve, not a pop. About the time an eye needs to
+    /// follow a change without it reading as a jump; 0 = swap at once (headless renders, tests).
+    std::uint64_t chunk_fade_ms = 0;
     /// The limits for an interactive window: uploads and wave simulation
     /// setup are spread over frames (upload_budget_ms 1.0, background_fluid).
     [[nodiscard]] static GpuLimits interactive() {
@@ -185,6 +224,8 @@ struct GpuLimits {
         l.upload_budget_ms = 1.0;
         l.background_fluid = true;
         l.prewarm_chunks = 24;
+        l.prefetch_chunks = 96;
+        l.chunk_fade_ms = 150;
         return l;
     }
     /// A visible chunk that is not on the GPU yet (still being built, or waiting
@@ -358,6 +399,11 @@ class GpuFrame {
     std::vector<std::uint8_t> read_back(WGPUTexture texture, std::uint32_t w, std::uint32_t h,
                                         std::uint32_t bpp = 4) const;
     [[nodiscard]] WGPUTextureFormat format() const;
+    /// The clock the chunk dissolves run on (GpuLimits::chunk_fade_ms), in
+    /// milliseconds: by default a steady clock of the compositor's own, not
+    /// render()'s animation time, which the viewer freezes on pause (a chunk
+    /// arriving then must still appear). Tests set a clock they step by hand.
+    void set_fade_clock(std::function<std::uint64_t()> clock);
     /// Pre-created chunk planes waiting for uploads (GpuLimits::prewarm_chunks).
     [[nodiscard]] std::size_t warm_planes_ready() const;
     /// Errors of the device so far (Context::errors): uncaptured ones and

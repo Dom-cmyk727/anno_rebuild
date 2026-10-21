@@ -198,8 +198,8 @@ float smooth_height(std::span<const std::uint8_t> heights, std::size_t w, std::s
 float height_noise(float x, float y) {
     const float amp = kWaves.shore_noise;
     // noise3 at the integer z 11 and 23, bit for bit (noise3_at).
-    return (noise3_at(x * 0.9F, y * 0.9F, 11) - 0.5F) * 2.0F * amp +
-           (noise3_at(x * 2.7F, y * 2.7F, 23) - 0.5F) * 0.6F * amp;
+    return (noise3_at(x * 0.9F, y * 0.9F, 11) - 0.5F) * kNoiseCoarseWeight * amp +
+           (noise3_at(x * 2.7F, y * 2.7F, 23) - 0.5F) * kNoiseFineWeight * amp;
 }
 
 float river_bed_height(std::span<const std::uint8_t> heights, std::size_t w, std::size_t h, float x,
@@ -456,6 +456,13 @@ std::optional<IslandWater> IslandWater::build(const insel::Island& island,
     return out;
 }
 
+// The premises of the empty-cell proof (docs/render/iso.md "Water field: empty
+// cells") that are constants: below −kSlopeBand no beach slope is computed, so
+// field_at's run_max is runup_max_tiles · 0.2 and the empty texel needs only
+// sd ≤ −(shore_edge + run_max).
+static_assert(kWaves.shore_edge + kWaves.runup_max_tiles * 0.2F <= kSlopeBand,
+              "an empty cell must lie below field_at's dry-land threshold");
+
 void IslandWater::classify_cells() {
     // Empty cells (docs/render/iso.md "Water field: empty cells"): no river
     // level at the four corners river_level reads, and either no sea in the
@@ -567,8 +574,8 @@ float SmoothSampler::smooth(float x, float y) {
 float SmoothSampler::noise(float x, float y) {
     // height_noise, term by term.
     const float amp = kWaves.shore_noise;
-    return (coarse_.at(x * 0.9F, y * 0.9F) - 0.5F) * 2.0F * amp +
-           (fine_.at(x * 2.7F, y * 2.7F) - 0.5F) * 0.6F * amp;
+    return (coarse_.at(x * 0.9F, y * 0.9F) - 0.5F) * kNoiseCoarseWeight * amp +
+           (fine_.at(x * 2.7F, y * 2.7F) - 0.5F) * kNoiseFineWeight * amp;
 }
 
 namespace {

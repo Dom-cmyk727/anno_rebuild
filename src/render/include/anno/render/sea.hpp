@@ -178,13 +178,19 @@ class IslandWater {
 /// Waterline distance below which water_field computes no beach slope (sd in
 /// HEIGHT units).
 inline constexpr float kSlopeBand = 12.0F;
+/// Weights of height_noise's two octaves: each adds (n − 0.5) · weight ·
+/// shore_noise with n in [0, 1], so the sum is at least −(coarse + fine) / 2 ·
+/// shore_noise (the bound kEmptyLandHeight relies on).
+inline constexpr float kNoiseCoarseWeight = 2.0F;
+inline constexpr float kNoiseFineWeight = 0.6F;
 /// Lowest of the 16 corner heights under a tile's smooth_height at which the
 /// tile is provably dry land far from the waterline (sd ≤ −kSlopeBand): the
-/// spline is at least its lowest corner, the noise at least −1.3 ·
-/// shore_noise, plus 0.5 for rounding (docs/render/iso.md "Water field:
-/// empty cells").
+/// spline is at least its lowest corner, the noise at least −(coarse + fine) /
+/// 2 · shore_noise (−2.6), plus 0.5 for rounding (docs/render/iso.md "Water
+/// field: empty cells").
 inline constexpr float kEmptyLandHeight =
-    static_cast<float>(kWaterline) + kSlopeBand + 1.3F * kWaves.shore_noise + 0.5F;
+    static_cast<float>(kWaterline) + kSlopeBand +
+    0.5F * (kNoiseCoarseWeight + kNoiseFineWeight) * kWaves.shore_noise + 0.5F;
 
 /// One texel of the water field (WaterField's four planes at one pixel).
 struct FieldTexel {

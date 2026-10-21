@@ -445,6 +445,8 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
     // blank apply_fall_masks changes nothing either (af = am = ab = 0 gives
     // a = 0 and bed = -kBedEdge * kBedDepth = -2 <= -0.5 at every pixel), so a
     // chunk without river sprite pixels skips both.
+    static_assert((0.0F - kBedEdge) * kBedDepth <= -0.5F,
+                  "blank masks must leave apply_fall_masks without effect");
     Canvas falls, mouths, beds;
     auto add = [&](Canvas& mask, const Canvas& local, std::pair<int, int> off) {
         bool opaque = false;
@@ -754,6 +756,14 @@ std::optional<float> Scene::terrain_at(const sea::SceneProbe& probe, Rect rect, 
 }
 
 std::vector<std::uint16_t> Scene::terrain_plane(const sea::SceneProbe& probe) const {
+    return render::terrain_plane(probe, [this](std::uint32_t island) {
+        const auto& g = objects_[island].grids;
+        return TerrainGrid{g ? &g->second : nullptr, islands[island].width, islands[island].height};
+    });
+}
+
+std::vector<std::uint16_t> terrain_plane(const sea::SceneProbe& probe,
+                                         const std::function<TerrainGrid(std::uint32_t)>& grid) {
     // terrain_at and the quantisation of Chunk::terrain per pixel, with the
     // island and the tile's corners looked up once per run instead of per
     // pixel; the arithmetic is terrain_height's, so the values are identical.
@@ -770,10 +780,10 @@ std::vector<std::uint16_t> Scene::terrain_plane(const sea::SceneProbe& probe) co
         }
         if (probe.island[i] != island) {
             island = probe.island[i];
-            const auto& g = objects_[island].grids;
-            heights = g ? &g->second : nullptr;
-            w = islands[island].width;
-            h = islands[island].height;
+            const TerrainGrid g = grid(island);
+            heights = g.heights;
+            w = g.w;
+            h = g.h;
             cached = false;
         }
         if (heights == nullptr) {

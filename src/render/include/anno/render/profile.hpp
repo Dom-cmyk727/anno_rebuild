@@ -22,7 +22,7 @@ enum class Stage : std::size_t {
     fall_masks,    ///< apply_fall_masks (blurred sprite alpha)
     river_blend,   ///< blend_rivers_into_sea (chamfer distances)
     field_pack,    ///< the four field planes interleaved
-    terrain,       ///< Chunk::terrain: terrain_at per pixel
+    terrain,       ///< Chunk::terrain (Scene::terrain_plane)
     flow,          ///< Scene::flow_plane: the lattice slice
     apron,         ///< flow_plane: ground probes of the strips around the chunk
     flow_solve,    ///< the river flow of an island, solved on first use

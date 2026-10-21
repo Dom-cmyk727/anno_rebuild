@@ -44,6 +44,18 @@ inline constexpr float kTerrainScale = 64.0F;
 /// Chunk::terrain where no island ground is drawn.
 inline constexpr std::uint16_t kNoTerrain = 0xFFFF;
 
+/// How the objects layer of a chunk is produced (docs/render/gpu-chunks.md 8).
+enum class ChunkBuilder {
+    /// The worker composites the layer on the CPU: it builds the draw list
+    /// (Scene::objects_draws) and replays it (replay()). Today's behaviour.
+    Cpu,
+    /// The worker builds the draw list and keeps it on the chunk (Chunk::draws)
+    /// for a compositor that draws it itself; Chunk::objects and Chunk::base stay
+    /// empty. The ground, the sea field, the terrain and the flow are built as
+    /// with Cpu.
+    GpuList,
+};
+
 /// Cached static data of one chunk; empty vectors where nothing is drawn.
 struct Chunk {
     /// Ground, opaque 0RGB; empty = no island ground (open-water colour).
@@ -64,6 +76,11 @@ struct Chunk {
     /// Canvas::base of `objects` (chunks without ships, for the GPU); empty
     /// = none.
     std::vector<std::uint8_t> base;
+    /// ChunkBuilder::GpuList: the draw list of the objects layer, in place of
+    /// `objects` and `base`; nullopt = no objects here (or the Cpu builder).
+    std::optional<ChunkDraws> draws;
+    /// The builder that made this chunk.
+    ChunkBuilder built_by = ChunkBuilder::Cpu;
     /// The baked flow of enhanced rivers here (rivers.md 3.3); empty = this
     /// chunk has no river flow (no river pixels, or the flow is not ready).
     river::FlowPlane flow;
@@ -81,7 +98,7 @@ struct Chunk {
     [[nodiscard]] std::size_t bytes() const {
         auto of = [](const auto& v) { return v.capacity() * sizeof(v[0]); };
         return of(ground) + of(objects) + of(field) + of(terrain) + of(base) + of(flow.uv) +
-               of(flow.aux) + of(flow.shear) + of(flow_waiting);
+               of(flow.aux) + of(flow.shear) + of(flow_waiting) + (draws ? draws->bytes() : 0);
     }
 };
 
@@ -99,6 +116,17 @@ using ChunkKey = std::tuple<std::size_t, int, int>;
 Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool ships = true,
                    bool wait_for_flow = true);
 
+/// What render_chunk builds with: the arguments above plus the builder.
+struct ChunkBuildOptions {
+    bool ships = true;
+    bool wait_for_flow = true;
+    ChunkBuilder builder = ChunkBuilder::Cpu;
+    /// Pixels of a bin edge in the draw list (ChunkDraws::bin_px).
+    std::uint32_t bin_px = kDefaultBinPx;
+};
+Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy,
+                   const ChunkBuildOptions& options);
+
 /// Background chunk builders: a priority job list and a result queue. The
 /// scene must outlive them. Destroying them stops the builders and waits for
 /// the chunks in progress (at most one per thread; the Rust version waits at
@@ -113,7 +141,8 @@ class ChunkWorkers {
     /// Replaces the job list with `wanted` (priority order) minus the chunks
     /// being built, built with or without ships (render_chunk); whether any
     /// work is queued or running.
-    bool submit(const std::vector<ChunkKey>& wanted, bool ships = true);
+    bool submit(const std::vector<ChunkKey>& wanted, bool ships = true,
+                ChunkBuilder builder = ChunkBuilder::Cpu, std::uint32_t bin_px = kDefaultBinPx);
     /// Finished chunks since the last call.
     std::vector<std::pair<ChunkKey, Chunk>> take_done();
     /// Smoothed time one worker takes to build a chunk, in milliseconds (the
@@ -142,6 +171,8 @@ class ChunkWorkers {
     std::atomic<double> build_ms_{100.0};
     bool stop_ = false;
     bool ships_ = true;
+    ChunkBuilder builder_ = ChunkBuilder::Cpu;
+    std::uint32_t bin_px_ = kDefaultBinPx;
     std::vector<std::thread> threads_;
 };
 
@@ -201,6 +232,16 @@ class FrameRenderer {
     /// Enhanced water: the river look render() draws (chunks carry the lattice
     /// either way, so switching needs no rebuild).
     RiverFlowMode river_flow = RiverFlowMode::Flow;
+    /// How the chunks' objects layer is built (gpu-chunks.md 8). Cpu by default:
+    /// the CPU path, --png and the digests are the reference. GpuList chunks carry
+    /// a draw list instead of the objects pixels, which render() does not draw:
+    /// set it before the first chunk is requested, with a compositor that draws
+    /// lists. Chunks built by the other builder are not taken from the workers.
+    ChunkBuilder chunk_builder = ChunkBuilder::Cpu;
+    /// Pixels of a bin edge in the draw lists of GpuList chunks. 32 = 256 bins
+    /// per 512 px chunk (kDefaultBinPx: the reason is there; measured in
+    /// stage 2).
+    std::uint32_t bin_px = kDefaultBinPx;
     /// The cost tier of the flow shading render() uses (RiverParams::quality): High
     /// is the reference look; the GPU compositor's automatic tier (GpuFrame::
     /// river_quality) can be Medium or Low, which a CPU reference compared against

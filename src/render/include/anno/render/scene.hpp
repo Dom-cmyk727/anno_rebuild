@@ -32,6 +32,8 @@
 #include <anno/formats/anlagen.hpp>
 #include <anno/formats/figuren.hpp>
 #include <anno/formats/insel.hpp>
+#include <anno/render/chunk_draws.hpp>
+#include <anno/render/frame_table.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/rect.hpp>
 #include <anno/render/river.hpp>
@@ -201,6 +203,9 @@ class Scene {
     std::array<std::vector<Placement>, kGroups> layouts;
     /// Decoded sprite frames, shared by all renders and threads.
     mutable SpriteCache sprites;
+    /// The frames chunk draw lists name (gpu-chunks.md 4.1), interned by the
+    /// threads that build lists; ids never change meaning within a scene.
+    mutable FrameTable frame_table;
     Lift lift;
     /// Ships and soldiers (empty unless set by the caller).
     std::vector<UnitSprite> units;
@@ -318,6 +323,14 @@ class Scene {
     /// Renders `layers` of `rect` at `group` into a new canvas.
     [[nodiscard]] std::pair<Canvas, SceneStats> render(Rect rect, std::size_t group,
                                                        Layers layers) const;
+    /// The draw list of the objects layer of `rect` at `group`: what render()
+    /// with Layers::objects (and `ships`, `bases`) composites there, as records
+    /// in blit order that replay() draws with the same result, byte for byte
+    /// (not water objects: they are drawn per frame; time 0). Ships follow the
+    /// islands as unclipped records. Decodes the frames it names on the calling
+    /// thread (frame_table).
+    [[nodiscard]] ChunkDraws objects_draws(Rect rect, std::size_t group, bool ships, bool bases,
+                                           std::uint32_t bin_px = kDefaultBinPx) const;
     /// render() with the terrain height at each scene pixel given by
     /// `terrain` (from a chunk cache) for the river depth test.
     [[nodiscard]] std::pair<Canvas, SceneStats>

@@ -963,7 +963,8 @@ std::optional<Chunk> stand_in_chunk(const FrameRenderer& frames, std::size_t gro
     Chunk out;
     auto any = [&](auto member) {
         return std::any_of(cover.begin(), cover.end(), [&](const StandInPart& p) {
-            return !(frames.chunk({p.from, p.span.src_cx, p.span.src_cy})->*member).empty();
+            const Chunk* c = frames.chunk({p.from, p.span.src_cx, p.span.src_cy});
+            return c != nullptr && !(c->*member).empty();
         });
     };
     if (any(&Chunk::ground)) {
@@ -986,7 +987,11 @@ std::optional<Chunk> stand_in_chunk(const FrameRenderer& frames, std::size_t gro
         out.base.assign(n * n, 255);
     }
     for (const StandInPart& part : cover) {
-        const Chunk& src = *frames.chunk({part.from, part.span.src_cx, part.span.src_cy});
+        const Chunk* src_ptr = frames.chunk({part.from, part.span.src_cx, part.span.src_cy});
+        if (src_ptr == nullptr) {
+            continue;
+        }
+        const Chunk& src = *src_ptr;
         const StandInSpan& span = part.span;
         const int nx = kTile[part.from].w, dx = kTile[group].w;
         const int ny = kTile[part.from].h, dy = kTile[group].h;
@@ -1017,9 +1022,13 @@ std::optional<Chunk> stand_in_chunk(const FrameRenderer& frames, std::size_t gro
             }
         }
     }
-    out.ships =
-        frames.chunk({cover.front().from, cover.front().span.src_cx, cover.front().span.src_cy})
-            ->ships;
+    // The cover's sources are cached by construction (the predicate above), so the
+    // lookup is never null; the guard keeps a broken cover from being dereferenced.
+    if (const Chunk* first = frames.chunk(
+            {cover.front().from, cover.front().span.src_cx, cover.front().span.src_cy});
+        first != nullptr) {
+        out.ships = first->ships;
+    }
     return out;
 }
 

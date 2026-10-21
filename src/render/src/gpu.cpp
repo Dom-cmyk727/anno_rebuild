@@ -278,6 +278,16 @@ struct GpuFrame::Impl {
     PipelineLayout scale_pl;
     RenderPipeline scale_pipe;
     Buffer scale_uniform;
+    /// The reduction of four chunks into one of a derived zoom level (reduce_fs
+    /// in gpu.wgsl): group 3 holds one uniform slot per quadrant, bound with a
+    /// dynamic offset.
+    BindGroupLayout reduce_layout;
+    PipelineLayout reduce_pl;
+    RenderPipeline reduce_pipe;
+    Buffer reduce_uniform;
+    BindGroup reduce_bind;
+    static constexpr std::uint32_t kReduceSlot = 256; // minUniformBufferOffsetAlignment
+    static constexpr std::uint32_t kReduceBytes = 32; // struct ReduceU
     Texture scene_t;
     TextureView scene_v;
     std::pair<std::uint32_t, std::uint32_t> scene_size{0, 0};
@@ -346,6 +356,8 @@ struct GpuFrame::Impl {
         std::uint64_t serial = 0;
         /// The chunk has a flow lattice on the GPU.
         bool flow = false;
+        /// The plane bits of the chunk uniform (kChunkFlag*).
+        std::uint32_t flags = 0;
         std::vector<Plane> planes;
         Buffer uniform;
     };
@@ -836,6 +848,7 @@ struct GpuFrame::Impl {
             flags |= kChunkFlagFlow | fl.stride_px << kChunkStrideShift;
         }
         out.flow = has_flow;
+        out.flags = flags;
         out.uniform =
             make_buffer(dev(), "chunk", 16, WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
         Bytes u;
@@ -861,6 +874,120 @@ struct GpuFrame::Impl {
         out.bind = BindGroup(wgpuDeviceCreateBindGroup(dev(), &desc));
         out.real = chunk != nullptr;
         out.serial = chunk != nullptr ? chunk->serial : 0;
+        return out;
+    }
+
+    /// The chunk at `r` of a derived level: the four chunks of `src` (index
+    /// qy * 2 + qx, null = nothing there) reduced 2x on the GPU into its
+    /// quadrants (reduce_fs; chunk_reduce.hpp is the reference). The planes
+    /// ground, objects, field and terrain exist where a source has them; base
+    /// and the flow lattice are not derived. Submits its own commands.
+    std::optional<Chunk> reduce_quad(const std::array<const Chunk*, 4>& src, const Rect& r,
+                                     Px water) {
+        const std::uint32_t n = static_cast<std::uint32_t>(kChunk);
+        std::uint32_t flags = 0;
+        for (const Chunk* c : src) {
+            flags |= c != nullptr ? c->flags & 15U : 0U;
+        }
+        Chunk out;
+        const std::array formats = {WGPUTextureFormat_BGRA8Unorm, WGPUTextureFormat_RGBA8Unorm,
+                                    WGPUTextureFormat_RGBA8Uint, kTerrainFormat};
+        std::array<WGPURenderPassColorAttachment, 4> ca;
+        const std::array<WGPUColor, 4> clear = {
+            {{water[0] / 255.0, water[1] / 255.0, water[2] / 255.0, 0.0},
+             {0.0, 0.0, 0.0, 0.0},
+             {255.0, 255.0, 255.0, 1.0},
+             {65535.0, 0.0, 0.0, 0.0}}};
+        for (std::size_t i = 0; i < 4; ++i) {
+            Plane p;
+            p.format = formats[i];
+            p.w = p.h = n;
+            p.texture =
+                make_texture(dev(), "reduced", formats[i], n, n, 1,
+                             WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding |
+                                 WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
+            p.view = make_view(p.texture.get(), false);
+            ca[i] = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+            ca[i].view = p.view.get();
+            ca[i].loadOp = WGPULoadOp_Clear;
+            ca[i].storeOp = WGPUStoreOp_Store;
+            ca[i].clearValue = clear[i];
+            out.planes.push_back(std::move(p));
+        }
+        // The uniform slots: the quadrant origin and the open-water colour.
+        std::vector<std::uint8_t> slots(std::size_t{kReduceSlot} * 4, 0);
+        for (std::uint32_t q = 0; q < 4; ++q) {
+            Bytes b;
+            b.i32(static_cast<std::int32_t>((q % 2) * (n / 2)));
+            b.i32(static_cast<std::int32_t>((q / 2) * (n / 2)));
+            b.i32(0);
+            b.i32(0);
+            for (std::size_t k = 0; k < 4; ++k) {
+                b.u32(water[k]);
+            }
+            std::copy(b.b.begin(), b.b.end(), slots.begin() + std::size_t{q} * kReduceSlot);
+        }
+        wgpuQueueWriteBuffer(queue(), reduce_uniform.get(), 0, slots.data(), slots.size());
+        WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
+        CommandEncoder enc(wgpuDeviceCreateCommandEncoder(dev(), &ed));
+        WGPURenderPassDescriptor rd = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+        rd.colorAttachmentCount = ca.size();
+        rd.colorAttachments = ca.data();
+        WGPURenderPassEncoder p = wgpuCommandEncoderBeginRenderPass(enc.get(), &rd);
+        wgpuRenderPassEncoderSetPipeline(p, reduce_pipe.get());
+        wgpuRenderPassEncoderSetBindGroup(p, 0, empty_bind.get(), 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(p, 2, empty_bind.get(), 0, nullptr);
+        for (std::uint32_t q = 0; q < 4; ++q) {
+            if (src[q] == nullptr) {
+                continue;
+            }
+            const std::uint32_t offset = q * kReduceSlot;
+            wgpuRenderPassEncoderSetBindGroup(p, 1, src[q]->bind.get(), 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(p, 3, reduce_bind.get(), 1, &offset);
+            wgpuRenderPassEncoderSetScissorRect(p, (q % 2) * (n / 2), (q / 2) * (n / 2), n / 2,
+                                                n / 2);
+            wgpuRenderPassEncoderDraw(p, 3, 1, 0, 0);
+        }
+        wgpuRenderPassEncoderEnd(p);
+        wgpuRenderPassEncoderRelease(p);
+        if (!submit(enc.get(), "reduce")) {
+            return std::nullopt;
+        }
+        // The chunk's bind group: the planes a source had, dummies for the rest
+        // (the textures of the others stay allocated until the chunk is dropped).
+        const WGPUTextureView gv =
+            (flags & 1U) != 0 ? out.planes[0].view.get() : dummy_color.second.get();
+        const WGPUTextureView ov =
+            (flags & 2U) != 0 ? out.planes[1].view.get() : dummy_color.second.get();
+        const WGPUTextureView fv =
+            (flags & 4U) != 0 ? out.planes[2].view.get() : dummy_field.second.get();
+        const WGPUTextureView tv =
+            (flags & 8U) != 0 ? out.planes[3].view.get() : dummy_terrain.second.get();
+        out.flags = flags;
+        out.uniform =
+            make_buffer(dev(), "chunk", 16, WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
+        Bytes u;
+        u.i32(r.x);
+        u.i32(r.y);
+        u.i32(kChunk);
+        u.u32(flags);
+        wgpuQueueWriteBuffer(queue(), out.uniform.get(), 0, u.b.data(), u.b.size());
+        const std::array entries = {buffer_entry(0, out.uniform.get(), 16),
+                                    view_entry(1, gv),
+                                    view_entry(2, ov),
+                                    view_entry(3, fv),
+                                    view_entry(4, tv),
+                                    view_entry(5, dummy_base.second.get()),
+                                    view_entry(kFlowVelocityBinding, dummy_flow_uv.second.get()),
+                                    view_entry(kFlowAuxBinding, dummy_flow_aux.second.get()),
+                                    view_entry(kFlowShearBinding, dummy_flow_shear.second.get())};
+        WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+        desc.label = sv("chunk");
+        desc.layout = chunk_layout.get();
+        desc.entryCount = entries.size();
+        desc.entries = entries.data();
+        out.bind = BindGroup(wgpuDeviceCreateBindGroup(dev(), &desc));
+        out.real = true;
         return out;
     }
 
@@ -1470,6 +1597,18 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
         pd.bindGroupLayoutCount = scl.size();
         pd.bindGroupLayouts = scl.data();
         m.scale_pl = PipelineLayout(wgpuDeviceCreatePipelineLayout(d, &pd));
+        // The reduction (group 3 binding 2 of the module): a dynamic-offset
+        // uniform, one slot per quadrant; the source chunk is group 1.
+        WGPUBindGroupLayoutEntry re = uniform_entry(2);
+        re.buffer.hasDynamicOffset = 1;
+        re.buffer.minBindingSize = Impl::kReduceBytes;
+        m.reduce_layout = layout(d, "reduce", {re});
+        const std::array rl = {m.empty_layout.get(), m.chunk_layout.get(), m.empty_layout.get(),
+                               m.reduce_layout.get()};
+        pd.label = sv("reduce");
+        pd.bindGroupLayoutCount = rl.size();
+        pd.bindGroupLayouts = rl.data();
+        m.reduce_pl = PipelineLayout(wgpuDeviceCreatePipelineLayout(d, &pd));
     }
     WGPUBlendState alpha{};
     alpha.color = {WGPUBlendOperation_Add, WGPUBlendFactor_SrcAlpha,
@@ -1507,6 +1646,32 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
         m.pipeline("sprite", m.sprite_pl.get(), "sprite_vs", "sprite_fs", &vbl, 1, format, &alpha);
     m.scale_pipe =
         m.pipeline("scale", m.scale_pl.get(), "scale_vs", "scale_fs", nullptr, 0, format, nullptr);
+    {
+        // Four render targets (ground, objects, field, terrain), no blending.
+        const std::array formats = {WGPUTextureFormat_BGRA8Unorm, WGPUTextureFormat_RGBA8Unorm,
+                                    WGPUTextureFormat_RGBA8Uint, kTerrainFormat};
+        std::array<WGPUColorTargetState, 4> ct;
+        for (std::size_t i = 0; i < ct.size(); ++i) {
+            ct[i] = WGPU_COLOR_TARGET_STATE_INIT;
+            ct[i].format = formats[i];
+            ct[i].writeMask = WGPUColorWriteMask_All;
+        }
+        WGPUFragmentState frag = WGPU_FRAGMENT_STATE_INIT;
+        frag.module = m.module.get();
+        frag.entryPoint = sv("reduce_fs");
+        frag.targetCount = ct.size();
+        frag.targets = ct.data();
+        WGPURenderPipelineDescriptor rdesc = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        rdesc.label = sv("reduce");
+        rdesc.layout = m.reduce_pl.get();
+        rdesc.vertex.module = m.module.get();
+        rdesc.vertex.entryPoint = sv("scale_vs");
+        rdesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        rdesc.multisample.count = 1;
+        rdesc.multisample.mask = 0xFFFFFFFFU;
+        rdesc.fragment = &frag;
+        m.reduce_pipe = RenderPipeline(wgpuDeviceCreateRenderPipeline(d, &rdesc));
+    }
     if (const std::string err = pop_error_scope(c.instance.get(), d); !err.empty()) {
         return "pipelines: " + err;
     }
@@ -1514,6 +1679,17 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
                                   WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
     m.scale_uniform =
         make_buffer(d, "scale", kScaleBytes, WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
+    m.reduce_uniform = make_buffer(d, "reduce", std::uint64_t{Impl::kReduceSlot} * 4,
+                                   WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
+    {
+        const std::array entries = {buffer_entry(2, m.reduce_uniform.get(), Impl::kReduceBytes)};
+        WGPUBindGroupDescriptor bd = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+        bd.label = sv("reduce");
+        bd.layout = m.reduce_layout.get();
+        bd.entryCount = entries.size();
+        bd.entries = entries.data();
+        m.reduce_bind = BindGroup(wgpuDeviceCreateBindGroup(d, &bd));
+    }
     // Slot 0 of the pieces: the chunk itself (all zero = kind 0).
     m.write_pieces(std::vector<std::uint8_t>(kPieceStride, 0));
     m.river_uniform = make_buffer(d, "river", kRiverParamsBytes,
@@ -2224,6 +2400,54 @@ std::pair<Texture, TextureView> GpuFrame::offscreen_target(std::uint32_t w, std:
                              WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc);
     TextureView v = make_view(t.get(), false);
     return {std::move(t), std::move(v)};
+}
+
+std::optional<Chunk> GpuFrame::reduce_chunks_2x(const ChunkQuad& quad, Px open_water) {
+    Impl& m = *impl_;
+    std::array<Impl::Chunk, 4> up;
+    std::array<const Impl::Chunk*, 4> src{};
+    for (std::size_t i = 0; i < 4; ++i) {
+        if (quad[i] != nullptr) {
+            up[i] = m.upload_chunk({0, 0, 0}, quad[i]);
+            src[i] = &up[i];
+        }
+    }
+    auto reduced = m.reduce_quad(src, chunk_rect(0, 0), open_water);
+    if (!reduced) {
+        return std::nullopt;
+    }
+    const auto n = static_cast<std::uint32_t>(kChunk);
+    auto bytes = [&](std::size_t plane, std::uint32_t bpp) {
+        return read_back(reduced->planes[plane].texture.get(), n, n, bpp);
+    };
+    Chunk out;
+    if ((reduced->flags & 1U) != 0) {
+        const auto b = bytes(0, 4);
+        out.ground.resize(b.size() / 4);
+        std::memcpy(out.ground.data(), b.data(), b.size());
+    }
+    if ((reduced->flags & 2U) != 0) {
+        const auto b = bytes(1, 4);
+        out.objects.resize(b.size() / 4);
+        std::memcpy(out.objects.data(), b.data(), b.size());
+    }
+    if ((reduced->flags & 4U) != 0) {
+        out.field = bytes(2, 4);
+    }
+    if ((reduced->flags & 8U) != 0) {
+        const auto b = bytes(3, 2);
+        out.terrain.resize(b.size() / 2);
+        std::memcpy(out.terrain.data(), b.data(), b.size());
+    }
+    out.ships = true;
+    for (const render::Chunk* c : quad) {
+        if (c != nullptr) {
+            out.water_below = out.water_below || c->water_below;
+            out.water_above = out.water_above || c->water_above;
+            out.ships = out.ships && c->ships;
+        }
+    }
+    return out;
 }
 
 std::vector<std::uint8_t> GpuFrame::read_back(WGPUTexture texture, std::uint32_t w, std::uint32_t h,

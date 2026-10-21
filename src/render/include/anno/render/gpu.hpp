@@ -29,6 +29,7 @@
 #include <utility>
 #include <vector>
 
+#include <anno/render/chunk_reduce.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/render/scene.hpp>
 #include <anno/render/wgpu.hpp>
@@ -454,6 +455,11 @@ class GpuFrame {
     std::vector<std::uint8_t> read_back(WGPUTexture texture, std::uint32_t w, std::uint32_t h,
                                         std::uint32_t bpp = 4) const;
     [[nodiscard]] WGPUTextureFormat format() const;
+    /// reduce_chunks_2x (chunk_reduce.hpp) on the GPU: uploads the four chunks,
+    /// reduces them with the compositor's reduce pass and reads the planes back.
+    /// For the exact-equality tests and tools; the viewer keeps derived chunks on
+    /// the GPU. Waits for the GPU; nullopt if the pass could not be submitted.
+    std::optional<Chunk> reduce_chunks_2x(const ChunkQuad& quad, Px open_water);
     /// The clock the chunk dissolves run on (GpuLimits::chunk_fade_ms), in
     /// milliseconds: by default a steady clock of the compositor's own, not
     /// render()'s animation time, which the viewer freezes on pause (a chunk

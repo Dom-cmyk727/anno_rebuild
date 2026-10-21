@@ -1,6 +1,6 @@
 # GPU-built chunks: the sprite passes on the GPU (T11)
 
-**Status 2026-10-20: design (stage 0), nothing implemented.** Written for task T11 (`docs/orchestration/TASKS.md`), owner decision 2026-10-20 "tier 3 now". Companion to [`iso.md`](iso.md) ("Objects", "Animation and layers", "Fidelity", "Stand-in chunks") and [`../re/annodisplay.md`](../re/annodisplay.md). Once a stage lands, the matching rows of `iso.md` are updated and this page keeps the record formats, the residency rules and the test contract.
+**Status 2026-10-21: stage 1 built (CPU only: frame table, `ChunkDraws`, replay, residency model, `chunk_builder` switch; section 11 "Stage 1 as built"); stages 2-3 not started.** Written for task T11 (`docs/orchestration/TASKS.md`), owner decision 2026-10-20 "tier 3 now". Companion to [`iso.md`](iso.md) ("Objects", "Animation and layers", "Fidelity", "Stand-in chunks") and [`../re/annodisplay.md`](../re/annodisplay.md). Once a stage lands, the matching rows of `iso.md` are updated and this page keeps the record formats, the residency rules and the test contract.
 
 Evidence tags as in [`rivers.md`](rivers.md): **M** measured (here: counted with a script over the original files, section 2), **P** parsed from the original files, **D** disassembly, **C** code read at `1900132` (file:line), **E** estimate (to be replaced by a measurement in the stage named), **T** tuning value, **?** open question (section 12).
 
@@ -231,10 +231,19 @@ No fixed arrays: the clip table, the bins, the frame table and the keel buffer a
 
 | Stage | Content | Evidence |
 |---|---|---|
-| 1 | frame ids, frame table, residency (CPU model), `ChunkDraws` builder, CPU replay | 7.1: digests unchanged, replay = old planes, residency unit tests |
+| 1 `DONE` (2026-10-21, see "Stage 1 as built" below) | frame ids, frame table, residency (CPU model), `ChunkDraws` builder, CPU replay | 7.1: digests unchanged, replay = old planes, residency unit tests |
 | 2a | compute pass for objects + base, scheduling, `GpuList` builder behind the switch | 7.2, 7.3; `bench_frame` per-stage numbers; **owner check** (canyon island: fast pan, wheel zoom; `Single_24.sze`) |
 | 2b | ground (+ terrain) render pass | 7.2 with the 5.2 tolerance; after T1f item 2 or by the profile (C2) |
 | 3 | cache and prefetch take GPU-built chunks, stand-ins from them, 5000 px/s pan, cold frame | `docs/perf/README.md` table: chunk latency CPU vs GPU per group, resident atlas MiB, p50/p95/p99/max at 1280 × 800 and 2560 × 1440, RTX 4090 and Radeon iGPU |
+
+### Stage 1 as built (2026-10-21, CPU only)
+
+- **Frame table** (`FrameTable`, `frame_table.hpp`): scene-wide interning of the frames a list names, dense `u32` ids that never change across evictions; decode on the thread that first references a frame; header, image and per-column keel computed once. Shared mutex like `SpriteCache`.
+- **Draw list** (`ChunkDraws`, `chunk_draws.hpp`): 32-byte little-endian object records written field by field, clip table, sorted frame set, CSR bins (`bin_px` 32 by default). The ground record format is defined and layout-tested; there is no ground builder yet (stage 2b).
+- **Builder and replay**: `Scene::objects_draws` emits records in the CPU blit order (islands in layout order, shadow before its object, soldiers merged by their key, ships as an unclipped tail). `replay()` draws them with `blit_sprite_keel`, the same per-island local canvas and `composite()` rule as `render_with_terrain`. `render_chunk` builds the list and replays it (`chunk_builder` switch, default Cpu); output is byte-identical to the old path.
+- **Residency model** (`AtlasResidency`, `residency.hpp`): pure CPU class, layers of `atlas_size`^2 texels under a byte budget, Static and Hot classes in separate layers, shelf packing, layer-granular LRU, per-frame pinning, an upload byte cap (`Deferred`), `Overflow` as the CPU-fallback counter. The budgets are `GpuLimits::atlas_budget_mb`, `atlas_upload_bytes_per_frame`, `gpu_chunks_per_frame` (defaults and reasons in `gpu.hpp`); the compositor does not read them yet.
+- **Tests**: `chunk_draws_corpus_test.cpp` replays every chunk of `Single_01`, `Single_24` and the canyon island at all three groups, ships on and off, and compares objects and base planes with `Scene::render` (equal), the binning against a brute-force list, and that every clip entry lies inside its chunk; `residency_test.cpp` covers the model. All 67 render tests matching the stage 1 filter pass on the msvc Release build.
+- **Not done in stage 1**: any GPU work (2a), the ground pass (2b), the cache and prefetch taking GPU-built chunks (3).
 
 ## 12. Open questions (candidates; the orchestrator assigns OQ numbers, the highest on `main` is OQ-095)
 

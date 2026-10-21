@@ -206,7 +206,7 @@ Canvas replay(const ChunkDraws& draws, const FrameTable& frames, std::size_t* mi
         data[i] = frames.get(draws.frame_set[i]);
     }
     // The island segment being drawn: its local canvas, composited at its end.
-    std::optional<Canvas> local;
+    std::unique_ptr<Canvas> local;
     std::uint32_t segment = kClipNone;
     auto close = [&] {
         if (local) {
@@ -225,7 +225,7 @@ Canvas replay(const ChunkDraws& draws, const FrameTable& frames, std::size_t* mi
             if (!local || r.clip != segment) {
                 close();
                 const Rect& c = draws.clips.at(r.clip);
-                local = blank(c);
+                local = std::make_unique<Canvas>(blank(c));
                 if (draws.bases) {
                     local->base.assign(local->width * local->height, 255);
                     local->base_band = draws.base_band;

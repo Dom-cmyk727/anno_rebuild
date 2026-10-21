@@ -45,10 +45,13 @@ template <class F> std::shared_ptr<const Rgba> image(std::uint16_t w, std::uint1
     auto img = std::make_shared<Rgba>();
     img->width = w;
     img->height = h;
+    img->pixels.resize(std::size_t{w} * h * 4);
     for (std::uint16_t y = 0; y < h; ++y) {
         for (std::uint16_t x = 0; x < w; ++x) {
             const Px p = px(x, y);
-            img->pixels.insert(img->pixels.end(), p.begin(), p.end());
+            for (std::size_t c = 0; c < p.size(); ++c) {
+                img->pixels[(std::size_t{y} * w + x) * 4 + c] = p[c];
+            }
         }
     }
     return img;

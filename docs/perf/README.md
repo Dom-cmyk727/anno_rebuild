@@ -318,3 +318,90 @@ Reading: with stand-ins off the same binary also has runs with a max above 8 ms 
 - Cost of stand-ins: p50 unchanged (0.3 / 0.4 ms); p95 +0.0 at 1280x800, +0.2 ms at 2560x1440 groups 0 and 1 (1.0 to 1.2 ms), max within noise.
 - Prewarm on vs off: no difference outside noise in these medians. It is kept because it targets the first uploads into a group (10-19 ms texture creation seen before); this bench starts after the pre-created planes are ready (`pre-created planes ready: 120`), i.e. it measures the steady state the thread leaves, not the first seconds. The viewer's first zoom into an uncached group on the owner's machine is the case still to be checked by the owner (A/B with `ANNO_VIEW_PREWARM=off`).
 - Raw outputs: scratch files of the session (`bench/r<round>_<res>_si<on|off>_pw<0|24>.txt`, `loads.txt`), not in the repository.
+
+### 2026-10-20 - T1d: pan while zooming (margin, prefetch, cross-fade)
+
+**What the owner saw:** artifacts only when moving through the map while zooming. **Reproduced** with `bench_frame --zoom 60 --zoom-pan 4,2,400` (the view walks 4 x 2 scene pixels per frame, about 1600 px/s at 2.5 ms frames, reversing every 400 frames, a zoom step every 60 frames): with the T1c code, visible chunks with no source in any zoom group (open sea) in 9-86 of 1600 frames, runs up to 325 ms, and single frame pairs where 14-30 % of the pixels jump by more than 40 levels.
+
+**Cause, measured.** (1) A chunk takes 100-250 ms on one worker thread (blocking cold frame: 12 chunks 118-247 ms with 16 threads), so what the ring of one chunk does not cover arrives late; the queue was ordered by key, not by nearness; the neighbouring groups were only built once the current one was nearly done, and never uploaded, so a zoom step had no stand-in source for the part of the new view that had been off screen. (2) A chunk replacing its stand-in swapped in one frame. The 4.2 ms window-event frame and the `queue submit` spikes of 3.9-5.0 ms named in the board are **not** explained: `SDL_SetWindowTitle` per zoom step costs 0.03 ms (worst 0.09 ms), a wheel event does no per-event work that grows with anything (`group_ready` is a map lookup); they did not reproduce here.
+
+**Changes** (commits `T1d 5`, `T1d 1`, `T1d 2` of the branch): the margin around the view grows in the direction of motion by speed x (2 x the measured build time + 0.1 s), at most `FrameRenderer::max_lookahead_chunks` (3) chunks (`lookahead_rect`); the view a zoom step would show in each neighbouring group gets the same margin, always, queued behind the current group and nearest-first to the view as it will be; the compositor uploads those built chunks when no visible chunk waits (`GpuLimits::prefetch_chunks` 96, one per frame); a chunk that replaces a stand-in or the open sea dissolves in over `GpuLimits::chunk_fade_ms` (150 interactive, 0 elsewhere) on the animation clock (ground and sea pipelines blend by the piece record's `transparent`, terrain switches half-way, objects scale their alpha). Switches for comparing: `bench_frame --prefetch 0 --fade 0` is the T1c behaviour. (Changed in T1e, next section: the fade runs on a steady clock and starts only over a placeholder an earlier frame drew; only the fading draws blend; the "open sea" columns below count whole chunks without any source and miss holes in a stand-in's cover.)
+
+**Measured** on `D_256x256_0045_5B`, enhanced, GPU async chunks, interactive limits, RTX 4090 + Ryzen 9800X3D, three runs per cell (rounds alternating the two configurations), CPU load read before each run 0-29 % (mostly 4-15 %). "pop" = the share of pixels that change by more than 40 levels between two consecutive frames of one group, the previous frame shifted by the pan (`--pop on`; the water's own motion stays below it); worst single frame pair per run.
+
+| res | pan | config | group | p50 / p95 / p99 / max ms (median of 3) | worst max | frames with open sea (median) | longest open-sea run ms (worst) | worst pop % of pixels (median / worst) | pairs above 0.5 % (median) |
+|---|---|---|---|---|---|---|---|---|---|
+| 1280x800 | 0,0 | T1c (no prefetch, no fade) | 0 | 0.2 / 0.4 / 2.3 / 3.0 | 151.6 | 8 | 16 | 17.91 / 18.69 | 9 |
+| 1280x800 | 0,0 | T1c (no prefetch, no fade) | 1 | 0.3 / 0.5 / 2.5 / 4.2 | 4.6 | 11 | 72 | 11.98 / 12.44 | 18 |
+| 1280x800 | 0,0 | T1c (no prefetch, no fade) | 2 | 0.3 / 0.5 / 2.5 / 4.3 | 4.5 | 0 | 0 | 10.10 / 10.10 | 16 |
+| 1280x800 | 0,0 | T1d defaults | 0 | 0.3 / 0.6 / 2.4 / 3.0 | 130.4 | 0 | 0 | 0.46 / 0.52 | 0 |
+| 1280x800 | 0,0 | T1d defaults | 1 | 0.3 / 1.8 / 2.5 / 4.3 | 667.3 | 0 | 0 | 0.46 / 0.49 | 0 |
+| 1280x800 | 0,0 | T1d defaults | 2 | 0.3 / 0.6 / 1.5 / 2.5 | 4.0 | 0 | 0 | 0.46 / 0.48 | 0 |
+| 1280x800 | 4,2 | T1c (no prefetch, no fade) | 0 | 0.3 / 1.8 / 2.5 / 4.3 | 4.3 | 33 | 73 | 27.86 / 30.50 | 64 |
+| 1280x800 | 4,2 | T1c (no prefetch, no fade) | 1 | 0.3 / 1.7 / 2.6 / 5.9 | 5.9 | 19 | 67 | 19.22 / 19.83 | 51 |
+| 1280x800 | 4,2 | T1c (no prefetch, no fade) | 2 | 0.3 / 2.0 / 4.0 / 4.4 | 4.5 | 9 | 13 | 12.35 / 17.14 | 86 |
+| 1280x800 | 4,2 | T1d defaults | 0 | 0.3 / 1.8 / 2.3 / 4.3 | 5.6 | 0 | 0 | 2.11 / 2.70 | 14 |
+| 1280x800 | 4,2 | T1d defaults | 1 | 0.3 / 2.3 / 3.8 / 4.4 | 5.7 | 0 | 0 | 1.48 / 1.76 | 9 |
+| 1280x800 | 4,2 | T1d defaults | 2 | 0.3 / 2.1 / 3.7 / 4.3 | 5.9 | 0 | 0 | 1.54 / 2.35 | 12 |
+| 2560x1440 | 0,0 | T1c (no prefetch, no fade) | 0 | 0.4 / 0.7 / 2.1 / 3.6 | 3.6 | 15 | 94 | 11.63 / 14.46 | 21 |
+| 2560x1440 | 0,0 | T1c (no prefetch, no fade) | 1 | 0.4 / 0.7 / 2.1 / 3.6 | 657.3 | 7 | 1783 | 10.25 / 10.25 | 17 |
+| 2560x1440 | 0,0 | T1c (no prefetch, no fade) | 2 | 0.4 / 0.7 / 2.1 / 3.6 | 3.7 | 0 | 0 | 7.18 / 7.18 | 18 |
+| 2560x1440 | 0,0 | T1d defaults | 0 | 0.4 / 1.0 / 2.1 / 2.6 | 2.8 | 0 | 0 | 1.38 / 1.39 | 7 |
+| 2560x1440 | 0,0 | T1d defaults | 1 | 0.4 / 1.1 / 2.1 / 3.0 | 3.6 | 0 | 0 | 1.40 / 1.41 | 6 |
+| 2560x1440 | 0,0 | T1d defaults | 2 | 0.4 / 1.2 / 2.1 / 2.7 | 2.7 | 0 | 0 | 1.27 / 1.28 | 6 |
+| 2560x1440 | 4,2 | T1c (no prefetch, no fade) | 0 | 0.5 / 2.1 / 3.4 / 4.7 | 5.1 | 48 | 267 | 14.30 / 14.30 | 89 |
+| 2560x1440 | 4,2 | T1c (no prefetch, no fade) | 1 | 0.5 / 2.1 / 3.3 / 6.7 | 9.3 | 31 | 77 | 18.02 / 18.02 | 88 |
+| 2560x1440 | 4,2 | T1c (no prefetch, no fade) | 2 | 0.5 / 2.1 / 3.3 / 5.9 | 6.7 | 23 | 325 | 18.01 / 18.01 | 89 |
+| 2560x1440 | 4,2 | T1d defaults | 0 | 0.6 / 1.9 / 2.8 / 4.8 | 4.9 | 0 | 0 | 1.48 / 1.56 | 18 |
+| 2560x1440 | 4,2 | T1d defaults | 1 | 0.6 / 2.0 / 2.8 / 4.5 | 4.5 | 0 | 0 | 1.34 / 1.34 | 15 |
+| 2560x1440 | 4,2 | T1d defaults | 2 | 0.5 / 1.9 / 2.7 / 4.7 | 4.7 | 0 | 0 | 1.44 / 1.48 | 16 |
+
+- **No pan:** open sea gone (0 frames; T1c: 8-15 frames, runs up to 94 ms, one 1783 ms run at 2560x1440 group 1 while the machine was at 20 % load); pop worst 10-18 % of pixels in one frame pair falls to 0.5 % (1280x800) and 1.4 % (2560x1440, bigger chunks arriving per frame).
+- **Pan 4,2 (about 1600 px/s):** open sea gone in all 36 runs; pop worst 12-31 % falls to 1.3-2.7 %; pairs above 0.5 % fall from 51-89 to 9-18. **Stated threshold:** no more than 3 % of the pixels jump between two frames of one group at this pan, 1.5 % without pan.
+- **Frame time:** window-thread max 4.3-5.9 ms in every median cell (acceptance 8 ms), p99 at most 3.8 ms; the T1d defaults add 0.1-0.2 ms at p95 for the prefetch uploads. Single-frame outliers of 130-667 ms occurred in four no-pan runs (two per configuration, so not caused by T1d; all with the per-frame read-back of `--pop`, which stalls the GPU queue) and are in the "worst max" column.
+- **Not covered:** a pan of 12,6 px per frame (about 5000 px/s) still shows open sea (hundreds of frames): chunk builds, 100-250 ms each, cannot keep up with a view crossing 1280 px in a quarter of a second; faster chunk building is the remaining lever (not in this task).
+- **Items not done:** 3 (rivers on a stand-in: the owner reports rivers "perfect"; river pixels are a small share of the pop) and 4 (wave window: 14-48 ms per zoom step, not reported by the owner; the dumped-frame metric shows no jump left that is not a chunk swap) were conditional on frames still showing them after items 1, 2 and 5; they do not, at the metric's resolution. Left open as OQ-091 / OQ-076.
+
+### 2026-10-20 - T1e: no dissolve on a plain pan; open sea by area; the margin's memory
+
+RTX 4090 + Ryzen 9800X3D, enhanced water, GPU async chunks, interactive limits, CPU load 0-8 % before each run, branch `task/T1d-zoom-artifacts` at `245f666` (the review commits after it change counting and tests only). One run per cell unless said.
+
+**Plain pan (item 1).** `bench_frame --zoom 0 --zoom-pan dx,dy,400 --zoom-frames 1600` (a pan with no zoom step). "fade" = frames after the first second in which a chunk dissolves in; T1d dissolved every chunk entering at the edge (reviewers' finding, not measured on T1d).
+
+| scene | res | group | pan (px/frame, about px/s) | p50 / p95 / p99 / max ms | frames with open sea | fade frames |
+|---|---|---|---|---|---|---|
+| canyon `D_256x256_0045_5B` | 1280x800 | 1 | 4,2 (1600) | 0.3 / 1.7 / 1.8 / 3.7 | 0 | 0 |
+| canyon, `--prefetch 0` | 1280x800 | 1 | 4,2 | 0.2 / 0.4 / 0.7 / 2.3 | 2 | 0 |
+| canyon | 2560x1440 | 0 / 2 | 4,2 | 0.3-0.4 / 0.7-0.8 / 0.9-1.0 / 2.1-2.7 | 0 / 0 | 0 / 0 |
+| canyon | 2560x1440 | 0 / 2 | 8,0 (3200) | 0.3-0.4 / 0.7-0.8 / 0.9-1.0 / 2.3-3.1 | 0 / 0 | 0 / 0 |
+| canyon | 2560x1440 | 0 / 2 | 12,6 (5000) | 0.4 / 0.8-0.9 / 1.1 / 2.5-6.5 | 53 / 0 | 151 / 0 |
+| `Single_24.sze` | 2560x1440 | 0 / 2 | 4,2 / 8,0 / 12,6 | 0.3-0.4 / 0.8-0.9 / 1.0-1.1 / 2.2-3.3 | 0 in all six | 0 in all six |
+
+The prefetch uploads cost p95 at 1280x800 (0.4 → 1.7 ms: one chunk upload per idle frame while the margin moves); max stays below 8 ms everywhere. The canyon at 5000 px/s, group 0, is build latency (no source built in any group, "0 built on the CPU"): those chunks show open sea, then dissolve; the T1f / T11 tasks are about that. The reviewers' concern that the margin and the neighbouring groups share `prefetch_chunks` (96) and could starve the margin at 2560x1440 is not seen in these runs.
+
+**Open sea by area (item 7).** `open_sea_chunks` now counts a chunk when the stand-in parts leave any of its visible area uncovered, `open_sea_px` sums that area. Pan while zooming (`--zoom 60 --zoom-pan 4,2,400 --zoom-frames 1600`, the T1d table's rows), canyon, 1280x800:
+
+| group | p50 / p95 / p99 / max ms | frames with open sea (of 1600) | longest run | open-sea pixels in all | worst share of the view | fade frames |
+|---|---|---|---|---|---|---|
+| 0 | 0.3 / 1.8 / 2.7 / 4.9 | 201 | 60 frames / 118 ms | 13.2 M | 18.2 % | 261 |
+| 1 | 0.3 / 2.4 / 3.4 / 5.7 | 94 | 60 / 114 ms | 1.5 M | 4.2 % | 237 |
+| 2 | 0.3 / 1.7 / 2.4 / 4.2 | 74 | 35 / 68 ms | 1.6 M | 6.1 % | 320 |
+
+So T1d's "open sea 0 frames" held chunk-wise only: holes in the stand-in cover (parts of the new view with no built source in any group, mostly after a step to group 0 while panning) show open sea for up to one zoom interval. It is not a T1e regression: group 0 with the margin taken out of the prefetch (the T1d order, a temporary build) gave 210-212 frames / 12.4-15.2 M px in two runs, the T1e code 130-240 frames / 4.0-8.0 M px, a larger cap (`--prefetch 200`) 195-230 frames. Every missing part was unbuilt on the CPU ("0 built"): build latency again (T1f, T11). `Single_24.sze` at 2560x1440 with a zoom every 60 frames: 289-364 frames, up to 18-27 % of the view in the worst frame (next table).
+
+**The margin's memory (item 8).** CPU chunk cache sampled after every frame (`Chunk::bytes`, capacities), `Single_24.sze`, group 0, pan while zooming as above:
+
+| res | pan | `--lookahead-chunks` | peak MB | mean MB | peak chunks | frames with open sea | worst share of the view |
+|---|---|---|---|---|---|---|---|
+| 1280x800 | 4,2 | 3 | 495 | 383 | 133 | 62 | 2.1 % |
+| 1280x800 | 4,0 | 3 | 439 | 359 | 117 | 6 | 2.7 % |
+| 2560x1440 | 4,2 | 3 | 672 | 511 | 191 | 347 | 26.9 % |
+| 2560x1440 | 4,0 | 3 | 677 | 536 | 185 | 293 | 18.4 % |
+| 1280x800 | 4,2 | 2 | 490 | 382 | 131 | 99 | 2.8 % |
+| 1280x800 | 4,0 | 2 | 443 | 362 | 118 | 2 | 2.3 % |
+| 2560x1440 | 4,2 | 2 | 711 | 529 | 193 | 364 | 26.2 % |
+| 2560x1440 | 4,0 | 2 | 634 | 528 | 171 | 289 | 17.4 % |
+
+The counted worst case at 2560x1440 (all chunks land chunks of 4.3 MB) is 0.8 / 1.1 / 1.5 GB standing / one axis / diagonal; the largest scene stays at 0.44-0.71 GB peak because sea chunks are small. Cap 2 against 3 differs by less than the run-to-run noise in memory (most of the cache is the 48 spare chunks and the neighbouring groups' views); the viewer's default stays 3, `--lookahead-chunks 2` exists for the owner.
+
+**Blend cost (item 3)** is not measured: the opaque pipelines are back for every draw but the fading ones (one pipeline switch per pass when a chunk fades), so the per-frame cost is the pre-T1d one by construction.

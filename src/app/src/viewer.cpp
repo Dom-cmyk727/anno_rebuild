@@ -234,10 +234,11 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
 class Viewer {
   public:
     Viewer(const render::Scene& scene, std::size_t group, std::size_t threads, Renderer renderer,
-           render::RiverFlowMode river_flow, render::WaterStyle water)
+           render::RiverFlowMode river_flow, render::WaterStyle water, std::size_t lookahead_chunks)
         : scene_(scene), group_(group), frames_(threads), renderer_choice_(renderer),
           water_(water) {
         frames_.river_flow = river_flow;
+        frames_.max_lookahead_chunks = lookahead_chunks;
         const auto b = *scene.bounds(group);
         cam_x_ = b.x + b.w / 2.0;
         cam_y_ = b.y + b.h / 2.0;
@@ -381,8 +382,10 @@ std::string Viewer::run() {
             gpu_ = std::move(g).value();
             // The compositor draws the ships each frame: chunks without them.
             const render::RiverFlowMode river_flow = frames_.river_flow;
+            const std::size_t lookahead = frames_.max_lookahead_chunks;
             frames_ = render::FrameRenderer(frames_.threads, false);
             frames_.river_flow = river_flow;
+            frames_.max_lookahead_chunks = lookahead;
             const render::RiverQuality tier = gpu_->frame->river_quality();
             std::fprintf(stderr, "GPU renderer: %s (river shading: %s)\n", gpu_->ctx.name.c_str(),
                          tier == render::RiverQuality::High     ? "high"
@@ -975,13 +978,14 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
 } // namespace
 
 std::string run_viewer(const render::Scene& scene, std::size_t group, Renderer renderer,
-                       render::RiverFlowMode river_flow, render::WaterStyle water) {
+                       render::RiverFlowMode river_flow, render::WaterStyle water,
+                       std::size_t lookahead_chunks) {
     if (!scene.bounds(group)) {
         return "no islands";
     }
     const std::size_t threads =
         (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);
-    Viewer v(scene, group, threads, renderer, river_flow, water);
+    Viewer v(scene, group, threads, renderer, river_flow, water, lookahead_chunks);
     return v.run();
 }
 

@@ -124,7 +124,10 @@ struct Piece {
     num: vec2<i32>,
     den: vec2<i32>,
     kind: u32,
-    _p0: u32,
+    // How transparent the draw is, 0 (all records written before the field
+    // existed: opaque) to 1: a chunk that just replaced its stand-in or the open
+    // sea is drawn over it with this falling to 0 (GpuLimits::chunk_fade_ms).
+    transparent: f32,
     _p1: u32,
     _p2: u32,
 }
@@ -185,13 +188,14 @@ fn ground_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         discard;
     }
     let local = chunk_local(scene_px(pos));
-    return vec4<f32>(textureLoad(ground_tex, local, 0).rgb, 1.0);
+    return vec4<f32>(textureLoad(ground_tex, local, 0).rgb, 1.0 - piece.transparent);
 }
 
 // Terrain height of the chunk pixel (flag bit 3: chunk has terrain).
 @fragment
 fn terrain_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<u32> {
-    if (chunk.flags & 8u) == 0u {
+    // A chunk fading in shows the terrain of what it replaces until half-way.
+    if (chunk.flags & 8u) == 0u || piece.transparent > 0.5 {
         discard;
     }
     let local = chunk_local(scene_px(pos));
@@ -209,9 +213,10 @@ fn objects_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         discard;
     }
     if frame.enhanced != 0u && frame.objects_water != 0.0 && (chunk.flags & 16u) != 0u {
-        return object_in_water(c, local, scene_px(pos), pos);
+        let w = object_in_water(c, local, scene_px(pos), pos);
+        return vec4<f32>(w.rgb, w.a * (1.0 - piece.transparent));
     }
-    return c;
+    return vec4<f32>(c.rgb, c.a * (1.0 - piece.transparent));
 }
 
 // ---- Water against objects (enhanced water only; not in the original) ----
@@ -742,7 +747,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         flags = f.a;
     }
     if cover == 0u {
-        return vec4<f32>(under, 1.0);
+        return vec4<f32>(under, 1.0 - piece.transparent);
     }
     let enhanced = frame.enhanced != 0u;
     // Original: the original's waterline; enhanced: the smooth waterline
@@ -770,7 +775,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         alpha = 0.0;
     }
     if alpha <= 0.0 {
-        return vec4<f32>(under, 1.0);
+        return vec4<f32>(under, 1.0 - piece.transparent);
     }
     let pi = vec2<i32>(wrap(px.x, frame.pattern_size.x), wrap(px.y, frame.pattern_size.y));
     var sprite = textureLoad(sea_sprite, pi, frame.steps.x, 0);
@@ -829,7 +834,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
             c = shade_apply(c, wave_shade(f32(shore) / SHORE_SCALE, sd, slope_of(flags), w, frame.time_ms, detail));
         }
     }
-    return vec4<f32>(mix(under, c, alpha), 1.0);
+    return vec4<f32>(mix(under, c, alpha), 1.0 - piece.transparent);
 }
 
 // ---- Sprites (water objects) from the atlas ----

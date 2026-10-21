@@ -319,12 +319,22 @@ void ChunkWorkers::run() {
         }
         const auto [group, cx, cy] = key;
         std::optional<Chunk> chunk;
+        const auto built_at = Clock::now();
         try {
             chunk = render_chunk(scene_, group, cx, cy, ships, false);
         } catch (const std::exception& e) {
             // E.g. out of memory: the chunk stays missing (open sea) and is not
             // requested again; the worker keeps running.
             std::fprintf(stderr, "chunk (%zu, %d, %d) failed: %s\n", group, cx, cy, e.what());
+        }
+        // A failed build says nothing about how long a chunk takes.
+        if (chunk) {
+            const double took = ms_since(built_at);
+            // Workers finish at the same time: a compare-exchange loop so no
+            // sample is lost between the load and the store.
+            double was = build_ms_.load();
+            while (!build_ms_.compare_exchange_weak(was, 0.8 * was + 0.2 * took)) {
+            }
         }
         const std::lock_guard lock(mutex_);
         busy_.erase(key);
@@ -376,8 +386,16 @@ std::tuple<std::size_t, double, std::size_t>
 FrameRenderer::update_chunks(const Scene& scene, Rect view, std::size_t group) {
     const auto t = Clock::now();
     const auto chunks = visible_chunks(view);
-    const std::size_t built =
-        workers_ ? request_chunks(scene, group, view, chunks) : fill_cache(scene, group, chunks);
+    std::size_t built = 0;
+    if (workers_) {
+        built = request_chunks(scene, group, view, chunks);
+    } else {
+        built = fill_cache(scene, group, chunks);
+        // Without background builds only the neighbouring groups' keys are of use
+        // (the GPU compositor uploads those that are cached).
+        std::set<ChunkKey> keep;
+        plan_margin(view, group, chunks, 0.1, keep);
+    }
     std::size_t missing = 0;
     for (const auto& [cx, cy] : chunks) {
         missing += cache_.contains({group, cx, cy}) ? 0U : 1U;
@@ -562,6 +580,77 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
     return stats;
 }
 
+std::vector<ChunkKey> FrameRenderer::plan_margin(Rect view, std::size_t group,
+                                                 const std::vector<std::pair<int, int>>& visible,
+                                                 double horizon_s, std::set<ChunkKey>& keep) {
+    track_velocity(view, group);
+    const auto ring =
+        visible_chunks(lookahead_rect(view, vx_, vy_, horizon_s, max_lookahead_chunks));
+    // The queue: visible chunks first, then the rest of the margin of this group,
+    // then the neighbouring groups' views, each class nearest first to the view
+    // as it will be in a moment (shifted by half the lookahead), so what the
+    // motion brings into view first is built first, not what the key order says.
+    struct Candidate {
+        int rank;
+        double distance;
+        ChunkKey key;
+        bool operator<(const Candidate& o) const {
+            return std::tie(rank, distance, key) < std::tie(o.rank, o.distance, o.key);
+        }
+    };
+    std::vector<Candidate> queue;
+    auto add = [&](std::size_t g, const std::vector<std::pair<int, int>>& chunks, Rect centre_on,
+                   double vx, double vy, auto&& rank_of) {
+        const double reach = static_cast<double>(max_lookahead_chunks) * kChunk;
+        const double px =
+            centre_on.x + centre_on.w / 2.0 + std::clamp(vx * horizon_s, -reach, reach) / 2.0;
+        const double py =
+            centre_on.y + centre_on.h / 2.0 + std::clamp(vy * horizon_s, -reach, reach) / 2.0;
+        for (const auto& [cx, cy] : chunks) {
+            const ChunkKey k{g, cx, cy};
+            if (!keep.insert(k).second) {
+                continue;
+            }
+            const double dx = (cx + 0.5) * kChunk - px, dy = (cy + 0.5) * kChunk - py;
+            queue.push_back({rank_of(cx, cy), dx * dx + dy * dy, k});
+        }
+    };
+    add(group, visible, view, vx_, vy_, [](int, int) { return 0; });
+    add(group, ring, view, vx_, vy_, [](int, int) { return 1; });
+    // The view a zoom step would show (same window size, same centre point) in
+    // each neighbouring zoom group, with the same margin, is built behind the
+    // current group's chunks, whatever is still missing there: a pan during a
+    // zoom lands on built content, not on open sea. The memory is the cache's:
+    // these keys are kept like the ring (the budget is spare_chunks plus what is
+    // kept), and adjacent_keys() hands them to the GPU compositor to upload when
+    // it has nothing better to do.
+    for (const std::size_t g : {group - 1, group + 1}) {
+        // group − 1 wraps to SIZE_MAX for group 0 and is skipped.
+        if (g < kGroups) {
+            const Rect next = zoomed_view(view, group, g);
+            const double sx = static_cast<double>(kTile[g].w) / kTile[group].w;
+            const double sy = static_cast<double>(kTile[g].h) / kTile[group].h;
+            add(g,
+                visible_chunks(
+                    lookahead_rect(next, vx_ * sx, vy_ * sy, horizon_s, max_lookahead_chunks)),
+                next, vx_ * sx, vy_ * sy, [](int, int) { return 2; });
+        }
+    }
+    std::sort(queue.begin(), queue.end());
+    adjacent_.clear();
+    margin_.clear();
+    std::vector<ChunkKey> order;
+    for (const auto& c : queue) {
+        order.push_back(c.key);
+        if (c.rank == 1) {
+            margin_.push_back(c.key);
+        } else if (c.rank == 2) {
+            adjacent_.push_back(c.key);
+        }
+    }
+    return order;
+}
+
 std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group, Rect view,
                                           const std::vector<std::pair<int, int>>& visible) {
     std::size_t received = 0;
@@ -585,43 +674,11 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
     if (!replaced.empty()) {
         workers_->discard(std::move(replaced));
     }
-    const auto ring = visible_chunks(
-        Rect{view.x - kChunk, view.y - kChunk, view.w + 2 * kChunk, view.h + 2 * kChunk});
+    // The time a request takes to come back: a build on a free worker, doubled for
+    // the queue in front of it, and the frames in between.
     std::set<ChunkKey> keep;
-    for (const auto& [cx, cy] : visible) {
-        keep.insert({group, cx, cy});
-    }
-    for (const auto& [cx, cy] : ring) {
-        keep.insert({group, cx, cy});
-    }
-    // Once the current group is (nearly) done, prepare the same area in the
-    // neighbouring zoom groups, so zooming shows islands at once.
-    std::size_t missing = 0;
-    for (const auto* list : {&visible, &ring}) {
-        for (const auto& [cx, cy] : *list) {
-            missing += cache_.contains({group, cx, cy}) ? 0U : 1U;
-        }
-    }
-    if (missing <= threads) {
-        for (const std::size_t g : {group - 1, group + 1}) {
-            // group − 1 wraps to SIZE_MAX for group 0 and is skipped.
-            if (g < kGroups) {
-                for (const auto& [cx, cy] : visible_chunks(zoomed_view(view, group, g))) {
-                    keep.insert({g, cx, cy});
-                }
-            }
-        }
-    }
-    // Visible chunks first, then the ring, then other zoom groups.
-    std::vector<ChunkKey> order(keep.begin(), keep.end());
-    auto rank = [&](const ChunkKey& k) {
-        const auto [g, cx, cy] = k;
-        const bool vis =
-            std::find(visible.begin(), visible.end(), std::pair{cx, cy}) != visible.end();
-        return std::pair{g != group, !vis};
-    };
-    std::stable_sort(order.begin(), order.end(),
-                     [&](const ChunkKey& a, const ChunkKey& b) { return rank(a) < rank(b); });
+    const std::vector<ChunkKey> order =
+        plan_margin(view, group, visible, 2.0 * workers_->build_ms() / 1000.0 + 0.1, keep);
     // A chunk built while an island's river flow was not ready is rebuilt once
     // the flow is: it stays in the cache (the legacy river look) until its
     // replacement arrives.
@@ -658,8 +715,8 @@ FrameRenderer::stand_in_retain(std::size_t group,
         return retain;
     }
     for (const auto& [cx, cy] : visible) {
-        if (cache_.contains({group, cx, cy})) {
-            continue; // built: nothing to stand in for
+        if (cache_.contains({group, cx, cy}) && !shown_over_stand_in.contains({group, cx, cy})) {
+            continue; // built and shown: nothing to stand in for
         }
         for (const std::size_t from : stand_in_groups(group)) {
             for (const StandInSpan& span : stand_in_spans(cx, cy, group, from)) {
@@ -724,8 +781,50 @@ std::size_t FrameRenderer::fill_cache(const Scene& scene, std::size_t group,
     }
     const Rect view =
         wanted.empty() ? chunk_rect(0, 0) : chunk_rect(wanted.front().first, wanted.front().second);
-    trim(group, view, keep);
+    trim(group, view, keep, stand_in_retain(group, wanted));
     return todo.size();
+}
+
+Rect lookahead_rect(Rect view, double vx, double vy, double horizon_s, std::size_t max_chunks) {
+    const double reach = static_cast<double>(max_chunks) * kChunk;
+    const double dx = std::clamp(vx * horizon_s, -reach, reach);
+    const double dy = std::clamp(vy * horizon_s, -reach, reach);
+    // A chunk of margin on every side, the lookahead on the side of motion on top.
+    const int left = kChunk + (dx < 0 ? static_cast<int>(std::ceil(-dx)) : 0);
+    const int right = kChunk + (dx > 0 ? static_cast<int>(std::ceil(dx)) : 0);
+    const int up = kChunk + (dy < 0 ? static_cast<int>(std::ceil(-dy)) : 0);
+    const int down = kChunk + (dy > 0 ? static_cast<int>(std::ceil(dy)) : 0);
+    return {view.x - left, view.y - up, view.w + left + right, view.h + up + down};
+}
+
+void FrameRenderer::track_velocity(Rect view, std::size_t group) {
+    const auto now = clock();
+    const double cx = view.x + view.w / 2.0, cy = view.y + view.h / 2.0;
+    if (last_centre_) {
+        const double dt = std::chrono::duration<double>(now - last_time_).count();
+        const double dx = cx - last_centre_->first, dy = cy - last_centre_->second;
+        if (group != last_group_) {
+            // A zoom step moves the centre by the cursor anchoring, not by a pan:
+            // keep the velocity, in the new group's pixels (also when the step
+            // comes with a jump: rescaled, the old velocity is no spike).
+            vx_ *= static_cast<double>(kTile[group].w) / kTile[last_group_].w;
+            vy_ *= static_cast<double>(kTile[group].h) / kTile[last_group_].h;
+        } else if (std::abs(dx) > view.w || std::abs(dy) > view.h) {
+            // More than a view in one update: a jump (a minimap click, a "go to"),
+            // not a drag. Counted as motion it would read D / 0.15 px/s whatever
+            // the frame time and pin the margin at its cap for a while.
+            vx_ = 0;
+            vy_ = 0;
+        } else if (dt > 1e-4) {
+            // Smoothed over about 150 ms: a mouse drag is noisy per frame.
+            const double a = 1.0 - std::exp(-dt / 0.15);
+            vx_ += a * (dx / dt - vx_);
+            vy_ += a * (dy / dt - vy_);
+        }
+    }
+    last_centre_ = std::pair{cx, cy};
+    last_time_ = now;
+    last_group_ = group;
 }
 
 Rect zoomed_view(Rect view, std::size_t from, std::size_t to) {

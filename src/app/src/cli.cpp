@@ -140,6 +140,12 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             } else {
                 return std::nullopt;
             }
+        } else if (a == "--lookahead-chunks") {
+            const auto n = number<std::size_t>(v);
+            if (!n || *n > kMaxLookaheadChunks) {
+                return std::nullopt;
+            }
+            out.lookahead_chunks = *n;
         } else if (a == "--renderer") {
             if (v == "auto") {
                 out.renderer = Renderer::Auto;

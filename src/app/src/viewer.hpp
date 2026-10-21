@@ -18,6 +18,7 @@ namespace anno::app {
 /// success, else the error.
 std::string run_viewer(const render::Scene& scene, std::size_t group, Renderer renderer,
                        render::RiverFlowMode river_flow = render::RiverFlowMode::Flow,
-                       render::WaterStyle water = render::WaterStyle::Original);
+                       render::WaterStyle water = render::WaterStyle::Original,
+                       std::size_t lookahead_chunks = 3);
 
 } // namespace anno::app

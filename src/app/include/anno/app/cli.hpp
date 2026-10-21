@@ -20,7 +20,7 @@ inline constexpr const char* kUsage =
     "usage: anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png "
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
     "[--river-flow legacy|flow] [--river-gain <x>] [--river-speed median|fastest] "
-    "[--river-gap-patch <tiles>] [--renderer auto|gpu|cpu]\n";
+    "[--river-gap-patch <tiles>] [--renderer auto|gpu|cpu] [--lookahead-chunks <n>]\n";
 
 /// World tiles accepted by --at: INSEL5 positions are u16 (docs/formats/insel.md);
 /// the margin keeps every projected coordinate inside int range.
@@ -28,6 +28,10 @@ inline constexpr int kMaxAtTile = 65536;
 /// Pixels per dimension accepted by --size; larger regions exceed the 4 GiB
 /// canvas limit anyway and would overflow screen coordinates.
 inline constexpr int kMaxSizePx = 65535;
+/// Chunks accepted by --lookahead-chunks: each one adds a strip of chunks of
+/// about 4 MB in the shown and both neighbouring zoom groups (16 strips at
+/// 2560 x 1440 are several GB); a guard against a typo, not a design bound.
+inline constexpr std::size_t kMaxLookaheadChunks = 16;
 
 enum class Renderer { Auto, Gpu, Cpu };
 
@@ -56,6 +60,10 @@ struct Args {
     /// gaps of the original data). The viewer joins gaps up to 8 tiles.
     float river_gap_patch = 8.0F;
     Renderer renderer = Renderer::Auto;
+    /// FrameRenderer::max_lookahead_chunks: how far (in chunks) the margin of
+    /// built chunks grows ahead of a moving view. 3 is the library default;
+    /// 2 saves memory (docs/perf/README.md, T1e), 0 is a plain ring.
+    std::size_t lookahead_chunks = 3;
 };
 
 /// Parses option/value pairs; nullopt for anything invalid (print kUsage,

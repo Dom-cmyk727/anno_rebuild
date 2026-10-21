@@ -789,7 +789,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Faithful default:** nothing changes in the code.
 
 ## OQ-095: Continuous zoom: default mode, speed and the reset key (new, owner proposal 2026-10-20)
-- **Status:** open, owner decides after T3's first owner look
+- **Status:** items 1-3 decided 2026-10-21 (owner: "I agree with your recommendation"): continuous is the default, 1.1 per notch, 120 ms, `Home` / `0` back to group 1; stepped stays as `--zoom-mode stepped`. Items 4 and 5 open until T3 stage 3's design note and PNG pairs.
 - **Area:** app / render (look and feel; no sim state)
 - **What:** the owner proposed replacing the three instant zoom steps by a continuous zoom "with a lower, smoother zooming haptic and speed, with a key to return to default zoom level". The original game has three fixed zoom levels (`kTile` 84/42/20, keys and wheel step between them). Task T3 in `docs/orchestration/TASKS.md` implements a continuous scale drawn from the nearest built group, eased wheel zoom, a zoom-out range beyond group 2, and keeps a stepped mode.
 - **Owner decides:** (1) default mode of the viewer: continuous or stepped (the original); (2) wheel factor per notch (T3 default 1.1) and easing time (default 120 ms); (3) the reset key (`Home` or `0`) and what "default zoom" is (group 1 scale proposed); (4) minimum zoom-out (whole scene fits the window proposed); (5) bilinear or nearest for scales above 1 (PNG pairs from T3). The owner picks after the first T3 build.

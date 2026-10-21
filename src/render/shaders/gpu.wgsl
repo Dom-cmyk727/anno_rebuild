@@ -1076,3 +1076,112 @@ fn scale_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     }
     return scale_texel(vec2<i32>(floor(src)));
 }
+
+// ---- Derived zoom levels: the 2x reduction of a chunk (chunk_reduce.hpp) ----
+// One draw per source chunk, scissored to its quadrant of the destination
+// chunk; the chunk bind group (group 1) is the source's. Integer arithmetic
+// only, the same as the CPU reference reduce_chunks_2x (the planes' bytes are
+// compared exactly in the tests).
+struct ReduceU {
+    origin: vec2<i32>,
+    _pad: vec2<i32>,
+    water: vec4<u32>,
+}
+@group(3) @binding(2) var<uniform> reduce_u: ReduceU;
+
+struct ReduceOut {
+    @location(0) ground: vec4<f32>,
+    @location(1) objects: vec4<f32>,
+    @location(2) field: vec4<u32>,
+    @location(3) terrain: vec4<u32>,
+}
+
+// round(sum / count) to nearest, ties up.
+fn rmean(sum: u32, count: u32) -> u32 {
+    return (2u * sum + count) / (2u * count);
+}
+
+fn byte_of(v: f32) -> u32 {
+    return u32(floor(v * 255.0 + 0.5));
+}
+
+@fragment
+fn reduce_fs(@builtin(position) pos: vec4<f32>) -> ReduceOut {
+    let q = vec2<i32>(pos.xy) - reduce_u.origin;
+    let has_ground = (chunk.flags & 1u) != 0u;
+    let has_objects = (chunk.flags & 2u) != 0u;
+    let has_field = (chunk.flags & 4u) != 0u;
+    let has_terrain = (chunk.flags & 8u) != 0u;
+    var lands = 0u;
+    var gsum = vec3<u32>(0u);
+    var tsum = 0u;
+    var a = 0u;
+    var psum = vec3<u32>(0u);
+    var cover = 0u;
+    var shore = 0u;
+    var depth = 0u;
+    var bits = 0u;
+    var slope = 0u;
+    var water = 0u;
+    for (var k = 0; k < 4; k = k + 1) {
+        let t = q * 2 + vec2<i32>(k & 1, k >> 1);
+        var land = has_ground;
+        if has_terrain {
+            let tv = textureLoad(terrain_chunk, t, 0).r;
+            land = tv != 0xFFFFu;
+            if land {
+                tsum = tsum + tv;
+            }
+        }
+        if land {
+            lands = lands + 1u;
+            if has_ground {
+                let g = textureLoad(ground_tex, t, 0);
+                gsum = gsum + vec3<u32>(byte_of(g.r), byte_of(g.g), byte_of(g.b));
+            }
+        }
+        if has_objects {
+            let o = textureLoad(objects_tex, t, 0);
+            let pa = byte_of(o.a);
+            a = a + pa;
+            psum = psum + vec3<u32>(byte_of(o.r), byte_of(o.g), byte_of(o.b)) * pa;
+        }
+        if has_field {
+            let f = textureLoad(field_tex, t, 0);
+            cover = cover + f.r;
+            shore = shore + f.g;
+            depth = depth + f.b;
+            bits = bits | (f.a & 3u);
+            if f.r > 0u {
+                slope = slope + (f.a >> 2u);
+                water = water + 1u;
+            }
+        }
+    }
+    var out: ReduceOut;
+    var ground = vec3<u32>(reduce_u.water.x, reduce_u.water.y, reduce_u.water.z);
+    if lands > 0u && has_ground {
+        ground = vec3<u32>(rmean(gsum.x, lands), rmean(gsum.y, lands), rmean(gsum.z, lands));
+    }
+    out.ground = vec4<f32>(vec3<f32>(ground) / 255.0, 0.0);
+    var obj = vec4<u32>(0u);
+    if has_objects && a > 0u {
+        obj = vec4<u32>(rmean(psum.x, a), rmean(psum.y, a), rmean(psum.z, a), rmean(a, 4u));
+    }
+    out.objects = vec4<f32>(obj) / 255.0;
+    var field = vec4<u32>(255u, 255u, 255u, 1u);
+    if has_field {
+        var flags = bits;
+        if water > 0u {
+            flags = flags | (rmean(slope, water) << 2u);
+        }
+        field = vec4<u32>(rmean(cover, 4u), rmean(shore, 4u), rmean(depth, 4u), flags);
+    }
+    out.field = field;
+    var terrain = 0xFFFFu;
+    if lands > 0u && has_terrain {
+        terrain = rmean(tsum, lands);
+    }
+    out.terrain = vec4<u32>(terrain, 0u, 0u, 0u);
+    return out;
+}

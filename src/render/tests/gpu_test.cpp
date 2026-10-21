@@ -4036,3 +4036,189 @@ TEST_CASE("resample pass: odd scales, unequal offsets, non-square, a dirty targe
         run({rs, 40, 40, render::Rect{0, 0, 42, 42}}, 0.002, "offset 1e-9");
     }
 }
+// ---- Derived zoom levels: the GPU reduce pass equals reduce_chunks_2x exactly ----
+
+namespace {
+
+/// A chunk of noise with every plane: terrain valid in two of three texels,
+/// water cover 0 in a quarter, flags with both water bits and any slope, objects
+/// with the alpha levels of the game. `planes` drops planes (bit 0 ground, 1
+/// objects, 2 field, 3 terrain).
+render::Chunk reduce_noise_chunk(std::uint32_t seed, unsigned planes) {
+    render::Chunk c;
+    const auto n = static_cast<std::size_t>(render::kChunk);
+    if ((planes & 1U) != 0) {
+        c.ground.resize(n * n);
+    }
+    if ((planes & 2U) != 0) {
+        c.objects.resize(n * n);
+    }
+    if ((planes & 4U) != 0) {
+        c.field.resize(n * n * 4);
+    }
+    if ((planes & 8U) != 0) {
+        c.terrain.resize(n * n);
+    }
+    for (std::size_t i = 0; i < n * n; ++i) {
+        std::uint32_t h = static_cast<std::uint32_t>(i) * 2654435761U ^ seed * 0x9E3779B9U;
+        h ^= h >> 15;
+        h *= 0x85EBCA6BU;
+        h ^= h >> 13;
+        h *= 0xC2B2AE35U;
+        h ^= h >> 16;
+        if (!c.ground.empty()) {
+            c.ground[i] = h & 0xFFFFFFU;
+        }
+        if (!c.objects.empty()) {
+            const std::uint32_t g = h * 2246822519U;
+            const std::array<std::uint8_t, 6> alphas = {0, 0, 1, 85, 128, 255};
+            c.objects[i] =
+                render::Px{static_cast<std::uint8_t>(g), static_cast<std::uint8_t>(g >> 8),
+                           static_cast<std::uint8_t>(g >> 16), alphas[(g >> 28) % 6]};
+        }
+        if (!c.field.empty()) {
+            const std::uint32_t g = h * 3266489917U;
+            c.field[i * 4 + 0] = (g & 3U) == 0 ? 0 : static_cast<std::uint8_t>(1 + (g >> 8) % 255);
+            c.field[i * 4 + 1] = static_cast<std::uint8_t>(g >> 16);
+            c.field[i * 4 + 2] = static_cast<std::uint8_t>(g >> 24);
+            c.field[i * 4 + 3] = static_cast<std::uint8_t>((g >> 4) % 64 << 2 | (g >> 10 & 3U));
+        }
+        if (!c.terrain.empty()) {
+            c.terrain[i] = h % 3 == 0 ? render::kNoTerrain : static_cast<std::uint16_t>(h % 4000);
+        }
+    }
+    c.water_below = seed % 2 == 0;
+    c.water_above = seed % 3 == 0;
+    c.ships = seed % 5 != 0;
+    return c;
+}
+
+/// Compares every plane exactly; the first differing texel is reported.
+void check_same_chunk(const render::Chunk& got, const render::Chunk& want, const char* what) {
+    auto same = [&](const auto& a, const auto& b, const char* plane) {
+        INFO(what << ": plane " << plane);
+        REQUIRE(a.size() == b.size());
+        std::size_t bad = 0, first = 0;
+        for (std::size_t i = 0; i < a.size(); ++i) {
+            if (!(a[i] == b[i])) {
+                if (bad++ == 0) {
+                    first = i;
+                }
+            }
+        }
+        CHECK_MESSAGE(bad == 0, bad << " texels differ, the first at " << first);
+    };
+    same(got.ground, want.ground, "ground");
+    same(got.objects, want.objects, "objects");
+    same(got.field, want.field, "field");
+    same(got.terrain, want.terrain, "terrain");
+    CHECK(got.base.empty());
+    CHECK(got.water_below == want.water_below);
+    CHECK(got.water_above == want.water_above);
+    CHECK(got.ships == want.ships);
+}
+
+} // namespace
+
+TEST_CASE("GPU reduce pass equals reduce_chunks_2x exactly on noise chunks") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    const render::Px water{23, 91, 177, 255};
+    struct Case {
+        const char* name;
+        std::array<int, 4> planes; // -1 = no chunk
+    };
+    const std::array cases = {
+        Case{"all planes", {15, 15, 15, 15}},
+        Case{"one source", {-1, 15, -1, -1}},
+        Case{"no sources", {-1, -1, -1, -1}},
+        Case{"planes differ between sources", {1, 2 | 4, 8 | 1, 15}},
+        Case{"terrain without ground, ground without terrain", {8, 1, 8 | 4, 1 | 2}},
+        Case{"fields only", {4, 4, -1, 4}},
+    };
+    std::uint32_t seed = 1;
+    for (const Case& cs : cases) {
+        std::array<render::Chunk, 4> chunks;
+        render::ChunkQuad quad{};
+        for (std::size_t i = 0; i < 4; ++i) {
+            if (cs.planes[i] >= 0) {
+                chunks[i] = reduce_noise_chunk(seed++, static_cast<unsigned>(cs.planes[i]));
+                quad[i] = &chunks[i];
+            }
+        }
+        const render::Chunk want = render::reduce_chunks_2x(quad, water);
+        const auto got = g.reduce_chunks_2x(quad, water);
+        REQUIRE_MESSAGE(got, cs.name);
+        check_same_chunk(*got, want, cs.name);
+    }
+    CHECK(g.errors() == 0);
+}
+
+TEST_CASE(
+    "GPU reduce pass equals reduce_chunks_2x exactly on real chunks, two levels (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    struct Scene {
+        const char* name;
+        Loaded loaded;
+    };
+    std::vector<Scene> scenes;
+    scenes.push_back(
+        {"canyon island", load_island_scene(*dir, "Islands/Dschungel/D_256x256_0045_5B.scp")});
+    scenes.push_back({"Single_24", load_scene(*dir, "Single_24.sze")});
+    constexpr std::size_t kGroup2 = 2;
+    for (const Scene& sc : scenes) {
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+        gpu::GpuFrame& g = *made.value();
+        const render::Scene& scene = *sc.loaded.scene;
+        const auto b = *scene.bounds(kGroup2);
+        // A 4 x 4 block of group-2 chunks around the centre of the scene, aligned
+        // to even indices so that 2 x 2 of them are one chunk of level 3 and the
+        // four of those one chunk of level 4.
+        const int cx0 = (floor_chunk(b.x + b.w / 2) & ~3) - 0;
+        const int cy0 = (floor_chunk(b.y + b.h / 2) & ~3) - 0;
+        std::vector<render::Chunk> level2;
+        for (int y = 0; y < 4; ++y) {
+            for (int x = 0; x < 4; ++x) {
+                level2.push_back(
+                    render::render_chunk(scene, kGroup2, cx0 + x, cy0 + y, false, true));
+            }
+        }
+        const render::Px water = scene.textures.water();
+        std::vector<render::Chunk> level3;
+        for (int qy = 0; qy < 2; ++qy) {
+            for (int qx = 0; qx < 2; ++qx) {
+                const render::ChunkQuad quad = {
+                    &level2[static_cast<std::size_t>((qy * 2) * 4 + qx * 2)],
+                    &level2[static_cast<std::size_t>((qy * 2) * 4 + qx * 2 + 1)],
+                    &level2[static_cast<std::size_t>((qy * 2 + 1) * 4 + qx * 2)],
+                    &level2[static_cast<std::size_t>((qy * 2 + 1) * 4 + qx * 2 + 1)]};
+                const render::Chunk want = render::reduce_chunks_2x(quad, water);
+                const auto got = g.reduce_chunks_2x(quad, water);
+                REQUIRE_MESSAGE(got, sc.name);
+                check_same_chunk(*got, want, sc.name);
+                level3.push_back(want);
+            }
+        }
+        // Level 4 from the (CPU) level 3 chunks: a reduction of a reduction.
+        const render::ChunkQuad quad = {&level3[0], &level3[1], &level3[2], &level3[3]};
+        const render::Chunk want = render::reduce_chunks_2x(quad, water);
+        const auto got = g.reduce_chunks_2x(quad, water);
+        REQUIRE_MESSAGE(got, sc.name);
+        check_same_chunk(*got, want, sc.name);
+        CHECK(g.errors() == 0);
+    }
+}

@@ -3,6 +3,7 @@
 find_package(Threads REQUIRED)
 add_library(anno_render
   src/chunk_draws.cpp
+  src/chunk_reduce.cpp
   src/fluid.cpp
   src/frame.cpp
   src/frame_table.cpp
@@ -24,6 +25,7 @@ if(ANNO_BUILD_TESTS)
   add_executable(anno_render_tests
     tests/chunk_draws_corpus_test.cpp
     tests/chunk_draws_test.cpp
+    tests/chunk_reduce_test.cpp
     tests/fluid_test.cpp
     tests/main.cpp
     tests/render_corpus_test.cpp

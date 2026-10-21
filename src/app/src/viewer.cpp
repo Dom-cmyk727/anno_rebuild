@@ -267,8 +267,10 @@ class Viewer {
         const auto b = *scene.bounds(group);
         cam_x_ = b.x + b.w / 2.0;
         cam_y_ = b.y + b.h / 2.0;
-        zoom_now_ = zoom_target_ = static_cast<double>(render::kTile[group].w);
+        zoom_now_ = zoom_target_ = levels().tile_w(group);
     }
+
+    const render::ZoomLevels& levels() const { return frames_.levels(); }
 
     std::string run();
 
@@ -300,7 +302,7 @@ class Viewer {
     [[nodiscard]] bool zoom_animating() const { return continuous_ && zoom_now_ != zoom_target_; }
     /// Screen pixels per scene pixel of the group shown (1 when stepped).
     [[nodiscard]] double scale() const {
-        return continuous_ ? zoom_now_ / static_cast<double>(render::kTile[group_].w) : 1.0;
+        return continuous_ ? zoom_now_ / levels().tile_w(group_) : 1.0;
     }
     /// Whether zoom group `g` can be shown without waiting for content.
     [[nodiscard]] bool group_ready(std::size_t g) const;
@@ -502,7 +504,7 @@ std::string Viewer::run() {
         (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);
     // Sea patterns of all zoom groups, built off the window thread.
     std::vector<std::thread> seas;
-    for (std::size_t g = 0; g < render::kGroups; ++g) {
+    for (std::size_t g = 0; g < levels().built_count(); ++g) {
         seas.emplace_back([this, g] { scene_.sea(g); });
     }
     // Chunk builders use half the cores; frames use all of them.
@@ -548,7 +550,7 @@ std::string Viewer::run() {
             if (script_every_ > 0) {
                 if (++script_frames_ % script_every_ == 0) {
                     const auto next = static_cast<std::ptrdiff_t>(group_) + script_dir_;
-                    if (next < 0 || next >= static_cast<std::ptrdiff_t>(render::kGroups)) {
+                    if (next < 0 || next >= static_cast<std::ptrdiff_t>(levels().size())) {
                         script_dir_ = -script_dir_;
                     }
                     zoom(script_dir_, std::nullopt);
@@ -666,7 +668,7 @@ void Viewer::handle(const SDL_Event& e) {
         case SDLK_KP_0:
             // Back to the default zoom: group 1's own scale.
             if (continuous_) {
-                zoom_to(static_cast<double>(render::kTile[1].w));
+                zoom_to(levels().tile_w(1));
             }
             break;
         default:
@@ -755,7 +757,7 @@ void Viewer::clamp() {
 
 void Viewer::zoom(int step, std::optional<std::pair<double, double>> anchor) {
     const auto next = static_cast<std::ptrdiff_t>(group_) + step;
-    if (next < 0 || next >= static_cast<std::ptrdiff_t>(render::kGroups)) {
+    if (next < 0 || next >= static_cast<std::ptrdiff_t>(levels().size())) {
         return;
     }
     const auto g = static_cast<std::size_t>(next);
@@ -770,16 +772,17 @@ void Viewer::zoom(int step, std::optional<std::pair<double, double>> anchor) {
     const auto [w, h] = view_size();
     const double dx = anchor ? anchor->first - w / 2.0 : 0.0;
     const double dy = anchor ? anchor->second - h / 2.0 : 0.0;
-    const auto ot = render::kTile[group_], nt = render::kTile[g];
+    const double rw = levels().tile_w(g) / levels().tile_w(group_);
+    const double rh = levels().tile_h(g) / levels().tile_h(group_);
     // Screen coordinates are linear in tile coordinates per group; keep the
     // scene point under the anchor fixed.
-    const double px = (cam_x_ + dx) * nt.w / ot.w, py = (cam_y_ + dy) * nt.h / ot.h;
+    const double px = (cam_x_ + dx) * rw, py = (cam_y_ + dy) * rh;
     cam_x_ = px - dx;
     cam_y_ = py - dy;
     group_ = g;
     // A stepped zoom in the continuous mode (the test script, a pending step)
     // lands on the group's own scale.
-    zoom_now_ = zoom_target_ = static_cast<double>(render::kTile[g].w);
+    zoom_now_ = zoom_target_ = levels().tile_w(g);
     clamp();
     update_title();
     dirty_ = true;
@@ -794,7 +797,7 @@ void Viewer::zoom_by(double factor, std::optional<std::pair<double, double>> anc
     const auto [w, h] = view_size();
     zoom_anchor_ =
         anchor ? std::pair{anchor->first - w / 2.0, anchor->second - h / 2.0} : std::pair{0.0, 0.0};
-    zoom_target_ = zoom_target_after(zoom_target_, factor);
+    zoom_target_ = zoom_target_after(zoom_target_, factor, levels());
     dirty_ = true;
 }
 
@@ -820,7 +823,8 @@ void Viewer::zoom_tick() {
     s.cam_y = cam_y_;
     s.group = group_;
     const std::size_t before = group_;
-    s = zoom_advance(s, dt_ms, zoom_opt_.ease_ms, [this](std::size_t g) { return group_ready(g); });
+    s = zoom_advance(
+        s, dt_ms, zoom_opt_.ease_ms, [this](std::size_t g) { return group_ready(g); }, levels());
     zoom_now_ = s.now;
     cam_x_ = s.cam_x;
     cam_y_ = s.cam_y;
@@ -832,10 +836,9 @@ void Viewer::zoom_tick() {
     // Keep drawing while a nearer group is not ready yet (its sea pattern is still
     // being built): the group is taken in the first frame it is.
     std::size_t nearest = group_;
-    for (std::size_t g = 0; g < render::kGroups; ++g) {
-        if (std::abs(std::log(zoom_now_ / static_cast<double>(render::kTile[g].w))) *
-                kGroupSwitchBias <
-            std::abs(std::log(zoom_now_ / static_cast<double>(render::kTile[nearest].w)))) {
+    for (std::size_t g = 0; g < levels().size(); ++g) {
+        if (std::abs(std::log(zoom_now_ / levels().tile_w(g))) * kGroupSwitchBias <
+            std::abs(std::log(zoom_now_ / levels().tile_w(nearest)))) {
             nearest = g;
         }
     }

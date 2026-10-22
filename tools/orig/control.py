@@ -46,6 +46,7 @@ MOUSEEVENTF_RIGHTDOWN = 0x0008
 MOUSEEVENTF_RIGHTUP = 0x0010
 MOUSEEVENTF_ABSOLUTE = 0x8000
 MOUSEEVENTF_VIRTUALDESK = 0x4000
+MOUSEEVENTF_WHEEL = 0x0800
 SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN = 76, 77, 78, 79
 
 
@@ -154,7 +155,15 @@ def click_at(hwnd: int, nx: float, ny: float, button: str = "left", double: bool
         time.sleep(0.08)
 
 
-def foreground(game_dir: str) -> int | None:
+def wheel(notches: int) -> None:
+    """Mouse wheel at the current cursor position; +in / -out notches (zoom)."""
+    i = INPUT(type=INPUT_MOUSE)
+    i.u.mi = MOUSEINPUT(dx=0, dy=0, mouseData=(notches * 120) & 0xFFFFFFFF,
+                        dwFlags=MOUSEEVENTF_WHEEL, time=0, dwExtraInfo=0)
+    _send(i)
+
+
+def foreground(game_dir: str, settle: float = 0.2) -> int | None:
     w = smoke.find_game_window(game_dir)
     if not w:
         return None
@@ -163,8 +172,32 @@ def foreground(game_dir: str) -> int | None:
     user32.SetForegroundWindow(hwnd)
     user32.BringWindowToTop(hwnd)
     user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002)
-    time.sleep(0.4)
+    time.sleep(settle)
     return hwnd
+
+
+def run_actions(hwnd: int, game_dir: str, actions: list[str], gap: float) -> None:
+    """A batch of actions, one foreground, small gaps. Tokens: `key:F7`, `click:nx,ny`,
+    `right:nx,ny`, `dbl:nx,ny`, `move:nx,ny`, `wheel:-3` (negative = zoom out)."""
+    for a in actions:
+        kind, _, rest = a.partition(":")
+        if kind == "key":
+            for name in rest.split(","):
+                press_key(vk_of(name), hold=0.03)
+                time.sleep(0.05)
+        elif kind == "wheel":
+            move_to(hwnd, 0.42, 0.42)
+            time.sleep(0.05)
+            wheel(int(rest))
+        elif kind in ("click", "right", "dbl", "move"):
+            nx, ny = (float(v) for v in rest.split(","))
+            if kind == "move":
+                move_to(hwnd, nx, ny)
+            elif kind == "dbl":
+                click_at(hwnd, nx, ny, double=True)
+            else:
+                click_at(hwnd, nx, ny, button=("right" if kind == "right" else "left"))
+        time.sleep(gap)
 
 
 def main() -> int:
@@ -187,6 +220,14 @@ def main() -> int:
             pc.add_argument("--button", choices=["left", "right"], default="left")
         pc.add_argument("--shot", help="optional PNG to capture after the action")
     sub.add_parser("close")
+    p_seq = sub.add_parser("seq")
+    p_seq.add_argument("actions", nargs="+",
+                       help="e.g. key:F7 wheel:-4 click:0.3,0.4 right:0.3,0.4")
+    p_seq.add_argument("--gap", type=float, default=0.15)
+    p_seq.add_argument("--shot", default=None)
+    p_wheel = sub.add_parser("wheel")
+    p_wheel.add_argument("notches", type=int, help="negative = zoom out")
+    p_wheel.add_argument("--shot", default=None)
     args = ap.parse_args()
 
     try:
@@ -271,6 +312,24 @@ def main() -> int:
                 smoke.write_png(args.shot, cw, ch, bgra)
                 print({"shot": args.shot, "size": [cw, ch], "nonblack": smoke.nonblack(bgra)})
         return 0
+
+    if args.cmd == "wheel":
+        move_to(hwnd, 0.42, 0.42)
+        time.sleep(0.05)
+        wheel(args.notches)
+        print({"wheel": args.notches})
+    elif args.cmd == "seq":
+        run_actions(hwnd, game_dir, args.actions, args.gap)
+        print({"ran": len(args.actions)})
+
+    if getattr(args, "shot", None):
+        time.sleep(0.3)
+        hwnd2 = foreground(game_dir) or hwnd
+        cw, ch, bgra = smoke.capture(hwnd2)
+        if cw and ch:
+            os.makedirs(os.path.dirname(os.path.abspath(args.shot)), exist_ok=True)
+            smoke.write_png(args.shot, cw, ch, bgra)
+            print({"shot": args.shot, "size": [cw, ch], "nonblack": smoke.nonblack(bgra)})
     return 0
 
 

@@ -230,6 +230,27 @@ Observables: house residents and the satisfaction shown in the house info panel 
 | T4 | Constant income `I` per booking for ≥ 5 game minutes | city page "Sales revenue" → `15 · I` (smoothing factor 104/105 per booking) |
 | T5 | Press "Change taxes" three times (single-player) | tax level 0 → 1 → 2 → 0; in multiplayer the button does nothing |
 
+## Verified by running (T15 stage 1, 2026-10-22)
+
+Citizen single-player, the copy driven by `tools/orig/control.py` (zoom out, speed 400%, place
+pioneer houses in the Kontor's yellow range), objects read by `tools/orig/probe.py` (vtable scan).
+
+- **City inhabitant count confirmed at `+0x2f0`.** The player's city (city vtable `AnnoWelt
+  +0xc2f40`, identified by its warehouse goods = the HUD's tools 50 / wood 38) read `+0x2f0` = 27-31
+  while the HUD showed ~28 pioneers: so `+0x2f0` (= the `+0x2ec` sub-object slot +4, the "likely
+  inhabitants" of the Open list) **is the city inhabitant count**. `+0x18a` = 4 = the number of
+  pioneer houses placed (the "houses per level" guess holds). `+0x618` (stage mask) = 0x3 for the
+  player, 0x7 for the more-grown AI cities (pop 72 / 96).
+- **No-supply decline (P5 / no INFRA) observed.** Pioneer houses placed in range but with no food
+  and no road to the Kontor did **not** grow: over ~20 s at 400% the city `+0x2f0` fell 31 -> 21 and
+  `+0x18a` dropped 4 -> 3 (a house removed). That matches the starvation downgrade/removal (P5) and
+  the P2 precondition "INFRA_EVER reached": without a market/road connection and food the pioneers
+  leave. Growth (P2 to 8 residents, P3) needs the houses road-connected to the Kontor (market
+  access = INFRA) and a food source (NAHRUNG); then the same input through `src/sim`'s house model
+  is the anno-diff comparison. Locating an individual house object (for the per-house `+0x2c`
+  residents of P2/P3) still needs the house vtable (OQ-T15-HOUSEVT); the city `+0x2f0` aggregate is
+  read now.
+
 ## Open
 - Unit of the city store and of delivered amounts (is 256 = 1 t?); confirm with T1 and a savegame pair (M2.1).
 - Where house flags bits 4/5 (`+0x0c & 0x30`, forced mood −1/−2) are set: fire, plague, riot? (`0x1002ba80`.)

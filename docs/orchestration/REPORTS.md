@@ -495,3 +495,67 @@ The follow-up (--png at derived levels, upload holds to the workers, offscreen s
 - **Test:** `the scene grid is kept at the window floor when idle, never dropped` (both adapters); mutation (drop the grid) fails it. Docs: OQ-099, iso.md, perf README (the re-grow table).
 
 **Gates:** full MSVC build warning-free; clang-format 23.1.3 clean; GCC 13.3 `-O3 -Werror` clean on the changed files (gpu.cpp, gpu_test.cpp); `ctest` with the game dir 695/695 and without it 695/695 (no flake this run); the full `anno_render_gpu_tests` on adapter 0 (NVIDIA GeForce RTX 4090, Vulkan) and adapter 1 (AMD Radeon(TM) Graphics, Vulkan), 78/78 each. **CI on PR #12 head 72ec018:** green on all jobs; windows-msvc passed on one of the two runs, the duplicate still finishing when reported.
+
+## 2026-10-21 — T15 stage 0 (design and static checks; smoke run waits for the owner) — REVIEW (branch task/T15-original-harness, from main 792afa3)
+
+**Done.**
+- The original game folder is copied to `C:\anno1503-original\` (63 entries, outside the repository), after the owner's explicit go-ahead ("try blocked T15 stage 0 again"). The first attempt was denied by the auto-mode classifier; the retry, on the owner's instruction, went through. The copy's 20 executables and DLLs have the same SHA-256 as in `game/app` (list in `docs/testing/original-harness.md`, section 8). `game/app` was not written to.
+- Static checks from `analysis/pe_symbols.json` (no game code run): `1503Startup.exe` imports only KERNEL32, USER32, GDI32; `AnnoDisplay.dll` imports `DDRAW.dll` through `DirectDrawCreateEx`, so the original renders through DirectDraw 7. Community notes give a `/w` window switch and DxWnd (ISS-014, not verified here), and the registry key `HKCU\Software\Max-Design\Anno1503` with `SCREENMODE` 0-4; the key is not on this PC yet.
+- The design `docs/testing/original-harness.md` (commit `07e5ea6`): the harness methods (standard library and `ctypes` only: `CreateProcess`, `PrintWindow`, `EnumProcessModules`, `ReadProcessMemory`, `SendInput` only in agreed sessions); the smoke run's steps (launch, one screenshot, one memory value, close, hash again); the third-party candidates (dgVoodoo2, cnc-ddraw, Frida, pywinauto, mss), none installed.
+
+**Not done: the smoke run.** Starting the game takes the desktop's focus, which needs the owner's agreement (rule (c)). Not started. Also not done: the scripted control, the savegame and fixture stages, and `tools/orig/`.
+
+**Needs the owner (the three questions of section 7 of the design):**
+1. Agree to the smoke run now: it shows the game on the desktop for under 5 minutes; it sends no input; it ends with the game's close or `taskkill` on the recorded PIDs.
+2. Which windowed method if the game's own `/w` switch does not work on this copy: dgVoodoo2 or cnc-ddraw (each needs a yes; licence check first).
+3. Confirm the copy's folder `C:\anno1503-original\` for all stages.
+
+**Note.** A `mkdir -p C:\anno1503-original` that the first attempt ran with the denied copy did not leave a folder (it was absent after the denial), so no cleanup is needed.
+
+## 2026-10-21 — T15 stage 0 smoke run complete (dgVoodoo2) — REVIEW (branch task/T15-original-harness, PR #13)
+
+Follows the earlier stage 0 design entry. The owner approved the smoke run and both wrappers (2026-10-21 r). Corrected display facts (2026-10-21 s): both monitors on the RTX 4090, the 2560x1440 @ 500 Hz one primary; the launcher's native 2560x1440 was exclusive full-screen on the primary (black capture), not the second monitor.
+
+**Result: the harness works end to end.**
+- **cnc-ddraw first (owner's order):** installed, but it rendered black and then `1503Startup.exe` (which runs the game in-process and persists natively) exited within ~3 s whenever cnc-ddraw's `ddraw.dll` was present. So cnc-ddraw does not run this game; removed.
+- **dgVoodoo2 v2.87.5 (freeware, SHA-256 in the design doc):** installed into `C:\anno1503-original\` only (`MS/x86/DDraw.dll`, `D3DImm.dll`, a configured `dgVoodoo.conf`); the game runs windowed on the primary monitor. The game's 20 files stay byte-identical to `game/app`.
+- **(a) Screenshot, not black:** `cache/orig/smoke-dgv-full/shot-114s.png` (git-ignored) is a running single-player scenario at 1024x768 — isometric coast, a ship, a trading post, the HUD (minimap, resource bar, gold 499,990) — captured by the script (BitBlt of the window rectangle; PrintWindow returns black for the D3D window). I looked at it (point 10): clean original render.
+- **(b) To a running scenario:** the owner clicked through the intros and menu; the window grew 800x600 -> 1024x768 on scenario load.
+- **(c) Module bases (32-bit, by walking the WOW64 PEB loader list over ReadProcessMemory — the Win32 module APIs show a 64-bit caller only the shim DLLs): `AnnoDisplay.dll` at its preferred base 0x10000000; `AnnoFrame.dll` 0x2300000, `AnnoScene.dll` 0x24b0000, `AnnoGame.dll` 0x2500000, `AnnoWelt.dll` 0x2530000-0x2560000 rebased** (they all prefer 0x10000000 and conflict). This answers the "do the DLLs load at their preferred bases" question: only the first (AnnoDisplay) does.
+- **(d) World tick:** `ReadProcessMemory` of a module's code bytes matches the file on disk, and the world-object vtable (`AnnoWelt base + 0xccdd8`) is found in the heap. **Partial:** the tick read back 0 and did not grow — the scenario was **paused** when the owner closed the run early. The locator now verifies the object by `tick == (ms counter >> 1)` (docs/re/tick-loop.md). Showing it grow needs one short run with the scenario unpaused (a stage-1 fixture regardless).
+- **(e) Close:** WM_CLOSE then taskkill of every process under the copy folder; no process left, hashes unchanged, across every run.
+
+**Harness:** `tools/orig/smoke.py` (standard library only; sends no input — the owner clicks). Committed in this branch (`b7e7a65`, `f7ba0bd`).
+
+**For the review / owner:**
+- The one open smoke point (d) the tick growing: I can do a ~40 s run where you start a scenario and press play/unpause, or leave it to stage 1 (the fixtures do this anyway). Your call.
+- dgVoodoo2 stays installed in the copy (the working wrapper). Nothing of it, or of the original's output, is in git.
+- Stage 1 (the M2 fixtures against the running original) is the next T15 stage; it builds on this harness.
+
+## 2026-10-21 — T15 stage 0 close-out (world clock grows, cross-checks) — REVIEW (branch task/T15-original-harness, PR #13)
+
+Follows the stage 0 smoke report. The orchestrator's close-out (2026-10-21 t): the locator must list every vtable match and accept only a real one, read the tick ≥3 times with real times and a rate, cross-check the module bases, fix the doc, and state the display scaling / 1:1 capture.
+
+**One close-out commit (`02374ed`), `tools/orig/smoke.py` + `docs/testing/original-harness.md`, and one owner run (unpaused scenario).**
+
+**(1a/1b) World clock — the owner's unpaused run (`cache/orig/smoke-dgv-tick/log.json`, not git).** `AnnoWelt.dll` base `0x2530000`, world vtable value `0x25fcdd8`. The heap scan found **one** match of that value, and it was accepted (non-zero counter, `tick == counter >> 1`):
+
+| read | real time (s) | counter (+0x100) | +0x108 | tick (+0x10c) | +0x108 == tick |
+|---|---|---|---|---|---|
+| locate | — | 8008 | 4004 | 4004 | yes |
+| 1 | 30.376 | 8127 | 4063 | 4063 | yes |
+| 2 | 32.876 | 10628 | 5314 | 5314 | yes |
+| 3 | 35.377 | 13127 | 6563 | 6563 | yes |
+| 4 | 37.877 | 15629 | 7814 | 7814 | yes |
+
+Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = game speed 1.0** (the RE note's 500 ticks/s at 1x; 1 tick = 2 ms game time, `docs/re/tick-loop.md`). `tick == counter >> 1` and `+0x108 == +0x10c` held in every read. (An earlier paused run had accepted an all-zero stray match; the non-zero-counter rule rejects it now.)
+
+**(1c) Module bases (and cross-check).** By walking the 32-bit PEB loader list over `ReadProcessMemory` (the Win32 32-bit-module APIs — `EnumProcessModulesEx(LIST_MODULES_32BIT)`, `TH32CS_SNAPMODULE32` — return the 64-bit shim view / nothing from a 64-bit caller; recorded). Each base is cross-checked by reading the 0x40 header bytes at the base and comparing with the DLL file on disk (the first page is mapped from the file); **all match** (`header_matches_disk: true`). A run's bases (they vary by ASLR each launch): `AnnoDisplay.dll` at its preferred **0x10000000**; `AnnoFrame.dll`, `AnnoScene.dll`, `AnnoGame.dll`, `AnnoWelt.dll` rebased (they all prefer 0x10000000 and conflict, so only the first keeps it); `binkw32.dll` 0x30000000; the dgVoodoo2 `DDraw.dll`/`D3DImm.dll` in the 0x6xxxxxxx range.
+
+**(1d) Doc fixes:** the lost `\a` (`C:\anno1503-original\`), `\.\DISPLAY2`, and dgVoodoo2's licence quoted verbatim from the page its `Doc\Readme.url` links (section "1. Redistribution rights", `Copyright (c) 2013-2026 Dege`): shipping a game with unmodified dgVoodoo files is allowed; standalone redistribution must be the original unmodified .zip; no bundling in launchers/frameworks. We ship nothing (local copy only, never git), so this is use, not redistribution.
+
+**(1e) Scaling / 1:1 capture:** the primary display is at **100 %** (96 DPI, 2560 x 1440). The harness marks itself per-monitor-DPI-aware and `BitBlt`s the window's physical rectangle; the scenario shot is **1024 x 768 = the game's own resolution**, so 1:1 with no scaling. **Correction (owner's note):** the game ran **full-screen at its native resolution**, not bordered-windowed — `FullScreenMode = false` did not window this title; the capture is still 1:1 (a scaled full-screen would have been grabbed at 2560 x 1440 and blurred). A true window is a later nicety (per-game CPL profile), not a stage-3 need.
+
+**(2) The screenshot** (point 10): `shot-064s.png`, 1024 x 768, a running scenario — isometric forest coast, a ship, a trading post, the Workshops build menu, minimap, gold 499,980 (counting down as time passes). I looked at it: clean 1:1 original render. Close: no process left; the game's 20 files stay byte-identical to `game/app`.
+
+**Left for stage 1:** scripted input (`SendInput`, owner-agreed sessions); the M2 fixtures that read the clock/PRNG/stocks from memory (the clock read is proven); optionally true windowed mode. Nothing of the original's output is in git (under `cache/orig/`). I will not start stage 1 until PR #13 is merged.

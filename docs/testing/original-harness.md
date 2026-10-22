@@ -79,6 +79,25 @@ process under the copy folder) and hashes the copy. It sends **no input** (the o
 Stop: the game's own close, or `taskkill` on the recorded PIDs (the script does the latter at the
 end). Nothing is typed into other windows.
 
+## 4a. Input control (SendInput; `tools/orig/control.py`)
+
+`tools/orig/control.py` drives the game with Windows `SendInput` (standard-library ctypes, no
+third-party tool): it foregrounds the game window and sends key presses (speeds F5-F8, menu keys)
+and mouse moves/clicks at window-relative coordinates (0..1), and screenshots the window. Used
+only in a session the owner agreed to; the owner agreed to `SendInput` control on 2026-10-22.
+
+Sub-commands (the game is launched once, detached, and persists across calls): `launch`, `shot
+--out`, `key F6` (or `ENTER,ESC`), `click nx ny [--shot]`, `dblclick`, `move`, `close` (WM_CLOSE +
+taskkill + re-hash). A perceive-act loop: `launch`, `shot`, read the PNG, `click`/`key`, `shot`.
+
+Verified 2026-10-22: driven entirely by the script, the game went main menu -> Singleplayer -> New
+game -> Choose game (Citizen) -> OK -> a running single-player scenario (screens in
+`cache/orig/drive/`, git-ignored), and in the running scenario `F7` changed the clock from 500 to
+2000 ticks/s (speed 4.0) and `F5` back to 500 (1.0): mouse drives the menus and keyboard drives
+the simulation. So the keyed fixtures (`m2-fixtures.md` TL-F2 speeds, TL-F4 pause) and menu/scene
+setup can run without the owner at the keyboard, in an agreed session. The copy stays byte-identical
+to `game/app` after a run; no process is left.
+
 ## 5. Third-party tools (none installed; owner decides each)
 
 Candidates for the questions above; each needs its version, licence and reason before installation, and nothing of them goes into git:

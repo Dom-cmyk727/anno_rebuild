@@ -153,6 +153,11 @@ Sources abbreviated: GFA = `docs/research/game-files-analysis.md`, CL = `docs/re
 - **Area:** formats / savegame
 - **Question:** Where does the GOG 2.0.0.5 build write Spielstände, with which extension, and are they the same chunk container as `.sze` (root `ANNO`/`ANNOADDON1`) with additional live-state chunks?
 - **What we know:** `AnnoScene.dll` exports `SaveGame`, `AnnoWelt.dll` exports `RepairSavegame` (`analysis/pe_symbols.json`). No savegame exists in the extracted install.
+- **Partly answered (T16, 2026-10-22, Wine runner; `docs/testing/original-wine.md` §2.5):**
+  - F10 writes `SaveGame/<profile>/Lastgame.sav` in the game folder;
+  - it is the same chunk container, root `ANNOADDON1`, with `WELT`, `MAIN`, `GUID`, `ALIASNAME`, `WARETYPE`, `SPIELER` × n, `INSEL5` × n, `SKTIMER`, `MONOPOL2`, `LIMITS`, `BIGBROTHER`;
+  - `MAIN` `u32` +0 = game time in whole seconds.
+  Open: the extension and folder of named saves, the meaning of `MAIN` +4, and the field-by-field comparison with the scenario a game started from.
 - **How to resolve:** create saves with the original (PLAN M2.1), run `anno-dump chunks` on them, compare chunk sets with the scenario they started from.
 
 ## OQ-021: Unknown fields in `.tex` entries and `TEXTURE/HEAD`
@@ -251,7 +256,6 @@ Sources abbreviated: GFA = `docs/research/game-files-analysis.md`, CL = `docs/re
 - **Question:** (a) what the two `u16` at the start of a `.zei` `HEAD` mean (`size_a` 10–31, `size_b` 13–31; the glyph row count equals `size_b` in four fonts and is 4–6 more in the others); (b) how the game draws the three pixel levels 1–3 (text colour, shadow, highlight? blended?); (c) why the two `Textures/Scape*.zei` have bytes after the NUL in their chunk name fields (`e0 e1 e2 e3`, `u32 16`) — a different tool version?
 - **What we know:** layout and counts (P), `docs/formats/zei.md`.
 - **How to resolve:** Ghidra: the font loader and text blitter (`AnnoDisplay.dll`/`AnnoFrame.dll`, strings `CHARSET`, `.zei`); screenshots of the original UI text.
-
 
 ## OQ-032: x87 precision when the original loads `Anlagen.dat`
 - **Status:** open
@@ -1023,6 +1027,43 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   Stall prices in the FAQ match `BGruppen.dat` at tax index 2 (`community-faq.md` §2, §4).
 - **Update 2026-10-22 (manual and in-game help):** the price slider's arrow is green, yellow or red [M p. 43, H/Verkauf_Waren], so the UI computes an acceptance band per good; its function in `AnnoFrame.dll` is the shortest way to the trader's limits. The Venetians refuse a buy price that is too low, a sell price that is too high, goods they cannot deliver, and goods they do not want. An alliance needs a trade treaty and grows with trade volume. Five scouts in a computer player's territory is the tolerated maximum (`manual-and-help.md` §3).
 
+## OQ-109: Fixtures over time: the original's step size depends on the frame rate (new, T16 2026-10-22)
+- **Status:** open, test design (orchestrator)
+- **Area:** testing (fixtures, `anno-diff`), sim
+- **Evidence:**
+  - Single player advances the world once per frame by `min(trunc(dt · speed + 0.5), 100)` game ms (`tick-loop.md` §2).
+  - The Wine runner renders at 380–405 fps, so its steps are 2–3 ms. The mix changes between runs: dt 3 ms 57 % / 2 ms 36 % at about 380 fps, but 2 ms 54 % / 3 ms 46 % / ≥ 4 ms 0.5 % at 405 fps (`t16-timing3`, 26,344 frames at 100 %; `docs/testing/original-wine.md` §3). Windows with dgVoodoo2 steps differently (fps not recorded in T15).
+  - At 50 % the rate follows the frames exactly through the rounding (Σ steps = (Σ dt + odd frames) / 2). It was 611.8 game ms/s at 380 fps and 593.8 at 405 fps, against 523 on Windows.
+  - Parts of the simulation depend on the step size, e.g. the island chunk sweep per call `min(chunks · Δtick / 2000 + 1, chunks)` (`tick-loop.md` §2) and the 50 % rounding.
+  - New games are seeded from `GetTickCount` (`tick-loop.md` §3). The computer players' cities differed between Wine runs (capacities 90/70/50 t in one run, 70/70/70 t in another); only the player's start (50 t, tools 50, wood 50) was the same every time.
+- **Question:** How should fixtures that compare state *over time* (production, population, trade) handle this?
+  1. record every frame's step (the T16 timing poller already does) and feed the same steps to `src/sim` in the S9 replay;
+  2. pin the original's frame rate (Wine has no DirectDraw frame limiter; a CPU quota is inexact; a hook would not be read-only);
+  3. compare only quantities that do not depend on the step size.
+  Starting from a fixed savegame instead of a new game removes the seed difference in any case.
+- **How to resolve:** run the same opening from the same savegame twice in the Wine runner and once on Windows, and compare the sampler's per-minute city stores.
+
+## OQ-110: The original's multiplayer: hosting from a savegame (new, T16 2026-10-22)
+- **Status:** open, try
+- **Area:** testing (fixtures F5, F7, F8 in `tick-loop.md`; OQ-T15-MP), net
+- **Evidence (Wine runner, two instances on one host):**
+  - `HKCU\Software\Max-Design\Anno1503` `MULTIPLAYER` = 1 (`REG_DWORD`) shows the hidden Multiplayer button (`community-landscape.md`). The string sits in `AnnoFrame.dll` next to the startup splash code.
+  - The LAN client lists the LAN server's session ("NoName (Unknown)") and joins it ("Please wait …"); no virtual network was needed.
+  - The host's New game list is empty (no multiplayer scenarios ship: `Scenes/0500MultiEndlos` and `0700Multi` are empty, ISS-030), and Load game is empty in a fresh copy.
+- **Question:** Does the host's Load game accept a single-player save placed in its copy's `SaveGame` folder and start a two-player game? If yes, F5, F7 and F8 can be measured.
+- **How to resolve:** seed a quicksave from an unattended run into the host's disposable copy and retry.
+
+## OQ-111: Profile `user.dat`: volume order and scale, speech bits (new, T16 2026-10-22)
+- **Status:** open
+- **Area:** formats (`docs/formats/user-dat.md`), audio
+- **Question:**
+  1. Which of the two `VOLUME` values is music and which is speech? Both sliders were moved together.
+  2. How does the slider value (0 … −250) map to DirectSound attenuation, and is −250 silence?
+  3. Which `SPEECH` bit is which category?
+  4. What does `HELPPLAYER` switch?
+  5. Does the game choose the active profile from the registry value `HKCU\Software\Max-Design\Anno1503` `AKTPLAYER`? The first start wrote `"AKTPLAYER"="ANNOnymous"` to the prefix's `user.reg`, and the string sits next to the profile code's strings in `AnnoFrame.dll` and `1503Startup.exe` (`user-dat.md`); the reader is not traced.
+- **How to resolve:** move one slider at a time and diff the file. For the scale, trace the reader of the `VOLUME` chunk. For `AKTPLAYER`, trace the references to the string in `AnnoFrame.dll` (`tFrameStartupProfile`), or set it to a second profile's name in a run's prefix and see which profile the game opens.
+
 ## OQ-112: `COMPPROFIL2` profile columns the hand-over does not use, and its doubled `SUSPEND` call (new, T18 2026-10-22)
 - **Status:** open
 - **Area:** formats (`.sze`), AI
@@ -1139,3 +1180,16 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   4. ~~what `SCHUETTIINITSIG` marks~~ (T19, D: the first step runs the `INITBLOCK` while it is TRUE and then clears it, AnnoScene `0x10016b70`; `annoscene.md` §12). Still open: whether a savegame stores the variables' current values (the format strings suggest it; the quicksaves had no variables), and whether `[SIGNALS]` is applied before the first step;
   5. (T19) whether evaluating a condition changes state, for example consumes an event. If it does, `&&`'s skipped right operand and `||`'s always-evaluated one are observable (`0x10010290`). Also how many `IF`s one step evaluates: the step `0x10016b70` takes `min(count, (arg · count + 125) / 250)` per call, round-robin; what the argument is was not traced.
 - **How to resolve:** walk the dispatch from the name tables to the handlers in AnnoScene (`0x10011ed0`–`0x10013dab`, O-16) and record each in `bigbrother.md`; the port of the engine (O-34) needs the list. For item 4, quick-save a mission with variables and an `INITBLOCK` in the Wine runner (T16).
+
+## OQ-124: An intermittent crash in AnnoGame's table getter (new, T16 2026-10-22)
+- **Status:** open
+- **Area:** testing (Wine runner), RE (`AnnoGame.dll`)
+- **Evidence:**
+  - One of three long Wine runs died at about 4.45 game minutes with a read fault at `AnnoGame.dll 0x100037E4`. That is the getter `0x100037E0`, which returns `[this + 0x214 + 4·i]` (`docs/testing/original-wine.md` §2.6).
+  - The run was a Citizen game: the scripted opening of `tools/orig/opening.py`, then the sampler.
+  - The other two runs (12 and 30 minutes) were the same kind of game and did not crash.
+- **Question:** Which caller passes the bad index or object, and is it a bug of the original (also on Windows) or of Wine?
+- **How to resolve:**
+  - list the callers of `0x100037E0` and find which could pass an index ≥ 4001 or a stale object;
+  - repeat long runs to measure how often it happens, with a register dump (`WINEDEBUG=+seh` or winedbg's auto mode with a log);
+  - on Windows, the same game under the T15 harness.

@@ -717,6 +717,78 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
   - Cross-branch citations: the doc cites `docs/formats/user-dat.md` (T16) and `docs/re/annoscene.md` §11 (T18) as evidence for two non-script blocks of names; they resolve once those branches are merged.
 - Time spent / subagents used: inline, plus two reviewer subagents (read-only). T18 ran in parallel in its own subagent and worktree.
 
+## T16 — The isolated runner: the original under Wine on an invisible X display — 2026-10-22 — status: FINISHED
+- Branch: task/T16-wine-runner (25 commits plus this report, rebased onto main 60709d5); worktree: C:\Users\altin\anno1503-T16. Distro `AnnoHarness` (E:\wsl\AnnoHarness). Python tools and docs only; no C++ touched.
+- Built (§4 items 1–6 of `docs/testing/original-wine.md`):
+  1. **One backend interface** (`tools/orig/backend.py`):
+     - `WineBackend` speaks JSON lines to `tools/orig/wine/agent.py serve` over `wsl -e`;
+     - `WindowsBackend` reuses `smoke.py`, and `control.py` once PR #16 is on main;
+     - shared readers in `gamestate.py`: world clock/tick, PRNG table, cities, players with money;
+     - `live.py`, a file-driven live session.
+  2. **Disposable copies:**
+     - overlayfs over the base game and prefix per run;
+     - run-id validation; teardown on stop, EOF, broken pipe, SIGTERM or SIGHUP; Xvfb dies with the agent;
+     - `cleanup` reaps orphans; outputs are synced to `cache/orig/<session>/`.
+  3. **Several instances:** one display each, two at once.
+     - Multiplayer try: `MULTIPLAYER=1` shows the menu; LAN discovery and join work between two instances. No MP scenarios ship, and hosting from a save is untried (OQ-110).
+  4. **Screen recognition:** 192-bit region dHashes with calibrated thresholds; no pictures in git.
+     - Macros: `skip_intros` (two intros) and `new_game` (Citizen in about 16 s).
+  5. **Timing check** (`timing.py`): host–guest clock pairs, the rate on `CLOCK_MONOTONIC_RAW`, the 50 % rounding check, F4.
+  6. **Sampler and unattended run:**
+     - one JSONL record per game minute, with quicksaves kept;
+     - `opening.py` plays playbook §12 step 1, checking each placement by tools exactly, money within gold + one upkeep booking, and wood within one cart load;
+     - `unattended.py` judges eleven criteria.
+  - **Silence** (owner instruction): no audio device for Wine (no `PULSE_*`, private `XDG_RUNTIME_DIR`, Wine audio drivers off), an audio guard, and the in-game volumes at −250 in every copy's `user.dat`.
+  - **Docs:**
+    - `original-wine.md` rewritten (setup, findings, measurements, harness, acceptance, rules);
+    - new `docs/formats/user-dat.md`;
+    - `population.md`: the player object confirmed by running;
+    - OQ-109, OQ-110, OQ-111, OQ-124; OQ-020 partly answered.
+- Gates:
+  - no C++ changed: msvc, ctest, clang-format, GCC and agree.py n.a.;
+  - `python -I tools/orig/test_orig.py`: 42/42 on Windows after the rebase; earlier also in the distro (Python 3.12).
+- Evidence (acceptance):
+  - **Unattended 30 minutes: passed** (`t16-accept2`, 30.02 min). All 11 criteria are true:
+    - the opening: 15/15 steps;
+    - the sampler: 29 records with no gap; the tick invariant in 29/29;
+    - 5 quicksaves kept;
+    - no crash; 0 audio violations.
+    - The owner's desktop: no sound is observed (the audio guard, 0 violations over 11 processes, every minute); no window and no input hold by construction (the game draws only to the private Xvfb `:91`, xdotool sends only to `:91`), not by observation.
+  - **F6 (read-only form) and the warehouse equal Windows:**
+    - PRNG table: 0 of 2048 differ;
+    - Kontor 50 t, tools 50, wood 50; money 500000.
+  - **Timing verdict** (`t16-timing3`), written in `original-wine.md` §3/§4.5:
+    - F1 1000.008 ± 0.019 game ms/s;
+    - F2 2000.011 / 3999.951 (± 19 ppm); 50 % 593.8, exactly the frame rounding (Σ steps = (Σ dt + odd frames) / 2);
+    - F4 0 ms;
+    - ~405 fps, frame p50/p95/p99/max 2.39/3.11/3.22/15.6 ms, none capped.
+    - F1, F2 (100/200/400 %) and F4 may run in the Wine runner; 50 % only through the rounding model.
+  - Findings beyond the task:
+    - savegames: F10 → `SaveGame/<profile>/Lastgame.sav`; root `ANNOADDON1`; `MAIN` +0 = game seconds (300 … 1500 at minutes 5 … 25); the 64-bit ms counter is not saved;
+    - a Citizen game starts from `00_1024_easyentry_01.sze`: its script text equals that file's in all seven quicksaves;
+    - WSL's `CLOCK_MONOTONIC` slews up to 1,400 ppm, while RAW stays within 0.5 ppm of the host;
+    - one intermittent crash in `AnnoGame.dll 0x100037E0` (first acceptance try, 4.45 game min; not repeated in 12 + 30 min; OQ-124).
+- Reviewers: two independent reviewers of the harness. Their findings and the fixes (commits 386e832 … 3f23ec9):
+  - **live world:** `find_world` prefers an advancing counter; a stale copy passed the old check;
+  - **names:** Latin-1 player names; an umlaut used to drop the human player;
+  - **scans:** unbounded vtable scans instead of a silent cut;
+  - **teardown:** run ids validated, so a reused or `..` id could no longer delete another run or the base copies; teardown on every exit path; no orphans; the crash dialog off plus a crash watchdog;
+  - **poller:** RAW timestamps, failed reads counted, the rate between observed frames (the old edge error was ±50 ppm), a model-free 50 % check;
+  - **opening:** placement bounded on both sides; before, a wrong menu cell, a sheep farm for a forester, could pass;
+  - **acceptance:** `summary.ok` now requires the opening, the sampler and no crash;
+  - **protocol:** backend protocol hardening; the live session survives bad files;
+  - **mutations:** the reviewers' surviving mutants are now killed by the 42 tests.
+- Left open / questions:
+  - OQ-109: fixtures over time depend on the step mix, which changes with the frame rate between runs: 380 vs 405 fps, 50 % at 611.8 vs 593.8.
+  - OQ-110: MP hosting from a savegame.
+  - OQ-111: `user.dat` details.
+  - OQ-124: the crash.
+  - Untested: F3 (5 fps, needs a frame limiter).
+  - The opening does not yet check road connectivity.
+  - Input on the Windows backend waits for PR #16.
+- Time spent / subagents used: inline, plus two reviewer subagents. One heavy job at a time: Wine runs one after another, and T8 stays paused as the owner asked.
+
+
 ## T18 — The AI profiles: `COMPPROFIL2` loader and the 19 columns — 2026-10-22 — status: FINISHED
 - Branch: task/T18-compprofil (5 commits plus this report, on main 60709d5); worktree: C:\Users\altin\anno1503-T18. Docs only. The work was done by one subagent (static analysis with capstone/pefile, no Wine, no builds), then checked by me and two independent reviewers.
 - Built:
@@ -767,6 +839,7 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
 
 ---
 
+
 ## T8 — sim stage S9, replay and session: gates completed, review findings fixed — 2026-10-22 — status: FINISHED
 - Branch: task/T8-sim-s9-replay at a6257db (3 new commits on a234232, not pushed); worktree: C:\Users\altin\anno1503-T8. origin/main is 4 docs-only commits ahead (research, TASKS.md); none touches this branch's files, so main was not merged in.
 - Built: test(sim) 5ee20e1 — the replay-log frame pinned byte for byte against bytes transcribed from the layout in state.md §15 S9 (new case "write_log matches the documented frame byte for byte"); the framing test's prefix loop made exact (boundary prefixes decode to exactly the entries before them, all others fail and keep those entries); `record_size` pinned to 8 for a SetSpeed record, with its two error cases. fix(sim) 9251865 — `PrintArchive` strips the hash tree's root name `world` from its filter, so the path `diff_trees` returns works in `--dump-scope` (before: an empty dump, so the documented workflow failed); `anno-sim-replay tree` prints one full scope path per line. docs(sim) a6257db — the frame layout written out field by field, verification, review findings; PLAN S9 verified.
@@ -776,6 +849,29 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
 - Correction to the first T8 section above: "with game dir n/a (no game files on this host)" was wrong — the files are in the main worktree; the with-game-dir runs are now done (738/738 MSVC, 439/439 GCC).
 - Left open / questions for the orchestrator or owner: push and CI on the 3 new commits (I did not push). The tool rebuilds a world from a log on the empty type registry only, until S14 brings the scenario path (state.md §15 S9). No new OQ.
 - Time spent / subagents used: inline, no subagents; heavy jobs strictly one at a time (MSVC build, ctest without, ctest with, GCC build, GCC runs), started only after the coordinator's "resume".
+
+
+## T16 fix-up — the PR #21 review items (TASKS.md §4, 2026-10-22 h) — 2026-10-22 — status: FINISHED
+- Branch: task/T16-wine-runner, 2b74a57..791b4e3 on top of the merge 3e84767 (plus this report); worktree C:\Users\altin\anno1503-T16. Python tools and docs only. No Wine or game run (a C++ build ran on the PC); the only distro access was reading the base prefix's `user.reg` for item 3.
+- Done:
+  1. **Action log** (2b74a57, tests a558d56): `stop()` joins the watchdog (5 s) before the log closes; `log()` locks the lazy open, every write and the close, opens only when `<run>/out` exists (no `makedirs`), and is a no-op after `log_close()`; `sync()` flushes under the lock.
+  2. **Paths** (b982c5d, tests 83d9fc8): `within(path, base)` (realpath on both sides, no `..` component, not the base itself). `--out-win` must lie inside the repository's `cache/orig` as the distro sees it (derived from the agent's location; `backend.py`'s folders pass). `screenshot` `dest` must lie inside the run's `out` or inside `--out-win`. Deviation from the review wording ("under the run's out dir"): `backend.py` sends every screenshot copy to the `--out-win` folder, so that folder is allowed too. Also: names that become file names (screenshot, learned screen, timing label, sampler, `keep_as`) must be one component.
+  3. **`AKTPLAYER`** (cd58e04): `user-dat.md` cites the base prefix's `user.reg` (`[Software\\Max-Design\\Anno1503]` `"AKTPLAYER"="ANNOnymous"`) and the strings in `AnnoFrame.dll` (`0x95c64`) and `1503Startup.exe`; that the game reads it is hedged and is OQ-111 question 5.
+  4. **Desktop claim** (e6192c4): `original-wine.md` §5 and the T16 report say that silence is observed (0 audio-guard violations) and that no window and no input hold by construction (private `:91`).
+  5. **Merge of `origin/main`** (3e84767): every entry kept; open questions in numeric order (OQ-124 moved after OQ-123); REPORTS in chronological order (T17 22:19, T16 22:23).
+  - Nits:
+    - `Offsets` parses the values from the docs it cites (916bca6).
+    - `WindowsBackend.key` defaults to `hold=0.0`, the interface's value; a tap is still sent as a 50 ms press there (3bcfda7).
+    - The four spike scripts say SUPERSEDED at their top, and `run_game.sh`/`debug_run.sh` exit at once (fc6a6a0).
+    - The crash latency of `unattended.py` (up to `--check` = 60 s) is in §4.6 and its docstring (791b4e3).
+- Evidence:
+  - `python -I tools/orig/test_orig.py`: 52 tests (was 42). Windows: OK, 2 skipped (symlinks need a privilege). WSL Ubuntu (Python 3.12, Pillow from a private `--target` folder): OK, 0 skipped. `tools/test_bigbrother.py` after the merge: OK (4 skipped, no game dir).
+  - Mutations, each applied alone and then restored (bytecode caches cleared between runs):
+    - log: 4 of 4 killed;
+    - paths: 11 of 11 killed in WSL; on Windows, the realpath→abspath mutant survives only because the symlink cases skip there;
+    - nits: 8 of 8 killed (four constants in `gamestate.py`, the booking divisor, `VOLUME_MIN`, a value in `play-original.md`, the Windows key default).
+- Left open: OQ-111 question 5 (who reads `AKTPLAYER`). `agent.py` now refuses an `--out-win` outside `cache/orig`; nothing else in the repository passes one. The orchestrator's smoke run is the first live check of the changed agent.
+- Time spent / subagents used: inline, no subagents.
 
 ## T19 — The script engine: `&&`/`||` precedence and statements without `;` (OQ-120, OQ-121) — 2026-10-22 — status: FINISHED
 - Branch: task/T19-script-engine-re from origin/main bb13852; worktree: C:\Users\altin\anno1503-T19. Docs and Python tools only, no C++ touched, nothing of the original in git beyond one-line excerpts.
@@ -833,6 +929,7 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
   - **How many IFs one step evaluates.** The step takes `min(count, (arg · count + 125) / 250)` per call, round-robin, with `+0x3c` only seen written as 0. The argument is what AnnoFrame adds to `+0xa24`, likely the step length; if so, small scripts at small steps would evaluate 0 IFs per call, which looks wrong. So something is not yet understood here. OQ-123 item 5.
   - **For the owner:** restoring the lost S01_09_01 minimap alert would be a `rules` option; faithful default = lost.
 - Time spent / subagents used: inline, no subagents (no Wine, no game runs, no builds).
+
 
 ## T8 fix-up — the orchestrator review of PR #19 (TASKS.md §4, 2026-10-22 h: items 1, 2, 4, 6, 7 and the nits) — 2026-10-22 — status: FINISHED
 - Branch: task/T8-sim-s9-replay, commits 583c709, fbe9130, ff71342, d206da4 on top of 96fc4e3 (plus this report); `main` not merged.

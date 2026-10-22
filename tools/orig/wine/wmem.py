@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Spike: read the original's memory under Wine (root reads /proc/<pid>/mem directly).
+SUPERSEDED by agent.py and tools/orig/gamestate.py (T16, docs/testing/original-wine.md
+section 4); kept for reference only.
+
 
   wmem.py info                 pid, module bases (from /proc/<pid>/maps or a PE-header scan)
   wmem.py world [--seconds N]  locate the world object (vtable AnnoWelt+0xccdd8), sample the clock

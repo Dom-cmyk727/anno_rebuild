@@ -179,6 +179,14 @@ For each stage `i` = 0…30 not yet set in the city mask `+0x618`: if `counter.s
 ## 8. Money: income, tax level, upkeep
 
 - **Player money** = `i32` at player `+0x74`. The player vtable is `0x100c2238`: slot `+0x60` get (`0x1001cfc0`), `+0x64` add (`0x1001cfd0`), `+0x68` subtract (`0x1001cfe0`). No clamping, so the balance can go negative. **Confirmed.**
+  - **Confirmed by running** (Wine runner, T16, 2026-10-22). A read-only value scan for the HUD gold (500000, then 499996 after upkeep) left one address. It is `+0x74` of an object whose vtable is AnnoWelt `+0xc2238`, the static address above.
+  - A Citizen game holds seven such objects. In every one, `+0x08` points to the live world object.
+  - Fields seen:
+    - `+0x24`: name, 32 bytes, zero-padded;
+    - `+0x44`: kind, 32 bytes (`HUMAN`, `CG01`, `CG02`, `VENEZIANER`, `DUMMYPLAYER`, empty for the two natives "Yaok" and "Sokkot");
+    - `+0x64`: a 16-byte GUID. The human's equals the profile's `USGUID` (`docs/formats/user-dat.md`); the others are zero.
+  - Money of the others at start: 10000; the two `CG` players had 9696 a few seconds in.
+  - Building costs are debited at once on placement. Placements verified by money and store deltas match `Anlagen.dat` `HEAD` (playbook §14), e.g. a forester −150 gold and −2 tools. Reader: `tools/orig/gamestate.py` `players()`.
 - **Booking** (`0x10029950`, when `(u16)(tick − last) ≥ 2000`, then `last = tick`; **confirmed** from the disassembly):
   ```
   tax     = world property 10                       // 0, 1 or 2

@@ -1,0 +1,184 @@
+{
+ "screens": {
+  "choose_game": {
+   "frame": [
+    800,
+    600
+   ],
+   "regions": [
+    {
+     "box": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+     ],
+     "dhash": "8918c9aa45b40fb00fc08d848f04ce0c8e0e881e021cc314",
+     "max_dist": 17,
+     "nearest": {
+      "dist": 37,
+      "screen": "main_menu"
+     }
+    },
+    {
+     "box": [
+      0.28,
+      0.15,
+      0.72,
+      0.75
+     ],
+     "dhash": "23cfe3c5fa82cbe6c8e0e5e0b390c6d8f800f800b800f850",
+     "max_dist": 24,
+     "nearest": {
+      "dist": 77,
+      "screen": "main_menu"
+     }
+    }
+   ]
+  },
+  "in_game": {
+   "frame": [
+    1024,
+    768
+   ],
+   "regions": [
+    {
+     "box": [
+      0.745,
+      0.235,
+      1.0,
+      0.315
+     ],
+     "dhash": "23c123c4239433b232d632d612a336e532e5126753666662",
+     "max_dist": 24,
+     "nearest": {
+      "dist": 82,
+      "screen": "choose_game"
+     }
+    },
+    {
+     "box": [
+      0.77,
+      0.32,
+      1.0,
+      0.38
+     ],
+     "dhash": "2706674772633bc3b339b3c3827392439963b823bb81b281",
+     "max_dist": 24,
+     "nearest": {
+      "dist": 84,
+      "screen": "choose_game"
+     }
+    }
+   ]
+  },
+  "main_menu": {
+   "frame": [
+    800,
+    600
+   ],
+   "regions": [
+    {
+     "box": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+     ],
+     "dhash": "8918c9ea47d407bc8ffc8d7486dcc6cc848c801ea29c8616",
+     "max_dist": 9,
+     "nearest": {
+      "dist": 21,
+      "screen": "options_graphics"
+     }
+    },
+    {
+     "box": [
+      0.28,
+      0.12,
+      0.72,
+      0.95
+     ],
+     "dhash": "4b55fed5bb17f937f322f31bf87875f070d0c03380225ec0",
+     "max_dist": 24,
+     "nearest": {
+      "dist": 64,
+      "screen": "options_graphics"
+     }
+    }
+   ]
+  },
+  "options_graphics": {
+   "frame": [
+    800,
+    600
+   ],
+   "regions": [
+    {
+     "box": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+     ],
+     "dhash": "8918d9ea46dc06dc86fc8fd486dcc61c804e8c0ea29c8616",
+     "max_dist": 9,
+     "nearest": {
+      "dist": 21,
+      "screen": "main_menu"
+     }
+    },
+    {
+     "box": [
+      0.28,
+      0.12,
+      0.72,
+      0.95
+     ],
+     "dhash": "15f831f1bdf4f856f5fbf838f1f8328912b4e43080225ec0",
+     "max_dist": 24,
+     "nearest": {
+      "dist": 64,
+      "screen": "main_menu"
+     }
+    }
+   ]
+  },
+  "singleplayer": {
+   "frame": [
+    800,
+    600
+   ],
+   "regions": [
+    {
+     "box": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+     ],
+     "dhash": "8838c37243380fb88f708d748ddcc6cc86cc844e860c8136",
+     "max_dist": 16,
+     "nearest": {
+      "dist": 34,
+      "screen": "main_menu"
+     }
+    },
+    {
+     "box": [
+      0.28,
+      0.12,
+      0.72,
+      0.95
+     ],
+     "dhash": "b6bab3a6e79ff5d7f333f373f1e071f83138f430b0004248",
+     "max_dist": 24,
+     "nearest": {
+      "dist": 64,
+      "screen": "options_graphics"
+     }
+    }
+   ]
+  }
+ }
+}

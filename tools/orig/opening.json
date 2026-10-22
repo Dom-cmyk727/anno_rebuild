@@ -1,0 +1,44 @@
+{
+ "_doc": "The playbook's tested Citizen opening, step 1 (docs/research/playbook.md section 12) as data for tools/orig/opening.py. Menu positions and costs measured in the Wine runner 2026-10-22 (T16) from the original's construction menu: categories in the left column, the building grid, tooltips and each building's panel (tools, wood, bricks, marble, gold; upkeep). Screen positions are frame fractions for the Citizen start camera (the same in every run: the player's Kontor at about (0.38, 0.47)); each building has a preferred spot and is tried at candidates around it until the city's store and the player's money show the placement.",
+ "menu": {
+  "open_key": "B",
+  "leave_key": "ESC",
+  "category_x": 0.764,
+  "categories": {"public": 0.423, "roads": 0.484, "farms": 0.544, "workshops": 0.605,
+                 "coastal": 0.664, "mines": 0.723, "military": 0.784, "ornamental": 0.844},
+  "grid_x": [0.815, 0.864, 0.915, 0.964],
+  "grid_y": [0.43, 0.497, 0.565, 0.633, 0.70, 0.768, 0.836, 0.90]
+ },
+ "_costs": "cost = the building panel in the running game (Wine runner 2026-10-22); identical to Anlagen.dat HEAD (gold u16 [8], materials bytes [3..6]) for every id below, as tabled in docs/research/playbook.md section 14. upkeep = the panel's running cost = the larger PROD3 value.",
+ "buildings": {
+  "forester":    {"id": 801,  "name": "Forester's hut",       "category": "farms",     "cell": [0, 1], "cost": {"tools": 2, "wood": 0, "bricks": 0, "gold": 150}, "upkeep": 12},
+  "hunter":      {"id": 805,  "name": "Hunting lodge",        "category": "farms",     "cell": [1, 0], "cost": {"tools": 1, "wood": 3, "bricks": 0, "gold": 140}, "upkeep": 20},
+  "sheep":       {"id": 807,  "name": "Sheep farm",           "category": "farms",     "cell": [0, 0], "cost": {"tools": 2, "wood": 4, "bricks": 0, "gold": 220}, "upkeep": 10},
+  "tannery":     {"id": 1023, "name": "Tannery",              "category": "workshops", "cell": [0, 0], "cost": {"tools": 2, "wood": 5, "bricks": 0, "gold": 300}, "upkeep": 9},
+  "weaver":      {"id": 1001, "name": "Weaver's hut",         "category": "workshops", "cell": [0, 1], "cost": {"tools": 3, "wood": 4, "bricks": 0, "gold": 300}, "upkeep": 15},
+  "market":      {"id": 1301, "name": "Main market building", "category": "public",    "cell": [2, 0], "cost": {"tools": 3, "wood": 7, "bricks": 0, "gold": 250}, "upkeep": 10},
+  "road":        {"id": 2520, "name": "Dirt road",            "category": "roads",     "cell": [0, 0], "cost": {"tools": 0, "wood": 0, "bricks": 0, "gold": 5}, "upkeep": 0}
+ },
+ "_cell": "cell = [column, row] in the grid (0-based)",
+ "candidates": {
+  "_note": "rings around the preferred spot: offsets in frame fractions, tried in order",
+  "offsets": [[0, 0], [0.06, -0.04], [-0.06, 0.04], [0.06, 0.04], [-0.06, -0.04], [0.12, -0.08], [-0.12, 0.08], [0, -0.08], [0, 0.08], [0.12, 0], [-0.12, 0]]
+ },
+ "steps": [
+  {"build": "forester", "at": [0.244, 0.365], "_src": "4 foresters in a row (playbook 12.1); the first spot was placed and verified in a live session"},
+  {"build": "forester", "at": [0.303, 0.326]},
+  {"build": "forester", "at": [0.361, 0.287]},
+  {"build": "forester", "at": [0.42, 0.247]},
+  {"road": [[0.27, 0.42], [0.36, 0.47]], "_src": "a road from the foresters toward the Kontor"},
+  {"build": "market", "at": [0.18, 0.24]},
+  {"build": "hunter", "at": [0.10, 0.32]},
+  {"build": "hunter", "at": [0.15, 0.15]},
+  {"build": "tannery", "at": [0.25, 0.19]},
+  {"build": "weaver", "at": [0.10, 0.48]},
+  {"build": "sheep", "at": [0.04, 0.42]},
+  {"build": "sheep", "at": [0.16, 0.53]},
+  {"build": "weaver", "at": [0.30, 0.10]},
+  {"build": "sheep", "at": [0.36, 0.06]},
+  {"build": "sheep", "at": [0.24, 0.04]}
+ ]
+}

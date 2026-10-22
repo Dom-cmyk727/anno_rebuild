@@ -702,3 +702,60 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
   - "One example per construct" is met by the first file cited per row plus one-line excerpts; nothing longer is quoted.
   - Cross-branch citations: the doc cites `docs/formats/user-dat.md` (T16) and `docs/re/annoscene.md` §11 (T18) as evidence for two non-script blocks of names; they resolve once those branches are merged.
 - Time spent / subagents used: inline, plus two reviewer subagents (read-only). T18 ran in parallel in its own subagent and worktree.
+
+## T19 — The script engine: `&&`/`||` precedence and statements without `;` (OQ-120, OQ-121) — 2026-10-22 — status: FINISHED
+- Branch: task/T19-script-engine-re from origin/main bb13852; worktree: C:\Users\altin\anno1503-T19. Docs and Python tools only, no C++ touched, nothing of the original in git beyond one-line excerpts.
+- Method:
+  - Static analysis of `AnnoScene.dll` with capstone (`tools/disasm.py` plus scratch range dumps and an xref scan for the delimiter table and the comparison strings), on the Windows host.
+  - A scratch Python emulation of the reader and the condition parser (not committed) ran over all 50 scripts. It gave the same items, terms and SET values as `tools/bigbrother.py` everywhere; it differed only at the four statements without `;`.
+- Found (all D with addresses in `docs/re/annoscene.md` §12):
+  - **Where the code is:** the reader and the parser are not in the O-16 op range. The kernel reader is `0x1001c9e0`; the condition parser `0x10022bf0`; the action reader `0x100170d0`; the text helpers `0x1000b150`–`0x1000b542`; the evaluation `0x10010290`; the step `0x10016b70`.
+  - **OQ-120 (resolved):** the parser takes a term, then on `&&`/`||` parses the **whole rest** of the condition recursively as the right operand and returns.
+    - So the two connectives have equal rank and group to the right: `A && B || C` = `A && (B || C)`.
+    - Evaluation: left first; `&&` skips the right operand when the left is false; `||` evaluates both.
+    - A top `&&` with a false left runs **neither** THEN nor ELSE (only the IF's top node holds the actions).
+  - **OQ-121 (resolved):**
+    - **In a block:** a statement is the text up to `strpbrk(p, ";")` over the rest of the kernel text, not bounded by the block's `}`. The action reader parses its arguments and ignores the rest, so statements before that `;` are lost. The reader resumes after the `}` in any case.
+    - **At the top level:** `SET` never looks for `;`.
+    - **No `;` at all:** if none follows, the kernel is refused.
+  - **Side finding:** the step runs the INITBLOCK once, before any IF, only while `SCHUETTIINITSIG` is TRUE, then clears it. The kernel reader creates that signal TRUE if missing. This answers half of OQ-123 item 4.
+- The shipped scripts under the answer (P, `tools/bigbrother.py quirks`):
+  - **28 mixed conditions** (S01_03_01 2, S01_04_01 2, S01_05_01 1, S01_11_01 1, Single_01 1, Single_14 1, single32 3, single36 15, single40 1, single41 1):
+    - all are `guard && … && alt1 || alt2 …`, which the interpreter reads as `guard && (alt1 || alt2 …)`;
+    - each differs from the C reading as a boolean function (truth tables in the corpus test);
+    - under C precedence the alternatives would fire without the guard; the interpreter's reading fits the one-shot flags;
+    - example, Single_01: `MISSION_FLAG == FALSE && (… DEAD && …) || … "BUERGER" > 2999`.
+  - **Statements without `;`:**
+    - `SET_PROFILE(…)` S01_02_01: runs on to a commented-out `$ATTACK_OBJECT(…);` in its block; nothing lost;
+    - `SET DEADEND_ABFRAGE = FALSE` S01_08_01: top level; nothing lost;
+    - `SET_DIPLOMACY( "CG2", "HUMAN", -127 )` S01_09_01: the INITBLOCK's last statement; runs past `}` to `SET TEIL1_1 = FALSE;`, which is re-read; nothing lost;
+    - `SET_FOR_BUY( "HEILKRAEUTER", "INDIANS", 30 )` S01_09_01: swallows the next statement `MINIMAP_ALERT( 640, 950 );`. **That alert never runs in the original.**
+  - **ELSE quirk:** the three shipped ELSEs (single33) start with `CHKPARTn &&`, so their ELSE runs only while the flag is TRUE.
+- Built:
+  - `tools/bigbrother.py`:
+    - `grouped`/`describe_grouped`, `evaluate`, `branch`, `is_mixed`, `read_on`;
+    - `dump` marks the grouping and the lost statements;
+    - new command `quirks`.
+  - `tools/test_bigbrother.py`, a new `Interpreter` class (8 synthetic cases):
+    - the grouping, with the C reading shown to differ;
+    - the evaluation order;
+    - which block runs;
+    - read-on: swallowing, past `}`, a `;` in a comment, two in a row, refusal, a top-level SET.
+
+    Plus a corpus case: 28 in 10 files, each unlike C, and exactly one lost statement.
+  - **Docs:**
+    - `docs/re/annoscene.md` §12 (new; T18 adds §11, so expect a trivial conflict at `## Open` when both merge);
+    - `bigbrother.md` §3.4, §3.5, §8 and the status lines;
+    - the formats README row;
+    - OQ-120 and OQ-121 resolved, OQ-123 item 4 narrowed and a new item 5.
+- Gates:
+  - `python -I tools/test_bigbrother.py`: 26 OK with `ANNO1503_GAME_DIR` (Windows, Python 3.14); 21 OK + 5 clean skips without;
+  - `python -I -m doctest tools/bigbrother.py` passes;
+  - `bigbrother.py check` 50/50;
+  - ruff shows only the three pre-existing findings.
+  - No C++ changed, so builds, ctest, clang-format and agree.py are n.a.
+- Left open / questions:
+  - **Whether evaluating a condition changes state** (for example, consumes an event). It decides whether `&&`'s skip and `||`'s full evaluation are observable. OQ-123 item 5.
+  - **How many IFs one step evaluates.** The step takes `min(count, (arg · count + 125) / 250)` per call, round-robin, with `+0x3c` only seen written as 0. The argument is what AnnoFrame adds to `+0xa24`, likely the step length; if so, small scripts at small steps would evaluate 0 IFs per call, which looks wrong. So something is not yet understood here. OQ-123 item 5.
+  - **For the owner:** restoring the lost S01_09_01 minimap alert would be a `rules` option; faithful default = lost.
+- Time spent / subagents used: inline, no subagents (no Wine, no game runs, no builds).

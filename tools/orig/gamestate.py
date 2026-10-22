@@ -16,6 +16,10 @@ Offsets and their evidence (module RVAs relative to AnnoWelt.dll's load base):
                  capacity u32 +0x624, inhabitants i32 +0x2f0   docs/re/population.md (city store),
                                                                 docs/testing/play-original.md section 2
   goods ids      tools 41, wood 42, bricks 43 (T15 stage 1: equal to the HUD at game start)
+  player object  vtable AnnoWelt+0xc2238; +0x08 world pointer, +0x24 name[32], +0x44 kind[32]
+                 ("HUMAN", "CG01", "VENEZIANER", ...), +0x64 GUID (the human's = the profile's
+                 USGUID), money i32 +0x74                       docs/re/population.md (player
+                 money; confirmed by running 2026-10-22, T16)
 Standard library only; import-safe under `python -I`.
 """
 
@@ -39,6 +43,14 @@ CITY_CAPACITY = 0x624
 CITY_INHABITANTS = 0x2F0
 STORE_UNIT = 256                      # store amounts and capacity are in 1/256 t
 GOODS = {"tools": 41, "wood": 42, "bricks": 43}
+
+WELT_PLAYER_VT = 0xC2238
+PLAYER_WORLD = 0x08
+PLAYER_NAME = 0x24
+PLAYER_KIND = 0x44
+PLAYER_TEXT = 32                      # name and kind fields are 32 bytes each (zero padded)
+PLAYER_GUID = 0x64
+PLAYER_MONEY = 0x74
 
 # Plausibility bound for a city capacity read (in store units). A freed or unrelated object that
 # still carries the city vtable (review N1) shows zero or garbage here. The bound only filters
@@ -127,6 +139,29 @@ def prng_check(mem, welt_base: int) -> dict:
     expect = msvc_rand(PRNG_ENTRIES)
     return {"entries": PRNG_ENTRIES, "mismatches": sum(a != b for a, b in zip(table, expect)),
             "head": list(table[:6])}
+
+
+def _text(b: bytes) -> str | None:
+    s = b.split(b"\0", 1)[0]
+    return s.decode("latin-1") if all(0x20 <= c < 0x7F for c in s) else None
+
+
+def players(mem, welt_base: int, world: int | None = None) -> list[dict]:
+    """Every player object whose world pointer is the live world (freed objects keep their
+    vtable, review N1) and whose name and kind fields are text."""
+    world = world if world is not None else find_world(mem, welt_base)
+    out = []
+    for obj in scan_u32(mem, welt_base + WELT_PLAYER_VT):
+        b = mem.read(obj, PLAYER_MONEY + 4)
+        if not b or u32(b, PLAYER_WORLD) != world:
+            continue
+        name = _text(b[PLAYER_NAME:PLAYER_NAME + PLAYER_TEXT])
+        kind = _text(b[PLAYER_KIND:PLAYER_KIND + PLAYER_TEXT])
+        if name is None or kind is None:
+            continue
+        out.append({"addr": hex(obj), "name": name, "kind": kind,
+                    "guid": b[PLAYER_GUID:PLAYER_GUID + 16].hex(), "money": i32(b, PLAYER_MONEY)})
+    return out
 
 
 def city_fields(mem, obj: int) -> dict | None:

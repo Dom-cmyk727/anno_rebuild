@@ -631,6 +631,8 @@ class Instance:
             res["prng"] = gamestate.prng_check(self.mem, welt)
         if what in ("cities", "all"):
             res["cities"] = gamestate.cities(self.mem, welt)
+        if what in ("players", "all"):
+            res["players"] = gamestate.players(self.mem, welt, self.find_world())
         return res
 
     # ---- quick save / load -------------------------------------------------------------------
@@ -758,7 +760,9 @@ class Instance:
         def run():
             welt = self.bases.get("annowelt.dll")
             nxt = None
+            plist = gamestate.players(self.mem, welt, w)   # found once; money re-read per record
             with open(path, "a", buffering=1) as f:
+                f.write(json.dumps({"event": "players", "players": plist}) + "\n")
                 while not stop.is_set():
                     try:
                         if not self.alive():
@@ -769,8 +773,13 @@ class Instance:
                         if wf and nxt is None:
                             nxt = (wf["counter"] // period_game_ms + 1) * period_game_ms
                         if wf and wf["counter"] >= nxt:
+                            money = {}
+                            for p in plist:
+                                mb = self.mem.read(int(p["addr"], 16) + gamestate.PLAYER_MONEY, 4)
+                                money[f"{p['kind'] or p['name']}"] = gamestate.i32(mb) if mb else None
                             r = {"game_min": round(wf["counter"] / 60000, 3), "t_mono": round(mono(), 3),
-                                 "t_real": round(time.time(), 3), "world": wf,
+                                 "t_raw": round(time.clock_gettime(time.CLOCK_MONOTONIC_RAW), 3),
+                                 "t_real": round(time.time(), 3), "world": wf, "money": money,
                                  "cities": gamestate.cities(self.mem, welt)}
                             rec["n"] += 1
                             if save_every and rec["n"] % save_every == 0:

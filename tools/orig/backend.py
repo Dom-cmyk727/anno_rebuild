@@ -284,6 +284,8 @@ class WindowsBackend:
             res["prng"] = gamestate.prng_check(self, welt)
         if what in ("cities", "all"):
             res["cities"] = gamestate.cities(self, welt)
+        if what in ("players", "all"):
+            res["players"] = gamestate.players(self, welt)
         return res
 
     # screen

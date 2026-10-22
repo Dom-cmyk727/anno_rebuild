@@ -1,4 +1,9 @@
 #!/bin/bash
+# SUPERSEDED by agent.py (T16, docs/testing/original-wine.md section 4; agent.py serve
+# --winedebug for Wine's error output); kept for reference only. It runs the game in the base
+# prefix instead of a disposable copy, so do not run it.
+echo "debug_run.sh is superseded by tools/orig/wine/agent.py; see its header" >&2
+exit 1
 # Spike diagnostics: start the launcher with Wine's error output, watch the processes for a while.
 DISP=:92
 export DISPLAY=$DISP WINEPREFIX=/root/anno/prefix WINEARCH=win32

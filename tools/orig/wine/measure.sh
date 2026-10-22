@@ -1,4 +1,6 @@
 #!/bin/bash
+# SUPERSEDED by agent.py and tools/orig/timing.py (T16, docs/testing/original-wine.md
+# sections 3 and 4); kept for reference only.
 # Spike measurements under Wine: PRNG table, cities, speed keys (F7 400 %, F6 200 %, F8 50 %, F5 100 %).
 cd /root/anno/tools
 export DISPLAY=:91

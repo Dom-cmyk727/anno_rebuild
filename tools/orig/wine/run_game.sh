@@ -1,4 +1,9 @@
 #!/bin/bash
+# SUPERSEDED by agent.py (T16, docs/testing/original-wine.md section 4); kept for reference only.
+# Do not run it: it uses `pkill -f`, which the T16 rules forbid (`pkill -x` only), and it
+# runs the game in the base prefix instead of a disposable copy.
+echo "run_game.sh is superseded by tools/orig/wine/agent.py; see its header" >&2
+exit 1
 # Spike: run the original ANNO 1503 under Wine on an invisible X display (Xvfb).
 # Runs in the AnnoHarness WSL distro as root. Game copy /root/anno/game, prefix /root/anno/prefix.
 DISP=${1:-:91}

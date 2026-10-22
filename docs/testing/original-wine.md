@@ -121,7 +121,7 @@ Why the Windows F2 numbers sit 0.4–0.8 % below the ideal is not known. T15 did
 
 ## 4. The harness (T16 as built)
 
-The spike's scripts in `tools/orig/wine/` (`run_game.sh`, `debug_run.sh`, `measure.sh`, `wmem.py`) stay for reference; `agent.py` supersedes them.
+The spike's scripts in `tools/orig/wine/` (`run_game.sh`, `debug_run.sh`, `measure.sh`, `wmem.py`) stay for reference; `agent.py` supersedes them, and each says so at its top. `run_game.sh` and `debug_run.sh` exit at once: they run the game in the base prefix, and `run_game.sh` uses `pkill -f`, which the runner's rules forbid (`pkill -x` only).
 
 ### 4.1 One backend interface (`tools/orig/backend.py`)
 The play layer, the fixtures and the runner scripts talk to a backend:

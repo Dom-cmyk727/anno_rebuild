@@ -1342,10 +1342,11 @@ TEST_CASE("reject names and results") {
     CHECK(sim::reject_name(sim::Reject::None) == "None");
     CHECK(sim::reject_name(sim::Reject::OutOfIsland) == "OutOfIsland");
     CHECK(sim::reject_name(sim::Reject::ListFull) == "ListFull");
+    CHECK(sim::reject_name(sim::Reject::Unencodable) == "Unencodable");
     CHECK(sim::reject_name(static_cast<sim::Reject>(999)) == "?");
-    // Every enumerator has a name of its own.
+    // Every enumerator has a name of its own (Unencodable is the last).
     std::vector<std::string> names;
-    for (std::uint16_t v = 0; v <= static_cast<std::uint16_t>(sim::Reject::ListFull); ++v) {
+    for (std::uint16_t v = 0; v <= static_cast<std::uint16_t>(sim::Reject::Unencodable); ++v) {
         names.emplace_back(sim::reject_name(static_cast<sim::Reject>(v)));
         CHECK(names.back() != "?");
     }

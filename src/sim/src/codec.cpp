@@ -366,4 +366,44 @@ formats::Result<TurnEntry, std::string> decode_turn_entry(std::span<const std::u
     return e;
 }
 
+formats::Result<std::size_t, std::string> record_size(std::span<const std::uint8_t> bytes) {
+    if (bytes.size() < kHeaderSize) {
+        return at("record shorter than its header", bytes.size());
+    }
+    const std::uint16_t len = formats::u16_le(bytes, 2);
+    const std::size_t total = kHeaderSize + std::size_t{len};
+    if (total > bytes.size()) {
+        return at("record length beyond the input", bytes.size());
+    }
+    return total;
+}
+
+formats::Result<std::size_t, std::string> decode_turn(std::span<const std::uint8_t> bytes,
+                                                      std::vector<TurnEntry>& out) {
+    // A turn entry is {u32 issuer, u32 seq, ClientRecord}: the issuer/seq header
+    // (8 bytes) in front of a length-framed record. record_size frames the record,
+    // so the version read and the per-record framing live in one place.
+    enum : std::size_t { kEntryHeader = 8 };
+    std::size_t count = 0;
+    std::span<const std::uint8_t> rest = bytes;
+    while (!rest.empty()) {
+        if (rest.size() < kEntryHeader) {
+            return at("turn entry shorter than its header", rest.size());
+        }
+        const auto rs = record_size(rest.subspan(kEntryHeader));
+        if (!rs.ok()) {
+            return rs.error();
+        }
+        const std::size_t entry_size = kEntryHeader + rs.value();
+        auto entry = decode_turn_entry(rest.first(entry_size));
+        if (!entry.ok()) {
+            return entry.error();
+        }
+        out.push_back(std::move(entry).value());
+        rest = rest.subspan(entry_size);
+        ++count;
+    }
+    return count;
+}
+
 } // namespace anno::sim

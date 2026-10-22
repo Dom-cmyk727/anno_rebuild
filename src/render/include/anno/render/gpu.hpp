@@ -157,6 +157,15 @@ struct GpuStats {
     /// and the cost tier the river shading ran at this frame.
     std::size_t river_chunks = 0;
     RiverQuality river_quality = RiverQuality::High;
+    /// GPU-built chunks (T11 stage 2a, ChunkBuilder::GpuList): chunks whose
+    /// objects and base planes were built by the compute pass this frame, chunks
+    /// that fell back to the CPU because their frames overflowed the atlas
+    /// budget (gpu-chunks.md 4.3 rule 5), atlas doublings copied this frame, and
+    /// the resident chunk-atlas memory in MiB.
+    std::size_t gpu_built_chunks = 0;
+    std::size_t chunks_cpu_fallback = 0;
+    std::size_t chunk_atlas_grows = 0;
+    double chunk_atlas_mb = 0;
 };
 
 /// Tuning of the compositor (Rust constants; data, PLAN §0.1).
@@ -414,6 +423,15 @@ using render::resampled_view;
 using render::ResampledView;
 using render::ResampleFilter;
 
+/// A chunk's objects and base planes read back from the GPU build
+/// (GpuFrame::build_chunk_planes): straight-alpha RGBA objects (w x h) and the
+/// R8 base plane (w x h bytes, empty when the chunk tracks no base).
+struct ChunkPlanes {
+    std::vector<Px> objects;
+    std::vector<std::uint8_t> base;
+    bool bases = false;
+};
+
 class GpuFrame {
   public:
     /// Pipelines for targets of `format` (a non-sRGB format: colours are
@@ -494,6 +512,15 @@ class GpuFrame {
     /// For the exact-equality tests and tools; the viewer keeps derived chunks on
     /// the GPU. Waits for the GPU; nullopt if the pass could not be submitted.
     std::optional<Chunk> reduce_chunks_2x(const ChunkQuad& quad, Px open_water);
+    /// Builds a chunk's objects and base planes from its draw list on the GPU
+    /// (the binned compute pass, docs/render/gpu-chunks.md 5.1), making the
+    /// frames resident in the chunk atlas, and reads the planes back. The result
+    /// equals replay(draws, frames) (chunk_draws.hpp) bit for bit. For the
+    /// GPU = CPU tests and tools; the viewer keeps GpuList chunks on the GPU.
+    /// Waits for the GPU; nullopt if the compute pipeline could not be made or
+    /// the frames overflow the atlas budget (the caller then uses the CPU).
+    std::optional<ChunkPlanes> build_chunk_planes(const ChunkDraws& draws,
+                                                  const FrameTable& frames);
     /// The clock the chunk dissolves run on (GpuLimits::chunk_fade_ms), in
     /// milliseconds: by default a steady clock of the compositor's own, not
     /// render()'s animation time, which the viewer freezes on pause (a chunk

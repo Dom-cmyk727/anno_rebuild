@@ -1277,3 +1277,203 @@ fn reduce_fs(@builtin(position) pos: vec4<f32>) -> ReduceOut {
     out.terrain = vec4<u32>(terrain, 0u, 0u, 0u);
     return out;
 }
+
+// ---- GPU-built chunks (T11 stage 2a, docs/render/gpu-chunks.md 5.1): the exact
+// binned compute pass for a chunk's objects and base planes. One invocation per
+// chunk pixel walks the records of the pixel's bin in list order and repeats the
+// CPU blitter bit for bit (iso.cpp over(), scene.cpp composite(), the per-island
+// local canvas with its base reset). Integer `over` in u32 with floor division,
+// so the result equals the CPU on every adapter (tolerance 0). The pass writes
+// two storage buffers that the C++ side copies into the RGBA8 objects plane and
+// the R8Uint base plane (those formats are not storage-writable in core WebGPU).
+//
+// The compute entry uses only group 0, at binding slots 10-19 (0-7 are the
+// compositor's frame-wide bindings; the chunk-build pass never references them,
+// so its pipeline layout is one bind group). Bindings mirror the C++ structs in
+// gpu.cpp (ChunkBuild, the 32-byte ObjectRecord of chunk_draws.hpp, the 32-byte
+// frame-table entry and the per-column keel of frame_table.hpp / residency.hpp).
+struct ChunkBuild {
+    // Scene pixel of the chunk's top-left corner (ChunkDraws::rect x, y).
+    origin: vec2<i32>,
+    // Chunk size in pixels (rect w, h); size.x must be a multiple of 4 (the base
+    // plane packs four pixels per u32). kChunk = 512 satisfies it.
+    size: vec2<u32>,
+    bin_px: u32,
+    bins_x: u32,
+    // Canvas::base_band, and 1 when the base plane is tracked (bases).
+    base_band: i32,
+    bases: u32,
+}
+// Bytes per ObjectRecord / frame-table entry, as u32 counts.
+const CB_RECORD_U32: u32 = 8u;  // kObjectRecordBytes / 4
+const CB_FRAME_U32: u32 = 8u;   // frame-table entry: layer, ax, ay, w, h, anchor_y, keel_off, resident
+const CB_CLIP_NONE: u32 = 0xFFFFFFFFu;
+const CB_SHADOW: u32 = 1u;      // object_flags::kShadow
+const CB_TRACK_BASE: u32 = 2u;  // object_flags::kTrackBase
+
+@group(0) @binding(10) var<uniform> cb: ChunkBuild;
+@group(0) @binding(11) var<storage, read> cb_records: array<u32>;
+@group(0) @binding(12) var<storage, read> cb_bin_off: array<u32>;
+@group(0) @binding(13) var<storage, read> cb_bin_idx: array<u32>;
+@group(0) @binding(14) var<storage, read> cb_clips: array<i32>;
+@group(0) @binding(15) var<storage, read> cb_frames: array<u32>;
+@group(0) @binding(16) var<storage, read> cb_keel: array<u32>;
+@group(0) @binding(17) var<storage, read_write> cb_objects: array<u32>;
+@group(0) @binding(18) var<storage, read_write> cb_base: array<atomic<u32>>;
+@group(0) @binding(19) var cb_atlas: texture_2d_array<f32>;
+
+// dst = src over dst, straight-alpha 8-bit integers in units of 1/255², floor
+// division: iso.cpp over() repeated exactly. Components are 0..255 in a vec4<u32>.
+fn cb_over(dst: vec4<u32>, src: vec4<u32>) -> vec4<u32> {
+    let a = src.w;
+    if a == 0u {
+        return dst;
+    }
+    if a == 255u {
+        return src;
+    }
+    let da = dst.w;
+    let out_a = a * 255u + da * (255u - a);
+    var o: vec4<u32>;
+    // The largest numerator is 255*255*255 + 255*255*255 < 2^32.
+    o.x = (src.x * a * 255u + dst.x * da * (255u - a)) / out_a;
+    o.y = (src.y * a * 255u + dst.y * da * (255u - a)) / out_a;
+    o.z = (src.z * a * 255u + dst.z * da * (255u - a)) / out_a;
+    o.w = out_a / 255u;
+    return o;
+}
+
+@compute @workgroup_size(8, 8)
+fn chunk_build_cs(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let x = gid.x;
+    let y = gid.y;
+    if x >= cb.size.x || y >= cb.size.y {
+        return;
+    }
+    let sx = cb.origin.x + i32(x);
+    let sy = cb.origin.y + i32(y);
+    let bin = (y / cb.bin_px) * cb.bins_x + (x / cb.bin_px);
+
+    // The chunk canvas pixel (acc / abase) and the current island's local canvas
+    // pixel (loc / lbase), composited when the segment ends (replay_binned).
+    var acc = vec4<u32>(0u, 0u, 0u, 0u);
+    var loc = vec4<u32>(0u, 0u, 0u, 0u);
+    var abase = 255u;
+    var lbase = 255u;
+    var has_seg = false;
+    var seg = 0u;
+
+    let start = cb_bin_off[bin];
+    let end = cb_bin_off[bin + 1u];
+    for (var k = start; k < end; k = k + 1u) {
+        let rec = cb_bin_idx[k] * CB_RECORD_U32;
+        let rx = bitcast<i32>(cb_records[rec + 0u]);
+        let ry = bitcast<i32>(cb_records[rec + 1u]);
+        let frame = cb_records[rec + 2u];
+        let flags = cb_records[rec + 3u];
+        let clip = cb_records[rec + 4u];
+
+        var into_loc = false;
+        if clip == CB_CLIP_NONE {
+            // Close the open segment onto the chunk canvas (composite()).
+            if has_seg {
+                acc = cb_over(acc, loc);
+                if loc.w != 0u {
+                    abase = lbase;
+                }
+                loc = vec4<u32>(0u, 0u, 0u, 0u);
+                lbase = 255u;
+                has_seg = false;
+            }
+        } else {
+            if !has_seg || seg != clip {
+                if has_seg {
+                    acc = cb_over(acc, loc);
+                    if loc.w != 0u {
+                        abase = lbase;
+                    }
+                    loc = vec4<u32>(0u, 0u, 0u, 0u);
+                    lbase = 255u;
+                }
+                has_seg = true;
+                seg = clip;
+            }
+            into_loc = true;
+            // The local canvas is blank(clip): a pixel outside the clip rect is
+            // not drawn into it.
+            let c = clip * 4u;
+            let x0 = cb_clips[c + 0u];
+            let y0 = cb_clips[c + 1u];
+            let x1 = cb_clips[c + 2u];
+            let y1 = cb_clips[c + 3u];
+            if sx < x0 || sy < y0 || sx >= x1 || sy >= y1 {
+                continue;
+            }
+        }
+
+        let fb = frame * CB_FRAME_U32;
+        if cb_frames[fb + 7u] == 0u {
+            continue; // not resident (never expected: the pass waits for frames)
+        }
+        let layer = cb_frames[fb + 0u];
+        let ax = bitcast<i32>(cb_frames[fb + 1u]);
+        let ay = bitcast<i32>(cb_frames[fb + 2u]);
+        let fw = bitcast<i32>(cb_frames[fb + 3u]);
+        let fh = bitcast<i32>(cb_frames[fb + 4u]);
+        let anchor_y = bitcast<i32>(cb_frames[fb + 5u]);
+        let keel_off = cb_frames[fb + 6u];
+        let lx = sx - rx;
+        let ly = sy - ry;
+        if lx < 0 || ly < 0 || lx >= fw || ly >= fh {
+            continue;
+        }
+        let texel = textureLoad(cb_atlas, vec2<i32>(ax + lx, ay + ly), layer, 0);
+        let t = vec4<u32>(u32(round(texel.x * 255.0)), u32(round(texel.y * 255.0)),
+                          u32(round(texel.z * 255.0)), u32(round(texel.w * 255.0)));
+        if t.w == 0u {
+            continue;
+        }
+        let shadow = (flags & CB_SHADOW) != 0u;
+        var color = t;
+        if shadow {
+            color = vec4<u32>(0u, 0u, 0u, 96u); // iso::kShadow
+        }
+        if into_loc {
+            loc = cb_over(loc, color);
+        } else {
+            acc = cb_over(acc, color);
+        }
+        if (flags & CB_TRACK_BASE) != 0u {
+            let keel = bitcast<i32>(cb_keel[keel_off + u32(lx)]);
+            var b = 255u;
+            if keel + cb.base_band >= anchor_y {
+                b = u32(min(keel - ly, 254));
+            }
+            if into_loc {
+                lbase = b;
+            } else {
+                abase = b;
+            }
+        }
+    }
+    if has_seg {
+        acc = cb_over(acc, loc);
+        if loc.w != 0u {
+            abase = lbase;
+        }
+    }
+
+    // objects: RGBA8 bytes little-endian (r | g<<8 | b<<16 | a<<24), one u32 per
+    // pixel; copied into the RGBA8Unorm objects plane.
+    let oi = y * cb.size.x + x;
+    cb_objects[oi] = acc.x | (acc.y << 8u) | (acc.z << 16u) | (acc.w << 24u);
+
+    // base: one byte per pixel, four pixels per u32 (the row stride size.x is a
+    // multiple of 4). cb_base is cleared to 0 before the dispatch, so each lane
+    // OR-ing its own byte is race-free and order-independent.
+    if cb.bases != 0u {
+        let idx = (y * cb.size.x + x) / 4u;
+        let lane = (x & 3u) * 8u;
+        atomicOr(&cb_base[idx], abase << lane);
+    }
+}

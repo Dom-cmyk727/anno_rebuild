@@ -1,6 +1,6 @@
 # GPU-built chunks: the sprite passes on the GPU (T11)
 
-**Status 2026-10-21: stage 1 built (CPU only: frame table, `ChunkDraws`, replay, residency model, `chunk_builder` switch; section 11 "Stage 1 as built"); stages 2-3 not started.** Written for task T11 (`docs/orchestration/TASKS.md`), owner decision 2026-10-20 "tier 3 now". Companion to [`iso.md`](iso.md) ("Objects", "Animation and layers", "Fidelity", "Stand-in chunks") and [`../re/annodisplay.md`](../re/annodisplay.md). Once a stage lands, the matching rows of `iso.md` are updated and this page keeps the record formats, the residency rules and the test contract.
+**Status 2026-10-22 b: stage 2a built incl. the review follow-ups (the exact binned compute pass for objects and base; the residency-driven chunk atlas sharing the OQ-096 budget with the sprite atlas; dirty-only frame/keel upload and pooled scratch; the eager pipeline/atlas create; the derived-level `reduce_quad` wiring over GPU children; the atlas-overflow CPU fallback; the `GpuList` builder behind `ANNO_VIEW_GPU_CHUNKS` / `--chunk-build`; section 11 "Stage 2a as built"). Stage 1 built before it. Remaining in 2a: the isolated per-chunk GPU-dispatch timestamp (the `bin_px` frame-level sweep and the iGPU pan/zoom matrix are measured, `docs/perf/README.md`).** Written for task T11 (`docs/orchestration/TASKS.md`), owner decision 2026-10-20 "tier 3 now". Companion to [`iso.md`](iso.md) ("Objects", "Animation and layers", "Fidelity", "Stand-in chunks") and [`../re/annodisplay.md`](../re/annodisplay.md). Once a stage lands, the matching rows of `iso.md` are updated and this page keeps the record formats, the residency rules and the test contract.
 
 Evidence tags as in [`rivers.md`](rivers.md): **M** measured (here: counted with a script over the original files, section 2), **P** parsed from the original files, **D** disassembly, **C** code read at `1900132` (file:line), **E** estimate (to be replaced by a measurement in the stage named), **T** tuning value, **?** open question (section 12).
 
@@ -244,6 +244,115 @@ No fixed arrays: the clip table, the bins, the frame table and the keel buffer a
 - **Residency model** (`AtlasResidency`, `residency.hpp`): pure CPU class, layers of `atlas_size`^2 texels under a byte budget, Static and Hot classes in separate layers, shelf packing, layer-granular LRU, per-frame pinning, an upload byte cap (`Deferred`), `Overflow` as the CPU-fallback counter. The budgets are `GpuLimits::atlas_budget_mb`, `atlas_upload_bytes_per_frame`, `gpu_chunks_per_frame` (defaults and reasons in `gpu.hpp`); the compositor does not read them yet.
 - **Tests**: `chunk_draws_corpus_test.cpp` replays every chunk of `Single_01`, `Single_24` and the canyon island at all three groups, ships on and off, and compares objects and base planes with `Scene::render` (equal), the binning against a brute-force list, and that every clip entry lies inside its chunk; `residency_test.cpp` covers the model. All 67 render tests matching the stage 1 filter pass on the msvc Release build.
 - **Not done in stage 1**: any GPU work (2a), the ground pass (2b), the cache and prefetch taking GPU-built chunks (3).
+
+### Stage 2a: the derived-level decision (before coding)
+
+Written before the code, per the task. T3 stage 3 derives a coarser level's chunk by reducing its
+four children 2x (`reduce_chunks_2x`, `chunk_reduce.hpp`). Today that derivation runs **on the
+workers** over the cached CPU children's pixels (`frame.cpp:279 render_derived_chunk`) and the
+result is uploaded like any chunk. With the `GpuList` builder a built chunk's `objects` and `base`
+live only in GPU textures (the compute pass writes them, 5.1), so a group-2 GpuList chunk has **no
+CPU `objects`/`ground` pixels** and the CPU `reduce_chunks_2x` cannot run over it without a
+read-back.
+
+The engine already reduces on the GPU: `Impl::reduce_quad` (`gpu.cpp:1080`) runs `reduce_fs`,
+binding each child's **GPU plane textures** (`src[q]->bind`) and writing the derived chunk's
+textures; `chunk_reduce.hpp` pins `reduce_fs` == the CPU `reduce_chunks_2x` exactly. (The read-back
+helper `GpuFrame::reduce_chunks_2x`, `gpu.cpp:2722`, uploads CPU children and reads the result back
+— a test oracle, not a per-frame path.) That pass is not yet wired into the live chunk flow; the
+viewer's derived chunks come from the CPU workers today.
+
+**Decision (option a of the task):** with `GpuList` a derived chunk is produced **on the window
+thread by `reduce_quad` over the children's GPU textures**, into the frame's submission — not by the
+CPU `render_derived_chunk`. This meets both constraints: **no read-back on the window thread**
+(`reduce_quad` reads child textures and writes new ones) and **no second build of any group-2
+chunk** (each built chunk is produced once by the compute pass; its textures are then read by the
+reduce). The children are resident before the parent by the existing depth-first `plan_jobs` order
+(children are jobs before the parent, `frame.cpp:879`); a derived chunk whose four children are not
+all resident keeps its stand-in, exactly as a built chunk whose frames are not all resident (4.3
+rule 2). `base` and `flow` stay un-derived (`chunk_reduce.hpp`). The ground/field/terrain planes of a
+GpuList child are still CPU-uploaded in 2a, so they are ordinary GPU textures on the child's bind
+group and `reduce_quad` reduces them unchanged alongside the compute-pass `objects`.
+
+Rejected: CPU `reduce_chunks_2x` over GpuList children needs a read-back (forbidden); building the
+reduced range on the CPU in GpuList mode is a second builder and rebuilds the children (forbidden).
+
+**Test (7.2 extension).** For each scene, the derived levels the viewer uses (`ZoomLevels` beyond
+`built_count`): a GpuList derived chunk's planes, read back, equal the CPU `render_derived_chunk` of
+the same key within the reduce tolerance (objects/ground within 1 per channel — the alpha-weighted
+mean; field/terrain exact), with the group-2 children built by both builders. A mutation (wrong
+quadrant origin, a child's bind group swapped in, the reduce skipped) must fail it.
+
+**Built 2026-10-22 b (PR #17).** `build_derived_gpu` / `gpu_chunk_for_reduce` in `gpu.cpp` wire this:
+`sync_chunks` detects a derived level under `GpuList` and reduces the four GPU children with
+`reduce_quad` (recursing for a derived child). The test (`gpu_chunk_build_test.cpp`) compares the
+composed GpuList derived frame to the Cpu builder's at derived groups 3 and 4 (0 bytes differ by
+more than 1); the three mutations above were applied locally and each failed its `maxd <= 1` /
+`over1 == 0` CHECK (reverted, not committed).
+
+### Stage 2a as built (2026-10-22)
+
+- **The compute pass** (`gpu.wgsl` `chunk_build_cs`, 5.1): one `@workgroup_size(8, 8)` invocation
+  per chunk pixel walks its bin's records and repeats `replay_binned` (`chunk_draws_model.hpp`,
+  the pinned spec of the pass) exactly — integer `cb_over` in u32 with floor division, the
+  per-island local canvas and its `base` reset, the keel contact. It writes two storage buffers
+  (objects as RGBA8 packed in a u32 per pixel; base one byte per pixel, four per u32 via a
+  race-free `atomicOr` into a buffer cleared with `ClearBuffer`) that are copied into the existing
+  RGBA8Unorm objects plane and R8Uint base plane. The pass uses only group 0 (bindings 10-19), so
+  its pipeline is one bind group; the compositor's passes are unchanged. Tolerance 0.
+- **Residency and atlas** (`gpu.cpp` `ChunkBuild`): the stage-1 `AtlasResidency` drives a static
+  sprite atlas **of its own** (its own RGBA8Unorm 2D array), separate from the per-frame sprite/ship
+  atlas, so the merged compositor's sprite path is untouched. **This is an accepted deviation from
+  4.2's one texture, two classes** (orchestrator decision 2026-10-22, PR #17): separate textures are
+  simpler and risk-free for the Hot path; frames never overlap between the two (chunk lists never
+  name water objects or ships), so nothing is duplicated; folding the two is revisited in stage 2b
+  when the sprite path moves. The atlas grows by doubling, **clamped to the residency's layer cap so
+  the grow's transient old+new peak stays within budget** (G3), copies counted in
+  `GpuStats::chunk_atlas_grows`. The **OQ-096 budget covers BOTH atlases together** (G3): the chunk
+  atlas budget subtracts the per-frame sprite atlas's current footprint each frame
+  (`AtlasResidency::set_budget`), so the two never exceed 512 MiB discrete / 256 MiB other. `ensure()`
+  Overflow builds that chunk **on the CPU** (`cb_cpu_fallback`: the draw list replayed on the window
+  thread, `GpuStats::chunks_cpu_fallback`), not a placeholder. A scene-wide GPU frame table (32
+  bytes/id) and an append-once keel buffer carry what the pass reads; **only the dirty frame-table
+  entries and the appended keel tail are uploaded** per frame, counted in the atlas upload budget
+  (G1). The seven per-chunk scratch buffers and the compute bind group are **pooled in `cb` and
+  reused** across builds (G2; safe because builds are sequential and queue-ordered). The base/objects
+  copy asserts `bytesPerRow % 256 == 0` (G4).
+- **Scheduling** (6): `sync_chunks` builds a `GpuList` chunk's objects/base in its own submit during
+  the sync (as `reduce_quad` and atlas growth already do), before the compositor passes; the window
+  thread never fences, maps or reads back. Bounded by `uploads_per_frame` / `upload_budget_ms` (the
+  existing gate) and `atlas_upload_bytes_per_frame` (the first built chunk always goes). Both the
+  visible and the prefetch paths build `GpuList` chunks. The compute pipeline and the first atlas
+  layer are created in **`GpuFrame::create`** (not lazily on the first GpuList frame; removes the
+  first-frame hitch).
+- **Derived levels** (the committed decision below, item 1): a derived level under `GpuList` is
+  reduced on the window thread by `reduce_quad` over the four GPU children (`build_derived_gpu` /
+  `gpu_chunk_for_reduce`), each child built once by the compute pass, no read-back. Far-zoom objects
+  now match the CPU `render_derived_chunk` reference (reduce tolerance).
+- **The switch** (8): `ANNO_VIEW_GPU_CHUNKS=on` in the viewer and `--chunk-build cpu|gpu` in
+  `bench_frame`; default `Cpu`. No compute pipeline → `cb.failed`, the chunk builds on the CPU.
+- **Tests** (`gpu_chunk_build_test.cpp`, `gpu_test.cpp`): `GpuFrame::build_chunk_planes` equals
+  `replay()` byte for byte for every chunk of `Single_01`, `Single_24` and the canyon island at all
+  three groups (2738 chunks, 605,564 records, 0 mismatches, RTX 4090 Vulkan); the synthetic 7.3
+  scenes (shadows over translucent, three compounding shadows pinned by hand, the WZ checkerboard,
+  the base contact branch, a wide image, chunk/clip edges, the two-island base reset, ignored
+  colour/depth) each GPU = CPU = the binned model; the composed frame is byte-identical with both
+  builders on `Single_24` and the canyon island at every group; **a GpuList derived chunk's composed
+  frame equals the Cpu builder's `render_derived_chunk` within the reduce tolerance (0 bytes differ
+  by more than 1) at derived groups 3 and 4** (7.2 extension); the **GPU = CPU stand-in test runs
+  with both the Cpu and GpuList builders** (stage-0 addition 3), each stating its stand-in source; a
+  no-GPU string check ties the WGSL bindings to `gpu.cpp`. **Mutation evidence** (B3, applied locally,
+  not committed): each 7.2 mutation fails a named CHECK — floor→round, dropped clip, no base reset,
+  ignored anchor_y, used colour/depth, off-by-one bin (`gpu_chunk_build_test.cpp` lines 359/417 and
+  the corpus `mismatches == 0`); wrong quadrant origin, child bind group swapped, reduce skipped (the
+  derived test's `maxd <= 1` / `over1 == 0`).
+- **Measured** (`docs/perf/README.md`, 2026-10-22 and 2026-10-22 b): the cold frame at group 0
+  halves (119.5 → 56.5 ms); interactive (async) pan p50/p95/p99/max at 1280×800 and 2560×1440 on the
+  RTX 4090 (adapter 0) and the AMD Radeon iGPU (adapter 1) for both builders are within the frame
+  budget (GpuList within 1-2 ms of Cpu on the window thread); the `bin_px` 16/32/64 sweep is flat on
+  both adapters (**bin_px 32 kept**); the resident chunk atlas peaks ~11.8 MiB (canyon group 0) with
+  0 CPU fallbacks. **Remaining:** the isolated GPU time of the dispatch per chunk (timestamp writes
+  around `cb_encode`).
 
 ## 12. Decisions and open questions (stage 0 review of 2026-10-21 folded in)
 

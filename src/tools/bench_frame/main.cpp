@@ -152,6 +152,10 @@ struct Options {
     std::vector<std::size_t> zoom_dump_after{0};
     /// --chunk-profile: the builder thread counts to profile (empty = the frame paths).
     std::vector<std::size_t> profile_threads;
+    /// --chunk-build cpu|gpu: the GpuList builder (T11 stage 2a) on the GPU paths.
+    render::ChunkBuilder chunk_builder = render::ChunkBuilder::Cpu;
+    /// --bin-px: the ChunkDraws bin edge (gpu-chunks.md 9; the bin_px sweep).
+    std::uint32_t bin_px = render::kDefaultBinPx;
     /// --chunk-limit: the chunks nearest the island's centre that are built. 96 is
     /// about four 2560 x 1440 views at group 0 (24 chunks each), a few minutes on
     /// one thread at the measured 100-250 ms per chunk; 0 = all of the island.
@@ -221,6 +225,10 @@ struct Row {
     std::uint64_t open_px = 0;
     /// The CPU chunk cache after the frame: chunks and bytes (outside `total`).
     std::size_t cache_chunks = 0, cache_bytes = 0;
+    /// GPU-built chunks (T11 2a): the resident chunk atlas (MiB), chunks built by
+    /// the compute pass, and CPU-fallback builds (GpuStats).
+    double chunk_atlas_mb = 0;
+    std::size_t gpu_built = 0, cpu_fallback = 0;
     /// GPU: every window-thread step of the frame (GpuStats::steps, they add up
     /// to the compositor's total), and the counts behind the sync steps.
     std::vector<std::pair<std::string, double>> steps;
@@ -237,6 +245,8 @@ struct Config {
     int w = 0, h = 0;
     std::size_t group = 0;
     render::WaterStyle style = render::WaterStyle::Original;
+    render::ChunkBuilder chunk_builder = render::ChunkBuilder::Cpu;
+    std::uint32_t bin_px = render::kDefaultBinPx;
     bool async_chunks = false;
     std::pair<int, int> centre{0, 0};
     std::size_t frames = 120;
@@ -803,6 +813,19 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, Grab&&
                             1048576.0,
                         peak_chunks);
         }
+        // GPU-built chunks (T11 2a): the resident chunk atlas and the build counts.
+        double peak_atlas = 0;
+        std::size_t total_gpu_built = 0, total_fallback = 0;
+        for (const auto& r : rows) {
+            peak_atlas = std::max(peak_atlas, r.chunk_atlas_mb);
+            total_gpu_built += r.gpu_built;
+            total_fallback += r.cpu_fallback;
+        }
+        if (peak_atlas > 0 || total_gpu_built > 0) {
+            std::printf("GPU chunk atlas: peak resident %.1f MiB; %zu chunks built by the compute "
+                        "pass, %zu CPU fallbacks\n",
+                        peak_atlas, total_gpu_built, total_fallback);
+        }
     }
     if (c.zoom_every > 0) {
         // How long each zoom step's transient lasts (wall ms since the step's frame):
@@ -848,6 +871,11 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
     // The GPU compositor draws the ships itself: chunks without them.
     render::FrameRenderer fr(c.threads, g == nullptr);
     fr.river_flow = c.river_flow;
+    // GpuList builder only on the GPU path (the CPU path replays the list).
+    if (g != nullptr) {
+        fr.chunk_builder = c.chunk_builder;
+        fr.bin_px = c.bin_px;
+    }
     if (c.lookahead) {
         fr.max_lookahead_chunks = *c.lookahead;
     }
@@ -899,6 +927,9 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
             r.open_px = st.open_sea_px;
             r.cache_chunks = fr.cached();
             r.cache_bytes = fr.cached_bytes();
+            r.chunk_atlas_mb = st.chunk_atlas_mb;
+            r.gpu_built = st.gpu_built_chunks;
+            r.cpu_fallback = st.chunks_cpu_fallback;
             r.fluid_setting_up = st.fluid_setting_up;
             r.sea = st.sea_ms;
             r.sync = st.chunk_sync_ms;
@@ -1101,6 +1132,8 @@ int fill_time(const render::Scene& scene, const Options& o, std::size_t island) 
         return 1;
     }
     render::FrameRenderer fr(o.threads, false);
+    fr.chunk_builder = o.chunk_builder;
+    fr.bin_px = o.bin_px;
     fr.derive_from_cache = o.derive_from_cache;
     fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, o.threads));
     // The sea patterns are not needed to build chunks.
@@ -1202,6 +1235,8 @@ int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
             const auto rv = gpu::resampled_view(cx, cy, static_cast<std::uint32_t>(w),
                                                 static_cast<std::uint32_t>(h), pt.scale, filter);
             render::FrameRenderer fr(o.threads, false);
+            fr.chunk_builder = o.chunk_builder;
+            fr.bin_px = o.bin_px;
             fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (o.threads + 1) / 2));
             const auto target =
                 g.offscreen_target(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));
@@ -1298,6 +1333,8 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
     constexpr double kBusyMs = 8.0;
     for (const auto& [w, h] : o.resolutions) {
         render::FrameRenderer fr(o.threads, false);
+        fr.chunk_builder = o.chunk_builder;
+        fr.bin_px = o.bin_px;
         fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (o.threads + 1) / 2));
         const auto target =
             g.offscreen_target(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));
@@ -1584,7 +1621,8 @@ int chunk_profile(const fs::path& dir, const fs::path& file, const Options& o, s
 
 constexpr const char* kUsage =
     "usage: bench_frame <game_dir> <file> [--threads n] [--res WxH,..] [--groups 0,1,2] "
-    "[--styles original,enhanced] [--chunks blocking,async] [--renderer cpu,gpu] [--check] "
+    "[--styles original,enhanced] [--chunks blocking,async] [--renderer cpu,gpu] "
+    "[--chunk-build cpu|gpu] [--bin-px n] [--check] "
     "[--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick] [--zoom k] [--zoom-frames n] "
     "[--pace ms] [--spike ms] [--limits default|interactive] [--settle ms] "
     "[--river-flow legacy|flow] [--river-quality auto|low|medium|high] [--river-gain x] "
@@ -1679,6 +1717,14 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
                 ok = false;
             }
 #endif
+        } else if (a == "--chunk-build") {
+            ok = v == "cpu" || v == "gpu";
+            o.chunk_builder =
+                v == "gpu" ? render::ChunkBuilder::GpuList : render::ChunkBuilder::Cpu;
+        } else if (a == "--bin-px") {
+            std::uint32_t n = 0;
+            ok = parse(v, n) && n > 0;
+            o.bin_px = n;
         } else if (a == "--island") {
             std::size_t n = 0;
             ok = parse(v, n);
@@ -2037,6 +2083,8 @@ int main(int argc, char** argv) {
                             return 1;
                         }
                         Config c;
+                        c.chunk_builder = o->chunk_builder;
+                        c.bin_px = o->bin_px;
                         c.w = w;
                         c.h = h;
                         c.group = group;

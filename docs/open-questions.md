@@ -751,11 +751,12 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Faithful default implemented:** the high-performance adapter, as before S6. **Alternative:** a viewer option to render on the integrated GPU that drives the monitor (and the tier gate then picks Low).
 
 ## OQ-089: Run the GPU parity tests in CI (new, review of S6)
-- **Status:** open, owner decides
+- **Status:** closed (T13, 2026-10-22; second executor)
 - **Area:** ci / render / tests
-- **What:** the Linux CI job has no Vulkan driver, so the five synthetic shader parity tests of `gpu_test.cpp` (the only CI-capable check of the WGSL port of the river shading: tiers, hour wrap, chunk borders, `min_valid`) skip themselves for lack of an adapter; only the device-free tests (binding contract, uniform bytes, gate logic, adapter picking) run there. A parity regression is caught only on a machine with an adapter. Whether CI installs a software Vulkan driver is an infrastructure choice.
-- **Why it may change the feel:** nothing visible; build time and CI complexity.
-- **Faithful default implemented:** the skip is loud: a CI step prints a warning annotation "GPU tests skipped" when the first GPU test finds no adapter (`.github/workflows/ci.yml`). **Alternative:** install `mesa-vulkan-drivers` (lavapipe) in the Linux job and set `WGPU_BACKEND=vulkan` and `ANNO_REQUIRE_GPU=1`, so that a missing device fails.
+- **What:** the GPU parity tests of `gpu_test.cpp` already ran on Linux CI before T13 (main run 39758843314, linux-gcc ran 79 GPU cases; the other cpp jobs run them too, on adapters not named in the logs), but only on whatever adapter each runner happened to have. What T13 changes is the `linux-gcc` job: it is pinned to Mesa's software Vulkan driver (lavapipe) so the tests run on a deterministic software adapter instead of skipping or depending on the runner's hardware, and `ANNO_REQUIRE_GPU=1` is set so a missing adapter fails the job instead of skipping. The other cpp jobs keep their existing warning-on-skip behaviour.
+- **Answer:** CI installs Mesa's software Vulkan driver (lavapipe) in the `linux-gcc` job only (`mesa-vulkan-drivers`, `libvulkan1`, `vulkan-tools` for a `vulkaninfo --summary` line in the log), sets `WGPU_BACKEND=vulkan` and `VK_ICD_FILENAMES` to the lvp ICD (`/usr/share/vulkan/icd.d/lvp_icd.json`) so wgpu-native picks lavapipe, and sets `ANNO_REQUIRE_GPU=1` for that job's test step so a missing adapter fails instead of skipping. The "GPU tests need an adapter" step now fails on `linux-gcc` and keeps warning on the other jobs. The `macos-clang` job already runs the tests on Metal; its flaky automatic-tier test was made deterministic: the automatic choice runs with no wall-clock budget (`river_measure_budget_ms = 0`, unlimited) so it cannot run out after the baseline, and the tier is asserted as `choose_river_quality(frame's own river_costs(), gate)` plus `costs.size() >= 1` baseline-first. A new `choose_river_quality` unit test pins the rule on hand-made cost tables (gate -1 → Low, huge gate → High, mixed, empty, cut after baseline, Medium expected). No tolerance was loosened; a lavapipe parity difference is reported as BLOCKED/QUESTION, not renderer-fixed. Test time added: test step 75 s → 135 s, GPU case sum 62 s → 117 s, lavapipe install about 21 s (run 39753758943). See `.github/workflows/ci.yml`, `src/render/tests/gpu_test.cpp`, and `docs/testing/gpu-tests.md`.
+- **Why it may change the feel:** nothing visible; build time and CI complexity (one extra package install on `linux-gcc`; the GPU parity tests now run there deterministically).
+- **Faithful default implemented:** as above; the soft-adapter running note is in `docs/testing/gpu-tests.md`.
 
 ## OQ-090: Flow lattice textures per river chunk and the plane pool (new, review of S6)
 - **Status:** open, owner decides
@@ -830,3 +831,184 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Proposed default:** `GpuLimits::atlas_budget_mb` 512 on a discrete adapter, 256 on an integrated one, clamped to the device's texture array and buffer limits; above the budget the least recently used atlas layer is emptied, and a chunk whose frames cannot fit at all is built on the CPU and counted.
 - **Owner decides:** accept 512 / 256, or another rule (for example a share of the adapter's reported VRAM where a backend exposes it). Decide after the stage 2a owner check, when the measured resident MiB are in the perf README.
 - **Faithful default:** no look-and-feel stake; the original keeps all sprites in system memory.
+
+## OQ-100: Up to 8 players: how the world grows above 4 players (new, owner decision 2026-10-22, PLAN §0.6 / M4.1)
+- **Status:** **decided by the owner 2026-10-22** (all items: 1 as answered, 2-6 as recommended, 7 with a stricter floor of 99 %). Implementation: PLAN M4.1, spec `docs/sim/world-scaling.md` (to be written).
+- **Area:** sim (world setup), net (handshake), UI (game setup)
+- **Evidence:**
+  - The original has no world generator: an endless world is a scenario with a fixed size and fixed island links, and only the templates, raw materials, ores and treasures are drawn at start (`docs/re/annoscene.md` §3, §5).
+  - Its nine endless worlds (`Scenes/0010SingleEndlos`) are 1024 × 1024 tiles (seven of them) or 800 × 800 (two), with 16–28 links covering 19–46 % of the area. They hold one human and 2–4 computer players, plus Venetians, pirates and the neutral player 31.
+  - The multiplayer scenario folders are empty in this build (multiplayer never shipped, ISS-030, ISS-031; 2–8 players were planned, ISS-034).
+  - `Single_24.sze` has eight parties (one human, seven computer players) on a 512 × 512 map.
+  - Read on 2026-10-22 with `tools/sze.py` (header `HEAD` world size, `INSELLNK` links, `SPIELER/HEAD` player types).
+- **Questions, each with the recommendation:**
+  1. **Who counts as a player:** **DECIDED by the owner 2026-10-22: every competing party, human or computer** (not Venetians, pirates, natives or the neutral player). Note: the original's endless worlds already hold up to 5 competing parties (1 human + 4 computer) at 1024 tiles without growing; the owner's baseline of 4 is stricter, which is fine (more room per player).
+  2. **World area (DECIDED as recommended):** grows in proportion to the player count above 4: area(n) = area(template) × n / 4, so the edge grows by √(n / 4). For the 1024 template that is about 1145, 1254, 1355 and 1448 tiles for 5-8 players, and 800 → 894 … 1131. *Recommended*, because it keeps the land per player of the 4-player world.
+  3. **Island links (DECIDED as recommended):** added in proportion too (links(n) = links(template) × n / 4, rounded up), keeping the template's climate bands and its size mix (64, 80, 128 and 256 tiles). The original endless worlds lay the climates out north to south: the median island centre lies at 0.08 of the world height for polar, 0.21 tundra, 0.35 nord, 0.49 steppe, 0.52 prairie and 0.77 jungle. There is no desert link in them. Measured over their 229 links on 2026-10-22. *Recommended.* Alternative: keep the island count and only enlarge the gaps (not fair: same land, more players).
+  4. **Layout (DECIDED: extend the template):** extend the template (keep the original links where they are, add bands of new links and new start regions around them) or generate a whole new layout. *Recommended: extend*, so a 5-player world still looks like the original world it came from, and the faithful 4-player world is literally its core.
+  5. **Raw materials, ores, treasures (DECIDED as recommended)** (`ROHSTOFF`, `ERZE`, `SCHATZ`): scale with the number of links (the original distributes them per link). *Recommended.*
+  6. **Natives, pirates, Venetians (DECIDED as recommended):** natives scale with islands (they live on islands); one pirate and one Venetian party stay as in the template. *Recommended*; the owner may want more pirates in a big world.
+  7. **Fairness tolerance: DECIDED by the owner 2026-10-22: every player gets at least 99 % of the 4-player share** of land, resources and room. This applies to each measure separately: land by climate and size class, reachable raw materials and ores, and distance to the nearest rival and to free islands. My recommendation was 90 %.
+     - The 4-player share is the template world's total divided by 4.
+     - For whole-number measures (kinds of raw material or ore within reach), 99 % means not one fewer than the baseline.
+     - The generator therefore needs a deterministic, bounded search: seeded retries with a stated limit. If no layout meets the floor, world setup fails with a message naming the measure that fell short; it never quietly hands out an unfair world.
+     - The spec measures how far the original worlds themselves are from even (they are not symmetric), so the baseline is defined on the template, not on one player's corner of it.
+- **Faithful default:** up to 4 players nothing changes. The scaling is a rule (PLAN §0.2) whose parameters are configuration; authored missions keep their own setup.
+
+## OQ-101: What turns chapels into churches and schools into universities (new, tutorial series 2026-10-22)
+- **Status:** open, RE
+- **Area:** sim (buildings, needs)
+- **Evidence:**
+  - `Anlagen.dat` (P) has two chapel types and two school types, next to the big church 1325 and university 1379:
+    - chapel 1320 (`WARE KAPELLE`, `INFRA_STUFE_1C`) and 1321 (same footprint and cost, `WARE KIRCHE`, `2F`);
+    - school 1346 (`SCHULE`, `2B`) and 1347 (`HOCHSCHULE`, `3C`).
+  - The community series (`docs/research/tutorial-videos.md` §3.2):
+    - the chapels became churches the moment a church was built (V7 06:16);
+    - the school took the university's look and function the moment the university was built, although the city had passed `3C` long before (V13 03:10);
+    - later, a newly placed chapel served aristocrats as a church (V14 12:46).
+- **Questions:**
+  1. Is the swap 1320 → 1321 / 1346 → 1347 triggered by the stage, by the first 1325 / 1379 built, or by both?
+  2. Does it apply to every chapel or school of the city, the island or the player?
+  3. Does the chapel slot build 1321 directly once the trigger has happened?
+  4. Where in `AnnoWelt` is it done? (A pass like the house upgrade, `population.md` §5?)
+- **Faithful default:** whatever the original does; needed before public buildings enter the sim.
+- **Update 2026-10-22 (community FAQ):** forum posters report that one university or church on the **island** upgrades every school or chapel there, whatever their coverage, and that demolishing it loses the upgrade; the cathedral counts as a church (`docs/research/community-faq.md` §4). That answers questions 1–2 as community evidence: the trigger is the big building, with island scope. Still to confirm in the code or by running the original.
+
+## OQ-102: How houses get market-stand goods and infrastructure (new, tutorial series 2026-10-22)
+- **Status:** open, RE (extends the `population.md` "Open" items on the market class and on infrastructure delivery)
+- **Area:** sim (supply)
+- **Evidence:**
+  - Market stands (PRODTYPE group 5, e.g. 1310 food and salt, 1314 cloth and leather) have action radius 4 (P).
+  - The series:
+    - residents walk to a stand and buy there (V2 01:45);
+    - a stand with exits on all sides serves residents from all sides (V2 01:36);
+    - the innkeeper walks to the market hall to fetch alcohol, so a tavern should stand next to one (V2 05:41, V11 05:15);
+    - new districts need their own stands (V9 07:42);
+    - a citizen house outside the church's drawn circle still had its church need met (V10 03:52).
+- **Questions:**
+  1. Is the house's walker task `0x35` the resident going to a stand? Is coverage the walker's reach, a footprint overlap or the drawn circle?
+  2. Do stands and the tavern hold their own stock, refilled by their own walker from the city store, or do they draw on the city store directly?
+  3. How do infrastructure needs (`0x4c`–`0x5a`) reach the house stock?
+- **Faithful default:** the original's rule, once traced.
+- **Update 2026-10-22 (community FAQ):** the house's reach counts, not the stall's radius. Stalls sell from the island store. The tavern keeper physically fetches alcohol within the tavern's radius. Reach at the edge is irregular, which suggests walker reach (`community-faq.md` §4).
+
+## OQ-103: Which walkers need roads (new, tutorial series 2026-10-22)
+- **Status:** open, RE
+- **Area:** sim (transport, pathing)
+- **Evidence:**
+  - The market cart (job `0x34`) searches the road net (`production.md` §5.2, D).
+  - The series:
+    - sheep farms need no road inside a weaving hut's radius, because the weaver's carrier fetches the wool (V1 03:34);
+    - the stonemason's worker walks up to the quarry without a road (V3 01:58);
+    - the forester needs a road, "or nothing is collected" (V1 00:58);
+    - aristocrat houses can do without roads (V14 31:05).
+- **Questions:**
+  1. Do the workshop carrier (job `0x33`) and the farm worker walk over open terrain within the building's radius?
+  2. Which buildings need a road to the market hall (producers whose goods go to the city store)? Do houses need one at all?
+  3. Are paved roads faster? (V14 34:46 calls them cosmetic; `wegspeed.dat` is not read, `production.md` §5.4.)
+- **Faithful default:** the original's rule, once traced.
+- **Update 2026-10-22 (owner, working rule):**
+  - houses need roads connected to markets;
+  - services must reach a house by road (the fire brigade, for example);
+  - a road connects only at a building's **specific entrance tile**, not at any edge tile.
+
+  The manual and the community FAQ agree on the entrance rule. FAQ posters from 2002–2004 claim that houses and the fire brigade need no roads; that **contradicts the owner** and may describe an older patch. The owner's rule is the working rule. T15 decides the mechanism with per-house reads, the same houses with and without a road to a market (PR #16 review). See `community-faq.md` §3.
+
+## OQ-104: Player controls missing from the command list (new, tutorial series 2026-10-22)
+- **Status:** open, spec (S8 command set and later)
+- **Area:** sim (commands), net, UI
+- **Evidence (series):**
+  - lock building materials per city in the market hall's "?" panel, which stops all upgrades (V3 03:28, V10 06:33, V12 02:34);
+  - stop and start a building (V10 09:13);
+  - the "plant" button, which fills a farm's or forester's radius with fields or trees (V1 01:10), and also turns the small farm to alcohol (V2 02:52);
+  - Kontor buy orders (good, amount, price limit) and sell orders (stock level to keep, minimum price) (V2 03:24, V6 01:30, V10 02:22);
+  - automatic trade routes with load and unload per Kontor (V5 04:04);
+  - trade treaty and alliance in the diplomacy page (V4 02:43, V14 27:39);
+  - unloading a scout and sending it over the mountains to find deposits (V5 08:14);
+  - choosing an aristocrat house's look by cycling the build preview (V14 22:39).
+- **Questions:**
+  1. Where does the original keep the material lock (savegame `STADT2` `BAUMAT`, `production.md` §5.3?), and how does the upgrade check read it?
+  2. Which of these controls are commands in the original's turn stream (`tick-loop.md`, command numbers `0x64`–`0x97`)?
+  3. How is a placed house's look chosen: by the client's preview, or by the simulation's PRNG when the command executes? In lockstep the preview must never decide it silently; the choice must travel in the command.
+- **Faithful default:** every control the original has, as a command. The look is carried in the build command or drawn by the sim.
+- **Update 2026-10-22 (community FAQ):** the material lock is per island. A house's look is cycled by clicking the build tool on unbuildable ground, so the client chooses it and the build command must carry it. The add-on's V key plants the active farm's fields (`community-faq.md` §4).
+
+## OQ-105: Plague and the medicus (new, tutorial series 2026-10-22)
+- **Status:** open, RE
+- **Area:** sim (events)
+- **Evidence:**
+  - From our RE (`fire-and-ships.md` §2.4, D):
+    - the outbreak chance grows with inhabitants above 500;
+    - plague spreads within 2 tiles and cures itself with 25 % chance per 9-step cycle;
+    - the house state SEUCHE is bit `0x10`.
+  - House flag bits 4/5 force a bad mood; where they are set is open (`population.md` §4.1, "Open").
+  - The series:
+    - the first plague came after the 1,500-inhabitant message (V13 07:02);
+    - the medicus' apothecary walks to the house and cures it (V13 07:17);
+    - houses out of the medicus' reach fell (V14 20:50);
+    - some downgraded houses "stay afloat as long as no plague comes" (V14 33:29).
+- **Questions:**
+  1. Is the plague bit the same as house flag bit 4 (forced mood −1)?
+  2. How does the medicus (1337, radius 24, uses herbs) choose its targets, and how fast does it act?
+  3. Does the "255 = never" table entry apply to plague as it does to fire? If so, the first outbreak needs ≥ 1,524 inhabitants.
+- **Faithful default:** the original's rule once traced, behind the "disasters off" rule like fire.
+- **Update 2026-10-22 (community FAQ):** the medicus cures only houses in its area and some residents die first; "fast healing" shortens that; bathhouses reportedly lower the plague chance (unchecked) (`community-faq.md` §4).
+
+## OQ-106: Wildlife and pastures (new, tutorial series 2026-10-22)
+- **Status:** open, RE
+- **Area:** sim (figures, production yield)
+- **Evidence:**
+  - The series:
+    - game for the hunter appears only where there is forest (V1 02:05);
+    - deer eat the sheep's grass, so pastures without forest yield more (V10 01:08).
+  - The hunter (805, input `FLEISCHTIER`) and the sheep farm (807, input `GRAS`) are in `production.md` §2.1 and §4.2. How wild animals spawn and graze is not traced.
+- **Questions:**
+  1. Where and how often do wild animals spawn, and does it depend on forest tiles?
+  2. Do wild animals use up `GRAS` objects, competing with the sheep?
+  3. Which figures carry `PELZTIER` for the fur trapper? (The series names arctic foxes, hares and bears, V14 10:03.)
+- **Faithful default:** the original's rule, once traced.
+- **Update 2026-10-22 (community FAQ):** game comes from forests and grazes anywhere there is grass. The fur trapper takes white-furred animals, and leopards and tigers in the jungle at half yield (`community-faq.md` §4).
+
+## OQ-107: Research and knowledge (new, tutorial series 2026-10-22)
+- **Status:** open, RE (related to O-30 in `docs/sim/state.md`)
+- **Area:** sim (research)
+- **Evidence:**
+  - Files and RE (P, D):
+    - the player research table in `docs/sim/state.md`: 65 entries, researchable and researched bits, a `u16` progress each;
+    - the `Wissen:` lines in `BGruppen.dat` `[BAUSTUFEN]`, which nothing reads yet (`2B` 20, `2E` 25, `3B` 50, `3D` 70, `4C` 90; `population.md` §1).
+  - The series:
+    - settlers who attend school earn knowledge points;
+    - the well costs 5 knowledge, and after it the fire brigade costs 5 (V3 09:17);
+    - the university offers civil and military research, for example the large ore mine (V14 03:59);
+    - "fast healing" and the court can be researched (V14 33:38).
+- **Questions:**
+  1. How do schools and universities turn pupils into knowledge? At what rate, and what do the `Wissen` lines mean?
+  2. Where are the research costs and their order (the well before the fire brigade) stored?
+  3. Is research per player? It is sim state that must be checksummed if it gates building.
+- **Faithful default:** the original's costs and order, as data.
+- **Update 2026-10-22 (answers question 1 in part):** the `Wissen:` lines are the **knowledge cap** per stage. The FAQ's cap table (20 / 25 / 50 / 70 / 90 at 50 / 170 settlers, 200 / 600 citizens, 750 merchants) equals `BGruppen.dat` `2B`/`2E`/`3B`/`3D`/`4C` exactly (P). A library adds 10; the number of schools does not matter. Research costs per item are in the FAQ's research trees, not yet checked against the data (`community-faq.md` §2, §4).
+
+## OQ-108: Trade with the free trader and computer players (new, tutorial series 2026-10-22)
+- **Status:** open, RE
+- **Area:** sim (trade, AI), net
+- **Evidence:**
+  - Our RE (D):
+    - the city's sell and buy lists `VK`/`EK` and the trade flag per good (`production.md` §5.3);
+    - trade sales and purchases in city statistics 4 and 5 (`population.md` §8).
+  - The series:
+    - a Venetian ship fills a buy order for 40 tools at 52 (base price 60); 51 still works (V2 03:24, V3 02:21);
+    - a sell order sells wood above 50 t at 5 (base 8), and salt above 100 t at 23 (base 30) (V6 01:30, V10 02:22);
+    - computer players come and buy what is on sale. That lengthens the relations bar until an alliance can be offered (V9 02:02, V14 27:18);
+    - trading with a computer player needs a trade treaty, which can be offered once its city is discovered (V4 02:43).
+- **Questions:**
+  1. How does the free trader choose which orders to fill, how often, and within which price bounds?
+  2. How do computer players decide to buy from a human, and how does trade change relations?
+  3. Which of this is simulation state? All of it, if it moves goods or money.
+- **Faithful default:** the original's rules, once traced.
+- **Update 2026-10-22 (community FAQ):**
+  - Venetians always sell tools, and otherwise relay other players' orders; they sail a fixed circuit; a coastal warehouse is needed;
+  - the AI trades only from its main island;
+  - trade visits raise relations;
+  - the slider sets the stock to keep.
+
+  Stall prices in the FAQ match `BGruppen.dat` at tax index 2 (`community-faq.md` §2, §4).

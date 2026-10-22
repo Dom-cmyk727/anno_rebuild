@@ -327,12 +327,29 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   5. all gates of §1 item 4 including the WSL GCC -O3 check with and without the game dir, `lint_sim.py`, and mutation evidence for the charge, the atomic rule and the free-slot order (break each, the tests fail);
   6. `state.md` §15 "S10 as implemented", PLAN status, a REPORTS.md section, a PR.
 
-### T19 — The script engine: `&&`/`||` precedence and statements without `;` (OQ-120, OQ-121) · `READY` · `PARALLEL-OK` (docs only: `docs/re/annoscene.md`, `docs/formats/bigbrother.md` §3.4, `docs/open-questions.md`) · branch `task/T19-script-engine-re` from `main`
+### T19 — The script engine: `&&`/`||` precedence and statements without `;` (OQ-120, OQ-121) · `REVIEW` → approved 2026-10-22 i (PR #23; both closed: equal rank grouped to the right, `&&` short-circuits; a missing `;` reads on to the next `;`, one shipped action lost) · `PARALLEL-OK` (docs only: `docs/re/annoscene.md`, `docs/formats/bigbrother.md` §3.4, `docs/open-questions.md`) · branch `task/T19-script-engine-re` from `main`
 - **Why:** 28 of the 308 shipped conditions mix `&&` and `||` without parentheses, and four shipped statements have no `;` (`bigbrother.md` §3.4). What these missions test, and whether an action is lost, depends on the interpreter. The C++ port of the script engine needs both answered.
 - **Do** (static analysis with `tools/disasm.py` and capstone, as in `docs/re/annoscene.md`): find the condition parser and the statement reader in `AnnoScene.dll` (the ops range `0x10011ed0`–`0x10013dab`, O-16; the delimiter table `0x1003d888`–`0x1003d8a0`; the strings "Kein THEN bei Bedingung", "Unbekannter Vergleichsoperator!"); state how a condition with mixed connectives is grouped and evaluated (left to right, `&&` binds tighter, or other), and what the reader does at a missing `;` (ends the statement at `)`/value, or reads on into the next).
 - **Acceptance:** both questions answered with module + address for every step, or narrowed with the reason; the 28 mixed conditions and the four statements re-read under the answer (which of them change meaning against a naive reading, by file, short excerpts only); `tools/bigbrother.py` grows a `describe` of the grouping only if the answer is certain; OQ-120/121 updated (closed or narrowed); report and PR.
 
 ## 4. Review log (orchestrator)
+
+- **T19 (2026-10-22 i, PR #23, head 2ea082f). Approved; merge when CI is green** (docs and tools only; expect a small conflict with T18 at `annoscene.md` "## Open").
+  - Verified in the disassembly by the orchestrator. Evaluation `AnnoScene.dll` `0x10010290`:
+    - the left operand first (`[esi-0x10]`, slot +4);
+    - a false left with the AND flag (`[esi-8]` = 0) returns 0 at `0x100102af` without calling THEN or ELSE;
+    - otherwise the right operand is always evaluated (`0x100102c1`), then AND/OR combine.
+  - Verified grouping: after a connective (strstr `&&` `0x1003d89c` at `0x10022c52`, `||` `0x1003d898`), the parser copies the remaining text (malloc `0x10026d2b`, strncpy `0x100280f0`) and calls itself `0x10022bf0` on it (`0x10022fbd`): equal rank, grouped to the right. The delimiter bytes at file offset 0x3d898 read `|| && ;`.
+  - Re-run: `test_bigbrother.py` 26 OK with the corpus; `quirks` 28 mixed conditions, 1 lost statement in 50 files.
+  - Mutation: `grouped` made left-associative (C-like) fails 36 checks.
+  - Owner question (rules): the `MINIMAP_ALERT( 640, 950 )` that S01_09_01's missing `;` swallows never runs in the original; the faithful default keeps it lost.
+  - Nit: the IF-count formula of the step (`0x10016b70`, `+0x3c` only ever 0) looks wrong as read; correctly left open in OQ-123 item 5.
+- **T16 fix-up (2026-10-22 i, PR #21, head 7df37a5).** All five items and the four nits done (subagent; 52 tests, mutation evidence for every new guard). Re-read by the orchestrator:
+  - `agent.py`: the watchdog is joined (5 s) before `log_close`; the log lock covers the lazy open, the writes, the flush and the close, and logging after the close is a no-op that never creates folders.
+  - `within()` uses realpath, refuses `..` and the base itself; `--out-win` is fenced to `cache/orig`; screenshot `dest` to `out` or `--out-win`; controller-chosen names are one component.
+  - `AKTPLAYER` verified independently: `AnnoFrame.dll` file offset 0x95c64 holds `%s\SaveGame\%s`, `AKTPLAYER`, `ANNOnymous`, after `.?AVtFrameStartupProfile@@`; `1503Startup.exe` 0xec30.
+  - `test_orig.py` 52 OK (2 symlink skips on Windows).
+  - Left before the merge: a short silent smoke run of the changed agent (when no build runs), and CI green on 7df37a5.
 
 - **T17 (2026-10-22 h, PR #20, head 1e54c90). Approved; merged as 4ef5373.**
   - Re-run by the orchestrator: `bigbrother.py check` 50/50 byte-identical; `test_bigbrother.py` 15 passed with the corpus cases. The spec's §7 corrections to the resurvey are right (the 37-vs-39 script count, `SOLDAT_*` as tutorial object names).

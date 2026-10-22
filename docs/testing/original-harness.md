@@ -87,8 +87,30 @@ and mouse moves/clicks at window-relative coordinates (0..1), and screenshots th
 only in a session the owner agreed to; the owner agreed to `SendInput` control on 2026-10-22.
 
 Sub-commands (the game is launched once, detached, and persists across calls): `launch`, `shot
---out`, `key F6` (or `ENTER,ESC`), `click nx ny [--shot]`, `dblclick`, `move`, `close` (WM_CLOSE +
-taskkill + re-hash). A perceive-act loop: `launch`, `shot`, read the PNG, `click`/`key`, `shot`.
+--out`, `key F6` (or `ENTER,ESC`), `click nx ny [--shot]`, `dblclick`, `move`, `wheel`, `drag`,
+`seq`, `quicksave` (F10), `quickload` (F9), `close` (WM_CLOSE + taskkill + re-hash). A perceive-act
+loop: `launch`, `shot`, read the PNG, `click`/`key`, `shot`.
+
+**Quick save / load (stage A).** `quicksave` presses F10 and `quickload` presses F9 (manual p4-5,
+authoritative; English copy). The save state itself is not yet read from memory (stages B/C), so the
+command logs and can `--shot`; verify by screenshot until the save slot can be read. Quirk
+(playbook §13): a tavern's alcohol and goods on carts are **not** saved — quick-save at calm moments.
+
+**Cross-call cursor guard (stage A).** The "owner took the mouse" safety check compares the cursor
+to where the tool last left it. Within one process that is a module global; **across** separate
+`control.py` calls the last cursor is now persisted to `cache/orig/<session>/cursor.json` and
+re-loaded at the start of the next call, so the first input of a later call in the same session is
+also checked. This is active only with a **stable `--session`** (the default per-call timestamp
+session has no prior cursor, so the first input is unchecked, as before). A driving session should
+therefore pass a fixed `--session <name>`.
+
+**Screen table as data (stage A).** The HUD and construction-menu layout is `tools/orig/screens.json`
+(window-fraction coordinates, resolution-independent) with a loader+validator `tools/orig/screens.py`
+(`python -I tools/orig/screens.py` validates; `--missing` lists what is still to capture). Only
+measured coordinates are filled in (the four main tabs, the minimap region, the category column x,
+the grid region, the scripted new-Citizen-game menu path, the manual's eight construction categories,
+the gameplay key map); every per-civ-level building grid cell and every panel layout is marked
+`{"capture": "owner-session"}` and recorded by screenshot with the owner, not fabricated.
 
 Verified 2026-10-22: driven entirely by the script, the game went main menu -> Singleplayer -> New
 game -> Choose game (Citizen) -> OK -> a running single-player scenario (screens in

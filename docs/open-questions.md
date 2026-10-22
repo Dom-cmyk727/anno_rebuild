@@ -1067,12 +1067,13 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   This is the AI work of PLAN M5 and O-1 in `docs/sim/state.md`.
 
 ## OQ-114: Scenario `COMP` records spell `SETTRIBUTSPERRE`, which the AI ignores (new, T18 2026-10-22)
-- **Status:** open, decision for the owner (faithful default stated)
+- **Status:** decided 2026-10-22 (owner: "faithful default for OQ-114, ignore the misspelt key")
 - **Area:** formats (`.sze`), AI
 - **Question:** Should the reimplementation honour the tribute-block values the scenario authors set, which the original drops?
+- **Decision:** no. The reimplementation ignores `SETTRIBUTSPERRE` exactly as the original does; only `TRIBUTSPERRE` reaches parameter 25.
 - **Evidence:**
   - *Who writes what (D):* the editor writes parameter 25 as `SETTRIBUTSPERRE` (`AnnoScene.dll` `0x100052b0`). The AI's readers know only `TRIBUTSPERRE` (`CompLogic.dll` `0x10001583`, `0x10040c41`). Unknown keys are skipped (`strncmp` up to the last `=`). `CompLogicClassic.dll` has no `SETTRIBUTSPERRE` string (S).
   - *Affected values (P):* 267 of the 276 shipped values are 0. `endless02` sets 18 for five native peoples, `S01_04_01` sets 1 for players 1–3, `S01_05_01` 1 for player 2. The original never applies them.
   - *Other routes:* a profile's column 8 still reaches the parameter at game start (0 in all profiles), and the AI's own saves use `TRIBUTSPERRE`.
-- **How to resolve:** owner decision. A `rules` option (default off = faithful) could map `SETTRIBUTSPERRE` to parameter 25. What the parameter does is part of OQ-113.
-- **Faithful default:** ignore the key.
+- **How to resolve:** decided (above). What the parameter does is part of OQ-113.
+- **Faithful default:** ignore the key (chosen).

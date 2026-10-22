@@ -692,7 +692,7 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
 - Left open / questions:
   - OQ-112: columns 0, 7, 14, 15 and the doubled call. A differential run in the T16 runner (patched columns, then read the `COMP` record after a save) could settle it.
   - OQ-113: what each parameter steers.
-  - OQ-114: owner decision. The faithful default ignores the misspelt key; a rules option could honour it.
+  - OQ-114: decided by the owner on 2026-10-22: faithful, the misspelt key is ignored.
   - Not traced: which machine sends network message 6; the type-17 AI case.
   - The subagent also confirmed `TRIBUTSPERRE` in a savegame of the Windows install (`C:\anno1503-original`); that evidence is not cited in the docs.
 - Time spent / subagents used: one subagent did the RE and docs; two reviewer subagents (read-only); my check and fixes inline.

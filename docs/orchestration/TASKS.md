@@ -303,7 +303,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   4. Carry over to T8 (S9) as requirements: the framing helper above; the net layer drops a peer after N decode errors (M4 note); an AI-issued `SetSpeed` inside `advance` is allowed by spec §8.2 item 4 and stays so (the seam is trusted code, not a rules question).
 - Then gates (sim: MSVC, GCC -O3, ASan in WSL as before), report, and the orchestrator merges.
 
-### T10b — Test memory: make the mitigation visible and schedule the heavy tests apart · `READY` · `PARALLEL-OK` · branch `task/T10-digest-flake`
+### T10b — Test memory: make the mitigation visible and schedule the heavy tests apart · `IN PROGRESS` (round i: orchestrator subagent; merges `main` into the branch first) · `PARALLEL-OK` · branch `task/T10-digest-flake`
 - **Added 2026-10-21 (from T12):** (a) commit the executor's warning check as `tools/check_unix_warnings.sh` (GCC 13 and Clang 18 in WSL with the CI flags over every `.cpp` under `src/`, deps from `build/msvc/_deps`, the viewer and GPU defines on), with a line in `CLAUDE.md`'s environment notes; it is the gate of §1 point 9; (b) `anno_dump_agrees_with_python` joined the `-j 16` `bad_alloc` list: cover it the same way as the render tests; (c) tiny: the three private fields of `viewer.cpp` unused without `ANNO_VIEWER_GPU` (`-Wunused-private-field` on Clang): guard them with the same `#ifdef` as their uses.
 - **Review verdict on 9f42def:** keep the memory bound in `test_threads()`, `memory.cpp` (Windows min(AvailPhys, AvailPageFile) is the right quantity), the preset output log and the CLAUDE.md line; retry results are written by index so output equals the serial run; CI is unaffected (the game-dir tests skip there). Not mergeable because the wait and the retry are silent and the wait has a dead tail. Fix:
   1. **HIGH: silent mitigation.** Neither a memory wait (up to 120 s per item) nor a bad_alloc retry prints anything, so "no bad_alloc occurred in the three green runs" is unsupported and a slow run cannot be explained from the log this branch adds. Count waits and retries, print one stderr line per retry and one summary line at the end of `parallel_indexed`.
@@ -334,6 +334,17 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 
 ## 4. Review log (orchestrator)
 
+- **T8 fix-up (2026-10-22 i, PR #19, head 6ac397f). Approved; merge when CI is green.** Items 1, 2, 4, 6, 7 and the comment/spec nits done (subagent, mutation evidence for every new test).
+  - Re-read by the orchestrator (`replay.cpp`):
+    - `Recorder::submit` refuses with `Reject::Unencodable` before logging or applying;
+    - `write_log` returns a `Result` naming entry and command instead of dropping it;
+    - `replay` compares `prng_timeline_missing`;
+    - `Recorder::start` checks `terrain_matches` per island.
+  - Re-run: `anno_sim_tests` 443/443 (MSVC).
+  - Mutation by the orchestrator: the missing-site comparison disabled → `replay_test.cpp:549` fails (1 of 443); restored.
+  - Subagent gates: MSVC 0 warnings; ctest 750/750 without the game dir; with it, only render corpus tests failed, on `bad allocation` (the T10b memory problem, untouched by this change; the 7 failing tests pass one at a time; everything except render 518/518); GCC 13.3 -O3 -Werror 53 TUs clean, 443/443 both ways; clang-format clean; `lint_sim.py` ok.
+  - Accepted as is: `diff_node` pairs children by position; the tool's copy of `apply_entry`; the narrow config-mismatch test. `run_turn` without a recorder still applies directly; the gap is written in `state.md` for S10's multi-record `Build`.
+
 - **T19 (2026-10-22 i, PR #23, head 2ea082f). Approved; merge when CI is green** (docs and tools only; expect a small conflict with T18 at `annoscene.md` "## Open").
   - Verified in the disassembly by the orchestrator. Evaluation `AnnoScene.dll` `0x10010290`:
     - the left operand first (`[esi-0x10]`, slot +4);
@@ -350,6 +361,10 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   - `AKTPLAYER` verified independently: `AnnoFrame.dll` file offset 0x95c64 holds `%s\SaveGame\%s`, `AKTPLAYER`, `ANNOnymous`, after `.?AVtFrameStartupProfile@@`; `1503Startup.exe` 0xec30.
   - `test_orig.py` 52 OK (2 symlink skips on Windows).
   - Left before the merge: a short silent smoke run of the changed agent (when no build runs), and CI green on 7df37a5.
+  - **Smoke run done (orchestrator, `t16-smoke-i`, 4.01 min, `--no-opening`):**
+    - all eleven criteria true;
+    - `stop` reports no errors, `watchdog_stopped` true, the run folder removed after the sync, `/root/anno/runs` empty afterwards;
+    - 3 sampler records, 1 quicksave kept. Approved; merge when CI is green.
 
 - **T17 (2026-10-22 h, PR #20, head 1e54c90). Approved; merged as 4ef5373.**
   - Re-run by the orchestrator: `bigbrother.py check` 50/50 byte-identical; `test_bigbrother.py` 15 passed with the corpus cases. The spec's §7 corrections to the resurvey are right (the 37-vs-39 script count, `SOLDAT_*` as tutorial object names).

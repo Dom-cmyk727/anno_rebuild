@@ -94,10 +94,11 @@ const char* style_name(render::WaterStyle s) {
     return s == render::WaterStyle::Original ? "Original" : "Enhanced";
 }
 
-/// The digest lines of the corpus; `only`: just the scenario with that file
-/// name; `river_flow`: how enhanced rivers are shaded.
+/// The digest lines of the corpus, four per scenario in file order; `only`:
+/// just the scenarios with these file names (empty: all); `river_flow`: how
+/// enhanced rivers are shaded.
 std::vector<std::string>
-digest_lines(const std::filesystem::path& dir, std::string_view only = {},
+digest_lines(const std::filesystem::path& dir, const std::vector<std::string_view>& only = {},
              render::RiverFlowMode river_flow = render::RiverFlowMode::Flow) {
     const auto felder_buf = anno::test::read_file(dir / "Textures" / "Felder.tex");
     const auto anl_buf = anno::test::read_file(dir / "Anlagen.dat");
@@ -117,7 +118,9 @@ digest_lines(const std::filesystem::path& dir, std::string_view only = {},
     auto files = anno::test::files_with_ext(dir / "Scenes" / "0200Single", "sze");
     files.push_back(dir / "Scenes" / "Islands" / "Nord" / "N_064x064_0001_0B.scp");
     if (!only.empty()) {
-        std::erase_if(files, [&](const auto& f) { return f.filename().string() != only; });
+        std::erase_if(files, [&](const auto& f) {
+            return std::find(only.begin(), only.end(), f.filename().string()) == only.end();
+        });
     }
     // One render per task, four per scenario (whole map at group 2 in both
     // water styles, a group 1 region in both): a few whole-map renders of the
@@ -358,11 +361,33 @@ TEST_CASE("legacy river shading reproduces the previous enhanced digests (game f
          "Single_24.sze g1 region Enhanced febd87d511c3ec25 drawn=23526 units=0"},
     };
     const std::vector<std::string> now = expected_lines();
+    // All five scenarios in one call per mode (20 renders on the test threads):
+    // one call per scenario kept 4 renders in flight and ran this case alone on
+    // the machine (it is "heavy") for minutes.
+    std::vector<std::string_view> files;
+    for (const Old& o : old) {
+        files.emplace_back(o.file);
+    }
+    const auto all_legacy = digest_lines(*dir, files, render::RiverFlowMode::Legacy);
+    const auto all_flow = digest_lines(*dir, files);
+    REQUIRE(all_legacy.size() == 4 * old.size());
+    REQUIRE(all_flow.size() == 4 * old.size());
+    // The four lines of one scenario; every line starts with its file name.
+    auto lines_of = [](const std::vector<std::string>& all, const char* file) {
+        std::vector<std::string> out;
+        for (const std::string& line : all) {
+            if (line.rfind(std::string(file) + " ", 0) == 0) {
+                out.push_back(line);
+            }
+        }
+        return out;
+    };
     for (const Old& o : old) {
         INFO(o.file);
-        const auto legacy = digest_lines(*dir, o.file, render::RiverFlowMode::Legacy);
-        const auto flow = digest_lines(*dir, o.file);
+        const auto legacy = lines_of(all_legacy, o.file);
+        const auto flow = lines_of(all_flow, o.file);
         REQUIRE(legacy.size() == 4);
+        REQUIRE(flow.size() == 4);
         CHECK(legacy[1] == o.g2);
         const auto at = std::find_if(now.begin(), now.end(), [&](const std::string& line) {
             return line.rfind(std::string(o.file) + " g1 region Enhanced", 0) == 0;

@@ -12,6 +12,11 @@ a mouse target lies inside the game's client area; it aborts (exit 3) otherwise,
 click can never land in a terminal. It never leaves the game topmost (restores HWND_NOTOPMOST), and
 every action is logged to cache/orig/<session>/actions.jsonl. `launch` refuses a second instance.
 
+The last cursor position is persisted to cache/orig/<session>/cursor.json, so the "owner took the
+mouse" check also works ACROSS separate control.py calls — pass a stable `--session` for a driving
+session so each call checks the cursor the previous one left (with the default per-call timestamp
+session there is no prior cursor and the first input is unchecked, as before).
+
 Each sub-command finds the running game (so the game is launched once, detached, and persists
 across calls), foregrounds its window and acts. A perceive-act loop from the shell:
 
@@ -19,6 +24,8 @@ across calls), foregrounds its window and acts. A perceive-act loop from the she
   python -I tools/orig/control.py --game C:\\anno1503-original shot --out cache/orig/drive/s1.png
   python -I tools/orig/control.py --game C:\\anno1503-original click 0.5 0.6
   python -I tools/orig/control.py --game C:\\anno1503-original key F6
+  python -I tools/orig/control.py --game C:\\anno1503-original --session s1 quicksave   # F10
+  python -I tools/orig/control.py --game C:\\anno1503-original --session s1 quickload   # F9
   python -I tools/orig/control.py --game C:\\anno1503-original close   # WM_CLOSE + taskkill + hashes
 
 Coordinates for click/move are client-relative in 0..1 (0,0 = top-left of the game's client area,
@@ -91,6 +98,7 @@ def _send(*inputs: INPUT) -> None:
 # --- safety: never send input to the wrong window (shared PC) --------------
 _LAST_CURSOR: tuple[int, int] | None = None   # where this process last put the cursor
 _LOG_PATH: str | None = None                  # cache/orig/<session>/actions.jsonl
+_CURSOR_PATH: str | None = None               # cache/orig/<session>/cursor.json (cross-call state)
 
 
 def cursor_pos() -> tuple[int, int]:
@@ -133,6 +141,35 @@ def log_action(kind: str, **fields) -> None:
             f.write(json.dumps(rec) + "\n")
     except OSError:
         pass
+
+
+def set_last_cursor(pos: tuple[int, int]) -> None:
+    """Record where the tool left the cursor, both in this process and in the session's
+    cursor.json, so a *later* control.py call in the same `--session` can tell whether the owner
+    moved the mouse in between (the single-process cursor check alone cannot; review 2026-10-22 e).
+    Cross-call checking is active only when a stable `--session` is passed; with the default
+    per-call timestamp session each call gets a fresh dir and no prior cursor, as before."""
+    global _LAST_CURSOR
+    _LAST_CURSOR = pos
+    if _CURSOR_PATH:
+        try:
+            with open(_CURSOR_PATH, "w", encoding="utf-8") as f:
+                json.dump({"screen": [pos[0], pos[1]],
+                           "t": datetime.datetime.now().isoformat(timespec="milliseconds")}, f)
+        except OSError:
+            pass
+
+
+def load_last_cursor() -> tuple[int, int] | None:
+    """The cursor the previous call in this session left (None if no session file yet)."""
+    if not _CURSOR_PATH or not os.path.exists(_CURSOR_PATH):
+        return None
+    try:
+        with open(_CURSOR_PATH, encoding="utf-8") as f:
+            s = json.load(f)["screen"]
+        return int(s[0]), int(s[1])
+    except (OSError, ValueError, KeyError, TypeError, IndexError):
+        return None
 
 
 def abort(hwnd: int, reason: str) -> None:
@@ -196,13 +233,12 @@ def key_event(vk: int, up: bool) -> INPUT:
 
 
 def press_key(hwnd: int, vk: int, hold: float = 0.05) -> None:
-    global _LAST_CURSOR
     guard(hwnd, "key")
     _send(key_event(vk, False))
     time.sleep(hold)
     _send(key_event(vk, True))
-    _LAST_CURSOR = cursor_pos()
-    log_action("key", vk=vk)
+    set_last_cursor(cursor_pos())
+    log_action("key", vk=vk, cursor=list(_LAST_CURSOR))
 
 
 def abs_coord(screen_x: int, screen_y: int) -> tuple[int, int]:
@@ -217,7 +253,6 @@ def abs_coord(screen_x: int, screen_y: int) -> tuple[int, int]:
 
 
 def move_to(hwnd: int, nx: float, ny: float) -> tuple[int, int]:
-    global _LAST_CURSOR
     left, top, w, h = client_box(hwnd)
     sx = left + int(round(nx * w))
     sy = top + int(round(ny * h))
@@ -229,13 +264,12 @@ def move_to(hwnd: int, nx: float, ny: float) -> tuple[int, int]:
                         time=0, dwExtraInfo=0)
     _send(i)
     time.sleep(0.02)
-    _LAST_CURSOR = cursor_pos()   # record where it actually landed
+    set_last_cursor(cursor_pos())   # record where it actually landed
     log_action("move", nx=nx, ny=ny, screen=[sx, sy], cursor=list(_LAST_CURSOR))
     return sx, sy
 
 
 def click_at(hwnd: int, nx: float, ny: float, button: str = "left", double: bool = False) -> None:
-    global _LAST_CURSOR
     move_to(hwnd, nx, ny)
     time.sleep(0.08)
     down = MOUSEEVENTF_RIGHTDOWN if button == "right" else MOUSEEVENTF_LEFTDOWN
@@ -250,25 +284,23 @@ def click_at(hwnd: int, nx: float, ny: float, button: str = "left", double: bool
         time.sleep(0.05)
         _send(u)
         time.sleep(0.08)
-    _LAST_CURSOR = cursor_pos()
-    log_action("click", nx=nx, ny=ny, button=button, double=double)
+    set_last_cursor(cursor_pos())
+    log_action("click", nx=nx, ny=ny, button=button, double=double, cursor=list(_LAST_CURSOR))
 
 
 def wheel(hwnd: int, notches: int) -> None:
     """Mouse wheel at the current cursor position; +in / -out notches (zoom)."""
-    global _LAST_CURSOR
     guard(hwnd, "wheel")
     i = INPUT(type=INPUT_MOUSE)
     i.u.mi = MOUSEINPUT(dx=0, dy=0, mouseData=(notches * 120) & 0xFFFFFFFF,
                         dwFlags=MOUSEEVENTF_WHEEL, time=0, dwExtraInfo=0)
     _send(i)
-    _LAST_CURSOR = cursor_pos()
-    log_action("wheel", notches=notches)
+    set_last_cursor(cursor_pos())
+    log_action("wheel", notches=notches, cursor=list(_LAST_CURSOR))
 
 
 def drag(hwnd: int, nx0: float, ny0: float, nx1: float, ny1: float) -> None:
     """Press at (nx0,ny0), move to (nx1,ny1), release — for laying a road/path."""
-    global _LAST_CURSOR
     move_to(hwnd, nx0, ny0)
     time.sleep(0.1)
     guard(hwnd, "drag-down")
@@ -283,8 +315,8 @@ def drag(hwnd: int, nx0: float, ny0: float, nx1: float, ny1: float) -> None:
     u.u.mi = MOUSEINPUT(dx=0, dy=0, mouseData=0, dwFlags=MOUSEEVENTF_LEFTUP, time=0, dwExtraInfo=0)
     _send(u)
     time.sleep(0.1)
-    _LAST_CURSOR = cursor_pos()
-    log_action("drag", a=[nx0, ny0], b=[nx1, ny1])
+    set_last_cursor(cursor_pos())
+    log_action("drag", a=[nx0, ny0], b=[nx1, ny1], cursor=list(_LAST_CURSOR))
 
 
 def foreground(game_dir: str, settle: float = 0.2) -> int | None:
@@ -343,7 +375,7 @@ def run_actions(hwnd: int, game_dir: str, actions: list[str], gap: float) -> Non
 
 
 def main() -> int:
-    global _LOG_PATH
+    global _LOG_PATH, _CURSOR_PATH, _LAST_CURSOR
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", required=True)
     ap.add_argument("--launcher", default="1503Startup.exe")
@@ -365,6 +397,14 @@ def main() -> int:
             pc.add_argument("--button", choices=["left", "right"], default="left")
         pc.add_argument("--shot", help="optional PNG to capture after the action")
     sub.add_parser("close")
+    p_qs = sub.add_parser("quicksave",
+                          help="press F10 (quick save). QUIRK: a tavern's alcohol and goods on "
+                               "carts are not saved (playbook 13); quick-save at calm moments.")
+    p_qs.add_argument("--shot", default=None)
+    p_qs.add_argument("--after", type=float, default=1.0, help="seconds to wait for the save")
+    p_ql = sub.add_parser("quickload", help="press F9 (quick load)")
+    p_ql.add_argument("--shot", default=None)
+    p_ql.add_argument("--after", type=float, default=2.0, help="seconds to wait for the load")
     p_seq = sub.add_parser("seq")
     p_seq.add_argument("actions", nargs="+",
                        help="e.g. key:F7 wheel:-4 click:0.3,0.4 right:0.3,0.4 drag:0.3,0.4,0.2,0.3")
@@ -391,6 +431,7 @@ def main() -> int:
     log_dir = os.path.join("cache", "orig", session)
     os.makedirs(log_dir, exist_ok=True)
     _LOG_PATH = os.path.join(log_dir, "actions.jsonl")
+    _CURSOR_PATH = os.path.join(log_dir, "cursor.json")
     log_action("cmd", argv=sys.argv[1:], game=game_dir)
 
     if args.cmd == "launch":
@@ -435,6 +476,13 @@ def main() -> int:
     if hwnd is None:
         print("game window not found (launch first)")
         return 1
+    # Cross-call safety: adopt the cursor the previous call in this session left, so the FIRST
+    # input of this call is still checked against "the owner has not moved the mouse" (the single
+    # process already resets to None in foreground()). Only has an effect with a stable --session.
+    prev = load_last_cursor()
+    if prev is not None:
+        _LAST_CURSOR = prev
+        log_action("cursor_resume", screen=list(prev))
     try:
         if args.cmd == "shot":
             print(capture_png(game_dir, hwnd, args.out))
@@ -445,6 +493,16 @@ def main() -> int:
                 time.sleep(0.1)
             time.sleep(args.after)
             print({"sent": args.keys})
+            return 0
+        if args.cmd in ("quicksave", "quickload"):
+            vk = VK["F10"] if args.cmd == "quicksave" else VK["F9"]
+            press_key(hwnd, vk)
+            time.sleep(args.after)   # the game writes/reads the quick-save slot
+            log_action(args.cmd)
+            print({args.cmd: True, "key": "F10" if args.cmd == "quicksave" else "F9"})
+            if getattr(args, "shot", None):
+                time.sleep(0.3)
+                print(capture_png(game_dir, hwnd, args.shot))
             return 0
         if args.cmd in ("click", "dblclick", "move"):
             if args.cmd == "move":

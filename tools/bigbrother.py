@@ -39,7 +39,7 @@ True
 ...     parse(SAMPLE.replace(b"THEN", b"THAN"))
 ... except ScriptError as e:
 ...     print(e)
-[SCRIPT_KERNEL]: no THEN for the condition at offset 234
+[SCRIPT_KERNEL]: expected THEN for the IF at offset 234, got 'THAN' at offset 329
 """
 from __future__ import annotations
 
@@ -71,10 +71,14 @@ TRIVIA = ("WS", "NEWLINE", "COMMENT")
 # STARTUP (S: AnnoScene.dll 0x1003e628 "STARTUP\n"), which no shipped script has.
 SECTIONS = ("[OBJECT_DEFINE]", "[AREA_DEFINE]", "[PLAYERMAPPER_DEFINE]", "[SCRIPT_KERNEL]",
             "[SIGNALS]", "[CAMARAPOS]")
-OBJECT_KINDS = ("OBJECT_FIGUR", "OBJECT_STADT", "OBJECT_ANLAGE")
+OBJECT_KINDS = {"OBJECT_FIGUR": "IDENT STRING NUMBER",          # the line shape per kind (P)
+                "OBJECT_STADT": "IDENT STRING NUMBER",
+                "OBJECT_ANLAGE": "IDENT STRING NUMBER , NUMBER , NUMBER"}
 SUBJECTS = ("PLAYER", "OBJECT", "AREA")
 COMPARE = ("==", "<", ">")          # the comparisons the scripts use (P); != <= >= never occur
 BOOL = ("TRUE", "FALSE")
+KEYWORDS = ("INITBLOCK", "SET", "IF", "THEN", "ELSE")
+RESERVED = KEYWORDS + BOOL          # never a variable, signal, call or query name (P)
 
 # A synthetic script in the shipped shape (LF headers and define lines, CRLF script lines), for the
 # doctests: no text of the original.
@@ -126,7 +130,7 @@ class Call:
     name: str
     args: list
     parens: bool = True        # QUESTLOG_DRAW; once without ()
-    semicolon: bool = True     # two statements in the corpus lack their ';'
+    semicolon: bool = True     # four statements in the corpus lack their ';' (see end())
     off: int = 0
 
 
@@ -190,9 +194,25 @@ class Script:
 # ---- parser -------------------------------------------------------------------------------------
 class Cursor:
     def __init__(self, toks: list[Tok], where: str):
-        self.t = [x for x in toks if x.kind not in TRIVIA]
+        self.t, self.nl, gap = [], [], False   # nl[i]: a line break lies before significant token i
+        for x in toks:
+            if x.kind == "NEWLINE":
+                gap = True
+            elif x.kind not in TRIVIA:
+                self.t.append(x)
+                self.nl.append(gap)
+                gap = False
         self.i = 0
         self.where = where
+
+    def at_line_end(self) -> bool:
+        """Nothing else follows on the current line."""
+        return self.done() or self.nl[self.i]
+
+    def fail(self, what: str):
+        t = self.peek()
+        at = "at the end of the section" if t is None else f"{t.text!r} at offset {t.off}"
+        raise ScriptError(f"{self.where}: {what}, got {at}")
 
     def peek(self, k=0) -> Tok | None:
         j = self.i + k
@@ -204,10 +224,16 @@ class Cursor:
     def take(self, kind=None, text=None) -> Tok:
         t = self.peek()
         if t is None or (kind and t.kind != kind) or (text and t.text != text):
-            want = text or kind
-            got = "end of section" if t is None else repr(t.text)
-            raise ScriptError(f"{self.where}: expected {want}, got {got} at offset {t.off if t else '-'}")
+            self.fail(f"expected {text or kind}")
         self.i += 1
+        return t
+
+    def name(self) -> Tok:
+        """An identifier that is not a keyword or a truth value."""
+        t = self.take("IDENT")
+        if t.text in RESERVED:
+            self.i -= 1
+            self.fail("expected a name")
         return t
 
     def is_(self, kind=None, text=None, k=0) -> bool:
@@ -223,7 +249,7 @@ def value(c: Cursor) -> Value:
         return Value("number", c.take().text)
     if t and t.kind == "STRING":
         return Value("string", c.take().text)
-    raise ScriptError(f"{c.where}: expected a value at offset {t.off if t else '-'}")
+    c.fail("expected a value")
 
 
 def lines(toks: list[Tok]) -> list[list[Tok]]:
@@ -246,40 +272,51 @@ def shape(line: list[Tok]) -> str:
 
 
 def parse_defines(name: str, body: list[Tok]) -> list[dict]:
+    comment = next((t for t in body if t.kind == "COMMENT"), None)
+    if comment:                                      # all comments are in the kernel (P)
+        raise ScriptError(f"{name}: a comment at offset {comment.off}")
     items = []
     for ln in lines(body):
         s = shape(ln)
+        bad = ScriptError(f"{name}: unexpected line {' '.join(t.text for t in ln)!r} at offset {ln[0].off}")
         if name == "[OBJECT_DEFINE]":
-            # OBJECT_FIGUR "N" id | OBJECT_STADT "N" id | OBJECT_ANLAGE "N" id  or  "N" x,y,type (P)
-            if ln[0].kind != "IDENT" or ln[0].text not in OBJECT_KINDS or \
-                    s not in ("IDENT STRING NUMBER", "IDENT STRING NUMBER , NUMBER , NUMBER"):
-                raise ScriptError(f"{name}: unexpected line {' '.join(t.text for t in ln)!r}")
+            # OBJECT_FIGUR "N" id | OBJECT_STADT "N" id | OBJECT_ANLAGE "N" x,y,type (P: 133, 80, 37)
+            if ln[0].kind != "IDENT" or s != OBJECT_KINDS.get(ln[0].text):
+                raise bad
             items.append({"kind": ln[0].text, "name": ln[1].text[1:-1],
                           "numbers": [int(t.text) for t in ln if t.kind == "NUMBER"], "off": ln[0].off})
         elif name == "[AREA_DEFINE]":
             if s != "STRING NUMBER , NUMBER , NUMBER , NUMBER":
-                raise ScriptError(f"{name}: unexpected line {' '.join(t.text for t in ln)!r}")
+                raise bad
             items.append({"name": ln[0].text[1:-1], "rect": [int(t.text) for t in ln if t.kind == "NUMBER"],
                           "off": ln[0].off})
         elif name == "[PLAYERMAPPER_DEFINE]":
             if s != "STRING NUMBER":
-                raise ScriptError(f"{name}: unexpected line {' '.join(t.text for t in ln)!r}")
+                raise bad
             items.append({"name": ln[0].text[1:-1], "player": int(ln[1].text), "off": ln[0].off})
         elif name == "[SIGNALS]":
-            if s != "IDENT = IDENT" or ln[2].text not in BOOL:
-                raise ScriptError(f"{name}: unexpected line {' '.join(t.text for t in ln)!r}")
+            if s != "IDENT = IDENT" or ln[0].text in RESERVED or ln[2].text not in BOOL:
+                raise bad
             items.append({"name": ln[0].text, "value": ln[2].text == "TRUE", "off": ln[0].off})
         elif name == "[CAMARAPOS]":
-            if s != "NUMBER , NUMBER":
-                raise ScriptError(f"{name}: unexpected line {' '.join(t.text for t in ln)!r}")
+            if s != "NUMBER , NUMBER" or items:      # one line (P: 50 of 50)
+                raise bad
             items.append({"pos": [int(ln[0].text), int(ln[2].text)], "off": ln[0].off})
+        else:
+            raise ScriptError(f"no reader for {name}")
+    if name == "[CAMARAPOS]" and not items:
+        raise ScriptError(f"{name}: no position")
+    names = [it["name"] for it in items if "name" in it]
+    dup = next((n for n in names if names.count(n) > 1), None)
+    if dup is not None:                              # every name once (P: 50 of 50)
+        raise ScriptError(f"{name}: {dup!r} defined twice")
     return items
 
 
 def primary(c: Cursor) -> Primary:
-    t = c.take("IDENT")
+    t = c.name()
     if t.text in SUBJECTS:
-        p = Primary(t.text, c.take("STRING").text[1:-1], c.take("IDENT").text, off=t.off)
+        p = Primary(t.text, c.take("STRING").text[1:-1], c.name().text, off=t.off)
         if c.is_("STRING"):
             p.arg = c.take().text[1:-1]
     else:
@@ -320,10 +357,13 @@ def call_args(c: Cursor) -> list[Value]:
 
 
 def end(c: Cursor) -> bool:
-    """A statement's ';'. Two shipped statements end without one (S01_08_01, S01_09_01)."""
+    """A statement's ';'. Four shipped statements end without one (S01_02_01, S01_08_01, S01_09_01
+    twice); each of them ends its line, so a missing ';' is accepted only at the end of a line."""
     if c.is_("OP", ";"):
         c.take()
         return True
+    if not c.at_line_end():
+        c.fail("expected ';'")
     return False
 
 
@@ -331,7 +371,7 @@ def block(c: Cursor) -> list:
     c.take("OP", "{")
     body = []
     while not c.is_("OP", "}"):
-        t = c.take("IDENT")
+        t = c.name()
         if c.is_("OP", "="):
             c.take()
             v = value(c)
@@ -343,7 +383,7 @@ def block(c: Cursor) -> list:
             c.take()
             body.append(Call(t.text, [], False, True, t.off))
         else:
-            raise ScriptError(f"{c.where}: unexpected {c.peek().text!r} after {t.text} at offset {t.off}")
+            c.fail(f"expected '=', '(' or ';' after {t.text}")
     c.take("OP", "}")
     return body
 
@@ -358,14 +398,14 @@ def parse_kernel(body: list[Tok]) -> list:
             c.take("OP", ")")
             items.append(InitBlock(block(c), t.off))
         elif t.text == "SET":
-            name = c.take("IDENT").text
+            name = c.name().text
             c.take("OP", "=")
             v = value(c)
             items.append(Assign(name, v, True, end(c), t.off))
         elif t.text == "IF":
             cond = condition(c)
             if not c.is_("IDENT", "THEN"):
-                raise ScriptError(f"[SCRIPT_KERNEL]: no THEN for the condition at offset {t.off}")
+                c.fail(f"expected THEN for the IF at offset {t.off}")
             c.take()
             then = block(c)
             els = None
@@ -379,20 +419,23 @@ def parse_kernel(body: list[Tok]) -> list:
 
 
 def parse(data: bytes) -> Script:
+    """Offsets in errors count from the start of the payload (the chunk's data)."""
     toks = lex(data.decode(ENCODING))
     heads = [i for i, t in enumerate(toks) if t.kind == "SECTION"]
     names = tuple(toks[i].text for i in heads)
     if names != SECTIONS:
         raise ScriptError(f"sections {names} differ from {SECTIONS}")
-    if any(t.kind not in TRIVIA for t in toks[:heads[0]]):
+    if heads[0] != 0:
         raise ScriptError("text before the first section")
+    for i in heads:            # a header is a line of its own (P: 300 of 300)
+        if (i and toks[i - 1].kind != "NEWLINE") or i + 1 == len(toks) or toks[i + 1].kind != "NEWLINE":
+            raise ScriptError(f"{toks[i].text} at offset {toks[i].off} is not a line of its own")
     sections = []
     for k, i in enumerate(heads):
         j = heads[k + 1] if k + 1 < len(heads) else len(toks)
-        first = 0 if k == 0 else i                   # leading trivia belongs to the first section
         name, body = toks[i].text, toks[i + 1:j]
         items = parse_kernel(body) if name == "[SCRIPT_KERNEL]" else parse_defines(name, body)
-        sections.append(Section(name, toks[first:j], items))
+        sections.append(Section(name, toks[i:j], items))
     return Script(sections)
 
 
@@ -457,6 +500,11 @@ def cmd_check(files) -> int:
             bad += 1
     print(f"{len(files) - bad}/{len(files)} parsed and re-emitted byte-identically")
     return 1 if bad else 0
+
+
+def is_timer(name: str) -> bool:
+    """TIMER_0 … TIMER_4 are the interpreter's timers (S); TIMER_FLAG (Single_08) is a variable."""
+    return re.fullmatch(r"TIMER_[0-9]+", name) is not None
 
 
 def describe(x) -> str:
@@ -544,7 +592,7 @@ def vocab(files) -> dict:
                     if a.kind == "string":
                         v["string_args"][a.py] += 1
             elif isinstance(x, Primary):
-                key = f"{x.subject} {x.query}" if x.subject else ("TIMER" if x.name.startswith("TIMER_") else "variable")
+                key = f"{x.subject} {x.query}" if x.subject else ("TIMER" if is_timer(x.name) else "variable")
                 if x.op:
                     v["compare"][x.op] += 1
                 v["conditions"][key] += 1

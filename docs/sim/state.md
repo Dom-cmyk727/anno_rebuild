@@ -1854,6 +1854,24 @@ Each stage compiles warning-free, keeps every earlier test green, adds its own t
 
 **S10. Build, Demolish, trade commands.** `apply.cpp` (Build, Demolish, SetTradeFlag, SetTradeSlot), `placement.cpp` (stand-in rule), create with charge, `legacy_codec.cpp`, `fixtures/synthetic/sim/g2.log`. Tests (`command_build_test.cpp`, `property_test.cpp`): "build charges gold and goods", "build drag spends in stream order", "build atomic rule", "build footprint owner rules", "build occupied", "build unknown type and rotation", "build flags are not on the wire", "free build cheat rule", "demolish frees the slot and keeps the hint", "demolish skips unowned tiles", "city removal default never", "trade flag modes 0 1 9", "trade slot index", "trade limit and list bounds", "random command streams keep invariants", "G2 replay equals golden", "legacy 0x64 decode on synthetic bytes". Exit: G2 log committed; free-slot reuse after demolish matches the hand-derived order.
 
+**S10 free-slot reuse order, derived by hand before the code (2026-10-23).** The rule is §5.2 (D `0x10026a00`, `0x10026b30`, `0x100255c0`, `Rules::slot_policy = Original`): the scan starts at `(hint + 1) mod n` and takes the first null slot; with none the list grows to `max(n + n/4, list_min_growth)` and the new element takes slot `n`; a removal empties the slot and leaves `hint`, `cursor` and `n` alone. Start: the city of `synthetic::g1_scenario` (S6 G1), whose production list after the load is `[weaver, farm, null × 8]`, `n = 10`, `hint = 1` (§14.3 semantic assert). Every Build below places one 1 × 1 weaver on a free city tile (one record, one command); every Demolish names one tile of the building it removes.
+
+| Step | Command | Scan from | Slot taken | `hint` after | `n` after |
+|---|---|---|---|---|---|
+| 1 | Build B1 | 2 | 2 | 2 | 10 |
+| 2 | Build B2 | 3 | 3 | 3 | 10 |
+| 3 | Demolish the farm (slot 1) | – | – (slot 1 empties) | 3 | 10 |
+| 4 | Build B3 | 4 | **4** (not the freed 1) | 4 | 10 |
+| 5 | Build B4, B5, B6, B7, B8 | 5 … 9 | 5, 6, 7, 8, 9 | 9 | 10 |
+| 6 | Build B9 | 0 (wraps) | **1** (slot 0 holds the weaver) | 1 | 10 |
+| 7 | Build B10 | 2 | none free → growth to 12, slot **10** | 10 | 12 |
+| 8 | Demolish B2 (slot 3), then B1 (slot 2) | – | – | 10 | 12 |
+| 9 | Build B11 | 11 | 11 (a null of the growth) | 11 | 12 |
+| 10 | Build B12 | 0 (wraps) | **2** | 2 | 12 |
+| 11 | Build B13 | 3 | 3 | 3 | 12 |
+
+So B1 … B13 take the slots 2, 3, 4, 5, 6, 7, 8, 9, 1, 10, 11, 2, 3, the list ends with `n = 12` and `hint = 3`, and the serials are 3 … 15 (the island's counter is never reused). With `SlotPolicy::LowestFree` the same commands give 2, 3, 1, 4, 5, 6, 7, 8, 9, 10, 2, 3, 11, so a policy mistake shows at step 4. The test "demolish frees the slot and keeps the hint" checks this table row by row. G2 (§14.3) uses the first rows of the same rule: the second weaver at tick 5 000 takes slot 2, a third weaver slot 3, the farm is demolished (slot 1 empties, `hint` stays 3), and the next weaver takes slot 4.
+
 **S11. Remaining production classes.** `driver.cpp` (WeaponsWorkshop with research input, FurTrapper, SmallFarm with `DrawRef`, Mine with deposits), mine area, remove the temporary mask. Tests (`driver_classes_test.cpp`): each class through the scheduler equals the direct step-function tests at the same ticks, "weapons workshop unlocked from research", "mine deposit by index and depletion only in the add-on", "small farm draws once per step through the world", "fur trapper sends nothing without prey", "weapons workshop save load advance" (`unlocked` empty after load, sized by the first tick, hash equal to the live run), G3. Exit: every step function of `production.hpp` is reachable from `advance`.
 
 **S12. World-level time.** `events.cpp` (queue, dispatch, seams), `timers.cpp`, monopoly, event 7.5 min, `figures_tick` with the slot policy and phases B/C/D. Tests (`world_events_test.cpp`): the world-level cases of §14.2 (FIFO, saved-next in `advance`, kind-1 events saved, timer clamp, monopoly once and the rule, event 7.5 min draws, accumulator discard vs keep, zero islands, registry count without `+1`, expiry, interim return, counter release), "figure phase goods effects merge after each call (C2)", "AI seam commands applied in advance and not logged", G4. Exit: every subsystem of §5.3 exists, even where its body is a seam default.

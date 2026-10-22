@@ -44,6 +44,40 @@ enum class DrawSite : std::uint8_t {
     Count_
 };
 
+/// The name of a draw site: the single list the PRNG-timeline manifest is derived
+/// from (docs/sim/state.md §6). A string literal, stable across builds.
+[[nodiscard]] constexpr const char* draw_site_name(DrawSite site) {
+    switch (site) {
+    case DrawSite::SmallFarmAnimal:
+        return "SmallFarmAnimal";
+    case DrawSite::Event300:
+        return "Event300";
+    case DrawSite::Event750Gate:
+        return "Event750Gate";
+    case DrawSite::Event750Island:
+        return "Event750Island";
+    case DrawSite::CityRandomEvents:
+        return "CityRandomEvents";
+    case DrawSite::WildlifeSweep:
+        return "WildlifeSweep";
+    case DrawSite::Ai:
+        return "Ai";
+    case DrawSite::Count_:
+        break;
+    }
+    return "";
+}
+
+/// Whether the sim reproduces this site's draws. The first four exist; the rest are
+/// the original's sites the sim does not draw yet (city random events 0x1002ba80,
+/// the fauna sweep 0x1009366f, the CompLogic AI), so the cursor is short of the
+/// original's there (docs/sim/state.md §6). The replay-log header records the names
+/// of the unported sites as the PRNG timeline.
+[[nodiscard]] constexpr bool draw_site_ported(DrawSite site) {
+    return site == DrawSite::SmallFarmAnimal || site == DrawSite::Event300 ||
+           site == DrawSite::Event750Gate || site == DrawSite::Event750Island;
+}
+
 /// A source of world draws. The world PRNG behind it is consumed in the
 /// original's order, one cursor (docs/sim/state.md §6).
 class DrawSource {

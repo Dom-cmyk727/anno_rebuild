@@ -1,6 +1,6 @@
 # GPU-built chunks: the sprite passes on the GPU (T11)
 
-**Status 2026-10-21: stage 1 built (CPU only: frame table, `ChunkDraws`, replay, residency model, `chunk_builder` switch; section 11 "Stage 1 as built"); stages 2-3 not started.** Written for task T11 (`docs/orchestration/TASKS.md`), owner decision 2026-10-20 "tier 3 now". Companion to [`iso.md`](iso.md) ("Objects", "Animation and layers", "Fidelity", "Stand-in chunks") and [`../re/annodisplay.md`](../re/annodisplay.md). Once a stage lands, the matching rows of `iso.md` are updated and this page keeps the record formats, the residency rules and the test contract.
+**Status 2026-10-22: stage 2a built (the exact binned compute pass for objects and base, the residency-driven chunk atlas, the GPU frame table and keel buffer, the `GpuList` builder in the compositor behind `ANNO_VIEW_GPU_CHUNKS` / `--chunk-build`; section 11 "Stage 2a as built"). Stage 1 built before it. Remaining in 2a: derived-level `reduce_quad` wiring and the full `bin_px` / iGPU measurement sweep.** Written for task T11 (`docs/orchestration/TASKS.md`), owner decision 2026-10-20 "tier 3 now". Companion to [`iso.md`](iso.md) ("Objects", "Animation and layers", "Fidelity", "Stand-in chunks") and [`../re/annodisplay.md`](../re/annodisplay.md). Once a stage lands, the matching rows of `iso.md` are updated and this page keeps the record formats, the residency rules and the test contract.
 
 Evidence tags as in [`rivers.md`](rivers.md): **M** measured (here: counted with a script over the original files, section 2), **P** parsed from the original files, **D** disassembly, **C** code read at `1900132` (file:line), **E** estimate (to be replaced by a measurement in the stage named), **T** tuning value, **?** open question (section 12).
 
@@ -282,6 +282,51 @@ reduced range on the CPU in GpuList mode is a second builder and rebuilds the ch
 the same key within the reduce tolerance (objects/ground within 1 per channel — the alpha-weighted
 mean; field/terrain exact), with the group-2 children built by both builders. A mutation (wrong
 quadrant origin, a child's bind group swapped in, the reduce skipped) must fail it.
+
+### Stage 2a as built (2026-10-22)
+
+- **The compute pass** (`gpu.wgsl` `chunk_build_cs`, 5.1): one `@workgroup_size(8, 8)` invocation
+  per chunk pixel walks its bin's records and repeats `replay_binned` (`chunk_draws_model.hpp`,
+  the pinned spec of the pass) exactly — integer `cb_over` in u32 with floor division, the
+  per-island local canvas and its `base` reset, the keel contact. It writes two storage buffers
+  (objects as RGBA8 packed in a u32 per pixel; base one byte per pixel, four per u32 via a
+  race-free `atomicOr` into a buffer cleared with `ClearBuffer`) that are copied into the existing
+  RGBA8Unorm objects plane and R8Uint base plane. The pass uses only group 0 (bindings 10-19), so
+  its pipeline is one bind group; the compositor's passes are unchanged. Tolerance 0.
+- **Residency and atlas** (`gpu.cpp` `ChunkBuild`): the stage-1 `AtlasResidency` drives a static
+  sprite atlas **of its own** (its own RGBA8Unorm 2D array), separate from the per-frame sprite/ship
+  atlas, so the merged compositor's sprite path is untouched. **This is a deviation from 4.2's one
+  texture, two classes** (noted as a question for the orchestrator): separate textures are simpler
+  and risk-free for the Hot path; frames never overlap between the two (chunk lists never name water
+  objects or ships), so nothing is duplicated. The atlas grows by doubling (copies counted in
+  `GpuStats::chunk_atlas_grows`), the budget defaults from the adapter (512 MiB discrete / 256 MiB
+  other, OQ-096), and `ensure()` Overflow falls back to the CPU (`GpuStats::chunks_cpu_fallback`;
+  the full CPU-rebuild of that key is not yet wired — it keeps its placeholder). A scene-wide GPU
+  frame table (32 bytes/id) and an append-once keel buffer carry what the pass reads.
+- **Scheduling** (6): `sync_chunks` builds a `GpuList` chunk's objects/base in its own submit during
+  the sync (as `reduce_quad` and atlas growth already do), before the compositor passes; the window
+  thread never fences, maps or reads back. Bounded by `uploads_per_frame` / `upload_budget_ms` (the
+  existing gate) and `atlas_upload_bytes_per_frame` (the first built chunk always goes). Both the
+  visible and the prefetch paths build `GpuList` chunks.
+- **The switch** (8): `ANNO_VIEW_GPU_CHUNKS=on` in the viewer and `--chunk-build cpu|gpu` in
+  `bench_frame`; default `Cpu`. No compute pipeline → `cb.failed`, the chunk builds on the CPU.
+- **Tests** (`gpu_chunk_build_test.cpp`): `GpuFrame::build_chunk_planes` equals `replay()` byte for
+  byte for every chunk of `Single_01`, `Single_24` and the canyon island at all three groups (2738
+  chunks, 605,564 records, 0 mismatches, RTX 4090 Vulkan); the synthetic 7.3 scenes (shadows over
+  translucent, three compounding shadows pinned by hand, the WZ checkerboard, the base contact
+  branch, a wide image, chunk/clip edges, the two-island base reset, ignored colour/depth) each GPU
+  = CPU = the binned model; the composed frame is byte-identical with both builders on `Single_24`
+  and the canyon island at every group; a no-GPU string check ties the WGSL bindings to `gpu.cpp`.
+- **Measured** (RTX 4090, 2560 x 1440, canyon island, `docs/perf/README.md`): the cold frame at
+  group 0 halves (119.5 → 56.5 ms; the CPU no longer replays the sprite blits), interactive frames
+  stay sub-millisecond at p50. The per-chunk GPU-pass timestamp, the `bin_px` sweep and the Radeon
+  iGPU runs are the remaining 2a measurement (needs timestamp writes around the dispatch and
+  `ANNO_GPU_ADAPTER` selection).
+- **Not done in 2a:** the derived-level `reduce_quad` over `GpuList` children on the window thread
+  (the committed decision above): a `GpuList` derived chunk still comes from the CPU
+  `render_derived_chunk`, whose `GpuList` children have no CPU objects pixels, so far-zoom objects
+  are empty under `GpuList`. The default therefore stays `Cpu` (as C4 requires until the owner
+  check); wiring `reduce_quad` into the live flow for derived keys is the next 2a commit.
 
 ## 12. Decisions and open questions (stage 0 review of 2026-10-21 folded in)
 

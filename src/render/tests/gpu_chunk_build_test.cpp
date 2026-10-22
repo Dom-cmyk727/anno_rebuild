@@ -27,6 +27,7 @@
 #include <anno/render/gpu.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/scene.hpp>
+#include <anno/render/shaders.hpp>
 #include <anno/test/game_dir.hpp>
 
 #include "chunk_draws_model.hpp"
@@ -76,6 +77,28 @@ std::size_t diff(const gpu::ChunkPlanes& got, const render::Canvas& cpu) {
 }
 
 } // namespace
+
+TEST_CASE("the WGSL declares the chunk-build compute bindings the compositor binds") {
+    // No GPU needed: a string check that gpu.wgsl's chunk_build_cs bindings match
+    // what gpu.cpp's cb_layout / cb_scratch set up (group 0, bindings 10-19).
+    const std::string_view src = anno::render::shaders::compositor();
+    auto has = [&](std::string_view needle) {
+        INFO("missing from gpu.wgsl: " << needle);
+        CHECK(src.find(needle) != std::string_view::npos);
+    };
+    has("fn chunk_build_cs(");
+    has("@compute @workgroup_size(8, 8)");
+    has("@group(0) @binding(10) var<uniform> cb: ChunkBuild;");
+    has("@group(0) @binding(11) var<storage, read> cb_records: array<u32>;");
+    has("@group(0) @binding(12) var<storage, read> cb_bin_off: array<u32>;");
+    has("@group(0) @binding(13) var<storage, read> cb_bin_idx: array<u32>;");
+    has("@group(0) @binding(14) var<storage, read> cb_clips: array<i32>;");
+    has("@group(0) @binding(15) var<storage, read> cb_frames: array<u32>;");
+    has("@group(0) @binding(16) var<storage, read> cb_keel: array<u32>;");
+    has("@group(0) @binding(17) var<storage, read_write> cb_objects: array<u32>;");
+    has("@group(0) @binding(18) var<storage, read_write> cb_base: array<atomic<u32>>;");
+    has("@group(0) @binding(19) var cb_atlas: texture_2d_array<f32>;");
+}
 
 TEST_CASE("GPU-built chunk objects and base planes equal the CPU replay (game files)") {
     const auto dir = anno::test::game_dir();

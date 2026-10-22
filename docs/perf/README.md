@@ -643,3 +643,20 @@ The `scene` grid is never freed outright: when idle it shrinks only toward the w
 | 1 — AMD Radeon(TM) Graphics (Vulkan) | ~14 ms (13.8, 13.9, 14.1, 15.1 over four runs) | 285 MB |
 
 The iGPU re-grow (allocating ~280 MB of shared-memory textures) is over the 2 ms a frame can spare, so `GpuLimits::offscreen_shrink_ms` defaults to **0 (never shrink)**: the targets are kept at their largest until the owner sets a memory budget (OQ-099). On the RTX 4090 the re-grow is negligible; the shrink could be enabled there alone if the memory mattered.
+
+### 2026-10-22 - T11 stage 2a: GPU-built chunk objects/base (compute pass), Windows 11, Ryzen 9800X3D, branch task/T11-gpu-chunks, commit of the stage-2a integration
+
+`bench_frame <game_dir> D_256x256_0045_5B.scp --renderer gpu --res 2560x1440 --groups 0,1,2 --styles original --chunks async --quick`, `--chunk-build cpu` against `--chunk-build gpu`, RTX 4090 (adapter 0, Vulkan), idle machine. The GpuList builder has the CPU worker emit only the draw list (no sprite blits) and the compositor's compute pass fill the objects and base planes; the Cpu builder replays the list with the blitter on the worker.
+
+| path (group 0) | p50 ms | p95 ms | p99 ms | max ms | cold ms | stage 1 (cold) | stage 4 (cold) |
+|---|---|---|---|---|---|---|---|
+| Cpu builder, cold | - | - | - | - | 119.5 | 40.6 | 75.7 |
+| GpuList builder, cold | - | - | - | - | 56.5 | 15.3 | 38.8 |
+| Cpu builder, static | 1.2 | 4.5 | 4.6 | 4.6 | | | |
+| GpuList builder, static | 1.1 | 3.6 | 55.6 | 55.6 | | | |
+
+- The cold frame at group 0 (24 chunks of the canyon island) roughly halves, 119.5 to 56.5 ms: the objects stage (stage 1) and the objects part of stage 4 move off the CPU. The per-chunk CPU build time ("chunk ms") drops (the worker builds only the list); fewer chunks show as "missing" in the first static frames.
+- The 55.6 ms p99/max spike in the GpuList "static" run is the one-time lazy creation of the compute pipeline plus the first chunk-atlas allocation on the first GpuList frame (`cb_init` / `cb_grow_atlas`); a warm-up frame hides it. A later commit should create the pipeline in `GpuFrame::create` under the limits, as the other pipelines are.
+- Interactive frames (static/pan) stay sub-millisecond at p50 and under the 2 ms 500 Hz budget at p95 on both builders.
+
+**Not yet measured (remaining 2a):** per-chunk GPU time of the compute pass with GPU timestamps on adapter 0 (RTX 4090) and adapter 1 (AMD Radeon, Vulkan), the `bin_px` (16/32/64) sweep chosen from it, and the 1280 x 800 / 2560 x 1440 p50/p95/p99/max on both adapters with the pan-and-zoom script. These need timestamp writes around the dispatch (not yet added) and the derived-level path for the zoom script.

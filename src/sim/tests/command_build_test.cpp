@@ -12,6 +12,9 @@
 #include <anno/sim/command.hpp>
 #include <anno/sim/field_count.hpp>
 #include <anno/sim/legacy_codec.hpp>
+#include <anno/sim/seams.hpp>
+#include <anno/sim/tick.hpp>
+#include <anno/sim/types.hpp>
 #include <anno/sim/world.hpp>
 
 #include "command_helpers.hpp"
@@ -244,6 +247,44 @@ TEST_CASE("build atomic rule") {
     CHECK(stock(w, ct::goods(t, "WERKZEUG")) == 1 * sim::kTon);
     CHECK(w.check_invariants() == "");
 
+    // The gold budget: 500 gold pays one weaver (300) but not two, so the pair is aborted
+    // although each record alone is affordable; without the rule one is built.
+    sim::World poor = ct::make_world(t, syn::g2_scenario(t), atomic);
+    sim::WorldTestAccess::players(poor).slots[0]->money = 500;
+    const std::uint64_t poor_before = poor.state_hash();
+    const sim::ApplyResult pair =
+        poor.apply(build(0, kCity0, {at(t.weaver, 112, 115), at(t.weaver, 113, 115)}));
+    CHECK(pair.status == sim::Reject::AtomicAbort);
+    CHECK(record_status(pair, 0) == sim::Reject::AtomicAbort);
+    CHECK(record_status(pair, 1) == sim::Reject::CannotAfford);
+    CHECK(money(poor) == 500);
+    CHECK(poor.state_hash() == poor_before);
+    // The serial budget: two serials are left before the counter's end (0xffffffff), so
+    // a third record is SerialExhausted and the whole command is aborted.
+    sim::WorldTestAccess::players(poor).slots[0]->money = 10000;
+    sim::WorldTestAccess::islands(poor)[0]->next_serial = 0xfffffffdU;
+    const sim::ApplyResult three = poor.apply(
+        build(0, kCity0, {at(t.weaver, 112, 115), at(t.weaver, 113, 115), at(t.weaver, 114, 115)}));
+    CHECK(three.status == sim::Reject::AtomicAbort);
+    CHECK(record_status(three, 2) == sim::Reject::SerialExhausted);
+    CHECK(poor.islands()[0]->next_serial == 0xfffffffdU);
+    CHECK(poor.apply(build(0, kCity0, {at(t.weaver, 112, 115), at(t.weaver, 113, 115)})).ok());
+    CHECK(poor.islands()[0]->next_serial == 0xffffffffU);
+    const sim::ApplyResult none_left = poor.apply(build(0, kCity0, {at(t.weaver, 114, 115)}));
+    CHECK(none_left.status == sim::Reject::AtomicAbort);
+    CHECK(record_status(none_left, 0) == sim::Reject::SerialExhausted);
+    // A record that only create_building would refuse (rotation 4) aborts the dry run too.
+    const sim::ApplyResult rot =
+        poor.apply(build(0, kCity0, {at(t.weaver, 114, 115), at(t.weaver, 115, 115, 4)}));
+    CHECK(rot.status == sim::Reject::AtomicAbort);
+    CHECK(record_status(rot, 1) == sim::Reject::BadRotation);
+    CHECK(poor.check_invariants() == "");
+    sim::World poor_plain = ct::make_world(t, syn::g2_scenario(t));
+    sim::WorldTestAccess::players(poor_plain).slots[0]->money = 500;
+    CHECK(
+        poor_plain.apply(build(0, kCity0, {at(t.weaver, 112, 115), at(t.weaver, 113, 115)})).ok());
+    CHECK(money(poor_plain) == 200);
+
     // The same six records without the rule build four (D8, the original's default).
     sim::World plain = ct::make_world(t, syn::g2_scenario(t));
     CHECK(plain.apply(build(0, kCity0, six)).ok());
@@ -313,6 +354,9 @@ TEST_CASE("build occupied") {
     // A footprint that only partly covers a building (fur trapper 2 x 3 from (109,108)
     // covers (110,110)).
     check_refused(r.w, build(0, kCity0, {at(r.t.fur_trapper, 109, 108)}), sim::Reject::Occupied);
+    // A tile object under a footprint tile that is not the north-west one (fur trapper
+    // 2 x 3 from (108,101) covers the scenery at (108,103); rows 100-101 are neutral).
+    check_refused(r.w, build(0, kCity0, {at(r.t.fur_trapper, 108, 101)}), sim::Reject::Occupied);
     // A record placed earlier in the same command occupies its tiles for the later ones.
     const sim::ApplyResult res =
         r.w.apply(build(0, kCity0, {at(r.t.weaver, 112, 115), at(r.t.weaver, 112, 115)}));
@@ -342,8 +386,10 @@ TEST_CASE("build unknown type and rotation") {
         check_refused(r.w, build(0, kCity0, {at(r.t.weaver, 112, 115, rot)}),
                       sim::Reject::BadRotation);
     }
-    // PRODTYPE above 192 (a road): a tile object, not ported (O-4).
+    // PRODTYPE above 192 (a road): a tile object, not ported (O-4); the rotation is
+    // checked first.
     check_refused(r.w, build(0, kCity0, {at(r.t.road, 112, 115)}), sim::Reject::Unsupported);
+    check_refused(r.w, build(0, kCity0, {at(r.t.road, 112, 115, 5)}), sim::Reject::BadRotation);
     // Type id 0 is skipped, not refused (D).
     const std::uint64_t h = r.w.state_hash();
     const sim::ApplyResult zero = r.w.apply(build(0, kCity0, {at(sim::TypeId{0}, 112, 115)}));
@@ -650,8 +696,13 @@ TEST_CASE("trade flag modes 0 1 9") {
         CHECK(r.w.apply(ct::trade_flag(0, kCity0, mode, wool, 0)).ok());
     }
     CHECK(r.w.state_hash() == h);
-    // City checks first: another player's command is refused.
+    // City checks first: a missing player, another player's city.
     check_refused(r.w, ct::trade_flag(3, kCity0, 0, wool, 0), sim::Reject::UnknownIssuer);
+    sim::World two = ct::make_world(r.t, ct::two_city_spec(r.t));
+    check_refused(two, ct::trade_flag(1, kCity0, 9, wood, 1), sim::Reject::NotCityOwner);
+    check_refused(two, ct::trade_slot(0, kCity1, 0, sim::kAppendIndex, wool),
+                  sim::Reject::NotCityOwner);
+    CHECK(two.apply(ct::trade_flag(1, kCity1, 9, wood, 1)).ok());
     CHECK(r.w.check_invariants() == "");
 }
 
@@ -692,7 +743,13 @@ TEST_CASE("trade slot index") {
     REQUIRE(r.w.apply(ct::trade_flag(0, kCity0, 0, wood, 1)).ok());
     CHECK(r.w.apply(ct::trade_slot(0, kCity0, 0, 1, wool, 1, 1)).ok());
     CHECK(ct::city(r.w, kCity0).goods.at(wood).list_index == -1);
-    // ... but not a setting of the same goods, nor one that names the other list.
+    // ... but not a setting of another entry of the same list: wool on entries 0 and 1,
+    // linked to 1; entry 0 changes goods.
+    REQUIRE(r.w.apply(ct::trade_slot(0, kCity0, 0, 0, wool, 1, 1)).ok());
+    REQUIRE(r.w.apply(ct::trade_flag(0, kCity0, 0, wool, 1)).ok());
+    CHECK(r.w.apply(ct::trade_slot(0, kCity0, 0, 0, wood, 1, 1)).ok());
+    CHECK(ct::city(r.w, kCity0).goods.at(wool).list_index == 1);
+    // ... nor a setting of the same goods, nor one that names the other list.
     REQUIRE(r.w.apply(ct::trade_flag(0, kCity0, 0, wool, 1)).ok());
     CHECK(r.w.apply(ct::trade_slot(0, kCity0, 0, 1, wool, 2, 2)).ok());
     CHECK(ct::city(r.w, kCity0).goods.at(wool).list_index == 1);
@@ -789,6 +846,21 @@ TEST_CASE("legacy 0x64 decode on synthetic bytes") {
             CHECK_FALSE(p.ok());
         }
     }
+    // Fifteen followers (the 4-bit count's maximum) and a type id above 2047 (12 bits:
+    // Anlagen.dat's ids reach about 2600).
+    std::vector<std::uint8_t> many = {0, 0, 0, 0, 0, 0, 0x28, 0xfa, 10, 0, 20, 0, 0, 0};
+    for (std::uint8_t i = 1; i <= 15; ++i) {
+        many.push_back(0);
+        many.push_back(i);
+        many.push_back(0);
+    }
+    auto dm = sim::legacy::decode_0x64(many);
+    REQUIRE(dm.ok());
+    REQUIRE(dm.value().placements.size() == 16);
+    for (std::size_t i = 0; i < 16; ++i) {
+        CHECK(dm.value().placements[i].type == sim::TypeId{0xa28});
+        CHECK(dm.value().placements[i].x == 10 + static_cast<std::int32_t>(i));
+    }
     // The decoded command goes through the same rules as a native one (here: island 3
     // does not exist in the g2 world).
     Rig r;
@@ -808,4 +880,243 @@ TEST_CASE("legacy 0x64 decode on synthetic bytes") {
     const sim::ApplyResult res = r.w.apply(sim::Command{sim::PlayerId{0}, imported});
     CHECK(record_status(res, 0) == sim::Reject::None);
     CHECK(record_status(res, 1) == sim::Reject::BadRotation);
+}
+
+namespace {
+
+/// The build types plus two of the tests' own: 9100 costs wood twice (3 t + 3 t), 9101
+/// needs research 3.
+syn::SyntheticTypes extra_types() {
+    syn::SyntheticTypes t = ct::build_types();
+    sim::TypeRegistry::Builder b;
+    for (const sim::BuildingType& ty : t.registry->types()) {
+        b.add(ty);
+    }
+    const sim::GoodsId wood = ct::goods(t, "HOLZ");
+    sim::BuildingType twice = *t.registry->find(t.pioneer_house);
+    twice.id = sim::TypeId{9100};
+    twice.width = 1;
+    twice.height = 1;
+    twice.cost_gold = 0;
+    twice.cost_goods = {sim::CostEntry{wood, 3 * sim::kTon}, sim::CostEntry{wood, 3 * sim::kTon}};
+    b.add(twice);
+    sim::BuildingType research = *t.registry->find(t.weaver);
+    research.id = sim::TypeId{9101};
+    research.research_id = 3;
+    b.add(research);
+    auto built = b.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    t.registry = std::move(built).value();
+    return t;
+}
+
+} // namespace
+
+TEST_CASE("build charges a goods named twice in full") {
+    const syn::SyntheticTypes t = extra_types();
+    const sim::GoodsId wood = ct::goods(t, "HOLZ");
+    sim::World w = ct::make_world(t, syn::g2_scenario(t));
+    ct::city_mut(w, kCity0).stock.stock[wood] = 4 * sim::kTon; // less than 3 t + 3 t
+    check_refused(w, build(0, kCity0, {at(sim::TypeId{9100}, 112, 115)}),
+                  sim::Reject::CannotAfford);
+    ct::city_mut(w, kCity0).stock.stock[wood] = 6 * sim::kTon;
+    CHECK(w.apply(build(0, kCity0, {at(sim::TypeId{9100}, 112, 115)})).ok());
+    CHECK(stock(w, wood) == 0);
+    CHECK(ct::city(w, kCity0).build_goods.at(wood - w.config().build_goods_first).spent ==
+          6 * sim::kTon);
+    CHECK(w.check_invariants() == "");
+}
+
+TEST_CASE("build enforces research only under the rule") {
+    // Rules::enforce_research (O-30): off by default (the original has no sim-side
+    // research gate on Build).
+    const syn::SyntheticTypes t = extra_types();
+    sim::World off = ct::make_world(t, syn::g2_scenario(t));
+    CHECK(off.apply(build(0, kCity0, {at(sim::TypeId{9101}, 112, 115)})).ok());
+    sim::Rules rules;
+    rules.enforce_research = true;
+    sim::World on = ct::make_world(t, syn::g2_scenario(t), rules);
+    check_refused(on, build(0, kCity0, {at(sim::TypeId{9101}, 112, 115)}),
+                  sim::Reject::NotResearched);
+    // A type without a research id is not gated.
+    CHECK(on.apply(build(0, kCity0, {at(t.weaver, 113, 115)})).ok());
+    // Researched (bit 1 of the state byte): accepted.
+    sim::WorldTestAccess::players(on).slots[0]->research.state.at(3) = 2;
+    CHECK(on.apply(build(0, kCity0, {at(sim::TypeId{9101}, 112, 115)})).ok());
+    CHECK(on.check_invariants() == "");
+}
+
+namespace {
+
+/// What the test seams saw.
+struct SeamLog {
+    std::vector<std::uint64_t> placed_ticks, removed_ticks;
+    std::vector<sim::BuildingId> placed, removed;
+    sim::TypeId rewrite_to;
+    sim::Reject rule = sim::Reject::None;
+    std::vector<sim::Command> ai_commands;
+    int ai_calls = 0;
+};
+
+void on_placed(void* ctx, const sim::TickContext& tc, sim::Island&, sim::City& c, sim::Building& b,
+               sim::Effects& fx) {
+    auto& log = *static_cast<SeamLog*>(ctx);
+    log.placed.push_back(b.id);
+    log.placed_ticks.push_back(tc.tick);
+    sim::SimEvent e;
+    e.kind = sim::SimEventKind::Notice;
+    e.building = b.id;
+    e.code = 4242;
+    fx.ui.push_back(e);
+    fx.money.push_back(sim::MoneyDelta{c.owner, 1});
+}
+
+void on_removed(void* ctx, const sim::TickContext& tc, sim::Island&, sim::City&, sim::Building& b,
+                sim::Effects&) {
+    auto& log = *static_cast<SeamLog*>(ctx);
+    log.removed.push_back(b.id);
+    log.removed_ticks.push_back(tc.tick);
+}
+
+sim::Reject placement_rule(void* ctx, const sim::Island&, const sim::BuildingType&,
+                           const sim::PlacementRecord&) {
+    return static_cast<SeamLog*>(ctx)->rule;
+}
+
+void upgrade(void* ctx, const sim::BuildingType&, sim::PlacementRecord& rec) {
+    const auto& log = *static_cast<SeamLog*>(ctx);
+    if (log.rewrite_to.valid()) {
+        rec.type = log.rewrite_to;
+    }
+}
+
+void ai(void* ctx, const sim::TickContext&, const sim::SerialWorld&,
+        std::vector<sim::Command>& out) {
+    auto& log = *static_cast<SeamLog*>(ctx);
+    if (log.ai_calls++ == 0) {
+        out = log.ai_commands;
+    }
+}
+
+sim::Seams place_seams(SeamLog& log) {
+    sim::Seams s;
+    s.on_placed = {"test_on_placed", &on_placed, &log};
+    s.on_removed = {"test_on_removed", &on_removed, &log};
+    return s;
+}
+
+} // namespace
+
+TEST_CASE("build and demolish run the place and remove seams") {
+    const syn::SyntheticTypes t = ct::build_types();
+    SeamLog log;
+    sim::World w = ct::make_world(t, syn::g2_scenario(t), {}, place_seams(log));
+    w.advance(100); // tick 50
+    static_cast<void>(w.drain_events());
+    // Between two advances: the seam runs at the clock's tick, its Effects merge at once
+    // (one gold back), its UI event goes to the host queue only, not to the last
+    // advance's output (which belongs to that advance).
+    const std::size_t events_before = w.last_output().events.size();
+    const sim::ApplyResult res = w.apply(build(0, kCity0, {at(t.weaver, 112, 115)}));
+    REQUIRE(res.ok());
+    REQUIRE(log.placed.size() == 1);
+    CHECK(log.placed[0] == res.records[0].building);
+    CHECK(log.placed_ticks[0] == 50);
+    CHECK(money(w) == 10000 - 300 + 1);
+    CHECK(w.last_output().events.size() == events_before);
+    const std::vector<sim::SimEvent> host = w.drain_events();
+    REQUIRE(host.size() == 1);
+    CHECK(host[0].code == 4242);
+    CHECK(w.apply(demolish(0, kCity0, {{112, 115}})).ok());
+    REQUIRE(log.removed.size() == 1);
+    CHECK(log.removed[0] == res.records[0].building);
+    CHECK(w.check_invariants() == "");
+
+    // Inside an advance (commands of the AI seam): the advance's tick, and the UI event is
+    // part of that advance's output as well.
+    SeamLog log2;
+    log2.ai_commands = {build(0, kCity0, {at(t.weaver, 113, 115)}),
+                        demolish(0, kCity0, {{120, 110}})};
+    sim::Seams seams = place_seams(log2);
+    seams.ai = {"test_ai_builds", &ai, &log2};
+    sim::World a = ct::make_world(t, syn::g2_scenario(t), {}, seams);
+    a.advance(100);
+    CHECK(log2.ai_calls == 1);
+    REQUIRE(log2.placed.size() == 1);
+    CHECK(log2.placed_ticks[0] == 50);
+    REQUIRE(log2.removed.size() == 1);
+    CHECK(log2.removed_ticks[0] == 50);
+    CHECK(a.building_at(kCity0, 113, 115) != nullptr);
+    CHECK(a.building_at(kCity0, 120, 110) == nullptr);
+    bool notice = false;
+    for (const sim::SimEvent& e : a.last_output().events) {
+        notice = notice || e.code == 4242;
+    }
+    CHECK(notice);
+    CHECK(a.check_invariants() == "");
+}
+
+TEST_CASE("build placement rule and upgrade seams") {
+    const syn::SyntheticTypes t = ct::build_types();
+    SeamLog log;
+    sim::Seams s;
+    s.placement_rule = {"test_rule", &placement_rule, &log};
+    s.upgrade_rewrite = {"test_upgrade", &upgrade, &log};
+    sim::World w = ct::make_world(t, syn::g2_scenario(t), {}, s);
+    // The seam replaces the stand-in: its reason is the record's.
+    log.rule = sim::Reject::TerrainRefused;
+    check_refused(w, build(0, kCity0, {at(t.weaver, 112, 115)}), sim::Reject::TerrainRefused);
+    // A rule that accepts everything lets a scenery tile through, but never a building
+    // (create_building's overlap check is part of the validation, F32), so neither a
+    // drag build nor an atomic one ends half done for that reason.
+    log.rule = sim::Reject::None;
+    CHECK(w.apply(build(0, kCity0, {at(t.weaver, 108, 103)})).ok());
+    check_refused(w, build(0, kCity0, {at(t.weaver, 110, 110)}), sim::Reject::Occupied);
+    // The upgrade rewrite: the rewritten record is validated and charged as what it
+    // became (the small farm: 250 gold).
+    log.rewrite_to = t.small_farm;
+    const std::int64_t before = money(w);
+    const sim::ApplyResult up = w.apply(build(0, kCity0, {at(t.weaver, 112, 115)}));
+    REQUIRE(up.ok());
+    CHECK(w.find_building(up.records[0].building)->type == t.small_farm);
+    CHECK(money(w) == before - 250);
+    // ... and refused for what it became (a road: Unsupported).
+    log.rewrite_to = t.road;
+    check_refused(w, build(0, kCity0, {at(t.weaver, 113, 115)}), sim::Reject::Unsupported);
+    CHECK(w.check_invariants() == "");
+    // Under build_atomic with the permissive rule: a record over a building aborts all.
+    sim::Rules atomic;
+    atomic.build_atomic = true;
+    SeamLog log3;
+    sim::Seams s3;
+    s3.placement_rule = {"test_rule", &placement_rule, &log3};
+    sim::World a = ct::make_world(t, syn::g2_scenario(t), atomic, s3);
+    const sim::ApplyResult res =
+        a.apply(build(0, kCity0, {at(t.weaver, 112, 115), at(t.weaver, 110, 110)}));
+    CHECK(res.status == sim::Reject::AtomicAbort);
+    CHECK(record_status(res, 1) == sim::Reject::Occupied);
+    CHECK(a.building_at(kCity0, 112, 115) == nullptr);
+}
+
+TEST_CASE("demolish leaves another city's building on the city's tile") {
+    // Only a scenario can place a building of city 1 on a tile of city 0 (create_building
+    // does not read owners): Demolish by city 0 finds no building of its own there and
+    // must not clear the object the other building's footprint carries (OQ-126 item 3).
+    const syn::SyntheticTypes t = ct::build_types();
+    sim::ScenarioSpec spec = ct::two_city_spec(t);
+    sim::ScenarioSpec::BuildingSpec stray;
+    stray.type = t.weaver;
+    stray.x = 130;
+    stray.y = 125; // a city-0 tile
+    spec.islands[0].cities[1].buildings.push_back(stray);
+    sim::World w = ct::make_world(t, spec);
+    const sim::BuildingId id = w.building_at(kCity1, 130, 125)->id;
+    const std::uint64_t idx = (125U - 100U) * 64U + (130U - 100U);
+    REQUIRE(w.islands()[0]->tiles.object(idx) != 0);
+    const sim::ApplyResult res = w.apply(demolish(0, kCity0, {{130, 125}}));
+    CHECK(res.ok());
+    CHECK(record_status(res, 0) == sim::Reject::NoBuildingAtTile);
+    CHECK(w.find_building(id) != nullptr);
+    CHECK(w.islands()[0]->tiles.object(idx) != 0);
+    CHECK(w.check_invariants() == "");
 }

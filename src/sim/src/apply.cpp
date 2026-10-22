@@ -199,6 +199,16 @@ void run_building_seam(Env& env, const Seam<Seams::PlaceHook>& seam, Island& is,
 
 // ---- Build 0x64 (§8.4) -------------------------------------------------------------
 
+/// Whether any building of the island (any city, any list) covers tile `idx`.
+bool tile_has_building(const Island& is, std::uint64_t idx) {
+    for (const std::vector<std::uint32_t>& grid : is.cache.grids) {
+        if (idx < grid.size() && grid[static_cast<std::size_t>(idx)] != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// The scratch budget of the atomic dry run (Rules::build_atomic, D8, §8.2 item 5): what
 /// the records before the current one would take if they were placed.
 struct Budget {
@@ -290,15 +300,17 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
             out.status = placed;
             return out;
         }
-        if (budget != nullptr) {
-            bool taken = false;
-            for_each_footprint_tile(is, *type, rec, [&](std::uint64_t idx) {
-                taken = taken || budget->tiles.count(idx) != 0;
-            });
-            if (taken) {
-                out.status = Reject::Occupied;
-                return out;
-            }
+        // create_building's own overlap check (F32), here so that a validated record
+        // cannot fail at its creation (a placement seam may ignore buildings), and in the
+        // atomic dry run the tiles of the earlier records of the command.
+        bool taken = false;
+        for_each_footprint_tile(is, *type, rec, [&](std::uint64_t idx) {
+            taken = taken || tile_has_building(is, idx) ||
+                    (budget != nullptr && budget->tiles.count(idx) != 0);
+        });
+        if (taken) {
+            out.status = Reject::Occupied;
+            return out;
         }
         // 4. The upgrade rewrite (D 0x100276a0 for PRODTYPE 0x43 / 0x48, O-28; default
         // none).
@@ -329,7 +341,8 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
     // 6. Affordability, read-only (D 0x100275d0), against the state the earlier records
     // left (D8). Waived by the owner's free-build flag (D owner slot +0x9c(7), O-9) and
     // by Rules::free_build_cheat (F13: the original's free-build flag 0x2000000 came from
-    // the payload; here it is a hashed session rule, never a wire field).
+    // the payload; here it is a hashed session rule, never a wire field; OQ-125). A waiver
+    // skips the check and the charge (I: "cost waiver"; OQ-126).
     out.free = env.rules.free_build_cheat || owner.free_build;
     if (!out.free) {
         const std::int64_t gold_before = budget != nullptr ? budget->money : 0;
@@ -337,6 +350,9 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
             out.status = Reject::CannotAfford;
             return out;
         }
+        // The goods per goods number: a type may name one goods twice (the registry does
+        // not refuse it), and the sum must be in stock.
+        std::map<GoodsId, std::uint64_t> need;
         for (const CostEntry& cost : type->cost_goods) {
             // A cost goods outside the charged goods (validate_against refuses such a
             // registry) or the warehouse cannot be paid.
@@ -346,12 +362,15 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
                 out.status = Reject::CannotAfford;
                 return out;
             }
+            need[cost.goods] += cost.amount_88;
+        }
+        for (const auto& [goods, amount] : need) {
             std::uint64_t used = 0;
             if (budget != nullptr) {
-                const auto it = budget->goods.find(cost.goods);
+                const auto it = budget->goods.find(goods);
                 used = it != budget->goods.end() ? it->second : 0;
             }
-            if (used + cost.amount_88 > city.stock.stock[cost.goods]) {
+            if (used + amount > city.stock.stock[goods]) {
                 out.status = Reject::CannotAfford;
                 return out;
             }
@@ -450,7 +469,8 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
     // Record by record in stream order (§8.2 item 5; D: op 6 continues after a failed
     // record, 0x10058a6d), each validated against the state the earlier ones left. Under
     // build_atomic every record passed the dry run; the live check repeats it (only a
-    // seam's Effects could make it differ).
+    // Place seam's Effects could make it differ: the dry run repeats create_building's
+    // checks, so a validated record is created).
     bool placed_any = false;
     Reject first_failure = Reject::None;
     for (std::size_t i = 0; i < cmd.placements.size(); ++i) {
@@ -484,7 +504,7 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
 /// every building through remove_building (derived indexes, footprint objects, the
 /// market list's defeat flag), every tile of the city becomes neutral (a stand-in that
 /// keeps §9.6 "every owner is a present city or neutral"; what the original does with
-/// the tiles is unread, OQ-125), and the slot is emptied.
+/// the tiles is unread, OQ-126), and the slot is emptied.
 void remove_city(Env& env, Island& is, CityNo no) {
     City& city = *is.cities[no.v];
     for (std::size_t l = 0; l < city.index.lists.size(); ++l) {
@@ -504,16 +524,6 @@ void remove_city(Env& env, Island& is, CityNo no) {
         }
     }
     is.cities[no.v].reset();
-}
-
-/// Whether any building of the island (any city, any list) covers tile `idx`.
-bool tile_has_building(const Island& is, std::uint64_t idx) {
-    for (const std::vector<std::uint32_t>& grid : is.cache.grids) {
-        if (idx < grid.size() && grid[static_cast<std::size_t>(idx)] != 0) {
-            return true;
-        }
-    }
-    return false;
 }
 
 ApplyResult demolish(Env& env, const Command& c, const DemolishCmd& cmd) {
@@ -634,7 +644,8 @@ ApplyResult set_trade_slot(Env& env, const Command& c, const SetTradeSlotCmd& cm
         return result;
     }
     City& city = *t.city;
-    // I (O-14): list < trade_lists, index < the list's length or kAppendIndex (0x8a).
+    // I (O-14, OQ-127): list < trade_lists, index < the list's length or kAppendIndex
+    // (0x8a).
     if (cmd.list >= city.trade_lists.size()) {
         result.status = Reject::BadIndex;
         return result;

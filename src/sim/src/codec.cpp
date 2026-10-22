@@ -294,12 +294,13 @@ bool has_wire_form(const Body& body) {
 }
 
 formats::Result<std::vector<std::uint8_t>, std::string> encode_record(const Body& body) {
-    if (const auto* legacy = std::get_if<LegacyRawCmd>(&body);
-        legacy != nullptr && is_native_wire_type(legacy->type)) {
-        return std::string("LegacyRaw: the type is a native wire type");
-    }
-    if (payload_size(body) > kMaxRecordPayload) {
-        return std::string("record payload longer than 65535 bytes");
+    // One rule for the recorder, the session drivers and the encoder: has_wire_form;
+    // the message names which of its two refusals applies.
+    if (!has_wire_form(body)) {
+        const auto* legacy = std::get_if<LegacyRawCmd>(&body);
+        return std::string(legacy != nullptr && is_native_wire_type(legacy->type)
+                               ? "LegacyRaw: the type is a native wire type"
+                               : "record payload longer than 65535 bytes");
     }
     PayloadWriter w;
     std::visit(w, body);

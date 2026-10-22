@@ -52,9 +52,9 @@ def distance(a: str, b: str) -> int:
 
 
 def mean_grey(img) -> float:
-    g = img.convert("L").resize((64, 48))
-    data = list(g.getdata())
-    return sum(data) / len(data)
+    """Mean grey level from the histogram (works on Pillow 10 in the distro and 12+ on Windows)."""
+    hist = img.convert("L").resize((64, 48)).histogram()
+    return sum(i * n for i, n in enumerate(hist)) / sum(hist)
 
 
 def load(path: str | None = None) -> dict:

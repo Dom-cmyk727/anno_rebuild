@@ -66,7 +66,11 @@ By the end of the project a game holds **up to 8 players**, in multiplayer and a
 - **Rule:**
   - A player is every competing party, human or computer; Venetians, pirates, natives and the neutral player do not count (owner decision 2026-10-22, OQ-100 item 1).
   - Up to 4 players, a world is used as authored: faithful, no change.
-  - For each player above 4, the world's area and its islands grow by the scaling rule (OQ-100), which keeps per-player fairness measures at least at the 4-player level.
+  - For each player above 4, the world's area and its islands grow by the scaling rule. Every player then gets at least 99 % of the 4-player share of land, resources and room, on each measure separately (owner decisions 2026-10-22, OQ-100):
+    - The area grows in proportion to the player count (edge × √(n/4)).
+    - The island links grow in proportion too, keeping the template's climate bands and size mix.
+    - The template is extended, not replaced, so the 4-player world stays its core.
+    - Raw materials, ores and treasures scale with the links; natives scale with the islands; one pirate and one Venetian party stay.
   - Authored missions (campaign, `0200Single`) keep their own player setup and map; scaling applies to endless and multiplayer worlds.
 - **How:**
   - A deterministic world-scaling step extends a world template (the endless worlds' link layouts) by more world area and more island links, with the same climate bands and size mix.
@@ -269,7 +273,7 @@ Goal: 2–8 players (owner decision 2026-10-22: up to 8 by the end of the projec
 Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay in sync for 10k ticks; an injected divergence is detected within one tick and recovered. **And 8 peers on a scaled 8-player world (M4.1) stay in sync for 10k ticks under the same conditions;** every peer builds the identical world from the handshake (same world hash before the first tick).
 
 ### M4.1 Up to 8 players: the world grows with the player count (§0.6)
-- [ ] **Owner decisions first (OQ-100):**
+- [x] **Owner decisions (OQ-100), all taken 2026-10-22:** a player is every competing party; area and islands grow in proportion; extend the template; resources scale with the links, natives with the islands; fairness floor 99 % per measure. Superseded detail of the original question list:
   - ~~what counts as a player~~ decided 2026-10-22: every competing party, human or computer;
   - the growth rule: world area and island links per player above 4;
   - the layout: extend the template, or build a new one;
@@ -286,7 +290,7 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
   - Start positions placed so that the measures hold.
 - [ ] **Fairness tool and tests** (`world_fairness`):
   - The report for a generated world.
-  - Property tests over many seeds and every player count from 1 to 8: up to 4 players the world equals the template; above 4 every player's measures stay within the stated tolerance of the 4-player baseline; no island overlaps or leaves the world; the same inputs always give the same world hash on Windows and Linux.
+  - Property tests over many seeds and every player count from 1 to 8: up to 4 players the world equals the template; above 4 every player's measures are at least 99 % of the 4-player share, each measure separately; a seed for which no layout meets the floor within the search limit fails world setup with a named measure, never silently; no island overlaps or leaves the world; the same inputs always give the same world hash on Windows and Linux.
 - [ ] **Lockstep and saves:** the generator's version, parameters and seed in the handshake and the content hash (M4); the world hash checked before the first tick; savegames store the generated islands.
 - [ ] **Performance:** the sim tick and the view frame on the largest 8-player world (the 1024-tile template scaled to 8 players: about 1448 × 1448 tiles if the area grows in proportion), with 8 players' cities, in `docs/perf/README.md` against the §0.3 targets.
 - [ ] **Game setup (M5 UI):** choose 1–8 players, each a human seat or a computer player, and a world template; the world is scaled when the game starts. Faithful mode keeps the original endless worlds for up to 4 players.

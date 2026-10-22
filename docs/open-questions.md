@@ -1060,6 +1060,54 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   4. What does `HELPPLAYER` switch?
 - **How to resolve:** move one slider at a time and diff the file. For the scale, trace the reader of the `VOLUME` chunk.
 
+## OQ-120: Precedence of `&&` and `||` in the scenario script (new, T17 2026-10-22)
+- **Status:** open, RE
+- **Area:** formats (`docs/formats/bigbrother.md` §3.4), script engine
+- **Evidence:** 28 of the 308 `IF` conditions in 10 shipped scripts mix `&&` and `||` in one group without parentheses (P), e.g. Single_01: `MISSION_FLAG == FALSE && (…) || PLAYER "HUMAN" INHABITANTCOUNT "BUERGER" > 2999`. The interpreter keeps `&&` and `||` in one delimiter table (`AnnoScene.dll` `0x1003d898`/`0x1003d89c`, S).
+- **Question:** Does `&&` bind tighter than `||` (as in C), do both group left to right, or something else? The answer decides what these missions test; with C precedence the Single_01 rule fires again after the mission flag is set.
+- **How to resolve:** read the condition parser around the delimiter table (AnnoScene, the script ops `0x10011ed0`–`0x10013dab`, O-16) with `tools/disasm.py`.
+
+## OQ-121: Script statements without `;` (new, T17 2026-10-22)
+- **Status:** open, RE
+- **Area:** formats (`bigbrother.md` §3.4)
+- **Evidence:** four shipped statements end without `;` (P):
+  - `SET_PROFILE(…)` (S01_02_01);
+  - `SET DEADEND_ABFRAGE = FALSE` (S01_08_01);
+  - `SET_DIPLOMACY(…)` and `SET_FOR_BUY(…)` (S01_09_01).
+
+  Each of the four ends its line. `QUESTLOG_DRAW;` has no parentheses (single42). All of them ship in the release; whether the missions play as intended was not checked.
+- **Question:** Does the interpreter end a statement at the closing parenthesis or value, or does it read the next statement as part of it, losing or merging an action?
+- **How to resolve:** the statement reader in AnnoScene (O-16 range); or play S01_09_01 in the Wine runner (T16) to the rule and check whether both actions take effect.
+
+## OQ-122: Script define numbers, `[CAMARAPOS]`, the `STARTUP` section (new, T17 2026-10-22)
+- **Status:** open
+- **Area:** formats (`bigbrother.md` §3.1–3.6)
+- **Evidence (P):**
+  - `OBJECT_FIGUR "N" n` and `OBJECT_STADT "N" n` carry one number; `OBJECT_ANLAGE "N" x,y,t` three (t an `Anlagen.dat` type);
+  - `[AREA_DEFINE]` lines carry four numbers in 0–1025 whose first pair is not always the smaller;
+  - `[CAMARAPOS]` is `0,0` in every file and in seven quicksaves (T16).
+- **Evidence (S):** the reader knows a seventh section `STARTUP` (`0x1003e628`) that no shipped script uses.
+- **Question:**
+  1. Is the figure number the unit id of the `SPIELER` record, and what is the city number?
+  2. Are the area numbers two corners in tiles?
+  3. What does `[CAMARAPOS]` hold?
+  4. What does `STARTUP` contain?
+- **How to resolve:**
+  - match `OBJECT_FIGUR` numbers against the unit ids in the same `.sze` (`tools/sze.py`);
+  - match areas against the map;
+  - trace the readers next to the section strings.
+
+## OQ-123: What each script action and condition does (new, T17 2026-10-22)
+- **Status:** open, RE
+- **Area:** script engine, sim (lockstep), `bigbrother.md` §4–§6
+- **Evidence:** the vocabulary, argument types and observed value ranges are in `bigbrother.md` (P). The split into state-changing and presentation actions is read from the names (likely). 62 of the 164 script names of the interpreter's tables are used by no shipped script (S).
+- **Question:**
+  1. Each handler's effect and the meaning of its numeric arguments (e.g. `WON`/`LOST`'s second number, `SET_DIPLOMACY`'s −128/−127/0/30);
+  2. the role of every unused name (action or condition: read from the block it stands in);
+  3. which conditions read state that is not synchronised in multiplayer (by its name, `SELECTED_CURSORCONSTRUCTION` likely asks about the local build cursor);
+  4. what `SCHUETTIINITSIG` marks (it flips `TRUE` → `FALSE` in quicksaves of a scenario without an `INITBLOCK`), and whether a savegame stores the variables' current values (the format strings suggest it; the quicksaves had no variables).
+- **How to resolve:** walk the dispatch from the name tables to the handlers in AnnoScene (`0x10011ed0`–`0x10013dab`, O-16) and record each in `bigbrother.md`; the port of the engine (O-34) needs the list. For item 4, quick-save a mission with variables and an `INITBLOCK` in the Wine runner (T16).
+
 ## OQ-124: An intermittent crash in AnnoGame's table getter (new, T16 2026-10-22)
 - **Status:** open
 - **Area:** testing (Wine runner), RE (`AnnoGame.dll`)

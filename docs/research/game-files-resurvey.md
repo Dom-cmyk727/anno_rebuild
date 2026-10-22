@@ -13,6 +13,8 @@
 
 ## 2. The scenario script (`BIGBROTHER`)
 
+> Superseded in detail by [`../formats/bigbrother.md`](../formats/bigbrother.md) (T17, 2026-10-22): the grammar, all 164 script names classified, and §7 there corrects this section (37 scripts have statements, not 39; `SOLDAT_*`/`SCHIFF_ATTACK` are the combat tutorial's object names; `HELPPLAYER`/`VOLUME` are profile chunk names; `CHEATLIMIT`/`SETTRIBUTSPERRE` are `COMP` keys).
+
 ### 2.1 Shape (P, 50 files)
 ```
 [OBJECT_DEFINE]        OBJECT_FIGUR "TOCHTER" 7          (also OBJECT_ANLAGE, OBJECT_STADT)

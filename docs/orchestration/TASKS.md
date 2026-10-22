@@ -2,7 +2,10 @@
 
 **Who writes this file:** the orchestrator session (Claude Fable, the owner's "main" session). **Who reads it:** the executor session (Claude Sonnet with subagents). The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-Last update: 2026-10-22 g.
+Last update: 2026-10-22 h.
+- **Reviewed (§4):** T17 merged (PR #20), T18 merged (PR #22), T8 S9 (PR #19) `REVIEW` with five should-fix items left (two of seven fixed by 96fc4e3), T16 (PR #21) `REVIEW` with five, T18 approved, merge when CI is green.
+
+Previous: 2026-10-22 g.
 - **Orchestrator research merged on `main`:** the in-game help checked against the data (`docs/research/manual-and-help.md`, e3b48b6), building costs in `playbook.md` §14 (51615bb), and a second survey of the game files (`docs/research/game-files-resurvey.md`, 1dc8cc7): the `BIGBROTHER` chunk is a scenario **script language**, `COMPPROFIL2` holds the AI profiles.
 - **New tasks T17 and T18** (owner: "do it", 2026-10-22): the script spec and the AI-profile loader. Both `PARALLEL-OK` and docs/tools only.
 
@@ -202,7 +205,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 - **Stage 4, the remaining M1 format points:** the `Texte.dat` join and `anno-dump anlagen` with names (static: may be the first commit, while stage 0 waits for its review); the `Anlagen.dat` gameplay records (OQ-015: `HEAD`, `PRODTYPE`, `PROD3`, `WARE`, `ROHSTOFF`, the masks, `INFRAMIN`, `OBJECTPOS`, `BAUSAMPLE`, `ENTRANCE`) from the RE plus experiments in the copy (a value changed in a copied data or scenario file, the effect observed; never in `game/`); the other `SCENE` records (`HEAD`, `MAIN`, ...), the other island records (OQ-024), the `.scp` trailer (OQ-001), versioned chunk names in the loader (M1.5), plain-text field meanings (OQ-029), figure record semantics (OQ-023), `FileGame.dll` symbols (OQ-011), the interface vtables (`docs/re/interfaces.md`). The Amsel cross-check needs the owner (a contact): list it as a question. Update PLAN M1/M2 (several boxes are stale: the Ghidra project and the static analysis are done) and the checklist.
 - **Acceptance:** every open M1/M2 point is closed with evidence or is a precise OQ that says what remains; the harness is reusable for M3's differential tests; nothing of the original in git; the owner agreed to every desktop session and every third-party tool.
 
-### T16 — The isolated runner: the original under Wine + Xvfb in WSL (owner decision 2026-10-22: "I want a similar set up to run the game") · `READY` · after the T15 play layer's stage B (it reuses its tools) · branch `task/T16-wine-runner` from `main`
+### T16 — The isolated runner: the original under Wine + Xvfb in WSL (owner decision 2026-10-22: "I want a similar set up to run the game") · `REVIEW` (PR #21, reviewed 2026-10-22 h, §4: five should-fix items, then merge; the unattended 30-minute acceptance run passed) · was `READY` · after the T15 play layer's stage B (it reuses its tools) · branch `task/T16-wine-runner` from `main`
 - **Spike passed 2026-10-22** (`docs/testing/original-wine.md`). The distro `AnnoHarness` is on `E:\wsl\AnnoHarness`, set up by `tools/orig/wine/setup.sh`; spike scripts in `tools/orig/wine/`.
   - Wine 9.0 with Mesa llvmpipe runs intros, menus and a Citizen game on Xvfb 1024×768.
   - Module bases come from `/proc/maps`.
@@ -219,7 +222,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 - **Acceptance:** an unattended 30-minute run in the Wine runner (new game, a scripted opening from the playbook, the sampler) with the owner's desktop untouched. The state fixtures F6 and warehouse agree with Windows; the timing verdict is written down.
 - **Rules:** the game copy only inside the distro; read-only memory unless the owner decides OQ-T15-WRITE; nothing of the original in git.
 
-### T17 — The scenario script language (`BIGBROTHER`): spec and Python reference (owner decision 2026-10-22: "do it") · `READY` · `PARALLEL-OK` (new files only: `docs/formats/bigbrother.md`, `tools/bigbrother.py`, a doctest corpus case) · branch `task/T17-bigbrother-spec` from `main`
+### T17 — The scenario script language (`BIGBROTHER`): spec and Python reference (owner decision 2026-10-22: "do it") · `DONE` (PR #20, reviewed 2026-10-22 h, merged as 4ef5373) · `PARALLEL-OK` (new files only: `docs/formats/bigbrother.md`, `tools/bigbrother.py`, a doctest corpus case) · branch `task/T17-bigbrother-spec` from `main`
 - **Evidence so far:** `docs/research/game-files-resurvey.md` §2 (shape, vocabulary with usage counts, the German parse errors of the interpreter in `AnnoScene.dll`), `docs/formats/sze.md` (the chunk row).
 - **Do:**
   1. `tools/bigbrother.py`: parse the `BIGBROTHER` payload of all 50 `.sze` files into sections, defines, `INITBLOCK`, `SET` statements, `IF … THEN { … }` rules (condition expressions with `&&`/`||`, comparisons, the `PLAYER "X" <query> "Y" op n`, `AREA`, `OBJECT`, `TIMER` forms), action calls with typed arguments, `[SIGNALS]`, `[CAMARAPOS]`. Re-emit byte-identically (round trip over all 50) or state exactly which bytes are not kept (trailing blanks, comments).
@@ -228,7 +231,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 - **Rules:** nothing of the original in git; quote the scripts only in short excerpts. Evidence only: where the vocabulary comes from the strings of `AnnoScene.dll` and no shipped script uses an item, mark it S (unused).
 - **Acceptance:** all 50 files parse without a fallback; the doc lists every keyword of the interpreter's string table (284 uppercase names in `AnnoScene.dll`, filter the non-script ones) as used/unused; report in REPORTS.md.
 
-### T18 — The AI profiles: `COMPPROFIL2` loader and the 19 `COMPCAPS_*` columns (owner decision 2026-10-22: "do it") · `READY` · `PARALLEL-OK` (docs only: `docs/re/annoscene.md`, `docs/formats/sze.md` §COMPPROFIL2, `docs/research/game-files-resurvey.md` §3) · branch `task/T18-compprofil` from `main`
+### T18 — The AI profiles: `COMPPROFIL2` loader and the 19 `COMPCAPS_*` columns (owner decision 2026-10-22: "do it") · `REVIEW` → approved 2026-10-22 h (PR #22, head 89246a0); merge when its CI is green · `PARALLEL-OK` (docs only: `docs/re/annoscene.md`, `docs/formats/sze.md` §COMPPROFIL2, `docs/research/game-files-resurvey.md` §3) · branch `task/T18-compprofil` from `main`
 - **Evidence so far:** `game-files-resurvey.md` §3: 168-byte `ENTRY` = `u32[19]`, name, `Profil<nn>.htm`, `0xCC` fill; keys `COMPCAPS_TYP … COMPCAPS_SETHELPANLAGE` in `AnnoScene.dll`; `DEF` 128 bytes.
 - **Do** (static analysis with `tools/disasm.py`, as in `docs/re/annoscene.md`):
   1. find the `COMPPROFIL2` reader in `AnnoScene.dll` (string refs `COMPPROFIL2`, `ENTRY`, `DEF`, the `COMPCAPS_*` names) and map each of the 19 columns to its key and type; the `DEF` record likewise;
@@ -305,7 +308,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   5. LOW: a free value of 0 is treated as "unknown" and switches the bound off; on Windows `AvailPageFile == 0` is exactly the bad_alloc condition: return an optional for a failed query and keep 0 as 0. Clamp `mb * 1024 * 1024` and `memory_wait_seconds() * 4` against wrap.
 - Then gates (test_support: MSVC and GCC -O3), report, and the orchestrator merges.
 
-### T8 — Sim stage S9: replay and session · `READY` since T7b is merged (2026-10-22); **round e: run by one subagent of the main executor** (the second executor did not start it); originally assigned to the second executor in round c; it carries the T7b requirements (framing helper, `state.md` §15 S9) · `PARALLEL-OK` (only `src/sim`, `src/tools/sim_replay`, `docs/sim`) · branch `task/T8-sim-s9-replay` from `main` (worktree `C:\Users\altin\anno1503-T8`)
+### T8 — Sim stage S9: replay and session · `REVIEW` (PR #19, reviewed 2026-10-22 h, §4: items 1, 2, 4, 6, 7 open, then merge) · was `READY` since T7b is merged (2026-10-22); **round e: run by one subagent of the main executor** (the second executor did not start it); originally assigned to the second executor in round c; it carries the T7b requirements (framing helper, `state.md` §15 S9) · `PARALLEL-OK` (only `src/sim`, `src/tools/sim_replay`, `docs/sim`) · branch `task/T8-sim-s9-replay` from `main` (worktree `C:\Users\altin\anno1503-T8`)
 - Per `state.md` §15 S9 including `src/tools/sim_replay/`. Unlocked by the orchestrator.
 
 ### T9 — Sim stages S10–S15 · `LATER`
@@ -313,6 +316,30 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 
 ## 4. Review log (orchestrator)
 
+- **T17 (2026-10-22 h, PR #20, head 1e54c90). Approved; merged as 4ef5373.**
+  - Re-run by the orchestrator: `bigbrother.py check` 50/50 byte-identical; `test_bigbrother.py` 15 passed with the corpus cases. The spec's §7 corrections to the resurvey are right (the 37-vs-39 script count, `SOLDAT_*` as tutorial object names).
+  - Nits: `vocab` prints a `0 SET (counted above)` line; the resurvey §2 has no pointer to `bigbrother.md` §7 yet (orchestrator adds one).
+- **T18 (2026-10-22 h, PR #22, head 89246a0). Approved; merge when CI is green** (docs only; the last commit, `TRIBUTSPERRE` gates one AI action, is consistent and hedged).
+  - Spot-checked in the disassembly: the 15 setter calls of the hand-over `AnnoFrame.dll` `0x10028e8a`–`0x10028fe0` push indices 0, 3, 6, 1, 2, 7, 8, 9, 18, 13, 14, 4, 25, 26, 26 as tabled; the last call takes column 13 at message `+0x18` and column 14 at `+0x14`. The twelve-profile table agrees with the orchestrator's own survey row.
+  - **Owner to confirm:** OQ-114 is written as decided by the owner ("faithful default, ignore the misspelt key"). If that was the executor's reading and not the owner's words, the status goes back to open.
+- **T8 S9 (2026-10-22 h, PR #19, reviewed at a234232; the four later commits up to 96fc4e3 fix items 3 and 5, the rest is open). Merge after fixes.** Core sound: every read bounds-checked through `ReadArchive`, explicit little-endian, hostile or truncated logs are clean `Result` errors, no floats, time, unordered containers or globals in `src/sim`. Should-fix before merge:
+  1. `replay.cpp` ~198: `write_log` drops a command that `encode_turn_entry` refuses (`if (rec.ok())`) although `Recorder::submit` already applied it to the world. The log stops being the ground truth. `Recorder::submit` must refuse such a command (or `write_log` return a `Result`); add a test.
+  2. `replay.cpp` ~327: `replay` checks `prng_timeline_version` but never compares `log.prng_timeline_missing` with `prng_timeline_missing()`. Compare it and refuse on a difference (the reason the manifest exists, `replay.hpp` 54-56); add a test.
+  3. ~~`replay_test.cpp` ~271: tautology~~ fixed in 5ee20e1 (every framing prefix checked exactly; the frame pinned byte for byte).
+  4. No real negative test for `hash_per_entry`/`first_divergent_entry`: two runs that diverge after entry k, with `first_divergent_entry(...) == k` (k > 0).
+  5. ~~`docs/sim/state.md` §8.7 normative block~~ fixed in a6257db (normative frame layout written out; `--dump-scope` takes the `diff_trees` path, 9251865).
+  6. `sim_replay/main.cpp` ~265: `std::stoull(args[++i])` throws on `--entry abc`; validate or catch, the tool must not abort.
+  7. `Recorder` calls `world_.save()` whose precondition (real terrain, `world.hpp` 127-130) is not stated on `Recorder`; document or check.
+  - Nits: `replay.hpp` 79-80 says "logs, then acts" but `advance` acts first; `run_turn` with a recorder emits one entry per command, not one block per turn (say so in the spec or change it); `diff_node` pairs children by position without a name check; the tool re-implements the private `apply_entry` loop; the config-mismatch test covers rules and registry only; REPORTS.md names head 1da8f1b and "438/438" while state.md says 731/731 (say which suite).
+  - Process: one independent reviewer (orchestrator subagent), findings 1 and 2 verified by the orchestrator in the code.
+- **T16 (2026-10-22 h, PR #21, head 086a45b). Merge after fixes.** Passed the hard checks: nothing of the original in git (`screens_sig.json` holds region hashes only, `menus.json`/`opening.json` coordinates and ids), memory reads are `os.pread` on `/proc/<pid>/mem` opened read-only, teardown kills only processes whose environment carries this run's `WINEPREFIX` and the Xvfb named by the pid file, input goes to the private X display only, audio stripped. Timing, PRNG, savegame and clock-slew claims carry run names, sample counts and error models and agree with `tick-loop.md`/`population.md`. Should-fix before merge:
+  1. `tools/orig/wine/agent.py` ~448-560: `stop()` sets `guard_stop` but never joins the watchdog thread; `log()` lazily reopens `<run>/out/actions.jsonl`, so a late watchdog line recreates the run folder after `rmtree`, and three threads call `log()` without a lock. Join before `log_close`, lock the lazy open.
+  2. `agent.py` ~663-684 (`screenshot dest`) and `--out-win`: unvalidated absolute paths written as root in the distro. Require `dest` under the run's `out` dir.
+  3. `docs/formats/user-dat.md` ~25: the `AKTPLAYER` registry value is stated as fact without evidence. Cite the prefix's `user.reg` (or the Windows registry key `SOFTWARE\GAME_ANNO1503`) or hedge.
+  4. `original-wine.md` §5 / REPORTS: "the owner's desktop received no window, input or sound": sound is observed (0 guard violations), window and input are by construction (display `:91`). Say so.
+  5. Merge `main` (T17 is on it now; both branches append to `open-questions.md` and the formats README row) and resolve.
+  - Nits: `test_orig.py` `Offsets.test_documented_values` compares constants with literal copies; `WindowsBackend.key(hold=0.05)` vs the interface default `0.0`; `agent.py` line 27 says `pkill -x` only while the kept spike `run_game.sh` still uses `pkill -f` (mark the spike scripts superseded or delete them); `unattended.py` notices a crash up to 60 s late (document).
+  - Process: one independent reviewer (orchestrator subagent).
 - **T13 fix-up (2026-10-22 e, review of f17940c..aa2a533). Approved; merged as 558dd27.**
   - Done: all seven items: the OQ-089 premise, the `lvp_icd.json` path, the added time, the `gpu-tests.md` corrections, the Medium case and the absolute-vs-difference case (both shown to catch the wrong rules), gate 1e9 → High restored, the report details.
   - CI: green on the head, push and PR runs, macOS included.

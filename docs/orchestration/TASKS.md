@@ -2,8 +2,13 @@
 
 **Who writes this file:** the orchestrator session (Claude Fable, the owner's "main" session). **Who reads it:** the executor session (Claude Sonnet with subagents). The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-Last update: 2026-10-22 h.
-- **Reviewed (§4):** T17 merged (PR #20), T18 merged (PR #22), T8 S9 (PR #19) `REVIEW` with five should-fix items left (two of seven fixed by 96fc4e3), T16 (PR #21) `REVIEW` with five, T18 approved, merge when CI is green.
+Last update: 2026-10-22 i.
+- **Role change (owner decision 2026-10-22):** the former executor session is now the orchestrator; it executes through at most two subagents at a time, each on its own `task/<id>-<slug>` branch, each reporting in `REPORTS.md` and opening a PR; subagents never merge or push to `main`.
+- **Round i:** T18 (PR #22) merges when its CI is green. The T8 fix-up (PR #19, §4 items 1, 2, 4, 6, 7) and the T16 fix-up (PR #21, §4 items 1-5) run in two subagents (`IN PROGRESS`). PR #16 (T15 stage 1) stays a draft until an owner-agreed driving session. After S9 lands: T9 (S10), T14, and a small RE task on the script engine (OQ-120/121).
+- **OQ-114 confirmed:** the owner wrote in the session "faithful default for OQ-114, ignore the misspelt key"; the decided status stands.
+
+Previous: 2026-10-22 h.
+- **Reviewed (§4):** T17 merged (PR #20), T18 approved, not merged (the "T18 merged" in the first version of this line was wrong), T8 S9 (PR #19) `REVIEW` with five should-fix items left (two of seven fixed by 96fc4e3), T16 (PR #21) `REVIEW` with five.
 
 Previous: 2026-10-22 g.
 - **Orchestrator research merged on `main`:** the in-game help checked against the data (`docs/research/manual-and-help.md`, e3b48b6), building costs in `playbook.md` §14 (51615bb), and a second survey of the game files (`docs/research/game-files-resurvey.md`, 1dc8cc7): the `BIGBROTHER` chunk is a scenario **script language**, `COMPPROFIL2` holds the AI profiles.
@@ -205,7 +210,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 - **Stage 4, the remaining M1 format points:** the `Texte.dat` join and `anno-dump anlagen` with names (static: may be the first commit, while stage 0 waits for its review); the `Anlagen.dat` gameplay records (OQ-015: `HEAD`, `PRODTYPE`, `PROD3`, `WARE`, `ROHSTOFF`, the masks, `INFRAMIN`, `OBJECTPOS`, `BAUSAMPLE`, `ENTRANCE`) from the RE plus experiments in the copy (a value changed in a copied data or scenario file, the effect observed; never in `game/`); the other `SCENE` records (`HEAD`, `MAIN`, ...), the other island records (OQ-024), the `.scp` trailer (OQ-001), versioned chunk names in the loader (M1.5), plain-text field meanings (OQ-029), figure record semantics (OQ-023), `FileGame.dll` symbols (OQ-011), the interface vtables (`docs/re/interfaces.md`). The Amsel cross-check needs the owner (a contact): list it as a question. Update PLAN M1/M2 (several boxes are stale: the Ghidra project and the static analysis are done) and the checklist.
 - **Acceptance:** every open M1/M2 point is closed with evidence or is a precise OQ that says what remains; the harness is reusable for M3's differential tests; nothing of the original in git; the owner agreed to every desktop session and every third-party tool.
 
-### T16 — The isolated runner: the original under Wine + Xvfb in WSL (owner decision 2026-10-22: "I want a similar set up to run the game") · `REVIEW` (PR #21, reviewed 2026-10-22 h, §4: five should-fix items, then merge; the unattended 30-minute acceptance run passed) · was `READY` · after the T15 play layer's stage B (it reuses its tools) · branch `task/T16-wine-runner` from `main`
+### T16 — The isolated runner: the original under Wine + Xvfb in WSL (owner decision 2026-10-22: "I want a similar set up to run the game") · `IN PROGRESS` (round i: the fix-up of §4 items 1-5 and the nits runs in an orchestrator subagent on the same branch, no Wine runs; the orchestrator runs a short smoke run before the merge) · was `REVIEW` (PR #21, reviewed 2026-10-22 h, §4: five should-fix items, then merge; the unattended 30-minute acceptance run passed) · was `READY` · after the T15 play layer's stage B (it reuses its tools) · branch `task/T16-wine-runner` from `main`
 - **Spike passed 2026-10-22** (`docs/testing/original-wine.md`). The distro `AnnoHarness` is on `E:\wsl\AnnoHarness`, set up by `tools/orig/wine/setup.sh`; spike scripts in `tools/orig/wine/`.
   - Wine 9.0 with Mesa llvmpipe runs intros, menus and a Citizen game on Xvfb 1024×768.
   - Module bases come from `/proc/maps`.
@@ -308,11 +313,24 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   5. LOW: a free value of 0 is treated as "unknown" and switches the bound off; on Windows `AvailPageFile == 0` is exactly the bad_alloc condition: return an optional for a failed query and keep 0 as 0. Clamp `mb * 1024 * 1024` and `memory_wait_seconds() * 4` against wrap.
 - Then gates (test_support: MSVC and GCC -O3), report, and the orchestrator merges.
 
-### T8 — Sim stage S9: replay and session · `REVIEW` (PR #19, reviewed 2026-10-22 h, §4: items 1, 2, 4, 6, 7 open, then merge) · was `READY` since T7b is merged (2026-10-22); **round e: run by one subagent of the main executor** (the second executor did not start it); originally assigned to the second executor in round c; it carries the T7b requirements (framing helper, `state.md` §15 S9) · `PARALLEL-OK` (only `src/sim`, `src/tools/sim_replay`, `docs/sim`) · branch `task/T8-sim-s9-replay` from `main` (worktree `C:\Users\altin\anno1503-T8`)
+### T8 — Sim stage S9: replay and session · `IN PROGRESS` (round i: the fix-up of §4 items 1, 2, 4, 6, 7 and the nits runs in an orchestrator subagent on the same branch; then re-review and merge, then PLAN S9 done) · was `REVIEW` (PR #19, reviewed 2026-10-22 h, §4: items 1, 2, 4, 6, 7 open, then merge) · was `READY` since T7b is merged (2026-10-22); **round e: run by one subagent of the main executor** (the second executor did not start it); originally assigned to the second executor in round c; it carries the T7b requirements (framing helper, `state.md` §15 S9) · `PARALLEL-OK` (only `src/sim`, `src/tools/sim_replay`, `docs/sim`) · branch `task/T8-sim-s9-replay` from `main` (worktree `C:\Users\altin\anno1503-T8`)
 - Per `state.md` §15 S9 including `src/tools/sim_replay/`. Unlocked by the orchestrator.
 
-### T9 — Sim stages S10–S15 · `LATER`
-- One stage per task, in the order of §15; each unlocked after the previous is merged.
+### T9 — Sim stages S10–S15 · S10 `READY after T8 (S9) is merged` (round i) · S11–S15 `LATER`
+- One stage per task, in the order of `docs/sim/state.md` §15; each unlocked after the previous is merged. Branch `task/T9-sim-s10-build` from `main` after the S9 merge (worktree `C:\Users\altin\anno1503-T9`); one orchestrator subagent; `src/sim`, `src/tools/sim_replay`, `fixtures/synthetic/sim`, `docs/sim` only.
+- **S10 (Build, Demolish, trade commands)**, as written in `state.md` §15 S10: `apply.cpp` (Build, Demolish, SetTradeFlag, SetTradeSlot; today they answer `Unsupported`), `placement.cpp` (the stand-in rule), create with charge, `legacy_codec.cpp`, the G2 log.
+- **Acceptance (written before work starts):**
+  1. every test name listed in §15 S10 exists and passes (17 cases, from "build charges gold and goods" to "legacy 0x64 decode on synthetic bytes");
+  2. `fixtures/synthetic/sim/g2.log` committed (our own synthetic data, no original bytes), recorded with S9's `Recorder`; `anno-sim-replay run` reproduces every checkpoint of it;
+  3. free-slot reuse after Demolish matches the hand-derived order written in `state.md` before the code;
+  4. every rule cites its evidence (module + address or `production.md`/`core.md` section); anything not traced goes to `open-questions.md`, not into code as fact; anything that changes the feel (e.g. the free-build cheat default) stays at the original's behaviour and is listed as an owner question;
+  5. all gates of §1 item 4 including the WSL GCC -O3 check with and without the game dir, `lint_sim.py`, and mutation evidence for the charge, the atomic rule and the free-slot order (break each, the tests fail);
+  6. `state.md` §15 "S10 as implemented", PLAN status, a REPORTS.md section, a PR.
+
+### T19 — The script engine: `&&`/`||` precedence and statements without `;` (OQ-120, OQ-121) · `READY` · `PARALLEL-OK` (docs only: `docs/re/annoscene.md`, `docs/formats/bigbrother.md` §3.4, `docs/open-questions.md`) · branch `task/T19-script-engine-re` from `main`
+- **Why:** 28 of the 308 shipped conditions mix `&&` and `||` without parentheses, and four shipped statements have no `;` (`bigbrother.md` §3.4). What these missions test, and whether an action is lost, depends on the interpreter. The C++ port of the script engine needs both answered.
+- **Do** (static analysis with `tools/disasm.py` and capstone, as in `docs/re/annoscene.md`): find the condition parser and the statement reader in `AnnoScene.dll` (the ops range `0x10011ed0`–`0x10013dab`, O-16; the delimiter table `0x1003d888`–`0x1003d8a0`; the strings "Kein THEN bei Bedingung", "Unbekannter Vergleichsoperator!"); state how a condition with mixed connectives is grouped and evaluated (left to right, `&&` binds tighter, or other), and what the reader does at a missing `;` (ends the statement at `)`/value, or reads on into the next).
+- **Acceptance:** both questions answered with module + address for every step, or narrowed with the reason; the 28 mixed conditions and the four statements re-read under the answer (which of them change meaning against a naive reading, by file, short excerpts only); `tools/bigbrother.py` grows a `describe` of the grouping only if the answer is certain; OQ-120/121 updated (closed or narrowed); report and PR.
 
 ## 4. Review log (orchestrator)
 
@@ -321,7 +339,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   - Nits: `vocab` prints a `0 SET (counted above)` line; the resurvey §2 has no pointer to `bigbrother.md` §7 yet (orchestrator adds one).
 - **T18 (2026-10-22 h, PR #22, head 89246a0). Approved; merge when CI is green** (docs only; the last commit, `TRIBUTSPERRE` gates one AI action, is consistent and hedged).
   - Spot-checked in the disassembly: the 15 setter calls of the hand-over `AnnoFrame.dll` `0x10028e8a`–`0x10028fe0` push indices 0, 3, 6, 1, 2, 7, 8, 9, 18, 13, 14, 4, 25, 26, 26 as tabled; the last call takes column 13 at message `+0x18` and column 14 at `+0x14`. The twelve-profile table agrees with the orchestrator's own survey row.
-  - **Owner to confirm:** OQ-114 is written as decided by the owner ("faithful default, ignore the misspelt key"). If that was the executor's reading and not the owner's words, the status goes back to open.
+  - **Owner to confirm:** OQ-114 is written as decided by the owner ("faithful default, ignore the misspelt key"). If that was the executor's reading and not the owner's words, the status goes back to open. **Confirmed 2026-10-22 i:** the owner's own words in the session were "faithful default for OQ-114, ignore the misspelt key".
 - **T8 S9 (2026-10-22 h, PR #19, reviewed at a234232; the four later commits up to 96fc4e3 fix items 3 and 5, the rest is open). Merge after fixes.** Core sound: every read bounds-checked through `ReadArchive`, explicit little-endian, hostile or truncated logs are clean `Result` errors, no floats, time, unordered containers or globals in `src/sim`. Should-fix before merge:
   1. `replay.cpp` ~198: `write_log` drops a command that `encode_turn_entry` refuses (`if (rec.ok())`) although `Recorder::submit` already applied it to the world. The log stops being the ground truth. `Recorder::submit` must refuse such a command (or `write_log` return a `Result`); add a test.
   2. `replay.cpp` ~327: `replay` checks `prng_timeline_version` but never compares `log.prng_timeline_missing` with `prng_timeline_missing()`. Compare it and refuse on a difference (the reason the manifest exists, `replay.hpp` 54-56); add a test.

@@ -60,12 +60,13 @@ def skip_intros(b, timeout: float = 120.0) -> dict:
     cfg = menus()["intros"]
     end = time.monotonic() + timeout
     skips, seen = 0, []
+    max_skips = cfg["expected_skips"] + 1      # one spare; then only wait (videos end by themselves)
     while time.monotonic() < end:
         r = b.recognize()
         seen.append(r["screen"])
         if r["screen"] == "main_menu":
             return {"skips": skips, "expected": cfg["expected_skips"], "seen": seen[-12:]}
-        if r["screen"] not in ("black",):
+        if r["screen"] not in ("black",) and skips < max_skips:
             b.key(cfg["skip_key"])
             skips += 1
             time.sleep(1.5)

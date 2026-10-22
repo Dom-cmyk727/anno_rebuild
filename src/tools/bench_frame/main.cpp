@@ -152,6 +152,8 @@ struct Options {
     std::vector<std::size_t> zoom_dump_after{0};
     /// --chunk-profile: the builder thread counts to profile (empty = the frame paths).
     std::vector<std::size_t> profile_threads;
+    /// --chunk-build cpu|gpu: the GpuList builder (T11 stage 2a) on the GPU paths.
+    render::ChunkBuilder chunk_builder = render::ChunkBuilder::Cpu;
     /// --chunk-limit: the chunks nearest the island's centre that are built. 96 is
     /// about four 2560 x 1440 views at group 0 (24 chunks each), a few minutes on
     /// one thread at the measured 100-250 ms per chunk; 0 = all of the island.
@@ -237,6 +239,7 @@ struct Config {
     int w = 0, h = 0;
     std::size_t group = 0;
     render::WaterStyle style = render::WaterStyle::Original;
+    render::ChunkBuilder chunk_builder = render::ChunkBuilder::Cpu;
     bool async_chunks = false;
     std::pair<int, int> centre{0, 0};
     std::size_t frames = 120;
@@ -848,6 +851,10 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
     // The GPU compositor draws the ships itself: chunks without them.
     render::FrameRenderer fr(c.threads, g == nullptr);
     fr.river_flow = c.river_flow;
+    // GpuList builder only on the GPU path (the CPU path replays the list).
+    if (g != nullptr) {
+        fr.chunk_builder = c.chunk_builder;
+    }
     if (c.lookahead) {
         fr.max_lookahead_chunks = *c.lookahead;
     }
@@ -1101,6 +1108,7 @@ int fill_time(const render::Scene& scene, const Options& o, std::size_t island) 
         return 1;
     }
     render::FrameRenderer fr(o.threads, false);
+    fr.chunk_builder = o.chunk_builder;
     fr.derive_from_cache = o.derive_from_cache;
     fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, o.threads));
     // The sea patterns are not needed to build chunks.
@@ -1202,6 +1210,7 @@ int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
             const auto rv = gpu::resampled_view(cx, cy, static_cast<std::uint32_t>(w),
                                                 static_cast<std::uint32_t>(h), pt.scale, filter);
             render::FrameRenderer fr(o.threads, false);
+        fr.chunk_builder = o.chunk_builder;
             fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (o.threads + 1) / 2));
             const auto target =
                 g.offscreen_target(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));
@@ -1298,6 +1307,7 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
     constexpr double kBusyMs = 8.0;
     for (const auto& [w, h] : o.resolutions) {
         render::FrameRenderer fr(o.threads, false);
+        fr.chunk_builder = o.chunk_builder;
         fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (o.threads + 1) / 2));
         const auto target =
             g.offscreen_target(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));
@@ -1679,6 +1689,10 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
                 ok = false;
             }
 #endif
+        } else if (a == "--chunk-build") {
+            ok = v == "cpu" || v == "gpu";
+            o.chunk_builder =
+                v == "gpu" ? render::ChunkBuilder::GpuList : render::ChunkBuilder::Cpu;
         } else if (a == "--island") {
             std::size_t n = 0;
             ok = parse(v, n);
@@ -2037,6 +2051,7 @@ int main(int argc, char** argv) {
                             return 1;
                         }
                         Config c;
+                        c.chunk_builder = o->chunk_builder;
                         c.w = w;
                         c.h = h;
                         c.group = group;

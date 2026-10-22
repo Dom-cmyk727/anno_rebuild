@@ -6,12 +6,15 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <anno/sim/archive.hpp>
 #include <anno/sim/draw.hpp>
 #include <anno/sim/hash.hpp>
+#include <anno/sim/island.hpp>
 #include <anno/sim/replay.hpp>
 
 namespace anno::sim {
@@ -91,6 +94,22 @@ std::vector<std::string> prng_timeline_missing() {
 
 // ---- Recorder ----------------------------------------------------------------------
 
+formats::Result<Recorder, std::string> Recorder::start(World& world) {
+    // World::save's precondition (world.hpp): a digest-only terrain placeholder would
+    // make the initial save one that World::load refuses. One FNV pass over each
+    // island's terrain columns, less than the save itself costs.
+    const std::vector<std::optional<Island>>& islands = world.islands();
+    for (std::size_t i = 0; i < islands.size(); ++i) {
+        if (islands[i].has_value() && islands[i]->terrain != nullptr &&
+            !terrain_matches(*islands[i]->terrain)) {
+            return std::string("cannot record: islands[" + std::to_string(i) +
+                               "].terrain is a digest-only placeholder (a world from the "
+                               "flat state stream is for hashing only, World::save)");
+        }
+    }
+    return Recorder(world);
+}
+
 Recorder::Recorder(World& world) : world_(world) {
     log_.config_digest = world_.config().digest();
     log_.rules_digest = world_.rules().digest();
@@ -102,6 +121,13 @@ Recorder::Recorder(World& world) : world_(world) {
 }
 
 ApplyResult Recorder::submit(const Command& command) {
+    // A command write_log could not write is refused before it is logged or applied:
+    // otherwise the world would hold a change the written log does not (§8.7).
+    if (!encode_record(command.body).ok()) {
+        ApplyResult refused;
+        refused.status = Reject::Unencodable;
+        return refused;
+    }
     ReplayEntry e;
     e.kind = ReplayEntry::Kind::Commands;
     e.commands.push_back(command);
@@ -164,7 +190,7 @@ void run_frame(World& world, Recorder* rec, std::span<const Command> commands,
 
 // ---- write / read ------------------------------------------------------------------
 
-std::vector<std::uint8_t> write_log(const ReplayLog& log) {
+formats::Result<std::vector<std::uint8_t>, std::string> write_log(const ReplayLog& log) {
     WriteArchive w;
     w.bytes(kMagic);
     w.u32(kReplayLogVersion);
@@ -181,7 +207,8 @@ std::vector<std::uint8_t> write_log(const ReplayLog& log) {
     w.u64(log.initial_save.size());
     w.bytes(log.initial_save);
     w.count(log.entries.size(), kMinEntryBytes);
-    for (const ReplayEntry& e : log.entries) {
+    for (std::size_t i = 0; i < log.entries.size(); ++i) {
+        const ReplayEntry& e = log.entries[i];
         w.u8(kind_byte(e.kind));
         switch (e.kind) {
         case ReplayEntry::Kind::Advance:
@@ -195,9 +222,12 @@ std::vector<std::uint8_t> write_log(const ReplayLog& log) {
             std::uint32_t seq = 0;
             for (const Command& c : e.commands) {
                 auto rec = encode_turn_entry(TurnEntry{c, seq});
-                if (rec.ok()) {
-                    blob.insert(blob.end(), rec.value().begin(), rec.value().end());
+                if (!rec.ok()) {
+                    // Never drop a command: the log would no longer be what happened.
+                    return std::string("entry " + std::to_string(i) + ", command " +
+                                       std::to_string(seq) + ": " + rec.error());
                 }
+                blob.insert(blob.end(), rec.value().begin(), rec.value().end());
                 ++seq;
             }
             w.u64(blob.size());
@@ -328,6 +358,12 @@ formats::Result<ReplayOutcome, std::string> replay(World& world, const ReplayLog
         return std::string("replay refused: PRNG timeline version " +
                            std::to_string(log.prng_timeline_version) + " is not this build's " +
                            std::to_string(kPrngTimelineVersion));
+    }
+    if (log.prng_timeline_missing != prng_timeline_missing()) {
+        // The same version with another set of unported draw sites: a site was ported
+        // (or dropped) without a version bump, so the draws would silently differ.
+        return std::string("replay refused: the PRNG timeline's missing draw sites differ "
+                           "from this build's");
     }
     if (log.config_digest != world.config().digest()) {
         return std::string("replay refused: configuration digest differs from the log's");

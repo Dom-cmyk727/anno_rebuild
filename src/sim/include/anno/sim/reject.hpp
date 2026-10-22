@@ -46,7 +46,12 @@ enum class Reject : std::uint16_t {
     /// The building list is full and cannot grow: a list of 0xFFFFFFFF elements
     /// (the slot is a u32 and kNoSlot its maximum, SlotList::grown_size). Own
     /// design (S6): unreachable in a game, but create_building must be total.
-    ListFull
+    ListFull,
+    /// The command has no wire form, so a replay log cannot hold it (encode_record
+    /// refuses it: a LegacyRawCmd whose type is a native wire type, or a payload longer
+    /// than kMaxRecordPayload). Recorder::submit answers it without logging or applying
+    /// the command, so the log stays the ground truth of the session (S9).
+    Unencodable
 };
 
 /// What one record of a command did (docs/sim/state.md §8.3): the status and, for
@@ -116,6 +121,8 @@ struct ApplyResult {
         return "BadValue";
     case Reject::ListFull:
         return "ListFull";
+    case Reject::Unencodable:
+        return "Unencodable";
     }
     return "?";
 }

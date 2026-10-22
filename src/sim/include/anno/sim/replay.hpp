@@ -2,11 +2,13 @@
 // through, the on-disk replay log, the deterministic re-run and the divergence
 // finder (spec: docs/sim/state.md §8.7, §15 S9).
 //
-// A Recorder logs first, then acts: every command it submits and every advance it
-// makes becomes a ReplayEntry, with a checkpoint entry holding the state hash
-// wherever the session asks. write_log / read_log move the log through an explicit
-// little-endian frame (bounds-checked, no reinterpret_cast; a truncated or hostile
-// log is a clean Result error, never UB). replay() re-runs a log against a world
+// Every command a Recorder applies and every advance it makes becomes a ReplayEntry
+// (a command is logged, then applied; an advance is made, then logged with the tick
+// it reached), with a checkpoint entry holding the state hash wherever the session
+// asks; a command the log cannot hold is refused before it is applied. write_log /
+// read_log move the log through an explicit little-endian frame (bounds-checked, no
+// reinterpret_cast; a truncated or hostile log, or a log holding a command without a
+// wire form, is a clean Result error, never UB). replay() re-runs a log against a world
 // built with the matching registry and seams and stops at the first checkpoint whose
 // hash differs; hash_per_entry / first_divergent_entry / tree_at / diff_trees narrow
 // a two-build disagreement to one scope path. PrintArchive dumps a scope's fields as
@@ -75,17 +77,29 @@ struct ReplayLog {
 /// order (docs/sim/state.md §6). Recorded in the replay-log header.
 [[nodiscard]] std::vector<std::string> prng_timeline_missing();
 
-/// The one door a session drives a World through: it logs an entry, then performs
-/// the action, so the log is the ground truth of what happened (docs/sim/state.md
-/// §8.7). It captures the world's digests, the PRNG timeline and the world's save
-/// at construction (the state before entry 0).
+/// The one door a session drives a World through: every command it applies and every
+/// advance it makes becomes an entry of its log, so the log is the ground truth of what
+/// happened (docs/sim/state.md §8.7). It captures the world's digests, the PRNG
+/// timeline and the world's save when it starts (the state before entry 0).
+///
+/// Precondition, checked by start(): the world can be saved (World::save), i.e. every
+/// island's terrain satisfies terrain_matches(). A world filled from the flat state
+/// stream alone holds digest-only terrain placeholders; it is for hashing only and
+/// cannot be recorded, because the log's initial save would be refused by World::load.
 class Recorder {
   public:
-    explicit Recorder(World& world);
+    /// A recorder of `world`, or an error naming the first island whose terrain is a
+    /// digest-only placeholder (the precondition above). The world must outlive the
+    /// recorder.
+    [[nodiscard]] static formats::Result<Recorder, std::string> start(World& world);
 
-    /// Logs the command, then applies it; returns World::apply's result.
+    /// Logs the command, then applies it; returns World::apply's result. A command
+    /// that has no wire form (encode_record refuses it, so write_log could not write
+    /// it) is neither logged nor applied: the result is Reject::Unencodable and the
+    /// world and the log are unchanged.
     ApplyResult submit(const Command& command);
-    /// Logs an advance, then advances the world by `ms`; returns the new tick.
+    /// Advances the world by `ms`, then logs an Advance entry with the tick it reached;
+    /// returns the new tick.
     std::uint64_t advance(std::uint32_t ms);
     /// Logs a checkpoint with the current tick and state hash.
     void checkpoint();
@@ -93,6 +107,8 @@ class Recorder {
     [[nodiscard]] const ReplayLog& log() const { return log_; }
 
   private:
+    explicit Recorder(World& world);
+
     World& world_;
     ReplayLog log_;
 };
@@ -107,13 +123,19 @@ struct Turn {
 
 /// MP: apply the turn's commands in stream order, then `steps` advances of
 /// turn.step_ms. SP: apply the commands, then one advance of step_ms. When `rec` is
-/// non-null the session is driven through it (the commands and advances are logged);
-/// otherwise the World is driven directly.
+/// non-null the session is driven through it: each command goes through
+/// Recorder::submit and becomes one Commands entry of its own (not one block per turn),
+/// each advance one Advance entry. Otherwise the World is driven directly.
 void run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_t steps);
 void run_frame(World& world, Recorder* rec, std::span<const Command> commands,
                std::uint32_t step_ms);
 
-std::vector<std::uint8_t> write_log(const ReplayLog& log);
+/// The log as bytes, or an error (naming the entry) when a Commands entry holds a
+/// command that has no wire form (encode_record refuses it). A log made by a Recorder
+/// never does (Recorder::submit refuses such a command); a hand-built one may, and is
+/// refused rather than written without the command.
+[[nodiscard]] formats::Result<std::vector<std::uint8_t>, std::string>
+write_log(const ReplayLog& log);
 [[nodiscard]] formats::Result<ReplayLog, std::string> read_log(std::span<const std::uint8_t> bytes);
 
 /// The result of replaying a log against a world.
@@ -133,9 +155,10 @@ struct ReplayOutcome {
 
 /// Re-runs `log` against `world`, which must be at the log's initial state and built
 /// with a matching registry and seams: an error when the world's digests or PRNG
-/// timeline differ from the log's (a replay of someone else's build, refused before
-/// anything runs, §8.2 item 4). Otherwise it applies the entries in order and stops
-/// at the first checkpoint whose hash differs, reporting it in the outcome.
+/// timeline (its version and the list of missing draw sites) differ from the log's (a
+/// replay of someone else's build, refused before anything runs, §8.2 item 4). Otherwise it applies
+/// the entries in order and stops at the first checkpoint whose hash differs, reporting it in the
+/// outcome.
 [[nodiscard]] formats::Result<ReplayOutcome, std::string> replay(World& world,
                                                                  const ReplayLog& log);
 

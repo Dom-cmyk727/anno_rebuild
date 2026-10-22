@@ -1,12 +1,17 @@
 // Stage S9: replay and session (docs/sim/state.md §8.7, §15 S9). The recorder that is
 // the one door a session drives a World through, the log round trip, the divergence
 // finder down to a scope path, the config-mismatch refusal, the command-before-steps
-// order, the PRNG-timeline header, the framing helper and a hostile-log check.
+// order, the PRNG-timeline header, the framing helper and a hostile-log check; the
+// T8 review fixes: a command without a wire form is refused by the recorder and by
+// write_log, a different list of missing draw sites is refused by replay, and a world that cannot
+// be saved cannot be recorded.
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -58,13 +63,27 @@ sim::Command legacy_cmd() {
     return c;
 }
 
+/// A recorder of `w` (Recorder::start; the test worlds have real terrain).
+sim::Recorder recorder(sim::World& w) {
+    auto r = sim::Recorder::start(w);
+    REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
+    return std::move(r).value();
+}
+
+/// write_log's bytes for a log that holds only commands with a wire form.
+std::vector<std::uint8_t> log_bytes(const sim::ReplayLog& log) {
+    auto b = sim::write_log(log);
+    REQUIRE_MESSAGE(b.ok(), (b.ok() ? std::string() : b.error()));
+    return std::move(b).value();
+}
+
 } // namespace
 
 TEST_CASE("recorder replay reproduces checkpoints") {
     const bt::Kit k = bt::make_kit();
     sim::World w = bt::all_classes_world(k);
 
-    sim::Recorder rec(w);
+    sim::Recorder rec = recorder(w);
     rec.checkpoint();
     rec.submit(host_speed(200));
     rec.advance(20);
@@ -100,7 +119,7 @@ TEST_CASE("write_log read_log round trip") {
     const bt::Kit k = bt::make_kit();
     sim::World w = bt::all_classes_world(k);
 
-    sim::Recorder rec(w);
+    sim::Recorder rec = recorder(w);
     rec.checkpoint();
     rec.submit(host_speed(200));
     rec.submit(build_cmd());
@@ -114,13 +133,13 @@ TEST_CASE("write_log read_log round trip") {
     multi.commands = {host_speed(50), build_cmd(), legacy_cmd()};
     log.entries.push_back(multi);
 
-    const std::vector<std::uint8_t> bytes = sim::write_log(log);
+    const std::vector<std::uint8_t> bytes = log_bytes(log);
     auto rd = sim::read_log(bytes);
     REQUIRE_MESSAGE(rd.ok(), (rd.ok() ? std::string() : rd.error()));
     CHECK(rd.value() == log);
 
     // Re-writing the read-back log yields identical bytes.
-    CHECK(sim::write_log(rd.value()) == bytes);
+    CHECK(log_bytes(rd.value()) == bytes);
 }
 
 TEST_CASE("write_log matches the documented frame byte for byte") {
@@ -183,7 +202,7 @@ TEST_CASE("write_log matches the documented frame byte for byte") {
     s.u16(4);    // payload length
     s.u32(200);  // percent
 
-    CHECK(sim::write_log(log) == s.v);
+    CHECK(log_bytes(log) == s.v);
     auto rd = sim::read_log(s.v);
     REQUIRE_MESSAGE(rd.ok(), (rd.ok() ? std::string() : rd.error()));
     CHECK(rd.value() == log);
@@ -230,7 +249,7 @@ TEST_CASE("replay refuses a config mismatch") {
     const sim::ScenarioSpec spec = bt::kit_scenario();
 
     sim::World logw = bt::make_world(k, spec);
-    sim::Recorder rec(logw);
+    sim::Recorder rec = recorder(logw);
     rec.advance(20);
     rec.checkpoint();
     const sim::ReplayLog log = rec.log();
@@ -254,7 +273,7 @@ TEST_CASE("run_turn applies commands before steps") {
     const bt::Kit k = bt::make_kit();
 
     sim::World w1 = bt::all_classes_world(k);
-    sim::Recorder rec(w1);
+    sim::Recorder rec = recorder(w1);
     sim::Turn turn;
     turn.step_ms = 20;
     turn.commands = {host_speed(200)};
@@ -278,7 +297,7 @@ TEST_CASE("run_turn applies commands before steps") {
 
     // run_frame (single player): the commands, then exactly one advance.
     sim::World w3 = bt::all_classes_world(k);
-    sim::Recorder rec3(w3);
+    sim::Recorder rec3 = recorder(w3);
     const std::vector<sim::Command> cmds{host_speed(100)};
     sim::run_frame(w3, &rec3, cmds, 50);
     const std::vector<sim::ReplayEntry>& fs = rec3.log().entries;
@@ -290,7 +309,7 @@ TEST_CASE("run_turn applies commands before steps") {
 TEST_CASE("log header records the prng timeline") {
     const bt::Kit k = bt::make_kit();
     sim::World w = bt::all_classes_world(k);
-    sim::Recorder rec(w);
+    sim::Recorder rec = recorder(w);
     const sim::ReplayLog& log = rec.log();
 
     CHECK(log.prng_timeline_version == sim::kPrngTimelineVersion);
@@ -366,11 +385,11 @@ TEST_CASE("record_size and decode_turn frame a back-to-back stream") {
 TEST_CASE("read_log rejects truncated and hostile input") {
     const bt::Kit k = bt::make_kit();
     sim::World w = bt::all_classes_world(k);
-    sim::Recorder rec(w);
+    sim::Recorder rec = recorder(w);
     rec.submit(host_speed(200));
     rec.advance(20);
     rec.checkpoint();
-    const std::vector<std::uint8_t> good = sim::write_log(rec.log());
+    const std::vector<std::uint8_t> good = log_bytes(rec.log());
     REQUIRE(sim::read_log(good).ok());
 
     // Every prefix is rejected cleanly (not the whole log, which is valid).
@@ -438,7 +457,7 @@ TEST_CASE("PrintArchive dumps the stream and filters a scope") {
 TEST_CASE("hash_per_entry and tree_at follow the log") {
     const bt::Kit k = bt::make_kit();
     sim::World w = bt::all_classes_world(k);
-    sim::Recorder rec(w);
+    sim::Recorder rec = recorder(w);
     rec.advance(20);
     rec.checkpoint();
     rec.advance(40);
@@ -458,4 +477,103 @@ TEST_CASE("hash_per_entry and tree_at follow the log") {
     sim::World initial2 = bt::all_classes_world(k);
     const sim::HashTree tree = sim::tree_at(initial2, log, log.entries.size(), 0);
     CHECK(tree.root.hash == hashes.back());
+}
+
+// ---- T8 review fixes ---------------------------------------------------------------
+
+TEST_CASE("recorder refuses a command the log cannot hold") {
+    const bt::Kit k = bt::make_kit();
+    sim::World w = bt::all_classes_world(k);
+    sim::Recorder rec = recorder(w);
+    rec.submit(host_speed(200));
+    const std::size_t logged = rec.log().entries.size();
+    const std::uint64_t before = w.state_hash();
+
+    // Two commands encode_record refuses: a LegacyRawCmd whose type is a native wire
+    // type, and one whose payload is longer than a record can carry.
+    sim::Command native = legacy_cmd();
+    std::get<sim::LegacyRawCmd>(native.body).type = sim::kWireSetSpeed;
+    sim::Command oversized = legacy_cmd();
+    std::get<sim::LegacyRawCmd>(oversized.body).payload.assign(sim::kMaxRecordPayload + 1, 0);
+    for (const sim::Command& c : {native, oversized}) {
+        REQUIRE_FALSE(sim::encode_record(c.body).ok());
+        const sim::ApplyResult res = rec.submit(c);
+        CHECK(res.status == sim::Reject::Unencodable);
+        // Neither logged nor applied: the log stays what happened.
+        CHECK(rec.log().entries.size() == logged);
+        CHECK(w.state_hash() == before);
+    }
+
+    // The log written after the refusals is the whole session and replays.
+    const std::vector<std::uint8_t> bytes = log_bytes(rec.log());
+    auto rd = sim::read_log(bytes);
+    REQUIRE(rd.ok());
+    CHECK(rd.value() == rec.log());
+
+    // A hand-built log holding such a command is refused by write_log, naming the
+    // entry and the command, instead of being written without it.
+    sim::ReplayLog hand = rec.log();
+    sim::ReplayEntry bad;
+    bad.kind = sim::ReplayEntry::Kind::Commands;
+    bad.commands = {host_speed(100), native};
+    hand.entries.push_back(bad);
+    auto refused = sim::write_log(hand);
+    REQUIRE_FALSE(refused.ok());
+    CHECK(refused.error().find("entry " + std::to_string(hand.entries.size() - 1) +
+                               ", command 1") != std::string::npos);
+}
+
+TEST_CASE("replay refuses another set of missing draw sites") {
+    const bt::Kit k = bt::make_kit();
+    sim::World w = bt::all_classes_world(k);
+    sim::Recorder rec = recorder(w);
+    rec.advance(20);
+    rec.checkpoint();
+    REQUIRE_FALSE(rec.log().prng_timeline_missing.empty());
+
+    // The same timeline version and digests, but a site ported (or one more missing)
+    // without a version bump: the draws would differ silently, so replay refuses
+    // before anything runs.
+    sim::ReplayLog ported = rec.log();
+    ported.prng_timeline_missing.pop_back();
+    sim::ReplayLog extra = rec.log();
+    extra.prng_timeline_missing.emplace_back("ExtraSite");
+    sim::ReplayLog reordered = rec.log();
+    REQUIRE(reordered.prng_timeline_missing.size() >= 2);
+    std::swap(reordered.prng_timeline_missing.front(), reordered.prng_timeline_missing.back());
+    for (const sim::ReplayLog* log : {&ported, &extra, &reordered}) {
+        sim::World fresh = bt::all_classes_world(k);
+        const std::uint64_t before = fresh.state_hash();
+        auto refused = sim::replay(fresh, *log);
+        REQUIRE_FALSE(refused.ok());
+        CHECK(refused.error().find("missing draw sites") != std::string::npos);
+        CHECK(fresh.state_hash() == before);
+    }
+
+    // The unmodified log replays.
+    sim::World fresh = bt::all_classes_world(k);
+    auto ok = sim::replay(fresh, rec.log());
+    REQUIRE(ok.ok());
+    CHECK(ok.value().reproduced());
+}
+
+TEST_CASE("recorder refuses a world it cannot save") {
+    const bt::Kit k = bt::make_kit();
+    sim::World w = bt::all_classes_world(k);
+    REQUIRE(sim::Recorder::start(w).ok());
+
+    // A digest-only terrain placeholder (what a world filled from the flat state stream
+    // holds): the digest without its columns. World::save would write a frame load
+    // refuses, so the recorder does not start.
+    sim::Island& is = bt::isl(w, 3);
+    REQUIRE(is.terrain != nullptr);
+    auto placeholder = std::make_shared<sim::Terrain>(*is.terrain);
+    placeholder->height.clear();
+    placeholder->gfx.clear();
+    placeholder->fertility.clear();
+    REQUIRE_FALSE(sim::terrain_matches(*placeholder));
+    is.terrain = placeholder;
+    auto refused = sim::Recorder::start(w);
+    REQUIRE_FALSE(refused.ok());
+    CHECK(refused.error().find("islands[3].terrain") != std::string::npos);
 }

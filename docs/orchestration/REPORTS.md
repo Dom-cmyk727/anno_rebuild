@@ -648,3 +648,74 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
   - (5, B5/B6) OWNER-CHECK viewer run — see the PR description and the final report for the exact commands.
 - Reviewers: none spawned. I was able to spawn subagents but did not (single GPU, "one heavy job at a time"); the work is machine-checked against the CPU oracle and both builders, plus the mutation evidence.
 - Time spent / subagents used: inline, no subagents; sequential GPU builds/tests/benches (one heavy job at a time on the shared PC).
+
+## T16 — The isolated runner: the original under Wine on an invisible X display — 2026-10-22 — status: FINISHED
+- Branch: task/T16-wine-runner (25 commits plus this report, rebased onto main 60709d5); worktree: C:\Users\altin\anno1503-T16. Distro `AnnoHarness` (E:\wsl\AnnoHarness). Python tools and docs only; no C++ touched.
+- Built (§4 items 1–6 of `docs/testing/original-wine.md`):
+  1. **One backend interface** (`tools/orig/backend.py`):
+     - `WineBackend` speaks JSON lines to `tools/orig/wine/agent.py serve` over `wsl -e`;
+     - `WindowsBackend` reuses `smoke.py`, and `control.py` once PR #16 is on main;
+     - shared readers in `gamestate.py`: world clock/tick, PRNG table, cities, players with money;
+     - `live.py`, a file-driven live session.
+  2. **Disposable copies:**
+     - overlayfs over the base game and prefix per run;
+     - run-id validation; teardown on stop, EOF, broken pipe, SIGTERM or SIGHUP; Xvfb dies with the agent;
+     - `cleanup` reaps orphans; outputs are synced to `cache/orig/<session>/`.
+  3. **Several instances:** one display each, two at once.
+     - Multiplayer try: `MULTIPLAYER=1` shows the menu; LAN discovery and join work between two instances. No MP scenarios ship, and hosting from a save is untried (OQ-110).
+  4. **Screen recognition:** 192-bit region dHashes with calibrated thresholds; no pictures in git.
+     - Macros: `skip_intros` (two intros) and `new_game` (Citizen in about 16 s).
+  5. **Timing check** (`timing.py`): host–guest clock pairs, the rate on `CLOCK_MONOTONIC_RAW`, the 50 % rounding check, F4.
+  6. **Sampler and unattended run:**
+     - one JSONL record per game minute, with quicksaves kept;
+     - `opening.py` plays playbook §12 step 1, checking each placement by tools exactly, money within gold + one upkeep booking, and wood within one cart load;
+     - `unattended.py` judges eleven criteria.
+  - **Silence** (owner instruction): no audio device for Wine (no `PULSE_*`, private `XDG_RUNTIME_DIR`, Wine audio drivers off), an audio guard, and the in-game volumes at −250 in every copy's `user.dat`.
+  - **Docs:**
+    - `original-wine.md` rewritten (setup, findings, measurements, harness, acceptance, rules);
+    - new `docs/formats/user-dat.md`;
+    - `population.md`: the player object confirmed by running;
+    - OQ-109, OQ-110, OQ-111, OQ-124; OQ-020 partly answered.
+- Gates:
+  - no C++ changed: msvc, ctest, clang-format, GCC and agree.py n.a.;
+  - `python -I tools/orig/test_orig.py`: 42/42 on Windows after the rebase; earlier also in the distro (Python 3.12).
+- Evidence (acceptance):
+  - **Unattended 30 minutes: passed** (`t16-accept2`, 30.02 min). All 11 criteria are true:
+    - the opening: 15/15 steps;
+    - the sampler: 29 records with no gap; the tick invariant in 29/29;
+    - 5 quicksaves kept;
+    - no crash; 0 audio violations.
+    - The owner's desktop was untouched: Xvfb `:91`, no window, input or sound.
+  - **F6 (read-only form) and the warehouse equal Windows:**
+    - PRNG table: 0 of 2048 differ;
+    - Kontor 50 t, tools 50, wood 50; money 500000.
+  - **Timing verdict** (`t16-timing3`), written in `original-wine.md` §3/§4.5:
+    - F1 1000.008 ± 0.019 game ms/s;
+    - F2 2000.011 / 3999.951 (± 19 ppm); 50 % 593.8, exactly the frame rounding (Σ steps = (Σ dt + odd frames) / 2);
+    - F4 0 ms;
+    - ~405 fps, frame p50/p95/p99/max 2.39/3.11/3.22/15.6 ms, none capped.
+    - F1, F2 (100/200/400 %) and F4 may run in the Wine runner; 50 % only through the rounding model.
+  - Findings beyond the task:
+    - savegames: F10 → `SaveGame/<profile>/Lastgame.sav`; root `ANNOADDON1`; `MAIN` +0 = game seconds (300 … 1500 at minutes 5 … 25); the 64-bit ms counter is not saved;
+    - a Citizen game starts from `00_1024_easyentry_01.sze`: its script text equals that file's in all seven quicksaves;
+    - WSL's `CLOCK_MONOTONIC` slews up to 1,400 ppm, while RAW stays within 0.5 ppm of the host;
+    - one intermittent crash in `AnnoGame.dll 0x100037E0` (first acceptance try, 4.45 game min; not repeated in 12 + 30 min; OQ-124).
+- Reviewers: two independent reviewers (harness code and tests; acceptance against the task). Their findings and the fixes (commits 386e832 … 3f23ec9):
+  - **live world:** `find_world` prefers an advancing counter; a stale copy passed the old check;
+  - **names:** Latin-1 player names; an umlaut used to drop the human player;
+  - **scans:** unbounded vtable scans instead of a silent cut;
+  - **teardown:** run ids validated, so a reused or `..` id could no longer delete another run or the base copies; teardown on every exit path; no orphans; the crash dialog off plus a crash watchdog;
+  - **poller:** RAW timestamps, failed reads counted, the rate between observed frames (the old edge error was ±50 ppm), a model-free 50 % check;
+  - **opening:** placement bounded on both sides; before, a wrong menu cell, a sheep farm for a forester, could pass;
+  - **acceptance:** `summary.ok` now requires the opening, the sampler and no crash;
+  - **protocol:** backend protocol hardening; the live session survives bad files;
+  - **mutations:** the reviewers' surviving mutants are now killed by the 42 tests.
+- Left open / questions:
+  - OQ-109: fixtures over time depend on the step mix, which changes with the frame rate between runs: 380 vs 405 fps, 50 % at 611.8 vs 593.8.
+  - OQ-110: MP hosting from a savegame.
+  - OQ-111: `user.dat` details.
+  - OQ-124: the crash.
+  - Untested: F3 (5 fps, needs a frame limiter).
+  - The opening does not yet check road connectivity.
+  - Input on the Windows backend waits for PR #16.
+- Time spent / subagents used: inline, plus two reviewer subagents. One heavy job at a time: Wine runs one after another, and T8 stays paused as the owner asked.

@@ -155,6 +155,9 @@ void player_table_tick(PlayerTable& table, std::uint32_t t, const SimConfig& cfg
         table.cursor = static_cast<std::uint32_t>(cursor);
     }
     // The AI tick of the original runs here, before the stamp (Seams::ai, O-1).
+    if (hooks.ai != nullptr) {
+        hooks.ai(hooks.ai_ctx);
+    }
     table.stamp = static_cast<std::uint16_t>(t);
 }
 

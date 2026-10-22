@@ -47,6 +47,22 @@ const std::shared_ptr<const RngTable>& original_table() {
     return table;
 }
 
+/// The one body behind both World::island_at overloads: the island whose rectangle holds
+/// the world tile, or nullptr. `Islands` deduces to the const or the non-const island
+/// vector, so the const and the mutable lookup share this scan. The table is scanned (a
+/// derived grid is a later optimisation, §4.14): the cost is the island count, never the
+/// building or player count.
+template <class Islands>
+auto island_at_impl(Islands& islands, std::int32_t x, std::int32_t y)
+    -> decltype(&*islands.front()) {
+    for (auto& is : islands) {
+        if (is.has_value() && is->tiles.contains(x, y)) {
+            return &*is;
+        }
+    }
+    return nullptr;
+}
+
 } // namespace
 
 WorldRng::WorldRng() : table_(original_table()) {}
@@ -148,16 +164,15 @@ World::World()
 World::World(std::uint32_t seed)
     : types_(TypeRegistry::empty()), players_(make_player_table(config_)),
       figures_(make_figure_registry(config_)) {
-    rng.set_cursor(seed);
+    rng_.set_cursor(seed);
 }
 
 const Island* World::island_at(std::int32_t x, std::int32_t y) const {
-    for (const std::optional<Island>& is : islands_) {
-        if (is.has_value() && is->tiles.contains(x, y)) {
-            return &*is;
-        }
-    }
-    return nullptr;
+    return island_at_impl(islands_, x, y);
+}
+
+Island* World::island_at(std::int32_t x, std::int32_t y) {
+    return island_at_impl(islands_, x, y);
 }
 
 void World::prepare_hash(const Executor& ex) {
@@ -184,11 +199,11 @@ std::uint64_t World::state_hash(HashTree& tree, std::uint32_t depth) const {
 
 std::uint64_t World::core_hash() const {
     StateHasher h;
-    h.u64(clock.ms);
-    h.u64(clock.last_tick);
-    h.u64(rng.size());
-    h.u64(rng.table_digest());
-    h.u32(rng.cursor());
+    h.u64(clock_.ms);
+    h.u64(clock_.last_tick);
+    h.u64(rng_.size());
+    h.u64(rng_.table_digest());
+    h.u32(rng_.cursor());
     return h.value();
 }
 

@@ -1175,8 +1175,8 @@ struct StateIO {
             SimConfig config = w.config_;
             Rules rules = w.rules_;
             WorldSettings settings = w.settings_;
-            WorldClock clock = w.clock;
-            WorldRng rng = w.rng;
+            WorldClock clock = w.clock_;
+            WorldRng rng = w.rng_;
             IdCounters ids = w.ids_;
             PlayerTable players = w.players_;
             std::vector<std::optional<Island>> islands;
@@ -1195,8 +1195,8 @@ struct StateIO {
                 w.config_ = std::move(config);
                 w.rules_ = rules;
                 w.settings_ = settings;
-                w.clock = clock;
-                w.rng = rng;
+                w.clock_ = clock;
+                w.rng_ = rng;
                 w.ids_ = ids;
                 w.players_ = std::move(players);
                 w.islands_ = std::move(islands);
@@ -1204,7 +1204,7 @@ struct StateIO {
                 w.events_ = std::move(events);
             }
         } else {
-            scopes(a, w, w.config_, w.rules_, w.settings_, w.clock, w.rng, w.ids_, w.players_,
+            scopes(a, w, w.config_, w.rules_, w.settings_, w.clock_, w.rng_, w.ids_, w.players_,
                    w.islands_, w.figures_, w.events_);
         }
     }

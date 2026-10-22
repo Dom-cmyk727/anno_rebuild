@@ -52,11 +52,11 @@ std::vector<std::uint8_t> StateIO::save(const World& w) {
     out.bytes(kMagic);
     out.u32(kSaveVersion);
     out.u32(kStateHashVersion);
-    const bool original = original_table(w.rng);
+    const bool original = original_table(w.rng_);
     out.u8(static_cast<std::uint8_t>(original ? 0 : 1));
     if (!original) {
-        out.count(w.rng.size());
-        for (const std::uint16_t v : w.rng.table()) {
+        out.count(w.rng_.size());
+        for (const std::uint16_t v : w.rng_.table()) {
             out.u16(v);
         }
     }
@@ -67,7 +67,7 @@ std::vector<std::uint8_t> StateIO::save(const World& w) {
         out.bytes(s.data());
     };
     section([&](WriteArchive& s) { header_section(s, w, w.config_, w.rules_); });
-    section([&](WriteArchive& s) { clock_rng_section(s, w.clock, w.rng); });
+    section([&](WriteArchive& s) { clock_rng_section(s, w.clock_, w.rng_); });
     section([&](WriteArchive& s) { settings_section(s, w.settings_); });
     section([&](WriteArchive& s) { ids_section(s, w.ids_); });
     section([&](WriteArchive& s) { players_section(s, w.players_, w.config_); });
@@ -169,7 +169,7 @@ formats::Result<World, std::string> StateIO::load(std::span<const std::uint8_t> 
             if (!rng.has_value()) {
                 return std::string("save: the PRNG table is empty");
             }
-            w.rng = std::move(*rng);
+            w.rng_ = std::move(*rng);
         }
     }
     if (r.failed()) {
@@ -208,7 +208,7 @@ formats::Result<World, std::string> StateIO::load(std::span<const std::uint8_t> 
         section("header", [&](ReadArchive& s) { header_section(s, w, w.config_, w.rules_); });
     if (problem.empty()) {
         problem =
-            section("clock_rng", [&](ReadArchive& s) { clock_rng_section(s, w.clock, w.rng); });
+            section("clock_rng", [&](ReadArchive& s) { clock_rng_section(s, w.clock_, w.rng_); });
     }
     if (problem.empty()) {
         problem = section("settings", [&](ReadArchive& s) { settings_section(s, w.settings_); });

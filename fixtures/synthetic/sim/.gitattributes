@@ -1,0 +1,2 @@
+# Replay logs are binary (little-endian frames with NUL bytes): never convert line ends.
+*.log binary

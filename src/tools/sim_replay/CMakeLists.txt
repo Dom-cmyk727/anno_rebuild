@@ -27,4 +27,10 @@ if(ANNO_BUILD_TESTS)
   anno_sim_replay_arg_test(depth_negative "tree|no.log|--depth|-3" "bad --depth value '-3'")
   anno_sim_replay_arg_test(entry_valid_reaches_the_log "tree|no-such.log|--entry|3|--depth|2"
                            "cannot read no-such.log")
+  # The golden G2 (docs/sim/state.md §14.3, stage S10): the tool rebuilds the world from
+  # the committed log on the registry its digest names and reproduces every checkpoint.
+  add_test(NAME anno_sim_replay_g2_run
+           COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g2.log)
+  set_tests_properties(anno_sim_replay_g2_run PROPERTIES
+                       PASS_REGULAR_EXPRESSION "checkpoints 6/6.*reproduced: every checkpoint matched")
 endif()

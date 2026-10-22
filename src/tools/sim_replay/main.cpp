@@ -10,10 +10,12 @@
 //   golden <log>              a stable, committable fingerprint of the whole run
 //
 // The log carries the registry's digest, not the registry itself, so a world is
-// rebuilt from the log's initial save on the empty type registry (the original goods
-// table, no building types): enough for the headless golden and the S9 tests. A log
-// made against another registry reports a digest mismatch here (the full scenario
-// path arrives with the game files, S14).
+// rebuilt from the log's initial save on the code-built registry whose digest the log
+// names: the empty one (the original goods table, no building types: the headless
+// golden and the S9 tests), the synthetic types (synthetic::make_synthetic_types) or
+// the synthetic types with build costs (synthetic::make_build_types, the golden G2 of
+// S10). A log made against another registry reports a digest mismatch here (the full
+// scenario path arrives with the game files, S14).
 #include <algorithm>
 #include <charconv>
 #include <cstddef>
@@ -22,6 +24,7 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -30,6 +33,7 @@
 
 #include <anno/sim/replay.hpp>
 #include <anno/sim/state_fields.hpp>
+#include <anno/sim/synthetic.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim/world.hpp>
 
@@ -69,8 +73,26 @@ std::optional<sim::ReplayLog> load_log(const std::string& path) {
     return std::move(log).value();
 }
 
+/// The code-built registry whose digest the log names; the empty one when none matches
+/// (World::load then names the mismatch).
+std::shared_ptr<const sim::TypeRegistry> registry_for(const sim::ReplayLog& log) {
+    std::vector<std::shared_ptr<const sim::TypeRegistry>> known{sim::TypeRegistry::empty()};
+    for (auto make : {&sim::synthetic::make_synthetic_types, &sim::synthetic::make_build_types}) {
+        auto t = make();
+        if (t.ok()) {
+            known.push_back(t.value().registry);
+        }
+    }
+    for (const auto& r : known) {
+        if (r->digest() == log.registry_digest) {
+            return r;
+        }
+    }
+    return sim::TypeRegistry::empty();
+}
+
 std::optional<sim::World> build_world(const sim::ReplayLog& log) {
-    auto w = sim::World::load(log.initial_save, sim::TypeRegistry::empty(), {});
+    auto w = sim::World::load(log.initial_save, registry_for(log), {});
     if (!w.ok()) {
         std::cerr << "cannot rebuild the initial world from the log: " << w.error() << "\n";
         return std::nullopt;

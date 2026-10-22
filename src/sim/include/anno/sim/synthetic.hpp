@@ -84,4 +84,22 @@ ScenarioSpec two_island_scenario(std::uint32_t seed = 1234);
 /// (5 t of raw material) at (120,110) in city 0. Needs the synthetic registry.
 ScenarioSpec g1_scenario(const SyntheticTypes& types, std::uint32_t seed = 1234);
 
+/// The types of make_synthetic_types (same ids, classes and production values) with
+/// the build cost of the Anlagen.dat entry each one stands for (HEAD u16 [8] gold and
+/// bytes [3..6] bricks, wood, tools, marble; the values of docs/research/playbook.md
+/// §14 and docs/sim/state.md §14.5), for the commands of stage S10 and the golden G2:
+/// weaver = weaving hut 1001 (300 gold, 3 t tools, 4 t wood), grain farm 811 (200
+/// gold, 2 t tools, 3 t wood, 3 t bricks), fur trapper 824 (100 gold, 5 t tools, 6 t
+/// wood), small farm 809 (250 gold, 2 t tools, 4 t wood), iron mine = ore mine 1205
+/// (1 200 gold, 5 t tools, 15 t wood), pioneer house 501 (3 t wood), kontor 1302 (350
+/// gold, 5 t tools, 12 t wood), market stall 1310 (50 gold, 1 t tools, 1 t wood); the
+/// bow maker and the road cost nothing. Footprints (own test data, not the
+/// original's): fur trapper 2 x 3, pioneer house and kontor 2 x 2, the others 1 x 1.
+formats::Result<SyntheticTypes, std::string> make_build_types();
+
+/// The scenario of the golden G2 (docs/sim/state.md §14.3, stage S10): g1_scenario on
+/// `types` (make_build_types) with 13 t of tools and 30 t of wood in the warehouse of
+/// city 0, so that four weavers can be paid and a fifth cannot.
+ScenarioSpec g2_scenario(const SyntheticTypes& types, std::uint32_t seed = 1234);
+
 } // namespace anno::sim::synthetic

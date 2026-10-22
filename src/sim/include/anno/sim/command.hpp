@@ -4,9 +4,9 @@
 // format (append only). The wire format of §8.5 is explicit little-endian with
 // widened ids and is bounds-checked; it is NOT byte-compatible with the original's.
 //
-// Stage S8 applies SetSpeed and SetProductionLine (apply.cpp). The other bodies are
-// declared, encoded and decoded now (S9's replay log needs them) and answer
-// Reject::Unsupported until stage S10 gives them their rules.
+// Stage S8 applies SetSpeed and SetProductionLine (apply.cpp), stage S10 Build,
+// Demolish, SetTradeFlag and SetTradeSlot; a LegacyRawCmd is decoded, logged, replayed
+// and answers Reject::Unsupported.
 #pragma once
 
 #include <cstddef>

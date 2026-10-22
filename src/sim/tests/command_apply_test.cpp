@@ -24,8 +24,6 @@ namespace syn = anno::sim::synthetic;
 
 namespace {
 
-constexpr sim::CityRef kCity0{sim::IslandId{0}, sim::CityNo{0}};
-
 sim::ScenarioSpec::BuildingSpec place(sim::TypeId type, std::int32_t x, std::int32_t y) {
     sim::ScenarioSpec::BuildingSpec b;
     b.type = type;
@@ -348,16 +346,17 @@ TEST_CASE("issuer not owner rejected") {
     CHECK(!payload<sim::Workshop>(w, Rig::weaver).switched_on);
 }
 
-TEST_CASE("commands of later stages and legacy records are refused without a change") {
+TEST_CASE("legacy records are refused without a change") {
+    // Build, Demolish and the trade commands have their rules since S10
+    // (command_build_test.cpp); a legacy record stays closed (§8.3).
     Rig r = make_rig();
     sim::World& w = r.world;
     const std::uint64_t before = w.state_hash();
     const sim::Body bodies[] = {
-        sim::BuildCmd{kCity0, {{r.types.weaver, 130, 130, 0, 0, 0}}},
-        sim::DemolishCmd{kCity0, {{110, 110}}},
-        sim::SetTradeFlagCmd{kCity0, 0, 1, 0},
-        sim::SetTradeSlotCmd{kCity0, 0, sim::kAppendIndex, 1, 2, 3},
         sim::LegacyRawCmd{0x6a, {1, 2, 3}},
+        sim::LegacyRawCmd{0x87, {}},
+        sim::LegacyRawCmd{0x98, {0, 0, 0, 0}},
+        sim::LegacyRawCmd{0xffff, {9}},
     };
     for (const sim::Body& b : bodies) {
         const sim::ApplyResult res = w.apply(sim::Command{sim::PlayerId{0}, b});

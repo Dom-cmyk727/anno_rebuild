@@ -19,6 +19,8 @@
 #include <anno/sim/tick.hpp>
 #include <anno/sim/world.hpp>
 
+#include "scheduler_internal.hpp"
+
 namespace anno::sim {
 
 // ---------------------------------------------------------------------------
@@ -243,16 +245,6 @@ void add_draws(std::vector<DrawRecord>& total, const std::vector<DrawRecord>& mo
 
 } // namespace
 
-struct Scheduler {
-    static std::uint64_t advance(World& w, std::uint32_t game_ms);
-    static void release_counter(World& w, BuildingId home, std::uint32_t home_counter);
-    static void merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t);
-    static void run_player_pass(void* raw, Player& p);
-    static void run_ai(void* raw);
-    static Island* island_of_id(World& w, IslandId id);
-    static City* city_of_ref(World& w, CityRef ref);
-};
-
 Island* Scheduler::island_of_id(World& w, IslandId id) {
     if (!id.valid() || id.v >= w.islands_.size() || !w.islands_[id.v].has_value()) {
         return nullptr;
@@ -274,7 +266,7 @@ void Scheduler::release_counter(World& w, BuildingId home, std::uint32_t home_co
     }
 }
 
-void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t) {
+void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t, bool in_advance) {
     // 1. Spawns: a figure per request, id from the world counter, slot by the group
     // list's policy (A6), and a FigureSpawned event.
     for (const SpawnRequest& s : fx.spawns) {
@@ -379,12 +371,17 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
     for (const EnqueueEvent& e : fx.events) {
         w.events_.enqueue(w.ids_, tick, e.delay, e.e);
     }
-    // 8. UI events, and the telemetry of the call.
+    // 8. UI events, and the telemetry of the call (inside an advance only: between two
+    // advances SimOutput belongs to the last advance and is not touched).
     for (const SimEvent& e : fx.ui) {
-        w.out_.events.push_back(e);
+        if (in_advance) {
+            w.out_.events.push_back(e);
+        }
         w.host_events_.push(e);
     }
-    add_draws(w.out_.draws, fx.draws);
+    if (in_advance) {
+        add_draws(w.out_.draws, fx.draws);
+    }
 }
 
 void Scheduler::run_player_pass(void* raw, Player& p) {
@@ -415,8 +412,9 @@ void Scheduler::run_ai(void* raw) {
         fx.draws = draw_records_between(before, c.draws->counts);
     }
     merge(w, fx, c.ctx->tick, c.ctx->t);
+    const InAdvance in_advance{c.ctx, c.draws};
     for (const Command& command : commands) {
-        static_cast<void>(Commands::apply(w, command, true));
+        static_cast<void>(Commands::apply(w, command, &in_advance));
     }
 }
 

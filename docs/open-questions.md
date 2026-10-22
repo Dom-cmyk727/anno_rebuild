@@ -1034,7 +1034,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   - `SET DEADEND_ABFRAGE = FALSE` (S01_08_01);
   - `SET_DIPLOMACY(…)` and `SET_FOR_BUY(…)` (S01_09_01).
 
-  `QUESTLOG_DRAW;` has no parentheses (single42). The missions load.
+  Each of the four ends its line. `QUESTLOG_DRAW;` has no parentheses (single42). All of them ship in the release; whether the missions play as intended was not checked.
 - **Question:** Does the interpreter end a statement at the closing parenthesis or value, or does it read the next statement as part of it, losing or merging an action?
 - **How to resolve:** the statement reader in AnnoScene (O-16 range); or play S01_09_01 in the Wine runner (T16) to the rule and check whether both actions take effect.
 
@@ -1044,7 +1044,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Evidence (P):**
   - `OBJECT_FIGUR "N" n` and `OBJECT_STADT "N" n` carry one number; `OBJECT_ANLAGE "N" x,y,t` three (t an `Anlagen.dat` type);
   - `[AREA_DEFINE]` lines carry four numbers in 0–1025 whose first pair is not always the smaller;
-  - `[CAMARAPOS]` is `0,0` in every file and in a quicksave.
+  - `[CAMARAPOS]` is `0,0` in every file and in seven quicksaves (T16).
 - **Evidence (S):** the reader knows a seventh section `STARTUP` (`0x1003e628`) that no shipped script uses.
 - **Question:**
   1. Is the figure number the unit id of the `SPIELER` record, and what is the city number?
@@ -1059,9 +1059,10 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 ## OQ-123: What each script action and condition does (new, T17 2026-10-22)
 - **Status:** open, RE
 - **Area:** script engine, sim (lockstep), `bigbrother.md` §4–§6
-- **Evidence:** the vocabulary, argument types and observed value ranges are in `bigbrother.md` (P). The split into state-changing and presentation actions is read from the names (likely). 62 of the 163 script names of the interpreter's tables are used by no shipped script (S).
+- **Evidence:** the vocabulary, argument types and observed value ranges are in `bigbrother.md` (P). The split into state-changing and presentation actions is read from the names (likely). 62 of the 164 script names of the interpreter's tables are used by no shipped script (S).
 - **Question:**
   1. Each handler's effect and the meaning of its numeric arguments (e.g. `WON`/`LOST`'s second number, `SET_DIPLOMACY`'s −128/−127/0/30);
   2. the role of every unused name (action or condition: read from the block it stands in);
-  3. which conditions read state that is not synchronised in multiplayer (`SELECTED_CURSORCONSTRUCTION` reads the local build cursor).
-- **How to resolve:** walk the dispatch from the name tables to the handlers in AnnoScene (`0x10011ed0`–`0x10013dab`, O-16) and record each in `bigbrother.md`; the port of the engine (O-34) needs the list.
+  3. which conditions read state that is not synchronised in multiplayer (by its name, `SELECTED_CURSORCONSTRUCTION` likely asks about the local build cursor);
+  4. what `SCHUETTIINITSIG` marks (it flips `TRUE` → `FALSE` in quicksaves of a scenario without an `INITBLOCK`), and whether a savegame stores the variables' current values (the format strings suggest it; the quicksaves had no variables).
+- **How to resolve:** walk the dispatch from the name tables to the handlers in AnnoScene (`0x10011ed0`–`0x10013dab`, O-16) and record each in `bigbrother.md`; the port of the engine (O-34) needs the list. For item 4, quick-save a mission with variables and an `INITBLOCK` in the Wine runner (T16).

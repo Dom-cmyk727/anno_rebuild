@@ -4,11 +4,11 @@
 - **Grammar:** complete for the 50 shipped scripts. All parse without a fallback and re-emit byte-identically (`tools/bigbrother.py check`; T17, 2026-10-22).
 - **Meanings:** conditions and actions are read from their names, arguments and uses. The interpreter's handlers were not traced (OQ-120 … OQ-123).
 
-Evidence: **P** = parsed from the 50 `.sze` files (and two savegames); **S** = strings in `AnnoScene.dll` (GOG 2.0.0.5, image base `0x10000000`, addresses as virtual addresses); **D** = disassembly, cited from other notes.
+Evidence: **P** = parsed from the 50 `.sze` files (and seven quicksaves); **S** = strings in `AnnoScene.dll` (GOG 2.0.0.5, image base `0x10000000`, addresses as virtual addresses); **D** = disassembly, cited from other notes.
 
 ## Files covered
 - **Scenarios:** the last child of `SCENE` in every `.sze` (50 of 50, P; `sze.md`).
-- **Savegames:** a direct child of the root (`ANNOADDON1`) in `SaveGame/<profile>/Lastgame.sav`. P: two quicksaves of the Wine runner (T16), not in git.
+- **Savegames:** a direct child of the root (`ANNOADDON1`) in `SaveGame/<profile>/Lastgame.sav`. P: seven quicksaves of two games in the Wine runner (T16), not in git.
 - **The interpreter:** `AnnoScene.dll` (`AnnoBigBrother`; the script ops lie in `0x10011ed0`–`0x10013dab`, `docs/sim/state.md` O-16). The net client steps it before every simulation advance (AnnoFrame `0x1005fe10`, O-34).
 - **Size:** 174–29,425 bytes per script. 37 scripts have at least one statement. The kernel is empty in the nine endless games of `0010SingleEndlos`, in `endless03` and in the three tutorials.
 
@@ -18,7 +18,7 @@ Evidence: **P** = parsed from the 50 `.sze` files (and two savegames); **S** = s
 - **Mixed line endings, written that way by the game (S):**
   - section headers and define lines end in LF; script, `[SIGNALS]` and `[CAMARAPOS]` lines end in CRLF;
   - totals: 6,257 CRLF, 1,216 LF, no bare CR, 1,590 tabs (P);
-  - the save writer (`tESave`) writes `"\n[SIGNALS]\n"`, then `"%s = %s\r\n"` per signal, then `"\n[CAMARAPOS]\n"` and `"%d,%d\r\n"` (`0x1003e558`, `0x1003e54c`, `0x1003e53c`, `0x1003e534`);
+  - the format strings `"\n[SIGNALS]\n"`, `"%s = %s\r\n"` (one per signal), `"\n[CAMARAPOS]\n"` and `"%d,%d\r\n"` (`0x1003e558`, `0x1003e54c`, `0x1003e53c`, `0x1003e534`) produce exactly the endings of a savegame's `[SIGNALS]` and `[CAMARAPOS]` (P: seven quicksaves); their writer was not traced;
   - the define writers use `"[OBJECT_DEFINE]\n"`, `"OBJECT_FIGUR \"%s\" %d\n"`, `"[AREA_DEFINE]\n"`, `"[PLAYERMAPPER_DEFINE]\n"` and `"[CAMARAPOS]\n"` (`0x10040330`, `0x10040318`, `0x10040308`, `0x100402f0`, `0x100402e0`).
 
 ## 2. Tokens (P: every byte of the 50 scripts is one of these)
@@ -27,12 +27,12 @@ Evidence: **P** = parsed from the 50 `.sze` files (and two savegames); **S** = s
 |---|---|---|
 | newline | `\r\n` or `\n` | both kept |
 | blank | spaces and tabs | |
-| comment | `$` to the end of the line | the whole line or after a statement |
-| section | `[NAME]` | at the start of a line |
+| comment | `$` to the end of the line | the whole line or after a statement; only in the kernel (1,273 of 1,273) |
+| section | `[NAME]` | a line of its own (300 of 300); the first byte of the script |
 | string | `"…"` | no escapes, no line break inside |
 | number | `-?[0-9]+` | negative only as `SET_DIPLOMACY`'s value (−127, −128) |
 | name | `[A-Za-z_][A-Za-z0-9_]*` | keywords, variables, actions; all upper case in the corpus |
-| operator | `&&` `\|\|` `==` `<` `>` `=` `(` `)` `{` `}` `,` `;` | `!=`, `<=`, `>=` and `!` never occur |
+| operator | `&&` `\|\|` `==` `<` `>` `=` `(` `)` `{` `}` `,` `;` | `!=`, `<=`, `>=` and `!` never occur; the interpreter's comparison table (S, `0x1003fdc4`–`0x1003fdd0`, after `"Unbekannter Vergleichsoperator!"`) has `!=`, `==`, `>`, `<` |
 
 - **Tokens may touch.** `AREA"NEGER"TOUCHED_BY_SHIP_FROM"HUMAN"` (endless01) has no blank between the tokens.
 - **The interpreter's delimiter table** (S, `0x1003d888`–`0x1003d8a0`): `THEN`, `{`, `}`, `||`, `&&`, `;`.
@@ -53,7 +53,7 @@ Evidence: **P** = parsed from the 50 `.sze` files (and two savegames); **S** = s
 - **Names the engine itself looks up (S):**
   - `SCHIFF_ATTACK` and 29 `SOLDAT_*` names stand in `AnnoScene.dll` (`0x1003b444`–`0x1003b63c`) and are the objects of the combat tutorial (`03T_Combat_01`).
   - `ERZ01` (`0x1003e4d8`, next to `"Please unload scout"`) is an area of the discovery tutorial (`01Discover01`).
-  - Both tutorials have empty kernels: their logic is in the code, not in the script.
+  - Both tutorials have empty kernels, so their logic is likely in the code, which knows their object names.
 
 ### 3.2 `[AREA_DEFINE]`: `"NAME" a, b, c, d`
 - **The numbers:** four integers in 0–1025 (P).
@@ -61,9 +61,10 @@ Evidence: **P** = parsed from the 50 `.sze` files (and two savegames); **S** = s
 
 ### 3.3 `[PLAYERMAPPER_DEFINE]`: `"NAME" slot`
 - **What it does:** maps the player names the kernel uses to player slots (the `SPIELER` index).
-- **Slot 0** is `"HUMAN"` in 32 files and `"HUMAN01"` in 14 (once misspelt `"HUNAM01"`). Three missions give slot 0 another name: `"CG1"`, `"CG2"`, `"BERTRECHT"`.
+- **Slot 0** is `"HUMAN"` in 32 files, `"HUMAN01"` in 14 and the misspelt `"HUNAM01"` in 1. The other three missions give slot 0 another name: `"CG1"`, `"CG2"`, `"BERTRECHT"`.
 - **Slot 31** is `"DUMMYPLAYER"` in all 50.
-- **Other names:** `CG01`…, `PIRAT`, `VENEZIANER`, native peoples (P).
+- **Other names:** `CG01`…, `PIRAT` (16 files), `VENEZIANER`, native peoples (P).
+- **Every name once:** no define section repeats a name (P, 50 of 50).
 
 ### 3.4 `[SCRIPT_KERNEL]`
 Grammar as read from the files (P):
@@ -82,12 +83,15 @@ primary   = ( "PLAYER" | "OBJECT" | "AREA" ) STRING QUERY [ STRING ] [ compare v
 compare   = "==" | "<" | ">" ;
 value     = "TRUE" | "FALSE" | NUMBER | STRING ;
 ```
+- **Names:** `INITBLOCK`, `SET`, `IF`, `THEN`, `ELSE`, `TRUE` and `FALSE` are never a variable, signal, action or query name (P); the reference treats them as reserved.
+- **The missing `;`:** each of the four statements without one ends its line (P), and the reference accepts a missing `;` only there.
+- **Define lines** (§3.1–§3.6): `OBJECT_FIGUR` and `OBJECT_STADT` take one number, `OBJECT_ANLAGE` three (P: 133, 80, 37 lines); `[CAMARAPOS]` has exactly one line. The reference rejects anything else.
 - **Counts:**
   - 35 `INITBLOCK`s, 271 `SET`s, 308 `IF`s (3 with `ELSE`, all in single33);
-  - 382 assignments and 1,654 calls inside blocks;
+  - 382 assignments and 1,656 calls inside blocks;
   - no nested `IF`, no `ELSE IF`, no other statement.
 - **Variables:** 147 distinct names. Their values are only `TRUE` and `FALSE`; they are set by `SET` at the top level and by assignments in blocks.
-- **Timers:** `TIMER_0` … `TIMER_4` are read in conditions (compared with numbers, three times with `TRUE`).
+- **Timers:** `TIMER_0` … `TIMER_4` are read in conditions and only compared with numbers (24 uses in 10 files). `TIMER_FLAG` (Single_08) is a `SET` variable, not a timer.
   - Actions drive them: `TIMER_SET(slot, value)`, `TIMER_START(slot)`, `TIMER_STOP(slot)`.
   - Their state is the `SKTIMER` chunk (resurvey §4, O-31).
 - **Evaluation:** the scripts are written for rules that are tested again and again. The common pattern is one-shot: `IF ONETIME && … THEN { ONETIME = FALSE; … }`. This fits a step before every advance (O-34). Whether `INITBLOCK` runs first in the same step is not traced.
@@ -104,20 +108,19 @@ value     = "TRUE" | "FALSE" | NUMBER | STRING ;
 ### 3.5 `[SIGNALS]`: the script's state
 - **Form:** one `NAME = TRUE|FALSE` per line, no `;`, CRLF.
 - **In every shipped scenario** (50 of 50, P): exactly the kernel's `SET` variables with their initial values, plus `SCHUETTIINITSIG = TRUE`.
-- **In a savegame,** the game writes the section anew with the current values (the writer of §1). One pair, `00_1024_easyentry_01.sze` (the "Citizen" endless game) and its quicksave, showed this (P):
-  - the definitions and the kernel were byte-identical;
-  - `SCHUETTIINITSIG` had changed from `TRUE` to `FALSE`.
-
-  So `SCHUETTIINITSIG` means "`INITBLOCK` still to run", and a loaded savegame does not run it again (likely).
-- **Load check:** the loader reports `Signal "%s" ist nicht vorhanden!` ("signal … does not exist", S, `0x1003e574`), likely for a signal the kernel does not define.
+- **In a savegame** (P: seven quicksaves of two "Citizen" games in the Wine runner, T16):
+  - the definitions and the kernel are byte-identical to those of exactly one scenario, `00_1024_easyentry_01.sze`, so a Citizen game starts from it (its kernel is empty; the islands are generated);
+  - `[SIGNALS]` holds only `SCHUETTIINITSIG`, now `FALSE`; `[CAMARAPOS]` is still `0,0`.
+- **`SCHUETTIINITSIG`:** `TRUE` in every scenario, `FALSE` once the game has run. That it marks the `INITBLOCK` as done, so a loaded game does not run it again, is a guess from this flip; the saved script has no `INITBLOCK` at all (OQ-123).
+- **Load check:** the loader reports `Signal "%s" ist nicht vorhanden!` ("signal … does not exist", S, `0x1003e574`), likely for a signal the kernel does not define. A signal name has a maximum length: `Name "%s" für Signalobject zu lang\nMax. %d Zeichen!` (S, `0x1003f93c`; the limit is in the code, not traced).
 - **What a savegame keeps of the script:**
-  - the whole text (definitions and kernel);
-  - the current variable values;
-  - `[CAMARAPOS]`;
-  - the timers, which live in `SKTIMER`.
+  - the whole text (definitions and kernel; P);
+  - one `NAME = value` line per signal (P for `SCHUETTIINITSIG`). That variables are saved with their current values is likely from the format strings of §1; the saved scripts have no variables, so it was not observed (OQ-123);
+  - `[CAMARAPOS]` (P);
+  - the timers, which live in `SKTIMER` (resurvey §4).
 
 ### 3.6 `[CAMARAPOS]`
-- **Form:** `x,y`; it is `0,0` in all 50 scenarios and in the quicksave (P).
+- **Form:** `x,y`, one line; it is `0,0` in all 50 scenarios and in the seven quicksaves (P).
 - **Meaning:** a camera position the game saves. Whether it is `CAMERA_MEMORY`'s slot is not traced (OQ-122).
 
 ## 4. Conditions (P)
@@ -125,12 +128,12 @@ The query names a property of the subject. An optional string narrows it, and an
 
 | Condition | Forms after the query (count) | Uses | Files | First file |
 |---|---|---|---|---|
-| `variable` | — (228), == bool (198) | 426 | 37 | endless01.sze |
+| `variable` | — (228), == bool (201) | 429 | 37 | endless01.sze |
 | `OBJECT KILLED` | — (77) | 77 | 21 | S01_01_01.sze |
 | `AREA TOUCHED_BY_SHIP_FROM` | "…" (53) | 53 | 9 | endless01.sze |
 | `PLAYER DEAD` | — (30) | 30 | 7 | S01_02_01.sze |
 | `AREA TOUCHED_BY_CONSTRUCTION` | "…" (30) | 30 | 3 | single33.sze |
-| `TIMER_n` | > number (10), == number (8), < number (6), == bool (3) | 27 | 10 | S01_07_01.sze |
+| `TIMER_n` | > number (10), == number (8), < number (6) | 24 | 10 | S01_07_01.sze |
 | `AREA TOUCHED_BY_SOLDIER_FROM` | "…" (26) | 26 | 5 | endless01.sze |
 | `PLAYER INHABITANTCOUNT` | "…" > number (21), "…" < number (5) | 26 | 17 | S01_01_01.sze |
 | `AREA TOUCHED_BY_SOLDIERS_FROM` | "…" (22) | 22 | 11 | S01_05_01.sze |
@@ -157,18 +160,25 @@ The query names a property of the subject. An optional string narrows it, and an
 
 String arguments of the conditions (P):
 - **Player, object and area names** from the define sections.
-- **Inhabitant levels** for `INHABITANTCOUNT`: `PIONIER`, `SIEDLER`, `BUERGER`, `KAUFLEUTE`, `ADEL`, `ALL`.
-- **Goods** for `WARECOUNT` (`"NAHRUNG"`).
-- **Unit names** for `CONTAINS` and `SOLDIERCOUNT` (`"BOGENSCHUETZE"`, `"MOERSER"`).
+- **`INHABITANTCOUNT`:** the levels `ALL` (17), `BUERGER` (9), `KAUFLEUTE` (6), `SIEDLER` (3), `ADEL` (3), `PIONIER` (1).
+- **`SOLDIERCOUNT`:** `ALL` (3), `MOERSER` (1), `BEDIENER` (1).
+- **`CONTAINS`** (13 uses) takes units and goods: `PIONIER` (6), `BOGENSCHUETZE`, `SCHWERTKAEMPFER`, `HOLZ`, `WERKZEUG`, `NAHRUNG`, `PELZE`, `HEILKRAEUTER` (1 each). `BOGENSCHUETZE` is not in the interpreter's unit-class block, which has `BOGEN` (§6).
+- **`WARECOUNT`:** `EISENERZ` (6), `FLACHS` (3), `NAHRUNG` (1).
 - **`"type@player"`:** `TOUCHED_BY_CONSTRUCTION "1210@HUMAN"`, a building type of a player (single33).
 - **`"player@ware"`:** `BOUGHT "HUMAN@SALZ"`.
 - **`"player@ware:n"`:** `SHIPCNT_FROM "HUMAN@WERKZEUG:1"` (single32).
 
-Error messages of the condition parser (S) give its checks:
+**Goods in the scripts** (P; conditions and actions together, uses / files): `HEILKRAEUTER` 8/4, `EISENERZ` 6/1, `FLACHS` 6/1, `EISEN` 4/2, `WERKZEUG` 3/3, `NAHRUNG` 2/2, `SALZ` 2/1, `GEWUERZE` 2/2, and once each `HOLZ`, `PELZE`, `TABAK`, `TABAKWAREN`, `SCHWERT`, `SCHMUCK`, `GOLD`, `SEILE`. They are the `WARETYPE` names (`docs/re/production.md`).
+
+**Units in the scripts** (P): `PIONIER` (6), `BOGENSCHUETZE`, `SCHWERTKAEMPFER`, `MOERSER`, `BEDIENER` (1 each).
+
+The interpreter's error messages (S) show some of its checks. They are shared by conditions and actions (`"… bei Bedingung: %d"` ends both):
 - `"Kein THEN bei Bedingung: %d"` (no THEN);
-- `"%s ist unbekannter Disastertyp bei Bedingung: %d"` (unknown disaster type);
-- `"Anlage mit ID %d existiert nicht bei Bedingung: %d"` (building type id does not exist, `0x1003e9b8`);
-- `"Menge muß positiv sein bei Bedingung"` (count must be positive, `0x1003e634`);
+- `"%s ist unbekannter Disastertyp bei Bedingung: %d"` (`0x1003ef2c`, next to `DISASTER_AT`'s types);
+- `"Anlage mit ID %d existiert nicht bei Bedingung: %d"` (`0x1003e9b8`, next to `SETCONSTRUCTION_DRAWSTATE`);
+- `"Menge muß Positiv sein bei Bedingung %d"` (count must be positive, `0x1003e634`);
+- `"GOTO_SCREEN Zoom Value muß zwischen 0 und 3 sein bei Bedingung: %d"` (`0x1003f6f8`);
+- `"KILLPLAYER hat keinen \"SpielerNamen\" definiert bei Bedingung: %d"` (`0x1003eaf8`);
 - `"SE ScriptChunk im File ist defekt!"` (the script chunk is broken, `0x1003e598`).
 
 ## 5. Actions (P)
@@ -219,7 +229,7 @@ Observed numeric arguments (P). The readings are likely; none is traced in the h
 |---|---|---|---|
 | `DISASTER_AT(x, y, type)` | x, y | 200–756, 137–810 | tile position |
 | `MINIMAP_ALERT(x, y)` | x, y | 120–970, 45–950 | tile position |
-| `GOTO_SCREEN(x, y, z)` | z | 1, 2, 3 | zoom level |
+| `GOTO_SCREEN(x, y, z)` | z | 1, 2, 3 | zoom level; the interpreter allows 0–3 (S, `0x1003f6f8`) |
 | `TIMER_SET(slot, value)` | slot, value | 0–4; 0–10,800 | timer slot; seconds |
 | `SET_DIPLOMACY(a, b, n)` | n | −128, −127, 0, 30 | treaty or relation value |
 | `SET_PROFILE(player, key, n)` | key, n | `COMPCAPS_*`; 0, 1, 2, 5 or `TRUE`/`FALSE` | an AI profile parameter of `COMPPROFIL2` (T18) |
@@ -237,7 +247,7 @@ The disaster types of `DISASTER_AT` (S, `0x1003ef60`–`0x1003ef84`):
 | `DROUGHT`, `PLAGUE` | — | known to the interpreter, unused |
 
 ### 5.1 State versus presentation (lockstep)
-The conditions read simulation state only: inhabitants, goods, money, units, areas, kills, treaties and timers. The unused `SELECTED_CURSORCONSTRUCTION` is the exception; it reads the local player's build cursor and is UI state.
+Read from their names, the conditions ask about simulation state: inhabitants, goods, money, units, areas, kills, treaties and timers (likely; the handlers were not traced). The unused `SELECTED_CURSORCONSTRUCTION` is likely the exception: by its name it asks about the local player's build cursor, which is UI state (OQ-123).
 
 The actions split by what they change. The split is likely, read from the names and arguments; the handlers (O-16) decide.
 
@@ -273,9 +283,9 @@ The shipped multiplayer scenarios do not exist in this build, so the original's 
   - the unit classes (`0x1003f9ec`–`0x1003faa0`);
   - the conditions (`0x1003fb18`–`0x10040254`).
 
-**Short names:** `IF`, `SET`, `ALL` and `THEN` are shorter than 4 characters or embedded (`"-THEN"`), so the 284 miss them; they are listed with a note.
+**Short names:** `IF`, `SET`, `ALL`, `WON` and `THEN` are shorter than 4 characters or embedded (`"-THEN"`), so the 284 miss them; they are listed with a note.
 
-Script vocabulary: 159 of the 284, plus 4 shorter names. Used = in at least one shipped script (P); unused = only in the DLL (S).
+Script vocabulary: 159 of the 284, plus 5 shorter names. Used = in at least one shipped script (P); unused = only in the DLL (S).
 
 | Name | Address | Role | Uses | Files | First file |
 |---|---|---|---|---|---|
@@ -293,7 +303,7 @@ Script vocabulary: 159 of the 284, plus 4 shorter names. Used = in at least one 
 | `IF` | `0x1003f988` | statement (below the 4-character rule) | 308 | 37 | endless01.sze |
 | `FALSE` | `0x1003e564` | value | 1217 | 37 | endless01.sze |
 | `TRUE` | `0x1003e56c` | value | 783 | 50 | 00_1024_easyentry_01.sze |
-| `SCHUETTIINITSIG` | `0x1003e4e0` | internal signal (INITBLOCK pending) | 50 | 50 | 00_1024_easyentry_01.sze |
+| `SCHUETTIINITSIG` | `0x1003e4e0` | internal signal (`TRUE` in scenarios, `FALSE` in saves; §3.5) | 50 | 50 | 00_1024_easyentry_01.sze |
 | `OBJECT` | `0x1004021c` | condition subject | 109 | 22 | S01_01_01.sze |
 | `AREA` | `0x10040224` | condition subject | 169 | 21 | endless01.sze |
 | `PLAYER` | `0x1004022c` | condition subject | 100 | 27 | S01_01_01.sze |
@@ -354,8 +364,8 @@ Script vocabulary: 159 of the 284, plus 4 shorter names. Used = in at least one 
 | `KAUFLEUTE` | `0x1003fd58` | inhabitant level (condition argument) | 6 | 5 | Single_06.sze |
 | `BUERGER` | `0x1003fd64` | inhabitant level (condition argument) | 9 | 9 | S01_02_01.sze |
 | `SIEDLER` | `0x1003fd6c` | inhabitant level (condition argument) | 3 | 3 | S01_01_01.sze |
-| `PIONIER` | `0x1003fd74` | inhabitant level (condition argument) | 7 | 3 | S01_01_01.sze |
-| `ALL` | `0x1003fd7c` | inhabitant level (condition argument) (below the 4-character rule) | 20 | 9 | S01_05_01.sze |
+| `PIONIER` | `0x1003fd74` | inhabitant level (condition argument); 6 of the 7 uses are a `CONTAINS` unit | 7 | 3 | S01_01_01.sze |
+| `ALL` | `0x1003fd7c` | inhabitant level (condition argument; 17 `INHABITANTCOUNT`, 3 `SOLDIERCOUNT`) (below the 4-character rule) | 20 | 9 | S01_05_01.sze |
 | `MEDICUS` | `0x1003f9ec` | unit class (condition argument) | unused (S) |  |  |
 | `BEDIENER` | `0x1003f9f4` | unit class (condition argument) | 1 | 1 | S01_06_01.sze |
 | `MUSKETEN` | `0x1003fa00` | unit class (condition argument) | unused (S) |  |  |
@@ -401,6 +411,7 @@ Script vocabulary: 159 of the 284, plus 4 shorter names. Used = in at least one 
 | `SHOWMESSAGE` | `0x1003f124` | action | 1 | 1 | single41.sze |
 | `SHOWTEXT` | `0x1003f130` | action | 72 | 24 | S01_01_01.sze |
 | `LOST` | `0x1003f13c` | action | 55 | 21 | S01_01_01.sze |
+| `WON` | `0x1003f144` | action (below the 4-character rule) | 35 | 35 | S01_01_01.sze |
 | `CAMERA_RECALL` | `0x1003f148` | action | unused (S) |  |  |
 | `CAMERA_MEMORY` | `0x1003f158` | action | unused (S) |  |  |
 | `ATTACK_OBJECT` | `0x1003f214` | action | 6 | 1 | Single_24.sze |
@@ -451,9 +462,9 @@ Not script vocabulary (the rest of the 284):
 | other data (no string table) | `0x10031150`–`0x1004616c` | 3 | `PERT`, `HMXB`, `E0S0` |
 | combat-tutorial object names (03T_Combat_01 OBJECT_DEFINE) | `0x1003b444`–`0x1003b63c` | 30 | `SCHIFF_ATTACK`, `SOLDAT_BOGEN`, `SOLDAT_KAVAL`, `SOLDAT_SCHWERT`, `SOLDAT_LANZE`, `SOLDAT_SPIESS`, `SOLDAT_VICTIM_1`, `SOLDAT_VICTIM_2`, `SOLDAT_VICTIM_3`, `SOLDAT_VICTIM_4`, `SOLDAT_VICTIM_5`, `SOLDAT_PINOIER`, `SOLDAT_BEDIN_KATA1`, `SOLDAT_BEDIN_KATA2`, `SOLDAT_KATAPULT`, `SOLDAT_BEDIN_MOERSER`, `SOLDAT_MOERSER`, `SOLDAT_BEDIN_KANONE`, `SOLDAT_KANONE`, `SOLDAT_SANI`, `SOLDAT_WOUNDED`, `SOLDAT_WOUNDER`, `SOLDAT_FOR_TURM`, `SOLDAT_FEUERMACHER`, `SOLDAT_BELAGTURM`, `SOLDAT_BEDIN_BELAG1`, `SOLDAT_BEDIN_BELAG2`, `SOLDAT_SCHLEUSS1`, `SOLDAT_SCHLEUSS2`, `SOLDAT_SCHLEUSS3` |
 | runtime library (KERNEL32, CRT error ids) | `0x1003bd34`–`0x1003c118` | 13 | `KERNEL32`, `R6028`, `R6027`, `R6026`, `R6025`, `R6024`, `R6019`, `R6018`, `R6017`, `R6016`, `R6009`, `R6008`, `R6002` |
-| profile user.dat chunk names | `0x1003d190`–`0x1003d1e4` | 8 | `PROFIL`, `USDAT`, `HELPPLAYER`, `SPEECH`, `VOLUME`, `SONGS`, `SOGUID`, `USGUID` |
-| scene and player chunk names | `0x1003d1ec`–`0x1003d478` | 25 | `COMPSPIELER_NAME`, `WELT`, `SCENE`, `ANNOADDON1`, `ANNO`, `ENTRY`, `K_DATA`, `GUID`, `ALIASNAME`, `SPIELER`, `HEAD`, `BIGBROTHER`, `INFO`, `COMPUTER`, `COMP`, `INSEL5`, `SCHATZ`, `ERZE`, `ROHSTOFF`, `INSELLNK`, `COMPPROFIL2`, `AUFTRAGTEXT`, `PIRAT`, `NATIVE_SPIELER`, `NATIVE_STADT` |
-| AI profile and save keys (CompLogic) | `0x1003d2d0`–`0x1003d37c` | 16 | `CHEATLIMIT`, `SUSPEND`, `MINEISEN`, `MINBAUMAT`, `ZIELANZAHL`, `ZIELGRUPPE`, `MAXSTADT`, `HAUPTKLIMA`, `KAMPFTYP`, `SETTRIBUTSPERRE`, `OPTIONAL`, `PROZENTE`, `TRANSPORT`, `HANDEL`, `LAGER`, `FLAECHE` |
+| profile chunk names (P: `PROFIL`, `USDAT`, `HELPPLAYER`, `SPEECH`, `VOLUME`, `SONGS`, `USGUID` are the chunks of the profile file the game writes, `docs/formats/user-dat.md`, T16) | `0x1003d190`–`0x1003d1e4` | 8 | `PROFIL`, `USDAT`, `HELPPLAYER`, `SPEECH`, `VOLUME`, `SONGS`, `SOGUID`, `USGUID` |
+| scene and player chunk names (`sze.md`) with three `Texte.dat` section names (`COMPSPIELER_NAME`, `NATIVE_SPIELER`, `NATIVE_STADT`; `data-text.md`) and `PIRAT`, the island-file filter next to `"DUMMY.scp"` (`sze.md`). `PIRAT` also names the pirate player in 16 scripts' `[PLAYERMAPPER_DEFINE]` | `0x1003d1ec`–`0x1003d478` | 25 | `COMPSPIELER_NAME`, `WELT`, `SCENE`, `ANNOADDON1`, `ANNO`, `ENTRY`, `K_DATA`, `GUID`, `ALIASNAME`, `SPIELER`, `HEAD`, `BIGBROTHER`, `INFO`, `COMPUTER`, `COMP`, `INSEL5`, `SCHATZ`, `ERZE`, `ROHSTOFF`, `INSELLNK`, `COMPPROFIL2`, `AUFTRAGTEXT`, `PIRAT`, `NATIVE_SPIELER`, `NATIVE_STADT` |
+| keys of the `SPIELER`/`COMP` record (AI parameters; T18, `docs/re/annoscene.md` §11) | `0x1003d2d0`–`0x1003d37c` | 16 | `CHEATLIMIT`, `SUSPEND`, `MINEISEN`, `MINBAUMAT`, `ZIELANZAHL`, `ZIELGRUPPE`, `MAXSTADT`, `HAUPTKLIMA`, `KAMPFTYP`, `SETTRIBUTSPERRE`, `OPTIONAL`, `PROZENTE`, `TRANSPORT`, `HANDEL`, `LAGER`, `FLAECHE` |
 | discovery-tutorial area name (01Discover01 AREA_DEFINE) | `0x1003e4d8`–`0x1003e4d8` | 1 | `ERZ01` |
 
 Total: 284 names = 159 script + 125 other.
@@ -461,7 +472,7 @@ Total: 284 names = 159 script + 125 other.
 ## 7. Corrections to the second survey (`docs/research/game-files-resurvey.md` §2)
 - **`SOLDAT_*` and `SCHIFF_ATTACK` are not the script's unit names.** They are the combat tutorial's object names, which the engine looks up by name (§3.1).
 - **`HELPPLAYER` and `VOLUME` are not unused actions.** They are chunk names of the player profile (`SaveGame/<profile>/user.dat`).
-- **`CHEATLIMIT` and `SETTRIBUTSPERRE` are not unused actions.** They are AI profile and save keys (`0x1003d2d0`–`0x1003d37c`).
+- **`CHEATLIMIT` and `SETTRIBUTSPERRE` are not unused actions.** They are keys of the `SPIELER`/`COMP` record (`0x1003d2d0`–`0x1003d37c`; T18).
 - **`SOLDATCOUNT_BELAGERUNGSMASCHINE` is not a condition.** It stands among the unit classes, so it is likely a unit-class argument.
 - **`MONOPOLY_ON` and `STARTSKILL` are not actions.** They stand in the condition block (likely conditions).
 - **Disaster use:** 226 of the 230 `DISASTER_AT` calls are in one mission, single40 (`FIRE` 158, `VULCAN` 68). The rest are `VULCAN` 2 (single30) and `EARTHQUAKE` 2 (single41). `DROUGHT` and `PLAGUE` are unused.
@@ -469,10 +480,16 @@ Total: 284 names = 159 script + 125 other.
 ## 8. Reference and checks
 - `python -I tools/bigbrother.py check <files>`:
   - all 50 `.sze` files: 50/50 parsed and re-emitted byte-identically;
-  - the two quicksaves: 2/2.
+  - the seven quicksaves of T16: 7/7.
 - `python -I -m doctest tools/bigbrother.py`: the grammar on a synthetic script of our own.
-- `python -I tools/test_bigbrother.py`: the doctests, plus synthetic cases (every byte is one token, Latin-1 round trip, sections out of order or missing, text outside the grammar is an error). With `ANNO1503_GAME_DIR` set, it also runs the corpus cases (skipped otherwise):
+- `python -I tools/test_bigbrother.py`: the doctests, plus synthetic cases:
+  - the tree of a synthetic script: values, argument kinds, areas, slots, the camera;
+  - every byte is one token, and the Latin-1 round trip;
+  - each rule of §2–§3 refused when broken.
+
+  With `ANNO1503_GAME_DIR` set, it also runs the corpus cases (skipped otherwise):
   - all 50 scripts re-emit byte-identically;
+  - the counts of §3.4 and §4;
   - `[SIGNALS]` equals `SCHUETTIINITSIG = TRUE` followed by the `SET` variables in order;
   - `AnnoScene.dll` has 284 names.
 - `dump <file>` prints the tree; `vocab <files>` and `keywords <AnnoScene.dll> <files>` produce the counts and tables of §4–§6.

@@ -2,7 +2,13 @@
 
 **Who writes this file:** the orchestrator session (Claude Fable, the owner's "main" session). **Who reads it:** the executor session (Claude Sonnet with subagents). The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-Last update: 2026-10-22 d (owner priority: the **play layer** of the original's driver, so Claude can play the original from the manual, guides and videos.
+Last update: 2026-10-22 e (round e).
+- **T13 merged** as 558dd27 (PR #15, CI green, macOS included); the river-tier flake is fixed on `main`.
+- **T11 stage 2a reviewed and approved:** merged once PR #17's last CI jobs are green; then OWNER-CHECK. The per-chunk dispatch timestamps are due before the default flips to `gpu`.
+- **T15:** B1-B4 done (PR #16). Next is the play layer (stage 1b), stages A-D.
+- **The second executor stopped** (T8 never started; its worktree `C:\Users\altin\anno1503-T8` is clean). From now on the main executor runs T8 through **one subagent** and works on T15 itself.
+
+Previous: 2026-10-22 d (owner priority: the **play layer** of the original's driver, so Claude can play the original from the manual, guides and videos.
 - Spec: `docs/testing/play-original.md`, stages A-G.
 - Player knowledge: `docs/research/playbook.md`.
 - It is T15 stage 1b and comes right after B1 (its stage A).
@@ -65,6 +71,11 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
      2. T11 stage 2a to the end: PR #17 review items 1–7 and G1–G4, then OWNER-CHECK;
      3. the T15 docs and tools (B2–B4); then the weaver fixture and the road/no-road house test, in an owner-agreed session.
    - **Second executor:** the T13 fix-up (the PR #15 review), then **T8**, in its own worktree.
+
+   **Round of 2026-10-22 e (overrides c and d):** one executor, the main one.
+   - **The executor itself:** T15 play-layer stage A remainder, then stages B, C and D (`docs/testing/play-original.md`), in owner-agreed sessions.
+   - **One subagent:** T8 (S9) in `C:\Users\altin\anno1503-T8`. It first finds out why the second executor stalled there.
+   - **T11:** after the PR #17 merge, the owner's viewer check, then the dispatch timestamps.
 
    **Owner priority 2026-10-22 d (changes the main executor's order above):**
    1. T15 B1 = play-layer stage A.
@@ -189,7 +200,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 ### T2 — Smooth zoom, step 2: animated zoom step · dropped 2026-10-20 (a special case of T3)
 - Animate the group switch over about 120 ms (ease-out), anchored at the cursor, by rendering the current group's content with a continuous scale factor in the compositor during the animation, then landing on the new group at scale 1. Wheel events during the animation retarget it (no queueing of steps). Duration and curve are a viewer config value with 120 ms default (owner decides the feel: OQ entry). Must not add work on the window thread beyond one uniform update; measure with the zoom script.
 
-### T13 — GPU tests in CI: a software Vulkan adapter on the Linux runners (OQ-089) · `IN PROGRESS` (PR #15 reviewed 2026-10-22 c: changes needed; docs (OQ-089 premise, ICD path, added time, `gpu-tests.md`) and two `choose_river_quality` cases) — **assigned to the second executor (2026-10-22 b); the main executor does not touch it** (`.github/workflows/ci.yml`, the GPU test gating, the river-tier test, `choose_river_quality` / the automatic tier, OQ-089) · `PARALLEL-OK` (CI config and test gating only) · branch `task/T13-ci-gpu-tests` from `main` (worktree `C:\Users\altin\anno1503-T13`)
+### T13 — GPU tests in CI: a software Vulkan adapter on the Linux runners (OQ-089) · **`DONE`** (merged as 558dd27 on 2026-10-22 e, PR #15; earlier: PR #15 reviewed 2026-10-22 c: changes needed; docs (OQ-089 premise, ICD path, added time, `gpu-tests.md`) and two `choose_river_quality` cases) — **assigned to the second executor (2026-10-22 b); the main executor does not touch it** (`.github/workflows/ci.yml`, the GPU test gating, the river-tier test, `choose_river_quality` / the automatic tier, OQ-089) · `PARALLEL-OK` (CI config and test gating only) · branch `task/T13-ci-gpu-tests` from `main` (worktree `C:\Users\altin\anno1503-T13`)
 - **Flake evidence 2026-10-22:** the automatic-tier block of "river flow on the GPU: ... the automatic tier follows the adapter" failed on `macos-clang` in `main` run 39737579340 (attempt 1, `gpu_test.cpp:2151`) and in all three attempts of PR #14's run 39739641333 (`:2135` `river_costs().size() >= 2` got 1, `:2152` loose gate gave Low). Hypothesis to check, not a finding: the wall-clock budget `river_measure_budget_ms` runs out after the baseline on a slow, loaded runner (PR #14 adds 20 sim cases to the same `ctest -j 4`). The fix makes the whole block deterministic (the rule on given cost tables; a measured frame checked against `choose_river_quality` of its own costs).
 - **Why:** every GPU test (`device_or_skip`) skips on the runners, so CI checks none of the GPU = CPU parity, the stand-in and fade tests or T3's resample pass; the only gate is the executor's local run on the 4090. T11 adds a compute pass whose exactness is the whole point. Asked by the executor in the T3 report.
 - **Do:** install Mesa's lavapipe (`mesa-vulkan-drivers`, `libvulkan1`; `VK_ICD_FILENAMES` to the lvp ICD if needed) in the `linux-gcc` job (one job is enough; not the ASan job unless it works at once), set `ANNO_REQUIRE_GPU=1` there so a missing adapter fails instead of skipping, and make wgpu-native pick the software adapter (`WGPUPowerPreference`, or the backend's env override; find out, document in `docs/testing/` or the perf README). Report the test time added; if a test is too slow on lavapipe, bound it by a size parameter with the reason, do not skip it.
@@ -251,13 +262,30 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   5. LOW: a free value of 0 is treated as "unknown" and switches the bound off; on Windows `AvailPageFile == 0` is exactly the bad_alloc condition: return an optional for a failed query and keep 0 as 0. Clamp `mb * 1024 * 1024` and `memory_wait_seconds() * 4` against wrap.
 - Then gates (test_support: MSVC and GCC -O3), report, and the orchestrator merges.
 
-### T8 — Sim stage S9: replay and session · `READY` since T7b is merged (2026-10-22); **assigned to the second executor in round 2026-10-22 c, after its T13 fix-up**; it carries the T7b requirements (framing helper, `state.md` §15 S9) · `PARALLEL-OK` (only `src/sim`, `src/tools/sim_replay`, `docs/sim`) · branch `task/T8-sim-s9-replay` from `main` (worktree `C:\Users\altin\anno1503-T8`)
+### T8 — Sim stage S9: replay and session · `READY` since T7b is merged (2026-10-22); **round e: run by one subagent of the main executor** (the second executor did not start it); originally assigned to the second executor in round c; it carries the T7b requirements (framing helper, `state.md` §15 S9) · `PARALLEL-OK` (only `src/sim`, `src/tools/sim_replay`, `docs/sim`) · branch `task/T8-sim-s9-replay` from `main` (worktree `C:\Users\altin\anno1503-T8`)
 - Per `state.md` §15 S9 including `src/tools/sim_replay/`. Unlocked by the orchestrator.
 
 ### T9 — Sim stages S10–S15 · `LATER`
 - One stage per task, in the order of §15; each unlocked after the previous is merged.
 
 ## 4. Review log (orchestrator)
+
+- **T13 fix-up (2026-10-22 e, review of f17940c..aa2a533). Approved; merged as 558dd27.**
+  - Done: all seven items: the OQ-089 premise, the `lvp_icd.json` path, the added time, the `gpu-tests.md` corrections, the Medium case and the absolute-vs-difference case (both shown to catch the wrong rules), gate 1e9 → High restored, the report details.
+  - CI: green on the head, push and PR runs, macOS included.
+  - Nits, accepted: the report cites the old head's runs as "final head"; the test's `adapter:` MESSAGE shows in CI only on failure (vulkaninfo names the adapter anyway).
+- **T11 stage 2a follow-ups (2026-10-22 e, review of 7be0e72..65618f2, PR #17). Approved; merge when the last CI jobs are green; then OWNER-CHECK.**
+  - Done: derived levels under GpuList are reduced on the GPU from GPU-built children, and the GpuList derived frame equals the CPU `render_derived_chunk` within 1 at derived groups 3-4, with mutation evidence. The first-frame hitch is gone (pipeline and atlas created at start). G1 dirty-only uploads counted in the budget; G2 pooled scratch; G3 both atlases in one budget; G4 assert. The stand-in test runs with both builders (0 px). Mutation evidence names the failing CHECK for each 7.2 item. Pan/zoom percentiles for both builders on both adapters; the bin_px sweep is flat (32 kept); atlas peak 11.8 MiB, 0 fallbacks.
+  - Open:
+    - the per-chunk dispatch GPU timestamps (C1), required before the default flips to `gpu`;
+    - the owner's viewer check;
+    - nit: the overflow fallback replays on the window thread (unreachable at default budgets); route it to the CPU workers when convenient.
+  - Process: no reviewers were spawned again (§1 point 5).
+- **T15 round-c response (2026-10-22 e, review of 1f70e93..f8254d6, PR #16). B1-B4 accepted.**
+  - B1: before every input the tool checks the foreground window, the cursor and the client rect; NOTOPMOST is restored; actions are logged; one instance only; client-rect coordinates. Gap: the "owner took the mouse" check works only inside one process. Persist the last cursor in the session log so separate calls check it too.
+  - B2: the corrections and the OQ moves (OQ-T15-HOUSEGROW, -SERVICE, -PLACEREFUSE) as asked. B3: the full-copy hash compare. B4: rounding recorded. N1/N4/N6/N8 done; N3 (A6) deferred with a reason.
+  - Report error: the repo-root `Anno_1503_Manual.pdf` is the full 77-page German manual, not "6-page front matter" (the orchestrator read it for `docs/research/playbook.md`).
+  - The macOS failures on PR #16 were the known flake, fixed on main by T13. PR #16 now conflicts with main only in REPORTS.md (both append).
 
 - **T11 stage 2a (2026-10-22 c, review of the PR #17 head d761f10; the full text is the PR comment). The core is approved; the stage is not finished.**
   - Approved: every chunk of Single_01, Single_24 and the canyon at groups 0–2 equals the CPU replay with 0 mismatched pixels on the RTX 4090 and the Radeon iGPU. The composed frame is identical with both builders. The synthetic cases cover the old mutation survivors. One submit per chunk keeps frame-table and atlas updates ordered. The default stays `Cpu`. CI is green apart from the known macOS flake.

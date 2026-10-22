@@ -1762,8 +1762,6 @@ TEST_CASE("river flow on the GPU: the shader draws what the CPU twin draws, at e
                                 << " % within 2/255, max " << r.max);
                 // Rounding of the 8-bit colour and the GPU's own arithmetic: the pixels
                 // agree within 2/255 on >= 99.9 %, none beyond 4 (rivers.md Q2).
-                // Rounding of the 8-bit colour and the GPU's own arithmetic: the pixels
-                // agree within 2/255 on >= 99.9 %, none beyond 4 (rivers.md Q2).
                 CHECK(r.within2() >= 0.999);
                 CHECK(r.max <= 4);
                 // Negative control: with the flow reversed the CPU's expectation is
@@ -2083,6 +2081,20 @@ TEST_CASE("choose_river_quality: the gate rule on given cost tables (determinist
                                      river_cost(render::RiverQuality::Medium, 25.0),
                                      river_cost(render::RiverQuality::High, 30.0)},
                                     1.0e9) == render::RiverQuality::High);
+    // Medium is the highest tier within the gate: legacy 10, Low adds 2, Medium adds 4,
+    // High adds 20, gate 5 → Medium.
+    CHECK(gpu::choose_river_quality({legacy, river_cost(render::RiverQuality::Low, 12.0),
+                                     river_cost(render::RiverQuality::Medium, 14.0),
+                                     river_cost(render::RiverQuality::High, 30.0)},
+                                    5.0) == render::RiverQuality::Medium);
+    // The gate compares the *difference* to the baseline, not the absolute ms_per_mpx:
+    // legacy 100, Low adds 2, Medium adds 4, High adds 6, gate 5 → Medium. An absolute
+    // comparison (tier <= gate) would wrongly give Low since every tier exceeds 5.
+    CHECK(gpu::choose_river_quality({river_cost(std::nullopt, 100.0),
+                                     river_cost(render::RiverQuality::Low, 102.0),
+                                     river_cost(render::RiverQuality::Medium, 104.0),
+                                     river_cost(render::RiverQuality::High, 106.0)},
+                                    5.0) == render::RiverQuality::Medium);
     // Mixed: only Low adds at most 12 above the legacy (10); Medium (15) and High (20) do not.
     CHECK(gpu::choose_river_quality({legacy, river_cost(render::RiverQuality::Low, 20.0),
                                      river_cost(render::RiverQuality::Medium, 25.0),
@@ -2166,7 +2178,7 @@ TEST_CASE("river flow on the GPU: the cost is measured per tier, GPU timestamps 
     // "unlimited" in GpuLimits): a budget can run out after the legacy baseline on a slow
     // or loaded adapter and leave only that measurement, which forces Low and makes the
     // choice depend on timing instead of on the measured costs (the macOS CI runner flaked
-    // here: gpu_test.cpp:2135 and :2152). With no budget the tiers are always measured up
+    // on the automatic-tier CHECKs). With no budget the tiers are always measured up
     // to the stop gate, so the choice is the rule on the costs, not on the wall clock.
     gpu::GpuLimits auto_limits;
     auto_limits.river_measure_budget_ms = 0.0; // unlimited: the choice must be deterministic
@@ -2216,6 +2228,8 @@ TEST_CASE("river flow on the GPU: the cost is measured per tier, GPU timestamps 
               gpu::choose_river_quality(a_costs, tight.river_gate_ms_per_mpx));
         CHECK(b.value()->river_quality() ==
               gpu::choose_river_quality(b_costs, loose.river_gate_ms_per_mpx));
+        // With an unlimited budget a huge gate always reaches High: timing-independent.
+        CHECK(b.value()->river_quality() == render::RiverQuality::High);
     }
     CHECK(made.value()->errors() == 0);
 }

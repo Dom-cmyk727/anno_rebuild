@@ -3,7 +3,7 @@
 **Who writes this file:** the orchestrator session (Claude Fable, the owner's "main" session). **Who reads it:** the executor session (Claude Sonnet with subagents). The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
 Last update: 2026-10-22 h.
-- **Reviewed (§4):** T17 merged (PR #20), T18 merged (PR #22), T8 S9 (PR #19) `REVIEW` with seven should-fix items, T16 (PR #21) see §4.
+- **Reviewed (§4):** T17 merged (PR #20), T18 merged (PR #22), T8 S9 (PR #19) `REVIEW` with five should-fix items left (two of seven fixed by 96fc4e3), T16 (PR #21) `REVIEW` with five, T18 approved, merge when CI is green.
 
 Previous: 2026-10-22 g.
 - **Orchestrator research merged on `main`:** the in-game help checked against the data (`docs/research/manual-and-help.md`, e3b48b6), building costs in `playbook.md` §14 (51615bb), and a second survey of the game files (`docs/research/game-files-resurvey.md`, 1dc8cc7): the `BIGBROTHER` chunk is a scenario **script language**, `COMPPROFIL2` holds the AI profiles.
@@ -231,7 +231,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 - **Rules:** nothing of the original in git; quote the scripts only in short excerpts. Evidence only: where the vocabulary comes from the strings of `AnnoScene.dll` and no shipped script uses an item, mark it S (unused).
 - **Acceptance:** all 50 files parse without a fallback; the doc lists every keyword of the interpreter's string table (284 uppercase names in `AnnoScene.dll`, filter the non-script ones) as used/unused; report in REPORTS.md.
 
-### T18 — The AI profiles: `COMPPROFIL2` loader and the 19 `COMPCAPS_*` columns (owner decision 2026-10-22: "do it") · `DONE` (PR #22, reviewed 2026-10-22 h, merged) · `PARALLEL-OK` (docs only: `docs/re/annoscene.md`, `docs/formats/sze.md` §COMPPROFIL2, `docs/research/game-files-resurvey.md` §3) · branch `task/T18-compprofil` from `main`
+### T18 — The AI profiles: `COMPPROFIL2` loader and the 19 `COMPCAPS_*` columns (owner decision 2026-10-22: "do it") · `REVIEW` → approved 2026-10-22 h (PR #22, head 89246a0); merge when its CI is green · `PARALLEL-OK` (docs only: `docs/re/annoscene.md`, `docs/formats/sze.md` §COMPPROFIL2, `docs/research/game-files-resurvey.md` §3) · branch `task/T18-compprofil` from `main`
 - **Evidence so far:** `game-files-resurvey.md` §3: 168-byte `ENTRY` = `u32[19]`, name, `Profil<nn>.htm`, `0xCC` fill; keys `COMPCAPS_TYP … COMPCAPS_SETHELPANLAGE` in `AnnoScene.dll`; `DEF` 128 bytes.
 - **Do** (static analysis with `tools/disasm.py`, as in `docs/re/annoscene.md`):
   1. find the `COMPPROFIL2` reader in `AnnoScene.dll` (string refs `COMPPROFIL2`, `ENTRY`, `DEF`, the `COMPCAPS_*` names) and map each of the 19 columns to its key and type; the `DEF` record likewise;
@@ -308,7 +308,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   5. LOW: a free value of 0 is treated as "unknown" and switches the bound off; on Windows `AvailPageFile == 0` is exactly the bad_alloc condition: return an optional for a failed query and keep 0 as 0. Clamp `mb * 1024 * 1024` and `memory_wait_seconds() * 4` against wrap.
 - Then gates (test_support: MSVC and GCC -O3), report, and the orchestrator merges.
 
-### T8 — Sim stage S9: replay and session · `REVIEW` (PR #19, reviewed 2026-10-22 h, §4: seven should-fix items, then merge) · was `READY` since T7b is merged (2026-10-22); **round e: run by one subagent of the main executor** (the second executor did not start it); originally assigned to the second executor in round c; it carries the T7b requirements (framing helper, `state.md` §15 S9) · `PARALLEL-OK` (only `src/sim`, `src/tools/sim_replay`, `docs/sim`) · branch `task/T8-sim-s9-replay` from `main` (worktree `C:\Users\altin\anno1503-T8`)
+### T8 — Sim stage S9: replay and session · `REVIEW` (PR #19, reviewed 2026-10-22 h, §4: items 1, 2, 4, 6, 7 open, then merge) · was `READY` since T7b is merged (2026-10-22); **round e: run by one subagent of the main executor** (the second executor did not start it); originally assigned to the second executor in round c; it carries the T7b requirements (framing helper, `state.md` §15 S9) · `PARALLEL-OK` (only `src/sim`, `src/tools/sim_replay`, `docs/sim`) · branch `task/T8-sim-s9-replay` from `main` (worktree `C:\Users\altin\anno1503-T8`)
 - Per `state.md` §15 S9 including `src/tools/sim_replay/`. Unlocked by the orchestrator.
 
 ### T9 — Sim stages S10–S15 · `LATER`
@@ -319,15 +319,15 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 - **T17 (2026-10-22 h, PR #20, head 1e54c90). Approved; merged as 4ef5373.**
   - Re-run by the orchestrator: `bigbrother.py check` 50/50 byte-identical; `test_bigbrother.py` 15 passed with the corpus cases. The spec's §7 corrections to the resurvey are right (the 37-vs-39 script count, `SOLDAT_*` as tutorial object names).
   - Nits: `vocab` prints a `0 SET (counted above)` line; the resurvey §2 has no pointer to `bigbrother.md` §7 yet (orchestrator adds one).
-- **T18 (2026-10-22 h, PR #22, head bf48bf8). Approved; merged.**
+- **T18 (2026-10-22 h, PR #22, head 89246a0). Approved; merge when CI is green** (docs only; the last commit, `TRIBUTSPERRE` gates one AI action, is consistent and hedged).
   - Spot-checked in the disassembly: the 15 setter calls of the hand-over `AnnoFrame.dll` `0x10028e8a`–`0x10028fe0` push indices 0, 3, 6, 1, 2, 7, 8, 9, 18, 13, 14, 4, 25, 26, 26 as tabled; the last call takes column 13 at message `+0x18` and column 14 at `+0x14`. The twelve-profile table agrees with the orchestrator's own survey row.
   - **Owner to confirm:** OQ-114 is written as decided by the owner ("faithful default, ignore the misspelt key"). If that was the executor's reading and not the owner's words, the status goes back to open.
-- **T8 S9 (2026-10-22 h, PR #19, head a234232). Merge after fixes.** Core sound: every read bounds-checked through `ReadArchive`, explicit little-endian, hostile or truncated logs are clean `Result` errors, no floats, time, unordered containers or globals in `src/sim`. Should-fix before merge:
+- **T8 S9 (2026-10-22 h, PR #19, reviewed at a234232; the four later commits up to 96fc4e3 fix items 3 and 5, the rest is open). Merge after fixes.** Core sound: every read bounds-checked through `ReadArchive`, explicit little-endian, hostile or truncated logs are clean `Result` errors, no floats, time, unordered containers or globals in `src/sim`. Should-fix before merge:
   1. `replay.cpp` ~198: `write_log` drops a command that `encode_turn_entry` refuses (`if (rec.ok())`) although `Recorder::submit` already applied it to the world. The log stops being the ground truth. `Recorder::submit` must refuse such a command (or `write_log` return a `Result`); add a test.
   2. `replay.cpp` ~327: `replay` checks `prng_timeline_version` but never compares `log.prng_timeline_missing` with `prng_timeline_missing()`. Compare it and refuse on a difference (the reason the manifest exists, `replay.hpp` 54-56); add a test.
-  3. `replay_test.cpp` ~271: `CHECK((bad.ok() || !bad.error().empty()))` is a tautology. Assert `bad.ok() == (len is an entry boundary)` and check `partial.size()`.
+  3. ~~`replay_test.cpp` ~271: tautology~~ fixed in 5ee20e1 (every framing prefix checked exactly; the frame pinned byte for byte).
   4. No real negative test for `hash_per_entry`/`first_divergent_entry`: two runs that diverge after entry k, with `first_divergent_entry(...) == k` (k > 0).
-  5. `docs/sim/state.md` §8.7: the normative block still shows `kVersion = 1` inside `ReplayLog` and the `diff_trees` path without `index/`; correct the block, not only the "as implemented" note (specs are the truth).
+  5. ~~`docs/sim/state.md` §8.7 normative block~~ fixed in a6257db (normative frame layout written out; `--dump-scope` takes the `diff_trees` path, 9251865).
   6. `sim_replay/main.cpp` ~265: `std::stoull(args[++i])` throws on `--entry abc`; validate or catch, the tool must not abort.
   7. `Recorder` calls `world_.save()` whose precondition (real terrain, `world.hpp` 127-130) is not stated on `Recorder`; document or check.
   - Nits: `replay.hpp` 79-80 says "logs, then acts" but `advance` acts first; `run_turn` with a recorder emits one entry per command, not one block per turn (say so in the spec or change it); `diff_node` pairs children by position without a name check; the tool re-implements the private `apply_entry` loop; the config-mismatch test covers rules and registry only; REPORTS.md names head 1da8f1b and "438/438" while state.md says 731/731 (say which suite).

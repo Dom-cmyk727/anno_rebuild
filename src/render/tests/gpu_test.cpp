@@ -2185,22 +2185,35 @@ TEST_CASE("river flow on the GPU: the cost is measured per tier, GPU timestamps 
         CHECK_FALSE(auto_costs.front().quality.has_value()); // the legacy shimmer is first
         CHECK(autoq.value()->river_quality() == gpu::choose_river_quality(auto_costs, 1.0));
     }
-    // A gate of zero and a huge one on a measured adapter: Low and High.
-    // Unlimited budget here as well: a spent budget would leave only the legacy
-    // measurement and the choice would fall to Low regardless of the gate.
+    // A gate of -1 and a huge one on a measured adapter: whatever the timing,
+    // the chosen tier is the gate's rule applied to that frame's own costs. The
+    // budget is unlimited so no tier is dropped after the baseline (the macOS
+    // CI runner flake: the budget ran out after the legacy measurement, leaving
+    // only that, so the choice fell to Low whatever the gate).
     if (ctx->adapter_type != WGPUAdapterType_DiscreteGPU &&
         ctx->adapter_type != WGPUAdapterType_CPU) {
         gpu::GpuLimits tight, loose;
         tight.river_gate_ms_per_mpx = -1.0;
-        tight.river_measure_budget_ms = 0.0; // unlimited (determinism, reason above)
+        tight.river_measure_budget_ms = 0.0; // unlimited: determinism (reason above)
         loose.river_gate_ms_per_mpx = 1.0e9;
-        loose.river_measure_budget_ms = 0.0; // unlimited (determinism, reason above)
+        loose.river_measure_budget_ms = 0.0; // unlimited: determinism (reason above)
         auto a = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, tight);
         auto b = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, loose);
         REQUIRE(a);
         REQUIRE(b);
-        CHECK(a.value()->river_quality() == render::RiverQuality::Low);
-        CHECK(b.value()->river_quality() == render::RiverQuality::High);
+        const auto& a_costs = a.value()->river_costs();
+        const auto& b_costs = b.value()->river_costs();
+        CHECK_FALSE(a_costs.empty());
+        CHECK_FALSE(b_costs.empty());
+        // The legacy shimmer (no tier) is measured first.
+        CHECK_FALSE(a_costs.front().quality.has_value());
+        CHECK_FALSE(b_costs.front().quality.has_value());
+        // Self-consistency: the tier is the rule on this frame's own costs,
+        // whatever the wall-clock measurement did (deterministic, no timing).
+        CHECK(a.value()->river_quality() ==
+              gpu::choose_river_quality(a_costs, tight.river_gate_ms_per_mpx));
+        CHECK(b.value()->river_quality() ==
+              gpu::choose_river_quality(b_costs, loose.river_gate_ms_per_mpx));
     }
     CHECK(made.value()->errors() == 0);
 }

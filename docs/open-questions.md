@@ -1036,8 +1036,10 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   - *Shipped values (P):* columns 13, 14 and 18 are 0 in all twelve shipped profiles, so both readings behave the same.
   - *Two readings of the unused columns (guess):*
     - *Order:* every confirmed column follows the AI key reader's test order (`CompLogic.dll` `0x10040b79`–`0x10040d4e`). That would give 7 = `OPTIONAL`, 13 = `ZIELANZAHL`, 14–15 = `CHEATLIMIT`.
-    - *Value:* column 15 (3/60) matches the `OPTIONAL=3`/`=60` of the scenarios' `COMP` records.
-  - *Default profile (D):* the global slots start as default profiles with a valid GUID (`AnnoFrame.dll` `0x100172d0`). The setup reader `0x1001e5d0` clears them, but not every game-start path was traced.
+    - *Value:* column 15 (3/60) looks like the `OPTIONAL=3`/`=60` of the scenarios' `COMP` records. The files speak against it (P): in `02` player 3, `04` player 1 and `05` player 3 the `COMP` record copies the player's profile (Profil03) in every mapped key, yet has `OPTIONAL=3` where column 15 is 60. Every player that `DEF` gives a profile has `OPTIONAL=3` in the eight `0010` games, and `OPTIONAL` takes the values 2, 3, 6, 10 and 60 across the corpus.
+  - *Independent support for the mapping (P):* the same three exact copies match the hand-over's columns 1, 3, 4, 5, 6, 9, 10, 11 and 12 to the keys `TYP`, `LAGER`, `HANDEL`, `TRANSPORT`, `PROZENTE`, `KAMPFTYP`, `HAUPTKLIMA`, `MAXSTADT`, `ZIELGRUPPE`.
+  - *Against the slip reading (D):* the `COMP` key reader stores `CHEATLIMIT=a,b` as a at message `+0x14` and b at `+0x18` (`CompLogic.dll` `0x100016e8`, `0x10001703`), so the hand-over would carry column 14 = a and column 13 = b, against the column order. The key-order reading also puts `ZIELANZAHL` at 13.
+  - *Default profile (D):* the global slots start as default profiles with a valid GUID (`AnnoFrame.dll` `0x100172d0`). The setup reader `0x1001e5d0` clears its own slots and ends by committing them to the global array (`0x1001ec26` → `0x1001fad0`), but not every game-start path was traced.
 - **How to resolve:**
   - *The original's own tools:* look for a profile editor screen that edits these columns (the 1503 editor is not shipped; `AnnoScene.dll`'s editor class has no caller).
   - *Ghidra on Linux:* search `AnnoFrame.dll`/`AnnoGame.dll` for further readers of a 168-byte record.

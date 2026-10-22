@@ -154,10 +154,11 @@ Modules as named per item; all image bases `0x10000000`. Record layout and corpu
      - `HEAD`: two flags go to the globals `0x1009c068`/`0x1009c069`.
      - `COMPPROFIL2`, each `ENTRY`: default-constructs a record, zeroes it, reads 168 bytes and appends it to the profile vector (`this+0x534`, begin `+0x538`, end `+0x53c`; count byte `+0x544`).
      - `COMPPROFIL2`, `DEF`: if `apply` is set, enables all 7 slots (bytes `+0x94`…`+0x9a` = 1). Then, in player order, copies `ENTRY[DEF[i]]` into the next slot (`+0x9c + k·0xa8`) for every `DEF[i] ≠ −1`. Nothing checks the slot count against 7 or `DEF[i]` against the vector size.
-  4. Returns whether any `ENTRY` was read.
+  4. Calls the commit `0x1001fad0` (`0x1001ec26`, §11.3), which copies the slots to the global array `0x1009bbd0`.
+  5. Returns whether any `ENTRY` was read.
 
 ### 11.2 The record and the GUID test (`AnnoFrame.dll`, `AnnoScene.dll`)
-- **Record constructor**, inlined in the setup object's constructor `0x1001e140`, in the static initialiser of the global slot array `0x100172d0`, and in both readers: byte 0 = 1, bytes 1–3 = 0, columns 1–18 `4 0 2 3 1 18 0 0 15 3 5 5 0 0 60 0 0 0`, GUID `{E861A553-AFA5-4C53-BAEB-6AF500000000}`, name `Default`, page `Default.htm`. **Confirmed.** Both file readers zero the record after constructing it, so a file record never inherits these values.
+- **Record constructor**, in the setup object's constructor `0x1001e140` (through the helper `0x1001e300`), in the static initialiser of the global slot array `0x100172d0`, and in both readers: byte 0 = 1, bytes 1–3 = 0, columns 1–18 `4 0 2 3 1 18 0 0 15 3 5 5 0 0 60 0 0 0`, GUID `{E861A553-AFA5-4C53-BAEB-6AF500000000}`, name `Default`, page `Default.htm`. **Confirmed.** Both file readers zero the record after constructing it, so a file record never inherits these values.
 - **GUID test** `0x10019ff0`: false if the 16 bytes at record `+0x4c` are all zero or all `0xFF`, compared as `u32, u16, u16, 8 × u8`. **Confirmed.** So `+0x4c` is a GUID and "no profile" is an invalid GUID.
 
 ### 11.3 The opponent setup screen (`AnnoFrame.dll`)
@@ -198,16 +199,20 @@ Called from the game start `0x10029100` at `0x10029372` and `0x1002967b`. Both c
 | 15 | 13 (value) and 14 (second value, message `+0x14`) | 26 `SUSPEND` again | `0x10028fc5`–`0x10028fe0` |
 
 - Columns 0, 7 and 15, the name and the page are not passed. **Confirmed.**
-- Call 15 overrides call 14 with column 13. Its message shape (two values, at `+0x18` and `+0x14`) is the shape of parameter 17 `CHEATLIMIT`, whose setter stores both (`0x10004768`). The `COMP` key reader also builds this shape for `CHEATLIMIT=a,b` (`0x100016df`–`0x1000170e`). So index 26 instead of 17 is **likely** a slip in the original. With the shipped values (all 0) it changes nothing (OQ-112).
-- Because only type-12 players with colour `0xFF` take slots, the slots go to `DEF`'s players in `DEF` order. The corpus has no file where these sets differ (P). A computer player with a preset colour keeps the values of its `COMP` record. So does a scenario without `ENTRY` records: its slots carry no valid GUID, and each computer only gets parameter 34. This assumes the setup reader `0x1001e5d0` ran for the scenario (**likely**). The global slots start out as default records with a valid GUID (`0x100172d0`), and whether any start path skips the reader was not traced.
+- Call 15 overrides call 14 with column 13. Its message shape (two values, at `+0x18` and `+0x14`) is the shape of parameter 17 `CHEATLIMIT`, whose setter stores both (`0x10004768`). That index 26 is a slip for 17 is a **guess** (OQ-112), and two things speak against it:
+  - the `COMP` key reader puts `CHEATLIMIT=a,b` as a at `+0x14` and b at `+0x18` (`0x100016e8`, `0x10001703`), so the hand-over would carry column 14 = a and column 13 = b, against the column order;
+  - the key-order reading of §11.4's columns (`sze.md` "AI profiles") puts `ZIELANZAHL` at 13 and `CHEATLIMIT` at 14–15.
+
+  With the shipped values (all 0) it changes nothing.
+- Because only type-12 players with colour `0xFF` take slots, the slots go to `DEF`'s players in `DEF` order. In the nine files with `ENTRY` records these sets are the same (P). A computer player with a preset colour keeps the values of its `COMP` record. So does a scenario without `ENTRY` records: its slots carry no valid GUID, and each computer only gets parameter 34. One shipped file is such a case: `single39.sze` has no `ENTRY` and a type-12 player with colour `0xFF` (player 17, P). This assumes the setup reader `0x1001e5d0` ran for the scenario (**likely**); it ends with the commit to the global slots itself (§11.1 step 4). The global slots start out as default records with a valid GUID (`0x100172d0`), and whether any start path skips the reader was not traced.
 
 ### 11.5 The AI side: objects, factory, parameter setter (`CompLogic.dll`)
 - **Loading:** `AnnoWelt.dll` `0x1009c630` loads `CompLogic.dll` if world property 14 has bit 1 set (`0x1009c681`; the `ANNOADDON1` root sets it, §1), otherwise `CompLogicClassic.dll`. It calls `CompCreateInstance` (`0x100163b0`), which builds the manager (`0x1003d590`, vtable `0x100634f8`). **Confirmed.** This answers the selection half of OQ-018.
 - **Per-player AI object:** the player reader for `COMP` (`AnnoWelt.dll` `0x1001e3be`) works in three steps. **Confirmed:**
   1. Reads the 8-byte prefix (type, index).
-  2. Calls manager slot `+0x1c` = factory `0x1003dc50` with them and stores the result in player property 44.
+  2. Calls manager slot `+0x1c` = factory `0x1003dc50` with (type, index, the player's Volk number `word [player+0x7a]` = property 28 (§6), 1) (`0x1001e423`–`0x1001e434`) and stores the result in player property 44.
   3. Lets the new object read the key text (object slot `+0x18`).
-- **The factory switches on the player type** (jump table `0x1003de68`). **Confirmed.** It stores the type at object `+0xa18` and the index at `+0xa14`. Classes by type:
+- **The factory switches on the player type** (jump table `0x1003de68`). **Confirmed.** It stores the type at object `+0xa18` and the Volk number at `+0xa14` (`0x1003dd89`, `0x1003dd8f`); for types 12 and 13 it first sets the Volk number to 1 (`0x1003dcb4`–`0x1003dcba`). The index goes to the new object's slot 0 (`0x1003dd95`–`0x1003dd9f`). Classes by type:
 
 | Type | Constructor | Vtable | Size | Player kind |
 |---|---|---|---|---|
@@ -228,7 +233,7 @@ The names are German words (`Lager` storage, `Handel` trade, `Prozente` percent,
 
 | Index | `COMP` key | Script name | Setter effect (object field) | Profile column |
 |---|---|---|---|---|
-| 0 | `TYP` | `COMPCAPS_TYP` | 0–7 only: `+0xa34`; slot `+0x24` (`0x100044b0`) sets `+0xaf0` = `+0xaf4` = 47,500 / 37,500 / 42,500 / 42,500 / 52,500 / 42,500 / 52,500 / 57,500 for 0…7 | 1 |
+| 0 | `TYP` | `COMPCAPS_TYP` | 0–7 only: calls slot `+0x24` (`0x100044b0`), which stores `+0xa34` and sets `+0xaf0` = `+0xaf4` = 47,500 / 37,500 / 42,500 / 42,500 / 52,500 / 42,500 / 52,500 / 57,500 for 0…7. The pirate class overrides slot `+0x24` (`0x10054710`), so these intervals do not hold for pirates | 1 |
 | 1 | `FLAECHE` | — | `+0xa70` | 2 |
 | 2 | `LAGER` | `COMPCAPS_LAGER` | 0–3: `+0xa3c` | 3 |
 | 3 | `HANDEL` | `COMPCAPS_HANDEL` | 0–3: `+0xa40` | 4 |
@@ -248,7 +253,7 @@ The names are German words (`Lager` storage, `Handel` trade, `Prozente` percent,
 | 18 | `KAMPFTYP` | `COMPCAPS_KAMPFTYP` | `+0xa38` = v & 15; then `0x10004df0` (§11.6) | 9 |
 | 19–21 | — | — | call `0x10005e50`, `0x10005730`, `0x10005940` | — |
 | 22, 23, 27 | — | — | ignored | — |
-| 24 | — | `COMPCAPS_SETHELPANLAGE` | type 11 only: `+0xa2c`, then `0x100043e0` | — |
+| 24 | — | `COMPCAPS_SETHELPANLAGE` | type 11 only: `+0xa2c`; then, for every type, `0x100043e0` (`0x100048ed` → `0x100048fc`) | — |
 | 25 | `TRIBUTSPERRE` (editor: `SETTRIBUTSPERRE`) | — | `+0xa68` | 8 |
 | 26 | `SUSPEND` | `COMPCAPS_SUSPEND` | 0: `+0xa80` = 0, byte `+0x1a89` = 1; else `+0xa80` = 1, byte `+0x1a89` = 0 and slot `+0x20` is called | 18 (then 13, §11.4) |
 | 28 | `NATIVEBAUMODE` | — | `+0xafc` | — |
@@ -265,11 +270,11 @@ The 16 `COMPCAPS_*` names cover indices 0, 2, 3, 4, 6, 8, 9, 11, 12, 13, 14, 18,
 ### 11.6 What some parameters steer (`CompLogic.dll`)
 - **`KAMPFTYP` (column 9)** is two 2-bit switches. **Confirmed** for the code paths; that the tasks are military ones is **likely** from the name and from the profiles: the Trader page "detests war" and has 0, the Warrior has 11, the Tactician 15.
   - *Creating tasks:* `0x10003680` acts only for a type-12 AI (`+0xa18` = 12). If bits 0–1 are non-zero and no task of kind 6 exists (`0x100037a0`), it creates one (`0x100037f0`). Bits 2–3 do the same for task kind 8.
-  - *Capping tasks:* the planner at `0x10043233` returns at once when bits 2–3 are 0. Otherwise it counts two sorts of entries in the AI's 12-entry task table (`+0x1ad4`, 28 bytes each). It returns early once a count reaches 1 (bits 2–3 = 4 or 8) or 2 (= 12).
+  - *Capping tasks:* the planner `0x10043210` first returns if the global `[0x100692d8]` is below 4. At `0x10043233` it returns when bits 2–3 are 0. Otherwise it makes two counts over the AI's 12-entry task table (`+0x1ad4`, 28 bytes each): one of entries, one of distinct values of the entry byte `+8`. It returns early once a count reaches 1 (bits 2–3 = 4 or 8) or 2 (= 12).
   - *Cancelling tasks:* writing the parameter calls `0x10004df0`, which cancels the table entries of the kind whose bits are now 0. Entries without flag bit 1 belong to bits 2–3; entries with it belong to bits 0–1.
-  - *Two further tests:* `0x1004354d` tests bit 3 and `0x10043e4a` tests bit 1; not followed.
+  - *Two further tests:* `0x1004354d` (inside the same planner) tests bit 3, and `0x10043e4a` tests bit 1; not followed.
 - **`PIRATEATTACKALL`** (script only, `single34.sze`, 6 uses) sets bit 3 of the flag word `+0xa84`. **Confirmed:** the pirate class (vtable `0x10063a00`, slot `+0x2c` = `0x10055a30`) calls `0x100558b0` three times. That routine walks candidate objects and drops each one that fails the check `0x10028bd0(candidate, TYP)`. When bit 3 is set it skips this check (`0x1005593f`). **Likely:** the pirates then attack every candidate instead of a TYP-filtered set.
-- **`TYP` (column 1)** selects the pair `+0xaf0`/`+0xaf4` (table above). Several AI routines pass both values with a time value to `0x1003ea50`, e.g. `0x10042357` (the time comes from `0x1003d240`). That routine divides elapsed time by them while it updates a 32-entry per-player table of signed byte values. **Confirmed** for the arithmetic. **Likely:** a decay rate of the AI's per-player attitude; the time unit is not traced. The field `+0xa34` itself occurs 47 times in the module, among them in the pirate target check above.
+- **`TYP` (column 1)** selects the pair `+0xaf0`/`+0xaf4` (table above; not for pirates, whose class overrides the slot). Several AI routines pass both values with a time value to `0x1003ea50`, e.g. `0x10042357` (the time comes from `0x1003d240`). That routine divides elapsed time by them while it updates a 32-entry per-player table of signed byte values. **Confirmed** for the arithmetic. **Likely:** a decay rate of the AI's per-player attitude; the time unit is not traced. The field `+0xa34` itself occurs 47 times in the module, among them in the pirate target check above.
 - **`PROZENTE` (column 6)** gives the AI two factors, 1 ± v/100. **Confirmed.** A price margin is a **guess** (OQ-113).
 - **`SUSPEND`:** a non-zero value sets `+0xa80`, clears the byte `+0x1a89` and calls the AI's slot `+0x20`. **Confirmed.** That this pauses the AI is **likely** from the name. `single41.sze` sets it for 12 computer players by script.
 
@@ -284,7 +289,7 @@ The 16 `COMPCAPS_*` names cover indices 0, 2, 3, 4, 6, 8, 9, 11, 12, 13, 14, 18,
 - It has the same key strings minus a few (S, `game-files-resurvey.md` §3). Its own readers and its behaviour behind the fields were not compared.
 
 ## Open
-- §11: `ENTRY` columns 0, 7, 13, 14, 15 and the doubled `SUSPEND` call (OQ-112); what the AI parameters do beyond the setter (OQ-113); the lost `SETTRIBUTSPERRE` values (OQ-114); which machine sends network message 6; the type-17 AI case (`0x1003de00`).
+- §11: `ENTRY` columns 0, 7, 14, 15 (unused) and 13 (the doubled `SUSPEND` call) (OQ-112); what the AI parameters do beyond the setter (OQ-113); the lost `SETTRIBUTSPERRE` values (OQ-114); which machine sends network message 6; the type-17 AI case (`0x1003de00`).
 - The meaning of `INFO` byte 2 ("special") and byte 5 (capacity vs. mountain/ore slots); the size classes and climate masks of the raw-material and ore distribution (`0x1003af74`, `0x10009010`, `0x1003af40`).
 - What happens to a link without any candidate after the capacity filter (§5 step 10).
 - Whether a savegame stores the world random cursor (property 8), and when the reset `0x100af240` runs relative to a scene load.

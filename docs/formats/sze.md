@@ -1,6 +1,6 @@
 # Scenarios (`.sze`)
 
-**Status:** partial — the `SCENE` chunk list, the tagged-record container, players (`SPIELER`), ships and soldiers (`SCHIFF`, `SOLDAT`) and island links (`INSELLNK`) are decoded and re-encode byte-identically (P). The AI profiles (`COMPPROFIL2`) and the per-player AI record (`SPIELER/COMP`) are decoded field by field (D + P, 2026-10-22, T18); four profile columns are still unnamed (OQ-112). The content of most other records (`STADT2`, `PRIVAT`, …) and of the other `SCENE` children is open (OQ-027, OQ-028).
+**Status:** partial — the `SCENE` chunk list, the tagged-record container, players (`SPIELER`), ships and soldiers (`SCHIFF`, `SOLDAT`) and island links (`INSELLNK`) are decoded and re-encode byte-identically (P). The AI profiles (`COMPPROFIL2`) and the per-player AI record (`SPIELER/COMP`) are decoded field by field (D + P, 2026-10-22, T18); four profile columns reach no setter and one only through a doubtful second call (OQ-112). The content of most other records (`STADT2`, `PRIVAT`, …) and of the other `SCENE` children is open (OQ-027, OQ-028).
 
 ## Files covered
 - Glob: `Scenes/**/*.sze`
@@ -27,7 +27,7 @@ All integers little-endian.
 | `LIMITS` | 23 + 27 | 4 | `u16` ship cap, `u16` soldier cap (40 / 100 endless, 20 / 100 missions, up to 50 / 400 add-on; ISS-061) | P (resurvey §4) |
 | `AUFTRAGTEXT` | 13 + 25 | 19–27 | NUL-terminated file name of the mission page (`.htm` in the scenario folder) | P (resurvey §4) |
 | `K_DATA` | 12 + 3 | 172 | ? (campaign files) | P (size) |
-| `COMPPROFIL2` | 23 + 27 | 136, 840 or 2248 | [AI profiles](#ai-profiles-compprofil2): 0, 4 or 12 `ENTRY` (168 B: 19 `u32` columns, GUID, name, `Profil<nn>.htm`) and one `DEF` (128 B: profile per player) | P (all 50 parse exactly), D |
+| `COMPPROFIL2` | 23 + 27 | 136, 840 or 2248 | [AI profiles](#ai-profiles-compprofil2): 0, 4 or 12 `ENTRY` (168 B: 19 four-byte columns, GUID, name, `Profil<nn>.htm`) and one `DEF` (128 B: profile per player) | P (all 50 parse exactly), D |
 | `SPIELER` | 192 + 532 blocks | 104–88,425 | [players](#players-spieler) | P |
 | `INSEL5` | 326 + 342 in 44 files | | islands, [`insel.md`](insel.md) | P |
 | `INSELLNK` | 0 + 229 in 9 files | 45–50 | [island links](#island-links-insellnk) | P |
@@ -178,12 +178,12 @@ Who reads it (D, [`annoscene.md`](../re/annoscene.md) §11):
 | 0x5C | 25 | char[25] | display name, NUL-terminated; not passed to the AI | `Hagen V. Sayn`, … | P |
 | 0x75 | 51 | char[51] | character page in `Profiles\Texte\`, NUL-terminated | `Profil01.htm` … `Profil12.htm` | D `AnnoFrame` `0x1001f8d0` opens `%s\Profiles\Texte\%s` with it; P |
 
-- **Columns 13, 14 and 18:** the hand-over sets parameter 26 (`SUSPEND`) from column 18. Its last call then sets parameter 26 again, with column 13 as the value and column 14 as a second value (`0x10028fc5`–`0x10028fe0`). Parameter 26 reads only the first value, so the effective `SUSPEND` comes from column 13. A two-value call fits parameter 17 (`CHEATLIMIT`, the only two-value parameter), so a wrong index in the original is **likely** (OQ-112). With the shipped zeros both readings give the same result.
-- **Unknown columns:** 0, 7 and 15 are not passed on by any code found, so their keys cannot be read from the code (OQ-112). Two readings disagree:
+- **Columns 13, 14 and 18:** the hand-over sets parameter 26 (`SUSPEND`) from column 18. Its last call then sets parameter 26 again, with column 13 as the value and column 14 as a second value (`0x10028fc5`–`0x10028fe0`). Parameter 26 reads only the first value, so the effective `SUSPEND` comes from column 13. A two-value call fits parameter 17 (`CHEATLIMIT`, the only two-value parameter), so a wrong index in the original is a **guess** (OQ-112). It has two problems: the hand-over would pass `CHEATLIMIT`'s two values in reverse column order (`annoscene.md` §11.4), and it contradicts the key-order reading below. With the shipped zeros all readings give the same result.
+- **Unknown columns:** 0, 7 and 15 are not passed on by any code found, and 14 only rides along as an unused second value, so their keys cannot be read from the code; 13 reaches the AI only through the doubtful second call (OQ-112). Two readings disagree:
   - *By order:* every confirmed column follows the order in which the AI's key reader tests the keys (`TYP FLAECHE LAGER HANDEL TRANSPORT PROZENTE OPTIONAL TRIBUTSPERRE KAMPFTYP HAUPTKLIMA MAXSTADT ZIELGRUPPE ZIELANZAHL CHEATLIMIT MINBAUMAT MINEISEN SUSPEND`, `CompLogic.dll` `0x10040b79`–`0x10040d4e`). That order leaves exactly one key for column 7 (`OPTIONAL`) and three values for columns 13–15 (`ZIELANZAHL`, then the two `CHEATLIMIT` values).
-  - *By value:* column 15 (3 or 60) looks like the `OPTIONAL=3` / `=60` of the `COMP` records.
+  - *By value:* column 15 (3 or 60) looks like the `OPTIONAL=3` / `=60` of the `COMP` records. The files speak against it: three players whose `COMP` record copies their profile (Profil03) in every mapped key have `OPTIONAL=3` where column 15 is 60 (P, OQ-112).
 
-  Both are **guesses**.
+  Both are **guesses**. The same three copies support the mapping of columns 1, 3–6 and 9–12 independently of the code (P).
 - **Fill:** after the NUL, the name and page fields are filled with `0xCC` in every shipped record (P). This is the MSVC debug-heap pattern, so the editor saved uninitialised memory (**likely**). A reader must ignore the bytes after the NUL; a round-trip writer keeps them as read.
 - **Defaults** (record constructor, `AnnoFrame` `0x1001e140` and `0x100172d0`, `AnnoScene` `0x1000716c`): columns `1 4 0 2 3 1 18 0 0 15 3 5 5 0 0 60 0 0 0`, GUID `{E861A553-AFA5-4C53-BAEB-6AF500000000}`, name `Default`, page `Default.htm`. The default `ZIELGRUPPE` 5 is outside the setter's limit 0–4, so the setter would ignore it. The readers zero the record before filling it, so a record read from a file never carries these defaults.
 
@@ -194,7 +194,7 @@ Who reads it (D, [`annoscene.md`](../re/annoscene.md) §11):
 | 0x00 | 4 × 32 | i32[32] | entry `i` = index of the `ENTRY` used for player `i`, −1 = none | D: `AnnoFrame.dll` `0x1001eb8b`–`0x1001ec03`; P |
 
 - **How the game uses it (D):** the setup reader first clears the GUIDs of its 7 opponent slots (`0x1001e640`). It then copies, in player order, the `ENTRY` named by every entry ≠ −1 into the next slot. Neither the number of slots nor the `ENTRY` index is checked. At game start the next slot goes to every player except 31 whose type is 12 (computer) and whose colour is still unassigned (`0xFF`), in index order (`0x10028d90`). A slot without a valid GUID sends parameter 34 instead (`0x10028e63`).
-- **Corpus (P):** in all nine files the entries ≠ −1 are exactly the type-12 players with colour `0xFF`. So in practice `DEF[i]` is player `i`'s profile, e.g. `endless03`: players 1, 2, 3 and 10. Entry 0 (the human) is always −1. The 41 files without `ENTRY` have all 32 entries −1.
+- **Corpus (P):** in all nine files the entries ≠ −1 are exactly the type-12 players with colour `0xFF`. So in these files `DEF[i]` is player `i`'s profile, e.g. `endless03`: players 1, 2, 3 and 10. Entry 0 (the human) is always −1. The 41 files without `ENTRY` have all 32 entries −1. One of them, `0201SingleAddOn/single39.sze`, still has a type-12 player with colour `0xFF` (player 17); it is the one shipped case of a computer player that gets no profile (§11.4 of `annoscene.md`).
 - **Limits:** the original has 7 opponent slots and 32 entries (the player count). More than 7 entries ≠ −1 would make it write past its slot array, and an out-of-range entry would read past the profile list (no checks, D). A reimplementation takes both sizes from data and rejects a `DEF` entry that names a missing `ENTRY`.
 - **Multiplayer:** the 7 chosen slots are sent to the other machines as network message 6 (1,180 bytes, `0x1001fd10`; receiver `0x10019a92`).
 
@@ -216,7 +216,7 @@ With `--full`, every record that the nesting table marks is followed by its nest
 ## Open fields
 - Long-form header choice, role of player 31, the `STADT2`/`ESEL`/`CREW/ENTRY` prefixes, unit `attr`, record contents — OQ-027
 - What an island link resolves to — OQ-028
-- `COMPPROFIL2` `ENTRY` columns 0, 7, 13, 14, 15 — OQ-112; what the AI parameters do — OQ-113
+- `COMPPROFIL2` `ENTRY` columns 0, 7, 14, 15 (unused) and 13 (the doubled `SUSPEND` call) — OQ-112; what the AI parameters do — OQ-113
 
 ## Tests
 - Unit tests: `crates/formats/src/tagged.rs` (short/long form round trip, malformed input), `crates/formats/src/sze.rs` (scene, player, ship round trip).

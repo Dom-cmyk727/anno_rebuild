@@ -1,24 +1,36 @@
 """Unit tests for the T16 harness tools that need no running game (synthetic data only).
 
-    python -I tools/orig/test_orig.py [-v]        (Pillow needed)
+    python -I tools/orig/test_orig.py [-v]        (Pillow needed; runs on Windows and in the distro)
 """
 
 from __future__ import annotations
 
+import io
+import json
 import os
+import queue
+import re
 import struct
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(os.path.dirname(_HERE))
 sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.join(_HERE, "wine"))
 
+import agent  # noqa: E402
+import backend  # noqa: E402
 import gamestate  # noqa: E402
+import live  # noqa: E402
 import opening  # noqa: E402
 import screensig  # noqa: E402
 import timing  # noqa: E402
 import userdat  # noqa: E402
+
+STRAY_COUNTER = 0x43F3600E00000000   # the garbage "counter" a stray hit showed under Wine (2026-10-22)
 
 
 class FakeMem:
@@ -30,7 +42,7 @@ class FakeMem:
     def read(self, addr, n):
         for base, data in self.blocks.items():
             if base <= addr and addr + n <= base + len(data):
-                return data[addr - base:addr - base + n]
+                return bytes(data[addr - base:addr - base + n])
         return None
 
     def regions(self):
@@ -38,14 +50,14 @@ class FakeMem:
             yield base, base + len(data)
 
 
-def world_obj(vt: int, counter: int, tick: int, cursor: int = 7) -> bytes:
+def world_obj(vt: int, counter: int, tick: int, cursor: int = 7) -> bytearray:
     b = bytearray(0x120)
     struct.pack_into("<I", b, 0, vt)
     struct.pack_into("<H", b, gamestate.WORLD_CURSOR, cursor)
     struct.pack_into("<Q", b, gamestate.WORLD_COUNTER, counter)
     struct.pack_into("<I", b, gamestate.WORLD_AT108, tick)
     struct.pack_into("<I", b, gamestate.WORLD_TICK, tick)
-    return bytes(b)
+    return b
 
 
 def player_obj(vt: int, world: int, name: bytes, kind: bytes, money: int) -> bytes:
@@ -58,21 +70,63 @@ def player_obj(vt: int, world: int, name: bytes, kind: bytes, money: int) -> byt
     return bytes(b)
 
 
+class Offsets(unittest.TestCase):
+    """The offsets are the RE notes' values (docs/re/tick-loop.md, population.md, play-original.md)."""
+
+    def test_documented_values(self):
+        self.assertEqual((gamestate.WELT_WORLD_VT, gamestate.WELT_CITY_VT, gamestate.WELT_PLAYER_VT,
+                          gamestate.PRNG_RVA), (0xCCDD8, 0xC2F40, 0xC2238, 0xCB8F8))
+        self.assertEqual((gamestate.WORLD_CURSOR, gamestate.WORLD_COUNTER, gamestate.WORLD_TICK),
+                         (0xFC, 0x100, 0x10C))
+        self.assertEqual((gamestate.CITY_STORE, gamestate.CITY_STORE_STRIDE, gamestate.CITY_CAPACITY,
+                          gamestate.CITY_INHABITANTS, gamestate.STORE_UNIT), (0x334, 12, 0x624, 0x2F0, 256))
+        self.assertEqual((gamestate.PLAYER_WORLD, gamestate.PLAYER_NAME, gamestate.PLAYER_KIND,
+                          gamestate.PLAYER_GUID, gamestate.PLAYER_MONEY), (0x08, 0x24, 0x44, 0x64, 0x74))
+        self.assertEqual(gamestate.GOODS, {"tools": 41, "wood": 42, "bricks": 43})
+        self.assertEqual((opening.CITY_STAT_CIVIL, opening.CITY_STAT_MILITARY, opening.PLAYER_UPKEEP,
+                          opening.PLAYER_UPKEEP_REM, opening.BOOKING_DIVISOR), (0x604, 0x608, (0x88, 0x8C), 0xA2, 15))
+        self.assertEqual(userdat.VOLUME_MIN, -250)
+
+
 class GameState(unittest.TestCase):
     WELT = 0x580000
 
     def test_world_check_is_unmasked(self):
-        good = {"counter": 1371, "tick": 685}
-        self.assertTrue(gamestate.is_world(good))
-        # A stray 64-bit value with 33 low zero bits: a masked compare would accept tick 0.
-        stray = {"counter": 0x43F3333300000000, "tick": 0}
-        self.assertFalse(gamestate.is_world(stray))
+        self.assertTrue(gamestate.is_world({"counter": 1371, "tick": 685}))
+        # The observed stray value has 33 low zero bits: a masked compare (before or after the
+        # shift) would accept it with tick 0.
+        self.assertEqual(STRAY_COUNTER & ((1 << 33) - 1), 0)
+        self.assertFalse(gamestate.is_world({"counter": STRAY_COUNTER, "tick": 0}))
         self.assertFalse(gamestate.is_world({"counter": 0, "tick": 0}))
 
     def test_find_world_skips_stray_and_finds_live(self):
         vt = self.WELT + gamestate.WELT_WORLD_VT
-        mem = FakeMem({0x1000: world_obj(vt, 0x43F3333300000000, 0) + world_obj(vt, 5000, 2500)})
+        mem = FakeMem({0x1000: world_obj(vt, STRAY_COUNTER, 0) + world_obj(vt, 5000, 2500)})
         self.assertEqual(gamestate.find_world(mem, self.WELT), 0x1000 + 0x120)
+
+    def test_find_world_prefers_the_advancing_copy(self):
+        vt = self.WELT + gamestate.WELT_WORLD_VT
+        stale, live_obj = world_obj(vt, 4000, 2000), world_obj(vt, 6000, 3000)
+        blocks = {0x1000: stale + live_obj}
+
+        class Ticking(FakeMem):
+            def read(self, addr, n):
+                if addr == 0x1000 + 0x120 + gamestate.WORLD_COUNTER and n == 8:   # the live copy runs
+                    c = struct.unpack_from("<Q", blocks[0x1000], 0x120 + gamestate.WORLD_COUNTER)[0] + 2
+                    struct.pack_into("<Q", blocks[0x1000], 0x120 + gamestate.WORLD_COUNTER, c)
+                    struct.pack_into("<I", blocks[0x1000], 0x120 + gamestate.WORLD_TICK, c >> 1)
+                return super().read(addr, n)
+
+        mem = Ticking(blocks)
+        self.assertEqual(gamestate.find_world(mem, self.WELT), 0x1000)                 # first by address
+        self.assertEqual(gamestate.find_world(mem, self.WELT, settle=0.001), 0x1120)   # the one that runs
+
+    def test_scan_is_aligned(self):
+        v = 0x11223344
+        data = bytearray(16)
+        struct.pack_into("<I", data, 2, v)       # unaligned copy
+        struct.pack_into("<I", data, 8, v)       # aligned copy
+        self.assertEqual(gamestate.scan_u32(FakeMem({0x4000: data}), v), [0x4008])
 
     def test_msvc_rand_head(self):
         # MSVC rand() from seed 1: the documented head of the table (tick-loop.md F6).
@@ -82,24 +136,27 @@ class GameState(unittest.TestCase):
         vt = self.WELT + gamestate.WELT_PLAYER_VT
         world = 0x9000
         a = player_obj(vt, world, b"ANNOnymous", b"HUMAN", 500000)
-        freed = player_obj(vt, 0xDEAD, b"Ghost", b"CG01", 1)           # other world: rejected
+        umlaut = player_obj(vt, world, "Jörg".encode("latin-1"), b"CG01", 10000)
+        freed = player_obj(vt, 0xDEAD, b"Ghost", b"CG01", 1)            # other world: rejected
         junk = player_obj(vt, world, b"\x01\x02", b"HUMAN", 3)           # name not text: rejected
-        mem = FakeMem({0x2000: a, 0x3000: freed, 0x4000: junk})
+        mem = FakeMem({0x2000: a, 0x2800: umlaut, 0x3000: freed, 0x4000: junk})
         got = gamestate.players(mem, self.WELT, world)
-        self.assertEqual([(p["name"], p["kind"], p["money"]) for p in got], [("ANNOnymous", "HUMAN", 500000)])
+        self.assertEqual([(p["name"], p["kind"], p["money"]) for p in got],
+                         [("ANNOnymous", "HUMAN", 500000), ("Jörg", "CG01", 10000)])
 
     def test_city_capacity_plausibility(self):
         vt = self.WELT + gamestate.WELT_CITY_VT
-        b = bytearray(gamestate.CITY_CAPACITY + 4)
-        struct.pack_into("<I", b, 0, vt)
-        struct.pack_into("<I", b, gamestate.CITY_CAPACITY, 50 * 256)
-        struct.pack_into("<I", b, gamestate.CITY_STORE + 12 * 41, 48 * 256)
-        dead = bytearray(b)
-        struct.pack_into("<I", dead, gamestate.CITY_CAPACITY, 0)
-        mem = FakeMem({0x5000: bytes(b), 0x6000: bytes(dead)})
+
+        def city(cap):
+            b = bytearray(gamestate.CITY_CAPACITY + 4)
+            struct.pack_into("<I", b, 0, vt)
+            struct.pack_into("<I", b, gamestate.CITY_CAPACITY, cap)
+            struct.pack_into("<I", b, gamestate.CITY_STORE + 12 * 41, 48 * 256)
+            return bytes(b)
+
+        mem = FakeMem({0x5000: city(50 * 256), 0x6000: city(0), 0x7000: city(gamestate.CITY_CAPACITY_SANE + 1)})
         got = gamestate.cities(mem, self.WELT)
-        self.assertEqual(len(got), 1)
-        self.assertEqual((got[0]["capacity_t"], got[0]["tools_t"]), (50.0, 48.0))
+        self.assertEqual([(c["addr"], c["capacity_t"], c["tools_t"]) for c in got], [("0x5000", 50.0, 48.0)])
 
 
 def chunk(name: str, payload: bytes) -> bytes:
@@ -126,9 +183,8 @@ class UserDat(unittest.TestCase):
     def test_set_volume_changes_only_volume(self):
         data = synthetic_profile()
         out = userdat.set_volume(data)
-        self.assertEqual(userdat.read(out)["volume"], [userdat.VOLUME_MIN, userdat.VOLUME_MIN])
-        diff = [i for i in range(len(data)) if data[i] != out[i]]
-        self.assertEqual(len(diff), 8)
+        self.assertEqual(userdat.read(out)["volume"], [-250, -250])
+        self.assertEqual(len([i for i in range(len(data)) if data[i] != out[i]]), 8)
         self.assertEqual(len(out), len(data))
 
     def test_missing_volume_raises(self):
@@ -146,35 +202,61 @@ class ScreenSig(unittest.TestCase):
         from PIL import Image, ImageDraw
         self.Image, self.Draw = Image, ImageDraw
 
-    def picture(self, bars: int, w: int = 200, h: int = 150):
+    def picture(self, bars, w: int = 200, h: int = 150, shade: int = 230):
         img = self.Image.new("RGB", (w, h), (90, 90, 90))
         d = self.Draw.Draw(img)
-        for i in range(bars):
-            d.rectangle([20 + 35 * i, 20, 35 + 35 * i, 130], fill=(230, 230, 230))
+        for x in bars:
+            d.rectangle([x, 20, x + 15, 130], fill=(shade, shade, shade))
         return img
 
     def test_same_picture_distance_zero_and_scale_tolerant(self):
-        a = self.picture(3)
+        a = self.picture([20, 55, 90])
         self.assertEqual(screensig.distance(screensig.dhash(a), screensig.dhash(a)), 0)
-        big = a.resize((400, 300))
-        self.assertLessEqual(screensig.distance(screensig.dhash(a), screensig.dhash(big)), 12)
+        self.assertLessEqual(screensig.distance(screensig.dhash(a), screensig.dhash(a.resize((400, 300)))), 12)
+
+    def test_uniform_picture_hashes_to_zero(self):
+        # dHash bit = left strictly brighter than right: a flat image has no set bit.
+        self.assertEqual(int(screensig.dhash(self.Image.new("RGB", (64, 48), (120, 120, 120))), 16), 0)
 
     def test_recognize_and_black(self):
-        a, b = self.picture(2), self.picture(5)
+        a, b = self.picture([20, 55]), self.picture([20, 55, 90, 125, 160])
         table = {"screens": {"two": {"regions": screensig.learn(a)}, "five": {"regions": screensig.learn(b)}}}
         self.assertEqual(screensig.recognize(a, table)["screen"], "two")
         self.assertEqual(screensig.recognize(b, table)["screen"], "five")
         black = self.Image.new("RGB", (200, 150), (0, 0, 0))
         self.assertEqual(screensig.recognize(black, table)["screen"], "black")
 
-    def test_calibrate_halves_nearest_distance(self):
-        a, b = self.picture(2), self.picture(5)
-        table = {"screens": {"two": {"regions": screensig.learn(a)}, "five": {"regions": screensig.learn(b)}}}
-        rep = screensig.calibrate(table, {"two": a, "five": b})
+    def test_recognize_threshold_is_inclusive_and_best_wins(self):
+        a, b = self.picture([20, 55]), self.picture([20, 55, 90])
         d = screensig.distance(screensig.dhash(a), screensig.dhash(b))
-        want = max(0, min(screensig.DEFAULT_MAX_DIST, d // 2 - 1))
-        self.assertEqual(table["screens"]["two"]["regions"][0]["max_dist"], want)
-        self.assertEqual(rep["two[0]"]["nearest"], "five")
+        self.assertGreater(d, 0)
+        table = {"screens": {"x": {"regions": screensig.learn(a, max_dist=d)}}}
+        self.assertTrue(screensig.recognize(b, table)["scores"]["x"]["match"])          # d <= max_dist
+        table = {"screens": {"x": {"regions": screensig.learn(a, max_dist=d - 1)}}}
+        self.assertFalse(screensig.recognize(b, table)["scores"]["x"]["match"])
+        table = {"screens": {"far": {"regions": screensig.learn(a, max_dist=192)}},
+                 }
+        table["screens"]["near"] = {"regions": screensig.learn(b, max_dist=192)}
+        self.assertEqual(screensig.recognize(b, table)["screen"], "near")              # smaller mean wins
+
+    def test_calibrate_halves_the_nearest_distance(self):
+        a, b, c = self.picture([20, 55]), self.picture([20, 55, 90]), self.picture([120, 160], shade=40)
+        table = {"screens": {n: {"regions": screensig.learn(img)} for n, img in (("a", a), ("b", b), ("c", c))}}
+        dab = screensig.distance(screensig.dhash(a), screensig.dhash(b))
+        dac = screensig.distance(screensig.dhash(a), screensig.dhash(c))
+        self.assertLess(dab, 2 * screensig.DEFAULT_MAX_DIST)        # the formula, not the cap, decides
+        self.assertLess(dab, dac)
+        rep = screensig.calibrate(table, {"a": a, "b": b, "c": c})
+        self.assertEqual(rep["a[0]"]["nearest"], "b")               # nearest = the closest other screen
+        self.assertEqual(table["screens"]["a"]["regions"][0]["max_dist"], dab // 2 - 1)
+        self.assertEqual(rep["a[0]"]["ambiguous"], dab < 4)
+
+    def test_calibrate_flags_ambiguous_screens(self):
+        a = self.picture([20, 55])
+        table = {"screens": {"a": {"regions": screensig.learn(a)}, "a2": {"regions": screensig.learn(a)}}}
+        rep = screensig.calibrate(table, {"a": a, "a2": a})
+        self.assertTrue(rep["a[0]"]["ambiguous"])
+        self.assertEqual(table["screens"]["a"]["regions"][0]["max_dist"], 0)
 
 
 class TimingModel(unittest.TestCase):
@@ -185,13 +267,11 @@ class TimingModel(unittest.TestCase):
         c, out, acc, prev = start, [(0.0, start)], 0.0, 0
         for g in gaps_ms:
             acc += g
-            t = (acc + 0.25) / 1000.0
             now = int(acc)
-            dt = now - prev
-            prev = now
+            dt, prev = now - prev, now
             step = int(dt * speed + 0.5)
             c += min(step, timing.CAP_MS) if step >= 1 else 0
-            out.append((t, c))
+            out.append(((acc + 0.25) / 1000.0, c))
         return out
 
     def test_prediction_matches_game_rule(self):
@@ -205,35 +285,283 @@ class TimingModel(unittest.TestCase):
         s = self.series([3.0] * 100, 0.5)
         self.assertEqual(timing.analyse(s, 0.5)["predicted_ms"], 200)     # 3 ms -> 2 ms, not 1.5
 
-    def test_cap_counted(self):
-        s = self.series([150.0] * 10, 1.0)
-        r = timing.analyse(s, 1.0)
-        self.assertEqual(r["capped_frames"], 10)
+    def test_cap_in_prediction_and_cost(self):
+        r = timing.analyse(self.series([150.0] * 10, 1.0), 1.0)
+        self.assertEqual((r["predicted_ms"], r["capped_frames"]), (1000, 10))
         self.assertAlmostEqual(r["lost_ms"], 500.0, delta=1.0)
+        r2 = timing.analyse(self.series([60.0] * 10, 2.0), 2.0)            # 120 ms steps capped at 100
+        self.assertEqual(r2["capped_frames"], 10)
+        self.assertAlmostEqual(r2["lost_ms"], 200.0, delta=1.0)
+
+    def test_half_speed_odd_frames(self):
+        # 100 frames of 3 ms: steps 2 each -> sum 200, sum dt 300, n_odd = 100 = every frame
+        r = timing.half_speed_odd_frames({"game_ms": 200, "raw_s": 0.300, "frames": 100})
+        self.assertEqual((r["n_odd"], r["consistent"]), (100, True))
+        # truncation without +0.5 would give 100 ms: n_odd = -100, impossible
+        self.assertFalse(timing.half_speed_odd_frames({"game_ms": 100, "raw_s": 0.300, "frames": 100})["consistent"])
+
+    def test_verdict(self):
+        f5 = {"rate_ms_per_host_s": 1000.0, "lost_ms": 0.0, "host_s": 65.0, "capped_frames": 0}
+        f8 = {"rate_ms_per_host_s": 611.8, "half_speed": {"consistent": True}}
+        pause = {"read_failures": 0, "game_ms": 0, "resumed": True}
+        v = timing.verdict({"F5": f5, "F8": f8, "pause": pause})
+        self.assertEqual((v["clock_f1"], v["speeds"]["F5"], v["speeds"]["F8"], v["pause_f4"]), ("pass", True, True, True))
+        self.assertEqual(timing.F1_REL, 1 / 60)
+        self.assertEqual(timing.verdict({"F5": dict(f5, rate_ms_per_host_s=1017.0)})["clock_f1"], "fail")
+        self.assertEqual(timing.verdict({"F5": dict(f5, rate_ms_per_host_s=1016.0)})["clock_f1"], "pass")
+        self.assertEqual(timing.verdict({"F5": dict(f5, capped_frames=1)})["clock_f1"], "fail")
+        self.assertFalse(timing.verdict({"F8": dict(f8, rate_ms_per_host_s=499.0)})["speeds"]["F8"])
+        self.assertFalse(timing.verdict({"pause": dict(pause, read_failures=1)})["pause_f4"])
+        self.assertFalse(timing.verdict({"pause": dict(pause, resumed=False)})["pause_f4"])
 
 
-class AgentAndOpening(unittest.TestCase):
-    def test_key_names(self):
-        import agent  # noqa: PLC0415 - tools/orig/wine
-        self.assertEqual(agent.xkey("ESC"), "Escape")
-        self.assertEqual(agent.xkey("F10"), "F10")
-        self.assertEqual(agent.xkey("B"), "b")
-        self.assertEqual(agent.xkey("CTRL+X"), "Control_L+x")
-        self.assertEqual(agent.xkey("DOT"), "period")
+def playbook_costs() -> dict[int, dict]:
+    """docs/research/playbook.md section 14: id -> gold, tools, wood, running (the larger value)."""
+    with open(os.path.join(REPO, "docs", "research", "playbook.md"), encoding="utf-8") as f:
+        text = f.read()
+    section = re.search(r"^## 14\..*?(?=^## |\Z)", text, re.M | re.S)
+    out = {}
+    for line in (section.group(0) if section else "").splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) == 8 and cells[1].isdigit():
+            num = lambda s: 0 if s in ("–", "-", "") else int(s.replace(",", ""))  # noqa: E731
+            run = max(num(x.strip()) for x in cells[7].split("/"))
+            out[int(cells[1])] = {"gold": num(cells[2]), "tools": num(cells[3]), "wood": num(cells[4]), "running": run}
+    return out
 
-    def test_spots_stay_on_the_map(self):
-        cfg = opening.load()
-        for at in ([0.02, 0.02], [0.74, 0.93], [0.3, 0.3]):
-            for x, y in opening.spots(cfg, at):
-                self.assertTrue(0.01 <= x <= opening.MAP_RIGHT - 0.01 and 0.01 <= y <= opening.MAP_BOTTOM - 0.01)
+
+class Opening(unittest.TestCase):
+    def setUp(self):
+        self.cfg = opening.load()
+
+    def test_costs_equal_the_playbook_table(self):
+        table = playbook_costs()
+        for key, b in self.cfg["buildings"].items():
+            self.assertIn(b["id"], table, key)
+            row = table[b["id"]]
+            self.assertEqual((b["cost"]["gold"], b["cost"]["tools"], b["cost"]["wood"], b["upkeep"]),
+                             (row["gold"], row["tools"], row["wood"], row["running"]), key)
 
     def test_opening_fits_the_start_store(self):
-        cfg = opening.load()
-        tools = sum(cfg["buildings"][s["build"]]["cost"]["tools"] for s in cfg["steps"] if "build" in s)
-        wood = sum(cfg["buildings"][s["build"]]["cost"]["wood"] for s in cfg["steps"] if "build" in s)
+        steps = [s for s in self.cfg["steps"] if "build" in s]
+        tools = sum(self.cfg["buildings"][s["build"]]["cost"]["tools"] for s in steps)
+        wood = sum(self.cfg["buildings"][s["build"]]["cost"]["wood"] for s in steps)
         self.assertEqual((tools, wood), (29, 42))          # measured: 50/50 -> 21/8
-        self.assertLessEqual(tools, 50)
-        self.assertLessEqual(wood, 50)
+
+    def test_map_box(self):
+        sig = screensig.load()
+        self.assertEqual(opening.MAP_RIGHT, sig["screens"]["in_game"]["regions"][0]["box"][0])
+        self.assertEqual(opening.MAP_BOTTOM, 0.94)
+        for at in ([0.02, 0.02], [0.74, 0.93], [0.3, 0.3]):
+            for x, y in opening.spots(self.cfg, at):
+                self.assertTrue(0.01 <= x <= 0.735 and 0.01 <= y <= 0.93)
+
+    def snap(self, tools, wood, money, bound=12):
+        return {"tools": tools, "wood": wood, "money": money, "upkeep_bound": bound}
+
+    def test_placement_ok_identifies_the_building(self):
+        cost = self.cfg["buildings"]
+        before = self.snap(50.0, 50.0, 100000)
+        self.assertTrue(opening.placement_ok(cost["forester"]["cost"], before, self.snap(48.0, 50.0, 99850))[0])
+        self.assertTrue(opening.placement_ok(cost["forester"]["cost"], before, self.snap(48.0, 50.0, 99840))[0])
+        # a sheep farm placed instead (2 tools, 4 wood, 220 gold): the money drop is too large
+        self.assertFalse(opening.placement_ok(cost["forester"]["cost"], before, self.snap(48.0, 46.0, 99780))[0])
+        # a weaver (3 tools) instead of the market (3 tools, 250): money and wood give it away
+        self.assertFalse(opening.placement_ok(cost["market"]["cost"], before, self.snap(47.0, 46.0, 99700))[0])
+        # nothing placed, only upkeep
+        self.assertFalse(opening.placement_ok(cost["forester"]["cost"], before, self.snap(50.0, 50.0, 99990))[0])
+        # wood fell more than the cost
+        self.assertFalse(opening.placement_ok(cost["sheep"]["cost"], before, self.snap(48.0, 45.0, 99780))[0])
+        # a cart delivered wood meanwhile: still this building
+        self.assertTrue(opening.placement_ok(cost["sheep"]["cost"], before, self.snap(48.0, 49.0, 99780))[0])
+        # no upkeep bound: cannot prove it
+        self.assertFalse(opening.placement_ok(cost["forester"]["cost"], self.snap(50.0, 50.0, 100000, None),
+                                              self.snap(48.0, 50.0, 99850, None))[0])
+
+    def test_road_tiles(self):
+        self.assertEqual(opening.road_tiles(15, 3, 5), (3, 3))
+        self.assertEqual(opening.road_tiles(10, 5, 5), (1, 2))      # could be one tile plus upkeep
+        self.assertIsNone(opening.road_tiles(15, None, 5))
+
+    def test_find_own(self):
+        class B:
+            def __init__(self, cities, players):
+                self.st = {"cities": cities, "players": players}
+
+            def state(self, what):
+                return self.st
+
+        own = {"addr": "0x100", "inhabitants": 0, "tools_t": 50.0, "wood_t": 50.0}
+        ai = {"addr": "0x200", "inhabitants": 64, "tools_t": 50.0, "wood_t": 35.0}
+        empty = {"addr": "0x300", "inhabitants": 0, "tools_t": 0.0, "wood_t": 0.0}
+        human = {"addr": "0x500", "kind": "HUMAN"}
+        cg = {"addr": "0x600", "kind": "CG01"}
+        city, player, _ = opening.find_own(B([ai, own, empty], [cg, human]))
+        self.assertEqual((city, player), (0x100, 0x500))
+        with self.assertRaises(RuntimeError):
+            opening.find_own(B([own, dict(ai, inhabitants=0)], [human]))   # two candidates
+
+
+class Agent(unittest.TestCase):
+    def test_key_names(self):
+        self.assertEqual([agent.xkey(k) for k in ("ESC", "F10", "B", "CTRL+X", "DOT")],
+                         ["Escape", "F10", "b", "Control_L+x", "period"])
+
+    def test_run_id_and_display_validation(self):
+        for bad in ("..", "../x", "a/b", ".hidden", "", "x" * 101):
+            with self.assertRaises(ValueError, msg=bad):
+                agent.Instance(":91", bad if bad else "-")
+        with self.assertRaises(ValueError):
+            agent.Instance("91")
+        inst = agent.Instance(":91", "run-ok_1.2")
+        self.assertTrue(inst.run.endswith("/run-ok_1.2"))
+
+    def test_env_is_silent(self):
+        noisy = {"PULSE_SERVER": "unix:/mnt/wslg/PulseServer", "PULSE_COOKIE": "x", "WSL_INTEROP": "/run/x",
+                 "WAYLAND_DISPLAY": "wayland-0", "XDG_RUNTIME_DIR": "/mnt/wslg/runtime-dir", "PATH": "/bin"}
+        with mock.patch.dict(os.environ, noisy, clear=True):
+            e = agent.Instance(":91", "r1").env()
+            self.assertFalse([k for k in e if k.startswith("PULSE_")])
+            self.assertNotIn("WSL_INTEROP", e)
+            self.assertNotIn("WAYLAND_DISPLAY", e)
+            self.assertEqual(e["XDG_RUNTIME_DIR"], f"{agent.RUNS}/r1/xdg")
+            self.assertIn(agent.AUDIO_OFF, e["WINEDLLOVERRIDES"])
+            self.assertEqual((e["DISPLAY"], e["WINEPREFIX"]), (":91", f"{agent.RUNS}/r1/prefix"))
+            loud = agent.Instance(":91", "r2", audio=True).env()
+            self.assertEqual(loud["PULSE_SERVER"], "unix:/mnt/wslg/PulseServer")
+
+    def test_log_keeps_colliding_fields(self):
+        inst = agent.Instance(":91", "r3")
+        with tempfile.TemporaryDirectory() as d:
+            inst.out = d
+            inst.log("reg_add", kind="REG_DWORD", t=5)
+            inst.log_f.close()
+            with open(os.path.join(d, "actions.jsonl"), encoding="utf-8") as f:
+                rec = json.loads(f.read())
+        self.assertEqual((rec["kind"], rec["arg_kind"], rec["arg_t"]), ("reg_add", "REG_DWORD", 5))
+
+    def test_stop_without_prepare_touches_nothing(self):
+        inst = agent.Instance(":91", "never-prepared")
+        res = inst.stop()
+        self.assertIn("skipped", res)
+        self.assertIs(inst.stop(), res)                                 # idempotent
+
+    def test_reg_add_and_launch_need_prepare(self):
+        inst = agent.Instance(":91", "r4")
+        with self.assertRaises(RuntimeError):
+            inst.reg_add("HKCU\\X", "Y", "1")
+        with self.assertRaises(RuntimeError):
+            inst.launch()
+
+
+class FakeInstance:
+    run, display = "/root/anno/runs/fake", ":91"
+
+    def __init__(self):
+        self.stops = 0
+
+    def stop(self):
+        self.stops += 1
+        return {"stopped": self.stops}
+
+    def status(self):
+        return {"alive": True}
+
+
+class BrokenOut:
+    def write(self, s):
+        raise BrokenPipeError
+
+    def flush(self):
+        raise BrokenPipeError
+
+
+class Serve(unittest.TestCase):
+    def run_serve(self, lines, out=None):
+        inst = FakeInstance()
+        out = out or io.StringIO()
+        agent.serve(inst, stdin=io.StringIO("".join(x + "\n" for x in lines)), stdout=out)
+        return inst, out
+
+    def test_eof_stops_once(self):
+        inst, out = self.run_serve(['{"id": 1, "cmd": "status"}'])
+        self.assertEqual(inst.stops, 1)
+        replies = [json.loads(x) for x in out.getvalue().splitlines()]
+        self.assertEqual([r["id"] for r in replies], [0, 1])
+
+    def test_non_object_and_unknown_lines_answer_errors_then_stop_once(self):
+        inst, out = self.run_serve(["[1, 2]", "not json", '{"id": 2, "cmd": "rm_rf"}', '{"id": 3, "args": 7, "cmd": "status"}'])
+        replies = [json.loads(x) for x in out.getvalue().splitlines()][1:]
+        self.assertEqual([r["ok"] for r in replies], [False, False, False, False])
+        self.assertEqual(inst.stops, 1)
+
+    def test_broken_pipe_still_stops(self):
+        inst, _ = self.run_serve(['{"id": 1, "cmd": "status"}'], out=BrokenOut())
+        self.assertEqual(inst.stops, 1)
+
+    def test_stop_command_then_finally(self):
+        inst, _ = self.run_serve(['{"id": 1, "cmd": "stop"}', '{"id": 2, "cmd": "status"}'])
+        self.assertGreaterEqual(inst.stops, 1)                          # Instance.stop is idempotent
+
+
+class BackendCall(unittest.TestCase):
+    def fake(self, replies):
+        b = object.__new__(backend.WineBackend)
+        b._id, b.timeout, b.noise = 0, 1.0, []
+        b._lines = queue.Queue()
+        for r in replies:
+            b._lines.put(r)
+
+        class In:
+            def __init__(self):
+                self.sent = []
+
+            def write(self, data):
+                self.sent.append(json.loads(data))
+
+            def flush(self):
+                pass
+
+        b.proc = mock.Mock(stdin=In())
+        return b
+
+    def test_id_matching_noise_and_args(self):
+        b = self.fake([b'{"id": 0, "ok": true, "result": "stale"}\n', "wsl: kein Verteiler\n".encode("utf-16-le"),
+                       b'{"id": 1, "ok": true, "result": 42}\n'])
+        self.assertEqual(b.call("find_game", {"wait": 150, "timeout": 3}, timeout=1.0), 42)
+        self.assertEqual(b.proc.stdin.sent[0]["args"], {"wait": 150, "timeout": 3})
+        self.assertEqual(len(b.noise), 1)
+
+    def test_error_reply_raises(self):
+        b = self.fake([b'{"id": 1, "ok": false, "error": "boom"}\n'])
+        with self.assertRaises(backend.BackendError):
+            b.call("status")
+
+
+class LiveRunOne(unittest.TestCase):
+    class B:
+        def __init__(self):
+            self.calls = []
+
+        def status(self):
+            return {"alive": True}
+
+        def call(self, cmd, args=None, timeout=None):
+            self.calls.append((cmd, args, timeout))
+            return "agent:" + cmd
+
+    def test_items(self):
+        b = self.B()
+        self.assertFalse(live.run_one(b, [1, 2])["ok"])
+        self.assertFalse(live.run_one(b, {"macro": "_private"})["ok"])
+        self.assertTrue(live.run_one(b, {"cmd": "status"})["ok"])
+        self.assertEqual(live.run_one(b, {"cmd": "scan", "args": {"value": 5}, "timeout": 9})["result"], "agent:scan")
+        self.assertEqual(b.calls[-1], ("scan", {"value": 5}, 9))
+        for quit_cmd in ("quit", "stop"):
+            with self.assertRaises(live.SessionOver):
+                live.run_one(b, {"cmd": quit_cmd})
+        with self.assertRaises(live.SessionOver):
+            live.run_one(b, {"batch": [{"cmd": "status"}, {"cmd": "quit"}]})
 
 
 if __name__ == "__main__":

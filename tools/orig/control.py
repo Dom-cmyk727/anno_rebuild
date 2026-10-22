@@ -67,6 +67,8 @@ MOUSEEVENTF_WHEEL = 0x0800
 SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN = 76, 77, 78, 79
 HWND_NOTOPMOST = -2
 SWP_NOMOVE_NOSIZE = 0x0001 | 0x0002
+SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001
+SW_SHOW, SW_RESTORE = 5, 9
 
 
 class KEYBDINPUT(ctypes.Structure):
@@ -320,16 +322,52 @@ def drag(hwnd: int, nx0: float, ny0: float, nx1: float, ny1: float) -> None:
     log_action("drag", a=[nx0, ny0], b=[nx1, ny1], cursor=list(_LAST_CURSOR))
 
 
+def find_game_window_any(game_dir: str) -> tuple[int, str] | None:
+    """The game's top-level window by pid + title, INCLUDING when it is minimized (iconic). A
+    full-screen DirectDraw/dgVoodoo2 game minimizes itself on focus loss; smoke.find_game_window
+    filters a minimized window out by its tiny off-screen rect, which would make every later call
+    fail with 'game window not found'. This finder keeps it so foreground() can restore it."""
+    pids = set(smoke.pids_under(game_dir))
+    hits: list[tuple[int, str]] = []
+
+    def cb(hwnd, _lp):
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value in pids and user32.IsWindowVisible(hwnd):
+            title = window_title(hwnd)
+            if title:
+                hits.append((hwnd, title))
+        return True
+
+    user32.EnumWindows(smoke.EnumWindowsProc(cb), 0)
+    for hwnd, title in hits:
+        if title.strip().lower().startswith("anno"):
+            return hwnd, title
+    return hits[0] if hits else None
+
+
 def foreground(game_dir: str, settle: float = 0.2) -> int | None:
-    """Bring the game to the foreground (no persistent topmost — the guard enforces focus)."""
+    """Bring the game to the foreground, restoring it if it minimized itself on a previous focus
+    loss (no persistent topmost — the guard enforces focus). A full-screen DirectDraw game minimizes
+    when it loses focus and refuses a plain background SetForegroundWindow, so drop the foreground-
+    lock timeout and send an ALT tap first (that gives this thread the right to change the foreground
+    window), then SW_RESTORE if iconic."""
     global _LAST_CURSOR
-    w = smoke.find_game_window(game_dir)
+    try:
+        user32.SystemParametersInfoW(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, None, 0x3)
+    except Exception:
+        pass
+    w = find_game_window_any(game_dir)
     if not w:
         return None
     hwnd = w[0]
-    user32.ShowWindow(hwnd, 5)  # SW_SHOW
-    user32.SetForegroundWindow(hwnd)
-    user32.BringWindowToTop(hwnd)
+    h = ctypes.c_void_p(hwnd)   # type the handle so the Win32 calls below take it correctly
+    user32.keybd_event(0x12, 0, 0, 0)   # ALT down: unlocks SetForegroundWindow for this thread
+    time.sleep(0.02)
+    user32.keybd_event(0x12, 0, 2, 0)   # ALT up
+    user32.ShowWindow(h, SW_RESTORE if user32.IsIconic(h) else SW_SHOW)
+    user32.SetForegroundWindow(h)
+    user32.BringWindowToTop(h)
     time.sleep(settle)
     _LAST_CURSOR = None   # focus just changed; don't treat the pre-focus cursor as "ours"
     return hwnd

@@ -26,6 +26,7 @@ Standard library only; import-safe under `python -I`.
 from __future__ import annotations
 
 import struct
+import time
 
 WELT_WORLD_VT = 0xCCDD8
 WELT_CITY_VT = 0xC2F40
@@ -70,8 +71,9 @@ def i32(b: bytes, off: int = 0) -> int:
     return struct.unpack_from("<i", b, off)[0]
 
 
-def scan_u32(mem, value: int, limit: int = 256) -> list[int]:
-    """Every 4-aligned address in the writable regions whose u32 equals value (vtable scans)."""
+def scan_u32(mem, value: int, limit: int | None = None) -> list[int]:
+    """Every 4-aligned address in the writable regions whose u32 equals value (vtable scans).
+    Unbounded by default; `limit` is for interactive value searches, whose callers report it."""
     needle = struct.pack("<I", value)
     hits: list[int] = []
     for lo, hi in mem.regions():
@@ -82,7 +84,7 @@ def scan_u32(mem, value: int, limit: int = 256) -> list[int]:
         while i != -1:
             if (lo + i) % 4 == 0:
                 hits.append(lo + i)
-                if len(hits) >= limit:
+                if limit is not None and len(hits) >= limit:
                     return hits
             i = data.find(needle, i + 1)
     return hits
@@ -113,13 +115,26 @@ def is_world(f: dict | None) -> bool:
     return bool(f) and f["counter"] != 0 and f["tick"] == f["counter"] >> 1
 
 
-def find_world(mem, welt_base: int) -> int | None:
-    """The live world object: first DWORD is the world vtable and is_world() holds
-    (rejects stray matches of the vtable value and freed copies)."""
-    for obj in scan_u32(mem, welt_base + WELT_WORLD_VT):
-        if is_world(world_fields(mem, obj)):
-            return obj
-    return None
+def world_candidates(mem, welt_base: int) -> list[int]:
+    """Objects whose first DWORD is the world vtable and for which is_world() holds. This rejects
+    stray matches of the vtable value; a freed copy with an intact header would still pass."""
+    return [obj for obj in scan_u32(mem, welt_base + WELT_WORLD_VT) if is_world(world_fields(mem, obj))]
+
+
+def find_world(mem, welt_base: int, settle: float = 0.0) -> int | None:
+    """The live world object. With several candidates and settle > 0, the one whose counter
+    advances within `settle` seconds wins (a stale copy does not advance); otherwise the first in
+    address order. Returns None when there is no candidate."""
+    cands = world_candidates(mem, welt_base)
+    if len(cands) <= 1 or settle <= 0:
+        return cands[0] if cands else None
+    before = {c: world_counter(mem, c) for c in cands}
+    time.sleep(settle)
+    for c in cands:
+        now = world_counter(mem, c)
+        if now is not None and before[c] is not None and now > before[c]:
+            return c
+    return cands[0]
 
 
 def msvc_rand(n: int, seed: int = 1) -> list[int]:
@@ -142,8 +157,9 @@ def prng_check(mem, welt_base: int) -> dict:
 
 
 def _text(b: bytes) -> str | None:
+    """A zero-terminated Latin-1 text field (player names may hold umlauts), else None."""
     s = b.split(b"\0", 1)[0]
-    return s.decode("latin-1") if all(0x20 <= c < 0x7F for c in s) else None
+    return s.decode("latin-1") if all(0x20 <= c < 0x7F or 0xA0 <= c for c in s) else None
 
 
 def players(mem, welt_base: int, world: int | None = None) -> list[dict]:

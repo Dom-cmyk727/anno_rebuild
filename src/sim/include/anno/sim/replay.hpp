@@ -163,11 +163,14 @@ struct ReplayOutcome {
 /// (`fields(a, w)`): one primitive per line, indented by scope depth, so a scope the
 /// tree diff named can be read field by field. With a `filter` path only that scope
 /// and its descendants are printed (its ancestors appear as headers for context);
-/// empty prints the whole stream. A write-side archive: it never changes the world.
+/// empty prints the whole stream. The filter takes a diff_trees path verbatim: its
+/// leading "world" is the hash tree's name for the root, not a scope of the field list,
+/// and is stripped ("world" alone prints the whole stream). A write-side archive: it
+/// never changes the world.
 class PrintArchive : public detail::Writer<PrintArchive> {
   public:
     PrintArchive() = default;
-    explicit PrintArchive(std::string filter) : filter_(std::move(filter)) {}
+    explicit PrintArchive(std::string filter) : filter_(strip_root(std::move(filter))) {}
 
     void emit(Prim kind, std::uint64_t value, std::uint32_t width) {
         if (!primitive_visible()) {
@@ -248,6 +251,20 @@ class PrintArchive : public detail::Writer<PrintArchive> {
             }
         }
         return p;
+    }
+
+    /// A diff_trees path names the root "world" (HashArchive::finish), which the field
+    /// list never opens as a scope: drop it so the path matches the scopes seen here.
+    static std::string strip_root(std::string filter) {
+        constexpr std::string_view root = "world";
+        constexpr std::string_view root_slash = "world/";
+        if (filter == root) {
+            return {};
+        }
+        if (filter.rfind(root_slash, 0) == 0) {
+            return filter.substr(root_slash.size());
+        }
+        return filter;
     }
 
     /// True when `inside` is `of` itself or a descendant scope of it.

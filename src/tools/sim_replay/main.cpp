@@ -3,8 +3,10 @@
 //   run <log>                 replay the log, report whether every checkpoint matched
 //   hashes <log>              the state hash after each entry, one per line (hex)
 //   first-diff <a> <b>        the first entry at which two `hashes` outputs differ
-//   tree <log> --entry N      the hash tree at entry N (--depth D, default 8)
-//        [--dump-scope PATH]  instead, the scope's fields as text (PrintArchive)
+//   tree <log> --entry N      the hash tree at entry N, one "path digest" line per
+//                             scope (--depth D, default 8)
+//        [--dump-scope PATH]  instead, the scope's fields as text (PrintArchive); PATH
+//                             as `tree` prints it or diff_trees returns it
 //   golden <log>              a stable, committable fingerprint of the whole run
 //
 // The log carries the registry's digest, not the registry itself, so a world is
@@ -177,23 +179,23 @@ int cmd_tree(const std::string& path, std::size_t entry, std::uint32_t depth,
         return 0;
     }
     const sim::HashTree tree = sim::tree_at(*world, *log, entry, depth);
-    // A small indented walk of the tree.
+    // One line per node: its full scope path (the form diff_trees returns and
+    // --dump-scope takes), then its digest. A line diff of two runs' trees names the
+    // diverging paths directly.
     struct Walk {
-        static void go(const sim::HashNode& n, int indent) {
-            for (int i = 0; i < indent; ++i) {
-                std::cout << "  ";
-            }
-            std::cout << n.name;
+        static void go(const sim::HashNode& n, const std::string& prefix) {
+            std::string path =
+                prefix.empty() ? std::string(n.name) : prefix + "/" + std::string(n.name);
             if (n.indexed) {
-                std::cout << "[" << n.index << "]";
+                path += "[" + std::to_string(n.index) + "]";
             }
-            std::cout << " " << hex64(n.hash) << "\n";
+            std::cout << path << " " << hex64(n.hash) << "\n";
             for (const sim::HashNode& c : n.children) {
-                go(c, indent + 1);
+                go(c, path);
             }
         }
     };
-    Walk::go(tree.root, 0);
+    Walk::go(tree.root, {});
     return 0;
 }
 

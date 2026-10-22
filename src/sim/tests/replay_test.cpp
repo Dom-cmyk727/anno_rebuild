@@ -393,18 +393,46 @@ TEST_CASE("PrintArchive dumps the stream and filters a scope") {
     const bt::Kit k = bt::make_kit();
     sim::World w = bt::all_classes_world(k);
 
+    // The workflow: a building diverges, the tree diff names it, the dump shows its
+    // fields. carriers_out gets a value no other field of this world has.
+    sim::HashTree before;
+    static_cast<void>(w.state_hash(before, 8));
+    auto& slot = bt::city_of(w, 0, 0).index.lists[4].slots[0];
+    REQUIRE(slot.has_value());
+    REQUIRE(std::holds_alternative<sim::Workshop>(slot->payload));
+    std::get<sim::Workshop>(slot->payload).carriers_out = 123456789U;
+    sim::HashTree after;
+    static_cast<void>(w.state_hash(after, 8));
+    const std::string path = sim::diff_trees(before, after);
+    REQUIRE(path == "world/islands/island[0]/cities/city[0]/index/list[4]/building[0]");
+
     sim::PrintArchive full;
     fields(full, w);
     CHECK(full.text().find("header {") != std::string::npos);
     CHECK(full.text().find("islands {") != std::string::npos);
+    CHECK(full.text().find("u32 = 123456789 (4 B)") != std::string::npos);
 
     // A filter restricts the printed primitives to one scope subtree.
     sim::PrintArchive filtered("islands/island[0]/cities/city[0]/index/list[4]/building[0]");
     fields(filtered, w);
     const std::string& t = filtered.text();
     CHECK(t.find("building[0] {") != std::string::npos);
-    // The filter shows the chain down to the scope but not a sibling island scope.
+    CHECK(t.find("u32 = 123456789 (4 B)") != std::string::npos);
+    CHECK(t.size() < full.text().size());
+    // The chain down to the scope is shown, but no sibling scope: not the settings, not
+    // the next building of the list, not the tiles of the island.
+    CHECK(t.find("islands {") != std::string::npos);
     CHECK(t.find("settings {") == std::string::npos);
+    CHECK(t.find("building[1] {") == std::string::npos);
+    CHECK(t.find("tiles {") == std::string::npos);
+
+    // The diff_trees path works verbatim (its leading "world" is the tree's root name).
+    sim::PrintArchive from_diff(path);
+    fields(from_diff, w);
+    CHECK(from_diff.text() == t);
+    sim::PrintArchive root("world");
+    fields(root, w);
+    CHECK(root.text() == full.text());
 }
 
 TEST_CASE("hash_per_entry and tree_at follow the log") {

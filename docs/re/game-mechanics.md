@@ -49,7 +49,9 @@ construction menu with **B**; rotate a building-in-placement with `.`/`,`.
    - **Market stands:** inhabitants buy their needs at market stands (which earn money); one stand
      per goods type; a **queue of customers** means you need another stand of that type.
    - **Houses and public buildings:** once roads and the building-material + food chains exist, build
-     Houses (up to **30** for the first stage) and the first public buildings; link all with streets.
+     Houses (the manual suggests ~**30** houses before expanding — a build-up guideline, not a hard
+     cap; it lines up with the city-stage thresholds of `population.md` P6, e.g. stage 1A at 30
+     pioneers) and the first public buildings; link all with streets.
 
 ## 3. Placement rules (manual p9, p15-16) — this is what blocked the in-game build-up
 
@@ -115,7 +117,8 @@ market stand. The dependency graphs (useful for setting up fixtures and matching
   **Doctor**.
 - **Ropes/Weapons:** Ropemaker <- Hemp (Hemp Plantation); Ropes+Wood -> War Machine Maker (War
   Machines, Siege Towers) / Bow Maker (Bows, Crossbows).
-- **Weapons (metal):** Iron (Ore Smelter <- Iron Ore + Charcoal <- Charcoal Burner); Iron -> Weapon
+- **Weapons (metal):** Iron (Ore Smelter <- Iron Ore + fuel; the manual simplifies — type **1017**
+  smelter uses **wood**, type **1034** uses **charcoal** <- Charcoal Burner); Iron -> Weapon
   Smithies / Gunsmith (Muskets, Ship Cannons) / Armourer (Armour) / Cannon Foundry (Cannons,
   Mortars).
 
@@ -149,4 +152,6 @@ market stand. The dependency graphs (useful for setting up fixtures and matching
 - The settlement that the population/production fixtures need is: Warehouse/Main Market Building ->
   streets -> a **food** chain (Fisherman's Hut on the coast is the simplest) and the
   building-material chain, all within one Service Area, with a **Food and Salt Stand**, then Houses
-  on the streets — then pioneers grow to Settlers and the workshops (Weaver) unlock.
+  on the streets. The **weaver (1001) is available from the start** (`INFRAMIN = INFRA_EVER`), so the
+  PR-F2 weaver fixture does NOT wait for a civ-level upgrade; growth to Settlers is only needed for
+  the Settlers' own buildings, not the weaver.

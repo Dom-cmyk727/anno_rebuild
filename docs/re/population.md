@@ -235,21 +235,27 @@ Observables: house residents and the satisfaction shown in the house info panel 
 Citizen single-player, the copy driven by `tools/orig/control.py` (zoom out, speed 400%, place
 pioneer houses in the Kontor's yellow range), objects read by `tools/orig/probe.py` (vtable scan).
 
-- **City inhabitant count confirmed at `+0x2f0`.** The player's city (city vtable `AnnoWelt
+- **City inhabitant count is at `+0x2f0` (likely; N4).** The player's city (city vtable `AnnoWelt
   +0xc2f40`, identified by its warehouse goods = the HUD's tools 50 / wood 38) read `+0x2f0` = 27-31
-  while the HUD showed ~28 pioneers: so `+0x2f0` (= the `+0x2ec` sub-object slot +4, the "likely
-  inhabitants" of the Open list) **is the city inhabitant count**. `+0x18a` = 4 = the number of
-  pioneer houses placed (the "houses per level" guess holds). `+0x618` (stage mask) = 0x3 for the
-  player, 0x7 for the more-grown AI cities (pop 72 / 96).
-- **No-supply decline (P5 / no INFRA) observed.** Pioneer houses placed in range but with no food
-  and no road to the Kontor did **not** grow: over ~20 s at 400% the city `+0x2f0` fell 31 -> 21 and
-  `+0x18a` dropped 4 -> 3 (a house removed). That matches the starvation downgrade/removal (P5) and
-  the P2 precondition "INFRA_EVER reached": without a market/road connection and food the pioneers
-  leave. Growth (P2 to 8 residents, P3) needs the houses road-connected to the Kontor (market
-  access = INFRA) and a food source (NAHRUNG); then the same input through `src/sim`'s house model
-  is the anno-diff comparison. Locating an individual house object (for the per-house `+0x2c`
-  residents of P2/P3) still needs the house vtable (OQ-T15-HOUSEVT); the city `+0x2f0` aggregate is
-  read now.
+  while the HUD showed ~28 pioneers, i.e. `+0x2f0` (= the `+0x2ec` sub-object slot +4, the "likely
+  inhabitants" Open item) tracks the inhabitant count. It was read **while the population was
+  changing**, so this is **likely**, not confirmed: read it **paused** and equal to the HUD to
+  confirm. `+0x18a` = 4 = the pioneer houses placed (the "houses per level" guess holds); `+0x618`
+  (stage mask) = 0x3 for the player, 0x7 for the more-grown AI cities (pop 72 / 96).
+- **Decline/removal without a market: an OPEN mismatch, NOT P5 (OQ-T15-HOUSEGROW).** Houses placed
+  in the Kontor's range populated (28 pioneers); over ~80 game-s (20 s at 400%) the city `+0x2f0`
+  fell 31 -> 21 and `+0x18a` went 4 -> 3 (one house removed). This is **not** starvation removal
+  (P5): food decays ~1/128 per 5 s update, so a negative food score takes ~97 updates and emptying
+  a house ~50 more — roughly 750 game-s, not 80. And `INFRA_EVER` (threshold 0) is always reached,
+  so P2 predicts growth with no deliveries; 31 in 4 houses is ~7.75/house, i.e. growth. So the cause
+  of the removal is **unknown** — possibly the tool itself (a road drag across the house, or a
+  misplaced click under the screen->tile offset), possibly a model rule we lack. It needs **per-house
+  `+0x2c` reads** (house vtable, OQ-T15-HOUSEVT) of the same houses with and without a road to a
+  market, fed into `src/sim`; only then does it become a finding. The owner's rule (houses need a
+  road to a market; services reach by road; a road connects at the building entrance tile) stands as
+  the game's rule, but HOW a missing connection acts on a house (no deliveries / bad mood / removal)
+  is unmeasured. The city `+0x2f0`/`+0x18a` aggregate is read now; the per-house read is the fixture
+  that decides it.
 
 ## Open
 - Unit of the city store and of delivered amounts (is 256 = 1 t?); confirm with T1 and a savegame pair (M2.1).

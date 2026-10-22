@@ -30,17 +30,18 @@ Categories seen (top to bottom), with the buildings unlocked at the Citizen star
 
 | Category (banner) | Icon | Unlocked at Citizen start |
 |---|---|---|
-| **Public buildings** | house | **Pioneer house** (settler residence, cost 3 wood), a market/warehouse, a sawmill, a coin/level-I building |
+| **Public buildings** | house | **Pioneer house** (settler residence, cost 3 wood), the **Main market building** (1301), a coin/level-I building, and a 4th building I did not verify (NOT a "sawmill" — no such type) |
 | **Squares, Streets** | path | a stone **road/path**, a paved square (street placement) |
-| **Farms, Plantations** | ox | sheep farm, a plantation, **grain farm**, **forester ("Forest")** (cost ~5 gold), potato farm |
-| **Workshops** | anvil | mostly `?` (the weaver and other goods workshops need a higher stage) |
+| **Farms, Plantations** | ox | the **forester (801)** (cost **150 gold + 2 tools**) and several farm/plantation buildings; the specific ids (sheep/grain/potato) are NOT verified, and the **grain farm (811)** needs `INFRA_STUFE_3B` (200 citizens) so it is not start-available |
+| **Workshops** | anvil | the **weaver (1001)** and **tannery (1023)** ARE available from the start (`INFRAMIN = INFRA_EVER`); most other goods workshops are higher-tier |
 | **Mining** | crossed picks | `?` at this stage |
 | **Military** | spear | `?` at this stage |
 | (ranch / other) | animal, keg | `?` |
 
-So the **weaver** (production fixture PR-F2) and most workshops are **not placeable at a fresh Citizen
-start** — they require growing settler houses first. The farms, the forester, the pioneer house, roads
-and the market are available immediately.
+**Correction (orchestrator review, 2026-10-22):** the **weaver (1001) IS placeable at a fresh
+Citizen start** (`INFRAMIN = INFRA_EVER`; the community tutorial builds weaving huts immediately),
+so **PR-F2 is not blocked by colony growth**. The grid ids above were read from the info panels,
+not checked against the `Anlagen.dat` `INFRA_EVER` list — treat the specific names as unconfirmed.
 
 ## 3. Placement flow
 
@@ -63,17 +64,17 @@ The visible overlays correspond to `Anlagen.dat` fields the RE notes decode:
   "market search radius"; a market's candidate buildings are those in its footprint **grown by that
   radius** (production.md:315). So "warehouse connection" = a house (or producer) lying inside a
   market/Kontor's action-radius rectangle. (Exact tiles = the type's `+0x65` value per building.)
-- **Forester ("Forest") tree radius.** The forester plants/chops trees within a **circle of radius 7**
-  around its footprint, with the per-row half-width table `[7, 7, 7, 6, 6, 5, 4, 2]` (production.md:259),
-  already emulated exactly in `src/sim`. That is the "woodcutter tree range / tree ground objects".
+- **Forester (801) range.** Its range is its **action radius `HEAD[0x11]` = 5** (`types.cpp:138`,
+  stored at `+0x65`), **not** the radius-7 circle of `production.md:259` — that circle is the
+  **mine's deposit search**, a different building. (My earlier "radius 7" cited the wrong line.)
 - **Farm fields (farm-ground objects).** A farm places its **field tiles** around the building; the field
   layout is the type's `OBJECTPOS` (the ground objects it owns, OQ-015 in production.md). Grain/potato
   farms show their field as those tiles; harvest fills the farm's raw stock (production.md §4.1, farm
   `+0x1c`).
 - **Public-service buildings (church, well, …) radius.** Public services reach houses through a
   **service mask / service radius**: `BuildingType::service_mask` / `service_mask_for_goods`
-  (`src/sim/types.hpp:137,361`); infrastructure "goods" `0x4c`–`0x5a` reach a house within the service
-  radius (population.md:213, 237). The chapel/church is in **Public buildings** (locked until the colony
+  question** (`population.md:237`, OQ-T15-SERVICE), not a confirmed rule; infrastructure "goods"
+  radius — but **that a public service reaches a house "within the service radius" is an OPEN
   reaches the stage that unlocks it).
 - **Roads/streets** ("Squares, Streets") carry the carriers between producers, markets and the
   warehouse; a producer out of road/market reach does not deliver (the carrier path, production.md §3).
@@ -106,29 +107,34 @@ range datum; this note records which on-screen overlay each one is.
 Driving a colony build-up (control.py: zoom, place, road-drag, 400% speed) produced these findings:
 
 - **Buildings and costs** (from the info panels): **Pioneer house** 3 wood; **Main market building**
-  3 tools / 7 wood / 250 gold / 10 upkeep; **Dirt road** 5 gold; **forester ("Forest")** ~5 gold.
+  3 tools / 7 wood / 250 gold / 10 upkeep (Anlagen.dat 1301); **Dirt road** 5 gold; **forester (801)** 150 gold + 2 tools (my earlier "~5 gold" was wrong).
   Public buildings icon 3 is the **Main market building** (the Marktplatz), not a warehouse.
-- **Houses need a Main market building, not just the Kontor, to grow.** Placing pioneer houses in the
-  **Kontor's** yellow range populated them (28 pioneers) but they then **declined** (city `+0x2f0`
-  31 -> 21, `+0x18a` 4 -> 3, a house removed) — because there was **no Main market building** in range,
-  so the houses never reached INFRA (PO-P2's precondition) and starved out. The real "warehouse/market
-  connection" is: Kontor (warehouse, stores goods) -> **Main market building** (distributes to houses
-  in its radius, = INFRA) -> houses. A pioneer house in a market's range grows to 8 even with no
-  deliveries (PO-P2); food (NAHRUNG) only affects satisfaction/mood.
-- **Road connection rule (owner, 2026-10-22).** A building joins the road network (and so the Kontor)
-  by sitting on the **edge of a road** — placed **adjacent to** a road tile, **not on** the road and
-  **not touching shore**. The road must itself reach the **Kontor's land entrance** to carry goods.
-  Confirmed in driving: a **Pioneer house** (cheap, few requirements) placed freely, but the **Main
-  market building** would only place when its clear 2x2 footprint sat beside a **Kontor-connected**
-  road; on the road, on shore, on trees, or beside a disconnected road segment it did not place (gold
-  not deducted). So the supply chain is Kontor (warehouse) -> road -> **Main market building** on the
-  road edge -> houses on the road edge.
+- **House removal without a market: an OPEN mismatch, NOT a finding (OQ-T15-HOUSEGROW).** Placing
+  pioneer houses in the Kontor's range populated them (28 pioneers); then over ~80 game-seconds the
+  city `+0x2f0` fell 31 -> 21 and `+0x18a` went 4 -> 3 (one house removed). This does **not** prove
+  "no market = no growth": `INFRA_EVER` has threshold 0 (always reached), so PO-P2 predicts growth
+  to 8 with no deliveries; 31 residents in 4 houses is ~7.75/house, i.e. growth; and starvation
+  removal (P5) cannot happen that fast (food decays ~1/128 per 5 s; emptying a house takes ~750
+  game-s, not 80). The removal may be the **tool itself** (a road drag across the house, or a
+  misplaced click under the screen->tile offset). To decide it, read each house's `+0x2c` residents
+  over time (house vtable, OQ-T15-HOUSEVT), the same houses with and without a road to a market, and
+  feed the same start into `src/sim`. If the original really refuses growth without a market, our
+  house model (`population.md` section 4) is missing that rule.
+- **Road connection rule (owner, 2026-10-22).** A building joins the road network at its **specific
+  entrance tile** (the green entrance arrows on its info box, manual p15), **not** at any edge tile;
+  **hold CTRL while placing to auto-align the entrance to a street** (manual p15). Houses need a
+  road to a market, and services (e.g. the fire brigade) reach a house by road. Supply chain:
+  Kontor/Warehouse -> road -> **Main market building** (entrance on the road) -> houses (entrance on
+  the road). **Still OPEN (OQ-T15-PLACEREFUSE):** does the game *refuse* placement beside an
+  unconnected road, or place the building and leave it unsupplied? My blind clicks (confounded by
+  trees in the footprint and the screen->tile offset) do not separate the two; it needs one
+  controlled placement on clear grass once the placement helper exists.
 - **Open blocker for the growth/weaver fixtures.** On the Citizen starting island the land near the
   Kontor is **densely forested**, so the road-adjacent tiles that are also clear enough for a 2x2
   market are scarce, and placing on them blind (isometric screen->tile mapping, trees in the footprint)
   did not succeed over many tries. The road-and-edge mechanic is understood and the road was connected
   to the Kontor; the remaining need is a **clear road-adjacent 2x2**. Running the house-growth
-  (PO-P2/P3), tax (PO-T) and workshop (PR-F2 weaver) fixtures end to end therefore needs: a scenario or
+  (PO-P2/P3), tax (PO-T) and workshop (PR-F2 weaver, — available from the start, not gated) fixtures end to end therefore needs: a scenario or
   landing spot with **open grassland**, **clearing trees first** (the forester), or a **placement
   helper** that moves the ghost until the game reports it valid (feedback loop) rather than blind
   clicks. The **measurement side is ready**: city `+0x2f0` (inhabitants), `+0x18a` (houses), `+0x618`

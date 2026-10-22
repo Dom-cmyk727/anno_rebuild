@@ -293,8 +293,12 @@ std::vector<std::string> expected_lines() {
 
 } // namespace
 
+// The suite "heavy" marks a case that needs well over 1 GB with ANNO_TEST_THREADS
+// workers (this one: about 35 GB at 16 threads, measured alone): CTest runs it
+// alone (anno_add_doctest in the top CMakeLists.txt).
 TEST_CASE("scene renders match the recorded digests (the Rust reference's, except the enhanced "
-          "river lines)") {
+          "river lines)" *
+          doctest::test_suite("heavy")) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -313,7 +317,8 @@ TEST_CASE("scene renders match the recorded digests (the Rust reference's, excep
     }
 }
 
-TEST_CASE("legacy river shading reproduces the previous enhanced digests (game files)") {
+TEST_CASE("legacy river shading reproduces the previous enhanced digests (game files)" *
+          doctest::test_suite("heavy")) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -924,7 +929,8 @@ MaskFidelity mask_fidelity(const render::Scene& scene, std::size_t island) {
 
 } // namespace
 
-TEST_CASE("river raster agrees with the river the original draws (mask fidelity, rivers.md R1)") {
+TEST_CASE("river raster agrees with the river the original draws (mask fidelity, rivers.md R1)" *
+          doctest::test_suite("heavy")) {
     // The sprite-derived part of the raster (forward projection of the cells, the
     // original's depth test, the closed 50 % checkerboard, the coverage window) is what
     // the flow of S5 is drawn under: compare it with the sprites of the original at zoom
@@ -1241,7 +1247,8 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "derived levels: a zoom-out sweep builds every chunk once while it stays cached (game files)") {
+    "derived levels: a zoom-out sweep builds every chunk once while it stays cached (game files)" *
+    doctest::test_suite("heavy")) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");

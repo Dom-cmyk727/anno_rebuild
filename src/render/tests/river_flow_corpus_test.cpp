@@ -290,7 +290,10 @@ float median(std::vector<float> v) {
 
 } // namespace
 
-TEST_CASE("river flow shading moves with the flow on real rivers (Q5, CPU path, game files)") {
+// The suite "heavy": about 2.5 GB at 16 threads measured alone, so CTest runs the
+// case alone (anno_add_doctest in the top CMakeLists.txt).
+TEST_CASE("river flow shading moves with the flow on real rivers (Q5, CPU path, game files)" *
+          doctest::test_suite("heavy")) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -330,7 +333,8 @@ TEST_CASE("river flow shading moves with the flow on real rivers (Q5, CPU path, 
     }
 }
 
-TEST_CASE("flow coverage and the water mask over the zoom groups (Q3, game files)") {
+TEST_CASE("flow coverage and the water mask over the zoom groups (Q3, game files)" *
+          doctest::test_suite("heavy")) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -718,7 +722,8 @@ TEST_CASE("a flow that is not ready draws the legacy look and is rebuilt later, 
 }
 
 TEST_CASE("the flow shading changes river pixels only and the legacy look stays selectable (game "
-          "files)") {
+          "files)" *
+          doctest::test_suite("heavy")) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -908,7 +913,8 @@ StepStats coordinate_steps(const render::Scene& scene, std::size_t group, const 
 
 } // namespace
 
-TEST_CASE("the noise coordinate follows the geometry on real rivers: no aliasing (game files)") {
+TEST_CASE("the noise coordinate follows the geometry on real rivers: no aliasing (game files)" *
+          doctest::test_suite("heavy")) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -1101,7 +1107,8 @@ OpenBlocks open_blocks(const render::Scene& scene, std::size_t group, const Regi
 } // namespace
 
 TEST_CASE("the flow shading moves with the flow in all windows, not only the flat stems (Q5, game "
-          "files)") {
+          "files)" *
+          doctest::test_suite("heavy")) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -1145,7 +1152,8 @@ TEST_CASE("the flow shading moves with the flow in all windows, not only the fla
     CHECK(static_cast<double>(wins) >= 0.75 * static_cast<double>(windows));
 }
 
-TEST_CASE("the light of the flow shading against the legacy shimmer on real rivers (game files)") {
+TEST_CASE("the light of the flow shading against the legacy shimmer on real rivers (game files)" *
+          doctest::test_suite("heavy")) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");

@@ -97,6 +97,15 @@ class AtlasResidency {
     [[nodiscard]] std::uint32_t atlas_size() const { return size_; }
     /// Layers the budget allows.
     [[nodiscard]] std::size_t max_layers() const { return max_layers_; }
+    /// Changes the byte budget (gpu-chunks.md 4.3 rule 6, G3): the chunk atlas
+    /// shares the OQ-096 budget with the per-frame sprite atlas, whose size the
+    /// compositor subtracts each frame. Lowering it below the resident layers is
+    /// safe: no layer is placed beyond the new cap and the next ensure() evicts
+    /// the least recently used ones under pressure.
+    void set_budget(std::uint64_t budget_bytes) {
+        const std::uint64_t layer = std::uint64_t{size_} * size_ * 4;
+        max_layers_ = layer == 0 ? 0 : static_cast<std::size_t>(budget_bytes / layer);
+    }
 
   private:
     struct Layer {

@@ -126,14 +126,15 @@ jobs:
           if [ "${{ matrix.name }}" = "linux-gcc" ]; then
             export ANNO_REQUIRE_GPU=1
             export WGPU_BACKEND=vulkan
-            # Mesa's lavapipe ICD (filename can vary by distro; pick it dynamically).
-            export VK_ICD_FILENAMES="$(ls /usr/share/vulkan/icd.d/lvp_icd.*.json 2>/dev/null | head -n 1)"
-            if [ -z "$VK_ICD_FILENAMES" ]; then
-              echo "::error title=lavapipe ICD not found::mesa-vulkan-drivers did not install /usr/share/vulkan/icd.d/lvp_icd.*.json"
-              exit 1
+            # Mesa's lavapipe ICD (path/name can vary by distro; pick any *lvp* ICD).
+            export VK_ICD_FILENAMES="$(ls /usr/share/vulkan/icd.d/*lvp*.json 2>/dev/null | head -n 1)"
+            if [ -n "$VK_ICD_FILENAMES" ]; then
+              echo "adapter: WGPU_BACKEND=vulkan, VK_ICD_FILENAMES=$VK_ICD_FILENAMES (lavapipe), ANNO_REQUIRE_GPU=1"
+            else
+              echo "::warning title=lavapipe ICD not found::no *lvp* ICD in /usr/share/vulkan/icd.d; letting the Vulkan loader scan the default directory"
+              ls -la /usr/share/vulkan/icd.d/ 2>/dev/null || true
             fi
-            echo "adapter: WGPU_BACKEND=vulkan, VK_ICD_FILENAMES=$VK_ICD_FILENAMES (lavapipe), ANNO_REQUIRE_GPU=1"
-            vulkaninfo --summary 2>&1 | grep -iE "device name|api version|Driver version" || true
+            vulkaninfo --summary 2>&1 | grep -iE "device name|api version|Driver version|llvmpipe|lavapipe" || true
           fi
           # Each doctest case is its own test (anno_add_doctest): run them on
           # the runner's cores (4 on the hosted Linux and Windows runners).

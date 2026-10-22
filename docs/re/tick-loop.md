@@ -149,7 +149,14 @@ object located at `0x2726db0` (`AnnoWelt.dll` base `0x2530000`, vtable RVA `0xcc
   18467, 6334`. `src/sim`'s `rng.hpp` builds this same seed-1 table, so the original PRNG table
   equals the sim's. The cursor `+0xfc` advanced over the run (draws happening), e.g. 1134 -> 1422.
   The written variant (set `+0xfc`) was not run (read-only session; OQ-T15-WRITE).
-- **F2/F4 (speeds, pause):** keyed fixtures, the second owner session.
+- **F2 (speeds, confirmed) / F4 (pause, confirmed).** Owner key sequence while the clock was
+  sampled at 2 Hz (`tools/orig/fixtures.py --mode rate`, `cache/orig/f2f4-1/`), segmented by the
+  per-interval rate (game ms per real second): 100% -> 1002, **F6 200% -> 1984**, **F7 400% ->
+  3986**, **F8 50% -> 523**, **pause -> ~0** (the counter frozen; the ~9 ms/s over the 11 s
+  segment is only the enter/exit frames). So game ms per real second = 1000 x speed (section 2;
+  the 100 ms/frame cap does not bite at the game's high fps), 400% works in single-player, and
+  pause (SetSpeed 0) stops the clock. `+0x10c == +0x100 >> 1` held in all 220 samples. Matches
+  `src/sim`'s clock (SetSpeed scales Advance; speed 0 = no advance).
 - Copy unchanged after the run (the 20 files' SHA-256 equal `game/app`); no process left.
 
 ## Open

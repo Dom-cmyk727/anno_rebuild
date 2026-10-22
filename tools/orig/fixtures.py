@@ -106,6 +106,109 @@ def locate_world(game_dir: str, deadline: float) -> tuple[int, int, int] | None:
     return None
 
 
+def run_f1f6(pid: int, welt_base: int, obj: int, t0: float, seconds: float, log: dict) -> None:
+    """TL-F6 (PRNG table, read-only) + TL-F1 (clock rate and the tick==counter>>1 invariant)."""
+    table = read_prng_table(pid, welt_base)
+    expected = msvc_rand_seed1(PRNG_TABLE_LEN)
+    f6: dict = {"table_rva": hex(PRNG_TABLE_RVA), "len": PRNG_TABLE_LEN}
+    if table is None:
+        f6["result"] = "could not read the table"
+    else:
+        diffs = [i for i in range(PRNG_TABLE_LEN) if table[i] != expected[i]]
+        f6["matches_msvc_rand_seed1"] = not diffs
+        f6["first_mismatch_index"] = diffs[0] if diffs else None
+        f6["mismatch_count"] = len(diffs)
+        f6["table_head"] = table[:6]
+        f6["expected_head"] = expected[:6]
+        f6["draws_after_cursor_0"] = [table[(0 + k) % PRNG_TABLE_LEN] for k in range(1, 6)]
+        f6["draws_after_cursor_2047"] = [table[(2047 + k) % PRNG_TABLE_LEN] for k in range(1, 4)]
+        f6["note"] = ("src/sim rng.hpp builds this same MSVC rand() seed-1 table, so "
+                      "matches_msvc_rand_seed1 == matches the sim table")
+    log["TL_F6"] = f6
+
+    print(f"TL-F1: sampling the clock ~1/s for {seconds:.0f} s...", flush=True)
+    samples: list[dict] = []
+    end = time.time() + seconds
+    while time.time() <= end:
+        s = read_world_sample(pid, obj)
+        if s is not None:
+            s["real_s"] = round(time.time() - t0, 3)
+            s["tick_eq_counter_shr1"] = s["tick"] == (s["counter"] >> 1)
+            s["at108_eq_tick"] = s["at_0x108"] == s["tick"]
+            samples.append(s)
+        time.sleep(1.0)
+    f1: dict = {"samples": samples, "n": len(samples)}
+    if len(samples) >= 2:
+        dt = samples[-1]["real_s"] - samples[0]["real_s"]
+        dtick = samples[-1]["tick"] - samples[0]["tick"]
+        dcounter = samples[-1]["counter"] - samples[0]["counter"]
+        f1["real_seconds"] = round(dt, 3)
+        f1["tick_delta"] = dtick
+        f1["counter_delta_ms"] = dcounter
+        f1["game_seconds_delta"] = round(dcounter / 1000.0, 3)
+        f1["ticks_per_real_s"] = round(dtick / dt, 1) if dt > 0 else 0.0
+        f1["implied_game_speed"] = round((dtick / dt) / 500.0, 3) if dt > 0 else 0.0
+        f1["invariant_tick_eq_counter_shr1_all"] = all(s["tick_eq_counter_shr1"] for s in samples)
+        f1["invariant_at108_eq_tick_all"] = all(s["at108_eq_tick"] for s in samples)
+        cursors = [s["cursor"] for s in samples if s["cursor"] is not None]
+        f1["cursor_first_last"] = [cursors[0], cursors[-1]] if cursors else None
+        f1["cursor_advanced"] = (len(set(cursors)) > 1) if cursors else None
+    log["TL_F1"] = f1
+    log["step_size_note"] = ("1 Hz polling shows the clock rate and the tick==counter>>1 "
+                             "invariant, not the per-frame dt (one Advance is sub-frame); per-frame "
+                             "step needs a hook at Advance (0x100ae040) or a high-rate sampler.")
+
+
+def run_rate(pid: int, obj: int, t0: float, seconds: float, interval: float, log: dict) -> None:
+    """TL-F2 (speeds) + TL-F4 (pause): sample the clock continuously while the owner presses a
+    scripted key sequence, then segment by the per-interval rate (game ms per real second). No
+    real-time coordination: the speed of each segment is read from its rate plateau afterwards."""
+    print(f"Rate mode: sampling the clock every {interval:.1f} s for {seconds:.0f} s. "
+          "Press the key sequence now (100% -> F6 -> F7 -> F8 -> pause -> unpause, ~15 s each).",
+          flush=True)
+    samples: list[dict] = []
+    end = time.time() + seconds
+    while time.time() <= end:
+        s = read_world_sample(pid, obj)
+        if s is not None:
+            s["real_s"] = round(time.time() - t0, 3)
+            s["tick_eq_counter_shr1"] = s["tick"] == (s["counter"] >> 1)
+            samples.append(s)
+        time.sleep(interval)
+    # Per-interval rate (game ms / real s); label by the nearest expected speed bucket.
+    buckets = {0: "pause (0%)", 500: "50%", 1000: "100%", 2000: "200%", 4000: "400%"}
+    segs: list[dict] = []
+    for a, b in zip(samples, samples[1:]):
+        dt = b["real_s"] - a["real_s"]
+        if dt <= 0:
+            continue
+        rate = (b["counter"] - a["counter"]) / dt  # game ms per real s
+        label = min(buckets, key=lambda k: abs(k - rate))
+        name = buckets[label]
+        if segs and segs[-1]["label"] == name:
+            segs[-1]["end_s"] = b["real_s"]
+            segs[-1]["rates"].append(round(rate, 1))
+        else:
+            segs.append({"label": name, "start_s": a["real_s"], "end_s": b["real_s"],
+                         "rates": [round(rate, 1)]})
+    for seg in segs:
+        rs = seg.pop("rates")
+        seg["mean_ms_per_s"] = round(sum(rs) / len(rs), 1)
+        seg["duration_s"] = round(seg["end_s"] - seg["start_s"], 1)
+    # Keep only segments that lasted a little, so single-sample transitions do not show as speeds.
+    plateaus = [s for s in segs if s["duration_s"] >= 3.0]
+    log["TL_F2_F4"] = {
+        "n_samples": len(samples),
+        "invariant_tick_eq_counter_shr1_all": all(s["tick_eq_counter_shr1"] for s in samples),
+        "segments": plateaus,
+        "all_segments": segs,
+        "expected": "100% -> 1000, 200% -> 2000, 400% -> 4000, 50% -> 500, pause -> 0 ms/s",
+        "note": "F4 (pause) is the 0 ms/s segment (the counter frozen); F2 the 2000/4000/500 ones. "
+                "400% is single-player only (refused in MP).",
+        "samples": samples,
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", required=True)
@@ -114,7 +217,11 @@ def main() -> int:
     ap.add_argument("--wait", type=float, default=60.0, help="seconds to wait for the window")
     ap.add_argument("--hold", type=float, default=180.0,
                     help="seconds for the owner to reach a running scenario")
-    ap.add_argument("--seconds", type=float, default=60.0, help="F1 sampling duration")
+    ap.add_argument("--seconds", type=float, default=60.0, help="F1/rate sampling duration")
+    ap.add_argument("--mode", choices=["f1f6", "rate"], default="f1f6",
+                    help="f1f6 = clock + PRNG (first owner session); rate = continuous clock "
+                         "sampling for TL-F2 (speeds) and TL-F4 (pause), segmented afterwards")
+    ap.add_argument("--interval", type=float, default=0.5, help="rate-mode sample interval (s)")
     ap.add_argument("--arg", action="append", default=[])
     args = ap.parse_args()
 
@@ -171,61 +278,10 @@ def main() -> int:
                 log["screenshot"] = {"file": shot, "size": [cw, ch],
                                      "nonblack": smoke.nonblack(bgra)}
 
-        # TL-F6: the PRNG table (once), compared with MSVC rand() seed 1 = src/sim's table.
-        table = read_prng_table(pid, welt_base)
-        expected = msvc_rand_seed1(PRNG_TABLE_LEN)
-        f6: dict = {"table_rva": hex(PRNG_TABLE_RVA), "len": PRNG_TABLE_LEN}
-        if table is None:
-            f6["result"] = "could not read the table"
+        if args.mode == "rate":
+            run_rate(pid, obj, t0, args.seconds, args.interval, log)
         else:
-            diffs = [i for i in range(PRNG_TABLE_LEN) if table[i] != expected[i]]
-            f6["matches_msvc_rand_seed1"] = not diffs
-            f6["first_mismatch_index"] = diffs[0] if diffs else None
-            f6["mismatch_count"] = len(diffs)
-            f6["table_head"] = table[:6]
-            f6["expected_head"] = expected[:6]
-            # Cross-check the documented pre-increment draws (tick-loop.md:127): draw after
-            # cursor c returns table[(c+1) mod len].
-            f6["draws_after_cursor_0"] = [table[(0 + k) % PRNG_TABLE_LEN] for k in range(1, 6)]
-            f6["draws_after_cursor_2047"] = [table[(2047 + k) % PRNG_TABLE_LEN] for k in range(1, 4)]
-            f6["note"] = ("src/sim rng.hpp builds this same MSVC rand() seed-1 table, so "
-                          "matches_msvc_rand_seed1 == matches the sim table")
-        log["TL_F6"] = f6
-
-        # TL-F1: sample ~1/s for --seconds; also the PRNG cursor.
-        print(f"TL-F1: sampling the clock ~1/s for {args.seconds:.0f} s...", flush=True)
-        samples: list[dict] = []
-        end = time.time() + args.seconds
-        while time.time() <= end:
-            s = read_world_sample(pid, obj)
-            if s is not None:
-                s["real_s"] = round(time.time() - t0, 3)
-                s["tick_eq_counter_shr1"] = s["tick"] == (s["counter"] >> 1)
-                s["at108_eq_tick"] = s["at_0x108"] == s["tick"]
-                samples.append(s)
-            time.sleep(1.0)
-        f1: dict = {"samples": samples, "n": len(samples)}
-        if len(samples) >= 2:
-            dt = samples[-1]["real_s"] - samples[0]["real_s"]
-            dtick = samples[-1]["tick"] - samples[0]["tick"]
-            dcounter = samples[-1]["counter"] - samples[0]["counter"]
-            f1["real_seconds"] = round(dt, 3)
-            f1["tick_delta"] = dtick
-            f1["counter_delta_ms"] = dcounter
-            f1["game_seconds_delta"] = round(dcounter / 1000.0, 3)
-            f1["ticks_per_real_s"] = round(dtick / dt, 1) if dt > 0 else 0.0
-            f1["implied_game_speed"] = round((dtick / dt) / 500.0, 3) if dt > 0 else 0.0
-            f1["invariant_tick_eq_counter_shr1_all"] = all(s["tick_eq_counter_shr1"] for s in samples)
-            f1["invariant_at108_eq_tick_all"] = all(s["at108_eq_tick"] for s in samples)
-            cursors = [s["cursor"] for s in samples if s["cursor"] is not None]
-            f1["cursor_first_last"] = [cursors[0], cursors[-1]] if cursors else None
-            f1["cursor_advanced"] = (len(set(cursors)) > 1) if cursors else None
-        log["TL_F1"] = f1
-        # Step size per frame: polling at 1 Hz cannot see per-frame dt; say so.
-        log["step_size_note"] = ("1 Hz polling shows the clock rate and the tick==counter>>1 "
-                                 "invariant, not the per-frame dt (one Advance is sub-frame); "
-                                 "per-frame step needs a hook at Advance (0x100ae040) or a high-rate "
-                                 "sampler, a later fixture.")
+            run_f1f6(pid, welt_base, obj, t0, args.seconds, log)
 
     # Close and re-hash the copy.
     w = smoke.find_game_window(game_dir)

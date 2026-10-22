@@ -335,9 +335,9 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         if (!r.has_value()) {
             return std::string("rng_table: must not be empty");
         }
-        w.rng = std::move(*r);
+        w.rng_ = std::move(*r);
     } else {
-        w.rng.set_cursor(spec.seed);
+        w.rng_.set_cursor(spec.seed);
     }
     w.players_ = make_player_table(w.config_);
     w.figures_ = make_figure_registry(w.config_);

@@ -6,8 +6,8 @@
 // frame), the cities with their buildings (stage S6: World::create places them
 // in file order, check_invariants checks the structure and the derived indexes).
 // Figures follow as their rules are recovered (PLAN M3, docs/sim/state.md §15).
-// Once commands exist they become the only way to change it from outside; until
-// then `clock` and `rng` are public for tests.
+// Since stage S8 the commands (apply) and advance are the only way to change it from
+// outside: the clock and the PRNG are private with const accessors.
 #pragma once
 
 #include <cstddef>
@@ -21,6 +21,7 @@
 
 #include <anno/formats/result.hpp>
 #include <anno/sim/clock.hpp>
+#include <anno/sim/command.hpp>
 #include <anno/sim/config.hpp>
 #include <anno/sim/events.hpp>
 #include <anno/sim/executor.hpp>
@@ -29,6 +30,7 @@
 #include <anno/sim/hash_tree.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/player.hpp>
+#include <anno/sim/reject.hpp>
 #include <anno/sim/rng.hpp>
 #include <anno/sim/seams.hpp>
 #include <anno/sim/settings.hpp>
@@ -128,9 +130,10 @@ class World {
     /// only (a frame written from it is refused by load, and a debug build asserts).
     [[nodiscard]] std::vector<std::uint8_t> save() const;
 
-    WorldClock clock;
-    WorldRng rng;
-
+    /// The clock and the PRNG (stage S8: private; the world is changed only through
+    /// apply() and advance()). Const views for the host, the UI and the tests.
+    [[nodiscard]] const WorldClock& clock() const { return clock_; }
+    [[nodiscard]] const WorldRng& rng() const { return rng_; }
     [[nodiscard]] const WorldSettings& settings() const { return settings_; }
     [[nodiscard]] const SimConfig& config() const { return config_; }
     [[nodiscard]] const Rules& rules() const { return rules_; }
@@ -164,8 +167,11 @@ class World {
     [[nodiscard]] const std::vector<std::optional<Island>>& islands() const { return islands_; }
     /// The island whose rectangle holds the world tile (x, y), or nullptr. The
     /// rectangles are disjoint, so there is at most one; the lookup scans the
-    /// table (a derived grid, D: world +0x130, is a later optimisation).
+    /// table (a derived grid, D: world +0x130, is a later optimisation). Both
+    /// overloads share one scan body (sim.cpp); the mutable one is the single
+    /// island lookup for command apply (§8.4, §4.14).
     [[nodiscard]] const Island* island_at(std::int32_t x, std::int32_t y) const;
+    [[nodiscard]] Island* island_at(std::int32_t x, std::int32_t y);
     /// The building with this id (the island named by the id, then its by_id
     /// cache), or nullptr: a removed building is "gone", never an error.
     [[nodiscard]] const Building* find_building(BuildingId id) const;
@@ -180,6 +186,14 @@ class World {
     /// (list in the layout's rect order, y, x, id; D2).
     void rect_query(CityRef city, const TileRect& rect, std::uint32_t list_mask,
                     std::vector<BuildingId>& out) const;
+    /// Applies one command at the current tick, between two advances (docs/sim/
+    /// state.md §8). Total: any input yields a result, nothing throws. Validation is
+    /// pure: a rejected command changes no hashed state (the hash before equals the
+    /// hash after); it only queues a CommandRejected UI event for the host. The
+    /// commands the host stamped come in order, one call each; the AI seam's commands
+    /// are applied inside advance by the same code and are not logged by anyone.
+    ApplyResult apply(const Command& command);
+
     /// The structural facts and the derived-equals-recomputed facts of docs/sim/
     /// state.md §9.6 that exist at this stage. Empty when they all hold, else one
     /// message that names the first violation with its path ("islands[0].cities[1].
@@ -237,7 +251,10 @@ class World {
     friend struct StateIO;
     friend struct WorldTestAccess;
     friend struct Scheduler;
+    friend struct Commands;
 
+    WorldClock clock_;
+    WorldRng rng_;
     WorldSettings settings_;
     SimConfig config_;
     Rules rules_;

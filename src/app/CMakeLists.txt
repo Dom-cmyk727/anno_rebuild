@@ -5,6 +5,7 @@ add_library(anno_app_core
   src/cli.cpp
   src/loader.cpp
   src/png.cpp
+  src/still.cpp
 )
 target_include_directories(anno_app_core PUBLIC include)
 target_link_libraries(anno_app_core PUBLIC anno_render)

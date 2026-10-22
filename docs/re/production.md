@@ -50,8 +50,8 @@ Loader branch `0x100094d2`–`0x1000972f`. **Confirmed** (every offset read from
 
 | Off | Type | → field | Conversion at load | Meaning |
 |---|---|---|---|---|
-| 0x00 | u16 | `+0x21c` | — | running cost A (smaller value; weaver 10) — **likely** "inactive" |
-| 0x02 | u16 | `+0x21e` | — | running cost B (weaver 15) — **likely** "active" |
+| 0x00 | u16 | `+0x21c` | — | running cost while shut down, gold per minute (weaver 10); **confirmed** by the in-game help (`docs/research/manual-and-help.md` §1.2) |
+| 0x02 | u16 | `+0x21e` | — | running cost while active, gold per minute (weaver 15); **confirmed** likewise; charged as in `population.md` §8 |
 | 0x04 | u8 | `+0x208` | `v << 8` | storage capacity of output 0 in tons (weaver 5, mill 7) |
 | 0x06 | u8 | `+0x20a` | `v << 8` | storage capacity of output 1 (small farm 4) |
 | 0x05, 0x07 | u8 | — | not read | always 0 (P) |
@@ -388,7 +388,7 @@ Read in the S3 review of the type registry; each is **D** (disassembly) unless s
 ## Open
 - Unit of `dt` (ms assumed) and game-speed scaling between `AnnoFrame` and world slot `+0x84` (Advance); confirm with F14.
 - Flags bits 4/5 at building `+0x0c` (what suspends production); what slot `+0xc8`/`0x10072a60` changes (running cost switch?).
-- Running costs: confirm `PROD3` 0x00/0x02 as inactive/active cost and where they are charged.
+- (Closed 2026-10-22: `PROD3` 0x00/0x02 are the shut-down and active running costs. The in-game help confirms the pairing, and `population.md` §8 has the charging.)
 - Harvest amount per field and what a harvested field becomes (713 → ?); which code reads fertility (planting, growth chance); meaning of `Wachstum.dat` `Klima`/`Bridge` tables beyond being loaded (`0x10006a80`).
 - Deposit class: amounts per `BERGWERK2` deposit, the extraction rule behind slots `+0x88/+0x8c`, effect of "deep" mining.
 - Carrier and cart capacity: confirm figure slot `+0x84` = type `+0xf2`; unit of the speed float; which code (if any) slows figures on roads/slopes, given that `wegspeed.dat` is not read.

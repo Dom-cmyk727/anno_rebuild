@@ -1,13 +1,20 @@
 // Synthetic tests of anno_render (no game files needed).
+#include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstring>
 #include <limits>
 
 #include <doctest/doctest.h>
 
 #include <anno/render/frame.hpp>
 #include <anno/render/iso.hpp>
+#include <anno/render/profile.hpp>
+#include <anno/render/river_window.hpp>
 #include <anno/render/scene.hpp>
 #include <anno/render/sea.hpp>
+
+#include "water_field_fixture.hpp"
 
 namespace render = anno::render;
 using render::Rect;
@@ -170,6 +177,27 @@ TEST_CASE("numeric helpers follow the documented semantics") {
     CHECK(render::fmaxf(std::numeric_limits<float>::quiet_NaN(), 1.0F) == 1.0F);
 }
 
+TEST_CASE("div_euclid at exact multiples of kChunk, and where a chunk index of -2 comes from") {
+    constexpr int k = render::kChunk;
+    CHECK(render::div_euclid(-k, k) == -1);
+    CHECK(render::rem_euclid(-k, k) == 0);
+    CHECK(render::div_euclid(-k - 1, k) == -2);
+    CHECK(render::rem_euclid(-k - 1, k) == k - 1);
+    CHECK(render::div_euclid(-1, k) == -1);
+    CHECK(render::div_euclid(0, k) == 0);
+    CHECK(render::div_euclid(k - 1, k) == 0);
+    CHECK(render::div_euclid(k, k) == 1);
+    // The T1 note "-2 instead of -1 for -512 / 512" came from a stand-in source, not from
+    // the division: the first pixel of destination chunk -1 (x = -512) reads the source
+    // group at the scaled coordinate, and that lies in source chunk -2 (zoom-in: kTile
+    // ratio 2, source = 2 * x + 1 = -1023). div_euclid(-1023, 512) == -2 is right.
+    const int src = render::stand_in_source(-k, render::kTile[0].w, render::kTile[1].w);
+    CHECK(src == -1023);
+    CHECK(render::div_euclid(src, k) == -2);
+    // The destination coordinate itself is chunk -1.
+    CHECK(render::div_euclid(-k, k) == -1);
+}
+
 TEST_CASE("water field of an island without land: NaN distances become 0") {
     // All corners below the waterline: the shore distance is +inf everywhere,
     // and bilinear blending at a tile corner gives inf · 0 = NaN. Rust's
@@ -289,4 +317,614 @@ TEST_CASE("river gap patch: trench corners get depth, nearby pieces are joined (
     render::sea::patch_river_gaps(touching, n, n, 6.0F, h2, s2, c2);
     CHECK(h2[9 * n + 4] == 48);
     CHECK(c2[9 * n + 4] == 0.0F);
+}
+
+namespace {
+
+/// Busy-waits `us` microseconds (the steady clock, not sleep: no scheduling).
+void spin(int us) {
+    const auto end = std::chrono::steady_clock::now() + std::chrono::microseconds(us);
+    while (std::chrono::steady_clock::now() < end) {
+    }
+}
+
+} // namespace
+
+TEST_CASE("chunk profile: off without a sink, nested stages counted exclusively") {
+    namespace profile = render::profile;
+    profile::Times t;
+    {
+        // Not attached: a scope records nothing.
+        const profile::Scope s(profile::Stage::objects);
+        spin(200);
+    }
+    profile::attach(&t);
+    const auto start = std::chrono::steady_clock::now();
+    {
+        const profile::Scope outer(profile::Stage::objects);
+        spin(500);
+        {
+            const profile::Scope inner(profile::Stage::decode);
+            spin(500);
+        }
+        spin(500);
+    }
+    const double elapsed =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    profile::attach(nullptr);
+    CHECK(t[profile::Stage::objects] >= 0.9);
+    CHECK(t[profile::Stage::decode] >= 0.45);
+    // Exclusive: the decode is not also counted in the objects. The stage times are
+    // converted to milliseconds per interval and summed, `elapsed` once, so with no
+    // clock tick between the start and the first scope the sum can exceed `elapsed`
+    // by the rounding of those conversions (it failed once on MSVC, passed on a rerun
+    // of the same commit): compare with a tolerance far below the 1.5 ms of spinning
+    // and far above a double's rounding, 1e-6 ms.
+    constexpr double kRoundingMs = 1e-6;
+    CHECK(t[profile::Stage::objects] + t[profile::Stage::decode] <= elapsed + kRoundingMs);
+    double others = 0;
+    for (std::size_t i = 0; i < t.ms.size(); ++i) {
+        if (i != static_cast<std::size_t>(profile::Stage::objects) &&
+            i != static_cast<std::size_t>(profile::Stage::decode)) {
+            others += t.ms[i];
+        }
+    }
+    CHECK(others == 0.0);
+    // Detached again: nothing more is counted.
+    const double before = t[profile::Stage::objects];
+    {
+        const profile::Scope s(profile::Stage::objects);
+        spin(200);
+    }
+    CHECK(t[profile::Stage::objects] == before);
+}
+
+TEST_CASE("water field: every position in an empty cell gets the empty texel") {
+    namespace sea = render::sea;
+    // A synthetic island: a ridge whose corners run through the waterline and
+    // the threshold (kEmptyLandHeight) in small steps, sea around it, and a
+    // river over high ground. Each condition of the proof is needed somewhere
+    // here: without the river check the river tiles fail, with a lower height
+    // threshold the tiles near the waterline fail.
+    sea::IslandWater iw;
+    iw.w = 48;
+    iw.h = 40;
+    iw.heights.resize(iw.w * iw.h);
+    for (std::size_t y = 0; y < iw.h; ++y) {
+        for (std::size_t x = 0; x < iw.w; ++x) {
+            // 0 at the left edge to 47 at the right, plus a 0-3 jitter.
+            const auto jitter = static_cast<std::uint8_t>((x * 7U + y * 13U) % 4U);
+            iw.heights[y * iw.w + x] = static_cast<std::uint8_t>(x + jitter);
+        }
+    }
+    // The 8 x 8 blocks up to x = 39 count as holding sea (an input here), the
+    // last column (x 40-47) not.
+    const std::size_t cw = (iw.w + 7) / 8;
+    iw.sea_chunk.assign(cw * ((iw.h + 7) / 8), true);
+    for (std::size_t by = 0; by < (iw.h + 7) / 8; ++by) {
+        iw.sea_chunk[by * cw + cw - 1] = false;
+    }
+    iw.open.assign(iw.w * iw.h, 0.5F);
+    iw.shore.assign(iw.w * iw.h, 1.0F);
+    iw.river.assign(iw.w * iw.h, std::numeric_limits<float>::quiet_NaN());
+    for (std::size_t x = 30; x < 46; ++x) {
+        // A river along row 20 over the high ground: level above the bed.
+        iw.river[20 * iw.w + x] = static_cast<float>(iw.heights[20 * iw.w + x]) + 9.0F;
+    }
+    iw.classify_cells();
+    std::size_t empty = 0, by_height = 0, by_block = 0, checked = 0, wrong = 0;
+    for (std::size_t ty = 0; ty < iw.h; ++ty) {
+        for (std::size_t tx = 0; tx < iw.w; ++tx) {
+            if (iw.empty_cell[ty * iw.w + tx] == 0) {
+                continue;
+            }
+            ++empty;
+            (iw.sea_chunk[(ty / 8) * cw + tx / 8] ? by_height : by_block) += 1;
+            for (const float fy : {0.0F, 0.2F, 0.45F, 0.7F, 0.9999F}) {
+                for (const float fx : {0.0F, 0.15F, 0.5F, 0.8F, 0.9999F}) {
+                    ++checked;
+                    const sea::FieldTexel t =
+                        sea::field_at(iw, static_cast<float>(tx) + fx, static_cast<float>(ty) + fy);
+                    wrong += t == sea::FieldTexel{} ? 0U : 1U;
+                }
+            }
+        }
+    }
+    MESSAGE("empty cells " << empty << " (" << by_height << " by height, " << by_block
+                           << " without sea), " << checked << " positions");
+    CHECK(by_height > 0);
+    CHECK(by_block > 0);
+    CHECK(wrong == 0);
+    // The sea, the waterline and the river are not empty.
+    CHECK(iw.empty_cell[10 * iw.w + 2] == 0);
+    CHECK(iw.empty_cell[10 * iw.w + 16] == 0);
+    CHECK(iw.empty_cell[20 * iw.w + 35] == 0);
+    // water_field: empty cells written without evaluation, the rest as field_at.
+    render::Rect rect{0, 0, 64, 32};
+    sea::SceneProbe probe{std::vector<std::uint32_t>(64 * 32, 0),
+                          std::vector<std::array<float, 2>>(64 * 32)};
+    for (std::size_t i = 0; i < probe.pos.size(); ++i) {
+        probe.pos[i] = {0.3F + static_cast<float>(i % 64) * 0.73F,
+                        0.1F + static_cast<float>(i / 64) * 1.21F};
+    }
+    const auto f = sea::water_field(rect, probe, [&](std::size_t) { return &iw; });
+    std::size_t differ = 0;
+    for (std::size_t i = 0; i < probe.pos.size(); ++i) {
+        const sea::FieldTexel ref = sea::field_at(iw, probe.pos[i][0], probe.pos[i][1]);
+        differ += ref == sea::FieldTexel{f.cover[i], f.shore[i], f.depth[i], f.flags[i]} ? 0U : 1U;
+    }
+    CHECK(differ == 0);
+}
+TEST_CASE("noise3_at equals noise3 at an integer z, bit for bit") {
+    std::size_t differ = 0, n = 0;
+    for (int iz : {-3, 0, 11, 23}) {
+        for (int j = -200; j < 200; ++j) {
+            for (int i = -200; i < 200; ++i) {
+                const float x = static_cast<float>(i) * 0.137F + 0.01F;
+                const float y = static_cast<float>(j) * 0.091F - 0.3F;
+                const float a = render::noise3(x, y, static_cast<float>(iz));
+                const float b = render::noise3_at(x, y, iz);
+                differ += std::memcmp(&a, &b, sizeof a) == 0 ? 0U : 1U;
+                ++n;
+            }
+        }
+    }
+    CHECK(n == 640000);
+    CHECK(differ == 0);
+}
+TEST_CASE("SmoothSampler equals smooth_height and height_noise, bit for bit") {
+    namespace sea = render::sea;
+    sea::IslandWater iw;
+    iw.w = 40;
+    iw.h = 30;
+    iw.heights.resize(iw.w * iw.h);
+    for (std::size_t i = 0; i < iw.heights.size(); ++i) {
+        iw.heights[i] = static_cast<std::uint8_t>((i * 53U + i / 7U) % 60U);
+    }
+    sea::SmoothSampler s(iw);
+    std::size_t differ = 0, n = 0;
+    auto same = [](float a, float b) { return std::memcmp(&a, &b, sizeof a) == 0; };
+    // Rows of small steps (the cache holds), jumps between rows (it misses),
+    // and positions outside the grid (clamped corners).
+    for (int row = -3; row < 34; ++row) {
+        for (int k = -20; k < 460; ++k) {
+            const float x = static_cast<float>(k) * 0.091F + static_cast<float>(row % 5) * 0.37F;
+            const float y = static_cast<float>(row) + static_cast<float>(k) * 0.013F;
+            differ +=
+                same(s.smooth(x, y), sea::smooth_height(iw.heights, iw.w, iw.h, x, y)) ? 0U : 1U;
+            differ += same(s.noise(x, y), sea::height_noise(x, y)) ? 0U : 1U;
+            n += 2;
+        }
+    }
+    CHECK(n > 30000);
+    CHECK(differ == 0);
+}
+TEST_CASE("water field: the synthetic scene's digest is the one before the T1f speedups") {
+    // Recorded with the sources of 7479a2a (tests/water_field_fixture.hpp): every
+    // shortcut must leave every byte as it was, classified or not.
+    constexpr std::uint64_t kGolden = 0x51aadd2b3bf2a795ULL;
+    namespace sea = render::sea;
+    auto s = render::test::field_scene();
+    auto water = [&](std::size_t i) -> const sea::IslandWater* {
+        return i < s.islands.size() ? &s.islands[i] : nullptr;
+    };
+    CHECK(render::test::field_digest(sea::water_field(s.rect, s.probe, water)) == kGolden);
+    std::size_t empty = 0;
+    for (auto& iw : s.islands) {
+        iw.classify_cells();
+        empty +=
+            static_cast<std::size_t>(std::count(iw.empty_cell.begin(), iw.empty_cell.end(), 1));
+    }
+    CHECK(empty > 0);
+    const auto f = sea::water_field(s.rect, s.probe, water);
+    CHECK(render::test::field_digest(f) == kGolden);
+    // Per pixel against field_at of the pixel's island: island changes, pixels
+    // without an island, the missing island, positions outside the grids.
+    std::size_t differ = 0, outside = 0;
+    for (std::size_t i = 0; i < s.probe.island.size(); ++i) {
+        const std::uint32_t island = s.probe.island[i];
+        sea::FieldTexel want{255, 255, 255, 1};
+        if (island < s.islands.size()) {
+            const auto& iw = s.islands[island];
+            const auto [x, y] = s.probe.pos[i];
+            want = sea::field_at(iw, x, y);
+            outside += x < 0.0F || y < 0.0F || x >= static_cast<float>(iw.w) ||
+                               y >= static_cast<float>(iw.h)
+                           ? 1U
+                           : 0U;
+        }
+        differ += want == sea::FieldTexel{f.cover[i], f.shore[i], f.depth[i], f.flags[i]} ? 0U : 1U;
+    }
+    CHECK(outside > 100);
+    CHECK(differ == 0);
+}
+
+TEST_CASE("water field: a tile is empty exactly when its 16 spline corners clear the threshold") {
+    namespace sea = render::sea;
+    auto plateau = [](std::uint8_t height) {
+        sea::IslandWater iw;
+        iw.w = 24;
+        iw.h = 16;
+        iw.heights.assign(iw.w * iw.h, height);
+        iw.sea_chunk.assign(((iw.w + 7) / 8) * ((iw.h + 7) / 8), true);
+        iw.open.assign(iw.w * iw.h, 0.5F);
+        iw.shore.assign(iw.w * iw.h, 1.0F);
+        iw.river.assign(iw.w * iw.h, std::numeric_limits<float>::quiet_NaN());
+        return iw;
+    };
+    auto marked = [](const sea::IslandWater& iw) {
+        return static_cast<std::size_t>(std::count(iw.empty_cell.begin(), iw.empty_cell.end(), 1));
+    };
+    // The threshold: 31 < kEmptyLandHeight = 31.1 <= 32.
+    auto low = plateau(31);
+    low.classify_cells();
+    CHECK(marked(low) == 0);
+    auto high = plateau(32);
+    high.classify_cells();
+    CHECK(marked(high) == high.w * high.h);
+    // One low corner (cx, cy) unmarks exactly the tiles whose smooth_height reads
+    // it: tx in [cx - 2, cx + 1], ty in [cy - 2, cy + 1].
+    auto pit = plateau(40);
+    constexpr std::size_t cx = 10, cy = 7;
+    pit.heights[cy * pit.w + cx] = 30;
+    pit.classify_cells();
+    for (std::size_t ty = 0; ty < pit.h; ++ty) {
+        for (std::size_t tx = 0; tx < pit.w; ++tx) {
+            const bool reads = tx + 2 >= cx && tx <= cx + 1 && ty + 2 >= cy && ty <= cy + 1;
+            CHECK_MESSAGE((pit.empty_cell[ty * pit.w + tx] == 0) == reads, tx << ", " << ty);
+        }
+    }
+    CHECK(marked(pit) == pit.w * pit.h - 16);
+}
+
+TEST_CASE("stand-ins across derived levels: spans tile the chunk and map by the exact tile ratio") {
+    const auto levels = render::ZoomLevels::with_derived(4);
+    REQUIRE(levels.size() == 7);
+    // The ratios are exact fractions: 2 between the first two groups, 2.1 then 2, and 2
+    // between derived levels (20 / 10 / 5 / ...).
+    CHECK(levels.ratio_w(2, 3) == std::pair{20 * 2, 20});
+    CHECK(levels.ratio_w(3, 4) == std::pair{20 * 4, 20 * 2});
+    CHECK(levels.ratio_w(0, 3) == std::pair{84 * 2, 20});
+    CHECK(levels.ancestor(6) == 2);
+    for (std::size_t to = 0; to < levels.size(); ++to) {
+        for (const std::size_t from : render::stand_in_groups(to, levels)) {
+            for (const auto& [cx, cy] : {std::pair{0, 0}, std::pair{-3, 2}, std::pair{5, -7}}) {
+                const auto spans = render::stand_in_spans(cx, cy, to, from, levels);
+                CHECK(!spans.empty());
+                long long area = 0;
+                const auto wr = levels.ratio_w(from, to);
+                const auto hr = levels.ratio_h(from, to);
+                // The source pixel written out: floor((2p + 1) * num / (2 * den)).
+                auto floor_div = [](long long a, long long d) {
+                    return a / d - (a % d < 0 ? 1 : 0);
+                };
+                for (const auto& sp : spans) {
+                    area += static_cast<long long>(sp.dst.w) * sp.dst.h;
+                    for (int y = sp.dst.y; y < sp.dst.y + sp.dst.h; y += 11) {
+                        for (int x = sp.dst.x; x < sp.dst.x + sp.dst.w; x += 13) {
+                            const long long sx =
+                                floor_div((2LL * x + 1) * wr.first, 2LL * wr.second);
+                            const long long sy =
+                                floor_div((2LL * y + 1) * hr.first, 2LL * hr.second);
+                            CHECK(floor_div(sx, render::kChunk) == sp.src_cx);
+                            CHECK(floor_div(sy, render::kChunk) == sp.src_cy);
+                            CHECK(sx == render::stand_in_source(x, wr.first, wr.second));
+                        }
+                    }
+                }
+                CHECK(area == static_cast<long long>(render::kChunk) * render::kChunk);
+            }
+        }
+    }
+    // Nearest first, the finer level first at equal distance.
+    // Level 0 is 8.4 x the tile width of level 3: too fine to stand in (kMaxStandInReduction).
+    CHECK(render::stand_in_groups(3, levels) == std::vector<std::size_t>{2, 4, 1, 5, 6});
+    CHECK(render::stand_in_groups(6, levels) == std::vector<std::size_t>{5, 4, 3});
+    // At the built groups every other group stays a source (84 / 20 = 4.2).
+    CHECK(render::stand_in_groups(2) == std::vector<std::size_t>{1, 0});
+}
+
+TEST_CASE("water field: islands one tile wide or high classify and evaluate like the rest") {
+    // The spline reads 16 corners around a tile and clamps at the grid; on a
+    // grid one tile wide every neighbour is a clamp. Classified or not, every
+    // pixel must be field_at of its position (item 2 left this case out).
+    namespace sea = render::sea;
+    for (const bool tall : {true, false}) {
+        for (const std::uint8_t base : {std::uint8_t{20}, std::uint8_t{45}}) {
+            sea::IslandWater iw;
+            iw.w = tall ? 1 : 18;
+            iw.h = tall ? 18 : 1;
+            iw.heights.resize(iw.w * iw.h);
+            for (std::size_t i = 0; i < iw.heights.size(); ++i) {
+                iw.heights[i] = static_cast<std::uint8_t>(base + (i % 5 == 0 ? 0U : 12U));
+            }
+            iw.sea_chunk.assign(((iw.w + 7) / 8) * ((iw.h + 7) / 8), true);
+            iw.open.assign(iw.w * iw.h, 0.5F);
+            iw.shore.assign(iw.w * iw.h, 1.0F);
+            iw.river.assign(iw.w * iw.h, std::numeric_limits<float>::quiet_NaN());
+            const render::Rect rect{0, 0, 48, 48};
+            sea::SceneProbe probe{std::vector<std::uint32_t>(48 * 48, 0),
+                                  std::vector<std::array<float, 2>>(48 * 48)};
+            for (std::size_t i = 0; i < probe.pos.size(); ++i) {
+                probe.pos[i] = {-1.0F + static_cast<float>(i % 48) * (tall ? 0.05F : 0.45F),
+                                -1.0F + static_cast<float>(i / 48) * (tall ? 0.45F : 0.05F)};
+            }
+            auto water = [&](std::size_t) { return &iw; };
+            const auto before = sea::water_field(rect, probe, water);
+            iw.classify_cells();
+            const auto after = sea::water_field(rect, probe, water);
+            std::size_t differ = 0;
+            for (std::size_t i = 0; i < probe.pos.size(); ++i) {
+                const sea::FieldTexel want = sea::field_at(iw, probe.pos[i][0], probe.pos[i][1]);
+                differ += want == sea::FieldTexel{after.cover[i], after.shore[i], after.depth[i],
+                                                  after.flags[i]}
+                              ? 0U
+                              : 1U;
+            }
+            CHECK(differ == 0);
+            CHECK(render::test::field_digest(before) == render::test::field_digest(after));
+        }
+    }
+}
+
+TEST_CASE("terrain_plane equals terrain_height per pixel across islands") {
+    // Two islands whose pixels alternate in short runs on the same tiles: the
+    // corner cache must not carry over from one island to the other.
+    std::vector<std::uint8_t> a(12 * 10), b(12 * 10);
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        a[i] = static_cast<std::uint8_t>((i * 7U) % 50U);
+        b[i] = static_cast<std::uint8_t>(200U - (i * 11U) % 90U);
+    }
+    render::sea::SceneProbe probe;
+    for (std::size_t i = 0; i < 4000; ++i) {
+        const std::size_t k = (i / 3) % 4;
+        probe.island.push_back(k == 3 ? render::sea::kNoIsland : static_cast<std::uint32_t>(k));
+        const float x = -1.0F + static_cast<float>(i % 160) * 0.09F;
+        const float y = -0.5F + static_cast<float>(i / 160) * 0.47F;
+        probe.pos.push_back({x, y});
+    }
+    const auto plane = render::terrain_plane(probe, [&](std::uint32_t island) {
+        // Island 2 has no ground.
+        return island == 0   ? render::TerrainGrid{&a, 12, 10}
+               : island == 1 ? render::TerrainGrid{&b, 12, 10}
+                             : render::TerrainGrid{};
+    });
+    REQUIRE(plane.size() == probe.island.size());
+    std::size_t differ = 0, ground = 0;
+    for (std::size_t i = 0; i < plane.size(); ++i) {
+        std::uint16_t want = render::kNoTerrain;
+        if (probe.island[i] < 2) {
+            const auto& h = probe.island[i] == 0 ? a : b;
+            const float z = render::terrain_height(h, 12, 10, probe.pos[i][0], probe.pos[i][1]);
+            want = render::sat_cast<std::uint16_t>(
+                render::clampf(roundf(z * render::kTerrainScale), 0.0F,
+                               static_cast<float>(render::kNoTerrain - 1)));
+            ++ground;
+        }
+        differ += plane[i] == want ? 0U : 1U;
+    }
+    CHECK(ground > 1000);
+    CHECK(differ == 0);
+}
+
+TEST_CASE("NoisePlane equals noise3_at, also at negative z and coordinates") {
+    std::size_t differ = 0;
+    for (const int iz : {-7, 11}) {
+        render::NoisePlane plane(iz);
+        for (int i = -500; i < 500; ++i) {
+            const float x = static_cast<float>(i) * 0.031F, y = static_cast<float>(i % 37) * -0.17F;
+            const float a = plane.at(x, y), b = render::noise3_at(x, y, iz);
+            differ += std::memcmp(&a, &b, sizeof a) == 0 ? 0U : 1U;
+        }
+    }
+    CHECK(differ == 0);
+}
+
+// ---- T1f item 2b: the bounded blur and chamfer equal the unbounded ones ----
+// (CI cannot run the game-file digests; docs/render/iso.md "Bounded blur and
+// chamfer" is the proof, these are its synthetic checks.)
+
+namespace {
+
+using render::detail::WindowOptions;
+
+constexpr WindowOptions kWhole{false, 0};
+
+/// A canvas of w x h with the alpha given by `alpha(x, y)`.
+template <class F> render::Canvas alpha_canvas(int w, int h, F&& alpha) {
+    render::Canvas c;
+    c.width = static_cast<std::size_t>(w);
+    c.height = static_cast<std::size_t>(h);
+    c.pixels.assign(c.width * c.height * 4, 0);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            c.pixels[(static_cast<std::size_t>(y) * c.width + static_cast<std::size_t>(x)) * 4 +
+                     3] = static_cast<std::uint8_t>(alpha(x, y));
+        }
+    }
+    return c;
+}
+
+bool same_floats(const std::vector<float>& a, const std::vector<float>& b) {
+    return a.size() == b.size() &&
+           (a.empty() || std::memcmp(a.data(), b.data(), a.size() * sizeof(float)) == 0);
+}
+
+} // namespace
+
+TEST_CASE("bounded blur: equal to the whole-canvas blur, at the edges and with the closing") {
+    for (const int r : {1, 2, 4}) {
+        for (const bool close : {false, true}) {
+            INFO("r " << r << ", close " << close);
+            const int w = 70, h = 52;
+            // Sprite pixels at the corners and edges, a checkerboard blob inside, a lone
+            // pixel one step from an edge.
+            const auto c = alpha_canvas(w, h, [&](int x, int y) {
+                if ((x == 0 || x == w - 1) && (y == 0 || y == h - 1)) {
+                    return 255;
+                }
+                if (y == 0 && x == 31) {
+                    return 200;
+                }
+                if (x == w - 1 && y == 17) {
+                    return 90;
+                }
+                if (x == 1 && y == h - 2) {
+                    return 255;
+                }
+                if (x >= 20 && x < 29 && y >= 14 && y < 23) {
+                    return (x + y) % 2 == 0 ? 255 : 0;
+                }
+                return 0;
+            });
+            CHECK(same_floats(render::detail::blurred_alpha(c, r, close),
+                              render::detail::blurred_alpha(c, r, close, kWhole)));
+            // One sprite pixel far from every edge, and none at all.
+            const auto lone =
+                alpha_canvas(w, h, [&](int x, int y) { return x == 35 && y == 26 ? 255 : 0; });
+            CHECK(same_floats(render::detail::blurred_alpha(lone, r, close),
+                              render::detail::blurred_alpha(lone, r, close, kWhole)));
+            const auto none = alpha_canvas(w, h, [](int, int) { return 0; });
+            CHECK(same_floats(render::detail::blurred_alpha(none, r, close),
+                              render::detail::blurred_alpha(none, r, close, kWhole)));
+            // The margin is tight: one pixel less changes the result (the closing
+            // reaches one pixel further, so it needs one more than without it).
+            CHECK_FALSE(same_floats(render::detail::blurred_alpha(lone, r, close, {true, 1}),
+                                    render::detail::blurred_alpha(lone, r, close, kWhole)));
+        }
+    }
+}
+
+namespace {
+
+/// A water field of w x h from `kind(x, y)`: '.' land, 'S' deep sea, 's' shallow
+/// sea (below the seam depth), 'R' river water.
+template <class F> render::sea::WaterField make_field(int w, int h, F&& kind) {
+    namespace sea = render::sea;
+    sea::WaterField f;
+    f.rect = {0, 0, w, h};
+    const auto n = static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
+    f.cover.assign(n, 0);
+    f.shore.assign(n, 255);
+    f.depth.assign(n, 0);
+    f.flags.assign(n, 0);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const auto i = static_cast<std::size_t>(y * w + x);
+            switch (kind(x, y)) {
+            case 'S':
+                f.cover[i] = 255;
+                f.depth[i] = 255;
+                f.flags[i] = 1;
+                break;
+            case 's':
+                f.cover[i] = 200;
+                f.depth[i] = static_cast<std::uint8_t>(sea::kDepthBias + 0.4F * sea::kDepthScale);
+                f.flags[i] = 1;
+                break;
+            case 'R':
+                f.cover[i] = static_cast<std::uint8_t>(1 + sea::kRiverOpenness);
+                f.depth[i] = static_cast<std::uint8_t>(sea::kDepthBias + 0.5F * sea::kDepthScale);
+                f.flags[i] = 2;
+                break;
+            default:
+                break;
+            }
+        }
+    }
+    return f;
+}
+
+bool same_field(const render::sea::WaterField& a, const render::sea::WaterField& b) {
+    return a.cover == b.cover && a.shore == b.shore && a.depth == b.depth && a.flags == b.flags;
+}
+
+} // namespace
+
+TEST_CASE(
+    "bounded river blend: equal to the whole-rect blend, sea just inside and outside the margin") {
+    for (const std::size_t group : {std::size_t{0}, std::size_t{1}, std::size_t{2}}) {
+        const float reach =
+            render::kRiverBlend * static_cast<float>(render::kTile[group].h) / 42.0F;
+        const int needed = static_cast<int>(std::ceil(reach)) - 1; // the farthest seed that matters
+        INFO("group " << group << ", reach " << reach << ", needed " << needed);
+        const int w = 120, h = 90;
+        // A river patch in the middle; deep sea on one side at distance d; the same
+        // on the diagonal and for a patch against the rect edge.
+        for (int d = std::max(0, needed - 2); d <= needed + 3; ++d) {
+            const auto along_x = make_field(w, h, [&](int x, int y) {
+                if (x >= 50 && x < 58 && y >= 40 && y < 46) {
+                    return 'R';
+                }
+                return x >= 57 + d ? 'S' : '.';
+            });
+            const auto diagonal = make_field(w, h, [&](int x, int y) {
+                if (x >= 50 && x < 58 && y >= 40 && y < 46) {
+                    return 'R';
+                }
+                return x >= 57 + d && y >= 45 + d ? 'S' : '.';
+            });
+            const auto at_edge = make_field(w, h, [&](int x, int y) {
+                if (x < 6 && y >= 40 && y < 46) {
+                    return 'R';
+                }
+                return x >= 5 + d && x < 60 ? 'S' : '.';
+            });
+            for (const auto* f : {&along_x, &diagonal, &at_edge}) {
+                auto a = *f, b = *f;
+                render::detail::blend_rivers_into_sea(a, group);
+                render::detail::blend_rivers_into_sea(b, group, kWhole);
+                CHECK_MESSAGE(same_field(a, b), "d " << d);
+            }
+            if (d == needed) {
+                // The margin is tight: a sea at the farthest distance that still blends is
+                // outside a window one pixel smaller, and the river pixels differ.
+                auto a = along_x, b = along_x, c = along_x;
+                render::detail::blend_rivers_into_sea(a, group, {true, 1});
+                render::detail::blend_rivers_into_sea(b, group, kWhole);
+                CHECK_FALSE(same_field(a, b));
+                // ... and the blend did something to the field at all.
+                render::detail::blend_rivers_into_sea(c, group, kWhole);
+                CHECK_FALSE(same_field(c, along_x));
+            }
+        }
+    }
+}
+
+TEST_CASE("bounded river blend: the seam between river and sea, at the window border") {
+    // Shallow sea pixels in the gap between a river and deep sea join the river when the
+    // two distances add up to the seam width at most; the gap pixels farthest from the
+    // river lie at the window border of a river patch at the field's edge or in its middle.
+    for (const std::size_t group : {std::size_t{0}, std::size_t{1}}) {
+        const int seam = static_cast<int>(
+            std::floor(render::kRiverSeam * static_cast<float>(render::kTile[group].h) / 42.0F));
+        for (int gap = 1; gap <= seam + 2; ++gap) {
+            INFO("group " << group << ", gap " << gap);
+            const int w = 100, h = 80;
+            const auto mid = make_field(w, h, [&](int x, int y) {
+                if (x >= 40 && x < 46 && y >= 30 && y < 36) {
+                    return 'R';
+                }
+                if (x >= 46 && x < 46 + gap && y >= 20 && y < 50) {
+                    return 's';
+                }
+                return x >= 46 + gap ? 'S' : '.';
+            });
+            const auto edge = make_field(w, h, [&](int x, int y) {
+                if (x < 6 && y >= 30 && y < 36) {
+                    return 'R';
+                }
+                if (x >= 6 && x < 6 + gap) {
+                    return 's';
+                }
+                return x >= 6 + gap ? 'S' : '.';
+            });
+            for (const auto* f : {&mid, &edge}) {
+                auto a = *f, b = *f;
+                render::detail::blend_rivers_into_sea(a, group);
+                render::detail::blend_rivers_into_sea(b, group, kWhole);
+                CHECK(same_field(a, b));
+            }
+        }
+    }
 }

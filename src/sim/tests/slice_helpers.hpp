@@ -49,16 +49,16 @@ struct Tick {
     sim::CountingDraw draw;
     sim::TickContext ctx;
     Tick(sim::World& w, std::uint64_t tick)
-        : global(w.rng), draw(global), ctx{tick,
-                                           static_cast<std::uint32_t>(tick),
-                                           w.config(),
-                                           w.rules(),
-                                           w.settings(),
-                                           w.types(),
-                                           sim::PlayersView(w.players()),
-                                           sim::IslandsView(w.islands()),
-                                           draw,
-                                           w.seams()} {}
+        : global(sim::WorldTestAccess::rng(w)), draw(global), ctx{tick,
+                                                                  static_cast<std::uint32_t>(tick),
+                                                                  w.config(),
+                                                                  w.rules(),
+                                                                  w.settings(),
+                                                                  w.types(),
+                                                                  sim::PlayersView(w.players()),
+                                                                  sim::IslandsView(w.islands()),
+                                                                  draw,
+                                                                  w.seams()} {}
 };
 
 inline sim::Island& island(sim::World& w, std::size_t slot = 0) {

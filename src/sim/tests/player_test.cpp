@@ -907,15 +907,15 @@ TEST_CASE("world advance runs the player table and does not special-case zero") 
     CHECK(w.advance(0) == 5);
     CHECK(w.players().cursor == 5);
     CHECK(w.players().stamp == 5);
-    CHECK(w.clock.last_tick == 5);
+    CHECK(w.clock().last_tick == 5);
     // The tick passed is the low 32 bits of the 64-bit tick: tick 2^32 + 70000 is
     // t = 70000 (stamp 4464 as a word, grace deadline 220000).
     sim::World late;
     sim::WorldTestAccess::players(late) = full_table(late.config());
     sim::WorldTestAccess::players(late).slots[0]->money = -9000;
     sim::WorldTestAccess::players(late).stamp = 69995 - 65536; // the word of tick 69995
-    late.clock.ms = 2ULL * (0x100000000ULL + 70000);
-    late.clock.last_tick = late.clock.tick();
+    sim::WorldTestAccess::clock(late).ms = 2ULL * (0x100000000ULL + 70000);
+    sim::WorldTestAccess::clock(late).last_tick = late.clock().tick();
     CHECK(late.advance(0) == 0x100000000ULL + 70000);
     CHECK(late.players().stamp == 70000 - 65536);
     CHECK(late.players().cursor == 4); // d = 5
@@ -935,7 +935,7 @@ TEST_CASE("world advance respects the rules and the configuration it holds") {
     for (int i = 0; i < 400; ++i) { // t = 5 * i, 10 ms per advance
         w.advance(10);
     }
-    CHECK(w.clock.tick() == 2000);
+    CHECK(w.clock().tick() == 2000);
     CHECK(w.players().slots[0]->money == -20);
     CHECK(w.players().slots[0]->upkeep_stamp == 2000);
 }
@@ -951,7 +951,7 @@ TEST_CASE("player table step size is not invariant") {
     three.advance(2);
     three.advance(2);
     one.advance(6);
-    CHECK(three.clock.ms == one.clock.ms);
+    CHECK(three.clock().ms == one.clock().ms);
     CHECK(three.players().cursor == 3); // d = 1 each: one visit each
     CHECK(one.players().cursor == 2);   // d = 3: 3*32/50 + 1 = 2
     CHECK(three.players().stamp == one.players().stamp);
@@ -970,7 +970,7 @@ TEST_CASE("player upkeep and bankruptcy timeline through the world") {
     p.money = -2990;
     p.upkeep_a = 300;
     auto run_to = [&](std::uint64_t tick) {
-        while (w.clock.tick() < tick) {
+        while (w.clock().tick() < tick) {
             w.advance(10);
         }
     };
@@ -1252,8 +1252,8 @@ TEST_CASE("golden G1 populated player table with the full tick rule") {
             CHECK(table.slots[4]->defeat_pending);                            // not alive
         }
     }
-    CHECK(w.clock.ms == 350000);
-    CHECK(w.rng.cursor() == 1234);
+    CHECK(w.clock().ms == 350000);
+    CHECK(w.rng().cursor() == 1234);
 }
 
 namespace {
@@ -1734,7 +1734,7 @@ TEST_CASE("players scope reads back and validates what it read") {
         CHECK(target.state_hash() == before);
         CHECK(target.players().slots[3].has_value());
         CHECK(target.players().slots[3]->money == 10000);
-        CHECK(target.rng.cursor() == 5);
+        CHECK(target.rng().cursor() == 5);
         // A good stream replaces everything.
         CHECK(read_world(target, bytes) == "");
         CHECK(target.state_hash() == w.state_hash());

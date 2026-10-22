@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -29,13 +30,17 @@
 #include <vector>
 
 #include <anno/assets/island.hpp>
+#include <anno/assets/unit.hpp>
 #include <anno/formats/anlagen.hpp>
 #include <anno/formats/figuren.hpp>
 #include <anno/formats/insel.hpp>
+#include <anno/render/chunk_draws.hpp>
+#include <anno/render/frame_table.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/rect.hpp>
 #include <anno/render/river.hpp>
 #include <anno/render/sea.hpp>
+#include <anno/render/zoom_levels.hpp>
 
 namespace anno::render {
 
@@ -71,6 +76,18 @@ std::vector<Placement> layout(std::span<const IslandBox> boxes, std::size_t grou
 std::optional<Rect> scene_bounds(std::span<const Placement> placements);
 /// A transparent canvas covering `rect`.
 Canvas blank(Rect rect);
+
+/// One island's height grid as terrain_plane reads it (heights nullptr: the
+/// island has no ground).
+struct TerrainGrid {
+    const std::vector<std::uint8_t>* heights = nullptr;
+    std::size_t w = 0, h = 0;
+};
+/// Chunk::terrain for the pixels of `probe`: terrain_height at each pixel's
+/// position on its island (grid(i)), in 1/kTerrainScale HEIGHT units,
+/// kNoTerrain where no ground was drawn.
+std::vector<std::uint16_t> terrain_plane(const sea::SceneProbe& probe,
+                                         const std::function<TerrainGrid(std::uint32_t)>& grid);
 /// Composites src source-over onto dst; src's point (sx, sy) lands on dst's
 /// point (sx + offset.first, sy + offset.second).
 void composite(Canvas& dst, const Canvas& src, std::pair<int, int> offset);
@@ -150,7 +167,22 @@ std::optional<Px> sea_floor_colour(std::span<const formats::insel::Island> islan
 struct UnitFrame {
     formats::figuren::Frame frame;
     std::shared_ptr<const Rgba> image;
+    /// Which frame this is; frames with the same identity share one entry in
+    /// the frame table (and one atlas copy). Unknown: keyed by the image.
+    UnitFrameId id;
 };
+
+/// The render form of a decoded unit frame of figure entry `figure`, with the
+/// identity that lets identical units share a frame-table entry.
+inline UnitFrame to_unit_frame(const assets::unit::DecodedFrame& f, std::uint16_t figure,
+                               bool shadow) {
+    std::uint32_t colour = UnitFrameId::kNoColour;
+    if (f.colour && !shadow) {
+        colour = std::uint32_t{(*f.colour)[0]} << 16U | std::uint32_t{(*f.colour)[1]} << 8U |
+                 (*f.colour)[2];
+    }
+    return {f.frame, f.image, UnitFrameId{true, figure, f.index, colour}};
+}
 
 /// A unit to draw: world position in tiles, the ground height it stands on
 /// (nullopt = on the sea surface), its frame and shadow per zoom group.
@@ -189,6 +221,9 @@ class Scene {
     std::array<std::vector<Placement>, kGroups> layouts;
     /// Decoded sprite frames, shared by all renders and threads.
     mutable SpriteCache sprites;
+    /// The frames chunk draw lists name (gpu-chunks.md 4.1), interned by the
+    /// threads that build lists; ids never change meaning within a scene.
+    mutable FrameTable frame_table;
     Lift lift;
     /// Ships and soldiers (empty unless set by the caller).
     std::vector<UnitSprite> units;
@@ -244,6 +279,14 @@ class Scene {
     /// chunk that waited for it can be rebuilt. Never blocks, queues nothing.
     [[nodiscard]] bool river_flow_done(std::size_t index) const;
 
+    /// The zoom levels the scene is drawn at: the three built groups and the
+    /// derived levels after them (default: the original three). Set before the
+    /// scene is shared with other threads. Scene content (layouts, objects,
+    /// units) exists for the built levels only; at a derived level `sea`, `bounds`
+    /// and the sprite lists answer from the level above (reduced or empty).
+    void set_levels(ZoomLevels levels);
+    [[nodiscard]] const ZoomLevels& levels() const { return levels_; }
+
     /// The sea pattern of `group`, rendered on first use (thread-safe).
     const sea::SeaPattern* sea(std::size_t group) const;
     /// The sea pattern of `group` if it has been rendered already (never
@@ -271,6 +314,9 @@ class Scene {
     /// sprite covers the pixel. Enhanced water must carry water at all of them.
     [[nodiscard]] Canvas river_sprites(Rect rect, const sea::SceneProbe& probe,
                                        std::size_t group) const;
+    /// Chunk::terrain for the pixels of `probe`: terrain_at at each pixel in
+    /// 1/kTerrainScale HEIGHT units, kNoTerrain where no ground was drawn.
+    [[nodiscard]] std::vector<std::uint16_t> terrain_plane(const sea::SceneProbe& probe) const;
     /// QA/debug: the per-island water inputs (river level, smooth terrain).
     [[nodiscard]] const sea::IslandWater* island_water_info(std::size_t index) const {
         return island_water(index);
@@ -303,6 +349,14 @@ class Scene {
     /// Renders `layers` of `rect` at `group` into a new canvas.
     [[nodiscard]] std::pair<Canvas, SceneStats> render(Rect rect, std::size_t group,
                                                        Layers layers) const;
+    /// The draw list of the objects layer of `rect` at `group`: what render()
+    /// with Layers::objects (and `ships`, `bases`) composites there, as records
+    /// in blit order that replay() draws with the same result, byte for byte
+    /// (not water objects: they are drawn per frame; time 0). Ships follow the
+    /// islands as unclipped records. Decodes the frames it names on the calling
+    /// thread (frame_table).
+    [[nodiscard]] ChunkDraws objects_draws(Rect rect, std::size_t group, bool ships, bool bases,
+                                           std::uint32_t bin_px = kDefaultBinPx) const;
     /// render() with the terrain height at each scene pixel given by
     /// `terrain` (from a chunk cache) for the river depth test.
     [[nodiscard]] std::pair<Canvas, SceneStats>
@@ -367,6 +421,9 @@ class Scene {
 
     mutable std::vector<IslandData> objects_;
     mutable std::array<SeaSlot, kGroups> seas_;
+    ZoomLevels levels_ = ZoomLevels::original();
+    /// The sea patterns of the derived levels (index level - built_count()).
+    mutable std::deque<SeaSlot> derived_seas_;
     mutable std::vector<std::unique_ptr<FlowSlot>> flow_slots_;
     mutable std::unique_ptr<FlowBuild> flow_build_;
     mutable std::once_flag flow_build_once_;

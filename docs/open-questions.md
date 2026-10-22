@@ -136,6 +136,10 @@ Sources abbreviated: GFA = `docs/research/game-files-analysis.md`, CL = `docs/re
 - **Question:** When does the game load `CompLogic.dll` vs. `CompLogicClassic.dll`, and how do their behaviours differ?
 - **What we know:** Both export `CompCreateInstance`; described as add-on vs. classic variant (GFA §1). Removing them disables AI (Venedig mod, CL §2).
 - **How to resolve:** Find the `LoadLibrary` call sites in `AnnoFrame.dll`/`AnnoGame.dll`; diff the two DLLs' function sets.
+- **Update 2026-10-22 (T18, selection answered):**
+  - *Selection (D):* `AnnoWelt.dll` `0x1009c630` loads `CompLogic.dll` when world property 14 has bit 1 set (`0x1009c681`; set by an `ANNOADDON1` scenario root), otherwise `CompLogicClassic.dll`.
+  - *Shared interface (D):* both export the same `CompCreateInstance`. Their per-player parameter setters have the same 36 cases with the same fields and value limits (`CompLogic` `0x10004550`, `CompLogicClassic` `0x10002e50`).
+  - *Still open:* how their AI behaviour behind those fields differs (`docs/re/annoscene.md` §11.5, §11.8).
 
 ## OQ-019: Role of `Max_Sound.dll` and `DrvMgt.dll`
 - **Status:** open
@@ -176,6 +180,7 @@ Sources abbreviated: GFA = `docs/research/game-files-analysis.md`, CL = `docs/re
 - **Question:** (a) Contents of the entry records `VERSION2` (24 bytes), `HEAD` (16/20), `LOGIC` (28–44, contains `1.0f`), `SCHUSSPOS`, `OBJECTPOS`, and meaning of the strings `BEWOHNTYPE`, `ROUTETYPE`, `FORSCHTYPE`, `WARE`, `BAUWARE`. (b) The 16-byte sprite-set prefix (259 distinct values, trailing bytes look like uninitialised memory) and the records `BODY2` (44), `ANIM` (24), `SOUND2` (128), `GFXDATA` (84, holds a `.tga` source path). (c) What `z` (first byte of `Z` pixel pairs) encodes — per-pixel depth for occlusion? The sheep's values are nearly all 255. (d) What the 2-bit `level` of `A` formats encodes — 4 alpha steps? In the gondola level 3 dominates (2,195 of 2,322 pixels) and drawing all levels opaque looks right, so 3 is probably opaque; levels 0–2 are unconfirmed. (e) The `H` in `BSH_RGBH` (24 frames; also one `.tex` texture, OQ-021 d). (f) Anchor semantics: `(width/2, height−4)` for walking figures, the waterline for ships, outside the frame for 783 frames — draw origin relative to the tile?
 - **What we know:** layout, counts and decodability from the whole corpus (P), `docs/formats/figuren.md`, `crates/formats/tests/figuren_corpus.rs`. `AnnoDisplay.dll` has blitters for alpha, shadow and Z (GFA §1).
 - **How to resolve:** Ghidra: the figure loader (strings `HAEUSER`, `GFXDATA`, `BSH_RGBAZ`) and the `tBrush2Screen…` blitters in `AnnoDisplay.dll` for `z`, `level` and anchors; statistics over `ANIM`/`BODY2` against frame counts (e.g. 128 frames = 8 directions × 16 steps?); render scenes in the M1.6 viewer and compare with screenshots.
+- **Update 2026-10-22 (in-game help, `docs/research/manual-and-help.md` §1.4):** (a) part of `LOGIC`, **likely**: `0x1c` = damage × 10 (equal to the help for 10 of 14 units); `0x12`/`0x27` = ranges in 1/8 field (every help range equals one of them); `0x14` = unit slots (the crews of war machines exactly as the manual gives them; the troops a ship carries). **Guess:** `0x16` = price, `0x15` = upkeep per minute. `BAUWARE` = the goods a unit needs (sword and armour for the swordsman, P).
 
 ## OQ-024: What island `GFXID` values refer to, and the other island records
 - **Status:** open
@@ -615,6 +620,8 @@ Source: `docs/render/rivers.md` §12 (rows D1..D16), the hydraulics stage S4 and
 - **Faithful default implemented:** log and list, never patch (rivers.md D13) beyond the fall and mouth links.
 - **Rules option:** `RiverConfig::bridge_tiles` (0 turns the fall links off too); a general patch is not implemented.
 - **Owner look 2026-10-20 (fix + decision):** on the canyon island the visible gaps were not separate pieces but the one-corner-wide painted trench: corners at level + 1 (the original's depth test, `z + 10`) fail the stricter water test, so the water broke along touching pieces. `RiverConfig::gap_patch_tiles` (viewer `--river-gap-patch`, default 8; library default 0 = data as is) now (1) deepens every trench corner inside a piece to `level - kGapBedDepth` (5) in the water's own copy of the heights and (2) joins pieces up to that many tiles apart (Kruskal, shortest first; interpolated level, carved bed; only the 4 tier changes z80 to z32 of this island, 5.4 to 6 tiles apart, under cliffs). The owner: "looks good". Other islands still to be checked (`river_qa`).
+- **Survey of all river islands 2026-10-20 (T6, docs/render/rivers.md 13.1):** 72 island templates have river pieces; patch 8 against 0 gives no regression (no island with more components, split, lost or gap pixels), gap pixels 94 -> 0 (group 0), components 363 -> 339 (group 1, 8 islands improve), but enhanced river water outside the painted bed grows from 5.8 % to 15.3 % of the original river pixels (a thin fringe at bends and a few-tile tail at open river ends, up to 19.5 % of an island's original river pixels; 0 of 444 scenes failed to load; the task text's 106 islands was not reproduced: 72 templates, or 112 islands placed in 36 of 50 scenarios). Owner decides: keep 8, a smaller value, or deepen only real gap cells. No default changed.
+- **Owner decision 2026-10-20:** deepen only the real gap cells and join only facing bed pieces (no tails at open ends), as a new `RiverConfig` mode; the viewer keeps `--river-gap-patch 8` until that mode exists and matches patch 8's connectivity with patch 0's spill. Task T6c in `docs/orchestration/TASKS.md`.
 
 ## OQ-069: Ponds and lakes (rivers.md D7)
 - **Status:** open, owner decides
@@ -667,19 +674,20 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Faithful default:** the original's width.
 
 ## OQ-076: After a zoom change: analytic waves, cross-fade, snap or hold (rivers.md D8)
-- **Status:** open, owner decides (the stutter fix shipped with the analytic fallback; the cross-fade is not built)
+- **Status:** decided 2026-10-21 (owner: "yes" to the cross-fade): a 250 ms cross-fade from the analytic waves into the simulated window after a group switch; built in T3 stage 3 (`TASKS.md`).
 - **Area:** render / gpu / zoom
 - **What:** see `docs/perf/README.md` "2026-10-19 — zoom stutter": for 0.1-0.4 s after a zoom change the coast shows the analytic waves; a 250 ms cross-fade (default of the design), a snap, or holding the previous window are the alternatives. Rivers are not affected: they never use the wave simulation window.
 - **Faithful default:** analytic waves, no cross-fade yet.
 
 ## OQ-077: Missing chunks: open sea or a stand-in from the nearest built zoom group (rivers.md D9)
-- **Status:** open, owner decides (not built)
-- **Area:** render / frame
+- **Status:** decided 2026-10-21 (owner: "confirm"): stand-ins stay on by default; open sea remains `ANNO_VIEW_STAND_INS=off`.
+- **Area:** render / frame / gpu
 - **What:** a chunk that is not built yet draws open sea; the design option is the nearest built group's chunk. A chunk that waits for a river flow already draws the legacy river look on the correct mask (S5), not open sea.
-- **Faithful default:** open sea.
+- **Implemented (T1):** a visible chunk that is not on the GPU yet (still being built, or waiting for its upload) draws the nearest zoom group's chunks that are, scaled by the compositor's shader to the tile size shown (`GpuLimits::stand_ins`, default on; viewer `ANNO_VIEW_STAND_INS=off`, `bench_frame --stand-ins off` for open sea). The ratio is derived from `kTile` per axis (2 between groups 0 and 1, 2.1 between 1 and 2), nearest neighbour at pixel centres, the same integer rule in `render::stand_in_source` (CPU reference, `FrameRenderer::stand_ins`, off by default so the digests stay) and in `gpu.wgsl` (`Piece`). Rivers on a stand-in use the legacy look on the stand-in's mask; sea, water objects and ships are drawn at the group shown as always. Details and limits: `docs/render/iso.md` "Stand-in chunks". Open for the owner: whether the scaled content (blurry when enlarged, aliased when shrunk) is preferred to open sea, and whether a cross-fade into the built chunk is wanted (not built). Where the nearest group lacks a source chunk, the next group fills that part (per part, `stand_in_cover`); only what no group covers is open sea.
+- **Faithful default:** open sea (`stand_ins` off).
 
 ## OQ-078: Legacy shimmer or flow shading by default in Enhanced water (rivers.md D10)
-- **Status:** implemented as the owner asked; confirm
+- **Status:** confirmed 2026-10-21 (owner: "looks good, leave as is"): flow on by default.
 - **Area:** render / rivers / viewer
 - **What:** flow is the default of Enhanced water (`--river-flow flow`, key `R`); `--river-flow legacy` (also `bench_frame`) keeps the shimmer that slides along fixed axes, bit-identical to the previous renderer (test). Since stage S6 (2026-10-19) the GPU compositor, the viewer's default renderer, draws the flow as well (R key and `--river-flow legacy` switch to the old shimmer on both paths); how visible the flow is at the default strength is OQ-083.
 - **Faithful default implemented:** flow on. **Rules option:** `--river-flow`, `Layers::river_flow`, `FrameRenderer::river_flow`.
@@ -707,7 +715,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 
 ## OQ-083: Strength of the river light and cycle times (new, stage S5; rivers.md 2.8, 15)
 - **Owner look 2026-10-20:** the viewer defaults to `--river-gain 4` (library `light_gain` stays 1); the owner called the result "much better" together with the median-cell speed (OQ-065). Further tuning is open.
-- **Status:** open, owner decides
+- **Status:** decided 2026-10-21 (owner: "looks good, leave as is"): the default strength and cycle times stay.
 - **Area:** render / rivers / shading
 - **What:** the layer table is calibrated to the legacy shimmer's light variance (standard deviation 0.018, brightness +-1.8 %) for a uniform flow at full wave detail, so that the average river brightness does not change. On real rivers the glints fade with the zoom group's wave detail (by design, the legacy shimmer has no such fade) and the shear fade removes layers near the banks, so the default is **quieter than the legacy shimmer at groups 1 and 2**: the standard deviation of the river light, flow over legacy, is 0.78-0.98 at group 0 (mean 0.89), 0.51-0.59 at group 1 (0.56) and 0.42-0.50 at group 2 (0.45) on the five QA islands (corpus test "the light of the flow shading against the legacy shimmer on real rivers"); the mean change of a river pixel over 250 ms is the same for legacy and flow in the owner's window (1.88 against 1.91 levels, 2.28 at gain 4). The motion is there (features move with the solved velocity: Q5 flat stems median angle error 4-9 degrees, speed ratio 0.90-1.07; all windows: the prediction beats standing still in 83 %, 63 % in the owner's canyon where the shear fade has taken most of the light) but at the default the flow is hardly visible as flow (below), and at groups 1 and 2 rivers are calmer than before. **Since S6 the viewer's GPU renderer draws the same light; that the viewer draws the flow does not mean the owner sees it: the headline goal "visibly flowing rivers" is not met at the defaults.** Review of S6, GPU frames of the owner's window (`D_256x256_0045_5B`, group 1): S6 changes at most 9-14 levels of 255 per river pixel and before/after at 1:1 are indistinguishable; the flow light has a standard deviation of 1.09 levels (p99 3.1, max 5.5); the non-advected in-place animation of the sea pattern changes 3.7 levels rms per 250 ms, 5.6 times the temporal change of the flow light (0.66); the median screen speed is 3.2 px/s and 86 % of the river pixels move under 6 px/s; a feature drifts u*T = 0.22 tile (about 9 px) per phase cycle against a noise feature of about 0.87 tile (36 px), so the two-phase crossfade reads as boiling in place rather than as drift; even at gain 4 the structure is faint. Block matching on GPU frames over 250 ms: 81 % of 21 windows within 45 degrees of the solved direction, median angle error 22 degrees, speed ratio 0.54, 52 % beating standing still (over 300 ms: ratio 0.25, 63 % within 45 degrees). At group 2 the light sd is 0.85-0.9 levels, which posterises to +-1 level. **Candidates for the owner, none changes the default (nothing is built except the gain):** default gain 3-4 (but see OQ-067: do not raise it before the pseudo outlets are decided); `Reference::MedianCell` or a lower speed floor so that narrows and wide reaches differ on screen (OQ-065); damping the static sea-sprite animation inside river pixels; longer layer periods or a faster flow-to-feature ratio (more drift per cycle); for group 2 a larger amplitude. Contact sheets and sequences: `C:\Users\altin\Pictures\anno-rivers\S6` (`frames\` gain 1 and 4; `decision\` gain 1 / 3 / 4 side by side). `RiverConfig::light_gain` (`--river-gain x`, `river_qa --shade-gain x`) multiplies the ripple layers (not the rapids layer): 1 (default, calibrated), 4 shows the structure clearly (sheets show both). Candidates, not implemented: calibrate the amplitude per zoom group on real river pixels, or let it compensate the detail fade; a lattice stride of 2 px at group 2, whose 0.2 x 0.4 tile texels are as wide as the banks of a river one tile wide (the slow layers then fade across the whole river). The cycle times 2400 / 1600 / 800 / 640 ms are the design's (they divide the hour). The design's stretch of the layers along the flow is not built (it aliased, rivers.md 15.7).
 - **Why it may change the feel:** how visible the flow is against how much the river's look changes from the original/legacy, and how calm distant rivers are.
@@ -743,15 +751,17 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Status:** open, owner decides
 - **Area:** viewer / gpu
 - **What:** the viewer asks for the high-performance adapter compatible with its window (the RTX 4090), which presents across to the monitor on the iGPU; the river tier is then High (OQ-079). `ANNO_GPU_ADAPTER` (a number of `bench_frame --list-adapters`, or a part of the name) selects another adapter for the headless tools and tests only, because presentation support of a chosen adapter to the window is not checked. This machine lists: 0 RTX 4090 (Vulkan), 1 AMD Radeon(TM) Graphics (Vulkan, integrated), 2 RTX 4090 (DirectX 12), 3 the iGPU (DirectX 12), 4 Microsoft Basic Render Driver (software), 5 RTX 4090 (OpenGL).
+- **Correction 2026-10-21 (owner: the 500 Hz monitor is physically connected to the RTX 4090; checked with `EnumDisplayDevices`):** both monitors are driven by the RTX 4090: `\\.\DISPLAY2` 2560x1440 @ 500 Hz, primary, at (0, 0), and `\\.\DISPLAY1` 1920x1080 @ 144 Hz at (-1920, 0); the Radeon iGPU drives no monitor. The earlier note came from `Win32_VideoController`, whose `CurrentRefreshRate` and resolution put the 500 Hz mode on the AMD entry: a WMI quirk, not the topology. So the viewer on the RTX 4090 presents to its own monitor: there is no cross-GPU copy, and rendering on the iGPU would be the case that copies.
 - **Why it may change the feel:** frame pacing on the 500 Hz display, power use.
 - **Faithful default implemented:** the high-performance adapter, as before S6. **Alternative:** a viewer option to render on the integrated GPU that drives the monitor (and the tier gate then picks Low).
 
 ## OQ-089: Run the GPU parity tests in CI (new, review of S6)
-- **Status:** open, owner decides
+- **Status:** closed (T13, 2026-10-22; second executor)
 - **Area:** ci / render / tests
-- **What:** the Linux CI job has no Vulkan driver, so the five synthetic shader parity tests of `gpu_test.cpp` (the only CI-capable check of the WGSL port of the river shading: tiers, hour wrap, chunk borders, `min_valid`) skip themselves for lack of an adapter; only the device-free tests (binding contract, uniform bytes, gate logic, adapter picking) run there. A parity regression is caught only on a machine with an adapter. Whether CI installs a software Vulkan driver is an infrastructure choice.
-- **Why it may change the feel:** nothing visible; build time and CI complexity.
-- **Faithful default implemented:** the skip is loud: a CI step prints a warning annotation "GPU tests skipped" when the first GPU test finds no adapter (`.github/workflows/ci.yml`). **Alternative:** install `mesa-vulkan-drivers` (lavapipe) in the Linux job and set `WGPU_BACKEND=vulkan` and `ANNO_REQUIRE_GPU=1`, so that a missing device fails.
+- **What:** the GPU parity tests of `gpu_test.cpp` already ran on Linux CI before T13 (main run 39758843314, linux-gcc ran 79 GPU cases; the other cpp jobs run them too, on adapters not named in the logs), but only on whatever adapter each runner happened to have. What T13 changes is the `linux-gcc` job: it is pinned to Mesa's software Vulkan driver (lavapipe) so the tests run on a deterministic software adapter instead of skipping or depending on the runner's hardware, and `ANNO_REQUIRE_GPU=1` is set so a missing adapter fails the job instead of skipping. The other cpp jobs keep their existing warning-on-skip behaviour.
+- **Answer:** CI installs Mesa's software Vulkan driver (lavapipe) in the `linux-gcc` job only (`mesa-vulkan-drivers`, `libvulkan1`, `vulkan-tools` for a `vulkaninfo --summary` line in the log), sets `WGPU_BACKEND=vulkan` and `VK_ICD_FILENAMES` to the lvp ICD (`/usr/share/vulkan/icd.d/lvp_icd.json`) so wgpu-native picks lavapipe, and sets `ANNO_REQUIRE_GPU=1` for that job's test step so a missing adapter fails instead of skipping. The "GPU tests need an adapter" step now fails on `linux-gcc` and keeps warning on the other jobs. The `macos-clang` job already runs the tests on Metal; its flaky automatic-tier test was made deterministic: the automatic choice runs with no wall-clock budget (`river_measure_budget_ms = 0`, unlimited) so it cannot run out after the baseline, and the tier is asserted as `choose_river_quality(frame's own river_costs(), gate)` plus `costs.size() >= 1` baseline-first. A new `choose_river_quality` unit test pins the rule on hand-made cost tables (gate -1 → Low, huge gate → High, mixed, empty, cut after baseline, Medium expected). No tolerance was loosened; a lavapipe parity difference is reported as BLOCKED/QUESTION, not renderer-fixed. Test time added: test step 75 s → 135 s, GPU case sum 62 s → 117 s, lavapipe install about 21 s (run 39753758943). See `.github/workflows/ci.yml`, `src/render/tests/gpu_test.cpp`, and `docs/testing/gpu-tests.md`.
+- **Why it may change the feel:** nothing visible; build time and CI complexity (one extra package install on `linux-gcc`; the GPU parity tests now run there deterministically).
+- **Faithful default implemented:** as above; the soft-adapter running note is in `docs/testing/gpu-tests.md`.
 
 ## OQ-090: Flow lattice textures per river chunk and the plane pool (new, review of S6)
 - **Status:** open, owner decides
@@ -759,3 +769,362 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What:** a river chunk now creates 8 textures instead of 5 on the window thread when its planes are not pooled, and the plane pool grew from 120 to 192 planes (`kPoolPlanes` 8 x 24, up to about 72 MB more of pooled 1 MB planes). A/B runs (baseline build against the working tree, 2560 x 1369, `--zoom 6`, 9 pairs): p50 0.3 to 0.4 ms every time, p95 and p99 equal, max outliers of 8-20 ms in both builds (one 16.7 ms `create` for 2 chunks at a group change, the baseline has the same class of stall at 17.3 ms, so it cannot be attributed to S6). Whether to trade pool memory and pre-created lattice textures for fewer stalls is a tuning call.
 - **Why it may change the feel:** nothing visible; occasional frame-time outliers at zoom changes versus memory.
 - **Faithful default implemented:** as built (documented, within the budget). **Options:** pre-create a few flow lattice planes at startup, or lower the cap; re-measure with 20 or more repetitions first.
+
+## OQ-091: Rivers on a stand-in: legacy look, scaled flow, or cross-fade (new, T1b step 3)
+- **Status:** decided 2026-10-21 (owner: "leave"): legacy look on stand-ins stays.
+- **Area:** render / gpu / frame / rivers
+- **What:** a stand-in chunk draws its river with the legacy shimmer and flips to flow shading when the real chunk lands. Measured (`docs/perf/README.md`, T1b step 3) as small at the default river gain: the river pixels move by 2.5-8.6 summed over channels for 2-37 frames. Options: leave (default), sample the source chunk's flow lattice scaled (GPU one-line change in `sea_fs`, but the CPU reference `stand_in_chunk` then needs a scaled lattice too), or cross-fade the swap (needs a per-chunk arrival time).
+- **Faithful default:** legacy look on stand-ins.
+
+## OQ-092: What blocky stand-ins should look like (new, T1b step 3)
+- **Status:** closed 2026-10-21 (owner: "seems resolved now, haven't seen any anymore in my last test", with the T1e dissolve and the continuous zoom of T3). Reopen if T11 changes the picture.
+- **Area:** render / gpu
+- **What:** stand-ins enlarge the nearest built group by nearest neighbour, so for 25-70 ms after a zoom into an unbuilt group (first visit, 2560x1440) they are blocky next to sharp built chunks. Options: keep (default), bilinear sampling of the source, or cross-fade into the built chunk (T2/T3 smoothing steps). Open sea instead of a stand-in is `ANNO_VIEW_STAND_INS=off`.
+- **Faithful default:** nearest neighbour.
+
+## OQ-093: Pre-created chunk planes: how many, and from what (new, T1b finalize)
+- **Status:** decided 2026-10-21 (owner agrees): derive the pre-created planes from the view (visible chunks of the largest shown group times planes per chunk), bounded by a VRAM budget in `GpuLimits`; built in T3 stage 3 as its own commit.
+- **Area:** render / gpu / perf
+- **What:** `GpuLimits::prewarm_chunks` is 24 in `GpuLimits::interactive()` (about 96 MB of 512 x 512 textures kept ready by a background thread, tuned on a 2560 x 1369 view at one group). A larger view, a 4K window or a zoom range wider than three groups needs more; the shortfall falls back to texture creation on the window thread (1-13 ms each), as before. Nothing derives the number from the window size yet. Options: derive it from the view (visible chunks of the largest group x planes per chunk, bounded by a VRAM budget), or leave the fixed default and expose it in the viewer config.
+- **Faithful default:** 24, a `GpuLimits` field, 0 outside the interactive limits.
+
+## OQ-094: Frame hitches that are in the display path, not in the frame (new, T1b finalize)
+- **Status:** open, needs the owner's machine
+- **Area:** app / render / perf
+- **What:** the owner's 26-39 ms busy frames did not reproduce in the development runs of this branch, and every step of `GpuFrame::render` is now named, so the window thread's own work is covered. What `bench_frame` cannot see is the surface acquire, SDL's present and the display itself (it has no window). The memory notes say the 500 Hz monitor is attached to the AMD iGPU while rendering runs on the RTX 4090, so every presented frame is copied across GPUs by the driver, a path that can stall for tens of milliseconds without any work in our code. The `frame hitch:` line separates it: "waiting for the display" (the acquire) against "busy" and the steps. If a hitch shows as a long wait for the display and a small busy time, the cause is outside the frame. Isolation for the owner: run the viewer once with the monitor on the 4090 (or the iGPU output unused) and once as now, and compare the hitch lines.
+- **Two corrections (T1c).** (1) "busy" includes the `present` step (`vkQueuePresentKHR` / `wgpuSurfacePresent`). On NVIDIA Vulkan with the window composited on the iGPU, the copy and vsync wait can land inside that call instead of in the surface acquire, so a display stall can show as a large `present` step inside busy. A large `present` with small other steps is the display path, not our work. (2) The hitch line's own console write (and the periodic report's) happens on the window thread after the frame it describes, so its cost lands in the end-to-start gap of the next frame, not in any step. Since T1c nothing is printed per frame for received chunks (before, `zoom group N: k chunk(s) received` was written once per frame after present, outside every measured step, and is the reviewer's best explanation of the 26-39 ms frames: a synchronous console write on a loaded machine); the count is in the periodic report.
+- **Correction 2026-10-21 (owner: the 500 Hz monitor is physically connected to the RTX 4090; checked with `EnumDisplayDevices`):** both monitors are driven by the RTX 4090: `\\.\DISPLAY2` 2560x1440 @ 500 Hz, primary, at (0, 0), and `\\.\DISPLAY1` 1920x1080 @ 144 Hz at (-1920, 0); the Radeon iGPU drives no monitor. The earlier note came from `Win32_VideoController`, whose `CurrentRefreshRate` and resolution put the 500 Hz mode on the AMD entry: a WMI quirk, not the topology. The cross-GPU copy this question supposed does not exist on this machine, so its isolation run is moot. Hitches with a long display wait and a small busy time are then the 4090's own present and vsync path (or the DWM with two monitors at 500 and 144 Hz): the next check is the viewer fullscreen or on the 500 Hz monitor alone, against the hitch lines as now.
+- **Faithful default:** nothing changes in the code.
+
+## OQ-095: Continuous zoom: default mode, speed and the reset key (new, owner proposal 2026-10-20)
+- **Status:** items 1-3 decided 2026-10-21 (owner: "I agree with your recommendation"): continuous is the default, 1.1 per notch, 120 ms, `Home` / `0` back to group 1; stepped stays as `--zoom-mode stepped`. Item 5 decided 2026-10-21 (owner, on the T3 stage 3 fix 1 build, after comparing area, bilinear and the old nearest look: "bilinear works very well"): **bilinear** magnifies wherever the picture is enlarged (above group 0's tile width, or a finer level bridged while it loads); below scale 1 the picture is composed on the finer level and reduced by box (fix 1), so nearest is gone from the default path; `ANNO_VIEW_RESAMPLE` keeps the A/B. Item 4 open (minimum zoom; as built: the whole scene fits the window, `--min-zoom` overrides).
+- **Area:** app / render (look and feel; no sim state)
+- **What:** the owner proposed replacing the three instant zoom steps by a continuous zoom "with a lower, smoother zooming haptic and speed, with a key to return to default zoom level". The original game has three fixed zoom levels (`kTile` 84/42/20, keys and wheel step between them). Task T3 in `docs/orchestration/TASKS.md` implements a continuous scale drawn from the nearest built group, eased wheel zoom, a zoom-out range beyond group 2, and keeps a stepped mode.
+- **Owner decides:** (1) default mode of the viewer: continuous or stepped (the original); (2) wheel factor per notch (T3 default 1.1) and easing time (default 120 ms); (3) the reset key (`Home` or `0`) and what "default zoom" is (group 1 scale proposed); (4) minimum zoom-out (whole scene fits the window proposed); (5) bilinear or nearest for scales above 1 (PNG pairs from T3). The owner picks after the first T3 build.
+- **Owner look 2026-10-21 (T3 stages 1-2 build, canyon island, 4090):** "zoom feels very smooth. no artifacts at all now while zooming and moving." As built: wheel notch 1.1, 95 % of the way in 120 ms, `Home` / `0` back to group 1's width, groups switch at the geometric middle with 5 % hysteresis, nearest above scale 1 and box below, range half a group beyond groups 0 and 2 (more zoom-out is stage 3).
+- **Orchestrator recommendation:** make `continuous` the viewer default with the values as built (1.1 / 120 ms / `Home` and `0` / group 1 as the default zoom), keep `--zoom-mode stepped` as the faithful option, decide item 5 (nearest vs bilinear above 1) on the PNG pairs stage 3 produces, and item 4 (minimum zoom) with stage 3's design note.
+- **Faithful default:** the stepped mode reproduces the original's three levels; the faithful core (sim) is untouched either way.
+
+## OQ-097: Recentred wave-simulation strips are uploaded in one step on the window thread (new, T3 follow-up)
+- **Status:** open, a small change with a state question; the executor's measure is in docs/perf/README.md (2026-10-21, T3 follow-up)
+- **Area:** render (enhanced water, GPU) / perf
+- **What:** when the wave window moves (a pan, a zoom step inside a group), the cells that came into view are written by `FluidGpu::apply_job` in one call for all pieces: 1.3-1.9 ms on the window thread on the RTX 4090 at 2560 x 1369 (the owner's log: `fluid` 1.6-1.9 ms every few frames, 3.9 ms once). The whole-grid upload, the first window of a group, is already spread over frames (`upload_budget_ms`). Spreading the recentred strips the same way is a change of what the simulation sees: until every strip is written, the window's grid mixes cells of the old and the new window coordinates for a few frames at its edge.
+- **Options:** (1) keep the single step and accept 1.3-1.9 ms in those frames (today); (2) spread the strips over frames and hold the window's origin at the old one until the last strip is in, so the sim is coherent throughout (the moving window then lags by the upload time); (3) write the strips from the job thread into a staging texture and copy on the window thread (a copy is cheap, the write is not). Option 3 has the least visible effect; it needs a staging buffer per strip size.
+- **Owner decides:** nothing visible changes with (2) or (3) except the timing of the wave's first appearance at a new edge (about one frame). If it is wanted, the executor implements it as T14 item (iGPU compositor cost) or a separate small task.
+- **Faithful default:** no sim change: the simulation is the enhanced water's, not the original's.
+
+## OQ-098: A resize reconfigures the surface on the window thread (new, T3 follow-up)
+- **Status:** open, measured; the fix is not small
+- **Area:** app / render (resize)
+- **What:** on a resize the viewer calls `wgpuSurfaceConfigure`, which rebuilds the swapchain in the driver: 9.5 ms on the RTX 4090 at 2560 x 1369 (`surface configure` in the frame log, the owner's resize frame of 8.35-11 ms). The composited targets are not part of that step (the `under` step of the resize frame is small, the grid's targets are made in `render`, and the offscreen targets have room for the larger window: `fits`). The planes for the larger window are pre-created (OQ-093), so the resize frame is no longer a plane upload.
+- **Options:** (1) keep it: one frame of 10 ms per resize; (2) debounce the reconfigure while the window size changes (SDL resize events arrive in bursts): frames keep the old swapchain, drawn into a scaled picture, until the size is stable (about 100 ms); (3) configure from a background thread, if the driver allows it (wgpu-native does not promise it for a surface in use).
+- **Owner decides:** (2) changes what the window shows during a live resize for about 100 ms (a scaled picture, not a blank); the owner's choice.
+- **Faithful default:** no sim or look change.
+
+## OQ-099: Offscreen targets at 4K in the zoomed-out view, and their return (new, T3 follow-up)
+- **Status:** open, the owner decides on the memory budget
+- **Area:** render (GPU memory; the iGPU shares system memory)
+- **What:** the compositor's offscreen targets are made for the largest composed grid they have seen (2.77 x the window per axis, see iso.md "Derived levels in use"): measured 285 MB at 2560 x 1440 (`offscreen_bytes()`), computed about 640 MB at 3840 x 2160, when zoomed all the way out. **Measured 2026-10-21 (T3 follow-up):** re-growing those targets (the first zoom-out frame after a shrink, 2560 x 1440) costs **0.02 ms on the RTX 4090 and about 14 ms on the Radeon iGPU** (the iGPU allocates ~280 MB of shared-memory textures). 14 ms is over the 2 ms a frame can spare, so **`offscreen_shrink_ms` now defaults to 0 (never shrink):** the targets are kept at their largest. The `scene` grid is also never freed outright; if shrinking is enabled it floors at the window size (+25 %).
+- **Options:** (1) keep the targets at their largest (today's default, 0): up to 285 MB at 2560 x 1440 held on the iGPU's shared memory; (2) a memory budget in `GpuLimits` (as OQ-096 does for the sprite atlas): above it the targets are made for the view and the grid is drawn at the level above; (3) enable `offscreen_shrink_ms` on the discrete adapter only (0.02 ms there), off on the iGPU; (4) cut the 2.77 x to the grid's real size (the +25 % of `ensure_under` is for a zoom that keeps widening).
+- **Owner decides:** the budget (a number for 256 MB on an integrated adapter and 1 GiB on a discrete one, as the prewarm budget already uses) and whether the grid may be drawn one level up when the budget is full; or enabling the shrink per adapter class.
+- **Faithful default:** no look change while the budget holds.
+
+## OQ-096: GPU-built chunks: the sprite atlas budget (new, T11 stage 0, C3)
+- **Status:** open, owner decides (a limit default)
+- **Area:** render (GPU memory)
+- **What:** T11 keeps sprite frames resident on the GPU per scene (`docs/render/gpu-chunks.md` section 4). WebGPU reports no memory size, so the budget is a config value. Measured: every original scenario's frames for all three groups fit in 197 MiB (330 MiB estimated with enhanced water's smoothed copies); one chunk needs at most 7.8 MiB.
+- **Proposed default:** `GpuLimits::atlas_budget_mb` 512 on a discrete adapter, 256 on an integrated one, clamped to the device's texture array and buffer limits; above the budget the least recently used atlas layer is emptied, and a chunk whose frames cannot fit at all is built on the CPU and counted.
+- **Owner decides:** accept 512 / 256, or another rule (for example a share of the adapter's reported VRAM where a backend exposes it). Decide after the stage 2a owner check, when the measured resident MiB are in the perf README.
+- **Faithful default:** no look-and-feel stake; the original keeps all sprites in system memory.
+
+## OQ-100: Up to 8 players: how the world grows above 4 players (new, owner decision 2026-10-22, PLAN §0.6 / M4.1)
+- **Status:** **decided by the owner 2026-10-22** (all items: 1 as answered, 2-6 as recommended, 7 with a stricter floor of 99 %). Implementation: PLAN M4.1, spec `docs/sim/world-scaling.md` (to be written).
+- **Area:** sim (world setup), net (handshake), UI (game setup)
+- **Evidence:**
+  - The original has no world generator: an endless world is a scenario with a fixed size and fixed island links, and only the templates, raw materials, ores and treasures are drawn at start (`docs/re/annoscene.md` §3, §5).
+  - Its nine endless worlds (`Scenes/0010SingleEndlos`) are 1024 × 1024 tiles (seven of them) or 800 × 800 (two), with 16–28 links covering 19–46 % of the area. They hold one human and 2–4 computer players, plus Venetians, pirates and the neutral player 31.
+  - The multiplayer scenario folders are empty in this build (multiplayer never shipped, ISS-030, ISS-031; 2–8 players were planned, ISS-034).
+  - `Single_24.sze` has eight parties (one human, seven computer players) on a 512 × 512 map.
+  - Read on 2026-10-22 with `tools/sze.py` (header `HEAD` world size, `INSELLNK` links, `SPIELER/HEAD` player types).
+- **Questions, each with the recommendation:**
+  1. **Who counts as a player:** **DECIDED by the owner 2026-10-22: every competing party, human or computer** (not Venetians, pirates, natives or the neutral player). Note: the original's endless worlds already hold up to 5 competing parties (1 human + 4 computer) at 1024 tiles without growing; the owner's baseline of 4 is stricter, which is fine (more room per player).
+  2. **World area (DECIDED as recommended):** grows in proportion to the player count above 4: area(n) = area(template) × n / 4, so the edge grows by √(n / 4). For the 1024 template that is about 1145, 1254, 1355 and 1448 tiles for 5-8 players, and 800 → 894 … 1131. *Recommended*, because it keeps the land per player of the 4-player world.
+  3. **Island links (DECIDED as recommended):** added in proportion too (links(n) = links(template) × n / 4, rounded up), keeping the template's climate bands and its size mix (64, 80, 128 and 256 tiles). The original endless worlds lay the climates out north to south: the median island centre lies at 0.08 of the world height for polar, 0.21 tundra, 0.35 nord, 0.49 steppe, 0.52 prairie and 0.77 jungle. There is no desert link in them. Measured over their 229 links on 2026-10-22. *Recommended.* Alternative: keep the island count and only enlarge the gaps (not fair: same land, more players).
+  4. **Layout (DECIDED: extend the template):** extend the template (keep the original links where they are, add bands of new links and new start regions around them) or generate a whole new layout. *Recommended: extend*, so a 5-player world still looks like the original world it came from, and the faithful 4-player world is literally its core.
+  5. **Raw materials, ores, treasures (DECIDED as recommended)** (`ROHSTOFF`, `ERZE`, `SCHATZ`): scale with the number of links (the original distributes them per link). *Recommended.*
+  6. **Natives, pirates, Venetians (DECIDED as recommended):** natives scale with islands (they live on islands); one pirate and one Venetian party stay as in the template. *Recommended*; the owner may want more pirates in a big world.
+  7. **Fairness tolerance: DECIDED by the owner 2026-10-22: every player gets at least 99 % of the 4-player share** of land, resources and room. This applies to each measure separately: land by climate and size class, reachable raw materials and ores, and distance to the nearest rival and to free islands. My recommendation was 90 %.
+     - The 4-player share is the template world's total divided by 4.
+     - For whole-number measures (kinds of raw material or ore within reach), 99 % means not one fewer than the baseline.
+     - The generator therefore needs a deterministic, bounded search: seeded retries with a stated limit. If no layout meets the floor, world setup fails with a message naming the measure that fell short; it never quietly hands out an unfair world.
+     - The spec measures how far the original worlds themselves are from even (they are not symmetric), so the baseline is defined on the template, not on one player's corner of it.
+- **Faithful default:** up to 4 players nothing changes. The scaling is a rule (PLAN §0.2) whose parameters are configuration; authored missions keep their own setup.
+
+## OQ-101: What turns chapels into churches and schools into universities (new, tutorial series 2026-10-22)
+- **Status:** open, RE
+- **Area:** sim (buildings, needs)
+- **Evidence:**
+  - `Anlagen.dat` (P) has two chapel types and two school types, next to the big church 1325 and university 1379:
+    - chapel 1320 (`WARE KAPELLE`, `INFRA_STUFE_1C`) and 1321 (same footprint and cost, `WARE KIRCHE`, `2F`);
+    - school 1346 (`SCHULE`, `2B`) and 1347 (`HOCHSCHULE`, `3C`).
+  - The community series (`docs/research/tutorial-videos.md` §3.2):
+    - the chapels became churches the moment a church was built (V7 06:16);
+    - the school took the university's look and function the moment the university was built, although the city had passed `3C` long before (V13 03:10);
+    - later, a newly placed chapel served aristocrats as a church (V14 12:46).
+- **Questions:**
+  1. Is the swap 1320 → 1321 / 1346 → 1347 triggered by the stage, by the first 1325 / 1379 built, or by both?
+  2. Does it apply to every chapel or school of the city, the island or the player?
+  3. Does the chapel slot build 1321 directly once the trigger has happened?
+  4. Where in `AnnoWelt` is it done? (A pass like the house upgrade, `population.md` §5?)
+- **Faithful default:** whatever the original does; needed before public buildings enter the sim.
+- **Update 2026-10-22 (community FAQ):** forum posters report that one university or church on the **island** upgrades every school or chapel there, whatever their coverage, and that demolishing it loses the upgrade; the cathedral counts as a church (`docs/research/community-faq.md` §4). That answers questions 1–2 as community evidence: the trigger is the big building, with island scope. Still to confirm in the code or by running the original.
+- **Update 2026-10-22 (manual and in-game help):** both shipped documents say **service area**, not island: chapels in a church's service area become stone chapels that count as churches [H/Kapelle, H/Kirche], and schools in a university's service area can research everything [H/Forschung, M p. 50]. That contradicts the FAQ's island scope. T15 test: one chapel inside and one outside a new church's area. RE: the place-side-effect hooks (O-4) and the upgrade rewrite (O-28) (`manual-and-help.md` §2, §5).
+
+## OQ-102: How houses get market-stand goods and infrastructure (new, tutorial series 2026-10-22)
+- **Status:** open, RE (extends the `population.md` "Open" items on the market class and on infrastructure delivery)
+- **Area:** sim (supply)
+- **Evidence:**
+  - Market stands (PRODTYPE group 5, e.g. 1310 food and salt, 1314 cloth and leather) have action radius 4 (P).
+  - The series:
+    - residents walk to a stand and buy there (V2 01:45);
+    - a stand with exits on all sides serves residents from all sides (V2 01:36);
+    - the innkeeper walks to the market hall to fetch alcohol, so a tavern should stand next to one (V2 05:41, V11 05:15);
+    - new districts need their own stands (V9 07:42);
+    - a citizen house outside the church's drawn circle still had its church need met (V10 03:52).
+- **Questions:**
+  1. Is the house's walker task `0x35` the resident going to a stand? Is coverage the walker's reach, a footprint overlap or the drawn circle?
+  2. Do stands and the tavern hold their own stock, refilled by their own walker from the city store, or do they draw on the city store directly?
+  3. How do infrastructure needs (`0x4c`–`0x5a`) reach the house stock?
+- **Faithful default:** the original's rule, once traced.
+- **Update 2026-10-22 (community FAQ):** the house's reach counts, not the stall's radius. Stalls sell from the island store. The tavern keeper physically fetches alcohol within the tavern's radius. Reach at the edge is irregular, which suggests walker reach (`community-faq.md` §4).
+
+## OQ-103: Which walkers need roads (new, tutorial series 2026-10-22)
+- **Status:** open, RE
+- **Area:** sim (transport, pathing)
+- **Evidence:**
+  - The market cart (job `0x34`) searches the road net (`production.md` §5.2, D).
+  - The series:
+    - sheep farms need no road inside a weaving hut's radius, because the weaver's carrier fetches the wool (V1 03:34);
+    - the stonemason's worker walks up to the quarry without a road (V3 01:58);
+    - the forester needs a road, "or nothing is collected" (V1 00:58);
+    - aristocrat houses can do without roads (V14 31:05).
+- **Questions:**
+  1. Do the workshop carrier (job `0x33`) and the farm worker walk over open terrain within the building's radius?
+  2. Which buildings need a road to the market hall (producers whose goods go to the city store)? Do houses need one at all?
+  3. Are paved roads faster? (V14 34:46 calls them cosmetic; `wegspeed.dat` is not read, `production.md` §5.4.)
+- **Faithful default:** the original's rule, once traced.
+- **Update 2026-10-22 (owner, working rule):**
+  - houses need roads connected to markets;
+  - services must reach a house by road (the fire brigade, for example);
+  - a road connects only at a building's **specific entrance tile**, not at any edge tile.
+
+  The manual and the community FAQ agree on the entrance rule. FAQ posters from 2002–2004 claim that houses and the fire brigade need no roads; that **contradicts the owner** and may describe an older patch. The owner's rule is the working rule. T15 decides the mechanism with per-house reads, the same houses with and without a road to a market (PR #16 review). See `community-faq.md` §3.
+- **Update 2026-10-22 (in-game help):** entrances MUST face a street, or market wagons cannot pick up goods. A street connection "shortens the way" of inhabitants and workers, so they can also walk without one [H/Strassenanschluss]. Cobblestone is described as "considerably faster" for inhabitants and wagons [H/Pflasterstrasse]; that is the design intent against question 3. `wegspeed.dat` is a slope walk mask, not a speed table. Decide by timing a wagon round trip (`manual-and-help.md` §2, §4).
+
+## OQ-104: Player controls missing from the command list (new, tutorial series 2026-10-22)
+- **Status:** open, spec (S8 command set and later)
+- **Area:** sim (commands), net, UI
+- **Evidence (series):**
+  - lock building materials per city in the market hall's "?" panel, which stops all upgrades (V3 03:28, V10 06:33, V12 02:34);
+  - stop and start a building (V10 09:13);
+  - the "plant" button, which fills a farm's or forester's radius with fields or trees (V1 01:10), and also turns the small farm to alcohol (V2 02:52);
+  - Kontor buy orders (good, amount, price limit) and sell orders (stock level to keep, minimum price) (V2 03:24, V6 01:30, V10 02:22);
+  - automatic trade routes with load and unload per Kontor (V5 04:04);
+  - trade treaty and alliance in the diplomacy page (V4 02:43, V14 27:39);
+  - unloading a scout and sending it over the mountains to find deposits (V5 08:14);
+  - choosing an aristocrat house's look by cycling the build preview (V14 22:39).
+- **Questions:**
+  1. Where does the original keep the material lock (savegame `STADT2` `BAUMAT`, `production.md` §5.3?), and how does the upgrade check read it?
+  2. Which of these controls are commands in the original's turn stream (`tick-loop.md`, command numbers `0x64`–`0x97`)?
+  3. How is a placed house's look chosen: by the client's preview, or by the simulation's PRNG when the command executes? In lockstep the preview must never decide it silently; the choice must travel in the command.
+- **Faithful default:** every control the original has, as a command. The look is carried in the build command or drawn by the sim.
+- **Update 2026-10-22 (community FAQ):** the material lock is per island. A house's look is cycled by clicking the build tool on unbuildable ground, so the client chooses it and the build command must carry it. The add-on's V key plants the active farm's fields (`community-faq.md` §4).
+
+## OQ-105: Plague and the medicus (new, tutorial series 2026-10-22)
+- **Status:** open, RE
+- **Area:** sim (events)
+- **Evidence:**
+  - From our RE (`fire-and-ships.md` §2.4, D):
+    - the outbreak chance grows with inhabitants above 500;
+    - plague spreads within 2 tiles and cures itself with 25 % chance per 9-step cycle;
+    - the house state SEUCHE is bit `0x10`.
+  - House flag bits 4/5 force a bad mood; where they are set is open (`population.md` §4.1, "Open").
+  - The series:
+    - the first plague came after the 1,500-inhabitant message (V13 07:02);
+    - the medicus' apothecary walks to the house and cures it (V13 07:17);
+    - houses out of the medicus' reach fell (V14 20:50);
+    - some downgraded houses "stay afloat as long as no plague comes" (V14 33:29).
+- **Questions:**
+  1. Is the plague bit the same as house flag bit 4 (forced mood −1)?
+  2. How does the medicus (1337, radius 24, uses herbs) choose its targets, and how fast does it act?
+  3. Does the "255 = never" table entry apply to plague as it does to fire? If so, the first outbreak needs ≥ 1,524 inhabitants.
+- **Faithful default:** the original's rule once traced, behind the "disasters off" rule like fire.
+- **Update 2026-10-22 (community FAQ):** the medicus cures only houses in its area and some residents die first; "fast healing" shortens that; bathhouses reportedly lower the plague chance (unchecked) (`community-faq.md` §4).
+- **Update 2026-10-22 (in-game help):** fire causes are a volcano, a chance event, war, and "large, crowded settlements of wooden buildings"; dense pioneer and settler cities raise the fire danger. The doctor needs herbs; "faster healing" means more house calls at once. Bandits climb the walls and rob inhabitants, and a court reduces them. Riots come from a lasting lack of a good or long unhappiness. Earthquakes mostly damage houses (`manual-and-help.md` §2, §3).
+
+## OQ-106: Wildlife and pastures (new, tutorial series 2026-10-22)
+- **Status:** open, RE
+- **Area:** sim (figures, production yield)
+- **Evidence:**
+  - The series:
+    - game for the hunter appears only where there is forest (V1 02:05);
+    - deer eat the sheep's grass, so pastures without forest yield more (V10 01:08).
+  - The hunter (805, input `FLEISCHTIER`) and the sheep farm (807, input `GRAS`) are in `production.md` §2.1 and §4.2. How wild animals spawn and graze is not traced.
+- **Questions:**
+  1. Where and how often do wild animals spawn, and does it depend on forest tiles?
+  2. Do wild animals use up `GRAS` objects, competing with the sheep?
+  3. Which figures carry `PELZTIER` for the fur trapper? (The series names arctic foxes, hares and bears, V14 10:03.)
+- **Faithful default:** the original's rule, once traced.
+- **Update 2026-10-22 (community FAQ):** game comes from forests and grazes anywhere there is grass. The fur trapper takes white-furred animals, and leopards and tigers in the jungle at half yield (`community-faq.md` §4).
+
+## OQ-107: Research and knowledge (new, tutorial series 2026-10-22)
+- **Status:** open, RE (related to O-30 in `docs/sim/state.md`)
+- **Area:** sim (research)
+- **Evidence:**
+  - Files and RE (P, D):
+    - the player research table in `docs/sim/state.md`: 65 entries, researchable and researched bits, a `u16` progress each;
+    - the `Wissen:` lines in `BGruppen.dat` `[BAUSTUFEN]`, which nothing reads yet (`2B` 20, `2E` 25, `3B` 50, `3D` 70, `4C` 90; `population.md` §1).
+  - The series:
+    - settlers who attend school earn knowledge points;
+    - the well costs 5 knowledge, and after it the fire brigade costs 5 (V3 09:17);
+    - the university offers civil and military research, for example the large ore mine (V14 03:59);
+    - "fast healing" and the court can be researched (V14 33:38).
+- **Questions:**
+  1. How do schools and universities turn pupils into knowledge? At what rate, and what do the `Wissen` lines mean?
+  2. Where are the research costs and their order (the well before the fire brigade) stored?
+  3. Is research per player? It is sim state that must be checksummed if it gates building.
+- **Faithful default:** the original's costs and order, as data.
+- **Update 2026-10-22 (answers question 1 in part):** the `Wissen:` lines are the **knowledge cap** per stage. The FAQ's cap table (20 / 25 / 50 / 70 / 90 at 50 / 170 settlers, 200 / 600 citizens, 750 merchants) equals `BGruppen.dat` `2B`/`2E`/`3B`/`3D`/`4C` exactly (P). A library adds 10; the number of schools does not matter. Research costs per item are in the FAQ's research trees, not yet checked against the data (`community-faq.md` §2, §4).
+- **Update 2026-10-22 (manual and in-game help):** starting research uses up **all** accumulated knowledge [H/Wissen]. One library raises the cap, more do not. Research costs knowledge and gold. Each area starts with one key technology. X fields are university-only [M p. 48-50]. The help lists about 36 items in four areas, the checklist for the 65 player research slots. A search of four DLLs for two FAQ cost pairs found no cost table (`manual-and-help.md` §2).
+
+## OQ-108: Trade with the free trader and computer players (new, tutorial series 2026-10-22)
+- **Status:** open, RE
+- **Area:** sim (trade, AI), net
+- **Evidence:**
+  - Our RE (D):
+    - the city's sell and buy lists `VK`/`EK` and the trade flag per good (`production.md` §5.3);
+    - trade sales and purchases in city statistics 4 and 5 (`population.md` §8).
+  - The series:
+    - a Venetian ship fills a buy order for 40 tools at 52 (base price 60); 51 still works (V2 03:24, V3 02:21);
+    - a sell order sells wood above 50 t at 5 (base 8), and salt above 100 t at 23 (base 30) (V6 01:30, V10 02:22);
+    - computer players come and buy what is on sale. That lengthens the relations bar until an alliance can be offered (V9 02:02, V14 27:18);
+    - trading with a computer player needs a trade treaty, which can be offered once its city is discovered (V4 02:43).
+- **Questions:**
+  1. How does the free trader choose which orders to fill, how often, and within which price bounds?
+  2. How do computer players decide to buy from a human, and how does trade change relations?
+  3. Which of this is simulation state? All of it, if it moves goods or money.
+- **Faithful default:** the original's rules, once traced.
+- **Update 2026-10-22 (community FAQ):**
+  - Venetians always sell tools, and otherwise relay other players' orders; they sail a fixed circuit; a coastal warehouse is needed;
+  - the AI trades only from its main island;
+  - trade visits raise relations;
+  - the slider sets the stock to keep.
+
+  Stall prices in the FAQ match `BGruppen.dat` at tax index 2 (`community-faq.md` §2, §4).
+- **Update 2026-10-22 (manual and in-game help):** the price slider's arrow is green, yellow or red [M p. 43, H/Verkauf_Waren], so the UI computes an acceptance band per good; its function in `AnnoFrame.dll` is the shortest way to the trader's limits. The Venetians refuse a buy price that is too low, a sell price that is too high, goods they cannot deliver, and goods they do not want. An alliance needs a trade treaty and grows with trade volume. Five scouts in a computer player's territory is the tolerated maximum (`manual-and-help.md` §3).
+
+## OQ-112: `COMPPROFIL2` profile columns the hand-over does not use, and its doubled `SUSPEND` call (new, T18 2026-10-22)
+- **Status:** open
+- **Area:** formats (`.sze`), AI
+- **Question:**
+  1. What are `ENTRY` columns 0, 7, 14 and 15?
+  2. Is column 13 really meant as `SUSPEND`, or as one of the two `CHEATLIMIT` values?
+  3. Does any start path hand the static default profile to a computer player?
+- **Evidence:**
+  - *Hand-over (D):* the only code found that passes profile columns on is the game-start hand-over `AnnoFrame.dll` `0x10028d90`. It passes columns 1–6, 8–13, 16–18 as AI parameters (`docs/re/annoscene.md` §11.4). Column 0 (a byte, 1 in all records), 7 (0 in all) and 15 (3 or 60) are not passed, and no other reader was found.
+  - *The last call (D):* it sends parameter 26 (`SUSPEND`) a second time with column 13 as the value and column 14 as a second value (`0x10028fc5`–`0x10028fe0`). This overrides column 18. The two-value shape is that of parameter 17 `CHEATLIMIT` (setter `CompLogic.dll` `0x10004768`).
+  - *Shipped values (P):* columns 13, 14 and 18 are 0 in all twelve shipped profiles, so both readings behave the same.
+  - *Two readings of the unused columns (guess):*
+    - *Order:* every confirmed column follows the AI key reader's test order (`CompLogic.dll` `0x10040b79`–`0x10040d4e`). That would give 7 = `OPTIONAL`, 13 = `ZIELANZAHL`, 14–15 = `CHEATLIMIT`.
+    - *Value:* column 15 (3/60) looks like the `OPTIONAL=3`/`=60` of the scenarios' `COMP` records. The files speak against it (P): in `02` player 3, `04` player 1 and `05` player 3 the `COMP` record copies the player's profile (Profil03) in every mapped key, yet has `OPTIONAL=3` where column 15 is 60. Every player that `DEF` gives a profile has `OPTIONAL=3` in the eight `0010` games, and `OPTIONAL` takes the values 2, 3, 6, 10 and 60 across the corpus.
+  - *Independent support for the mapping (P):* the same three exact copies match the hand-over's columns 1, 3, 4, 5, 6, 9, 10, 11 and 12 to the keys `TYP`, `LAGER`, `HANDEL`, `TRANSPORT`, `PROZENTE`, `KAMPFTYP`, `HAUPTKLIMA`, `MAXSTADT`, `ZIELGRUPPE`.
+  - *Against the slip reading (D):* the `COMP` key reader stores `CHEATLIMIT=a,b` as a at message `+0x14` and b at `+0x18` (`CompLogic.dll` `0x100016e8`, `0x10001703`), so the hand-over would carry column 14 = a and column 13 = b, against the column order. The key-order reading also puts `ZIELANZAHL` at 13.
+  - *Default profile (D):* the global slots start as default profiles with a valid GUID (`AnnoFrame.dll` `0x100172d0`). The setup reader `0x1001e5d0` clears its own slots and ends by committing them to the global array (`0x1001ec26` → `0x1001fad0`), but not every game-start path was traced.
+- **How to resolve:**
+  - *The original's own tools:* look for a profile editor screen that edits these columns (the 1503 editor is not shipped; `AnnoScene.dll`'s editor class has no caller).
+  - *Ghidra on Linux:* search `AnnoFrame.dll`/`AnnoGame.dll` for further readers of a 168-byte record.
+  - *Differential run (T16 runner):* patch a copy of an endless scenario with distinct values in columns 7, 13, 14, 15, start it, save, and read the computer players' `COMP` records (`CHEATLIMIT=`, `OPTIONAL=`, `ZIELANZAHL=`, `SUSPEND=`).
+- **Faithful default:** the reimplementation passes exactly what `0x10028d90` passes, including the second `SUSPEND` call from column 13.
+
+## OQ-113: What the AI parameters steer (new, T18 2026-10-22)
+- **Status:** open, RE
+- **Area:** AI (`CompLogic.dll`), sim
+- **Question:** What do the numbered AI parameters do inside the computer logic, beyond the field the setter writes?
+  - `TYP` (time intervals 37,500–57,500 per type);
+  - `FLAECHE`, `LAGER`, `HANDEL`, `PROZENTE` (factors 1 ± v/100), `OPTIONAL`, `TRANSPORT`, `HAUPTKLIMA` (stored as 4/16/20);
+  - `MAXSTADT`, `ZIELGRUPPE`, `MINBAUMAT`, `MINEISEN`, `CHEATLIMIT`, `TRIBUTSPERRE`;
+  - `FIXDIPLOMATIE` vs. `ADDDIPLOMATIE` (both call `0x10008690`);
+  - `SETHELPANLAGE` (type 11 only), `BAULOGICOFF` (`0x10003750`);
+  - the unnamed indices 15, 16, 19–21, 33–35.
+- **Evidence (D, `docs/re/annoscene.md` §11.5–11.6):**
+  - *Setter:* `CompLogic.dll` `0x10004550`, shared by all AI classes. Every index, its range check and its object field are known.
+  - *Traced further:* `KAMPFTYP` (combat-task switches and caps, `0x10003680`, `0x10043233`, `0x10004df0`), `PIRATEATTACKALL` (the pirates skip their target check, `0x1005593f`) and `SUSPEND`.
+  - *Hints:* the profile pages (`Profiles/Texte/Profil01..12.htm`) describe each archetype in words. They hint at meanings but are not evidence for a formula.
+- **How to resolve:**
+  - *Ghidra on Linux:* trace the readers of each field (`+0xa34` … `+0xafc`) with decompiled `CompLogic.dll`.
+  - *Differential runs:* run one profile with one parameter changed and compare AI behaviour (T16 runner).
+
+  This is the AI work of PLAN M5 and O-1 in `docs/sim/state.md`.
+
+## OQ-114: Scenario `COMP` records spell `SETTRIBUTSPERRE`, which the AI ignores (new, T18 2026-10-22)
+- **Status:** decided 2026-10-22 (owner: "faithful default for OQ-114, ignore the misspelt key")
+- **Area:** formats (`.sze`), AI
+- **Question:** Should the reimplementation honour the tribute-block values the scenario authors set, which the original drops?
+- **Decision:** no. The reimplementation ignores `SETTRIBUTSPERRE` exactly as the original does; only `TRIBUTSPERRE` reaches parameter 25.
+- **Evidence:**
+  - *Who writes what (D):* the editor writes parameter 25 as `SETTRIBUTSPERRE` (`AnnoScene.dll` `0x100052b0`). The AI's readers know only `TRIBUTSPERRE` (`CompLogic.dll` `0x10001583`, `0x10040c41`). Unknown keys are skipped (`strncmp` up to the last `=`). `CompLogicClassic.dll` has no `SETTRIBUTSPERRE` string (S).
+  - *Affected values (P):* 267 of the 276 shipped values are 0. `endless02` sets 18 for five native peoples, `S01_04_01` sets 1 for players 1–3, `S01_05_01` 1 for player 2. The original never applies them.
+  - *Other routes:* a profile's column 8 still reaches the parameter at game start (0 in all profiles), and the AI's own saves use `TRIBUTSPERRE`.
+  - *What honouring it would change (D + P, `annoscene.md` §11.6):* the AI tests the value only as zero / non-zero, in one gate (`CompLogic.dll` `0x100057a0`) called from the computer and pirate classes' code, not from the native class's.
+    - Five of the six affected players are native peoples (type 14: endless02's five, S01_05_01's player 2), so for them it would most likely change nothing.
+    - The other three are the computer opponents of `S01_04_01` (type 12: O'Reilly, Madrugada, Pelés). Honouring the key would stop their gated action, likely tribute demands. That mission's script handles tribute itself (`SETTRIBUTE`, `PAID_TRIBUTE_TO`).
+- **How to resolve:** decided (above). What the parameter does is part of OQ-113.
+- **Faithful default:** ignore the key (chosen).
+
+## OQ-120: Precedence of `&&` and `||` in the scenario script (new, T17 2026-10-22)
+- **Status:** open, RE
+- **Area:** formats (`docs/formats/bigbrother.md` §3.4), script engine
+- **Evidence:** 28 of the 308 `IF` conditions in 10 shipped scripts mix `&&` and `||` in one group without parentheses (P), e.g. Single_01: `MISSION_FLAG == FALSE && (…) || PLAYER "HUMAN" INHABITANTCOUNT "BUERGER" > 2999`. The interpreter keeps `&&` and `||` in one delimiter table (`AnnoScene.dll` `0x1003d898`/`0x1003d89c`, S).
+- **Question:** Does `&&` bind tighter than `||` (as in C), do both group left to right, or something else? The answer decides what these missions test; with C precedence the Single_01 rule fires again after the mission flag is set.
+- **How to resolve:** read the condition parser around the delimiter table (AnnoScene, the script ops `0x10011ed0`–`0x10013dab`, O-16) with `tools/disasm.py`.
+
+## OQ-121: Script statements without `;` (new, T17 2026-10-22)
+- **Status:** open, RE
+- **Area:** formats (`bigbrother.md` §3.4)
+- **Evidence:** four shipped statements end without `;` (P):
+  - `SET_PROFILE(…)` (S01_02_01);
+  - `SET DEADEND_ABFRAGE = FALSE` (S01_08_01);
+  - `SET_DIPLOMACY(…)` and `SET_FOR_BUY(…)` (S01_09_01).
+
+  Each of the four ends its line. `QUESTLOG_DRAW;` has no parentheses (single42). All of them ship in the release; whether the missions play as intended was not checked.
+- **Question:** Does the interpreter end a statement at the closing parenthesis or value, or does it read the next statement as part of it, losing or merging an action?
+- **How to resolve:** the statement reader in AnnoScene (O-16 range); or play S01_09_01 in the Wine runner (T16) to the rule and check whether both actions take effect.
+
+## OQ-122: Script define numbers, `[CAMARAPOS]`, the `STARTUP` section (new, T17 2026-10-22)
+- **Status:** open
+- **Area:** formats (`bigbrother.md` §3.1–3.6)
+- **Evidence (P):**
+  - `OBJECT_FIGUR "N" n` and `OBJECT_STADT "N" n` carry one number; `OBJECT_ANLAGE "N" x,y,t` three (t an `Anlagen.dat` type);
+  - `[AREA_DEFINE]` lines carry four numbers in 0–1025 whose first pair is not always the smaller;
+  - `[CAMARAPOS]` is `0,0` in every file and in seven quicksaves (T16).
+- **Evidence (S):** the reader knows a seventh section `STARTUP` (`0x1003e628`) that no shipped script uses.
+- **Question:**
+  1. Is the figure number the unit id of the `SPIELER` record, and what is the city number?
+  2. Are the area numbers two corners in tiles?
+  3. What does `[CAMARAPOS]` hold?
+  4. What does `STARTUP` contain?
+- **How to resolve:**
+  - match `OBJECT_FIGUR` numbers against the unit ids in the same `.sze` (`tools/sze.py`);
+  - match areas against the map;
+  - trace the readers next to the section strings.
+
+## OQ-123: What each script action and condition does (new, T17 2026-10-22)
+- **Status:** open, RE
+- **Area:** script engine, sim (lockstep), `bigbrother.md` §4–§6
+- **Evidence:** the vocabulary, argument types and observed value ranges are in `bigbrother.md` (P). The split into state-changing and presentation actions is read from the names (likely). 62 of the 164 script names of the interpreter's tables are used by no shipped script (S).
+- **Question:**
+  1. Each handler's effect and the meaning of its numeric arguments (e.g. `WON`/`LOST`'s second number, `SET_DIPLOMACY`'s −128/−127/0/30);
+  2. the role of every unused name (action or condition: read from the block it stands in);
+  3. which conditions read state that is not synchronised in multiplayer (by its name, `SELECTED_CURSORCONSTRUCTION` likely asks about the local build cursor);
+  4. what `SCHUETTIINITSIG` marks (it flips `TRUE` → `FALSE` in quicksaves of a scenario without an `INITBLOCK`), and whether a savegame stores the variables' current values (the format strings suggest it; the quicksaves had no variables).
+- **How to resolve:** walk the dispatch from the name tables to the handlers in AnnoScene (`0x10011ed0`–`0x10013dab`, O-16) and record each in `bigbrother.md`; the port of the engine (O-34) needs the list. For item 4, quick-save a mission with variables and an `INITBLOCK` in the Wine runner (T16).

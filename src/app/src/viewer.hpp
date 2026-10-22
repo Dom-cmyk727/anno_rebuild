@@ -17,6 +17,8 @@ namespace anno::app {
 /// Opens the window and runs until it is closed; an empty string on
 /// success, else the error.
 std::string run_viewer(const render::Scene& scene, std::size_t group, Renderer renderer,
-                       render::RiverFlowMode river_flow = render::RiverFlowMode::Flow);
+                       render::RiverFlowMode river_flow = render::RiverFlowMode::Flow,
+                       render::WaterStyle water = render::WaterStyle::Original,
+                       std::size_t lookahead_chunks = 3, ZoomOptions zoom = {});
 
 } // namespace anno::app

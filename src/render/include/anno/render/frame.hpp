@@ -15,13 +15,16 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <thread>
 #include <tuple>
@@ -31,6 +34,7 @@
 #include <anno/render/iso.hpp>
 #include <anno/render/rect.hpp>
 #include <anno/render/scene.hpp>
+#include <anno/render/zoom_levels.hpp>
 
 namespace anno::render {
 
@@ -40,6 +44,18 @@ inline constexpr int kChunk = 512;
 inline constexpr float kTerrainScale = 64.0F;
 /// Chunk::terrain where no island ground is drawn.
 inline constexpr std::uint16_t kNoTerrain = 0xFFFF;
+
+/// How the objects layer of a chunk is produced (docs/render/gpu-chunks.md 8).
+enum class ChunkBuilder {
+    /// The worker composites the layer on the CPU: it builds the draw list
+    /// (Scene::objects_draws) and replays it (replay()). Today's behaviour.
+    Cpu,
+    /// The worker builds the draw list and keeps it on the chunk (Chunk::draws)
+    /// for a compositor that draws it itself; Chunk::objects and Chunk::base stay
+    /// empty. The ground, the sea field, the terrain and the flow are built as
+    /// with Cpu.
+    GpuList,
+};
 
 /// Cached static data of one chunk; empty vectors where nothing is drawn.
 struct Chunk {
@@ -61,6 +77,11 @@ struct Chunk {
     /// Canvas::base of `objects` (chunks without ships, for the GPU); empty
     /// = none.
     std::vector<std::uint8_t> base;
+    /// ChunkBuilder::GpuList: the draw list of the objects layer, in place of
+    /// `objects` and `base`; nullopt = no objects here (or the Cpu builder).
+    std::optional<ChunkDraws> draws;
+    /// The builder that made this chunk.
+    ChunkBuilder built_by = ChunkBuilder::Cpu;
     /// The baked flow of enhanced rivers here (rivers.md 3.3); empty = this
     /// chunk has no river flow (no river pixels, or the flow is not ready).
     river::FlowPlane flow;
@@ -74,6 +95,12 @@ struct Chunk {
     /// that keeps a copy (the GPU compositor's textures) sees that a chunk of
     /// the same key was rebuilt (e.g. after its river flow arrived).
     std::uint64_t serial = 0;
+    /// The heap memory the chunk holds (its vectors' capacities), in bytes.
+    [[nodiscard]] std::size_t bytes() const {
+        auto of = [](const auto& v) { return v.capacity() * sizeof(v[0]); };
+        return of(ground) + of(objects) + of(field) + of(terrain) + of(base) + of(flow.uv) +
+               of(flow.aux) + of(flow.shear) + of(flow_waiting) + (draws ? draws->bytes() : 0);
+    }
 };
 
 /// (zoom group, chunk x, chunk y).
@@ -90,6 +117,39 @@ using ChunkKey = std::tuple<std::size_t, int, int>;
 Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool ships = true,
                    bool wait_for_flow = true);
 
+/// What render_chunk builds with: the arguments above plus the builder.
+struct ChunkBuildOptions {
+    bool ships = true;
+    bool wait_for_flow = true;
+    ChunkBuilder builder = ChunkBuilder::Cpu;
+    /// Pixels of a bin edge in the draw list (ChunkDraws::bin_px).
+    std::uint32_t bin_px = kDefaultBinPx;
+};
+Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy,
+                   const ChunkBuildOptions& options);
+
+/// A chunk in the cache: immutable and shared, so a worker can reduce a derived
+/// chunk from cached children while the window thread keeps drawing them (and may
+/// evict them: the worker's reference keeps them alive).
+using ChunkPtr = std::shared_ptr<const Chunk>;
+
+/// The four chunks of the level above that a derived chunk is reduced from: key
+/// (group, cx, cy) of a derived level (ZoomLevels::built_count() and above) has the
+/// children (source, 2 cx + q % 2, 2 cy + q / 2), q = 0..3 (the quadrant order of
+/// ChunkQuad).
+std::array<ChunkKey, 4> derived_children(const ChunkKey& key, const ZoomLevels& levels);
+
+/// A derived chunk reduced from its four children (reduce_chunks_2x, then the flags
+/// a derived level has: no water objects). No child is built or copied here.
+Chunk render_derived_chunk(const Scene& scene, const std::array<ChunkPtr, 4>& kids);
+
+/// One chunk for the background workers. A key of a derived level carries its four
+/// children (all non-null: the planner submits it only when they are cached).
+struct ChunkJob {
+    ChunkKey key;
+    std::array<ChunkPtr, 4> kids{};
+};
+
 /// Background chunk builders: a priority job list and a result queue. The
 /// scene must outlive them. Destroying them stops the builders and waits for
 /// the chunks in progress (at most one per thread; the Rust version waits at
@@ -104,13 +164,17 @@ class ChunkWorkers {
     /// Replaces the job list with `wanted` (priority order) minus the chunks
     /// being built, built with or without ships (render_chunk); whether any
     /// work is queued or running.
-    bool submit(const std::vector<ChunkKey>& wanted, bool ships = true);
+    bool submit(const std::vector<ChunkJob>& wanted, bool ships = true,
+                ChunkBuilder builder = ChunkBuilder::Cpu, std::uint32_t bin_px = kDefaultBinPx);
     /// Finished chunks since the last call.
     std::vector<std::pair<ChunkKey, Chunk>> take_done();
+    /// Smoothed time one worker takes to build a chunk, in milliseconds (the
+    /// latency of a request that finds a free worker); 100 until the first chunk.
+    [[nodiscard]] double build_ms() const { return build_ms_.load(); }
     /// Takes chunks that are no longer needed and frees them on a
     /// background thread (freeing a chunk's vectors takes about a
     /// millisecond: the window thread must not).
-    void discard(std::vector<Chunk> chunks);
+    void discard(std::vector<ChunkPtr> chunks);
 
   private:
     void run();
@@ -119,16 +183,19 @@ class ChunkWorkers {
     const Scene& scene_;
     std::mutex mutex_;
     std::condition_variable ready_, garbage_ready_;
-    std::vector<Chunk> garbage_;
+    std::vector<ChunkPtr> garbage_;
     std::thread reaper_;
-    std::deque<ChunkKey> jobs_;
+    std::deque<ChunkJob> jobs_;
     std::set<ChunkKey> busy_;
     /// Chunks whose build threw: not requested again (a deterministic
     /// failure would otherwise be retried every frame).
     std::set<ChunkKey> failed_;
     std::vector<std::pair<ChunkKey, Chunk>> done_;
+    std::atomic<double> build_ms_{100.0};
     bool stop_ = false;
     bool ships_ = true;
+    ChunkBuilder builder_ = ChunkBuilder::Cpu;
+    std::uint32_t bin_px_ = kDefaultBinPx;
     std::vector<std::thread> threads_;
 };
 
@@ -148,18 +215,63 @@ class FrameRenderer {
     /// compositor, which draws them each frame); render() then omits them.
     explicit FrameRenderer(std::size_t threads, bool ships_in_chunks = true);
     [[nodiscard]] bool ships_in_chunks() const { return ships_; }
+    /// The zoom levels the chunk keys' group index refers to (default: the
+    /// original three groups). Set before the first update_chunks.
+    [[nodiscard]] const ZoomLevels& levels() const { return levels_; }
+    void set_levels(ZoomLevels levels) { levels_ = std::move(levels); }
 
     /// Builds chunks with `workers` from now on (nullptr: in the frame).
     void set_workers(std::unique_ptr<ChunkWorkers> workers);
+    /// Takes chunks the caller held on to (an upload dropped or finished, gpu.cpp): the last
+    /// reference to a chunk is freed on the chunk workers' thread, not the caller's (about a
+    /// millisecond per chunk). Without workers they are freed here.
+    void release(std::vector<ChunkPtr> chunks);
     /// Whether chunks are still being built in the background.
     [[nodiscard]] bool busy() const { return pending_; }
     [[nodiscard]] std::size_t cached() const { return cache_.size(); }
+    /// The memory of the cached chunks (Chunk::bytes), O(cached chunks): for
+    /// tools and reports, not per frame in the viewer.
+    [[nodiscard]] std::size_t cached_bytes() const {
+        std::size_t n = 0;
+        for (const auto& [key, chunk] : cache_) {
+            n += chunk->bytes();
+        }
+        return n;
+    }
     /// Brings the chunks of `view` up to date; (built or received, ms spent,
     /// visible chunks still missing).
     std::tuple<std::size_t, double, std::size_t> update_chunks(const Scene& scene, Rect view,
                                                                std::size_t group);
+    /// The chunks of the neighbouring zoom groups that update_chunks keeps built
+    /// for the view a zoom step would show (a ring included), both groups
+    /// interleaved, nearest to the view (as it will be in a moment) first. Not
+    /// necessarily built yet.
+    [[nodiscard]] const std::vector<ChunkKey>& adjacent_keys() const { return adjacent_; }
+    /// The chunks of the group shown that update_chunks keeps built around the
+    /// visible ones (the margin, grown in the direction of motion), the ones the
+    /// motion brings into view first at the front. Not necessarily built yet.
+    [[nodiscard]] const std::vector<ChunkKey>& margin_keys() const { return margin_; }
     /// The cached chunk, if built.
     [[nodiscard]] const Chunk* chunk(const ChunkKey& key) const;
+    /// The same chunk with shared ownership (null if not cached): a consumer that
+    /// works on it over several frames (the GPU upload, plane by plane) keeps it alive.
+    [[nodiscard]] ChunkPtr chunk_shared(const ChunkKey& key) const {
+        const auto it = cache_.find(key);
+        return it == cache_.end() ? nullptr : it->second;
+    }
+    /// How many times the chunk under `key` was put in the cache as new (received
+    /// from a worker or built in update_chunks; not inserted by insert_chunk): a
+    /// chunk that stays cached is built once (stage 3 fix 2, tests). The rebuild of a
+    /// cached chunk whose river flow was not ready is not counted here
+    /// (chunk_rebuilds).
+    [[nodiscard]] std::size_t chunk_builds(const ChunkKey& key) const {
+        const auto it = builds_.find(key);
+        return it == builds_.end() ? 0 : it->second;
+    }
+    [[nodiscard]] std::size_t chunk_rebuilds(const ChunkKey& key) const {
+        const auto it = rebuilds_.find(key);
+        return it == rebuilds_.end() ? 0 : it->second;
+    }
     /// Puts `chunk` in the cache under `key` (tests and tools: a synthetic
     /// chunk without a scene to build it from); it gets a new serial.
     void insert_chunk(const ChunkKey& key, Chunk chunk);
@@ -170,24 +282,119 @@ class FrameRenderer {
     /// Enhanced water: the river look render() draws (chunks carry the lattice
     /// either way, so switching needs no rebuild).
     RiverFlowMode river_flow = RiverFlowMode::Flow;
+    /// How the chunks' objects layer is built (gpu-chunks.md 8). Cpu by default:
+    /// the CPU path, --png and the digests are the reference. GpuList chunks carry
+    /// a draw list instead of the objects pixels, which render() does not draw:
+    /// set it before the first chunk is requested, with a compositor that draws
+    /// lists. Chunks built by the other builder are not taken from the workers.
+    ChunkBuilder chunk_builder = ChunkBuilder::Cpu;
+    /// Pixels of a bin edge in the draw lists of GpuList chunks. 32 = 256 bins
+    /// per 512 px chunk (kDefaultBinPx: the reason is there; measured in
+    /// stage 2).
+    std::uint32_t bin_px = kDefaultBinPx;
     /// The cost tier of the flow shading render() uses (RiverParams::quality): High
     /// is the reference look; the GPU compositor's automatic tier (GpuFrame::
     /// river_quality) can be Medium or Low, which a CPU reference compared against
     /// it must follow.
     RiverQuality river_quality = RiverQuality::High;
+    /// A derived chunk is reduced from the cached chunks of the level above and only
+    /// the missing children are built (stage 3 fix 2). false: the first stage 3
+    /// build's way, every derived chunk builds its descendants from nothing and drops
+    /// them (render_chunk): kept as the reference of the fill-time measurement.
+    bool derive_from_cache = true;
     /// Worker threads per stage.
     std::size_t threads;
     /// Chunks kept besides the visible ones.
     std::size_t spare_chunks = 48;
+    /// A derived zoom level whose whole scene is at most this many chunks is never
+    /// evicted (iso.md, stage 3): rebuilding one of its chunks from nothing needs
+    /// 4^k group-2 chunks built on the CPU (up to the whole scene, seconds of all
+    /// cores), while 16 chunks are about 70 MB. Raise it for more memory and an
+    /// instant overview at more levels.
+    std::size_t resident_level_chunks = 16;
+    /// Most chunks the margin around the view grows in the direction the view is
+    /// moving (lookahead_rect). Each chunk-wide strip is (view height / kChunk + 2)
+    /// chunks of up to 4.3 MB (a land chunk; sea chunks are far smaller) in the
+    /// current group and in each neighbouring one, on top of spare_chunks.
+    /// Counted for 2560 x 1440, three groups, cap 3: 144 chunks kept standing,
+    /// about 200-216 on a pan along one axis, 297 on a diagonal, plus 48 spare:
+    /// 0.8 / 1.1 / 1.5 GB at worst. Measured on Single_24.sze (the largest
+    /// scene) with a pan while zooming: peak 0.44-0.71 GB, mean 0.36-0.54 GB,
+    /// and cap 2 within 40 MB of cap 3 (docs/perf/README.md, T1e). 3 covers
+    /// 1500 px of travel; the viewer's --lookahead-chunks sets it; 0 = a plain
+    /// ring of one chunk.
+    std::size_t max_lookahead_chunks = 3;
+    /// render() draws a visible chunk that is not built from the nearest zoom
+    /// group's chunks (stand_in_chunk) instead of open sea. Off by default: the
+    /// CPU path is the reference and the tests' digests; the GPU compositor has
+    /// its own switch (GpuLimits::stand_ins) and does the same on the card.
+    bool stand_ins = false;
+    /// Keep the built chunks of other zoom groups that would stand in for a
+    /// visible chunk still being built, past the eviction in update_chunks. Set
+    /// by GpuFrame::render from GpuLimits::stand_ins; also on with `stand_ins`.
+    /// Off, the eviction is the one from before stand-ins existed.
+    bool retain_stand_in_sources = false;
+    /// Visible chunks that are built but that the GPU compositor still draws
+    /// over their stand-in (not uploaded yet, or dissolving in over it for
+    /// GpuLimits::chunk_fade_ms). Set by GpuFrame::render before update_chunks;
+    /// their stand-in sources are kept like those of chunks not built.
+    std::set<ChunkKey> shown_over_stand_in;
+    /// What update_chunks keeps beyond the visible chunks for the stand-ins of
+    /// the visible chunks that are not built or in shown_over_stand_in (empty
+    /// when both switches are off).
+    [[nodiscard]] std::set<ChunkKey>
+    stand_in_retain(std::size_t group, const std::vector<std::pair<int, int>>& visible) const;
+    /// Where the user is panning to, in scene pixels of the group shown, when that is not
+    /// the centre of `view`: the continuous zoom moves the camera to keep the point under
+    /// the cursor fixed, and rounds the composed grid to the pixel grid, so the grid's
+    /// centre moves without a pan. The viewer sets the camera minus the zoom's own
+    /// displacement here before each update; the velocity of the margin follows it.
+    /// nullopt (the default): the centre of the view is the motion.
+    std::optional<std::pair<double, double>> motion_centre;
+    /// The smoothed velocity of the view centre that sizes the margin, in scene
+    /// pixels per second of the group shown (x, y).
+    [[nodiscard]] std::pair<double, double> velocity() const { return {vx_, vy_}; }
+    /// The time source of the velocity (a steady clock; tests step it by hand).
+    std::function<std::chrono::steady_clock::time_point()> clock = [] {
+        return std::chrono::steady_clock::now();
+    };
 
   private:
+    std::vector<ChunkKey> adjacent_, margin_;
+    /// Velocity of the view centre in scene pixels per second of the group shown
+    /// (smoothed), the centre and time of the last update_chunks, and its group.
+    double vx_ = 0, vy_ = 0;
+    std::optional<std::pair<double, double>> last_centre_;
+    std::chrono::steady_clock::time_point last_time_;
+    std::size_t last_group_ = 0;
+    ZoomLevels levels_ = ZoomLevels::original();
+    /// Chunks the whole scene covers at each level of levels_ (derived levels
+    /// only; 0 for the built ones), for the resident rule of trim().
+    std::vector<std::size_t> level_chunks_;
+    /// Takes the scene's zoom levels (and their chunk counts) when they changed.
+    void sync_levels(const Scene& scene);
+    void track_velocity(Rect view, std::size_t group);
+    /// The chunks to keep and to build, most urgent first (`keep` is filled
+    /// with them), and adjacent_: the visible chunks, the margin around them
+    /// grown in the direction of motion, and the neighbouring groups' views.
+    std::vector<ChunkKey> plan_margin(Rect view, std::size_t group,
+                                      const std::vector<std::pair<int, int>>& visible,
+                                      double horizon_s, std::set<ChunkKey>& keep);
     std::size_t request_chunks(const Scene& scene, std::size_t group, Rect view,
                                const std::vector<std::pair<int, int>>& visible);
-    void trim(std::size_t group, Rect view, const std::set<ChunkKey>& keep);
+    void trim(std::size_t group, Rect view, const std::set<ChunkKey>& keep,
+              const std::set<ChunkKey>& retain = {});
     std::size_t fill_cache(const Scene& scene, std::size_t group,
                            const std::vector<std::pair<int, int>>& wanted);
 
-    std::map<ChunkKey, Chunk> cache_;
+    std::map<ChunkKey, ChunkPtr> cache_;
+    std::map<ChunkKey, std::size_t> builds_, rebuilds_;
+    /// The jobs for `wanted` (most urgent first) and, for a derived key whose
+    /// children are cached, the children; a missing child is a job of its own,
+    /// before its parent, and the parent waits for the next frame in which all four
+    /// are cached. Every key that is a job or waits is added to `keep`.
+    std::vector<ChunkJob> plan_jobs(const std::vector<ChunkKey>& wanted,
+                                    std::set<ChunkKey>& keep) const;
     std::unique_ptr<ChunkWorkers> workers_;
     bool pending_ = false;
     bool ships_ = true;
@@ -195,7 +402,93 @@ class FrameRenderer {
 
 /// The rectangle of view's size at group `to` centred on the scene point
 /// that `view` centres on at group `from`.
-Rect zoomed_view(Rect view, std::size_t from, std::size_t to);
+Rect zoomed_view(Rect view, std::size_t from, std::size_t to,
+                 const ZoomLevels& levels = ZoomLevels::original());
+
+/// The area whose chunks are kept built around `view`: a ring of one chunk, and
+/// where the view is moving (velocity vx, vy in scene pixels per second) the
+/// distance it covers in `horizon_s` seconds on that side, at most
+/// `max_chunks` chunks: the time to build a chunk (ChunkWorkers::build_ms) is
+/// long against how fast a view can be dragged, so what comes into view must be
+/// requested that much earlier.
+Rect lookahead_rect(Rect view, double vx, double vy, double horizon_s, std::size_t max_chunks);
+
+// ---- Stand-in chunks (open-questions OQ-077) ----
+//
+// A visible chunk that is not built yet (a zoom step to a group nobody has
+// built here, an upload still waiting) shows the same screen area of the
+// nearest zoom group whose chunks exist, scaled to the tile size of the group
+// shown: scene pixels are linear in tile coordinates per group, so the scale
+// of an axis is kTile[to] / kTile[from] there (2 between the first two groups
+// of the original, 2.1 between the next two: derived from kTile, never
+// written as a literal). The scaling is nearest-neighbour at pixel centres,
+// the same integer rule on the CPU reference (stand_in_chunk) and in the GPU
+// compositor (gpu.wgsl, Piece), and it keeps the world alignment: a stand-in
+// next to a built chunk shows the same ground at the same place, up to the
+// rounding of the tile sizes. Rivers keep the legacy look on the stand-in's
+// mask (no flow lattice is scaled); animated layers (water objects, sea,
+// ships) are drawn at the group shown as always.
+
+/// Source pixel (on one axis) that destination pixel `p` shows: the pixel
+/// containing the centre of `p` after scaling by num / den (the tile size of
+/// the source group over the one of the destination group on that axis),
+/// floor((2p + 1) * num / (2 den)).
+int stand_in_source(int p, int num, int den);
+
+/// The most a stand-in source level may be finer than the level it stands in for, in tile
+/// width: 8 (a chunk is then covered by at most 8 x 8 source chunks).
+inline constexpr double kMaxStandInReduction = 8.0;
+/// The zoom groups whose chunks may stand in for a chunk of `group`, nearest
+/// first, the finer group (smaller index, larger tiles) first at equal
+/// distance: one entry per other group, except the finer ones more than
+/// kMaxStandInReduction x its tile width (their cover would take hundreds of spans).
+std::vector<std::size_t> stand_in_groups(std::size_t group,
+                                         const ZoomLevels& levels = ZoomLevels::original());
+
+/// The part of a destination chunk that one source chunk shows.
+struct StandInSpan {
+    /// Chunk of the source group.
+    int src_cx = 0, src_cy = 0;
+    /// Scene pixels (destination group) of the destination chunk whose centre
+    /// lies in that source chunk after scaling.
+    Rect dst;
+};
+/// The source chunks (group `from`) that chunk (cx, cy) of group `to` shows,
+/// with their parts of it; the parts tile the destination chunk exactly, row by
+/// row. O(chunks covered) = at most ceil(ratio) + 1 per axis.
+std::vector<StandInSpan> stand_in_spans(int cx, int cy, std::size_t to, std::size_t from,
+                                        const ZoomLevels& levels = ZoomLevels::original());
+
+/// As stand_in_spans for the destination pixels `region` only (the parts tile
+/// `region`).
+std::vector<StandInSpan> stand_in_spans_in(Rect region, std::size_t to, std::size_t from,
+                                           const ZoomLevels& levels = ZoomLevels::original());
+
+/// A part of a stand-in and the zoom group its source chunk is in.
+struct StandInPart {
+    std::size_t from = 0;
+    StandInSpan span;
+};
+/// What chunk (cx, cy) of group `to` shows when it is not built: per part of
+/// it, the nearest group (stand_in_groups order) for which `has` says the
+/// source chunk exists. A part whose source chunk is missing in the nearest
+/// group is split by the source chunks of the next group, and so on; what no
+/// group covers is absent (open sea). The parts are disjoint. Shared by the
+/// CPU reference and the GPU compositor, so both choose alike.
+std::vector<StandInPart> stand_in_cover(int cx, int cy, std::size_t to,
+                                        const std::function<bool(const ChunkKey&)>& has,
+                                        const ZoomLevels& levels = ZoomLevels::original());
+
+/// The CPU reference of a stand-in: chunk (cx, cy) of `group` built from
+/// stand_in_cover over the chunks `frames` holds (pixels no group covers stay
+/// open sea of colour `open_water`). nullopt when there is none. The result carries no
+/// flow lattice and no serial. The `base` plane (an object pixel's height
+/// above its lowest row, in rows of the source group) is copied texel by texel,
+/// so on a stand-in its values are in source-group rows, not scaled to the
+/// destination group; the GPU sampling does the same. Cost: one pass over the planes, ~5 MB.
+std::optional<Chunk> stand_in_chunk(const FrameRenderer& frames, std::size_t group, int cx, int cy,
+                                    Px open_water);
+
 /// Chunks (cx, cy) that overlap `view`, row by row.
 std::vector<std::pair<int, int>> visible_chunks(Rect view);
 /// Scene rectangle of chunk (cx, cy).

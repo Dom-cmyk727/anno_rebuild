@@ -65,6 +65,7 @@ SENTINELS = {
     "kOriginalRngLength",
     "kTileBytes",  # bytes of one tile in the stream (layout width, island.hpp)
     "kSaveVersion",  # version of the save frame (world.hpp)
+    "kCommandWireVersion",  # version of the command wire layout (command.hpp)
 }
 # Headers where the original's constants live as documented defaults.
 CONSTEXPR_FILES = {"config.hpp", "production.hpp"}

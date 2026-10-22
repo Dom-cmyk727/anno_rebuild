@@ -63,6 +63,7 @@
 #include <anno/formats/insel.hpp>
 #include <anno/formats/sze.hpp>
 #include <anno/formats/tex.hpp>
+#include <anno/render/chunk_reduce.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/render/river.hpp>
 #include <anno/render/scene.hpp>
@@ -163,12 +164,14 @@ digest_lines(const std::filesystem::path& dir, std::string_view only = {},
                 }
                 render::UnitSprite sprite{u.x, u.y, z, {}, {}};
                 for (const auto& f : u.frames) {
-                    sprite.frames.push_back(
-                        f ? std::optional<render::UnitFrame>({f->frame, f->image}) : std::nullopt);
+                    sprite.frames.push_back(f ? std::optional<render::UnitFrame>(
+                                                    render::to_unit_frame(*f, u.figure, false))
+                                              : std::nullopt);
                 }
                 for (const auto& f : u.shadows) {
-                    sprite.shadows.push_back(
-                        f ? std::optional<render::UnitFrame>({f->frame, f->image}) : std::nullopt);
+                    sprite.shadows.push_back(f ? std::optional<render::UnitFrame>(
+                                                     render::to_unit_frame(*f, u.figure, true))
+                                               : std::nullopt);
                 }
                 scene.units.push_back(std::move(sprite));
             }
@@ -1013,4 +1016,343 @@ TEST_CASE("river raster: built once per island on a worker, the same for every c
         }
         CHECK(same);
     }
+}
+
+TEST_CASE("water field: empty cells hold on every island (game files)") {
+    // The empty-cell proof (docs/render/iso.md "Water field: empty cells") on
+    // the real islands: every island template and the islands of the 0200Single
+    // and 0201SingleAddOn scenarios, 9 positions in every empty tile (corners, edges, centre;
+    // the synthetic tests sample more densely).
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    std::vector<std::filesystem::path> files;
+    for (const char* climate : {"Dschungel", "Nord", "Praerie", "Steppe", "Tundra"}) {
+        for (const auto& p :
+             anno::test::files_with_ext(*dir / "Scenes" / "Islands" / climate, "scp")) {
+            files.push_back(p);
+        }
+    }
+    for (const char* folder : {"0200Single", "0201SingleAddOn"}) {
+        for (const auto& p : anno::test::files_with_ext(*dir / "Scenes" / folder, "sze")) {
+            files.push_back(p);
+        }
+    }
+    const auto felder_buf = anno::test::read_file(*dir / "Textures" / "Felder.tex");
+    const auto anl_buf = anno::test::read_file(*dir / "Anlagen.dat");
+    struct Count {
+        std::size_t tiles = 0, empty = 0, wrong = 0;
+    };
+    const auto per_file = anno::test::parallel_indexed(files.size(), [&](std::size_t fi) {
+        Count c;
+        const auto buf = anno::test::read_file(files[fi]);
+        auto anlagen = anno::formats::anlagen::AnlagenFile::parse(anl_buf).value();
+        const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
+        auto textures = anno::assets::island::GroundTextures::load(felder).value();
+        const render::Scene scene("", anno::formats::insel::islands(buf).value(),
+                                  std::move(textures), std::move(anlagen), render::kHeightLift);
+        for (std::size_t i = 0; i < scene.islands.size(); ++i) {
+            const render::sea::IslandWater* iw = scene.island_water_info(i);
+            if (iw == nullptr) {
+                continue;
+            }
+            c.tiles += iw->w * iw->h;
+            for (std::size_t ty = 0; ty < iw->h; ++ty) {
+                for (std::size_t tx = 0; tx < iw->w; ++tx) {
+                    if (iw->empty_cell[ty * iw->w + tx] == 0) {
+                        continue;
+                    }
+                    ++c.empty;
+                    for (const float fy : {0.0F, 0.5F, 0.9999F}) {
+                        for (const float fx : {0.0F, 0.5F, 0.9999F}) {
+                            const auto t = render::sea::field_at(*iw, static_cast<float>(tx) + fx,
+                                                                 static_cast<float>(ty) + fy);
+                            c.wrong += t == render::sea::FieldTexel{} ? 0U : 1U;
+                        }
+                    }
+                }
+            }
+        }
+        return c;
+    });
+    Count all;
+    for (const auto& c : per_file) {
+        all.tiles += c.tiles;
+        all.empty += c.empty;
+        all.wrong += c.wrong;
+    }
+    MESSAGE(files.size() << " files, " << all.tiles << " tiles, " << all.empty << " empty");
+    CHECK(all.empty > 0);
+    CHECK(all.wrong == 0);
+}
+TEST_CASE("terrain_plane equals terrain_at per pixel (game files)") {
+    // Chunk::terrain is built by Scene::terrain_plane (corners cached per tile);
+    // it must equal the quantised terrain_at of every pixel, as built before.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto buf =
+        anno::test::read_file(*dir / "Scenes" / "Islands" / "Dschungel" / "D_256x256_0045_5B.scp");
+    // The parsed files keep views into their buffers: the buffers outlive them.
+    const auto felder_buf = anno::test::read_file(*dir / "Textures" / "Felder.tex");
+    const auto anl_buf = anno::test::read_file(*dir / "Anlagen.dat");
+    const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
+    const render::Scene scene("", anno::formats::insel::islands(buf).value(),
+                              anno::assets::island::GroundTextures::load(felder).value(),
+                              anno::formats::anlagen::AnlagenFile::parse(anl_buf).value(),
+                              render::kHeightLift);
+    std::size_t pixels = 0, ground = 0, differ = 0;
+    for (std::size_t group = 0; group < render::kGroups; ++group) {
+        const auto b = scene.layouts[group].front().bounds;
+        for (const auto& [fx, fy] :
+             {std::pair{0.5, 0.5}, std::pair{0.3, 0.6}, std::pair{0.7, 0.2}}) {
+            const render::Rect rect{b.x + static_cast<int>(fx * b.w),
+                                    b.y + static_cast<int>(fy * b.h), 300, 200};
+            const auto probe = scene.ground_with_probe(rect, group).second;
+            const auto plane = scene.terrain_plane(probe);
+            REQUIRE(plane.size() == probe.island.size());
+            for (std::size_t i = 0; i < plane.size(); ++i) {
+                const int x = rect.x + static_cast<int>(i % 300);
+                const int y = rect.y + static_cast<int>(i / 300);
+                const auto z = scene.terrain_at(probe, rect, x, y);
+                const std::uint16_t want = z ? render::sat_cast<std::uint16_t>(render::clampf(
+                                                   roundf(*z * render::kTerrainScale), 0.0F,
+                                                   static_cast<float>(render::kNoTerrain - 1)))
+                                             : render::kNoTerrain;
+                ++pixels;
+                ground += want != render::kNoTerrain ? 1U : 0U;
+                differ += plane[i] == want ? 0U : 1U;
+            }
+        }
+    }
+    MESSAGE(pixels << " pixels, " << ground << " on the ground");
+    CHECK(ground > pixels / 2);
+    CHECK(differ == 0);
+}
+
+// ---- Derived zoom levels (iso.md, "Continuous zoom, stage 3 design") ----
+
+TEST_CASE(
+    "derived levels: a chunk is the reduction of its four children, recursively (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto scene =
+        load_islands(*dir, *dir / "Scenes" / "Islands" / "Dschungel" / "D_256x256_0045_5B.scp");
+    scene.set_levels(render::ZoomLevels::with_derived(2));
+    REQUIRE(scene.levels().size() == 5);
+    const render::Px water = scene.textures.water();
+    if (const auto* p2 = scene.sea(2); p2 != nullptr) {
+        const auto* p3 = scene.sea(3);
+        REQUIRE(p3 != nullptr);
+        MESSAGE("sea pattern period at group 2: " << p2->width << " x " << p2->height
+                                                  << ", level 3: " << p3->width << " x "
+                                                  << p3->height);
+        CHECK(p3->width == (p2->width + 1) / 2);
+        CHECK(p3->height == (p2->height + 1) / 2);
+        CHECK(p3->step_count() == p2->step_count());
+    }
+    const auto b = *scene.bounds(2);
+    const int cx0 = render::div_euclid(b.x + b.w / 2, render::kChunk) & ~3,
+              cy0 = render::div_euclid(b.y + b.h / 2, render::kChunk) & ~3;
+    std::vector<render::Chunk> l2;
+    for (int y = 0; y < 4; ++y) {
+        for (int x = 0; x < 4; ++x) {
+            l2.push_back(render::render_chunk(scene, 2, cx0 + x, cy0 + y, false, true));
+        }
+    }
+    auto quad_of = [](const std::vector<render::Chunk>& v, std::size_t stride, std::size_t x0,
+                      std::size_t y0) {
+        return render::ChunkQuad{&v[y0 * stride + x0], &v[y0 * stride + x0 + 1],
+                                 &v[(y0 + 1) * stride + x0], &v[(y0 + 1) * stride + x0 + 1]};
+    };
+    auto same = [](const render::Chunk& a, const render::Chunk& c) {
+        return a.ground == c.ground && a.objects == c.objects && a.field == c.field &&
+               a.terrain == c.terrain && a.base.empty() && c.base.empty();
+    };
+    std::vector<render::Chunk> l3;
+    for (std::size_t qy = 0; qy < 2; ++qy) {
+        for (std::size_t qx = 0; qx < 2; ++qx) {
+            const render::Chunk want =
+                render::reduce_chunks_2x(quad_of(l2, 4, 2 * qx, 2 * qy), water);
+            // Level 3 chunk (cx0 / 2 + qx, cy0 / 2 + qy), built through render_chunk.
+            const render::Chunk got =
+                render::render_chunk(scene, 3, cx0 / 2 + static_cast<int>(qx),
+                                     cy0 / 2 + static_cast<int>(qy), false, true);
+            CHECK(same(got, want));
+            CHECK(got.serial != 0);
+            l3.push_back(want);
+        }
+    }
+    const render::Chunk want4 = render::reduce_chunks_2x(quad_of(l3, 2, 0, 0), water);
+    const render::Chunk got4 = render::render_chunk(scene, 4, cx0 / 4, cy0 / 4, false, true);
+    CHECK(same(got4, want4));
+    CHECK_FALSE(got4.ground.empty()); // the island is in it
+}
+
+TEST_CASE(
+    "derived levels: the CPU frame draws, and is close to the reduced frame above (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto scene =
+        load_islands(*dir, *dir / "Scenes" / "Islands" / "Dschungel" / "D_256x256_0045_5B.scp");
+    scene.set_levels(render::ZoomLevels::with_derived(2));
+    const auto b3 = *scene.bounds(3);
+    constexpr int kW = 512, kH = 384;
+    const render::Rect v3{b3.x + b3.w / 2 - kW / 2, b3.y + b3.h / 2 - kH / 2, kW, kH};
+    const render::Rect v2{v3.x * 2, v3.y * 2, kW * 2, kH * 2};
+    render::FrameRenderer fr(4);
+    std::vector<std::uint32_t> f3(kW * kH), f2(static_cast<std::size_t>(kW) * 2 * kH * 2);
+    fr.render(scene, v3, 3, 0, render::WaterStyle::Original, f3.data());
+    fr.render(scene, v2, 2, 0, render::WaterStyle::Original, f2.data());
+    // The mean colour per channel of the level 3 frame against the 2 x 2 mean of the
+    // group 2 frame: the same picture reduced (the sea pattern and the chunks are
+    // reductions of group 2's; only rounding and the shading grid differ).
+    std::array<double, 3> m3{}, m2{};
+    for (int y = 0; y < kH; ++y) {
+        for (int x = 0; x < kW; ++x) {
+            const std::uint32_t p = f3[static_cast<std::size_t>(y * kW + x)];
+            for (int c = 0; c < 3; ++c) {
+                m3[static_cast<std::size_t>(c)] += (p >> (16 - 8 * c)) & 0xFFU;
+                for (int j = 0; j < 2; ++j) {
+                    for (int i = 0; i < 2; ++i) {
+                        const std::uint32_t q =
+                            f2[static_cast<std::size_t>((2 * y + j) * kW * 2 + 2 * x + i)];
+                        m2[static_cast<std::size_t>(c)] += ((q >> (16 - 8 * c)) & 0xFFU) / 4.0;
+                    }
+                }
+            }
+        }
+    }
+    for (std::size_t c = 0; c < 3; ++c) {
+        INFO("channel " << c << ": level 3 " << m3[c] / (kW * kH) << ", reduced group 2 "
+                        << m2[c] / (kW * kH));
+        CHECK(std::abs(m3[c] - m2[c]) / (kW * kH) < 6.0);
+    }
+}
+
+TEST_CASE(
+    "derived levels: a zoom-out sweep builds every chunk once while it stays cached (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    // Group 2, then levels 3, 4, 5 in turn, each showing the whole scene: the chunks of
+    // a level are reduced from the cached chunks of the level above (shared, not copied)
+    // and only the missing children are built, then cached like any chunk. Nothing is
+    // evicted (spare_chunks large), so no key may be built twice: the sweep used to
+    // rebuild the group-2 chunks of the whole scene for each level (4^(k-2) per chunk).
+    for (const bool workers : {false, true}) {
+        auto scene =
+            load_islands(*dir, *dir / "Scenes" / "Islands" / "Dschungel" / "D_256x256_0045_5B.scp");
+        scene.set_levels(render::ZoomLevels::with_derived(3));
+        render::FrameRenderer fr(4);
+        fr.spare_chunks = 100000;
+        if (workers) {
+            fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, 4));
+        }
+        std::vector<std::size_t> shown;
+        for (const std::size_t level :
+             {std::size_t{2}, std::size_t{3}, std::size_t{4}, std::size_t{5}}) {
+            const auto b = *scene.bounds(level);
+            const render::Rect view{b.x, b.y, b.w, b.h};
+            std::size_t missing = 1;
+            for (int i = 0; i < 20000 && (missing != 0 || fr.busy()); ++i) {
+                missing = std::get<2>(fr.update_chunks(scene, view, level));
+                if (workers) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                }
+            }
+            REQUIRE(missing == 0);
+            std::size_t n = 0;
+            for (int cy = render::div_euclid(b.y, render::kChunk);
+                 cy <= render::div_euclid(b.y + b.h - 1, render::kChunk); ++cy) {
+                for (int cx = render::div_euclid(b.x, render::kChunk);
+                     cx <= render::div_euclid(b.x + b.w - 1, render::kChunk); ++cx) {
+                    n += fr.chunk({level, cx, cy}) != nullptr ? 1U : 0U;
+                }
+            }
+            shown.push_back(n);
+        }
+        // Every chunk in the cache was built exactly once, at every level.
+        std::size_t group2 = 0, over = 0, total = 0;
+        for (std::size_t level = 2; level <= 5; ++level) {
+            const auto b = *scene.bounds(level);
+            for (int cy = render::div_euclid(b.y, render::kChunk) - 2;
+                 cy <= render::div_euclid(b.y + b.h - 1, render::kChunk) + 2; ++cy) {
+                for (int cx = render::div_euclid(b.x, render::kChunk) - 2;
+                     cx <= render::div_euclid(b.x + b.w - 1, render::kChunk) + 2; ++cx) {
+                    const std::size_t n = fr.chunk_builds({level, cx, cy});
+                    over += n > 1 ? 1U : 0U;
+                    total += n;
+                    group2 += level == 2 ? n : 0U;
+                }
+            }
+        }
+        MESSAGE((workers ? "workers" : "blocking")
+                << ": chunks shown per level 2..5 = " << shown[0] << ", " << shown[1] << ", "
+                << shown[2] << ", " << shown[3] << "; builds in all " << total << ", of group 2 "
+                << group2 << ", keys built more than once " << over);
+        CHECK(over == 0);
+        CHECK(group2 >= shown[0]);
+        // Group 2 holds the shown chunks and the children of the level 3 chunks shown: the
+        // old sweep built 4^(k-2) group-2 chunks for each chunk shown at level k.
+        CHECK(group2 <= shown[0] + 4 * shown[1]);
+        fr.set_workers(nullptr);
+    }
+}
+
+TEST_CASE("derived levels: a small level stays in the cache, a large one is trimmed (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto scene =
+        load_islands(*dir, *dir / "Scenes" / "Islands" / "Dschungel" / "D_256x256_0045_5B.scp");
+    scene.set_levels(render::ZoomLevels::with_derived(3));
+    const auto b5 = *scene.bounds(5);
+    render::FrameRenderer fr(4);
+    fr.spare_chunks = 0;
+    const render::Rect view5{b5.x, b5.y, b5.w, b5.h};
+    fr.update_chunks(scene, view5, 5);
+    // The chunks of level 5 (the levels below it that were built on the way are cached
+    // too, as ordinary chunks).
+    auto cached_at_5 = [&](const render::FrameRenderer& f) {
+        std::size_t n = 0;
+        for (int cy = render::div_euclid(b5.y, render::kChunk);
+             cy <= render::div_euclid(b5.y + b5.h - 1, render::kChunk); ++cy) {
+            for (int cx = render::div_euclid(b5.x, render::kChunk);
+                 cx <= render::div_euclid(b5.x + b5.w - 1, render::kChunk); ++cx) {
+                n += f.chunk({5, cx, cy}) != nullptr ? 1U : 0U;
+            }
+        }
+        return n;
+    };
+    const std::size_t level5 = cached_at_5(fr);
+    CHECK(level5 > 0);
+    // A view elsewhere at group 2 with nothing spare: level 5 (a handful of chunks
+    // for the whole scene) is below resident_level_chunks and stays.
+    const auto b2 = *scene.bounds(2);
+    fr.update_chunks(scene, render::Rect{b2.x, b2.y, 600, 600}, 2);
+    const std::size_t kept = cached_at_5(fr);
+    CHECK(kept == level5);
+    // With the rule off the same sequence evicts them.
+    render::FrameRenderer off(4);
+    off.spare_chunks = 0;
+    off.resident_level_chunks = 0;
+    off.update_chunks(scene, view5, 5);
+    off.update_chunks(scene, render::Rect{b2.x, b2.y, 600, 600}, 2);
+    const std::size_t kept_off = cached_at_5(off);
+    CHECK(kept_off < level5);
 }

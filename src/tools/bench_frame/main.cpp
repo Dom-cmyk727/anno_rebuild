@@ -8,7 +8,24 @@
 //       [--renderer cpu,gpu] [--check] [--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick]
 //       [--zoom k] [--zoom-frames n] [--pace ms] [--spike ms] [--limits default|interactive]
 //       [--settle ms] [--river-flow legacy|flow] [--river-quality auto|low|medium|high]
-//       [--river-pass]
+//       [--river-pass] [--stand-ins on|off] [--prewarm chunks] [--zoom-dump <dir>]
+//       [--zoom-dump-after a,b,...] [--zoom-pan dx,dy[,frames]] [--pop on|off]
+//   bench_frame <game_dir> <file> --renderer gpu --scale-cost group:scale[:filter],..
+//                                (GPU time of continuous zoom frames, compositor + resample)
+//   bench_frame <game_dir> <file> --renderer gpu --limits interactive --derived n --zoom-sweep
+//   seconds
+//                                (the continuous zoom as the viewer runs it: per level the window
+//                                thread's and the GPU's time per frame, chunks shown, cache MB)
+//   bench_frame <game_dir> <file> --zoom-factor f [--resample nearest|bilinear|box|area] ...
+//                                (every frame composes the grid of the group and resamples it
+//                                to the window at f output pixels per grid pixel; CPU:
+//                                cpu_resample)
+//   bench_frame <game_dir> <file> --derived n --groups 2,3,..,2+n ...   (the paths above at the
+//                                derived zoom levels after group 2: each is the level above reduced
+//                                2x)
+//   bench_frame <game_dir> <file> --fill-time [--derive old|cache] [--threads n] [--res WxH]
+//                                (the first zoom-out: ms until the window's chunks are cached,
+//                                levels 3-5)
 //   bench_frame --list-adapters
 //   bench_frame <game_dir> <file> --river-cost      (GPU cost of the river shading, synthetic)
 //
@@ -32,7 +49,18 @@
 // a 500 Hz display) so that the chunk workers get real time. Frames slower
 // than `--spike` ms (default 8) are listed with their phase breakdown. The
 // frame time of this path is the window thread's CPU time (the viewer does
-// not wait for the GPU); the GPU wait is listed separately.
+// not wait for the GPU); the GPU wait is listed separately. `--zoom 0` with
+// `--zoom-pan dx,dy` runs the same path as a plain pan without zoom steps (the
+// line "chunks dissolving in after the first second" should then say 0).
+//
+// `--stand-ins off` draws chunks that are not built yet as open sea (the
+// behaviour before the stand-in chunks of OQ-077); the default is the library's
+// (on for the GPU compositor, off for the CPU path). `--zoom-dump <dir>` (GPU)
+// writes the first frames after zoom steps as raw RGBA (`zoom_<n>_g<group>_<w>x<h>.rgba`)
+// (`--zoom-dump-after a,b` writes the frames a and b frames after each of the first
+// steps instead of the step's own frame, named `zoom_<step>_f<frames>_g<group>_...`)
+// and prints, after the table, how many frames had chunks still missing and
+// how many of those were covered by stand-ins.
 //
 // `--river-cost` prints the GPU cost per million river pixels of the river flow
 // shading at each tier (GpuFrame::measure_river_cost: a synthetic 1024 x 1024
@@ -41,6 +69,7 @@
 // divides the difference by the visible river pixels. The adapter is chosen by
 // ANNO_GPU_ADAPTER (a number of --list-adapters or a part of its name).
 #include <algorithm>
+#include <atomic>
 #include <charconv>
 #include <chrono>
 #include <cmath>
@@ -53,7 +82,10 @@
 #include <vector>
 
 #include <anno/app/loader.hpp>
+#include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/render/profile.hpp>
+#include <anno/render/resample.hpp>
 #include <anno/render/scene.hpp>
 #ifdef ANNO_BENCH_GPU
 #include <fstream>
@@ -82,6 +114,15 @@ struct Options {
     std::uint64_t t0 = 0, warmup = 0;
     bool quick = false;
     std::size_t zoom_every = 0, zoom_frames = 240;
+    /// Zoom path: the view moves by this many scene pixels (of the group shown) per
+    /// frame, reversing every zoom_pan_period frames: panning while zooming
+    /// (--zoom-pan dx,dy).
+    std::pair<int, int> zoom_pan{0, 0};
+    /// Zoom path (GPU): compare consecutive frames of one group without a pan and
+    /// report how many pixels jump (--pop): the pop of a chunk swap.
+    bool pop = false;
+    /// Frames the pan walks one way before it reverses (--zoom-pan dx,dy[,frames]).
+    std::size_t zoom_pan_period = 400;
     double pace_ms = 2.0, spike_ms = 8.0;
     /// GpuLimits::interactive() instead of the defaults.
     bool interactive = false;
@@ -95,6 +136,51 @@ struct Options {
     /// RiverConfig::light_gain (--river-gain): 1 = calibrated, larger shows the flow.
     float river_gain = 1.0F;
     bool river_cost = false, river_pass = false;
+    /// GpuLimits::stand_ins / FrameRenderer::stand_ins (nullopt = library defaults).
+    std::optional<bool> stand_ins;
+    /// GpuLimits::prewarm_chunks (nullopt = the limits' default).
+    std::optional<std::size_t> prewarm;
+    /// GpuLimits::prefetch_chunks (nullopt = the limits' default).
+    std::optional<std::size_t> prefetch;
+    /// GpuLimits::chunk_fade_ms (nullopt = the limits' default).
+    std::optional<std::uint64_t> fade;
+    /// FrameRenderer::max_lookahead_chunks (nullopt = the library default).
+    std::optional<std::size_t> lookahead;
+    /// Directory for the frames after zoom steps (empty = none).
+    std::string zoom_dump;
+    /// Frames after a zoom step that --zoom-dump writes (0 = the step's own frame).
+    std::vector<std::size_t> zoom_dump_after{0};
+    /// --chunk-profile: the builder thread counts to profile (empty = the frame paths).
+    std::vector<std::size_t> profile_threads;
+    /// --chunk-build cpu|gpu: the GpuList builder (T11 stage 2a) on the GPU paths.
+    render::ChunkBuilder chunk_builder = render::ChunkBuilder::Cpu;
+    /// --bin-px: the ChunkDraws bin edge (gpu-chunks.md 9; the bin_px sweep).
+    std::uint32_t bin_px = render::kDefaultBinPx;
+    /// --chunk-limit: the chunks nearest the island's centre that are built. 96 is
+    /// about four 2560 x 1440 views at group 0 (24 chunks each), a few minutes on
+    /// one thread at the measured 100-250 ms per chunk; 0 = all of the island.
+    std::size_t chunk_limit = 96;
+    /// --scale-cost: the continuous zoom points to time (zoom group, scale, filter).
+    struct ScalePoint {
+        std::size_t group = 0;
+        double scale = 1.0;
+        std::string filter;
+    };
+    std::vector<ScalePoint> scale_cost;
+    /// --fill-time: the first zoom-out (levels 3-5 from group 2), and --derive old|cache.
+    bool fill_time = false, derive_from_cache = true;
+    /// --derived n: n derived zoom levels after group 2 (the groups 3.. of --groups).
+    std::size_t derived = 0;
+    /// --zoom-sweep seconds: the continuous zoom run as the viewer does (GPU).
+    double zoom_sweep = 0.0;
+    /// --wave-fade-hold k (0..1): with --scale-cost, the simulated waves' weight held at k
+    /// (GpuLimits::wave_fade_ms on a frozen clock), to time the cross-fade (OQ-076).
+    double wave_fade_hold = -1.0;
+    /// --zoom-factor f [--resample filter]: every frame composes the grid of the group
+    /// and resamples it onto the window at f output pixels per grid pixel (GPU: the
+    /// resample pass; CPU: render::cpu_resample, in the frame's time).
+    double zoom_factor = 1.0;
+    std::optional<render::ResampleFilter> resample;
 };
 
 std::vector<std::string_view> split(std::string_view s, char sep) {
@@ -129,12 +215,38 @@ struct Row {
     std::size_t uploaded = 0, sprites_new = 0;
     double create = 0, write = 0;
     std::size_t frame_no = 0;
+    /// Visible chunks drawn from another group's chunks (GPU).
+    std::size_t stand = 0;
+    /// Visible chunks that showed open sea: none built, no source in any group (GPU).
+    std::size_t open = 0, open_built = 0;
+    /// Visible chunks drawn dissolving in over their placeholder (GPU).
+    std::size_t fading = 0;
+    /// Pixels of the view showing open sea (GpuStats::open_sea_px).
+    std::uint64_t open_px = 0;
+    /// The CPU chunk cache after the frame: chunks and bytes (outside `total`).
+    std::size_t cache_chunks = 0, cache_bytes = 0;
+    /// GPU-built chunks (T11 2a): the resident chunk atlas (MiB), chunks built by
+    /// the compute pass, and CPU-fallback builds (GpuStats).
+    double chunk_atlas_mb = 0;
+    std::size_t gpu_built = 0, cpu_fallback = 0;
+    /// GPU: every window-thread step of the frame (GpuStats::steps, they add up
+    /// to the compositor's total), and the counts behind the sync steps.
+    std::vector<std::pair<std::string, double>> steps;
+    std::size_t dropped = 0, planes_freed = 0, placeholders = 0, planes_warm = 0;
+    bool pieces_realloc = false;
+    /// Zoom path: wave-window job in the background; wall time since the path started.
+    bool fluid_setting_up = false;
+    double wall_ms = 0;
 };
 
 struct Config {
+    double zoom_factor = 1.0;
+    std::optional<render::ResampleFilter> resample;
     int w = 0, h = 0;
     std::size_t group = 0;
     render::WaterStyle style = render::WaterStyle::Original;
+    render::ChunkBuilder chunk_builder = render::ChunkBuilder::Cpu;
+    std::uint32_t bin_px = render::kDefaultBinPx;
     bool async_chunks = false;
     std::pair<int, int> centre{0, 0};
     std::size_t frames = 120;
@@ -142,10 +254,24 @@ struct Config {
     std::size_t threads = 1;
     bool check = false;
     std::size_t zoom_every = 0, zoom_frames = 240;
+    /// Zoom path: the view moves by this many scene pixels (of the group shown) per
+    /// frame, reversing every zoom_pan_period frames: panning while zooming
+    /// (--zoom-pan dx,dy).
+    std::pair<int, int> zoom_pan{0, 0};
+    /// Zoom path (GPU): compare consecutive frames of one group without a pan and
+    /// report how many pixels jump (--pop): the pop of a chunk swap.
+    bool pop = false;
+    /// Frames the pan walks one way before it reverses (--zoom-pan dx,dy[,frames]).
+    std::size_t zoom_pan_period = 400;
     double pace_ms = 2.0, spike_ms = 8.0;
     std::size_t settle_ms = 0;
     render::RiverFlowMode river_flow = render::RiverFlowMode::Flow;
     bool river_pass = false;
+    std::optional<bool> stand_ins;
+    std::optional<std::size_t> lookahead;
+    std::string zoom_dump;
+    /// Frames after a zoom step that --zoom-dump writes (0 = the step's own frame).
+    std::vector<std::size_t> zoom_dump_after{0};
 };
 
 void report(const Config& c, const char* renderer, const char* mode, const char* name,
@@ -436,9 +562,9 @@ struct GpuFrame {};
 
 /// The zoom path (see the header): wheel-like group switches every
 /// c.zoom_every frames, paced frames, a list of the slow frames.
-template <class Frame, class Ready>
-void run_zoom(const Config& c, Frame&& frame, Ready&& ready, std::size_t& group,
-              std::pair<int, int> cam, std::uint64_t time) {
+template <class Frame, class Ready, class Dump, class Grab>
+void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, Grab&& grab,
+              std::size_t& group, std::pair<int, int> cam, std::uint64_t time) {
     using SC = std::chrono::steady_clock;
     // Warm-up: static frames until the first group is built. The first
     // frames carry the one-time costs (pipelines, first uploads); slow ones
@@ -463,10 +589,15 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, std::size_t& group,
     auto next = start;
     // As the viewer: a zoom step waits until the sea pattern of its group is
     // rendered and on the GPU (only in the first moments after the start).
-    bool switch_due = false;
-    std::size_t deferred = 0;
+    bool switch_due = false, switched = false;
+    std::size_t deferred = 0, steps = 0, last_step = 0;
+    std::vector<std::uint8_t> prev_px;
+    std::size_t pop_frames = 0, pop_over = 0, pop_worst_at = 0;
+    double pop_sum = 0, pop_worst = 0;
+    bool any_step = false;
     for (std::size_t i = 0; i < c.zoom_frames; ++i) {
-        if (i > 0 && i % c.zoom_every == 0) {
+        switched = false;
+        if (c.zoom_every > 0 && i > 0 && i % c.zoom_every == 0) {
             switch_due = true;
         }
         if (switch_due && !ready(kCycle[(at + 1) % kCycle.size()])) {
@@ -482,13 +613,64 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, std::size_t& group,
             cam = {static_cast<int>(std::lround(nx - c.w / 2.0)),
                    static_cast<int>(std::lround(ny - c.h / 2.0))};
             group = to;
+            switched = true;
+            any_step = true;
+            last_step = i;
+            ++steps;
         }
+        // Panning while zooming: the view walks one way for zoom_pan_period frames,
+        // then back.
+        const int dir = (i / c.zoom_pan_period) % 2 == 0 ? 1 : -1;
+        cam.first += dir * c.zoom_pan.first;
+        cam.second += dir * c.zoom_pan.second;
         const render::Rect view{cam.first, cam.second, c.w, c.h};
         Row r = frame(view, time, true);
+        if (c.pop) {
+            // Consecutive frames of one group without a pan: what changes besides
+            // the water's own motion is a chunk swap (the pop this measures).
+            auto now_px = grab();
+            if (!prev_px.empty() && now_px.size() == prev_px.size() && !switched && i > 30) {
+                // The view moved by `pan` since the previous frame, so pixel (x, y) of
+                // this frame is (x + pan_x, y + pan_y) of the previous one (the
+                // overlap is compared; nothing else changed unless a chunk swapped).
+                const int px_ = dir * c.zoom_pan.first, py_ = dir * c.zoom_pan.second;
+                const int w = c.w, h = c.h;
+                std::size_t big = 0, counted = 0;
+                for (int y = std::max(0, -py_); y < std::min(h, h - py_); ++y) {
+                    for (int x = std::max(0, -px_); x < std::min(w, w - px_); ++x) {
+                        const std::size_t a = static_cast<std::size_t>(y * w + x) * 4;
+                        const std::size_t b =
+                            static_cast<std::size_t>((y + py_) * w + (x + px_)) * 4;
+                        int d = 0;
+                        for (std::size_t q = 0; q < 3; ++q) {
+                            d = std::max(d, std::abs(int{now_px[a + q]} - int{prev_px[b + q]}));
+                        }
+                        big += d > 40 ? 1U : 0U;
+                        ++counted;
+                    }
+                }
+                const double frac = 100.0 * static_cast<double>(big) /
+                                    static_cast<double>(std::max<std::size_t>(counted, 1));
+                ++pop_frames;
+                pop_sum += frac;
+                pop_over += frac > 0.5 ? 1U : 0U;
+                if (frac > pop_worst) {
+                    pop_worst = frac;
+                    pop_worst_at = i;
+                }
+            }
+            prev_px = std::move(now_px);
+        }
+        if (any_step && steps <= 8 &&
+            std::find(c.zoom_dump_after.begin(), c.zoom_dump_after.end(), i - last_step) !=
+                c.zoom_dump_after.end()) {
+            dump(steps - 1, i - last_step, group);
+        }
         // Window-thread time only: the viewer does not wait for the GPU (the
         // wait is still in the last stage column and in the `wait` column).
         r.total -= r.wait;
         r.frame_no = i;
+        r.wall_ms = std::chrono::duration<double, std::milli>(SC::now() - start).count();
         rows.push_back(r);
         // Pace like a display: the window thread sleeps out the rest of the
         // frame interval (workers run meanwhile).
@@ -498,6 +680,13 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, std::size_t& group,
         time = static_cast<std::uint64_t>(
                    std::chrono::duration<double, std::milli>(SC::now() - start).count()) +
                1000;
+    }
+    if (c.pop) {
+        std::printf("swap pop: %zu frame pairs of one group compared, pixels changing by more "
+                    "than 40 levels: mean %.3f %%, worst %.3f %% (frame %zu), %zu pairs above "
+                    "0.5 %%\n",
+                    pop_frames, pop_frames > 0 ? pop_sum / static_cast<double>(pop_frames) : 0.0,
+                    pop_worst, pop_worst_at, pop_over);
     }
     report(c, "zoom", c.async_chunks ? "async" : "blocking",
            ("zoom/" + std::to_string(c.zoom_every)).c_str(), rows);
@@ -518,8 +707,161 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, std::size_t& group,
                         r.sync, r.create, r.write, r.sprites, r.decode, r.atlas, r.sprites_new,
                         r.fluid, r.encode, r.wait);
         }
+        // Every step of the slow frames (GPU): the steps add up to the compositor's
+        // total, so the time of a spike is named here.
+        bool any = false;
+        for (const auto& r : list) {
+            if (r.total <= c.spike_ms || r.steps.empty()) {
+                continue;
+            }
+            if (!any) {
+                std::printf("\nsteps of the slow frames (ms; steps below 0.05 left out; dropped "
+                            "= GPU chunks dropped, freed = planes freed on this thread, "
+                            "placeholders = chunks made without content, realloc = piece buffer "
+                            "grown):\n\n");
+                any = true;
+            }
+            double sum = 0;
+            std::string line;
+            char buf[96];
+            for (const auto& [name, ms] : r.steps) {
+                sum += ms;
+                if (ms >= 0.05) {
+                    std::snprintf(buf, sizeof buf, "%s%s %.2f", line.empty() ? "" : ", ",
+                                  name.c_str(), ms);
+                    line += buf;
+                }
+            }
+            std::printf("- #%zu (group %zu, total %.1f, wait %.1f): %s; sum %.2f; dropped %zu, "
+                        "freed %zu, placeholders %zu, warm planes %zu, realloc %s\n",
+                        r.frame_no, r.group, r.total, r.wait, line.c_str(), sum, r.dropped,
+                        r.planes_freed, r.placeholders, r.planes_warm,
+                        r.pieces_realloc ? "yes" : "no");
+        }
     };
     std::printf("\nzoom steps deferred until the target group was ready: %zu frames\n", deferred);
+    {
+        // Frames with visible chunks not built, and how many of those frames drew
+        // stand-ins for some chunk (GPU; the frame right after a zoom step is the
+        // one that used to show open sea).
+        std::size_t missing = 0, covered = 0, after = 0, after_covered = 0;
+        for (std::size_t i = 0; i < rows.size(); ++i) {
+            const bool first = i > 0 && rows[i].group != rows[i - 1].group;
+            missing += rows[i].missing > 0 ? 1U : 0U;
+            covered += rows[i].missing > 0 && rows[i].stand > 0 ? 1U : 0U;
+            after += first && rows[i].missing > 0 ? 1U : 0U;
+            after_covered += first && rows[i].missing > 0 && rows[i].stand > 0 ? 1U : 0U;
+        }
+        std::printf("frames with chunks not built: %zu of %zu (%zu drew stand-ins); first frames "
+                    "after a zoom step with chunks not built: %zu (%zu drew stand-ins)\n",
+                    missing, rows.size(), covered, after, after_covered);
+        // Open sea in the view: part of a visible chunk that is not on the GPU and
+        // has no source in any zoom group (by area: a hole in a stand-in counts).
+        // The longest run of such frames, in frames and wall time, is what a
+        // viewer sees as a patch that pops in.
+        std::size_t open_frames = 0, run = 0, longest = 0, longest_at = 0, open_chunks = 0,
+                    open_built = 0;
+        std::uint64_t open_px = 0, open_px_worst = 0;
+        for (std::size_t i = 0; i < rows.size(); ++i) {
+            if (rows[i].open > 0) {
+                ++open_frames;
+                open_chunks += rows[i].open;
+                open_built += rows[i].open_built;
+                open_px += rows[i].open_px;
+                open_px_worst = std::max(open_px_worst, rows[i].open_px);
+                if (++run > longest) {
+                    longest = run;
+                    longest_at = i;
+                }
+            } else {
+                run = 0;
+            }
+        }
+        const double longest_ms =
+            longest > 0 ? rows[longest_at].wall_ms - rows[longest_at + 1 - longest].wall_ms : 0.0;
+        std::printf("frames showing open sea (a visible chunk with no source in any group): %zu "
+                    "of %zu, %zu chunk-frames in all (%zu built on the CPU, waiting for the "
+                    "upload); longest run %zu frames / %.0f ms; open-sea pixels %llu in all, "
+                    "%.2f %% of the view at worst\n",
+                    open_frames, rows.size(), open_chunks, open_built, longest, longest_ms,
+                    static_cast<unsigned long long>(open_px),
+                    100.0 * static_cast<double>(open_px_worst) /
+                        (static_cast<double>(c.w) * static_cast<double>(c.h)));
+        // Dissolves after the first second (a cold start fills the view with them):
+        // on a plain pan none should happen, the margin is uploaded ahead.
+        std::size_t fade_frames = 0, fade_chunks = 0;
+        for (const auto& r : rows) {
+            if (r.wall_ms >= 1000.0 && r.fading > 0) {
+                ++fade_frames;
+                fade_chunks += r.fading;
+            }
+        }
+        std::printf("frames with chunks dissolving in after the first second: %zu (%zu "
+                    "chunk-frames)\n",
+                    fade_frames, fade_chunks);
+        // The resident CPU chunk cache (GPU path: sampled after every frame).
+        std::size_t peak_bytes = 0, peak_chunks = 0, sum_bytes = 0;
+        for (const auto& r : rows) {
+            peak_bytes = std::max(peak_bytes, r.cache_bytes);
+            peak_chunks = std::max(peak_chunks, r.cache_chunks);
+            sum_bytes += r.cache_bytes;
+        }
+        if (peak_chunks > 0) {
+            std::printf("CPU chunk cache: peak %.0f MB, mean %.0f MB, peak %zu chunks\n",
+                        static_cast<double>(peak_bytes) / 1048576.0,
+                        static_cast<double>(sum_bytes) / static_cast<double>(rows.size()) /
+                            1048576.0,
+                        peak_chunks);
+        }
+        // GPU-built chunks (T11 2a): the resident chunk atlas and the build counts.
+        double peak_atlas = 0;
+        std::size_t total_gpu_built = 0, total_fallback = 0;
+        for (const auto& r : rows) {
+            peak_atlas = std::max(peak_atlas, r.chunk_atlas_mb);
+            total_gpu_built += r.gpu_built;
+            total_fallback += r.cpu_fallback;
+        }
+        if (peak_atlas > 0 || total_gpu_built > 0) {
+            std::printf("GPU chunk atlas: peak resident %.1f MiB; %zu chunks built by the compute "
+                        "pass, %zu CPU fallbacks\n",
+                        peak_atlas, total_gpu_built, total_fallback);
+        }
+    }
+    if (c.zoom_every > 0) {
+        // How long each zoom step's transient lasts (wall ms since the step's frame):
+        // chunks missing from the CPU cache, stand-in chunks drawn on the GPU (built
+        // but not yet uploaded count too), and the wave window being prepared.
+        std::printf("\ntransients per zoom step (frames / ms after the step until the last "
+                    "frame that still had them):\n\n| step | to group | missing | stand-ins | "
+                    "wave window |\n|---|---|---|---|---|\n");
+        std::size_t step = 0;
+        for (std::size_t i = 1; i < rows.size(); ++i) {
+            if (rows[i].group == rows[i - 1].group) {
+                continue;
+            }
+            auto last = [&](auto&& has) {
+                std::size_t n = 0;
+                bool any = false;
+                for (std::size_t j = i; j < rows.size() && rows[j].group == rows[i].group; ++j) {
+                    if (has(rows[j])) {
+                        n = j - i + 1;
+                        any = true;
+                    }
+                }
+                char b[48];
+                if (!any) {
+                    return std::string("-");
+                }
+                std::snprintf(b, sizeof b, "%zu fr / %.0f ms", n,
+                              rows[i + n - 1].wall_ms - rows[i].wall_ms);
+                return std::string(b);
+            };
+            std::printf("| %zu | %zu | %s | %s | %s |\n", step++, rows[i].group,
+                        last([](const Row& r) { return r.missing > 0; }).c_str(),
+                        last([](const Row& r) { return r.stand > 0; }).c_str(),
+                        last([](const Row& r) { return r.fluid_setting_up; }).c_str());
+        }
+    }
     slow("slow warm-up frames", warm);
     slow("slow frames of the zoom path", rows);
     std::printf("\n");
@@ -529,6 +871,17 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
     // The GPU compositor draws the ships itself: chunks without them.
     render::FrameRenderer fr(c.threads, g == nullptr);
     fr.river_flow = c.river_flow;
+    // GpuList builder only on the GPU path (the CPU path replays the list).
+    if (g != nullptr) {
+        fr.chunk_builder = c.chunk_builder;
+        fr.bin_px = c.bin_px;
+    }
+    if (c.lookahead) {
+        fr.max_lookahead_chunks = *c.lookahead;
+    }
+    if (c.stand_ins && g == nullptr) {
+        fr.stand_ins = *c.stand_ins;
+    }
     if (c.async_chunks) {
         fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (c.threads + 1) / 2));
     }
@@ -546,13 +899,38 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
     // One frame on the selected renderer; measured GPU frames wait for the
     // card (warm-up frames do not, as the Rust benchmark).
     std::size_t frame_group = c.group;
+    std::vector<std::uint32_t> grid_buffer;
     auto frame = [&](render::Rect view, std::uint64_t t, bool wait_gpu) -> Row {
+        // --zoom-factor: the grid composed for the window at the factor, then resampled.
+        std::optional<render::ResampledView> zoomed;
+        if (c.zoom_factor != 1.0 || c.resample) {
+            zoomed = render::resampled_view(view.x + view.w / 2.0, view.y + view.h / 2.0,
+                                            static_cast<std::uint32_t>(c.w),
+                                            static_cast<std::uint32_t>(c.h), c.zoom_factor,
+                                            render::resample_filter_for(c.zoom_factor, c.resample));
+        }
+        const render::Rect grid_view = zoomed ? zoomed->view : view;
 #ifdef ANNO_BENCH_GPU
         if (g != nullptr) {
-            const auto st =
-                g->render(fr, scene, view, frame_group, t, c.style, target->second.get());
-            Row r{st.total_ms, st.chunks_built, st.chunks_ms, st.chunks_missing, {}};
+            const auto st = g->render(fr, scene, grid_view, frame_group, t, c.style,
+                                      target->second.get(), zoomed ? &zoomed->resample : nullptr);
+            Row r;
+            r.total = st.total_ms;
+            r.built = st.chunks_built;
+            r.chunk_ms = st.chunks_ms;
+            r.missing = st.chunks_missing;
             r.group = frame_group;
+            r.stand = st.stand_in_chunks;
+            r.open = st.open_sea_chunks;
+            r.open_built = st.open_sea_built;
+            r.fading = st.chunks_fading;
+            r.open_px = st.open_sea_px;
+            r.cache_chunks = fr.cached();
+            r.cache_bytes = fr.cached_bytes();
+            r.chunk_atlas_mb = st.chunk_atlas_mb;
+            r.gpu_built = st.gpu_built_chunks;
+            r.cpu_fallback = st.chunks_cpu_fallback;
+            r.fluid_setting_up = st.fluid_setting_up;
             r.sea = st.sea_ms;
             r.sync = st.chunk_sync_ms;
             r.decode = st.decode_ms;
@@ -564,6 +942,14 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
             r.sprites_new = st.sprites_new;
             r.create = st.upload_create_ms;
             r.write = st.upload_write_ms;
+            for (const auto& step : st.steps()) {
+                r.steps.emplace_back(step.name, step.ms);
+            }
+            r.dropped = st.chunks_dropped;
+            r.planes_freed = st.planes_freed;
+            r.placeholders = st.placeholders;
+            r.planes_warm = st.planes_warm;
+            r.pieces_realloc = st.pieces_realloc;
             if (!wait_gpu) {
                 return r;
             }
@@ -579,12 +965,28 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
         }
 #endif
         (void)wait_gpu;
-        const auto st = fr.render(scene, view, frame_group, t, c.style, out.data());
-        Row r{st.total_ms,
-              st.chunks_built,
-              st.chunks_ms,
-              st.chunks_missing,
-              {st.ground_ms, st.water_objects_ms, st.sea_ms, st.objects_ms}};
+        double resample_ms = 0;
+        render::FrameStats st;
+        if (zoomed) {
+            grid_buffer.resize(static_cast<std::size_t>(grid_view.w) *
+                               static_cast<std::size_t>(grid_view.h));
+            st = fr.render(scene, grid_view, frame_group, t, c.style, grid_buffer.data());
+            const auto t0 = std::chrono::steady_clock::now();
+            render::cpu_resample(grid_buffer.data(), grid_view.w, grid_view.h, zoomed->resample,
+                                 static_cast<std::uint32_t>(c.w), static_cast<std::uint32_t>(c.h),
+                                 out.data());
+            resample_ms =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+                    .count();
+        } else {
+            st = fr.render(scene, view, frame_group, t, c.style, out.data());
+        }
+        Row r;
+        r.total = st.total_ms + resample_ms;
+        r.built = st.chunks_built;
+        r.chunk_ms = st.chunks_ms;
+        r.missing = st.chunks_missing;
+        r.stages = {st.ground_ms, st.water_objects_ms, st.sea_ms, st.objects_ms};
         r.group = frame_group;
         return r;
     };
@@ -603,11 +1005,12 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
         return;
     }
 #endif
-    if (c.zoom_every > 0) {
+    // A pan without zoom steps (--zoom 0 --zoom-pan dx,dy) runs the same path.
+    if (c.zoom_every > 0 || c.zoom_pan != std::pair{0, 0}) {
         // The viewer renders the sea patterns of all groups on background
         // threads from the start; so does the zoom path.
         std::vector<std::thread> seas;
-        for (std::size_t grp = 0; grp < render::kGroups; ++grp) {
+        for (std::size_t grp = 0; grp < scene.levels().size(); ++grp) {
             seas.emplace_back([&scene, grp] { scene.sea(grp); });
         }
         auto ready = [&](std::size_t grp) {
@@ -618,7 +1021,36 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
 #endif
             return scene.sea_built(grp);
         };
-        run_zoom(c, frame, ready, frame_group, cam, time);
+        // The frame as RGBA bytes (GPU), for --pop.
+        auto grab = [&]() -> std::vector<std::uint8_t> {
+#ifdef ANNO_BENCH_GPU
+            if (g != nullptr) {
+                return g->read_back(target->first.get(), static_cast<std::uint32_t>(c.w),
+                                    static_cast<std::uint32_t>(c.h));
+            }
+#endif
+            return {};
+        };
+        auto dump = [&](std::size_t n, std::size_t after, std::size_t grp) {
+#ifdef ANNO_BENCH_GPU
+            if (g == nullptr || c.zoom_dump.empty()) {
+                return;
+            }
+            const auto px = g->read_back(target->first.get(), static_cast<std::uint32_t>(c.w),
+                                         static_cast<std::uint32_t>(c.h));
+            const std::string name = c.zoom_dump + "/zoom_" + std::to_string(n) + "_f" +
+                                     std::to_string(after) + "_g" + std::to_string(grp) + "_" +
+                                     std::to_string(c.w) + "x" + std::to_string(c.h) + ".rgba";
+            std::ofstream f(name, std::ios::binary);
+            f.write(reinterpret_cast<const char*>(px.data()),
+                    static_cast<std::streamsize>(px.size()));
+#else
+            (void)n;
+            (void)after;
+            (void)grp;
+#endif
+        };
+        run_zoom(c, frame, ready, dump, grab, frame_group, cam, time);
         for (auto& t : seas) {
             t.join();
         }
@@ -654,13 +1086,559 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
     fr.set_workers(nullptr);
 }
 
+/// The bounds of island `island` at zoom level `group` of the scene: its placement at
+/// the built level, and at a derived level that rectangle reduced by 2^shift, rounded
+/// outwards (as Scene::bounds does for the whole scene).
+std::optional<render::Rect> island_bounds(const render::Scene& scene, std::size_t group,
+                                          std::size_t island) {
+    const render::ZoomLevels& levels = scene.levels();
+    if (group >= levels.size()) {
+        return std::nullopt;
+    }
+    const std::size_t base = levels.ancestor(group);
+    if (base >= render::kGroups) {
+        return std::nullopt;
+    }
+    for (const auto& q : scene.layouts[base]) {
+        if (q.index != island) {
+            continue;
+        }
+        const int r = 1 << levels[group].shift;
+        const int x0 = render::div_euclid(q.bounds.x, r), y0 = render::div_euclid(q.bounds.y, r);
+        const int x1 = -render::div_euclid(-(q.bounds.x + q.bounds.w), r);
+        const int y1 = -render::div_euclid(-(q.bounds.y + q.bounds.h), r);
+        return render::Rect{x0, y0, x1 - x0, y1 - y0};
+    }
+    return std::nullopt;
+}
+
+/// --fill-time: the first zoom-out. A window of `--res` (the first) at group 2 on the
+/// island is built with `--threads` chunk workers (until its chunks are cached; the
+/// prefetch goes on, as in the viewer); then the same window
+/// is shown at levels 3, 4 and 5 in turn (derived, centred on the same scene point) and
+/// the wall time until every shown chunk is cached is printed per level, with the
+/// chunks built on the way (`--derive old` = every derived chunk builds its descendants
+/// from nothing, as the first stage 3 build did; `cache` = from the cached chunks).
+int fill_time(const render::Scene& scene, const Options& o, std::size_t island) {
+    const auto [w, h] = o.resolutions.front();
+    const render::Placement* p = nullptr;
+    for (const auto& q : scene.layouts[2]) {
+        if (q.index == island) {
+            p = &q;
+        }
+    }
+    if (p == nullptr) {
+        std::fputs("no placement for that island\n", stderr);
+        return 1;
+    }
+    render::FrameRenderer fr(o.threads, false);
+    fr.chunk_builder = o.chunk_builder;
+    fr.bin_px = o.bin_px;
+    fr.derive_from_cache = o.derive_from_cache;
+    fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, o.threads));
+    // The sea patterns are not needed to build chunks.
+    const render::Rect v2{p->bounds.x + p->bounds.w / 2 - w / 2,
+                          p->bounds.y + p->bounds.h / 2 - h / 2, w, h};
+    // Until every chunk the view shows is cached; the prefetch (neighbouring levels, the
+    // margin) goes on in the background, as it does while the owner zooms: the next step
+    // starts at once, with whatever the prefetch has done by then.
+    auto settle = [&](render::Rect view, std::size_t level) {
+        const auto t0 = std::chrono::steady_clock::now();
+        std::size_t missing = 1;
+        while (missing != 0) {
+            missing = std::get<2>(fr.update_chunks(scene, view, level));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            if (std::chrono::steady_clock::now() - t0 > std::chrono::minutes(10)) {
+                break;
+            }
+        }
+        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+            .count();
+    };
+    auto builds = [&] {
+        std::size_t n = 0;
+        // Keys seen by the cache: every level, a generous range around the view.
+        for (std::size_t level = 0; level < scene.levels().size(); ++level) {
+            for (int cy = -64; cy < 64; ++cy) {
+                for (int cx = -64; cx < 64; ++cx) {
+                    n += fr.chunk_builds({level, cx, cy});
+                }
+            }
+        }
+        return n;
+    };
+    std::printf(
+        "| threads | derive | step | window | chunks shown | ms | chunks built in all | cached |\n"
+        "|---|---|---|---|---|---|---|---|\n");
+    const double ms2 = settle(v2, 2);
+    std::printf("| %zu | %s | group 2 | %dx%d | %zu | %.0f | %zu | %zu |\n", o.threads,
+                o.derive_from_cache ? "cache" : "old", w, h, render::visible_chunks(v2).size(), ms2,
+                builds(), fr.cached());
+    render::Rect view = v2;
+    std::size_t from = 2;
+    for (const std::size_t level : {std::size_t{3}, std::size_t{4}, std::size_t{5}}) {
+        view = render::zoomed_view(view, from, level, scene.levels());
+        from = level;
+        const double ms = settle(view, level);
+        std::printf("| %zu | %s | level %zu | %dx%d | %zu | %.0f | %zu | %zu |\n", o.threads,
+                    o.derive_from_cache ? "cache" : "old", level, w, h,
+                    render::visible_chunks(view).size(), ms, builds(), fr.cached());
+    }
+    fr.set_workers(nullptr);
+    return 0;
+}
+
+#ifdef ANNO_BENCH_GPU
+/// --scale-cost g:scale[:filter],..: the GPU time of a continuous zoom frame (the
+/// compositor and the resample pass, from the start of the first pass to the end of
+/// the last, timestamps) for each point: the scene grid of zoom group g composed for
+/// the window at `scale`, resampled with `filter` (default as the viewer: box below
+/// 1, area from 1). Per point the chunks the grid shows, the chunks cached, the
+/// chunks missing and dropped over the measured frames (a visible chunk trimmed
+/// shows as missing), after a settle until everything is built and uploaded.
+int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, std::size_t island) {
+    auto filter_of = [](std::string_view s, double scale) {
+        if (s == "nearest") {
+            return gpu::ResampleFilter::Nearest;
+        }
+        if (s == "bilinear") {
+            return gpu::ResampleFilter::Bilinear;
+        }
+        if (s == "box") {
+            return gpu::ResampleFilter::Box;
+        }
+        if (s == "area") {
+            return gpu::ResampleFilter::Area;
+        }
+        return scale < 1.0 ? gpu::ResampleFilter::Box : gpu::ResampleFilter::Area;
+    };
+    auto name_of = [](gpu::ResampleFilter f) {
+        return f == gpu::ResampleFilter::Nearest    ? "nearest"
+               : f == gpu::ResampleFilter::Bilinear ? "bilinear"
+               : f == gpu::ResampleFilter::Box      ? "box"
+                                                    : "area";
+    };
+    const render::WaterStyle style = o.styles.front(); // --styles enhanced for the other
+    std::printf("| window | group | scale | filter | grid | chunks shown | cached | missing | "
+                "dropped | GPU ms p50 | GPU ms max | window thread ms p50 |\n"
+                "|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+    for (const auto& [w, h] : o.resolutions) {
+        for (const auto& pt : o.scale_cost) {
+            const auto b = island_bounds(scene, pt.group, island);
+            if (!b) {
+                std::fputs("no placement for that island\n", stderr);
+                return 1;
+            }
+            const double cx = b->x + b->w / 2.0 + o.at.first;
+            const double cy = b->y + b->h / 2.0 + o.at.second;
+            const auto filter = filter_of(pt.filter, pt.scale);
+            const auto rv = gpu::resampled_view(cx, cy, static_cast<std::uint32_t>(w),
+                                                static_cast<std::uint32_t>(h), pt.scale, filter);
+            render::FrameRenderer fr(o.threads, false);
+            fr.chunk_builder = o.chunk_builder;
+            fr.bin_px = o.bin_px;
+            fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (o.threads + 1) / 2));
+            const auto target =
+                g.offscreen_target(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));
+            std::uint64_t t = 0;
+            auto frame = [&] {
+                const auto st = g.render(fr, scene, rv.view, pt.group, t, style,
+                                         target.second.get(), &rv.resample);
+                t += 16;
+                return st;
+            };
+            // --wave-fade-hold: the window appears at clock 1000 and the weight of the
+            // simulation is then held at k.
+            std::uint64_t fade_clock = 1000;
+            g.set_fade_clock([&] { return fade_clock; });
+            // Settle: until every shown chunk is built and uploaded (30 s at most).
+            const auto settle_start = std::chrono::steady_clock::now();
+            std::size_t quiet = 0;
+            while (quiet < 20 &&
+                   std::chrono::steady_clock::now() - settle_start < std::chrono::seconds(30)) {
+                const auto st = frame();
+                quiet = st.chunks_missing == 0 && st.chunks_uploaded == 0 && st.placeholders == 0
+                            ? quiet + 1
+                            : 0;
+                std::this_thread::sleep_for(std::chrono::milliseconds(8));
+            }
+            if (o.wave_fade_hold >= 0.0) {
+                fade_clock = 1000 + static_cast<std::uint64_t>(o.wave_fade_hold * 1000.0);
+            }
+            std::vector<double> gpu_ms, cpu_ms;
+            std::size_t missing = 0, dropped = 0, no_reading = 0;
+            for (int i = 0; i < 60; ++i) {
+                const auto st = frame();
+                missing += st.chunks_missing;
+                dropped += st.chunks_dropped;
+                cpu_ms.push_back(st.total_ms);
+                const auto sea = g.sea_pass_ms(); // waits for the GPU and reads the ticks
+                if (const auto ms = g.frame_gpu_ms(); sea && ms) {
+                    gpu_ms.push_back(*ms);
+                } else {
+                    ++no_reading;
+                }
+            }
+            auto pct = [](std::vector<double> v, double q) {
+                if (v.empty()) {
+                    return 0.0;
+                }
+                std::sort(v.begin(), v.end());
+                return v[static_cast<std::size_t>(
+                    std::lround(q * static_cast<double>(v.size() - 1)))];
+            };
+            std::printf("| %dx%d | %zu | %.3f | %s | %dx%d | %zu | %zu | %zu | %zu | ", w, h,
+                        pt.group, rv.resample.scale, name_of(filter), rv.view.w, rv.view.h,
+                        render::visible_chunks(rv.view).size(), fr.cached(), missing, dropped);
+            if (gpu_ms.empty()) {
+                std::printf("no GPU timestamps | | %.2f |\n", pct(cpu_ms, 0.5));
+            } else {
+                std::printf("%.2f | %.2f | %.2f |\n", pct(gpu_ms, 0.5), pct(gpu_ms, 1.0),
+                            pct(cpu_ms, 0.5));
+            }
+            if (no_reading > 0) {
+                std::fprintf(stderr, "%zu of 60 frames without a GPU reading\n", no_reading);
+            }
+            fr.set_workers(nullptr);
+        }
+    }
+    return 0;
+}
+#endif
+
+#ifdef ANNO_BENCH_GPU
+/// --zoom-sweep seconds: the continuous zoom as the viewer runs it, on the GPU: from tile
+/// width 42 out to the smallest level, in to the largest zoom, out again to the smallest
+/// and back to 42, `seconds` per leg, the target moving evenly in the logarithm, eased
+/// (120 ms), with a pan of 300 screen pixels per second reversing every leg and the cursor
+/// 25 % / 15 % of the window off the centre as the anchor; frames paced at 500 Hz
+/// (2 ms) so that the chunk builders work in real time. `--derived n` adds the levels
+/// below group 2. Per zoom level shown: the window thread's time per frame (p50 / p95 /
+/// p99 / max), the GPU time of the frame (timestamps; compositor and resample), the
+/// most chunks the grid showed, the most megabytes the chunk cache held, the frames above
+/// 8 ms and what the worst of them spent its time on.
+int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, std::size_t island,
+               double seconds) {
+    const render::ZoomLevels& levels = scene.levels();
+    for (std::size_t grp = 0; grp < levels.size(); ++grp) {
+        scene.sea(grp);
+    }
+    const auto b2 = island_bounds(scene, 2, island);
+    if (!b2) {
+        std::fputs("no placement for that island\n", stderr);
+        return 1;
+    }
+    const render::WaterStyle style = o.styles.front();
+    constexpr double kFrameMs = 2.0;
+    constexpr double kBusyMs = 8.0;
+    for (const auto& [w, h] : o.resolutions) {
+        render::FrameRenderer fr(o.threads, false);
+        fr.chunk_builder = o.chunk_builder;
+        fr.bin_px = o.bin_px;
+        fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (o.threads + 1) / 2));
+        const auto target =
+            g.offscreen_target(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));
+        auto ready = [&](std::size_t grp) { return g.group_ready(scene, grp); };
+        // Start as the viewer does: group 1 on the island, its tile width.
+        anno::app::ZoomState s;
+        s.group = 1;
+        s.now = s.target = levels.tile_w(1);
+        const auto b1 = *island_bounds(scene, 1, island);
+        s.cam_x = b1.x + b1.w / 2.0;
+        s.cam_y = b1.y + b1.h / 2.0;
+        s.anchor_x = 0.25 * w;
+        s.anchor_y = 0.15 * h;
+        const double lo =
+            std::max(levels.tile_w(levels.size() - 1) / anno::app::kZoomEndFactor, 0.5);
+        const double hi = levels.tile_w(0) * anno::app::kZoomEndFactor;
+        const std::array<std::pair<double, double>, 4> legs = {
+            {{levels.tile_w(1), lo}, {lo, hi}, {hi, lo}, {lo, levels.tile_w(1)}}};
+        struct Frame {
+            std::size_t group;
+            double total, gpu, scale;
+            std::size_t visible;
+            std::vector<std::pair<const char*, double>> steps;
+        };
+        std::vector<Frame> frames;
+        std::vector<std::size_t> cache_mb(levels.size(), 0);
+        std::uint64_t t_ms = 0;
+        auto last = std::chrono::steady_clock::now();
+        std::size_t index = 0;
+        for (std::size_t leg = 0; leg < legs.size(); ++leg) {
+            const auto [from, to] = legs[leg];
+            const auto frames_in_leg = static_cast<std::size_t>(seconds * 1000.0 / kFrameMs);
+            for (std::size_t i = 0; i < frames_in_leg; ++i, ++index) {
+                const auto frame_start = std::chrono::steady_clock::now();
+                const double dt_ms =
+                    std::chrono::duration<double, std::milli>(frame_start - last).count();
+                last = frame_start;
+                const double u = static_cast<double>(i) / static_cast<double>(frames_in_leg);
+                s.target = from * std::pow(to / from, u);
+                s = anno::app::zoom_advance(s, dt_ms, 120, ready, levels);
+                const double scale = s.now / levels.tile_w(s.group);
+                // The pan: 300 screen pixels per second, the direction reversing each leg.
+                const double pan = (leg % 2 == 0 ? 1.0 : -1.0) * 300.0 * dt_ms / 1000.0 / scale;
+                s.cam_x += pan;
+                if (const auto bnd = scene.bounds(s.group)) {
+                    s.cam_x = std::clamp(s.cam_x, static_cast<double>(bnd->x),
+                                         static_cast<double>(bnd->x) + bnd->w);
+                    s.cam_y = std::clamp(s.cam_y, static_cast<double>(bnd->y),
+                                         static_cast<double>(bnd->y) + bnd->h);
+                }
+                const auto rv = render::resampled_view(
+                    s.cam_x, s.cam_y, static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h),
+                    scale, render::resample_filter_for(scale));
+                fr.motion_centre = anno::app::pan_centre(s);
+                const auto st = g.render(fr, scene, rv.view, s.group, t_ms, style,
+                                         target.second.get(), &rv.resample);
+                t_ms += 2;
+                Frame f;
+                f.group = s.group;
+                f.total = st.total_ms;
+                f.scale = scale;
+                f.visible = render::visible_chunks(rv.view).size();
+                const auto sea = g.sea_pass_ms(); // waits for the GPU
+                f.gpu = sea && g.frame_gpu_ms() ? *g.frame_gpu_ms() : -1.0;
+                if (f.total > kBusyMs) {
+                    for (const auto& step : st.steps()) {
+                        f.steps.emplace_back(step.name, step.ms);
+                    }
+                }
+                if (index % 64 == 0) {
+                    cache_mb[s.group] = std::max(cache_mb[s.group], fr.cached_bytes() >> 20);
+                }
+                frames.push_back(std::move(f));
+                const auto spent = std::chrono::steady_clock::now() - frame_start;
+                const auto pace = std::chrono::duration<double, std::milli>(kFrameMs);
+                if (spent < pace) {
+                    std::this_thread::sleep_for(pace - spent);
+                }
+            }
+        }
+        std::printf("\n%dx%d, %zu frames, sweep 42 -> %.1f -> %.1f -> %.1f -> 42 tile width, "
+                    "%.0f s per leg, %s water\n\n",
+                    w, h, frames.size(), lo, hi, lo, seconds,
+                    style == render::WaterStyle::Enhanced ? "enhanced" : "original");
+        std::printf(
+            "| level | scale range | frames | thread ms p50 | p95 | p99 | max | GPU ms p50 | "
+            "GPU ms max | chunks shown (max) | cache MB (max) | frames > %.0f ms |\n"
+            "|---|---|---|---|---|---|---|---|---|---|---|---|\n",
+            kBusyMs);
+        auto pct = [](std::vector<double> v, double q) {
+            if (v.empty()) {
+                return 0.0;
+            }
+            std::sort(v.begin(), v.end());
+            return v[static_cast<std::size_t>(std::lround(q * static_cast<double>(v.size() - 1)))];
+        };
+        std::vector<std::pair<double, std::string>> worst;
+        for (std::size_t grp = 0; grp < levels.size(); ++grp) {
+            std::vector<double> total, gpu_ms;
+            double smin = 1e9, smax = 0;
+            std::size_t visible = 0, busy = 0, count = 0;
+            for (const Frame& f : frames) {
+                if (f.group != grp) {
+                    continue;
+                }
+                ++count;
+                total.push_back(f.total);
+                if (f.gpu >= 0) {
+                    gpu_ms.push_back(f.gpu);
+                }
+                smin = std::min(smin, f.scale);
+                smax = std::max(smax, f.scale);
+                visible = std::max(visible, f.visible);
+                if (f.total > kBusyMs) {
+                    ++busy;
+                    std::string what;
+                    for (const auto& [name, ms] : f.steps) {
+                        if (ms >= 1.0) {
+                            char buf[64];
+                            std::snprintf(buf, sizeof buf, "%s %.2f, ", name, ms);
+                            what += buf;
+                        }
+                    }
+                    char head[96];
+                    std::snprintf(head, sizeof head, "level %zu, scale %.2f, %.2f ms: ", grp,
+                                  f.scale, f.total);
+                    worst.emplace_back(f.total, head + what);
+                }
+            }
+            if (count == 0) {
+                continue;
+            }
+            std::printf("| %zu | %.2f - %.2f | %zu | %.2f | %.2f | %.2f | %.2f | %.2f | %.2f | "
+                        "%zu | %zu | %zu |\n",
+                        grp, smin, smax, count, pct(total, 0.5), pct(total, 0.95), pct(total, 0.99),
+                        pct(total, 1.0), pct(gpu_ms, 0.5), pct(gpu_ms, 1.0), visible, cache_mb[grp],
+                        busy);
+        }
+        std::sort(worst.begin(), worst.end(), std::greater<>());
+        std::printf("\nthe busiest frames above %.0f ms (%zu in all):\n", kBusyMs, worst.size());
+        for (std::size_t i = 0; i < worst.size() && i < 8; ++i) {
+            std::printf("- %s\n", worst[i].second.c_str());
+        }
+        fr.set_workers(nullptr);
+    }
+    return 0;
+}
+#endif
+
+/// --chunk-profile: builds the chunks of island `island` per group, as the
+/// viewer's workers do (render_chunk without ships, the river flow waited for),
+/// on each thread count, from a freshly loaded scene (cold: sprite decodes, the
+/// island water and the river flow solved on first use) and again on the same
+/// scene (warm), and prints the time per stage (anno/render/profile.hpp).
+int chunk_profile(const fs::path& dir, const fs::path& file, const Options& o, std::size_t island) {
+    namespace profile = render::profile;
+    struct Record {
+        double total = 0;
+        profile::Times stages;
+        bool land = false;
+    };
+    auto pct = [](std::vector<double> v, double p) {
+        if (v.empty()) {
+            return 0.0;
+        }
+        std::sort(v.begin(), v.end());
+        const auto k = static_cast<std::size_t>(p * static_cast<double>(v.size() - 1) + 0.5);
+        return v[std::min(k, v.size() - 1)];
+    };
+    std::printf("%s, island %zu, %u hardware threads\n\n", file.string().c_str(), island,
+                std::thread::hardware_concurrency());
+    for (const std::size_t group : o.groups) {
+        for (const std::size_t threads : o.profile_threads) {
+            auto loaded = anno::app::load_scene(dir, file);
+            if (!loaded) {
+                std::fprintf(stderr, "%s: %s\n", file.string().c_str(), loaded.error().c_str());
+                return 1;
+            }
+            loaded.value().scene->river_cfg.light_gain = o.river_gain;
+            const render::Scene& scene = *loaded.value().scene;
+            const auto place =
+                std::find_if(scene.layouts[group].begin(), scene.layouts[group].end(),
+                             [&](const render::Placement& p) { return p.index == island; });
+            if (place == scene.layouts[group].end()) {
+                std::fprintf(stderr, "island %zu is not in group %zu\n", island, group);
+                return 1;
+            }
+            const render::Rect b = place->bounds;
+            auto floor_div = [](int a, int d) { return a >= 0 ? a / d : -((-a + d - 1) / d); };
+            std::vector<std::pair<int, int>> keys;
+            for (int cy = floor_div(b.y, render::kChunk);
+                 cy <= floor_div(b.y + b.h - 1, render::kChunk); ++cy) {
+                for (int cx = floor_div(b.x, render::kChunk);
+                     cx <= floor_div(b.x + b.w - 1, render::kChunk); ++cx) {
+                    keys.emplace_back(cx, cy);
+                }
+            }
+            // Nearest the island's centre first (ties in row order: deterministic).
+            const double mx = b.x + b.w / 2.0, my = b.y + b.h / 2.0;
+            auto dist = [&](const std::pair<int, int>& k) {
+                const double x = (k.first + 0.5) * render::kChunk - mx;
+                const double y = (k.second + 0.5) * render::kChunk - my;
+                return x * x + y * y;
+            };
+            std::stable_sort(keys.begin(), keys.end(),
+                             [&](const auto& a, const auto& c) { return dist(a) < dist(c); });
+            if (o.chunk_limit != 0 && keys.size() > o.chunk_limit) {
+                keys.resize(o.chunk_limit);
+            }
+            for (const char* pass : {"cold", "warm"}) {
+                std::vector<Record> records(keys.size());
+                std::atomic<std::size_t> next{0};
+                const auto start = std::chrono::steady_clock::now();
+                std::vector<std::thread> pool;
+                for (std::size_t t = 0; t < threads; ++t) {
+                    pool.emplace_back([&] {
+                        for (;;) {
+                            const std::size_t i = next.fetch_add(1);
+                            if (i >= keys.size()) {
+                                return;
+                            }
+                            Record& r = records[i];
+                            profile::attach(&r.stages);
+                            const auto t0 = std::chrono::steady_clock::now();
+                            const render::Chunk c = render::render_chunk(
+                                scene, group, keys[i].first, keys[i].second, false, true);
+                            r.total = std::chrono::duration<double, std::milli>(
+                                          std::chrono::steady_clock::now() - t0)
+                                          .count();
+                            profile::attach(nullptr);
+                            r.land = !c.ground.empty();
+                        }
+                    });
+                }
+                for (auto& t : pool) {
+                    t.join();
+                }
+                const double wall = std::chrono::duration<double, std::milli>(
+                                        std::chrono::steady_clock::now() - start)
+                                        .count();
+                std::vector<double> totals;
+                profile::Times sum, worst;
+                double other = 0;
+                for (const auto& r : records) {
+                    if (!r.land) {
+                        continue;
+                    }
+                    totals.push_back(r.total);
+                    double staged = 0;
+                    for (std::size_t s = 0; s < sum.ms.size(); ++s) {
+                        sum.ms[s] += r.stages.ms[s];
+                        worst.ms[s] = std::max(worst.ms[s], r.stages.ms[s]);
+                        staged += r.stages.ms[s];
+                    }
+                    other += r.total - staged;
+                }
+                const double n = std::max<double>(1.0, static_cast<double>(totals.size()));
+                double mean_total = 0;
+                for (const double v : totals) {
+                    mean_total += v / n;
+                }
+                std::printf("### group %zu, %zu thread(s), %s: %zu chunks (%zu with land) in "
+                            "%.0f ms, %.1f chunks/s\n\n",
+                            group, threads, pass, keys.size(), totals.size(), wall,
+                            1000.0 * static_cast<double>(keys.size()) / wall);
+                std::printf("land chunk: mean %.1f ms, p50 %.1f, p95 %.1f, max %.1f\n\n",
+                            mean_total, pct(totals, 0.5), pct(totals, 0.95), pct(totals, 1.0));
+                std::printf("| stage | mean ms | share | max ms |\n|---|---|---|---|\n");
+                for (std::size_t s = 0; s < sum.ms.size(); ++s) {
+                    std::printf("| %.*s | %.2f | %.1f %% | %.1f |\n",
+                                static_cast<int>(profile::kStageNames[s].size()),
+                                profile::kStageNames[s].data(), sum.ms[s] / n,
+                                mean_total > 0 ? 100.0 * sum.ms[s] / n / mean_total : 0.0,
+                                worst.ms[s]);
+                }
+                std::printf("| outside the stages | %.2f | %.1f %% | |\n\n", other / n,
+                            mean_total > 0 ? 100.0 * other / n / mean_total : 0.0);
+                std::fflush(stdout);
+            }
+        }
+    }
+    return 0;
+}
+
 constexpr const char* kUsage =
     "usage: bench_frame <game_dir> <file> [--threads n] [--res WxH,..] [--groups 0,1,2] "
-    "[--styles original,enhanced] [--chunks blocking,async] [--renderer cpu,gpu] [--check] "
+    "[--styles original,enhanced] [--chunks blocking,async] [--renderer cpu,gpu] "
+    "[--chunk-build cpu|gpu] [--bin-px n] [--check] "
     "[--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick] [--zoom k] [--zoom-frames n] "
     "[--pace ms] [--spike ms] [--limits default|interactive] [--settle ms] "
     "[--river-flow legacy|flow] [--river-quality auto|low|medium|high] [--river-gain x] "
-    "[--river-pass]\n"
+    "[--river-pass] [--stand-ins on|off] [--prewarm chunks] [--prefetch chunks] [--fade ms] "
+    "[--lookahead-chunks n] "
+    "[--zoom-dump dir]\n"
+    "       bench_frame <game_dir> <file> --renderer gpu --scale-cost group:scale[:filter],.. "
+    "[--res ..] [--groups ..]\n"
+    "       bench_frame <game_dir> <file> --chunk-profile threads,.. [--chunk-limit n] "
+    "[--groups ..] [--island n]\n"
+    "       bench_frame <game_dir> <file> --zoom-factor f [--resample nearest|bilinear|box|area] "
+    "[--renderer cpu,gpu] [--groups ..]\n"
+    "       bench_frame <game_dir> <file> --renderer cpu,gpu --derived n --groups 0,..,2+n "
+    "(derived zoom levels after group 2)\n"
+    "       bench_frame <game_dir> <file> --fill-time [--derive old|cache] [--threads n] "
+    "[--res WxH]\n"
     "       bench_frame --list-adapters\n"
     "       bench_frame <game_dir> <file> --river-cost\n";
 
@@ -684,6 +1662,10 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             o.river_pass = true;
             continue;
         }
+        if (a == "--fill-time") {
+            o.fill_time = true;
+            continue;
+        }
         if (i + 1 >= args.size()) {
             std::fprintf(stderr, "%s needs a value\n", a.c_str());
             return std::nullopt;
@@ -704,7 +1686,8 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             o.groups.clear();
             for (const auto g : split(v, ',')) {
                 std::size_t n = 0;
-                ok = ok && parse(g, n) && n < render::kGroups;
+                // A derived level (--derived) is checked once all options are read.
+                ok = ok && parse(g, n);
                 o.groups.push_back(n);
             }
         } else if (a == "--styles") {
@@ -734,6 +1717,14 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
                 ok = false;
             }
 #endif
+        } else if (a == "--chunk-build") {
+            ok = v == "cpu" || v == "gpu";
+            o.chunk_builder =
+                v == "gpu" ? render::ChunkBuilder::GpuList : render::ChunkBuilder::Cpu;
+        } else if (a == "--bin-px") {
+            std::uint32_t n = 0;
+            ok = parse(v, n) && n > 0;
+            o.bin_px = n;
         } else if (a == "--island") {
             std::size_t n = 0;
             ok = parse(v, n);
@@ -747,6 +1738,36 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = v == "legacy" || v == "flow";
             o.river_flow =
                 v == "legacy" ? render::RiverFlowMode::Legacy : render::RiverFlowMode::Flow;
+        } else if (a == "--wave-fade-hold") {
+            ok = parse(v, o.wave_fade_hold) && o.wave_fade_hold >= 0.0 && o.wave_fade_hold <= 1.0;
+        } else if (a == "--zoom-sweep") {
+            ok = parse(v, o.zoom_sweep) && o.zoom_sweep > 0.0;
+        } else if (a == "--zoom-factor") {
+            ok = parse(v, o.zoom_factor) && o.zoom_factor >= 1.0 / 64.0 && o.zoom_factor <= 64.0;
+        } else if (a == "--resample") {
+            ok = v == "nearest" || v == "bilinear" || v == "box" || v == "area";
+            o.resample = v == "nearest"    ? render::ResampleFilter::Nearest
+                         : v == "bilinear" ? render::ResampleFilter::Bilinear
+                         : v == "box"      ? render::ResampleFilter::Box
+                                           : render::ResampleFilter::Area;
+        } else if (a == "--derived") {
+            ok = parse(v, o.derived) && o.derived <= 24;
+        } else if (a == "--derive") {
+            ok = v == "old" || v == "cache";
+            o.derive_from_cache = v == "cache";
+        } else if (a == "--scale-cost") {
+            for (const auto item : split(v, ',')) {
+                const auto f = split(item, ':');
+                Options::ScalePoint pt;
+                ok = ok && (f.size() == 2 || f.size() == 3) && parse(f[0], pt.group) &&
+                     parse(f[1], pt.scale) && pt.scale > 0.0;
+                if (f.size() == 3) {
+                    pt.filter = std::string(f[2]);
+                    ok = ok && (pt.filter == "nearest" || pt.filter == "bilinear" ||
+                                pt.filter == "box" || pt.filter == "area");
+                }
+                o.scale_cost.push_back(pt);
+            }
         } else if (a == "--river-gain") {
             ok = parse(v, o.river_gain) && o.river_gain >= 0.0F;
         } else if (a == "--river-quality") {
@@ -758,13 +1779,68 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             } else if (v == "high") {
                 o.river_quality = render::RiverQuality::High;
             }
+        } else if (a == "--stand-ins") {
+            ok = v == "on" || v == "off";
+            o.stand_ins = v == "on";
+        } else if (a == "--lookahead-chunks") {
+            // The viewer's bound (anno::app::kMaxLookaheadChunks): far beyond it the
+            // margin's pixel reach no longer fits lookahead_rect's int rectangle.
+            std::size_t n = 0;
+            ok = parse(v, n) && n <= 16;
+            o.lookahead = n;
+        } else if (a == "--fade") {
+            std::uint64_t n = 0;
+            ok = parse(v, n);
+            o.fade = n;
+        } else if (a == "--prefetch") {
+            std::size_t n = 0;
+            ok = parse(v, n);
+            o.prefetch = n;
+        } else if (a == "--prewarm") {
+            std::size_t n = 0;
+            ok = parse(v, n);
+            o.prewarm = n;
+        } else if (a == "--chunk-profile") {
+            o.profile_threads.clear();
+            for (const auto s : split(v, ',')) {
+                std::size_t n = 0;
+                ok = ok && parse(s, n) && n > 0;
+                o.profile_threads.push_back(n);
+            }
+        } else if (a == "--chunk-limit") {
+            ok = parse(v, o.chunk_limit);
+        } else if (a == "--zoom-dump") {
+            ok = !v.empty();
+            o.zoom_dump = std::string(v);
+        } else if (a == "--zoom-dump-after") {
+            o.zoom_dump_after.clear();
+            std::string_view rest = v;
+            ok = !rest.empty();
+            while (ok && !rest.empty()) {
+                const auto comma = rest.find(',');
+                std::size_t n = 0;
+                ok = parse(rest.substr(0, comma), n);
+                o.zoom_dump_after.push_back(n);
+                rest =
+                    comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
+            }
         } else if (a == "--limits") {
             ok = v == "default" || v == "interactive";
             o.interactive = v == "interactive";
         } else if (a == "--zoom") {
-            ok = parse(v, o.zoom_every) && o.zoom_every > 0;
+            // 0: no zoom steps (with --zoom-pan: a plain pan on the zoom path).
+            ok = parse(v, o.zoom_every);
         } else if (a == "--zoom-frames") {
             ok = parse(v, o.zoom_frames) && o.zoom_frames > 0;
+        } else if (a == "--pop") {
+            ok = v == "on" || v == "off";
+            o.pop = v == "on";
+        } else if (a == "--zoom-pan") {
+            const auto parts = split(v, ',');
+            ok = (parts.size() == 2 || parts.size() == 3) && parse(parts[0], o.zoom_pan.first) &&
+                 parse(parts[1], o.zoom_pan.second) &&
+                 (parts.size() == 2 ||
+                  (parse(parts[2], o.zoom_pan_period) && o.zoom_pan_period > 0));
         } else if (a == "--pace") {
             ok = parse(v, o.pace_ms);
         } else if (a == "--spike") {
@@ -859,6 +1935,20 @@ int main(int argc, char** argv) {
         return 1;
     }
     loaded.value().scene->river_cfg.light_gain = o->river_gain;
+    if (o->fill_time || o->derived > 0) {
+        loaded.value().scene->set_levels(render::ZoomLevels::with_derived(
+            std::max<std::size_t>(o->derived, o->fill_time ? 3 : 0)));
+    }
+    for (const std::size_t g : o->groups) {
+        if (g >= loaded.value().scene->levels().size() ||
+            (!o->profile_threads.empty() && g >= render::kGroups)) {
+            std::fprintf(stderr,
+                         "--groups %zu: no such zoom level (%zu levels; --derived n adds "
+                         "levels after group 2; --chunk-profile needs built groups)\n",
+                         g, loaded.value().scene->levels().size());
+            return 2;
+        }
+    }
     const render::Scene& scene = *loaded.value().scene;
     std::fprintf(
         stderr, "scene loaded in %.0f ms\n",
@@ -886,13 +1976,22 @@ int main(int argc, char** argv) {
             }
         }
     }
+    if (!o->profile_threads.empty()) {
+        return chunk_profile(dir, file, *o, largest);
+    }
+    if (o->fill_time) {
+        return fill_time(scene, *o, largest);
+    }
     std::printf("%s — %u threads available — %zu threads%s\n\n", file.string().c_str(),
                 std::thread::hardware_concurrency(), o->threads, o->quick ? " — quick" : "");
-    std::printf(
-        "| resolution | group | water | renderer | chunks | path | frames | p50 ms | p95 ms | "
-        "p99 ms | max ms | ≤16.7 ms | built | chunk ms | missing | stage 1 | stage 2 | "
-        "stage 3 | stage 4 |\n");
-    std::printf("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+    if (o->scale_cost.empty() && o->zoom_sweep <= 0.0) {
+        std::printf(
+            "| resolution | group | water | renderer | chunks | path | frames | p50 ms | p95 ms | "
+            "p99 ms | max ms | ≤16.7 ms | built | chunk ms | missing | stage 1 | stage 2 | "
+            "stage 3 | stage 4 |\n");
+        std::printf(
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+    }
     const std::size_t scale = o->quick ? 4 : 1;
 #ifdef ANNO_BENCH_GPU
     std::optional<gpu::Context> ctx;
@@ -908,16 +2007,69 @@ int main(int argc, char** argv) {
         // One compositor for all configurations, as the Rust benchmark.
         gpu::GpuLimits limits = o->interactive ? gpu::GpuLimits::interactive() : gpu::GpuLimits{};
         limits.river_quality = o->river_quality;
-        limits.gpu_timing = o->river_pass;
+        limits.gpu_timing = o->river_pass || !o->scale_cost.empty() || o->zoom_sweep > 0.0;
+        if (o->wave_fade_hold >= 0.0) {
+            limits.wave_fade_ms = 1000;
+        }
+        if (o->zoom_sweep > 0.0 && limits.prewarm_chunks > 0) {
+            // As the viewer: a view's worth of chunks of the window, never fewer.
+            limits.prewarm_chunks =
+                gpu::prewarm_plan(o->resolutions.front().first, o->resolutions.front().second,
+                                  limits.idle_plane_budget_mb)
+                    .chunks;
+        }
+        if (o->fade) {
+            limits.chunk_fade_ms = *o->fade;
+        }
+        if (o->prefetch) {
+            limits.prefetch_chunks = *o->prefetch;
+        }
+        if (o->prewarm) {
+            limits.prewarm_chunks = *o->prewarm;
+        }
+        if (o->stand_ins) {
+            limits.stand_ins = *o->stand_ins;
+        }
         auto f = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
         if (!f) {
             std::fprintf(stderr, "GPU: %s\n", f.error().c_str());
             return 1;
         }
         frame_gpu = std::move(f).value();
+        // The viewer's window is open for seconds before the first zoom: wait
+        // (5 s at most) for the background plane pre-creation, so the benchmark
+        // sees the state of a window that has been idle.
+        const auto warm_start = std::chrono::steady_clock::now();
+        while (frame_gpu->warm_planes_ready() < 5 * limits.prewarm_chunks &&
+               std::chrono::steady_clock::now() - warm_start < std::chrono::seconds(5)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        std::fprintf(
+            stderr, "pre-created planes ready: %zu after %.0f ms\n", frame_gpu->warm_planes_ready(),
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - warm_start)
+                .count());
         if (!frame_gpu->river_tier_note().empty()) {
             std::fprintf(stderr, "%s\n", frame_gpu->river_tier_note().c_str());
         }
+    }
+#endif
+#ifdef ANNO_BENCH_GPU
+    if (o->zoom_sweep > 0.0) {
+        if (!frame_gpu) {
+            std::fputs("--zoom-sweep needs --renderer gpu\n", stderr);
+            return 2;
+        }
+        return zoom_sweep(scene, *o, *frame_gpu, largest, o->zoom_sweep);
+    }
+    if (!o->scale_cost.empty()) {
+        if (!frame_gpu) {
+            std::fputs("--scale-cost needs --renderer gpu\n", stderr);
+            return 2;
+        }
+        for (const auto& pt : o->scale_cost) {
+            scene.sea(pt.group);
+        }
+        return scale_cost(scene, *o, *frame_gpu, largest);
     }
 #endif
     for (const auto& [w, h] : o->resolutions) {
@@ -925,24 +2077,20 @@ int main(int argc, char** argv) {
             for (const auto style : o->styles) {
                 for (const bool on_gpu : o->renderers) {
                     for (const bool async_chunks : o->modes) {
-                        const render::Placement* p = nullptr;
-                        for (const auto& q : scene.layouts[group]) {
-                            if (q.index == largest) {
-                                p = &q;
-                            }
-                        }
-                        if (p == nullptr) {
+                        const auto b = island_bounds(scene, group, largest);
+                        if (!b) {
                             std::fputs("no placement for that island\n", stderr);
                             return 1;
                         }
                         Config c;
+                        c.chunk_builder = o->chunk_builder;
+                        c.bin_px = o->bin_px;
                         c.w = w;
                         c.h = h;
                         c.group = group;
                         c.style = style;
                         c.async_chunks = async_chunks;
-                        c.centre = {p->bounds.x + p->bounds.w / 2 + o->at.first,
-                                    p->bounds.y + p->bounds.h / 2 + o->at.second};
+                        c.centre = {b->x + b->w / 2 + o->at.first, b->y + b->h / 2 + o->at.second};
                         c.frames = 120 / scale;
                         c.t0 = o->t0;
                         c.warmup = o->warmup;
@@ -951,10 +2099,19 @@ int main(int argc, char** argv) {
                         c.settle_ms = o->settle_ms;
                         c.river_flow = o->river_flow;
                         c.river_pass = o->river_pass;
+                        c.zoom_factor = o->zoom_factor;
+                        c.resample = o->resample;
                         c.zoom_every = o->zoom_every;
                         c.zoom_frames = o->zoom_frames;
                         c.pace_ms = o->pace_ms;
                         c.spike_ms = o->spike_ms;
+                        c.stand_ins = o->stand_ins;
+                        c.zoom_pan = o->zoom_pan;
+                        c.pop = o->pop;
+                        c.zoom_pan_period = o->zoom_pan_period;
+                        c.zoom_dump = o->zoom_dump;
+                        c.zoom_dump_after = o->zoom_dump_after;
+                        c.lookahead = o->lookahead;
                         gpu::GpuFrame* g = nullptr;
 #ifdef ANNO_BENCH_GPU
                         if (on_gpu) {

@@ -1000,7 +1000,7 @@ TEST_CASE("world create places the cities and buildings of a scenario in file or
     CHECK(w.check_invariants() == "");
     // Nothing was charged: the player still has the money of the scenario.
     CHECK(w.players().slots[0]->money == 10000);
-    CHECK(w.clock.ms == 0);
+    CHECK(w.clock().ms == 0);
 }
 
 TEST_CASE("world create forwards the rotation and byte0f of a scenario building") {

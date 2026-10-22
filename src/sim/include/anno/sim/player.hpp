@@ -160,6 +160,12 @@ struct PlayerHooks {
     /// the flag is cleared before the call (D: 0x10020550, O-22).
     Fn defeat = nullptr;
     void* defeat_ctx = nullptr;
+    /// The AI tick of the original, after the visits and before the stamp is written
+    /// (D: 0x1009c4d0, CompLogic, every advance; Seams::ai, O-1). It runs once per
+    /// table tick, with the table as the visits left it.
+    using TableFn = void (*)(void* ctx);
+    TableFn ai = nullptr;
+    void* ai_ctx = nullptr;
 };
 
 /// One player's tick (D: 0x1001b900), `t` the low 32 bits of the world tick, in
@@ -196,7 +202,7 @@ void player_tick(Player& p, std::uint32_t t, const SimConfig& cfg, const Rules& 
 /// slot count read before the loop; an empty table or a cursor at or beyond n
 /// (an inconsistent state, validate_players) visits nothing and leaves the
 /// cursor. The AI of the original runs between the loop and the stamp (D:
-/// Seams::ai, O-1); it is not called here (stage S8).
+/// Seams::ai, O-1): hooks.ai is called there, once, whatever the table holds.
 void player_table_tick(PlayerTable& table, std::uint32_t t, const SimConfig& cfg,
                        const Rules& rules, const PlayerHooks& hooks = {});
 

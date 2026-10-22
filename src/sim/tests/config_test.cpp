@@ -1265,7 +1265,7 @@ TEST_CASE("a moved-from world keeps its registry") {
     CHECK(&a.types() == registry); // NOLINT: the guarantee under test
     CHECK(a.types().digest() == digest);
     static_cast<void>(a.state_hash());
-    CHECK(a.rng.size() == 2048);
+    CHECK(a.rng().size() == 2048);
     sim::World c;
     c = std::move(b);
     CHECK(&c.types() == registry);
@@ -1273,7 +1273,7 @@ TEST_CASE("a moved-from world keeps its registry") {
     static_cast<void>(b.state_hash());
     // A moved-from world can be assigned to and used again.
     b = sim::World(9);
-    CHECK(b.rng.cursor() == 9);
+    CHECK(b.rng().cursor() == 9);
     CHECK(&b.types() == &sim::World().types());
     // A null registry is replaced by the empty one.
     const sim::RegistryRef null_ref{nullptr};
@@ -1294,7 +1294,7 @@ TEST_CASE("world holds config rules settings seams and registry") {
     CHECK(sim::validate_seams(w.seams(), w.config()).empty());
     // A seed world is the same world with another cursor.
     const sim::World seeded(77);
-    CHECK(seeded.rng.cursor() == 77);
+    CHECK(seeded.rng().cursor() == 77);
     CHECK(seeded.config().digest() == w.config().digest());
     CHECK(seeded.types().digest() == w.types().digest());
     // Copies are independent snapshots; the registry is shared, not copied.
@@ -1326,7 +1326,7 @@ TEST_CASE("state stream header and settings scopes") {
     expected.u64(0); // clock.ms
     expected.u64(0); // clock.last_tick
     expected.u64(2048);
-    expected.u64(w.rng.table_digest());
+    expected.u64(w.rng().table_digest());
     expected.u32(0);
     expected_settings(expected);
     expected.u64(1);  // ids: next_figure
@@ -1637,8 +1637,8 @@ TEST_CASE("state stream header reads back and validates what it read") {
             CHECK(target.rules().enforce_research);
             CHECK(target.settings().prop14 == 1);
             CHECK(target.settings().world_width == 0);
-            CHECK(target.clock.ms == 6);
-            CHECK(target.rng.cursor() == 77);
+            CHECK(target.clock().ms == 6);
+            CHECK(target.rng().cursor() == 77);
         };
         // A zero divisor: fails in the header, after the config was read.
         sim::World zero = w;

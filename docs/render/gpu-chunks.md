@@ -245,6 +245,44 @@ No fixed arrays: the clip table, the bins, the frame table and the keel buffer a
 - **Tests**: `chunk_draws_corpus_test.cpp` replays every chunk of `Single_01`, `Single_24` and the canyon island at all three groups, ships on and off, and compares objects and base planes with `Scene::render` (equal), the binning against a brute-force list, and that every clip entry lies inside its chunk; `residency_test.cpp` covers the model. All 67 render tests matching the stage 1 filter pass on the msvc Release build.
 - **Not done in stage 1**: any GPU work (2a), the ground pass (2b), the cache and prefetch taking GPU-built chunks (3).
 
+### Stage 2a: the derived-level decision (before coding)
+
+Written before the code, per the task. T3 stage 3 derives a coarser level's chunk by reducing its
+four children 2x (`reduce_chunks_2x`, `chunk_reduce.hpp`). Today that derivation runs **on the
+workers** over the cached CPU children's pixels (`frame.cpp:279 render_derived_chunk`) and the
+result is uploaded like any chunk. With the `GpuList` builder a built chunk's `objects` and `base`
+live only in GPU textures (the compute pass writes them, 5.1), so a group-2 GpuList chunk has **no
+CPU `objects`/`ground` pixels** and the CPU `reduce_chunks_2x` cannot run over it without a
+read-back.
+
+The engine already reduces on the GPU: `Impl::reduce_quad` (`gpu.cpp:1080`) runs `reduce_fs`,
+binding each child's **GPU plane textures** (`src[q]->bind`) and writing the derived chunk's
+textures; `chunk_reduce.hpp` pins `reduce_fs` == the CPU `reduce_chunks_2x` exactly. (The read-back
+helper `GpuFrame::reduce_chunks_2x`, `gpu.cpp:2722`, uploads CPU children and reads the result back
+— a test oracle, not a per-frame path.) That pass is not yet wired into the live chunk flow; the
+viewer's derived chunks come from the CPU workers today.
+
+**Decision (option a of the task):** with `GpuList` a derived chunk is produced **on the window
+thread by `reduce_quad` over the children's GPU textures**, into the frame's submission — not by the
+CPU `render_derived_chunk`. This meets both constraints: **no read-back on the window thread**
+(`reduce_quad` reads child textures and writes new ones) and **no second build of any group-2
+chunk** (each built chunk is produced once by the compute pass; its textures are then read by the
+reduce). The children are resident before the parent by the existing depth-first `plan_jobs` order
+(children are jobs before the parent, `frame.cpp:879`); a derived chunk whose four children are not
+all resident keeps its stand-in, exactly as a built chunk whose frames are not all resident (4.3
+rule 2). `base` and `flow` stay un-derived (`chunk_reduce.hpp`). The ground/field/terrain planes of a
+GpuList child are still CPU-uploaded in 2a, so they are ordinary GPU textures on the child's bind
+group and `reduce_quad` reduces them unchanged alongside the compute-pass `objects`.
+
+Rejected: CPU `reduce_chunks_2x` over GpuList children needs a read-back (forbidden); building the
+reduced range on the CPU in GpuList mode is a second builder and rebuilds the children (forbidden).
+
+**Test (7.2 extension).** For each scene, the derived levels the viewer uses (`ZoomLevels` beyond
+`built_count`): a GpuList derived chunk's planes, read back, equal the CPU `render_derived_chunk` of
+the same key within the reduce tolerance (objects/ground within 1 per channel — the alpha-weighted
+mean; field/terrain exact), with the group-2 children built by both builders. A mutation (wrong
+quadrant origin, a child's bind group swapped in, the reduce skipped) must fail it.
+
 ## 12. Decisions and open questions (stage 0 review of 2026-10-21 folded in)
 
 - **C1 DECIDED (orchestrator): the exact binned compute pass** for objects and base (5.1): tolerance 0, the per-island composite and the `base` reset repeated. The blending render pass stays the documented fallback only (fixed-function blending rounds where the CPU floors; compounding shadows and the per-island local canvas cannot be repeated by a blend state). Conditions: the per-pixel walk is measured on the Radeon iGPU as well as on the RTX 4090 in stage 2a with GPU timestamps, and `bin_px` is tuned from that measurement, not guessed.

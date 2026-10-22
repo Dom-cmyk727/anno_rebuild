@@ -226,6 +226,14 @@ struct GpuLimits {
     /// clock (OQ-076): the new window starts at rest and the waves would otherwise pop in.
     /// The sea is shaded twice meanwhile (README: cost). 0 = no fade, as before.
     std::uint64_t wave_fade_ms = 0;
+    /// How long an offscreen target (`under`, terrain, the resample's `scene` grid) may sit above
+    /// three times the needed area before it is made again at that size (+25 %). The `scene` grid
+    /// is never freed below the window (+25 %), only shrunk toward it, so the first zoom-out after
+    /// a shrink re-grows it from the window. 0 = never shrink. **Default 0**: that re-grow of the
+    /// ~280 MB targets at 2560 x 1440 costs about 14 ms on the Radeon iGPU (0.02 ms on the RTX
+    /// 4090; docs/perf/README.md, OQ-099), over the 2 ms a frame can spare, so the targets are kept
+    /// at their largest until the owner sets a memory budget (OQ-099).
+    std::uint64_t offscreen_shrink_ms = 0;
     /// The limits for an interactive window: uploads and wave simulation
     /// setup are spread over frames (upload_budget_ms 1.0, background_fluid).
     [[nodiscard]] static GpuLimits interactive() {
@@ -493,6 +501,10 @@ class GpuFrame {
     void set_fade_clock(std::function<std::uint64_t()> clock);
     /// Pre-created chunk planes waiting for uploads (GpuLimits::prewarm_chunks).
     [[nodiscard]] std::size_t warm_planes_ready() const;
+    /// The memory of the offscreen targets (the compositor's `under` and terrain, the resample's
+    /// `scene` grid) as they are allocated now: GpuLimits::offscreen_shrink_ms says when they
+    /// shrink. Tools and the frame log, not per frame.
+    [[nodiscard]] std::size_t offscreen_bytes() const;
     /// Changes the number of chunks' worth of planes the background pre-creation keeps
     /// ready (GpuLimits::prewarm_chunks), e.g. after a window resize (prewarm_plan);
     /// starts the pre-creation if the compositor was made without it, and 0 stops

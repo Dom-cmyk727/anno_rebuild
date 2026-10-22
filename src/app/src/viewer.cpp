@@ -980,7 +980,12 @@ void Viewer::draw_gpu(render::Rect view, const gpu::Resample* resample, int out_
     auto since_ms = [](Clock::time_point a, Clock::time_point b) {
         return std::chrono::duration<double, std::milli>(b - a).count();
     };
+    // The prologue: window size queries, the view rectangle and, on a resize, the surface
+    // (re)configuration, reported as its own step ("surface configure").
+    auto prologue_from = draw_start_;
     if (g.width != w || g.height != h || reconfigure_) {
+        const auto configure_start = Clock::now();
+        steps_.push_back({"draw prologue", since_ms(draw_start_, configure_start)});
         g.configure(w, h);
         reconfigure_ = false;
         if (g.prewarm_budget_mb > 0 && g.frame) {
@@ -988,11 +993,12 @@ void Viewer::draw_gpu(render::Rect view, const gpu::Resample* resample, int out_
                 gpu::prewarm_plan(static_cast<int>(w), static_cast<int>(h), g.prewarm_budget_mb)
                     .chunks);
         }
+        prologue_from = Clock::now();
+        steps_.push_back({"surface configure", since_ms(configure_start, prologue_from)});
     }
     WGPUSurfaceTexture st = WGPU_SURFACE_TEXTURE_INIT;
     const auto acquire_start = Clock::now();
-    // Window size queries, the view rectangle and a surface (re)configuration.
-    steps_.push_back({"draw prologue", since_ms(draw_start_, acquire_start)});
+    steps_.push_back({"draw prologue", since_ms(prologue_from, acquire_start)});
     wgpuSurfaceGetCurrentTexture(g.surface.get(), &st);
     const auto acquired = Clock::now();
     display_wait_ms_ = since_ms(acquire_start, acquired);

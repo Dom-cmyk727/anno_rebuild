@@ -799,6 +799,30 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Orchestrator recommendation:** make `continuous` the viewer default with the values as built (1.1 / 120 ms / `Home` and `0` / group 1 as the default zoom), keep `--zoom-mode stepped` as the faithful option, decide item 5 (nearest vs bilinear above 1) on the PNG pairs stage 3 produces, and item 4 (minimum zoom) with stage 3's design note.
 - **Faithful default:** the stepped mode reproduces the original's three levels; the faithful core (sim) is untouched either way.
 
+## OQ-097: Recentred wave-simulation strips are uploaded in one step on the window thread (new, T3 follow-up)
+- **Status:** open, a small change with a state question; the executor's measure is in docs/perf/README.md (2026-10-21, T3 follow-up)
+- **Area:** render (enhanced water, GPU) / perf
+- **What:** when the wave window moves (a pan, a zoom step inside a group), the cells that came into view are written by `FluidGpu::apply_job` in one call for all pieces: 1.3-1.9 ms on the window thread on the RTX 4090 at 2560 x 1369 (the owner's log: `fluid` 1.6-1.9 ms every few frames, 3.9 ms once). The whole-grid upload, the first window of a group, is already spread over frames (`upload_budget_ms`). Spreading the recentred strips the same way is a change of what the simulation sees: until every strip is written, the window's grid mixes cells of the old and the new window coordinates for a few frames at its edge.
+- **Options:** (1) keep the single step and accept 1.3-1.9 ms in those frames (today); (2) spread the strips over frames and hold the window's origin at the old one until the last strip is in, so the sim is coherent throughout (the moving window then lags by the upload time); (3) write the strips from the job thread into a staging texture and copy on the window thread (a copy is cheap, the write is not). Option 3 has the least visible effect; it needs a staging buffer per strip size.
+- **Owner decides:** nothing visible changes with (2) or (3) except the timing of the wave's first appearance at a new edge (about one frame). If it is wanted, the executor implements it as T14 item (iGPU compositor cost) or a separate small task.
+- **Faithful default:** no sim change: the simulation is the enhanced water's, not the original's.
+
+## OQ-098: A resize reconfigures the surface on the window thread (new, T3 follow-up)
+- **Status:** open, measured; the fix is not small
+- **Area:** app / render (resize)
+- **What:** on a resize the viewer calls `wgpuSurfaceConfigure`, which rebuilds the swapchain in the driver: 9.5 ms on the RTX 4090 at 2560 x 1369 (`surface configure` in the frame log, the owner's resize frame of 8.35-11 ms). The composited targets are not part of that step (the `under` step of the resize frame is small, the grid's targets are made in `render`, and the offscreen targets have room for the larger window: `fits`). The planes for the larger window are pre-created (OQ-093), so the resize frame is no longer a plane upload.
+- **Options:** (1) keep it: one frame of 10 ms per resize; (2) debounce the reconfigure while the window size changes (SDL resize events arrive in bursts): frames keep the old swapchain, drawn into a scaled picture, until the size is stable (about 100 ms); (3) configure from a background thread, if the driver allows it (wgpu-native does not promise it for a surface in use).
+- **Owner decides:** (2) changes what the window shows during a live resize for about 100 ms (a scaled picture, not a blank); the owner's choice.
+- **Faithful default:** no sim or look change.
+
+## OQ-099: Offscreen targets at 4K in the zoomed-out view, and their return (new, T3 follow-up)
+- **Status:** open, the owner decides on the memory budget
+- **Area:** render (GPU memory; the iGPU shares system memory)
+- **What:** the compositor's offscreen targets are made for the largest composed grid they have seen (2.77 x the window per axis, see iso.md "Derived levels in use"): measured 285 MB at 2560 x 1440 (`offscreen_bytes()`), computed about 640 MB at 3840 x 2160, when zoomed all the way out. **Measured 2026-10-21 (T3 follow-up):** re-growing those targets (the first zoom-out frame after a shrink, 2560 x 1440) costs **0.02 ms on the RTX 4090 and about 14 ms on the Radeon iGPU** (the iGPU allocates ~280 MB of shared-memory textures). 14 ms is over the 2 ms a frame can spare, so **`offscreen_shrink_ms` now defaults to 0 (never shrink):** the targets are kept at their largest. The `scene` grid is also never freed outright; if shrinking is enabled it floors at the window size (+25 %).
+- **Options:** (1) keep the targets at their largest (today's default, 0): up to 285 MB at 2560 x 1440 held on the iGPU's shared memory; (2) a memory budget in `GpuLimits` (as OQ-096 does for the sprite atlas): above it the targets are made for the view and the grid is drawn at the level above; (3) enable `offscreen_shrink_ms` on the discrete adapter only (0.02 ms there), off on the iGPU; (4) cut the 2.77 x to the grid's real size (the +25 % of `ensure_under` is for a zoom that keeps widening).
+- **Owner decides:** the budget (a number for 256 MB on an integrated adapter and 1 GiB on a discrete one, as the prewarm budget already uses) and whether the grid may be drawn one level up when the budget is full; or enabling the shrink per adapter class.
+- **Faithful default:** no look change while the budget holds.
+
 ## OQ-096: GPU-built chunks: the sprite atlas budget (new, T11 stage 0, C3)
 - **Status:** open, owner decides (a limit default)
 - **Area:** render (GPU memory)

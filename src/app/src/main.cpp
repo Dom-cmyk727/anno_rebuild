@@ -50,6 +50,7 @@
 #include <anno/app/cli.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/app/png.hpp>
+#include <anno/app/still.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/scene.hpp>
 
@@ -98,7 +99,23 @@ int write_scene_png(const anno::render::Scene& scene, std::size_t group, std::op
             static_cast<std::uint32_t>(rect->h), zoom_factor,
             anno::render::resample_filter_for(zoom_factor, filter));
     }
-    auto [canvas, st] = scene.render(zoomed ? zoomed->view : *rect, group, layers);
+    const anno::render::Rect drawn = zoomed ? zoomed->view : *rect;
+    anno::render::Canvas canvas;
+    std::optional<anno::render::SceneStats> built;
+    anno::render::FrameStats frames;
+    if (group < anno::render::kGroups) {
+        auto [picture, st] = scene.render(drawn, group, layers);
+        canvas = std::move(picture);
+        built = st;
+    } else {
+        // A derived level: the viewer's chunk pipeline (still.hpp).
+        auto picture = anno::app::derived_view(scene, drawn, group, layers, frames);
+        if (!picture) {
+            std::fprintf(stderr, "%s: the chunks of the view were not built\n", scene.name.c_str());
+            return 1;
+        }
+        canvas = std::move(*picture);
+    }
     if (zoomed) {
         anno::render::Canvas shown;
         shown.width = static_cast<std::size_t>(rect->w);
@@ -109,11 +126,17 @@ int write_scene_png(const anno::render::Scene& scene, std::size_t group, std::op
                                    static_cast<std::uint32_t>(rect->h), shown.pixels.data());
         canvas = std::move(shown);
     }
-    std::fprintf(stderr,
-                 "%s: group %zu %dx%d px, %zu islands drawn (%zu without ground), objects %zu "
-                 "drawn, %zu invisible, %zu failed, %zu units drawn\n",
-                 scene.name.c_str(), group, rect->w, rect->h, st.islands, st.no_ground,
-                 st.objects.drawn, st.objects.invisible, st.objects.failed, st.units);
+    if (built) {
+        const auto& st = *built;
+        std::fprintf(stderr,
+                     "%s: group %zu %dx%d px, %zu islands drawn (%zu without ground), objects %zu "
+                     "drawn, %zu invisible, %zu failed, %zu units drawn\n",
+                     scene.name.c_str(), group, rect->w, rect->h, st.islands, st.no_ground,
+                     st.objects.drawn, st.objects.invisible, st.objects.failed, st.units);
+    } else {
+        std::fprintf(stderr, "%s: group %zu (derived) %dx%d px, %zu chunks built\n",
+                     scene.name.c_str(), group, rect->w, rect->h, frames.chunks_built);
+    }
     const std::string err =
         anno::app::write_png(out, static_cast<std::uint32_t>(canvas.width),
                              static_cast<std::uint32_t>(canvas.height), canvas.pixels);
@@ -121,12 +144,17 @@ int write_scene_png(const anno::render::Scene& scene, std::size_t group, std::op
         std::fprintf(stderr, "%s: %s\n", scene.name.c_str(), err.c_str());
         return 1;
     }
-    return st.objects.failed == 0 ? 0 : 1;
+    return built && built->objects.failed != 0 ? 1 : 0;
 }
 
 int run(const std::vector<std::string>& raw) {
     const auto args = anno::app::parse_args(raw);
     if (!args) {
+        std::fputs(anno::app::kUsage, stderr);
+        return 2;
+    }
+    if (!args->png && args->group && *args->group >= anno::render::kGroups) {
+        std::fprintf(stderr, "--group %zu: derived zoom levels are for --png\n", *args->group);
         std::fputs(anno::app::kUsage, stderr);
         return 2;
     }
@@ -151,10 +179,20 @@ int run(const std::vector<std::string>& raw) {
     scene.river_cfg.gap_patch_tiles = args->river_gap_patch;
     if (args->png) {
         const std::size_t group = args->group.value_or(2);
+        if (const std::string err =
+                anno::app::set_derived_levels(scene, group, args->zoom.max_derived_levels);
+            !err.empty()) {
+            std::fprintf(stderr, "%s: %s\n", name.c_str(), err.c_str());
+            return 2;
+        }
         std::optional<Rect> region;
         if (args->at) {
-            // --at is bounded (cli.hpp), so the projection stays in int range.
-            const auto [cx, cy] = anno::render::tile_top(args->at->first, args->at->second, group);
+            // --at is bounded (cli.hpp), so the projection stays in int range. A derived level
+            // is its built ancestor's picture halved per level, as Scene::bounds reduces it.
+            const auto [ax, ay] = anno::render::tile_top(args->at->first, args->at->second,
+                                                         scene.levels().ancestor(group));
+            const int r = 1 << scene.levels()[group].shift;
+            const int cx = anno::render::div_euclid(ax, r), cy = anno::render::div_euclid(ay, r);
             region = Rect{cx - args->size.first / 2, cy - args->size.second / 2, args->size.first,
                           args->size.second};
         }

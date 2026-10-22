@@ -222,6 +222,10 @@ class FrameRenderer {
 
     /// Builds chunks with `workers` from now on (nullptr: in the frame).
     void set_workers(std::unique_ptr<ChunkWorkers> workers);
+    /// Takes chunks the caller held on to (an upload dropped or finished, gpu.cpp): the last
+    /// reference to a chunk is freed on the chunk workers' thread, not the caller's (about a
+    /// millisecond per chunk). Without workers they are freed here.
+    void release(std::vector<ChunkPtr> chunks);
     /// Whether chunks are still being built in the background.
     [[nodiscard]] bool busy() const { return pending_; }
     [[nodiscard]] std::size_t cached() const { return cache_.size(); }

@@ -5,6 +5,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -107,6 +108,10 @@ class FluidGpu {
     bool apply_job(Job& j);
     /// Cancels the job in flight; its thread is joined later (retired_).
     void retire_job();
+    /// Frees a finished job on a background thread: its grid is tens of megabytes of
+    /// textures, and releasing them on the window thread takes ~1 ms (the zoom sweep's
+    /// `fluid` step, docs/perf/README.md). The destructor waits for those threads.
+    void free_job_in_background(std::unique_ptr<Job> job);
 
     std::unique_ptr<DeviceRef> ref_;
     fluid::FluidConfig cfg_;
@@ -129,6 +134,8 @@ class FluidGpu {
     std::unique_ptr<Job> job_;
     /// Cancelled jobs whose threads may still be running.
     std::vector<std::unique_ptr<Job>> retired_;
+    /// Background frees still running (free_job_in_background); the destructor waits for 0.
+    std::shared_ptr<std::atomic<int>> freeing_ = std::make_shared<std::atomic<int>>(0);
 };
 
 } // namespace anno::render::gpu

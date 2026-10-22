@@ -18,12 +18,14 @@
 namespace anno::app {
 
 inline constexpr const char* kUsage =
-    "usage: anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>] [--png "
+    "usage: anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <n>] [--png "
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
     "[--river-flow legacy|flow] [--river-gain <x>] [--river-speed median|fastest] "
     "[--river-gap-patch <tiles>] [--renderer auto|gpu|cpu] [--lookahead-chunks <n>] "
     "[--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>] "
     "[--min-zoom <tile width>] [--max-derived-levels <n>] [--zoom-max-upscale <factor>]\n"
+    "(--group 0-2: the built zoom levels; 3 and up: derived levels, --png only, bounded by "
+    "--max-derived-levels)\n"
     "(--png only: [--zoom-factor <scale>] [--resample nearest|bilinear|box|area], the picture "
     "composed at --group and resampled by the CPU model of the GPU pass)\n"
     "environment: ANNO_GPU_ADAPTER=<index> (bench_frame --list-adapters), "

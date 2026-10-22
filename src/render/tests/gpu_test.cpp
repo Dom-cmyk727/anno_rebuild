@@ -4905,3 +4905,122 @@ TEST_CASE("GPU frames at derived levels match the CPU path, objects standing in 
         CHECK(g.errors() == 0);
     }
 }
+
+TEST_CASE("released upload holds are freed by the chunk workers, not by the caller") {
+    // The upload's last reference is handed to the workers' thread (FrameRenderer::release):
+    // it is freed once they have taken it, and not before.
+    const EmptyScene es = empty_scene();
+    render::FrameRenderer fr(1, false);
+    fr.set_workers(std::make_unique<render::ChunkWorkers>(*es.scene, 1));
+    auto chunk = std::make_shared<const render::Chunk>();
+    const std::weak_ptr<const render::Chunk> weak = chunk;
+    fr.release({std::move(chunk)});
+    const auto start = std::chrono::steady_clock::now();
+    while (!weak.expired() && std::chrono::steady_clock::now() - start < std::chrono::seconds(10)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    CHECK(weak.expired());
+    // Without workers the caller frees it, as before.
+    render::FrameRenderer plain(1, false);
+    auto other = std::make_shared<const render::Chunk>();
+    const std::weak_ptr<const render::Chunk> gone = other;
+    plain.release({std::move(other)});
+    CHECK(gone.expired());
+}
+
+TEST_CASE("offscreen targets shrink after the views have been small for offscreen_shrink_ms") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    auto run = [&](gpu::GpuFrame& g, render::FrameRenderer& fr, std::uint32_t w, std::uint32_t h) {
+        const auto target = g.offscreen_target(w, h);
+        return g.render(fr, scene, render::Rect{0, 0, static_cast<int>(w), static_cast<int>(h)}, 2,
+                        0, render::WaterStyle::Original, target.second.get(), nullptr);
+    };
+    // A big view makes its targets at 1.25 x its size; a view of half that size fits them
+    // (at most 3 x per axis) and is below a third of their area, so the shrink timer decides.
+    // The big view must not fit a target made before it: a non-discrete adapter has already
+    // made one for its river cost measurement (GpuFrame::create).
+    gpu::GpuLimits limits;
+    limits.offscreen_shrink_ms = 100;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    render::FrameRenderer fr(1, false);
+    run(g, fr, 2000, 1200);
+    const std::size_t big = g.offscreen_bytes();
+    CHECK(big == std::size_t{2500} * 1500 * 6);
+    run(g, fr, 1000, 600);
+    CHECK(g.offscreen_bytes() == big); // the timer has only started
+    const auto start = std::chrono::steady_clock::now();
+    while (g.offscreen_bytes() == big &&
+           std::chrono::steady_clock::now() - start < std::chrono::seconds(10)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        run(g, fr, 1000, 600);
+    }
+    CHECK(g.offscreen_bytes() == std::size_t{1250} * 750 * 6);
+    CHECK(g.errors() == 0);
+    // Off: the target is kept however long the views stay small.
+    limits.offscreen_shrink_ms = 0;
+    auto kept = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(kept);
+    gpu::GpuFrame& k = *kept.value();
+    run(k, fr, 2000, 1200);
+    const std::size_t kept_bytes = k.offscreen_bytes();
+    for (int i = 0; i < 30; ++i) {
+        run(k, fr, 1000, 600);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    CHECK(k.offscreen_bytes() == kept_bytes);
+}
+
+TEST_CASE("the scene grid is kept at the window floor when idle, never dropped") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    const render::Scene& scene = *es.scene;
+    gpu::GpuLimits limits;
+    limits.offscreen_shrink_ms = 100;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    render::FrameRenderer fr(1, false);
+    // A resampled frame: window 1600 x 1000 composed at scale 0.5, so the grid is ~3200 x 2000.
+    const std::uint32_t win_w = 2560, win_h = 1440;
+    // The smallest composed scale (iso.md "Choosing the level"): the grid is 2.21 x the window.
+    const auto rv =
+        gpu::resampled_view(4000.0, 3000.0, win_w, win_h, 0.95 / 2.1, gpu::ResampleFilter::Box);
+    auto target = g.offscreen_target(win_w, win_h);
+    auto resampled = [&]() {
+        return g.render(fr, scene, rv.view, 2, 0, render::WaterStyle::Original, target.second.get(),
+                        &rv.resample);
+    };
+    auto window_only = [&]() {
+        auto t = g.offscreen_target(win_w, win_h);
+        return g.render(fr, scene,
+                        render::Rect{0, 0, static_cast<int>(win_w), static_cast<int>(win_h)}, 2, 0,
+                        render::WaterStyle::Original, t.second.get(), nullptr);
+    };
+    resampled();
+    const std::size_t big = g.offscreen_bytes();
+    CHECK(big > std::size_t{win_w} * win_h * 10); // a grid larger than the window, both targets
+    // Window-only frames: the grid shrinks after the timer, but only to the window floor (+25 %).
+    const std::size_t floor = std::size_t{win_w} * 5 / 4 * (win_h * 5 / 4) * (6 + 4);
+    const auto start = std::chrono::steady_clock::now();
+    while (g.offscreen_bytes() != floor &&
+           std::chrono::steady_clock::now() - start < std::chrono::seconds(10)) {
+        window_only();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    CHECK(g.offscreen_bytes() == floor); // the scene grid is still there, at the window floor
+    CHECK(floor < big);
+    // Re-grow: the first resampled frame after the idle spell builds the grid again.
+    resampled();
+    CHECK(g.offscreen_bytes() == big);
+    CHECK(g.errors() == 0);
+}

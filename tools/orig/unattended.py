@@ -9,7 +9,8 @@
      then quicksaves on (one kept every --save-every records);
   5. the run continues until --minutes of wall time have passed, with a check every --check
      seconds: game alive, no crash (Wine's crash handler), audio guard clean, outputs synced;
-     a crash ends the run at once;
+     a crash ends the run at the next check: the agent's watchdog marks it within 0.5 s and the
+     sampler stops within another 0.5 s, but this script notices it up to --check seconds later;
   6. afterwards, from the sampler JSONL: one record per game minute, and F1's invariant
      tick == counter >> 1 in every record; a summary (summary.json) and full cleanup.
 Input reaches only the runner's own X display; nothing here calls a Win32 input API.

@@ -183,6 +183,7 @@ The play layer, the fixtures and the runner scripts talk to a backend:
   - Menu cells and costs come from the original's construction menu and building panels, and equal `Anlagen.dat` (playbook §14; a unit test compares `opening.json` with that table).
   - Road connectivity is not verified yet; that needs the building lists.
 - **`tools/orig/unattended.py`** runs it all (§5).
+  - It checks health every `--check` seconds (default 60). A crash is marked by the agent's watchdog within 0.5 s, and the sampler writes its `crash` record and stops within another 0.5 s, but `unattended.py` notices it only at its next check, so up to 60 s late with the default. The run ends then; the game minutes in between are lost either way, since the game is dead.
 
 ### 4.7 Later
 - A Dockerfile of the same setup, so it can move to a Linux cloud machine unchanged.

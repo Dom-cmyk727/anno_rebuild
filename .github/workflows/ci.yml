@@ -91,6 +91,10 @@ jobs:
           libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev
           libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libegl1-mesa-dev libgl1-mesa-dev
           libwayland-dev wayland-protocols libdecor-0-dev libasound2-dev libpulse-dev libdbus-1-dev libudev-dev
+      - if: runner.os == 'Linux' && matrix.name == 'linux-gcc'
+        # T13: Mesa's software Vulkan driver (lavapipe) so the GPU parity tests
+        # run on a real adapter in this job only (OQ-089). linux-gcc only.
+        run: sudo apt-get install -y mesa-vulkan-drivers libvulkan1 vulkan-tools
       - if: runner.os == 'macOS'
         run: brew install ninja
       - run: cmake --preset ${{ matrix.preset }}
@@ -117,6 +121,15 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          # T13: linux-gcc runs the GPU parity tests on lavapipe (Mesa's software
+          # Vulkan driver). A missing adapter must fail the job, not skip (OQ-089).
+          if [ "${{ matrix.name }}" = "linux-gcc" ]; then
+            export ANNO_REQUIRE_GPU=1
+            export WGPU_BACKEND=vulkan
+            export VK_ICD_FILENAMES="/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
+            echo "adapter: WGPU_BACKEND=vulkan, VK_ICD_FILENAMES=$VK_ICD_FILENAMES (lavapipe), ANNO_REQUIRE_GPU=1"
+            vulkaninfo --summary 2>/dev/null | grep -i "device name" || true
+          fi
           # Each doctest case is its own test (anno_add_doctest): run them on
           # the runner's cores (4 on the hosted Linux and Windows runners).
           ctest --preset ${{ matrix.preset }} -j 4 2>&1 | tee test.log
@@ -128,6 +141,12 @@ jobs:
         shell: bash
         run: |
           if ctest --preset ${{ matrix.preset }} -V -R "the shared WGSL shaders compile" 2>&1 | grep -q "skipping:"; then
+            if [ "${{ matrix.name }}" = "linux-gcc" ]; then
+              # T13: linux-gcc runs lavapipe with ANNO_REQUIRE_GPU=1, so a missing
+              # adapter must fail the job instead of skipping (OQ-089).
+              echo "::error title=GPU tests skipped::no GPU adapter on linux-gcc (lavapipe); the river-flow shader parity tests did not run (OQ-089)"
+              exit 1
+            fi
             echo "::warning title=GPU tests skipped::no GPU adapter on this runner, the shader parity tests of the river flow (gpu_test.cpp) did not run (OQ-089)"
           fi
       - name: test failures as annotations

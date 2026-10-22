@@ -541,6 +541,83 @@ class Agent(unittest.TestCase):
         recs = [json.loads(x) for x in lines]                           # every line is whole
         self.assertEqual(sorted((r["who"], r["j"]) for r in recs), [(i, j) for i in range(4) for j in range(20)])
 
+    @staticmethod
+    def symlink_or_skip(test, target, link):
+        try:
+            os.symlink(target, link, target_is_directory=True)
+        except (OSError, NotImplementedError) as ex:      # Windows without the symlink privilege
+            test.skipTest(f"no symlinks here: {ex}")
+
+    def test_within(self):
+        with tempfile.TemporaryDirectory() as d:
+            base, outside = os.path.join(d, "out"), os.path.join(d, "outside")
+            os.makedirs(os.path.join(base, "shots"))
+            os.makedirs(outside)
+            ok = os.path.join(base, "shots", "a.png")
+            self.assertEqual(agent.within(ok, base), os.path.realpath(ok))
+            for bad in (base, os.path.join(base, "..", "outside", "a.png"),
+                        os.path.join(base, "shots", "..", "a.png"),          # '..' even when it stays inside
+                        os.path.join(outside, "a.png"), base + "side", "", os.path.abspath(os.sep)):
+                with self.assertRaises(ValueError, msg=bad):
+                    agent.within(bad, base)
+            self.symlink_or_skip(self, outside, os.path.join(base, "link"))
+            with self.assertRaises(ValueError):
+                agent.within(os.path.join(base, "link", "a.png"), base)
+
+    def test_out_win_must_be_inside_cache_orig(self):
+        self.assertEqual(os.path.realpath(agent.OUT_WIN_BASE), os.path.realpath(os.path.join(REPO, "cache", "orig")))
+        # what backend.py passes (before its /mnt/c translation, which the distro side undoes)
+        out_dir = os.path.join(REPO, "cache", "orig", "wine-20261022", "d91-20261022-120000")
+        self.assertEqual(agent.within(out_dir, agent.OUT_WIN_BASE), os.path.realpath(out_dir))
+        with tempfile.TemporaryDirectory() as d:
+            base = os.path.join(d, "cache", "orig")
+            with mock.patch.object(agent, "OUT_WIN_BASE", base):
+                good = os.path.join(base, "s", "d91")
+                self.assertEqual(agent.Instance(":91", "r7", out_win=good).out_win, os.path.realpath(good))
+                for bad in (base, os.path.join(d, "elsewhere"), os.path.join(base, "..", "x"), "/root"):
+                    with self.assertRaises(ValueError, msg=bad):
+                        agent.Instance(":91", "r7", out_win=bad)
+
+    def test_screenshot_dest_and_names(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as d:
+            base = os.path.join(d, "cache", "orig")
+            outside = os.path.join(d, "outside")
+            os.makedirs(outside)
+            with mock.patch.object(agent, "OUT_WIN_BASE", base):
+                inst = self.fake_run(d)
+                inst.out_win = agent.within(os.path.join(base, "s", "d91"), base)
+            inst.grab = lambda: Image.new("RGB", agent.DESKTOP)
+            r = inst.screenshot("a", dest="extra/a.png")                       # relative: under out
+            self.assertEqual(r["dest"], os.path.realpath(os.path.join(inst.out, "extra", "a.png")))
+            win = os.path.join(inst.out_win, "shots", "b.png")
+            self.assertTrue(os.path.isfile(inst.screenshot("b", dest=win)["dest"]))
+            for bad in (os.path.join(outside, "c.png"), "../c.png", os.path.join(inst.out, "..", "c.png"),
+                        os.path.join(d, "c.png")):
+                with self.assertRaises(ValueError, msg=bad):
+                    inst.screenshot("c", dest=bad)
+            self.assertEqual(os.listdir(outside), [])
+            self.assertFalse(os.path.exists(os.path.join(d, "c.png")))
+            for bad in ("../c", "a/b", "", ".x"):
+                with self.assertRaises(ValueError, msg=bad):
+                    inst.screenshot(bad)
+            self.assertFalse(os.path.exists(os.path.join(inst.out, "c.png")))
+            self.symlink_or_skip(self, outside, os.path.join(inst.out, "link"))
+            with self.assertRaises(ValueError):
+                inst.screenshot("c", dest="link/c.png")
+            self.assertEqual(os.listdir(outside), [])
+
+    def test_file_names_are_one_component(self):
+        inst = agent.Instance(":91", "r8")
+        inst.key = mock.Mock()
+        inst.frame_image = mock.Mock()
+        for call in (lambda: inst.learn("../x"), lambda: inst.poll_start("a/b"),
+                     lambda: inst.sample_start(name="..\\x"), lambda: inst.quicksave(keep_as="../m0001")):
+            with self.assertRaises(ValueError):
+                call()
+        inst.key.assert_not_called()                       # refused before F10 is pressed
+        inst.frame_image.assert_not_called()
+
     def test_stop_without_prepare_touches_nothing(self):
         inst = agent.Instance(":91", "never-prepared")
         res = inst.stop()

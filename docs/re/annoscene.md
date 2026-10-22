@@ -4,7 +4,7 @@
 
 Confidence: **confirmed** = read in the decompiled/disassembled function; **likely** = strong inference, not traced end to end; **guess** = hypothesis, also listed under "Open".
 
-Answers in short: OQ-028 — a link naming a `*DUMMY.scp` is replaced at game start by a random real template of the same climate and size (§3–§5). OQ-027 — player type, colour and identity fields of `HEAD`, player 31, unit `attr`, and the `STADT2`, `CREW/ENTRY` and `ESEL` prefixes: §6–§8. Player colours: §9. Long record header: §10.
+Answers in short: OQ-028 — a link naming a `*DUMMY.scp` is replaced at game start by a random real template of the same climate and size (§3–§5). OQ-027 — player type, colour and identity fields of `HEAD`, player 31, unit `attr`, and the `STADT2`, `CREW/ENTRY` and `ESEL` prefixes: §6–§8. Player colours: §9. Long record header: §10. AI profiles (`COMPPROFIL2`), the opponent setup, the hand-over to `CompLogic.dll` and the AI parameter table: §11 (added 2026-10-22, T18; static analysis with `tools/disasm.py` and a capstone linear sweep, no Ghidra on this host).
 
 ## 1. Entry points and classes (`AnnoScene.dll`)
 
@@ -135,7 +135,156 @@ Reader `0x1001dc7a` (`SOLDAT`) / `0x1001df31` (`SCHIFF`), writer around `0x1001f
 - Reader `0x100b4f50`: reads 6-byte name + `u16`; if the `u16` is `≥ 0xFF00`, its low byte is bits 16–23 of the length and the next `u16` is bits 0–15 (`0x100b4d80` returns `high · 65536 + low`). **Confirmed.** So the marker is a 24-bit length escape: `0xFF00` = high byte 0; `0xFFnn` would mean lengths up to 16 MiB. It is not a version flag, and the reader treats short and long forms alike.
 - Writers: `0x100b4e80` writes the short form when the length fits (`< 0xFF00`, high part 0), else the long form `0x100b4df0`. Records written before their size is known reserve 8 bytes (`0x100b5060`) or 10 bytes (`0x100b5080`) and back-patch the header (`0x100b5000` / `0x100b5030`). The `STADT2` writer (`0x1001f3fd`) and the `PROD` writer (`0x1002f23f`) always reserve 10 bytes and back-patch with the long form, whatever the size. **Confirmed.** That explains why every `STADT2` and `STADT2/PROD` in the add-on files is long, even at 22 bytes; the base-game files were written by an older writer that used the short form (**likely**). The reader also still accepts the older record name `STADT` (**confirmed**, string test in `0x1001d240`).
 
+## 11. AI profiles: `COMPPROFIL2`, the opponent setup and the hand-over to `CompLogic.dll`
+
+Modules as named per item; all image bases `0x10000000`. Record layout and corpus: [`../formats/sze.md`](../formats/sze.md) "AI profiles"; the twelve shipped profiles: [`../research/game-files-resurvey.md`](../research/game-files-resurvey.md) §3.
+
+### 11.1 Who reads and writes the chunk
+- **The game's scene loader does not read it.** The game class's record handler `0x10009cc0` (§1) has cases for `HEAD`, `INSELLNK`, `ROHSTOFF`, `SCHATZ`, `ERZE` and `BIGBROTHER` only. Everything else goes to the world's chunk reader, and `AnnoWelt.dll` has no `COMPPROFIL2` string (S). That the world reader skips the chunk is therefore **likely** (the skip path itself was not traced).
+- **The editor class** (kind 1, vtable `0x10031420`, no caller in the shipped modules, §1) keeps a profile list as a member at `+0x8064`; its record handler sends `COMPPROFIL2` there (`0x100058f5`). **Confirmed:**
+  - The list class has vtable `0x100314e0`: read `0x10007110`, write `0x10007320`, count `0x10007440`, add `0x100074c0` (slot `+0x10`).
+  - The `DEF` record sits at list `+4` (128 bytes). The `ENTRY` records are a vector of 168-byte elements at `+0x88`/`+0x8c`.
+  - The reader builds a default record (§11.2), zeroes it, reads the payload over it and appends it.
+  - The writer writes every `ENTRY` (168 bytes), then `DEF` (128 bytes), and wraps them in `COMPPROFIL2`.
+  - The same class writes the per-player `COMP` records with the editor's key names (`0x100052b0`: loops over the parameter indices with a presence mask; `SETTRIBUTSPERRE` for index 25, see `sze.md` "COMP").
+- **The single-player setup (`AnnoFrame.dll`) reads it straight from the scenario file**: `0x1001e5d0(apply)`, called with `apply = 1` from the colour screen's slot `+0x68` (`0x1001d71b`, §9) and from `0x10022db6`. **Confirmed:**
+  1. Opens `Scenes\<folder>\<file>` and accepts root `ANNO` or `ANNOADDON1`.
+  2. Clears the GUID of all 7 opponent slots (`0x1001e640`).
+  3. Walks the `SCENE` children:
+     - `HEAD`: two flags go to the globals `0x1009c068`/`0x1009c069`.
+     - `COMPPROFIL2`, each `ENTRY`: default-constructs a record, zeroes it, reads 168 bytes and appends it to the profile vector (`this+0x534`, begin `+0x538`, end `+0x53c`; count byte `+0x544`).
+     - `COMPPROFIL2`, `DEF`: if `apply` is set, enables all 7 slots (bytes `+0x94`…`+0x9a` = 1). Then, in player order, copies `ENTRY[DEF[i]]` into the next slot (`+0x9c + k·0xa8`) for every `DEF[i] ≠ −1`. Nothing checks the slot count against 7 or `DEF[i]` against the vector size.
+  4. Returns whether any `ENTRY` was read.
+
+### 11.2 The record and the GUID test (`AnnoFrame.dll`, `AnnoScene.dll`)
+- **Record constructor**, inlined in the setup object's constructor `0x1001e140`, in the static initialiser of the global slot array `0x100172d0`, and in both readers: byte 0 = 1, bytes 1–3 = 0, columns 1–18 `4 0 2 3 1 18 0 0 15 3 5 5 0 0 60 0 0 0`, GUID `{E861A553-AFA5-4C53-BAEB-6AF500000000}`, name `Default`, page `Default.htm`. **Confirmed.** Both file readers zero the record after constructing it, so a file record never inherits these values.
+- **GUID test** `0x10019ff0`: false if the 16 bytes at record `+0x4c` are all zero or all `0xFF`, compared as `u32, u16, u16, 8 × u8`. **Confirmed.** So `+0x4c` is a GUID and "no profile" is an invalid GUID.
+
+### 11.3 The opponent setup screen (`AnnoFrame.dll`)
+- **Setup object** (constructor `0x1001e140`, vtable `0x10087234`):
+  - 7 opponent slots of 168 bytes at `+0x9c`, with enable bytes at `+0x94`…`+0x9a` (all 1 after construction);
+  - the profile vector at `+0x534`;
+  - the current slot at `+0x8c` and the profile cursor at `+0x90`.
+
+  **Confirmed.**
+- **Arrows** `0x1001f7f0` (previous) and `0x1001f860` (next): step the cursor through the profile list and, while it points at a profile, copy that profile into the current slot. Then `0x1001f8d0` opens `<game dir>\Profiles\Texte\<page>` with the slot's page name (`+0x75`). **Confirmed.** That this shows the character sketch on the screen is **likely** (the HTML view was not followed).
+- **Commit** `0x1001fad0`: clears the GUID of every slot whose enable byte is 0, then copies all 7 slots to the global array `0x1009bbd0` (1,176 bytes). **Confirmed.**
+- **Network:** `0x1001fd10` runs the commit and, in a network game, sends message 6 with the 1,180 bytes at `0x1009bbd0` (the 7 slots plus the two `HEAD` flags at `0x1009c068`). The message handler `0x10019880` (case 6 at `0x10019a92`) copies them back to `0x1009bbd0`. **Confirmed.** It is the same handler whose case 0 adopts the random seed (§4). So in a network game every machine starts the AI from the same profiles (**likely**: which side sends was not traced, as for the seed).
+
+### 11.4 Hand-over at game start (`AnnoFrame.dll` `0x10028d90`)
+Called from the game start `0x10029100` at `0x10029372` and `0x1002967b`. Both calls come before that function's pass that gives each computer player at `0xFF` the lowest free colour (`0x10029b3a`, §9). For every player in index order (**confirmed**):
+1. Skip player 31 (`0x10028de2`), every player whose type (property 9) is not 12, and every player whose colour (property 11) is not `0xFF`.
+2. Take the player's AI object from player property 44 (`0x2c`). In `AnnoWelt.dll` this is player field `+0xc`: getter `0x10020ab9`, setter `0x10020f27`.
+3. Take the next global slot.
+4. If the slot's GUID is invalid (§11.2), call AI slot `+4` with parameter 34 and no message (`0x10028e63`). That only sets a flag (§11.5).
+5. Otherwise copy columns 1–18 and call the parameter setter (AI vtable slot `+4`, message field `+0x18` = value) 15 times, in this order:
+
+| Call | Column | Parameter | Address |
+|---|---|---|---|
+| 1 | 1 | 0 `TYP` | `0x10028e8a` |
+| 2 | 4 | 3 `HANDEL` | `0x10028e9e` |
+| 3 | 5 | 6 `TRANSPORT` | `0x10028eb4` |
+| 4 | 2 | 1 `FLAECHE` | `0x10028eca` |
+| 5 | 3 | 2 `LAGER` | `0x10028ee0` |
+| 6 | 10 | 7 `HAUPTKLIMA` | `0x10028ef6` |
+| 7 | 11 | 8 `MAXSTADT` | `0x10028f0c` |
+| 8 | 12 | 9 `ZIELGRUPPE` | `0x10028f22` |
+| 9 | 9 | 18 `KAMPFTYP` | `0x10028f38` |
+| 10 | 16 | 13 `MINBAUMAT` | `0x10028f4e` |
+| 11 | 17 | 14 `MINEISEN` | `0x10028f67` |
+| 12 | 6 | 4 `PROZENTE` | `0x10028f80` |
+| 13 | 8 | 25 `TRIBUTSPERRE` | `0x10028f96` |
+| 14 | 18 | 26 `SUSPEND` | `0x10028fac` |
+| 15 | 13 (value) and 14 (second value, message `+0x14`) | 26 `SUSPEND` again | `0x10028fc5`–`0x10028fe0` |
+
+- Columns 0, 7 and 15, the name and the page are not passed. **Confirmed.**
+- Call 15 overrides call 14 with column 13. Its message shape (two values, at `+0x18` and `+0x14`) is the shape of parameter 17 `CHEATLIMIT`, whose setter stores both (`0x10004768`). The `COMP` key reader also builds this shape for `CHEATLIMIT=a,b` (`0x100016df`–`0x1000170e`). So index 26 instead of 17 is **likely** a slip in the original. With the shipped values (all 0) it changes nothing (OQ-112).
+- Because only type-12 players with colour `0xFF` take slots, the slots go to `DEF`'s players in `DEF` order. The corpus has no file where these sets differ (P). A computer player with a preset colour keeps the values of its `COMP` record. So does a scenario without `ENTRY` records: its slots carry no valid GUID, and each computer only gets parameter 34. This assumes the setup reader `0x1001e5d0` ran for the scenario (**likely**). The global slots start out as default records with a valid GUID (`0x100172d0`), and whether any start path skips the reader was not traced.
+
+### 11.5 The AI side: objects, factory, parameter setter (`CompLogic.dll`)
+- **Loading:** `AnnoWelt.dll` `0x1009c630` loads `CompLogic.dll` if world property 14 has bit 1 set (`0x1009c681`; the `ANNOADDON1` root sets it, §1), otherwise `CompLogicClassic.dll`. It calls `CompCreateInstance` (`0x100163b0`), which builds the manager (`0x1003d590`, vtable `0x100634f8`). **Confirmed.** This answers the selection half of OQ-018.
+- **Per-player AI object:** the player reader for `COMP` (`AnnoWelt.dll` `0x1001e3be`) works in three steps. **Confirmed:**
+  1. Reads the 8-byte prefix (type, index).
+  2. Calls manager slot `+0x1c` = factory `0x1003dc50` with them and stores the result in player property 44.
+  3. Lets the new object read the key text (object slot `+0x18`).
+- **The factory switches on the player type** (jump table `0x1003de68`). **Confirmed.** It stores the type at object `+0xa18` and the index at `+0xa14`. Classes by type:
+
+| Type | Constructor | Vtable | Size | Player kind |
+|---|---|---|---|---|
+| 11 | `0x1004ed60` | `0x100637f0` | `0x2420` | human-slot type (§6) |
+| 12, 13 | `0x1003ec80` | `0x10063550` | `0x1d98` | computer opponent; the constructor sets `KAMPFTYP` = 15 (`0x1003ed3f`) |
+| 14 | `0x100516a0` | `0x100638b0` | `0x1d74` | native peoples |
+| 15 | `0x10053660` | `0x10063a00` | `0x1d9c` | pirates |
+| 16 | `0x1004c0c0` | `0x10063680` | `0x1d8c` | Venetians |
+| 17 | own case `0x1003de00` | — | — | not followed |
+
+- **Parameter setter** `0x10004550` = vtable slot `+4`, the same in every class above and in the base vtable `0x10063100`. **Confirmed.** It takes `(index, message)` with the value at message `+0x18` and switches over 36 indices (jump table `0x100049e0`). A value outside a case's limits is ignored, and so is an index above 35.
+- **Key names come from three independent places** and agree on every index they share. **Confirmed:**
+  - the AI's `COMP` key readers `0x10001450` (base) and `0x10040b00` (computer class);
+  - the editor's `COMP` writer (`AnnoScene.dll` `0x100052b0`);
+  - the script's `SET_PROFILE` parser (`AnnoScene.dll` `0x10019b4e`–`0x10019f3b`, the `COMPCAPS_*` names).
+
+The names are German words (`Lager` storage, `Handel` trade, `Prozente` percent, `Kampftyp` combat type, `Hauptklima` main climate, `Zielgruppe` target group, `Mindest-Baumaterial`/`-Eisen` minimum building material/iron, `Tributsperre` tribute block, `Fläche` area). Read them as labels, not as established meaning (OQ-113).
+
+| Index | `COMP` key | Script name | Setter effect (object field) | Profile column |
+|---|---|---|---|---|
+| 0 | `TYP` | `COMPCAPS_TYP` | 0–7 only: `+0xa34`; slot `+0x24` (`0x100044b0`) sets `+0xaf0` = `+0xaf4` = 47,500 / 37,500 / 42,500 / 42,500 / 52,500 / 42,500 / 52,500 / 57,500 for 0…7 | 1 |
+| 1 | `FLAECHE` | — | `+0xa70` | 2 |
+| 2 | `LAGER` | `COMPCAPS_LAGER` | 0–3: `+0xa3c` | 3 |
+| 3 | `HANDEL` | `COMPCAPS_HANDEL` | 0–3: `+0xa40` | 4 |
+| 4 | `PROZENTE` | `COMPCAPS_PROZENTE` | 5–30: `+0xa44`; floats `+0xa8c` = 1 + v·0.01, `+0xa88` = 1 − v·0.01 (constant `0x10063298`) | 6 |
+| 5 | `OPTIONAL` | — | `+0xa6c` | — (OQ-112) |
+| 6 | `TRANSPORT` | `COMPCAPS_TRANSPORT` | 0–3: `+0xa48`; non-zero also calls `0x10004460` | 5 |
+| 7 | `HAUPTKLIMA` | — | `+0xa4c` = 4 (v = 0), 16 (v = 1), 20 (else) | 10 |
+| 8 | `MAXSTADT` | `COMPCAPS_MAXSTADT` | 0–8: `+0xa50` | 11 |
+| 9 | `ZIELGRUPPE` | `COMPCAPS_ZIELGRUPPE` | 0–4: `+0xa54` | 12 |
+| 10 | `ZIELANZAHL` | — | accepted, nothing stored | — (OQ-112) |
+| 11 | — | `COMPCAPS_FIXDIPLOMATIE` | calls `0x10008690(message)` | — |
+| 12 | — | `COMPCAPS_ADDDIPLOMATIE` | calls `0x10008690(message)` (same routine; how 11 and 12 differ is not traced) | — |
+| 13 | `MINBAUMAT` | `COMPCAPS_MINBAUMAT` | `+0xa60` | 16 |
+| 14 | `MINEISEN` | `COMPCAPS_MINEISEN` | `+0xa64` | 17 |
+| 15, 16 | — | — | call `0x100060d0` / `0x100061f0` with the message | — |
+| 17 | `CHEATLIMIT` (two values `a,b`) | — | `+0xa58` = message `+0x18` (b), `+0xa5c` = message `+0x14` (a) | — (OQ-112) |
+| 18 | `KAMPFTYP` | `COMPCAPS_KAMPFTYP` | `+0xa38` = v & 15; then `0x10004df0` (§11.6) | 9 |
+| 19–21 | — | — | call `0x10005e50`, `0x10005730`, `0x10005940` | — |
+| 22, 23, 27 | — | — | ignored | — |
+| 24 | — | `COMPCAPS_SETHELPANLAGE` | type 11 only: `+0xa2c`, then `0x100043e0` | — |
+| 25 | `TRIBUTSPERRE` (editor: `SETTRIBUTSPERRE`) | — | `+0xa68` | 8 |
+| 26 | `SUSPEND` | `COMPCAPS_SUSPEND` | 0: `+0xa80` = 0, byte `+0x1a89` = 1; else `+0xa80` = 1, byte `+0x1a89` = 0 and slot `+0x20` is called | 18 (then 13, §11.4) |
+| 28 | `NATIVEBAUMODE` | — | `+0xafc` | — |
+| 29 | `SPEZFLAG` | — | `+0xa84` (flag word) | — |
+| 30 | `FIXHAUSANZ` (computer class reader) | — | non-zero: `+0xa74`; 0: a value looked up via `0x1000c3d0`, and `+0xa84` bit 2 set | — |
+| 31 | `STADTOFF` (computer class reader) | `COMPCAPS_BAULOGICOFF` | calls `0x10003750(v)` | — |
+| 32 | — | `COMPCAPS_PIRATEATTACKALL` | `+0xa84` \|= 8 (value ignored) | — |
+| 33 | — | — | slot `+0x50` with the message's first `u16` | — |
+| 34 | — | — | `+0xa7c` = 1 (sent for an opponent without a valid profile, §11.4) | — |
+| 35 | — | — | type 11 only: `+0xa78` = (v ≠ 0) | — |
+
+The 16 `COMPCAPS_*` names cover indices 0, 2, 3, 4, 6, 8, 9, 11, 12, 13, 14, 18, 24, 26, 31 and 32. Of the 19 profile columns, 15 reach the setter, at 14 indices: columns 13 and 18 both go to index 26, and column 14 only rides along as an unused second value. **Confirmed.**
+
+### 11.6 What some parameters steer (`CompLogic.dll`)
+- **`KAMPFTYP` (column 9)** is two 2-bit switches. **Confirmed** for the code paths; that the tasks are military ones is **likely** from the name and from the profiles: the Trader page "detests war" and has 0, the Warrior has 11, the Tactician 15.
+  - *Creating tasks:* `0x10003680` acts only for a type-12 AI (`+0xa18` = 12). If bits 0–1 are non-zero and no task of kind 6 exists (`0x100037a0`), it creates one (`0x100037f0`). Bits 2–3 do the same for task kind 8.
+  - *Capping tasks:* the planner at `0x10043233` returns at once when bits 2–3 are 0. Otherwise it counts two sorts of entries in the AI's 12-entry task table (`+0x1ad4`, 28 bytes each). It returns early once a count reaches 1 (bits 2–3 = 4 or 8) or 2 (= 12).
+  - *Cancelling tasks:* writing the parameter calls `0x10004df0`, which cancels the table entries of the kind whose bits are now 0. Entries without flag bit 1 belong to bits 2–3; entries with it belong to bits 0–1.
+  - *Two further tests:* `0x1004354d` tests bit 3 and `0x10043e4a` tests bit 1; not followed.
+- **`PIRATEATTACKALL`** (script only, `single34.sze`, 6 uses) sets bit 3 of the flag word `+0xa84`. **Confirmed:** the pirate class (vtable `0x10063a00`, slot `+0x2c` = `0x10055a30`) calls `0x100558b0` three times. That routine walks candidate objects and drops each one that fails the check `0x10028bd0(candidate, TYP)`. When bit 3 is set it skips this check (`0x1005593f`). **Likely:** the pirates then attack every candidate instead of a TYP-filtered set.
+- **`TYP` (column 1)** selects the pair `+0xaf0`/`+0xaf4` (table above). Several AI routines pass both values with a time value to `0x1003ea50`, e.g. `0x10042357` (the time comes from `0x1003d240`). That routine divides elapsed time by them while it updates a 32-entry per-player table of signed byte values. **Confirmed** for the arithmetic. **Likely:** a decay rate of the AI's per-player attitude; the time unit is not traced. The field `+0xa34` itself occurs 47 times in the module, among them in the pirate target check above.
+- **`PROZENTE` (column 6)** gives the AI two factors, 1 ± v/100. **Confirmed.** A price margin is a **guess** (OQ-113).
+- **`SUSPEND`:** a non-zero value sets `+0xa80`, clears the byte `+0x1a89` and calls the AI's slot `+0x20`. **Confirmed.** That this pauses the AI is **likely** from the name. `single41.sze` sets it for 12 computer players by script.
+
+### 11.7 The script route (`SET_PROFILE`, `AnnoScene.dll`)
+- The action parser (`0x10019a04`) handles `SET_PROFILE("<player>", "COMPCAPS_<key>", <value>)` and maps the name to the index of §11.5 (`0x10019b4e`–`0x10019f3b`). **Confirmed.** An unknown name gives the error `%s ist ein unbekanntes PROFIL bei Bedingung: %d`.
+- The action object (vtable `0x1003b874`) stores the player at `+4`, the value at `+8` and the index at `+0xc`.
+- Its execute method `0x10015e80` takes the player's AI object from player property 44 and calls the same setter (slot `+4`). It puts the value in message `+0x18`. For indices 15 and 16 it puts the value in `+0x10` and 25 in `+0x18` instead; no script name maps to 15 or 16. **Confirmed.**
+- The shipped scripts use it 22 times (P): `COMPCAPS_SUSPEND` 12 × in `single41`, `COMPCAPS_PIRATEATTACKALL` 6 × in `single34` (value `TRUE`), `COMPCAPS_KAMPFTYP` 2 × each in `S01_02_01` (1, 5) and `S01_07_01` (0, 2).
+
+### 11.8 `CompLogicClassic.dll`
+- Its parameter setter `0x10002e50` (jump table `0x100032d0`) has the same 36 cases with the same object fields and the same value limits as `CompLogic.dll`. It differs only in the called routines and in the `SUSPEND` byte (`+0x1a19` instead of `+0x1a89`). **Confirmed.** So the profile columns mean the same in both modules.
+- It has the same key strings minus a few (S, `game-files-resurvey.md` §3). Its own readers and its behaviour behind the fields were not compared.
+
 ## Open
+- §11: `ENTRY` columns 0, 7, 13, 14, 15 and the doubled `SUSPEND` call (OQ-112); what the AI parameters do beyond the setter (OQ-113); the lost `SETTRIBUTSPERRE` values (OQ-114); which machine sends network message 6; the type-17 AI case (`0x1003de00`).
 - The meaning of `INFO` byte 2 ("special") and byte 5 (capacity vs. mountain/ore slots); the size classes and climate masks of the raw-material and ore distribution (`0x1003af74`, `0x10009010`, `0x1003af40`).
 - What happens to a link without any candidate after the capacity filter (§5 step 10).
 - Whether a savegame stores the world random cursor (property 8), and when the reset `0x100af240` runs relative to a scene load.

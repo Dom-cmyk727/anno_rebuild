@@ -2,7 +2,11 @@
 
 **Who writes this file:** the orchestrator session (Claude Fable, the owner's "main" session). **Who reads it:** the executor session (Claude Sonnet with subagents). The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-Last update: 2026-10-22 f.
+Last update: 2026-10-22 g.
+- **Orchestrator research merged on `main`:** the in-game help checked against the data (`docs/research/manual-and-help.md`, e3b48b6), building costs in `playbook.md` §14 (51615bb), and a second survey of the game files (`docs/research/game-files-resurvey.md`, 1dc8cc7): the `BIGBROTHER` chunk is a scenario **script language**, `COMPPROFIL2` holds the AI profiles.
+- **New tasks T17 and T18** (owner: "do it", 2026-10-22): the script spec and the AI-profile loader. Both `PARALLEL-OK` and docs/tools only.
+
+Previous: 2026-10-22 f.
 - **PR #17 (T11 stage 2a) merged** as 9f54fec. CI was 20/20; one linux-clang-asan job hung in the runner's apt-get and was rerun. Next: the owner's viewer check.
 - **Isolated-runner spike passed (orchestrator, owner's green light):** the original runs under Wine on an invisible X display in a WSL distro on E:. State reads equal the Windows ones; timing under Wine is noisy. Details: `docs/testing/original-wine.md`.
 - **New task T16:** the harness on top of the spike.
@@ -214,6 +218,23 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   7. later, a Dockerfile.
 - **Acceptance:** an unattended 30-minute run in the Wine runner (new game, a scripted opening from the playbook, the sampler) with the owner's desktop untouched. The state fixtures F6 and warehouse agree with Windows; the timing verdict is written down.
 - **Rules:** the game copy only inside the distro; read-only memory unless the owner decides OQ-T15-WRITE; nothing of the original in git.
+
+### T17 — The scenario script language (`BIGBROTHER`): spec and Python reference (owner decision 2026-10-22: "do it") · `READY` · `PARALLEL-OK` (new files only: `docs/formats/bigbrother.md`, `tools/bigbrother.py`, a doctest corpus case) · branch `task/T17-bigbrother-spec` from `main`
+- **Evidence so far:** `docs/research/game-files-resurvey.md` §2 (shape, vocabulary with usage counts, the German parse errors of the interpreter in `AnnoScene.dll`), `docs/formats/sze.md` (the chunk row).
+- **Do:**
+  1. `tools/bigbrother.py`: parse the `BIGBROTHER` payload of all 50 `.sze` files into sections, defines, `INITBLOCK`, `SET` statements, `IF … THEN { … }` rules (condition expressions with `&&`/`||`, comparisons, the `PLAYER "X" <query> "Y" op n`, `AREA`, `OBJECT`, `TIMER` forms), action calls with typed arguments, `[SIGNALS]`, `[CAMARAPOS]`. Re-emit byte-identically (round trip over all 50) or state exactly which bytes are not kept (trailing blanks, comments).
+  2. `docs/formats/bigbrother.md`: the grammar as read from the files, the full vocabulary (conditions, actions, disaster types, unit and goods names), with usage counts and one example per construct cited by file; the `[SIGNALS]` state and what a savegame keeps; the UI actions vs. the sim-mutating actions (lockstep note, O-16/O-34 in `docs/sim/state.md`).
+  3. A C++ corpus test is **not** part of this task; the Python reference is the oracle. Add `anno-dump`'s `sze` dump of the chunk only if it already prints it.
+- **Rules:** nothing of the original in git; quote the scripts only in short excerpts. Evidence only: where the vocabulary comes from the strings of `AnnoScene.dll` and no shipped script uses an item, mark it S (unused).
+- **Acceptance:** all 50 files parse without a fallback; the doc lists every keyword of the interpreter's string table (284 uppercase names in `AnnoScene.dll`, filter the non-script ones) as used/unused; report in REPORTS.md.
+
+### T18 — The AI profiles: `COMPPROFIL2` loader and the 19 `COMPCAPS_*` columns (owner decision 2026-10-22: "do it") · `READY` · `PARALLEL-OK` (docs only: `docs/re/annoscene.md`, `docs/formats/sze.md` §COMPPROFIL2, `docs/research/game-files-resurvey.md` §3) · branch `task/T18-compprofil` from `main`
+- **Evidence so far:** `game-files-resurvey.md` §3: 168-byte `ENTRY` = `u32[19]`, name, `Profil<nn>.htm`, `0xCC` fill; keys `COMPCAPS_TYP … COMPCAPS_SETHELPANLAGE` in `AnnoScene.dll`; `DEF` 128 bytes.
+- **Do** (static analysis with `tools/disasm.py`, as in `docs/re/annoscene.md`):
+  1. find the `COMPPROFIL2` reader in `AnnoScene.dll` (string refs `COMPPROFIL2`, `ENTRY`, `DEF`, the `COMPCAPS_*` names) and map each of the 19 columns to its key and type; the `DEF` record likewise;
+  2. follow one column into `CompLogic.dll` (`CompCreateInstance`, the profile setter) far enough to say what it steers (e.g. `COMPCAPS_KAMPFTYP`, `COMPCAPS_PIRATEATTACKALL`), with addresses;
+  3. write the table into `docs/formats/sze.md` and the RE note; list the twelve shipped profiles with their column values (P, from the nine endless `.sze` files) in the resurvey note §3.
+- **Acceptance:** every column named or marked unknown with the reason; addresses for every claim; report in REPORTS.md.
 
 ### T14 — The compositor on weak GPUs (the Radeon iGPU) · `READY after T3 stage 3` (owner decision 2026-10-21 n: "Agree with your recommendation"; it edits `gpu.cpp` / `gpu.wgsl`, so it runs after T3 stage 3 and one at a time with T11 stage 2a, T11 first) · branch `task/T14-weak-gpu` from `main` after T3 stage 3
 - **Why:** T3's measurements (`docs/perf/README.md`, "T3 stage 3 fix 1") show the GPU frame with enhanced water at 3.6 ms (1280x800) and 13.4 ms (2560x1440) on the Radeon iGPU at scale 1, and 72-195 ms when zoomed out, against 0.1-4.7 ms on the RTX 4090. The game must run on integrated graphics (PLAN 0.3: modern hardware, not only the top end).

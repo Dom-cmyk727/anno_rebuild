@@ -157,4 +157,24 @@ encode_turn_entry(const TurnEntry& entry);
 [[nodiscard]] formats::Result<TurnEntry, std::string>
 decode_turn_entry(std::span<const std::uint8_t> bytes);
 
+/// The total size in bytes of the one ClientRecord at the front of `bytes`: its
+/// header (4 bytes) plus the payload length its header announces. An error (a
+/// message) when `bytes` is shorter than a header or than the record the header
+/// claims. It only frames — it does not decode or validate the body — so that the
+/// header read lives in one place (§8.5, §8.7): decode_turn and the replay-log
+/// reader walk a back-to-back record stream through it instead of re-deriving the
+/// framing at each call site. The wire version is NOT per record; it is carried
+/// once in the replay-log header (kCommandWireVersion).
+[[nodiscard]] formats::Result<std::size_t, std::string>
+record_size(std::span<const std::uint8_t> bytes);
+
+/// Decodes a back-to-back stream of TurnEntry records (`{u32 issuer, u32 seq,
+/// ClientRecord}`, §8.5) that fills `bytes` exactly, appending each to `out`.
+/// Framing is by record_size, so no per-record version or separator is needed.
+/// Returns the number of entries appended, or an error (leaving `out` with the
+/// entries decoded so far) for a truncated entry, a body that does not decode, or
+/// a record that does not end on the span boundary. Total on hostile input.
+[[nodiscard]] formats::Result<std::size_t, std::string>
+decode_turn(std::span<const std::uint8_t> bytes, std::vector<TurnEntry>& out);
+
 } // namespace anno::sim

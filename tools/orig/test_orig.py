@@ -73,21 +73,65 @@ def player_obj(vt: int, world: int, name: bytes, kind: bytes, money: int) -> byt
 
 
 class Offsets(unittest.TestCase):
-    """The offsets are the RE notes' values (docs/re/tick-loop.md, population.md, play-original.md)."""
+    """The tools' offsets against the values written in the docs they cite (docs/re/tick-loop.md,
+    population.md, production.md, players.md; docs/testing/original-harness.md, original-wine.md,
+    play-original.md; docs/formats/user-dat.md), parsed from the docs' text: a change on either
+    side without the other fails here."""
+
+    @staticmethod
+    def doc(rel: str, pattern: str) -> tuple:
+        with open(os.path.join(REPO, "docs", rel), encoding="utf-8") as f:
+            m = re.search(pattern, f.read())
+        if not m:
+            raise AssertionError(f"docs/{rel}: no match for {pattern!r} (doc reworded? update the pattern)")
+        return tuple(int(g, 16) if g.startswith("0x") else int(g) for g in m.groups())
 
     def test_documented_values(self):
-        self.assertEqual((gamestate.WELT_WORLD_VT, gamestate.WELT_CITY_VT, gamestate.WELT_PLAYER_VT,
-                          gamestate.PRNG_RVA), (0xCCDD8, 0xC2F40, 0xC2238, 0xCB8F8))
-        self.assertEqual((gamestate.WORLD_CURSOR, gamestate.WORLD_COUNTER, gamestate.WORLD_TICK),
-                         (0xFC, 0x100, 0x10C))
-        self.assertEqual((gamestate.CITY_STORE, gamestate.CITY_STORE_STRIDE, gamestate.CITY_CAPACITY,
-                          gamestate.CITY_INHABITANTS, gamestate.STORE_UNIT), (0x334, 12, 0x624, 0x2F0, 256))
-        self.assertEqual((gamestate.PLAYER_WORLD, gamestate.PLAYER_NAME, gamestate.PLAYER_KIND,
-                          gamestate.PLAYER_GUID, gamestate.PLAYER_MONEY), (0x08, 0x24, 0x44, 0x64, 0x74))
-        self.assertEqual(gamestate.GOODS, {"tools": 41, "wood": 42, "bricks": 43})
-        self.assertEqual((opening.CITY_STAT_CIVIL, opening.CITY_STAT_MILITARY, opening.PLAYER_UPKEEP,
-                          opening.PLAYER_UPKEEP_REM, opening.BOOKING_DIVISOR), (0x604, 0x608, (0x88, 0x8C), 0xA2, 15))
-        self.assertEqual(userdat.VOLUME_MIN, -250)
+        hexa = "(0x[0-9a-fA-F]+)"
+        world_va, world_rva = self.doc("testing/original-harness.md",
+                                       rf"vtable `{hexa}` in `AnnoWelt\.dll` \(offset `{hexa}` from the module base\)")
+        image = world_va - world_rva                    # AnnoWelt's addresses in the RE notes are VAs
+        self.assertEqual(self.doc("re/tick-loop.md", rf"World object vtable `{hexa}`"), (world_va,))
+        self.assertEqual(gamestate.WELT_WORLD_VT, world_rva)
+        (prng,) = self.doc("re/tick-loop.md", rf"`T` is a u16 table at `{hexa}`")
+        self.assertEqual(gamestate.PRNG_RVA, prng - image)
+        self.assertEqual(self.doc("testing/original-wine.md", rf"PRNG table `AnnoWelt\+{hexa}`"), (gamestate.PRNG_RVA,))
+        (city_vt,) = self.doc("re/production.md", rf"City \(warehouse\) stock — city vtable `{hexa}`")
+        self.assertEqual(gamestate.WELT_CITY_VT, city_vt - image)
+        (player_vt,) = self.doc("re/population.md", rf"The player vtable is `{hexa}`")
+        self.assertEqual(gamestate.WELT_PLAYER_VT, player_vt - image)
+
+        self.assertEqual(self.doc("re/tick-loop.md", rf"The cursor is the u16 at world `\+{hexa}`"),
+                         (gamestate.WORLD_CURSOR,))
+        self.assertEqual(self.doc("re/tick-loop.md", rf"64-bit millisecond counter at `\+{hexa}/\+0x[0-9a-f]+` and "
+                                                     rf"sets the \*\*world tick\*\* `\+{hexa} = counter >> 1`"),
+                         (gamestate.WORLD_COUNTER, gamestate.WORLD_TICK))
+
+        self.assertEqual(self.doc("testing/play-original.md", rf"store per good `\+{hexa} \+ (\d+)g`, capacity "
+                                                              rf"`\+{hexa}`, inhabitants `\+{hexa}`"),
+                         (gamestate.CITY_STORE, gamestate.CITY_STORE_STRIDE, gamestate.CITY_CAPACITY,
+                          gamestate.CITY_INHABITANTS))
+        self.assertEqual(self.doc("re/production.md", r"unsigned fixed point with (\d+) = 1 ton"), (gamestate.STORE_UNIT,))
+        (first,) = self.doc("re/production.md", r"\| (\d+)–\d+ \| `WERKZEUG HOLZ ZIEGEL")
+        self.assertEqual(gamestate.GOODS, {"tools": first, "wood": first + 1, "bricks": first + 2})
+
+        self.assertEqual(self.doc("re/population.md", rf"In every one, `\+{hexa}` points to the live world object"),
+                         (gamestate.PLAYER_WORLD,))
+        self.assertEqual(self.doc("re/population.md", rf"`\+{hexa}`: name, (\d+) bytes"),
+                         (gamestate.PLAYER_NAME, gamestate.PLAYER_TEXT))
+        self.assertEqual(self.doc("re/population.md", rf"`\+{hexa}`: kind, (\d+) bytes"),
+                         (gamestate.PLAYER_KIND, gamestate.PLAYER_TEXT))
+        self.assertEqual(self.doc("re/population.md", rf"`\+{hexa}`: a 16-byte GUID"), (gamestate.PLAYER_GUID,))
+        self.assertEqual(self.doc("re/population.md", rf"\*\*Player money\*\* = `i32` at player `\+{hexa}`"),
+                         (gamestate.PLAYER_MONEY,))
+
+        self.assertEqual(self.doc("re/population.md", rf"stat 1 `\+{hexa}` and stat 2 `\+{hexa}`"),
+                         (opening.CITY_STAT_CIVIL, opening.CITY_STAT_MILITARY))
+        a, b, rem, div = self.doc("re/players.md", rf"booking `S = \[\+{hexa}\] \+ \[\+{hexa}\] \+ u16\[\+{hexa}\]`"
+                                                   r" in a 32-bit register, charge `S/(\d+)`")
+        self.assertEqual(sorted(opening.PLAYER_UPKEEP), sorted((a, b)))
+        self.assertEqual((opening.PLAYER_UPKEEP_REM, opening.BOOKING_DIVISOR), (rem, div))
+        self.assertEqual(self.doc("formats/user-dat.md", r"`(-\d+)` = slider at the left end"), (userdat.VOLUME_MIN,))
 
 
 class GameState(unittest.TestCase):

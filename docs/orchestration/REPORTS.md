@@ -648,3 +648,51 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
   - (5, B5/B6) OWNER-CHECK viewer run — see the PR description and the final report for the exact commands.
 - Reviewers: none spawned. I was able to spawn subagents but did not (single GPU, "one heavy job at a time"); the work is machine-checked against the CPU oracle and both builders, plus the mutation evidence.
 - Time spent / subagents used: inline, no subagents; sequential GPU builds/tests/benches (one heavy job at a time on the shared PC).
+
+## T18 — The AI profiles: `COMPPROFIL2` loader and the 19 columns — 2026-10-22 — status: FINISHED
+- Branch: task/T18-compprofil (5 commits plus this report, on main 60709d5); worktree: C:\Users\altin\anno1503-T18. Docs only. The work was done by one subagent (static analysis with capstone/pefile, no Wine, no builds), then checked by me and two independent reviewers.
+- Built:
+  - `docs/re/annoscene.md` §11 (new): who reads the chunk, the record and GUID test, the opponent setup screen, the game-start hand-over, the AI side (module choice, factory, parameter setter with all 36 indices), what some parameters steer, the `SET_PROFILE` route, `CompLogicClassic`.
+  - `docs/formats/sze.md`: the `ENTRY` and `DEF` layouts with column → parameter → key, setter limits, shipped values and hand-over addresses; the `SPIELER/COMP` record (u32 type, u32 index, `KEY=value` strings).
+  - `docs/research/game-files-resurvey.md` §3: the twelve shipped profiles with every column and which file/player gets which.
+  - OQ-112 (unused columns, the doubled `SUSPEND` call), OQ-113 (what the parameters steer), OQ-114 (`SETTRIBUTSPERRE` values the AI ignores; owner decision on a rules switch); OQ-018 gains the module selection.
+- Main findings:
+  - **The scene loader never reads `COMPPROFIL2`.** The single-player opponent setup in `AnnoFrame.dll` (`0x1001e5d0`) reads it straight from the scenario file and fills 7 slots in `DEF` order. At game start `0x10028d90` gives each computer player (type 12, colour `0xFF`) the next slot. It then passes 15 columns to the AI's parameter setter (`CompLogic.dll` `0x10004550`, 36 indices).
+  - **Columns:**
+    - mapped: 1 `TYP`, 2 `FLAECHE`, 3 `LAGER`, 4 `HANDEL`, 5 `TRANSPORT`, 6 `PROZENTE`, 8 `TRIBUTSPERRE`, 9 `KAMPFTYP`, 10 `HAUPTKLIMA`, 11 `MAXSTADT`, 12 `ZIELGRUPPE`, 16 `MINBAUMAT`, 17 `MINEISEN`, 18 `SUSPEND`;
+    - column 13 reaches parameter 26 (`SUSPEND`) a second time;
+    - columns 0, 7, 14 and 15 reach no setter, so their keys cannot be read from the code (OQ-112, with both readings and the evidence against each).
+  - **Key names:** three independent name sources agree on every index: the AI's key readers, the editor's writer, and the script's `SET_PROFILE` parser. The 16 `COMPCAPS_*` names are `SET_PROFILE`'s names for 16 parameter indices.
+  - **Followed into CompLogic** (addresses in §11.6):
+    - `KAMPFTYP` is two 2-bit switches that create, cap and cancel two kinds of AI tasks;
+    - `PIRATEATTACKALL` makes the pirate class skip its per-target check;
+    - `TYP` selects a time interval used by a per-player table update;
+    - module choice: `CompLogic.dll` for `ANNOADDON1` scenarios, otherwise `CompLogicClassic.dll` (AnnoWelt `0x1009c630`; OQ-018 half answered).
+  - **`SETTRIBUTSPERRE`:** the editor wrote this key into the scenarios' `COMP` records, but the AI only knows `TRIBUTSPERRE`. So shipped values are silently dropped: 18 for five native peoples in `endless02`, and 1 in `S01_04_01` and `S01_05_01` (OQ-114, owner decision).
+- Gates: docs only. No C++ or tool changed: msvc, ctest, clang-format, GCC and agree.py n.a.
+- Evidence (acceptance: every column named or marked unknown with the reason; addresses for every claim):
+  - every column row in `sze.md` carries its hand-over address, or the reason it is unknown (OQ-112);
+  - every §11 claim carries module + address, and every reading beyond the code is labelled likely or guess.
+- Reviewers (two, independent; given the diff and the task):
+  - **A (disassembly)** checked about 30 address claims and derived the column table independently; all 15 hand-over rows and all 36 setter cases match, and the three key-name sources agree at every index. Findings, all fixed:
+    - one **wrong** claim: the factory stores the player's Volk number at `+0xa14`, not the index (I re-checked the instructions: the caller pushes `word [player+0x7a]`);
+    - "column 13 is likely a `CHEATLIMIT` slip" downgraded to a guess (the two values would arrive reversed; it contradicts the key-order reading);
+    - the setup reader's final commit was missing;
+    - smaller precision fixes: pirates override `TYP`'s slot; `SETHELPANLAGE`'s call is for every type; the planner's details; the defaults' helper.
+  - **B (files)** wrote its own parser over all 50 files. Everything matched:
+    - `COMPPROFIL2` counts and sizes; all 100 `ENTRY` boundaries and fill;
+    - the twelve profiles byte-identical, and all 12 × 19 table values;
+    - DEF = the type-12/`0xFF` players in all nine files;
+    - 282 `COMP` records; the `SETTRIBUTSPERRE` values; the 22 `SET_PROFILE` uses.
+
+    Findings, all fixed:
+    - `single39.sze` has a type-12/`0xFF` player and no profile (I verified it: player 17). It is the one shipped case of parameter 34; the "no file where these sets differ" claim is narrowed.
+    - Counter-evidence for the "column 15 = `OPTIONAL`" reading: three `COMP` records copy Profil03 in every mapped key yet have `OPTIONAL=3` where column 15 is 60 (I re-ran it). The same copies independently support the mapping of columns 1, 3–6 and 9–12.
+    - Inconsistent counts of the open columns, now worded the same everywhere; three wording nits.
+- Left open / questions:
+  - OQ-112: columns 0, 7, 14, 15 and the doubled call. A differential run in the T16 runner (patched columns, then read the `COMP` record after a save) could settle it.
+  - OQ-113: what each parameter steers.
+  - OQ-114: owner decision. The faithful default ignores the misspelt key; a rules option could honour it.
+  - Not traced: which machine sends network message 6; the type-17 AI case.
+  - The subagent also confirmed `TRIBUTSPERRE` in a savegame of the Windows install (`C:\anno1503-original`); that evidence is not cited in the docs.
+- Time spent / subagents used: one subagent did the RE and docs; two reviewer subagents (read-only); my check and fixes inline.

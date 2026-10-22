@@ -13,6 +13,8 @@ import re
 import struct
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -439,6 +441,105 @@ class Agent(unittest.TestCase):
             with open(os.path.join(d, "actions.jsonl"), encoding="utf-8") as f:
                 rec = json.loads(f.read())
         self.assertEqual((rec["kind"], rec["arg_kind"], rec["arg_t"]), ("reg_add", "REG_DWORD", 5))
+
+    def fake_run(self, d: str, run_id: str = "fake-run", keep: bool = False):
+        """An Instance whose run folder is a temp dir, marked prepared (no mounts, no processes)."""
+        inst = agent.Instance(":91", run_id, keep=keep)
+        inst.run = os.path.join(d, run_id)
+        inst.out, inst.game, inst.prefix = (os.path.join(inst.run, x) for x in ("out", "game", "prefix"))
+        os.makedirs(inst.out)
+        inst.created = True
+        return inst
+
+    @staticmethod
+    def kinds(path: str) -> list[str]:
+        with open(path, encoding="utf-8") as f:
+            return [json.loads(x)["kind"] for x in f]
+
+    def test_log_never_creates_the_folder(self):
+        with tempfile.TemporaryDirectory() as d:
+            inst = agent.Instance(":91", "r5")
+            inst.out = os.path.join(d, "run", "out")
+            inst.log("early")                                           # before prepare: dropped
+            self.assertFalse(os.path.exists(os.path.join(d, "run")))
+
+    def test_log_after_stop_does_not_recreate_the_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            inst = self.fake_run(d)
+            inst.log("before")
+            res = inst.stop()
+            self.assertTrue(res.get("removed"), res)
+            inst.log("watchdog_error", error="late")                    # a late thread's line
+            self.assertFalse(os.path.exists(inst.run))
+
+    def test_log_after_close_is_dropped(self):
+        with tempfile.TemporaryDirectory() as d:
+            inst = self.fake_run(d, keep=True)
+            inst.log("before")
+            inst.log_close()
+            inst.log("after")
+            self.assertEqual(self.kinds(os.path.join(inst.out, "actions.jsonl")), ["before"])
+
+    def test_stop_joins_the_watchdog_before_closing_the_log(self):
+        with tempfile.TemporaryDirectory() as d:
+            inst = self.fake_run(d, keep=True)
+
+            def slow_watchdog():                                        # its last pass ends after stop()
+                inst.guard_stop.wait()
+                time.sleep(0.3)
+                inst.log("late")
+            inst.watchdog = threading.Thread(target=slow_watchdog, daemon=True)
+            inst.watchdog.start()
+            res = inst.stop()
+            self.assertIs(res["watchdog_stopped"], True)
+            self.assertEqual(self.kinds(os.path.join(inst.out, "actions.jsonl")), ["late", "stop"])
+
+    def test_concurrent_log_lines_do_not_interleave(self):
+
+        class SlowFile:                         # writes one character at a time, yielding between
+            def __init__(self, sink):
+                self.sink = sink
+
+            def write(self, s):
+                for ch in s:
+                    self.sink.append(ch)
+                    time.sleep(0)
+
+            def flush(self):
+                pass
+
+            def close(self):
+                pass
+
+        sink: list[str] = []
+        opens: list[str] = []
+
+        def slow_open(path, *a, **kw):          # a slow open widens the lazy-open race
+            opens.append(path)
+            time.sleep(0.05)
+            return SlowFile(sink)
+
+        with tempfile.TemporaryDirectory() as d:
+            inst = agent.Instance(":91", "r6")
+            inst.out = d
+            go = threading.Event()
+
+            def worker(i):
+                go.wait()
+                for j in range(20):
+                    inst.log("w", who=i, j=j, pad="x" * 40)
+            with mock.patch.object(agent, "open", slow_open, create=True):
+                ts = [threading.Thread(target=worker, args=(i,)) for i in range(4)]
+                for t in ts:
+                    t.start()
+                go.set()
+                for t in ts:
+                    t.join()
+        lines = "".join(sink).splitlines()
+        self.assertEqual(len(opens), 1)
+        self.assertEqual(len(lines), 80)
+        recs = [json.loads(x) for x in lines]                           # every line is whole
+        self.assertEqual(sorted((r["who"], r["j"]) for r in recs), [(i, j) for i in range(4) for j in range(20)])
 
     def test_stop_without_prepare_touches_nothing(self):
         inst = agent.Instance(":91", "never-prepared")

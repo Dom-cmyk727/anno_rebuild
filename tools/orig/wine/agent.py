@@ -447,16 +447,18 @@ class Instance:
         self.log("key", key=name, xkey=k)
         return {"key": k}
 
+    # Each gesture is ONE xdotool invocation (one X connection, so the events stay in order).
+    # No `mousemove --sync`: it waits for a motion event, and when the pointer is already at the
+    # target none comes, so it hung ~15 s per click (measured 2026-10-22).
     def move_px(self, x: int, y: int) -> dict:
         with self.input_lock:
-            self._xdo("mousemove", "--sync", str(x), str(y))
+            self._xdo("mousemove", str(x), str(y))
         return {"x": x, "y": y}
 
     def click_px(self, x: int, y: int, button: int = 1, count: int = 1) -> dict:
         with self.input_lock:
-            self._xdo("mousemove", "--sync", str(x), str(y))
-            time.sleep(0.03)
-            self._xdo("click", "--repeat", str(count), "--delay", "80", str(button))
+            self._xdo("mousemove", str(x), str(y), "sleep", "0.03",
+                      "click", "--repeat", str(count), "--delay", "80", str(button))
         self.log("click", x=x, y=y, button=button, count=count)
         return {"x": x, "y": y}
 
@@ -472,13 +474,12 @@ class Instance:
     def drag(self, nx: float, ny: float, nx2: float, ny2: float, steps: int = 12, button: int = 1) -> dict:
         fr = self.frame()
         (x, y), (x2, y2) = self._px(nx, ny, fr), self._px(nx2, ny2, fr)
+        seq = ["mousemove", str(x), str(y), "sleep", "0.03", "mousedown", str(button)]
+        for i in range(1, steps + 1):
+            seq += ["sleep", "0.02", "mousemove", str(x + (x2 - x) * i // steps), str(y + (y2 - y) * i // steps)]
+        seq += ["sleep", "0.03", "mouseup", str(button)]
         with self.input_lock:
-            self._xdo("mousemove", "--sync", str(x), str(y))
-            self._xdo("mousedown", str(button))
-            for i in range(1, steps + 1):
-                self._xdo("mousemove", "--sync", str(x + (x2 - x) * i // steps), str(y + (y2 - y) * i // steps))
-                time.sleep(0.02)
-            self._xdo("mouseup", str(button))
+            self._xdo(*seq)
         self.log("drag", frm=[x, y], to=[x2, y2])
         return {"from": [x, y], "to": [x2, y2]}
 
@@ -486,8 +487,8 @@ class Instance:
         x, y = self._px(nx, ny)
         button = "4" if amount > 0 else "5"
         with self.input_lock:
-            self._xdo("mousemove", "--sync", str(x), str(y))
-            self._xdo("click", "--repeat", str(abs(amount)), "--delay", "60", button)
+            self._xdo("mousemove", str(x), str(y), "sleep", "0.03",
+                      "click", "--repeat", str(abs(amount)), "--delay", "60", button)
         self.log("wheel", x=x, y=y, amount=amount)
         return {"x": x, "y": y, "amount": amount}
 

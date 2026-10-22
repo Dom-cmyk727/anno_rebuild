@@ -15,18 +15,6 @@ namespace anno::sim {
 
 namespace {
 
-/// The island whose rectangle holds the world tile, or nullptr. The table is scanned
-/// (a derived grid is a later optimisation, World::island_at): the cost is the island
-/// count, never the building or player count.
-Island* island_at_mut(std::vector<std::optional<Island>>& islands, std::int32_t x, std::int32_t y) {
-    for (std::optional<Island>& is : islands) {
-        if (is.has_value() && is->tiles.contains(x, y)) {
-            return &*is;
-        }
-    }
-    return nullptr;
-}
-
 /// Switches the line of output `index` of a payload. False when the payload has no
 /// switch for that output (a class without one, or an index beyond its lines).
 bool switch_line(Payload& payload, std::size_t index, bool on) {
@@ -76,10 +64,9 @@ Reject set_speed(const SimConfig& cfg, WorldSettings& settings, const Command& c
     return Reject::None;
 }
 
-Reject set_production_line(std::vector<std::optional<Island>>& islands, const SimConfig& cfg,
-                           const TypeRegistry& types, const Command& c,
-                           const SetProductionLineCmd& s) {
-    Island* is = island_at_mut(islands, s.tile.x, s.tile.y);
+Reject set_production_line(World& w, const SimConfig& cfg, const TypeRegistry& types,
+                           const Command& c, const SetProductionLineCmd& s) {
+    Island* is = w.island_at(s.tile.x, s.tile.y);
     if (is == nullptr) {
         return Reject::UnknownIsland;
     }
@@ -121,7 +108,7 @@ ApplyResult Commands::apply(World& w, const Command& command, bool inside_advanc
     } else if (const auto* speed = std::get_if<SetSpeedCmd>(&command.body)) {
         result.status = set_speed(w.config_, w.settings_, command, *speed);
     } else if (const auto* line = std::get_if<SetProductionLineCmd>(&command.body)) {
-        result.status = set_production_line(w.islands_, w.config_, *w.types_, command, *line);
+        result.status = set_production_line(w, w.config_, *w.types_, command, *line);
     } else {
         // Build, Demolish and the trade commands are stage S10; a legacy record is never
         // executed (fail closed, §8.3).

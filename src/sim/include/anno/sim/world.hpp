@@ -167,8 +167,11 @@ class World {
     [[nodiscard]] const std::vector<std::optional<Island>>& islands() const { return islands_; }
     /// The island whose rectangle holds the world tile (x, y), or nullptr. The
     /// rectangles are disjoint, so there is at most one; the lookup scans the
-    /// table (a derived grid, D: world +0x130, is a later optimisation).
+    /// table (a derived grid, D: world +0x130, is a later optimisation). Both
+    /// overloads share one scan body (sim.cpp); the mutable one is the single
+    /// island lookup for command apply (§8.4, §4.14).
     [[nodiscard]] const Island* island_at(std::int32_t x, std::int32_t y) const;
+    [[nodiscard]] Island* island_at(std::int32_t x, std::int32_t y);
     /// The building with this id (the island named by the id, then its by_id
     /// cache), or nullptr: a removed building is "gone", never an error.
     [[nodiscard]] const Building* find_building(BuildingId id) const;

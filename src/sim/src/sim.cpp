@@ -47,6 +47,22 @@ const std::shared_ptr<const RngTable>& original_table() {
     return table;
 }
 
+/// The one body behind both World::island_at overloads: the island whose rectangle holds
+/// the world tile, or nullptr. `Islands` deduces to the const or the non-const island
+/// vector, so the const and the mutable lookup share this scan. The table is scanned (a
+/// derived grid is a later optimisation, §4.14): the cost is the island count, never the
+/// building or player count.
+template <class Islands>
+auto island_at_impl(Islands& islands, std::int32_t x, std::int32_t y)
+    -> decltype(&*islands.front()) {
+    for (auto& is : islands) {
+        if (is.has_value() && is->tiles.contains(x, y)) {
+            return &*is;
+        }
+    }
+    return nullptr;
+}
+
 } // namespace
 
 WorldRng::WorldRng() : table_(original_table()) {}
@@ -152,12 +168,11 @@ World::World(std::uint32_t seed)
 }
 
 const Island* World::island_at(std::int32_t x, std::int32_t y) const {
-    for (const std::optional<Island>& is : islands_) {
-        if (is.has_value() && is->tiles.contains(x, y)) {
-            return &*is;
-        }
-    }
-    return nullptr;
+    return island_at_impl(islands_, x, y);
+}
+
+Island* World::island_at(std::int32_t x, std::int32_t y) {
+    return island_at_impl(islands_, x, y);
 }
 
 void World::prepare_hash(const Executor& ex) {

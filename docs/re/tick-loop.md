@@ -129,6 +129,29 @@ Observable: the game clock (world property 7 = game seconds; UI clock `TIMER_UHR
 | F8 | LAN game, then patch one client's world `+0xfc` | within ≤ 60 s + 1 s: `0xd6` received; with an agreed snapshot present the game reloads it, otherwise the "Async aufgetreten" box appears |
 | F9 | Real-time intervals | sync id increments every 60 s; server compare every 500 ms; waiting dialog after 2 s without turns; autosave every 10 min of real time (single-player) |
 
+## Verified by running (T15 stage 1, 2026-10-22)
+
+Read-only, on the copy at `C:\anno1503-original\` through dgVoodoo2, owner at the PC; harness
+`tools/orig/fixtures.py` (reuses `smoke.py`); outputs in `cache/orig/f1f6-1/` (git-ignored). World
+object located at `0x2726db0` (`AnnoWelt.dll` base `0x2530000`, vtable RVA `0xccdd8`).
+
+- **F1 (clock, confirmed).** 60 samples ~1 s apart over 59.023 s real: the ms counter `+0x100` grew
+  59,023 (so +59.0 s game time) and the tick `+0x10c` grew 29,512 = **500.0 ticks per real second,
+  game speed 1.0** (one tick = 2 ms game time). `+0x10c == +0x100 >> 1` in **every** sample and
+  `+0x108 == +0x10c` in every sample (the clock was read between advances). This is the rate and
+  the invariant `src/sim` produces by construction (`clock.hpp`: `Advance` adds ms, tick = counter
+  >> 1), so the original and the sim agree. Per-frame step size is sub-frame and not visible to a
+  1 Hz poll (needs a hook at `Advance` `0x100ae040`; a later fixture).
+- **F6 (PRNG table, read-only variant, confirmed).** The 2048-entry u16 table at `0xcb8f8` read
+  from memory matches the first 2048 MSVC `rand()` outputs from seed 1 **exactly (0 of 2048
+  differ)**; head `41, 18467, 6334, 26500, 19169, 15724`. The documented pre-increment draws
+  reproduce: after cursor 0 -> `18467, 6334, 26500, 19169, 15724`; after cursor 2047 -> `41,
+  18467, 6334`. `src/sim`'s `rng.hpp` builds this same seed-1 table, so the original PRNG table
+  equals the sim's. The cursor `+0xfc` advanced over the run (draws happening), e.g. 1134 -> 1422.
+  The written variant (set `+0xfc`) was not run (read-only session; OQ-T15-WRITE).
+- **F2/F4 (speeds, pause):** keyed fixtures, the second owner session.
+- Copy unchanged after the run (the 20 files' SHA-256 equal `game/app`); no process left.
+
 ## Open
 - Which key or button sends frame command `0x70` (pause); confirm F5–F8 key mapping and the meaning of the `0x80` key-flag bit.
 - Whether single-player really stops while the window is inactive (`+0x1704`/`+0x1708`).

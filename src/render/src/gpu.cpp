@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -17,6 +18,7 @@
 
 #include <anno/render/gpu.hpp>
 #include <anno/render/gpu_fluid.hpp>
+#include <anno/render/residency.hpp>
 #include <anno/render/shaders.hpp>
 
 #include "thread_priority.hpp"
@@ -103,6 +105,39 @@ WGPUBindGroupEntry buffer_entry(std::uint32_t binding, WGPUBuffer b, std::uint64
     e.buffer = b;
     e.offset = 0;
     e.size = size;
+    return e;
+}
+
+/// A compute-visible storage buffer binding layout entry (read-only or
+/// read-write). The GPU chunk-build pass (T11 stage 2a) binds its record, bin,
+/// clip, frame-table, keel and output buffers this way.
+WGPUBindGroupLayoutEntry storage_entry(std::uint32_t binding, bool read_write) {
+    WGPUBindGroupLayoutEntry e = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
+    e.binding = binding;
+    e.visibility = WGPUShaderStage_Compute;
+    e.buffer.type =
+        read_write ? WGPUBufferBindingType_Storage : WGPUBufferBindingType_ReadOnlyStorage;
+    return e;
+}
+
+/// A compute-visible uniform buffer binding layout entry.
+WGPUBindGroupLayoutEntry uniform_compute_entry(std::uint32_t binding) {
+    WGPUBindGroupLayoutEntry e = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
+    e.binding = binding;
+    e.visibility = WGPUShaderStage_Compute;
+    e.buffer.type = WGPUBufferBindingType_Uniform;
+    return e;
+}
+
+/// A compute-visible sampled-texture binding layout entry (the chunk-build
+/// pass reads the static sprite atlas, an unfilterable-float 2D array).
+WGPUBindGroupLayoutEntry texture_compute_entry(std::uint32_t binding) {
+    WGPUBindGroupLayoutEntry e = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
+    e.binding = binding;
+    e.visibility = WGPUShaderStage_Compute;
+    e.texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+    e.texture.viewDimension = WGPUTextureViewDimension_2DArray;
+    e.texture.multisampled = 0;
     return e;
 }
 
@@ -270,6 +305,8 @@ struct GpuFrame::Impl {
     GpuLimits limits;
     /// The device's maxTextureArrayLayers (atlas growth stops there).
     std::uint32_t max_layers = 1;
+    /// The adapter kind (for the atlas budget default, gpu-chunks.md 4.3 rule 6).
+    WGPUAdapterType adapter_type = WGPUAdapterType_Unknown;
     bool atlas_full_reported = false;
     WGPUTextureFormat format = WGPUTextureFormat_RGBA8Unorm;
     ShaderModule module;
@@ -602,6 +639,45 @@ struct GpuFrame::Impl {
     bool fluid_failed = false;
     /// The window serial the cross-fade has seen, and the fade-clock time (ms) it changed.
     std::uint64_t fluid_seen_serial = 0, fluid_arrival = 0;
+
+    /// u32 words of one GPU frame-table entry (frame_table.hpp): layer, atlas x,
+    /// atlas y, image w, image h, anchor_y (i32), keel offset (u32), resident.
+    static constexpr std::uint32_t kCbFrameU32 = 8;
+
+    /// GPU-built chunks (T11 stage 2a, docs/render/gpu-chunks.md 5.1-5.3): the
+    /// compute pipeline, a sprite atlas for chunk (Static) frames of its own so
+    /// the per-frame sprite path (Hot) is untouched, the scene-wide GPU frame
+    /// table and keel buffer the compute pass reads, and the residency model that
+    /// decides atlas placement.
+    struct ChunkBuild {
+        BindGroupLayout layout;
+        PipelineLayout pl;
+        ComputePipeline pipe;
+        bool ready = false;  ///< the pipeline is created and usable
+        bool failed = false; ///< the pipeline could not be created (fall back to Cpu)
+
+        /// The static atlas (RGBA8Unorm 2D array), grown by doubling.
+        Texture atlas;
+        TextureView atlas_view;
+        std::uint32_t atlas_layers = 0;
+        std::optional<AtlasResidency> residency;
+
+        /// Scene-wide GPU frame table, kCbFrameU32 words per FrameId; CPU mirror
+        /// plus the storage buffer. Ids are dense and stable (frame_table.hpp).
+        std::vector<std::uint32_t> frame_cpu;
+        Buffer frame_buf;
+        std::uint64_t frame_cap = 0;
+        /// Per-column keel of each resident frame, appended once (immutable data,
+        /// stable ids), the offset by FrameId.
+        std::map<FrameId, std::uint32_t> keel_off;
+        std::vector<std::uint32_t> keel_cpu;
+        Buffer keel_buf;
+        std::uint64_t keel_cap = 0;
+
+        /// Atlas doublings recorded since the last render() (GpuStats).
+        std::size_t grows = 0;
+    };
+    ChunkBuild cb;
 
     WGPUDevice dev() const { return ref->device.get(); }
     WGPUQueue queue() const { return ref->queue.get(); }
@@ -1070,6 +1146,294 @@ struct GpuFrame::Impl {
         pool_planes.store(plane_pool.size());
         released_holds.push_back(std::move(it->second.hold));
         staged.erase(it);
+    }
+
+    // ---- GPU-built chunks (T11 stage 2a) --------------------------------------
+
+    /// The atlas budget in bytes (gpu-chunks.md 4.3 rule 6): GpuLimits::
+    /// atlas_budget_mb, or 512 MiB on a discrete adapter / 256 MiB otherwise,
+    /// clamped to what the device's array layers hold.
+    std::uint64_t cb_atlas_budget_bytes() const {
+        std::uint64_t mb = limits.atlas_budget_mb;
+        if (mb == 0) {
+            mb = adapter_type == WGPUAdapterType_DiscreteGPU ? 512 : 256;
+        }
+        const std::uint64_t layer = std::uint64_t{limits.atlas_size} * limits.atlas_size * 4;
+        return std::min(mb << 20, std::uint64_t{max_layers} * layer);
+    }
+
+    /// Creates the compute pipeline and the residency model once. cb.failed when
+    /// the pipeline cannot be made (the caller then builds chunks on the CPU).
+    bool cb_init() {
+        if (cb.ready) {
+            return true;
+        }
+        if (cb.failed) {
+            return false;
+        }
+        wgpuDevicePushErrorScope(dev(), WGPUErrorFilter_Validation);
+        cb.layout =
+            layout(dev(), "chunk-build",
+                   {uniform_compute_entry(10), storage_entry(11, false), storage_entry(12, false),
+                    storage_entry(13, false), storage_entry(14, false), storage_entry(15, false),
+                    storage_entry(16, false), storage_entry(17, true), storage_entry(18, true),
+                    texture_compute_entry(19)});
+        const std::array bgls = {cb.layout.get()};
+        WGPUPipelineLayoutDescriptor pld = WGPU_PIPELINE_LAYOUT_DESCRIPTOR_INIT;
+        pld.bindGroupLayoutCount = bgls.size();
+        pld.bindGroupLayouts = bgls.data();
+        cb.pl = PipelineLayout(wgpuDeviceCreatePipelineLayout(dev(), &pld));
+        WGPUComputePipelineDescriptor cd = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+        cd.label = sv("chunk-build");
+        cd.layout = cb.pl.get();
+        cd.compute.module = module.get();
+        cd.compute.entryPoint = sv("chunk_build_cs");
+        cb.pipe = ComputePipeline(wgpuDeviceCreateComputePipeline(dev(), &cd));
+        const std::string err = pop_error_scope(ref->instance.get(), dev());
+        if (!err.empty() || cb.pipe.get() == nullptr) {
+            std::fprintf(stderr, "GPU chunk build disabled: %s\n", err.c_str());
+            cb.failed = true;
+            return false;
+        }
+        cb.residency.emplace(limits.atlas_size, cb_atlas_budget_bytes());
+        cb.ready = true;
+        return true;
+    }
+
+    /// Grows the chunk atlas to at least `need` layers by doubling, copying the
+    /// old layers once (counted in cb.grows / GpuStats::chunk_atlas_grows).
+    void cb_grow_atlas(std::uint32_t need) {
+        need = array_layers(need);
+        if (cb.atlas.get() != nullptr && cb.atlas_layers >= need) {
+            return;
+        }
+        std::uint32_t target = std::max<std::uint32_t>(cb.atlas_layers, 1);
+        while (target < need) {
+            target *= 2;
+        }
+        Texture tex = make_texture(dev(), "chunk-atlas", WGPUTextureFormat_RGBA8Unorm,
+                                   limits.atlas_size, limits.atlas_size, target,
+                                   WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst |
+                                       WGPUTextureUsage_CopySrc);
+        if (cb.atlas.get() != nullptr && cb.atlas_layers > 0) {
+            WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
+            CommandEncoder enc(wgpuDeviceCreateCommandEncoder(dev(), &ed));
+            WGPUTexelCopyTextureInfo src = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+            src.texture = cb.atlas.get();
+            WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+            dst.texture = tex.get();
+            const WGPUExtent3D ext = {limits.atlas_size, limits.atlas_size, cb.atlas_layers};
+            wgpuCommandEncoderCopyTextureToTexture(enc.get(), &src, &dst, &ext);
+            submit(enc.get(), "chunk-atlas grow");
+            ++cb.grows;
+        }
+        cb.atlas = std::move(tex);
+        cb.atlas_layers = target;
+        cb.atlas_view = make_view(cb.atlas.get(), true);
+    }
+
+    void cb_ensure_frame_entry(FrameId id) {
+        const std::size_t need = (std::size_t{id} + 1) * kCbFrameU32;
+        if (cb.frame_cpu.size() < need) {
+            cb.frame_cpu.resize(need, 0);
+        }
+    }
+
+    /// Appends frame `id`'s per-column keel to the keel buffer once (immutable
+    /// data, stable id); returns the u32 offset.
+    std::uint32_t cb_append_keel(FrameId id, const FrameData& f) {
+        if (const auto it = cb.keel_off.find(id); it != cb.keel_off.end()) {
+            return it->second;
+        }
+        const auto off = static_cast<std::uint32_t>(cb.keel_cpu.size());
+        cb.keel_cpu.reserve(cb.keel_cpu.size() + f.keel.size());
+        for (const std::uint16_t v : f.keel) {
+            cb.keel_cpu.push_back(v);
+        }
+        cb.keel_off.emplace(id, off);
+        return off;
+    }
+
+    void cb_set_frame_entry(FrameId id, const AtlasPlace& p, const FrameData& f) {
+        cb_ensure_frame_entry(id);
+        std::uint32_t* e = &cb.frame_cpu[std::size_t{id} * kCbFrameU32];
+        e[0] = p.layer;
+        e[1] = p.x;
+        e[2] = p.y;
+        e[3] = f.width();
+        e[4] = f.height();
+        e[5] = static_cast<std::uint32_t>(f.header.anchor_y);
+        e[6] = cb.keel_off.at(id);
+        e[7] = 1; // resident
+    }
+
+    /// Grows a storage buffer to hold `words` u32 (CopyDst|Storage) and writes
+    /// the whole CPU mirror. Keeps a minimum so the binding is never empty.
+    void cb_upload_buffer(Buffer& buf, std::uint64_t& cap, const std::vector<std::uint32_t>& cpu,
+                          const char* label) {
+        const std::uint64_t want = std::max<std::uint64_t>(cpu.size() * 4, 16);
+        if (buf.get() == nullptr || cap < want) {
+            std::uint64_t cnew = std::max<std::uint64_t>(cap, 16);
+            while (cnew < want) {
+                cnew *= 2;
+            }
+            buf = make_buffer(dev(), label, cnew,
+                              WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst);
+            cap = cnew;
+        }
+        if (!cpu.empty()) {
+            wgpuQueueWriteBuffer(queue(), buf.get(), 0, cpu.data(), cpu.size() * 4);
+        }
+    }
+
+    /// Makes every frame of `set` resident in the chunk atlas (residency.hpp),
+    /// uploads the new images and keels and updates the GPU frame table.
+    /// `max_upload_bytes` bounds the texel bytes uploaded this call.
+    EnsureStatus cb_resident(const std::vector<FrameId>& set, const FrameTable& ft,
+                             std::uint64_t max_upload_bytes) {
+        std::vector<FrameRef> refs;
+        refs.reserve(set.size());
+        for (const FrameId id : set) {
+            const auto f = ft.get(id);
+            if (!f || !f->image) {
+                continue; // cannot decode: left out (replay skips it too)
+            }
+            refs.push_back({id, f->width(), f->height()});
+        }
+        cb.residency->begin_frame();
+        const EnsureResult r = cb.residency->ensure(refs, AtlasClass::Static, max_upload_bytes);
+        if (r.status == EnsureStatus::Deferred || r.status == EnsureStatus::Overflow) {
+            return r.status;
+        }
+        std::uint32_t maxlayer = cb.atlas_layers;
+        for (const auto& [id, p] : r.uploads) {
+            maxlayer = std::max(maxlayer, p.layer + 1);
+        }
+        cb_grow_atlas(maxlayer);
+        for (const auto& [id, p] : r.uploads) {
+            const auto f = ft.get(id);
+            write_layer(queue(), cb.atlas.get(), p.layer, p.x, p.y, p.width, p.height, 4,
+                        f->image->pixels.data(), f->image->pixels.size());
+            cb_append_keel(id, *f);
+        }
+        for (const FrameId id : cb.residency->take_evicted()) {
+            cb_ensure_frame_entry(id);
+            cb.frame_cpu[std::size_t{id} * kCbFrameU32 + 7] = 0;
+        }
+        for (const FrameId id : set) {
+            const auto f = ft.get(id);
+            if (!f || !f->image) {
+                continue;
+            }
+            if (const auto place = cb.residency->place(id)) {
+                cb_set_frame_entry(id, *place, *f);
+            }
+        }
+        cb_upload_buffer(cb.frame_buf, cb.frame_cap, cb.frame_cpu, "cb-frames");
+        cb_upload_buffer(cb.keel_buf, cb.keel_cap, cb.keel_cpu, "cb-keel");
+        return EnsureStatus::Resident;
+    }
+
+    /// Per-chunk scratch buffers and the compute bind group. Kept alive by the
+    /// caller until the GPU has consumed them (after submit, or across the frame).
+    struct CbScratch {
+        Buffer uniform, records, bin_off, bin_idx, clips, objects_out, base_out;
+        BindGroup bind;
+        std::uint32_t w = 0, h = 0;
+    };
+
+    CbScratch cb_scratch(const ChunkDraws& d) {
+        CbScratch s;
+        s.w = static_cast<std::uint32_t>(d.rect.w);
+        s.h = static_cast<std::uint32_t>(d.rect.h);
+        Bytes u;
+        u.i32(d.rect.x);
+        u.i32(d.rect.y);
+        u.u32(s.w);
+        u.u32(s.h);
+        u.u32(d.bin_px);
+        u.u32(d.bins_x);
+        u.i32(d.base_band);
+        u.u32(d.bases ? 1U : 0U);
+        s.uniform = make_buffer(dev(), "cb-uniform", u.b.size(),
+                                WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
+        wgpuQueueWriteBuffer(queue(), s.uniform.get(), 0, u.b.data(), u.b.size());
+        auto storage = [&](const char* label, const void* data, std::size_t bytes) {
+            const std::uint64_t sz = std::max<std::uint64_t>(bytes, 16);
+            Buffer b = make_buffer(dev(), label, sz,
+                                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst);
+            if (bytes != 0) {
+                wgpuQueueWriteBuffer(queue(), b.get(), 0, data, bytes);
+            }
+            return b;
+        };
+        s.records = storage("cb-records", d.objects.data(), d.objects.size());
+        s.bin_off = storage("cb-binoff", d.bin_offsets.data(), d.bin_offsets.size() * 4);
+        s.bin_idx = storage("cb-binidx", d.bin_indices.data(), d.bin_indices.size() * 4);
+        const std::vector<std::uint8_t> clips = clip_table_bytes(d.clips);
+        s.clips = storage("cb-clips", clips.data(), clips.size());
+        const std::uint64_t obytes = std::uint64_t{s.w} * s.h * 4;
+        const std::uint64_t bbytes = std::uint64_t{s.w} * s.h;
+        s.objects_out = make_buffer(dev(), "cb-objects", obytes,
+                                    WGPUBufferUsage_Storage | WGPUBufferUsage_CopySrc);
+        s.base_out = make_buffer(dev(), "cb-base", bbytes,
+                                 WGPUBufferUsage_Storage | WGPUBufferUsage_CopySrc |
+                                     WGPUBufferUsage_CopyDst);
+        auto size_of = [](const Buffer& b, std::uint64_t fallback) {
+            const std::uint64_t n = wgpuBufferGetSize(b.get());
+            return n != 0 ? n : fallback;
+        };
+        const std::array entries = {
+            buffer_entry(10, s.uniform.get(), u.b.size()),
+            buffer_entry(11, s.records.get(), size_of(s.records, 16)),
+            buffer_entry(12, s.bin_off.get(), size_of(s.bin_off, 16)),
+            buffer_entry(13, s.bin_idx.get(), size_of(s.bin_idx, 16)),
+            buffer_entry(14, s.clips.get(), size_of(s.clips, 16)),
+            buffer_entry(15, cb.frame_buf.get(), cb.frame_cap),
+            buffer_entry(16, cb.keel_buf.get(), cb.keel_cap),
+            buffer_entry(17, s.objects_out.get(), obytes),
+            buffer_entry(18, s.base_out.get(), bbytes),
+            view_entry(19, cb.atlas_view.get())};
+        WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+        desc.label = sv("chunk-build");
+        desc.layout = cb.layout.get();
+        desc.entryCount = entries.size();
+        desc.entries = entries.data();
+        s.bind = BindGroup(wgpuDeviceCreateBindGroup(dev(), &desc));
+        return s;
+    }
+
+    /// Copies a tightly-packed buffer into a plane texture's layer 0.
+    void cb_copy_to_plane(WGPUCommandEncoder enc, WGPUBuffer buf, std::uint32_t bytes_per_row,
+                          WGPUTexture tex, std::uint32_t w, std::uint32_t h) const {
+        WGPUTexelCopyBufferInfo src = WGPU_TEXEL_COPY_BUFFER_INFO_INIT;
+        src.buffer = buf;
+        src.layout.offset = 0;
+        src.layout.bytesPerRow = bytes_per_row;
+        src.layout.rowsPerImage = h;
+        WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+        dst.texture = tex;
+        dst.mipLevel = 0;
+        dst.origin = {0, 0, 0};
+        dst.aspect = WGPUTextureAspect_All;
+        const WGPUExtent3D ext = {w, h, 1};
+        wgpuCommandEncoderCopyBufferToTexture(enc, &src, &dst, &ext);
+    }
+
+    /// Records the compute dispatch and the copies into the objects and base
+    /// plane textures (both w x h). base_out is cleared first (atomicOr needs 0).
+    void cb_encode(WGPUCommandEncoder enc, const CbScratch& s, WGPUTexture objects_tex,
+                   WGPUTexture base_tex) const {
+        wgpuCommandEncoderClearBuffer(enc, s.base_out.get(), 0, std::uint64_t{s.w} * s.h);
+        WGPUComputePassDescriptor pd = WGPU_COMPUTE_PASS_DESCRIPTOR_INIT;
+        WGPUComputePassEncoder cp = wgpuCommandEncoderBeginComputePass(enc, &pd);
+        wgpuComputePassEncoderSetPipeline(cp, cb.pipe.get());
+        wgpuComputePassEncoderSetBindGroup(cp, 0, s.bind.get(), 0, nullptr);
+        wgpuComputePassEncoderDispatchWorkgroups(cp, (s.w + 7) / 8, (s.h + 7) / 8, 1);
+        wgpuComputePassEncoderEnd(cp);
+        wgpuComputePassEncoderRelease(cp);
+        cb_copy_to_plane(enc, s.objects_out.get(), s.w * 4, objects_tex, s.w, s.h);
+        cb_copy_to_plane(enc, s.base_out.get(), s.w, base_tex, s.w, s.h);
     }
 
     /// The chunk at `r` of a derived level: the four chunks of `src` (index
@@ -1839,6 +2203,7 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     Impl& m = *f->impl_;
     m.ref = std::make_unique<DeviceRef>(c);
     m.limits = limits;
+    m.adapter_type = c.adapter_type;
     m.max_layers = std::max(device_limits.maxTextureArrayLayers, 1U);
     if (limits.max_atlas_layers != 0) {
         m.max_layers = std::min(m.max_layers, limits.max_atlas_layers);
@@ -2764,6 +3129,49 @@ std::optional<Chunk> GpuFrame::reduce_chunks_2x(const ChunkQuad& quad, Px open_w
             out.ships = out.ships && c->ships;
         }
     }
+    return out;
+}
+
+std::optional<ChunkPlanes> GpuFrame::build_chunk_planes(const ChunkDraws& draws,
+                                                        const FrameTable& frames) {
+    Impl& m = *impl_;
+    if (!m.cb_init()) {
+        return std::nullopt;
+    }
+    const auto w = static_cast<std::uint32_t>(std::max(draws.rect.w, 0));
+    const auto h = static_cast<std::uint32_t>(std::max(draws.rect.h, 0));
+    if (w == 0 || h == 0) {
+        return std::nullopt;
+    }
+    ChunkPlanes out;
+    if (draws.object_count() == 0) {
+        // No objects: the planes are a blank canvas (transparent, base 255), as
+        // replay() of an empty list gives.
+        out.objects.assign(std::size_t{w} * h, Px{0, 0, 0, 0});
+        out.base.assign(std::size_t{w} * h, draws.bases ? std::uint8_t{255} : std::uint8_t{0});
+        out.bases = draws.bases;
+        return out;
+    }
+    if (m.cb_resident(draws.frame_set, frames,
+                      std::numeric_limits<std::uint64_t>::max()) == EnsureStatus::Overflow) {
+        return std::nullopt; // the caller builds this chunk on the CPU
+    }
+    Texture objects_tex = make_texture(m.dev(), "cb-objects-tex", WGPUTextureFormat_RGBA8Unorm, w, h,
+                                       1, WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
+    Texture base_tex = make_texture(m.dev(), "cb-base-tex", WGPUTextureFormat_R8Uint, w, h, 1,
+                                    WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
+    const Impl::CbScratch s = m.cb_scratch(draws);
+    WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
+    CommandEncoder enc(wgpuDeviceCreateCommandEncoder(m.dev(), &ed));
+    m.cb_encode(enc.get(), s, objects_tex.get(), base_tex.get());
+    if (!m.submit(enc.get(), "chunk-build")) {
+        return std::nullopt;
+    }
+    const auto ob = read_back(objects_tex.get(), w, h, 4);
+    out.objects.resize(ob.size() / 4);
+    std::memcpy(out.objects.data(), ob.data(), ob.size());
+    out.base = read_back(base_tex.get(), w, h, 1);
+    out.bases = draws.bases;
     return out;
 }
 

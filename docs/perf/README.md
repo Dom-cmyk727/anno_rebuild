@@ -660,3 +660,28 @@ The iGPU re-grow (allocating ~280 MB of shared-memory textures) is over the 2 ms
 - Interactive frames (static/pan) stay sub-millisecond at p50 and under the 2 ms 500 Hz budget at p95 on both builders.
 
 **Not yet measured (remaining 2a):** per-chunk GPU time of the compute pass with GPU timestamps on adapter 0 (RTX 4090) and adapter 1 (AMD Radeon, Vulkan), the `bin_px` (16/32/64) sweep chosen from it, and the 1280 x 800 / 2560 x 1440 p50/p95/p99/max on both adapters with the pan-and-zoom script. These need timestamp writes around the dispatch (not yet added) and the derived-level path for the zoom script.
+
+### 2026-10-22 b - T11 stage 2a follow-ups: pan-and-zoom matrix, bin_px sweep, resident atlas (B4)
+
+Follow-up to the section above (review item 4 / C1 condition). Idle machine (Ryzen 9800X3D), MSVC Release, branch `task/T11-gpu-chunks`. Scene `D_256x256_0045_5B.scp` (the canyon island), group 0, original water, GPU renderer. `bench_frame <game> <scene> --renderer gpu --chunk-build cpu|gpu --res 1280x800,2560x1440 --groups 0`, `ANNO_GPU_ADAPTER` 0 (RTX 4090, Vulkan) and 1 (AMD Radeon integrated, Vulkan). The `async` path (the interactive one: the margin is uploaded ahead, chunks never block the window thread) pan rows:
+
+| adapter | builder | res | path | p50 ms | p95 ms | p99 ms | max ms |
+|---|---|---|---|---|---|---|---|
+| 0 RTX 4090 | Cpu | 1280×800 | pan fast | 0.4 | 0.5 | 0.8 | 0.8 |
+| 0 RTX 4090 | GpuList | 1280×800 | pan fast | 0.4 | 0.6 | 1.0 | 2.7 |
+| 0 RTX 4090 | Cpu | 2560×1440 | pan fast | 0.7 | 0.9 | 1.3 | 1.3 |
+| 0 RTX 4090 | GpuList | 2560×1440 | pan fast | 0.8 | 1.9 | 3.7 | 4.3 |
+| 0 RTX 4090 | GpuList | 2560×1440 | pan slow | 0.8 | 1.2 | 2.9 | 5.6 |
+| 1 Radeon iGPU | Cpu | 1280×800 | pan fast | 3.5 | 5.4 | 6.1 | 6.3 |
+| 1 Radeon iGPU | GpuList | 1280×800 | pan fast | 3.5 | 5.9 | 7.9 | 7.9 |
+| 1 Radeon iGPU | Cpu | 2560×1440 | pan fast | 10.3 | 14.1 | 15.4 | 15.8 |
+| 1 Radeon iGPU | GpuList | 2560×1440 | pan fast | 11.0 | 15.2 | 22.4 | 23.2 |
+
+- Interactive (async) frames are within the frame budget on both adapters and both resolutions for both builders; GpuList is within a millisecond or two of Cpu on the window thread (the GPU does the objects work instead). The iGPU's cost here is the water/sea compositor (stage 4), not the chunk build (stage 1 is 0.1-0.2 ms).
+- The `blocking` path (chunks built on the window thread, worst case) shows where GpuList helps: the cold group-0 frame's compositor stage (stage 4) drops from ~36 ms (Cpu) to ~6 ms (GpuList) at 1280×800 because the window thread uploads a draw list instead of 3.9 MB of texels per chunk; the per-chunk build on the worker (stage 1) is similar for both since both emit the same list.
+
+**`bin_px` 16/32/64 sweep** (`--bin-px`, GpuList, 2560×1440, group 0, blocking cold + pan): the frame-level times are flat within noise on BOTH adapters (RTX 4090 cold chunk-stage 42-44 ms, iGPU 41-43 ms; pan-fast chunk ms ~4-5 ms; no monotonic trend across 16/32/64). The per-pixel bin walk is not the frame bottleneck — the cold frame is dominated by the CPU worker's list + ground/field/terrain build, and interactive frames are GPU-bound elsewhere. **Choice: keep `bin_px` 32** (the default), since 16 and 64 give no measurable benefit. Isolating the compute dispatch to tune `bin_px` more finely needs a per-chunk GPU timestamp (below).
+
+**Resident chunk atlas** (new `GPU chunk atlas:` summary line, `--zoom-pan`): the canyon at group 0, 2560×1440 holds a **peak ~11.8 MiB** of static chunk frames resident, with **0 CPU fallbacks**, far under the OQ-096 budget (256 MiB integrated / 512 MiB discrete, now covering both atlases together). Single_24 at group 0 is the same ~11.8 MiB (the visible static frame set of one view).
+
+**Still open (one 2a measurement):** the GPU time of the compute **dispatch per chunk** in isolation, with timestamp writes around `cb_encode`, on both adapters. The frame-level `bin_px` sweep above stands in for the tuning (no difference), but the isolated dispatch cost is not yet instrumented; it is the remaining B4 item.

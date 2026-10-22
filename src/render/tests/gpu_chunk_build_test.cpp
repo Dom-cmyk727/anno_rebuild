@@ -208,6 +208,84 @@ TEST_CASE("the composed frame is identical with the Cpu and GpuList builders (ga
     }
 }
 
+TEST_CASE("GpuList derived chunks (reduce_quad) equal the CPU render_derived_chunk (game files)") {
+    // The derived-level decision of gpu-chunks.md 7.2 extension (item 1): with the
+    // GpuList builder a derived chunk's objects live only in the children's GPU
+    // textures, so it is reduced on the window thread by reduce_quad over the GPU
+    // children (built once by the compute pass), not taken from the CPU derived
+    // chunk (whose GpuList children have no objects pixels -> empty far-zoom
+    // objects before the fix). The composed derived frame must equal the Cpu
+    // builder's (which reduces CPU children pixels, the render_derived_chunk
+    // reference) within the reduce tolerance (objects/ground within 1 per
+    // channel; the GPU pass and reduce are exact, so the observed difference is
+    // 0). The derived level 3 reduces built group-2 children; level 4 recurses
+    // over level-3 children: both builders feed the reduce.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    MESSAGE("adapter: " << ctx->name);
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    limits.atlas_upload_bytes_per_frame = std::uint64_t{1} << 40;
+    limits.wave_simulation = false;
+    constexpr int kW = 1280, kH = 800;
+    const render::test::Game game(*dir);
+    for (const char* path :
+         {"Scenes/0200Single/Single_24.sze", "Scenes/Islands/Dschungel/D_256x256_0045_5B.scp"}) {
+        const auto loaded = game.scene(*dir / path);
+        loaded->set_levels(render::ZoomLevels::with_derived(3)); // derived levels 3, 4, 5
+        auto g_cpu = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        auto g_gpu = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE(g_cpu);
+        REQUIRE(g_gpu);
+        render::FrameRenderer cpu(2, false);
+        render::FrameRenderer gpulist(2, false);
+        gpulist.chunk_builder = render::ChunkBuilder::GpuList;
+        const auto tc = g_cpu.value()->offscreen_target(kW, kH);
+        const auto tg = g_gpu.value()->offscreen_target(kW, kH);
+        std::size_t total_built = 0;
+        for (const std::size_t group : {std::size_t{3}, std::size_t{4}}) {
+            const auto b = loaded->bounds(group);
+            REQUIRE(b);
+            const Rect view{b->x + b->w / 2 - kW / 2, b->y + b->h / 2 - kH / 2, kW, kH};
+            const auto sc = g_cpu.value()->render(cpu, *loaded, view, group, 0,
+                                                  render::WaterStyle::Original, tc.second.get());
+            const auto sg = g_gpu.value()->render(gpulist, *loaded, view, group, 0,
+                                                  render::WaterStyle::Original, tg.second.get());
+            CHECK(sc.chunks_missing == 0);
+            CHECK(sg.chunks_missing == 0);
+            CHECK(sg.chunks_cpu_fallback == 0);
+            total_built += sg.gpu_built_chunks;
+            const auto pc = g_cpu.value()->read_back(tc.first.get(), kW, kH);
+            const auto pg = g_gpu.value()->read_back(tg.first.get(), kW, kH);
+            REQUIRE(pc.size() == pg.size());
+            std::size_t over1 = 0;
+            int maxd = 0;
+            for (std::size_t i = 0; i < pc.size(); ++i) {
+                const int d = std::abs(int{pc[i]} - int{pg[i]});
+                maxd = std::max(maxd, d);
+                over1 += d > 1 ? 1 : 0;
+            }
+            INFO(path << " derived group " << group << ": max " << maxd << ", " << over1
+                      << " bytes differ by more than 1");
+            CHECK(maxd <= 1);
+            CHECK(over1 == 0);
+        }
+        // The children fed to the reduce were built by the GPU compute pass: the
+        // derived objects really come from reduce_quad, not an empty plane.
+        MESSAGE(std::string(path) << ": " << total_built
+                                  << " child chunks built by the compute pass for the reduce");
+        CHECK(total_built > 0);
+        CHECK(g_gpu.value()->errors() == 0);
+    }
+}
+
 // ---- The synthetic scene (no game files, gpu-chunks.md 7.3) -----------------
 
 namespace {

@@ -2764,6 +2764,129 @@ TEST_CASE("GPU stand-in chunks equal the CPU reference (synthetic)") {
     }
 }
 
+TEST_CASE(
+    "GPU stand-in equals the CPU reference with both builders (synthetic objects via draws)") {
+    // Stage-0 addition 3 of gpu-chunks.md 12 (item 6): the GPU = CPU stand-in
+    // test runs with both the Cpu and GpuList builders. The source chunks' ground
+    // is the same for both; their objects come from one draw list, so each
+    // builder reaches the stand-in by a different path. The stand-in CPU
+    // reference (stand_in_chunk) composes ground + objects from a Cpu
+    // FrameRenderer whose source objects are the REPLAY of that same draw list;
+    // that is the stated source of the reference. The Cpu builder's GPU stand-in
+    // samples those replayed pixels uploaded as a texture; the GpuList builder's
+    // samples the SAME objects built by the compute pass from the draw list.
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    MESSAGE("adapter: " << ctx->name);
+    namespace flags = render::object_flags;
+    const EmptyScene es = empty_scene();
+    render::Scene& scene = *es.scene;
+    render::FrameTable& ft = scene.frame_table;
+    const auto side = static_cast<std::uint32_t>(render::kChunk);
+    constexpr std::size_t kTo = 1;
+    // One opaque 160 x 160 frame placed near each source chunk's centre.
+    auto img = std::make_shared<anno::assets::Rgba>();
+    img->width = 160;
+    img->height = 160;
+    img->pixels.assign(std::size_t{160} * 160 * 4, 0);
+    for (std::size_t i = 0; i < std::size_t{160} * 160; ++i) {
+        img->pixels[i * 4 + 0] = 200;
+        img->pixels[i * 4 + 1] = 120;
+        img->pixels[i * 4 + 2] = 40;
+        img->pixels[i * 4 + 3] = 255;
+    }
+    anno::formats::figuren::Frame hdr;
+    hdr.width = 160;
+    hdr.height = 160;
+    hdr.anchor_x = 0;
+    hdr.anchor_y = 0;
+    const render::FrameId frame =
+        *ft.intern(render::FrameKey::unit({true, 1, 0, render::UnitFrameId::kNoColour}, 0, false),
+                   [&] { return std::pair{hdr, img}; });
+    for (const std::size_t from : {std::size_t{2}, std::size_t{0}}) {
+        for (const render::ChunkBuilder builder :
+             {render::ChunkBuilder::Cpu, render::ChunkBuilder::GpuList}) {
+            gpu::GpuLimits limits;
+            limits.uploads_per_frame = 1;
+            limits.wave_simulation = false;
+            auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+            REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+            gpu::GpuFrame& g = *made.value();
+            render::FrameRenderer fr(1, false);
+            fr.chunk_builder = builder;
+            render::FrameRenderer ref_fr(1, false); // always Cpu: the reference source
+            for (const auto& sp : render::stand_in_spans(1, 0, kTo, from)) {
+                const render::ChunkKey key{from, sp.src_cx, sp.src_cy};
+                const render::Rect r = render::chunk_rect(sp.src_cx, sp.src_cy);
+                render::ChunkDrawsBuilder b(r, from, true, 0, 32);
+                b.begin_unclipped();
+                b.add({r.x + 176, r.y + 176, frame, flags::kTrackBase, 0, 0, 0});
+                render::ChunkDraws d = b.finish(ft);
+                const render::Canvas cv = render::replay(d, ft);
+                render::Chunk cpu = noise_land_chunk(from, sp.src_cx, sp.src_cy);
+                cpu.objects.resize(std::size_t{side} * side);
+                for (std::size_t i = 0; i < cpu.objects.size(); ++i) {
+                    cpu.objects[i] = {cv.pixels[i * 4], cv.pixels[i * 4 + 1], cv.pixels[i * 4 + 2],
+                                      cv.pixels[i * 4 + 3]};
+                }
+                ref_fr.insert_chunk(key, render::Chunk(cpu));
+                if (builder == render::ChunkBuilder::GpuList) {
+                    render::Chunk src = noise_land_chunk(from, sp.src_cx, sp.src_cy);
+                    src.objects.clear();
+                    src.draws = std::move(d);
+                    fr.insert_chunk(key, std::move(src));
+                } else {
+                    fr.insert_chunk(key, std::move(cpu));
+                }
+            }
+            std::optional<render::Rect> src_view;
+            for (const auto& sp : render::stand_in_spans(1, 0, kTo, from)) {
+                const render::Rect r = render::chunk_rect(sp.src_cx, sp.src_cy);
+                src_view = src_view ? src_view->unite(r) : r;
+            }
+            REQUIRE(src_view);
+            const auto st_target = g.offscreen_target(static_cast<std::uint32_t>(src_view->w),
+                                                      static_cast<std::uint32_t>(src_view->h));
+            for (int f = 0; f < 12; ++f) {
+                g.render(fr, scene, *src_view, from, 0, render::WaterStyle::Original,
+                         st_target.second.get());
+            }
+            const render::Rect view{0, 0, 2 * render::kChunk, render::kChunk};
+            const auto target = g.offscreen_target(2 * side, side);
+            const auto st = g.render(fr, scene, view, kTo, 0, render::WaterStyle::Original,
+                                     target.second.get());
+            CHECK(st.stand_in_chunks == 1);
+            CHECK(st.chunks_cpu_fallback == 0);
+            const auto px = g.read_back(target.first.get(), 2 * side, side);
+            REQUIRE(px.size() == std::size_t{2} * side * side * 4);
+            const auto ref = render::stand_in_chunk(ref_fr, kTo, 1, 0, scene.textures.water());
+            REQUIRE(ref);
+            std::size_t wrong = 0;
+            int worst = 0;
+            for (std::size_t y = 0; y < side; ++y) {
+                for (std::size_t x = 0; x < side; ++x) {
+                    const render::Px e = land_pixel(*ref, y * side + x);
+                    const std::size_t o = (y * 2 * side + side + x) * 4;
+                    int m = 0;
+                    for (std::size_t k = 0; k < 3; ++k) {
+                        m = std::max(m, std::abs(int{e[k]} - int{px[o + k]}));
+                    }
+                    worst = std::max(worst, m);
+                    wrong += m > 1 ? 1U : 0U;
+                }
+            }
+            MESSAGE("source group "
+                    << from << ", builder "
+                    << std::string(builder == render::ChunkBuilder::GpuList ? "GpuList" : "Cpu")
+                    << ": " << wrong << " pixels differ by more than 1, worst " << worst);
+            CHECK(wrong == 0);
+            CHECK(g.errors() == 0);
+        }
+    }
+}
+
 TEST_CASE("GPU stand-ins carry the sea field: cover 0 shows the open water, cover 255 the sea") {
     auto ctx = device_or_skip();
     if (!ctx) {

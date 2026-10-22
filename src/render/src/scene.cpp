@@ -11,23 +11,12 @@
 #include <numeric>
 #include <thread>
 
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-#else
-#include <pthread.h>
-#include <sys/resource.h>
-#include <sys/syscall.h>
-#include <unistd.h>
-#endif
-
 #include <anno/render/frame.hpp>
+#include <anno/render/profile.hpp>
+#include <anno/render/river_window.hpp>
 #include <anno/render/scene.hpp>
+
+#include "thread_priority.hpp"
 
 namespace anno::render {
 
@@ -37,21 +26,6 @@ namespace {
 
 /// States of a FlowSlot.
 constexpr std::uint8_t kFlowIdle = 0, kFlowQueued = 1, kFlowReady = 2, kFlowFailed = 3;
-
-/// Background work yields to the window thread and the chunk builders: this
-/// thread only (a nice value is per thread on Linux but per process on macOS,
-/// the development host, where the QoS class is the per-thread equivalent).
-void lower_thread_priority() {
-#if defined(_WIN32)
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
-#elif defined(__APPLE__)
-    pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
-#elif defined(__linux__)
-    // The kernel's thread id is a task id, which setpriority takes.
-    const int rc = setpriority(PRIO_PROCESS, static_cast<id_t>(::syscall(SYS_gettid)), 5);
-    static_cast<void>(rc);
-#endif
-}
 
 } // namespace
 
@@ -269,7 +243,29 @@ Scene::Scene(std::string name_, std::vector<insel::Island> islands_,
     }
 }
 
+void Scene::set_levels(ZoomLevels levels) {
+    levels_ = std::move(levels);
+    derived_seas_.clear();
+    for (std::size_t i = levels_.built_count(); i < levels_.size(); ++i) {
+        derived_seas_.emplace_back();
+    }
+}
+
 const sea::SeaPattern* Scene::sea(std::size_t group) const {
+    if (group >= kGroups) {
+        // A derived level: the pattern of its source reduced once.
+        if (group >= levels_.size()) {
+            return nullptr;
+        }
+        SeaSlot& d = derived_seas_[group - levels_.built_count()];
+        std::call_once(d.once, [&] {
+            if (const sea::SeaPattern* src = sea(levels_[group].source)) {
+                d.pattern = sea::SeaPattern::reduced(*src);
+            }
+            d.ready.store(true, std::memory_order_release);
+        });
+        return d.pattern ? &*d.pattern : nullptr;
+    }
     SeaSlot& s = seas_[group];
     std::call_once(s.once, [&] {
         s.pattern = sea::SeaPattern::build(anlagen, group, lift, textures.water(), sprites);
@@ -279,15 +275,26 @@ const sea::SeaPattern* Scene::sea(std::size_t group) const {
 }
 
 const sea::SeaPattern* Scene::sea_if_ready(std::size_t group) const {
-    const SeaSlot& s = seas_[group];
-    if (!s.ready.load(std::memory_order_acquire)) {
+    const SeaSlot* s = nullptr;
+    if (group < kGroups) {
+        s = &seas_[group];
+    } else if (group < levels_.size()) {
+        s = &derived_seas_[group - levels_.built_count()];
+    } else {
         return nullptr;
     }
-    return s.pattern ? &*s.pattern : nullptr;
+    if (!s->ready.load(std::memory_order_acquire)) {
+        return nullptr;
+    }
+    return s->pattern ? &*s->pattern : nullptr;
 }
 
 bool Scene::sea_built(std::size_t group) const {
-    return seas_[group].ready.load(std::memory_order_acquire);
+    if (group < kGroups) {
+        return seas_[group].ready.load(std::memory_order_acquire);
+    }
+    return group < levels_.size() &&
+           derived_seas_[group - levels_.built_count()].ready.load(std::memory_order_acquire);
 }
 
 std::pair<bool, bool> Scene::has_water_objects(std::size_t index) const {
@@ -298,6 +305,9 @@ std::pair<bool, bool> Scene::has_water_objects(std::size_t index) const {
 std::vector<SpriteDraw> Scene::sprites_in(Rect rect, std::size_t group, std::uint64_t time_ms,
                                           SpriteLayer layer, WaterStyle style) const {
     std::vector<SpriteDraw> out;
+    if (group >= kGroups) {
+        return out; // no scene content at a derived level (set_levels)
+    }
     for (const auto& p : layouts[group]) {
         if (!p.bounds.intersect(rect)) {
             continue;
@@ -329,6 +339,7 @@ std::vector<SpriteDraw> Scene::sprites_in(Rect rect, std::size_t group, std::uin
 const sea::IslandWater* Scene::island_water(std::size_t i) const {
     IslandData& d = objects_[i];
     std::call_once(*d.water_once, [&] {
+        const profile::Scope stage(profile::Stage::island_water);
         d.water = sea::IslandWater::build(islands[i], d.rivers, river_cfg.gap_patch_tiles);
     });
     return d.water ? &*d.water : nullptr;
@@ -347,17 +358,45 @@ namespace {
 /// per pixel does not grow with r and chunks without any alpha are free.
 /// `close`: every pixel with any alpha in its 3 x 3 neighbourhood counts as
 /// fully covered first (fills the holes of a 50 % checkerboard sprite).
-std::vector<float> blurred_alpha(const Canvas& c, int r, bool close = false) {
-    const auto w = static_cast<int>(c.width), h = static_cast<int>(c.height);
+} // namespace
+
+namespace detail {
+
+std::vector<float> blurred_alpha(const Canvas& c, int r, bool close, WindowOptions options) {
+    const auto cw = static_cast<int>(c.width), ch = static_cast<int>(c.height);
     std::vector<float> out(c.width * c.height, 0.0F);
-    std::vector<std::uint32_t> a(out.size());
-    bool any = false;
-    for (std::size_t i = 0; i < a.size(); ++i) {
-        a[i] = c.pixels[i * 4 + 3];
-        any = any || a[i] != 0;
+    int bx0 = cw, by0 = ch, bx1 = -1, by1 = -1;
+    for (int y = 0; y < ch; ++y) {
+        for (int x = 0; x < cw; ++x) {
+            if (c.pixels[static_cast<std::size_t>(y * cw + x) * 4 + 3] != 0) {
+                bx0 = std::min(bx0, x);
+                bx1 = std::max(bx1, x);
+                by0 = std::min(by0, y);
+                by1 = std::max(by1, y);
+            }
+        }
     }
-    if (!any) {
+    if (bx1 < 0) {
         return out;
+    }
+    // Only the bounding box of the alpha plus the reach of the filters can be
+    // non-zero (iso.md, "Bounded blur and chamfer"): the closing reaches 1 pixel,
+    // the two box passes in each direction r each, so the output reaches 2r (+ 1
+    // with the closing). The inputs of every pass reach less than that (a pass
+    // adds r), so the border of the window is zero in them, and the edge repeat of
+    // a line there equals the zeros it replaces. The window is clipped to the
+    // canvas, where the edge repeat is the real one.
+    const int margin =
+        options.bounded ? std::max(0, 2 * r + (close ? 1 : 0) - options.shrink) : cw + ch;
+    const int x0 = std::max(0, bx0 - margin), y0 = std::max(0, by0 - margin);
+    const int x1 = std::min(cw, bx1 + margin + 1), y1 = std::min(ch, by1 + margin + 1);
+    const int w = x1 - x0, h = y1 - y0;
+    std::vector<std::uint32_t> a(static_cast<std::size_t>(w) * static_cast<std::size_t>(h));
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            a[static_cast<std::size_t>(y * w + x)] =
+                c.pixels[static_cast<std::size_t>((y0 + y) * cw + x0 + x) * 4 + 3];
+        }
     }
     std::vector<std::uint32_t> tmp(a.size());
     if (close) {
@@ -405,11 +444,18 @@ std::vector<float> blurred_alpha(const Canvas& c, int r, bool close = false) {
     }
     const float n = static_cast<float>(2 * r + 1);
     const float norm = 1.0F / (255.0F * n * n * n * n);
-    for (std::size_t i = 0; i < a.size(); ++i) {
-        out[i] = static_cast<float>(a[i]) * norm;
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            out[static_cast<std::size_t>((y0 + y) * cw + x0 + x)] =
+                static_cast<float>(a[static_cast<std::size_t>(y * w + x)]) * norm;
+        }
     }
     return out;
 }
+
+} // namespace detail
+
+namespace {
 
 /// Two-pass chamfer distance (1, √2) in place: 0 at the seeds, else large.
 void chamfer(std::vector<float>& d, std::size_t w, std::size_t h) {
@@ -457,14 +503,39 @@ void chamfer(std::vector<float>& d, std::size_t w, std::size_t h) {
 
 sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
                                         std::size_t group) const {
+    std::optional<profile::Scope> stage(std::in_place, profile::Stage::sea_field);
     sea::WaterField f =
         sea::water_field(rect, probe, [this](std::size_t i) { return island_water(i); });
+    stage.emplace(profile::Stage::river_sprites);
     // Enhanced river water takes the shapes of the waterfall and mouth
     // sprites (their alpha, softened): the river runs through the falls into
     // the sea as one surface instead of ending at hard-edged sprite patches
     // (tester feedback 2026-10-18). Falls get rapids, mouths stay calm.
     // Original water ignores river pixels (flag bit 1) and draws the sprites.
-    Canvas falls = blank(rect), mouths = blank(rect), beds = blank(rect);
+    // The three masks are created on the first sprite pixel that reaches them:
+    // compositing a transparent canvas changes nothing, and with all three
+    // blank apply_fall_masks changes nothing either (af = am = ab = 0 gives
+    // a = 0 and bed = -kBedEdge * kBedDepth = -2 <= -0.5 at every pixel), so a
+    // chunk without river sprite pixels skips both.
+    static_assert((0.0F - kBedEdge) * kBedDepth <= -0.5F,
+                  "blank masks must leave apply_fall_masks without effect");
+    Canvas falls, mouths, beds;
+    auto add = [&](Canvas& mask, const Canvas& local, std::pair<int, int> off) {
+        bool opaque = false;
+        for (std::size_t k = 3; k < local.pixels.size(); k += 4) {
+            if (local.pixels[k] != 0) {
+                opaque = true;
+                break;
+            }
+        }
+        if (!opaque) {
+            return;
+        }
+        if (mask.pixels.empty()) {
+            mask = blank(rect);
+        }
+        composite(mask, local, off);
+    };
     bool any = false;
     for (const auto& p : layouts[group]) {
         const auto r = p.bounds.intersect(rect);
@@ -490,7 +561,7 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
         if (!o.river_sprites.empty()) {
             Canvas local = blank(Rect{r->x - off.first, r->y - off.second, r->w, r->h});
             draw_prepared_tested(local, o.river_sprites, anlagen, group, lift, 0, sprites, 0, keep);
-            composite(beds, local, off);
+            add(beds, local, off);
         }
         for (const bool fall : {true, false}) {
             std::vector<Prepared> below, above;
@@ -510,12 +581,19 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
             Canvas local = blank(Rect{r->x - off.first, r->y - off.second, r->w, r->h});
             draw_prepared_tested(local, below, anlagen, group, lift, 0, sprites, 0, all);
             draw_prepared_tested(local, above, anlagen, group, lift, 0, sprites, 0, keep);
-            composite(fall ? falls : mouths, local, off);
+            add(fall ? falls : mouths, local, off);
         }
     }
-    if (any) {
+    if (any && !(falls.pixels.empty() && mouths.pixels.empty() && beds.pixels.empty())) {
+        stage.emplace(profile::Stage::fall_masks);
+        for (Canvas* mask : {&falls, &mouths, &beds}) {
+            if (mask->pixels.empty()) {
+                *mask = blank(rect);
+            }
+        }
         apply_fall_masks(f, falls, mouths, beds, group);
     }
+    stage.emplace(profile::Stage::river_blend);
     blend_rivers_into_sea(f, group);
     return f;
 }
@@ -524,8 +602,9 @@ void Scene::apply_fall_masks(sea::WaterField& f, const Canvas& falls, const Canv
                              const Canvas& beds, std::size_t group) const {
     // Soft, rounded edges: about 4 px at zoom group 0.
     const int radius = std::max(1, static_cast<int>(kTile[group].h) / 10);
-    const std::vector<float> af = blurred_alpha(falls, radius), am = blurred_alpha(mouths, radius),
-                             ab = blurred_alpha(beds, radius, true);
+    const std::vector<float> af = detail::blurred_alpha(falls, radius, false),
+                             am = detail::blurred_alpha(mouths, radius, false),
+                             ab = detail::blurred_alpha(beds, radius, true);
     auto byte = [](float v) { return sat_cast<std::uint8_t>(clampf(v, 0.0F, 255.0F)); };
     for (std::size_t i = 0; i < f.flags.size(); ++i) {
         const float a = fmaxf(af[i], am[i]);
@@ -564,28 +643,67 @@ void Scene::apply_fall_masks(sea::WaterField& f, const Canvas& falls, const Canv
 }
 
 void Scene::blend_rivers_into_sea(sea::WaterField& f, std::size_t group) const {
+    detail::blend_rivers_into_sea(f, group);
+}
+
+void detail::blend_rivers_into_sea(sea::WaterField& f, std::size_t group, WindowOptions options) {
     // Where river water meets the sea, its look turns into the sea's over
     // kRiverBlend pixels (scaled with the zoom): distance to the nearest
-    // enhanced sea water (two-pass chamfer within the rect) and that
-    // water's cover. The shader and shade_sea mix river and sea shading by
-    // the distance stored in `shore` (river pixels; 255 = far).
-    const auto w = static_cast<std::size_t>(f.rect.w), h = static_cast<std::size_t>(f.rect.h);
+    // enhanced sea water (two-pass chamfer) and that water's cover. The
+    // shader and shade_sea mix river and sea shading by the distance stored in
+    // `shore` (river pixels; 255 = far).
+    //
+    // Everything below acts on river pixels and on sea pixels within `seam` of
+    // one, and only reads chamfer values below `reach` / `seam`. Those values
+    // depend on pixels within that many pixels (Chebyshev) only, so the passes
+    // run on the bounding box of the river pixels grown by `margin`, with the
+    // same results (iso.md, "Bounded blur and chamfer").
+    static_assert(kSeamDepth > 0.0F, "the seam seeds are a subset of the blend seeds");
+    const auto fw = static_cast<std::size_t>(f.rect.w), fh = static_cast<std::size_t>(f.rect.h);
     const float reach = kRiverBlend * static_cast<float>(kTile[group].h) / 42.0F;
+    const float seam = kRiverSeam * static_cast<float>(kTile[group].h) / 42.0F;
     constexpr float kFar = 1e9F;
+    std::size_t bx0 = fw, by0 = fh, bx1 = 0, by1 = 0;
+    bool rivers = false;
+    for (std::size_t y = 0; y < fh; ++y) {
+        for (std::size_t x = 0; x < fw; ++x) {
+            if ((f.flags[y * fw + x] & 2U) != 0) {
+                rivers = true;
+                bx0 = std::min(bx0, x);
+                bx1 = std::max(bx1, x);
+                by0 = std::min(by0, y);
+                by1 = std::max(by1, y);
+            }
+        }
+    }
+    if (!rivers) {
+        return;
+    }
+    // A seam pixel lies within `seam` of a river pixel and its sea seed within
+    // `seam` of it (both inclusive); a blended pixel's seed lies at a chamfer
+    // distance below `reach`, i.e. at most ceil(reach) - 1 pixels away.
+    const auto reachpx =
+        static_cast<std::size_t>(std::max(std::ceil(reach) - 1.0F, 2.0F * std::floor(seam)));
+    const std::size_t margin =
+        !options.bounded ? fw + fh
+                         : reachpx - std::min(reachpx, static_cast<std::size_t>(options.shrink));
+    const std::size_t x0 = bx0 > margin ? bx0 - margin : 0, y0 = by0 > margin ? by0 - margin : 0;
+    const std::size_t x1 = std::min(fw, bx1 + margin + 1), y1 = std::min(fh, by1 + margin + 1);
+    const std::size_t w = x1 - x0, h = y1 - y0;
+    auto at = [&](std::size_t i) { return (y0 + i / w) * fw + x0 + i % w; }; // window -> field
     std::vector<float> dist(w * h, kFar);
     std::vector<std::uint8_t> near_cover(w * h, 0);
-    bool rivers = false, sea = false;
+    bool sea = false;
     for (std::size_t i = 0; i < w * h; ++i) {
-        const float sd = (static_cast<float>(f.depth[i]) - sea::kDepthBias) / sea::kDepthScale;
-        if ((f.flags[i] & 2U) != 0) {
-            rivers = true;
-        } else if (f.cover[i] != 0 && sd > 0.0F) {
+        const std::size_t k = at(i);
+        const float sd = (static_cast<float>(f.depth[k]) - sea::kDepthBias) / sea::kDepthScale;
+        if ((f.flags[k] & 2U) == 0 && f.cover[k] != 0 && sd > 0.0F) {
             dist[i] = 0.0F;
-            near_cover[i] = f.cover[i];
+            near_cover[i] = f.cover[k];
             sea = true;
         }
     }
-    if (!rivers || !sea) {
+    if (!sea) {
         return;
     }
     auto relax = [&](std::size_t i, std::size_t j, float step) {
@@ -633,45 +751,45 @@ void Scene::blend_rivers_into_sea(sea::WaterField& f, std::size_t group) const {
     // water would turn transparent (a sand line between the two): they join
     // the river surface with the sea's look (shore 0), fully water.
     std::vector<float> to_river(w * h, kFar);
-    for (std::size_t i = 0; i < w * h; ++i) {
-        if ((f.flags[i] & 2U) != 0) {
-            to_river[i] = 0.0F;
-        }
-    }
-    chamfer(to_river, w, h);
-    // ... and to full sea water: only pixels in a narrow gap between the
-    // two are filled, the open shoreline stays as it is.
     std::vector<float> to_sea(w * h, kFar);
     for (std::size_t i = 0; i < w * h; ++i) {
-        const float sd = (static_cast<float>(f.depth[i]) - sea::kDepthBias) / sea::kDepthScale;
-        if ((f.flags[i] & 2U) == 0 && f.cover[i] != 0 && sd >= kSeamDepth) {
+        const std::size_t k = at(i);
+        if ((f.flags[k] & 2U) != 0) {
+            to_river[i] = 0.0F;
+        }
+        // ... and to full sea water: only pixels in a narrow gap between the
+        // two are filled, the open shoreline stays as it is.
+        const float sd = (static_cast<float>(f.depth[k]) - sea::kDepthBias) / sea::kDepthScale;
+        if ((f.flags[k] & 2U) == 0 && f.cover[k] != 0 && sd >= kSeamDepth) {
             to_sea[i] = 0.0F;
         }
     }
+    chamfer(to_river, w, h);
     chamfer(to_sea, w, h);
-    const float seam = kRiverSeam * static_cast<float>(kTile[group].h) / 42.0F;
     for (std::size_t i = 0; i < w * h; ++i) {
-        const float sd = (static_cast<float>(f.depth[i]) - sea::kDepthBias) / sea::kDepthScale;
-        if ((f.flags[i] & 2U) != 0 || f.cover[i] == 0 || sd >= kSeamDepth ||
+        const std::size_t k = at(i);
+        const float sd = (static_cast<float>(f.depth[k]) - sea::kDepthBias) / sea::kDepthScale;
+        if ((f.flags[k] & 2U) != 0 || f.cover[k] == 0 || sd >= kSeamDepth ||
             to_river[i] + to_sea[i] > seam) {
             continue;
         }
-        f.flags[i] = static_cast<std::uint8_t>((f.flags[i] & 1U) | 2U);
-        f.shore[i] = 0;
-        f.depth[i] = sat_cast<std::uint8_t>(
+        f.flags[k] = static_cast<std::uint8_t>((f.flags[k] & 1U) | 2U);
+        f.shore[k] = 0;
+        f.depth[k] = sat_cast<std::uint8_t>(
             clampf(sea::kDepthBias + kSeamDepth * sea::kDepthScale, 0.0F, 255.0F));
     }
     for (std::size_t i = 0; i < w * h; ++i) {
-        if ((f.flags[i] & 2U) == 0 || dist[i] >= reach) {
+        const std::size_t k = at(i);
+        if ((f.flags[k] & 2U) == 0 || dist[i] >= reach) {
             continue;
         }
-        const float k = dist[i] / reach;
-        f.shore[i] = sat_cast<std::uint8_t>(roundf(k * 254.0F));
-        if ((f.flags[i] & 1U) == 0) {
+        const float kk = dist[i] / reach;
+        f.shore[k] = sat_cast<std::uint8_t>(roundf(kk * 254.0F));
+        if ((f.flags[k] & 1U) == 0) {
             const float river = 1.0F + static_cast<float>(sea::kRiverOpenness);
-            f.cover[i] =
+            f.cover[k] =
                 sat_cast<std::uint8_t>(roundf(static_cast<float>(near_cover[i]) +
-                                              (river - static_cast<float>(near_cover[i])) * k));
+                                              (river - static_cast<float>(near_cover[i])) * kk));
         }
     }
 }
@@ -747,6 +865,63 @@ std::optional<float> Scene::terrain_at(const sea::SceneProbe& probe, Rect rect, 
     }
     const auto& isl = islands[island];
     return terrain_height(g->second, isl.width, isl.height, probe.pos[i][0], probe.pos[i][1]);
+}
+
+std::vector<std::uint16_t> Scene::terrain_plane(const sea::SceneProbe& probe) const {
+    return render::terrain_plane(probe, [this](std::uint32_t island) {
+        const auto& g = objects_[island].grids;
+        return TerrainGrid{g ? &g->second : nullptr, islands[island].width, islands[island].height};
+    });
+}
+
+std::vector<std::uint16_t> terrain_plane(const sea::SceneProbe& probe,
+                                         const std::function<TerrainGrid(std::uint32_t)>& grid) {
+    // terrain_at and the quantisation of Chunk::terrain per pixel, with the
+    // island and the tile's corners looked up once per run instead of per
+    // pixel; the arithmetic is terrain_height's, so the values are identical.
+    std::vector<std::uint16_t> out(probe.island.size(), kNoTerrain);
+    std::uint32_t island = sea::kNoIsland;
+    const std::vector<std::uint8_t>* heights = nullptr;
+    std::size_t w = 0, h = 0;
+    std::size_t ctx = 0, cty = 0;
+    bool cached = false;
+    float a = 0, cc = 0, b = 0, d = 0;
+    for (std::size_t i = 0; i < probe.island.size(); ++i) {
+        if (probe.island[i] == sea::kNoIsland) {
+            continue;
+        }
+        if (probe.island[i] != island) {
+            island = probe.island[i];
+            const TerrainGrid g = grid(island);
+            heights = g.heights;
+            w = g.w;
+            h = g.h;
+            cached = false;
+        }
+        if (heights == nullptr) {
+            continue;
+        }
+        const auto [x, y] = probe.pos[i];
+        const std::size_t tx = std::min(sat_cast<std::size_t>(fmaxf(x, 0.0F)), w - 1);
+        const std::size_t ty = std::min(sat_cast<std::size_t>(fmaxf(y, 0.0F)), h - 1);
+        if (!cached || tx != ctx || ty != cty) {
+            const auto c = corners(*heights, w, h, tx, ty);
+            a = static_cast<float>(c[0]);
+            cc = static_cast<float>(c[1]);
+            b = static_cast<float>(c[2]);
+            d = static_cast<float>(c[3]);
+            ctx = tx;
+            cty = ty;
+            cached = true;
+        }
+        const float s = clampf(x - static_cast<float>(tx), 0.0F, 1.0F);
+        const float t = clampf(y - static_cast<float>(ty), 0.0F, 1.0F);
+        const float z = s + t <= 1.0F ? a + s * (cc - a) + t * (b - a)
+                                      : d + (1.0F - s) * (b - d) + (1.0F - t) * (cc - d);
+        out[i] = sat_cast<std::uint16_t>(
+            clampf(roundf(z * kTerrainScale), 0.0F, static_cast<float>(kNoTerrain - 1)));
+    }
+    return out;
 }
 
 std::pair<Canvas, sea::SceneProbe> Scene::ground_with_probe(Rect rect, std::size_t group) const {
@@ -960,6 +1135,125 @@ std::pair<DrawStats, std::size_t> Scene::draw_island_objects(Canvas& local, cons
     return {stats, drawn};
 }
 
+ChunkDraws Scene::objects_draws(Rect rect, std::size_t group, bool ships, bool bases,
+                                std::uint32_t bin_px) const {
+    assert(group < kGroups);
+    // render_with_terrain's setup for Layers::objects: the base band of the
+    // chunk canvas and of every island's local canvas.
+    ChunkDrawsBuilder out(rect, group, bases, bases ? static_cast<int>(kTile[group].h) * 6 / 10 : 0,
+                          bin_px);
+    const std::uint32_t track = bases ? object_flags::kTrackBase : 0U;
+    // Canvas::overlaps of a canvas covering `c`.
+    auto overlaps = [](const Rect& c, int x, int y, int w, int h) {
+        return x < c.x + c.w && x + w > c.x && y < c.y + c.h && y + h > c.y;
+    };
+    // The sprites of `list` (placed as draw_prepared does: time 0, kept when
+    // the island's local canvas `local` can see them) as records.
+    auto emit_list = [&](std::span<const Prepared> list, std::pair<int, int> offset,
+                         const Rect& local) {
+        std::vector<SpriteDraw> draws;
+        place_prepared(
+            list, anlagen, group, lift, 0,
+            [&](int x, int y, int w, int h) { return overlaps(local, x, y, w, h); }, draws);
+        for (const SpriteDraw& d : draws) {
+            // A frame that cannot be decoded is left out, as draw_prepared does.
+            const auto id = frame_table.intern_building(anlagen, sprites, d.key, *d.frame);
+            if (!id) {
+                continue;
+            }
+            const bool shadow = d.is_shadow();
+            out.add(ObjectRecord{d.anchor.first + offset.first - d.frame->anchor_x,
+                                 d.anchor.second + offset.second - d.frame->anchor_y, *id,
+                                 (shadow ? object_flags::kShadow : track) |
+                                     std::uint32_t{d.height} << object_flags::kHeightShift,
+                                 0, 0, 0});
+        }
+    };
+    // UnitSprite::draw: the shadow, then the frame, in scene coordinates;
+    // `canvas` is the canvas blit_sprite would draw into.
+    auto emit_unit = [&](const UnitSprite& u, const Rect& canvas) {
+        if (group >= u.frames.size() || !u.frames[group] || !u.frames[group]->image) {
+            return;
+        }
+        const auto a = u.anchor(group, lift);
+        auto add = [&](const UnitFrame& f, bool shadow) {
+            const int x = a.first - f.frame.anchor_x, y = a.second - f.frame.anchor_y;
+            if (!overlaps(canvas, x, y, f.image->width, f.image->height)) {
+                return;
+            }
+            const auto id =
+                frame_table.intern(f.id.known ? FrameKey::unit(f.id, group, shadow)
+                                              : FrameKey::unit_image(f.image.get(), group, shadow),
+                                   [&] { return std::pair{f.frame, f.image}; });
+            if (id) {
+                out.add(ObjectRecord{x, y, *id, shadow ? object_flags::kShadow : track, 0, 0, 0});
+            }
+        };
+        if (group < u.shadows.size() && u.shadows[group] && u.shadows[group]->image) {
+            add(*u.shadows[group], true);
+        }
+        add(*u.frames[group], false);
+    };
+    for (const auto& p : layouts[group]) {
+        const auto r = p.bounds.intersect(rect);
+        if (!r) {
+            continue;
+        }
+        out.begin_island(*r);
+        const Rect local{r->x - p.offset.first, r->y - p.offset.second, r->w, r->h};
+        // draw_island_objects: the island's soldiers are merged into its
+        // objects by the key of their 1 x 1 footprint.
+        const auto& island = islands[p.index];
+        const std::span<const Prepared> list = objects_[p.index].other;
+        const float ix = static_cast<float>(island.x), iy = static_cast<float>(island.y);
+        const float w = static_cast<float>(island.width), h = static_cast<float>(island.height);
+        using Key = std::pair<std::uint32_t, std::uint32_t>;
+        std::vector<std::pair<Key, const UnitSprite*>> on;
+        for (const auto& u : units) {
+            if (!u.z || !(u.x >= ix && u.x < ix + w) || !(u.y >= iy && u.y < iy + h)) {
+                continue;
+            }
+            const auto tx = sat_cast<std::uint32_t>(u.x - ix),
+                       ty = sat_cast<std::uint32_t>(u.y - iy);
+            on.emplace_back(Key{tx + 1 + ty + 1, tx}, &u);
+        }
+        std::stable_sort(on.begin(), on.end(),
+                         [](const auto& a, const auto& b) { return a.first < b.first; });
+        auto key = [](const Prepared& o) {
+            return Key{std::uint32_t{o.first.x} + o.second.first + o.first.y + o.second.second,
+                       o.first.x};
+        };
+        std::size_t start = 0;
+        for (const auto& [k, u] : on) {
+            const auto it =
+                std::partition_point(list.begin() + static_cast<std::ptrdiff_t>(start), list.end(),
+                                     [&](const Prepared& o) { return key(o) <= k; });
+            const auto end = static_cast<std::size_t>(it - list.begin());
+            emit_list(list.subspan(start, end - start), p.offset, local);
+            start = end;
+            emit_unit(*u, *r);
+        }
+        emit_list(list.subspan(start), p.offset, local);
+    }
+    if (ships) {
+        // draw_units: after all islands, straight onto the chunk canvas.
+        out.begin_unclipped();
+        std::vector<const UnitSprite*> order;
+        for (const auto& u : units) {
+            if (!u.z) {
+                order.push_back(&u);
+            }
+        }
+        std::stable_sort(order.begin(), order.end(), [](const UnitSprite* a, const UnitSprite* b) {
+            return total_less(a->x + a->y, b->x + b->y);
+        });
+        for (const UnitSprite* u : order) {
+            emit_unit(*u, rect);
+        }
+    }
+    return out.finish(frame_table);
+}
+
 std::optional<Rect> Scene::unit_rect(const UnitSprite& u, std::size_t group) const {
     if (group >= u.frames.size() || !u.frames[group]) {
         return std::nullopt;
@@ -970,6 +1264,9 @@ std::optional<Rect> Scene::unit_rect(const UnitSprite& u, std::size_t group) con
 }
 
 bool Scene::units_touch(Rect rect, std::size_t group, bool ships) const {
+    if (group >= kGroups) {
+        return false;
+    }
     return std::any_of(units.begin(), units.end(), [&](const UnitSprite& u) {
         if (!ships && !u.z) {
             return false;
@@ -980,6 +1277,19 @@ bool Scene::units_touch(Rect rect, std::size_t group, bool ships) const {
 }
 
 std::optional<Rect> Scene::bounds(std::size_t group) const {
+    if (group >= kGroups) {
+        // The source level's rectangle reduced 2x, rounded outwards.
+        if (group >= levels_.size()) {
+            return std::nullopt;
+        }
+        const auto b = bounds(levels_[group].source);
+        if (!b) {
+            return std::nullopt;
+        }
+        const int x0 = div_euclid(b->x, 2), y0 = div_euclid(b->y, 2);
+        const int x1 = -div_euclid(-(b->x + b->w), 2), y1 = -div_euclid(-(b->y + b->h), 2);
+        return Rect{x0, y0, x1 - x0, y1 - y0};
+    }
     std::optional<Rect> r = scene_bounds(layouts[group]);
     for (const auto& u : units) {
         if (const auto ur = unit_rect(u, group)) {
@@ -990,6 +1300,9 @@ std::optional<Rect> Scene::bounds(std::size_t group) const {
 }
 
 std::size_t Scene::draw_units(Canvas& canvas, std::size_t group) const {
+    if (group >= kGroups) {
+        return 0;
+    }
     std::vector<const UnitSprite*> order;
     for (const auto& u : units) {
         if (!u.z) {
@@ -1024,6 +1337,7 @@ Scene::~Scene() {
 void Scene::build_flow(std::size_t index) const {
     FlowSlot& slot = *flow_slots_[index];
     std::call_once(slot.once, [&] {
+        const profile::Scope stage(profile::Stage::flow_solve);
         try {
             // Phase A (the raster) and phase B (the solve); the raster is only
             // needed for the solve and freed here.
@@ -1195,6 +1509,7 @@ river::FlowPlane Scene::flow_plane(Rect area, std::size_t group, const sea::Scen
     std::vector<Part> extra;
     auto add_strip = [&](Rect r) {
         if (const auto c = r.intersect(need)) {
+            const profile::Scope stage(profile::Stage::apron);
             extra.push_back({*c, ground_with_probe(*c, group).second});
         }
     };

@@ -14,6 +14,8 @@
 #include <anno/render/iso.hpp>
 #include <anno/render/shaders.hpp>
 
+#include "thread_priority.hpp"
+
 namespace anno::render::gpu {
 
 namespace {
@@ -265,6 +267,7 @@ void FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<f
             new_rects = window_->recentre(centre, cfg_.recentre_cells);
         } else {
             window_ = fluid::FluidWindow::with_size(cfg_, group, centre, size);
+            ++window_serial_;
             group_ = group;
             sim_t_ = target;
             new_rects = {window_->rect()};
@@ -551,7 +554,18 @@ void FluidGpu::prepare_window(std::size_t group, std::pair<float, float> centre,
     }
     const std::size_t workers = std::max<std::size_t>(threads / 2, 1);
     Job* j = job.get();
-    j->thread = std::thread([j, workers] {
+    // A whole new grid is made here, not by apply_job on the window thread: the textures
+    // are tens of megabytes (15-30 ms on an integrated adapter, the `fluid` step of the
+    // zoom sweep). The spare grid of the same size, if there is one, is reused instead.
+    if (j->whole && spare_ && spare_->n == j->size) {
+        j->grid = std::move(spare_);
+        spare_.reset();
+    }
+    j->thread = std::thread([this, j, workers] {
+        lower_thread_priority();
+        if (j->whole && !j->grid) {
+            j->grid = make_grid(j->size);
+        }
         for (const auto& r : j->rects) {
             auto pieces =
                 compute_pieces(j->cfg, j->comps, j->window, r, j->depth, j->t, workers, &j->cancel);
@@ -615,6 +629,7 @@ bool FluidGpu::apply_job(Job& j) {
     spare_ = std::move(grid_);
     grid_ = std::move(*j.grid);
     window_ = j.window;
+    ++window_serial_;
     group_ = j.group;
     sim_t_ = static_cast<double>(j.t);
     return true;

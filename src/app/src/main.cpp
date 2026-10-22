@@ -1,10 +1,14 @@
 // anno1503: the rebuild's entry point; for now the M1.6 island viewer.
 //
 //   anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>]
-//            [--png <out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]]
+//            [--png <out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]
+//                              [--zoom-factor <scale>] [--resample nearest|bilinear|box|area]]
 //            [--water original|enhanced] [--river-flow legacy|flow] [--river-gain <x>]
 //            [--river-speed median|fastest] [--river-gap-patch <tiles>]
-//            [--renderer auto|gpu|cpu]
+//            [--renderer auto|gpu|cpu] [--lookahead-chunks <n>]
+//            [--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>]
+//            [--min-zoom <tile width>] [--max-derived-levels <n>]
+//            [--zoom-max-upscale <factor>]
 //
 // --view shows every island of a scenario (.sze) at its INSEL5 world
 // position (INSELLNK islands as stand-ins of the same climate and size,
@@ -13,7 +17,10 @@
 // docs/render/iso.md).
 //
 // - Window (default): drag with the left mouse button, arrow keys or WASD to
-//   pan; mouse wheel or + / - to switch zoom groups 2 (far) / 1 / 0 (near);
+//   pan; mouse wheel zooms smoothly (--zoom-mode continuous, the default on the
+//   GPU renderer; Home or 0 back to the default zoom), + / - likewise; with
+//   --zoom-mode stepped (or the CPU renderer) they switch zoom groups
+//   2 (far) / 1 / 0 (near);
 //   Esc or Q quits; Space pauses the animation; E toggles enhanced water
 //   (not in the original; off by default); R toggles the river flow
 //   shading of enhanced water (--river-flow legacy|flow, flow by default;
@@ -61,7 +68,8 @@ using anno::render::WaterStyle;
 /// Headless --png: renders `region`, or the whole scene, at `group`.
 int write_scene_png(const anno::render::Scene& scene, std::size_t group, std::optional<Rect> region,
                     const fs::path& out, std::uint64_t time, WaterStyle style,
-                    anno::render::RiverFlowMode river_flow) {
+                    anno::render::RiverFlowMode river_flow, double zoom_factor,
+                    std::optional<anno::render::ResampleFilter> filter) {
     const auto rect = region ? region : scene.bounds(group);
     if (!rect) {
         std::fprintf(stderr, "%s: no islands\n", scene.name.c_str());
@@ -80,7 +88,27 @@ int write_scene_png(const anno::render::Scene& scene, std::size_t group, std::op
     layers.time_ms = time;
     layers.water_style = style;
     layers.river_flow = river_flow;
-    const auto [canvas, st] = scene.render(*rect, group, layers);
+    // --zoom-factor: `rect` is the picture (in output pixels); the grid it shows is composed
+    // at `group` and resampled by the CPU model of the GPU pass (the reference at a
+    // fractional scale, iso.md "Continuous zoom").
+    std::optional<anno::render::ResampledView> zoomed;
+    if (zoom_factor != 1.0 || filter) {
+        zoomed = anno::render::resampled_view(
+            rect->x + rect->w / 2.0, rect->y + rect->h / 2.0, static_cast<std::uint32_t>(rect->w),
+            static_cast<std::uint32_t>(rect->h), zoom_factor,
+            anno::render::resample_filter_for(zoom_factor, filter));
+    }
+    auto [canvas, st] = scene.render(zoomed ? zoomed->view : *rect, group, layers);
+    if (zoomed) {
+        anno::render::Canvas shown;
+        shown.width = static_cast<std::size_t>(rect->w);
+        shown.height = static_cast<std::size_t>(rect->h);
+        shown.pixels.resize(shown.width * shown.height * 4);
+        anno::render::cpu_resample(canvas.pixels.data(), zoomed->view.w, zoomed->view.h,
+                                   zoomed->resample, static_cast<std::uint32_t>(rect->w),
+                                   static_cast<std::uint32_t>(rect->h), shown.pixels.data());
+        canvas = std::move(shown);
+    }
     std::fprintf(stderr,
                  "%s: group %zu %dx%d px, %zu islands drawn (%zu without ground), objects %zu "
                  "drawn, %zu invisible, %zu failed, %zu units drawn\n",
@@ -131,11 +159,33 @@ int run(const std::vector<std::string>& raw) {
                           args->size.second};
         }
         return write_scene_png(scene, group, region, *args->png, args->time, args->water,
-                               args->river_flow);
+                               args->river_flow, args->zoom_factor, args->resample);
     }
 #ifdef ANNO_WITH_VIEWER
+    if (args->zoom.mode == anno::app::ZoomMode::Continuous &&
+        args->renderer != anno::app::Renderer::Cpu) {
+        // Zoom levels below group 2, reduced from it, down to the smallest tile
+        // the window can ask for: --min-zoom, else the point where the scene fits
+        // a small window (the viewer stops at the actual window's fit).
+        if (const auto b = scene.bounds(2)) {
+            const auto& l = anno::render::ZoomLevels::original();
+            std::size_t n = 0;
+            if (args->zoom.min_zoom > 0.0) {
+                while (n < args->zoom.max_derived_levels &&
+                       l.tile_w(2) / static_cast<double>(std::uint64_t{1} << n) >
+                           args->zoom.min_zoom) {
+                    ++n;
+                }
+            } else {
+                n = anno::render::ZoomLevels::derived_to_fit(b->w, b->h, 640.0, 360.0,
+                                                             args->zoom.max_derived_levels);
+            }
+            scene.set_levels(anno::render::ZoomLevels::with_derived(n));
+        }
+    }
     const std::string err =
-        anno::app::run_viewer(scene, args->group.value_or(2), args->renderer, args->river_flow);
+        anno::app::run_viewer(scene, args->group.value_or(2), args->renderer, args->river_flow,
+                              args->water, args->lookahead_chunks, args->zoom);
     if (!err.empty()) {
         std::fprintf(stderr, "%s: %s\n", name.c_str(), err.c_str());
         return 1;

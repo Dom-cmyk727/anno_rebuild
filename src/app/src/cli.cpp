@@ -84,6 +84,24 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             out.group = g;
         } else if (a == "--png") {
             out.png = utf8_path(v);
+        } else if (a == "--zoom-factor") {
+            const auto f = number<double>(v);
+            if (!f || !(*f >= kMinZoomFactor) || *f > kMaxZoomFactor) {
+                return std::nullopt;
+            }
+            out.zoom_factor = *f;
+        } else if (a == "--resample") {
+            if (v == "nearest") {
+                out.resample = render::ResampleFilter::Nearest;
+            } else if (v == "bilinear") {
+                out.resample = render::ResampleFilter::Bilinear;
+            } else if (v == "box") {
+                out.resample = render::ResampleFilter::Box;
+            } else if (v == "area") {
+                out.resample = render::ResampleFilter::Area;
+            } else {
+                return std::nullopt;
+            }
         } else if (a == "--time") {
             const auto t = number<std::uint64_t>(v);
             if (!t) {
@@ -140,6 +158,51 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             } else {
                 return std::nullopt;
             }
+        } else if (a == "--lookahead-chunks") {
+            const auto n = number<std::size_t>(v);
+            if (!n || *n > kMaxLookaheadChunks) {
+                return std::nullopt;
+            }
+            out.lookahead_chunks = *n;
+        } else if (a == "--zoom-mode") {
+            out.zoom.mode_explicit = true;
+            if (v == "stepped") {
+                out.zoom.mode = ZoomMode::Stepped;
+            } else if (v == "continuous") {
+                out.zoom.mode = ZoomMode::Continuous;
+            } else {
+                return std::nullopt;
+            }
+        } else if (a == "--zoom-step") {
+            const auto f = number<double>(v);
+            if (!f || !(*f >= kMinZoomStep) || *f > kMaxZoomStep) {
+                return std::nullopt;
+            }
+            out.zoom.step = *f;
+        } else if (a == "--min-zoom") {
+            const auto f = number<double>(v);
+            if (!f || !(*f >= kMinMinZoom) || *f > kMaxMinZoom) {
+                return std::nullopt;
+            }
+            out.zoom.min_zoom = *f;
+        } else if (a == "--max-derived-levels") {
+            const auto n = number<unsigned>(v);
+            if (!n || *n > kMaxDerivedLevels) {
+                return std::nullopt;
+            }
+            out.zoom.max_derived_levels = *n;
+        } else if (a == "--zoom-max-upscale") {
+            const auto f = number<double>(v);
+            if (!f || !(*f >= kMinMaxUpscale) || *f > kMaxMaxUpscale) {
+                return std::nullopt;
+            }
+            out.zoom.max_upscale = *f;
+        } else if (a == "--zoom-ease") {
+            const auto ms = number<unsigned>(v);
+            if (!ms || *ms > kMaxZoomEaseMs) {
+                return std::nullopt;
+            }
+            out.zoom.ease_ms = *ms;
         } else if (a == "--renderer") {
             if (v == "auto") {
                 out.renderer = Renderer::Auto;
@@ -155,6 +218,10 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
         }
     }
     if (!have_file) {
+        return std::nullopt;
+    }
+    // The resampling options belong to the headless picture.
+    if (!out.png && (out.zoom_factor != 1.0 || out.resample)) {
         return std::nullopt;
     }
     return out;

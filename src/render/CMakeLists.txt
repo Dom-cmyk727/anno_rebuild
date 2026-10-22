@@ -2,9 +2,15 @@
 # follows, ADR 0001). Consumes anno_assets; never mutates simulation state.
 find_package(Threads REQUIRED)
 add_library(anno_render
+  src/chunk_draws.cpp
+  src/chunk_reduce.cpp
   src/fluid.cpp
   src/frame.cpp
+  src/frame_table.cpp
   src/iso.cpp
+  src/profile.cpp
+  src/residency.cpp
+  src/resample.cpp
   src/river.cpp
   src/river_lattice.cpp
   src/river_solve.cpp
@@ -18,10 +24,14 @@ anno_target_defaults(anno_render)
 
 if(ANNO_BUILD_TESTS)
   add_executable(anno_render_tests
+    tests/chunk_draws_corpus_test.cpp
+    tests/chunk_draws_test.cpp
+    tests/chunk_reduce_test.cpp
     tests/fluid_test.cpp
     tests/main.cpp
     tests/render_corpus_test.cpp
     tests/render_test.cpp
+    tests/residency_test.cpp
     tests/river_flow_corpus_test.cpp
     tests/river_flow_test.cpp
     tests/river_shade_test.cpp

@@ -10,6 +10,8 @@ What only a person with the right machine can check. Claude Code keeps this list
 
 ## Results
 
+- 2026-10-20, owner, Windows PC (RTX 4090), `main` at 3c8876b (stand-in chunks after a zoom step, river defaults gain 4 / median speed / gap patch 8), canyon island `D_256x256_0045_5B`, enhanced water: "MUCH smoother and overall better now"; zooming with the wheel alone is "really smooth"; the rivers "look perfect now". Artifacts remain only when panning while zooming (new area without a built chunk in any group). Follow-up: T1d on the task board.
+
 - 2026-10-18, owner, Windows PC (Ryzen 7 9800X3D, 16 threads; RTX 4090, driver 617.14; Windows 11 Pro 26H2), C++ build `msvc` preset with the game files, `ANNO_REQUIRE_GPU=1`, `ctest -j 16`, `ANNO_TEST_THREADS=16`:
   - Build clean (warnings as errors). First run without game files in `game/app`: 37 game-file tests failed with "path not found" or follow-on errors (`bad variant access`), not a code fault.
   - With the game files: **all 21 GPU tests pass on the RTX 4090 (Vulkan)** — the first run on a real Windows GPU.
@@ -61,6 +63,8 @@ What only a person with the right machine can check. Claude Code keeps this list
 - **New preview `share/anno1503-preview-2026-10-18b.zip`** (2026-10-18): with `E`, river mouths (after your feedback "Übergang von Meer zu Flüssen sieht abgehakt und unnatürlich aus") and rocks in the water. Please look at the same places again and say whether the transition now looks natural. Earlier the same day: 2026-10-18a, the first build from the C++ code: steps and what to report are in the README (section "Test the preview"). New: ships sit in the water with `E`. Please also report whether it starts at all (exact error text if not), the GPU named in the window title, and `benchmark-results.md`. Linux needs glibc 2.35 or newer (Ubuntu 22.04 or later).
 
 ## Later, needs an x86 Windows machine or Wine on x86 Linux
+
+**2026-10-21:** possible now on the owner's Windows 11 PC: task T15 (`docs/orchestration/TASKS.md`) runs these with a scripted harness against a copy of the original.
 
 - Fixtures F1–F9 in `docs/re/tick-loop.md` (game clock, speeds, PRNG cursor, multiplayer sync) against the original game. F6 (PRNG values) is already confirmed statically (the DLL's table bytes and the draw function), not yet by running the game.
 - Savegame corpus (PLAN M2.1).

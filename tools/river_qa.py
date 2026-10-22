@@ -26,6 +26,14 @@ components of O and of the enhanced river water).
       <= 1e-3, p95 flow build <= 0.3 s, none above 1 s; exit code 1 when it fails). --dump
       writes a PNG of the flow per island (hue = direction, brightness = speed, arrows).
 
+  tools/river_qa.py gap-patch --exe build/msvc/src/tools/river_qa/Release/river_qa.exe       --game-dir game/app [--patch 8] [--climates ...] [--table OUT.md] [--sheets DIR] [--worst 5] [--cache rows.json]
+      the gap patch survey (OQ-068): every island with river pieces is measured with
+      `river_qa --gap-patch 0` and `--gap-patch N`; one table row per island with the
+      components of the enhanced river water, the gap pixels and the water outside the
+      painted bed, before -> after per zoom group, the regressions marked, and before/after
+      contact sheets of the worst islands in --sheets (needs Pillow). Logic and tests:
+      tools/river_qa_gap.py, tools/test_river_qa_gap.py.
+
   tools/river_qa.py shots --exe ... --app build/msvc/src/app/Release/anno1503.exe \
       --game-dir game/app --file Islands/Dschungel/D_256x256_0045_5B.scp \
       --group 1 --rect X,Y,W,H --out DIR
@@ -66,6 +74,12 @@ def scenario_files(game_dir, folders):
             continue
         out += sorted(os.path.join(d, f) for f in os.listdir(d) if f.lower().endswith('.sze'))
     return out
+
+
+def gap_patch(args):
+    import river_qa_gap
+    return river_qa_gap.gap_patch(args, island_files, lambda d: island_files(
+        d, sorted(os.listdir(os.path.join(d, 'Scenes', 'Islands')))))
 
 
 def measure(args):
@@ -211,6 +225,16 @@ def main():
     f.add_argument('--rivers', help='write one row per river (sea-less ones marked) to this file')
     f.add_argument('--out')
     f.add_argument('files', nargs='*')
+    gp = sub.add_parser('gap-patch')
+    gp.add_argument('--exe', required=True)
+    gp.add_argument('--game-dir', required=True)
+    gp.add_argument('--patch', default='8', help='gap_patch_tiles of the "after" run')
+    gp.add_argument('--groups', default='0,1,2')
+    gp.add_argument('--climates', default='', help='default: every folder in Scenes/Islands')
+    gp.add_argument('--table', help='write summary and table to this Markdown file')
+    gp.add_argument('--sheets', help='directory for the contact sheets of the worst islands')
+    gp.add_argument('--worst', type=int, default=5)
+    gp.add_argument('--cache', help='JSON file for the measured rows: reused when it exists')
     s = sub.add_parser('shots')
     s.add_argument('--exe', required=True)
     s.add_argument('--app', required=True)
@@ -220,7 +244,8 @@ def main():
     s.add_argument('--rect', required=True, help='x,y,w,h in scene pixels at that group')
     s.add_argument('--out', required=True)
     args = ap.parse_args()
-    sys.exit({'measure': measure, 'flow': flow, 'shots': shots}[args.cmd](args))
+    sys.exit({'measure': measure, 'flow': flow, 'shots': shots,
+            'gap-patch': gap_patch}[args.cmd](args))
 
 
 if __name__ == '__main__':

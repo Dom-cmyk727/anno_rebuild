@@ -34,7 +34,9 @@ struct Frame {
     // zoom group (iso::RiverView::lambda, the river's own water plane).
     river_flow: f32,
     river_lambda: f32,
-    _pad4: f32,
+    // The weight of the simulated waves against the analytic ones, 0..1 (GpuLimits::
+    // wave_fade_ms: 250 ms after a window switch, OQ-076); 1 = only the simulation.
+    fluid_fade: f32,
 }
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -105,6 +107,51 @@ struct Chunk {
 @group(1) @binding(7) var flow_aux: texture_2d<u32>;
 @group(1) @binding(8) var flow_shear: texture_2d<u32>;
 
+// What one draw of a chunk shows (group 2, bound with a dynamic offset).
+// kind 0: the chunk itself, at its own place. kind 1: a stand-in
+// (frame.hpp, stand_in_spans): the chunk belongs to another zoom group and is
+// drawn into the scene rectangle dst_min..dst_max of the group shown, each
+// pixel taking the chunk pixel that holds its centre after scaling by
+// num / den per axis (the tile size of the chunk's group over the one shown):
+// floor((2 p + 1) num / (2 den)). The rectangle is exactly the part of the
+// destination chunk that lies in this source chunk, so no pixel is drawn twice
+// and none leaves the chunk. A stand-in has no river flow (the legacy look).
+// The products stay below 2^31 up to scene coordinates of about 12 million
+// pixels at the largest tile width (a map of 100,000 tiles).
+// Larger maps: split the product per axis into integer and remainder parts, or
+// take the centre in f32 per chunk (the CPU rule stand_in_source is the check).
+struct Piece {
+    dst_min: vec2<i32>,
+    dst_max: vec2<i32>,
+    num: vec2<i32>,
+    den: vec2<i32>,
+    kind: u32,
+    // How transparent the draw is, 0 (all records written before the field
+    // existed: opaque) to 1: a chunk that just replaced its stand-in or the open
+    // sea is drawn over it with this falling to 0 (GpuLimits::chunk_fade_ms).
+    transparent: f32,
+    _p1: u32,
+    _p2: u32,
+}
+@group(2) @binding(1) var<uniform> piece: Piece;
+
+fn floor_div(a: i32, b: i32) -> i32 {
+    let q = a / b;
+    return select(q, q - 1, q * b > a);
+}
+
+// The texel of the chunk's textures that scene pixel `px` shows.
+fn chunk_local(px: vec2<i32>) -> vec2<i32> {
+    if piece.kind == 0u {
+        return px - chunk.origin;
+    }
+    let src = vec2<i32>(
+        floor_div((2 * px.x + 1) * piece.num.x, 2 * piece.den.x),
+        floor_div((2 * px.y + 1) * piece.num.y, 2 * piece.den.y),
+    );
+    return src - chunk.origin;
+}
+
 // Scene pixel rectangle → clip space.
 fn to_clip(p: vec2<f32>) -> vec4<f32> {
     let size = vec2<f32>(frame.view_size);
@@ -123,8 +170,13 @@ fn quad_corner(i: u32) -> vec2<f32> {
 
 @vertex
 fn chunk_vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-    let p = vec2<f32>(chunk.origin) + quad_corner(i) * f32(chunk.size);
-    return to_clip(p);
+    var lo = vec2<f32>(chunk.origin);
+    var size = vec2<f32>(f32(chunk.size));
+    if piece.kind != 0u {
+        lo = vec2<f32>(piece.dst_min);
+        size = vec2<f32>(piece.dst_max - piece.dst_min);
+    }
+    return to_clip(lo + quad_corner(i) * size);
 }
 
 // Scene pixel of a fragment.
@@ -137,17 +189,18 @@ fn ground_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     if (chunk.flags & 1u) == 0u {
         discard;
     }
-    let local = scene_px(pos) - chunk.origin;
-    return vec4<f32>(textureLoad(ground_tex, local, 0).rgb, 1.0);
+    let local = chunk_local(scene_px(pos));
+    return vec4<f32>(textureLoad(ground_tex, local, 0).rgb, 1.0 - piece.transparent);
 }
 
 // Terrain height of the chunk pixel (flag bit 3: chunk has terrain).
 @fragment
 fn terrain_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<u32> {
-    if (chunk.flags & 8u) == 0u {
+    // A chunk fading in shows the terrain of what it replaces until half-way.
+    if (chunk.flags & 8u) == 0u || piece.transparent > 0.5 {
         discard;
     }
-    let local = scene_px(pos) - chunk.origin;
+    let local = chunk_local(scene_px(pos));
     return vec4<u32>(textureLoad(terrain_chunk, local, 0).r, 0u, 0u, 0u);
 }
 
@@ -156,15 +209,16 @@ fn objects_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     if (chunk.flags & 2u) == 0u {
         discard;
     }
-    let local = scene_px(pos) - chunk.origin;
+    let local = chunk_local(scene_px(pos));
     let c = textureLoad(objects_tex, local, 0);
     if c.a == 0.0 {
         discard;
     }
     if frame.enhanced != 0u && frame.objects_water != 0.0 && (chunk.flags & 16u) != 0u {
-        return object_in_water(c, local, pos);
+        let w = object_in_water(c, local, scene_px(pos), pos);
+        return vec4<f32>(w.rgb, w.a * (1.0 - piece.transparent));
     }
-    return c;
+    return vec4<f32>(c.rgb, c.a * (1.0 - piece.transparent));
 }
 
 // ---- Water against objects (enhanced water only; not in the original) ----
@@ -180,10 +234,16 @@ const OBJ_MAX_DEPTH: f32 = 6.0;
 const OBJ_FADE: f32 = 2.5;
 const OBJ_FOAM: f32 = 1.2;
 
-fn object_in_water(c: vec4<f32>, local: vec2<i32>, pos: vec4<f32>) -> vec4<f32> {
+fn object_in_water(c: vec4<f32>, local: vec2<i32>, px: vec2<i32>, pos: vec4<f32>) -> vec4<f32> {
     let b = textureLoad(base_tex, local, 0).r;
     if b >= 255u {
         return c;
+    }
+    // Rows above the object's lowest pixel, in pixels of the group shown (a
+    // stand-in's base plane counts the rows of its own group).
+    var bs = f32(b);
+    if piece.kind != 0u {
+        bs = bs * f32(piece.den.y) / f32(piece.num.y);
     }
     let foot = vec2<i32>(local.x, min(local.y + i32(b), chunk.size - 1));
     var cover = 255u;
@@ -204,11 +264,11 @@ fn object_in_water(c: vec4<f32>, local: vec2<i32>, pos: vec4<f32>) -> vec4<f32> 
     }
     let s = frame.tile_h / 42.0;
     let t = frame.time_ms;
-    let fx = f32(local.x + chunk.origin.x);
+    let fx = f32(px.x);
     // Water level above the foot in pixels (HEIGHT units x lift).
     let level = min(sd, OBJ_MAX_DEPTH) * frame.raise / 32.0;
     let ripple = s * (0.4 * sin(fx * 0.35 / s + t * 0.0021) + 0.25 * sin(fx * 0.9 / s - t * 0.0033));
-    let d = level + ripple - f32(b);
+    let d = level + ripple - bs;
     var rgb = c.rgb;
     var a = c.a;
     if d > 0.0 {
@@ -219,7 +279,7 @@ fn object_in_water(c: vec4<f32>, local: vec2<i32>, pos: vec4<f32>) -> vec4<f32> 
     }
     if (flags & 2u) == 0u {
         let fw = 1.0 - sstep(0.0, OBJ_FOAM * s, abs(d - 0.3 * s));
-        let n = noise3(fx * 0.5 / s, f32(local.y + chunk.origin.y) * 0.25 / s + t * 0.0012, t * 0.0021);
+        let n = noise3(fx * 0.5 / s, f32(px.y) * 0.25 / s + t * 0.0012, t * 0.0021);
         let foam = fw * sstep(0.3, 0.7, n);
         rgb = mix(rgb, vec3<f32>(0.90, 0.95, 0.98), 0.7 * foam);
         a = max(a, 0.8 * foam * c.a);
@@ -672,9 +732,23 @@ fn unpremultiply(p: vec4<f32>) -> vec4<f32> {
     return vec4<f32>(p.rgb / p.a, p.a);
 }
 
-// The sea over the pass-1 result: sea::shade_sea.
+// The sea over the pass-1 result: sea::shade_sea. After a wave window switch the sea is
+// shaded twice for GpuLimits::wave_fade_ms, with the analytic waves and with the simulated
+// ones, and the two colours are mixed by the weight of the simulation: the waves never
+// pop in (OQ-076).
 @fragment
 fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    if frame.fluid_on == 0u || frame.fluid_fade >= 1.0 {
+        return sea_shade(pos, true);
+    }
+    let analytic = sea_shade(pos, false);
+    if frame.fluid_fade <= 0.0 {
+        return analytic;
+    }
+    return mix(analytic, sea_shade(pos, true), frame.fluid_fade);
+}
+
+fn sea_shade(pos: vec4<f32>, allow_fluid: bool) -> vec4<f32> {
     let px = scene_px(pos);
     let under = textureLoad(under_tex, vec2<i32>(floor(pos.xy)), 0).rgb;
     var cover = 255u;
@@ -682,14 +756,14 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     var depth = 255u;
     var flags = 1u;
     if (chunk.flags & 4u) != 0u {
-        let f = textureLoad(field_tex, px - chunk.origin, 0);
+        let f = textureLoad(field_tex, chunk_local(px), 0);
         cover = f.r;
         shore = f.g;
         depth = f.b;
         flags = f.a;
     }
     if cover == 0u {
-        return vec4<f32>(under, 1.0);
+        return vec4<f32>(under, 1.0 - piece.transparent);
     }
     let enhanced = frame.enhanced != 0u;
     // Original: the original's waterline; enhanced: the smooth waterline
@@ -698,7 +772,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     var alpha = 1.0;
     let pw = vec2<f32>(f32(px.x), f32(px.y) + frame.raise);
     let wpos = vec2<f32>(pw.x / frame.tile_w + pw.y / frame.tile_h, pw.y / frame.tile_h - pw.x / frame.tile_w);
-    let use_fluid = enhanced && (flags & 2u) == 0u && fluid_inside(wpos);
+    let use_fluid = allow_fluid && enhanced && (flags & 2u) == 0u && fluid_inside(wpos);
     var fl = vec4<f32>(0.0);
     var run = 0.0;
     if use_fluid {
@@ -717,7 +791,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         alpha = 0.0;
     }
     if alpha <= 0.0 {
-        return vec4<f32>(under, 1.0);
+        return vec4<f32>(under, 1.0 - piece.transparent);
     }
     let pi = vec2<i32>(wrap(px.x, frame.pattern_size.x), wrap(px.y, frame.pattern_size.y));
     var sprite = textureLoad(sea_sprite, pi, frame.steps.x, 0);
@@ -750,7 +824,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
             // (sea::river_pixel_shade), else the legacy shimmer.
             var rs = vec3<f32>(0.0);
             var flowing = false;
-            if frame.river_flow != 0.0 && (chunk.flags & 32u) != 0u {
+            if frame.river_flow != 0.0 && (chunk.flags & 32u) != 0u && piece.kind == 0u {
                 let fs = flow_at(px - chunk.origin);
                 if fs.valid >= river.min_valid {
                     rs = river_flow_shade(vec2<f32>(px), fs, sd, slope_of(flags), frame.time_ms, detail);
@@ -763,7 +837,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
             let kb = min(f32(shore) / 254.0, 1.0);
             var ss = rs;
             if kb < 1.0 {
-                if fluid_inside(wpos) {
+                if allow_fluid && fluid_inside(wpos) {
                     ss = fluid_shade(fluid_sample(wpos).s, sd, 0.0, w, frame.time_ms, detail);
                 } else {
                     ss = wave_shade(RIVER_SEA_DIST, sd, 0.0, w, frame.time_ms, detail);
@@ -776,7 +850,7 @@ fn sea_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
             c = shade_apply(c, wave_shade(f32(shore) / SHORE_SCALE, sd, slope_of(flags), w, frame.time_ms, detail));
         }
     }
-    return vec4<f32>(mix(under, c, alpha), 1.0);
+    return vec4<f32>(mix(under, c, alpha), 1.0 - piece.transparent);
 }
 
 // ---- Sprites (water objects) from the atlas ----
@@ -790,6 +864,10 @@ struct SpriteOut {
     @location(1) @interpolate(flat) dst: vec2<i32>,
     @location(2) @interpolate(flat) layer_shadow: vec2<u32>,
     @location(3) @interpolate(flat) size: vec2<u32>,
+    // A frame reduced by 2^shift (frame_size != 0): the frame's size and the source pixels
+    // before its first row/column in the first output pixel (see sprite_fs).
+    @location(4) @interpolate(flat) frame_size: vec2<u32>,
+    @location(5) @interpolate(flat) off: vec2<u32>,
 }
 
 @vertex
@@ -801,11 +879,15 @@ fn sprite_vs(
     @location(3) layer_shadow: vec2<u32>,
 ) -> SpriteOut {
     var out: SpriteOut;
-    out.pos = to_clip(vec2<f32>(dst) + quad_corner(i) * vec2<f32>(size));
-    out.src = vec2<i32>(src);
+    // Ordinary instances have 0 in the high halves of size and src.
+    let dsize = size & vec2<u32>(0xFFFFu, 0xFFFFu);
+    out.pos = to_clip(vec2<f32>(dst) + quad_corner(i) * vec2<f32>(dsize));
+    out.src = vec2<i32>(src & vec2<u32>(0xFFFFu, 0xFFFFu));
     out.dst = dst;
     out.layer_shadow = layer_shadow;
-    out.size = size;
+    out.size = dsize;
+    out.frame_size = size >> vec2<u32>(16u, 16u);
+    out.off = src >> vec2<u32>(16u, 16u);
     return out;
 }
 
@@ -928,9 +1010,48 @@ fn ship_in_water(c: vec4<f32>, in: SpriteOut, local: vec2<i32>) -> vec4<f32> {
     return vec4<f32>(rgb, a);
 }
 
+// A frame of the built ancestor reduced by R = 2^shift (frame_size.x != 0): output pixel `local` covers the
+// frame pixels [local * R - off, local * R - off + R) per axis (transparent outside the
+// frame). The mean of the R x R pixels, premultiplied by alpha; for R > 8, 8 x 8
+// samples spread over the footprint. A shadow frame has a constant colour and the
+// coverage of its non-transparent pixels as alpha.
+fn sprite_reduced(in: SpriteOut, local: vec2<i32>) -> vec4<f32> {
+    let r = 1i << ((in.layer_shadow.y >> 18u) & 15u);
+    let n = min(r, 8i);
+    let origin = local * r - vec2<i32>(in.off);
+    let fsize = vec2<i32>(in.frame_size);
+    var rgb = vec3<f32>(0.0);
+    var alpha = 0.0;
+    var covered = 0.0;
+    for (var j = 0i; j < n; j = j + 1i) {
+        for (var i = 0i; i < n; i = i + 1i) {
+            let p = origin + vec2<i32>((2i * i + 1i) * r / (2i * n), (2i * j + 1i) * r / (2i * n));
+            if p.x < 0 || p.y < 0 || p.x >= fsize.x || p.y >= fsize.y {
+                continue;
+            }
+            let c = textureLoad(atlas, in.src + p, in.layer_shadow.x, 0);
+            rgb = rgb + c.rgb * c.a;
+            alpha = alpha + c.a;
+            covered = covered + select(0.0, 1.0, c.a > 0.0);
+        }
+    }
+    if alpha == 0.0 {
+        discard;
+    }
+    let count = f32(n * n);
+    if (in.layer_shadow.y & 1u) != 0u {
+        // iso::SHADOW: 37.5 % black, over the covered share of the output pixel.
+        return vec4<f32>(0.0, 0.0, 0.0, 96.0 / 255.0 * covered / count);
+    }
+    return vec4<f32>(rgb / alpha, alpha / count);
+}
+
 @fragment
 fn sprite_fs(in: SpriteOut) -> @location(0) vec4<f32> {
     let local = scene_px(in.pos) - in.dst;
+    if in.frame_size.x != 0u {
+        return sprite_reduced(in, local);
+    }
     let c = textureLoad(atlas, in.src + local, in.layer_shadow.x, 0);
     let flags = in.layer_shadow.y;
     if (flags & 0x20000u) != 0u && frame.enhanced != 0u && frame.ship_water != 0.0 {
@@ -957,4 +1078,202 @@ fn sprite_fs(in: SpriteOut) -> @location(0) vec4<f32> {
         return vec4<f32>(0.0, 0.0, 0.0, 96.0 / 255.0);
     }
     return c;
+}
+
+// ---- Resample (T3, docs/render/iso.md "Continuous zoom"): the composed scene
+// grid onto the target at a scale. Its own group (3), unused by every other
+// entry point, so no (group, binding) pair is shared. Reads with textureLoad
+// only (the grid is an unfilterable-float texture), so the filters are done
+// here; the arithmetic is the same on every adapter.
+struct Scale {
+    // Target pixels per grid pixel; the grid position of the target's left/top
+    // edge; the filter (ResampleFilter); the grid's size; taps per axis (Box).
+    scale: f32,
+    off_x: f32,
+    off_y: f32,
+    mode: u32,
+    src_w: u32,
+    src_h: u32,
+    taps: u32,
+    _pad: u32,
+};
+@group(3) @binding(0) var<uniform> scale_u: Scale;
+@group(3) @binding(1) var scale_src: texture_2d<f32>;
+
+@vertex
+fn scale_vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+    // One triangle over the whole target: (0, 0), (2, 0), (0, 2) in unit space.
+    let p = vec2<f32>(f32((i << 1u) & 2u), f32(i & 2u));
+    return vec4<f32>(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0, 0.0, 1.0);
+}
+
+fn scale_texel(p: vec2<i32>) -> vec4<f32> {
+    let c = clamp(p, vec2<i32>(0, 0), vec2<i32>(i32(scale_u.src_w) - 1, i32(scale_u.src_h) - 1));
+    return textureLoad(scale_src, c, 0);
+}
+
+@fragment
+fn scale_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    // pos.xy is the target pixel's centre; src is its centre in grid pixels.
+    let src = vec2<f32>(scale_u.off_x, scale_u.off_y) + pos.xy / scale_u.scale;
+    if scale_u.mode == 1u {
+        let f = src - vec2<f32>(0.5, 0.5);
+        let i0 = vec2<i32>(floor(f));
+        let t = f - floor(f);
+        let a = mix(scale_texel(i0), scale_texel(i0 + vec2<i32>(1, 0)), t.x);
+        let b = mix(scale_texel(i0 + vec2<i32>(0, 1)), scale_texel(i0 + vec2<i32>(1, 1)), t.x);
+        return mix(a, b, t.y);
+    }
+    if scale_u.mode == 3u {
+        // Area: the footprint [src - span / 2, src + span / 2] per axis; every grid
+        // pixel it overlaps counts with the fraction of the footprint it covers.
+        let span = 1.0 / scale_u.scale;
+        let lo = src - vec2<f32>(0.5 * span);
+        let hi = src + vec2<f32>(0.5 * span);
+        let first = vec2<i32>(floor(lo));
+        let last = max(vec2<i32>(ceil(hi)) - vec2<i32>(1, 1), first);
+        var sum = vec4<f32>(0.0);
+        var wsum = 0.0;
+        for (var j = 0; j < 8; j = j + 1) {
+            let y = first.y + j;
+            if y > last.y {
+                break;
+            }
+            let wy = (min(hi.y, f32(y + 1)) - max(lo.y, f32(y))) / span;
+            for (var i = 0; i < 8; i = i + 1) {
+                let x = first.x + i;
+                if x > last.x {
+                    break;
+                }
+                let wx = (min(hi.x, f32(x + 1)) - max(lo.x, f32(x))) / span;
+                sum = sum + scale_texel(vec2<i32>(x, y)) * (wx * wy);
+                wsum = wsum + wx * wy;
+            }
+        }
+        // 1 up to rounding, unless the footprint is wider than the 8 pixels read.
+        return sum / max(wsum, 1e-6);
+    }
+    if scale_u.mode == 2u {
+        // The output pixel covers 1 / scale grid pixels per axis around src.
+        let n = i32(scale_u.taps);
+        let span = 1.0 / scale_u.scale;
+        var sum = vec4<f32>(0.0);
+        for (var j = 0; j < n; j = j + 1) {
+            for (var i = 0; i < n; i = i + 1) {
+                let d = (vec2<f32>(f32(i), f32(j)) + vec2<f32>(0.5, 0.5)) / f32(n) - vec2<f32>(0.5, 0.5);
+                sum = sum + scale_texel(vec2<i32>(floor(src + d * span)));
+            }
+        }
+        return sum / f32(n * n);
+    }
+    return scale_texel(vec2<i32>(floor(src)));
+}
+
+// ---- Derived zoom levels: the 2x reduction of a chunk (chunk_reduce.hpp) ----
+// One draw per source chunk, scissored to its quadrant of the destination
+// chunk; the chunk bind group (group 1) is the source's. Integer arithmetic
+// only, the same as the CPU reference reduce_chunks_2x (the planes' bytes are
+// compared exactly in the tests).
+struct ReduceU {
+    origin: vec2<i32>,
+    _pad: vec2<i32>,
+    water: vec4<u32>,
+}
+@group(3) @binding(2) var<uniform> reduce_u: ReduceU;
+
+struct ReduceOut {
+    @location(0) ground: vec4<f32>,
+    @location(1) objects: vec4<f32>,
+    @location(2) field: vec4<u32>,
+    @location(3) terrain: vec4<u32>,
+}
+
+// round(sum / count) to nearest, ties up.
+fn rmean(sum: u32, count: u32) -> u32 {
+    return (2u * sum + count) / (2u * count);
+}
+
+fn byte_of(v: f32) -> u32 {
+    return u32(floor(v * 255.0 + 0.5));
+}
+
+@fragment
+fn reduce_fs(@builtin(position) pos: vec4<f32>) -> ReduceOut {
+    let q = vec2<i32>(pos.xy) - reduce_u.origin;
+    let has_ground = (chunk.flags & 1u) != 0u;
+    let has_objects = (chunk.flags & 2u) != 0u;
+    let has_field = (chunk.flags & 4u) != 0u;
+    let has_terrain = (chunk.flags & 8u) != 0u;
+    var lands = 0u;
+    var gsum = vec3<u32>(0u);
+    var tsum = 0u;
+    var a = 0u;
+    var psum = vec3<u32>(0u);
+    var cover = 0u;
+    var shore = 0u;
+    var depth = 0u;
+    var bits = 0u;
+    var slope = 0u;
+    var water = 0u;
+    for (var k = 0; k < 4; k = k + 1) {
+        let t = q * 2 + vec2<i32>(k & 1, k >> 1);
+        var land = has_ground;
+        if has_terrain {
+            let tv = textureLoad(terrain_chunk, t, 0).r;
+            land = tv != 0xFFFFu;
+            if land {
+                tsum = tsum + tv;
+            }
+        }
+        if land {
+            lands = lands + 1u;
+            if has_ground {
+                let g = textureLoad(ground_tex, t, 0);
+                gsum = gsum + vec3<u32>(byte_of(g.r), byte_of(g.g), byte_of(g.b));
+            }
+        }
+        if has_objects {
+            let o = textureLoad(objects_tex, t, 0);
+            let pa = byte_of(o.a);
+            a = a + pa;
+            psum = psum + vec3<u32>(byte_of(o.r), byte_of(o.g), byte_of(o.b)) * pa;
+        }
+        if has_field {
+            let f = textureLoad(field_tex, t, 0);
+            cover = cover + f.r;
+            shore = shore + f.g;
+            depth = depth + f.b;
+            bits = bits | (f.a & 3u);
+            if f.r > 0u {
+                slope = slope + (f.a >> 2u);
+                water = water + 1u;
+            }
+        }
+    }
+    var out: ReduceOut;
+    var ground = vec3<u32>(reduce_u.water.x, reduce_u.water.y, reduce_u.water.z);
+    if lands > 0u && has_ground {
+        ground = vec3<u32>(rmean(gsum.x, lands), rmean(gsum.y, lands), rmean(gsum.z, lands));
+    }
+    out.ground = vec4<f32>(vec3<f32>(ground) / 255.0, 0.0);
+    var obj = vec4<u32>(0u);
+    if has_objects && a > 0u {
+        obj = vec4<u32>(rmean(psum.x, a), rmean(psum.y, a), rmean(psum.z, a), rmean(a, 4u));
+    }
+    out.objects = vec4<f32>(obj) / 255.0;
+    var field = vec4<u32>(255u, 255u, 255u, 1u);
+    if has_field {
+        var flags = bits;
+        if water > 0u {
+            flags = flags | (rmean(slope, water) << 2u);
+        }
+        field = vec4<u32>(rmean(cover, 4u), rmean(shore, 4u), rmean(depth, 4u), flags);
+    }
+    out.field = field;
+    var terrain = 0xFFFFu;
+    if lands > 0u && has_terrain {
+        terrain = rmean(tsum, lands);
+    }
+    out.terrain = vec4<u32>(terrain, 0u, 0u, 0u);
+    return out;
 }

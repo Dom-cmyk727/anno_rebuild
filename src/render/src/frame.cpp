@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -6,8 +7,12 @@
 #include <functional>
 #include <optional>
 
+#include <anno/render/chunk_reduce.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/render/profile.hpp>
 #include <anno/render/sea.hpp>
+
+#include "thread_priority.hpp"
 
 namespace anno::render {
 
@@ -156,8 +161,10 @@ std::uint64_t next_serial() {
     return counter.fetch_add(1, std::memory_order_relaxed) + 1;
 }
 
-Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, bool ships,
-                        bool wait_for_flow) {
+Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy,
+                        const ChunkBuildOptions& options) {
+    const bool ships = options.ships;
+    const bool wait_for_flow = options.wait_for_flow;
     const Rect rect = chunk_rect(cx, cy);
     std::vector<std::size_t> islands;
     for (const auto& p : scene.layouts[group]) {
@@ -165,43 +172,63 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, b
             islands.push_back(p.index);
         }
     }
-    Layers objects_only = Layers::none();
-    objects_only.objects = true;
-    objects_only.ships = ships;
     // Chunks for the GPU compositor (ships drawn there): with the object
     // base plane for the water against objects.
-    objects_only.bases = !ships;
+    const bool bases = !ships;
+    const bool gpu_list = options.builder == ChunkBuilder::GpuList;
     if (islands.empty()) {
         // Open sea; only units (ships) can add an objects layer.
-        if (!scene.units_touch(rect, group, ships)) {
-            Chunk none;
-            none.ships = ships;
-            return none;
-        }
         Chunk c;
         c.ships = ships;
-        c.objects = to_px(scene.render(rect, group, objects_only).first);
+        c.built_by = options.builder;
+        if (!scene.units_touch(rect, group, ships)) {
+            return c;
+        }
+        ChunkDraws draws = scene.objects_draws(rect, group, ships, bases, options.bin_px);
+        if (gpu_list) {
+            if (draws.object_count() > 0) {
+                c.draws = std::move(draws);
+            }
+        } else {
+            c.objects = to_px(replay(draws, scene.frame_table));
+        }
         return c;
     }
     Chunk c;
     c.ships = ships;
+    c.built_by = options.builder;
     const Px water = scene.textures.water();
+    std::optional<profile::Scope> stage(std::in_place, profile::Stage::ground);
     auto [ground, probe] = scene.ground_with_probe(rect, group);
+    stage.emplace(profile::Stage::ground_px);
     c.ground.reserve(ground.width * ground.height);
     for (std::size_t i = 0; i < ground.width * ground.height; ++i) {
         Px px = water;
         over(px.data(), &ground.pixels[i * 4]);
         c.ground.push_back(rgb(px));
     }
-    Canvas objects = scene.render(rect, group, objects_only).first;
-    c.objects = to_px(objects);
-    if (std::all_of(c.objects.begin(), c.objects.end(), [](const Px& p) { return p[3] == 0; })) {
-        c.objects.clear();
+    stage.emplace(profile::Stage::objects);
+    // The objects layer: the draw list of the chunk, replayed (Cpu) or kept for
+    // the compositor (GpuList).
+    ChunkDraws draws = scene.objects_draws(rect, group, ships, bases, options.bin_px);
+    if (gpu_list) {
+        if (draws.object_count() > 0) {
+            c.draws = std::move(draws);
+        }
     } else {
-        c.base = std::move(objects.base);
+        Canvas objects = replay(draws, scene.frame_table);
+        c.objects = to_px(objects);
+        if (std::all_of(c.objects.begin(), c.objects.end(),
+                        [](const Px& p) { return p[3] == 0; })) {
+            c.objects.clear();
+        } else {
+            c.base = std::move(objects.base);
+        }
     }
+    stage.reset(); // water_field_from has its own stages
     const auto field = scene.water_field_from(rect, probe, group);
     {
+        const profile::Scope pack(profile::Stage::field_pack);
         // The four planes have one entry per texel each; interleaved here,
         // on the builder thread, so the window thread uploads them as is.
         const std::size_t k = std::min(
@@ -217,15 +244,9 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, b
             }
         }
     }
-    c.terrain.reserve(probe.island.size());
-    for (std::size_t i = 0; i < probe.island.size(); ++i) {
-        const int x = rect.x + static_cast<int>(i % to_size(rect.w));
-        const int y = rect.y + static_cast<int>(i / to_size(rect.w));
-        const auto z = scene.terrain_at(probe, rect, x, y);
-        c.terrain.push_back(z ? sat_cast<std::uint16_t>(clampf(roundf(*z * kTerrainScale), 0.0F,
-                                                               static_cast<float>(kNoTerrain - 1)))
-                              : kNoTerrain);
-    }
+    stage.emplace(profile::Stage::terrain);
+    c.terrain = scene.terrain_plane(probe);
+    stage.reset();
     for (const std::size_t i : islands) {
         const auto [below, above] = scene.has_water_objects(i);
         c.water_below = c.water_below || below;
@@ -234,6 +255,7 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, b
     // The flow lattice of enhanced rivers (rivers.md 3.3).
     if (scene.river_active() && std::any_of(islands.begin(), islands.end(),
                                             [&](std::size_t i) { return scene.has_river(i); })) {
+        const profile::Scope flow(profile::Stage::flow);
         c.flow = scene.flow_plane(rect, group, probe, rect, wait_for_flow, &c.flow_waiting);
         std::sort(c.flow_waiting.begin(), c.flow_waiting.end());
         c.flow_waiting.erase(std::unique(c.flow_waiting.begin(), c.flow_waiting.end()),
@@ -244,11 +266,58 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy, b
 
 } // namespace
 
-Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool ships,
-                   bool wait_for_flow) {
-    Chunk c = render_chunk_data(scene, group, cx, cy, ships, wait_for_flow);
+std::array<ChunkKey, 4> derived_children(const ChunkKey& key, const ZoomLevels& levels) {
+    const auto [group, cx, cy] = key;
+    const std::size_t src = levels[group].source;
+    std::array<ChunkKey, 4> out;
+    for (std::size_t q = 0; q < 4; ++q) {
+        out[q] = {src, 2 * cx + static_cast<int>(q % 2), 2 * cy + static_cast<int>(q / 2)};
+    }
+    return out;
+}
+
+Chunk render_derived_chunk(const Scene& scene, const std::array<ChunkPtr, 4>& kids) {
+    ChunkQuad quad{};
+    for (std::size_t q = 0; q < 4; ++q) {
+        quad[q] = kids[q].get();
+    }
+    Chunk c = reduce_chunks_2x(quad, scene.textures.water());
+    // Water objects (waterfalls, animated sprites) are not drawn at a derived
+    // level: no scene content exists there to draw them from.
+    c.water_below = c.water_above = false;
     c.serial = next_serial();
     return c;
+}
+
+Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy,
+                   const ChunkBuildOptions& options) {
+    const ZoomLevels& levels = scene.levels();
+    if (group >= levels.built_count() && group < levels.size()) {
+        // A derived level (iso.md, stage 3): the four chunks of the level above,
+        // each reduced 2x into a quadrant. This is the reference for one chunk from
+        // nothing (tests, tools): they are built recursively, down to the built
+        // level, and dropped as they are reduced. The viewer's workers do not come
+        // here: they reduce the cached children (FrameRenderer::plan_jobs).
+        const std::size_t src = levels[group].source;
+        std::array<ChunkPtr, 4> kids;
+        for (std::size_t q = 0; q < 4; ++q) {
+            kids[q] = std::make_shared<const Chunk>(
+                render_chunk(scene, src, 2 * cx + static_cast<int>(q % 2),
+                             2 * cy + static_cast<int>(q / 2), options));
+        }
+        return render_derived_chunk(scene, kids);
+    }
+    Chunk c = render_chunk_data(scene, group, cx, cy, options);
+    c.serial = next_serial();
+    return c;
+}
+
+Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool ships,
+                   bool wait_for_flow) {
+    ChunkBuildOptions options;
+    options.ships = ships;
+    options.wait_for_flow = wait_for_flow;
+    return render_chunk(scene, group, cx, cy, options);
 }
 
 ChunkWorkers::ChunkWorkers(const Scene& scene, std::size_t threads) : scene_(scene) {
@@ -272,8 +341,9 @@ ChunkWorkers::~ChunkWorkers() {
 }
 
 void ChunkWorkers::reap() {
+    lower_thread_priority();
     for (;;) {
-        std::vector<Chunk> dead;
+        std::vector<ChunkPtr> dead;
         {
             std::unique_lock lock(mutex_);
             garbage_ready_.wait(lock, [this] { return stop_ || !garbage_.empty(); });
@@ -287,7 +357,7 @@ void ChunkWorkers::reap() {
     }
 }
 
-void ChunkWorkers::discard(std::vector<Chunk> chunks) {
+void ChunkWorkers::discard(std::vector<ChunkPtr> chunks) {
     {
         const std::lock_guard lock(mutex_);
         for (auto& c : chunks) {
@@ -298,28 +368,51 @@ void ChunkWorkers::discard(std::vector<Chunk> chunks) {
 }
 
 void ChunkWorkers::run() {
+    lower_thread_priority();
     for (;;) {
-        ChunkKey key;
-        bool ships = true;
+        ChunkJob job;
+        ChunkBuildOptions options;
         {
             std::unique_lock lock(mutex_);
             ready_.wait(lock, [this] { return stop_ || !jobs_.empty(); });
             if (stop_) {
                 return;
             }
-            key = jobs_.front();
+            job = std::move(jobs_.front());
             jobs_.pop_front();
+            const ChunkKey key = job.key;
             busy_.insert(key);
-            ships = ships_;
+            options.ships = ships_;
+            options.wait_for_flow = false;
+            options.builder = builder_;
+            options.bin_px = bin_px_;
         }
+        const ChunkKey key = job.key;
         const auto [group, cx, cy] = key;
         std::optional<Chunk> chunk;
+        const auto built_at = Clock::now();
         try {
-            chunk = render_chunk(scene_, group, cx, cy, ships, false);
+            if (group >= scene_.levels().built_count() && group < scene_.levels().size() &&
+                job.kids[0]) {
+                // Reduced from the cached children the job carries (shared, not copied).
+                // A job without children (derive_from_cache off) is built from nothing.
+                chunk = render_derived_chunk(scene_, job.kids);
+            } else {
+                chunk = render_chunk(scene_, group, cx, cy, options);
+            }
         } catch (const std::exception& e) {
             // E.g. out of memory: the chunk stays missing (open sea) and is not
             // requested again; the worker keeps running.
             std::fprintf(stderr, "chunk (%zu, %d, %d) failed: %s\n", group, cx, cy, e.what());
+        }
+        // A failed build says nothing about how long a chunk takes.
+        if (chunk) {
+            const double took = ms_since(built_at);
+            // Workers finish at the same time: a compare-exchange loop so no
+            // sample is lost between the load and the store.
+            double was = build_ms_.load();
+            while (!build_ms_.compare_exchange_weak(was, 0.8 * was + 0.2 * took)) {
+            }
         }
         const std::lock_guard lock(mutex_);
         busy_.erase(key);
@@ -331,13 +424,22 @@ void ChunkWorkers::run() {
     }
 }
 
-bool ChunkWorkers::submit(const std::vector<ChunkKey>& wanted, bool ships) {
+bool ChunkWorkers::submit(const std::vector<ChunkJob>& wanted, bool ships, ChunkBuilder builder,
+                          std::uint32_t bin_px) {
     const std::lock_guard lock(mutex_);
     ships_ = ships;
+    builder_ = builder;
+    bin_px_ = bin_px;
     jobs_.clear();
-    for (const auto& k : wanted) {
-        if (!busy_.contains(k) && !failed_.contains(k)) {
-            jobs_.push_back(k);
+    // A chunk finished since the window thread last took the results is not in its
+    // cache yet: it must not be built a second time.
+    std::set<ChunkKey> finished;
+    for (const auto& d : done_) {
+        finished.insert(d.first);
+    }
+    for (const auto& j : wanted) {
+        if (!busy_.contains(j.key) && !failed_.contains(j.key) && !finished.contains(j.key)) {
+            jobs_.push_back(j);
         }
     }
     ready_.notify_all();
@@ -359,20 +461,29 @@ void FrameRenderer::set_workers(std::unique_ptr<ChunkWorkers> workers) {
 
 const Chunk* FrameRenderer::chunk(const ChunkKey& key) const {
     const auto it = cache_.find(key);
-    return it == cache_.end() ? nullptr : &it->second;
+    return it == cache_.end() ? nullptr : it->second.get();
 }
 
 void FrameRenderer::insert_chunk(const ChunkKey& key, Chunk chunk) {
     chunk.serial = next_serial();
-    cache_.insert_or_assign(key, std::move(chunk));
+    cache_.insert_or_assign(key, std::make_shared<const Chunk>(std::move(chunk)));
 }
 
 std::tuple<std::size_t, double, std::size_t>
 FrameRenderer::update_chunks(const Scene& scene, Rect view, std::size_t group) {
+    sync_levels(scene);
     const auto t = Clock::now();
     const auto chunks = visible_chunks(view);
-    const std::size_t built =
-        workers_ ? request_chunks(scene, group, view, chunks) : fill_cache(scene, group, chunks);
+    std::size_t built = 0;
+    if (workers_) {
+        built = request_chunks(scene, group, view, chunks);
+    } else {
+        built = fill_cache(scene, group, chunks);
+        // Without background builds only the neighbouring groups' keys are of use
+        // (the GPU compositor uploads those that are cached).
+        std::set<ChunkKey> keep;
+        plan_margin(view, group, chunks, 0.1, keep);
+    }
     std::size_t missing = 0;
     for (const auto& [cx, cy] : chunks) {
         missing += cache_.contains({group, cx, cy}) ? 0U : 1U;
@@ -388,9 +499,36 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
     std::tie(stats.chunks_built, stats.chunks_ms, stats.chunks_missing) =
         update_chunks(scene, view, group);
     static const Chunk empty;
+    // Visible chunks that are not built: the nearest group's chunks, scaled
+    // (stand_ins), else open sea.
+    std::map<std::pair<int, int>, Chunk> standing;
+    if (stand_ins) {
+        std::vector<std::pair<int, int>> missing;
+        for (const auto& [cx, cy] : chunks) {
+            if (!cache_.contains({group, cx, cy})) {
+                missing.emplace_back(cx, cy);
+            }
+        }
+        const Px open = scene.textures.water();
+        auto built = par_map(missing, threads, [&](const std::pair<int, int>& c) {
+            return stand_in_chunk(*this, group, c.first, c.second, open);
+        });
+        for (std::size_t i = 0; i < missing.size(); ++i) {
+            if (built[i]) {
+                standing.emplace(missing[i], std::move(*built[i]));
+            }
+        }
+    }
+    auto find = [&](int cx, int cy) -> const Chunk* {
+        if (const auto it = cache_.find({group, cx, cy}); it != cache_.end()) {
+            return it->second.get();
+        }
+        const auto it = standing.find({cx, cy});
+        return it == standing.end() ? nullptr : &it->second;
+    };
     auto get = [&](int cx, int cy) -> const Chunk& {
-        const auto it = cache_.find({group, cx, cy});
-        return it == cache_.end() ? empty : it->second;
+        const Chunk* c = find(cx, cy);
+        return c != nullptr ? *c : empty;
     };
     const std::uint32_t water = rgb(scene.textures.water());
 
@@ -421,15 +559,15 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
     const std::function<std::optional<float>(int, int)> terrain =
         [&](int sx, int sy) -> std::optional<float> {
         const int cx = div_euclid(sx, kChunk), cy = div_euclid(sy, kChunk);
-        const auto it = cache_.find({group, cx, cy});
-        if (it == cache_.end()) {
+        const Chunk* c = find(cx, cy);
+        if (c == nullptr) {
             return std::nullopt;
         }
         const std::size_t i = chunk_index(cx, cy, sx, sy);
-        if (i >= it->second.terrain.size()) {
+        if (i >= c->terrain.size()) {
             return std::nullopt;
         }
-        const std::uint16_t v = it->second.terrain[i];
+        const std::uint16_t v = c->terrain[i];
         if (v == kNoTerrain) {
             return std::nullopt;
         }
@@ -437,7 +575,7 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
     };
     auto render_parts = [&](bool below) {
         std::vector<Rect> parts;
-        for (const auto& [cx, cy] : chunks) {
+        for (const auto& [cx, cy] : group < kGroups ? chunks : decltype(chunks){}) {
             const Chunk& c = get(cx, cy);
             if (!(below ? c.water_below : c.water_above)) {
                 continue;
@@ -494,7 +632,7 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
                 };
                 sea::shade_sea_flow(sea::XrgbTarget{band + d}, to_size(view.w), *r, field, flow,
                                     flowing && !c.flow.empty() ? &shading : nullptr, *pattern,
-                                    time_ms, style, group, lift);
+                                    time_ms, style, group, lift, levels_);
             }
         });
     }
@@ -530,61 +668,116 @@ FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t grou
     return stats;
 }
 
+std::vector<ChunkKey> FrameRenderer::plan_margin(Rect view, std::size_t group,
+                                                 const std::vector<std::pair<int, int>>& visible,
+                                                 double horizon_s, std::set<ChunkKey>& keep) {
+    track_velocity(view, group);
+    const auto ring =
+        visible_chunks(lookahead_rect(view, vx_, vy_, horizon_s, max_lookahead_chunks));
+    // The queue: visible chunks first, then the rest of the margin of this group,
+    // then the neighbouring groups' views, each class nearest first to the view
+    // as it will be in a moment (shifted by half the lookahead), so what the
+    // motion brings into view first is built first, not what the key order says.
+    struct Candidate {
+        int rank;
+        double distance;
+        ChunkKey key;
+        bool operator<(const Candidate& o) const {
+            return std::tie(rank, distance, key) < std::tie(o.rank, o.distance, o.key);
+        }
+    };
+    std::vector<Candidate> queue;
+    auto add = [&](std::size_t g, const std::vector<std::pair<int, int>>& chunks, Rect centre_on,
+                   double vx, double vy, auto&& rank_of) {
+        const double reach = static_cast<double>(max_lookahead_chunks) * kChunk;
+        const double px =
+            centre_on.x + centre_on.w / 2.0 + std::clamp(vx * horizon_s, -reach, reach) / 2.0;
+        const double py =
+            centre_on.y + centre_on.h / 2.0 + std::clamp(vy * horizon_s, -reach, reach) / 2.0;
+        for (const auto& [cx, cy] : chunks) {
+            const ChunkKey k{g, cx, cy};
+            if (!keep.insert(k).second) {
+                continue;
+            }
+            const double dx = (cx + 0.5) * kChunk - px, dy = (cy + 0.5) * kChunk - py;
+            queue.push_back({rank_of(cx, cy), dx * dx + dy * dy, k});
+        }
+    };
+    add(group, visible, view, vx_, vy_, [](int, int) { return 0; });
+    add(group, ring, view, vx_, vy_, [](int, int) { return 1; });
+    // The view a zoom step would show (same window size, same centre point) in
+    // each neighbouring zoom group, with the same margin, is built behind the
+    // current group's chunks, whatever is still missing there: a pan during a
+    // zoom lands on built content, not on open sea. The memory is the cache's:
+    // these keys are kept like the ring (the budget is spare_chunks plus what is
+    // kept), and adjacent_keys() hands them to the GPU compositor to upload when
+    // it has nothing better to do.
+    for (const std::size_t g : {group - 1, group + 1}) {
+        // group − 1 wraps to SIZE_MAX for group 0 and is skipped.
+        if (g < levels_.size()) {
+            const Rect next = zoomed_view(view, group, g, levels_);
+            const double sx = levels_.tile_w(g) / levels_.tile_w(group);
+            const double sy = levels_.tile_h(g) / levels_.tile_h(group);
+            add(g,
+                visible_chunks(
+                    lookahead_rect(next, vx_ * sx, vy_ * sy, horizon_s, max_lookahead_chunks)),
+                next, vx_ * sx, vy_ * sy, [](int, int) { return 2; });
+        }
+    }
+    std::sort(queue.begin(), queue.end());
+    adjacent_.clear();
+    margin_.clear();
+    std::vector<ChunkKey> order;
+    for (const auto& c : queue) {
+        order.push_back(c.key);
+        if (c.rank == 1) {
+            margin_.push_back(c.key);
+        } else if (c.rank == 2) {
+            adjacent_.push_back(c.key);
+        }
+    }
+    return order;
+}
+
 std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group, Rect view,
                                           const std::vector<std::pair<int, int>>& visible) {
     std::size_t received = 0;
+    // A chunk replaced by its rebuild (the river flow arrived) is freed on the
+    // reaper thread, like the evicted ones: freeing its ~4 MB of vectors costs
+    // the window thread about a millisecond each.
+    std::vector<ChunkPtr> replaced;
     for (auto& [key, chunk] : workers_->take_done()) {
         // Workers shared with a renderer of the other ship setting: rebuilt.
-        if (chunk.ships != ships_) {
+        if (chunk.ships != ships_ || chunk.built_by != chunk_builder) {
             continue;
         }
-        cache_.insert_or_assign(key, std::move(chunk));
+        // The chunk is moved into its shared owner (vectors moved, no plane copied).
+        ChunkPtr owned = std::make_shared<const Chunk>(std::move(chunk));
+        if (const auto it = cache_.find(key); it != cache_.end()) {
+            replaced.push_back(std::move(it->second));
+            it->second = std::move(owned);
+            ++rebuilds_[key]; // the river flow arrived: a rebuild that was planned
+        } else {
+            cache_.emplace(key, std::move(owned));
+            ++builds_[key];
+        }
         ++received;
     }
-    const auto ring = visible_chunks(
-        Rect{view.x - kChunk, view.y - kChunk, view.w + 2 * kChunk, view.h + 2 * kChunk});
+    if (!replaced.empty()) {
+        workers_->discard(std::move(replaced));
+    }
+    // The time a request takes to come back: a build on a free worker, doubled for
+    // the queue in front of it, and the frames in between.
     std::set<ChunkKey> keep;
-    for (const auto& [cx, cy] : visible) {
-        keep.insert({group, cx, cy});
-    }
-    for (const auto& [cx, cy] : ring) {
-        keep.insert({group, cx, cy});
-    }
-    // Once the current group is (nearly) done, prepare the same area in the
-    // neighbouring zoom groups, so zooming shows islands at once.
-    std::size_t missing = 0;
-    for (const auto* list : {&visible, &ring}) {
-        for (const auto& [cx, cy] : *list) {
-            missing += cache_.contains({group, cx, cy}) ? 0U : 1U;
-        }
-    }
-    if (missing <= threads) {
-        for (const std::size_t g : {group - 1, group + 1}) {
-            // group − 1 wraps to SIZE_MAX for group 0 and is skipped.
-            if (g < kGroups) {
-                for (const auto& [cx, cy] : visible_chunks(zoomed_view(view, group, g))) {
-                    keep.insert({g, cx, cy});
-                }
-            }
-        }
-    }
-    // Visible chunks first, then the ring, then other zoom groups.
-    std::vector<ChunkKey> order(keep.begin(), keep.end());
-    auto rank = [&](const ChunkKey& k) {
-        const auto [g, cx, cy] = k;
-        const bool vis =
-            std::find(visible.begin(), visible.end(), std::pair{cx, cy}) != visible.end();
-        return std::pair{g != group, !vis};
-    };
-    std::stable_sort(order.begin(), order.end(),
-                     [&](const ChunkKey& a, const ChunkKey& b) { return rank(a) < rank(b); });
+    const std::vector<ChunkKey> order =
+        plan_margin(view, group, visible, 2.0 * workers_->build_ms() / 1000.0 + 0.1, keep);
     // A chunk built while an island's river flow was not ready is rebuilt once
     // the flow is: it stays in the cache (the legacy river look) until its
     // replacement arrives.
     auto stale = [&](const ChunkKey& k) {
         const auto it = cache_.find(k);
-        return it != cache_.end() && it->second.flow_pending() &&
-               std::all_of(it->second.flow_waiting.begin(), it->second.flow_waiting.end(),
+        return it != cache_.end() && it->second->flow_pending() &&
+               std::all_of(it->second->flow_waiting.begin(), it->second->flow_waiting.end(),
                            [&](std::uint32_t i) { return scene.river_flow_done(i); });
     };
     std::vector<ChunkKey> todo;
@@ -593,12 +786,47 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
             todo.push_back(k);
         }
     }
-    pending_ = workers_->submit(todo, ships_);
-    trim(group, view, keep);
+    // A derived chunk is reduced from its four children as the cache holds them; the
+    // missing ones are jobs before it (and kept, with it, past the trim below).
+    const std::vector<ChunkJob> jobs = plan_jobs(todo, keep);
+    pending_ = workers_->submit(jobs, ships_, chunk_builder, bin_px);
+    const std::set<ChunkKey> retain = stand_in_retain(group, visible);
+    trim(group, view, keep, retain);
     return received;
 }
 
-void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>& keep) {
+std::set<ChunkKey>
+FrameRenderer::stand_in_retain(std::size_t group,
+                               const std::vector<std::pair<int, int>>& visible) const {
+    // The chunks that would stand in for a visible chunk still being built (the
+    // zoom group the view came from, the prebuilt neighbours) are kept, though
+    // nothing asks for them to be built: the eviction ranks other groups'
+    // chunks by their distance in the current group's chunk coordinates, which
+    // says nothing about what shows through. Only chunks already built, so no
+    // more than (groups - 1) x the missing visible ones; none when stand-ins are
+    // off (the eviction is then the one from before they existed).
+    std::set<ChunkKey> retain;
+    if (!stand_ins && !retain_stand_in_sources) {
+        return retain;
+    }
+    for (const auto& [cx, cy] : visible) {
+        if (cache_.contains({group, cx, cy}) && !shown_over_stand_in.contains({group, cx, cy})) {
+            continue; // built and shown: nothing to stand in for
+        }
+        for (const std::size_t from : stand_in_groups(group, levels_)) {
+            for (const StandInSpan& span : stand_in_spans(cx, cy, group, from, levels_)) {
+                const ChunkKey k{from, span.src_cx, span.src_cy};
+                if (cache_.contains(k)) {
+                    retain.insert(k);
+                }
+            }
+        }
+    }
+    return retain;
+}
+
+void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>& keep,
+                         const std::set<ChunkKey>& retain) {
     if (cache_.size() <= keep.size() + spare_chunks) {
         return;
     }
@@ -606,16 +834,20 @@ void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>&
     const int ccy = div_euclid(view.y + view.h / 2, kChunk);
     std::vector<std::tuple<bool, int, ChunkKey>> keys;
     for (const auto& [k, c] : cache_) {
-        if (keep.contains(k)) {
+        if (keep.contains(k) || retain.contains(k)) {
             continue;
         }
         const auto [g, cx, cy] = k;
+        if (g < level_chunks_.size() && level_chunks_[g] > 0 &&
+            level_chunks_[g] <= resident_level_chunks) {
+            continue; // a small derived level stays for the scene's lifetime
+        }
         keys.emplace_back(g != group, std::abs(cx - ccx) + std::abs(cy - ccy), k);
     }
     std::sort(keys.begin(), keys.end());
     // Freeing a chunk's ~4 MB of vectors costs a millisecond each: with
     // background workers the evicted chunks are freed on their reaper thread.
-    std::vector<Chunk> dead;
+    std::vector<ChunkPtr> dead;
     for (std::size_t i = spare_chunks; i < keys.size(); ++i) {
         const auto it = cache_.find(std::get<2>(keys[i]));
         if (workers_) {
@@ -628,19 +860,106 @@ void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>&
     }
 }
 
-std::size_t FrameRenderer::fill_cache(const Scene& scene, std::size_t group,
-                                      const std::vector<std::pair<int, int>>& wanted) {
-    std::vector<std::pair<int, int>> todo;
-    for (const auto& [cx, cy] : wanted) {
-        if (!cache_.contains({group, cx, cy})) {
-            todo.emplace_back(cx, cy);
+std::vector<ChunkJob> FrameRenderer::plan_jobs(const std::vector<ChunkKey>& wanted,
+                                               std::set<ChunkKey>& keep) const {
+    std::vector<ChunkJob> jobs;
+    std::set<ChunkKey> seen;
+    // A key of a deep level has 4^k descendants and the plan is made every frame on the
+    // window thread: it looks at this many keys at most (a level 6 view with nothing built
+    // took 9-11 ms before this), the most urgent first; the rest follow in the frames after
+    // as the workers finish. 512 keys are more than the workers (up to half the cores,
+    // each busy for 20-100 ms per chunk) can take on in the frames between two plans.
+    constexpr std::size_t kPlanKeys = 512;
+    // Depth first: the children of a derived chunk are jobs before it, so the first
+    // chunk wanted is the first to be complete.
+    std::function<void(const ChunkKey&)> need = [&](const ChunkKey& key) {
+        if (seen.size() >= kPlanKeys || !seen.insert(key).second) {
+            return;
+        }
+        keep.insert(key);
+        const std::size_t group = std::get<0>(key);
+        if (group < levels_.built_count() || group >= levels_.size() || !derive_from_cache) {
+            jobs.push_back({key, {}});
+            return;
+        }
+        ChunkJob job{key, {}};
+        bool complete = true;
+        const auto kids = derived_children(key, levels_);
+        for (std::size_t q = 0; q < 4; ++q) {
+            if (const auto it = cache_.find(kids[q]); it != cache_.end()) {
+                job.kids[q] = it->second;
+                keep.insert(kids[q]); // until the parent is built
+            } else {
+                complete = false;
+                need(kids[q]);
+            }
+        }
+        if (complete) {
+            jobs.push_back(std::move(job));
+        }
+    };
+    for (const auto& key : wanted) {
+        need(key);
+    }
+    return jobs;
+}
+
+void FrameRenderer::sync_levels(const Scene& scene) {
+    const ZoomLevels& l = scene.levels();
+    if (levels_.size() == l.size() && level_chunks_.size() == l.size()) {
+        return;
+    }
+    levels_ = l;
+    level_chunks_.assign(l.size(), 0);
+    for (std::size_t i = l.built_count(); i < l.size(); ++i) {
+        if (const auto b = scene.bounds(i)) {
+            const auto cx = static_cast<std::size_t>(div_euclid(b->x + b->w - 1, kChunk) -
+                                                     div_euclid(b->x, kChunk) + 1);
+            const auto cy = static_cast<std::size_t>(div_euclid(b->y + b->h - 1, kChunk) -
+                                                     div_euclid(b->y, kChunk) + 1);
+            level_chunks_[i] = cx * cy;
         }
     }
-    auto built = par_map(todo, threads, [&](const std::pair<int, int>& c) {
-        return render_chunk(scene, group, c.first, c.second, ships_);
-    });
-    for (std::size_t i = 0; i < todo.size(); ++i) {
-        cache_.insert_or_assign({group, todo[i].first, todo[i].second}, std::move(built[i]));
+}
+
+std::size_t FrameRenderer::fill_cache(const Scene& scene, std::size_t group,
+                                      const std::vector<std::pair<int, int>>& wanted) {
+    std::vector<ChunkKey> missing;
+    for (const auto& [cx, cy] : wanted) {
+        if (!cache_.contains({group, cx, cy})) {
+            missing.push_back({group, cx, cy});
+        }
+    }
+    // Built in the frame (no workers): level by level, the finest first, so that a
+    // derived chunk finds its children cached. plan_jobs gives the jobs that can
+    // run now; repeating until nothing is missing builds the missing children and
+    // then their parents.
+    std::size_t built_count = 0;
+    std::set<ChunkKey> planned;
+    while (!missing.empty()) {
+        std::set<ChunkKey> keep_unused;
+        const std::vector<ChunkJob> jobs = plan_jobs(missing, keep_unused);
+        if (jobs.empty()) {
+            break;
+        }
+        auto built = par_map(jobs, threads, [&](const ChunkJob& j) {
+            const auto [g, cx, cy] = j.key;
+            if (g >= levels_.built_count() && g < levels_.size() && j.kids[0]) {
+                return render_derived_chunk(scene, j.kids);
+            }
+            ChunkBuildOptions options;
+            options.ships = ships_;
+            options.builder = chunk_builder;
+            options.bin_px = bin_px;
+            return render_chunk(scene, g, cx, cy, options);
+        });
+        for (std::size_t i = 0; i < jobs.size(); ++i) {
+            cache_.insert_or_assign(jobs[i].key,
+                                    std::make_shared<const Chunk>(std::move(built[i])));
+            ++builds_[jobs[i].key];
+        }
+        built_count += jobs.size();
+        std::erase_if(missing, [&](const ChunkKey& k) { return cache_.contains(k); });
     }
     std::set<ChunkKey> keep;
     for (const auto& [cx, cy] : wanted) {
@@ -648,17 +967,268 @@ std::size_t FrameRenderer::fill_cache(const Scene& scene, std::size_t group,
     }
     const Rect view =
         wanted.empty() ? chunk_rect(0, 0) : chunk_rect(wanted.front().first, wanted.front().second);
-    trim(group, view, keep);
-    return todo.size();
+    trim(group, view, keep, stand_in_retain(group, wanted));
+    return built_count;
 }
 
-Rect zoomed_view(Rect view, std::size_t from, std::size_t to) {
+Rect lookahead_rect(Rect view, double vx, double vy, double horizon_s, std::size_t max_chunks) {
+    const double reach = static_cast<double>(max_chunks) * kChunk;
+    const double dx = std::clamp(vx * horizon_s, -reach, reach);
+    const double dy = std::clamp(vy * horizon_s, -reach, reach);
+    // A chunk of margin on every side, the lookahead on the side of motion on top.
+    const int left = kChunk + (dx < 0 ? static_cast<int>(std::ceil(-dx)) : 0);
+    const int right = kChunk + (dx > 0 ? static_cast<int>(std::ceil(dx)) : 0);
+    const int up = kChunk + (dy < 0 ? static_cast<int>(std::ceil(-dy)) : 0);
+    const int down = kChunk + (dy > 0 ? static_cast<int>(std::ceil(dy)) : 0);
+    return {view.x - left, view.y - up, view.w + left + right, view.h + up + down};
+}
+
+void FrameRenderer::track_velocity(Rect view, std::size_t group) {
+    const auto now = clock();
+    const double cx = motion_centre ? motion_centre->first : view.x + view.w / 2.0;
+    const double cy = motion_centre ? motion_centre->second : view.y + view.h / 2.0;
+    if (last_centre_) {
+        const double dt = std::chrono::duration<double>(now - last_time_).count();
+        const double dx = cx - last_centre_->first, dy = cy - last_centre_->second;
+        if (group != last_group_) {
+            // A zoom step moves the centre by the cursor anchoring, not by a pan:
+            // keep the velocity, in the new group's pixels (also when the step
+            // comes with a jump: rescaled, the old velocity is no spike).
+            vx_ *= levels_.tile_w(group) / levels_.tile_w(last_group_);
+            vy_ *= levels_.tile_h(group) / levels_.tile_h(last_group_);
+        } else if (std::abs(dx) > view.w || std::abs(dy) > view.h) {
+            // More than a view in one update: a jump (a minimap click, a "go to"),
+            // not a drag. Counted as motion it would read D / 0.15 px/s whatever
+            // the frame time and pin the margin at its cap for a while.
+            vx_ = 0;
+            vy_ = 0;
+        } else if (dt > 1e-4) {
+            // Smoothed over about 150 ms: a mouse drag is noisy per frame.
+            const double a = 1.0 - std::exp(-dt / 0.15);
+            vx_ += a * (dx / dt - vx_);
+            vy_ += a * (dy / dt - vy_);
+        }
+    }
+    last_centre_ = std::pair{cx, cy};
+    last_time_ = now;
+    last_group_ = group;
+}
+
+Rect zoomed_view(Rect view, std::size_t from, std::size_t to, const ZoomLevels& levels) {
     const std::int64_t cx = std::int64_t{view.x} + std::int64_t{view.w} / 2;
     const std::int64_t cy = std::int64_t{view.y} + std::int64_t{view.h} / 2;
     auto scale = [](std::int64_t v, int a, int b) { return static_cast<int>(v * b / a); };
-    const int x = scale(cx, kTile[from].w, kTile[to].w);
-    const int y = scale(cy, kTile[from].h, kTile[to].h);
+    const auto [xn, xd] = levels.ratio_w(from, to);
+    const auto [yn, yd] = levels.ratio_h(from, to);
+    const int x = scale(cx, xn, xd);
+    const int y = scale(cy, yn, yd);
     return {x - view.w / 2, y - view.h / 2, view.w, view.h};
+}
+
+int stand_in_source(int p, int num, int den) {
+    return static_cast<int>(
+        div_euclid<std::int64_t>((std::int64_t{2} * p + 1) * num, std::int64_t{2} * den));
+}
+
+std::vector<std::size_t> stand_in_groups(std::size_t group, const ZoomLevels& levels) {
+    std::vector<std::size_t> out;
+    for (std::size_t d = 1; d < levels.size(); ++d) {
+        // A chunk of a finer source level than kMaxStandInReduction x the tile width is
+        // covered by that ratio squared source chunks (a level-7 chunk from level 0: 16384
+        // spans, each looked up in the cache every frame: 30 ms of the window thread in the
+        // zoom sweep with nothing built at the deep levels). The levels between serve.
+        if (group >= d && levels.tile_w(group - d) <= kMaxStandInReduction * levels.tile_w(group)) {
+            out.push_back(group - d);
+        }
+        if (group + d < levels.size()) {
+            out.push_back(group + d);
+        }
+    }
+    return out;
+}
+
+namespace {
+
+/// One axis of stand_in_spans: (source chunk, first and one past the last
+/// destination pixel) for the destination pixels [d0, d1).
+std::vector<std::array<int, 3>> stand_in_axis(int d0, int d1, int num, int den) {
+    auto ceil_div = [](std::int64_t a, std::int64_t b) {
+        return div_euclid<std::int64_t>(a + b - 1, b);
+    };
+    const int s0 = div_euclid(stand_in_source(d0, num, den), kChunk);
+    const int s1 = div_euclid(stand_in_source(d1 - 1, num, den), kChunk);
+    std::vector<std::array<int, 3>> out;
+    for (int s = s0; s <= s1; ++s) {
+        // The first destination pixel p whose centre maps to source pixel
+        // `source` or beyond: the smallest p with (2p + 1) num >= 2 den source.
+        const auto first = [&](std::int64_t source) {
+            return ceil_div(2 * std::int64_t{den} * source - num, 2 * std::int64_t{num});
+        };
+        const int lo = std::max<int>(d0, static_cast<int>(first(std::int64_t{s} * kChunk)));
+        const int hi = std::min<int>(d1, static_cast<int>(first((std::int64_t{s} + 1) * kChunk)));
+        if (hi > lo) {
+            out.push_back({s, lo, hi});
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+std::vector<StandInSpan> stand_in_spans_in(Rect region, std::size_t to, std::size_t from,
+                                           const ZoomLevels& levels) {
+    std::vector<StandInSpan> out;
+    if (to >= levels.size() || from >= levels.size() || region.w <= 0 || region.h <= 0) {
+        return out;
+    }
+    const auto [xn, xd] = levels.ratio_w(from, to);
+    const auto [yn, yd] = levels.ratio_h(from, to);
+    const auto xs = stand_in_axis(region.x, region.x + region.w, xn, xd);
+    const auto ys = stand_in_axis(region.y, region.y + region.h, yn, yd);
+    for (const auto& y : ys) {
+        for (const auto& x : xs) {
+            out.push_back({x[0], y[0], Rect{x[1], y[1], x[2] - x[1], y[2] - y[1]}});
+        }
+    }
+    return out;
+}
+
+std::vector<StandInSpan> stand_in_spans(int cx, int cy, std::size_t to, std::size_t from,
+                                        const ZoomLevels& levels) {
+    return stand_in_spans_in(chunk_rect(cx, cy), to, from, levels);
+}
+
+std::vector<StandInPart> stand_in_cover(int cx, int cy, std::size_t to,
+                                        const std::function<bool(const ChunkKey&)>& has,
+                                        const ZoomLevels& levels) {
+    std::vector<StandInPart> out;
+    std::vector<Rect> open{chunk_rect(cx, cy)};
+    for (const std::size_t from : stand_in_groups(to, levels)) {
+        if (open.empty()) {
+            break;
+        }
+        std::vector<Rect> next;
+        for (const Rect& region : open) {
+            for (const StandInSpan& sp : stand_in_spans_in(region, to, from, levels)) {
+                if (has({from, sp.src_cx, sp.src_cy})) {
+                    out.push_back({from, sp});
+                } else {
+                    next.push_back(sp.dst);
+                }
+            }
+        }
+        open = std::move(next);
+    }
+    // Parts of one source chunk that join into a rectangle are one draw (a hole
+    // in the nearest group splits the regions of the next one).
+    for (bool merged = true; merged;) {
+        merged = false;
+        for (std::size_t i = 0; i < out.size() && !merged; ++i) {
+            for (std::size_t j = i + 1; j < out.size() && !merged; ++j) {
+                StandInPart& a = out[i];
+                const StandInPart& b = out[j];
+                if (a.from != b.from || a.span.src_cx != b.span.src_cx ||
+                    a.span.src_cy != b.span.src_cy) {
+                    continue;
+                }
+                Rect& ra = a.span.dst;
+                const Rect& rb = b.span.dst;
+                if (ra.y == rb.y && ra.h == rb.h && (ra.x + ra.w == rb.x || rb.x + rb.w == ra.x)) {
+                    ra = Rect{std::min(ra.x, rb.x), ra.y, ra.w + rb.w, ra.h};
+                    merged = true;
+                } else if (ra.x == rb.x && ra.w == rb.w &&
+                           (ra.y + ra.h == rb.y || rb.y + rb.h == ra.y)) {
+                    ra = Rect{ra.x, std::min(ra.y, rb.y), ra.w, ra.h + rb.h};
+                    merged = true;
+                }
+                if (merged) {
+                    out.erase(out.begin() + static_cast<std::ptrdiff_t>(j));
+                }
+            }
+        }
+    }
+    return out;
+}
+
+std::optional<Chunk> stand_in_chunk(const FrameRenderer& frames, std::size_t group, int cx, int cy,
+                                    Px open_water) {
+    const auto cover = stand_in_cover(
+        cx, cy, group, [&](const ChunkKey& k) { return frames.chunk(k) != nullptr; },
+        frames.levels());
+    if (cover.empty()) {
+        return std::nullopt;
+    }
+    const auto n = to_size(kChunk);
+    Chunk out;
+    auto any = [&](auto member) {
+        return std::any_of(cover.begin(), cover.end(), [&](const StandInPart& p) {
+            const Chunk* c = frames.chunk({p.from, p.span.src_cx, p.span.src_cy});
+            return c != nullptr && !(c->*member).empty();
+        });
+    };
+    if (any(&Chunk::ground)) {
+        out.ground.assign(n * n, rgb(open_water));
+    }
+    if (any(&Chunk::objects)) {
+        out.objects.assign(n * n, Px{0, 0, 0, 0});
+    }
+    if (any(&Chunk::field)) {
+        out.field.resize(n * n * 4);
+        for (std::size_t i = 0; i < n * n; ++i) {
+            out.field[i * 4] = out.field[i * 4 + 1] = out.field[i * 4 + 2] = 255;
+            out.field[i * 4 + 3] = 1;
+        }
+    }
+    if (any(&Chunk::terrain)) {
+        out.terrain.assign(n * n, kNoTerrain);
+    }
+    if (any(&Chunk::base)) {
+        out.base.assign(n * n, 255);
+    }
+    for (const StandInPart& part : cover) {
+        const Chunk* src_ptr = frames.chunk({part.from, part.span.src_cx, part.span.src_cy});
+        if (src_ptr == nullptr) {
+            continue;
+        }
+        const Chunk& src = *src_ptr;
+        const StandInSpan& span = part.span;
+        const auto [nx, dx] = frames.levels().ratio_w(part.from, group);
+        const auto [ny, dy] = frames.levels().ratio_h(part.from, group);
+        out.water_below = out.water_below || src.water_below;
+        out.water_above = out.water_above || src.water_above;
+        const Rect r = span.dst;
+        for (int y = r.y; y < r.y + r.h; ++y) {
+            const int sy = stand_in_source(y, ny, dy);
+            for (int x = r.x; x < r.x + r.w; ++x) {
+                const int sx = stand_in_source(x, nx, dx);
+                const std::size_t d = chunk_index(cx, cy, x, y);
+                const std::size_t s = chunk_index(span.src_cx, span.src_cy, sx, sy);
+                if (!src.ground.empty()) {
+                    out.ground[d] = src.ground[s];
+                }
+                if (!src.objects.empty()) {
+                    out.objects[d] = src.objects[s];
+                }
+                if (!src.field.empty()) {
+                    std::copy_n(src.field.data() + s * 4, 4, out.field.data() + d * 4);
+                }
+                if (!src.terrain.empty()) {
+                    out.terrain[d] = src.terrain[s];
+                }
+                if (!src.base.empty()) {
+                    out.base[d] = src.base[s];
+                }
+            }
+        }
+    }
+    // The cover's sources are cached by construction (the predicate above), so the
+    // lookup is never null; the guard keeps a broken cover from being dereferenced.
+    if (const Chunk* first = frames.chunk(
+            {cover.front().from, cover.front().span.src_cx, cover.front().span.src_cy});
+        first != nullptr) {
+        out.ships = first->ships;
+    }
+    return out;
 }
 
 std::vector<std::pair<int, int>> visible_chunks(Rect view) {

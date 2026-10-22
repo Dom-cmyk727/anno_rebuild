@@ -232,11 +232,28 @@ std::pair<std::size_t, std::uint64_t> animation(const formats::figuren::GfxSet& 
 std::size_t frame_index(std::size_t total, std::pair<std::size_t, std::uint64_t> anim,
                         std::uint8_t rotation, std::uint64_t time_ms, std::size_t phase);
 
-/// Draws `img` with its anchor at screen point (sx, sy); `pixel(x, y, rgba)`
-/// decides per pixel whether (and what) to draw.
+/// Lowest opaque row of each column of `img` (0 for a column without opaque
+/// pixel): what Canvas::base measures an object pixel's height against. The
+/// GPU-chunk frame table (frame_table.hpp) computes it once per frame.
+inline std::vector<std::uint16_t> keel_rows(const Rgba& img) {
+    const std::size_t w = img.width;
+    std::vector<std::uint16_t> keel(w, 0);
+    const std::size_t n = img.pixels.size() / 4;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (img.pixels[i * 4 + 3] != 0) {
+            keel[i % w] = static_cast<std::uint16_t>(i / w);
+        }
+    }
+    return keel;
+}
+
+/// blit_sprite with the object-base tracking spelled out: `track` says whether
+/// Canvas::base is written (the canvas must then hold it) and `keel` is
+/// keel_rows(img) (read only when `track`).
 template <class F>
-void blit_sprite(Canvas& canvas, const Rgba& img, const formats::figuren::Frame& frame,
-                 std::pair<int, int> at, bool shadow, F&& pixel) {
+void blit_sprite_keel(Canvas& canvas, const Rgba& img, const formats::figuren::Frame& frame,
+                      std::pair<int, int> at, bool shadow, bool track,
+                      std::span<const std::uint16_t> keel, F&& pixel) {
     const int ox = at.first - frame.anchor_x;
     const int oy = at.second - frame.anchor_y;
     if (!canvas.overlaps(ox, oy, img.width, img.height)) {
@@ -244,17 +261,6 @@ void blit_sprite(Canvas& canvas, const Rgba& img, const formats::figuren::Frame&
     }
     const std::size_t w = img.width;
     const std::size_t n = img.pixels.size() / 4;
-    // Lowest opaque row per column, for Canvas::base (objects, not shadows).
-    const bool track = !shadow && !canvas.base.empty();
-    std::vector<std::size_t> keel;
-    if (track) {
-        keel.assign(w, 0);
-        for (std::size_t i = 0; i < n; ++i) {
-            if (img.pixels[i * 4 + 3] != 0) {
-                keel[i % w] = i / w;
-            }
-        }
-    }
     auto contact = [&](std::size_t col) {
         return static_cast<int>(keel[col]) + canvas.base_band >= frame.anchor_y;
     };
@@ -279,6 +285,24 @@ void blit_sprite(Canvas& canvas, const Rgba& img, const formats::figuren::Frame&
             }
         }
     }
+}
+
+/// Draws `img` with its anchor at screen point (sx, sy); `pixel(x, y, rgba)`
+/// decides per pixel whether (and what) to draw.
+template <class F>
+void blit_sprite(Canvas& canvas, const Rgba& img, const formats::figuren::Frame& frame,
+                 std::pair<int, int> at, bool shadow, F&& pixel) {
+    // Lowest opaque row per column, for Canvas::base (objects, not shadows).
+    const bool track = !shadow && !canvas.base.empty();
+    if (!canvas.overlaps(at.first - frame.anchor_x, at.second - frame.anchor_y, img.width,
+                         img.height)) {
+        return;
+    }
+    std::vector<std::uint16_t> keel;
+    if (track) {
+        keel = keel_rows(img);
+    }
+    blit_sprite_keel(canvas, img, frame, at, shadow, track, keel, std::forward<F>(pixel));
 }
 
 /// A placed object with its footprint (w, h), ready to draw.
@@ -416,6 +440,23 @@ inline constexpr Waves kWaves = {
 float smoothstep(float a, float b, float x);
 /// Smooth value noise in [0, 1) (trilinear, smoothstep fade).
 float noise3(float x, float y, float z);
+/// noise3(x, y, iz) for an integer iz, bit for bit: the fade weight of the
+/// plane above is fade(0) = 0 and lerp(p0, p1, 0) = p0 + (p1 − p0) · 0 = p0,
+/// so that plane is not evaluated.
+float noise3_at(float x, float y, int iz);
+/// noise3_at(x, y, iz) for one iz with the four lattice hashes of the last
+/// cell kept: the same arithmetic, so the same bits; for callers that sample
+/// neighbouring positions in a row (the water field).
+class NoisePlane {
+  public:
+    explicit NoisePlane(int iz) : iz_(iz) {}
+    float at(float x, float y);
+
+  private:
+    int iz_ = 0, cx_ = 0, cy_ = 0;
+    bool valid_ = false;
+    std::array<float, 4> hash_{};
+};
 /// How much of the sea floor deep water hides (0–1) at `depth`.
 float deep_water(float depth);
 /// Detail level of the enhanced water for tile width `tw` (pixels).

@@ -254,7 +254,7 @@ The names are German words (`Lager` storage, `Handel` trade, `Prozente` percent,
 | 19–21 | — | — | call `0x10005e50`, `0x10005730`, `0x10005940` | — |
 | 22, 23, 27 | — | — | ignored | — |
 | 24 | — | `COMPCAPS_SETHELPANLAGE` | type 11 only: `+0xa2c`; then, for every type, `0x100043e0` (`0x100048ed` → `0x100048fc`) | — |
-| 25 | `TRIBUTSPERRE` (editor: `SETTRIBUTSPERRE`) | — | `+0xa68` | 8 |
+| 25 | `TRIBUTSPERRE` (editor: `SETTRIBUTSPERRE`) | — | `+0xa68`; read only by the getter (`0x10004b23`) and by the gate `0x100057a0` (below) | 8 |
 | 26 | `SUSPEND` | `COMPCAPS_SUSPEND` | 0: `+0xa80` = 0, byte `+0x1a89` = 1; else `+0xa80` = 1, byte `+0x1a89` = 0 and slot `+0x20` is called | 18 (then 13, §11.4) |
 | 28 | `NATIVEBAUMODE` | — | `+0xafc` | — |
 | 29 | `SPEZFLAG` | — | `+0xa84` (flag word) | — |
@@ -276,6 +276,12 @@ The 16 `COMPCAPS_*` names cover indices 0, 2, 3, 4, 6, 8, 9, 11, 12, 13, 14, 18,
 - **`PIRATEATTACKALL`** (script only, `single34.sze`, 6 uses) sets bit 3 of the flag word `+0xa84`. **Confirmed:** the pirate class (vtable `0x10063a00`, slot `+0x2c` = `0x10055a30`) calls `0x100558b0` three times. That routine walks candidate objects and drops each one that fails the check `0x10028bd0(candidate, TYP)`. When bit 3 is set it skips this check (`0x1005593f`). **Likely:** the pirates then attack every candidate instead of a TYP-filtered set.
 - **`TYP` (column 1)** selects the pair `+0xaf0`/`+0xaf4` (table above; not for pirates, whose class overrides the slot). Several AI routines pass both values with a time value to `0x1003ea50`, e.g. `0x10042357` (the time comes from `0x1003d240`). That routine divides elapsed time by them while it updates a 32-entry per-player table of signed byte values. **Confirmed** for the arithmetic. **Likely:** a decay rate of the AI's per-player attitude; the time unit is not traced. The field `+0xa34` itself occurs 47 times in the module, among them in the pirate target check above.
 - **`PROZENTE` (column 6)** gives the AI two factors, 1 ± v/100. **Confirmed.** A price margin is a **guess** (OQ-113).
+- **`TRIBUTSPERRE` (column 8)** is tested only as zero / non-zero, in the gate `0x100057a0` (`0x100057a3`). **Confirmed:**
+  - non-zero: the gate returns 0 and does nothing;
+  - zero: it calls `0x10026c30` with the AI's own player number (`+0xa30`), a target player and a message, then `0x100087e0`, which stamps the current time (`0x1003d240`) into the AI's per-player table (`+0xaf8`, via `0x1003e680`), and returns 1.
+  - The other writes are the setter (`0x1000469d`) and four constructors (`0x1000108f`, `0x1003ec9c`, `0x100516c6`, `0x100536d2`).
+  - *Callers:* `0x100425c5`, `0x10042679`, `0x100429d7`, `0x10042a0e`, `0x10042b1c`, which sit in the computer class's code range, and `0x10054a6f` in the pirate class's range. None is in the native class's range. Which class each calling function belongs to was not traced through the vtables.
+  - *Reading:* the message amounts set before the first two calls (300 or 2,000 at `0x10042590`–`0x1004259e`; 800 at `0x10042650`) look like gold. With the name, the gated action is **likely** a tribute demand to another player (OQ-113).
 - **`SUSPEND`:** a non-zero value sets `+0xa80`, clears the byte `+0x1a89` and calls the AI's slot `+0x20`. **Confirmed.** That this pauses the AI is **likely** from the name. `single41.sze` sets it for 12 computer players by script.
 
 ### 11.7 The script route (`SET_PROFILE`, `AnnoScene.dll`)

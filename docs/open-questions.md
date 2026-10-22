@@ -1075,5 +1075,8 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   - *Who writes what (D):* the editor writes parameter 25 as `SETTRIBUTSPERRE` (`AnnoScene.dll` `0x100052b0`). The AI's readers know only `TRIBUTSPERRE` (`CompLogic.dll` `0x10001583`, `0x10040c41`). Unknown keys are skipped (`strncmp` up to the last `=`). `CompLogicClassic.dll` has no `SETTRIBUTSPERRE` string (S).
   - *Affected values (P):* 267 of the 276 shipped values are 0. `endless02` sets 18 for five native peoples, `S01_04_01` sets 1 for players 1–3, `S01_05_01` 1 for player 2. The original never applies them.
   - *Other routes:* a profile's column 8 still reaches the parameter at game start (0 in all profiles), and the AI's own saves use `TRIBUTSPERRE`.
+  - *What honouring it would change (D + P, `annoscene.md` §11.6):* the AI tests the value only as zero / non-zero, in one gate (`CompLogic.dll` `0x100057a0`) called from the computer and pirate classes' code, not from the native class's.
+    - Five of the six affected players are native peoples (type 14: endless02's five, S01_05_01's player 2), so for them it would most likely change nothing.
+    - The other three are the computer opponents of `S01_04_01` (type 12: O'Reilly, Madrugada, Pelés). Honouring the key would stop their gated action, likely tribute demands. That mission's script handles tribute itself (`SETTRIBUTE`, `PAID_TRIBUTE_TO`).
 - **How to resolve:** decided (above). What the parameter does is part of OQ-113.
 - **Faithful default:** ignore the key (chosen).

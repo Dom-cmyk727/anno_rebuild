@@ -14,6 +14,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <optional>
 #include <string>
 #include <vector>
@@ -120,6 +121,66 @@ TEST_CASE("GPU-built chunk objects and base planes equal the CPU replay (game fi
                                      << loaded->frame_table.size() << " frames, " << mismatches
                                      << " mismatched pixels");
         CHECK(mismatches == 0);
+    }
+}
+
+TEST_CASE("the composed frame is identical with the Cpu and GpuList builders (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    MESSAGE("adapter: " << ctx->name);
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;                           // the whole view in one frame
+    limits.atlas_upload_bytes_per_frame = std::uint64_t{1} << 40;  // never defer the atlas uploads
+    constexpr int kW = 1280, kH = 800;
+    const render::test::Game game(*dir);
+    for (const char* path : {"Scenes/0200Single/Single_24.sze",
+                             "Scenes/Islands/Dschungel/D_256x256_0045_5B.scp"}) {
+        const auto loaded = game.scene(*dir / path);
+        auto g_cpu = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        auto g_gpu = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE(g_cpu);
+        REQUIRE(g_gpu);
+        render::FrameRenderer cpu(2, false);
+        render::FrameRenderer gpulist(2, false);
+        gpulist.chunk_builder = render::ChunkBuilder::GpuList;
+        const auto tc = g_cpu.value()->offscreen_target(kW, kH);
+        const auto tg = g_gpu.value()->offscreen_target(kW, kH);
+        std::size_t built = 0;
+        for (std::size_t group = 0; group < render::kGroups; ++group) {
+            const auto b = loaded->bounds(group);
+            REQUIRE(b);
+            const Rect view{b->x + b->w / 2 - kW / 2, b->y + b->h / 2 - kH / 2, kW, kH};
+            const auto sc = g_cpu.value()->render(cpu, *loaded, view, group, 0,
+                                                  render::WaterStyle::Original, tc.second.get());
+            const auto sg = g_gpu.value()->render(gpulist, *loaded, view, group, 0,
+                                                  render::WaterStyle::Original, tg.second.get());
+            CHECK(sc.chunks_missing == 0);
+            CHECK(sg.chunks_missing == 0);
+            CHECK(sg.chunks_cpu_fallback == 0);
+            built += sg.gpu_built_chunks;
+            const auto pc = g_cpu.value()->read_back(tc.first.get(), kW, kH);
+            const auto pg = g_gpu.value()->read_back(tg.first.get(), kW, kH);
+            REQUIRE(pc.size() == pg.size());
+            std::size_t differ = 0;
+            int maxd = 0;
+            for (std::size_t i = 0; i < pc.size(); ++i) {
+                const int d = std::abs(int{pc[i]} - int{pg[i]});
+                maxd = std::max(maxd, d);
+                differ += d != 0 ? 1 : 0;
+            }
+            INFO(path << " group " << group << ": max " << maxd << ", " << differ << " bytes differ");
+            CHECK(maxd == 0);
+        }
+        MESSAGE(std::string(path) << ": " << built << " chunks built by the GPU compute pass");
+        CHECK(built > 0);
+        CHECK(g_gpu.value()->errors() == 0);
     }
 }
 

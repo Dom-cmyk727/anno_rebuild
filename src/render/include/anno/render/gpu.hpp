@@ -157,6 +157,15 @@ struct GpuStats {
     /// and the cost tier the river shading ran at this frame.
     std::size_t river_chunks = 0;
     RiverQuality river_quality = RiverQuality::High;
+    /// GPU-built chunks (T11 stage 2a, ChunkBuilder::GpuList): chunks whose
+    /// objects and base planes were built by the compute pass this frame, chunks
+    /// that fell back to the CPU because their frames overflowed the atlas
+    /// budget (gpu-chunks.md 4.3 rule 5), atlas doublings copied this frame, and
+    /// the resident chunk-atlas memory in MiB.
+    std::size_t gpu_built_chunks = 0;
+    std::size_t chunks_cpu_fallback = 0;
+    std::size_t chunk_atlas_grows = 0;
+    double chunk_atlas_mb = 0;
 };
 
 /// Tuning of the compositor (Rust constants; data, PLAN §0.1).

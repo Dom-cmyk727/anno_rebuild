@@ -676,6 +676,15 @@ struct GpuFrame::Impl {
 
         /// Atlas doublings recorded since the last render() (GpuStats).
         std::size_t grows = 0;
+        /// The current scene's frame table (set each render(); the draw lists'
+        /// FrameIds index it).
+        const FrameTable* ft = nullptr;
+        /// Atlas texel bytes left to upload this frame (atlas_upload_bytes_per_frame).
+        std::uint64_t upload_left = 0;
+        /// Texel bytes the last cb_resident() uploaded.
+        std::uint64_t last_upload = 0;
+        /// Chunks built and CPU fallbacks this frame (reset each render()).
+        std::size_t built = 0, fallbacks = 0;
     };
     ChunkBuild cb;
 
@@ -969,6 +978,58 @@ struct GpuFrame::Impl {
         return raw;
     }
 
+    /// A plane texture for a GpuList chunk's compute output (objects / base),
+    /// reused from the pool or the warm set, else made: CopyDst (the compute
+    /// copies into it), TextureBinding (the compositor samples it), CopySrc
+    /// (read-back and the derived reduce). No texels are written here.
+    Plane acquire_plane(WGPUTextureFormat fmt, std::uint32_t w, std::uint32_t h) {
+        Plane plane;
+        const auto pooled = std::find_if(plane_pool.begin(), plane_pool.end(), [&](const Plane& p) {
+            return p.format == fmt && p.w == w && p.h == h;
+        });
+        if (pooled != plane_pool.end()) {
+            plane = std::move(*pooled);
+            plane_pool.erase(pooled);
+            pool_planes.store(plane_pool.size());
+        } else if (!take_warm(fmt, w, h, plane)) {
+            plane.format = fmt;
+            plane.w = w;
+            plane.h = h;
+            plane.texture = make_texture(dev(), "gpu-list", fmt, w, h, 1,
+                                         WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst |
+                                             WGPUTextureUsage_CopySrc);
+            plane.view = make_view(plane.texture.get(), false);
+        }
+        return plane;
+    }
+
+    /// Readiness of a GpuList chunk's frames in the atlas.
+    enum class CbReady { Ready, Wait, Fallback };
+
+    /// Makes `c`'s draw-list frames resident for the build, within this frame's
+    /// atlas upload budget (the first built chunk always goes, gpu-chunks.md 4.4).
+    /// Ready = build it; Wait = frames not all uploaded yet (keep the placeholder);
+    /// Fallback = they overflow the budget (gpu-chunks.md 4.3 rule 5).
+    CbReady cb_prepare(const render::Chunk& c) {
+        if (!c.draws || c.draws->object_count() == 0) {
+            return CbReady::Ready; // no objects: the normal upload path handles it
+        }
+        if (!cb_init() || cb.ft == nullptr) {
+            return CbReady::Fallback;
+        }
+        const std::uint64_t budget =
+            cb.built == 0 ? std::numeric_limits<std::uint64_t>::max() : cb.upload_left;
+        const EnsureStatus st = cb_resident(c.draws->frame_set, *cb.ft, budget);
+        if (st == EnsureStatus::Overflow) {
+            return CbReady::Fallback;
+        }
+        if (st == EnsureStatus::Deferred) {
+            return CbReady::Wait;
+        }
+        cb.upload_left -= std::min(cb.upload_left, cb.last_upload);
+        return CbReady::Ready;
+    }
+
     /// The start of an upload of `chunk` (null: a placeholder with no planes) under `key`.
     Staged begin_upload(const ChunkKey& key, const render::Chunk* chunk,
                         std::shared_ptr<const render::Chunk> hold) {
@@ -1067,6 +1128,26 @@ struct GpuFrame::Impl {
     Chunk finish_upload(const ChunkKey& key, Staged&& st) {
         const Rect r = chunk_rect(std::get<1>(key), std::get<2>(key));
         Chunk out = std::move(st.out);
+        // GpuList: the objects and base planes are built by the compute pass from
+        // the draw list (frames made resident by cb_prepare), not uploaded. The
+        // other planes (ground, field, terrain, flow) staged as usual above.
+        if (st.chunk != nullptr && st.chunk->draws && st.chunk->draws->object_count() > 0 &&
+            cb.ready) {
+            const render::ChunkDraws& d = *st.chunk->draws;
+            const auto n = static_cast<std::uint32_t>(kChunk);
+            Plane objp = acquire_plane(WGPUTextureFormat_RGBA8Unorm, n, n);
+            Plane basep = acquire_plane(WGPUTextureFormat_R8Uint, n, n);
+            const CbScratch s = cb_scratch(d);
+            WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
+            CommandEncoder enc(wgpuDeviceCreateCommandEncoder(dev(), &ed));
+            cb_encode(enc.get(), s, objp.texture.get(), basep.texture.get());
+            submit(enc.get(), "gpu-list chunk");
+            st.views[1] = objp.view.get();
+            st.views[4] = basep.view.get();
+            st.flags |= 2U | 16U; // objects, base present
+            out.planes.push_back(std::move(objp));
+            out.planes.push_back(std::move(basep));
+        }
         out.flow = st.has_flow;
         out.flags = st.flags;
         out.uniform =
@@ -1302,6 +1383,7 @@ struct GpuFrame::Impl {
         }
         cb.residency->begin_frame();
         const EnsureResult r = cb.residency->ensure(refs, AtlasClass::Static, max_upload_bytes);
+        cb.last_upload = r.upload_bytes;
         if (r.status == EnsureStatus::Deferred || r.status == EnsureStatus::Overflow) {
             return r.status;
         }
@@ -1632,7 +1714,29 @@ struct GpuFrame::Impl {
                 // With a time budget the chunk is uploaded a plane at a time, over as many
                 // frames as that takes; it shows its placeholder or stand-in meanwhile.
                 std::optional<Chunk> got;
-                if (limits.upload_budget_ms > 0.0) {
+                if (c->draws && c->draws->object_count() > 0) {
+                    // GpuList: make the draw list's frames resident, then build the
+                    // objects and base planes with the compute pass (whole chunk).
+                    const CbReady ready = cb_prepare(*c);
+                    if (ready == CbReady::Ready) {
+                        got = upload_chunk(key, c);
+                        ++cb.built;
+                    } else {
+                        if (ready == CbReady::Fallback) {
+                            ++cb.fallbacks; // frames overflow the atlas budget
+                        } else {
+                            partial_spent = true; // atlas upload budget spent this frame
+                        }
+                        if (it == chunks.end()) {
+                            const auto p0 = Clock::now();
+                            chunks.emplace(key, upload_chunk(key, nullptr));
+                            ++stats.placeholders;
+                            stats.sync_placeholder_ms += ms_since(p0);
+                        }
+                        stats.sync_real_ms += ms_since(u0);
+                        continue;
+                    }
+                } else if (limits.upload_budget_ms > 0.0) {
                     got = advance_upload(key, frames.chunk_shared(key), begin);
                 } else {
                     got = upload_chunk(key, c);
@@ -1710,7 +1814,19 @@ struct GpuFrame::Impl {
                     }
                     const auto u0 = Clock::now();
                     std::optional<Chunk> got;
-                    if (limits.upload_budget_ms > 0.0) {
+                    if (c->draws && c->draws->object_count() > 0) {
+                        const CbReady ready = cb_prepare(*c);
+                        if (ready != CbReady::Ready) {
+                            if (ready == CbReady::Fallback) {
+                                ++cb.fallbacks;
+                            }
+                            stats.sync_real_ms += ms_since(u0);
+                            spent = true; // the atlas budget (or a fallback) ends prefetch
+                            break;
+                        }
+                        got = upload_chunk(key, c);
+                        ++cb.built;
+                    } else if (limits.upload_budget_ms > 0.0) {
                         got = advance_upload(key, frames.chunk_shared(key), begin);
                     } else {
                         got = upload_chunk(key, c);
@@ -2485,6 +2601,11 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                           const Resample* resample) {
     Impl& m = *impl_;
     m.levels = &frames.levels();
+    // GpuList chunk build (T11 stage 2a): this scene's frame table and this
+    // frame's atlas upload budget and counters.
+    m.cb.ft = &scene.frame_table;
+    m.cb.upload_left = m.limits.atlas_upload_bytes_per_frame;
+    m.cb.built = m.cb.fallbacks = m.cb.grows = 0;
     // From the first frame on the pre-creation is paced by quiet frames (a
     // stricter condition for the thread, so no wake-up is needed).
     m.warm_paced.store(true);
@@ -2540,6 +2661,13 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                                           frames.adjacent_keys(), fade_now, stats);
     frames.release(std::exchange(m.released_holds, {}));
     stats.planes_warm = m.planes_warm_taken - warm_before;
+    stats.gpu_built_chunks = m.cb.built;
+    stats.chunks_cpu_fallback = m.cb.fallbacks;
+    stats.chunk_atlas_grows = m.cb.grows;
+    if (m.cb.residency) {
+        stats.chunk_atlas_mb =
+            static_cast<double>(m.cb.residency->stats().resident_bytes) / (1024.0 * 1024.0);
+    }
     stats.chunk_sync_ms = lap();
     stats.sync_scan_ms = std::max(0.0, stats.chunk_sync_ms - stats.sync_drop_ms -
                                            stats.sync_real_ms - stats.sync_placeholder_ms);

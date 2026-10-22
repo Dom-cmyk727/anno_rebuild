@@ -760,6 +760,15 @@ class BackendCall(unittest.TestCase):
             b.call("status")
 
 
+class BackendInterface(unittest.TestCase):
+    def test_key_hold_default_is_the_same_everywhere(self):
+        import inspect
+        defaults = {cls.__name__: inspect.signature(cls.key).parameters["hold"].default
+                    for cls in (backend.WineBackend, backend.WindowsBackend, agent.Instance)}
+        self.assertEqual(defaults, dict.fromkeys(defaults, 0.0))
+        self.assertIn("key(name, hold=0)", backend.__doc__)
+
+
 class LiveRunOne(unittest.TestCase):
     class B:
         def __init__(self):

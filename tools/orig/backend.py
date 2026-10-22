@@ -361,7 +361,9 @@ class WindowsBackend:
         return res
 
     # input (T15 control.py, with its B1 guard)
-    def key(self, name: str, hold: float = 0.05):
+    def key(self, name: str, hold: float = 0.0):
+        # hold=0 is the interface's "tap"; SendInput needs a gap between down and up, so a tap is
+        # sent as a 50 ms press here (on the Wine side `xdotool key` sends down and up itself).
         hwnd = self._need_input()
         self.control.press_key(hwnd, self.control.vk_of(name), hold=hold or 0.05)
 

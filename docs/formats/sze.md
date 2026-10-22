@@ -1,6 +1,6 @@
 # Scenarios (`.sze`)
 
-**Status:** partial — the `SCENE` chunk list, the tagged-record container, players (`SPIELER`), ships and soldiers (`SCHIFF`, `SOLDAT`) and island links (`INSELLNK`) are decoded and re-encode byte-identically (P). The content of most records (`HEAD`, `STADT2`, `PRIVAT`, …) and of the other `SCENE` children is open (OQ-027, OQ-028).
+**Status:** partial — the `SCENE` chunk list, the tagged-record container, players (`SPIELER`), ships and soldiers (`SCHIFF`, `SOLDAT`) and island links (`INSELLNK`) are decoded and re-encode byte-identically (P). The AI profiles (`COMPPROFIL2`) and the per-player AI record (`SPIELER/COMP`) are decoded field by field (D + P, 2026-10-22, T18); four profile columns are still unnamed (OQ-112). The content of most other records (`STADT2`, `PRIVAT`, …) and of the other `SCENE` children is open (OQ-027, OQ-028).
 
 ## Files covered
 - Glob: `Scenes/**/*.sze`
@@ -27,7 +27,7 @@ All integers little-endian.
 | `LIMITS` | 23 + 27 | 4 | `u16` ship cap, `u16` soldier cap (40 / 100 endless, 20 / 100 missions, up to 50 / 400 add-on; ISS-061) | P (resurvey §4) |
 | `AUFTRAGTEXT` | 13 + 25 | 19–27 | NUL-terminated file name of the mission page (`.htm` in the scenario folder) | P (resurvey §4) |
 | `K_DATA` | 12 + 3 | 172 | ? (campaign files) | P (size) |
-| `COMPPROFIL2` | 23 + 27 | 136, 840 or 2248 | tagged records: 0, 4 or 12 `ENTRY` (168 B: `u32[19]` AI parameters, name, `Profil<nn>.htm`, `0xCC` fill) and one `DEF` (128 B); the parameter keys are `AnnoScene.dll`'s `COMPCAPS_*` | P (all 50 parse exactly; resurvey §3) |
+| `COMPPROFIL2` | 23 + 27 | 136, 840 or 2248 | [AI profiles](#ai-profiles-compprofil2): 0, 4 or 12 `ENTRY` (168 B: 19 `u32` columns, GUID, name, `Profil<nn>.htm`) and one `DEF` (128 B: profile per player) | P (all 50 parse exactly), D |
 | `SPIELER` | 192 + 532 blocks | 104–88,425 | [players](#players-spieler) | P |
 | `INSEL5` | 326 + 342 in 44 files | | islands, [`insel.md`](insel.md) | P |
 | `INSELLNK` | 0 + 229 in 9 files | 45–50 | [island links](#island-links-insellnk) | P |
@@ -100,6 +100,16 @@ Each scenario lists its players in two series (P, all 50):
 - **Header series** (before the islands): one block per player, each holding `HEAD` (plus `VOLK`, `ALIAS`, `STATIS`, `PROFIL`, …); player 31 is always last.
 - **State series** (after `ERZE`): the same indices in the same order, no block holds `HEAD`; the blocks hold `COMP`, `SEL_0`…`SEL_7`, `SCHIFF`, `SOLDAT`, `STADT2`, `GROUP`. In 22 of the 23 `ANNO` files the state series has no block for player 31; all 27 `ANNOADDON1` files have one.
 
+**`COMP`** (state series; the computer logic's state for this player):
+
+| Offset | Size | Type | Meaning | Evidence |
+|---|---|---|---|---|
+| 0x00 | 4 | u32 | player type, equal to the player's `HEAD` type; selects the AI class | P (282 of 282); D: `AnnoWelt.dll` reader `0x1001e3be` passes it to the AI factory, `CompLogic.dll` `0x1003dc50` switches on it |
+| 0x04 | 4 | u32 | player index, equal to the enclosing `SPIELER` index | P (282 of 282); D (same call) |
+| 0x08 | | ASCII | NUL-terminated strings `KEY=n` or `KEY=n,m` (decimal) | P (all 282 parse); D: `CompLogic.dll` readers `0x10001450`, `0x10040b00` |
+
+Every player of types 11, 12 and 14–17 has one (282), types 2 and 8 none (P). Each key names one AI parameter, by index ([`annoscene.md`](../re/annoscene.md) §11.5); the reader passes the number(s) to the AI's parameter setter. The shipped records hold the keys `TYP FLAECHE LAGER HANDEL PROZENTE OPTIONAL TRANSPORT HAUPTKLIMA MAXSTADT ZIELGRUPPE [ZIELANZAHL] MINBAUMAT MINEISEN CHEATLIMIT KAMPFTYP [SETTRIBUTSPERRE] SUSPEND` in this order (= parameter index order; 260 + 16 + 6 records, P): they were written by the scenario editor's writer (`AnnoScene.dll` `0x100052b0`, which spells parameter 25 `SETTRIBUTSPERRE`). The AI's own readers and writer spell it `TRIBUTSPERRE` (`CompLogic.dll` `0x10001583`, `0x10040c41`, writer `0x10003c47`). So the editor-written key is ignored on load (D): the reader takes the text up to the last `=` (`strrchr` `0x10059c10`), compares it with `strncmp` (`0x10059bd0`) and skips unknown keys. `CompLogicClassic.dll` has no `SETTRIBUTSPERRE` string either (S). Values: 267 of 276 are 0; `endless02` (players 1, 3–6, natives) has 18 and `S01_04_01` (players 1–3) and `S01_05_01` (player 2) have 1, all lost in the original (P; OQ-114). The AI's writer adds further keys (`NATIVEBAUMODE`, `SPEZFLAG`, `DIPLPLAYER`, `LOGWARE`, `EKVKWARE`, `AREA`, … ; `game-files-resurvey.md` §3).
+
 ## Units (`SCHIFF`, `SOLDAT`)
 
 | Offset | Size | Type | Name | Meaning | Evidence |
@@ -126,6 +136,68 @@ Ships per figure: 1501: 29, 1502: 64, 1503: 38, 1504: 42, 1505: 25, 1506: 61, 15
 
 Every path names one of the 21 `INSEL4` `*_dummy.scp` templates (found case-insensitively) whose size equals the link's `width × height` (P, all 229). Island numbers are unique across a scenario's `INSEL5` and `INSELLNK` (P). Six climates occur (`polar`, `tundra`, `nord`, `steppe`, `praerie`, `dschungel`). Six add-on scenarios (the endless games `03`–`08`) have no `INSEL5` at all, so their islands come only from links. At game start the game replaces every link to a `*DUMMY.scp` by a random real template (D: `AnnoScene.dll` `0x10009e0f`, `0x10009550`, `docs/re/annoscene.md` §3–5): candidates are all `Scenes\Islands\**\*.scp` except dummies and names containing `PIRAT` (cached in `InselCache.txt`), with the link's width and height, its climate (`INFO[0]`) and `INFO[8]` = `INFO[9]` = 0; ores and raw materials (`ERZE`, `ROHSTOFF`) are distributed over the links first, and the pick uses the world's random sequence from the per-game seed. Savegames store the chosen islands as `INSEL5`. The dummies themselves are flat grass squares without coast or objects. The viewer draws a deterministic stand-in from the same climate and size (`docs/render/iso.md`, "Scene composition").
 
+## AI profiles (`COMPPROFIL2`)
+
+A [record sequence](#tagged-records): `ENTRY` × n, then exactly one `DEF` (P, all 50). n = 12 in the eight endless games `0010SingleEndlos/01`–`08`, 4 in `0011SingleEndlosAddon/endless03`, 0 in the other 41 files. Each of the twelve shipped profiles is byte-identical in every file that holds it; the records are sorted by name (P). The values are listed in [`../research/game-files-resurvey.md`](../research/game-files-resurvey.md) §3.
+
+Who reads it (D, [`annoscene.md`](../re/annoscene.md) §11):
+- The game's scene loader does not: `AnnoScene.dll`'s game record handler `0x10009cc0` has no case for it and the world chunk reader it falls through to has no such name (S: the string is absent from `AnnoWelt.dll`).
+- The single-player setup reads it from the scenario file to offer opponents (`AnnoFrame.dll` `0x1001e5d0`). At game start the chosen profiles' columns go to the AI module as parameters (`0x10028d90`).
+- The scenario-editor class of `AnnoScene.dll` has a reader and a writer (`0x10007110`, `0x10007320`); that class has no caller in the shipped modules (`annoscene.md` §1).
+
+### `ENTRY` (168 bytes, one computer-player profile)
+
+"Col" is the index of the `u32` (0–18). "Parameter" is the AI parameter index the game-start hand-over passes the column to, with its key in the `COMP` record ([above](#players-spieler)) and, where one exists, the scenario-script name (`COMPCAPS_*`, the `SET_PROFILE` action). Hand-over: `AnnoFrame.dll` `0x10028e73`–`0x10028fe0`. The parameter table with the setter's effect for every index is [`annoscene.md`](../re/annoscene.md) §11.5. "Setter" is what the AI's setter does with the value (D: `CompLogic.dll` `0x10004550`).
+
+| Offset | Size | Type | Col | Parameter | Setter (D) | Shipped values | Evidence (hand-over read) |
+|---|---|---|---|---|---|---|---|
+| 0x00 | 1 | u8 | 0 | — not passed | — | 1 | constructor sets it to 1 (`AnnoFrame` `0x1001e18a`, `AnnoScene` `0x1000724e`); no reader found (OQ-112) |
+| 0x01 | 3 | | | | | 0 | P; the constructor writes 0 |
+| 0x04 | 4 | u32 | 1 | 0 `TYP` (`COMPCAPS_TYP`) | 0–7 kept, larger ignored; selects a time interval (§11.6) | 0–7 | `0x10028e8a` |
+| 0x08 | 4 | u32 | 2 | 1 `FLAECHE` | stored | 0 | `0x10028eca` |
+| 0x0C | 4 | u32 | 3 | 2 `LAGER` (`COMPCAPS_LAGER`) | 0–3 | 1–3 | `0x10028ee0` |
+| 0x10 | 4 | u32 | 4 | 3 `HANDEL` (`COMPCAPS_HANDEL`) | 0–3 | 3 | `0x10028e9e` |
+| 0x14 | 4 | u32 | 5 | 6 `TRANSPORT` (`COMPCAPS_TRANSPORT`) | 0–3 | 1, 3 | `0x10028eb4` |
+| 0x18 | 4 | u32 | 6 | 4 `PROZENTE` (`COMPCAPS_PROZENTE`) | 5–30 kept; the AI derives the factors 1 + v/100 and 1 − v/100 | 18–25 | `0x10028f80` |
+| 0x1C | 4 | u32 | 7 | — not passed | — | 0 | OQ-112 |
+| 0x20 | 4 | u32 | 8 | 25 `TRIBUTSPERRE` | stored | 0 | `0x10028f96` |
+| 0x24 | 4 | u32 | 9 | 18 `KAMPFTYP` (`COMPCAPS_KAMPFTYP`) | low 4 bits kept: two 2-bit combat switches (§11.6) | 0–15 | `0x10028f38` |
+| 0x28 | 4 | u32 | 10 | 7 `HAUPTKLIMA` | stored as 4 (v = 0), 16 (v = 1) or 20 (other) | 3 | `0x10028ef6` |
+| 0x2C | 4 | u32 | 11 | 8 `MAXSTADT` (`COMPCAPS_MAXSTADT`) | 0–8 | 4–7 | `0x10028f0c` |
+| 0x30 | 4 | u32 | 12 | 9 `ZIELGRUPPE` (`COMPCAPS_ZIELGRUPPE`) | 0–4 | 3 | `0x10028f22` |
+| 0x34 | 4 | u32 | 13 | 26 `SUSPEND`, second call (see below) | zero / non-zero (pause flag, likely) | 0 | `0x10028fc9` (OQ-112) |
+| 0x38 | 4 | u32 | 14 | second value of that call, unused by parameter 26 | — | 0 | `0x10028fc5` (OQ-112) |
+| 0x3C | 4 | u32 | 15 | — not passed | — | 3, 60 | OQ-112 |
+| 0x40 | 4 | u32 | 16 | 13 `MINBAUMAT` (`COMPCAPS_MINBAUMAT`) | stored | 0 | `0x10028f4e` |
+| 0x44 | 4 | u32 | 17 | 14 `MINEISEN` (`COMPCAPS_MINEISEN`) | stored | 0 | `0x10028f67` |
+| 0x48 | 4 | u32 | 18 | 26 `SUSPEND` (`COMPCAPS_SUSPEND`), first call | zero / non-zero (pause flag, likely) | 0 | `0x10028fac` |
+
+| Offset | Size | Type | Meaning | Shipped values | Evidence |
+|---|---|---|---|---|---|
+| 0x4C | 16 | GUID (`u32, u16, u16, u8[8]`) | profile identity; all zero or all `0xFF` = no profile | one distinct GUID per profile | D `AnnoFrame` `0x10019ff0` (the test), `0x10028e52` (its use); P |
+| 0x5C | 25 | char[25] | display name, NUL-terminated; not passed to the AI | `Hagen V. Sayn`, … | P |
+| 0x75 | 51 | char[51] | character page in `Profiles\Texte\`, NUL-terminated | `Profil01.htm` … `Profil12.htm` | D `AnnoFrame` `0x1001f8d0` opens `%s\Profiles\Texte\%s` with it; P |
+
+- **Columns 13, 14 and 18:** the hand-over sets parameter 26 (`SUSPEND`) from column 18. Its last call then sets parameter 26 again, with column 13 as the value and column 14 as a second value (`0x10028fc5`–`0x10028fe0`). Parameter 26 reads only the first value, so the effective `SUSPEND` comes from column 13. A two-value call fits parameter 17 (`CHEATLIMIT`, the only two-value parameter), so a wrong index in the original is **likely** (OQ-112). With the shipped zeros both readings give the same result.
+- **Unknown columns:** 0, 7 and 15 are not passed on by any code found, so their keys cannot be read from the code (OQ-112). Two readings disagree:
+  - *By order:* every confirmed column follows the order in which the AI's key reader tests the keys (`TYP FLAECHE LAGER HANDEL TRANSPORT PROZENTE OPTIONAL TRIBUTSPERRE KAMPFTYP HAUPTKLIMA MAXSTADT ZIELGRUPPE ZIELANZAHL CHEATLIMIT MINBAUMAT MINEISEN SUSPEND`, `CompLogic.dll` `0x10040b79`–`0x10040d4e`). That order leaves exactly one key for column 7 (`OPTIONAL`) and three values for columns 13–15 (`ZIELANZAHL`, then the two `CHEATLIMIT` values).
+  - *By value:* column 15 (3 or 60) looks like the `OPTIONAL=3` / `=60` of the `COMP` records.
+
+  Both are **guesses**.
+- **Fill:** after the NUL, the name and page fields are filled with `0xCC` in every shipped record (P). This is the MSVC debug-heap pattern, so the editor saved uninitialised memory (**likely**). A reader must ignore the bytes after the NUL; a round-trip writer keeps them as read.
+- **Defaults** (record constructor, `AnnoFrame` `0x1001e140` and `0x100172d0`, `AnnoScene` `0x1000716c`): columns `1 4 0 2 3 1 18 0 0 15 3 5 5 0 0 60 0 0 0`, GUID `{E861A553-AFA5-4C53-BAEB-6AF500000000}`, name `Default`, page `Default.htm`. The default `ZIELGRUPPE` 5 is outside the setter's limit 0–4, so the setter would ignore it. The readers zero the record before filling it, so a record read from a file never carries these defaults.
+
+### `DEF` (128 bytes)
+
+| Offset | Size | Type | Meaning | Evidence |
+|---|---|---|---|---|
+| 0x00 | 4 × 32 | i32[32] | entry `i` = index of the `ENTRY` used for player `i`, −1 = none | D: `AnnoFrame.dll` `0x1001eb8b`–`0x1001ec03`; P |
+
+- **How the game uses it (D):** the setup reader first clears the GUIDs of its 7 opponent slots (`0x1001e640`). It then copies, in player order, the `ENTRY` named by every entry ≠ −1 into the next slot. Neither the number of slots nor the `ENTRY` index is checked. At game start the next slot goes to every player except 31 whose type is 12 (computer) and whose colour is still unassigned (`0xFF`), in index order (`0x10028d90`). A slot without a valid GUID sends parameter 34 instead (`0x10028e63`).
+- **Corpus (P):** in all nine files the entries ≠ −1 are exactly the type-12 players with colour `0xFF`. So in practice `DEF[i]` is player `i`'s profile, e.g. `endless03`: players 1, 2, 3 and 10. Entry 0 (the human) is always −1. The 41 files without `ENTRY` have all 32 entries −1.
+- **Limits:** the original has 7 opponent slots and 32 entries (the player count). More than 7 entries ≠ −1 would make it write past its slot array, and an out-of-range entry would read past the profile list (no checks, D). A reimplementation takes both sizes from data and rejects a `DEF` entry that names a missing `ENTRY`.
+- **Multiplayer:** the 7 chosen slots are sent to the other machines as network message 6 (1,180 bytes, `0x1001fd10`; receiver `0x10019a92`).
+
 ## Reference dump
 
 `anno-dump sze [--full] <file.sze>...` and `python3 tools/sze.py dump [--full] <file.sze>...` print the same bytes (`crates/tools/tests/agree_python.rs`):
@@ -144,6 +216,7 @@ With `--full`, every record that the nesting table marks is followed by its nest
 ## Open fields
 - Long-form header choice, role of player 31, the `STADT2`/`ESEL`/`CREW/ENTRY` prefixes, unit `attr`, record contents — OQ-027
 - What an island link resolves to — OQ-028
+- `COMPPROFIL2` `ENTRY` columns 0, 7, 13, 14, 15 — OQ-112; what the AI parameters do — OQ-113
 
 ## Tests
 - Unit tests: `crates/formats/src/tagged.rs` (short/long form round trip, malformed input), `crates/formats/src/sze.rs` (scene, player, ship round trip).

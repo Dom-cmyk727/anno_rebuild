@@ -2,6 +2,7 @@
 // the one door a session drives a World through, the log round trip, the divergence
 // finder down to a scope path, the config-mismatch refusal, the command-before-steps
 // order, the PRNG-timeline header, the framing helper and a hostile-log check.
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -120,6 +121,72 @@ TEST_CASE("write_log read_log round trip") {
 
     // Re-writing the read-back log yields identical bytes.
     CHECK(sim::write_log(rd.value()) == bytes);
+}
+
+TEST_CASE("write_log matches the documented frame byte for byte") {
+    // A small log built by hand, and its bytes transcribed from the frame layout of
+    // docs/sim/state.md §15 "S9 as implemented" and the TurnEntry of §8.5, independently
+    // of write_log: a change of the layout that write and read made together would
+    // still round-trip, so the bytes are pinned here.
+    sim::ReplayLog log;
+    log.config_digest = 0x1111111111111111ULL;
+    log.rules_digest = 0x2222222222222222ULL;
+    log.registry_digest = 0x3333333333333333ULL;
+    log.seams_digest = 0x4444444444444444ULL;
+    log.prng_timeline_version = 1;
+    log.prng_timeline_missing = {"Ai"};
+    log.initial_save = {0xaa, 0xbb};
+    sim::ReplayEntry advance;
+    advance.kind = sim::ReplayEntry::Kind::Advance;
+    advance.ms = 20;
+    advance.tick = 10;
+    sim::ReplayEntry checkpoint;
+    checkpoint.kind = sim::ReplayEntry::Kind::Checkpoint;
+    checkpoint.tick = 10;
+    checkpoint.hash = 0x5555555555555555ULL;
+    sim::ReplayEntry commands;
+    commands.kind = sim::ReplayEntry::Kind::Commands;
+    sim::Command speed;
+    speed.issuer = sim::PlayerId{2};
+    speed.body = sim::SetSpeedCmd{200};
+    commands.commands = {speed};
+    log.entries = {advance, checkpoint, commands};
+
+    island_test::Stream s;
+    for (const char c : std::string("A3RP")) {
+        s.u8(static_cast<std::uint8_t>(c)); // magic
+    }
+    s.u32(1);                     // kReplayLogVersion
+    s.u32(1);                     // kCommandWireVersion, once
+    s.u64(0x1111111111111111ULL); // config digest
+    s.u64(0x2222222222222222ULL); // rules digest
+    s.u64(0x3333333333333333ULL); // registry digest
+    s.u64(0x4444444444444444ULL); // seams digest
+    s.u32(1);                     // PRNG timeline version
+    s.u64(1);                     // one missing site
+    s.str("Ai");
+    s.u64(2); // initial save length
+    s.u8(0xaa);
+    s.u8(0xbb);
+    s.u64(3); // entries
+    s.u8(0);  // Advance
+    s.u32(20);
+    s.u64(10);
+    s.u8(2); // Checkpoint
+    s.u64(10);
+    s.u64(0x5555555555555555ULL);
+    s.u8(1);     // Commands
+    s.u64(16);   // block length: one TurnEntry of 8 + 4 + 4 bytes
+    s.u32(2);    // issuer
+    s.u32(0);    // seq (the ordinal in the block)
+    s.u16(0x7a); // SetSpeed
+    s.u16(4);    // payload length
+    s.u32(200);  // percent
+
+    CHECK(sim::write_log(log) == s.v);
+    auto rd = sim::read_log(s.v);
+    REQUIRE_MESSAGE(rd.ok(), (rd.ok() ? std::string() : rd.error()));
+    CHECK(rd.value() == log);
 }
 
 TEST_CASE("first divergent entry") {
@@ -247,10 +314,13 @@ TEST_CASE("record_size and decode_turn frame a back-to-back stream") {
         sim::TurnEntry{legacy_cmd(), 2},
     };
     std::vector<std::uint8_t> blob;
+    // The offsets at which an entry ends (0 = the empty stream).
+    std::vector<std::size_t> ends{0};
     for (const sim::TurnEntry& e : entries) {
         auto rec = sim::encode_turn_entry(e);
         REQUIRE(rec.ok());
         blob.insert(blob.end(), rec.value().begin(), rec.value().end());
+        ends.push_back(blob.size());
     }
 
     std::vector<sim::TurnEntry> out;
@@ -259,16 +329,37 @@ TEST_CASE("record_size and decode_turn frame a back-to-back stream") {
     CHECK(n.value() == 3);
     CHECK(out == entries);
 
-    // record_size frames the first ClientRecord (after the 8-byte issuer/seq header).
-    auto rs = sim::record_size(std::span<const std::uint8_t>(blob).subspan(8));
+    // record_size frames the first ClientRecord (after the 8-byte issuer/seq header): a
+    // SetSpeed is its 4-byte header plus a 4-byte payload.
+    const std::span<const std::uint8_t> first_record =
+        std::span<const std::uint8_t>(blob).subspan(8);
+    auto rs = sim::record_size(first_record);
     REQUIRE(rs.ok());
-    CHECK(rs.value() >= 4);
+    CHECK(rs.value() == 8);
+    // Shorter than a header, or a header that claims more than the input holds: errors.
+    CHECK_FALSE(sim::record_size(first_record.first(3)).ok());
+    CHECK_FALSE(sim::record_size(first_record.first(7)).ok());
+    CHECK(sim::record_size(first_record.first(8)).ok());
 
-    // A truncated stream is a clean error, never a crash or an over-read.
+    // Every prefix: one that ends on an entry boundary decodes to exactly the entries
+    // before it; any other is an error that keeps the entries decoded before the cut.
     for (std::size_t len = 0; len < blob.size(); ++len) {
+        INFO("prefix length " << len);
+        std::size_t whole = 0;
+        while (whole + 1 < ends.size() && ends[whole + 1] <= len) {
+            ++whole;
+        }
         std::vector<sim::TurnEntry> partial;
-        auto bad = sim::decode_turn(std::span<const std::uint8_t>(blob).first(len), partial);
-        CHECK((bad.ok() || !bad.error().empty()));
+        auto r = sim::decode_turn(std::span<const std::uint8_t>(blob).first(len), partial);
+        const std::vector<sim::TurnEntry> expected(
+            entries.begin(), entries.begin() + static_cast<std::ptrdiff_t>(whole));
+        if (len == ends[whole]) {
+            REQUIRE(r.ok());
+            CHECK(r.value() == whole);
+        } else {
+            CHECK_FALSE(r.ok());
+        }
+        CHECK(partial == expected);
     }
 }
 

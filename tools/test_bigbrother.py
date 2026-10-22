@@ -180,6 +180,118 @@ class Synthetic(unittest.TestCase):
         self.assertFalse(bb.is_timer("TIMER_FLAG"))
 
 
+SAMPLE_COND = b'GO && (AREA"A1"TOUCHED_BY_SHIP_FROM"HUMAN" || PLAYER "HUMAN" INHABITANTCOUNT "SIEDLER" > 9)'
+SAMPLE_BLOCK = b'{\r\n GO = FALSE;\r\n QUESTLOG_DRAW;\r\n}'
+
+
+def with_cond(text: bytes) -> bb.Group:
+    assert SAMPLE_COND in bb.SAMPLE
+    return bb.parse(bb.SAMPLE.replace(SAMPLE_COND, text)).section("[SCRIPT_KERNEL]").items[2].cond
+
+
+def c_precedence(g):
+    """The C reading of a group (&& binds tighter than ||), as a value function, for comparison."""
+    terms = [c_precedence(x) if isinstance(x, bb.Group) else x for x in g.items]
+    ors, cur = [], [terms[0]]
+    for op, t in zip(terms[1::2], terms[2::2]):
+        if op == "||":
+            ors.append(cur)
+            cur = []
+        cur.append(t)
+    ors.append(cur)
+
+    def val(truth):
+        return any(all(t(truth) if callable(t) else truth(t) for t in a) for a in ors)
+    return val
+
+
+class Interpreter(unittest.TestCase):
+    """The interpreter's reading (AnnoScene.dll, docs/re/annoscene.md §12): grouping, evaluation,
+    and the block statements without ';'."""
+
+    def test_connectives_have_equal_rank_and_group_to_the_right(self):
+        for text, want in (
+                (b"A && B || C", "(A && (B || C))"),
+                (b"A || B && C", "(A || (B && C))"),
+                (b"A && B && C || D", "(A && (B && (C || D)))"),
+                (b"A || B || C", "(A || (B || C))"),
+                (b"(A || B) && C", "((A || B) && C)"),
+                (b"A && (B || C) && D", "(A && ((B || C) && D))"),
+                (b"(A)", "A"),
+                (b"A", "A")):
+            with self.subTest(text=text):
+                self.assertEqual(bb.describe_grouped(bb.grouped(with_cond(text))), want)
+
+    def test_a_guard_before_alternatives_covers_all_of_them(self):
+        g = with_cond(b"A && B || C")
+        x = bb.grouped(g)
+        for a, b, c in ((False, False, True), (True, False, True), (True, False, False), (False, True, True)):
+            truth = {"A": a, "B": b, "C": c}
+            with self.subTest(truth=truth):
+                self.assertEqual(bb.evaluate(x, lambda p, t=truth: t[p.name]), a and (b or c))
+        v = {"A": False, "B": False, "C": True}
+        self.assertTrue(c_precedence(g)(lambda p: v[p.name]))   # the C reading would fire here
+        self.assertFalse(bb.evaluate(x, lambda p: v[p.name]))   # the interpreter does not
+
+    def test_and_skips_its_right_operand_or_evaluates_both(self):
+        for text, values, asked in ((b"A && B", {"A": False, "B": True}, ["A"]),
+                                    (b"A && B", {"A": True, "B": True}, ["A", "B"]),
+                                    (b"A || B", {"A": True, "B": True}, ["A", "B"]),
+                                    (b"A || B", {"A": False, "B": True}, ["A", "B"])):
+            seen = []
+
+            def truth(p, values=values, seen=seen):
+                seen.append(p.name)
+                return values[p.name]
+            with self.subTest(text=text, values=values):
+                bb.evaluate(bb.grouped(with_cond(text)), truth)
+                self.assertEqual(seen, asked)
+
+    def test_a_top_and_with_a_false_left_operand_runs_neither_block(self):
+        g = with_cond(b"A && B")
+        for a, b, want in ((False, False, None), (False, True, None), (True, False, "else"), (True, True, "then")):
+            with self.subTest(a=a, b=b):
+                self.assertEqual(bb.branch(g, lambda p, v={"A": a, "B": b}: v[p.name]), want)
+        for text, values, want in ((b"A || B", {"A": False, "B": False}, "else"),
+                                   (b"A", {"A": False}, "else"),
+                                   (b"(A && B) || C", {"A": False, "B": False, "C": False}, "else")):
+            with self.subTest(text=text):
+                self.assertEqual(bb.branch(with_cond(text), lambda p, v=values: v[p.name]), want)
+
+    def test_a_block_statement_without_semicolon_reads_on_to_the_next_semicolon(self):
+        def run(block: bytes):
+            assert SAMPLE_BLOCK in bb.SAMPLE
+            s = bb.parse(bb.SAMPLE.replace(SAMPLE_BLOCK, block).replace(b'WON( "HUMAN" )', b'WON( "HUMAN" );'))
+            return [(st.name, end is not None, [x.name for x in lost]) for st, end, lost in bb.read_on(s)]
+        # the next statement of the block is read into it and lost
+        self.assertEqual(run(b'{\r\n GO = FALSE\r\n QUESTLOG_DRAW;\r\n}'), [("GO", True, ["QUESTLOG_DRAW"])])
+        self.assertEqual(run(b'{\r\n MONEY_ADD("HUMAN", 5)\r\n LOST("HUMAN");\r\n WON("HUMAN");\r\n}'),
+                         [("MONEY_ADD", True, ["LOST"])])
+        # the last statement: the ';' lies past the '}', nothing of the block is lost
+        self.assertEqual(run(b'{\r\n GO = FALSE;\r\n QUESTLOG_DRAW()\r\n}'), [("QUESTLOG_DRAW", True, [])])
+        # a ';' in a comment ends it before the next statement
+        self.assertEqual(run(b'{\r\n GO = FALSE\r\n $ old;\r\n QUESTLOG_DRAW;\r\n}'), [("GO", True, [])])
+        # two in a row: the second is swallowed by the first
+        self.assertEqual(run(b'{\r\n GO = FALSE\r\n QUESTLOG_DRAW()\r\n LOST("HUMAN");\r\n}'),
+                         [("GO", True, ["QUESTLOG_DRAW", "LOST"])])
+
+    def test_no_semicolon_after_it_makes_the_interpreter_refuse_the_kernel(self):
+        # the sample's last statement, WON( "HUMAN" ) in the ELSE block, has none after it
+        ((st, end, lost),) = bb.read_on(bb.parse(bb.SAMPLE))
+        self.assertEqual((st.name, end, lost), ("WON", None, []))
+
+    def test_a_top_level_set_without_semicolon_is_not_listed(self):
+        s = bb.parse(bb.SAMPLE.replace(b"SET GO = TRUE;\r\n", b"SET GO = TRUE\r\n")
+                     .replace(b'WON( "HUMAN" )', b'WON( "HUMAN" );'))
+        self.assertEqual(bb.read_on(s), [])
+
+    def test_mixed(self):
+        self.assertTrue(bb.is_mixed(with_cond(b"A && B || C")))
+        self.assertTrue(bb.is_mixed(with_cond(b"A && (B && C || D)")))
+        self.assertFalse(bb.is_mixed(with_cond(b"A && (B || C)")))
+        self.assertFalse(bb.is_mixed(with_cond(b"A || B || C")))
+
+
 class Corpus(unittest.TestCase):
     def setUp(self):
         game = os.environ.get("ANNO1503_GAME_DIR")
@@ -233,6 +345,32 @@ class Corpus(unittest.TestCase):
                         if isinstance(x, bb.Assign) and x.is_set]
                 signals = [(g["name"], g["value"]) for g in s.section("[SIGNALS]").items]
                 self.assertEqual(signals, [("SCHUETTIINITSIG", True)] + sets)
+
+    def test_the_interpreters_reading_of_the_shipped_scripts(self):
+        mixed = collections.Counter()
+        no_semi = []
+        for name, s in self.scripts():
+            for it in s.section("[SCRIPT_KERNEL]").items:
+                if isinstance(it, bb.If) and bb.is_mixed(it.cond):
+                    mixed[name] += 1
+                    x = bb.grouped(it.cond)
+                    prims = list(bb.walk_cond(it.cond))
+                    atoms = sorted({bb.describe(p) for p in prims})
+                    differs = False                 # against the C reading, over all truth values
+                    for bits in range(1 << len(atoms)):
+                        v = {a: bool(bits >> i & 1) for i, a in enumerate(atoms)}
+                        def truth(p, v=v):
+                            return v[bb.describe(p)]
+                        differs |= bb.evaluate(x, truth) != c_precedence(it.cond)(truth)
+                    with self.subTest(f=name, at=it.off):
+                        self.assertTrue(differs)
+                        self.assertEqual(it.cond.items[1], "&&")     # every one: guard(s) && alternatives
+            no_semi += [(name, st.name, [x.name for x in lost]) for st, end, lost in bb.read_on(s)
+                        if end is not None]
+        self.assertEqual((sum(mixed.values()), len(mixed)), (28, 10))
+        self.assertEqual(sorted(no_semi), [("S01_02_01.sze", "SET_PROFILE", []),
+                                           ("S01_09_01.sze", "SET_DIPLOMACY", []),
+                                           ("S01_09_01.sze", "SET_FOR_BUY", ["MINIMAP_ALERT"])])
 
     def test_the_interpreter_has_284_uppercase_names(self):
         self.assertEqual(len(bb.dll_names(os.path.join(self.game, "AnnoScene.dll"))), 284)

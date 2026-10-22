@@ -700,7 +700,7 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
     - a Citizen game starts from `00_1024_easyentry_01.sze`: its script text equals that file's in all seven quicksaves;
     - WSL's `CLOCK_MONOTONIC` slews up to 1,400 ppm, while RAW stays within 0.5 ppm of the host;
     - one intermittent crash in `AnnoGame.dll 0x100037E0` (first acceptance try, 4.45 game min; not repeated in 12 + 30 min; OQ-124).
-- Reviewers: two independent reviewers (harness code and tests; acceptance against the task). Their findings and the fixes (commits 386e832 … 3f23ec9):
+- Reviewers: two independent reviewers of the harness. Their findings and the fixes (commits 386e832 … 3f23ec9):
   - **live world:** `find_world` prefers an advancing counter; a stale copy passed the old check;
   - **names:** Latin-1 player names; an umlaut used to drop the human player;
   - **scans:** unbounded vtable scans instead of a silent cut;

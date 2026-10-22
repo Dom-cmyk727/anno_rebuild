@@ -1,0 +1,154 @@
+"""Read-only state readers for the running original, independent of the backend (T16).
+
+Every function takes a memory object with two methods,
+
+    mem.read(addr, n) -> bytes | None        # n bytes at a virtual address, None when unreadable
+    mem.regions() -> iterable of (lo, hi)    # committed, writable regions (where heap objects live)
+
+so the same code runs on the Windows backend (ReadProcessMemory / VirtualQueryEx) and inside the
+Wine runner (/proc/<pid>/mem and /proc/<pid>/maps). Nothing here writes memory.
+
+Offsets and their evidence (module RVAs relative to AnnoWelt.dll's load base):
+  world object   vtable AnnoWelt+0xccdd8; u64 game-ms counter +0x100, tick +0x10c = counter >> 1,
+                 PRNG cursor u16 +0xfc                          docs/re/tick-loop.md section 2-3
+  PRNG table     AnnoWelt+0xcb8f8, 2048 u16 = MSVC rand() from seed 1   tick-loop.md section 3 (F6)
+  city object    vtable AnnoWelt+0xc2f40; store +0x334 + 12*g (u32 amount, 1 t = 256),
+                 capacity u32 +0x624, inhabitants i32 +0x2f0   docs/re/population.md (city store),
+                                                                docs/testing/play-original.md section 2
+  goods ids      tools 41, wood 42, bricks 43 (T15 stage 1: equal to the HUD at game start)
+Standard library only; import-safe under `python -I`.
+"""
+
+from __future__ import annotations
+
+import struct
+
+WELT_WORLD_VT = 0xCCDD8
+WELT_CITY_VT = 0xC2F40
+PRNG_RVA = 0xCB8F8
+PRNG_ENTRIES = 2048
+
+WORLD_COUNTER = 0x100
+WORLD_AT108 = 0x108
+WORLD_TICK = 0x10C
+WORLD_CURSOR = 0xFC
+
+CITY_STORE = 0x334
+CITY_STORE_STRIDE = 12
+CITY_CAPACITY = 0x624
+CITY_INHABITANTS = 0x2F0
+STORE_UNIT = 256                      # store amounts and capacity are in 1/256 t
+GOODS = {"tools": 41, "wood": 42, "bricks": 43}
+
+# Plausibility bound for a city capacity read (in store units). A freed or unrelated object that
+# still carries the city vtable (review N1) shows zero or garbage here. The bound only filters
+# scan hits; it is not a game limit (the largest Kontor capacity seen is far below it).
+CITY_CAPACITY_SANE = 100000 * STORE_UNIT
+
+
+def u16(b: bytes, off: int = 0) -> int:
+    return struct.unpack_from("<H", b, off)[0]
+
+
+def u32(b: bytes, off: int = 0) -> int:
+    return struct.unpack_from("<I", b, off)[0]
+
+
+def i32(b: bytes, off: int = 0) -> int:
+    return struct.unpack_from("<i", b, off)[0]
+
+
+def scan_u32(mem, value: int, limit: int = 256) -> list[int]:
+    """Every 4-aligned address in the writable regions whose u32 equals value (vtable scans)."""
+    needle = struct.pack("<I", value)
+    hits: list[int] = []
+    for lo, hi in mem.regions():
+        data = mem.read(lo, hi - lo)
+        if not data:
+            continue
+        i = data.find(needle)
+        while i != -1:
+            if (lo + i) % 4 == 0:
+                hits.append(lo + i)
+                if len(hits) >= limit:
+                    return hits
+            i = data.find(needle, i + 1)
+    return hits
+
+
+def world_fields(mem, obj: int) -> dict | None:
+    b = mem.read(obj + WORLD_CURSOR, WORLD_TICK + 4 - WORLD_CURSOR)
+    if not b:
+        return None
+    base = WORLD_CURSOR
+    return {"counter": struct.unpack_from("<Q", b, WORLD_COUNTER - base)[0],
+            "at108": u32(b, WORLD_AT108 - base),
+            "tick": u32(b, WORLD_TICK - base),
+            "cursor": u16(b, 0)}
+
+
+def world_counter(mem, obj: int) -> int | None:
+    """The 64-bit game-ms counter alone (the timing sampler reads only this)."""
+    b = mem.read(obj + WORLD_COUNTER, 8)
+    return struct.unpack("<Q", b)[0] if b and len(b) == 8 else None
+
+
+def is_world(f: dict | None) -> bool:
+    """Counter non-zero and tick == counter >> 1 exactly (as tools/orig/smoke.py on Windows).
+    Unmasked on purpose: a stray hit whose garbage 64-bit 'counter' has 33 low zero bits would
+    pass a masked compare with tick 0 (seen under Wine, 2026-10-22). Valid while the counter is
+    below 2^33 ms (about 99 days of game time); the tick is stored as 32 bits (tick-loop.md)."""
+    return bool(f) and f["counter"] != 0 and f["tick"] == f["counter"] >> 1
+
+
+def find_world(mem, welt_base: int) -> int | None:
+    """The live world object: first DWORD is the world vtable and is_world() holds
+    (rejects stray matches of the vtable value and freed copies)."""
+    for obj in scan_u32(mem, welt_base + WELT_WORLD_VT):
+        if is_world(world_fields(mem, obj)):
+            return obj
+    return None
+
+
+def msvc_rand(n: int, seed: int = 1) -> list[int]:
+    x, out = seed, []
+    for _ in range(n):
+        x = (x * 214013 + 2531011) & 0xFFFFFFFF
+        out.append((x >> 16) & 0x7FFF)
+    return out
+
+
+def prng_check(mem, welt_base: int) -> dict:
+    """F6 (read-only form): the table at AnnoWelt+0xcb8f8 against MSVC rand() seed 1."""
+    raw = mem.read(welt_base + PRNG_RVA, 2 * PRNG_ENTRIES)
+    if not raw or len(raw) != 2 * PRNG_ENTRIES:
+        return {"error": "PRNG table unreadable"}
+    table = struct.unpack(f"<{PRNG_ENTRIES}H", raw)
+    expect = msvc_rand(PRNG_ENTRIES)
+    return {"entries": PRNG_ENTRIES, "mismatches": sum(a != b for a, b in zip(table, expect)),
+            "head": list(table[:6])}
+
+
+def city_fields(mem, obj: int) -> dict | None:
+    cap = mem.read(obj + CITY_CAPACITY, 4)
+    inh = mem.read(obj + CITY_INHABITANTS, 4)
+    if not cap or not inh:
+        return None
+    rec = {"addr": hex(obj), "capacity_t": u32(cap) / STORE_UNIT, "inhabitants": i32(inh)}
+    for name, g in GOODS.items():
+        b = mem.read(obj + CITY_STORE + CITY_STORE_STRIDE * g, 4)
+        rec[f"{name}_t"] = u32(b) / STORE_UNIT if b else None
+    return rec
+
+
+def cities(mem, welt_base: int) -> list[dict]:
+    """Every city object that passes the plausibility check (capacity in range)."""
+    out = []
+    for obj in scan_u32(mem, welt_base + WELT_CITY_VT):
+        cap = mem.read(obj + CITY_CAPACITY, 4)
+        if not cap or not 0 < u32(cap) <= CITY_CAPACITY_SANE:
+            continue
+        rec = city_fields(mem, obj)
+        if rec:
+            out.append(rec)
+    return out

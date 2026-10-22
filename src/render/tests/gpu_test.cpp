@@ -1762,11 +1762,10 @@ TEST_CASE("river flow on the GPU: the shader draws what the CPU twin draws, at e
                                 << " % within 2/255, max " << r.max);
                 // Rounding of the 8-bit colour and the GPU's own arithmetic: the pixels
                 // agree within 2/255 on >= 99.9 %, none beyond 4 (rivers.md Q2).
-                // TEMPORARY BREAK (T13 evidence): tighten the GPU=CPU parity
-                // tolerance to zero to prove a failing GPU test turns linux-gcc
-                // red. Revert immediately after the red run; do not keep.
-                CHECK(r.within2() >= 1.0);
-                CHECK(r.max <= 0);
+                // Rounding of the 8-bit colour and the GPU's own arithmetic: the pixels
+                // agree within 2/255 on >= 99.9 %, none beyond 4 (rivers.md Q2).
+                CHECK(r.within2() >= 0.999);
+                CHECK(r.max <= 4);
                 // Negative control: with the flow reversed the CPU's expectation is
                 // another picture, so the check above would fail on a wrong direction.
                 if (t == 700) {

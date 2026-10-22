@@ -739,7 +739,7 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
     - the sampler: 29 records with no gap; the tick invariant in 29/29;
     - 5 quicksaves kept;
     - no crash; 0 audio violations.
-    - The owner's desktop was untouched: Xvfb `:91`, no window, input or sound.
+    - The owner's desktop: no sound is observed (the audio guard, 0 violations over 11 processes, every minute); no window and no input hold by construction (the game draws only to the private Xvfb `:91`, xdotool sends only to `:91`), not by observation.
   - **F6 (read-only form) and the warehouse equal Windows:**
     - PRNG table: 0 of 2048 differ;
     - Kontor 50 t, tools 50, wood 50; money 500000.

@@ -190,7 +190,7 @@ The play layer, the fixtures and the runner scripts talk to a backend:
 
 ## 5. Acceptance run
 
-**Passed** on 2026-10-22: `tools/orig/unattended.py --session t16-accept2 --minutes 30 --save-every 5`, 30.02 wall minutes, unattended. Everything ran on Xvfb `:91` inside the distro; the owner's desktop received no window, input or sound. Output: `cache/orig/t16-accept2/d91-20261022-214309/` (`summary.json`, `sampler.jsonl`, `actions.jsonl`, `saves/`; not in git).
+**Passed** on 2026-10-22: `tools/orig/unattended.py --session t16-accept2 --minutes 30 --save-every 5`, 30.02 wall minutes, unattended. Everything ran on Xvfb `:91` inside the distro. Silence was observed: the audio guard checked every minute and found 0 violations (no `PULSE_*` variable, no audio library mapped) over the run's 11 processes. No window and no input on the owner's desktop hold by construction, not by observation: the game drew only to the private display `:91`, xdotool sent input only to `:91`, and `WSL_INTEROP` was removed from the run's environment, so nothing in it could start a Windows program. Output: `cache/orig/t16-accept2/d91-20261022-214309/` (`summary.json`, `sampler.jsonl`, `actions.jsonl`, `saves/`; not in git).
 
 | Step | Result |
 |---|---|

@@ -471,5 +471,9 @@ Total: 284 names = 159 script + 125 other.
   - all 50 `.sze` files: 50/50 parsed and re-emitted byte-identically;
   - the two quicksaves: 2/2.
 - `python -I -m doctest tools/bigbrother.py`: the grammar on a synthetic script of our own.
+- `python -I tools/test_bigbrother.py`: the doctests, plus synthetic cases (every byte is one token, Latin-1 round trip, sections out of order or missing, text outside the grammar is an error). With `ANNO1503_GAME_DIR` set, it also runs the corpus cases (skipped otherwise):
+  - all 50 scripts re-emit byte-identically;
+  - `[SIGNALS]` equals `SCHUETTIINITSIG = TRUE` followed by the `SET` variables in order;
+  - `AnnoScene.dll` has 284 names.
 - `dump <file>` prints the tree; `vocab <files>` and `keywords <AnnoScene.dll> <files>` produce the counts and tables of §4–§6.
 - No C++ reader yet (T17: the Python reference is the oracle). `anno-dump sze` does not print the chunk.

@@ -18,7 +18,8 @@ tree over the significant tokens and must account for all of them, so anything o
 read from the 50 shipped scripts is an error, not a fallback. Emission walks the tree's sections
 and concatenates their tokens, so the round trip is byte-identical by construction and is checked.
 
-Doctests (synthetic text of our own, no content of the original): `python -I -m doctest tools/bigbrother.py`
+Doctests (synthetic text of our own, no content of the original): `python -I -m doctest tools/bigbrother.py`;
+with the corpus cases (ANNO1503_GAME_DIR): `python -I tools/test_bigbrother.py`.
 
 >>> s = parse(SAMPLE)
 >>> s.emit() == SAMPLE
@@ -398,7 +399,8 @@ def parse(data: bytes) -> Script:
 # ---- files --------------------------------------------------------------------------------------
 def payload(path: str) -> bytes:
     """The BIGBROTHER payload of a scenario (ANNO*/SCENE/...) or a savegame (ANNO*/...)."""
-    buf = open(path, "rb").read()
+    with open(path, "rb") as f:
+        buf = f.read()
     tree, _ = chunks.parse_file(buf)
     if not tree or tree[0][0] not in ("ANNO", "ANNOADDON1") or tree[0][3] is None:
         raise ScriptError("no ANNO or ANNOADDON1 container")
@@ -576,7 +578,8 @@ def cmd_vocab(files) -> int:
 def dll_names(path: str) -> list[tuple[str, int, str]]:
     """`strings -n 4` over the whole file, lines matching ^[A-Z][A-Z0-9_]+$ (the 284 of the task),
     with the virtual address and section of their first occurrence."""
-    data = open(path, "rb").read()
+    with open(path, "rb") as f:
+        data = f.read()
     pe = struct.unpack_from("<I", data, 0x3C)[0]
     nsec = struct.unpack_from("<H", data, pe + 6)[0]
     opt = pe + 24

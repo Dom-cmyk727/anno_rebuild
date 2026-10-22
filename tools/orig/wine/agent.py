@@ -139,6 +139,7 @@ class Instance:
         self.log_f = None
         self.guard_stop = threading.Event()
         self.audio_killed: list | None = None
+        self.scan_hits: list[int] | None = None
 
     # ---- environment -------------------------------------------------------------------------
     def env(self) -> dict:
@@ -222,6 +223,22 @@ class Instance:
             out.append({"profile": name, "volume_before": before,
                         "volume_after": userdat.read(open(p, "rb").read()).get("volume")})
         return out
+
+    def reg_add(self, key: str, name: str, value: str, kind: str = "REG_SZ") -> dict:
+        """Set a registry value in THIS run's prefix (disposable; the base prefix is untouched).
+        Call between prepare and launch. Example: the community's hidden-multiplayer switch
+        HKCU\\Software\\Max-Design\\Anno1503 MULTIPLAYER=1 (community-landscape.md)."""
+        if kind not in ("REG_SZ", "REG_DWORD"):
+            raise ValueError(f"unsupported registry type {kind}")
+        r = subprocess.run(["wine", "reg", "add", key, "/v", name, "/t", kind, "/d", str(value), "/f"],
+                           env=self.env(), capture_output=True, text=True, timeout=60)
+        subprocess.run(["wineserver", "-w"], env=self.env(), capture_output=True, timeout=60)
+        res = {"key": key, "name": name, "kind": kind, "value": value, "rc": r.returncode,
+               "out": (r.stdout + r.stderr).strip()[-300:]}
+        self.log("reg_add", **res)
+        if r.returncode != 0:
+            raise RuntimeError(f"wine reg add failed: {res['out']}")
+        return res
 
     def _unmount(self) -> None:
         for m in reversed(self.mounts):
@@ -493,11 +510,20 @@ class Instance:
         w, h = MENU_FRAME if hi - lo <= 2 else DESKTOP
         return {"x": 0, "y": 0, "w": w, "h": h}
 
-    def screenshot(self, name: str, dest: str | None = None, full: bool = False) -> dict:
+    def screenshot(self, name: str, dest: str | None = None, full: bool = False, box=None,
+                   scale: int = 1) -> dict:
+        """PNG of the game frame (or the whole desktop with full=True). box = [x0, y0, x1, y1] in
+        frame fractions crops it; scale enlarges a crop (nearest neighbour) for reading digits."""
         img = self.grab()
         if not full:
             fr = self.frame_from(img)
             img = img.crop((fr["x"], fr["y"], fr["x"] + fr["w"], fr["y"] + fr["h"]))
+        if box:
+            w, h = img.size
+            img = img.crop((round(box[0] * w), round(box[1] * h), round(box[2] * w), round(box[3] * h)))
+        if scale > 1:
+            from PIL import Image
+            img = img.resize((img.size[0] * scale, img.size[1] * scale), Image.NEAREST)
         os.makedirs(f"{self.out}/shots", exist_ok=True)
         path = f"{self.out}/shots/{name}.png"
         img.save(path)
@@ -555,6 +581,34 @@ class Instance:
     def module_bases(self) -> dict:
         self.need_game()
         return {k: hex(v) for k, v in self.bases.items()}
+
+    def scan(self, value: int, refine: bool = False, limit: int = 1 << 16) -> dict:
+        """Read-only value search (RE by memory diffing): every 4-aligned u32 == value in the
+        writable regions, or, with refine, only among the previous scan's hits."""
+        self.need_game()
+        if refine and self.scan_hits is not None:
+            hits = []
+            for a in self.scan_hits:
+                b = self.mem.read(a, 4)
+                if b and gamestate.u32(b) == value:
+                    hits.append(a)
+        else:
+            hits = gamestate.scan_u32(self.mem, value, limit)
+        self.scan_hits = hits
+        return {"value": value, "count": len(hits), "addrs": [hex(a) for a in hits[:64]]}
+
+    def whereis(self, addr: int) -> dict:
+        """Which mapping holds addr; for a module image, the module and the RVA."""
+        self.need_game()
+        maps = self.mem.maps()
+        for lo, hi, perm, path in maps:
+            if lo <= addr < hi:
+                base = min(m[0] for m in maps if m[3] == path) if path else lo
+                rec = {"addr": hex(addr), "perm": perm, "path": path, "region": [hex(lo), hex(hi)]}
+                if path.lower().endswith((".dll", ".exe")):
+                    rec.update(module=os.path.basename(path).lower(), rva=hex(addr - base))
+                return rec
+        return {"addr": hex(addr), "path": None}
 
     def find_world(self) -> int | None:
         self.need_game()
@@ -742,6 +796,11 @@ class Instance:
         self.sampler = None
         return {"path": rec["path"], "records": rec["n"], "error": rec["error"]}
 
+    def clocks(self) -> dict:
+        """The guest clocks now (for host/guest clock pairs, timing.py)."""
+        return {"mono": mono(), "raw": time.clock_gettime(time.CLOCK_MONOTONIC_RAW),
+                "real": time.clock_gettime(time.CLOCK_REALTIME)}
+
     def status(self) -> dict:
         return {"run": self.run, "display": self.display, "pid": self.pid, "alive": self.alive(),
                 "copy": self.copy, "sampler": None if not self.sampler else
@@ -752,7 +811,8 @@ class Instance:
 COMMANDS = {"prepare", "launch", "find_game", "stop", "status", "key", "click", "click_px", "move",
             "move_px", "drag", "wheel", "frame", "screenshot", "recognize", "learn", "read",
             "module_bases", "state", "quicksave", "quickload", "poll_start", "poll_stop",
-            "sample_start", "sample_stop", "sync", "upper_files", "audio_check", "calibrate", "forget"}
+            "sample_start", "sample_stop", "sync", "upper_files", "audio_check", "calibrate", "forget",
+            "reg_add", "clocks", "scan", "whereis"}
 
 
 def serve(inst: Instance) -> int:

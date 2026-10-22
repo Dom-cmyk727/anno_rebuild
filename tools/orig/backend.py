@@ -149,9 +149,9 @@ class WineBackend:
     def wheel(self, nx: float, ny: float, amount: int):
         return self.call("wheel", nx=nx, ny=ny, amount=amount)
 
-    def screenshot(self, name: str, full: bool = False) -> str:
+    def screenshot(self, name: str, full: bool = False, box=None, scale: int = 1) -> str:
         dest = to_wsl_path(os.path.join(self.out_dir, "shots", f"{name}.png"))
-        self.call("screenshot", name=name, dest=dest, full=full)
+        self.call("screenshot", name=name, dest=dest, full=full, box=box, scale=scale)
         return os.path.join(self.out_dir, "shots", f"{name}.png")
 
     def recognize(self) -> dict:
@@ -188,6 +188,18 @@ class WineBackend:
 
     def sample_stop(self):
         return self.call("sample_stop", timeout=90)
+
+    def clock_pair(self, n: int = 9) -> dict:
+        """Host perf_counter <-> guest clocks, NTP style: n pings, keep the one with the smallest
+        round trip; its midpoint maps to the guest reading with an error of at most rtt/2."""
+        best = None
+        for _ in range(n):
+            t0 = time.perf_counter()
+            g = self.call("clocks")
+            t1 = time.perf_counter()
+            if best is None or t1 - t0 < best["rtt"]:
+                best = dict(g, host=(t0 + t1) / 2, rtt=t1 - t0)
+        return best
 
     def status(self):
         return self.call("status")

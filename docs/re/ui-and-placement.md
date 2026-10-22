@@ -115,13 +115,23 @@ Driving a colony build-up (control.py: zoom, place, road-drag, 400% speed) produ
   connection" is: Kontor (warehouse, stores goods) -> **Main market building** (distributes to houses
   in its radius, = INFRA) -> houses. A pioneer house in a market's range grows to 8 even with no
   deliveries (PO-P2); food (NAHRUNG) only affects satisfaction/mood.
-- **Open blocker for the growth/weaver fixtures.** The Citizen starting island is **densely forested**;
-  buildings need clear flat ground, and precise placement by screen coordinates at this zoom is
-  unreliable (the isometric projection offsets the click from the intended tile), so a **Main market
-  building** could not be placed on the small clear patches near the Kontor over several tries. Running
-  the house-growth (PO-P2/P3), tax (PO-T) and workshop (PR-F2 weaver) fixtures end to end therefore
-  needs one of: a scenario/location with **open grassland**, **clearing trees first** (the forester
-  chops a radius), or a **placement helper** that snaps to a valid tile (read the ghost's validity, or
-  compute tile->screen from the camera). The measurement side is ready (city `+0x2f0` aggregate;
-  per-house `+0x2c` needs the house vtable, OQ-T15-HOUSEVT).
+- **Road connection rule (owner, 2026-10-22).** A building joins the road network (and so the Kontor)
+  by sitting on the **edge of a road** — placed **adjacent to** a road tile, **not on** the road and
+  **not touching shore**. The road must itself reach the **Kontor's land entrance** to carry goods.
+  Confirmed in driving: a **Pioneer house** (cheap, few requirements) placed freely, but the **Main
+  market building** would only place when its clear 2x2 footprint sat beside a **Kontor-connected**
+  road; on the road, on shore, on trees, or beside a disconnected road segment it did not place (gold
+  not deducted). So the supply chain is Kontor (warehouse) -> road -> **Main market building** on the
+  road edge -> houses on the road edge.
+- **Open blocker for the growth/weaver fixtures.** On the Citizen starting island the land near the
+  Kontor is **densely forested**, so the road-adjacent tiles that are also clear enough for a 2x2
+  market are scarce, and placing on them blind (isometric screen->tile mapping, trees in the footprint)
+  did not succeed over many tries. The road-and-edge mechanic is understood and the road was connected
+  to the Kontor; the remaining need is a **clear road-adjacent 2x2**. Running the house-growth
+  (PO-P2/P3), tax (PO-T) and workshop (PR-F2 weaver) fixtures end to end therefore needs: a scenario or
+  landing spot with **open grassland**, **clearing trees first** (the forester), or a **placement
+  helper** that moves the ghost until the game reports it valid (feedback loop) rather than blind
+  clicks. The **measurement side is ready**: city `+0x2f0` (inhabitants), `+0x18a` (houses), `+0x618`
+  (stage), warehouse `+0x334`/`+0x624` are all read live; per-house `+0x2c` residents need the house
+  vtable (OQ-T15-HOUSEVT).
 

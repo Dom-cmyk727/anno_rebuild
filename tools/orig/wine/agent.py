@@ -3,19 +3,25 @@
 
 Runs inside the AnnoHarness WSL distro as root (docs/testing/original-wine.md). One instance =
   - a disposable copy: overlayfs views of the base game (/root/anno/game) and the base prefix
-    (/root/anno/prefix), so a run never changes the base copies and starts in milliseconds;
-    falls back to a full copy (cp -a) where overlayfs is unavailable;
+    (/root/anno/prefix), so a run never changes the base copies and starts in milliseconds
+    (a full copy with --copy copy, opt-in only);
   - its own Xvfb display (:91, :92, ...) and therefore its own wineserver (one per prefix);
   - outputs in <run>/out (screenshots, timing series, sampler JSONL, quicksave copies), copied to a
-    Windows folder (cache/orig/<session>/<instance>) on `sync` and on `stop`.
+    Windows folder (cache/orig/<session>/...) on `sync` and on `stop`.
 
 Input is XTEST through xdotool on that display only; the owner's desktop is never touched. Memory is
-read-only (/proc/<pid>/mem; root may read any process despite ptrace_scope=1).
+read-only (/proc/<pid>/mem; root may read any process despite ptrace_scope=1). Runs are silent
+(no audio device, an audio guard, the game's own volumes at minimum; original-wine.md section 2.2).
+Wine's crash dialog is switched off in each run's prefix: a crash writes its report to wine.log, the
+process ends, and the watchdog reports `crashed` at once.
 
 Two ways to use it:
   serve   JSON lines on stdin/stdout, one command per line: {"id": n, "cmd": "...", "args": {...}}
           -> {"id": n, "ok": true, "result": ...}. tools/orig/backend.py (WineBackend) speaks this.
-          EOF on stdin stops the instance and cleans up, so a dead controller leaves nothing behind.
+          The instance is stopped and cleaned up when the loop ends for any reason: `stop`, EOF on
+          stdin, a broken pipe, SIGTERM/SIGHUP. Xvfb dies with the agent (PR_SET_PDEATHSIG); Wine
+          processes of a run whose agent died are reaped by `cleanup` (agent.pid in the run folder).
+          Last resort from Windows: `wsl --terminate AnnoHarness`.
   python  `from agent import Instance` inside the distro (the same methods, no pipe).
 
 Rules (TASKS.md T16): the game copy stays inside the distro; read-only memory; `pkill -x` only.
@@ -26,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -35,7 +42,7 @@ import time
 import traceback
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(_HERE))          # tools/orig: gamestate, screensig
+sys.path.insert(0, os.path.dirname(_HERE))          # tools/orig: gamestate, screensig, userdat
 import gamestate  # noqa: E402
 import screensig  # noqa: E402
 import userdat  # noqa: E402
@@ -48,9 +55,16 @@ SIGREF = f"{BASE}/sigref"      # reference frames of learned screens (inside the
 DESKTOP = (1024, 768)          # the Wine virtual desktop; the game never switches display modes
 MENU_FRAME = (800, 600)        # menus draw 800x600 at the desktop's top left (spike, section 2)
 GAME_DLLS = ("annowelt.dll", "annogame.dll", "annoframe.dll", "annoscene.dll", "annodisplay.dll")
-MAX_REGION = 256 << 20         # skip larger mappings in vtable scans (not game heap)
+# Vtable scans skip mappings larger than this: they are file images or Wine's reserved areas, not
+# game heap. A filter on scan hits, not a game limit; raise it here if a heap ever grows past it.
+MAX_REGION = 256 << 20
 AUDIO_OFF = "winepulse.drv,winealsa.drv,wineoss.drv=d"   # WINEDLLOVERRIDES: no audio driver
-AUDIO_LIBS = ("winepulse", "winealsa", "wineoss", "libpulse", "libasound")   # audio guard looks for these
+# The audio guard kills the instance when any of these is mapped in a silent run.
+AUDIO_LIBS = ("winepulse", "winealsa", "wineoss", "libpulse", "libasound", "libpipewire", "libjack",
+              "libopenal")
+RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+XDO_TIMEOUT = 30               # seconds; a wedged X server must not hang the command loop
+SAVE_DIR = "SaveGame"          # the game's save folder in its copy (user.dat profile lives there too)
 
 # play-layer key names (tools/orig/screens.json "keys") -> X keysyms
 XKEYS = {"ESC": "Escape", "ENTER": "Return", "RETURN": "Return", "SPACE": "space", "TAB": "Tab",
@@ -75,12 +89,77 @@ def xkey(name: str) -> str:
     return "+".join(out)
 
 
+_POSIX_CLOCKS = hasattr(time, "clock_gettime")   # the agent runs in the distro; its tests also on Windows
+
+
 def mono() -> float:
-    return time.clock_gettime(time.CLOCK_MONOTONIC)
+    return time.clock_gettime(time.CLOCK_MONOTONIC) if _POSIX_CLOCKS else time.monotonic()
+
+
+def raw() -> float:
+    """CLOCK_MONOTONIC_RAW: not slewed by WSL's time sync; the clock the game's timer follows
+    (measured, original-wine.md section 2.3)."""
+    return time.clock_gettime(time.CLOCK_MONOTONIC_RAW) if _POSIX_CLOCKS else time.monotonic()
+
+
+def clocks() -> dict:
+    return {"mono": mono(), "raw": raw(),
+            "real": time.clock_gettime(time.CLOCK_REALTIME) if _POSIX_CLOCKS else time.time()}
+
+
+def cmdline(pid: int) -> str:
+    try:
+        return open(f"/proc/{pid}/cmdline", "rb").read().replace(b"\0", b" ").decode("latin-1").strip()
+    except OSError:
+        return ""
+
+
+def pid_alive(pid: int | None) -> bool:
+    return bool(pid) and os.path.exists(f"/proc/{pid}")
+
+
+def prefix_pids(prefix: str) -> list[int]:
+    """Every process whose environment has WINEPREFIX=<prefix>."""
+    want = f"WINEPREFIX={prefix}".encode()
+    pids = []
+    for p in os.listdir("/proc"):
+        if not p.isdigit():
+            continue
+        try:
+            env = open(f"/proc/{p}/environ", "rb").read().split(b"\0")
+        except OSError:
+            continue
+        if want in env:
+            pids.append(int(p))
+    return pids
+
+
+def kill_pids(pids) -> list[int]:
+    killed = []
+    for p in pids:
+        try:
+            os.kill(p, signal.SIGKILL)
+            killed.append(p)
+        except OSError:
+            pass
+    return killed
+
+
+def read_pid(path: str) -> int | None:
+    try:
+        return int(open(path).read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _pdeathsig() -> None:
+    """In the child: get SIGTERM when the parent (the agent) dies (prctl PR_SET_PDEATHSIG = 1)."""
+    import ctypes
+    ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGTERM)
 
 
 class ProcMem:
-    """gamestate's memory interface over /proc/<pid>/mem and /proc/<pid>/maps."""
+    """gamestate's memory interface over /proc/<pid>/mem and /proc/<pid>/maps (read-only)."""
 
     def __init__(self, pid: int):
         self.pid = pid
@@ -89,7 +168,7 @@ class ProcMem:
     def read(self, addr: int, n: int) -> bytes | None:
         try:
             return os.pread(self.f.fileno(), n, addr)
-        except OSError:
+        except (OSError, ValueError):       # ValueError: the file was closed by another thread
             return None
 
     def maps(self) -> list[tuple[int, int, str, str]]:
@@ -113,12 +192,17 @@ class ProcMem:
 class Instance:
     def __init__(self, display: str = ":91", run_id: str | None = None, out_win: str | None = None,
                  copy: str = "overlay", keep: bool = False, sig_path: str | None = None,
-                 audio: bool = False):
+                 audio: bool = False, winedebug: str = "-all", crash_dialog: bool = False):
+        if not re.fullmatch(r":\d{1,4}", display):
+            raise ValueError(f"display must look like :91, got {display!r}")
         self.display = display
-        self.audio = audio
         self.num = display.lstrip(":")
         self.run_id = run_id or time.strftime(f"run-%Y%m%d-%H%M%S-d{self.num}")
+        if not RUN_ID.match(self.run_id):
+            raise ValueError(f"run id {self.run_id!r} must match {RUN_ID.pattern}")
         self.run = f"{RUNS}/{self.run_id}"
+        if os.path.dirname(os.path.realpath(self.run)) != os.path.realpath(RUNS):
+            raise ValueError(f"run folder {self.run} is not directly inside {RUNS}")
         self.game = f"{self.run}/game"
         self.prefix = f"{self.run}/prefix"
         self.out = f"{self.run}/out"
@@ -126,6 +210,12 @@ class Instance:
         self.copy = copy
         self.keep = keep
         self.sig_path = sig_path
+        self.audio = audio
+        self.winedebug = winedebug
+        self.crash_dialog = crash_dialog
+        self.created = False           # set by prepare(); stop() tears down only what this created
+        self.stopped = False
+        self.stop_result: dict | None = None
         self.mounts: list[str] = []
         self.xvfb: subprocess.Popen | None = None
         self.wine: subprocess.Popen | None = None
@@ -134,26 +224,27 @@ class Instance:
         self.bases: dict[str, int] = {}
         self.world: int | None = None
         self.input_lock = threading.Lock()
+        self.game_lock = threading.RLock()
         self.poller: dict | None = None
         self.sampler: dict | None = None
         self.log_f = None
         self.guard_stop = threading.Event()
         self.audio_killed: list | None = None
+        self.crashed: dict | None = None
         self.scan_hits: list[int] | None = None
 
     # ---- environment -------------------------------------------------------------------------
     def env(self) -> dict:
         e = dict(os.environ)
         e.pop("WAYLAND_DISPLAY", None)
-        e.update(DISPLAY=self.display, WINEPREFIX=self.prefix, WINEARCH="win32",
-                 WINEDEBUG=e.get("ANNO_WINEDEBUG", "-all"))
+        e.pop("WSL_INTEROP", None)     # nothing in a run may start a Windows program on the desktop
+        e.update(DISPLAY=self.display, WINEPREFIX=self.prefix, WINEARCH="win32", WINEDEBUG=self.winedebug)
         if not self.audio:
             # Silent runs (owner, 2026-10-22): WSLg hands every distro a PulseAudio socket
             # (PULSE_SERVER=unix:/mnt/wslg/PulseServer) that plays on the owner's speakers.
-            # Remove it and switch off Wine's audio drivers, so no sound leaves the distro.
             # Without PULSE_SERVER, libpulse would still find WSLg's socket through
             # XDG_RUNTIME_DIR (/mnt/wslg/runtime-dir), so each run gets a private, empty one.
-            # The audio guard (launch) kills the instance if any audio library loads anyway.
+            # The audio guard (watchdog) kills the instance if any audio library loads anyway.
             for k in [k for k in e if k.startswith("PULSE_")]:
                 e.pop(k)
             e["XDG_RUNTIME_DIR"] = f"{self.run}/xdg"
@@ -167,7 +258,7 @@ class Instance:
         rec = {"t": round(mono(), 4), "kind": kind}
         for k, v in kw.items():
             rec[f"arg_{k}" if k in rec else k] = v
-        self.log_f.write(json.dumps(rec) + "\n")
+        self.log_f.write(json.dumps(rec, default=str) + "\n")
 
     # ---- disposable copy ---------------------------------------------------------------------
     def _overlay(self, lower: str, merged: str) -> None:
@@ -182,70 +273,91 @@ class Instance:
         self.mounts.append(merged)
 
     def prepare(self) -> dict:
+        if self.created:
+            raise RuntimeError("already prepared")
         if os.path.exists(self.run):
             raise RuntimeError(f"run folder {self.run} exists; pick another run id")
-        os.makedirs(self.out, exist_ok=True)
+        os.makedirs(self.out)
+        self.created = True
+        with open(f"{self.run}/agent.pid", "w") as f:
+            f.write(str(os.getpid()))
+        if self.keep:
+            open(f"{self.run}/.keep", "w").close()
         os.makedirs(f"{self.run}/xdg", mode=0o700, exist_ok=True)
         t0 = mono()
-        mode = self.copy
-        if mode == "overlay":
-            try:
-                self._overlay(BASE_GAME, self.game)
-                self._overlay(BASE_PREFIX, self.prefix)
-            except RuntimeError as e:
-                self.log("overlay_failed", error=str(e))
-                self._unmount()
-                mode = "copy"
-        if mode == "copy":
-            shutil.rmtree(self.game, ignore_errors=True)
-            shutil.rmtree(self.prefix, ignore_errors=True)
+        if self.copy == "overlay":
+            self._overlay(BASE_GAME, self.game)
+            self._overlay(BASE_PREFIX, self.prefix)
+        elif self.copy == "copy":
             subprocess.run(["cp", "-a", BASE_GAME, self.game], check=True)
             subprocess.run(["cp", "-a", BASE_PREFIX, self.prefix], check=True)
-        self.copy = mode
-        res = {"run": self.run, "copy": mode, "seconds": round(mono() - t0, 3)}
+        else:
+            raise ValueError(f"copy mode {self.copy!r} (overlay | copy)")
+        res = {"run": self.run, "copy": self.copy, "seconds": round(mono() - t0, 3)}
         if not self.audio:
             res["profiles"] = self.silence_profiles()
+        if not self.crash_dialog:
+            res["crash_dialog_off"] = self._reg("HKCU\\Software\\Wine\\WineDbg", "ShowCrashDialog", "0",
+                                                "REG_DWORD")["rc"] == 0
         self.log("prepare", **res)
         return res
 
     def silence_profiles(self) -> list[dict]:
         """In-game music and speech volume to the game's minimum in every profile of this copy
-        (tools/orig/userdat.py). Writes land in the overlay's upper layer, never in the base."""
+        (tools/orig/userdat.py). Writes land in the overlay's upper layer, never in the base. A
+        profile that cannot be patched is reported and left as it is."""
         out = []
-        root = f"{self.game}/SaveGame"
+        root = f"{self.game}/{SAVE_DIR}"
         for name in sorted(os.listdir(root)) if os.path.isdir(root) else []:
             p = f"{root}/{name}/user.dat"
             if not os.path.isfile(p):
                 continue
             data = open(p, "rb").read()
-            before = userdat.read(data).get("volume")
+            rec = {"profile": name}
+            try:
+                rec["volume_before"] = userdat.read(data).get("volume")
+                new = userdat.set_volume(data)
+            except ValueError as ex:
+                rec["error"] = str(ex)
+                out.append(rec)
+                continue
             with open(p, "wb") as f:
-                f.write(userdat.set_volume(data))
-            out.append({"profile": name, "volume_before": before,
-                        "volume_after": userdat.read(open(p, "rb").read()).get("volume")})
+                f.write(new)
+            rec["volume_after"] = userdat.read(open(p, "rb").read()).get("volume")
+            out.append(rec)
         return out
 
-    def reg_add(self, key: str, name: str, value: str, kind: str = "REG_SZ") -> dict:
-        """Set a registry value in THIS run's prefix (disposable; the base prefix is untouched).
-        Call between prepare and launch. Example: the community's hidden-multiplayer switch
-        HKCU\\Software\\Max-Design\\Anno1503 MULTIPLAYER=1 (community-landscape.md)."""
-        if kind not in ("REG_SZ", "REG_DWORD"):
-            raise ValueError(f"unsupported registry type {kind}")
+    def _reg(self, key: str, name: str, value: str, kind: str) -> dict:
         r = subprocess.run(["wine", "reg", "add", key, "/v", name, "/t", kind, "/d", str(value), "/f"],
                            env=self.env(), capture_output=True, text=True, timeout=60)
         subprocess.run(["wineserver", "-w"], env=self.env(), capture_output=True, timeout=60)
-        res = {"key": key, "name": name, "kind": kind, "value": value, "rc": r.returncode,
-               "out": (r.stdout + r.stderr).strip()[-300:]}
+        return {"key": key, "name": name, "kind": kind, "value": value, "rc": r.returncode,
+                "out": (r.stdout + r.stderr).strip()[-300:]}
+
+    def reg_add(self, key: str, name: str, value: str, kind: str = "REG_SZ") -> dict:
+        """Set a registry value in THIS run's prefix (disposable; the base prefix is untouched),
+        between prepare and launch. Example: the community's hidden-multiplayer switch
+        HKCU\\Software\\Max-Design\\Anno1503 MULTIPLAYER=1 (community-landscape.md)."""
+        if not self.created:
+            raise RuntimeError("reg_add needs prepare first")
+        if self.wine is not None:
+            raise RuntimeError("reg_add must run between prepare and launch")
+        if kind not in ("REG_SZ", "REG_DWORD"):
+            raise ValueError(f"unsupported registry type {kind}")
+        res = self._reg(key, name, value, kind)
         self.log("reg_add", **res)
-        if r.returncode != 0:
+        if res["rc"] != 0:
             raise RuntimeError(f"wine reg add failed: {res['out']}")
         return res
 
-    def _unmount(self) -> None:
+    def _unmount(self) -> list[str]:
+        failed = []
         for m in reversed(self.mounts):
             if subprocess.run(["umount", m], capture_output=True).returncode != 0:
-                subprocess.run(["umount", "-l", m], capture_output=True)
+                if subprocess.run(["umount", "-l", m], capture_output=True).returncode != 0:
+                    failed.append(m)
         self.mounts.clear()
+        return failed
 
     # ---- launch and stop ---------------------------------------------------------------------
     def _x_listening(self) -> bool:
@@ -260,95 +372,54 @@ class Instance:
         return not os.path.exists(f"/tmp/.X{self.num}-lock") and not self._x_listening()
 
     def launch(self) -> dict:
+        if not self.created:
+            raise RuntimeError("launch needs prepare first")
+        if self.wine is not None:
+            raise RuntimeError("already launched")
         if not self._display_free():
             raise RuntimeError(f"display {self.display} is in use (/tmp/.X{self.num}-lock)")
         self.xvfb = subprocess.Popen(
             ["Xvfb", self.display, "-screen", "0", f"{DESKTOP[0]}x{DESKTOP[1]}x24", "-nolisten", "tcp"],
-            stdout=subprocess.DEVNULL, stderr=open(f"{self.out}/xvfb.log", "w"))
+            stdout=subprocess.DEVNULL, stderr=open(f"{self.out}/xvfb.log", "w"), preexec_fn=_pdeathsig)
+        with open(f"{self.run}/xvfb.pid", "w") as f:
+            f.write(str(self.xvfb.pid))
         for _ in range(200):
-            if self._x_listening():
-                break
             if self.xvfb.poll() is not None:
                 raise RuntimeError(f"Xvfb exited with {self.xvfb.returncode} (see xvfb.log)")
+            if self._x_listening():
+                break
             time.sleep(0.05)
         else:
             raise RuntimeError("Xvfb did not come up within 10 s (see xvfb.log)")
+        time.sleep(0.1)
+        if self.xvfb.poll() is not None:     # another server owned the display: it was not ours
+            raise RuntimeError(f"Xvfb exited with {self.xvfb.returncode}; display {self.display} taken")
         self.wine = subprocess.Popen(
             ["wine", "explorer", f"/desktop=anno{self.num},{DESKTOP[0]}x{DESKTOP[1]}", "1503Startup.exe"],
             cwd=self.game, env=self.env(), stdout=open(f"{self.out}/wine.log", "w"),
             stderr=subprocess.STDOUT, start_new_session=True)
         self.log("launch", display=self.display, xvfb=self.xvfb.pid, wine=self.wine.pid, audio=self.audio)
-        if not self.audio:
-            threading.Thread(target=self._audio_guard, daemon=True).start()
+        threading.Thread(target=self._watchdog, daemon=True).start()
         return {"display": self.display, "xvfb_pid": self.xvfb.pid, "audio": self.audio}
-
-    # ---- audio guard (silent runs) -----------------------------------------------------------
-    def audio_check(self) -> dict:
-        """Every process of this instance: PULSE_* variables in its environment and audio
-        libraries in its address space. Both must be empty in a silent run."""
-        pids = self._prefix_pids()
-        bad = []
-        for pid in pids:
-            try:
-                env = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
-                maps = open(f"/proc/{pid}/maps").read().lower()
-            except OSError:
-                continue
-            pulse = [e.decode(errors="replace") for e in env if e.startswith(b"PULSE_")]
-            libs = sorted({lib for lib in AUDIO_LIBS if lib in maps})
-            if pulse or libs:
-                bad.append({"pid": pid, "env": pulse, "libs": libs})
-        return {"audio": self.audio, "processes": len(pids), "violations": bad, "killed": self.audio_killed}
-
-    def _kill_all(self) -> None:
-        subprocess.run(["wineserver", "-k"], env=self.env(), capture_output=True, timeout=30)
-        for p in self._prefix_pids():
-            try:
-                os.kill(p, signal.SIGKILL)
-            except OSError:
-                pass
-
-    def _audio_guard(self) -> None:
-        while not self.guard_stop.is_set():
-            r = self.audio_check()
-            if r["violations"]:
-                self.audio_killed = r["violations"]
-                self._kill_all()
-                self.log("audio_guard_kill", violations=r["violations"])
-                return
-            self.guard_stop.wait(0.5)
-
-    def _prefix_pids(self) -> list[int]:
-        want = f"WINEPREFIX={self.prefix}".encode()
-        pids = []
-        for p in os.listdir("/proc"):
-            if not p.isdigit():
-                continue
-            try:
-                env = open(f"/proc/{p}/environ", "rb").read().split(b"\0")
-            except OSError:
-                continue
-            if want in env:
-                pids.append(int(p))
-        return pids
 
     def find_game(self, wait: float = 0.0) -> int | None:
         """The process of this instance that maps AnnoWelt.dll (the world lives there)."""
         end = mono() + wait
         while True:
-            for pid in self._prefix_pids():
-                try:
-                    maps = open(f"/proc/{pid}/maps").read().lower()
-                except OSError:
-                    continue
-                if "/annowelt.dll" in maps:
-                    if pid != self.pid:
-                        if self.mem:
-                            self.mem.close()
-                        self.pid, self.mem, self.world = pid, ProcMem(pid), None
-                        self.bases = self._bases()
-                        self.log("game_pid", pid=pid, bases={k: hex(v) for k, v in self.bases.items()})
-                    return pid
+            with self.game_lock:
+                for pid in prefix_pids(self.prefix):
+                    try:
+                        maps = open(f"/proc/{pid}/maps").read().lower()
+                    except OSError:
+                        continue
+                    if "/annowelt.dll" in maps:
+                        if pid != self.pid:
+                            if self.mem:
+                                self.mem.close()
+                            self.pid, self.mem, self.world = pid, ProcMem(pid), None
+                            self.bases = self._bases()
+                            self.log("game_pid", pid=pid, bases={k: hex(v) for k, v in self.bases.items()})
+                        return pid
             if mono() >= end:
                 return None
             time.sleep(0.25)
@@ -363,42 +434,72 @@ class Instance:
         return found
 
     def alive(self) -> bool:
-        return bool(self.pid) and os.path.exists(f"/proc/{self.pid}")
+        return pid_alive(self.pid)
+
+    def _kill_all(self) -> dict:
+        """SIGKILL first (it cannot hang), then let wineserver clean up what is left."""
+        res = {"killed": kill_pids(prefix_pids(self.prefix))}
+        try:
+            subprocess.run(["wineserver", "-k"], env=self.env(), capture_output=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired) as ex:
+            res["wineserver"] = repr(ex)
+        return res
 
     def stop(self) -> dict:
+        """Tear down what prepare/launch created, step by step; every step runs even if an earlier
+        one failed, and the errors are reported. The run folder is removed only after its outputs
+        were synced (or when no Windows folder was given) and unless the run is kept."""
+        if self.stopped:
+            return self.stop_result
+        if not self.created:
+            self.stopped = True
+            self.stop_result = {"run": self.run, "skipped": "nothing was prepared by this agent"}
+            return self.stop_result
+        res: dict = {"run": self.run, "errors": []}
+
+        def step(name, fn):
+            try:
+                return fn()
+            except Exception as ex:  # noqa: BLE001 - collect, keep tearing down
+                res["errors"].append(f"{name}: {type(ex).__name__}: {ex}")
+                return None
+
         self.guard_stop.set()
-        self.sample_stop()
-        self.poll_stop()
-        res = {"run": self.run}
-        subprocess.run(["wineserver", "-k"], env=self.env(), capture_output=True, timeout=30)
+        res["sampler"] = step("sample_stop", self.sample_stop)
+        res["poller"] = step("poll_stop", lambda: self.poll_stop() and "stopped")
+        res["kill"] = step("kill", self._kill_all)
         if self.wine:
-            try:
-                self.wine.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                os.killpg(self.wine.pid, signal.SIGKILL)
-        if self.xvfb:
+            step("wine_wait", lambda: self.wine.wait(timeout=10))
+        if self.xvfb and self.xvfb.poll() is None:
             self.xvfb.terminate()
-            try:
-                self.xvfb.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                self.xvfb.kill()
-        left = self._prefix_pids()
-        for p in left:
-            try:
-                os.kill(p, signal.SIGKILL)
-            except OSError:
-                pass
-        res["leftover_pids_killed"] = left
+            if step("xvfb_wait", lambda: self.xvfb.wait(timeout=10) is not None) is None:
+                step("xvfb_kill", self.xvfb.kill)
+        res["leftover_pids_killed"] = step("leftovers", lambda: kill_pids(prefix_pids(self.prefix)))
         if self.mem:
-            self.mem.close()
+            step("mem_close", self.mem.close)
             self.mem = None
-        res["upper_files"] = self.upper_files()
+        res["crashed"] = self.crashed
+        res["audio_killed"] = self.audio_killed
+        res["upper_files"] = step("upper_files", self.upper_files) or []
         self.log("stop", **{k: v for k, v in res.items() if k != "upper_files"})
-        res["synced_to"] = self.sync()
-        self._unmount()
-        if not self.keep:
-            shutil.rmtree(self.run, ignore_errors=True)
-            res["removed"] = True
+        if self.log_f:
+            step("log_close", self.log_f.close)
+            self.log_f = None
+        synced = step("sync", self.sync)
+        res["synced_to"] = synced
+        res["unmount_failed"] = step("unmount", self._unmount)
+        sync_ok = self.out_win is None or synced is not None
+        if self.keep or os.path.exists(f"{self.run}/.keep"):
+            res["kept"] = "--keep"
+        elif not sync_ok:
+            res["kept"] = "outputs not synced; the run folder stays for `cleanup`"
+        elif res["unmount_failed"]:
+            res["kept"] = "an overlay could not be unmounted"
+        else:
+            step("remove", lambda: shutil.rmtree(self.run))
+            res["removed"] = not os.path.exists(self.run)
+        self.stopped = True
+        self.stop_result = res
         return res
 
     def upper_files(self, layer: str = "game") -> list[dict]:
@@ -421,9 +522,54 @@ class Instance:
         shutil.copytree(self.out, self.out_win, dirs_exist_ok=True)
         return self.out_win
 
+    # ---- watchdog: silence and crashes --------------------------------------------------------
+    def audio_check(self, pids: list[int] | None = None) -> dict:
+        """Every process of this instance: PULSE_* variables in its environment and audio
+        libraries in its address space. Both must be empty in a silent run."""
+        pids = prefix_pids(self.prefix) if pids is None else pids
+        bad = []
+        for pid in pids:
+            try:
+                env = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
+                maps = open(f"/proc/{pid}/maps").read().lower()
+            except OSError:
+                continue
+            pulse = [e.decode(errors="replace") for e in env if e.startswith(b"PULSE_")]
+            libs = sorted({lib for lib in AUDIO_LIBS if lib in maps})
+            if pulse or libs:
+                bad.append({"pid": pid, "env": pulse, "libs": libs})
+        return {"audio": self.audio, "processes": len(pids), "violations": bad, "killed": self.audio_killed}
+
+    def _watchdog(self) -> None:
+        while not self.guard_stop.wait(0.5):
+            try:
+                pids = prefix_pids(self.prefix)
+                if not self.audio and self.audio_killed is None:
+                    r = self.audio_check(pids)
+                    if r["violations"]:
+                        self.audio_killed = r["violations"]
+                        kill_pids(prefix_pids(self.prefix))
+                        self.log("audio_guard_kill", violations=r["violations"])
+                        continue
+                if self.crashed is None:
+                    dbg = [{"pid": p, "cmd": cmdline(p)} for p in pids if "winedbg" in cmdline(p).lower()]
+                    if dbg:
+                        self.crashed = {"t_mono": round(mono(), 3), "winedbg": dbg}
+                        self.log("crash", winedbg=dbg)
+            except Exception as ex:  # noqa: BLE001 - the watchdog must keep watching
+                self.log("watchdog_error", error=repr(ex))
+
+    def status(self) -> dict:
+        return {"run": self.run, "display": self.display, "pid": self.pid, "alive": self.alive(),
+                "copy": self.copy, "crashed": self.crashed, "audio_killed": self.audio_killed,
+                "sampler": None if not self.sampler else
+                {"records": self.sampler["n"], "error": self.sampler["error"],
+                 "saves_on": self.sampler["saves_on"]}}
+
     # ---- input (XTEST via xdotool, this display only) ----------------------------------------
     def _xdo(self, *args: str) -> None:
-        r = subprocess.run(["xdotool", *args], env=self.env(), capture_output=True, text=True)
+        r = subprocess.run(["xdotool", *args], env=self.env(), capture_output=True, text=True,
+                           timeout=XDO_TIMEOUT)
         if r.returncode != 0:
             raise RuntimeError(f"xdotool {' '.join(args)}: {r.stderr.strip()}")
 
@@ -441,8 +587,10 @@ class Instance:
         with self.input_lock:
             if hold > 0:
                 self._xdo("keydown", k)
-                time.sleep(hold)
-                self._xdo("keyup", k)
+                try:
+                    time.sleep(hold)
+                finally:
+                    self._xdo("keyup", k)
             else:
                 self._xdo("key", k)
         self.log("key", key=name, xkey=k)
@@ -498,11 +646,6 @@ class Instance:
         from PIL import ImageGrab
         return ImageGrab.grab(xdisplay=self.display)
 
-    def frame_image(self):
-        img = self.grab()
-        fr = self.frame_from(img)
-        return img.crop((fr["x"], fr["y"], fr["x"] + fr["w"], fr["y"] + fr["h"])), fr
-
     def frame_from(self, img) -> dict:
         """The game frame inside the desktop: menus are 800x600 at the top left, a running game
         fills the desktop. Decided from the screen: outside the menu frame the desktop is one
@@ -511,6 +654,11 @@ class Instance:
         lo, hi = right.getextrema()
         w, h = MENU_FRAME if hi - lo <= 2 else DESKTOP
         return {"x": 0, "y": 0, "w": w, "h": h}
+
+    def frame_image(self):
+        img = self.grab()
+        fr = self.frame_from(img)
+        return img.crop((fr["x"], fr["y"], fr["x"] + fr["w"], fr["y"] + fr["h"])), fr
 
     def screenshot(self, name: str, dest: str | None = None, full: bool = False, box=None,
                    scale: int = 1) -> dict:
@@ -568,12 +716,13 @@ class Instance:
         screensig.save(table, self.sig_path)
         return {"forgot": name, "existed": gone}
 
-    # ---- memory ------------------------------------------------------------------------------
+    # ---- memory (read-only) ------------------------------------------------------------------
     def need_game(self) -> None:
-        if not self.alive():
-            self.pid = None
-            if not self.find_game(wait=0):
-                raise RuntimeError("game process not found")
+        with self.game_lock:
+            if not self.alive():
+                self.pid = None
+                if not self.find_game(wait=0):
+                    raise RuntimeError("game process not found")
 
     def read(self, addr: int, n: int) -> str | None:
         self.need_game()
@@ -597,7 +746,8 @@ class Instance:
         else:
             hits = gamestate.scan_u32(self.mem, value, limit)
         self.scan_hits = hits
-        return {"value": value, "count": len(hits), "addrs": [hex(a) for a in hits[:64]]}
+        return {"value": value, "count": len(hits), "truncated": not refine and len(hits) >= limit,
+                "addrs": [hex(a) for a in hits[:64]]}
 
     def whereis(self, addr: int) -> dict:
         """Which mapping holds addr; for a module image, the module and the RVA."""
@@ -613,14 +763,15 @@ class Instance:
         return {"addr": hex(addr), "path": None}
 
     def find_world(self) -> int | None:
-        self.need_game()
-        welt = self.bases.get("annowelt.dll")
-        if welt is None:
-            return None
-        if self.world is not None and gamestate.is_world(gamestate.world_fields(self.mem, self.world)):
+        with self.game_lock:
+            self.need_game()
+            welt = self.bases.get("annowelt.dll")
+            if welt is None:
+                return None
+            if self.world is not None and gamestate.is_world(gamestate.world_fields(self.mem, self.world)):
+                return self.world
+            self.world = gamestate.find_world(self.mem, welt, settle=0.05)
             return self.world
-        self.world = gamestate.find_world(self.mem, welt)
-        return self.world
 
     def state(self, what: str = "world") -> dict:
         self.need_game()
@@ -637,31 +788,50 @@ class Instance:
             res["players"] = gamestate.players(self.mem, welt, self.find_world())
         return res
 
+    def clocks(self) -> dict:
+        """The guest clocks now (for host/guest clock pairs, timing.py)."""
+        return clocks()
+
     # ---- quick save / load -------------------------------------------------------------------
+    def _save_snapshot(self) -> dict:
+        root = f"{self.game}/{SAVE_DIR}"
+        snap = {}
+        for dirpath, _dirs, files in os.walk(root):
+            for fn in files:
+                p = os.path.join(dirpath, fn)
+                try:
+                    st = os.stat(p)
+                except OSError:
+                    continue
+                snap[os.path.relpath(p, self.game)] = (st.st_mtime_ns, st.st_size)
+        return snap
+
     def quicksave(self, keep_as: str | None = None, wait: float = 20.0) -> dict:
-        """F10 (game-mechanics.md section 1), then wait for a file in the copy's upper layer to be
-        newer than the key press and stable in size; optionally keep a copy in out/saves."""
-        before = mono()
-        wall = time.time()
+        """F10 (playbook section 1), then wait until new or changed files in the copy's save folder
+        (the profile user.dat excluded) are stable in size; keep every one of them in out/saves."""
+        before = self._save_snapshot()
         self.key("F10")
-        found = None
-        end = before + wait
-        while mono() < end:
+        found: list[str] = []
+        end = mono() + wait
+        while mono() < end and not found:
             time.sleep(0.5)
-            newer = [f for f in self.upper_files() if f["mtime"] >= wall - 0.5]
-            if newer:
-                cand = newer[-1]
-                time.sleep(0.5)
-                p = os.path.join(self.game + ".upper", cand["path"])
-                if os.path.exists(p) and os.path.getsize(p) == cand["size"]:
-                    found = cand
-                    break
-        res = {"saved": found}
-        if found and keep_as:
+            now = self._save_snapshot()
+            changed = sorted(p for p, v in now.items() if before.get(p) != v
+                             and not p.lower().endswith("user.dat"))
+            if changed:
+                time.sleep(0.7)
+                again = self._save_snapshot()
+                if all(again.get(p) == now.get(p) for p in changed):
+                    found = changed
+        res: dict = {"saved": found, "kept": []}
+        if not found:
+            res["error"] = f"no new file in {SAVE_DIR} within {wait} s"
+        elif keep_as:
             os.makedirs(f"{self.out}/saves", exist_ok=True)
-            dst = f"{self.out}/saves/{keep_as}{os.path.splitext(found['path'])[1]}"
-            shutil.copyfile(os.path.join(self.game + ".upper", found["path"]), dst)
-            res["kept"] = dst
+            for p in found:
+                dst = f"{self.out}/saves/{keep_as}__{os.path.basename(p)}"
+                shutil.copyfile(os.path.join(self.game, p), dst)
+                res["kept"].append(dst)
         self.log("quicksave", **res)
         return res
 
@@ -672,38 +842,43 @@ class Instance:
 
     # ---- frame-time poller (timing check, section 4 item 5) ----------------------------------
     def poll_start(self, label: str = "timing", interval: float = 0.0005) -> dict:
-        """Poll the world's game-ms counter about every `interval` s on CLOCK_MONOTONIC. In single
-        player every frame advances the counter once by round(dt * speed), capped at 100
-        (tick-loop.md section 2), so each change marks a frame."""
+        """Poll the world's game-ms counter about every `interval` s, timestamped on
+        CLOCK_MONOTONIC_RAW. In single player every frame advances the counter once by
+        min(trunc(dt * speed + 0.5), 100) (tick-loop.md section 2), so each change marks a frame."""
         if self.poller:
             raise RuntimeError("poller already running")
         w = self.find_world()
         if w is None:
             raise RuntimeError("no world object (not in a game)")
-        stop = threading.Event()
-        rec = {"label": label, "stop": stop, "series": [], "start": None, "end": None}
-
-        def clocks():
-            return {"mono": mono(), "raw": time.clock_gettime(time.CLOCK_MONOTONIC_RAW),
-                    "real": time.clock_gettime(time.CLOCK_REALTIME)}
+        stop, started = threading.Event(), threading.Event()
+        rec = {"label": label, "world": w, "stop": stop, "series": [], "start": None,
+               "fails": 0, "error": None, "interval": interval}
 
         def run():
-            series = rec["series"]
-            last = gamestate.world_counter(self.mem, w)
-            rec["start"] = dict(clocks(), counter=last)
-            series.append((rec["start"]["mono"], last))
-            while not stop.is_set():
-                c = gamestate.world_counter(self.mem, w)
-                if c is not None and c != last:
-                    series.append((mono(), c))
-                    last = c
-                time.sleep(interval)
-            rec["end"] = dict(clocks(), counter=last)
+            try:
+                series = rec["series"]
+                last = gamestate.world_counter(self.mem, w)
+                rec["start"] = dict(clocks(), counter=last)
+                series.append((rec["start"]["raw"], last))
+                started.set()
+                while not stop.is_set():
+                    c = gamestate.world_counter(self.mem, w)
+                    if c is None:
+                        rec["fails"] += 1
+                    elif c != last:
+                        series.append((raw(), c))
+                        last = c
+                    time.sleep(interval)
+            except Exception as ex:  # noqa: BLE001 - reported by poll_stop
+                rec["error"] = repr(ex)
+            finally:
+                started.set()
 
         rec["thread"] = threading.Thread(target=run, daemon=True)
         rec["thread"].start()
-        while rec["start"] is None:
-            time.sleep(0.001)
+        if not started.wait(5) or rec["start"] is None or rec["start"]["counter"] is None:
+            stop.set()
+            raise RuntimeError(f"poller did not start: {rec['error']}")
         self.poller = rec
         return {"label": label, "start": rec["start"]}
 
@@ -711,18 +886,24 @@ class Instance:
         rec = self.poller
         if not rec:
             return None
+        self.poller = None
         rec["stop"].set()
         rec["thread"].join(timeout=5)
-        self.poller = None
-        series = rec["series"]
+        end_counter = gamestate.world_counter(self.mem, rec["world"]) if self.mem else None
+        if end_counter is None:
+            rec["fails"] += 1
+        e = dict(clocks(), counter=end_counter)
+        s, series = rec["start"], rec["series"]
         os.makedirs(f"{self.out}/timing", exist_ok=True)
         path = f"{self.out}/timing/{rec['label']}.jsonl"
         with open(path, "w") as f:
             for t, c in series:
-                f.write(json.dumps({"t": round(t, 6), "counter": c}) + "\n")
-        s, e = rec["start"], rec["end"]
+                f.write(json.dumps({"t_raw": round(t, 6), "counter": c}) + "\n")
         steps = [b[1] - a[1] for a, b in zip(series, series[1:])]
         gaps = [b[0] - a[0] for a, b in zip(series, series[1:])]
+        hist: dict[int, int] = {}
+        for x in steps:
+            hist[x] = hist.get(x, 0) + 1
 
         def pct(v, q):
             if not v:
@@ -730,26 +911,38 @@ class Instance:
             v = sorted(v)
             return v[min(len(v) - 1, int(q * len(v)))]
 
-        dm = e["mono"] - s["mono"]
-        res = {"label": rec["label"], "series": path, "frames": len(steps),
-               "mono_s": round(dm, 4), "raw_s": round(e["raw"] - s["raw"], 4),
-               "real_s": round(e["real"] - s["real"], 4), "game_ms": e["counter"] - s["counter"],
-               "game_ms_per_mono_s": round((e["counter"] - s["counter"]) / dm, 2) if dm else None,
-               "step_ms": {"p50": pct(steps, .5), "p95": pct(steps, .95), "p99": pct(steps, .99),
-                           "max": max(steps) if steps else None,
+        changes = series[1:]
+        res = {"label": rec["label"], "series": path, "frames": len(steps), "read_failures": rec["fails"],
+               "thread_error": rec["error"], "thread_alive": rec["thread"].is_alive(),
+               "mono_s": round(e["mono"] - s["mono"], 6), "raw_s": round(e["raw"] - s["raw"], 6),
+               "real_s": round(e["real"] - s["real"], 6),
+               "game_ms": None if end_counter is None else end_counter - s["counter"],
+               # window edges: the start read and the end read each fall inside one frame, so the
+               # window total is off by at most the first and the last step
+               "edge_error_ms": (steps[0] + steps[-1]) if steps else None,
+               "step_hist": {str(k): v for k, v in sorted(hist.items())},
+               "step_ms": {"p50": pct(steps, .5), "p95": pct(steps, .95), "max": max(steps) if steps else None,
                            "at_cap_100": sum(1 for x in steps if x >= 100)},
-               "frame_ms": {k: (round(1000 * v, 2) if v is not None else None) for k, v in
+               "frame_ms": {k: (round(1000 * v, 3) if v is not None else None) for k, v in
                             {"p50": pct(gaps, .5), "p95": pct(gaps, .95), "p99": pct(gaps, .99),
                              "max": max(gaps) if gaps else None}.items()},
                "start": s, "end": e}
-        self.log("timing", **{k: v for k, v in res.items() if k not in ("start", "end")})
+        if len(changes) >= 2:
+            (t0, c0), (t1, c1) = changes[0], changes[-1]
+            res["changes"] = {"first": [round(t0, 6), c0], "last": [round(t1, 6), c1],
+                              "game_ms": c1 - c0, "raw_s": round(t1 - t0, 6),
+                              "game_ms_per_raw_s": round((c1 - c0) / (t1 - t0), 4) if t1 > t0 else None,
+                              "frames": len(changes) - 1}
+        self.log("timing", **{k: v for k, v in res.items() if k not in ("start", "end", "step_hist")})
         return res
 
     # ---- JSONL sampler (section 4 item 6) ----------------------------------------------------
-    def sample_start(self, period_game_ms: int = 60000, save_every: int = 0, name: str = "sampler") -> dict:
+    def sample_start(self, period_game_ms: int = 60000, save_every: int = 0, name: str = "sampler",
+                     saves_on: bool = True) -> dict:
         """One JSONL record per `period_game_ms` of game time (default one game minute): clocks,
-        world fields, PRNG cursor, cities. Every `save_every` records (0 = never) a quicksave is
-        taken and kept as out/saves/m<minute>."""
+        world fields, every player's money, city stores. Every `save_every` records (0 = never) a
+        quicksave is taken and kept as out/saves/m<minute>__<file>, while saves are on
+        (sample_saves; a macro switches them off so F10 never lands in the middle of it)."""
         if self.sampler:
             raise RuntimeError("sampler already running")
         w = self.find_world()
@@ -757,19 +950,23 @@ class Instance:
             raise RuntimeError("no world object (not in a game)")
         stop = threading.Event()
         path = f"{self.out}/{name}.jsonl"
-        rec = {"stop": stop, "path": path, "n": 0, "error": None}
+        rec = {"stop": stop, "path": path, "n": 0, "error": None, "saves_on": saves_on, "saves": 0}
 
         def run():
             welt = self.bases.get("annowelt.dll")
             nxt = None
-            plist = gamestate.players(self.mem, welt, w)   # found once; money re-read per record
             with open(path, "a", buffering=1) as f:
+                plist = gamestate.players(self.mem, welt, w)   # found once; money re-read per record
                 f.write(json.dumps({"event": "players", "players": plist}) + "\n")
                 while not stop.is_set():
                     try:
+                        if self.crashed:
+                            rec["error"] = "game crashed"
+                            f.write(json.dumps({"event": "crash", "crash": self.crashed}) + "\n")
+                            return
                         if not self.alive():
                             rec["error"] = "game exited"
-                            f.write(json.dumps({"event": "game_exited", "t_mono": round(mono(), 3)}) + "\n")
+                            f.write(json.dumps({"event": "game_exited", "t_raw": round(raw(), 3)}) + "\n")
                             return
                         wf = gamestate.world_fields(self.mem, self.find_world() or w)
                         if wf and nxt is None:
@@ -779,13 +976,13 @@ class Instance:
                             for p in plist:
                                 mb = self.mem.read(int(p["addr"], 16) + gamestate.PLAYER_MONEY, 4)
                                 money[f"{p['kind'] or p['name']}"] = gamestate.i32(mb) if mb else None
-                            r = {"game_min": round(wf["counter"] / 60000, 3), "t_mono": round(mono(), 3),
-                                 "t_raw": round(time.clock_gettime(time.CLOCK_MONOTONIC_RAW), 3),
+                            r = {"game_min": round(wf["counter"] / 60000, 3), "t_raw": round(raw(), 3),
                                  "t_real": round(time.time(), 3), "world": wf, "money": money,
                                  "cities": gamestate.cities(self.mem, welt)}
                             rec["n"] += 1
-                            if save_every and rec["n"] % save_every == 0:
+                            if save_every and rec["n"] % save_every == 0 and rec["saves_on"]:
                                 r["save"] = self.quicksave(keep_as=f"m{int(wf['counter'] // 60000):04d}")
+                                rec["saves"] += 1
                             f.write(json.dumps(r) + "\n")
                             nxt += period_game_ms
                     except Exception as ex:  # noqa: BLE001 - record and continue
@@ -796,71 +993,119 @@ class Instance:
         rec["thread"] = threading.Thread(target=run, daemon=True)
         rec["thread"].start()
         self.sampler = rec
-        return {"path": path}
+        return {"path": path, "saves_on": saves_on}
+
+    def sample_saves(self, on: bool) -> dict:
+        if not self.sampler:
+            raise RuntimeError("no sampler running")
+        self.sampler["saves_on"] = bool(on)
+        self.log("sample_saves", on=bool(on))
+        return {"saves_on": bool(on)}
 
     def sample_stop(self) -> dict | None:
         rec = self.sampler
         if not rec:
             return None
+        self.sampler = None
         rec["stop"].set()
         rec["thread"].join(timeout=30)
-        self.sampler = None
-        return {"path": rec["path"], "records": rec["n"], "error": rec["error"]}
-
-    def clocks(self) -> dict:
-        """The guest clocks now (for host/guest clock pairs, timing.py)."""
-        return {"mono": mono(), "raw": time.clock_gettime(time.CLOCK_MONOTONIC_RAW),
-                "real": time.clock_gettime(time.CLOCK_REALTIME)}
-
-    def status(self) -> dict:
-        return {"run": self.run, "display": self.display, "pid": self.pid, "alive": self.alive(),
-                "copy": self.copy, "sampler": None if not self.sampler else
-                {"records": self.sampler["n"], "error": self.sampler["error"]}}
+        return {"path": rec["path"], "records": rec["n"], "saves": rec["saves"], "error": rec["error"],
+                "thread_alive": rec["thread"].is_alive()}
 
 
 # ---- JSON-lines server ------------------------------------------------------------------------
 COMMANDS = {"prepare", "launch", "find_game", "stop", "status", "key", "click", "click_px", "move",
             "move_px", "drag", "wheel", "frame", "screenshot", "recognize", "learn", "read",
             "module_bases", "state", "quicksave", "quickload", "poll_start", "poll_stop",
-            "sample_start", "sample_stop", "sync", "upper_files", "audio_check", "calibrate", "forget",
-            "reg_add", "clocks", "scan", "whereis"}
+            "sample_start", "sample_stop", "sample_saves", "sync", "upper_files", "audio_check",
+            "calibrate", "forget", "reg_add", "clocks", "scan", "whereis"}
 
 
-def serve(inst: Instance) -> int:
-    out = sys.stdout
-    stopped = False
+def serve(inst: Instance, stdin=None, stdout=None) -> int:
+    """The command loop. Whatever ends it (stop, EOF, broken pipe, a signal, an error in the loop
+    itself), the instance is stopped in `finally`; stop() is idempotent."""
+    out = stdout or sys.stdout
+    src = stdin or sys.stdin
 
     def reply(obj):
-        out.write(json.dumps(obj) + "\n")
-        out.flush()
+        try:
+            out.write(json.dumps(obj, default=str) + "\n")
+            out.flush()
+        except (OSError, ValueError):       # the controller is gone; keep going until EOF/finally
+            pass
 
-    reply({"id": 0, "ok": True, "result": {"hello": "anno-wine-agent", "run": inst.run,
-                                           "display": inst.display, "t_mono": mono()}})
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            msg = json.loads(line)
-        except ValueError:
-            reply({"id": None, "ok": False, "error": "bad json"})
-            continue
-        cid, cmd, args = msg.get("id"), msg.get("cmd"), msg.get("args") or {}
-        if cmd not in COMMANDS:
-            reply({"id": cid, "ok": False, "error": f"unknown command {cmd!r}"})
-            continue
-        try:
-            result = getattr(inst, cmd)(**args)
-            reply({"id": cid, "ok": True, "result": result, "t_mono": mono()})
-            if cmd == "stop":
-                stopped = True
-                break
-        except Exception as ex:  # noqa: BLE001 - every failure goes back to the controller
-            reply({"id": cid, "ok": False, "error": f"{type(ex).__name__}: {ex}",
-                   "trace": traceback.format_exc(limit=3)})
-    if not stopped:
+    def on_signal(signum, _frame):
+        raise SystemExit(128 + signum)
+
+    if threading.current_thread() is threading.main_thread():
+        for name in ("SIGTERM", "SIGHUP"):
+            if hasattr(signal, name):
+                signal.signal(getattr(signal, name), on_signal)
+    try:
+        reply({"id": 0, "ok": True, "result": {"hello": "anno-wine-agent", "run": inst.run,
+                                               "display": inst.display, "t_mono": mono()}})
+        for line in src:
+            line = line.strip()
+            if not line:
+                continue
+            cid = None
+            try:
+                msg = json.loads(line)
+                if not isinstance(msg, dict):
+                    raise ValueError("a command must be a JSON object")
+                cid, cmd, args = msg.get("id"), msg.get("cmd"), msg.get("args") or {}
+                if not isinstance(args, dict):
+                    raise ValueError("args must be a JSON object")
+            except ValueError as ex:
+                reply({"id": cid, "ok": False, "error": f"bad command: {ex}"})
+                continue
+            if cmd not in COMMANDS:
+                reply({"id": cid, "ok": False, "error": f"unknown command {cmd!r}"})
+                continue
+            try:
+                result = getattr(inst, cmd)(**args)
+                reply({"id": cid, "ok": True, "result": result, "t_mono": mono()})
+                if cmd == "stop":
+                    break
+            except Exception as ex:  # noqa: BLE001 - every failure goes back to the controller
+                reply({"id": cid, "ok": False, "error": f"{type(ex).__name__}: {ex}",
+                       "trace": traceback.format_exc(limit=3)})
+    finally:
         inst.stop()
     return 0
+
+
+def cleanup(force: bool = False) -> dict:
+    """Reap runs under /root/anno/runs whose agent is gone: kill their Wine processes and Xvfb,
+    unmount their overlays, delete the folders. A run whose agent is alive is never touched; a
+    run marked .keep is kept unless force. Never touches the base copies."""
+    report: dict = {"removed": [], "live": [], "kept": [], "killed": {}, "errors": []}
+    runs = sorted(os.listdir(RUNS)) if os.path.isdir(RUNS) else []
+    mounts = [ln.split()[1] for ln in open("/proc/mounts")]
+    for d in runs:
+        run = f"{RUNS}/{d}"
+        apid = read_pid(f"{run}/agent.pid")
+        if pid_alive(apid) and "agent.py" in cmdline(apid):
+            report["live"].append(d)
+            continue
+        if os.path.exists(f"{run}/.keep") and not force:
+            report["kept"].append(d)
+            continue
+        killed = kill_pids(prefix_pids(f"{run}/prefix"))
+        xpid = read_pid(f"{run}/xvfb.pid")
+        if pid_alive(xpid) and cmdline(xpid).startswith("Xvfb"):
+            killed += kill_pids([xpid])
+        if killed:
+            report["killed"][d] = killed
+            time.sleep(0.5)
+        for m in sorted((m for m in mounts if m.startswith(run + "/")), reverse=True):
+            subprocess.run(["umount", "-l", m], capture_output=True)
+        try:
+            shutil.rmtree(run)
+            report["removed"].append(d)
+        except OSError as ex:
+            report["errors"].append(f"{d}: {ex}")
+    return report
 
 
 def main(argv=None) -> int:
@@ -870,41 +1115,19 @@ def main(argv=None) -> int:
     ap.add_argument("--run", default=None, help="run id (folder under /root/anno/runs)")
     ap.add_argument("--out-win", default=None, help="Windows-visible folder for outputs (/mnt/c/...)")
     ap.add_argument("--copy", choices=["overlay", "copy"], default="overlay")
-    ap.add_argument("--keep", action="store_true", help="keep the run folder after stop")
+    ap.add_argument("--keep", action="store_true", help="keep the run folder after stop (.keep marker)")
     ap.add_argument("--sigs", default=None, help="signature file (default tools/orig/screens_sig.json)")
     ap.add_argument("--audio", action="store_true", help="let Wine play sound (default: silent)")
+    ap.add_argument("--winedebug", default="-all", help="WINEDEBUG for the game (default -all)")
+    ap.add_argument("--crash-dialog", action="store_true", help="keep Wine's crash dialog (default: off)")
+    ap.add_argument("--force", action="store_true", help="cleanup: also remove runs marked .keep")
     a = ap.parse_args(argv)
     if a.mode == "cleanup":
-        return cleanup()
-    inst = Instance(a.display, a.run, a.out_win, a.copy, a.keep, a.sigs, a.audio)
+        print(json.dumps(cleanup(a.force)))
+        return 0
+    inst = Instance(a.display, a.run, a.out_win, a.copy, a.keep, a.sigs, a.audio, a.winedebug,
+                    a.crash_dialog)
     return serve(inst)
-
-
-def cleanup() -> int:
-    """Remove what crashed runs left under /root/anno/runs: unmount their overlays and delete the
-    folders. A run with a live Wine process (WINEPREFIX inside it) is left alone. Never touches
-    the base copies."""
-    live = set()
-    for p in os.listdir("/proc"):
-        if not p.isdigit():
-            continue
-        try:
-            env = open(f"/proc/{p}/environ", "rb").read().split(b"\0")
-        except OSError:
-            continue
-        for e in env:
-            if e.startswith(f"WINEPREFIX={RUNS}/".encode()):
-                live.add(e.decode().split("=", 1)[1][len(RUNS) + 1:].split("/")[0])
-    runs = sorted(os.listdir(RUNS)) if os.path.isdir(RUNS) else []
-    dead = [d for d in runs if d not in live]
-    mounts = [ln.split()[1] for ln in open("/proc/mounts")
-              if ln.split()[1].startswith(RUNS + "/") and ln.split()[1][len(RUNS) + 1:].split("/")[0] in dead]
-    for m in sorted(mounts, reverse=True):
-        subprocess.run(["umount", "-l", m], capture_output=True)
-    for d in dead:
-        shutil.rmtree(f"{RUNS}/{d}", ignore_errors=True)
-    print(json.dumps({"unmounted": mounts, "removed": dead, "live_kept": sorted(live)}))
-    return 0
 
 
 if __name__ == "__main__":

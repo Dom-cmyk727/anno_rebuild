@@ -773,3 +773,25 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
   - The opening does not yet check road connectivity.
   - Input on the Windows backend waits for PR #16.
 - Time spent / subagents used: inline, plus two reviewer subagents. One heavy job at a time: Wine runs one after another, and T8 stays paused as the owner asked.
+
+## T16 fix-up — the PR #21 review items (TASKS.md §4, 2026-10-22 h) — 2026-10-22 — status: FINISHED
+- Branch: task/T16-wine-runner, 2b74a57..791b4e3 on top of the merge 3e84767 (plus this report); worktree C:\Users\altin\anno1503-T16. Python tools and docs only. No Wine or game run (a C++ build ran on the PC); the only distro access was reading the base prefix's `user.reg` for item 3.
+- Done:
+  1. **Action log** (2b74a57, tests a558d56): `stop()` joins the watchdog (5 s) before the log closes; `log()` locks the lazy open, every write and the close, opens only when `<run>/out` exists (no `makedirs`), and is a no-op after `log_close()`; `sync()` flushes under the lock.
+  2. **Paths** (b982c5d, tests 83d9fc8): `within(path, base)` (realpath on both sides, no `..` component, not the base itself). `--out-win` must lie inside the repository's `cache/orig` as the distro sees it (derived from the agent's location; `backend.py`'s folders pass). `screenshot` `dest` must lie inside the run's `out` or inside `--out-win`. Deviation from the review wording ("under the run's out dir"): `backend.py` sends every screenshot copy to the `--out-win` folder, so that folder is allowed too. Also: names that become file names (screenshot, learned screen, timing label, sampler, `keep_as`) must be one component.
+  3. **`AKTPLAYER`** (cd58e04): `user-dat.md` cites the base prefix's `user.reg` (`[Software\\Max-Design\\Anno1503]` `"AKTPLAYER"="ANNOnymous"`) and the strings in `AnnoFrame.dll` (`0x95c64`) and `1503Startup.exe`; that the game reads it is hedged and is OQ-111 question 5.
+  4. **Desktop claim** (e6192c4): `original-wine.md` §5 and the T16 report say that silence is observed (0 audio-guard violations) and that no window and no input hold by construction (private `:91`).
+  5. **Merge of `origin/main`** (3e84767): every entry kept; open questions in numeric order (OQ-124 moved after OQ-123); REPORTS in chronological order (T17 22:19, T16 22:23).
+  - Nits:
+    - `Offsets` parses the values from the docs it cites (916bca6).
+    - `WindowsBackend.key` defaults to `hold=0.0`, the interface's value; a tap is still sent as a 50 ms press there (3bcfda7).
+    - The four spike scripts say SUPERSEDED at their top, and `run_game.sh`/`debug_run.sh` exit at once (fc6a6a0).
+    - The crash latency of `unattended.py` (up to `--check` = 60 s) is in §4.6 and its docstring (791b4e3).
+- Evidence:
+  - `python -I tools/orig/test_orig.py`: 52 tests (was 42). Windows: OK, 2 skipped (symlinks need a privilege). WSL Ubuntu (Python 3.12, Pillow from a private `--target` folder): OK, 0 skipped. `tools/test_bigbrother.py` after the merge: OK (4 skipped, no game dir).
+  - Mutations, each applied alone and then restored (bytecode caches cleared between runs):
+    - log: 4 of 4 killed;
+    - paths: 11 of 11 killed in WSL; on Windows, the realpath→abspath mutant survives only because the symlink cases skip there;
+    - nits: 8 of 8 killed (four constants in `gamestate.py`, the booking divisor, `VOLUME_MIN`, a value in `play-original.md`, the Windows key default).
+- Left open: OQ-111 question 5 (who reads `AKTPLAYER`). `agent.py` now refuses an `--out-win` outside `cache/orig`; nothing else in the repository passes one. The orchestrator's smoke run is the first live check of the changed agent.
+- Time spent / subagents used: inline, no subagents.

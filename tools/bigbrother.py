@@ -11,6 +11,9 @@ script format (T17).
   bigbrother.py keywords <AnnoScene.dll> <file>...
                                               the interpreter's uppercase names (strings -n 4 rule)
                                               with address, block and corpus use
+  bigbrother.py quirks <file>...              the conditions mixing && and || without parentheses
+                                              as the interpreter groups them, and the block
+                                              statements without ';' with what it reads into them
 
 Design. The lexer turns EVERY byte into exactly one token (whitespace, newlines and `$` comments
 are tokens too); the text is Latin-1, which maps bytes to characters 1:1. The parser builds the
@@ -520,8 +523,110 @@ def describe(x) -> str:
     return str(x)
 
 
+# ---- the interpreter's reading (AnnoScene.dll; docs/re/annoscene.md §12, T19) -------------------
+def grouped(g):
+    """The condition as the interpreter groups it: the first term, the first connective, and the
+    whole rest grouped the same way, whatever the connectives (the condition parser 0x10022bf0
+    recurses on everything after the first `&&`/`||`; the two have equal rank). A group of one term
+    is that term. Returns a Primary or a tuple (connective, left, right).
+
+    >>> c = parse(SAMPLE).section("[SCRIPT_KERNEL]").items[2].cond
+    >>> describe_grouped(grouped(c))
+    '(GO && (AREA "A1" TOUCHED_BY_SHIP_FROM "HUMAN" || PLAYER "HUMAN" INHABITANTCOUNT "SIEDLER" > 9))'
+    """
+    if isinstance(g, Primary):
+        return g
+    items = [grouped(x) if isinstance(x, Group) else x for x in g.items]
+    node = items[-1]
+    for i in range(len(items) - 3, -1, -2):        # items: term, op, term, op, ..., term
+        node = (items[i + 1], items[i], node)
+    return node
+
+
+def describe_grouped(x) -> str:
+    if isinstance(x, tuple):
+        op, left, right = x
+        return f"({describe_grouped(left)} {op} {describe_grouped(right)})"
+    return describe(x)
+
+
+def evaluate(x, truth) -> bool:
+    """The value of a grouped condition as the interpreter computes it (0x10010290): the left
+    operand first; `&&` skips the right operand when the left is false; `||` always evaluates
+    both. `truth(primary)` gives a primary's value."""
+    if not isinstance(x, tuple):
+        return bool(truth(x))
+    op, left, right = x
+    a = evaluate(left, truth)
+    if op == "&&" and not a:
+        return False
+    b = evaluate(right, truth)
+    return (a and b) if op == "&&" else (a or b)
+
+
+def branch(cond: Group, truth) -> str | None:
+    """Which block of an IF runs: "then", "else" or None. The top node runs THEN when true and
+    ELSE when false, except a top `&&` whose left operand is false: it returns at once and runs
+    neither (0x10010290, the early return at 0x100102a8-0x100102b4)."""
+    x = grouped(cond)
+    if isinstance(x, tuple) and x[0] == "&&" and not evaluate(x[1], truth):
+        return None
+    return "then" if evaluate(x, truth) else "else"
+
+
+def is_mixed(g: Group) -> bool:
+    """A group whose own connectives are both `&&` and `||`, or that holds such a group."""
+    return len({x for x in g.items if isinstance(x, str)}) > 1 or any(
+        is_mixed(x) for x in g.items if isinstance(x, Group))
+
+
+def read_on(script: Script) -> list[tuple]:
+    """The block statements without ';' as the interpreter reads them (0x1001c9e0). A block
+    statement ends at the next ';' of the kernel text, wherever it is (strpbrk, 0x1000b530): in a
+    later statement, in a comment, or past the block's '}'. Returns one (statement, end, lost)
+    per such statement: `end` is the payload offset of that ';', `lost` the statements of the same
+    block that start before it, which are read into the statement and dropped (an action's reader
+    ignores the text after its arguments). A ';' past the '}' loses nothing, because the kernel
+    reader resumes after the '}'. `end` None: no ';' follows in the kernel text, and the
+    interpreter refuses the kernel ("FunktionsBlock nicht oder falsch definiert", 0x1003f7c4). A
+    top-level SET without ';' is not listed: it loses nothing (the reader takes the next word)."""
+    text = script.emit().decode(ENCODING)
+    kernel = script.section("[SCRIPT_KERNEL]")
+    start = kernel.tokens[0].off + len(kernel.tokens[0].text)
+    stop = text.find("[", start)               # the kernel text ends at the next '[' (0x1000b3f0)
+    stop = len(text) if stop < 0 else stop
+    blocks = []
+    for it in kernel.items:
+        if isinstance(it, InitBlock):
+            blocks.append(it.body)
+        elif isinstance(it, If):
+            blocks += [it.then] + ([it.els] if it.els is not None else [])
+    out = []
+    for body in blocks:
+        gone: set[int] = set()
+        for st in body:
+            if st.semicolon or id(st) in gone:
+                continue
+            semi = text.find(";", st.off, stop)
+            if semi < 0:
+                out.append((st, None, []))
+                continue
+            lost = [s for s in body if st.off < s.off < semi]
+            gone.update(id(s) for s in lost)
+            out.append((st, semi, lost))
+    return out
+
+
+def stmt_text(st) -> str:
+    if isinstance(st, Assign):
+        return f"{'SET ' if st.is_set else ''}{st.name} = {st.value.text}"
+    return f"{st.name}({', '.join(v.text for v in st.args)})" if st.parens else st.name
+
+
 def cmd_dump(path: str) -> int:
     s = parse(payload(path))
+    swallowed = {id(st): (end, lost) for st, end, lost in read_on(s)}
+    lost_ids = {id(x) for _end, lost in swallowed.values() for x in lost}
     for sec in s.sections:
         print(sec.name)
         if sec.name != "[SCRIPT_KERNEL]":
@@ -532,10 +637,18 @@ def cmd_dump(path: str) -> int:
         def stmts(body, ind):
             for st in body:
                 if isinstance(st, Assign):
-                    print(f"{ind}{'SET ' if st.is_set else ''}{st.name} = {st.value.text}{'' if st.semicolon else '  (no ;)'}")
+                    note = '' if st.semicolon else '  (no ;)'
+                    print(f"{ind}{'SET ' if st.is_set else ''}{st.name} = {st.value.text}{note}"
+                          f"{'  (LOST: read into the statement before)' if id(st) in lost_ids else ''}")
                 elif isinstance(st, Call):
                     a = ", ".join(v.text for v in st.args)
-                    print(f"{ind}CALL {st.name}({a}){'' if st.parens else '  (no ())'}{'' if st.semicolon else '  (no ;)'}")
+                    note = '' if st.semicolon else '  (no ;)'
+                    if id(st) in swallowed:
+                        end, lost = swallowed[id(st)]
+                        note += ("  (the interpreter refuses the kernel: no ';' follows)" if end is None else
+                                 f"  (reads on to the ';' at offset {end}; loses {len(lost)} statement(s))")
+                    print(f"{ind}CALL {st.name}({a}){'' if st.parens else '  (no ())'}{note}"
+                          f"{'  (LOST: read into the statement before)' if id(st) in lost_ids else ''}")
 
         for it in sec.items:
             if isinstance(it, InitBlock):
@@ -545,10 +658,33 @@ def cmd_dump(path: str) -> int:
                 stmts([it], "  ")
             elif isinstance(it, If):
                 print(f"  IF {describe(it.cond)} THEN")
+                if is_mixed(it.cond):
+                    print(f"     grouped by the interpreter: {describe_grouped(grouped(it.cond))}")
                 stmts(it.then, "    ")
                 if it.els is not None:
                     print("  ELSE")
                     stmts(it.els, "    ")
+    return 0
+
+
+def cmd_quirks(files) -> int:
+    """The conditions that mix `&&` and `||` without parentheses, as written and as grouped, and
+    the block statements without ';' with what the interpreter reads into them."""
+    mixed = lost = 0
+    for f in files:
+        s = parse(payload(f))
+        base = os.path.basename(f)
+        for it in s.section("[SCRIPT_KERNEL]").items:
+            if isinstance(it, If) and is_mixed(it.cond):
+                mixed += 1
+                print(f"{base} @{it.off} MIXED\n  written: {describe(it.cond)}\n"
+                      f"  grouped: {describe_grouped(grouped(it.cond))}")
+        for st, end, gone in read_on(s):
+            lost += len(gone)
+            what = "no ';' follows: the kernel is refused" if end is None else (
+                f"reads on to offset {end}; lost: " + ("; ".join(stmt_text(x) for x in gone) or "nothing"))
+            print(f"{base} @{st.off} NO ';' {stmt_text(st)}: {what}")
+    print(f"{mixed} mixed conditions, {lost} lost statements in {len(files)} files")
     return 0
 
 
@@ -683,6 +819,8 @@ def main(argv) -> int:
         return cmd_vocab(argv[1:])
     if len(argv) >= 3 and argv[0] == "keywords":
         return cmd_keywords(argv[1], argv[2:])
+    if len(argv) >= 2 and argv[0] == "quirks":
+        return cmd_quirks(argv[1:])
     print(__doc__, file=sys.stderr)
     return 2
 

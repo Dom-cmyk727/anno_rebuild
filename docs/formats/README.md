@@ -17,7 +17,7 @@ Counts refer to GOG 2.0.0.5 (`game/app/`), from `docs/research/game-files-analys
 | Buildings | `Anlagen.dat` (1) | [`anlagen.md`](anlagen.md) | partial — complete parse, entry round trip, all frames decode and render; gameplay records not decoded |
 | Figures / sprites | `FigurenHeader.dat`, `Figuren*.dat` (16) | [`figuren.md`](figuren.md) | partial — index parses and round-trips byte-identically, all frames decode; record semantics, `z`/`level` open (OQ-023) |
 | Plain-text data | `Data/*.dat` (10 text ones + 2 `.bat`), `Texte.dat` | [`data-text.md`](data-text.md) | partial — line grammar of every file, byte-identical round trip; `Texte.dat` sections and `[ANLAGEN]` names decoded; record meaning open (OQ-029) |
-| Scenario script | `BIGBROTHER` chunk of `.sze` (50) and savegames | [`bigbrother.md`](bigbrother.md) | partial — grammar complete, all 50 parse and re-emit byte-identically (`tools/bigbrother.py`); handler semantics open (OQ-120…123) |
+| Scenario script | `BIGBROTHER` chunk of `.sze` (50) and savegames | [`bigbrother.md`](bigbrother.md) | partial — grammar complete, all 50 parse and re-emit byte-identically (`tools/bigbrother.py`); `&&`/`||` grouping and missing `;` traced (`docs/re/annoscene.md` §12, T19); handler semantics open (OQ-122, OQ-123) |
 
 Third-party formats (`.wav` RIFF, `.bik` Bink, `.jpg`) get no spec; note only how the game uses them.
 

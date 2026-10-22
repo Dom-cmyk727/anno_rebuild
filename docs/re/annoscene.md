@@ -4,7 +4,7 @@
 
 Confidence: **confirmed** = read in the decompiled/disassembled function; **likely** = strong inference, not traced end to end; **guess** = hypothesis, also listed under "Open".
 
-Answers in short: OQ-028 — a link naming a `*DUMMY.scp` is replaced at game start by a random real template of the same climate and size (§3–§5). OQ-027 — player type, colour and identity fields of `HEAD`, player 31, unit `attr`, and the `STADT2`, `CREW/ENTRY` and `ESEL` prefixes: §6–§8. Player colours: §9. Long record header: §10. AI profiles (`COMPPROFIL2`), the opponent setup, the hand-over to `CompLogic.dll` and the AI parameter table: §11 (added 2026-10-22, T18; static analysis with `tools/disasm.py` and a capstone linear sweep, no Ghidra on this host).
+Answers in short: OQ-028 — a link naming a `*DUMMY.scp` is replaced at game start by a random real template of the same climate and size (§3–§5). OQ-027 — player type, colour and identity fields of `HEAD`, player 31, unit `attr`, and the `STADT2`, `CREW/ENTRY` and `ESEL` prefixes: §6–§8. Player colours: §9. Long record header: §10. AI profiles (`COMPPROFIL2`), the opponent setup, the hand-over to `CompLogic.dll` and the AI parameter table: §11 (added 2026-10-22, T18; static analysis with `tools/disasm.py` and a capstone linear sweep, no Ghidra on this host). Script kernel (OQ-120 `&&`/`||`, OQ-121 missing `;`): §12.
 
 ## 1. Entry points and classes (`AnnoScene.dll`)
 
@@ -294,6 +294,108 @@ The 16 `COMPCAPS_*` names cover indices 0, 2, 3, 4, 6, 8, 9, 11, 12, 13, 14, 18,
 - Its parameter setter `0x10002e50` (jump table `0x100032d0`) has the same 36 cases with the same object fields and the same value limits as `CompLogic.dll`. It differs only in the called routines and in the `SUSPEND` byte (`+0x1a19` instead of `+0x1a89`). **Confirmed.** So the profile columns mean the same in both modules.
 - It has the same key strings minus a few (S, `game-files-resurvey.md` §3). Its own readers and its behaviour behind the fields were not compared.
 
+## 12. The script kernel: statement reader, condition parser, evaluation (`AnnoScene.dll`)
+
+T19, 2026-10-22. Static analysis with capstone (`tools/disasm.py` and range dumps), Windows host. The reader and the parser lie outside the O-16 op range (`0x10011ed0`–`0x10013dab`, `docs/sim/state.md`). **D** = read in the disassembly at the address given; **P** = checked over the 50 shipped scripts with `tools/bigbrother.py` and a scratch emulation of the reader below (not committed). Answers OQ-120 and OQ-121; spec: `docs/formats/bigbrother.md` §3.4.
+
+**Answers in short.**
+- **`&&` and `||` have equal rank and group to the right:** `a op1 b op2 c` is `a op1 (b op2 c)`. The first connective takes the whole rest of the condition as its right operand. So `A && B || C` is `A && (B || C)`, not C's `(A && B) || C`.
+- **Evaluation:** left operand first. `&&` skips its right operand when the left is false; `||` evaluates both.
+- **A block statement without `;`** runs on to the next `;` anywhere in the kernel text. The text in between is read into it and lost. In the shipped scripts that loses one action: `MINIMAP_ALERT( 640, 950 )` in S01_09_01.
+
+**Text helpers (D).** All C-runtime calls are statically linked:
+- `_stricmp` `0x10027310`, `strncmp` `0x10027550`, `strstr` `0x10027640`, `strchr` `0x100273f0`, `strpbrk` `0x10028020`, `strncpy` `0x100280f0`, `isalnum` `0x10027716`, `isalpha` `0x100276c0`.
+- **skip** `0x1000b150`: stops at a letter or digit or at one of `" ; [ ( & | < > - ! =`. It passes over everything else: blanks, line ends, `{`, `}`, `)` and `,`. A `$` comment is skipped to the end of its line or to a `[` (`0x1000b210`, `0x1000b1f0`).
+- **word** `0x1000b280`: copies letters, digits and `_ | & < > ! =`. So `&&`, `||` and `==` are words when blanks surround them.
+- **first connective** `0x1000b4f0`: the earlier of `strstr(p, "&&")` and `strstr(p, "||")`.
+- **`strpbrk` wrappers:** `{` `0x1000b4b0`, `}` `0x1000b4d0`, `;` `0x1000b530`.
+- **THEN finder** `0x1000b420`: `strncmp(…, "THEN", 4)` at every position, accepted only before the first `{`.
+- The delimiter table `0x1003d888`–`0x1003d8a0` is these helpers' strings.
+- **Error messages** (message box `0x10031144`) appear only while the script object's byte `+4` is set; the refusals happen either way.
+
+**The kernel reader** `0x1001c9e0`, called by the section reader at `0x10016fb6`. It gets a copy of the kernel text up to the next `[` (`0x1000b3f0`, call at `0x10016f76`). **D:**
+1. **`SCHUETTIINITSIG`.** If the signal does not exist, it is created with the value 1 (`0x1001c9f0`–`0x1001ca64`).
+2. **Main loop** (`0x1001ca8f`–`0x1001cac8`, `0x1001d21d`): skip, word, skip. Without progress the reader moves one byte on. The word is compared with `_stricmp`:
+   - `IF` (`0x1001cad9`);
+   - `INITBLOCK` (`0x1001ce13`);
+   - `SET` (`0x1001cf30`);
+   - `ELSE` (`0x1001d1c4`): a lone `ELSE` reports `"ELSE hat keine zugehörigest IF"` (`0x1003f824`) and the reader goes on.
+
+   Any other word, and a top-level `;`, is passed over without a message.
+3. **`IF`** (`0x1001cae9`):
+   - **Count:** it increments the condition counter `+0x74`, the `%d` of the error messages.
+   - **`THEN`:** without one (`0x1000b420`), the reader reports `"Kein THEN bei Bedingung: %d"` (`0x1003f804`) and returns 0, which refuses the whole kernel.
+   - **Condition:** the text between `IF` and `THEN` is copied. Each LF becomes a blank (`0x1001c9c0`; the skip passes over CR), and the copy goes to the condition parser (`0x1001cb55`); a null result refuses the kernel.
+   - **Block bounds:** the block is the first `{` and the first `}` after `THEN` (`0x1001cb76`, `0x1001cb7e`). Neither is matched for nesting or skipped in comments.
+   - **Statements** (`0x1001cbb0`–`0x1001cc7b`). From the current point:
+     1. skip; at or past the `}`, the block ends;
+     2. otherwise the statement is the text up to `strpbrk(p, ";")` (`0x1001cbca`), searched in the rest of the kernel text, not in the block. No `;` at all reports `"FunktionsBlock nicht oder falsch definiert bei Bedingung: %d"` (`0x1003f7c4`) and refuses the kernel;
+     3. the copy goes to the action reader `0x100170d0` (`0x1001cc1e`). Null refuses the kernel. The action joins the condition's THEN list (condition slot `+0x18`, `0x1001cc3c`);
+     4. the next statement starts after that `;`.
+   - **Resume point:** the reader goes on after the block's `}` in every case (`0x1001cb9c`).
+   - **`ELSE`** (`0x1001cc81`–`0x1001cdb5`): the reader reads the next word; on `ELSE` the same loop fills the ELSE list (slot `+0x20`), and the reader resumes at that block's `}`.
+   - **The IF** joins the list `+0x30`; the count is at `+0x38` (`0x1001cdbc`–`0x1001ce01`).
+4. **`INITBLOCK`** (`0x1001ce09`–`0x1001cf21`): the same block loop; the actions go to the list `+0x14`.
+5. **`SET`** (`0x1001cf26`–`0x1001d16c`):
+   - **Name:** the next word, at most 34 characters (`0x1001cf84`, `"Name … zu lang"` `0x1003f93c`). It must not exist yet (`0x1003f864`).
+   - **Value:** if a `=` follows, the next word must be `TRUE` or `FALSE` (`0x1001d076`, `0x1001d093`). Anything else reports `"Unbekannter Operator %s!"` (`0x1003e700`) and refuses the kernel; an empty value reports `0x1003f8f8`. Without `=` the value is FALSE (`0x1001cfd7`).
+   - **End:** the reader goes on at the next word after the value. A `;` is not looked for, so a top-level `SET` without one loses nothing.
+
+**The action reader** `0x100170d0`. It reads the name, then compares it with each action name in turn (`GOTO_SCREEN` first, `0x10017116`). Each branch reads its own arguments: `(` skipped by one byte, strings by `0x1000b370`, numbers by `strtol` (`0x1000b2e0`, `0x1000b310`), commas by one byte. The branch then builds the action and returns; the text after the last argument is never looked at. **D** for the four branches the corpus needs:
+- `SET_FOR_BUY` (`0x1001c2ea`–`0x1001c5e2`);
+- `SET_PROFILE` (`0x10019a1d`–`0x10019f92`);
+- `SET_DIPLOMACY` (`0x1001bcdc`–`0x1001be8d`);
+- `QUESTLOG_DRAW` (`0x100180c9`): it takes no argument, so `QUESTLOG_DRAW;` and `QUESTLOG_DRAW();` are the same.
+
+**The condition parser** `0x10022bf0` (`this` = the script object; argument = the text). Loop (`0x10022c37`): skip, word, skip. **D:**
+1. **Word `&&`** (`0x10022c52`) or **`||`** (`0x10022c6e`):
+   - without a left operand it reports `"Syntaxfehler : Unbekannter Befehl bei Bedingung: %d"` (`0x1004018c`) and returns 0;
+   - otherwise the **whole rest of the text** is copied and parsed by a recursive call (`0x10022fbd` / `0x10023091`). That is the right operand;
+   - the node (`0x28` bytes; vftable `0x1003b6f8` at `+0x24`) gets the left operand at `+0x14`, the right at `+0x18` and the connective (0 = `&&`, 1 = `||`) through slot `+0x28` (`0x1001c8d0`, byte `+0x1c`);
+   - **the function returns at once.**
+2. **`(`** (`0x10022c84`): the matching `)` is found by counting depth (`0x10022c9a`–`0x10022cb1`); none reports `"Syntaxfehler : ')'"` (`0x100401c0`). The inside (with the `)`) is parsed recursively (`0x10022d01`) and becomes the current left operand.
+3. **Otherwise a term:**
+   - its arguments are the text up to the first connective after it (`0x1000b4f0` at `0x10022d22`), or to the end;
+   - by the word: `PLAYER` `0x1001d650`, `AREA` `0x100201a0`, `OBJECT` `0x10021280`, `TIMER_0`…`TIMER_4` `0x10022610` (index as argument), `PLAYTIME` `0x100227b0`; any other word is a variable, `0x10022940`;
+   - the term becomes the current left operand (`0x10022f56`), and the loop goes on at the connective.
+
+So the grammar is `cond = term [ ("&&" | "||") cond ]`, `term = "(" cond ")" | primary`. There is no rank between the connectives; the right side is everything after the first one. P: the emulation of this parser over the 50 scripts gives the same terms as `tools/bigbrother.py` in all 308 conditions.
+
+**Evaluation** (`0x10010290`: vftable slot 1 of the connective, through the thunk `0x1001c840`; argument = the world). **D:**
+1. **Left operand:** its slot 1 is evaluated first.
+2. **`&&` with a false left:** the function returns false at once (`0x100102a8`–`0x100102b4`). The right operand is not evaluated, and neither block runs.
+3. **Otherwise** the right operand is evaluated (`0x100102c1`), also for `||` with a true left. The two values are combined.
+4. **Result:** true runs slot 2, the THEN list (`0x10010070`); false runs slot 3, the ELSE list (`0x100100a0`).
+
+**Leaves** do the same:
+- **Variable leaf** (`0x10010840`, vftable `0x1003bb58`): `== FALSE` sets a negate flag at parse time (`0x10022aee`), and a bare name means `== TRUE`.
+- **Then** THEN or ELSE runs (`0x10010885` / `0x10010890`).
+
+Only the IF's top node has actions in its lists, so the THEN/ELSE runs of inner nodes do nothing.
+
+**Consequence:** an `IF a && … THEN … ELSE …` runs neither block while `a` is false. P: the three shipped `ELSE`s (single33) all start with `CHKPARTn &&`.
+
+**Whether evaluating a condition changes state** (for example, consumes an event) was not traced. So it is open whether the skipped right operand of `&&`, or the always-evaluated one of `||`, matters.
+
+**The step** `0x10016b70` (vftable `0x1003b7b0` slot `+0x20`, the call in AnnoFrame `0x1005fe2e`; argument at `+0x70`). **D:**
+1. **Pause:** the step returns at once while the global byte `0x10043438` is set.
+2. **First call** (IF cursor `+0x40` empty): if `SCHUETTIINITSIG`'s value is non-zero, the INITBLOCK actions run (list `+0x14`, slot 1 with the world `+0x78`). The signal is then set to 0 (`0x10016b90`–`0x10016bbe`), and the cursor starts at the first IF.
+3. **The IFs:** each call evaluates `n` of them round-robin from the cursor, wrapping at the end (`0x10016bf9`–`0x10016c1e`). `n = min(count, ((arg − [+0x3c]) · count + 125) / 250)` (`0x10016bcc`–`0x10016bf3`); a negative value gives `count`.
+4. **`+0x3c`:** among the direct writes, only the constructor `0x100160b0` writes it (0).
+
+So the INITBLOCK runs once, before any IF, in the first step, and only while `SCHUETTIINITSIG` is TRUE. That is what the flip `TRUE` → `FALSE` in the quicksaves shows (OQ-123 item 4). What the argument is (AnnoFrame adds it to `+0xa24`, `0x1005fe31`) and how many IFs a step evaluates in practice is open.
+
+**The shipped scripts under this reading** (P; `python -I tools/bigbrother.py quirks <files>`):
+- **The 28 mixed conditions** (10 files) all have the shape `guard && … && alt1 || alt2 || …`. With one parenthesised group, Single_01's shape is `MISSION_FLAG == FALSE && (… DEAD && … DEAD && … DEAD) || … > 2999`.
+- **What the interpreter reads:** `guard && (… && (alt1 || alt2 …))`. The guards cover every alternative.
+- **Against C precedence** each of the 28 is a different function: the alternatives after the first `||` would fire without the guard. For example, the Single_01 rule would fire again after `MISSION_FLAG` is set.
+- **Read as the authors meant:** the one-shot flags (`ONETIME`, `PARTn`, `END_FLAG`, `DEADEND`) guard all alternatives.
+- **Statements without `;`:**
+  - `SET_PROFILE( "CG_ENEMY", "COMPCAPS_KAMPFTYP",  5  )` (S01_02_01) reads on to the `;` of the commented-out `$ATTACK_OBJECT(…);` a few lines below, inside its own block. Only comments are swallowed, so nothing is lost;
+  - `SET DEADEND_ABFRAGE = FALSE` (S01_08_01) is a top-level `SET`. Nothing is lost;
+  - `SET_DIPLOMACY( "CG2", "HUMAN", -127 )` (S01_09_01, the last statement of the INITBLOCK) reads on past the `}` to the `;` of `SET TEIL1_1 = FALSE;`. The INITBLOCK resumes at its `}`, so that `SET` is read again normally. Nothing is lost;
+  - `SET_FOR_BUY( "HEILKRAEUTER", "INDIANS", 30 )` (S01_09_01) reads on to the `;` of the next statement, `MINIMAP_ALERT( 640, 950 );`, in the same THEN block. **That minimap alert is lost**; the THEN block has 8 actions, not 9.
+
 ## Open
 - §11: `ENTRY` columns 0, 7, 14, 15 (unused) and 13 (the doubled `SUSPEND` call) (OQ-112); what the AI parameters do beyond the setter (OQ-113); the lost `SETTRIBUTSPERRE` values (OQ-114); which machine sends network message 6; the type-17 AI case (`0x1003de00`).
 - The meaning of `INFO` byte 2 ("special") and byte 5 (capacity vs. mountain/ore slots); the size classes and climate masks of the raw-material and ore distribution (`0x1003af74`, `0x10009010`, `0x1003af40`).
@@ -304,3 +406,4 @@ The 16 `COMPCAPS_*` names cover indices 0, 2, 3, 4, 6, 8, 9, 11, 12, 13, 14, 18,
 - Ship `attr` range 0–14: 16-step facing? Trace the ship class's draw/frame selection.
 - Colour button → value mapping on the colour screens; whether computer colours can collide with preset ones in practice.
 - Whether anything reads `INFO` bytes 6–7 (area / 64) or byte 1.
+- Script step (§12): what the step's argument is and how many IFs a step evaluates in practice; whether `+0x3c` is written anywhere else; whether evaluating a condition changes state (it would make `&&`'s skip and `||`'s full evaluation observable).

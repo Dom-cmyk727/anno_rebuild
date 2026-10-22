@@ -2,9 +2,10 @@
 
 **Status:** partial.
 - **Grammar:** complete for the 50 shipped scripts. All parse without a fallback and re-emit byte-identically (`tools/bigbrother.py check`; T17, 2026-10-22).
-- **Meanings:** conditions and actions are read from their names, arguments and uses. The interpreter's handlers were not traced (OQ-120 … OQ-123).
+- **Meanings:** conditions and actions are read from their names, arguments and uses. The action and condition handlers were not traced (OQ-122, OQ-123).
+- **The interpreter's reading** (T19, D): the statement reader, the condition parser and the evaluation are traced in `docs/re/annoscene.md` §12. That settles the grouping of `&&`/`||` (OQ-120) and the statements without `;` (OQ-121); see §3.4.
 
-Evidence: **P** = parsed from the 50 `.sze` files (and seven quicksaves); **S** = strings in `AnnoScene.dll` (GOG 2.0.0.5, image base `0x10000000`, addresses as virtual addresses); **D** = disassembly, cited from other notes.
+Evidence: **P** = parsed from the 50 `.sze` files (and seven quicksaves); **S** = strings in `AnnoScene.dll` (GOG 2.0.0.5, image base `0x10000000`, addresses as virtual addresses); **D** = disassembly (`docs/re/annoscene.md` §12 and other notes).
 
 ## Files covered
 - **Scenarios:** the last child of `SCENE` in every `.sze` (50 of 50, P; `sze.md`).
@@ -94,7 +95,12 @@ value     = "TRUE" | "FALSE" | NUMBER | STRING ;
 - **Timers:** `TIMER_0` … `TIMER_4` are read in conditions and only compared with numbers (24 uses in 10 files). `TIMER_FLAG` (Single_08) is a `SET` variable, not a timer.
   - Actions drive them: `TIMER_SET(slot, value)`, `TIMER_START(slot)`, `TIMER_STOP(slot)`.
   - Their state is the `SKTIMER` chunk (resurvey §4, O-31).
-- **Evaluation:** the scripts are written for rules that are tested again and again. The common pattern is one-shot: `IF ONETIME && … THEN { ONETIME = FALSE; … }`. This fits a step before every advance (O-34). Whether `INITBLOCK` runs first in the same step is not traced.
+- **Evaluation:** the scripts are written for rules that are tested again and again. The common pattern is one-shot: `IF ONETIME && … THEN { ONETIME = FALSE; … }`. This fits a step before every advance (O-34).
+  - **The step** (D, AnnoScene `0x10016b70`): the `INITBLOCK` runs in the first step, before any `IF`, and only while `SCHUETTIINITSIG` is TRUE; the step then sets it FALSE.
+  - **The `IF`s** are evaluated round-robin from a cursor. How many per step is open (`annoscene.md` §12).
+  - **An `IF`'s condition** is evaluated left operand first. `&&` skips its right operand when the left is false; `||` always evaluates both (D, `0x10010290`).
+  - **The blocks:** THEN runs when the condition is true, ELSE when it is false. Exception: a condition whose top connective is `&&` with a false left operand runs **neither** block.
+  - **ELSE in the corpus:** the three shipped `ELSE`s (single33) all start with `CHKPARTn &&`, so their ELSE runs only while that flag is TRUE.
 - **Irregular statements:** they ship, and the game loads these missions:
   - four statements without `;`:
     - `SET_PROFILE(…)` in S01_02_01;
@@ -102,8 +108,26 @@ value     = "TRUE" | "FALSE" | NUMBER | STRING ;
     - `SET_DIPLOMACY(…)` and `SET_FOR_BUY( "HEILKRAEUTER", "INDIANS", 30 )` in S01_09_01;
   - `QUESTLOG_DRAW;` without parentheses (single42).
 
-  The reference accepts them as written. Whether the interpreter ends the statement there or reads on into the next one is not traced (OQ-121).
-- **Precedence:** 28 of the 308 conditions (in 10 files) mix `&&` and `||` without parentheses. Example (Single_01): `MISSION_FLAG == FALSE && (… DEAD && … DEAD && … DEAD) || PLAYER "HUMAN" INHABITANTCOUNT "BUERGER" > 2999`. The reference keeps the sequence as written. The interpreter's precedence decides what these missions test and is not traced (OQ-120).
+  The reference accepts them as written.
+
+  **The interpreter reads on (D, `annoscene.md` §12; OQ-121 closed):**
+  - **In a block** (`INITBLOCK`, THEN, ELSE), a statement is the text up to the next `;` anywhere in the kernel text (`strpbrk`, `0x1001cbca`). That `;` can be in a later statement, in a comment or past the block's `}`.
+  - **What it swallows:** the action's reader takes its arguments and ignores the rest, so every statement that starts before that `;` is lost. A `;` past the `}` loses nothing, because the reader resumes after the `}`. With no `;` left in the kernel, the interpreter refuses the whole kernel.
+  - **At the top level**, `SET` takes its value and goes on at the next word, so a missing `;` there is harmless. `QUESTLOG_DRAW;` and `QUESTLOG_DRAW();` read the same (the action takes no argument).
+  - **The four shipped cases** (P):
+    - `SET_PROFILE(…)` (S01_02_01) runs on to the `;` of a commented-out line in its block: nothing lost;
+    - `SET DEADEND_ABFRAGE = FALSE` (S01_08_01) is top level: nothing lost;
+    - `SET_DIPLOMACY(…)` (S01_09_01) is the INITBLOCK's last statement and runs on past `}` to `SET TEIL1_1 = FALSE;`, which the reader then reads again: nothing lost;
+    - `SET_FOR_BUY( "HEILKRAEUTER", "INDIANS", 30 )` (S01_09_01) swallows the next statement of its block, `MINIMAP_ALERT( 640, 950 );`. **The original never shows that minimap alert.**
+
+  `tools/bigbrother.py` models this in `read_on` (`dump` marks the statements, `quirks` lists them). The faithful port drops the swallowed statement. Restoring the alert would be a QoL change behind a `rules` option, with the owner picking the default (CLAUDE.md).
+- **Precedence:** 28 of the 308 conditions (in 10 files) mix `&&` and `||` without parentheses. Example (Single_01): `MISSION_FLAG == FALSE && (… DEAD && … DEAD && … DEAD) || PLAYER "HUMAN" INHABITANTCOUNT "BUERGER" > 2999`. The reference keeps the sequence as written.
+
+  **The interpreter's grouping (D, `annoscene.md` §12; OQ-120 closed):**
+  - **Equal rank, to the right:** `&&` and `||` have equal rank and group to the right. The first connective takes the whole rest of the condition as its right operand: `a op b op c` = `a op (b op c)`; parentheses group as written (condition parser `0x10022bf0`).
+  - **The 28 shipped conditions:** all have the shape `guard && … && alt1 || alt2 …`, and the interpreter reads them as `guard && (… && (alt1 || alt2 …))`. Single_01 reads as `MISSION_FLAG == FALSE && ((… DEAD && …) || … > 2999)`.
+  - **Against C precedence,** each of the 28 means something else: the alternatives after the first `||` would fire without their guard. So the interpreter's grouping is what the one-shot pattern needs; the C reading would make the rules fire again.
+  - **In the reference:** `grouped`/`describe_grouped` give the grouping, `evaluate`/`branch` the evaluation; `dump` prints the grouping under each mixed condition.
 
 ### 3.5 `[SIGNALS]`: the script's state
 - **Form:** one `NAME = TRUE|FALSE` per line, no `;`, CRLF.
@@ -111,8 +135,12 @@ value     = "TRUE" | "FALSE" | NUMBER | STRING ;
 - **In a savegame** (P: seven quicksaves of two "Citizen" games in the Wine runner, T16):
   - the definitions and the kernel are byte-identical to those of exactly one scenario, `00_1024_easyentry_01.sze`, so a Citizen game starts from it (its kernel is empty; the islands are generated);
   - `[SIGNALS]` holds only `SCHUETTIINITSIG`, now `FALSE`; `[CAMARAPOS]` is still `0,0`.
-- **`SCHUETTIINITSIG`:** `TRUE` in every scenario, `FALSE` once the game has run. That it marks the `INITBLOCK` as done, so a loaded game does not run it again, is a guess from this flip; the saved script has no `INITBLOCK` at all (OQ-123).
-- **Load check:** the loader reports `Signal "%s" ist nicht vorhanden!` ("signal … does not exist", S, `0x1003e574`), likely for a signal the kernel does not define. A signal name has a maximum length: `Name "%s" für Signalobject zu lang\nMax. %d Zeichen!` (S, `0x1003f93c`; the limit is in the code, not traced).
+- **`SCHUETTIINITSIG`:** `TRUE` in every scenario, `FALSE` once the game has run. It marks the `INITBLOCK` as pending (D, AnnoScene step `0x10016b70`):
+  - the first step runs the `INITBLOCK` only while it is TRUE, then sets it FALSE. So a game loaded with it FALSE does not run the block again (likely: that `[SIGNALS]` is applied before the first step was not traced);
+  - the kernel reader creates it TRUE when the script does not define it (`0x1001c9f0`).
+
+  The quicksaves' flip fits; their script has no `INITBLOCK`.
+- **Load check:** the loader reports `Signal "%s" ist nicht vorhanden!` ("signal … does not exist", S, `0x1003e574`), likely for a signal the kernel does not define. A signal name has a maximum length: `Name "%s" für Signalobject zu lang\nMax. %d Zeichen!` (S, `0x1003f93c`): 34 characters for a `SET` name (D, `0x1001cf84`).
 - **What a savegame keeps of the script:**
   - the whole text (definitions and kernel; P);
   - one `NAME = value` line per signal (P for `SCHUETTIINITSIG`). That variables are saved with their current values is likely from the format strings of §1; the saved scripts have no variables, so it was not observed (OQ-123);
@@ -485,12 +513,17 @@ Total: 284 names = 159 script + 125 other.
 - `python -I tools/test_bigbrother.py`: the doctests, plus synthetic cases:
   - the tree of a synthetic script: values, argument kinds, areas, slots, the camera;
   - every byte is one token, and the Latin-1 round trip;
-  - each rule of §2–§3 refused when broken.
+  - each rule of §2–§3 refused when broken;
+  - the interpreter's reading (T19):
+    - the grouping, with C precedence shown to differ;
+    - `&&`'s skip and `||`'s full evaluation, and which block runs;
+    - the statements without `;` that swallow the next one, swallow nothing, end in a comment's `;`, or have no `;` after them.
 
   With `ANNO1503_GAME_DIR` set, it also runs the corpus cases (skipped otherwise):
   - all 50 scripts re-emit byte-identically;
   - the counts of §3.4 and §4;
   - `[SIGNALS]` equals `SCHUETTIINITSIG = TRUE` followed by the `SET` variables in order;
-  - `AnnoScene.dll` has 284 names.
-- `dump <file>` prints the tree; `vocab <files>` and `keywords <AnnoScene.dll> <files>` produce the counts and tables of §4–§6.
+  - `AnnoScene.dll` has 284 names;
+  - the interpreter's reading of the corpus: 28 mixed conditions in 10 files, each different from the C reading; three block statements without `;`, one lost statement (`MINIMAP_ALERT`, S01_09_01).
+- `dump <file>` prints the tree, with the grouping of mixed conditions and the statements without `;` marked. `vocab <files>` and `keywords <AnnoScene.dll> <files>` produce the counts and tables of §4–§6. `quirks <files>` lists the mixed conditions as grouped and the statements without `;` with what they swallow (§3.4).
 - No C++ reader yet (T17: the Python reference is the oracle). `anno-dump sze` does not print the chunk.

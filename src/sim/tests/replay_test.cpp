@@ -3,8 +3,9 @@
 // finder down to a scope path, the config-mismatch refusal, the command-before-steps
 // order, the PRNG-timeline header, the framing helper and a hostile-log check; the
 // T8 review fixes: a command without a wire form is refused by the recorder and by
-// write_log, a different list of missing draw sites is refused by replay, and a world that cannot
-// be saved cannot be recorded.
+// write_log, a different list of missing draw sites is refused by replay, two runs
+// that split after entry k are found at k, and a world that cannot be saved cannot be
+// recorded.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -555,6 +556,55 @@ TEST_CASE("replay refuses another set of missing draw sites") {
     auto ok = sim::replay(fresh, rec.log());
     REQUIRE(ok.ok());
     CHECK(ok.value().reproduced());
+}
+
+TEST_CASE("first divergent entry of two runs that split after entry k") {
+    const bt::Kit k = bt::make_kit();
+    // Two recorded sessions that agree on entries 0..3 and differ from entry 4 on:
+    // run a repeats the speed it already has there (no state change), run b's host
+    // sets another one (speed_percent is hashed state and stays different).
+    constexpr std::size_t split = 4;
+    auto session = [&k](std::uint32_t percent_at_split) {
+        sim::World w = bt::all_classes_world(k);
+        sim::Recorder rec = recorder(w);
+        rec.advance(20);                          // 0
+        rec.submit(host_speed(200));              // 1
+        rec.advance(20);                          // 2
+        rec.checkpoint();                         // 3
+        rec.submit(host_speed(percent_at_split)); // 4: the split
+        rec.advance(20);                          // 5
+        rec.checkpoint();                         // 6
+        rec.advance(20);                          // 7
+        return rec.log();
+    };
+    const sim::ReplayLog a = session(200);
+    const sim::ReplayLog b = session(100);
+    REQUIRE(a.entries.size() == 8);
+    REQUIRE(b.entries.size() == a.entries.size());
+    for (std::size_t i = 0; i < a.entries.size(); ++i) {
+        CHECK((a.entries[i] == b.entries[i]) == (i != split && i != 6));
+    }
+
+    const std::vector<std::uint64_t> ha = sim::hash_per_entry(bt::all_classes_world(k), a);
+    const std::vector<std::uint64_t> hb = sim::hash_per_entry(bt::all_classes_world(k), b);
+    REQUIRE(ha.size() == a.entries.size());
+    REQUIRE(hb.size() == b.entries.size());
+    CHECK(sim::first_divergent_entry(ha, hb) == std::optional<std::size_t>{split});
+    CHECK(sim::first_divergent_entry(hb, ha) == std::optional<std::size_t>{split});
+    for (std::size_t i = 0; i < ha.size(); ++i) {
+        CHECK((ha[i] == hb[i]) == (i < split));
+    }
+
+    // replay agrees: run a's log with run b's command at the split stops at the first
+    // checkpoint after it (entry 6), not before.
+    sim::ReplayLog mixed = a;
+    mixed.entries[split] = b.entries[split];
+    sim::World fresh = bt::all_classes_world(k);
+    auto out = sim::replay(fresh, mixed);
+    REQUIRE(out.ok());
+    CHECK(out.value().checkpoints_matched == 1);
+    REQUIRE(out.value().diverged_entry.has_value());
+    CHECK(*out.value().diverged_entry == 6);
 }
 
 TEST_CASE("recorder refuses a world it cannot save") {

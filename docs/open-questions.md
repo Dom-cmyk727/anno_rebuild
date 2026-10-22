@@ -1020,14 +1020,24 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Update 2026-10-22 (manual and in-game help):** the price slider's arrow is green, yellow or red [M p. 43, H/Verkauf_Waren], so the UI computes an acceptance band per good; its function in `AnnoFrame.dll` is the shortest way to the trader's limits. The Venetians refuse a buy price that is too low, a sell price that is too high, goods they cannot deliver, and goods they do not want. An alliance needs a trade treaty and grows with trade volume. Five scouts in a computer player's territory is the tolerated maximum (`manual-and-help.md` §3).
 
 ## OQ-120: Precedence of `&&` and `||` in the scenario script (new, T17 2026-10-22)
-- **Status:** open, RE
+- **Status:** resolved 2026-10-22 (T19). `&&` and `||` have equal rank and group to the right (D, AnnoScene condition parser `0x10022bf0`): the first connective takes the whole rest of the condition as its right operand, so `A && B || C` is `A && (B || C)`.
+  - **Evaluation** (`0x10010290`): left operand first; `&&` skips its right operand when the left is false, `||` evaluates both. A top `&&` with a false left runs neither THEN nor ELSE.
+  - **The 28 shipped conditions** are all `guard && … && alt1 || alt2 …`, so the guards cover every alternative. Each differs from the C reading, and the Single_01 rule does not fire again.
+  - **Where:** `docs/re/annoscene.md` §12, `bigbrother.md` §3.4; `tools/bigbrother.py` `grouped`/`evaluate`/`branch`.
+  - **Still open:** whether evaluating a condition changes state, which would make the skip observable (OQ-123 item 5).
 - **Area:** formats (`docs/formats/bigbrother.md` §3.4), script engine
 - **Evidence:** 28 of the 308 `IF` conditions in 10 shipped scripts mix `&&` and `||` in one group without parentheses (P), e.g. Single_01: `MISSION_FLAG == FALSE && (…) || PLAYER "HUMAN" INHABITANTCOUNT "BUERGER" > 2999`. The interpreter keeps `&&` and `||` in one delimiter table (`AnnoScene.dll` `0x1003d898`/`0x1003d89c`, S).
 - **Question:** Does `&&` bind tighter than `||` (as in C), do both group left to right, or something else? The answer decides what these missions test; with C precedence the Single_01 rule fires again after the mission flag is set.
 - **How to resolve:** read the condition parser around the delimiter table (AnnoScene, the script ops `0x10011ed0`–`0x10013dab`, O-16) with `tools/disasm.py`.
 
 ## OQ-121: Script statements without `;` (new, T17 2026-10-22)
-- **Status:** open, RE
+- **Status:** resolved 2026-10-22 (T19). In a block, a statement is the text up to the next `;` anywhere in the kernel text (D, AnnoScene `0x1001cbca`, `strpbrk`). The action's reader ignores what follows its arguments, so every statement that starts before that `;` is lost. The reader resumes after the block's `}`, so a `;` past it loses nothing. A top-level `SET` does not look for `;` (`0x1001cf26`–`0x1001d16c`).
+  - **Shipped cases** (P):
+    - `SET_FOR_BUY(…)` in S01_09_01 swallows `MINIMAP_ALERT( 640, 950 );`: that alert never runs in the original;
+    - the other three lose nothing (`SET_PROFILE` runs on to a commented-out `;`, `SET_DIPLOMACY` runs on past its `}`, `SET DEADEND_ABFRAGE` is top level).
+  - `QUESTLOG_DRAW;` = `QUESTLOG_DRAW();` (`0x100180c9`).
+  - **Where:** `docs/re/annoscene.md` §12, `bigbrother.md` §3.4; `tools/bigbrother.py` `read_on`.
+  - **For the owner:** whether a port restores the lost alert is a `rules` default (faithful: lost).
 - **Area:** formats (`bigbrother.md` §3.4)
 - **Evidence:** four shipped statements end without `;` (P):
   - `SET_PROFILE(…)` (S01_02_01);
@@ -1064,5 +1074,6 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   1. Each handler's effect and the meaning of its numeric arguments (e.g. `WON`/`LOST`'s second number, `SET_DIPLOMACY`'s −128/−127/0/30);
   2. the role of every unused name (action or condition: read from the block it stands in);
   3. which conditions read state that is not synchronised in multiplayer (by its name, `SELECTED_CURSORCONSTRUCTION` likely asks about the local build cursor);
-  4. what `SCHUETTIINITSIG` marks (it flips `TRUE` → `FALSE` in quicksaves of a scenario without an `INITBLOCK`), and whether a savegame stores the variables' current values (the format strings suggest it; the quicksaves had no variables).
+  4. ~~what `SCHUETTIINITSIG` marks~~ (T19, D: the first step runs the `INITBLOCK` while it is TRUE and then clears it, AnnoScene `0x10016b70`; `annoscene.md` §12). Still open: whether a savegame stores the variables' current values (the format strings suggest it; the quicksaves had no variables), and whether `[SIGNALS]` is applied before the first step;
+  5. (T19) whether evaluating a condition changes state, for example consumes an event. If it does, `&&`'s skipped right operand and `||`'s always-evaluated one are observable (`0x10010290`). Also how many `IF`s one step evaluates: the step `0x10016b70` takes `min(count, (arg · count + 125) / 250)` per call, round-robin; what the argument is was not traced.
 - **How to resolve:** walk the dispatch from the name tables to the handlers in AnnoScene (`0x10011ed0`–`0x10013dab`, O-16) and record each in `bigbrother.md`; the port of the engine (O-34) needs the list. For item 4, quick-save a mission with variables and an `INITBLOCK` in the Wine runner (T16).

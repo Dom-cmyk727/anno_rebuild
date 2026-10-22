@@ -871,6 +871,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   3. Does the chapel slot build 1321 directly once the trigger has happened?
   4. Where in `AnnoWelt` is it done? (A pass like the house upgrade, `population.md` §5?)
 - **Faithful default:** whatever the original does; needed before public buildings enter the sim.
+- **Update 2026-10-22 (community FAQ):** forum posters report that one university or church on the **island** upgrades every school or chapel there, whatever their coverage, and that demolishing it loses the upgrade; the cathedral counts as a church (`docs/research/community-faq.md` §4). That answers questions 1–2 as community evidence: the trigger is the big building, with island scope. Still to confirm in the code or by running the original.
 
 ## OQ-102: How houses get market-stand goods and infrastructure (new, tutorial series 2026-10-22)
 - **Status:** open, RE (extends the `population.md` "Open" items on the market class and on infrastructure delivery)
@@ -888,6 +889,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   2. Do stands and the tavern hold their own stock, refilled by their own walker from the city store, or do they draw on the city store directly?
   3. How do infrastructure needs (`0x4c`–`0x5a`) reach the house stock?
 - **Faithful default:** the original's rule, once traced.
+- **Update 2026-10-22 (community FAQ):** the house's reach counts, not the stall's radius. Stalls sell from the island store. The tavern keeper physically fetches alcohol within the tavern's radius. Reach at the edge is irregular, which suggests walker reach (`community-faq.md` §4).
 
 ## OQ-103: Which walkers need roads (new, tutorial series 2026-10-22)
 - **Status:** open, RE
@@ -904,6 +906,12 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   2. Which buildings need a road to the market hall (producers whose goods go to the city store)? Do houses need one at all?
   3. Are paved roads faster? (V14 34:46 calls them cosmetic; `wegspeed.dat` is not read, `production.md` §5.4.)
 - **Faithful default:** the original's rule, once traced.
+- **Update 2026-10-22 (owner, working rule):**
+  - houses need roads connected to markets;
+  - services must reach a house by road (the fire brigade, for example);
+  - a road connects only at a building's **specific entrance tile**, not at any edge tile.
+
+  The manual and the community FAQ agree on the entrance rule. FAQ posters from 2002–2004 claim that houses and the fire brigade need no roads; that **contradicts the owner** and may describe an older patch. The owner's rule is the working rule. T15 decides the mechanism with per-house reads, the same houses with and without a road to a market (PR #16 review). See `community-faq.md` §3.
 
 ## OQ-104: Player controls missing from the command list (new, tutorial series 2026-10-22)
 - **Status:** open, spec (S8 command set and later)
@@ -922,6 +930,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   2. Which of these controls are commands in the original's turn stream (`tick-loop.md`, command numbers `0x64`–`0x97`)?
   3. How is a placed house's look chosen: by the client's preview, or by the simulation's PRNG when the command executes? In lockstep the preview must never decide it silently; the choice must travel in the command.
 - **Faithful default:** every control the original has, as a command. The look is carried in the build command or drawn by the sim.
+- **Update 2026-10-22 (community FAQ):** the material lock is per island. A house's look is cycled by clicking the build tool on unbuildable ground, so the client chooses it and the build command must carry it. The add-on's V key plants the active farm's fields (`community-faq.md` §4).
 
 ## OQ-105: Plague and the medicus (new, tutorial series 2026-10-22)
 - **Status:** open, RE
@@ -942,6 +951,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   2. How does the medicus (1337, radius 24, uses herbs) choose its targets, and how fast does it act?
   3. Does the "255 = never" table entry apply to plague as it does to fire? If so, the first outbreak needs ≥ 1,524 inhabitants.
 - **Faithful default:** the original's rule once traced, behind the "disasters off" rule like fire.
+- **Update 2026-10-22 (community FAQ):** the medicus cures only houses in its area and some residents die first; "fast healing" shortens that; bathhouses reportedly lower the plague chance (unchecked) (`community-faq.md` §4).
 
 ## OQ-106: Wildlife and pastures (new, tutorial series 2026-10-22)
 - **Status:** open, RE
@@ -956,6 +966,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   2. Do wild animals use up `GRAS` objects, competing with the sheep?
   3. Which figures carry `PELZTIER` for the fur trapper? (The series names arctic foxes, hares and bears, V14 10:03.)
 - **Faithful default:** the original's rule, once traced.
+- **Update 2026-10-22 (community FAQ):** game comes from forests and grazes anywhere there is grass. The fur trapper takes white-furred animals, and leopards and tigers in the jungle at half yield (`community-faq.md` §4).
 
 ## OQ-107: Research and knowledge (new, tutorial series 2026-10-22)
 - **Status:** open, RE (related to O-30 in `docs/sim/state.md`)
@@ -974,6 +985,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   2. Where are the research costs and their order (the well before the fire brigade) stored?
   3. Is research per player? It is sim state that must be checksummed if it gates building.
 - **Faithful default:** the original's costs and order, as data.
+- **Update 2026-10-22 (answers question 1 in part):** the `Wissen:` lines are the **knowledge cap** per stage. The FAQ's cap table (20 / 25 / 50 / 70 / 90 at 50 / 170 settlers, 200 / 600 citizens, 750 merchants) equals `BGruppen.dat` `2B`/`2E`/`3B`/`3D`/`4C` exactly (P). A library adds 10; the number of schools does not matter. Research costs per item are in the FAQ's research trees, not yet checked against the data (`community-faq.md` §2, §4).
 
 ## OQ-108: Trade with the free trader and computer players (new, tutorial series 2026-10-22)
 - **Status:** open, RE
@@ -992,3 +1004,10 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   2. How do computer players decide to buy from a human, and how does trade change relations?
   3. Which of this is simulation state? All of it, if it moves goods or money.
 - **Faithful default:** the original's rules, once traced.
+- **Update 2026-10-22 (community FAQ):**
+  - Venetians always sell tools, and otherwise relay other players' orders; they sail a fixed circuit; a coastal warehouse is needed;
+  - the AI trades only from its main island;
+  - trade visits raise relations;
+  - the slider sets the stock to keep.
+
+  Stall prices in the FAQ match `BGruppen.dat` at tax index 2 (`community-faq.md` §2, §4).

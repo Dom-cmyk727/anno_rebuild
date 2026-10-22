@@ -121,6 +121,7 @@ Verdicts: **agrees** = matches the file (P) or a disassembled function (D); **pa
 - **"A chapel works like a church":** this holds only for chapel type 1321, which the chapel slot builds from stage `2F` on. A 1320 chapel serves only the chapel need.
 - **"Houses collapse":** only aristocrat houses vanish; the others downgrade.
 - **"Salt is not important" and "lamp oil or silk":** both are effects of averaging the goods needs. Every missing forced good still lowers the goods score, and with it growth.
+- **Roads:** the narrator says aristocrat houses can do without roads (V14 31:05). The owner's rule (2026-10-22) is that houses need roads connected to markets, that services such as the fire brigade must reach a house by road, and that a road connects only at the building's entrance tile (OQ-103, `community-faq.md` §3).
 - **The church's reach** (V10 03:52): a citizen house outside the church's drawn circle still had the need met, and the narrator could not explain it. Coverage may be measured by footprint overlap or by walkers rather than the drawn circle (OQ-102).
 
 ## 5. New leads (filed as OQs)

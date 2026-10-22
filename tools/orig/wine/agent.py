@@ -63,6 +63,13 @@ AUDIO_OFF = "winepulse.drv,winealsa.drv,wineoss.drv=d"   # WINEDLLOVERRIDES: no 
 AUDIO_LIBS = ("winepulse", "winealsa", "wineoss", "libpulse", "libasound", "libpipewire", "libjack",
               "libopenal")
 RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+# File names the controller picks (screenshot, learned screen, timing label, sampler, kept save):
+# one path component, no separators, no "..", the same alphabet as run ids.
+NAME = RUN_ID
+# The only place --out-win may point: the repository's cache/orig folder as the distro sees it
+# (the agent runs from the Windows checkout, /mnt/c/.../tools/orig/wine/agent.py; backend.py puts
+# each run in cache/orig/<session>/d<display>-<time>/). The agent writes there as root.
+OUT_WIN_BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_HERE))), "cache", "orig")
 XDO_TIMEOUT = 30               # seconds; a wedged X server must not hang the command loop
 WATCHDOG_JOIN = 5              # seconds stop() waits for the watchdog (it checks for stop every 0.5 s)
 SAVE_DIR = "SaveGame"          # the game's save folder in its copy (user.dat profile lives there too)
@@ -153,6 +160,31 @@ def read_pid(path: str) -> int | None:
         return None
 
 
+def check_name(name: str, what: str = "name") -> str:
+    if not isinstance(name, str) or not NAME.match(name):
+        raise ValueError(f"{what} {name!r} must match {NAME.pattern}")
+    return name
+
+
+def within(path: str, base: str, what: str = "path") -> str:
+    """The real path of `path` when it lies strictly inside `base` (both through realpath, so a
+    symlink that leads out is caught); ValueError otherwise. A '..' component is refused outright,
+    wherever it would lead."""
+    if not isinstance(path, str) or not path:
+        raise ValueError(f"{what} must be a non-empty path")
+    if ".." in re.split(r"[\\/]+", path):
+        raise ValueError(f"{what} {path!r} contains '..'")
+    real, rbase = os.path.realpath(path), os.path.realpath(base)
+    try:
+        common = os.path.commonpath([real, rbase])
+    except ValueError:                  # different drives (Windows)
+        common = None
+    if common is None or os.path.normcase(common) != os.path.normcase(rbase) \
+            or os.path.normcase(real) == os.path.normcase(rbase):
+        raise ValueError(f"{what} {path!r} is not inside {base}")
+    return real
+
+
 def _pdeathsig() -> None:
     """In the child: get SIGTERM when the parent (the agent) dies (prctl PR_SET_PDEATHSIG = 1)."""
     import ctypes
@@ -207,7 +239,7 @@ class Instance:
         self.game = f"{self.run}/game"
         self.prefix = f"{self.run}/prefix"
         self.out = f"{self.run}/out"
-        self.out_win = out_win
+        self.out_win = within(out_win, OUT_WIN_BASE, "--out-win") if out_win else None
         self.copy = copy
         self.keep = keep
         self.sig_path = sig_path
@@ -697,7 +729,11 @@ class Instance:
     def screenshot(self, name: str, dest: str | None = None, full: bool = False, box=None,
                    scale: int = 1) -> dict:
         """PNG of the game frame (or the whole desktop with full=True). box = [x0, y0, x1, y1] in
-        frame fractions crops it; scale enlarges a crop (nearest neighbour) for reading digits."""
+        frame fractions crops it; scale enlarges a crop (nearest neighbour) for reading digits.
+        dest: an extra copy, inside this run's out dir (relative paths are taken from there) or
+        inside --out-win (backend.py copies each shot to the Windows folder this way)."""
+        check_name(name, "screenshot name")
+        dest = self.dest_path(dest) if dest else None
         img = self.grab()
         if not full:
             fr = self.frame_from(img)
@@ -718,6 +754,18 @@ class Instance:
             res["dest"] = dest
         return res
 
+    def dest_path(self, dest: str) -> str:
+        """`dest` resolved and checked: strictly inside the run's out dir or the --out-win folder."""
+        if not os.path.isabs(dest):
+            dest = os.path.join(self.out, dest)
+        errors = []
+        for base in filter(None, (self.out, self.out_win)):
+            try:
+                return within(dest, base, "dest")
+            except ValueError as ex:
+                errors.append(str(ex))
+        raise ValueError("; ".join(errors))
+
     def recognize(self) -> dict:
         img, fr = self.frame_image()
         res = screensig.recognize(img, screensig.load(self.sig_path))
@@ -725,6 +773,7 @@ class Instance:
         return res
 
     def learn(self, name: str, regions=None, max_dist: int = screensig.DEFAULT_MAX_DIST) -> dict:
+        check_name(name, "screen name")
         img, fr = self.frame_image()
         os.makedirs(SIGREF, exist_ok=True)
         img.save(f"{SIGREF}/{name}.png")
@@ -843,6 +892,8 @@ class Instance:
     def quicksave(self, keep_as: str | None = None, wait: float = 20.0) -> dict:
         """F10 (playbook section 1), then wait until new or changed files in the copy's save folder
         (the profile user.dat excluded) are stable in size; keep every one of them in out/saves."""
+        if keep_as is not None:
+            check_name(keep_as, "keep_as")
         before = self._save_snapshot()
         self.key("F10")
         found: list[str] = []
@@ -879,6 +930,7 @@ class Instance:
         """Poll the world's game-ms counter about every `interval` s, timestamped on
         CLOCK_MONOTONIC_RAW. In single player every frame advances the counter once by
         min(trunc(dt * speed + 0.5), 100) (tick-loop.md section 2), so each change marks a frame."""
+        check_name(label, "timing label")
         if self.poller:
             raise RuntimeError("poller already running")
         w = self.find_world()
@@ -977,6 +1029,7 @@ class Instance:
         world fields, every player's money, city stores. Every `save_every` records (0 = never) a
         quicksave is taken and kept as out/saves/m<minute>__<file>, while saves are on
         (sample_saves; a macro switches them off so F10 never lands in the middle of it)."""
+        check_name(name, "sampler name")
         if self.sampler:
             raise RuntimeError("sampler already running")
         w = self.find_world()
@@ -1147,7 +1200,8 @@ def main(argv=None) -> int:
     ap.add_argument("mode", choices=["serve", "cleanup"])
     ap.add_argument("--display", default=":91")
     ap.add_argument("--run", default=None, help="run id (folder under /root/anno/runs)")
-    ap.add_argument("--out-win", default=None, help="Windows-visible folder for outputs (/mnt/c/...)")
+    ap.add_argument("--out-win", default=None, help="Windows-visible folder for outputs; must lie inside the repository's "
+                         f"cache/orig ({OUT_WIN_BASE})")
     ap.add_argument("--copy", choices=["overlay", "copy"], default="overlay")
     ap.add_argument("--keep", action="store_true", help="keep the run folder after stop (.keep marker)")
     ap.add_argument("--sigs", default=None, help="signature file (default tools/orig/screens_sig.json)")

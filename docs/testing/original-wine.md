@@ -140,6 +140,10 @@ The play layer, the fixtures and the runner scripts talk to a backend:
 - Each run gets overlayfs views of the base game and base prefix under `/root/anno/runs/<run>/` (3 ms), plus its own Xvfb display and wineserver. A full copy (`--copy copy`) is opt-in only.
 - Run ids must match `[A-Za-z0-9][A-Za-z0-9._-]*` and resolve directly inside `/root/anno/runs`. `stop` tears down only a run this agent prepared; `launch` and `reg_add` refuse without `prepare`.
 - Outputs go to `<run>/out` and are copied to `cache/orig/<session>/d<display>-<start time>/` (one folder per backend) on `sync` and `stop`. The run folder is deleted only after a successful copy, and never with `--keep` (a `.keep` marker).
+- The agent writes as root, so every path the controller names is checked (`within` in `agent.py`, resolved with `realpath`, so a symlink that leads out is refused, and any `..` component is refused outright):
+  - `--out-win` must lie inside the repository's `cache/orig` folder, as the distro sees it (`/mnt/c/.../cache/orig`);
+  - a screenshot's `dest` must lie inside the run's `out` folder (a relative `dest` is taken from there) or inside `--out-win`;
+  - names that become file names (screenshot, learned screen, timing label, sampler, kept quicksave) are one component with the run-id alphabet.
 - Files the game wrote (the overlay's upper layer) are listed on stop.
 - **The agent stops its instance whatever ends its command loop:** `stop`, EOF, a broken pipe, SIGTERM or SIGHUP. Xvfb dies with the agent (`PR_SET_PDEATHSIG`). Each teardown step runs even if an earlier one failed.
 - `agent.py cleanup` reaps runs whose agent is dead. It reads `agent.pid` and `xvfb.pid` in the run folder, kills the run's Wine processes and Xvfb, unmounts and deletes. Runs whose agent is alive, and `.keep` runs, are left alone.

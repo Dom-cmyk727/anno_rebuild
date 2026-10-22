@@ -426,7 +426,7 @@ def main() -> int:
         time.sleep(1.0)
         left = smoke.pids_under(game_dir)
         # Compare ALL game files against game/app by SHA-256 (not just three) and fail on a diff.
-        diffs = verify_copy_unchanged(game_dir)
+        diffs = smoke.verify_copy_unchanged(game_dir)
         log_action("close", left_running=left, copy_diffs=diffs)
         print({"left_running": left, "copy_unchanged": not diffs, "diffs": diffs})
         return 0 if (not left and not diffs) else 1
@@ -476,28 +476,6 @@ def main() -> int:
         return 0
     finally:
         restore_notopmost(hwnd)
-
-
-def verify_copy_unchanged(game_dir: str) -> list[str]:
-    """SHA-256 every executable/DLL of the copy against the matching file in the repo's game/app;
-    return the list of names that differ or are missing (empty = unchanged)."""
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo = os.path.abspath(os.path.join(here, "..", ".."))
-    ref = os.path.join(repo, "game", "app")
-    diffs: list[str] = []
-    for n in sorted(os.listdir(game_dir)):
-        if not n.lower().endswith((".exe", ".dll")):
-            continue
-        rp = os.path.join(ref, n)
-        cp = os.path.join(game_dir, n)
-        if not os.path.exists(rp):
-            continue  # wrapper files (dgVoodoo2 DDraw.dll etc.) have no game/app counterpart
-        try:
-            if smoke.sha256(cp) != smoke.sha256(rp):
-                diffs.append(n)
-        except OSError:
-            diffs.append(n + " (unreadable)")
-    return diffs
 
 
 if __name__ == "__main__":

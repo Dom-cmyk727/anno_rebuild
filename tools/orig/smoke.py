@@ -120,6 +120,28 @@ def sha256(path: str) -> str:
     return h.hexdigest()
 
 
+def verify_copy_unchanged(game_dir: str) -> list[str]:
+    """SHA-256 every .exe/.dll of the copy against the matching file in the repo's game/app; return
+    the names that differ or are unreadable (empty = the copy is byte-identical to game/app). Wrapper
+    files (e.g. dgVoodoo2's DDraw.dll/D3DImm.dll) have no game/app counterpart and are skipped, so a
+    difference only ever means a game file changed."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    ref = os.path.join(os.path.abspath(os.path.join(here, "..", "..")), "game", "app")
+    diffs: list[str] = []
+    for n in sorted(os.listdir(game_dir)):
+        if not n.lower().endswith((".exe", ".dll")):
+            continue
+        rp = os.path.join(ref, n)
+        if not os.path.exists(rp):
+            continue
+        try:
+            if sha256(os.path.join(game_dir, n)) != sha256(rp):
+                diffs.append(n)
+        except OSError:
+            diffs.append(n + " (unreadable)")
+    return diffs
+
+
 def image_path(pid: int) -> str:
     handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
     if not handle:

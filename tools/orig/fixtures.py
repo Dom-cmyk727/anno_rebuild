@@ -297,14 +297,17 @@ def main() -> int:
             subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True)
     time.sleep(1.0)
     log["left_running"] = [p for p in leftover if smoke.alive(p)]
-    log["copy_sha256_after"] = {n: smoke.sha256(os.path.join(game_dir, n))
-                                for n in ("1503Startup.exe", "AnnoWelt.dll", "AnnoFrame.dll")}
+    # Compare EVERY game .exe/.dll of the copy against game/app by SHA-256 (not just three) and
+    # fail loudly on any difference; wrapper files have no game/app counterpart and are skipped.
+    log["copy_diffs"] = smoke.verify_copy_unchanged(game_dir)
+    log["copy_unchanged"] = not log["copy_diffs"]
     log["finished"] = datetime.datetime.now().isoformat(timespec="seconds")
     with open(os.path.join(args.out, "log.json"), "w", encoding="utf-8") as f:
         json.dump(log, f, indent=2)
-    print(json.dumps({k: v for k, v in log.items()
-                      if k not in ("TL_F6",) or True}, indent=2, default=str))
-    return 0 if located is not None else 1
+    print(json.dumps(log, indent=2, default=str))
+    if log["copy_diffs"]:
+        print(f"ERROR: the copy differs from game/app: {log['copy_diffs']}", file=sys.stderr)
+    return 0 if (located is not None and not log["copy_diffs"]) else 1
 
 
 if __name__ == "__main__":

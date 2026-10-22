@@ -491,6 +491,19 @@ std::string Viewer::run() {
             frames_ = render::FrameRenderer(frames_.threads, false);
             frames_.river_flow = river_flow;
             frames_.max_lookahead_chunks = lookahead;
+            // GPU-built chunks (T11 stage 2a): off by default; the interim switch
+            // ANNO_VIEW_GPU_CHUNKS=on makes the workers produce draw lists that
+            // the compositor's compute pass turns into the objects and base
+            // planes (the owner check; C4 of docs/render/gpu-chunks.md).
+            if (const char* s = std::getenv("ANNO_VIEW_GPU_CHUNKS"); s != nullptr && *s != 0) {
+                const std::string v(s);
+                if (v == "on") {
+                    frames_.chunk_builder = render::ChunkBuilder::GpuList;
+                    std::fprintf(stderr, "GPU chunk build: on\n");
+                } else if (v != "off") {
+                    std::fprintf(stderr, "ANNO_VIEW_GPU_CHUNKS=%s not known (on, off)\n", s);
+                }
+            }
             const render::RiverQuality tier = gpu_->frame->river_quality();
             std::fprintf(stderr, "GPU renderer: %s (river shading: %s)\n", gpu_->ctx.name.c_str(),
                          tier == render::RiverQuality::High     ? "high"

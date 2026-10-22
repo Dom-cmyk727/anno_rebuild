@@ -138,6 +138,13 @@ enum : std::size_t { kMaxRecordPayload = 0xffff };
 [[nodiscard]] formats::Result<std::vector<std::uint8_t>, std::string>
 encode_record(const Body& body);
 
+/// Whether encode_record accepts `body`, decided without allocating: false for a
+/// LegacyRawCmd whose type is native and for a payload longer than kMaxRecordPayload
+/// (a Build of more than 4 095 placements, a Demolish of more than 8 190 tiles). The
+/// session drivers apply only such commands (replay.hpp), so a recorded and an
+/// unrecorded session agree.
+[[nodiscard]] bool has_wire_form(const Body& body);
+
 /// Decodes exactly one ClientRecord. Rejects: input shorter than a header, a length
 /// beyond the input, trailing bytes, a count larger than the payload can hold (checked
 /// before any allocation), a native type with the wrong payload length, a flag byte

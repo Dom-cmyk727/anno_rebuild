@@ -285,6 +285,14 @@ std::uint16_t wire_type(const Body& body) {
     return std::visit(Type{}, body);
 }
 
+bool has_wire_form(const Body& body) {
+    if (const auto* legacy = std::get_if<LegacyRawCmd>(&body);
+        legacy != nullptr && is_native_wire_type(legacy->type)) {
+        return false;
+    }
+    return payload_size(body) <= kMaxRecordPayload;
+}
+
 formats::Result<std::vector<std::uint8_t>, std::string> encode_record(const Body& body) {
     if (const auto* legacy = std::get_if<LegacyRawCmd>(&body);
         legacy != nullptr && is_native_wire_type(legacy->type)) {

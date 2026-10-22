@@ -123,7 +123,7 @@ Recorder::Recorder(World& world) : world_(world) {
 ApplyResult Recorder::submit(const Command& command) {
     // A command write_log could not write is refused before it is logged or applied:
     // otherwise the world would hold a change the written log does not (§8.7).
-    if (!encode_record(command.body).ok()) {
+    if (!has_wire_form(command.body)) {
         ApplyResult refused;
         refused.status = Reject::Unencodable;
         return refused;
@@ -155,13 +155,26 @@ void Recorder::checkpoint() {
 
 // ---- session drivers ---------------------------------------------------------------
 
+namespace {
+
+/// One command of a session: through the recorder when there is one, else applied
+/// directly, with the recorder's rule in both cases: a command without a wire form
+/// (has_wire_form) is neither logged nor applied. Without that rule a Build too long
+/// for one record would change an unrecorded session and not a recorded one (the S9
+/// gap closed in S10, docs/sim/state.md §15).
+void submit_or_apply(World& world, Recorder* rec, const Command& c) {
+    if (rec != nullptr) {
+        rec->submit(c);
+    } else if (has_wire_form(c.body)) {
+        world.apply(c);
+    }
+}
+
+} // namespace
+
 void run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_t steps) {
     for (const Command& c : turn.commands) {
-        if (rec != nullptr) {
-            rec->submit(c);
-        } else {
-            world.apply(c);
-        }
+        submit_or_apply(world, rec, c);
     }
     for (std::uint32_t i = 0; i < steps; ++i) {
         if (rec != nullptr) {
@@ -175,11 +188,7 @@ void run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_t steps
 void run_frame(World& world, Recorder* rec, std::span<const Command> commands,
                std::uint32_t step_ms) {
     for (const Command& c : commands) {
-        if (rec != nullptr) {
-            rec->submit(c);
-        } else {
-            world.apply(c);
-        }
+        submit_or_apply(world, rec, c);
     }
     if (rec != nullptr) {
         rec->advance(step_ms);

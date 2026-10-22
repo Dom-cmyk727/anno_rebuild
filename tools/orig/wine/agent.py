@@ -64,6 +64,7 @@ AUDIO_LIBS = ("winepulse", "winealsa", "wineoss", "libpulse", "libasound", "libp
               "libopenal")
 RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 XDO_TIMEOUT = 30               # seconds; a wedged X server must not hang the command loop
+WATCHDOG_JOIN = 5              # seconds stop() waits for the watchdog (it checks for stop every 0.5 s)
 SAVE_DIR = "SaveGame"          # the game's save folder in its copy (user.dat profile lives there too)
 
 # play-layer key names (tools/orig/screens.json "keys") -> X keysyms
@@ -228,7 +229,13 @@ class Instance:
         self.poller: dict | None = None
         self.sampler: dict | None = None
         self.log_f = None
+        # The command loop, the watchdog, the sampler and the poller all log: one lock guards the
+        # lazy open, every write and the close; after the close log() is a no-op, so a late line
+        # never recreates <run>/out after stop() removed the run folder.
+        self.log_lock = threading.Lock()
+        self.log_closed = False
         self.guard_stop = threading.Event()
+        self.watchdog: threading.Thread | None = None
         self.audio_killed: list | None = None
         self.crashed: dict | None = None
         self.scan_hits: list[int] | None = None
@@ -252,13 +259,28 @@ class Instance:
         return e
 
     def log(self, kind: str, /, **kw) -> None:
-        if self.log_f is None:
-            os.makedirs(self.out, exist_ok=True)
-            self.log_f = open(f"{self.out}/actions.jsonl", "a", buffering=1)
+        """One line in <run>/out/actions.jsonl. Thread-safe. Never creates a folder: before
+        prepare() made out/ and after log_close() the line is dropped."""
         rec = {"t": round(mono(), 4), "kind": kind}
         for k, v in kw.items():
             rec[f"arg_{k}" if k in rec else k] = v
-        self.log_f.write(json.dumps(rec, default=str) + "\n")
+        line = json.dumps(rec, default=str) + "\n"
+        with self.log_lock:
+            if self.log_closed:
+                return
+            if self.log_f is None:
+                if not os.path.isdir(self.out):
+                    return
+                self.log_f = open(f"{self.out}/actions.jsonl", "a", buffering=1)
+            self.log_f.write(line)
+
+    def log_close(self) -> None:
+        """Close the action log for good; later log() calls are no-ops."""
+        with self.log_lock:
+            self.log_closed = True
+            if self.log_f is not None:
+                f, self.log_f = self.log_f, None
+                f.close()
 
     # ---- disposable copy ---------------------------------------------------------------------
     def _overlay(self, lower: str, merged: str) -> None:
@@ -399,7 +421,8 @@ class Instance:
             cwd=self.game, env=self.env(), stdout=open(f"{self.out}/wine.log", "w"),
             stderr=subprocess.STDOUT, start_new_session=True)
         self.log("launch", display=self.display, xvfb=self.xvfb.pid, wine=self.wine.pid, audio=self.audio)
-        threading.Thread(target=self._watchdog, daemon=True).start()
+        self.watchdog = threading.Thread(target=self._watchdog, daemon=True)
+        self.watchdog.start()
         return {"display": self.display, "xvfb_pid": self.xvfb.pid, "audio": self.audio}
 
     def find_game(self, wait: float = 0.0) -> int | None:
@@ -465,6 +488,7 @@ class Instance:
                 return None
 
         self.guard_stop.set()
+        res["watchdog_stopped"] = step("watchdog_join", self._join_watchdog)
         res["sampler"] = step("sample_stop", self.sample_stop)
         res["poller"] = step("poll_stop", lambda: self.poll_stop() and "stopped")
         res["kill"] = step("kill", self._kill_all)
@@ -482,9 +506,7 @@ class Instance:
         res["audio_killed"] = self.audio_killed
         res["upper_files"] = step("upper_files", self.upper_files) or []
         self.log("stop", **{k: v for k, v in res.items() if k != "upper_files"})
-        if self.log_f:
-            step("log_close", self.log_f.close)
-            self.log_f = None
+        step("log_close", self.log_close)
         synced = step("sync", self.sync)
         res["synced_to"] = synced
         res["unmount_failed"] = step("unmount", self._unmount)
@@ -502,6 +524,17 @@ class Instance:
         self.stop_result = res
         return res
 
+    def _join_watchdog(self) -> bool | None:
+        """Wait for the watchdog after guard_stop is set (it wakes every 0.5 s). True when it
+        ended, None when it was never started; a watchdog still running after the timeout is an
+        error, and its late lines are dropped by the closed log."""
+        if self.watchdog is None:
+            return None
+        self.watchdog.join(timeout=WATCHDOG_JOIN)
+        if self.watchdog.is_alive():
+            raise RuntimeError(f"watchdog still running after {WATCHDOG_JOIN} s")
+        return True
+
     def upper_files(self, layer: str = "game") -> list[dict]:
         """Every file the game wrote into its copy or its prefix (the overlay upper layer)."""
         upper = (self.game if layer == "game" else self.prefix) + ".upper"
@@ -516,8 +549,9 @@ class Instance:
     def sync(self) -> str | None:
         if not self.out_win:
             return None
-        if self.log_f:
-            self.log_f.flush()
+        with self.log_lock:
+            if self.log_f is not None:
+                self.log_f.flush()
         os.makedirs(self.out_win, exist_ok=True)
         shutil.copytree(self.out, self.out_win, dirs_exist_ok=True)
         return self.out_win

@@ -15,7 +15,7 @@ Sources abbreviated below: GFA = `docs/research/game-files-analysis.md`, CL = `d
 | Welt | world | The game world; module believed to hold the simulation core (unconfirmed, inferred from exports/imports) | `AnnoWelt.dll` (exports AnnoWelt, GetAnnoInselFileData, RepairSavegame) (GFA §1) |
 | Insel | island | An island: terrain grid plus island-level data | Chunks `INSEL4`, `INSEL5`, `INSELLNK`; export `GetAnnoInselFileData`; `.scp` island templates (GFA §1, §3) |
 | Waren (sg. Ware) | goods, wares | Tradeable goods | `BGruppen.dat` (goods/prices per GFA), chunk `WARETYPE`, View.dll goods tooltips (GFA §1–3) |
-| WARETYPE | goods type | Goods type definitions/settings in a scenario (unconfirmed) | `.sze` chunk `SCENE/WARETYPE` (GFA §3) |
+| WARETYPE | goods type | The goods id table a scenario was saved with (56 ids) | `.sze` chunk `SCENE/WARETYPE` (`docs/formats/sze.md`) |
 | BGruppen | "B-groups" | Plain-text file with goods and prices (`Id` blocks per CL). What "B" abbreviates is unconfirmed. | `Data/BGruppen.dat` (GFA §2, CL §3) |
 | Farbtabelle (pl. Farbtabellen) | colour table | A 256-colour palette; the directory name in every `Anlagen.dat` `COLORS` entry name (`Farbtabellen\<file>.pcx`), i.e. the palettes were authored as PCX files | `Anlagen.dat` `COLORS/ENTRY` `NAME` (P, `docs/formats/palette.md`) |
 | Gelaende (Gelände) | terrain | Per-tile terrain classification of an island (unconfirmed) | Island chunk `GELAENDE` (GFA §3) |
@@ -43,11 +43,11 @@ Sources abbreviated below: GFA = `docs/research/game-files-analysis.md`, CL = `d
 | Rohstoff | raw material | Raw-material settings in a scenario (unconfirmed) | `.sze` chunk `SCENE/ROHSTOFF` (GFA §3) |
 | Schatz | treasure | Treasure placements/settings (unconfirmed) | `.sze` chunk `SCENE/SCHATZ` (GFA §3) |
 | Erze (sg. Erz) | ores | Ore deposit settings (unconfirmed) | `.sze` chunk `SCENE/ERZE` (GFA §3) |
-| Monopol | monopoly | Monopoly (exclusive goods) settings (unconfirmed) | `.sze` chunk `SCENE/MONOPOL2` (GFA §3) |
-| Auftrag | mission, order, task | Mission/assignment text of a scenario (unconfirmed) | `.sze` chunk `SCENE/AUFTRAGTEXT` (GFA §3) |
-| COMPPROFIL | computer profile | AI opponent profile (unconfirmed) | `.sze` chunk `SCENE/COMPPROFIL2` (GFA §3) |
+| Monopol | monopoly | Monopoly table: 28 (count, owner) pairs | `.sze` chunk `SCENE/MONOPOL2` (`docs/formats/sze.md`) |
+| Auftrag | mission, order, task | The mission page (`.htm` file name) of a scenario | `.sze` chunk `SCENE/AUFTRAGTEXT` (`docs/formats/sze.md`) |
+| COMPPROFIL | computer profile | AI opponent profiles: 19 parameters, name and `Profil<nn>.htm` per computer player | `.sze` chunk `SCENE/COMPPROFIL2` (`docs/research/game-files-resurvey.md` §3) |
 | CompLogic | computer logic | AI opponent module; Addon vs. Classic variant | `CompLogic.dll`, `CompLogicClassic.dll` (GFA §1) |
-| BIGBROTHER | (English) | Statistics recording | `.sze` chunk `SCENE/BIGBROTHER`; export `AnnoBigBrother` (GFA §1, §3) |
+| BIGBROTHER | (English) | The scenario script engine and its text script (conditions, actions, timers, signals) | `.sze` chunk `SCENE/BIGBROTHER`; export `AnnoBigBrother` (`docs/research/game-files-resurvey.md` §2) |
 | Async | (short for asynchron) | The original's term for a multiplayer desync | String "Async aufgetreten! …" in `AnnoFrame.dll` (GFA §1) |
 | Texte | texts | Plain-text string table, `[SECTION]` + `id:Text` | `Texte.dat` (GFA §2) |
 | Endlos | endless | Endless (sandbox) game mode, used in scenario folder names | `Scenes/0010SingleEndlos`, `0011SingleEndlosAddon`, `0500MultiEndlos` (GFA §2) |

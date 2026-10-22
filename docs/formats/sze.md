@@ -21,20 +21,20 @@ All integers little-endian.
 | `MAIN` | 23 + 27 | 8 or 16 | ? | P (size) |
 | `GUID` | 23 + 27 | 16 | ? | P (size) |
 | `ALIASNAME` | 23 + 27 | 6–128 | ? | P (size) |
-| `WARETYPE` | 23 + 27 | 543 | ? | P (size) |
-| `SKTIMER` | 23 + 27 | 40 | ? | P (size) |
-| `MONOPOL` / `MONOPOL2` | 23 / 27 | 224 | ? | P (size) |
-| `LIMITS` | 23 + 27 | 4 | ? | P (size) |
-| `AUFTRAGTEXT` | 13 + 25 | 19–27 | ? | P (size) |
-| `K_DATA` | 12 + 3 | 172 | ? | P (size) |
-| `COMPPROFIL2` | 23 + 27 | 136, 840 or 2248 | tagged records `DEF`, `ENTRY` | P (all 50 parse exactly) |
+| `WARETYPE` | 23 + 27 | 543 | 56 × (`u16` id, NUL-terminated name): the goods table in id order (0 `UNUSED`, 1 `EISENERZ`, … 53 `KANONESHIP`), identical in all 50 files | P ([`../research/game-files-resurvey.md`](../research/game-files-resurvey.md) §4) |
+| `SKTIMER` | 23 + 27 | 40 | 10 × `u32` script timers (`TIMER_0..4` state); all zero except one mission | P (resurvey §4) |
+| `MONOPOL` / `MONOPOL2` | 23 / 27 | 224 | 28 × (`u32` count, `i32` owner), all `(0, −1)` in the shipped files; the `MonopolyTable` of O-24 | P (resurvey §4) |
+| `LIMITS` | 23 + 27 | 4 | `u16` ship cap, `u16` soldier cap (40 / 100 endless, 20 / 100 missions, up to 50 / 400 add-on; ISS-061) | P (resurvey §4) |
+| `AUFTRAGTEXT` | 13 + 25 | 19–27 | NUL-terminated file name of the mission page (`.htm` in the scenario folder) | P (resurvey §4) |
+| `K_DATA` | 12 + 3 | 172 | ? (campaign files) | P (size) |
+| `COMPPROFIL2` | 23 + 27 | 136, 840 or 2248 | tagged records: 0, 4 or 12 `ENTRY` (168 B: `u32[19]` AI parameters, name, `Profil<nn>.htm`, `0xCC` fill) and one `DEF` (128 B); the parameter keys are `AnnoScene.dll`'s `COMPCAPS_*` | P (all 50 parse exactly; resurvey §3) |
 | `SPIELER` | 192 + 532 blocks | 104–88,425 | [players](#players-spieler) | P |
 | `INSEL5` | 326 + 342 in 44 files | | islands, [`insel.md`](insel.md) | P |
 | `INSELLNK` | 0 + 229 in 9 files | 45–50 | [island links](#island-links-insellnk) | P |
 | `ROHSTOFF` | 23 + 27 | 16 | ? | P (size) |
 | `SCHATZ` | 23 + 27 | 2 | ? | P (size) |
 | `ERZE` | 23 + 27 | 10 | ? | P (size) |
-| `BIGBROTHER` | 23 + 27 | 174–29,425 | text script with `[OBJECT_DEFINE]`, `[AREA_DEFINE]`, `[PLAYERMAPPER_DEFINE]` sections | P (inspection) |
+| `BIGBROTHER` | 23 + 27 | 174–29,425 | the **scenario script**: `[OBJECT_DEFINE]`, `[AREA_DEFINE]`, `[PLAYERMAPPER_DEFINE]`, `[SCRIPT_KERNEL]` (`INITBLOCK`, `SET`, `IF … THEN { … }`), `[SIGNALS]` (variable state), `[CAMARAPOS]`; interpreter `AnnoBigBrother` in `AnnoScene.dll` | P, S (resurvey §2) |
 
 Order (P, all 50): `HEAD, MAIN, GUID, ALIASNAME, WARETYPE, SKTIMER, MONOPOL|MONOPOL2, LIMITS, [K_DATA], [AUFTRAGTEXT], COMPPROFIL2, SPIELER × n (header series), INSELLNK × n, INSEL5 × n, ROHSTOFF, SCHATZ, ERZE, SPIELER × n (state series), BIGBROTHER`. Every file has `K_DATA` or `AUFTRAGTEXT`, three have both; at least one of `INSELLNK`/`INSEL5` occurs, and in the three files with both kinds the links come first.
 

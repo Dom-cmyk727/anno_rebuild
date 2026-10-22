@@ -1,6 +1,6 @@
 # ANNO 1503 – Analyse der Spieldateien (GOG 2.0.0.5)
 
-Stand 16.10.2026. Quelle: `setup_anno_1503_2.0.0.5.exe` (GOG-ID 1438074791, Inno Setup 5.5.0, nur Englisch), entpackt mit innoextract 1.8 nach `~/Dev/anno1503/game/app`. 6.040 Dateien, ca. 1,5 GB.
+Stand 16.10.2026. **Zweite Durchsicht 22.10.2026:** [`game-files-resurvey.md`](game-files-resurvey.md) (Szenario-Skriptsprache, KI-Profile, Regel-Chunks, Online-Hilfe). Quelle: `setup_anno_1503_2.0.0.5.exe` (GOG-ID 1438074791, Inno Setup 5.5.0, nur Englisch), entpackt mit innoextract 1.8 nach `~/Dev/anno1503/game/app`. 6.040 Dateien, ca. 1,5 GB.
 
 **Version-Gate:** Alle Spiel-DLLs und die EXE haben den PE-Zeitstempel **2006-07-21**, Ausnahmen sind `FileGame.dll` und `DrvMgt.dll` (Januar 2004). Es ist also der Königsedition-Stand, 32-bit x86 (Machine 0x14c), gebaut mit MSVC 6 (Linker 6.0). Die History Edition (64-bit) hat andere Binaries. Alle Aussagen hier gelten nur für diese Version.
 

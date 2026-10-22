@@ -136,6 +136,10 @@ Sources abbreviated: GFA = `docs/research/game-files-analysis.md`, CL = `docs/re
 - **Question:** When does the game load `CompLogic.dll` vs. `CompLogicClassic.dll`, and how do their behaviours differ?
 - **What we know:** Both export `CompCreateInstance`; described as add-on vs. classic variant (GFA §1). Removing them disables AI (Venedig mod, CL §2).
 - **How to resolve:** Find the `LoadLibrary` call sites in `AnnoFrame.dll`/`AnnoGame.dll`; diff the two DLLs' function sets.
+- **Update 2026-10-22 (T18, selection answered):**
+  - *Selection (D):* `AnnoWelt.dll` `0x1009c630` loads `CompLogic.dll` when world property 14 has bit 1 set (`0x1009c681`; set by an `ANNOADDON1` scenario root), otherwise `CompLogicClassic.dll`.
+  - *Shared interface (D):* both export the same `CompCreateInstance`. Their per-player parameter setters have the same 36 cases with the same fields and value limits (`CompLogic` `0x10004550`, `CompLogicClassic` `0x10002e50`).
+  - *Still open:* how their AI behaviour behind those fields differs (`docs/re/annoscene.md` §11.5, §11.8).
 
 ## OQ-019: Role of `Max_Sound.dll` and `DrvMgt.dll`
 - **Status:** open
@@ -1018,3 +1022,55 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 
   Stall prices in the FAQ match `BGruppen.dat` at tax index 2 (`community-faq.md` §2, §4).
 - **Update 2026-10-22 (manual and in-game help):** the price slider's arrow is green, yellow or red [M p. 43, H/Verkauf_Waren], so the UI computes an acceptance band per good; its function in `AnnoFrame.dll` is the shortest way to the trader's limits. The Venetians refuse a buy price that is too low, a sell price that is too high, goods they cannot deliver, and goods they do not want. An alliance needs a trade treaty and grows with trade volume. Five scouts in a computer player's territory is the tolerated maximum (`manual-and-help.md` §3).
+
+## OQ-112: `COMPPROFIL2` profile columns the hand-over does not use, and its doubled `SUSPEND` call (new, T18 2026-10-22)
+- **Status:** open
+- **Area:** formats (`.sze`), AI
+- **Question:**
+  1. What are `ENTRY` columns 0, 7, 14 and 15?
+  2. Is column 13 really meant as `SUSPEND`, or as one of the two `CHEATLIMIT` values?
+  3. Does any start path hand the static default profile to a computer player?
+- **Evidence:**
+  - *Hand-over (D):* the only code found that passes profile columns on is the game-start hand-over `AnnoFrame.dll` `0x10028d90`. It passes columns 1–6, 8–13, 16–18 as AI parameters (`docs/re/annoscene.md` §11.4). Column 0 (a byte, 1 in all records), 7 (0 in all) and 15 (3 or 60) are not passed, and no other reader was found.
+  - *The last call (D):* it sends parameter 26 (`SUSPEND`) a second time with column 13 as the value and column 14 as a second value (`0x10028fc5`–`0x10028fe0`). This overrides column 18. The two-value shape is that of parameter 17 `CHEATLIMIT` (setter `CompLogic.dll` `0x10004768`).
+  - *Shipped values (P):* columns 13, 14 and 18 are 0 in all twelve shipped profiles, so both readings behave the same.
+  - *Two readings of the unused columns (guess):*
+    - *Order:* every confirmed column follows the AI key reader's test order (`CompLogic.dll` `0x10040b79`–`0x10040d4e`). That would give 7 = `OPTIONAL`, 13 = `ZIELANZAHL`, 14–15 = `CHEATLIMIT`.
+    - *Value:* column 15 (3/60) matches the `OPTIONAL=3`/`=60` of the scenarios' `COMP` records.
+  - *Default profile (D):* the global slots start as default profiles with a valid GUID (`AnnoFrame.dll` `0x100172d0`). The setup reader `0x1001e5d0` clears them, but not every game-start path was traced.
+- **How to resolve:**
+  - *The original's own tools:* look for a profile editor screen that edits these columns (the 1503 editor is not shipped; `AnnoScene.dll`'s editor class has no caller).
+  - *Ghidra on Linux:* search `AnnoFrame.dll`/`AnnoGame.dll` for further readers of a 168-byte record.
+  - *Differential run (T16 runner):* patch a copy of an endless scenario with distinct values in columns 7, 13, 14, 15, start it, save, and read the computer players' `COMP` records (`CHEATLIMIT=`, `OPTIONAL=`, `ZIELANZAHL=`, `SUSPEND=`).
+- **Faithful default:** the reimplementation passes exactly what `0x10028d90` passes, including the second `SUSPEND` call from column 13.
+
+## OQ-113: What the AI parameters steer (new, T18 2026-10-22)
+- **Status:** open, RE
+- **Area:** AI (`CompLogic.dll`), sim
+- **Question:** What do the numbered AI parameters do inside the computer logic, beyond the field the setter writes?
+  - `TYP` (time intervals 37,500–57,500 per type);
+  - `FLAECHE`, `LAGER`, `HANDEL`, `PROZENTE` (factors 1 ± v/100), `OPTIONAL`, `TRANSPORT`, `HAUPTKLIMA` (stored as 4/16/20);
+  - `MAXSTADT`, `ZIELGRUPPE`, `MINBAUMAT`, `MINEISEN`, `CHEATLIMIT`, `TRIBUTSPERRE`;
+  - `FIXDIPLOMATIE` vs. `ADDDIPLOMATIE` (both call `0x10008690`);
+  - `SETHELPANLAGE` (type 11 only), `BAULOGICOFF` (`0x10003750`);
+  - the unnamed indices 15, 16, 19–21, 33–35.
+- **Evidence (D, `docs/re/annoscene.md` §11.5–11.6):**
+  - *Setter:* `CompLogic.dll` `0x10004550`, shared by all AI classes. Every index, its range check and its object field are known.
+  - *Traced further:* `KAMPFTYP` (combat-task switches and caps, `0x10003680`, `0x10043233`, `0x10004df0`), `PIRATEATTACKALL` (the pirates skip their target check, `0x1005593f`) and `SUSPEND`.
+  - *Hints:* the profile pages (`Profiles/Texte/Profil01..12.htm`) describe each archetype in words. They hint at meanings but are not evidence for a formula.
+- **How to resolve:**
+  - *Ghidra on Linux:* trace the readers of each field (`+0xa34` … `+0xafc`) with decompiled `CompLogic.dll`.
+  - *Differential runs:* run one profile with one parameter changed and compare AI behaviour (T16 runner).
+
+  This is the AI work of PLAN M5 and O-1 in `docs/sim/state.md`.
+
+## OQ-114: Scenario `COMP` records spell `SETTRIBUTSPERRE`, which the AI ignores (new, T18 2026-10-22)
+- **Status:** open, decision for the owner (faithful default stated)
+- **Area:** formats (`.sze`), AI
+- **Question:** Should the reimplementation honour the tribute-block values the scenario authors set, which the original drops?
+- **Evidence:**
+  - *Who writes what (D):* the editor writes parameter 25 as `SETTRIBUTSPERRE` (`AnnoScene.dll` `0x100052b0`). The AI's readers know only `TRIBUTSPERRE` (`CompLogic.dll` `0x10001583`, `0x10040c41`). Unknown keys are skipped (`strncmp` up to the last `=`). `CompLogicClassic.dll` has no `SETTRIBUTSPERRE` string (S).
+  - *Affected values (P):* 267 of the 276 shipped values are 0. `endless02` sets 18 for five native peoples, `S01_04_01` sets 1 for players 1–3, `S01_05_01` 1 for player 2. The original never applies them.
+  - *Other routes:* a profile's column 8 still reaches the parameter at game start (0 in all profiles), and the AI's own saves use `TRIBUTSPERRE`.
+- **How to resolve:** owner decision. A `rules` option (default off = faithful) could map `SETTRIBUTSPERRE` to parameter 25. What the parameter does is part of OQ-113.
+- **Faithful default:** ignore the key.

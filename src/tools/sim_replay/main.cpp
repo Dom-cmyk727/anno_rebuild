@@ -14,13 +14,18 @@
 // table, no building types): enough for the headless golden and the S9 tests. A log
 // made against another registry reports a digest mismatch here (the full scenario
 // path arrives with the game files, S14).
+#include <algorithm>
+#include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include <anno/sim/replay.hpp>
@@ -114,6 +119,21 @@ int cmd_hashes(const std::string& path) {
     return 0;
 }
 
+/// The whole of `text` as an unsigned number in `base`, or nullopt: an empty string, a
+/// sign, a leading space, trailing characters and a value beyond u64 are all refused
+/// (std::from_chars: no exceptions and no locale, unlike std::stoull, which throws on
+/// "abc" and wraps "-1").
+std::optional<std::uint64_t> parse_u64(const std::string& text, int base = 10) {
+    std::uint64_t v = 0;
+    const char* first = text.data();
+    const char* last = first + text.size();
+    const auto [end, ec] = std::from_chars(first, last, v, base);
+    if (text.empty() || ec != std::errc{} || end != last) {
+        return std::nullopt;
+    }
+    return v;
+}
+
 std::vector<std::uint64_t> read_hashes(const std::string& path, bool& ok) {
     std::vector<std::uint64_t> out;
     std::ifstream in(path);
@@ -123,10 +143,9 @@ std::vector<std::uint64_t> read_hashes(const std::string& path, bool& ok) {
         std::istringstream ls(line);
         std::string token;
         if (ls >> token) {
-            try {
-                out.push_back(std::stoull(token, nullptr, 16));
-            } catch (...) {
-                // A non-hex line (a header) is skipped.
+            // A line whose first token is not wholly hex (a header) is skipped.
+            if (const auto h = parse_u64(token, 16)) {
+                out.push_back(*h);
             }
         }
     }
@@ -264,9 +283,26 @@ int main(int argc, char** argv) {
         std::string dump_scope;
         for (std::size_t i = 2; i < args.size(); ++i) {
             if (args[i] == "--entry" && i + 1 < args.size()) {
-                entry = static_cast<std::size_t>(std::stoull(args[++i]));
+                // An entry beyond the log applies the whole log (tree_at), so any u64
+                // is meaningful; on a 32-bit size_t a larger value saturates.
+                const auto v = parse_u64(args[++i]);
+                if (!v) {
+                    std::cerr << "bad --entry value '" << args[i]
+                              << "': expected a non-negative decimal integer\n";
+                    usage();
+                    return 2;
+                }
+                entry = static_cast<std::size_t>(
+                    std::min<std::uint64_t>(*v, std::numeric_limits<std::size_t>::max()));
             } else if (args[i] == "--depth" && i + 1 < args.size()) {
-                depth = static_cast<std::uint32_t>(std::stoul(args[++i]));
+                const auto v = parse_u64(args[++i]);
+                if (!v || *v > std::numeric_limits<std::uint32_t>::max()) {
+                    std::cerr << "bad --depth value '" << args[i]
+                              << "': expected a decimal integer from 0 to 4294967295\n";
+                    usage();
+                    return 2;
+                }
+                depth = static_cast<std::uint32_t>(*v);
             } else if (args[i] == "--dump-scope" && i + 1 < args.size()) {
                 dump_scope = args[++i];
             } else {

@@ -1058,7 +1058,8 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   2. How does the slider value (0 … −250) map to DirectSound attenuation, and is −250 silence?
   3. Which `SPEECH` bit is which category?
   4. What does `HELPPLAYER` switch?
-- **How to resolve:** move one slider at a time and diff the file. For the scale, trace the reader of the `VOLUME` chunk.
+  5. Does the game choose the active profile from the registry value `HKCU\Software\Max-Design\Anno1503` `AKTPLAYER`? The first start wrote `"AKTPLAYER"="ANNOnymous"` to the prefix's `user.reg`, and the string sits next to the profile code's strings in `AnnoFrame.dll` and `1503Startup.exe` (`user-dat.md`); the reader is not traced.
+- **How to resolve:** move one slider at a time and diff the file. For the scale, trace the reader of the `VOLUME` chunk. For `AKTPLAYER`, trace the references to the string in `AnnoFrame.dll` (`tFrameStartupProfile`), or set it to a second profile's name in a run's prefix and see which profile the game opens.
 
 ## OQ-120: Precedence of `&&` and `||` in the scenario script (new, T17 2026-10-22)
 - **Status:** open, RE

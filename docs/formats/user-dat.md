@@ -4,7 +4,7 @@
 
 ## Files covered
 - Glob: `SaveGame/*/user.dat`
-- Count in GOG 2.0.0.5: 0 shipped (the install has no `SaveGame` folder). The game creates `SaveGame/ANNOnymous/user.dat` (216 bytes) at its first start; `ANNOnymous` is the default profile (registry `HKCU\Software\Max-Design\Anno1503` `AKTPLAYER`). The evidence below is that file, created by the first start in the Wine runner's base copy (2026-10-22).
+- Count in GOG 2.0.0.5: 0 shipped (the install has no `SaveGame` folder). The game creates `SaveGame/ANNOnymous/user.dat` (216 bytes) at its first start; `ANNOnymous` is the default profile name. After that first start the base prefix's `user.reg` (`/root/anno/prefix/user.reg` in the AnnoHarness distro, read 2026-10-22) holds `[Software\\Max-Design\\Anno1503]` `"AKTPLAYER"="ANNOnymous"`. The strings `AKTPLAYER`, `ANNOnymous` and `%s\SaveGame\%s` sit together in `AnnoFrame.dll` (file offset `0x95c64`, next to `tFrameStartupProfile` RTTI), and `1503Startup.exe` has `AKTPLAYER` near `Software\Max-Design\Anno1503` (`0xec30`, `0xebcd`). That the game reads the value to choose the active profile is likely but not traced (OQ-111). The evidence below is that file, created by the first start in the Wine runner's base copy (2026-10-22).
 - Related formats: [`chunk-container.md`](chunk-container.md) (generic chunks: 12-byte NUL-padded name, `u32` size, payload)
 
 ## Identification

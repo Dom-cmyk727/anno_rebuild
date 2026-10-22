@@ -313,10 +313,10 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   5. LOW: a free value of 0 is treated as "unknown" and switches the bound off; on Windows `AvailPageFile == 0` is exactly the bad_alloc condition: return an optional for a failed query and keep 0 as 0. Clamp `mb * 1024 * 1024` and `memory_wait_seconds() * 4` against wrap.
 - Then gates (test_support: MSVC and GCC -O3), report, and the orchestrator merges.
 
-### T8 — Sim stage S9: replay and session · `IN PROGRESS` (round i: the fix-up of §4 items 1, 2, 4, 6, 7 and the nits runs in an orchestrator subagent on the same branch; then re-review and merge, then PLAN S9 done) · was `REVIEW` (PR #19, reviewed 2026-10-22 h, §4: items 1, 2, 4, 6, 7 open, then merge) · was `READY` since T7b is merged (2026-10-22); **round e: run by one subagent of the main executor** (the second executor did not start it); originally assigned to the second executor in round c; it carries the T7b requirements (framing helper, `state.md` §15 S9) · `PARALLEL-OK` (only `src/sim`, `src/tools/sim_replay`, `docs/sim`) · branch `task/T8-sim-s9-replay` from `main` (worktree `C:\Users\altin\anno1503-T8`)
+### T8 — Sim stage S9: replay and session · **`DONE`** (merged as aa85d73 on 2026-10-23, PR #19, CI green; §4 round i) · was `IN PROGRESS` (round i: the fix-up of §4 items 1, 2, 4, 6, 7 and the nits runs in an orchestrator subagent on the same branch; then re-review and merge, then PLAN S9 done) · was `REVIEW` (PR #19, reviewed 2026-10-22 h, §4: items 1, 2, 4, 6, 7 open, then merge) · was `READY` since T7b is merged (2026-10-22); **round e: run by one subagent of the main executor** (the second executor did not start it); originally assigned to the second executor in round c; it carries the T7b requirements (framing helper, `state.md` §15 S9) · `PARALLEL-OK` (only `src/sim`, `src/tools/sim_replay`, `docs/sim`) · branch `task/T8-sim-s9-replay` from `main` (worktree `C:\Users\altin\anno1503-T8`)
 - Per `state.md` §15 S9 including `src/tools/sim_replay/`. Unlocked by the orchestrator.
 
-### T9 — Sim stages S10–S15 · S10 `READY after T8 (S9) is merged` (round i) · S11–S15 `LATER`
+### T9 — Sim stages S10–S15 · S10 **`READY`** (S9 merged 2026-10-23; it starts when T10b's heavy test runs are done, one heavy job at a time) · S11–S15 `LATER`
 - One stage per task, in the order of `docs/sim/state.md` §15; each unlocked after the previous is merged. Branch `task/T9-sim-s10-build` from `main` after the S9 merge (worktree `C:\Users\altin\anno1503-T9`); one orchestrator subagent; `src/sim`, `src/tools/sim_replay`, `fixtures/synthetic/sim`, `docs/sim` only.
 - **S10 (Build, Demolish, trade commands)**, as written in `state.md` §15 S10: `apply.cpp` (Build, Demolish, SetTradeFlag, SetTradeSlot; today they answer `Unsupported`), `placement.cpp` (the stand-in rule), create with charge, `legacy_codec.cpp`, the G2 log.
 - **Acceptance (written before work starts):**
@@ -334,7 +334,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 
 ## 4. Review log (orchestrator)
 
-- **T8 fix-up (2026-10-22 i, PR #19, head 6ac397f). Approved; merge when CI is green.** Items 1, 2, 4, 6, 7 and the comment/spec nits done (subagent, mutation evidence for every new test).
+- **T8 fix-up (2026-10-22 i, PR #19, head 6ac397f). Approved; merged as aa85d73 on 2026-10-23 with CI green on all jobs.** Items 1, 2, 4, 6, 7 and the comment/spec nits done (subagent, mutation evidence for every new test).
   - Re-read by the orchestrator (`replay.cpp`):
     - `Recorder::submit` refuses with `Reject::Unencodable` before logging or applying;
     - `write_log` returns a `Result` naming entry and command instead of dropping it;

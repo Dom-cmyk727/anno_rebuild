@@ -54,6 +54,28 @@ Every graphic and design asset of the original must come through the rebuild com
 
 [`docs/research/original-issues.md`](research/original-issues.md) lists the bugs, crashes, desync causes and design flaws of ANNO 1503 reported in patch notes and by the community (ISS-001…, each with sources and a rebuild implication: FIX, RULE, FAITHFUL or N/A). Every milestone that touches an affected system checks the list and records how each issue is handled; the multiplayer findings (desyncs from complexity and OS differences, fire spread) feed directly into M3/M4.
 
+## 0.6 Design goal: up to 8 players, a world that grows with the player count (owner decision 2026-10-22)
+
+By the end of the project a game holds **up to 8 players**, in multiplayer and against the computer. **With every player above 4 the world grows and gets new islands**, so that a game of 5, 6, 7 or 8 players is as fair as a game of 4: each player has about as much land, as many raw materials and as much room to expand as in the 4-player world.
+
+- **What the original has (evidence):**
+  - Multiplayer never shipped (ISS-030, ISS-031), although 2–8 players were planned (ISS-034). The GOG 2.0.0.5 build's multiplayer scenario folders `Scenes/0500MultiEndlos` and `Scenes/0700Multi` are empty.
+  - The data model holds 8 players: 31 player slots plus the neutral player 31 (`docs/re/players.md`, `docs/re/annoscene.md` §6; `SimConfig::player_slots` 32) and eight player colours (`docs/re/annodisplay.md` §8).
+  - The original has no world generator. An endless game is a scenario file with a fixed world size and fixed island links (position, size, climate). Only the island *template* behind each link, the raw materials, the ores and the treasures are chosen at game start, from the world PRNG (`docs/re/annoscene.md` §3, §5). The nine endless worlds of `Scenes/0010SingleEndlos` are 800 × 800 or 1024 × 1024 tiles with 16–28 links (19–46 % of the world area). They hold one human and 2–4 computer players, plus Venetians, pirates and the neutral player.
+  - One authored scenario has eight parties: `Single_24.sze`, one human and seven computer players on a 512 × 512 map.
+- **Rule:**
+  - Up to 4 players, a world is used as authored: faithful, no change.
+  - For each player above 4, the world's area and its islands grow by the scaling rule (OQ-100), which keeps per-player fairness measures at least at the 4-player level.
+  - Authored missions (campaign, `0200Single`) keep their own player setup and map; scaling applies to endless and multiplayer worlds.
+- **How:**
+  - A deterministic world-scaling step extends a world template (the endless worlds' link layouts) by more world area and more island links, with the same climate bands and size mix.
+  - The added links then go through the original's own island selection: templates by climate and size, the `ROHSTOFF` / `ERZE` distribution and `SCHATZ`. So every island is an original template; only the layout is new.
+  - It is integer-only, uses the sim's seeded generator and no wall clock, and is versioned. Its version, parameters and seed go into the lockstep handshake and the content hash (M4), so every peer builds the same world.
+  - Savegames store the islands themselves, as the original's do (`annoscene.md` §5), so a saved scaled world reloads without the generator.
+  - This is an improvement beyond the original (§0.2): it is a rule, its parameters are configuration with reasoned defaults, and the faithful path stays reproducible.
+- **Limits:** nothing hard-codes 4 or 8 (§0.1). The player count, the world edge (`WorldSettings`, bounded by `kWorldEdgeBound` = 16,384 tiles) and the island count are data. 8 is the project's target and the default maximum of the game setup, not an engine limit.
+- **Measured, not assumed (§0.3):** a fairness report per generated world, as a tool and in tests over many seeds. The sim tick and the frame on the largest 8-player world go into `docs/perf/README.md`.
+
 ## 1. Milestone M0 — Repository and tooling skeleton
 
 Goal: a workspace that builds on all targets with CI, before any game code.
@@ -234,7 +256,7 @@ Acceptance M3: a 1-hour headless run of an endless scenario produces identical h
 
 ## 5. Milestone M4 — Lockstep multiplayer (`crates/net`)
 
-Goal: 2–8 players, robust against the known failure modes of the original (undetected asyncs, OS/fps-dependent divergence, state-size blowup).
+Goal: 2–8 players (owner decision 2026-10-22: up to 8 by the end of the project, humans and computer players mixed, on a world that grows above 4 players, §0.6), robust against the known failure modes of the original (undetected asyncs, OS/fps-dependent divergence, state-size blowup).
 
 - [ ] Transport: UDP with reliability layer (e.g. `laminar`/`quinn`/custom) — decision ADR in `docs/adr/0001-transport.md`. LAN discovery + direct IP; lobby later.
 - [ ] Protocol: commands only, never state. Each command is scheduled for tick `now + delay`; all peers execute the same commands on the same tick. Per-tick state hash exchange; mismatch = detected desync with the exact tick.
@@ -243,11 +265,34 @@ Goal: 2–8 players, robust against the known failure modes of the original (und
 - [ ] Tick pacing independent of frame rate: fixed sim tick (e.g. 10–20 Hz, to be decided from M2 findings) decoupled from render loop.
 - [ ] Test harness: run N headless peers in-process with simulated latency/loss (`netsim` tests), assert hash equality over 10k ticks.
 
-Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay in sync for 10k ticks; an injected divergence is detected within one tick and recovered.
+Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay in sync for 10k ticks; an injected divergence is detected within one tick and recovered. **And 8 peers on a scaled 8-player world (M4.1) stay in sync for 10k ticks under the same conditions;** every peer builds the identical world from the handshake (same world hash before the first tick).
+
+### M4.1 Up to 8 players: the world grows with the player count (§0.6)
+- [ ] **Owner decisions first (OQ-100):**
+  - what counts as a player (every competing party, human or computer);
+  - the growth rule: world area and island links per player above 4;
+  - the layout: extend the template, or build a new one;
+  - how raw materials, ores, treasures, natives, pirates and Venetians scale.
+- [ ] **Spec** `docs/sim/world-scaling.md`, written before code:
+  - The fairness measures, defined and measured on the nine original endless worlds at their own player counts. Per player: buildable land by climate and island size class; raw-material and ore kinds within reach; distance from the start to the nearest free islands and to the nearest rival.
+  - The growth rule as configuration, with the defaults from OQ-100.
+  - The generator: input (template world, player count, seed, parameters, version); output (world size, the links: position, size, climate, start regions); integer-only; uses the sim's seeded generator.
+  - How the added links enter the original's island selection (`annoscene.md` §5).
+  - Evidence column for every original value used.
+- [ ] **Generator in `src/sim`**:
+  - Deterministic and versioned; ordered containers only; no hard-coded player or island counts.
+  - Islands are original templates chosen as the original chooses them.
+  - Start positions placed so that the measures hold.
+- [ ] **Fairness tool and tests** (`world_fairness`):
+  - The report for a generated world.
+  - Property tests over many seeds and every player count from 1 to 8: up to 4 players the world equals the template; above 4 every player's measures stay within the stated tolerance of the 4-player baseline; no island overlaps or leaves the world; the same inputs always give the same world hash on Windows and Linux.
+- [ ] **Lockstep and saves:** the generator's version, parameters and seed in the handshake and the content hash (M4); the world hash checked before the first tick; savegames store the generated islands.
+- [ ] **Performance:** the sim tick and the view frame on the largest 8-player world (the 1024-tile template scaled to 8 players: about 1448 × 1448 tiles if the area grows in proportion), with 8 players' cities, in `docs/perf/README.md` against the §0.3 targets.
+- [ ] **Game setup (M5 UI):** choose 1–8 players, each a human seat or a computer player, and a world template; the world is scaled when the game starts. Faithful mode keeps the original endless worlds for up to 4 players.
 
 ## 6. Milestone M5 — Playable game and QoL
 
-- [ ] UI: menus, build menu, HUD, info panels (reuse original UI textures from `ToolGfx`); input → commands.
+- [ ] UI: menus, build menu, HUD, info panels (reuse original UI textures from `ToolGfx`); input → commands. The game setup offers 1–8 players (human seats and computer players) and scales the world above 4 players (§0.6, M4.1).
 - [ ] Audio: WAV samples, ADPCM music (`Music/*`), Bink videos via `ffmpeg` or skip at first (videos are optional).
 - [ ] AI opponents: port `CompLogic` behaviour or write a new AI behind the same command interface (decision in M2 after inspecting CompLogic.dll).
 - [~] Enhanced water rendering (breakers rolling onto beaches, open-water swell) — implemented 2026-10-16 as an opt-in render option (`E` / `--water enhanced`), faithful water stays the default (`docs/render/iso.md`).
@@ -256,7 +301,7 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 
 ## 7. Immediate next actions (do these first)
 
-**Orchestration (2026-10-22, current):** since 2026-10-21 continuous zoom with derived far levels is the viewer default (T3 stage 3 and its follow-up merged), the CPU draw lists and the atlas residency model of T11 stage 1 are merged, the original game runs on the owner's Windows PC through dgVoodoo2 with a scripted harness that reads the world clock (T15 stage 0, `docs/testing/original-harness.md`), and sim stage S8 (commands) is merged. Next round: T15 stage 1 (the M2 fixtures against the running original) and T11 stage 2a (the objects pass on the GPU) by the main executor; T13 (GPU tests in CI, the flaky macOS tier test) by a second executor on the same PC. The task board ([`docs/orchestration/TASKS.md`](orchestration/TASKS.md)) is the newer source; the paragraphs below are the older hand-over.
+**Orchestration (2026-10-22, current):** since 2026-10-21 continuous zoom with derived far levels is the viewer default (T3 stage 3 and its follow-up merged), the CPU draw lists and the atlas residency model of T11 stage 1 are merged, the original game runs on the owner's Windows PC through dgVoodoo2 with a scripted harness that reads the world clock (T15 stage 0, `docs/testing/original-harness.md`), and sim stage S8 (commands) is merged. Next round: T15 stage 1 (the M2 fixtures against the running original) and T11 stage 2a (the objects pass on the GPU) by the main executor; T13 (GPU tests in CI, the flaky macOS tier test) by a second executor on the same PC. New owner goal of 2026-10-22: up to 8 players, with a world that grows above 4 players (§0.6, M4.1; the rule's defaults are OQ-100); it belongs to M4/M5 and is not scheduled yet. The task board ([`docs/orchestration/TASKS.md`](orchestration/TASKS.md)) is the newer source; the paragraphs below are the older hand-over.
 
 **Orchestration (2026-10-20):** stand-in chunks after a zoom step (smooth zoom step 1, OQ-077) are merged on 2026-10-20; pan while zooming (predictive margin, neighbour-group prefetch, dissolve on a placeholder swap; T1d/T1e) merged 2026-10-21 (`0467a51`), owner-checked; chunk build profile and exact field/terrain shortcuts (T1f items 1-2, chunk 50 to 29 ms at group 0) merged 2026-10-21 (`ae8b936`); continuous zoom stages 1-2 (T3: one resample pass, eased wheel, opt-in `--zoom-mode continuous`) merged 2026-10-21 (`15a4aaa`), owner-checked; next: GPU-built chunks (T11, design in `docs/render/gpu-chunks.md`), T3 stage 3 (bounded grid for the zoom-out range), GPU tests in CI (T13); the four zoom artifacts the owner sees (T1d), the animated step (T2), continuous zoom (T3) and prebuild (T4) follow on the board. the executable task queue is [`docs/orchestration/TASKS.md`](orchestration/TASKS.md) (written by the orchestrator session, read by the executor session; results in [`docs/orchestration/REPORTS.md`](orchestration/REPORTS.md)). This section keeps the narrative hand-over; when the two disagree, the task board is newer.
 
@@ -287,3 +332,4 @@ Older list (M0–M2 era):
 | No x86 Windows to run the original | Differential fixtures are specs first, executed later; static RE does not need it |
 | Scope creep into engine features | Milestones gate on acceptance criteria; QoL only in M5 behind flags |
 | Legal | No assets or binaries in repo; clean-room notes cite evidence; GOG install required |
+| Scaled 5–8 player worlds unfair, or different on different peers | Fairness measures defined on the original endless worlds and checked per generated world over many seeds (M4.1); the generator is integer-only, seeded and versioned, its inputs in the lockstep handshake, the world hash compared before the first tick |

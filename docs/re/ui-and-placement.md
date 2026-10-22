@@ -100,3 +100,28 @@ range datum; this note records which on-screen overlay each one is.
 - **Precise tile ranges** per building (the action radius, the field layout) are read from `Anlagen.dat`
   (type `+0x65`, `OBJECTPOS`) rather than measured from the overlays; this note links the overlay to the
   field so a data dump gives the exact numbers.
+
+## 7. Growth build-up: findings and the open blocker (2026-10-22)
+
+Driving a colony build-up (control.py: zoom, place, road-drag, 400% speed) produced these findings:
+
+- **Buildings and costs** (from the info panels): **Pioneer house** 3 wood; **Main market building**
+  3 tools / 7 wood / 250 gold / 10 upkeep; **Dirt road** 5 gold; **forester ("Forest")** ~5 gold.
+  Public buildings icon 3 is the **Main market building** (the Marktplatz), not a warehouse.
+- **Houses need a Main market building, not just the Kontor, to grow.** Placing pioneer houses in the
+  **Kontor's** yellow range populated them (28 pioneers) but they then **declined** (city `+0x2f0`
+  31 -> 21, `+0x18a` 4 -> 3, a house removed) — because there was **no Main market building** in range,
+  so the houses never reached INFRA (PO-P2's precondition) and starved out. The real "warehouse/market
+  connection" is: Kontor (warehouse, stores goods) -> **Main market building** (distributes to houses
+  in its radius, = INFRA) -> houses. A pioneer house in a market's range grows to 8 even with no
+  deliveries (PO-P2); food (NAHRUNG) only affects satisfaction/mood.
+- **Open blocker for the growth/weaver fixtures.** The Citizen starting island is **densely forested**;
+  buildings need clear flat ground, and precise placement by screen coordinates at this zoom is
+  unreliable (the isometric projection offsets the click from the intended tile), so a **Main market
+  building** could not be placed on the small clear patches near the Kontor over several tries. Running
+  the house-growth (PO-P2/P3), tax (PO-T) and workshop (PR-F2 weaver) fixtures end to end therefore
+  needs one of: a scenario/location with **open grassland**, **clearing trees first** (the forester
+  chops a radius), or a **placement helper** that snaps to a valid tile (read the ghost's validity, or
+  compute tile->screen from the camera). The measurement side is ready (city `+0x2f0` aggregate;
+  per-house `+0x2c` needs the house vtable, OQ-T15-HOUSEVT).
+

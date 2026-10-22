@@ -163,6 +163,22 @@ def wheel(notches: int) -> None:
     _send(i)
 
 
+def drag(hwnd: int, nx0: float, ny0: float, nx1: float, ny1: float) -> None:
+    """Press at (nx0,ny0), move to (nx1,ny1), release — for laying a road/path."""
+    move_to(hwnd, nx0, ny0)
+    time.sleep(0.1)
+    d = INPUT(type=INPUT_MOUSE)
+    d.u.mi = MOUSEINPUT(dx=0, dy=0, mouseData=0, dwFlags=MOUSEEVENTF_LEFTDOWN, time=0, dwExtraInfo=0)
+    _send(d)
+    time.sleep(0.1)
+    move_to(hwnd, nx1, ny1)
+    time.sleep(0.1)
+    u = INPUT(type=INPUT_MOUSE)
+    u.u.mi = MOUSEINPUT(dx=0, dy=0, mouseData=0, dwFlags=MOUSEEVENTF_LEFTUP, time=0, dwExtraInfo=0)
+    _send(u)
+    time.sleep(0.1)
+
+
 def foreground(game_dir: str, settle: float = 0.2) -> int | None:
     w = smoke.find_game_window(game_dir)
     if not w:
@@ -189,6 +205,9 @@ def run_actions(hwnd: int, game_dir: str, actions: list[str], gap: float) -> Non
             move_to(hwnd, 0.42, 0.42)
             time.sleep(0.05)
             wheel(int(rest))
+        elif kind == "drag":
+            nx0, ny0, nx1, ny1 = (float(v) for v in rest.split(","))
+            drag(hwnd, nx0, ny0, nx1, ny1)
         elif kind in ("click", "right", "dbl", "move"):
             nx, ny = (float(v) for v in rest.split(","))
             if kind == "move":
@@ -228,6 +247,10 @@ def main() -> int:
     p_wheel = sub.add_parser("wheel")
     p_wheel.add_argument("notches", type=int, help="negative = zoom out")
     p_wheel.add_argument("--shot", default=None)
+    p_drag = sub.add_parser("drag")
+    for n in ("nx0", "ny0", "nx1", "ny1"):
+        p_drag.add_argument(n, type=float)
+    p_drag.add_argument("--shot", default=None)
     args = ap.parse_args()
 
     try:
@@ -321,6 +344,9 @@ def main() -> int:
     elif args.cmd == "seq":
         run_actions(hwnd, game_dir, args.actions, args.gap)
         print({"ran": len(args.actions)})
+    elif args.cmd == "drag":
+        drag(hwnd, args.nx0, args.ny0, args.nx1, args.ny1)
+        print({"drag": [args.nx0, args.ny0, args.nx1, args.ny1]})
 
     if getattr(args, "shot", None):
         time.sleep(0.3)

@@ -64,6 +64,7 @@ By the end of the project a game holds **up to 8 players**, in multiplayer and a
   - The original has no world generator. An endless game is a scenario file with a fixed world size and fixed island links (position, size, climate). Only the island *template* behind each link, the raw materials, the ores and the treasures are chosen at game start, from the world PRNG (`docs/re/annoscene.md` §3, §5). The nine endless worlds of `Scenes/0010SingleEndlos` are 800 × 800 or 1024 × 1024 tiles with 16–28 links (19–46 % of the world area). They hold one human and 2–4 computer players, plus Venetians, pirates and the neutral player.
   - One authored scenario has eight parties: `Single_24.sze`, one human and seven computer players on a 512 × 512 map.
 - **Rule:**
+  - A player is every competing party, human or computer; Venetians, pirates, natives and the neutral player do not count (owner decision 2026-10-22, OQ-100 item 1).
   - Up to 4 players, a world is used as authored: faithful, no change.
   - For each player above 4, the world's area and its islands grow by the scaling rule (OQ-100), which keeps per-player fairness measures at least at the 4-player level.
   - Authored missions (campaign, `0200Single`) keep their own player setup and map; scaling applies to endless and multiplayer worlds.
@@ -269,7 +270,7 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 
 ### M4.1 Up to 8 players: the world grows with the player count (§0.6)
 - [ ] **Owner decisions first (OQ-100):**
-  - what counts as a player (every competing party, human or computer);
+  - ~~what counts as a player~~ decided 2026-10-22: every competing party, human or computer;
   - the growth rule: world area and island links per player above 4;
   - the layout: extend the template, or build a new one;
   - how raw materials, ores, treasures, natives, pirates and Venetians scale.

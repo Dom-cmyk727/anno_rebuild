@@ -2,7 +2,12 @@
 
 **Who writes this file:** the orchestrator session (Claude Fable, the owner's "main" session). **Who reads it:** the executor session (Claude Sonnet with subagents). The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-Last update: 2026-10-22 e (round e).
+Last update: 2026-10-22 f.
+- **PR #17 (T11 stage 2a) merged** as 9f54fec. CI was 20/20; one linux-clang-asan job hung in the runner's apt-get and was rerun. Next: the owner's viewer check.
+- **Isolated-runner spike passed (orchestrator, owner's green light):** the original runs under Wine on an invisible X display in a WSL distro on E:. State reads equal the Windows ones; timing under Wine is noisy. Details: `docs/testing/original-wine.md`.
+- **New task T16:** the harness on top of the spike.
+
+Previous: 2026-10-22 e (round e).
 - **T13 merged** as 558dd27 (PR #15, CI green, macOS included); the river-tier flake is fixed on `main`.
 - **T11 stage 2a reviewed and approved:** merged once PR #17's last CI jobs are green; then OWNER-CHECK. The per-chunk dispatch timestamps are due before the default flips to `gpu`.
 - **T15:** B1-B4 done (PR #16). Next is the play layer (stage 1b), stages A-D.
@@ -192,6 +197,23 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 - **Stage 3, the renderer against the original (M1.6):** for the ten `0200Single` scenarios and the canyon island, zoom groups 0-2, several camera positions each (coast, river, town, mountains, ships): the original's screenshot (paused, game time noted) against our `--png` in faithful water at the same camera and zoom; per view the share of pixels equal, within 1, within 8, and a difference heat map (in `cache/`); animation phases aligned or masked. The findings settle OQ-026 (projection, draw order), OQ-024 (`GFXID`), OQ-023 (figure frames), player colours and the M1.6 open list (people and soldiers, animations, terrain lighting): each difference is fixed (bug) or becomes an OQ (look). Enhanced water is not compared (not original). The owner gets a side-by-side page of the worst views (local, not published).
 - **Stage 4, the remaining M1 format points:** the `Texte.dat` join and `anno-dump anlagen` with names (static: may be the first commit, while stage 0 waits for its review); the `Anlagen.dat` gameplay records (OQ-015: `HEAD`, `PRODTYPE`, `PROD3`, `WARE`, `ROHSTOFF`, the masks, `INFRAMIN`, `OBJECTPOS`, `BAUSAMPLE`, `ENTRANCE`) from the RE plus experiments in the copy (a value changed in a copied data or scenario file, the effect observed; never in `game/`); the other `SCENE` records (`HEAD`, `MAIN`, ...), the other island records (OQ-024), the `.scp` trailer (OQ-001), versioned chunk names in the loader (M1.5), plain-text field meanings (OQ-029), figure record semantics (OQ-023), `FileGame.dll` symbols (OQ-011), the interface vtables (`docs/re/interfaces.md`). The Amsel cross-check needs the owner (a contact): list it as a question. Update PLAN M1/M2 (several boxes are stale: the Ghidra project and the static analysis are done) and the checklist.
 - **Acceptance:** every open M1/M2 point is closed with evidence or is a precise OQ that says what remains; the harness is reusable for M3's differential tests; nothing of the original in git; the owner agreed to every desktop session and every third-party tool.
+
+### T16 — The isolated runner: the original under Wine + Xvfb in WSL (owner decision 2026-10-22: "I want a similar set up to run the game") · `READY` · after the T15 play layer's stage B (it reuses its tools) · branch `task/T16-wine-runner` from `main`
+- **Spike passed 2026-10-22** (`docs/testing/original-wine.md`). The distro `AnnoHarness` is on `E:\wsl\AnnoHarness`, set up by `tools/orig/wine/setup.sh`; spike scripts in `tools/orig/wine/`.
+  - Wine 9.0 with Mesa llvmpipe runs intros, menus and a Citizen game on Xvfb 1024×768.
+  - Module bases come from `/proc/maps`.
+  - The PRNG table matches (0/2048 differ), the tick invariant holds, and the starting city reads 50 t / tools 50 / wood 50, all equal to Windows.
+  - The clock runs at +0.9 % over 60 s; speed-key rates are noisy.
+- **Do** (spec §4 of that doc):
+  1. one backend interface for control/probe/fixtures/play, with a Windows `ctypes` backend and a Wine backend (Xvfb, xdotool/XTEST, scrot, `/proc/<pid>/mem`, maps);
+  2. a disposable copy and prefix per run;
+  3. several instances, one display each, and a two-instance multiplayer try (OQ-T15-MP);
+  4. screen recognition by pixel signatures and a `new-game` macro;
+  5. the timing check: `CLOCK_MONOTONIC`, at least 60 s per speed, frame times, F1/F2 compared with Windows. Until it passes, timing fixtures stay on Windows;
+  6. a long-running JSONL sampler;
+  7. later, a Dockerfile.
+- **Acceptance:** an unattended 30-minute run in the Wine runner (new game, a scripted opening from the playbook, the sampler) with the owner's desktop untouched. The state fixtures F6 and warehouse agree with Windows; the timing verdict is written down.
+- **Rules:** the game copy only inside the distro; read-only memory unless the owner decides OQ-T15-WRITE; nothing of the original in git.
 
 ### T14 — The compositor on weak GPUs (the Radeon iGPU) · `READY after T3 stage 3` (owner decision 2026-10-21 n: "Agree with your recommendation"; it edits `gpu.cpp` / `gpu.wgsl`, so it runs after T3 stage 3 and one at a time with T11 stage 2a, T11 first) · branch `task/T14-weak-gpu` from `main` after T3 stage 3
 - **Why:** T3's measurements (`docs/perf/README.md`, "T3 stage 3 fix 1") show the GPU frame with enhanced water at 3.6 ms (1280x800) and 13.4 ms (2560x1440) on the Radeon iGPU at scale 1, and 72-195 ms when zoomed out, against 0.1-4.7 ms on the RTX 4090. The game must run on integrated graphics (PLAN 0.3: modern hardware, not only the top end).

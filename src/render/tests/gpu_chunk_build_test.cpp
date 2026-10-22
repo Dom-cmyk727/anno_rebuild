@@ -140,9 +140,9 @@ TEST_CASE("GPU-built chunk objects and base planes equal the CPU replay (game fi
                 records += d.object_count();
             }
         }
-        MESSAGE(std::string(sf.name) << ": " << chunks << " chunks, " << records << " records, "
-                                     << loaded->frame_table.size() << " frames, " << mismatches
-                                     << " mismatched pixels");
+        MESSAGE(std::string(sf.name)
+                << ": " << chunks << " chunks, " << records << " records, "
+                << loaded->frame_table.size() << " frames, " << mismatches << " mismatched pixels");
         CHECK(mismatches == 0);
     }
 }
@@ -159,12 +159,12 @@ TEST_CASE("the composed frame is identical with the Cpu and GpuList builders (ga
     }
     MESSAGE("adapter: " << ctx->name);
     gpu::GpuLimits limits;
-    limits.uploads_per_frame = SIZE_MAX;                           // the whole view in one frame
-    limits.atlas_upload_bytes_per_frame = std::uint64_t{1} << 40;  // never defer the atlas uploads
+    limits.uploads_per_frame = SIZE_MAX;                          // the whole view in one frame
+    limits.atlas_upload_bytes_per_frame = std::uint64_t{1} << 40; // never defer the atlas uploads
     constexpr int kW = 1280, kH = 800;
     const render::test::Game game(*dir);
-    for (const char* path : {"Scenes/0200Single/Single_24.sze",
-                             "Scenes/Islands/Dschungel/D_256x256_0045_5B.scp"}) {
+    for (const char* path :
+         {"Scenes/0200Single/Single_24.sze", "Scenes/Islands/Dschungel/D_256x256_0045_5B.scp"}) {
         const auto loaded = game.scene(*dir / path);
         auto g_cpu = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
         auto g_gpu = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
@@ -198,7 +198,8 @@ TEST_CASE("the composed frame is identical with the Cpu and GpuList builders (ga
                 maxd = std::max(maxd, d);
                 differ += d != 0 ? 1 : 0;
             }
-            INFO(path << " group " << group << ": max " << maxd << ", " << differ << " bytes differ");
+            INFO(path << " group " << group << ": max " << maxd << ", " << differ
+                      << " bytes differ");
             CHECK(maxd == 0);
         }
         MESSAGE(std::string(path) << ": " << built << " chunks built by the GPU compute pass");
@@ -254,8 +255,9 @@ Frame header(std::int16_t ax, std::int16_t ay, std::uint16_t w, std::uint16_t h)
 /// Interns a hand-made frame and returns its id (keyed by a unique integer).
 render::FrameId add(render::FrameTable& ft, std::uint32_t id, Rgba img, Frame hdr) {
     auto image = std::make_shared<Rgba>(std::move(img));
-    return *ft.intern(render::FrameKey::unit({true, id, 0, render::UnitFrameId::kNoColour}, 0, false),
-                      [&] { return std::pair{hdr, image}; });
+    return *ft.intern(
+        render::FrameKey::unit({true, id, 0, render::UnitFrameId::kNoColour}, 0, false),
+        [&] { return std::pair{hdr, image}; });
 }
 
 /// Builds the planes on the GPU and checks they equal replay() and the binned

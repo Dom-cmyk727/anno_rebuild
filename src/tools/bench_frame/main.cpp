@@ -1210,7 +1210,7 @@ int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
             const auto rv = gpu::resampled_view(cx, cy, static_cast<std::uint32_t>(w),
                                                 static_cast<std::uint32_t>(h), pt.scale, filter);
             render::FrameRenderer fr(o.threads, false);
-        fr.chunk_builder = o.chunk_builder;
+            fr.chunk_builder = o.chunk_builder;
             fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (o.threads + 1) / 2));
             const auto target =
                 g.offscreen_target(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));

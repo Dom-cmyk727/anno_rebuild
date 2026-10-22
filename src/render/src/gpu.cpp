@@ -996,8 +996,8 @@ struct GpuFrame::Impl {
             plane.w = w;
             plane.h = h;
             plane.texture = make_texture(dev(), "gpu-list", fmt, w, h, 1,
-                                         WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst |
-                                             WGPUTextureUsage_CopySrc);
+                                         WGPUTextureUsage_TextureBinding |
+                                             WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
             plane.view = make_view(plane.texture.get(), false);
         }
         return plane;
@@ -1358,8 +1358,8 @@ struct GpuFrame::Impl {
             while (cnew < want) {
                 cnew *= 2;
             }
-            buf = make_buffer(dev(), label, cnew,
-                              WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst);
+            buf =
+                make_buffer(dev(), label, cnew, WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst);
             cap = cnew;
         }
         if (!cpu.empty()) {
@@ -1442,8 +1442,8 @@ struct GpuFrame::Impl {
         wgpuQueueWriteBuffer(queue(), s.uniform.get(), 0, u.b.data(), u.b.size());
         auto storage = [&](const char* label, const void* data, std::size_t bytes) {
             const std::uint64_t sz = std::max<std::uint64_t>(bytes, 16);
-            Buffer b = make_buffer(dev(), label, sz,
-                                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst);
+            Buffer b =
+                make_buffer(dev(), label, sz, WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst);
             if (bytes != 0) {
                 wgpuQueueWriteBuffer(queue(), b.get(), 0, data, bytes);
             }
@@ -1465,17 +1465,16 @@ struct GpuFrame::Impl {
             const std::uint64_t n = wgpuBufferGetSize(b.get());
             return n != 0 ? n : fallback;
         };
-        const std::array entries = {
-            buffer_entry(10, s.uniform.get(), u.b.size()),
-            buffer_entry(11, s.records.get(), size_of(s.records, 16)),
-            buffer_entry(12, s.bin_off.get(), size_of(s.bin_off, 16)),
-            buffer_entry(13, s.bin_idx.get(), size_of(s.bin_idx, 16)),
-            buffer_entry(14, s.clips.get(), size_of(s.clips, 16)),
-            buffer_entry(15, cb.frame_buf.get(), cb.frame_cap),
-            buffer_entry(16, cb.keel_buf.get(), cb.keel_cap),
-            buffer_entry(17, s.objects_out.get(), obytes),
-            buffer_entry(18, s.base_out.get(), bbytes),
-            view_entry(19, cb.atlas_view.get())};
+        const std::array entries = {buffer_entry(10, s.uniform.get(), u.b.size()),
+                                    buffer_entry(11, s.records.get(), size_of(s.records, 16)),
+                                    buffer_entry(12, s.bin_off.get(), size_of(s.bin_off, 16)),
+                                    buffer_entry(13, s.bin_idx.get(), size_of(s.bin_idx, 16)),
+                                    buffer_entry(14, s.clips.get(), size_of(s.clips, 16)),
+                                    buffer_entry(15, cb.frame_buf.get(), cb.frame_cap),
+                                    buffer_entry(16, cb.keel_buf.get(), cb.keel_cap),
+                                    buffer_entry(17, s.objects_out.get(), obytes),
+                                    buffer_entry(18, s.base_out.get(), bbytes),
+                                    view_entry(19, cb.atlas_view.get())};
         WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
         desc.label = sv("chunk-build");
         desc.layout = cb.layout.get();
@@ -3280,12 +3279,12 @@ std::optional<ChunkPlanes> GpuFrame::build_chunk_planes(const ChunkDraws& draws,
         out.bases = draws.bases;
         return out;
     }
-    if (m.cb_resident(draws.frame_set, frames,
-                      std::numeric_limits<std::uint64_t>::max()) == EnsureStatus::Overflow) {
+    if (m.cb_resident(draws.frame_set, frames, std::numeric_limits<std::uint64_t>::max()) ==
+        EnsureStatus::Overflow) {
         return std::nullopt; // the caller builds this chunk on the CPU
     }
-    Texture objects_tex = make_texture(m.dev(), "cb-objects-tex", WGPUTextureFormat_RGBA8Unorm, w, h,
-                                       1, WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
+    Texture objects_tex = make_texture(m.dev(), "cb-objects-tex", WGPUTextureFormat_RGBA8Unorm, w,
+                                       h, 1, WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
     Texture base_tex = make_texture(m.dev(), "cb-base-tex", WGPUTextureFormat_R8Uint, w, h, 1,
                                     WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
     const Impl::CbScratch s = m.cb_scratch(draws);

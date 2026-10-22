@@ -2,8 +2,8 @@
 
 Starts the copy's launcher (DirectDraw via cnc-ddraw, windowed on the primary monitor),
 re-finds and foregrounds the game window to screenshot it (PrintWindow, PNG), enumerates the
-game modules (32-bit, via a toolhelp snapshot), reads a module's bytes from the process and
-compares them with the file on disk, and - when a scenario is running - scans the process heap
+game modules (32-bit, by walking the WOW64 PEB loader list), reads a module's bytes from the
+process and cross-checks each base against the file's PE identity (TimeDateStamp/SizeOfImage/CheckSum), and - when a scenario is running - scans the process heap
 for the world object (its first field is the AnnoWelt world vtable) and reads the world tick
 twice to show it growing. Closes the game (WM_CLOSE, then taskkill of every process in the copy
 folder) and hashes the copy again. Sends no input. Standard library only (ctypes); Windows only.
@@ -120,6 +120,28 @@ def sha256(path: str) -> str:
     return h.hexdigest()
 
 
+def verify_copy_unchanged(game_dir: str) -> list[str]:
+    """SHA-256 every .exe/.dll of the copy against the matching file in the repo's game/app; return
+    the names that differ or are unreadable (empty = the copy is byte-identical to game/app). Wrapper
+    files (e.g. dgVoodoo2's DDraw.dll/D3DImm.dll) have no game/app counterpart and are skipped, so a
+    difference only ever means a game file changed."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    ref = os.path.join(os.path.abspath(os.path.join(here, "..", "..")), "game", "app")
+    diffs: list[str] = []
+    for n in sorted(os.listdir(game_dir)):
+        if not n.lower().endswith((".exe", ".dll")):
+            continue
+        rp = os.path.join(ref, n)
+        if not os.path.exists(rp):
+            continue
+        try:
+            if sha256(os.path.join(game_dir, n)) != sha256(rp):
+                diffs.append(n)
+        except OSError:
+            diffs.append(n + " (unreadable)")
+    return diffs
+
+
 def image_path(pid: int) -> str:
     handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
     if not handle:
@@ -176,8 +198,9 @@ def _rpm(handle, addr: int, size: int) -> bytes | None:
 
 def enum_modules(pid: int) -> list[tuple[str, int, int]]:
     """(name, base, size) of every 32-bit module of a WOW64 process, by walking the 32-bit PEB
-    loader list over ReadProcessMemory. The Win32 module APIs return only the 64-bit shim modules
-    of a WOW64 target when the caller is 64-bit, so they cannot see the Anno DLLs; this can."""
+    loader list over ReadProcessMemory. This is the primary method because a TH32CS_SNAPMODULE32
+    snapshot came back empty in our runs (see enum_modules_toolhelp); EnumProcessModulesEx with
+    LIST_MODULES_32BIT is the documented alternative for a 64-bit caller on a WOW64 target."""
     out: list[tuple[str, int, int]] = []
     handle = kernel32.OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, pid)
     if not handle:
@@ -334,6 +357,25 @@ def read_memory(handle, address: int, size: int) -> bytes | None:
     return buf.raw
 
 
+def pe_identity(header: bytes | None) -> dict | None:
+    """(TimeDateStamp, SizeOfImage, CheckSum) from a PE32 image header blob that starts at the
+    DOS header (offset 0). These three fields differ between the game's DLLs, unlike the shared
+    MSVC 6 DOS stub, so matching them memory-vs-disk identifies the module at a base. None if the
+    blob is too short or has no PE signature."""
+    if not header or len(header) < 0x40:
+        return None
+    e_lfanew = struct.unpack_from("<I", header, 0x3C)[0]
+    if e_lfanew + 0x5C > len(header) or header[e_lfanew:e_lfanew + 4] != b"PE\x00\x00":
+        return None
+    # COFF header at e_lfanew+4 (TimeDateStamp at +4 of it); PE32 optional header at e_lfanew+24
+    # (SizeOfImage at +0x38 of it, CheckSum at +0x40).
+    return {
+        "timedatestamp": struct.unpack_from("<I", header, e_lfanew + 8)[0],
+        "sizeofimage": struct.unpack_from("<I", header, e_lfanew + 0x50)[0],
+        "checksum": struct.unpack_from("<I", header, e_lfanew + 0x58)[0],
+    }
+
+
 def pe_file_bytes(path: str, rva: int, size: int) -> bytes:
     with open(path, "rb") as f:
         data = f.read()
@@ -409,27 +451,34 @@ def read_tick_fields(pid: int, obj: int) -> tuple[int, int, int] | None:
         kernel32.CloseHandle(handle)
 
 
-def enum_modules_toolhelp(pid: int) -> list[tuple[str, int, int]]:
-    """Cross-check of enum_modules: a 32-bit-module toolhelp snapshot (TH32CS_SNAPMODULE32)."""
+def enum_modules_toolhelp(pid: int) -> tuple[list[tuple[str, int, int]], int]:
+    """Cross-check of enum_modules: a 32-bit-module toolhelp snapshot (TH32CS_SNAPMODULE32).
+    Documented to read a WOW64 target's 32-bit modules from a 64-bit caller, but it can fail with
+    ERROR_PARTIAL_COPY (299) early in the target's life. Returns (modules, last_error); last_error
+    is the GetLastError of the final failed call, 0 when the snapshot was read."""
     out: list[tuple[str, int, int]] = []
     snap = -1
+    last_error = 0
     for _ in range(50):
         snap = kernel32.CreateToolhelp32Snapshot(0x00000010, pid)  # TH32CS_SNAPMODULE32
         if snap != -1:
             break
+        last_error = ctypes.get_last_error()
         time.sleep(0.05)
     if snap == -1:
-        return out
+        return out, last_error
     try:
         entry = MODULEENTRY32W()
         entry.dwSize = ctypes.sizeof(entry)
         ok = kernel32.Module32FirstW(snap, ctypes.byref(entry))
+        if not ok:
+            last_error = ctypes.get_last_error()
         while ok:
             out.append((entry.szModule, int(entry.modBaseAddr or 0), int(entry.modBaseSize)))
             ok = kernel32.Module32NextW(snap, ctypes.byref(entry))
     finally:
         kernel32.CloseHandle(snap)
-    return out
+    return out, last_error
 
 
 def main() -> int:
@@ -556,30 +605,38 @@ def main() -> int:
                 walk = [(n, b, s) for n, b, s in enum_modules(pid) if want(n)]
                 if not walk:
                     continue
-                th = enum_modules_toolhelp(pid)
+                th, th_err = enum_modules_toolhelp(pid)
                 handle = open_read(pid)
                 mods = {}
                 for n, b, s in walk:
                     rec = {"base": hex(b), "size": s}
-                    # Cross-check the base: the first page of a loaded image is mapped from the file,
-                    # so the 0x40 header bytes at the base must equal the file's first 0x40 bytes.
+                    # Cross-check the base against the file. The headers page is mapped from the
+                    # file, so the PE identity at the base must equal the file's. The first 0x40
+                    # bytes are only the DOS stub, identical across the MSVC 6 DLLs, so they cannot
+                    # tell the modules apart; compare TimeDateStamp / SizeOfImage / CheckSum at
+                    # e_lfanew instead (pe_identity).
                     path = os.path.join(game_dir, n)
                     if os.path.exists(path):
-                        on_disk = open(path, "rb").read(0x40)
-                        in_mem = read_memory(handle, b, 0x40) if handle else None
-                        rec["header_matches_disk"] = in_mem == on_disk
+                        on_disk = open(path, "rb").read(0x100)
+                        in_mem = read_memory(handle, b, 0x100) if handle else None
+                        disk_id = pe_identity(on_disk)
+                        mem_id = pe_identity(in_mem)
+                        rec["pe_identity_disk"] = disk_id
+                        rec["pe_identity_memory"] = mem_id
+                        rec["identity_matches_disk"] = mem_id is not None and mem_id == disk_id
                     mods[n] = rec
                 if handle:
                     kernel32.CloseHandle(handle)
                 anno_mods = {
                     "method": "wow64_peb_walk (ReadProcessMemory on the 32-bit loader list)",
                     "modules": mods,
-                    # The documented cross-check APIs do not see a WOW64 target's 32-bit modules from
-                    # a 64-bit caller, which is why the PEB walk is used; recorded for the trail.
+                    # EnumProcessModulesEx(LIST_MODULES_32BIT) and TH32CS_SNAPMODULE32 are the
+                    # documented ways to read a WOW64 target's 32-bit modules from a 64-bit caller;
+                    # in our runs the snapshot came back empty (count 0, error below), so the PEB
+                    # walk is primary and the per-module identity_matches_disk flag (PE COFF fields,
+                    # not the shared DOS stub) is the real cross-check of each base.
                     "toolhelp_snapmodule32_count": len([m for m in th if want(m[0])]),
-                    "note": "EnumProcessModulesEx(LIST_MODULES_32BIT) / TH32CS_SNAPMODULE32 return the "
-                            "64-bit shim view from a 64-bit caller; the per-module header_matches_disk "
-                            "flag is the real cross-check of each base.",
+                    "toolhelp_snapmodule32_error": th_err,
                 }
             time.sleep(1.0)
         log["screenshots"] = shots

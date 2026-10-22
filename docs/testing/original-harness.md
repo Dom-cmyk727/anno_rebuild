@@ -28,7 +28,7 @@ All of this uses the Python standard library (`ctypes`) and Windows calls; nothi
 |---|---|---|
 | Start the game | `CreateProcess` of `1503Startup.exe` from the copy, with a `cwd` in the copy | the launcher may start `Anno1503.exe`-like children; record the process tree |
 | Screenshot | `PrintWindow` (or `BitBlt` of the window's DC) into a PNG under `cache/orig/<session>/` | exclusive-mode DirectDraw may not show in `PrintWindow`; the smoke run decides between that and a desktop capture |
-| Module bases | `EnumProcessModules` + `GetModuleInformation` | the RE notes assume image base `0x10000000` per module; check at run time, the DLLs may rebase |
+| Module bases | 32-bit PEB loader-list walk via `ReadProcessMemory` (`EnumProcessModulesEx(LIST_MODULES_32BIT)` / `TH32CS_SNAPMODULE32` as the documented cross-check) | the RE notes assume image base `0x10000000` per module; checked at run time, the DLLs rebase |
 | Memory reads | `ReadProcessMemory` (read-only handle) | the world object: vtable `0x100ccdd8` in `AnnoWelt.dll` (offset `0x000ccdd8` from the module base), tick at `+0x10c` (`docs/re/tick-loop.md`, §3 and the world object) |
 | Input (camera, zoom, pause, speed) | `SendInput` or window messages to the game window | **only in an agreed session**, one action at a time, each followed by a screenshot |
 | Scripting | a protocol file (JSON lines: action, expected screenshot or memory value) run by `tools/orig/` | outputs and a timestamped log in `cache/orig/<session>/` |
@@ -52,8 +52,13 @@ process under the copy folder) and hashes the copy. It sends **no input** (the o
    See 5.1 / 5.2.) First frames are black (the Max Design intro), then content.
 2. **The owner reaches a scenario** by clicking the intros and menu (the window grows from 800 x 600
    to 1024 x 768 when the scenario loads).
-3. **Module bases** (32-bit, by walking the WOW64 PEB loader list over `ReadProcessMemory`, since
-   the Win32 module APIs show a 64-bit caller only the shim DLLs): `AnnoDisplay.dll` loads at its
+3. **Module bases** (32-bit, by walking the WOW64 target's PEB loader list over
+   `ReadProcessMemory`. `EnumProcessModulesEx(LIST_MODULES_32BIT)` and `TH32CS_SNAPMODULE32` are the
+   documented ways for a 64-bit caller to read a WOW64 target's 32-bit modules, but a
+   `TH32CS_SNAPMODULE32` snapshot came back empty in the stage-0 runs (`toolhelp_snapmodule32_count`
+   0; smoke.py now also records the `CreateToolhelp32Snapshot` error code), so the PEB walk is the
+   primary method and the per-module PE-identity check below is the real cross-check):
+   `AnnoDisplay.dll` loads at its
    preferred base **0x10000000**; `AnnoFrame.dll` (0x2300000), `AnnoScene.dll` (0x24b0000),
    `AnnoGame.dll` (0x2500000) and `AnnoWelt.dll` (0x2530000-0x2560000) are **rebased** (they all
    prefer 0x10000000 and conflict, so only the first keeps it). `binkw32.dll` 0x30000000,
@@ -73,6 +78,47 @@ process under the copy folder) and hashes the copy. It sends **no input** (the o
 
 Stop: the game's own close, or `taskkill` on the recorded PIDs (the script does the latter at the
 end). Nothing is typed into other windows.
+
+## 4a. Input control (SendInput; `tools/orig/control.py`)
+
+`tools/orig/control.py` drives the game with Windows `SendInput` (standard-library ctypes, no
+third-party tool): it foregrounds the game window and sends key presses (speeds F5-F8, menu keys)
+and mouse moves/clicks at window-relative coordinates (0..1), and screenshots the window. Used
+only in a session the owner agreed to; the owner agreed to `SendInput` control on 2026-10-22.
+
+Sub-commands (the game is launched once, detached, and persists across calls): `launch`, `shot
+--out`, `key F6` (or `ENTER,ESC`), `click nx ny [--shot]`, `dblclick`, `move`, `wheel`, `drag`,
+`seq`, `quicksave` (F10), `quickload` (F9), `close` (WM_CLOSE + taskkill + re-hash). A perceive-act
+loop: `launch`, `shot`, read the PNG, `click`/`key`, `shot`.
+
+**Quick save / load (stage A).** `quicksave` presses F10 and `quickload` presses F9 (manual p4-5,
+authoritative; English copy). The save state itself is not yet read from memory (stages B/C), so the
+command logs and can `--shot`; verify by screenshot until the save slot can be read. Quirk
+(playbook §13): a tavern's alcohol and goods on carts are **not** saved — quick-save at calm moments.
+
+**Cross-call cursor guard (stage A).** The "owner took the mouse" safety check compares the cursor
+to where the tool last left it. Within one process that is a module global; **across** separate
+`control.py` calls the last cursor is now persisted to `cache/orig/<session>/cursor.json` and
+re-loaded at the start of the next call, so the first input of a later call in the same session is
+also checked. This is active only with a **stable `--session`** (the default per-call timestamp
+session has no prior cursor, so the first input is unchecked, as before). A driving session should
+therefore pass a fixed `--session <name>`.
+
+**Screen table as data (stage A).** The HUD and construction-menu layout is `tools/orig/screens.json`
+(window-fraction coordinates, resolution-independent) with a loader+validator `tools/orig/screens.py`
+(`python -I tools/orig/screens.py` validates; `--missing` lists what is still to capture). Only
+measured coordinates are filled in (the four main tabs, the minimap region, the category column x,
+the grid region, the scripted new-Citizen-game menu path, the manual's eight construction categories,
+the gameplay key map); every per-civ-level building grid cell and every panel layout is marked
+`{"capture": "owner-session"}` and recorded by screenshot with the owner, not fabricated.
+
+Verified 2026-10-22: driven entirely by the script, the game went main menu -> Singleplayer -> New
+game -> Choose game (Citizen) -> OK -> a running single-player scenario (screens in
+`cache/orig/drive/`, git-ignored), and in the running scenario `F7` changed the clock from 500 to
+2000 ticks/s (speed 4.0) and `F5` back to 500 (1.0): mouse drives the menus and keyboard drives
+the simulation. So the keyed fixtures (`m2-fixtures.md` TL-F2 speeds, TL-F4 pause) and menu/scene
+setup can run without the owner at the keyboard, in an agreed session. The copy stays byte-identical
+to `game/app` after a run; no process is left.
 
 ## 5. Third-party tools (none installed; owner decides each)
 
@@ -99,7 +145,7 @@ game; its files were **removed** from the copy. Recorded for the trail:
 - **Download:** https://github.com/FunkyFr3sh/cnc-ddraw/releases/download/v7.1.0.0/cnc-ddraw.zip
 - **SHA-256 (cnc-ddraw.zip):** `0b13ab89a64c9918189b1dadd449ef6ed3cb3b7b19cabd96d8adbd95505bb908`
 - **Licence:** MIT (github.com/FunkyFr3sh/cnc-ddraw).
-- **Installed files** (into `C:nno1503-original\` only, never `game/app`, never git):
+- **Installed files** (into `C:\anno1503-original\` only, never `game/app`, never git):
   - `ddraw.dll` SHA-256 `85e0f7d530dfda134793a57cb3e76b0287dcc96892ee57162dd68f47283b03a9`
   - `ddraw.ini` (configured, see below) and `Shaders\` (15 files, for the unused shader renderers).
 - **Configuration** (the global `[ddraw]` section of `ddraw.ini`; no Anno-specific section exists):

@@ -139,10 +139,10 @@ jobs:
           # Each doctest case is its own test (anno_add_doctest): run them on
           # the runner's cores (4 on the hosted Linux and Windows runners).
           ctest --preset ${{ matrix.preset }} -j 4 2>&1 | tee test.log
-      # The GPU parity tests (the WGSL port of the river shading, the compositor) skip
-      # themselves on a runner without an adapter: say so in the run summary instead
-      # of passing silently (docs/open-questions.md OQ-089 asks whether to install a
-      # software Vulkan driver, lavapipe, so that they run here).
+      # T13: linux-gcc pins lavapipe with ANNO_REQUIRE_GPU=1 so the GPU parity
+      # tests run there deterministically instead of skipping; the other jobs
+      # still warn when they skip (the step can still fire on windows-msvc,
+      # macos-clang, linux-clang-asan, linux-gcc-release).
       - name: GPU tests need an adapter (loud skip)
         shell: bash
         run: |

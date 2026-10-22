@@ -648,3 +648,57 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
   - (5, B5/B6) OWNER-CHECK viewer run — see the PR description and the final report for the exact commands.
 - Reviewers: none spawned. I was able to spawn subagents but did not (single GPU, "one heavy job at a time"); the work is machine-checked against the CPU oracle and both builders, plus the mutation evidence.
 - Time spent / subagents used: inline, no subagents; sequential GPU builds/tests/benches (one heavy job at a time on the shared PC).
+
+## T17 — The scenario script language (`BIGBROTHER`): spec and Python reference — 2026-10-22 — status: FINISHED
+- Branch: task/T17-bigbrother-spec at e802d65 (6 commits on main 60709d5); worktree: C:\Users\altin\anno1503-T17. Docs/tools only, no C++ touched.
+- Built:
+  - `tools/bigbrother.py`, the reference reader:
+    - a lossless lexer (every byte is one token, Latin-1) and a strict parser for the six sections and the kernel grammar read from the files (INITBLOCK, SET, IF … THEN { } [ELSE { }], assignments, calls with typed arguments, conditions with PLAYER/OBJECT/AREA subjects, `&&`/`||`, parentheses, comparisons);
+    - emission from the tree;
+    - commands: `check` (round trip), `dump`, `vocab`, `keywords` (the DLL's 284 names with address, block and use).
+    - Anything outside the corpus grammar is a `ScriptError`; there is no fallback path.
+  - `tools/test_bigbrother.py`:
+    - synthetic: the tree of a synthetic script of our own (values, argument kinds, areas, slots, camera, parens, semicolons), 42 refused edits (at least one per grammar rule), 3 kinds of leading text, whole sections swapped with valid bodies, and the one-`BIGBROTHER` rule on synthetic containers;
+    - corpus (`ANNO1503_GAME_DIR`): the 50 round trips, the spec's counts, `[SIGNALS]` = `SCHUETTIINITSIG = TRUE` followed by the `SET` variables, and 284 DLL names.
+  - `docs/formats/bigbrother.md`:
+    - bytes (mixed endings), tokens, sections, the grammar with counts, `[SIGNALS]` and what a savegame keeps, `[CAMARAPOS]`;
+    - the condition and action tables with argument types, counts and the first file per construct; observed value ranges; the goods (16) and unit (5) lists; the interpreter's error checks;
+    - state vs. presentation for lockstep;
+    - all 284 DLL names classified, plus 5 short names: 164 script names (102 used, 62 unused, S) and 125 other names by block;
+    - corrections to the resurvey.
+  - README row; OQ-120 (precedence: 28 of 308 conditions mix `&&`/`||`), OQ-121 (four statements without `;`), OQ-122 (define numbers, `[CAMARAPOS]`, `STARTUP`), OQ-123 (handlers; `SCHUETTIINITSIG` and saved variables).
+- Gates: no C++ changed, so msvc build, ctest, clang-format, GCC and agree.py are n.a. (no anno-dump command changed; `anno-dump sze` does not print the chunk).
+  - Python, Windows 3.14: `test_bigbrother.py` 16/16 with the game dir and 12 + 4 clean skips without; `-W error::ResourceWarning` clean.
+  - Python, WSL Linux 3.12: reviewer A ran the suite (before the review fixes): green, same 50 files.
+  - `python -m doctest tools/bigbrother.py` passes.
+- Evidence (acceptance):
+  - **all 50 files parse without a fallback** and re-emit byte-identically (`check` 50/50); the seven T16 quicksaves 7/7;
+  - **every one of the 284 names is in the doc**, marked used (P, with uses, files and first file) or unused (S), or classified as non-script by block;
+  - reviewer B reproduced the 284 independently (GNU strings 2.42) and recounted all 163 rows then in the table (uses, files, first file).
+- Reviewers (two, independent; given the code and the task, not my conclusions):
+  - **A (parser and tests)** found:
+    - a crash: a bare name at a section end raised `AttributeError`;
+    - a grammar looser than the doc: keywords usable as names, `;` optional anywhere so `GO = FALSE FALSE;` parsed, headers glued to text, any number count per object kind, any number of `[CAMARAPOS]` lines, duplicate signals, comments in define sections;
+    - tests that hardly looked at the tree: 25 of its mutations survived;
+    - stale comments.
+
+    Fixed. Every rule is now enforced as read from the corpus: the four missing `;` all end their line; headers 300/300 on their own line; object kinds 133×1, 80×1, 37×3; one `[CAMARAPOS]`; names unique; comments only in the kernel. Tests were added, and 40 parser mutations (A's surviving ones adapted plus new ones) are **all killed**.
+  - **B (spec vs. corpus and DLL)** found:
+    - 1,654 → 1,656 calls;
+    - `TIMER_FLAG` counted as a timer (the timer row now 24, variables 429);
+    - `WON` missing as a short name;
+    - slot-0 counts not adding up to 50;
+    - wrong argument roles: `PIONIER` mostly a `CONTAINS` unit, `ALL` also in `SOLDIERCOUNT`, `CONTAINS` takes goods, `BOGENSCHUETZE` not in the unit block;
+    - no complete goods and unit lists;
+    - wrong block labels: Texte.dat sections, `PIRAT` the island filter, and "CompLogic" without evidence;
+    - error messages attributed to the condition parser, and one misquoted;
+    - unsupported claims: `SCHUETTIINITSIG` = INITBLOCK pending, saved variable values, conditions "state only".
+
+    All fixed or hedged into OQ-123 item 4.
+  - B confirmed everything else, including the 284, all row addresses and nearly all numbers.
+  - B noted the savegame claims were unchecked because the quicksaves were not on its path. I checked them myself: seven quicksaves of two Citizen games keep the definitions and kernel byte-identical to exactly one scenario, `00_1024_easyentry_01.sze`. `[SIGNALS]` has only `SCHUETTIINITSIG = FALSE` and `[CAMARAPOS]` `0,0`.
+- Left open / questions:
+  - The interpreter's handlers, `&&`/`||` precedence and the missing-`;` behaviour are untraced (OQ-120, OQ-121, OQ-123). The doc labels every reading "likely".
+  - "One example per construct" is met by the first file cited per row plus one-line excerpts; nothing longer is quoted.
+  - Cross-branch citations: the doc cites `docs/formats/user-dat.md` (T16) and `docs/re/annoscene.md` §11 (T18) as evidence for two non-script blocks of names; they resolve once those branches are merged.
+- Time spent / subagents used: inline, plus two reviewer subagents (read-only). T18 ran in parallel in its own subagent and worktree.

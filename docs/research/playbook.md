@@ -178,7 +178,7 @@ Per 100 residents per minute:
 - **Tools:** buy them from the Venetians early (a buy order at the Kontor), but build your own chain soon: ore mine → smelter (+ wood) → smith (+ wood) [V 8-11; FAQ/climate_resources].
 - **Money:** the full balance comes from merchants; selling at your own stands pays best [FAQ/trade_strategy; V].
 - **Building materials:** 50 tools / 50 wood are typical start stocks (read on PR #16).
-- **Bankruptcy** comes from staying below −1,000 gold for some time [FAQ].
+- **Bankruptcy:** money at or below **−3,000** gold starts a 300 s deadline (150,000 ticks at normal speed). A player still at or below −3,000 when it ends is bankrupt (D `0x1001b900`, `docs/re/players.md`). The FAQ's "−1,000" is wrong for this build.
 
 ## 6. Settlement development (levels and unlocks)
 
@@ -362,9 +362,12 @@ The manual gives no numbers. It only says how to see them [M 27-28]:
 - demolishing refunds nothing.
 
 All numbers below come from `Anlagen.dat` (the id column):
-- **Build cost** comes from `HEAD`: u16 `[8]` is the gold, and bytes `[3..6]` are bricks, wood, tools and marble (`docs/formats/anlagen.md`). The affordability check reads these fields (D `0x100275d0`, `docs/sim/state.md`). Spot checks: the weaving hut costs 300 gold, 3 tools and 4 wood, and the house materials match §6.
+- **Build cost** comes from `HEAD`: u16 `[8]` is the gold, and bytes `[3..6]` are bricks, wood, tools and marble (`docs/formats/anlagen.md`). The affordability check reads these fields (D `0x100275d0`, `docs/sim/state.md`).
+  - The in-game help (`game/app/help`) gives the same values for 86 of 94 buildings (580 of 589 values).
+  - Where they differ, the data is used (`manual-and-help.md` §1.1).
 - **Running cost** comes from `PROD3` u16 `0x00` and `0x02`, in gold per game minute. The game takes 1/15 of a city's total every 4 s (`docs/re/population.md` §8; loader in `docs/re/production.md` §2.3).
-  - The larger value is charged while the building works, and the smaller one while it is stopped. This pairing is **likely**: it follows the manual's "stopping lowers it".
+  - The larger value (`0x02`) is charged while the building works, and the smaller one (`0x00`) while it is stopped.
+  - **Confirmed:** 50 help pages give "operating costs while active / while shut down", and all 50 equal this pairing.
   - A single number below means the stopped value is 0; these buildings cannot be stopped.
 - **Houses** cost materials only and have no running cost. Settler to merchant houses are reached by upgrade, which takes these materials (§6).
 - **Not in `Anlagen.dat`:** the upkeep of ships and soldiers. It sits in the figure data and is still open (`docs/sim/state.md` O-49).
@@ -386,7 +389,8 @@ All numbers below come from `Anlagen.dat` (the id column):
 | Field tile (one plant) | 700–733 | 5–6 | – | – | – | – | – |
 | Wooden pier | 2529 | 5 | – | 1 | – | – | – |
 | Stone pier | 2509 | 10 | – | – | 1 | – | – |
-| Small bridge (research) | 2516 | 25 | – | – | 1 | – | – |
+| Wooden bridge (rivers only) | 2536 | 15 | – | 1 | – | – | – |
+| Stone bridge (research) | 2516 | 25 | – | – | 1 | – | – |
 | Bridge | 2518 | 500 | – | – | 3 | – | – |
 
 **Trade and supply**
@@ -460,13 +464,13 @@ All numbers below come from `Anlagen.dat` (the id column):
 | Large ore smelter (charcoal) | 1034 | 1,000 | 10 | 10 | 20 | – | 75 / 32 |
 | Smith (tools) | 1019 | 500 | 3 | 4 | 8 | – | 25 / 15 |
 | Tailor | 1027 | 500 | 5 | 5 | 5 | – | 30 / 15 |
-| Silk weaver | 1009 | 500 | 7 | 2 | 8 | – | 40 / 25 |
+| Dyer (silk and dyes → silk cloth) | 1009 | 500 | 7 | 2 | 8 | – | 40 / 25 |
 | Lamp-oil maker | 1028 | 500 | 5 | 5 | 5 | – | 20 / 10 |
 | Goldsmith | 1039 | 300 | 6 | 7 | 11 | – | 40 / 20 |
 | Armourer | 1029 | 300 | 5 | 8 | 2 | – | 30 / 15 |
 | Bow maker (research) | 1006 | 500 | 6 | 4 | 4 | – | 30 / 15 |
-| Axe and lance maker (research) | 1036 | 300 | 5 | 5 | 3 | – | 35 / 17 |
-| Swordsmith (research) | 1037 | 200 | 4 | 4 | 2 | – | 40 / 15 |
+| Large weapon smith: axes, lances (research) | 1036 | 300 | 5 | 5 | 3 | – | 35 / 17 |
+| Small weapon smith: swords (research) | 1037 | 200 | 4 | 4 | 2 | – | 40 / 15 |
 | Gunsmith (research) | 1012 | 500 | 6 | 3 | 8 | – | 40 / 15 |
 | War-machine builder (research) | 1010 | 500 | 8 | 6 | 2 | – | – |
 | Cannon foundry (research) | 1038 | 800 | 10 | 10 | 10 | – | – |
@@ -504,9 +508,9 @@ All numbers below come from `Anlagen.dat` (the id column):
 | Small fortress | 2220 | 600 | 10 | 20 | – | – | – |
 | Medium fortress | 2221 | 1,000 | 10 | 15 | 20 | – | – |
 | Large fortress (castle) | 2223 | 2,500 | 20 | 15 | 30 | – | – |
-| Watchtower | 2246 | 100 | 2 | 8 | 5 | – | – |
-| Watchtower, later type | 2230 | 200 | 3 | 8 | 8 | – | – |
-| Cannon tower | 2229 | 650 | 10 | 12 | 16 | – | – |
+| Watchtower (ranged soldiers only) | 2246 | 100 | 2 | 8 | 5 | – | – |
+| Cannon tower (up to 2 cannons with crews) | 2230 | 200 | 3 | 8 | 8 | – | – |
+| Defensive tower (fires over 180°, no cannons) | 2229 | 650 | 10 | 12 | 16 | – | – |
 | Wall (per tile) | 2240 | 50 | – | – | 1 | – | – |
 | Gate | 2234 | 150 | – | 1 | 6 | – | – |
 | Large gate | 2233 | 200 | – | 2 | 10 | – | – |

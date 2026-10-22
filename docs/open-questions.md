@@ -176,6 +176,7 @@ Sources abbreviated: GFA = `docs/research/game-files-analysis.md`, CL = `docs/re
 - **Question:** (a) Contents of the entry records `VERSION2` (24 bytes), `HEAD` (16/20), `LOGIC` (28–44, contains `1.0f`), `SCHUSSPOS`, `OBJECTPOS`, and meaning of the strings `BEWOHNTYPE`, `ROUTETYPE`, `FORSCHTYPE`, `WARE`, `BAUWARE`. (b) The 16-byte sprite-set prefix (259 distinct values, trailing bytes look like uninitialised memory) and the records `BODY2` (44), `ANIM` (24), `SOUND2` (128), `GFXDATA` (84, holds a `.tga` source path). (c) What `z` (first byte of `Z` pixel pairs) encodes — per-pixel depth for occlusion? The sheep's values are nearly all 255. (d) What the 2-bit `level` of `A` formats encodes — 4 alpha steps? In the gondola level 3 dominates (2,195 of 2,322 pixels) and drawing all levels opaque looks right, so 3 is probably opaque; levels 0–2 are unconfirmed. (e) The `H` in `BSH_RGBH` (24 frames; also one `.tex` texture, OQ-021 d). (f) Anchor semantics: `(width/2, height−4)` for walking figures, the waterline for ships, outside the frame for 783 frames — draw origin relative to the tile?
 - **What we know:** layout, counts and decodability from the whole corpus (P), `docs/formats/figuren.md`, `crates/formats/tests/figuren_corpus.rs`. `AnnoDisplay.dll` has blitters for alpha, shadow and Z (GFA §1).
 - **How to resolve:** Ghidra: the figure loader (strings `HAEUSER`, `GFXDATA`, `BSH_RGBAZ`) and the `tBrush2Screen…` blitters in `AnnoDisplay.dll` for `z`, `level` and anchors; statistics over `ANIM`/`BODY2` against frame counts (e.g. 128 frames = 8 directions × 16 steps?); render scenes in the M1.6 viewer and compare with screenshots.
+- **Update 2026-10-22 (in-game help, `docs/research/manual-and-help.md` §1.4):** (a) part of `LOGIC`, **likely**: `0x1c` = damage × 10 (equal to the help for 10 of 14 units); `0x12`/`0x27` = ranges in 1/8 field (every help range equals one of them); `0x14` = unit slots (the crews of war machines exactly as the manual gives them; the troops a ship carries). **Guess:** `0x16` = price, `0x15` = upkeep per minute. `BAUWARE` = the goods a unit needs (sword and armour for the swordsman, P).
 
 ## OQ-024: What island `GFXID` values refer to, and the other island records
 - **Status:** open
@@ -873,6 +874,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   4. Where in `AnnoWelt` is it done? (A pass like the house upgrade, `population.md` §5?)
 - **Faithful default:** whatever the original does; needed before public buildings enter the sim.
 - **Update 2026-10-22 (community FAQ):** forum posters report that one university or church on the **island** upgrades every school or chapel there, whatever their coverage, and that demolishing it loses the upgrade; the cathedral counts as a church (`docs/research/community-faq.md` §4). That answers questions 1–2 as community evidence: the trigger is the big building, with island scope. Still to confirm in the code or by running the original.
+- **Update 2026-10-22 (manual and in-game help):** both shipped documents say **service area**, not island: chapels in a church's service area become stone chapels that count as churches [H/Kapelle, H/Kirche], and schools in a university's service area can research everything [H/Forschung, M p. 50]. That contradicts the FAQ's island scope. T15 test: one chapel inside and one outside a new church's area. RE: the place-side-effect hooks (O-4) and the upgrade rewrite (O-28) (`manual-and-help.md` §2, §5).
 
 ## OQ-102: How houses get market-stand goods and infrastructure (new, tutorial series 2026-10-22)
 - **Status:** open, RE (extends the `population.md` "Open" items on the market class and on infrastructure delivery)
@@ -913,6 +915,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   - a road connects only at a building's **specific entrance tile**, not at any edge tile.
 
   The manual and the community FAQ agree on the entrance rule. FAQ posters from 2002–2004 claim that houses and the fire brigade need no roads; that **contradicts the owner** and may describe an older patch. The owner's rule is the working rule. T15 decides the mechanism with per-house reads, the same houses with and without a road to a market (PR #16 review). See `community-faq.md` §3.
+- **Update 2026-10-22 (in-game help):** entrances MUST face a street, or market wagons cannot pick up goods. A street connection "shortens the way" of inhabitants and workers, so they can also walk without one [H/Strassenanschluss]. Cobblestone is described as "considerably faster" for inhabitants and wagons [H/Pflasterstrasse]; that is the design intent against question 3. `wegspeed.dat` is a slope walk mask, not a speed table. Decide by timing a wagon round trip (`manual-and-help.md` §2, §4).
 
 ## OQ-104: Player controls missing from the command list (new, tutorial series 2026-10-22)
 - **Status:** open, spec (S8 command set and later)
@@ -953,6 +956,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   3. Does the "255 = never" table entry apply to plague as it does to fire? If so, the first outbreak needs ≥ 1,524 inhabitants.
 - **Faithful default:** the original's rule once traced, behind the "disasters off" rule like fire.
 - **Update 2026-10-22 (community FAQ):** the medicus cures only houses in its area and some residents die first; "fast healing" shortens that; bathhouses reportedly lower the plague chance (unchecked) (`community-faq.md` §4).
+- **Update 2026-10-22 (in-game help):** fire causes are a volcano, a chance event, war, and "large, crowded settlements of wooden buildings"; dense pioneer and settler cities raise the fire danger. The doctor needs herbs; "faster healing" means more house calls at once. Bandits climb the walls and rob inhabitants, and a court reduces them. Riots come from a lasting lack of a good or long unhappiness. Earthquakes mostly damage houses (`manual-and-help.md` §2, §3).
 
 ## OQ-106: Wildlife and pastures (new, tutorial series 2026-10-22)
 - **Status:** open, RE
@@ -987,6 +991,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   3. Is research per player? It is sim state that must be checksummed if it gates building.
 - **Faithful default:** the original's costs and order, as data.
 - **Update 2026-10-22 (answers question 1 in part):** the `Wissen:` lines are the **knowledge cap** per stage. The FAQ's cap table (20 / 25 / 50 / 70 / 90 at 50 / 170 settlers, 200 / 600 citizens, 750 merchants) equals `BGruppen.dat` `2B`/`2E`/`3B`/`3D`/`4C` exactly (P). A library adds 10; the number of schools does not matter. Research costs per item are in the FAQ's research trees, not yet checked against the data (`community-faq.md` §2, §4).
+- **Update 2026-10-22 (manual and in-game help):** starting research uses up **all** accumulated knowledge [H/Wissen]. One library raises the cap, more do not. Research costs knowledge and gold. Each area starts with one key technology. X fields are university-only [M p. 48-50]. The help lists about 36 items in four areas, the checklist for the 65 player research slots. A search of four DLLs for two FAQ cost pairs found no cost table (`manual-and-help.md` §2).
 
 ## OQ-108: Trade with the free trader and computer players (new, tutorial series 2026-10-22)
 - **Status:** open, RE
@@ -1012,3 +1017,4 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   - the slider sets the stock to keep.
 
   Stall prices in the FAQ match `BGruppen.dat` at tax index 2 (`community-faq.md` §2, §4).
+- **Update 2026-10-22 (manual and in-game help):** the price slider's arrow is green, yellow or red [M p. 43, H/Verkauf_Waren], so the UI computes an acceptance band per good; its function in `AnnoFrame.dll` is the shortest way to the trader's limits. The Venetians refuse a buy price that is too low, a sell price that is too high, goods they cannot deliver, and goods they do not want. An alliance needs a trade treaty and grows with trade volume. Five scouts in a computer player's territory is the tolerated maximum (`manual-and-help.md` §3).

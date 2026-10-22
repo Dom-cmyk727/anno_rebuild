@@ -97,8 +97,9 @@ for b in app/anno1503 tools/bench_frame/bench_frame tools/anno_dump/anno-dump; d
 done'
 rm -rf "$src"
 
+# sed -b: MSYS sed would otherwise drop the CRs of the .bat files' CRLF.
 for f in README.txt start-viewer.sh start-viewer.bat run-benchmark.sh run-benchmark.bat; do
-  git show "HEAD:packaging/preview/$f" | sed "s/@NAME@/$name/g; s/@COMMIT@/$commit/g" > "$out/$f"
+  git show "HEAD:packaging/preview/$f" | sed -b "s/@NAME@/$name/g; s/@COMMIT@/$commit/g" > "$out/$f"
 done
 git -c core.autocrlf=false archive --format=zip -o "$out/anno1503-source.zip" HEAD -- . ':!share'
 

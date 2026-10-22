@@ -160,12 +160,13 @@ class Instance:
             e["WINEDLLOVERRIDES"] = ";".join(filter(None, [e.get("WINEDLLOVERRIDES"), AUDIO_OFF]))
         return e
 
-    def log(self, kind: str, **kw) -> None:
+    def log(self, kind: str, /, **kw) -> None:
         if self.log_f is None:
             os.makedirs(self.out, exist_ok=True)
             self.log_f = open(f"{self.out}/actions.jsonl", "a", buffering=1)
         rec = {"t": round(mono(), 4), "kind": kind}
-        rec.update(kw)
+        for k, v in kw.items():
+            rec[f"arg_{k}" if k in rec else k] = v
         self.log_f.write(json.dumps(rec) + "\n")
 
     # ---- disposable copy ---------------------------------------------------------------------

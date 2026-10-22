@@ -13,9 +13,10 @@ click can never land in a terminal. It never leaves the game topmost (restores H
 every action is logged to cache/orig/<session>/actions.jsonl. `launch` refuses a second instance.
 
 The last cursor position is persisted to cache/orig/<session>/cursor.json, so the "owner took the
-mouse" check also works ACROSS separate control.py calls — pass a stable `--session` for a driving
-session so each call checks the cursor the previous one left (with the default per-call timestamp
-session there is no prior cursor and the first input is unchecked, as before).
+mouse" check also works ACROSS separate control.py calls — each call checks the cursor the previous
+one left. `--session` defaults to a stable per-day name (drive-YYYYMMDD), so the cross-call guard is
+on by default and never silently off; only the very first action of a day has no prior cursor to
+check (nothing to compare against yet). Override with an explicit `--session` to isolate a run.
 
 Each sub-command finds the running game (so the game is launched once, detached, and persists
 across calls), foregrounds its window and acts. A perceive-act loop from the shell:
@@ -380,7 +381,8 @@ def main() -> int:
     ap.add_argument("--game", required=True)
     ap.add_argument("--launcher", default="1503Startup.exe")
     ap.add_argument("--session", default=None,
-                    help="log actions to cache/orig/<session>/actions.jsonl (default: a timestamp)")
+                    help="log actions to cache/orig/<session>/actions.jsonl (default: a stable "
+                         "per-day name drive-YYYYMMDD, so the cross-call cursor guard is always on)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("launch")
     p_shot = sub.add_parser("shot")
@@ -427,7 +429,9 @@ def main() -> int:
         except Exception:
             pass
     game_dir = os.path.abspath(args.game)
-    session = args.session or datetime.datetime.now().strftime("drive-%Y%m%d-%H%M%S")
+    # A stable per-day session by default (not a per-call timestamp), so the cross-call cursor
+    # guard is on by default and never silently off (orchestrator, round e). Override with --session.
+    session = args.session or datetime.datetime.now().strftime("drive-%Y%m%d")
     log_dir = os.path.join("cache", "orig", session)
     os.makedirs(log_dir, exist_ok=True)
     _LOG_PATH = os.path.join(log_dir, "actions.jsonl")

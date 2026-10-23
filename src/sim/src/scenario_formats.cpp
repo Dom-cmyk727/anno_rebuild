@@ -2,6 +2,7 @@
 // mapping line is cited next to it: D = a disassembled function (module and
 // address), P = the corpus (the spec section that states it).
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -55,6 +56,8 @@ std::string_view warning_kind_name(ScenarioWarningKind kind) {
         return "ComputerNameNotDrawn";
     case ScenarioWarningKind::UnknownClimate:
         return "UnknownClimate";
+    case ScenarioWarningKind::UnalignedIsland:
+        return "UnalignedIsland";
     }
     return "?";
 }
@@ -66,7 +69,7 @@ std::vector<ScenarioWarningKind> all_warning_kinds() {
             ScenarioWarningKind::UndecodedDeposits,   ScenarioWarningKind::ObjectTileTaken,
             ScenarioWarningKind::DuplicateObject,     ScenarioWarningKind::CityOffIsland,
             ScenarioWarningKind::UndecodedPeople,     ScenarioWarningKind::ComputerNameNotDrawn,
-            ScenarioWarningKind::UnknownClimate};
+            ScenarioWarningKind::UnknownClimate,      ScenarioWarningKind::UnalignedIsland};
 }
 
 ScenarioCounts count(const LoadedScenario& s) {
@@ -120,10 +123,18 @@ std::vector<std::uint8_t> c_string(Bytes raw) {
 }
 
 /// The island of the scenario whose rectangle holds the world tile (x, y), as
-/// the STADT2 reader finds it (world slot +0x8C, D AnnoWelt 0x1001e294).
-ScenarioSpec::IslandSpec* island_at(std::vector<ScenarioSpec::IslandSpec>& islands, std::uint32_t x,
-                                    std::uint32_t y) {
-    for (ScenarioSpec::IslandSpec& is : islands) {
+/// the STADT2 reader finds it (world slot +0x8C, D AnnoWelt 0x1001e294), among the
+/// islands whose INSEL5 lies before `before` in the file: the original reads the
+/// SCENE children in file order, so a city before its island finds none (P: no such
+/// file in the corpus). `at[i]` is the file offset of islands[i].
+ScenarioSpec::IslandSpec* island_at(std::vector<ScenarioSpec::IslandSpec>& islands,
+                                    const std::vector<std::uint64_t>& at, std::uint64_t before,
+                                    std::uint32_t x, std::uint32_t y) {
+    for (std::size_t i = 0; i < islands.size(); ++i) {
+        ScenarioSpec::IslandSpec& is = islands[i];
+        if (at[i] >= before) {
+            continue;
+        }
         const auto x0 = static_cast<std::uint32_t>(is.x0);
         const auto y0 = static_cast<std::uint32_t>(is.y0);
         if (x >= x0 && y >= y0 && x - x0 < is.w && y - y0 < is.h) {
@@ -142,14 +153,20 @@ ItemKey key_of(const insel::PlacedObject& o) {
 }
 
 /// SCENE/HEAD → WorldSettings and the world size (D AnnoScene 0x10009cc0, the HEAD
-/// case 0x10009cf6–0x10009dfa: the 32 bytes are read into a buffer, the world is
-/// created with u32 [0] and u32 [4], then world properties are set from it).
-std::optional<std::string> read_head(Bytes head, sze::Edition edition, WorldSettings& s) {
-    // P: 32 bytes in all 50 (sze.md "SCENE children"); the handler reads at most
-    // up to [0x11], so a shorter record cannot be read as the original reads it.
-    if (head.size() < 0x12) {
-        return "scene.HEAD: " + std::to_string(head.size()) + " bytes, the reader needs 18";
+/// case 0x10009cf6–0x10009dfa: a 32-byte buffer is zero-filled (0x10009cfd–0x10009d08)
+/// and the record read into it (0x1000aa40), the world is created with u32 [0] and
+/// u32 [4], then world properties are set from it).
+std::optional<std::string> read_head(Bytes record, sze::Edition edition, WorldSettings& s) {
+    // P: 32 bytes in all 50 (sze.md "SCENE children"). A shorter record reads as zeros
+    // after its end, as in the original's buffer. A longer one would be read past the
+    // original's 32-byte buffer (0x1000aa40 reads the record's own length): refused.
+    if (record.size() > 32) {
+        return "scene.HEAD: " + std::to_string(record.size()) +
+               " bytes, longer than the reader's 32-byte buffer";
     }
+    std::array<std::uint8_t, 32> buf{};
+    std::copy(record.begin(), record.end(), buf.begin());
+    const Bytes head(buf);
     s.world_width = formats::u32_le(head, 0);  // D 0x10009d2a: first argument of world slot +0x60
     s.world_height = formats::u32_le(head, 4); // D 0x10009d24: second argument
     s.prop0 = head[8];                         // D 0x10009d4f: property 0 = [8]
@@ -202,7 +219,24 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
 
     // Islands (INSEL5) first: the STADT2 cities of the state series name a tile of
     // their island.
+    // Island numbers are unique across a scenario's INSEL5 and INSELLNK (P, sze.md
+    // "Island links"); a link reserves its number for stage 2 (O-35).
     std::set<std::uint32_t> slots;
+    std::vector<std::uint64_t> island_at_offset; // file offset of spec.islands[i]
+    for (std::size_t c = 0; c < scene.children.size(); ++c) {
+        const formats::chunk::Chunk& child = scene.children[c];
+        if (child.name() != "INSELLNK") {
+            continue;
+        }
+        auto link = sze::IslandLink::parse(child.payload);
+        if (!link) {
+            return "scene[" + std::to_string(c) + "].INSELLNK: " + link.error();
+        }
+        if (!slots.insert(link.value().number).second) {
+            return "scene[" + std::to_string(c) + "].INSELLNK: island number " +
+                   std::to_string(link.value().number) + " is used twice";
+        }
+    }
     for (std::size_t c = 0; c < scene.children.size(); ++c) {
         const formats::chunk::Chunk& child = scene.children[c];
         if (child.name() != "INSEL5") {
@@ -216,10 +250,16 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
             return path + ": " + parsed_island.error();
         }
         const insel::Island& isl = parsed_island.value();
-        // The table slot: D AnnoWelt 0x100a19a0 stores the island at world +0x6530 +
-        // 4 · slot with slot = the low byte of the island's slot +0x40; that it
-        // returns the head's number is likely (P: numbers unique per scenario,
-        // insel.md "Head"; the record that sets it is not traced, OQ-141).
+        // The scenario's INSEL5 is read by the world reader 0x100a2ea0 (from 0x100ae270
+        // at 0x100ae6cb): head at 0x100a2efd, rectangle (x, y, x + w, y + h) at
+        // 0x100a2f12–0x100a2f4d, `number & 0xFFFF` looked up in the island table
+        // (0x100a2f38–0x100a2f5c); a missing island is made by world +0x88 =
+        // 0x100a24d0(0, &rect, number) through island +0x1c4(&rect, number)
+        // (0x100a2623), then 0x100a19a0 stores it at world +0x6530 + 4 · slot with slot
+        // = the low byte of island slot +0x40. That +0x40 returns the number given to
+        // +0x1c4 is likely (not followed, OQ-141). The original reads a second INSEL5
+        // with a number it already has into that island; the adapter refuses it (no
+        // scenario does it, P: numbers unique).
         const std::uint32_t slot = isl.number;
         if (slot >= config.island_slots) {
             return path + ": island number " + std::to_string(slot) +
@@ -238,6 +278,12 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                          ? "INFO[0] = " + std::to_string((*info)[0]) + " has no climate mask"
                          : std::string("no INFO record"));
             continue;
+        }
+        if (isl.x % 8 != 0 || isl.y % 8 != 0) {
+            warn.add(ScenarioWarningKind::UnalignedIsland, path, "INSEL5", child.offset,
+                     "position (" + std::to_string(isl.x) + ", " + std::to_string(isl.y) +
+                         ") is not a multiple of 8; the original snaps it down "
+                         "(0x100a253e–0x100a2586), here it stays");
         }
         ScenarioSpec::IslandSpec is;
         is.slot = IslandId{slot};
@@ -294,11 +340,18 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
             if (!block) {
                 return path + "." + std::string(name) + ": " + block.error();
             }
+            // D AnnoWelt 0x1008957d–0x10089676 (the PROD2 case of the island record
+            // loader 0x10089130; GELAENDE and FLUESSE are read alike): floor((len - 6) /
+            // 6) items (0x100895cf–0x100895d6), so bytes after the last whole item are
+            // ignored; per item the id & 0x3FFF is looked up (0x1008960d) and an unknown
+            // id skipped (0x10089619), rotation (id >> 14) & 3 (0x1008964e), phase
+            // state & 0x3F (0x1008965e), height state >> 8 (0x10089660), tile = block
+            // origin + the item's x, y read as signed bytes (movsx, 0x10089634).
+            // formats::insel masks the id with 0x0FFF and reads x, y unsigned: equal
+            // on the corpus (P, insel.md: bits 12–13 always 0, items inside their block).
             const Bytes items = block.value().data;
-            if (items.size() % insel::kItemLen != 0) {
-                return path + "." + std::string(name) + ": the items are not 6-byte items";
-            }
-            for (std::size_t i = 0; i < items.size(); i += insel::kItemLen) {
+            const std::size_t whole = items.size() - items.size() % insel::kItemLen;
+            for (std::size_t i = 0; i < whole; i += insel::kItemLen) {
                 const insel::PlacedObject o =
                     insel::PlacedObject::parse(items.subspan(i, insel::kItemLen), block.value());
                 const std::string where = path + "." + std::string(name) + "[" +
@@ -348,6 +401,7 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
         warn.add(ScenarioWarningKind::TileOwnersUndecoded, path, "INSEL5", child.offset,
                  "no record of the island is decoded as tile owners (OQ-141): every tile neutral");
         spec.islands.push_back(std::move(is));
+        island_at_offset.push_back(child.offset);
     }
 
     // Players (SPIELER): the header series (with HEAD) makes the players, the state
@@ -384,8 +438,13 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                 } else if (r.name == "VOLK") {
                     // D AnnoWelt 0x1001d657–0x1001d753 (switch 0x1001e8f4): people 1
                     // for types 8, 11, 12; 11 for 15; 12 for 16, which also set
-                    // +0xA0 bits 0x19 and colour 0. Other types take the index of
-                    // the VOLK name in a 20-name list that is not traced.
+                    // +0xA0 bits 0x19 and colour 0; types 9, 10, 13, 14, 17 and up take
+                    // the index of the VOLK name in a 20-name list (people 2..12 also
+                    // set the bits and colour 0). The reader first matches the name
+                    // against that list (0x1001d69e–0x1001d6f7) and sets nothing when
+                    // it does not match; the list is not traced (OQ-143). The names
+                    // that occur with types 8/11/12/15/16 are SPIELER, PIRATEN and
+                    // VENECIA (P), taken here as matching.
                     if (p.kind == 8 || p.kind == 11 || p.kind == 12) {
                         p.volk = 1;
                     } else if (p.kind == 15 || p.kind == 16) {
@@ -396,8 +455,9 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                         warn.add(ScenarioWarningKind::UndecodedPeople, path + ".VOLK", r.name,
                                  r.offset,
                                  "type " + std::to_string(p.kind) +
-                                     ": the VOLK name list is not traced, people stays " +
-                                     std::to_string(p.volk));
+                                     ": the VOLK name list is not traced (OQ-143): people stays " +
+                                     std::to_string(p.volk) +
+                                     ", and the +0xA0 bits 0x19 and colour 0 may be missing");
                     }
                 } else {
                     warn.unknown_record("players", path + "." + std::string(r.name), r.name,
@@ -419,32 +479,37 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                    ", which has no header block";
         }
         for (const tagged::Record& r : pl.records) {
-            if (r.name != "STADT2") {
+            // The player reader also takes the older name STADT for the same record (D
+            // AnnoWelt 0x1001d240, string test; docs/re/annoscene.md §10).
+            if (r.name != "STADT2" && r.name != "STADT") {
                 warn.unknown_record("players", path + "." + std::string(r.name), r.name, r.offset);
                 continue;
             }
             // STADT2 prefix (D AnnoWelt reader 0x1001e294, writer 0x1001f3fd): u8
             // city number on its island, u8 0, u16 x, u16 y (a tile of the city);
             // the owner is the enclosing block's player.
-            const std::string where = path + ".STADT2";
+            const std::string where = path + "." + std::string(r.name);
             if (r.payload.size() < 6) {
                 return where + ": the 6-byte prefix is missing";
             }
             const std::uint32_t no = r.payload[0];
             const std::uint32_t x = formats::u16_le(r.payload, 2);
             const std::uint32_t y = formats::u16_le(r.payload, 4);
-            ScenarioSpec::IslandSpec* is = island_at(spec.islands, x, y);
+            if (no >= config.city_slots || no == config.neutral_owner) {
+                return where + ": city number " + std::to_string(no) +
+                       " is not a city slot (city_slots " + std::to_string(config.city_slots) +
+                       ", neutral_owner " + std::to_string(config.neutral_owner) + ")";
+            }
+            // The scenario path's load origin and the reader's skip flag (0x1001e2c4–
+            // 0x1001e2fd, 0x1001d2fa) are not traced; origin 0 and flag 0 are likely.
+            ScenarioSpec::IslandSpec* is =
+                island_at(spec.islands, island_at_offset, r.offset, x, y);
             if (is == nullptr) {
                 warn.add(ScenarioWarningKind::CityOffIsland, where, r.name, r.offset,
                          "city " + std::to_string(no) + " at (" + std::to_string(x) + ", " +
                              std::to_string(y) +
                              ") is on no read island; skipped as the original does");
                 continue;
-            }
-            if (no >= config.city_slots || no == config.neutral_owner) {
-                return where + ": city number " + std::to_string(no) +
-                       " is not a city slot (city_slots " + std::to_string(config.city_slots) +
-                       ", neutral_owner " + std::to_string(config.neutral_owner) + ")";
             }
             for (const ScenarioSpec::CitySpec& other : is->cities) {
                 if (other.no.v == no) {

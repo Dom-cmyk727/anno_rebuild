@@ -65,6 +65,10 @@ enum class ScenarioWarningKind : std::uint8_t {
     /// An island without INFO, or whose INFO[0] climate has no monopoly mask: the
     /// island is skipped.
     UnknownClimate,
+    /// An INSEL5 whose x or y is not a multiple of 8: the original snaps the
+    /// rectangle down (D AnnoWelt 0x100a253e–0x100a2586); here it stays where the head
+    /// puts it (none in the corpus).
+    UnalignedIsland,
 };
 
 /// The stable name of a kind ("UnknownRecord", …): the corpus expectations file

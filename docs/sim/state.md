@@ -715,6 +715,8 @@ struct Figure {
     GoodsId cargo_goods = 0; std::uint32_t cargo_88 = 0;
     std::uint32_t hp = 0;
     std::uint32_t born = 0;            // t at spawn (the interim return rule D12 reads it)
+    std::uint16_t stamp = 0;           // T24: u16 tick of the figure's last call (D: the unit's +8 while it lives; the figure tick works through u16(t - stamp) ticks, 0x10034760)
+    TransportState transport;          // T24: the job steps and the walk of a market cart / workshop carrier (below)
     std::optional<std::uint16_t> expiry_stamp;    // present = ended, on the 7500-tick expiry list: u16 tick of the end (D property 0x23 = unit +8, frozen at the Remove 0x10034844); the default spawn does not set it (O-8). S7..S13 called it created_stamp
 };
 struct FigureRegistry {                           // D unit registry, world +0x114, vtable 0x100ccd74
@@ -742,6 +744,21 @@ Phase A of the original registry tick (sector re-bucketing of float positions) i
 4. `created_stamp` holds the tick of the figure's end (the unit's `+8`, frozen by the Remove at `0x10034844`), not the spawn tick. Change (done in T22, not at the S15 freeze): renamed to `expiry_stamp`; the bytes are unchanged.
 
 The original's unit slot is a u16 (65 536 slots); `Slot` is the widening of "no hardcoded limits".
+
+*T24 (transport, `docs/re/transport.md`).* Two figure fields and the job state:
+```cpp
+enum class TransportStep : std::uint8_t { Start, ToSource, Load, ToHome, Done };   // the job's steps A, B, C (D factory 0x1003b0e0)
+struct TransportState {
+    TransportStep step = TransportStep::Start;
+    std::uint32_t wait = 0;            // ticks left of step B's wait
+    std::vector<FixedPos> route;       // waypoints in Q24.8, the first where the walk started; empty = not walking
+    std::uint32_t next = 0;            // the waypoint walked to next
+    std::uint32_t along = 0;           // progress from route[next - 1] towards route[next], 2^-24 tile
+    BuildingId target;                 // step A's chosen building
+    std::uint32_t reserved_88 = 0;     // what the target reserved for this figure (cargo +0x1c)
+};
+```
+`validate_figures` refuses a step outside the enumerators, a route with `next` beyond its end, and `along` on an empty route. The field counts are 14 (`Figure`) and 7 (`TransportState`). The figure type's data come from `FigurenHeader.dat` into the registry (`FigureType{id, speed_q24, capacity_88, layer, load_ticks}`, `TypeRegistry::find_figure_type`, part of the registry digest): `speed_q24 = round(f32 HEAD[4] · 0.2f · 2^24)`, `capacity_88 = LOGIC[0x11] << 8`, `layer = LOGIC[0x10]`, `load_ticks = round(f32 LOGIC[4] · 500)` (1.0 when not above 0). A spawned figure now starts at the type's first `ENTRANCE` point (rotated as AnnoGame `0x100084c0`, in sixths of a tile, `BuildingType::entrances`), else at the north-west tile as before (O-59).
 
 ### 4.10 `events.hpp`, `timers.hpp`
 ```cpp
@@ -1201,6 +1218,60 @@ end_figure(f, t):                                                       // D 0x1
 ```
 Default behaviour (no seam): nothing moves; if `rules.interim_figure_return_ticks > 0` and `u32(t - fig.born) >= N` the figure ends (`end_figure`, D12): its counter goes back at once, its slot stays taken until phase C frees it 7500 ticks later. `destroy` = free the slot (`SlotList::remove`), erase `by_id`, take it off `expiry`; it releases nothing (D `0x10097520` nulls the entry, calls the destructor `0x10031db0`, lowers the live count). A behaviour seam ends its figure through `SerialWorld::end_figure` (the registry appends it to `expiry` after the seam returns); a seam that sets the stamp directly is ended the same way, and a `ReleaseCounter` that names a figure releases through it, only while it still has a home (own design, the seam protocol; T22). The original's last walk between the release and the Remove (`0x1003af00`: 0 or 15.0 at rate 0.01) belongs to a behaviour body (O-8); `end_figure` does both at `t`. Which other unit classes append to `expiry` is unread (O-8); the default spawn does not.
 
+**Transport (T24; D `docs/re/transport.md`; stand-ins OQ-160, OQ-161, OQ-162).** With no seam installed, phase B runs this body for the jobs `0x34` (market cart) and `0x33` (workshop carrier). It follows the seam protocol: only its own figure and its `Effects` (`store_deltas`, `goods_moves`, the end through `SerialWorld::end_figure`), merged right after the call; it draws nothing. When it answers false, the D12 default below runs.
+```
+market_tick(m, type, t):                                  // D 0x1006b6d0; class Market, TickKind Market, gate 500
+    if u16(t - m.last) < 500: return;  m.last += 500
+    send_figure = m.carts_out < type.max_figures[0]       // a market type without PROD data: never
+    // consume: carts_out += 1, spawn figure_ids[0] (group 0, entry 0) with job 0x34
+
+transport_tick(fig):
+    ft = types.find_figure_type(fig.kind);  if !ft: return false               // a registry without FigurenHeader.dat
+    if fig.expiry_stamp: fig.stamp = u16(t); return true                        // ended, waiting for phase C
+    ticks = u16(u16(t) - fig.stamp);  fig.stamp = u16(t)
+    if step in {ToSource, ToHome} and walk(ticks) does not arrive: return true  // reads nothing else
+    home = the building fig.home (or none)
+    if job == 0x33 and home is not a Workshop: return false                     // the weapons workshop's carrier: stage 2 (it never left Start)
+    repeat (each pass waits or moves on):
+      Start:    c = choose_source(job, home)                                    // step A, 0x1005ad10 / 0x1005a530
+                if !c: start_home; continue                                     // 0x1005d380: step 9 -> the tail
+                if c.building is a producer: r = clamp(avail(c, g), 0, ft.capacity); store_deltas += {c, Reserved, line(g), +r}   // 0x10068460; a market reserves 0
+                cargo_goods = g;  reserved_88 = r;  target = c;  route = path;  step = ToSource
+      ToSource: walk;  if no home: unreserve; step = Done                       // 0x1005d3c0 -> +0x38
+                else wait = ft.load_ticks; step = Load                          // 0x100551b0
+      Load:     wait out the ticks;  load():                                    // 0x100551f0
+                  market target: take = min(capacity, city stock(g)); goods_moves += {city, g, -take}      // 0x1006b7f0
+                  producer:      unres = min(reserved(line), reserved_88); store_deltas += {Reserved, -unres}
+                                 take = clamp(out - (reserved - unres), 0, capacity); store_deltas += {Output, -take}   // 0x10068430
+                  cargo_88 += take;  reserved_88 = 0;  start_home
+      ToHome:   walk;  unload():                                                // 0x10057bd0
+                  market home: goods_moves += {home city, g, +cargo}            // the city's add clips at its capacity, the rest is lost
+                  workshop home: store_deltas += {home, Input, index(g), +cargo}   // 0x100683f0, no clip
+                step = Done
+      Done:     end_figure(fig)                                                 // release + expiry (T22)
+
+start_home:  route = none;  step = ToHome;  if fig stands inside the home's footprint: arrive now
+             else path_home (first footprint tile reached, 0x10054240) or, without a path, step = Done
+
+choose_source(job, home):                                 // area = search_area(home): footprint centre, radius HEAD[0x11], disc 0x10002a60
+    ids = rect_query(home city, area.square(), job == 0x34 ? mask 8 : mask 0xa)  // the home city's buildings only (city +0x60)
+    cart filter:    avail(out0) >= 256 or avail(out1) >= 256                    // 0x1005aca0
+    carrier filter: workshop_offer(home, b) > 0                                 // 0x1005a500
+    search from the home's footprint tiles to the candidates' footprint tiles (stand-in, OQ-161); best = 0 (cart) / -1 (carrier)
+    on a candidate's first goal tile:
+      cart (0x1005a900): for g in out0, out1 (a 0 out1 ends) with city capacity > city stock(g):
+          raw (1..25): q = 3cap/4; score = (avail - q)·128 / (cap - q)    else: score = avail·128 / cap, only if avail >= 256
+          if best < score: best = score, take (b, g); stop if score >= 128 and (not raw or 2cap >= city stock(g))
+      carrier (0x1005a400): v = workshop_offer(home, b, &g); if best < v: best = v, take (b, g); stop if avail(b, g) >= 3·capacity/4
+workshop_offer(ws, src, &g) (0x100728f0): best over the inputs g that src holds (out0 = g or ALL 0x8e, or out1 = g):
+    avail(src, g) >= 256 and p = priority(ws, g) > 0:  p + avail·192 / cap(src)
+priority(ws, g) (0x10068500): (input stock(g) + reserved_88 + cargo_88 of ws's live carriers with goods g) / need: < 30 -> 0x80, < 60 -> 0x60, else -1
+
+walk(ticks):  dist = ticks · ft.speed_q24;  along the route's segments (axis |d|, diagonal |d|·23726566/256, else isqrt) in 2^-24 tile
+              arrival: the route clears and dist / speed ticks are left for the next step (OQ-162)
+```
+The stand-in walk rule (OQ-160): `layer == 3` (`kRoadLayer`) enters road tiles only (HEAD flag `0x4000`); every other layer enters tiles without a building and roads. The home's and the candidates' footprints may always be entered; no diagonal passes a blocked orthogonal neighbour. The work per search is bounded by the square of the area: at most `(2r + 2)²` tiles, `r` the home type's radius. The merge applies a `StoreDelta` (step 6b, after the goods moves) to the building's output, reserved or input store, clamped to `0 .. 2^32 - 1`; a building that is gone is skipped.
+
 ### 5.10 Players, script timers, monopoly, event 7.5 min
 ```
 players_tick(t):                                          // D 0x1009c4d0
@@ -1653,7 +1724,7 @@ Honest cost note: the faithful scheduler performs about `Σ_lists (n·dt/500 + 1
 | O-5 | RemoveAt tail: goods 0x51–0x56 handlers, message record 0x2c, island slot `+0x7c` tile clear, PRODTYPE switch 0x10029540, fire/plague extinguish, market stall detach, third argument | `Seams::on_removed` | footprint `object := 0` (stand-in, D24: the previous tile object is lost); nothing else |
 | O-6 | City-empty predicate (city slot `+0x78` = 0x1002f7f0) | `Seams::city_is_empty` | `false`: no city is ever removed (D9) |
 | O-7 | Original spatial order: lazy unstable quicksort on y (0x10027000), swap-remove, rect queries and `FindNext` in set order | `Rules::spatial_order = Original0x10027000` | `YXSlot` (D2) |
-| O-8 | Figure bodies (unit slot `+0x74`), registry slot allocation (0x10097250), 7500-tick expiry list membership, destruction routine 0x10097520, job codes | `Seams::figure_tick`; `FigureRegistry` | figures never act; slot policy = list policy (A6); `expiry` empty; return only via `interim_figure_return_ticks` (D12); the registry holds the figures the merge creates (S7) |
+| O-8 | Figure bodies (unit slot `+0x74`), registry slot allocation (0x10097250), 7500-tick expiry list membership, destruction routine 0x10097520, job codes | `Seams::figure_tick`; `FigureRegistry` | figures never act, except the market cart (job `0x34`) and the `HANDWERK` workshop's carrier (`0x33`), which run the T24 transport body (§5.9) when the registry has their figure type; slot policy = list policy (A6); `expiry` empty; return only via `interim_figure_return_ticks` (D12); the registry holds the figures the merge creates (S7) |
 | O-9 | Type slot `+0xcc(2, P)` running cost with the per-instance index `P = bld.slot+0xc4(0x8e)`; `bld.slot+0x90` values other than 1; owner slot `+0x9c(7)` (cost waiver) and `+0x68` | `BuildingType::running_cost` carried; `Player::free_build` | no running-cost state; `free_build = false` |
 | O-10 | Trade-list capacity (0x73) | grows on demand | unbounded (data) |
 | O-11 | Meaning of tile flag bits (0x80 of byte `+3`, walk/shot/own masks `+0x88/+0xe8/+0x148`); a fresh tile record is `dword@4 = 0x1e000200` (owner nibble 15 and bit `0x200`, 0x1008c80d..0x1008c821) and `byte@3` holds the phase in its low 6 bits, a parity flag in bit 6 and another flag in bit 7 (0x1008b5f0) | `TileLayer::aux`, `TileLayer::phase` | `aux` = 0 is a stand-in (the original fresh tile carries 0x200); `phase` accepts the whole `u8` (the original holds 0..63): both decided when S7 / S14 read the bits |
@@ -1705,7 +1776,7 @@ Honest cost note: the faithful scheduler performs about `Σ_lists (n·dt/500 + 1
 | O-56 | (closed in the S6 review round) which buildings a rect query returns: read, 0x10023380 accepts a building iff its footprint overlaps the rectangle | `Island::rect_query` | the original's rule; only the order is D2 |
 | O-57 | Trade data without an index role: the range of `BuildGoods::setting` (the `value` of SetTradeFlag mode 9, stored as `u32` at city+0x48c+8k) and of `CityStock::capacity` (HEAD2 tons << 8, 0 = 50 t; how a Kontor level changes it is untraced), and whether the original's SetTradeFlag value always equals the entry index its UI sends | stored as given, hashed, no checked range; `list_index` is validated against the entries (§4.7) | stored only |
 | O-58 | Whether the class `Load` that follows `Create` for a loaded building (0x100264a0) keeps a mine's saved deposit or searches again. Scenarios (T23): the mine `Load` (D `0x1006e310`) reads no deposit and an entry carries none, so the mine searches at attach; open for savegames | a given payload keeps its deposit; a mine without one searches at attach | keeps the saved deposit |
-| O-59 | Own-design stand-ins of the serial figure phase that S7 had to fix because the effect types exist: the start position of a spawned figure (the building's north-west tile in Q24.8; the original's is a float from the unit constructor, O-47), the goods of a `Reserve` (the type's output goods of the store, a cart carries one kind at a time), the delivery rule (the whole cargo through `CityStock::add`, the rest stays, an empty cart carries no goods), the job code 0 for a figure whose job is unread (O-8), and the figure kind 0 of a building whose type has no figure id (an empty `figure_ids` list or a first entry of 0, which is the file's "none"): `consume` still raises the counter and queues the spawn, so a kind-0 figure appears; what the original does for such a building is unread (decision for the owner, OQ-064) | `Effects::reserves`, `deliveries`, `goods_moves`; `SpawnRequest::pos` | as described; no figure acts before S12, so nothing is visible; S12 reads 0x10097520 / the transport code and replaces them |
+| O-59 | Own-design stand-ins of the serial figure phase that S7 had to fix because the effect types exist: the start position of a spawned figure (the building's north-west tile in Q24.8; the original's is a float from the unit constructor, O-47), the goods of a `Reserve` (the type's output goods of the store, a cart carries one kind at a time), the delivery rule (the whole cargo through `CityStock::add`, the rest stays, an empty cart carries no goods), the job code 0 for a figure whose job is unread (O-8), and the figure kind 0 of a building whose type has no figure id (an empty `figure_ids` list or a first entry of 0, which is the file's "none"): `consume` still raises the counter and queues the spawn, so a kind-0 figure appears; what the original does for such a building is unread (decision for the owner, OQ-064) | `Effects::reserves`, `deliveries`, `goods_moves`; `SpawnRequest::pos` | as described; T24 replaced two of them for the transport jobs: the spawn is at the type's first entrance point (NW tile only without one), and the cart's and carrier's reservations, loads and deliveries follow the original (`StoreDelta`, `docs/re/transport.md`); the rest stands for the other figures |
 
 ## 13. Deviations from the original
 
@@ -1762,7 +1833,7 @@ Honest cost note: the faithful scheduler performs about `Σ_lists (n·dt/500 + 1
 | D9 | decision-needed | Demolish removes the whole city when city slot `+0x78` reports empty, with no confirmation | hook; the predicate is unread so by default no city is ever removed; opt-out reserved | 0x10058f80; 0x1002f7f0 | `keep_empty_city` |
 | D10 | decision-needed | The 7.5 min accumulator is reset to 0 (overshoot discarded), so the draw schedule depends on step size | replicated; opt-in `acc −= 450000` | 0x100ae16e | `event750_keep_overshoot` |
 | D11 | decision-needed (design-only) | One world PRNG consumed in sequential island order | replicated. `PerIsland` streams over the shared table are **design-only**: a reserved `Rules` value that `Rules::validate()` rejects until stage S16 builds the stream state (per-island cursor, hash scope, save entry, header seed), so no unhashed stream state can exist; if the owner chooses it later it enables pure parallel island ticks | 0x100a1740 | `prng_mode` (reserved) |
-| D12 | decision-needed (stand-in) | Carriers, workers and animals walk and return; trip length unknown | a spawned figure never returns (counters stay raised); opt-in return after N ticks | unit slot `+0x74` | `interim_figure_return_ticks` |
+| D12 | decision-needed (stand-in) | Carriers, workers and animals walk and return; trip length unknown | a spawned figure never returns (counters stay raised); opt-in return after N ticks. Since T24 the market cart and the workshop carrier walk and return as the original's (§5.9); D12 covers the other figures | unit slot `+0x74` | `interim_figure_return_ticks` |
 | D13 | decision-needed | Figure positions are x87 floats (no oracle); speeds float | Q24.8 fixed point, integer speeds; path and arrival ties may differ from the original; the format is the owner's call when figures are ported | 0x10059220 | none (fixed point only) |
 | D14 | decision-needed | The 0x64 group codec merges records of equal type and `rec8` (lossy `rec7`, ≤ 15 followers, \|d\| ≤ 127) and floats for speed | plain widened lists on the wire; the original codec only as optional replay import (`legacy::decode_0x64`) | 0x1005c8cf, 0x1005cc07 | n/a |
 | D15 | decision-needed (stand-in) | Unported class tick bodies (houses, markets, public, military, hunters, ships, doctors, schools, castle) do something after their gate; unread | `TickKind::None`: the building is inert and `last` is untouched; gate periods (500 production/market/public/school/hunter/whaler/shipyard/…, 2500 houses 0x10076230, 5000 stalls 0x100702d0 and the inn, 166 towers and cannon towers; the compare constants are read, **D**, Appendix C) are carried as data only; what the bodies do with `last` after the gate is not read (**I**) | various | `ClassInfo::tick` |
@@ -1816,6 +1887,7 @@ Scenarios are built in code (`synthetic.cpp`); types use the values of fixtures 
 | G3 | S2: two islands, two cities, one building of every implemented class, a mine over two deposits, research bytes set for the weapon lines | 100 000 ticks | S11 |
 | G4 | S3: players with upkeep and bankruptcy, events, timers, 7.5 min event with the add-on flag, monopoly once | 600 000 ticks (20 game minutes) | S12 |
 | G5 | S4: growth tiles, 300 s drought gate with a market building | 1 000 000 ticks | S13 |
+| G6 | `synthetic::g6_scenario` on `make_transport_types` (T24): one island, city 0 with the market (one cart, radius 8) at (110, 110), on its road the weaver with 5 t of cloth and the grain farm with 7 t of corn, the carrier weaver (radius 16, one carrier) at (106, 114), 30 t of wool in the warehouse; seed 624 | `fixtures/synthetic/sim/g6.log`: 6 000 advances of 100 ms (300 000 ticks), checkpoints every 300 advances; `t24_g6_checkpoints`, `t24_g6_end`; replayed by the test and by `anno-sim-replay run` (CTest `anno_sim_replay_g6_run`) | T24 |
 
 **The scenario corpus file is re-baselined with the goldens.** `fixtures/synthetic/sim/scenario_corpus.txt` (§14.5) holds the state hash after `World::create` for every shipped scenario, so a `kStateHashVersion` or `kPrngTimelineVersion` bump moves it too. It cannot be rewritten in CI (it needs the game files): the task that bumps runs the corpus case with `ANNO1503_GAME_DIR` and `ANNO_UPDATE_GOLDEN=1` in the same commit. Its header line `# kStateHashVersion=<n> kPrngTimelineVersion=<m>` names the versions it was made at; the corpus case refuses a file whose line is not this build's ("re-baseline"), and `tools/sim_stream.py --check` refuses one whose line is not the script's versions (since S14 stage 2).
 
@@ -2061,6 +2133,32 @@ So B1 … B13 take the slots 2, 3, 4, 5, 6, 7, 8, 9, 1, 10, 11, 2, 3, the list e
 **S14 stage 2 as implemented (2026-10-23).** Files: `island_links.hpp` / `island_links.cpp` (new: `resolve_island_links`, `link_candidate_name`, `ascii_upper`), `config.hpp` (`LinkTables`, `IslandCandidateOrder`, `SimConfig::links`, `Rules::island_candidate_order`), `draw.hpp` (ten load sites, `DrawPhase`, `draw_site_phase`, `may_draw`), `scenario_formats.hpp/.cpp` (the link records, `template_summary`, `resolve_scenario_links`, `place_island_links`, the island code pulled into `island_from_insel`), `src/sim_load` (new library `anno_sim_load`: the template scan and the glue), `anno-sim-replay scenario` (prints every link's outcome and the draws per site), `tools/lint_sim.py` (`file_io`), `tools/sim_stream.py` (the new header fields, the corpus version check). Tests: `island_links_test.cpp` (28 cases on synthetic links with scripted draws, every pick derived by hand in the case), `scenario_links_test.cpp` (10 cases on synthetic `.sze` and `.scp` built in the test: the byte maps, the records, the refusals, the summaries, resolution with the cursor hand-off and placement, every link warning kind, no load site in advance), `config_test.cpp` (the header transcription, the mutations, the validation rows), the CTest `anno_sim_replay_scenario_endless_03_links`. Stream **110** and PRNG timeline **2** (§6), every golden re-baselined, `g2.log`–`g5.log` re-recorded, `scenario_corpus.txt` re-baselined with its version line.
 - **Corpus (this PC, 2026-10-23):** 50 of 50 load, resolve, create and run clean as in stage 1; the 9 link files (6 with links only, 3 mixed) create every linked island: **229 of 229 links resolved, 0 unresolved**, 989 draws in all (81–138 per file); islands 897 (668 `INSEL5` + 229), tile objects 3 251 239, deposits 0 (`LinkOresUnplaced` 189, OQ-151). New warnings: `LinkOresUnplaced` 189, `LinkRawMaterials` 229 (every placed link), `LinkTreasureUnplaced` 102, `LinkTemplatePlayers` 33; `LinkNamesTemplate`, `LinkUnresolved` and `LinkTreasuresCapped` 0. The corpus case takes 4.1 s with 16 threads.
 - **Exit:** a scenario's links become islands as in the original's network game (the order of OQ-150); what the placement does to them beyond the template (ores on mountains and their deposits, native names, treasures, island property 11) waits for OQ-151/152 and is reported per link.
+
+**T24 as implemented (2026-10-23): transport stage 1, the market cart and the workshop carrier.**
+- **Files:**
+  - `transport.hpp` / `transport.cpp` (new; §5.9 "Transport");
+  - `types.hpp` / `types.cpp`: `FigureType` and `figure_type_from_entry`, `EntrancePoint` and `BuildingType::entrances`, the Market row of the class table, the Builder's `add_market`, `entrances`, `footprint`, `action_radius`, `flags_word`, `figure_ids`, `figure_type`;
+  - `production.hpp` / `production.cpp`: `Market`, `market_step`, and the `reserved` stores of every producer;
+  - `building.hpp` / `building.cpp`: the Market payload, tag 6;
+  - `figure.hpp` / `figure.cpp`: `stamp`, `TransportState`;
+  - `tick.hpp`: `StoreDelta`, `Effects::store_deltas`, `SerialWorld::figures()` / `layout()`;
+  - `scheduler.cpp`: merge step 6b, the spawn stamp, the default body;
+  - `driver.cpp`: the market tick, the cart's job, the spawn at the entrance;
+  - `island.cpp`: `rect_query` drops a building's repeated tiles before it sorts (same order, far fewer lookups);
+  - `state_fields.hpp`; `world.hpp`;
+  - `synthetic.hpp` / `.cpp`: `make_transport_types`, `g6_scenario`;
+  - `anno-sim-replay`: the scenario registry reads `FigurenHeader.dat`.
+- **Tests:**
+  - `transport_test.cpp` (17 cases): the disc, the area, the segment lengths, the slots; the cart end to end with every tick derived; off the road; F11; F12; the cart's choice in five sub-cases (75 % line, 1 t filter, strict best, room, reservation clip); the full warehouse; the neighbour order; the carrier end to end; the priority; the offer; the carrier's 3/4 stop; determinism and a save mid-walk; G6.
+  - The layouts, field counts and digests of `slice_test`, `sim_test`, `building_state_test`, `types_test`, `container_probe_test`, `config_test`, `world_state_test` and `create_remove_test`.
+  - `scenario_test` counts the producers and warehouses whose stocks moved.
+- **Stream 111** (PRNG timeline unchanged at 2: transport draws nothing). Every golden re-baselined (`goldens.txt` lists the 110 values in a note), `g2.log`–`g5.log` re-recorded, `g6.log` new, `scenario_corpus.txt` re-baselined; `tools/sim_stream.py` transcribes the new fields and the Market row.
+- **Corpus (this PC):** 50 of 50 load, create, run 150 000 ticks clean. Producers whose stocks moved: **670 of 2 147**; warehouses (cities) whose stock moved: **86 of 272**. In the scenario with the most buildings (`single36`, 759) at least one warehouse stock moves (the economy case).
+- **Time per scenario** (`anno-sim-replay scenario`, Release MSVC, Ryzen 9800X3D, 150 000 ticks, all 50): run median 264.5 ms, max 1 168 ms (`S01_07_01`); against T23's 149 / 655 that is 1.78× on both. The stage 2 head on the same machine: 183 / 573.
+  - The worst file, `S01_07_01`, takes 3.3× its stage 2 time: its carts search 13 800 times in 150 000 ticks and find a source 90 times, each search reading up to its whole area.
+  - What made it faster without changing a hash: `rect_query` (above), the walkability worked out lazily per tile and memoised per search, a bucket queue in the place of the binary heap (the same pop order), and no world lookups for a figure in mid-walk.
+  - A per-island walk-class cache is the next step if more is needed.
+- **Exit:** a shipped town's carts and carriers move goods between producers, markets and workshops; the search and the walk rule are stand-ins (OQ-160, OQ-161), the walk is integer (OQ-162); the weapons workshop's carrier, the farm workers and the other jobs keep the D12 default.
 
 **S15. Hardening and acceptance.** `src/tools/bench_sim/`, `fixtures/diff` exporter, lint completed, **the state stream frozen: `kStateHashVersion = 2` and every golden re-baselined in that one commit (§14.3)**, 1-hour determinism acceptance run (PLAN M3), `docs/PLAN.md` and `docs/perf/README.md` status, `docs/open-questions.md` entries for O-1..O-52 (the decisions D1..D18 are already filed as OQ-036..OQ-053). Tests: "one hour run is deterministic across two runs" (long, opt-in), 24 h soak under ASan (nightly), cross-platform golden matrix, "state hash version is frozen at 2". Exit: PLAN M3 acceptance.
 

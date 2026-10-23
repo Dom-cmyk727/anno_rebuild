@@ -247,7 +247,7 @@ struct Drought {
 /// clipped), ring r >= 1 the side `phase` (0 top, 1 right, 2 bottom, 3 left) of the
 /// ring clipped to the island; its chunk anchors are (rect.x0 + i · chunk_edge,
 /// rect.y0 + j · chunk_edge) inside it, row-major. Empty (w or h 0) when the clipped
-/// side holds no tile, and for a phase of 4 or more (no rectangle in the original;
+/// side holds no tile, and for ring >= 1 with a phase of 4 or more (no rectangle in the original;
 /// reachable only with SimConfig::drought_phases above 4). `step` is the index into the
 /// original's 64 in-chunk tile offsets (table 0x100ca0b8): the strip covers the
 /// offsets step .. step + chunk_edge - 1 of every anchor's chunk. A tile access of a

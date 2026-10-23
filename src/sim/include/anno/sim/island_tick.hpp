@@ -29,7 +29,8 @@ namespace anno::sim {
 /// fauna sweep (chunk counts min(chunks · d /
 /// period + 1, chunks) with d the 16-bit difference to the sweep stamp; zero chunks
 /// give 0 visits and everything after still runs, A1), the object manager, the city
-/// ring, the 300 s event, then the sweep stamp becomes the 16-bit tick.
+/// ring, the 300 s event, the drought tick (0x1008b8a2, then 0x1008b8ab), then the
+/// sweep stamp becomes the 16-bit tick.
 void island_tick(const TickContext& ctx, Island& island, Effects& fx);
 
 /// The growth visit of one chunk (D: 0x1008b5f0), the chunk whose top-left tile is
@@ -86,15 +87,17 @@ void event_300s(const TickContext& ctx, Island& island, Effects& fx);
 /// D: 0x10093a10, the wrapper whose only caller is the 300 s event. Does nothing if
 /// the island has a drought; otherwise the first non-null building (slot order,
 /// holes skipped) of the market list (ListLayout::Roles::market_list) of the first
-/// city (slot order over all city_slots) that has one gives the centre, floored to
-/// the chunk edge, and start_drought_at runs with SimConfig::drought_radius.
+/// city (slot order over all city_slots) that has one gives the centre as it is (the
+/// constructor floors it), and start_drought_at runs with SimConfig::drought_radius.
 /// Returns whether a drought was started.
 bool start_drought(const TickContext& ctx, Island& island);
 
 /// The drought-area constructor (D: 0x10087280, island virtual slot +0x15c): a
 /// drought at world tile (x - x % chunk_edge, y - y % chunk_edge) (the constructor
 /// floors, 0x100872b8..0x100872e5) in the expanding state, ring 0, target_ring =
-/// radius / chunk_edge, stamp = the 16-bit `t`. Pure: a scripted drought (O-51) will
+/// radius / chunk_edge (at most kMaxDroughtRing: the ring is an i32; the 300 s event's
+/// radius is bounded by SimConfig::validate, a larger one from another caller is cut to
+/// the bound), stamp = the 16-bit `t`. Pure: a scripted drought (O-51) will
 /// call it too. It sets the record unconditionally, like the constructor (a caller that
 /// must not replace a running drought, as start_drought, asks first), with a city
 /// mask of drought_mask_words(city_slots) zero words (O-55).
@@ -104,7 +107,7 @@ void start_drought_at(const SimConfig& cfg, Island& island, std::uint32_t x, std
 /// The rectangle of the drought record's current strip (D 0x1008aefb..0x1008b014, see
 /// DroughtStrip): ring 0 the centre chunk [x, x + e) x [y, y + e), unclipped; ring r >= 1
 /// the side `phase` of the ring at distance r chunks, clipped to the island; empty for
-/// a phase of 4 or more.
+/// ring >= 1 and a phase of 4 or more (ring 0 ignores the phase, as the original).
 DroughtStrip drought_strip(const SimConfig& cfg, const Island& island, const Drought& d);
 
 /// The drought machine (D 0x1008aeb0, docs/sim/state.md §5.8), a no-op without a

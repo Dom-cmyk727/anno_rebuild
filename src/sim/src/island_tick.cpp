@@ -123,7 +123,9 @@ void start_drought_at(const SimConfig& cfg, Island& island, std::uint32_t x, std
     Drought d;
     d.x = x - x % cfg.chunk_edge;
     d.y = y - y % cfg.chunk_edge;
-    d.target_ring = radius / cfg.chunk_edge;
+    // At most kMaxDroughtRing: the ring is an i32 that runs up to the target. The 300 s
+    // event's radius is bounded by SimConfig::validate; a scripted caller's is cut here.
+    d.target_ring = std::min(radius / cfg.chunk_edge, kMaxDroughtRing);
     d.ring = 0;
     d.city_mask.assign(static_cast<std::size_t>(drought_mask_words(cfg.city_slots)), 0U);
     d.phase = 0;

@@ -722,6 +722,16 @@ TEST_CASE("start_drought_at is the constructor the scripted door will use") {
     CHECK(island(w).drought->ring == 2);
     CHECK(island(w).drought->stamp == 4800);
     CHECK(w.check_invariants() == "");
+    // A radius beyond the i32 ring (edge 1: 2^32 - 1 rings) is cut to 2^31 - 1, so the
+    // ring can never overflow on the way out.
+    sim::SimConfig wide = w.config();
+    wide.chunk_edge = 1;
+    sim::Island spare;
+    sim::start_drought_at(wide, spare, 5, 5, 0xFFFFFFFFU, 0);
+    REQUIRE(spare.drought.has_value());
+    CHECK(spare.drought->target_ring == sim::kMaxDroughtRing);
+    sim::start_drought_at(wide, spare, 5, 5, sim::kMaxDroughtRing, 0);
+    CHECK(spare.drought->target_ring == sim::kMaxDroughtRing);
 }
 
 TEST_CASE("city mask with more than 32 city slots") {

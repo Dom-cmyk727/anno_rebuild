@@ -1157,3 +1157,23 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
   - OQ numbers continue after T14's OQ-130; renumber at merge if needed.
   - `g4.log` is 178 KB (12 000 advance entries).
 - Time spent / subagents used: two reviewer subagents (read-only); builds, mutation runs and gates by this session, one heavy job at a time.
+- **Addendum 2026-10-23: OQ-133 fix-up** (the owner: "Stay on the original bug with optional fix").
+  - New rule `Rules::timer0_clamp`, default **off**. Off is the original (D 0x1009cd51..0x1009cd59): timer 0's u32 counter minus dt wraps on an overshoot and the timer stops only on an exact 0. On is the F5 clamp. `TimerExpired` is posted only when the timer stops, in both modes; a wrap posts nothing. Files: `config.hpp`, `state_fields.hpp`, `timers.hpp`/`timers.cpp`, `scheduler.cpp`. The script side of the timers (0x1009cd90 set = seconds × 500, 0x1009cd70 read = counter / 500, 0x1009cdb0 / 0x1009cdc0 stop and start) is noted for the script engine.
+  - `Rules` is in the hashed header, so `kStateHashVersion` goes 106 → 107. Every golden was re-baselined: g0, g1_players, s5, s6 and the empty-world hash from `tools/sim_stream.py` (one more Rules byte; the C++ agrees), the rest self-baselined; g2.log, g3.log and g4.log were re-recorded. G2 6/6, G3 21/21, G4 21/21 in the tests and through `anno-sim-replay run`.
+  - G4 now runs the default rules. Timer 0 overshoots at tick 100 050, wraps, and ends at 2^32 − 25 − 499 950, still running, with no `TimerExpired`. Re-derived and asserted.
+  - Test "timer clamp: timer 0 wraps on an overshoot by default and stops at 0 under the rule":
+    - default: an overshoot leaves 2^32 − overshoot with the timer still active; an exact landing stops it;
+    - rule on: an overshoot stops the timer at 0;
+    - also run through `advance` in each mode, with the event or its absence checked.
+  - The advance-order case now lands timer 0 exactly.
+  - Mutations, all killed:
+    - clamping without the rule fails the timer clamp case and G4;
+    - the rule not passed to the tick fails the timer clamp case;
+    - an exact landing that does not stop the timer fails the timer clamp case, the advance-order case and `advance(0)`.
+  - Docs: state.md §5.10 pseudo-code, §3 Rules, §13 F5 row (now a rules option with a faithful default), §15 "S12 as implemented"; OQ-133 resolved.
+  - Gates:
+    - MSVC full build: warning-free.
+    - ctest without the game dir: 824/824.
+    - ctest `-R anno_sim` (sim and replay) with the game dir: 515/515. The full run with the game dir was not repeated because of the memory guard.
+    - clang-format: clean. lint_sim: ok. `sim_stream.py --check`: agree.
+    - WSL GCC 13.3 and Clang 18.1.3 at `-O3 -Werror`: 62 TUs clean, 502/502 with and without the game dir, g2/g3/g4 replay.

@@ -60,14 +60,18 @@ struct MonopolyTable {
 
 /// The timer tick (D 0x1009cd30), `t` the low 32 bits of the world tick: dt = t −
 /// last_tick (u32); every running timer k > 0 counts up by dt (u32, wrapping like the
-/// original's `add`); the running timer 0 counts down by dt and stops at 0. The original
-/// stops it only when the subtraction gives exactly 0 (0x1009cd51 `sub` / `jne`): an
-/// overshoot underflows to a huge u32 and keeps it running for about 99 days of game
-/// time. Here an overshoot clamps at 0 and stops the timer (F5, a fix). last_tick
-/// becomes t. Returns true when timer 0 stopped in this call (the world reports it as
-/// a TimerExpired UI event). A table whose vectors differ in size (check_invariants
-/// refuses it) is ticked over the shorter length.
-bool timers_tick(ScriptTimers& timers, std::uint32_t t);
+/// original's `add`); the running timer 0 counts down by dt (u32 `sub`, wrapping) and
+/// stops only when the result is exactly 0 (0x1009cd51..0x1009cd59 `sub` / `jne`): a
+/// step that overshoots leaves 2^32 minus the overshoot and the timer running (for
+/// about 99 days of game time). That is the default (owner decision 2026-10-23, OQ-133).
+/// With `clamp` (Rules::timer0_clamp, F5) an overshoot stops the timer at 0 instead.
+/// last_tick becomes t. Returns true when timer 0 stopped in this call, in both modes
+/// (the world reports it as a TimerExpired UI event; an overshoot that wraps posts
+/// nothing, since the timer did not stop). A table whose vectors differ in size
+/// (check_invariants refuses it) is ticked over the shorter length. Script access, for
+/// the script engine (O-16): 0x1009cd90 sets a timer to seconds × 500 ticks, 0x1009cd70
+/// reads counter / 500 in seconds, 0x1009cdb0 / 0x1009cdc0 stop and start it.
+bool timers_tick(ScriptTimers& timers, std::uint32_t t, bool clamp = false);
 
 /// The owner the monopoly table credits an island to (D 0x1009d210): the owner of the
 /// only city of the island, in city-number order, whose player has Volk 1; none when

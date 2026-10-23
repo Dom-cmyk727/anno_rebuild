@@ -25,7 +25,7 @@ MonopolyTable make_monopoly_table(const SimConfig& cfg) {
     return m;
 }
 
-bool timers_tick(ScriptTimers& timers, std::uint32_t t) {
+bool timers_tick(ScriptTimers& timers, std::uint32_t t, bool clamp) {
     // D 0x1009cd39..0x1009cd3b: dt = t - [+4], u32.
     const std::uint32_t dt = t - timers.last_tick;
     bool expired = false;
@@ -36,14 +36,19 @@ bool timers_tick(ScriptTimers& timers, std::uint32_t t) {
         }
         if (k > 0) {
             timers.counter[k] += dt; // 0x1009cd4b, u32 wrap as the original's add
-        } else if (dt >= timers.counter[0]) {
-            // 0x1009cd51..0x1009cd59 stop the timer only on exactly 0; an overshoot is
-            // clamped here (F5, fix).
+        } else if (clamp && dt >= timers.counter[0]) {
+            // Rules::timer0_clamp (F5, OQ-133): an overshoot stops the timer at 0.
             timers.counter[0] = 0;
             timers.active[0] = 0;
             expired = true;
         } else {
+            // 0x1009cd51: u32 `sub`, wrapping on an overshoot; 0x1009cd54..0x1009cd59:
+            // the timer stops only when the result is exactly 0.
             timers.counter[0] -= dt;
+            if (timers.counter[0] == 0) {
+                timers.active[0] = 0;
+                expired = true;
+            }
         }
     }
     timers.last_tick = t; // 0x1009cd62

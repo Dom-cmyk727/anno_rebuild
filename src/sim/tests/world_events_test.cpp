@@ -944,10 +944,13 @@ TEST_CASE("AI seam commands applied in advance and not logged") {
 
 // ------------------------------------------------------------- steps 5 to 7
 
-TEST_CASE("timer clamp: timer 0 counts down, stops at 0 and an overshoot is clamped") {
+TEST_CASE("timer clamp: timer 0 wraps on an overshoot by default and stops at 0 under the rule") {
     // D 0x1009cd30: dt = t - last_tick (u32); running timers k > 0 count up by dt
-    // (wrapping), the running timer 0 counts down by dt; the original stops it only on
-    // exactly 0 (0x1009cd51 `sub`/`jne`): an overshoot wrapped. F5 clamps it.
+    // (wrapping); the running timer 0 counts down by dt in u32 and stops only when the
+    // result is exactly 0 (0x1009cd51..0x1009cd59 `sub`/`jne`): an overshoot wraps and the
+    // timer runs on. That is the default (owner decision on OQ-133); Rules::timer0_clamp
+    // (F5) stops it at 0 instead. TimerExpired is posted only when the timer stops.
+    constexpr std::uint64_t k2to32 = std::uint64_t{1} << 32;
     sim::ScriptTimers tm = sim::make_script_timers(sim::SimConfig{});
     REQUIRE(tm.active.size() == 5);
     tm.active = {1, 1, 0, 1, 1};
@@ -955,40 +958,84 @@ TEST_CASE("timer clamp: timer 0 counts down, stops at 0 and an overshoot is clam
     CHECK_FALSE(sim::timers_tick(tm, 60)); // dt 60
     CHECK(tm.counter == std::vector<std::uint32_t>{40, 58, 9, 65, 60});
     CHECK(tm.last_tick == 60);
-    CHECK(sim::timers_tick(tm, 160)); // dt 100 > 40: clamped to 0 and stopped
-    CHECK(tm.counter == std::vector<std::uint32_t>{0, 158, 9, 165, 160});
-    CHECK(tm.active == std::vector<std::uint8_t>{0, 1, 0, 1, 1});
-    CHECK_FALSE(sim::timers_tick(tm, 170)); // a stopped timer stays as it is
-    CHECK(tm.counter[0] == 0);
-    // Exactly 0 stops it too (the original's own case).
-    tm.active[0] = 1;
-    tm.counter[0] = 30;
-    CHECK(sim::timers_tick(tm, 200));
-    CHECK(tm.active[0] == 0);
-    // dt is a u32 difference across the wrap of t.
-    tm.last_tick = 0xFFFFFFF0U;
-    tm.counter[1] = 0;
-    CHECK_FALSE(sim::timers_tick(tm, 0x10));
-    CHECK(tm.counter[1] == 0x20);
-    // Through advance: a TimerExpired UI event (code 0) at that tick, after the players.
+    SUBCASE("the original: an overshoot wraps and the timer runs on") {
+        CHECK_FALSE(sim::timers_tick(tm, 160)); // dt 100 > 40: 40 - 100 in u32
+        CHECK(tm.counter[0] == k2to32 - 60);
+        CHECK(tm.active == std::vector<std::uint8_t>{1, 1, 0, 1, 1});
+        CHECK(tm.counter == std::vector<std::uint32_t>{static_cast<std::uint32_t>(k2to32 - 60), 158,
+                                                       9, 165, 160});
+        // An exact landing stops it (the original's own case).
+        tm.counter[0] = 30;
+        CHECK(sim::timers_tick(tm, 190));
+        CHECK(tm.counter[0] == 0);
+        CHECK(tm.active[0] == 0);
+        CHECK_FALSE(sim::timers_tick(tm, 200)); // a stopped timer stays as it is
+        CHECK(tm.counter[0] == 0);
+    }
+    SUBCASE("Rules::timer0_clamp: an overshoot stops the timer at 0") {
+        CHECK(sim::timers_tick(tm, 160, true)); // dt 100 > 40
+        CHECK(tm.counter == std::vector<std::uint32_t>{0, 158, 9, 165, 160});
+        CHECK(tm.active == std::vector<std::uint8_t>{0, 1, 0, 1, 1});
+        CHECK_FALSE(sim::timers_tick(tm, 170, true));
+        CHECK(tm.counter[0] == 0);
+        tm.active[0] = 1; // an exact landing stops it as well
+        tm.counter[0] = 30;
+        CHECK(sim::timers_tick(tm, 200, true));
+        CHECK(tm.active[0] == 0);
+    }
+    SUBCASE("dt is a u32 difference across the wrap of t") {
+        tm.last_tick = 0xFFFFFFF0U;
+        tm.counter[1] = 0;
+        CHECK_FALSE(sim::timers_tick(tm, 0x10));
+        CHECK(tm.counter[1] == 0x20);
+    }
+    // Through advance: steps of 50 ticks over a counter of 100.
     const syn::SyntheticTypes t = types();
-    sim::World w = make(syn::empty_scenario(), t);
-    sim::WorldTestAccess::timers(w).active[0] = 1;
-    sim::WorldTestAccess::timers(w).counter[0] = 100;
-    w.advance(198); // tick 99: 1 left
-    CHECK(w.timers().counter[0] == 1);
-    CHECK(w.last_output().events.empty());
-    w.advance(100); // tick 149: overshoot of 49
-    CHECK(w.timers().counter[0] == 0);
-    CHECK(w.timers().active[0] == 0);
-    CHECK(w.timers().last_tick == 149);
-    REQUIRE(w.last_output().events.size() == 1);
-    CHECK(w.last_output().events[0].kind == sim::SimEventKind::TimerExpired);
-    CHECK(w.last_output().events[0].code == 0);
-    CHECK(w.last_output().events[0].tick == 149);
-    const std::vector<sim::SimEvent> host = w.drain_events();
-    REQUIRE(host.size() == 1);
-    CHECK(host[0].kind == sim::SimEventKind::TimerExpired);
+    auto run = [&](bool clamp, std::uint32_t counter) {
+        sim::Rules rules;
+        rules.timer0_clamp = clamp;
+        sim::World w = make(syn::empty_scenario(), t, {}, rules);
+        sim::WorldTestAccess::timers(w).active[0] = 1;
+        sim::WorldTestAccess::timers(w).counter[0] = counter;
+        w.advance(198); // tick 99
+        const std::uint32_t left = w.timers().counter[0];
+        w.advance(100); // tick 149
+        return std::tuple{left, std::move(w)};
+    };
+    {
+        // The default with an overshoot: 1 left at tick 99, then 1 - 50 wraps; no event.
+        auto [left, w] = run(false, 100);
+        CHECK(left == 1);
+        CHECK(w.timers().counter[0] == k2to32 - 49);
+        CHECK(w.timers().active[0] == 1);
+        CHECK(w.last_output().events.empty());
+        CHECK(w.drain_events().empty());
+    }
+    {
+        // The default with an exact landing: 99 + 50 = 149 ticks.
+        auto [left, w] = run(false, 149);
+        CHECK(left == 50);
+        CHECK(w.timers().counter[0] == 0);
+        CHECK(w.timers().active[0] == 0);
+        REQUIRE(w.last_output().events.size() == 1);
+        CHECK(w.last_output().events[0].kind == sim::SimEventKind::TimerExpired);
+        CHECK(w.last_output().events[0].tick == 149);
+    }
+    {
+        // The rule: the overshoot of 49 stops the timer at tick 149 with a TimerExpired.
+        auto [left, w] = run(true, 100);
+        CHECK(left == 1);
+        CHECK(w.timers().counter[0] == 0);
+        CHECK(w.timers().active[0] == 0);
+        CHECK(w.timers().last_tick == 149);
+        REQUIRE(w.last_output().events.size() == 1);
+        CHECK(w.last_output().events[0].kind == sim::SimEventKind::TimerExpired);
+        CHECK(w.last_output().events[0].code == 0);
+        CHECK(w.last_output().events[0].tick == 149);
+        const std::vector<sim::SimEvent> host = w.drain_events();
+        REQUIRE(host.size() == 1);
+        CHECK(host[0].kind == sim::SimEventKind::TimerExpired);
+    }
 }
 
 TEST_CASE("monopoly owner is the one city of a Volk 1 player on the island") {
@@ -1330,7 +1377,7 @@ TEST_CASE("advance runs events, figures, players and the AI, then timers, monopo
     queue(w, 1, hit_event(1));
     put_figure(w, bid(0, kWeaver));
     sim::WorldTestAccess::timers(w).active[0] = 1;
-    sim::WorldTestAccess::timers(w).counter[0] = 1;
+    sim::WorldTestAccess::timers(w).counter[0] = 50; // lands exactly at tick 50
     const std::uint32_t c = cursor_where(
         [](std::uint16_t r1, std::uint16_t r2) { return r1 % 10 == 0 && r2 % 5 == 0; });
     sim::WorldTestAccess::rng(w).set_cursor(c);
@@ -1461,7 +1508,8 @@ TEST_CASE("G4 players timers events and the 7.5 min event through 600000 ticks e
     human.upkeep_b = 30;
     human.stat_a = 1050;
     sim::WorldTestAccess::players(w).slots[1]->upkeep_a = 600;
-    // Timers: timer 0 counts down 100 025 ticks (an overshoot of 25 at tick 100 050, F5),
+    // Timers: timer 0 counts down 100 025 ticks; with the default rules (the original, OQ-133)
+    // the step to tick 100 050 overshoots by 25, the counter wraps and the timer runs on;
     // timer 2 counts up from 7, timer 4 is stopped.
     sim::ScriptTimers& tm = sim::WorldTestAccess::timers(w);
     tm.active = {1, 0, 1, 0, 0};
@@ -1540,9 +1588,11 @@ TEST_CASE("G4 players timers events and the 7.5 min event through 600000 ticks e
     CHECK(player(w, 1).money == -2900 - 300 * 40);
     CHECK(player(w, 2).money == 5000);
     CHECK(player(w, 2).state == sim::PlayerState::Alive);
-    // Timers: timer 0 clamped at tick 100 050, timer 2 at 7 + 600 000, timer 4 untouched.
-    CHECK(w.timers().active == std::vector<std::uint8_t>{0, 0, 1, 0, 0});
-    CHECK(w.timers().counter == std::vector<std::uint32_t>{0, 0, 600007, 0, 3});
+    // Timers: timer 0 wrapped at tick 100 050 (25 - 50) and counted down 499 950 more
+    // ticks: 2^32 - 25 - 499 950, still running; timer 2 at 7 + 600 000; timer 4 untouched.
+    CHECK(w.timers().active == std::vector<std::uint8_t>{1, 0, 1, 0, 0});
+    CHECK(w.timers().counter ==
+          std::vector<std::uint32_t>{4294967296U - 25U - 499950U, 0, 600007, 0, 3});
     CHECK(w.timers().last_tick == 600000);
     // Events: three dispatched (two at tick 1 000, one at 400 000), the delayed hit at
     // 700 000 still queued.
@@ -1578,8 +1628,7 @@ TEST_CASE("G4 players timers events and the 7.5 min event through 600000 ticks e
     CHECK(fired[0].tick == 225000);
     CHECK(fired[0].x == 308);
     CHECK(fired[0].y == 308);
-    REQUIRE(timers_out.size() == 1);
-    CHECK(timers_out[0].tick == 100050);
+    CHECK(timers_out.empty()); // the wrapped timer never stopped
     // The monopoly table of the first advance (see "monopoly once and the rule").
     CHECK(w.monopoly().entries[6].player == sim::PlayerId{0});
     CHECK(w.monopoly().entries[16].player == sim::PlayerId{1});

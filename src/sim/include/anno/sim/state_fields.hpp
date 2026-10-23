@@ -236,7 +236,7 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     fields(a, s.layout);
 }
 
-static_assert(field_count<Rules>() == 17, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<Rules>() == 18, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -256,6 +256,7 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.boolean(s.enforce_research);
     a.boolean(s.stat_decay_wide);
     a.boolean(s.bankrupt_deadline_wrap_safe);
+    a.boolean(s.timer0_clamp);
 }
 
 // ---- settings scope

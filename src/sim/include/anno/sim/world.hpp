@@ -61,7 +61,8 @@ namespace anno::sim {
 // Stream at 106 (stage S12): the ids scope gains u32 event750_acc, u32 monopoly.acc and
 // bool faulted; new scope timers_monopoly after events (the script timers and the
 // monopoly entries). advance() now also writes the figure registry's stamp and cursor.
-inline constexpr std::uint32_t kStateHashVersion = 106;
+// Stream at 107 (stage S12 fix-up): Rules gains timer0_clamp (the header scope).
+inline constexpr std::uint32_t kStateHashVersion = 107;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

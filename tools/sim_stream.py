@@ -40,6 +40,8 @@ follows events: the script timers (their last tick) and the monopoly table, whos
 refresh body runs on the first advance only (D5) and which the script transcribes
 (docs/sim/state.md section 5.10: the climate masks, the one Volk-1 city per island).
 The 7.5 minute event is asserted not to fire within the horizon of the goldens.
+The S12 fix-up added Rules::timer0_clamp (owner decision on OQ-133), one more byte of the
+header's Rules.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
@@ -59,7 +61,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 106
+STATE_HASH_VERSION = 107
 PRNG_TIMELINE_VERSION = 1
 
 
@@ -170,10 +172,10 @@ def rules_bytes(full_tick=False):
     # slot_policy, spatial_order, events_drain_new, events_max_dispatch, six flags (flush,
     # monopoly_every_30s, player_table_full_tick, drought centre, atomic, empty city),
     # event750_keep_overshoot, prng_mode, interim_figure_return_ticks, free_build_cheat,
-    # enforce_research, stat_decay_wide, bankrupt_deadline_wrap_safe
+    # enforce_research, stat_decay_wide, bankrupt_deadline_wrap_safe, timer0_clamp
     flags = bytes([0, 0, 1 if full_tick else 0, 0, 0, 0])
     return (u8(0) + u8(0) + u8(0) + u64(1 << 20) + flags + u8(0) + u8(0) + u32(0) + u8(0)
-            + u8(0) + u8(0) + u8(0))
+            + u8(0) + u8(0) + u8(0) + u8(0))
 
 
 def settings_bytes(width=0, height=0):

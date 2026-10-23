@@ -580,7 +580,7 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
     fx.ui.reserve(2);
     const auto before = draw.counts;
     // 5. The script timers (D: 0x1009cd30 via world +0x69c8, slot +0x14).
-    if (timers_tick(w.timers_, t)) {
+    if (timers_tick(w.timers_, t, w.rules_.timer0_clamp)) {
         SimEvent e;
         e.kind = SimEventKind::TimerExpired;
         e.tick = tick;

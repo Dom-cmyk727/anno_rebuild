@@ -403,6 +403,11 @@ struct Rules {
     /// the tick. The original compares unsigned: within the last grace_ticks
     /// before 2^32 a player is declared bankrupt at once or the deadline lands on 0.
     bool bankrupt_deadline_wrap_safe = false;
+    /// F5, OQ-133 (owner decision 2026-10-23: "Stay on the original bug with optional
+    /// fix"): script timer 0 stops at 0 when a step overshoots it. The original
+    /// (D 0x1009cd51..0x1009cd59) subtracts in u32 and stops the timer only on exactly
+    /// 0, so an overshoot wraps the counter and the timer runs on (timers_tick).
+    bool timer0_clamp = false;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed

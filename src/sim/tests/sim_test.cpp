@@ -586,8 +586,8 @@ TEST_CASE("state_hash relational properties") {
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
-    CHECK(sim::World().state_hash() == 0x1976feebdaacbadaULL);
-    CHECK(sim::kStateHashVersion == 106);
+    CHECK(sim::World().state_hash() == 0x35d6e77db2e48d2fULL);
+    CHECK(sim::kStateHashVersion == 107);
     CHECK(sim::kPrngTimelineVersion == 1);
 }
 
@@ -858,7 +858,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     sim::WriteArchive wa;
     fields(wa, std::as_const(w));
     const std::vector<std::uint8_t> bytes = wa.take();
-    // header: u32 106, u32 1, then SimConfig, Rules, registry digest and seam
+    // header: u32 107, u32 1, then SimConfig, Rules, registry digest and seam
     // names (config_test.cpp pins those bytes); clock_rng: u64 ms, u64
     // last_tick, u64 2048, u64 table digest, u32 cursor (36 bytes); settings
     // (38 bytes, config_test.cpp); ids: two u64, two u32 and a bool (25 bytes);
@@ -875,7 +875,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     const std::size_t at = bytes.size() - kTailBytes - kIslandsBytes - kPlayersBytes - kIdsBytes -
                            kSettingsBytes - 36; // clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 8) ==
-          std::vector<std::uint8_t>{106, 0, 0, 0, 1, 0, 0, 0});
+          std::vector<std::uint8_t>{107, 0, 0, 0, 1, 0, 0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8
     CHECK(bytes[at + 16] == 0);
@@ -910,7 +910,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another state hash version is refused") {
         auto bad = bytes;
-        bad[0] = 107;
+        bad[0] = 108;
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);

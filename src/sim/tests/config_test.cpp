@@ -145,6 +145,7 @@ void expected_config(Stream& s) {
     s.boolean(false); // enforce_research
     s.boolean(false); // stat_decay_wide
     s.boolean(false); // bankrupt_deadline_wrap_safe
+    s.boolean(false); // timer0_clamp
 }
 
 void expected_settings(Stream& s) {
@@ -298,6 +299,7 @@ std::vector<std::pair<const char*, RulesMut>> rules_mutations() {
     m.emplace_back("stat_decay_wide", [](sim::Rules& r) { r.stat_decay_wide = true; });
     m.emplace_back("bankrupt_deadline_wrap_safe",
                    [](sim::Rules& r) { r.bankrupt_deadline_wrap_safe = true; });
+    m.emplace_back("timer0_clamp", [](sim::Rules& r) { r.timer0_clamp = true; });
     return m;
 }
 
@@ -501,8 +503,9 @@ TEST_CASE("rules defaults are faithful") {
     CHECK_FALSE(r.enforce_research);
     CHECK_FALSE(r.stat_decay_wide);
     CHECK_FALSE(r.bankrupt_deadline_wrap_safe);
+    CHECK_FALSE(r.timer0_clamp);
     CHECK(r.validate().empty());
-    static_assert(sim::field_count<sim::Rules>() == 17);
+    static_assert(sim::field_count<sim::Rules>() == 18);
 }
 
 TEST_CASE("sim config defaults are the originals") {
@@ -1365,7 +1368,7 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u8(0);  // no player
     }
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 106);
+    CHECK(sim::kStateHashVersion == 107);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);

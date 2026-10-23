@@ -173,14 +173,17 @@ Buf scene(std::string_view root, const Buf& children) {
 }
 
 // The registry of the unit cases: ids that fit the 12 bits of an item.
-constexpr std::uint32_t kRoad = 100;     // PRODTYPE 193: no list, a tile object
-constexpr std::uint32_t kHouse = 101;    // PRODTYPE 97: the house list, a building
-constexpr std::uint32_t kTree = 102;     // PRODTYPE 225: no list, scenery
-constexpr std::uint32_t kUnknown = 777;  // not in the registry
-constexpr std::uint32_t kWeaver = 103;   // a HANDWERK workshop: STOFFE from WOLLE
-constexpr std::uint32_t kFarm = 104;     // a PLANTAGE farm: KORN from GETREIDE
-constexpr std::uint32_t kBigHouse = 105; // PRODTYPE 97 with a 2 x 2 footprint
-constexpr std::uint32_t kMine = 106;     // a MINE of EISENERZ
+constexpr std::uint32_t kRoad = 100;      // PRODTYPE 193: no list, a tile object
+constexpr std::uint32_t kHouse = 101;     // PRODTYPE 97: the house list, a building
+constexpr std::uint32_t kTree = 102;      // PRODTYPE 225: no list, scenery
+constexpr std::uint32_t kUnknown = 777;   // not in the registry
+constexpr std::uint32_t kWeaver = 103;    // a HANDWERK workshop: STOFFE from WOLLE
+constexpr std::uint32_t kFarm = 104;      // a PLANTAGE farm: KORN from GETREIDE
+constexpr std::uint32_t kBigHouse = 105;  // PRODTYPE 97 with a 2 x 2 footprint
+constexpr std::uint32_t kMine = 106;      // a MINE of EISENERZ
+constexpr std::uint32_t kSmallFarm = 107; // UNIVERSAL: KORN from GETREIDE, WOLLE from GRAS
+constexpr std::uint32_t kWeapons = 108;   // HANDWERKWAFFEN: BOGEN, ARMBRUST from HOLZ, SEILE
+constexpr std::uint32_t kTrapper = 109;   // PELZJAEGER: PELZE from PELZTIER
 
 std::shared_ptr<const sim::TypeRegistry> registry() {
     sim::TypeRegistry::Builder b;
@@ -190,6 +193,10 @@ std::shared_ptr<const sim::TypeRegistry> registry() {
     b.add_workshop(sim::TypeId{kWeaver}, "STOFFE", "WOLLE", 6, 11, 5);
     b.add_farm(sim::TypeId{kFarm}, "KORN", "GETREIDE", 37, 80, 5);
     b.add_mine(sim::TypeId{kMine}, "EISENERZ", 4, 6);
+    b.add_small_farm(sim::TypeId{kSmallFarm}, "KORN", "WOLLE", "GETREIDE", "GRAS", 13, 4, 128, 50,
+                     4);
+    b.add_weapons_workshop(sim::TypeId{kWeapons}, "BOGEN", "ARMBRUST", "HOLZ", "SEILE", 9, 5);
+    b.add_fur_trapper(sim::TypeId{kTrapper}, "PELZE", "PELZTIER", 26, 25, 5);
     {
         sim::TypeRegistry::Builder one;
         one.add_plain(sim::TypeId{kBigHouse}, 97);
@@ -537,8 +544,8 @@ TEST_CASE("scenario city PROD/ENTRY creates the buildings") {
     // bytes after the position go to the class's Load (slot +0x7c). Workshop
     // 0x10068640: length <= 10, [1] & 1 the switch, [2] output, [4] input 0, [6]
     // input 1, [8] activity. Farm 0x1006ef70: exactly 10 bytes, [1] & 1, [2] output,
-    // [4] raw stock, [6] activity; another length skips the record whole. Mine
-    // 0x1006e310: [1] & 1, [2] output, [8] activity, over Create's default (the deep
+    // [4] raw stock, [8] activity ([6] not read); another length skips the record
+    // whole. Mine 0x1006e310: [1] & 1, [2] output, [8] activity, over Create's default (the deep
     // flag of the type attach stays). Then the footprint claim (0x10026685): the
     // building's tiles still neutral get the city.
     Buf prod2;
@@ -557,10 +564,10 @@ TEST_CASE("scenario city PROD/ENTRY creates the buildings") {
     Buf prod = entry(8, 4);
     append(prod, entry(12, 2, Buf{0, 0, 0x80, 0x01, 0x40, 0x02, 0x77, 0x77, 5, 0}));
     append(prod, record("XYZ", Buf(2, 0))); // not an ENTRY: skipped (0x1002671d)
-    append(prod, entry(13, 5, Buf{0, 1, 0x00, 0x03, 0x00, 0x01, 9, 0, 0xee, 0xee}));
+    append(prod, entry(13, 5, Buf{0, 0, 0x00, 0x03, 0x00, 0x01, 0x77, 0x77, 9, 0}));
     append(prod, entry(14, 6, Buf(11, 0x55))); // 11 bytes: the farm skips them whole
     append(prod, entry(3, 6));                 // a tile of the big house: its origin (2, 5)
-    append(prod, entry(10, 7, Buf{0, 1, 0x00, 0x02, 0x11, 0x11, 0x22, 0x22, 3, 0}));
+    append(prod, entry(10, 7, Buf{0, 0, 0x00, 0x02, 0x11, 0x11, 0x22, 0x22, 3, 0}));
     Buf c = {2, 0};
     put16(c, 41);
     put16(c, 61);
@@ -601,7 +608,7 @@ TEST_CASE("scenario city PROD/ENTRY creates the buildings") {
     CHECK(weaver->activity == std::vector<std::uint32_t>{5});
     const auto* farm = std::get_if<sim::Farm>(&*b[2].payload);
     REQUIRE(farm != nullptr);
-    CHECK(farm->switched_on);
+    CHECK_FALSE(farm->switched_on);
     CHECK(farm->out == 0x0300);
     CHECK(farm->raw == 0x0100);
     CHECK(farm->activity == 9);
@@ -614,7 +621,7 @@ TEST_CASE("scenario city PROD/ENTRY creates the buildings") {
     REQUIRE(b[5].payload.has_value());
     const auto* mine = std::get_if<sim::Mine>(&*b[5].payload);
     REQUIRE(mine != nullptr);
-    CHECK(mine->switched_on);
+    CHECK_FALSE(mine->switched_on);
     CHECK(mine->out == 0x0200);
     CHECK(mine->activity == 3);
     const auto types = registry(); // keeps the type alive
@@ -652,6 +659,137 @@ TEST_CASE("scenario city PROD/ENTRY creates the buildings") {
         }
     }
     CHECK(placed == 6);
+}
+
+TEST_CASE("scenario city class records: two-line classes and the length rules") {
+    // Small farm 0x1006fc80 (own length into 14 bytes, no test): per line i [2 + 2i]
+    // output, [6 + 2i] raw stock, [10 + 2i] activity, ([1] >> i) & 1 the switch.
+    // Weapons workshop 0x10069140 (the same buffer): [2 + 2i] output, [6 + 2i] input,
+    // [10 + 2i] activity, [1] & (1 << i). Fur trapper: the farm's Load 0x1006ef70.
+    // Length rules: a farm record of another length than 10 and a workshop record
+    // over 10 are skipped whole (the default stays, no warning); a mine record over
+    // 10 or a small farm record over 14 would overrun the original's buffer
+    // (UndecodedBuildingRecord, once per class).
+    Buf prod2;
+    item(prod2, kSmallFarm, 0, 0, 0, 0, 0);
+    item(prod2, kWeapons, 0, 0, 0, 2, 0);
+    item(prod2, kTrapper, 0, 0, 0, 4, 0);
+    item(prod2, kFarm, 0, 0, 0, 6, 0);
+    item(prod2, kWeaver, 0, 0, 0, 8, 0);
+    item(prod2, kMine, 0, 0, 0, 10, 0);
+    item(prod2, kSmallFarm, 0, 0, 0, 12, 0);
+    Buf kids = chunk("HEAD", head_bytes());
+    append(kids, chunk("SPIELER", spieler(0, record("HEAD", player_head(8, 1, "A", 1)))));
+    append(kids, insel5(40, 60, 16, 8, 7, 2, block_record("PROD2", prod2)));
+    Buf prod =
+        entry(0, 0, Buf{0, 0x02, 0x10, 0x01, 0x20, 0x01, 0x30, 0x01, 0x40, 0x01, 7, 0, 8, 0});
+    append(prod,
+           entry(2, 0, Buf{0, 0x01, 0x10, 0x02, 0x20, 0x02, 0x30, 0x02, 0x40, 0x02, 3, 0, 4, 0}));
+    append(prod, entry(4, 0, Buf{0, 0, 0x50, 0, 0x60, 0, 0x77, 0x77, 6, 0}));
+    append(prod, entry(6, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1}));       // 9 bytes: skipped
+    append(prod, entry(8, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1})); // 11 bytes: skipped
+    append(prod, entry(10, 0, Buf(11, 1)));                          // over the mine's 10
+    append(prod, entry(12, 0, Buf(15, 1)));                          // over the small farm's 14
+    Buf c = {2, 0};
+    put16(c, 41);
+    put16(c, 61);
+    append(c, record("PROD", prod));
+    append(kids, chunk("SPIELER", spieler(0, record("STADT2", c))));
+    const sim::LoadedScenario s = load(scene("ANNO", kids));
+    const auto& b = s.spec.islands[0].cities[0].buildings;
+    REQUIRE(b.size() == 7);
+    for (const auto& bs : b) {
+        REQUIRE(bs.payload.has_value());
+    }
+    const auto* sf = std::get_if<sim::SmallFarm>(&*b[0].payload);
+    REQUIRE(sf != nullptr);
+    CHECK(sf->out == std::vector<std::uint32_t>{0x0110, 0x0120});
+    CHECK(sf->raw == std::vector<std::uint32_t>{0x0130, 0x0140});
+    CHECK(sf->activity == std::vector<std::uint16_t>{7, 8});
+    CHECK(sf->line_on == std::vector<bool>{false, true});
+    const auto* ww = std::get_if<sim::WeaponsWorkshop>(&*b[1].payload);
+    REQUIRE(ww != nullptr);
+    CHECK(ww->out == std::vector<std::uint32_t>{0x0210, 0x0220});
+    CHECK(ww->in == std::vector<std::uint32_t>{0x0230, 0x0240});
+    CHECK(ww->activity == std::vector<std::uint16_t>{3, 4});
+    CHECK(ww->line_on == std::vector<bool>{true, false});
+    const auto* tr = std::get_if<sim::Farm>(&*b[2].payload);
+    REQUIRE(tr != nullptr);
+    CHECK_FALSE(tr->switched_on);
+    CHECK(tr->out == 0x50);
+    CHECK(tr->raw == 0x60);
+    CHECK(tr->activity == 6);
+    const auto* farm = std::get_if<sim::Farm>(&*b[3].payload);
+    REQUIRE(farm != nullptr);
+    CHECK(farm->switched_on);
+    CHECK(farm->out == 0);
+    CHECK(farm->activity == 0);
+    const auto* weaver = std::get_if<sim::Workshop>(&*b[4].payload);
+    REQUIRE(weaver != nullptr);
+    CHECK(weaver->switched_on);
+    CHECK(weaver->out == std::vector<std::uint32_t>{0});
+    const auto* mine = std::get_if<sim::Mine>(&*b[5].payload);
+    REQUIRE(mine != nullptr);
+    CHECK(mine->switched_on);
+    CHECK(mine->out == 0);
+    const auto* sf2 = std::get_if<sim::SmallFarm>(&*b[6].payload);
+    REQUIRE(sf2 != nullptr);
+    CHECK(sf2->out == std::vector<std::uint32_t>{0, 0});
+    CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 2); // the mine and the small farm
+    auto w = sim::World::create(s.spec, registry());
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    CHECK(w.value().check_invariants() == "");
+}
+
+TEST_CASE("scenario city footprints: the origin wins, another city's tile stays") {
+    // An entry on a tile that is one item's origin and inside another item's footprint
+    // names the item of that origin (0x10083a90 reads the tile's own record). The
+    // footprint claim (0x10026685, no force) takes only neutral tiles, so a tile that
+    // another city's ID3 holds stays that city's. A second equal item on a building
+    // item's origin is a DuplicateObject and does not stand for a second building.
+    Buf prod2;
+    item(prod2, kBigHouse, 0, 0, 0, 0, 4); // covers (0..1, 4..5)
+    item(prod2, kHouse, 0, 0, 0, 1, 5);    // its origin inside the big house's footprint
+    item(prod2, kHouse, 0, 0, 0, 9, 1);
+    item(prod2, kHouse, 0, 0, 0, 9, 1); // the same item again
+    Buf kids = chunk("HEAD", head_bytes());
+    append(kids, chunk("SPIELER", spieler(0, record("HEAD", player_head(8, 1, "A", 1)))));
+    append(kids, insel5(40, 60, 16, 8, 7, 2, block_record("PROD2", prod2)));
+    Buf id3;
+    put32(id3, 8); // city 3: the chunk (8..15, 0..7)
+    Buf c3 = {3, 0};
+    put16(c3, 41);
+    put16(c3, 61);
+    append(c3, record("ID3", id3));
+    Buf prod = entry(1, 5);
+    append(prod, entry(9, 1));
+    Buf c2 = {2, 0};
+    put16(c2, 41);
+    put16(c2, 61);
+    append(c2, record("PROD", prod));
+    Buf st = record("STADT2", c3);
+    append(st, record("STADT2", c2));
+    append(kids, chunk("SPIELER", spieler(0, st)));
+    const sim::LoadedScenario s = load(scene("ANNO", kids));
+    REQUIRE(s.spec.islands[0].cities.size() == 2);
+    const auto& cities = s.spec.islands[0].cities;
+    const auto& city2 = cities[0].no == sim::CityNo{2} ? cities[0] : cities[1];
+    REQUIRE(city2.buildings.size() == 2);
+    CHECK(city2.buildings[0].type == sim::TypeId{kHouse});
+    CHECK(city2.buildings[0].x == 41);
+    CHECK(city2.buildings[0].y == 65);
+    CHECK(city2.buildings[1].x == 49);
+    CHECK(warnings_of(s, Kind::BuildingItemWithoutEntry) == 1); // the big house
+    CHECK(warnings_of(s, Kind::DuplicateObject) == 1);
+    const std::uint32_t neutral = sim::SimConfig{}.neutral_owner;
+    std::vector<std::uint32_t> want(16 * 8, neutral);
+    for (std::size_t y = 0; y < 8; ++y) {
+        for (std::size_t x = 8; x < 16; ++x) {
+            want[y * 16 + x] = 3;
+        }
+    }
+    want[5 * 16 + 1] = 2; // the house's own footprint, neutral before
+    CHECK(owner_grid(s.spec.islands[0].owner_runs, want.size(), neutral) == want);
 }
 
 TEST_CASE("scenario city entries: refused buildings and entries without an item") {

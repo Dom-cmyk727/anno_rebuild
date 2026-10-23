@@ -37,9 +37,9 @@ enum class ScenarioWarningKind : std::uint8_t {
     /// does not know.
     UnknownObject,
     /// A PROD2 item of a building type (a list in the layout) that no city's
-    /// PROD/ENTRY names: the original keeps it as a tile object only (the
-    /// buildings come from PROD/ENTRY, docs/re/annowelt.md "Scenario cities");
-    /// here it is not placed at all.
+    /// PROD/ENTRY names: not placed. The buildings come from PROD/ENTRY
+    /// (docs/re/annowelt.md "Scenario cities"); that the original keeps such an
+    /// item as a tile item without a building is likely (OQ-144).
     BuildingItemWithoutEntry,
     /// A city's territory record that is not modelled: ID (radius claims through
     /// island +0xe8, D AnnoWelt 0x1002e5a5; the claim shape is not read); none in
@@ -69,10 +69,10 @@ enum class ScenarioWarningKind : std::uint8_t {
     /// rectangle down (D AnnoWelt 0x100a253e–0x100a2586); here it stays where the head
     /// puts it (none in the corpus).
     UnalignedIsland,
-    /// A PROD/ENTRY whose tile holds no PROD2 building item: no item at all (the
-    /// original's type lookup fails and skips the entry, D 0x10026599), or an item
-    /// whose PRODTYPE has no list in the layout (the corpus: DENKMAL 289; what the
-    /// original's Create 0x10024010 makes of it is not traced, OQ-144); skipped.
+    /// A PROD/ENTRY whose tile holds no PROD2 building item, skipped: no PROD2 item
+    /// at all, or one whose PRODTYPE has no list in the layout (the corpus: DENKMAL
+    /// 289). The original skips an entry only when the type lookup of the tile's
+    /// object fails (D 0x10026599); what it creates for these is not read (OQ-144).
     EntryWithoutBuildingItem,
     /// A building create_building would refuse (outside the island, on another
     /// building, a payload that does not fit): the original creates it blindly

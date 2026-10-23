@@ -240,10 +240,11 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
     // The per-file counts against the committed expectations.
     if (update_requested()) {
         std::ofstream out(expectations_path(), std::ios::binary);
-        out << "# The scenario corpus through the S14 adapter: per file (relative to Scenes) the\n"
-               "# counts of the loaded ScenarioSpec and of its warnings per kind. Counts only, no\n"
-               "# content of the files. Rewritten by scenario_test.cpp with "
-               "ANNO_UPDATE_GOLDEN=1.\n";
+        out << "# The scenario corpus through the S14 adapter (T23: with the cities): per file\n"
+               "# (relative to Scenes) the counts of the loaded ScenarioSpec, of its warnings per\n"
+               "# kind, and the state hash after World::create (it moves with kStateHashVersion\n"
+               "# and with what the adapter decodes). No content of the files. Rewritten by\n"
+               "# scenario_test.cpp with ANNO_UPDATE_GOLDEN=1.\n";
         for (const std::string& l : lines) {
             out << l << "\n";
         }
@@ -261,7 +262,7 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
     }
 }
 
-TEST_CASE("scenario corpus: the ten scenarios with the most PROD2 buildings run 20000 ticks more") {
+TEST_CASE("scenario corpus: the ten scenarios with the most buildings run 20000 ticks more") {
     // §15 S14: the 5 add-on and the 5 base scenarios with the most buildings run longer;
     // under the asan preset this is the UBSan run. Since T23 "most buildings" ranks the
     // buildings the cities' PROD/ENTRY records place.
@@ -313,27 +314,25 @@ TEST_CASE("scenario corpus: the ten scenarios with the most PROD2 buildings run 
 
 namespace {
 
-/// The production state of a producing building: the tick of its last step and its
-/// output, input and raw stocks; empty for a payload that does not produce.
+/// The stocks of a producing building: output, input and raw stocks (not `last`,
+/// which every scheduled step moves, producing or not); empty for a payload that does
+/// not produce.
 std::vector<std::uint32_t> production_state(const sim::Payload& p) {
     std::vector<std::uint32_t> v;
     auto add = [&v](const auto& xs) { v.insert(v.end(), xs.begin(), xs.end()); };
     if (const auto* w = std::get_if<sim::Workshop>(&p)) {
-        v.push_back(w->last);
         add(w->out);
         add(w->in);
     } else if (const auto* x = std::get_if<sim::WeaponsWorkshop>(&p)) {
-        v.push_back(x->last);
         add(x->out);
         add(x->in);
     } else if (const auto* f = std::get_if<sim::Farm>(&p)) {
-        v = {f->last, f->out, f->raw};
+        v = {f->out, f->raw};
     } else if (const auto* s = std::get_if<sim::SmallFarm>(&p)) {
-        v.push_back(s->last);
         add(s->out);
         add(s->raw);
     } else if (const auto* m = std::get_if<sim::Mine>(&p)) {
-        v = {m->last, m->out};
+        v = {m->out};
     }
     return v;
 }
@@ -363,6 +362,7 @@ std::uint64_t output_sum(const sim::Payload& p) {
 struct BuildingSnapshot {
     std::vector<std::uint32_t> state;
     std::uint64_t output = 0;
+    std::size_t kind = 0; ///< the payload's alternative (sim::Payload index)
 };
 
 /// Every building of every city, by id: its production state and output sum.
@@ -379,7 +379,8 @@ std::map<std::uint64_t, BuildingSnapshot> snapshot(const sim::World& w) {
             for (const sim::BuildingList& l : c->index.lists) {
                 for (const auto& b : l.slots) {
                     if (b) {
-                        out[b->id.v] = {production_state(b->payload), output_sum(b->payload)};
+                        out[b->id.v] = {production_state(b->payload), output_sum(b->payload),
+                                        b->payload.index()};
                     }
                 }
             }
@@ -409,8 +410,8 @@ warehouses(const sim::World& w) {
 
 TEST_CASE("scenario corpus: a shipped town's economy runs 150000 ticks") {
     // T23 Do 3: the scenario with the most buildings runs 150 000 ticks (3 000 advances
-    // of 100 ms); its producing buildings step (the stocks or the last step's tick
-    // move). The warehouse stocks are reported: no ported code moves goods between a
+    // of 100 ms); its producing buildings work (their stocks move, and some gain
+    // output). The warehouse stocks are reported: no ported code moves goods between a
     // building and a warehouse yet (carriers are a figure behaviour seam, houses do not
     // consume: docs/sim/state.md §10 "As implemented in T23"), so the delta is printed,
     // not asserted.
@@ -450,26 +451,37 @@ TEST_CASE("scenario corpus: a shipped town's economy runs 150000 ticks") {
     const auto after = snapshot(world);
     const auto stock_after = warehouses(world);
     REQUIRE(after.size() == before.size());
-    std::uint64_t producers = 0, stepped = 0, gained = 0;
+    std::uint64_t producers = 0, moved_stocks = 0, gained = 0;
+    // Per payload alternative (Workshop, WeaponsWorkshop, Farm, SmallFarm, Mine):
+    // producing, with stocks that moved.
+    std::map<std::size_t, std::pair<std::uint64_t, std::uint64_t>> by_kind;
     for (const auto& [id, b] : before) {
         const BuildingSnapshot& a = after.at(id);
         if (b.state.empty()) {
             continue;
         }
         ++producers;
-        stepped += a.state != b.state ? 1U : 0U;
+        moved_stocks += a.state != b.state ? 1U : 0U;
         gained += a.output > b.output ? 1U : 0U;
+        ++by_kind[b.kind].first;
+        by_kind[b.kind].second += a.state != b.state ? 1U : 0U;
+    }
+    const char* const kind_names[] = {"Inert", "Workshop",  "WeaponsWorkshop",
+                                      "Farm",  "SmallFarm", "Mine"};
+    for (const auto& [k, n] : by_kind) {
+        std::cout << "scenario economy: " << (k < std::size(kind_names) ? kind_names[k] : "?")
+                  << " " << n.first << " producing, " << n.second << " with stocks that moved\n";
     }
     std::uint64_t moved = 0;
     for (const auto& [city, s] : stock_before) {
         moved += stock_after.at(city) != s ? 1U : 0U;
     }
     std::cout << "scenario economy: " << rel_name(*dir, files[pick]) << ": " << before.size()
-              << " buildings, " << producers << " producing; after 150000 ticks " << stepped
-              << " stepped (stocks or last step moved), " << gained
+              << " buildings, " << producers << " producing; after 150000 ticks " << moved_stocks
+              << " with stocks that moved, " << gained
               << " with more output in stock; warehouses that moved: " << moved << " of "
               << stock_before.size() << "\n";
     CHECK(producers > 0);
-    CHECK(stepped > 0);
+    CHECK(moved_stocks > 0);
     CHECK(gained > 0);
 }

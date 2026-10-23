@@ -176,6 +176,7 @@ struct BuildingItem {
     std::uint32_t w = 1, h = 1; ///< the footprint on the island (rotated)
     std::string where;
     std::uint64_t at = 0;
+    ItemKey key; ///< the item as the record holds it (the duplicate test)
     bool used = false;
 };
 
@@ -225,7 +226,11 @@ std::uint16_t le16(const std::uint8_t* p) {
 /// A building's own record after its 4-byte position, read as the class's Load does
 /// (slot +0x7c; docs/re/annowelt.md "Scenario cities" (b)). Returns false when the
 /// adapter does not map the bytes (a class whose Load is not read, or a record that
-/// would overrun the original's buffer): the make_* default stays.
+/// would overrun the original's buffer): the make_* default stays. The switch: each
+/// Load passes the result of slot +0xac of the object at building +0x14, called with
+/// (0, the switch bit), to slot +0xc8 (workshop 0x100686aa / 0x100686b3, farm
+/// 0x1006efd1 / 0x1006efda); that +0xac returns the bit unchanged is likely (not read,
+/// OQ-145).
 bool read_class_record(Payload& payload, RuntimeClass cls, Bytes rec) {
     if (rec.empty()) {
         return true;
@@ -257,7 +262,7 @@ bool read_class_record(Payload& payload, RuntimeClass cls, Bytes rec) {
         f->switched_on = (rec[1] & 1) != 0;
         f->out = le16(&rec[2]);      // +0x18
         f->raw = le16(&rec[4]);      // +0x1c
-        f->activity = le16(&rec[6]); // +0x1e
+        f->activity = le16(&rec[8]); // +0x1e ([6] is not read, 0x1006efad)
         return true;
     }
     if (auto* m = std::get_if<Mine>(&payload); m != nullptr && cls == RuntimeClass::Mine) {
@@ -390,7 +395,7 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
             // capacity, 0 -> 0x3200 (50 t).
             const auto b = zero_filled<64>(k.payload);
             const std::uint32_t cap = le16(&b[0x24]);
-            city.capacity = cap != 0 ? cap << 8 : 50U * kTon;
+            city.capacity = cap != 0 ? cap << 8 : CityStock{}.capacity;
         } else if (k.name == "WARE") {
             // 0x1002e7ca–0x1002e84b: length / 8 entries {u16 goods (file numbering),
             // u16 tons}; the goods mapped by WARETYPE name, 0 -> skipped; stock = tons << 8.
@@ -811,7 +816,24 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                 // 0x100264a0 through island +0x84 = 0x10083a90; docs/re/annowelt.md
                 // "Scenario cities" (b), (e)). It is kept here for the city pass.
                 if (name == "PROD2" && config.layout.list_for(type->prodtype).has_value()) {
+                    // A second item on a building item's origin is dropped as the tile
+                    // objects are (DuplicateObject for an equal item, else
+                    // ObjectTileTaken; OQ-142): an entry names one building there.
+                    const std::uint32_t origin = static_cast<std::uint32_t>(o.y) * is.w + o.x;
+                    if (const auto f = ic.by_origin.find(origin); f != ic.by_origin.end()) {
+                        const bool same = ic.items[f->second].key == key_of(o);
+                        warn.add(same ? ScenarioWarningKind::DuplicateObject
+                                      : ScenarioWarningKind::ObjectTileTaken,
+                                 where, name, item_at,
+                                 same
+                                     ? std::string("the same building item again (OQ-024)")
+                                     : "tile (" + std::to_string(o.x) + ", " + std::to_string(o.y) +
+                                           ") already holds a building item; the first "
+                                           "stays (OQ-142)");
+                        continue;
+                    }
                     BuildingItem bi;
+                    bi.key = key_of(o);
                     bi.id = o.anlage;
                     bi.rotation = o.rotation;
                     bi.height = o.height();
@@ -823,8 +845,7 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                     bi.h = fh;
                     bi.where = where;
                     bi.at = item_at;
-                    ic.by_origin.try_emplace(static_cast<std::uint32_t>(o.y) * is.w + o.x,
-                                             ic.items.size());
+                    ic.by_origin.emplace(origin, ic.items.size());
                     ic.items.push_back(std::move(bi));
                     continue;
                 }
@@ -952,8 +973,10 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                        " is not a city slot (city_slots " + std::to_string(config.city_slots) +
                        ", neutral_owner " + std::to_string(config.neutral_owner) + ")";
             }
-            // The scenario path's load origin and the reader's skip flag (0x1001e2c4–
-            // 0x1001e2fd, 0x1001d2fa) are not traced; origin 0 and flag 0 are likely.
+            // The scenario path's load origin is (0, 0) and the reader's flag 0 (D
+            // 0x100ae2a9 / 0x100ae2ad, 0x100ae286); the prefix position is always
+            // added: the context bit that would drop it (0x1001e2c4–0x1001e2fd) is
+            // likely clear (OQ-145).
             ScenarioSpec::IslandSpec* is =
                 island_at(spec.islands, island_at_offset, r.offset, x, y);
             if (is == nullptr) {
@@ -992,8 +1015,8 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                 warn.add(ScenarioWarningKind::BuildingItemWithoutEntry, b.where, "PROD2", b.at,
                          "building " + std::to_string(b.id) + " at (" + std::to_string(b.x) + ", " +
                              std::to_string(b.y) +
-                             ") is named by no city's PROD/ENTRY: a tile object in the "
-                             "original, not placed here");
+                             ") is named by no city's PROD/ENTRY: not placed (likely a tile "
+                             "item without a building in the original, OQ-144)");
             }
         }
     }

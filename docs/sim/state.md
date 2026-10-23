@@ -1173,7 +1173,6 @@ timers_tick(t):                                           // D 0x1009cd30
         if k > 0: T.counter[k] += dt
         else if rules.timer0_clamp and dt >= T.counter[0]: T.counter[0] = 0;  T.active[0] = 0;  UI event TimerExpired{0}     // F5 option (OQ-133)
         else T.counter[0] -= dt (u32, wraps on an overshoot);  if T.counter[0] == 0: T.active[0] = 0;  UI event TimerExpired{0}    // D 0x1009cd51..0x1009cd59: stops only on exactly 0
-        else T.counter[0] -= dt
     T.last_tick = t
 
 monopoly_refresh(dt_ms):                                  // D 0x1009d2a0 (no PRNG)

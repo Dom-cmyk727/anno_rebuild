@@ -130,10 +130,10 @@ struct Ender {
     int script = 0;
 };
 
-sim::Seams ender_seams(Ender* e) {
+sim::Seams ender_seams(Ender* ender) {
     sim::Seams seams;
     seams.figure_tick.name = "test_ender";
-    seams.figure_tick.ctx = e;
+    seams.figure_tick.ctx = ender;
     seams.figure_tick.fn = [](void* c, const sim::TickContext& ctx, sim::SerialWorld& sw,
                               sim::Figure& f) {
         auto& e = *static_cast<Ender*>(c);

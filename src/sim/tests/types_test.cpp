@@ -1541,7 +1541,10 @@ TEST_CASE("registry digest stable") {
 }
 
 TEST_CASE("registry digest changes with every field") {
-    static_assert(sim::field_count<sim::BuildingType>() == 21);
+    // 22 since T27: the derived walk_class is the 22nd member. It is NOT in the digest
+    // (which is a function of the parsed file only), so it is deliberately absent from
+    // the mutation list below; the synthetic digest 0x13e65df34212c0c3 is unchanged.
+    static_assert(sim::field_count<sim::BuildingType>() == 22);
     static_assert(sim::field_count<sim::ProductionType>() == 18);
     sim::BuildingType base;
     base.id = sim::TypeId{10};

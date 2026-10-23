@@ -188,6 +188,15 @@ struct BuildingType {
     bool has_prod = false;
     /// Valid when has_prod.
     ProductionType prod;
+    /// DERIVED, not file state: the walk class of the tile this type occupies for the
+    /// transport search (0 = does not block, 1 = road, 2 = a building). Computed in
+    /// TypeRegistry::finish from `flags_word & kRoadFlag` (road) and
+    /// `layout.list_for(prodtype)` (a building occupies its footprint) — the rule of
+    /// TileTest in transport.cpp, moved to a per-type field (task T27). It is NOT in
+    /// `fields()` and NOT in the registry digest (the digest is a function of the parsed
+    /// file only; types_test "registry digest changes with every field" pins it), so it
+    /// is left out of the per-field mutation list there.
+    std::uint8_t walk_class = 0;
 };
 
 /// The immutable type data of a world.

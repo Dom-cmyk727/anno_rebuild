@@ -137,8 +137,8 @@ struct SourceChoice {
 /// of `home` inside its area (step C's walk, D 0x10057ae0 with the callback 0x10054240:
 /// the first goal reached); nullopt when there is none.
 [[nodiscard]] std::optional<std::vector<TileXY>>
-path_home(const Island& island, const TypeRegistry& types, const ListLayout& layout,
-          const Building& home, const BuildingType& home_type, TileXY from, WalkRule rule);
+path_home(const Island& island, const TypeRegistry& types, const Building& home,
+          const BuildingType& home_type, TileXY from, WalkRule rule);
 
 /// The length of a straight walk segment in 2^-24 tile: |d| on an axis, |d| · √2 on a
 /// diagonal (the segment builder 0x1002fde0 multiplies by 1.41421354f: 23726566 per

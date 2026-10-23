@@ -87,11 +87,9 @@ bool start_drought(const TickContext& ctx, Island& island);
 /// drought at world tile (x, y) in the expanding state, ring 0, target_ring =
 /// radius / chunk_edge, stamp = the 16-bit `t`. Pure: a scripted drought (O-51) will
 /// call it too. It sets the record unconditionally, like the constructor (a caller that
-/// must not replace a running drought, as start_drought, asks first), except that it
-/// refuses (returns false, island unchanged) while SimConfig::city_slots is above 32,
-/// because the drought's city mask is a u32 (O-55; the loader refuses such a record,
-/// S13 widens the mask).
-bool start_drought_at(const SimConfig& cfg, Island& island, std::uint32_t x, std::uint32_t y,
+/// must not replace a running drought, as start_drought, asks first), with a city
+/// mask of drought_mask_words(city_slots) zero words (O-55).
+void start_drought_at(const SimConfig& cfg, Island& island, std::uint32_t x, std::uint32_t y,
                       std::uint32_t radius, std::uint32_t t);
 
 } // namespace anno::sim

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <utility>
 
 #include <anno/sim/clock.hpp>
 #include <anno/sim/draw.hpp>
@@ -78,24 +79,20 @@ void city_ring_tick(const TickContext& ctx, Island& island, Effects& fx) {
     island.ring.stamp = static_cast<std::uint16_t>(ctx.t);
 }
 
-bool start_drought_at(const SimConfig& cfg, Island& island, std::uint32_t x, std::uint32_t y,
+void start_drought_at(const SimConfig& cfg, Island& island, std::uint32_t x, std::uint32_t y,
                       std::uint32_t radius, std::uint32_t t) {
-    if (cfg.city_slots > 32) {
-        return false;
-    }
     Drought d;
     d.x = x;
     d.y = y;
     d.target_ring = radius / cfg.chunk_edge;
     d.ring = 0;
-    d.city_mask = 0;
+    d.city_mask.assign(static_cast<std::size_t>(drought_mask_words(cfg.city_slots)), 0U);
     d.phase = 0;
     d.step = 0;
     d.state = 1;
     d.counter = 0;
     d.stamp = static_cast<std::uint16_t>(t);
-    island.drought = d;
-    return true;
+    island.drought = std::move(d);
 }
 
 bool start_drought(const TickContext& ctx, Island& island) {
@@ -115,8 +112,9 @@ bool start_drought(const TickContext& ctx, Island& island) {
             // floor to the chunk edge.
             const auto bx = static_cast<std::uint32_t>(b->x);
             const auto by = static_cast<std::uint32_t>(b->y);
-            return start_drought_at(ctx.cfg, island, bx - bx % ctx.cfg.chunk_edge,
-                                    by - by % ctx.cfg.chunk_edge, ctx.cfg.drought_radius, ctx.t);
+            start_drought_at(ctx.cfg, island, bx - bx % ctx.cfg.chunk_edge,
+                             by - by % ctx.cfg.chunk_edge, ctx.cfg.drought_radius, ctx.t);
+            return true;
         }
     }
     return false;

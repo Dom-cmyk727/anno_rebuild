@@ -534,15 +534,24 @@ std::string validate_island(const Island& is, std::size_t slot, const SimConfig&
             return dp + ".ring: " + std::to_string(dr.ring) + " is not in 0 .. target_ring (" +
                    std::to_string(dr.target_ring) + ")";
         }
-        if (cfg.city_slots > 32) {
-            return dp + ".city_mask: a u32 mask holds 32 city slots, SimConfig.city_slots is " +
-                   std::to_string(cfg.city_slots);
+        // O-55: one bit per city slot in ceil(city_slots / 32) words.
+        const std::uint64_t words = drought_mask_words(cfg.city_slots);
+        if (dr.city_mask.size() != words) {
+            return dp + ".city_mask: has " + std::to_string(dr.city_mask.size()) +
+                   " words, SimConfig.city_slots " + std::to_string(cfg.city_slots) + " needs " +
+                   std::to_string(words);
         }
-        const std::uint32_t slot_bits =
-            cfg.city_slots >= 32 ? 0xFFFFFFFFU : (std::uint32_t{1} << cfg.city_slots) - 1U;
-        if ((dr.city_mask & ~slot_bits) != 0) {
-            return dp + ".city_mask: bits beyond the " + std::to_string(cfg.city_slots) +
-                   " city slots are set";
+        for (std::uint64_t i = 0; i < words; ++i) {
+            // The bits of word i that name a city slot: slots 32 i .. min(32 i + 32,
+            // city_slots) - 1.
+            const std::uint64_t first = 32U * i;
+            const std::uint64_t in_word = std::min<std::uint64_t>(32U, cfg.city_slots - first);
+            const std::uint32_t slot_bits =
+                in_word >= 32U ? 0xFFFFFFFFU : (std::uint32_t{1} << in_word) - 1U;
+            if ((dr.city_mask[static_cast<std::size_t>(i)] & ~slot_bits) != 0) {
+                return dp + ".city_mask: bits beyond the " + std::to_string(cfg.city_slots) +
+                       " city slots are set";
+            }
         }
     }
     if (!t.cache_consistent()) {

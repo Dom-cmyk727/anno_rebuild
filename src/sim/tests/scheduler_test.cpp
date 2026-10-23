@@ -895,7 +895,7 @@ TEST_CASE(
     CHECK(d.y == 128);         // 133 - 133 % 8
     CHECK(d.target_ring == 6); // 0x32 / 8
     CHECK(d.ring == 0);
-    CHECK(d.city_mask == 0);
+    CHECK(d.city_mask == std::vector<std::uint32_t>{0});
     CHECK(d.phase == 0);
     CHECK(d.step == 0);
     CHECK(d.state == 1);
@@ -1107,7 +1107,7 @@ TEST_CASE(
     }
 }
 
-TEST_CASE("start drought is refused while a drought runs and while city slots exceed the mask") {
+TEST_CASE("start drought is refused while a drought runs and sizes the mask from the city slots") {
     const Kit k = make_kit();
     sim::ScenarioSpec spec = event_scenario(k, 1, 2, {5, 0, 0, 0});
     spec.islands[0].cities[0].buildings = {building_test::place(k.kontor, 121, 133)};
@@ -1127,26 +1127,20 @@ TEST_CASE("start drought is refused while a drought runs and while city slots ex
         CHECK(is.drought->counter == 5);
     }
     {
-        // O-55: the drought's city mask is a u32, so no drought exists while the table has
-        // more than 32 slots (the loader refuses such a record).
-        sim::SimConfig cfg;
-        cfg.city_slots = 33;
-        sim::World w = make_world_with(k, spec, named_seams(), cfg);
-        Tick t(w, 150000);
-        CHECK_FALSE(sim::start_drought(t.ctx, island(w)));
-        CHECK_FALSE(island(w).drought.has_value());
-        sim::Effects fx;
-        sim::event_300s(t.ctx, island(w), fx);
-        CHECK(event_draws(t) == 1); // the draw is still made
-        CHECK_FALSE(island(w).drought.has_value());
-        CHECK(island(w).event300_stamp == 300);
-        // 32 slots are fine.
-        sim::SimConfig edge;
-        edge.city_slots = 32;
-        sim::World w32 = make_world_with(k, spec, named_seams(), edge);
-        Tick t32(w32, 150000);
-        CHECK(sim::start_drought(t32.ctx, island(w32)));
-        CHECK(w32.check_invariants() == "");
+        // O-55 (widened in S13): the city mask has ceil(city_slots / 32) words, so a drought
+        // starts with any number of city slots.
+        for (const std::uint32_t slots : {32U, 33U, 64U, 65U}) {
+            INFO("city_slots " << slots);
+            sim::SimConfig cfg;
+            cfg.city_slots = slots;
+            sim::World w = make_world_with(k, spec, named_seams(), cfg);
+            Tick t(w, 150000);
+            CHECK(sim::start_drought(t.ctx, island(w)));
+            REQUIRE(island(w).drought.has_value());
+            CHECK(island(w).drought->city_mask ==
+                  std::vector<std::uint32_t>((slots + 31U) / 32U, 0U));
+            CHECK(w.check_invariants() == "");
+        }
     }
 }
 
@@ -1154,14 +1148,14 @@ TEST_CASE("start drought at builds the record of the constructor") {
     const Kit k = make_kit();
     sim::World w = make_world_with(k, cities_scenario(1), named_seams());
     sim::Island& is = island(w);
-    REQUIRE(sim::start_drought_at(w.config(), is, 144, 152, 50, 70000));
+    sim::start_drought_at(w.config(), is, 144, 152, 50, 70000);
     REQUIRE(is.drought.has_value());
     const sim::Drought& d = *is.drought;
     CHECK(d.x == 144);
     CHECK(d.y == 152);
     CHECK(d.target_ring == 6);
     CHECK(d.ring == 0);
-    CHECK(d.city_mask == 0);
+    CHECK(d.city_mask == std::vector<std::uint32_t>{0});
     CHECK(d.phase == 0);
     CHECK(d.step == 0);
     CHECK(d.state == 1);
@@ -1169,12 +1163,12 @@ TEST_CASE("start drought at builds the record of the constructor") {
     CHECK(d.stamp == 70000 - 65536);
     // The radius is divided by the chunk edge.
     is.drought.reset();
-    REQUIRE(sim::start_drought_at(w.config(), is, 144, 152, 63, 5));
+    sim::start_drought_at(w.config(), is, 144, 152, 63, 5);
     CHECK(is.drought->target_ring == 7);
     CHECK(is.drought->stamp == 5);
     // The constructor sets the record unconditionally: a second call replaces it (it is
     // start_drought that asks first).
-    REQUIRE(sim::start_drought_at(w.config(), is, 8, 16, 8, 9));
+    sim::start_drought_at(w.config(), is, 8, 16, 8, 9);
     CHECK(is.drought->x == 8);
     CHECK(is.drought->y == 16);
     CHECK(is.drought->target_ring == 1);

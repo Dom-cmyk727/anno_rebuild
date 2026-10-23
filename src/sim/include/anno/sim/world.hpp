@@ -62,7 +62,9 @@ namespace anno::sim {
 // bool faulted; new scope timers_monopoly after events (the script timers and the
 // monopoly entries). advance() now also writes the figure registry's stamp and cursor.
 // Stream at 107 (stage S12 fix-up): Rules gains timer0_clamp (the header scope).
-inline constexpr std::uint32_t kStateHashVersion = 107;
+// Stream at 108 (stage S13): the drought's city_mask is u64 count + u32 words
+// (ceil(city_slots / 32) words, O-55) instead of one u32.
+inline constexpr std::uint32_t kStateHashVersion = 108;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

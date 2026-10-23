@@ -12,13 +12,18 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include <doctest/doctest.h>
 
 #include <anno/formats/anlagen.hpp>
+#include <anno/sim/building.hpp>
+#include <anno/sim/production.hpp>
 #include <anno/sim/scenario_formats.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim/world.hpp>
@@ -86,9 +91,8 @@ struct FileResult {
     std::string load_error, create_error, invariants, save_error;
     std::string line;
     sim::ScenarioCounts counts;
-    std::uint64_t a14 = 0;             // islands whose w or h is not a multiple of chunk_edge
-    std::uint64_t prod2_buildings = 0; // BuildingWithoutCity: the PROD2 buildings of the file
-    std::uint64_t prod2_unknown = 0;   // UnknownObject warnings on PROD2 items
+    std::uint64_t a14 = 0;           // islands whose w or h is not a multiple of chunk_edge
+    std::uint64_t prod2_unknown = 0; // UnknownObject warnings on PROD2 items
     bool deterministic = false, save_identity = false;
     std::uint64_t hash = 0, create_hash = 0;
 };
@@ -122,7 +126,6 @@ FileResult run_file(const fs::path& game, const fs::path& p,
         }
     }
     for (const sim::ScenarioWarning& w : loaded.value().warnings) {
-        r.prod2_buildings += w.kind == sim::ScenarioWarningKind::BuildingWithoutCity ? 1U : 0U;
         r.prod2_unknown +=
             w.kind == sim::ScenarioWarningKind::UnknownObject && w.record == "PROD2" ? 1U : 0U;
     }
@@ -222,6 +225,8 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
             totals[k] += n;
         }
     }
+    // T23: the cities' PROD/ENTRY records place buildings.
+    CHECK(buildings > 0);
     std::cout << "scenario corpus: " << results.size() << " files, " << with_island
               << " with at least one island, " << links_only << " with links only; islands "
               << islands << ", links " << links << ", cities " << cities << ", buildings "
@@ -235,10 +240,11 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
     // The per-file counts against the committed expectations.
     if (update_requested()) {
         std::ofstream out(expectations_path(), std::ios::binary);
-        out << "# The scenario corpus through the S14 adapter: per file (relative to Scenes) the\n"
-               "# counts of the loaded ScenarioSpec and of its warnings per kind. Counts only, no\n"
-               "# content of the files. Rewritten by scenario_test.cpp with "
-               "ANNO_UPDATE_GOLDEN=1.\n";
+        out << "# The scenario corpus through the S14 adapter (T23: with the cities): per file\n"
+               "# (relative to Scenes) the counts of the loaded ScenarioSpec, of its warnings per\n"
+               "# kind, and the state hash after World::create (it moves with kStateHashVersion\n"
+               "# and with what the adapter decodes). No content of the files. Rewritten by\n"
+               "# scenario_test.cpp with ANNO_UPDATE_GOLDEN=1.\n";
         for (const std::string& l : lines) {
             out << l << "\n";
         }
@@ -256,11 +262,10 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
     }
 }
 
-TEST_CASE("scenario corpus: the ten scenarios with the most PROD2 buildings run 20000 ticks more") {
+TEST_CASE("scenario corpus: the ten scenarios with the most buildings run 20000 ticks more") {
     // §15 S14: the 5 add-on and the 5 base scenarios with the most buildings run longer;
-    // under the asan preset this is the UBSan run. No PROD2 building is placed in stage 1
-    // (no tile owners decoded, OQ-141), so "most buildings" ranks the PROD2 building
-    // items of the file (the BuildingWithoutCity warnings).
+    // under the asan preset this is the UBSan run. Since T23 "most buildings" ranks the
+    // buildings the cities' PROD/ENTRY records place.
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -274,9 +279,7 @@ TEST_CASE("scenario corpus: the ten scenarios with the most PROD2 buildings run 
         auto l = sim::load_scenario(buf, *types, sim::SimConfig{});
         REQUIRE(l);
         const auto c = sim::count(l.value());
-        const auto it = c.warnings.find(sim::ScenarioWarningKind::BuildingWithoutCity);
-        const std::uint64_t n = it == c.warnings.end() ? 0 : it->second;
-        (l.value().spec.settings.prop14 == 3 ? addon : base).push_back({n, i});
+        (l.value().spec.settings.prop14 == 3 ? addon : base).push_back({c.buildings, i});
     }
     auto top5 = [](auto& v) {
         std::sort(v.begin(), v.end(), [](const auto& a, const auto& b) {
@@ -307,4 +310,178 @@ TEST_CASE("scenario corpus: the ten scenarios with the most PROD2 buildings run 
         CHECK(r.deterministic);
         CHECK(r.save_identity);
     }
+}
+
+namespace {
+
+/// The stocks of a producing building: output, input and raw stocks (not `last`,
+/// which every scheduled step moves, producing or not); empty for a payload that does
+/// not produce.
+std::vector<std::uint32_t> production_state(const sim::Payload& p) {
+    std::vector<std::uint32_t> v;
+    auto add = [&v](const auto& xs) { v.insert(v.end(), xs.begin(), xs.end()); };
+    if (const auto* w = std::get_if<sim::Workshop>(&p)) {
+        add(w->out);
+        add(w->in);
+    } else if (const auto* x = std::get_if<sim::WeaponsWorkshop>(&p)) {
+        add(x->out);
+        add(x->in);
+    } else if (const auto* f = std::get_if<sim::Farm>(&p)) {
+        v = {f->out, f->raw};
+    } else if (const auto* s = std::get_if<sim::SmallFarm>(&p)) {
+        add(s->out);
+        add(s->raw);
+    } else if (const auto* m = std::get_if<sim::Mine>(&p)) {
+        v = {m->out};
+    }
+    return v;
+}
+
+/// The sum of a producing building's output stocks (8.8).
+std::uint64_t output_sum(const sim::Payload& p) {
+    std::uint64_t n = 0;
+    auto add = [&n](const auto& xs) {
+        for (const auto x : xs) {
+            n += x;
+        }
+    };
+    if (const auto* w = std::get_if<sim::Workshop>(&p)) {
+        add(w->out);
+    } else if (const auto* x = std::get_if<sim::WeaponsWorkshop>(&p)) {
+        add(x->out);
+    } else if (const auto* f = std::get_if<sim::Farm>(&p)) {
+        n = f->out;
+    } else if (const auto* s = std::get_if<sim::SmallFarm>(&p)) {
+        add(s->out);
+    } else if (const auto* m = std::get_if<sim::Mine>(&p)) {
+        n = m->out;
+    }
+    return n;
+}
+
+struct BuildingSnapshot {
+    std::vector<std::uint32_t> state;
+    std::uint64_t output = 0;
+    std::size_t kind = 0; ///< the payload's alternative (sim::Payload index)
+};
+
+/// Every building of every city, by id: its production state and output sum.
+std::map<std::uint64_t, BuildingSnapshot> snapshot(const sim::World& w) {
+    std::map<std::uint64_t, BuildingSnapshot> out;
+    for (const std::optional<sim::Island>& is : w.islands()) {
+        if (!is) {
+            continue;
+        }
+        for (const std::optional<sim::City>& c : is->cities) {
+            if (!c) {
+                continue;
+            }
+            for (const sim::BuildingList& l : c->index.lists) {
+                for (const auto& b : l.slots) {
+                    if (b) {
+                        out[b->id.v] = {production_state(b->payload), output_sum(b->payload),
+                                        b->payload.index()};
+                    }
+                }
+            }
+        }
+    }
+    return out;
+}
+
+/// Per city (island slot, city number): the warehouse stock.
+std::map<std::pair<std::size_t, std::uint32_t>, std::vector<std::uint32_t>>
+warehouses(const sim::World& w) {
+    std::map<std::pair<std::size_t, std::uint32_t>, std::vector<std::uint32_t>> out;
+    for (std::size_t i = 0; i < w.islands().size(); ++i) {
+        if (!w.islands()[i]) {
+            continue;
+        }
+        for (const std::optional<sim::City>& c : w.islands()[i]->cities) {
+            if (c) {
+                out[{i, c->number.v}] = c->stock.stock;
+            }
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("scenario corpus: a shipped town's economy runs 150000 ticks") {
+    // T23 Do 3: the scenario with the most buildings runs 150 000 ticks (3 000 advances
+    // of 100 ms); its producing buildings work (their stocks move, and some gain
+    // output). The warehouse stocks are reported: no ported code moves goods between a
+    // building and a warehouse yet (carriers are a figure behaviour seam, houses do not
+    // consume: docs/sim/state.md §10 "As implemented in T23"), so the delta is printed,
+    // not asserted.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto types = original_registry(*dir);
+    const std::vector<fs::path> files = scenario_files(*dir);
+    std::uint64_t most = 0;
+    std::size_t pick = files.size();
+    std::optional<sim::LoadedScenario> loaded;
+    for (std::size_t i = 0; i < files.size(); ++i) {
+        const auto buf = anno::test::read_file(files[i]);
+        auto l = sim::load_scenario(buf, *types, sim::SimConfig{});
+        REQUIRE(l);
+        const std::uint64_t n = sim::count(l.value()).buildings;
+        if (n > most) {
+            most = n;
+            pick = i;
+            loaded = std::move(l).value();
+        }
+    }
+    REQUIRE(loaded.has_value());
+    INFO(rel_name(*dir, files[pick]));
+    auto w = sim::World::create(loaded->spec, types, sim::SimConfig{});
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    sim::World world = std::move(w).value();
+    const auto before = snapshot(world);
+    const auto stock_before = warehouses(world);
+    for (int i = 0; i < kAdvances; ++i) {
+        world.advance(kStepMs);
+    }
+    CHECK(world.check_invariants() == "");
+    CHECK(world.clock().tick() == 150000);
+    const auto after = snapshot(world);
+    const auto stock_after = warehouses(world);
+    REQUIRE(after.size() == before.size());
+    std::uint64_t producers = 0, moved_stocks = 0, gained = 0;
+    // Per payload alternative (Workshop, WeaponsWorkshop, Farm, SmallFarm, Mine):
+    // producing, with stocks that moved.
+    std::map<std::size_t, std::pair<std::uint64_t, std::uint64_t>> by_kind;
+    for (const auto& [id, b] : before) {
+        const BuildingSnapshot& a = after.at(id);
+        if (b.state.empty()) {
+            continue;
+        }
+        ++producers;
+        moved_stocks += a.state != b.state ? 1U : 0U;
+        gained += a.output > b.output ? 1U : 0U;
+        ++by_kind[b.kind].first;
+        by_kind[b.kind].second += a.state != b.state ? 1U : 0U;
+    }
+    const char* const kind_names[] = {"Inert", "Workshop",  "WeaponsWorkshop",
+                                      "Farm",  "SmallFarm", "Mine"};
+    for (const auto& [k, n] : by_kind) {
+        std::cout << "scenario economy: " << (k < std::size(kind_names) ? kind_names[k] : "?")
+                  << " " << n.first << " producing, " << n.second << " with stocks that moved\n";
+    }
+    std::uint64_t moved = 0;
+    for (const auto& [city, s] : stock_before) {
+        moved += stock_after.at(city) != s ? 1U : 0U;
+    }
+    std::cout << "scenario economy: " << rel_name(*dir, files[pick]) << ": " << before.size()
+              << " buildings, " << producers << " producing; after 150000 ticks " << moved_stocks
+              << " with stocks that moved, " << gained
+              << " with more output in stock; warehouses that moved: " << moved << " of "
+              << stock_before.size() << "\n";
+    CHECK(producers > 0);
+    CHECK(moved_stocks > 0);
+    CHECK(gained > 0);
 }

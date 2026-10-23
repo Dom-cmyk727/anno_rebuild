@@ -81,6 +81,10 @@ struct ScenarioSpec {
         /// The warehouse stock in 8.8 tons, exactly SimConfig::warehouse_goods
         /// entries; nullopt = empty.
         std::optional<std::vector<std::uint32_t>> stock;
+        /// The warehouse capacity in 8.8 tons (CityStock::capacity; a savegame or
+        /// scenario city's HEAD2, docs/re/annowelt.md "Scenario cities"); nullopt =
+        /// the constructor's 50 t.
+        std::optional<std::uint32_t> capacity;
         std::vector<BuildingSpec> buildings;
     };
     struct IslandSpec {

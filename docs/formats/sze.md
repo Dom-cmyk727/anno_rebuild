@@ -118,15 +118,21 @@ A `STADT2` record (or its older name `STADT`, the same reader) in a player's sta
 
 | Record | Layout | Meaning | Evidence |
 |---|---|---|---|
-| `HEAD2` | read into a zero-filled 64-byte buffer | u16 `[0x24]`: the warehouse capacity in tons, stored `<< 8` at city `+0x624`; 0 → 50 t. The other fields (to city `+0xd8`, `+0x140`, `+0x328`, `+0x32c`, `+0x5fc`…`+0x620`) are open | D `0x1002e383`–`0x1002e3e5` |
+| `HEAD2` | read into a zero-filled 64-byte buffer | u16 `[0x24]`: the warehouse capacity in tons, stored `<< 8` at city `+0x624`; 0 → 50 t. The other fields: [`HEAD2` byte map](#head2-byte-map) below (T25) | D `0x1002e383`–`0x1002e3e5` |
 | `WARE` | length / 8 entries: u16 goods number (the file's numbering), u16 tons, 4 bytes not read | stock of that goods = tons << 8 (city `+0x334 + 12g`); the number is mapped through the load's goods table, built from `WARETYPE` by name; no table: every entry skipped; a mapped 0: skipped | D `0x1002e7ca`–`0x1002e84b`, `0x100a18d0` |
 | `ID3` | u32 entries: x = bits 0–14, y = bits 15–29; bit 30 set: 8 mask bytes follow | the city owns the 8 × 8 chunk at (x, y): all 64 tiles, or with a mask the tile (x + i, y + j) where byte j has bit i; written unconditionally and unclipped (island `+0x100` = `0x10085620`) | D `0x1002e709`–`0x1002e7c5`; P: all 272 cities, 14 957 entries (8 739 whole chunks, 6 218 masked) |
 | `ID2` | as `ID3`, in world tiles | as `ID3` | D `0x1002e65c`; none in the corpus |
 | `ID` | 8-byte entries: u16 x, y, u8 `w \| h << 4`, a radius (0 → 16) | a claim with radius through island `+0xe8` (its shape is not read) | D `0x1002e5a5`; none in the corpus |
 | `PROD` | nested records; `ENTRY`: u16 x, u16 y, then the building's own record | one building per `ENTRY` (below); another record name is skipped | D `0x100264a0`, `0x1002671d`; P: 8 561 entries |
-| `BAUMAT`, `VK`, `EK`, `STAT`, `STAT2`, `STST2`, `HEAD`, `VOLK` | | read by the city reader; not decoded (OQ-145) | D (the record names at `0x1002e170`) |
+| `BAUMAT` | length / 8 entries: u16 goods number (file numbering), u16 tons, 4 bytes not read | `BuildGoods::setting` of that goods = tons << 8 (city `+0x48c + 8g` = `+0x5d4 + 8(g − 0x29)` for goods `0x29`–`0x2d`, the field `SetTradeFlag` mode 9 writes); mapped through the goods table like `WARE` (no table or a mapped 0: skipped); no range check | D `0x1002e862`–`0x1002e8cd`; P: 272 × 5 entries, goods 41–45 in order, non-zero values (10–17 t) in 6 cities |
+| `VK`, `EK` | length / 8 entries: u16 `[0]` → entry `+4` (`price`, likely), u16 `[2]` goods (file numbering), u16 `[4]` tons → entry `+8` = tons << 8 (amount, 8.8), `[6]` not read | entry `i` (the loop index, counted also over skipped entries) of the `VK` list (city `+0xdc`, 8 entries) or the `EK` list (`+0x44`, 12 entries), no bound; the goods record gets `+0xb` = `i` and `+0xa` bit 0 = 1 (`VK`) / 0 (`EK`); a mapped goods 0: skipped. `VK` (*Verkauf*) is likely the sell list, so the rebuild's `GoodsSetting::buy` names the bit the wrong way round (OQ-155) | D `0x1002e8e8`–`0x1002e9b9`, `0x1002e9d4`–`0x1002ea9e`; P: `VK` 4/6/8 entries (221/25/26), `EK` 6/8 (221/51), 75 and 76 entries name a goods, none twice in a list, `[6]` = 0 |
+| `STAT2` | read into a zero-filled 36-byte buffer | u32 `[0x00]`…`[0x10]` → city `+0x628`…`+0x638` (five of the ten tick counters `+0x628`…`+0x64c` of city tick step h), u16 `[0x20]` → `+0x654`, u8 `[0x22]` → `+0x656`; `[0x14]`, `[0x18]`, `[0x1c]` (written from `+0x63c`…`+0x644`) and `[0x23]` are not read | D `0x1002e525`–`0x1002e5a0`, writer `0x1002f2b4`; P: 193, all 36 bytes |
+| `STST2` | raw | city `+0x84c`…`+0x30bf` is zeroed and the record copied into it (likely the statistics screen's sampled history, city tick step i `0x1002d3b0`) | D `0x1002eb2a`–`0x1002eb4b`; P: 193, all 10 356 bytes |
+| `STAT` | | skipped like an unknown record | D `0x1002eb4d`–`0x1002eb70`; P: 79, all 20 bytes |
+| `HEAD` | read into a zero-filled 64-byte buffer | the older `HEAD2`: u16 `[2]` the owner player (not found → 0, then 31), who gets the city; then `[0]`, `[4]`…, `[0x24]`, `[0x26]`, `[0x27]`, `[0x28]`, `[0x2c]` as in `HEAD2` | D `0x1002e1c9`–`0x1002e37e`; none in the corpus |
+| `VOLK` | | read into an uninitialised stack buffer and ignored | D `0x1002eaff`–`0x1002eb16`; none in the corpus |
 
-**`PROD/ENTRY` → building** (D `0x100264a0`). The island resolves the entry's tile to the placement of the building whose footprint holds it (island `+0x84` = `0x10083a90`: the tile's object id, the origin from the tile's in-footprint offset, rotation, phase, height), so type, origin, rotation and height come from the island's `PROD2` copy, not from the entry; an unknown type skips the entry. `Create` (`0x10024010`) builds the building (the height goes to `+0x0f`), the bytes after the position go to the class's `Load` (slot `+0x7c`), then the city claims the footprint tiles that are still neutral (`0x10026685`). The class records, each read into a zero-filled buffer; `[1]` bit 0 (bit i for line i) is the switch (passed through slot `+0xac` of the object at building `+0x14` before slot `+0xc8` stores it; that the call returns the bit unchanged is likely, OQ-145):
+**`PROD/ENTRY` → building** (D `0x100264a0`). The island resolves the entry's tile to the placement of the building whose footprint holds it (island `+0x84` = `0x10083a90`: the tile's object id, the origin from the tile's in-footprint offset, rotation, phase, height), so type, origin, rotation and height come from the island's `PROD2` copy, not from the entry; an unknown type skips the entry. `Create` (`0x10024010`) builds the building (the height goes to `+0x0f`), the bytes after the position go to the class's `Load` (slot `+0x7c`), then the city claims the footprint tiles that are still neutral (`0x10026685`). The class records, each read into a zero-filled buffer; `[1]` bit 0 (bit i for line i) is the switch (the `Load` calls building slot `+0xc8` with (output goods i of the type, the bit), which books the running-cost change and stores the bit, D, T25; first read as passing the bit through the type's slot `+0xac`):
 
 | Class (`Load`) | Length rule | Bytes |
 |---|---|---|
@@ -135,9 +141,55 @@ A `STADT2` record (or its older name `STADT`, the same reader) in a player's sta
 | mine (`0x1006e310`) | into 10 bytes, no test | `[2]` output, `[8]` activity |
 | small farm (`0x1006fc80`) | into 14 bytes, no test | `[2 + 2i]` output i, `[6 + 2i]` raw stock i, `[10 + 2i]` activity i |
 | weapons workshop (`0x10069140`) | into 14 bytes, no test | `[2 + 2i]` output i, `[6 + 2i]` input i, `[10 + 2i]` activity i |
-| house (`0x10076e60`), market (`0x1006be00`) | | not read (OQ-145) |
+| house (`0x10076e60`) | reads 8 + `n` bytes (version 2) or 8 + 2`n` (version 1) or 8 (version 0), whatever the length | header `[1]` residents, `[2]` `n`, `[3]` version (`[0]`, `[4..7]` not read); version 2: `[8 + j]` = satisfaction `s_j` of need `j` (128 = 100 %; the save writes at most 160); version 1: the second byte of each 2-byte pair; [below](#house-and-market-records) |
+| market, `MARKTKOMBI` (`0x1006be00`) | nested records | `KONTID`: u16 → building `+0x1e`, the market's number on its island; other names skipped |
 
 P: 8 538 entries sit exactly on a `PROD2` item's origin and 23 on another tile; 7 460 carry class bytes. The `PROD2` items of building types are the tile layer's copy of the buildings: of the 8 810, 212 are second copies of an equal item on the same origin, 8 526 are named by an entry and 72 by none; 34 entries name a `DENKMAL` item (PRODTYPE 289, not a building of the layout) and one a tile without an item (OQ-144).
+
+A `DENKMAL` entry makes `Create` build a base-class object (`0x100734c0`, `0x18` bytes) in the production list, like every PRODTYPE above 192; its bytes are skipped by the base `Load` (`0x10031840`) (D, T25; `docs/re/annowelt.md` "Scenario cities" (j)).
+
+### `HEAD2` byte map
+
+64 bytes (P: all 272), read into a zero-filled 64-byte buffer whatever the record's length (a longer record overruns it, D `0x100b4fd0`). Reader `0x1002e399`–`0x1002e50a`, writer `0x1002ebb0` (D, T25; `docs/re/annowelt.md` "Scenario cities" (g)).
+
+| Offset | Size | Type | City field | Meaning | Evidence |
+|---|---|---|---|---|---|
+| 0x00 | 1 | u8 | `+0x324` | the byte of the sub-object `+0x320` (likely the research topic in progress, OQ-157); the writer stores it as a u16 | D; P: 0 in 271, 17 in 1 |
+| 0x01 | 3 | | | not read | P: 0 |
+| 0x04 | 32 | char[] | `+0x24` | city name, NUL-terminated; copied up to the NUL with no bound (a name of 32 or more characters runs into the list at `+0x44`); default `New City` | D `0x1002e4c6`–`0x1002e504`, `0x1002fa64`; P: 4–20 characters, 16 names with bytes ≥ `0x80` |
+| 0x24 | 2 | u16 | `+0x624` | warehouse capacity in tons (`<< 8`; 0 → 50 t) | D; P: equals the market-count table of city slot `+0xbc` in 259 of 272 (OQ-156) |
+| 0x26 | 1 | u8 | `+0x140` | slot count of the `VK` list; 0 keeps the constructor's 4 | D; P: 4/6/8 = the `VK` entry count in all 272 |
+| 0x27 | 1 | u8 | `+0xd8` | slot count of the `EK` list; 0 keeps the constructor's 6 | D; P: 6/8 = the `EK` entry count in all 272 |
+| 0x28 | 4 | u32 | `+0x60c` | statistic 0 (sales to residents) as shown; stored `× 7` (`(105 · v mod 2³²) / 15`) | D; P: non-zero in 79 |
+| 0x2c | 2 | u16 | `+0x620` | city property 1 (slots `+0xc4`/`+0xc8`); meaning open | D; P: 0 |
+| 0x2e | 2 | | | not read | P: 0 |
+| 0x30 | 4 | u32 | `+0x61c` | ORed into the player bit mask (bit = player index); meaning open (O-40) | D; P: always holds the owner's bit, only it in 181 |
+| 0x34 | 2 | u16 | `+0x328` | `<< 8`; the sub-object's `+8` (OQ-157) | D; P: 25 in 1, else 0 |
+| 0x36 | 2 | u16 | `+0x32c` | `<< 8`; the sub-object's `+0xc`, also recomputed from the city's `BIBLIOTHEK` buildings (OQ-157) | D; P: 25 in 1, else 0 |
+| 0x38 | 4 | u32 | `+0x5fc` | statistic 4 (trade sales), stored `× 7` | D; P: 0 |
+| 0x3c | 4 | u32 | `+0x600` | statistic 5 (trade purchases), stored `× 7` | D; P: non-zero in 1 |
+
+The running costs (statistics 1 and 2, `+0x604`/`+0x608`) and the u16 statistics 8, 9, 13, 14 are not saved here.
+
+### House and market records
+
+**House** (`Load` `0x10076e60`, save `0x10077130`; D, T25). The building's group (PIONIER … ARISTOKRATEN) comes from its type, not from the record.
+
+| Offset | Size | Type | Meaning | Evidence |
+|---|---|---|---|---|
+| 0x00 | 1 | u8 | not read; the save writes 0 | D; P: 0 in all 3 283 |
+| 0x01 | 1 | u8 | residents; house `+0x2c` = residents · 64, `E` (`+0x2e`) = residents · 128; the city's resident counter is moved from the old to the new count. **Reset:** in a group above PIONIER, fewer residents than half the lower group's `Wohnmax` become the group's own `Wohnmax` | D `0x10076e9e`–`0x10076f31`; P: never below that bound, never above `Wohnmax` |
+| 0x02 | 1 | u8 | `n`, the number of need bytes; the save writes the group's need count | D; P: 6 (1 874 houses), 10 (688), 12 (631), 11 (90) |
+| 0x03 | 1 | u8 | version: 0 = no need bytes (the rest is skipped), 1 = two bytes per need, any other value = one byte per need; the save writes 2 | D `0x10076f34`, `0x10076f69`; P: 2 in all |
+| 0x04 | 4 | | not read; the save writes 0 | D; P: 0 |
+| 0x08 | n | u8[n] | version 2: satisfaction `s_j` of need slot `j` (128 = 100 %; the save writes at most 160); stock `+0x30 + 2j` = `trunc(Menge_j · s_j · residents · 128 / 1536)` for `j < min(n, the group's need count)`. After a reset, need 0 gets 128 and every forced need `128 − (r & 31)` with a draw `r` from the world's random sequence, replacing the file's bytes | D `0x1007702b`–`0x10077119`; P: 0–160 |
+| 0x08 | 2n | | version 1: the same per need from the **second** byte of each pair | D `0x10076f71`–`0x1007701a`; P: none |
+
+No length test: the header and `n` (or `2n`) bytes are read whatever the record's length (the need bytes go into a 64-byte stack buffer). The `Load` returns 1 on every path.
+
+**Market** (PRODTYPE 33–36; `Load` `0x1006be00`, save `0x1006beb0`; D, T25): a [record sequence](#tagged-records); `KONTID` holds a u16 (2 bytes are read whatever its length), stored at building `+0x1e`; any other record is skipped. `KONTID` is the market's number on its island: when it is 0 after the `Load`, the entry loop gives the market the island's counter (island property `0x11`) and raises the counter (`0x100266a5`–`0x100266f5`); a loaded number is kept (OQ-158). P: 781 markets, each with one 2-byte `KONTID`, values 1–30, never 0, unique per island (225 islands).
+
+Other entry shapes not yet read (P): a nested `SLICE` (278 entries, 8 bytes), a nested `CREW` (251), one byte (579) (OQ-145).
 
 ## Units (`SCHIFF`, `SOLDAT`)
 
@@ -244,7 +296,7 @@ With `--full`, every record that the nesting table marks is followed by its nest
 
 ## Open fields
 - Long-form header choice, role of player 31, the `STADT2`/`ESEL`/`CREW/ENTRY` prefixes, unit `attr`, record contents — OQ-027
-- The `STADT2` records not decoded (`BAUMAT`, `VK`, `EK`, `STAT`, `STAT2`, `STST2`, the rest of `HEAD2`) and the house and market records of `PROD/ENTRY` — OQ-145; entries and `PROD2` items that do not pair — OQ-144
+- The `STADT2` records are decoded since T25 (what is left: the meaning of several fields, the other class records of `PROD/ENTRY`, the context bit) — OQ-145, OQ-155..158; entries and `PROD2` items that do not pair — OQ-144
 - What an island link resolves to — OQ-028
 - `COMPPROFIL2` `ENTRY` columns 0, 7, 14, 15 (unused) and 13 (the doubled `SUSPEND` call) — OQ-112; what the AI parameters do — OQ-113
 

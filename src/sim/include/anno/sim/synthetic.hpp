@@ -42,10 +42,20 @@ struct SyntheticTypes {
     TypeId market_stall;
     /// STRASSE (PRODTYPE 193): a tile object, not a building.
     TypeId road;
+    /// Growing tile objects (make_growth_types only; invalid ids elsewhere), each with
+    /// its successor, the next id (a ROHSTOFF object that does not grow): a grain
+    /// field (ROHSTWACHS, P 15 500, S 5, k 2: the values of fixture F8, entry 712), a
+    /// forest (ROHSTWACHS, P 24 000, S 5, k 2) and a dry grass (ROHSTDUERR, P 1 000,
+    /// S 5, k 0; P / 2 = 500 is shorter than a full growth sweep, so flips are lost).
+    TypeId field, ripe_field, forest, ripe_forest, grass, ripe_grass;
 };
 
 /// The registry of the types above on the original goods and class tables.
 formats::Result<SyntheticTypes, std::string> make_synthetic_types();
+
+/// make_synthetic_types plus the growing tile objects field (9011), forest (9013),
+/// grass (9015) and their ripe successors 9012, 9014, 9016 (stage S13, the golden G5).
+formats::Result<SyntheticTypes, std::string> make_growth_types();
 
 /// The settings of the synthetic worlds: a 512 x 512 tile world, the add-on
 /// edition flag at its default (3), everything else as WorldSettings{}.
@@ -130,5 +140,16 @@ ScenarioSpec g3_scenario(const SyntheticTypes& types, std::uint32_t seed = 1234)
 /// game seconds the monopoly table records). The test adds the state a scenario cannot
 /// carry (upkeep sums, timers, queued events, figures on the expiry and deferred lists).
 ScenarioSpec g4_scenario(const SyntheticTypes& types, std::uint32_t seed = 508);
+
+/// The scenario of the golden G5 (docs/sim/state.md §14.3, stage S13), on
+/// make_growth_types; the seed 514 is the one the golden uses (its 300 s draws are worked
+/// out in sweeps_test.cpp). One player (slot 0); one island in slot 0, 60 x 44 tiles at
+/// (100, 100) (8 x 6 chunks, the last column and row of chunks clipped), climate 2, rows 0
+/// .. 39 owned by city 0 and rows 40 .. 43 by city 3, both of player 0; the Kontor (the
+/// market list) of city 0 at (131, 123), so the 300 s event centres a drought on the chunk
+/// (128, 120); a grain field at island tile (2, 3) (chunk 0) and a forest at (58, 42) (the
+/// last chunk, 47). World property 6 has bit 0x80: the 7.5 minute event is off, so the 300
+/// s event makes the only draws.
+ScenarioSpec g5_scenario(const SyntheticTypes& types, std::uint32_t seed = 514);
 
 } // namespace anno::sim::synthetic

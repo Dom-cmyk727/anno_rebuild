@@ -42,6 +42,8 @@ refresh body runs on the first advance only (D5) and which the script transcribe
 The 7.5 minute event is asserted not to fire within the horizon of the goldens.
 The S12 fix-up added Rules::timer0_clamp (owner decision on OQ-133), one more byte of the
 header's Rules.
+Stage S13 (stream 108) widened the drought record's city mask to u64 count + u32 words;
+the transcribed worlds hold no drought (presence byte 0), so only the version moved.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
@@ -61,7 +63,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 107
+STATE_HASH_VERSION = 108
 PRNG_TIMELINE_VERSION = 1
 
 

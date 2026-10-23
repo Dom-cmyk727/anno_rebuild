@@ -83,13 +83,13 @@
 # players), 7ff0bfae5f95af02, 1d998748f6990f83 (S5 islands), 9c0e107e4f9e93e7 and
 # cf98c83f259a74f9 (S6 G1). The values come from tools/sim_stream.py, which transcribes
 # the new scopes and the monopoly body independently of the C++ code.
-g0_step1 S1 107 fbb03c10c6d023ed
-g0_step100 S1 107 a00446d467ffba09
-g0_step1000 S1 107 51dffeccc8eca004
-g1_players_step100 S4 107 8eb76d3541783675
-g1_players_step700 S4 107 0a334c1d4a4e08b0
-s5_islands_create S5 107 31181d99b479c888
-s5_islands_step100 S5 107 3567e5a84f77e100
+g0_step1 S1 108 8e213d1a7eca3b8d
+g0_step100 S1 108 f8620feb9527b829
+g0_step1000 S1 108 657da21c3efc7b64
+g1_players_step100 S4 108 64dd1c202a3c0eb7
+g1_players_step700 S4 108 6dd8f125332a38a6
+s5_islands_create S5 108 c1abeb349c12a368
+s5_islands_step100 S5 108 54ae1ae7460a3060
 #
 # S6 G1 scenario (synthetic::g1_scenario: one player, island 0 with city 0 holding
 # the weaver with 5 t of wool at (110,110) and the grain farm with 5 t of raw
@@ -97,8 +97,8 @@ s5_islands_step100 S5 107 3567e5a84f77e100
 # after World::create and after advance(10) x 100. tools/sim_stream.py transcribes
 # the city, the building lists and the Workshop and Farm payloads independently of
 # the C++ code; the registry digest of the synthetic types is its one literal.
-s6_g1_create S6 107 e3c784593f0f4b74
-s6_g1_step100 S6 107 941c7950e1e3a5c3
+s6_g1_create S6 108 966f2d9913ce01c1
+s6_g1_step100 S6 108 14c874b5e8174ece
 #
 # S7 G1 (stage S7): the S6 G1 scenario run through the real scheduler (synthetic::
 # g1_scenario: the weaver with 5 t of wool and the grain farm with 5 t of raw material).
@@ -126,10 +126,10 @@ s6_g1_step100 S6 107 941c7950e1e3a5c3
 # unchanged (no UI event of S12 occurs in these runs: no timer runs, the 7.5 minute event
 # is not reached). g2.log and g3.log were re-recorded (their initial saves carry the
 # stream version).
-s7_g1_mp_checkpoints S7 107 f0a065d5c2a4090b
-s7_g1_mp_end S7 107 bdd2b9b4213b59eb
-s7_g1_events S7 107 d705f409820828d2
-s7_g1_sp_end S7 107 5e4472ab18de4da1
+s7_g1_mp_checkpoints S7 108 b57c2f24ef1d86b3
+s7_g1_mp_end S7 108 300961df32e9c52a
+s7_g1_events S7 108 d705f409820828d2
+s7_g1_sp_end S7 108 050bca81eebb9ec4
 #
 # S10 G2 (stage S10): the G1 scenario on the types with build costs (synthetic::
 # g2_scenario, synthetic::make_build_types) driven by the recorded command log
@@ -141,7 +141,7 @@ s7_g1_sp_end S7 107 5e4472ab18de4da1
 # with slot 1 freed and the hint kept), the charges (4 x 300 gold, 12 t tools, 16 t wood)
 # and the rejection reasons independently of the hash. The log carries the stream version
 # in its initial save, so a stream bump re-records it.
-s10_g2_end S10 107 5377024450f6d702
+s10_g2_end S10 108 497c19fe86eacfb2
 #
 # S11 G3 (stage S11): synthetic::g3_scenario on synthetic::make_synthetic_types (two
 # players, two islands, two cities; a weaver, a grain farm, a fur trapper, a small farm, a
@@ -155,9 +155,9 @@ s10_g2_end S10 107 5377024450f6d702
 # every building to values derived by hand from docs/sim/production.md (F2 weavers, F6
 # farm, the trapper's 20 steps, the small farm's lines, 143 bow steps on one line and 160
 # on two, the mine's 768 from the two deposits), the draw count and the notice 0x19.
-s11_g3_checkpoints S11 107 35528dd83fa53031
-s11_g3_end S11 107 8c174c991443a4b9
-s11_g3_events S11 107 3140bd8e1eb7db86
+s11_g3_checkpoints S11 108 95d29817c125cb82
+s11_g3_end S11 108 a5e67e03f3fb97f0
+s11_g3_events S11 108 3140bd8e1eb7db86
 #
 # S12 G4 (stage S12): synthetic::g4_scenario (seed 508; three players, islands in slots 0,
 # 2 and 4 with five cities, a weaver and a grain farm) with the state a scenario cannot
@@ -177,9 +177,9 @@ s11_g3_events S11 107 3140bd8e1eb7db86
 # bankruptcy tick, the timers, the queue, the figures' end ticks, the monopoly entries, the
 # draw counts per site (worked out from the PRNG table for seed 508) and the two UI events
 # to values derived by hand.
-s12_g4_checkpoints S12 107 f1d4887d8b451e35
-s12_g4_end S12 107 75377408add93662
-s12_g4_events S12 107 c03145d1114f097d
+s12_g4_checkpoints S12 108 ad60664f87e2b436
+s12_g4_end S12 108 358bb38a5503969b
+s12_g4_events S12 108 c03145d1114f097d
 #
 # Re-baselined at stream version 107 (stage S12 fix-up: Rules gained timer0_clamp, owner
 # decision on OQ-133, one more byte of the header scope; and G4 runs timer 0 the original's
@@ -194,3 +194,32 @@ s12_g4_events S12 107 c03145d1114f097d
 # s12_g4_events 0ac22bbdf79face5. g0, g1_players, s5 and s6 come from tools/sim_stream.py
 # again; the others are self-baselined (the event goldens of s7 and s11 are unchanged);
 # g2.log, g3.log and g4.log were re-recorded.
+#
+# Re-baselined at stream version 108 (stage S13: the drought's city mask is u64 count + u32
+# words, ceil(city_slots / 32) of them, O-55; no drought occurs in any of these runs, so only
+# the version in the header moved them). The version-107 values were g0_step1
+# fbb03c10c6d023ed, g0_step100 a00446d467ffba09, g0_step1000 51dffeccc8eca004,
+# g1_players_step100 8eb76d3541783675, g1_players_step700 0a334c1d4a4e08b0, s5_islands_create
+# 31181d99b479c888, s5_islands_step100 3567e5a84f77e100, s6_g1_create e3c784593f0f4b74,
+# s6_g1_step100 941c7950e1e3a5c3, s7_g1_mp_checkpoints f0a065d5c2a4090b, s7_g1_mp_end
+# bdd2b9b4213b59eb, s7_g1_events d705f409820828d2, s7_g1_sp_end 5e4472ab18de4da1, s10_g2_end
+# 5377024450f6d702, s11_g3_checkpoints 35528dd83fa53031, s11_g3_end 8c174c991443a4b9,
+# s11_g3_events 3140bd8e1eb7db86, s12_g4_checkpoints f1d4887d8b451e35, s12_g4_end
+# 75377408add93662, s12_g4_events c03145d1114f097d. g0, g1_players, s5 and s6 come from
+# tools/sim_stream.py (the C++ printed the same values); the others are self-baselined (the
+# event goldens are unchanged); g2.log, g3.log and g4.log were re-recorded.
+#
+# S13 G5 (stage S13): synthetic::g5_scenario (seed 514) on synthetic::make_growth_types (one
+# player; island 0, 60 x 44 at (100, 100), rows 0 .. 39 of city 0 and 40 .. 43 of city 3, the
+# Kontor of city 0 at (131, 123), a grain field in chunk 0 and a forest in the last chunk;
+# the 7.5 minute event off), 20 000 single-player advances of 100 ms (tick 1 000 000),
+# recorded as fixtures/synthetic/sim/g5.log with 21 checkpoints: the field ripe at tick
+# 156 050, the forest at 240 000, droughts started by the 300 s event at 300 000 (gone at
+# 442 400) and at 900 000 (in its plateau at the end, 88 counts). s13_g5_checkpoints is the
+# FNV-1a 64 of the state hashes after every 1 000th advance, s13_g5_end the hash at tick
+# 1 000 000. SELF-BASELINED like the S7 .. S12 goldens (ANNO_UPDATE_GOLDEN also rewrites
+# g5.log); sweeps_test.cpp holds the growth counters, the ripe ticks, the six draws (worked
+# out from the PRNG table for seed 514), the drought starts, states and city mask to values
+# derived by hand.
+s13_g5_checkpoints S13 108 63bd3ee827a70306
+s13_g5_end S13 108 e2858ed01a150989

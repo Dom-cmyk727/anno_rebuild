@@ -34,6 +34,7 @@ struct TickContext;
 class SerialWorld;
 struct Effects;
 struct Island;
+struct DroughtStrip;
 struct City;
 struct Figure;
 struct Player;
@@ -76,8 +77,14 @@ struct Seams {
     using IslandPass = void (*)(void* ctx, const TickContext&, Island&, Effects&);
     /// D 0x10095d40 object bodies (O-12).
     Seam<IslandPass> object_manager;
-    /// D 0x1008aeb0 tile effects (O-15).
-    Seam<IslandPass> drought_tiles;
+
+    using DroughtTiles = void (*)(void* ctx, const TickContext&, Island&, const DroughtStrip&,
+                                  Effects&);
+    /// D 0x1008aeb0 tile effects (O-15: the chunk flag bit 2, the AI message 0x11 and the
+    /// world event 0x17 for the cities of the owner samples, the crop objects 0xe2 / 0xe3,
+    /// event 0xce): called once per strip, after the stamp moved and before the owner
+    /// samples and the step, phase and ring advance (docs/sim/state.md §5.8).
+    Seam<DroughtTiles> drought_tiles;
 
     using FigureTick = void (*)(void* ctx, const TickContext&, SerialWorld&, Figure&);
     /// Serial figure phase (§5.9), D unit slot +0x74 (O-8); goods traffic via

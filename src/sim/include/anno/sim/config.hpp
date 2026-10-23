@@ -123,6 +123,10 @@ inline constexpr std::uint32_t kMaxDroughtStep = 0xff;
 /// The largest value of the saved Drought `counter` (u16), compared with
 /// drought_plateau_count. Path to raise it: as kMaxDroughtStep.
 inline constexpr std::uint32_t kMaxDroughtCounter = 0xffff;
+/// The largest drought target ring, drought_radius / chunk_edge: the saved ring is an
+/// i32 like the original's dword (signed tests at 0x1008b530..0x1008b56e) and runs from
+/// 0 to the target. Path to raise it: widen Drought::ring to i64 with this constant.
+inline constexpr std::uint32_t kMaxDroughtRing = 0x7fffffff;
 
 /// SimConfig::list_min_growth is valid when it is in 1..kListSizeBound (zero
 /// would stall the growth rule of SlotList::insert, F22).
@@ -323,16 +327,17 @@ struct SimConfig {
     std::uint32_t stat_decay_den = 105;
     std::int64_t bankrupt_money = -3000;
     std::uint32_t bankrupt_grace_ticks = 150000;
-    // ---- drought (I, D 0x10087280, 0x1008aeb0)
+    // ---- drought (D 0x10087280, 0x1008aeb0; docs/sim/state.md §5.8)
     /// Target ring = radius / chunk_edge = 6.
     std::uint32_t drought_radius = 0x32;
     std::uint32_t drought_plateau_period = 1000;
     std::uint32_t drought_plateau_count = 120;
     std::uint32_t drought_strip_period = 50;
     /// Strips per phase: the step advances by chunk_edge up to
-    /// drought_steps · chunk_edge (I, 0x1008aeb0).
+    /// drought_steps · chunk_edge (D 0x1008b4ed..0x1008b4fd: `add 8`, `cmp 0x40`).
     std::uint32_t drought_steps = 8;
-    /// Phases per ring (I, 0x1008aeb0).
+    /// Phases per ring, the sides top, right, bottom, left (D 0x1008b50d..0x1008b51a, jump
+    /// table 0x1008b5e0).
     std::uint32_t drought_phases = 4;
     // ---- monopoly climate masks (D 0x1009d2a0): index = climate 0..6
     std::vector<std::uint32_t> monopoly_climate_mask = {0x18000, 0xf009, 0xf949, 0xf06b,

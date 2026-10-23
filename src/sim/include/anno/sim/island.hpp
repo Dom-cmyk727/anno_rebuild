@@ -207,25 +207,31 @@ struct ObjectManagerState {
     std::uint16_t stamp = 0;
     std::uint32_t cursor = 0;
 };
-/// D: the object at island +0x84, 0x18 bytes, constructor 0x10087280. The
-/// machine that drives it is stage S13 (docs/sim/state.md §5.8); the state is
-/// stored, and validate_islands accepts the states the machine leaves behind
-/// between two ticks (§4.8): x and y multiples of chunk_edge below the world's
-/// edges, 0 <= ring <= target_ring, phase < drought_phases, step <
-/// drought_steps · chunk_edge, counter < drought_plateau_count (the original
-/// resets at the limit in the same tick: `jb` at 0x1008b4f7, 0x1008b516,
-/// 0x1008b5be), and a city_mask with no bit beyond the city slots.
+/// The number of u32 words of a drought's city mask for `city_slots` city slots:
+/// ceil(city_slots / 32) (O-55; the original's mask is one u32 for its 16 slots).
+[[nodiscard]] constexpr std::uint64_t drought_mask_words(std::uint32_t city_slots) {
+    return (std::uint64_t{city_slots} + 31U) / 32U;
+}
+
+/// D: the object at island +0x84, 0x18 bytes, constructor 0x10087280, ticked by
+/// drought_tick (0x1008aeb0, stage S13, docs/sim/state.md §5.8). validate_islands
+/// accepts the states the machine leaves behind between two ticks (§4.8): x and y
+/// multiples of chunk_edge below the world's edges, 0 <= ring <= target_ring,
+/// phase < drought_phases, step < drought_steps · chunk_edge, counter <
+/// drought_plateau_count (the original resets at the limit in the same tick: `jb`
+/// at 0x1008b4f7, 0x1008b516, 0x1008b5be), and a city_mask of
+/// drought_mask_words(city_slots) words with no bit beyond the city slots.
 struct Drought {
     /// Multiples of chunk_edge (original 8).
     std::uint32_t x = 0, y = 0;
     /// radius / chunk_edge.
     std::uint32_t target_ring = 6;
     std::int32_t ring = 0;
-    /// One bit per city slot (D +0xc). A u32: validate_islands refuses a drought
-    /// record while SimConfig::city_slots is above 32, because bit 32 and up
-    /// cannot be stored; S13 widens the mask to words sized from city_slots
-    /// before it shifts by a slot index (O-54).
-    std::uint32_t city_mask = 0;
+    /// One bit per city slot (D +0xc, a u32 for the original's 16 slots): bit k % 32
+    /// of word k / 32 for city slot k, drought_mask_words(city_slots) words (O-55,
+    /// widened in S13; saved as u64 count + words). start_drought_at sizes it from
+    /// the configuration; the default of one word fits up to 32 city slots.
+    std::vector<std::uint32_t> city_mask = std::vector<std::uint32_t>(1, 0U);
     std::uint8_t phase = 0, step = 0;
     /// 1 expanding, 0 plateau, 0xff retreating.
     std::uint8_t state = 1;
@@ -233,6 +239,25 @@ struct Drought {
     std::uint16_t counter = 0;
     /// A u16 tick, the catch-up gate (§5.8).
     std::uint16_t stamp = 0;
+};
+
+/// One strip of the drought machine (D 0x1008aeb0, docs/sim/state.md §5.8), what
+/// Seams::drought_tiles is called with once per strip. The rectangle is in world
+/// tiles, half-open, as the original computes it: ring 0 the centre chunk (not
+/// clipped), ring r >= 1 the side `phase` (0 top, 1 right, 2 bottom, 3 left) of the
+/// ring clipped to the island; its chunk anchors are (rect.x0 + i · chunk_edge,
+/// rect.y0 + j · chunk_edge) inside it, row-major. Empty (w or h 0) when the clipped
+/// side holds no tile, and for ring >= 1 with a phase of 4 or more (no rectangle in the original;
+/// reachable only with SimConfig::drought_phases above 4). `step` is the index into the
+/// original's 64 in-chunk tile offsets (table 0x100ca0b8): the strip covers the
+/// offsets step .. step + chunk_edge - 1 of every anchor's chunk. A tile access of a
+/// seam must be clipped to the island (F36).
+struct DroughtStrip {
+    TileRect rect;
+    std::int32_t ring = 0;
+    std::uint32_t phase = 0, step = 0;
+    /// The record's state is 1 (expanding); otherwise it retreats (0xff).
+    bool expanding = true;
 };
 
 /// DERIVED, never saved or hashed (docs/sim/state.md §4.8, §9.1): rebuilt by

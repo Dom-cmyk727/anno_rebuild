@@ -46,4 +46,10 @@ if(ANNO_BUILD_TESTS)
            COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g4.log)
   set_tests_properties(anno_sim_replay_g4_run PROPERTIES
                        PASS_REGULAR_EXPRESSION "checkpoints 21/21.*reproduced: every checkpoint matched")
+  # The golden G5 (stage S13): the growth sweep and two droughts of the 300 s event over
+  # 1 000 000 ticks on the growth types, 21 checkpoints.
+  add_test(NAME anno_sim_replay_g5_run
+           COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g5.log)
+  set_tests_properties(anno_sim_replay_g5_run PROPERTIES
+                       PASS_REGULAR_EXPRESSION "checkpoints 21/21.*reproduced: every checkpoint matched")
 endif()

@@ -6,7 +6,7 @@
 // of its function plus a kStateHashVersion bump and re-baselined goldens in
 // the same commit.
 //
-// Stream at kStateHashVersion 106 (stage S12), the scopes of §9.3 so far:
+// Stream at kStateHashVersion 108 (stage S13), the scopes of §9.3 so far:
 //   1 header     u32 kStateHashVersion, u32 kPrngTimelineVersion,
 //                SimConfig (declaration order; vectors as count + elements;
 //                small_farm_animals; layout), Rules (declaration order),
@@ -409,7 +409,7 @@ template <class A, Same<Drought> S> void fields(A& a, S& s) {
     a.u32(s.y);
     a.u32(s.target_ring);
     a.i32(s.ring);
-    a.u32(s.city_mask);
+    ar::seq(a, s.city_mask, 4, [&](auto& w) { a.u32(w); });
     a.u8(s.phase);
     a.u8(s.step);
     a.u8(s.state);

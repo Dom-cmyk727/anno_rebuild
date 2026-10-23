@@ -39,6 +39,48 @@ formats::Result<SyntheticTypes, std::string> make_synthetic_types() {
     return s;
 }
 
+formats::Result<SyntheticTypes, std::string> make_growth_types() {
+    auto base = make_synthetic_types();
+    if (!base) {
+        return base.error();
+    }
+    SyntheticTypes s = std::move(base).value();
+    s.field = TypeId{9011};
+    s.ripe_field = TypeId{9012};
+    s.forest = TypeId{9013};
+    s.ripe_forest = TypeId{9014};
+    s.grass = TypeId{9015};
+    s.ripe_grass = TypeId{9016};
+    TypeRegistry::Builder b;
+    for (const BuildingType& t : s.registry->types()) {
+        b.add(t);
+    }
+    // A growing object (PRODTYPE 226 ROHSTWACHS or 227 ROHSTDUERR: tile objects, no
+    // list) and its successor (225 ROHSTOFF, not growing).
+    const auto growing = [&](TypeId id, std::uint32_t prodtype, std::uint32_t period,
+                             std::uint32_t stages, std::uint32_t shift) {
+        BuildingType t;
+        t.id = id;
+        t.prodtype = prodtype;
+        t.has_prod = true;
+        t.prod.kind = BuildingClass::GrowingItem;
+        t.prod.growth_period = period;
+        t.prod.stages = stages;
+        t.prod.stage_shift = shift;
+        b.add(std::move(t));
+        b.add_plain(TypeId{id.v + 1}, 225);
+    };
+    growing(s.field, 226, 15500, 5, 2);
+    growing(s.forest, 226, 24000, 5, 2);
+    growing(s.grass, 227, 1000, 5, 0);
+    auto built = b.build();
+    if (!built) {
+        return built.error();
+    }
+    s.registry = std::move(built.value());
+    return s;
+}
+
 WorldSettings synthetic_settings() {
     WorldSettings s;
     s.world_width = 512;
@@ -347,6 +389,22 @@ ScenarioSpec g4_scenario(const SyntheticTypes& types, std::uint32_t seed) {
     is4.cities = {plain_city(0, 1), plain_city(1, 2)};
 
     spec.islands = {std::move(is0), std::move(is2), std::move(is4)};
+    return spec;
+}
+
+ScenarioSpec g5_scenario(const SyntheticTypes& types, std::uint32_t seed) {
+    ScenarioSpec spec = empty_scenario(seed);
+    spec.settings.prop6 |= 0x80U; // the 7.5 minute event off (world property 6 bit 0x80)
+    ScenarioSpec::PlayerSpec p;
+    p.id = PlayerId{0};
+    spec.players.push_back(p);
+    ScenarioSpec::IslandSpec is = plain_island(0, 100, 100, 60, 44);
+    is.owner_runs = {{0, 60U * 40U}, {3, 60U * 4U}};
+    is.objects = {{3U * 60U + 2U, types.field.v, 0}, {42U * 60U + 58U, types.forest.v, 0}};
+    ScenarioSpec::CitySpec city0 = plain_city(0, 0);
+    city0.buildings = {building_at(types.kontor, 131, 123)};
+    is.cities = {std::move(city0), plain_city(3, 0)};
+    spec.islands.push_back(std::move(is));
     return spec;
 }
 

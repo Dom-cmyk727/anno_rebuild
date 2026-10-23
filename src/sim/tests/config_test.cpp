@@ -733,6 +733,7 @@ TEST_CASE("config validate rejects each bad field") {
     ZERO(chunk_edge);
     ZERO(drought_steps);
     ZERO(drought_phases);
+    ZERO(drought_plateau_count);
 #undef ZERO
     rows.push_back({"layout.block_size", [](sim::SimConfig& c) { c.layout.block_size = 0; }});
     // List sizes: zero, one past the bound, the largest u32.
@@ -827,6 +828,15 @@ TEST_CASE("config validate rejects each bad field") {
     rows.push_back({"drought_steps", [](sim::SimConfig& c) { c.drought_steps = 0xFFFFFFFFU; }});
     rows.push_back({"drought_phases", [](sim::SimConfig& c) { c.drought_phases = 256; }});
     rows.push_back({"drought_phases", [](sim::SimConfig& c) { c.drought_phases = 0xFFFFFFFFU; }});
+    // The saved ring is an i32 (S13): drought_radius / chunk_edge <= 2^31 - 1.
+    rows.push_back({"drought_radius", [](sim::SimConfig& c) {
+                        c.chunk_edge = 1;
+                        c.drought_radius = 0x80000000U;
+                    }});
+    rows.push_back({"drought_radius", [](sim::SimConfig& c) {
+                        c.chunk_edge = 1;
+                        c.drought_radius = 0xFFFFFFFFU;
+                    }});
     rows.push_back(
         {"drought_plateau_count", [](sim::SimConfig& c) { c.drought_plateau_count = 65536; }});
     rows.push_back({"drought_plateau_count",
@@ -856,6 +866,14 @@ TEST_CASE("config validate accepts the edges of each bound") {
         CHECK(c.validate().empty());
     };
     accepted("list_min_growth 1", [](sim::SimConfig& c) { c.list_min_growth = 1; });
+    accepted("drought target ring 2^31 - 1", [](sim::SimConfig& c) {
+        c.chunk_edge = 1;
+        c.drought_radius = 0x7FFFFFFFU;
+    });
+    accepted("drought radius 2^32 - 1 at edge 2", [](sim::SimConfig& c) {
+        c.chunk_edge = 2;
+        c.drought_radius = 0xFFFFFFFFU;
+    });
     accepted("list_min_growth bound",
              [](sim::SimConfig& c) { c.list_min_growth = sim::kListSizeBound; });
     accepted("list_initial_size 1", [](sim::SimConfig& c) { c.list_initial_size = 1; });
@@ -939,7 +957,7 @@ TEST_CASE("config validate accepts the edges of each bound") {
         c.drought_phases = 255;
         c.drought_plateau_count = 65535;
     });
-    accepted("drought plateau count 0", [](sim::SimConfig& c) { c.drought_plateau_count = 0; });
+    accepted("drought plateau count 1", [](sim::SimConfig& c) { c.drought_plateau_count = 1; });
     accepted("a modded table size", [](sim::SimConfig& c) {
         c.city_slots = 4;
         c.neutral_owner = 3;
@@ -1368,7 +1386,7 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u8(0);  // no player
     }
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 107);
+    CHECK(sim::kStateHashVersion == 108);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);

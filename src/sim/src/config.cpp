@@ -154,7 +154,10 @@ std::string SimConfig::validate() const {
         {"stat_decay_den", stat_decay_den},
         {"chunk_edge", chunk_edge},
         {"drought_steps", drought_steps},
-        {"drought_phases", drought_phases}};
+        {"drought_phases", drought_phases},
+        // The plateau needs at least one count: with 0 the counter would rest at 0, a
+        // value validate_islands refuses (counter < drought_plateau_count).
+        {"drought_plateau_count", drought_plateau_count}};
     for (const auto& [name, value] : non_zero) {
         if (value == 0) {
             return bad(kOwner, name, "must be non-zero");
@@ -237,6 +240,12 @@ std::string SimConfig::validate() const {
         return bad(kOwner, "drought_phases",
                    "must be at most 255 (the saved phase is a u8), is " +
                        std::to_string(drought_phases));
+    }
+    if (drought_radius / chunk_edge > kMaxDroughtRing) {
+        return bad(kOwner, "drought_radius",
+                   "drought_radius / chunk_edge must be at most 2147483647 (the saved ring is an "
+                   "i32), is " +
+                       std::to_string(drought_radius / chunk_edge));
     }
     if (drought_plateau_count > kMaxDroughtCounter) {
         return bad(kOwner, "drought_plateau_count",

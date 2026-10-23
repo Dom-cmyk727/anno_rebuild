@@ -195,6 +195,153 @@ void read_player_head(Bytes h, ScenarioSpec::PlayerSpec& p) {
     p.flags_a0 = a0 >= 0x100 ? 0U : (a0 & 0xFFBFU);
 }
 
+/// One island record (INSEL5) → IslandSpec at (x0, y0) in table slot `slot`: the
+/// climate, the terrain columns and the placed items, with the warnings of their
+/// records (`base` is the file offset of the island's first record, `head_offset` the
+/// INSEL5's own). Used for the scenario's INSEL5 islands and for the template a link
+/// resolves to (stage 2). `out` stays empty when the island is skipped
+/// (UnknownClimate); the return value is a refusal.
+std::optional<std::string> island_from_insel(const insel::Island& isl, const std::string& path,
+                                             std::uint64_t base, std::uint64_t head_offset,
+                                             IslandId slot, std::uint32_t x0, std::uint32_t y0,
+                                             const TypeRegistry& types, const SimConfig& config,
+                                             Warnings& warn,
+                                             std::optional<ScenarioSpec::IslandSpec>& out) {
+    // Climate = INFO[0] (P over 444 templates: 0 polar … 5 steppe, matching the
+    // folder; the link selection compares it, D AnnoScene 0x10009550,
+    // docs/re/annoscene.md §2, §5 step 2).
+    const std::optional<Bytes> info = isl.record("INFO");
+    if (!info || info->empty() || (*info)[0] >= config.monopoly_climate_mask.size()) {
+        warn.add(ScenarioWarningKind::UnknownClimate, path, "INFO", base,
+                 info && !info->empty()
+                     ? "INFO[0] = " + std::to_string((*info)[0]) + " has no climate mask"
+                     : std::string("no INFO record"));
+        return std::nullopt;
+    }
+    if (x0 % 8 != 0 || y0 % 8 != 0) {
+        warn.add(ScenarioWarningKind::UnalignedIsland, path, "INSEL5", head_offset,
+                 "position (" + std::to_string(x0) + ", " + std::to_string(y0) +
+                     ") is not a multiple of 8; the original snaps it down "
+                     "(0x100a253e–0x100a2586), here it stays");
+    }
+    ScenarioSpec::IslandSpec is;
+    is.slot = slot;
+    is.x0 = static_cast<std::int32_t>(x0); // head u16 x, y (or the link's), width, height
+    is.y0 = static_cast<std::int32_t>(y0); // (P, insel.md "Head")
+    is.w = isl.width;
+    is.h = isl.height;
+    is.climate = (*info)[0];
+    // Terrain: the HEIGHT and GFXID grids (P, insel.md "Blocks") and FRUCHTBAR
+    // (P, w × h bytes); a missing column stays empty (OQ-060 shape).
+    std::vector<std::uint8_t> height;
+    std::vector<std::uint16_t> gfx;
+    std::vector<std::uint8_t> fertility;
+    if (isl.record("HEIGHT")) {
+        auto h = isl.heights();
+        if (!h) {
+            return path + ".HEIGHT: " + h.error();
+        }
+        height = std::move(h).value();
+    }
+    if (isl.record("GFXID")) {
+        auto g = isl.gfx_ids();
+        if (!g) {
+            return path + ".GFXID: " + g.error();
+        }
+        gfx = std::move(g).value();
+    }
+    if (const std::optional<Bytes> f = isl.fertility()) {
+        fertility.assign(f->begin(), f->end());
+    }
+    is.terrain = make_terrain(std::move(height), std::move(gfx), std::move(fertility));
+
+    // The placed items of GELAENDE, FLUESSE and PROD2 in file order (P,
+    // insel.md "Placed objects": ANLAGEN id, rotation, height << 8 | phase, the
+    // footprint's top-left tile).
+    std::map<std::uint32_t, std::pair<std::string_view, ItemKey>> taken; // tile -> first item
+    std::map<std::string, std::uint64_t> item_no;                        // per record name
+    for (const formats::chunk::Chunk& rec : isl.records) {
+        const std::string_view name = rec.name();
+        const std::uint64_t at = base + rec.offset;
+        if (name == "INFO" || name == "HEIGHT" || name == "GFXID" || name == "FRUCHTBAR") {
+            continue;
+        }
+        if (name == "BERGWERK2") {
+            warn.add(ScenarioWarningKind::UndecodedDeposits, path + ".BERGWERK2", name, at,
+                     "BERGWERK2 is undecoded (OQ-024; deposit goods O-37): no deposit");
+            continue;
+        }
+        if (name != "GELAENDE" && name != "FLUESSE" && name != "PROD2") {
+            warn.unknown_record("islands", path + "." + std::string(name), name, at);
+            continue;
+        }
+        auto block = insel::Block::parse(rec.payload);
+        if (!block) {
+            return path + "." + std::string(name) + ": " + block.error();
+        }
+        // D AnnoWelt 0x1008957d–0x10089676 (the PROD2 case of the island record
+        // loader 0x10089130; GELAENDE and FLUESSE are read alike): floor((len - 6) /
+        // 6) items (0x100895cf–0x100895d6), so bytes after the last whole item are
+        // ignored; per item the id & 0x3FFF is looked up (0x1008960d) and an unknown
+        // id skipped (0x10089619), rotation (id >> 14) & 3 (0x1008964e), phase
+        // state & 0x3F (0x1008965e), height state >> 8 (0x10089660), tile = block
+        // origin + the item's x, y read as signed bytes (movsx, 0x10089634).
+        // formats::insel masks the id with 0x0FFF and reads x, y unsigned: equal
+        // on the corpus (P, insel.md: bits 12–13 always 0, items inside their block).
+        const Bytes items = block.value().data;
+        const std::size_t whole = items.size() - items.size() % insel::kItemLen;
+        for (std::size_t i = 0; i < whole; i += insel::kItemLen) {
+            const insel::PlacedObject o =
+                insel::PlacedObject::parse(items.subspan(i, insel::kItemLen), block.value());
+            const std::string where = path + "." + std::string(name) + "[" +
+                                      std::to_string(item_no[std::string(name)]++) + "]";
+            const std::uint64_t item_at =
+                at + formats::chunk::kHeaderLen + insel::kBlockHeaderLen + i;
+            if (o.x >= is.w || o.y >= is.h) {
+                return where + ": the item's tile (" + std::to_string(o.x) + ", " +
+                       std::to_string(o.y) + ") is outside the island";
+            }
+            const BuildingType* type = types.find(TypeId{o.anlage});
+            if (type == nullptr) {
+                warn.add(ScenarioWarningKind::UnknownObject, where, name, item_at,
+                         "ANLAGEN id " + std::to_string(o.anlage) + " is not in the registry");
+                continue;
+            }
+            // A PROD2 item of a type with a list in the layout is a building of a
+            // city (state.md §10, S6 checks). Its city is the owner of its tile,
+            // and no record of the island is decoded as tile owners (OQ-141):
+            // the building is not placed.
+            if (name == "PROD2" && config.layout.list_for(type->prodtype).has_value()) {
+                warn.add(ScenarioWarningKind::BuildingWithoutCity, where, name, item_at,
+                         "building " + std::to_string(o.anlage) + " at (" + std::to_string(o.x) +
+                             ", " + std::to_string(o.y) + "): its tile has no known city");
+                continue;
+            }
+            const std::uint32_t tile = static_cast<std::uint32_t>(o.y) * is.w + o.x;
+            const auto [it, fresh] = taken.try_emplace(tile, name, key_of(o));
+            if (!fresh) {
+                const bool same = it->second.first == name && it->second.second == key_of(o);
+                warn.add(same ? ScenarioWarningKind::DuplicateObject
+                              : ScenarioWarningKind::ObjectTileTaken,
+                         where, name, item_at,
+                         same ? std::string("the same item again (OQ-024)")
+                              : "tile (" + std::to_string(o.x) + ", " + std::to_string(o.y) +
+                                    ") already holds an item; the first stays (OQ-142)");
+                continue;
+            }
+            ScenarioSpec::TileObjectSpec t;
+            t.index = tile;
+            t.object = o.anlage;
+            t.phase = o.phase(); // low 6 bits of state (D AnnoWelt 0x1007aa40)
+            is.objects.push_back(t);
+        }
+    }
+    warn.add(ScenarioWarningKind::TileOwnersUndecoded, path, "INSEL5", head_offset,
+             "no record of the island is decoded as tile owners (OQ-141): every tile neutral");
+    out = std::move(is);
+    return std::nullopt;
+}
+
 } // namespace
 
 formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const TypeRegistry& types,
@@ -268,139 +415,15 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
         if (!slots.insert(slot).second) {
             return path + ": island number " + std::to_string(slot) + " is used twice";
         }
-        // Climate = INFO[0] (P over 444 templates: 0 polar … 5 steppe, matching the
-        // folder; the link selection compares it, D AnnoScene 0x10009550,
-        // docs/re/annoscene.md §2, §5 step 2).
-        const std::optional<Bytes> info = isl.record("INFO");
-        if (!info || info->empty() || (*info)[0] >= config.monopoly_climate_mask.size()) {
-            warn.add(ScenarioWarningKind::UnknownClimate, path, "INFO", base,
-                     info && !info->empty()
-                         ? "INFO[0] = " + std::to_string((*info)[0]) + " has no climate mask"
-                         : std::string("no INFO record"));
+        std::optional<ScenarioSpec::IslandSpec> built;
+        if (auto e = island_from_insel(isl, path, base, child.offset, IslandId{slot}, isl.x, isl.y,
+                                       types, config, warn, built)) {
+            return *e;
+        }
+        if (!built) {
             continue;
         }
-        if (isl.x % 8 != 0 || isl.y % 8 != 0) {
-            warn.add(ScenarioWarningKind::UnalignedIsland, path, "INSEL5", child.offset,
-                     "position (" + std::to_string(isl.x) + ", " + std::to_string(isl.y) +
-                         ") is not a multiple of 8; the original snaps it down "
-                         "(0x100a253e–0x100a2586), here it stays");
-        }
-        ScenarioSpec::IslandSpec is;
-        is.slot = IslandId{slot};
-        is.x0 = isl.x; // head u16 x, y, width, height (P, insel.md "Head")
-        is.y0 = isl.y;
-        is.w = isl.width;
-        is.h = isl.height;
-        is.climate = (*info)[0];
-        // Terrain: the HEIGHT and GFXID grids (P, insel.md "Blocks") and FRUCHTBAR
-        // (P, w × h bytes); a missing column stays empty (OQ-060 shape).
-        std::vector<std::uint8_t> height;
-        std::vector<std::uint16_t> gfx;
-        std::vector<std::uint8_t> fertility;
-        if (isl.record("HEIGHT")) {
-            auto h = isl.heights();
-            if (!h) {
-                return path + ".HEIGHT: " + h.error();
-            }
-            height = std::move(h).value();
-        }
-        if (isl.record("GFXID")) {
-            auto g = isl.gfx_ids();
-            if (!g) {
-                return path + ".GFXID: " + g.error();
-            }
-            gfx = std::move(g).value();
-        }
-        if (const std::optional<Bytes> f = isl.fertility()) {
-            fertility.assign(f->begin(), f->end());
-        }
-        is.terrain = make_terrain(std::move(height), std::move(gfx), std::move(fertility));
-
-        // The placed items of GELAENDE, FLUESSE and PROD2 in file order (P,
-        // insel.md "Placed objects": ANLAGEN id, rotation, height << 8 | phase, the
-        // footprint's top-left tile).
-        std::map<std::uint32_t, std::pair<std::string_view, ItemKey>> taken; // tile -> first item
-        std::map<std::string, std::uint64_t> item_no;                        // per record name
-        for (const formats::chunk::Chunk& rec : isl.records) {
-            const std::string_view name = rec.name();
-            const std::uint64_t at = base + rec.offset;
-            if (name == "INFO" || name == "HEIGHT" || name == "GFXID" || name == "FRUCHTBAR") {
-                continue;
-            }
-            if (name == "BERGWERK2") {
-                warn.add(ScenarioWarningKind::UndecodedDeposits, path + ".BERGWERK2", name, at,
-                         "BERGWERK2 is undecoded (OQ-024; deposit goods O-37): no deposit");
-                continue;
-            }
-            if (name != "GELAENDE" && name != "FLUESSE" && name != "PROD2") {
-                warn.unknown_record("islands", path + "." + std::string(name), name, at);
-                continue;
-            }
-            auto block = insel::Block::parse(rec.payload);
-            if (!block) {
-                return path + "." + std::string(name) + ": " + block.error();
-            }
-            // D AnnoWelt 0x1008957d–0x10089676 (the PROD2 case of the island record
-            // loader 0x10089130; GELAENDE and FLUESSE are read alike): floor((len - 6) /
-            // 6) items (0x100895cf–0x100895d6), so bytes after the last whole item are
-            // ignored; per item the id & 0x3FFF is looked up (0x1008960d) and an unknown
-            // id skipped (0x10089619), rotation (id >> 14) & 3 (0x1008964e), phase
-            // state & 0x3F (0x1008965e), height state >> 8 (0x10089660), tile = block
-            // origin + the item's x, y read as signed bytes (movsx, 0x10089634).
-            // formats::insel masks the id with 0x0FFF and reads x, y unsigned: equal
-            // on the corpus (P, insel.md: bits 12–13 always 0, items inside their block).
-            const Bytes items = block.value().data;
-            const std::size_t whole = items.size() - items.size() % insel::kItemLen;
-            for (std::size_t i = 0; i < whole; i += insel::kItemLen) {
-                const insel::PlacedObject o =
-                    insel::PlacedObject::parse(items.subspan(i, insel::kItemLen), block.value());
-                const std::string where = path + "." + std::string(name) + "[" +
-                                          std::to_string(item_no[std::string(name)]++) + "]";
-                const std::uint64_t item_at =
-                    at + formats::chunk::kHeaderLen + insel::kBlockHeaderLen + i;
-                if (o.x >= is.w || o.y >= is.h) {
-                    return where + ": the item's tile (" + std::to_string(o.x) + ", " +
-                           std::to_string(o.y) + ") is outside the island";
-                }
-                const BuildingType* type = types.find(TypeId{o.anlage});
-                if (type == nullptr) {
-                    warn.add(ScenarioWarningKind::UnknownObject, where, name, item_at,
-                             "ANLAGEN id " + std::to_string(o.anlage) + " is not in the registry");
-                    continue;
-                }
-                // A PROD2 item of a type with a list in the layout is a building of a
-                // city (state.md §10, S6 checks). Its city is the owner of its tile,
-                // and no record of the island is decoded as tile owners (OQ-141):
-                // the building is not placed.
-                if (name == "PROD2" && config.layout.list_for(type->prodtype).has_value()) {
-                    warn.add(ScenarioWarningKind::BuildingWithoutCity, where, name, item_at,
-                             "building " + std::to_string(o.anlage) + " at (" +
-                                 std::to_string(o.x) + ", " + std::to_string(o.y) +
-                                 "): its tile has no known city");
-                    continue;
-                }
-                const std::uint32_t tile = static_cast<std::uint32_t>(o.y) * is.w + o.x;
-                const auto [it, fresh] = taken.try_emplace(tile, name, key_of(o));
-                if (!fresh) {
-                    const bool same = it->second.first == name && it->second.second == key_of(o);
-                    warn.add(same ? ScenarioWarningKind::DuplicateObject
-                                  : ScenarioWarningKind::ObjectTileTaken,
-                             where, name, item_at,
-                             same ? std::string("the same item again (OQ-024)")
-                                  : "tile (" + std::to_string(o.x) + ", " + std::to_string(o.y) +
-                                        ") already holds an item; the first stays (OQ-142)");
-                    continue;
-                }
-                ScenarioSpec::TileObjectSpec t;
-                t.index = tile;
-                t.object = o.anlage;
-                t.phase = o.phase(); // low 6 bits of state (D AnnoWelt 0x1007aa40)
-                is.objects.push_back(t);
-            }
-        }
-        warn.add(ScenarioWarningKind::TileOwnersUndecoded, path, "INSEL5", child.offset,
-                 "no record of the island is decoded as tile owners (OQ-141): every tile neutral");
-        spec.islands.push_back(std::move(is));
+        spec.islands.push_back(std::move(*built));
         island_at_offset.push_back(child.offset);
     }
 

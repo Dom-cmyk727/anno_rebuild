@@ -1195,7 +1195,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   - on Windows, the same game under the T15 harness.
 
 ## OQ-125: Who the free-build cheat rule covers (spec F13, O-9; new, T9 S10 2026-10-23)
-- **Status:** open, owner decides
+- **Status:** resolved 2026-10-23 by the owner: option (a), the rule stays session-wide as built (default off).
 - **Area:** simulation / building UX (a cheat switch)
 - **What:** in the original a client may set the free-build flag `0x2000000` in the flags word of a Build record (op 6 passes the payload's flags to Build/Place; AnnoFrame `0x1005c7f0`, `0x100589a0`), and the owner slot `+0x9c(7)` waives the cost inside Place (O-9). The rebuild carries no build flags on the wire (F13). Since S10:
   - `Rules::free_build_cheat` (hashed in the header, default **off**) waives the cost of every Build of the session, for every player: no affordability check, no charge, nothing counted as spent;

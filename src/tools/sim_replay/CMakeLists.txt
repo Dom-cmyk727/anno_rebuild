@@ -2,7 +2,7 @@
 # §8.7, §15 S9). A thin front end over anno_sim's replay API.
 add_executable(sim_replay main.cpp)
 set_target_properties(sim_replay PROPERTIES OUTPUT_NAME anno-sim-replay)
-target_link_libraries(sim_replay PRIVATE anno_sim)
+target_link_libraries(sim_replay PRIVATE anno_sim anno_sim_load)
 anno_target_defaults(sim_replay)
 
 if(ANNO_BUILD_TESTS)
@@ -67,5 +67,14 @@ if(ANNO_BUILD_TESTS)
            COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay> -DSCENE=0200Single/Single_01.sze
                    -DTICKS=20000 -P ${PROJECT_SOURCE_DIR}/cmake/RunScenarioTool.cmake)
   set_tests_properties(anno_sim_replay_scenario_single_01 PROPERTIES
+                       SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
+  # S14 stage 2: a scenario whose islands all come from links (27 INSELLNK) resolves
+  # every link over the game's templates and runs five minutes clean.
+  add_test(NAME anno_sim_replay_scenario_endless_03_links
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   -DSCENE=0010SingleEndlos/03_1024_med_256.sze -DTICKS=150000
+                   "-DEXPECT=links 27 links_resolved 27 links_unresolved 0"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunScenarioTool.cmake)
+  set_tests_properties(anno_sim_replay_scenario_endless_03_links PROPERTIES
                        SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
 endif()

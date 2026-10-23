@@ -129,6 +129,46 @@ void expected_config(Stream& s) {
     for (const std::uint32_t x : {5U, 3U, 1U, 2U, 4U, 0U}) {
         s.u32(x); // roles: market, house, public, military, production, stall
     }
+    // links (LinkTables, docs/re/annoscene.md §5 step 3)
+    for (const std::uint32_t x : {20U, 9U, 25U, 5U, 50U}) {
+        s.u32(x); // raw_kinds, ore_kinds, rounds, best_list_cap, pick_list_cap
+    }
+    s.u32s({0x18000, 0xf009, 0xf949, 0xf06b, 0xf6b9, 0xf04d, 0xf04d}); // raw_climate_mask
+    s.u32s({0, 5, 0x25, 1, 3, 0xb, 0xb});                              // ore_climate_mask
+    s.u32s({0, 1, 2, 3, 4, 5, 0, 7, 8});                               // ore_mask_bit
+    s.u64(81);                                                         // ore_exclusion
+    const char* exclusion = "100000001"
+                            "011111100"
+                            "001000011"
+                            "111111101"
+                            "011111100"
+                            "001001001"
+                            "011111100"
+                            "000000000"
+                            "000000000";
+    for (const char* e = exclusion; *e != '\0'; ++e) {
+        s.u8(*e == '1' ? 1U : 0U);
+    }
+    const auto ranks = [&](std::initializer_list<std::pair<int, std::vector<std::uint32_t>>> rows) {
+        s.u64(100);
+        for (const auto& [n, row] : rows) {
+            for (int i = 0; i < n; ++i) {
+                for (const std::uint32_t w : row) {
+                    s.u32(w);
+                }
+            }
+        }
+    };
+    ranks({{1, {256, 128, 0, 0}},
+           {1, {256, 128, 80, 80}},
+           {4, {80, 128, 256, 64}},
+           {19, {64, 80, 128, 256}}}); // raw_width_rank
+    ranks({{1, {256, 128, 0, 0}},
+           {1, {256, 128, 80, 80}},
+           {13, {128, 256, 80, 64}},
+           {10, {64, 80, 128, 256}}}); // ore_width_rank
+    s.u32s({4, 3, 2, 1});              // raw_rank_score
+    s.u32s({116, 6, 3, 1});            // ore_rank_score
     // Rules
     s.u8(0); // slot_policy
     s.u8(0); // spatial_order
@@ -146,6 +186,7 @@ void expected_config(Stream& s) {
     s.boolean(false); // stat_decay_wide
     s.boolean(false); // bankrupt_deadline_wrap_safe
     s.boolean(false); // timer0_clamp
+    s.u8(0);          // island_candidate_order (Sorted)
 }
 
 void expected_settings(Stream& s) {
@@ -270,6 +311,7 @@ std::vector<std::pair<const char*, ConfigMut>> config_mutations() {
     m.emplace_back("small_farm_animals",
                    [](sim::SimConfig& c) { c.small_farm_animals.kind_by_draw[0] += 1; });
     m.emplace_back("layout", [](sim::SimConfig& c) { c.layout.schedule.pop_back(); });
+    m.emplace_back("links", [](sim::SimConfig& c) { c.links.ore_rank_score[0] += 1; });
     return m;
 }
 
@@ -301,6 +343,9 @@ std::vector<std::pair<const char*, RulesMut>> rules_mutations() {
     m.emplace_back("bankrupt_deadline_wrap_safe",
                    [](sim::Rules& r) { r.bankrupt_deadline_wrap_safe = true; });
     m.emplace_back("timer0_clamp", [](sim::Rules& r) { r.timer0_clamp = true; });
+    m.emplace_back("island_candidate_order", [](sim::Rules& r) {
+        r.island_candidate_order = sim::IslandCandidateOrder::Cached;
+    });
     return m;
 }
 
@@ -505,8 +550,9 @@ TEST_CASE("rules defaults are faithful") {
     CHECK_FALSE(r.stat_decay_wide);
     CHECK_FALSE(r.bankrupt_deadline_wrap_safe);
     CHECK_FALSE(r.timer0_clamp);
+    CHECK(r.island_candidate_order == sim::IslandCandidateOrder::Sorted);
     CHECK(r.validate().empty());
-    static_assert(sim::field_count<sim::Rules>() == 18);
+    static_assert(sim::field_count<sim::Rules>() == 19);
 }
 
 TEST_CASE("sim config defaults are the originals") {
@@ -564,6 +610,9 @@ TEST_CASE("sim config defaults are the originals") {
     CHECK(c.small_farm_animals.kind_by_draw.size() == 8);
     CHECK(c.small_farm_animals.base == 106);
     CHECK(c.layout.schedule == sim::ListLayout::original().schedule);
+    CHECK(c.links.raw_kinds == 20);
+    CHECK(c.links.ore_kinds == 9);
+    CHECK(c.links.rounds == 25);
     CHECK(c.validate().empty());
     // kOriginalWarehouseGoods and the city pass count the Seams default uses.
     CHECK(sim::kOriginalCityPassCount == 8);
@@ -571,7 +620,7 @@ TEST_CASE("sim config defaults are the originals") {
 }
 
 TEST_CASE("config digest changes with every field") {
-    static_assert(sim::field_count<sim::SimConfig>() == 51);
+    static_assert(sim::field_count<sim::SimConfig>() == 52);
     const sim::SimConfig base;
     const std::uint64_t base_digest = base.digest();
     CHECK(sim::SimConfig{}.digest() == base_digest);
@@ -840,6 +889,15 @@ TEST_CASE("config validate rejects each bad field") {
                         c.chunk_edge = 1;
                         c.drought_radius = 0xFFFFFFFFU;
                     }});
+    // The link tables (LinkTables::validate, reported under SimConfig.links).
+    rows.push_back({"links", [](sim::SimConfig& c) { c.links.rounds = 0; }});
+    rows.push_back({"links", [](sim::SimConfig& c) { c.links.rounds = 24; }});
+    rows.push_back({"links", [](sim::SimConfig& c) { c.links.raw_kinds = 33; }});
+    rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_mask_bit.pop_back(); }});
+    rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_exclusion.pop_back(); }});
+    rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_climate_mask[1] = 0x100; }});
+    rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_rank_score[0] = 254; }});
+    rows.push_back({"links", [](sim::SimConfig& c) { c.links.best_list_cap = 0; }});
     rows.push_back(
         {"drought_plateau_count", [](sim::SimConfig& c) { c.drought_plateau_count = 65536; }});
     rows.push_back({"drought_plateau_count",
@@ -1099,6 +1157,13 @@ TEST_CASE("rules validate rejects reserved values") {
     r.drought_random_centre = true;
     CHECK(starts_with(r.validate(), "Rules.drought_random_centre:"));
     CHECK(r.validate().find("reserved") != std::string::npos);
+    // island_candidate_order Cached is reserved (OQ-150); a byte past the enum is refused.
+    r = sim::Rules{};
+    r.island_candidate_order = sim::IslandCandidateOrder::Cached;
+    CHECK(starts_with(r.validate(), "Rules.island_candidate_order:"));
+    CHECK(r.validate().find("reserved") != std::string::npos);
+    r.island_candidate_order = static_cast<sim::IslandCandidateOrder>(7);
+    CHECK(starts_with(r.validate(), "Rules.island_candidate_order:"));
 }
 
 TEST_CASE("seams names validation and defaults") {
@@ -1391,7 +1456,7 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u8(0);  // no player
     }
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 109);
+    CHECK(sim::kStateHashVersion == 110);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);

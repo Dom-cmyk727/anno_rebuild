@@ -23,8 +23,12 @@ if(ANNO_BUILD_TESTS)
                  tests/command_build_test.cpp tests/property_test.cpp
                  tests/driver_classes_test.cpp tests/world_events_test.cpp tests/sweeps_test.cpp
                  tests/figure_removal_test.cpp tests/scenario_formats_test.cpp
-                 tests/scenario_test.cpp tests/island_links_test.cpp)
-  target_link_libraries(anno_sim_tests PRIVATE anno_sim anno_test_support doctest::doctest)
+                 tests/scenario_test.cpp tests/island_links_test.cpp
+                 tests/scenario_links_test.cpp)
+  # anno_sim_load: the scenario corpus case reads the island templates of the game
+  # directory for the link resolver (S14 stage 2).
+  target_link_libraries(anno_sim_tests PRIVATE anno_sim anno_sim_load anno_test_support
+                                               doctest::doctest)
   # The goldens (fixtures/synthetic/sim/goldens.txt, docs/sim/state.md §14.3).
   target_compile_definitions(anno_sim_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")

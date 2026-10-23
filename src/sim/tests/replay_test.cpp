@@ -314,7 +314,9 @@ TEST_CASE("log header records the prng timeline") {
     const sim::ReplayLog& log = rec.log();
 
     CHECK(log.prng_timeline_version == sim::kPrngTimelineVersion);
-    const std::vector<std::string> expected{"CityRandomEvents", "WildlifeSweep", "Ai"};
+    const std::vector<std::string> expected{
+        "CityRandomEvents", "WildlifeSweep",     "Ai",          "LinkOrePlace", "LinkNativeName",
+        "LinkTreasureKind", "LinkTreasurePlace", "ComputerName"};
     CHECK(log.prng_timeline_missing == expected);
 
     // The digests pin the world the log was recorded against.

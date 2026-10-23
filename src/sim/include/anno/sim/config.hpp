@@ -423,6 +423,10 @@ struct SimConfig {
     /// (= draw & 7 for the original 8 entries).
     SmallFarmAnimals small_farm_animals;
     ListLayout layout = ListLayout::original();
+    /// The island-link selection of a scenario load (docs/re/annoscene.md §5): read
+    /// before the world exists, hashed with the configuration so a world records the
+    /// tables its links were drawn with.
+    LinkTables links;
 
     /// docs/sim/state.md §3.1. Empty when valid, else one message naming the
     /// first offending field ("SimConfig.building_div: must be non-zero").
@@ -485,11 +489,16 @@ struct Rules {
     /// (D 0x1009cd51..0x1009cd59) subtracts in u32 and stops the timer only on exactly
     /// 0, so an overshoot wraps the counter and the timer runs on (timers_tick).
     bool timer0_clamp = false;
+    /// OQ-150 (owner check pending): the order of the island templates a scenario's
+    /// links are resolved from. Sorted is the original's network-game list order (D
+    /// AnnoScene 0x10008187–0x100082ad) and the same on every machine; Cached (the
+    /// single-player InselCache.txt order) is reserved.
+    IslandCandidateOrder island_candidate_order = IslandCandidateOrder::Sorted;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed
     /// or saved; spatial_order == Original0x10027000: O-7; drought_random_centre
-    /// == true: OQ-042), any enum byte
+    /// == true: OQ-042; island_candidate_order == Cached: OQ-150), any enum byte
     /// outside its range (a value cast from a save or a config file may be
     /// anything) and events_max_dispatch == 0. Empty when valid.
     [[nodiscard]] std::string validate() const;

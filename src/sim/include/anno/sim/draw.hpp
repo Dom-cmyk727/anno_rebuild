@@ -54,6 +54,18 @@ enum class DrawSite : std::uint8_t {
     /// Step 9: one draw before the treasure count is tested and one per round
     /// (0x10009c42, 0x10009c8c).
     LinkTreasure,
+    // Unported load-time sites (the placement 0x10008490 and the scene loader):
+    /// Step 10: one draw per ore put on a mountain object (0x100086ad).
+    LinkOrePlace,
+    /// Step 10: a native settlement's city and player names (0x10008a23, 0x10008aa3).
+    LinkNativeName,
+    /// Step 10: the treasure's kind on climates 4..6 (0x10008b69).
+    LinkTreasureKind,
+    /// Step 10: the treasure spot (0x10008cc0, the draw at 0x10008e9a).
+    LinkTreasurePlace,
+    /// The name of an unnamed computer player after the file is read
+    /// (0x100025a0, docs/re/annoscene.md §1).
+    ComputerName,
     /// Number of sites (not a site).
     Count_
 };
@@ -90,14 +102,25 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
         return "LinkSpecialMark";
     case DrawSite::LinkTreasure:
         return "LinkTreasure";
+    case DrawSite::LinkOrePlace:
+        return "LinkOrePlace";
+    case DrawSite::LinkNativeName:
+        return "LinkNativeName";
+    case DrawSite::LinkTreasureKind:
+        return "LinkTreasureKind";
+    case DrawSite::LinkTreasurePlace:
+        return "LinkTreasurePlace";
+    case DrawSite::ComputerName:
+        return "ComputerName";
     case DrawSite::Count_:
         break;
     }
     return "";
 }
 
-/// The phase a site draws in (docs/sim/state.md §6): the link selection's sites at
-/// load, every other site inside World::advance.
+/// The phase a site draws in (docs/sim/state.md §6): the scenario loader's sites (the
+/// link selection, the placement, the computer names) at load, every other site
+/// inside World::advance.
 [[nodiscard]] constexpr DrawPhase draw_site_phase(DrawSite site) {
     switch (site) {
     case DrawSite::LinkRawMaterial:
@@ -105,6 +128,11 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
     case DrawSite::LinkTemplatePick:
     case DrawSite::LinkSpecialMark:
     case DrawSite::LinkTreasure:
+    case DrawSite::LinkOrePlace:
+    case DrawSite::LinkNativeName:
+    case DrawSite::LinkTreasureKind:
+    case DrawSite::LinkTreasurePlace:
+    case DrawSite::ComputerName:
         return DrawPhase::Load;
     case DrawSite::SmallFarmAnimal:
     case DrawSite::Event300:

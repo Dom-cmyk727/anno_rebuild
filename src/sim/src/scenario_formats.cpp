@@ -19,6 +19,7 @@
 #include <anno/formats/insel.hpp>
 #include <anno/formats/sze.hpp>
 #include <anno/formats/tagged.hpp>
+#include <anno/sim/rng.hpp>
 #include <anno/sim/scenario_formats.hpp>
 
 namespace anno::sim {
@@ -34,8 +35,6 @@ std::string_view warning_kind_name(ScenarioWarningKind kind) {
         return "UnknownRecord";
     case ScenarioWarningKind::UndecodedCity:
         return "UndecodedCity";
-    case ScenarioWarningKind::IslandLink:
-        return "IslandLink";
     case ScenarioWarningKind::UnknownObject:
         return "UnknownObject";
     case ScenarioWarningKind::BuildingWithoutCity:
@@ -58,18 +57,35 @@ std::string_view warning_kind_name(ScenarioWarningKind kind) {
         return "UnknownClimate";
     case ScenarioWarningKind::UnalignedIsland:
         return "UnalignedIsland";
+    case ScenarioWarningKind::LinkNamesTemplate:
+        return "LinkNamesTemplate";
+    case ScenarioWarningKind::LinkUnresolved:
+        return "LinkUnresolved";
+    case ScenarioWarningKind::LinkOresUnplaced:
+        return "LinkOresUnplaced";
+    case ScenarioWarningKind::LinkRawMaterials:
+        return "LinkRawMaterials";
+    case ScenarioWarningKind::LinkTreasureUnplaced:
+        return "LinkTreasureUnplaced";
+    case ScenarioWarningKind::LinkTreasuresCapped:
+        return "LinkTreasuresCapped";
+    case ScenarioWarningKind::LinkTemplatePlayers:
+        return "LinkTemplatePlayers";
     }
     return "?";
 }
 
 std::vector<ScenarioWarningKind> all_warning_kinds() {
-    return {ScenarioWarningKind::UnknownRecord,       ScenarioWarningKind::UndecodedCity,
-            ScenarioWarningKind::IslandLink,          ScenarioWarningKind::UnknownObject,
-            ScenarioWarningKind::BuildingWithoutCity, ScenarioWarningKind::TileOwnersUndecoded,
-            ScenarioWarningKind::UndecodedDeposits,   ScenarioWarningKind::ObjectTileTaken,
-            ScenarioWarningKind::DuplicateObject,     ScenarioWarningKind::CityOffIsland,
-            ScenarioWarningKind::UndecodedPeople,     ScenarioWarningKind::ComputerNameNotDrawn,
-            ScenarioWarningKind::UnknownClimate,      ScenarioWarningKind::UnalignedIsland};
+    return {ScenarioWarningKind::UnknownRecord,        ScenarioWarningKind::UndecodedCity,
+            ScenarioWarningKind::UnknownObject,        ScenarioWarningKind::BuildingWithoutCity,
+            ScenarioWarningKind::TileOwnersUndecoded,  ScenarioWarningKind::UndecodedDeposits,
+            ScenarioWarningKind::ObjectTileTaken,      ScenarioWarningKind::DuplicateObject,
+            ScenarioWarningKind::CityOffIsland,        ScenarioWarningKind::UndecodedPeople,
+            ScenarioWarningKind::ComputerNameNotDrawn, ScenarioWarningKind::UnknownClimate,
+            ScenarioWarningKind::UnalignedIsland,      ScenarioWarningKind::LinkNamesTemplate,
+            ScenarioWarningKind::LinkUnresolved,       ScenarioWarningKind::LinkOresUnplaced,
+            ScenarioWarningKind::LinkRawMaterials,     ScenarioWarningKind::LinkTreasureUnplaced,
+            ScenarioWarningKind::LinkTreasuresCapped,  ScenarioWarningKind::LinkTemplatePlayers};
 }
 
 ScenarioCounts count(const LoadedScenario& s) {
@@ -84,10 +100,12 @@ ScenarioCounts count(const LoadedScenario& s) {
             c.buildings += city.buildings.size();
         }
     }
+    c.links = s.links_total;
+    c.links_resolved = s.links_placed;
     for (const ScenarioWarning& w : s.warnings) {
         ++c.warnings[w.kind];
-        if (w.kind == ScenarioWarningKind::IslandLink) {
-            ++c.links;
+        if (w.kind == ScenarioWarningKind::LinkUnresolved) {
+            ++c.links_unresolved;
         }
     }
     return c;
@@ -195,17 +213,42 @@ void read_player_head(Bytes h, ScenarioSpec::PlayerSpec& p) {
     p.flags_a0 = a0 >= 0x100 ? 0U : (a0 & 0xFFBFU);
 }
 
+/// Whether an INSELLNK path names a dummy: its last 9 characters are "DUMMY.scp" in
+/// any case (D AnnoScene 0x10009eac–0x10009ec0, _stricmp at 0x10027310).
+bool is_dummy_path(const std::string& path) {
+    return path.size() >= 9 &&
+           ascii_upper(std::string_view(path).substr(path.size() - 9)) == "DUMMY.SCP";
+}
+
+/// A dummy link's climate: the file name after the last backslash (the whole path when
+/// there is none) against the prefixes of the table at 0x1003b328, case-insensitive,
+/// first match wins; no match keeps 0 (D 0x10009ec6–0x10009f73).
+std::uint32_t link_climate(const std::string& path) {
+    const std::size_t slash = path.rfind('\\');
+    const std::string file =
+        ascii_upper(slash == std::string::npos ? path : path.substr(slash + 1));
+    constexpr std::array<std::string_view, 7> kPrefix = {"PO_", "T_", "N_", "PR_",
+                                                         "D_",  "S_", "W_"};
+    for (std::size_t i = 0; i < kPrefix.size(); ++i) {
+        if (file.compare(0, kPrefix[i].size(), kPrefix[i]) == 0) {
+            return static_cast<std::uint32_t>(i);
+        }
+    }
+    return 0;
+}
+
 /// One island record (INSEL5) → IslandSpec at (x0, y0) in table slot `slot`: the
 /// climate, the terrain columns and the placed items, with the warnings of their
 /// records (`base` is the file offset of the island's first record, `head_offset` the
-/// INSEL5's own). Used for the scenario's INSEL5 islands and for the template a link
-/// resolves to (stage 2). `out` stays empty when the island is skipped
+/// INSEL5's own; an unknown record is reported once per `record_scope` and name). Used
+/// for the scenario's INSEL5 islands and for the template a link resolves to (stage 2,
+/// whose offsets are in the template file). `out` stays empty when the island is skipped
 /// (UnknownClimate); the return value is a refusal.
 std::optional<std::string> island_from_insel(const insel::Island& isl, const std::string& path,
                                              std::uint64_t base, std::uint64_t head_offset,
                                              IslandId slot, std::uint32_t x0, std::uint32_t y0,
                                              const TypeRegistry& types, const SimConfig& config,
-                                             Warnings& warn,
+                                             Warnings& warn, std::string_view record_scope,
                                              std::optional<ScenarioSpec::IslandSpec>& out) {
     // Climate = INFO[0] (P over 444 templates: 0 polar … 5 steppe, matching the
     // folder; the link selection compares it, D AnnoScene 0x10009550,
@@ -272,7 +315,8 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
             continue;
         }
         if (name != "GELAENDE" && name != "FLUESSE" && name != "PROD2") {
-            warn.unknown_record("islands", path + "." + std::string(name), name, at);
+            warn.unknown_record(std::string(record_scope), path + "." + std::string(name), name,
+                                at);
             continue;
         }
         auto block = insel::Block::parse(rec.payload);
@@ -417,7 +461,7 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
         }
         std::optional<ScenarioSpec::IslandSpec> built;
         if (auto e = island_from_insel(isl, path, base, child.offset, IslandId{slot}, isl.x, isl.y,
-                                       types, config, warn, built)) {
+                                       types, config, warn, "islands", built)) {
             return *e;
         }
         if (!built) {
@@ -559,29 +603,324 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
         }
     }
 
-    // The other SCENE children.
+    // The other SCENE children, in file order: the ROHSTOFF, SCHATZ and INSELLNK
+    // records before ERZE feed the link selection, which the ERZE record runs (D
+    // AnnoScene 0x1000a25c; docs/re/annoscene.md §3, §5).
+    bool erze_seen = false;
+    std::vector<std::uint16_t> raw(config.links.raw_kinds, 0);
+    std::uint16_t treasures = 0;
     for (std::size_t c = 0; c < scene.children.size(); ++c) {
         const formats::chunk::Chunk& child = scene.children[c];
         const std::string_view name = child.name();
+        const std::string where = "scene[" + std::to_string(c) + "]";
         if (name == "HEAD" || name == "INSEL5" || name == "SPIELER") {
             continue;
         }
         if (name == "INSELLNK") {
-            auto link = sze::IslandLink::parse(child.payload);
-            if (!link) {
-                return "scene[" + std::to_string(c) + "].INSELLNK: " + link.error();
+            auto parsed_link = sze::IslandLink::parse(child.payload);
+            if (!parsed_link) {
+                return where + ".INSELLNK: " + parsed_link.error();
             }
-            warn.add(ScenarioWarningKind::IslandLink, "scene[" + std::to_string(c) + "]", name,
-                     child.offset,
-                     "island " + std::to_string(link.value().number) + " (" +
-                         std::to_string(link.value().width) + " x " +
-                         std::to_string(link.value().height) +
-                         ") is a link: resolved in stage 2 (O-35), its slot stays empty");
+            const sze::IslandLink& l = parsed_link.value();
+            ++out.links_total;
+            const std::string path(l.path.begin(), l.path.end());
+            if (!is_dummy_path(path)) {
+                warn.add(ScenarioWarningKind::LinkNamesTemplate, where, name, child.offset,
+                         "island " + std::to_string(l.number) + " names " + path +
+                             ": the original places that file as it is (0x10009fe9), not read "
+                             "here");
+                continue;
+            }
+            IslandLinkSpec link;
+            link.number = l.number; // the head (D 0x10009e2e–0x10009e63, sze.md)
+            link.x = l.x;
+            link.y = l.y;
+            link.w = l.width;
+            link.h = l.height;
+            link.climate = link_climate(path);
+            link.path = path;
+            link.where = where;
+            link.offset = child.offset;
+            if (erze_seen) {
+                warn.add(ScenarioWarningKind::LinkUnresolved, where, name, child.offset,
+                         "island " + std::to_string(l.number) +
+                             " comes after ERZE, which has run the selection (0x1000a25c)");
+                continue;
+            }
+            out.links.push_back(std::move(link));
+            continue;
+        }
+        if (name == "ROHSTOFF") {
+            // D 0x1000a076–0x1000a140: a zero-filled 16-byte buffer, bytes 0..9 to the
+            // kinds 1, 2, 4..11 of this+0x51DC (bytes 10..15 not read). A longer record
+            // would be read past the buffer: refused.
+            if (child.payload.size() > 16) {
+                return where + ".ROHSTOFF: " + std::to_string(child.payload.size()) +
+                       " bytes, longer than the reader's 16-byte buffer";
+            }
+            if (config.links.raw_kinds < 12) {
+                return where + ".ROHSTOFF: LinkTables.raw_kinds is below the 12 the record fills";
+            }
+            std::array<std::uint8_t, 16> buf{};
+            std::copy(child.payload.begin(), child.payload.end(), buf.begin());
+            constexpr std::array<std::uint32_t, 10> kKind = {1, 2, 4, 5, 6, 7, 8, 9, 10, 11};
+            for (std::size_t b = 0; b < kKind.size(); ++b) {
+                raw[kKind[b]] = buf[b];
+            }
+            continue;
+        }
+        if (name == "SCHATZ") {
+            // D 0x1000a158–0x1000a19c: the record is read into the u16 at this+0x150.
+            if (child.payload.size() > 2) {
+                return where + ".SCHATZ: " + std::to_string(child.payload.size()) +
+                       " bytes, longer than the u16 it is read into";
+            }
+            std::array<std::uint8_t, 2> buf = {static_cast<std::uint8_t>(treasures & 0xffU),
+                                               static_cast<std::uint8_t>(treasures >> 8)};
+            std::copy(child.payload.begin(), child.payload.end(), buf.begin());
+            treasures = static_cast<std::uint16_t>(buf[0] | (buf[1] << 8));
+            continue;
+        }
+        if (name == "ERZE") {
+            // D 0x1000a19f–0x1000a25c: a zero-filled 10-byte buffer; bytes 0..3 → ore
+            // kinds 0..3, 4 → kind 5, 5 → kind 6, 6 → the special count; bytes 7 and 8
+            // go to this+0x528C / +0x528E (not read by the selection), byte 9 is not read.
+            // Then the selection runs (0x1000a25c).
+            if (child.payload.size() > 10) {
+                return where + ".ERZE: " + std::to_string(child.payload.size()) +
+                       " bytes, longer than the reader's 10-byte buffer";
+            }
+            if (erze_seen) {
+                return where + ".ERZE: a second ERZE would run the selection again";
+            }
+            if (config.links.ore_kinds < 7) {
+                return where + ".ERZE: LinkTables.ore_kinds is below the 7 the record fills";
+            }
+            std::array<std::uint8_t, 10> buf{};
+            std::copy(child.payload.begin(), child.payload.end(), buf.begin());
+            LinkInputs& in = out.link_inputs;
+            in.raw_materials = raw;
+            in.ores.assign(config.links.ore_kinds, 0);
+            constexpr std::array<std::uint32_t, 6> kKind = {0, 1, 2, 3, 5, 6};
+            for (std::size_t b = 0; b < kKind.size(); ++b) {
+                in.ores[kKind[b]] = buf[b];
+            }
+            in.special_count = buf[6];
+            in.treasures = treasures;
+            erze_seen = true;
             continue;
         }
         warn.unknown_record("scene", "scene." + std::string(name), name, child.offset);
     }
+    if (!erze_seen) {
+        // Without ERZE the selection never runs (it is called from the ERZE case only).
+        for (const IslandLinkSpec& l : out.links) {
+            warn.add(ScenarioWarningKind::LinkUnresolved, l.where, "INSELLNK", l.offset,
+                     "island " + std::to_string(l.number) +
+                         ": the scenario has no ERZE record, which runs the selection");
+        }
+        out.links.clear();
+    }
+    out.link_inputs.raw_materials.resize(config.links.raw_kinds, 0);
+    out.link_inputs.ores.resize(config.links.ore_kinds, 0);
     return out;
+}
+
+namespace {
+
+/// The INFO bytes of an island: the record's first 12 bytes, zero where it is shorter
+/// or missing (AnnoWelt 0x100b2770 zeroes them only when it finds the record, into a
+/// zeroed summary).
+std::array<std::uint8_t, 12> info_bytes(const insel::Island& isl) {
+    std::array<std::uint8_t, 12> out{};
+    if (const std::optional<Bytes> info = isl.record("INFO")) {
+        std::copy_n(info->begin(), std::min<std::size_t>(info->size(), out.size()), out.begin());
+    }
+    return out;
+}
+
+/// "0, 3, 12" for the set entries of a mark list.
+std::string kinds_list(const std::vector<std::uint8_t>& marks) {
+    std::string s;
+    for (std::size_t k = 0; k < marks.size(); ++k) {
+        if (marks[k] != 0) {
+            s += (s.empty() ? "" : ", ") + std::to_string(k);
+        }
+    }
+    return s;
+}
+
+} // namespace
+
+std::optional<TemplateSummary> template_summary(Bytes scp, std::string name) {
+    // D AnnoWelt 0x100b25a0: root ANNO (0x100b25f5), then every INSEL4 / INSEL5 child
+    // (0x100b2645, 0x100b26ba) gives the size from its head and the INFO record
+    // through 0x100b2770; the last one wins; none: failure.
+    auto parsed = formats::chunk::parse_file(scp);
+    if (!parsed || parsed.value().chunks.empty()) {
+        return std::nullopt;
+    }
+    const formats::chunk::Chunk& root = parsed.value().chunks.front();
+    if (root.name() != "ANNO" || !root.is_container) {
+        return std::nullopt;
+    }
+    std::optional<TemplateSummary> out;
+    for (const formats::chunk::Chunk& c : root.children) {
+        std::optional<formats::Result<insel::Island, std::string>> isl;
+        if (c.name() == "INSEL5") {
+            isl = insel::Island::from_insel5(c.payload);
+        } else if (c.name() == "INSEL4") {
+            isl = insel::Island::from_insel4(root.children);
+        } else {
+            continue;
+        }
+        if (!*isl) {
+            return std::nullopt;
+        }
+        TemplateSummary t;
+        t.name = name;
+        t.w = isl->value().width; // INSEL5 head +4, +6 (0x100b267b–0x100b269c)
+        t.h = isl->value().height;
+        t.info = info_bytes(isl->value());
+        out = std::move(t);
+    }
+    return out;
+}
+
+formats::Result<LinkResolution, std::string>
+resolve_scenario_links(LoadedScenario& s, std::span<const TemplateSummary> candidates,
+                       const SimConfig& config, const Rules& rules) {
+    // The generator World::create builds (scenario.cpp): the table, then the cursor
+    // spec.seed mod its length (world property 8, D AnnoWelt 0x100a3230).
+    WorldRng rng;
+    if (s.spec.rng_table.has_value()) {
+        std::optional<WorldRng> r = WorldRng::from_table(*s.spec.rng_table, s.spec.seed);
+        if (!r) {
+            return std::string("rng_table: must not be empty");
+        }
+        rng = std::move(*r);
+    } else {
+        rng.set_cursor(s.spec.seed);
+    }
+    GlobalDraw draw(rng);
+    auto res = resolve_island_links(s.links, s.link_inputs, candidates, draw, config.links,
+                                    rules.island_candidate_order);
+    if (!res) {
+        return res.error();
+    }
+    if (!s.links.empty()) {
+        s.spec.seed = rng.cursor();
+    }
+    if (res.value().treasures_capped) {
+        Warnings warn{s.warnings, {}};
+        warn.add(ScenarioWarningKind::LinkTreasuresCapped, "scene", "SCHATZ", 0,
+                 std::to_string(s.link_inputs.treasures) + " treasures for " +
+                     std::to_string(s.links.size()) +
+                     " links: the original's loop would not end (0x10009c5e–0x10009c9d)");
+    }
+    return res;
+}
+
+std::optional<std::string> place_island_links(LoadedScenario& s, const LinkResolution& res,
+                                              std::span<const Bytes> templates,
+                                              const TypeRegistry& types, const SimConfig& config) {
+    if (res.links.size() != s.links.size() || templates.size() != s.links.size()) {
+        return std::string("place_island_links: the resolution or the templates do not match "
+                           "the links");
+    }
+    Warnings warn{s.warnings, {}};
+    std::set<std::uint32_t> used;
+    for (const ScenarioSpec::IslandSpec& is : s.spec.islands) {
+        used.insert(is.slot.v);
+    }
+    // D 0x10008490: the links in list order (file order).
+    for (std::size_t i = 0; i < s.links.size(); ++i) {
+        const IslandLinkSpec& l = s.links[i];
+        const ResolvedLink& r = res.links[i];
+        const std::string path = "links[" + std::to_string(i) + "]";
+        const std::string who = path + " (island " + std::to_string(l.number) + ")";
+        if (!r.candidate.has_value()) {
+            // D 0x100084f4–0x100084fd: an empty chosen name skips the link.
+            warn.add(ScenarioWarningKind::LinkUnresolved, l.where, "INSELLNK", l.offset,
+                     "island " + std::to_string(l.number) + " (" + std::to_string(l.w) + " x " +
+                         std::to_string(l.h) + ", climate " + std::to_string(l.climate) +
+                         "): no template left (" + std::to_string(r.matched) + " matched, " +
+                         std::to_string(r.kept) + " kept); the original skips it");
+            continue;
+        }
+        auto parsed = formats::chunk::parse_file(templates[i]);
+        if (!parsed || parsed.value().chunks.empty() ||
+            !parsed.value().chunks.front().is_container) {
+            return who + ": the template is not a chunk file";
+        }
+        const formats::chunk::Chunk& root = parsed.value().chunks.front();
+        const formats::chunk::Chunk* insel5 = nullptr;
+        bool players = false;
+        for (const formats::chunk::Chunk& c : root.children) {
+            if (c.name() == "INSEL5" && insel5 == nullptr) {
+                insel5 = &c;
+            } else if (c.name() == "SPIELER") {
+                players = true;
+            } else {
+                warn.unknown_record("link_templates", path + "." + std::string(c.name()), c.name(),
+                                    c.offset);
+            }
+        }
+        if (insel5 == nullptr) {
+            return who + ": the template holds no INSEL5";
+        }
+        auto isl = insel::Island::from_insel5(insel5->payload);
+        if (!isl) {
+            return who + ": " + isl.error();
+        }
+        // D 0x10008503–0x1000850d: world slot +0x88(name, &(x, y), number & 0xFFFF).
+        const std::uint32_t slot = l.number & 0xFFFFU;
+        if (slot >= config.island_slots) {
+            return who + ": island number is not below island_slots (" +
+                   std::to_string(config.island_slots) + ")";
+        }
+        if (!used.insert(slot).second) {
+            return who + ": island slot " + std::to_string(slot) + " is used twice";
+        }
+        std::optional<ScenarioSpec::IslandSpec> built;
+        const std::uint64_t base =
+            insel5->offset + formats::chunk::kHeaderLen + insel::kInsel5HeadLen;
+        if (auto e = island_from_insel(isl.value(), path, base, insel5->offset, IslandId{slot}, l.x,
+                                       l.y, types, config, warn, "link_templates", built)) {
+            return who + ": " + *e;
+        }
+        if (!built) {
+            continue; // UnknownClimate, warned
+        }
+        // D 0x10008532–0x10008545: island property 7 = the link's climate (equal to the
+        // template's INFO[0] by step 2).
+        built->climate = l.climate;
+        s.spec.islands.push_back(std::move(*built));
+        ++s.links_placed;
+        const std::string marks_raw = kinds_list(r.raw_marks);
+        if (!marks_raw.empty()) {
+            warn.add(ScenarioWarningKind::LinkRawMaterials, path, "INSELLNK", l.offset,
+                     "raw materials " + marks_raw +
+                         ": island property 11 = 0xF009 | marks (0x100085a2) has no field");
+        }
+        const std::string marks_ore = kinds_list(r.ore_marks);
+        if (!marks_ore.empty()) {
+            warn.add(ScenarioWarningKind::LinkOresUnplaced, path, "INSELLNK", l.offset,
+                     "ores " + marks_ore +
+                         ": not put on mountain objects (0x100085d5, O-37), no deposit, the "
+                         "LinkOrePlace draws not made");
+        }
+        if (r.treasure) {
+            warn.add(ScenarioWarningKind::LinkTreasureUnplaced, path, "INSELLNK", l.offset,
+                     "the treasure (0x10008b25) is not placed, its draws not made");
+        }
+        if (players) {
+            warn.add(ScenarioWarningKind::LinkTemplatePlayers, path, "SPIELER", 0,
+                     "the template's SPIELER blocks are not read (native settlements; the "
+                     "LinkNativeName draws not made)");
+        }
+    }
+    return std::nullopt;
 }
 
 } // namespace anno::sim

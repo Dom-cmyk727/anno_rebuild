@@ -413,7 +413,7 @@ TEST_CASE("scenario warning kinds") {
     const sim::LoadedScenario s = load(scene("ANNO", scene_kids));
     CHECK(warnings_of(s, Kind::UnknownRecord) == 3); // OCCUR, SCHIFF, SKTIMER
     CHECK(warnings_of(s, Kind::UndecodedCity) == 1);
-    CHECK(warnings_of(s, Kind::IslandLink) == 1);
+    CHECK(warnings_of(s, Kind::LinkUnresolved) == 1); // no ERZE: the selection never runs
     CHECK(warnings_of(s, Kind::UnknownObject) == 1);
     CHECK(warnings_of(s, Kind::BuildingWithoutCity) == 1);
     CHECK(warnings_of(s, Kind::TileOwnersUndecoded) == 2); // the skipped island has none
@@ -428,6 +428,9 @@ TEST_CASE("scenario warning kinds") {
     // Every kind is listed, has a name, and is reached here.
     for (const Kind k : sim::all_warning_kinds()) {
         INFO(sim::warning_kind_name(k));
+        if (sim::warning_kind_name(k).starts_with("Link") && k != Kind::LinkUnresolved) {
+            continue; // reached by the link cases (scenario_links_test.cpp)
+        }
         CHECK(warnings_of(s, k) > 0);
         CHECK(sim::warning_kind_name(k) != "?");
     }

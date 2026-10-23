@@ -410,6 +410,9 @@ std::string SimConfig::validate() const {
     if (std::string p = layout.validate(); !p.empty()) {
         return p;
     }
+    if (std::string p = links.validate(); !p.empty()) {
+        return "SimConfig.links: " + p;
+    }
     if (city_pass_count > 64) {
         // A sanity bound for the seam vector (Seams::city_pass is sized from it).
         return bad(kOwner, "city_pass_count",
@@ -468,6 +471,16 @@ std::string Rules::validate() const {
     }
     if (events_max_dispatch == 0) {
         return bad(kOwner, "events_max_dispatch", "must be at least 1");
+    }
+    if (island_candidate_order == IslandCandidateOrder::Cached) {
+        // The single-player original's InselCache.txt order is a property of the
+        // machine that wrote the cache; no cache is read (OQ-150).
+        return bad(kOwner, "island_candidate_order", "reserved: not implemented (OQ-150)");
+    }
+    if (island_candidate_order != IslandCandidateOrder::Sorted) {
+        return bad(kOwner, "island_candidate_order",
+                   "is not an enumerator (" +
+                       std::to_string(static_cast<std::uint8_t>(island_candidate_order)) + ")");
     }
     if (drought_random_centre) {
         // What a random centre is (which tiles, how many draws, which draw site) is the

@@ -2116,7 +2116,7 @@ TEST_CASE("counting draw counts per site, forwards every draw and reports the di
     CHECK(between[1].site == sim::DrawSite::Ai);
     CHECK(between[1].count == 2);
     CHECK(sim::draw_records_between(draw.counts, draw.counts).empty());
-    CHECK(sim::kDrawSiteCount == 12);
+    CHECK(sim::kDrawSiteCount == 17);
 }
 
 TEST_CASE("figure registry slot policy is the rules' slot policy") {

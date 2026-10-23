@@ -1,4 +1,4 @@
-// Stage S11 (docs/sim/state.md Â§15 S11, Â§7.1, Â§14.3): the driver runs the weapons
+// Stage S11 (docs/sim/state.md §15 S11, §7.1, §14.3): the driver runs the weapons
 // workshop (with the owner's research as input), the fur trapper, the small farm (one
 // world draw per step) and the mine (the island's deposits) through the real scheduler,
 // and the golden G3 (two islands, two cities, one building of every ticking class, a mine
@@ -39,23 +39,63 @@ constexpr std::uint32_t kWeaver0 = 1, kFarm0 = 2, kTrapper0 = 3, kSmallFarm0 = 4
                         kMine0 = 6, kHouse0 = 7;
 constexpr std::uint32_t kBowMaker3 = 1, kWeaver3 = 2;
 
-struct G3 {
-    syn::SyntheticTypes types;
-    sim::World world;
-    static G3 make(const sim::ScenarioSpec* custom = nullptr) {
-        auto t = syn::make_synthetic_types();
-        REQUIRE_MESSAGE(t.ok(), (t.ok() ? std::string() : t.error()));
-        const sim::ScenarioSpec spec = custom != nullptr ? *custom : syn::g3_scenario(t.value());
-        auto w = sim::World::create(spec, t.value().registry);
-        REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
-        return G3{std::move(t).value(), std::move(w).value()};
-    }
-};
-
 syn::SyntheticTypes g3_types() {
     auto t = syn::make_synthetic_types();
     REQUIRE_MESSAGE(t.ok(), (t.ok() ? std::string() : t.error()));
     return std::move(t).value();
+}
+
+/// The synthetic types with `edit` applied to a copy of every type (same ids and
+/// classes), for the tests that need figure ids or another footprint.
+syn::SyntheticTypes edited_types(void (*edit)(const syn::SyntheticTypes&, sim::BuildingType&)) {
+    syn::SyntheticTypes t = g3_types();
+    sim::TypeRegistry::Builder b;
+    for (const sim::BuildingType& type : t.registry->types()) {
+        sim::BuildingType copy = type;
+        edit(t, copy);
+        b.add(std::move(copy));
+    }
+    auto built = b.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    t.registry = std::move(built.value());
+    return t;
+}
+
+struct G3 {
+    syn::SyntheticTypes types;
+    sim::World world;
+    /// The G3 world (synthetic::g3_scenario on `t`, or `custom`) with `cfg`.
+    static G3 make(const sim::ScenarioSpec* custom = nullptr,
+                   const syn::SyntheticTypes* t = nullptr, sim::SimConfig cfg = {}) {
+        syn::SyntheticTypes ty = t != nullptr ? *t : g3_types();
+        const sim::ScenarioSpec spec = custom != nullptr ? *custom : syn::g3_scenario(ty);
+        auto w = sim::World::create(spec, ty.registry, std::move(cfg));
+        REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+        return G3{std::move(ty), std::move(w).value()};
+    }
+};
+
+/// What a figure of the registry says about where it came from.
+struct Sent {
+    std::uint64_t home = 0;
+    std::uint32_t job = 0, kind = 0, counter = 0, owner = 0, born = 0;
+    friend bool operator<(const Sent& a, const Sent& b) {
+        return std::tie(a.home, a.counter, a.born, a.job, a.kind, a.owner) <
+               std::tie(b.home, b.counter, b.born, b.job, b.kind, b.owner);
+    }
+    friend bool operator==(const Sent&, const Sent&) = default;
+};
+
+std::vector<Sent> sent_figures(const sim::World& w) {
+    std::vector<Sent> out;
+    for (const auto& slot : w.figures().list.slots) {
+        if (slot.has_value()) {
+            out.push_back(Sent{slot->home.v, slot->job, slot->kind, slot->home_counter,
+                               slot->owner.v, slot->born});
+        }
+    }
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 sim::Building& building(sim::World& w, std::uint32_t island, std::uint32_t serial) {
@@ -141,12 +181,32 @@ TEST_CASE("each class through the scheduler equals the direct step-function test
     // a copy of every production payload driven by calling its step function directly at
     // the ticks at which the scheduler stepped the building (its gate opened: `last`
     // moved), with the inputs written down here by hand: the owner's research as the
-    // weapons workshops' `unlocked` (player 0: BOGEN only, player 1: both), a copy of
-    // island 0's deposits, the mine's footprint (1 x 1 at 110,118) and the add-on's
-    // depletion, a generator copied from the world's (the small farm is the only draw
-    // site before the 300 s event at tick 150 000), and the counters consume raises
-    // (docs/sim/state.md Â§7.2). After every advance the stream bytes must be equal.
-    G3 g = G3::make();
+    // weapons workshops' `unlocked` (player 0: BOGEN only, player 1: both), the owner's
+    // Volk as `shows_icons` (player 1 is given Volk 2, so its buildings show no icons), a
+    // copy of island 0's deposits, the mine's footprint (1 x 1 at 110,118) and the
+    // add-on's depletion, a generator copied from the world's (the small farm is the only
+    // draw site before the 300 s event at tick 150 000), and what consume does with the
+    // result (docs/sim/state.md §7.2): the counters it raises, the figures it asks for
+    // (home, job, kind = the type's first figure id, counter, owner, birth tick) and the
+    // mine's notices. The types carry distinct figure ids so a figure tells its sender.
+    // After every advance the stream bytes must be equal; at the end the figures and the
+    // notices.
+    const syn::SyntheticTypes types =
+        edited_types([](const syn::SyntheticTypes& s, sim::BuildingType& type) {
+            const std::pair<sim::TypeId, std::uint32_t> ids[] = {{s.weaver, 11},
+                                                                 {s.farm, 22},
+                                                                 {s.fur_trapper, 33},
+                                                                 {s.small_farm, 44},
+                                                                 {s.bow_maker, 55}};
+            for (const auto& [id, kind] : ids) {
+                if (type.id == id) {
+                    type.prod.figure_ids[0] = kind;
+                }
+            }
+        });
+    sim::ScenarioSpec spec = syn::g3_scenario(types);
+    spec.players[1].volk = 2;
+    G3 g = G3::make(&spec, &types);
     sim::World& w = g.world;
     const syn::SyntheticTypes& t = g.types;
 
@@ -158,18 +218,28 @@ TEST_CASE("each class through the scheduler equals the direct step-function test
     sim::Mine mine0 = payload<sim::Mine>(w, 0, kMine0);
     sim::WeaponsWorkshop bow3 = payload<sim::WeaponsWorkshop>(w, 3, kBowMaker3);
     sim::Workshop weaver3 = payload<sim::Workshop>(w, 3, kWeaver3);
+    bow3.status.shows_icons = false; // player 1, Volk 2
+    weaver3.status.shows_icons = false;
     std::vector<sim::Deposit> dep = deposits(w);
     sim::WorldRng rng = w.rng();
     const sim::SmallFarmAnimals animals = w.config().small_farm_animals;
     REQUIRE(mine0.deposit.has_value());
     CHECK(*mine0.deposit == 0); // the larger of the two in reach (2 t against 1 t)
 
+    const auto id0 = [](std::uint32_t serial) {
+        return sim::make_building_id(sim::IslandId{0}, serial).v;
+    };
+    const auto id3 = [](std::uint32_t serial) {
+        return sim::make_building_id(sim::IslandId{3}, serial).v;
+    };
+    std::vector<Sent> expect_sent;
+    std::vector<sim::SimEvent> expect_notices, notices;
+
     struct Steps {
         std::uint32_t weaver0 = 0, farm0 = 0, trapper0 = 0, small0 = 0, bow0 = 0, mine0 = 0,
                       bow3 = 0, weaver3 = 0;
     } steps;
     std::uint32_t trapper_due = 0; // steps in which the trapper's step asked for a trapper
-    std::uint32_t mine_notices = 0;
 
     for (int i = 0; i < 20000; ++i) {
         const std::uint16_t last_w0 = payload<sim::Workshop>(w, 0, kWeaver0).last;
@@ -182,30 +252,46 @@ TEST_CASE("each class through the scheduler equals the direct step-function test
         const std::uint16_t last_w3 = payload<sim::Workshop>(w, 3, kWeaver3).last;
         w.advance(10);
         const auto now = static_cast<std::uint32_t>(w.clock().tick());
+        for (const sim::SimEvent& e : w.last_output().events) {
+            if (e.kind == sim::SimEventKind::Notice) {
+                notices.push_back(e);
+            }
+        }
 
         if (payload<sim::Workshop>(w, 0, kWeaver0).last != last_w0) {
             ++steps.weaver0;
             const sim::StepResult r = sim::workshop_step(weaver0, prod(t, t.weaver), now);
-            weaver0.carriers_out += r.send_figure ? 1U : 0U;
+            if (r.send_figure) {
+                ++weaver0.carriers_out;
+                expect_sent.push_back(Sent{id0(kWeaver0), 0x33, 11, 0, 0, now});
+            }
         }
         if (payload<sim::Farm>(w, 0, kFarm0).last != last_f0) {
             ++steps.farm0;
             const sim::StepResult r = sim::farm_step(farm0, prod(t, t.farm), now);
-            farm0.workers_out += r.send_figure ? 1U : 0U;
+            if (r.send_figure) {
+                ++farm0.workers_out;
+                expect_sent.push_back(Sent{id0(kFarm0), 0, 22, 0, 0, now});
+            }
         }
         if (payload<sim::Farm>(w, 0, kTrapper0).last != last_t0) {
             ++steps.trapper0;
             const sim::StepResult r = sim::fur_trapper_step(trapper0, prod(t, t.fur_trapper), now);
-            // No prey: the driver sends no trapper, so no counter rises.
+            // No prey: the driver sends no trapper, so no counter rises and no figure.
             trapper_due += r.send_figure ? 1U : 0U;
         }
         if (payload<sim::SmallFarm>(w, 0, kSmallFarm0).last != last_s0) {
             ++steps.small0;
             const sim::StepResult r = sim::small_farm_step(small0, prod(t, t.small_farm), now,
                                                            sim::DrawRef::of(rng), animals);
-            small0.figures_out[0] += r.send_figure ? 1U : 0U;
+            if (r.send_figure) {
+                ++small0.figures_out[0];
+                expect_sent.push_back(Sent{id0(kSmallFarm0), 0x2a, 44, 0, 0, now});
+            }
             if (r.send_animal) {
-                ++small0.figures_out[static_cast<std::size_t>(r.animal_kind - animals.base)];
+                const auto counter = static_cast<std::uint32_t>(r.animal_kind - animals.base);
+                ++small0.figures_out[counter];
+                expect_sent.push_back(Sent{id0(kSmallFarm0), 0x2e, r.animal_kind, counter, 0, now});
             }
         }
         if (payload<sim::WeaponsWorkshop>(w, 0, kBowMaker0).last != last_b0) {
@@ -213,24 +299,41 @@ TEST_CASE("each class through the scheduler equals the direct step-function test
             bow0.unlocked.assign(2, true);
             bow0.unlocked[1] = false; // ARMBRUST (research 9) is not done for player 0
             const sim::StepResult r = sim::weapons_workshop_step(bow0, prod(t, t.bow_maker), now);
-            bow0.carriers_out += r.send_figure ? 1U : 0U;
+            if (r.send_figure) {
+                ++bow0.carriers_out;
+                expect_sent.push_back(Sent{id0(kBowMaker0), 0x33, 55, 0, 0, now});
+            }
         }
         if (payload<sim::Mine>(w, 0, kMine0).last != last_m0) {
             ++steps.mine0;
             const sim::StepResult r = sim::mine_step(mine0, prod(t, t.iron_mine), now, dep,
                                                      sim::MineArea{110, 118, 1, 1}, true);
-            mine_notices += r.notice != 0 ? 1U : 0U;
+            if (r.notice != 0) {
+                sim::SimEvent e;
+                e.kind = sim::SimEventKind::Notice;
+                e.tick = now;
+                e.player = sim::PlayerId{0};
+                e.building = sim::make_building_id(sim::IslandId{0}, kMine0);
+                e.code = r.notice;
+                expect_notices.push_back(e);
+            }
         }
         if (payload<sim::WeaponsWorkshop>(w, 3, kBowMaker3).last != last_b3) {
             ++steps.bow3;
             bow3.unlocked.assign(2, true);
             const sim::StepResult r = sim::weapons_workshop_step(bow3, prod(t, t.bow_maker), now);
-            bow3.carriers_out += r.send_figure ? 1U : 0U;
+            if (r.send_figure) {
+                ++bow3.carriers_out;
+                expect_sent.push_back(Sent{id3(kBowMaker3), 0x33, 55, 0, 1, now});
+            }
         }
         if (payload<sim::Workshop>(w, 3, kWeaver3).last != last_w3) {
             ++steps.weaver3;
             const sim::StepResult r = sim::workshop_step(weaver3, prod(t, t.weaver), now);
-            weaver3.carriers_out += r.send_figure ? 1U : 0U;
+            if (r.send_figure) {
+                ++weaver3.carriers_out;
+                expect_sent.push_back(Sent{id3(kWeaver3), 0x33, 11, 0, 1, now});
+            }
         }
 
         // Equal state after every advance (the payloads, the deposits, the generator).
@@ -255,6 +358,21 @@ TEST_CASE("each class through the scheduler equals the direct step-function test
     // The driver's derived inputs equal the hand-written ones.
     CHECK(payload<sim::WeaponsWorkshop>(w, 0, kBowMaker0).unlocked == bow0.unlocked);
     CHECK(payload<sim::WeaponsWorkshop>(w, 3, kBowMaker3).unlocked == bow3.unlocked);
+    CHECK_FALSE(payload<sim::WeaponsWorkshop>(w, 3, kBowMaker3).status.shows_icons);
+    CHECK_FALSE(payload<sim::Workshop>(w, 3, kWeaver3).status.shows_icons);
+    CHECK(payload<sim::WeaponsWorkshop>(w, 0, kBowMaker0).status.shows_icons);
+    // The figures the scheduler made are the ones the direct steps asked for.
+    std::sort(expect_sent.begin(), expect_sent.end());
+    CHECK(sent_figures(w) == expect_sent);
+    CHECK(expect_sent.size() >= 6); // two weavers, two bow makers, the farm, the small farm
+    // The mine's notices: the same building, owner, code and tick.
+    REQUIRE(notices.size() == expect_notices.size());
+    for (std::size_t i = 0; i < notices.size(); ++i) {
+        CHECK(notices[i].building == expect_notices[i].building);
+        CHECK(notices[i].player == expect_notices[i].player);
+        CHECK(notices[i].code == expect_notices[i].code);
+        CHECK(notices[i].tick == expect_notices[i].tick);
+    }
     // Every building stepped about once per 500 ticks: 200 gates in 100 000 ticks, the
     // first one at the first visit after tick 500, so the scheduler may be a few behind.
     for (const std::uint32_t n : {steps.weaver0, steps.farm0, steps.trapper0, steps.small0,
@@ -263,11 +381,43 @@ TEST_CASE("each class through the scheduler equals the direct step-function test
         CHECK(n <= 200);
     }
     // The cases the test is meant to cover did happen: the trapper wanted to send, the
-    // mine ran its deposits dry (one notice 0x19), the small farm drew once per step.
+    // mine ran its deposits dry (one notice 0x19).
     CHECK(trapper_due > 0);
-    CHECK(mine_notices == 1);
-    CHECK(w.rng().cursor() != syn::g3_scenario(t).seed);
+    CHECK(expect_notices.size() == 1);
     CHECK(w.check_invariants() == "");
+}
+
+TEST_CASE("the driver refreshes the status icons of every class from the owner's Volk") {
+    // StatusTracker::shows_icons = the city owner's Volk is 1 (OQ-033), refreshed before
+    // every step. Player 0 with Volk 2: after one gate of every building none of player
+    // 0's buildings shows icons, while player 1 (Volk 1) keeps them.
+    const syn::SyntheticTypes t = g3_types();
+    sim::ScenarioSpec spec = syn::g3_scenario(t);
+    spec.players[0].volk = 2;
+    G3 g = G3::make(&spec);
+    sim::World& w = g.world;
+    for (int i = 0; i < 200; ++i) { // tick 1 000: every building passed its first gate
+        w.advance(10);
+    }
+    CHECK(payload<sim::Workshop>(w, 0, kWeaver0).last != 0);
+    CHECK(payload<sim::Mine>(w, 0, kMine0).last != 0);
+    CHECK_FALSE(payload<sim::Workshop>(w, 0, kWeaver0).status.shows_icons);
+    CHECK_FALSE(payload<sim::Farm>(w, 0, kFarm0).status.shows_icons);
+    CHECK_FALSE(payload<sim::Farm>(w, 0, kTrapper0).status.shows_icons);
+    CHECK_FALSE(payload<sim::SmallFarm>(w, 0, kSmallFarm0).status.shows_icons);
+    CHECK_FALSE(payload<sim::WeaponsWorkshop>(w, 0, kBowMaker0).status.shows_icons);
+    CHECK_FALSE(payload<sim::Mine>(w, 0, kMine0).status.shows_icons);
+    CHECK(payload<sim::WeaponsWorkshop>(w, 3, kBowMaker3).status.shows_icons);
+    CHECK(payload<sim::Workshop>(w, 3, kWeaver3).status.shows_icons);
+    // And back: Volk 1 shows them again at the next step.
+    sim::WorldTestAccess::players(w).slots[0]->volk = 1;
+    for (int i = 0; i < 200; ++i) {
+        w.advance(10);
+    }
+    CHECK(payload<sim::Farm>(w, 0, kTrapper0).status.shows_icons);
+    CHECK(payload<sim::SmallFarm>(w, 0, kSmallFarm0).status.shows_icons);
+    CHECK(payload<sim::WeaponsWorkshop>(w, 0, kBowMaker0).status.shows_icons);
+    CHECK(payload<sim::Mine>(w, 0, kMine0).status.shows_icons);
 }
 
 // ------------------------------------------------------------ weapons workshop
@@ -600,6 +750,74 @@ TEST_CASE("small farm draws once per step through the world") {
     }
 }
 
+TEST_CASE("small farm animals come from the configured animal table") {
+    // SimConfig::small_farm_animals reaches the step: a table that can only pick kind 110
+    // (counter 4, limit 1) sends animals of kind 110 only: two, because a step in which line 1
+    // made something counts one animal fewer against the limit (D 0x1006f855-0x1006f86b).
+    sim::SimConfig cfg;
+    cfg.small_farm_animals.kind_by_draw = {110};
+    const syn::SyntheticTypes t = g3_types();
+    G3 g = G3::make(nullptr, &t, cfg);
+    sim::World& w = g.world;
+    const std::uint32_t c0 = w.rng().cursor();
+    for (int i = 0; i < 6000; ++i) { // tick 30 000
+        w.advance(10);
+    }
+    const auto& f = payload<sim::SmallFarm>(w, 0, kSmallFarm0);
+    CHECK(f.figures_out == std::vector<std::uint32_t>{1, 0, 0, 0, 2});
+    std::size_t animals = 0;
+    for (const auto& slot : w.figures().list.slots) {
+        if (slot.has_value() && slot->job == 0x2e) {
+            ++animals;
+            CHECK(slot->kind == 110);
+            CHECK(slot->home_counter == 4);
+        }
+    }
+    CHECK(animals == 2);
+    // The draws go on at every step whatever the table holds.
+    CHECK(w.rng().cursor() != c0);
+}
+
+TEST_CASE("the mine searches from its rotated footprint") {
+    // An iron mine of 1 x 4 tiles placed with rotation 1 covers 4 x 1 tiles: x 110..113,
+    // y 118 (mine_area, D 0x1006ddf0 builds the search rectangle from the position and the
+    // footprint by rotation). Deposit 0 at (110, 120) with 2 t is in reach of any footprint;
+    // deposit 1 at (120, 118) with 1 t is 7 columns beyond the rotated footprint (in reach,
+    // half-width 7 in row 0) but 10 beyond an unrotated or 1 x 1 one (out of reach). The
+    // mine takes deposit 0 (the larger), and when it is used up finds deposit 1 only
+    // through the rotated footprint: 768 out in all.
+    const syn::SyntheticTypes t =
+        edited_types([](const syn::SyntheticTypes& s, sim::BuildingType& type) {
+            if (type.id == s.iron_mine) {
+                type.width = 1;
+                type.height = 4;
+            }
+        });
+    sim::ScenarioSpec spec = syn::g3_scenario(t);
+    auto& is0 = spec.islands[0];
+    is0.deposits[1].x = 120;
+    is0.deposits[1].y = 118;
+    for (auto& b : is0.cities[0].buildings) {
+        if (b.type == t.iron_mine) {
+            b.rotation = 1;
+        }
+    }
+    G3 g = G3::make(&spec, &t);
+    sim::World& w = g.world;
+    REQUIRE(*payload<sim::Mine>(w, 0, kMine0).deposit == 0);
+    std::vector<std::size_t> indexes{0};
+    for (int i = 0; i < 6000; ++i) { // tick 30 000: about 60 steps
+        w.advance(10);
+        const std::size_t now = *payload<sim::Mine>(w, 0, kMine0).deposit;
+        if (now != indexes.back()) {
+            indexes.push_back(now);
+        }
+    }
+    CHECK(indexes == std::vector<std::size_t>{0, 1, 0});
+    CHECK(payload<sim::Mine>(w, 0, kMine0).out == 768);
+    CHECK(deposits(w)[1].remaining == 0);
+}
+
 // ---------------------------------------------------------------- the fur trapper
 
 TEST_CASE("fur trapper sends nothing without prey") {
@@ -675,7 +893,7 @@ std::vector<std::uint8_t> read_bytes(const std::filesystem::path& p) {
 } // namespace
 
 TEST_CASE("G3 every production class through advance equals golden") {
-    // G3 (docs/sim/state.md Â§14.3): synthetic::g3_scenario, 2 000 single-player advances of
+    // G3 (docs/sim/state.md §14.3): synthetic::g3_scenario, 2 000 single-player advances of
     // 100 ms (tick 100 000), a checkpoint before the first and after every 100th advance,
     // recorded with the Recorder as fixtures/synthetic/sim/g3.log.
     G3 g = G3::make();
@@ -734,8 +952,10 @@ TEST_CASE("G3 every production class through advance equals golden") {
     for (std::size_t i = 1; i < small.figures_out.size(); ++i) {
         animals += small.figures_out[i];
     }
-    CHECK(animals >= 1);
-    CHECK(animals <= 3);
+    // Three animals, max_figures(0): two of kind 107 (limit 2) and one of 109 (limit 1), as
+    // the world's draws picked them (pinned like the goldens).
+    CHECK(small.figures_out == std::vector<std::uint32_t>{1, 2, 0, 1, 0});
+    CHECK(animals == 3);
     // Player 0's bow maker: BOGEN only, 9 per step; 143 steps reach the capacity (1287 >=
     // 1280), using 8 wood and 4 ropes each; line 1 is locked and stays empty.
     const auto& bow0 = payload<sim::WeaponsWorkshop>(w, 0, kBowMaker0);
@@ -756,10 +976,10 @@ TEST_CASE("G3 every production class through advance equals golden") {
     CHECK(deposits(w)[1].remaining == 0);
     // The pioneer house is inert: `last` untouched.
     CHECK(std::get<sim::Inert>(building(w, 0, kHouse0).payload).last == 0);
-    // One draw per small-farm step: 200 gates at 100 ms steps (the city is visited at
-    // every advance), and nothing else draws before tick 150 000.
-    CHECK(draws >= 196);
-    CHECK(draws <= 200);
+    // One draw per small-farm step, and nothing else draws before tick 150 000: 199 steps in
+    // 100 000 ticks (one gate per 500 ticks; the scheduler reaches the farm a little after
+    // each gate opens, so the 200th falls after the end). Pinned like the goldens.
+    CHECK(draws == 199);
     const std::uint32_t len = static_cast<std::uint32_t>(w.rng().table().size());
     CHECK(w.rng().cursor() == (cursor0 + draws) % len);
     // UI events: one Notice 0x19 (the mine), no figure with the trapper's job.

@@ -82,6 +82,20 @@ std::string_view warning_kind_name(ScenarioWarningKind kind) {
         return "LinkTreasuresCapped";
     case ScenarioWarningKind::LinkTemplatePlayers:
         return "LinkTemplatePlayers";
+    case ScenarioWarningKind::MarketNumberNotKept:
+        return "MarketNumberNotKept";
+    case ScenarioWarningKind::BuildGoodsOutOfRange:
+        return "BuildGoodsOutOfRange";
+    case ScenarioWarningKind::TradeEntryBeyondSlots:
+        return "TradeEntryBeyondSlots";
+    case ScenarioWarningKind::Head2FieldNotMapped:
+        return "Head2FieldNotMapped";
+    case ScenarioWarningKind::StatisticsNotModelled:
+        return "StatisticsNotModelled";
+    case ScenarioWarningKind::StatisticsHistoryNotModelled:
+        return "StatisticsHistoryNotModelled";
+    case ScenarioWarningKind::HouseRecordNotModelled:
+        return "HouseRecordNotModelled";
     }
     return "?";
 }
@@ -110,7 +124,66 @@ std::vector<ScenarioWarningKind> all_warning_kinds() {
             ScenarioWarningKind::LinkRawMaterials,
             ScenarioWarningKind::LinkTreasureUnplaced,
             ScenarioWarningKind::LinkTreasuresCapped,
-            ScenarioWarningKind::LinkTemplatePlayers};
+            ScenarioWarningKind::LinkTemplatePlayers,
+            ScenarioWarningKind::MarketNumberNotKept,
+            ScenarioWarningKind::BuildGoodsOutOfRange,
+            ScenarioWarningKind::TradeEntryBeyondSlots,
+            ScenarioWarningKind::Head2FieldNotMapped,
+            ScenarioWarningKind::StatisticsNotModelled,
+            ScenarioWarningKind::StatisticsHistoryNotModelled,
+            ScenarioWarningKind::HouseRecordNotModelled};
+}
+
+// ---- The house population reading and the VOLK name table (T26). Pure; declared in
+// the header. See the header for why they are not applied to state.
+
+std::uint32_t house_need_stock(std::uint32_t menge, std::uint32_t s, std::uint32_t residents) {
+    // D AnnoWelt 0x1007702b–0x10077119: stock = trunc(Menge · s · residents · 128 /
+    // 1536) (population.md §2; 128 = 100 %). u64 so the product cannot overflow.
+    return static_cast<std::uint32_t>(std::uint64_t{menge} * s * residents * 128U / 1536U);
+}
+
+std::vector<std::uint32_t> house_satisfaction(std::uint8_t version, std::uint32_t n,
+                                              formats::Bytes need_bytes) {
+    std::vector<std::uint32_t> out;
+    if (version == 0) {
+        return out; // 0x10076f34: no need bytes, the stocks keep SetGroup's values.
+    }
+    const bool pairs = version == 1; // 0x10076f69: 2 bytes per need, the SECOND is s_j.
+    out.reserve(n);
+    for (std::uint32_t j = 0; j < n; ++j) {
+        const std::size_t at = pairs ? std::size_t{2} * j + 1 : std::size_t{j};
+        out.push_back(at < need_bytes.size() ? need_bytes[at] : 0U);
+    }
+    return out;
+}
+
+bool house_reset_applies(std::uint32_t group, std::uint32_t residents,
+                         std::uint32_t lower_wohnmax) {
+    // D 0x10076e9e–0x10076ecb: group above pioneers and residents below half the
+    // lower group's Wohnmax (u16 at group − 0x50, shr 1).
+    return group != 0 && residents < lower_wohnmax / 2;
+}
+
+namespace {
+// D AnnoGame 0x10024c50 (kind 0x1c, 0x10013d80): the 14 people names, index =
+// people value. 14..19 are null pointers (never match).
+constexpr std::string_view kVolkNames[] = {
+    "GOTT",    "SPIELER",  "MAUREN",  "BEDUINEN", "MONGOLEN", "AFRIKANER", "AZTEKEN",
+    "ESKIMOS", "INDIANER", "SUEDSEE", "HOEHLEN",  "PIRATEN",  "VENECIA",   "BANDE"};
+} // namespace
+
+std::string_view volk_name(std::uint32_t i) {
+    return i < std::size(kVolkNames) ? kVolkNames[i] : std::string_view{};
+}
+
+std::int32_t volk_name_index(std::string_view name) {
+    for (std::size_t i = 0; i < std::size(kVolkNames); ++i) {
+        if (kVolkNames[i] == name) {
+            return static_cast<std::int32_t>(i);
+        }
+    }
+    return -1;
 }
 
 ScenarioCounts count(const LoadedScenario& s) {
@@ -146,6 +219,16 @@ struct Warnings {
     void add(ScenarioWarningKind kind, std::string path, std::string_view record,
              std::uint64_t offset, std::string message) {
         out.push_back({kind, std::move(path), std::string(record), offset, std::move(message)});
+    }
+    /// A warning emitted at most once per scenario for the given `key` (a
+    /// (scope, label) pair), e.g. the T26 "once per scope" city-record warnings.
+    void once(ScenarioWarningKind kind, const std::string& scope, const std::string& label,
+              std::string path, std::string_view record, std::uint64_t offset,
+              std::string message) {
+        if (!seen_once.emplace(scope, label).second) {
+            return;
+        }
+        add(kind, std::move(path), record, offset, std::move(message));
     }
     /// UnknownRecord once per scenario, `scope` and record name.
     void unknown_record(const std::string& scope, const std::string& path, std::string_view record,
@@ -252,14 +335,21 @@ std::uint16_t le16(const std::uint8_t* p) {
     return static_cast<std::uint16_t>(p[0] | (p[1] << 8));
 }
 
+std::uint32_t le32(const std::uint8_t* p) {
+    return static_cast<std::uint32_t>(p[0]) | (static_cast<std::uint32_t>(p[1]) << 8) |
+           (static_cast<std::uint32_t>(p[2]) << 16) | (static_cast<std::uint32_t>(p[3]) << 24);
+}
+
 /// A building's own record after its 4-byte position, read as the class's Load does
 /// (slot +0x7c; docs/re/annowelt.md "Scenario cities" (b)). Returns false when the
 /// adapter does not map the bytes (a class whose Load is not read, or a record that
-/// would overrun the original's buffer): the make_* default stays. The switch: each
-/// Load passes the result of slot +0xac of the object at building +0x14, called with
-/// (0, the switch bit), to slot +0xc8 (workshop 0x100686aa / 0x100686b3, farm
-/// 0x1006efd1 / 0x1006efda); that +0xac returns the bit unchanged is likely (not read,
-/// OQ-145).
+/// would overrun the original's buffer): the make_* default stays. The switch (D, T25
+/// (h), docs/re/annowelt.md "Scenario cities" (h)): the Load calls type slot +0xac
+/// (building +0x14; AnnoGame 0x1000a410, ret 4) with 0, which returns output goods 0
+/// (type byte +0x206 + i); then it calls building slot +0xc8 with (output goods i, the
+/// switch bit), which books the running-cost change (0x10072a60) and stores the bit at
+/// +0x24 (workshop 0x100686aa / 0x100686b3, farm 0x1006efd1 / 0x1006efda). The stored
+/// bit is the record's bit, mapped here unchanged.
 bool read_class_record(Payload& payload, RuntimeClass cls, Bytes rec) {
     if (rec.empty()) {
         return true;
@@ -403,7 +493,8 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
                                      ScenarioSpec::IslandSpec& is, IslandCities& ic,
                                      ScenarioSpec::CitySpec& city, const TypeRegistry& types,
                                      const SimConfig& config, Warnings& warn,
-                                     const std::map<std::uint32_t, std::optional<GoodsId>>& goods) {
+                                     const std::map<std::uint32_t, std::optional<GoodsId>>& goods,
+                                     LoadedScenario& loaded) {
     const std::size_t header = r.long_form ? tagged::kLongHeaderLen : tagged::kHeaderLen;
     auto kids = tagged::parse_records(r.payload.subspan(6), r.offset + header + 6);
     if (!kids) {
@@ -417,14 +508,163 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
         }
         return ic.owner;
     };
+    // Trade-list slot counts (HEAD2 [0x26]/[0x27], read before VK/EK in file order).
+    // Defaults, not limits: the original constructors (VK count byte +0x64 = 4,
+    // 0x10027510; EK count byte +0x94 = 6, 0x10027590); the lists hold up to 8/12 and
+    // grow to the entries read (TradeEntryBeyondSlots). A modded warehouse would carry
+    // its own counts (SimConfig, OQ-155).
+    constexpr std::uint32_t kDefaultVkSlots = 4, kDefaultEkSlots = 6;
+    std::uint32_t vk_slots = kDefaultVkSlots, ek_slots = kDefaultEkSlots;
+    // City.goods / build_goods are sized once (lazily) to the config; City.trade_lists
+    // to the config list count, each inner list grown as entries are read.
+    auto goods_settings = [&]() -> std::vector<GoodsSetting>& {
+        if (!city.goods.has_value()) {
+            city.goods = std::vector<GoodsSetting>(config.warehouse_goods, GoodsSetting{});
+        }
+        return *city.goods;
+    };
+    auto build_goods_rec = [&]() -> std::vector<BuildGoods>& {
+        if (!city.build_goods.has_value()) {
+            city.build_goods = std::vector<BuildGoods>(config.build_goods_count, BuildGoods{});
+        }
+        return *city.build_goods;
+    };
+    auto trade_list = [&](std::size_t l) -> std::vector<TradeEntry>& {
+        if (!city.trade_lists.has_value()) {
+            city.trade_lists =
+                std::vector<std::vector<TradeEntry>>(config.trade_lists, std::vector<TradeEntry>{});
+        }
+        return (*city.trade_lists)[l];
+    };
+    // VK (list 1, the sell list) and EK (list 0, the buy list): per 8-byte entry
+    // (loop index i, skipped entries keep their index) u16 [2] goods (mapped like
+    // WARE, 0/unmapped skipped), [0] -> price, [4] << 8 -> amount; the goods record
+    // (city.goods[g]) gets list_index = i and buy = the list's number (1 for VK). An
+    // index at/above the slot count is a TradeEntryBeyondSlots warning (the original
+    // has no bound; D AnnoWelt 0x1002e8e8–0x1002e9b9 / 0x1002e9d4–0x1002ea9e,
+    // docs/re/annowelt.md "Scenario cities" (g)).
+    auto read_trade = [&](const tagged::Record& k, std::size_t list_no, bool is_vk,
+                          std::uint32_t slots, const std::string& p) {
+        if (config.trade_lists <= list_no) {
+            return; // a layout without that list: nothing to store (OQ-155)
+        }
+        const std::size_t entries = k.payload.size() / 8;
+        std::vector<TradeEntry>& list = trade_list(list_no);
+        if (list.size() < std::max<std::size_t>(entries, slots)) {
+            list.resize(std::max<std::size_t>(entries, slots));
+        }
+        bool warned_slots = false;
+        for (std::size_t i = 0; i < entries; ++i) {
+            const std::uint32_t file_goods = formats::u16_le(k.payload, i * 8 + 2);
+            const auto it = goods.find(file_goods);
+            if (it == goods.end() || !it->second.has_value() || *it->second == 0 ||
+                *it->second >= config.warehouse_goods) {
+                continue; // no table / a mapped 0 / out of the warehouse: skipped, i advances
+            }
+            const auto g = static_cast<std::uint32_t>(*it->second);
+            TradeEntry& e = list[i];
+            e.goods = static_cast<GoodsId>(g);
+            e.price = formats::u16_le(k.payload, i * 8);                             // [0] -> e +4
+            e.amount_88 = std::uint32_t{formats::u16_le(k.payload, i * 8 + 4)} << 8; // [4] << 8
+            GoodsSetting& gs = goods_settings()[g];
+            gs.buy = is_vk;                               // +0xa bit 0 = the list number
+            gs.list_index = static_cast<std::int32_t>(i); // +0xb = the loop index
+            if (i >= slots && !warned_slots) {
+                warned_slots = true;
+                warn.add(ScenarioWarningKind::TradeEntryBeyondSlots, p, k.name, k.offset,
+                         std::string(k.name) + " has an entry at index " + std::to_string(i) +
+                             " at or beyond the list's " + std::to_string(slots) +
+                             " slots (the original has no bound; the list is grown)");
+            }
+        }
+    };
     for (const tagged::Record& k : kids.value()) {
         const std::string kp = where + "." + std::string(k.name);
-        if (k.name == "HEAD2") {
-            // 0x1002e383–0x1002e3e5: a zero-filled 64-byte buffer, u16 [0x24] << 8 is the
-            // capacity, 0 -> 0x3200 (50 t).
+        if (k.name == "HEAD2" || k.name == "HEAD") {
+            // HEAD2 0x1002e399–0x1002e50a, HEAD 0x1002e1c9–0x1002e37e (the older form, the
+            // same 64-byte buffer; its owner [2] is ignored here — the owner comes from
+            // the player block). docs/re/annowelt.md "Scenario cities" (g), sze.md HEAD2
+            // byte map.
             const auto b = zero_filled<64>(k.payload);
-            const std::uint32_t cap = le16(&b[0x24]);
+            const std::uint32_t cap = le16(&b[0x24]); // [0x24] << 8 -> capacity, 0 -> 50 t
             city.capacity = cap != 0 ? cap << 8 : CityStock{}.capacity;
+            if (b[0x26] != 0) {
+                vk_slots = b[0x26]; // -> +0x140, the VK list's slot count
+            }
+            if (b[0x27] != 0) {
+                ek_slots = b[0x27]; // -> +0xd8, the EK list's slot count
+            }
+            // [0x28]/[0x38]/[0x3c] statistics 0/4/5 (stored × 7 by the original, the getter
+            // divides): the City has no statistics field (state.md §4.7 "Not modelled",
+            // O-9/O-23), so they are read but not kept.
+            const bool stat = le32(&b[0x28]) != 0 ||
+                              (k.name == "HEAD2" && (le32(&b[0x38]) != 0 || le32(&b[0x3c]) != 0));
+            if (stat) {
+                warn.once(ScenarioWarningKind::StatisticsNotModelled, "cities", "head2 stat", kp,
+                          k.name, k.offset,
+                          "HEAD2 holds city statistics (sales/trade); the City has no statistics "
+                          "field (not modelled, O-9/O-23)");
+            }
+            // [0x2c] property 1, [0x34]/[0x36] the research sub-object (OQ-157), and a
+            // foreign bit in the player mask [0x30] (the owner's own bit is the default,
+            // O-40): no City field. One Head2FieldNotMapped per city that carries one.
+            const std::uint32_t mask30 = le32(&b[0x30]);
+            const std::uint32_t owner_bit =
+                city.owner.v < 32 ? (1U << city.owner.v) : 0U; // bit by player index
+            const bool unmapped =
+                le16(&b[0x2c]) != 0 ||
+                (k.name == "HEAD2" &&
+                 (le16(&b[0x34]) != 0 || le16(&b[0x36]) != 0 || (mask30 & ~owner_bit) != 0));
+            if (unmapped) {
+                warn.add(ScenarioWarningKind::Head2FieldNotMapped, kp, k.name, k.offset,
+                         "HEAD2 carries a field with no City target (property [0x2c], the research "
+                         "sub-object [0x34]/[0x36], or a non-owner bit in the player mask [0x30]): "
+                         "not mapped (O-40, OQ-157)");
+            }
+        } else if (k.name == "BAUMAT") {
+            // 0x1002e862–0x1002e8cd: length / 8 entries {u16 [0] goods (file numbering,
+            // mapped like WARE), u16 [2] value}; city +0x48c + 8g = [2] << 8. For a goods
+            // in the build-goods block [build_goods_first, +count) this is
+            // BuildGoods::setting; the original writes any other goods past the block
+            // (no range check) -> BuildGoodsOutOfRange here.
+            for (std::size_t o = 0; o + 8 <= k.payload.size(); o += 8) {
+                const std::uint32_t file_goods = formats::u16_le(k.payload, o);
+                const std::uint32_t value = formats::u16_le(k.payload, o + 2);
+                const auto it = goods.find(file_goods);
+                if (it == goods.end() || !it->second.has_value() || *it->second == 0) {
+                    continue; // no table / a mapped 0: skipped, as WARE
+                }
+                const auto g = static_cast<std::uint32_t>(*it->second);
+                if (g < config.build_goods_first ||
+                    g - config.build_goods_first >= config.build_goods_count) {
+                    warn.add(ScenarioWarningKind::BuildGoodsOutOfRange, kp, k.name, k.offset,
+                             "goods " + std::to_string(g) + " is not in the build-goods block [" +
+                                 std::to_string(config.build_goods_first) + ", +" +
+                                 std::to_string(config.build_goods_count) +
+                                 ") (the original writes past the block)");
+                    continue;
+                }
+                build_goods_rec()[g - config.build_goods_first].setting = value << 8;
+            }
+        } else if (k.name == "VK") {
+            read_trade(k, 1, true, vk_slots, kp);
+        } else if (k.name == "EK") {
+            read_trade(k, 0, false, ek_slots, kp);
+        } else if (k.name == "STAT2") {
+            // 0x1002e525–0x1002e5a0: the ten tick counters and two counts; the City has no
+            // such fields (state.md §4.7), read but not kept.
+            warn.once(ScenarioWarningKind::StatisticsNotModelled, "cities", "stat2", kp, k.name,
+                      k.offset,
+                      "STAT2 holds the city's tick counters; not modelled (state.md §4.7)");
+        } else if (k.name == "STST2" || k.name == "STAT") {
+            // STST2 0x1002eb2a (the statistics history), STAT skipped like the original:
+            // the rebuild has no sampled history (state.md §4.7).
+            warn.once(ScenarioWarningKind::StatisticsHistoryNotModelled, "cities", "stat-history",
+                      kp, k.name, k.offset,
+                      "the city statistics history is not modelled (state.md §4.7)");
+        } else if (k.name == "VOLK") {
+            // 0x1002eaed–0x1002eb16: read into an uninitialised buffer and never used; the
+            // original ignores a city VOLK (no warning).
         } else if (k.name == "WARE") {
             // 0x1002e7ca–0x1002e84b: length / 8 entries {u16 goods (file numbering),
             // u16 tons}; the goods mapped by WARETYPE name, 0 -> skipped; stock = tons << 8.
@@ -572,25 +812,69 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
                 // 0 at tick 0, the default), then the Load's fields.
                 std::optional<Payload> payload;
                 if (e.payload.size() > 4) {
-                    const ClassInfo& cls = types.class_info(type->cls);
-                    payload = make_payload(*type, cls, config);
-                    if (auto* mine = std::get_if<Mine>(&*payload)) {
-                        mine->deep = mine_is_deep(type->prod, type->research_id);
-                    }
-                    if (!read_class_record(*payload, type->cls, e.payload.subspan(4)) &&
-                        warn.seen_once
-                            .emplace("building record", std::to_string(static_cast<int>(type->cls)))
-                            .second) {
-                        warn.add(ScenarioWarningKind::UndecodedBuildingRecord, ep, e.name, e.offset,
-                                 "the record of class " +
-                                     std::to_string(static_cast<int>(type->cls)) +
-                                     " is not mapped: the make_* default stays");
-                    }
-                    if (const std::string p = payload_problem(*payload, *type, cls, config);
-                        !p.empty()) {
-                        warn.add(ScenarioWarningKind::BuildingRefused, ep, e.name, e.offset,
-                                 "building " + std::to_string(bi->id) + ": " + p);
-                        continue;
+                    const Bytes rec = e.payload.subspan(4);
+                    if (type->cls == RuntimeClass::House) {
+                        // The house record (0x10076e60): residents, satisfaction bytes and the
+                        // reset rule. The sim has no house population state (Inert payload, no
+                        // BGruppen group data) and T26 adds none, so the record is consumed
+                        // (not UndecodedBuildingRecord) and its residents counted for the
+                        // economy diagnostic; the s_j -> stock formula and the reset rule are
+                        // the pure functions house_need_stock / house_satisfaction /
+                        // house_reset_applies, unit-tested but not applied (HouseRecordNotModelled,
+                        // OQ-165).
+                        const auto h = zero_filled<8>(rec);
+                        const std::uint32_t residents = h[1]; // [1]
+                        ++loaded.houses;
+                        if (residents > 0) {
+                            ++loaded.houses_with_residents;
+                        }
+                        loaded.resident_sum += residents;
+                        warn.once(ScenarioWarningKind::HouseRecordNotModelled, "cities", "house",
+                                  ep, e.name, e.offset,
+                                  "a house's residents, stocks and the reset rule are not applied: "
+                                  "the sim has no house population state (OQ-165); the record is "
+                                  "read and consumed");
+                    } else if (type->cls == RuntimeClass::Market ||
+                               type->cls == RuntimeClass::MarketCombi) {
+                        // The market record (0x1006be00): one nested KONTID u16 = the market's
+                        // number on its island. The Market payload has no number field and T26
+                        // adds none, so it is read but not kept (MarketNumberNotKept, OQ-158).
+                        std::string number = "?";
+                        if (auto subs = tagged::parse_records(rec, e.offset)) {
+                            for (const tagged::Record& sub : subs.value()) {
+                                if (sub.name == "KONTID" && sub.payload.size() >= 2) {
+                                    number = std::to_string(formats::u16_le(sub.payload, 0));
+                                }
+                            }
+                        }
+                        warn.once(ScenarioWarningKind::MarketNumberNotKept, "cities", "market", ep,
+                                  e.name, e.offset,
+                                  "the market's KONTID (number " + number +
+                                      ") is read but not kept: the Market payload has no number "
+                                      "field (OQ-158); the record is consumed");
+                    } else {
+                        const ClassInfo& cls = types.class_info(type->cls);
+                        payload = make_payload(*type, cls, config);
+                        if (auto* mine = std::get_if<Mine>(&*payload)) {
+                            mine->deep = mine_is_deep(type->prod, type->research_id);
+                        }
+                        if (!read_class_record(*payload, type->cls, rec) &&
+                            warn.seen_once
+                                .emplace("building record",
+                                         std::to_string(static_cast<int>(type->cls)))
+                                .second) {
+                            warn.add(ScenarioWarningKind::UndecodedBuildingRecord, ep, e.name,
+                                     e.offset,
+                                     "the record of class " +
+                                         std::to_string(static_cast<int>(type->cls)) +
+                                         " is not mapped: the make_* default stays");
+                        }
+                        if (const std::string p = payload_problem(*payload, *type, cls, config);
+                            !p.empty()) {
+                            warn.add(ScenarioWarningKind::BuildingRefused, ep, e.name, e.offset,
+                                     "building " + std::to_string(bi->id) + ": " + p);
+                            continue;
+                        }
                     }
                 }
                 std::vector<std::uint32_t>& g = owners();
@@ -989,15 +1273,13 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                 if (r.name == "HEAD") {
                     read_player_head(r.payload, p);
                 } else if (r.name == "VOLK") {
-                    // D AnnoWelt 0x1001d657–0x1001d753 (switch 0x1001e8f4): people 1
-                    // for types 8, 11, 12; 11 for 15; 12 for 16, which also set
-                    // +0xA0 bits 0x19 and colour 0; types 9, 10, 13, 14, 17 and up take
-                    // the index of the VOLK name in a 20-name list (people 2..12 also
-                    // set the bits and colour 0). The reader first matches the name
-                    // against that list (0x1001d69e–0x1001d6f7) and sets nothing when
-                    // it does not match; the list is not traced (OQ-143). The names
-                    // that occur with types 8/11/12/15/16 are SPIELER, PIRATEN and
-                    // VENECIA (P), taken here as matching.
+                    // D AnnoWelt 0x1001d657–0x1001d753 (switch 0x1001e8f4 on the player type):
+                    // types 8, 11, 12 -> people 1; 15 -> 11, 16 -> 12 (both also set +0xA0 bits
+                    // 0x19 and colour 0); every OTHER type -> people = the index of the VOLK
+                    // record's name in the 14-name table (volk_name_index, D 0x10024c50, kind
+                    // 0x1c), and for indices 2..12 also the bits 0x19 and colour 0 (indices 0,
+                    // 1, 13 set no bits). A name not in the table sets nothing (UndecodedPeople).
+                    // docs/re/annowelt.md "Scenario cities" (i), T26 OQ-143.
                     if (p.kind == 8 || p.kind == 11 || p.kind == 12) {
                         p.volk = 1;
                     } else if (p.kind == 15 || p.kind == 16) {
@@ -1005,12 +1287,22 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                         p.flags_a0 |= 0x19U;
                         p.colour = 0;
                     } else {
-                        warn.add(ScenarioWarningKind::UndecodedPeople, path + ".VOLK", r.name,
-                                 r.offset,
-                                 "type " + std::to_string(p.kind) +
-                                     ": the VOLK name list is not traced (OQ-143): people stays " +
-                                     std::to_string(p.volk) +
-                                     ", and the +0xA0 bits 0x19 and colour 0 may be missing");
+                        const std::vector<std::uint8_t> nm = c_string(r.payload);
+                        const std::string name(nm.begin(), nm.end());
+                        const std::int32_t idx = volk_name_index(name);
+                        if (idx < 0) {
+                            warn.add(ScenarioWarningKind::UndecodedPeople, path + ".VOLK", r.name,
+                                     r.offset,
+                                     "type " + std::to_string(p.kind) + ": the VOLK name '" + name +
+                                         "' is not one of the 14 names (OQ-143): people stays " +
+                                         std::to_string(p.volk));
+                        } else {
+                            p.volk = static_cast<std::uint32_t>(idx);
+                            if (idx >= 2 && idx <= 12) {
+                                p.flags_a0 |= 0x19U;
+                                p.colour = 0;
+                            }
+                        }
                     }
                 } else {
                     warn.unknown_record("players", path + "." + std::string(r.name), r.name,
@@ -1077,7 +1369,7 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
             city.owner = PlayerId{pl.index};
             const std::size_t island_index = static_cast<std::size_t>(is - spec.islands.data());
             if (auto e = read_city(r, where, *is, cities_of[island_index], city, types, config,
-                                   warn, goods)) {
+                                   warn, goods, out)) {
                 return *e;
             }
             is->cities.push_back(std::move(city));

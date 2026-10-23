@@ -72,6 +72,19 @@ std::string check_island_spec(const Spec::IslandSpec& is, std::size_t i, const S
             return cp + ".stock: " + std::to_string(cs.stock->size()) +
                    " entries, SimConfig.warehouse_goods is " + std::to_string(cfg.warehouse_goods);
         }
+        if (cs.goods.has_value() && cs.goods->size() != cfg.warehouse_goods) {
+            return cp + ".goods: " + std::to_string(cs.goods->size()) +
+                   " entries, SimConfig.warehouse_goods is " + std::to_string(cfg.warehouse_goods);
+        }
+        if (cs.build_goods.has_value() && cs.build_goods->size() != cfg.build_goods_count) {
+            return cp + ".build_goods: " + std::to_string(cs.build_goods->size()) +
+                   " entries, SimConfig.build_goods_count is " +
+                   std::to_string(cfg.build_goods_count);
+        }
+        if (cs.trade_lists.has_value() && cs.trade_lists->size() != cfg.trade_lists) {
+            return cp + ".trade_lists: " + std::to_string(cs.trade_lists->size()) +
+                   " lists, SimConfig.trade_lists is " + std::to_string(cfg.trade_lists);
+        }
         for (std::size_t b = 0; b < cs.buildings.size(); ++b) {
             const Spec::BuildingSpec& bs = cs.buildings[b];
             const std::string bp = cp + ".buildings[" + std::to_string(b) + "]";
@@ -214,6 +227,15 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
         }
         if (cs.stock.has_value()) {
             city.stock.stock = *cs.stock;
+        }
+        if (cs.goods.has_value()) {
+            city.goods = *cs.goods;
+        }
+        if (cs.build_goods.has_value()) {
+            city.build_goods = *cs.build_goods;
+        }
+        if (cs.trade_lists.has_value()) {
+            city.trade_lists = *cs.trade_lists;
         }
         out.cities[cs.no.v] = std::move(city);
     }

@@ -86,6 +86,16 @@ struct ScenarioSpec {
         /// scenario city's HEAD2, docs/re/annowelt.md "Scenario cities"); nullopt =
         /// the constructor's 50 t.
         std::optional<std::uint32_t> capacity;
+        /// The per-goods trade-list setting (City::goods, size warehouse_goods);
+        /// nullopt = all default. From STADT2 VK/EK (T26, docs/re/annowelt.md
+        /// "Scenario cities" (g)).
+        std::optional<std::vector<GoodsSetting>> goods;
+        /// The build-goods settings (City::build_goods, size build_goods_count);
+        /// nullopt = all default. From STADT2 BAUMAT (T26).
+        std::optional<std::vector<BuildGoods>> build_goods;
+        /// The trade lists (City::trade_lists, size trade_lists); nullopt = empty.
+        /// From STADT2 VK (list 1) and EK (list 0) (T26).
+        std::optional<std::vector<std::vector<TradeEntry>>> trade_lists;
         std::vector<BuildingSpec> buildings;
     };
     struct IslandSpec {

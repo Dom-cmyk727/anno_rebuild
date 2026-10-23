@@ -100,3 +100,5 @@ In `src/sim/src/transport.cpp` (`docs/sim/state.md` §5.9 has the pseudo-code):
 - a **stand-in search** (OQ-160, OQ-161) over the area's tiles.
 
 The figure type's speed, capacity, layer and load wait come from `FigurenHeader.dat` (`figure_type_from_entry`, `src/sim/src/types.cpp`). A registry without them (the synthetic registries of G1–G5) keeps the earlier default (the figure does not act; D12).
+
+**T27 (stage 2) changed, without touching behaviour:** the tile class of the walk (0 none / 1 road / 2 building) is precomputed per type as `BuildingType::walk_class` (derived, `TypeRegistry::finish`) instead of a per-search `std::map` + layout lookup; §3.1 records the RE of the walking-layer tables (static `.data`, layer 3 the most restrictive), which stay un-decoded (OQ-160); the walk still ignores terrain (OQ-170), since the sim state cannot tell water from open land. No hash moved. The real search expansion (OQ-161) and the weapons workshop's carrier (T28) are still open.

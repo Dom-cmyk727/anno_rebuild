@@ -1490,14 +1490,16 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   - the layer selects the table `0x100d1140 + 0x1c00 · layer` (engine `+0x430`);
   - the cells come from the island's tiles through island slot `+0x128` in mode 0, which reads a 9-bit mask per tile (likely the `WALKMASK` of the tile's object; every `ANLAGEN` entry has one, P 921 of 921).
 
-  The tables are `.data` filled at run time and are not read, so it is open which masks a layer accepts. P: figure 220 (the market cart) has layer 3, the only one; 287 figure types have layer 0, among them the carrier 203 and the native cart 390.
+  P: figure 220 (the market cart) has layer 3, the only one; 287 figure types have layer 0, among them the carrier 203 and the native cart 390.
+- **Update 2026-10-23 (T27, `docs/re/transport.md` §3.1):** the layer tables are **static initialised `.data`** with image content (not "filled at run time" as first believed), `0x1c00` bytes per layer; the setters are `0x1000dd20` (`[engine+0x430]`) and `0x1000f010` (`[engine+0x1030]`). The `0xff`-byte counts per layer (0:316, 1:409, 2:561, **3:75**, 4:613, D) show layer 3 (the cart) by far the most restrictive and layer 0 (the carrier) permissive — the stand-in's shape (cart→roads, others→open land) is right. Still **open:** the entry *semantics* (mask → walkable per layer); that needs the search node-expansion that reads `[engine+0x430]` in the engine at world `+0x6aa8` (vtable `0x100c1424`), the body of `0x10003d90`/`0x10004890` (also OQ-161). That is the next address.
 - **What the rebuild does (stand-in, `transport.cpp` `walk_rule`):**
   - layer `kRoadLayer` = 3 walks on road tiles only (a tile whose object type has the HEAD flag `0x4000`);
   - every other layer walks on tiles without a building (no object, or an object whose type has no building list) and on roads;
   - the home's footprint and the candidates' footprints may always be entered.
 
   A tile is a whole tile; the original's 3 × 3 sub-cells and the walk masks are not used.
-- **How to resolve:** read the writer of `0x100d1140` (the engine's set-up, `0x1000dd20` and its callers) and `0x10091fa0` mode 0, then compare the masks with `WALKMASK`. Until then the layer value and the rule move into `SimConfig` (the path named at `kRoadLayer`) if the owner wants another rule.
+- **Terrain (T27 step 7, outcome (b)): the stand-in ignores water and rivers, because the sim state cannot tell them from open land.** The island's `Terrain` (height, gfx, fertility) is a stand-in the simulation reads none of (O-53, OQ-060), and a state read from the flat stream leaves `Terrain` a placeholder with empty columns (only a digest, `island.hpp`); the `TileLayer` carries only object ids and owners, and a water tile has object 0 just as empty land does. So no per-tile water/land class exists to add to the walk rule, and T27 does **not** invent one — a carrier on open land may cross a water tile in the stand-in. Where the real information lives: the walking-layer mask above (once its semantics are decoded, OQ-160) encodes passability including water; failing that, the island tile record's terrain bits (`docs/re/islands.md`, the second dword, RE step 6(c), not read) or a new sim terrain-class field. See **OQ-170**.
+- **How to resolve:** read the search node-expansion that consumes `[engine+0x430]` (the next address above) to decode the mask semantics, and compare with the tiles' `WALKMASK` (every `ANLAGEN` entry has one, P 921 of 921). Until then the layer value and the rule stay in `transport.cpp` (`kRoadLayer`), to move into `SimConfig` if the owner wants another rule.
 
 ## OQ-161: How the original's search expands, and which nodes are goals (new, T24 2026-10-23; O-8)
 - **Status:** open, RE
@@ -1535,3 +1537,14 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   - the load wait is `round(f32 · 500)` ticks.
 - **Consequence:** a trip's length in ticks can differ from the original's by rounding (a tick per action or less for these speeds), and a figure walks tile centre to tile centre, not along the original's sub-cell path (OQ-161). The hash stays platform independent.
 - **Decision for the owner:** keep the integer walk (default), or ask for a fixed-point model of the x87 sequence once differential fixtures (T15) show the difference matters.
+
+## OQ-170: Where the transport walk could learn water, river and mountain from (new, T27 2026-10-23; OQ-160, O-53)
+- **Status:** open, RE / design
+- **Area:** simulation / transport, terrain
+- **Why:** the T27 stand-in walk rule (OQ-160) classifies a tile only by its object (road, building, or nothing); a tile with no object is "open land" and a carrier (or any non-road layer) may cross it, **including water and rivers**, because the sim state has no per-tile water/land class (the `Terrain` columns are a stand-in the sim reads none of, O-53/OQ-060, and the flat state leaves them empty; the `TileLayer` has only object ids, and water carries object 0 like empty land). In the shipped scenarios this rarely bites (producers and markets sit inland on roads), but a carrier whose open-land path would cross a bay is not stopped.
+- **The candidates for the information, in order of fidelity:**
+  1. The original's own answer: the walking-layer mask (OQ-160) — the `0x100d1140` table indexed by each tile's 9-bit mask already encodes which layers may enter a water/shore/mountain tile. Decoding it (the search node-expansion at the engine world `+0x6aa8`, `0x10003d90`/`0x10004890`) resolves both OQ-160 and this at once, with no new sim field.
+  2. The island tile record's terrain bits (`docs/re/islands.md`, the tile record's second dword, RE step 6(c) — not read), mapped to a sim terrain class.
+  3. A derived per-tile terrain class in the sim state built at load from the island's `gfx`/`height` (a new field → a `kStateHashVersion` bump; only if 1 and 2 cannot be read).
+- **What the rebuild does meanwhile:** nothing — the walk ignores terrain (stated in OQ-160). No rule is invented against the "evidence only" ground rule.
+- **How to resolve:** (1) first, as part of OQ-160's next address; then decide whether a sim terrain field is still needed.

@@ -417,7 +417,7 @@ TEST_CASE("scenario warning kinds") {
     CHECK(warnings_of(s, Kind::UnknownObject) == 1);
     CHECK(warnings_of(s, Kind::BuildingWithoutCity) == 1);
     CHECK(warnings_of(s, Kind::TileOwnersUndecoded) == 2); // the skipped island has none
-    CHECK(warnings_of(s, Kind::UnalignedIsland) == 2); // (40, 60) and (205, 100)
+    CHECK(warnings_of(s, Kind::UnalignedIsland) == 2);     // (40, 60) and (205, 100)
     CHECK(warnings_of(s, Kind::UndecodedDeposits) == 1);
     CHECK(warnings_of(s, Kind::ObjectTileTaken) == 1);
     CHECK(warnings_of(s, Kind::DuplicateObject) == 1);

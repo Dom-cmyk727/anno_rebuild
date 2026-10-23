@@ -885,7 +885,7 @@ TEST_CASE("scenario city HEAD2 slot counts, statistics and fields, BAUMAT, VK an
     CHECK(w.value().check_invariants() == "");
 }
 
-TEST_CASE("scenario HEAD2 [0x30] with only the owner's bit does not warn (T26)") {
+TEST_CASE("scenario HEAD2 player-mask with only the owner's bit does not warn (T26)") {
     Buf head2(64, 0);
     head2[0x30] = 0x01; // only the owner's bit (player 0): the default, no warning
     const sim::LoadedScenario s = load(t26_city_scene({}, record("HEAD2", head2)));
@@ -1023,7 +1023,8 @@ TEST_CASE("scenario city entries: refused buildings and entries without an item"
     // create_building's rules (F32: the original creates blindly): a footprint that
     // leaves the island or overlaps an earlier building is refused with the reason. An
     // entry whose tile holds no building item is skipped (the original's type lookup
-    // fails). A class whose Load is not read warns once per scenario and class.
+    // fails). A house record with bytes is consumed and warns HouseRecordNotModelled
+    // once per scenario (T26: no house population state).
     Buf prod2;
     item(prod2, kBigHouse, 0, 0, 0, 15, 3); // 2 x 2 from (15, 3): leaves the 16-wide island
     item(prod2, kHouse, 0, 0, 0, 8, 4);
@@ -1039,8 +1040,8 @@ TEST_CASE("scenario city entries: refused buildings and entries without an item"
     append(prod, entry(0, 0));       // EntryWithoutBuildingItem: no item
     append(prod, entry(99, 0));      // EntryWithoutBuildingItem: off the island
     append(prod, entry(5, 5));       // EntryWithoutBuildingItem: the road (OQ-144)
-    append(prod, entry(10, 4, {1})); // placed; UndecodedBuildingRecord (the house's Load)
-    append(prod, entry(11, 4, {2})); // placed; the same class: no second warning
+    append(prod, entry(10, 4, {1})); // placed; HouseRecordNotModelled (the house record)
+    append(prod, entry(11, 4, {2})); // placed; the same scope: no second warning
     Buf c = {2, 0};
     put16(c, 41);
     put16(c, 61);
@@ -1054,7 +1055,8 @@ TEST_CASE("scenario city entries: refused buildings and entries without an item"
     CHECK(b[2].x == 51);
     CHECK(warnings_of(s, Kind::BuildingRefused) == 2);
     CHECK(warnings_of(s, Kind::EntryWithoutBuildingItem) == 3);
-    CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 1);
+    CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 0);  // the houses are their own kind
+    CHECK(warnings_of(s, Kind::HouseRecordNotModelled) == 1);   // the two house records (T26)
     CHECK(warnings_of(s, Kind::BuildingItemWithoutEntry) == 0); // every item is named
     std::vector<std::string> reasons, skipped;
     for (const sim::ScenarioWarning& w : s.warnings) {

@@ -64,6 +64,20 @@ sim::Building& building(sim::World& w, std::uint32_t island, std::uint32_t seria
     return *b;
 }
 
+/// The player in slot `id` (it must be there).
+const sim::Player& player(const sim::World& w, std::uint32_t id) {
+    const sim::Player* p = w.players().find(sim::PlayerId{id});
+    REQUIRE(p != nullptr);
+    return *p;
+}
+
+/// The figure `id` (it must be there).
+const sim::Figure& figure(const sim::World& w, sim::FigureId id) {
+    const sim::Figure* f = sim::find_figure(w.figures(), id);
+    REQUIRE(f != nullptr);
+    return *f;
+}
+
 template <class T> T& payload(sim::World& w, std::uint32_t island, std::uint32_t serial) {
     T* p = std::get_if<T>(&building(w, island, serial).payload);
     REQUIRE(p != nullptr);
@@ -348,9 +362,11 @@ TEST_CASE("handler effects are merged right after each handler (C2)") {
     sim::Seams seams;
     seams.delayed_hit.name = "test_pay";
     seams.delayed_hit.ctx = &seen;
-    seams.delayed_hit.fn = [](void* c, const sim::TickContext&, sim::SerialWorld& sw,
+    seams.delayed_hit.fn = [](void* c, const sim::TickContext& ctx, sim::SerialWorld& sw,
                               const sim::TimedEvent& e) {
-        static_cast<Seen*>(c)->money.push_back(sw.players().find(sim::PlayerId{0})->money);
+        static_cast<void>(ctx.draw.next(sim::DrawSite::CityRandomEvents)); // telemetry
+        const sim::Player* p = sw.players().find(sim::PlayerId{0});
+        static_cast<Seen*>(c)->money.push_back(p != nullptr ? p->money : 0);
         sim::MoneyDelta m;
         m.player = sim::PlayerId{0};
         m.delta = -static_cast<std::int64_t>(e.value);
@@ -362,7 +378,38 @@ TEST_CASE("handler effects are merged right after each handler (C2)") {
     queue(w, 5, hit_event(3));
     w.advance(10);
     CHECK(seen.money == std::vector<std::int64_t>{10000, 9900, 9880});
-    CHECK(w.players().find(sim::PlayerId{0})->money == 9877);
+    CHECK(player(w, 0).money == 9877);
+    // A handler's draws are told per site in the advance's output.
+    CHECK(draws_at(w, sim::DrawSite::CityRandomEvents) == 3);
+}
+
+TEST_CASE("an event the island phase queues due now is dispatched in the same advance") {
+    // §5.3: the islands' Effects are merged (step 1) before the timed events are popped
+    // (step 2), so an event queued with delay 0 by an island tick is served by the same
+    // advance; one with delay 1 waits for the next tick.
+    const syn::SyntheticTypes t = types();
+    struct Once {
+        EventScript s;
+        int calls = 0;
+    } once;
+    sim::Seams seams;
+    install_handlers(seams, &once.s);
+    seams.city_pass[0].name = "test_queue_once";
+    seams.city_pass[0].ctx = &once;
+    seams.city_pass[0].fn = [](void* c, const sim::TickContext&, sim::Island&, sim::City&,
+                               sim::Effects& fx) {
+        auto& o = *static_cast<Once*>(c);
+        if (o.calls++ == 0) {
+            fx.events.push_back(later(0, hit_event(1)));
+            fx.events.push_back(later(1, hit_event(2)));
+        }
+    };
+    sim::World w = make(syn::g4_scenario(t), t, seams);
+    w.advance(100); // tick 50
+    CHECK(once.s.seen == strings({"hit 1"}));
+    CHECK(once.s.ticks == std::vector<std::uint64_t>{50});
+    w.advance(2); // tick 51
+    CHECK(once.s.seen == strings({"hit 1", "hit 2"}));
 }
 
 TEST_CASE("kind-1 events saved: both kinds survive save and load and fire alike") {
@@ -431,15 +478,18 @@ TEST_CASE("events flush after figures: a delay-0 hit of the figure phase waits o
         put_figure(w, bid(0, kWeaver));
         w.advance(100); // tick 50
         std::vector<std::uint64_t> first = s.ticks;
+        const std::uint64_t dispatched = w.last_output().events_dispatched;
         w.advance(100); // tick 100
-        return std::pair{first, s.ticks};
+        return std::tuple{first, s.ticks, dispatched};
     };
-    const auto [plain_first, plain_all] = run(false);
+    const auto [plain_first, plain_all, plain_n] = run(false);
     CHECK(plain_first.empty());
     CHECK(plain_all == std::vector<std::uint64_t>{100});
-    const auto [flush_first, flush_all] = run(true);
+    CHECK(plain_n == 0);
+    const auto [flush_first, flush_all, flush_n] = run(true);
     CHECK(flush_first == std::vector<std::uint64_t>{50});
     CHECK(flush_all == std::vector<std::uint64_t>{50, 100});
+    CHECK(flush_n == 1); // the second pass is counted in the advance's output
 }
 
 TEST_CASE("a dispatch stopped at the cap is reported by check_invariants until the next advance") {
@@ -541,19 +591,50 @@ TEST_CASE("expiry compares a 16-bit difference across the wrap of the tick") {
     w.advance(2); // tick 72500, low 16 bits 6964: u16(6964 - 65000) = 7500
     CHECK(sim::find_figure(w.figures(), f) == nullptr);
     CHECK(w.check_invariants() == "");
+    // A stamp taken after the first wrap: at tick 70000 the stamp is u16(70000) = 4464, so
+    // a 32-bit difference would read 65586 at tick 70050 and end the figure at once.
+    sim::World v = quiet_g4(t);
+    sim::WorldTestAccess::clock(v).ms = 2 * 70000;
+    const sim::FigureId g = put_figure(v, bid(0, kWeaver), 0, std::uint16_t{4464});
+    v.advance(100); // tick 70050: u16 difference 50
+    CHECK(sim::find_figure(v.figures(), g) != nullptr);
+    v.advance(2 * 7449); // tick 77499: 7499
+    CHECK(sim::find_figure(v.figures(), g) != nullptr);
+    v.advance(2); // tick 77500: 7500
+    CHECK(sim::find_figure(v.figures(), g) == nullptr);
 }
 
 TEST_CASE("counter release: phase D frees the slot, keeps hint and length, releases the counter") {
     // D 0x1009ab33..0x1009ab7c: every figure on the deferred list is deleted and the list
-    // emptied. A figure on both lists is released once.
+    // emptied. A figure on both lists ends in phase C and is released once; a figure
+    // releases the counter it holds (a small farm's animal counter 2 here).
     const syn::SyntheticTypes t = types();
-    sim::World w = quiet_g4(t);
+    sim::ScenarioSpec spec = syn::g4_scenario(t);
+    {
+        sim::SmallFarm sf = sim::make_small_farm(t.registry->find(t.small_farm)->prod);
+        sf.line_on[0] = false; // both lines off: no step, no draw, no figure of its own
+        sf.line_on[1] = false;
+        sim::ScenarioSpec::BuildingSpec b;
+        b.type = t.small_farm;
+        b.x = 115;
+        b.y = 115;
+        b.payload = sim::Payload{sf};
+        spec.islands[0].cities[0].buildings.push_back(b);
+    }
+    sim::World w = make(spec, t);
+    payload<sim::Workshop>(w, 0, kWeaver).switched_on = false;
+    payload<sim::Farm>(w, 0, kFarm).switched_on = false;
+    constexpr std::uint32_t kSmallFarm = 3;
     const sim::FigureId a = put_figure(w, bid(0, kWeaver));
     const sim::FigureId b = put_figure(w, bid(0, kWeaver), 0, std::nullopt, true);
-    const sim::FigureId both = put_figure(w, bid(0, kFarm), 0, std::uint16_t{0}, true);
+    // Stamp u16(50 - 7500): 7500 old at tick 50, so phase C ends it before phase D.
+    const sim::FigureId both =
+        put_figure(w, bid(0, kWeaver), 0, static_cast<std::uint16_t>(50 - 7500), true);
+    const sim::FigureId animal = put_figure(w, bid(0, kSmallFarm), 2, std::nullopt, true);
     const sim::FigureId orphan = put_figure(w, bid(0, 77), 0, std::nullopt, true);
-    REQUIRE(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 2);
-    REQUIRE(payload<sim::Farm>(w, 0, kFarm).workers_out == 1);
+    REQUIRE(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 3);
+    REQUIRE(payload<sim::SmallFarm>(w, 0, kSmallFarm).figures_out ==
+            std::vector<std::uint32_t>{0, 0, 1, 0, 0});
     const std::int64_t hint = w.figures().list.hint;
     const std::uint64_t next = w.ids().next_figure;
     REQUIRE(w.check_invariants() == "");
@@ -561,6 +642,7 @@ TEST_CASE("counter release: phase D frees the slot, keeps hint and length, relea
     CHECK(sim::find_figure(w.figures(), a) != nullptr);
     CHECK(sim::find_figure(w.figures(), b) == nullptr);
     CHECK(sim::find_figure(w.figures(), both) == nullptr);
+    CHECK(sim::find_figure(w.figures(), animal) == nullptr);
     CHECK(sim::find_figure(w.figures(), orphan) == nullptr);
     CHECK(w.figures().deferred.empty());
     CHECK(w.figures().expiry.empty());
@@ -568,8 +650,9 @@ TEST_CASE("counter release: phase D frees the slot, keeps hint and length, relea
     CHECK(w.figures().list.slots.size() == 10);
     CHECK(w.figures().list.hint == hint);
     CHECK(w.ids().next_figure == next);
-    CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 1);
-    CHECK(payload<sim::Farm>(w, 0, kFarm).workers_out == 0);
+    CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 1); // 3 - b - both
+    CHECK(payload<sim::SmallFarm>(w, 0, kSmallFarm).figures_out ==
+          std::vector<std::uint32_t>{0, 0, 0, 0, 0});
     CHECK(w.check_invariants() == "");
     // The freed slots are taken again by the list policy (the scan from hint + 1).
     const sim::FigureId c = put_figure(w, bid(0, kWeaver));
@@ -638,17 +721,30 @@ TEST_CASE("a figure seam writes its own figure and the registry lists follow its
             f.marked_for_delete = true;
         } else if (f.kind == 4) {
             f.id = sim::FigureId{999}; // not the seam's to change
+        } else if (f.kind == 5) {
+            f.created_stamp.reset(); // leaves the expiry list
+        } else if (f.kind == 6) {
+            f.marked_for_delete = false; // leaves the deferred list
         }
     };
     sim::World w = quiet_g4(t, seams);
     const sim::FigureId stamped = put_figure(w, bid(0, kWeaver));
     const sim::FigureId leaving = put_figure(w, bid(0, kFarm));
     const sim::FigureId renamed = put_figure(w, bid(0, kWeaver));
+    const sim::FigureId unstamped = put_figure(w, bid(0, kWeaver), 0, std::uint16_t{0});
+    const sim::FigureId kept = put_figure(w, bid(0, kWeaver), 0, std::nullopt, true);
     sim::WorldTestAccess::figures(w).list.slots[1]->kind = 3;
     sim::WorldTestAccess::figures(w).list.slots[2]->kind = 4;
+    sim::WorldTestAccess::figures(w).list.slots[3]->kind = 5;
+    sim::WorldTestAccess::figures(w).list.slots[4]->kind = 6;
+    REQUIRE(w.figures().expiry == std::vector<sim::FigureId>{unstamped});
+    REQUIRE(w.figures().deferred == std::vector<sim::FigureId>{kept});
     w.advance(100); // tick 50
     CHECK(w.figures().expiry == std::vector<sim::FigureId>{stamped});
-    CHECK(*sim::find_figure(w.figures(), stamped)->created_stamp == 50);
+    CHECK(w.figures().deferred.empty());
+    CHECK_FALSE(figure(w, unstamped).created_stamp.has_value());
+    CHECK_FALSE(figure(w, kept).marked_for_delete);
+    CHECK(figure(w, stamped).created_stamp == std::uint16_t{50});
     CHECK(sim::find_figure(w.figures(), leaving) == nullptr);
     CHECK(payload<sim::Farm>(w, 0, kFarm).workers_out == 0);
     CHECK(sim::find_figure(w.figures(), renamed) != nullptr);
@@ -657,8 +753,74 @@ TEST_CASE("a figure seam writes its own figure and the registry lists follow its
     CHECK(sim::find_figure(w.figures(), stamped) != nullptr);
     w.advance(100); // tick 7550: 7500, ends
     CHECK(sim::find_figure(w.figures(), stamped) == nullptr);
-    CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 1);
+    CHECK(sim::find_figure(w.figures(), unstamped) != nullptr);     // off the expiry list
+    CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 3); // renamed, unstamped, kept
     CHECK(w.check_invariants() == "");
+}
+
+TEST_CASE("a figure spawned during phase B waits for the next pass") {
+    // n is read once before the loop (0x1009aa3a) and the slot looked up again in every
+    // iteration (0x1009aa93): a spawn merged after a figure's call grows the list, but this
+    // pass still visits the n slots it started with; the new figure is visited next time.
+    const syn::SyntheticTypes t = types();
+    struct Spawner {
+        std::vector<std::uint64_t> visited;
+        bool spawned = false;
+    } sp;
+    sim::Seams seams;
+    seams.figure_tick.name = "test_spawner";
+    seams.figure_tick.ctx = &sp;
+    seams.figure_tick.fn = [](void* c, const sim::TickContext&, sim::SerialWorld& sw,
+                              sim::Figure& f) {
+        auto& s = *static_cast<Spawner*>(c);
+        s.visited.push_back(f.id.v);
+        if (f.id.v == 1 && !s.spawned) {
+            s.spawned = true;
+            sim::SpawnRequest r;
+            r.figure_kind = 9;
+            r.owner = sim::PlayerId{0};
+            sw.fx.spawns.push_back(r);
+        }
+    };
+    sim::World w = make(syn::empty_scenario(), t, seams);
+    for (int i = 0; i < 10; ++i) {
+        put_figure(w, sim::BuildingId{}); // slots 0 .. 9: the list of 10 is full
+    }
+    REQUIRE(w.figures().list.slots.size() == 10);
+    w.advance(100);                             // d = 50: clamp(50 * 10 / 50, 1, 10) = 10 visits
+    CHECK(w.figures().list.slots.size() == 12); // grown 10 -> 12 by the spawn (§5.2)
+    CHECK(sp.visited == std::vector<std::uint64_t>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+    CHECK(w.figures().list.cursor == 0);
+    sp.visited.clear();
+    w.advance(100); // d = 50: clamp(50 * 12 / 50, 1, 12) = 12: the new figure (11) too
+    CHECK(sp.visited == std::vector<std::uint64_t>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+    CHECK(w.check_invariants() == "");
+}
+
+TEST_CASE("interim return reads a u32 age and is the default body only") {
+    // D12: the age is t - born in u32 (state.md §5.9); a behaviour seam replaces the
+    // default body, so with a seam installed the rule does nothing.
+    const syn::SyntheticTypes t = types();
+    sim::Rules rules;
+    rules.interim_figure_return_ticks = 66000;
+    sim::World w = quiet_g4(t, {}, rules);
+    const sim::FigureId f = put_figure(w, bid(0, kWeaver));
+    w.advance(2 * 65950); // tick 65950: age 65950
+    CHECK(sim::find_figure(w.figures(), f) != nullptr);
+    w.advance(100); // tick 66000: age 66000 (a u16 age would be 464)
+    CHECK(sim::find_figure(w.figures(), f) == nullptr);
+    CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 0);
+    sim::Seams seams;
+    seams.figure_tick.name = "test_idle";
+    seams.figure_tick.fn = [](void*, const sim::TickContext&, sim::SerialWorld&, sim::Figure&) {};
+    sim::Rules quick;
+    quick.interim_figure_return_ticks = 1000;
+    sim::World v = quiet_g4(t, seams, quick);
+    const sim::FigureId g = put_figure(v, bid(0, kWeaver));
+    for (int i = 0; i < 40; ++i) {
+        v.advance(100); // tick 2000
+    }
+    CHECK(sim::find_figure(v.figures(), g) != nullptr);
 }
 
 TEST_CASE("figure phase goods effects merge after each call (C2)") {
@@ -679,10 +841,16 @@ TEST_CASE("figure phase goods effects merge after each call (C2)") {
         auto& k = *static_cast<Carts*>(c);
         ++k.calls;
         const sim::CityRef city{sim::IslandId{0}, sim::CityNo{0}};
-        const auto* weaver =
-            std::get_if<sim::Workshop>(&sw.find_building(bid(0, kWeaver))->payload);
-        k.store_seen.push_back(weaver->out[0]);
-        k.stock_seen.push_back(sw.city(city)->stock.stock[k.goods]);
+        const sim::Building* b = sw.find_building(bid(0, kWeaver));
+        const sim::Workshop* weaver =
+            b != nullptr ? std::get_if<sim::Workshop>(&b->payload) : nullptr;
+        const sim::City* home = sw.city(city);
+        if (weaver == nullptr || weaver->out.empty() || home == nullptr ||
+            k.goods >= home->stock.stock.size()) {
+            return;
+        }
+        k.store_seen.push_back(weaver->out.front());
+        k.stock_seen.push_back(home->stock.stock[k.goods]);
         if (ctx.tick == 50) {
             // First lap: take 600 from the store, put 256 into the stock, and try a
             // building that does not exist.
@@ -702,14 +870,14 @@ TEST_CASE("figure phase goods effects merge after each call (C2)") {
     w.advance(100); // tick 50: both carts, a first (slot 0)
     CHECK(carts.store_seen == std::vector<std::uint32_t>{1000, 400});
     CHECK(carts.stock_seen == std::vector<std::uint32_t>{0, 256});
-    CHECK(sim::find_figure(w.figures(), a)->cargo_88 == 600);
-    CHECK(sim::find_figure(w.figures(), b)->cargo_88 == 400);
+    CHECK(figure(w, a).cargo_88 == 600);
+    CHECK(figure(w, b).cargo_88 == 400);
     CHECK(payload<sim::Workshop>(w, 0, kWeaver).out[0] == 0);
     w.advance(100); // tick 100: both deliver, b sees a's delivery
     CHECK(carts.stock_seen == std::vector<std::uint32_t>{0, 256, 512, 1112});
     CHECK(w.islands()[0]->city(sim::CityNo{0})->stock.stock[carts.goods] == 1512);
-    CHECK(sim::find_figure(w.figures(), a)->cargo_88 == 0);
-    CHECK(sim::find_figure(w.figures(), b)->cargo_88 == 0);
+    CHECK(figure(w, a).cargo_88 == 0);
+    CHECK(figure(w, b).cargo_88 == 0);
     CHECK(carts.calls == 4);
     CHECK(w.check_invariants() == "");
 }
@@ -782,14 +950,14 @@ TEST_CASE("timer clamp: timer 0 counts down, stops at 0 and an overshoot is clam
     // exactly 0 (0x1009cd51 `sub`/`jne`): an overshoot wrapped. F5 clamps it.
     sim::ScriptTimers tm = sim::make_script_timers(sim::SimConfig{});
     REQUIRE(tm.active.size() == 5);
-    tm.active = {1, 1, 0, 1, 0};
+    tm.active = {1, 1, 0, 1, 1};
     tm.counter = {100, 0xFFFFFFFEU, 9, 5, 0};
     CHECK_FALSE(sim::timers_tick(tm, 60)); // dt 60
-    CHECK(tm.counter == std::vector<std::uint32_t>{40, 58, 9, 65, 0});
+    CHECK(tm.counter == std::vector<std::uint32_t>{40, 58, 9, 65, 60});
     CHECK(tm.last_tick == 60);
     CHECK(sim::timers_tick(tm, 160)); // dt 100 > 40: clamped to 0 and stopped
-    CHECK(tm.counter == std::vector<std::uint32_t>{0, 158, 9, 165, 0});
-    CHECK(tm.active == std::vector<std::uint8_t>{0, 1, 0, 1, 0});
+    CHECK(tm.counter == std::vector<std::uint32_t>{0, 158, 9, 165, 160});
+    CHECK(tm.active == std::vector<std::uint8_t>{0, 1, 0, 1, 1});
     CHECK_FALSE(sim::timers_tick(tm, 170)); // a stopped timer stays as it is
     CHECK(tm.counter[0] == 0);
     // Exactly 0 stops it too (the original's own case).
@@ -904,6 +1072,40 @@ TEST_CASE("monopoly once and the rule: the faithful refresh runs on the first ad
         }
         CHECK_FALSE(w.monopoly().entries[16].player.has_value());
         CHECK(w.monopoly().entries[6].player == sim::PlayerId{0});
+        // An unchanged owner keeps the time of its first entry (0x1009d3bf skips it).
+        CHECK(w.monopoly().entries[6].time_s == 1030);
+    }
+    SUBCASE("the rule keeps the remainder of the accumulator") {
+        // 70 ms steps: 429 of them reach 30 030, the refresh runs and 30 is kept.
+        sim::Rules rules;
+        rules.monopoly_every_30s = true;
+        sim::World w = make(syn::g4_scenario(t), t, {}, rules);
+        for (int i = 0; i < 428; ++i) {
+            w.advance(70);
+        }
+        CHECK(w.monopoly().acc == 29960);
+        CHECK_FALSE(w.monopoly().entries[6].player.has_value());
+        w.advance(70);
+        CHECK(w.monopoly().acc == 30);
+        CHECK(w.monopoly().entries[6].player == sim::PlayerId{0});
+    }
+    SUBCASE("only the raw slots are scanned") {
+        // monopoly_raw_slots bounds the slot loop (s = 0 .. 19 in the original): with 10,
+        // slots 11 and 16 stay empty; a mask bit at or above the bound is never read, so
+        // entries 20 .. 27 (the second loop, O-24) are left alone.
+        sim::SimConfig cfg;
+        cfg.monopoly_raw_slots = 10;
+        sim::World w = make(syn::g4_scenario(t), t, {}, {}, cfg);
+        w.advance(100);
+        CHECK(w.monopoly().entries[6].player == sim::PlayerId{0});
+        CHECK(w.monopoly().entries[8].player == sim::PlayerId{0});
+        CHECK_FALSE(w.monopoly().entries[11].player.has_value());
+        CHECK_FALSE(w.monopoly().entries[16].player.has_value());
+        sim::SimConfig wide;
+        wide.monopoly_climate_mask[2] |= 1U << 20; // island 0's climate
+        sim::World v = make(syn::g4_scenario(t), t, {}, {}, wide);
+        v.advance(100);
+        CHECK_FALSE(v.monopoly().entries[20].player.has_value());
     }
     SUBCASE("a first step of 0 ms or of 30 s or more lets the body run again") {
         // advance(0) adds nothing: the accumulator stays 0 and the next call runs the body
@@ -995,7 +1197,15 @@ TEST_CASE("event 7.5 min draws: one draw in the base game, two in the add-on on 
     // the island hit (D 0x100ae1d6..0x100ae240: x0 + w / 2, y0 + h / 2).
     const std::uint32_t c = cursor_where(
         [](std::uint16_t r1, std::uint16_t r2) { return r1 % 10 == 0 && r2 % 5 == 4; });
-    sim::World w = make(syn::g4_scenario(t), t);
+    // Island 4 moved to (301, 330) and made 15 x 9, so x and y, w and h and the rounding
+    // of an odd width all show.
+    sim::ScenarioSpec spec = syn::g4_scenario(t);
+    REQUIRE(spec.islands[2].slot == sim::IslandId{4});
+    spec.islands[2].x0 = 301;
+    spec.islands[2].y0 = 330;
+    spec.islands[2].w = 15;
+    spec.islands[2].h = 9;
+    sim::World w = make(spec, t);
     sim::WorldTestAccess::rng(w).set_cursor(c);
     sim::WorldTestAccess::event750_acc(w) = 449900;
     w.advance(100); // tick 50: no other site draws this early
@@ -1007,8 +1217,8 @@ TEST_CASE("event 7.5 min draws: one draw in the base game, two in the add-on on 
     CHECK(e.kind == sim::SimEventKind::Event15a);
     CHECK(e.code == 0x15a);
     CHECK(e.tick == 50);
-    CHECK(e.x == 300 + 8); // island 4: (300, 300), 16 x 16
-    CHECK(e.y == 300 + 8);
+    CHECK(e.x == 301 + 7); // x0 + w / 2 (15 / 2 = 7)
+    CHECK(e.y == 330 + 4); // y0 + h / 2 (9 / 2 = 4)
     CHECK(w.event750_acc() == 0);
 }
 
@@ -1028,10 +1238,11 @@ TEST_CASE("accumulator discard vs keep: the 7.5 min event drops its overshoot by
     acc = 449990;
     static_cast<void>(sim::event750(acc, 100, cfg, keep, g4.settings(), g4.islands(), d));
     CHECK(acc == 90);
-    // Through advance with steps of 70 ms: the gate fires at 450 030 ms (6 429 steps), then
-    // at 900 060 (faithful: 6 429 steps again) or at 900 060 too (kept: 30 + 449 960 >=
-    // 450 000 after 6 428 more); over 15 000 steps (1 050 000 ms) the faithful run fires
-    // twice and the kept run twice, but the kept accumulator ends 100 ms ahead.
+    // Through advance with steps of 70 ms: the gate fires at 450 030 ms (6 429 steps).
+    // Faithful: the accumulator restarts at 0 and fires again after 6 429 more steps (at
+    // 900 060 ms). Kept: it restarts at 30 and needs 6 429 more steps as well (30 + 450 030),
+    // keeping 60. Over 15 000 steps (1 050 000 ms) both fire twice; the kept accumulator
+    // ends 60 ms ahead.
     auto run = [&](const sim::Rules& rules) {
         sim::World w = make(syn::empty_scenario(), t, {}, rules);
         std::uint32_t gates = 0;
@@ -1242,8 +1453,9 @@ TEST_CASE("G4 players timers events and the 7.5 min event through 600000 ticks e
     // fixtures/synthetic/sim/g4.log.
     const syn::SyntheticTypes t = types();
     sim::World w = make(syn::g4_scenario(t), t);
-    // Players: 0 pays 330 per 2 000 ticks (330 / 15 = 22, no remainder); 1 starts 2 900 in
-    // debt and pays 600 (40 per booking); 2 (Volk 2) has nothing to pay.
+    // Players: 0 has the upkeep sum 330 (330 / 15 = 22 booked per 2 000 ticks, no
+    // remainder); 1 starts 2 900 in debt with the sum 600 (40 per booking); 2 (Volk 2) has
+    // nothing to pay.
     sim::Player& human = *sim::WorldTestAccess::players(w).slots[0];
     human.upkeep_a = 300;
     human.upkeep_b = 30;
@@ -1280,8 +1492,11 @@ TEST_CASE("G4 players timers events and the 7.5 min event through 600000 ticks e
     std::vector<sim::SimEvent> ui;
     std::uint64_t dispatched = 0;
     std::optional<std::uint64_t> carrier_gone, worker_gone, bankrupt_at;
+    bool monopoly_once = true;
     for (int i = 1; i <= 12000; ++i) {
         rec.advance(100);
+        // The advance's own output (never dropped, unlike the bounded host queue).
+        ui.insert(ui.end(), w.last_output().events.begin(), w.last_output().events.end());
         for (const sim::DrawRecord& r : w.last_output().draws) {
             draws[r.site] += r.count;
         }
@@ -1293,8 +1508,7 @@ TEST_CASE("G4 players timers events and the 7.5 min event through 600000 ticks e
         if (!worker_gone && sim::find_figure(w.figures(), worker) == nullptr) {
             worker_gone = tick;
         }
-        if (!bankrupt_at &&
-            w.players().find(sim::PlayerId{1})->state == sim::PlayerState::Bankrupt) {
+        if (!bankrupt_at && player(w, 1).state == sim::PlayerState::Bankrupt) {
             bankrupt_at = tick;
         }
         if (i % 600 == 0) {
@@ -1302,10 +1516,12 @@ TEST_CASE("G4 players timers events and the 7.5 min event through 600000 ticks e
             checkpoints.u64(w.state_hash());
             REQUIRE(w.check_invariants() == "");
         }
-        // The monopoly table never changes after the first advance (D5).
-        CHECK(w.monopoly().acc == 100);
+        // The monopoly accumulator never changes after the first advance (D5).
+        monopoly_once = monopoly_once && w.monopoly().acc == 100;
     }
-    ui = w.drain_events();
+    CHECK(monopoly_once);
+    CHECK(w.events_dropped() == 0);
+    CHECK(w.drain_events().size() == ui.size());
     REQUIRE(w.clock().tick() == 600000);
 
     // Semantic asserts, derived by hand (independent of the hash).
@@ -1315,15 +1531,15 @@ TEST_CASE("G4 players timers events and the 7.5 min event through 600000 ticks e
     CHECK(carrier_gone == std::uint64_t{7500});
     CHECK(payload<sim::Farm>(w, 0, kFarm).workers_out == 1); // its own worker, sent later
     // Upkeep: 300 bookings (every 2 000 ticks, stamp = t). Player 0: 300 * 22 = 6 600.
-    CHECK(w.players().find(sim::PlayerId{0})->money == 10000 - 300 * 22);
+    CHECK(player(w, 0).money == 10000 - 300 * 22);
     // Player 1: -2 900, -2 940, -2 980, -3 020 at tick 6 000 (deadline 156 000, the visit
     // that sets it does not test it), bankrupt at the first visit after 156 000 (tick 156
     // 050); the upkeep goes on: -2 900 - 300 * 40.
     CHECK(bankrupt_at == std::uint64_t{156050});
-    CHECK(w.players().find(sim::PlayerId{1})->bankrupt_deadline == 156000);
-    CHECK(w.players().find(sim::PlayerId{1})->money == -2900 - 300 * 40);
-    CHECK(w.players().find(sim::PlayerId{2})->money == 5000);
-    CHECK(w.players().find(sim::PlayerId{2})->state == sim::PlayerState::Alive);
+    CHECK(player(w, 1).bankrupt_deadline == 156000);
+    CHECK(player(w, 1).money == -2900 - 300 * 40);
+    CHECK(player(w, 2).money == 5000);
+    CHECK(player(w, 2).state == sim::PlayerState::Alive);
     // Timers: timer 0 clamped at tick 100 050, timer 2 at 7 + 600 000, timer 4 untouched.
     CHECK(w.timers().active == std::vector<std::uint8_t>{0, 0, 1, 0, 0});
     CHECK(w.timers().counter == std::vector<std::uint32_t>{0, 0, 600007, 0, 3});

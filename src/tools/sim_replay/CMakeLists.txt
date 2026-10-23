@@ -33,4 +33,10 @@ if(ANNO_BUILD_TESTS)
            COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g2.log)
   set_tests_properties(anno_sim_replay_g2_run PROPERTIES
                        PASS_REGULAR_EXPRESSION "checkpoints 6/6.*reproduced: every checkpoint matched")
+  # The golden G3 (stage S11): every production class through advance on the synthetic
+  # types, 21 checkpoints.
+  add_test(NAME anno_sim_replay_g3_run
+           COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g3.log)
+  set_tests_properties(anno_sim_replay_g3_run PROPERTIES
+                       PASS_REGULAR_EXPRESSION "checkpoints 21/21.*reproduced: every checkpoint matched")
 endif()

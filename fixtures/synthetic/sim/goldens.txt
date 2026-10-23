@@ -118,3 +118,19 @@ s7_g1_sp_end S7 105 7b17d192d21d4670
 # and the rejection reasons independently of the hash. The log carries the stream version
 # in its initial save, so a stream bump re-records it.
 s10_g2_end S10 105 0802e7cb98ced333
+#
+# S11 G3 (stage S11): synthetic::g3_scenario on synthetic::make_synthetic_types (two
+# players, two islands, two cities; a weaver, a grain farm, a fur trapper, a small farm, a
+# bow maker, an iron mine over two deposits and an inert house in city 0, a bow maker and a
+# weaver in city 1; research bytes so that player 0's bow maker works BOGEN only and player
+# 1's both lines), 2000 single-player advances of 100 ms (tick 100000), recorded as
+# fixtures/synthetic/sim/g3.log with 21 checkpoints. s11_g3_checkpoints is the FNV-1a 64 of
+# the state hashes after every 100th advance, s11_g3_end the hash at tick 100000,
+# s11_g3_events the hash of the UI events. SELF-BASELINED like the S7 and S10 goldens
+# (ANNO_UPDATE_GOLDEN also rewrites g3.log); driver_classes_test.cpp holds the end state of
+# every building to values derived by hand from docs/sim/production.md (F2 weavers, F6
+# farm, the trapper's 20 steps, the small farm's lines, 143 bow steps on one line and 160
+# on two, the mine's 768 from the two deposits), the draw count and the notice 0x19.
+s11_g3_checkpoints S11 105 a3d3609be58ac346
+s11_g3_end S11 105 6f25437c7e31d2b3
+s11_g3_events S11 105 3140bd8e1eb7db86

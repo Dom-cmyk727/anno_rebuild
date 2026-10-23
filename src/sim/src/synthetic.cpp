@@ -220,4 +220,94 @@ ScenarioSpec g2_scenario(const SyntheticTypes& types, std::uint32_t seed) {
     return spec;
 }
 
+namespace {
+
+ScenarioSpec::BuildingSpec building_at(TypeId type, std::int32_t x, std::int32_t y,
+                                       std::optional<Payload> payload = std::nullopt) {
+    ScenarioSpec::BuildingSpec b;
+    b.type = type;
+    b.x = x;
+    b.y = y;
+    b.payload = std::move(payload);
+    return b;
+}
+
+/// A research column of SimConfig::research_entries bytes with `done` researched (state
+/// byte 3: bit 0 researchable, bit 1 researched) and `open` only researchable (1).
+std::vector<std::uint8_t> research_bytes(std::initializer_list<std::uint32_t> done,
+                                         std::initializer_list<std::uint32_t> open) {
+    std::vector<std::uint8_t> r(SimConfig{}.research_entries, 0);
+    for (const std::uint32_t id : open) {
+        if (id < r.size()) {
+            r[id] = 1;
+        }
+    }
+    for (const std::uint32_t id : done) {
+        if (id < r.size()) {
+            r[id] = 3;
+        }
+    }
+    return r;
+}
+
+} // namespace
+
+ScenarioSpec g3_scenario(const SyntheticTypes& types, std::uint32_t seed) {
+    ScenarioSpec spec = two_island_scenario(seed);
+    const TypeRegistry& reg = *types.registry;
+    // Research ids of the bow maker's goods (BGruppen [WAREN] Forsch, OQ-034): BOGEN 4,
+    // ARMBRUST 9.
+    spec.players[0].research = research_bytes({4}, {9});
+    spec.players[1].research = research_bytes({4, 9}, {});
+
+    const auto weaver = [&]() {
+        Workshop w = make_workshop(reg.find(types.weaver)->prod);
+        w.in[0] = 5 * kTon;
+        return Payload{w};
+    };
+    const auto bow_maker = [&]() {
+        WeaponsWorkshop w = make_weapons_workshop(reg.find(types.bow_maker)->prod);
+        w.in[0] = 5 * kTon; // HOLZ
+        w.in[1] = 5 * kTon; // SEILE
+        return Payload{w};
+    };
+    Farm farm;
+    farm.raw = 5 * kTon;
+    // 2 t: the trapper runs out of raw stock before its store is full, so a trapper becomes
+    // due (and finds no prey).
+    Farm trapper;
+    trapper.raw = 2 * kTon;
+    SmallFarm small = make_small_farm(reg.find(types.small_farm)->prod);
+    small.raw[0] = 5 * kTon;
+    small.raw[1] = 5 * kTon;
+
+    ScenarioSpec::IslandSpec& is0 = spec.islands[0];
+    // The deposit of basic_scenario at (110, 120) with 2 t and a second one at (112, 121)
+    // with 1 t, both without the reserve flag (OQ-035 b: who clears it is open; a deposit
+    // without it is used up by any mine).
+    is0.deposits[0].remaining = 2 * kTon;
+    is0.deposits[0].reserve = false;
+    ScenarioSpec::DepositSpec second;
+    second.goods = "EISENERZ";
+    second.x = 112;
+    second.y = 121;
+    second.remaining = 1 * kTon;
+    second.reserve = false;
+    is0.deposits.push_back(second);
+    is0.cities[0].buildings = {
+        building_at(types.weaver, 110, 110, weaver()),
+        building_at(types.farm, 120, 110, Payload{farm}),
+        building_at(types.fur_trapper, 130, 110, Payload{trapper}),
+        building_at(types.small_farm, 140, 110, Payload{small}),
+        building_at(types.bow_maker, 150, 110, bow_maker()),
+        building_at(types.iron_mine, 110, 118),
+        building_at(types.pioneer_house, 125, 125),
+    };
+    spec.islands[1].cities[0].buildings = {
+        building_at(types.bow_maker, 305, 205, bow_maker()),
+        building_at(types.weaver, 310, 205, weaver()),
+    };
+    return spec;
+}
+
 } // namespace anno::sim::synthetic

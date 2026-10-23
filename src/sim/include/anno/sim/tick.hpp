@@ -211,6 +211,19 @@ struct Deliver {
     CityRef city;
 };
 
+/// A change of one of a building's goods stores, which the transport body computed
+/// from the state it read (T24: the reservations and the load of a cart, docs/re/
+/// transport.md §1.4): `delta_88` is added to the store `index` of `store` and the
+/// result clamped to 0 .. 0xFFFFFFFF. A building that is gone or a store it does not
+/// have changes nothing.
+struct StoreDelta {
+    enum class Store : std::uint8_t { Output, Reserved, Input };
+    BuildingId building;
+    Store store = Store::Output;
+    std::uint32_t index = 0;
+    std::int64_t delta_88 = 0;
+};
+
 enum class SimEventKind : std::uint8_t {
     StatusMessage,
     Notice,
@@ -240,7 +253,7 @@ struct SimEvent {
 
 /// Filled by an island tick or a serial-phase seam, merged by the world (§5.3). Merge
 /// order inside one buffer: spawns, releases, money, goods_moves, reserves,
-/// deliveries, events, ui; each vector in order.
+/// deliveries, store_deltas, events, ui; each vector in order.
 struct Effects {
     std::vector<SpawnRequest> spawns;
     std::vector<ReleaseCounter> releases;
@@ -248,6 +261,7 @@ struct Effects {
     std::vector<GoodsMove> goods_moves;
     std::vector<Reserve> reserves;
     std::vector<Deliver> deliveries;
+    std::vector<StoreDelta> store_deltas;
     std::vector<EnqueueEvent> events;
     std::vector<SimEvent> ui;
     /// Telemetry: the draws the call made, per site (the world fills it).
@@ -303,6 +317,10 @@ class SerialWorld {
     [[nodiscard]] const Figure* find_figure(FigureId id) const {
         return anno::sim::find_figure(figures_, id);
     }
+    /// The figure registry (const): the transport sums a workshop's carriers' loads.
+    [[nodiscard]] const FigureRegistry& figures() const { return figures_; }
+    /// The list layout of the world's configuration.
+    [[nodiscard]] const ListLayout& layout() const { return layout_; }
     /// Ends the figure a behaviour seam is ticking (end_figure on its fields: the
     /// release goes into `fx`, home none, the stamp u16(t)); the registry appends it to
     /// the expiry list after the seam returns (sync_figure_lists). Returns false when the

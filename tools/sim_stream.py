@@ -47,6 +47,11 @@ the transcribed worlds hold no drought (presence byte 0), so only the version mo
 S14 stage 2 (stream 110, PRNG timeline 2) added SimConfig::links (the island-link
 selection's tables) and Rules::island_candidate_order to the header; --check also refuses
 a scenario_corpus.txt whose version header line names other versions.
+T24 (stream 111) made the market class tick (tick 7, payload Market 6 in the class table),
+added the figure types (u64 count 0 for the empty registry) and the types' entrance
+points to the registry digest, the cart reservations to the payloads (the Workshop's
+`reserved` list after `activity`, the Farm's u32 after `activity`) and the stamp and the
+transport state to the figure record (the transcribed registries hold no figure).
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
@@ -67,7 +72,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 110
+STATE_HASH_VERSION = 111
 PRNG_TIMELINE_VERSION = 2
 
 
@@ -124,7 +129,7 @@ CLASSES = [
     (10, 0, 0, 500),   # Whaler 0x10073737
     (11, 0, 0, 500),   # Shipyard 0x10074ea1
     (12, 0, 0, 500),   # Cannonworks
-    (13, 0, 0, 500),   # Market
+    (13, 7, 6, 500),   # Market 0x1006b6d0 (T24: the cart send)
     (14, 0, 0, 500),   # MarketCombi
     (15, 0, 0, 5000),  # MarketStall
     (16, 0, 0, 5000),  # Inn
@@ -147,6 +152,7 @@ def registry_digest(names):
     d += u64(len(CLASSES))
     for cls, tick, payload, gate in CLASSES:
         d += u8(cls) + u8(tick) + u8(payload) + u32(gate)
+    d += u64(0)  # no figure types (T24)
     return fnv(d)
 
 
@@ -393,12 +399,15 @@ def cities_digest(cities):
 
 
 def workshop_bytes(out, inn, activity=0):
+    # last, switched_on, suspended, blocked, out, in, activity, reserved (T24), carriers_out
     return (u16(0) + u8(1) + u8(0) + u8(0) + u64(1) + u32(out) + u64(1) + u32(inn) + u64(1)
-            + u32(activity) + u32(0) + STATUS_NONE)
+            + u32(activity) + u64(1) + u32(0) + u32(0) + STATUS_NONE)
 
 
 def farm_bytes(out=0, raw=0):
-    return u16(0) + u8(1) + u8(0) + u8(0) + u32(out) + u32(raw) + u16(0) + u32(0) + STATUS_NONE
+    # last, switched_on, suspended, blocked, out, raw, activity, reserved (T24), workers_out
+    return (u16(0) + u8(1) + u8(0) + u8(0) + u32(out) + u32(raw) + u16(0) + u32(0) + u32(0)
+            + STATUS_NONE)
 
 
 def building_bytes(serial, island, type_id, x, y, byte0e, tag, payload):
@@ -557,7 +566,7 @@ def islands_digest(by_slot):
 # The registry digest of synthetic::make_synthetic_types() (the golden test in
 # building_state_test.cpp checks it);
 # a literal here because the type table is not transcribed by this script.
-SYNTHETIC_REGISTRY = 0x00D140F84BF28924
+SYNTHETIC_REGISTRY = 0x13E65DF34212C0C3
 
 
 def g1_scenario(steps=0, step_ms=10):

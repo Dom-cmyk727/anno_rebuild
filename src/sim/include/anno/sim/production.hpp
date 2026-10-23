@@ -163,6 +163,10 @@ struct Workshop {
     std::vector<std::uint32_t> out;      ///< output stock per output, 8.8
     std::vector<std::uint32_t> in;       ///< input stock per input, 8.8
     std::vector<std::uint32_t> activity; ///< activity average per output
+    /// Per output: the part of `out` that carts have reserved (D +0x1a, u16 8.8, raised
+    /// by slot +0xb4 = 0x10068460 and lowered by +0xb8 = 0x10068490 and the load;
+    /// docs/re/transport.md §1.4).
+    std::vector<std::uint32_t> reserved;
     std::uint32_t carriers_out = 0;
     StatusTracker status;
 };
@@ -197,6 +201,8 @@ struct WeaponsWorkshop {
     /// Activity average per line: a u16 in the original (+0x24/+0x26,
     /// addw), kept 16-bit to match.
     std::vector<std::uint16_t> activity;
+    /// Per line: reserved by carts (D +0x1c + 2i, 0x1006a540 / 0x10068f50).
+    std::vector<std::uint32_t> reserved;
     std::uint32_t carriers_out = 0;
     StatusTracker status;
 };
@@ -227,6 +233,8 @@ struct Farm {
     /// Activity average: a u16 in the original (+0x1e, addw), which wraps for
     /// farms averaging more than 16 per step; kept 16-bit to match.
     std::uint16_t activity = 0;
+    /// Reserved by carts (D +0x1a, 0x10068460 / 0x10068490).
+    std::uint32_t reserved = 0;
     std::uint32_t workers_out = 0;
     StatusTracker status;
 };
@@ -286,6 +294,8 @@ struct SmallFarm {
     std::vector<std::uint32_t> out, raw; ///< per line, 8.8
     /// Activity per line: u16 in the original, kept 16-bit.
     std::vector<std::uint16_t> activity;
+    /// Per line: reserved by carts (D +0x20 + 2i, 0x1006fa70 / 0x1006fad0).
+    std::vector<std::uint32_t> reserved;
     /// Figures out per counter: 0 = line 0's workers, 1–4 = animals of kind
     /// SmallFarmAnimals::base + i (bytes +0x2a–+0x2e).
     std::vector<std::uint32_t> figures_out;
@@ -394,11 +404,34 @@ struct Mine {
     std::uint32_t out = 0; ///< output stock, 8.8
     /// Activity average: a u16 in the original (+0x1c), kept 16-bit.
     std::uint16_t activity = 0;
+    /// Reserved by carts (D +0x1a, 0x10068460 / 0x10068490).
+    std::uint32_t reserved = 0;
     /// The deposit worked (index into the island's deposits); found when the
     /// mine joins its city (0x1006ddf0).
     std::optional<std::size_t> deposit;
     StatusTracker status;
 };
+
+/// A market or Kontor (HAUPT, MARKT, KONTOR: PRODTYPE 33-35; D class 0x1006c080,
+/// vtable 0x100c86c8, tick 0x1006b6d0; T24). It has no stock of its own: its add,
+/// remove and available slots forward to its city (docs/re/transport.md §1.4). The
+/// members before carts_out are the Inert ones (the same creation values).
+struct Market {
+    std::uint16_t last = 0;
+    bool blocked = false;
+    bool suspended = false;
+    StatusTracker status;
+    /// Market carts out (D: the non-null pointers of +0x20 / +0x24, figure group 0).
+    std::uint32_t carts_out = 0;
+};
+
+/// One market tick at world tick `t` (D 0x1006b6d0, docs/re/transport.md §1.5): the
+/// gate (u16)(t - last) >= 500 adds 500 to `last`; then while fewer than
+/// max_figures[0] carts are out (a type without production data has no carts) the
+/// step asks for one (send_figure; the caller raises carts_out and sends job 0x34
+/// with figure_ids[0]). Group 2 (+0x28 / +0x2c, a figure picked by a value from the
+/// world) is not modelled: no shipped market type has one (P).
+StepResult market_step(Market& m, const ProductionType& type, bool has_prod, std::uint32_t t);
 
 /// The deep flag for a mine of `type` (D: 0x1006e270): false only for an
 /// iron ore mine without the research id 0x39. `research_id` is the type's

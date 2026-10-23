@@ -587,8 +587,8 @@ TEST_CASE("state_hash relational properties") {
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
-    CHECK(sim::World().state_hash() == 0x62efed0576064b54ULL);
-    CHECK(sim::kStateHashVersion == 110);
+    CHECK(sim::World().state_hash() == 0xea498b0eb0ed8c35ULL);
+    CHECK(sim::kStateHashVersion == 111);
     CHECK(sim::kPrngTimelineVersion == 2);
 }
 
@@ -803,10 +803,10 @@ TEST_CASE("field count canary") {
     // shows up here, in S1, not later.
     static_assert(sim::field_count<sim::StatusTracker>() == 4);
     static_assert(sim::field_count<sim::StepResult>() == 9);
-    static_assert(sim::field_count<sim::Workshop>() == 9);
-    static_assert(sim::field_count<sim::WeaponsWorkshop>() == 10);
-    static_assert(sim::field_count<sim::Farm>() == 9);
-    static_assert(sim::field_count<sim::SmallFarm>() == 9);
+    static_assert(sim::field_count<sim::Workshop>() == 10);
+    static_assert(sim::field_count<sim::WeaponsWorkshop>() == 11);
+    static_assert(sim::field_count<sim::Farm>() == 10);
+    static_assert(sim::field_count<sim::SmallFarm>() == 10);
     static_assert(sim::field_count<sim::SmallFarmAnimals>() == 3);
     // The probe bound is a template argument; a type beyond it is refused.
     static_assert(sim::field_count<sim::TileRect, 4>() == 4);
@@ -876,7 +876,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     const std::size_t at = bytes.size() - kTailBytes - kIslandsBytes - kPlayersBytes - kIdsBytes -
                            kSettingsBytes - 36; // clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 8) ==
-          std::vector<std::uint8_t>{110, 0, 0, 0, 2, 0, 0, 0});
+          std::vector<std::uint8_t>{111, 0, 0, 0, 2, 0, 0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8
     CHECK(bytes[at + 16] == 0);
@@ -911,7 +911,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another state hash version is refused") {
         auto bad = bytes;
-        bad[0] = 111;
+        bad[0] = 112;
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);

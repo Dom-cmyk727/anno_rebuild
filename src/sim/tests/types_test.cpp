@@ -317,7 +317,7 @@ TEST_CASE("class table payload tags") {
                              {C::Whaler, T::None, P::Inert, 500},
                              {C::Shipyard, T::None, P::Inert, 500},
                              {C::Cannonworks, T::None, P::Inert, 500},
-                             {C::Market, T::None, P::Inert, 500},
+                             {C::Market, T::Market, P::Market, 500},
                              {C::MarketCombi, T::None, P::Inert, 500},
                              {C::MarketStall, T::None, P::Inert, 5000},
                              {C::Inn, T::None, P::Inert, 5000},
@@ -1497,8 +1497,9 @@ TEST_CASE("class for prodtype follows the layout") {
 TEST_CASE("registry digest stable") {
     // The digest of the empty registry (the original goods and class tables):
     // an independent transcription is the FNV-1a 64 of u64 0 (types), the goods
-    // (u64 143, then name as u64 length + bytes and u32 forsch) and the classes
-    // (u64 25, then u8 class, u8 tick, u8 payload, u32 gate period).
+    // (u64 143, then name as u64 length + bytes and u32 forsch), the classes
+    // (u64 25, then u8 class, u8 tick, u8 payload, u32 gate period) and u64 0 (the
+    // figure types, T24).
     sim::StateHasher h;
     h.u64(0);
     const std::vector<sim::GoodsInfo> goods = sim::original_goods();
@@ -1518,10 +1519,11 @@ TEST_CASE("registry digest stable") {
         h.u8(static_cast<std::uint8_t>(c.payload));
         h.u32(c.gate_period);
     }
+    h.u64(0);
     CHECK(sim::TypeRegistry::empty()->digest() == h.value());
     // And the value of an independent Python transcription (tools/sim_stream.py:
     // goods names read from AnnoGame.dll, classes from Appendix C).
-    CHECK(h.value() == 0x41581ac7f44d81ebULL);
+    CHECK(h.value() == 0x18432b5c366bf7b8ULL);
     // Rebuilding gives the same digest; the order types are added in does not matter.
     auto a = sim::synthetic::make_synthetic_types();
     auto b = sim::synthetic::make_synthetic_types();
@@ -1535,11 +1537,11 @@ TEST_CASE("registry digest stable") {
     CHECK(forward.build().value()->digest() == backward.build().value()->digest());
     // The synthetic registry's digest, pinned (a change of the type data, the
     // class or goods tables, or the digest layout moves it).
-    CHECK(a.value().registry->digest() == 0x00d140f84bf28924ULL);
+    CHECK(a.value().registry->digest() == 0x13e65df34212c0c3ULL);
 }
 
 TEST_CASE("registry digest changes with every field") {
-    static_assert(sim::field_count<sim::BuildingType>() == 20);
+    static_assert(sim::field_count<sim::BuildingType>() == 21);
     static_assert(sim::field_count<sim::ProductionType>() == 18);
     sim::BuildingType base;
     base.id = sim::TypeId{10};
@@ -1560,6 +1562,7 @@ TEST_CASE("registry digest changes with every field") {
     base.output_goods = {14};
     base.input_goods = {15};
     base.head_raw = {16, 17};
+    base.entrances = {{1, 3}, {5, 9}};
     base.has_prod = true;
     base.prod.id = 10;
     base.prod.prodtype = "HANDWERK";
@@ -1609,6 +1612,9 @@ TEST_CASE("registry digest changes with every field") {
         {"output_goods", [](auto& t) { t.output_goods[0] += 1; }},
         {"input_goods", [](auto& t) { t.input_goods[0] += 1; }},
         {"head_raw", [](auto& t) { t.head_raw[1] += 1; }},
+        {"entrances.x6", [](auto& t) { t.entrances[1].x6 += 1; }},
+        {"entrances.y6", [](auto& t) { t.entrances[0].y6 += 1; }},
+        {"entrances.count", [](auto& t) { t.entrances.pop_back(); }},
         {"has_prod", [](auto& t) { t.has_prod = false; }},
         {"prod.id", [](auto& t) { t.prod.id += 1; }},
         {"prod.prodtype", [](auto& t) { t.prod.prodtype = "PLANTAGE"; }},
@@ -1648,6 +1654,29 @@ TEST_CASE("registry digest changes with every field") {
     goods = sim::original_goods();
     goods[9].name = "WOLLE2";
     CHECK(sim::TypeRegistry::digest_of({}, goods, class_table) != empty_digest);
+    // The figure types (T24) too, field by field.
+    static_assert(sim::field_count<sim::FigureType>() == 5);
+    const sim::FigureType fig{220, 53687, 1280, 3, 500};
+    std::map<std::uint64_t, std::string> fseen;
+    fseen[sim::TypeRegistry::digest_of({}, goods_table, class_table, {&fig, 1})] = "base";
+    using FMut = std::function<void(sim::FigureType&)>;
+    const std::vector<std::pair<std::string, FMut>> fmuts = {
+        {"id", [](auto& f) { f.id += 1; }},
+        {"speed_q24", [](auto& f) { f.speed_q24 += 1; }},
+        {"capacity_88", [](auto& f) { f.capacity_88 += 1; }},
+        {"layer", [](auto& f) { f.layer += 1; }},
+        {"load_ticks", [](auto& f) { f.load_ticks += 1; }},
+    };
+    for (const auto& [name, mutate] : fmuts) {
+        sim::FigureType f = fig;
+        mutate(f);
+        INFO("figure field " << name);
+        CHECK(
+            fseen.emplace(sim::TypeRegistry::digest_of({}, goods_table, class_table, {&f, 1}), name)
+                .second);
+    }
+    CHECK(fseen.size() == fmuts.size() + 1);
+    CHECK(fseen.count(empty_digest) == 0);
     auto classes = sim::original_class_table();
     classes[1].gate_period = 501;
     CHECK(sim::TypeRegistry::digest_of({}, goods_table, classes) != empty_digest);
@@ -1836,7 +1865,8 @@ TEST_CASE("registry builds all 921 entries of Anlagen.dat") {
         sim::TypeRegistry::build(file.value().entries, sim::original_goods(), sim::SimConfig{});
     REQUIRE(again);
     CHECK(again.value()->digest() == r.digest());
-    CHECK(r.digest() == 0xf7a619a85e19e062ULL);
+    // T24: the digest covers the ENTRANCE points and the figure types (none here).
+    CHECK(r.digest() == 0x626a29feff392800ULL);
     // The growing items (ROHSTWACHS / ROHSTDUERR): grain field 712 and forest 104.
     CHECK(r.find_growing(712) == r.find(sim::TypeId{712}));
     CHECK(r.find_growing(712)->prod.growth_period == 15500);

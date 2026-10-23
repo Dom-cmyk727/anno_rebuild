@@ -14,7 +14,9 @@
 // names: the empty one (the original goods table, no building types: the headless
 // golden and the S9 tests), the synthetic types (synthetic::make_synthetic_types) or
 // the synthetic types with build costs (synthetic::make_build_types, the golden G2 of
-// S10) or with growing tile objects (synthetic::make_growth_types, the golden G5 of S13).
+// S10), with growing tile objects (synthetic::make_growth_types, the golden G5 of S13) or
+// with a market cart and a workshop carrier (synthetic::make_transport_types, the golden G6
+// of T24).
 // A log made against another registry reports a digest mismatch here (the full
 // scenario path arrives with the game files, S14).
 #include <algorithm>
@@ -87,7 +89,7 @@ std::optional<sim::ReplayLog> load_log(const std::string& path) {
 std::shared_ptr<const sim::TypeRegistry> registry_for(const sim::ReplayLog& log) {
     std::vector<std::shared_ptr<const sim::TypeRegistry>> known{sim::TypeRegistry::empty()};
     for (auto make : {&sim::synthetic::make_synthetic_types, &sim::synthetic::make_build_types,
-                      &sim::synthetic::make_growth_types}) {
+                      &sim::synthetic::make_growth_types, &sim::synthetic::make_transport_types}) {
         auto t = make();
         if (t.ok()) {
             known.push_back(t.value().registry);
@@ -317,8 +319,21 @@ std::shared_ptr<const sim::TypeRegistry> scenario_registry() {
         std::cout << "registry empty (cannot read " << p.string() << ")\n";
         return sim::TypeRegistry::empty();
     }
-    auto r =
-        sim::TypeRegistry::build(file.value().entries, sim::original_goods(), sim::SimConfig{});
+    // The figure types (T24): FigurenHeader.dat next to Anlagen.dat; without it the
+    // registry has none and no cart moves. The entries view `fbuf`, which therefore
+    // lives until the registry is built.
+    std::vector<anno::formats::figuren::Entry> figure_entries;
+    const std::filesystem::path fp = std::filesystem::path(dir) / "FigurenHeader.dat";
+    std::ifstream fin(fp, std::ios::binary);
+    const std::vector<std::uint8_t> fbuf{std::istreambuf_iterator<char>(fin), {}};
+    auto header = anno::formats::figuren::FigurenHeader::parse(fbuf);
+    if (header) {
+        figure_entries = std::move(header.value().entries);
+    } else {
+        std::cout << "no figure types (cannot read " << fp.string() << ")\n";
+    }
+    auto r = sim::TypeRegistry::build(file.value().entries, sim::original_goods(), sim::SimConfig{},
+                                      figure_entries);
     if (!r) {
         std::cout << "registry empty (" << r.error() << ")\n";
         return sim::TypeRegistry::empty();

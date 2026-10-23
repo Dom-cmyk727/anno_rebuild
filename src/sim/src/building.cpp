@@ -67,6 +67,8 @@ Payload make_payload(const BuildingType& type, const ClassInfo& cls, const SimCo
         return make_small_farm(type.prod, cfg.small_farm_animals);
     case PayloadTag::Mine:
         return Mine{};
+    case PayloadTag::Market:
+        return Market{};
     case PayloadTag::Inert:
         break;
     }
@@ -89,6 +91,8 @@ const char* payload_name(std::size_t index) {
         return "SmallFarm";
     case 5:
         return "Mine";
+    case 6:
+        return "Market";
     default:
         return "?";
     }
@@ -122,6 +126,9 @@ std::string payload_problem(const Payload& payload, const BuildingType& type, co
         if (w->activity.size() != r.activity.size()) {
             return sizes("activity", w->activity.size(), r.activity.size());
         }
+        if (w->reserved.size() != r.reserved.size()) {
+            return sizes("reserved", w->reserved.size(), r.reserved.size());
+        }
     } else if (const auto* ww = std::get_if<WeaponsWorkshop>(&payload)) {
         const auto& r = std::get<WeaponsWorkshop>(ref);
         if (ww->line_on.size() != r.line_on.size()) {
@@ -135,6 +142,9 @@ std::string payload_problem(const Payload& payload, const BuildingType& type, co
         }
         if (ww->activity.size() != r.activity.size()) {
             return sizes("activity", ww->activity.size(), r.activity.size());
+        }
+        if (ww->reserved.size() != r.reserved.size()) {
+            return sizes("reserved", ww->reserved.size(), r.reserved.size());
         }
     } else if (const auto* sf = std::get_if<SmallFarm>(&payload)) {
         const auto& r = std::get<SmallFarm>(ref);
@@ -152,6 +162,9 @@ std::string payload_problem(const Payload& payload, const BuildingType& type, co
         }
         if (sf->figures_out.size() != r.figures_out.size()) {
             return sizes("figures_out", sf->figures_out.size(), r.figures_out.size());
+        }
+        if (sf->reserved.size() != r.reserved.size()) {
+            return sizes("reserved", sf->reserved.size(), r.reserved.size());
         }
     } else if (std::holds_alternative<Mine>(payload)) {
         if (type.prod.outputs.empty()) {

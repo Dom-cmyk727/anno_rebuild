@@ -100,7 +100,7 @@ TEST_CASE("invariant payload alternative vs type") {
              "lists[3].slots[0].payload: holds Farm, the class needs Inert"},
             {"a market building with a workshop payload",
              [](sim::World& w) { bld(w, 0, 5, 0).payload = sim::Workshop{}; },
-             "lists[5].slots[0].payload: holds Workshop, the class needs Inert"},
+             "lists[5].slots[0].payload: holds Workshop, the class needs Market"},
         });
 }
 

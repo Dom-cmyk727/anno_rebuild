@@ -31,21 +31,30 @@ namespace anno::sim {
 void refresh_unlocked(WeaponsWorkshop& w, const BuildingType& type, const TypeRegistry& types,
                       const PlayersView& players, PlayerId owner);
 
-/// The counter of figures out of `home_counter` of a payload: Workshop and
-/// WeaponsWorkshop `carriers_out`, Farm `workers_out` (counter 0 each), SmallFarm
-/// `figures_out[home_counter]`; nullptr for a counter the payload does not have
-/// and for the payloads without counters (Mine, Inert).
+/// The counter of figures out of `home_counter` of a payload: Market `carts_out`,
+/// Workshop and WeaponsWorkshop `carriers_out`, Farm `workers_out` (counter 0 each),
+/// SmallFarm `figures_out[home_counter]`; nullptr for a counter the payload does not
+/// have and for the payloads without counters (Mine, Inert).
 [[nodiscard]] std::uint32_t* figure_counter(Payload& payload, std::uint32_t home_counter);
 [[nodiscard]] const std::uint32_t* figure_counter(const Payload& payload,
                                                   std::uint32_t home_counter);
-/// How many counters a payload has: 1 for Workshop, WeaponsWorkshop and Farm, the
-/// size of `figures_out` for SmallFarm, 0 for Mine and Inert.
+/// How many counters a payload has: 1 for Market, Workshop, WeaponsWorkshop and Farm,
+/// the size of `figures_out` for SmallFarm, 0 for Mine and Inert.
 [[nodiscard]] std::uint32_t figure_counter_count(const Payload& payload);
 
 /// The output store `out_index` of a payload in 8.8 tons (Workshop, WeaponsWorkshop
 /// and SmallFarm `out[out_index]`, Farm and Mine `out` for index 0); nullptr beyond
 /// the stores and for Inert.
 [[nodiscard]] std::uint32_t* output_store(Payload& payload, std::uint32_t out_index);
+
+/// The reserved part of output store `index` (the stores of output_store; T24,
+/// docs/re/transport.md §1.4); nullptr where output_store has none.
+[[nodiscard]] std::uint32_t* reserved_store(Payload& payload, std::uint32_t index);
+
+/// The input store `index` (Workshop and WeaponsWorkshop `in[index]`, SmallFarm
+/// `raw[index]`, Farm `raw` for index 0); nullptr beyond the stores, for Mine, Market
+/// and Inert.
+[[nodiscard]] std::uint32_t* input_store(Payload& payload, std::uint32_t index);
 
 /// The player-visible blocked flag of any payload.
 [[nodiscard]] bool payload_blocked(const Payload& payload);
@@ -55,10 +64,17 @@ void refresh_unlocked(WeaponsWorkshop& w, const BuildingType& type, const TypeRe
 /// another island.
 [[nodiscard]] Building* find_building_mut(Island& island, BuildingId id);
 
-/// Where a figure sent by `b` starts: the building's north-west tile in Q24.8. A
-/// STAND-IN (the original's start position is a float from the unit constructor,
-/// O-47, and figures do not move before stage S12).
-[[nodiscard]] FixedPos spawn_position(const Building& b);
+/// Where a figure sent by `b` starts, in Q24.8: the type's first entrance point
+/// (entrance_position), else the building's north-west tile. A STAND-IN (the send
+/// 0x10072d20 starts the figure at a reachable entrance, 0x10072b50, not read; O-59,
+/// O-47).
+[[nodiscard]] FixedPos spawn_position(const Building& b, const BuildingType& type);
+
+/// Entrance point `i` of `b`'s type at the building's rotation (D AnnoGame
+/// 0x100084c0), in Q24.8 world position (sixths rounded to the nearest 1/256); the
+/// type's corner when the type has no such point.
+[[nodiscard]] FixedPos entrance_position(const Building& b, const BuildingType& type,
+                                         std::size_t i);
 
 /// One building's tick (D: building slot +0x8c). The type, the class and the owner
 /// come from the context; the step function of the class runs on the payload, then

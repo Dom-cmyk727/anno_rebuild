@@ -195,6 +195,21 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
             return where + ".home: the figure has ended (it has an expiry_stamp) but still " +
                    "holds a counter of building " + std::to_string(f.home.v);
         }
+        // The transport state (T24): a step the job knows, and a walk position inside
+        // the route (the walk code indexes route[next - 1] and route[next]).
+        const TransportState& tr = f.transport;
+        if (static_cast<std::uint8_t>(tr.step) > static_cast<std::uint8_t>(TransportStep::Done)) {
+            return where + ".transport.step: " + std::to_string(static_cast<unsigned>(tr.step)) +
+                   " is no step";
+        }
+        if (!tr.route.empty() && (tr.next == 0 || tr.next > tr.route.size())) {
+            return where + ".transport.next: " + std::to_string(tr.next) + " is not in 1 .. " +
+                   std::to_string(tr.route.size());
+        }
+        if (tr.route.empty() && (tr.next != 0 || tr.along != 0)) {
+            return where + ".transport: no route, but next " + std::to_string(tr.next) +
+                   " and along " + std::to_string(tr.along);
+        }
     }
     std::map<FigureId, Slot> fresh;
     for (std::size_t s = 0; s < l.slots.size(); ++s) {

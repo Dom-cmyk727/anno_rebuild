@@ -42,6 +42,43 @@ struct FixedPos {
 static_assert(kWorldEdgeBound <= (1U << 23),
               "FixedPos (Q24.8 in an i32) cannot hold a tile coordinate of this world edge");
 
+/// The step of a transport job (docs/re/transport.md §1, T24): the job's current
+/// step, D the list node at job +0xc (A = 0x1005ad10 the search and the walk to the
+/// source, B = 0x100551b0 the load, C = 0x10057ae0 the walk home and the unload).
+enum class TransportStep : std::uint8_t {
+    /// The job has not run yet: the first figure call runs step A's start.
+    Start = 0,
+    /// Step A: walking to the chosen building.
+    ToSource = 1,
+    /// Step B: the load wait.
+    Load = 2,
+    /// Step C: walking home.
+    ToHome = 3,
+    /// No step left: the figure ends (the end path 0x1003af00).
+    Done = 4
+};
+
+/// What a transport job keeps between calls (the job's steps and the figure's walk,
+/// docs/sim/state.md §5.9). Data, not limits: the route is as long as the search found.
+struct TransportState {
+    TransportStep step = TransportStep::Start;
+    /// Ticks left of the current wait (step B, at the wait rate of 0x10035260).
+    std::uint32_t wait = 0;
+    /// The walk: waypoints in Q24.8 tiles, the first where the walk started; empty when
+    /// the figure does not walk (the original's route list +0x48, built by 0x10034df0
+    /// from the searcher's path; here tile centres of the stand-in search, OQ-161).
+    std::vector<FixedPos> route;
+    /// The waypoint walked to next (1 .. route.size(); route.size() + 1 = arrived).
+    std::uint32_t next = 0;
+    /// The distance walked from route[next - 1] towards route[next], in 2^-24 tile.
+    std::uint32_t along = 0;
+    /// Step A's chosen building (D: step +4 / +6 keep its tile; the load and the abort
+    /// look the building up there).
+    BuildingId target;
+    /// The amount the target reserved for this figure (the cargo's +0x1c, D 0x1005aef1).
+    std::uint32_t reserved_88 = 0;
+};
+
 struct Figure {
     FigureId id;
     /// FigurenHeader id / world figure kind (small farm animals: base 106 + i).
@@ -64,6 +101,13 @@ struct Figure {
     /// The low 32 bits of the world tick at the spawn (the interim return rule D12
     /// reads it).
     std::uint32_t born = 0;
+    /// The u16 tick the figure last acted at (the unit's +8 while it acts, D
+    /// 0x1003488e; set at the spawn): a figure call works through u16(t - stamp)
+    /// ticks (D 0x1003476a). The end freezes the original's +8 into expiry_stamp.
+    std::uint16_t stamp = 0;
+    /// The transport job (job 0x34; docs/sim/state.md §5.9). Default for a figure of
+    /// another job.
+    TransportState transport;
     /// Present = on the 7500-tick expiry list: the u16 tick of the figure's end
     /// (property 0x23, the unit's +8, which follows the tick while the unit acts and
     /// freezes at its Remove, D 0x1003488e / 0x10034844; docs/re/annowelt.md "Unit

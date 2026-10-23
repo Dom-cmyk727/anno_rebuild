@@ -543,7 +543,7 @@ template <class A, Same<Inert> S> void fields(A& a, S& s) {
     fields(a, s.status);
 }
 
-static_assert(field_count<Workshop>() == 9, "a Workshop member needs a line in fields(Workshop)");
+static_assert(field_count<Workshop>() == 10, "a Workshop member needs a line in fields(Workshop)");
 
 template <class A, Same<Workshop> S> void fields(A& a, S& s) {
     a.u16(s.last);
@@ -553,13 +553,14 @@ template <class A, Same<Workshop> S> void fields(A& a, S& s) {
     u32_list(a, s.out);
     u32_list(a, s.in);
     u32_list(a, s.activity);
+    u32_list(a, s.reserved);
     a.u32(s.carriers_out);
     fields(a, s.status);
 }
 
 // `unlocked` is derived (refreshed from the owner's research before every step,
 // §7.1) and is not in the stream.
-static_assert(field_count<WeaponsWorkshop>() == 10,
+static_assert(field_count<WeaponsWorkshop>() == 11,
               "a WeaponsWorkshop member needs a line in fields(WeaponsWorkshop) or a derived note");
 
 template <class A, Same<WeaponsWorkshop> S> void fields(A& a, S& s) {
@@ -570,11 +571,12 @@ template <class A, Same<WeaponsWorkshop> S> void fields(A& a, S& s) {
     u32_list(a, s.out);
     u32_list(a, s.in);
     ar::seq(a, s.activity, 2, [&](auto& x) { a.u16(x); });
+    u32_list(a, s.reserved);
     a.u32(s.carriers_out);
     fields(a, s.status);
 }
 
-static_assert(field_count<Farm>() == 9, "a Farm member needs a line in fields(Farm)");
+static_assert(field_count<Farm>() == 10, "a Farm member needs a line in fields(Farm)");
 
 template <class A, Same<Farm> S> void fields(A& a, S& s) {
     a.u16(s.last);
@@ -584,11 +586,12 @@ template <class A, Same<Farm> S> void fields(A& a, S& s) {
     a.u32(s.out);
     a.u32(s.raw);
     a.u16(s.activity);
+    a.u32(s.reserved);
     a.u32(s.workers_out);
     fields(a, s.status);
 }
 
-static_assert(field_count<SmallFarm>() == 9,
+static_assert(field_count<SmallFarm>() == 10,
               "a SmallFarm member needs a line in fields(SmallFarm)");
 
 template <class A, Same<SmallFarm> S> void fields(A& a, S& s) {
@@ -599,11 +602,12 @@ template <class A, Same<SmallFarm> S> void fields(A& a, S& s) {
     u32_list(a, s.out);
     u32_list(a, s.raw);
     ar::seq(a, s.activity, 2, [&](auto& x) { a.u16(x); });
+    u32_list(a, s.reserved);
     u32_list(a, s.figures_out);
     fields(a, s.status);
 }
 
-static_assert(field_count<Mine>() == 8, "a Mine member needs a line in fields(Mine)");
+static_assert(field_count<Mine>() == 9, "a Mine member needs a line in fields(Mine)");
 
 template <class A, Same<Mine> S> void fields(A& a, S& s) {
     a.u16(s.last);
@@ -612,6 +616,7 @@ template <class A, Same<Mine> S> void fields(A& a, S& s) {
     a.boolean(s.blocked);
     a.u32(s.out);
     a.u16(s.activity);
+    a.u32(s.reserved);
     // The deposit is an index into Island::deposits: a presence byte, then a u64 (the
     // optional<size_t> is widened at the archive boundary).
     bool has = s.deposit.has_value();
@@ -630,17 +635,29 @@ template <class A, Same<Mine> S> void fields(A& a, S& s) {
     fields(a, s.status);
 }
 
+static_assert(field_count<Market>() == 5, "a Market member needs a line in fields(Market)");
+
+template <class A, Same<Market> S> void fields(A& a, S& s) {
+    a.u16(s.last);
+    a.boolean(s.blocked);
+    a.boolean(s.suspended);
+    fields(a, s.status);
+    a.u32(s.carts_out);
+}
+
 static_assert(field_count<Building>() == 8, "a Building member needs a line in fields(Building)");
 
 /// The u8 tag of each Payload alternative in the stream: the PayloadTag values
-/// (Inert 0, Workshop 1, WeaponsWorkshop 2, Farm 3, SmallFarm 4, Mine 5), append-only.
-inline constexpr std::array<std::uint8_t, 6> kPayloadTags = {
+/// (Inert 0, Workshop 1, WeaponsWorkshop 2, Farm 3, SmallFarm 4, Mine 5, Market 6),
+/// append-only.
+inline constexpr std::array<std::uint8_t, 7> kPayloadTags = {
     static_cast<std::uint8_t>(PayloadTag::Inert),
     static_cast<std::uint8_t>(PayloadTag::Workshop),
     static_cast<std::uint8_t>(PayloadTag::WeaponsWorkshop),
     static_cast<std::uint8_t>(PayloadTag::Farm),
     static_cast<std::uint8_t>(PayloadTag::SmallFarm),
-    static_cast<std::uint8_t>(PayloadTag::Mine)};
+    static_cast<std::uint8_t>(PayloadTag::Mine),
+    static_cast<std::uint8_t>(PayloadTag::Market)};
 
 template <class A, Same<Building> S> void fields(A& a, S& s) {
     a.u64(s.id.v);
@@ -887,7 +904,25 @@ template <class A, Same<IdCounters> S> void fields(A& a, S& s) {
     a.u64(s.next_event_seq);
 }
 
-static_assert(field_count<Figure>() == 12, "a Figure member needs a line in fields(Figure)");
+template <> struct EnumInfo<TransportStep> : ContiguousEnum<5> {};
+
+static_assert(field_count<TransportState>() == 7,
+              "a TransportState member needs a line in fields(TransportState)");
+
+template <class A, Same<TransportState> S> void fields(A& a, S& s) {
+    a.enumv(s.step);
+    a.u32(s.wait);
+    ar::seq(a, s.route, 8, [&](auto& p) {
+        a.i32(p.x);
+        a.i32(p.y);
+    });
+    a.u32(s.next);
+    a.u32(s.along);
+    a.u64(s.target.v);
+    a.u32(s.reserved_88);
+}
+
+static_assert(field_count<Figure>() == 14, "a Figure member needs a line in fields(Figure)");
 
 template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u64(s.id.v);
@@ -902,6 +937,8 @@ template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u32(s.cargo_88);
     a.u32(s.hp);
     a.u32(s.born);
+    a.u16(s.stamp);
+    fields(a, s.transport);
     ar::opt(a, s.expiry_stamp, [&](auto& v) { a.u16(v); });
 }
 

@@ -1,6 +1,6 @@
 # Scenarios (`.sze`)
 
-**Status:** partial — the `SCENE` chunk list, the tagged-record container, players (`SPIELER`), ships and soldiers (`SCHIFF`, `SOLDAT`) and island links (`INSELLNK`) are decoded and re-encode byte-identically (P). The AI profiles (`COMPPROFIL2`) and the per-player AI record (`SPIELER/COMP`) are decoded field by field (D + P, 2026-10-22, T18); four profile columns reach no setter and one only through a doubtful second call (OQ-112). The content of most other records (`STADT2`, `PRIVAT`, …) and of the other `SCENE` children is open (OQ-027, OQ-028).
+**Status:** partial — the `SCENE` chunk list, the tagged-record container, players (`SPIELER`), ships and soldiers (`SCHIFF`, `SOLDAT`) and island links (`INSELLNK`) are decoded and re-encode byte-identically (P). The AI profiles (`COMPPROFIL2`) and the per-player AI record (`SPIELER/COMP`) are decoded field by field (D + P, 2026-10-22, T18); four profile columns reach no setter and one only through a doubtful second call (OQ-112). The content of most other records (`STADT2`, `PRIVAT`, …) and of the other `SCENE` children is open (OQ-027, OQ-028). Read by the sim adapter (S14 stage 1, `src/sim/src/scenario_formats.cpp`, `docs/sim/state.md` §10): `HEAD`, the player `HEAD` and `VOLK`, the `STADT2` prefix and `INSELLNK` (as warnings).
 
 ## Files covered
 - Glob: `Scenes/**/*.sze`

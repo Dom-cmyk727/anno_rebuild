@@ -52,4 +52,20 @@ if(ANNO_BUILD_TESTS)
            COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g5.log)
   set_tests_properties(anno_sim_replay_g5_run PROPERTIES
                        PASS_REGULAR_EXPRESSION "checkpoints 21/21.*reproduced: every checkpoint matched")
+  # The scenario adapter (stage S14): the usage and the refusal of a file that is not a
+  # scenario need no game files; one shipped scenario runs when ANNO1503_GAME_DIR is set.
+  anno_sim_replay_arg_test(scenario_ticks_not_a_number "scenario|x.sze|--ticks|abc"
+                           "bad --ticks value 'abc'")
+  anno_sim_replay_arg_test(scenario_step_zero "scenario|x.sze|--step-ms|0" "bad --step-ms value '0'")
+  anno_sim_replay_arg_test(scenario_no_file "scenario" "usage: anno-sim-replay")
+  add_test(NAME anno_sim_replay_scenario_refuses_a_non_scenario
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   "-DARGS=scenario|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sze_synthetic/noscene.sze"
+                   -DEXPECT_RC=1 "-DEXPECT=refused: not a scenario"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunToolExpectError.cmake)
+  add_test(NAME anno_sim_replay_scenario_single_01
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay> -DSCENE=0200Single/Single_01.sze
+                   -DTICKS=20000 -P ${PROJECT_SOURCE_DIR}/cmake/RunScenarioTool.cmake)
+  set_tests_properties(anno_sim_replay_scenario_single_01 PROPERTIES
+                       SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
 endif()

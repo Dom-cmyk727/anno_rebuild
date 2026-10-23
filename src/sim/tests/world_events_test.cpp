@@ -12,9 +12,9 @@
 #include <fstream>
 #include <iterator>
 #include <map>
-#include <tuple>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -769,7 +769,7 @@ TEST_CASE("a figure seam writes its own figure and the registry follows its stam
     REQUIRE(w.figures().expiry == std::vector<sim::FigureId>{unstamped});
     REQUIRE(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 2); // stamped, renamed
     REQUIRE(payload<sim::Farm>(w, 0, kFarm).workers_out == 1);        // leaving
-    w.advance(100); // tick 50
+    w.advance(100);                                                   // tick 50
     CHECK(w.figures().expiry == std::vector<sim::FigureId>{stamped, leaving});
     CHECK_FALSE(figure(w, unstamped).expiry_stamp.has_value());
     CHECK(figure(w, stamped).expiry_stamp == std::uint16_t{50});

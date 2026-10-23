@@ -307,7 +307,9 @@ class SerialWorld {
     /// release goes into `fx`, home none, the stamp u16(t)); the registry appends it to
     /// the expiry list after the seam returns (sync_figure_lists). Returns false when the
     /// figure had ended already.
-    bool end_figure(Figure& figure, std::uint32_t t) { return anno::sim::end_figure(figure, t, fx); }
+    bool end_figure(Figure& figure, std::uint32_t t) {
+        return anno::sim::end_figure(figure, t, fx);
+    }
     [[nodiscard]] const PlayerTable& players() const { return players_; }
 
     /// The buffer the seam writes its consequences to.

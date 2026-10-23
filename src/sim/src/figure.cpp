@@ -186,8 +186,7 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
         const std::string where = "figures.list.slots[" + std::to_string(s) + "]";
         if (f.expiry_stamp.has_value() != on_expiry.contains(f.id)) {
             return where + ".expiry_stamp: the figure " +
-                   (f.expiry_stamp.has_value() ? "has a stamp but is not"
-                                               : "has no stamp but is") +
+                   (f.expiry_stamp.has_value() ? "has a stamp but is not" : "has no stamp but is") +
                    " on the expiry list";
         }
         // The end path releases before it stamps (0x1003b6e0, then the Remove at

@@ -100,8 +100,8 @@ sim::FigureId put_out(sim::World& w, sim::BuildingId home, std::uint32_t counter
     REQUIRE(sim::add_figure(sim::WorldTestAccess::figures(w), f, w.config(), w.rules()) !=
             sim::kNoSlot);
     ++ids.next_figure;
-    sim::Building* b = sim::find_building_mut(
-        *sim::WorldTestAccess::islands(w)[sim::island_of(home).v], home);
+    sim::Building* b =
+        sim::find_building_mut(*sim::WorldTestAccess::islands(w)[sim::island_of(home).v], home);
     REQUIRE(b != nullptr);
     std::uint32_t* c = sim::figure_counter(b->payload, counter);
     REQUIRE(c != nullptr);
@@ -115,7 +115,9 @@ const sim::Figure& figure(const sim::World& w, sim::FigureId id) {
     return *f;
 }
 
-std::uint32_t carriers(sim::World& w) { return payload<sim::Workshop>(w, 0, kWeaver).carriers_out; }
+std::uint32_t carriers(sim::World& w) {
+    return payload<sim::Workshop>(w, 0, kWeaver).carriers_out;
+}
 
 /// A behaviour seam that, for the figure `target`, does what `script` says at the first
 /// visit whose tick is `at` or later, once.
@@ -146,7 +148,7 @@ sim::Seams ender_seams(Ender* e) {
         } else if (e.script == 1) {
             CHECK(sw.end_figure(f, ctx.t));
             CHECK_FALSE(sw.end_figure(f, ctx.t)); // ended already: nothing
-            sw.fx.releases.push_back(r);         // through the figure: home none, nothing
+            sw.fx.releases.push_back(r);          // through the figure: home none, nothing
         } else {
             sw.fx.releases.push_back(r);
         }

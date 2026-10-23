@@ -1,26 +1,35 @@
-// The driver: tick_building and consume (docs/sim/state.md §7.1, §7.2, stage S7).
+// The driver: tick_building and consume (docs/sim/state.md §7.1, §7.2; stages S7 and
+// S11).
 #include <cstddef>
 #include <variant>
 
+#include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
 
 namespace anno::sim {
 
-bool tick_kind_enabled(TickKind kind) {
-    // Stage S7: Workshop and Farm only. -Wswitch (no default) makes a tick kind
-    // added later a compile error here, so no kind can be forgotten.
-    switch (kind) {
-    case TickKind::Workshop:
-    case TickKind::Farm:
-        return true;
-    case TickKind::None:
-    case TickKind::WeaponsWorkshop:
-    case TickKind::FurTrapper:
-    case TickKind::Mine:
-    case TickKind::SmallFarm:
-        return false;
+void refresh_unlocked(WeaponsWorkshop& w, const BuildingType& type, const TypeRegistry& types,
+                      const PlayersView& players, PlayerId owner) {
+    // D: AnnoWelt.dll 0x10069580-0x10069640 (docs/re/production.md §4.1a): line j works
+    // only if the requirement byte b of its output goods g = type+0xac(j) is 0 or the
+    // owner's research object reports bit 1 for b; b is the goods' Forsch research id
+    // (BGruppen [WAREN], OQ-034 resolved; GoodsInfo::forsch) and the bit is "researched"
+    // (player +0xb0 table, ResearchState::researched). One entry per line of the
+    // payload: weapons_workshop_step indexes `unlocked` by the lines of `out`, so it is
+    // sized to them before it is written (it is derived, not saved: empty after a load).
+    const std::size_t lines = w.out.size();
+    w.unlocked.assign(lines, false);
+    for (std::size_t j = 0; j < lines; ++j) {
+        // A line without an output goods (beyond the type's list) names goods 0, which has
+        // no requirement. The registry resolves every goods name, so goods() of a type's
+        // output is never null; a null entry is read as "no requirement" like goods 0.
+        const GoodsId g = j < type.output_goods.size() ? type.output_goods[j] : GoodsId{0};
+        const GoodsInfo* info = types.goods(g);
+        const std::uint32_t forsch = info != nullptr ? info->forsch : 0;
+        // Element stores, not a braced list (the GCC 12 -Wnull-dereference false positive
+        // of vector<bool>, docs/sim/state.md §15 S2).
+        w.unlocked[j] = forsch == 0 || players.researched(owner, forsch);
     }
-    return false;
 }
 
 std::uint32_t* figure_counter(Payload& payload, std::uint32_t home_counter) {
@@ -128,14 +137,14 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
         return;
     }
     const ClassInfo& ci = ctx.types.class_info(type->cls);
-    if (!tick_kind_enabled(ci.tick)) {
-        return;
-    }
     // StatusTracker::shows_icons is derived from the owner (OQ-033): refreshed
     // before every step, not part of the state stream.
     const bool icons = ctx.players.volk(city.owner) == 1;
     StepResult r;
+    // -Wswitch (no default): a tick kind added later is a compile error here.
     switch (ci.tick) {
+    case TickKind::None:
+        return; // inert: `last` untouched (D15)
     case TickKind::Workshop: {
         auto* w = std::get_if<Workshop>(&b.payload);
         if (w == nullptr) {
@@ -143,6 +152,18 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
         }
         w->status.shows_icons = icons;
         r = workshop_step(*w, type->prod, ctx.t);
+        break;
+    }
+    case TickKind::WeaponsWorkshop: {
+        auto* w = std::get_if<WeaponsWorkshop>(&b.payload);
+        if (w == nullptr) {
+            return;
+        }
+        w->status.shows_icons = icons;
+        // The research input (§7.1): derived from the owner's research state before the
+        // step, every tick.
+        refresh_unlocked(*w, *type, ctx.types, ctx.players, city.owner);
+        r = weapons_workshop_step(*w, type->prod, ctx.t);
         break;
     }
     case TickKind::Farm: {
@@ -154,12 +175,47 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
         r = farm_step(*f, type->prod, ctx.t);
         break;
     }
-    case TickKind::None:
-    case TickKind::WeaponsWorkshop:
-    case TickKind::FurTrapper:
-    case TickKind::Mine:
-    case TickKind::SmallFarm:
-        return; // masked by tick_kind_enabled
+    case TickKind::FurTrapper: {
+        auto* f = std::get_if<Farm>(&b.payload);
+        if (f == nullptr) {
+            return;
+        }
+        f->status.shows_icons = icons;
+        r = fur_trapper_step(*f, type->prod, ctx.t);
+        // D 0x1006e5d0 (docs/re/production.md §4.2a): a due trapper is sent only with a
+        // target from the radius search 0x10071da0(8), the nearest animal of the input
+        // goods. The island's animals are wildlife objects, which the sim does not create
+        // (O-12; their fauna sweep is the unported WildlifeSweep), so the search finds
+        // nothing and no trapper is sent (O-25, docs/sim/state.md §12). The step itself
+        // ran in full: what the trapper made from its raw stock stays made.
+        r.send_figure = false;
+        break;
+    }
+    case TickKind::Mine: {
+        auto* m = std::get_if<Mine>(&b.payload);
+        if (m == nullptr) {
+            return;
+        }
+        m->status.shows_icons = icons;
+        // The island's deposits in index order (Mine::deposit is an index into them),
+        // the footprint by rotation (D 0x1006ddf0) and world setting 14 bit 1, the
+        // add-on edition (OQ-035 a, D 0x10063686).
+        r = mine_step(*m, type->prod, ctx.t, island.deposits, mine_area(b, *type),
+                      ctx.settings.depletes());
+        break;
+    }
+    case TickKind::SmallFarm: {
+        auto* f = std::get_if<SmallFarm>(&b.payload);
+        if (f == nullptr) {
+            return;
+        }
+        f->status.shows_icons = icons;
+        // Line 1's animal kind is a world PRNG draw (D 0x1006f810-0x1006f838, §7.4),
+        // through the advance's DrawSource as the site SmallFarmAnimal.
+        SiteDraw site{ctx.draw, DrawSite::SmallFarmAnimal};
+        r = small_farm_step(*f, type->prod, ctx.t, DrawRef::of(site), ctx.cfg.small_farm_animals);
+        break;
+    }
     }
     consume(ctx, island, city, b, *type, r, fx);
 }
@@ -167,8 +223,13 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
 namespace {
 
 /// The job code of a figure a class sends through send_figure: 0x0d for the fur
-/// trapper (D: job table, docs/sim/state.md §4.9), 0 (unknown, O-8) for the rest.
+/// trapper (D: job table, docs/sim/state.md §4.9; D 0x1006e5d0), 0x2a for the small
+/// farm's line-0 worker (D 0x1006f660: `this+0x118(job 0x2a, type+0xb4(0, 0), t)`,
+/// docs/re/production.md §4.5), 0 (unknown, O-8) for the rest: the farm's worker takes
+/// its job from the figure type's slot +0x54 (docs/re/production.md §4.2), which is not
+/// read.
 constexpr std::uint32_t kJobFurTrapper = 0x0d;
+constexpr std::uint32_t kJobSmallFarmWorker = 0x2a;
 /// The small-farm animal job (D: 0x2e).
 constexpr std::uint32_t kJobSmallFarmAnimal = 0x2e;
 
@@ -221,8 +282,9 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
         if (counter != nullptr) {
             ++*counter;
             const std::uint32_t kind = type.prod.figure_ids.empty() ? 0 : type.prod.figure_ids[0];
-            const std::uint32_t job =
-                type.cls == RuntimeClass::FurTrapper ? kJobFurTrapper : std::uint32_t{0};
+            const std::uint32_t job = type.cls == RuntimeClass::FurTrapper  ? kJobFurTrapper
+                                      : type.cls == RuntimeClass::SmallFarm ? kJobSmallFarmWorker
+                                                                            : std::uint32_t{0};
             fx.spawns.push_back(spawn_request(island, city, b, 0, job, kind));
         }
     }

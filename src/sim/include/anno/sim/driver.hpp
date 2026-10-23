@@ -1,5 +1,6 @@
 // The driver: calling the production step functions from the building scheduler
-// (spec: docs/sim/state.md §7.1, §7.2, stage S7).
+// (spec: docs/sim/state.md §7.1, §7.2; stage S7 drove the workshop and the farm, stage
+// S11 the weapons workshop, the fur trapper, the mine and the small farm).
 //
 // tick_building is what the original's building slot +0x8c does for each non-null
 // slot the scheduler reaches: it refreshes the inputs the step derives from other
@@ -20,13 +21,15 @@
 
 namespace anno::sim {
 
-/// Whether tick_building runs the step function of this tick kind. STAGE S7 MASK
-/// (docs/sim/state.md §15, S7): only the Workshop and Farm kinds are driven; the
-/// other ported kinds (WeaponsWorkshop, FurTrapper, SmallFarm, Mine) behave as
-/// TickKind::None (inert, `last` untouched) until stage S11 adds their driver
-/// cases and removes this function, so that no kind is half wired. The classes
-/// without a ported tick are None for good (D15).
-[[nodiscard]] bool tick_kind_enabled(TickKind kind);
+/// The research input of a weapons workshop (docs/sim/state.md §7.1; D: AnnoWelt.dll
+/// 0x10069580-0x10069640): sizes `w.unlocked` to the lines of the payload (one per
+/// entry of `w.out`) and sets line j when the Forsch research id of its output goods
+/// (`type.output_goods[j]`, GoodsInfo::forsch, OQ-034) is 0 or researched by `owner`
+/// (PlayersView::researched: bit 1 of the research state byte). A player that is not
+/// there has researched nothing. `unlocked` is derived and not saved, so it is empty
+/// after a load; tick_building calls this before every weapons_workshop_step.
+void refresh_unlocked(WeaponsWorkshop& w, const BuildingType& type, const TypeRegistry& types,
+                      const PlayersView& players, PlayerId owner);
 
 /// The counter of figures out of `home_counter` of a payload: Workshop and
 /// WeaponsWorkshop `carriers_out`, Farm `workers_out` (counter 0 each), SmallFarm
@@ -59,12 +62,23 @@ namespace anno::sim {
 
 /// One building's tick (D: building slot +0x8c). The type, the class and the owner
 /// come from the context; the step function of the class runs on the payload, then
-/// `consume` turns its result into counters, spawn requests and UI events.
-/// Returns without effect when the type is unknown or the payload is not the
-/// class's alternative (check_invariants and the loader rule both out: the
-/// release-mode behaviour of a corrupt copy is "do nothing", never an exception),
-/// when the class has no ported tick, and for the kinds masked in stage S7
-/// (tick_kind_enabled).
+/// `consume` turns its result into counters, spawn requests and UI events. Per tick
+/// kind (docs/sim/state.md §7.1):
+///  - Workshop, Farm: workshop_step, farm_step;
+///  - WeaponsWorkshop: refresh_unlocked (the owner's research), then
+///    weapons_workshop_step;
+///  - FurTrapper: fur_trapper_step on the Farm payload; a due trapper is not sent,
+///    because the prey search (D 0x10071da0) finds no animal: the sim has no wildlife
+///    objects (O-12, O-25);
+///  - Mine: mine_step over the island's deposits, the footprint by rotation
+///    (mine_area) and the world's depletion setting (WorldSettings::depletes, the
+///    add-on edition);
+///  - SmallFarm: small_farm_step with a DrawRef over the context's DrawSource
+///    (DrawSite::SmallFarmAnimal) and SimConfig::small_farm_animals.
+/// Returns without effect when the type is unknown, the payload is not the class's
+/// alternative (check_invariants and the loader rule both out: the release-mode
+/// behaviour of a corrupt copy is "do nothing", never an exception), or the class has
+/// no ported tick (TickKind::None: inert, `last` untouched, D15).
 void tick_building(const TickContext& ctx, Island& island, City& city, Building& b, Effects& fx);
 
 /// The consequences of one step (docs/sim/state.md §7.2), in this order:
@@ -75,9 +89,9 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
 ///  - made: nothing (the output stays in the building's store; carriers that move it
 ///    to the city stock arrive with transport);
 ///  - send_figure: the home counter is raised HERE, in the tick, and a SpawnRequest
-///    {kind = the type's first figure id, job (0x0d for the fur trapper, else 0 =
-///    unknown), home_counter 0} is queued; the figure itself is created by the
-///    merge;
+///    {kind = the type's first figure id, job (0x0d for the fur trapper, 0x2a for
+///    the small farm's line-0 worker, else 0 = unknown), home_counter 0} is queued;
+///    the figure itself is created by the merge;
 ///  - send_animal (small farm): counter animal_kind - small_farm_animals.base is
 ///    raised and a SpawnRequest {kind = animal_kind, job 0x2e, home_counter = that
 ///    index} is queued; a kind outside the counters sends nothing (F21).

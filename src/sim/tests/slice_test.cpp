@@ -142,47 +142,29 @@ std::uint64_t hash_events(const std::vector<sim::SimEvent>& events) {
 
 } // namespace
 
-// ------------------------------------------------------------------- the masks
+// --------------------------------------------------------------- inert classes
 
-TEST_CASE("only the workshop and farm ticks are driven in stage S7") {
-    CHECK(sim::tick_kind_enabled(sim::TickKind::Workshop));
-    CHECK(sim::tick_kind_enabled(sim::TickKind::Farm));
-    CHECK_FALSE(sim::tick_kind_enabled(sim::TickKind::None));
-    CHECK_FALSE(sim::tick_kind_enabled(sim::TickKind::WeaponsWorkshop));
-    CHECK_FALSE(sim::tick_kind_enabled(sim::TickKind::FurTrapper));
-    CHECK_FALSE(sim::tick_kind_enabled(sim::TickKind::Mine));
-    CHECK_FALSE(sim::tick_kind_enabled(sim::TickKind::SmallFarm));
-}
-
-TEST_CASE("masked and inert classes do not tick even with an open gate") {
+// Stage S7 also tested its temporary mask here (the weapons workshop, fur trapper, mine
+// and small farm did not tick); stage S11 removed the mask and drives those classes
+// (driver_classes_test.cpp). What stays: a class without a ported tick never ticks.
+TEST_CASE("inert classes do not tick even with an open gate") {
     const Kit k = make_kit();
     sim::World w = make_world_with(k, merge_scenario(k), named_seams());
-    // Open every gate: last = 0xF000 makes the 16-bit difference at tick 500 at least 500.
-    payload<sim::WeaponsWorkshop>(w, 0, 4).last = 0xF000;
-    payload<sim::SmallFarm>(w, 0, 3).last = 0xF000;
-    payload<sim::Mine>(w, 0, 5).last = 0xF000;
+    // Open the gate: last = 0xF000 makes the 16-bit difference at tick 500 at least 500.
     payload<sim::Inert>(w, 0, 6).last = 0xF000;
     sim::Effects fx;
     Tick t(w, 500);
     sim::City& c = city(w, 0);
-    for (const std::uint32_t serial : {3U, 4U, 5U, 6U}) {
-        sim::tick_building(t.ctx, island(w), c, building(w, 0, serial), fx);
-    }
-    CHECK(payload<sim::SmallFarm>(w, 0, 3).last == 0xF000);
-    CHECK(payload<sim::WeaponsWorkshop>(w, 0, 4).last == 0xF000);
-    CHECK(payload<sim::Mine>(w, 0, 5).last == 0xF000);
+    sim::tick_building(t.ctx, island(w), c, building(w, 0, 6), fx);
     CHECK(payload<sim::Inert>(w, 0, 6).last == 0xF000);
     CHECK(fx.ui.empty());
     CHECK(fx.spawns.empty());
-    // The same through the scheduler: a full lap at tick 500 ticks nothing of them.
+    // The same through the scheduler: a full lap at tick 500 leaves the kontor alone.
     sim::Effects fx2;
     c.index.stamp = 0;
     Tick t2(w, 500);
     sim::building_scheduler(t2.ctx, island(w), c, fx2);
-    CHECK(payload<sim::WeaponsWorkshop>(w, 0, 4).last == 0xF000);
-    CHECK(payload<sim::SmallFarm>(w, 0, 3).last == 0xF000);
-    // No small farm step, so no animal draw was made.
-    CHECK(t2.draw.counts[static_cast<std::size_t>(sim::DrawSite::SmallFarmAnimal)] == 0);
+    CHECK(payload<sim::Inert>(w, 0, 6).last == 0xF000);
 }
 
 // ---------------------------------------------------------------- tick_building
@@ -594,7 +576,8 @@ TEST_CASE("consume sends a figure and an animal in this order") {
     sim::Effects fx;
     sim::consume(t.ctx, island(w), city(w, 0), b, *ck.k.registry->find(ck.k.small_farm), r, fx);
     REQUIRE(fx.spawns.size() == 2);
-    CHECK(fx.spawns[0].job == 0);
+    // The line-0 worker has job 0x2a (D 0x1006f660, docs/re/production.md §4.5).
+    CHECK(fx.spawns[0].job == 0x2a);
     CHECK(fx.spawns[1].job == 0x2e);
     const auto& farm = std::get<sim::SmallFarm>(b.payload);
     CHECK(farm.figures_out[0] == 1);

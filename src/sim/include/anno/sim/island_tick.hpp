@@ -2,17 +2,16 @@
 // S13; evidence: AnnoWelt.dll island tick 0x1008b760, growth visit 0x1008b5f0, city ring
 // 0x100969d0, city tick 0x1002d9a0, building scheduler 0x10023a50, object manager
 // 0x10095d40, 300 s event 0x10093980, drought wrapper 0x10093a10, drought constructor
-// 0x10087280).
+// 0x10087280, drought tick 0x1008aeb0).
 //
 // Every function takes the read-only TickContext, the island (and city) it works
 // on and the Effects buffer for the consequences that leave the island; none of
 // them touches anything else, so the island phase can be ticked in any order
 // that merges the buffers in island order (docs/sim/state.md §4.11, §11).
 //
-// Since stage S13 the growth sweep visits its chunks (0x1008b5f0); the drought machine
-// 0x1008aeb0 is the next S13 step (a drought the 300 s event starts keeps its start
-// record until then). The fauna sweep, the object bodies and the eight city passes are
-// the seams of seams.hpp and do nothing by default.
+// Since stage S13 the growth sweep visits its chunks (0x1008b5f0) and the drought
+// machine runs (0x1008aeb0); the fauna sweep, the object bodies, the eight city passes
+// and the drought tile effects are the seams of seams.hpp and do nothing by default.
 // The island message manager ([island+0x30], 0x100793b0) is not modelled (O-52).
 #pragma once
 
@@ -93,12 +92,31 @@ void event_300s(const TickContext& ctx, Island& island, Effects& fx);
 bool start_drought(const TickContext& ctx, Island& island);
 
 /// The drought-area constructor (D: 0x10087280, island virtual slot +0x15c): a
-/// drought at world tile (x, y) in the expanding state, ring 0, target_ring =
+/// drought at world tile (x - x % chunk_edge, y - y % chunk_edge) (the constructor
+/// floors, 0x100872b8..0x100872e5) in the expanding state, ring 0, target_ring =
 /// radius / chunk_edge, stamp = the 16-bit `t`. Pure: a scripted drought (O-51) will
 /// call it too. It sets the record unconditionally, like the constructor (a caller that
 /// must not replace a running drought, as start_drought, asks first), with a city
 /// mask of drought_mask_words(city_slots) zero words (O-55).
 void start_drought_at(const SimConfig& cfg, Island& island, std::uint32_t x, std::uint32_t y,
                       std::uint32_t radius, std::uint32_t t);
+
+/// The rectangle of the drought record's current strip (D 0x1008aefb..0x1008b014, see
+/// DroughtStrip): ring 0 the centre chunk [x, x + e) x [y, y + e), unclipped; ring r >= 1
+/// the side `phase` of the ring at distance r chunks, clipped to the island; empty for
+/// a phase of 4 or more.
+DroughtStrip drought_strip(const SimConfig& cfg, const Island& island, const Drought& d);
+
+/// The drought machine (D 0x1008aeb0, docs/sim/state.md §5.8), a no-op without a
+/// record. Plateau (state 0): a count per drought_plateau_period ticks, after
+/// drought_plateau_count counts the state becomes 0xff. Expanding (1) or retreating
+/// (0xff): a strip per drought_strip_period ticks: the stamp moves by the period (the
+/// catch-up gate: never to t, one strip per call at most), Seams::drought_tiles is
+/// called with the strip (default none, O-15), an expanding strip at step 0 ORs the
+/// owners of its anchors samples into the city mask, then the step advances by
+/// chunk_edge, at drought_steps * chunk_edge the phase, at drought_phases the ring: an
+/// expanding ring past target_ring becomes the plateau at target_ring, a retreating
+/// ring below 0 removes the record. Draws nothing.
+void drought_tick(const TickContext& ctx, Island& island, Effects& fx);
 
 } // namespace anno::sim

@@ -238,6 +238,12 @@ std::string SimConfig::validate() const {
                    "must be at most 255 (the saved phase is a u8), is " +
                        std::to_string(drought_phases));
     }
+    if (drought_radius / chunk_edge > kMaxDroughtRing) {
+        return bad(kOwner, "drought_radius",
+                   "drought_radius / chunk_edge must be at most 2147483647 (the saved ring is an "
+                   "i32), is " +
+                       std::to_string(drought_radius / chunk_edge));
+    }
     if (drought_plateau_count > kMaxDroughtCounter) {
         return bad(kOwner, "drought_plateau_count",
                    "must be at most 65535 (the saved counter is a u16), is " +

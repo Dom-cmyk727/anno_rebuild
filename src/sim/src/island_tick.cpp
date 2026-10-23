@@ -7,6 +7,7 @@
 #include <limits>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include <anno/sim/clock.hpp>
 #include <anno/sim/draw.hpp>
@@ -116,9 +117,12 @@ void city_ring_tick(const TickContext& ctx, Island& island, Effects& fx) {
 
 void start_drought_at(const SimConfig& cfg, Island& island, std::uint32_t x, std::uint32_t y,
                       std::uint32_t radius, std::uint32_t t) {
+    // D 0x10087280: the position floored to the chunk edge (0x100872b8..0x100872e5, a C
+    // remainder, = floor for the non-negative coordinates), the target ring radius / edge
+    // (0x100872e9..0x100872fc), state 1, the stamp = world property 4, the tick.
     Drought d;
-    d.x = x;
-    d.y = y;
+    d.x = x - x % cfg.chunk_edge;
+    d.y = y - y % cfg.chunk_edge;
     d.target_ring = radius / cfg.chunk_edge;
     d.ring = 0;
     d.city_mask.assign(static_cast<std::size_t>(drought_mask_words(cfg.city_slots)), 0U);
@@ -143,12 +147,11 @@ bool start_drought(const TickContext& ctx, Island& island) {
             if (!b.has_value()) {
                 continue;
             }
-            // Tile coordinates inside the world are non-negative (validate_islands);
-            // floor to the chunk edge.
-            const auto bx = static_cast<std::uint32_t>(b->x);
-            const auto by = static_cast<std::uint32_t>(b->y);
-            start_drought_at(ctx.cfg, island, bx - bx % ctx.cfg.chunk_edge,
-                             by - by % ctx.cfg.chunk_edge, ctx.cfg.drought_radius, ctx.t);
+            // The building's position as it is (slots +0x54 / +0x58); the constructor
+            // floors it. Tile coordinates inside the world are non-negative
+            // (validate_islands).
+            start_drought_at(ctx.cfg, island, static_cast<std::uint32_t>(b->x),
+                             static_cast<std::uint32_t>(b->y), ctx.cfg.drought_radius, ctx.t);
             return true;
         }
     }
@@ -179,6 +182,187 @@ void event_300s(const TickContext& ctx, Island& island, Effects& /*fx*/) {
     island.event300_stamp = stamp;
 }
 
+DroughtStrip drought_strip(const SimConfig& cfg, const Island& island, const Drought& d) {
+    // D 0x1008aefb..0x1008b014 (docs/sim/state.md §5.8). i64 throughout: the ring may be
+    // up to 2^31 - 1 chunks (kMaxDroughtRing), the edge up to kWorldEdgeBound.
+    DroughtStrip s;
+    s.ring = d.ring;
+    s.phase = d.phase;
+    s.step = d.step;
+    s.expanding = d.state == 1;
+    const std::int64_t e = cfg.chunk_edge;
+    const std::int64_t x = d.x;
+    const std::int64_t y = d.y;
+    // Ring 0: the centre chunk, for every phase, not clipped (0x1008af02..0x1008af20).
+    std::int64_t x0 = x;
+    std::int64_t x1 = x + e;
+    std::int64_t y0 = y;
+    std::int64_t y1 = y + e;
+    if (d.ring != 0) {
+        const std::int64_t r = e * std::int64_t{d.ring};
+        switch (d.phase) {
+        case 0: // top row (0x1008af46)
+            x0 = x - r;
+            x1 = x + r;
+            y0 = y - r;
+            y1 = y - r + e;
+            break;
+        case 1: // right column (0x1008af68)
+            x0 = x + r;
+            x1 = x + r + e;
+            y0 = y - r;
+            y1 = y + r;
+            break;
+        case 2: // bottom row (0x1008af84)
+            x0 = x - r + e;
+            x1 = x + r + e;
+            y0 = y + r;
+            y1 = y + r + e;
+            break;
+        case 3: // left column (0x1008afa9)
+            x0 = x - r;
+            x1 = x - r + e;
+            y0 = y - r + e;
+            y1 = y + r + e;
+            break;
+        default:
+            // No rectangle in the original (0x1008af39 `ja` to an uninitialised local):
+            // an empty strip (N, only with drought_phases above 4).
+            return s;
+        }
+        // Clipped to the island (signed, 0x1008afd2..0x1008b014).
+        const std::int64_t ix = island.tiles.x0();
+        const std::int64_t iy = island.tiles.y0();
+        x0 = std::max(x0, ix);
+        x1 = std::min(x1, ix + std::int64_t{island.tiles.width()});
+        y0 = std::max(y0, iy);
+        y1 = std::min(y1, iy + std::int64_t{island.tiles.height()});
+    }
+    if (x0 >= x1 || y0 >= y1) {
+        return s; // no tile (the loops at 0x1008b028 / 0x1008b036 do not run)
+    }
+    s.rect = TileRect{static_cast<std::int32_t>(x0), static_cast<std::int32_t>(y0),
+                      static_cast<std::uint32_t>(x1 - x0), static_cast<std::uint32_t>(y1 - y0)};
+    return s;
+}
+
+namespace {
+
+/// The owner samples of an expanding strip at step 0 (D 0x1008b0c2..0x1008b195): per
+/// chunk anchor (ax, ay) of the strip, the owners of the tiles (ax + a, ay + a), (ax + a,
+/// ay + b), (ax + b, ay + a), (ax + b, ay + b) with a = e / 4 and b = 3 e / 4 (2 and 6
+/// for the original 8) set their city slot bit in the mask. An owner equal to
+/// neutral_owner (the original 15) or beyond the city slots gives no bit; a sample
+/// outside the island is skipped (F36: the original reads it unchecked).
+void sample_owners(const SimConfig& cfg, const Island& island, const DroughtStrip& s,
+                   std::vector<std::uint32_t>& mask) {
+    const std::int64_t e = cfg.chunk_edge;
+    const std::int64_t a = e / 4;
+    const std::int64_t b = 3 * e / 4;
+    const std::int64_t offsets[4][2] = {{a, a}, {a, b}, {b, a}, {b, b}};
+    const std::int64_t x_end = std::int64_t{s.rect.x0} + s.rect.w;
+    const std::int64_t y_end = std::int64_t{s.rect.y0} + s.rect.h;
+    for (std::int64_t ay = s.rect.y0; ay < y_end; ay += e) {
+        for (std::int64_t ax = s.rect.x0; ax < x_end; ax += e) {
+            for (const auto& o : offsets) {
+                const std::int64_t sx = ax + o[0];
+                const std::int64_t sy = ay + o[1];
+                if (sx > std::numeric_limits<std::int32_t>::max() ||
+                    sy > std::numeric_limits<std::int32_t>::max()) {
+                    continue;
+                }
+                const Slot idx = island.tiles.index_of(static_cast<std::int32_t>(sx),
+                                                       static_cast<std::int32_t>(sy));
+                if (idx == kNoSlot) {
+                    continue;
+                }
+                const std::uint32_t owner = island.tiles.owner(idx);
+                if (owner == cfg.neutral_owner || owner >= cfg.city_slots) {
+                    continue;
+                }
+                const std::size_t word = owner / 32U;
+                if (word < mask.size()) {
+                    mask[word] |= std::uint32_t{1} << (owner % 32U);
+                }
+            }
+        }
+    }
+}
+
+} // namespace
+
+void drought_tick(const TickContext& ctx, Island& island, Effects& fx) {
+    // D 0x1008aeb0 (docs/sim/state.md §5.8).
+    if (!island.drought.has_value()) {
+        return; // 0x1008aec2
+    }
+    const SimConfig& cfg = ctx.cfg;
+    const auto t16 = static_cast<std::uint16_t>(ctx.t);
+    {
+        Drought& d = *island.drought;
+        if (d.state == 0) {
+            // The plateau (0x1008b58e): one count per 1 000 ticks; the catch-up gate moves
+            // the stamp by the period, never to t.
+            if (static_cast<std::uint16_t>(t16 - d.stamp) < cfg.drought_plateau_period) {
+                return;
+            }
+            d.stamp = static_cast<std::uint16_t>(d.stamp + cfg.drought_plateau_period);
+            d.counter = static_cast<std::uint16_t>(d.counter + 1U);
+            if (d.counter >= cfg.drought_plateau_count) { // 0x1008b5be `jb`
+                d.counter = 0;
+                d.state = 0xff;
+            }
+            return;
+        }
+        // Expanding (1) or retreating (0xff): one strip per 50 ticks (0x1008aee2), the
+        // stamp moved before the strip (0x1008aeec).
+        if (static_cast<std::uint16_t>(t16 - d.stamp) < cfg.drought_strip_period) {
+            return;
+        }
+        d.stamp = static_cast<std::uint16_t>(d.stamp + cfg.drought_strip_period);
+    }
+    const DroughtStrip strip = drought_strip(cfg, island, *island.drought);
+    const Seam<Seams::DroughtTiles>& tiles = ctx.seams.drought_tiles;
+    if (tiles.fn != nullptr) {
+        tiles.fn(tiles.ctx, ctx, island, strip, fx);
+        if (!island.drought.has_value()) {
+            return; // a seam that removed the record ends the strip
+        }
+    }
+    Drought& d = *island.drought;
+    if (d.state == 1 && d.step == 0) {
+        sample_owners(cfg, island, strip, d.city_mask);
+    }
+    // The step: one group of chunk_edge offsets per strip, drought_steps groups per phase
+    // (`add 8`, `cmp 0x40; jb` 0x1008b4ed..0x1008b4fd).
+    const std::uint32_t next_step = std::uint32_t{d.step} + cfg.chunk_edge;
+    if (std::uint64_t{next_step} < std::uint64_t{cfg.drought_steps} * cfg.chunk_edge) {
+        d.step = static_cast<std::uint8_t>(next_step);
+        return;
+    }
+    d.step = 0;
+    // The phase: the sides of the ring (`inc`, `cmp 4; jb` 0x1008b503..0x1008b51a).
+    const std::uint32_t next_phase = std::uint32_t{d.phase} + 1U;
+    if (next_phase < cfg.drought_phases) {
+        d.phase = static_cast<std::uint8_t>(next_phase);
+        return;
+    }
+    d.phase = 0;
+    if (d.state == 1) {
+        // 0x1008b530..0x1008b553: a ring past the target is the plateau at the target.
+        if (std::int64_t{d.ring} + 1 > std::int64_t{d.target_ring}) {
+            d.state = 0;
+            d.ring = static_cast<std::int32_t>(d.target_ring);
+        } else {
+            d.ring += 1;
+        }
+    } else if (d.ring <= 0) {
+        island.drought.reset(); // 0x1008b560..0x1008b57a: the ring went below 0
+    } else {
+        d.ring -= 1;
+    }
+}
+
 void island_tick(const TickContext& ctx, Island& island, Effects& fx) {
     const std::uint32_t t = ctx.t;
     const TileLayer& tiles = island.tiles;
@@ -207,7 +391,7 @@ void island_tick(const TickContext& ctx, Island& island, Effects& fx) {
     // [island+0x30] message manager: I/O, not modelled (O-52).
     city_ring_tick(ctx, island, fx);
     event_300s(ctx, island, fx);
-    // drought_tick (D: 0x1008aeb0) is stage S13.
+    drought_tick(ctx, island, fx); // D 0x1008b8ab
     island.sweep.stamp = static_cast<std::uint16_t>(t);
 }
 

@@ -530,6 +530,10 @@ std::string validate_island(const Island& is, std::size_t slot, const SimConfig&
         // ring is i32 and runs 0 .. target_ring: an expanding ring past the target
         // turns into the plateau, a retreating one below 0 removes the drought, both
         // in the same tick.
+        if (dr.target_ring > kMaxDroughtRing) {
+            return dp + ".target_ring: " + std::to_string(dr.target_ring) +
+                   " is above 2147483647 (the ring is an i32)";
+        }
         if (dr.ring < 0 || std::int64_t{dr.ring} > std::int64_t{dr.target_ring}) {
             return dp + ".ring: " + std::to_string(dr.ring) + " is not in 0 .. target_ring (" +
                    std::to_string(dr.target_ring) + ")";

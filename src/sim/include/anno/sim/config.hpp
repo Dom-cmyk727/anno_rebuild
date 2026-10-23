@@ -123,6 +123,10 @@ inline constexpr std::uint32_t kMaxDroughtStep = 0xff;
 /// The largest value of the saved Drought `counter` (u16), compared with
 /// drought_plateau_count. Path to raise it: as kMaxDroughtStep.
 inline constexpr std::uint32_t kMaxDroughtCounter = 0xffff;
+/// The largest drought target ring, drought_radius / chunk_edge: the saved ring is an
+/// i32 like the original's dword (signed tests at 0x1008b530..0x1008b56e) and runs from
+/// 0 to the target. Path to raise it: widen Drought::ring to i64 with this constant.
+inline constexpr std::uint32_t kMaxDroughtRing = 0x7fffffff;
 
 /// SimConfig::list_min_growth is valid when it is in 1..kListSizeBound (zero
 /// would stall the growth rule of SlotList::insert, F22).

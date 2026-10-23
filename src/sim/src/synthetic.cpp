@@ -392,4 +392,20 @@ ScenarioSpec g4_scenario(const SyntheticTypes& types, std::uint32_t seed) {
     return spec;
 }
 
+ScenarioSpec g5_scenario(const SyntheticTypes& types, std::uint32_t seed) {
+    ScenarioSpec spec = empty_scenario(seed);
+    spec.settings.prop6 |= 0x80U; // the 7.5 minute event off (world property 6 bit 0x80)
+    ScenarioSpec::PlayerSpec p;
+    p.id = PlayerId{0};
+    spec.players.push_back(p);
+    ScenarioSpec::IslandSpec is = plain_island(0, 100, 100, 60, 44);
+    is.owner_runs = {{0, 60U * 40U}, {3, 60U * 4U}};
+    is.objects = {{3U * 60U + 2U, types.field.v, 0}, {42U * 60U + 58U, types.forest.v, 0}};
+    ScenarioSpec::CitySpec city0 = plain_city(0, 0);
+    city0.buildings = {building_at(types.kontor, 131, 123)};
+    is.cities = {std::move(city0), plain_city(3, 0)};
+    spec.islands.push_back(std::move(is));
+    return spec;
+}
+
 } // namespace anno::sim::synthetic

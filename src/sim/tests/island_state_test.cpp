@@ -1114,7 +1114,14 @@ std::vector<ReadRow> invalid_island_rows() {
              isl(w, 3).drought->target_ring = 0xFFFFFFFFU;
              isl(w, 3).drought->ring = -1;
          },
-         "islands[3].drought.ring: -1 is not in 0 .. target_ring (4294967295)"},
+         "islands[3].drought.target_ring: 4294967295 is above 2147483647 (the ring is an i32)"},
+        {"drought ring below 0 under the largest target",
+         [](sim::World& w) {
+             isl(w, 3).drought.emplace();
+             isl(w, 3).drought->target_ring = 0x7FFFFFFFU;
+             isl(w, 3).drought->ring = -1;
+         },
+         "islands[3].drought.ring: -1 is not in 0 .. target_ring (2147483647)"},
         {"drought city mask beyond the city slots",
          [](sim::World& w) {
              isl(w, 3).drought.emplace();
@@ -1405,7 +1412,7 @@ TEST_CASE("islands scope reads back and validates what it read") {
             {"drought ring at the i32 end",
              [](sim::World& x) {
                  isl(x, 3).drought.emplace();
-                 isl(x, 3).drought->target_ring = 0xFFFFFFFFU;
+                 isl(x, 3).drought->target_ring = 0x7FFFFFFFU; // kMaxDroughtRing (S13)
                  isl(x, 3).drought->ring = 0x7FFFFFFF;
              }},
             {"drought plateau",

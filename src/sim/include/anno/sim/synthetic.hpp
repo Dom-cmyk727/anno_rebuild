@@ -141,4 +141,15 @@ ScenarioSpec g3_scenario(const SyntheticTypes& types, std::uint32_t seed = 1234)
 /// carry (upkeep sums, timers, queued events, figures on the expiry and deferred lists).
 ScenarioSpec g4_scenario(const SyntheticTypes& types, std::uint32_t seed = 508);
 
+/// The scenario of the golden G5 (docs/sim/state.md §14.3, stage S13), on
+/// make_growth_types; the seed 514 is the one the golden uses (its 300 s draws are worked
+/// out in sweeps_test.cpp). One player (slot 0); one island in slot 0, 60 x 44 tiles at
+/// (100, 100) (8 x 6 chunks, the last column and row of chunks clipped), climate 2, rows 0
+/// .. 39 owned by city 0 and rows 40 .. 43 by city 3, both of player 0; the Kontor (the
+/// market list) of city 0 at (131, 123), so the 300 s event centres a drought on the chunk
+/// (128, 120); a grain field at island tile (2, 3) (chunk 0) and a forest at (58, 42) (the
+/// last chunk, 47). World property 6 has bit 0x80: the 7.5 minute event is off, so the 300
+/// s event makes the only draws.
+ScenarioSpec g5_scenario(const SyntheticTypes& types, std::uint32_t seed = 514);
+
 } // namespace anno::sim::synthetic

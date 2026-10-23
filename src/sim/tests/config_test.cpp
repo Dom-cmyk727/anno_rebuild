@@ -827,6 +827,15 @@ TEST_CASE("config validate rejects each bad field") {
     rows.push_back({"drought_steps", [](sim::SimConfig& c) { c.drought_steps = 0xFFFFFFFFU; }});
     rows.push_back({"drought_phases", [](sim::SimConfig& c) { c.drought_phases = 256; }});
     rows.push_back({"drought_phases", [](sim::SimConfig& c) { c.drought_phases = 0xFFFFFFFFU; }});
+    // The saved ring is an i32 (S13): drought_radius / chunk_edge <= 2^31 - 1.
+    rows.push_back({"drought_radius", [](sim::SimConfig& c) {
+                        c.chunk_edge = 1;
+                        c.drought_radius = 0x80000000U;
+                    }});
+    rows.push_back({"drought_radius", [](sim::SimConfig& c) {
+                        c.chunk_edge = 1;
+                        c.drought_radius = 0xFFFFFFFFU;
+                    }});
     rows.push_back(
         {"drought_plateau_count", [](sim::SimConfig& c) { c.drought_plateau_count = 65536; }});
     rows.push_back({"drought_plateau_count",
@@ -856,6 +865,14 @@ TEST_CASE("config validate accepts the edges of each bound") {
         CHECK(c.validate().empty());
     };
     accepted("list_min_growth 1", [](sim::SimConfig& c) { c.list_min_growth = 1; });
+    accepted("drought target ring 2^31 - 1", [](sim::SimConfig& c) {
+        c.chunk_edge = 1;
+        c.drought_radius = 0x7FFFFFFFU;
+    });
+    accepted("drought radius 2^32 - 1 at edge 2", [](sim::SimConfig& c) {
+        c.chunk_edge = 2;
+        c.drought_radius = 0xFFFFFFFFU;
+    });
     accepted("list_min_growth bound",
              [](sim::SimConfig& c) { c.list_min_growth = sim::kListSizeBound; });
     accepted("list_initial_size 1", [](sim::SimConfig& c) { c.list_initial_size = 1; });

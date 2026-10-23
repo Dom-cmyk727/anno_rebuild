@@ -39,9 +39,10 @@ class FluidGpu {
     [[nodiscard]] WGPUTexture state_texture() const { return grid_.states[0].get(); }
     /// The window, once update() has run.
     [[nodiscard]] std::optional<fluid::FluidWindow> window() const { return window_; }
-    /// Counts the windows the simulation has switched to (the first one, a new zoom group
-    /// or size; not a recentring of the same group): the compositor starts the cross-fade
-    /// from the analytic waves when it changes (GpuLimits::wave_fade_ms).
+    /// Counts the windows the simulation has switched to (the first one, other cells per
+    /// tile (a zoom group or the far-zoom bound) or another size; not a recentring): the
+    /// compositor starts the cross-fade from the analytic waves when it changes
+    /// (GpuLimits::wave_fade_ms).
     [[nodiscard]] std::uint64_t window_serial() const { return window_serial_; }
     /// Simulation time in seconds.
     [[nodiscard]] double sim_time() const { return sim_t_; }
@@ -55,7 +56,7 @@ class FluidGpu {
     /// upload_bytes_per_frame each); meanwhile the simulation keeps running
     /// on the previous window (window() is empty before the first one is
     /// ready, and renderers then fall back to the analytic waves). A window
-    /// for another zoom group or size replaces the one being prepared, so
+    /// with other cells per tile or another size replaces the one being prepared, so
     /// only the last request is ever finished. Without it (the default)
     /// update() blocks until the window is filled, which tests and headless
     /// renders rely on.
@@ -72,14 +73,18 @@ class FluidGpu {
 
     /// Brings the simulation to `time_ms` for a view at zoom `group` centred
     /// on tile position `centre` and spanning `span_tiles` tiles (sizes the
-    /// window, FluidConfig::window_size): recentres the window (new cells get
+    /// window, FluidConfig::window_size_for): recentres the window (new cells get
     /// depth `depth(x, y)` and the incoming swell, computed on `threads` CPU
     /// threads) and records the time steps into `encoder`. `depth` is called
-    /// from several threads at once. The compute pass writes `timestamps` when
-    /// given. True when a pass was recorded (a step was due).
+    /// from several threads at once. The window has `cells_per_tile` cells per
+    /// tile (fluid::bounded_cells_per_tile), or the group's when 0; a window with
+    /// other cells per tile is a new window, another group with the same cells per
+    /// tile keeps it (the cells are world cells). The compute pass writes
+    /// `timestamps` when given. True when a pass was recorded (a step was due).
     bool update(WGPUCommandEncoder encoder, std::size_t group, std::pair<float, float> centre,
                 float span_tiles, std::uint64_t time_ms, const fluid::DepthFn& depth,
-                std::size_t threads, const WGPUPassTimestampWrites* timestamps = nullptr);
+                std::size_t threads, std::uint32_t cells_per_tile = 0,
+                const WGPUPassTimestampWrites* timestamps = nullptr);
 
   private:
     /// Textures of a grid of n × n cells and their bind groups; recreated
@@ -105,8 +110,9 @@ class FluidGpu {
               float t, std::size_t threads) const;
     /// Background mode of update(): retires a stale job, uploads a finished
     /// one, starts the next when the window has to change.
-    void prepare_window(std::size_t group, std::pair<float, float> centre, std::uint32_t size,
-                        double target, const fluid::DepthFn& depth, std::size_t threads);
+    void prepare_window(std::uint32_t cells_per_tile, std::pair<float, float> centre,
+                        std::uint32_t size, double target, const fluid::DepthFn& depth,
+                        std::size_t threads);
     /// Uploads (part of) a finished job; true when the window was switched.
     bool apply_job(Job& j);
     /// Cancels the job in flight; its thread is joined later (retired_).
@@ -121,7 +127,6 @@ class FluidGpu {
     fluid::Swell comps_{};
     std::optional<fluid::FluidWindow> window_;
     std::uint64_t window_serial_ = 0;
-    std::size_t group_ = SIZE_MAX;
     BindGroupLayout layout_;
     Buffer params_, steps_;
     std::uint64_t align_ = 0;

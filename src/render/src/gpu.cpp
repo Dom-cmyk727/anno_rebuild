@@ -315,6 +315,8 @@ struct GpuFrame::Impl {
     std::uint32_t max_layers = 1;
     /// The adapter kind (for the atlas budget default, gpu-chunks.md 4.3 rule 6).
     WGPUAdapterType adapter_type = WGPUAdapterType_Unknown;
+    /// The wave simulation's cells per screen pixel at most (0 = no bound).
+    double fluid_cells_cap = 0.0;
     bool atlas_full_reported = false;
     WGPUTextureFormat format = WGPUTextureFormat_RGBA8Unorm;
     ShaderModule module;
@@ -2439,9 +2441,12 @@ struct GpuFrame::Impl {
     /// Brings the wave simulation to `time_ms` for `view` (enhanced water),
     /// recording its steps into `enc`; false if it cannot run.
     /// With `stamps`, the simulation's compute pass writes them and is marked as
-    /// timed (TimedPass::Fluid) when a step was due.
+    /// timed (TimedPass::Fluid) when a step was due. `scale` is the screen pixels per
+    /// pixel of `view` (the resample's scale, 1 without one): the window's cells per
+    /// tile are bounded by the cells per screen pixel (fluid_cells_cap); false (the
+    /// analytic waves) where even one cell per tile is above the bound.
     bool update_fluid(WGPUCommandEncoder enc, const Scene& scene, Rect view, std::size_t group,
-                      std::uint64_t time_ms, const WGPUPassTimestampWrites* stamps) {
+                      std::uint64_t time_ms, double scale, const WGPUPassTimestampWrites* stamps) {
         if (!fluid && !fluid_failed) {
             auto made = FluidGpu::create(*ref, fluid::FluidConfig{});
             if (made) {
@@ -2465,7 +2470,14 @@ struct GpuFrame::Impl {
         const std::size_t threads = hw > 0 ? hw : 4;
         const fluid::DepthFn depth = [&scene](float x, float y) { return scene.fluid_depth(x, y); };
         const float span = static_cast<float>(view.w) / tw + static_cast<float>(view.h) / th;
-        if (fluid->update(enc, group, centre, span, time_ms, depth, threads, stamps) &&
+        const auto current = fluid->window();
+        const std::uint32_t cpt =
+            fluid::bounded_cells_per_tile(fluid->config(), group, levels->tile_w(group) * scale,
+                                          fluid_cells_cap, current ? current->cells_per_tile : 0U);
+        if (cpt == 0) {
+            return false;
+        }
+        if (fluid->update(enc, group, centre, span, time_ms, depth, threads, cpt, stamps) &&
             stamps != nullptr) {
             ts_mark(TimedPass::Fluid);
         }
@@ -2662,6 +2674,10 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     m.ref = std::make_unique<DeviceRef>(c);
     m.limits = limits;
     m.adapter_type = c.adapter_type;
+    // The wave window's bound (GpuLimits::fluid_max_cells_per_px): given, or on an adapter
+    // that is not discrete the default; a discrete adapter keeps the unbounded window.
+    m.fluid_cells_cap = limits.fluid_max_cells_per_px.value_or(
+        c.adapter_type == WGPUAdapterType_DiscreteGPU ? 0.0 : fluid::kDefaultMaxCellsPerPx);
     m.max_layers = std::max(device_limits.maxTextureArrayLayers, 1U);
     if (limits.max_atlas_layers != 0) {
         m.max_layers = std::min(m.max_layers, limits.max_atlas_layers);
@@ -3055,10 +3071,10 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         m.ts_start();
     }
     // Coastal wave simulation (enhanced water only).
-    const bool fluid_on = style == WaterStyle::Enhanced && m.limits.wave_simulation &&
-                          group < kGroups &&
-                          m.update_fluid(enc.get(), scene, view, group, time_ms,
-                                         timed ? m.ts_writes(TimedPass::Fluid) : nullptr);
+    const bool fluid_on =
+        style == WaterStyle::Enhanced && m.limits.wave_simulation && group < kGroups &&
+        m.update_fluid(enc.get(), scene, view, group, time_ms, resampling ? resample->scale : 1.0,
+                       timed ? m.ts_writes(TimedPass::Fluid) : nullptr);
     stats.fluid_ms = lap();
     stats.wave_simulation = fluid_on;
     if (fluid_on && m.fluid) {
@@ -3417,6 +3433,10 @@ void GpuFrame::wait() const {
 
 RiverQuality GpuFrame::river_quality() const {
     return impl_->quality;
+}
+
+double GpuFrame::fluid_max_cells_per_px() const {
+    return impl_->fluid_cells_cap;
 }
 
 const std::vector<RiverCost>& GpuFrame::river_costs() const {

@@ -172,6 +172,9 @@ struct Options {
     int cost_frames = 60;
     /// --wave-sim on|off: GpuLimits::wave_simulation (enhanced water's wave simulation).
     std::optional<bool> wave_sim;
+    /// --fluid-cells-per-px x: GpuLimits::fluid_max_cells_per_px (0 = no bound; default:
+    /// the automatic choice by adapter type).
+    std::optional<double> fluid_cells;
     /// --cost-png dir: --scale-cost writes the last timed frame of every point as a PNG
     /// (<scene>_<w>x<h>_<style>_L<group>_s<scale>.png).
     std::string cost_png;
@@ -1286,6 +1289,7 @@ int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                 std::size_t missing = 0, dropped = 0, no_reading = 0;
                 std::uint64_t fluid_steps = 0, fluid_cells = 0;
                 std::uint32_t fluid_cpt = 0;
+                gpu::GpuStats last;
                 for (int i = 0; i < o.cost_frames; ++i) {
                     const auto st = frame();
                     missing += st.chunks_missing;
@@ -1294,6 +1298,7 @@ int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                     fluid_steps += st.fluid_steps;
                     fluid_cells = st.fluid_cells;
                     fluid_cpt = st.fluid_cells_per_tile;
+                    last = st;
                     const auto sea = g.sea_pass_ms(); // waits for the GPU and reads the ticks
                     const auto passes = g.pass_gpu_ms();
                     if (!sea || !passes || !passes->frame) {
@@ -1342,6 +1347,11 @@ int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                              static_cast<double>(fluid_cells) / (static_cast<double>(w) * h),
                              fluid_cpt,
                              static_cast<double>(fluid_steps) / static_cast<double>(o.cost_frames));
+                std::fprintf(stderr,
+                             "  last frame: %zu stand-in chunks (%zu parts), %zu chunks with open "
+                             "sea (%llu px), %zu chunks fading\n",
+                             last.stand_in_chunks, last.stand_in_parts, last.open_sea_chunks,
+                             static_cast<unsigned long long>(last.open_sea_px), last.chunks_fading);
                 if (no_reading > 0) {
                     std::fprintf(stderr, "%zu of %d frames without a GPU reading\n", no_reading,
                                  o.cost_frames);
@@ -1692,7 +1702,8 @@ constexpr const char* kUsage =
     "[--lookahead-chunks n] "
     "[--zoom-dump dir]\n"
     "       bench_frame <game_dir> <file> --renderer gpu --scale-cost group:scale[:filter],.. "
-    "[--res ..] [--styles ..] [--cost-frames n] [--derived n]\n"
+    "[--res ..] [--styles ..] [--cost-frames n] [--derived n] [--wave-sim on|off] "
+    "[--fluid-cells-per-px x] [--cost-png dir]\n"
     "       bench_frame <game_dir> <file> --chunk-profile threads,.. [--chunk-limit n] "
     "[--groups ..] [--island n]\n"
     "       bench_frame <game_dir> <file> --zoom-factor f [--resample nearest|bilinear|box|area] "
@@ -1804,6 +1815,10 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = parse(v, o.cost_frames) && o.cost_frames > 0;
         } else if (a == "--cost-png") {
             o.cost_png = std::string(v);
+        } else if (a == "--fluid-cells-per-px") {
+            double x = 0.0;
+            ok = parse(v, x) && x >= 0.0;
+            o.fluid_cells = x;
         } else if (a == "--wave-sim") {
             ok = v == "on" || v == "off";
             o.wave_sim = v == "on";
@@ -2102,12 +2117,17 @@ int main(int argc, char** argv) {
         if (o->wave_sim) {
             limits.wave_simulation = *o->wave_sim;
         }
+        if (o->fluid_cells) {
+            limits.fluid_max_cells_per_px = *o->fluid_cells;
+        }
         auto f = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
         if (!f) {
             std::fprintf(stderr, "GPU: %s\n", f.error().c_str());
             return 1;
         }
         frame_gpu = std::move(f).value();
+        std::fprintf(stderr, "wave simulation bound: %.3f cells per screen pixel (0 = none)\n",
+                     frame_gpu->fluid_max_cells_per_px());
         // The viewer's window is open for seconds before the first zoom: wait
         // (5 s at most) for the background plane pre-creation, so the benchmark
         // sees the state of a window that has been idle.

@@ -302,6 +302,16 @@ struct GpuLimits {
     /// Run the coastal wave simulation for enhanced water (false: the
     /// shader's analytic waves, as the Rust compositor without it).
     bool wave_simulation = true;
+    /// The wave simulation's cells per screen pixel (along x) at most
+    /// (fluid::bounded_cells_per_tile, T14): its window covers the world area shown, so
+    /// at a continuous zoom below scale 1 its cells, and its GPU time, grow with that
+    /// area; above the bound the cells per tile are halved (coarser cells), and off
+    /// where one cell per tile is still denser. nullopt = automatic:
+    /// fluid::kDefaultMaxCellsPerPx (0.25) on an adapter that is not discrete, where the
+    /// unbounded window costs 42-106 ms per frame at the far zoom points (Radeon iGPU,
+    /// docs/perf/README.md "T14"), and no bound on a discrete adapter (0.2-2 ms there:
+    /// the look stays as it was; the owner decides, OQ-130). 0 = no bound.
+    std::optional<double> fluid_max_cells_per_px;
     /// The cost tier of the river flow shading (docs/render/rivers.md 4 and 16).
     /// nullopt = automatic: High on a discrete adapter; on any other adapter the
     /// highest tier whose measured added cost over the legacy shimmer
@@ -488,6 +498,9 @@ class GpuFrame {
     /// The tier the river flow shading runs at (GpuLimits::river_quality, or
     /// the automatic choice made in create()).
     [[nodiscard]] RiverQuality river_quality() const;
+    /// The wave simulation's bound in cells per screen pixel in use
+    /// (GpuLimits::fluid_max_cells_per_px, or the automatic choice; 0 = none).
+    [[nodiscard]] double fluid_max_cells_per_px() const;
     /// One line describing an automatic choice that was measured (adapter, gate,
     /// the added cost per tier, or that the budget ran out); empty when the tier
     /// was given or decided by the adapter type. For the caller to print.

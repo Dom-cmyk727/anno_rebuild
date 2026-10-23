@@ -23,7 +23,8 @@
 
 namespace anno::sim {
 
-/// D: SKTIMER, world +0x69c8 (vtable 0x100cb8c4, tick 0x1009cd30). Timer 0 counts
+/// D: SKTIMER, the object world +0x69c8 points to (vtable 0x100cb8c4, tick 0x1009cd30,
+/// called at 0x100ae103; the offsets below are the object's). Timer 0 counts
 /// down, the others count up; the counters are in ticks (seconds = counter / 500).
 /// The script engine sets and reads them (BigBrother ops 0x10011ed0..0x10013dab, O-16,
 /// OQ-054); until it is ported only a loaded or test-made state starts a timer.

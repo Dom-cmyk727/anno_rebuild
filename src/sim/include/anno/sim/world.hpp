@@ -153,7 +153,7 @@ class World {
     /// The timed-event queue (stage S7: filled by the merge of EnqueueEvents;
     /// dispatched by advance since stage S12).
     [[nodiscard]] const EventQueue& events() const { return events_; }
-    /// The script timers (stage S12; D: SKTIMER, world +0x69c8).
+    /// The script timers (stage S12; D: the SKTIMER object behind world +0x69c8).
     [[nodiscard]] const ScriptTimers& timers() const { return timers_; }
     /// The monopoly table with its accumulator (stage S12; D: world +4, +0xe8).
     [[nodiscard]] const MonopolyTable& monopoly() const { return monopoly_; }

@@ -104,12 +104,6 @@ std::string World::check_invariants() const {
                    "ids.next_event_seq " + std::to_string(ids_.next_event_seq);
         }
     }
-    // F24: the last advance's event dispatch stopped at Rules::events_max_dispatch with
-    // a due event left (a game never reaches the cap; stage S12).
-    if (out_.events_capped) {
-        return "events: the last advance stopped its dispatch at Rules::events_max_dispatch (" +
-               std::to_string(rules_.events_max_dispatch) + ") with a due event left";
-    }
     // The script timers and the monopoly table (stage S12).
     problem = validate_timers(timers_, config_);
     if (problem.empty()) {
@@ -178,6 +172,14 @@ std::string World::check_invariants() const {
                 }
             }
         }
+    }
+    // F24 (stage S12), last so that it hides no structural fact: the last advance's event
+    // dispatch stopped at Rules::events_max_dispatch with a due event left (a game never
+    // reaches the cap). This reads the advance's output, not state: a save and load of
+    // the world, or the next advance, clears it.
+    if (out_.events_capped) {
+        return "events: the last advance stopped its dispatch at Rules::events_max_dispatch (" +
+               std::to_string(rules_.events_max_dispatch) + ") with a due event left";
     }
     return {};
 }

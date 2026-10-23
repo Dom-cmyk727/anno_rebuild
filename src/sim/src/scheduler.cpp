@@ -386,9 +386,10 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
 }
 
 void Scheduler::destroy_figure(World& w, FigureId id) {
-    // D 0x10097520 empties the figure's registry entry and deletes the unit; the
-    // counter of the home building that the figure held goes down by one as for a
-    // ReleaseCounter (docs/sim/state.md §5.9; a building that is gone does nothing).
+    // Phase C: D 0x10097520 empties the figure's registry entry and deletes the unit;
+    // phase D: D 0x10097770 unlinks and deletes it (remove_figure, OQ-131). The counter
+    // of the home building that the figure held goes down by one as for a ReleaseCounter
+    // (docs/sim/state.md §5.9; a building that is gone does nothing).
     const std::optional<Figure> f = remove_figure(w.figures_, id);
     if (f.has_value()) {
         release_counter(w, f->home, f->home_counter);
@@ -461,7 +462,10 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
         destroy_figure(w, id); // also takes `id` off the list
     }
     // Phase D (0x1009ab33..0x1009ab7c): every figure on the deferred list is deleted
-    // and the list is emptied.
+    // (through registry slot +0x3c = 0x10097770) and the list is emptied. Cost: phase C
+    // erases from the front of a vector and remove_figure searches both lists, O(k n) for
+    // k figures ending in one tick; a deque or an index is a later optimisation once
+    // bench_sim (stage S15) measures it.
     const std::vector<FigureId> deferred = std::move(reg.deferred);
     reg.deferred.clear();
     for (const FigureId id : deferred) {
@@ -569,8 +573,11 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
         hooks.ai_ctx = &ai_ctx;
     }
     player_table_tick(w.players_, t, w.config_, w.rules_, hooks);
-    // 5.-7. (timers.cpp): their UI events and draws go through one Effects buffer.
+    // 5.-7. (timers.cpp): their UI events and draws go through one Effects buffer. Room
+    // for its at most two events is made first: GCC 13 at -O3 otherwise reports a false
+    // -Wstringop-overflow in the reallocation path of the second push_back.
     Effects fx;
+    fx.ui.reserve(2);
     const auto before = draw.counts;
     // 5. The script timers (D: 0x1009cd30 via world +0x69c8, slot +0x14).
     if (timers_tick(w.timers_, t)) {

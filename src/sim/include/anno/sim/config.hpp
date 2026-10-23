@@ -386,6 +386,8 @@ struct Rules {
     /// D11, OQ-046; PerIsland is a reserved value.
     PrngMode prng_mode = PrngMode::Global;
     /// D12, OQ-047: 0 = a spawned figure never returns.
+    /// It is the default figure body: with a Seams::figure_tick installed the seam
+    /// decides when a figure ends and this rule does nothing (docs/sim/state.md §5.9).
     std::uint32_t interim_figure_return_ticks = 0;
     /// F13: honour a free-build flag (never from the wire).
     bool free_build_cheat = false;

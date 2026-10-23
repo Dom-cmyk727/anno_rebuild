@@ -101,18 +101,28 @@ Slot add_figure(FigureRegistry& registry, Figure f, const SimConfig& cfg, const 
 /// Rebuilds the id map from the list (after a read of the state).
 void rebuild_figure_index(FigureRegistry& registry);
 
-/// Removes the figure `id` from the registry (D: 0x10097520 nulls the entry of the
-/// figure's slot and deletes the unit; the list keeps its length, hint and cursor, as
-/// SlotList::remove): the slot is emptied, the id map forgets it, and the id leaves the
-/// expiry and the deferred list (stand-in: the original's unit destructor is unread,
-/// so whether it unlinks the unit from those lists is open, OQ-131; without it a later
-/// pass would follow a stale entry). Returns the removed figure, or nullopt when the
-/// registry holds no such figure (the id is still taken off both lists). The caller
+/// Removes the figure `id` from the registry: the slot is emptied (the list keeps its
+/// length, hint and cursor, as SlotList::remove), the id map forgets it, and the id
+/// leaves the expiry and the deferred list. Returns the removed figure, or nullopt when
+/// the registry holds no such figure (the id is still taken off both lists). The caller
 /// releases the home building's counter (the world's merge rule).
+///
+/// Evidence and stand-in (OQ-131): phase C of the original destroys through 0x10097520,
+/// which nulls the entry of the figure's slot (read through the unit's slot +0x40),
+/// calls the unit's slot +8 and lowers the live count word +0x24 (derived, not
+/// modelled). Phase D goes another way: registry slot +0x3c = 0x10097770 unlinks the
+/// unit's record from its list and the phase-A sector cells, returns it to the record
+/// pool and calls the unit's slot +8, and does not touch the entry vector. Whether the
+/// unit destructor (unread) frees the registry slot, unlinks the unit from the expiry
+/// and deferred lists and releases the home counter is open; the model does all three
+/// for both phases, so no list keeps a stale entry and no counter stays raised.
 std::optional<Figure> remove_figure(FigureRegistry& registry, FigureId id);
 
 /// Puts `figure` on the deferred-delete list and marks it, unless it is marked already
-/// (D: list +0x58; the interim return rule D12 and a behaviour seam use it).
+/// (the interim return rule D12 and a behaviour seam use it). D: registry slot +0x40 =
+/// 0x10097720 with a zero flag appends to the list +0x58 without asking whether the unit
+/// is on it already (a non-zero flag deletes at once through 0x10097770); the "once"
+/// is own design, so a figure is never released twice (validate_figures, OQ-131).
 void mark_figure_for_delete(FigureRegistry& registry, Figure& figure);
 
 /// After a behaviour seam ran on `figure` (which may write the figure's own fields,

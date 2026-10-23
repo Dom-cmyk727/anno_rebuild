@@ -539,15 +539,13 @@ TEST_CASE("state_hash relational properties") {
     CHECK(tree.root.children[5].hash == islands.value());
     // The figures scope of a new world: the registry list (i64 hint -1, u32 cursor, u64
     // slot count 1 and its child scope, an empty slot being the single byte 0), the
-    // u16 stamp and the empty expiry and deferred lists; the events scope: the u64
-    // count 0.
+    // u16 stamp and the empty expiry list; the events scope: the u64 count 0.
     sim::StateHasher figures;
     figures.u64(0xffffffffffffffffULL); // hint -1
     figures.u32(0);
     figures.u64(1);
     figures.u64(absent.value());
     figures.u16(0);
-    figures.u64(0);
     figures.u64(0);
     CHECK(tree.root.children[6].hash == figures.value());
     sim::StateHasher events;

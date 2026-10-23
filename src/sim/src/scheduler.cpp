@@ -138,9 +138,19 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         e.y = s.pos.y / 256;
         fx.ui.push_back(e);
     }
-    // 2. Releases.
+    // 2. Releases. One that names a figure goes through it (D 0x1003b6e0: only while the
+    // unit's home +0x78 is set, which it then clears), so a figure releases once.
     for (const ReleaseCounter& r : fx.releases) {
-        release_counter(w, r.home, r.home_counter);
+        if (!r.figure.valid()) {
+            release_counter(w, r.home, r.home_counter);
+            continue;
+        }
+        Figure* f = find_figure(w.figures_, r.figure);
+        if (f != nullptr && f->home.valid()) {
+            const BuildingId home = f->home;
+            f->home = BuildingId{};
+            release_counter(w, home, f->home_counter);
+        }
     }
     // 3. Money.
     for (const MoneyDelta& m : fx.money) {
@@ -222,14 +232,11 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
 }
 
 void Scheduler::destroy_figure(World& w, FigureId id) {
-    // Phase C: D 0x10097520 empties the figure's registry entry and deletes the unit;
-    // phase D: D 0x10097770 unlinks and deletes it (remove_figure, OQ-131). The counter
-    // of the home building that the figure held goes down by one as for a ReleaseCounter
-    // (docs/sim/state.md §5.9; a building that is gone does nothing).
-    const std::optional<Figure> f = remove_figure(w.figures_, id);
-    if (f.has_value()) {
-        release_counter(w, f->home, f->home_counter);
-    }
+    // Phase C: D 0x10097520 empties the figure's registry entry, calls the unit's
+    // destructor (0x10031db0, which frees only the unit) and lowers the live count. It
+    // releases nothing: the home counter went back at the figure's end (end_figure,
+    // OQ-131; docs/sim/state.md §5.9).
+    static_cast<void>(remove_figure(w.figures_, id));
 }
 
 void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw) {
@@ -259,7 +266,6 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
                     // it returns (C2).
                     const FigureId id = fig.id;
                     const bool had_stamp = fig.expiry_stamp.has_value();
-                    const bool was_marked = fig.marked_for_delete;
                     Effects fx;
                     {
                         SerialWorld serial(w.islands_, w.config_.layout, reg, w.players_, fx);
@@ -268,12 +274,17 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
                         fx.draws = draw_records_between(before, draw.counts);
                     }
                     fig.id = id; // the identity is the registry's, never the seam's
-                    sync_figure_lists(reg, fig, had_stamp, was_marked);
+                    sync_figure_lists(reg, fig, had_stamp, fx);
                     merge(w, fx, ctx.tick, t); // may grow the list: `fig` is not used below
-                } else if (interim > 0 && static_cast<std::uint32_t>(t - fig.born) >= interim) {
-                    // D12 (OQ-047, off by default): a figure returns after N ticks; it
-                    // ends in phase D of this tick.
-                    mark_figure_for_delete(reg, fig);
+                } else if (interim > 0 && !fig.expiry_stamp.has_value() &&
+                           static_cast<std::uint32_t>(t - fig.born) >= interim) {
+                    // D12 (OQ-047, off by default): a figure returns after N ticks. It
+                    // ends as the original's do (end_figure: the counter back now, the
+                    // figure on the expiry list), and its slot is freed by phase C
+                    // figure_expiry_ticks later (D: Remove(unit, 0) at 0x10034844).
+                    Effects fx;
+                    end_figure(reg, fig, t, fx);
+                    merge(w, fx, ctx.tick, t);
                 }
             }
             if (++cur >= n) {
@@ -297,16 +308,12 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
         }
         destroy_figure(w, id); // also takes `id` off the list
     }
-    // Phase D (0x1009ab33..0x1009ab7c): every figure on the deferred list is deleted
-    // (through registry slot +0x3c = 0x10097770) and the list is emptied. Cost: phase C
-    // erases from the front of a vector and remove_figure searches both lists, O(k n) for
-    // k figures ending in one tick; a deque or an index is a later optimisation once
-    // bench_sim (stage S15) measures it.
-    const std::vector<FigureId> deferred = std::move(reg.deferred);
-    reg.deferred.clear();
-    for (const FigureId id : deferred) {
-        destroy_figure(w, id);
-    }
+    // Cost: phase C erases from the front of a vector and remove_figure searches the
+    // list, O(k n) for k figures destroyed in one tick; a deque or an index is a later
+    // optimisation once bench_sim (stage S15) measures it.
+    // Phase D (0x1009ab33..0x1009ab7c) deletes the records on the list +0x58 through
+    // registry slot +0x3c = 0x10097770: the pooled sector records of registry slot
+    // +0x38, never a figure (OQ-131); not modelled (O-17, OQ-134).
 }
 
 void Scheduler::run_player_pass(void* raw, Player& p) {

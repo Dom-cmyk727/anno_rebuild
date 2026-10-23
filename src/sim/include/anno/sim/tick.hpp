@@ -156,11 +156,16 @@ struct SpawnRequest {
     FixedPos pos;
 };
 
-/// A figure ended: the named counter of its home building goes down by one (if the
-/// building still exists and the counter is above 0).
+/// A counter of figures out goes down by one (if the building still exists and the
+/// counter is above 0). With `figure` valid the release goes through the figure, as
+/// the original's unit slot +0x110 = 0x1003b6e0 does: the figure's own home and counter
+/// are released and its home becomes none, and a figure that is gone or has no home
+/// any more releases nothing (`home` / `home_counter` are then not read). That is the
+/// release a behaviour seam asks for; end_figure's own release names the building.
 struct ReleaseCounter {
     BuildingId home;
     std::uint32_t home_counter = 0;
+    FigureId figure;
 };
 
 /// A change of a player's money (i64; saturating at the ends of the type).
@@ -298,6 +303,11 @@ class SerialWorld {
     [[nodiscard]] const Figure* find_figure(FigureId id) const {
         return anno::sim::find_figure(figures_, id);
     }
+    /// Ends the figure a behaviour seam is ticking (end_figure on its fields: the
+    /// release goes into `fx`, home none, the stamp u16(t)); the registry appends it to
+    /// the expiry list after the seam returns (sync_figure_lists). Returns false when the
+    /// figure had ended already.
+    bool end_figure(Figure& figure, std::uint32_t t) { return anno::sim::end_figure(figure, t, fx); }
     [[nodiscard]] const PlayerTable& players() const { return players_; }
 
     /// The buffer the seam writes its consequences to.

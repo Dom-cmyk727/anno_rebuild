@@ -138,7 +138,7 @@ ScenarioSpec g3_scenario(const SyntheticTypes& types, std::uint32_t seed = 1234)
 /// city 0 of player 0 and city 1 of player 1; slot 4, 16 x 16 at (300, 300), climate 0,
 /// with city 0 of player 1 and city 1 of player 2. World property 7's offset is 1000 (the
 /// game seconds the monopoly table records). The test adds the state a scenario cannot
-/// carry (upkeep sums, timers, queued events, figures on the expiry and deferred lists).
+/// carry (upkeep sums, timers, queued events, figures on the expiry list).
 ScenarioSpec g4_scenario(const SyntheticTypes& types, std::uint32_t seed = 508);
 
 /// The scenario of the golden G5 (docs/sim/state.md §14.3, stage S13), on

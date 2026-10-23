@@ -720,7 +720,6 @@ TEST_CASE("merge creates figures in order with the world's ids slots and events"
     CHECK(a.cargo_88 == 0);
     CHECK(a.hp == 0);
     CHECK_FALSE(a.expiry_stamp.has_value());
-    CHECK_FALSE(a.marked_for_delete);
     CHECK(w.ids().next_figure == 3);
     CHECK(reg.by_id.at(sim::FigureId{1}) == 0);
     CHECK(reg.by_id.at(sim::FigureId{2}) == 1);
@@ -2019,7 +2018,6 @@ TEST_CASE("figure registry creation follows the group list policy") {
     CHECK(r.list.cursor == 0);
     CHECK(r.stamp == 0);
     CHECK(r.expiry.empty());
-    CHECK(r.deferred.empty());
     auto fig = [](std::uint64_t id) {
         sim::Figure f;
         f.id = sim::FigureId{id};
@@ -2151,10 +2149,8 @@ TEST_CASE("figure registry validation names each broken fact") {
         sim::add_figure(good, f, cfg, rules);
     }
     good.expiry = {sim::FigureId{2}};
-    good.deferred = {sim::FigureId{3}, sim::FigureId{1}};
-    good.list.slots[1]->expiry_stamp = 100; // on the expiry list
-    good.list.slots[2]->marked_for_delete = true;
-    good.list.slots[0]->marked_for_delete = true; // both on the deferred list
+    good.list.slots[1]->expiry_stamp = 100; // on the expiry list, ended: no home
+    good.list.slots[0]->home = sim::BuildingId{5}; // still out: holds a counter
     REQUIRE(sim::validate_figures(good, ids) == "");
     struct Row {
         const char* name;
@@ -2182,20 +2178,14 @@ TEST_CASE("figure registry validation names each broken fact") {
          "used twice"},
         {"expiry unknown", [](sim::FigureRegistry& r) { r.expiry.push_back(sim::FigureId{7}); },
          "figures.expiry[1]"},
-        {"deferred unknown", [](sim::FigureRegistry& r) { r.deferred[0] = sim::FigureId{7}; },
-         "figures.deferred[0]"},
         {"expiry twice", [](sim::FigureRegistry& r) { r.expiry.push_back(sim::FigureId{2}); },
          "figures.expiry[1]: figure 2 is on the list twice"},
-        {"deferred twice", [](sim::FigureRegistry& r) { r.deferred.push_back(sim::FigureId{3}); },
-         "figures.deferred[2]: figure 3 is on the list twice"},
-        {"marked but not deferred",
-         [](sim::FigureRegistry& r) { r.list.slots[1]->marked_for_delete = true; },
-         "slots[1].marked_for_delete: true but the figure is not on the deferred list"},
-        {"deferred but not marked",
-         [](sim::FigureRegistry& r) { r.list.slots[2]->marked_for_delete = false; },
-         "slots[2].marked_for_delete: false but the figure is on the deferred list"},
-        {"stamp without expiry", [](sim::FigureRegistry& r) { r.list.slots[0]->expiry_stamp = 5; },
-         "slots[0].expiry_stamp: the figure has a stamp but is not on the expiry list"},
+        {"ended but still holding a counter",
+         [](sim::FigureRegistry& r) { r.list.slots[1]->home = sim::BuildingId{5}; },
+         "slots[1].home: the figure has ended (it has an expiry_stamp) but still holds a "
+         "counter of building 5"},
+        {"stamp without expiry", [](sim::FigureRegistry& r) { r.list.slots[2]->expiry_stamp = 5; },
+         "slots[2].expiry_stamp: the figure has a stamp but is not on the expiry list"},
         {"expiry without stamp",
          [](sim::FigureRegistry& r) { r.list.slots[1]->expiry_stamp.reset(); },
          "slots[1].expiry_stamp: the figure has no stamp but is on the expiry list"},
@@ -2281,14 +2271,15 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     CHECK(players_at - ids_at == ids.v.size());
     CHECK(std::equal(ids.v.begin(), ids.v.end(),
                      bytes.begin() + static_cast<std::ptrdiff_t>(ids_at)));
-    // figures: the list (i64 hint 1, u32 cursor 0, u64 slot count 10, per slot a presence
-    // byte and the Figure), u16 stamp, the expiry ids, the deferred ids. Phase B of the
-    // advance ran over the ten slots once (clamp(50 · 10 / 50, 1, 10) = 10 visits from
-    // cursor 0: back at 0) and wrote the stamp 50.
+    // figures: the list (i64 hint 1, u32 cursor 0, u64 slot count 100, per slot a
+    // presence byte and the Figure), u16 stamp, the expiry ids. The second figure grew
+    // the registry 1 -> max(1 + 1/4, figure_min_growth 100) = 100 (D 0x10099185). Phase B
+    // of the advance ran over the hundred slots once (clamp(50 · 100 / 50, 1, 100) = 100
+    // visits from cursor 0: back at 0) and wrote the stamp 50.
     island_test::Stream figs;
     figs.u64(1);
     figs.u32(0);
-    figs.u64(10);
+    figs.u64(100);
     auto figure = [&](std::uint64_t id, std::uint32_t kind, std::uint32_t owner, std::uint64_t home,
                       std::uint32_t job) {
         figs.u8(1);
@@ -2305,26 +2296,24 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
         figs.u32(0);  // hp
         figs.u32(50); // born
         figs.u8(0);   // expiry_stamp absent
-        figs.u8(0);   // marked_for_delete
     };
     figure(1, 11, 0, bid(0, 1).v, 7);
     figure(2, 22, 1, bid(0, 2).v, 0);
-    for (int i = 2; i < 10; ++i) {
+    for (int i = 2; i < 100; ++i) {
         figs.u8(0);
     }
     figs.u16(50);
     figs.u64(0);
-    figs.u64(0);
     CHECK(events_at - figures_at == figs.v.size());
     CHECK(std::equal(figs.v.begin(), figs.v.end(),
                      bytes.begin() + static_cast<std::ptrdiff_t>(figures_at)));
-    // A corrupt byte in the second figure (its marked_for_delete: 20 bytes of list head,
-    // the 59 bytes of slot 0, then 58 bytes into slot 1) is reported with the scope path
-    // of that slot.
-    const std::size_t marked_at = figures_at + 20 + 59 + 58;
-    REQUIRE(bytes[marked_at] == 0);
+    // A corrupt byte in the second figure (the presence byte of its expiry_stamp: 20
+    // bytes of list head, the 58 bytes of slot 0, then 57 bytes into slot 1) is reported
+    // with the scope path of that slot.
+    const std::size_t stamp_at = figures_at + 20 + 58 + 57;
+    REQUIRE(bytes[stamp_at] == 0);
     std::vector<std::uint8_t> bad = bytes;
-    bad[marked_at] = 2;
+    bad[stamp_at] = 2;
     sim::World target = make_world_with(k, syn::empty_scenario(), script_seams(&script));
     CHECK(contains(island_test::read_flat(target, bad), "figures/figure[1] (byte"));
     // events: u64 count 1, the key (u64 due 75, u64 seq 1), kind, subtype, value, tile,
@@ -2365,13 +2354,14 @@ TEST_CASE("a world with figures and events saves loads and continues") {
     sim::World w = make_world_with(k, merge_scenario(k), script_seams(&script));
     lap(w);
     payload<sim::Workshop>(w, 0, 1).carriers_out = 1;
-    payload<sim::Farm>(w, 0, 2).workers_out = 1;
+    payload<sim::Farm>(w, 0, 2).workers_out = 0;
+    // Figure 2 has ended: its counter (the farm's workers_out) went back and its home
+    // is none (end_figure); figure 1 is still out.
     sim::WorldTestAccess::figures(w).expiry = {sim::FigureId{2}};
-    sim::WorldTestAccess::figures(w).deferred = {sim::FigureId{1}};
     sim::WorldTestAccess::figures(w).stamp = 77;
     sim::WorldTestAccess::figures(w).list.cursor = 4;
     sim::WorldTestAccess::figures(w).list.slots[1]->expiry_stamp = 1234;
-    sim::WorldTestAccess::figures(w).list.slots[0]->marked_for_delete = true;
+    sim::WorldTestAccess::figures(w).list.slots[1]->home = sim::BuildingId{};
     sim::WorldTestAccess::figures(w).list.slots[0]->cargo_goods = 9;
     sim::WorldTestAccess::figures(w).list.slots[0]->cargo_88 = 300;
     REQUIRE(w.check_invariants() == "");
@@ -2387,8 +2377,8 @@ TEST_CASE("a world with figures and events saves loads and continues") {
     CHECK(back.figures().stamp == 77);
     CHECK(back.figures().expiry == std::vector<sim::FigureId>{sim::FigureId{2}});
     CHECK(back.figures().list.slots[1]->expiry_stamp == std::optional<std::uint16_t>{1234});
-    CHECK(back.figures().list.slots[0]->marked_for_delete);
-    CHECK_FALSE(back.figures().list.slots[1]->marked_for_delete);
+    CHECK_FALSE(back.figures().list.slots[1]->home.valid());
+    CHECK(back.figures().list.slots[0]->home == bid(0, 1));
     CHECK(back.figures().list.slots[0]->cargo_88 == 300);
     CHECK(back.events().q.size() == 2);
     CHECK(back.ids().next_figure == 3);
@@ -2446,9 +2436,6 @@ TEST_CASE("ids figures and events reject hostile streams") {
         {"expiry unknown",
          [](sim::World& w) { sim::WorldTestAccess::figures(w).expiry = {sim::FigureId{9}}; },
          "figures.expiry[0]"},
-        {"deferred unknown",
-         [](sim::World& w) { sim::WorldTestAccess::figures(w).deferred = {sim::FigureId{9}}; },
-         "figures.deferred[0]"},
     };
     for (const Row& row : rows) {
         INFO("row " << row.name);
@@ -2589,10 +2576,9 @@ TEST_CASE("every field of the figure registry and the event queue moves the hash
         {"born", [](sim::Figure& f) { f.born += 1; }},
         {"expiry_stamp present",
          [](sim::Figure& f) { f.expiry_stamp = std::optional<std::uint16_t>(std::uint16_t{0}); }},
-        {"marked_for_delete", [](sim::Figure& f) { f.marked_for_delete = true; }},
     };
-    static_assert(sim::field_count<sim::Figure>() == 13);
-    CHECK(figure.size() == 14); // the 13 members, the position being two scalars
+    static_assert(sim::field_count<sim::Figure>() == 12);
+    CHECK(figure.size() == 13); // the 12 members, the position being two scalars
     std::set<std::uint64_t> seen;
     for (const auto& [name, mutate] : figure) {
         INFO("figure " << name);
@@ -2615,7 +2601,6 @@ TEST_CASE("every field of the figure registry and the event queue moves the hash
         {"cursor", [](sim::FigureRegistry& r) { r.list.cursor = 1; }},
         {"stamp", [](sim::FigureRegistry& r) { r.stamp = 1; }},
         {"expiry", [](sim::FigureRegistry& r) { r.expiry.push_back(sim::FigureId{1}); }},
-        {"deferred", [](sim::FigureRegistry& r) { r.deferred.push_back(sim::FigureId{2}); }},
         {"slot removed", [](sim::FigureRegistry& r) { r.list.slots[0].reset(); }},
         {"slot added", [](sim::FigureRegistry& r) { r.list.slots.emplace_back(); }},
     };

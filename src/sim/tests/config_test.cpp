@@ -1375,7 +1375,6 @@ TEST_CASE("state stream header and settings scopes") {
     expected.u8(0);                      // the empty slot
     expected.u16(0);                     // stamp
     expected.u64(0);                     // expiry
-    expected.u64(0);                     // deferred
     expected.u64(0);                     // events: count
     expected.u32(0);                     // timers: last_tick
     expected.u64(5);                     // timers: active

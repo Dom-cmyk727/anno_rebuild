@@ -25,7 +25,7 @@
 //                `index` / `list` / `building`)
 //   7 figures    the FigureRegistry: i64 hint, u32 cursor, u64 slot count, per slot
 //                (scope `figure`, ordinal = slot) an optional Figure, u16 stamp,
-//                the expiry ids, the deferred ids
+//                the expiry ids
 //   8 events     the timed-event queue: u64 count, per event its key (u64 due, u64
 //                seq) and the TimedEvent
 //   9 timers_monopoly  the ScriptTimers (u32 last_tick, u8 flags, u32 counters) and
@@ -865,7 +865,7 @@ template <class A, Same<IdCounters> S> void fields(A& a, S& s) {
     a.u64(s.next_event_seq);
 }
 
-static_assert(field_count<Figure>() == 13, "a Figure member needs a line in fields(Figure)");
+static_assert(field_count<Figure>() == 12, "a Figure member needs a line in fields(Figure)");
 
 template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u64(s.id.v);
@@ -881,7 +881,6 @@ template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u32(s.hp);
     a.u32(s.born);
     ar::opt(a, s.expiry_stamp, [&](auto& v) { a.u16(v); });
-    a.boolean(s.marked_for_delete);
 }
 
 /// The registry's slot list, like a building list: `i64 hint, u32 cursor, u64
@@ -921,14 +920,13 @@ template <class A, Same<SlotList<Figure>> S> void fields(A& a, S& s) {
 }
 
 // `by_id` is derived (rebuilt after a read) and is not in the stream.
-static_assert(field_count<FigureRegistry>() == 5,
+static_assert(field_count<FigureRegistry>() == 4,
               "a FigureRegistry member needs a line in fields(FigureRegistry) or a derived note");
 
 template <class A, Same<FigureRegistry> S> void fields(A& a, S& s) {
     fields(a, s.list);
     a.u16(s.stamp);
     ar::seq(a, s.expiry, 8, [&](auto& id) { a.u64(id.v); });
-    ar::seq(a, s.deferred, 8, [&](auto& id) { a.u64(id.v); });
 }
 
 template <> struct EnumInfo<EventKind> : ContiguousEnum<2> {};

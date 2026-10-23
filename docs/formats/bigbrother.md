@@ -2,6 +2,7 @@
 
 **Status:** partial.
 - **Grammar:** complete for the 50 shipped scripts. All parse without a fallback and re-emit byte-identically (`tools/bigbrother.py check`; T17, 2026-10-22).
+- **C++ reader** (T20 stage 1, 2026-10-23): `anno::formats::bigbrother` reads the grammar and the interpreter's reading (grouping, read-on) and re-emits all 50 byte-identically; `anno-dump bigbrother` = `tools/bigbrother.py dump` (§8). No evaluation yet (stage 2).
 - **Meanings:** conditions and actions are read from their names, arguments and uses. The action and condition handlers were not traced (OQ-122, OQ-123).
 - **The interpreter's reading** (T19, D): the statement reader, the condition parser and the evaluation are traced in `docs/re/annoscene.md` §12. That settles the grouping of `&&`/`||` (OQ-120) and the statements without `;` (OQ-121); see §3.4.
 
@@ -42,6 +43,7 @@ Evidence: **P** = parsed from the 50 `.sze` files (and seven quicksaves); **S** 
 - **Order:** every shipped script has six sections, always in this order (P, 50 of 50): `[OBJECT_DEFINE]`, `[AREA_DEFINE]`, `[PLAYERMAPPER_DEFINE]`, `[SCRIPT_KERNEL]`, `[SIGNALS]`, `[CAMARAPOS]`.
 - **The reader's names:** it looks the sections up as `"OBJECT_DEFINE\n"` … `"SIGNALS\n"` (S, `0x1003e5c8`–`0x1003e618`).
 - **`STARTUP`:** a seventh name (`0x1003e628`) that no shipped script uses (OQ-122).
+- **In the readers** (the reference and the C++ reader): the six names are data, required once each and in this order. A section of any other name (its body must still be tokens of §2) is kept as read and not interpreted, so a script with `STARTUP` loads and re-emits.
 
 ### 3.1 `[OBJECT_DEFINE]`: named objects, one per line
 | Form | Uses | Reading |
@@ -525,5 +527,57 @@ Total: 284 names = 159 script + 125 other.
   - `[SIGNALS]` equals `SCHUETTIINITSIG = TRUE` followed by the `SET` variables in order;
   - `AnnoScene.dll` has 284 names;
   - the interpreter's reading of the corpus: 28 mixed conditions in 10 files, each different from the C reading; three block statements without `;`, one lost statement (`MINIMAP_ALERT`, S01_09_01).
-- `dump <file>` prints the tree, with the grouping of mixed conditions and the statements without `;` marked. `vocab <files>` and `keywords <AnnoScene.dll> <files>` produce the counts and tables of §4–§6. `quirks <files>` lists the mixed conditions as grouped and the statements without `;` with what they swallow (§3.4).
-- No C++ reader yet (T17: the Python reference is the oracle). `anno-dump sze` does not print the chunk.
+- `dump [--full] <file>...` prints the tree, with the grouping of mixed conditions and the statements without `;` marked (the reference dump below). `vocab <files>` and `keywords <AnnoScene.dll> <files>` produce the counts and tables of §4–§6. `quirks <files>` lists the mixed conditions as grouped and the statements without `;` with what they swallow (§3.4).
+- The synthetic fixtures: `fixtures/synthetic/bigbrother_synthetic/`, written by `python -I tools/bigbrother_fixtures.py` (our own text; `test_bigbrother.py` checks that the committed files are its output).
+
+### C++ reader: `anno::formats::bigbrother` (T20 stage 1)
+- `src/formats/include/anno/formats/bigbrother.hpp`:
+  - `parse` returns the tree or an `Error` with the byte offset, the line (1-based, in LF bytes) and the reason;
+  - `emit` gives back the bytes (every byte is in one token);
+  - `find_payload` finds the chunk in a scenario or a savegame;
+  - `grouped` and `read_on` are the interpreter's reading of §3.4. No evaluation.
+- **No limits compiled in:** the six section names of §3, the three object kinds of §3.1 and the three subjects of §3.4 are tables; numbers are kept as written. The names of §4–§6 are not known to the reader: a call is a name plus values.
+- **Tests:** `src/formats/tests/bigbrother_test.cpp` (synthetic) and `bigbrother_corpus_test.cpp` (`ANNO1503_GAME_DIR`). The corpus case asserts:
+  - 50/50 byte-identical;
+  - the counts of §3.4, plus 4 statements without `;`, 1 call without `()`, 24 timer and 429 variable primaries, 1,273 comments, 147 variables and 37 scripts with statements;
+  - `[SIGNALS]` as in §3.5;
+  - 28 mixed conditions in 10 files, each guarded by its first term and different from C's reading;
+  - the three block statements without `;` and the one lost statement.
+
+  Its output names files and counts only.
+- `tools/agree.py --commands bigbrother`: `anno-dump bigbrother [--full]` prints the same bytes as `tools/bigbrother.py dump [--full]`. It runs on the synthetic fixtures (the accepted ones, then all with the refused ones) and, with the game dir, on the 50 `.sze`.
+
+### Reference dump
+`anno-dump bigbrother [--full] <file.sze|file.sav>...` and `python3 tools/bigbrother.py dump [--full] <file>...` print:
+```text
+# <path>
+SCRIPT bytes=<n> tokens=<n> sections=<n> crlf=<n> lf=<n>
+[OBJECT_DEFINE]
+  <kind> "<name>" <n>[,<n>,<n>]                     one per line; numbers as values
+[AREA_DEFINE]
+  "<name>" <a>,<b>,<c>,<d>
+[PLAYERMAPPER_DEFINE]
+  "<name>" <slot>
+[SCRIPT_KERNEL]
+  INITBLOCK
+    CALL <name>(<v>, ...)[  (no ())][  (no ;)][  <read-on note>][  (LOST: read into the statement before)]
+    <name> = <v>[  (no ;)][  <read-on note>][  (LOST: ...)]
+  SET <name> = <v>[  (no ;)]
+  IF <condition as written, in parentheses> THEN
+     grouped by the interpreter: <grouping>          only for a mixed condition
+    <statements>
+  ELSE
+    <statements>
+[SIGNALS]
+  <name> = TRUE|FALSE
+[CAMARAPOS]
+  <x>,<y>
+[<OTHER>]  (not read: <n> tokens kept)
+TOKEN <offset> <NEWLINE|WS|COMMENT|SECTION|STRING|NUMBER|IDENT|OP> <text>   --full: every token
+```
+- **Read-on notes:**
+  - `(reads on to the ';' at offset <n>; loses <k> statement(s))`;
+  - `(the interpreter refuses the kernel: no ';' follows)`.
+- **Values** are as written: strings with their quotes.
+- **Escaping:** every byte outside printable ASCII, and `\`, prints as `\xHH`, so the text is ASCII on every platform.
+- **Refusals:** a file whose script is refused, or that has no single `BIGBROTHER` chunk, prints `NOPARSE` (the reason goes to stderr), and the exit code is 1.

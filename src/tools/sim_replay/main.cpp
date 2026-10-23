@@ -18,9 +18,13 @@
 // A log made against another registry reports a digest mismatch here (the full
 // scenario path arrives with the game files, S14).
 #include <algorithm>
+#include <atomic>
 #include <charconv>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -30,9 +34,12 @@
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
 
+#include <anno/formats/anlagen.hpp>
 #include <anno/sim/replay.hpp>
+#include <anno/sim/scenario_formats.hpp>
 #include <anno/sim/state_fields.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/types.hpp>
@@ -271,13 +278,115 @@ int cmd_golden(const std::string& path) {
     return 0;
 }
 
+/// The island content of World::create on all cores (docs/sim/state.md §11 item 1:
+/// load-time work per island in parallel, results in table order).
+class ThreadExecutor final : public sim::Executor {
+  public:
+    void run(std::uint64_t n, Body body, void* ctx) const override {
+        const std::uint64_t threads =
+            std::min<std::uint64_t>(n, std::max(1U, std::thread::hardware_concurrency()));
+        std::atomic<std::uint64_t> next{0};
+        std::vector<std::thread> pool;
+        for (std::uint64_t t = 0; t < threads; ++t) {
+            pool.emplace_back([&] {
+                for (std::uint64_t i = next++; i < n; i = next++) {
+                    body(ctx, i);
+                }
+            });
+        }
+        for (std::thread& th : pool) {
+            th.join();
+        }
+    }
+};
+
+/// The registry of the game directory (ANNO1503_GAME_DIR/Anlagen.dat), or the empty
+/// one (then every placed item is an UnknownObject) with a note.
+std::shared_ptr<const sim::TypeRegistry> scenario_registry() {
+    const char* dir = std::getenv("ANNO1503_GAME_DIR");
+    if (dir == nullptr || *dir == '\0') {
+        std::cout << "registry empty (ANNO1503_GAME_DIR not set)\n";
+        return sim::TypeRegistry::empty();
+    }
+    const std::filesystem::path p = std::filesystem::path(dir) / "Anlagen.dat";
+    std::ifstream in(p, std::ios::binary);
+    const std::vector<std::uint8_t> buf{std::istreambuf_iterator<char>(in), {}};
+    auto file = anno::formats::anlagen::AnlagenFile::parse(buf);
+    if (!file) {
+        std::cout << "registry empty (cannot read " << p.string() << ")\n";
+        return sim::TypeRegistry::empty();
+    }
+    auto r =
+        sim::TypeRegistry::build(file.value().entries, sim::original_goods(), sim::SimConfig{});
+    if (!r) {
+        std::cout << "registry empty (" << r.error() << ")\n";
+        return sim::TypeRegistry::empty();
+    }
+    return r.value();
+}
+
+int cmd_scenario(const std::string& path, std::uint64_t ticks, std::uint32_t step_ms) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        std::cerr << "cannot read " << path << "\n";
+        return 1;
+    }
+    const std::vector<std::uint8_t> buf{std::istreambuf_iterator<char>(in), {}};
+    const auto types = scenario_registry();
+    const sim::SimConfig cfg;
+    using clock = std::chrono::steady_clock;
+    const auto t0 = clock::now();
+    auto loaded = sim::load_scenario(buf, *types, cfg);
+    const auto t1 = clock::now();
+    if (!loaded) {
+        std::cout << "refused: " << loaded.error() << "\n";
+        return 1;
+    }
+    const sim::ScenarioCounts c = sim::count(loaded.value());
+    std::cout << "islands " << c.islands << " links " << c.links << " players " << c.players
+              << " cities " << c.cities << " buildings " << c.buildings << " tile_objects "
+              << c.tile_objects << " deposits " << c.deposits << "\n";
+    for (const sim::ScenarioWarningKind k : sim::all_warning_kinds()) {
+        const auto it = c.warnings.find(k);
+        std::cout << "warnings " << sim::warning_kind_name(k) << " "
+                  << (it == c.warnings.end() ? 0 : it->second) << "\n";
+    }
+    const ThreadExecutor ex;
+    auto w = sim::World::create(loaded.value().spec, types, cfg, {}, {}, ex);
+    const auto t2 = clock::now();
+    if (!w) {
+        std::cout << "create refused: " << w.error() << "\n";
+        return 1;
+    }
+    sim::World world = std::move(w).value();
+    std::cout << "hash after create " << hex64(world.state_hash()) << "\n";
+    // Advances of step_ms until the tick reaches `ticks` (a tick is 2 ms).
+    const std::uint64_t target = world.clock().tick() + ticks;
+    while (world.clock().tick() < target) {
+        world.advance(step_ms);
+    }
+    const auto t3 = clock::now();
+    std::cout << "hash after " << world.clock().tick() << " ticks " << hex64(world.state_hash())
+              << "\n";
+    const std::string problem = world.check_invariants();
+    std::cout << "check_invariants " << (problem.empty() ? std::string("clean") : problem) << "\n";
+    auto ms = [](auto d) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
+    };
+    std::cout << "time load " << ms(t1 - t0) << " ms, create " << ms(t2 - t1) << " ms, run "
+              << ms(t3 - t2) << " ms\n";
+    return problem.empty() ? 0 : 1;
+}
+
 void usage() {
-    std::cerr << "usage: anno-sim-replay <run|hashes|first-diff|tree|golden> ...\n"
+    std::cerr << "usage: anno-sim-replay <run|hashes|first-diff|tree|golden|scenario> ...\n"
                  "  run <log>\n"
                  "  hashes <log>\n"
                  "  first-diff <a> <b>\n"
                  "  tree <log> [--entry N] [--depth D] [--dump-scope PATH]\n"
-                 "  golden <log>\n";
+                 "  golden <log>\n"
+                 "  scenario <file.sze> [--ticks N] [--step-ms M]   (the registry of "
+                 "ANNO1503_GAME_DIR)\n";
 }
 
 } // namespace
@@ -335,6 +444,35 @@ int main(int argc, char** argv) {
             }
         }
         return cmd_tree(args[1], entry, depth, dump_scope);
+    }
+    if (sub == "scenario" && args.size() >= 2) {
+        std::uint64_t ticks = 0;
+        std::uint32_t step_ms = 100;
+        for (std::size_t i = 2; i < args.size(); ++i) {
+            if (args[i] == "--ticks" && i + 1 < args.size()) {
+                const auto v = parse_u64(args[++i]);
+                if (!v) {
+                    std::cerr << "bad --ticks value '" << args[i]
+                              << "': expected a non-negative decimal integer\n";
+                    usage();
+                    return 2;
+                }
+                ticks = *v;
+            } else if (args[i] == "--step-ms" && i + 1 < args.size()) {
+                const auto v = parse_u64(args[++i]);
+                if (!v || *v == 0 || *v > std::numeric_limits<std::uint32_t>::max()) {
+                    std::cerr << "bad --step-ms value '" << args[i]
+                              << "': expected a decimal integer from 1 to 4294967295\n";
+                    usage();
+                    return 2;
+                }
+                step_ms = static_cast<std::uint32_t>(*v);
+            } else {
+                usage();
+                return 2;
+            }
+        }
+        return cmd_scenario(args[1], ticks, step_ms);
     }
     usage();
     return 2;

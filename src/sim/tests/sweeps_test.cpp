@@ -670,6 +670,34 @@ TEST_CASE("drought samples outside the island are skipped (F36)") {
     CHECK(w.check_invariants() == "");
 }
 
+TEST_CASE("the 300 s event sees a drought that ends in the same island tick") {
+    // The island tick runs the 300 s event before the drought tick (D 0x1008b8a2 slot
+    // +0x190, then 0x1008b8ab). A drought started at tick 7 600 ends at 7 600 + 142 400 =
+    // 150 000, the tick of the first 300 s gate; with seed 2 that gate's draw (26 500)
+    // passes, but the event still sees the record and starts nothing; the drought tick then
+    // removes it. Run the other way round, a new drought would start at 150 000.
+    const syn::SyntheticTypes t = growth_types();
+    REQUIRE(draw_after(2, 1) == 26500);
+    sim::World w = make(syn::g5_scenario(t, 2), t);
+    w.advance(15200);
+    REQUIRE(w.clock().tick() == 7600);
+    sim::start_drought_at(w.config(), island(w), 131, 123, 50, 7600);
+    std::uint32_t draws = 0;
+    for (int i = 0; i < 142400 / 50; ++i) {
+        w.advance(100);
+        for (const sim::DrawRecord& r : w.last_output().draws) {
+            draws += r.count;
+        }
+        if (w.clock().tick() < 150000) {
+            REQUIRE(island(w).drought.has_value());
+        }
+    }
+    REQUIRE(w.clock().tick() == 150000);
+    CHECK(draws == 1); // the gate drew once
+    CHECK_FALSE(island(w).drought.has_value());
+    CHECK(island(w).event300_stamp == 300);
+}
+
 TEST_CASE("start_drought_at is the constructor the scripted door will use") {
     // O-51: a scripted drought calls the constructor with its own position and length, on
     // an island without cities or a market building, and the machine runs it like any

@@ -6,7 +6,7 @@ add_library(anno_sim src/sim.cpp src/production.cpp src/config.cpp src/types.cpp
             src/save.cpp src/building.cpp src/create.cpp src/invariants.cpp src/figure.cpp
             src/driver.cpp src/scheduler.cpp src/codec.cpp src/apply.cpp src/replay.cpp
             src/placement.cpp src/legacy_codec.cpp src/events.cpp src/timers.cpp
-            src/island_tick.cpp)
+            src/island_tick.cpp src/scenario_formats.cpp)
 target_include_directories(anno_sim PUBLIC include)
 target_link_libraries(anno_sim PUBLIC anno_formats)
 target_compile_features(anno_sim PUBLIC cxx_std_20)

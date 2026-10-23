@@ -333,8 +333,26 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 ### T8 — Sim stage S9: replay and session · **`DONE`** (merged as aa85d73 on 2026-10-23, PR #19, CI green; §4 round i) · was `IN PROGRESS` (round i: the fix-up of §4 items 1, 2, 4, 6, 7 and the nits runs in an orchestrator subagent on the same branch; then re-review and merge, then PLAN S9 done) · was `REVIEW` (PR #19, reviewed 2026-10-22 h, §4: items 1, 2, 4, 6, 7 open, then merge) · was `READY` since T7b is merged (2026-10-22); **round e: run by one subagent of the main executor** (the second executor did not start it); originally assigned to the second executor in round c; it carries the T7b requirements (framing helper, `state.md` §15 S9) · `PARALLEL-OK` (only `src/sim`, `src/tools/sim_replay`, `docs/sim`) · branch `task/T8-sim-s9-replay` from `main` (worktree `C:\Users\altin\anno1503-T8`)
 - Per `state.md` §15 S9 including `src/tools/sim_replay/`. Unlocked by the orchestrator.
 
-### T9 — Sim stages S10–S15 · S10 **`DONE`** (merged as 0ebfeb2 on 2026-10-23, PR #25, CI green; §4) · **S11 `IN PROGRESS`** (round j, orchestrator subagent, branch `task/T9-sim-s11-classes`, worktree `C:\Users\altin\anno1503-T9`) · S12–S15 `LATER`
-- **S11 (remaining production classes)**, as written in `state.md` §15 S11: `driver.cpp` drives WeaponsWorkshop (research input), FurTrapper, SmallFarm (`DrawRef`) and Mine (deposits), the mine area, and removes the temporary mask.
+### T9 — Sim stages S10–S15 · S10 **`DONE`** (merged as 0ebfeb2, PR #25) · S11 **`DONE`** (merged as 9393718 on 2026-10-23, PR #26, CI green; §4) · **S12 `IN PROGRESS`** (round j, orchestrator subagent, branch `task/T9-sim-s12-time`, worktree `C:\Users\altin\anno1503-T9`) · S13–S15 `LATER`
+- **S12 (world-level time)**, as written in `state.md` §15 S12: `events.cpp` (queue, dispatch, seams), `timers.cpp`, the monopoly, the 7.5 min event, `figures_tick` with the slot policy and phases B/C/D.
+- **S12 acceptance (written before work starts):**
+  1. every test name listed in §15 S12 exists in `world_events_test.cpp` and passes:
+     - the world-level cases of §14.2: FIFO, saved-next in `advance`, kind-1 events saved, timer clamp, monopoly once and the rule, event 7.5 min draws, accumulator discard vs keep, zero islands, registry count without `+1`, expiry, interim return, counter release;
+     - "figure phase goods effects merge after each call (C2)";
+     - "AI seam commands applied in advance and not logged";
+  2. golden G4 (§14.3: players with upkeep and bankruptcy, events, timers, the 7.5 min event with the add-on flag, monopoly once; 600 000 ticks) committed as our own synthetic fixture and reproduced by the test and by `anno-sim-replay run` (a CTest like `anno_sim_replay_g3_run`);
+  3. exit condition checked and stated: every subsystem of §5.3 exists, even where its body is a seam default (list each with its file and whether its body is real or a seam default);
+  4. evidence as in S11: module + address or a spec section per rule; untraced details as new OQs with the stand-in named; feel changes stay faithful and become owner questions; new OQ numbers continue after the highest on `main` when the PR is opened;
+  5. `kStateHashVersion` / `kPrngTimelineVersion` bumped with the reason if the stream or the draw sites change; G1–G3 still replay, or are re-recorded with the reason;
+  6. gates of §1 item 4 through the heavy-job lock:
+     - MSVC build;
+     - ctest with and without the game dir;
+     - clang-format 23.1.3;
+     - WSL GCC 13.3 and Clang 18 `-O3 -Werror`, with and without the game dir;
+     - `lint_sim.py`;
+     - mutation evidence for the event FIFO order, the monopoly-once rule and the 7.5 min event's add-on flag (break each, a named test fails);
+  7. `state.md` §15 "S12 as implemented", PLAN status, a REPORTS.md section, a PR.
+- **S11 (remaining production classes; done, §4 2026-10-23 j)**, as written in `state.md` §15 S11: `driver.cpp` drives WeaponsWorkshop (research input), FurTrapper, SmallFarm (`DrawRef`) and Mine (deposits), the mine area, and removes the temporary mask.
 - **S11 acceptance (written before work starts):**
   1. every test name listed in §15 S11 exists and passes (`driver_classes_test.cpp`: each class through the scheduler equals the direct step-function test at the same ticks; "weapons workshop unlocked from research"; "mine deposit by index and depletion only in the add-on"; "small farm draws once per step through the world"; "fur trapper sends nothing without prey"; "weapons workshop save load advance");
   2. golden G3 (§14.3 table: two islands, two cities, one building of every implemented class, a mine over two deposits, research bytes set, 100 000 ticks) committed as our own synthetic fixture and reproduced by the test;

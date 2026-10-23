@@ -1237,7 +1237,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** read the three methods and their callers (which vtable slot they are, who calls them per player), and the other 17 sites.
 
 ## OQ-129: Fur trappers send no trapper until the island has wildlife (new, T9 S11 2026-10-23; O-12, O-25)
-- **Status:** open, owner decides (informational until the fauna is ported)
+- **Status:** resolved 2026-10-23 by the owner: "just stay idle until the animals are added". No stand-in; the trapper waits for the fauna port.
 - **Area:** simulation / production
 - **What the rebuild does (faithful):** the fur trapper's tick (`0x1006e5d0`) sends a trapper only with a target from the radius search `0x10071da0(8)`: the nearest animal of the input goods. Animals are wildlife island objects, which the sim does not create yet: their spawns come from the fauna sweep `0x10093480` (O-12, the unported `WildlifeSweep` draw site). So the search finds nothing, no trapper leaves, and a fur trapper produces only from the raw stock it starts with. In a played game, fur trappers therefore stay idle until the fauna is ported.
 - **Question for the owner:** keep this until the fauna sweep is ported (the default; nothing is guessed), or add an opt-in `rules` stand-in before that (e.g. a trapper that always finds prey)? A stand-in would change the PRNG-free production numbers and is not the original.

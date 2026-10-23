@@ -208,3 +208,18 @@ s12_g4_events S12 108 c03145d1114f097d
 # 75377408add93662, s12_g4_events c03145d1114f097d. g0, g1_players, s5 and s6 come from
 # tools/sim_stream.py (the C++ printed the same values); the others are self-baselined (the
 # event goldens are unchanged); g2.log, g3.log and g4.log were re-recorded.
+#
+# S13 G5 (stage S13): synthetic::g5_scenario (seed 514) on synthetic::make_growth_types (one
+# player; island 0, 60 x 44 at (100, 100), rows 0 .. 39 of city 0 and 40 .. 43 of city 3, the
+# Kontor of city 0 at (131, 123), a grain field in chunk 0 and a forest in the last chunk;
+# the 7.5 minute event off), 20 000 single-player advances of 100 ms (tick 1 000 000),
+# recorded as fixtures/synthetic/sim/g5.log with 21 checkpoints: the field ripe at tick
+# 156 050, the forest at 240 000, droughts started by the 300 s event at 300 000 (gone at
+# 442 400) and at 900 000 (in its plateau at the end, 88 counts). s13_g5_checkpoints is the
+# FNV-1a 64 of the state hashes after every 1 000th advance, s13_g5_end the hash at tick
+# 1 000 000. SELF-BASELINED like the S7 .. S12 goldens (ANNO_UPDATE_GOLDEN also rewrites
+# g5.log); sweeps_test.cpp holds the growth counters, the ripe ticks, the six draws (worked
+# out from the PRNG table for seed 514), the drought starts, states and city mask to values
+# derived by hand.
+s13_g5_checkpoints S13 108 63bd3ee827a70306
+s13_g5_end S13 108 e2858ed01a150989

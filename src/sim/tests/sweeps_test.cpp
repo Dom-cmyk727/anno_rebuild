@@ -3,6 +3,10 @@
 // 0x1008aeb0). Every expected number is derived by hand from the spec (never from the
 // code under test); the derivations are in the comments.
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -10,11 +14,14 @@
 
 #include <doctest/doctest.h>
 
+#include <anno/sim/hash.hpp>
 #include <anno/sim/island_tick.hpp>
+#include <anno/sim/replay.hpp>
 #include <anno/sim/rng.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/world.hpp>
 
+#include "golden.hpp"
 #include "slice_helpers.hpp"
 
 namespace sim = anno::sim;
@@ -764,5 +771,187 @@ TEST_CASE("drought save load and hash in each of the three states") {
                 static_cast<std::uint8_t>(island(moved).drought->step ^ 8);
         }
         CHECK(moved.state_hash() != w.state_hash());
+    }
+}
+
+// ------------------------------------------------------------------- G5
+
+TEST_CASE("G5 growth and the 300 s drought through 1000000 ticks equal golden") {
+    // G5 (docs/sim/state.md §14.3): synthetic::g5_scenario (seed 514) on make_growth_types,
+    // 20 000 single-player advances of 100 ms (tick 1 000 000, 2 000 game seconds), a
+    // checkpoint before the first and after every 1 000th advance, recorded as
+    // fixtures/synthetic/sim/g5.log. Every number below is derived by hand.
+    const syn::SyntheticTypes t = growth_types();
+    sim::World w = make(syn::g5_scenario(t), t);
+    const std::uint32_t cursor0 = w.rng().cursor();
+    auto started = sim::Recorder::start(w);
+    REQUIRE_MESSAGE(started.ok(), (started.ok() ? std::string() : started.error()));
+    sim::Recorder rec = std::move(started).value();
+    rec.checkpoint();
+    sim::StateHasher checkpoints;
+    std::map<sim::DrawSite, std::uint32_t> draws;
+    std::vector<sim::SimEvent> ui;
+    std::optional<std::uint64_t> field_ripe, forest_ripe;
+    std::vector<std::uint64_t> starts, ends, bit3_at;
+    bool had = false;
+    std::vector<std::uint32_t> last_mask;
+    std::uint8_t field_phase_100k = 0xff, forest_phase_200k = 0xff;
+    std::optional<sim::Drought> at305k, at350k, at440k;
+    for (int i = 1; i <= 20000; ++i) {
+        rec.advance(100);
+        ui.insert(ui.end(), w.last_output().events.begin(), w.last_output().events.end());
+        for (const sim::DrawRecord& r : w.last_output().draws) {
+            draws[r.site] += r.count;
+        }
+        const std::uint64_t tick = w.clock().tick();
+        const sim::Island& is = island(w);
+        if (!field_ripe && object_at(is, 2, 3) == t.ripe_field.v) {
+            field_ripe = tick;
+        }
+        if (!forest_ripe && object_at(is, 58, 42) == t.ripe_forest.v) {
+            forest_ripe = tick;
+        }
+        if (tick == 100000) {
+            field_phase_100k = phase_at(is, 2, 3);
+        }
+        if (tick == 200000) {
+            forest_phase_200k = phase_at(is, 58, 42);
+        }
+        if (is.drought.has_value() != had) {
+            (had ? ends : starts).push_back(tick);
+            had = is.drought.has_value();
+            last_mask.clear();
+        }
+        if (had) {
+            if (is.drought->city_mask.size() == 1 && (is.drought->city_mask[0] & 8U) != 0 &&
+                (last_mask.empty() || (last_mask[0] & 8U) == 0)) {
+                bit3_at.push_back(tick);
+            }
+            last_mask = is.drought->city_mask;
+        }
+        if (tick == 305000) {
+            at305k = is.drought;
+        } else if (tick == 350000) {
+            at350k = is.drought;
+        } else if (tick == 440000) {
+            at440k = is.drought;
+        }
+        if (i % 1000 == 0) {
+            rec.checkpoint();
+            checkpoints.u64(w.state_hash());
+            REQUIRE(w.check_invariants() == "");
+        }
+    }
+    REQUIRE(w.clock().tick() == 1000000);
+    CHECK(w.events_dropped() == 0);
+    CHECK(ui.empty()); // nothing in G5 posts a UI event (no production, no timer)
+
+    // Growth. 48 chunks (8 x 6), d = 50 per advance: min(48 · 50 / 2000 + 1, 48) = 2
+    // chunks per advance from the cursor, a full sweep every 24 advances = 1 200 ticks.
+    // Advance k visits chunks 2 (k - 1) and 2 (k - 1) + 1 (mod 48): chunk 0 at ticks 50 +
+    // 1 200 j, chunk 47 at 1 200 (j + 1). Both P / 2 (7 750, 12 000) exceed 1 200, so every
+    // parity flip of t / (P / 2) is counted once: after a visit at tick T the counter is T
+    // / (P / 2) and the parity bit its low bit, until the counter reaches S << k = 20 at a
+    // multiple of 2^k = 4, which makes the object ripe.
+    // The field (P / 2 = 7 750) in chunk 0: its 84th visit, at 99 650, the last before the
+    // checkpoint at 100 000, leaves the counter 99 650 / 7 750 = 12, parity 0; ripe at the
+    // first visit at or after 20 · 7 750 = 155 000: 50 + 1 200 · 130 = 156 050.
+    CHECK(field_phase_100k == 12);
+    CHECK(field_ripe == std::uint64_t{156050});
+    // The forest (P / 2 = 12 000) in chunk 47: its 166th visit, at 199 200, leaves 16,
+    // parity 0; ripe at 20 · 12 000 = 240 000, which is a visit (1 200 · 200).
+    CHECK(forest_phase_200k == 16);
+    CHECK(forest_ripe == std::uint64_t{240000});
+
+    // The 300 s gates at game seconds 300 · k = ticks 150 000 · k, k = 1 .. 6 (the 7th, at
+    // 2 100 s, is beyond the end): one draw each, the only draws of G5 (the 7.5 minute event
+    // is off). Cursor 514: 21 763, 4 940, 20 851, 18 662, 13 829, 30 900; % 20: 3, 0, 11, 2,
+    // 9, 0. The gate also needs climate != 0 and a city below slot 15 (city 0): droughts
+    // start at the second gate (300 000) and at the sixth (900 000); the first is gone at
+    // 300 000 + 142 400 = 442 400, before the third gate, so no draw meets a running one.
+    CHECK(cursor0 == 514);
+    CHECK(draw_after(cursor0, 1) == 21763);
+    CHECK(draw_after(cursor0, 2) == 4940);
+    CHECK(draw_after(cursor0, 3) == 20851);
+    CHECK(draw_after(cursor0, 4) == 18662);
+    CHECK(draw_after(cursor0, 5) == 13829);
+    CHECK(draw_after(cursor0, 6) == 30900);
+    CHECK(draws[sim::DrawSite::Event300] == 6);
+    CHECK(draws.size() == 1);
+    CHECK(w.rng().cursor() == cursor0 + 6);
+    CHECK(starts == std::vector<std::uint64_t>{300000, 900000});
+    CHECK(ends == std::vector<std::uint64_t>{442400});
+    // The states at three checkpoints of the first drought (T0 = 300 000, the timeline of
+    // §5.8): at 305 000, 100 strips: ring 3, phase 0, step 32, expanding; at 350 000 the
+    // plateau since 311 200: 38 counts; at 440 000, 176 retreating strips since 431 200:
+    // ring 6 - 5 = 1, phase 2, step 0.
+    REQUIRE(at305k.has_value());
+    CHECK(at305k->state == 1);
+    CHECK(at305k->ring == 3);
+    CHECK(at305k->phase == 0);
+    CHECK(at305k->step == 32);
+    REQUIRE(at350k.has_value());
+    CHECK(at350k->state == 0);
+    CHECK(at350k->ring == 6);
+    CHECK(at350k->counter == 38);
+    REQUIRE(at440k.has_value());
+    CHECK(at440k->state == 0xff);
+    CHECK(at440k->ring == 1);
+    CHECK(at440k->phase == 2);
+    CHECK(at440k->step == 0);
+    // Both droughts centre on the Kontor's chunk (128, 120). City 0 is in the mask from the
+    // first strip, city 3 (rows 140 .. 143) from strip 81 (ring 2, phase 2, step 0, samples
+    // at y = 142): T0 + 4 050.
+    CHECK(bit3_at == std::vector<std::uint64_t>{304050, 904050});
+    // The end: the second drought still runs, in its plateau since 911 200 (88 counts by
+    // 999 200, the 89th would be at 1 000 200), so it is not gone: it would retreat from
+    // 1 031 200 and end at 1 042 400.
+    REQUIRE(island(w).drought.has_value());
+    const sim::Drought& d = *island(w).drought;
+    CHECK(d.x == 128);
+    CHECK(d.y == 120);
+    CHECK(d.state == 0);
+    CHECK(d.ring == 6);
+    CHECK(d.counter == 88);
+    CHECK(d.stamp == static_cast<std::uint16_t>(999200));
+    CHECK(d.city_mask == std::vector<std::uint32_t>{9});
+
+    // The log is byte-identical to the committed one (ANNO_UPDATE_GOLDEN=1 rewrites it).
+    const sim::ReplayLog log = rec.log();
+    auto written = sim::write_log(log);
+    REQUIRE_MESSAGE(written.ok(), (written.ok() ? std::string() : written.error()));
+    const std::filesystem::path path = std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "g5.log";
+    if (anno::test::update_mode()) {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        out.write(reinterpret_cast<const char*>(written.value().data()),
+                  static_cast<std::streamsize>(written.value().size()));
+        MESSAGE("wrote " << path.string());
+    }
+    std::ifstream in(path, std::ios::binary);
+    const std::vector<std::uint8_t> committed((std::istreambuf_iterator<char>(in)),
+                                              std::istreambuf_iterator<char>());
+    CHECK_MESSAGE(committed == written.value(), "the recorded G5 log differs from "
+                                                    << path.string()
+                                                    << " (ANNO_UPDATE_GOLDEN=1 rewrites it)");
+    // The committed log replays on a world rebuilt from its initial save: 21 of 21.
+    auto read = sim::read_log(committed);
+    REQUIRE_MESSAGE(read.ok(), (read.ok() ? std::string() : read.error()));
+    sim::World replayed = loaded(read.value().initial_save, t);
+    auto outcome = sim::replay(replayed, read.value());
+    REQUIRE_MESSAGE(outcome.ok(), (outcome.ok() ? std::string() : outcome.error()));
+    CHECK(outcome.value().reproduced());
+    CHECK(outcome.value().checkpoints_total == 21);
+    CHECK(outcome.value().checkpoints_matched == 21);
+    CHECK(replayed.state_hash() == w.state_hash());
+
+    // Goldens (self-baselined, goldens.txt; the asserts above do not depend on them).
+    for (const auto& [name, value] : std::vector<std::pair<std::string, std::uint64_t>>{
+             {"s13_g5_checkpoints", checkpoints.value()}, {"s13_g5_end", w.state_hash()}}) {
+        std::string line;
+        const std::string problem = anno::test::check_golden(name, "S13", value, line);
+        if (anno::test::update_mode()) {
+            MESSAGE("golden line: " << line);
+        }
+        CHECK_MESSAGE(problem.empty(), problem);
     }
 }

@@ -14,7 +14,8 @@
 // names: the empty one (the original goods table, no building types: the headless
 // golden and the S9 tests), the synthetic types (synthetic::make_synthetic_types) or
 // the synthetic types with build costs (synthetic::make_build_types, the golden G2 of
-// S10). A log made against another registry reports a digest mismatch here (the full
+// S10) or with growing tile objects (synthetic::make_growth_types, the golden G5 of S13).
+// A log made against another registry reports a digest mismatch here (the full
 // scenario path arrives with the game files, S14).
 #include <algorithm>
 #include <charconv>
@@ -77,7 +78,8 @@ std::optional<sim::ReplayLog> load_log(const std::string& path) {
 /// (World::load then names the mismatch).
 std::shared_ptr<const sim::TypeRegistry> registry_for(const sim::ReplayLog& log) {
     std::vector<std::shared_ptr<const sim::TypeRegistry>> known{sim::TypeRegistry::empty()};
-    for (auto make : {&sim::synthetic::make_synthetic_types, &sim::synthetic::make_build_types}) {
+    for (auto make : {&sim::synthetic::make_synthetic_types, &sim::synthetic::make_build_types,
+                      &sim::synthetic::make_growth_types}) {
         auto t = make();
         if (t.ok()) {
             known.push_back(t.value().registry);

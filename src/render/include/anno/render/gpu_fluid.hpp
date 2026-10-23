@@ -45,6 +45,8 @@ class FluidGpu {
     [[nodiscard]] std::uint64_t window_serial() const { return window_serial_; }
     /// Simulation time in seconds.
     [[nodiscard]] double sim_time() const { return sim_t_; }
+    /// Time steps the last update() recorded (0 when none was due).
+    [[nodiscard]] std::uint32_t last_steps() const { return last_steps_; }
     [[nodiscard]] const fluid::FluidConfig& config() const { return cfg_; }
 
     /// Background setup: update() no longer fills a new or moved window in
@@ -73,10 +75,11 @@ class FluidGpu {
     /// window, FluidConfig::window_size): recentres the window (new cells get
     /// depth `depth(x, y)` and the incoming swell, computed on `threads` CPU
     /// threads) and records the time steps into `encoder`. `depth` is called
-    /// from several threads at once.
-    void update(WGPUCommandEncoder encoder, std::size_t group, std::pair<float, float> centre,
+    /// from several threads at once. The compute pass writes `timestamps` when
+    /// given. True when a pass was recorded (a step was due).
+    bool update(WGPUCommandEncoder encoder, std::size_t group, std::pair<float, float> centre,
                 float span_tiles, std::uint64_t time_ms, const fluid::DepthFn& depth,
-                std::size_t threads);
+                std::size_t threads, const WGPUPassTimestampWrites* timestamps = nullptr);
 
   private:
     /// Textures of a grid of n × n cells and their bind groups; recreated
@@ -130,6 +133,7 @@ class FluidGpu {
     /// textures — tens of megabytes — on the window thread.
     std::optional<Grid> spare_;
     double sim_t_ = 0.0;
+    std::uint32_t last_steps_ = 0;
     bool background_ = false;
     std::unique_ptr<Job> job_;
     /// Cancelled jobs whose threads may still be running.

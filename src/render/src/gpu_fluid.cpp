@@ -246,16 +246,17 @@ FluidGpu::Grid FluidGpu::make_grid(std::uint32_t n) const {
     return g;
 }
 
-void FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<float, float> centre,
+bool FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<float, float> centre,
                       float span_tiles, std::uint64_t time_ms, const fluid::DepthFn& depth,
-                      std::size_t threads) {
+                      std::size_t threads, const WGPUPassTimestampWrites* timestamps) {
     const double target = static_cast<double>(time_ms) / 1000.0;
     const std::uint32_t size = cfg_.window_size(group, span_tiles);
+    last_steps_ = 0;
     if (background_) {
         prepare_window(group, centre, size, target, depth, threads);
         if (!window_) {
             // No window yet: nothing to step.
-            return;
+            return false;
         }
     } else {
         if (size != grid_.n) {
@@ -294,8 +295,9 @@ void FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<f
         sim_t_ += static_cast<double>(due - n) * dt;
     }
     if (n == 0) {
-        return;
+        return false;
     }
+    last_steps_ = static_cast<std::uint32_t>(n);
     std::vector<std::uint8_t> bytes(static_cast<std::size_t>(align_ * n), 0);
     for (std::uint64_t k = 0; k < n; ++k) {
         const double t = sim_t_ + dt * static_cast<double>(k + 1);
@@ -307,6 +309,7 @@ void FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<f
     const std::uint32_t groups = (grid_.n + 7) / 8;
     WGPUComputePassDescriptor cd = WGPU_COMPUTE_PASS_DESCRIPTOR_INIT;
     cd.label = sv("fluid");
+    cd.timestampWrites = timestamps;
     const WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, &cd);
     for (std::uint64_t k = 0; k < n; ++k) {
         const auto off = static_cast<std::uint32_t>(align_ * k);
@@ -319,6 +322,7 @@ void FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<f
     }
     wgpuComputePassEncoderEnd(pass);
     wgpuComputePassEncoderRelease(pass);
+    return true;
 }
 
 namespace {

@@ -131,6 +131,11 @@ struct GpuStats {
     std::size_t ships = 0;
     /// The coastal wave simulation ran for this frame (enhanced water).
     bool wave_simulation = false;
+    /// Its time steps recorded this frame, the cells of its window (size²) and the
+    /// window's cells per tile (0 = no window yet).
+    std::uint32_t fluid_steps = 0;
+    std::uint64_t fluid_cells = 0;
+    std::uint32_t fluid_cells_per_tile = 0;
     /// Visible chunks drawn from another zoom group's chunks because their own
     /// are not built or not uploaded yet (GpuLimits::stand_ins), and the parts
     /// (draws) they took.
@@ -314,9 +319,10 @@ struct GpuLimits {
     /// out the tiers not finished are unmeasured and the choice is Low (the floor), so
     /// a slow adapter never waits more than about this plus one pass. 0 = unlimited.
     double river_measure_budget_ms = 500.0;
-    /// Time the sea pass with GPU timestamps (GpuFrame::sea_pass_ms) when the
-    /// device supports them. Costs two query writes and a 16-byte copy per
-    /// frame; for benchmarks.
+    /// Time every pass with GPU timestamps (GpuFrame::sea_pass_ms, pass_gpu_ms)
+    /// when the device supports them. Costs two query writes per pass, a resolve
+    /// and a small copy per frame, and the sea pass is split in two (GpuPassTimes);
+    /// for benchmarks.
     bool gpu_timing = false;
 };
 
@@ -349,6 +355,21 @@ inline constexpr std::size_t kChunkPlaneBytes = std::size_t{512} * 512 * (4 + 4 
     p.mb = static_cast<double>(p.chunks * kChunkPlaneBytes) / (1024.0 * 1024.0);
     return p;
 }
+
+/// GPU time per pass of one render() in milliseconds (GpuLimits::gpu_timing,
+/// GpuFrame::pass_gpu_ms), from timestamps the device writes at the start and end of
+/// each pass; nullopt for a pass that did not run in that frame (no wave-simulation step
+/// was due, no resample). With timing on, the sea pass is recorded as two passes: `sea`
+/// (the sea shading of the chunks) and `objects` (the water objects above the waterline,
+/// the cached objects and the ships, drawn over it); the picture is the same.
+struct GpuPassTimes {
+    /// The coastal wave simulation's compute pass (enhanced water), the terrain heights,
+    /// the ground and the water objects below the waterline (`under`), the sea, the
+    /// objects, the continuous zoom's resample onto the window.
+    std::optional<double> fluid, terrain, under, sea, objects, resample;
+    /// From the start of the first pass to the end of the last (gaps included).
+    std::optional<double> frame;
+};
 
 /// Values of the frame uniform (struct Frame in gpu.wgsl).
 struct FrameUniform {
@@ -490,14 +511,18 @@ class GpuFrame {
     std::vector<RiverCost> measure_river_cost(std::size_t repeats = 5,
                                               std::optional<double> stop_gate = std::nullopt,
                                               double budget_ms = 0.0);
-    /// GPU time of the sea pass of the last render() in milliseconds (needs
-    /// GpuLimits::gpu_timing and a device with timestamp queries; waits for
-    /// the GPU); nullopt otherwise.
+    /// GPU time of the sea pass of the last render() in milliseconds (the sea
+    /// shading and the objects drawn over it; needs GpuLimits::gpu_timing and a
+    /// device with timestamp queries; waits for the GPU); nullopt otherwise. Also
+    /// reads the frame's other passes (frame_gpu_ms, pass_gpu_ms).
     std::optional<double> sea_pass_ms();
     /// GPU time of the whole frame of the render() that the last sea_pass_ms()
     /// read: from the start of its first pass to the end of its last one (the
-    /// resample pass of a continuous zoom included). nullopt without a reading.
+    /// wave simulation's compute pass and the resample pass of a continuous zoom
+    /// included). nullopt without a reading.
     [[nodiscard]] std::optional<double> frame_gpu_ms() const;
+    /// The same frame split by pass (GpuPassTimes). nullopt without a reading.
+    [[nodiscard]] std::optional<GpuPassTimes> pass_gpu_ms() const;
     /// An offscreen target of `w × h` in the frame's format that can be
     /// read back.
     std::pair<Texture, TextureView> offscreen_target(std::uint32_t w, std::uint32_t h) const;

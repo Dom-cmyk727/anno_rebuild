@@ -2289,6 +2289,66 @@ TEST_CASE("the sea pass is timed with GPU timestamps when asked and the device c
     CHECK(g.errors() == 0);
 }
 
+TEST_CASE("every pass of a frame is timed, and the timed frame is the untimed picture") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    gpu::GpuLimits limits;
+    limits.river_quality = render::RiverQuality::High;
+    limits.uploads_per_frame = SIZE_MAX;
+    gpu::GpuLimits timed_limits = limits;
+    timed_limits.gpu_timing = true;
+    auto plain = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    auto timed = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, timed_limits);
+    REQUIRE(plain);
+    REQUIRE(timed);
+    render::FrameRenderer frames(1, false);
+    frames.insert_chunk({1, 0, 0}, synthetic_river(4, true).chunk);
+    // A continuous-zoom frame (the resample pass runs) with the wave simulation on: the
+    // grid of 512 x 512 at scale 0.5 onto 256 x 256.
+    const auto rv = gpu::resampled_view(256.0, 256.0, 256, 256, 0.5, gpu::ResampleFilter::Box);
+    auto run = [&](gpu::GpuFrame& g) {
+        const auto target = g.offscreen_target(256, 256);
+        std::optional<gpu::GpuPassTimes> passes;
+        for (std::uint64_t i = 0; i < 4; ++i) {
+            const auto st =
+                g.render(frames, *es.scene, rv.view, 1, 100 + 16 * i, render::WaterStyle::Enhanced,
+                         target.second.get(), &rv.resample);
+            CHECK(st.wave_simulation);
+            static_cast<void>(g.sea_pass_ms());
+            passes = g.pass_gpu_ms();
+        }
+        return std::make_pair(g.read_back(target.first.get(), 256, 256), passes);
+    };
+    const auto [plain_px, plain_passes] = run(*plain.value());
+    const auto [timed_px, timed_passes] = run(*timed.value());
+    // The split of the sea pass (sea, then the objects drawn over it) is the same picture.
+    REQUIRE(plain_px.size() == std::size_t{256} * 256 * 4);
+    CHECK(timed_px == plain_px);
+    CHECK_FALSE(plain_passes.has_value());
+    if (!ctx->timestamps) {
+        CHECK_FALSE(timed_passes.has_value());
+        return;
+    }
+    REQUIRE(timed_passes.has_value());
+    const gpu::GpuPassTimes& p = *timed_passes;
+    // 16 ms of animation per frame is one or two steps of 1/120 s: the simulation ran.
+    for (const auto& pass : {p.fluid, p.terrain, p.under, p.sea, p.objects, p.resample}) {
+        REQUIRE(pass.has_value());
+        CHECK(*pass >= 0.0);
+    }
+    REQUIRE(p.frame.has_value());
+    // The frame spans its passes (they run one after another on the queue).
+    const double sum = *p.fluid + *p.terrain + *p.under + *p.sea + *p.objects + *p.resample;
+    CHECK(*p.frame >= sum * 0.999);
+    CHECK(*p.frame < 1000.0);
+    CHECK(timed.value()->frame_gpu_ms() == p.frame);
+    CHECK(timed.value()->errors() == 0);
+    CHECK(plain.value()->errors() == 0);
+}
+
 // ---- Q2 of rivers.md: the river pixels of real scenes, GPU against CPU (game files) ----
 
 namespace {

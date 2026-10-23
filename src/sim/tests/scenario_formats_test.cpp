@@ -599,7 +599,7 @@ const sim::ScenarioWarning& the_warning(const sim::LoadedScenario& s, Kind k) {
 
 } // namespace
 
-TEST_CASE("scenario warnings name their path and the record's offset; unknown records once") {
+TEST_CASE("scenario warnings name their path and the record's offset, unknown records once") {
     Buf kids = chunk("HEAD", head_bytes());     // child 0
     append(kids, chunk("SKTIMER", Buf(40, 0))); // child 1
     append(kids, chunk("SPIELER", spieler(0, record("HEAD", player_head(8, 1, "A", 1))))); // 2

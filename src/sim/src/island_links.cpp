@@ -29,8 +29,9 @@ std::string ascii_upper(std::string_view s) {
 }
 
 bool link_candidate_name(std::string_view file_name) {
-    // D 0x10007e16: _stricmp of the last 4 characters with ".scp" (a shorter name
-    // compares from its start, which is not ".scp").
+    // D 0x10007e16: _stricmp of the last 4 characters with ".scp" (the original's
+    // pointer is name + len - 4 also for a shorter name, which reads before the name;
+    // such a name is no candidate here).
     const std::string up = ascii_upper(file_name);
     const auto ends_with = [&](std::string_view tail) {
         return up.size() >= tail.size() &&

@@ -490,7 +490,7 @@ struct Rules {
     /// 0, so an overshoot wraps the counter and the timer runs on (timers_tick).
     bool timer0_clamp = false;
     /// OQ-150 (owner check pending): the order of the island templates a scenario's
-    /// links are resolved from. Sorted is the original's network-game list order (D
+    /// links are resolved from. Sorted is the order of the original's network-game list (D
     /// AnnoScene 0x10008187–0x100082ad) and the same on every machine; Cached (the
     /// single-player InselCache.txt order) is reserved.
     IslandCandidateOrder island_candidate_order = IslandCandidateOrder::Sorted;

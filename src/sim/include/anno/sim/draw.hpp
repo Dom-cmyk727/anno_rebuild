@@ -57,7 +57,8 @@ enum class DrawSite : std::uint8_t {
     // Unported load-time sites (the placement 0x10008490 and the scene loader):
     /// Step 10: one draw per ore put on a mountain object (0x100086ad).
     LinkOrePlace,
-    /// Step 10: a native settlement's city and player names (0x10008a23, 0x10008aa3).
+    /// Step 10: a native settlement's player name (NATIVE_SPIELER, 0x10008a23), then its
+    /// city name (NATIVE_STADT, 0x10008aa3), each only when its list exists.
     LinkNativeName,
     /// Step 10: the treasure's kind on climates 4..6 (0x10008b69).
     LinkTreasureKind,

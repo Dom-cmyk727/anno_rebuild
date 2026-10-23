@@ -429,3 +429,158 @@ TEST_CASE("link tables are the original's") {
     CHECK(t.ore_exclusion[3 * 9 + 8] == 1);
     CHECK(t.ore_mask_bit[6] == 0);
 }
+
+TEST_CASE("link step 2 compares the height too") {
+    // A candidate 128 wide and 64 high does not match a 128 x 128 link.
+    auto flat = cand("NORD/G.SCP", 128, kNord);
+    flat.h = 64;
+    Script s({0, 0});
+    const auto r =
+        resolve({link(1, 128, kNord)}, inputs(), {flat, cand("NORD/H.SCP", 128, kNord)}, s);
+    CHECK(r.links[0].matched == 1);
+    REQUIRE(r.links[0].candidate.has_value());
+    CHECK(*r.links[0].candidate == 1);
+}
+
+TEST_CASE("link raw rank takes the last equal width") {
+    // Links A, A' (128) and B (80), nord. raw[0] = 1, raw[3] = 2.
+    // Round 0, kind 0: A 3, A' 3, B 0 (80 is not in 256, 128, 0, 0) -> list A, A', draw 0 -> A.
+    // Round 0, kind 3: A 3, A' 3, B 0 -> draw 1 -> A'.
+    // Round 1 (256, 128, 80, 80), kind 3: A 3 + 0 (count 1 < 1 no) = 3; A' marked; B: 80
+    // at ranks 2 and 3, the last wins -> 1, + 1 (count 0 < 1) = 2 -> list A, draw 1 -> A.
+    // With the first match B would score 2 + 1 = 3, the list A, B and draw 1 would take B.
+    auto in = inputs();
+    in.raw_materials[0] = 1;
+    in.raw_materials[3] = 2;
+    Script s({0, 1, 1, /* picks */ 0, 0, 0, /* treasure */ 0});
+    const auto r = resolve({link(1, 128, kNord), link(2, 128, kNord), link(3, 80, kNord)}, in,
+                           {cand("NORD/A.SCP", 128, kNord), cand("NORD/B.SCP", 80, kNord)}, s);
+    CHECK(r.links[0].raw_marks[3] == 1);
+    CHECK(r.links[1].raw_marks[3] == 1);
+    CHECK(r.links[2].raw_marks[3] == 0);
+}
+
+TEST_CASE("link raw best list holds five") {
+    // Six nord links of 128 tie at 3 for raw kind 0: the list is the first five, draw 5
+    // -> 5 % 5 = 0 -> link 0 (with six, 5 % 6 would take link 5).
+    auto in = inputs();
+    in.raw_materials[0] = 1;
+    std::vector<sim::IslandLinkSpec> links;
+    for (std::uint32_t i = 0; i < 6; ++i) {
+        links.push_back(link(i + 1, 128, kNord));
+    }
+    Script s({5, 0, 0, 0, 0, 0, 0, 0});
+    const auto r = resolve(links, in, {cand("NORD/A.SCP", 128, kNord)}, s);
+    CHECK(r.links[0].raw_marks[0] == 1);
+    CHECK(r.links[5].raw_marks[0] == 0);
+}
+
+TEST_CASE("link ores prefer links below the round count") {
+    // Three nord links of 128; ore[0] = 1, ore[2] = 2 (nord's ore mask 0x25: bits 0, 2;
+    // row 2 of the exclusion table does not refuse kind 0). Round 0 (width 128 = rank 1
+    // -> 6): kind 0 -> A, B, C at 6, draw 0 -> A (count A 1); kind 2 -> A, B, C at 6,
+    // draw 1 -> B (count B 1). Round 1 (rank 1 again -> 6), kind 2: A 6 + (1 < 1 ? 1 : 0)
+    // = 6, B marked, C 6 + 1 = 7 -> list C. Without the bonus the list would be A, C and
+    // draw 0 would take A.
+    auto in = inputs();
+    in.ores[0] = 1;
+    in.ores[2] = 2;
+    Script s({0, 1, 0, /* picks */ 0, 0, 0, /* treasure */ 0});
+    const auto r = resolve({link(1, 128, kNord), link(2, 128, kNord), link(3, 128, kNord)}, in,
+                           {cand("NORD/A.SCP", 128, kNord)}, s);
+    CHECK(r.links[0].ore_marks[0] == 1);
+    CHECK(r.links[0].ore_marks[2] == 0);
+    CHECK(r.links[1].ore_marks[2] == 1);
+    CHECK(r.links[2].ore_marks[2] == 1);
+}
+
+TEST_CASE("link ore scores are the ore table's") {
+    // Links A (256) and B (128), nord. raw[0], raw[3], raw[6] = 1: in round 0 A scores 4,
+    // B 3, so A takes all three (best_raw 3, A 3, B 0). ore[0] = 1, round 0: A 116 (rank 0
+    // of the ore scores) + 0 + 0 = 116, B 6 + 0 + (3 - 0 > 2) = 7 -> list A, draw 1 -> A.
+    // With the raw scores (4, 3) A 4 and B 4 tie and draw 1 would take B.
+    auto in = inputs();
+    in.raw_materials[0] = in.raw_materials[3] = in.raw_materials[6] = 1;
+    in.ores[0] = 1;
+    Script s({0, 0, 0, 1, /* picks */ 0, 0, /* treasure */ 0});
+    const auto r = resolve({link(1, 256, kNord), link(2, 128, kNord)}, in,
+                           {cand("NORD/A.SCP", 256, kNord), cand("NORD/B.SCP", 128, kNord)}, s);
+    CHECK(r.links[0].raw_marks[0] + r.links[0].raw_marks[3] + r.links[0].raw_marks[6] == 3);
+    CHECK(r.links[0].ore_marks[0] == 1);
+    CHECK(r.links[1].ore_marks[0] == 0);
+}
+
+TEST_CASE("link ore best raw bonus needs a gap above 2") {
+    // Links A and B, nord 128. raw[0], raw[3] = 1, draws 0: both to A (lists A, B at 3),
+    // best_raw 2. ore[0] = 1, round 0: A 6 + 0, B 6 + (2 - 0 > 2 ? 1 : 0) = 6 -> list A, B,
+    // draw 0 -> A. With ">= 2" B would score 7 and take it.
+    auto in = inputs();
+    in.raw_materials[0] = in.raw_materials[3] = 1;
+    in.ores[0] = 1;
+    Script s({0, 0, 0, /* picks */ 0, 0, /* treasure */ 0});
+    const auto r = resolve({link(1, 128, kNord), link(2, 128, kNord)}, in,
+                           {cand("NORD/A.SCP", 128, kNord)}, s);
+    CHECK(r.links[0].raw_marks[0] + r.links[0].raw_marks[3] == 2);
+    CHECK(r.links[0].ore_marks[0] == 1);
+    CHECK(r.links[1].ore_marks[0] == 0);
+}
+
+TEST_CASE("link capacity counts ore marks against INFO 4 plus 5") {
+    // One nord link with raw kind 0 and ores 0, 2: one raw and two ore marks. Candidates:
+    // A capacity INFO[5] = 1 (dropped), B INFO[5] = 2 (kept), D INFO[4] = 2 (kept; the
+    // capacity is INFO[4] + INFO[5], and raw marks do not count). The pick draws 1 -> the
+    // second kept -> D.
+    auto in = inputs();
+    in.raw_materials[0] = 1;
+    in.ores[0] = in.ores[2] = 1;
+    auto d = cand("NORD/D.SCP", 128, kNord, 0, 0);
+    d.info[4] = 2;
+    Script s({0, 0, 0, 1, 0});
+    const auto r =
+        resolve({link(1, 128, kNord)}, in,
+                {cand("NORD/A.SCP", 128, kNord, 0, 1), cand("NORD/B.SCP", 128, kNord, 0, 2), d}, s);
+    CHECK(r.links[0].kept == 2);
+    REQUIRE(r.links[0].candidate.has_value());
+    CHECK(*r.links[0].candidate == 2);
+}
+
+TEST_CASE("link kinds come from the kept candidates") {
+    // One nord link with one ore; candidates: special S with capacity 0 (dropped) and
+    // normal N. The link keeps one kind, so step 5 picks N; step 6 (special 1) probes and
+    // marks nothing (no link has both kinds). Had the kinds come from all matched
+    // candidates the link would have both, be marked, and find no special candidate in
+    // step 7.
+    auto in = inputs();
+    in.ores[0] = 1;
+    in.special_count = 1;
+    Script s({0, 0, 0, 0, 0});
+    const auto r =
+        resolve({link(1, 128, kNord)}, in,
+                {cand("NORD/N.SCP", 128, kNord, 0, 9), cand("NORD/S.SCP", 128, kNord, 1, 0)}, s);
+    REQUIRE(r.links[0].candidate.has_value());
+    CHECK(*r.links[0].candidate == 0);
+    CHECK(s.sites == std::vector<Site>{Site::LinkOre, Site::LinkTemplatePick, Site::LinkSpecialMark,
+                                       Site::LinkTreasure});
+}
+
+TEST_CASE("link special marks skip one-kind and marked links") {
+    // L0 nord 64 (one normal candidate), L1 and L2 nord 128 (normal A, special S): special
+    // count 2. Step 5: L0 draw 0 -> C. Step 6, mark 1: draw 0 -> d 0 (L0 has one kind) ->
+    // d 1 -> L1 marked. Mark 2: draw 1 -> d 1 (L1 is marked) -> d 2 -> L2 marked. Step 7:
+    // L1 marked, special 2 -> S (special 1); L2 marked, special 1 -> S. Without the kinds
+    // test mark 1 would take L0 and L2 would stay unmarked (-> A); without the mark test
+    // mark 2 would take L1 again (-> L2 A).
+    auto in = inputs();
+    in.special_count = 2;
+    Script s({0, 0, 1, 0, 0, 0});
+    const auto r = resolve({link(1, 64, kNord), link(2, 128, kNord), link(3, 128, kNord)}, in,
+                           {cand("NORD/A.SCP", 128, kNord), cand("NORD/C.SCP", 64, kNord),
+                            cand("NORD/S.SCP", 128, kNord, 1)},
+                           s);
+    REQUIRE(r.links[1].candidate.has_value());
+    REQUIRE(r.links[2].candidate.has_value());
+    CHECK(*r.links[1].candidate == 2);
+    CHECK(*r.links[2].candidate == 2);
+    CHECK(r.links[1].special == 1);
+    CHECK(r.links[2].special == 1);
+}

@@ -81,9 +81,9 @@ enum class ScenarioWarningKind : std::uint8_t {
     /// mountain objects with one draw each (D 0x100085d5–0x10008784), which is not
     /// read far enough to map (O-37): no deposit is made, the draws are not made.
     LinkOresUnplaced,
-    /// The raw materials assigned to a placed link: the original sets island
-    /// property 11 = 0xF009 | marks (D 0x100085a2–0x100085cf); the sim has no field
-    /// for it yet.
+    /// Every placed link: the original sets island property 11 = 0xF009 | the raw
+    /// materials assigned to it (D 0x100085a2–0x100085cf); the sim has no field for it
+    /// yet.
     LinkRawMaterials,
     /// A placed link that holds a treasure: the original creates a treasure object
     /// with up to two draws (D 0x10008b25–0x10008bb5, the spot scan 0x10008cc0 not

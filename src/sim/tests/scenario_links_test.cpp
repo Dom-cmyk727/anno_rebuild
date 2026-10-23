@@ -163,6 +163,11 @@ Buf erze(Buf bytes = Buf(10, 0)) {
     return chunk("ERZE", bytes);
 }
 
+Buf append_erze(Buf kids) {
+    append(kids, erze());
+    return kids;
+}
+
 } // namespace
 
 TEST_CASE("scenario ROHSTOFF SCHATZ ERZE byte maps") {
@@ -264,6 +269,15 @@ TEST_CASE("template summary as GetAnnoInselFileData") {
     const auto z = sim::template_summary(no_info, "X");
     REQUIRE(z.has_value());
     CHECK(z->info == std::array<std::uint8_t, 12>{});
+    // A later island without INFO keeps the earlier INFO bytes and gives its own size
+    // (0x100b2770 zeroes the bytes only when it finds a record).
+    Buf two = insel5(16, 2, 1, 7);
+    append(two, insel5(24, 0, 0, 0, false));
+    const auto later = sim::template_summary(chunk("ANNO", two), "X");
+    REQUIRE(later.has_value());
+    CHECK(later->w == 24);
+    CHECK(later->info[0] == 2);
+    CHECK(later->info[5] == 7);
     // Not ANNO, or no island: no candidate.
     CHECK_FALSE(sim::template_summary(chunk("ANNOADDON1", insel5(16, 2, 0, 0)), "X"));
     CHECK_FALSE(sim::template_summary(chunk("ANNO", chunk("WARETYPE", Buf(4, 0))), "X"));
@@ -354,6 +368,7 @@ TEST_CASE("scenario links resolve on the scenario's generator and place their te
     CHECK(warnings_of(s, Kind::LinkUnresolved) == 1);
     CHECK(warnings_of(s, Kind::LinkTreasureUnplaced) == 1);
     CHECK(warnings_of(s, Kind::LinkTemplatePlayers) == 1); // B.SCP holds a SPIELER
+    CHECK(warnings_of(s, Kind::LinkRawMaterials) == 2);    // property 11, also without marks
     CHECK(warnings_of(s, Kind::UnknownRecord) == 1);       // WARETYPE, once
     CHECK(warnings_of(s, Kind::TileOwnersUndecoded) == 2);
 
@@ -444,4 +459,58 @@ TEST_CASE("every link warning kind is reached and the link sites never draw in a
         }
     }
     CHECK(advance_draws > 0);
+}
+
+TEST_CASE("scenario links draw on the scenario's own table") {
+    // A custom table 10, 11, 12, ... (ScenarioSpec::rng_table), cursor 1: step 5 draws
+    // T[2] = 12 % 2 = 0 -> A.SCP and T[3] = 13 % 2 = 1 -> B.SCP, step 9 T[4] = 14 % 3 = 2
+    // (the unresolved link's treasure) and T[5]: the cursor ends at 5. The original
+    // table would give A.SCP twice (6334 and 26500 are even).
+    Templates t;
+    sim::LoadedScenario s = load(links_scene());
+    std::vector<std::uint16_t> table;
+    for (std::uint16_t v = 10; v < 42; ++v) {
+        table.push_back(v);
+    }
+    s.spec.rng_table = table;
+    auto r = sim::resolve_scenario_links(s, t.summaries, sim::SimConfig{}, sim::Rules{});
+    REQUIRE(r.ok());
+    CHECK(r.value().links[0].candidate == std::optional<std::uint32_t>{0});
+    CHECK(r.value().links[1].candidate == std::optional<std::uint32_t>{1});
+    CHECK(r.value().links[2].treasure);
+    CHECK(s.spec.seed == 5);
+}
+
+TEST_CASE("scenario link template may be an INSEL4 island") {
+    // GetAnnoInselFileData takes an INSEL4 as well (its records are root siblings,
+    // insel.md); such a template is a candidate and is placed from its root records.
+    Buf four;
+    put16(four, 16);
+    put16(four, 16);
+    put32(four, 0);
+    Buf kids = chunk("INSEL4", four);
+    Buf info(12, 0);
+    info[0] = 2;
+    info[5] = 9;
+    append(kids, chunk("INFO", info));
+    Buf height = {0, 0, 0, 0, 16, 16};
+    for (int i = 0; i < 256; ++i) {
+        height.push_back(1);
+    }
+    append(kids, chunk("HEIGHT", height));
+    const Buf file = chunk("ANNO", kids);
+    const std::optional<sim::TemplateSummary> sum = sim::template_summary(file, "NORD/F.SCP");
+    REQUIRE(sum.has_value());
+    CHECK(sum->w == 16);
+    CHECK(sum->info[0] == 2);
+    sim::LoadedScenario s = load(scene(append_erze(link(64, 64, 16, 1, "n_016x016_dummy.scp"))));
+    const std::vector<sim::TemplateSummary> cands = {*sum};
+    auto r = sim::resolve_scenario_links(s, cands, sim::SimConfig{}, sim::Rules{});
+    REQUIRE(r.ok());
+    const std::vector<anno::formats::Bytes> views = {file};
+    auto e = sim::place_island_links(s, r.value(), views, *registry(), sim::SimConfig{});
+    REQUIRE_MESSAGE(!e.has_value(), (e ? *e : std::string()));
+    REQUIRE(s.spec.islands.size() == 1);
+    CHECK(s.spec.islands[0].w == 16);
+    CHECK(s.spec.islands[0].x0 == 64);
 }

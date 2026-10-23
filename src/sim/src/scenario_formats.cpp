@@ -728,15 +728,17 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
 
 namespace {
 
-/// The INFO bytes of an island: the record's first 12 bytes, zero where it is shorter
-/// or missing (AnnoWelt 0x100b2770 zeroes them only when it finds the record, into a
-/// zeroed summary).
-std::array<std::uint8_t, 12> info_bytes(const insel::Island& isl) {
-    std::array<std::uint8_t, 12> out{};
-    if (const std::optional<Bytes> info = isl.record("INFO")) {
-        std::copy_n(info->begin(), std::min<std::size_t>(info->size(), out.size()), out.begin());
+/// The INFO bytes of an island into `out` as 0x100b2770 copies them (AnnoWelt
+/// 0x100b27d3): each INFO record in order zeroes the 12 bytes and copies its first 12
+/// bytes (the last record wins); without a record `out` keeps what it held.
+void copy_info(const insel::Island& isl, std::array<std::uint8_t, 12>& out) {
+    for (const formats::chunk::Chunk& r : isl.records) {
+        if (r.name() == "INFO") {
+            out = {};
+            std::copy_n(r.payload.begin(), std::min<std::size_t>(r.payload.size(), out.size()),
+                        out.begin());
+        }
     }
-    return out;
 }
 
 /// "0, 3, 12" for the set entries of a mark list.
@@ -754,7 +756,7 @@ std::string kinds_list(const std::vector<std::uint8_t>& marks) {
 
 std::optional<TemplateSummary> template_summary(Bytes scp, std::string name) {
     // D AnnoWelt 0x100b25a0: root ANNO (0x100b25f5), then every INSEL4 / INSEL5 child
-    // (0x100b2645, 0x100b26ba) gives the size from its head and the INFO record
+    // (INSEL4 0x100b2645, INSEL5 0x100b26ba) gives the size from its head and the INFO record
     // through 0x100b2770; the last one wins; none: failure.
     auto parsed = formats::chunk::parse_file(scp);
     if (!parsed || parsed.value().chunks.empty()) {
@@ -765,6 +767,7 @@ std::optional<TemplateSummary> template_summary(Bytes scp, std::string name) {
         return std::nullopt;
     }
     std::optional<TemplateSummary> out;
+    std::array<std::uint8_t, 12> info{}; // the zero-filled summary (0x10007ed0-0x10007f2a)
     for (const formats::chunk::Chunk& c : root.children) {
         std::optional<formats::Result<insel::Island, std::string>> isl;
         if (c.name() == "INSEL5") {
@@ -779,9 +782,10 @@ std::optional<TemplateSummary> template_summary(Bytes scp, std::string name) {
         }
         TemplateSummary t;
         t.name = name;
-        t.w = isl->value().width; // INSEL5 head +4, +6 (0x100b267b–0x100b269c)
+        t.w = isl->value().width; // INSEL5 head +4, +6 (0x100b26f3–0x100b2717); INSEL4 +0, +2
         t.h = isl->value().height;
-        t.info = info_bytes(isl->value());
+        copy_info(isl->value(), info);
+        t.info = info;
         out = std::move(t);
     }
     return out;
@@ -790,18 +794,13 @@ std::optional<TemplateSummary> template_summary(Bytes scp, std::string name) {
 formats::Result<LinkResolution, std::string>
 resolve_scenario_links(LoadedScenario& s, std::span<const TemplateSummary> candidates,
                        const SimConfig& config, const Rules& rules) {
-    // The generator World::create builds (scenario.cpp): the table, then the cursor
+    // The generator World::create builds (scenario_rng): the table, then the cursor
     // spec.seed mod its length (world property 8, D AnnoWelt 0x100a3230).
-    WorldRng rng;
-    if (s.spec.rng_table.has_value()) {
-        std::optional<WorldRng> r = WorldRng::from_table(*s.spec.rng_table, s.spec.seed);
-        if (!r) {
-            return std::string("rng_table: must not be empty");
-        }
-        rng = std::move(*r);
-    } else {
-        rng.set_cursor(s.spec.seed);
+    std::optional<WorldRng> made = scenario_rng(s.spec);
+    if (!made) {
+        return std::string("rng_table: must not be empty");
     }
+    WorldRng rng = std::move(*made);
     GlobalDraw draw(rng);
     auto res = resolve_island_links(s.links, s.link_inputs, candidates, draw, config.links,
                                     rules.island_candidate_order);
@@ -855,21 +854,33 @@ std::optional<std::string> place_island_links(LoadedScenario& s, const LinkResol
         }
         const formats::chunk::Chunk& root = parsed.value().chunks.front();
         const formats::chunk::Chunk* insel5 = nullptr;
+        const formats::chunk::Chunk* insel4 = nullptr;
         bool players = false;
         for (const formats::chunk::Chunk& c : root.children) {
-            if (c.name() == "INSEL5" && insel5 == nullptr) {
+            const std::string_view cname = c.name();
+            if (cname == "INSEL5" && insel5 == nullptr) {
                 insel5 = &c;
-            } else if (c.name() == "SPIELER") {
+            } else if (cname == "INSEL4" && insel4 == nullptr) {
+                insel4 = &c;
+            } else if (cname == "SPIELER") {
                 players = true;
-            } else {
-                warn.unknown_record("link_templates", path + "." + std::string(c.name()), c.name(),
+            } else if (insel4 == nullptr) {
+                // (An INSEL4 template keeps its island records as root siblings after the
+                // INSEL4, insel.md: those are read with it, not reported here.)
+                warn.unknown_record("link_templates", path + "." + std::string(cname), cname,
                                     c.offset);
             }
         }
-        if (insel5 == nullptr) {
-            return who + ": the template holds no INSEL5";
+        // The template's island as the world loader takes it: an INSEL5, else an INSEL4
+        // with its root-level records (insel.md; GetAnnoInselFileData accepts both, so a
+        // template of either kind can be a candidate).
+        formats::Result<insel::Island, std::string> isl =
+            std::string("the template holds no INSEL5 or INSEL4");
+        if (insel5 != nullptr) {
+            isl = insel::Island::from_insel5(insel5->payload);
+        } else if (insel4 != nullptr) {
+            isl = insel::Island::from_insel4(root.children);
         }
-        auto isl = insel::Island::from_insel5(insel5->payload);
         if (!isl) {
             return who + ": " + isl.error();
         }
@@ -883,10 +894,13 @@ std::optional<std::string> place_island_links(LoadedScenario& s, const LinkResol
             return who + ": island slot " + std::to_string(slot) + " is used twice";
         }
         std::optional<ScenarioSpec::IslandSpec> built;
+        // Record offsets: inside the INSEL5's payload, or file offsets for an INSEL4's
+        // root-level records.
+        const std::uint64_t head_at = insel5 != nullptr ? insel5->offset : insel4->offset;
         const std::uint64_t base =
-            insel5->offset + formats::chunk::kHeaderLen + insel::kInsel5HeadLen;
-        if (auto e = island_from_insel(isl.value(), path, base, insel5->offset, IslandId{slot}, l.x,
-                                       l.y, types, config, warn, "link_templates", built)) {
+            insel5 != nullptr ? head_at + formats::chunk::kHeaderLen + insel::kInsel5HeadLen : 0;
+        if (auto e = island_from_insel(isl.value(), path, base, head_at, IslandId{slot}, l.x, l.y,
+                                       types, config, warn, "link_templates", built)) {
             return who + ": " + *e;
         }
         if (!built) {
@@ -897,12 +911,11 @@ std::optional<std::string> place_island_links(LoadedScenario& s, const LinkResol
         built->climate = l.climate;
         s.spec.islands.push_back(std::move(*built));
         ++s.links_placed;
+        // D 0x100085a2–0x100085cf: island property 11 = 0xF009 | the marks, also with none.
         const std::string marks_raw = kinds_list(r.raw_marks);
-        if (!marks_raw.empty()) {
-            warn.add(ScenarioWarningKind::LinkRawMaterials, path, "INSELLNK", l.offset,
-                     "raw materials " + marks_raw +
-                         ": island property 11 = 0xF009 | marks (0x100085a2) has no field");
-        }
+        warn.add(ScenarioWarningKind::LinkRawMaterials, path, "INSELLNK", l.offset,
+                 "island property 11 = 0xF009 | raw materials {" + marks_raw +
+                     "} (0x100085a2) has no field");
         const std::string marks_ore = kinds_list(r.ore_marks);
         if (!marks_ore.empty()) {
             warn.add(ScenarioWarningKind::LinkOresUnplaced, path, "INSELLNK", l.offset,

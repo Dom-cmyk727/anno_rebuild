@@ -330,15 +330,11 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
     w.settings_ = spec.settings;
     w.seams_ = std::move(seams);
     w.types_ = RegistryRef(std::move(types));
-    if (spec.rng_table.has_value()) {
-        std::optional<WorldRng> r = WorldRng::from_table(*spec.rng_table, spec.seed);
-        if (!r.has_value()) {
-            return std::string("rng_table: must not be empty");
-        }
-        w.rng_ = std::move(*r);
-    } else {
-        w.rng_.set_cursor(spec.seed);
+    std::optional<WorldRng> rng = scenario_rng(spec);
+    if (!rng.has_value()) {
+        return std::string("rng_table: must not be empty");
     }
+    w.rng_ = std::move(*rng);
     w.players_ = make_player_table(w.config_);
     w.figures_ = make_figure_registry(w.config_);
     // §10 step 2: the monopoly entries sized from the configuration and empty, the
@@ -389,6 +385,15 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         return problem;
     }
     return w;
+}
+
+std::optional<WorldRng> scenario_rng(const ScenarioSpec& spec) {
+    if (spec.rng_table.has_value()) {
+        return WorldRng::from_table(*spec.rng_table, spec.seed);
+    }
+    WorldRng rng;
+    rng.set_cursor(spec.seed);
+    return rng;
 }
 
 } // namespace anno::sim

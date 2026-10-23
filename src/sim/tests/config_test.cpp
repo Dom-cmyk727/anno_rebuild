@@ -898,6 +898,10 @@ TEST_CASE("config validate rejects each bad field") {
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_climate_mask[1] = 0x100; }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_rank_score[0] = 254; }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.best_list_cap = 0; }});
+    rows.push_back({"links", [](sim::SimConfig& c) { c.links.pick_list_cap = 0; }});
+    rows.push_back({"links", [](sim::SimConfig& c) { c.links.raw_kinds = 0; }});
+    rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_mask_bit[0] = 32; }});
+    rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_kinds = 0; }});
     rows.push_back(
         {"drought_plateau_count", [](sim::SimConfig& c) { c.drought_plateau_count = 65536; }});
     rows.push_back({"drought_plateau_count",

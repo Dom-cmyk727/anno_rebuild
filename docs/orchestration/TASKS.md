@@ -365,6 +365,42 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 
 ## 4. Review log (orchestrator)
 
+- **T14 stage 1 (2026-10-23 j, PR #27, head 74bbff2). Approved after one fix-up (below); merge when CI is green.**
+  - Per-pass GPU timestamps on both adapters. The wave simulation (`fluid`) was outside T3's timed span and is the iGPU's largest pass.
+  - The wave window's cells per screen pixel are bounded at far zoom (`GpuLimits::fluid_max_cells_per_px`, default 0.25).
+  - Acceptance item 3 (no iGPU frame above 8 ms at 1280x800) is **missed and stated**: worst 51.6 ms. Left for stage 2: sea shading 25 ms (36-40 ms on derived levels), the simulation at its scale-1 cost 11-17 ms, the composed grid ~9 ms.
+  - **Timing problem found by the orchestrator:** the "after" table ran at 03:32 but its commit f7112b0 is dated 05:23:46 (the agent was resumed after a stall), so the label "after = f7112b0" could not be trusted.
+  - **Re-measured on the head 74bbff2** (iGPU, 1280x800, enhanced, 60 frames), bound on → off:
+
+    | point | `fluid` | frame |
+    |---|---|---|
+    | group 1 at 0.452 | 13.71 → 42.27 ms | 35.15 → 63.28 ms |
+    | group 2 at 0.475 | 17.23 → 50.30 ms | 51.73 → 84.62 ms |
+    | scale 1 | 15.56 vs 15.55 ms (frame) | |
+
+    All within 0.2 ms of the report's tables.
+  - Looked at `far\crops\a1_Single_06_L1_s0.452_coast.png`: foam and shallows slightly softer at 4x; nothing else changes.
+  - **Owner decision on OQ-130 (2026-10-23):** "the option that scales best in dense late game game play on high player multiplayer matches", read by the orchestrator as **the bound on every adapter**: it frees GPU time on every card for the dense late-game load, and the far zoom then looks and costs the same on every machine of a match.
+  - **Fix-up (same branch, before the merge):**
+    1. the default bound 0.25 on every adapter (drop the discrete exception), keeping `--fluid-cells-per-px 0` / the `GpuLimits` field as the switch;
+    2. adjust the "automatic choice by adapter" test to the new rule;
+    3. the RTX 4090 far-zoom row with the bound on (default) in `docs/perf/README.md`;
+    4. OQ-130 decided with the owner's words;
+    5. GPU tests on both adapters again.
+  - **Stage 2 note:** the owner's criterion is scaling in dense late-game multiplayer. The stage 2 tiers should be chosen from the measured frame budget under load, not from the adapter type.
+
+- **T9 S11 (2026-10-23 j, PR #26, head 59505bd). Approved; merge when CI is green.** The weapons workshop (research input), fur trapper, mine (deposits, rotated area, add-on depletion) and small farm (`DrawRef`) are driven through `advance`; the mask is gone; G3 is our own fixture. Subagent: 13 of 13 mutants killed; 796/796 ctest with and without the game dir; GCC 13.3 and Clang 18 `-O3 -Werror` 475/475 both ways.
+  - Verified by the orchestrator in the disassembly (`AnnoWelt.dll`, capstone), every job id pushed before the send-figure slot `+0x118`:
+    - workshop `0x100683a8` 0x33;
+    - weapons workshop `0x10069a7b` 0x33;
+    - small farm `0x1006f78d` 0x2a (worker) and `0x1006f8f3` 0x2e (animal).
+  - That makes S7's carrier job 0 a bug. The fix a4410ac and the re-baselined G1/G2 goldens are justified; the old values and the reason are in `goldens.txt`.
+  - Re-run: `anno-sim-replay run g3.log` 2021 entries, 21/21 checkpoints at tick 100 000; `g2.log` 6/6; `git grep tick_kind_enabled -- src` finds nothing.
+  - Accepted: the out-of-scope one-line regex in `tools/lint_sim_allow.txt` (the new job constants); `kPrngTimelineVersion` stays 1 (the draw sites are unchanged, state.md §6); one reviewer instead of two.
+  - Nit for S13/fauna: the fur trapper's step runs in full and only the send is suppressed (`driver.cpp`, `case TickKind::FurTrapper`). Whether the original keeps the step's other effects when the radius search `0x10071da0` finds no prey should be checked when wildlife is ported (OQ-129).
+  - New OQs: OQ-128 (RE, world property 5) and OQ-129 (fur trappers idle until the fauna is ported, faithful). Renumber at merge if T14 also uses 128/129.
+  - **OQ-129 decided by the owner 2026-10-23:** "just stay idle until the animals are added". No stand-in; recorded in `open-questions.md` after the merge.
+
 - **T9 S10 merged (2026-10-23 j)** as 0ebfeb2 with CI green on all 20 jobs. On the merged tree (with T10b): MSVC build clean and ctest without the game dir 784/784. The full with-game-dir run on the merged tree was stopped by the host's low-memory guard. T10b changes only `test_support`'s parallel helper, which no sim test uses, so the branch's 542/542 carries over.
 - **T10b merged (2026-10-23 j)** as 36d7405 with CI green on all ten jobs.
 

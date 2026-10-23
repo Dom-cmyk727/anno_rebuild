@@ -1262,7 +1262,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
     - The end behaviour `0x1003af00` calls slot `+0x110` = `0x1003b6e0`.
     - That calls `home→slot +0x2c(unit)` (workshop `0x100687b0`, weapons workshop `0x100692d0`, farm and fur trapper `0x1006f070`, small farm `0x1006fe40`). It nulls the building's pointer to the figure, which is the counter, and clears the unit's home `+0x78`. A second release changes nothing.
   - **Step 2: onto the expiry list.**
-    - When the 0.01 step ends, the tick `0x10034760` calls Remove(unit, 0) (registry slot `+4` = `0x100974b0`, at `0x10034844`).
+    - When the last step set by the end behaviour is used up, the tick `0x10034760` calls Remove(unit, 0) (registry slot `+4` = `0x100974b0`, at `0x10034844`).
     - Remove unlinks the unit from its sector cell (`0x10097d80`) and appends its vector entry to the expiry list `+0x48`.
     - The unit's stamp (property 0x23 = unit `+8`, written after every active step at `0x1003488e`) freezes at that tick.
   - **Step 3, 7500 ticks later: destroy.**
@@ -1349,7 +1349,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What we know:**
   - **The world's functions.** Load (`0x100ae270`) writes neither the monopoly accumulator, the 7.5 minute accumulator, the clock nor the timers' last tick (OQ-132). Init (world slot `+0x50`, `0x100aa910`) builds a new SKTIMER, unit registry and player table. Clear (`+0x1c0`, `0x100af240`) zeroes the clock and the 7.5 minute accumulator but not the monopoly accumulator, which only the world constructor `0x100a3980` zeroes.
   - **AnnoScene.** `0x10002e40` creates a new world instance (`CreateAnnoWeltInstance`, `0x10002ea6`) only while the scene's flag `+0x164` is 0; otherwise it re-initialises the world it has. `0x100029f0` takes the world from its caller and sets the flag.
-  - **The registry.** `MAIN` carries the unit registry's vector length, and Load resizes the vector to it (`0x100980e0`). The registry's stamp `+0x20`, cursor `+0x22` and expiry list were not found in the world's chunks. A registry made by Init starts with all three at 0 and empty.
+  - **The registry.** `MAIN` carries the unit registry's vector length, and Load resizes the vector to it (`0x100980e0`). The registry's stamp `+0x20`, cursor `+0x22` and expiry list were not found in the world's chunks. A registry made by Init starts with all three at 0 and empty. Load hands a `SCHIFF` chunk to registry slot `+0x18` (`0x100987a0`, not read).
 - **Open:**
   - whether a savegame load always runs on a new world object. That decides whether the monopoly table is recomputed after a load (OQ-132).
   - where the units are saved (likely inside the island or `SPIELER` chunks), and whether a unit waiting on the expiry list is saved and comes back on it.

@@ -24,7 +24,10 @@ struct WorldSettings {
     /// Time-limit-like, 2550 = none (I). The original stores value/10 in a
     /// byte (F8: loses precision and wraps above 2559); u16 here.
     std::uint16_t prop3 = 2550;
-    /// Mine deposit search, ship code (the original stores it inverted).
+    /// Read by island-object methods next to a per-player bit of the object (+0x2c;
+    /// AnnoWelt 0x10063235, 0x100634bc, 0x100638f3) and by ship code (the original
+    /// stores it inverted); NOT by the mine tick or the deposit search (0x1006def0,
+    /// 0x100787c0). Meaning open (OQ-128); the sim does not read it.
     bool prop5 = true;
     /// Feature-off mask: 0x02 volcano, 0x04 drought, 0x08 city events, 0x80
     /// event 7.5 min (bit 0x20 is read by CompLogic only).

@@ -1228,3 +1228,16 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Question:** does the original remove an entry (shifting the later entries and rewriting their goods bytes) or clear it in place; what `0x8a` with goods 0 does; whether the value the UI sends to `0x7c` is always the entry's index (O-57).
 - **Also open (O-10):** the capacity of a list. The command layer has no limit: every accepted append grows the hashed and saved state by one entry, so a peer can grow it by one entry per command. If the original has a capacity, it becomes a `SimConfig` value with that default.
 - **How to resolve:** read the `0x73` / `0x8a` handlers behind the dispatcher `0x1005ffd0` and the city methods they call, next to the removal paths above.
+
+## OQ-128: What world property 5 does (new, T9 S11 2026-10-23; narrows O-29)
+- **Status:** open, RE
+- **Area:** simulation / island objects
+- **What we know:** `docs/sim/state.md` §3 said property 5 is read "by the mine deposit search". It is not: the mine tick `0x1006def0` and the deposit search `0x100787c0` (read instruction by instruction, `docs/re/production.md` §4.4) do not read it. A scan of AnnoWelt for `push 5` followed by `call [reg+0x74]` (the world property getter, the same shape as the deposit's property-14 read at `0x1006368b`) finds 20 sites, among them three island-object methods next to the deposit class (`0x10063235`, `0x100634bc`, `0x100638f3`). Each of these first tests the bit of a player index (from slot `+0xd4` of the argument) in the object's mask `+0x2c`. When that bit is clear and property 5 is non-zero, it skips the rest. In `0x10063210..0x1006325f` the rest calls `0x10064250` only when the deposit's remaining amount `+0x28` or its reserve flag `+0x30` is non-zero. The setting is default true and an SP toggle at AnnoFrame `0x10006fa0` (O-29). Likely reading: something like "objects stay hidden until a player has discovered them". This reading is not verified.
+- **What the rebuild does:** stores and hashes `WorldSettings::prop5`; nothing in the sim reads it (the mine needs no input from it).
+- **How to resolve:** read the three methods and their callers (which vtable slot they are, who calls them per player), and the other 17 sites.
+
+## OQ-129: Fur trappers send no trapper until the island has wildlife (new, T9 S11 2026-10-23; O-12, O-25)
+- **Status:** open, owner decides (informational until the fauna is ported)
+- **Area:** simulation / production
+- **What the rebuild does (faithful):** the fur trapper's tick (`0x1006e5d0`) sends a trapper only with a target from the radius search `0x10071da0(8)`: the nearest animal of the input goods. Animals are wildlife island objects, which the sim does not create yet: their spawns come from the fauna sweep `0x10093480` (O-12, the unported `WildlifeSweep` draw site). So the search finds nothing, no trapper leaves, and a fur trapper produces only from the raw stock it starts with. In a played game, fur trappers therefore stay idle until the fauna is ported.
+- **Question for the owner:** keep this until the fauna sweep is ported (the default; nothing is guessed), or add an opt-in `rules` stand-in before that (e.g. a trapper that always finds prey)? A stand-in would change the PRNG-free production numbers and is not the original.

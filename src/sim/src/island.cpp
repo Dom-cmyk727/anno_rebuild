@@ -726,6 +726,9 @@ void Island::rect_query(const ListLayout& layout, CityNo no, const TileRect& rec
                     continue;
                 }
                 const BuildingId id = make_building_id(index, serial);
+                if (out.size() > static_cast<std::size_t>(segment) && out.back() == id) {
+                    continue; // the next tile of the footprint just taken
+                }
                 const auto it = cache.by_id.find(id);
                 if (it == cache.by_id.end() || it->second.city.city != no ||
                     find_building(id) == nullptr) {
@@ -734,10 +737,12 @@ void Island::rect_query(const ListLayout& layout, CityNo no, const TileRect& rec
                 out.push_back(id);
             }
         }
-        // The same building is met once per footprint tile in the box.
+        // The same building is met once per footprint tile in the box: the duplicates go
+        // first (by id, no lookup), then the unique ids take the (y, x, id) order.
         const auto first = out.begin() + segment;
-        std::sort(first, out.end(), before);
+        std::sort(first, out.end());
         out.erase(std::unique(first, out.end()), out.end());
+        std::sort(out.begin() + segment, out.end(), before);
     }
 }
 

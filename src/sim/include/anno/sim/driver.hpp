@@ -89,9 +89,10 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
 ///  - made: nothing (the output stays in the building's store; carriers that move it
 ///    to the city stock arrive with transport);
 ///  - send_figure: the home counter is raised HERE, in the tick, and a SpawnRequest
-///    {kind = the type's first figure id, job (0x0d for the fur trapper, 0x2a for
-///    the small farm's line-0 worker, else 0 = unknown), home_counter 0} is queued;
-///    the figure itself is created by the merge;
+///    {kind = the type's first figure id, job (0x33 for the carrier of a workshop or
+///    weapons workshop, 0x0d for the fur trapper, 0x2a for the small farm's line-0
+///    worker, else 0 = unknown), home_counter 0} is queued; the figure itself is
+///    created by the merge;
 ///  - send_animal (small farm): counter animal_kind - small_farm_animals.base is
 ///    raised and a SpawnRequest {kind = animal_kind, job 0x2e, home_counter = that
 ///    index} is queued; a kind outside the counters sends nothing (F21).

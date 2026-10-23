@@ -183,13 +183,14 @@ TEST_CASE("tick_building steps a workshop and raises its carrier counter") {
     CHECK(wk.out[0] == 6);
     CHECK(wk.in[0] == 5 * sim::kTon - 11);
     CHECK(wk.carriers_out == 1);
-    // One spawn: the weaver's first figure id, job unknown, counter 0, owner = the city's.
+    // One spawn: the weaver's first figure id, the carrier job 0x33 (D 0x100680b0), counter 0,
+    // owner = the city's.
     REQUIRE(fx.spawns.size() == 1);
     const sim::SpawnRequest& s = fx.spawns[0];
     CHECK(s.home == b.id);
     CHECK(s.city == cref(0, 0));
     CHECK(s.home_counter == 0);
-    CHECK(s.job == 0);
+    CHECK(s.job == 0x33);
     CHECK(s.figure_kind == 11);
     CHECK(s.owner == sim::PlayerId{0});
     CHECK(s.pos.x == 101 * 256);
@@ -416,7 +417,8 @@ TEST_CASE("consume sends a figure by raising the home counter and queueing a spa
     Tick t(w, 77);
     sim::StepResult send;
     send.send_figure = true;
-    // weaver 1 (kind 11), farm 2 (kind 22); the fur trapper job is 0x0d.
+    // weaver 1 (kind 11, carrier job 0x33), farm 2 (kind 22, job unknown: 0); the fur trapper
+    // job is 0x0d.
     {
         sim::Effects fx;
         sim::Building& b = building(w, 0, 1);
@@ -424,7 +426,7 @@ TEST_CASE("consume sends a figure by raising the home counter and queueing a spa
         CHECK(std::get<sim::Workshop>(b.payload).carriers_out == 1);
         REQUIRE(fx.spawns.size() == 1);
         CHECK(fx.spawns[0].figure_kind == 11);
-        CHECK(fx.spawns[0].job == 0);
+        CHECK(fx.spawns[0].job == 0x33);
         CHECK(fx.spawns[0].home_counter == 0);
     }
     {
@@ -447,7 +449,9 @@ TEST_CASE("consume sends a figure by raising the home counter and queueing a spa
         sim::consume(t.ctx, island(w), city(w, 0), sb, *ck.k.registry->find(ck.k.small_farm), send,
                      fx);
         CHECK(std::get<sim::SmallFarm>(sb.payload).figures_out[0] == 1);
-        CHECK(fx.spawns.size() == 2);
+        REQUIRE(fx.spawns.size() == 2);
+        CHECK(fx.spawns[0].job == 0x33); // the weapons workshop's carrier
+        CHECK(fx.spawns[1].job == 0x2a); // the small farm's line-0 worker
     }
     {
         // The fur trapper (class FurTrapper, a Farm payload) sends job 0x0d. Its payload is

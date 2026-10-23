@@ -222,16 +222,36 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
 
 namespace {
 
-/// The job code of a figure a class sends through send_figure: 0x0d for the fur
-/// trapper (D: job table, docs/sim/state.md §4.9; D 0x1006e5d0), 0x2a for the small
-/// farm's line-0 worker (D 0x1006f660: `this+0x118(job 0x2a, type+0xb4(0, 0), t)`,
-/// docs/re/production.md §4.5), 0 (unknown, O-8) for the rest: the farm's worker takes
-/// its job from the figure type's slot +0x54 (docs/re/production.md §4.2), which is not
-/// read.
+/// The job codes of the figures the production classes send (docs/re/production.md §4,
+/// §5.1; the D addresses below):
+///  - 0x33 the carrier of a workshop (D 0x100680b0, "send a carrier (job 0x33, figure
+///    type list[0])", §4.1) and of a weapons workshop, whose tick shares the workshop's
+///    carrier rule (D 0x10069550, §4.1a);
+///  - 0x0d the fur trapper (D 0x1006e5d0: `this+0x118(job 0x0d, ...)`, §4.2a);
+///  - 0x2a the small farm's line-0 worker (D 0x1006f660: `this+0x118(job 0x2a, ...)`,
+///    §4.5);
+///  - 0x2e the small farm's animal (D 0x1006f660, §4.5).
+/// The farm's worker takes its job from the figure type's slot +0x54 (§4.2), which is
+/// not read: 0 (unknown, O-8).
+constexpr std::uint32_t kJobWorkshopCarrier = 0x33;
 constexpr std::uint32_t kJobFurTrapper = 0x0d;
 constexpr std::uint32_t kJobSmallFarmWorker = 0x2a;
-/// The small-farm animal job (D: 0x2e).
 constexpr std::uint32_t kJobSmallFarmAnimal = 0x2e;
+
+/// The job of the figure `send_figure` sends for a building of class `cls`.
+std::uint32_t send_figure_job(RuntimeClass cls) {
+    switch (cls) {
+    case RuntimeClass::Workshop:
+    case RuntimeClass::WeaponsWorkshop:
+        return kJobWorkshopCarrier;
+    case RuntimeClass::FurTrapper:
+        return kJobFurTrapper;
+    case RuntimeClass::SmallFarm:
+        return kJobSmallFarmWorker;
+    default:
+        return 0; // the farm family: unknown (O-8); other classes send no figure here
+    }
+}
 
 SpawnRequest spawn_request(const Island& island, const City& city, const Building& b,
                            std::uint32_t home_counter, std::uint32_t job,
@@ -282,10 +302,7 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
         if (counter != nullptr) {
             ++*counter;
             const std::uint32_t kind = type.prod.figure_ids.empty() ? 0 : type.prod.figure_ids[0];
-            const std::uint32_t job = type.cls == RuntimeClass::FurTrapper  ? kJobFurTrapper
-                                      : type.cls == RuntimeClass::SmallFarm ? kJobSmallFarmWorker
-                                                                            : std::uint32_t{0};
-            fx.spawns.push_back(spawn_request(island, city, b, 0, job, kind));
+            fx.spawns.push_back(spawn_request(island, city, b, 0, send_figure_job(type.cls), kind));
         }
     }
     if (r.send_animal) {

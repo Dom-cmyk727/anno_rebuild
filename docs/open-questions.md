@@ -924,6 +924,11 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   - a road connects only at a building's **specific entrance tile**, not at any edge tile.
 
   The manual and the community FAQ agree on the entrance rule. FAQ posters from 2002–2004 claim that houses and the fire brigade need no roads; that **contradicts the owner** and may describe an older patch. The owner's rule is the working rule. T15 decides the mechanism with per-house reads, the same houses with and without a road to a market (PR #16 review). See `community-faq.md` §3.
+- **Update 2026-10-23 (T24, what the code does):** the walk layer of a figure type is `LOGIC[0x10]` (D, `docs/re/transport.md` §3); the tables the layer selects are not read (OQ-160). The stand-in:
+  - layer 3 walks on road tiles only (HEAD flag `0x4000`, P: 35 of the 921 types); P: the only figure type with layer 3 is the market cart 220;
+  - every other layer walks on any tile that holds no building (roads included), among them the workshop carrier 203 and the native cart 390 (layer 0).
+
+  So a producer feeds the market only when one of its footprint tiles touches the market's road net inside the market's area, and a workshop's carrier reaches its sources over open land. The goal is a footprint tile, not the entrance tile the owner's rule names (the entrance points are read, `BuildingType::entrances`, and used only for the spawn position; OQ-161). Houses, services and other walkers are not touched by T24. If the owner's rule differs (carriers on roads too, or the entrance tile as the only goal), the owner picks the default; the rule becomes a `Rules` option.
 - **Update 2026-10-22 (in-game help):** entrances MUST face a street, or market wagons cannot pick up goods. A street connection "shortens the way" of inhabitants and workers, so they can also walk without one [H/Strassenanschluss]. Cobblestone is described as "considerably faster" for inhabitants and wagons [H/Pflasterstrasse]; that is the design intent against question 3. `wegspeed.dat` is a slope walk mask, not a speed table. Decide by timing a wagon round trip (`manual-and-help.md` §2, §4).
 
 ## OQ-104: Player controls missing from the command list (new, tutorial series 2026-10-22)
@@ -1476,3 +1481,57 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What we know (D AnnoWelt, `docs/re/annowelt.md` "Scenario cities" (f)):** a market whose `KONTID` is 0 after its `Load` gets the island's property `0x11`, and the property is raised by one (entry loop `0x100266a5`–`0x100266f5`, Build path `0x10027c63`–`0x10027c9d`); a loaded non-zero number does not touch the counter. P: every market of the corpus has a non-zero number, unique on its island.
 - **The question:** where does the island's property `0x11` come from on a load (an island record such as `KONTORID`, OQ-024, or 0)? If it starts below the loaded numbers, the next market built gets a number already in use: does anything key on `KONTID` (the city function around `0x1002893b` reads property `0xe` of the buildings in a rectangle)?
 - **How to resolve:** read island property `0x11` in the island's property getter and setter and in the island record loader `0x10089130`; read the consumer at `0x1002893b`.
+
+## OQ-160: Which tiles a cart and a carrier may enter: the walking layers (new, T24 2026-10-23; OQ-103, O-8)
+- **Status:** open, RE; the road rule is the owner's to confirm (OQ-103)
+- **Area:** simulation / transport
+- **What we know (AnnoWelt, `docs/re/transport.md` §3, D):**
+  - the figure's searcher takes the walking layer from the figure type's byte `+0xff` (`LOGIC[0x10]`, AnnoGame `0x1000faf0`);
+  - the layer selects the table `0x100d1140 + 0x1c00 · layer` (engine `+0x430`);
+  - the cells come from the island's tiles through island slot `+0x128` in mode 0, which reads a 9-bit mask per tile (likely the `WALKMASK` of the tile's object; every `ANLAGEN` entry has one, P 921 of 921).
+
+  The tables are `.data` filled at run time and are not read, so it is open which masks a layer accepts. P: figure 220 (the market cart) has layer 3, the only one; 287 figure types have layer 0, among them the carrier 203 and the native cart 390.
+- **What the rebuild does (stand-in, `transport.cpp` `walk_rule`):**
+  - layer `kRoadLayer` = 3 walks on road tiles only (a tile whose object type has the HEAD flag `0x4000`);
+  - every other layer walks on tiles without a building (no object, or an object whose type has no building list) and on roads;
+  - the home's footprint and the candidates' footprints may always be entered.
+
+  A tile is a whole tile; the original's 3 × 3 sub-cells and the walk masks are not used.
+- **How to resolve:** read the writer of `0x100d1140` (the engine's set-up, `0x1000dd20` and its callers) and `0x10091fa0` mode 0, then compare the masks with `WALKMASK`. Until then the layer value and the rule move into `SimConfig` (the path named at `kRoadLayer`) if the owner wants another rule.
+
+## OQ-161: How the original's search expands, and which nodes are goals (new, T24 2026-10-23; O-8)
+- **Status:** open, RE
+- **Area:** simulation / transport
+- **What we know (D, `docs/re/transport.md` §3):**
+  - the search runs over 4 × 4-cell blocks made on demand;
+  - its callback is called on a goal node (`0x10003d90`), its best score starts at 0 every run (`0x10003dbf`), and it stops when the callback answers 0 (`0x10003210`);
+  - the goals are the candidates' entrance points (`0x10072be0`);
+  - the path is a list of `{direction, count}` pairs in thirds of a tile (`0x10005890`).
+
+  The node expansion (order, costs, ties) and the disc fill's arithmetic (`0x10003780`) are not read in full.
+- **What the rebuild does (stand-in, `transport.cpp` `search`):** a Dijkstra over the area's tiles (the candidate square cut to the island, the disc of `disc_half_widths`, D):
+  - costs 5 straight and 7 diagonal;
+  - neighbours in the order of the segment builder's direction codes (`0x1002ff20`);
+  - ties in insertion order;
+  - no diagonal past a blocked orthogonal neighbour;
+  - the starts are the home's footprint tiles;
+  - the goals are the candidates' footprint tiles (not their entrance points);
+  - a goal is scored once per search (its other tiles score the same under the strict `<`) and never walked through.
+
+  The work per search is bounded by the area: at most `(2r + 2)²` tiles, `r` the home type's action radius (P: at most 24, so 2 500 tiles); measured on `single36`: carts read 909 tiles per search on average, at most 2 046; carriers at most 237.
+- **Consequence:** with several candidates at different distances the original may score them in another order than the stand-in, and so pick another source when the early stop fires; the route's tiles and length can differ.
+- **How to resolve:** read the expansion of the engine at world `+0x6aa8` (vtable `0x100c1424`) and the entrance goals; then replace the stand-in with a stream and timeline bump.
+
+## OQ-162: The walk in integers instead of the original's x87 floats (new, T24 2026-10-23; D13) — owner
+- **Status:** open, owner decision (the default is the integer walk; no float may enter hashed state)
+- **Area:** simulation / transport
+- **What the original does (D, `docs/re/transport.md` §4):** a figure's time is `u16(t − stamp) · 0.2f` in x87 floats; the walk moves `time · speed` along f32 segments of `count / 3` tiles (diagonals × `1.41421354f`); the rest of the time after an action goes on to the next in the same call; the position is three floats.
+- **What the rebuild does (`transport.cpp` `walk`, `figure_type_from_entry`):**
+  - the speed is precomputed per figure type as `round(f32 · 0.2f · 2^24)` in double precision (2^-24 tile per tick; the cart 53 687, the carrier 40 265);
+  - a route is a list of tile centres in Q24.8;
+  - a diagonal tile is 23 726 566 / 2^24 long;
+  - the progress is integer;
+  - the time left after an arrival is carried at a tick's resolution (`dist / speed`, rounded down);
+  - the load wait is `round(f32 · 500)` ticks.
+- **Consequence:** a trip's length in ticks can differ from the original's by rounding (a tick per action or less for these speeds), and a figure walks tile centre to tile centre, not along the original's sub-cell path (OQ-161). The hash stays platform independent.
+- **Decision for the owner:** keep the integer walk (default), or ask for a fixed-point model of the x87 sequence once differential fixtures (T15) show the difference matters.

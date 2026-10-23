@@ -146,10 +146,15 @@ std::uint64_t hash_events(const std::vector<sim::SimEvent>& events) {
 
 // Stage S7 also tested its temporary mask here (the weapons workshop, fur trapper, mine
 // and small farm did not tick); stage S11 removed the mask and drives those classes
-// (driver_classes_test.cpp). What stays: a class without a ported tick never ticks.
+// (driver_classes_test.cpp). What stays: a class without a ported tick never ticks. The
+// kit's kontor, the inert example until T24, ticks since then (its own case below): the
+// building in its slot is made a market stall (an inert class) here.
 TEST_CASE("inert classes do not tick even with an open gate") {
     const Kit k = make_kit();
     sim::World w = make_world_with(k, merge_scenario(k), named_seams());
+    sim::Building& b = building(w, 0, 6);
+    b.type = k.market_stall;
+    b.payload = sim::Inert{};
     // Open the gate: last = 0xF000 makes the 16-bit difference at tick 500 at least 500.
     payload<sim::Inert>(w, 0, 6).last = 0xF000;
     sim::Effects fx;
@@ -159,12 +164,26 @@ TEST_CASE("inert classes do not tick even with an open gate") {
     CHECK(payload<sim::Inert>(w, 0, 6).last == 0xF000);
     CHECK(fx.ui.empty());
     CHECK(fx.spawns.empty());
-    // The same through the scheduler: a full lap at tick 500 leaves the kontor alone.
+    // The same through the scheduler: a full lap at tick 500 leaves the stall alone.
     sim::Effects fx2;
     c.index.stamp = 0;
     Tick t2(w, 500);
     sim::building_scheduler(t2.ctx, island(w), c, fx2);
     CHECK(payload<sim::Inert>(w, 0, 6).last == 0xF000);
+}
+
+TEST_CASE("a market without production data steps its gate and sends no cart") {
+    // The kit's kontor (add_plain, no PROD3): class Market ticks since T24 (D 0x1006b6d0),
+    // its max_figures(0) is 0, so the gate moves (last += 500) and nothing is sent.
+    const Kit k = make_kit();
+    sim::World w = make_world_with(k, merge_scenario(k), named_seams());
+    payload<sim::Market>(w, 0, 6).last = 0xF000;
+    sim::Effects fx;
+    Tick t(w, 500);
+    sim::tick_building(t.ctx, island(w), city(w, 0), building(w, 0, 6), fx);
+    CHECK(payload<sim::Market>(w, 0, 6).last == static_cast<std::uint16_t>(0xF000 + 500));
+    CHECK(payload<sim::Market>(w, 0, 6).carts_out == 0);
+    CHECK(fx.spawns.empty());
 }
 
 // ---------------------------------------------------------------- tick_building
@@ -466,15 +485,24 @@ TEST_CASE("consume sends a figure by raising the home counter and queueing a spa
         CHECK(fx.spawns[0].job == 0x0d);
     }
     {
-        // A payload without a counter (a mine, an inert building) sends nothing.
+        // A payload without a counter (a mine) sends nothing.
         sim::Effects fx;
         sim::Building& mine = building(w, 0, 5);
         sim::consume(t.ctx, island(w), city(w, 0), mine, *ck.k.registry->find(ck.k.iron_mine), send,
                      fx);
+        CHECK(fx.spawns.empty());
+    }
+    {
+        // A market sends a cart (job 0x34) on its carts_out counter (T24, D 0x1006b6d0);
+        // the kit's kontor has no figure ids: kind 0.
+        sim::Effects fx;
         sim::Building& kontor = building(w, 0, 6);
         sim::consume(t.ctx, island(w), city(w, 0), kontor, *ck.k.registry->find(ck.k.kontor), send,
                      fx);
-        CHECK(fx.spawns.empty());
+        CHECK(std::get<sim::Market>(kontor.payload).carts_out == 1);
+        REQUIRE(fx.spawns.size() == 1);
+        CHECK(fx.spawns[0].job == 0x34);
+        CHECK(fx.spawns[0].figure_kind == 0);
     }
 }
 
@@ -613,10 +641,22 @@ TEST_CASE("figure counters and output stores by payload") {
     CHECK(*sim::figure_counter(csmall, 4) == 5);
     CHECK(sim::figure_counter(csmall, 5) == nullptr);
     // Mine and Inert have none.
-    for (const std::uint32_t serial : {5U, 6U}) {
-        sim::Payload& p = building(w, 0, serial).payload;
+    {
+        sim::Payload& p = building(w, 0, 5).payload;
         CHECK(sim::figure_counter_count(p) == 0);
         CHECK(sim::figure_counter(p, 0) == nullptr);
+        sim::Payload inert = sim::Inert{};
+        CHECK(sim::figure_counter_count(inert) == 0);
+        CHECK(sim::figure_counter(inert, 0) == nullptr);
+    }
+    // A market has its carts (T24).
+    {
+        sim::Payload& p = building(w, 0, 6).payload;
+        CHECK(sim::figure_counter_count(p) == 1);
+        REQUIRE(sim::figure_counter(p, 0) != nullptr);
+        *sim::figure_counter(p, 0) = 2;
+        CHECK(std::get<sim::Market>(p).carts_out == 2);
+        CHECK(sim::figure_counter(p, 1) == nullptr);
     }
     // The pointers point at the right members.
     sim::Payload& wk = building(w, 0, 1).payload;
@@ -2295,11 +2335,19 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
         figs.u32(job);
         figs.i32(256 * 101 + 7);
         figs.i32(256 * 102);
-        figs.u32(0);  // cargo_goods
-        figs.u32(0);  // cargo_88
-        figs.u32(0);  // hp
-        figs.u32(50); // born
-        figs.u8(0);   // expiry_stamp absent
+        figs.u32(0);                   // cargo_goods
+        figs.u32(0);                   // cargo_88
+        figs.u32(0);                   // hp
+        figs.u32(50);                  // born
+        figs.u16(50);                  // stamp: the spawn's tick (T24)
+        figs.u8(0);                    // transport.step Start
+        figs.u32(0);                   // transport.wait
+        figs.u64(0);                   // transport.route: no points
+        figs.u32(0);                   // transport.next
+        figs.u32(0);                   // transport.along
+        figs.u64(sim::BuildingId{}.v); // transport.target: none
+        figs.u32(0);                   // transport.reserved_88
+        figs.u8(0);                    // expiry_stamp absent
     };
     figure(1, 11, 0, bid(0, 1).v, 7);
     figure(2, 22, 1, bid(0, 2).v, 0);
@@ -2312,9 +2360,9 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     CHECK(std::equal(figs.v.begin(), figs.v.end(),
                      bytes.begin() + static_cast<std::ptrdiff_t>(figures_at)));
     // A corrupt byte in the second figure (the presence byte of its expiry_stamp: 20
-    // bytes of list head, the 58 bytes of slot 0, then 57 bytes into slot 1) is reported
+    // bytes of list head, the 93 bytes of slot 0, then 92 bytes into slot 1) is reported
     // with the scope path of that slot.
-    const std::size_t stamp_at = figures_at + 20 + 58 + 57;
+    const std::size_t stamp_at = figures_at + 20 + 93 + 92;
     REQUIRE(bytes[stamp_at] == 0);
     std::vector<std::uint8_t> bad = bytes;
     bad[stamp_at] = 2;
@@ -2578,11 +2626,35 @@ TEST_CASE("every field of the figure registry and the event queue moves the hash
         {"cargo_88", [](sim::Figure& f) { f.cargo_88 += 1; }},
         {"hp", [](sim::Figure& f) { f.hp += 1; }},
         {"born", [](sim::Figure& f) { f.born += 1; }},
+        {"stamp", [](sim::Figure& f) { f.stamp += 1; }},
+        {"transport.step", [](sim::Figure& f) { f.transport.step = sim::TransportStep::ToHome; }},
+        {"transport.wait", [](sim::Figure& f) { f.transport.wait += 1; }},
+        {"transport.route",
+         [](sim::Figure& f) {
+             f.transport.route = {sim::FixedPos{1, 2}, sim::FixedPos{3, 4}};
+             f.transport.next = 1;
+         }},
+        {"transport.next",
+         [](sim::Figure& f) {
+             f.transport.route = {sim::FixedPos{1, 2}, sim::FixedPos{3, 4}};
+             f.transport.next = 2;
+         }},
+        {"transport.along",
+         [](sim::Figure& f) {
+             f.transport.route = {sim::FixedPos{1, 2}, sim::FixedPos{3, 4}};
+             f.transport.next = 1;
+             f.transport.along = 5;
+         }},
+        {"transport.target", [](sim::Figure& f) { f.transport.target = bid(0, 2); }},
+        {"transport.reserved_88", [](sim::Figure& f) { f.transport.reserved_88 += 1; }},
         {"expiry_stamp present",
          [](sim::Figure& f) { f.expiry_stamp = std::optional<std::uint16_t>(std::uint16_t{0}); }},
     };
-    static_assert(sim::field_count<sim::Figure>() == 12);
-    CHECK(figure.size() == 13); // the 12 members, the position being two scalars
+    static_assert(sim::field_count<sim::Figure>() == 14);
+    static_assert(sim::field_count<sim::TransportState>() == 7);
+    // The 14 members, the position being two scalars and the transport state seven
+    // fields.
+    CHECK(figure.size() == 21);
     std::set<std::uint64_t> seen;
     for (const auto& [name, mutate] : figure) {
         INFO("figure " << name);

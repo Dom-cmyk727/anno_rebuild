@@ -39,6 +39,36 @@ formats::Result<SyntheticTypes, std::string> make_synthetic_types() {
     return s;
 }
 
+formats::Result<SyntheticTypes, std::string> make_transport_types() {
+    auto base = make_synthetic_types();
+    if (!base) {
+        return base.error();
+    }
+    SyntheticTypes s = std::move(base).value();
+    s.market = TypeId{9021};
+    s.carrier_weaver = TypeId{9022};
+    TypeRegistry::Builder b;
+    for (const BuildingType& t : s.registry->types()) {
+        b.add(t);
+    }
+    b.flags_word(s.road, 0x4000)
+        .add_market(s.market, 220, 1, 8)
+        .entrances(s.market, {{9, 15}})
+        .add_workshop(s.carrier_weaver, "STOFFE", "WOLLE", 6, 11, 5, 1)
+        .action_radius(s.carrier_weaver, 16)
+        .figure_ids(s.carrier_weaver, {203})
+        // round(0.016f · 0.2f · 2^24) = 53687, round(0.012f · 0.2f · 2^24) = 40265; waits
+        // round(1.0 · 500) and round(2.0 · 500) ticks.
+        .figure_type(FigureType{220, 53687, 5 * 256, 3, 500})
+        .figure_type(FigureType{203, 40265, 3 * 256, 0, 1000});
+    auto built = b.build();
+    if (!built) {
+        return built.error();
+    }
+    s.registry = std::move(built.value());
+    return s;
+}
+
 formats::Result<SyntheticTypes, std::string> make_growth_types() {
     auto base = make_synthetic_types();
     if (!base) {
@@ -404,6 +434,36 @@ ScenarioSpec g5_scenario(const SyntheticTypes& types, std::uint32_t seed) {
     ScenarioSpec::CitySpec city0 = plain_city(0, 0);
     city0.buildings = {building_at(types.kontor, 131, 123)};
     is.cities = {std::move(city0), plain_city(3, 0)};
+    spec.islands.push_back(std::move(is));
+    return spec;
+}
+
+ScenarioSpec g6_scenario(const SyntheticTypes& types, std::uint32_t seed) {
+    ScenarioSpec spec = empty_scenario(seed);
+    ScenarioSpec::PlayerSpec p;
+    p.id = PlayerId{0};
+    spec.players.push_back(p);
+    ScenarioSpec::IslandSpec is = plain_island(0, 100, 100, 40, 32);
+    is.owner_runs = {{0, 40U * 32U}};
+    for (const auto& [x, y] :
+         {std::pair{111, 113}, {111, 114}, {112, 114}, {113, 114}, {114, 114}}) {
+        is.objects.push_back(ScenarioSpec::TileObjectSpec{
+            static_cast<std::uint32_t>((y - 100) * 40 + (x - 100)), types.road.v, 0});
+    }
+    ScenarioSpec::CitySpec city0 = plain_city(0, 0);
+    Workshop weaver = make_workshop(types.registry->find(types.weaver)->prod);
+    weaver.out[0] = 5 * kTon;
+    Farm farm;
+    farm.out = 5 * kTon;
+    farm.raw = 5 * kTon;
+    city0.buildings = {building_at(types.market, 110, 110),
+                       building_at(types.weaver, 111, 115, Payload{weaver}),
+                       building_at(types.farm, 114, 115, Payload{farm}),
+                       building_at(types.carrier_weaver, 106, 114)};
+    std::vector<std::uint32_t> stock(kOriginalWarehouseGoods, 0);
+    stock[9] = 30 * kTon; // WOLLE
+    city0.stock = std::move(stock);
+    is.cities = {std::move(city0)};
     spec.islands.push_back(std::move(is));
     return spec;
 }

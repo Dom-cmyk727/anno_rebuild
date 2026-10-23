@@ -70,12 +70,18 @@ std::string rel_name(const fs::path& game, const fs::path& p) {
     return fs::relative(p, game / "Scenes").generic_string();
 }
 
-/// One line of the expectations file: the counts of a loaded scenario and the state
-/// hash of the world right after create (a digest of everything the adapter decoded:
+/// What the run of a scenario moved (T24): producers whose stocks changed and city
+/// warehouses whose stock changed, each of how many.
+struct Moved {
+    std::uint64_t producers = 0, producers_moved = 0, warehouses = 0, warehouses_moved = 0;
+};
+
+/// One line of the expectations file: the counts of a loaded scenario, the state hash
+/// of the world right after create (a digest of everything the adapter decoded:
 /// settings, players, terrain, tile objects, cities; it moves with kStateHashVersion,
-/// and the file is then rewritten like the goldens).
+/// and the file is then rewritten like the goldens) and what the run moved.
 std::string counts_line(const std::string& name, const sim::ScenarioCounts& c,
-                        std::uint64_t create_hash) {
+                        std::uint64_t create_hash, const Moved& m) {
     std::ostringstream o;
     o << name << " islands=" << c.islands << " links=" << c.links
       << " links_resolved=" << c.links_resolved << " links_unresolved=" << c.links_unresolved
@@ -87,7 +93,8 @@ std::string counts_line(const std::string& name, const sim::ScenarioCounts& c,
     }
     char hex[17];
     std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(create_hash));
-    o << " create_hash=" << hex;
+    o << " create_hash=" << hex << " producers_moved=" << m.producers_moved << "/" << m.producers
+      << " warehouses_moved=" << m.warehouses_moved << "/" << m.warehouses;
     return o.str();
 }
 
@@ -101,6 +108,7 @@ struct FileResult {
     bool deterministic = false, save_identity = false;
     std::uint64_t hash = 0, create_hash = 0;
     std::uint32_t link_draws = 0; // the resolver's draws
+    Moved moved;
 };
 
 /// The header line of the expectations file: the versions the hashes were made at
@@ -115,257 +123,16 @@ std::shared_ptr<const sim::TypeRegistry> original_registry(const fs::path& game)
     const auto buf = anno::test::read_file(game / "Anlagen.dat");
     auto file = anno::formats::anlagen::AnlagenFile::parse(buf);
     REQUIRE(file);
-    auto r =
-        sim::TypeRegistry::build(file.value().entries, sim::original_goods(), sim::SimConfig{});
+    // The figure types of FigurenHeader.dat (T24: the carts' speed, capacity, layer and
+    // load wait).
+    const auto fig_buf = anno::test::read_file(game / "FigurenHeader.dat");
+    auto figures = anno::formats::figuren::FigurenHeader::parse(fig_buf);
+    REQUIRE_MESSAGE(figures.ok(), (figures.ok() ? std::string() : figures.error()));
+    auto r = sim::TypeRegistry::build(file.value().entries, sim::original_goods(), sim::SimConfig{},
+                                      figures.value().entries);
     REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
     return r.value();
 }
-
-/// Load, create and run one scenario; no doctest assertion (parallel worker).
-FileResult run_file(const fs::path& game, const fs::path& p,
-                    const std::shared_ptr<const sim::TypeRegistry>& types,
-                    const anno::sim_load::IslandTemplates& templates, int advances) {
-    FileResult r;
-    r.name = rel_name(game, p);
-    const auto buf = anno::test::read_file(p);
-    const sim::SimConfig cfg;
-    auto resolved = anno::sim_load::load_scenario_with_links(buf, templates, *types, cfg, {});
-    if (!resolved) {
-        r.load_error = resolved.error();
-        return r;
-    }
-    for (const std::uint32_t n : resolved.value().resolution.draws) {
-        r.link_draws += n;
-    }
-    const sim::LoadedScenario& loaded_scenario = resolved.value().loaded;
-    r.counts = sim::count(loaded_scenario);
-    for (const sim::ScenarioSpec::IslandSpec& is : loaded_scenario.spec.islands) {
-        if (is.w % cfg.chunk_edge != 0 || is.h % cfg.chunk_edge != 0) {
-            ++r.a14;
-        }
-    }
-    for (const sim::ScenarioWarning& w : loaded_scenario.warnings) {
-        r.prod2_unknown +=
-            w.kind == sim::ScenarioWarningKind::UnknownObject && w.record == "PROD2" ? 1U : 0U;
-    }
-    auto run = [&](std::uint64_t& hash) -> std::string {
-        auto w = sim::World::create(loaded_scenario.spec, types, cfg);
-        if (!w) {
-            return w.error();
-        }
-        sim::World world = std::move(w).value();
-        r.create_hash = world.state_hash();
-        for (int i = 0; i < advances; ++i) {
-            world.advance(kStepMs);
-        }
-        r.invariants = world.check_invariants();
-        hash = world.state_hash();
-        const std::vector<std::uint8_t> saved = world.save();
-        auto back = sim::World::load(saved, types, {});
-        if (!back) {
-            r.save_error = back.error();
-        } else {
-            r.save_identity = back.value().save() == saved;
-        }
-        return {};
-    };
-    std::uint64_t h1 = 0, h2 = 0;
-    r.create_error = run(h1);
-    if (r.create_error.empty()) {
-        r.create_error = run(h2);
-        r.deterministic = h1 == h2;
-        r.hash = h1;
-    }
-    r.line = counts_line(r.name, r.counts, r.create_hash);
-    return r;
-}
-
-/// The file's lines by scenario name; `versions` gets its version header line.
-std::map<std::string, std::string> read_expectations(std::string& versions) {
-    std::map<std::string, std::string> out;
-    std::ifstream in(expectations_path());
-    std::string line;
-    while (std::getline(in, line)) {
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        if (line.rfind("# kStateHashVersion=", 0) == 0) {
-            versions = line;
-            continue;
-        }
-        if (line.empty() || line[0] == '#') {
-            continue;
-        }
-        out[line.substr(0, line.find(' '))] = line;
-    }
-    return out;
-}
-
-bool update_requested() {
-    const char* u = std::getenv("ANNO_UPDATE_GOLDEN");
-    const char* ci = std::getenv("CI");
-    return u != nullptr && std::string(u) == "1" && (ci == nullptr || std::string(ci).empty());
-}
-
-} // namespace
-
-TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
-    const auto dir = anno::test::game_dir();
-    if (!dir) {
-        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
-        return;
-    }
-    const auto types = original_registry(*dir);
-    const std::vector<fs::path> files = scenario_files(*dir);
-    REQUIRE(files.size() == 50); // P, sze.md "Files covered"
-    // The link selection's candidates (D AnnoScene 0x10007c50): 429 templates on this
-    // installation (docs/re/annoscene.md §5 step 1).
-    const anno::sim_load::IslandTemplates templates = anno::sim_load::scan_island_templates(*dir);
-    std::cout << "scenario corpus: " << templates.summaries.size() << " island templates\n";
-    CHECK(templates.summaries.size() == 429);
-    const auto results = anno::test::parallel_indexed(
-        files.size(),
-        [&](std::size_t i) { return run_file(*dir, files[i], types, templates, kAdvances); },
-        anno::test::parallel_options());
-
-    std::map<sim::ScenarioWarningKind, std::uint64_t> totals;
-    std::uint64_t islands = 0, links = 0, cities = 0, buildings = 0, objects = 0, a14 = 0,
-                  with_island = 0, links_only = 0, resolved = 0, unresolved = 0, link_draws = 0,
-                  link_files = 0, link_files_complete = 0;
-    std::vector<std::string> lines;
-    for (const FileResult& r : results) {
-        INFO(r.name);
-        CHECK(r.load_error == "");
-        CHECK(r.create_error == "");
-        CHECK(r.invariants == "");
-        CHECK(r.save_error == "");
-        CHECK(r.deterministic);
-        CHECK(r.save_identity);
-        // Every PROD2 id resolves in the registry.
-        CHECK(r.prod2_unknown == 0);
-        lines.push_back(r.line);
-        islands += r.counts.islands;
-        links += r.counts.links;
-        resolved += r.counts.links_resolved;
-        unresolved += r.counts.links_unresolved;
-        link_draws += r.link_draws;
-        if (r.counts.links > 0) {
-            ++link_files;
-            link_files_complete += r.counts.links_resolved == r.counts.links ? 1U : 0U;
-            std::cout << "scenario corpus: links " << r.name << " " << r.counts.links_resolved
-                      << " of " << r.counts.links << " resolved, " << r.link_draws << " draws\n";
-        }
-        cities += r.counts.cities;
-        buildings += r.counts.buildings;
-        objects += r.counts.tile_objects;
-        a14 += r.a14;
-        with_island += r.counts.islands > 0 ? 1U : 0U;
-        links_only += r.counts.islands == 0 && r.counts.links > 0 ? 1U : 0U;
-        for (const auto& [k, n] : r.counts.warnings) {
-            totals[k] += n;
-        }
-    }
-    // T23: the cities' PROD/ENTRY records place buildings.
-    CHECK(buildings > 0);
-    std::cout << "scenario corpus: " << results.size() << " files, " << with_island
-              << " with at least one island, " << links_only << " with links only; islands "
-              << islands << ", links " << links << ", cities " << cities << ", buildings "
-              << buildings << ", tile objects " << objects << "\n";
-    std::cout << "scenario corpus: links " << links << " in " << link_files
-              << " files: " << resolved << " resolved, " << unresolved << " unresolved, "
-              << link_draws << " draws; " << link_files_complete
-              << " files create every linked island\n";
-    std::cout << "scenario corpus: islands not a multiple of chunk_edge (A14/F20): " << a14 << "\n";
-    for (const sim::ScenarioWarningKind k : sim::all_warning_kinds()) {
-        std::cout << "scenario corpus: warnings " << sim::warning_kind_name(k) << " " << totals[k]
-                  << "\n";
-    }
-
-    // The per-file counts against the committed expectations.
-    if (update_requested()) {
-        std::ofstream out(expectations_path(), std::ios::binary);
-        out << "# The scenario corpus through the S14 adapter (T23: with the cities): per file\n"
-               "# (relative to Scenes) the counts of the loaded ScenarioSpec, of its warnings per\n"
-               "# kind, and the state hash after World::create (it moves with kStateHashVersion\n"
-               "# and with what the adapter decodes). No content of the files. Rewritten by\n"
-               "# scenario_test.cpp with ANNO_UPDATE_GOLDEN=1 (T9 S14 stage 2: with the links).\n"
-            << version_line() << "\n";
-        for (const std::string& l : lines) {
-            out << l << "\n";
-        }
-        MESSAGE("scenario_corpus.txt rewritten");
-        return;
-    }
-    std::string versions;
-    const std::map<std::string, std::string> want = read_expectations(versions);
-    // A file made at another stream or timeline version holds stale hashes: re-baseline.
-    REQUIRE_MESSAGE(versions == version_line(),
-                    ("scenario_corpus.txt is for '" + versions + "', this build is '" +
-                     version_line() + "': re-baseline (ANNO_UPDATE_GOLDEN=1)"));
-    CHECK(want.size() == results.size());
-    for (const std::string& l : lines) {
-        const std::string name = l.substr(0, l.find(' '));
-        INFO(name);
-        const auto it = want.find(name);
-        REQUIRE_MESSAGE(it != want.end(), "not in scenario_corpus.txt (ANNO_UPDATE_GOLDEN=1)");
-        CHECK(it->second == l);
-    }
-}
-
-TEST_CASE("scenario corpus: the ten scenarios with the most buildings run 20000 ticks more") {
-    // §15 S14: the 5 add-on and the 5 base scenarios with the most buildings run longer;
-    // under the asan preset this is the UBSan run. Since T23 "most buildings" ranks the
-    // buildings the cities' PROD/ENTRY records place.
-    const auto dir = anno::test::game_dir();
-    if (!dir) {
-        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
-        return;
-    }
-    const auto types = original_registry(*dir);
-    const std::vector<fs::path> files = scenario_files(*dir);
-    const anno::sim_load::IslandTemplates templates = anno::sim_load::scan_island_templates(*dir);
-    std::vector<std::pair<std::uint64_t, std::size_t>> base, addon;
-    for (std::size_t i = 0; i < files.size(); ++i) {
-        const auto buf = anno::test::read_file(files[i]);
-        auto l = sim::load_scenario(buf, *types, sim::SimConfig{});
-        REQUIRE(l);
-        const auto c = sim::count(l.value());
-        (l.value().spec.settings.prop14 == 3 ? addon : base).push_back({c.buildings, i});
-    }
-    auto top5 = [](auto& v) {
-        std::sort(v.begin(), v.end(), [](const auto& a, const auto& b) {
-            return a.first != b.first ? a.first > b.first : a.second < b.second;
-        });
-        v.resize(std::min<std::size_t>(v.size(), 5));
-    };
-    top5(base);
-    top5(addon);
-    std::vector<std::size_t> picked;
-    for (const auto& [n, i] : base) {
-        picked.push_back(i);
-    }
-    for (const auto& [n, i] : addon) {
-        picked.push_back(i);
-    }
-    REQUIRE(picked.size() == 10);
-    // 20 000 ticks more than the corpus case: 400 more advances of 100 ms (50 ticks each).
-    const auto results = anno::test::parallel_indexed(
-        picked.size(),
-        [&](std::size_t k) {
-            return run_file(*dir, files[picked[k]], types, templates, kAdvances + 400);
-        },
-        anno::test::parallel_options());
-    for (const FileResult& r : results) {
-        INFO(r.name);
-        std::cout << "scenario long run: " << r.name << "\n";
-        CHECK(r.create_error == "");
-        CHECK(r.invariants == "");
-        CHECK(r.deterministic);
-        CHECK(r.save_identity);
-    }
-}
-
-namespace {
 
 /// The stocks of a producing building: output, input and raw stocks (not `last`,
 /// which every scheduled step moves, producing or not); empty for a payload that does
@@ -459,15 +226,287 @@ warehouses(const sim::World& w) {
     return out;
 }
 
+/// Load, create and run one scenario; no doctest assertion (parallel worker).
+FileResult run_file(const fs::path& game, const fs::path& p,
+                    const std::shared_ptr<const sim::TypeRegistry>& types,
+                    const anno::sim_load::IslandTemplates& templates, int advances) {
+    FileResult r;
+    r.name = rel_name(game, p);
+    const auto buf = anno::test::read_file(p);
+    const sim::SimConfig cfg;
+    auto resolved = anno::sim_load::load_scenario_with_links(buf, templates, *types, cfg, {});
+    if (!resolved) {
+        r.load_error = resolved.error();
+        return r;
+    }
+    for (const std::uint32_t n : resolved.value().resolution.draws) {
+        r.link_draws += n;
+    }
+    const sim::LoadedScenario& loaded_scenario = resolved.value().loaded;
+    r.counts = sim::count(loaded_scenario);
+    for (const sim::ScenarioSpec::IslandSpec& is : loaded_scenario.spec.islands) {
+        if (is.w % cfg.chunk_edge != 0 || is.h % cfg.chunk_edge != 0) {
+            ++r.a14;
+        }
+    }
+    for (const sim::ScenarioWarning& w : loaded_scenario.warnings) {
+        r.prod2_unknown +=
+            w.kind == sim::ScenarioWarningKind::UnknownObject && w.record == "PROD2" ? 1U : 0U;
+    }
+    auto run = [&](std::uint64_t& hash) -> std::string {
+        auto w = sim::World::create(loaded_scenario.spec, types, cfg);
+        if (!w) {
+            return w.error();
+        }
+        sim::World world = std::move(w).value();
+        r.create_hash = world.state_hash();
+        const auto before = snapshot(world);
+        const auto stock_before = warehouses(world);
+        for (int i = 0; i < advances; ++i) {
+            world.advance(kStepMs);
+        }
+        const auto after = snapshot(world);
+        const auto stock_after = warehouses(world);
+        r.moved = Moved{};
+        for (const auto& [id, b] : before) {
+            const auto it = after.find(id);
+            if (b.state.empty() || it == after.end()) {
+                continue;
+            }
+            ++r.moved.producers;
+            r.moved.producers_moved += it->second.state != b.state ? 1U : 0U;
+        }
+        for (const auto& [city, s] : stock_before) {
+            const auto it = stock_after.find(city);
+            ++r.moved.warehouses;
+            r.moved.warehouses_moved += it != stock_after.end() && it->second != s ? 1U : 0U;
+        }
+        r.invariants = world.check_invariants();
+        hash = world.state_hash();
+        const std::vector<std::uint8_t> saved = world.save();
+        auto back = sim::World::load(saved, types, {});
+        if (!back) {
+            r.save_error = back.error();
+        } else {
+            r.save_identity = back.value().save() == saved;
+        }
+        return {};
+    };
+    std::uint64_t h1 = 0, h2 = 0;
+    r.create_error = run(h1);
+    if (r.create_error.empty()) {
+        r.create_error = run(h2);
+        r.deterministic = h1 == h2;
+        r.hash = h1;
+    }
+    r.line = counts_line(r.name, r.counts, r.create_hash, r.moved);
+    return r;
+}
+
+/// The file's lines by scenario name; `versions` gets its version header line.
+std::map<std::string, std::string> read_expectations(std::string& versions) {
+    std::map<std::string, std::string> out;
+    std::ifstream in(expectations_path());
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (line.rfind("# kStateHashVersion=", 0) == 0) {
+            versions = line;
+            continue;
+        }
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        out[line.substr(0, line.find(' '))] = line;
+    }
+    return out;
+}
+
+bool update_requested() {
+    const char* u = std::getenv("ANNO_UPDATE_GOLDEN");
+    const char* ci = std::getenv("CI");
+    return u != nullptr && std::string(u) == "1" && (ci == nullptr || std::string(ci).empty());
+}
+
 } // namespace
 
+TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto types = original_registry(*dir);
+    const std::vector<fs::path> files = scenario_files(*dir);
+    REQUIRE(files.size() == 50); // P, sze.md "Files covered"
+    // The link selection's candidates (D AnnoScene 0x10007c50): 429 templates on this
+    // installation (docs/re/annoscene.md §5 step 1).
+    const anno::sim_load::IslandTemplates templates = anno::sim_load::scan_island_templates(*dir);
+    std::cout << "scenario corpus: " << templates.summaries.size() << " island templates\n";
+    CHECK(templates.summaries.size() == 429);
+    const auto results = anno::test::parallel_indexed(
+        files.size(),
+        [&](std::size_t i) { return run_file(*dir, files[i], types, templates, kAdvances); },
+        anno::test::parallel_options());
+
+    std::map<sim::ScenarioWarningKind, std::uint64_t> totals;
+    std::uint64_t islands = 0, links = 0, cities = 0, buildings = 0, objects = 0, a14 = 0,
+                  with_island = 0, links_only = 0, resolved = 0, unresolved = 0, link_draws = 0,
+                  link_files = 0, link_files_complete = 0;
+    Moved moved;
+    std::vector<std::string> lines;
+    for (const FileResult& r : results) {
+        INFO(r.name);
+        CHECK(r.load_error == "");
+        CHECK(r.create_error == "");
+        CHECK(r.invariants == "");
+        CHECK(r.save_error == "");
+        CHECK(r.deterministic);
+        CHECK(r.save_identity);
+        // Every PROD2 id resolves in the registry.
+        CHECK(r.prod2_unknown == 0);
+        lines.push_back(r.line);
+        islands += r.counts.islands;
+        links += r.counts.links;
+        resolved += r.counts.links_resolved;
+        unresolved += r.counts.links_unresolved;
+        link_draws += r.link_draws;
+        if (r.counts.links > 0) {
+            ++link_files;
+            link_files_complete += r.counts.links_resolved == r.counts.links ? 1U : 0U;
+            std::cout << "scenario corpus: links " << r.name << " " << r.counts.links_resolved
+                      << " of " << r.counts.links << " resolved, " << r.link_draws << " draws\n";
+        }
+        cities += r.counts.cities;
+        buildings += r.counts.buildings;
+        objects += r.counts.tile_objects;
+        a14 += r.a14;
+        with_island += r.counts.islands > 0 ? 1U : 0U;
+        links_only += r.counts.islands == 0 && r.counts.links > 0 ? 1U : 0U;
+        for (const auto& [k, n] : r.counts.warnings) {
+            totals[k] += n;
+        }
+        moved.producers += r.moved.producers;
+        moved.producers_moved += r.moved.producers_moved;
+        moved.warehouses += r.moved.warehouses;
+        moved.warehouses_moved += r.moved.warehouses_moved;
+        // T24: what the run moved, per scenario.
+        std::cout << "scenario corpus: moved " << r.name << " producers " << r.moved.producers_moved
+                  << " of " << r.moved.producers << ", warehouses " << r.moved.warehouses_moved
+                  << " of " << r.moved.warehouses << "\n";
+    }
+    std::cout << "scenario corpus: moved in all: producers " << moved.producers_moved << " of "
+              << moved.producers << ", warehouses " << moved.warehouses_moved << " of "
+              << moved.warehouses << "\n";
+    // T23: the cities' PROD/ENTRY records place buildings.
+    CHECK(buildings > 0);
+    std::cout << "scenario corpus: " << results.size() << " files, " << with_island
+              << " with at least one island, " << links_only << " with links only; islands "
+              << islands << ", links " << links << ", cities " << cities << ", buildings "
+              << buildings << ", tile objects " << objects << "\n";
+    std::cout << "scenario corpus: links " << links << " in " << link_files
+              << " files: " << resolved << " resolved, " << unresolved << " unresolved, "
+              << link_draws << " draws; " << link_files_complete
+              << " files create every linked island\n";
+    std::cout << "scenario corpus: islands not a multiple of chunk_edge (A14/F20): " << a14 << "\n";
+    for (const sim::ScenarioWarningKind k : sim::all_warning_kinds()) {
+        std::cout << "scenario corpus: warnings " << sim::warning_kind_name(k) << " " << totals[k]
+                  << "\n";
+    }
+
+    // The per-file counts against the committed expectations.
+    if (update_requested()) {
+        std::ofstream out(expectations_path(), std::ios::binary);
+        out << "# The scenario corpus through the S14 adapter (T23: with the cities): per file\n"
+               "# (relative to Scenes) the counts of the loaded ScenarioSpec, of its warnings per\n"
+               "# kind, and the state hash after World::create (it moves with kStateHashVersion\n"
+               "# and with what the adapter decodes). No content of the files. Rewritten by\n"
+               "# scenario_test.cpp with ANNO_UPDATE_GOLDEN=1 (T9 S14 stage 2: with the links;\n"
+               "# T24: with the producers and warehouses whose stocks moved in the run).\n"
+            << version_line() << "\n";
+        for (const std::string& l : lines) {
+            out << l << "\n";
+        }
+        MESSAGE("scenario_corpus.txt rewritten");
+        return;
+    }
+    std::string versions;
+    const std::map<std::string, std::string> want = read_expectations(versions);
+    // A file made at another stream or timeline version holds stale hashes: re-baseline.
+    REQUIRE_MESSAGE(versions == version_line(),
+                    ("scenario_corpus.txt is for '" + versions + "', this build is '" +
+                     version_line() + "': re-baseline (ANNO_UPDATE_GOLDEN=1)"));
+    CHECK(want.size() == results.size());
+    for (const std::string& l : lines) {
+        const std::string name = l.substr(0, l.find(' '));
+        INFO(name);
+        const auto it = want.find(name);
+        REQUIRE_MESSAGE(it != want.end(), "not in scenario_corpus.txt (ANNO_UPDATE_GOLDEN=1)");
+        CHECK(it->second == l);
+    }
+}
+
+TEST_CASE("scenario corpus: the ten scenarios with the most buildings run 20000 ticks more") {
+    // §15 S14: the 5 add-on and the 5 base scenarios with the most buildings run longer;
+    // under the asan preset this is the UBSan run. Since T23 "most buildings" ranks the
+    // buildings the cities' PROD/ENTRY records place.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto types = original_registry(*dir);
+    const std::vector<fs::path> files = scenario_files(*dir);
+    const anno::sim_load::IslandTemplates templates = anno::sim_load::scan_island_templates(*dir);
+    std::vector<std::pair<std::uint64_t, std::size_t>> base, addon;
+    for (std::size_t i = 0; i < files.size(); ++i) {
+        const auto buf = anno::test::read_file(files[i]);
+        auto l = sim::load_scenario(buf, *types, sim::SimConfig{});
+        REQUIRE(l);
+        const auto c = sim::count(l.value());
+        (l.value().spec.settings.prop14 == 3 ? addon : base).push_back({c.buildings, i});
+    }
+    auto top5 = [](auto& v) {
+        std::sort(v.begin(), v.end(), [](const auto& a, const auto& b) {
+            return a.first != b.first ? a.first > b.first : a.second < b.second;
+        });
+        v.resize(std::min<std::size_t>(v.size(), 5));
+    };
+    top5(base);
+    top5(addon);
+    std::vector<std::size_t> picked;
+    for (const auto& [n, i] : base) {
+        picked.push_back(i);
+    }
+    for (const auto& [n, i] : addon) {
+        picked.push_back(i);
+    }
+    REQUIRE(picked.size() == 10);
+    // 20 000 ticks more than the corpus case: 400 more advances of 100 ms (50 ticks each).
+    const auto results = anno::test::parallel_indexed(
+        picked.size(),
+        [&](std::size_t k) {
+            return run_file(*dir, files[picked[k]], types, templates, kAdvances + 400);
+        },
+        anno::test::parallel_options());
+    for (const FileResult& r : results) {
+        INFO(r.name);
+        std::cout << "scenario long run: " << r.name << "\n";
+        CHECK(r.create_error == "");
+        CHECK(r.invariants == "");
+        CHECK(r.deterministic);
+        CHECK(r.save_identity);
+    }
+}
+
 TEST_CASE("scenario corpus: a shipped town's economy runs 150000 ticks") {
-    // T23 Do 3: the scenario with the most buildings runs 150 000 ticks (3 000 advances
-    // of 100 ms); its producing buildings work (their stocks move, and some gain
-    // output). The warehouse stocks are reported: no ported code moves goods between a
-    // building and a warehouse yet (carriers are a figure behaviour seam, houses do not
-    // consume: docs/sim/state.md §10 "As implemented in T23"), so the delta is printed,
-    // not asserted.
+    // T23 Do 3 and T24 acceptance (3): the scenario with the most buildings runs 150 000
+    // ticks (3 000 advances of 100 ms); its producing buildings work (their stocks
+    // move, and some gain output), and since T24 the market carts and the workshop
+    // carriers move goods between buildings and warehouses (docs/sim/state.md §5.9): at
+    // least one warehouse stock moves.
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -537,4 +576,5 @@ TEST_CASE("scenario corpus: a shipped town's economy runs 150000 ticks") {
     CHECK(producers > 0);
     CHECK(moved_stocks > 0);
     CHECK(gained > 0);
+    CHECK(moved > 0);
 }

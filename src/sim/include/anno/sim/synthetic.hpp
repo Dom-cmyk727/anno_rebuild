@@ -48,6 +48,10 @@ struct SyntheticTypes {
     /// forest (ROHSTWACHS, P 24 000, S 5, k 2) and a dry grass (ROHSTDUERR, P 1 000,
     /// S 5, k 0; P / 2 = 500 is shorter than a full growth sweep, so flips are lost).
     TypeId field, ripe_field, forest, ripe_forest, grass, ripe_grass;
+    /// make_transport_types only (invalid ids elsewhere): a market (MARKT, PRODTYPE 34,
+    /// 3 x 3, radius 8, one cart of figure 220, its entrance at (1.5, 2.5)) and a weaver
+    /// with one carrier of figure 203 (radius 16, the weaver 1001's: P).
+    TypeId market, carrier_weaver;
 };
 
 /// The registry of the types above on the original goods and class tables.
@@ -56,6 +60,13 @@ formats::Result<SyntheticTypes, std::string> make_synthetic_types();
 /// make_synthetic_types plus the growing tile objects field (9011), forest (9013),
 /// grass (9015) and their ripe successors 9012, 9014, 9016 (stage S13, the golden G5).
 formats::Result<SyntheticTypes, std::string> make_growth_types();
+
+/// make_synthetic_types with the road flag 0x4000 on the road (9010), plus the market
+/// (9021) and the carrier weaver (9022) and the figure types 220 (the market cart:
+/// 0.016 tiles per time unit, 5 t, layer 3, a wait of 1.0) and 203 (the carrier: 0.012,
+/// 3 t, layer 0, a wait of 2.0), with the file's values (P, docs/re/transport.md §4)
+/// converted as the registry converts FigurenHeader.dat (task T24, the golden G6).
+formats::Result<SyntheticTypes, std::string> make_transport_types();
 
 /// The settings of the synthetic worlds: a 512 x 512 tile world, the add-on
 /// edition flag at its default (3), everything else as WorldSettings{}.
@@ -151,5 +162,13 @@ ScenarioSpec g4_scenario(const SyntheticTypes& types, std::uint32_t seed = 508);
 /// last chunk, 47). World property 6 has bit 0x80: the 7.5 minute event is off, so the 300
 /// s event makes the only draws.
 ScenarioSpec g5_scenario(const SyntheticTypes& types, std::uint32_t seed = 514);
+
+/// The scenario of the golden G6 (docs/sim/state.md §14.3, task T24), on
+/// make_transport_types. One player; one island in slot 0, 40 x 32 tiles at (100, 100),
+/// every tile city 0's. City 0: the market at (110, 110); on its road the weaver at (111,
+/// 115) with 5 t of cloth and the grain farm at (114, 115) with 5 t of corn and 5 t of raw
+/// material (roads (111, 113), (111, 114), (112, 114), (113, 114), (114, 114)); the carrier
+/// weaver at (106, 114) without wool. The warehouse holds 30 t of wool.
+ScenarioSpec g6_scenario(const SyntheticTypes& types, std::uint32_t seed = 624);
 
 } // namespace anno::sim::synthetic

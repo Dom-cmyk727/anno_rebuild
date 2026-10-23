@@ -68,7 +68,12 @@ namespace anno::sim {
 // figure record loses marked_for_delete and the figure registry its deferred list.
 // Stream at 110 (stage S14 stage 2): the header's SimConfig gains links (LinkTables, the
 // island-link selection's tables) and Rules gains island_candidate_order.
-inline constexpr std::uint32_t kStateHashVersion = 110;
+// Stream at 111 (task T24, transport stage 1): the header's registry digest gains the
+// building types' entrance points and the figure types; the payloads gain the cart
+// reservations (Workshop, WeaponsWorkshop, SmallFarm per line, Farm and Mine one) and
+// the alternative Market (tag 6, carts_out); the figure record gains its stamp and
+// the transport state (docs/sim/state.md §4.9, §5.9).
+inline constexpr std::uint32_t kStateHashVersion = 111;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

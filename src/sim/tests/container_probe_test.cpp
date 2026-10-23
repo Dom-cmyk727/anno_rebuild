@@ -80,6 +80,7 @@ void fp_payload(Fp& f, const sim::Workshop& p) {
     fp_vec(f, p.out);
     fp_vec(f, p.in);
     fp_vec(f, p.activity);
+    fp_vec(f, p.reserved);
     f.add(p.carriers_out);
     fp_status(f, p.status);
 }
@@ -92,6 +93,7 @@ void fp_payload(Fp& f, const sim::WeaponsWorkshop& p) {
     fp_vec(f, p.out);
     fp_vec(f, p.in);
     fp_vec(f, p.activity);
+    fp_vec(f, p.reserved);
     f.add(p.carriers_out);
     fp_status(f, p.status);
 }
@@ -103,6 +105,7 @@ void fp_payload(Fp& f, const sim::Farm& p) {
     f.add(p.out);
     f.add(p.raw);
     f.add(p.activity);
+    f.add(p.reserved);
     f.add(p.workers_out);
     fp_status(f, p.status);
 }
@@ -114,14 +117,23 @@ void fp_payload(Fp& f, const sim::SmallFarm& p) {
     fp_vec(f, p.out);
     fp_vec(f, p.raw);
     fp_vec(f, p.activity);
+    fp_vec(f, p.reserved);
     fp_vec(f, p.figures_out);
     fp_status(f, p.status);
+}
+void fp_payload(Fp& f, const sim::Market& p) {
+    f.add(p.last);
+    f.add(p.blocked ? 1U : 0U);
+    f.add(p.suspended ? 1U : 0U);
+    fp_status(f, p.status);
+    f.add(p.carts_out);
 }
 void fp_payload(Fp& f, const sim::Mine& p) {
     f.add(p.last);
     f.add(p.switched_on ? 1U : 0U);
     f.add(p.deep ? 1U : 0U);
     f.add(p.blocked ? 1U : 0U);
+    f.add(p.reserved);
     f.add(p.out);
     f.add(p.activity);
     f.add(p.deposit.has_value() ? 1U + static_cast<std::uint64_t>(*p.deposit) : 0U);
@@ -142,7 +154,7 @@ std::uint64_t fingerprint(const BuildingLike& b) {
     return f.h;
 }
 
-/// A building whose payload is alternative `k % 6`, filled with values that
+/// A building whose payload is alternative `k % 7`, filled with values that
 /// depend on `k` (vectors of different lengths, so the copies allocate).
 BuildingLike make_building(std::uint32_t k) {
     BuildingLike b;
@@ -153,7 +165,7 @@ BuildingLike make_building(std::uint32_t k) {
     b.rotation = static_cast<std::uint8_t>(k % 4);
     b.byte0f = static_cast<std::uint8_t>(k);
     const std::uint32_t len = 1 + k % 5;
-    switch (k % 6) {
+    switch (k % 7) {
     case 0: {
         auto& p = b.payload.emplace<InertLike>();
         p.last = static_cast<std::uint16_t>(k);
@@ -169,6 +181,7 @@ BuildingLike make_building(std::uint32_t k) {
         p.out.assign(len, 256 + k);
         p.in.assign(len + 1, 512 + k);
         p.activity.assign(len, k);
+        p.reserved.assign(len, k / 2);
         p.carriers_out = k;
         break;
     }
@@ -204,13 +217,21 @@ BuildingLike make_building(std::uint32_t k) {
         p.figures_out.assign(5, k % 3);
         break;
     }
-    default: {
+    case 5: {
         auto& p = b.payload.emplace<sim::Mine>();
         p.last = static_cast<std::uint16_t>(k);
         p.out = k * 13;
+        p.reserved = k;
         if ((k & 1U) != 0) {
             p.deposit = static_cast<std::size_t>(k);
         }
+        break;
+    }
+    default: {
+        auto& p = b.payload.emplace<sim::Market>();
+        p.last = static_cast<std::uint16_t>(k);
+        p.carts_out = k % 3;
+        p.status.time = static_cast<std::uint16_t>(k);
         break;
     }
     }
@@ -408,7 +429,7 @@ TEST_CASE("container shapes copy move emplace") {
         std::optional<BuildingLike> a;
         a.emplace(make_building(k));
         REQUIRE(a.has_value());
-        CHECK(a->payload.index() == k % 6);
+        CHECK(a->payload.index() == k % 7);
         const std::uint64_t want = fingerprint(a);
         const std::optional<BuildingLike> copy(a);
         CHECK(fingerprint(copy) == want);

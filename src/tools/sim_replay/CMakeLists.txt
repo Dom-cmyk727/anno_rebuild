@@ -52,6 +52,12 @@ if(ANNO_BUILD_TESTS)
            COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g5.log)
   set_tests_properties(anno_sim_replay_g5_run PROPERTIES
                        PASS_REGULAR_EXPRESSION "checkpoints 21/21.*reproduced: every checkpoint matched")
+  # The golden G6 (task T24): a market cart and a workshop carrier over 300 000 ticks on
+  # the transport types, 21 checkpoints.
+  add_test(NAME anno_sim_replay_g6_run
+           COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g6.log)
+  set_tests_properties(anno_sim_replay_g6_run PROPERTIES
+                       PASS_REGULAR_EXPRESSION "checkpoints 21/21.*reproduced: every checkpoint matched")
   # The scenario adapter (stage S14): the usage and the refusal of a file that is not a
   # scenario need no game files; one shipped scenario runs when ANNO1503_GAME_DIR is set.
   anno_sim_replay_arg_test(scenario_ticks_not_a_number "scenario|x.sze|--ticks|abc"

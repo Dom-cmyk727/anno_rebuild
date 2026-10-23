@@ -18,6 +18,7 @@
 #include <anno/sim/scheduler.hpp>
 #include <anno/sim/tick.hpp>
 #include <anno/sim/timers.hpp>
+#include <anno/sim/transport.hpp>
 #include <anno/sim/world.hpp>
 
 #include "scheduler_internal.hpp"
@@ -119,6 +120,7 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         f.job = s.job;
         f.pos = s.pos;
         f.born = t;
+        f.stamp = static_cast<std::uint16_t>(t); // the unit's +8 from its creation
         if (add_figure(w.figures_, f, w.config_, w.rules_) == kNoSlot) {
             // No figure: the tick raised the home counter for it, so it is taken back
             // here, or the building would count a carrier that no release can ever
@@ -214,6 +216,31 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
             f->cargo_goods = 0;
         }
     }
+    // 6b. Store deltas (T24: reservations and loads, computed by the transport body).
+    for (const StoreDelta& d : fx.store_deltas) {
+        Island* is = island_of_id(w, island_of(d.building));
+        Building* b = is != nullptr ? find_building_mut(*is, d.building) : nullptr;
+        std::uint32_t* store = nullptr;
+        if (b != nullptr) {
+            switch (d.store) {
+            case StoreDelta::Store::Output:
+                store = output_store(b->payload, d.index);
+                break;
+            case StoreDelta::Store::Reserved:
+                store = reserved_store(b->payload, d.index);
+                break;
+            case StoreDelta::Store::Input:
+                store = input_store(b->payload, d.index);
+                break;
+            }
+        }
+        if (store == nullptr) {
+            continue;
+        }
+        const std::int64_t v = std::int64_t{*store} + d.delta_88;
+        *store = static_cast<std::uint32_t>(
+            std::clamp<std::int64_t>(v, 0, std::numeric_limits<std::uint32_t>::max()));
+    }
     // 7. Timed events.
     for (const EnqueueEvent& e : fx.events) {
         w.events_.enqueue(w.ids_, tick, e.delay, e.e);
@@ -276,15 +303,33 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
                     fig.id = id; // the identity is the registry's, never the seam's
                     sync_figure_lists(reg, fig, had_stamp, fx);
                     merge(w, fx, ctx.tick, t); // may grow the list: `fig` is not used below
-                } else if (interim > 0 && !fig.expiry_stamp.has_value() &&
-                           static_cast<std::uint32_t>(t - fig.born) >= interim) {
-                    // D12 (OQ-047, off by default): a figure returns after N ticks. It
-                    // ends as the original's do (end_figure: the counter back now, the
-                    // figure on the expiry list), and its slot is freed by phase C
-                    // figure_expiry_ticks later (D: Remove(unit, 0) at 0x10034844).
-                    Effects fx;
-                    end_figure(reg, fig, t, fx);
-                    merge(w, fx, ctx.tick, t);
+                } else {
+                    // The default body of the market cart and the workshop carrier (T24,
+                    // docs/sim/state.md §5.9): the same protocol as a seam (its own figure
+                    // and its Effects, merged right after the call, C2). It draws nothing.
+                    bool ran = false;
+                    if (transport_runs_job(fig.job)) {
+                        const bool had_stamp = fig.expiry_stamp.has_value();
+                        Effects fx;
+                        {
+                            SerialWorld serial(w.islands_, w.config_.layout, reg, w.players_, fx);
+                            ran = transport_tick(ctx, serial, fig);
+                        }
+                        if (ran) {
+                            sync_figure_lists(reg, fig, had_stamp, fx);
+                            merge(w, fx, ctx.tick, t); // may grow the list: `fig` is not used
+                        }
+                    }
+                    if (!ran && interim > 0 && !fig.expiry_stamp.has_value() &&
+                        static_cast<std::uint32_t>(t - fig.born) >= interim) {
+                        // D12 (OQ-047, off by default): a figure returns after N ticks. It
+                        // ends as the original's do (end_figure: the counter back now, the
+                        // figure on the expiry list), and its slot is freed by phase C
+                        // figure_expiry_ticks later (D: Remove(unit, 0) at 0x10034844).
+                        Effects fx;
+                        end_figure(reg, fig, t, fx);
+                        merge(w, fx, ctx.tick, t);
+                    }
                 }
             }
             if (++cur >= n) {

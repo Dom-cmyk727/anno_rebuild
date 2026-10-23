@@ -1253,24 +1253,106 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Faithful default:** no stake (the wave simulation is not in the original).
 
 ## OQ-131: How a figure is removed: phase D's path and the unit destructor (new, T9 S12 2026-10-23; O-8, D12)
-- **Status:** open, RE (a stand-in is in the code)
+- **Status:** resolved by RE 2026-10-23 (T21, `docs/re/annowelt.md` "Unit registry: creation, removal and the figure destructor"). The S12 stand-in differs from the original in four points, listed below for S13/S15. None of them is a feel question: the faithful path is the one to build.
 - **Area:** simulation / figures
-- **What we know (AnnoWelt.dll):** phase C of the registry tick (`0x1009aacc..0x1009ab31`) destroys a figure through `0x10097520`: it reads the figure's slot through the unit's slot `+0x40`, nulls that entry of the registry vector (`+0x14`; length and allocation hint unchanged), calls the unit's slot `+8` (its destructor) and lowers the live count word `+0x24`. Phase D (`0x1009ab33..0x1009ab7c`) goes another way: for each unit on the list `+0x58` it calls registry slot `+0x3c` = `0x10097770`, which unlinks the unit's record from its list and from the phase-A sector cells, returns the record to the pool `+0x68` and calls the unit's slot `+8`; it does not touch the registry vector. The mark-for-delete call is registry slot `+0x40` = `0x10097720`: a non-zero flag deletes at once through `0x10097770`, a zero flag appends to `+0x58` without asking whether the unit is on the list already.
-- **Open:** what the unit destructor does: whether it frees the registry slot in the phase-D path (if not, a deferred figure leaves a non-null entry or a dangling pointer, and the slot policy sees no hole), whether it unlinks the unit from the expiry list `+0x48` and the deferred list, and whether it releases the counter of the home building (carrier, worker, animal).
-- **What the rebuild does (stand-in):** both phases free the slot, take the id off both lists and release the home counter once (`remove_figure`, `Scheduler::destroy_figure`); `mark_figure_for_delete` puts a figure on the deferred list only once. So no list keeps a stale entry and no counter stays raised or is released twice. The live count `+0x24` is derived and not modelled.
-- **How to resolve:** read the destructors of the unit classes behind the carrier, worker and animal jobs (vtable slot `+8`) and `0x10097770`'s callees; then fix the phase D path and, if needed, the order in which slots become free.
+- **What the original does (AnnoWelt.dll, all D):**
+  - **The class.** Carriers, workers and small-farm animals are one unit class: constructor `0x1003b7c0`, vtable `0x100c4950`, `BEWOHNTYPE` codes `TRAEGER` 17, `MAEHER` 1, `WEIDETIER` 2 and `JAEGER` 3 through the factory `0x1009a110`.
+  - **The destructor does not do the removal.** Slot `+8` (`0x10031db0` → `0x10054080` → `0x10050e00` + operator delete) frees only the unit itself. It does not null the registry entry, does not unlink the expiry or deferred list, and does not release the home building.
+  - **Step 1, at the figure's end: release.**
+    - The end behaviour `0x1003af00` calls slot `+0x110` = `0x1003b6e0`.
+    - That calls `home→slot +0x2c(unit)` (workshop `0x100687b0`, weapons workshop `0x100692d0`, farm and fur trapper `0x1006f070`, small farm `0x1006fe40`). It nulls the building's pointer to the figure, which is the counter, and clears the unit's home `+0x78`. A second release changes nothing.
+  - **Step 2: onto the expiry list.**
+    - When the last step set by the end behaviour is used up, the tick `0x10034760` calls Remove(unit, 0) (registry slot `+4` = `0x100974b0`, at `0x10034844`).
+    - Remove unlinks the unit from its sector cell (`0x10097d80`) and appends its vector entry to the expiry list `+0x48`.
+    - The unit's stamp (property 0x23 = unit `+8`, written after every active step at `0x1003488e`) freezes at that tick.
+  - **Step 3, 7500 ticks later: destroy.**
+    - Phase C destroys the unit once `u16(t − stamp) ≥ 7500`.
+    - `0x10097520` nulls the vector entry (index from the unit's u16 slot `+4`), calls the destructor and lowers the live count `+0x24`. The list node was unlinked by phase C.
+    - The slot can be reused only after that.
+  - **Phase D is never on this path.** `0x10097720` and phase D read the unit's slot `+0x40` as a record pointer, and this class returns its u16 slot index (`0x10035be0`). The deferred list holds the pooled sector records of registry slot `+0x38` (`0x10097560`), not figures.
+  - **Twice on the deferred list:** possible by the code, never for a figure.
+    - `0x10097720` with flag 0 appends with no membership test and without unlinking the record from its sector cell.
+    - The list's append `0x10096f40` does not deduplicate; a second append leaves the record's links pointing to itself.
+    - Who marks pooled records is not traced (OQ-134).
+  - **When the home building is demolished.** The workshop, weapons workshop, farm and small farm destructors (`0x10068800`, `0x10069320`, `0x1006f0c0`, `0x1006fec0`) detach their figures, which **live on** without a home; their later release does nothing. Three other classes destroy their figures at once (`0x100713e0`, `0x10066f90`, `0x1006db40`, not production classes).
+  - **Slot policy (A6).**
+    - The free-slot search `0x10099130` is the building list's scan from hint + 1 with wrap.
+    - Its minimum growth is **100** (`0x10099185`–`0x100991a1`), where the building list's is 10. A fresh registry holds one zero entry (`0x10098cd6`).
+    - Slots marked in the reserved bitmap `+0x80` are skipped (OQ-134).
+- **What the rebuild does (S12 stand-in), and the change S13 or S15 must make:**
+  1. **Release at the end, not at the destroy.** Today `Scheduler::destroy_figure` releases the home counter in phases C and D, 7500 ticks after the end for an expiring figure. A seam that emits `ReleaseCounter` at the end is then released twice; `release_counter` stops at 0, so another figure of the same building would be under-counted.
+     - **Change:** the release belongs to the figure's end (the D12 rule's or a seam's own `ReleaseCounter`, in the tick where the figure ends). `Figure::home` is cleared with it (the original clears `+0x78`), so a second release does nothing. `destroy_figure` stops releasing.
+     - The counter invariant of `check_invariants` (§9.6) then counts only figures that still have a home.
+  2. **The D12 interim return goes through the expiry list, not the deferred list.** Today `mark_figure_for_delete` puts the figure on `deferred`, and phase D frees its slot in the same advance.
+     - **Change:** at the return, release the counter (point 1), set the stamp to `u16(t)` and append the figure to `expiry`. Phase C frees the slot at the first advance with `u16(t' − stamp) ≥ 7500`.
+     - The slot stays occupied for those 7500 ticks, which changes later slot numbers and the phase-B order. The goldens of tests that turn the rule on move.
+     - No figure path appends to `deferred`. Keep the list empty for figures (`validate_figures` can require it) until the pooled sector objects are modelled (O-17), or drop it with `mark_figure_for_delete`.
+  3. **The registry's minimum growth is 100.** Today `add_figure` uses `SimConfig::list_min_growth` (10).
+     - **Change:** a separate `SimConfig::figure_min_growth = 100` (data, the original's default; validated `>= 1`). It changes the vector length `n`, so the phase-B visit count `clamp(d·n/50, 1, n)` and the cursor wrap, and every golden with figures moves.
+     - The scan itself (A6) is confirmed. So is `list_initial_size` 1 for the registry.
+  4. **What the stamp means.** `Figure::created_stamp` holds the tick of the figure's end in the original, the tick at which the frozen `+8` stops; it is not the spawn tick. The field works as specified (present = on `expiry`).
+     - **Change:** rename it to `expiry_stamp` with S15's stream freeze. The bytes are unchanged; it is a documentation and API change only.
+- **Confirmed as built:**
+  - phase C's u16 test `≥ 7500` from the front of the list;
+  - the stamp written after phase B, also when phase B is skipped;
+  - a removed slot keeps the list's length, hint and cursor;
+  - the id is never reused;
+  - a release for a building that is gone does nothing (the homeless figure of a demolished production building);
+  - the live count `+0x24` is derived.
+- **Not modelled and not needed for figures:** the unit's u16 slot cap (65 536 slots in the original). The rebuild's wider slot type is the "no hardcoded limits" widening.
 
 ## OQ-132: Does the original's savegame keep the monopoly and 7.5 minute accumulators? (new, T9 S12 2026-10-23; D5, D10, F7)
-- **Status:** open, RE (no owner decision needed unless the answer changes play)
+- **Status:** RE answered 2026-10-23 (T21, `docs/re/annowelt.md` "World save and load: the accumulators"): **no, neither is saved**, and neither is the script timers' last tick nor the world clock. **Decided by the owner 2026-10-23** (asked: exact save/load as the default, with the original's load behaviour as an opt-in `rules` option, as T21 recommended; owner: "agreed"): the default stays exact save/load (the stream keeps the clock, both accumulators and the timers' last tick; resync snapshots and replays need it). This is a stated exception to the faithful-default rule of `docs/sim/state.md` §0, by the owner's decision. An opt-in `Rules` option that follows the original on loading a savegame (monopoly table recomputed on the first advance, the 7.5 minute schedule restarted, the timers' base and the tick re-set) is still to be built (S15, or the stage that implements savegame loading; OQ-135 decides whether the original always loads into a new world object).
 - **Area:** simulation / save
-- **What we know:** the monopoly refresh (`0x1009d2a0`) runs its body only while its accumulator (world `+0xe8`) is 0 or at least 30 000 ms, and only the body adds the step: from a fresh accumulator the table is computed on the first advance and never again (D5, OQ-040). The 7.5 minute event keeps its accumulator at world `+0x69e4` (`0x100ae140`). The script timers (SKTIMER) keep their last tick.
-- **Open:** whether the original's save and load write and read these fields. If the accumulator of the monopoly is not saved, the original recomputes the table after every load ("once per session", not "once per game"); if the 7.5 minute accumulator is not saved, its schedule restarts at every load.
-- **What the rebuild does:** saves and hashes all of them (`ids` scope and `timers_monopoly`, `docs/sim/state.md` §9.3), like F7 saves both kinds of timed events. A save and load therefore never changes the outcome.
-- **How to resolve:** read the world's save and load (`0x100ad900..0x100ada30` and the world serializer around them) for offsets `+0xe8`, `+0x69e4` and the SKTIMER object; if the original drops them, decide (owner) whether the rebuild follows that or keeps the fix.
+- **What the original does (AnnoWelt.dll, all D):**
+  - The world Save (`0x100ae700`) writes the chunks `WELT`, `MAIN`, `GUID`, `ALIASNAME`, `WARETYPE`, `SPIELER`, the islands, `COUNTDOWN`, `SKTIMER`, `MONOPOL2`, `LIMITS` and `K_DATA`. Load is `0x100ae270`.
+  - **The monopoly accumulator, world `+0xe8`, is in no chunk.** `MONOPOL2` (`0x1009d130` and `0x1009d080`) carries only the 28 entries `{time, player}`. Load zeroes and refills those entries and leaves the accumulator as it was; only the world constructor zeroes it (`0x100a39a8`).
+  - **The 7.5 minute accumulator, `+0x69e4`, is in no chunk.** `LIMITS` is the 4 bytes at `+0x69e0`. Clear (`0x100af28e`) and the constructor zero it; Load never sets it.
+  - **SKTIMER saves the five active flags and counters** (`0x1009ce60`, `0x1009cdd0`), **not its last tick** `+4`. A new SKTIMER starts at 0.
+  - **The world clock is not saved.** `MAIN` carries the game seconds, which Load puts into the offset `+0x69d4`, so property 7 continues. The tick itself restarts from the world object's value: 0 after the constructor or Clear. That is why the buildings' `last` is 0 after a load (F1).
+  - **After a load into a new world object** (the case when AnnoScene creates the world, `0x10002e40`; whether every load does so is OQ-135):
+    - the monopoly body runs once on the first advance, so the table is recomputed from the loaded state. An unchanged owner keeps its saved time; a changed owner gets the current game seconds. The original's rule is therefore "once per session", not "once per game";
+    - the 7.5 minute event's schedule restarts: the first one 450 000 ms after the load;
+    - the script timers continue with their saved counters.
+  - **On a world object that is cleared and re-initialised instead:** the 7.5 minute schedule restarts as well, but the monopoly accumulator keeps the previous game's value.
+- **What the rebuild does:** it saves and hashes all of them: `ids` gets `event750_acc` and `monopoly.acc`, `timers_monopoly` the `last_tick`, `clock_rng` the clock (`docs/sim/state.md` §9.3), as F7 saves both kinds of timed events. A save and load never changes the outcome, which the multiplayer resync snapshot and the replay rely on.
+- **Question for the owner:** keep the exact save as the default (recommended: the same snapshot serves savegames, the resync of a desynced peer and replays, and there a load must not change the game), with an opt-in `rules` option that follows the original when a *savegame* is loaded? Under that option the monopoly table would be recomputed on the first advance, the 7.5 minute schedule restarted and the timers' last tick re-based. Or make the original's behaviour the default for savegames, keeping the exact path for resync snapshots?
+  - Either way the world tick does not need to restart: F1 already covers the building stamps.
+  - Until the decision the code keeps the exact save; that matches the original only in that nothing is lost.
+- **How to resolve:** the owner's choice; then implement the option (S15, with the stream freeze) and test both readings.
 
 ## OQ-133: Script timer 0: a countdown that overshoots 0 (spec F5) (new, T9 S12 2026-10-23)
 - **Status:** resolved 2026-10-23 by the owner: "Stay on the original bug with optional fix". The default replicates the wrap; `Rules::timer0_clamp` (off by default) is the fix. Implemented in the S12 fix-up.
 - **Area:** simulation / script
 - **What the original does:** timer 0 of SKTIMER counts down by the ticks of each advance and stops only when the subtraction gives exactly 0 (`0x1009cd51` `sub` / `jne`). A step that overshoots (the counter left is smaller than the step: this depends on the step sizes, and single-player steps follow the frame time, so it can happen in any game; with exact 100 ms steps and a counter that is a multiple of 50 ticks it does not) wraps the u32 counter to about 4.29 billion ticks, so the timer runs on for about 99 days of game time and does not fire.
 - **What the rebuild does (since the owner's decision):** by default the original's wrap (the timer stops, with a `TimerExpired` UI event, only on an exact landing); with `Rules::timer0_clamp` the F5 fix (clamp at 0, stop, `TimerExpired`). Nothing reads the timers before the script engine is ported (O-16, OQ-054), so today the difference is invisible. (Before the decision the code had the fix as the default, `docs/sim/state.md` §13 F5 tagged "fix".)
-- **Question for the owner:** keep the fix as the default (a scenario's countdown fires when it reaches 0, which is what its script means), or follow the original's wrap (with the fix as a `rules` option)? Recommendation: keep the fix; scenarios with countdowns would otherwise never reach their end.
+- **Asked of the owner (2026-10-23, answered above):** the F5 fix or the original wrap as the default.
+
+## OQ-134: The unit registry's pooled path: who uses the deferred list and the reserved slots (new, T21 2026-10-23; O-17)
+- **Status:** open, RE (no stand-in needed: no figure the rebuild models takes this path)
+- **Area:** simulation / figures
+- **What we know (AnnoWelt.dll, `docs/re/annowelt.md` "Unit registry"):**
+  - Registry slot `+0x38` (`0x10097560`) creates pooled objects. They live in the phase-A sector cells only, not in the vector: their record comes from the pool `+0x68`, and their property 0x23 is the world tick. They are removed through slot `+0x40` (`0x10097720`): at once, or with flag 0 onto the deferred list `+0x58`, which phase D empties through `0x10097770`.
+  - Read as written, the deferred path has two hazards:
+    - `0x10097720` appends a record without a membership test and without unlinking it from its sector cell; a second mark makes its links point to itself;
+    - deleting the **last** deferred record makes `0x10097770` treat registry `+0x50` (the expiry list's tail word) as an empty sector cell and overwrite it.
+  - Registry slot `+0x58` (`0x100981d0`) sets bits in a 65 536-bit bitmap at `+0x80`; the creation path `0x10097250` skips those slots.
+- **Open:**
+  - which classes are created through slot `+0x38` (call sites `0x10038375`, `0x1003943f`, `0x10039497`, `0x10097aa3`, `0x10097b66`, `0x10097d47`, …);
+  - who marks them with flag 0, and whether the two hazards are ever reached;
+  - who reserves slots, and when (a load-time mechanism is likely: the saved registry length, `MAIN`, OQ-135).
+- **How to resolve:** read the callers above and the indirect callers of registry slots `+0x40` and `+0x58`. This is needed when the ambient animals and effects (O-17) are modelled.
+
+## OQ-135: Which world object a savegame load runs on, and where the unit registry's state goes in a save (new, T21 2026-10-23; OQ-132)
+- **Status:** open, RE
+- **Area:** simulation / save
+- **What we know:**
+  - **The world's functions.** Load (`0x100ae270`) writes neither the monopoly accumulator, the 7.5 minute accumulator, the clock nor the timers' last tick (OQ-132). Init (world slot `+0x50`, `0x100aa910`) builds a new SKTIMER, unit registry and player table. Clear (`+0x1c0`, `0x100af240`) zeroes the clock and the 7.5 minute accumulator but not the monopoly accumulator, which only the world constructor `0x100a3980` zeroes.
+  - **AnnoScene.** `0x10002e40` creates a new world instance (`CreateAnnoWeltInstance`, `0x10002ea6`) only while the scene's flag `+0x164` is 0; otherwise it re-initialises the world it has. `0x100029f0` takes the world from its caller and sets the flag.
+  - **The registry.** `MAIN` carries the unit registry's vector length, and Load resizes the vector to it (`0x100980e0`). The registry's stamp `+0x20`, cursor `+0x22` and expiry list were not found in the world's chunks. A registry made by Init starts with all three at 0 and empty. Load hands a `SCHIFF` chunk to registry slot `+0x18` (`0x100987a0`, not read).
+- **Open:**
+  - whether a savegame load always runs on a new world object. That decides whether the monopoly table is recomputed after a load (OQ-132).
+  - where the units are saved (likely inside the island or `SPIELER` chunks), and whether a unit waiting on the expiry list is saved and comes back on it.
+- **How to resolve:**
+  - read the callers of world slots `+0x78` (Load), `+0x50` (Init) and `+0x1c0` (Clear) in AnnoScene and AnnoFrame (`0x100584a8` calls Clear), and the unit save inside the island and player chunks;
+  - or one run of the original under the T16 harness, reading world `+0xe8` before and after a load.

@@ -721,6 +721,21 @@ Phase A of the original registry tick (sector re-bucketing of float positions) i
 
 *Implemented in S7 (`figure.hpp`, `figure.cpp`): creation only.* `FixedPos`, `Figure`, `FigureRegistry` as listed (the registry is an aggregate of five members, the list `SlotList<Figure>` written `SlotList<Figure>()` because its constructor is explicit), `make_figure_registry(cfg)` (one list of `list_initial_size` null slots, A6/A7), `add_figure(registry, figure, cfg, rules)` (the group list's insert with `list_min_growth` and `Rules::slot_policy`; it returns `kNoSlot` and changes nothing for an invalid id, an id that is already in the registry, or a list that cannot grow), `find_figure`, `rebuild_figure_index` and `validate_figures(registry, ids)` (§9.6: the list has a slot, its hint is in -1 .. n and its cursor below n, every id is in `1 .. next_figure - 1` and unique, `expiry` and `deferred` name figures of the registry once each, a figure is on `expiry` exactly when it has a `created_stamp` and on `deferred` exactly when it is `marked_for_delete`, the id map equals a recomputation). `FixedPos` is an i32 in 1/256 tile, which holds tiles up to 2^23: a `static_assert` ties `kWorldEdgeBound` to it (path to raise both: widen the members). The registry tick (phases B/C/D), the behaviour seam, the destruction and the expiry list came with stage S12 (§15 "S12 as implemented"); until then a created figure never moved, returned or ended. A spawned figure starts at the building's north-west tile in Q24.8 (`spawn_position`): a stand-in (O-59), the original's start position is a float from the unit constructor (O-47).
 
+*The original's removal path (T21, 2026-10-23; OQ-131, `docs/re/annowelt.md` "Unit registry").* The registry and the figure skeleton above, checked against the disassembly. **Confirmed:**
+- the registry is a vector of 16-byte entries plus the u16 `stamp` `+0x20` and the phase-B cursor `+0x22`;
+- `expiry` = list `+0x48` in insertion order, destroyed by phase C at `u16(t − stamp) ≥ 7500` through `0x10097520` (entry nulled; hint, length and cursor kept);
+- the free-slot scan is the building list's (`0x10099130`: from hint + 1, wrapping), so A6 holds for the scan, and a fresh registry holds one zero entry (A7);
+- a figure whose home building was demolished keeps running and releases nothing (the four production classes' destructors detach their figures);
+- `by_id` is derived.
+
+**Deviations, to fix in S13 or S15** (the changes are in OQ-131):
+1. The original releases the home counter when the figure **ends**, through unit slot `+0x110` = `0x1003b6e0` → the home's slot `+0x2c`, which nulls the building's pointer and the figure's home. It does not release at the destroy. Change: `destroy_figure` stops releasing; the end path releases once and clears `Figure::home`.
+2. A carrier, worker or animal never goes on `deferred`. Phase D and `0x10097720` serve the pooled sector objects of registry slot `+0x38` (O-17, OQ-134). Change: the D12 interim rule ends a figure by release + `expiry` (stamp = `u16(t)`), not `mark_figure_for_delete`; no figure path appends to `deferred`.
+3. The registry's minimum growth is **100** (`0x10099185`–`0x100991a1`), not `list_min_growth` 10. Change: `SimConfig::figure_min_growth = 100`.
+4. `created_stamp` holds the tick of the figure's end (the unit's `+8`, frozen by the Remove at `0x10034844`), not the spawn tick. Change: rename it to `expiry_stamp` with the S15 freeze; the bytes are unchanged.
+
+The original's unit slot is a u16 (65 536 slots); `Slot` is the widening of "no hardcoded limits".
+
 ### 4.10 `events.hpp`, `timers.hpp`
 ```cpp
 enum class EventKind : std::uint8_t { TileCleanup = 0, DelayedHit = 1 };      // exactly two exist (D 0x100add90; enqueue sites 0x10063cf1, 0x100943d5, 0x1003593e)
@@ -1448,6 +1463,19 @@ Scope names are fixed strings; a repeated scope is also addressed by its ordinal
 | 7 | `figures` | **FigureRegistry** |
 | 8 | `events` | `u64 count`, per event in `(due, seq)` order **TimedEvent** with its key |
 | 9 | `timers_monopoly` | **ScriptTimers**; **MonopolyTable** |
+
+*Against the original's savegame (T21, 2026-10-23; OQ-132, `docs/re/annowelt.md` "World save and load").* The original's world save (`0x100ae700`) and load (`0x100ae270`) drop several fields this stream carries. **Kept on purpose, by the owner's decision on OQ-132 (2026-10-23, "agreed"):** a save and load must not change the game, which the resync snapshot and replays rely on. The original's load behaviour becomes an opt-in `Rules` option (not built yet; S15 or the savegame-loading stage).
+
+| Field of this stream | In the original's save | After a load into a new world |
+|---|---|---|
+| `clock_rng` clock: `ms`, `last_tick` | Not saved. `MAIN` carries only the game seconds, which Load puts into the offset `+0x69d4` | The tick restarts at 0; game seconds continue; buildings' `last` is 0 (F1) |
+| `ids.event750_acc` (`+0x69e4`) | Not saved (`LIMITS` is `+0x69e0`, 4 bytes) | 0, so the 7.5 minute schedule restarts |
+| `ids.monopoly.acc` (`+0xe8`) | Not saved. `MONOPOL2` carries only the 28 entries, and its loader leaves the accumulator alone | 0 in a new world object, so the table is recomputed on the first advance (OQ-135: a reused world keeps the old value) |
+| `ScriptTimers::last_tick` (SKTIMER `+4`) | Not saved. The five active flags and counters are (`0x1009ce60`, `0x1009cdd0`) | 0, consistent with the tick restarting at 0 |
+| `events` | `COUNTDOWN`, with the delay relative to the tick; kind 1 dropped on load (F7) | |
+| `figures`: `stamp`, cursor, `expiry` | The registry's vector length is in `MAIN` (`0x100980e0`); the rest was not found in the world chunks (OQ-135) | |
+
+The `MonopolyTable` entries match `MONOPOL2`: 28 × {u32 time, player or −1}.
 
 **Player**: `u32 index, u32 kind, u32 volk, i64 money, u32 upkeep_a, u32 upkeep_b, u32 upkeep_rem, u16 upkeep_stamp, u32 stat_a, u32 stat_b, u32 flags, u32 flags_a0, u32 colour_slot, u32 default_colour, u8 state (open byte, no range check), u32 bankrupt_deadline, bool defeat_pending, bool free_build`, `name` (u64 length + bytes), research: `u8` states (count + elements), `u16` progress (count + elements).
 

@@ -22,7 +22,8 @@ if(ANNO_BUILD_TESTS)
                  tests/command_codec_test.cpp tests/command_apply_test.cpp tests/replay_test.cpp
                  tests/command_build_test.cpp tests/property_test.cpp
                  tests/driver_classes_test.cpp tests/world_events_test.cpp tests/sweeps_test.cpp
-                 tests/figure_removal_test.cpp tests/scenario_formats_test.cpp)
+                 tests/figure_removal_test.cpp tests/scenario_formats_test.cpp
+                 tests/scenario_test.cpp)
   target_link_libraries(anno_sim_tests PRIVATE anno_sim anno_test_support doctest::doctest)
   # The goldens (fixtures/synthetic/sim/goldens.txt, docs/sim/state.md §14.3).
   target_compile_definitions(anno_sim_tests PRIVATE

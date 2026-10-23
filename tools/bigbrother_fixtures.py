@@ -152,6 +152,33 @@ CRLF = LF.replace(b"\n", b"\r\n")
 # An unknown section (the interpreter also knows STARTUP, OQ-122): kept as read.
 STARTUP = GRAMMAR + b'[STARTUP]\nSPEED = 2\r\n'
 
+# Edge cases of the dump and of read_on: define numbers with leading zeros and -0 (printed as
+# values), a backslash and a tilde in a string and a comment (escaping), a blank of space and tab,
+# a call with empty parentheses, an ELSE statement without ';' that swallows the next one, and a
+# statement without ';' whose next ';' stands after a '[' in a comment (the kernel text ends at the
+# '[': the interpreter refuses the kernel).
+EDGE = (b'[OBJECT_DEFINE]\nOBJECT_FIGUR "SKIFF" 007\n'
+        b'[AREA_DEFINE]\n"BAY" -0, 01, 2, 30\n'
+        b'[PLAYERMAPPER_DEFINE]\n"ME" 00\n"NOBODY" 31\n'
+        b'[SCRIPT_KERNEL]\n'
+        b'SET OK = TRUE;\r\n'
+        b'IF OK THEN\r\n'
+        b'{\r\n'
+        b' \t PING();\r\n'
+        b'}\r\n'
+        b'ELSE\r\n'
+        b'{\r\n'
+        b' PONG( "c:\\path~" )\r\n'
+        b' PANG( 2 );\r\n'
+        b'}\r\n'
+        b'IF OK == FALSE THEN\r\n'
+        b'{\r\n'
+        b' LAST( 3 )\r\n'
+        b' $ see [note;] \\ ~\r\n'
+        b'}\r\n'
+        b'\n'
+        b'[SIGNALS]\nSCHUETTIINITSIG = TRUE\r\nOK = TRUE\r\n\n[CAMARAPOS]\n-0,05\r\n')
+
 # A savegame's script: an empty kernel, the init signal cleared.
 SAVED = (b'[OBJECT_DEFINE]\n[AREA_DEFINE]\n[PLAYERMAPPER_DEFINE]\n"ME" 0\n"NOBODY" 31\n'
          b'[SCRIPT_KERNEL]\n\n[SIGNALS]\nSCHUETTIINITSIG = FALSE\r\n\n[CAMARAPOS]\n0,0\r\n')
@@ -166,6 +193,7 @@ def files() -> dict[str, bytes]:
         "lf.sze": scenario(LF),
         "crlf.sze": scenario(CRLF),
         "startup.sze": scenario(STARTUP),
+        "edge.sze": scenario(EDGE),
         "saved.sav": savegame(SAVED),
         # one broken rule each: refused
         "bad_order.sze": scenario(GRAMMAR.replace(b"[AREA_DEFINE]", b"[AREA_X]")

@@ -295,8 +295,22 @@ R<Primary> primary(Cursor& c) {
     return p;
 }
 
-/// `base`: the nesting depth of this condition (Options::max_condition_depth). Its term after
-/// `i` connectives lies at depth `base + i` of the grouped tree; a group adds one level.
+/// The depth Options::max_condition_depth bounds: along any path of the condition as written,
+/// the connectives `grouped` nests it under plus the parentheses. Term `i` of `k` connectives
+/// lies under `i + 1` of them, the last one under `k`.
+std::size_t written_depth(const Condition& g) {
+    const std::size_t k = g.connectives.size();
+    std::size_t d = 0;
+    for (std::size_t i = 0; i < g.terms.size(); ++i) {
+        const std::size_t pos = i < k ? i + 1 : k;
+        const Term& t = g.terms[i];
+        d = std::max(d, pos + (t.group.empty() ? 0 : 1 + written_depth(t.group[0])));
+    }
+    return d;
+}
+
+/// `base`: a lower bound of this condition's depth (written_depth). Checking it before each term
+/// bounds the recursion while parsing; the exact depth is checked when the condition is read.
 R<Condition> condition(Cursor& c, std::size_t base, std::size_t max_depth) {
     Condition g;
     while (true) {
@@ -455,6 +469,12 @@ R<std::vector<KernelItem>> parse_kernel(Cursor c, const Options& options) {
             auto cond = condition(c, 0, options.max_condition_depth);
             if (!cond) {
                 return cond.error();
+            }
+            if (written_depth(cond.value()) > options.max_condition_depth) {
+                return c.error_at(t->offset, "[SCRIPT_KERNEL]: the condition of the IF at offset " +
+                                                 std::to_string(t->offset) + " nests deeper than " +
+                                                 std::to_string(options.max_condition_depth) +
+                                                 " levels (Options::max_condition_depth)");
             }
             if (c.take(TokenKind::Name, "THEN") == nullptr) {
                 return c.fail("expected THEN for the IF at offset " + std::to_string(t->offset));

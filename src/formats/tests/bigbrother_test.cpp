@@ -152,7 +152,7 @@ std::string name_of(const bb::Statement* s) {
 
 TEST_CASE("bigbrother: every synthetic script parses and re-emits byte-identically") {
     const auto files = accepted_fixtures();
-    REQUIRE(files.size() == 8);
+    REQUIRE(files.size() == 9);
     for (const auto& f : files) {
         INFO(f.filename().string());
         const auto file = anno::test::read_file(f);
@@ -182,6 +182,8 @@ TEST_CASE("bigbrother: every byte is one token, every token kind occurs") {
         kinds.insert(t.kind);
         if (t.kind == bb::TokenKind::Newline) {
             newlines.insert(t.text);
+        } else {
+            CHECK(t.text.find_first_of("\r\n") == std::string::npos); // a comment ends before CR
         }
     }
     CHECK(joined == text);
@@ -231,7 +233,8 @@ TEST_CASE("bigbrother: Latin-1 bytes round trip") {
 }
 
 TEST_CASE("bigbrother: the tree of the grammar script") {
-    auto parsed = parse(script_of("grammar.sze"));
+    const std::string text = script_of("grammar.sze");
+    auto parsed = parse(text);
     REQUIRE(parsed);
     const bb::Script& s = parsed.value();
     REQUIRE(s.sections.size() == 6);
@@ -289,6 +292,18 @@ TEST_CASE("bigbrother: the tree of the grammar script") {
     CHECK(houses.arg == std::optional<std::string>("TOWN"));
     CHECK(houses.op == ">");
     CHECK(houses.value->text == "49");
+    // Offsets: the first token of each item.
+    CHECK(houses.offset == text.find("PLAYER \"ME\" HOUSES"));
+    CHECK(first.offset == text.find("IF STARTED"));
+    CHECK(first.condition.terms[1].primary.offset == text.find("DONE == FALSE"));
+    CHECK(std::get<bb::InitBlock>(s.kernel[0]).offset == text.find("INITBLOCK"));
+    CHECK(set.offset == text.find("SET STARTED"));
+    CHECK(pay.offset == text.find("PAY("));
+    CHECK(s.objects[2].offset == text.find("OBJECT_ANLAGE"));
+    CHECK(s.areas[1].offset == text.find("\"RIDGE\""));
+    CHECK(s.players[2].offset == text.find("\"NOBODY\""));
+    CHECK(s.signals[2].offset == text.find("DONE = FALSE\r\n\n"));
+    CHECK(s.camera.offset == text.find("0,0\r\n"));
     const bb::Primary& var = first.condition.terms[0].primary;
     CHECK((var.subject.empty() && var.name == "STARTED" && var.op == "==" &&
            var.value->text == "TRUE"));
@@ -409,6 +424,14 @@ TEST_CASE("bigbrother: text outside the grammar is refused, naming its line") {
         {"\"NOBODY\" 31", "\"ME\" 31", 11},                          // player twice
         {"[CAMARAPOS]\n0,0\r\n", "[CAMARAPOS]\n", 46},               // no position
         {"[CAMARAPOS]\n0,0\r\n", "[CAMARAPOS]\n0,0\r\n1,1\r\n", 47}, // two positions
+        {"[AREA_DEFINE]", "[Area_DEFINE]", 5},                       // header in lower case
+        {"PAY( \"ME\", -250 );", "PAY( \"ME\", - );", 24},           // a '-' alone
+        {"\"INTRO_1\"", "\"INTRO\r_1\"", 16},                        // a CR in a string
+        {"SET DONE = FALSE;", "SET SET = FALSE;", 20},               // reserved names
+        {"SET DONE = FALSE;", "SET INITBLOCK = FALSE;", 20},
+        {"SET DONE = FALSE;", "SET FALSE = TRUE;", 20},
+        {"SET DONE = FALSE;", "SET TRUE = TRUE;", 20},
+        {"SET DONE = FALSE;", "SET THEN = TRUE;", 20},
     };
     const std::string text = script_of("grammar.sze");
     for (const auto& c : cases) {
@@ -427,6 +450,25 @@ TEST_CASE("bigbrother: the error offset is the offending byte") {
     auto s = parse(text);
     REQUIRE_FALSE(s);
     CHECK(s.error().offset == text.find('@'));
+    // The token the error is about: `<=` is one operator (not `<` then `=`); a define line by
+    // its first token; a duplicate at its second occurrence.
+    struct Case {
+        std::string_view old_text, new_text, at;
+    };
+    const std::vector<Case> cases{
+        {"> 49", "<= 49", "<= 49"},
+        {"> 49", ">= 49", ">= 49"},
+        {"\"RIDGE\" 500,60,70,800", "\"RIDGE\" 500,60", "\"RIDGE\""},
+        {"\"RIDGE\" 500", "\"COVE\" 500", "\"COVE\" 500"},
+        {"TIMER_RESET( 2, 0 );\r\n}\r\n", "TIMER_RESET( 2, 0 );\r\n", "[SIGNALS]"},
+    };
+    for (const auto& c : cases) {
+        const std::string t = replaced(script_of("grammar.sze"), c.old_text, c.new_text);
+        auto e = parse(t);
+        INFO(c.new_text);
+        REQUIRE_FALSE(e);
+        CHECK(e.error().offset == t.find(c.at));
+    }
 }
 
 TEST_CASE("bigbrother: text before the first section is refused") {
@@ -453,6 +495,10 @@ TEST_CASE("bigbrother: the payload is the one BIGBROTHER chunk") {
         {chunk("ANNOADDON1", chunk("SCENE", chunk("OTHER", std::string(16, 'x')))), false},
         {chunk("OTHERROOT", chunk("SCENE", big)), false},
         {"not a chunk file", false},
+        // The first SCENE container is searched, not a later one; a SCENE that is not a
+        // container is passed over and the root searched.
+        {chunk("ANNO", chunk("SCENE", big) + chunk("SCENE", chunk("BIGBROTHER", "other"))), true},
+        {chunk("ANNO", chunk("SCENE", "x") + big), true},
     };
     for (const auto& c : cases) {
         const ByteBuffer file = to_bytes(c.file);
@@ -558,6 +604,7 @@ TEST_CASE("bigbrother: the four kinds of statement without semicolon") {
     const auto set_semi =
         text.find("SET FLAG_A = TRUE;") + std::string_view("SET FLAG_A = TRUE").size();
     CHECK(reads[0].end == std::optional<std::size_t>(set_semi));
+    REQUIRE(reads[0].end.has_value());
     CHECK(*reads[0].end > text.find("}\r\nSET FLAG_A"));
     CHECK(reads[0].lost.empty());
     // A block statement reads on to the ';' of a commented-out line: nothing lost.
@@ -631,6 +678,40 @@ TEST_CASE("bigbrother: two statements without semicolon in a row, and the kernel
     }
 }
 
+TEST_CASE("bigbrother: the edge fixture: numbers as written, empty parentheses, ELSE, the bound") {
+    const std::string text = script_of("edge.sze");
+    auto parsed = parse(text);
+    REQUIRE(parsed);
+    const bb::Script& s = parsed.value();
+    REQUIRE(s.objects.size() == 1);
+    CHECK(s.objects[0].numbers == std::vector<std::string>{"007"});
+    REQUIRE(s.areas.size() == 1);
+    CHECK(s.areas[0].corners == std::vector<std::string>{"-0", "01", "2", "30"});
+    CHECK(s.players[0].slot == "00");
+    CHECK((s.camera.x == "-0" && s.camera.y == "05"));
+    // A blank of space and tab is one token.
+    auto toks = bb::lex(to_bytes(text));
+    REQUIRE(toks);
+    CHECK(std::count_if(toks.value().begin(), toks.value().end(), [](const bb::Token& t) {
+              return t.kind == bb::TokenKind::Blank && t.text == " \t ";
+          }) == 1);
+    // A call with empty parentheses.
+    const auto& first = std::get<bb::If>(s.kernel[1]);
+    REQUIRE(first.then_block.size() == 1);
+    const auto& ping = std::get<bb::Call>(first.then_block[0]);
+    CHECK((ping.name == "PING" && ping.parens && ping.args.empty() && ping.semicolon));
+    // An ELSE statement without ';' swallows the next one of its block; a statement whose next
+    // ';' stands after a '[' (in a comment) finds none: the kernel text ends at the '['.
+    const auto reads = bb::read_on(s);
+    REQUIRE(reads.size() == 2);
+    CHECK(name_of(reads[0].statement) == "PONG");
+    CHECK(reads[0].end == std::optional<std::size_t>(text.find("PANG( 2 );") + 9));
+    REQUIRE(reads[0].lost.size() == 1);
+    CHECK(name_of(reads[0].lost[0]) == "PANG");
+    CHECK(name_of(reads[1].statement) == "LAST");
+    CHECK_FALSE(reads[1].end.has_value());
+}
+
 TEST_CASE("bigbrother: a condition nested deeper than the limit is refused, not a crash") {
     const std::string text = script_of("grammar.sze");
     const auto chain = [](std::size_t connectives, std::string_view op) {
@@ -655,6 +736,19 @@ TEST_CASE("bigbrother: a condition nested deeper than the limit is refused, not 
     CHECK_FALSE(parses(nest(bb::kMaxConditionDepth + 1)));
     CHECK(parses("A && (" + nest(bb::kMaxConditionDepth - 2) + ")"));
     CHECK_FALSE(parses("A && (" + nest(bb::kMaxConditionDepth - 1) + ")"));
+    // A left operand lies under its connective too.
+    CHECK(parses("(" + nest(bb::kMaxConditionDepth - 2) + ") && A"));
+    CHECK_FALSE(parses("(" + nest(bb::kMaxConditionDepth - 1) + ") && A"));
+    CHECK(parses("A || (" + nest(bb::kMaxConditionDepth - 3) + ") && B"));
+    CHECK_FALSE(parses("A || (" + nest(bb::kMaxConditionDepth - 2) + ") && B"));
+    {
+        const std::string t =
+            replaced(text, kFirstCondition, "(" + nest(bb::kMaxConditionDepth - 1) + ") && A");
+        auto e = parse(t);
+        REQUIRE_FALSE(e);
+        CHECK(e.error().offset == t.find("IF ("));
+        CHECK(e.error().line == 21);
+    }
     // Far beyond it: an Error, no stack overflow.
     CHECK_FALSE(parses(nest(100000)));
     CHECK_FALSE(parses(chain(3000, "&&") + " || Z"));

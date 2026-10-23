@@ -38,9 +38,10 @@ std::string join_numbers(const std::vector<std::string>& numbers) {
     return s;
 }
 
+/// The read-on notes, by the statement's offset (unique per statement).
 struct Notes {
-    std::map<const bb::Statement*, const bb::ReadOn*> swallowed;
-    std::map<const bb::Statement*, bool> lost;
+    std::map<std::size_t, const bb::ReadOn*> swallowed;
+    std::map<std::size_t, bool> lost;
 };
 
 void statement(const bb::Statement& st, std::string_view ind, const Notes& notes,
@@ -58,13 +59,13 @@ void statement(const bb::Statement& st, std::string_view ind, const Notes& notes
         line += c.parens ? "" : "  (no ())";
     }
     line += bb::has_semicolon(st) ? "" : "  (no ;)";
-    if (const auto it = notes.swallowed.find(&st); it != notes.swallowed.end()) {
+    if (const auto it = notes.swallowed.find(bb::offset_of(st)); it != notes.swallowed.end()) {
         const bb::ReadOn& r = *it->second;
         line += !r.end ? std::string("  (the interpreter refuses the kernel: no ';' follows)")
                        : "  (reads on to the ';' at offset " + std::to_string(*r.end) + "; loses " +
                              std::to_string(r.lost.size()) + " statement(s))";
     }
-    if (notes.lost.count(&st) != 0) {
+    if (notes.lost.count(bb::offset_of(st)) != 0) {
         line += "  (LOST: read into the statement before)";
     }
     out.push_back(std::move(line));
@@ -94,9 +95,9 @@ std::vector<std::string> dump_lines(const bb::Script& s, bool full) {
     const auto reads = bb::read_on(s);
     Notes notes;
     for (const auto& r : reads) {
-        notes.swallowed[r.statement] = &r;
+        notes.swallowed[bb::offset_of(*r.statement)] = &r;
         for (const auto* x : r.lost) {
-            notes.lost[x] = true;
+            notes.lost[bb::offset_of(*x)] = true;
         }
     }
     for (const auto& sec : s.sections) {
@@ -138,8 +139,7 @@ std::vector<std::string> dump_lines(const bb::Script& s, bool full) {
                     statements(init->body, "    ", notes, out);
                 } else if (const auto* set = std::get_if<bb::Assign>(&it)) {
                     // A top-level SET: the same line as a block statement, two spaces in.
-                    const bb::Statement st = *set;
-                    statement(st, "  ", notes, out);
+                    statement(bb::Statement(*set), "  ", notes, out);
                 } else {
                     const auto& cond = std::get<bb::If>(it);
                     out.push_back("  IF " + bb::describe(cond.condition) + " THEN");

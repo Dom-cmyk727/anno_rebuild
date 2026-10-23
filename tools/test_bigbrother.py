@@ -185,8 +185,9 @@ class Synthetic(unittest.TestCase):
         cond(chain(n))
         cond(nest(n))
         cond("A && (" + nest(n - 2) + ")")
-        for text in (chain(n + 1), nest(n + 1), "A && (" + nest(n - 1) + ")", nest(100000),
-                     chain(3000) + " || Z"):
+        cond("(" + nest(n - 2) + ") && A")              # a left operand lies under its connective
+        for text in (chain(n + 1), nest(n + 1), "A && (" + nest(n - 1) + ")",
+                     "(" + nest(n - 1) + ") && A", nest(100000), chain(3000) + " || Z"):
             with self.subTest(text=text[:20]), self.assertRaises(bb.ScriptError):
                 cond(text)
         cond(nest(400), max_condition_depth=400)

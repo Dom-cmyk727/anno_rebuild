@@ -338,9 +338,19 @@ def primary(c: Cursor) -> Primary:
     return p
 
 
+def written_depth(g: Group) -> int:
+    """The depth MAX_CONDITION_DEPTH bounds: along any path of the condition as written, the
+    connectives `grouped` nests it under plus the parentheses. Term i of k connectives lies under
+    i + 1 of them, the last one under k."""
+    terms = g.items[0::2]
+    k = len(terms) - 1
+    return max((i + 1 if i < k else k) + (1 + written_depth(x) if isinstance(x, Group) else 0)
+               for i, x in enumerate(terms))
+
+
 def condition(c: Cursor, base: int = 0, max_depth: int = MAX_CONDITION_DEPTH) -> Group:
-    """`base`: the nesting depth of this condition; its term after i connectives lies at depth
-    base + i of the grouped tree, and a group adds one level (see MAX_CONDITION_DEPTH)."""
+    """`base`: a lower bound of this condition's depth (written_depth). Checking it before each
+    term bounds the recursion while parsing; parse_kernel checks the exact depth."""
     items = []
     while True:
         level = base + len(items) // 2
@@ -420,6 +430,9 @@ def parse_kernel(body: list[Tok], max_depth: int = MAX_CONDITION_DEPTH) -> list:
             items.append(Assign(name, v, True, end(c), t.off))
         elif t.text == "IF":
             cond = condition(c, 0, max_depth)
+            if written_depth(cond) > max_depth:
+                raise ScriptError(f"[SCRIPT_KERNEL]: the condition of the IF at offset {t.off} "
+                                  f"nests deeper than {max_depth} levels")
             if not c.is_("IDENT", "THEN"):
                 c.fail(f"expected THEN for the IF at offset {t.off}")
             c.take()

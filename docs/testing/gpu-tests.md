@@ -59,6 +59,18 @@ river view per tier) is slower than on real hardware. Added test time on linux-g
 install about 21 s. The job stays well under the 15 minute cap. If a GPU test is too
 slow on lavapipe, bound it by a size parameter with a reason comment; do not skip it.
 
+**windows-msvc runs without the GPU cases (2026-10-23).** The hosted Windows runner's
+only adapter is Microsoft's WARP software rasterizer, which wgpu-native picks through
+DX12, so the cases did not skip there: they ran one at a time (`RESOURCE_LOCK gpu`) at
+about 50 s each, 2 557 s of the job's 2 613 s of test time (run 39926764589, 852 tests,
+43 of 54 minutes; the sim tests took 19 s). The GPU test executable carries the CTest
+label `gpu` (`src/render/CMakeLists.txt`), and the windows-msvc test step runs
+`ctest -LE gpu`. What Windows still checks: the MSVC build of `anno_render_gpu` and its
+tests, and every other test. What it no longer checks: the GPU parity cases on WARP,
+which linux-gcc checks on lavapipe and the owner's 4090 checks locally
+(`ctest --preset msvc -L gpu`). The other jobs are unchanged. Reverting is one line in
+`ci.yml`.
+
 ## What must not happen
 
 - Do not loosen any GPU = CPU tolerance without evidence.

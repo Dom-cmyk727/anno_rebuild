@@ -138,12 +138,25 @@ jobs:
           fi
           # Each doctest case is its own test (anno_add_doctest): run them on
           # the runner's cores (4 on the hosted Linux and Windows runners).
-          ctest --preset ${{ matrix.preset }} -j 4 2>&1 | tee test.log
+          # windows-msvc leaves out the GPU cases (label "gpu"): the hosted
+          # Windows runner's only adapter is the WARP software rasterizer, on
+          # which they take about 50 s each, one at a time (RESOURCE_LOCK gpu):
+          # 43 of the job's 54 minutes (run 39926764589) for a parity check
+          # that linux-gcc makes deterministically on lavapipe (OQ-089). The
+          # MSVC build of the GPU code is still checked; the owner's 4090 runs
+          # the cases locally (docs/testing/gpu-tests.md).
+          EXCLUDE=""
+          if [ "${{ matrix.name }}" = "windows-msvc" ]; then
+            EXCLUDE="-LE gpu"
+          fi
+          ctest --preset ${{ matrix.preset }} -j 4 $EXCLUDE 2>&1 | tee test.log
       # T13: linux-gcc pins lavapipe with ANNO_REQUIRE_GPU=1 so the GPU parity
       # tests run there deterministically instead of skipping; the other jobs
-      # still warn when they skip (the step can still fire on windows-msvc,
-      # macos-clang, linux-clang-asan, linux-gcc-release).
+      # still warn when they skip (the step can still fire on macos-clang,
+      # linux-clang-asan, linux-gcc-release; windows-msvc leaves the GPU cases
+      # out, see the test step).
       - name: GPU tests need an adapter (loud skip)
+        if: matrix.name != 'windows-msvc'
         shell: bash
         run: |
           if ctest --preset ${{ matrix.preset }} -V -R "the shared WGSL shaders compile" 2>&1 | grep -q "skipping:"; then

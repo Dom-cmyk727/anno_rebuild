@@ -80,12 +80,14 @@ if(ANNO_BUILD_TESTS)
   if(ANNO_HEAVY_TEST_PROCESSORS EQUAL 0)
     set(ANNO_HEAVY_TEST_PROCESSORS 1)
   endif()
-  # anno_add_doctest(<target> [UBSAN_HALT] [PROPERTIES ...]): registers the
-  # cases of a doctest executable as "<target>.<case name>". UBSAN_HALT (asan
-  # preset only; for targets built with SANITIZE_NO_RECOVER) puts
-  # UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 into the environment of
-  # every case. A caller that sets its own ENVIRONMENT property in PROPERTIES
-  # wins over this one.
+  # anno_add_doctest(<target> [UBSAN_HALT] [LABELS ...] [PROPERTIES ...]):
+  # registers the cases of a doctest executable as "<target>.<case name>".
+  # UBSAN_HALT (asan preset only; for targets built with SANITIZE_NO_RECOVER)
+  # puts UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 into the environment
+  # of every case. A caller that sets its own ENVIRONMENT property in
+  # PROPERTIES wins over this one. LABELS are CTest labels for every case; the
+  # heavy cases get "heavy" beside them (so pass labels here, not in
+  # PROPERTIES, which the heavy label would replace).
   #
   # The cases are discovered twice: the "heavy" suite gets PROCESSORS
   # ANNO_HEAVY_TEST_PROCESSORS and the label "heavy" (`ctest -L heavy`,
@@ -95,10 +97,14 @@ if(ANNO_BUILD_TESTS)
   # arguments, which is how the suite filters reach --list-test-cases; the
   # two spec hashes differ, so the two discoveries write separate files.
   function(anno_add_doctest target)
-    cmake_parse_arguments(ARG "UBSAN_HALT" "" "PROPERTIES" ${ARGN})
+    cmake_parse_arguments(ARG "UBSAN_HALT" "" "PROPERTIES;LABELS" ${ARGN})
     set(props ${ARG_PROPERTIES})
     if(ARG_UBSAN_HALT AND ANNO_SANITIZE AND NOT MSVC)
       list(PREPEND props ENVIRONMENT "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
+    endif()
+    set(heavy_labels heavy ${ARG_LABELS})
+    if(ARG_LABELS)
+      list(APPEND props LABELS "${ARG_LABELS}")
     endif()
     doctest_discover_tests(${target} TEST_PREFIX "${target}."
       TEST_SPEC "*" "--test-suite-exclude=heavy" TEST_LIST ${target}_TESTS
@@ -108,9 +114,11 @@ if(ANNO_BUILD_TESTS)
       PROPERTIES ${props} PROCESSORS ${ANNO_HEAVY_TEST_PROCESSORS})
     # Runs after both discovery files (TEST_INCLUDE_FILES keeps the order).
     set(label_file "${CMAKE_CURRENT_BINARY_DIR}/${target}_heavy_label.cmake")
+    # The caller's LABELS stay beside "heavy" (set_tests_properties replaces
+    # the property; ctest's reader has no APPEND for tests of an included file).
     file(WRITE "${label_file}"
       "if(${target}_HEAVY_TESTS)\n"
-      "  set_tests_properties(\${${target}_HEAVY_TESTS} PROPERTIES LABELS heavy)\n"
+      "  set_tests_properties(\${${target}_HEAVY_TESTS} PROPERTIES LABELS \"${heavy_labels}\")\n"
       "endif()\n")
     set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${label_file}")
   endfunction()

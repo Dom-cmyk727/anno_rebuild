@@ -944,3 +944,82 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
 - Gates: `cmake --build --preset msvc` exit 0, 0 warnings. `ctest --preset msvc -j 16` (ANNO_TEST_THREADS=16) without the game dir: 750/750. With `ANNO1503_GAME_DIR=C:\Users\altin\anno1503\game\app`: two full runs gave 748/750 and 746/750; every failure was a render corpus test throwing `bad allocation` (render is untouched by this change). The host had 32.6 GB of its 52.8 GB commit limit in use while idle (the WSL VM and the other session's processes), so the heavy render corpus cases ran out of commit; at `-j 4` the render set alone still lost 4 cases to `bad allocation`. Split runs: everything except render with the game dir at `-j 16` 518/518; the 7 distinct render cases that failed (#49, 74, 75, 79, 122, 127, 130) pass when run one at a time with the game dir (7/7). So with the game dir every test passed, but not in one `-j 16` run on this host today; that is the T10b memory problem, not this change. clang-format 23.1.3: `--dry-run --Werror` over all of `src` clean. GCC 13.3 (WSL Ubuntu) `-O3 -DNDEBUG -std=c++20` with the CI warning set and `-Werror`, doctest from build/msvc/_deps/doctest-src: 53 translation units (formats, test_support, sim, sim tests, sim_replay main.cpp), no diagnostic; sim tests 443/443 without the game dir (2,014,970 assertions) and 443/443 with it (2,030,214); the GCC-built tool refuses all 7 bad flag values with exit 2. `tools/lint_sim.py`: ok, self-test 64 cases, 0 failures. agree.py n.a. asan/Clang not run locally (Clang is not installed in WSL): CI on the push.
 - Left open: CI on the pushed branch; the three nits named above.
 - Subagents: none; heavy jobs one at a time.
+
+## T10b — Test memory: the mitigation visible, the heavy tests scheduled apart — 2026-10-23 — status: FINISHED (one acceptance line not met, explained below)
+
+- **Branch:** `task/T10-digest-flake`, `origin/main` merged first (365d7ef, no conflicts; the branch's `test_support` memory work kept). Commits:
+  - c6989f5 `fix(test)`: review items 1, 2, 3, 5 in `parallel.hpp` / `memory.cpp`;
+  - d91623f `build(test)`: item 4, the heavy cases alone (`anno_add_doctest`), item (b);
+  - a28a004 `test(render)`: the legacy digest case in one call per mode (222 s → 90 s alone);
+  - 06f0869 `fix(viewer)`: item (c);
+  - ce552d6 `build`: `.gitattributes` `*.sh text eol=lf` (with `core.autocrlf=true` the scripts were CRLF in the Windows checkout, which bash in WSL rejects; `tools/orig/wine/*.sh` included);
+  - e5e91c9 `build(tools)`: item (a), `tools/check_unix_warnings.sh`;
+  - b568d9a `docs`: `CLAUDE.md` environment notes.
+- **Items 1-3, 5 (`src/test_support`):**
+  - Every bad_alloc retry prints `[anno-test memory] item i of n threw std::bad_alloc: retry a of R (free X MiB)`. One summary line follows whenever a call waited, retried or got fewer threads than requested (items, threads used of requested, waits with total ms and how many ran out, bad_alloc items, retries, free memory, budget). The counts also come back in `ParallelStats`. Passed tests' stderr is in `Testing/Temporary/LastTest.log`, not in `ctest-output.log`; `CLAUDE.md` now says so.
+  - Dead tail: a worker checks `next >= n` before it waits and on every poll, so it leaves as soon as all items are taken.
+  - `ANNO_TEST_BAD_ALLOC_RETRIES` (default 5, 0 = the first bad_alloc fails the test).
+  - `free_memory_bytes()` returns `std::optional`: nullopt for a failed query or no implementation (no bound), 0 stays 0 (one thread). The MiB budget saturates; `ANNO_TEST_MEM_WAIT_S` is capped at a day, so `x4` polls cannot wrap.
+  - The knobs are a `ParallelOptions` struct (`parallel_options()` reads the environment). Tests pass a fake free-memory query and short pauses.
+  - Tests (13 cases in `parallel_test.cpp`): retry count and order, retries off and limit, wait counted, no wait to the end once items are taken, 0 vs. unknown free memory, saturation, env parsing.
+  - **Mutation evidence** (MSVC, each mutant rebuilt and run): all seven mutants killed:
+    1. no items-taken check in the wait poll;
+    2. retry counter dropped;
+    3. retries=0 ignored;
+    4. 0 free treated as unknown;
+    5. budget wraps;
+    6. wait counter dropped;
+    7. retry limit off by one.
+- **Item 4, scheduling:**
+  - `anno_add_doctest` calls `doctest_discover_tests` twice per executable: once for the doctest suite `"heavy"` with `PROCESSORS` = `ProcessorCount` (16 here; CTest caps it at `-j`), once for the rest.
+  - A small include file gives the heavy ones the label `heavy` (`ctest -L heavy` / `-LE heavy`).
+  - Deviation from the review text: doctest 2.4.12's `doctestAddTests.cmake` wraps `TEST_SPEC` into `--test-case=<spec>`, so `-tc=`/`-tce=` cannot be passed. Instead the spec is the list `"*;--test-suite=heavy"` / `"*;--test-suite-exclude=heavy"`: the script expands the list, so the second element arrives as a raw argument. The cases are marked in the source (`* doctest::test_suite("heavy")`), not by name patterns that a rename would silently break.
+  - Checked: 738 tests = 731 + 7 new `test_support` cases (no duplicates, none lost); `ctest -N -L heavy` lists the 10; the generated files carry `PROCESSORS 16`; the GPU tests keep `RESOURCE_LOCK gpu`. In all three runs, no test started while a heavy one ran (parsed from the console log).
+- **Which cases are heavy (measured, not guessed):** every case that took ≥ 4 s in a baseline `-j 16` run (55 cases, all executables) was run alone with `ANNO_TEST_THREADS=16`, with the process's peak commit sampled. The heavy set is every CPU case whose peak alone is above 1.25 GB:
+
+  | case | peak commit alone (16 threads) |
+  |---|---|
+  | scene renders match the recorded digests | 35.6 GB |
+  | legacy river shading reproduces the previous enhanced digests | 14.7 GB (35.4 GB after a28a004) |
+  | six river flow corpus cases (Q5 CPU path, Q3 coverage, pixels only, noise coordinate, all windows, light vs shimmer) | 2.4-2.7 GB each |
+  | river raster agrees with the river the original draws | 1.5 GB |
+  | derived levels: a zoom-out sweep | 1.4 GB |
+
+  Everything else: ≤ 1.02 GB (render_chunk, FrameRenderer 1.0; the other corpus cases 0.3-0.95). The GPU cases (1.3-2.5 GB) already run one at a time under `RESOURCE_LOCK gpu` and stay light.
+- **Item (b), `anno_dump_agrees_with_python`:** alone it raises the system commit by 0.7 GB (33.0 → 33.6 GB) in 42 s, and `river_qa_gap_survey` is negligible too. The bad_alloc of T12 came from the heavy cases running beside it (like tests #49, #122, #127 and #130 in the orchestrator's run: unit tests, victims). Since the heavy cases now never share the machine, agree needs no slot reservation, and one would add 42 s to the serial part. It has a comment in `src/tools/anno_dump/CMakeLists.txt`. **If the orchestrator wants it heavy anyway, it is a one-line `set_tests_properties`.**
+- **Verification** (`ctest --preset msvc -j 16`, `ANNO_TEST_THREADS=16`, `ANNO1503_GAME_DIR=C:\Users\altin\anno1503\game\app`; system commit = total - available page file of `GlobalMemoryStatusEx`, sampled every second):
+
+  | run | passed | wall | commit at start | peak commit | commit limit (start → max) | retry lines | bad allocation | wait lines |
+  |---|---|---|---|---|---|---|---|---|
+  | baseline (merged branch before this task, silent mitigation) | 731/731 | 304 s | 33.5 GB | 73.1 GB | 52.8 → 73.6 GB | (not logged) | 0 | (not logged) |
+  | run 1 | 738/738 | 374 s | 33.6 GB | 67.8 GB | 52.8 → 70.0 GB | 0 | 0 | 1 (9 waits, 26.0 s, none ran out) |
+  | run 2 | 738/738 | 374 s | 34.0 GB | 68.5 GB | 52.8 → 70.3 GB | 0 | 0 | 1 (5 waits, 10.2 s) |
+  | run 3 | 738/738 | 374 s | 33.2 GB | 68.5 GB | 52.8 → 69.0 GB | 0 | 0 | 1 (9 waits, 27.4 s) |
+  | without the game dir | 738/738 | 32 s | 33.2 GB | 33.6 GB | 52.8 | 0 | 0 | 0 |
+
+  - **Not met: "no wait line".** Each run has exactly one wait line, from the scene-digest case. It ran alone, and its own 16 workers waited for memory while the page file grew.
+    - That case needs about 35 GB with any thread count ≥ 7: the whole-map group 2 renders of Single_01/10/14 hold about 5 GB each. A 2.5 GB per-task budget, tried and reverted, gave 7 threads and still 27.5 GB; the legacy case reached 36.8 GB on 7 threads.
+    - Free commit headroom at idle is about 19 GB (the WSL VM keeps about 33 GB committed).
+    - So on this PC the case always depends on Windows growing the page file: the limit grew from 52.8 to about 70 GB in every run.
+    - No wait ran out, no bad_alloc occurred and nothing was retried.
+  - The other memory lines in the three runs (15-18 per run) are thread cuts of light corpus cases, not waits or retries: for example, 11-15 of 16 threads while other tests held memory, and 0 waits.
+  - Wall time rose from 304 s to 374 s: the heavy cases (about 175 s together) now run serially. a28a004 already took 130 s out of the legacy case; without it the run would be about 500 s.
+- **Logging works (forced):**
+  - In a job object limited to 1200 MB per process, "flow coverage … (Q3)" printed three `retry 1 of 5` lines and the summary `5 items on 5 of 16 requested threads; 0 memory waits …, 3 bad_alloc items, 3 retries`, and passed.
+  - With `ANNO_TEST_MB_PER_THREAD=2400 ANNO_TEST_MEM_WAIT_S=10`, the scene digests printed `44 items on 7 of 16 requested threads; 3 memory waits (15155 ms, 0 ran out), 0 bad_alloc items, 0 retries`, and passed.
+- **Gates:**
+  - MSVC build: 0 warnings.
+  - ctest with the game dir: the three runs above, all green. Without it: 738/738.
+  - clang-format 23.1.3 `--dry-run --Werror` over `src`: clean.
+  - `tools/check_unix_warnings.sh` in WSL `Ubuntu`: GCC 13.3 and Clang 18.1.3 (the unpacked `~/clang18`), 124 files each, clean. Clang without `ANNO_VIEWER_GPU`: clean, and with the viewer fix reverted it reports the three `-Wunused-private-field` errors and exits 1. With no Clang found, the skip message is printed and the exit is 0.
+  - GCC 13.3 `-O3 -Werror`, CI flags, `anno_test_support_tests` linked and run in WSL: 13/13 without and with `ANNO1503_GAME_DIR`.
+  - `agree.py`: no `anno-dump` command changed; the test passed in every run.
+- **Reviewers:** none spawned (round i subagent; the orchestrator reviews). The mutation checks above stand in for the reviewer's test check.
+- **Left open / for the orchestrator:**
+  1. The whole-scene digest cases need more commit than this PC has free at idle. They are safe only while the page file can grow. Real fixes are outside T10b:
+     - a per-item memory estimate in `parallel_indexed` (hold back a big render until its canvas fits);
+     - or less memory per whole-map render.
+
+     Which one, if any?
+  2. agree not marked heavy (above): confirm.
+  3. The full run is 70 s longer than before.

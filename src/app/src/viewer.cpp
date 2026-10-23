@@ -381,11 +381,13 @@ class Viewer {
     /// No frame before this time: the surface is occluded or timed out, or
     /// the window has no pixels (the Rust viewer's occluded_until).
     std::optional<Clock::time_point> retry_at_;
+#ifdef ANNO_VIEWER_GPU
     /// Consecutive frames whose surface texture was outdated or lost.
     int surface_failures_ = 0;
     /// Present the next frame on a reconfigured surface (it was suboptimal).
     bool reconfigure_ = false;
     bool present_error_shown_ = false;
+#endif
     /// Chunks received since the last periodic report. A console write on the
     /// window thread is synchronous and can cost tens of milliseconds on a busy
     /// machine, so nothing is printed per frame (hitch lines excepted: they are

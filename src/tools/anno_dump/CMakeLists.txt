@@ -15,6 +15,11 @@ if(ANNO_BUILD_TESTS)
     add_test(NAME anno_dump_agrees_with_python
       COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/agree.py
               --dump $<TARGET_FILE:anno_dump> --commands ${ANNO_DUMP_PORTED_COMMANDS})
+    # Not "heavy": alone it raises the commit charge by about 0.7 GB (one
+    # anno-dump at a time, measured 2026-10-23, T10b). Its bad_alloc under
+    # `ctest -j 16` came from the heavy render cases beside it, which now
+    # run alone (anno_add_doctest); a slot reservation here would only add
+    # its 40 s to the serial part of the run.
   else()
     message(STATUS "python3 not found: anno_dump_agrees_with_python not registered")
   endif()

@@ -2,7 +2,13 @@
 
 **Who writes this file:** the orchestrator session (Claude Fable, the owner's "main" session). **Who reads it:** the executor session (Claude Sonnet with subagents). The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-Last update: 2026-10-23 j.
+Last update: 2026-10-23 k.
+- **Merged:** T14 stage 1 as c46bc81 (PR #27) and T9 S12 as a727eb7 (PR #28), CI green on both; §4. The S12 merge's conflicts were two appended sections each in `open-questions.md` and `REPORTS.md` (T14's OQ-130 and report); both kept. The orchestrator removed a stale `else` line from `timers_tick`'s pseudo-code in `state.md` before the merge (a488e23).
+- **Owner decisions 2026-10-23:** OQ-130, the wave window's bound on every adapter; OQ-133, timer 0 wraps as in the original, `Rules::timer0_clamp` opts into the F5 fix.
+- **Host:** the page file now spans C: (system managed) and E: (48-64 GB); commit limit 100.8 GB (was 52.8 GB), checked after the restart.
+- **No subagent running.** Open for the next round: T9 S13 (acceptance to be written), T14 stage 2 (quality tiers), T11 `OWNER-CHECK`, the RE questions OQ-131/132; PR #16 (T15 stage 1) stays a draft.
+
+Previous: 2026-10-23 j.
 - **Merged:** T10b as 36d7405 (PR #24) and T9 S10 as 0ebfeb2 (PR #25), CI green on both, §4.
 - **Owner decisions 2026-10-23:** OQ-125, the free-build cheat stays session-wide. OQ-121: an opt-in `rules` option restores the `MINIMAP_ALERT` lost in S01_09_01; the default keeps it lost (T20).
 - **Round j, two orchestrator subagents:** T9 S11 (`src/sim`) and T14 (`src/render` GPU, `docs/perf`). They share no files. Every build, ctest and benchmark goes through the heavy-job lock (`python <scratchpad>\heavy.py <command>`), so only one heavy job runs at a time on this PC. PR #16 (T15 stage 1) stays a draft until an owner-agreed driving session.
@@ -250,7 +256,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   3. write the table into `docs/formats/sze.md` and the RE note; list the twelve shipped profiles with their column values (P, from the nine endless `.sze` files) in the resurvey note §3.
 - **Acceptance:** every column named or marked unknown with the reason; addresses for every claim; report in REPORTS.md.
 
-### T14 — The compositor on weak GPUs (the Radeon iGPU) · **stage 1 `IN PROGRESS`** (round j, orchestrator subagent, worktree `C:\Users\altin\anno1503-T14`; T3 stage 3 and T11 stage 2a are merged) · was `READY after T3 stage 3` (owner decision 2026-10-21 n: "Agree with your recommendation"; it edits `gpu.cpp` / `gpu.wgsl`) · branch `task/T14-weak-gpu` from `main`
+### T14 — The compositor on weak GPUs (the Radeon iGPU) · stage 1 **`DONE`** (merged as c46bc81 on 2026-10-23, PR #27, CI green; acceptance item 3, the 8 ms iGPU frame, missed and left to stage 2; §4) · stage 2 `LATER` · was `IN PROGRESS` (round j, orchestrator subagent, worktree `C:\Users\altin\anno1503-T14`; T3 stage 3 and T11 stage 2a are merged) · was `READY after T3 stage 3` (owner decision 2026-10-21 n: "Agree with your recommendation"; it edits `gpu.cpp` / `gpu.wgsl`) · branch `task/T14-weak-gpu` from `main`
 - **Stage 1 (round j) = Do items (1) and (2):** attribute the cost, then bound the area-proportional passes. Item (3), the quality tiers, is stage 2: it needs the owner's side-by-side look before a default is set.
 - **Stage 1 acceptance (written before work starts):**
   1. per-pass GPU timestamps (sea shading, coast, wave simulation, rivers, chunks, resample, anything else measured) on the Radeon iGPU **and** the RTX 4090, at 1280x800 and 2560x1440, scale 1 and the T3 worst far-zoom points, both water styles, in `docs/perf/README.md` (p50/p95/p99/max, adapter, commit);
@@ -333,7 +339,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 ### T8 — Sim stage S9: replay and session · **`DONE`** (merged as aa85d73 on 2026-10-23, PR #19, CI green; §4 round i) · was `IN PROGRESS` (round i: the fix-up of §4 items 1, 2, 4, 6, 7 and the nits runs in an orchestrator subagent on the same branch; then re-review and merge, then PLAN S9 done) · was `REVIEW` (PR #19, reviewed 2026-10-22 h, §4: items 1, 2, 4, 6, 7 open, then merge) · was `READY` since T7b is merged (2026-10-22); **round e: run by one subagent of the main executor** (the second executor did not start it); originally assigned to the second executor in round c; it carries the T7b requirements (framing helper, `state.md` §15 S9) · `PARALLEL-OK` (only `src/sim`, `src/tools/sim_replay`, `docs/sim`) · branch `task/T8-sim-s9-replay` from `main` (worktree `C:\Users\altin\anno1503-T8`)
 - Per `state.md` §15 S9 including `src/tools/sim_replay/`. Unlocked by the orchestrator.
 
-### T9 — Sim stages S10–S15 · S10 **`DONE`** (merged as 0ebfeb2, PR #25) · S11 **`DONE`** (merged as 9393718 on 2026-10-23, PR #26, CI green; §4) · **S12 `IN PROGRESS`** (round j, orchestrator subagent, branch `task/T9-sim-s12-time`, worktree `C:\Users\altin\anno1503-T9`) · S13–S15 `LATER`
+### T9 — Sim stages S10–S15 · S10 **`DONE`** (merged as 0ebfeb2, PR #25) · S11 **`DONE`** (merged as 9393718 on 2026-10-23, PR #26, CI green; §4) · S12 **`DONE`** (merged as a727eb7 on 2026-10-23, PR #28, CI green; §4) · was `IN PROGRESS` (round j, orchestrator subagent, branch `task/T9-sim-s12-time`, worktree `C:\Users\altin\anno1503-T9`) · S13–S15 `LATER`
 - **S12 (world-level time)**, as written in `state.md` §15 S12: `events.cpp` (queue, dispatch, seams), `timers.cpp`, the monopoly, the 7.5 min event, `figures_tick` with the slot policy and phases B/C/D.
 - **S12 acceptance (written before work starts):**
   1. every test name listed in §15 S12 exists in `world_events_test.cpp` and passes:
@@ -383,7 +389,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 
 ## 4. Review log (orchestrator)
 
-- **T9 S12 (2026-10-23 j, PR #28, head 25024cd). Approved; merge when CI is green.**
+- **T9 S12 (2026-10-23 j, PR #28, head 25024cd). Approved; merge when CI is green.** → **Merged as a727eb7 (2026-10-23 k).** Fix-up re-reviewed at 4bea059: all seven items done (rule default off, both modes tested, G4 re-derived on the default, F5 row, OQ-133, stream 107, gates; the full with-game-dir ctest not repeated because of the memory guard, the 515 sim cases run with the game dir). Orchestrator fix a488e23: the stale `else T.counter[0] -= dt` line in `timers_tick`'s pseudo-code. CI 10/10 on a488e23.
   - What it builds:
     - world-level time: event dispatch with handler seams, the D4 second pass;
     - figure registry phases B/C/D;
@@ -416,7 +422,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
     7. gates.
   - New RE questions: OQ-131 (phase D removal through `0x10097770`) and OQ-132 (whether saves keep the accumulators).
 
-- **T14 stage 1 (2026-10-23 j, PR #27, head 74bbff2). Approved after one fix-up (below); merge when CI is green.**
+- **T14 stage 1 (2026-10-23 j, PR #27, head 74bbff2). Approved after one fix-up (below); merge when CI is green.** → **Merged as c46bc81 (2026-10-23 j), the fix-up 587ca4c included; build clean and 800/800 on the combined code.**
   - Per-pass GPU timestamps on both adapters. The wave simulation (`fluid`) was outside T3's timed span and is the iGPU's largest pass.
   - The wave window's cells per screen pixel are bounded at far zoom (`GpuLimits::fluid_max_cells_per_px`, default 0.25).
   - Acceptance item 3 (no iGPU frame above 8 ms at 1280x800) is **missed and stated**: worst 51.6 ms. Left for stage 2: sea shading 25 ms (36-40 ms on derived levels), the simulation at its scale-1 cost 11-17 ms, the composed grid ~9 ms.

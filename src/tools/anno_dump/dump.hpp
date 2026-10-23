@@ -42,6 +42,7 @@ bool dump_sze(Bytes buf, bool full, std::string& out);
 bool dump_keyed(Bytes buf, std::string& out);
 bool dump_texte(Bytes buf, bool full, std::string& out);
 bool dump_zei(Bytes buf, bool full, std::string& out);
+bool dump_bigbrother(Bytes buf, bool full, std::string& out);
 /// `frames <game_dir> <entry id>...`; returns the exit code.
 int dump_frames(const std::string& dir, const std::vector<std::string>& ids);
 

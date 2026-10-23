@@ -174,6 +174,76 @@ class Synthetic(unittest.TestCase):
                         with self.assertRaises(bb.ScriptError):
                             bb.payload(path)
 
+    def test_a_condition_deeper_than_the_limit_is_refused(self):
+        n = bb.MAX_CONDITION_DEPTH
+
+        def cond(text: str, **kw):
+            return bb.parse(bb.SAMPLE.replace(SAMPLE_COND, text.encode()), **kw)
+
+        chain = lambda k, op="&&": " ".join([f"A{i} {op}" for i in range(k)] + [f"A{k}"])
+        nest = lambda k: "(" * k + "A" + ")" * k
+        cond(chain(n))
+        cond(nest(n))
+        cond("A && (" + nest(n - 2) + ")")
+        cond("(" + nest(n - 2) + ") && A")              # a left operand lies under its connective
+        for text in (chain(n + 1), nest(n + 1), "A && (" + nest(n - 1) + ")",
+                     "(" + nest(n - 1) + ") && A", nest(100000), chain(3000) + " || Z"):
+            with self.subTest(text=text[:20]), self.assertRaises(bb.ScriptError):
+                cond(text)
+        cond(nest(400), max_condition_depth=400)
+
+    def test_an_unknown_section_is_kept_not_refused(self):
+        # The interpreter also knows STARTUP (OQ-122); a section of another name is kept as read.
+        for data in (bb.SAMPLE + b"[STARTUP]\nSPEED = 2\r\n",
+                     b"[STARTUP]\n\n" + bb.SAMPLE,
+                     bb.SAMPLE.replace(b"[SCRIPT_KERNEL]\n", b"[STARTUP]\n[SCRIPT_KERNEL]\n")):
+            with self.subTest(data=data[:40]):
+                s = bb.parse(data)
+                self.assertEqual(s.emit(), data)
+                self.assertEqual([x.name for x in s.sections if x.name not in bb.SECTIONS], ["[STARTUP]"])
+                self.assertEqual(s.section("[STARTUP]").items, [])
+                self.assertEqual(len(s.section("[SCRIPT_KERNEL]").items), 4)
+
+    def test_the_dump(self):
+        lines = bb.dump_lines(bb.parse(bb.SAMPLE))
+        self.assertEqual(lines[0], f"SCRIPT bytes={len(bb.SAMPLE)} tokens=175 sections=6 crlf=22 lf=13")
+        self.assertEqual(lines[1:4], ["[OBJECT_DEFINE]", '  OBJECT_FIGUR "BOAT" 7', '  OBJECT_ANLAGE "MILL" 10,20,1001'])
+        self.assertIn('  "A1" 1,2,30,40', lines)
+        self.assertIn('  "DUMMYPLAYER" 31', lines)
+        self.assertIn("  SCHUETTIINITSIG = TRUE", lines)
+        self.assertEqual(lines[-1], "  0,0")
+        self.assertIn("    CALL QUESTLOG_DRAW()  (no ())", lines)
+        self.assertIn("    CALL WON(\"HUMAN\")  (no ;)  (the interpreter refuses the kernel: no ';' follows)", lines)
+        self.assertIn('  IF (GO && (AREA "A1" TOUCHED_BY_SHIP_FROM "HUMAN" || '
+                      'PLAYER "HUMAN" INHABITANTCOUNT "SIEDLER" > 9)) THEN', lines)
+        self.assertFalse(any("grouped by" in x for x in lines))        # not mixed: parenthesised
+        mixed = bb.dump_lines(bb.parse(bb.SAMPLE.replace(b"GO && (", b"GO && ").replace(b"> 9)", b"> 9")))
+        self.assertIn('     grouped by the interpreter: (GO && (AREA "A1" TOUCHED_BY_SHIP_FROM "HUMAN" || '
+                      'PLAYER "HUMAN" INHABITANTCOUNT "SIEDLER" > 9))', mixed)
+        full = bb.dump_lines(bb.parse(bb.SAMPLE), full=True)
+        tokens = [x for x in full if x.startswith("TOKEN ")]
+        self.assertEqual(len(tokens), 175)
+        self.assertEqual(tokens[:2], ["TOKEN 0 SECTION [OBJECT_DEFINE]", "TOKEN 15 NEWLINE \n"])
+        # The printed text is ASCII on every platform: other bytes as \xHH, the backslash too.
+        self.assertEqual(bb.esc("A\xe4\t\r\n\\~"), "A\\xe4\\x09\\x0d\\x0a\\x5c~")
+        self.assertEqual(bb.esc(tokens[1]), "TOKEN 15 NEWLINE \\x0a")
+        # Numbers in define lines print as their values.
+        moved = bb.dump_lines(bb.parse(bb.SAMPLE.replace(b'"HUMAN" 0\n', b'"HUMAN" -00\n')))
+        self.assertIn('  "HUMAN" 0', moved)
+
+    def test_the_synthetic_fixtures_are_the_generators_output(self):
+        import bigbrother_fixtures
+        for name, data in bigbrother_fixtures.files().items():
+            with self.subTest(name=name), open(os.path.join(bigbrother_fixtures.OUT, name), "rb") as f:
+                self.assertEqual(f.read(), data)
+        for name, data in bigbrother_fixtures.files().items():
+            with self.subTest(name=name):
+                if name.startswith("bad_"):
+                    with self.assertRaises(bb.ScriptError):
+                        bb.parse(bb.payload_of(data))
+                else:
+                    self.assertEqual(bb.parse(bb.payload_of(data)).emit(), bb.payload_of(data))
+
     def test_timers_are_numbered(self):
         self.assertTrue(bb.is_timer("TIMER_0"))
         self.assertTrue(bb.is_timer("TIMER_12"))

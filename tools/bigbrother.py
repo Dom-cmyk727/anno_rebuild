@@ -4,7 +4,8 @@ script format (T17).
 
   bigbrother.py check <file.sze|.sav>...      parse every script, re-emit, compare bytes; exit 1 on
                                               any failure (the corpus check: all 50 .sze)
-  bigbrother.py dump <file>                   the parse tree, one line per item
+  bigbrother.py dump [--full] <file>...       the parse tree, one line per item; --full adds
+                                              every token (the same bytes as anno-dump bigbrother)
   bigbrother.py vocab <file>...               usage counts: sections, statements, conditions,
                                               actions with argument signatures, disaster types,
                                               string arguments, variables and signals
@@ -18,7 +19,8 @@ script format (T17).
 Design. The lexer turns EVERY byte into exactly one token (whitespace, newlines and `$` comments
 are tokens too); the text is Latin-1, which maps bytes to characters 1:1. The parser builds the
 tree over the significant tokens and must account for all of them, so anything outside the grammar
-read from the 50 shipped scripts is an error, not a fallback. Emission walks the tree's sections
+read from the 50 shipped scripts is an error, not a fallback; only a section of an unknown name is
+kept unread (STARTUP, OQ-122). Emission walks the tree's sections
 and concatenates their tokens, so the round trip is byte-identical by construction and is checked.
 
 Doctests (synthetic text of our own, no content of the original): `python -I -m doctest tools/bigbrother.py`;
@@ -82,6 +84,12 @@ COMPARE = ("==", "<", ">")          # the comparisons the scripts use (P); != <=
 BOOL = ("TRUE", "FALSE")
 KEYWORDS = ("INITBLOCK", "SET", "IF", "THEN", "ELSE")
 RESERVED = KEYWORDS + BOOL          # never a variable, signal, call or query name (P)
+# How deep a condition may nest: along any path of its grouping (`grouped`), the connectives plus
+# the parentheses. The parser and the walks here recurse once per level, as the interpreter's
+# condition parser does (AnnoScene 0x10022bf0 recurses on each connective and group), so a deeper
+# (modded) script is refused instead of hitting the recursion limit. The shipped scripts need 21
+# (P). The same default as the C++ reader's Options::max_condition_depth; parse() takes another.
+MAX_CONDITION_DEPTH = 256
 
 # A synthetic script in the shipped shape (LF headers and define lines, CRLF script lines), for the
 # doctests: no text of the original.
@@ -330,12 +338,27 @@ def primary(c: Cursor) -> Primary:
     return p
 
 
-def condition(c: Cursor, depth: int = 0) -> Group:
+def written_depth(g: Group) -> int:
+    """The depth MAX_CONDITION_DEPTH bounds: along any path of the condition as written, the
+    connectives `grouped` nests it under plus the parentheses. Term i of k connectives lies under
+    i + 1 of them, the last one under k."""
+    terms = g.items[0::2]
+    k = len(terms) - 1
+    return max((i + 1 if i < k else k) + (1 + written_depth(x) if isinstance(x, Group) else 0)
+               for i, x in enumerate(terms))
+
+
+def condition(c: Cursor, base: int = 0, max_depth: int = MAX_CONDITION_DEPTH) -> Group:
+    """`base`: a lower bound of this condition's depth (written_depth). Checking it before each
+    term bounds the recursion while parsing; parse_kernel checks the exact depth."""
     items = []
     while True:
+        level = base + len(items) // 2
+        if level + c.is_("OP", "(") > max_depth:
+            c.fail(f"condition nested deeper than {max_depth} levels")
         if c.is_("OP", "("):
             c.take()
-            items.append(condition(c, depth + 1))
+            items.append(condition(c, level + 1, max_depth))
             c.take("OP", ")")
         else:
             items.append(primary(c))
@@ -391,7 +414,7 @@ def block(c: Cursor) -> list:
     return body
 
 
-def parse_kernel(body: list[Tok]) -> list:
+def parse_kernel(body: list[Tok], max_depth: int = MAX_CONDITION_DEPTH) -> list:
     c = Cursor(body, "[SCRIPT_KERNEL]")
     items = []
     while not c.done():
@@ -406,7 +429,10 @@ def parse_kernel(body: list[Tok]) -> list:
             v = value(c)
             items.append(Assign(name, v, True, end(c), t.off))
         elif t.text == "IF":
-            cond = condition(c)
+            cond = condition(c, 0, max_depth)
+            if written_depth(cond) > max_depth:
+                raise ScriptError(f"[SCRIPT_KERNEL]: the condition of the IF at offset {t.off} "
+                                  f"nests deeper than {max_depth} levels")
             if not c.is_("IDENT", "THEN"):
                 c.fail(f"expected THEN for the IF at offset {t.off}")
             c.take()
@@ -421,13 +447,14 @@ def parse_kernel(body: list[Tok]) -> list:
     return items
 
 
-def parse(data: bytes) -> Script:
+def parse(data: bytes, max_condition_depth: int = MAX_CONDITION_DEPTH) -> Script:
     """Offsets in errors count from the start of the payload (the chunk's data)."""
     toks = lex(data.decode(ENCODING))
     heads = [i for i, t in enumerate(toks) if t.kind == "SECTION"]
     names = tuple(toks[i].text for i in heads)
-    if names != SECTIONS:
-        raise ScriptError(f"sections {names} differ from {SECTIONS}")
+    known = tuple(n for n in names if n in SECTIONS)
+    if known != SECTIONS:               # the six, each once and in order; other names are kept
+        raise ScriptError(f"sections {known} differ from {SECTIONS}")
     if heads[0] != 0:
         raise ScriptError("text before the first section")
     for i in heads:            # a header is a line of its own (P: 300 of 300)
@@ -437,7 +464,12 @@ def parse(data: bytes) -> Script:
     for k, i in enumerate(heads):
         j = heads[k + 1] if k + 1 < len(heads) else len(toks)
         name, body = toks[i].text, toks[i + 1:j]
-        items = parse_kernel(body) if name == "[SCRIPT_KERNEL]" else parse_defines(name, body)
+        if name not in SECTIONS:        # e.g. STARTUP (OQ-122): kept as read, not interpreted
+            items = []
+        elif name == "[SCRIPT_KERNEL]":
+            items = parse_kernel(body, max_condition_depth)
+        else:
+            items = parse_defines(name, body)
         sections.append(Section(name, toks[i:j], items))
     return Script(sections)
 
@@ -446,7 +478,11 @@ def parse(data: bytes) -> Script:
 def payload(path: str) -> bytes:
     """The BIGBROTHER payload of a scenario (ANNO*/SCENE/...) or a savegame (ANNO*/...)."""
     with open(path, "rb") as f:
-        buf = f.read()
+        return payload_of(f.read())
+
+
+def payload_of(buf: bytes) -> bytes:
+    """As payload, from the file's bytes."""
     tree, _ = chunks.parse_file(buf)
     if not tree or tree[0][0] not in ("ANNO", "ANNOADDON1") or tree[0][3] is None:
         raise ScriptError("no ANNO or ANNOADDON1 container")
@@ -586,8 +622,10 @@ def read_on(script: Script) -> list[tuple]:
     later statement, in a comment, or past the block's '}'. Returns one (statement, end, lost)
     per such statement: `end` is the payload offset of that ';', `lost` the statements of the same
     block that start before it, which are read into the statement and dropped (an action's reader
-    ignores the text after its arguments). A ';' past the '}' loses nothing, because the kernel
-    reader resumes after the '}'. `end` None: no ';' follows in the kernel text, and the
+    ignores the text after its arguments). What lies past the block's '}' is not lost, because the
+    kernel reader resumes after the '}'. Not modelled (no shipped case): when that ';' stands in a
+    comment or a string with text after it, the interpreter's next statement starts right after
+    the ';'. `end` None: no ';' follows in the kernel text, and the
     interpreter refuses the kernel ("FunktionsBlock nicht oder falsch definiert", 0x1003f7c4). A
     top-level SET without ';' is not listed: it loses nothing (the reader takes the next word)."""
     text = script.emit().decode(ENCODING)
@@ -623,48 +661,96 @@ def stmt_text(st) -> str:
     return f"{st.name}({', '.join(v.text for v in st.args)})" if st.parens else st.name
 
 
-def cmd_dump(path: str) -> int:
-    s = parse(payload(path))
+def esc(line: str) -> str:
+    """The dump is ASCII on every platform: printable ASCII except a backslash as is, every other
+    character (a Latin-1 byte, a tab, a line break) as backslash, x, two hex digits."""
+    return "".join(c if " " <= c <= "~" and c != "\\" else f"\\x{ord(c):02x}" for c in line)
+
+
+def dump_lines(s: Script, full: bool = False) -> list[str]:
+    """The `dump` text of one script, before `esc` (docs/formats/bigbrother.md §8)."""
+    toks = [t for sec in s.sections for t in sec.tokens]
+    crlf = sum(t.text == "\r\n" for t in toks)
+    lf = sum(t.text == "\n" for t in toks)
+    out = [f"SCRIPT bytes={sum(len(t.text) for t in toks)} tokens={len(toks)} "
+           f"sections={len(s.sections)} crlf={crlf} lf={lf}"]
     swallowed = {id(st): (end, lost) for st, end, lost in read_on(s)}
     lost_ids = {id(x) for _end, lost in swallowed.values() for x in lost}
+
+    def stmt(st, ind):
+        if isinstance(st, Assign):
+            line = f"{ind}{'SET ' if st.is_set else ''}{st.name} = {st.value.text}"
+        else:
+            line = f"{ind}CALL {st.name}({', '.join(v.text for v in st.args)})"
+            line += "" if st.parens else "  (no ())"
+        line += "" if st.semicolon else "  (no ;)"
+        if id(st) in swallowed:
+            end, lost = swallowed[id(st)]
+            line += ("  (the interpreter refuses the kernel: no ';' follows)" if end is None else
+                     f"  (reads on to the ';' at offset {end}; loses {len(lost)} statement(s))")
+        if id(st) in lost_ids:
+            line += "  (LOST: read into the statement before)"
+        out.append(line)
+
     for sec in s.sections:
-        print(sec.name)
-        if sec.name != "[SCRIPT_KERNEL]":
-            for it in sec.items:
-                print("  ", {k: v for k, v in it.items() if k != "off"})
+        if sec.name not in SECTIONS:
+            out.append(f"{sec.name}  (not read: {len(sec.tokens) - 1} tokens kept)")
             continue
-
-        def stmts(body, ind):
-            for st in body:
-                if isinstance(st, Assign):
-                    note = '' if st.semicolon else '  (no ;)'
-                    print(f"{ind}{'SET ' if st.is_set else ''}{st.name} = {st.value.text}{note}"
-                          f"{'  (LOST: read into the statement before)' if id(st) in lost_ids else ''}")
-                elif isinstance(st, Call):
-                    a = ", ".join(v.text for v in st.args)
-                    note = '' if st.semicolon else '  (no ;)'
-                    if id(st) in swallowed:
-                        end, lost = swallowed[id(st)]
-                        note += ("  (the interpreter refuses the kernel: no ';' follows)" if end is None else
-                                 f"  (reads on to the ';' at offset {end}; loses {len(lost)} statement(s))")
-                    print(f"{ind}CALL {st.name}({a}){'' if st.parens else '  (no ())'}{note}"
-                          f"{'  (LOST: read into the statement before)' if id(st) in lost_ids else ''}")
-
+        out.append(sec.name)
         for it in sec.items:
-            if isinstance(it, InitBlock):
-                print("  INITBLOCK")
-                stmts(it.body, "    ")
+            if sec.name == "[OBJECT_DEFINE]":
+                out.append(f'  {it["kind"]} "{it["name"]}" {",".join(str(n) for n in it["numbers"])}')
+            elif sec.name == "[AREA_DEFINE]":
+                out.append(f'  "{it["name"]}" {",".join(str(n) for n in it["rect"])}')
+            elif sec.name == "[PLAYERMAPPER_DEFINE]":
+                out.append(f'  "{it["name"]}" {it["player"]}')
+            elif sec.name == "[SIGNALS]":
+                out.append(f'  {it["name"]} = {"TRUE" if it["value"] else "FALSE"}')
+            elif sec.name == "[CAMARAPOS]":
+                out.append(f'  {it["pos"][0]},{it["pos"][1]}')
+            elif isinstance(it, InitBlock):
+                out.append("  INITBLOCK")
+                for st in it.body:
+                    stmt(st, "    ")
             elif isinstance(it, Assign):
-                stmts([it], "  ")
+                stmt(it, "  ")
             elif isinstance(it, If):
-                print(f"  IF {describe(it.cond)} THEN")
+                out.append(f"  IF {describe(it.cond)} THEN")
                 if is_mixed(it.cond):
-                    print(f"     grouped by the interpreter: {describe_grouped(grouped(it.cond))}")
-                stmts(it.then, "    ")
+                    out.append(f"     grouped by the interpreter: {describe_grouped(grouped(it.cond))}")
+                for st in it.then:
+                    stmt(st, "    ")
                 if it.els is not None:
-                    print("  ELSE")
-                    stmts(it.els, "    ")
-    return 0
+                    out.append("  ELSE")
+                    for st in it.els:
+                        stmt(st, "    ")
+    if full:
+        out += [f"TOKEN {t.off} {t.kind} {t.text}" for t in toks]
+    return out
+
+
+def cmd_dump(files, full: bool) -> int:
+    """`dump [--full] <file>...`: the same bytes as `anno-dump bigbrother [--full] <file>...`."""
+    bad = 0
+    for f in files:
+        try:
+            with open(f, "rb") as fh:
+                buf = fh.read()
+        except OSError:
+            print(f"{f}: cannot read", file=sys.stderr)
+            bad += 1
+            continue
+        print(f"# {f}")
+        try:
+            s = parse(payload_of(buf))
+        except ScriptError as e:
+            print(f"NOPARSE: {e}", file=sys.stderr)
+            print("NOPARSE")
+            bad += 1
+            continue
+        for line in dump_lines(s, full):
+            print(esc(line))
+    return 1 if bad else 0
 
 
 def cmd_quirks(files) -> int:
@@ -813,8 +899,10 @@ def cmd_keywords(dll: str, files) -> int:
 def main(argv) -> int:
     if len(argv) >= 2 and argv[0] == "check":
         return cmd_check(argv[1:])
-    if len(argv) == 2 and argv[0] == "dump":
-        return cmd_dump(argv[1])
+    if len(argv) >= 2 and argv[0] == "dump":
+        full = argv[1] == "--full"
+        if len(argv) > 1 + full:
+            return cmd_dump(argv[1 + full:], full)
     if len(argv) >= 2 and argv[0] == "vocab":
         return cmd_vocab(argv[1:])
     if len(argv) >= 3 and argv[0] == "keywords":

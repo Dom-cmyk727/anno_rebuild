@@ -1325,3 +1325,89 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
   - `g5.log` is 298 KB.
 - OQ numbers used: **OQ-140** only (OQ-134..139 left to T21).
 - Time spent / subagents used: two reviewer subagents (read-only); builds, 32 mutation runs and the gates by this session, one heavy job at a time.
+
+## T20 stage 1 — The scenario script engine in C++: the `BIGBROTHER` reader, `anno-dump bigbrother`, `agree.py` — 2026-10-23 — status: FINISHED
+- Branch: task/T20-bigbrother-reader (9 commits on a7c7d53); worktree: C:\Users\altin\anno1503-T20. Files: the new ones of the T20 entry, plus `tools/bigbrother.py`, `tools/test_bigbrother.py`, the new generator `tools/bigbrother_fixtures.py`, `docs/formats/bigbrother.md`, `docs/formats/README.md` and `docs/PLAN.md` (M1.5).
+- Built:
+  - `anno::formats::bigbrother` (`src/formats/{include/anno/formats,src}/bigbrother.*`):
+    - `lex`/`parse` return `Result<…, Error>`; `Error` carries the byte offset, the line and the reason;
+    - `emit` gives back the input byte for byte (every byte is in one token: CRLF/LF, blanks, comments, touching tokens);
+    - `find_payload` reads a scenario (root > SCENE > BIGBROTHER) or a savegame (root > BIGBROTHER);
+    - the interpreter's reading: `grouped` (equal rank, grouped to the right, parentheses as written), `is_mixed`, `describe`, and `read_on` (the block statements without `;`, the `;` each runs on to, and what it swallows).
+
+    No evaluation, no sim link. The six section names of §3, the three object kinds and the three subjects are tables. An unknown section (`STARTUP`, OQ-122) is kept as read. No §4–§6 names are compiled in.
+  - `anno-dump bigbrother [--full] <file.sze|file.sav>...` (`src/tools/anno_dump/dump_bigbrother.cpp`) prints the bytes of `tools/bigbrother.py dump [--full]`. `--full` adds every token with offset and kind. The format is in `bigbrother.md` §8, "Reference dump".
+  - `tools/agree.py`, `bigbrother` cases:
+    - the accepted fixtures, plain and `--full`;
+    - all fixtures, with the refused `bad_*`;
+    - with the game dir, the 50 `.sze`, plain and `--full`.
+
+    `ANNO_DUMP_PORTED_COMMANDS` gets `bigbrother`.
+  - Fixtures: `fixtures/synthetic/bigbrother_synthetic/`, 17 chunk files written by `tools/bigbrother_fixtures.py`. They are our own text, and as binary files git keeps their mixed line endings under `core.autocrlf`. `test_bigbrother.py` checks the committed files equal the generator's output.
+    - Accepted (9): grammar (every token kind, touching tokens, Latin-1), lf, crlf, mixed, read_on (the four shapes), refuse, edge, startup, saved.sav.
+    - Refused (8): order, byte, then, semicolon, define, deep, two, none.
+- **Python oracle changed, and why** (a3b4614, before the C++). The old `dump` could not be the oracle:
+  - **Unstable:** six shipped player names hold Latin-1 bytes, which went out through Python's stdout encoding (cp1252 on a Windows pipe, UTF-8 on Linux), and the define lines were Python dict reprs;
+  - **One file only, and a traceback on a refused script.**
+
+  Now:
+  - one `# path` per file;
+  - define lines as text;
+  - every byte outside printable ASCII, and `\`, as `\xHH`;
+  - `NOPARSE` and exit 1 on a refusal;
+  - the read-on note also on assignments;
+  - `--full`.
+
+  `parse` keeps an unknown section, as the task requires; the six known ones stay required once each and in order. In review fixes, both readers got the same nesting limit (below). `check`, `quirks`, `vocab` and `keywords` are unchanged.
+- **One new limit, an option:** `Options::max_condition_depth`, default `kMaxConditionDepth` = 256 (Python `MAX_CONDITION_DEPTH`). It counts the connectives `grouped` nests a term under plus the parentheses, along any path of a condition.
+  - Reason: the parser and every walk recurse once per level, as the interpreter's parser does (`0x10022bf0`). Without the bound, 1,500 nested `(` or a 3,000-term chain overflowed the stack (exit 0xC00000FD, review A).
+  - The corpus needs 21 (P).
+- Gates (preset msvc, head 068d421; this report commit is docs only):
+  - MSVC full build: warning-free.
+  - ctest `-j 16` (`ANNO_TEST_THREADS=16`): 852/852 with the game dir (503 s), 852/852 without.
+  - `agree.py`: `--commands bigbrother` 5/5 with the game dir, 3/3 without. The default list: 23/23 without the game dir; 43/43 with it (as the ctest case `anno_dump_agrees_with_python` in the with-game-dir run).
+  - clang-format 23.1.3 over `src`: clean.
+  - WSL `tools/check_unix_warnings.sh`: GCC 13.3 and Clang 18.1.3 at `-O3 -Werror`, all 139 files clean.
+  - The formats tests built in WSL with GCC 13.3 at the CI flags: 60/60 without and with the game dir. Not run under Clang 18, which is not on the WSL PATH; the script's Clang pass compiles them.
+  - Python: `test_bigbrother.py` 30 OK with the game dir; without it 25 OK and 5 clean skips. The doctests pass.
+- Evidence:
+  - **Tests** (`src/formats/tests/bigbrother_test.cpp`):
+    - round trip of the 9 accepted fixtures; every byte one token, all 8 kinds, both line endings, no CR outside a newline token; Latin-1 0x80–0xFF; the tree with values, kinds and offsets;
+    - an unknown section at the start, in the middle and at the end;
+    - known sections swapped, missing or twice;
+    - 54 refused edits, each checked for its line, plus checks of the offending offset;
+    - text before the first section; the payload rule (incl. the first SCENE container and a leaf SCENE); `to_integer`/`canonical_integer`;
+    - the grouping table; the grouping against C precedence (truth tables: different exactly where the connectives mix in the guarded shape; `A || B && C` mixes but is the same function); the mixed fixture;
+    - `read_on`: the four shipped shapes on synthetic copies, the refused kernel, two in a row, the `[` bound (an unknown section's and one in a comment); the edge fixture; the depth limit; no vocabulary.
+  - **Corpus** (`bigbrother_corpus_test.cpp`, with `ANNO1503_GAME_DIR`; the output is file names and counts only):
+    - 50/50 byte-identical;
+    - 35 INITBLOCK, 271 SET, 308 IF, 3 ELSE, 382 assignments, 1,656 calls;
+    - 4 without `;`, 1 without `()`, 24 timer and 429 variable primaries, 1,273 comments, 147 variables, 37 scripts with statements;
+    - `[SIGNALS]` = `SCHUETTIINITSIG` + the SETs in all 50;
+    - 28 mixed conditions in 10 files, all 28 differ from C and are guarded by their first term;
+    - 0 refused kernels, 3 block statements without `;` (SET_PROFILE, SET_DIPLOMACY, SET_FOR_BUY), 1 lost statement (MINIMAP_ALERT, S01_09_01).
+  - **Mutations** (scratch scripts, each built and run through the heavy-job lock; the source is restored byte-identical after each):
+    - (a) grouping left-grouped: fails the grouping table, C precedence, the mixed fixture and the corpus reading (`guarded`, `differ`); agree fails.
+    - (b) `read_on` searching only up to the block's `}`: fails the past-`}` assertions (LAST_ONE in "the four kinds…"; SET_DIPLOMACY in the corpus reading); agree fails. As review B noted, the swallowed-statement assertions do not fail under this mutant, because that `;` lies before the `}`. The swallowed case is (c).
+    - (c) `read_on` never losing a statement: fails "the four kinds…" (TRADE/BEEP), two in a row, the edge fixture and the corpus case (MINIMAP_ALERT); agree fails.
+    - (d) CRLF lexed as LF: fails the round trips, "CRLF and LF are kept", Latin-1, unknown sections, "every byte is one token", the read-on cases and the corpus 50/50; agree fails.
+    - Review B's 17 proposals, plus my check that the exact-depth check is not dead (each killed): the `[` bound; ELSE skipped in `read_on`; lower-case headers; a lone `-`; a CR in a string; operator order; SET/INITBLOCK/FALSE not reserved; the last SCENE; a leaf SCENE; the define-line error offset; empty `()`; primary offsets; blank munching; a comment taking the CR; the exact-depth check disabled. All by the unit tests. The dump's number and escape mutants (3) are caught by agree.py only.
+- Reviewers (two, one after the other, read-only, given the diff and the spec):
+  - **A (spec and oracle):** 63 probes and the corpus agree byte for byte. Found:
+    - **must-fix:** a stack overflow on deep nesting. Fixed with the limit above, in both readers, plus tests and `bad_deep.sze`;
+    - an overflow on long `&&`/`||` chains: covered by the same limit;
+    - the duplicate-name error naming another name than the reference: aligned;
+    - stale "everything is refused" comments, the "`;` past `}` loses nothing" wording, and an unmodelled case (a `;` in a comment or string with text after it): documented in §3.4, `bigbrother.hpp` and `read_on`;
+    - §8 inexact on define numbers, describe's spacing, the path line and unreadable files: corrected;
+    - nits: an empty Condition, the truth-table shift, `<tuple>`, an unused include. Fixed.
+    - Left as is: `agree.py` prints up to 200 bytes of the first differing line, which on a corpus failure would be shipped script text (existing behaviour for every command; local only, since CI has no game dir).
+  - **B (acceptance and mutations):** every item the code can show is met; the four required mutations are killed. Found:
+    - **should-fix:** the depth check undercounted a left operand. Fixed: the exact depth is checked after each condition, with tests for `(deep) && A`;
+    - 12 mutants it expected to survive: tests and `edge.sze` added, all killed (above);
+    - the wording of mutation (b): see the evidence above;
+    - nits: an optional dereference without a REQUIRE in a test (fixed); the dump looking notes up by address (now by offset).
+- Left open / questions:
+  - **OQ-new, owner-relevant only once stage 2 evaluates:** the readers do not model a `;` that stands in a comment or string with text after it. The interpreter would start the next statement right after it (§3.4). No shipped script does this; a modded one could. Stage 2 should decide whether to model the original exactly.
+  - The OQ-121 `rules` option (restore `MINIMAP_ALERT`) is stage 2, as the task says.
+  - PR and CI: see the PR (MSVC takes about 50 min).
+- Time spent / subagents used: inline; two reviewer subagents (read-only). Every build, ctest, mutation and WSL run went through the heavy-job lock, one at a time, beside T9 S13.

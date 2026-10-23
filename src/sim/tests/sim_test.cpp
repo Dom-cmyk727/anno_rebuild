@@ -389,7 +389,9 @@ TEST_CASE("draw sources forward the site and the world stream") {
     CHECK(static_cast<int>(sim::DrawSite::CityRandomEvents) == 4);
     CHECK(static_cast<int>(sim::DrawSite::WildlifeSweep) == 5);
     CHECK(static_cast<int>(sim::DrawSite::Ai) == 6);
-    CHECK(static_cast<int>(sim::DrawSite::Count_) == 7);
+    CHECK(static_cast<int>(sim::DrawSite::LinkRawMaterial) == 7);
+    CHECK(static_cast<int>(sim::DrawSite::LinkTreasure) == 11);
+    CHECK(static_cast<int>(sim::DrawSite::Count_) == 12);
     CHECK(sim::DrawRecord{}.count == 0);
 }
 

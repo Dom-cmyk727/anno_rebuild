@@ -1325,3 +1325,63 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
   - `g5.log` is 298 KB.
 - OQ numbers used: **OQ-140** only (OQ-134..139 left to T21).
 - Time spent / subagents used: two reviewer subagents (read-only); builds, 32 mutation runs and the gates by this session, one heavy job at a time.
+
+## T22 — The figure removal path as the original's: the four OQ-131 deviations — 2026-10-23 — status: FINISHED
+- Branch: `task/T22-figure-removal-fix` from `main` at 8ccd301 (after the S13 merge 7c13f3b); worktree `C:\Users\altin\anno1503-T22`. Done by the executor session itself (owner: "Dont start a second subagent for T22, do it yourself"); T20 stage 1 ran in the one subagent at the same time.
+- Commits, one concern each:
+  1. baa0f5d `refactor(sim)`: `created_stamp` → `expiry_stamp` (bytes unchanged).
+  2. 3e5eddb `feat(sim)`: `SimConfig::figure_min_growth = 100` (D `0x10099185..0x100991a1`), validated as `list_min_growth`, in the header; `add_figure` uses it; test "figure registry grows by 100".
+  3. cdaa828 `fix(sim)`: the end path (`end_figure`), `destroy_figure` without a release, D12 through `end_figure`, `ReleaseCounter::figure`, `SerialWorld::end_figure`; `marked_for_delete`, `deferred`, `mark_figure_for_delete` and phase D removed; `validate_figures` and the §9.6 counter rule; `figure_removal_test.cpp`; the S12 figure tests re-derived.
+  4. 79e7300 `style(sim)`: clang-format of commit 3 (4 files, formatting only).
+  5. 3ef673b `test(sim)`: `kStateHashVersion` 108 → 109, goldens re-baselined, `g2.log` .. `g5.log` re-recorded, layout and slot numbers re-derived.
+  6. 289dbd1 `docs(sim)`: `state.md` §3, §4.9, §5.9, §9.3, §9.6, §15 "T22 as implemented"; OQ-131 fixed; PLAN.
+  7. 0efaeb7 `test(sim)`: a parameter renamed for GCC's `-Wshadow` (found by the WSL gate).
+- Built (`docs/sim/state.md` §15 "T22 as implemented"; every rule from OQ-131 / `docs/re/annowelt.md` "Unit registry", no new RE):
+  - `end_figure(figure, t, fx)` (D `0x1003b6e0`): a figure with a home puts `ReleaseCounter{home, counter}` into `fx`, its `home` becomes none; the stamp freezes at `u16(t)` (the Remove at `0x10034844`); a figure that has ended already is left alone. `end_figure(registry, figure, t, fx)` also appends it to `expiry`. `SerialWorld::end_figure(figure, t)` is the seam's door (the registry appends after the seam, `sync_figure_lists`).
+  - `Scheduler::destroy_figure` (phase C, D `0x10097520`) releases nothing.
+  - `ReleaseCounter::figure` (new): a release that names a figure goes through it, only while the figure still has a home, and clears it (the original's `+0x78` test). Own design, the seam protocol: a seam that sets the stamp directly is ended the same way (`sync_figure_lists` releases a stamped figure that still has a home).
+  - D12 (`interim_figure_return_ticks`, off by default) calls `end_figure` in phase B; the slot waits for phase C.
+  - Dropped: `Figure::marked_for_delete`, `FigureRegistry::deferred`, `mark_figure_for_delete`, phase D (comments keep the phase letters, D = pooled records, OQ-134).
+  - `validate_figures`: on `expiry` iff `expiry_stamp`; a stamp **and** a home is refused. `check_invariants` counts only figures that still have the home (read back on load: `World::load` runs `check_invariants`).
+- Acceptance:
+  1. **Met.** `figure_removal_test.cpp` (new, 6 cases): "figure registry grows by 100", "release at the end, not at the destroy" (counter 2; the end at T = 1000: counter 1, on `expiry` with stamp 1000, home none; tick 8450 still there; tick 8500 slot free, counter **still 1**), "a second release does nothing" (registry level: one release from two `end_figure` calls; seam level: end twice + a figure release → the counter moves once; a figure release alone, then the end: once; invariants clean after each), "the interim return goes on expiry" (N = 1000: ends at tick 1000, not 950; a figure put out at 2000 grows the list 1 → 100 and takes slot 1, slot 0 taken until tick 8450 and free at 8500; `field_count<FigureRegistry>` = 4: no deferred list), "a figure whose home was demolished ends without a release", "check_invariants counts the figures that still have the home" (an ended figure is not counted; a counter above its figures is reported; an ended figure with a home is refused).
+  2. **Met.** Changed assertions and why:
+     - `world_events_test.cpp` "registry count without +1": n is 100 (`figure_min_growth`), not 10: 20·100/50 = 40 visits (with +1: 41), cursor 40; d = 1: 2 visits, cursor 42; the clamp to 1 now needs d = 0 (`advance(1)` inside tick 21), cursor 43; d = 60: 120 cut to 100, a full lap, cursor 43; `/25`: 80.
+     - "expiry: phase C …": the figures on `expiry` have ended, so they hold no counter and the destroy releases nothing; an out figure added to show its counter stays 1.
+     - "counter release …" rewritten for the end path (it tested phase D): D12 with N = 1 ends four figures at tick 50 (counters back then), phase C frees the four slots at tick 7550 (7500 at 7500 not yet), length 100 and hint kept, no second release.
+     - "interim return: with the rule …": a figure now ends (stamp) at born + 1000 .. +1049 and its slot is freed 7500 .. 7549 ticks later; 400 advances so that slots are freed in the run.
+     - The seam protocol case: the `marked_for_delete` kinds removed; kind 3 ends through `SerialWorld::end_figure`; a seam that sets the stamp directly releases at once (weaver 2 → 1, farm 1 → 0 at tick 50); both slots freed at 7550.
+     - "a figure spawned during phase B …": 100 figures fill the list (was 10); the spawn grows 100 → 125 (was 10 → 12); 100 then 125 visits.
+     - "interim return reads a u32 age …": at tick 66 000 the figure has ended (stamp 66000, counter 0) instead of being gone.
+     - G4: the carrier put on `expiry` at tick 0 has ended, so it has no home and holds no counter (it held the weaver's counter until 7500 before); the farm's worker is out for the whole run (it was on the deferred list and ended in phase D); `worker_gone` is now never, `workers_out` 1.
+     - `slice_test.cpp`: 10 → 100 in "merge creates figures …", the merge model's growth rule, "figure registry creation …" (a stale index 700 → 7000 to stay past the end; the modded config uses `figure_min_growth` 20 with `list_min_growth` 50 to show which one counts); the validation and hostile-stream rows: the deferred rows replaced by "ended but still holding a counter", hint/cursor 10 → 100, edges 9 → 99; the byte layout: 100 slots, no `marked_for_delete` byte, the corrupt byte is the stamp's presence byte at 20 + 58 + 57; the save/load case: figure 2 has ended (home none, the farm's counter 0); the hash-field list has 12 members.
+     - Layout constants: the empty figures scope is 31 bytes, was 39 (`config_test.cpp`, `sim_test.cpp`, `player_test.cpp`, `island_helpers.hpp`); `building_div` is SimConfig's 21st field (`island_state_test.cpp`); the expected config bytes gain 100.
+  3. **Met**, the whole sim suite per mutant (MSVC, 531 cases):
+     - `destroy_figure` releasing again, alone: **equivalent** — the end cleared the home, so the destroy finds none to release. With the S12 behaviour restored (the end keeps the home and the destroy releases): 7 fail, "release at the end, not at the destroy" and "a second release does nothing" among them.
+     - `end_figure` not clearing `home`: 7 fail, "a second release does nothing" among them.
+     - The D12 rule freeing the slot in the same advance: 5 fail, "the interim return goes on expiry" among them.
+     - `figure_min_growth` read as `list_min_growth`: 15 fail, "figure registry grows by 100" and G1–G4 among them. G5 does not move: its scenario has no figure, so its registry never grows.
+     - `expiry_stamp` set to the spawn tick: 8 fail, "release at the end, not at the destroy" among them.
+  4. **Met.** `validate_figures` as above; the §9.6 rule is `check_invariants`', which `World::load` runs.
+  5. **Met.** Gates (all through the heavy-job lock, in the foreground):
+     - MSVC full build: warning-free (0 warnings).
+     - ctest `--preset msvc -j 16`, `ANNO_TEST_THREADS=16`: 858/858 with the game dir (the full run, 415 s, not stopped) and 858/858 without. The sim/replay subset again on the final head: 545/545.
+     - clang-format 23.1.3 `--dry-run --Werror` over all of `src`: clean.
+     - WSL GCC 13.3 and Clang 18.1.3, `-O3 -DNDEBUG -Werror` with the CI flags over formats, test_support, sim, the sim tests and anno-sim-replay (65 TUs each): no diagnostic after 0efaeb7 (GCC found a `-Wshadow` in the new test first); the sim tests pass with and without the game dir on both; g2–g5 replay on both.
+     - `tools/check_unix_warnings.sh`: GCC and Clang with viewer and GPU (138 files) and Clang without GPU: clean.
+     - `tools/lint_sim.py`: ok. `tools/sim_stream.py --check`: agree.
+     - `anno_sim_replay_g2..g5_run` pass on the re-recorded logs (g5: 20 021 entries, 21/21, tick 1 000 000).
+  6. **Met.** Docs and commits as listed; OQ-131 status "fixed 2026-10-23 (T22)" with the four changes marked done.
+- Moved test cases per commit (the whole sim suite after each; a golden case stops at its log or hash, so the set is per case, not per golden value):
+  - Commit 1 (rename): none.
+  - Commit 2 (growth, header byte): 21 — every golden (G0, G1 players, s5, s6, G1 ×2, G2–G5 and the empty-world hash: the header gained a field) and the cases that pin the registry length or the header layout ("registry count without +1", "a figure spawned during phase B", "counter release", "merge creates figures …", "effects applied after the island ticks …", "figure registry creation …", "figure registry validation …", "ids figures and events reject hostile streams", "ids figures and events scopes have the documented byte layout", "load refuses a header whose config has a zero divisor …"). The new "figure registry grows by 100" passed.
+  - Commit 3 (end path, fields dropped): 22 — the goldens again and the layout cases of the figures scope ("islands scope stream layout", "players scope stream layout", "players scope reads back …", "state stream header and settings scopes", "world core stream layout …"); the S12 figure cases re-derived in this commit passed, so did the six new cases.
+  - Commit 5: all re-baselined and re-derived; 531/531.
+  - By golden value (from the re-baseline): every hash moved (the header); the event goldens s7_g1_events and s11_g3_events are unchanged; s12_g4_events moved with G4's figures (commit 3's end path: the ended carrier no longer holds the weaver's counter, the worker no longer ends in phase D).
+- Reviewers: **none** — §1 item 5 asks for two read-only reviewer subagents, but the owner said not to start a subagent for T22, and T20 held the second slot. The mutation evidence above was run by this session; the orchestrator's review is the first independent read.
+- Left open / notes:
+  - Demolishing a building does not clear its figures' homes in the model (the original's production destructors detach them, A6/T21). A release for a building that is gone does nothing and building ids are never reused, so the effect is the same; the stale id stays in the figure record until its end.
+  - `end_figure` does the release and the Remove at the same tick; the original's last walk between them (0 or 15.0 at rate 0.01) belongs to a behaviour body (O-8).
+  - Not in T22: the pooled sector objects (O-17, OQ-134), the unit's u16 slot cap, any behaviour seam body.
+- OQ numbers used: none.
+- Time spent / subagents used: no subagent; builds, ctest, 6 mutation runs and the WSL gates by this session, one heavy job at a time.

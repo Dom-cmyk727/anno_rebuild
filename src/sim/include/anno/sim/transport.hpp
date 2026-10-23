@@ -122,16 +122,27 @@ struct SourceChoice {
     std::vector<TileXY> path;
 };
 
+/// A diagnostic tally of why a search ended, filled when `choose_source` is passed a
+/// non-null pointer (task T27, measurement only; not sim state, not hashed, not drawn —
+/// a pure classification of the one search). Exactly one counter is bumped per call that
+/// reaches the candidate stage.
+struct TransportStats {
+    std::uint64_t no_candidate = 0; ///< (i) no building passed the filter
+    std::uint64_t unreached = 0;    ///< (ii) candidates, but the search reached no goal
+    std::uint64_t low_score = 0;    ///< (iii) a goal was reached but no score beat the start
+    std::uint64_t found = 0;        ///< (iv) a source was chosen
+};
+
 /// Step A's choice for a cart of market `home` (D 0x1005ad10 with the callback
 /// 0x1005a900) or a carrier of workshop `home` (D 0x1005a530 with the callback
 /// 0x1005a400): nullopt when no candidate passes the filter or none is reached with a
 /// score above the start (0 for the cart, -1 for the carrier). `capacity_88` is the
 /// figure type's capacity (the carrier's early stop at 3/4 of it), `rule` its walk.
-[[nodiscard]] std::optional<SourceChoice> choose_source(const SerialWorld& world,
-                                                        const TypeRegistry& types,
-                                                        std::uint32_t job, const Building& home,
-                                                        const BuildingType& home_type, CityRef city,
-                                                        std::uint32_t capacity_88, WalkRule rule);
+/// `stats`, when non-null, is bumped in exactly one bucket (TransportStats).
+[[nodiscard]] std::optional<SourceChoice>
+choose_source(const SerialWorld& world, const TypeRegistry& types, std::uint32_t job,
+              const Building& home, const BuildingType& home_type, CityRef city,
+              std::uint32_t capacity_88, WalkRule rule, TransportStats* stats = nullptr);
 
 /// The stand-in path from the world tile `from` to the nearest tile of the footprint
 /// of `home` inside its area (step C's walk, D 0x10057ae0 with the callback 0x10054240:

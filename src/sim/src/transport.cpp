@@ -573,7 +573,8 @@ std::uint64_t segment_length_q24(FixedPos a, FixedPos b) {
 std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRegistry& types,
                                           std::uint32_t job, const Building& home,
                                           const BuildingType& home_type, CityRef city,
-                                          std::uint32_t capacity_88, WalkRule rule) {
+                                          std::uint32_t capacity_88, WalkRule rule,
+                                          TransportStats* stats) {
     const Island* island = world.island(city.island);
     const City* c = world.city(city);
     if (island == nullptr || c == nullptr) {
@@ -611,6 +612,9 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
         }
     }
     if (candidates.empty()) {
+        if (stats != nullptr) {
+            ++stats->no_candidate;
+        }
         return std::nullopt;
     }
     // Goals: the candidates' footprint tiles (the stand-in for their entrance points,
@@ -639,6 +643,7 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
     std::optional<std::size_t> best;
     GoodsId best_goods = 0;
     TileXY best_tile;
+    bool reached = false; // a goal node was visited (T27 diagnostic)
     auto visit_cart = [&](std::size_t k, std::int32_t x, std::int32_t y) {
         // The callback 0x1005a900.
         const Building& b = *candidates[k].b;
@@ -701,6 +706,7 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
         return available(*candidates[k].b, *candidates[k].t, goods, c) < q;
     };
     auto visit = [&](std::uint32_t k, std::int32_t x, std::int32_t y) {
+        reached = true;
         if (candidates[k].scored) {
             return true; // its further entrances score the same (strict `<`)
         }
@@ -710,6 +716,9 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
     const std::vector<std::uint64_t> parent =
         search(g, footprint_tiles(home, home_type), tiles, visit);
     if (!best) {
+        if (stats != nullptr) {
+            ++(reached ? stats->low_score : stats->unreached);
+        }
         return std::nullopt;
     }
     SourceChoice choice;
@@ -717,7 +726,13 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
     choice.goods = best_goods;
     choice.path = path_to(g, parent, best_tile);
     if (choice.path.empty()) {
+        if (stats != nullptr) {
+            ++stats->unreached;
+        }
         return std::nullopt;
+    }
+    if (stats != nullptr) {
+        ++stats->found;
     }
     return choice;
 }

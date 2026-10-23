@@ -172,6 +172,11 @@ std::string SimConfig::validate() const {
                    "must be in 1.." + std::to_string(kListSizeBound) + ", is " +
                        std::to_string(list_min_growth));
     }
+    if (!valid_list_min_growth(figure_min_growth)) {
+        return bad(kOwner, "figure_min_growth",
+                   "must be in 1.." + std::to_string(kListSizeBound) + ", is " +
+                       std::to_string(figure_min_growth));
+    }
     if (!valid_list_initial_size(list_initial_size)) {
         return bad(kOwner, "list_initial_size",
                    "must be in 1.." + std::to_string(kListSizeBound) + ", is " +

@@ -1254,7 +1254,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Faithful default:** no stake (the wave simulation is not in the original).
 
 ## OQ-131: How a figure is removed: phase D's path and the unit destructor (new, T9 S12 2026-10-23; O-8, D12)
-- **Status:** resolved by RE 2026-10-23 (T21, `docs/re/annowelt.md` "Unit registry: creation, removal and the figure destructor"). The S12 stand-in differs from the original in four points, listed below for S13/S15. None of them is a feel question: the faithful path is the one to build.
+- **Status:** resolved by RE 2026-10-23 (T21, `docs/re/annowelt.md` "Unit registry: creation, removal and the figure destructor"); **fixed 2026-10-23 (T22)**: the four points below are built as the original's (`docs/sim/state.md` §15 "T22 as implemented", stream version 109). None of them was a feel question.
 - **Area:** simulation / figures
 - **What the original does (AnnoWelt.dll, all D):**
   - **The class.** Carriers, workers and small-farm animals are one unit class: constructor `0x1003b7c0`, vtable `0x100c4950`, `BEWOHNTYPE` codes `TRAEGER` 17, `MAEHER` 1, `WEIDETIER` 2 and `JAEGER` 3 through the factory `0x1009a110`.
@@ -1280,18 +1280,18 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
     - The free-slot search `0x10099130` is the building list's scan from hint + 1 with wrap.
     - Its minimum growth is **100** (`0x10099185`–`0x100991a1`), where the building list's is 10. A fresh registry holds one zero entry (`0x10098cd6`).
     - Slots marked in the reserved bitmap `+0x80` are skipped (OQ-134).
-- **What the rebuild does (S12 stand-in), and the change S13 or S15 must make:**
-  1. **Release at the end, not at the destroy.** Today `Scheduler::destroy_figure` releases the home counter in phases C and D, 7500 ticks after the end for an expiring figure. A seam that emits `ReleaseCounter` at the end is then released twice; `release_counter` stops at 0, so another figure of the same building would be under-counted.
+- **What the rebuild did (S12 stand-in), and the change (all four done in T22, 2026-10-23):**
+  1. **Release at the end, not at the destroy.** *Done (T22: `end_figure`, `destroy_figure` without a release, `ReleaseCounter::figure`).* Before: `Scheduler::destroy_figure` releases the home counter in phases C and D, 7500 ticks after the end for an expiring figure. A seam that emits `ReleaseCounter` at the end is then released twice; `release_counter` stops at 0, so another figure of the same building would be under-counted.
      - **Change:** the release belongs to the figure's end (the D12 rule's or a seam's own `ReleaseCounter`, in the tick where the figure ends). `Figure::home` is cleared with it (the original clears `+0x78`), so a second release does nothing. `destroy_figure` stops releasing.
      - The counter invariant of `check_invariants` (§9.6) then counts only figures that still have a home.
-  2. **The D12 interim return goes through the expiry list, not the deferred list.** Today `mark_figure_for_delete` puts the figure on `deferred`, and phase D frees its slot in the same advance.
+  2. **The D12 interim return goes through the expiry list, not the deferred list.** *Done (T22; the deferred list, `marked_for_delete`, `mark_figure_for_delete` and phase D dropped).* Before: `mark_figure_for_delete` puts the figure on `deferred`, and phase D frees its slot in the same advance.
      - **Change:** at the return, release the counter (point 1), set the stamp to `u16(t)` and append the figure to `expiry`. Phase C frees the slot at the first advance with `u16(t' − stamp) ≥ 7500`.
      - The slot stays occupied for those 7500 ticks, which changes later slot numbers and the phase-B order. The goldens of tests that turn the rule on move.
      - No figure path appends to `deferred`. Keep the list empty for figures (`validate_figures` can require it) until the pooled sector objects are modelled (O-17), or drop it with `mark_figure_for_delete`.
-  3. **The registry's minimum growth is 100.** Today `add_figure` uses `SimConfig::list_min_growth` (10).
+  3. **The registry's minimum growth is 100.** *Done (T22: `SimConfig::figure_min_growth`).* Before: `add_figure` uses `SimConfig::list_min_growth` (10).
      - **Change:** a separate `SimConfig::figure_min_growth = 100` (data, the original's default; validated `>= 1`). It changes the vector length `n`, so the phase-B visit count `clamp(d·n/50, 1, n)` and the cursor wrap, and every golden with figures moves.
      - The scan itself (A6) is confirmed. So is `list_initial_size` 1 for the registry.
-  4. **What the stamp means.** `Figure::created_stamp` holds the tick of the figure's end in the original, the tick at which the frozen `+8` stops; it is not the spawn tick. The field works as specified (present = on `expiry`).
+  4. **What the stamp means.** *Done (T22: renamed `expiry_stamp`, before the S15 freeze).* `Figure::created_stamp` held the tick of the figure's end in the original, the tick at which the frozen `+8` stops; it is not the spawn tick. The field works as specified (present = on `expiry`).
      - **Change:** rename it to `expiry_stamp` with S15's stream freeze. The bytes are unchanged; it is a documentation and API change only.
 - **Confirmed as built:**
   - phase C's u16 test `≥ 7500` from the front of the list;

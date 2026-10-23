@@ -33,10 +33,11 @@ struct Scheduler {
     /// timed-event queue with the two handler seams, each handler's Effects merged
     /// right after it returns (C2).
     static PopResult run_events(World& w, const TickContext& ctx, CountingDraw& draw);
-    /// Step 3 (docs/sim/state.md §5.9): the figure registry's phases B, C and D.
+    /// Step 3 (docs/sim/state.md §5.9): the figure registry's phases B and C (phase D
+    /// serves the pooled sector records, not modelled).
     static void run_figures(World& w, const TickContext& ctx, CountingDraw& draw);
-    /// Destroys the figure `id` (phases C and D): frees its slot, takes it off the
-    /// registry's lists and releases the counter of its home building.
+    /// Destroys the figure `id` (phase C): frees its slot and takes it off the expiry
+    /// list. Releases nothing (the counter went back at the figure's end, end_figure).
     static void destroy_figure(World& w, FigureId id);
     static void run_player_pass(void* raw, Player& p);
     static void run_ai(void* raw);

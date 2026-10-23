@@ -132,11 +132,13 @@ std::string World::check_invariants() const {
             return "islands[" + std::to_string(i) + "]." + problem;
         }
     }
-    // The counters of figures out equal the figures that refer to them: the tick
-    // raises the counter, the merge creates the figure (docs/sim/state.md §7.2).
+    // The counters of figures out equal the figures that still have that home: the
+    // tick raises the counter, the merge creates the figure (docs/sim/state.md §7.2),
+    // and the figure's end releases it and clears its home (end_figure, D 0x1003b6e0),
+    // so a figure waiting on the expiry list is not counted.
     std::map<std::pair<BuildingId, std::uint32_t>, std::uint32_t> held;
     for (const std::optional<Figure>& f : figures_.list.slots) {
-        if (f.has_value()) {
+        if (f.has_value() && f->home.valid()) {
             ++held[{f->home, f->home_counter}];
         }
     }

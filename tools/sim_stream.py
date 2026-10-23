@@ -63,7 +63,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 108
+STATE_HASH_VERSION = 109
 PRNG_TIMELINE_VERSION = 1
 
 
@@ -148,7 +148,7 @@ def registry_digest(names):
 
 def config_bytes():
     b = b''.join(u32(x) for x in [256, 16, 15, 32, 31, 5, 28, 20, 32, 5, 65, 56, 0x29, 5, 2,
-                                  8, 1, 10, 8])
+                                  8, 1, 10, 100, 8])
     b += b''.join(u32(x) for x in [500, 50, 50, 250, 50, 5000, 2000, 15000, 7500, 300, 20, 450000,
                                    10, 30000])
     b += b''.join(u32(x) for x in [2000, 15, 104, 105])
@@ -585,11 +585,10 @@ def g1_after(steps, step_ms):
 def figures_digest(stamp=0):
     """The empty figure registry: i64 hint -1, u32 cursor 0, u64 slot count 1 and its
     child scope (an empty slot hashes as the single byte 0), u16 stamp, empty expiry
-    and deferred lists. Phase B of every advance visits the one slot (clamp(d*1/50, 1,
-    1) = 1, the cursor stays 0) and writes the stamp: the 16-bit tick of the last
-    advance."""
-    return fnv(struct.pack('<q', -1) + u32(0) + u64(1) + u64(fnv(u8(0))) + u16(stamp) + u64(0)
-               + u64(0))
+    list (the deferred list left the stream with T22: it never holds a figure, OQ-131).
+    Phase B of every advance visits the one slot (clamp(d*1/50, 1, 1) = 1, the cursor
+    stays 0) and writes the stamp: the 16-bit tick of the last advance."""
+    return fnv(struct.pack('<q', -1) + u32(0) + u64(1) + u64(fnv(u8(0))) + u16(stamp) + u64(0))
 
 
 MONOPOLY_MASKS = [0x18000, 0xF009, 0xF949, 0xF06B, 0xF6B9, 0xF04D, 0xF04D]

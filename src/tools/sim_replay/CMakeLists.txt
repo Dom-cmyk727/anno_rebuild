@@ -40,7 +40,7 @@ if(ANNO_BUILD_TESTS)
   set_tests_properties(anno_sim_replay_g3_run PROPERTIES
                        PASS_REGULAR_EXPRESSION "checkpoints 21/21.*reproduced: every checkpoint matched")
   # The golden G4 (stage S12): players with upkeep and bankruptcy, timers, timed events,
-  # the figure registry's expiry and deferred lists, the monopoly table and the 7.5 minute
+  # the figure registry's expiry list, the monopoly table and the 7.5 minute
   # event over 600 000 ticks, 21 checkpoints.
   add_test(NAME anno_sim_replay_g4_run
            COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g4.log)

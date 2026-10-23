@@ -14,6 +14,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -93,29 +94,28 @@ sim::World quiet_g4(const syn::SyntheticTypes& t, sim::Seams seams = {}, sim::Ru
     return w;
 }
 
-/// Puts a figure with the next id into the registry (the slot by the list policy), with
-/// `home`'s counter `counter` raised for it, and returns its id.
+/// Puts a figure with the next id into the registry (the slot by the list policy) and
+/// returns its id. Without `expiry_stamp` the figure is out: `home`'s counter `counter`
+/// is raised for it. With a stamp it has ended (as end_figure leaves it): no home, no
+/// counter held, on the expiry list.
 sim::FigureId put_figure(sim::World& w, sim::BuildingId home, std::uint32_t counter = 0,
-                         std::optional<std::uint16_t> created_stamp = std::nullopt,
-                         bool deferred = false, std::uint32_t born = 0) {
+                         std::optional<std::uint16_t> expiry_stamp = std::nullopt) {
     sim::IdCounters& ids = sim::WorldTestAccess::ids(w);
     sim::FigureRegistry& reg = sim::WorldTestAccess::figures(w);
+    if (expiry_stamp.has_value()) {
+        home = sim::BuildingId{};
+    }
     sim::Figure f;
     f.id = sim::FigureId{ids.next_figure};
     f.kind = 1;
     f.owner = sim::PlayerId{0};
     f.home = home;
     f.home_counter = counter;
-    f.born = born;
-    f.created_stamp = created_stamp;
-    f.marked_for_delete = deferred;
+    f.expiry_stamp = expiry_stamp;
     REQUIRE(sim::add_figure(reg, f, w.config(), w.rules()) != sim::kNoSlot);
     ++ids.next_figure;
-    if (created_stamp.has_value()) {
+    if (expiry_stamp.has_value()) {
         reg.expiry.push_back(f.id);
-    }
-    if (deferred) {
-        reg.deferred.push_back(f.id);
     }
     auto& islands = sim::WorldTestAccess::islands(w);
     const std::uint32_t slot = sim::island_of(home).v;
@@ -526,21 +526,24 @@ TEST_CASE("registry count without +1: phase B visits clamp(d n / 50, 1, n) slots
         static_cast<std::vector<std::uint64_t>*>(c)->push_back(f.id.v);
     };
     sim::World w = make(syn::empty_scenario(), t, seams);
-    // Two figures: the list grows from 1 to 10 slots (A7, §5.2); slots 0 and 1.
+    // Two figures: the list grows from 1 to max(1 + 1/4, figure_min_growth) = 100 slots
+    // (A7, §5.2, D 0x10099185); slots 0 and 1.
     const sim::FigureId a = put_figure(w, sim::BuildingId{});
     const sim::FigureId b = put_figure(w, sim::BuildingId{});
-    REQUIRE(w.figures().list.slots.size() == 10);
+    REQUIRE(w.figures().list.slots.size() == 100);
     REQUIRE(w.figures().by_id.at(a) == 0);
     REQUIRE(w.figures().by_id.at(b) == 1);
-    w.advance(40); // t = 20, d = 20: 20 * 10 / 50 = 4 visits (with +1 it would be 5)
+    w.advance(40); // t = 20, d = 20: 20 * 100 / 50 = 40 visits (with +1 it would be 41)
     CHECK(visited == std::vector<std::uint64_t>{a.v, b.v});
-    CHECK(w.figures().list.cursor == 4);
+    CHECK(w.figures().list.cursor == 40);
     CHECK(w.figures().stamp == 20);
-    w.advance(2); // t = 21, d = 1: 10 / 50 = 0, raised to 1: slot 4
-    CHECK(w.figures().list.cursor == 5);
-    w.advance(120); // t = 81, d = 60: 12, cut to 10: slots 5..9 and 0..4
+    w.advance(2); // t = 21, d = 1: 100 / 50 = 2 visits: slots 40, 41
+    CHECK(w.figures().list.cursor == 42);
+    w.advance(1); // ms 43, t = 21 again, d = 0: 0 visits, raised to 1: slot 42
+    CHECK(w.figures().list.cursor == 43);
+    w.advance(119); // ms 162, t = 81, d = 60: 120, cut to 100: slots 43..99 and 0..42
     CHECK(visited == std::vector<std::uint64_t>{a.v, b.v, a.v, b.v});
-    CHECK(w.figures().list.cursor == 5);
+    CHECK(w.figures().list.cursor == 43);
     CHECK(w.figures().stamp == 81);
     // figure_b_div is configuration: /25 doubles the count.
     sim::SimConfig cfg;
@@ -548,22 +551,24 @@ TEST_CASE("registry count without +1: phase B visits clamp(d n / 50, 1, n) slots
     sim::World v = make(syn::empty_scenario(), t, seams, {}, cfg);
     put_figure(v, sim::BuildingId{});
     put_figure(v, sim::BuildingId{});
-    v.advance(40); // d = 20: 20 * 10 / 25 = 8
-    CHECK(v.figures().list.cursor == 8);
+    v.advance(40); // d = 20: 20 * 100 / 25 = 80
+    CHECK(v.figures().list.cursor == 80);
 }
 
 TEST_CASE("expiry: phase C ends figures 7500 ticks old from the front and stops at a young one") {
     // D 0x1009aacc..0x1009ab31: from the front of the expiry list, a figure whose u16
     // difference t - stamp is at least 7500 (0x1d4c, `jb` at 0x1009ab07) is destroyed
-    // (0x10097520: its slot emptied, its home counter released); the first younger one
-    // ends the scan, even when an older one stands behind it.
+    // (0x10097520: its slot emptied; nothing released, the figures on the list ended and
+    // released before, OQ-131); the first younger one ends the scan, even when an older
+    // one stands behind it. A figure still out (no stamp) is not on the list.
     const syn::SyntheticTypes t = types();
     sim::World w = quiet_g4(t);
     const sim::FigureId old1 = put_figure(w, bid(0, kWeaver), 0, std::uint16_t{0});
     const sim::FigureId young = put_figure(w, bid(0, kFarm), 0, std::uint16_t{100});
     const sim::FigureId old2 = put_figure(w, bid(0, kWeaver), 0, std::uint16_t{0});
-    REQUIRE(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 2);
-    REQUIRE(payload<sim::Farm>(w, 0, kFarm).workers_out == 1);
+    const sim::FigureId out = put_figure(w, bid(0, kWeaver));
+    REQUIRE(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 1); // `out` only
+    REQUIRE(payload<sim::Farm>(w, 0, kFarm).workers_out == 0);
     REQUIRE(w.check_invariants() == "");
     w.advance(14998); // tick 7499: 7499 < 7500 for all three
     CHECK(w.figures().expiry == std::vector<sim::FigureId>{old1, young, old2});
@@ -575,8 +580,9 @@ TEST_CASE("expiry: phase C ends figures 7500 ticks old from the front and stops 
     CHECK(w.check_invariants() == "");
     w.advance(200); // tick 7600: young (7500) and old2 end
     CHECK(w.figures().expiry.empty());
-    CHECK(w.figures().by_id.empty());
-    CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 0);
+    CHECK(w.figures().by_id.size() == 1);
+    CHECK(sim::find_figure(w.figures(), out) != nullptr);
+    CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 1);
     CHECK(payload<sim::Farm>(w, 0, kFarm).workers_out == 0);
     CHECK(w.check_invariants() == "");
 }
@@ -604,10 +610,12 @@ TEST_CASE("expiry compares a 16-bit difference across the wrap of the tick") {
     CHECK(sim::find_figure(v.figures(), g) == nullptr);
 }
 
-TEST_CASE("counter release: phase D frees the slot, keeps hint and length, releases the counter") {
-    // D 0x1009ab33..0x1009ab7c: every figure on the deferred list is deleted and the list
-    // emptied. A figure on both lists ends in phase C and is released once; a figure
-    // releases the counter it holds (a small farm's animal counter 2 here).
+TEST_CASE("counter release: the end releases, phase C frees the slot and keeps hint and length") {
+    // D 0x1003b6e0 at the figure's end releases the counter it holds (a small farm's
+    // animal counter 2 here) and clears its home; D 0x10097520 in phase C later empties
+    // its slot and releases nothing; the list keeps its length and hint (SlotList::
+    // remove). The interim rule D12 ends the figures here (N = 1: each ends at the first
+    // phase-B visit).
     const syn::SyntheticTypes t = types();
     sim::ScenarioSpec spec = syn::g4_scenario(t);
     {
@@ -621,56 +629,67 @@ TEST_CASE("counter release: phase D frees the slot, keeps hint and length, relea
         b.payload = sim::Payload{sf};
         spec.islands[0].cities[0].buildings.push_back(b);
     }
-    sim::World w = make(spec, t);
+    sim::Rules rules;
+    rules.interim_figure_return_ticks = 1;
+    sim::World w = make(spec, t, {}, rules);
     payload<sim::Workshop>(w, 0, kWeaver).switched_on = false;
     payload<sim::Farm>(w, 0, kFarm).switched_on = false;
     constexpr std::uint32_t kSmallFarm = 3;
-    const sim::FigureId a = put_figure(w, bid(0, kWeaver));
-    const sim::FigureId b = put_figure(w, bid(0, kWeaver), 0, std::nullopt, true);
-    // Stamp u16(50 - 7500): 7500 old at tick 50, so phase C ends it before phase D.
-    const sim::FigureId both =
-        put_figure(w, bid(0, kWeaver), 0, static_cast<std::uint16_t>(50 - 7500), true);
-    const sim::FigureId animal = put_figure(w, bid(0, kSmallFarm), 2, std::nullopt, true);
-    const sim::FigureId orphan = put_figure(w, bid(0, 77), 0, std::nullopt, true);
-    REQUIRE(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 3);
+    // Born at tick 0 (put_figure): at the first advance (tick 50) every age is 50 >= 1.
+    const sim::FigureId b = put_figure(w, bid(0, kWeaver));
+    const sim::FigureId c = put_figure(w, bid(0, kWeaver));
+    const sim::FigureId animal = put_figure(w, bid(0, kSmallFarm), 2);
+    const sim::FigureId orphan = put_figure(w, bid(0, 77)); // its building is gone
+    REQUIRE(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 2);
     REQUIRE(payload<sim::SmallFarm>(w, 0, kSmallFarm).figures_out ==
             std::vector<std::uint32_t>{0, 0, 1, 0, 0});
     const std::int64_t hint = w.figures().list.hint;
     const std::uint64_t next = w.ids().next_figure;
     REQUIRE(w.check_invariants() == "");
-    w.advance(100);
-    CHECK(sim::find_figure(w.figures(), a) != nullptr);
-    CHECK(sim::find_figure(w.figures(), b) == nullptr);
-    CHECK(sim::find_figure(w.figures(), both) == nullptr);
-    CHECK(sim::find_figure(w.figures(), animal) == nullptr);
-    CHECK(sim::find_figure(w.figures(), orphan) == nullptr);
-    CHECK(w.figures().deferred.empty());
-    CHECK(w.figures().expiry.empty());
-    CHECK(w.figures().by_id.size() == 1);
-    CHECK(w.figures().list.slots.size() == 10);
-    CHECK(w.figures().list.hint == hint);
-    CHECK(w.ids().next_figure == next);
-    CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 1); // 3 - b - both
+    w.advance(100); // tick 50: phase B visits all 100 slots (clamp(50 · 100 / 50, 1, 100))
+    // Ended at tick 50: the counters back at once, the figures still in their slots.
+    CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 0);
     CHECK(payload<sim::SmallFarm>(w, 0, kSmallFarm).figures_out ==
           std::vector<std::uint32_t>{0, 0, 0, 0, 0});
+    CHECK(w.figures().expiry == std::vector<sim::FigureId>{b, c, animal, orphan});
+    for (const sim::FigureId id : {b, c, animal, orphan}) {
+        CHECK(figure(w, id).expiry_stamp == std::uint16_t{50});
+        CHECK_FALSE(figure(w, id).home.valid());
+    }
     CHECK(w.check_invariants() == "");
-    // The freed slots are taken again by the list policy (the scan from hint + 1).
-    const sim::FigureId c = put_figure(w, bid(0, kWeaver));
-    CHECK(w.figures().by_id.at(c) == static_cast<sim::Slot>(hint + 1));
+    w.advance(2 * 7450); // tick 7500: u16(7500 - 50) = 7450 < 7500, all still there
+    CHECK(w.figures().by_id.size() == 4);
+    w.advance(100); // tick 7550: 7500, phase C frees all four slots
+    for (const sim::FigureId id : {b, c, animal, orphan}) {
+        CHECK(sim::find_figure(w.figures(), id) == nullptr);
+    }
+    CHECK(w.figures().expiry.empty());
+    CHECK(w.figures().by_id.empty());
+    CHECK(w.figures().list.slots.size() == 100);
+    CHECK(w.figures().list.hint == hint);
+    CHECK(w.ids().next_figure == next);
+    CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 0); // not released again
+    CHECK(w.check_invariants() == "");
+    // The freed slots are taken again by the list policy (the scan from hint + 1 wraps
+    // over the empty slots 4 .. 99 first).
+    const sim::FigureId d = put_figure(w, bid(0, kWeaver));
+    CHECK(w.figures().by_id.at(d) == static_cast<sim::Slot>(hint + 1));
 }
 
 TEST_CASE("interim return: with the rule a figure ends N ticks after its birth") {
     // D12 (OQ-047, a stand-in): without a behaviour seam a figure never returns, so its
-    // counter stays raised; with Rules::interim_figure_return_ticks = N, phase B marks a
-    // figure whose u32 age t - born is at least N, and phase D ends it in the same tick.
+    // counter stays raised; with Rules::interim_figure_return_ticks = N, phase B ends a
+    // figure whose u32 age t - born is at least N (end_figure: the counter back, the
+    // figure on the expiry list), and phase C frees its slot 7500 ticks later.
     const syn::SyntheticTypes t = types();
     auto run = [&](std::uint32_t n) {
         sim::Rules rules;
         rules.interim_figure_return_ticks = n;
         sim::World w = make(syn::g4_scenario(t), t, {}, rules);
         std::vector<std::pair<std::uint64_t, std::uint32_t>> spawns; // (id, born)
-        std::map<std::uint64_t, std::uint64_t> gone;                 // id -> first tick gone
-        for (int i = 0; i < 200; ++i) {
+        std::map<std::uint64_t, std::uint64_t> ended; // id -> first tick with a stamp
+        std::map<std::uint64_t, std::uint64_t> gone;  // id -> first tick gone
+        for (int i = 0; i < 400; ++i) {
             w.advance(100);
             for (const sim::SimEvent& e : w.last_output().events) {
                 if (e.kind == sim::SimEventKind::FigureSpawned) {
@@ -678,53 +697,65 @@ TEST_CASE("interim return: with the rule a figure ends N ticks after its birth")
                 }
             }
             for (const auto& [id, born] : spawns) {
-                if (!gone.contains(id) &&
-                    sim::find_figure(w.figures(), sim::FigureId{id}) == nullptr) {
+                const sim::Figure* f = sim::find_figure(w.figures(), sim::FigureId{id});
+                if (!ended.contains(id) && f != nullptr && f->expiry_stamp.has_value()) {
+                    ended[id] = w.clock().tick();
+                    CHECK_FALSE(f->home.valid());
+                }
+                if (!gone.contains(id) && f == nullptr) {
                     gone[id] = w.clock().tick();
                 }
             }
             REQUIRE(w.check_invariants() == "");
         }
-        return std::pair{spawns, gone};
+        return std::tuple{spawns, ended, gone};
     };
     // Off (the default): the weaver's carrier and the farm's worker never come back.
-    const auto [kept, never] = run(0);
+    const auto [kept, never_ended, never] = run(0);
     CHECK(kept.size() == 2);
+    CHECK(never_ended.empty());
     CHECK(never.empty());
     // N = 1000: every figure ends at the first advance (50 ticks each; phase B visits all
-    // ten slots, clamp(50 · 10 / 50, 1, 10)) whose tick is born + 1000 or later, and the
-    // building sends the next one.
-    const auto [spawns, gone] = run(1000);
+    // 100 slots, clamp(50 · 100 / 50, 1, 100)) whose tick is born + 1000 or later, and
+    // the building sends the next one; phase C frees its slot at the first advance with
+    // u16(t - end) >= 7500, so 7500 to 7549 ticks after the end. 400 advances reach tick
+    // 20 000, past the first slots freed.
+    const auto [spawns, ended, gone] = run(1000);
     CHECK(spawns.size() > 4);
+    CHECK_FALSE(gone.empty());
     for (const auto& [id, born] : spawns) {
+        if (ended.contains(id)) {
+            CHECK(ended.at(id) >= std::uint64_t{born} + 1000);
+            CHECK(ended.at(id) < std::uint64_t{born} + 1000 + 50);
+        }
         if (gone.contains(id)) {
-            CHECK(gone.at(id) >= std::uint64_t{born} + 1000);
-            CHECK(gone.at(id) < std::uint64_t{born} + 1000 + 50);
+            REQUIRE(ended.contains(id));
+            CHECK(gone.at(id) >= ended.at(id) + 7500);
+            CHECK(gone.at(id) < ended.at(id) + 7500 + 50);
         }
     }
 }
 
-TEST_CASE("a figure seam writes its own figure and the registry lists follow its flags") {
+TEST_CASE("a figure seam writes its own figure and the registry follows its stamp") {
     // The seam protocol (C2, §4.11): a behaviour seam may write the figure it is called
-    // for; a figure that gains a created_stamp joins the expiry list, one that marks
-    // itself for deletion joins the deferred list (and ends in phase D of the same tick),
-    // and the figure's id stays the registry's.
+    // for. A figure the seam ends through SerialWorld::end_figure releases its counter and
+    // joins the expiry list; one that gains an expiry_stamp directly is ended the same
+    // way (its counter goes back once); one that loses its stamp leaves the list; the
+    // figure's id stays the registry's.
     const syn::SyntheticTypes t = types();
     sim::Seams seams;
     seams.figure_tick.name = "test_self";
-    seams.figure_tick.fn = [](void*, const sim::TickContext& ctx, sim::SerialWorld&,
+    seams.figure_tick.fn = [](void*, const sim::TickContext& ctx, sim::SerialWorld& sw,
                               sim::Figure& f) {
         if (f.kind == 1) {
-            f.created_stamp = static_cast<std::uint16_t>(ctx.t);
+            f.expiry_stamp = static_cast<std::uint16_t>(ctx.t);
             f.kind = 2;
         } else if (f.kind == 3) {
-            f.marked_for_delete = true;
+            sw.end_figure(f, ctx.t);
         } else if (f.kind == 4) {
             f.id = sim::FigureId{999}; // not the seam's to change
         } else if (f.kind == 5) {
-            f.created_stamp.reset(); // leaves the expiry list
-        } else if (f.kind == 6) {
-            f.marked_for_delete = false; // leaves the deferred list
+            f.expiry_stamp.reset(); // leaves the expiry list
         }
     };
     sim::World w = quiet_g4(t, seams);
@@ -732,29 +763,32 @@ TEST_CASE("a figure seam writes its own figure and the registry lists follow its
     const sim::FigureId leaving = put_figure(w, bid(0, kFarm));
     const sim::FigureId renamed = put_figure(w, bid(0, kWeaver));
     const sim::FigureId unstamped = put_figure(w, bid(0, kWeaver), 0, std::uint16_t{0});
-    const sim::FigureId kept = put_figure(w, bid(0, kWeaver), 0, std::nullopt, true);
     sim::WorldTestAccess::figures(w).list.slots[1]->kind = 3;
     sim::WorldTestAccess::figures(w).list.slots[2]->kind = 4;
     sim::WorldTestAccess::figures(w).list.slots[3]->kind = 5;
-    sim::WorldTestAccess::figures(w).list.slots[4]->kind = 6;
     REQUIRE(w.figures().expiry == std::vector<sim::FigureId>{unstamped});
-    REQUIRE(w.figures().deferred == std::vector<sim::FigureId>{kept});
-    w.advance(100); // tick 50
-    CHECK(w.figures().expiry == std::vector<sim::FigureId>{stamped});
-    CHECK(w.figures().deferred.empty());
-    CHECK_FALSE(figure(w, unstamped).created_stamp.has_value());
-    CHECK_FALSE(figure(w, kept).marked_for_delete);
-    CHECK(figure(w, stamped).created_stamp == std::uint16_t{50});
-    CHECK(sim::find_figure(w.figures(), leaving) == nullptr);
+    REQUIRE(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 2); // stamped, renamed
+    REQUIRE(payload<sim::Farm>(w, 0, kFarm).workers_out == 1);        // leaving
+    w.advance(100);                                                   // tick 50
+    CHECK(w.figures().expiry == std::vector<sim::FigureId>{stamped, leaving});
+    CHECK_FALSE(figure(w, unstamped).expiry_stamp.has_value());
+    CHECK(figure(w, stamped).expiry_stamp == std::uint16_t{50});
+    CHECK(figure(w, leaving).expiry_stamp == std::uint16_t{50});
+    CHECK_FALSE(figure(w, stamped).home.valid());
+    CHECK_FALSE(figure(w, leaving).home.valid());
     CHECK(payload<sim::Farm>(w, 0, kFarm).workers_out == 0);
+    CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 1); // renamed
     CHECK(sim::find_figure(w.figures(), renamed) != nullptr);
     CHECK(w.check_invariants() == "");
     w.advance(2 * 7450); // tick 7500: 7450 < 7500, still there
     CHECK(sim::find_figure(w.figures(), stamped) != nullptr);
-    w.advance(100); // tick 7550: 7500, ends
+    CHECK(sim::find_figure(w.figures(), leaving) != nullptr);
+    w.advance(100); // tick 7550: 7500, both freed
     CHECK(sim::find_figure(w.figures(), stamped) == nullptr);
-    CHECK(sim::find_figure(w.figures(), unstamped) != nullptr);     // off the expiry list
-    CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 3); // renamed, unstamped, kept
+    CHECK(sim::find_figure(w.figures(), leaving) == nullptr);
+    CHECK(sim::find_figure(w.figures(), unstamped) != nullptr); // off the expiry list
+    CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 1);
+    CHECK(payload<sim::Farm>(w, 0, kFarm).workers_out == 0);
     CHECK(w.check_invariants() == "");
 }
 
@@ -783,17 +817,23 @@ TEST_CASE("a figure spawned during phase B waits for the next pass") {
         }
     };
     sim::World w = make(syn::empty_scenario(), t, seams);
-    for (int i = 0; i < 10; ++i) {
-        put_figure(w, sim::BuildingId{}); // slots 0 .. 9: the list of 10 is full
+    for (int i = 0; i < 100; ++i) {
+        put_figure(w, sim::BuildingId{}); // slots 0 .. 99: the list of 100 is full
     }
-    REQUIRE(w.figures().list.slots.size() == 10);
-    w.advance(100);                             // d = 50: clamp(50 * 10 / 50, 1, 10) = 10 visits
-    CHECK(w.figures().list.slots.size() == 12); // grown 10 -> 12 by the spawn (§5.2)
-    CHECK(sp.visited == std::vector<std::uint64_t>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+    REQUIRE(w.figures().list.slots.size() == 100);
+    std::vector<std::uint64_t> first(100);
+    for (std::uint64_t i = 0; i < 100; ++i) {
+        first[i] = i + 1;
+    }
+    w.advance(100); // d = 50: clamp(50 * 100 / 50, 1, 100) = 100 visits
+    // Grown 100 -> 100 + 100/4 = 125 by the spawn (§5.2, D 0x10099185).
+    CHECK(w.figures().list.slots.size() == 125);
+    CHECK(sp.visited == first);
     CHECK(w.figures().list.cursor == 0);
     sp.visited.clear();
-    w.advance(100); // d = 50: clamp(50 * 12 / 50, 1, 12) = 12: the new figure (11) too
-    CHECK(sp.visited == std::vector<std::uint64_t>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+    w.advance(100); // d = 50: clamp(50 * 125 / 50, 1, 125) = 125: the new figure (101) too
+    first.push_back(101);
+    CHECK(sp.visited == first);
     CHECK(w.check_invariants() == "");
 }
 
@@ -806,9 +846,10 @@ TEST_CASE("interim return reads a u32 age and is the default body only") {
     sim::World w = quiet_g4(t, {}, rules);
     const sim::FigureId f = put_figure(w, bid(0, kWeaver));
     w.advance(2 * 65950); // tick 65950: age 65950
-    CHECK(sim::find_figure(w.figures(), f) != nullptr);
-    w.advance(100); // tick 66000: age 66000 (a u16 age would be 464)
-    CHECK(sim::find_figure(w.figures(), f) == nullptr);
+    CHECK_FALSE(figure(w, f).expiry_stamp.has_value());
+    CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 1);
+    w.advance(100); // tick 66000: age 66000 (a u16 age would be 464): ended
+    CHECK(figure(w, f).expiry_stamp == static_cast<std::uint16_t>(66000));
     CHECK(payload<sim::Workshop>(w, 0, kWeaver).carriers_out == 0);
     sim::Seams seams;
     seams.figure_tick.name = "test_idle";
@@ -820,7 +861,8 @@ TEST_CASE("interim return reads a u32 age and is the default body only") {
     for (int i = 0; i < 40; ++i) {
         v.advance(100); // tick 2000
     }
-    CHECK(sim::find_figure(v.figures(), g) != nullptr);
+    CHECK_FALSE(figure(v, g).expiry_stamp.has_value());
+    CHECK(payload<sim::Workshop>(v, 0, kWeaver).carriers_out == 1);
 }
 
 TEST_CASE("figure phase goods effects merge after each call (C2)") {
@@ -1523,11 +1565,11 @@ TEST_CASE("G4 players timers events and the 7.5 min event through 600000 ticks e
     late.subtype = sim::kTileSubtype;
     late.tile = sim::TileXY{105, 105};
     queue(w, 700000, late);
-    // Figures: a carrier of the weaver on the expiry list from tick 0 (the weaver holds its
-    // one carrier until phase C ends it at tick 7 500) and a worker of the farm on the
-    // deferred list (ended by the first advance).
+    // Figures: a carrier that ended at tick 0 (its counter released then, no home; on the
+    // expiry list until phase C frees its slot at tick 7 500) and a worker of the farm
+    // that is out and never ends (no behaviour seam, D12 off: the farm holds it).
     const sim::FigureId carrier = put_figure(w, bid(0, kWeaver), 0, std::uint16_t{0});
-    const sim::FigureId worker = put_figure(w, bid(0, kFarm), 0, std::nullopt, true);
+    const sim::FigureId worker = put_figure(w, bid(0, kFarm));
     REQUIRE(w.check_invariants() == "");
 
     const std::uint32_t cursor0 = w.rng().cursor();
@@ -1573,11 +1615,11 @@ TEST_CASE("G4 players timers events and the 7.5 min event through 600000 ticks e
     REQUIRE(w.clock().tick() == 600000);
 
     // Semantic asserts, derived by hand (independent of the hash).
-    // The figures: the worker ends in phase D of the first advance, the carrier in phase C
-    // of the advance that reaches tick 7 500 (u16 difference 7 500).
-    CHECK(worker_gone == std::uint64_t{50});
+    // The figures: the carrier's slot is freed in phase C of the advance that reaches tick
+    // 7 500 (u16 difference 7 500); the worker is still out and the farm holds it.
+    CHECK_FALSE(worker_gone.has_value());
     CHECK(carrier_gone == std::uint64_t{7500});
-    CHECK(payload<sim::Farm>(w, 0, kFarm).workers_out == 1); // its own worker, sent later
+    CHECK(payload<sim::Farm>(w, 0, kFarm).workers_out == 1); // the worker put out at tick 0
     // Upkeep: 300 bookings (every 2 000 ticks, stamp = t). Player 0: 300 * 22 = 6 600.
     CHECK(player(w, 0).money == 10000 - 300 * 22);
     // Player 1: -2 900, -2 940, -2 980, -3 020 at tick 6 000 (deadline 156 000, the visit

@@ -190,10 +190,10 @@ inline constexpr std::size_t kTimersMonopolyBytes = 193;
 
 /// The size in the flat stream of the scopes that follow `islands` in a world
 /// without figures and events (stage S7): the figures scope (i64 hint, u32 cursor,
-/// u64 slot count, one empty slot byte, u16 stamp, two empty id lists = 8 + 4 + 8 +
-/// 1 + 2 + 8 + 8 = 39 bytes), the events scope (the u64 count 0 = 8 bytes) and the
-/// timers_monopoly scope (stage S12).
-inline constexpr std::size_t kTailBytes = 39 + 8 + kTimersMonopolyBytes;
+/// u64 slot count, one empty slot byte, u16 stamp, the empty expiry list = 8 + 4 + 8 +
+/// 1 + 2 + 8 = 31 bytes; 39 before T22 dropped the deferred list), the events scope
+/// (the u64 count 0 = 8 bytes) and the timers_monopoly scope (stage S12).
+inline constexpr std::size_t kTailBytes = 31 + 8 + kTimersMonopolyBytes;
 
 /// The flat stream of `w` with the bytes of its islands scope replaced by `table`;
 /// the scopes before it and the scopes after it (figures, events) stay as they are.

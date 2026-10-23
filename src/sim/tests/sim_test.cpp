@@ -539,15 +539,13 @@ TEST_CASE("state_hash relational properties") {
     CHECK(tree.root.children[5].hash == islands.value());
     // The figures scope of a new world: the registry list (i64 hint -1, u32 cursor, u64
     // slot count 1 and its child scope, an empty slot being the single byte 0), the
-    // u16 stamp and the empty expiry and deferred lists; the events scope: the u64
-    // count 0.
+    // u16 stamp and the empty expiry list; the events scope: the u64 count 0.
     sim::StateHasher figures;
     figures.u64(0xffffffffffffffffULL); // hint -1
     figures.u32(0);
     figures.u64(1);
     figures.u64(absent.value());
     figures.u16(0);
-    figures.u64(0);
     figures.u64(0);
     CHECK(tree.root.children[6].hash == figures.value());
     sim::StateHasher events;
@@ -586,8 +584,8 @@ TEST_CASE("state_hash relational properties") {
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
-    CHECK(sim::World().state_hash() == 0x047711083eb35acfULL);
-    CHECK(sim::kStateHashVersion == 108);
+    CHECK(sim::World().state_hash() == 0xa9b457facea32d02ULL);
+    CHECK(sim::kStateHashVersion == 109);
     CHECK(sim::kPrngTimelineVersion == 1);
 }
 
@@ -863,19 +861,19 @@ TEST_CASE("world core stream layout round trip and rejects") {
     // last_tick, u64 2048, u64 table digest, u32 cursor (36 bytes); settings
     // (38 bytes, config_test.cpp); ids: two u64, two u32 and a bool (25 bytes);
     // players: u64 32, 32 absent bytes, u16 stamp, u32 cursor (46 bytes); islands:
-    // u64 0 (8 bytes); figures (39 bytes), events (8 bytes) and timers_monopoly (193
-    // bytes), config_test.cpp. The clock_rng scope is found from the end.
+    // u64 0 (8 bytes); figures (31 bytes: no deferred list since T22), events (8 bytes) and
+    // timers_monopoly (193 bytes), config_test.cpp. The clock_rng scope is found from the end.
     constexpr std::size_t kSettingsBytes = 38;
     constexpr std::size_t kIdsBytes = 25;
     constexpr std::size_t kPlayersBytes = 8 + 32 + 2 + 4;
     constexpr std::size_t kIslandsBytes = 8;
-    constexpr std::size_t kTailBytes = 39 + 8 + 193;
+    constexpr std::size_t kTailBytes = 31 + 8 + 193;
     REQUIRE(bytes.size() >
             8 + 36 + kSettingsBytes + kIdsBytes + kPlayersBytes + kIslandsBytes + kTailBytes);
     const std::size_t at = bytes.size() - kTailBytes - kIslandsBytes - kPlayersBytes - kIdsBytes -
                            kSettingsBytes - 36; // clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 8) ==
-          std::vector<std::uint8_t>{108, 0, 0, 0, 1, 0, 0, 0});
+          std::vector<std::uint8_t>{109, 0, 0, 0, 1, 0, 0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8
     CHECK(bytes[at + 16] == 0);
@@ -910,7 +908,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another state hash version is refused") {
         auto bad = bytes;
-        bad[0] = 109;
+        bad[0] = 110;
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);

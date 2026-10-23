@@ -128,8 +128,8 @@ inline constexpr std::uint32_t kMaxDroughtCounter = 0xffff;
 /// 0 to the target. Path to raise it: widen Drought::ring to i64 with this constant.
 inline constexpr std::uint32_t kMaxDroughtRing = 0x7fffffff;
 
-/// SimConfig::list_min_growth is valid when it is in 1..kListSizeBound (zero
-/// would stall the growth rule of SlotList::insert, F22).
+/// SimConfig::list_min_growth (and figure_min_growth) is valid when it is in
+/// 1..kListSizeBound (zero would stall the growth rule of SlotList::insert, F22).
 constexpr bool valid_list_min_growth(std::uint32_t v) {
     return v >= 1 && v <= kListSizeBound;
 }
@@ -301,6 +301,11 @@ struct SimConfig {
     std::uint32_t list_initial_size = 1;
     /// D 0x10026a00.
     std::uint32_t list_min_growth = 10;
+    /// The figure registry's smallest growth: its free-slot search 0x10099130 grows a
+    /// full vector to n + n/4 but at least 100 (D 0x10099185..0x100991a1; the explicit
+    /// slot path 0x1009734b..0x1009736d has the same form), so a fresh registry grows
+    /// 1 -> 100 -> 125 (docs/re/annowelt.md "Unit registry"). Valid as list_min_growth.
+    std::uint32_t figure_min_growth = 100;
     /// Passes after the building scheduler (D 0x1002d9a0).
     std::uint32_t city_pass_count = kOriginalCityPassCount;
     // ---- scheduler divisors and periods (D)

@@ -126,18 +126,18 @@ A `STADT2` record (or its older name `STADT`, the same reader) in a player's sta
 | `PROD` | nested records; `ENTRY`: u16 x, u16 y, then the building's own record | one building per `ENTRY` (below); another record name is skipped | D `0x100264a0`, `0x1002671d`; P: 8 561 entries |
 | `BAUMAT`, `VK`, `EK`, `STAT`, `STAT2`, `STST2`, `HEAD`, `VOLK` | | read by the city reader; not decoded (OQ-145) | D (the record names at `0x1002e170`) |
 
-**`PROD/ENTRY` → building** (D `0x100264a0`). The island resolves the entry's tile to the placement of the building whose footprint holds it (island `+0x84` = `0x10083a90`: the tile's object id, the origin from the tile's in-footprint offset, rotation, phase, height), so type, origin, rotation and height come from the island's `PROD2` copy, not from the entry; an unknown type skips the entry. `Create` (`0x10024010`) builds the building (the height goes to `+0x0f`), the bytes after the position go to the class's `Load` (slot `+0x7c`), then the city claims the footprint tiles that are still neutral (`0x10026685`). The class records, each read into a zero-filled buffer; `[1]` bit 0 (bit i for line i) is the switch:
+**`PROD/ENTRY` → building** (D `0x100264a0`). The island resolves the entry's tile to the placement of the building whose footprint holds it (island `+0x84` = `0x10083a90`: the tile's object id, the origin from the tile's in-footprint offset, rotation, phase, height), so type, origin, rotation and height come from the island's `PROD2` copy, not from the entry; an unknown type skips the entry. `Create` (`0x10024010`) builds the building (the height goes to `+0x0f`), the bytes after the position go to the class's `Load` (slot `+0x7c`), then the city claims the footprint tiles that are still neutral (`0x10026685`). The class records, each read into a zero-filled buffer; `[1]` bit 0 (bit i for line i) is the switch (passed through slot `+0xac` of the object at building `+0x14` before slot `+0xc8` stores it; that the call returns the bit unchanged is likely, OQ-145):
 
 | Class (`Load`) | Length rule | Bytes |
 |---|---|---|
 | workshop (`0x10068640`) | ≤ 10; longer: skipped whole | `[2]` output, `[4]` input 0, `[6]` input 1, `[8]` activity |
-| farm, fur trapper (`0x1006ef70`) | exactly 10; else skipped whole | `[2]` output, `[4]` raw stock, `[6]` activity |
+| farm, fur trapper (`0x1006ef70`) | exactly 10; else skipped whole | `[2]` output, `[4]` raw stock, `[8]` activity (`[6]` not read) |
 | mine (`0x1006e310`) | into 10 bytes, no test | `[2]` output, `[8]` activity |
 | small farm (`0x1006fc80`) | into 14 bytes, no test | `[2 + 2i]` output i, `[6 + 2i]` raw stock i, `[10 + 2i]` activity i |
 | weapons workshop (`0x10069140`) | into 14 bytes, no test | `[2 + 2i]` output i, `[6 + 2i]` input i, `[10 + 2i]` activity i |
 | house (`0x10076e60`), market (`0x1006be00`) | | not read (OQ-145) |
 
-P: 8 538 entries sit exactly on a `PROD2` item's origin and 23 on another tile; 7 460 carry class bytes. The `PROD2` items of building types are the tile layer's copy of the buildings: 8 526 of the 8 810 are named by an entry; 34 entries name a `DENKMAL` item (PRODTYPE 289, not a building of the layout) and one a tile without an item (OQ-144).
+P: 8 538 entries sit exactly on a `PROD2` item's origin and 23 on another tile; 7 460 carry class bytes. The `PROD2` items of building types are the tile layer's copy of the buildings: of the 8 810, 212 are second copies of an equal item on the same origin, 8 526 are named by an entry and 72 by none; 34 entries name a `DENKMAL` item (PRODTYPE 289, not a building of the layout) and one a tile without an item (OQ-144).
 
 ## Units (`SCHIFF`, `SOLDAT`)
 

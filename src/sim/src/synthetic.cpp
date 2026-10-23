@@ -39,6 +39,48 @@ formats::Result<SyntheticTypes, std::string> make_synthetic_types() {
     return s;
 }
 
+formats::Result<SyntheticTypes, std::string> make_growth_types() {
+    auto base = make_synthetic_types();
+    if (!base) {
+        return base.error();
+    }
+    SyntheticTypes s = std::move(base).value();
+    s.field = TypeId{9011};
+    s.ripe_field = TypeId{9012};
+    s.forest = TypeId{9013};
+    s.ripe_forest = TypeId{9014};
+    s.grass = TypeId{9015};
+    s.ripe_grass = TypeId{9016};
+    TypeRegistry::Builder b;
+    for (const BuildingType& t : s.registry->types()) {
+        b.add(t);
+    }
+    // A growing object (PRODTYPE 226 ROHSTWACHS or 227 ROHSTDUERR: tile objects, no
+    // list) and its successor (225 ROHSTOFF, not growing).
+    const auto growing = [&](TypeId id, std::uint32_t prodtype, std::uint32_t period,
+                             std::uint32_t stages, std::uint32_t shift) {
+        BuildingType t;
+        t.id = id;
+        t.prodtype = prodtype;
+        t.has_prod = true;
+        t.prod.kind = BuildingClass::GrowingItem;
+        t.prod.growth_period = period;
+        t.prod.stages = stages;
+        t.prod.stage_shift = shift;
+        b.add(std::move(t));
+        b.add_plain(TypeId{id.v + 1}, 225);
+    };
+    growing(s.field, 226, 15500, 5, 2);
+    growing(s.forest, 226, 24000, 5, 2);
+    growing(s.grass, 227, 1000, 5, 0);
+    auto built = b.build();
+    if (!built) {
+        return built.error();
+    }
+    s.registry = std::move(built.value());
+    return s;
+}
+
 WorldSettings synthetic_settings() {
     WorldSettings s;
     s.world_width = 512;

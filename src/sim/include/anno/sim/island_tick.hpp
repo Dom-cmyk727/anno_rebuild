@@ -1,19 +1,19 @@
-// The island phase of World::advance (spec: docs/sim/state.md §5.4–§5.8, stage S7;
-// evidence: AnnoWelt.dll island tick 0x1008b760, city ring 0x100969d0, city tick
-// 0x1002d9a0, building scheduler 0x10023a50, object manager 0x10095d40, 300 s event
-// 0x10093980, drought wrapper 0x10093a10, drought constructor 0x10087280).
+// The island phase of World::advance (spec: docs/sim/state.md §5.4–§5.8, stages S7 and
+// S13; evidence: AnnoWelt.dll island tick 0x1008b760, growth visit 0x1008b5f0, city ring
+// 0x100969d0, city tick 0x1002d9a0, building scheduler 0x10023a50, object manager
+// 0x10095d40, 300 s event 0x10093980, drought wrapper 0x10093a10, drought constructor
+// 0x10087280).
 //
 // Every function takes the read-only TickContext, the island (and city) it works
 // on and the Effects buffer for the consequences that leave the island; none of
 // them touches anything else, so the island phase can be ticked in any order
 // that merges the buffers in island order (docs/sim/state.md §4.11, §11).
 //
-// Stage S7 scope: the sweeps advance their cursors and the growth sweep has no tile
-// body yet (the chunk visit 0x1008b5f0 is stage S13, together with the drought
-// machine 0x1008aeb0, which is why a drought the 300 s event starts keeps its
-// start record until then); the fauna sweep, the object bodies and the eight city
-// passes are the seams of seams.hpp and do nothing by default. The island message
-// manager ([island+0x30], 0x100793b0) is not modelled (O-52).
+// Since stage S13 the growth sweep visits its chunks (0x1008b5f0); the drought machine
+// 0x1008aeb0 is the next S13 step (a drought the 300 s event starts keeps its start
+// record until then). The fauna sweep, the object bodies and the eight city passes are
+// the seams of seams.hpp and do nothing by default.
+// The island message manager ([island+0x30], 0x100793b0) is not modelled (O-52).
 #pragma once
 
 #include <cstdint>
@@ -26,11 +26,20 @@
 namespace anno::sim {
 
 /// One island's tick (D: 0x1008b760, argument `t`, its low 16 bits used), in this
-/// order: the growth sweep and the fauna sweep (chunk counts min(chunks · d /
+/// order: the growth sweep (grow_chunk at the cursor, then the cursor step) and the
+/// fauna sweep (chunk counts min(chunks · d /
 /// period + 1, chunks) with d the 16-bit difference to the sweep stamp; zero chunks
 /// give 0 visits and everything after still runs, A1), the object manager, the city
 /// ring, the 300 s event, then the sweep stamp becomes the 16-bit tick.
 void island_tick(const TickContext& ctx, Island& island, Effects& fx);
+
+/// The growth visit of one chunk (D: 0x1008b5f0), the chunk whose top-left tile is
+/// (x, y) in island tiles: every in-bounds tile of the chunk, row-major (the edge
+/// chunks of an island whose width or height is not a multiple of chunk_edge are
+/// clipped, A14, F20), whose object is a growing type (TypeRegistry::find_growing)
+/// goes through grow() at the tick's t, and a changed object or phase is written back
+/// through the dirtying setters. Draws nothing (O-13 closed).
+void grow_chunk(const TickContext& ctx, Island& island, std::uint32_t x, std::uint32_t y);
 
 /// The sweep cursor step (A3): x += chunk_edge; at the end of a row x = 0 and y +=
 /// chunk_edge; at the end of the island y = 0. `width` and `height` are the island's

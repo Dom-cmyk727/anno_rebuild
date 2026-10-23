@@ -12,8 +12,10 @@
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
 #include <anno/sim/island_tick.hpp>
+#include <anno/sim/production.hpp>
 #include <anno/sim/scheduler.hpp>
 #include <anno/sim/tick.hpp>
+#include <anno/sim/types.hpp>
 
 namespace anno::sim {
 
@@ -28,6 +30,39 @@ void advance_sweep_cursor(std::uint32_t& x, std::uint32_t& y, std::uint32_t widt
         y = ny >= height ? 0 : static_cast<std::uint32_t>(ny);
     } else {
         x = static_cast<std::uint32_t>(nx);
+    }
+}
+
+void grow_chunk(const TickContext& ctx, Island& island, std::uint32_t x, std::uint32_t y) {
+    // D 0x1008b5f0 (arguments x, y, t): the original walks a fixed 8 x 8 block from
+    // tiles + 8 (w y + x) with no bounds check; the edge chunks of an island whose sides
+    // are not multiples of the edge are clipped to the in-bounds tiles here (A14, F20).
+    TileLayer& tiles = island.tiles;
+    const std::uint64_t w = tiles.width();
+    const std::uint64_t x_end = std::min<std::uint64_t>(std::uint64_t{x} + ctx.cfg.chunk_edge, w);
+    const std::uint64_t y_end =
+        std::min<std::uint64_t>(std::uint64_t{y} + ctx.cfg.chunk_edge, tiles.height());
+    for (std::uint64_t row = y; row < y_end; ++row) {
+        for (std::uint64_t col = x; col < x_end; ++col) {
+            const std::uint64_t idx = row * w + col;
+            const std::uint32_t object = tiles.object(idx);
+            // The type through game slot +0x70; a tile without one, or whose type has no
+            // growth period, is skipped (grow() returns at once for P / 2 = 0).
+            const BuildingType* type = ctx.types.find_growing(object);
+            if (type == nullptr) {
+                continue;
+            }
+            const std::uint8_t phase = tiles.phase(idx);
+            GrowthTile g{object, phase};
+            static_cast<void>(grow(g, type->prod, ctx.t));
+            // Written back through the setters, which mark the chunk dirty.
+            if (g.object != object) {
+                tiles.set_object(idx, g.object);
+            }
+            if (g.phase != phase) {
+                tiles.set_phase(idx, g.phase);
+            }
+        }
     }
 }
 
@@ -150,10 +185,11 @@ void island_tick(const TickContext& ctx, Island& island, Effects& fx) {
     const auto chunks = static_cast<std::uint32_t>(
         std::min<std::uint64_t>(tiles.chunk_count(), std::numeric_limits<std::uint32_t>::max()));
     const auto d = static_cast<std::uint16_t>(t - island.sweep.stamp);
-    // Growth sweep. The chunk visit (grow_chunk, D 0x1008b5f0) is stage S13: the
-    // cursor moves exactly as it will then.
+    // Growth sweep: the chunk at the cursor is visited (D 0x1008b5f0), then the cursor
+    // moves on (D 0x1008b7c5..0x1008b7f5).
     const std::uint64_t grow_chunks = sweep_chunks(chunks, d, ctx.cfg.grow_period);
     for (std::uint64_t i = 0; i < grow_chunks; ++i) {
+        grow_chunk(ctx, island, island.sweep.grow_x, island.sweep.grow_y);
         advance_sweep_cursor(island.sweep.grow_x, island.sweep.grow_y, tiles.width(),
                              tiles.height(), ctx.cfg.chunk_edge);
     }

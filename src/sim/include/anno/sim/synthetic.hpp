@@ -42,10 +42,20 @@ struct SyntheticTypes {
     TypeId market_stall;
     /// STRASSE (PRODTYPE 193): a tile object, not a building.
     TypeId road;
+    /// Growing tile objects (make_growth_types only; invalid ids elsewhere), each with
+    /// its successor, the next id (a ROHSTOFF object that does not grow): a grain
+    /// field (ROHSTWACHS, P 15 500, S 5, k 2: the values of fixture F8, entry 712), a
+    /// forest (ROHSTWACHS, P 24 000, S 5, k 2) and a dry grass (ROHSTDUERR, P 1 000,
+    /// S 5, k 0; P / 2 = 500 is shorter than a full growth sweep, so flips are lost).
+    TypeId field, ripe_field, forest, ripe_forest, grass, ripe_grass;
 };
 
 /// The registry of the types above on the original goods and class tables.
 formats::Result<SyntheticTypes, std::string> make_synthetic_types();
+
+/// make_synthetic_types plus the growing tile objects field (9011), forest (9013),
+/// grass (9015) and their ripe successors 9012, 9014, 9016 (stage S13, the golden G5).
+formats::Result<SyntheticTypes, std::string> make_growth_types();
 
 /// The settings of the synthetic worlds: a 512 x 512 tile world, the add-on
 /// edition flag at its default (3), everything else as WorldSettings{}.

@@ -383,6 +383,39 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 
 ## 4. Review log (orchestrator)
 
+- **T9 S12 (2026-10-23 j, PR #28, head 25024cd). Approved; merge when CI is green.**
+  - What it builds:
+    - world-level time: event dispatch with handler seams, the D4 second pass;
+    - figure registry phases B/C/D;
+    - script timers (F5 clamp), the monopoly refresh, the 7.5 min event;
+    - G4, 600 000 ticks;
+    - `kStateHashVersion` 105 → 106 (three new accumulator/flag fields, a `timers_monopoly` scope).
+  - Subagent: 34 of 35 mutants killed, 1 equivalent; GCC 13.3 and Clang 18 `-O3 -Werror` 502/502 both ways; ctest without the game dir 824/824. The full with-game-dir ctest was stopped by the memory guard at 730/824 with 0 failed; the 515 sim CTests then passed with the game dir.
+  - Verified by the orchestrator in `AnnoWelt.dll`:
+    - `0x1009cd30`: timer 0 is `sub [ecx+0x10], edx` / `jne` at `0x1009cd51`. It deactivates only on exactly 0, so an overshoot wraps the u32. Timers 1–4 count up (`add`). F5 and OQ-133 describe this correctly.
+    - `0x100ae140`, the 7.5 min event, step for step as `event750` in `timers.cpp`: acc += dt, `cmp 0x6ddd0` (450 000 ms), acc = 0, property 6 bit 0x80, draw, `% 10`, property 14 bit 2, draw, `div [esi+0xf4]`, null slot.
+  - Re-run on the branch build:
+    - `anno_sim_tests` with the game dir 502/502;
+    - `anno-sim-replay run` g2 6/6, g3 21/21, g4 21/21 (12 021 entries, tick 600 000).
+  - Mutation by the orchestrator: the add-on test moved before the first draw (so the base game consumes no draw) fails "event 7.5 min draws: one draw in the base game, two in the add-on on a hit" (1 of 502). Restored and rebuilt.
+  - Accepted:
+    - the edit to `tools/sim_stream.py` (needed for the independent goldens);
+    - the O(k·n) list removal, left for the S15 benchmark;
+    - the 94 non-sim CTests not run with the game dir: S12 touches only `src/sim`, `src/tools/sim_replay` and fixtures, and render and formats do not link sim.
+  - Owner question **OQ-133**: keep F5, the spec's fix of the timer-0 wrap, as the default?
+    - Orchestrator evidence for the owner: `0x1009cd90` `TIMER_SET` stores seconds × 500 ticks; `0x1009cd70` reads `counter / 500` in seconds (`mul 0x10624dd3`, `shr 5`); `0x1009cdb0`/`0x1009cdc0` stop/start.
+    - Timer 0 is the mission countdown (Single_08 5 min won, Single_14 3 h lost, single42 10 min with 300 nobles won; Single_10, Single_24, single31). `TIMER_0 < 1` fires in the last second before 0. The wrap only breaks later `TIMER_0 < 1` checks (single31 `PART6 && PART3 == FALSE && TIMER_0 < 1`).
+    - **Owner decision 2026-10-23: "Stay on the original bug with optional fix".** The default is the original's wrap (deactivate only on exactly 0); the clamp becomes an opt-in `Rules` option.
+  - **Fix-up before the merge (same branch, the S12 subagent):**
+    1. a `Rules` option (default off) for the F5 clamp; the default is the original's u32 wrap with deactivation only on exactly 0;
+    2. tests for both;
+    3. G4 re-derived for the default (or its timer part run with the option, stated);
+    4. state.md F5 row recategorised from "fix" to a rules option;
+    5. OQ-133 resolved with the owner's words;
+    6. version bump if the hashed `Rules` header changes;
+    7. gates.
+  - New RE questions: OQ-131 (phase D removal through `0x10097770`) and OQ-132 (whether saves keep the accumulators).
+
 - **T14 stage 1 (2026-10-23 j, PR #27, head 74bbff2). Approved after one fix-up (below); merge when CI is green.**
   - Per-pass GPU timestamps on both adapters. The wave simulation (`fluid`) was outside T3's timed span and is the iGPU's largest pass.
   - The wave window's cells per screen pixel are bounded at far zoom (`GpuLimits::fluid_max_cells_per_px`, default 0.25).

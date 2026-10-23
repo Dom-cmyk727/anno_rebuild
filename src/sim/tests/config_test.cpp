@@ -84,7 +84,7 @@ struct Stream {
 /// values of docs/sim/state.md §3.
 void expected_config(Stream& s) {
     for (const std::uint32_t x : {256U, 16U, 15U, 32U, 31U, 5U, 28U, 20U, 32U, 5U, 65U, 56U, 0x29U,
-                                  5U, 2U, 8U, 1U, 10U, 8U}) {
+                                  5U, 2U, 8U, 1U, 10U, 100U, 8U}) {
         s.u32(x); // island_slots .. city_pass_count
     }
     for (const std::uint32_t x : {500U, 50U, 50U, 250U, 50U, 5000U, 2000U, 15000U, 7500U, 300U, 20U,
@@ -234,6 +234,7 @@ std::vector<std::pair<const char*, ConfigMut>> config_mutations() {
     BUMP(chunk_edge);
     BUMP(list_initial_size);
     BUMP(list_min_growth);
+    BUMP(figure_min_growth);
     BUMP(city_pass_count);
     BUMP(building_div);
     BUMP(city_ring_div);
@@ -528,6 +529,7 @@ TEST_CASE("sim config defaults are the originals") {
     CHECK(c.chunk_edge == 8);
     CHECK(c.list_initial_size == 1);
     CHECK(c.list_min_growth == 10);
+    CHECK(c.figure_min_growth == 100);
     CHECK(c.city_pass_count == 8);
     CHECK(c.building_div == 500);
     CHECK(c.city_ring_div == 50);
@@ -569,7 +571,7 @@ TEST_CASE("sim config defaults are the originals") {
 }
 
 TEST_CASE("config digest changes with every field") {
-    static_assert(sim::field_count<sim::SimConfig>() == 50);
+    static_assert(sim::field_count<sim::SimConfig>() == 51);
     const sim::SimConfig base;
     const std::uint64_t base_digest = base.digest();
     CHECK(sim::SimConfig{}.digest() == base_digest);
@@ -739,6 +741,7 @@ TEST_CASE("config validate rejects each bad field") {
     // List sizes: zero, one past the bound, the largest u32.
     for (const std::uint32_t v : {0U, sim::kListSizeBound + 1, 0xFFFFFFFFU}) {
         rows.push_back({"list_min_growth", [v](sim::SimConfig& c) { c.list_min_growth = v; }});
+        rows.push_back({"figure_min_growth", [v](sim::SimConfig& c) { c.figure_min_growth = v; }});
         rows.push_back({"list_initial_size", [v](sim::SimConfig& c) { c.list_initial_size = v; }});
     }
     // The null slots one city starts with (lists x list_initial_size, F34): a valid
@@ -866,6 +869,9 @@ TEST_CASE("config validate accepts the edges of each bound") {
         CHECK(c.validate().empty());
     };
     accepted("list_min_growth 1", [](sim::SimConfig& c) { c.list_min_growth = 1; });
+    accepted("figure_min_growth 1", [](sim::SimConfig& c) { c.figure_min_growth = 1; });
+    accepted("figure_min_growth bound",
+             [](sim::SimConfig& c) { c.figure_min_growth = sim::kListSizeBound; });
     accepted("drought target ring 2^31 - 1", [](sim::SimConfig& c) {
         c.chunk_edge = 1;
         c.drought_radius = 0x7FFFFFFFU;

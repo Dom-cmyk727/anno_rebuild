@@ -91,8 +91,9 @@ struct FigureRegistry {
 /// the group list's constructor makes one, A7), stamp 0.
 [[nodiscard]] FigureRegistry make_figure_registry(const SimConfig& cfg);
 
-/// Stores `f` in a free slot by the group list's policy (SimConfig::list_min_growth,
-/// Rules::slot_policy; docs/sim/state.md §5.2), records it in the id map and returns
+/// Stores `f` in a free slot by the group list's policy (Rules::slot_policy; docs/sim/
+/// state.md §5.2) with the registry's own smallest growth SimConfig::figure_min_growth
+/// (100, D 0x10099185..0x100991a1; not list_min_growth), records it in the id map and returns
 /// the slot; kNoSlot, changing nothing, when the list cannot grow (a limit of the
 /// slot type, SlotList::insert) or `f.id` is invalid or already in the registry.
 Slot add_figure(FigureRegistry& registry, Figure f, const SimConfig& cfg, const Rules& rules);

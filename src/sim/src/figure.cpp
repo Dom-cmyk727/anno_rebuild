@@ -24,7 +24,7 @@ Slot add_figure(FigureRegistry& registry, Figure f, const SimConfig& cfg, const 
         return kNoSlot;
     }
     const Slot slot =
-        registry.list.insert(std::move(f), SlotParams{cfg.list_min_growth, rules.slot_policy});
+        registry.list.insert(std::move(f), SlotParams{cfg.figure_min_growth, rules.slot_policy});
     if (slot == kNoSlot) {
         return kNoSlot;
     }

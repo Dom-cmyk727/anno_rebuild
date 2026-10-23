@@ -180,7 +180,7 @@ template <class A, Same<SmallFarmAnimals> S> void fields(A& a, S& s) {
     ar::seq(a, s.limit, 1, [&](auto& x) { a.u8(x); });
 }
 
-static_assert(field_count<SimConfig>() == 50,
+static_assert(field_count<SimConfig>() == 51,
               "a SimConfig member needs a line in fields(SimConfig)");
 
 template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
@@ -202,6 +202,7 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     a.u32(s.chunk_edge);
     a.u32(s.list_initial_size);
     a.u32(s.list_min_growth);
+    a.u32(s.figure_min_growth);
     a.u32(s.city_pass_count);
     a.u32(s.building_div);
     a.u32(s.city_ring_div);

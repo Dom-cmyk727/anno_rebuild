@@ -25,6 +25,7 @@
 #include <anno/sim/world.hpp>
 
 #include "golden.hpp"
+#include "island_helpers.hpp"
 #include "world_access.hpp"
 
 namespace sim = anno::sim;
@@ -389,6 +390,19 @@ TEST_CASE("the cart's choice: the 75 percent line, the 1 t filter, the strict be
         CHECK(figures_of(w, sim::kJobMarketCart).empty());
         CHECK(std::get<sim::Farm>(at(w, 111, 115).payload).reserved == 0);
     }
+    SUBCASE("a full raw goods producer scores 128 and stops the search") {
+        // KORN 7 t: (1792 - 1344) · 128 / (1792 - 1344) = 128 >= 128, and 2 · 1792 >= the
+        // city's 0 corn: the search stops at the first farm (0x1005aa59), although the
+        // farther one holds more (2000 would score (2000 - 1344) · 128 / 448 = 187).
+        sim::World w = run([](Rig& r) {
+            r.place(kFarm, 111, 115, farm_with(1792));
+            r.place(kFarm, 113, 115, farm_with(2000));
+        });
+        const auto carts = figures_of(w, sim::kJobMarketCart);
+        REQUIRE(carts.size() == 1);
+        CHECK(carts[0]->transport.target == at(w, 111, 115).id);
+        CHECK(carts[0]->transport.reserved_88 == 1280); // min(5 t, 1792)
+    }
     SUBCASE("a producer with less than 1 t is no candidate (0x1005aca0)") {
         // KORN 1 t: cap 256, q = 192; 200 would score (200 - 192) · 128 / 64 = 16 in the
         // callback, but the filter keeps only 256 and more.
@@ -608,6 +622,20 @@ TEST_CASE("transport runs are deterministic and survive a save mid-walk") {
         b.advance(2);
     }
     CHECK(a.state_hash() == b.state_hash());
+    // The executor (World::create's island jobs, the hash preparation) does not change
+    // the run: 1, 2 and 8 threads give the serial world's hash.
+    for (const unsigned threads : {1U, 2U, 8U}) {
+        INFO("threads " << threads);
+        island_test::ThreadExecutor ex(threads);
+        auto made = sim::World::create(r.spec, types, sim::SimConfig{}, {}, {}, ex);
+        REQUIRE(made.ok());
+        sim::World d = std::move(made).value();
+        for (int i = 0; i < 1200; ++i) {
+            d.advance(2);
+        }
+        d.prepare_hash(ex);
+        CHECK(d.state_hash() == a.state_hash());
+    }
     // Both figures are on their way: a save and a load continue the same run.
     CHECK(!figures_of(a, sim::kJobMarketCart).empty());
     CHECK(!figures_of(a, sim::kJobWorkshopCarrier).empty());

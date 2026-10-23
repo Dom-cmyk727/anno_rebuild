@@ -2149,7 +2149,7 @@ So B1 … B13 take the slots 2, 3, 4, 5, 6, 7, 8, 9, 1, 10, 11, 2, 3, the list e
   - `synthetic.hpp` / `.cpp`: `make_transport_types`, `g6_scenario`;
   - `anno-sim-replay`: the scenario registry reads `FigurenHeader.dat`.
 - **Tests:**
-  - `transport_test.cpp` (17 cases): the disc, the area, the segment lengths, the slots; the cart end to end with every tick derived; off the road; F11; F12; the cart's choice in five sub-cases (75 % line, 1 t filter, strict best, room, reservation clip); the full warehouse; the neighbour order; the carrier end to end; the priority; the offer; the carrier's 3/4 stop; determinism and a save mid-walk; G6.
+  - `transport_test.cpp` (17 cases): the disc, the area, the segment lengths, the slots; the cart end to end with every tick derived; off the road; F11; F12; the cart's choice in six sub-cases (75 % line, the full raw producer's stop at 128, 1 t filter, strict best, room, reservation clip); the full warehouse; the neighbour order; the carrier end to end; the priority; the offer; the carrier's 3/4 stop; determinism, the executor at 1, 2 and 8 threads, and a save mid-walk; G6.
   - The layouts, field counts and digests of `slice_test`, `sim_test`, `building_state_test`, `types_test`, `container_probe_test`, `config_test`, `world_state_test` and `create_remove_test`.
   - `scenario_test` counts the producers and warehouses whose stocks moved.
 - **Stream 111** (PRNG timeline unchanged at 2: transport draws nothing). Every golden re-baselined (`goldens.txt` lists the 110 values in a note), `g2.log`–`g5.log` re-recorded, `g6.log` new, `scenario_corpus.txt` re-baselined; `tools/sim_stream.py` transcribes the new fields and the Market row.

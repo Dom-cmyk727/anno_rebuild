@@ -96,6 +96,57 @@ TEST_CASE("fluid window recentres in strips") {
     CHECK(jump == std::vector<CellRect>{w.rect()});
 }
 
+TEST_CASE("the wave window's cells per tile are bounded by the cells per screen pixel") {
+    const FluidConfig cfg; // 16 / 8 / 4 cells per tile at groups 0 / 1 / 2
+    const double cap = fluid::kDefaultMaxCellsPerPx;
+    // No bound, or no tile size: the group's cells.
+    CHECK(fluid::bounded_cells_per_tile(cfg, 2, 9.5, 0.0) == 4);
+    CHECK(fluid::bounded_cells_per_tile(cfg, 2, 0.0, cap) == 4);
+    // Scale 1 at every built group (tile 84, 42, 20 px): 0.19, 0.19, 0.20 cells per pixel.
+    CHECK(fluid::bounded_cells_per_tile(cfg, 0, 84.0, cap) == 16);
+    CHECK(fluid::bounded_cells_per_tile(cfg, 1, 42.0, cap) == 8);
+    CHECK(fluid::bounded_cells_per_tile(cfg, 2, 20.0, cap) == 4);
+    // The threshold of group 2: 4 / 16 = 0.25 fits, a hair below halves.
+    CHECK(fluid::bounded_cells_per_tile(cfg, 2, 16.0, cap) == 4);
+    CHECK(fluid::bounded_cells_per_tile(cfg, 2, 15.99, cap) == 2);
+    // The far end of the levels (scale 0.452 on group 1, 0.475 on group 2): halved once.
+    CHECK(fluid::bounded_cells_per_tile(cfg, 1, 42.0 * 0.452, cap) == 4);
+    CHECK(fluid::bounded_cells_per_tile(cfg, 2, 20.0 * 0.475, cap) == 2);
+    // Every result fits the bound.
+    for (double tile = 4.0; tile < 200.0; tile *= 1.07) {
+        for (std::size_t g = 0; g < 3; ++g) {
+            const std::uint32_t c = fluid::bounded_cells_per_tile(cfg, g, tile, cap);
+            REQUIRE(c >= 1);
+            CHECK(static_cast<double>(c) / tile <= cap);
+            // and is the finest halving that does (twice as many would not fit, unless it
+            // is the group's own).
+            CHECK((c == cfg.cells_per_tile[g] || 2.0 * c / tile > cap));
+        }
+    }
+    // Off where one cell per tile is still denser than the bound (tiles under 4 px).
+    CHECK(fluid::bounded_cells_per_tile(cfg, 2, 3.9, cap) == 0);
+    CHECK(fluid::bounded_cells_per_tile(cfg, 2, 4.0, cap) == 1);
+    // Hysteresis: a coarser window in use stays until the finer one fits with 5 % room.
+    CHECK(fluid::bounded_cells_per_tile(cfg, 2, 16.0, cap, 2) == 2);
+    CHECK(fluid::bounded_cells_per_tile(cfg, 2, 16.9, cap, 2) == 4); // 0.237 <= 0.95 x 0.25
+    CHECK(fluid::bounded_cells_per_tile(cfg, 2, 16.5, cap, 2) == 2);
+    // ... down to the halving in between when the finest has no room yet.
+    CHECK(fluid::bounded_cells_per_tile(cfg, 2, 16.5, cap, 1) == 2);
+    // A finer window in use gives way at once (the bound is hard).
+    CHECK(fluid::bounded_cells_per_tile(cfg, 2, 15.0, cap, 4) == 2);
+    // A window that is not one of the group's halvings (another group's) is no reason to
+    // stay coarse.
+    CHECK(fluid::bounded_cells_per_tile(cfg, 1, 42.0, cap, 3) == 8);
+    // The window size follows the cells per tile.
+    CHECK(cfg.window_size_for(4, 100.0F) == cfg.window_size(2, 100.0F));
+    CHECK(cfg.window_size_for(2, 100.0F) == 448); // 200 + 2 (64 + 32) = 392, rounded up
+    const FluidWindow w = FluidWindow::with_cells(2, {10.0F, 10.0F}, 64);
+    CHECK(w.cells_per_tile == 2);
+    CHECK(w.origin == std::pair<std::int64_t, std::int64_t>{20 - 32, 20 - 32});
+    CHECK(FluidWindow::with_size(cfg, 1, {10.0F, 10.0F}, 64) ==
+          FluidWindow::with_cells(8, {10.0F, 10.0F}, 64));
+}
+
 TEST_CASE("fluid swell is seeded and bounded") {
     const FluidConfig cfg;
     const fluid::Swell a = fluid::swell_components(cfg);

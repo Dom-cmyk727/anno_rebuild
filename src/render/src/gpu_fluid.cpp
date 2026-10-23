@@ -246,16 +246,19 @@ FluidGpu::Grid FluidGpu::make_grid(std::uint32_t n) const {
     return g;
 }
 
-void FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<float, float> centre,
+bool FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<float, float> centre,
                       float span_tiles, std::uint64_t time_ms, const fluid::DepthFn& depth,
-                      std::size_t threads) {
+                      std::size_t threads, std::uint32_t cells_per_tile,
+                      const WGPUPassTimestampWrites* timestamps) {
     const double target = static_cast<double>(time_ms) / 1000.0;
-    const std::uint32_t size = cfg_.window_size(group, span_tiles);
+    const std::uint32_t cpt = cells_per_tile != 0 ? cells_per_tile : cfg_.cells_per_tile.at(group);
+    const std::uint32_t size = cfg_.window_size_for(cpt, span_tiles);
+    last_steps_ = 0;
     if (background_) {
-        prepare_window(group, centre, size, target, depth, threads);
+        prepare_window(cpt, centre, size, target, depth, threads);
         if (!window_) {
             // No window yet: nothing to step.
-            return;
+            return false;
         }
     } else {
         if (size != grid_.n) {
@@ -263,12 +266,11 @@ void FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<f
             window_.reset();
         }
         std::vector<fluid::CellRect> new_rects;
-        if (window_ && group_ == group) {
+        if (window_ && window_->cells_per_tile == cpt) {
             new_rects = window_->recentre(centre, cfg_.recentre_cells);
         } else {
-            window_ = fluid::FluidWindow::with_size(cfg_, group, centre, size);
+            window_ = fluid::FluidWindow::with_cells(cpt, centre, size);
             ++window_serial_;
-            group_ = group;
             sim_t_ = target;
             new_rects = {window_->rect()};
         }
@@ -294,8 +296,9 @@ void FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<f
         sim_t_ += static_cast<double>(due - n) * dt;
     }
     if (n == 0) {
-        return;
+        return false;
     }
+    last_steps_ = static_cast<std::uint32_t>(n);
     std::vector<std::uint8_t> bytes(static_cast<std::size_t>(align_ * n), 0);
     for (std::uint64_t k = 0; k < n; ++k) {
         const double t = sim_t_ + dt * static_cast<double>(k + 1);
@@ -307,6 +310,7 @@ void FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<f
     const std::uint32_t groups = (grid_.n + 7) / 8;
     WGPUComputePassDescriptor cd = WGPU_COMPUTE_PASS_DESCRIPTOR_INIT;
     cd.label = sv("fluid");
+    cd.timestampWrites = timestamps;
     const WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, &cd);
     for (std::uint64_t k = 0; k < n; ++k) {
         const auto off = static_cast<std::uint32_t>(align_ * k);
@@ -319,6 +323,7 @@ void FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<f
     }
     wgpuComputePassEncoderEnd(pass);
     wgpuComputePassEncoderRelease(pass);
+    return true;
 }
 
 namespace {
@@ -437,11 +442,11 @@ struct FluidGpu::Job {
     fluid::FluidConfig cfg;
     fluid::Swell comps{};
     fluid::DepthFn depth;
-    /// The window to switch to; its group and size.
+    /// The window to switch to; its cells per tile and size.
     fluid::FluidWindow window;
-    std::size_t group = 0;
+    std::uint32_t cells_per_tile = 0;
     std::uint32_t size = 0;
-    /// A whole new grid (zoom group or size change, jump) or strips of new
+    /// A whole new grid (other cells per tile or size, jump) or strips of new
     /// cells written into the grid in use.
     bool whole = false;
     /// Simulation time (s) the cells are initialised at.
@@ -515,6 +520,11 @@ void FluidGpu::free_job_in_background(std::unique_ptr<Job> job) {
     }).detach();
 }
 
+void FluidGpu::drop_window() {
+    retire_job();
+    window_.reset();
+}
+
 void FluidGpu::retire_job() {
     if (!job_) {
         return;
@@ -525,8 +535,9 @@ void FluidGpu::retire_job() {
     retired_.push_back(std::move(job_));
 }
 
-void FluidGpu::prepare_window(std::size_t group, std::pair<float, float> centre, std::uint32_t size,
-                              double target, const fluid::DepthFn& depth, std::size_t threads) {
+void FluidGpu::prepare_window(std::uint32_t cells_per_tile, std::pair<float, float> centre,
+                              std::uint32_t size, double target, const fluid::DepthFn& depth,
+                              std::size_t threads) {
     // Cancelled jobs are freed once their threads have stopped.
     for (auto it = retired_.begin(); it != retired_.end();) {
         if (!(*it)->done.load(std::memory_order_acquire)) {
@@ -537,9 +548,9 @@ void FluidGpu::prepare_window(std::size_t group, std::pair<float, float> centre,
         free_job_in_background(std::move(*it));
         it = retired_.erase(it);
     }
-    // 1. A window for another group or size makes the one being prepared
-    //    useless.
-    if (job_ && job_->whole && (job_->group != group || job_->size != size)) {
+    // 1. A window with other cells per tile or another size makes the one being
+    //    prepared useless.
+    if (job_ && job_->whole && (job_->cells_per_tile != cells_per_tile || job_->size != size)) {
         retire_job();
     }
     // 2. Upload a finished job (a whole grid over several frames).
@@ -555,10 +566,10 @@ void FluidGpu::prepare_window(std::size_t group, std::pair<float, float> centre,
     job->cfg = cfg_;
     job->comps = comps_;
     job->depth = depth;
-    if (!window_ || group != group_ || size != grid_.n) {
+    if (!window_ || cells_per_tile != window_->cells_per_tile || size != grid_.n) {
         job->whole = true;
-        job->window = fluid::FluidWindow::with_size(cfg_, group, centre, size);
-        job->group = group;
+        job->window = fluid::FluidWindow::with_cells(cells_per_tile, centre, size);
+        job->cells_per_tile = cells_per_tile;
         job->size = size;
         job->t = static_cast<float>(target);
         job->rects = {job->window.rect()};
@@ -569,7 +580,7 @@ void FluidGpu::prepare_window(std::size_t group, std::pair<float, float> centre,
             return;
         }
         job->window = moved;
-        job->group = group_;
+        job->cells_per_tile = moved.cells_per_tile;
         job->size = size;
         // A jump (the whole window is new) still needs fresh cells for all
         // of it: a new grid, so the one in use stays valid meanwhile.
@@ -654,7 +665,6 @@ bool FluidGpu::apply_job(Job& j) {
     grid_ = std::move(*j.grid);
     window_ = j.window;
     ++window_serial_;
-    group_ = j.group;
     sim_t_ = static_cast<double>(j.t);
     return true;
 }

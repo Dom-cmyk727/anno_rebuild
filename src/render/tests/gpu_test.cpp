@@ -629,10 +629,10 @@ struct FluidRun {
     gpu::FluidGpu& g;
     const anno::render::fluid::DepthFn& depth;
     void operator()(std::size_t group, std::pair<float, float> centre, float span,
-                    std::uint64_t time_ms) const {
+                    std::uint64_t time_ms, std::uint32_t cells_per_tile = 0) const {
         WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
         const gpu::CommandEncoder enc(wgpuDeviceCreateCommandEncoder(ctx.device.get(), &ed));
-        g.update(enc.get(), group, centre, span, time_ms, depth, 2);
+        g.update(enc.get(), group, centre, span, time_ms, depth, 2, cells_per_tile);
         WGPUCommandBufferDescriptor cd = WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
         // An invalid compute pass must fail the check, not abort the binary
         // in wgpuQueueSubmit (wgpu-native 29).
@@ -710,6 +710,66 @@ TEST_CASE("the GPU wave solver: time stepping, skip-ahead, time going back, grou
     const auto [max, flow] = compare_state(*ctx, g, cpu, 64);
     MESSAGE("group-change max " << max);
     CHECK(max < 1e-4F);
+    CHECK(ctx->errors->load() == 0);
+}
+
+TEST_CASE("the GPU wave solver at coarser cells per tile (the far-zoom bound) matches the CPU") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    namespace fluid = anno::render::fluid;
+    fluid::FluidConfig cfg;
+    cfg.size = 64;
+    cfg.cells_per_tile = {8, 4, 4};
+    cfg.recentre_cells = 4;
+    cfg.sponge_cells = 8;
+    const fluid::DepthFn depth = [](float x, float y) {
+        return 16.0F - 2.0F * std::max(x - 4.0F, 0.0F) + 0.3F * std::sin(y * 0.7F);
+    };
+    auto made = gpu::FluidGpu::create(*ctx, cfg);
+    REQUIRE(made);
+    gpu::FluidGpu& g = made.value();
+    const FluidRun run{*ctx, g, depth};
+    // Group 1's 4 cells per tile halved twice (bounded_cells_per_tile): a window of 1 cell
+    // per tile, then 2, each matching the CPU reference after 60 frames of 33 ms.
+    std::uint64_t time_ms = 1000;
+    for (const std::uint32_t cpt : {1U, 2U}) {
+        const std::uint64_t serial = g.window_serial();
+        run(1, {8.0F, 8.0F}, 20.0F, time_ms, cpt);
+        REQUIRE(g.window());
+        CHECK(g.window()->cells_per_tile == cpt);
+        CHECK(g.window_serial() == serial + 1); // a new window
+        fluid::FluidGrid cpu(cfg, *g.window(), depth, static_cast<float>(g.sim_time()));
+        const fluid::FluidGrid initial = cpu;
+        for (int frame = 0; frame < 60; ++frame) {
+            const double before = g.sim_time();
+            time_ms += 33;
+            run(1, {8.0F, 8.0F}, 20.0F, time_ms, cpt);
+            for (double t = before; t + 1e-9 < g.sim_time();) {
+                t += static_cast<double>(cfg.dt);
+                cpu.step(static_cast<float>(t));
+            }
+        }
+        const auto [max, flow] = compare_state(*ctx, g, cpu, 64);
+        float moved = 0.0F;
+        for (std::size_t i = 0; i < cpu.state.size(); ++i) {
+            moved = std::max(moved, std::abs(cpu.state[i][0] - initial.state[i][0]));
+        }
+        MESSAGE(cpt << " cells per tile: max " << max << ", largest flow " << flow
+                    << ", largest change of eta " << moved);
+        CHECK(max < 1e-2F);
+        CHECK(moved > 0.05F); // the sea moved
+    }
+    // Another zoom group at the same cells per tile keeps the window (world cells).
+    const std::uint64_t serial = g.window_serial();
+    run(2, {8.0F, 8.0F}, 20.0F, time_ms + 33, 2);
+    CHECK(g.window_serial() == serial);
+    CHECK(g.window()->cells_per_tile == 2);
+    // 0 = the group's own.
+    run(2, {8.0F, 8.0F}, 20.0F, time_ms + 66);
+    CHECK(g.window()->cells_per_tile == 4);
+    CHECK(g.window_serial() == serial + 1);
     CHECK(ctx->errors->load() == 0);
 }
 
@@ -1355,6 +1415,23 @@ TEST_CASE("the wave solver sets its window up in the background without blocking
     const auto [max2, flow2] = compare_state(*ctx, g, cpu2, 128);
     MESSAGE("after the recentre: max " << max2);
     CHECK(max2 < 1e-3F);
+    // The far-zoom bound in the background: another group at the same cells per tile
+    // (given explicitly) keeps the window and starts no job ...
+    const std::uint64_t serial = g.window_serial();
+    run(2, {14.0F, 8.0F}, 20.0F, time_ms, 2);
+    CHECK_FALSE(g.setting_up());
+    CHECK(g.window_serial() == serial);
+    CHECK(*g.window() == moved);
+    // ... and other cells per tile are a new window, prepared in the background.
+    REQUIRE(poll_until(
+        [&] { run(2, {14.0F, 8.0F}, 20.0F, time_ms, 1); },
+        [&] { return g.window() && g.window()->cells_per_tile == 1 && !g.setting_up(); }, 20.0));
+    CHECK(g.window_serial() == serial + 1);
+    fluid::FluidGrid cpu3(cfg, *g.window(), depth, static_cast<float>(g.sim_time()));
+    const auto n3 = static_cast<std::uint32_t>(g.window()->size);
+    const auto [max3, flow3] = compare_state(*ctx, g, cpu3, n3);
+    MESSAGE("background window at 1 cell per tile: max " << max3);
+    CHECK(max3 < 1e-4F);
     CHECK(ctx->errors->load() == 0);
     // Destroying the solver with a job in flight waits for its thread.
     run(0, {40.0F, 40.0F}, 20.0F, time_ms + 100);
@@ -2287,6 +2364,167 @@ TEST_CASE("the sea pass is timed with GPU timestamps when asked and the device c
                           t2.second.get());
     CHECK_FALSE(made2.value()->sea_pass_ms().has_value());
     CHECK(g.errors() == 0);
+}
+
+TEST_CASE("the wave window is bounded in cells per screen pixel at far zoom") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    render::FrameRenderer frames(1, false);
+    frames.insert_chunk({2, 0, 0}, synthetic_river(4, true).chunk);
+    // Group 2 (tile 20 px, 4 cells per tile) composed at scale 0.475, the far end of the
+    // level: 0.42 cells per screen pixel unbounded.
+    const auto far_view =
+        gpu::resampled_view(256.0, 256.0, 256, 256, 0.475, gpu::ResampleFilter::Box);
+    const auto near_view =
+        gpu::resampled_view(256.0, 256.0, 256, 256, 1.0, gpu::ResampleFilter::Box);
+    struct Seen {
+        gpu::GpuStats stats;
+        std::vector<std::uint8_t> px;
+    };
+    auto run = [&](double bound, bool wave_simulation, const gpu::ResampledView& rv) {
+        gpu::GpuLimits limits;
+        limits.river_quality = render::RiverQuality::High;
+        limits.uploads_per_frame = SIZE_MAX;
+        limits.wave_simulation = wave_simulation;
+        limits.fluid_max_cells_per_px = bound;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE(made);
+        gpu::GpuFrame& g = *made.value();
+        CHECK(g.fluid_max_cells_per_px() == bound);
+        const auto target = g.offscreen_target(256, 256);
+        Seen seen;
+        for (std::uint64_t i = 0; i < 3; ++i) {
+            seen.stats = g.render(frames, *es.scene, rv.view, 2, 100 + 16 * i,
+                                  render::WaterStyle::Enhanced, target.second.get(), &rv.resample);
+        }
+        seen.px = g.read_back(target.first.get(), 256, 256);
+        CHECK(g.errors() == 0);
+        return seen;
+    };
+    // The default bound (0.25): halved once at the far end, the group's own at scale 1.
+    const Seen bounded = run(anno::render::fluid::kDefaultMaxCellsPerPx, true, far_view);
+    CHECK(bounded.stats.wave_simulation);
+    CHECK(bounded.stats.fluid_cells_per_tile == 2);
+    CHECK(run(anno::render::fluid::kDefaultMaxCellsPerPx, true, near_view)
+              .stats.fluid_cells_per_tile == 4);
+    // No bound: the group's cells, a window with more than twice the cells (4 times
+    // inside; the recentre and sponge margins are a large part of a window this small).
+    const Seen unbounded = run(0.0, true, far_view);
+    CHECK(unbounded.stats.fluid_cells_per_tile == 4);
+    CHECK(unbounded.stats.fluid_cells > 2 * bounded.stats.fluid_cells);
+    // A bound below one cell per tile (0.1 x 9.5 px < 1): the simulation is off and the
+    // frame is the analytic waves' frame exactly.
+    const Seen off = run(0.1, true, far_view);
+    CHECK_FALSE(off.stats.wave_simulation);
+    const Seen analytic = run(0.0, false, far_view);
+    REQUIRE(off.px.size() == std::size_t{256} * 256 * 4);
+    CHECK(off.px == analytic.px);
+    {
+        // Off and on again on one compositor (bound 0.1: off below tiles of 10 px): back
+        // on only with 5 % room (tiles of 10.53 px), then with a new window.
+        gpu::GpuLimits limits;
+        limits.river_quality = render::RiverQuality::High;
+        limits.uploads_per_frame = SIZE_MAX;
+        limits.fluid_max_cells_per_px = 0.1;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE(made);
+        gpu::GpuFrame& g = *made.value();
+        const auto target = g.offscreen_target(256, 256);
+        std::uint64_t t = 100;
+        auto frame = [&](double scale) {
+            const auto rv =
+                gpu::resampled_view(256.0, 256.0, 256, 256, scale, gpu::ResampleFilter::Box);
+            t += 16;
+            return g.render(frames, *es.scene, rv.view, 2, t, render::WaterStyle::Enhanced,
+                            target.second.get(), &rv.resample);
+        };
+        CHECK(frame(0.6).wave_simulation);         // 12 px tiles: 1 cell per tile
+        CHECK_FALSE(frame(0.475).wave_simulation); // 9.5 px: off
+        CHECK_FALSE(frame(0.51).wave_simulation);  // 10.2 px: fits, but without the room
+        const auto back = frame(0.6);
+        CHECK(back.wave_simulation);
+        CHECK(back.fluid_cells_per_tile == 1);
+        CHECK(g.errors() == 0);
+    }
+    // The default bound is the same on every adapter, discrete ones included (OQ-130).
+    gpu::GpuLimits defaults;
+    defaults.river_quality = render::RiverQuality::High;
+    CHECK(defaults.fluid_max_cells_per_px == anno::render::fluid::kDefaultMaxCellsPerPx);
+    auto a = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, defaults);
+    REQUIRE(a);
+    MESSAGE("adapter type " << static_cast<int>(ctx->adapter_type));
+    CHECK(a.value()->fluid_max_cells_per_px() == anno::render::fluid::kDefaultMaxCellsPerPx);
+    // and with the default, the far end of a level gets the halved window on it too.
+    const auto target = a.value()->offscreen_target(256, 256);
+    const auto st =
+        a.value()->render(frames, *es.scene, far_view.view, 2, 100, render::WaterStyle::Enhanced,
+                          target.second.get(), &far_view.resample);
+    CHECK(st.fluid_cells_per_tile == 2);
+}
+
+TEST_CASE("every pass of a frame is timed, and the timed frame is the untimed picture") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    gpu::GpuLimits limits;
+    limits.river_quality = render::RiverQuality::High;
+    limits.uploads_per_frame = SIZE_MAX;
+    gpu::GpuLimits timed_limits = limits;
+    timed_limits.gpu_timing = true;
+    auto plain = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    auto timed = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, timed_limits);
+    REQUIRE(plain);
+    REQUIRE(timed);
+    render::FrameRenderer frames(1, false);
+    frames.insert_chunk({1, 0, 0}, synthetic_river(4, true).chunk);
+    // A continuous-zoom frame (the resample pass runs) with the wave simulation on: the
+    // grid of 512 x 512 at scale 0.5 onto 256 x 256.
+    const auto rv = gpu::resampled_view(256.0, 256.0, 256, 256, 0.5, gpu::ResampleFilter::Box);
+    auto run = [&](gpu::GpuFrame& g) {
+        const auto target = g.offscreen_target(256, 256);
+        std::optional<gpu::GpuPassTimes> passes;
+        for (std::uint64_t i = 0; i < 4; ++i) {
+            const auto st =
+                g.render(frames, *es.scene, rv.view, 1, 100 + 16 * i, render::WaterStyle::Enhanced,
+                         target.second.get(), &rv.resample);
+            CHECK(st.wave_simulation);
+            static_cast<void>(g.sea_pass_ms());
+            passes = g.pass_gpu_ms();
+        }
+        return std::make_pair(g.read_back(target.first.get(), 256, 256), passes);
+    };
+    const auto [plain_px, plain_passes] = run(*plain.value());
+    const auto [timed_px, timed_passes] = run(*timed.value());
+    // The split of the sea pass (sea, then the objects drawn over it) is the same picture.
+    REQUIRE(plain_px.size() == std::size_t{256} * 256 * 4);
+    CHECK(timed_px == plain_px);
+    CHECK_FALSE(plain_passes.has_value());
+    if (!ctx->timestamps) {
+        CHECK_FALSE(timed_passes.has_value());
+        return;
+    }
+    REQUIRE(timed_passes.has_value());
+    const gpu::GpuPassTimes& p = *timed_passes;
+    // 16 ms of animation per frame is one or two steps of 1/120 s: the simulation ran.
+    for (const auto& pass : {p.fluid, p.terrain, p.under, p.sea, p.objects, p.resample}) {
+        REQUIRE(pass.has_value());
+        CHECK(*pass >= 0.0);
+    }
+    REQUIRE(p.frame.has_value());
+    // The frame spans every pass (the driver may overlap passes that share nothing, so
+    // the sum of the passes can exceed it).
+    for (const auto& pass : {p.fluid, p.terrain, p.under, p.sea, p.objects, p.resample}) {
+        CHECK(*p.frame >= *pass);
+    }
+    CHECK(*p.frame < 1000.0);
+    CHECK(timed.value()->frame_gpu_ms() == p.frame);
+    CHECK(timed.value()->errors() == 0);
+    CHECK(plain.value()->errors() == 0);
 }
 
 // ---- Q2 of rivers.md: the river pixels of real scenes, GPU against CPU (game files) ----

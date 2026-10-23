@@ -114,6 +114,10 @@ struct FluidConfig {
     /// on each side, rounded up to 64, at most `size` (`size` itself if it is
     /// below 64, where Rust's clamp panics).
     [[nodiscard]] std::uint32_t window_size(std::size_t group, float span_tiles) const;
+    /// window_size for a window of `cells_per_tile` (> 0) cells per tile instead of
+    /// the group's (bounded_cells_per_tile).
+    [[nodiscard]] std::uint32_t window_size_for(std::uint32_t cells_per_tile,
+                                                float span_tiles) const;
 
     /// Gravity in tiles² / (s² · HEIGHT unit), from deep_speed at depth_cap.
     [[nodiscard]] float gravity() const { return deep_speed * deep_speed / depth_cap; }
@@ -174,6 +178,9 @@ struct FluidWindow {
     /// As centred with `size` (> 0) cells per side.
     static FluidWindow with_size(const FluidConfig& cfg, std::size_t group,
                                  std::pair<float, float> centre, std::uint32_t size);
+    /// As with_size with `cells_per_tile` (> 0) cells per tile instead of the group's.
+    static FluidWindow with_cells(std::uint32_t cells_per_tile, std::pair<float, float> centre,
+                                  std::uint32_t size);
 
     /// The whole window as a cell rectangle.
     [[nodiscard]] CellRect rect() const {
@@ -197,6 +204,37 @@ struct FluidWindow {
     [[nodiscard]] std::pair<std::int64_t, std::int64_t>
     origin_for(std::pair<float, float> centre) const;
 };
+
+/// The bound on the wave window's cells at far zoom (T14; docs/render/iso.md "Wave
+/// simulation", "Bounded at far zoom"). The window covers the view's tiles at
+/// cells_per_tile[group] cells per tile, so its cells grow with the world area shown: at
+/// the continuous zoom's smallest scale on a level (0.45) up to 1 / 0.45² = 4.9 times its
+/// cells at scale 1 for the same window inside its fixed margins (3.7 times with them
+/// for a 1280 x 800 window), and the cost of a step with them (one compute pass over
+/// every cell, docs/perf/README.md "T14"). The cells per tile for a view whose tiles are
+/// `tile_px` screen pixels wide (the level's tile width times the resample scale) are
+/// cells_per_tile[group] halved until at most `max_cells_per_px` cells fall on a screen
+/// pixel along x (cells_per_tile / tile_px <= max_cells_per_px), so a cell is never
+/// smaller on screen than 1 / max_cells_per_px pixels and the window's cells per screen
+/// pixel stay bounded at every zoom; 0 when even one cell per tile is denser (the
+/// simulation is off there: the shader's analytic waves). `max_cells_per_px` <= 0 = no
+/// bound (the group's cells). With `current`, the cells per tile of the window in use (0 =
+/// none), a finer window replaces a coarser one only when it fits with
+/// kCellsHysteresis of the bound to spare, so a zoom resting near a threshold does not
+/// switch windows back and forth.
+std::uint32_t bounded_cells_per_tile(const FluidConfig& cfg, std::size_t group, double tile_px,
+                                     double max_cells_per_px, std::uint32_t current = 0);
+/// The share of the bound a finer window must fit in to replace a coarser one (5 %
+/// room, as the continuous zoom's level choice; iso.md "Choosing the level").
+inline constexpr double kCellsHysteresis = 0.95;
+/// The default of the bound (GpuLimits::fluid_max_cells_per_px): 0.25 cells per screen
+/// pixel. The built groups have 16 / 84, 8 / 42 and 4 / 20 = 0.19, 0.19 and 0.20 cells per
+/// screen pixel at scale 1 (cells_per_tile over the tile width), so a quarter above the
+/// densest keeps every group's own cells from scale 1 down to 0.8 (0.76 for groups 0 and
+/// 1) and halves them once below that, to the far end of every level (0.45): the window's
+/// cells, and the simulation's GPU time, stay at about their scale-1 figure there instead
+/// of growing 3-4 times (measured on the Radeon iGPU, docs/perf/README.md "T14").
+inline constexpr double kDefaultMaxCellsPerPx = 0.25;
 
 /// Water deeper than this (HEIGHT units) counts as wet.
 inline constexpr float kWet = 0.02F;

@@ -1464,7 +1464,7 @@ Scope names are fixed strings; a repeated scope is also addressed by its ordinal
 | 8 | `events` | `u64 count`, per event in `(due, seq)` order **TimedEvent** with its key |
 | 9 | `timers_monopoly` | **ScriptTimers**; **MonopolyTable** |
 
-*Against the original's savegame (T21, 2026-10-23; OQ-132, `docs/re/annowelt.md` "World save and load").* The original's world save (`0x100ae700`) and load (`0x100ae270`) drop several fields this stream carries. **Kept on purpose** until the owner decides OQ-132: a save and load must not change the game, which the resync snapshot and replays rely on.
+*Against the original's savegame (T21, 2026-10-23; OQ-132, `docs/re/annowelt.md` "World save and load").* The original's world save (`0x100ae700`) and load (`0x100ae270`) drop several fields this stream carries. **Kept on purpose, by the owner's decision on OQ-132 (2026-10-23, "agreed"):** a save and load must not change the game, which the resync snapshot and replays rely on. The original's load behaviour becomes an opt-in `Rules` option (not built yet; S15 or the savegame-loading stage).
 
 | Field of this stream | In the original's save | After a load into a new world |
 |---|---|---|

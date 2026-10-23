@@ -209,6 +209,9 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
     for (const std::size_t k : order) {
         const Spec::CitySpec& cs = is.cities[k];
         City city = make_city(cs.no, cs.owner, cfg);
+        if (cs.capacity.has_value()) {
+            city.stock.capacity = *cs.capacity;
+        }
         if (cs.stock.has_value()) {
             city.stock.stock = *cs.stock;
         }

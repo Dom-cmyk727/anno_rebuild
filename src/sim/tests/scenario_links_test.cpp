@@ -370,7 +370,9 @@ TEST_CASE("scenario links resolve on the scenario's generator and place their te
     CHECK(warnings_of(s, Kind::LinkTemplatePlayers) == 1); // B.SCP holds a SPIELER
     CHECK(warnings_of(s, Kind::LinkRawMaterials) == 2);    // property 11, also without marks
     CHECK(warnings_of(s, Kind::UnknownRecord) == 1);       // WARETYPE, once
-    CHECK(warnings_of(s, Kind::TileOwnersUndecoded) == 2);
+    // Every tile of a link island stays neutral: no city names it (since T23 the tile
+    // owners come from the cities, and TileOwnersUndecoded only from a city's ID).
+    CHECK(warnings_of(s, Kind::TileOwnersUndecoded) == 0);
 
     // The world starts where the selection left the cursor.
     auto w = sim::World::create(s.spec, registry(), sim::SimConfig{});

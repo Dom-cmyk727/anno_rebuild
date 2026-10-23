@@ -330,9 +330,9 @@ struct GpuLimits {
     /// a slow adapter never waits more than about this plus one pass. 0 = unlimited.
     double river_measure_budget_ms = 500.0;
     /// Time every pass with GPU timestamps (GpuFrame::sea_pass_ms, pass_gpu_ms)
-    /// when the device supports them. Costs two query writes per pass, a resolve
-    /// and a small copy per frame, and the sea pass is split in two (GpuPassTimes);
-    /// for benchmarks.
+    /// when the device supports them. Costs two query writes and a resolve per pass,
+    /// a 1.5 KiB copy per frame, and the sea pass is split in two (GpuPassTimes; the
+    /// frame time within 0.1 ms of the unsplit one); for benchmarks.
     bool gpu_timing = false;
 };
 
@@ -532,7 +532,8 @@ class GpuFrame {
     /// GPU time of the whole frame of the render() that the last sea_pass_ms()
     /// read: from the start of its first pass to the end of its last one (the
     /// wave simulation's compute pass and the resample pass of a continuous zoom
-    /// included). nullopt without a reading.
+    /// included). nullopt without a reading. After measure_river_cost, its last
+    /// measured pass.
     [[nodiscard]] std::optional<double> frame_gpu_ms() const;
     /// The same frame split by pass (GpuPassTimes). nullopt without a reading.
     [[nodiscard]] std::optional<GpuPassTimes> pass_gpu_ms() const;

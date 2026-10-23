@@ -64,6 +64,10 @@ class FluidGpu {
     [[nodiscard]] bool background() const { return background_; }
     /// Whether a window or strip is being prepared in the background.
     [[nodiscard]] bool setting_up() const { return job_ != nullptr; }
+    /// Forgets the window (and cancels a job in flight): the next update() starts a
+    /// new one (window_serial changes, the compositor fades the waves in). For the
+    /// compositor turning the simulation back on after the far-zoom bound had it off.
+    void drop_window();
     /// Limits for uploading a new window's data in the background, per frame:
     /// at most this many bytes (a 1024² window is 20 MiB) and, once this many
     /// milliseconds are spent, no further slice (0 = no time limit); at

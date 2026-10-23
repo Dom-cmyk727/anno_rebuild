@@ -315,8 +315,10 @@ struct GpuFrame::Impl {
     std::uint32_t max_layers = 1;
     /// The adapter kind (for the atlas budget default, gpu-chunks.md 4.3 rule 6).
     WGPUAdapterType adapter_type = WGPUAdapterType_Unknown;
-    /// The wave simulation's cells per screen pixel at most (0 = no bound).
+    /// The wave simulation's cells per screen pixel at most (0 = no bound), and whether
+    /// the bound turned it off in the last frame that asked for it.
     double fluid_cells_cap = 0.0;
+    bool fluid_off = false;
     bool atlas_full_reported = false;
     WGPUTextureFormat format = WGPUTextureFormat_RGBA8Unorm;
     ShaderModule module;
@@ -2471,11 +2473,26 @@ struct GpuFrame::Impl {
         const fluid::DepthFn depth = [&scene](float x, float y) { return scene.fluid_depth(x, y); };
         const float span = static_cast<float>(view.w) / tw + static_cast<float>(view.h) / th;
         const auto current = fluid->window();
-        const std::uint32_t cpt =
-            fluid::bounded_cells_per_tile(fluid->config(), group, levels->tile_w(group) * scale,
-                                          fluid_cells_cap, current ? current->cells_per_tile : 0U);
+        const double tile_px = levels->tile_w(group) * scale;
+        std::uint32_t cpt =
+            fluid::bounded_cells_per_tile(fluid->config(), group, tile_px, fluid_cells_cap,
+                                          current ? current->cells_per_tile : 0U);
+        // Off (even one cell per tile is above the bound) and back on: on again only with
+        // the hysteresis' room to spare (the bound checked on tiles kCellsHysteresis as
+        // wide), so a zoom resting at the threshold does not flip; and with a new window,
+        // so the waves fade in again instead of resuming a stale state.
+        if (fluid_off && cpt != 0 &&
+            fluid::bounded_cells_per_tile(fluid->config(), group, tile_px * fluid::kCellsHysteresis,
+                                          fluid_cells_cap) == 0) {
+            cpt = 0;
+        }
         if (cpt == 0) {
+            fluid_off = true;
             return false;
+        }
+        if (fluid_off) {
+            fluid_off = false;
+            fluid->drop_window();
         }
         if (fluid->update(enc, group, centre, span, time_ms, depth, threads, cpt, stamps) &&
             stamps != nullptr) {
@@ -2556,8 +2573,11 @@ struct GpuFrame::Impl {
         // A reading of seconds is a counter that wrapped or a driver that gave a wrong tick
         // (seen on an integrated adapter: 1.2e8 ms): no reading.
         constexpr double kMaxFrameMs = 10000.0;
+        // Equal ticks are no reading either: a driver that ignores the writes leaves the
+        // slots equal, and a pass of 0 ms must never read as free (measure_river_cost then
+        // falls back to the wall clock).
         auto span_ms = [&](std::uint64_t a, std::uint64_t b) -> std::optional<double> {
-            if (b < a) {
+            if (b <= a) {
                 return std::nullopt;
             }
             const double ms =

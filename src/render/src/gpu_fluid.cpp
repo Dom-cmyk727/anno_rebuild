@@ -520,6 +520,11 @@ void FluidGpu::free_job_in_background(std::unique_ptr<Job> job) {
     }).detach();
 }
 
+void FluidGpu::drop_window() {
+    retire_job();
+    window_.reset();
+}
+
 void FluidGpu::retire_job() {
     if (!job_) {
         return;

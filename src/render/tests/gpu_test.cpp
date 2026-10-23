@@ -1415,6 +1415,23 @@ TEST_CASE("the wave solver sets its window up in the background without blocking
     const auto [max2, flow2] = compare_state(*ctx, g, cpu2, 128);
     MESSAGE("after the recentre: max " << max2);
     CHECK(max2 < 1e-3F);
+    // The far-zoom bound in the background: another group at the same cells per tile
+    // (given explicitly) keeps the window and starts no job ...
+    const std::uint64_t serial = g.window_serial();
+    run(2, {14.0F, 8.0F}, 20.0F, time_ms, 2);
+    CHECK_FALSE(g.setting_up());
+    CHECK(g.window_serial() == serial);
+    CHECK(*g.window() == moved);
+    // ... and other cells per tile are a new window, prepared in the background.
+    REQUIRE(poll_until(
+        [&] { run(2, {14.0F, 8.0F}, 20.0F, time_ms, 1); },
+        [&] { return g.window() && g.window()->cells_per_tile == 1 && !g.setting_up(); }, 20.0));
+    CHECK(g.window_serial() == serial + 1);
+    fluid::FluidGrid cpu3(cfg, *g.window(), depth, static_cast<float>(g.sim_time()));
+    const auto n3 = static_cast<std::uint32_t>(g.window()->size);
+    const auto [max3, flow3] = compare_state(*ctx, g, cpu3, n3);
+    MESSAGE("background window at 1 cell per tile: max " << max3);
+    CHECK(max3 < 1e-4F);
     CHECK(ctx->errors->load() == 0);
     // Destroying the solver with a job in flight waits for its thread.
     run(0, {40.0F, 40.0F}, 20.0F, time_ms + 100);
@@ -2359,8 +2376,10 @@ TEST_CASE("the wave window is bounded in cells per screen pixel at far zoom") {
     frames.insert_chunk({2, 0, 0}, synthetic_river(4, true).chunk);
     // Group 2 (tile 20 px, 4 cells per tile) composed at scale 0.475, the far end of the
     // level: 0.42 cells per screen pixel unbounded.
-    const auto far = gpu::resampled_view(256.0, 256.0, 256, 256, 0.475, gpu::ResampleFilter::Box);
-    const auto near = gpu::resampled_view(256.0, 256.0, 256, 256, 1.0, gpu::ResampleFilter::Box);
+    const auto far_view =
+        gpu::resampled_view(256.0, 256.0, 256, 256, 0.475, gpu::ResampleFilter::Box);
+    const auto near_view =
+        gpu::resampled_view(256.0, 256.0, 256, 256, 1.0, gpu::ResampleFilter::Box);
     struct Seen {
         gpu::GpuStats stats;
         std::vector<std::uint8_t> px;
@@ -2389,23 +2408,50 @@ TEST_CASE("the wave window is bounded in cells per screen pixel at far zoom") {
         return seen;
     };
     // The default bound (0.25): halved once at the far end, the group's own at scale 1.
-    const Seen bounded = run(anno::render::fluid::kDefaultMaxCellsPerPx, true, far);
+    const Seen bounded = run(anno::render::fluid::kDefaultMaxCellsPerPx, true, far_view);
     CHECK(bounded.stats.wave_simulation);
     CHECK(bounded.stats.fluid_cells_per_tile == 2);
-    CHECK(run(anno::render::fluid::kDefaultMaxCellsPerPx, true, near).stats.fluid_cells_per_tile ==
-          4);
+    CHECK(run(anno::render::fluid::kDefaultMaxCellsPerPx, true, near_view)
+              .stats.fluid_cells_per_tile == 4);
     // No bound: the group's cells, a window with more than twice the cells (4 times
     // inside; the recentre and sponge margins are a large part of a window this small).
-    const Seen unbounded = run(0.0, true, far);
+    const Seen unbounded = run(0.0, true, far_view);
     CHECK(unbounded.stats.fluid_cells_per_tile == 4);
     CHECK(unbounded.stats.fluid_cells > 2 * bounded.stats.fluid_cells);
     // A bound below one cell per tile (0.1 x 9.5 px < 1): the simulation is off and the
     // frame is the analytic waves' frame exactly.
-    const Seen off = run(0.1, true, far);
+    const Seen off = run(0.1, true, far_view);
     CHECK_FALSE(off.stats.wave_simulation);
-    const Seen analytic = run(0.0, false, far);
+    const Seen analytic = run(0.0, false, far_view);
     REQUIRE(off.px.size() == std::size_t{256} * 256 * 4);
     CHECK(off.px == analytic.px);
+    {
+        // Off and on again on one compositor (bound 0.1: off below tiles of 10 px): back
+        // on only with 5 % room (tiles of 10.53 px), then with a new window.
+        gpu::GpuLimits limits;
+        limits.river_quality = render::RiverQuality::High;
+        limits.uploads_per_frame = SIZE_MAX;
+        limits.fluid_max_cells_per_px = 0.1;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE(made);
+        gpu::GpuFrame& g = *made.value();
+        const auto target = g.offscreen_target(256, 256);
+        std::uint64_t t = 100;
+        auto frame = [&](double scale) {
+            const auto rv =
+                gpu::resampled_view(256.0, 256.0, 256, 256, scale, gpu::ResampleFilter::Box);
+            t += 16;
+            return g.render(frames, *es.scene, rv.view, 2, t, render::WaterStyle::Enhanced,
+                            target.second.get(), &rv.resample);
+        };
+        CHECK(frame(0.6).wave_simulation);         // 12 px tiles: 1 cell per tile
+        CHECK_FALSE(frame(0.475).wave_simulation); // 9.5 px: off
+        CHECK_FALSE(frame(0.51).wave_simulation);  // 10.2 px: fits, but without the room
+        const auto back = frame(0.6);
+        CHECK(back.wave_simulation);
+        CHECK(back.fluid_cells_per_tile == 1);
+        CHECK(g.errors() == 0);
+    }
     // The automatic choice: the default on an adapter that is not discrete, none on one that is.
     gpu::GpuLimits automatic;
     automatic.river_quality = render::RiverQuality::High;
@@ -2468,9 +2514,11 @@ TEST_CASE("every pass of a frame is timed, and the timed frame is the untimed pi
         CHECK(*pass >= 0.0);
     }
     REQUIRE(p.frame.has_value());
-    // The frame spans its passes (they run one after another on the queue).
-    const double sum = *p.fluid + *p.terrain + *p.under + *p.sea + *p.objects + *p.resample;
-    CHECK(*p.frame >= sum * 0.999);
+    // The frame spans every pass (the driver may overlap passes that share nothing, so
+    // the sum of the passes can exceed it).
+    for (const auto& pass : {p.fluid, p.terrain, p.under, p.sea, p.objects, p.resample}) {
+        CHECK(*p.frame >= *pass);
+    }
     CHECK(*p.frame < 1000.0);
     CHECK(timed.value()->frame_gpu_ms() == p.frame);
     CHECK(timed.value()->errors() == 0);

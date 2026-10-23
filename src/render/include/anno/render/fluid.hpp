@@ -208,8 +208,9 @@ struct FluidWindow {
 /// The bound on the wave window's cells at far zoom (T14; docs/render/iso.md "Wave
 /// simulation", "Bounded at far zoom"). The window covers the view's tiles at
 /// cells_per_tile[group] cells per tile, so its cells grow with the world area shown: at
-/// the continuous zoom's smallest scale on a level (0.45) about 4.4 times its cells at
-/// scale 1 for the same window, and the cost of a step with them (one compute pass over
+/// the continuous zoom's smallest scale on a level (0.45) up to 1 / 0.45² = 4.9 times its
+/// cells at scale 1 for the same window inside its fixed margins (3.7 times with them
+/// for a 1280 x 800 window), and the cost of a step with them (one compute pass over
 /// every cell, docs/perf/README.md "T14"). The cells per tile for a view whose tiles are
 /// `tile_px` screen pixels wide (the level's tile width times the resample scale) are
 /// cells_per_tile[group] halved until at most `max_cells_per_px` cells fall on a screen

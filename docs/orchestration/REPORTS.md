@@ -1188,3 +1188,58 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
     - ctest `-R anno_sim` (sim and replay) with the game dir: 515/515. The full run with the game dir was not repeated because of the memory guard.
     - clang-format: clean. lint_sim: ok. `sim_stream.py --check`: agree.
     - WSL GCC 13.3 and Clang 18.1.3 at `-O3 -Werror`: 62 TUs clean, 502/502 with and without the game dir, g2/g3/g4 replay.
+
+## T21 — Figure removal and the saved accumulators: the RE behind OQ-131 and OQ-132 — 2026-10-23 — status: FINISHED
+- **Branch:** `task/T21-figure-removal-re` from `main` ea38384; worktree `C:\Users\altin\anno1503-T21`.
+- **Scope:** docs only. No build, ctest or game run, and no `src/` change. Nothing of the original is in git: disassembly and helper scripts stayed in `C:\Users\altin\anno1503-T21-scratch\`.
+- **Method:** static analysis of `AnnoWelt.dll`, with short excursions into `AnnoGame.dll` (the figure type and its `BEWOHNTYPE` table) and `AnnoScene.dll` (where the world is created).
+  - Tools: capstone/pefile, `tools/disasm.py`, a linear sweep of `.text`, and xref, vtable and immediate scans.
+  - The figure ids come from `Anlagen.dat` PROD3 and `FigurenHeader.dat` `BEWOHNTYPE`, read through the parser in `tools/figuren.py`.
+- **Written:**
+  - `docs/re/annowelt.md`: two new sections, "Unit registry: creation, removal and the figure destructor" and "World save and load: the accumulators", plus Open items;
+  - `docs/re/production.md`: the figure-type vtable corrected (`0x10021cf8` is a double constant; the vtable is `0x10021d10`);
+  - `docs/open-questions.md`: OQ-131 resolved, OQ-132 turned into an owner question, OQ-133's owner paragraph trimmed to one line, OQ-134 and OQ-135 new;
+  - `docs/sim/state.md`: notes in §4.9 (confirmed parts and deviations) and §9.3 (the fields the original's savegame drops).
+- **Evidence, OQ-131** (AnnoWelt unless named):
+  - **The class.** Carriers (203 `TRAEGER`), the small farm's worker (106 `MAEHER`), its animals (107/109/110 `WEIDETIER`) and the hunter/trapper (108 `JAEGER`) are one class.
+    - A figure type's class code is its `BEWOHNTYPE` index. AnnoGame `0x1000fe00` stores it at type `+8` (`0x10010016`; the table is `0x10024cb8`, read via `0x10013a20`), and type slot `+0x50` returns it.
+    - The factory `0x1009a110` builds codes 1, 2, 3, 5, 6 and 17 with `0x1003b7c0`, vtable `0x100c4950`.
+  - **Destructor:** slot `+8` = `0x10031db0` → `+0x170(1)` = `0x10054080` → `0x10050e00` and operator delete. It frees only the unit's own node list and memory. It does **not** null the registry entry, unlink `+0x48`/`+0x58` or release the home building.
+  - **Counter release, at the figure's end:**
+    - The end behaviour (slot `+0x174` = `0x1003af00`; also slots `+0x94` and `+0x17c` when hit points reach 0) calls slot `+0x110` = `0x1003b6e0`.
+    - That calls `home→slot +0x2c(this)` and clears the home `+0x78`. The home's slot nulls its pointer to the figure: workshop `0x100687b0`, weapons workshop `0x100692d0`, farm and trapper `0x1006f070`, small farm `0x1006fe40` (the small farm also lowers its byte counter).
+    - A second release does nothing.
+  - **Then the expiry list.** After the last walk (0 or 15.0 at rate 0.01), the tick `0x10034760` calls Remove(this, 0) (registry slot `+4` = `0x100974b0`, at `0x10034844`).
+    - The entry leaves its sector cell and is appended to `+0x48`.
+    - The stamp freezes: property 0x23 = unit `+8`, written after each active step at `0x1003488e`.
+    - Phase C destroys after 7500 ticks: `0x10097520` nulls the entry and lowers `+0x24`.
+  - **Phase D is never on this path.** `0x10097720` and phase D read slot `+0x40` as a record pointer; this class returns a u16 index (`0x10035be0`). The deferred list belongs to the pooled sector objects of registry slot `+0x38` (`0x10097560`).
+  - **Twice on the deferred list:** possible by the code (no membership test, and append `0x10096f40` does not deduplicate), never for a figure.
+  - **A6:** the scan of `0x10099130` is the building list's, but the minimum growth is 100 (`0x10099185`–`0x100991a1`). A fresh registry holds one entry.
+  - **Demolished home:** the four production destructors detach their figures, which live on without a home.
+- **Evidence, OQ-132:**
+  - Save `0x100ae700` / Load `0x100ae270` chunks: `WELT`, `MAIN`, `GUID`, `ALIASNAME`, `WARETYPE`, `SPIELER`, the islands, `COUNTDOWN`, `SKTIMER`, `MONOPOL2`, `LIMITS`, `K_DATA` (Load also takes `SCHIFF` and `COMPUTER`).
+  - **World `+0xe8`** (monopoly accumulator): never written or read. `MONOPOL2` `0x1009d130`/`0x1009d080` covers the 28 entries only. Only the constructor zeroes it (`0x100a39a8`).
+  - **`+0x69e4`** (7.5 minute accumulator): never written or read (`LIMITS` is `+0x69e0`, 4 bytes). Clear (`0x100af28e`) and the constructor (`0x100af46c`) zero it.
+  - **SKTIMER:** `0x1009ce60`/`0x1009cdd0` save the five `{counter, active}` pairs. The last tick `+4` is not saved; a new SKTIMER has 0.
+  - **The clock is not saved.** `MAIN` holds the game seconds, which Load writes into the offset `+0x69d4`. The tick restarts at 0 (consistent with F1).
+  - **After a load into a new world object:** the monopoly table is recomputed on the first advance ("once per session"), the 7.5 minute schedule restarts, and the timers continue.
+  - Whether loads always use a new world object is not traced (OQ-135).
+- **Deviations for S13/S15** (in OQ-131 and `state.md` §4.9; no code changed here):
+  1. **The home counter is released at the end, not at the destroy.** `destroy_figure` stops releasing; the end path releases once and clears `Figure::home`. Today an expiring figure is released 7500 ticks late, and twice when a seam already released.
+  2. **D12's interim return ends via release + `expiry` with stamp `u16(t)`, not via `mark_figure_for_delete`/phase D.** No figure path appends to `deferred`. The slot is then freed 7500 ticks later.
+  3. **`SimConfig::figure_min_growth = 100` for `add_figure`, instead of `list_min_growth` 10.** This changes `n`, the phase-B count and every golden with figures.
+  4. **`created_stamp` is the end tick: rename it (`expiry_stamp`) with the S15 freeze.** The bytes are unchanged.
+  - **Confirmed as built:** phase C's u16 test, the stamp after phase B, a removed slot keeping its hint, length and cursor, A6's scan, A7, homeless figures releasing nothing.
+  - **§9.3:** the clock, `event750_acc`, `monopoly.acc` and `timers.last_tick` are kept although the original drops them. That waits on the owner (OQ-132).
+- **Review:** one read-only reviewer re-read the addresses independently. It agreed on every answer and found three mistakes in my first text, now fixed:
+  - the field order of `MAIN` ({seconds, registry length, flag bit, 0});
+  - the SKTIMER record order ({counter, active, 3 zero bytes});
+  - the end behaviour's last walk (0 or 15.0 at rate 0.01, so the Remove can come well after the release).
+
+  It also found the callers through slots `+0x94`/`+0x17c`, and a small-farm attach quirk (`0x1006fdb0` raises its counter before looking for a free slot). That quirk is unreachable with the shipped data and is noted in annowelt.md.
+- **For the owner, OQ-132:** the original's savegame drops the two accumulators, the timers' last tick and the clock. After a load it therefore recomputes the monopoly table and restarts the 7.5 minute schedule. The rebuild keeps everything. Recommendation: keep exact save/load as the default (resync snapshots and replays need it), with an opt-in `rules` option that follows the original when a savegame is loaded.
+- **Left open:**
+  - OQ-134: the pooled sector objects — which classes, who marks with flag 0, the reserved-slot bitmap, and two hazards in `0x10097720`/`0x10097770` as written.
+  - OQ-135: whether a load runs on a new world object; where the units and the registry's stamp, cursor and expiry list are saved (`SCHIFF` → registry slot `+0x18`, not read).
+- **OQ numbers used:** OQ-134 and OQ-135; OQ-136..139 unused.

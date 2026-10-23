@@ -94,8 +94,8 @@ class Recorder {
     [[nodiscard]] static formats::Result<Recorder, std::string> start(World& world);
 
     /// Logs the command, then applies it; returns World::apply's result. A command
-    /// that has no wire form (encode_record refuses it, so write_log could not write
-    /// it) is neither logged nor applied: the result is Reject::Unencodable and the
+    /// that has no wire form (has_wire_form: encode_record refuses it, so write_log
+    /// could not write it) is neither logged nor applied: the result is Reject::Unencodable and the
     /// world and the log are unchanged.
     ApplyResult submit(const Command& command);
     /// Advances the world by `ms`, then logs an Advance entry with the tick it reached;
@@ -125,7 +125,10 @@ struct Turn {
 /// turn.step_ms. SP: apply the commands, then one advance of step_ms. When `rec` is
 /// non-null the session is driven through it: each command goes through
 /// Recorder::submit and becomes one Commands entry of its own (not one block per turn),
-/// each advance one Advance entry. Otherwise the World is driven directly.
+/// each advance one Advance entry. Otherwise the World is driven directly, with the
+/// recorder's rule for commands: one without a wire form (has_wire_form, e.g. a Build of
+/// more placements than one record holds) is skipped, not applied, so a recorded and an
+/// unrecorded session of the same commands reach the same state (S10).
 void run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_t steps);
 void run_frame(World& world, Recorder* rec, std::span<const Command> commands,
                std::uint32_t step_ms);

@@ -1,4 +1,6 @@
 #include <cstdint>
+#include <initializer_list>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -148,6 +150,73 @@ ScenarioSpec g1_scenario(const SyntheticTypes& types, std::uint32_t seed) {
         farm.payload = f;
     }
     city.buildings = {weaver, farm};
+    return spec;
+}
+
+formats::Result<SyntheticTypes, std::string> make_build_types() {
+    auto base = make_synthetic_types();
+    if (!base) {
+        return base.error();
+    }
+    SyntheticTypes s = std::move(base).value();
+    const std::optional<GoodsId> tools = s.registry->goods_by_name("WERKZEUG");
+    const std::optional<GoodsId> wood = s.registry->goods_by_name("HOLZ");
+    const std::optional<GoodsId> bricks = s.registry->goods_by_name("ZIEGEL");
+    if (!tools || !wood || !bricks) {
+        return std::string("make_build_types: the goods table lacks WERKZEUG, HOLZ or ZIEGEL");
+    }
+    // Gold, tools, wood, bricks (tons) and the footprint of each type.
+    struct Cost {
+        TypeId id;
+        std::uint32_t gold, tools, wood, bricks, w, h;
+    };
+    const Cost costs[] = {
+        {s.weaver, 300, 3, 4, 0, 1, 1},      {s.farm, 200, 2, 3, 3, 1, 1},
+        {s.fur_trapper, 100, 5, 6, 0, 2, 3}, {s.small_farm, 250, 2, 4, 0, 1, 1},
+        {s.iron_mine, 1200, 5, 15, 0, 1, 1}, {s.pioneer_house, 0, 0, 3, 0, 2, 2},
+        {s.kontor, 350, 5, 12, 0, 2, 2},     {s.market_stall, 50, 1, 1, 0, 1, 1},
+    };
+    TypeRegistry::Builder b;
+    for (const BuildingType& t : s.registry->types()) {
+        BuildingType copy = t;
+        for (const Cost& c : costs) {
+            if (c.id != t.id) {
+                continue;
+            }
+            copy.cost_gold = c.gold;
+            copy.cost_goods.clear();
+            // Ascending goods order (WERKZEUG 0x29, HOLZ 0x2a, ZIEGEL 0x2b), as the
+            // type reader stores them; amounts in 8.8 tons.
+            for (const auto& [goods, tons] : {std::pair{*tools, c.tools}, std::pair{*wood, c.wood},
+                                              std::pair{*bricks, c.bricks}}) {
+                if (tons != 0) {
+                    copy.cost_goods.push_back(CostEntry{goods, tons << 8});
+                }
+            }
+            copy.width = c.w;
+            copy.height = c.h;
+        }
+        b.add(std::move(copy));
+    }
+    auto built = b.build();
+    if (!built) {
+        return built.error();
+    }
+    s.registry = std::move(built.value());
+    return s;
+}
+
+ScenarioSpec g2_scenario(const SyntheticTypes& types, std::uint32_t seed) {
+    ScenarioSpec spec = g1_scenario(types, seed);
+    std::vector<std::uint32_t> stock(kOriginalWarehouseGoods, 0);
+    if (const auto tools = types.registry->goods_by_name("WERKZEUG");
+        tools && *tools < stock.size()) {
+        stock[*tools] = 13 * kTon;
+    }
+    if (const auto wood = types.registry->goods_by_name("HOLZ"); wood && *wood < stock.size()) {
+        stock[*wood] = 30 * kTon;
+    }
+    spec.islands[0].cities[0].stock = std::move(stock);
     return spec;
 }
 

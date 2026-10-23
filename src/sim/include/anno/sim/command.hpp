@@ -4,9 +4,9 @@
 // format (append only). The wire format of §8.5 is explicit little-endian with
 // widened ids and is bounds-checked; it is NOT byte-compatible with the original's.
 //
-// Stage S8 applies SetSpeed and SetProductionLine (apply.cpp). The other bodies are
-// declared, encoded and decoded now (S9's replay log needs them) and answer
-// Reject::Unsupported until stage S10 gives them their rules.
+// Stage S8 applies SetSpeed and SetProductionLine (apply.cpp), stage S10 Build,
+// Demolish, SetTradeFlag and SetTradeSlot; a LegacyRawCmd is decoded, logged, replayed
+// and answers Reject::Unsupported.
 #pragma once
 
 #include <cstddef>
@@ -137,6 +137,13 @@ enum : std::size_t { kMaxRecordPayload = 0xffff };
 /// payload longer than kMaxRecordPayload, or a LegacyRawCmd whose type is native.
 [[nodiscard]] formats::Result<std::vector<std::uint8_t>, std::string>
 encode_record(const Body& body);
+
+/// Whether encode_record accepts `body`, decided without allocating: false for a
+/// LegacyRawCmd whose type is native and for a payload longer than kMaxRecordPayload
+/// (a Build of more than 4 095 placements, a Demolish of more than 8 190 tiles). The
+/// session drivers apply only such commands (replay.hpp), so a recorded and an
+/// unrecorded session agree.
+[[nodiscard]] bool has_wire_form(const Body& body);
 
 /// Decodes exactly one ClientRecord. Rejects: input shorter than a header, a length
 /// beyond the input, trailing bytes, a count larger than the payload can hold (checked

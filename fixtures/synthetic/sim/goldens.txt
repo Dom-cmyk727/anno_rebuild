@@ -106,3 +106,15 @@ s7_g1_mp_checkpoints S7 105 08a62c3b5ac3764f
 s7_g1_mp_end S7 105 dd794e005294c6d5
 s7_g1_events S7 105 d705f409820828d2
 s7_g1_sp_end S7 105 7b17d192d21d4670
+#
+# S10 G2 (stage S10): the G1 scenario on the types with build costs (synthetic::
+# g2_scenario, synthetic::make_build_types) driven by the recorded command log
+# fixtures/synthetic/sim/g2.log (Build, SetProductionLine off/on, Demolish of the farm,
+# trade settings, a drag build that runs out of tools, rejected commands in between; 400
+# single-player advances of 100 ms, six checkpoints). s10_g2_end is the state hash at tick
+# 20000. SELF-BASELINED like the S7 goldens (ANNO_UPDATE_GOLDEN also rewrites g2.log); the
+# test's semantic asserts hold the free-slot order of state.md §15 S10 (slots 2, 3, 4, 5
+# with slot 1 freed and the hint kept), the charges (4 x 300 gold, 12 t tools, 16 t wood)
+# and the rejection reasons independently of the hash. The log carries the stream version
+# in its initial save, so a stream bump re-records it.
+s10_g2_end S10 105 0802e7cb98ced333

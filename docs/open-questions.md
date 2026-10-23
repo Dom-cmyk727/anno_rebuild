@@ -1193,3 +1193,38 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   - list the callers of `0x100037E0` and find which could pass an index ≥ 4001 or a stale object;
   - repeat long runs to measure how often it happens, with a register dump (`WINEDEBUG=+seh` or winedbg's auto mode with a log);
   - on Windows, the same game under the T15 harness.
+
+## OQ-125: Who the free-build cheat rule covers (spec F13, O-9; new, T9 S10 2026-10-23)
+- **Status:** open, owner decides
+- **Area:** simulation / building UX (a cheat switch)
+- **What:** in the original a client may set the free-build flag `0x2000000` in the flags word of a Build record (op 6 passes the payload's flags to Build/Place; AnnoFrame `0x1005c7f0`, `0x100589a0`), and the owner slot `+0x9c(7)` waives the cost inside Place (O-9). The rebuild carries no build flags on the wire (F13). Since S10:
+  - `Rules::free_build_cheat` (hashed in the header, default **off**) waives the cost of every Build of the session, for every player: no affordability check, no charge, nothing counted as spent;
+  - `Player::free_build` (state, default false; only a scenario or a save sets it) waives it for that player's own builds, with or without the rule.
+- **Why it may change the feel:** with the rule on nobody pays for buildings; a narrower rule (only some players) is a different cheat.
+- **Faithful default implemented:** off: every build costs what Anlagen.dat says, as for any client of the original that does not send the flag.
+- **Options:** (a) keep the rule session-wide (as built); (b) let it waive only the costs of players whose `free_build` is set, so a host can grant it per player (then the rule would be "honour `Player::free_build`" and the owner's waiver of O-9 would need the rule); (c) drop the rule.
+
+## OQ-126: Build and Demolish details the rebuild had to fill (new, T9 S10 2026-10-23)
+- **Status:** open, RE (not blockers; each has a stand-in in `docs/sim/state.md` §15 "S10 as implemented")
+- **Area:** simulation / commands
+- **Questions:**
+  1. The owner slot `+0x9c(7)` waiver: does it skip the affordability check (`0x100275d0`), the charge in Place (`0x100279a0`), or both? The rebuild skips both and counts nothing as spent (I: "cost waiver", O-9).
+  2. City removal (D9: `0x10058f80` after city slot `+0x78` = `0x1002f7f0` reports empty; O-48): what happens to the removed city's tiles (the rebuild makes them neutral, so that every tile owner is a present city or neutral, §9.6), whether each building goes through `RemoveAt` (`0x10028fd0`, with its handlers and the market list's defeat flag; the rebuild runs `remove_building` per building without the Remove seam), and whether the predicate runs after every tile or only after a tile that removed something (the rebuild: after every tile while the city exists).
+  3. A Demolish tile owned by the city with a building of another city on it (only a scenario can place one): the rebuild leaves it (`NoBuildingAtTile`) instead of clearing the tile object; what does the original's FindByTile / island slot `+0x7c` path do?
+  4. The record head of the original's Demolish (`0x68`) in the compact multiplayer form: `docs/sim/state.md` §8.5 gives its run-length tile list `{u16 x, u16 y, u8 n, n bytes}` with signed nibbles but not what precedes it (flags, island, city?), so only `legacy::decode_0x64` exists. Read the packer next to `tNetClientNet` slot `+0x54` (`0x1005cae0`).
+  5. Whether the Place and Remove handlers (O-4, O-5) draw from the PRNG when a command runs them between two advances (single player); the rebuild gives them a context at the clock's tick over the world PRNG.
+  6. Two rules of the manual (`docs/research/playbook.md` §3) that S10 neither implements nor knows the home of: "dragging a frame [with the pickaxe] clears only plants and roads" [M 28], and "nothing can be built or demolished with enemy units near" [M 27]. The first may be the UI's (it decides which tiles go into the 0x68 command) or the sim's (RemoveAt skipping buildings on a multi-tile command); the second needs units (not ported) and is either a UI check or one in Place / RemoveAt. The rebuild's Demolish removes a building on every tile of a command, and Build has no unit check. Read the cursor code (`tCursorAbriss`) and the two functions.
+  7. Figures whose home building was removed (Demolish, city removal) stay in the registry; their counters are gone with the building, so a release does nothing (§7.2) and §9.6 does not check the home. What the original's RemoveAt tail does with the units of a building (O-5) is unread.
+- **How to resolve:** read the named functions; the Wine harness (`docs/testing/original-wine.md`) can confirm 1 and 2 by watching money, stock and the tile owners around a free build and the demolition of a last Kontor.
+
+## OQ-127: Kontor trade-list entries: clear, append and the goods byte (new, T9 S10 2026-10-23; narrows O-14)
+- **Status:** open, RE
+- **Area:** simulation / trade
+- **What the rebuild does until it is read (own design, N):**
+  - `0x73` with goods 0 clears the entry in place (goods, amount and price 0; the list keeps its length);
+  - `0x8a` (append, `kAppendIndex`) with goods 0 is refused (`BadValue`);
+  - when an entry changes goods, the goods setting that named it for the old goods is unlinked (`list_index` = -1), as the original's entry removal writes `0xff` into the goods byte (`0x100285f4`, `0x10028655`);
+  - `0x7c` modes 0 and 1 accept only -1 (`0xffffffff`) or the index of the entry of list `mode` that holds the goods (`BadValue` otherwise), because the loader refuses any other state (§9.6, `validate_trade`); the original stores the low byte of any value (`0x1002dbd0`).
+- **Question:** does the original remove an entry (shifting the later entries and rewriting their goods bytes) or clear it in place; what `0x8a` with goods 0 does; whether the value the UI sends to `0x7c` is always the entry's index (O-57).
+- **Also open (O-10):** the capacity of a list. The command layer has no limit: every accepted append grows the hashed and saved state by one entry, so a peer can grow it by one entry per command. If the original has a capacity, it becomes a `SimConfig` value with that default.
+- **How to resolve:** read the `0x73` / `0x8a` handlers behind the dispatcher `0x1005ffd0` and the city methods they call, next to the removal paths above.

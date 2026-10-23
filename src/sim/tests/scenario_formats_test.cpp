@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -1295,4 +1296,61 @@ TEST_CASE("scenario cities: the old name STADT, and file order") {
     const sim::LoadedScenario early = load(with("STADT2", true));
     CHECK(early.spec.islands[0].cities.empty());
     CHECK(warnings_of(early, Kind::CityOffIsland) == 1);
+}
+
+TEST_CASE("scenario link template: its building items are reported, never placed") {
+    // A nord link of 16 x 16 (climate 2 from the n_ prefix) and one template whose
+    // PROD2 holds a house (a building item) at (8, 4) and a road at (9, 6). No city of
+    // the file names a link island's tiles, so the house is a BuildingItemWithoutEntry
+    // and the road the island's one tile object; every tile stays neutral.
+    Buf info(12, 0);
+    info[0] = 2;
+    info[5] = 9;
+    Buf prod;
+    item(prod, kHouse, 0, 4, 0, 8, 4);
+    item(prod, kRoad, 2, 4, 1, 9, 6);
+    Buf extra = chunk("INFO", info);
+    append(extra, block_record("PROD2", prod));
+    const Buf scp = chunk("ANNO", insel5(0, 0, 16, 16, 0, 2, extra, false));
+    const std::optional<sim::TemplateSummary> sum = sim::template_summary(scp, "NORD/A.SCP");
+    REQUIRE(sum.has_value());
+
+    Buf kids = chunk("HEAD", head_bytes());
+    append(kids, chunk("SPIELER", spieler(0, record("HEAD", player_head(8, 0, "Ada", 3)))));
+    Buf link;
+    put16(link, 64);
+    put16(link, 64);
+    put16(link, 16);
+    put16(link, 16);
+    put32(link, 4);
+    const std::string path = "islands\\nord\\n_016x016_dummy.scp";
+    link.insert(link.end(), path.begin(), path.end());
+    link.push_back(0);
+    append(kids, chunk("INSELLNK", link));
+    append(kids, chunk("ERZE", Buf(10, 0)));
+    sim::LoadedScenario s = load(scene("ANNO", kids));
+    const std::vector<sim::TemplateSummary> cands = {*sum};
+    auto r = sim::resolve_scenario_links(s, cands, sim::SimConfig{}, sim::Rules{});
+    REQUIRE(r.ok());
+    REQUIRE(r.value().links.size() == 1);
+    REQUIRE(r.value().links[0].candidate == std::optional<std::uint32_t>{0});
+    const std::vector<anno::formats::Bytes> views = {scp};
+    auto e = sim::place_island_links(s, r.value(), views, *registry(), sim::SimConfig{});
+    REQUIRE_MESSAGE(!e.has_value(), (e ? *e : std::string()));
+    REQUIRE(s.spec.islands.size() == 1);
+    const auto& is = s.spec.islands[0];
+    CHECK(is.slot == sim::IslandId{4});
+    REQUIRE(is.objects.size() == 1);
+    CHECK(is.objects[0].index == 6 * 16 + 9);
+    CHECK(is.objects[0].object == kRoad);
+    CHECK(is.cities.empty());
+    CHECK(is.owner_runs.empty());
+    CHECK(warnings_of(s, Kind::TileOwnersUndecoded) == 0);
+    REQUIRE(warnings_of(s, Kind::BuildingItemWithoutEntry) == 1);
+    const sim::ScenarioWarning& w = the_warning(s, Kind::BuildingItemWithoutEntry);
+    CHECK(w.path == "links[0].PROD2[0]");
+    CHECK(w.message.find("of the link's template") != std::string::npos);
+    auto world = sim::World::create(s.spec, registry(), sim::SimConfig{});
+    REQUIRE_MESSAGE(world.ok(), (world.ok() ? std::string() : world.error()));
+    CHECK(world.value().check_invariants().empty());
 }

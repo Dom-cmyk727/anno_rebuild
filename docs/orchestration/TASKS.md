@@ -303,7 +303,10 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   4. Carry over to T8 (S9) as requirements: the framing helper above; the net layer drops a peer after N decode errors (M4 note); an AI-issued `SetSpeed` inside `advance` is allowed by spec §8.2 item 4 and stays so (the seam is trusted code, not a rules question).
 - Then gates (sim: MSVC, GCC -O3, ASan in WSL as before), report, and the orchestrator merges.
 
-### T10b — Test memory: make the mitigation visible and schedule the heavy tests apart · `IN PROGRESS` (round i: orchestrator subagent; merges `main` into the branch first) · `PARALLEL-OK` · branch `task/T10-digest-flake`
+### T10c — Test memory: the whole-map renders need less commit · `LATER` (from the T10b review)
+- "scene renders match the recorded digests" needs ~35 GB of commit with 16 workers (~5 GB per whole-map render of Single_01/10/14) and waits for the page file on this PC. Options: a per-item memory estimate in `parallel_indexed`, or less memory per render (release buffers per tile row, smaller intermediates). Acceptance: no `[anno-test memory]` wait line in three full `ctest -j 16` runs with the game dir, digests unchanged.
+
+### T10b — Test memory: make the mitigation visible and schedule the heavy tests apart · `REVIEW` → approved 2026-10-23 i (PR #24; merge when CI is green; §4) · `PARALLEL-OK` · branch `task/T10-digest-flake`
 - **Added 2026-10-21 (from T12):** (a) commit the executor's warning check as `tools/check_unix_warnings.sh` (GCC 13 and Clang 18 in WSL with the CI flags over every `.cpp` under `src/`, deps from `build/msvc/_deps`, the viewer and GPU defines on), with a line in `CLAUDE.md`'s environment notes; it is the gate of §1 point 9; (b) `anno_dump_agrees_with_python` joined the `-j 16` `bad_alloc` list: cover it the same way as the render tests; (c) tiny: the three private fields of `viewer.cpp` unused without `ANNO_VIEWER_GPU` (`-Wunused-private-field` on Clang): guard them with the same `#ifdef` as their uses.
 - **Review verdict on 9f42def:** keep the memory bound in `test_threads()`, `memory.cpp` (Windows min(AvailPhys, AvailPageFile) is the right quantity), the preset output log and the CLAUDE.md line; retry results are written by index so output equals the serial run; CI is unaffected (the game-dir tests skip there). Not mergeable because the wait and the retry are silent and the wait has a dead tail. Fix:
   1. **HIGH: silent mitigation.** Neither a memory wait (up to 120 s per item) nor a bad_alloc retry prints anything, so "no bad_alloc occurred in the three green runs" is unsupported and a slow run cannot be explained from the log this branch adds. Count waits and retries, print one stderr line per retry and one summary line at the end of `parallel_indexed`.
@@ -316,7 +319,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 ### T8 — Sim stage S9: replay and session · **`DONE`** (merged as aa85d73 on 2026-10-23, PR #19, CI green; §4 round i) · was `IN PROGRESS` (round i: the fix-up of §4 items 1, 2, 4, 6, 7 and the nits runs in an orchestrator subagent on the same branch; then re-review and merge, then PLAN S9 done) · was `REVIEW` (PR #19, reviewed 2026-10-22 h, §4: items 1, 2, 4, 6, 7 open, then merge) · was `READY` since T7b is merged (2026-10-22); **round e: run by one subagent of the main executor** (the second executor did not start it); originally assigned to the second executor in round c; it carries the T7b requirements (framing helper, `state.md` §15 S9) · `PARALLEL-OK` (only `src/sim`, `src/tools/sim_replay`, `docs/sim`) · branch `task/T8-sim-s9-replay` from `main` (worktree `C:\Users\altin\anno1503-T8`)
 - Per `state.md` §15 S9 including `src/tools/sim_replay/`. Unlocked by the orchestrator.
 
-### T9 — Sim stages S10–S15 · S10 **`READY`** (S9 merged 2026-10-23; it starts when T10b's heavy test runs are done, one heavy job at a time) · S11–S15 `LATER`
+### T9 — Sim stages S10–S15 · S10 `REVIEW` → approved 2026-10-23 i (PR #25; merge when CI is green; §4) · was `IN PROGRESS` (round i, orchestrator subagent, worktree `C:\Users\altin\anno1503-T9`) · S11–S15 `LATER`
 - One stage per task, in the order of `docs/sim/state.md` §15; each unlocked after the previous is merged. Branch `task/T9-sim-s10-build` from `main` after the S9 merge (worktree `C:\Users\altin\anno1503-T9`); one orchestrator subagent; `src/sim`, `src/tools/sim_replay`, `fixtures/synthetic/sim`, `docs/sim` only.
 - **S10 (Build, Demolish, trade commands)**, as written in `state.md` §15 S10: `apply.cpp` (Build, Demolish, SetTradeFlag, SetTradeSlot; today they answer `Unsupported`), `placement.cpp` (the stand-in rule), create with charge, `legacy_codec.cpp`, the G2 log.
 - **Acceptance (written before work starts):**
@@ -333,6 +336,29 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 - **Acceptance:** both questions answered with module + address for every step, or narrowed with the reason; the 28 mixed conditions and the four statements re-read under the answer (which of them change meaning against a naive reading, by file, short excerpts only); `tools/bigbrother.py` grows a `describe` of the grouping only if the answer is certain; OQ-120/121 updated (closed or narrowed); report and PR.
 
 ## 4. Review log (orchestrator)
+
+- **T9 S10 (2026-10-23 i, PR #25, head 959394e). Approved; merge when CI is green.** Build, Demolish, SetTradeFlag, SetTradeSlot (`apply.cpp`, `placement.cpp`, `legacy_codec.cpp`), G2 log, 17 named tests plus 6. The subagent used two reviewers; they found two real bugs, both fixed in a144d3d: a half-done atomic build with an overlap-blind placement seam, and a goods named twice being undercharged.
+  - Verified by the orchestrator:
+    - `anno_sim_tests` 466/466 (MSVC);
+    - `anno-sim-replay run g2.log`: 422 entries, 6/6 checkpoints reproduced;
+    - mutation: the gold charge `owner.money -= cost_gold` removed fails 7 cases, matching the subagent's table; restored;
+    - full MSVC build clean;
+    - `ctest -j 8` with the game dir excluding `anno_render_tests`/`anno_render_gpu_tests`: 542/542. Render links no sim library (grep `anno_sim` under `src/render`: 0), so the excluded cases cannot see this change.
+  - The subagent's full with-game-dir run was killed by the host's low-memory guard: this branch predates T10b's heavy-test scheduling.
+  - Evidence discipline checked: the rules in §8.4 cite addresses. Stand-ins are marked (D17, **I**), and every gap the spec left is an open question with its stand-in named (OQ-126 Build/Demolish details, OQ-127 trade lists, own design marked N).
+  - **OQ-125 decided by the owner 2026-10-23:** the free-build cheat stays session-wide (as built; default off = faithful). Recorded in `open-questions.md` after the merge.
+  - Noted for M4: OQ-127 — trade lists have no capacity, so a peer can grow hashed state by one entry per command; resolve before lockstep.
+
+- **T10b (2026-10-23 i, PR #24, head 7ce47c4). Approved; merge when CI is green.** Review items 1–5 and (a)–(c) done (subagent; 13 unit tests, 7 of 7 mutants killed).
+  - Three full `ctest -j 16` runs with the game dir: 738/738 each, 0 `bad_alloc`, 0 retries, peak commit 67.8–68.5 GB (baseline run 73.1 GB).
+  - Verified by the orchestrator:
+    - `ctest -N -L heavy` lists exactly 10 cases, and all carry `PROCESSORS=16` (json-v1), so each runs alone;
+    - the total is 738 = 731 + 7 new cases;
+    - in `parallel.hpp`, a worker checks `next >= n` before waiting (no dead tail), each retry and a summary print one `[anno-test memory]` line, and `ANNO_TEST_BAD_ALLOC_RETRIES=0` makes the first `bad_alloc` the error.
+  - **Accepted deviation:** each run still shows one memory-wait line, from "scene renders match the recorded digests" running alone (~35 GB commit against ~19 GB free at idle; the page file grows). It is logged, bounded and passes; reducing the per-render memory is follow-up T10c.
+  - Deviation from the review text, accepted: doctest 2.4.12 cannot take `-tc`/`-tce` through `TEST_SPEC`, so the heavy cases are a doctest suite `"heavy"` in the source.
+  - `anno_dump_agrees_with_python` not marked heavy, accepted: 0.7 GB alone; its earlier `bad_alloc` came from the heavy cases beside it.
+  - `.gitattributes` `*.sh text eol=lf` fixes the CRLF shell scripts in WSL.
 
 - **T8 fix-up (2026-10-22 i, PR #19, head 6ac397f). Approved; merged as aa85d73 on 2026-10-23 with CI green on all jobs.** Items 1, 2, 4, 6, 7 and the comment/spec nits done (subagent, mutation evidence for every new test).
   - Re-read by the orchestrator (`replay.cpp`):
@@ -353,7 +379,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   - Verified grouping: after a connective (strstr `&&` `0x1003d89c` at `0x10022c52`, `||` `0x1003d898`), the parser copies the remaining text (malloc `0x10026d2b`, strncpy `0x100280f0`) and calls itself `0x10022bf0` on it (`0x10022fbd`): equal rank, grouped to the right. The delimiter bytes at file offset 0x3d898 read `|| && ;`.
   - Re-run: `test_bigbrother.py` 26 OK with the corpus; `quirks` 28 mixed conditions, 1 lost statement in 50 files.
   - Mutation: `grouped` made left-associative (C-like) fails 36 checks.
-  - Owner question (rules): the `MINIMAP_ALERT( 640, 950 )` that S01_09_01's missing `;` swallows never runs in the original; the faithful default keeps it lost.
+  - Owner question (rules): the `MINIMAP_ALERT( 640, 950 )` that S01_09_01's missing `;` swallows never runs in the original. **Decided 2026-10-23:** an opt-in `rules` option restores it; the default keeps it lost (OQ-121). The script engine port carries both.
   - Nit: the IF-count formula of the step (`0x10016b70`, `+0x3c` only ever 0) looks wrong as read; correctly left open in OQ-123 item 5.
 - **T16 fix-up (2026-10-22 i, PR #21, head 7df37a5).** All five items and the four nits done (subagent; 52 tests, mutation evidence for every new guard). Re-read by the orchestrator:
   - `agent.py`: the watchdog is joined (5 s) before `log_close`; the log lock covers the lazy open, the writes, the flush and the close, and logging after the close is a no-op that never creates folders.

@@ -1140,7 +1140,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
     - the other three lose nothing (`SET_PROFILE` runs on to a commented-out `;`, `SET_DIPLOMACY` runs on past its `}`, `SET DEADEND_ABFRAGE` is top level).
   - `QUESTLOG_DRAW;` = `QUESTLOG_DRAW();` (`0x100180c9`).
   - **Where:** `docs/re/annoscene.md` §12, `bigbrother.md` §3.4; `tools/bigbrother.py` `read_on`.
-  - **For the owner:** whether a port restores the lost alert is a `rules` default (faithful: lost).
+  - **Owner decision 2026-10-23:** an opt-in `rules` option restores the lost alert; the default stays faithful (lost). The C++ script engine port implements both.
 - **Area:** formats (`bigbrother.md` §3.4)
 - **Evidence:** four shipped statements end without `;` (P):
   - `SET_PROFILE(…)` (S01_02_01);

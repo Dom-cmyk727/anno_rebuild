@@ -6,6 +6,7 @@
 // output names files and counts only.
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -59,8 +60,12 @@ std::string rel_name(const fs::path& game, const fs::path& p) {
     return fs::relative(p, game / "Scenes").generic_string();
 }
 
-/// One line of the expectations file: the counts of a loaded scenario.
-std::string counts_line(const std::string& name, const sim::ScenarioCounts& c) {
+/// One line of the expectations file: the counts of a loaded scenario and the state
+/// hash of the world right after create (a digest of everything the adapter decoded:
+/// settings, players, terrain, tile objects, cities; it moves with kStateHashVersion,
+/// and the file is then rewritten like the goldens).
+std::string counts_line(const std::string& name, const sim::ScenarioCounts& c,
+                        std::uint64_t create_hash) {
     std::ostringstream o;
     o << name << " islands=" << c.islands << " links=" << c.links << " players=" << c.players
       << " cities=" << c.cities << " buildings=" << c.buildings
@@ -69,6 +74,9 @@ std::string counts_line(const std::string& name, const sim::ScenarioCounts& c) {
         const auto it = c.warnings.find(k);
         o << " " << sim::warning_kind_name(k) << "=" << (it == c.warnings.end() ? 0 : it->second);
     }
+    char hex[17];
+    std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(create_hash));
+    o << " create_hash=" << hex;
     return o.str();
 }
 
@@ -81,7 +89,7 @@ struct FileResult {
     std::uint64_t prod2_buildings = 0; // BuildingWithoutCity: the PROD2 buildings of the file
     std::uint64_t prod2_unknown = 0;   // UnknownObject warnings on PROD2 items
     bool deterministic = false, save_identity = false;
-    std::uint64_t hash = 0;
+    std::uint64_t hash = 0, create_hash = 0;
 };
 
 std::shared_ptr<const sim::TypeRegistry> original_registry(const fs::path& game) {
@@ -107,7 +115,6 @@ FileResult run_file(const fs::path& game, const fs::path& p,
         return r;
     }
     r.counts = sim::count(loaded.value());
-    r.line = counts_line(r.name, r.counts);
     for (const sim::ScenarioSpec::IslandSpec& is : loaded.value().spec.islands) {
         if (is.w % cfg.chunk_edge != 0 || is.h % cfg.chunk_edge != 0) {
             ++r.a14;
@@ -124,6 +131,7 @@ FileResult run_file(const fs::path& game, const fs::path& p,
             return w.error();
         }
         sim::World world = std::move(w).value();
+        r.create_hash = world.state_hash();
         for (int i = 0; i < advances; ++i) {
             world.advance(kStepMs);
         }
@@ -145,6 +153,7 @@ FileResult run_file(const fs::path& game, const fs::path& p,
         r.deterministic = h1 == h2;
         r.hash = h1;
     }
+    r.line = counts_line(r.name, r.counts, r.create_hash);
     return r;
 }
 

@@ -5,10 +5,10 @@
 //   u32 stream version          kStateHashVersion
 //   u8  PRNG table kind         0 = the original msvc_rand_sequence(2048, 1);
 //                               1 = custom: u64 n, n x u16
-//   8 sections                  u64 byte length, then the section's bytes: the
+//   9 sections                  u64 byte length, then the section's bytes: the
 //                               top-level scopes of the stream, in order (header,
 //                               clock_rng, settings, ids, players, islands, figures,
-//                               events)
+//                               events, timers_monopoly)
 //   terrain blobs               per present island, in slot order: bool present,
 //                               then height (u64 n + bytes), gfx (u64 n + u16s),
 //                               fertility (u64 n + bytes)
@@ -69,11 +69,15 @@ std::vector<std::uint8_t> StateIO::save(const World& w) {
     section([&](WriteArchive& s) { header_section(s, w, w.config_, w.rules_); });
     section([&](WriteArchive& s) { clock_rng_section(s, w.clock_, w.rng_); });
     section([&](WriteArchive& s) { settings_section(s, w.settings_); });
-    section([&](WriteArchive& s) { ids_section(s, w.ids_); });
+    section([&](WriteArchive& s) {
+        ids_section(s, w.ids_, w.event750_acc_, w.monopoly_.acc, w.faulted_);
+    });
     section([&](WriteArchive& s) { players_section(s, w.players_, w.config_); });
     section([&](WriteArchive& s) { islands_section(s, w, w.islands_, w.config_, w.settings_); });
     section([&](WriteArchive& s) { figures_section(s, w.figures_, w.ids_); });
     section([&](WriteArchive& s) { events_section(s, w.events_, w.ids_); });
+    section(
+        [&](WriteArchive& s) { timers_monopoly_section(s, w.timers_, w.monopoly_, w.config_); });
     for (const std::optional<Island>& is : w.islands_) {
         if (!is.has_value()) {
             continue;
@@ -214,7 +218,9 @@ formats::Result<World, std::string> StateIO::load(std::span<const std::uint8_t> 
         problem = section("settings", [&](ReadArchive& s) { settings_section(s, w.settings_); });
     }
     if (problem.empty()) {
-        problem = section("ids", [&](ReadArchive& s) { ids_section(s, w.ids_); });
+        problem = section("ids", [&](ReadArchive& s) {
+            ids_section(s, w.ids_, w.event750_acc_, w.monopoly_.acc, w.faulted_);
+        });
     }
     if (problem.empty()) {
         problem =
@@ -231,6 +237,11 @@ formats::Result<World, std::string> StateIO::load(std::span<const std::uint8_t> 
     }
     if (problem.empty()) {
         problem = section("events", [&](ReadArchive& s) { events_section(s, w.events_, w.ids_); });
+    }
+    if (problem.empty()) {
+        problem = section("timers_monopoly", [&](ReadArchive& s) {
+            timers_monopoly_section(s, w.timers_, w.monopoly_, w.config_);
+        });
     }
     if (!problem.empty()) {
         return problem;

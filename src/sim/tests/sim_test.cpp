@@ -456,19 +456,28 @@ TEST_CASE("state_hash relational properties") {
     sim::WorldTestAccess::rng(w) =
         *sim::WorldRng::from_table(sim::msvc_rand_sequence(2047, 1), 1234);
     CHECK(w.state_hash() != h);
-    // The hash depends on the state only, not on how it was reached.
+    // The hash depends on the state only, not on how it was reached. Two steps of 5 ms
+    // and one of 10 ms reach the same clock, PRNG, player table and figure registry in
+    // an empty world; they differ only in the monopoly accumulator (stage S12: the
+    // refresh body runs on the first step and adds that step, 5 or 10 ms, D5), and
+    // with that one field set equal the hashes are equal.
     sim::World a(1234), b(1234);
     a.advance(5);
     a.advance(5);
     b.advance(10);
+    CHECK(a.monopoly().acc == 5);
+    CHECK(b.monopoly().acc == 10);
+    CHECK(a.state_hash() != b.state_hash());
+    sim::WorldTestAccess::monopoly(b).acc = 5;
     CHECK(a.state_hash() == b.state_hash());
 
-    // The scopes of stream 105: header, clock_rng, settings, ids, players, islands,
-    // figures, events; the clock_rng scope is exactly the v1 five-field hash.
+    // The scopes of stream 106: header, clock_rng, settings, ids, players, islands,
+    // figures, events, timers_monopoly; the clock_rng scope is exactly the v1
+    // five-field hash.
     sim::HashTree tree;
     CHECK(base.state_hash(tree, 0) == h);
     CHECK(tree.root.hash == h);
-    REQUIRE(tree.root.children.size() == 8);
+    REQUIRE(tree.root.children.size() == 9);
     CHECK(tree.root.children[0].name == "header");
     CHECK(tree.root.children[1].name == "clock_rng");
     CHECK(tree.root.children[2].name == "settings");
@@ -477,6 +486,7 @@ TEST_CASE("state_hash relational properties") {
     CHECK(tree.root.children[5].name == "islands");
     CHECK(tree.root.children[6].name == "figures");
     CHECK(tree.root.children[7].name == "events");
+    CHECK(tree.root.children[8].name == "timers_monopoly");
     CHECK(tree.root.children[1].hash == base.core_hash());
     // The header scope: the two versions, SimConfig, Rules, the registry digest
     // and the seam names, in one FNV-1a stream (docs/sim/state.md §9.3).
@@ -502,10 +512,14 @@ TEST_CASE("state_hash relational properties") {
     sim::StateHasher settings;
     settings.bytes(settings_bytes.data());
     CHECK(tree.root.children[2].hash == settings.value());
-    // The ids scope: u64 next_figure, u64 next_event_seq (both 1 in a new world).
+    // The ids scope: u64 next_figure, u64 next_event_seq (both 1 in a new world), u32
+    // event750_acc, u32 monopoly.acc (both 0) and bool faulted (false).
     sim::StateHasher ids;
     ids.u64(1);
     ids.u64(1);
+    ids.u32(0);
+    ids.u32(0);
+    ids.u8(0);
     CHECK(tree.root.children[3].hash == ids.value());
     // The players scope: u64 slot count, one child scope per slot (an empty slot
     // is the single byte 0), u16 stamp, u32 cursor (docs/sim/state.md §9.3).
@@ -539,6 +553,24 @@ TEST_CASE("state_hash relational properties") {
     sim::StateHasher events;
     events.u64(0);
     CHECK(tree.root.children[7].hash == events.value());
+    // The timers_monopoly scope: u32 last_tick 0, five stopped timers (count + u8
+    // each, count + u32 each), 28 monopoly entries (u32 time 0, absent player).
+    sim::StateHasher timers;
+    timers.u32(0);
+    timers.u64(5);
+    for (int i = 0; i < 5; ++i) {
+        timers.u8(0);
+    }
+    timers.u64(5);
+    for (int i = 0; i < 5; ++i) {
+        timers.u32(0);
+    }
+    timers.u64(28);
+    for (int i = 0; i < 28; ++i) {
+        timers.u32(0);
+        timers.u8(0);
+    }
+    CHECK(tree.root.children[8].hash == timers.value());
     sim::StateHasher root;
     root.u64(header.value());
     root.u64(base.core_hash());
@@ -548,12 +580,14 @@ TEST_CASE("state_hash relational properties") {
     root.u64(islands.value());
     root.u64(figures.value());
     root.u64(events.value());
+    root.u64(timers.value());
     CHECK(root.value() == h);
     // The empty world, from the independent Python transcription of the stream
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
-    // names, clock_rng, settings, ids, players, islands, figures, events).
-    CHECK(sim::World().state_hash() == 0xf8e82150b092958dULL);
-    CHECK(sim::kStateHashVersion == 105);
+    // names, clock_rng, settings, ids, players, islands, figures, events,
+    // timers_monopoly).
+    CHECK(sim::World().state_hash() == 0x35d6e77db2e48d2fULL);
+    CHECK(sim::kStateHashVersion == 107);
     CHECK(sim::kPrngTimelineVersion == 1);
 }
 
@@ -614,11 +648,12 @@ TEST_CASE("hash_state records the scopes down to the requested depth") {
     CHECK(sim::hash_state(w, &tree, 5) == w.state_hash());
     CHECK(w.state_hash(tree, 5) == w.state_hash());
     // The world's top-level scopes are header, clock_rng, settings, ids, players,
-    // islands, figures and events. Only players and figures have children in a world
+    // islands, figures, events and timers_monopoly. Only players and figures have
+    // children in a world
     // without islands: one scope `player` per slot, indexed by the slot (S4, the
     // first world scope that nests), and one scope `figure` per slot of the registry
     // (S7: one empty slot), recorded from depth 1 on and not at depth 0.
-    REQUIRE(tree.root.children.size() == 8);
+    REQUIRE(tree.root.children.size() == 9);
     for (const sim::HashNode& c : tree.root.children) {
         CHECK(c.children.size() == (c.name == "players" ? 32U : c.name == "figures" ? 1U : 0U));
     }
@@ -631,7 +666,7 @@ TEST_CASE("hash_state records the scopes down to the requested depth") {
     }
     sim::HashTree shallow;
     CHECK(w.state_hash(shallow, 0) == w.state_hash());
-    REQUIRE(shallow.root.children.size() == 8);
+    REQUIRE(shallow.root.children.size() == 9);
     CHECK(shallow.root.children[4].children.empty());
 }
 
@@ -823,24 +858,24 @@ TEST_CASE("world core stream layout round trip and rejects") {
     sim::WriteArchive wa;
     fields(wa, std::as_const(w));
     const std::vector<std::uint8_t> bytes = wa.take();
-    // header: u32 105, u32 1, then SimConfig, Rules, registry digest and seam
+    // header: u32 107, u32 1, then SimConfig, Rules, registry digest and seam
     // names (config_test.cpp pins those bytes); clock_rng: u64 ms, u64
     // last_tick, u64 2048, u64 table digest, u32 cursor (36 bytes); settings
-    // (38 bytes, config_test.cpp); ids: two u64 (16 bytes); players: u64 32, 32
-    // absent bytes, u16 stamp, u32 cursor (46 bytes); islands: u64 0 (8 bytes);
-    // figures (39 bytes) and events (8 bytes), config_test.cpp. The clock_rng scope
-    // is found from the end.
+    // (38 bytes, config_test.cpp); ids: two u64, two u32 and a bool (25 bytes);
+    // players: u64 32, 32 absent bytes, u16 stamp, u32 cursor (46 bytes); islands:
+    // u64 0 (8 bytes); figures (39 bytes), events (8 bytes) and timers_monopoly (193
+    // bytes), config_test.cpp. The clock_rng scope is found from the end.
     constexpr std::size_t kSettingsBytes = 38;
-    constexpr std::size_t kIdsBytes = 16;
+    constexpr std::size_t kIdsBytes = 25;
     constexpr std::size_t kPlayersBytes = 8 + 32 + 2 + 4;
     constexpr std::size_t kIslandsBytes = 8;
-    constexpr std::size_t kTailBytes = 39 + 8;
+    constexpr std::size_t kTailBytes = 39 + 8 + 193;
     REQUIRE(bytes.size() >
             8 + 36 + kSettingsBytes + kIdsBytes + kPlayersBytes + kIslandsBytes + kTailBytes);
     const std::size_t at = bytes.size() - kTailBytes - kIslandsBytes - kPlayersBytes - kIdsBytes -
                            kSettingsBytes - 36; // clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 8) ==
-          std::vector<std::uint8_t>{105, 0, 0, 0, 1, 0, 0, 0});
+          std::vector<std::uint8_t>{107, 0, 0, 0, 1, 0, 0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8
     CHECK(bytes[at + 16] == 0);
@@ -875,7 +910,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another state hash version is refused") {
         auto bad = bytes;
-        bad[0] = 106;
+        bad[0] = 108;
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);

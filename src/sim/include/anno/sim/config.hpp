@@ -386,6 +386,8 @@ struct Rules {
     /// D11, OQ-046; PerIsland is a reserved value.
     PrngMode prng_mode = PrngMode::Global;
     /// D12, OQ-047: 0 = a spawned figure never returns.
+    /// It is the default figure body: with a Seams::figure_tick installed the seam
+    /// decides when a figure ends and this rule does nothing (docs/sim/state.md §5.9).
     std::uint32_t interim_figure_return_ticks = 0;
     /// F13: honour a free-build flag (never from the wire).
     bool free_build_cheat = false;
@@ -401,6 +403,11 @@ struct Rules {
     /// the tick. The original compares unsigned: within the last grace_ticks
     /// before 2^32 a player is declared bankrupt at once or the deadline lands on 0.
     bool bankrupt_deadline_wrap_safe = false;
+    /// F5, OQ-133 (owner decision 2026-10-23: "Stay on the original bug with optional
+    /// fix"): script timer 0 stops at 0 when a step overshoots it. The original
+    /// (D 0x1009cd51..0x1009cd59) subtracts in u32 and stops the timer only on exactly
+    /// 0, so an overshoot wraps the counter and the timer runs on (timers_tick).
+    bool timer0_clamp = false;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed

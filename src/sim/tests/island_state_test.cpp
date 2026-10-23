@@ -818,7 +818,7 @@ TEST_CASE("island perturbation moves the hash") {
     const sim::World base = make_world(zero_island_scenario());
     const std::uint64_t base_hash = sim::World(base).state_hash();
     const std::vector<std::uint64_t> base_scopes = scope_hashes(base);
-    REQUIRE(base_scopes.size() == 8);
+    REQUIRE(base_scopes.size() == 9);
     for (const auto& [name, mutate] : mutations) {
         INFO("mutation " << name);
         sim::World w = base;
@@ -871,7 +871,9 @@ TEST_CASE("island perturbation moves the hash") {
 TEST_CASE("advance ticks the islands but writes no tile") {
     // Stage S7: advance ticks the islands (the sweep cursors, the object manager, the
     // city ring: stamps and cursors move), but the growth sweep has no tile body
-    // before stage S13, so no tile column changes.
+    // before stage S13, so no tile column changes. Stage S12: the world-level steps
+    // move the two accumulators (ids), the registry's stamp (figures) and the timers'
+    // last tick (timers_monopoly).
     sim::World w = make_world(syn::two_island_scenario());
     const std::vector<std::uint64_t> before = scope_hashes(w);
     const sim::World created = w;
@@ -884,9 +886,13 @@ TEST_CASE("advance ticks the islands but writes no tile") {
     CHECK(after[4] != before[4]); // players: the table's stamp and cursor moved
     CHECK(after[0] == before[0]); // header
     CHECK(after[2] == before[2]); // settings
-    CHECK(after[3] == before[3]); // ids: nothing was spawned
-    CHECK(after[6] == before[6]); // figures
+    CHECK(after[3] != before[3]); // ids: nothing was spawned, the accumulators moved
+    CHECK(w.ids().next_figure == created.ids().next_figure);
+    CHECK(w.ids().next_event_seq == created.ids().next_event_seq);
+    CHECK(after[6] != before[6]); // figures: no figure, the registry's stamp moved
+    CHECK(w.figures().by_id.empty());
     CHECK(after[7] == before[7]); // events
+    CHECK(after[8] != before[8]); // timers_monopoly: the timers' last tick moved
     for (std::size_t slot : {std::size_t{0}, std::size_t{3}}) {
         const sim::TileLayer& now = w.islands()[slot]->tiles;
         const sim::TileLayer& then = created.islands()[slot]->tiles;

@@ -6,7 +6,7 @@
 // of its function plus a kStateHashVersion bump and re-baselined goldens in
 // the same commit.
 //
-// Stream at kStateHashVersion 104 (stage S6), the scopes of §9.3 so far:
+// Stream at kStateHashVersion 106 (stage S12), the scopes of §9.3 so far:
 //   1 header     u32 kStateHashVersion, u32 kPrngTimelineVersion,
 //                SimConfig (declaration order; vectors as count + elements;
 //                small_farm_animals; layout), Rules (declaration order),
@@ -14,7 +14,8 @@
 //   2 clock_rng  u64 clock.ms, u64 clock.last_tick, u64 rng.size,
 //                u64 rng.table_digest, u32 rng.cursor  (= core_hash)
 //   3 settings   the WorldSettings
-//   4 ids        u64 next_figure, u64 next_event_seq
+//   4 ids        u64 next_figure, u64 next_event_seq, u32 event750_acc,
+//                u32 monopoly.acc, bool faulted
 //   5 players    u64 slot count, then per slot (scope `player`, ordinal = slot)
 //                an optional Player, then u16 stamp, u32 cursor
 //   6 islands    u64 slot count, then per slot (scope `island`, ordinal = slot)
@@ -27,6 +28,8 @@
 //                the expiry ids, the deferred ids
 //   8 events     the timed-event queue: u64 count, per event its key (u64 due, u64
 //                seq) and the TimedEvent
+//   9 timers_monopoly  the ScriptTimers (u32 last_tick, u8 flags, u32 counters) and
+//                the monopoly entries (u32 time_s, optional u32 player each)
 // Not in the stream: the PRNG table itself (immutable, identified by its
 // size and digest; a custom table travels in the save frame, §9.5), the type
 // registry (its digest is in the header) and the seam functions (their names
@@ -71,6 +74,7 @@
 #include <anno/sim/rng.hpp>
 #include <anno/sim/seams.hpp>
 #include <anno/sim/settings.hpp>
+#include <anno/sim/timers.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim/world.hpp>
 
@@ -232,7 +236,7 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     fields(a, s.layout);
 }
 
-static_assert(field_count<Rules>() == 17, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<Rules>() == 18, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -252,6 +256,7 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.boolean(s.enforce_research);
     a.boolean(s.stat_decay_wide);
     a.boolean(s.bankrupt_deadline_wrap_safe);
+    a.boolean(s.timer0_clamp);
 }
 
 // ---- settings scope
@@ -956,6 +961,37 @@ template <class A, Same<EventQueue> S> void fields(A& a, S& s) {
         [&](auto& e) { fields(a, e); });
 }
 
+// ---- the script timers and the monopoly table (stage S12)
+
+static_assert(field_count<ScriptTimers>() == 3,
+              "a ScriptTimers member needs a line in fields(ScriptTimers)");
+
+/// `u32 last_tick`, the running flags (u8, count + elements) and the counters (u32,
+/// count + elements); reading bounds both counts by the input, StateIO checks the
+/// sizes against the configuration (validate_timers).
+template <class A, Same<ScriptTimers> S> void fields(A& a, S& s) {
+    a.u32(s.last_tick);
+    ar::seq(a, s.active, 1, [&](auto& v) { a.u8(v); });
+    ar::seq(a, s.counter, 4, [&](auto& v) { a.u32(v); });
+}
+
+static_assert(field_count<MonopolyEntry>() == 2,
+              "a MonopolyEntry member needs a line in fields(MonopolyEntry)");
+
+template <class A, Same<MonopolyEntry> S> void fields(A& a, S& s) {
+    a.u32(s.time_s);
+    ar::opt(a, s.player, [&](auto& p) { a.u32(p.v); });
+}
+
+// MonopolyTable::acc is in the ids scope (docs/sim/state.md §9.3), not here.
+static_assert(field_count<MonopolyTable>() == 2,
+              "a MonopolyTable member needs a line in fields(MonopolyTable) or the ids scope");
+
+/// The entries (count, then each `u32 time_s, optional u32 player`, 5 bytes at least).
+template <class A, Same<MonopolyTable> S> void fields(A& a, S& s) {
+    ar::seq(a, s.entries, 5, [&](auto& e) { fields(a, e); });
+}
+
 /// The hierarchical hash of any persistent value, with the scopes down to
 /// `depth` recorded in `tree` when it is not null. World::state_hash is this
 /// over the world; it is a template so the depth rule can be tested on values
@@ -1053,13 +1089,19 @@ struct StateIO {
         });
     }
 
-    /// Section 4: the id counters. Reading rejects 0 (ids start at 1). The maximum
-    /// is accepted: it is the "used up" state a counter reaches after it handed out
-    /// 2^64 - 2 (the last valid id; 2^64 - 1 is the invalid id), and a counter in it
-    /// refuses further ids instead of wrapping (F35).
-    template <class A, class Ids> static void ids_section(A& a, Ids& ids) {
+    /// Section 4: the id counters, then the two millisecond accumulators of the
+    /// world-level events and the draw-guard flag (stage S12: `u32 event750_acc, u32
+    /// monopoly.acc, bool faulted`). Reading rejects a counter of 0 (ids start at 1).
+    /// The maximum is accepted: it is the "used up" state a counter reaches after it
+    /// handed out 2^64 - 2 (the last valid id; 2^64 - 1 is the invalid id), and a
+    /// counter in it refuses further ids instead of wrapping (F35).
+    template <class A, class Ids, class U32, class Bool>
+    static void ids_section(A& a, Ids& ids, U32& event750_acc, U32& monopoly_acc, Bool& faulted) {
         a.scope("ids", [&] {
             fields(a, ids);
+            a.u32(event750_acc);
+            a.u32(monopoly_acc);
+            a.boolean(faulted);
             if constexpr (A::kReading) {
                 if (!a.failed() && ids.next_figure < 1) {
                     a.fail("next_figure " + std::to_string(ids.next_figure) +
@@ -1147,23 +1189,49 @@ struct StateIO {
         });
     }
 
+    /// Section 9 (stage S12): the script timers and the monopoly table. Reading
+    /// checks their sizes against the configuration just read and the players the
+    /// monopoly entries name against the player table's size.
+    template <class A, class Timers, class Monopoly, class Config>
+    static void timers_monopoly_section(A& a, Timers& timers, Monopoly& monopoly,
+                                        const Config& config) {
+        a.scope("timers_monopoly", [&] {
+            fields(a, timers);
+            fields(a, monopoly);
+            if constexpr (A::kReading) {
+                if (!a.failed()) {
+                    std::string problem = validate_timers(timers, config);
+                    if (problem.empty()) {
+                        problem = validate_monopoly(monopoly, config);
+                    }
+                    if (!problem.empty()) {
+                        a.fail(problem);
+                    }
+                }
+            }
+        });
+    }
+
     /// The scopes of the stream over the configuration, rules, settings, clock,
     /// PRNG, id counters, players, islands, figures and events to use: the world's
     /// own members when writing or hashing, the read-side temporaries when reading
     /// (so one function defines the order of the stream for all four archives).
     template <class A, class W, class Config, class RulesT, class Settings, class Clock, class Rng,
-              class Ids, class Players, class Islands, class Figures, class Events>
+              class Ids, class Players, class Islands, class Figures, class Events, class Timers,
+              class Monopoly, class U32, class Bool>
     static void scopes(A& a, W& w, Config& config, RulesT& rules, Settings& settings, Clock& clock,
                        Rng& rng, Ids& ids, Players& players, Islands& islands, Figures& figures,
-                       Events& events) {
+                       Events& events, Timers& timers, Monopoly& monopoly, U32& event750_acc,
+                       Bool& faulted) {
         header_section(a, w, config, rules);
         clock_rng_section(a, clock, rng);
         settings_section(a, settings);
-        ids_section(a, ids);
+        ids_section(a, ids, event750_acc, monopoly.acc, faulted);
         players_section(a, players, config);
         islands_section(a, w, islands, config, settings);
         figures_section(a, figures, ids);
         events_section(a, events, ids);
+        timers_monopoly_section(a, timers, monopoly, config);
     }
 
     template <class A, class W> static void world(A& a, W& w) {
@@ -1182,8 +1250,12 @@ struct StateIO {
             std::vector<std::optional<Island>> islands;
             FigureRegistry figures = w.figures_;
             EventQueue events = w.events_;
+            ScriptTimers timers = w.timers_;
+            MonopolyTable monopoly = w.monopoly_;
+            std::uint32_t event750_acc = w.event750_acc_;
+            bool faulted = w.faulted_;
             scopes(a, w, config, rules, settings, clock, rng, ids, players, islands, figures,
-                   events);
+                   events, timers, monopoly, event750_acc, faulted);
             if (!a.failed()) {
                 // The derived indexes (id map, footprint grids, counters) are not in
                 // the stream: rebuilt from the lists (docs/sim/state.md §9.1).
@@ -1202,10 +1274,15 @@ struct StateIO {
                 w.islands_ = std::move(islands);
                 w.figures_ = std::move(figures);
                 w.events_ = std::move(events);
+                w.timers_ = std::move(timers);
+                w.monopoly_ = std::move(monopoly);
+                w.event750_acc_ = event750_acc;
+                w.faulted_ = faulted;
             }
         } else {
             scopes(a, w, w.config_, w.rules_, w.settings_, w.clock_, w.rng_, w.ids_, w.players_,
-                   w.islands_, w.figures_, w.events_);
+                   w.islands_, w.figures_, w.events_, w.timers_, w.monopoly_, w.event750_acc_,
+                   w.faulted_);
         }
     }
 
@@ -1218,8 +1295,8 @@ struct StateIO {
                                                     Seams seams);
 };
 
-/// The world so far: scopes header, clock_rng, settings, ids, players, islands,
-/// figures and events (the order of §9.3).
+/// The world: scopes header, clock_rng, settings, ids, players, islands, figures,
+/// events and timers_monopoly (the order of §9.3).
 template <class A, Same<World> S> void fields(A& a, S& w) {
     StateIO::world(a, w);
 }

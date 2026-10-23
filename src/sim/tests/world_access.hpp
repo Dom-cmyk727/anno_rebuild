@@ -30,6 +30,11 @@ struct WorldTestAccess {
     static IdCounters& ids(World& w) { return w.ids_; }
     static FigureRegistry& figures(World& w) { return w.figures_; }
     static EventQueue& events(World& w) { return w.events_; }
+    static ScriptTimers& timers(World& w) { return w.timers_; }
+    static MonopolyTable& monopoly(World& w) { return w.monopoly_; }
+    static std::uint32_t& event750_acc(World& w) { return w.event750_acc_; }
+    static bool& faulted(World& w) { return w.faulted_; }
+    static SimOutput& output(World& w) { return w.out_; }
     static void set_types(World& w, std::shared_ptr<const TypeRegistry> t) {
         w.types_ = RegistryRef(std::move(t));
     }

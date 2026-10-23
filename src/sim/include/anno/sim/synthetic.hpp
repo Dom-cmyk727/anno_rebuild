@@ -118,4 +118,17 @@ ScenarioSpec g2_scenario(const SyntheticTypes& types, std::uint32_t seed = 1234)
 /// has both done.
 ScenarioSpec g3_scenario(const SyntheticTypes& types, std::uint32_t seed = 1234);
 
+/// The scenario of the golden G4 (docs/sim/state.md §14.3, stage S12), on
+/// make_synthetic_types; the seed 508 is the one the golden uses (its draws are worked
+/// out in world_events_test.cpp). Three players: 0 (kind 8, Volk 1), 1 (kind 12, Volk 1,
+/// 2 900 gold in debt) and 2 (kind 14, Volk 2). Three islands in table slots 0, 2 and 4
+/// (slots 1 and 3 stay null): slot 0, 24 x 24 at (100, 100), climate 2, every tile owned
+/// by city 0 of player 0, with the weaver (5 t of wool) at (110, 110) and the grain farm
+/// (5 t of raw material) at (120, 110); slot 2, 16 x 16 at (300, 100), climate 1, with
+/// city 0 of player 0 and city 1 of player 1; slot 4, 16 x 16 at (300, 300), climate 0,
+/// with city 0 of player 1 and city 1 of player 2. World property 7's offset is 1000 (the
+/// game seconds the monopoly table records). The test adds the state a scenario cannot
+/// carry (upkeep sums, timers, queued events, figures on the expiry and deferred lists).
+ScenarioSpec g4_scenario(const SyntheticTypes& types, std::uint32_t seed = 508);
+
 } // namespace anno::sim::synthetic

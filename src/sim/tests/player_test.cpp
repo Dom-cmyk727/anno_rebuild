@@ -1373,11 +1373,12 @@ TEST_CASE("players scope stream layout") {
 
     // The world stream has the table after the ids scope and before the islands scope
     // (stage S5: the u64 slot count 0 of a world without islands), then the figures
-    // scope (39 bytes) and the events scope (8 bytes) of stage S7.
+    // scope (39 bytes) and the events scope (8 bytes) of stage S7 and the
+    // timers_monopoly scope (193 bytes) of stage S12.
     sim::World w;
     sim::WorldTestAccess::players(w) = t;
     const std::vector<std::uint8_t> world = save_world(w);
-    constexpr std::ptrdiff_t kIslandsBytes = 8 + 39 + 8;
+    constexpr std::ptrdiff_t kIslandsBytes = 8 + 39 + 8 + 193;
     REQUIRE(world.size() > expected.v.size() + static_cast<std::size_t>(kIslandsBytes));
     CHECK(std::equal(expected.v.begin(), expected.v.end(),
                      world.end() - kIslandsBytes - static_cast<std::ptrdiff_t>(expected.v.size())));
@@ -1475,7 +1476,7 @@ TEST_CASE("every player field moves the players scope hash") {
         return out;
     };
     const auto base_scopes = scope_hashes(tree);
-    REQUIRE(base_scopes.size() == 8);
+    REQUIRE(base_scopes.size() == 9);
     for (const std::uint32_t slot : {0U, 3U, 31U}) {
         for (const auto& [name, mutate] : mutations) {
             INFO("slot " << slot << " field " << std::string(name));
@@ -1673,9 +1674,10 @@ TEST_CASE("players scope reads back and validates what it read") {
         // it: the remaining input would justify the count (one byte per absent
         // slot), but each slot is a whole Player in memory.
         const std::size_t table_size = save_table(w.players()).size();
-        // bytes ends with the players scope, the islands scope (u64 count 0) and the
-        // figures and events scopes of a world without either (39 + 8 bytes).
-        constexpr std::ptrdiff_t kTail = 39 + 8;
+        // bytes ends with the players scope, the islands scope (u64 count 0), the
+        // figures and events scopes of a world without either (39 + 8 bytes) and the
+        // timers_monopoly scope of the default configuration (193 bytes).
+        constexpr std::ptrdiff_t kTail = 39 + 8 + 193;
         REQUIRE(bytes.size() > table_size + 8 + kTail);
         Stream s;
         s.v.assign(bytes.begin(),

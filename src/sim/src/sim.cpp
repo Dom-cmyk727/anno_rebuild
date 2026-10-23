@@ -159,11 +159,13 @@ std::uint64_t sweep_chunks(std::uint32_t chunks, std::uint16_t delta_tick, std::
 
 World::World()
     : types_(TypeRegistry::empty()), players_(make_player_table(config_)),
-      figures_(make_figure_registry(config_)) {}
+      figures_(make_figure_registry(config_)), timers_(make_script_timers(config_)),
+      monopoly_(make_monopoly_table(config_)) {}
 
 World::World(std::uint32_t seed)
     : types_(TypeRegistry::empty()), players_(make_player_table(config_)),
-      figures_(make_figure_registry(config_)) {
+      figures_(make_figure_registry(config_)), timers_(make_script_timers(config_)),
+      monopoly_(make_monopoly_table(config_)) {
     rng_.set_cursor(seed);
 }
 

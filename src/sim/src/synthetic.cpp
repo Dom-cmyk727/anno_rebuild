@@ -310,4 +310,44 @@ ScenarioSpec g3_scenario(const SyntheticTypes& types, std::uint32_t seed) {
     return spec;
 }
 
+ScenarioSpec g4_scenario(const SyntheticTypes& types, std::uint32_t seed) {
+    ScenarioSpec spec = empty_scenario(seed);
+    spec.settings.prop7_offset = 1000;
+    ScenarioSpec::PlayerSpec human;
+    human.id = PlayerId{0};
+    ScenarioSpec::PlayerSpec debtor;
+    debtor.id = PlayerId{1};
+    debtor.kind = 12;
+    debtor.money = -2900;
+    debtor.name = {'A', 'I'};
+    ScenarioSpec::PlayerSpec natives;
+    natives.id = PlayerId{2};
+    natives.kind = 14;
+    natives.volk = 2;
+    natives.money = 5000;
+    spec.players = {human, debtor, natives};
+
+    ScenarioSpec::IslandSpec is0 = plain_island(0, 100, 100, 24, 24);
+    is0.owner_runs = {{0, 24U * 24U}};
+    ScenarioSpec::CitySpec city0 = plain_city(0, 0);
+    Workshop w = make_workshop(types.registry->find(types.weaver)->prod);
+    w.in[0] = 5 * kTon;
+    Farm f;
+    f.raw = 5 * kTon;
+    city0.buildings = {building_at(types.weaver, 110, 110, Payload{w}),
+                       building_at(types.farm, 120, 110, Payload{f})};
+    is0.cities.push_back(std::move(city0));
+
+    ScenarioSpec::IslandSpec is2 = plain_island(2, 300, 100, 16, 16);
+    is2.climate = 1;
+    is2.cities = {plain_city(0, 0), plain_city(1, 1)};
+
+    ScenarioSpec::IslandSpec is4 = plain_island(4, 300, 300, 16, 16);
+    is4.climate = 0;
+    is4.cities = {plain_city(0, 1), plain_city(1, 2)};
+
+    spec.islands = {std::move(is0), std::move(is2), std::move(is4)};
+    return spec;
+}
+
 } // namespace anno::sim::synthetic

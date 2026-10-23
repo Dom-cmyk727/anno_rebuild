@@ -145,6 +145,7 @@ void expected_config(Stream& s) {
     s.boolean(false); // enforce_research
     s.boolean(false); // stat_decay_wide
     s.boolean(false); // bankrupt_deadline_wrap_safe
+    s.boolean(false); // timer0_clamp
 }
 
 void expected_settings(Stream& s) {
@@ -298,6 +299,7 @@ std::vector<std::pair<const char*, RulesMut>> rules_mutations() {
     m.emplace_back("stat_decay_wide", [](sim::Rules& r) { r.stat_decay_wide = true; });
     m.emplace_back("bankrupt_deadline_wrap_safe",
                    [](sim::Rules& r) { r.bankrupt_deadline_wrap_safe = true; });
+    m.emplace_back("timer0_clamp", [](sim::Rules& r) { r.timer0_clamp = true; });
     return m;
 }
 
@@ -501,8 +503,9 @@ TEST_CASE("rules defaults are faithful") {
     CHECK_FALSE(r.enforce_research);
     CHECK_FALSE(r.stat_decay_wide);
     CHECK_FALSE(r.bankrupt_deadline_wrap_safe);
+    CHECK_FALSE(r.timer0_clamp);
     CHECK(r.validate().empty());
-    static_assert(sim::field_count<sim::Rules>() == 17);
+    static_assert(sim::field_count<sim::Rules>() == 18);
 }
 
 TEST_CASE("sim config defaults are the originals") {
@@ -1310,9 +1313,10 @@ TEST_CASE("state stream header and settings scopes") {
     const std::vector<std::uint8_t> bytes = save_fields(w);
     // The whole stream, transcribed from docs/sim/state.md §9.3: header
     // (versions, SimConfig, Rules, registry digest, seam names), clock_rng,
-    // settings, ids (next_figure, next_event_seq), players (32 absent slots, stamp,
-    // cursor), islands (slot count 0), figures (the registry of one empty slot) and
-    // events (count 0).
+    // settings, ids (next_figure, next_event_seq, the two accumulators, faulted),
+    // players (32 absent slots, stamp, cursor), islands (slot count 0), figures (the
+    // registry of one empty slot), events (count 0) and timers_monopoly (5 stopped
+    // timers, 28 empty monopoly entries).
     Stream expected;
     expected.u32(sim::kStateHashVersion);
     expected.u32(sim::kPrngTimelineVersion);
@@ -1331,6 +1335,9 @@ TEST_CASE("state stream header and settings scopes") {
     expected_settings(expected);
     expected.u64(1);  // ids: next_figure
     expected.u64(1);  // ids: next_event_seq
+    expected.u32(0);  // ids: event750_acc
+    expected.u32(0);  // ids: monopoly.acc
+    expected.u8(0);   // ids: faulted
     expected.u64(32); // players: slot count
     for (int i = 0; i < 32; ++i) {
         expected.u8(0); // an absent slot
@@ -1346,18 +1353,33 @@ TEST_CASE("state stream header and settings scopes") {
     expected.u64(0);                     // expiry
     expected.u64(0);                     // deferred
     expected.u64(0);                     // events: count
+    expected.u32(0);                     // timers: last_tick
+    expected.u64(5);                     // timers: active
+    for (int i = 0; i < 5; ++i) {
+        expected.u8(0);
+    }
+    expected.u64(5); // timers: counter
+    for (int i = 0; i < 5; ++i) {
+        expected.u32(0);
+    }
+    expected.u64(28); // monopoly entries
+    for (int i = 0; i < 28; ++i) {
+        expected.u32(0); // time_s
+        expected.u8(0);  // no player
+    }
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 105);
+    CHECK(sim::kStateHashVersion == 107);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);
     CHECK(scope_offset(w, "settings") == header_size + 36);
     CHECK(scope_offset(w, "ids") == header_size + 36 + 38);
-    CHECK(scope_offset(w, "players") == header_size + 36 + 38 + 16);
-    CHECK(scope_offset(w, "islands") == header_size + 36 + 38 + 16 + 46);
-    CHECK(scope_offset(w, "figures") == header_size + 36 + 38 + 16 + 46 + 8);
-    CHECK(scope_offset(w, "events") == header_size + 36 + 38 + 16 + 46 + 8 + 39);
-    CHECK(bytes.size() == header_size + 36 + 38 + 16 + 46 + 8 + 39 + 8);
+    CHECK(scope_offset(w, "players") == header_size + 36 + 38 + 25);
+    CHECK(scope_offset(w, "islands") == header_size + 36 + 38 + 25 + 46);
+    CHECK(scope_offset(w, "figures") == header_size + 36 + 38 + 25 + 46 + 8);
+    CHECK(scope_offset(w, "events") == header_size + 36 + 38 + 25 + 46 + 8 + 39);
+    CHECK(scope_offset(w, "timers_monopoly") == header_size + 36 + 38 + 25 + 46 + 8 + 39 + 8);
+    CHECK(bytes.size() == header_size + 36 + 38 + 25 + 46 + 8 + 39 + 8 + 193);
 }
 
 TEST_CASE("state hash moves with every config rules settings and seam field") {
@@ -1365,7 +1387,7 @@ TEST_CASE("state hash moves with every config rules settings and seam field") {
     const std::uint64_t base_hash = base.state_hash();
     sim::HashTree base_tree;
     CHECK(base.state_hash(base_tree, 0) == base_hash);
-    REQUIRE(base_tree.root.children.size() == 8);
+    REQUIRE(base_tree.root.children.size() == 9);
     CHECK(base_tree.root.children[0].name == "header");
     CHECK(base_tree.root.children[1].name == "clock_rng");
     CHECK(base_tree.root.children[2].name == "settings");
@@ -1374,6 +1396,7 @@ TEST_CASE("state hash moves with every config rules settings and seam field") {
     CHECK(base_tree.root.children[5].name == "islands");
     CHECK(base_tree.root.children[6].name == "figures");
     CHECK(base_tree.root.children[7].name == "events");
+    CHECK(base_tree.root.children[8].name == "timers_monopoly");
     auto scope_hashes = [](const sim::World& w) {
         sim::HashTree t;
         static_cast<void>(w.state_hash(t, 0));

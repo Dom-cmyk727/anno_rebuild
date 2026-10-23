@@ -341,6 +341,10 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
     }
     w.players_ = make_player_table(w.config_);
     w.figures_ = make_figure_registry(w.config_);
+    // §10 step 2: the monopoly entries sized from the configuration and empty, the
+    // script timers stopped at 0.
+    w.timers_ = make_script_timers(w.config_);
+    w.monopoly_ = make_monopoly_table(w.config_);
     for (const Spec::PlayerSpec& ps : spec.players) {
         Player p = make_player(ps.id, w.config_);
         p.kind = ps.kind;

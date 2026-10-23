@@ -220,7 +220,9 @@ enum class SimEventKind : std::uint8_t {
 /// kind uses: StatusMessage {player = the city owner, building, code = Status};
 /// Notice {player, building, code = the message id}; BlockedChanged {player,
 /// building, code = 1 blocked / 0 free, x, y}; FigureSpawned {player, building =
-/// the home, figure, code = the figure kind, x, y = the tile}.
+/// the home, figure, code = the figure kind, x, y = the tile}; Event15a {code =
+/// 0x15a, x, y = the centre tile of the island the 7.5 minute event hit; player,
+/// building and figure stay invalid}; TimerExpired {code = the timer index}.
 struct SimEvent {
     SimEventKind kind = SimEventKind::StatusMessage;
     std::uint64_t tick = 0;
@@ -318,6 +320,13 @@ struct SimOutput {
     std::vector<DrawRecord> draws;
     /// The PRNG cursor before the first and after the last draw of the advance.
     std::uint32_t rng_cursor_before = 0, rng_cursor_after = 0;
+    /// The timed events the advance dispatched (both passes of Rules::
+    /// events_flush_after_figures together).
+    std::uint64_t events_dispatched = 0;
+    /// True when a dispatch pass of the advance stopped at Rules::events_max_dispatch
+    /// with a due event left in the queue (F24, pop_due): a game never reaches the cap,
+    /// so World::check_invariants reports it until the next advance.
+    bool events_capped = false;
 };
 
 } // namespace anno::sim

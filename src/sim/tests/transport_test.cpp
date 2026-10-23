@@ -325,7 +325,7 @@ TEST_CASE("F11: the cart takes the producer with the better score, not the neare
         r.place(kMarket, 110, 110);
         r.place(kWeaver, 111, 115, weaver_with(b_has_more ? 200 : 300));
         r.place(kWeaver, 113, 115, weaver_with(b_has_more ? 300 : 255));
-        for (const auto [x, y] : {std::pair{111, 113}, {111, 114}, {112, 114}, {113, 114}}) {
+        for (const auto& [x, y] : {std::pair{111, 113}, {111, 114}, {112, 114}, {113, 114}}) {
             r.road(x, y);
         }
         sim::World w = create(r, types);
@@ -349,7 +349,7 @@ TEST_CASE("F12: a raw goods producer below 75 percent is never chosen") {
         if (with_b) {
             r.place(kFarm, 113, 115, farm_with(1400));
         }
-        for (const auto [x, y] : {std::pair{111, 113}, {111, 114}, {112, 114}, {113, 114}}) {
+        for (const auto& [x, y] : {std::pair{111, 113}, {111, 114}, {112, 114}, {113, 114}}) {
             r.road(x, y);
         }
         sim::World w = create(r, types);
@@ -374,7 +374,7 @@ TEST_CASE("the cart's choice: the 75 percent line, the 1 t filter, the strict be
     auto run = [&](auto&& setup) {
         Rig r = make_rig();
         r.place(sim::TypeId{kMarket}, 110, 110);
-        for (const auto [x, y] : {std::pair{111, 113}, {111, 114}, {112, 114}, {113, 114}}) {
+        for (const auto& [x, y] : {std::pair{111, 113}, {111, 114}, {112, 114}, {113, 114}}) {
             r.road(x, y);
         }
         setup(r);
@@ -502,14 +502,14 @@ TEST_CASE("the search expands its neighbours in the direction-code order") {
     Rig r = make_rig();
     r.place(kMarket, 110, 110);
     r.place(kWeaver, 111, 116, weaver_with(5 * 256));
-    for (const auto [x, y] : {std::pair{111, 113},
-                              {111, 114},
-                              {110, 114},
-                              {110, 115},
-                              {110, 116},
-                              {112, 114},
-                              {112, 115},
-                              {112, 116}}) {
+    for (const auto& [x, y] : {std::pair{111, 113},
+                               {111, 114},
+                               {110, 114},
+                               {110, 115},
+                               {110, 116},
+                               {112, 114},
+                               {112, 115},
+                               {112, 116}}) {
         r.road(x, y);
     }
     sim::World w = create(r, types);

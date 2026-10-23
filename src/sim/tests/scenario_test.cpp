@@ -121,9 +121,9 @@ FileResult run_file(const fs::path& game, const fs::path& p,
         }
     }
     for (const sim::ScenarioWarning& w : loaded.value().warnings) {
-        r.prod2_buildings += w.kind == sim::ScenarioWarningKind::BuildingWithoutCity ? 1 : 0;
+        r.prod2_buildings += w.kind == sim::ScenarioWarningKind::BuildingWithoutCity ? 1U : 0U;
         r.prod2_unknown +=
-            w.kind == sim::ScenarioWarningKind::UnknownObject && w.record == "PROD2" ? 1 : 0;
+            w.kind == sim::ScenarioWarningKind::UnknownObject && w.record == "PROD2" ? 1U : 0U;
     }
     auto run = [&](std::uint64_t& hash) -> std::string {
         auto w = sim::World::create(loaded.value().spec, types, cfg);
@@ -215,8 +215,8 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
         buildings += r.counts.buildings;
         objects += r.counts.tile_objects;
         a14 += r.a14;
-        with_island += r.counts.islands > 0 ? 1 : 0;
-        links_only += r.counts.islands == 0 && r.counts.links > 0 ? 1 : 0;
+        with_island += r.counts.islands > 0 ? 1U : 0U;
+        links_only += r.counts.islands == 0 && r.counts.links > 0 ? 1U : 0U;
         for (const auto& [k, n] : r.counts.warnings) {
             totals[k] += n;
         }

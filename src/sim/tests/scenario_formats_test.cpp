@@ -176,7 +176,7 @@ std::string refusal(const Buf& file) {
 std::size_t warnings_of(const sim::LoadedScenario& s, Kind k) {
     std::size_t n = 0;
     for (const sim::ScenarioWarning& w : s.warnings) {
-        n += w.kind == k ? 1 : 0;
+        n += w.kind == k ? 1U : 0U;
     }
     return n;
 }

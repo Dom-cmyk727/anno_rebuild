@@ -269,6 +269,31 @@ TEST_CASE("grow skips tiles whose object is not a growing type") {
     }
     CHECK(object_at(is, 2, 0) == t.weaver.v);
     CHECK(phase_at(is, 4, 0) == kGrassOnce);
+    // A type with growth data but not of the growing class is not grown either (the
+    // visit asks find_growing, not find).
+    sim::TypeRegistry::Builder b;
+    for (const sim::BuildingType& type : t.registry->types()) {
+        b.add(type);
+    }
+    sim::BuildingType odd;
+    odd.id = sim::TypeId{9020};
+    odd.prodtype = 225;
+    odd.has_prod = true;
+    odd.prod.kind = sim::BuildingClass::Other;
+    odd.prod.growth_period = 1000;
+    odd.prod.stages = 5;
+    b.add(odd);
+    auto built = b.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    syn::SyntheticTypes t2 = t;
+    t2.registry = std::move(built.value());
+    sim::ScenarioSpec spec2 = covered_island(8, 8, t.grass);
+    spec2.islands[0].objects[0] = {0, 9020, 0x15}; // bit 6 clear: a visit at t = 500 would flip it
+    sim::World w2 = make(spec2, t2);
+    Tick tick2(w2, 500);
+    sim::grow_chunk(tick2.ctx, island(w2), 0, 0);
+    CHECK(phase_at(island(w2), 0, 0) == 0x15);
+    CHECK(phase_at(island(w2), 1, 0) == kGrassOnce);
 }
 
 TEST_CASE("cursor wrap reading A3") {
@@ -569,13 +594,13 @@ TEST_CASE("drought tiles seam called per strip") {
     // Ring 6 (r = 48): top y [72, 80), right x [176, 184), bottom y [168, 176), left x
     // [80, 88): all outside the island, empty strips.
     for (const std::size_t i : {192U, 200U, 208U, 216U}) {
-        CHECK(log.strips[i].rect.w * log.strips[i].rect.h == 0);
+        CHECK(log.strips[i].rect == sim::TileRect{});
     }
     // Ring 5 bottom (r = 40): [96, 176) x [160, 168): outside (y >= 144), empty; ring 5
     // left: [88, 96) x [88, 168): x outside, empty; ring 4 right: [160, 168): empty.
-    CHECK(log.strips[160 + 16].rect.h == 0);
-    CHECK(log.strips[160 + 24].rect.w == 0);
-    CHECK(log.strips[128 + 8].rect.w == 0);
+    CHECK(log.strips[160 + 16].rect == sim::TileRect{});
+    CHECK(log.strips[160 + 24].rect == sim::TileRect{});
+    CHECK(log.strips[128 + 8].rect == sim::TileRect{});
     // The retreat starts at ring 6 phase 0 and ends with the centre chunk.
     CHECK(log.strips[224].ring == 6);
     CHECK(log.strips[224].phase == 0);
@@ -992,4 +1017,196 @@ TEST_CASE("G5 growth and the 300 s drought through 1000000 ticks equal golden") 
         }
         CHECK_MESSAGE(problem.empty(), problem);
     }
+}
+
+// ------------------------------------------------------------- review B's cases
+
+TEST_CASE("drought strip gate across the 16-bit wrap of the tick") {
+    // The gate is a u16 difference (0x1008aee2 `cmp dx`): a drought started at tick 65 000
+    // and ticked every 5 ticks (advances of 10 ms) runs one strip per 50 ticks across tick
+    // 65 536, where the stamp wraps from 65 500 + 50 to 14: 20 strips by tick 66 000, the
+    // stamp u16(66 000) = 464.
+    const syn::SyntheticTypes t = growth_types();
+    sim::World w = make(bare_island(), t);
+    w.advance(130000);
+    REQUIRE(w.clock().tick() == 65000);
+    sim::start_drought_at(w.config(), island(w), 128, 128, 50, 65000);
+    for (int i = 0; i < 200; ++i) {
+        w.advance(10);
+        const std::uint64_t tick = w.clock().tick();
+        if (strips_done(*island(w).drought, w.config()) != (tick - 65000) / 50) {
+            CHECK(strips_done(*island(w).drought, w.config()) == (tick - 65000) / 50);
+            break;
+        }
+    }
+    REQUIRE(w.clock().tick() == 66000);
+    CHECK(strips_done(*island(w).drought, w.config()) == 20);
+    CHECK(island(w).drought->stamp == 464);
+}
+
+TEST_CASE("owner samples cover every sample of every anchor of a strip") {
+    // Ring 1 right of a drought at (128, 128) is [136, 144) x [120, 136): anchors (136, 120)
+    // and (136, 128). City 1 owns (142, 122) = the (b, a) sample of the first anchor, city 2
+    // (138, 130) = the (a, a) sample of the second, city 3 (138, 134) = the second anchor's
+    // (a, b) and city 4 (142, 134) its (b, b). The strip is ring 1, phase 1, step 0: strip
+    // 32 + 8 + 1 = 41 at tick 2 050. Before it the mask is empty (ring 0 and ring 1's top
+    // row sample none of these tiles), after it bits 1 .. 4.
+    const syn::SyntheticTypes t = growth_types();
+    sim::ScenarioSpec spec = bare_island();
+    for (std::uint32_t c = 1; c <= 4; ++c) {
+        spec.islands[0].cities.push_back(syn::plain_city(c, 0));
+    }
+    sim::World w = make(spec, t);
+    sim::Island& is = island(w);
+    const auto own = [&](std::int32_t x, std::int32_t y, std::uint32_t c) {
+        is.tiles.set_owner(is.tile_index(x, y), c);
+    };
+    own(142, 122, 1);
+    own(138, 130, 2);
+    own(138, 134, 3);
+    own(142, 134, 4);
+    sim::start_drought_at(w.config(), is, 128, 128, 50, 0);
+    for (int i = 0; i < 40; ++i) {
+        w.advance(100);
+    }
+    CHECK(is.drought->city_mask == std::vector<std::uint32_t>{0});
+    w.advance(100);
+    CHECK(strips_done(*is.drought, w.config()) == 41);
+    CHECK(is.drought->city_mask == std::vector<std::uint32_t>{0b11110});
+}
+
+TEST_CASE("drought strips and samples follow chunk_edge") {
+    // The rectangles and the sample offsets scale with the edge e: ring 0 is [x, x + e)^2,
+    // ring 1 top [x - e, x + e) x [y - e, y), the samples at e / 4 and 3 e / 4 (1 and 3 for
+    // e = 4, 4 and 12 for e = 16). A drought at (128, 128) on the 64 x 64 island at
+    // (100, 100); city 1 owns (x + a, y + a), city 2 (x + b, y + b).
+    const syn::SyntheticTypes t = growth_types();
+    for (const std::uint32_t e : {4U, 16U}) {
+        INFO("chunk_edge " << e);
+        sim::SimConfig cfg;
+        cfg.chunk_edge = e;
+        sim::ScenarioSpec spec = bare_island();
+        spec.islands[0].cities = {syn::plain_city(1, 0), syn::plain_city(2, 0)};
+        StripLog log;
+        sim::Seams seams;
+        install_strip_log(seams, &log);
+        sim::World w = make(spec, t, seams, cfg);
+        sim::Island& is = island(w);
+        const auto a = static_cast<std::int32_t>(e / 4);
+        const auto b = static_cast<std::int32_t>(3 * e / 4);
+        is.tiles.set_owner(is.tile_index(128 + a, 128 + a), 1);
+        is.tiles.set_owner(is.tile_index(128 + b, 128 + b), 2);
+        sim::start_drought_at(w.config(), is, 128, 128, 50, 0);
+        for (int i = 0; i < 33; ++i) {
+            w.advance(100);
+        }
+        REQUIRE(log.strips.size() == 33);
+        const auto ei = static_cast<std::int32_t>(e);
+        CHECK(log.strips[0].rect == rect(128, 128, e, e));
+        CHECK(log.strips[0].step == 0);
+        CHECK(log.strips[1].step == e);
+        CHECK(log.strips[32].ring == 1);
+        CHECK(log.strips[32].rect == rect(128 - ei, 128 - ei, 2 * e, e));
+        CHECK(is.drought->city_mask == std::vector<std::uint32_t>{0b110});
+    }
+}
+
+TEST_CASE("drought clip uses the island origin on each axis") {
+    // An island of 60 x 44 at (100, 108): x in [100, 160), y in [108, 152). A drought at
+    // (128, 120), ring 3 (r = 24): the top row [104, 152) x [96, 104) lies above y = 108
+    // (empty); the left column [104, 112) x [104, 152) is clipped to y >= 108: 8 x 44.
+    const syn::SyntheticTypes t = growth_types();
+    sim::ScenarioSpec spec = syn::empty_scenario();
+    spec.islands.push_back(syn::plain_island(0, 100, 108, 60, 44));
+    sim::World w = make(spec, t);
+    sim::Drought d;
+    d.x = 128;
+    d.y = 120;
+    d.ring = 3;
+    d.phase = 0;
+    CHECK(sim::drought_strip(w.config(), island(w), d).rect == sim::TileRect{});
+    d.phase = 3;
+    CHECK(sim::drought_strip(w.config(), island(w), d).rect == rect(104, 108, 8, 44));
+    d.phase = 1; // right column [152, 160) x [96, 144) -> y from 108: 8 x 36
+    CHECK(sim::drought_strip(w.config(), island(w), d).rect == rect(152, 108, 8, 36));
+}
+
+TEST_CASE("the plateau's last count and ring 0 with a fifth phase") {
+    // The plateau's last count ends the call: state 0xff, counter 0, the stamp moved by
+    // 1 000, no strip in that call even when the lag would allow one (0x1008b5c5..0x1008b5d5
+    // returns). And ring 0 is the centre chunk for every phase, also a fifth one
+    // (drought_phases 5: strip 33 = ring 0, phase 4), while ring >= 1 has no fifth side.
+    const syn::SyntheticTypes t = growth_types();
+    sim::SimConfig cfg;
+    cfg.drought_phases = 5;
+    StripLog log;
+    sim::Seams seams;
+    install_strip_log(seams, &log);
+    sim::World w = make(bare_island(), t, seams, cfg);
+    sim::start_drought_at(w.config(), island(w), 128, 128, 50, 0);
+    for (int i = 0; i < 48; ++i) {
+        w.advance(100);
+    }
+    REQUIRE(log.strips.size() == 48);
+    CHECK(log.strips[32].ring == 0);
+    CHECK(log.strips[32].phase == 4);
+    CHECK(log.strips[32].rect == rect(128, 128, 8, 8));
+    CHECK(log.strips[47].ring == 1); // strip 48: 47 strips done, ring 1, phase 0, step 56
+    CHECK(log.strips[47].phase == 0);
+    CHECK(log.strips[47].step == 56);
+    // The plateau's last count with a lag of 1 100 ticks.
+    sim::Drought& d = *island(w).drought;
+    d.state = 0;
+    d.ring = 6;
+    d.phase = 0;
+    d.step = 0;
+    d.counter = 119;
+    const auto now = static_cast<std::uint16_t>(w.clock().tick());
+    d.stamp = static_cast<std::uint16_t>(now - 1100);
+    const std::size_t calls = log.strips.size();
+    w.advance(0);
+    CHECK(island(w).drought->state == 0xff);
+    CHECK(island(w).drought->counter == 0);
+    CHECK(island(w).drought->stamp == static_cast<std::uint16_t>(now - 100));
+    CHECK(island(w).drought->step == 0);
+    CHECK(log.strips.size() == calls);
+    // The next call runs the first retreating strip (lag 100 >= 50).
+    w.advance(0);
+    CHECK(log.strips.size() == calls + 1);
+    CHECK_FALSE(log.strips.back().expanding);
+}
+
+TEST_CASE("a drought tiles seam that removes or edits the record") {
+    // The seam may write the island; one that removes the record ends the strip (no
+    // samples, no step advance on a gone record), one that writes the step is followed by
+    // the machine from the seam's value.
+    const syn::SyntheticTypes t = growth_types();
+    struct Ctl {
+        int calls = 0;
+        int remove_at = -1;
+    } ctl;
+    sim::Seams seams;
+    seams.drought_tiles.name = "test_drought_edit";
+    seams.drought_tiles.ctx = &ctl;
+    seams.drought_tiles.fn = [](void* c, const sim::TickContext&, sim::Island& is,
+                                const sim::DroughtStrip&, sim::Effects&) {
+        auto& k = *static_cast<Ctl*>(c);
+        if (k.calls++ == k.remove_at) {
+            is.drought.reset();
+        } else {
+            is.drought->step = 48; // skip ahead to the last step group of the phase
+        }
+    };
+    ctl.remove_at = 2;
+    sim::World w = make(bare_island(), t, seams);
+    sim::start_drought_at(w.config(), island(w), 128, 128, 50, 0);
+    w.advance(100); // strip 1: the seam sets step 48, the machine advances it to 56
+    CHECK(island(w).drought->step == 56);
+    w.advance(100); // strip 2: step 48 -> 56 again
+    CHECK(island(w).drought->step == 56);
+    w.advance(100); // strip 3: the seam removes the record
+    CHECK_FALSE(island(w).drought.has_value());
+    w.advance(100);
+    CHECK(ctl.calls == 3);
+    CHECK(w.check_invariants() == "");
 }

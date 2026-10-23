@@ -154,7 +154,10 @@ std::string SimConfig::validate() const {
         {"stat_decay_den", stat_decay_den},
         {"chunk_edge", chunk_edge},
         {"drought_steps", drought_steps},
-        {"drought_phases", drought_phases}};
+        {"drought_phases", drought_phases},
+        // The plateau needs at least one count: with 0 the counter would rest at 0, a
+        // value validate_islands refuses (counter < drought_plateau_count).
+        {"drought_plateau_count", drought_plateau_count}};
     for (const auto& [name, value] : non_zero) {
         if (value == 0) {
             return bad(kOwner, name, "must be non-zero");

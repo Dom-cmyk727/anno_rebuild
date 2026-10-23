@@ -733,6 +733,7 @@ TEST_CASE("config validate rejects each bad field") {
     ZERO(chunk_edge);
     ZERO(drought_steps);
     ZERO(drought_phases);
+    ZERO(drought_plateau_count);
 #undef ZERO
     rows.push_back({"layout.block_size", [](sim::SimConfig& c) { c.layout.block_size = 0; }});
     // List sizes: zero, one past the bound, the largest u32.
@@ -956,7 +957,7 @@ TEST_CASE("config validate accepts the edges of each bound") {
         c.drought_phases = 255;
         c.drought_plateau_count = 65535;
     });
-    accepted("drought plateau count 0", [](sim::SimConfig& c) { c.drought_plateau_count = 0; });
+    accepted("drought plateau count 1", [](sim::SimConfig& c) { c.drought_plateau_count = 1; });
     accepted("a modded table size", [](sim::SimConfig& c) {
         c.city_slots = 4;
         c.neutral_owner = 3;

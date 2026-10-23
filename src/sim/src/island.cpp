@@ -517,7 +517,8 @@ std::string validate_island(const Island& is, std::size_t slot, const SimConfig&
             return dp + ".counter: " + std::to_string(dr.counter) +
                    " is not below SimConfig.drought_plateau_count";
         }
-        // The coordinate space of x and y (island or world) is fixed by S13; both
+        // x and y are world tiles (the drought tick compares them with the island's
+        // origin, D 0x1008afd2..0x1008b014); both
         // are below the world edge, and both are floored to the chunk edge.
         if (dr.x % cfg.chunk_edge != 0 || dr.y % cfg.chunk_edge != 0) {
             return dp + ".x/y: " + std::to_string(dr.x) + ", " + std::to_string(dr.y) +

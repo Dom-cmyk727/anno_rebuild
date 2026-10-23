@@ -27,23 +27,23 @@ namespace anno::sim {
 /// What a warning reports. Data, not a limit: a new kind is added when the
 /// adapter meets a new thing it does not decode.
 enum class ScenarioWarningKind : std::uint8_t {
-    /// A record the adapter does not map (a SCENE child, a player record or an
-    /// island record), once per scenario, scope and record name.
+    /// A record the adapter does not map (a SCENE child, a player record, an
+    /// island record or a city record), once per scenario, scope and record name.
     UnknownRecord,
-    /// A STADT2 city: its live records (PROD, WARE, STAT, …) are undecoded
-    /// (O-36), so the city starts default-constructed.
-    UndecodedCity,
     /// An INSELLNK: resolved by the template choice of stage 2 (O-35); its slot
     /// stays empty.
     IslandLink,
     /// A placed item (GELAENDE, FLUESSE, PROD2) whose ANLAGEN id the registry
     /// does not know.
     UnknownObject,
-    /// A PROD2 item of a building type (a list in the layout) whose tile has no
-    /// known city: not placed.
-    BuildingWithoutCity,
-    /// No decoded record gives the island's tile owners (OQ-141): every tile is
-    /// neutral.
+    /// A PROD2 item of a building type (a list in the layout) that no city's
+    /// PROD/ENTRY names: the original keeps it as a tile object only (the
+    /// buildings come from PROD/ENTRY, docs/re/annowelt.md "Scenario cities");
+    /// here it is not placed at all.
+    BuildingItemWithoutEntry,
+    /// A city's territory record that is not modelled: ID (radius claims through
+    /// island +0xe8, D AnnoWelt 0x1002e5a5; the claim shape is not read); none in
+    /// the corpus (every city has ID3).
     TileOwnersUndecoded,
     /// BERGWERK2 is undecoded (OQ-024, O-37): no deposit is made.
     UndecodedDeposits,
@@ -69,6 +69,27 @@ enum class ScenarioWarningKind : std::uint8_t {
     /// rectangle down (D AnnoWelt 0x100a253e–0x100a2586); here it stays where the head
     /// puts it (none in the corpus).
     UnalignedIsland,
+    /// A PROD/ENTRY whose tile holds no PROD2 building item: no item at all (the
+    /// original's type lookup fails and skips the entry, D 0x10026599), or an item
+    /// whose PRODTYPE has no list in the layout (the corpus: DENKMAL 289; what the
+    /// original's Create 0x10024010 makes of it is not traced, OQ-144); skipped.
+    EntryWithoutBuildingItem,
+    /// A building create_building would refuse (outside the island, on another
+    /// building, a payload that does not fit): the original creates it blindly
+    /// (F32); here it is left out with the reason.
+    BuildingRefused,
+    /// The bytes of a building's own record that the adapter does not map (a class
+    /// whose Load is not read, or a record longer than the class's buffer): the
+    /// make_* default stays. Once per scenario and class.
+    UndecodedBuildingRecord,
+    /// A WARE entry whose goods number has no name in WARETYPE or whose name the
+    /// registry's goods table does not know (the original maps by name, D AnnoWelt
+    /// 0x100a18d0); the entry is skipped.
+    UnknownGoods,
+    /// An ID3 or ID2 entry that names tiles outside its island: the original writes
+    /// them unclipped (D 0x10085620, past the island's tile array, F-fix); here
+    /// they are dropped.
+    OwnerTileOutsideIsland,
 };
 
 /// The stable name of a kind ("UnknownRecord", …): the corpus expectations file

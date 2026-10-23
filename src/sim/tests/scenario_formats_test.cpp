@@ -1,6 +1,7 @@
 // The scenario adapter on synthetic scenarios (docs/sim/state.md §10, stage S14):
 // the HEAD byte map, a player series, one INSEL5 island with terrain, tile objects
-// and a building, a STADT2 city, every warning kind, and the refusals. The .sze
+// and building items, a STADT2 city with its records (T23: HEAD2, WARE, ID3,
+// PROD/ENTRY), every warning kind, and the refusals. The .sze
 // files are built here byte by byte (our own data, nothing from the original files);
 // every expected value follows from the bytes written and the evidence the adapter
 // cites, never from the adapter.
@@ -16,6 +17,8 @@
 #include <doctest/doctest.h>
 
 #include <anno/formats/insel.hpp>
+#include <anno/sim/building.hpp>
+#include <anno/sim/production.hpp>
 #include <anno/sim/scenario_formats.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/world.hpp>
@@ -135,6 +138,28 @@ void item(Buf& b, std::uint32_t id, std::uint32_t rotation, std::uint32_t height
     b.push_back(y);
 }
 
+/// A PROD/ENTRY record: u16 x, y (island-relative), then the class's own bytes.
+Buf entry(std::uint32_t x, std::uint32_t y, const Buf& rest = {}) {
+    Buf e;
+    put16(e, x);
+    put16(e, y);
+    append(e, rest);
+    return record("ENTRY", e);
+}
+
+/// The owner grid of `n` tiles from row-major runs {owner, length}; the tiles after
+/// the last run are neutral.
+std::vector<std::uint32_t>
+owner_grid(const std::vector<std::pair<std::uint32_t, std::uint32_t>>& runs, std::size_t n,
+           std::uint32_t neutral) {
+    std::vector<std::uint32_t> g;
+    for (const auto& [owner, length] : runs) {
+        g.insert(g.end(), length, owner);
+    }
+    g.resize(n, neutral);
+    return g;
+}
+
 /// A block record (GELAENDE, PROD2, FLUESSE) at block origin (0, 0) holding `items`.
 Buf block_record(std::string_view name, const Buf& items, std::uint8_t w = 32,
                  std::uint8_t h = 32) {
@@ -148,16 +173,33 @@ Buf scene(std::string_view root, const Buf& children) {
 }
 
 // The registry of the unit cases: ids that fit the 12 bits of an item.
-constexpr std::uint32_t kRoad = 100;    // PRODTYPE 193: no list, a tile object
-constexpr std::uint32_t kHouse = 101;   // PRODTYPE 97: the house list, a building
-constexpr std::uint32_t kTree = 102;    // PRODTYPE 225: no list, scenery
-constexpr std::uint32_t kUnknown = 777; // not in the registry
+constexpr std::uint32_t kRoad = 100;     // PRODTYPE 193: no list, a tile object
+constexpr std::uint32_t kHouse = 101;    // PRODTYPE 97: the house list, a building
+constexpr std::uint32_t kTree = 102;     // PRODTYPE 225: no list, scenery
+constexpr std::uint32_t kUnknown = 777;  // not in the registry
+constexpr std::uint32_t kWeaver = 103;   // a HANDWERK workshop: STOFFE from WOLLE
+constexpr std::uint32_t kFarm = 104;     // a PLANTAGE farm: KORN from GETREIDE
+constexpr std::uint32_t kBigHouse = 105; // PRODTYPE 97 with a 2 x 2 footprint
+constexpr std::uint32_t kMine = 106;     // a MINE of EISENERZ
 
 std::shared_ptr<const sim::TypeRegistry> registry() {
     sim::TypeRegistry::Builder b;
     b.add_plain(sim::TypeId{kRoad}, 193);
     b.add_plain(sim::TypeId{kHouse}, 97);
     b.add_plain(sim::TypeId{kTree}, 225);
+    b.add_workshop(sim::TypeId{kWeaver}, "STOFFE", "WOLLE", 6, 11, 5);
+    b.add_farm(sim::TypeId{kFarm}, "KORN", "GETREIDE", 37, 80, 5);
+    b.add_mine(sim::TypeId{kMine}, "EISENERZ", 4, 6);
+    {
+        sim::TypeRegistry::Builder one;
+        one.add_plain(sim::TypeId{kBigHouse}, 97);
+        auto r = one.build();
+        REQUIRE(r.ok());
+        sim::BuildingType big = *r.value()->find(sim::TypeId{kBigHouse});
+        big.width = 2;
+        big.height = 2;
+        b.add(big);
+    }
     auto r = b.build();
     REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
     return r.value();
@@ -184,8 +226,10 @@ std::size_t warnings_of(const sim::LoadedScenario& s, Kind k) {
 }
 
 /// The scenario most cases use: player 0 (human) and 31 (type 2), one 16 × 8 island
-/// number 7 at (40, 60) with a road, a tree, a house and a city 2 of player 0.
-Buf base_scene(const Buf& island_extra = {}, const Buf& state_records = {}) {
+/// number 7 at (40, 60) with a road, a tree, a house (a PROD2 building item at (8, 4))
+/// and a city 2 of player 0 whose records are `city_records`.
+Buf base_scene(const Buf& island_extra = {}, const Buf& state_records = {},
+               const Buf& city_records = {}) {
     Buf kids = chunk("HEAD", head_bytes());
     append(kids, chunk("SPIELER", spieler(0, record("HEAD", player_head(8, 25000, "Ada", 3)))));
     append(kids, chunk("SPIELER", spieler(31, record("HEAD", player_head(2, 10000, "", 0)))));
@@ -202,6 +246,7 @@ Buf base_scene(const Buf& island_extra = {}, const Buf& state_records = {}) {
     Buf city = {2, 0};
     put16(city, 50);
     put16(city, 63);
+    append(city, city_records);
     Buf st = record("STADT2", city);
     append(st, state_records);
     append(kids, chunk("SPIELER", spieler(0, st)));
@@ -330,7 +375,7 @@ TEST_CASE("scenario island with terrain, tile objects and a building") {
     CHECK(is.terrain->gfx[3] == 0x1103);
     CHECK(is.terrain->fertility == std::vector<std::uint8_t>(128, 3));
     // GELAENDE road at (1, 1) and tree at (5, 2); PROD2 road at (9, 6). The house
-    // (a building) has no city on its tile (no owners decoded): not placed.
+    // (a building item) is named by no city's PROD/ENTRY: not placed.
     REQUIRE(is.objects.size() == 3);
     CHECK(is.objects[0].index == 1 * 16 + 1);
     CHECK(is.objects[0].object == kRoad);
@@ -339,10 +384,12 @@ TEST_CASE("scenario island with terrain, tile objects and a building") {
     CHECK(is.objects[1].phase == 3);
     CHECK(is.objects[2].index == 6 * 16 + 9);
     CHECK(is.objects[2].phase == 1);
-    CHECK(is.owner_runs.empty());
+    CHECK(is.owner_runs.empty()); // the city has no ID3: every tile neutral
     CHECK(is.deposits.empty());
-    CHECK(warnings_of(s, Kind::BuildingWithoutCity) == 1);
-    CHECK(warnings_of(s, Kind::TileOwnersUndecoded) == 1);
+    REQUIRE(is.cities.size() == 1);
+    CHECK(is.cities[0].buildings.empty());
+    CHECK(warnings_of(s, Kind::BuildingItemWithoutEntry) == 1);
+    CHECK(warnings_of(s, Kind::TileOwnersUndecoded) == 0);
 }
 
 TEST_CASE("scenario STADT2 city") {
@@ -361,9 +408,321 @@ TEST_CASE("scenario STADT2 city") {
     const auto& c = s.spec.islands[0].cities[0];
     CHECK(c.no == sim::CityNo{2});
     CHECK(c.owner == sim::PlayerId{5});
-    CHECK_FALSE(c.stock.has_value());
+    CHECK_FALSE(c.stock.has_value());    // no WARE: World::create's empty stock
+    CHECK_FALSE(c.capacity.has_value()); // no HEAD2: 50 t
     CHECK(c.buildings.empty());
-    CHECK(warnings_of(s, Kind::UndecodedCity) == 1);
+    CHECK(s.spec.islands[0].owner_runs.empty());
+    CHECK(warnings_of(s, Kind::UnknownRecord) == 0);
+}
+
+TEST_CASE("scenario city records: HEAD2, WARE and ID3") {
+    // HEAD2 (D AnnoWelt 0x1002e383–0x1002e3e5): a zero-filled 64-byte buffer, u16 [0x24]
+    // << 8 is the capacity, 0 -> 50 t. WARE (0x1002e7ca–0x1002e84b): length / 8 entries
+    // {u16 goods in the file's numbering, u16 tons, 4 bytes not read}, the goods mapped
+    // by its WARETYPE name (0x100a18d0), a mapped 0 skipped, stock = tons << 8. ID3
+    // (0x1002e709–0x1002e7c5, island +0x100 = 0x10085620): u32 x | y << 15, island-
+    // relative; bit 30: 8 mask bytes follow, row j bit i = tile (x + i, y + j); without
+    // a mask the whole 8 x 8 chunk.
+    auto with = [](const Buf& city_records) {
+        Buf waretype;
+        auto name = [&waretype](std::uint32_t number, std::string_view n) {
+            put16(waretype, number);
+            waretype.insert(waretype.end(), n.begin(), n.end());
+            waretype.push_back(0);
+        };
+        name(0, "UNUSED");
+        name(7, "WOLLE");
+        name(9, "NOSUCHGOODS");
+        Buf kids = chunk("HEAD", head_bytes());
+        append(kids, chunk("WARETYPE", waretype));
+        append(kids, chunk("SPIELER", spieler(0, record("HEAD", player_head(8, 1, "A", 1)))));
+        append(kids, insel5(40, 60, 16, 8, 7, 2, {}));
+        Buf c = {2, 0};
+        put16(c, 41);
+        put16(c, 61);
+        append(c, city_records);
+        append(kids, chunk("SPIELER", spieler(0, record("STADT2", c))));
+        return scene("ANNO", kids);
+    };
+    Buf head2(0x26, 0);
+    head2[0x24] = 80;
+    Buf ware;
+    auto goods = [&ware](std::uint32_t number, std::uint32_t tons) {
+        put16(ware, number);
+        put16(ware, tons);
+        put32(ware, 0xababababU);
+    };
+    goods(7, 12);                       // WOLLE: 12 t
+    goods(0, 99);                       // UNUSED: skipped without a warning
+    goods(9, 5);                        // a name the registry does not know: UnknownGoods
+    goods(12, 5);                       // a number without a WARETYPE name: UnknownGoods
+    ware.resize(ware.size() + 7, 0xcd); // a tail shorter than an entry: not read
+    Buf id3;
+    put32(id3, 0);               // the whole chunk at (0, 0)
+    put32(id3, 8 | 0x40000000U); // (8, 0) with a mask
+    append(id3, Buf{0x01, 0x03, 0, 0, 0, 0, 0, 0x80});
+    Buf recs = record("HEAD2", head2);
+    append(recs, record("WARE", ware));
+    append(recs, record("ID3", id3));
+    const sim::LoadedScenario s = load(with(recs));
+    REQUIRE(s.spec.islands.size() == 1);
+    REQUIRE(s.spec.islands[0].cities.size() == 1);
+    const auto& c = s.spec.islands[0].cities[0];
+    CHECK(c.capacity == std::optional<std::uint32_t>{80U << 8});
+    REQUIRE(c.stock.has_value());
+    CHECK(c.stock->size() == sim::SimConfig{}.warehouse_goods);
+    const auto wolle = registry()->goods_by_name("WOLLE");
+    REQUIRE(wolle.has_value());
+    for (std::size_t g = 0; g < c.stock->size(); ++g) {
+        INFO(g);
+        CHECK((*c.stock)[g] == (g == *wolle ? 12U << 8 : 0U));
+    }
+    CHECK(warnings_of(s, Kind::UnknownGoods) == 2);
+    CHECK(warnings_of(s, Kind::UnknownRecord) == 0); // WARETYPE is read
+    // The owner grid: the chunk (0..7, 0..7) and the masked tiles (8, 0), (8, 1), (9, 1),
+    // (15, 7) belong to city 2; the trailing neutral tiles are left out of the runs.
+    const std::uint32_t neutral = sim::SimConfig{}.neutral_owner;
+    std::vector<std::uint32_t> want(16 * 8, neutral);
+    for (std::size_t y = 0; y < 8; ++y) {
+        for (std::size_t x = 0; x < 8; ++x) {
+            want[y * 16 + x] = 2;
+        }
+    }
+    want[8] = 2;
+    want[16 + 8] = 2;
+    want[16 + 9] = 2;
+    want[7 * 16 + 15] = 2;
+    const auto& runs = s.spec.islands[0].owner_runs;
+    CHECK(owner_grid(runs, want.size(), neutral) == want);
+    REQUIRE_FALSE(runs.empty());
+    CHECK(runs.front() == std::pair<std::uint32_t, std::uint32_t>{2, 9});
+    CHECK(runs.back() == std::pair<std::uint32_t, std::uint32_t>{2, 1});
+    // The world takes the capacity, the stock and the owners.
+    auto w = sim::World::create(s.spec, registry());
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    CHECK(w.value().check_invariants() == "");
+    REQUIRE(w.value().islands()[7].has_value());
+    const sim::Island& island = *w.value().islands()[7];
+    const sim::City* city = island.city(sim::CityNo{2});
+    REQUIRE(city != nullptr);
+    CHECK(city->stock.capacity == 80U << 8);
+    CHECK(city->stock.stock[*wolle] == 12U << 8);
+    CHECK(island.tiles.owner(7 * 16 + 15) == 2);
+    CHECK(island.tiles.owner(7 * 16 + 14) == neutral);
+    // HEAD2 [0x24] = 0 and a short HEAD2 (zero-filled) give 50 t.
+    for (const Buf& h : {Buf(0x26, 0), Buf(4, 0xff)}) {
+        const sim::LoadedScenario z = load(with(record("HEAD2", h)));
+        CHECK(z.spec.islands[0].cities[0].capacity == std::optional<std::uint32_t>{50U * 256U});
+    }
+    // ID2 is ID3 in world tiles: (48, 60) is island tile (8, 0).
+    Buf id2;
+    put32(id2, 48 | (60U << 15) | 0x40000000U);
+    append(id2, Buf{0x01, 0, 0, 0, 0, 0, 0, 0});
+    const sim::LoadedScenario v = load(with(record("ID2", id2)));
+    CHECK(v.spec.islands[0].owner_runs ==
+          std::vector<std::pair<std::uint32_t, std::uint32_t>>{{neutral, 8}, {2, 1}});
+    // A truncated entry or mask is refused.
+    CHECK(refusal(with(record("ID3", Buf{1, 2, 3}))) ==
+          "players[1].STADT2.ID3: a truncated entry at byte 0");
+    Buf cut;
+    put32(cut, 0x40000000U);
+    append(cut, Buf{1, 2, 3, 4});
+    CHECK(refusal(with(record("ID3", cut))) == "players[1].STADT2.ID3: a truncated mask at byte 4");
+}
+
+TEST_CASE("scenario city PROD/ENTRY creates the buildings") {
+    // D AnnoWelt 0x100264a0: per ENTRY u16 x, y island-relative; island +0x84
+    // (0x10083a90) gives the building whose footprint holds that tile, created with
+    // its type, origin, rotation and height byte (+0x0f, 0x10071c40) of the item; the
+    // bytes after the position go to the class's Load (slot +0x7c). Workshop
+    // 0x10068640: length <= 10, [1] & 1 the switch, [2] output, [4] input 0, [6]
+    // input 1, [8] activity. Farm 0x1006ef70: exactly 10 bytes, [1] & 1, [2] output,
+    // [4] raw stock, [6] activity; another length skips the record whole. Mine
+    // 0x1006e310: [1] & 1, [2] output, [8] activity, over Create's default (the deep
+    // flag of the type attach stays). Then the footprint claim (0x10026685): the
+    // building's tiles still neutral get the city.
+    Buf prod2;
+    item(prod2, kHouse, 0, 4, 0, 8, 4);
+    item(prod2, kWeaver, 1, 6, 0, 12, 2);
+    item(prod2, kFarm, 0, 3, 0, 13, 5);
+    item(prod2, kFarm, 0, 2, 0, 14, 6);
+    item(prod2, kBigHouse, 0, 5, 0, 2, 5);
+    item(prod2, kHouse, 0, 1, 0, 15, 0); // named by no ENTRY
+    item(prod2, kMine, 0, 0, 0, 10, 7);
+    Buf kids = chunk("HEAD", head_bytes());
+    append(kids, chunk("SPIELER", spieler(0, record("HEAD", player_head(8, 1, "A", 1)))));
+    append(kids, insel5(40, 60, 16, 8, 7, 2, block_record("PROD2", prod2)));
+    Buf id3;
+    put32(id3, 0); // the chunk (0..7, 0..7)
+    Buf prod = entry(8, 4);
+    append(prod, entry(12, 2, Buf{0, 0, 0x80, 0x01, 0x40, 0x02, 0x77, 0x77, 5, 0}));
+    append(prod, record("XYZ", Buf(2, 0))); // not an ENTRY: skipped (0x1002671d)
+    append(prod, entry(13, 5, Buf{0, 1, 0x00, 0x03, 0x00, 0x01, 9, 0, 0xee, 0xee}));
+    append(prod, entry(14, 6, Buf(11, 0x55))); // 11 bytes: the farm skips them whole
+    append(prod, entry(3, 6));                 // a tile of the big house: its origin (2, 5)
+    append(prod, entry(10, 7, Buf{0, 1, 0x00, 0x02, 0x11, 0x11, 0x22, 0x22, 3, 0}));
+    Buf c = {2, 0};
+    put16(c, 41);
+    put16(c, 61);
+    append(c, record("ID3", id3));
+    append(c, record("STAT2", Buf(4, 0))); // a city record the adapter does not map
+    append(c, record("PROD", prod));
+    append(kids, chunk("SPIELER", spieler(0, record("STADT2", c))));
+    const sim::LoadedScenario s = load(scene("ANNO", kids));
+    REQUIRE(s.spec.islands.size() == 1);
+    REQUIRE(s.spec.islands[0].cities.size() == 1);
+    const auto& b = s.spec.islands[0].cities[0].buildings;
+    REQUIRE(b.size() == 6); // in ENTRY order
+    auto at = [&b](std::size_t i, std::uint32_t type, std::int32_t x, std::int32_t y,
+                   std::uint8_t rotation, std::uint8_t byte0f) {
+        INFO(i);
+        CHECK(b[i].type == sim::TypeId{type});
+        CHECK(b[i].x == x);
+        CHECK(b[i].y == y);
+        CHECK(b[i].rotation == rotation);
+        CHECK(b[i].byte0f == byte0f);
+    };
+    at(0, kHouse, 48, 64, 0, 4);
+    at(1, kWeaver, 52, 62, 1, 6);
+    at(2, kFarm, 53, 65, 0, 3);
+    at(3, kFarm, 54, 66, 0, 2);
+    at(4, kBigHouse, 42, 65, 0, 5);
+    at(5, kMine, 50, 67, 0, 0);
+    CHECK_FALSE(b[0].payload.has_value()); // no bytes: World::create's default
+    REQUIRE(b[1].payload.has_value());
+    REQUIRE(b[2].payload.has_value());
+    REQUIRE(b[3].payload.has_value());
+    CHECK_FALSE(b[4].payload.has_value());
+    const auto* weaver = std::get_if<sim::Workshop>(&*b[1].payload);
+    REQUIRE(weaver != nullptr);
+    CHECK_FALSE(weaver->switched_on);
+    CHECK(weaver->out == std::vector<std::uint32_t>{0x0180});
+    CHECK(weaver->in == std::vector<std::uint32_t>{0x0240}); // input 1: the weaver has one
+    CHECK(weaver->activity == std::vector<std::uint32_t>{5});
+    const auto* farm = std::get_if<sim::Farm>(&*b[2].payload);
+    REQUIRE(farm != nullptr);
+    CHECK(farm->switched_on);
+    CHECK(farm->out == 0x0300);
+    CHECK(farm->raw == 0x0100);
+    CHECK(farm->activity == 9);
+    const auto* skipped = std::get_if<sim::Farm>(&*b[3].payload);
+    REQUIRE(skipped != nullptr);
+    CHECK(skipped->switched_on);
+    CHECK(skipped->out == 0);
+    CHECK(skipped->raw == 0);
+    CHECK(skipped->activity == 0);
+    REQUIRE(b[5].payload.has_value());
+    const auto* mine = std::get_if<sim::Mine>(&*b[5].payload);
+    REQUIRE(mine != nullptr);
+    CHECK(mine->switched_on);
+    CHECK(mine->out == 0x0200);
+    CHECK(mine->activity == 3);
+    const auto types = registry(); // keeps the type alive
+    const sim::BuildingType& mt = *types->find(sim::TypeId{kMine});
+    CHECK(mine->deep == sim::mine_is_deep(mt.prod, mt.research_id));
+    CHECK(warnings_of(s, Kind::BuildingItemWithoutEntry) == 1); // the house at (15, 0)
+    CHECK(warnings_of(s, Kind::UnknownRecord) == 2);            // STAT2 and PROD.XYZ
+    CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 0);
+    CHECK(warnings_of(s, Kind::BuildingRefused) == 0);
+    CHECK(warnings_of(s, Kind::EntryWithoutBuildingItem) == 0);
+    // The owners: the ID3 chunk plus the footprints outside it.
+    const std::uint32_t neutral = sim::SimConfig{}.neutral_owner;
+    std::vector<std::uint32_t> want(16 * 8, neutral);
+    for (std::size_t y = 0; y < 8; ++y) {
+        for (std::size_t x = 0; x < 8; ++x) {
+            want[y * 16 + x] = 2;
+        }
+    }
+    for (const auto& [x, y] : {std::pair{8, 4}, std::pair{12, 2}, std::pair{13, 5},
+                               std::pair{14, 6}, std::pair{10, 7}}) {
+        want[static_cast<std::size_t>(y * 16 + x)] = 2;
+    }
+    CHECK(owner_grid(s.spec.islands[0].owner_runs, want.size(), neutral) == want);
+    // The world holds the six buildings.
+    auto w = sim::World::create(s.spec, registry());
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    CHECK(w.value().check_invariants() == "");
+    REQUIRE(w.value().islands()[7].has_value());
+    const sim::City* city = w.value().islands()[7]->city(sim::CityNo{2});
+    REQUIRE(city != nullptr);
+    std::size_t placed = 0;
+    for (const sim::BuildingList& l : city->index.lists) {
+        for (const auto& slot : l.slots) {
+            placed += slot.has_value() ? 1U : 0U;
+        }
+    }
+    CHECK(placed == 6);
+}
+
+TEST_CASE("scenario city entries: refused buildings and entries without an item") {
+    // create_building's rules (F32: the original creates blindly): a footprint that
+    // leaves the island or overlaps an earlier building is refused with the reason. An
+    // entry whose tile holds no building item is skipped (the original's type lookup
+    // fails). A class whose Load is not read warns once per scenario and class.
+    Buf prod2;
+    item(prod2, kBigHouse, 0, 0, 0, 15, 3); // 2 x 2 from (15, 3): leaves the 16-wide island
+    item(prod2, kHouse, 0, 0, 0, 8, 4);
+    item(prod2, kHouse, 0, 0, 0, 10, 4);
+    item(prod2, kHouse, 0, 0, 0, 11, 4);
+    item(prod2, kRoad, 0, 0, 0, 5, 5); // a PROD2 item without a list: no building item
+    Buf kids = chunk("HEAD", head_bytes());
+    append(kids, chunk("SPIELER", spieler(0, record("HEAD", player_head(8, 1, "A", 1)))));
+    append(kids, insel5(40, 60, 16, 8, 7, 2, block_record("PROD2", prod2)));
+    Buf prod = entry(15, 3);         // BuildingRefused: not inside
+    append(prod, entry(8, 4));       // placed
+    append(prod, entry(8, 4));       // BuildingRefused: overlaps
+    append(prod, entry(0, 0));       // EntryWithoutBuildingItem: no item
+    append(prod, entry(99, 0));      // EntryWithoutBuildingItem: off the island
+    append(prod, entry(5, 5));       // EntryWithoutBuildingItem: the road (OQ-144)
+    append(prod, entry(10, 4, {1})); // placed; UndecodedBuildingRecord (the house's Load)
+    append(prod, entry(11, 4, {2})); // placed; the same class: no second warning
+    Buf c = {2, 0};
+    put16(c, 41);
+    put16(c, 61);
+    append(c, record("PROD", prod));
+    append(kids, chunk("SPIELER", spieler(0, record("STADT2", c))));
+    const sim::LoadedScenario s = load(scene("ANNO", kids));
+    const auto& b = s.spec.islands[0].cities[0].buildings;
+    REQUIRE(b.size() == 3);
+    CHECK(b[0].x == 48);
+    CHECK(b[1].x == 50);
+    CHECK(b[2].x == 51);
+    CHECK(warnings_of(s, Kind::BuildingRefused) == 2);
+    CHECK(warnings_of(s, Kind::EntryWithoutBuildingItem) == 3);
+    CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 1);
+    CHECK(warnings_of(s, Kind::BuildingItemWithoutEntry) == 0); // every item is named
+    std::vector<std::string> reasons, skipped;
+    for (const sim::ScenarioWarning& w : s.warnings) {
+        if (w.kind == Kind::BuildingRefused) {
+            reasons.push_back(w.message);
+        }
+        if (w.kind == Kind::EntryWithoutBuildingItem) {
+            skipped.push_back(w.message);
+        }
+    }
+    CHECK(skipped == std::vector<std::string>{
+                         "tile (0, 0) holds no PROD2 building item: skipped",
+                         "tile (99, 0) holds no PROD2 building item: skipped",
+                         "tile (5, 5) holds no PROD2 building item (a PROD2 item of PRODTYPE "
+                         "193, no list in the layout: OQ-144): skipped"});
+    CHECK(reasons ==
+          std::vector<std::string>{"building 105: the footprint is not inside the island",
+                                   "building 101: the footprint overlaps another building"});
+    auto w = sim::World::create(s.spec, registry());
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    CHECK(w.value().check_invariants() == "");
+    // An ENTRY shorter than its position is refused.
+    Buf short_prod = record("ENTRY", Buf{1, 0, 2});
+    Buf c2 = {2, 0};
+    put16(c2, 41);
+    put16(c2, 61);
+    append(c2, record("PROD", short_prod));
+    Buf k2 = chunk("HEAD", head_bytes());
+    append(k2, chunk("SPIELER", spieler(0, record("HEAD", player_head(8, 1, "A", 1)))));
+    append(k2, insel5(40, 60, 16, 8, 7, 2, {}));
+    append(k2, chunk("SPIELER", spieler(0, record("STADT2", c2))));
+    CHECK(refusal(scene("ANNO", k2)) ==
+          "players[1].STADT2.PROD.ENTRY[0]: the 4-byte position is missing");
 }
 
 TEST_CASE("scenario warning kinds") {
@@ -378,13 +737,32 @@ TEST_CASE("scenario warning kinds") {
         append(island_extra, block_record("FLUESSE", items, 8, 8));
         append(island_extra, chunk("BERGWERK2", Buf(8, 1))); // UndecodedDeposits
         append(island_extra, chunk("OCCUR", Buf(4, 0)));     // UnknownRecord
+        Buf more;
+        item(more, kHouse, 0, 0, 0, 14, 0); // BuildingItemWithoutEntry
+        append(island_extra, block_record("PROD2", more));
+    }
+    // City 2's records.
+    Buf city_records = record("ID", Buf(8, 0)); // TileOwnersUndecoded
+    {
+        Buf id3;
+        put32(id3, 12 | (4U << 15)); // the chunk at (12, 4): 48 of its tiles lie outside
+        append(city_records, record("ID3", id3));
+        Buf ware;
+        put16(ware, 12); // no WARETYPE in the scene: UnknownGoods
+        put16(ware, 3);
+        put32(ware, 0);
+        append(city_records, record("WARE", ware));
+        Buf prod = entry(0, 7);               // no item there: EntryWithoutBuildingItem
+        append(prod, entry(8, 4, Buf{1, 2})); // the house with bytes: UndecodedBuildingRecord
+        append(prod, entry(8, 4));            // the house again: BuildingRefused
+        append(city_records, record("PROD", prod));
     }
     Buf city_off = {1, 0};
     put16(city_off, 500); // no island there: CityOffIsland
     put16(city_off, 500);
     Buf state = record("STADT2", city_off);
     append(state, record("SCHIFF", Buf(16, 0))); // UnknownRecord (players)
-    Buf file = base_scene(island_extra, state);
+    Buf file = base_scene(island_extra, state, city_records);
     // Add: an INSELLNK, an unknown SCENE child, a native player with VOLK, an unnamed
     // computer, an island without a climate mask.
     Buf kids;
@@ -412,12 +790,11 @@ TEST_CASE("scenario warning kinds") {
     append(scene_kids, kids);
     const sim::LoadedScenario s = load(scene("ANNO", scene_kids));
     CHECK(warnings_of(s, Kind::UnknownRecord) == 3); // OCCUR, SCHIFF, SKTIMER
-    CHECK(warnings_of(s, Kind::UndecodedCity) == 1);
     CHECK(warnings_of(s, Kind::IslandLink) == 1);
     CHECK(warnings_of(s, Kind::UnknownObject) == 1);
-    CHECK(warnings_of(s, Kind::BuildingWithoutCity) == 1);
-    CHECK(warnings_of(s, Kind::TileOwnersUndecoded) == 2); // the skipped island has none
-    CHECK(warnings_of(s, Kind::UnalignedIsland) == 2);     // (40, 60) and (205, 100)
+    CHECK(warnings_of(s, Kind::BuildingItemWithoutEntry) == 1); // the house at (14, 0)
+    CHECK(warnings_of(s, Kind::TileOwnersUndecoded) == 1);      // the ID record
+    CHECK(warnings_of(s, Kind::UnalignedIsland) == 2);          // (40, 60) and (205, 100)
     CHECK(warnings_of(s, Kind::UndecodedDeposits) == 1);
     CHECK(warnings_of(s, Kind::ObjectTileTaken) == 1);
     CHECK(warnings_of(s, Kind::DuplicateObject) == 1);
@@ -425,6 +802,16 @@ TEST_CASE("scenario warning kinds") {
     CHECK(warnings_of(s, Kind::UndecodedPeople) == 1);
     CHECK(warnings_of(s, Kind::ComputerNameNotDrawn) == 1);
     CHECK(warnings_of(s, Kind::UnknownClimate) == 1);
+    CHECK(warnings_of(s, Kind::EntryWithoutBuildingItem) == 1);
+    CHECK(warnings_of(s, Kind::BuildingRefused) == 1);
+    CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 1);
+    CHECK(warnings_of(s, Kind::UnknownGoods) == 1);
+    CHECK(warnings_of(s, Kind::OwnerTileOutsideIsland) == 1);
+    for (const sim::ScenarioWarning& w : s.warnings) {
+        if (w.kind == Kind::OwnerTileOutsideIsland) {
+            CHECK(w.message.find("48 tiles outside the island") == 0);
+        }
+    }
     // Every kind is listed, has a name, and is reached here.
     for (const Kind k : sim::all_warning_kinds()) {
         INFO(sim::warning_kind_name(k));
@@ -443,7 +830,7 @@ TEST_CASE("scenario warning kinds") {
     CHECK(c.islands == 2);
     CHECK(c.links == 1);
     CHECK(c.cities == 1);
-    CHECK(c.buildings == 0);
+    CHECK(c.buildings == 1);    // the house at (8, 4)
     CHECK(c.tile_objects == 4); // road, tree, PROD2 road, FLUESSE road at (3, 5)
     CHECK(c.players == 4);
 }
@@ -607,6 +994,8 @@ TEST_CASE("scenario warnings name their path and the record's offset, unknown re
     Buf c = {3, 0};
     put16(c, 41);
     put16(c, 61);
+    append(c, record("STAT2", Buf(4, 0)));  // a city record the adapter does not map
+    append(c, record("PROD", entry(2, 2))); // no building item at (2, 2)
     Buf st = record("STADT2", c);
     append(st, record("SCHIFF", Buf(16, 0)));
     append(kids, chunk("SPIELER", spieler(0, st)));                           // child 4
@@ -614,8 +1003,9 @@ TEST_CASE("scenario warnings name their path and the record's offset, unknown re
     append(kids, chunk("SKTIMER", Buf(40, 0)));                               // child 6
     const Buf file = scene("ANNO", kids);
     const sim::LoadedScenario s = load(file);
-    // One UnknownRecord per scope and name: SKTIMER, OCCUR, SCHIFF (twice in the file each).
-    REQUIRE(warnings_of(s, Kind::UnknownRecord) == 3);
+    // One UnknownRecord per scope and name: SKTIMER, OCCUR, SCHIFF (twice in the file each),
+    // and the city record STAT2.
+    REQUIRE(warnings_of(s, Kind::UnknownRecord) == 4);
     std::map<std::string, const sim::ScenarioWarning*> by_record;
     for (const sim::ScenarioWarning& w : s.warnings) {
         if (w.kind == Kind::UnknownRecord) {
@@ -628,12 +1018,11 @@ TEST_CASE("scenario warnings name their path and the record's offset, unknown re
     CHECK(by_record.at("OCCUR")->offset == offset_of(file, "OCCUR"));
     CHECK(by_record.at("SCHIFF")->path == "players[1].SCHIFF");
     CHECK(by_record.at("SCHIFF")->offset == offset_of(file, "SCHIFF"));
-    const sim::ScenarioWarning& city = the_warning(s, Kind::UndecodedCity);
-    CHECK(city.path == "players[1].STADT2");
-    CHECK(city.offset == offset_of(file, "STADT2"));
-    const sim::ScenarioWarning& deposits = the_warning(s, Kind::TileOwnersUndecoded);
-    CHECK(deposits.path == "islands[3]");
-    CHECK(deposits.offset == offset_of(file, "INSEL5"));
+    CHECK(by_record.at("STAT2")->path == "players[1].STADT2.STAT2");
+    CHECK(by_record.at("STAT2")->offset == offset_of(file, "STAT2"));
+    const sim::ScenarioWarning& e = the_warning(s, Kind::EntryWithoutBuildingItem);
+    CHECK(e.path == "players[1].STADT2.PROD.ENTRY[0]");
+    CHECK(e.offset == offset_of(file, "ENTRY"));
 }
 
 TEST_CASE("scenario refusals at their bounds") {
@@ -745,6 +1134,9 @@ TEST_CASE("scenario cities: the old name STADT, and file order") {
         Buf c = {5, 0};
         put16(c, 41);
         put16(c, 61);
+        Buf head2(0x26, 0);
+        head2[0x24] = 7;
+        append(c, record("HEAD2", head2)); // the same city reader
         const Buf state = chunk("SPIELER", spieler(0, record(name, c)));
         if (city_first) {
             append(kids, state);
@@ -758,7 +1150,7 @@ TEST_CASE("scenario cities: the old name STADT, and file order") {
     const sim::LoadedScenario old = load(with("STADT", false));
     REQUIRE(old.spec.islands[0].cities.size() == 1);
     CHECK(old.spec.islands[0].cities[0].no == sim::CityNo{5});
-    CHECK(warnings_of(old, Kind::UndecodedCity) == 1);
+    CHECK(old.spec.islands[0].cities[0].capacity == std::optional<std::uint32_t>{7U << 8});
     const sim::LoadedScenario early = load(with("STADT2", true));
     CHECK(early.spec.islands[0].cities.empty());
     CHECK(warnings_of(early, Kind::CityOffIsland) == 1);

@@ -12,6 +12,7 @@
 #include <string_view>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <anno/formats/bytes.hpp>
@@ -19,6 +20,8 @@
 #include <anno/formats/insel.hpp>
 #include <anno/formats/sze.hpp>
 #include <anno/formats/tagged.hpp>
+#include <anno/sim/building.hpp>
+#include <anno/sim/production.hpp>
 #include <anno/sim/scenario_formats.hpp>
 
 namespace anno::sim {
@@ -32,14 +35,12 @@ std::string_view warning_kind_name(ScenarioWarningKind kind) {
     switch (kind) {
     case ScenarioWarningKind::UnknownRecord:
         return "UnknownRecord";
-    case ScenarioWarningKind::UndecodedCity:
-        return "UndecodedCity";
     case ScenarioWarningKind::IslandLink:
         return "IslandLink";
     case ScenarioWarningKind::UnknownObject:
         return "UnknownObject";
-    case ScenarioWarningKind::BuildingWithoutCity:
-        return "BuildingWithoutCity";
+    case ScenarioWarningKind::BuildingItemWithoutEntry:
+        return "BuildingItemWithoutEntry";
     case ScenarioWarningKind::TileOwnersUndecoded:
         return "TileOwnersUndecoded";
     case ScenarioWarningKind::UndecodedDeposits:
@@ -58,18 +59,31 @@ std::string_view warning_kind_name(ScenarioWarningKind kind) {
         return "UnknownClimate";
     case ScenarioWarningKind::UnalignedIsland:
         return "UnalignedIsland";
+    case ScenarioWarningKind::EntryWithoutBuildingItem:
+        return "EntryWithoutBuildingItem";
+    case ScenarioWarningKind::BuildingRefused:
+        return "BuildingRefused";
+    case ScenarioWarningKind::UndecodedBuildingRecord:
+        return "UndecodedBuildingRecord";
+    case ScenarioWarningKind::UnknownGoods:
+        return "UnknownGoods";
+    case ScenarioWarningKind::OwnerTileOutsideIsland:
+        return "OwnerTileOutsideIsland";
     }
     return "?";
 }
 
 std::vector<ScenarioWarningKind> all_warning_kinds() {
-    return {ScenarioWarningKind::UnknownRecord,       ScenarioWarningKind::UndecodedCity,
-            ScenarioWarningKind::IslandLink,          ScenarioWarningKind::UnknownObject,
-            ScenarioWarningKind::BuildingWithoutCity, ScenarioWarningKind::TileOwnersUndecoded,
-            ScenarioWarningKind::UndecodedDeposits,   ScenarioWarningKind::ObjectTileTaken,
-            ScenarioWarningKind::DuplicateObject,     ScenarioWarningKind::CityOffIsland,
-            ScenarioWarningKind::UndecodedPeople,     ScenarioWarningKind::ComputerNameNotDrawn,
-            ScenarioWarningKind::UnknownClimate,      ScenarioWarningKind::UnalignedIsland};
+    return {
+        ScenarioWarningKind::UnknownRecord,        ScenarioWarningKind::IslandLink,
+        ScenarioWarningKind::UnknownObject,        ScenarioWarningKind::BuildingItemWithoutEntry,
+        ScenarioWarningKind::TileOwnersUndecoded,  ScenarioWarningKind::UndecodedDeposits,
+        ScenarioWarningKind::ObjectTileTaken,      ScenarioWarningKind::DuplicateObject,
+        ScenarioWarningKind::CityOffIsland,        ScenarioWarningKind::UndecodedPeople,
+        ScenarioWarningKind::ComputerNameNotDrawn, ScenarioWarningKind::UnknownClimate,
+        ScenarioWarningKind::UnalignedIsland,      ScenarioWarningKind::EntryWithoutBuildingItem,
+        ScenarioWarningKind::BuildingRefused,      ScenarioWarningKind::UndecodedBuildingRecord,
+        ScenarioWarningKind::UnknownGoods,         ScenarioWarningKind::OwnerTileOutsideIsland};
 }
 
 ScenarioCounts count(const LoadedScenario& s) {
@@ -152,6 +166,427 @@ ItemKey key_of(const insel::PlacedObject& o) {
     return {o.anlage, o.rotation, o.state, o.x, o.y};
 }
 
+/// A PROD2 item of a building type: the tile layer's copy of a building, which a
+/// city's PROD/ENTRY turns into the building (docs/re/annowelt.md "Scenario cities",
+/// (b) and (e)).
+struct BuildingItem {
+    std::uint16_t id = 0;
+    std::uint8_t rotation = 0, height = 0;
+    std::uint32_t x = 0, y = 0; ///< island-relative origin
+    std::uint32_t w = 1, h = 1; ///< the footprint on the island (rotated)
+    std::string where;
+    std::uint64_t at = 0;
+    bool used = false;
+};
+
+/// What the city records of one island need from the island pass and write back.
+struct IslandCities {
+    std::vector<BuildingItem> items;                  ///< file order
+    std::map<std::uint32_t, std::uint64_t> by_origin; ///< origin tile -> first item there
+    /// The tile owners as the city records write them (row-major, w · h); empty until
+    /// a city of the island writes one (then filled with the neutral owner first).
+    std::vector<std::uint32_t> owner;
+    /// Tiles a placed building covers (create_building's Occupied rule).
+    std::vector<std::uint8_t> occupied;
+    /// Origin tile -> the PRODTYPE of the first PROD2 item there whose type has no
+    /// list in the layout (a monument, a wall, ...): only for the warning of an
+    /// ENTRY that names it.
+    std::map<std::uint32_t, std::uint32_t> other_prod2;
+};
+
+/// The tile a PROD/ENTRY at island tile (x, y) resolves to: island +0x84 =
+/// 0x10083a90 returns the placement of the building whose footprint holds the tile
+/// (the origin from the tile's in-footprint offset). Here: the item whose origin is
+/// (x, y), else the first item in file order whose footprint holds it.
+BuildingItem* item_at(IslandCities& ic, std::uint32_t x, std::uint32_t y, std::uint32_t w) {
+    if (const auto it = ic.by_origin.find(y * w + x); it != ic.by_origin.end()) {
+        return &ic.items[it->second];
+    }
+    for (BuildingItem& b : ic.items) {
+        if (x >= b.x && y >= b.y && x - b.x < b.w && y - b.y < b.h) {
+            return &b;
+        }
+    }
+    return nullptr;
+}
+
+/// The bytes of `rec` copied into a zero-filled buffer of `n` bytes (the class Loads
+/// read the record into such a buffer).
+template <std::size_t N> std::array<std::uint8_t, N> zero_filled(Bytes rec) {
+    std::array<std::uint8_t, N> b{};
+    std::copy_n(rec.begin(), std::min(rec.size(), N), b.begin());
+    return b;
+}
+
+std::uint16_t le16(const std::uint8_t* p) {
+    return static_cast<std::uint16_t>(p[0] | (p[1] << 8));
+}
+
+/// A building's own record after its 4-byte position, read as the class's Load does
+/// (slot +0x7c; docs/re/annowelt.md "Scenario cities" (b)). Returns false when the
+/// adapter does not map the bytes (a class whose Load is not read, or a record that
+/// would overrun the original's buffer): the make_* default stays.
+bool read_class_record(Payload& payload, RuntimeClass cls, Bytes rec) {
+    if (rec.empty()) {
+        return true;
+    }
+    if (auto* w = std::get_if<Workshop>(&payload); w != nullptr && cls == RuntimeClass::Workshop) {
+        // 0x10068640: length <= 10, else the record is skipped whole (0x100686c6).
+        if (rec.size() > 10) {
+            return true;
+        }
+        const auto b = zero_filled<10>(rec);
+        w->switched_on = (b[1] & 1) != 0; // slot +0xc8 stores it at +0x24 (0x100684d4)
+        if (!w->out.empty()) {
+            w->out[0] = le16(&b[2]); // +0x18
+        }
+        for (std::size_t i = 0; i < w->in.size() && i < 2; ++i) {
+            w->in[i] = le16(&b[4 + 2 * i]); // +0x1c, +0x1e
+        }
+        if (!w->activity.empty()) {
+            w->activity[0] = le16(&b[8]); // +0x20
+        }
+        return true;
+    }
+    if (auto* f = std::get_if<Farm>(&payload);
+        f != nullptr && (cls == RuntimeClass::Farm || cls == RuntimeClass::FurTrapper)) {
+        // 0x1006ef70: exactly 10 bytes, else the record is skipped whole (0x1006ef7e).
+        if (rec.size() != 10) {
+            return true;
+        }
+        f->switched_on = (rec[1] & 1) != 0;
+        f->out = le16(&rec[2]);      // +0x18
+        f->raw = le16(&rec[4]);      // +0x1c
+        f->activity = le16(&rec[6]); // +0x1e
+        return true;
+    }
+    if (auto* m = std::get_if<Mine>(&payload); m != nullptr && cls == RuntimeClass::Mine) {
+        // 0x1006e310: the record's own length into a 10-byte buffer (no test).
+        if (rec.size() > 10) {
+            return false;
+        }
+        const auto b = zero_filled<10>(rec);
+        m->switched_on = (b[1] & 1) != 0;
+        m->out = le16(&b[2]);      // +0x18
+        m->activity = le16(&b[8]); // +0x1c
+        return true;
+    }
+    if (auto* s = std::get_if<SmallFarm>(&payload);
+        s != nullptr && cls == RuntimeClass::SmallFarm) {
+        // 0x1006fc80: own length into a 14-byte buffer (no test); per line i.
+        if (rec.size() > 14) {
+            return false;
+        }
+        const auto b = zero_filled<14>(rec);
+        for (std::size_t i = 0; i < 2; ++i) {
+            if (i < s->out.size()) {
+                s->out[i] = le16(&b[2 + 2 * i]); // +0x18 + 2i
+            }
+            if (i < s->raw.size()) {
+                s->raw[i] = le16(&b[6 + 2 * i]); // +0x24 + 2i
+            }
+            if (i < s->line_on.size()) {
+                s->line_on[i] = ((b[1] >> i) & 1) != 0;
+            }
+            if (i < s->activity.size()) {
+                s->activity[i] = le16(&b[10 + 2 * i]); // +0x1c + 2i
+            }
+        }
+        return true;
+    }
+    if (auto* x = std::get_if<WeaponsWorkshop>(&payload);
+        x != nullptr && cls == RuntimeClass::WeaponsWorkshop) {
+        // 0x10069140: own length into a 14-byte buffer (no test); per line i.
+        if (rec.size() > 14) {
+            return false;
+        }
+        const auto b = zero_filled<14>(rec);
+        for (std::size_t i = 0; i < 2; ++i) {
+            if (i < x->out.size()) {
+                x->out[i] = le16(&b[2 + 2 * i]); // +0x18 + 2i
+            }
+            if (i < x->in.size()) {
+                x->in[i] = le16(&b[6 + 2 * i]); // +0x20 + 2i
+            }
+            if (i < x->activity.size()) {
+                x->activity[i] = le16(&b[10 + 2 * i]); // +0x24 + 2i
+            }
+            if (i < x->line_on.size()) {
+                x->line_on[i] = (b[1] & (1U << i)) != 0;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+/// WARETYPE (P: 56 × (u16 number, NUL-terminated name), sze.md "SCENE children") →
+/// the file's goods number -> the registry's goods id, by name as the original maps
+/// it (D AnnoWelt 0x100a18d0). nullopt for a number without a mappable name.
+std::map<std::uint32_t, std::optional<GoodsId>> goods_remap(const sze::Scene& scene,
+                                                            const TypeRegistry& types) {
+    std::map<std::uint32_t, std::optional<GoodsId>> out;
+    for (const formats::chunk::Chunk* c : scene.chunks("WARETYPE")) {
+        const Bytes p = c->payload;
+        std::size_t o = 0;
+        while (o + 2 < p.size()) {
+            const std::uint32_t number = formats::u16_le(p, o);
+            o += 2;
+            const auto end =
+                std::find(p.begin() + static_cast<std::ptrdiff_t>(o), p.end(), std::uint8_t{0});
+            const std::string name(p.begin() + static_cast<std::ptrdiff_t>(o), end);
+            o = static_cast<std::size_t>(end - p.begin()) + 1;
+            out[number] = types.goods_by_name(name);
+        }
+    }
+    return out;
+}
+
+/// The owner grid of an island as row-major runs {owner, length}, the trailing
+/// neutral tiles left out (World::create makes them neutral).
+std::vector<std::pair<std::uint32_t, std::uint32_t>> owner_runs(const std::vector<std::uint32_t>& g,
+                                                                std::uint32_t neutral) {
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> runs;
+    for (const std::uint32_t o : g) {
+        if (!runs.empty() && runs.back().first == o) {
+            ++runs.back().second;
+        } else {
+            runs.emplace_back(o, 1);
+        }
+    }
+    if (!runs.empty() && runs.back().first == neutral) {
+        runs.pop_back();
+    }
+    return runs;
+}
+
+/// A STADT2 city's records (D AnnoWelt city reader 0x1002e170, docs/re/annowelt.md
+/// "Scenario cities"): HEAD2 → capacity, WARE → stock, ID3 / ID2 → the island's tile
+/// owners, PROD/ENTRY → the buildings (with the footprint claim); every other record
+/// an UnknownRecord. The records in file order, as the reader takes them. An error
+/// only for a record that cannot be read at all.
+std::optional<std::string> read_city(const tagged::Record& r, const std::string& where,
+                                     ScenarioSpec::IslandSpec& is, IslandCities& ic,
+                                     ScenarioSpec::CitySpec& city, const TypeRegistry& types,
+                                     const SimConfig& config, Warnings& warn,
+                                     const std::map<std::uint32_t, std::optional<GoodsId>>& goods) {
+    const std::size_t header = r.long_form ? tagged::kLongHeaderLen : tagged::kHeaderLen;
+    auto kids = tagged::parse_records(r.payload.subspan(6), r.offset + header + 6);
+    if (!kids) {
+        return where + ": " + kids.error();
+    }
+    const std::uint32_t no = city.no.v;
+    const std::uint32_t tiles = is.w * is.h;
+    auto owners = [&]() -> std::vector<std::uint32_t>& {
+        if (ic.owner.empty()) {
+            ic.owner.assign(tiles, config.neutral_owner);
+        }
+        return ic.owner;
+    };
+    for (const tagged::Record& k : kids.value()) {
+        const std::string kp = where + "." + std::string(k.name);
+        if (k.name == "HEAD2") {
+            // 0x1002e383–0x1002e3e5: a zero-filled 64-byte buffer, u16 [0x24] << 8 is the
+            // capacity, 0 -> 0x3200 (50 t).
+            const auto b = zero_filled<64>(k.payload);
+            const std::uint32_t cap = le16(&b[0x24]);
+            city.capacity = cap != 0 ? cap << 8 : 50U * kTon;
+        } else if (k.name == "WARE") {
+            // 0x1002e7ca–0x1002e84b: length / 8 entries {u16 goods (file numbering),
+            // u16 tons}; the goods mapped by WARETYPE name, 0 -> skipped; stock = tons << 8.
+            if (!city.stock.has_value()) {
+                city.stock = std::vector<std::uint32_t>(config.warehouse_goods, 0);
+            }
+            for (std::size_t o = 0; o + 8 <= k.payload.size(); o += 8) {
+                const std::uint32_t file_goods = formats::u16_le(k.payload, o);
+                const std::uint32_t tons = formats::u16_le(k.payload, o + 2);
+                const auto it = goods.find(file_goods);
+                if (it == goods.end() || !it->second.has_value() ||
+                    *it->second >= city.stock->size()) {
+                    warn.add(ScenarioWarningKind::UnknownGoods, kp, k.name, k.offset,
+                             "goods number " + std::to_string(file_goods) +
+                                 " maps to no goods of the registry's table");
+                    continue;
+                }
+                if (*it->second == 0) {
+                    continue; // UNUSED: the original skips a mapped 0
+                }
+                (*city.stock)[*it->second] = tons << 8;
+            }
+        } else if (k.name == "ID3" || k.name == "ID2") {
+            // ID3 (0x1002e709–0x1002e7c5): u32 entries, x = v & 0x7fff, y = (v >> 15) &
+            // 0x7fff, island-relative (ID2, 0x1002e65c: world tiles); bit 30 -> 8 mask
+            // bytes follow. Island +0x100 = 0x10085620 sets the owner of the 8 × 8 chunk
+            // at (x, y) (all 64 tiles, or tile (x + i, y + j) where mask byte j has bit
+            // i), unconditionally and unclipped.
+            std::vector<std::uint32_t>& g = owners();
+            std::uint64_t outside = 0;
+            std::size_t o = 0;
+            while (o < k.payload.size()) {
+                if (o + 4 > k.payload.size()) {
+                    return kp + ": a truncated entry at byte " + std::to_string(o);
+                }
+                const std::uint32_t v = formats::u32_le(k.payload, o);
+                o += 4;
+                std::int64_t x = v & 0x7fffU;
+                std::int64_t y = (v >> 15) & 0x7fffU;
+                if (k.name == "ID2") {
+                    x -= is.x0;
+                    y -= is.y0;
+                }
+                const std::uint8_t* mask = nullptr;
+                if ((v & 0x40000000U) != 0) {
+                    if (o + 8 > k.payload.size()) {
+                        return kp + ": a truncated mask at byte " + std::to_string(o);
+                    }
+                    mask = &k.payload[o];
+                    o += 8;
+                }
+                for (std::int64_t j = 0; j < 8; ++j) {
+                    for (std::int64_t i = 0; i < 8; ++i) {
+                        if (mask != nullptr && ((mask[j] >> i) & 1) == 0) {
+                            continue;
+                        }
+                        const std::int64_t tx = x + i;
+                        const std::int64_t ty = y + j;
+                        if (tx < 0 || ty < 0 || tx >= is.w || ty >= is.h) {
+                            ++outside;
+                            continue;
+                        }
+                        g[static_cast<std::size_t>(ty * is.w + tx)] = no;
+                    }
+                }
+            }
+            if (outside > 0) {
+                warn.add(ScenarioWarningKind::OwnerTileOutsideIsland, kp, k.name, k.offset,
+                         std::to_string(outside) +
+                             " tiles outside the island (the original writes them unclipped)");
+            }
+        } else if (k.name == "ID") {
+            warn.add(ScenarioWarningKind::TileOwnersUndecoded, kp, k.name, k.offset,
+                     "radius claims (island +0xe8) are not modelled: their tiles stay as they are");
+        } else if (k.name == "PROD") {
+            const std::size_t kh = k.long_form ? tagged::kLongHeaderLen : tagged::kHeaderLen;
+            auto entries = tagged::parse_records(k.payload, k.offset + kh);
+            if (!entries) {
+                return kp + ": " + entries.error();
+            }
+            std::size_t e_no = 0;
+            for (const tagged::Record& e : entries.value()) {
+                if (e.name != "ENTRY") {
+                    // 0x1002671d: another record name is skipped.
+                    warn.unknown_record("cities", kp + "." + std::string(e.name), e.name, e.offset);
+                    continue;
+                }
+                const std::string ep = kp + ".ENTRY[" + std::to_string(e_no++) + "]";
+                if (e.payload.size() < 4) {
+                    return ep + ": the 4-byte position is missing";
+                }
+                // 0x10026524–0x1002655c: u16 x, y island-relative; island +0x84 resolves
+                // the tile to the building's placement.
+                const std::uint32_t ex = formats::u16_le(e.payload, 0);
+                const std::uint32_t ey = formats::u16_le(e.payload, 2);
+                BuildingItem* bi = ex < is.w && ey < is.h ? item_at(ic, ex, ey, is.w) : nullptr;
+                if (bi == nullptr) {
+                    const auto other = ex < is.w && ey < is.h ? ic.other_prod2.find(ey * is.w + ex)
+                                                              : ic.other_prod2.end();
+                    warn.add(ScenarioWarningKind::EntryWithoutBuildingItem, ep, e.name, e.offset,
+                             "tile (" + std::to_string(ex) + ", " + std::to_string(ey) +
+                                 ") holds no PROD2 building item" +
+                                 (other != ic.other_prod2.end()
+                                      ? " (a PROD2 item of PRODTYPE " +
+                                            std::to_string(other->second) +
+                                            ", no list in the layout: OQ-144)"
+                                      : "") +
+                                 ": skipped");
+                    continue;
+                }
+                bi->used = true; // named by an ENTRY, created or refused below
+                const BuildingType* type = types.find(TypeId{bi->id});
+                if (type == nullptr) {
+                    continue; // the island pass kept only known types
+                }
+                // create_building's rules (F32: the original creates blindly).
+                if (bi->x + bi->w > is.w || bi->y + bi->h > is.h) {
+                    warn.add(ScenarioWarningKind::BuildingRefused, ep, e.name, e.offset,
+                             "building " + std::to_string(bi->id) +
+                                 ": the footprint is not inside the island");
+                    continue;
+                }
+                if (ic.occupied.empty()) {
+                    ic.occupied.assign(tiles, 0);
+                }
+                bool free = true;
+                for (std::uint32_t j = 0; j < bi->h && free; ++j) {
+                    for (std::uint32_t i = 0; i < bi->w; ++i) {
+                        if (ic.occupied[(bi->y + j) * is.w + bi->x + i] != 0) {
+                            free = false;
+                            break;
+                        }
+                    }
+                }
+                if (!free) {
+                    warn.add(ScenarioWarningKind::BuildingRefused, ep, e.name, e.offset,
+                             "building " + std::to_string(bi->id) +
+                                 ": the footprint overlaps another building");
+                    continue;
+                }
+                // Create (0x10024010) builds the class's default, then the Load reads
+                // the bytes after the position over it. No bytes: World::create's own
+                // default (nullopt). With bytes: the default with the type attach's
+                // deep flag of a mine (create_building step 2-3; the stamp of step 5 is
+                // 0 at tick 0, the default), then the Load's fields.
+                std::optional<Payload> payload;
+                if (e.payload.size() > 4) {
+                    const ClassInfo& cls = types.class_info(type->cls);
+                    payload = make_payload(*type, cls, config);
+                    if (auto* mine = std::get_if<Mine>(&*payload)) {
+                        mine->deep = mine_is_deep(type->prod, type->research_id);
+                    }
+                    if (!read_class_record(*payload, type->cls, e.payload.subspan(4)) &&
+                        warn.seen_once
+                            .emplace("building record", std::to_string(static_cast<int>(type->cls)))
+                            .second) {
+                        warn.add(ScenarioWarningKind::UndecodedBuildingRecord, ep, e.name, e.offset,
+                                 "the record of class " +
+                                     std::to_string(static_cast<int>(type->cls)) +
+                                     " is not mapped: the make_* default stays");
+                    }
+                    if (const std::string p = payload_problem(*payload, *type, cls, config);
+                        !p.empty()) {
+                        warn.add(ScenarioWarningKind::BuildingRefused, ep, e.name, e.offset,
+                                 "building " + std::to_string(bi->id) + ": " + p);
+                        continue;
+                    }
+                }
+                std::vector<std::uint32_t>& g = owners();
+                for (std::uint32_t j = 0; j < bi->h; ++j) {
+                    for (std::uint32_t i = 0; i < bi->w; ++i) {
+                        const std::uint32_t t = (bi->y + j) * is.w + bi->x + i;
+                        ic.occupied[t] = 1;
+                        // The footprint claim (0x10026685: island +0xe8, radius 0, no
+                        // force): a tile still neutral gets the city.
+                        if (g[t] == config.neutral_owner) {
+                            g[t] = no;
+                        }
+                    }
+                }
+                ScenarioSpec::BuildingSpec bs;
+                bs.type = TypeId{bi->id};
+                bs.x = is.x0 + static_cast<std::int32_t>(bi->x); // world tile (+0x50)
+                bs.y = is.y0 + static_cast<std::int32_t>(bi->y);
+                bs.rotation = bi->rotation; // +0x68
+                bs.byte0f = bi->height;     // +0x70 stores +0x0f (0x10071c40)
+                bs.payload = std::move(payload);
+                city.buildings.push_back(std::move(bs));
+            }
+        } else {
+            warn.unknown_record("cities", kp, k.name, k.offset);
+        }
+    }
+    return std::nullopt;
+}
+
 /// SCENE/HEAD → WorldSettings and the world size (D AnnoScene 0x10009cc0, the HEAD
 /// case 0x10009cf6–0x10009dfa: a 32-byte buffer is zero-filled (0x10009cfd–0x10009d08)
 /// and the record read into it (0x1000aa40), the world is created with u32 [0] and
@@ -223,6 +658,7 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
     // "Island links"); a link reserves its number for stage 2 (O-35).
     std::set<std::uint32_t> slots;
     std::vector<std::uint64_t> island_at_offset; // file offset of spec.islands[i]
+    std::vector<IslandCities> cities_of;         // parallel to spec.islands (T23)
     for (std::size_t c = 0; c < scene.children.size(); ++c) {
         const formats::chunk::Chunk& child = scene.children[c];
         if (child.name() != "INSELLNK") {
@@ -319,6 +755,7 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
         // The placed items of GELAENDE, FLUESSE and PROD2 in file order (P,
         // insel.md "Placed objects": ANLAGEN id, rotation, height << 8 | phase, the
         // footprint's top-left tile).
+        IslandCities ic;
         std::map<std::uint32_t, std::pair<std::string_view, ItemKey>> taken; // tile -> first item
         std::map<std::string, std::uint64_t> item_no;                        // per record name
         for (const formats::chunk::Chunk& rec : isl.records) {
@@ -368,18 +805,33 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                              "ANLAGEN id " + std::to_string(o.anlage) + " is not in the registry");
                     continue;
                 }
-                // A PROD2 item of a type with a list in the layout is a building of a
-                // city (state.md §10, S6 checks). Its city is the owner of its tile,
-                // and no record of the island is decoded as tile owners (OQ-141):
-                // the building is not placed.
+                // A PROD2 item of a type with a list in the layout is the tile layer's
+                // copy of a building; the building is created from its city's
+                // PROD/ENTRY with the type, rotation and height of the tile (D AnnoWelt
+                // 0x100264a0 through island +0x84 = 0x10083a90; docs/re/annowelt.md
+                // "Scenario cities" (b), (e)). It is kept here for the city pass.
                 if (name == "PROD2" && config.layout.list_for(type->prodtype).has_value()) {
-                    warn.add(ScenarioWarningKind::BuildingWithoutCity, where, name, item_at,
-                             "building " + std::to_string(o.anlage) + " at (" +
-                                 std::to_string(o.x) + ", " + std::to_string(o.y) +
-                                 "): its tile has no known city");
+                    BuildingItem bi;
+                    bi.id = o.anlage;
+                    bi.rotation = o.rotation;
+                    bi.height = o.height();
+                    bi.x = o.x;
+                    bi.y = o.y;
+                    const auto [fw, fh] = o.footprint(static_cast<std::uint8_t>(type->width),
+                                                      static_cast<std::uint8_t>(type->height));
+                    bi.w = fw;
+                    bi.h = fh;
+                    bi.where = where;
+                    bi.at = item_at;
+                    ic.by_origin.try_emplace(static_cast<std::uint32_t>(o.y) * is.w + o.x,
+                                             ic.items.size());
+                    ic.items.push_back(std::move(bi));
                     continue;
                 }
                 const std::uint32_t tile = static_cast<std::uint32_t>(o.y) * is.w + o.x;
+                if (name == "PROD2") {
+                    ic.other_prod2.try_emplace(tile, type->prodtype);
+                }
                 const auto [it, fresh] = taken.try_emplace(tile, name, key_of(o));
                 if (!fresh) {
                     const bool same = it->second.first == name && it->second.second == key_of(o);
@@ -398,10 +850,9 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                 is.objects.push_back(t);
             }
         }
-        warn.add(ScenarioWarningKind::TileOwnersUndecoded, path, "INSEL5", child.offset,
-                 "no record of the island is decoded as tile owners (OQ-141): every tile neutral");
         spec.islands.push_back(std::move(is));
         island_at_offset.push_back(child.offset);
+        cities_of.push_back(std::move(ic));
     }
 
     // Players (SPIELER): the header series (with HEAD) makes the players, the state
@@ -410,6 +861,7 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
     if (!players) {
         return "players: " + players.error();
     }
+    const std::map<std::uint32_t, std::optional<GoodsId>> goods = goods_remap(scene, types);
     std::map<std::uint32_t, std::size_t> by_index; // SPIELER index -> spec.players
     std::size_t block_no = 0;
     for (const sze::Player& pl : players.value()) {
@@ -520,19 +972,29 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
             ScenarioSpec::CitySpec city;
             city.no = CityNo{no};
             city.owner = PlayerId{pl.index};
-            is->cities.push_back(std::move(city));
-            std::string nested;
-            if (auto kids = tagged::parse_records(
-                    r.payload.subspan(6),
-                    r.offset + (r.long_form ? tagged::kLongHeaderLen : tagged::kHeaderLen) + 6)) {
-                for (const tagged::Record& k : kids.value()) {
-                    nested += (nested.empty() ? "" : ",") + std::string(k.name);
-                }
+            const std::size_t island_index = static_cast<std::size_t>(is - spec.islands.data());
+            if (auto e = read_city(r, where, *is, cities_of[island_index], city, types, config,
+                                   warn, goods)) {
+                return *e;
             }
-            warn.add(ScenarioWarningKind::UndecodedCity, where, r.name, r.offset,
-                     "city " + std::to_string(no) + " of player " + std::to_string(pl.index) +
-                         ": its records (" + nested +
-                         ") are undecoded (O-36), the city starts empty");
+            is->cities.push_back(std::move(city));
+        }
+    }
+
+    // The tile owners the cities wrote, and the PROD2 buildings no city created.
+    for (std::size_t i = 0; i < spec.islands.size(); ++i) {
+        IslandCities& ic = cities_of[i];
+        if (!ic.owner.empty()) {
+            spec.islands[i].owner_runs = owner_runs(ic.owner, config.neutral_owner);
+        }
+        for (const BuildingItem& b : ic.items) {
+            if (!b.used) {
+                warn.add(ScenarioWarningKind::BuildingItemWithoutEntry, b.where, "PROD2", b.at,
+                         "building " + std::to_string(b.id) + " at (" + std::to_string(b.x) + ", " +
+                             std::to_string(b.y) +
+                             ") is named by no city's PROD/ENTRY: a tile object in the "
+                             "original, not placed here");
+            }
         }
     }
 
@@ -540,8 +1002,8 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
     for (std::size_t c = 0; c < scene.children.size(); ++c) {
         const formats::chunk::Chunk& child = scene.children[c];
         const std::string_view name = child.name();
-        if (name == "HEAD" || name == "INSEL5" || name == "SPIELER") {
-            continue;
+        if (name == "HEAD" || name == "INSEL5" || name == "SPIELER" || name == "WARETYPE") {
+            continue; // WARETYPE: the goods remap of the city WARE records
         }
         if (name == "INSELLNK") {
             auto link = sze::IslandLink::parse(child.payload);

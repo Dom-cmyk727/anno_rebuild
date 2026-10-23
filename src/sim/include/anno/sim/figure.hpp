@@ -6,10 +6,11 @@
 // group list's slot allocation (A6, assumed: the allocator 0x10097250 is unread), a
 // 16-bit stamp, the expiry list (property 0x23, entries die after 7500 ticks) and the
 // deferred-delete list. Stage S7 has the registry state and the creation path the
-// effect merge needs; the registry tick (phases B/C/D), the behaviour seam and the
-// removal come with stage S12, so until then a created figure never moves, never
-// returns and is never destroyed, and the building's counter that it holds stays
-// raised (D12, OQ-047).
+// effect merge needs; stage S12 adds the removal and the list helpers the registry
+// tick uses (its phases B/C/D run in World::advance, scheduler.cpp). With no behaviour
+// seam installed a figure never moves, and it ends only through the expiry list (which
+// the default spawn never fills, O-8) or the interim return rule (D12, OQ-047, off by
+// default), so the building's counter it holds stays raised.
 //
 // Figure positions are Q24.8 fixed point (D13, OQ-048); the original's are x87
 // floats with no oracle.
@@ -70,7 +71,8 @@ struct FigureRegistry {
     /// (Spelled out because SlotList's constructor is explicit: an aggregate member
     /// without an initializer is copy-list-initialised from `{}`.)
     SlotList<Figure> list = SlotList<Figure>();
-    /// D: +0x20, set after phase B of the registry tick (stage S12).
+    /// D: +0x20, set after phase B of the registry tick (0x1009aad9). The phase B
+    /// cursor is the list's own `cursor` (D: a u16 at +0x22, widened).
     std::uint16_t stamp = 0;
     /// D: list +0x48, insertion order.
     std::vector<FigureId> expiry;
@@ -98,6 +100,30 @@ Slot add_figure(FigureRegistry& registry, Figure f, const SimConfig& cfg, const 
 
 /// Rebuilds the id map from the list (after a read of the state).
 void rebuild_figure_index(FigureRegistry& registry);
+
+/// Removes the figure `id` from the registry (D: 0x10097520 nulls the entry of the
+/// figure's slot and deletes the unit; the list keeps its length, hint and cursor, as
+/// SlotList::remove): the slot is emptied, the id map forgets it, and the id leaves the
+/// expiry and the deferred list (stand-in: the original's unit destructor is unread,
+/// so whether it unlinks the unit from those lists is open, OQ-131; without it a later
+/// pass would follow a stale entry). Returns the removed figure, or nullopt when the
+/// registry holds no such figure (the id is still taken off both lists). The caller
+/// releases the home building's counter (the world's merge rule).
+std::optional<Figure> remove_figure(FigureRegistry& registry, FigureId id);
+
+/// Puts `figure` on the deferred-delete list and marks it, unless it is marked already
+/// (D: list +0x58; the interim return rule D12 and a behaviour seam use it).
+void mark_figure_for_delete(FigureRegistry& registry, Figure& figure);
+
+/// After a behaviour seam ran on `figure` (which may write the figure's own fields,
+/// docs/sim/state.md §4.11 C2), the registry's lists follow its flags: a figure that
+/// gained a created_stamp is appended to the expiry list and one that lost it leaves
+/// it; one that became marked_for_delete is appended to the deferred list and one that
+/// was unmarked leaves it (own design: the seam protocol of stage S12, so a seam cannot
+/// break the list invariants of validate_figures). `had_stamp` and `was_marked` are the
+/// flags before the call.
+void sync_figure_lists(FigureRegistry& registry, const Figure& figure, bool had_stamp,
+                       bool was_marked);
 
 /// The structural facts of a figure registry (docs/sim/state.md §9.6): the list has
 /// at least one element with its hint in -1 .. n and its cursor below n, every

@@ -33,6 +33,13 @@ s6_g1_step100, so the island state after 100 advances is held to an independent
 reading of the spec too. The G1 run of the spec (20 000 steps) is not transcribed:
 its goldens (s7_g1_*) come from the C++ and are protected by the semantic asserts of
 slice_test.cpp.
+Since stage S12 the ids scope carries the two millisecond accumulators (7.5 minute
+event, monopoly refresh) and the draw-guard flag, the figure registry's stamp moves
+with every advance (phase B over its one empty slot), and the scope timers_monopoly
+follows events: the script timers (their last tick) and the monopoly table, whose
+refresh body runs on the first advance only (D5) and which the script transcribes
+(docs/sim/state.md section 5.10: the climate masks, the one Volk-1 city per island).
+The 7.5 minute event is asserted not to fire within the horizon of the goldens.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
@@ -52,7 +59,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 105
+STATE_HASH_VERSION = 106
 PRNG_TIMELINE_VERSION = 1
 
 
@@ -571,25 +578,76 @@ def g1_after(steps, step_ms):
     return slots, stamp
 
 
-def figures_digest():
+def figures_digest(stamp=0):
     """The empty figure registry: i64 hint -1, u32 cursor 0, u64 slot count 1 and its
     child scope (an empty slot hashes as the single byte 0), u16 stamp, empty expiry
-    and deferred lists."""
-    return fnv(struct.pack('<q', -1) + u32(0) + u64(1) + u64(fnv(u8(0))) + u16(0) + u64(0)
+    and deferred lists. Phase B of every advance visits the one slot (clamp(d*1/50, 1,
+    1) = 1, the cursor stays 0) and writes the stamp: the 16-bit tick of the last
+    advance."""
+    return fnv(struct.pack('<q', -1) + u32(0) + u64(1) + u64(fnv(u8(0))) + u16(stamp) + u64(0)
                + u64(0))
 
 
+MONOPOLY_MASKS = [0x18000, 0xF009, 0xF949, 0xF06B, 0xF6B9, 0xF04D, 0xF04D]
+
+
+def monopoly_entries(islands, players, seconds):
+    """The monopoly table after the refresh body ran once (docs/sim/state.md section 5.10,
+    AnnoWelt 0x1009d2a0): `islands` is a list in table order of (climate, [owner of
+    each present city in number order]); `players` maps a slot to its Volk. For the raw
+    slots 0..19 and each island whose climate mask has bit s: no single Volk-1 city
+    clears the entry and ends the scan for s; otherwise a different owner takes the
+    entry with the game seconds."""
+    entries = [(0, None)] * 28
+    for s in range(20):
+        for climate, owners in islands:
+            if not (MONOPOLY_MASKS[climate] >> s) & 1:
+                continue
+            qualifying = [o for o in owners if players.get(o) == 1]
+            owner = qualifying[0] if len(qualifying) == 1 else None
+            if owner is None:
+                entries[s] = (0, None)
+                break
+            if entries[s][1] != owner:
+                entries[s] = (seconds, owner)
+    return entries
+
+
+def timers_monopoly_digest(last_tick=0, entries=None):
+    """The timers_monopoly scope: u32 last_tick, five stopped timers (u64 5 + u8 each,
+    u64 5 + u32 each) and the 28 monopoly entries (u32 time, optional u32 player)."""
+    entries = entries or [(0, None)] * 28
+    b = u32(last_tick) + u64(5) + bytes(5) + u64(5) + bytes(20) + u64(28)
+    for time_s, player in entries:
+        b += u32(time_s) + (u8(0) if player is None else u8(1) + u32(player))
+    return fnv(b)
+
+
 def state_hash(registry, cursor, ms, last_tick, players, full_tick=False, islands=None,
-               world=(0, 0)):
+               world=(0, 0), steps=0, step_ms=0, monopoly=None):
+    """`steps` advances of `step_ms` reached `ms`; `monopoly` is the table its first
+    advance wrote (None: all entries empty)."""
     header = (u32(STATE_HASH_VERSION) + u32(PRNG_TIMELINE_VERSION) + config_bytes()
               + rules_bytes(full_tick))
     header += u64(registry) + u64(22) + b''.join(string(b'default') for _ in range(22))
     clock_rng = u64(ms) + u64(last_tick) + u64(2048) + u64(rng_table_digest()) + u32(cursor)
     islands = islands_digest({}) if islands is None else islands
-    ids = fnv(u64(1) + u64(1))          # next_figure, next_event_seq
+    # The 7.5 minute accumulator holds every ms (below 450000 within these goldens: the
+    # event would draw), the monopoly accumulator the first step only (D5: the body ran
+    # once, from acc 0, and only the body adds; a first step of 30000 ms or more would
+    # run it again).
+    assert ms < 450000, 'the 7.5 minute event would fire (not transcribed)'
+    assert step_ms < 30000, 'the monopoly refresh would run again (not transcribed)'
+    acc750 = ms & M32
+    acc_monopoly = step_ms if steps > 0 else 0
+    ids = fnv(u64(1) + u64(1) + u32(acc750) + u32(acc_monopoly) + u8(0))
     events = fnv(u64(0))                # no timed events
+    t = (ms >> 1) & M32
+    figures = figures_digest(t & 0xFFFF if steps > 0 else 0)
+    timers = timers_monopoly_digest(t if steps > 0 else 0, monopoly if steps > 0 else None)
     return fnv(u64(fnv(header)) + u64(fnv(clock_rng)) + u64(fnv(settings_bytes(*world)))
-               + u64(ids) + u64(players) + u64(islands) + u64(figures_digest()) + u64(events))
+               + u64(ids) + u64(players) + u64(islands) + u64(figures) + u64(events)
+               + u64(timers))
 
 
 def values():
@@ -598,28 +656,35 @@ def values():
            'empty_world': state_hash(registry, 0, 0, 0, players_digest(0, 0))}
     for steps in (1, 100, 1000):  # G0: seed 1234, advance(10) x steps
         out['g0_step%d' % steps] = state_hash(registry, 1234, 10 * steps, 10 * steps // 2,
-                                              players_digest(*player_table_after(steps, 10)))
+                                              players_digest(*player_table_after(steps, 10)),
+                                              steps=steps, step_ms=10)
     for steps in (100, 700):  # G1: seed 1234, full-tick rule, advance(500) x steps
         slots, stamp = g1_after(steps, 500)
         out['g1_players_step%d' % steps] = state_hash(
-            registry, 1234, 500 * steps, 500 * steps // 2, players_digest(stamp, 0, slots), True)
+            registry, 1234, 500 * steps, 500 * steps // 2, players_digest(stamp, 0, slots), True,
+            steps=steps, step_ms=500)
     # S5: the synthetic two-island scenario, seed 1234, advance(10) x steps
     for steps in (0, 100):
         players, islands = two_island_scenario(steps)
         isl = islands_digest(islands)
         slots, stamp, cursor = table_run(players, steps, 10)
         key = 's5_islands_create' if steps == 0 else 's5_islands_step%d' % steps
+        # Island 0 (climate 2) holds city 0 of player 0, island 3 (climate 6) city 1 of
+        # player 1, both Volk 1; the first advance is at tick 5, game second 0.
+        monopoly = monopoly_entries([(2, [0]), (6, [1])], {0: 1, 1: 1}, 0)
         out[key] = state_hash(registry, 1234, 10 * steps, 10 * steps // 2,
                               players_digest(stamp, cursor, slots), islands=isl,
-                              world=(512, 512))
+                              world=(512, 512), steps=steps, step_ms=10, monopoly=monopoly)
     # S6: the G1 scenario (a city with a weaver and a farm), seed 1234, advance(10) x steps
     for steps in (0, 100):
         players, islands = g1_scenario(steps)
         isl = islands_digest(islands)
         slots, stamp, cursor = table_run(players, steps, 10)
         key = 's6_g1_create' if steps == 0 else 's6_g1_step%d' % steps
+        monopoly = monopoly_entries([(2, [0])], {0: 1}, 0)
         out[key] = state_hash(SYNTHETIC_REGISTRY, 1234, 10 * steps, 10 * steps // 2,
-                              players_digest(stamp, cursor, slots), islands=isl, world=(512, 512))
+                              players_digest(stamp, cursor, slots), islands=isl, world=(512, 512),
+                              steps=steps, step_ms=10, monopoly=monopoly)
     return out
 
 

@@ -1308,8 +1308,11 @@ TEST_CASE("merge queues timed events with the world's sequence numbers") {
     first.delay = 25;
     first.e.kind = sim::EventKind::TileCleanup;
     first.e.tile = sim::TileXY{3, 4};
+    // Delay 1, not 0: an event the island phase queues due now is dispatched by step 2
+    // of the same advance (stage S12, world_events_test.cpp), and this case looks at
+    // the queue after the advance.
     sim::EnqueueEvent second;
-    second.delay = 0;
+    second.delay = 1;
     second.e.kind = sim::EventKind::DelayedHit;
     second.e.subtype = 2;
     second.e.value = 7;
@@ -1322,9 +1325,9 @@ TEST_CASE("merge queues timed events with the world's sequence numbers") {
     lap(w); // tick 50
     const auto& q = w.events().q;
     REQUIRE(q.size() == 2);
-    // Keyed (due, seq): the delayed hit is due now (50, seq 2), the cleanup at 75 (seq 1).
+    // Keyed (due, seq): the delayed hit is due at 51 (seq 2), the cleanup at 75 (seq 1).
     auto it = q.begin();
-    CHECK(it->first == sim::EventKey{50, 2});
+    CHECK(it->first == sim::EventKey{51, 2});
     CHECK(it->second.kind == sim::EventKind::DelayedHit);
     CHECK(it->second.value == 7);
     CHECK(it->second.target == sim::FigureId{5});
@@ -1553,6 +1556,12 @@ struct SyncModel {
             ui.push_back(e);
         }
     }
+
+    /// Step 2 of the advance (stage S12): with no handler installed every event due at
+    /// `tick` is taken out of the queue and nothing else happens.
+    void dispatch(std::uint64_t tick) {
+        std::erase_if(events, [&](const auto& e) { return e.first.first <= tick; });
+    }
 };
 
 /// Two scripted buffers streams in one seam: island 0 city 0 and island 3 city 1 each have
@@ -1644,6 +1653,7 @@ TEST_CASE("effects applied after the island ticks equal the synchronous applicat
         // Island order: island 0's buffer, then island 3's.
         model.apply(script.a[static_cast<std::size_t>(lapno)], tick);
         model.apply(script.b[static_cast<std::size_t>(lapno)], tick);
+        model.dispatch(tick);
         INFO("lap " << lapno);
         REQUIRE(w.players().find(sim::PlayerId{0})->money == model.money[0]);
         REQUIRE(w.players().find(sim::PlayerId{1})->money == model.money[1]);
@@ -1684,7 +1694,9 @@ TEST_CASE("effects applied after the island ticks equal the synchronous applicat
         REQUIRE(ui[i].player == model.ui[i].player);
     }
     CHECK(model.figures.size() > 20);
-    CHECK(model.events.size() > 20);
+    CHECK(model.next_seq > 21);      // events queued over the run
+    CHECK(!model.events.empty());    // some still pending at the end
+    CHECK(model.events.size() < 20); // the rest were dispatched (stage S12)
     CHECK(model.ui.size() > 40);
 }
 
@@ -2255,16 +2267,24 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     const std::size_t players_at = island_test::flat_offset(w, "players");
     const std::size_t figures_at = island_test::flat_offset(w, "figures");
     const std::size_t events_at = island_test::flat_offset(w, "events");
+    const std::size_t timers_at = island_test::flat_offset(w, "timers_monopoly");
     REQUIRE(ids_at != std::string::npos);
-    // ids: u64 next_figure 3, u64 next_event_seq 2.
+    // ids: u64 next_figure 3, u64 next_event_seq 2, u32 event750_acc 100 and u32
+    // monopoly.acc 100 (the one advance of 100 ms; the refresh body ran on it), bool
+    // faulted false.
     island_test::Stream ids;
     ids.u64(3);
     ids.u64(2);
+    ids.u32(100);
+    ids.u32(100);
+    ids.u8(0);
     CHECK(players_at - ids_at == ids.v.size());
     CHECK(std::equal(ids.v.begin(), ids.v.end(),
                      bytes.begin() + static_cast<std::ptrdiff_t>(ids_at)));
     // figures: the list (i64 hint 1, u32 cursor 0, u64 slot count 10, per slot a presence
-    // byte and the Figure), u16 stamp, the expiry ids, the deferred ids.
+    // byte and the Figure), u16 stamp, the expiry ids, the deferred ids. Phase B of the
+    // advance ran over the ten slots once (clamp(50 · 10 / 50, 1, 10) = 10 visits from
+    // cursor 0: back at 0) and wrote the stamp 50.
     island_test::Stream figs;
     figs.u64(1);
     figs.u32(0);
@@ -2292,7 +2312,7 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     for (int i = 2; i < 10; ++i) {
         figs.u8(0);
     }
-    figs.u16(0);
+    figs.u16(50);
     figs.u64(0);
     figs.u64(0);
     CHECK(events_at - figures_at == figs.v.size());
@@ -2321,7 +2341,7 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     evs.u64(1);
     evs.u32(2);
     evs.u64(2);
-    CHECK(bytes.size() - events_at == evs.v.size());
+    CHECK(timers_at - events_at == evs.v.size());
     CHECK(std::equal(evs.v.begin(), evs.v.end(),
                      bytes.begin() + static_cast<std::ptrdiff_t>(events_at)));
     // The raw hash is the FNV of the stream and the trace sees the same bytes.
@@ -2516,7 +2536,7 @@ TEST_CASE("event queue stream refuses unordered keys and unknown kinds") {
     std::vector<std::uint8_t> bytes = island_test::flat_stream(w);
     const std::size_t at = island_test::flat_offset(w, "events");
     auto target = [&] { return make_world_with(k, syn::empty_scenario(), script_seams(&script)); };
-    REQUIRE(bytes.size() - at == 8 + 2 * 53);
+    REQUIRE(island_test::flat_offset(w, "timers_monopoly") - at == 8 + 2 * 53);
     // Swap the due ticks (60 and 70): the keys are no longer ascending.
     std::vector<std::uint8_t> swapped = bytes;
     swapped[at + 8] = 71;

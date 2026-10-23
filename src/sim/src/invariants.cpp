@@ -104,6 +104,20 @@ std::string World::check_invariants() const {
                    "ids.next_event_seq " + std::to_string(ids_.next_event_seq);
         }
     }
+    // F24: the last advance's event dispatch stopped at Rules::events_max_dispatch with
+    // a due event left (a game never reaches the cap; stage S12).
+    if (out_.events_capped) {
+        return "events: the last advance stopped its dispatch at Rules::events_max_dispatch (" +
+               std::to_string(rules_.events_max_dispatch) + ") with a due event left";
+    }
+    // The script timers and the monopoly table (stage S12).
+    problem = validate_timers(timers_, config_);
+    if (problem.empty()) {
+        problem = validate_monopoly(monopoly_, config_);
+    }
+    if (!problem.empty()) {
+        return problem;
+    }
     // Footprints, then the derived indexes (the second reads what the first
     // guarantees).
     for (std::size_t i = 0; i < islands_.size(); ++i) {

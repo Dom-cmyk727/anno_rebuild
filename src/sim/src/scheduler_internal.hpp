@@ -14,6 +14,9 @@ struct Effects;
 struct Player;
 struct Island;
 struct City;
+struct TickContext;
+struct CountingDraw;
+struct PopResult;
 
 /// The friend of World that runs advance and merges Effects (docs/sim/state.md §5.3).
 struct Scheduler {
@@ -26,6 +29,15 @@ struct Scheduler {
     /// queue only and no SimOutput is touched (it belongs to the last advance).
     static void merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t,
                       bool in_advance = true);
+    /// Step 2 of advance (events.cpp, docs/sim/state.md §5.7): one dispatch pass of the
+    /// timed-event queue with the two handler seams, each handler's Effects merged
+    /// right after it returns (C2).
+    static PopResult run_events(World& w, const TickContext& ctx, CountingDraw& draw);
+    /// Step 3 (docs/sim/state.md §5.9): the figure registry's phases B, C and D.
+    static void run_figures(World& w, const TickContext& ctx, CountingDraw& draw);
+    /// Destroys the figure `id` (phases C and D): frees its slot, takes it off the
+    /// registry's lists and releases the counter of its home building.
+    static void destroy_figure(World& w, FigureId id);
     static void run_player_pass(void* raw, Player& p);
     static void run_ai(void* raw);
     static Island* island_of_id(World& w, IslandId id);

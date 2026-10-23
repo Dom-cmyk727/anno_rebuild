@@ -1,8 +1,12 @@
+// The figure registry (docs/sim/state.md §4.9, §5.9; stages S7 and S12).
+#include <algorithm>
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <anno/sim/figure.hpp>
 
@@ -62,6 +66,53 @@ void rebuild_figure_index(FigureRegistry& registry) {
         if (registry.list.slots[s].has_value()) {
             registry.by_id[registry.list.slots[s]->id] = static_cast<Slot>(s);
         }
+    }
+}
+
+namespace {
+
+void erase_id(std::vector<FigureId>& list, FigureId id) {
+    const auto it = std::find(list.begin(), list.end(), id);
+    if (it != list.end()) {
+        list.erase(it);
+    }
+}
+
+} // namespace
+
+std::optional<Figure> remove_figure(FigureRegistry& registry, FigureId id) {
+    erase_id(registry.expiry, id);
+    erase_id(registry.deferred, id);
+    const Slot s = slot_of(registry, id);
+    if (s == kNoSlot) {
+        return std::nullopt;
+    }
+    std::optional<Figure> out = std::move(registry.list.slots[s]);
+    registry.list.remove(s);
+    registry.by_id.erase(id);
+    return out;
+}
+
+void mark_figure_for_delete(FigureRegistry& registry, Figure& figure) {
+    if (figure.marked_for_delete) {
+        return;
+    }
+    figure.marked_for_delete = true;
+    registry.deferred.push_back(figure.id);
+}
+
+void sync_figure_lists(FigureRegistry& registry, const Figure& figure, bool had_stamp,
+                       bool was_marked) {
+    const bool has_stamp = figure.created_stamp.has_value();
+    if (has_stamp && !had_stamp) {
+        registry.expiry.push_back(figure.id);
+    } else if (!has_stamp && had_stamp) {
+        erase_id(registry.expiry, figure.id);
+    }
+    if (figure.marked_for_delete && !was_marked) {
+        registry.deferred.push_back(figure.id);
+    } else if (!figure.marked_for_delete && was_marked) {
+        erase_id(registry.deferred, figure.id);
     }
 }
 

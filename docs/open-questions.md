@@ -1316,10 +1316,8 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
     - the script timers continue with their saved counters.
   - **On a world object that is cleared and re-initialised instead:** the 7.5 minute schedule restarts as well, but the monopoly accumulator keeps the previous game's value.
 - **What the rebuild does:** it saves and hashes all of them: `ids` gets `event750_acc` and `monopoly.acc`, `timers_monopoly` the `last_tick`, `clock_rng` the clock (`docs/sim/state.md` §9.3), as F7 saves both kinds of timed events. A save and load never changes the outcome, which the multiplayer resync snapshot and the replay rely on.
-- **Question for the owner:** keep the exact save as the default (recommended: the same snapshot serves savegames, the resync of a desynced peer and replays, and there a load must not change the game), with an opt-in `rules` option that follows the original when a *savegame* is loaded? Under that option the monopoly table would be recomputed on the first advance, the 7.5 minute schedule restarted and the timers' last tick re-based. Or make the original's behaviour the default for savegames, keeping the exact path for resync snapshots?
-  - Either way the world tick does not need to restart: F1 already covers the building stamps.
-  - Until the decision the code keeps the exact save; that matches the original only in that nothing is lost.
-- **How to resolve:** the owner's choice; then implement the option (S15, with the stream freeze) and test both readings.
+- **Asked of the owner (2026-10-23, answered in the status line above):** exact save/load as the default with the original's load behaviour as an opt-in `rules` option, or the original's behaviour as the default for savegames. The world tick does not need to restart either way (F1 covers the building stamps).
+- **How to resolve:** implement the opt-in option (S15, or the savegame-loading stage, with OQ-135) and test both readings.
 
 ## OQ-133: Script timer 0: a countdown that overshoots 0 (spec F5) (new, T9 S12 2026-10-23)
 - **Status:** resolved 2026-10-23 by the owner: "Stay on the original bug with optional fix". The default replicates the wrap; `Rules::timer0_clamp` (off by default) is the fix. Implemented in the S12 fix-up.

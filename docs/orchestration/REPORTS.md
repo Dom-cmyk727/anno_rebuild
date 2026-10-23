@@ -1039,3 +1039,70 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
 - Reviewers: (1) spec reader: an atomic build could end partial with a placement seam that ignores buildings (fixed: overlap check in validation); a duplicate cost goods was undercharged (fixed: summed); untested atomic money budget and seam paths (tests added); manual rules not listed (OQ-126 items 6-7); a wrong OQ reference (fixed); nits done (encode_record via has_wire_form, NotCityOwner for the trade commands, road rotation order, §8.4 BadValue line, trade-list capacity note in OQ-127). (2) mutation reviewer, 72 mutants in a private GCC copy of b812cb5: every charge, atomic and free-slot mutant killed except the atomic gold and serial budgets, which the new tests kill; the other survivors (seams, research, scenery under a non-north-west tile, a duplicate goods on one list, 15 followers, 12-bit type ids, another city's building) got tests; one equivalent survivor left (a rotation bound of 4 in check_record, refused by create_building too).
 - Left open / questions: owner: OQ-125 (who the free-build cheat covers; default off). RE: OQ-126, OQ-127. The full ctest with the game dir should run once on an idle machine or in CI before the merge.
 - Subagents: two reviewers (one read-only, one mutation runner in WSL), one heavy job at a time.
+
+## T9 — sim stage S11: the remaining production classes — 2026-10-23 — status: FINISHED
+- Branch: task/T9-sim-s11-classes (head in the PR); worktree: C:\Users\altin\anno1503-T9. Commits a1e2e8c feat (driver), 116fd4b test (driver classes, G3), a4410ac fix (carrier job 0x33), d1b1a51 test (review gaps), 0a26448 docs, plus this report.
+- Built:
+  - `src/sim/src/driver.cpp`, `driver.hpp`: `tick_building` drives WeaponsWorkshop (`refresh_unlocked`: the Forsch id of each line's goods and bit 1 of the owner's research byte, D 0x10069580-0x10069640, OQ-034), FurTrapper (full step; no trapper sent because the prey search finds no wildlife, O-12/O-25), Mine (`island.deposits`, `mine_area`, `WorldSettings::depletes()`), SmallFarm (`DrawRef` over `SiteDraw{ctx.draw, SmallFarmAnimal}`, `cfg.small_farm_animals`). `tick_kind_enabled` (the S7 mask) removed. `consume` takes the jobs from one table: 0x33 for the workshop and weapons-workshop carrier (D 0x100680b0, re/production.md §4.1/§4.1a; S7 had 0), 0x0d trapper, 0x2a small-farm worker (D 0x1006f660), 0x2e animal.
+  - `synthetic::g3_scenario`; `fixtures/synthetic/sim/g3.log` (94 KB, our own synthetic data); goldens `s11_g3_checkpoints/end/events`; CTest `anno_sim_replay_g3_run`.
+  - `tools/lint_sim_allow.txt`: the regex of the job-code line names the two new job constants. This is the one file outside src/sim/docs that I touched.
+- Gates (all on the final code and all after the standby windows the orchestrator reported; these runs replace the earlier ones):
+  - msvc build ok, warning-free.
+  - ctest --preset msvc -j 16: 796/796 without the game dir; 796/796 with `ANNO1503_GAME_DIR` (full run, 374 s).
+  - clang-format 23.1.3 clean over all 229 tracked src .cpp/.hpp.
+  - WSL GCC 13.3 `-O3 -Werror` with the CI flags over formats, test_support, sim, the sim tests and anno-sim-replay: 59 TUs clean; 475/475 sim cases with and without the game dir; `anno-sim-replay run` reproduces g2.log and g3.log, which were recorded by MSVC.
+  - The same with Clang 18.1.3: clean, 475/475 both ways, both logs reproduced.
+  - `lint_sim.py` ok; its self-test 64/64.
+  - `git grep tick_kind_enabled -- src` finds nothing.
+  - Redone after the standbys (03:41 and 04:41-05:23): the full build, both ctest runs, GCC, Clang and the mutation pass. The pass had overlapped the second window; the rerun gave identical results. The goldens/log recording ran at about 03:39, before the second window. Every later run checks it byte for byte (G2/G3 tests, both CTest replays, the GCC and Clang replays).
+- Acceptance:
+  1. All six named tests exist and pass in `driver_classes_test.cpp`, plus G3 and three from the review: icons from Volk, the configured animal table, the rotated mine footprint (10 cases; 475 sim cases in all).
+     - The scheduler-equals-direct case runs 20 000 advances of 10 ms. After every advance it compares eight payloads, both deposits and the PRNG cursor. At the end it compares every figure (home, job, kind on types with distinct figure ids, counter, owner, birth tick) and every notice.
+  2. G3 is `synthetic::g3_scenario`: 2 000 advances of 100 ms to tick 100 000, 21 checkpoints.
+     - It is committed as g3.log and reproduced by the test (21/21) and by `anno-sim-replay run`, on MSVC, GCC and Clang.
+     - The semantic asserts were derived by hand and checked again by the reviewer: weavers 696/4; farm 592; trapper 520/12; small farm {130,102}/{0,1}; bow maker of player 0 1287 (one line, 143 steps); bow maker of player 1 {640,640} (160 steps); mine 768 with deposit index 0→1→0 and notice 0x19.
+     - The draws (199) and the animal counters {1,2,0,1,0} are pinned from the run.
+  3. Call paths: `World::advance` → `Scheduler::advance` → `island_tick` → `city_ring_tick` → `city_tick` → `building_scheduler` → `run_scheduled_lists` → `tick_building`.
+     - From there: `workshop_step`, `weapons_workshop_step` (after `refresh_unlocked`), `farm_step`, `fur_trapper_step`, `small_farm_step`, and `mine_step` (→ `deposit_remaining`, `deposit_extract`, `find_deposit` → `deposit_in_reach`). `StatusTracker::report`/`clear` run inside every step.
+     - `mine_is_deep` and `find_deposit` also run in `create_building`, reached from advance through the AI seam's Build.
+     - `CityStock::add`/`remove` are reached via the merge (`GoodsMove`, `Deliver`) and the Build charge.
+     - **Exception: `grow`**, the body of the growth sweep, which is S13.
+     - Load and creation code (`production_type`, `ware_names`, `make_*`) is not a step.
+     - The mask is gone (grep above).
+  4. Evidence: every rule cites an address or a section (state.md §7.1 "As implemented in S11", §15 "S11 as implemented"). New OQ-128 and OQ-129.
+  5. The state stream is unchanged: `kStateHashVersion` stays 105, and so does `kPrngTimelineVersion` (the set of sites is unchanged; the reason is written in state.md §6).
+     - The carrier job fix moved the self-baselined goldens `s7_g1_mp_checkpoints`, `s7_g1_mp_end`, `s7_g1_sp_end` and `s10_g2_end`, and g2.log was re-recorded. The reason and the old values are in goldens.txt.
+     - `s7_g1_events` and every sim_stream.py golden are unchanged. G1 and G2 replay.
+  6. All gates above.
+- Mutation evidence: MSVC, the whole sim suite per mutant, 13 mutants, all killed. Each entry gives the number of failing cases and names some of them.
+  - Research unlock:
+    - `refresh_unlocked` not called: 4 ("weapons workshop unlocked from research", "weapons workshop save load advance", scheduler-equals-direct, G3).
+    - Research read as "owner present": the same 4.
+  - Add-on-only depletion:
+    - Always on: 1 ("mine deposit by index and depletion only in the add-on").
+    - Never on: 4 (the same case, "the mine searches from its rotated footprint", scheduler-equals-direct, G3).
+  - Once-per-step draw:
+    - No draw: 4 ("small farm draws once per step through the world", "small farm animals come from the configured animal table", scheduler-equals-direct, G3).
+    - A draw at every visit: 3 ("small farm draws once per step through the world", scheduler-equals-direct, G3).
+  - Trapper sent without prey: 3 ("fur trapper sends nothing without prey", scheduler-equals-direct, G3).
+  - Small-farm worker job 0: 5.
+  - Carrier job 0: 7 (G1, G2, G3 among them).
+  - The mine's `shows_icons` dropped: 1.
+  - Default animal table instead of the configured one: 1.
+  - A 1 × 1 mine area: 1.
+- Reviewers: one independent reviewer read the diff against the acceptance list. It re-derived every hand number and found no determinism, UB or GCC trap. Its findings and what I did:
+  1. The workshop/weapons-workshop carrier job is 0x33 by evidence, but the code wrote 0. Fixed (a4410ac), goldens re-baselined with the reason.
+  2. state.md and settings.hpp claimed that property 5 is read by the deposit search. I traced it: its reads are island-object methods next to a per-player bit (0x10063235, 0x100634bc, 0x100638f3); the mine tick and the search do not read it. Docs corrected, OQ-128.
+  3. The docs were missing. Written: §7.1, §15, §4.9 and §6; the sizing difference of `unlocked` is documented.
+  4. `grow` is named as the exception.
+  5.–8. Test gaps (`shows_icons`, the animal table, the mine area, spawns and notices not compared): one test each, mutation-checked.
+  9. The version policy. I kept the versions and wrote the reasoning in §6.
+  10. Mojibake in the test file: fixed.
+  11. Weak asserts: pinned.
+  - I ran one reviewer, not two.
+- Left open / questions:
+  - OQ-128 (RE): what world property 5 does.
+  - OQ-129 (owner): fur trappers stay idle until the fauna is ported. That is the faithful default; the question is whether an interim `rules` stand-in is wanted.
+  - OQ numbers 128/129 may collide with T14 if it adds OQs in the same round; renumber at merge.
+  - Not mine to decide: whether `kPrngTimelineVersion` should still be bumped for S11 (see §6).
+- Time spent / subagents used: one reviewer subagent (read-only); everything else inline.

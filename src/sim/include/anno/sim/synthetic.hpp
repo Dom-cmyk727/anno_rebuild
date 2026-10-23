@@ -102,4 +102,20 @@ formats::Result<SyntheticTypes, std::string> make_build_types();
 /// city 0, so that four weavers can be paid and a fifth cannot.
 ScenarioSpec g2_scenario(const SyntheticTypes& types, std::uint32_t seed = 1234);
 
+/// The scenario of the golden G3 (docs/sim/state.md §14.3, stage S11), on
+/// make_synthetic_types: two_island_scenario (two players, two islands, city 0 of player 0
+/// on island 0 and city 1 of player 1 on island 3) with one building of every ticking
+/// class and an inert house in city 0, and a second bow maker and a weaver in city 1.
+/// City 0 at y = 110: the weaver (110; 5 t of wool), the grain farm (120; 5 t of raw
+/// material), the fur trapper (130; 2 t of raw material), the small farm (140; 5 t of raw
+/// material per line), the bow maker (150; 5 t of wood and 5 t of ropes); the iron mine at
+/// (110, 118) over the two EISENERZ deposits of island 0, (110, 120) with 2 t and
+/// (112, 121) with 1 t, both without the reserve flag, so the mine uses the first up,
+/// moves to the second and runs dry in the add-on edition (the synthetic settings); the
+/// pioneer house at (125, 125). City 1: the bow maker at (305, 205) and the weaver at
+/// (310, 205), stocked as in city 0. Research bytes: player 0 has BOGEN's research (4)
+/// done and ARMBRUST's (9) only researchable, so its bow maker works one line; player 1
+/// has both done.
+ScenarioSpec g3_scenario(const SyntheticTypes& types, std::uint32_t seed = 1234);
+
 } // namespace anno::sim::synthetic

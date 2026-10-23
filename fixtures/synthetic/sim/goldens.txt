@@ -102,10 +102,16 @@ s6_g1_step100 S6 105 cf98c83f259a74f9
 # spec independently: the F2 and F6 states at tick 70000, the step counts and the
 # conservation of wool and raw material at every 5000th tick, the figure ids and ticks of
 # birth, the city stamp.
-s7_g1_mp_checkpoints S7 105 08a62c3b5ac3764f
-s7_g1_mp_end S7 105 dd794e005294c6d5
+# Re-baselined in stage S11 without a stream change (version 105): the carrier of a workshop
+# and of a weapons workshop has the job 0x33 (D AnnoWelt 0x100680b0, docs/re/production.md
+# §4.1, §4.1a; S7 had written 0, "unknown"), and Figure::job is state. The earlier values
+# were 08a62c3b5ac3764f, dd794e005294c6d5, 7b17d192d21d4670 (s7_g1 mp_checkpoints, mp_end,
+# sp_end; s7_g1_events is unchanged: the events carry the figure kind, not the job) and
+# 0802e7cb98ced333 (s10_g2_end); g2.log was re-recorded with them.
+s7_g1_mp_checkpoints S7 105 a4e2bc83ed722566
+s7_g1_mp_end S7 105 c5b121599836c0f2
 s7_g1_events S7 105 d705f409820828d2
-s7_g1_sp_end S7 105 7b17d192d21d4670
+s7_g1_sp_end S7 105 abe0075e72e0c8fd
 #
 # S10 G2 (stage S10): the G1 scenario on the types with build costs (synthetic::
 # g2_scenario, synthetic::make_build_types) driven by the recorded command log
@@ -117,4 +123,20 @@ s7_g1_sp_end S7 105 7b17d192d21d4670
 # with slot 1 freed and the hint kept), the charges (4 x 300 gold, 12 t tools, 16 t wood)
 # and the rejection reasons independently of the hash. The log carries the stream version
 # in its initial save, so a stream bump re-records it.
-s10_g2_end S10 105 0802e7cb98ced333
+s10_g2_end S10 105 3d5e4153b0399f8b
+#
+# S11 G3 (stage S11): synthetic::g3_scenario on synthetic::make_synthetic_types (two
+# players, two islands, two cities; a weaver, a grain farm, a fur trapper, a small farm, a
+# bow maker, an iron mine over two deposits and an inert house in city 0, a bow maker and a
+# weaver in city 1; research bytes so that player 0's bow maker works BOGEN only and player
+# 1's both lines), 2000 single-player advances of 100 ms (tick 100000), recorded as
+# fixtures/synthetic/sim/g3.log with 21 checkpoints. s11_g3_checkpoints is the FNV-1a 64 of
+# the state hashes after every 100th advance, s11_g3_end the hash at tick 100000,
+# s11_g3_events the hash of the UI events. SELF-BASELINED like the S7 and S10 goldens
+# (ANNO_UPDATE_GOLDEN also rewrites g3.log); driver_classes_test.cpp holds the end state of
+# every building to values derived by hand from docs/sim/production.md (F2 weavers, F6
+# farm, the trapper's 20 steps, the small farm's lines, 143 bow steps on one line and 160
+# on two, the mine's 768 from the two deposits), the draw count and the notice 0x19.
+s11_g3_checkpoints S11 105 65149ef806106bc6
+s11_g3_end S11 105 aa8f8def5607fcea
+s11_g3_events S11 105 3140bd8e1eb7db86

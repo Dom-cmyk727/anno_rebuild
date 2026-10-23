@@ -68,7 +68,11 @@ if(ANNO_HAVE_WGPU)
     target_compile_definitions(anno_render_gpu_tests PRIVATE
       ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
     anno_target_defaults(anno_render_gpu_tests)
-    # One GPU case at a time: each opens its own device.
-    anno_add_doctest(anno_render_gpu_tests PROPERTIES RESOURCE_LOCK gpu)
+    # One GPU case at a time: each opens its own device. The label "gpu" lets a
+    # host without a useful adapter leave them out (`ctest -LE gpu`): CI's
+    # windows-msvc job, whose only adapter is the WARP software rasterizer,
+    # spent 43 of its 54 minutes on them (about 50 s per case) while the
+    # deterministic GPU parity job is linux-gcc on lavapipe (OQ-089).
+    anno_add_doctest(anno_render_gpu_tests LABELS gpu PROPERTIES RESOURCE_LOCK gpu)
   endif()
 endif()

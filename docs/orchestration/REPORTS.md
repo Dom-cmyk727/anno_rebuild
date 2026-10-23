@@ -1593,3 +1593,110 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
 - **Left open:** the context byte `+0x400`; the `SLICE`/`CREW`/one-byte entry records; the meanings of the `STAT2` counters, `+0x620`, `+0x61c`; OQ-155 (trade-list naming, entry `+4`), OQ-156 (when `0x10028400` runs; type byte `+0x23`), OQ-157 (research sub-object), OQ-158 (the island's market counter on load); the `PROD2` items without an entry (OQ-144 rest, OQ-142).
 - **For the mapping task:** (1) house: residents and the stocks from `s_j` need the group's `Menge` and the reset rule; the non-pioneer houses already draw from the world sequence in `SetGroup` at `Create` (`population.md` §5), before the `Load` overwrites the stocks; (2) market: carry `KONTID` and the island counter; (3) `BAUMAT` → `build_goods[g − 0x29].setting`, `VK` → `trade_lists[1]`, `EK` → `trade_lists[0]` with `list_index` = the loop index (skipped entries keep their index) and the slot counts from `HEAD2`; (4) `HEAD2` statistics are stored × 7; (5) VOLK: the 14-name table; (6) monuments need a list (or a refusal) for PRODTYPE > 192.
 - **OQ numbers used:** OQ-155, OQ-156, OQ-157, OQ-158 (OQ-159 and up unused).
+
+## T24 — Transport stage 1: the market cart and the workshop carrier (jobs `0x34`, `0x33`) — 2026-10-23 — status: FINISHED (stage 1 includes the carrier; the per-file time bound, see acceptance 3)
+- Branch: `task/T24-transport-carts`, rebased on `main` at ba0c4bb (the stage 2 and T25 merges); worktree `C:\Users\altin\anno1503-T24`. The executor itself, no reviewer subagent (§1 item 5, round s).
+- **Staging:** stage 1 does both jobs. The carrier's reading (b) fits, so the `HANDWERK` workshop's carrier is in. The **weapons workshop's carrier** (`HANDWERKWAFFEN`, its two lines `0x1006a4a0`) keeps the D12 default and goes to stage 2; the farm workers and the other jobs do too.
+- Commits (one concern each):
+  - 4c60053: the RE note `docs/re/transport.md` and `production.md` §5 to D, before the code.
+  - 36f88bc: `rect_query` faster, no behaviour change (all hashes equal).
+  - 7f906c1: the transport body, the Market class, the reservations, the figure types and entrances, G6, and **stream 111 with every golden, g2–g5.log, g6.log and `scenario_corpus.txt` re-baselined in this one commit**.
+  - aeaacfd: spec docs (state.md, OQ-103, OQ-160..162, PLAN).
+  - c6a25c7: GCC `-Wrange-loop-construct` in the test.
+  - c7305e9: two test additions from the mutation run.
+- RE (`tools/disasm.py`, AnnoWelt and AnnoGame; `docs/re/transport.md` §1–§6, each line D, likely or open):
+  - **(a) The jobs.** The factory `0x1003b0e0` builds 0x48-byte jobs of three step nodes, run at `+0x30` (`0x1005b6c0`); a step that starts no action completes in the same figure tick.
+    - Step A: cart `0x1005ad10`, carrier `0x1005a530`.
+    - Step B: the wait (`0x100551b0`), then unreserve and take up to the capacity (`0x100551f0` → `0x10068490`, `0x10068430`; market source: the city's remove `0x1006b7f0`).
+    - Step C: walk home (`0x10057ae0`) and unload (`0x10057bd0`): market → the city's add, which clips at the capacity, and the rest is lost with the figure; workshop → input store `0x100683f0`.
+    - On failure the job goes to the tail (`0x1005d380`), then the end (T22's `0x1003b6e0`). The buildings' store slots `+0xa0`..`+0xc0` are tabulated per class.
+  - **(b) The carrier.**
+    - Candidates: list mask `0xa`, the production and market lists.
+    - Filter: the workshop's offer `0x100728f0` = `p + avail · 192 / cap` with the priority `p` = `0x10068500` above 0, for a source whose output 0 is the input or `ALL` (`0x8e`: a market), or whose output 1 is the input. So it fetches from the warehouse **and** from producers.
+    - Callback: `0x1005a400`, which stops at a source holding 3/4 of the carrier's capacity.
+  - **(c) The search.**
+    - The area: a square of `2r + 1` (+1 for an even footprint) around the footprint centre (not the footprint grown by `r`), `r` = `HEAD[0x11]`, with the midpoint-circle disc `0x10002a60` (ported exactly). Candidates come from the home city's building index only (city `+0x60` → `+0x144`).
+    - The cart's callback `0x1005a900`: the 75 % rule, the 1 t minimum, the strict `<`, the early stop. The best score starts at 0 every search (`0x10003dbf`, previously Open): a raw producer below 75 % is never chosen.
+    - **Open:** the walking-layer tables `0x100d1140 + 0x1c00 · layer` (`.data`, filled at run time; OQ-160) and the engine's expansion, costs and ties (OQ-161).
+  - **(d) Movement.**
+    - Time is `u16(t − stamp) · 0.2f` units; a wait of `d` is `500·d` ticks.
+    - Segments are `{direction, count/3}`, direction codes `0x1002ff20`, diagonal × `1.41421354f`; the speed is HEAD f32 `[4]`.
+    - P: cart 220 at 0.016 (1.6 tiles/s), 5 t, layer 3, wait 1.0; carrier 203 at 0.012, 3 t, layer 0, wait 2.0.
+  - **(e)** `TASK`/`ENTRY` are not read; no save compatibility.
+- Built (`state.md` §4.9, §5.9 "Transport", §15 "T24 as implemented"):
+  - `transport.hpp/.cpp`: both jobs as the default phase-B body. It follows the seam protocol (own figure plus `Effects`; `StoreDelta` for the reservations, the loads and a workshop's input; `GoodsMove` for a market's city stock) and draws nothing.
+  - The market class ticks (`TickKind::Market`, `PayloadTag` 6, gate 500, `carts_out < max_figures[0]`), and every producer keeps a `reserved` store.
+  - `FigureType` from `FigurenHeader.dat` (speed in 2^-24 tile per tick, capacity, layer, load ticks; part of the registry digest), and `ENTRANCE` points in sixths of a tile. A spawn starts at the first entrance point (rotated as AnnoGame `0x100084c0`).
+  - A registry without figure types (G1–G5's synthetic ones) keeps the D12 default, so those goldens only moved bytes.
+- Acceptance:
+  1. The RE note answers (a)–(d) with addresses; the stand-ins are stated in `state.md` §5.9 and OQ-160/161/162: the walk rule, the search and goals, the integer walk.
+  2. **Synthetic cases** (`transport_test.cpp`, 17 cases, every value derived by hand in the comment):
+     - the cart end to end: spawn at the entrance; reserve 1280; walk 938 ticks; load after 500 more; home in 938; the city +1280; the counter released; on the expiry list;
+     - off the road net: ends at once;
+     - F11 and F12;
+     - "the cart's choice" in six sub-cases;
+     - the full warehouse: clip at 1000;
+     - the neighbour order;
+     - the carrier end to end: from the market over open land, 1128 + 1000 ticks, city wool −768, back in 1251, input +768;
+     - the priority thresholds; the offer values (878, 218, −1); the carrier's 3/4 stop;
+     - determinism: two runs, the executor at 1/2/8 threads, a save mid-walk;
+     - **G6**: replayed by the test and by `anno-sim-replay run fixtures/synthetic/sim/g6.log` (21/21 checkpoints, CTest `anno_sim_replay_g6_run`).
+  3. **Economy:** the scenario with the most buildings is `single36` (759 buildings, 107 producing). In 150 000 ticks 16 of them move their stocks (T23: 5) and 7 gain output; **its warehouses: 4 of 14 move** (`CHECK(moved > 0)` in the economy case). By class: Workshop 4/11, Farm 12/84, SmallFarm 0/8, Mine 0/4.
+     - Per scenario, `scenario_corpus.txt` carries `producers_moved` and `warehouses_moved`, and the corpus case prints them. In all: producers 670 of 2 147, warehouses 86 of 272. All 50 load, create, run, hash and save/load clean.
+     - **Time** (`anno-sim-replay scenario`, MSVC Release, 9800X3D, all 50, 150 000 ticks): run **median 264.5 ms, max 1 168 ms** (`S01_07_01`). That is 1.78× T23's 149 / 655 on both; load median 13.5 / max 52 ms, create 3.5 / 11 ms.
+     - The stage 2 head on the same machine today: 183 / 573. Against it the median is 1.45× and the **worst single file 3.3×** (`S01_07_01`: 351 → 1 168 ms). There its carts search 13 800 times and find a source 90 times: every 500-tick market gate sends a cart that searches its whole road net in the area and ends. Not split yet: how much of that is no road connection (OQ-160) and how much a city without room for the goods.
+     - What I did before reporting (no hash moved):
+       - `rect_query` dropped its per-tile duplicates before the sort (the first profile: 69 M building lookups);
+       - the walkability is worked out lazily per tile and memoised;
+       - a bucket queue replaces the binary heap (the same (cost, insertion) order: costs 5/7, 8 FIFOs);
+       - a figure in mid-walk does no world lookup;
+       - ended figures return at once.
+
+       Before all this the corpus took median 343 / max 2 597 ms.
+     - The next lever, named as the task asks: a per-island walk-class cache, kept up to date with the tile objects. It is not done here: it needs invalidation on every object write. Say if the bound must hold per file.
+  4. `lint_sim`: ok. The only floats are the load-time conversions of the figure types and entrance points, allow-listed like `production.cpp`'s. The walk is integer: speed `round(f32 · 0.2f · 2^24)`, Q24.8 waypoints, the diagonal 23 726 566. The deviation is **OQ-162 (owner)**.
+  5. **Mutations (MSVC, the whole sim suite without the game dir): 19 of 19 killed.**
+     - The first run killed 8 of 16. The 8 survivors got new cases, then all were killed.
+     - Equivalent mutant, not counted: swapping direction codes 0 and 1. Their step costs differ (5 and 7), so the order within each cost class is unchanged; the neighbour mutant counted swaps 0 and 4.
+
+     | Mutant | Killed by |
+     |---|---|
+     | 75 % → 50 % | "the cart's choice" |
+     | 1 t filter → 0 | "the cart's choice" |
+     | other-goods score 128 → 64 | G6 |
+     | strict `<` → `<=` | "the cart's choice" |
+     | city room `<=` → `<` | "the cart's choice" |
+     | reservation not clipped | "the cart's choice" |
+     | load wait skipped | the cart end to end, the carrier end to end, G6 |
+     | neighbour order 0↔4 | the neighbour order |
+     | corner cutting allowed | the neighbour order, G6 |
+     | diagonal as straight | segment lengths, the carrier, G6 |
+     | carrier never stops at 3/4 | "the carrier stops at 3/4" |
+     | priority 30 → 20 | the priority |
+     | offer 192 → 128 | the offer |
+     | road rule off | off the road, the neighbour order, G6 |
+     | market send `<` → `<=` | market without production data, G5, the cart, the carrier, G6 |
+     | spawn stamp 0 | 8 cases incl. G1/G2/G3, the layouts, G6 |
+     | speed + 1 | the carrier end to end, G6 |
+     | the end skipped (no counter release) | 6 cases incl. the cart end to end, G6 |
+     | raw score ÷ cap instead of cap − q | "the cart's choice" (the stop at 128) |
+  6. `kStateHashVersion` 110 → 111 in 7f906c1 with the reasons. `kPrngTimelineVersion` stays 2: no job draws.
+     - g0, g1_players, s5 and s6 equal `tools/sim_stream.py`, which transcribes the Market row, the reserved stores and the figure-type digest.
+     - The others are self-baselined; `goldens.txt` lists the 110 values. `sim_stream.py --check`: "goldens agree".
+     - `scenario_corpus.txt` is re-recorded with the game dir (header 111/2); the GCC and Clang builds agree with it.
+  7. **Gates** (heavy-job lock, foreground):
+     - MSVC build warning-free;
+     - `ctest --preset msvc -j16`, `ANNO_TEST_THREADS=16`: **967/967 without the game dir, 967/967 with it** (548 s);
+     - after the last two test commits the sim suite again: 609/609 MSVC; GCC 13.3 and Clang 18 at `-O3 -Werror` with the CI flags (75 TUs, no diagnostic), the sim tests with and without the game dir, g2–g6 replayed;
+     - UBSan on the scenario, link and transport cases with the game dir: 85/85;
+     - `tools/check_unix_warnings.sh`: clean (GCC and Clang with viewer and GPU, Clang without GPU);
+     - clang-format 23.1.3 `--dry-run --Werror` over `src`: clean;
+     - `lint_sim`: ok, self-test 70/70.
+  8. **Scalability:** no fixed figure, job, road or path count. The route is a vector; the search grid is the area cut to the island; the radius is the type's byte, so the bound is data. **Bound per search:** at most `(2r + 2)²` tiles allocated and read.
+     - Measured on `single36` (150 000 ticks): 14 134 cart searches started, 3 754 with candidates and 45 finding a source; 3 025 carrier searches, 43 with candidates, all 43 finding one; radius at most 24, so a grid of at most 2 500 tiles.
+     - Carts read 909 tiles per search on average and at most 2 046; carriers at most 237.
+- Found and fixed in the branch: `anno-sim-replay scenario` crashed with an access violation in all 50 files, because the figure entries view the `FigurenHeader.dat` buffer, which went out of scope before the registry was built. The CTest scenario runs skip without the game dir, so CI could not see it. Fixed in 7f906c1.
+- OQ-103: recorded what the code does. Carts walk roads only; carriers and every other layer walk any tile without a building. A producer feeds a market only when one of its footprint tiles touches the market's road net in the area. The goal is a footprint tile, not the entrance the owner's rule names (entrance points are read and used only for the spawn). **If the owner's rule differs (carriers on roads, or the entrance as the only goal), the owner picks the default; it becomes a `Rules` option.**
+- OQ numbers used: **OQ-160, OQ-161, OQ-162** (OQ-163/164 of the range T26's brief reserved are free).
+- Not taken: the `alloc_probe.cpp` nothrow-`new` fix-up (the branch does not touch `src/test_support`, and the ASan job did not bite here).
+- Left open: the walking layers and the walk masks (OQ-160); the search's real expansion and the entrance goals (OQ-161); the x87 walk (OQ-162, owner); the weapons workshop's carrier, the farm workers and the other jobs (stage 2); the last walk of 15.0 outside the home at the end (`0x1003af00`, not modelled; `end_figure` ends at `t`).

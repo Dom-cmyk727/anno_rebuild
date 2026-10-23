@@ -1409,7 +1409,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Status:** open, RE
 - **Area:** simulation / islands
 - **What we know:** the placement sets island property 11 = `0xF009` | (1 << k for each raw-material kind k the selection marked) (`0x100085a2`–`0x100085cf`); the 20 kinds and the climate masks of the selection (`0x10009010`) are the values of the monopoly masks (`SimConfig::monopoly_climate_mask`, AnnoWelt `0x1009d2a0`), so the kinds are the 20 raw materials of the monopoly table. Who reads property 11, and what an INSEL5 island of a scenario has there, is not traced.
-- **What the rebuild does:** the marks are in the resolution (`ResolvedLink::raw_marks`, printed by `anno-sim-replay scenario`) and a `LinkRawMaterials` warning per link (161 in the corpus); the sim has no island field for them.
+- **What the rebuild does:** the marks are in the resolution (`ResolvedLink::raw_marks`, printed by `anno-sim-replay scenario`) and a `LinkRawMaterials` warning per placed link (229 in the corpus); the sim has no island field for them.
 - **How to resolve:** find the readers of island property 11 (the planting rules or the fertility check, e.g. what a farm may grow on the island) and where an INSEL5 island's value comes from; then add the field with a stream bump.
 
 ## OQ-153: A city on a link island (new, T9 S14 stage 2 2026-10-23)
@@ -1418,3 +1418,10 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What we know:** the original places the link islands while it reads the `ERZE` record (`0x1000a25c`), before the state series of `SPIELER` blocks, so a `STADT2` there could name a tile of a link island. The rebuild resolves and places the links after `load_scenario` has read the whole file, so such a city finds no island and becomes `CityOffIsland` (and is skipped).
 - **What the rebuild does:** as said; P: 0 `CityOffIsland` warnings in the 50 scenarios (every `STADT2` lies on an `INSEL5` island).
 - **How to resolve:** if a scenario needs it, let `place_island_links` re-run the `STADT2` lookup for the cities that found no island.
+
+## OQ-154: Does anything draw between the scene's HEAD and ERZE, and when does the world reset run? (new, T9 S14 stage 2 2026-10-23; O-35)
+- **Status:** open, RE
+- **Area:** simulation / PRNG timeline
+- **What we know:** the original creates the world at `HEAD` and sets its cursor to the seed (world property 8, `docs/re/annoscene.md` §4); the island selection draws at `ERZE` (`0x1000a25c`). Between them the file holds `WARETYPE`, `SKTIMER`, `MONOPOL`/`MONOPOL2`, `LIMITS`, `COMPPROFIL2`, the header-series `SPIELER` blocks and the `INSEL5` islands, which go to the world's chunk reader (world slot `+0x78`); their readers were not read for draws. One vtable call at slot `+0xb4` right after the player `HEAD` reader (AnnoWelt `0x1001d538`) is on the player object, so probably not the world draw, but it is not resolved. The world reset `0x100af240` sets the cursor to 0; when it runs relative to a scene load is open (§4). The template load inside the placement (world slot `+0x88`) is not traced for draws either.
+- **What the rebuild does:** the selection's draws start at `spec.seed` mod the table length (`resolve_scenario_links`), as if nothing drew between `HEAD` and `ERZE`.
+- **How to resolve:** read the readers of those records and `0x1001d538`'s target for `+0xb4` calls; find the callers of `0x100af240` around a game start (AnnoFrame `0x10029100`).

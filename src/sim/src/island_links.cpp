@@ -144,8 +144,11 @@ resolve_island_links(std::span<const IslandLinkSpec> links, const LinkInputs& in
     // Step 1's order (IslandCandidateOrder::Sorted): bytewise by name, ties by index.
     std::vector<std::uint32_t> by_order(candidates.size());
     std::iota(by_order.begin(), by_order.end(), std::uint32_t{0});
-    std::stable_sort(by_order.begin(), by_order.end(), [&](std::uint32_t a, std::uint32_t b) {
-        return candidates[a].name < candidates[b].name;
+    // A total order (name, then index), so std::sort gives the stable result without
+    // the temporary buffer std::stable_sort allocates.
+    std::sort(by_order.begin(), by_order.end(), [&](std::uint32_t a, std::uint32_t b) {
+        const int c = candidates[a].name.compare(candidates[b].name);
+        return c != 0 ? c < 0 : a < b;
     });
 
     // Step 2 (0x1000964c–0x1000972b): per link the candidates of equal climate (INFO[0]),

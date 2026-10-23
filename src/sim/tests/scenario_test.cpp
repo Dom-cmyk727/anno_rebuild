@@ -30,8 +30,9 @@ namespace fs = std::filesystem;
 
 namespace {
 
-/// The run of the corpus case: 1 500 advances of 100 ms = 150 000 ticks = 300 s.
-constexpr int kAdvances = 1500;
+/// The run of the corpus case: 3 000 advances of 100 ms = 300 000 ms = 150 000 ticks (a tick is
+/// 2 ms, WorldClock::tick) = 5 game minutes.
+constexpr int kAdvances = 3000;
 constexpr std::uint32_t kStepMs = 100;
 
 fs::path expectations_path() {
@@ -293,7 +294,7 @@ TEST_CASE("scenario corpus: the ten scenarios with the most PROD2 buildings run 
         picked.push_back(i);
     }
     REQUIRE(picked.size() == 10);
-    // 20 000 ticks more than the corpus case: 1 500 + 400 advances of 100 ms.
+    // 20 000 ticks more than the corpus case: 400 more advances of 100 ms (50 ticks each).
     const auto results = anno::test::parallel_indexed(
         picked.size(),
         [&](std::size_t k) { return run_file(*dir, files[picked[k]], types, kAdvances + 400); },

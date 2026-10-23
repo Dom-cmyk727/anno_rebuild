@@ -1188,3 +1188,84 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
     - ctest `-R anno_sim` (sim and replay) with the game dir: 515/515. The full run with the game dir was not repeated because of the memory guard.
     - clang-format: clean. lint_sim: ok. `sim_stream.py --check`: agree.
     - WSL GCC 13.3 and Clang 18.1.3 at `-O3 -Werror`: 62 TUs clean, 502/502 with and without the game dir, g2/g3/g4 replay.
+
+## T9 — sim stage S13: island sweeps, growth, the drought machine — 2026-10-23 — status: FINISHED
+- Branch: task/T9-sim-s13-sweeps, code and docs at 1ad0805 (11 commits on ea38384) plus this report; worktree: C:\Users\altin\anno1503-T9.
+- Built (`docs/sim/state.md` §15 "S13 as implemented"):
+  - `island_tick.cpp` (new): first the island phase moved out of `scheduler.cpp` (one commit, no behaviour change, 502/502).
+  - `grow_chunk` (D 0x1008b5f0): runs at the growth cursor before each cursor step. In-bounds tiles, row-major (A14/F20 clip). `grow()` for growing types. Object and phase are written through the dirtying setters.
+  - `drought_tick` (D 0x1008aeb0), after the 300 s event (D 0x1008b8ab):
+    - plateau and strip gates with catch-up: the stamp moves by the period, never to `t`;
+    - `drought_strip` (the rectangle), then the `drought_tiles` seam once per strip (new signature with `DroughtStrip`);
+    - owner samples into the city mask when expanding at step 0; samples outside the island are skipped (F36);
+    - step, phase and ring advance; the plateau at the target; removal below ring 0.
+  - `start_drought_at` floors the centre (the constructor 0x10087280 does) and bounds the target ring to 2^31 − 1.
+  - `city_mask`: `ceil(city_slots / 32)` u32 words (O-55 closed).
+  - Config: `kMaxDroughtRing`; `drought_plateau_count` must be non-zero.
+  - `make_growth_types` and `g5_scenario`; the replay tool knows the growth registry.
+- Disassembly (read instruction by instruction, nothing committed):
+  - Read: 0x1008aeb0 with the strip loop 0x1008b4f7..0x1008b5be and the jump table 0x1008b5e0; 0x10087280; 0x10093a10; 0x1008b760; 0x1008b5f0 and its callees; the table 0x100ca0b8 (a permutation of the 64 in-chunk offsets).
+  - The §5.8 pseudo-code's gates, advance and ring bound were right; the tag is now D.
+  - Corrected in the spec first, in its own commit d107694:
+    - `step` is a group of eight tile offsets inside each chunk, not an offset along the side;
+    - each strip covers its whole side; ring 0 is the centre chunk, unclipped;
+    - the expanding strip at step 0 writes the city mask from four owner samples per anchor;
+    - the constructor floors, not the wrapper;
+    - the coordinates are world tiles.
+- Acceptance:
+  1. **Met.** All nine §15 S13 names are TEST_CASEs in `src/sim/tests/sweeps_test.cpp`; the timeline case also runs steps 4 / phases 2 / edge 16 and edge 4 / phases 5. Also present: "city mask with more than 32 city slots" (33 and 64; the bit of city 32 / 63 is in word 1; the loader accepts it) and "drought save load and hash in each of the three states". 23 cases in the file; sim suite 525/525.
+  2. **Met.** `grow_chunk` uses `find_growing` and the existing `grow()`, row-major, writing only through the setters; the tests check that exactly the visited chunks' digests change. The S7 sweep tests in `scheduler_test.cpp` are unchanged and pass. Only its drought cases changed: S7's refusal above 32 slots became the sized mask.
+  3. **Met.** The timeline was derived by hand in §5.8 before the code: 11 200 / 120 000 / 11 200 ticks, gone at T0 + 142 400. Both gates add the period to the stamp. The rectangle and the meaning of `step` are written down with addresses.
+  4. **Met.** G5: `synthetic::g5_scenario` (seed 514), 20 000 × 100 ms = 1 000 000 ticks. `fixtures/synthetic/sim/g5.log`: 21 checkpoints, 298 KB, our own data. Reproduced 21/21 by the test and by CTest `anno_sim_replay_g5_run`. Hand-derived asserts:
+     - field: counter 12 after 84 visits, ripe at 156 050; forest: counter 16 after 166 visits, ripe at 240 000;
+     - the six 300 s draws for cursor 514 (21 763, 4 940, 20 851, 18 662, 13 829, 30 900): only the 2nd and 6th pass % 20, so droughts start at 300 000 and 900 000;
+     - first drought: ring 3 at 305 000, plateau count 38 at 350 000, ring 1 retreating at 440 000, gone at 442 400; city 3 joins the mask at 304 050;
+     - the second drought **still runs at the end**: plateau, 88 counts. It started at 900 000, so it would end at 1 042 400.
+     - Goldens `s13_g5_*`.
+  5. **Met.** Path: `advance → Scheduler::advance → island_tick → grow_chunk → grow`. The tile effects remain the seam `drought_tiles` (O-15, default none), now OQ-140. Nothing in S13 draws: the callees of 0x1008b5f0 (AnnoGame 0x100037e0, 0x1000a570, 0x10007da0, 0x10007db0; AnnoWelt 0x1008f2d0) neither call 0x100a1740 nor read 0x100cb8f8, so O-13's PRNG part is closed. §6 lists the original's seamed tile-effect callees as possible draws.
+  6. **Met.** Addresses or spec sections for every rule. §5.8 confirmed or corrected first (D). New OQ-140. Generalisations for modded configurations are tagged N: sample offsets e/4 and 3e/4, an empty strip for phase >= 4 at ring >= 1.
+  7. **Met.** `kStateHashVersion` 107 → 108: `city_mask` is now serialised as u64 count + u32 words.
+     - G1–G4 hold no drought, so only the header moved them. g0, g1_players, s5 and s6 were re-baselined from `tools/sim_stream.py`; the C++ printed the same values and `--check` agrees.
+     - The rest are self-baselined; the event goldens are unchanged.
+     - g2/g3/g4.log were re-recorded and replay 6/6, 21/21, 21/21. The growth and drought commits moved no golden.
+  8. **Met.** Gates and mutation evidence below.
+  9. **Met.** §15 "S13 as implemented", the §5.4/§5.8 corrections, PLAN status (S13 in review), this section, the PR.
+- Gates (each through the heavy-job lock, final code 1ad0805):
+  - MSVC full build: warning-free.
+  - `ctest --preset msvc -j 16` with `ANNO_TEST_THREADS=16`: 852/852 without the game dir; **852/852 with `ANNO1503_GAME_DIR`, the full run** (430 s; the memory guard did not stop it).
+  - clang-format 23.1.3 `--dry-run --Werror` over all of `src`: clean.
+  - WSL GCC 13.3 and Clang 18.1.3, `-O3 -DNDEBUG -Werror` with the CI warning set, over formats, test_support, sim, the sim tests and anno-sim-replay (64 TUs each): no diagnostic. Sim tests: 0 failed with and without the game dir on both. g2–g5 replay on both.
+  - `tools/check_unix_warnings.sh` (all of `src`, viewer and GPU on, GCC and Clang, and the viewer without GPU): clean.
+  - `lint_sim.py` ok; self-test 64/0. `sim_stream.py --check`: agree. agree.py n.a. ASan not run locally (CI).
+- Mutation evidence (MSVC, the whole sim suite per mutant): 32 mutants, 31 killed, 1 equivalent in state; the list is in state.md.
+  - **in-bounds clip removed**: "edge chunks are clipped" and G5 fail;
+  - **catch-up `stamp = t`** (strip gate and plateau gate): "drought gate catches up" fails;
+  - **expanding ring past the target not becoming the plateau**: 5 fail, among them "drought machine timeline";
+  - others killed:
+    - ring bound `>=`, removal at ring 0, plateau `>`;
+    - the sample mutants, the mask in word 0, ring 0 clipped, the right column off by one chunk;
+    - the seam not called, no floor, the phase written only with a new object, the visit after the cursor step;
+    - no drought tick;
+    - drought tick before the 300 s event (killed by a case added after it survived);
+    - mask word count unchecked;
+    - review B's 11;
+  - equivalent: the record check after the seam dropped. It writes an emptied optional's storage, which nothing reads; UB only in the mutant.
+- Reviewers (two, read-only, one after the other):
+  - **A** (spec + disassembly): no behavioural bug; every address matched; the G5 numbers re-derived. Fixed:
+    - the target-ring bound in `start_drought_at` (a latent i32 overflow from a scripted radius), tested;
+    - the tile-effect description (every expanding tile is tested, only 0xe3 retreats, the kinds are PRODTYPE 226/227; OQ-140 narrowed);
+    - the possible draws of the seamed callees (§6);
+    - §4.8, §3.1, §5.4 (the P = 1 fault, the 0xce notice);
+    - three comments.
+  - **B** (acceptance + mutation analysis): items 1–7 met, every derivation correct.
+    - **Medium**, fixed: `drought_plateau_count = 0` was accepted and left a counter the loader refuses; it is now refused.
+    - Its ~11 likely survivors are closed by six new cases (u16 wrap of the strip gate, every sample of every anchor, edges 4 and 16, the clip per axis, the plateau's last count and ring 0 with a fifth phase, a seam that edits or removes the record), a find/find_growing check, and exact empty rectangles. Run as mutants: 11 killed, 1 equivalent.
+    - Stale I tags fixed.
+    - Left (low): two "no draw" checks are vacuous in their windows; G5's draw count is the real check.
+- Left open / questions:
+  - **OQ-140** (RE): what a drought does to tiles and cities. Island slot +0x140 = 0x100817c0 is unread, as are the AI message 0x11, the event 0x17 and the crop objects. Until it is read, a drought runs on schedule but changes no tile: the gameplay effect is missing.
+  - No owner decision arose: F36 is a fix (out-of-island reads), and the generalisations only touch modded configurations.
+  - The `1 << owner` without `% 32` mutant is caught only by UBSan (CI), not on MSVC.
+  - `g5.log` is 298 KB.
+- OQ numbers used: **OQ-140** only (OQ-134..139 left to T21).
+- Time spent / subagents used: two reviewer subagents (read-only); builds, 32 mutation runs and the gates by this session, one heavy job at a time.

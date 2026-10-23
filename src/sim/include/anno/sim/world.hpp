@@ -64,7 +64,9 @@ namespace anno::sim {
 // Stream at 107 (stage S12 fix-up): Rules gains timer0_clamp (the header scope).
 // Stream at 108 (stage S13): the drought's city_mask is u64 count + u32 words
 // (ceil(city_slots / 32) words, O-55) instead of one u32.
-inline constexpr std::uint32_t kStateHashVersion = 108;
+// Stream at 109 (task T22, OQ-131): the header's SimConfig gains figure_min_growth, the
+// figure record loses marked_for_delete and the figure registry its deferred list.
+inline constexpr std::uint32_t kStateHashVersion = 109;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

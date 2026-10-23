@@ -83,8 +83,8 @@ struct Stream {
 /// §9.3 row 1 for the original configuration: SimConfig, then Rules, with the
 /// values of docs/sim/state.md §3.
 void expected_config(Stream& s) {
-    for (const std::uint32_t x : {256U, 16U, 15U, 32U, 31U, 5U, 28U, 20U, 32U, 5U, 65U, 56U, 0x29U,
-                                  5U, 2U, 8U, 1U, 10U, 100U, 8U}) {
+    for (const std::uint32_t x : {256U, 16U, 15U,   32U, 31U, 5U, 28U, 20U, 32U,  5U,
+                                  65U,  56U, 0x29U, 5U,  2U,  8U, 1U,  10U, 100U, 8U}) {
         s.u32(x); // island_slots .. city_pass_count
     }
     for (const std::uint32_t x : {500U, 50U, 50U, 250U, 50U, 5000U, 2000U, 15000U, 7500U, 300U, 20U,
@@ -1391,7 +1391,7 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u8(0);  // no player
     }
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 108);
+    CHECK(sim::kStateHashVersion == 109);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);
@@ -1400,9 +1400,10 @@ TEST_CASE("state stream header and settings scopes") {
     CHECK(scope_offset(w, "players") == header_size + 36 + 38 + 25);
     CHECK(scope_offset(w, "islands") == header_size + 36 + 38 + 25 + 46);
     CHECK(scope_offset(w, "figures") == header_size + 36 + 38 + 25 + 46 + 8);
-    CHECK(scope_offset(w, "events") == header_size + 36 + 38 + 25 + 46 + 8 + 39);
-    CHECK(scope_offset(w, "timers_monopoly") == header_size + 36 + 38 + 25 + 46 + 8 + 39 + 8);
-    CHECK(bytes.size() == header_size + 36 + 38 + 25 + 46 + 8 + 39 + 8 + 193);
+    // figures: 31 bytes (the empty registry without the deferred list, T22).
+    CHECK(scope_offset(w, "events") == header_size + 36 + 38 + 25 + 46 + 8 + 31);
+    CHECK(scope_offset(w, "timers_monopoly") == header_size + 36 + 38 + 25 + 46 + 8 + 31 + 8);
+    CHECK(bytes.size() == header_size + 36 + 38 + 25 + 46 + 8 + 31 + 8 + 193);
 }
 
 TEST_CASE("state hash moves with every config rules settings and seam field") {

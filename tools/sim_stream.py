@@ -63,7 +63,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 108
+STATE_HASH_VERSION = 109
 PRNG_TIMELINE_VERSION = 1
 
 

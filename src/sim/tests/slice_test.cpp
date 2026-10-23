@@ -698,7 +698,7 @@ TEST_CASE("merge creates figures in order with the world's ids slots and events"
     const sim::FigureRegistry& reg = w.figures();
     REQUIRE(reg.list.slots[0].has_value());
     REQUIRE(reg.list.slots[1].has_value());
-    CHECK(reg.list.slots.size() == 10); // 1 -> 10 with the second insert (D 0x10026a00)
+    CHECK(reg.list.slots.size() == 100); // 1 -> 100 with the second insert (D 0x10099185)
     CHECK(reg.list.hint == 1);
     const sim::Figure& a = *reg.list.slots[0];
     const sim::Figure& b = *reg.list.slots[1];
@@ -1496,9 +1496,10 @@ struct SyncModel {
             }
         }
         if (!found) {
+            // The figure registry's growth: n + n/4, at least 100 (D 0x10099185, T22).
             std::size_t grown = n + n / 4;
-            if (grown < 10) {
-                grown = 10;
+            if (grown < 100) {
+                grown = 100;
             }
             if (grown <= n) {
                 grown = n + 1;
@@ -2023,11 +2024,12 @@ TEST_CASE("figure registry creation follows the group list policy") {
         f.id = sim::FigureId{id};
         return f;
     };
-    // The first fits the fresh slot; the second grows the list 1 -> 10.
+    // The first fits the fresh slot; the second grows the list 1 -> 100
+    // (figure_min_growth, D 0x10099185).
     CHECK(sim::add_figure(r, fig(1), cfg, rules) == 0);
     CHECK(r.list.slots.size() == 1);
     CHECK(sim::add_figure(r, fig(2), cfg, rules) == 1);
-    CHECK(r.list.slots.size() == 10);
+    CHECK(r.list.slots.size() == 100);
     CHECK(r.list.hint == 1);
     // An invalid id and a duplicate create nothing.
     CHECK(sim::add_figure(r, sim::Figure{}, cfg, rules) == sim::kNoSlot);
@@ -2044,7 +2046,7 @@ TEST_CASE("figure registry creation follows the group list policy") {
     CHECK(sim::find_figure(r, sim::FigureId{3}) == nullptr);
     r.by_id[sim::FigureId{3}] = 1; // the slot holds figure 2
     CHECK(sim::find_figure(r, sim::FigureId{3}) == nullptr);
-    r.by_id[sim::FigureId{3}] = 700;
+    r.by_id[sim::FigureId{3}] = 7000;
     CHECK(sim::find_figure(r, sim::FigureId{3}) == nullptr);
     r.by_id[sim::FigureId{3}] = static_cast<sim::Slot>(r.list.slots.size()); // one past the end
     CHECK(sim::find_figure(r, sim::FigureId{3}) == nullptr);
@@ -2053,10 +2055,12 @@ TEST_CASE("figure registry creation follows the group list policy") {
     CHECK(r.by_id.size() == 2);
     CHECK(r.by_id.at(sim::FigureId{1}) == 0);
     CHECK(r.by_id.at(sim::FigureId{2}) == 1);
-    // The configuration decides the first size and the growth.
+    // The configuration decides the first size and the growth (figure_min_growth, not
+    // the building lists' list_min_growth).
     sim::SimConfig mod;
     mod.list_initial_size = 3;
-    mod.list_min_growth = 20;
+    mod.figure_min_growth = 20;
+    mod.list_min_growth = 50;
     sim::FigureRegistry m = sim::make_figure_registry(mod);
     CHECK(m.list.slots.size() == 3);
     for (std::uint64_t i = 1; i <= 4; ++i) {
@@ -2149,7 +2153,7 @@ TEST_CASE("figure registry validation names each broken fact") {
         sim::add_figure(good, f, cfg, rules);
     }
     good.expiry = {sim::FigureId{2}};
-    good.list.slots[1]->expiry_stamp = 100; // on the expiry list, ended: no home
+    good.list.slots[1]->expiry_stamp = 100;        // on the expiry list, ended: no home
     good.list.slots[0]->home = sim::BuildingId{5}; // still out: holds a counter
     REQUIRE(sim::validate_figures(good, ids) == "");
     struct Row {
@@ -2160,8 +2164,8 @@ TEST_CASE("figure registry validation names each broken fact") {
     const std::vector<Row> rows = {
         {"no slot", [](sim::FigureRegistry& r) { r.list.slots.clear(); }, "has no slot"},
         {"hint below", [](sim::FigureRegistry& r) { r.list.hint = -2; }, "figures.list.hint"},
-        {"hint beyond", [](sim::FigureRegistry& r) { r.list.hint = 10; }, "figures.list.hint"},
-        {"cursor beyond", [](sim::FigureRegistry& r) { r.list.cursor = 10; },
+        {"hint beyond", [](sim::FigureRegistry& r) { r.list.hint = 100; }, "figures.list.hint"},
+        {"cursor beyond", [](sim::FigureRegistry& r) { r.list.cursor = 100; },
          "figures.list.cursor"},
         {"id zero",
          [](sim::FigureRegistry& r) {
@@ -2204,9 +2208,9 @@ TEST_CASE("figure registry validation names each broken fact") {
     // The edges that are fine: the hint -1 and n - 1, the cursor n - 1, id next_figure - 1.
     sim::FigureRegistry edge = good;
     edge.list.hint = -1;
-    edge.list.cursor = 9;
+    edge.list.cursor = 99; // n = 100 (figure_min_growth)
     CHECK(sim::validate_figures(edge, ids) == "");
-    edge.list.hint = 9;
+    edge.list.hint = 99;
     CHECK(sim::validate_figures(edge, ids) == "");
     sim::IdCounters tight;
     tight.next_figure = 4;
@@ -2429,9 +2433,9 @@ TEST_CASE("ids figures and events reject hostile streams") {
              sim::WorldTestAccess::figures(w).list.slots[1]->id = sim::FigureId{1};
          },
          "used twice"},
-        {"hint beyond", [](sim::World& w) { sim::WorldTestAccess::figures(w).list.hint = 10; },
+        {"hint beyond", [](sim::World& w) { sim::WorldTestAccess::figures(w).list.hint = 100; },
          "figures.list.hint"},
-        {"cursor beyond", [](sim::World& w) { sim::WorldTestAccess::figures(w).list.cursor = 10; },
+        {"cursor beyond", [](sim::World& w) { sim::WorldTestAccess::figures(w).list.cursor = 100; },
          "figures.list.cursor"},
         {"expiry unknown",
          [](sim::World& w) { sim::WorldTestAccess::figures(w).expiry = {sim::FigureId{9}}; },

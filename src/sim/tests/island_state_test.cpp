@@ -2004,13 +2004,14 @@ TEST_CASE("load refuses a header whose config has a zero divisor before any cont
     const std::vector<std::uint8_t> good = w.save();
     // The header section starts at byte 21 (13 + its u64 length): u32 stream
     // version, u32 PRNG timeline version, then SimConfig. island_slots is its
-    // first field, chunk_edge its 16th, building_div its 20th.
+    // first field, chunk_edge its 16th, building_div its 21st (figure_min_growth, T22,
+    // is the 19th).
     constexpr std::size_t kConfig = 21 + 8;
     REQUIRE(island_test::get32(good, kConfig) == 256);
-    REQUIRE(island_test::get32(good, kConfig + 4 * 19) == 500);
+    REQUIRE(island_test::get32(good, kConfig + 4 * 20) == 500);
     SUBCASE("a zero divisor") {
         std::vector<std::uint8_t> bad = good;
-        island_test::put32(bad, kConfig + 4 * 19, 0);
+        island_test::put32(bad, kConfig + 4 * 20, 0);
         island_test::reseal(bad);
         const std::string err = island_test::load_error(bad);
         CHECK(contains(err, "SimConfig.building_div"));

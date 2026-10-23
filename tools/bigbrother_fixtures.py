@@ -175,6 +175,9 @@ def files() -> dict[str, bytes]:
         "bad_then.sze": scenario(GRAMMAR.replace(b"> 49 THEN", b"> 49")),
         "bad_semicolon.sze": scenario(GRAMMAR.replace(b" DONE = TRUE;", b" DONE = TRUE REFRESH;")),
         "bad_define.sze": scenario(GRAMMAR.replace(b"12,34,5678", b"12")),
+        # nested deeper than the readers' default limit (256): refused, not a crash
+        "bad_deep.sze": scenario(GRAMMAR.replace(b"IF (TIMER_2 < 30 || TIMER_2 > 90)",
+                                                 b"IF " + b"(" * 300 + b"TIMER_2 < 30" + b")" * 300)),
         "bad_two.sze": chunk(b"ANNOADDON1", chunk(b"SCENE", chunk(b"BIGBROTHER", GRAMMAR) * 2)),
         "bad_none.sze": chunk(b"ANNOADDON1", chunk(b"SCENE", chunk(b"NOTES", b"synthetic fixture"))),
     }

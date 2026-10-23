@@ -174,6 +174,23 @@ class Synthetic(unittest.TestCase):
                         with self.assertRaises(bb.ScriptError):
                             bb.payload(path)
 
+    def test_a_condition_deeper_than_the_limit_is_refused(self):
+        n = bb.MAX_CONDITION_DEPTH
+
+        def cond(text: str, **kw):
+            return bb.parse(bb.SAMPLE.replace(SAMPLE_COND, text.encode()), **kw)
+
+        chain = lambda k, op="&&": " ".join([f"A{i} {op}" for i in range(k)] + [f"A{k}"])
+        nest = lambda k: "(" * k + "A" + ")" * k
+        cond(chain(n))
+        cond(nest(n))
+        cond("A && (" + nest(n - 2) + ")")
+        for text in (chain(n + 1), nest(n + 1), "A && (" + nest(n - 1) + ")", nest(100000),
+                     chain(3000) + " || Z"):
+            with self.subTest(text=text[:20]), self.assertRaises(bb.ScriptError):
+                cond(text)
+        cond(nest(400), max_condition_depth=400)
+
     def test_an_unknown_section_is_kept_not_refused(self):
         # The interpreter also knows STARTUP (OQ-122); a section of another name is kept as read.
         for data in (bb.SAMPLE + b"[STARTUP]\nSPEED = 2\r\n",

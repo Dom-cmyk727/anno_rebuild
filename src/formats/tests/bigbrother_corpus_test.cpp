@@ -5,6 +5,8 @@
 #include <map>
 #include <set>
 #include <string>
+#include <tuple>
+#include <vector>
 
 #include <doctest/doctest.h>
 
@@ -87,6 +89,7 @@ bool differs_from_c(const bb::Condition& c) {
     std::set<std::string> names;
     atoms(c, names);
     const std::vector<std::string> list(names.begin(), names.end());
+    REQUIRE(list.size() < 24); // a truth table of at most 2^23 rows
     const bb::Grouped g = bb::grouped(c);
     for (std::size_t bits = 0; bits < (std::size_t{1} << list.size()); ++bits) {
         Truth v;

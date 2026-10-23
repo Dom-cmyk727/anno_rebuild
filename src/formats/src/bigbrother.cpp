@@ -295,12 +295,20 @@ R<Primary> primary(Cursor& c) {
     return p;
 }
 
-R<Condition> condition(Cursor& c) {
+/// `base`: the nesting depth of this condition (Options::max_condition_depth). Its term after
+/// `i` connectives lies at depth `base + i` of the grouped tree; a group adds one level.
+R<Condition> condition(Cursor& c, std::size_t base, std::size_t max_depth) {
     Condition g;
     while (true) {
         Term term;
+        const std::size_t level = base + g.connectives.size();
+        const bool group = c.is_op("(");
+        if (level + (group ? 1U : 0U) > max_depth) {
+            return c.fail("condition nested deeper than " + std::to_string(max_depth) +
+                          " levels (Options::max_condition_depth)");
+        }
         if (c.take(TokenKind::Operator, "(") != nullptr) {
-            auto inner = condition(c);
+            auto inner = condition(c, level + 1, max_depth);
             if (!inner) {
                 return inner.error();
             }
@@ -406,7 +414,7 @@ R<std::vector<Statement>> block(Cursor& c) {
     return body;
 }
 
-R<std::vector<KernelItem>> parse_kernel(Cursor c) {
+R<std::vector<KernelItem>> parse_kernel(Cursor c, const Options& options) {
     std::vector<KernelItem> items;
     while (!c.done()) {
         const Token* t = c.take(TokenKind::Name);
@@ -444,7 +452,7 @@ R<std::vector<KernelItem>> parse_kernel(Cursor c) {
             items.emplace_back(
                 Assign{n->text, std::move(v).value(), true, semi.value(), t->offset});
         } else if (t->text == "IF") {
-            auto cond = condition(c);
+            auto cond = condition(c, 0, options.max_condition_depth);
             if (!cond) {
                 return cond.error();
             }
@@ -603,10 +611,12 @@ R<bool> parse_defines(Bytes text, const std::vector<Token>& toks, std::size_t fi
     if (sec.kind == SectionKind::Camera && camera_lines == 0) {
         return error_at(end_offset, "no position");
     }
-    for (std::size_t i = 0; i < names.size(); ++i) { // every name once (P: 50 of 50)
-        for (std::size_t j = 0; j < i; ++j) {
+    // Every name once (P: 50 of 50). Named as the reference does: the first name that occurs
+    // twice, at its second occurrence.
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        for (std::size_t j = i + 1; j < names.size(); ++j) {
             if (names[j].first == names[i].first) {
-                return error_at(names[i].second, shown(names[i].first) + " defined twice");
+                return error_at(names[j].second, shown(names[i].first) + " defined twice");
             }
         }
     }
@@ -695,7 +705,7 @@ std::span<const std::string_view> subjects() {
     return kSubjects;
 }
 
-Result<Script, Error> parse(Bytes text) {
+Result<Script, Error> parse(Bytes text, const Options& options) {
     auto lexed = lex(text);
     if (!lexed) {
         return lexed.error();
@@ -749,7 +759,7 @@ Result<Script, Error> parse(Bytes text) {
                                         [&](const KnownSection& s) { return s.name == sec.name; });
         sec.kind = known == kKnownSections.end() ? SectionKind::Unknown : known->kind;
         if (sec.kind == SectionKind::Kernel) {
-            auto items = parse_kernel(Cursor(text, toks, first + 1, last, sec.name));
+            auto items = parse_kernel(Cursor(text, toks, first + 1, last, sec.name), options);
             if (!items) {
                 return items.error();
             }
@@ -848,6 +858,9 @@ std::string canonical_integer(std::string_view number) {
 }
 
 Grouped grouped(const Condition& condition) {
+    if (condition.terms.empty()) { // not from parse: an empty leaf
+        return Grouped{};
+    }
     std::vector<Grouped> items;
     items.reserve(condition.terms.size());
     for (const auto& t : condition.terms) {

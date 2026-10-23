@@ -19,7 +19,8 @@ script format (T17).
 Design. The lexer turns EVERY byte into exactly one token (whitespace, newlines and `$` comments
 are tokens too); the text is Latin-1, which maps bytes to characters 1:1. The parser builds the
 tree over the significant tokens and must account for all of them, so anything outside the grammar
-read from the 50 shipped scripts is an error, not a fallback. Emission walks the tree's sections
+read from the 50 shipped scripts is an error, not a fallback; only a section of an unknown name is
+kept unread (STARTUP, OQ-122). Emission walks the tree's sections
 and concatenates their tokens, so the round trip is byte-identical by construction and is checked.
 
 Doctests (synthetic text of our own, no content of the original): `python -I -m doctest tools/bigbrother.py`;
@@ -83,6 +84,12 @@ COMPARE = ("==", "<", ">")          # the comparisons the scripts use (P); != <=
 BOOL = ("TRUE", "FALSE")
 KEYWORDS = ("INITBLOCK", "SET", "IF", "THEN", "ELSE")
 RESERVED = KEYWORDS + BOOL          # never a variable, signal, call or query name (P)
+# How deep a condition may nest: along any path of its grouping (`grouped`), the connectives plus
+# the parentheses. The parser and the walks here recurse once per level, as the interpreter's
+# condition parser does (AnnoScene 0x10022bf0 recurses on each connective and group), so a deeper
+# (modded) script is refused instead of hitting the recursion limit. The shipped scripts need 21
+# (P). The same default as the C++ reader's Options::max_condition_depth; parse() takes another.
+MAX_CONDITION_DEPTH = 256
 
 # A synthetic script in the shipped shape (LF headers and define lines, CRLF script lines), for the
 # doctests: no text of the original.
@@ -331,12 +338,17 @@ def primary(c: Cursor) -> Primary:
     return p
 
 
-def condition(c: Cursor, depth: int = 0) -> Group:
+def condition(c: Cursor, base: int = 0, max_depth: int = MAX_CONDITION_DEPTH) -> Group:
+    """`base`: the nesting depth of this condition; its term after i connectives lies at depth
+    base + i of the grouped tree, and a group adds one level (see MAX_CONDITION_DEPTH)."""
     items = []
     while True:
+        level = base + len(items) // 2
+        if level + c.is_("OP", "(") > max_depth:
+            c.fail(f"condition nested deeper than {max_depth} levels")
         if c.is_("OP", "("):
             c.take()
-            items.append(condition(c, depth + 1))
+            items.append(condition(c, level + 1, max_depth))
             c.take("OP", ")")
         else:
             items.append(primary(c))
@@ -392,7 +404,7 @@ def block(c: Cursor) -> list:
     return body
 
 
-def parse_kernel(body: list[Tok]) -> list:
+def parse_kernel(body: list[Tok], max_depth: int = MAX_CONDITION_DEPTH) -> list:
     c = Cursor(body, "[SCRIPT_KERNEL]")
     items = []
     while not c.done():
@@ -407,7 +419,7 @@ def parse_kernel(body: list[Tok]) -> list:
             v = value(c)
             items.append(Assign(name, v, True, end(c), t.off))
         elif t.text == "IF":
-            cond = condition(c)
+            cond = condition(c, 0, max_depth)
             if not c.is_("IDENT", "THEN"):
                 c.fail(f"expected THEN for the IF at offset {t.off}")
             c.take()
@@ -422,7 +434,7 @@ def parse_kernel(body: list[Tok]) -> list:
     return items
 
 
-def parse(data: bytes) -> Script:
+def parse(data: bytes, max_condition_depth: int = MAX_CONDITION_DEPTH) -> Script:
     """Offsets in errors count from the start of the payload (the chunk's data)."""
     toks = lex(data.decode(ENCODING))
     heads = [i for i, t in enumerate(toks) if t.kind == "SECTION"]
@@ -442,7 +454,7 @@ def parse(data: bytes) -> Script:
         if name not in SECTIONS:        # e.g. STARTUP (OQ-122): kept as read, not interpreted
             items = []
         elif name == "[SCRIPT_KERNEL]":
-            items = parse_kernel(body)
+            items = parse_kernel(body, max_condition_depth)
         else:
             items = parse_defines(name, body)
         sections.append(Section(name, toks[i:j], items))
@@ -597,8 +609,10 @@ def read_on(script: Script) -> list[tuple]:
     later statement, in a comment, or past the block's '}'. Returns one (statement, end, lost)
     per such statement: `end` is the payload offset of that ';', `lost` the statements of the same
     block that start before it, which are read into the statement and dropped (an action's reader
-    ignores the text after its arguments). A ';' past the '}' loses nothing, because the kernel
-    reader resumes after the '}'. `end` None: no ';' follows in the kernel text, and the
+    ignores the text after its arguments). What lies past the block's '}' is not lost, because the
+    kernel reader resumes after the '}'. Not modelled (no shipped case): when that ';' stands in a
+    comment or a string with text after it, the interpreter's next statement starts right after
+    the ';'. `end` None: no ';' follows in the kernel text, and the
     interpreter refuses the kernel ("FunktionsBlock nicht oder falsch definiert", 0x1003f7c4). A
     top-level SET without ';' is not listed: it loses nothing (the reader takes the next word)."""
     text = script.emit().decode(ENCODING)

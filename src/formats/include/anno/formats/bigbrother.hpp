@@ -225,10 +225,25 @@ struct Script {
     Camera camera;
 };
 
-/// Parses a script (the BIGBROTHER payload). Anything outside the grammar
-/// read from the 50 shipped scripts is refused, with the offending offset
-/// and line.
-Result<Script, Error> parse(Bytes text);
+/// The default of Options::max_condition_depth (the same as
+/// tools/bigbrother.py MAX_CONDITION_DEPTH).
+inline constexpr std::size_t kMaxConditionDepth = 256;
+
+struct Options {
+    /// How deep a condition may nest: along any path of its grouped tree
+    /// (`grouped`), the connectives plus the parentheses. Reason: the parser
+    /// and every walk of a condition here recurse once per level, as the
+    /// original's condition parser does (AnnoScene 0x10022bf0 recurses on each
+    /// connective and each group), so an unbounded depth in a modded script
+    /// would overflow the stack instead of returning an Error. The shipped
+    /// scripts need 21 (P); raise it here for deeper ones.
+    std::size_t max_condition_depth = kMaxConditionDepth;
+};
+
+/// Parses a script (the BIGBROTHER payload). Text outside the grammar read
+/// from the 50 shipped scripts is refused, with the offending offset and
+/// line; a section of an unknown name is kept unread (`SectionKind::Unknown`).
+Result<Script, Error> parse(Bytes text, const Options& options = {});
 
 /// The script's bytes: its tokens in order (the input of `parse`).
 ByteBuffer emit(const Script& script);
@@ -281,7 +296,10 @@ struct ReadOn {
     /// interpreter then refuses the whole kernel).
     std::optional<std::size_t> end;
     /// The statements of the same block that start before `end`: read into
-    /// the statement and lost. A `;` past the `}` loses nothing.
+    /// the statement and lost. What lies past the block's `}` is not lost: the
+    /// reader resumes after the `}`. Not modelled (no shipped case): when that
+    /// `;` stands in a comment or a string with text after it, the
+    /// interpreter's next statement starts right after the `;`.
     std::vector<const Statement*> lost;
 };
 

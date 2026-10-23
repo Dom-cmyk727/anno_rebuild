@@ -114,7 +114,8 @@ value     = "TRUE" | "FALSE" | NUMBER | STRING ;
 
   **The interpreter reads on (D, `annoscene.md` §12; OQ-121 closed):**
   - **In a block** (`INITBLOCK`, THEN, ELSE), a statement is the text up to the next `;` anywhere in the kernel text (`strpbrk`, `0x1001cbca`). That `;` can be in a later statement, in a comment or past the block's `}`.
-  - **What it swallows:** the action's reader takes its arguments and ignores the rest, so every statement that starts before that `;` is lost. A `;` past the `}` loses nothing, because the reader resumes after the `}`. With no `;` left in the kernel, the interpreter refuses the whole kernel.
+  - **What it swallows:** the action's reader takes its arguments and ignores the rest, so every statement that starts before that `;` is lost. What lies past the block's `}` is not lost, because the reader resumes after the `}`. With no `;` left in the kernel, the interpreter refuses the whole kernel.
+  - **Not modelled by the readers** (no shipped case): when that `;` stands in a comment or in a later statement's string with text after it, the interpreter's next statement starts right after the `;`. The one `;` in a comment that the corpus reads on to (S01_02_01) ends its line.
   - **At the top level**, `SET` takes its value and goes on at the next word, so a missing `;` there is harmless. `QUESTLOG_DRAW;` and `QUESTLOG_DRAW();` read the same (the action takes no argument).
   - **The four shipped cases** (P):
     - `SET_PROFILE(…)` (S01_02_01) runs on to the `;` of a commented-out line in its block: nothing lost;
@@ -537,6 +538,9 @@ Total: 284 names = 159 script + 125 other.
   - `find_payload` finds the chunk in a scenario or a savegame;
   - `grouped` and `read_on` are the interpreter's reading of §3.4. No evaluation.
 - **No limits compiled in:** the six section names of §3, the three object kinds of §3.1 and the three subjects of §3.4 are tables; numbers are kept as written. The names of §4–§6 are not known to the reader: a call is a name plus values.
+- **One limit, an option:** `Options::max_condition_depth` (default `kMaxConditionDepth` = 256; the reference's `MAX_CONDITION_DEPTH`). It bounds how deep a condition nests: along any path of its grouping, the connectives plus the parentheses.
+  - **Reason:** the parser and every walk of a condition recurse once per level. So does the interpreter (`0x10022bf0` recurses on each connective and group). Without a bound, a deep modded script would overflow the stack instead of being refused.
+  - **The corpus needs 21** (P).
 - **Tests:** `src/formats/tests/bigbrother_test.cpp` (synthetic) and `bigbrother_corpus_test.cpp` (`ANNO1503_GAME_DIR`). The corpus case asserts:
   - 50/50 byte-identical;
   - the counts of §3.4, plus 4 statements without `;`, 1 call without `()`, 24 timer and 429 variable primaries, 1,273 comments, 147 variables and 37 scripts with statements;
@@ -553,7 +557,7 @@ Total: 284 names = 159 script + 125 other.
 # <path>
 SCRIPT bytes=<n> tokens=<n> sections=<n> crlf=<n> lf=<n>
 [OBJECT_DEFINE]
-  <kind> "<name>" <n>[,<n>,<n>]                     one per line; numbers as values
+  <kind> "<name>" <n>[,<n>,<n>]                     one per line
 [AREA_DEFINE]
   "<name>" <a>,<b>,<c>,<d>
 [PLAYERMAPPER_DEFINE]
@@ -563,7 +567,7 @@ SCRIPT bytes=<n> tokens=<n> sections=<n> crlf=<n> lf=<n>
     CALL <name>(<v>, ...)[  (no ())][  (no ;)][  <read-on note>][  (LOST: read into the statement before)]
     <name> = <v>[  (no ;)][  <read-on note>][  (LOST: ...)]
   SET <name> = <v>[  (no ;)]
-  IF <condition as written, in parentheses> THEN
+  IF <condition (describe): terms blank-separated, in parentheses> THEN
      grouped by the interpreter: <grouping>          only for a mixed condition
     <statements>
   ELSE
@@ -572,12 +576,12 @@ SCRIPT bytes=<n> tokens=<n> sections=<n> crlf=<n> lf=<n>
   <name> = TRUE|FALSE
 [CAMARAPOS]
   <x>,<y>
-[<OTHER>]  (not read: <n> tokens kept)
+[<OTHER>]  (not read: <n> tokens kept)               <n> without the header
 TOKEN <offset> <NEWLINE|WS|COMMENT|SECTION|STRING|NUMBER|IDENT|OP> <text>   --full: every token
 ```
 - **Read-on notes:**
   - `(reads on to the ';' at offset <n>; loses <k> statement(s))`;
   - `(the interpreter refuses the kernel: no ';' follows)`.
-- **Values** are as written: strings with their quotes.
-- **Escaping:** every byte outside printable ASCII, and `\`, prints as `\xHH`, so the text is ASCII on every platform.
-- **Refusals:** a file whose script is refused, or that has no single `BIGBROTHER` chunk, prints `NOPARSE` (the reason goes to stderr), and the exit code is 1.
+- **Values:** kernel values print as written, strings with their quotes. Every define number (objects, areas, slots, the camera) prints as its decimal value (`-0`, `007` print `0`, `7`).
+- **Escaping:** in every line but `# <path>` (printed as given), each byte outside printable ASCII, and `\`, prints as `\xHH`. So a script's text is ASCII on every platform.
+- **Refusals:** a file whose script is refused, or that has no single `BIGBROTHER` chunk, prints `NOPARSE` (the reason goes to stderr), and the exit code is 1. A file that cannot be read prints nothing on stdout (`<path>: cannot read` on stderr), and the exit code is 1.

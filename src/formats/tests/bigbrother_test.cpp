@@ -10,7 +10,6 @@
 #include <doctest/doctest.h>
 
 #include <anno/formats/bigbrother.hpp>
-#include <anno/formats/chunk.hpp>
 #include <anno/test/game_dir.hpp>
 
 namespace bb = anno::formats::bigbrother;
@@ -131,6 +130,7 @@ bool differs_from_c(const bb::Condition& c) {
     std::set<std::string> names;
     atoms(c, names);
     const std::vector<std::string> list(names.begin(), names.end());
+    REQUIRE(list.size() < 24); // a truth table of at most 2^23 rows
     const bb::Grouped g = bb::grouped(c);
     for (std::size_t bits = 0; bits < (std::size_t{1} << list.size()); ++bits) {
         Truth v;
@@ -629,6 +629,43 @@ TEST_CASE("bigbrother: two statements without semicolon in a row, and the kernel
         REQUIRE(plain.size() == 1);
         CHECK(plain[0].end.has_value());
     }
+}
+
+TEST_CASE("bigbrother: a condition nested deeper than the limit is refused, not a crash") {
+    const std::string text = script_of("grammar.sze");
+    const auto chain = [](std::size_t connectives, std::string_view op) {
+        std::string s = "A0";
+        for (std::size_t i = 1; i <= connectives; ++i) {
+            s += std::string(" ") + std::string(op) + " A" + std::to_string(i);
+        }
+        return s;
+    };
+    const auto nest = [](std::size_t groups) {
+        return std::string(groups, '(') + "A" + std::string(groups, ')');
+    };
+    const auto parses = [&](const std::string& cond, const bb::Options& options = {}) {
+        const ByteBuffer b = to_bytes(replaced(text, kFirstCondition, cond));
+        return bb::parse(b, options).ok();
+    };
+    CHECK(bb::Options{}.max_condition_depth == bb::kMaxConditionDepth);
+    // Along a path: the connectives plus the parentheses.
+    CHECK(parses(chain(bb::kMaxConditionDepth, "&&")));
+    CHECK_FALSE(parses(chain(bb::kMaxConditionDepth + 1, "&&")));
+    CHECK(parses(nest(bb::kMaxConditionDepth)));
+    CHECK_FALSE(parses(nest(bb::kMaxConditionDepth + 1)));
+    CHECK(parses("A && (" + nest(bb::kMaxConditionDepth - 2) + ")"));
+    CHECK_FALSE(parses("A && (" + nest(bb::kMaxConditionDepth - 1) + ")"));
+    // Far beyond it: an Error, no stack overflow.
+    CHECK_FALSE(parses(nest(100000)));
+    CHECK_FALSE(parses(chain(3000, "&&") + " || Z"));
+    // The limit is an option.
+    CHECK(parses(nest(400), bb::Options{400}));
+    CHECK(parses(chain(400, "||"), bb::Options{400}));
+    const ByteBuffer deep = to_bytes(replaced(text, kFirstCondition, nest(300)));
+    auto e = bb::parse(deep);
+    REQUIRE_FALSE(e);
+    CHECK(e.error().line == 21);
+    CHECK(e.error().offset == text.find(kFirstCondition) + 256);
 }
 
 TEST_CASE("bigbrother: the reader keeps no vocabulary") {

@@ -2694,10 +2694,9 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     m.ref = std::make_unique<DeviceRef>(c);
     m.limits = limits;
     m.adapter_type = c.adapter_type;
-    // The wave window's bound (GpuLimits::fluid_max_cells_per_px): given, or on an adapter
-    // that is not discrete the default; a discrete adapter keeps the unbounded window.
-    m.fluid_cells_cap = limits.fluid_max_cells_per_px.value_or(
-        c.adapter_type == WGPUAdapterType_DiscreteGPU ? 0.0 : fluid::kDefaultMaxCellsPerPx);
+    // The wave window's bound (GpuLimits::fluid_max_cells_per_px), the same on every
+    // adapter (OQ-130); a negative or NaN value is no bound.
+    m.fluid_cells_cap = limits.fluid_max_cells_per_px > 0.0 ? limits.fluid_max_cells_per_px : 0.0;
     m.max_layers = std::max(device_limits.maxTextureArrayLayers, 1U);
     if (limits.max_atlas_layers != 0) {
         m.max_layers = std::min(m.max_layers, limits.max_atlas_layers);

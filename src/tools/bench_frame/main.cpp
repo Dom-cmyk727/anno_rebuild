@@ -173,7 +173,7 @@ struct Options {
     /// --wave-sim on|off: GpuLimits::wave_simulation (enhanced water's wave simulation).
     std::optional<bool> wave_sim;
     /// --fluid-cells-per-px x: GpuLimits::fluid_max_cells_per_px (0 = no bound; default:
-    /// the automatic choice by adapter type).
+    /// fluid::kDefaultMaxCellsPerPx on every adapter).
     std::optional<double> fluid_cells;
     /// --cost-png dir: --scale-cost writes the last timed frame of every point as a PNG
     /// (<scene>_<w>x<h>_<style>_L<group>_s<scale>.png).

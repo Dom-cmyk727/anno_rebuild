@@ -30,6 +30,7 @@
 #include <vector>
 
 #include <anno/render/chunk_reduce.hpp>
+#include <anno/render/fluid.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/render/resample.hpp>
 #include <anno/render/scene.hpp>
@@ -306,12 +307,11 @@ struct GpuLimits {
     /// (fluid::bounded_cells_per_tile, T14): its window covers the world area shown, so
     /// at a continuous zoom below scale 1 its cells, and its GPU time, grow with that
     /// area; above the bound the cells per tile are halved (coarser cells), and off
-    /// where one cell per tile is still denser. nullopt = automatic:
-    /// fluid::kDefaultMaxCellsPerPx (0.25) on an adapter that is not discrete, where the
-    /// unbounded window costs 42-106 ms per frame at the far zoom points (Radeon iGPU,
-    /// docs/perf/README.md "T14"), and no bound on a discrete adapter (0.2-2 ms there:
-    /// the look stays as it was; the owner decides, OQ-130). 0 = no bound.
-    std::optional<double> fluid_max_cells_per_px;
+    /// where one cell per tile is still denser. Default fluid::kDefaultMaxCellsPerPx
+    /// (0.25) on every adapter (owner decision OQ-130: the option that scales best in
+    /// dense late-game multiplayer; the unbounded window costs 42-106 ms per frame at the
+    /// far zoom points on the Radeon iGPU, docs/perf/README.md "T14"). 0 = no bound.
+    double fluid_max_cells_per_px = fluid::kDefaultMaxCellsPerPx;
     /// The cost tier of the river flow shading (docs/render/rivers.md 4 and 16).
     /// nullopt = automatic: High on a discrete adapter; on any other adapter the
     /// highest tier whose measured added cost over the legacy shimmer
@@ -499,7 +499,7 @@ class GpuFrame {
     /// the automatic choice made in create()).
     [[nodiscard]] RiverQuality river_quality() const;
     /// The wave simulation's bound in cells per screen pixel in use
-    /// (GpuLimits::fluid_max_cells_per_px, or the automatic choice; 0 = none).
+    /// (GpuLimits::fluid_max_cells_per_px; 0 = none).
     [[nodiscard]] double fluid_max_cells_per_px() const;
     /// One line describing an automatic choice that was measured (adapter, gate,
     /// the added cost per tier, or that the budget ran out); empty when the tier

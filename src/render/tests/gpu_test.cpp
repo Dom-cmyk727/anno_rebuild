@@ -2384,8 +2384,7 @@ TEST_CASE("the wave window is bounded in cells per screen pixel at far zoom") {
         gpu::GpuStats stats;
         std::vector<std::uint8_t> px;
     };
-    auto run = [&](std::optional<double> bound, bool wave_simulation,
-                   const gpu::ResampledView& rv) {
+    auto run = [&](double bound, bool wave_simulation, const gpu::ResampledView& rv) {
         gpu::GpuLimits limits;
         limits.river_quality = render::RiverQuality::High;
         limits.uploads_per_frame = SIZE_MAX;
@@ -2394,9 +2393,7 @@ TEST_CASE("the wave window is bounded in cells per screen pixel at far zoom") {
         auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
         REQUIRE(made);
         gpu::GpuFrame& g = *made.value();
-        if (bound) {
-            CHECK(g.fluid_max_cells_per_px() == *bound);
-        }
+        CHECK(g.fluid_max_cells_per_px() == bound);
         const auto target = g.offscreen_target(256, 256);
         Seen seen;
         for (std::uint64_t i = 0; i < 3; ++i) {
@@ -2452,15 +2449,20 @@ TEST_CASE("the wave window is bounded in cells per screen pixel at far zoom") {
         CHECK(back.fluid_cells_per_tile == 1);
         CHECK(g.errors() == 0);
     }
-    // The automatic choice: the default on an adapter that is not discrete, none on one that is.
-    gpu::GpuLimits automatic;
-    automatic.river_quality = render::RiverQuality::High;
-    auto a = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, automatic);
+    // The default bound is the same on every adapter, discrete ones included (OQ-130).
+    gpu::GpuLimits defaults;
+    defaults.river_quality = render::RiverQuality::High;
+    CHECK(defaults.fluid_max_cells_per_px == anno::render::fluid::kDefaultMaxCellsPerPx);
+    auto a = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, defaults);
     REQUIRE(a);
-    CHECK(a.value()->fluid_max_cells_per_px() ==
-          (ctx->adapter_type == WGPUAdapterType_DiscreteGPU
-               ? 0.0
-               : anno::render::fluid::kDefaultMaxCellsPerPx));
+    MESSAGE("adapter type " << static_cast<int>(ctx->adapter_type));
+    CHECK(a.value()->fluid_max_cells_per_px() == anno::render::fluid::kDefaultMaxCellsPerPx);
+    // and with the default, the far end of a level gets the halved window on it too.
+    const auto target = a.value()->offscreen_target(256, 256);
+    const auto st =
+        a.value()->render(frames, *es.scene, far_view.view, 2, 100, render::WaterStyle::Enhanced,
+                          target.second.get(), &far_view.resample);
+    CHECK(st.fluid_cells_per_tile == 2);
 }
 
 TEST_CASE("every pass of a frame is timed, and the timed frame is the untimed picture") {

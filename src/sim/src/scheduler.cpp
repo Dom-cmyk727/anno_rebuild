@@ -258,7 +258,7 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
                     // it writes only its own figure and its Effects, merged right after
                     // it returns (C2).
                     const FigureId id = fig.id;
-                    const bool had_stamp = fig.created_stamp.has_value();
+                    const bool had_stamp = fig.expiry_stamp.has_value();
                     const bool was_marked = fig.marked_for_delete;
                     Effects fx;
                     {
@@ -291,8 +291,8 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
     while (!reg.expiry.empty()) {
         const FigureId id = reg.expiry.front();
         const Figure* f = find_figure(reg, id);
-        if (f != nullptr && f->created_stamp.has_value() &&
-            static_cast<std::uint16_t>(t - *f->created_stamp) < w.config_.figure_expiry_ticks) {
+        if (f != nullptr && f->expiry_stamp.has_value() &&
+            static_cast<std::uint16_t>(t - *f->expiry_stamp) < w.config_.figure_expiry_ticks) {
             break;
         }
         destroy_figure(w, id); // also takes `id` off the list

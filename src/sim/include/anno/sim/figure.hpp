@@ -58,9 +58,12 @@ struct Figure {
     /// The low 32 bits of the world tick at the spawn (the interim return rule D12
     /// reads it).
     std::uint32_t born = 0;
-    /// Present = on the 7500-tick expiry list (property 0x23); the default spawn
+    /// Present = on the 7500-tick expiry list: the u16 tick of the figure's end
+    /// (property 0x23, the unit's +8, which follows the tick while the unit acts and
+    /// freezes at its Remove, D 0x1003488e / 0x10034844; docs/re/annowelt.md "Unit
+    /// registry"). Not the spawn tick: S12 named it created_stamp. The default spawn
     /// does not set it (O-8).
-    std::optional<std::uint16_t> created_stamp;
+    std::optional<std::uint16_t> expiry_stamp;
     /// On the deferred-delete list (phase D).
     bool marked_for_delete = false;
 };
@@ -127,7 +130,7 @@ void mark_figure_for_delete(FigureRegistry& registry, Figure& figure);
 
 /// After a behaviour seam ran on `figure` (which may write the figure's own fields,
 /// docs/sim/state.md §4.11 C2), the registry's lists follow its flags: a figure that
-/// gained a created_stamp is appended to the expiry list and one that lost it leaves
+/// gained an expiry_stamp is appended to the expiry list and one that lost it leaves
 /// it; one that became marked_for_delete is appended to the deferred list and one that
 /// was unmarked leaves it (own design: the seam protocol of stage S12, so a seam cannot
 /// break the list invariants of validate_figures). `had_stamp` and `was_marked` are the
@@ -139,7 +142,7 @@ void sync_figure_lists(FigureRegistry& registry, const Figure& figure, bool had_
 /// at least one element with its hint in -1 .. n and its cursor below n, every
 /// figure has a valid id below `ids.next_figure` that no other figure has, the
 /// expiry and deferred lists name figures of the registry once each, a figure is on
-/// the expiry list exactly when it has a created_stamp and on the deferred list
+/// the expiry list exactly when it has an expiry_stamp and on the deferred list
 /// exactly when it is marked_for_delete, and the id map equals a recomputation.
 /// Empty when they hold, else one message ("figures.list: ...").
 [[nodiscard]] std::string validate_figures(const FigureRegistry& registry, const IdCounters& ids);

@@ -103,7 +103,7 @@ void mark_figure_for_delete(FigureRegistry& registry, Figure& figure) {
 
 void sync_figure_lists(FigureRegistry& registry, const Figure& figure, bool had_stamp,
                        bool was_marked) {
-    const bool has_stamp = figure.created_stamp.has_value();
+    const bool has_stamp = figure.expiry_stamp.has_value();
     if (has_stamp && !had_stamp) {
         registry.expiry.push_back(figure.id);
     } else if (!has_stamp && had_stamp) {
@@ -183,9 +183,9 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
                    " but the figure is " + (f.marked_for_delete ? "not " : "") +
                    "on the deferred list";
         }
-        if (f.created_stamp.has_value() != on_expiry.contains(f.id)) {
-            return where + ".created_stamp: the figure " +
-                   (f.created_stamp.has_value() ? "has a stamp but is not"
+        if (f.expiry_stamp.has_value() != on_expiry.contains(f.id)) {
+            return where + ".expiry_stamp: the figure " +
+                   (f.expiry_stamp.has_value() ? "has a stamp but is not"
                                                 : "has no stamp but is") +
                    " on the expiry list";
         }

@@ -879,7 +879,7 @@ template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u32(s.cargo_88);
     a.u32(s.hp);
     a.u32(s.born);
-    ar::opt(a, s.created_stamp, [&](auto& v) { a.u16(v); });
+    ar::opt(a, s.expiry_stamp, [&](auto& v) { a.u16(v); });
     a.boolean(s.marked_for_delete);
 }
 

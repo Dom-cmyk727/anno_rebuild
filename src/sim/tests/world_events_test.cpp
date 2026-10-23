@@ -96,7 +96,7 @@ sim::World quiet_g4(const syn::SyntheticTypes& t, sim::Seams seams = {}, sim::Ru
 /// Puts a figure with the next id into the registry (the slot by the list policy), with
 /// `home`'s counter `counter` raised for it, and returns its id.
 sim::FigureId put_figure(sim::World& w, sim::BuildingId home, std::uint32_t counter = 0,
-                         std::optional<std::uint16_t> created_stamp = std::nullopt,
+                         std::optional<std::uint16_t> expiry_stamp = std::nullopt,
                          bool deferred = false, std::uint32_t born = 0) {
     sim::IdCounters& ids = sim::WorldTestAccess::ids(w);
     sim::FigureRegistry& reg = sim::WorldTestAccess::figures(w);
@@ -107,11 +107,11 @@ sim::FigureId put_figure(sim::World& w, sim::BuildingId home, std::uint32_t coun
     f.home = home;
     f.home_counter = counter;
     f.born = born;
-    f.created_stamp = created_stamp;
+    f.expiry_stamp = expiry_stamp;
     f.marked_for_delete = deferred;
     REQUIRE(sim::add_figure(reg, f, w.config(), w.rules()) != sim::kNoSlot);
     ++ids.next_figure;
-    if (created_stamp.has_value()) {
+    if (expiry_stamp.has_value()) {
         reg.expiry.push_back(f.id);
     }
     if (deferred) {
@@ -706,7 +706,7 @@ TEST_CASE("interim return: with the rule a figure ends N ticks after its birth")
 
 TEST_CASE("a figure seam writes its own figure and the registry lists follow its flags") {
     // The seam protocol (C2, §4.11): a behaviour seam may write the figure it is called
-    // for; a figure that gains a created_stamp joins the expiry list, one that marks
+    // for; a figure that gains a expiry_stamp joins the expiry list, one that marks
     // itself for deletion joins the deferred list (and ends in phase D of the same tick),
     // and the figure's id stays the registry's.
     const syn::SyntheticTypes t = types();
@@ -715,14 +715,14 @@ TEST_CASE("a figure seam writes its own figure and the registry lists follow its
     seams.figure_tick.fn = [](void*, const sim::TickContext& ctx, sim::SerialWorld&,
                               sim::Figure& f) {
         if (f.kind == 1) {
-            f.created_stamp = static_cast<std::uint16_t>(ctx.t);
+            f.expiry_stamp = static_cast<std::uint16_t>(ctx.t);
             f.kind = 2;
         } else if (f.kind == 3) {
             f.marked_for_delete = true;
         } else if (f.kind == 4) {
             f.id = sim::FigureId{999}; // not the seam's to change
         } else if (f.kind == 5) {
-            f.created_stamp.reset(); // leaves the expiry list
+            f.expiry_stamp.reset(); // leaves the expiry list
         } else if (f.kind == 6) {
             f.marked_for_delete = false; // leaves the deferred list
         }
@@ -742,9 +742,9 @@ TEST_CASE("a figure seam writes its own figure and the registry lists follow its
     w.advance(100); // tick 50
     CHECK(w.figures().expiry == std::vector<sim::FigureId>{stamped});
     CHECK(w.figures().deferred.empty());
-    CHECK_FALSE(figure(w, unstamped).created_stamp.has_value());
+    CHECK_FALSE(figure(w, unstamped).expiry_stamp.has_value());
     CHECK_FALSE(figure(w, kept).marked_for_delete);
-    CHECK(figure(w, stamped).created_stamp == std::uint16_t{50});
+    CHECK(figure(w, stamped).expiry_stamp == std::uint16_t{50});
     CHECK(sim::find_figure(w.figures(), leaving) == nullptr);
     CHECK(payload<sim::Farm>(w, 0, kFarm).workers_out == 0);
     CHECK(sim::find_figure(w.figures(), renamed) != nullptr);

@@ -719,7 +719,7 @@ TEST_CASE("merge creates figures in order with the world's ids slots and events"
     CHECK(a.cargo_goods == 0);
     CHECK(a.cargo_88 == 0);
     CHECK(a.hp == 0);
-    CHECK_FALSE(a.created_stamp.has_value());
+    CHECK_FALSE(a.expiry_stamp.has_value());
     CHECK_FALSE(a.marked_for_delete);
     CHECK(w.ids().next_figure == 3);
     CHECK(reg.by_id.at(sim::FigureId{1}) == 0);
@@ -2152,7 +2152,7 @@ TEST_CASE("figure registry validation names each broken fact") {
     }
     good.expiry = {sim::FigureId{2}};
     good.deferred = {sim::FigureId{3}, sim::FigureId{1}};
-    good.list.slots[1]->created_stamp = 100; // on the expiry list
+    good.list.slots[1]->expiry_stamp = 100; // on the expiry list
     good.list.slots[2]->marked_for_delete = true;
     good.list.slots[0]->marked_for_delete = true; // both on the deferred list
     REQUIRE(sim::validate_figures(good, ids) == "");
@@ -2194,11 +2194,11 @@ TEST_CASE("figure registry validation names each broken fact") {
         {"deferred but not marked",
          [](sim::FigureRegistry& r) { r.list.slots[2]->marked_for_delete = false; },
          "slots[2].marked_for_delete: false but the figure is on the deferred list"},
-        {"stamp without expiry", [](sim::FigureRegistry& r) { r.list.slots[0]->created_stamp = 5; },
-         "slots[0].created_stamp: the figure has a stamp but is not on the expiry list"},
+        {"stamp without expiry", [](sim::FigureRegistry& r) { r.list.slots[0]->expiry_stamp = 5; },
+         "slots[0].expiry_stamp: the figure has a stamp but is not on the expiry list"},
         {"expiry without stamp",
-         [](sim::FigureRegistry& r) { r.list.slots[1]->created_stamp.reset(); },
-         "slots[1].created_stamp: the figure has no stamp but is on the expiry list"},
+         [](sim::FigureRegistry& r) { r.list.slots[1]->expiry_stamp.reset(); },
+         "slots[1].expiry_stamp: the figure has no stamp but is on the expiry list"},
         {"map differs", [](sim::FigureRegistry& r) { r.by_id[sim::FigureId{1}] = 2; },
          "figures.by_id"},
         {"map extra", [](sim::FigureRegistry& r) { r.by_id[sim::FigureId{9}] = 4; },
@@ -2304,7 +2304,7 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
         figs.u32(0);  // cargo_88
         figs.u32(0);  // hp
         figs.u32(50); // born
-        figs.u8(0);   // created_stamp absent
+        figs.u8(0);   // expiry_stamp absent
         figs.u8(0);   // marked_for_delete
     };
     figure(1, 11, 0, bid(0, 1).v, 7);
@@ -2370,7 +2370,7 @@ TEST_CASE("a world with figures and events saves loads and continues") {
     sim::WorldTestAccess::figures(w).deferred = {sim::FigureId{1}};
     sim::WorldTestAccess::figures(w).stamp = 77;
     sim::WorldTestAccess::figures(w).list.cursor = 4;
-    sim::WorldTestAccess::figures(w).list.slots[1]->created_stamp = 1234;
+    sim::WorldTestAccess::figures(w).list.slots[1]->expiry_stamp = 1234;
     sim::WorldTestAccess::figures(w).list.slots[0]->marked_for_delete = true;
     sim::WorldTestAccess::figures(w).list.slots[0]->cargo_goods = 9;
     sim::WorldTestAccess::figures(w).list.slots[0]->cargo_88 = 300;
@@ -2386,7 +2386,7 @@ TEST_CASE("a world with figures and events saves loads and continues") {
     CHECK(back.figures().by_id.size() == 2);
     CHECK(back.figures().stamp == 77);
     CHECK(back.figures().expiry == std::vector<sim::FigureId>{sim::FigureId{2}});
-    CHECK(back.figures().list.slots[1]->created_stamp == std::optional<std::uint16_t>{1234});
+    CHECK(back.figures().list.slots[1]->expiry_stamp == std::optional<std::uint16_t>{1234});
     CHECK(back.figures().list.slots[0]->marked_for_delete);
     CHECK_FALSE(back.figures().list.slots[1]->marked_for_delete);
     CHECK(back.figures().list.slots[0]->cargo_88 == 300);
@@ -2587,8 +2587,8 @@ TEST_CASE("every field of the figure registry and the event queue moves the hash
         {"cargo_88", [](sim::Figure& f) { f.cargo_88 += 1; }},
         {"hp", [](sim::Figure& f) { f.hp += 1; }},
         {"born", [](sim::Figure& f) { f.born += 1; }},
-        {"created_stamp present",
-         [](sim::Figure& f) { f.created_stamp = std::optional<std::uint16_t>(std::uint16_t{0}); }},
+        {"expiry_stamp present",
+         [](sim::Figure& f) { f.expiry_stamp = std::optional<std::uint16_t>(std::uint16_t{0}); }},
         {"marked_for_delete", [](sim::Figure& f) { f.marked_for_delete = true; }},
     };
     static_assert(sim::field_count<sim::Figure>() == 13);

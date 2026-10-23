@@ -19,6 +19,7 @@
 #include <anno/sim/ids.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/production.hpp>
+#include <anno/sim/rng.hpp>
 #include <anno/sim/settings.hpp>
 
 namespace anno::sim {
@@ -104,5 +105,11 @@ struct ScenarioSpec {
     /// The island table is as long as the highest slot + 1; unused slots stay null.
     std::vector<IslandSpec> islands;
 };
+
+/// The generator a world made from `spec` starts with (docs/sim/state.md §10 step 2):
+/// the scenario's table or the original one, the cursor spec.seed mod its length
+/// (world property 8, D AnnoWelt 0x100a3230). nullopt for an empty custom table.
+/// World::create and the link resolution at load (resolve_scenario_links) share it.
+[[nodiscard]] std::optional<WorldRng> scenario_rng(const ScenarioSpec& spec);
 
 } // namespace anno::sim

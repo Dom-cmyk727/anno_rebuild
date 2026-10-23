@@ -66,13 +66,20 @@ namespace anno::sim {
 // (ceil(city_slots / 32) words, O-55) instead of one u32.
 // Stream at 109 (task T22, OQ-131): the header's SimConfig gains figure_min_growth, the
 // figure record loses marked_for_delete and the figure registry its deferred list.
-inline constexpr std::uint32_t kStateHashVersion = 109;
+// Stream at 110 (stage S14 stage 2): the header's SimConfig gains links (LinkTables, the
+// island-link selection's tables) and Rules gains island_candidate_order.
+inline constexpr std::uint32_t kStateHashVersion = 110;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;
 /// The PRNG timeline: which original draw sites exist in the sim (docs/sim/
 /// state.md §6). Porting a site is a recorded bump, never a silent desync.
-inline constexpr std::uint32_t kPrngTimelineVersion = 1;
+/// Version 2 (S14 stage 2): the first load-time sites, the island-link selection's
+/// LinkRawMaterial, LinkOre, LinkTemplatePick, LinkSpecialMark and LinkTreasure
+/// (D AnnoScene 0x10009550), and the unported load sites LinkOrePlace,
+/// LinkNativeName, LinkTreasureKind, LinkTreasurePlace (0x10008490) and
+/// ComputerName (0x100025a0) in the manifest.
+inline constexpr std::uint32_t kPrngTimelineVersion = 2;
 
 struct StateIO;
 struct ScenarioSpec;

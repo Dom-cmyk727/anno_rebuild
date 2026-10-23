@@ -44,6 +44,7 @@
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim/world.hpp>
+#include <anno/sim_load/scenario_load.hpp>
 
 namespace {
 
@@ -325,6 +326,19 @@ std::shared_ptr<const sim::TypeRegistry> scenario_registry() {
     return r.value();
 }
 
+/// The island templates of the game directory (ANNO1503_GAME_DIR/Scenes/Islands), or
+/// none (then every link stays unresolved) with a note.
+anno::sim_load::IslandTemplates scenario_templates() {
+    const char* dir = std::getenv("ANNO1503_GAME_DIR");
+    if (dir == nullptr || *dir == '\0') {
+        std::cout << "island templates none (ANNO1503_GAME_DIR not set)\n";
+        return {};
+    }
+    anno::sim_load::IslandTemplates t = anno::sim_load::scan_island_templates(dir);
+    std::cout << "island templates " << t.summaries.size() << "\n";
+    return t;
+}
+
 int cmd_scenario(const std::string& path, std::uint64_t ticks, std::uint32_t step_ms) {
     std::ifstream in(path, std::ios::binary);
     if (!in) {
@@ -333,26 +347,65 @@ int cmd_scenario(const std::string& path, std::uint64_t ticks, std::uint32_t ste
     }
     const std::vector<std::uint8_t> buf{std::istreambuf_iterator<char>(in), {}};
     const auto types = scenario_registry();
+    const anno::sim_load::IslandTemplates templates = scenario_templates();
     const sim::SimConfig cfg;
     using clock = std::chrono::steady_clock;
     const auto t0 = clock::now();
-    auto loaded = sim::load_scenario(buf, *types, cfg);
+    auto resolved = anno::sim_load::load_scenario_with_links(buf, templates, *types, cfg, {});
     const auto t1 = clock::now();
-    if (!loaded) {
-        std::cout << "refused: " << loaded.error() << "\n";
+    if (!resolved) {
+        std::cout << "refused: " << resolved.error() << "\n";
         return 1;
     }
-    const sim::ScenarioCounts c = sim::count(loaded.value());
-    std::cout << "islands " << c.islands << " links " << c.links << " players " << c.players
-              << " cities " << c.cities << " buildings " << c.buildings << " tile_objects "
-              << c.tile_objects << " deposits " << c.deposits << "\n";
+    const sim::LoadedScenario& loaded = resolved.value().loaded;
+    const sim::LinkResolution& res = resolved.value().resolution;
+    // The links as the selection resolved them (docs/re/annoscene.md §5): the
+    // template, the raw-material and ore kinds, the special flag, the treasure.
+    for (std::size_t i = 0; i < loaded.links.size(); ++i) {
+        const sim::IslandLinkSpec& l = loaded.links[i];
+        const sim::ResolvedLink& r = res.links[i];
+        std::cout << "link " << i << " island " << l.number << " at " << l.x << "," << l.y << " "
+                  << l.w << "x" << l.h << " climate " << l.climate << " -> "
+                  << (r.candidate ? templates.summaries[*r.candidate].name
+                                  : std::string("unresolved"))
+                  << " (" << r.kept << " of " << r.matched << " candidates) raw";
+        for (std::size_t k = 0; k < r.raw_marks.size(); ++k) {
+            if (r.raw_marks[k] != 0) {
+                std::cout << " " << k;
+            }
+        }
+        std::cout << " ores";
+        for (std::size_t k = 0; k < r.ore_marks.size(); ++k) {
+            if (r.ore_marks[k] != 0) {
+                std::cout << " " << k;
+            }
+        }
+        std::cout << " special " << static_cast<unsigned>(r.special) << " treasure "
+                  << (r.treasure ? 1 : 0) << "\n";
+    }
+    if (!loaded.links.empty()) {
+        std::cout << "link draws";
+        for (std::size_t s = 0; s < sim::kDrawSiteCount; ++s) {
+            if (res.draws[s] != 0) {
+                std::cout << " " << sim::draw_site_name(static_cast<sim::DrawSite>(s)) << " "
+                          << res.draws[s];
+            }
+        }
+        std::cout << "; cursor " << resolved.value().seed_before << " -> " << loaded.spec.seed
+                  << "\n";
+    }
+    const sim::ScenarioCounts c = sim::count(loaded);
+    std::cout << "islands " << c.islands << " links " << c.links << " links_resolved "
+              << c.links_resolved << " links_unresolved " << c.links_unresolved << " players "
+              << c.players << " cities " << c.cities << " buildings " << c.buildings
+              << " tile_objects " << c.tile_objects << " deposits " << c.deposits << "\n";
     for (const sim::ScenarioWarningKind k : sim::all_warning_kinds()) {
         const auto it = c.warnings.find(k);
         std::cout << "warnings " << sim::warning_kind_name(k) << " "
                   << (it == c.warnings.end() ? 0 : it->second) << "\n";
     }
     const ThreadExecutor ex;
-    auto w = sim::World::create(loaded.value().spec, types, cfg, {}, {}, ex);
+    auto w = sim::World::create(loaded.spec, types, cfg, {}, {}, ex);
     const auto t2 = clock::now();
     if (!w) {
         std::cout << "create refused: " << w.error() << "\n";

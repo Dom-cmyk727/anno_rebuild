@@ -22,6 +22,7 @@
 #include <anno/formats/tagged.hpp>
 #include <anno/sim/building.hpp>
 #include <anno/sim/production.hpp>
+#include <anno/sim/rng.hpp>
 #include <anno/sim/scenario_formats.hpp>
 
 namespace anno::sim {
@@ -35,8 +36,6 @@ std::string_view warning_kind_name(ScenarioWarningKind kind) {
     switch (kind) {
     case ScenarioWarningKind::UnknownRecord:
         return "UnknownRecord";
-    case ScenarioWarningKind::IslandLink:
-        return "IslandLink";
     case ScenarioWarningKind::UnknownObject:
         return "UnknownObject";
     case ScenarioWarningKind::BuildingItemWithoutEntry:
@@ -69,21 +68,49 @@ std::string_view warning_kind_name(ScenarioWarningKind kind) {
         return "UnknownGoods";
     case ScenarioWarningKind::OwnerTileOutsideIsland:
         return "OwnerTileOutsideIsland";
+    case ScenarioWarningKind::LinkNamesTemplate:
+        return "LinkNamesTemplate";
+    case ScenarioWarningKind::LinkUnresolved:
+        return "LinkUnresolved";
+    case ScenarioWarningKind::LinkOresUnplaced:
+        return "LinkOresUnplaced";
+    case ScenarioWarningKind::LinkRawMaterials:
+        return "LinkRawMaterials";
+    case ScenarioWarningKind::LinkTreasureUnplaced:
+        return "LinkTreasureUnplaced";
+    case ScenarioWarningKind::LinkTreasuresCapped:
+        return "LinkTreasuresCapped";
+    case ScenarioWarningKind::LinkTemplatePlayers:
+        return "LinkTemplatePlayers";
     }
     return "?";
 }
 
 std::vector<ScenarioWarningKind> all_warning_kinds() {
-    return {
-        ScenarioWarningKind::UnknownRecord,        ScenarioWarningKind::IslandLink,
-        ScenarioWarningKind::UnknownObject,        ScenarioWarningKind::BuildingItemWithoutEntry,
-        ScenarioWarningKind::TileOwnersUndecoded,  ScenarioWarningKind::UndecodedDeposits,
-        ScenarioWarningKind::ObjectTileTaken,      ScenarioWarningKind::DuplicateObject,
-        ScenarioWarningKind::CityOffIsland,        ScenarioWarningKind::UndecodedPeople,
-        ScenarioWarningKind::ComputerNameNotDrawn, ScenarioWarningKind::UnknownClimate,
-        ScenarioWarningKind::UnalignedIsland,      ScenarioWarningKind::EntryWithoutBuildingItem,
-        ScenarioWarningKind::BuildingRefused,      ScenarioWarningKind::UndecodedBuildingRecord,
-        ScenarioWarningKind::UnknownGoods,         ScenarioWarningKind::OwnerTileOutsideIsland};
+    return {ScenarioWarningKind::UnknownRecord,
+            ScenarioWarningKind::UnknownObject,
+            ScenarioWarningKind::BuildingItemWithoutEntry,
+            ScenarioWarningKind::TileOwnersUndecoded,
+            ScenarioWarningKind::UndecodedDeposits,
+            ScenarioWarningKind::ObjectTileTaken,
+            ScenarioWarningKind::DuplicateObject,
+            ScenarioWarningKind::CityOffIsland,
+            ScenarioWarningKind::UndecodedPeople,
+            ScenarioWarningKind::ComputerNameNotDrawn,
+            ScenarioWarningKind::UnknownClimate,
+            ScenarioWarningKind::UnalignedIsland,
+            ScenarioWarningKind::EntryWithoutBuildingItem,
+            ScenarioWarningKind::BuildingRefused,
+            ScenarioWarningKind::UndecodedBuildingRecord,
+            ScenarioWarningKind::UnknownGoods,
+            ScenarioWarningKind::OwnerTileOutsideIsland,
+            ScenarioWarningKind::LinkNamesTemplate,
+            ScenarioWarningKind::LinkUnresolved,
+            ScenarioWarningKind::LinkOresUnplaced,
+            ScenarioWarningKind::LinkRawMaterials,
+            ScenarioWarningKind::LinkTreasureUnplaced,
+            ScenarioWarningKind::LinkTreasuresCapped,
+            ScenarioWarningKind::LinkTemplatePlayers};
 }
 
 ScenarioCounts count(const LoadedScenario& s) {
@@ -98,10 +125,12 @@ ScenarioCounts count(const LoadedScenario& s) {
             c.buildings += city.buildings.size();
         }
     }
+    c.links = s.links_total;
+    c.links_resolved = s.links_placed;
     for (const ScenarioWarning& w : s.warnings) {
         ++c.warnings[w.kind];
-        if (w.kind == ScenarioWarningKind::IslandLink) {
-            ++c.links;
+        if (w.kind == ScenarioWarningKind::LinkUnresolved) {
+            ++c.links_unresolved;
         }
     }
     return c;
@@ -635,6 +664,210 @@ void read_player_head(Bytes h, ScenarioSpec::PlayerSpec& p) {
     p.flags_a0 = a0 >= 0x100 ? 0U : (a0 & 0xFFBFU);
 }
 
+/// Whether an INSELLNK path names a dummy: its last 9 characters are "DUMMY.scp" in
+/// any case (D AnnoScene 0x10009eac–0x10009ec0, _stricmp at 0x10027310).
+bool is_dummy_path(const std::string& path) {
+    return path.size() >= 9 &&
+           ascii_upper(std::string_view(path).substr(path.size() - 9)) == "DUMMY.SCP";
+}
+
+/// A dummy link's climate: the file name after the last backslash (the whole path when
+/// there is none) against the prefixes of the table at 0x1003b328, case-insensitive,
+/// first match wins; no match keeps 0 (D 0x10009ec6–0x10009f73).
+std::uint32_t link_climate(const std::string& path) {
+    const std::size_t slash = path.rfind('\\');
+    const std::string file =
+        ascii_upper(slash == std::string::npos ? path : path.substr(slash + 1));
+    constexpr std::array<std::string_view, 7> kPrefix = {"PO_", "T_", "N_", "PR_",
+                                                         "D_",  "S_", "W_"};
+    for (std::size_t i = 0; i < kPrefix.size(); ++i) {
+        if (file.compare(0, kPrefix[i].size(), kPrefix[i]) == 0) {
+            return static_cast<std::uint32_t>(i);
+        }
+    }
+    return 0;
+}
+
+/// One island record (INSEL5) → IslandSpec at (x0, y0) in table slot `slot`: the
+/// climate, the terrain columns and the placed items, with the warnings of their
+/// records (`base` is the file offset of the island's first record, `head_offset` the
+/// INSEL5's own; an unknown record is reported once per `record_scope` and name). Used
+/// for the scenario's INSEL5 islands and for the template a link resolves to (stage 2,
+/// whose offsets are in the template file). `out` stays empty when the island is skipped
+/// (UnknownClimate); the return value is a refusal. The PROD2 building items are not
+/// placed: they go to `ic` for the city pass (T23).
+std::optional<std::string> island_from_insel(const insel::Island& isl, const std::string& path,
+                                             std::uint64_t base, std::uint64_t head_offset,
+                                             IslandId slot, std::uint32_t x0, std::uint32_t y0,
+                                             const TypeRegistry& types, const SimConfig& config,
+                                             Warnings& warn, std::string_view record_scope,
+                                             std::optional<ScenarioSpec::IslandSpec>& out,
+                                             IslandCities& ic) {
+    // Climate = INFO[0] (P over 444 templates: 0 polar … 5 steppe, matching the
+    // folder; the link selection compares it, D AnnoScene 0x10009550,
+    // docs/re/annoscene.md §2, §5 step 2).
+    const std::optional<Bytes> info = isl.record("INFO");
+    if (!info || info->empty() || (*info)[0] >= config.monopoly_climate_mask.size()) {
+        warn.add(ScenarioWarningKind::UnknownClimate, path, "INFO", base,
+                 info && !info->empty()
+                     ? "INFO[0] = " + std::to_string((*info)[0]) + " has no climate mask"
+                     : std::string("no INFO record"));
+        return std::nullopt;
+    }
+    if (x0 % 8 != 0 || y0 % 8 != 0) {
+        warn.add(ScenarioWarningKind::UnalignedIsland, path, "INSEL5", head_offset,
+                 "position (" + std::to_string(x0) + ", " + std::to_string(y0) +
+                     ") is not a multiple of 8; the original snaps it down "
+                     "(0x100a253e–0x100a2586), here it stays");
+    }
+    ScenarioSpec::IslandSpec is;
+    is.slot = slot;
+    is.x0 = static_cast<std::int32_t>(x0); // head u16 x, y (or the link's), width, height
+    is.y0 = static_cast<std::int32_t>(y0); // (P, insel.md "Head")
+    is.w = isl.width;
+    is.h = isl.height;
+    is.climate = (*info)[0];
+    // Terrain: the HEIGHT and GFXID grids (P, insel.md "Blocks") and FRUCHTBAR
+    // (P, w × h bytes); a missing column stays empty (OQ-060 shape).
+    std::vector<std::uint8_t> height;
+    std::vector<std::uint16_t> gfx;
+    std::vector<std::uint8_t> fertility;
+    if (isl.record("HEIGHT")) {
+        auto h = isl.heights();
+        if (!h) {
+            return path + ".HEIGHT: " + h.error();
+        }
+        height = std::move(h).value();
+    }
+    if (isl.record("GFXID")) {
+        auto g = isl.gfx_ids();
+        if (!g) {
+            return path + ".GFXID: " + g.error();
+        }
+        gfx = std::move(g).value();
+    }
+    if (const std::optional<Bytes> f = isl.fertility()) {
+        fertility.assign(f->begin(), f->end());
+    }
+    is.terrain = make_terrain(std::move(height), std::move(gfx), std::move(fertility));
+
+    // The placed items of GELAENDE, FLUESSE and PROD2 in file order (P,
+    // insel.md "Placed objects": ANLAGEN id, rotation, height << 8 | phase, the
+    // footprint's top-left tile).
+    std::map<std::uint32_t, std::pair<std::string_view, ItemKey>> taken; // tile -> first item
+    std::map<std::string, std::uint64_t> item_no;                        // per record name
+    for (const formats::chunk::Chunk& rec : isl.records) {
+        const std::string_view name = rec.name();
+        const std::uint64_t at = base + rec.offset;
+        if (name == "INFO" || name == "HEIGHT" || name == "GFXID" || name == "FRUCHTBAR") {
+            continue;
+        }
+        if (name == "BERGWERK2") {
+            warn.add(ScenarioWarningKind::UndecodedDeposits, path + ".BERGWERK2", name, at,
+                     "BERGWERK2 is undecoded (OQ-024; deposit goods O-37): no deposit");
+            continue;
+        }
+        if (name != "GELAENDE" && name != "FLUESSE" && name != "PROD2") {
+            warn.unknown_record(std::string(record_scope), path + "." + std::string(name), name,
+                                at);
+            continue;
+        }
+        auto block = insel::Block::parse(rec.payload);
+        if (!block) {
+            return path + "." + std::string(name) + ": " + block.error();
+        }
+        // D AnnoWelt 0x1008957d–0x10089676 (the PROD2 case of the island record
+        // loader 0x10089130; GELAENDE and FLUESSE are read alike): floor((len - 6) /
+        // 6) items (0x100895cf–0x100895d6), so bytes after the last whole item are
+        // ignored; per item the id & 0x3FFF is looked up (0x1008960d) and an unknown
+        // id skipped (0x10089619), rotation (id >> 14) & 3 (0x1008964e), phase
+        // state & 0x3F (0x1008965e), height state >> 8 (0x10089660), tile = block
+        // origin + the item's x, y read as signed bytes (movsx, 0x10089634).
+        // formats::insel masks the id with 0x0FFF and reads x, y unsigned: equal
+        // on the corpus (P, insel.md: bits 12–13 always 0, items inside their block).
+        const Bytes items = block.value().data;
+        const std::size_t whole = items.size() - items.size() % insel::kItemLen;
+        for (std::size_t i = 0; i < whole; i += insel::kItemLen) {
+            const insel::PlacedObject o =
+                insel::PlacedObject::parse(items.subspan(i, insel::kItemLen), block.value());
+            const std::string where = path + "." + std::string(name) + "[" +
+                                      std::to_string(item_no[std::string(name)]++) + "]";
+            const std::uint64_t item_at =
+                at + formats::chunk::kHeaderLen + insel::kBlockHeaderLen + i;
+            if (o.x >= is.w || o.y >= is.h) {
+                return where + ": the item's tile (" + std::to_string(o.x) + ", " +
+                       std::to_string(o.y) + ") is outside the island";
+            }
+            const BuildingType* type = types.find(TypeId{o.anlage});
+            if (type == nullptr) {
+                warn.add(ScenarioWarningKind::UnknownObject, where, name, item_at,
+                         "ANLAGEN id " + std::to_string(o.anlage) + " is not in the registry");
+                continue;
+            }
+            // A PROD2 item of a type with a list in the layout is the tile layer's
+            // copy of a building; the building is created from its city's
+            // PROD/ENTRY with the type, rotation and height of the tile (D AnnoWelt
+            // 0x100264a0 through island +0x84 = 0x10083a90; docs/re/annowelt.md
+            // "Scenario cities" (b), (e)). It is kept here for the city pass.
+            if (name == "PROD2" && config.layout.list_for(type->prodtype).has_value()) {
+                // A second item on a building item's origin is dropped as the tile
+                // objects are (DuplicateObject for an equal item, else
+                // ObjectTileTaken; OQ-142): an entry names one building there.
+                const std::uint32_t origin = static_cast<std::uint32_t>(o.y) * is.w + o.x;
+                if (const auto f = ic.by_origin.find(origin); f != ic.by_origin.end()) {
+                    const bool same = ic.items[f->second].key == key_of(o);
+                    warn.add(same ? ScenarioWarningKind::DuplicateObject
+                                  : ScenarioWarningKind::ObjectTileTaken,
+                             where, name, item_at,
+                             same ? std::string("the same building item again (OQ-024)")
+                                  : "tile (" + std::to_string(o.x) + ", " + std::to_string(o.y) +
+                                        ") already holds a building item; the first "
+                                        "stays (OQ-142)");
+                    continue;
+                }
+                BuildingItem bi;
+                bi.key = key_of(o);
+                bi.id = o.anlage;
+                bi.rotation = o.rotation;
+                bi.height = o.height();
+                bi.x = o.x;
+                bi.y = o.y;
+                const auto [fw, fh] = o.footprint(static_cast<std::uint8_t>(type->width),
+                                                  static_cast<std::uint8_t>(type->height));
+                bi.w = fw;
+                bi.h = fh;
+                bi.where = where;
+                bi.at = item_at;
+                ic.by_origin.emplace(origin, ic.items.size());
+                ic.items.push_back(std::move(bi));
+                continue;
+            }
+            const std::uint32_t tile = static_cast<std::uint32_t>(o.y) * is.w + o.x;
+            if (name == "PROD2") {
+                ic.other_prod2.try_emplace(tile, type->prodtype);
+            }
+            const auto [it, fresh] = taken.try_emplace(tile, name, key_of(o));
+            if (!fresh) {
+                const bool same = it->second.first == name && it->second.second == key_of(o);
+                warn.add(same ? ScenarioWarningKind::DuplicateObject
+                              : ScenarioWarningKind::ObjectTileTaken,
+                         where, name, item_at,
+                         same ? std::string("the same item again (OQ-024)")
+                              : "tile (" + std::to_string(o.x) + ", " + std::to_string(o.y) +
+                                    ") already holds an item; the first stays (OQ-142)");
+                continue;
+            }
+            ScenarioSpec::TileObjectSpec t;
+            t.index = tile;
+            t.object = o.anlage;
+            t.phase = o.phase(); // low 6 bits of state (D AnnoWelt 0x1007aa40)
+            is.objects.push_back(t);
+        }
+    }
+    out = std::move(is);
+    return std::nullopt;
+}
+
 } // namespace
 
 formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const TypeRegistry& types,
@@ -709,169 +942,16 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
         if (!slots.insert(slot).second) {
             return path + ": island number " + std::to_string(slot) + " is used twice";
         }
-        // Climate = INFO[0] (P over 444 templates: 0 polar … 5 steppe, matching the
-        // folder; the link selection compares it, D AnnoScene 0x10009550,
-        // docs/re/annoscene.md §2, §5 step 2).
-        const std::optional<Bytes> info = isl.record("INFO");
-        if (!info || info->empty() || (*info)[0] >= config.monopoly_climate_mask.size()) {
-            warn.add(ScenarioWarningKind::UnknownClimate, path, "INFO", base,
-                     info && !info->empty()
-                         ? "INFO[0] = " + std::to_string((*info)[0]) + " has no climate mask"
-                         : std::string("no INFO record"));
+        std::optional<ScenarioSpec::IslandSpec> built;
+        IslandCities ic;
+        if (auto e = island_from_insel(isl, path, base, child.offset, IslandId{slot}, isl.x, isl.y,
+                                       types, config, warn, "islands", built, ic)) {
+            return *e;
+        }
+        if (!built) {
             continue;
         }
-        if (isl.x % 8 != 0 || isl.y % 8 != 0) {
-            warn.add(ScenarioWarningKind::UnalignedIsland, path, "INSEL5", child.offset,
-                     "position (" + std::to_string(isl.x) + ", " + std::to_string(isl.y) +
-                         ") is not a multiple of 8; the original snaps it down "
-                         "(0x100a253e–0x100a2586), here it stays");
-        }
-        ScenarioSpec::IslandSpec is;
-        is.slot = IslandId{slot};
-        is.x0 = isl.x; // head u16 x, y, width, height (P, insel.md "Head")
-        is.y0 = isl.y;
-        is.w = isl.width;
-        is.h = isl.height;
-        is.climate = (*info)[0];
-        // Terrain: the HEIGHT and GFXID grids (P, insel.md "Blocks") and FRUCHTBAR
-        // (P, w × h bytes); a missing column stays empty (OQ-060 shape).
-        std::vector<std::uint8_t> height;
-        std::vector<std::uint16_t> gfx;
-        std::vector<std::uint8_t> fertility;
-        if (isl.record("HEIGHT")) {
-            auto h = isl.heights();
-            if (!h) {
-                return path + ".HEIGHT: " + h.error();
-            }
-            height = std::move(h).value();
-        }
-        if (isl.record("GFXID")) {
-            auto g = isl.gfx_ids();
-            if (!g) {
-                return path + ".GFXID: " + g.error();
-            }
-            gfx = std::move(g).value();
-        }
-        if (const std::optional<Bytes> f = isl.fertility()) {
-            fertility.assign(f->begin(), f->end());
-        }
-        is.terrain = make_terrain(std::move(height), std::move(gfx), std::move(fertility));
-
-        // The placed items of GELAENDE, FLUESSE and PROD2 in file order (P,
-        // insel.md "Placed objects": ANLAGEN id, rotation, height << 8 | phase, the
-        // footprint's top-left tile).
-        IslandCities ic;
-        std::map<std::uint32_t, std::pair<std::string_view, ItemKey>> taken; // tile -> first item
-        std::map<std::string, std::uint64_t> item_no;                        // per record name
-        for (const formats::chunk::Chunk& rec : isl.records) {
-            const std::string_view name = rec.name();
-            const std::uint64_t at = base + rec.offset;
-            if (name == "INFO" || name == "HEIGHT" || name == "GFXID" || name == "FRUCHTBAR") {
-                continue;
-            }
-            if (name == "BERGWERK2") {
-                warn.add(ScenarioWarningKind::UndecodedDeposits, path + ".BERGWERK2", name, at,
-                         "BERGWERK2 is undecoded (OQ-024; deposit goods O-37): no deposit");
-                continue;
-            }
-            if (name != "GELAENDE" && name != "FLUESSE" && name != "PROD2") {
-                warn.unknown_record("islands", path + "." + std::string(name), name, at);
-                continue;
-            }
-            auto block = insel::Block::parse(rec.payload);
-            if (!block) {
-                return path + "." + std::string(name) + ": " + block.error();
-            }
-            // D AnnoWelt 0x1008957d–0x10089676 (the PROD2 case of the island record
-            // loader 0x10089130; GELAENDE and FLUESSE are read alike): floor((len - 6) /
-            // 6) items (0x100895cf–0x100895d6), so bytes after the last whole item are
-            // ignored; per item the id & 0x3FFF is looked up (0x1008960d) and an unknown
-            // id skipped (0x10089619), rotation (id >> 14) & 3 (0x1008964e), phase
-            // state & 0x3F (0x1008965e), height state >> 8 (0x10089660), tile = block
-            // origin + the item's x, y read as signed bytes (movsx, 0x10089634).
-            // formats::insel masks the id with 0x0FFF and reads x, y unsigned: equal
-            // on the corpus (P, insel.md: bits 12–13 always 0, items inside their block).
-            const Bytes items = block.value().data;
-            const std::size_t whole = items.size() - items.size() % insel::kItemLen;
-            for (std::size_t i = 0; i < whole; i += insel::kItemLen) {
-                const insel::PlacedObject o =
-                    insel::PlacedObject::parse(items.subspan(i, insel::kItemLen), block.value());
-                const std::string where = path + "." + std::string(name) + "[" +
-                                          std::to_string(item_no[std::string(name)]++) + "]";
-                const std::uint64_t item_at =
-                    at + formats::chunk::kHeaderLen + insel::kBlockHeaderLen + i;
-                if (o.x >= is.w || o.y >= is.h) {
-                    return where + ": the item's tile (" + std::to_string(o.x) + ", " +
-                           std::to_string(o.y) + ") is outside the island";
-                }
-                const BuildingType* type = types.find(TypeId{o.anlage});
-                if (type == nullptr) {
-                    warn.add(ScenarioWarningKind::UnknownObject, where, name, item_at,
-                             "ANLAGEN id " + std::to_string(o.anlage) + " is not in the registry");
-                    continue;
-                }
-                // A PROD2 item of a type with a list in the layout is the tile layer's
-                // copy of a building; the building is created from its city's
-                // PROD/ENTRY with the type, rotation and height of the tile (D AnnoWelt
-                // 0x100264a0 through island +0x84 = 0x10083a90; docs/re/annowelt.md
-                // "Scenario cities" (b), (e)). It is kept here for the city pass.
-                if (name == "PROD2" && config.layout.list_for(type->prodtype).has_value()) {
-                    // A second item on a building item's origin is dropped as the tile
-                    // objects are (DuplicateObject for an equal item, else
-                    // ObjectTileTaken; OQ-142): an entry names one building there.
-                    const std::uint32_t origin = static_cast<std::uint32_t>(o.y) * is.w + o.x;
-                    if (const auto f = ic.by_origin.find(origin); f != ic.by_origin.end()) {
-                        const bool same = ic.items[f->second].key == key_of(o);
-                        warn.add(same ? ScenarioWarningKind::DuplicateObject
-                                      : ScenarioWarningKind::ObjectTileTaken,
-                                 where, name, item_at,
-                                 same
-                                     ? std::string("the same building item again (OQ-024)")
-                                     : "tile (" + std::to_string(o.x) + ", " + std::to_string(o.y) +
-                                           ") already holds a building item; the first "
-                                           "stays (OQ-142)");
-                        continue;
-                    }
-                    BuildingItem bi;
-                    bi.key = key_of(o);
-                    bi.id = o.anlage;
-                    bi.rotation = o.rotation;
-                    bi.height = o.height();
-                    bi.x = o.x;
-                    bi.y = o.y;
-                    const auto [fw, fh] = o.footprint(static_cast<std::uint8_t>(type->width),
-                                                      static_cast<std::uint8_t>(type->height));
-                    bi.w = fw;
-                    bi.h = fh;
-                    bi.where = where;
-                    bi.at = item_at;
-                    ic.by_origin.emplace(origin, ic.items.size());
-                    ic.items.push_back(std::move(bi));
-                    continue;
-                }
-                const std::uint32_t tile = static_cast<std::uint32_t>(o.y) * is.w + o.x;
-                if (name == "PROD2") {
-                    ic.other_prod2.try_emplace(tile, type->prodtype);
-                }
-                const auto [it, fresh] = taken.try_emplace(tile, name, key_of(o));
-                if (!fresh) {
-                    const bool same = it->second.first == name && it->second.second == key_of(o);
-                    warn.add(same ? ScenarioWarningKind::DuplicateObject
-                                  : ScenarioWarningKind::ObjectTileTaken,
-                             where, name, item_at,
-                             same ? std::string("the same item again (OQ-024)")
-                                  : "tile (" + std::to_string(o.x) + ", " + std::to_string(o.y) +
-                                        ") already holds an item; the first stays (OQ-142)");
-                    continue;
-                }
-                ScenarioSpec::TileObjectSpec t;
-                t.index = tile;
-                t.object = o.anlage;
-                t.phase = o.phase(); // low 6 bits of state (D AnnoWelt 0x1007aa40)
-                is.objects.push_back(t);
-            }
-        }
-        spec.islands.push_back(std::move(is));
+        spec.islands.push_back(std::move(*built));
         island_at_offset.push_back(child.offset);
         cities_of.push_back(std::move(ic));
     }
@@ -1021,29 +1101,348 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
         }
     }
 
-    // The other SCENE children.
+    // The other SCENE children, in file order: the ROHSTOFF, SCHATZ and INSELLNK
+    // records before ERZE feed the link selection, which the ERZE record runs (D
+    // AnnoScene 0x1000a25c; docs/re/annoscene.md §3, §5).
+    bool erze_seen = false;
+    std::vector<std::uint16_t> raw(config.links.raw_kinds, 0);
+    std::uint16_t treasures = 0;
     for (std::size_t c = 0; c < scene.children.size(); ++c) {
         const formats::chunk::Chunk& child = scene.children[c];
         const std::string_view name = child.name();
+        const std::string where = "scene[" + std::to_string(c) + "]";
         if (name == "HEAD" || name == "INSEL5" || name == "SPIELER" || name == "WARETYPE") {
             continue; // WARETYPE: the goods remap of the city WARE records
         }
         if (name == "INSELLNK") {
-            auto link = sze::IslandLink::parse(child.payload);
-            if (!link) {
-                return "scene[" + std::to_string(c) + "].INSELLNK: " + link.error();
+            auto parsed_link = sze::IslandLink::parse(child.payload);
+            if (!parsed_link) {
+                return where + ".INSELLNK: " + parsed_link.error();
             }
-            warn.add(ScenarioWarningKind::IslandLink, "scene[" + std::to_string(c) + "]", name,
-                     child.offset,
-                     "island " + std::to_string(link.value().number) + " (" +
-                         std::to_string(link.value().width) + " x " +
-                         std::to_string(link.value().height) +
-                         ") is a link: resolved in stage 2 (O-35), its slot stays empty");
+            const sze::IslandLink& l = parsed_link.value();
+            ++out.links_total;
+            const std::string path(l.path.begin(), l.path.end());
+            if (!is_dummy_path(path)) {
+                warn.add(ScenarioWarningKind::LinkNamesTemplate, where, name, child.offset,
+                         "island " + std::to_string(l.number) + " names " + path +
+                             ": the original places that file as it is (0x10009fe9), not read "
+                             "here");
+                continue;
+            }
+            IslandLinkSpec link;
+            link.number = l.number; // the head (D 0x10009e2e–0x10009e63, sze.md)
+            link.x = l.x;
+            link.y = l.y;
+            link.w = l.width;
+            link.h = l.height;
+            link.climate = link_climate(path);
+            link.path = path;
+            link.where = where;
+            link.offset = child.offset;
+            if (erze_seen) {
+                warn.add(ScenarioWarningKind::LinkUnresolved, where, name, child.offset,
+                         "island " + std::to_string(l.number) +
+                             " comes after ERZE, which has run the selection (0x1000a25c)");
+                continue;
+            }
+            out.links.push_back(std::move(link));
+            continue;
+        }
+        if (name == "ROHSTOFF") {
+            // D 0x1000a076–0x1000a140: a zero-filled 16-byte buffer, bytes 0..9 to the
+            // kinds 1, 2, 4..11 of this+0x51DC (bytes 10..15 not read). A longer record
+            // would be read past the buffer: refused.
+            if (child.payload.size() > 16) {
+                return where + ".ROHSTOFF: " + std::to_string(child.payload.size()) +
+                       " bytes, longer than the reader's 16-byte buffer";
+            }
+            if (config.links.raw_kinds < 12) {
+                return where + ".ROHSTOFF: LinkTables.raw_kinds is below the 12 the record fills";
+            }
+            std::array<std::uint8_t, 16> buf{};
+            std::copy(child.payload.begin(), child.payload.end(), buf.begin());
+            constexpr std::array<std::uint32_t, 10> kKind = {1, 2, 4, 5, 6, 7, 8, 9, 10, 11};
+            for (std::size_t b = 0; b < kKind.size(); ++b) {
+                raw[kKind[b]] = buf[b];
+            }
+            continue;
+        }
+        if (name == "SCHATZ") {
+            // D 0x1000a158–0x1000a19c: the record is read into the u16 at this+0x150.
+            if (child.payload.size() > 2) {
+                return where + ".SCHATZ: " + std::to_string(child.payload.size()) +
+                       " bytes, longer than the u16 it is read into";
+            }
+            std::array<std::uint8_t, 2> buf = {static_cast<std::uint8_t>(treasures & 0xffU),
+                                               static_cast<std::uint8_t>(treasures >> 8)};
+            std::copy(child.payload.begin(), child.payload.end(), buf.begin());
+            treasures = static_cast<std::uint16_t>(buf[0] | (buf[1] << 8));
+            continue;
+        }
+        if (name == "ERZE") {
+            // D 0x1000a19f–0x1000a25c: a zero-filled 10-byte buffer; bytes 0..3 → ore
+            // kinds 0..3, 4 → kind 5, 5 → kind 6, 6 → the special count; bytes 7 and 8
+            // go to this+0x528C / +0x528E (not read by the selection), byte 9 is not read.
+            // Then the selection runs (0x1000a25c).
+            if (child.payload.size() > 10) {
+                return where + ".ERZE: " + std::to_string(child.payload.size()) +
+                       " bytes, longer than the reader's 10-byte buffer";
+            }
+            if (erze_seen) {
+                return where + ".ERZE: a second ERZE would run the selection again";
+            }
+            if (config.links.ore_kinds < 7) {
+                return where + ".ERZE: LinkTables.ore_kinds is below the 7 the record fills";
+            }
+            std::array<std::uint8_t, 10> buf{};
+            std::copy(child.payload.begin(), child.payload.end(), buf.begin());
+            LinkInputs& in = out.link_inputs;
+            in.raw_materials = raw;
+            in.ores.assign(config.links.ore_kinds, 0);
+            constexpr std::array<std::uint32_t, 6> kKind = {0, 1, 2, 3, 5, 6};
+            for (std::size_t b = 0; b < kKind.size(); ++b) {
+                in.ores[kKind[b]] = buf[b];
+            }
+            in.special_count = buf[6];
+            in.treasures = treasures;
+            erze_seen = true;
             continue;
         }
         warn.unknown_record("scene", "scene." + std::string(name), name, child.offset);
     }
+    if (!erze_seen) {
+        // Without ERZE the selection never runs (it is called from the ERZE case only).
+        for (const IslandLinkSpec& l : out.links) {
+            warn.add(ScenarioWarningKind::LinkUnresolved, l.where, "INSELLNK", l.offset,
+                     "island " + std::to_string(l.number) +
+                         ": the scenario has no ERZE record, which runs the selection");
+        }
+        out.links.clear();
+    }
+    out.link_inputs.raw_materials.resize(config.links.raw_kinds, 0);
+    out.link_inputs.ores.resize(config.links.ore_kinds, 0);
     return out;
+}
+
+namespace {
+
+/// The INFO bytes of an island into `out` as 0x100b2770 copies them (AnnoWelt
+/// 0x100b27d3): each INFO record in order zeroes the 12 bytes and copies its first 12
+/// bytes (the last record wins); without a record `out` keeps what it held.
+void copy_info(const insel::Island& isl, std::array<std::uint8_t, 12>& out) {
+    for (const formats::chunk::Chunk& r : isl.records) {
+        if (r.name() == "INFO") {
+            out = {};
+            std::copy_n(r.payload.begin(), std::min<std::size_t>(r.payload.size(), out.size()),
+                        out.begin());
+        }
+    }
+}
+
+/// "0, 3, 12" for the set entries of a mark list.
+std::string kinds_list(const std::vector<std::uint8_t>& marks) {
+    std::string s;
+    for (std::size_t k = 0; k < marks.size(); ++k) {
+        if (marks[k] != 0) {
+            s += (s.empty() ? "" : ", ") + std::to_string(k);
+        }
+    }
+    return s;
+}
+
+} // namespace
+
+std::optional<TemplateSummary> template_summary(Bytes scp, std::string name) {
+    // D AnnoWelt 0x100b25a0: root ANNO (0x100b25f5), then every INSEL4 / INSEL5 child
+    // (INSEL4 0x100b2645, INSEL5 0x100b26ba) gives the size from its head and the INFO record
+    // through 0x100b2770; the last one wins; none: failure.
+    auto parsed = formats::chunk::parse_file(scp);
+    if (!parsed || parsed.value().chunks.empty()) {
+        return std::nullopt;
+    }
+    const formats::chunk::Chunk& root = parsed.value().chunks.front();
+    if (root.name() != "ANNO" || !root.is_container) {
+        return std::nullopt;
+    }
+    std::optional<TemplateSummary> out;
+    std::array<std::uint8_t, 12> info{}; // the zero-filled summary (0x10007ed0-0x10007f2a)
+    for (const formats::chunk::Chunk& c : root.children) {
+        std::optional<formats::Result<insel::Island, std::string>> isl;
+        if (c.name() == "INSEL5") {
+            isl = insel::Island::from_insel5(c.payload);
+        } else if (c.name() == "INSEL4") {
+            isl = insel::Island::from_insel4(root.children);
+        } else {
+            continue;
+        }
+        if (!*isl) {
+            return std::nullopt;
+        }
+        TemplateSummary t;
+        t.name = name;
+        t.w = isl->value().width; // INSEL5 head +4, +6 (0x100b26f3–0x100b2717); INSEL4 +0, +2
+        t.h = isl->value().height;
+        copy_info(isl->value(), info);
+        t.info = info;
+        out = std::move(t);
+    }
+    return out;
+}
+
+formats::Result<LinkResolution, std::string>
+resolve_scenario_links(LoadedScenario& s, std::span<const TemplateSummary> candidates,
+                       const SimConfig& config, const Rules& rules) {
+    // The generator World::create builds (scenario_rng): the table, then the cursor
+    // spec.seed mod its length (world property 8, D AnnoWelt 0x100a3230).
+    std::optional<WorldRng> made = scenario_rng(s.spec);
+    if (!made) {
+        return std::string("rng_table: must not be empty");
+    }
+    WorldRng rng = std::move(*made);
+    GlobalDraw draw(rng);
+    auto res = resolve_island_links(s.links, s.link_inputs, candidates, draw, config.links,
+                                    rules.island_candidate_order);
+    if (!res) {
+        return res.error();
+    }
+    if (!s.links.empty()) {
+        s.spec.seed = rng.cursor();
+    }
+    if (res.value().treasures_capped) {
+        Warnings warn{s.warnings, {}};
+        warn.add(ScenarioWarningKind::LinkTreasuresCapped, "scene", "SCHATZ", 0,
+                 std::to_string(s.link_inputs.treasures) + " treasures for " +
+                     std::to_string(s.links.size()) +
+                     " links: the original's loop would not end (0x10009c5e–0x10009c9d)");
+    }
+    return res;
+}
+
+std::optional<std::string> place_island_links(LoadedScenario& s, const LinkResolution& res,
+                                              std::span<const Bytes> templates,
+                                              const TypeRegistry& types, const SimConfig& config) {
+    if (res.links.size() != s.links.size() || templates.size() != s.links.size()) {
+        return std::string("place_island_links: the resolution or the templates do not match "
+                           "the links");
+    }
+    Warnings warn{s.warnings, {}};
+    std::set<std::uint32_t> used;
+    for (const ScenarioSpec::IslandSpec& is : s.spec.islands) {
+        used.insert(is.slot.v);
+    }
+    // D 0x10008490: the links in list order (file order).
+    for (std::size_t i = 0; i < s.links.size(); ++i) {
+        const IslandLinkSpec& l = s.links[i];
+        const ResolvedLink& r = res.links[i];
+        const std::string path = "links[" + std::to_string(i) + "]";
+        const std::string who = path + " (island " + std::to_string(l.number) + ")";
+        if (!r.candidate.has_value()) {
+            // D 0x100084f4–0x100084fd: an empty chosen name skips the link.
+            warn.add(ScenarioWarningKind::LinkUnresolved, l.where, "INSELLNK", l.offset,
+                     "island " + std::to_string(l.number) + " (" + std::to_string(l.w) + " x " +
+                         std::to_string(l.h) + ", climate " + std::to_string(l.climate) +
+                         "): no template left (" + std::to_string(r.matched) + " matched, " +
+                         std::to_string(r.kept) + " kept); the original skips it");
+            continue;
+        }
+        auto parsed = formats::chunk::parse_file(templates[i]);
+        if (!parsed || parsed.value().chunks.empty() ||
+            !parsed.value().chunks.front().is_container) {
+            return who + ": the template is not a chunk file";
+        }
+        const formats::chunk::Chunk& root = parsed.value().chunks.front();
+        const formats::chunk::Chunk* insel5 = nullptr;
+        const formats::chunk::Chunk* insel4 = nullptr;
+        bool players = false;
+        for (const formats::chunk::Chunk& c : root.children) {
+            const std::string_view cname = c.name();
+            if (cname == "INSEL5" && insel5 == nullptr) {
+                insel5 = &c;
+            } else if (cname == "INSEL4" && insel4 == nullptr) {
+                insel4 = &c;
+            } else if (cname == "SPIELER") {
+                players = true;
+            } else if (insel4 == nullptr) {
+                // (An INSEL4 template keeps its island records as root siblings after the
+                // INSEL4, insel.md: those are read with it, not reported here.)
+                warn.unknown_record("link_templates", path + "." + std::string(cname), cname,
+                                    c.offset);
+            }
+        }
+        // The template's island as the world loader takes it: an INSEL5, else an INSEL4
+        // with its root-level records (insel.md; GetAnnoInselFileData accepts both, so a
+        // template of either kind can be a candidate).
+        formats::Result<insel::Island, std::string> isl =
+            std::string("the template holds no INSEL5 or INSEL4");
+        if (insel5 != nullptr) {
+            isl = insel::Island::from_insel5(insel5->payload);
+        } else if (insel4 != nullptr) {
+            isl = insel::Island::from_insel4(root.children);
+        }
+        if (!isl) {
+            return who + ": " + isl.error();
+        }
+        // D 0x10008503–0x1000850d: world slot +0x88(name, &(x, y), number & 0xFFFF).
+        const std::uint32_t slot = l.number & 0xFFFFU;
+        if (slot >= config.island_slots) {
+            return who + ": island number is not below island_slots (" +
+                   std::to_string(config.island_slots) + ")";
+        }
+        if (!used.insert(slot).second) {
+            return who + ": island slot " + std::to_string(slot) + " is used twice";
+        }
+        std::optional<ScenarioSpec::IslandSpec> built;
+        IslandCities ic;
+        // Record offsets: inside the INSEL5's payload, or file offsets for an INSEL4's
+        // root-level records.
+        const std::uint64_t head_at = insel5 != nullptr ? insel5->offset : insel4->offset;
+        const std::uint64_t base =
+            insel5 != nullptr ? head_at + formats::chunk::kHeaderLen + insel::kInsel5HeadLen : 0;
+        if (auto e = island_from_insel(isl.value(), path, base, head_at, IslandId{slot}, l.x, l.y,
+                                       types, config, warn, "link_templates", built, ic)) {
+            return who + ": " + *e;
+        }
+        if (!built) {
+            continue; // UnknownClimate, warned
+        }
+        // D 0x10008532–0x10008545: island property 7 = the link's climate (equal to the
+        // template's INFO[0] by step 2).
+        built->climate = l.climate;
+        s.spec.islands.push_back(std::move(*built));
+        ++s.links_placed;
+        // No city of the file names a link island's tiles (STADT2 is read before the
+        // links are placed, and the template's SPIELER blocks are not read: native
+        // settlements, OQ-151), so no building item of the template is placed.
+        for (const BuildingItem& b : ic.items) {
+            warn.add(ScenarioWarningKind::BuildingItemWithoutEntry, b.where, "PROD2", b.at,
+                     "building " + std::to_string(b.id) + " at (" + std::to_string(b.x) + ", " +
+                         std::to_string(b.y) +
+                         ") of the link's template: no city's PROD/ENTRY names it, not placed "
+                         "(OQ-151)");
+        }
+        // D 0x100085a2–0x100085cf: island property 11 = 0xF009 | the marks, also with none.
+        const std::string marks_raw = kinds_list(r.raw_marks);
+        warn.add(ScenarioWarningKind::LinkRawMaterials, path, "INSELLNK", l.offset,
+                 "island property 11 = 0xF009 | raw materials {" + marks_raw +
+                     "} (0x100085a2) has no field");
+        const std::string marks_ore = kinds_list(r.ore_marks);
+        if (!marks_ore.empty()) {
+            warn.add(ScenarioWarningKind::LinkOresUnplaced, path, "INSELLNK", l.offset,
+                     "ores " + marks_ore +
+                         ": not put on mountain objects (0x100085d5, O-37), no deposit, the "
+                         "LinkOrePlace draws not made");
+        }
+        if (r.treasure) {
+            warn.add(ScenarioWarningKind::LinkTreasureUnplaced, path, "INSELLNK", l.offset,
+                     "the treasure (0x10008b25) is not placed, its draws not made");
+        }
+        if (players) {
+            warn.add(ScenarioWarningKind::LinkTemplatePlayers, path, "SPIELER", 0,
+                     "the template's SPIELER blocks are not read (native settlements; the "
+                     "LinkNativeName draws not made)");
+        }
+    }
+    return std::nullopt;
 }
 
 } // namespace anno::sim

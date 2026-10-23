@@ -133,6 +133,7 @@ template <class A, Same<WorldRng> S> void fields(A& a, S& s) {
 template <> struct EnumInfo<SlotPolicy> : ContiguousEnum<2> {};
 template <> struct EnumInfo<SpatialOrder> : ContiguousEnum<2> {};
 template <> struct EnumInfo<PrngMode> : ContiguousEnum<2> {};
+template <> struct EnumInfo<IslandCandidateOrder> : ContiguousEnum<2> {};
 
 /// A vector of u32: u64 count, then the elements.
 template <class A, class V> void u32_list(A& a, V& v) {
@@ -180,7 +181,26 @@ template <class A, Same<SmallFarmAnimals> S> void fields(A& a, S& s) {
     ar::seq(a, s.limit, 1, [&](auto& x) { a.u8(x); });
 }
 
-static_assert(field_count<SimConfig>() == 51,
+static_assert(field_count<LinkTables>() == 13,
+              "a LinkTables member needs a line in fields(LinkTables)");
+
+template <class A, Same<LinkTables> S> void fields(A& a, S& s) {
+    a.u32(s.raw_kinds);
+    a.u32(s.ore_kinds);
+    a.u32(s.rounds);
+    a.u32(s.best_list_cap);
+    a.u32(s.pick_list_cap);
+    u32_list(a, s.raw_climate_mask);
+    u32_list(a, s.ore_climate_mask);
+    u32_list(a, s.ore_mask_bit);
+    ar::seq(a, s.ore_exclusion, 1, [&](auto& x) { a.u8(x); });
+    u32_list(a, s.raw_width_rank);
+    u32_list(a, s.ore_width_rank);
+    u32_list(a, s.raw_rank_score);
+    u32_list(a, s.ore_rank_score);
+}
+
+static_assert(field_count<SimConfig>() == 52,
               "a SimConfig member needs a line in fields(SimConfig)");
 
 template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
@@ -235,9 +255,10 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     a.u32(s.host_player.v);
     fields(a, s.small_farm_animals);
     fields(a, s.layout);
+    fields(a, s.links);
 }
 
-static_assert(field_count<Rules>() == 18, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<Rules>() == 19, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -258,6 +279,7 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.boolean(s.stat_decay_wide);
     a.boolean(s.bankrupt_deadline_wrap_safe);
     a.boolean(s.timer0_clamp);
+    a.enumv(s.island_candidate_order);
 }
 
 // ---- settings scope

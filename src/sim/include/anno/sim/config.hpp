@@ -192,6 +192,73 @@ enum class PrngMode : std::uint8_t {
     PerIsland,
 };
 
+/// The order of the island templates a scenario's links are resolved from
+/// (docs/re/annoscene.md §5 step 1; OQ-150).
+enum class IslandCandidateOrder : std::uint8_t {
+    /// Bytewise by the upper-cased path below Scenes/Islands ("NORD/N_128X128_…").
+    /// The order of the list the original builds into AnnoScene.dll for network
+    /// games (D 0x10008187–0x100082ad: 428 entries in this order, P), and of a
+    /// single-player directory scan on NTFS; the same on every machine.
+    Sorted,
+    /// The single-player original's InselCache.txt order, i.e. the directory
+    /// enumeration of the machine it was written on (D 0x10007c50). Reserved:
+    /// no cache is read, so Rules::validate rejects it.
+    Cached,
+};
+
+/// The tables of the island-link selection (docs/re/annoscene.md §5, D AnnoScene
+/// 0x10009550 and its callees 0x10009170, 0x10009330, 0x10009010, 0x100090b0,
+/// 0x10009130). They are read when a scenario's links are resolved, before the
+/// world exists. A width rank table holds `rounds` rows of one width per rank
+/// position (row r, position p at r · positions + p, positions = the length of the
+/// score list).
+struct LinkTables {
+    /// Raw-material kinds: the loop `cmp esi, 0x14` (0x10009793) over the 20 u16 of
+    /// this+0x51DC and the record's 20 marks (+0x112). At most 32: a kind is a shift
+    /// count into the climate's u32 mask (0x10009019).
+    std::uint32_t raw_kinds = 20;
+    /// Ore kinds: the loop `cmp esi, 9` (0x100097fa), the record's 9 marks (+0x13A),
+    /// the exclusion test's 9 columns (0x10009158) and the capacity sum (0x100098b1).
+    std::uint32_t ore_kinds = 9;
+    /// Rounds of the raw and the ore distribution (0x10009799, 0x10009800).
+    std::uint32_t rounds = 25;
+    /// The best-score list of one pick (0x100092bc, 0x100094e1).
+    std::uint32_t best_list_cap = 5;
+    /// The candidate list of a link with special and normal candidates (0x10009b64).
+    std::uint32_t pick_list_cap = 50;
+    /// Per climate the raw kinds it takes, `1 << kind` (0x10009010, jump table
+    /// 0x1000908c; a climate past the table takes none). The same values as
+    /// SimConfig::monopoly_climate_mask (AnnoWelt 0x1009d2a0), held apart because the
+    /// two modules hold them apart.
+    std::vector<std::uint32_t> raw_climate_mask = {0x18000, 0xf009, 0xf949, 0xf06b,
+                                                   0xf6b9,  0xf04d, 0xf04d};
+    /// Per climate the ore bits (0x100090b0, jump table 0x10009114). The original
+    /// tests a byte (`test al, imm8`), so a mask is at most 0xFF.
+    std::vector<std::uint32_t> ore_climate_mask = {0x00, 0x05, 0x25, 0x01, 0x03, 0x0b, 0x0b};
+    /// The bit an ore kind tests in ore_climate_mask (0x100090b4: kind 6 tests bit 0).
+    std::vector<std::uint32_t> ore_mask_bit = {0, 1, 2, 3, 4, 5, 0, 7, 8};
+    /// ore_kinds × ore_kinds, row = the kind to place, column = a kind the link
+    /// already has: 1 = that link is not eligible (0x10009130: the byte at
+    /// 0x1003AF40 + 7 · kind + e is 0xFF; docs/re/annoscene.md §5 step 3).
+    std::vector<std::uint8_t> ore_exclusion = original_ore_exclusion();
+    /// The widths by rank of the raw distribution (0x1003AF74, 0x10009210).
+    std::vector<std::uint32_t> raw_width_rank = original_raw_width_rank();
+    /// The widths by rank of the ore distribution (0x1003B144, 0x10009400).
+    std::vector<std::uint32_t> ore_width_rank = original_ore_width_rank();
+    /// The score of a width at rank p: 4 − p (0x10009219).
+    std::vector<std::uint32_t> raw_rank_score = {4, 3, 2, 1};
+    /// (4 − p) + byte[0x1003B324 + 4 − p] (0x1000940a–0x1000941c): the byte for p = 0
+    /// is the first byte of the string "po_" at 0x1003B328 (0x70).
+    std::vector<std::uint32_t> ore_rank_score = {116, 6, 3, 1};
+
+    /// The original tables (docs/re/annoscene.md §5 step 3).
+    static std::vector<std::uint8_t> original_ore_exclusion();
+    static std::vector<std::uint32_t> original_raw_width_rank();
+    static std::vector<std::uint32_t> original_ore_width_rank();
+    /// Empty when valid, else one message naming the field ("LinkTables.rounds: ...").
+    [[nodiscard]] std::string validate() const;
+};
+
 /// The original's number of city passes after the building scheduler (D:
 /// 0x1002d9a0): the default of SimConfig::city_pass_count and the length of a
 /// default Seams::city_pass.
@@ -356,6 +423,10 @@ struct SimConfig {
     /// (= draw & 7 for the original 8 entries).
     SmallFarmAnimals small_farm_animals;
     ListLayout layout = ListLayout::original();
+    /// The island-link selection of a scenario load (docs/re/annoscene.md §5): read
+    /// before the world exists, hashed with the configuration so a world records the
+    /// tables its links were drawn with.
+    LinkTables links;
 
     /// docs/sim/state.md §3.1. Empty when valid, else one message naming the
     /// first offending field ("SimConfig.building_div: must be non-zero").
@@ -418,11 +489,16 @@ struct Rules {
     /// (D 0x1009cd51..0x1009cd59) subtracts in u32 and stops the timer only on exactly
     /// 0, so an overshoot wraps the counter and the timer runs on (timers_tick).
     bool timer0_clamp = false;
+    /// OQ-150 (decided 2026-10-23: Sorted stays): the order of the island templates a scenario's
+    /// links are resolved from. Sorted is the order of the original's network-game list (D
+    /// AnnoScene 0x10008187–0x100082ad) and the same on every machine; Cached (the
+    /// single-player InselCache.txt order) is reserved.
+    IslandCandidateOrder island_candidate_order = IslandCandidateOrder::Sorted;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed
     /// or saved; spatial_order == Original0x10027000: O-7; drought_random_centre
-    /// == true: OQ-042), any enum byte
+    /// == true: OQ-042; island_candidate_order == Cached: OQ-150), any enum byte
     /// outside its range (a value cast from a save or a config file may be
     /// anything) and events_max_dispatch == 0. Empty when valid.
     [[nodiscard]] std::string validate() const;

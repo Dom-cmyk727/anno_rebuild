@@ -1,6 +1,6 @@
 # Islands (`INSEL5`, `INSEL4`) in `.scp` and `.sze`
 
-**Status:** partial — the island head, the record sequence and the terrain grids (`HEIGHT`, `GFXID`, `FRUCHTBAR`) are complete and re-encode byte-identically (P); `GFXID` decodes to ground cells of `Textures/Felder.tex` (P + visual); the content of most other records is open (OQ-024). Read by the sim adapter (S14 stage 1, `src/sim/src/scenario_formats.cpp`, `docs/sim/state.md` §10): the head, `INFO[0]`, the three grids and the placed items.
+**Status:** partial — the island head, the record sequence and the terrain grids (`HEIGHT`, `GFXID`, `FRUCHTBAR`) are complete and re-encode byte-identically (P); `GFXID` decodes to ground cells of `Textures/Felder.tex` (P + visual); the content of most other records is open (OQ-024). Read by the sim adapter (S14 stage 1, `src/sim/src/scenario_formats.cpp`, `docs/sim/state.md` §10): the head, `INFO[0]`, the three grids and the placed items; since stage 2 also the island templates of `Scenes/Islands` (their size and `INFO` bytes 0, 2, 4, 5, 8, 9 as the link selection's candidates, and the chosen ones as islands).
 
 ## Files covered
 - Island templates `Scenes/Islands/<Klima>/*.scp`: 465 files, one island each (444 `INSEL5`, 21 `INSEL4`) (P).

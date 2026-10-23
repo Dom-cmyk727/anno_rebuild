@@ -1,5 +1,6 @@
 # Runs `anno-sim-replay scenario` on one scenario of the game directory:
-#   cmake -DPROG=<exe> -DSCENE=<path relative to Scenes> -DTICKS=<n> -P RunScenarioTool.cmake
+#   cmake -DPROG=<exe> -DSCENE=<path relative to Scenes> -DTICKS=<n> [-DEXPECT=<regex>]
+#         -P RunScenarioTool.cmake
 # Skips (the "skipping:" line, SKIP_REGULAR_EXPRESSION) when ANNO1503_GAME_DIR is not
 # set; otherwise passes only when the tool exits 0 and reports clean invariants.
 if(NOT PROG OR NOT SCENE OR NOT DEFINED TICKS)
@@ -16,5 +17,9 @@ if(NOT rc STREQUAL "0")
 endif()
 if(NOT out MATCHES "check_invariants clean")
   message(FATAL_ERROR "no clean check_invariants:\n${out}${err}")
+endif()
+# Optional: a regular expression the output must also match (-DEXPECT=...).
+if(DEFINED EXPECT AND NOT out MATCHES "${EXPECT}")
+  message(FATAL_ERROR "the output does not match '${EXPECT}':\n${out}${err}")
 endif()
 message(STATUS "${out}")

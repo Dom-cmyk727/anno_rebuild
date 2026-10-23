@@ -12,6 +12,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -19,6 +21,7 @@
 #include <anno/formats/bytes.hpp>
 #include <anno/formats/result.hpp>
 #include <anno/sim/config.hpp>
+#include <anno/sim/island_links.hpp>
 #include <anno/sim/scenario.hpp>
 #include <anno/sim/types.hpp>
 
@@ -30,9 +33,6 @@ enum class ScenarioWarningKind : std::uint8_t {
     /// A record the adapter does not map (a SCENE child, a player record, an
     /// island record or a city record), once per scenario, scope and record name.
     UnknownRecord,
-    /// An INSELLNK: resolved by the template choice of stage 2 (O-35); its slot
-    /// stays empty.
-    IslandLink,
     /// A placed item (GELAENDE, FLUESSE, PROD2) whose ANLAGEN id the registry
     /// does not know.
     UnknownObject,
@@ -90,6 +90,33 @@ enum class ScenarioWarningKind : std::uint8_t {
     /// them unclipped (D 0x10085620, past the island's tile array, F-fix); here
     /// they are dropped.
     OwnerTileOutsideIsland,
+    /// An INSELLNK to a file that is not a *DUMMY.scp: the original loads that file
+    /// as it is (D AnnoScene 0x10009fe9, docs/re/annoscene.md §3 item 3), which the
+    /// adapter does not; none in the corpus.
+    LinkNamesTemplate,
+    /// A link that gets no island: no candidate was left (the original keeps its
+    /// name empty and skips it, D 0x100084f4–0x100084fd), it comes after the ERZE
+    /// record that runs the selection (D 0x1000a25c), or the scenario has no ERZE.
+    LinkUnresolved,
+    /// The ores assigned to a placed link: the original puts them on the island's
+    /// mountain objects with one draw each (D 0x100085d5–0x10008784), which is not
+    /// read far enough to map (O-37): no deposit is made, the draws are not made.
+    LinkOresUnplaced,
+    /// Every placed link: the original sets island property 11 = 0xF009 | the raw
+    /// materials assigned to it (D 0x100085a2–0x100085cf); the sim has no field for it
+    /// yet.
+    LinkRawMaterials,
+    /// A placed link that holds a treasure: the original creates a treasure object
+    /// with up to two draws (D 0x10008b25–0x10008bb5, the spot scan 0x10008cc0 not
+    /// read); not placed, not drawn.
+    LinkTreasureUnplaced,
+    /// SCHATZ is more than the links can hold: the original's treasure loop never
+    /// ends (D 0x10009c5e–0x10009c9d); here it stops when every link holds one.
+    LinkTreasuresCapped,
+    /// A link's template holds SPIELER blocks (native settlements): they are not
+    /// read, and the original's name draws for native cities (D 0x10008848–
+    /// 0x10008b20) are not made.
+    LinkTemplatePlayers,
 };
 
 /// The stable name of a kind ("UnknownRecord", …): the corpus expectations file
@@ -113,12 +140,19 @@ struct ScenarioWarning {
 struct LoadedScenario {
     ScenarioSpec spec;
     std::vector<ScenarioWarning> warnings;
+    /// The INSELLNK records to *DUMMY.scp that take part in the selection (those
+    /// before the ERZE record, in file order; docs/re/annoscene.md §3, §5).
+    std::vector<IslandLinkSpec> links;
+    /// The ROHSTOFF, SCHATZ and ERZE values as the ERZE record finds them.
+    LinkInputs link_inputs;
+    /// Every INSELLNK record of the file, and the islands placed from links.
+    std::uint64_t links_total = 0, links_placed = 0;
 };
 
 /// What a loaded scenario holds, for the corpus table: counts only.
 struct ScenarioCounts {
-    std::uint64_t islands = 0, links = 0, cities = 0, buildings = 0, tile_objects = 0, deposits = 0,
-                  players = 0;
+    std::uint64_t islands = 0, links = 0, links_resolved = 0, links_unresolved = 0, cities = 0,
+                  buildings = 0, tile_objects = 0, deposits = 0, players = 0;
     std::map<ScenarioWarningKind, std::uint64_t> warnings;
 };
 [[nodiscard]] ScenarioCounts count(const LoadedScenario& s);
@@ -129,5 +163,34 @@ struct ScenarioCounts {
 /// file is checked against. Errors name the path ("players[2]: …").
 formats::Result<LoadedScenario, std::string>
 load_scenario(formats::Bytes file, const TypeRegistry& types, const SimConfig& config);
+
+/// One island template the caller read (the bytes of an .scp below Scenes/Islands)
+/// as a candidate of the link selection, under the caller's `name` (the upper-cased
+/// path, TemplateSummary). What GetAnnoInselFileData (AnnoWelt 0x100b25a0) gives the
+/// island cache: nullopt when the root is not ANNO or no INSEL4/INSEL5 child is
+/// there; width and height from the head, INFO zero where the record is missing.
+[[nodiscard]] std::optional<TemplateSummary> template_summary(formats::Bytes scp, std::string name);
+
+/// Steps 2–9 of the link selection (resolve_island_links) on the scenario's own
+/// generator: the draws start at the cursor World::create would start from (the
+/// table, then spec.seed mod its length), and spec.seed becomes the cursor they leave,
+/// so the world starts where the original's is after the ERZE record (D AnnoScene
+/// 0x1000a25c: the selection draws on the world created at HEAD, docs/re/annoscene.md
+/// §4). Adds the LinkTreasuresCapped warning. No link: no draw, spec.seed unchanged.
+formats::Result<LinkResolution, std::string>
+resolve_scenario_links(LoadedScenario& s, std::span<const TemplateSummary> candidates,
+                       const SimConfig& config, const Rules& rules);
+
+/// Step 10 (D AnnoScene 0x10008490) for every link of `s` in order: a link without a
+/// template → LinkUnresolved; otherwise `templates[i]` (the .scp bytes of link i's
+/// chosen candidate, read by the caller) becomes an island of slot `number & 0xFFFF`
+/// at the link's position, built as an INSEL5 of the scenario is, with the link's
+/// climate (island property 7, D 0x10008532–0x10008545), and the warnings for what
+/// the placement does beyond that (LinkRawMaterials, LinkOresUnplaced,
+/// LinkTreasureUnplaced, LinkTemplatePlayers). Errors name the link
+/// ("links[3] (island 12): ...").
+std::optional<std::string> place_island_links(LoadedScenario& s, const LinkResolution& res,
+                                              std::span<const formats::Bytes> templates,
+                                              const TypeRegistry& types, const SimConfig& config);
 
 } // namespace anno::sim

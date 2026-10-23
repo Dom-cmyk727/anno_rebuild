@@ -44,10 +44,14 @@ The S12 fix-up added Rules::timer0_clamp (owner decision on OQ-133), one more by
 header's Rules.
 Stage S13 (stream 108) widened the drought record's city mask to u64 count + u32 words;
 the transcribed worlds hold no drought (presence byte 0), so only the version moved.
+S14 stage 2 (stream 110, PRNG timeline 2) added SimConfig::links (the island-link
+selection's tables) and Rules::island_candidate_order to the header; --check also refuses
+a scenario_corpus.txt whose version header line names other versions.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
-                           (g0_*, g1_*, s5_*, s6_*); exit 1 on a difference
+                           (g0_*, g1_*, s5_*, s6_*) and the version header line of
+                           scenario_corpus.txt; exit 1 on a difference
 
 The class table below is Appendix C (compare constants of the class ticks read
 from AnnoWelt.dll, see docs/re/production.md §10); the stream layout is the one
@@ -63,8 +67,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 109
-PRNG_TIMELINE_VERSION = 1
+STATE_HASH_VERSION = 110
+PRNG_TIMELINE_VERSION = 2
 
 
 def fnv(data, h=0xCBF29CE484222325):
@@ -167,6 +171,28 @@ def config_bytes():
     b += u32s([4, 5, 1, 3, 2, 0])
     b += u32(1) + u32(32) + u32(4)
     b += b''.join(u32(x) for x in [5, 3, 1, 2, 4, 0])
+    b += link_tables_bytes()
+    return b
+
+
+def link_tables_bytes():
+    """SimConfig::links (S14 stage 2, docs/re/annoscene.md section 5 step 3): the counts,
+    the climate masks, the ore exclusion table, the width ranks and the rank scores of
+    the island-link selection, as read from AnnoScene.dll."""
+    b = b''.join(u32(x) for x in [20, 9, 25, 5, 50])
+    b += u32s([0x18000, 0xF009, 0xF949, 0xF06B, 0xF6B9, 0xF04D, 0xF04D])
+    b += u32s([0, 5, 0x25, 1, 3, 0xB, 0xB])
+    b += u32s([0, 1, 2, 3, 4, 5, 0, 7, 8])
+    # Row k = the ore kind to place, column e = a kind the link has: 1 = refused
+    # (0x10009130: the byte at 0x1003AF40 + 7k + e is 0xFF).
+    exclusion = ['100000001', '011111100', '001000011', '111111101', '011111100',
+                 '001001001', '011111100', '000000000', '000000000']
+    b += u64(81) + bytes(int(c) for row in exclusion for c in row)
+    raw = ([256, 128, 0, 0] + [256, 128, 80, 80] + [80, 128, 256, 64] * 4
+           + [64, 80, 128, 256] * 19)
+    ore = ([256, 128, 0, 0] + [256, 128, 80, 80] + [128, 256, 80, 64] * 13
+           + [64, 80, 128, 256] * 10)
+    b += u32s(raw) + u32s(ore) + u32s([4, 3, 2, 1]) + u32s([116, 6, 3, 1])
     return b
 
 
@@ -174,10 +200,11 @@ def rules_bytes(full_tick=False):
     # slot_policy, spatial_order, events_drain_new, events_max_dispatch, six flags (flush,
     # monopoly_every_30s, player_table_full_tick, drought centre, atomic, empty city),
     # event750_keep_overshoot, prng_mode, interim_figure_return_ticks, free_build_cheat,
-    # enforce_research, stat_decay_wide, bankrupt_deadline_wrap_safe, timer0_clamp
+    # enforce_research, stat_decay_wide, bankrupt_deadline_wrap_safe, timer0_clamp,
+    # island_candidate_order (S14 stage 2: Sorted = 0)
     flags = bytes([0, 0, 1 if full_tick else 0, 0, 0, 0])
     return (u8(0) + u8(0) + u8(0) + u64(1 << 20) + flags + u8(0) + u8(0) + u32(0) + u8(0)
-            + u8(0) + u8(0) + u8(0) + u8(0))
+            + u8(0) + u8(0) + u8(0) + u8(0) + u8(0))
 
 
 def settings_bytes(width=0, height=0):
@@ -701,6 +728,18 @@ def goldens():
     return found
 
 
+def corpus_versions():
+    """(kStateHashVersion, kPrngTimelineVersion) from the version header line of
+    fixtures/synthetic/sim/scenario_corpus.txt (written by scenario_test.cpp; its create
+    hashes move with both versions), or None when the file has none."""
+    path = ROOT / 'fixtures/synthetic/sim/scenario_corpus.txt'
+    for line in path.read_text(encoding='utf-8').splitlines():
+        m = re.match(r'# kStateHashVersion=(\d+) kPrngTimelineVersion=(\d+)$', line.strip())
+        if m:
+            return int(m.group(1)), int(m.group(2))
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--check', action='store_true', help='compare with goldens.txt')
@@ -722,6 +761,14 @@ def main():
             print('%s: goldens.txt has %016x, the transcription %016x' %
                   (name, value, computed[name]))
             bad += 1
+    # The scenario corpus file cannot be recomputed here (it needs the game files), but a
+    # header from another stream or timeline version means its hashes are stale.
+    versions = corpus_versions()
+    if versions != (STATE_HASH_VERSION, PRNG_TIMELINE_VERSION):
+        print('scenario_corpus.txt: header %s, this script is for kStateHashVersion=%d '
+              'kPrngTimelineVersion=%d (re-baseline it with the game dir)' %
+              (versions, STATE_HASH_VERSION, PRNG_TIMELINE_VERSION))
+        bad += 1
     print('goldens agree' if bad == 0 else '%d difference(s)' % bad)
     return 1 if bad else 0
 

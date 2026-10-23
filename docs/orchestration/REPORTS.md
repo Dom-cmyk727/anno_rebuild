@@ -1106,3 +1106,54 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
   - OQ numbers 128/129 may collide with T14 if it adds OQs in the same round; renumber at merge.
   - Not mine to decide: whether `kPrngTimelineVersion` should still be bumped for S11 (see §6).
 - Time spent / subagents used: one reviewer subagent (read-only); everything else inline.
+
+## T9 — sim stage S12: world-level time — 2026-10-23 — status: FINISHED
+- Branch: task/T9-sim-s12-time, code and docs at 0a0ae14 (5 commits on 12c48e0) plus this report; worktree: C:\Users\altin\anno1503-T9.
+- Built (`docs/sim/state.md` §15 "S12 as implemented"):
+  - `World::advance` steps 2, 3, 5, 6 and 7 (D AnnoWelt 0x100ae040):
+    - step 2, `events.cpp`: the timed-event dispatch through `pop_due` (0x100add90, saved-next rule) with the handler seams `tile_cleanup` / `delayed_hit`, each handler's Effects merged before the next event (C2); the D4 second pass; a capped pass (F24) reported by `check_invariants` (its last check) through `SimOutput::events_capped`;
+    - step 3, `scheduler.cpp` + `figure.cpp`: the registry's phase B (0x1009aa4c..0x1009aac1, clamp(d·n/50, 1, n) without +1, the behaviour seam merged per figure, D12 as the default body), phase C (u16 difference against 7500, `cmp cx,0x1d4c; jb`), phase D (the deferred list); destroy frees the slot, cleans both lists and releases the home counter;
+    - steps 5–7, `timers.hpp` / `timers.cpp`: the script timers (0x1009cd30, F5 clamp), the monopoly refresh (0x1009d2a0 with the owner query 0x1009d210; once, D5) and the 7.5 minute event (0x100ae140; F6 guard, D10 option, Event15a at the island centre).
+  - All functions read instruction by instruction; reviewer A re-read them independently: all match.
+  - State: `ScriptTimers`, `MonopolyTable`, the 7.5 minute accumulator and the draw-guard flag in `World`. Stream 105 → 106: the `ids` scope gains `u32 event750_acc, u32 monopoly.acc, bool faulted`; new scope `timers_monopoly`; the save frame has nine sections; `load` and `check_invariants` check the new sizes.
+  - Seam protocol for figure seams (own design): the registry keeps the figure's id, and its expiry and deferred lists follow the figure's flags.
+  - `tools/sim_stream.py` (outside the listed scope; needed so the independent goldens stay independent) transcribes the new scopes and the monopoly body.
+- Acceptance:
+  1. Every name of the §15 S12 list is a TEST_CASE of `src/sim/tests/world_events_test.cpp`: the twelve §14.2 world-level cases (FIFO, saved-next in advance, kind-1 events saved, timer clamp, monopoly once and the rule, event 7.5 min draws, accumulator discard vs keep, zero islands, registry count without +1, expiry, interim return, counter release), "figure phase goods effects merge after each call (C2)" and "AI seam commands applied in advance and not logged". 27 cases in the file; sim suite 502/502.
+  2. G4: `fixtures/synthetic/sim/g4.log` (synthetic::g4_scenario, seed 508, 12 000 advances of 100 ms = 600 000 ticks, 21 checkpoints, 178 KB, our own data). Reproduced 21/21 by "G4 players timers events and the 7.5 min event through 600000 ticks equal golden" and by the new CTest `anno_sim_replay_g4_run`. Hand-derived asserts: upkeep 300 × 22; player 1 bankrupt at tick 156 050; timer 0 clamped at 100 050; three events dispatched and one still queued; figures ended at ticks 50 (phase D) and 7 500 (phase C); the monopoly entries; 12 + 2 + 2 draws from the table for cursor 508; Event15a at tick 225 000 on island 4, the second firing on a null slot. Goldens `s12_g4_*` self-baselined.
+  3. §5.3 subsystems, each with its file:
+     1. islands: `island_tick`, `scheduler.cpp` (real; growth visit and drought machine are S13; fauna, object bodies and city passes are seams, default none);
+     2. events: `Scheduler::run_events`, `events.cpp` (real queue and pop; handlers are seams, default none: O-18, O-19);
+     3. figures: `Scheduler::run_figures`, `scheduler.cpp` (phases B, C, D real; per-figure body is the seam `figure_tick`, default the D12 rule, off; phase A derived, not modelled);
+     4. players: `player_table_tick`, `player.cpp` (real; seams `player_groups`, `defeat`, `ai`);
+     5. timers: `timers_tick`, `timers.cpp` (real);
+     6. monopoly: `monopoly_refresh`, `timers.cpp` (real; the second loop, O-24, not modelled);
+     7. 7.5 minute event: `event750`, `timers.cpp` (real; Event15a is a UI event, its consumer is the script engine, O-16).
+  4. Evidence per rule: the addresses above or a spec row. Untraced: OQ-131 (phase D removes through 0x10097770; the unit destructor is unread) and OQ-132 (whether the original's save keeps the two accumulators). Feel: OQ-133 (F5 timer clamp: the spec's fix is kept; the owner to confirm).
+  5. `kStateHashVersion` 105 → 106 (field list). `kPrngTimelineVersion` stays 1: the set of draw sites is unchanged; S12 only reaches Event750Gate / Event750Island, as S11 did for SmallFarmAnimal. Re-baselined: g0, g1_players, s5, s6 and the empty-world hash from `tools/sim_stream.py` (the C++ agreed on the first run; `--check`: goldens agree); s7, s10, s11 self-baselined (event goldens unchanged); g2.log and g3.log re-recorded. G2 6/6 and G3 21/21 replay in the tests and through `anno-sim-replay run`.
+  6. Gates below.
+  7. state.md §15 "S12 as implemented", §4.9 and §9.3; PLAN status; this section; the PR.
+- Gates (each through the heavy-job lock):
+  - MSVC full build: warning-free.
+  - `ctest --preset msvc -j 16` with `ANNO_TEST_THREADS=16`, without the game dir: 824/824.
+  - With `ANNO1503_GAME_DIR=C:\Users\altin\anno1503\game\app`: the full run was stopped by Claude Code's low-memory guard after 730 of 824 had passed (0 failed); not restarted. The 515 sim and sim-replay CTests (`-R anno_sim`) were then run with the game dir in the foreground: 515/515.
+  - clang-format 23.1.3 `--dry-run --Werror` over all of `src`: clean.
+  - WSL Ubuntu, GCC 13.3 and Clang 18.1.3, `-O3 -DNDEBUG` with the CI warning set and `-Werror`, over formats, test_support, sim, the sim tests and anno-sim-replay (62 TUs each): no diagnostic. 502/502 with and without the game dir on both compilers; g2, g3 and g4 replay on both.
+  - `tools/lint_sim.py` ok; self-test 64 cases, 0 failures. `tools/sim_stream.py --check`: agree. agree.py n.a. ASan not run locally (CI).
+- Mutation evidence (MSVC, the whole sim suite per mutant; 35 mutants: 34 killed, 1 equivalent; the full table is in state.md):
+  - event FIFO order (equal due ticks reversed): 12 cases fail, including "FIFO: timed events due at the same tick run in the order they were queued", "saved-next in advance…" and G4;
+  - monopoly-once rule (faithful gate dropped): 11 fail, including "monopoly once and the rule…", the G0 / G1 players / s5 / s6 goldens and G1–G4; the accumulator added outside the body: 12 fail;
+  - the 7.5 min event's add-on flag ignored: "event 7.5 min draws…" fails; inverted: 4 fail (that case, "zero islands…", the advance-order case, G4);
+  - also killed: the modulus, the overshoot rule, property 6, the centre's rounding and axis, the faithful timer wrap, the last timer, the monopoly owner, break, slot bound, time and remainder, phase B +1, phase C `<=` and a 32-bit difference, a counter not released or the wrong one, the interim body (dropped, under a seam, u16 age), the figure merge, the seam list sync, the handler merge and its draws, the event/figure order, the flush rule and count, the cap report;
+  - equivalent: `remove_figure` not erasing from `deferred` (phase D empties the list right after phase C).
+- Reviewers (two, read-only):
+  - A (spec + disassembly): every address matched. Fixed: the phase D path (OQ-131, comments), the original's save of the accumulators (OQ-132), the cap report moved last, the SKTIMER object location, the D12 note on the rule. Recorded: the O(k·n) list removal (for S15's benchmark); the u32 tick in advance versus the u64 tick in `WorldClock::game_seconds`.
+  - B (tests vs acceptance): every hand derivation correct. 14 survivors and 2 comment errors reported; all closed with tests (second test commit). G4 now collects each advance's output instead of the bounded host queue.
+  - Also fixed: a GCC 13 `-O3` false `-Wstringop-overflow` in `Scheduler::advance` (reserve), and `-Wnull-dereference` in the test (checked lookups).
+- Left open / questions:
+  - OQ-131 (RE): the phase D removal and the unit destructor.
+  - OQ-132 (RE): the original's save of the accumulators.
+  - OQ-133 (owner): confirm the F5 timer clamp.
+  - OQ numbers continue after T14's OQ-130; renumber at merge if needed.
+  - `g4.log` is 178 KB (12 000 advance entries).
+- Time spent / subagents used: two reviewer subagents (read-only); builds, mutation runs and gates by this session, one heavy job at a time.

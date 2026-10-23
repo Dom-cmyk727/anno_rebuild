@@ -158,3 +158,25 @@ s10_g2_end S10 106 3a8408456066e60a
 s11_g3_checkpoints S11 106 d3ed5179fe6614a2
 s11_g3_end S11 106 0e1a94dea2903706
 s11_g3_events S11 106 3140bd8e1eb7db86
+#
+# S12 G4 (stage S12): synthetic::g4_scenario (seed 508; three players, islands in slots 0,
+# 2 and 4 with five cities, a weaver and a grain farm) with the state a scenario cannot
+# carry, set by the test before recording: upkeep sums (player 0 pays 22 and player 1 40
+# per 2 000 ticks, player 1 starts 2 900 in debt and goes bankrupt at tick 156 050), script
+# timers (timer 0 counts down 100 025 ticks and is clamped at tick 100 050, F5; timer 2
+# counts up), four queued timed events (two at tick 1 000, one at 400 000, a delayed hit at
+# 700 000 that is still queued at the end), a carrier on the expiry list (ended at tick
+# 7 500) and a worker on the deferred list (ended by the first advance). 12 000
+# single-player advances of 100 ms (tick 600 000, 20 game minutes), recorded as
+# fixtures/synthetic/sim/g4.log with 21 checkpoints; the 7.5 minute event fires at tick
+# 225 000 (island 4, event 0x15a at (308, 308)) and at 450 000 (a null slot); the monopoly
+# body runs on the first advance only. s12_g4_checkpoints is the FNV-1a 64 of the state
+# hashes after every 600th advance, s12_g4_end the hash at tick 600 000, s12_g4_events the
+# hash of the UI events. SELF-BASELINED like the S7, S10 and S11 goldens
+# (ANNO_UPDATE_GOLDEN also rewrites g4.log); world_events_test.cpp holds the money, the
+# bankruptcy tick, the timers, the queue, the figures' end ticks, the monopoly entries, the
+# draw counts per site (worked out from the PRNG table for seed 508) and the two UI events
+# to values derived by hand.
+s12_g4_checkpoints S12 106 b54176dbb5ed8564
+s12_g4_end S12 106 9e089cb53dded6ff
+s12_g4_events S12 106 0ac22bbdf79face5

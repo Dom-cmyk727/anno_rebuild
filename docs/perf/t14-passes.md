@@ -1,6 +1,6 @@
 # T14 stage 1: GPU time per pass, before and after the wave window's bound
 
-The full tables behind [README.md](README.md), section "2026-10-23 - T14 stage 1". `bench_frame <game> D_256x256_0045_5B.scp --renderer gpu --styles original,enhanced --res 1280x800,2560x1440 --derived 5 --scale-cost 0:1.0,1:1.0,2:1.0,1:0.452,2:0.475,3:0.475,5:0.475,7:0.475 --cost-frames 60 --threads 16`, Windows 11, Ryzen 9800X3D (16 threads), MSVC Release, 2026-10-23 (the before and after runs finished at 03:16 and 03:32 local time, before the PC's standby at 03:41). Point "Lg at s": the grid of zoom level g composed for the window and resampled at scale s. GPU ms from timestamps at the start and end of each pass (`GpuFrame::pass_gpu_ms`), 60 frames per point, the animation clock 16 ms per frame. Before = 8313b62 (timestamps, nothing bounded), after = f7112b0 (the wave window bounded; automatic: on the integrated adapter only, so the RTX 4090's code path is the same in both runs and its differences are clock states). "-": the pass did not run (no wave simulation in original water and at the derived levels).
+The full tables behind [README.md](README.md), section "2026-10-23 - T14 stage 1". `bench_frame <game> D_256x256_0045_5B.scp --renderer gpu --styles original,enhanced --res 1280x800,2560x1440 --derived 5 --scale-cost 0:1.0,1:1.0,2:1.0,1:0.452,2:0.475,3:0.475,5:0.475,7:0.475 --cost-frames 60 --threads 16`, Windows 11, Ryzen 9800X3D (16 threads), MSVC Release, 2026-10-23 (the before and after runs finished at 03:16 and 03:32 local time, before the PC's standby at 03:41). Point "Lg at s": the grid of zoom level g composed for the window and resampled at scale s. GPU ms from timestamps at the start and end of each pass (`GpuFrame::pass_gpu_ms`), 60 frames per point, the animation clock 16 ms per frame. Before = 8313b62 (timestamps, nothing bounded), after = f7112b0 (the wave window bounded; at that commit on the integrated adapter only, so the RTX 4090's code path is the same in both runs and its differences are clock states; since 587ca4c the bound applies on every adapter, OQ-130, and the RTX 4090 table with it is the addendum of README.md's T14 section). "-": the pass did not run (no wave simulation in original water and at the derived levels).
 
 ### AMD Radeon(TM) Graphics, the iGPU (Vulkan, adapter 1)
 
@@ -451,3 +451,23 @@ The full tables behind [README.md](README.md), section "2026-10-23 - T14 stage 1
 | L7 at 0.475 | 5440x3072 | objects | 0.18 / 0.19 / 0.19 / 0.19 | 0.12 / 0.18 / 0.19 / 0.19 |
 | L7 at 0.475 | 5440x3072 | resample | 0.32 / 0.37 / 0.37 / 0.38 | 0.20 / 0.32 / 0.32 / 1.86 |
 | L7 at 0.475 | 5440x3072 | frame | 2.82 / 2.95 / 3.09 / 3.75 | 1.42 / 2.76 / 2.77 / 4.30 |
+
+### Addendum: NVIDIA GeForce RTX 4090 (Vulkan, adapter 0) with the bound on every adapter (587ca4c)
+
+
+| window | water | point | grid | fluid | sea | frame |
+|---|---|---|---|---|---|---|
+| 1280x800 | enhanced | group 0 at 1 | 1344x832 | 0.05 / 0.05 / 0.05 / 0.05 | 0.02 / 0.03 / 0.03 / 0.03 | 0.14 / 0.15 / 0.15 / 0.15 |
+| 1280x800 | enhanced | group 2 at 1 | 1344x832 | 0.18 / 0.19 / 0.19 / 0.19 | 0.08 / 0.08 / 0.08 / 0.09 | 0.39 / 0.39 / 0.39 / 0.39 |
+| 1280x800 | enhanced | group 1 at 0.452 | 2880x1792 | 0.23 / 0.23 / 0.23 / 0.23 | 0.32 / 0.32 / 0.33 / 0.33 | 0.88 / 0.89 / 0.90 / 1.44 |
+| 1280x800 | enhanced | group 2 at 0.475 | 2752x1728 | 0.30 / 0.30 / 0.30 / 0.30 | 0.48 / 0.49 / 0.50 / 0.50 | 1.09 / 1.10 / 1.10 / 1.11 |
+| 1280x800 | original | group 1 at 0.452 | 2880x1792 | - | 0.05 / 0.05 / 0.05 / 0.05 | 0.19 / 0.19 / 0.19 / 0.19 |
+| 1280x800 | original | group 2 at 0.475 | 2752x1728 | - | 0.05 / 0.05 / 0.05 / 0.05 | 0.17 / 0.18 / 0.18 / 0.18 |
+| 2560x1440 | enhanced | group 0 at 1 | 2624x1472 | 0.45 / 0.46 / 0.46 / 1.03 | 0.25 / 0.25 / 0.25 / 0.25 | 1.06 / 1.07 / 1.07 / 1.62 |
+| 2560x1440 | enhanced | group 2 at 1 | 2624x1472 | 0.59 / 0.60 / 0.60 / 1.09 | 0.34 / 0.34 / 0.34 / 0.34 | 1.29 / 1.30 / 1.30 / 1.79 |
+| 2560x1440 | enhanced | group 1 at 0.452 | 5696x3200 | 0.50 / 0.50 / 0.50 / 0.50 | 1.15 / 1.16 / 1.16 / 1.16 | 2.73 / 2.74 / 2.74 / 2.75 |
+| 2560x1440 | enhanced | group 2 at 0.475 | 5440x3072 | 0.48 / 0.48 / 0.48 / 0.48 | 1.45 / 1.46 / 1.46 / 1.48 | 2.60 / 2.61 / 2.66 / 2.98 |
+| 2560x1440 | original | group 1 at 0.452 | 5696x3200 | - | 0.51 / 0.51 / 0.51 / 0.51 | 1.54 / 1.54 / 1.54 / 1.54 |
+| 2560x1440 | original | group 2 at 0.475 | 5440x3072 | - | 0.42 / 0.42 / 0.42 / 0.42 | 1.20 / 1.20 / 1.20 / 1.20 |
+
+The wave window on the RTX 4090 now has the iGPU's cells (0.69 M at the 1280 x 800 far points, 1.81 / 1.98 M at 2560 x 1440). Every frame is under 3 ms; the absolute values move with the card's clock state between runs (the scale-1 rows with the same window as before read 0.14-1.3 ms here against 0.47-4.1 ms in the first run), so the comparison is within this table, not across runs.

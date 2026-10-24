@@ -150,6 +150,10 @@ struct FigureType {
     std::uint32_t load_ticks = 0;
 };
 
+/// The HEAD flag word bit of a road or bridge (type +0x12, HEAD u16 [0x1c];
+/// docs/re/production.md §2.3; P: 35 of the 921 types).
+inline constexpr std::uint32_t kRoadFlag = 0x4000;
+
 struct BuildingType {
     TypeId id;
     /// The PRODTYPE number (D AnnoGame 0x100138e0), 0 = UNUSED.

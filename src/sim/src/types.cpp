@@ -20,7 +20,6 @@
 #include <anno/formats/bytes.hpp>
 #include <anno/sim/archive.hpp>
 #include <anno/sim/field_count.hpp>
-#include <anno/sim/transport.hpp> // kRoadFlag, for the derived BuildingType::walk_class
 #include <anno/sim/types.hpp>
 
 namespace anno::sim {

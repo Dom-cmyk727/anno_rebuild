@@ -38,10 +38,6 @@ inline constexpr std::uint32_t kJobMarketCart = 0x34;
 /// The job code of the workshop carrier (D 0x100680b0, docs/re/production.md §4.1).
 inline constexpr std::uint32_t kJobWorkshopCarrier = 0x33;
 
-/// The HEAD flag word bit of a road or bridge (type +0x12, HEAD u16 [0x1c];
-/// docs/re/production.md §2.3; P: 35 of the 921 types).
-inline constexpr std::uint32_t kRoadFlag = 0x4000;
-
 /// The walking layer (FigureType::layer, LOGIC[0x10]) that the stand-in search keeps
 /// on the road net. A STAND-IN for the unread layer tables at 0x100d1140 (OQ-160): P,
 /// the one figure type with layer 3 is the market cart 220 (the cart needs roads,

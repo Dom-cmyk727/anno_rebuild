@@ -1999,3 +1999,127 @@ Measurement only, as the task says: no walk-rule change, no optimisation, no `ru
   - `docs(re): T30 the walking layers partial RE and the named-road finding (transport.md §3.2–§3.5, OQ-160/171, new OQ-175)`
   - `docs(sim): T30 proposed walk rule for T33 (state.md §5.9)`
   - `docs(orchestration): T30 report (step 2 partial, step 5 headline, step 7 blocked on a reader)`
+
+## T30b.2 — The class of `[this + 0x858]` and the method `[edx + 0xec]` — 2026-10-24 — status: PARTIAL
+
+- Branch: task/T30b-2-vtable-method (worktree C:\Users\altin\anno1503-T30b-2); not yet committed or pushed
+- Built: nothing (RE/docs only). Tools used: `tools/disasm.py`, `tools/xref.py`, capstone/pefile scripts (scratch, not committed)
+- Gates: n.a. (docs/RE only; no build, no game run)
+
+### Step 2 — Argument tables for the three readers
+
+**Reader 1 `0x1000daf0`** (vtable `0x100c18b0`, slot +0), call at `0x1000db4a`. Disassembly read `0x1000daf0`–`0x1000db55` (110 bytes). Pushes in push order:
+
+| Push address | Pushed | Meaning | Argument position |
+|---|---|---|---|
+| 0x1000db06 | 8 | constant 8 | arg 4 |
+| 0x1000db0b | esi = cell + 4 | pointer to dword after cell | arg 3 |
+| 0x1000db3d | esi = &buffer ([esp+0x10]) | address of 4-dword stack buffer | arg 2 |
+| 0x1000db41 | 0 | constant 0 | arg 1 |
+| 0x1000db49 | eax = [this + 0x85c] | dword loaded from [this + 0x85c] | arg 0 |
+
+Argument order: `([this + 0x85c], 0, &stack_buffer, cell + 4, 8)`. `this` = `ecx` = `[this + 0x858]` (set at `0x1000db27: mov ecx, [eax + 0x858]`). Matches the expected pattern from transport.md §3.3.
+
+**Reader 2 `0x1000ed40`** (vtable `0x100c1a30`, slot +0), call at `0x1000ed9a`. Disassembly read `0x1000ed40`–`0x1000eda5` (110 bytes):
+
+| Push address | Pushed | Meaning | Argument position |
+|---|---|---|---|
+| 0x1000ed56 | 8 | constant 8 | arg 4 |
+| 0x1000ed5b | esi = cell + 4 | pointer to dword after cell | arg 3 |
+| 0x1000ed8d | esi = &buffer | address of 4-dword stack buffer | arg 2 |
+| 0x1000ed91 | 0 | constant 0 | arg 1 |
+| 0x1000ed99 | eax = [this + 0x438] | dword loaded from [this + 0x438] | arg 0 |
+
+Argument order: `([this + 0x438], 0, &stack_buffer, cell + 4, 8)`. `this` = `ecx` = `[this + 0x434]` (set at `0x1000ed77: mov ecx, [eax + 0x434]`). Differs from reader 1: sub-object at `+0x434` not `+0x858`, sub-arg at `+0x438` not `+0x85c`, primary table at `+0x42c` not `+0x430`, secondary at `+0x430` not `+0x434`. Matches transport.md §3.6(a) twin row.
+
+**Reader 3 `0x1000f9d0`**, call at `0x1000fa33`. Disassembly read `0x1000f9d0`–`0x1000fa3e` (160 bytes):
+
+| Push address | Pushed | Meaning | Argument position |
+|---|---|---|---|
+| 0x1000f9f0 | 8 | constant 8 | arg 4 |
+| 0x1000f9f2 | edx = cell (from [esp+0x14]) | cell pointer itself (NOT cell + 4) | arg 3 |
+| 0x1000fa0a | edx = &buffer ([esp+0x10]) | address of 4-dword stack buffer | arg 2 |
+| 0x1000fa2b | edx = [this + 0x2394] | dword loaded from [this + 0x2394] | arg 1 |
+| 0x1000fa32 | eax = [this + 0x2398] | dword loaded from [this + 0x2398] | arg 0 |
+
+Argument order: `([this + 0x2398], [this + 0x2394], &stack_buffer, cell, 8)`. `this` = `ecx` = `[this + 0x1030]` (set at `0x1000fa15: mov ecx, [eax + 0x1030]`). Substantially different: cell u16s read at offsets `0x100`/`0x102` (not `0`/`2`), table indexing uses `·8` stride with `+0x40` pair delta (matches transport.md §3.6(a) third row).
+
+**Note:** Readers 2 and 3 differ from the expected pattern documented in transport.md §3.3 (which was derived from reader 1). Reported exactly as observed.
+
+### Step 3 — `+0x858` hit list
+
+Command: `python tools/xref.py AnnoWelt.dll 858 859` (run from C:\Users\altin\anno1503-T30b-2 against C:\Users\altin\anno1503\game\app\AnnoWelt.dll)
+
+Result: one hit:
+- `1000db27` value `00000858` — `mov ecx, dword ptr [eax + 0x858]` in `0x1000daf0` — a **READ** of `[this + 0x858]`, not a write.
+
+No write hits to `[reg + 0x858]` found in any executable section of AnnoWelt.dll.
+
+### Step 4 — Constructor tracing for `[this + 0x858]`
+
+No write hit exists, so per the board I traced callers of the constructor. E8 opcode scan over all executable sections found exactly **one direct call** to `0x1000eb40` (the real constructor start; `0x1000ebb0` is mid-instruction, `add al, 0x89`):
+
+- Caller: `0x100aabfd: call 0x1000eb40` (in `AnnoWelt.dll`)
+- At the caller: `0x100aabfb: mov ecx, eax` where `eax` = result of `call 0x100b5f80` at `0x100abe1` (an allocation wrapper calling `0x100b72c3`). No code between the allocation and the constructor call writes `[eax + 0x858]`.
+
+Constructor at `0x1000eb40` (disassembly read `0x1000eb40`–`0x1000ebcb`, flows into `0x1000ebb1`):
+
+| Address | Instruction | Meaning |
+|---|---|---|
+| 0x1000eb46 | `mov esi, ecx` | `esi` = `this` |
+| 0x1000eb48 | `mov [esi], 0x100c135c` | vtable `0x100c135c` at `+0` (temporary, overwritten later) |
+| 0x1000eb4e | `mov [esi + 4], 0x100c196c` | vtable `0x100c196c` at `+4` (temporary, overwritten later) |
+| 0x1000eb59 | `mov [esi + 0x41c], al` | byte argument at `+0x41c` |
+| 0x1000eb5f | `mov [esi + 0x420], ebx` | `+0x420` = 0 |
+| 0x1000eb65 | `call 0x100b5f80` | allocation |
+| 0x1000eb6e | `mov [esi + 0x418], eax` | alloc result at `+0x418` |
+| 0x1000eb8e–0x1000eb91 | circular list setup at `+0x418`/`+8`/`+0xc` | |
+| 0x1000eb91 | `mov eax, [esp + 0x14]` | `eax` = caller stack value (beyond the 8 ret bytes) |
+| 0x1000ebb1 | `mov [esi + 0x85c], eax` | `+0x85c` = `eax` |
+| 0x1000ebb7 | `mov [esi], 0x100c18b4` | **vtable `0x100c18b4` at `+0`** |
+| 0x1000ebbd | `mov [esi + 4], 0x100c18b0` | **vtable `0x100c18b0` at `+4`** |
+| 0x1000ebc4 | `mov [esi + 0x14], edx` | `+0x14` = `edx` |
+| 0x1000ebcb | `ret 8` | |
+
+**No write to `[esi + 0x858]`** anywhere in the constructor. The constructor writes `[esi + 0x85c]` but not `[esi + 0x858]`.
+
+Vtable verification (raw dword reads from AnnoWelt.dll `.rdata`, addresses only):
+- `0x100c18b0` slot +0 = `0x1000daf0` ✓ (this is the reader)
+- `0x100c18b4` slot +0 = `0x100b4a20` (not the reader)
+
+Since `0x1000daf0` is slot +0 of `0x100c18b0`, which the constructor installs at `[original_this + 4]`, the reader's `this` = `original_this + 4`. Therefore `[reader_this + 0x858] = [original_this + 0x85c]` — which IS written by the constructor (`eax` at `0x1000ebb1`). However, `eax` = `[constructor_esp + 0x14]` which reads **beyond** the constructor's 8 `ret` bytes into the caller's stack frame — an untraceable value statically.
+
+The object at `[reader_this + 0x858]` = `[eax_value]` has its vtable at `[eax_value]`, which cannot be determined from static analysis alone.
+
+### Step 5 — Vtable method `[edx + 0xec]`
+
+**Not reached.** The vtable address on `[this + 0x858]` (relative to the reader's `this`) cannot be determined statically because the stored value (`eax` from the caller's stack at `[esp + 0x14]`) is not recoverable without dynamic analysis. Per the board, the chain stops after one caller without a result (only one caller exists). Next address to read: the value at `[original_this + 0x85c]` at runtime in the running original (Wine memory compare, T30b.4), or determine the caller's stack layout at `0x100aabfd` to identify what `eax` holds.
+
+### Step 6 — transport.md §3.3 and OQ-175
+
+Not yet updated — pending step 5. The section will record either the method as D (address, signature, pseudo-code) or exactly where the chain stopped (this report names `0x100aabfd` → constructor `0x1000eb40` → untraceable `eax` at `[esp + 0x14]`).
+
+### Acceptance (per TASKS.md T30b.2 step 6)
+
+- (a) Argument tables for the three readers: **MET** — reader 1 matches expected; readers 2 and 3 documented as observed (they differ from reader 1's pattern)
+- (b) `+0x858` hit list: **MET** — one hit (`1000db27`, read only), no writes
+- (c) Method D with address and pseudo-code, or chain's last address and why stopped: **PARTIAL** — chain stops at caller `0x100aabfd` → constructor `0x1000eb40` → `[this + 0x85c] = eax` (caller stack value, untraceable); `[this + 0x858]` itself is never written; vtable method address undetermined
+- (d) Nothing of the original in git: **MET** — `git status` clean, nothing under `game/`
+
+### Open questions
+
+- Q1: What value does `eax` hold at constructor `0x1000eb40` (`0x1000eb91: mov eax, [esp + 0x14]`)? This is the value stored at `[original_this + 0x85c]` = `[reader_this + 0x858]`. It comes from the caller's stack frame at `0x100aabfd` and cannot be determined statically. Dynamic analysis (Wine memory read at `0x100aabfd` context, or memory-compare of the object after construction) would resolve it.
+- Q2: Once `eax_value` is known, what is the vtable at `[eax_value]`, and what is the method at `vtable + 0xec`? This is the yes/no method (OQ-175).
+- Q3: Readers 2 and 3 have different argument patterns and `this` offsets (`+0x434`/`+0x438` and `+0x1030`/`+0x2394`/`+0x2398`) than reader 1. Are these genuinely different classes, or different `this` adjustments on the same class? The vtable method at `+0xec` may be shared.
+
+### Commits (pending)
+
+Not yet committed. Two commits planned:
+1. `docs(re): T30b.2 the class behind [this+0x858] and its +0xec method` (transport.md §3.3)
+2. Possibly split if the twins' tables are a separate concern.
+
+Push and open PR "T30b.2: the walk rule's yes/no method" after committing.
+
+### Time spent / subagents used
+
+Inline, no subagents.

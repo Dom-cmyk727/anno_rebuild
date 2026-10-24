@@ -588,14 +588,16 @@ TEST_CASE("scenario corpus: a shipped town's economy runs 150000 ticks") {
 }
 
 TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
-    // T27 step 4, measurement only, off unless ANNO_SIM_TRANSPORT_STATS is set and the
-    // game dir is present (the counters are test-only; `src/sim` holds none — lint forbids
-    // getenv, cstdio and mutable statics there). For `S01_07_01` and `single36` the
-    // scenario is run 150 000 ticks (steady state) and then every sender's search is
-    // classified once through choose_source's diagnostic out-param (TransportStats):
-    // a market's cart search (job 0x34) and a HANDWERK workshop's carrier search (0x33).
-    // This is per sender, not per search over the run (the run-count would need a sim-side
-    // sink lint forbids); it answers the structural question of §4.
+    // T27 step 4 and T29 steps 2-3, measurement only, off unless ANNO_SIM_TRANSPORT_STATS
+    // is set and the game dir is present (the counters are test-only; `src/sim` holds
+    // none — lint forbids getenv, cstdio and mutable statics there). For
+    // `S01_07_01` and `single36`: the scenario is run 150 000 ticks (steady state); a
+    // single TransportStats sink is routed through World::set_transport_stats so every
+    // transport_tick call of the run accumulates its outcome and T29 diagnostic (cart
+    // and carrier mixed, since one sink per TickContext); on top, the T27 per-sender
+    // snapshot is taken at ticks 0, 30 000 and 150 000, split cart/carrier, by calling
+    // choose_source directly off a SerialWorld (that path does not read ctx.transport_
+    // stats, so the snapshot buckets stay separate from the over-run accumulator).
     if (std::getenv("ANNO_SIM_TRANSPORT_STATS") == nullptr) {
         MESSAGE("skipping: set ANNO_SIM_TRANSPORT_STATS=1 (and ANNO1503_GAME_DIR) to run");
         return;
@@ -607,22 +609,7 @@ TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
     }
     const auto types = original_registry(*dir);
     const std::vector<fs::path> files = scenario_files(*dir);
-    for (const char* want : {"0100Kampagne01/S01_07_01.sze", "0201SingleAddOn/single36.sze"}) {
-        const auto it = std::find_if(files.begin(), files.end(),
-                                     [&](const fs::path& p) { return rel_name(*dir, p) == want; });
-        if (it == files.end()) {
-            MESSAGE("not found: " << want);
-            continue;
-        }
-        const auto buf = anno::test::read_file(*it);
-        auto l = sim::load_scenario(buf, *types, sim::SimConfig{});
-        REQUIRE(l);
-        auto w = sim::World::create(l.value().spec, types, sim::SimConfig{});
-        REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
-        sim::World world = std::move(w).value();
-        for (int i = 0; i < kAdvances; ++i) {
-            world.advance(kStepMs);
-        }
+    const auto take_snapshot = [&](const sim::World& world, std::uint64_t tick, const char* want) {
         sim::Effects fx;
         sim::SerialWorld serial(world.islands(), world.config().layout, world.figures(),
                                 world.players(), fx);
@@ -666,12 +653,80 @@ TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
                                                 ft->capacity_88, sim::walk_rule(ft->layer), stats));
             }
         }
-        std::cout << "transport stats: " << want << " markets " << markets
+        std::cout << "transport snapshot: " << want << " tick " << tick << " markets " << markets
                   << " (cart: no_candidate " << cart.no_candidate << " unreached " << cart.unreached
-                  << " low_score " << cart.low_score << " found " << cart.found << "); workshops "
-                  << workshops << " (carrier: no_candidate " << carrier.no_candidate
-                  << " unreached " << carrier.unreached << " low_score " << carrier.low_score
-                  << " found " << carrier.found << "); senders without a figure type "
-                  << no_figure_type << "\n";
+                  << " low_score " << cart.low_score << " found " << cart.found << " home_no_road "
+                  << cart.home_no_road << " goal_no_road " << cart.goal_no_road << " edge "
+                  << cart.edge << " corner " << cart.corner << " outside_disc " << cart.outside_disc
+                  << "); workshops " << workshops << " (carrier: no_candidate "
+                  << carrier.no_candidate << " unreached " << carrier.unreached << " low_score "
+                  << carrier.low_score << " found " << carrier.found << " home_no_road "
+                  << carrier.home_no_road << " goal_no_road " << carrier.goal_no_road << " edge "
+                  << carrier.edge << " corner " << carrier.corner << " outside_disc "
+                  << carrier.outside_disc << "); senders without a figure type " << no_figure_type
+                  << "\n";
+    };
+    for (const char* want : {"0100Kampagne01/S01_07_01.sze", "0201SingleAddOn/single36.sze"}) {
+        const auto it = std::find_if(files.begin(), files.end(),
+                                     [&](const fs::path& p) { return rel_name(*dir, p) == want; });
+        if (it == files.end()) {
+            MESSAGE("not found: " << want);
+            continue;
+        }
+        const auto buf = anno::test::read_file(*it);
+        auto l = sim::load_scenario(buf, *types, sim::SimConfig{});
+        REQUIRE(l);
+        auto w = sim::World::create(l.value().spec, types, sim::SimConfig{});
+        REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+        sim::World world = std::move(w).value();
+        // T29: the over-run sink; ticks 0, 30 000 and 150 000 are the three snapshot
+        // moments. 150 000 ticks = 2 ms per tick · 150 000 = 300 000 ms = kAdvances
+        // (3 000) · kStepMs (100); 30 000 ticks = 600 advances.
+        sim::TransportStats run_stats;
+        world.set_transport_stats(&run_stats);
+        take_snapshot(world, world.clock().tick(), want);
+        for (int i = 0; i < 600; ++i) {
+            world.advance(kStepMs);
+        }
+        take_snapshot(world, world.clock().tick(), want);
+        for (int i = 600; i < kAdvances; ++i) {
+            world.advance(kStepMs);
+        }
+        take_snapshot(world, world.clock().tick(), want);
+        world.set_transport_stats(nullptr);
+        std::cout << "transport run: " << want << " ticks " << world.clock().tick()
+                  << " (choose_source: no_candidate " << run_stats.no_candidate << " unreached "
+                  << run_stats.unreached << " low_score " << run_stats.low_score << " found "
+                  << run_stats.found << " home_no_road " << run_stats.home_no_road
+                  << " goal_no_road " << run_stats.goal_no_road << " edge " << run_stats.edge
+                  << " corner " << run_stats.corner << " outside_disc " << run_stats.outside_disc
+                  << ")\n";
+        // Top-15 frontier type ids by count, with prodtype, flags_word (hex), walk_class.
+        std::vector<std::pair<std::uint32_t, std::uint64_t>> top(run_stats.frontier.begin(),
+                                                                 run_stats.frontier.end());
+        std::sort(top.begin(), top.end(),
+                  [](const auto& a, const auto& b) { return a.second > b.second; });
+        if (top.size() > 15) {
+            top.resize(15);
+        }
+        std::cout << "transport frontier: " << want << " top-" << top.size() << " of "
+                  << run_stats.frontier.size()
+                  << " type ids (count, prodtype, flags_word_hex, "
+                     "walk_class):\n";
+        for (const auto& [tid, cnt] : top) {
+            std::uint32_t prodtype = 0, flags = 0, wc = 0;
+            if (tid != 0) {
+                const sim::BuildingType* t = types->find(sim::TypeId{tid});
+                if (t != nullptr) {
+                    prodtype = t->prodtype;
+                    flags = t->flags_word;
+                    wc = t->walk_class;
+                }
+            }
+            char hex[12];
+            std::snprintf(hex, sizeof hex, "0x%x", flags);
+            std::cout << "  type " << tid << " count " << cnt << " prodtype " << prodtype
+                      << " flags " << hex << " walk_class " << wc << "\n";
+        }
     }
 }

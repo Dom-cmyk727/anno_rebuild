@@ -31,6 +31,8 @@
 
 namespace anno::sim {
 
+struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
+
 /// The players as a tick sees them: read-only, and deliberately without a money
 /// accessor (money changes only through Effects::money, merged by the world, so
 /// that no island tick can read a balance that a serial phase is about to
@@ -142,6 +144,13 @@ struct TickContext {
     IslandsView islands;
     DrawSource& draw;
     const Seams& seams;
+    /// Diagnostic sink for the transport search (task T29, measurement only; not sim
+    /// state, not hashed, not drawn). Default null: the sim and every caller leave it
+    /// so and the test routes it from World::set_transport_stats, which Scheduler::
+    /// advance copies into every context it builds. Single-threaded today; must stay
+    /// null if island ticks ever run in parallel (stage S16): a concurrent write
+    /// across islands would race on the std::map and the counters.
+    TransportStats* transport_stats = nullptr;
 };
 
 /// A figure a building asks for. The building's own counter was already raised in

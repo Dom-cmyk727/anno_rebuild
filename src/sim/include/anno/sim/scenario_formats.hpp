@@ -121,7 +121,7 @@ enum class ScenarioWarningKind : std::uint8_t {
     /// A market KONTID (the market's number on its island, D AnnoWelt 0x1006be00,
     /// 0x1006bda0): the Market payload (production.hpp) has no number field and T26
     /// adds no state field, so the number is read but not kept (OQ-158). Once per
-    /// scope. The record is consumed, so it is not UndecodedBuildingRecord.
+    /// scenario. The record is consumed, so it is not UndecodedBuildingRecord.
     MarketNumberNotKept,
     /// A BAUMAT entry whose goods number is not in the build-goods block
     /// (build_goods_first .. +build_goods_count-1, 0x29..0x2d): the original writes
@@ -147,12 +147,13 @@ enum class ScenarioWarningKind : std::uint8_t {
     /// A house record (PROD/ENTRY of a house type): its residents, stocks and the
     /// reset rule (D AnnoWelt 0x10076e60) are not applied, because the sim has no
     /// house population state (no resident/stock field on the house payload, which is
-    /// Inert) and no BGruppen group data (Menge/Wohnmax; the population model S8/S9 is
-    /// not ported), and T26 adds no state field (OQ-165). The record is read and
+    /// Inert) and no BGruppen group data (Menge/Wohnmax; the population model is not
+    /// ported (no stage in state.md §15 yet; PLAN M3 orders it after transport)), and
+    /// T26 adds no state field (OQ-165). The record is read and
     /// consumed (so it is not UndecodedBuildingRecord) and its residents counted for
     /// the economy diagnostic; the s_j -> stock formula and the reset rule are
     /// implemented and unit-tested as pure functions but not applied here. Once per
-    /// scope. This subsumes the task's planned HouseResetNotModelled (the reset
+    /// scenario. This subsumes the task's planned HouseResetNotModelled (the reset
     /// condition cannot be evaluated without the group's Wohnmax).
     HouseRecordNotModelled,
 };
@@ -169,7 +170,9 @@ enum class ScenarioWarningKind : std::uint8_t {
 // population field and the sim has no BGruppen group data (Menge/Wohnmax), so the
 // residents and stocks a loaded house carries have nowhere to go (HouseRecordNotModelled,
 // OQ-165). They are kept and unit-tested so the formula is written down once (a spec
-// oracle) and the mutation checks have a target, for the population stage (S8/S9) to use.
+// oracle) and the mutation checks have a target, for the population stage to use (the
+// population model is not ported (no stage in state.md §15 yet; PLAN M3 orders it after
+// transport)).
 
 /// The warehouse-stock value (8.8 units, city +0x30 + 2j) that gives satisfaction
 /// byte `s` for a need of quantity `menge` at `residents` residents (D AnnoWelt

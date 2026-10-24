@@ -2293,3 +2293,35 @@ Inline, no subagents.
 - **Commits:**
   - `docs(re): T30b.3d — zero cross-module references to the layer blocks; dead-data hypothesis (transport.md §3.4.1)`
   - `docs(orchestration): T30b.3d report`
+
+
+## T30b.4 — Wine memory compare: the five layer blocks are byte-identical to the DLL image, dead-data confirmed — 2026-10-24 — status: READY FOR REVIEW
+
+- **Branch:** `task/T30b-4-layer-memory-compare` from `main` at f746197; worktree `C:\Users\altin\anno1503-T30b-4`. Executor itself; no reviewer subagent. **Independent reviewer subagent reads this before merge.**
+
+- **Headline:** **ALL FIVE BLOCKS EQUAL** to the DLL image on disk in BOTH PASSES (after new-game and after +600 244 game-ms). The dead-data hypothesis is confirmed by direct run-time memory read. The walking-layer tables at `0x100d1140` are **not written at run time** in `AnnoWelt.dll`, and §3.3–§3.3.2 showed nothing reads the pointer `[X + 0x430]` as data. **OQ-175's walkability yes/no is NOT in the layer blocks.** The remaining candidate is the sub-cell bit layout (bits 0..2 set by the chunk-fetch readers with `(v & 0x8007 or 0xfc07) | 7`), to be read by T30b.3e on the search engine (`world + 0x6aa8` vtable `0x100c1424`).
+
+- **Steps:**
+  1. **Set up.** Worktree from `main` at f746197. No build.
+  2. **Tool.** `tools/orig/layer_blocks.py`, 180 lines, standard library + the Wine runner. Reads the five 7168-byte blocks via `b.read()`, compares each to the DLL image on disk via `pefile.PE.get_data()`. Uses `b.state("world")` to track the game-ms counter (not `gamestate.find_world`, because `WineBackend` doesn't expose `regions()`). Writes `cache/orig/<session>/d<display>-…/layer_blocks.txt` with per-block `equal` or `count=N first=[…]`. **No block content in git**: offsets and counts only.
+  3. **Run.** `python tools/orig/layer_blocks.py --session t30b4` through the heavy-job lock. One silent Wine instance (`:91`), game loaded via `macros.new_game(b, "citizen")`.
+  4. **Pass 1 (immediately after the new game, game-ms 1548).** All five blocks `{'status': 'equal'}`.
+  5. **Pass 2 (after ≈ 10 game minutes, game-ms 601 792, +600 244 advanced).** All five blocks `{'status': 'equal'}`.
+  6. **Docs.** `transport.md` §3.4.2 (new sub-section, the per-pass table and the OQ-175 implication). OQ-175 updated.
+
+- **Acceptance** (as the sub-task spec in TASKS.md T30b.4 lists):
+  1. **MET** — `tools/orig/layer_blocks.py` committed and run.
+  2. **MET** — both runs' summary lines pasted into §3.4.2.
+  3. **MET** — no block content in git (counts and offsets only; the summary file at `cache/orig/t30b4/d91-20261024-182325/layer_blocks.txt` lives outside git under `.gitignore`'s `cache/` rule).
+  4. **MET (with one note)** — the Wine run was silent (`audio=False`); music and sounds off per `docs/testing/original-wine.md`.
+
+- **One scope note.** The `wait_game_ms` loop reported `status: timeout` because its deadline (10 real minutes) was reached as the last iteration ran. `advanced_ms = 600244` shows the game clock DID advance past 10 game minutes, so the test's intent held. The `F4` keypress to accelerate to 400 % appears to have been dropped by the WSLg forwarder (the game ran at ≈ 1 × real time); the memory-compare result is unaffected. A follow-up tool improvement could use `b.state("world")` to detect the game speed and press the right F-key, or send `F4` via the agent's keyboard channel through a different path. Not blocking for T30b.4's conclusion.
+
+- **Open next addresses** (OQ-175, after T30b.4; the dead-data confirmed):
+  - **T30b.3e** — the search engine on `world + 0x6aa8` vtable `0x100c1424` and the sub-cell bit reader for bits 0..2 (walkable?).
+  - **T30b.5 and later** — the figure-position reader and the Wine walk check.
+
+- **Commits:**
+  - `tools: layer_blocks.py — read the five walking-layer blocks in the running game and compare with the DLL image (T30b.4)`
+  - `docs(re): T30b.4 — the five layer blocks are byte-identical to the DLL image; dead-data confirmed by Wine memory compare (transport.md §3.4.2)`
+  - `docs(orchestration): T30b.4 report (dead-data hypothesis confirmed; T30b.3e is the natural next task)`

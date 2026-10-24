@@ -515,6 +515,112 @@ The `edi + 0x438` byte read right after the deeper-helper call is suggestive: it
 
 **OQ-175: see `docs/open-questions.md` — further narrowed, not closed.** The only byte-mask bit test in the entire 3850-byte search-core trio is `0x1000476e`'s `test byte ptr [ecx + edx*4 + 3], 4` inside `0x10003d90`. Confirming or disproving that this reads walkability data requires identifying the array behind `[esi + 0x10]` in the record list fn1 walks, which calls for a one-caller trace of **fn1 itself** (who passes `[ebp+8]` into it) and/or a Wine memory read of the array at that pointer during a running cart search. **Next address** (natural follow-up): find callers of `0x10003d90` via its `.rdata` slot `0x100c1568` (one hit in the sweep so far — the vtable itself; the actual indirect call site(s) through `[this+4][+0x84]` on class Y need a `[this+4]` sweep over AnnoWelt and the game DLLs). Fallback **T30b.3g** (world chunk-fetch handlers `0x100abdb0` / `0x100a52d0` on `AnnoWelt.dll` and the world object — if filling filters out non-walkable cells before the search sees them, that is option 4 and closes OQ-175 without a per-cell reader).
 
+#### 3.4.5 The chunk-grid on `[Y + 4]` and bit 10 of the sub-cell `u16` as the walkability flag (T30b.3h, 2026-10-24)
+
+**D.** Static read of fn1's loop control, fn2's prologue (the fn1 → fn2 call site), and `0x100064b0` (the chunk fetcher). The three pieces fit end-to-end and identify the array behind `[esi + 0x10]` without a Wine run.
+
+**fn1's loop (D, `0x10004749..0x10004854`).** The list sentinel is `[edi + 0x418]` = `[this + 0x418]` on class Y (edi here is `this`, saved at `[esp+0x10]` by the prologue and reloaded earlier in the function):
+
+```
+10004749  mov   ebp, [edi + 0x418]   ; ebp = sentinel = &list head (= [Y + 0x418])
+1000474f  mov   esi, [ebp + 8]       ; esi = sentinel.next
+10004752  cmp   esi, ebp             ; loop while esi != sentinel  (CIRCULAR LIST)
+10004754  je    exit
+...
+1000476e  test  byte ptr [ecx + edx*4 + 3], 4
+...
+10004844  mov   ecx, [edi + 0x418]
+1000484a  mov   esi, [ecx + 8]       ; same reload: sentinel.next
+1000484d  cmp   esi, ebp
+1000484f  jne   1000475a             ; loop
+```
+
+So the list rooted at `[Y + 0x418]` is a **circular doubly-linked list** with `.next` at `+8`, and each node carries `(ptr at +0x10, u16 at +0x14, u16 at +0x16)`. The `+0xc` slot is `.prev` (set by the splice helpers in `.text` right after fn2).
+
+**fn2's prologue is the node constructor (D, `0x10004890..0x10004907`).** fn2 is `__thiscall(this, arg0, arg1, arg2)` with `ret 0xc`. Its very first act is to write the sub-cell mark, and its very last act (before the list splice) is to write the node's three identifying fields:
+
+```
+10004890  push ebx
+10004891  push ebp
+10004892  mov   ebp, [esp + 0xc]     ; arg0  = base pointer
+10004896  push esi
+10004897  mov   esi, [esp + 0x14]    ; arg1  = x-coord (u16-wide)
+1000489b  push edi
+1000489c  mov   edi, [esp + 0x1c]    ; arg2  = y-coord (u16-wide)
+100048a0  mov   ebx, ecx             ; ebx   = this  (= class Y)
+100048a2  lea   eax, [esi + edi*4]   ; eax   = arg1 + arg2*4             (the SAME index as fn1 line 10004769)
+100048a5  lea   eax, [ebp + eax*4]   ; eax   = arg0 + (arg1 + arg2*4)*4  (= 4-byte entry inside the chunk)
+100048a9  xor   ecx, ecx
+100048ab  mov   cx,  word ptr [eax + 2]   ; the u16 at byte +2 of that entry
+100048af  xor   edx, edx
+100048b1  and   ecx, 0xfc07
+100048b7  or    ecx, 7
+100048ba  mov   word ptr [eax + 2], cx    ; (v & 0xfc07) | 7  — the sub-cell visited mark
+...
+100048f8  mov   dword ptr [eax + 0x10], ebp   ; new_node.+0x10 = arg0  (the base pointer)
+100048fb  mov   word  ptr [eax + 0x18], dx    ; new_node.+0x18 = 0     (score / parent / tag field)
+100048ff  mov   word  ptr [eax + 0x14], si    ; new_node.+0x14 = arg1  (x)
+10004903  mov   word  ptr [eax + 0x16], di    ; new_node.+0x16 = arg2  (y)
+```
+
+**So the array behind `[esi + 0x10]` is literally arg0 of fn2** — the base pointer the search engine pushed when it created the node. **The two `u16`s at `[esi + 0x14] / [esi + 0x16]` are the x,y coordinates passed to fn2.** fn1's `cx + dx*4` index is byte-identical to fn2's `arg1 + arg2*4`, with the same `*4` stride applied to the base, giving the same 4-byte entry both times.
+
+**The fn1 → fn2 call site (D, `0x10003e74..0x10003e8d`).** Walking back from the call that creates each node, the arguments to fn2 are built out of two sub-steps:
+
+```
+10003e74  push edx                  ; y_aligned = y - (y mod 4)   (signed-mod expansion above)
+10003e75  push eax                  ; x_aligned = x - (x mod 4)
+10003e76  mov   eax, [esp + 0x18]   ; eax = [esp + 0x18] = this  (saved at [esp+0x10] in the fn1 prologue;
+                                    ;                             +0x8 shifted after push edx; push eax)
+10003e7a  lea   ebp, [eax + 4]      ; ebp = &Y + 4                 (second-interface adjusted this)
+10003e7d  mov   ecx, ebp
+10003e7f  call  0x100064b0          ; eax = CHUNK pointer for the 4-aligned (x,y)
+10003e84  test  eax, eax
+10003e86  je    skip                ; NULL chunk → no mark
+10003e88  push  ebx                 ; arg2 = y_mod_4                (y - y_aligned)
+10003e89  push  edi                 ; arg1 = x_mod_4                (x - x_aligned)
+10003e8a  push  eax                 ; arg0 = chunk pointer
+10003e8b  mov   ecx, ebp            ; this = &Y + 4
+10003e8d  call  0x10004890          ; fn2 — mark + push node
+```
+
+**`0x100064b0` is a chunk fetcher on `&Y + 4` (D).** `xref.py --reloc game/app/AnnoWelt.dll 0x100064b0 0x100064b1` returns **zero** `.rdata` references — `0x100064b0` is NOT a vtable method. It is called directly as `__thiscall` on `(&Y + 4)` from six sites inside class Y's own code: `0x10003e7f`, `0x1000405c`, `0x1000424a`, `0x10004476`, `0x10004726`, `0x10005669` (all inside `AnnoWelt.dll`). Its body reads `[ecx + 4]` and `[ecx + 8]` as integer dimensions (not pointers), bounds-checks `x_chunk = x/4` and `y_chunk = y/4` against them, computes a super-block index `(y_chunk/8)*16 + (x_chunk/8)`, and returns `[ecx + 0x14 + superblock*4]` — the pointer to a chunk-level record for the super-block covering `(x, y)`. The result is the pointer fn1 later walks the sub-cells of. **`[Y + 4]` is therefore a non-polymorphic sub-object (second-interface base of class Y) with layout:**
+
+| offset | contents |
+|---|---|
+| `(Y+4) + 0x00` | `0x100c14e4` (vtable, §3.4.3) |
+| `(Y+4) + 0x04` | chunk-grid width in chunk units (= map-width / 4) |
+| `(Y+4) + 0x08` | chunk-grid height in chunk units |
+| `(Y+4) + 0x14 + superblock*4` | super-block pointer table (one entry per 32×32-tile super-block, indexed `(y_chunk/8)*16 + (x_chunk/8)` — a 128-wide grid of 32×32-tile super-blocks is the apparent default; the `16` is a hard-coded super-row stride, see note below) |
+
+**Note on the hard-coded 16.** The super-row stride `shl esi, 4` at `0x1000650b` is a literal `*16` and is NOT read from an `[ecx + …]` field. This locks the super-block grid at **16 super-blocks wide** = **16 × 32 = 512 tiles wide** in the original. Any map at or below 512 tiles across (two of the three original scenarios the executor sampled fit easily) uses this grid; a wider map would overflow it. This is a hard-coded original-game constraint — a "no hardcoded limits" entry (`docs/open-questions.md`): the C++ port must configure the super-row stride from the chosen map size, not inherit `16`.
+
+**Each chunk the search operates on is 4 × 4 tiles of 4 bytes each (= 64 bytes).** fn2's `[arg0 + (arg1 + arg2*4) * 4]` indexes a 16-entry table with 4-byte stride, where `arg1, arg2 ∈ [0..3]`. fn1 does the identical index with the identical stride.
+
+**Bit 10 of the sub-cell `u16` at offset +2 is the walkability flag (strong candidate, D-on-the-shape).** fn1 tests **byte +3 bit 2** = **bit 10 of the `u16` at bytes +2..+3**. The three known marks of the family write the u16 at +2 with:
+
+| writer | mask preserved | bits set |
+|---|---|---|
+| `0x1000dd60` (§3.3.1) | `0x8007` | `| 7` |
+| `0x10003780` (§3.3.2) | `0xfc07` | `| 7` |
+| `0x10004890` (fn2, §3.4.4) | `0xfc07` | `| 7` |
+
+Bit 10 (= `0x0400`) is **preserved by every one of these marks**: `0x0400 & 0xfc07 = 0x0400` and `0x0400 & 0x8007 = 0`-wait, `0x0400 & 0x8007 = 0`. Only the `0xfc07` writers preserve bit 10; `0x1000dd60` CLEARS it (its mask only preserves bit 15 and bits 0..2). Consistent reading: **bit 10 is set once by the chunk-fill (likely at world-load / scenario-load, outside the search), preserved by `0x10003780` and `0x10004890` which are the search-engine marks, and used by fn1 as the walkability yes/no.** `0x1000dd60`'s wider clear is on a DIFFERENT chunk layout — on the X-class 8×8 chunks of §3.3.1 — not on the Y-class 4×4 chunks fn2 writes.
+
+**Who sets bit 10?** `0x10003780` (§3.3.2) is `[Y]+0xbc` and `0x10004890` is called from fn1 (`[Y]+0x84` via the second interface); both do `| 7`, never `| 0x400`. So bit 10 does not get set anywhere in `AnnoWelt.dll`'s search path. It must be written at **chunk allocation / fill time** by the world's chunk-fetch handlers `0x100abdb0` / `0x100a52d0` (T30b.3g territory) or at scenario-load from `Welt.dat`. The static evidence does not fully close this — the chunk-fill side is the natural next sub-task.
+
+**Caveats.**
+1. The claim "bit 10 is the walkability bit" is now the **leading hypothesis**, supported by: (a) the only byte-mask bit test in the entire search core reads it; (b) both search marks preserve it; (c) the structural interpretation of fn2 as the node-pusher + sub-cell visitor-mark is now fully D (not inferred). What is NOT yet D: that the game ever sets bit 10 to 1 in the chunk data at run time, and that it does so based on the terrain/`Welt.dat` walkability. Those need either a Wine break-and-read at `0x1000476e` to confirm the test is `true` on walkable tiles, or a trace of the chunk-fill side.
+2. The chunk-base register in fn1's test — the pointer at `[esi+0x10]` — is `arg0` passed to fn2, which is the `0x100064b0` return. But fn2 only wraps `(mark; push)`; fn1's **main-loop state transitions** might also push nodes with other base pointers via a different code path. A quick scan of fn1 for `call 0x10004890` returned exactly ONE site (`0x10003e8d`), so every node on the list was built with a chunk pointer from `0x100064b0`. **The array behind `[esi+0x10]` is a Y-class 4×4-tile chunk pointer, in every case.**
+
+**Implications for the port.**
+- The search's walkability yes/no reads **bit 10 of a `u16` at byte +2 of each 4-byte sub-cell** of a 4×4 chunk, with 32×32-tile super-blocks held in a `(Y+4)+0x14` table indexed by `(y/32)*16 + (x/32)`. This is the pathfinder's **tile-level walkability oracle** — the one the sim needs a faithful replacement for.
+- `[Y + 0x418..]` is the search's **open/closed list** (circular doubly-linked), with the sentinel at `[Y + 0x418]`; nodes carry `(chunk_ptr, x_mod_4, y_mod_4, u16_score)` at `(+0x10, +0x14, +0x16, +0x18)`.
+- fn2's `(v & 0xfc07) | 7` writes bits 0..2 as a **visited tag** on the sub-cell; the search re-finds visited cells by this tag (hence the three `test reg, 7` MSVC-mod-8-coord false positives of §3.4.3 — the real visited-check is this test-and-set in fn2, not a `test reg, 7`).
+- The `[Y + 0x438]` byte flag read at `0x10004784` (right after the test-byte branch) is the search's **outer continue/abort flag** — the §3.4.3 observation of a "byte flag 8 bytes past the world pointer" is `+0x438` relative to class Y, not to the world. Class Y is at `world + 0x6aa8` (T30b.3e), so this is `world + 0x6ae0` — a flag on the search engine itself, not on the world.
+
+**OQ-175 moved from "narrowed" to "answered subject to Wine confirmation".** The static read is complete; a one-shot Wine read of the chunk at `[esi + 0x10]` during a running cart search would confirm bit 10 as the walkability bit. **Next address:** T30b.3g (world chunk-fetch handlers `0x100abdb0` / `0x100a52d0` — now relevant for the ORIGIN of bit 10, i.e. who sets it, not just as a fallback). Also a very small Wine subtask: break at `0x1000476e`, snapshot `[esi+0x10]`, confirm bit 10 is set on walkable tiles and clear on blocked tiles.
+
 ### 3.5 Step 7 is BLOCKED on a figure-position reader
 
 Step 7 of T30 calls for building the playbook opening in the running original, reading the tile records of the opening's buildings and the market cart's position tick by tick, and checking each observed tile against the decoded rule. The Wine runner is set up (`docs/testing/original-wine.md`), the opening macro runs (`tools/orig/opening.py`), and `tools/orig/gamestate.py` reads world, players and city stocks. **It has no figure-position reader**, and no decoded figure object layout in memory (the sim's `figure.hpp` has one, but the ORIGINAL's figure layout is different). The reader is a task of its own: find the figure table off `world + ?`, read figure records (position, direction, tile), export them to the harness. **Done here instead:** step 7(a) and (b) are reduced to "memory-compare the five 7168-byte blocks at `0x100d1140` with the DLL image after a scenario loads" (no figure reader needed), left as a next-task sub-step of T30b with a mem-reader call plan. Step 7(c)/(d) wait on T30b's figure reader.

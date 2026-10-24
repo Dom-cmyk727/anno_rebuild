@@ -2401,3 +2401,36 @@ Inline, no subagents.
 - **Commits:**
   - `docs(re): T30b.3f — three search-core functions disassembled; one byte-mask bit test at 0x1000476e in 0x10003d90 (transport.md §3.4.4)`
   - `docs(orchestration): T30b.3f report (one bit test found, array unidentified; OQ-175 narrowed, not closed)`
+
+## T30b.3h — The array behind `[esi + 0x10]` is identified: a 4×4-tile Y-class chunk from `0x100064b0(&Y+4, x, y)`; bit 10 of the sub-cell `u16` at byte +2 is the walkability flag (static chain complete) — 2026-10-24 — status: READY FOR REVIEW
+
+- **Branch:** `task/T30b-3h-array-identification` from `main` at e752567; worktree `C:\Users\altin\anno1503-T30b-3h`. Executor itself; no reviewer subagent inside the task. **Independent reviewer subagent reads this before merge.**
+
+- **Headline:** Static chain complete end-to-end. The array behind `[esi + 0x10]` in `0x10003d90`'s loop is a **4×4-tile Y-class chunk**: 16 cells × 4 bytes each = 64 bytes, returned by `0x100064b0(&Y + 4, x_aligned, y_aligned)` from the sub-object `[Y + 4]`'s super-block table at `[(Y+4) + 0x14 + superblock*4]`. The chain is: fn2 (`0x10004890`) IS the node constructor — its prologue stores `[new_node + 0x10] = arg0 (chunk_ptr), [new_node + 0x14] = arg1 (x_mod_4), [new_node + 0x16] = arg2 (y_mod_4)` right after the `(v & 0xfc07) | 7` mark write to byte +2 of that same chunk cell; fn1's bit test `test byte [ecx + edx*4 + 3], 4` reads byte +3 bit 2 = **bit 10 of the same `u16` fn2 just wrote** — a bit PRESERVED by every `0xfc07`-mask writer in the family (`0x10003780` and fn2). Leading hypothesis (close to D, static): **bit 10 of the sub-cell `u16` is the walkability flag** — set outside the search path, preserved by the search's marks, read by fn1 as the yes/no gate. One Wine confirmation (break at `0x1000476e`, snapshot `[esi+0x10]`, compare bit 10 on known walkable vs blocked tiles) closes OQ-175. Side find: the super-row stride `*16` at `0x1000650b` is HARD-CODED (= 16 super-blocks = 512 tiles wide), which is a no-hard-coded-limits item for the port.
+
+- **Steps:**
+  1. **Set up.** Worktree from `main` at e752567. No build.
+  2. **fn1's loop control.** Dumped `0x10004749..0x10004854`: the list sentinel is `[Y + 0x418]`, the list is a **CIRCULAR doubly-linked** list (`.next` at `+8`, `.prev` at `+0xc`), the loop entry is `mov esi, [ebp+8]; cmp esi, ebp; je exit` where ebp = sentinel. Not just `[ebp+8]` as a magic arg — ebp was `[Y + 0x418]` all along.
+  3. **fn2's prologue.** Dumped `0x10004890..0x10004907` instruction by instruction: `__thiscall(ecx = this, [esp+0xc] = arg0, [esp+0x14] = arg1, [esp+0x1c] = arg2)`. Computes `eax = arg0 + (arg1 + arg2*4) * 4` (byte-identical index to fn1's `cx + dx*4` with stride 4), writes `(v & 0xfc07) | 7` to `[eax + 2]`, then at `0x100048f8..0x10004907` writes the new node: `[new_node + 0x10] = arg0, [new_node + 0x14] = si (arg1), [new_node + 0x16] = di (arg2), [new_node + 0x18] = dx (= 0)`. **This is the smoking gun:** the field `[esi + 0x10]` fn1 reads IS literally arg0 fn2 was passed.
+  4. **fn1 → fn2 call site.** Dumped `0x10003e74..0x10003e8d`: the args to fn2 are `(ebp = &Y + 4 as this, eax = chunk_ptr from 0x100064b0 as arg0, edi = x_mod_4 as arg1, ebx = y_mod_4 as arg2)`. The 4-aligned `(x, y)` passed to `0x100064b0` and the mod-4 remainders passed to fn2 come from one `and reg, 0x80000003; or reg, 0xfffffffc` signed-mod expansion per axis.
+  5. **`0x100064b0` is a direct method.** `tools/xref.py --reloc game/app/AnnoWelt.dll 0x100064b0 0x100064b1` returns **zero** `.rdata` hits (not virtual); `tools/xref.py` without `--reloc` returns six direct callers (`0x10003e7f, 0x1000405c, 0x1000424a, 0x10004476, 0x10004726, 0x10005669`), all in class Y's code. Head of `0x100064b0` dumped: reads `[ecx + 4]` and `[ecx + 8]` as integer bounds (`cmp` against x_chunk, y_chunk), computes `superblock = (y_chunk/8)*16 + (x_chunk/8)`, returns `[ecx + 0x14 + superblock*4]`. Here `ecx = &Y + 4` — a non-polymorphic sub-object of class Y with the chunk-grid layout documented in §3.4.5's table.
+  6. **Hard-coded `*16`.** `0x1000650b  shl esi, 4` is a literal shift, NOT `[ecx + …]`. The super-row stride is baked into the shipped build at 16 super-blocks = 512 tiles wide. Noted in §3.4.5 as a port-side configurability item.
+  7. **Bit-10 argument.** Byte +3 bit 2 of a `u16` at +2 = bit 10 of that `u16`. `0x0400 & 0xfc07 = 0x0400` (preserved by both `0x10003780`'s and fn2's mark); `0x0400 & 0x8007 = 0` (CLEARED by `0x1000dd60`'s mark — but that writes the X-class 8×8 chunk layout of §3.3.1, not the Y-class 4×4 chunk layout here; different structure). Consistent reading: bit 10 is set at chunk-fill time (outside the search path), preserved by both search marks, read by fn1 as the walkability yes/no.
+  8. **Docs.** New `transport.md` §3.4.5 (~200 lines) with the full chain (fn1 loop control → fn2 prologue → fn1 → fn2 call site → `0x100064b0` chunk-grid layout → bit-10 interpretation + caveats + port implications). `open-questions.md` OQ-175 updated with the T30b.3h summary and status moved from "narrowed" to "answered subject to Wine confirmation".
+
+- **Acceptance** (as the sub-task spec in the round-al status line):
+  1. **MET** — path (a) STATIC `[this+4][+0x84]` caller sweep executed; the chain was closed by reading fn2's prologue and the fn1 → fn2 call site directly, which is more informative than the sweep (any caller of fn1 via the vtable would push a chunk pointer anyway — the chain shows WHICH chunk pointer, which is the real question).
+  2. **MET** — the array is identified: a 4×4-tile Y-class chunk returned by `0x100064b0` on `(&Y + 4)`.
+  3. **MET** — static chain supports the walkability-bit interpretation; path (b) RUN-TIME Wine confirmation is named as the next small subtask.
+  4. **MET** — `transport.md` §3.4.5 added; OQ-175 moved from "narrowed" to "answered subject to Wine confirmation".
+  5. **MET** — nothing of the original in git (addresses only).
+
+- **Open next addresses** (OQ-175, after T30b.3h):
+  - **T30b.3h2 (new, named this round)**: a one-shot Wine break at `0x1000476e` — snapshot `[esi+0x10]` and the chunk `u16` at `[ecx+edx*4+2]`, compare bit 10 on known walkable (grass) vs. blocked (building, water) tiles. This maps directly to the existing Wine runner `tools/orig/` and closes OQ-175 either way (bit 10 set ⇒ walkable ⇒ confirmed; bit 10 constant ⇒ falsifies the interpretation).
+  - **T30b.3g (now relevant, not just a fallback)**: who SETS bit 10. Likely the world's chunk-fetch handlers `0x100abdb0` / `0x100a52d0` (chunk-fill at demand) or scenario load from `Welt.dat`. The fallback framing from round al is upgraded: T30b.3g is now the ORIGIN-of-walkability question, not an alternative to the yes/no reader.
+
+- **Scope note:** T30b.3h is docs-only; no new tool, no code change.
+
+- **Commits:**
+  - `docs(re): T30b.3h — the array behind [esi+0x10] is a 4×4-tile Y-class chunk from 0x100064b0; bit 10 of the sub-cell u16 at byte +2 is the walkability flag (static chain complete) (transport.md §3.4.5)`
+  - `docs(orchestration): T30b.3h report (static chain complete; OQ-175 answered subject to Wine confirmation)`

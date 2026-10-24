@@ -2359,3 +2359,45 @@ Inline, no subagents.
 - **Commits:**
   - `docs(re): T30b.3e — search engine on world +0x6aa8 vtable 0x100c1424; sub-cell bit-test grep inconclusive, three next addresses named (transport.md §3.4.3)`
   - `docs(orchestration): T30b.3e report (search engine = class Y; OQ-175 narrowed, not closed)`
+
+## T30b.3f — Deeper read of the three search-core functions; one byte-mask bit test found (`0x1000476e`), array behind it not yet identified — 2026-10-24 — status: READY FOR REVIEW
+
+- **Branch:** `task/T30b-3f-search-core-walkability` from `main` at 71c0073; worktree `C:\Users\altin\anno1503-T30b-3f`. Executor itself; no reviewer subagent inside the task. **Independent reviewer subagent reads this before merge.**
+
+- **Headline:** Full disassembly of the three search-core functions `0x10003d90` (~2776 bytes), `0x10004890` (~480 bytes, called only locally from `0x10003d90`), `0x10005890` (~697 bytes, vtable slot `+0xa4` on `0x100c1424`). Widened test-family grep across the entire 3850-byte trio returns exactly **one** true byte-mask bit test: **`0x1000476e  test byte ptr [ecx + edx*4 + 3], 4`** inside `0x10003d90`, 91 % through the function, inside a short loop that walks a linked list of records `(ptr at +0x10, u16 at +0x14, u16 at +0x16)` and combines the two u16s as `cx + dx*4` — the strongest walkability-test candidate found yet, but the array at `[record + 0x10]` has NOT been identified so the finding is not conclusive. The other test/cmp byte-ptr sites are a graph-visited-flag pair in `0x10004890` (3 sites, offset-0 of nodes, with `mov byte [eax], 1` writes right after) and a backward byte-run compare in `0x10005890` (`cmp byte ptr [ebx], dl` inside a `dec/jl` string-match loop). No `movzx` + mask on a sub-cell `u16`, no `bt/btr/bts` in the trio. OQ-175 **further narrowed, not closed.** Side nit: §3.4.3 said vtable `0x100c1424` has "47 slots"; raw dump shows 48 code slots (indices 0..47) — §3.4.4 flags the correction.
+
+- **Steps:**
+  1. **Set up.** Worktree from `main` at 71c0073. No build.
+  2. **Boundaries + xref.** `tools/disasm.py` on each function (6000 bytes), scanned for `ret`/`int3` to find function ends; `tools/xref.py` and `tools/xref.py --reloc` for `.rdata` references.
+     - `0x10003d90`: last ret at `0x10004867` (plain `c3`); body size ~2776 bytes; one `.rdata` ref at `0x100c1568` = slot `+0x84` of the second interface vtable `0x100c14e4` on class Y (i.e. the vtable at class Y's `[+4]` sub-slot).
+     - `0x10004890`: last ret at `0x10004a6d` (`c20c00`, `ret 0xc` = 3 stack args); body size ~480 bytes; zero `.rdata` refs; sweep finds a single caller at `0x10003e8d` inside `0x10003d90`. **NOT a vtable method** — a static helper of fn1.
+     - `0x10005890`: last ret at `0x10005b49` (`c21400`, `ret 0x14` = 5 stack args); body size ~697 bytes; one `.rdata` ref at `0x100c14c8` = slot `+0xa4` of the primary vtable `0x100c1424` (matches §3.4.3's slot table).
+  3. **Callees.** Grep `call` from each body:
+     - fn1 (36 call sites, 20 distinct targets): `0x100b5f90` (×8, `__ftol`-shaped), `0x100064b0` (×4), `0x10017510` (×3), `0x1000b790` (×3), `0x10003aa0` (×3, float-to-tile helper, 0xcc frame), `0x10004890` (×1 at `0x10003e8d`), `0x10008540`, `0x1000d6a0`, `0x10003220`, `0x100071c0`, `0x10007770`, `0x10007b00`, `0x10007ea0`, `0x10006a40`, `0x10001480`.
+     - fn2: `0x100b5f80` (×1), `0x10004a70` (×2), `0x10004ac0` (×2) — the two helpers are the three tiny linked-list splice functions in `.text` right after fn2 (16–57 bytes each, three plain `ret` endings at `0x10004a9d/0x10004aaf/0x10004ab9`).
+     - fn3: `0x100b5fc0` (`__chkstk`-shaped for 0x1020-byte frame), `0x100b5f90` (×2, `__ftol`), `0x1000c190`, `0x1000c260`, `0x10009ef0`, one vtable call `call dword ptr [eax + 0xac]` at `0x10005b37`.
+  4. **Widened test-family grep.** `test (byte|word) ptr`, `cmp (byte|word) ptr`, `movzx`, `bt/btr/bts`, `and|or reg, imm` across all three bodies.
+     - fn1: ONE byte-ptr test at `0x1000476e` (`test byte ptr [ecx + edx*4 + 3], 4`). `and`/`or` with small imm = sign-preserving modulo-N for coordinates (mod 4 and mod 8 patterns, 25+ sites — ordinary MSVC-generated coord arithmetic).
+     - fn2: three `cmp byte ptr [reg], 0` sites in a graph-visited block (`0x1000497e..0x10004a57`): check-and-set of a 0/1 flag at offset 0 of two neighbouring nodes.
+     - fn3: one `cmp byte ptr [ebx], dl` at `0x10005b0b` inside a backward `dec ebx; inc eax; cmp eax, esi; jl` byte-run; `and`/`or` with small imm = sign-preserving mod 4, mod 8, mod 16, plus `and X, 0xffff` (coord to u16).
+     - **No `movzx` + mask**, **no `bt/btr/bts`**, **no `test` on a word ptr** anywhere in the trio.
+  5. **Context dump of `0x1000476e`.** Read `0x1000474f..0x10004792` instruction by instruction: the surrounding loop walks `esi` records, each record carries `(ptr at +0x10, u16 at +0x14, u16 at +0x16)`, combined index `edx = cx + dx*4`, array base `ecx = [esi + 0x10]`, test bit 2 of byte at `[ecx + edx*4 + 3]`. If clear → continue loop (jmp `0x10004794`); if set → `call 0x10003220(this = edi, &record+0x10)` then `test al, al` on `[edi + 0x438]` (byte flag 8 bytes past class Y's `[+0x430]` world pointer). Transcribed in `transport.md` §3.4.4.
+  6. **Docs.** New `transport.md` §3.4.4 (~190 lines) with function boundary table, callee list, grep results, context dump, interpretation and the caveat that the array behind `[esi + 0x10]` is not identified. `open-questions.md` OQ-175 updated with the T30b.3f summary.
+
+- **Acceptance** (as the sub-task spec in TASKS.md T30b.3f):
+  1. **MET** — each of `0x10003d90`, `0x10004890`, `0x10005890` disassembled to its ret, length and direct callees recorded in §3.4.4.
+  2. **MET** — widened test-family grep (full x86 pattern list: `test byte/word ptr`, `cmp byte/word ptr`, `movzx` + mask, `and/or reg, imm`, `bt/btr/bts`, conditional branches on chunk-pointer loads) run across each body; all hits enumerated.
+  3. **MET** — the one bit-mask test found (`0x1000476e`) is documented with its surrounding context in §3.4.4.
+  4. **PARTIALLY MET** — walkability test NOT confirmed; the strongest candidate is `0x1000476e` but its backing array is unidentified. §3.4.4 names the next step (one-caller trace of `0x10003d90` through `0x100c1568`, or a Wine memory read).
+  5. **MET** — `transport.md` updated (§3.4.4) with the result; §3.4.3's "47 slots" nit flagged.
+  6. **MET** — OQ-175 updated with the new finding and next address.
+  7. **MET** — nothing of the original in git (addresses only).
+
+- **Open next addresses** (OQ-175, after T30b.3f):
+  - **T30b.3h (new)**: identify the array at `[esi + 0x10]` in the record list `0x10003d90` walks. Two paths: (a) static — find callers of `0x10003d90` on class Y via `[this+4][+0x84]` sweep across AnnoWelt and the game DLLs, then read the caller to see what it hangs on `+0x10` of each record; (b) run-time — in a running Wine session, break on `0x1000476e` (or `0x1000474f`), read `[esi+0x10]` and the array at that pointer, and compare it against the chunk-data layout `0x10003780` writes. **T30b.3g fallback stays READY** (world chunk-fetch handlers `0x100abdb0` / `0x100a52d0`).
+
+- **Scope note:** T30b.3f is docs-only; no new tool, no code.
+
+- **Commits:**
+  - `docs(re): T30b.3f — three search-core functions disassembled; one byte-mask bit test at 0x1000476e in 0x10003d90 (transport.md §3.4.4)`
+  - `docs(orchestration): T30b.3f report (one bit test found, array unidentified; OQ-175 narrowed, not closed)`

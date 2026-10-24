@@ -283,6 +283,32 @@ After the virtual call, `0x10003780` continues at `0x100037e5` and does, repeate
 - The sub-cell bit semantics (what makes a tile walkable, read from where).
 - What the layer tables at `0x100d1140` are actually read by (if they are consumed by `AnnoWelt.dll` at all, the sweep's `[reg + 0x430]` is the write/read of the pointer; the TABLE CONTENT is at `0x100d1140 + 0x1c00·L`, consumed only through that pointer, and the pointer has one setter and no readers found — **so the layer tables may not be consumed in `AnnoWelt.dll` at all**).
 
+**Also `0x100011c0` (T30b.3c, 2026-10-24).** Read to its `ret 4` at `0x1000123d`. **Correcting the round-af nit:** `0x100011e2 add edx, [ecx + 0x430]` **is not a pointer dereference**; it is an `add` that uses the field as a 32-bit coordinate value (added to `floor(p[0] / 3)`). The subagent's round-af catch about "two pointer-reads" was slightly loose: `0x100011c0` has `[ecx + 0x430]` and `[ecx + 0x434]` as **integer origin fields** (the same shape as class X's `[X + 0x434]` / `[X + 0x438]`), not object pointers. The function **does** dereference a different field, `[ecx + 0x454]`, through a virtual call `[edx + 0x128]`.
+
+Instruction summary (D, `disasm.py` on `0x100011c0`..`0x1000123d`, 125 bytes):
+
+| Address range | Reads | Computes |
+|---|---|---|
+| `0x100011c0`–`0x100011dd` | `[esp + 0x18]` (arg `p`), `word[esi]` (= `p[0]`, u16) | `edx = p[0] / 3` via MSVC's signed `div 3` sequence (`imul edx, 0x55555556; shr eax, 31; add edx, eax`). |
+| `0x100011e2` | `[ecx + 0x430]` as a 32-bit value | `edi = p[0] / 3 + [ecx + 0x430]`. |
+| `0x100011ea`–`0x1000120a` | `word[esi − 2]` (= `p[2]`, u16) | `edx = p[2] / 3` same divide trick. |
+| `0x1000120c` | `[ecx + 0x434]` as a 32-bit value | `edx = p[2] / 3 + [ecx + 0x434]`. |
+| `0x10001212`–`0x10001229` | `[ecx + 0x454]` (receiver), `[ecx + 0x458]` (arg) | Stores a 4-dword buffer at `[esp + 0x14..0x24]`: `(edi, edi + 2, edx, edx + 2)` = `(x0, x1, y0, y1)` in `W + 0x430..0x434` origin-shifted sub-cell → tile coordinates. |
+| `0x1000122d`–`0x10001232` | `[ecx + 0x454]`'s vtable, slot `+0x128` | `call [edx + 0x128]` with pushes `(6, p+4, &buffer, 0, [ecx + 0x458])` — the same chunk-fetch call shape as `0x1000daf0` and `0x10003780`, with kind = 6 (vs 8 in `0x1000daf0` and the implicit kind of `0x10003780`'s world call). |
+| `0x10001238`–`0x1000123d` | — | `pop edi; pop esi; add esp, 0x10; ret 4`. One arg (`p`); no explicit return. |
+
+**Caller / receiver class (D-partial):** `0x100011c0` is slot `+0` of vtable `0x100c129c` (`xref.py --reloc`), the SECONDARY base vtable (at `[W + 4]`) of a class whose primary vtable is `0x100c12a0` and whose constructor is at `~0x10002830` (`0x1000284d: mov [esi], 0x100c12a0; mov [esi+4], 0x100c129c`). Call it **class W**. Vtable `0x100c129c` is adjacent in memory to `0x100c18b0` (= class X's secondary); both appear to inherit from the same base `0x100c135c`. The virtual call receiver `[W + 0x458]` likely holds the world — if so, slot `+0x128` would be the same `0x100a52d0` as `0x10003780`'s receiver. **Open:** who writes `[W + 0x458]` and `[W + 0x454]`; is class W a sub-component of the bigger class or constructed separately? One more sub-task settles it; T30b.3c marks these as the next addresses.
+
+**Pattern across the three readers now:**
+
+| Function | this | `[+0x430]` | `[+0x434]` | Virtual-call receiver field | Dispatch slot | Divides p by |
+|---|---|---|---|---|---|---|
+| `0x1000daf0` | class X secondary (X+4) | origin x (`[X + 0x434]`) | origin y (`[X + 0x438]`) | `[X + 0x858]` (= world) | `+0xec` (`0x100abdb0`) | not divided |
+| `0x10003780` | class Y (bigger) | world pointer | some integer (`add` only) | `[Y + 0x430]` (= world) | `+0x128` (`0x100a52d0`) | not divided |
+| `0x100011c0` | class W secondary (W+4) | origin x (`[W + 0x434]`) | origin y (`[W + 0x438]`) | `[W + 0x458]` (probably world) | `+0x128` (likely `0x100a52d0`) | 3 (sub-cell → tile) |
+
+So **three different classes** share a very similar "fetch a chunk around a point" pattern against the world's chunk-row dispatcher, each with its own origin coordinates. Each then does something with the fetched chunk (`0x1000dd60` and `0x10003780` write a reservation mark; `0x100011c0` doesn't continue past the virtual call → the fetched chunk is probably the function's purpose, with the mutation happening in the virtual's handler). **The walkability yes/no decision is still not located**: all three family readers are **chunk-fetch / coordinate-translate**, not pass/fail.
+
 ### 3.4 The writers of the layer blocks (T30 step 3, D)
 
 - `xref.py --reloc AnnoWelt.dll 0x100d1140`: exactly two absolute references, both inside the two setters above (`1000dd32`, `1000f022`). **No absolute reference points into any address of the five blocks (`0x100d1141`–`0x100d9d3f`)**; the next referenced `.data` address is `0x100dcb44` (`xref --reloc 0x100d1141 0x100e1000`). So any run-time write must go through the stored pointers at `[engine + 0x430]` / `[+0x1030]`.

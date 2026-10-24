@@ -154,6 +154,46 @@ So this function **does not itself decide walkability**; it builds a 16-byte arg
 
 **Conclusion:** the layer blocks are **initialised data**, and writes at run time, if any, go through the engine pointers (not through the base address). Writes through the pointer have not been traced; T30 step 7(a) is the straightforward way to decide (compare the DLL image with the running game's memory at those addresses).
 
+### 3.6 OQ-175: deeper look at the layer-table family (T30 round y, 2026-10-24)
+
+After round y I went further on OQ-175. Four new concrete findings, each with its evidence; the actual yes/no method `[edx + 0xec]` body is **still open** (needs the class of `[this + 0x858]`).
+
+**(a) The reader is a family of at least three variants with different `this` layouts.**
+
+| Reader (vtable, slot +0) | primary table | secondary table | sub-obj | sub-arg | index stride (lea) | pair delta |
+|---|---|---|---|---|---|---|
+| `0x1000daf0` (`0x100c18b0`) | `[this + 0x430]` | `[this + 0x434]` | `[this + 0x858]` | `[this + 0x85c]` | implicit `+p[0]` | +8 |
+| `0x1000ed40` (`0x100c1a30`) | `[this + 0x42c]` | `[this + 0x430]` | `[this + 0x434]` | `[this + 0x438]` | implicit `+p[0]` | +8 |
+| `0x1000f9d0` | `[this + 0x1054]` | `[this + 0x1058]` | `[this + 0x1030]` | — | `lea [base + i·8]` | +0x40 |
+
+All three build a 4-dword buffer of pointers into two tables and call `[edx + 0xec]`. The first two share the pair-delta of +8 (two 8-byte spans read); the third has a +0x40 pair-delta and a `·8` index stride, so its tables hold 64-byte entries with 8-byte indexed rows. The `[+0x858]`/`[+0x85c]` pair in `0x1000daf0` is the same **conceptual field** as `[+0x434]`/`[+0x438]` in the twin — a sub-object + sub-arg, just at different absolute offsets because the two engine classes differ in size by about 0x424 bytes. The engine with vtable `0x100c1a30` is **embedded as a sub-object at `+0x23a4` of a larger engine** (constructor at `0x10012079`): `[outer + 0x23a4] = 0x100c1a30` is written inline, and the embedded sub-object's `+0x434` (full offset `+0x27d8` on the outer) holds the outer's `arg` passed to the constructor (D).
+
+**(b) The u16 table `0x100c1af8` is a many-to-few mapper, not a byte-wise mask.** 512 u16 entries (D, size), **33 distinct outputs** (P, counted). The outputs range `0..0xfff` and are **not aligned to 8 or 16 bytes** (several like `0x6c`, `0x82`, `0xee` are odd offsets): the layer-table entry stride is **not** uniform. Instead, each distinct output is a byte offset into the 0x1c00-byte layer block, pointing at an 8-byte span the reader hands to the decision method. One output (`0xfff`) dominates with **123 of 512 masks** mapping to it — likely "blocked / default" since 0xfff is the farthest offset into the 7168-byte block (just 1 byte of space after the 8-byte read).
+
+| cell type (byte offset in block) | masks mapping to it | first mask (9 bits) |
+|---|---|---|
+| `0x0000` | 21 | `0b101010101` (0x155) |
+| `0x000c` | 23 | `0b101010001` (0x151) |
+| `0x0060` | 23 | `0b101010100` (0x154) |
+| `0x006c` | 12 | `0b101010010` (0x152) |
+| `0x0300` | 23 | `0b100010101` (0x115) |
+| `0x030c` | 25 | `0b100010001` (0x111) |
+| `0x0801` | 23 | `0b001001111` (0x04f) |
+| `0x0b61` | 7 | `0b010001110` (0x08e) |
+| `0x0fff` (dominant) | **123** | `0b000000000` (0x000) |
+| other 24 types | 1..20 each | — |
+
+The 33 outputs have high nibbles only in `{0, 3, 4, 7, 8, b, c, f}` (pairs 0+3, 4+7, 8+b, c+f: each pair differs by 3, which is `0b11` in the low two bits). The 9-bit input mask reads naturally as a 3×3 sub-cell layout (centre + 8 neighbours), so the mapper looks like a **canonical form** of the 9-bit mask reduced to an equivalence class of walkability patterns. The isometric engine has 8 move directions, and the mapping compresses rotational / reflection symmetries.
+
+**(c) The layer blocks are addressed by that mapped offset, not by raw mask or by a uniform entry size.** The reader's math `[primary + p[0]]` with `p[0]` = `0x100c1af8[mask]` means a tile's cell-type is a **byte offset into the layer-specific block**, and the 8 bytes at that offset are the per-layer walkability data for that cell-type. Since 33 cell-types occupy offsets up to `0xfff + 8 = 0x1007` inside the 0x1c00 block, there is plenty of slack between entries; the real data density is one 8-byte entry per cell-type per layer, roughly `33 × 8 = 264` bytes of actual data per 7168-byte block. The rest is slack (needed because the mapper outputs byte offsets, not indices).
+
+**(d) The second u16 (`p[2]`) is the byte at bits 8–15 of the tile record's second dword** (`0x1008ff70` at `0x10090050`–`0x1009007b`, D §3.1 (b)). That is a different piece of per-tile data than the 9-bit mask — likely the **neighbourhood code** (a byte summarising the eight neighbours of this tile, or an orientation marker), since the `+0x40` stride in the third reader `0x1000f9d0` and the pattern of its reads suggest the secondary is a **direction-indexed 8-byte entry** (one byte per direction).
+
+**Still open (OQ-175, with addresses):**
+- The vtable method `[edx + 0xec]` body on the class pointed to by `[this + 0x858]` (`0x1000daf0`) / `[this + 0x434]` (twin) / `[this + 0x1030]` (`0x1000f9d0`). The call signature from the three readers is `(this = sub_obj, arg0 = sub_arg, arg1 = 0, arg2 = &buffer_of_4_dwords)`. The method must dereference the 4 pointers in `buffer` to read the two 8-byte spans from each layer table and return a boolean (walkable yes/no). Reading its body is T30b step 2.
+- The class of the sub-object. No direct write to `[reg + 0x858]` was found (sweep finds zero); the constructor `0x1000eb40` writes `+0x85c` from an argument but not `+0x858`. The outer engine's constructor at `0x10012079` writes `[esi + 0x27d8] = arg` (which is the embedded engine's `+0x434`), but the sub-object's own vtable write wasn't located. The field is likely written **during a later `init` method call** on the engine, not in the constructor. Checking who else calls `[engine + something]` with the newly-allocated engine (`0x100aac23` calls `[eax + 0x80]` which is the layer-table setter `0x1000dd20`) might reach it.
+- Of the 76 `call [reg + 0xec]` sites in `AnnoWelt.dll`, **four match this family's pattern** by eye (two or three dword pushes with the last being a buffer pointer): `0x1000db4a` and `0x1000ed9a` (our targets), `0x1000fa33` (the `+0x40`-stride variant), and `0x1000faed` (another variant nearby). The others look like unrelated virtual methods on different classes. T30b step 2 reads one body to decide which (likely the shared method lives on the sub-object's base class).
+
 ### 3.5 Step 7 is BLOCKED on a figure-position reader
 
 Step 7 of T30 calls for building the playbook opening in the running original, reading the tile records of the opening's buildings and the market cart's position tick by tick, and checking each observed tile against the decoded rule. The Wine runner is set up (`docs/testing/original-wine.md`), the opening macro runs (`tools/orig/opening.py`), and `tools/orig/gamestate.py` reads world, players and city stocks. **It has no figure-position reader**, and no decoded figure object layout in memory (the sim's `figure.hpp` has one, but the ORIGINAL's figure layout is different). The reader is a task of its own: find the figure table off `world + ?`, read figure records (position, direction, tile), export them to the harness. **Done here instead:** step 7(a) and (b) are reduced to "memory-compare the five 7168-byte blocks at `0x100d1140` with the DLL image after a scenario loads" (no figure reader needed), left as a next-task sub-step of T30b with a mem-reader call plan. Step 7(c)/(d) wait on T30b's figure reader.

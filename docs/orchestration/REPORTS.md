@@ -2325,3 +2325,37 @@ Inline, no subagents.
   - `tools: layer_blocks.py — read the five walking-layer blocks in the running game and compare with the DLL image (T30b.4)`
   - `docs(re): T30b.4 — the five layer blocks are byte-identical to the DLL image; dead-data confirmed by Wine memory compare (transport.md §3.4.2)`
   - `docs(orchestration): T30b.4 report (dead-data hypothesis confirmed; T30b.3e is the natural next task)`
+
+
+## T30b.3e — Search-engine vtable `0x100c1424` identified; simple sub-cell bit-test grep did not find the walkability yes/no — 2026-10-24 — status: READY FOR REVIEW
+
+- **Branch:** `task/T30b-3e-sub-cell-bit-reader` from `main` at 3d45ec2; worktree `C:\Users\altin\anno1503-T30b-3e`. Executor itself; no reviewer subagent. **Independent reviewer subagent reads this before merge.**
+
+- **Headline:** The search engine on `world + 0x6aa8` has vtable `0x100c1424` (47 slots, `pefile` dump). Its installer is at `0x10006401` inside the big-class constructor `0x10006344` (`xref.py --reloc`), **so the search engine IS class Y of §3.3.2** — same object, multiple vtables. Slot `+0xbc = 0x10003780` is the chunk-cache mark function from T30b.3b: the search engine DIRECTLY uses the mark function as one of its methods. **The simple sub-cell bit-test grep (`and reg, 7` / `test reg, 7` on non-stub slot bodies and the three search-core functions) found no walkability test**: the two hits are MSVC's signed `mod 8` for coordinates. The walkability yes/no is still not located; three next addresses named.
+
+- **Steps:**
+  1. **Set up.** Worktree from `main` at 3d45ec2. No build.
+  2. **Vtable dump.** `pefile` on `0x100c1424..0x100c1524` (0x100 bytes = 64 slots; actual non-stub range `+0x50..+0xbc`). Table in `transport.md` §3.4.3. **D.**
+  3. **Installer.** `xref.py --reloc game/app/AnnoWelt.dll 0x100c1424` returns a single hit `0x10006403` (one reloc, one address) and `xref.py` on the same address returns `0x10006401` (the `mov [reg+0], 0x100c1424` instruction). Both inside the big-class constructor `0x10006344` the earlier T30b.3b analysis identified. **D: the search engine's class is class Y.** This resolves one of OQ-175's "class relation" questions.
+  4. **Slot bodies.** Read first ~3 instructions of `0x10004b50` (slot `+0x50`, 5-arg entry), `0x10005890` (slot `+0xa4`, huge function with 0x1020-byte local frame and float-position input), `0x100062f0` (slot `+0xac`, destructor-chain helper). Each is documented in §3.4.3 table.
+  5. **Pattern scan.** For each non-stub slot: `python tools/disasm.py game/app/AnnoWelt.dll <slot> 500 | grep "and reg, 7\|test reg, 7"`. Two hits (`0x10010923`, `0x1000580a`) are MSVC's `cdq; and edx, 7; add eax, edx; sar eax, 3` pattern for signed `mod 8` — the same pattern `0x1000dd60` uses (§3.3.1). No bit test on sub-cell u16 found at this depth.
+  6. **Scan the search-core functions.** `0x10003d90`, `0x10004890`, `0x10005890` all show no `word ptr` with `0x8000` / `0xfc07` / `test reg, 7` on the sub-cell.
+  7. **Docs.** `transport.md` §3.4.3 (new) with the vtable table, the installer, the slot analysis, the pattern-scan results, and the leading alternative (the chunk-fetch handlers `0x100abdb0` / `0x100a52d0` may filter walkability before the mark). OQ-175 updated.
+
+- **Acceptance** (as the sub-task spec in TASKS.md T30b.3e):
+  1. **MET** — vtable `0x100c1424` dumped (47 slots) in §3.4.3.
+  2. **MET** — installer named (`0x10006401` inside the big-class constructor `0x10006344`).
+  3. **MET** — three expand/step/is_passable candidate slots read: `0x10004b50` (slot `+0x50`), `0x10005890` (slot `+0xa4`), `0x100062f0` (slot `+0xac`). All documented.
+  4. **MET** — `transport.md` updated with the result and the next addresses.
+  5. **PARTIALLY MET** — OQ-175 narrowed (search engine = class Y), not closed. The walkability yes/no is still not pinpointed; three next addresses named.
+  6. **MET** — nothing of the original in git (addresses only).
+
+- **Open next addresses** (OQ-175, after T30b.3e):
+  - **T30b.3f**: read `0x10005890`'s body in full (likely the search-entry that triggers the chunk cache + walk), plus `0x10003d90` and `0x10004890` (the "search core" functions named by the orchestrator in round ae). Look for a BRANCH on a word-value loaded from a chunk pointer, not necessarily `test reg, 7` directly.
+  - **T30b.3g**: read `0x100abdb0` and `0x100a52d0` (the world's chunk-fetch handlers) — these may FILTER cells by walkability before the mark function sees them. If so, bits 0..2 of the sub-cell are a search's "visited" tag, not a walkability flag, and the real walkability lives in the world's chunk-row data.
+
+- **Scope note:** T30b.3e is docs-only; no new tool.
+
+- **Commits:**
+  - `docs(re): T30b.3e — search engine on world +0x6aa8 vtable 0x100c1424; sub-cell bit-test grep inconclusive, three next addresses named (transport.md §3.4.3)`
+  - `docs(orchestration): T30b.3e report (search engine = class Y; OQ-175 narrowed, not closed)`

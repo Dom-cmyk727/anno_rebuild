@@ -669,13 +669,26 @@ TEST_CASE("building scheduler visits the lists in the order of the schedule") {
         cfg.layout.block_size = 1;
         cfg.layout.block_to_list = {4, 5};
         cfg.layout.schedule = std::move(schedule);
+        // The kit's registry was built with the original layout; the modded layout
+        // above lists only prodtypes 1 and 2, so the kit's other types' walk_class
+        // disagrees with the world's — validate_against would refuse (T27b). Build
+        // a kit here with the test's config so cls and walk_class match.
+        sim::TypeRegistry::Builder lb;
+        lb.config(cfg);
+        for (const sim::BuildingType& t : k.registry->types()) {
+            lb.add(t);
+        }
+        auto lrebuilt = lb.build();
+        REQUIRE_MESSAGE(lrebuilt.ok(), (lrebuilt.ok() ? std::string() : lrebuilt.error()));
+        Kit lk = k;
+        lk.registry = std::move(lrebuilt.value());
         sim::ScenarioSpec spec = cities_scenario(1);
-        sim::ScenarioSpec::BuildingSpec farm = place(k.farm, 103, 101);
+        sim::ScenarioSpec::BuildingSpec farm = place(lk.farm, 103, 101);
         sim::Farm f;
         f.last = 65036;
         farm.payload = f;
-        spec.islands[0].cities[0].buildings = {weaver_at(k, 101, 101, 65036), farm};
-        sim::World w = make_world_with(k, spec, named_seams(), cfg);
+        spec.islands[0].cities[0].buildings = {weaver_at(lk, 101, 101, 65036), farm};
+        sim::World w = make_world_with(lk, spec, named_seams(), cfg);
         REQUIRE(city(w, 0).index.lists[4].slots[0].has_value());
         REQUIRE(city(w, 0).index.lists[5].slots[0].has_value());
         std::get<sim::Workshop>(city(w, 0).index.lists[4].slots[0]->payload).in[0] = 0;

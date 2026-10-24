@@ -1494,6 +1494,39 @@ TEST_CASE("class for prodtype follows the layout") {
     CHECK(built.value()->find(sim::TypeId{1})->cls == C::Plain);
 }
 
+TEST_CASE("registry refuses a config whose layout reclassifies a type") {
+    // walk_class (not hashed) and cls (hashed) are derived from the layout the
+    // registry was built with (TypeRegistry::finish and Builder::add_*); the
+    // transport search reads walk_class with no reference to the world's cfg, so
+    // a world whose layout would give a different value must be refused
+    // (validate_against, T27b, owner 2026-10-24 w).
+    sim::TypeRegistry::Builder b;
+    // Two Plain-class types that need no production data: a house (prodtype 97,
+    // the house block) and a road (prodtype 193, beyond the original blocks →
+    // walk_class 0 by its default, since neither block_to_list covers it nor the
+    // road flag is set).
+    b.add_plain(sim::TypeId{1}, 97).add_plain(sim::TypeId{2}, 193);
+    auto built = b.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    const sim::TypeRegistry& r = *built.value();
+    CHECK(r.validate_against(sim::SimConfig{}) == "");
+    // Modding only the schedule, lookup_order or roles does not change list_for,
+    // so walk_class stays the same: those are accepted.
+    sim::SimConfig schedule_only;
+    schedule_only.layout.schedule = {4}; // visit the production list only
+    schedule_only.layout.roles.market_list = 2;
+    CHECK(r.validate_against(schedule_only) == "");
+    // Dropping the house block refuses on type 1 (prodtype 97, walk_class was 2
+    // in the registry; the modded layout gives 0 since there are only 3 blocks).
+    sim::SimConfig moved;
+    moved.layout.block_to_list = {4, 5, 1}; // production, market, public only
+    const std::string err = r.validate_against(moved);
+    CHECK(err.find("type 1") != std::string::npos);
+    CHECK(err.find("walk class") != std::string::npos);
+    // The empty registry fits any layout (it derived nothing).
+    CHECK(sim::TypeRegistry::empty()->validate_against(moved) == "");
+}
+
 TEST_CASE("registry digest stable") {
     // The digest of the empty registry (the original goods and class tables):
     // an independent transcription is the FNV-1a 64 of u64 0 (types), the goods

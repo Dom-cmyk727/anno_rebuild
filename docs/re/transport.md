@@ -316,6 +316,32 @@ So **three different classes** share a very similar "fetch a chunk around a poin
 
 **Conclusion:** the layer blocks are **initialised data**, and writes at run time, if any, go through the engine pointers (not through the base address). Writes through the pointer have not been traced; T30 step 7(a) is the straightforward way to decide (compare the DLL image with the running game's memory at those addresses).
 
+#### 3.4.1 Cross-module `--reloc` sweep: the layer blocks are not referenced outside `AnnoWelt.dll` (T30b.3d, 2026-10-24)
+
+**D.** `tools/xref.py --reloc` on every game DLL for the whole range `0x100d1140 .. 0x100d9d40` returns **zero hits** in each. A code sweep for each of the five base addresses `0x100d1140 + 0x1c00·L` (L = 0..4) across the same DLLs returns **zero hits** in each too.
+
+| DLL | `--reloc 0x100d1140..0x100d9d40` | code sweep for the 5 base addresses |
+|---|---|---|
+| `AnnoGame.dll` | 0 | 0 |
+| `AnnoScene.dll` | 0 | 0 |
+| `AnnoDisplay.dll` | 0 | 0 |
+| `AnnoFrame.dll` | 0 | 0 |
+| `CompLogic.dll` | 0 | 0 |
+| `CompLogicClassic.dll` | 0 | 0 |
+| `View.dll` | 0 | 0 |
+| `FileGame.dll` | 0 | 0 |
+
+So the only references to `0x100d1140` anywhere in the shipped modules are the two inside `AnnoWelt.dll`'s setter and its twin (`0x1000dd32`, `0x1000f022`, round-ag confirmed). The data at `0x100d1140 + 0x1c00·L` is **not read by any game DLL** my sweeps have found. Combined with §3.3.1–§3.3.2 (`AnnoWelt.dll` has three chunk-fetch "layer-table-shaped" readers, each of which turns out to be a chunk-fetch on the world's chunk map, not a read of the data at `0x100d1140`), the leading hypothesis is now:
+
+- **The layer tables at `0x100d1140 + 0x1c00·L` appear to be dead data** in the shipped build. The setter `0x1000dd20` writes a pointer to one of them into `[X + 0x430]`, and nothing reads that pointer back as data. T30's original "walking-layer tables" interpretation of OQ-160 is suspect: the walkability yes/no is **elsewhere**, likely in the sub-cell bit layout the three chunk-fetch readers set (bits 0..2 of the sub-cell u16 after `(v & 0x8007) | 7` / `(v & 0xfc07) | 7`) and a reader that **reads the sub-cell's bits** on each node expansion.
+- An alternative is a run-time write to the layer tables via the stored pointer (`[X + 0x430]`); step 7(a)'s memory compare of the five blocks after a scenario loads (T30b.4) decides it. If the blocks are the SAME as the DLL image at run time, the "dead data" conclusion is confirmed; if they differ, run-time writes exist and the writer must be traced through the pointer.
+
+**Next addresses for OQ-175 (updated):**
+
+1. **Sub-cell bit readers.** The reservation writes set bits 0..2 of each sub-cell u16; a reader somewhere must test these bits to decide "walkable". `xref.py` for `and reg, 7` / `test reg, 7` on the sub-cell data pointer is a lead; the search engine's node expander on `world + 0x6aa8` vtable `0x100c1424` is the most likely place.
+2. **Memory compare (T30b.4) as a cheap test.** Already written up as a sub-task. If the blocks don't change at run time, the "dead data" hypothesis is confirmed.
+3. **The three class W/X/Y writers for their world/receiver fields.** T30b.3b/3c left open: who writes `[X + 0x858]` (world), `[Y + 0x430]` (world), `[W + 0x454]`/`[W + 0x458]` (world + another). A `rep movs`-based or struct-copy-based writer may be in play; a non-`mov`-destination sweep across the four modules would catch it.
+
 ### 3.6 OQ-175: deeper look at the layer-table family (T30 round y, 2026-10-24)
 
 After round y I went further on OQ-175. Four new concrete findings, each with its evidence; the actual yes/no method `[edx + 0xec]` body is **still open** (needs the class of `[this + 0x858]`).

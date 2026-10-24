@@ -397,9 +397,15 @@ std::optional<BuildingClass> production_kind_for_tick(TickKind tick) {
 }
 
 /// The checks that depend on the configuration (TypeRegistry::validate_against):
-/// the public-need masks fit the service counters and the build cost goods are
+/// the public-need masks fit the service counters, the build cost goods are
 /// goods that Place charges (SimConfig::build_goods_first .. + build_goods_count,
-/// which SimConfig::validate keeps below warehouse_goods).
+/// which SimConfig::validate keeps below warehouse_goods), and every type's
+/// walk_class matches what cfg.layout would derive — walk_class is built from the
+/// registry's layout and the transport search reads it with no reference to the
+/// world's cfg, so a mismatch means the two disagree on what a building is
+/// (T27b, owner 2026-10-24 w; cls is left out, because Builder::add(t) accepts a
+/// type with a hand-set cls that class_for_prodtype may not reproduce — the
+/// "world create checks that the registry fits the configuration" case uses this).
 std::string check_against_config(std::span<const BuildingType> types, const SimConfig& cfg) {
     const std::uint64_t goods_end = std::uint64_t{cfg.build_goods_first} + cfg.build_goods_count;
     for (const BuildingType& t : types) {
@@ -419,6 +425,19 @@ std::string check_against_config(std::span<const BuildingType> types, const SimC
                        std::to_string(cfg.build_goods_first) + ") .. + build_goods_count (" +
                        std::to_string(cfg.build_goods_count) + ")";
             }
+        }
+        // walk_class is derived from cfg.layout at build (TypeRegistry::finish);
+        // recompute under this configuration's layout and refuse a mismatch, so a
+        // world whose layout would classify a type differently is caught (T27b).
+        const std::uint8_t walk_cfg = (t.flags_word & kRoadFlag) != 0 ? std::uint8_t{1}
+                                      : cfg.layout.list_for(t.prodtype).has_value()
+                                          ? std::uint8_t{2}
+                                          : std::uint8_t{0};
+        if (walk_cfg != t.walk_class) {
+            return who + "the configuration's ListLayout gives walk class " +
+                   std::to_string(static_cast<unsigned>(walk_cfg)) +
+                   ", the registry was built with " +
+                   std::to_string(static_cast<unsigned>(t.walk_class));
         }
     }
     return {};
@@ -692,6 +711,16 @@ TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goo
     if (std::string problem = check_consistency(types, classes); !problem.empty()) {
         return problem;
     }
+    // walk_class is DERIVED from cfg.layout, like cls (which is set when a type is
+    // added). Compute it here so check_against_config sees matching values; it is
+    // deliberately NOT in digest_registry below (the rule of TileTest in
+    // transport.cpp, task T27): road flag -> 1, a type that occupies a building list
+    // -> 2, else 0 (no object or a non-blocking one).
+    for (BuildingType& t : types) {
+        t.walk_class = (t.flags_word & kRoadFlag) != 0               ? std::uint8_t{1}
+                       : cfg.layout.list_for(t.prodtype).has_value() ? std::uint8_t{2}
+                                                                     : std::uint8_t{0};
+    }
     if (std::string problem = check_against_config(types, cfg); !problem.empty()) {
         return problem;
     }
@@ -705,14 +734,6 @@ TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goo
     auto sealed = std::make_shared<Sealed>();
     TypeRegistry& r = *sealed;
     r.digest_ = digest_registry(types, goods_in, classes, figures);
-    // walk_class is DERIVED and set after the digest, so it stays out of it (the rule
-    // of TileTest in transport.cpp, now a per-type field; task T27): road flag -> 1, a
-    // type that occupies a building list -> 2, else 0 (no object or a non-blocking one).
-    for (BuildingType& t : types) {
-        t.walk_class = (t.flags_word & kRoadFlag) != 0               ? std::uint8_t{1}
-                       : cfg.layout.list_for(t.prodtype).has_value() ? std::uint8_t{2}
-                                                                     : std::uint8_t{0};
-    }
     r.types_ = std::move(types);
     r.figure_types_ = std::move(figures);
     r.goods_ = std::move(goods_in);

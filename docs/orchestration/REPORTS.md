@@ -1810,6 +1810,33 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
 9. **Nits taken:** the image statistics are P, not D (distinct byte values per block 50 / 53 / 74 / 42 / 87, so the `0xff` counts do not rank the layers; "layer 0 permissive" dropped); "a repeating 8-byte group" dropped; five blocks used (the sixth is zero, P); `0x1000f010` belongs to another vtable; the one-entry memo comment in `transport.cpp`; §3.1 no longer says "OQ-160 stays open" against its decided status (the RE stays open, the owner decided how it is settled). Not taken: the `LOGIC[0x10]` value counts per layer (not re-checked here; T30 step 6 reads the layers).
 10. **Gates** (heavy-job lock, in the foreground after a background run was stopped by the host's low-memory guard): MSVC build warning-free; ctest **973/973** with the game dir (378 s) and **973/973** without (the merged tree with T26); clang-format 23.1.3 clean over `src`; `lint_sim.py` ok; `sim_stream.py --check` "goldens agree"; `check_unix_warnings.sh` clean (GCC 13.3 and Clang 18 with viewer and GPU, 151 files; Clang without GPU); `fixtures/` untouched.
 
+
+## T27b — The registry refuses a world whose layout would classify a type differently (OQ-160, follow-up of T27 review; owner decision 2026-10-24 w) — 2026-10-24 — status: READY FOR REVIEW
+- **Branch:** `task/T27b-layout-check` from `main` at c41d63d; worktree `C:\Users\altin\anno1503-T27b`. Executor itself; no reviewer subagent (§1 item 5).
+
+- **Steps:**
+  1. **Set up.** Worktree, build, `ctest --preset msvc -j 16 -R anno_sim` with the game dir: 636/636 before any change.
+  2. **The check.** `check_against_config` (`types.cpp`) recomputes each type's `walk_class` under `cfg.layout` and refuses a mismatch, with the message "type N: the configuration's ListLayout gives walk class X, the registry was built with Y". The `walk_class` computation is also moved: `TypeRegistry::finish` now sets it BEFORE `check_against_config` (so finish's own call to the check sees matching values), still before `digest_registry` (whose `digest_type` reads neither `walk_class` nor is affected: the pinned digests `0x18432b5c366bf7b8` and `0x13e65df34212c0c3` and the `make_build_types` digest `0xecaaacd327546c02` are unchanged; `sim_stream.py --check` agrees). **`cls` is deliberately not checked** (first version did and refused `TEST_CASE("world create checks that the registry fits the configuration")` because `Builder::add(t)` accepts a hand-set `cls` that `class_for_prodtype` does not reproduce for a prodtype like 65).
+  3. **The new test.** `TEST_CASE("registry refuses a config whose layout reclassifies a type")` in `types_test.cpp`: a registry with a house (prodtype 97) and a road (prodtype 193), under `SimConfig{}` → accepted; under a config that mods only `schedule` and `roles` → accepted (list_for unchanged); under a config whose `block_to_list` drops the house block → refused on type 1 with "walk class" in the message; `TypeRegistry::empty()` accepts any layout.
+  4. **The one existing case that pairs a registry with a modded layout.** `TEST_CASE("building scheduler visits the lists in the order of the schedule")` in `scheduler_test.cpp` runs with `block_size = 1, block_to_list = {4, 5}` — most kit types fall off its layout. Fix: the `spawn_order` lambda rebuilds the kit's types through a fresh `Builder` with the test's `cfg` so `walk_class` matches. The asserts are unchanged. **No other case changed.** (REPORTS T27 "Fix-up" first said "7 of 10 mod schedule / lookup / roles" — the other 3 (`"house groups come from the layout's house block and the house class"`, `"building scheduler never visits the list outside the schedule"`, and this one) mod `block_to_list` / `block_size`. Under the per-type check (not the whole-layout digest the first fix-up tried), only this one actually mismatches on walk_class — the first fails only on `cls` (which is not checked), the second has a layout under which the kit's extra types still fall into other lists.)
+  5. **Docs.** `state.md` §5.9 gains one sentence about `validate_against` refusing a world whose layout would reclassify a type. OQ-155 gains a note on the trade-list slot counts (owner, 2026-10-24 w: a `City` field comes with the trade stage). REPORTS this section; no `TASKS.md` edit.
+  6. **Mutants (both killed):**
+     - `if (walk_cfg != t.walk_class)` → `if (false && …)` → **"registry refuses a config whose layout reclassifies a type"** fails (REQUIRE on the error string).
+     - the road rule `(flags_word & kRoadFlag) != 0` → `== 0` → **"transport runs are deterministic and survive a save mid-walk"** and other walk tests fail at `b.build()` with "type 9201: the configuration's ListLayout gives walk class 2, the registry was built with 1".
+  7. **Gates (through the heavy-job lock, foreground):** MSVC build warning-free; `ctest --preset msvc -j 16` with `ANNO_TEST_THREADS=16` with and without the game dir — green; clang-format 23.1.3 clean; WSL GCC 13.3 and Clang 18 `-O3 -Werror` through `check_unix_warnings.sh` clean; `lint_sim.py` ok; `sim_stream.py --check` "goldens agree"; `fixtures/` untouched (no hash moved: `scenario_corpus.txt`, `goldens.txt` and g2–g6 unchanged).
+
+- **Acceptance** (as written in TASKS.md T27b):
+  1. **MET** — the new case and the two mutants (above).
+  2. **MET** — only the named test setup changed, its asserts untouched; no other sim case changed.
+  3. **MET** — no hash moved (fixtures/ clean; `sim_stream.py --check` agrees; the pinned digests and the make_build_types digest are the same before and after).
+  4. **MET** — gates above.
+  5. PR, not merged.
+
+- **Commits** (one concern each, model attribution lines included):
+  - `fix(sim): the registry refuses a world whose layout would reclassify a type (T27b)` — types.cpp (the check and the walk_class loop moved before it); types_test.cpp (new case); scheduler_test.cpp (one setup fix); state.md §5.9; open-questions.md OQ-155.
+
+- **Scope note (owner's new rule, 2026-10-24 w):** this task names one new test case (step 3); the OQ-155 note was not listed as a step but it directly reflects the owner's decision in the same round, so it is reported here per the amended item 7.
+
 ## T29 — Why the carts do not reach: the S01_07_01 frontier, the area cut and the profile — 2026-10-24 — status: REVIEW
 
 Measurement only, as the task says: no walk-rule change, no optimisation, no `rules` option; no state field; no hash moved; `scenario_corpus.txt` and the `g*.log` goldens untouched.

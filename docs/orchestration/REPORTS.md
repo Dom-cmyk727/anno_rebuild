@@ -2264,3 +2264,32 @@ Inline, no subagents.
 - **Commits:**
   - `docs(re): T30b.3c — 0x100011c0 is a third chunk-fetch, [+0x430] is a coordinate not a pointer (transport.md §3.3.2 end; round-af classification corrected)`
   - `docs(orchestration): T30b.3c report`
+
+
+## T30b.3d — Cross-module `--reloc` sweep: the layer blocks are not referenced outside `AnnoWelt.dll` — 2026-10-24 — status: READY FOR REVIEW
+
+- **Branch:** `task/T30b-3d-cross-module-sweep` from `main` at 8e210b2; worktree `C:\Users\altin\anno1503-T30b-3d`. Executor itself; no reviewer subagent. **Independent reviewer subagent reads this before merge.**
+
+- **Headline:** **ZERO hits in every other game DLL** for the whole layer-block address range `0x100d1140 .. 0x100d9d40` (`--reloc`) AND for each of the five base addresses `0x100d1140 + 0x1c00·L` (code sweep). Eight DLLs checked, including the three the sub-task spec named (AnnoGame, AnnoScene, AnnoDisplay) plus five more (AnnoFrame, CompLogic, CompLogicClassic, View, FileGame). The ONLY references to `0x100d1140` in the shipped build are the two inside `AnnoWelt.dll`'s setter and its twin. **The layer tables appear to be dead data.**
+
+- **Steps:**
+  1. **Set up.** Worktree from main at 8e210b2. No build.
+  2. **The sweeps** via the scratchpad script at `C:\Users\altin\AppData\Local\Temp\claude\C--Users-altin-anno1503\ec83e711-dbe1-4d88-a7ca-3c3a02a5b0c8\scratchpad\t30b_3d_sweep.py` (a short wrapper around `tools/xref.py` that runs eight DLLs × 6 sweeps each). Full output table in `transport.md` §3.4.1.
+  3. **Interpretation.** Combined with T30b.3b/3c (none of the three chunk-fetch readers dereferences the layer-table pointer: they all dispatch on world-chunk fetchers), this makes "the layer tables are dead data in the shipped build" the leading hypothesis for OQ-175. The walkability yes/no is likely in the sub-cell bit layout the chunk-fetch readers set (`(v & 0x8007 or 0xfc07) | 7`) and in a reader that tests bits 0..2 somewhere in the search engine on `world + 0x6aa8` vtable `0x100c1424` (OQ-161). T30b.4 (memory compare at run time) decides it cheaply.
+
+- **Acceptance** (as the orchestrator spelled it in round aa, inherited):
+  1. **MET** — three `--reloc` runs; the five base-address code sweeps; each with command, DLL, and count.
+  2. **MET** — `transport.md` §3.4.1 added with the per-DLL table and the leading hypothesis.
+  3. **MET** — OQ-175 updated.
+  4. **MET** — nothing of the original in git (addresses and counts only).
+
+- **Open next addresses** (OQ-175, after T30b.3d; same three as before, with the "dead-data" hypothesis to confirm by T30b.4):
+  - Sub-cell bit readers (search engine on `world + 0x6aa8`, OQ-161 overlap).
+  - T30b.4 memory compare of the five blocks after a scenario loads.
+  - The world/receiver-field writers for class X, Y, W (`[X+0x858]`, `[Y+0x430]`, `[W+0x454]`/`[W+0x458]`) — likely `rep movs`-based or struct-copy writers.
+
+- **Scope note:** T30b.3d is docs-only; the scratchpad script is listed with its full path above (not committed as a tool — the task spec said "no new file" if nothing new).
+
+- **Commits:**
+  - `docs(re): T30b.3d — zero cross-module references to the layer blocks; dead-data hypothesis (transport.md §3.4.1)`
+  - `docs(orchestration): T30b.3d report`

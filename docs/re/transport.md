@@ -115,9 +115,31 @@ The figure type's speed, capacity, layer and load wait come from `FigurenHeader.
 - **WALKMASK is 12 zero bytes for every named road** (36 of 36). 282 of 921 Anlagen entries carry 12 zero bytes; the rest carry a per-cell u32 mask (one per footprint cell). Named-road walkability therefore is **not stored per cell on the type**: it must come from a different mechanism.
 - **The bridge "transition" pieces that DO carry per-cell WALKMASK:** ids 3955 (`BRUECKE`, 24 bytes `3f000000 … 3f000000`, 6 cells of 6-bit mask), 3956 (12 bytes `ff010000 00000000 ff010000`, 3 cells with `0x1ff` / 0 / `0x1ff`), 3961 (`BRUECKE`, 12 bytes `ff0f0000 … ff0f0000`), 3992 (`BRUECKE`, `07000000 07000000 05000000`), 3993 (`BRUECKE`, `3f000000` × 3). These look like the ramps/approaches where the walkable cells are a subset of the footprint.
 
+**Named-road ids by group** (reproduced by `tools/anlagen_roads.py`, T30b.1; one row per contiguous id group, checked against the tool output):
+
+| id range | count | name | PRODTYPE | flags |
+|---|---|---|---|---|
+| 2500–2503 | 4 | Cobblestone street | STRASSE | 0x4186 |
+| 2505–2508 | 4 | Cobblestone street | STRASSE | 0x1186 |
+| 2509 | 1 | Stone pier | PIER | 0x4087 |
+| 2510–2513 | 4 | Cobblestone street | RAMPE | 0x4386 |
+| 2514 | 1 | Cobblestone street | RAMPELOW | 0x4186 |
+| 2515 | 1 | Cobblestone street | RAMPEHIGH | 0x4386 |
+| 2516 | 1 | Stone bridge | BRUECKE | 0x4386 |
+| 2517 | 1 | Stone bridge | BRUECKE | 0x1386 |
+| 2518–2519 | 2 | Grand bridge | BRUECKE | 0x4386 |
+| 2520–2524 | 5 | Dirt road | STRASSE | 0x4186 |
+| 2525–2528 | 4 | Dirt road | STRASSE | 0x1186 |
+| 2529 | 1 | Wooden pier | PIER | 0x4087 |
+| 2530–2533 | 4 | Dirt road | STRASSE | 0x4186 |
+| 2534 | 1 | Dirt road | RAMPELOW | 0x4186 |
+| 2535 | 1 | Dirt road | RAMPEHIGH | 0x4386 |
+| 2536–2537 | 2 | Wooden bridge | BRUECKE | 0x1386 |
+
 **Likely:**
 - Bit `0x1000` is a visual variant of the same `STRASSE`/`BRUECKE` type that doesn't carry traffic (an entrance marker or a decorative crossing). The owner's working rule says "a road connects only at a building's specific entrance tile" (OQ-103), and these may mark non-through pieces. Not confirmed by the game's code read here.
 - Real walkability per layer is decided by the walking-layer tables at `0x100d1140` (OQ-160 step 2 open; indexed by the mapped mask + byte, consumed by `0x1000daf0` whose caller stashes the resulting dwords into another object through a vtable method — the yes/no decision lives deeper).
+- A group of four ids with equal flags looks like one piece shape in four orientations (orchestrator's reading, round aa); which shape the `0x1000` groups are is for T30b.6.
 
 **Open:**
 - **Whether `0x1000` marks a tile walkable or not for layer 3 (the cart) in the real rule.** The 15 172 blocked cart searches of `S01_07_01` reaching Dirt road `2527` (`0x1186`) tell us the stand-in bars it; whether the original bars it too is OQ-171. T30 step 2 (the search's expansion) answers it.

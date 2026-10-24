@@ -40,6 +40,8 @@
 
 namespace anno::sim {
 
+struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
+
 // Development counter until the stream is complete (stage S15), then FROZEN
 // as 2 (the first released stream). Values 100, 101, ... are development
 // versions: the counter is bumped with every change of the field list (every
@@ -193,6 +195,13 @@ class World {
     /// How many UI events were dropped for lack of capacity since the world was made
     /// (the per-advance list SimOutput::events is never dropped). Not state.
     [[nodiscard]] std::uint64_t events_dropped() const;
+    /// Routes a transport-stats sink into every TickContext Scheduler::advance builds
+    /// (task T29, measurement only; TransportStats declared in transport.hpp). Not
+    /// state, not hashed, not saved: the pointer is held in a non-state member and is
+    /// not restored by load. Default and test-only; the sim leaves it null.
+    void set_transport_stats(TransportStats* stats);
+    /// The currently installed transport-stats sink (nullptr by default). Not state.
+    [[nodiscard]] TransportStats* transport_stats() const;
     /// The island table, slot order (null slots are unused slots).
     [[nodiscard]] const std::vector<std::optional<Island>>& islands() const { return islands_; }
     /// The island whose rectangle holds the world tile (x, y), or nullptr. The
@@ -240,13 +249,14 @@ class World {
     /// (state_fields.hpp) and to bump kStateHashVersion, so it cannot be left
     /// outside hash and save (docs/sim/state.md §14.4).
     static constexpr void field_list_canary(const World& w) {
-        // host_events_ and out_ are the host-facing output, deliberately not in the
-        // field list (not state).
+        // host_events_, out_ and transport_stats_ are host-facing or diagnostic,
+        // deliberately not in the field list (not state).
         [[maybe_unused]] const auto& [clock_member, rng_member, settings_member, config_member,
                                       rules_member, seams_member, types_member, ids_member,
                                       players_member, islands_member, figures_member, events_member,
                                       timers_member, monopoly_member, event750_acc_member,
-                                      faulted_member, host_events_member, out_member] = w;
+                                      faulted_member, host_events_member, out_member,
+                                      transport_stats_member] = w;
     }
 
     /// Advances the world by `game_ms` (original order, D: AnnoWelt.dll
@@ -304,6 +314,10 @@ class World {
     // Not state (never hashed or saved): the host-facing output.
     HostEventQueue host_events_;
     SimOutput out_;
+    // Not state (not hashed, not saved): a transport-stats sink the T29 scenario test
+    // routes into every TickContext Scheduler::advance builds. Default null; nothing
+    // in the sim writes it.
+    TransportStats* transport_stats_ = nullptr;
 };
 
 } // namespace anno::sim

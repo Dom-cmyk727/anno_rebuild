@@ -20,6 +20,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <vector>
 
@@ -120,13 +121,38 @@ struct SourceChoice {
 
 /// A diagnostic tally of why a search ended, filled when `choose_source` is passed a
 /// non-null pointer (task T27, measurement only; not sim state, not hashed, not drawn —
-/// a pure classification of the one search). Exactly one counter is bumped per call that
-/// reaches the candidate stage.
+/// a pure classification of the one search). Exactly one of the four outcome counters
+/// is bumped per call that reaches the candidate stage; the T29 fields are secondary
+/// counts over the same call, so one call that lands on `unreached` can bump several.
 struct TransportStats {
     std::uint64_t no_candidate = 0; ///< (i) no building passed the filter
     std::uint64_t unreached = 0;    ///< (ii) candidates, but the search reached no goal
     std::uint64_t low_score = 0;    ///< (iii) a goal was reached but no score beat the start
     std::uint64_t found = 0;        ///< (iv) a source was chosen
+    // T29 secondary counters: filled by every call that reaches the candidate stage
+    // (home_no_road, goal_no_road unconditionally; the others only when the outcome is
+    // `unreached`, so they explain the (ii) bucket).
+    /// Per blocked tile inside the search grid that is an 8-neighbour of a reached tile
+    /// (unreached searches only): the type id of the tile's object (0 = no object), each
+    /// tile counted once per search. T30 reads the top ids with `anno-dump anlagen`.
+    std::map<std::uint32_t, std::uint64_t> frontier;
+    /// Unreached searches whose reached set touches the search grid's border (the area
+    /// cut: a road leaves the home's area). Counted once per search.
+    std::uint64_t edge = 0;
+    /// Senders whose footprint has no road tile among its 4-neighbours; counted once per
+    /// call that reaches the candidate stage.
+    std::uint64_t home_no_road = 0;
+    /// Candidates (unique per search) whose footprint has no road tile among its
+    /// 4-neighbours; counted per candidate.
+    std::uint64_t goal_no_road = 0;
+    /// Diagonal steps from a reached tile to a passable, unreached tile that the corner
+    /// rule refused ("no diagonal passes a blocked orthogonal neighbour", unreached
+    /// searches only); counted per step occurrence (one (tile, direction) pair = one).
+    std::uint64_t corner = 0;
+    /// Unreached searches in which every candidate's footprint lies outside the area's
+    /// disc (candidates come from `area.square()` but only tiles inside the disc are
+    /// walkable, T27 review). Counted once per search.
+    std::uint64_t outside_disc = 0;
 };
 
 /// Step A's choice for a cart of market `home` (D 0x1005ad10 with the callback

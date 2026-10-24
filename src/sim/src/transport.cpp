@@ -617,6 +617,50 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
         }
         return std::nullopt;
     }
+    // T29 diagnostic (home_no_road, goal_no_road): "no road among the footprint's
+    // 4-neighbours" per home and per candidate. Counted on every call that reaches the
+    // candidate stage (not only on `unreached`): a sender with no road at all cannot
+    // reach any source, even on the open-land rule, since the test is per the owner's
+    // rule in OQ-103 that a sender needs road to a market. Walk-class 1 is "road"
+    // (types.cpp: `flags_word & kRoadFlag -> 1`, task T27).
+    if (stats != nullptr) {
+        constexpr std::array<std::pair<std::int32_t, std::int32_t>, 4> kOrtho{
+            {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}};
+        const auto has_road_4nei = [&](const Building& bb, const BuildingType& tt) {
+            for (const TileXY& t : footprint_tiles(bb, tt)) {
+                for (const auto& [dx, dy] : kOrtho) {
+                    const std::int32_t nx = t.x + dx, ny = t.y + dy;
+                    if (in_footprint(bb, tt, nx, ny)) {
+                        continue;
+                    }
+                    if (!island->tiles.contains(nx, ny)) {
+                        continue;
+                    }
+                    const Slot idx = island->tile_index(nx, ny);
+                    if (idx == kNoSlot) {
+                        continue;
+                    }
+                    const std::uint32_t obj = island->tiles.object(idx);
+                    if (obj == 0) {
+                        continue;
+                    }
+                    const BuildingType* tt_obj = types.find(TypeId{obj});
+                    if (tt_obj != nullptr && tt_obj->walk_class == 1) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+        if (!has_road_4nei(home, home_type)) {
+            ++stats->home_no_road;
+        }
+        for (const Candidate& cnd : candidates) {
+            if (!has_road_4nei(*cnd.b, *cnd.t)) {
+                ++stats->goal_no_road;
+            }
+        }
+    }
     // Goals: the candidates' footprint tiles (the stand-in for their entrance points,
     // 0x10072be0); a tile names the first candidate covering it.
     const Grid g = area_grid(area, *island);
@@ -718,6 +762,77 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
     if (!best) {
         if (stats != nullptr) {
             ++(reached ? stats->low_score : stats->unreached);
+            if (!reached) {
+                // T29 frontier/edge/corner/outside_disc (unreached only): read from the
+                // search's `parent` array (every reached tile has parent != kUnreached).
+                // The walk itself is unchanged; this is a pure classification. Each
+                // blocked tile counts once per search (seen_blocked), each diagonal
+                // corner refusal counts per (reached_tile, direction).
+                const std::uint64_t n = std::uint64_t{g.w} * g.h;
+                std::vector<std::uint8_t> seen_blocked(static_cast<std::size_t>(n), 0);
+                bool any_border = false;
+                const std::int32_t x_lo = g.x0;
+                const std::int32_t x_hi = g.x0 + static_cast<std::int32_t>(g.w) - 1;
+                const std::int32_t y_lo = g.y0;
+                const std::int32_t y_hi = g.y0 + static_cast<std::int32_t>(g.h) - 1;
+                for (std::uint64_t i = 0; i < n; ++i) {
+                    if (parent[static_cast<std::size_t>(i)] == kUnreached) {
+                        continue;
+                    }
+                    const TileXY tp = g.tile(i);
+                    if (tp.x == x_lo || tp.x == x_hi || tp.y == y_lo || tp.y == y_hi) {
+                        any_border = true;
+                    }
+                    for (const auto& [dx, dy] : kDirections) {
+                        const std::int32_t nx = tp.x + dx, ny = tp.y + dy;
+                        const auto j = g.index(nx, ny);
+                        if (!j) {
+                            continue;
+                        }
+                        const bool nei_walkable = tiles.walkable(*j);
+                        if (!nei_walkable && seen_blocked[static_cast<std::size_t>(*j)] == 0) {
+                            seen_blocked[static_cast<std::size_t>(*j)] = 1;
+                            std::uint32_t obj = 0;
+                            const Slot idx = island->tile_index(nx, ny);
+                            if (idx != kNoSlot) {
+                                obj = island->tiles.object(idx);
+                            }
+                            ++stats->frontier[obj];
+                        }
+                        // Corner refusal: diagonal step from this reached tile to a
+                        // walkable, unreached neighbour where at least one of the two
+                        // orthogonals is blocked (search's own `!walkable(ortho)` test).
+                        if (nei_walkable && dx != 0 && dy != 0 &&
+                            parent[static_cast<std::size_t>(*j)] == kUnreached) {
+                            const auto o1 = g.index(tp.x + dx, tp.y);
+                            const auto o2 = g.index(tp.x, tp.y + dy);
+                            const bool w1 = o1 && tiles.walkable(*o1);
+                            const bool w2 = o2 && tiles.walkable(*o2);
+                            if (!w1 || !w2) {
+                                ++stats->corner;
+                            }
+                        }
+                    }
+                }
+                if (any_border) {
+                    ++stats->edge;
+                }
+                bool all_outside = true;
+                for (const Candidate& cnd : candidates) {
+                    for (const TileXY& t : footprint_tiles(*cnd.b, *cnd.t)) {
+                        if (area.contains(t.x, t.y)) {
+                            all_outside = false;
+                            break;
+                        }
+                    }
+                    if (!all_outside) {
+                        break;
+                    }
+                }
+                if (all_outside) {
+                    ++stats->outside_disc;
+                }
+            }
         }
         return std::nullopt;
     }
@@ -884,7 +999,7 @@ void start_source(Job& j) {
     }
     const std::uint32_t capacity = j.ft != nullptr ? j.ft->capacity_88 : 0;
     const auto choice = choose_source(j.world, j.ctx.types, j.fig.job, *j.home, *j.home_type,
-                                      *j.home_city, capacity, j.rule);
+                                      *j.home_city, capacity, j.rule, j.ctx.transport_stats);
     const Building* target = choice ? j.world.find_building(choice->building) : nullptr;
     const BuildingType* target_type = target != nullptr ? j.ctx.types.find(target->type) : nullptr;
     if (target == nullptr || target_type == nullptr) {

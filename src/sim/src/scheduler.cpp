@@ -413,7 +413,8 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
                           PlayersView(w.players_),
                           IslandsView(w.islands_),
                           draw,
-                          w.seams_};
+                          w.seams_,
+                          w.transport_stats_};
     // 1. The islands, in table order (D: 0x100a2e60, nulls skipped); each island's
     // Effects are merged right after its tick (C1), so figure ids, registry slots
     // and event sequence numbers follow the island order.
@@ -523,6 +524,14 @@ std::uint64_t World::event_capacity() const {
 
 std::uint64_t World::events_dropped() const {
     return host_events_.dropped;
+}
+
+void World::set_transport_stats(TransportStats* stats) {
+    transport_stats_ = stats;
+}
+
+TransportStats* World::transport_stats() const {
+    return transport_stats_;
 }
 
 } // namespace anno::sim

@@ -627,7 +627,7 @@ TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
         sim::SerialWorld serial(world.islands(), world.config().layout, world.figures(),
                                 world.players(), fx);
         sim::TransportStats cart, carrier;
-        std::uint64_t markets = 0, workshops = 0;
+        std::uint64_t markets = 0, workshops = 0, no_figure_type = 0;
         for (const std::optional<sim::Island>& iso : world.islands()) {
             if (!iso) {
                 continue;
@@ -644,21 +644,24 @@ TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
                 }
                 std::uint32_t job = 0;
                 sim::TransportStats* stats = nullptr;
+                std::uint64_t* count = nullptr;
                 if (std::holds_alternative<sim::Market>(b->payload)) {
                     job = sim::kJobMarketCart;
                     stats = &cart;
-                    ++markets;
+                    count = &markets;
                 } else if (std::holds_alternative<sim::Workshop>(b->payload)) {
                     job = sim::kJobWorkshopCarrier;
                     stats = &carrier;
-                    ++workshops;
+                    count = &workshops;
                 } else {
                     continue;
                 }
                 const sim::FigureType* ft = types->find_figure_type(t->prod.figure_ids[0]);
                 if (ft == nullptr) {
+                    ++no_figure_type; // not classified (counted apart, T27 review)
                     continue;
                 }
+                ++*count;
                 static_cast<void>(choose_source(serial, *types, job, *b, *t, key.city,
                                                 ft->capacity_88, sim::walk_rule(ft->layer), stats));
             }
@@ -668,6 +671,7 @@ TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
                   << " low_score " << cart.low_score << " found " << cart.found << "); workshops "
                   << workshops << " (carrier: no_candidate " << carrier.no_candidate
                   << " unreached " << carrier.unreached << " low_score " << carrier.low_score
-                  << " found " << carrier.found << ")\n";
+                  << " found " << carrier.found << "); senders without a figure type "
+                  << no_figure_type << "\n";
     }
 }

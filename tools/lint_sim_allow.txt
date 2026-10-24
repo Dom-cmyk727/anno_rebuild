@@ -74,3 +74,10 @@ src/sim/src/transport.cpp:kOneTon = 256;  # 1 t in the 8.8 goods unit (D 0x1005a
 src/sim/src/transport.cpp:kAllGoods = 0x8e;  # the goods id "ALL" (D 0x10025470), a discriminant not a count
 src/sim/src/transport.cpp:kUnreached = std::numeric_limits  # sentinel of the search's parent links
 src/sim/src/transport.cpp:kBuckets = kDiagonalCost \+ 1;  # bucket count derived from the step weights (OQ-161), not a count of the game
+
+# --- scenario_formats.cpp (T26)
+# The original's default trade-list slot counts (VK list ctor 0x10027510 count
+# byte +0x64 = 4, EK list ctor 0x10027590 count byte +0x94 = 6). Defaults, not
+# limits: HEAD2 [0x26]/[0x27] override them and the lists grow to the entries read
+# (TradeEntryBeyondSlots); a modded warehouse would carry its own (OQ-155).
+src/sim/src/scenario_formats.cpp:kDefaultVkSlots = 4, kDefaultEkSlots = 6;  # the original's trade-list slot defaults, overridden by HEAD2, the lists grow

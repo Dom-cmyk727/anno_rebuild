@@ -573,6 +573,11 @@ TEST_CASE("scenario corpus: a shipped town's economy runs 150000 ticks") {
               << " with stocks that moved, " << gained
               << " with more output in stock; warehouses that moved: " << moved << " of "
               << stock_before.size() << "\n";
+    // T26 acceptance (3): the houses and residents the records carry (read for this
+    // diagnostic; not applied to state, HouseRecordNotModelled, OQ-165).
+    std::cout << "scenario economy: houses " << loaded->houses << ", with residents > 0 "
+              << loaded->houses_with_residents << ", sum of residents " << loaded->resident_sum
+              << "\n";
     CHECK(producers > 0);
     CHECK(moved_stocks > 0);
     CHECK(gained > 0);

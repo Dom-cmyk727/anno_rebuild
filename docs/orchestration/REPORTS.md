@@ -2193,3 +2193,40 @@ Inline, no subagents.
 - **Commits** (one concern each, model attribution lines included):
   - `docs(re): T30b.3 — 0x1000dd60 is a chunk cache, not the walkability yes/no (transport.md §3.3.1)`
   - `docs(orchestration): T30b.3 report (OQ-175 narrowed, next addresses named)`
+
+
+## T30b.3b — `0x10003780` and the virtual `[+0x128]` on `[Y + 0x430]`; §3.3.1 nits fixed — 2026-10-24 — status: READY FOR REVIEW
+- **Branch:** `task/T30b-3b-430-reader` from `main` at cf4ade3; worktree `C:\Users\altin\anno1503-T30b-3b`. Executor itself; no reviewer subagent. **Independent reviewer subagent reads this before merge** (RE D-tag directive).
+
+- **Headline.** `0x10003780` is **not** a walkability yes/no either. It is the SAME SHAPE as `0x1000dd60` from T30b.3: a position-based reservation / mark that **first** fetches a chunk through a virtual call `[eax + 0x128]` on `[Y + 0x430]`, **then** sweeps a rectangular range of sub-cells writing `(v & 0xfc07) | 7` into each. The virtual call target is **`0x100a52d0`** (world's vtable `0x100ccdd8` slot `+0x128`), a chunk-row dispatcher in the same family as `0x100abdb0` from round ae. **`[Y + 0x430]` is a world pointer** on this class, not a layer table (verified: first dword at each `0x100d1140 + 0x1c00·L` block is `0xffffffff`-ish image data, not a valid vtable, so it cannot be dereferenced as an object). **Consequence:** the walking-layer table at `0x100d1140` is not consumed by any method the T30/T30b sweeps have found; the walkability yes/no is elsewhere.
+
+- **Steps:**
+  1. **Set up.** Worktree from `cf4ade3` (post-merge of PR #46 as `a76dbad`). No build.
+  2. **`0x10003780` to its `ret`** (`disasm.py` through `0x10003a8a`). Phase 1 is the virtual `[eax + 0x128]` call; phase 2 is the sub-cell mark sweep. Pseudo-code and address ranges in `transport.md` §3.3.2.
+  3. **The virtual call target.** World's vtable `0x100ccdd8` + `0x128` = `0x100a52d0` (`pefile` read). Disassembled the first 15 instructions: reads `[world + 0xec]` (chunk-row width) and `[world + 0x130 + chunk_index]` (per-chunk byte table) — the same world-chunk access family as `0x100abdb0`.
+  4. **The field at `[Y + 0x430]`.** Dereferenced as a vtable pointer (`[ecx]` → vtable → `[+0x128]`), so a world-like object. Verified that the layer-block addresses `0x100d1140 + 0x1c00·L` cannot be the target: their first dwords are `ffffffff`, `ffffffff`, `ffffffff`, `0000ffff`, `ffffffff`, `00000000` (data, not code). So `[Y + 0x430]` holds the WORLD, not the layer table.
+  5. **Who writes `[Y + 0x430]` on this bigger class?** Open. A comprehensive `[reg + 0x430]` sweep (`mov`, `lea`, `add`, `sub`, `and`, `or`, `xor`, `inc`, `dec`, `push` as the destination with disp 0x430 and non-ESP base) finds **two** writers: `0x10006362` (zero-init, big-class ctor) and `0x1000dd36` (class X's setter, a different class). No non-zero writer on the bigger class in `AnnoWelt.dll`. Likely sources: a struct copy / `rep movs`, a cross-module writer, or an aggregate init my search did not match. **Next-task sub-step.**
+  6. **The §3.3.1 nits from PR #46 review** (round af):
+     - "sweep finds four `mov reg, [reg + 0x430]`": corrected to "sweep finds six `[reg + 0x430]` matches (any instruction, excluding `esp`-based)". Added `0x100011e2 add edx, [ecx + 0x430]` as the second pointer-read.
+     - `[X + 0x420]` label: corrected to `[X + 0x424], [X + 0x428], [X + 0x42c]` (`+0x420` is not read).
+     - `[X + 0x414..0x418]` enqueue list head: corrected to `[X + 0x418]` only.
+     - All three nit fixes carry a "Fix-up T30b.3b" annotation in `transport.md` §3.3.1 so the diff tells the story.
+
+- **Acceptance** (T30b.3b, as the orchestrator spelled it in round af):
+  1. **MET** — `0x10003780` read to its `ret`.
+  2. **MET** — the virtual call target is D with its address (`0x100a52d0`, world +0x128).
+  3. **PARTIALLY MET** — OQ-175 narrowed, not closed: the walkability yes/no is not in `0x10003780` either. Three next places named (search engine's node expander, `0x100011c0`'s virtual on `[ecx + 0x454]`, cross-module sweep).
+  4. **MET** — the two §3.3.1 nits fixed with the fix-up annotation.
+  5. **MET** — nothing of the original in git (addresses and counts only).
+
+- **Open next addresses** (OQ-175, after T30b.3b):
+  - `0x100011c0` body (the other `[reg + 0x430]` consumer; a virtual call on `[ecx + 0x454]` that is **not** `+0x128`).
+  - The pathfinder's node expander on `world + 0x6aa8` vtable `0x100c1424` (OQ-161 overlap).
+  - `tools/xref.py --reloc` on `AnnoGame.dll` / `AnnoScene.dll` / `AnnoDisplay.dll` for `0x100d1140..0x100d9d40` to see if the layer tables are consumed outside `AnnoWelt.dll`.
+  - Who writes `[Y + 0x430]` on the bigger class in the non-`AnnoWelt.dll` modules.
+
+- **Scope note:** T30b.3b is docs-only (no `src/` change, no new tool, no build). The orchestrator's acceptance says "fold the two §3.3.1 label fixes and the `0x100011e2` sentence" — both done in the §3.3.1 edits of this PR.
+
+- **Commits** (one concern each):
+  - `docs(re): T30b.3b — 0x10003780 is a chunk-cache mark too, not the yes/no (transport.md §3.3.2, §3.3.1 nits fixed)`
+  - `docs(orchestration): T30b.3b report (OQ-175 narrowed; three next addresses named)`

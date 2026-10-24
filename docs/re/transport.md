@@ -400,6 +400,43 @@ All ten cells **equal** — every byte at every offset matches the DLL image. Th
 
 **The run.** Written up in REPORTS.md T30b.4. The write-up includes the one scope note: pass 2's `wait_game_ms` reported `status: timeout` because the loop's deadline (10 real minutes) was reached as the last check, yet `advanced_ms = 600244 ms` shows the game clock DID advance just past 10 game minutes before the final read. The `F4` keypress to accelerate the game to 400 % appears to have been dropped by the WSLg forwarder (game clock advanced at ≈ 1× real time instead of 4×); the memory-compare result is unaffected because the game time did reach the target. The tool `tools/orig/layer_blocks.py` is a committed addition.
 
+#### 3.4.3 The search engine's vtable `0x100c1424` and the hunt for the sub-cell bit reader (T30b.3e, 2026-10-24)
+
+**D.** Dumped vtable `0x100c1424` (the search engine on `world + 0x6aa8`, round-ae identification). 47 slots (0x00 .. 0xfc; the slots at `+0x50..+0xbc` are the non-stub ones). The vtable is installed at `0x10006401` inside the big-class constructor `0x10006344` (`xref.py --reloc`, one hit): the SAME constructor the T30b.3b analysis named for class Y. So **the "search engine" is the big class** — class Y and the search engine are the same object with multiple vtables.
+
+**Non-stub slot summary:**
+
+| Slot | Function | First instructions |
+|---|---|---|
+| `+0x50` | `0x10004b50` | 5-arg entry (`mov edx, [esp+0x10]`, push save-regs) — likely `init(x0, y0, x1, y1, flags)` or similar |
+| `+0x54` / `+0x58` / `+0x5c` / `+0x60` / `+0x64` | `0x10004c10` / `0x10004b10` / `0x10004b20` / `0x10004b30` / `0x10004b40` | tiny setter/getter group (adjacent addresses in `.text`) |
+| `+0x68` | `0x10010830` | — |
+| **`+0x6c`** | **`0x10010870`** | contains `and edx, 7` BUT it is MSVC's signed `mod 8` for a coordinate (same pattern as `0x1000dd60`); not a bit test |
+| `+0x70` | `0x10004c70` | — |
+| `+0x74` / `+0x78` | `0x10010850` / `0x10004c50` | — |
+| `+0x7c` / `+0x80` | `0x10004c30` / `0x10004bf0` | — |
+| **`+0x84`** | **`0x10005750`** | contains `and edx, 7` BUT it is MSVC's `mod 8` for a coordinate |
+| `+0x94` / `+0x98` / `+0x9c` / `+0xa0` | `0x10004b90` / `0x10004bb0` / `0x10010810` / `0x10004bd0` | — |
+| **`+0xa4`** | **`0x10005890`** | huge function: 0x1020-byte local frame; `fld [esp+0x1024]; fdiv [0x100c1138]; fisub [edi+0x4ec]` — SAME float-position input shape as `0x10003780` (float → tile coord). Likely the **search's entry** that triggers the chunk cache + walk. ~700 bytes long. |
+| `+0xa8` / `+0xac` | `0x10005ff0` / `0x100062f0` | the second looks like a destructor-chain helper (`lea ecx, [esi+0x2048]; call 0x10002900; mov eax, [esi+4]; call [eax+0xac]` — forwards up the base chain) |
+| `+0xb0` / `+0xb4` | `0x100010a0` / `0x100029e0` | — |
+| **`+0xbc`** | **`0x10003780`** | the **chunk-cache mark function from T30b.3b** — the search engine is the class that uses `0x10003780` directly as one of its methods |
+
+**Scan for sub-cell bit tests.** Grepped every non-stub slot's body for `and reg, 7` / `test reg, 7`: two hits (`0x10010923`, `0x1000580a`), **both** are MSVC's signed `mod 8` pattern (`cdq; and edx, 7; add eax, edx; sar eax, 3`), computing a tile's block index from a sub-tile coordinate — same pattern as `0x1000dd60` uses in §3.3.1. **No obvious bit-test on a sub-cell u16 found in this pass.** Also scanned the three "search core" functions `0x10003d90`, `0x10004890`, `0x10005890` (named by the orchestrator in round ae) for word-based tests (`word ptr`, bit masks `0x8000` / `0xfc07`): zero hits.
+
+**Observation on the family.** The search engine's `+0xbc` slot IS `0x10003780`, which §3.3.2 identified as a reservation / mark function. So the search engine CALLS the mark function on every expansion that reaches a cell; this writes `(v & 0xfc07) | 7` into the sub-cell. The reader that TESTS these bits must exist (otherwise the write is wasted), but it isn't a direct `test reg, 7` on the chunk data in any of the slot bodies my grep covered.
+
+**Possibilities for the walkability yes/no, from leading to speculative:**
+
+1. **The bit test lives inside a per-cell loop that reads the chunk data differently** — e.g., `movzx eax, [edi + N]; and eax, 7` (where `edi` is the chunk pointer, not the vtable). A broader grep that doesn't anchor to a vtable slot but to the chunk-data pattern (`[edi + k]` where `edi` was set from a chunk-fetch result) is the next sweep.
+2. **The test is on a different field** of the sub-cell u16 — not bits 0..2 (`| 7`), but the preserved bits (`& 0xfc07` or `& 0x8007`): bits 3..9 or bits 10..14 might encode the actual walkability, with bits 0..2 being the "visited" tag.
+3. **The test lives in another DLL** (unlikely given T30b.3d's zero cross-module references for the layer blocks, but the chunk data is at a different address — the chunk `[chunk + 0x10]` is heap-allocated).
+4. **The chunk-fetch handler itself** (`0x100abdb0` / `0x100a52d0` on the world) tests walkability as part of filling the chunk — the chunk the family readers get is PRE-FILTERED to only walkable cells, and the subsequent sub-cell marks are reservation tags.
+
+**Next address:** read `0x10005890`'s body in full (likely the search-entry) and `0x10003d90`/`0x10004890` (likely the node expander and the step function). Look for a pattern like `movzx eax, word[reg+k]; and eax, 7; test ...` or a conditional branch on the sub-cell value. If still no walkability bit test, option 4 above (the chunk-fetch filters) becomes the leading theory.
+
+**OQ-175 further narrowed, not closed.** The search engine is identified (vtable `0x100c1424`, constructor `0x10006344`, same object as class Y of §3.3.2). The simple sub-cell-bit-test grep did not find a reader. T30b.3f (the deeper read of the three search-core functions) is the natural follow-up.
+
 ### 3.5 Step 7 is BLOCKED on a figure-position reader
 
 Step 7 of T30 calls for building the playbook opening in the running original, reading the tile records of the opening's buildings and the market cart's position tick by tick, and checking each observed tile against the decoded rule. The Wine runner is set up (`docs/testing/original-wine.md`), the opening macro runs (`tools/orig/opening.py`), and `tools/orig/gamestate.py` reads world, players and city stocks. **It has no figure-position reader**, and no decoded figure object layout in memory (the sim's `figure.hpp` has one, but the ORIGINAL's figure layout is different). The reader is a task of its own: find the figure table off `world + ?`, read figure records (position, direction, tile), export them to the harness. **Done here instead:** step 7(a) and (b) are reduced to "memory-compare the five 7168-byte blocks at `0x100d1140` with the DLL image after a scenario loads" (no figure reader needed), left as a next-task sub-step of T30b with a mem-reader call plan. Step 7(c)/(d) wait on T30b's figure reader.

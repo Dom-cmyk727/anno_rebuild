@@ -2230,3 +2230,37 @@ Inline, no subagents.
 - **Commits** (one concern each):
   - `docs(re): T30b.3b — 0x10003780 is a chunk-cache mark too, not the yes/no (transport.md §3.3.2, §3.3.1 nits fixed)`
   - `docs(orchestration): T30b.3b report (OQ-175 narrowed; three next addresses named)`
+
+
+## T30b.3c — `0x100011c0` reads `[+0x430]` as a coordinate, not a pointer; dispatches on `[+0x454]` — 2026-10-24 — status: READY FOR REVIEW
+
+- **Branch:** `task/T30b-3c-100011c0-reader` from `main` at 42cd2da; worktree `C:\Users\altin\anno1503-T30b-3c`. Executor itself; no reviewer subagent. **Independent reviewer subagent reads this before merge.**
+
+- **Headline:** `0x100011c0` is **another chunk-fetch family member** (now the third: `0x1000daf0`, `0x10003780`, `0x100011c0`). It is in **class W** (vtable `0x100c129c` at `[+4]`, primary `0x100c12a0`, constructor near `0x10002830`), a third class with the same shape as class X and class Y. It reads `[ecx + 0x430]` and `[ecx + 0x434]` as **integer origin coordinates** (NOT object pointers: `add edx, [ecx + 0x430]` is a `+=` to a running coordinate, not a dereference), divides `p[0]` and `p[2]` by 3 (MSVC `imul 0x55555556`), and dispatches on `[ecx + 0x454]`'s vtable slot `+0x128` with kind = 6. **This REFINES the round-af subagent's classification** — the subagent said "two pointer-reads of `[reg + 0x430]`" but `0x100011e2` is not a dereference. Only `0x100037cb` dereferences `[reg + 0x430]`. §3.3.2 corrected.
+
+- **Steps:**
+  1. **Set up.** Worktree from `main` at 42cd2da. No build.
+  2. **`0x100011c0` to its `ret 4`** (`disasm.py game/app/AnnoWelt.dll 100011c0 200`). Function ends at `0x1000123d` with `ret 4` — one arg + `this`. 7-row instruction table in `transport.md` §3.3.2 end.
+  3. **The caller / class** (D-partial). `0x100011c0` is slot `+0` of vtable `0x100c129c` (`xref.py --reloc`); the vtable is installed at `[esi + 4]` by a constructor at ~`0x10002830` (`mov [esi], 0x100c12a0; mov [esi + 4], 0x100c129c`). Call it **class W**. Its primary vtable is `0x100c12a0`, adjacent to class X's `0x100c18b4` and class W's secondary `0x100c129c` is adjacent to class X's `0x100c18b0` — both pairs likely inherit from the same base `0x100c135c`. **Open:** which world field holds class W (world `+ ?`), and whether class W is embedded in class Y (ctor `0x10006344`) or stands alone.
+  4. **The virtual call target.** `[ecx + 0x454]` is the receiver; `[edx + 0x128]` is the slot. If the receiver is the world (consistent with class X's `[X + 0x858]` = world and class Y's `[Y + 0x430]` = world), slot `+0x128` is `0x100a52d0` — the same world chunk-row method `0x10003780` dispatches to. **Open:** verify by finding who writes `[W + 0x458]` and `[W + 0x454]`.
+  5. **Pattern across the three readers.** Table in §3.3.2: all three classes build the same 4-dword `(x0, x1, y0, y1)` buffer and call a chunk-fetch virtual on their world-like receiver (`+0xec` or `+0x128` on world's vtable `0x100ccdd8`). `0x100011c0` is unique in dividing `p[]` by 3 (sub-cell input), suggesting its input is in sub-cell coordinates while the other two use tile coordinates.
+  6. **Docs.** `transport.md` §3.3.2 end: the `0x100011c0` sub-section with the instruction table, the correction of the round-af nit, and the "three readers" summary table. OQ-175 updated.
+
+- **Acceptance** (T30b.3c, as the orchestrator spelled it in round ag):
+  1. **MET** — `0x100011c0` read to its `ret`; the field list and the return per path are in §3.3.2.
+  2. **MET (D-partial)** — the caller class is named (class W, vtable `0x100c129c`, constructor near `0x10002830`); its instance's world field is open with the next address.
+  3. **MET** — the virtual call target is `[W + 0x454]`'s vtable `+0x128`, likely `0x100a52d0` if `[W + 0x454]` holds the world; also noted that the round-af nit about pointer-reads is corrected.
+  4. **MET** — nothing of the original in git (addresses only).
+
+- **Correction of round-af subagent's classification.** The subagent (round af, PR #46 review) wrote: "`0x100011e2  add edx, [ecx + 0x430]` also reads `[reg + 0x430]` as a pointer". That is factually wrong: `add edx, [reg + 0x430]` reads the field as an **integer value** and sums it into a running coordinate. The field is never dereferenced through `[*ecx]` in `0x100011c0`. Correction folded into §3.3.2.
+
+- **Open next addresses** (OQ-175, after T30b.3c):
+  - `[W + 0x454]`, `[W + 0x458]`: find a writer in `AnnoWelt.dll` or a cross-module writer (T30b.3d candidate).
+  - The world offset of class W (which `world + ?` holds it).
+  - The actual walkability yes/no — still not found in any of the three chunk-fetch readers. The three "next places" from T30b.3b remain open; T30b.3d may close the "layer tables not consumed in `AnnoWelt.dll`" question.
+
+- **Scope note:** T30b.3c is docs-only; no new tool.
+
+- **Commits:**
+  - `docs(re): T30b.3c — 0x100011c0 is a third chunk-fetch, [+0x430] is a coordinate not a pointer (transport.md §3.3.2 end; round-af classification corrected)`
+  - `docs(orchestration): T30b.3c report`

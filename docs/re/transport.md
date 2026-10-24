@@ -632,6 +632,39 @@ Re-disassembled by the orchestrator (`tools/disasm.py`, `pefile`), D unless mark
 
 **What this means for OQ-175 (status back to "narrowed"):** the 4-byte cell of the search engine's 4×4 chunks is the unit of the walk rule. Its low u16 carries a top nibble and the bits `0x2111` that the default expansion tests on a neighbour; its high u16 carries a 10-bit code (`0x80..0x86` select four special expansions, everything else the default) plus bit 10 (the `0x10003220` branch) and the three state bits `| 7` of the marks. The yes/no for an ordinary step is `table[code] & bit`, with the table behind `[this + 0x42c]` of the expansion's `this`. Three readings remain: the rest of `0x10006a40` (T30b.3j), the fill that writes the cells from the island's tiles (T30b.3k: the slot-0 call, the world handler kind, the copy routine, and `0x1008ff70`'s `table[mask] | byte << 16` of §3.1 (b), which now reads as "low u16 = the mapped 9-bit mask, high byte = a tile byte" — exactly the cell), and `0x10003220` with the four special expansions (T30b.3l). The named-road question (OQ-171) is answered where the fill turns a road tile's record into the low u16's bits.
 
+#### 3.4.10 `0x10003220` and the four special expansions (T30b.3l, 2026-10-25)
+
+**D.** `tools/disasm.py` on `AnnoWelt.dll`. fn1 calls `0x10003220` with `ecx = edi` (`edi = Y + 4`, PR #54). It calls the four special expansions with `lea ecx, [edi + 4]` (`this = Y + 8`), same as the default expansion.
+
+**`0x10003220` (D).** `this = esi = Y + 4` (`0x10003229`). One stack argument: the node (`0x10003234`). Ends at two `ret 4` epilogues (`0x1000376a`, `0x1000377d`); the next function is `0x10003780`.
+
+| `[this + k]` | Absolute | Use |
+|---|---|---|
+| `+0x574` | `Y + 0x578` | Count of a goal-point list. Zero → skip the float compare (`0x10003247`). |
+| `+0x578` | `Y + 0x57c` | Goal-point array, 8 bytes each (`lea ebx, [esi + 0x578]`, end `esi + count*8 + 0x578`). |
+| `+0x4e8` / `+0x4ec` | `Y + 0x4ec` / `Y + 0x4f0` | Origin added to `chunk[+0x40] + node.x` / `chunk[+0x42] + node.y`. |
+| `+0x434` | `Y + 0x438` | Island. Slot `+0x12c` at `0x100033bd`; slot `+0x128` = `0x10091fa0` at `0x10003453` with mode 0 and a stack rect. |
+| `+0x2040` | `Y + 0x2044` | Pushed as an argument of that island call. |
+| `+0x438` | `Y + 0x43c` | Continue byte. Zero after the callback → return 0 (`0x1000374a`). |
+| `+0x43c` / `+0x440` | `Y + 0x440` / `Y + 0x444` | Callback pointer and its argument (`call [esi + 0x43c]` at `0x10003737`). |
+
+Position: `x = [chunk + 0x40] + [node + 4] + [Y + 0x4ec]`, then `fild` / `fmul [0x100c1138]` (`1.0f`) at `0x10003269`. Same for y. The float pair is compared to each goal (`fcomp`, `test ah, 0x41`). **This is the goal / arrived test**, not an expansion: it does not call `0x10006f70` / `0x10007180`.
+
+Returns (`ret 4`):
+- `eax = 0` (`0x10003774`) when the callback ran and `[Y + 0x43c]` is 0 — fn1 then leaves the loop if that same byte is 0.
+- `eax = [esp + 0x10] & 0xff` (`0x10003757`, the `bl` accumulator) on the normal path. Non-zero → fn1 falls through to the expansion / unlink tail.
+
+**The four special expansions (D).** Each `this = Y + 8`. Same table `[this + 0x42c] = [Y + 0x434]`, same enqueue helpers as §3.4.8 (`0x10006f30`, `0x10006f70`, `0x10007180`, `0x1000d4e0`, `0x1000b850`, `0x10017510`, `0x1000b790`), plus `0x10007540`. Four orthogonal neighbours like the default, **minus one direction**.
+
+| Code | Function | First `ret 4` | Neighbours (order) | Missing | First in-chunk test |
+|---|---|---|---|---|---|
+| `0x80` | `0x10007b00` | `0x10007e3a` (second `0x10007e98`) | up, down, left | **right** | `[cell − 0x10], 0x2111` (`0x10007b40`) |
+| `0x82` | `0x10007770` | `0x10007afc` | left, right, down | **up** | `[cell − 4], 0x4888` (`0x100077ba`) |
+| `0x84` | `0x10007ea0` | `0x100081d0` (second `0x10008228`) | up, down, right | **left** | `[cell − 0x10], 0x2111` (`0x10007ee2`) |
+| `0x86` | `0x100071c0` | `0x10007533` | left, right, up | **down** | `[cell − 4], 0x4888` (`0x10007204`) |
+
+**Likely** (not D; T30b.3k did not map tile bytes to these codes): each code is a tile that has no exit in the missing direction (a ramp, bridge, pier or entrance facing the opposite way). Codes `0x81` / `0x83` / `0x85` still take the default expansion (`0x10006a40`).
+
 ### 3.5 Step 7 is BLOCKED on a figure-position reader
 
 Step 7 of T30 calls for building the playbook opening in the running original, reading the tile records of the opening's buildings and the market cart's position tick by tick, and checking each observed tile against the decoded rule. The Wine runner is set up (`docs/testing/original-wine.md`), the opening macro runs (`tools/orig/opening.py`), and `tools/orig/gamestate.py` reads world, players and city stocks. **It has no figure-position reader**, and no decoded figure object layout in memory (the sim's `figure.hpp` has one, but the ORIGINAL's figure layout is different). The reader is a task of its own: find the figure table off `world + ?`, read figure records (position, direction, tile), export them to the harness. **Done here instead:** step 7(a) and (b) are reduced to "memory-compare the five 7168-byte blocks at `0x100d1140` with the DLL image after a scenario loads" (no figure reader needed), left as a next-task sub-step of T30b with a mem-reader call plan. Step 7(c)/(d) wait on T30b's figure reader.

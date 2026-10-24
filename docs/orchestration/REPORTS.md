@@ -2434,3 +2434,25 @@ Inline, no subagents.
 - **Commits:**
   - `docs(re): T30b.3h — the array behind [esi+0x10] is a 4×4-tile Y-class chunk from 0x100064b0; bit 10 of the sub-cell u16 at byte +2 is the walkability flag (static chain complete) (transport.md §3.4.5)`
   - `docs(orchestration): T30b.3h report (static chain complete; OQ-175 answered subject to Wine confirmation)`
+
+## T30b.3l — `0x10003220` (goal test) and the four special expansions — 2026-10-25 — status: READY FOR REVIEW
+
+- **Branch:** `task/T30b-3l-special-expansions` from `main` at 0a1d013; worktree `C:\Users\altin\anno1503-T30b-3l`. Executor itself; no reviewer subagent. Docs only. Starts after T30b.3k PR #56 is open.
+
+- **Headline:** `0x10003220` (`this = Y + 4`) is the goal / arrived test: float position vs a list at `[Y + 0x57c]`, then island `+0x128`, then a callback. Returns 0 or a byte. The four special expansions (`this = Y + 8`) are the default expansion minus one direction.
+
+- **Steps** (ranges read; no original bytes in git):
+  1. **`0x10003220`.** `0x10003220..0x1000377d`. `this = Y + 4`. Returns: `eax = 0` at `0x1000377d`; `eax = byte` at `0x1000376a`.
+  2. **Four expansions.** `0x10007b00` (`0x80`, no right), `0x10007770` (`0x82`, no up), `0x10007ea0` (`0x84`, no left), `0x100071c0` (`0x86`, no down). Kind of tile = likely only.
+
+- **Acceptance** (TASKS.md T30b.3l):
+  1. **MET** — `0x10003220` described with return values.
+  2. **MET** — four-function table.
+  3. **MET** — nothing of the original in git.
+
+- **Left open:** T30b.3h2 (Wine cells). Tile-kind of `0x80..0x86` is likely, not D.
+
+- **Scope note:** docs only; no `src/`, no tool.
+
+- **Commits:**
+  - `docs(re): T30b.3l 0x10003220 and the four special expansions`

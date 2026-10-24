@@ -134,8 +134,9 @@ enum class ScenarioWarningKind : std::uint8_t {
     TradeEntryBeyondSlots,
     /// A HEAD2 field the adapter does not map to a City field (the research
     /// sub-object [0x34]/[0x36], property [0x2c], a foreign bit in the player mask
-    /// [0x30]; D AnnoWelt 0x1002e399): no City field exists (O-40, OQ-157). Once per
-    /// city that carries a non-default value there.
+    /// [0x30], a trade-list slot count [0x26]/[0x27] other than 4/6; D AnnoWelt
+    /// 0x1002e399): no City field exists (O-40, OQ-157). Once per city that carries a
+    /// non-default value there.
     Head2FieldNotMapped,
     /// A HEAD2/STAT2 city statistic (sales/trade counters, the ten tick counters):
     /// the City struct has no statistics fields (state.md §4.7 "Not modelled",

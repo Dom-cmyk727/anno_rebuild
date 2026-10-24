@@ -510,9 +510,10 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
     };
     // Trade-list slot counts (HEAD2 [0x26]/[0x27], read before VK/EK in file order).
     // Defaults, not limits: the original constructors (VK count byte +0x64 = 4,
-    // 0x10027510; EK count byte +0x94 = 6, 0x10027590); the lists hold up to 8/12 and
-    // grow to the entries read (TradeEntryBeyondSlots). A modded warehouse would carry
-    // its own counts (SimConfig, OQ-155).
+    // 0x10027510; EK count byte +0x94 = 6, 0x10027590); the lists hold up to 8/12. A
+    // list is sized to the entries read; the slot count is not kept (no City field) and
+    // only sets the TradeEntryBeyondSlots threshold. A modded warehouse would carry its
+    // own counts (SimConfig, OQ-155).
     constexpr std::uint32_t kDefaultVkSlots = 4, kDefaultEkSlots = 6;
     std::uint32_t vk_slots = kDefaultVkSlots, ek_slots = kDefaultEkSlots;
     // City.goods / build_goods are sized once (lazily) to the config; City.trade_lists
@@ -550,8 +551,8 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
         }
         const std::size_t entries = k.payload.size() / 8;
         std::vector<TradeEntry>& list = trade_list(list_no);
-        if (list.size() < std::max<std::size_t>(entries, slots)) {
-            list.resize(std::max<std::size_t>(entries, slots));
+        if (list.size() < entries) {
+            list.resize(entries); // the entries read; the slot count is not kept
         }
         bool warned_slots = false;
         for (std::size_t i = 0; i < entries; ++i) {
@@ -594,6 +595,11 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
             if (b[0x27] != 0) {
                 ek_slots = b[0x27]; // -> +0xd8, the EK list's slot count
             }
+            // No City field holds a slot count: a non-default one is not kept (it only
+            // sets the TradeEntryBeyondSlots threshold) and joins Head2FieldNotMapped.
+            const std::uint32_t vk_byte = b[0x26], ek_byte = b[0x27];
+            const bool slots_not_kept = (vk_byte != 0 && vk_byte != kDefaultVkSlots) ||
+                                        (ek_byte != 0 && ek_byte != kDefaultEkSlots);
             // [0x28]/[0x38]/[0x3c] statistics 0/4/5 (stored × 7 by the original, the getter
             // divides): the City has no statistics field (state.md §4.7 "Not modelled",
             // O-9/O-23), so they are read but not kept.
@@ -605,21 +611,23 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
                           "HEAD2 holds city statistics (sales/trade); the City has no statistics "
                           "field (not modelled, O-9/O-23)");
             }
-            // [0x2c] property 1, [0x34]/[0x36] the research sub-object (OQ-157), and a
-            // foreign bit in the player mask [0x30] (the owner's own bit is the default,
-            // O-40): no City field. One Head2FieldNotMapped per city that carries one.
+            // [0x2c] property 1, [0x34]/[0x36] the research sub-object (OQ-157), a foreign
+            // bit in the player mask [0x30] (the owner's own bit is the default, O-40) and
+            // a non-default slot count [0x26]/[0x27]: no City field. One
+            // Head2FieldNotMapped per city that carries one.
             const std::uint32_t mask30 = le32(&b[0x30]);
             const std::uint32_t owner_bit =
                 city.owner.v < 32 ? (1U << city.owner.v) : 0U; // bit by player index
             const bool unmapped =
-                le16(&b[0x2c]) != 0 ||
+                slots_not_kept || le16(&b[0x2c]) != 0 ||
                 (k.name == "HEAD2" &&
                  (le16(&b[0x34]) != 0 || le16(&b[0x36]) != 0 || (mask30 & ~owner_bit) != 0));
             if (unmapped) {
                 warn.add(ScenarioWarningKind::Head2FieldNotMapped, kp, k.name, k.offset,
                          "HEAD2 carries a field with no City target (property [0x2c], the research "
-                         "sub-object [0x34]/[0x36], or a non-owner bit in the player mask [0x30]): "
-                         "not mapped (O-40, OQ-157)");
+                         "sub-object [0x34]/[0x36], a non-owner bit in the player mask [0x30], or "
+                         "a trade-list slot count [0x26]/[0x27] other than 4/6): not mapped (O-40, "
+                         "OQ-157)");
             }
         } else if (k.name == "BAUMAT") {
             // 0x1002e862–0x1002e8cd: length / 8 entries {u16 [0] goods (file numbering,

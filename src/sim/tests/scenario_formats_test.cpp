@@ -858,13 +858,13 @@ TEST_CASE("scenario city HEAD2 slot counts, statistics and fields, BAUMAT, VK an
     REQUIRE(city.trade_lists->size() == cfg.trade_lists);
     const auto& vklist = (*city.trade_lists)[1];
     const auto& eklist = (*city.trade_lists)[0];
-    REQUIRE(vklist.size() == 3); // max(entries 3, slots 1)
+    REQUIRE(vklist.size() == 3); // the entries read (3)
     CHECK(vklist[0].goods == static_cast<sim::GoodsId>(wg));
     CHECK(vklist[0].amount_88 == (5U << 8));
     CHECK(vklist[0].price == 3);
     CHECK(vklist[1].goods == 0); // the skipped entry keeps its index, stays default
     CHECK(vklist[2].goods == static_cast<sim::GoodsId>(hg));
-    REQUIRE(eklist.size() == 2); // max(entries 1, slots 2)
+    REQUIRE(eklist.size() == 1); // the entries read (1); the slot count 2 is not kept
     CHECK(eklist[0].goods == static_cast<sim::GoodsId>(wg));
     CHECK(eklist[0].amount_88 == (4U << 8));
     CHECK(eklist[0].price == 2);
@@ -877,7 +877,7 @@ TEST_CASE("scenario city HEAD2 slot counts, statistics and fields, BAUMAT, VK an
     CHECK((*city.goods)[hg].list_index == 2);
 
     CHECK(warnings_of(s, Kind::StatisticsNotModelled) == 1); // HEAD2 [0x28]
-    CHECK(warnings_of(s, Kind::Head2FieldNotMapped) == 1);   // the foreign [0x30] bit
+    CHECK(warnings_of(s, Kind::Head2FieldNotMapped) == 1);   // [0x30] bit, slots 1/2: one per city
     CHECK(warnings_of(s, Kind::UnknownRecord) == 0);
 
     auto w = sim::World::create(s.spec, registry());
@@ -891,6 +891,14 @@ TEST_CASE("scenario HEAD2 player-mask with only the owner's bit does not warn (T
     const sim::LoadedScenario s = load(t26_city_scene({}, record("HEAD2", head2)));
     CHECK(warnings_of(s, Kind::Head2FieldNotMapped) == 0);
     CHECK(warnings_of(s, Kind::StatisticsNotModelled) == 0);
+    // The default slot counts 4/6 are no warning; another one is (not kept, no City field).
+    head2[0x26] = 4;
+    head2[0x27] = 6;
+    CHECK(warnings_of(load(t26_city_scene({}, record("HEAD2", head2))),
+                      Kind::Head2FieldNotMapped) == 0);
+    head2[0x27] = 7;
+    CHECK(warnings_of(load(t26_city_scene({}, record("HEAD2", head2))),
+                      Kind::Head2FieldNotMapped) == 1);
 }
 
 TEST_CASE("scenario market KONTID is read but not kept (T26)") {

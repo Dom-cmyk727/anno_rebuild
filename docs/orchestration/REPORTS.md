@@ -1809,3 +1809,115 @@ Rate = (7814 − 4063) / (37.877 − 30.376) = **500.1 ticks per real second = g
 8. **Guesses stated as fact (should-fix):** OQ-160 and OQ-170 no longer say the layer tables "encode passability including water"; open until read.
 9. **Nits taken:** the image statistics are P, not D (distinct byte values per block 50 / 53 / 74 / 42 / 87, so the `0xff` counts do not rank the layers; "layer 0 permissive" dropped); "a repeating 8-byte group" dropped; five blocks used (the sixth is zero, P); `0x1000f010` belongs to another vtable; the one-entry memo comment in `transport.cpp`; §3.1 no longer says "OQ-160 stays open" against its decided status (the RE stays open, the owner decided how it is settled). Not taken: the `LOGIC[0x10]` value counts per layer (not re-checked here; T30 step 6 reads the layers).
 10. **Gates** (heavy-job lock, in the foreground after a background run was stopped by the host's low-memory guard): MSVC build warning-free; ctest **973/973** with the game dir (378 s) and **973/973** without (the merged tree with T26); clang-format 23.1.3 clean over `src`; `lint_sim.py` ok; `sim_stream.py --check` "goldens agree"; `check_unix_warnings.sh` clean (GCC 13.3 and Clang 18 with viewer and GPU, 151 files; Clang without GPU); `fixtures/` untouched.
+
+## T29 — Why the carts do not reach: the S01_07_01 frontier, the area cut and the profile — 2026-10-24 — status: REVIEW
+
+Measurement only, as the task says: no walk-rule change, no optimisation, no `rules` option; no state field; no hash moved; `scenario_corpus.txt` and the `g*.log` goldens untouched.
+
+### Steps
+
+1. **Set up (done):** `git fetch`; PR #39 and PR #40 both `MERGED`; `git worktree add /c/Users/altin/anno1503-T29 -b task/T29-cart-reach origin/main`; `cmake --preset msvc && cmake --build --preset msvc` warning-free; `ctest --preset msvc -j 16 -R anno_sim` **636/636** pass without the game dir (2 skipped scenario-replay cases that need it) before the T29 edits.
+2. **The diagnostic fields (done):** `TransportStats` in `transport.hpp` gained `std::map<u32,u64> frontier`, `u64 edge`, `u64 home_no_road`, `u64 goal_no_road`, `u64 corner`, `u64 outside_disc`; `choose_source` fills them inside its own body (from the search's `parent` array after it returns, from the candidate list and from the home) — the generic `search()` is untouched. The four outcome counts stay exactly-one-of-four per call; the T29 counts are secondary (`home_no_road` and `goal_no_road` on every call that reaches candidates; `frontier`, `edge`, `corner`, `outside_disc` only on `unreached`, so they explain that bucket). `TickContext` gained a `TransportStats* transport_stats = nullptr` member (forward-declared; not state, not hashed, not drawn; set only by the test). `World::set_transport_stats` / `World::transport_stats` route a sink through a non-state `World` member into every TickContext the scheduler builds (`Scheduler::advance`). It is single-threaded today and must stay null if island ticks ever run in parallel (stage S16): a concurrent write across islands would race on the `std::map` and the counters. Mentioned in the member's doc-comment and in `state.md` §15.
+3. **The corpus numbers (done):** `scenario_test.cpp`'s `transport search statistics (ANNO_SIM_TRANSPORT_STATS)` case now routes a `TransportStats` sink through `World::set_transport_stats` across 150 000 ticks and takes a per-sender snapshot at ticks 0, 30 000 and 150 000 (cart/carrier split). Over the whole run (both files, with the game dir, idle PC):
+
+   | Scenario | Call stats (choose_source) |
+   |----------|--------------------------|
+   | `S01_07_01` 150 000 ticks | no_candidate 23 854, unreached 13 592, low_score 1 472, found 243, home_no_road 1 669, goal_no_road 4 219, edge 1 594, corner 32 525, outside_disc 1 965 |
+   | `single36` 150 000 ticks | no_candidate 13 362, unreached 556, low_score 3 153, found 88, home_no_road 3 270, goal_no_road 7 585, edge 304, corner 781, outside_disc 317 |
+
+   Per-sender cart snapshots (markets 55/49): `no_cand/unreach/low/found/home_no_road/goal_no_road/edge/corner/outside_disc`.
+
+   | File | Tick | Carts |
+   |------|------|-------|
+   | S01_07_01 | 0 | 7/36/2/10/8/35/0/100/2 |
+   | S01_07_01 | 30 000 | 9/39/4/3/7/24/1/110/3 |
+   | S01_07_01 | 150 000 | 5/43/7/0/8/22/1/112/2 |
+   | single36 | 0 | 34/1/6/8/15/40/1/0/1 |
+   | single36 | 30 000 | 36/2/9/2/11/29/1/3/1 |
+   | single36 | 150 000 | 35/2/12/0/12/29/1/3/1 |
+
+   Workshop carriers (workshops 88/11, same columns): `S01_07_01` tick 0 35/2/0/51/3/5/2/0/2; tick 30 000 75/5/0/8/0/0/5/0/5; tick 150 000 83/4/0/1/0/0/4/0/4. `single36` tick 0 7/0/0/4/1/1/0/0/0; tick 30 000 10/0/0/1/1/1/0/0/0; tick 150 000 11/0/0/0/0/0/0/0/0. "Senders without a figure type" 0 in `S01_07_01`, 2 in `single36`.
+
+   **Top-15 frontier type ids over the run (names from `anno-dump texte Texte.dat` ANLAGEN section where present).**
+
+   `S01_07_01` — 213 distinct type ids in the frontier:
+
+   | Type | Count | Prodtype | Flags (hex) | Walk class | Name |
+   |------|-------|----------|-------------|------------|------|
+   | 0 | 138 142 | 0 | 0x0 | 0 | (no object) |
+   | 69 | 38 071 | 225 | 0x29 | 0 | (unnamed; prodtype 225 is a tile object, likely a tree/decoration) |
+   | 355 | 22 343 | 225 | 0x29 | 0 | (unnamed; prodtype 225) |
+   | 2527 | 15 172 | 193 | 0x1186 | 0 | Dirt road |
+   | 2550 | 14 247 | 291 | 0x84 | 0 | Marketplace |
+   | 2 | 13 824 | 225 | 0x29 | 0 | (unnamed; prodtype 225) |
+   | 540 | 11 536 | 99 | 0x84 | 2 | Citizen's house |
+   | 807 | 11 272 | 10 | 0x84 | 2 | Sheep farm |
+   | 811 | 11 251 | 2 | 0x84 | 2 | Grain farm |
+   | 1005 | 8 911 | 1 | 0x84 | 2 | Weaving mill |
+   | 2507 | 7 687 | 193 | 0x1186 | 0 | Cobblestone street |
+   | 2526 | 7 114 | 193 | 0x1186 | 0 | Dirt road |
+   | 801 | 6 852 | 2 | 0x84 | 2 | Forester's hut |
+   | 1379 | 6 460 | 73 | 0x84 | 2 | University |
+   | 409 | 6 343 | 225 | 0x29 | 0 | (unnamed; prodtype 225) |
+
+   `single36` — 72 distinct type ids in the frontier:
+
+   | Type | Count | Prodtype | Flags (hex) | Walk class | Name |
+   |------|-------|----------|-------------|------------|------|
+   | 0 | 21 595 | 0 | 0x0 | 0 | (no object) |
+   | 3109 | 5 980 | 2 | 0x84 | 2 | (unnamed; native-tribe farm, 3100..) |
+   | 3101 | 4 186 | 97 | 0x84 | 2 | (unnamed; native-tribe house) |
+   | 3105 | 3 887 | 161 | 0x84 | 2 | (unnamed; native-tribe market stall) |
+   | 3103 | 3 289 | 97 | 0x84 | 2 | (unnamed; native-tribe house) |
+   | 3107 | 2 392 | 97 | 0x84 | 2 | (unnamed; native-tribe house) |
+   | 3106 | 2 392 | 130 | 0x84 | 2 | (unnamed; native-tribe cannonworks) |
+   | 3102 | 1 495 | 97 | 0x84 | 2 | (unnamed; native-tribe house) |
+   | 3100 | 1 495 | 34 | 0x84 | 2 | (unnamed; native-tribe market) |
+   | 2 | 1 469 | 225 | 0x29 | 0 | (unnamed; prodtype 225) |
+   | 3104 | 1 196 | 4 | 0x84 | 2 | (unnamed; native-tribe farm) |
+   | 503 | 924 | 97 | 0x84 | 2 | Pioneer house |
+   | 509 | 924 | 97 | 0x84 | 2 | Pioneer house |
+   | 368 | 897 | 225 | 0x29 | 0 | (unnamed; prodtype 225) |
+   | 71 | 732 | 225 | 0x29 | 0 | (unnamed; prodtype 225) |
+
+4. **Synthetic cases and the mutant (done):** `src/sim/tests/transport_test.cpp` gained
+
+   - **"T29 (a) a non-road obstacle blocks the walk: unreached and the obstacle in frontier"** — a market at (110, 110) 3x3 and a weaver at (111, 115) with 5 t cloth (one candidate), one tile object of a new type `kObstacle` (prodtype 193 **without** `kRoadFlag` -> walk_class 0) at (111, 113); no roads. The search starts in the home footprint, every 8-neighbour tile is non-road, so no step is taken, `unreached == 1`, `kObstacle` appears in `frontier` with count 1, `home_no_road == 1`, `goal_no_road == 1`, `edge == 0`, `outside_disc == 0`, `corner == 0`.
+   - **"T29 (b) a road that reaches the search grid border: edge is 1"** — a market at (110, 110) (search square `(103..119, 103..119)`, radius 8, disc from `0x10002a60`), a weaver at (111, 118) inside the disc but unreachable (no road nearby), a road run along `(x, 113)` for `x = 111..119` (ending on the east grid border `x_hi = 119`). The reached frontier touches the grid border; `edge == 1`, `unreached == 1`, `goal_no_road == 1`, `home_no_road == 0`, `outside_disc == 0`, `corner == 0`.
+
+   The two cases pass (ctest `-R T29` 2/2).
+
+   **Mutation check (as §1 item 5 asks; listed, not kept):** commenting out `++stats->frontier[obj]` in `choose_source` (`src/sim/src/transport.cpp` around line 800) makes case (a) fail — `REQUIRE_MESSAGE(it != s.frontier.end(), "kObstacle (...) must appear in frontier")` triggers because the frontier map stays empty; `ctest -R "T29 \(a\)"` returned "0% tests passed, 1 tests failed". Reverted after the check, the two cases pass again.
+
+5. **Profile (BLOCKED, §1 item 8).** The step asked for `perf record -g` or `valgrind --tool=callgrind` on a GCC `-O2 -g` build of `anno-sim-replay` in WSL, else Windows `wpr`. **What was tried:** `wsl -d Ubuntu -- which perf valgrind` reports both missing; `apt-get install -y linux-tools-generic valgrind` without `sudo` is refused (`Could not open lock file /var/lib/dpkg/lock-frontend... are you root?`) and `sudo` wants a password that is not available to the executor's non-interactive runs. `wpr /?` on Windows runs (binary present at `C:\Windows\System32\wpr.exe`) but recording the sim-replay would need an admin ETW session plus a profile XML, which the orchestrator's reminder narrowed away ("if no profiler can be installed with `apt install`, write a `BLOCKED` paragraph and go on; do not spin on it"). `gprof` (installed, part of binutils) was considered but it is neither of the two profilers the step named. The next speed-up for T29 therefore remains undocumented; the T27 "next speed-up" note (a per-island walk-class grid; a per-market "no road-reachable producer" cache invalidated on road/producer change) is the closest standing proposal and stays in T27's report.
+
+6. **Reading (step 6):**
+
+   **`S01_07_01` — why 13 592 carts and carriers end `unreached` over 150 000 ticks.** The biggest contributor is **(a) walkable types without `kRoadFlag`**: the top 15 frontier type ids include `2527` "Dirt road", `2507` "Cobblestone street" and `2526` "Dirt road" with their aggregate ~30 000 counts (all three have `prodtype = 193`, `flags = 0x1186`, `walk_class = 0` under the stand-in's rule, i.e. the T27 derivation `flags_word & kRoadFlag -> 1` reads them as non-road although their name says road). Buildings (walk_class 2) take another ~65 000 of the non-empty counts, and prodtype-225 tile objects (likely trees and decorations with `flags = 0x29`, walk_class 0) another ~81 000. **(b) The area cut (`edge`) is 11.7 %** of unreached (1 594 / 13 592) — a minority: the home's radius-8 disc is wide enough for most producers that end unreached. **(c) The corner rule** fired 32 525 times across 13 592 unreached searches (~2.4 refusals per search) — common but not conclusive (the step is own design, T27; the original's rule is OQ-161). **(d) Producers or markets with no road at all** are a minority: `home_no_road` 1 669 / 39 161 (4.3 %) and `goal_no_road` 4 219 per candidate; most senders and goals have a road 4-neighbour even in the campaign town. The reading matches T27's observation that 43 of 55 markets end `unreached` at tick 150 000: a cart's search sees "road-looking" dirt roads and cobblestone streets as blocked, so the road net the stand-in walks is sparser than the town's visible road net. **The T30 next step** is to read the walking-layer rule's actual road test (`0x1000daf0` reader, step 4 of T30) and settle OQ-171 — whether the engine admits dirt roads under a non-`kRoadFlag` bit, or players really do need a cobblestone-flagged road under the covers.
+
+   **`single36` — why 556 carts and carriers end `unreached` over 150 000 ticks** (much less than `S01_07_01`'s 13 592, because `single36` has fewer carts out and many more `no_candidate`-stopped searches, 13 362 / 17 059 = 78 %). **(a) Walkable types without `kRoadFlag`** here are mostly native-tribe tile objects (3100..3109, walk_class 2 buildings) and prodtype-225 trees. **(b) `edge`** is high relative to unreached: 304 / 556 = 55 % — in a smaller map more roads reach the search grid's border. **(c) `corner`** is 781 / 556 = 1.4 refusals per unreached search. **(d) `home_no_road`** is 3 270 / 17 059 = 19 % and `goal_no_road` 7 585 per candidate — a larger share than `S01_07_01` (`single36` has pioneer-level houses without full road connections). **Reading:** on the smaller addon map the "area cut" matters as much as the type-of-road question (a and b are roughly even), while the campaign town is dominated by (a). The next T30 step is still OQ-171's walking-layer road test; (b) will narrow once the original's area shape is read (T30 step 2 for the disc fill).
+
+   **Profile:** BLOCKED (see step 5); no next-speed-up is proposed here.
+
+7. **Docs (done).** `docs/sim/state.md` §15 — new "T29 as implemented" paragraph; `docs/re/transport.md` §6 — one T29 line after the T27 one; `docs/open-questions.md` — four new OQs (OQ-171 "road-like tiles without kRoadFlag", OQ-172 "edge in S01_07_01", OQ-173 "corner share", OQ-174 "senders/goals without a road 4-neighbour"); OQ-160's "How to resolve" lists the top-15 frontier type ids as T30's first tiles to check. REPORTS.md: this section.
+
+### Acceptance
+
+1. **MET** — no hash moved: the full sim suite with the game dir (`ctest --preset msvc -j 16` runs 975/975, 2 new T29 cases included; `anno_sim_replay_g2..g6_run` pass) and without (975/975, two scenario-replay cases skip cleanly); `tools/sim_stream.py --check` prints "goldens agree"; `fixtures/synthetic/sim/scenario_corpus.txt` and the `g*.log` goldens are untouched (`git status` shows no fixture change).
+2. **MET** — the per-tick numbers and the top-15 frontier table for both files are in step 3's tables above.
+3. **MET** — the two synthetic cases "T29 (a)..." and "T29 (b)..." are in `src/sim/tests/transport_test.cpp` and pass; the named mutant is `transport.cpp` around line 800 (the `++stats->frontier[obj]` line); case (a)'s `REQUIRE_MESSAGE(it != s.frontier.end(), ...)` is the test that fails without it.
+4. **BLOCKED** — the profile table (what was tried: WSL `perf` and `valgrind` not installed, `apt install` not possible without sudo; Windows `wpr` named as an alternative in the task text but set aside per the orchestrator's narrower "write BLOCKED and go on" reminder). Step 5 above.
+5. **MET** — gates through the heavy-job lock, in the foreground: MSVC build warning-free; `ctest --preset msvc -j 16` **975/975** with `ANNO1503_GAME_DIR=game\app` and `ANNO_TEST_THREADS=16`, same without (two cases skip cleanly); clang-format 23.1.3 clean over `src`; WSL GCC 13.3 and Clang 18 `-O3 -Werror` clean over 151 files, Clang without GPU clean over 9 files; `python tools/lint_sim.py` -> `lint_sim: ok`; `python tools/sim_stream.py --check` -> `goldens agree`.
+6. **MET** — commits one concern each (the TransportStats fields and sink routing; the scenario-test extension; the two synthetic cases; docs); PR to be opened at `task/T29-cart-reach`, not merged.
+
+### Left open / referred to T30 and T33
+
+- OQ-171 (why "road-like" tile objects — Dirt road, Cobblestone street — carry no `kRoadFlag` in HEAD).
+- OQ-172 (area-cut share depends on the scenario).
+- OQ-173 (corner rule's share and the original's rule, OQ-161).
+- OQ-174 (home/goal road 4-neighbour, OQ-103).
+- The profile is BLOCKED; the "next speed-up" question is deferred (T27's observations stand).
+
+### Mutation checks run
+
+- Commenting `++stats->frontier[obj]` in `choose_source` (`src/sim/src/transport.cpp` around line 800) -> "T29 (a) a non-road obstacle..." fails (ctest `-R "T29 \(a\)"` 0% passed). Reverted.

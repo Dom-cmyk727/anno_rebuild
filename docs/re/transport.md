@@ -199,15 +199,15 @@ Read `0x1000dd60` to its `ret` (`tools/disasm.py` on `AnnoWelt.dll`, instruction
 | `0x1000de4b`–`0x1000deeb` | `[X + 0xc]`, `[X + 0x10]`, `[X + 0x14 + k]` (chunk-pool head), `[chunk + 0x14]` size, `[chunk + 0x10]` data pointer | If chunk null, allocates / takes from a chunk pool and fills a new 132-byte region of chunk data by calling `[esi + 0]` = slot `+0` of the secondary vtable `0x100c18b0` installed at `[X + 4]`, which is **`0x1000daf0` (the block fetch, §3.3 orchestrator's read)**. The block fetch copies 8×8 tile records of the chunk's block into the chunk data. **D.** |
 | `0x1000deeb`–`0x1000def3` | — | Stores `edi` (chunk data pointer) into `*[esp + 0x24]` (out-param); if `edi` is null, returns (`jmp 0x1000df7e`). |
 | `0x1000def9`–`0x1000df19` | — | Picks the sub-cell u16 at offset `4 + (y_mod8 * 8 + x_mod8) * 2` within the chunk data (`edi`): `edx = word[eax]`, `edx = (edx & 0x8007) | 7`, `word[eax] = edx`. **MUTATES the sub-cell: bits 0..2 are set to all-1 and bit 15 is preserved; bits 3..14 are cleared.** |
-| `0x1000df1a`–`0x1000df5a` | `[X + 0x420]`, `[X + 0x424]`, `[X + 0x428]`, `[X + 0x42c]` free-list fields | Allocates a 28-byte list node (if free list empty, `operator new`), fills its fields, decrements `[X + 0x42c]`. |
-| `0x1000df5c`–`0x1000df7d` | — | `[node + 0x10] = edi`, `[node + 0x14] = y_mod8`, `[node + 0x16] = x_mod8`, `[node + 0x18] = 0`; calls `0x1000d4e0` on `[X + 0x414]` with the node — an enqueue onto the list head at `X + 0x414..0x418`. |
+| `0x1000df1a`–`0x1000df5a` | `[X + 0x424]`, `[X + 0x428]`, `[X + 0x42c]` free-list fields | Allocates a 28-byte list node (if free list empty, `operator new`), fills its fields, decrements `[X + 0x42c]`. (Fix-up T30b.3b: the first table listed `[X + 0x420]` too; `+0x420` is not read.) |
+| `0x1000df5c`–`0x1000df7d` | — | `[node + 0x10] = edi`, `[node + 0x14] = y_mod8`, `[node + 0x16] = x_mod8`, `[node + 0x18] = 0`; calls `0x1000d4e0` on `[X + 0x418]` with the node — an enqueue onto the list head at `[X + 0x418]`. (Fix-up T30b.3b: the first version wrote `[X + 0x414..0x418]`; only `+0x418` is used.) |
 | `0x1000df7e`–`0x1000df85` | — | Return (`pop edi; pop esi; pop ebp; pop ebx; add esp, 0xc; ret 8`). No explicit `eax` return; the function communicates through the out-param at `*[esp + 0x24]` which is `edi` or null. |
 
-**Does `0x1000dd60` consume the layer table `[X + 0x430]`?** **No.** A grep for `[esi + 0x4(2|3)*]` in the function shows reads of only `[X + 0x434]`, `[X + 0x438]`, `[X + 0x420]`, `[X + 0x424]`, `[X + 0x428]`, `[X + 0x42c]` and the chunk-array at `[X + 0x18 + …]`. The layer-table pointer is **not** read in this method. The function marks a sub-cell as "set" (bits 0..2 = 1, bit 15 preserved) and enqueues the mark on a list; this looks like a **claim-this-cell / reservation** operation during a walk, not a walkability test. T30b.3's hypothesis (that this is the layer-table consumer) is **refuted**.
+**Does `0x1000dd60` consume the layer table `[X + 0x430]`?** **No.** A grep for `[esi + 0x4(2|3)*]` in the function shows reads of only `[X + 0x434]`, `[X + 0x438]`, `[X + 0x424]`, `[X + 0x428]`, `[X + 0x42c]` and the chunk-array at `[X + 0x18 + …]`. The layer-table pointer is **not** read in this method. The function marks a sub-cell as "set" (bits 0..2 = 1, bit 15 preserved) and enqueues the mark on a list; this looks like a **claim-this-cell / reservation** operation during a walk, not a walkability test. T30b.3's hypothesis (that this is the layer-table consumer) is **refuted**.
 
 **The constant `0x100c15a8` = `1.0f`** (bytes `00 00 80 3f`, D via `pefile`). The two `fdiv`s are therefore no-ops mathematically. Likely: the floats are already in tile units (not world units), and the x87 pass may serve a different purpose (precision pin or NaN kill). **The orchestrator's note that the constant is "a world-unit size of a tile or a sub-cell" is wrong for this release: it is 1.0f.**
 
-**Where is `[X + 0x430]` actually read?** A sweep of `AnnoWelt.dll` finds **four** `mov reg, [reg + 0x430]` instructions. Three are red herrings (`0x1000db0e` and `0x1000ed50` read `[X + 0x434]` after the `+4` offset of the secondary base — these are the ORIGIN coordinate, per §3.3 orchestrator's read; `0x1009d2c2` reads `[esp + 0x430]`, a stack access). The **only register-load read of a `+0x430` field as a pointer** is `0x100037cb` (`mov ecx, [esi + 0x430]; mov eax, [ecx]; call [eax + 0x128]`), **inside `0x10003780` (slot 0 of vtable `0x100c14e0`)**, a method of a different class whose `esi` has fields up to at least `[esi + 0x3064]`. The constructor at `0x10006344` installs vtables at `[+0]`, `[+4] = 0x100c14e4`, `[+8] = 0x100c14e0` / `0x100c14dc`, `[+0x2048] = 0x100c14dc` (overwrites) — a bigger class whose base chain includes `0x100c14e4` (world `+0x6aac`). **Likely: this bigger class is the real consumer.** Class X and the bigger class share a base so the setter `0x1000dd20` writes a field that the bigger class dereferences through a virtual method on an object whose vtable it finds at the layer-table pointer (`[eax + 0x128]`). Not proven here (needs the bigger class's base chain and the vtable at the layer-table pointer); T30b.3 names the next address: **`0x10003780` body to its `ret`** and **`0x100c14e0` slot `+0x128`'s class**.
+**Where is `[X + 0x430]` actually read?** A full sweep of `AnnoWelt.dll` for `[reg + 0x430]` as any memory operand (any instruction kind, excluding `esp`-based) finds **six matches** (fix-up T30b.3b: the first version listed only four because the sweep was limited to `mov`). Two are writes (`0x10006362` zero-init, `0x1000dd36` class-X's setter). Two are red herrings (`0x1000db0e` and `0x1000ed50` read `[X + 0x434]` after the `+4` offset of the secondary base — these are the ORIGIN coordinate, per §3.3 orchestrator's read). **Two treat `+0x430` as a pointer**: `0x100037cb` (`mov ecx, [esi + 0x430]; mov eax, [ecx]; call [eax + 0x128]`) inside `0x10003780`, and `0x100011e2` (`add edx, [ecx + 0x430]`) inside `0x100011c0` (which also reads `[ecx + 0x434]` the same way and later calls a virtual on `[ecx + 0x454]`). Both are inside a different (bigger) class whose constructor is `0x10006344`: it installs vtables at `[+0]`, `[+4] = 0x100c14e4`, `[+8]` (chain `0x100c159c` → `0x100c1598` → `0x100c14e0` → `0x100c14dc`), `[+0x2048] = 0x100c14dc` (overwrites). **§3.3.2 below reads `0x10003780` to its `ret` and resolves what `[eax + 0x128]` dispatches to.**
 
 **The 47 slots of `0x100c18b4`** (D via `pefile`; `+0xbc` = `0x41000000` is a float value, not code — the vtable ends at `+0xb8`):
 
@@ -231,9 +231,57 @@ Read `0x1000dd60` to its `ret` (`tools/disasm.py` on `AnnoWelt.dll`, instruction
 | `+0xac` / `+0xb0` | `0x100026b0` / `0x100027d0` | `+0x42c` counter inc / byte setter |
 | `+0xb4` / `+0xb8` | `0x10037590` / `0x10037590` | shared stubs |
 
-**None of the 47 slots dereferences `[X + 0x430]` as a pointer.** The setter writes the field, but no reader of class X ever uses it. The real reader `0x100037cb` lives in another class whose base chain overlaps class X.
+**None of the 47 slots dereferences `[X + 0x430]` as a pointer.** The setter writes the field, but no reader of class X ever uses it. The real reader `0x100037cb` lives in another class whose base chain overlaps class X — read in §3.3.2.
 
 **OQ-175 narrowed, next addresses:** the walkability "yes/no" is **not** in `0x1000dd60`; `0x1000dd60` is a reservation / mark on a cached chunk. The real `[reg + 0x430]` dereference as a pointer is **`0x100037cb` inside `0x10003780`** (slot 0 of vtable `0x100c14e0`, part of a bigger engine class with vtables at `[+4]`, `[+8]`, `[+0x2048]`; big constructor `0x10006344`). The virtual call `[*(ptr) + 0x128]` on the dereferenced object is the next address. Reading `0x10003780` to its `ret` and the vtable of the object whose address lives at `[X + 0x430]` is what T30b.3 bequeaths to a follow-up.
+
+### 3.3.2 The real `[reg + 0x430]` reader `0x10003780`, and what it dispatches to (T30b.3b, 2026-10-24)
+
+Read `0x10003780` to its `ret` (`tools/disasm.py` on `AnnoWelt.dll`, through `0x10003a8a`).
+
+**Signature (D):** `(this = Y, void* arg_pt, int arg_a, int arg_b, int arg_c) → ret 0x14`. Called by vtable slot `+0` of `0x100c14e0` (= slot `+4` of the "complete object" vtable `0x100c14dc` at `[Y + 8]`, after MSVC's MI thunk). The call site at `0x100037cb` is at the very top of the function.
+
+**Phase 1 (D) — the first virtual call `[eax + 0x128]`:**
+- Reads `(ax, dx) = ([arg_pt + 0x40], [arg_pt + 0x42])` (two u16 of a point / tile).
+- Reads `[Y + 0x4e4]` (`ox`), `[Y + 0x4e8]` (`oy`): adds them to `(ax, dx)` → `(ox + x, oy + y)`.
+- Writes a 4-dword buffer on the stack at `[esp + 0x24]`: `{ox + x + 4, ox + x, oy + y + 4, oy + y}` — the SAME 16-byte rectangle shape as `0x1000daf0`'s buffer (§3.3).
+- Reads `[Y + 0x2038]` and `[Y + 0x203c]` (two world-level objects).
+- Reads **`ecx = [Y + 0x430]`**, then **`eax = [ecx]`** = ecx's vtable, then **`call [eax + 0x128]`** with the 5-arg stack `(4, arg_pt, &buffer, [Y + 0x2038], [Y + 0x203c])`.
+- **`[Y + 0x430]` is a world-like pointer, NOT the class-X layer table.** Dword at every layer-block start is `0xffffffff`-ish image data, not a valid vtable, so if the setter `0x1000dd20`'s pointer ever reached this field a crash would follow. Verified by reading the first 32 bytes of each of the five `0x100d1140 + 0x1c00 · L` blocks with `pefile`.
+
+**What `[eax + 0x128]` is (D):** the world's vtable is `0x100ccdd8` (annowelt.md, round-ae note); its slot `+0x128` is **`0x100a52d0`**. First instructions (`disasm.py`):
+
+```
+mov eax, [ecx + 0xec]      ; world's chunk-row width
+cdq / and edx, 7 / add eax, edx     ; align
+mov ebx, [esp + 8]         ; arg (part of the buffer coords)
+...
+mov al, [edx + ebp + 0x130]  ; byte at [world + 0x130 + chunk_index]
+```
+
+Pattern matches the kind-11 / kind-10 handlers of `0x100abdb0` (round-ae note: "a byte at `world + 0x130 + …`, chunk index from `[world + 0xec]`"). So `0x100a52d0` is **a per-chunk LOOKUP** on the world's chunk array, similar family to `0x100abdb0` but for a different kind code. The virtual call `[eax + 0x128]` therefore **fetches a chunk / chunk descriptor** for the buffer rectangle — the SAME shape as the block fetch of §3.3.
+
+**Phase 2 (D) — the position-range mark (bits 0..2 of a word):**
+After the virtual call, `0x10003780` continues at `0x100037e5` and does, repeatedly, the **same `(v & 0xfc07) | 7` or `(v & 0x8007) | 7` write pattern as `0x1000dd60`**:
+
+- `0x1000393e`: `and ebx, 0xfc07; or ebx, 7; mov word[edx − 4], bx` (per-cell loop, `inc eax; jne`).
+- `0x1000396d`: `and edx, 0xfc07; or edx, 7; mov word[eax − 4], dx` (per-cell loop).
+- The function sweeps a RECTANGULAR RANGE of sub-cells (bounded by `[Y + 0x454]`, `[Y + 0x458]`, `[Y + 0x45c]`, `[Y + 0x460]`, `[Y + 0x464 + k]` — a per-row bound table) and sets the low three bits of each sub-cell to `7`.
+
+**Conclusion.** `0x10003780` is **the same shape as `0x1000dd60`**: a position-indexed reservation / mark on a cached chunk, not a walkability yes/no. It calls the world's chunk fetcher first (through the virtual `[eax + 0x128]` on `[Y + 0x430]`), then walks the resulting chunks writing `(v & … | 7)` into every sub-cell in the range. The `0xfc07` mask preserves bit 15 and bits 10–14 (vs `0x8007` in `0x1000dd60` which preserves bit 15 only); the extra preserved bits suggest a WIDER tag field, so this reservation also records something more than the three-bit flag the other one writes. The virtual call parallels `0x1000daf0`'s shape — same `(fourarg buffer, cell + 4, 8)` kind of call, same "fetch a block of tiles" dispatch.
+
+**What `[Y + 0x430]` is (D-reasoned, not direct-D-written):** `0x100a52d0` reads `[ecx + 0xec]` and `[ecx + 0x130]` — fields the world owns (round-ae: "chunk index from `[world + 0xec]`"). So the receiver is the WORLD. **`[Y + 0x430]` holds a pointer to the world** in this class, not a layer table. The field is written through a path my sweep did not find in `AnnoWelt.dll` (no `mov [reg + 0x430], <non-zero>` on this class besides the class-X setter which belongs to class X); likely set via a struct copy, a cross-module writer, or a path my sweep missed (`add`, `lea`, or an aggregate init via `rep movs`). **Open:** the write path; a Wine memory read of this class's `[Y + 0x430]` at run time would confirm (T30b.4+).
+
+**OQ-175 resolved as follows.** The walkability "yes/no" is **not** `[edx + 0xec]` or `[edx + 0x128]` on any of the family readers: both are **chunk / block fetchers** (`0x100abdb0`, `0x100a52d0`, round-ae and this section). Both call sites are **inputs** to a reservation-write function (`0x1000dd60` and `0x10003780`); the final yes/no decision for a walk is **not** inside the family of `[reg + 0x430]`/`[reg + 0x434]` methods on these classes. The walking-layer table at `0x100d1140 + 0x1c00 · L` is **not consumed by any `AnnoWelt.dll` method the T30/T30b sweeps found**. Three places to look next, in order of likely payoff:
+
+1. **The pathfinder / search engine's node expander** (OQ-161, world `+0x6aa8` vtable `0x100c1424`). The search engine at `+0x6aa8` is a different class from class X (`+0x6ab0`); its vtable has not been read in full. The step cost / neighbour expansion likely consults the layer-table bits that `0x1000dd60`'s mark-write SETS on sub-cells, so the "walkable" test might be a **bit-mask read on the already-marked sub-cell** (bit 0..2 = marked, bit 15 = ?), not a direct layer-table lookup.
+2. **The sub-cell bit layout.** The mark writes `(v & 0x8007) | 7` and `(v & 0xfc07) | 7`: bits 0, 1, 2 become `1`; bits 3..9 are cleared by one but not the other; bits 10..14 are cleared by one but not the other; bit 15 is preserved by both. **Bits 10..14 are the "reservation detail"** on `0x10003780`'s wider mark. What a reader does with these bits (bit 15 as "blocked"? bits 10..14 as a cost?) is the actual walkability contract. Read **`0x100011c0`** next: it is the other `[reg + 0x430]` consumer and uses `[ecx + 0x454]` through a virtual too.
+3. **Cross-module reader.** `AnnoGame.dll` / `AnnoScene.dll` / `AnnoDisplay.dll` were not swept here; the layer-table pointer at `0x100d1140 + 0x1c00 · L` might be referenced only from `AnnoScene.dll`'s search engine. A `tools/xref.py --reloc <dll> 0x100d1140 0x100d9d40` sweep on each would decide.
+
+**Still open** (OQ-175 narrowed, not closed):
+- Who writes `[Y + 0x430]` on the bigger class (not caught by the `AnnoWelt.dll` sweep).
+- The sub-cell bit semantics (what makes a tile walkable, read from where).
+- What the layer tables at `0x100d1140` are actually read by (if they are consumed by `AnnoWelt.dll` at all, the sweep's `[reg + 0x430]` is the write/read of the pointer; the TABLE CONTENT is at `0x100d1140 + 0x1c00·L`, consumed only through that pointer, and the pointer has one setter and no readers found — **so the layer tables may not be consumed in `AnnoWelt.dll` at all**).
 
 ### 3.4 The writers of the layer blocks (T30 step 3, D)
 

@@ -904,7 +904,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Update 2026-10-22 (community FAQ):** the house's reach counts, not the stall's radius. Stalls sell from the island store. The tavern keeper physically fetches alcohol within the tavern's radius. Reach at the edge is irregular, which suggests walker reach (`community-faq.md` §4).
 
 ## OQ-103: Which walkers need roads (new, tutorial series 2026-10-22)
-- **Status:** open, RE
+- **Status:** **decided 2026-10-24 (owner): the rule comes from the original's code, analysed thoroughly to be 100 % sure (T30); the working rule of 2026-10-22 below is the hypothesis T30 checks clause by clause.** Was: open, RE
 - **Area:** sim (transport, pathing)
 - **Evidence:**
   - The market cart (job `0x34`) searches the road net (`production.md` §5.2, D).
@@ -1483,7 +1483,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** read island property `0x11` in the island's property getter and setter and in the island record loader `0x10089130`; read the consumer at `0x1002893b`.
 
 ## OQ-160: Which tiles a cart and a carrier may enter: the walking layers (new, T24 2026-10-23; OQ-103, O-8)
-- **Status:** open, RE; the road rule is the owner's to confirm (OQ-103)
+- **Status:** **decided 2026-10-24 (owner): the walk rule comes from the original's code, analysed thoroughly to be 100 % sure (T30: the static decode and a check in the running original); the stand-in stays until T33 implements the decoded rule.** Was: open, RE; the road rule is the owner's to confirm (OQ-103)
 - **Area:** simulation / transport
 - **What we know (AnnoWelt, `docs/re/transport.md` §3, D):**
   - the figure's searcher takes the walking layer from the figure type's byte `+0xff` (`LOGIC[0x10]`, AnnoGame `0x1000faf0`);
@@ -1491,7 +1491,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   - the cells come from the island's tiles through island slot `+0x128` in mode 0, which reads a 9-bit mask per tile (likely the `WALKMASK` of the tile's object; every `ANLAGEN` entry has one, P 921 of 921).
 
   P: figure 220 (the market cart) has layer 3, the only one; 287 figure types have layer 0, among them the carrier 203 and the native cart 390.
-- **Update 2026-10-23 (T27, `docs/re/transport.md` §3.1):** the layer tables are **static initialised `.data`** with image content (not "filled at run time" as first believed), `0x1c00` bytes per layer; the setters are `0x1000dd20` (`[engine+0x430]`) and `0x1000f010` (`[engine+0x1030]`). The `0xff`-byte counts per layer (0:316, 1:409, 2:561, **3:75**, 4:613, D) show layer 3 (the cart) by far the most restrictive and layer 0 (the carrier) permissive — the stand-in's shape (cart→roads, others→open land) is right. Still **open:** the entry *semantics* (mask → walkable per layer); that needs the search node-expansion that reads `[engine+0x430]` in the engine at world `+0x6aa8` (vtable `0x100c1424`), the body of `0x10003d90`/`0x10004890` (also OQ-161). That is the next address.
+- **Update 2026-10-23 (T27, `docs/re/transport.md` §3.1):** the layer tables lie in **initialised `.data`** with image content, `0x1c00` bytes per layer (D); that they are not also written at run time is **likely** only (only the base address's two references were searched; T30 settles it); the setters are `0x1000dd20` (`[engine+0x430]`) and `0x1000f010` (`[engine+0x1030]`). The `0xff`-byte counts per layer are 0:316, 1:409, 2:561, **3:75**, 4:613 (D); their reading is **open**: with `0xff` = passable layer 3 (the cart) is the most restrictive, with `0xff` = blocked the least, so they neither confirm nor refute the stand-in's shape. Still **open:** the entry *semantics* (mask → walkable per layer); that needs the search node-expansion that reads `[engine+0x430]` in the engine at world `+0x6aa8` (vtable `0x100c1424`), the body of `0x10003d90`/`0x10004890` (also OQ-161). That is the next address.
 - **What the rebuild does (stand-in, `transport.cpp` `walk_rule`):**
   - layer `kRoadLayer` = 3 walks on road tiles only (a tile whose object type has the HEAD flag `0x4000`);
   - every other layer walks on tiles without a building (no object, or an object whose type has no building list) and on roads;
@@ -1525,7 +1525,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** read the expansion of the engine at world `+0x6aa8` (vtable `0x100c1424`) and the entrance goals; then replace the stand-in with a stream and timeline bump.
 
 ## OQ-162: The walk in integers instead of the original's x87 floats (new, T24 2026-10-23; D13) — owner
-- **Status:** open, owner decision (the default is the integer walk; no float may enter hashed state)
+- **Status:** **decided 2026-10-24 (owner): the float walk** — the original's x87 walk reproduced bit-exactly, emulated in integer code with the floats' bit patterns in the state, so no native float enters hashed state (T34, ADR 0002); the integer walk stays until T34 stage 2. Was: open, owner decision (the default is the integer walk; no float may enter hashed state)
 - **Area:** simulation / transport
 - **What the original does (D, `docs/re/transport.md` §4):** a figure's time is `u16(t − stamp) · 0.2f` in x87 floats; the walk moves `time · speed` along f32 segments of `count / 3` tiles (diagonals × `1.41421354f`); the rest of the time after an action goes on to the next in the same call; the position is three floats.
 - **What the rebuild does (`transport.cpp` `walk`, `figure_type_from_entry`):**

@@ -41,6 +41,8 @@ constexpr sim::TypeId kCarrierWs{9206}; // STOFFE from WOLLE, one carrier of fig
 constexpr sim::TypeId kStore{9207};     // a market that sends no cart (max_figures(0) = 0)
 constexpr sim::TypeId kFarm1t{9208};    // KORN from GETREIDE with a store of 1 t
 constexpr sim::TypeId kSheep{9209};     // WOLLE (goods 9, a raw goods) from GETREIDE, 5 t
+constexpr sim::TypeId kObstacle{9210};  // a non-road tile object (prodtype 193 without
+                                        // kRoadFlag -> walk_class 0, T29 case (a))
 
 constexpr std::uint32_t kCart = 220;
 constexpr std::uint32_t kCarrier = 203;
@@ -65,6 +67,7 @@ std::shared_ptr<const sim::TypeRegistry> registry() {
         .add_workshop(kCarrierWs, "STOFFE", "WOLLE", 6, 11, 5, 1)
         .action_radius(kCarrierWs, 16) // P: the weaver 1001 has 16
         .figure_ids(kCarrierWs, {kCarrier})
+        .add_plain(kObstacle, 193) // same prodtype as kRoad, but no kRoadFlag -> walk_class 0
         .figure_type(sim::FigureType{kCart, kCartSpeed, 5 * 256, 3, 500})
         .figure_type(sim::FigureType{kCarrier, kCarrierSpeed, 3 * 256, 0, 1000});
     auto built = b.build();
@@ -76,9 +79,10 @@ std::shared_ptr<const sim::TypeRegistry> registry() {
 struct Rig {
     sim::ScenarioSpec spec;
     sim::ScenarioSpec::CitySpec& city() { return spec.islands[0].cities[0]; }
-    void road(std::int32_t x, std::int32_t y) {
+    void road(std::int32_t x, std::int32_t y) { tile_object(x, y, kRoad); }
+    void tile_object(std::int32_t x, std::int32_t y, sim::TypeId type) {
         spec.islands[0].objects.push_back(sim::ScenarioSpec::TileObjectSpec{
-            static_cast<std::uint32_t>((y - 100) * 32 + (x - 100)), kRoad.v, 0});
+            static_cast<std::uint32_t>((y - 100) * 32 + (x - 100)), type.v, 0});
     }
     void place(sim::TypeId type, std::int32_t x, std::int32_t y,
                std::optional<sim::Payload> payload = std::nullopt) {
@@ -657,7 +661,104 @@ std::filesystem::path g6_path() {
     return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "g6.log";
 }
 
+/// Finds the market's TypeId's search area and runs choose_source on `w` for every
+/// market whose job matches, collecting a single call's stats; returns the stats of
+/// the one market at `(mx, my)`. Keeps the test cases below readable.
+sim::TransportStats stats_of_cart(const sim::World& w,
+                                  const std::shared_ptr<const sim::TypeRegistry>& types,
+                                  std::int32_t mx, std::int32_t my) {
+    sim::Effects fx;
+    sim::SerialWorld serial(w.islands(), w.config().layout, w.figures(), w.players(), fx);
+    const sim::Building& m = at(w, mx, my);
+    const sim::BuildingType* t = types->find(m.type);
+    REQUIRE(t != nullptr);
+    REQUIRE(!t->prod.figure_ids.empty());
+    const sim::FigureType* ft = types->find_figure_type(t->prod.figure_ids[0]);
+    REQUIRE(ft != nullptr);
+    const sim::Island& is = *w.islands()[0];
+    const auto key = is.cache.by_id.at(m.id);
+    sim::TransportStats stats;
+    static_cast<void>(sim::choose_source(serial, *types, sim::kJobMarketCart, m, *t, key.city,
+                                         ft->capacity_88, sim::walk_rule(ft->layer), &stats));
+    return stats;
+}
+
 } // namespace
+
+TEST_CASE("T29 (a) a non-road obstacle blocks the walk: unreached and the obstacle in frontier") {
+    // The "no roads" setup of "a cart finds no producer off the road net" plus one named
+    // tile object placed where it is an 8-neighbour of the home footprint: the search
+    // starts in the home footprint, every tile around it is non-road, so no step is
+    // taken, outcome `unreached`, and the obstacle's type id lands in `frontier` with
+    // count 1 (each blocked tile is counted at most once per search). Hand-derived.
+    const auto types = registry();
+    Rig r = make_rig();
+    r.place(kMarket, 110, 110);                       // 3 x 3, footprint (110..112, 110..112)
+    r.place(kWeaver, 111, 115, weaver_with(5 * 256)); // the one candidate, unreached
+    r.tile_object(111, 113, kObstacle);               // 8-neighbour of (110..112, 112)
+    sim::World w = create(r, types);
+    const sim::TransportStats s = stats_of_cart(w, types, 110, 110);
+    CHECK(s.unreached == 1);
+    CHECK(s.found == 0);
+    CHECK(s.low_score == 0);
+    CHECK(s.no_candidate == 0);
+    // The obstacle at (111, 113) is a blocked 8-neighbour of three home tiles; dedup
+    // keeps it at 1. frontier[0] counts every empty tile that is an 8-neighbour of the
+    // home footprint; the test does not nail that number, only that kObstacle is in.
+    const auto it = s.frontier.find(kObstacle.v);
+    REQUIRE_MESSAGE(it != s.frontier.end(),
+                    "kObstacle (" << kObstacle.v << ") must appear in frontier");
+    CHECK(it->second == 1);
+    CHECK(s.frontier.count(0) > 0); // the surrounding empty tiles
+    // Edge is 0: the home footprint is at (110..112, 110..112), far from the grid
+    // border (103..119); no reached tile touches it. outside_disc is 0: the weaver's
+    // footprint (111, 115) lies inside the disc. corner is 0: no step was tried.
+    CHECK(s.edge == 0);
+    CHECK(s.outside_disc == 0);
+    CHECK(s.corner == 0);
+    // goal_no_road is 1: the weaver's 4-neighbours hold no road. home_no_road is 1:
+    // the market's 4-neighbours hold no road either (the only object around is
+    // kObstacle, which has walk_class 0, not road).
+    CHECK(s.goal_no_road == 1);
+    CHECK(s.home_no_road == 1);
+}
+
+TEST_CASE("T29 (b) a road that reaches the search grid border: edge is 1") {
+    // Market at (110, 110), 3 x 3; the search square is (103..119, 103..119) (radius 8,
+    // disc_half_widths(8)). A road run from the home footprint south then east to (119,
+    // 113): (111, 113), (112, 113), (113, 113), ..., (119, 113). The far tile (119,
+    // 113) is on the grid's east border. A weaver at (111, 118), with 5 t cloth, is a
+    // candidate but is not reached: no road connects it to the home. The search ends
+    // `unreached` with its reached frontier touching the grid border: `edge == 1`.
+    const auto types = registry();
+    Rig r = make_rig();
+    r.place(kMarket, 110, 110);
+    r.place(kWeaver, 111, 118, weaver_with(5 * 256)); // inside the disc, no road nearby
+    for (std::int32_t x = 111; x <= 119; ++x) {
+        r.road(x, 113);
+    }
+    sim::World w = create(r, types);
+    const sim::TransportStats s = stats_of_cart(w, types, 110, 110);
+    CHECK(s.unreached == 1);
+    CHECK(s.found == 0);
+    CHECK(s.low_score == 0);
+    CHECK(s.edge == 1);
+    // The reached road ends at the east border tile (119, 113); no diagonal step from a
+    // reached tile ever lands on a passable-but-unreached tile with a blocked
+    // orthogonal here (every neighbour outside the road run is non-road, so unwalkable
+    // and no "unreached passable" happens for the diagonal check): corner == 0.
+    CHECK(s.corner == 0);
+    // outside_disc is 0: the weaver's footprint (111, 118) lies inside the disc.
+    CHECK(s.outside_disc == 0);
+    // home_no_road is 0: (111, 113) is a road 4-neighbour of (111, 112).
+    CHECK(s.home_no_road == 0);
+    // goal_no_road is 1: the weaver's 4-neighbours hold no road.
+    CHECK(s.goal_no_road == 1);
+}
+
+// Mutant check (T29 step 4): dropping the `++stats->frontier[obj]` line from
+// choose_source makes the "T29 (a)" case's `REQUIRE_MESSAGE(it != s.frontier.end(),
+// ...)` fail (frontier stays empty, so kObstacle is not found); listed in REPORTS.md.
 
 TEST_CASE("G6 a market cart and a workshop carrier through 300000 ticks equal golden") {
     // G6 (docs/sim/state.md §14.3, task T24): synthetic::g6_scenario (seed 624) on

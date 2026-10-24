@@ -437,6 +437,84 @@ All ten cells **equal** — every byte at every offset matches the DLL image. Th
 
 **OQ-175 further narrowed, not closed.** The search engine is identified (vtable `0x100c1424`, constructor `0x10006344`, same object as class Y of §3.3.2). The simple sub-cell-bit-test grep did not find a reader. T30b.3f (the deeper read of the three search-core functions) is the natural follow-up.
 
+#### 3.4.4 The three search-core functions: lengths, callees, and the one byte-mask test (T30b.3f, 2026-10-24)
+
+**D.** Full disassembly of `0x10003d90`, `0x10004890`, `0x10005890` to their rets, every direct callee listed, and a widened test-family grep (`test (byte|word) ptr`, `cmp (byte|word) ptr`, `movzx`, `and|or|bt|btr|bts|xor reg, imm`) across all three bodies. The round-ak nit (§3.4.3 says "47 slots"; the actual vtable has 48 code slots, 0x00..0xbc) is noted; nothing in this pass changes with that correction.
+
+**Function boundaries and `.rdata` references.** First `ret` of each function and the end of its basic block (next instruction aligned on a prologue or data) give:
+
+| Function | Last `ret` | Body size | `ret imm` | `.rdata` reference (from `xref.py --reloc`) | Vtable interpretation |
+|---|---|---|---|---|---|
+| `0x10003d90` | `0x10004867` (`ret`) | ~2776 bytes | 0 args stacked (`__thiscall`-shaped: `ecx = this`, locals big) | `0x100c1568` | slot `+0x84` of the `0x100c14e4` sub-vtable (class Y's `[+4]` interface): offset `0x100c1568 - 0x100c14e4 = 0x84` = slot 33 of that second interface |
+| `0x10004890` | `0x10004a6d` (`ret 0xc`) | ~480 bytes | 3 stack args | no `.rdata` xref; sweep found exactly one caller `0x10003e8d` (inside `0x10003d90`) | NOT a vtable method — a static helper of `0x10003d90` |
+| `0x10005890` | `0x10005b49` (`ret 0x14`) | ~697 bytes | 5 stack args | `0x100c14c8` | slot `+0xa4` of the primary search-engine vtable `0x100c1424`, which §3.4.3 named as the likely search entry (same `fld [esp+N]; fdiv [0x100c1138]; fisub [this+0x4ec]` float-to-tile shape) |
+
+Callees (from each body's `call`s, de-duplicated):
+
+- **`0x10003d90`** (fn1, 36 direct call sites, 20 distinct targets): `0x100b5f90` (×8, likely the signed-float-to-int `__ftol` helper), `0x100064b0` (×4), `0x10017510` (×3), `0x1000b790` (×3), `0x10003aa0` (×3, a float-to-tile helper, 0xcc stack frame), `0x10004890` (fn2, ×1 at `0x10003e8d`), `0x10008540`, `0x1000d6a0`, `0x10003220`, `0x100071c0`, `0x10007770`, `0x10007b00`, `0x10007ea0`, `0x10006a40`, `0x10001480` (end-of-function cleanup).
+- **`0x10004890`** (fn2): `0x100b5f80` (×1, allocator-adjacent), `0x10004a70` (×2), `0x10004ac0` (×2). The two helpers (`0x10004a70`, `0x10004ac0`) are the three tiny linked-list-splice functions sitting right after fn2 in `.text` (ending with the three `ret` instructions at `0x10004a9d`, `0x10004aaf`, `0x10004ab9` seen in the raw sweep — ordinary intrusive-list helpers, 16–57 bytes each).
+- **`0x10005890`** (fn3): `0x100b5fc0` (`__chkstk`-shaped, 0x1020-byte frame probe), `0x100b5f90` (×2, `__ftol`), `0x1000c190`, `0x1000c260`, `0x10009ef0`, and one vtable call `call dword ptr [eax + 0xac]` at `0x10005b37` (slot `+0xac` on whatever `eax` points to — forwards to another object's method).
+
+**Widened test-family grep.**
+
+Across **all three function bodies** (3850 bytes of code total), the complete set of `test (byte|word) ptr` / `cmp (byte|word) ptr` hits is:
+
+| Function | Address | Instruction | Shape |
+|---|---|---|---|
+| **`0x10003d90`** | **`0x1000476e`** | **`test byte ptr [ecx + edx*4 + 3], 4`** | **bit-2 test (mask `0x04`) on byte +3 of a 4-byte-stride array entry; the only true bit-mask test in all three functions** |
+| `0x10004890` | `0x1000499a` | `cmp byte ptr [eax], 0` | byte-is-nonzero on a bare pointer (plain tag/flag check inside the linked-list helper block at `0x1000497e..0x10004a57`) |
+| `0x10004890` | `0x100049b4` | `cmp byte ptr [ecx], 0` | same, companion check in the same helper block |
+| `0x10004890` | `0x10004a03` | `cmp byte ptr [ecx], 0` | same, third site in the same helper block |
+| `0x10005890` | `0x10005b0b` | `cmp byte ptr [ebx], dl` | byte-match inside a backward loop (`dec ebx; inc eax; cmp eax, esi; jl 0x10005b0b`) — a string/byte-run compare, not a bit test |
+
+`movzx` hits: **none** of the kind "load a sub-cell u16 and mask it to bits 0..2". `bt/btr/bts`: zero hits in all three bodies. `and reg, imm` with small masks: fn1 and fn3 use `and reg, 0x80000003 | or reg, 0xfffffffc` (sign-preserving mod 4) and `and reg, 0x80000007 | or reg, 0xfffffff8` (mod 8), plus fn3 uses `and reg, 0x8000000f | or reg, 0xfffffff0` (mod 16) — these are MSVC's signed-mod-N expansions for coordinates, not bit tests. fn2 has one `and ecx, 0xfc07` at `0x100048b1` — the same `& 0xfc07` mask §3.4.1 noted for `0x10003780`'s sub-cell write, used here on a value in `ecx` without being applied to any memory.
+
+**`0x1000476e` in context (D).** The test sits 91 % through fn1 (`0x1000476e - 0x10003d90 = 0x9de` of ~`0xad8` bytes), inside a `esi`-walked list loop that starts at `0x1000474f`:
+
+```
+10004752  cmp   esi, ebp                     ; sentinel = ebp (saved at entry)
+10004754  je    0x10004855                   ; loop exit
+1000475a  xor   ecx, ecx
+1000475c  mov   cx,  word ptr [esi + 0x14]   ; cx  = u16 at [record + 0x14]
+10004760  lea   eax, [esi + 0x10]
+10004763  xor   edx, edx
+10004765  mov   dx,  word ptr [eax + 6]      ; dx  = u16 at [record + 0x16]
+10004769  lea   edx, [ecx + edx*4]           ; edx = cx + dx*4   (combined 2-D index)
+1000476c  mov   ecx, dword ptr [eax]         ; ecx = pointer at [record + 0x10]
+1000476e  test  byte ptr [ecx + edx*4 + 3], 4
+10004773  lea   ebx, [ecx + edx*4]
+10004776  je    0x10004794                   ; bit clear → next step of the loop
+10004778  push  eax                          ; bit set   → call deeper
+10004779  mov   ecx, edi                     ; this  = edi (edi = the big class saved at entry)
+1000477b  call  0x10003220                   ; a ~290-byte helper that takes this + a struct
+10004780  test  eax, eax
+10004782  jne   0x10004794                   ; non-zero → still just continue
+10004784  mov   al,  byte ptr [edi + 0x438]  ; a byte flag on class Y near [+0x430] (world ptr)
+1000478a  test  al,  al
+1000478c  je    0x10004855                   ; flag clear → exit loop
+10004792  jmp   0x100047e4                   ; flag set   → the "do work" branch
+```
+
+**Reading of the shape (not yet confirmed, see caveat below).** Each `esi` record carries `(pointer at +0x10, u16 at +0x14, u16 at +0x16)` — the pointer looks sized for a bulk array, the two u16s are an index pair, and the stride of 4 at `[ecx + edx*4 + 3]` reads byte +3 (the high byte in little-endian) of a `u32` entry at `edx` in that array. This matches a per-tile-with-flag-byte layout (3 payload bytes + 1 flag byte). Mask `0x04` picks bit 2 of that flag byte. The record layout `(ptr, u16, u16)` combined with the `cx + dx*4` index is also consistent with a 4-cells-wide sub-grid lookup — i.e. the chunk-and-sub-cell shape §3.4.1 described.
+
+**Caveat (why this is a candidate, not a confirmation).** The array at `[esi + 0x10]` has NOT been identified. It could be:
+1. a chunk-data pointer written by `0x10003780`'s mark path (making bit 2 of the high byte a walkability bit **outside** the `0x7` visited-tag that `0x10003780` writes — compatible with §3.4.3's "preserved bits" theory), OR
+2. a flag table belonging to the `esi` record's own owner (not a sub-cell block at all), OR
+3. a per-type property array (a type's walkable-terrain mask).
+
+The `edi + 0x438` byte read right after the deeper-helper call is suggestive: it is 8 bytes past the known `[+0x430]` world pointer in class Y, which is the right neighborhood for a search-engine state flag. But none of this nails which array the primary test reads.
+
+**fn3 (`0x10005890`) is a clean miss for a walkability test.** Its only `cmp byte ptr` is a byte-run compare at `0x10005b0b` (adjacent `dec ebx; inc eax; cmp eax, esi; jl` pattern). The rest of the function is dominated by float-coordinate munging (`fld; fdiv [0x100c1138]; fisub [edi+0x4ec]; __ftol`), integer `div 3` (via `imul 0x55555556`), and `and reg, 0xffff` masking of two 16-bit coordinates — i.e. this is the "float world position → tile and sub-cell indices" conversion, not the yes/no reader. It later calls `[eax + 0xac]` through a vtable (slot `+0xac` on another object), which may be where the yes/no actually lives.
+
+**fn2 (`0x10004890`) is a linked-list helper of fn1.** Its three `cmp byte ptr [reg], 0` sites are in a tight block (`0x1000497e..0x10004a57`) that reads a byte flag at the head of two neighbouring nodes and sets `byte [eax], 1` / `byte [ecx], 1` when both are 0 (`c60001` and `c60101` at `0x100049b9` / `0x100049bc`) — a classic "mark both visited" step on a graph edge. The byte at offset 0 of each node is a 0/1 visited flag, not a sub-cell walkability bit.
+
+**Updates to prior sections.**
+- §3.4.3 named `0x10003d90` without a vtable slot. **D here:** its `.rdata` reference is at `0x100c1568`, in the sub-vtable `0x100c14e4` (class Y's `[+4]` interface), at slot offset `+0x84` (= slot 33 of that second interface). §3.4.3 should be amended at the end of this round.
+- §3.4.3 said the vtable `0x100c1424` has "47 slots"; the raw dump shows 48 code slots (0x00..0xbc, i.e. indices 0..47). The slot count is 48, index range 0..47. Non-slot-material: nothing in §3.4.3's reasoning depends on this number.
+- §3.4.3's option 1 ("a broader grep that doesn't anchor to a vtable slot but to the chunk-data pattern") is the branch this task walked. The one hit it produced (`0x1000476e`) is the current best candidate for the walkability yes/no, but the structure it reads is unidentified. §3.4.3's option 4 ("the chunk-fetch handler itself tests walkability as part of filling the chunk") remains the obvious fallback.
+
+**OQ-175: see `docs/open-questions.md` — further narrowed, not closed.** The only byte-mask bit test in the entire 3850-byte search-core trio is `0x1000476e`'s `test byte ptr [ecx + edx*4 + 3], 4` inside `0x10003d90`. Confirming or disproving that this reads walkability data requires identifying the array behind `[esi + 0x10]` in the record list fn1 walks, which calls for a one-caller trace of **fn1 itself** (who passes `[ebp+8]` into it) and/or a Wine memory read of the array at that pointer during a running cart search. **Next address** (natural follow-up): find callers of `0x10003d90` via its `.rdata` slot `0x100c1568` (one hit in the sweep so far — the vtable itself; the actual indirect call site(s) through `[this+4][+0x84]` on class Y need a `[this+4]` sweep over AnnoWelt and the game DLLs). Fallback **T30b.3g** (world chunk-fetch handlers `0x100abdb0` / `0x100a52d0` on `AnnoWelt.dll` and the world object — if filling filters out non-walkable cells before the search sees them, that is option 4 and closes OQ-175 without a per-cell reader).
+
 ### 3.5 Step 7 is BLOCKED on a figure-position reader
 
 Step 7 of T30 calls for building the playbook opening in the running original, reading the tile records of the opening's buildings and the market cart's position tick by tick, and checking each observed tile against the decoded rule. The Wine runner is set up (`docs/testing/original-wine.md`), the opening macro runs (`tools/orig/opening.py`), and `tools/orig/gamestate.py` reads world, players and city stocks. **It has no figure-position reader**, and no decoded figure object layout in memory (the sim's `figure.hpp` has one, but the ORIGINAL's figure layout is different). The reader is a task of its own: find the figure table off `world + ?`, read figure records (position, direction, tile), export them to the harness. **Done here instead:** step 7(a) and (b) are reduced to "memory-compare the five 7168-byte blocks at `0x100d1140` with the DLL image after a scenario loads" (no figure reader needed), left as a next-task sub-step of T30b with a mem-reader call plan. Step 7(c)/(d) wait on T30b's figure reader.

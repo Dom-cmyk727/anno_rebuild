@@ -1999,3 +1999,38 @@ Measurement only, as the task says: no walk-rule change, no optimisation, no `ru
   - `docs(re): T30 the walking layers partial RE and the named-road finding (transport.md §3.2–§3.5, OQ-160/171, new OQ-175)`
   - `docs(sim): T30 proposed walk rule for T33 (state.md §5.9)`
   - `docs(orchestration): T30 report (step 2 partial, step 5 headline, step 7 blocked on a reader)`
+
+## T30b.1 — The road table as a tool — 2026-10-24 — status: PARTIAL
+
+- Branch: task/T30b-1-road-table (worktree C:\Users\altin\anno1503-T30b-1); not yet committed or pushed (step 6 commits/PR are the next action)
+- Built: tools/anlagen_roads.py (new) — reads Anlagen.dat via tools/figuren.py (records()/entry()), ANLAGEN names from `anno-dump texte` section ANLAGEN; prints one line per entry: id, name, PRODTYPE string, HEAD flags_word in hex (u16 at HEAD offset 0x1c), WALKMASK byte count; writes no file; game dir from --game-dir or ANNO1503_GAME_DIR; anno-dump path optional (default build/msvc/src/tools/anno_dump/Release/anno-dump.exe relative to the repo); top docstring states what it prints and that nothing of the game is written
+- Docs edited: docs/re/transport.md §3.2 (added "Named-road ids by group" table, one row per contiguous id group, plus one sentence under Likely; Q1 counts corrected below), docs/open-questions.md OQ-160 and OQ-171, docs/sim/state.md §5.9 "Proposed rule for T33" (Q1 counts corrected below)
+- Gates: n.a. (docs + tool only; no build, no game run). Tool run once against game/app in the parent repo.
+- Evidence:
+  - Command: `python tools/anlagen_roads.py --game-dir C:\Users\altin\anno1503\game\app --anno-dump C:\Users\altin\anno1503\build\msvc\src\tools\anno_dump\Release\anno-dump.exe` (run from C:\Users\altin\anno1503-T30b-1)
+  - First 12 output lines:
+    1 Entries parsed: 921
+    2 Entries with HEAD flags_word 0x4000 (kRoadFlag): 35
+    3 Named roads (ANLAGEN name matches road/street/bridge/pier): 37
+    4   of which flags 0x4000: 26, flags 0x1000: 11
+    5 (blank)
+    6    id name                             PRODTYPE     flags WALKMASK_bytes
+    7     1                                  ROHSTWACHS 0x0029   12
+    8     2                                  ROHSTOFF   0x0029   12
+    9    10                                  ROHSTWACHS 0x0029   12
+    10    11                                  ROHSTOFF   0x0029   12
+    11    20                                  ROHSTWACHS 0x0029   12
+    12    21                                  ROHSTOFF   0x0029   12
+  - Three counts: flag 0x4000 = 35 (expected 35, matches); named roads = 37 (expected 36, differs by 1); split = 26 with 0x4000 (matches) and 11 with 0x1000 (expected 10, differs by 1)
+  - All 16 contiguous id groups from the board's list checked row by row against the tool output: every range matches (2500–2503, 2505–2508, 2509, 2510–2513, 2514, 2515, 2516, 2517, 2518–2519, 2520–2524, 2525–2528, 2529, 2530–2533, 2534, 2535, 2536–2537). The listed 0x1000 ids sum to 11 (2505–2508, 2517, 2536–2537, 2525–2528), not 10.
+- Q1 (answered by owner): yes, the tool's count is right and the T30 prose was wrong. Corrected in all four places:
+  1. docs/re/transport.md §3.2: "36 entries" -> "37 entries (the two piers included)"; "26 carry 0x4000 and 10 carry 0x1000" -> "26 carry 0x4000 and 11 carry 0x1000"; "(36 of 36)" -> "(37 of 37)"; the 35-types sentence -> "35 types carry 0x4000: 24 named roads, the 2 piers, and 9 BRUECKE pieces without a Texte.dat ANLAGEN name (3955, 3956, 3961, 3990-3993, 3997, 3998)" — those nine ids were checked against the tool output (all BRUECKE 0x4386, blank name, carry 0x4000; total named roads carrying 0x4000 = 24 + 2 piers = 26, plus 9 unnamed = 35 total with 0x4000).
+  2. docs/open-questions.md OQ-160: "10 of 36 named roads" -> "11 of 37 named roads".
+  3. docs/open-questions.md OQ-171: "of 36 ... 26 ... and 10 carry 0x1000" -> "of 37 ... 26 ... 11"; "All 36 named-road WALKMASK records" -> "All 37".
+  4. docs/sim/state.md §5.9: "36 named roads" -> "37 named roads"; "10 with bit 0x1000" -> "11 with bit 0x1000"; "under-counts roads by 10 entries" -> "by 11 entries".
+  Each corrected place ends with "(counts corrected in T30b.1; T30 wrote 36 and 10)".
+- Acceptance (per TASKS.md T30b.1 step 6):
+  - (a) tool committed and run: tool created and run; commits/PR pending (step 6)
+  - (b) table checked row by row: yes — all 16 ranges match the tool output
+  - (c) nothing of the original in git: confirmed — git status shows only docs/open-questions.md, docs/re/transport.md, docs/sim/state.md modified and tools/anlagen_roads.py new; nothing under game/
+- Time spent / subagents used: inline, no subagents

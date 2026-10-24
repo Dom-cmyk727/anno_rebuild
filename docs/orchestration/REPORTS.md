@@ -1948,3 +1948,54 @@ Measurement only, as the task says: no walk-rule change, no optimisation, no `ru
 ### Mutation checks run
 
 - Commenting `++stats->frontier[obj]` in `choose_source` (`src/sim/src/transport.cpp` around line 800) -> "T29 (a) a non-road obstacle..." fails (ctest `-R "T29 \(a\)"` 0% passed). Reverted.
+
+## T30 — The walk rule from the original's code: the walking layers decoded and checked in the running original (OQ-160, OQ-103, OQ-170, OQ-171; owner decision 2026-10-24; no time box) — 2026-10-24 — status: PARTIAL D, READY FOR READ
+
+- **Branch:** `task/T30-walk-rule-re` from `main` at bca27a8; worktree `C:\Users\altin\anno1503-T30`. Executor itself; **owner reads this before merge** (per the directive on RE tasks' D tags).
+- **Scope:** docs and `tools/` only (no `src/` change). RE-heavy; some sub-steps are **open** and name their next address. The user agreed to handle the independent read for the D claims; every "D" below cites the address I read.
+
+- **Step 1 (set up).** Worktree created from `main` at bca27a8; `tools/xref.py` is in. No build needed.
+
+- **Step 2 (the search's consumer, instruction by instruction). PARTIAL D; the next address named.** Read `0x1000daf0` (vtable `0x100c18b0` slot `+0`) and its twin `0x1000ed40` (vtable `0x100c1a30`) instruction by instruction. **D:** the function takes `(this, cell_ptr)`, reads two u16s from the cell (`p[0]`, `p[2]`), two table pointers from `this` (`[this + 0x430]` primary, `[this + 0x434]` secondary), builds a 16-byte stack buffer of 4 dwords (two 8-byte spans from each table), and calls the vtable method `[edx + 0xec]` on object `[this + 0x858]` with that buffer. **Open (OQ-175):** that vtable method (where the yes/no decision lives) and who writes `[this + 0x434]`. Full writeup in `docs/re/transport.md` §3.3.
+
+- **Step 3 (every writer of the blocks). D (static).** `xref.py --reloc AnnoWelt.dll 0x100d1140`: exactly two absolute references, both inside the setters `0x1000dd20` and `0x1000f010` (`1000dd32`, `1000f022`). **Nothing points into the five blocks** (`xref.py --reloc 0x100d1141 0x100e1000` lists its first match at `0x100dcb44`). So any run-time write must go through the stored pointer `[engine + 0x430]` / `[+0x1030]`. Did not read the other three AnnoWelt DLLs (`AnnoGame.dll`, `AnnoScene.dll`, `AnnoDisplay.dll`) — a cross-module writer would need an import, so T30b or step 7(a) catches it in memory. §3.4.
+
+- **Step 4 (the rule per layer).** DEPENDS on step 2's open piece. Written as a **PROPOSED rule** in `state.md` §5.9 "Proposed rule for T33": the cell goes into the primary and secondary blocks and the vtable method combines them. The 0xff image statistics per block are **not** a rank: the blocks hold 42–87 distinct byte values, so an entry is not a plain yes/no (T27 fix-up correction). The rule's decoded form waits on OQ-175.
+
+- **Step 5 (the tile side, OQ-170, OQ-171). HEADLINE D (`tools/figuren.py` on `Anlagen.dat`, `anno-dump texte` on `Texte.dat`).** The script lives at `C:\Users\altin\AppData\Local\Temp\claude\C--Users-altin-anno1503\ec83e711-dbe1-4d88-a7ca-3c3a02a5b0c8\scratchpad\t30_walkmask.py`.
+  - **35 Anlagen entries carry HEAD `flags_word & 0x4000` (kRoadFlag);** 33 are named roads, 2 are piers.
+  - **36 Anlagen entries have a Texte.dat name that mentions a road.** 26 carry `0x4000`; **10 carry `0x1000` instead** (`2505–2508` STRASSE Cobblestone street, `2517` and `2536–2537` BRUECKE Stone/Wooden bridge, `2525–2528` STRASSE Dirt road). Flag pairs: `0x4186 ↔ 0x1186` and `0x4386 ↔ 0x1386`; bits 14 (`0x4000`) and 12 (`0x1000`) are never set together across the 921 entries.
+  - **All 36 named-road WALKMASK records are 12 zero bytes.** 282 of 921 WALKMASKs are the all-zero pattern; the rest are per-cell (3 u32s). Named-road walkability is therefore not stored per cell on the type — it comes from the HEAD `flags_word` and/or the walking-layer tables.
+  - **Bridge "transition" pieces that DO carry per-cell WALKMASK:** ids `3955`, `3956`, `3961`, `3990–3998` (all `BRUECKE`); the mask patterns look like 3-cell or 6-cell walkable sub-footprints (`0x3f`, `0x1ff`, `0x0f`, `0x07`). These are the ramps/approaches to bridges where only some footprint cells are walkable.
+  - **Named-road PRODTYPE strings:** `STRASSE` (16), `RAMPE`/`RAMPELOW`/`RAMPEHIGH` (6), `BRUECKE` (10), `PIER` (2). The sim maps these to `kProdtypeNames` numbers; Anlagen.dat always carries the string.
+  - **Rivers (OQ-170, round w):** confirmed in `scenario_formats.cpp` and `scenario.cpp`: `FLUESSE` items are tile objects, written to the top-left tile only. T33 implements their rule once step 2 is decoded.
+  - **OQ-171 narrowed:** the big dirt-road puzzle has a concrete cause: 10 of 36 named-road variants carry `0x1000` instead of `0x4000`. Whether the game treats them as walkable for layer 3 is the OPEN sub-question (OQ-175's vtable method, or step 7(a)'s memory compare).
+
+- **Step 6 (the walker's layer). D (from `types.cpp`, confirmed through `tools/figuren.py` on `FigurenHeader.dat`).** `FigureType::layer = LOGIC[0x10]` (type byte `+0xff`, slot `+0xac` = `0x1000faf0`). P: 287 types layer 0, 5 layer 1, 32 layer 2, 1 layer 3 (the market cart 220, D), 43 layer 4. The workshop carrier 203 is layer 0 (D). Open: which other walkers (farm worker, stonemason, forester, services) are at which layer in the shipped runs. §3.3 lists this.
+
+- **Step 7 (the check in the running original). BLOCKED on a figure-position reader.** The Wine runner is set up (`docs/testing/original-wine.md`) and the opening macro runs. **`tools/orig/gamestate.py` has no figure-position reader**, so step 7(c) (track a market cart's tile every game second) and 7(d) (the OQ-103 clauses) cannot be done without first finding the figure table in the original and exporting it. Step 7(a) (memory compare the five 7168-byte blocks with the DLL image after a scenario loads) is cheaper — it just needs `agent.py read` on the known addresses — and would settle whether the blocks are also written at run time. Step 7(b) (read the opening's tile records and apply the rule) depends on the proposed rule which is still partial (step 4 open). **Done here instead:** `transport.md` §3.5 names the sub-steps and the reader to build; T30b carries them.
+
+- **Step 8 (the owner's working rule, OQ-103 2026-10-22). Not re-answered here.** The three clauses (houses need roads to markets; services reach houses by road; a road connects only at a building's specific entrance tile) stay with the Wine run of step 7(d) in T30b.
+
+- **Step 9 (docs).**
+  - `docs/re/transport.md` gained §3.2 (named-road puzzle), §3.3 (the reader `0x1000daf0`), §3.4 (writers), §3.5 (step 7 as a T30b plan).
+  - `docs/open-questions.md`: OQ-171 updated with the 10-of-36 split; OQ-160 updated with the next address (OQ-175's vtable method); **new OQ-175** (the layer-table reader's vtable method and the `+0x434` secondary table).
+  - `docs/sim/state.md` §5.9 gained a "Proposed rule for T33 (DRAFT, T30)" paragraph.
+  - No `TASKS.md` edit.
+
+- **Acceptance** (as written in TASKS.md T30):
+  1. The rule per layer, each part D with its address: **PARTIAL** — the setter and the reader are D with addresses; the yes/no decision is open and names the next address (OQ-175).
+  2. The run-time question settled: **D (static)** — no absolute references into the blocks; a dynamic store through the pointer is still possible and step 7(a) decides it.
+  3. The tile table of step 5: **HEADLINE D** — 36 named roads, 26/10 split on bits 14/12, every named-road WALKMASK = 12 zero bytes, the per-cell WALKMASK pattern used by 10 bridge "transition" pieces.
+  4. The step-7 run: **BLOCKED** on a figure-position reader (T30b).
+  5. The owner's three clauses: deferred to step 7(d) in T30b.
+  6. Nothing of the original in git: confirmed (addresses, offsets, counts; no byte dumps of code; no screenshots).
+  7. The PROPOSED paragraph names every input T33 needs: cell, primary + secondary blocks, the vtable method's yes/no.
+  8. Report, PR, not merged.
+
+- **Scope note (owner's scope rule, round w):** T30 is RE-only; two small code additions were considered but not made: a figure-position reader in `tools/orig/gamestate.py` (its own task T30b), and a memory-compare helper. The scratchpad script is listed with its path above; moving it into `tools/` would be a committed addition and I left it to the review.
+
+- **Commits** (one concern each, model attribution lines included):
+  - `docs(re): T30 the walking layers partial RE and the named-road finding (transport.md §3.2–§3.5, OQ-160/171, new OQ-175)`
+  - `docs(sim): T30 proposed walk rule for T33 (state.md §5.9)`
+  - `docs(orchestration): T30 report (step 2 partial, step 5 headline, step 7 blocked on a reader)`

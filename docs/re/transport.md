@@ -632,6 +632,125 @@ Re-disassembled by the orchestrator (`tools/disasm.py`, `pefile`), D unless mark
 
 **What this means for OQ-175 (status back to "narrowed"):** the 4-byte cell of the search engine's 4×4 chunks is the unit of the walk rule. Its low u16 carries a top nibble and the bits `0x2111` that the default expansion tests on a neighbour; its high u16 carries a 10-bit code (`0x80..0x86` select four special expansions, everything else the default) plus bit 10 (the `0x10003220` branch) and the three state bits `| 7` of the marks. The yes/no for an ordinary step is `table[code] & bit`, with the table behind `[this + 0x42c]` of the expansion's `this`. Three readings remain: the rest of `0x10006a40` (T30b.3j), the fill that writes the cells from the island's tiles (T30b.3k: the slot-0 call, the world handler kind, the copy routine, and `0x1008ff70`'s `table[mask] | byte << 16` of §3.1 (b), which now reads as "low u16 = the mapped 9-bit mask, high byte = a tile byte" — exactly the cell), and `0x10003220` with the four special expansions (T30b.3l). The named-road question (OQ-171) is answered where the fill turns a road tile's record into the low u16's bits.
 
+#### 3.4.7 fn1 as pseudo-code: `this`, absolute `Y` offsets, the node, the loop (T30b.3i, 2026-10-25)
+
+**D.** `tools/disasm.py` on `AnnoWelt.dll` `0x10003d90` (2800 bytes; one `ret` at `0x10004867`) and `0x10004890` (fn2, through the node writes at `0x100048f8..0x1000498a` and the `0x1c` allocation at `0x100048c6`). Jump table at `0x10004868` read as seven dwords (`pefile`). Constructor vtable writes `0x10006375` / `0x1000637c` / `0x10006401` re-read. Ranges named below; no listing of the original.
+
+**First row — `this` and the registers (D).**
+
+| Item | Value | Evidence |
+|---|---|---|
+| fn1's `this` | `Y + 4` | fn1 is slot `+0x84` of vtable `0x100c14e4` (`pefile`: dword at `0x100c14e4 + 0x84` = `0x10003d90`). The constructor writes that vtable at `[Y + 4]` (`0x10006375`). Called through that slot, `ecx` is the address of `[Y + 4]`. |
+| Who holds `this` | `esi` after `0x10003d99` `mov esi, ecx`. Saved at `[esp + 0x10]` at `0x10003dad`. That slot is written once in the whole function. | Prologue `0x10003d90..0x10003dad`. |
+| Where `edi` is loaded before the loop at `0x1000475a` | `0x100046cf` `mov edi, [esp + 0x10]` | Between that load and `0x1000475a`, `edi` is not reassigned. The next `edi` write in the function is `pop edi` at `0x1000485d` (epilogue). |
+| What `edi` is at `0x1000474f` | fn1's `this` = `Y + 4` | Same saved slot. At `0x1000474f` the instruction is `mov esi, [ebp + 8]` (the list head); `edi` is already `this`. |
+| Expansion `this` | `Y + 8` | Each expansion is `lea ecx, [edi + 4]` then `call` (`0x100047b0`, `0x100047bb`, `0x100047c6`, `0x100047d1`, `0x100047dc`). With `edi = Y + 4`, `ecx = Y + 8`. |
+| `0x10003220`'s `this` | `Y + 4` | `0x10004779` `mov ecx, edi` — the same `this` as fn1, not the expansion's. |
+| `0x100064b0` / fn2 `this` | `Y + 8` | Call site `0x10003e7a` `lea ebp, [eax + 4]` with `eax` = `[esp + 0x10]` after the two argument pushes = fn1's `this`; `mov ecx, ebp` at `0x10003e7d` / `0x10003e8b`. Same `lea ecx, [reg + 4]` shape at the later `0x100064b0` sites (`0x10004059`, `0x10004247`, `0x10004723`). |
+
+So fn1's `[this + k]` is `[Y + 4 + k]`. §3.4.5's labels that wrote `[Y + 0x418]` / `[Y + 0x438]` for those fields were fn1's `[this + 0x418]` / `[this + 0x438]` named as if `this` were `Y`. The absolute values are the next table.
+
+**fn1's fields as absolute `Y` offsets (D).**
+
+| fn1 `[this + k]` | Absolute | Who | Role in fn1 |
+|---|---|---|---|
+| `+0x418` | `Y + 0x41c` | `0x10004749` load sentinel into `ebp`; `0x100047e4` / `0x10004844` again | Open-list sentinel. Circular: `.next` at sentinel `+8`. Loop while `[[Y + 0x41c] + 8] != sentinel`. |
+| `+0x420` | `Y + 0x424` | `0x100047fc` load, `dec`, `0x10004806` store | Open count. Decremented in the common tail after a node is unlinked. |
+| `+0x424` | `Y + 0x428` | `0x1000480c` / `0x10004821` / `0x10004838` | Free-list head. Tail pushes the unlinked node here. |
+| `+0x428` | `Y + 0x42c` | `0x1000481b` | Free-list other end: written with the node when the head was null. |
+| `+0x42c` | `Y + 0x430` | `0x10004831` load, `inc`, `0x1000483e` store | Free-list count. Incremented when a node is pushed on the free list. |
+| `+0x438` | `Y + 0x43c` | prologue `0x10003db1` writes `1`; loop `0x10004784` tests | Continue/abort byte. Zero after `0x10003220` returned 0 → leave the loop. |
+| `+0x439` | `Y + 0x43d` | prologue `0x10003db8` writes `0`; `0x10004857` reads into `al` | The value fn1 returns (zero-extended in `eax`). fn1 itself has no other write of this byte. |
+| `+0x444` | `Y + 0x448` | prologue `0x10003dbf` writes `0` | Best score, same as §1.1 / §3. |
+| `+0x4f0` / `+0x4f4` | `Y + 0x4f4` / `Y + 0x4f8` | `0x10003d9b` / `0x10003da2` | Count and base of the first pre-loop array (8-byte float pairs). |
+| `+0x4e8` / `+0x4ec` | `Y + 0x4ec` / `Y + 0x4f0` | `fisub` at `0x10003de9` / `0x10003e03` and the later walks | Integer origin subtracted from each float after `fdiv` of `1.0f` at `0x100c1138` (`pefile`, four bytes `00 00 80 3f`). |
+| `+8` / `+0xc` | `Y + 0xc` / `Y + 0x10` | `0x10003e1c` / `0x10003e39` | Bounds the first walk compares against (`[this + 8] << 2`, `[this + 0xc] << 2`). |
+| `+0x574` / `+0x578` | `Y + 0x578` / `Y + 0x57c` | `0x10003f91` / `0x10003f97` | Count and base of the second pre-loop array (also 8-byte float pairs). |
+| `+0x17fc` / `+0x1800` | `Y + 0x1800` / `Y + 0x1804` | `0x1000416f` / `0x10004169` | Count and base of the third pre-loop array (stride 4). |
+| `+0x1c04` / `+0x1c08` | `Y + 0x1c08` / `Y + 0x1c0c` | `0x100046d3` / `0x100046d9` | Count and base of the last pre-loop array (stride `0xc`). |
+
+fn2 is called with `this = Y + 8`. Its list fields then sit on the same absolute offsets as fn1's: `[fn2 + 0x414]` = `Y + 0x41c` (fn1's sentinel), `[fn2 + 0x41c]` incremented at `0x10004a64` = `Y + 0x424` (fn1's open count), `[fn2 + 0x420]` / `+0x424` / `+0x428` = fn1's free-list triple. That is the this-adjustment check: the two functions share the lists only after both `this` pointers are written as `Y + n`.
+
+The free-list count at `Y + 0x430` is the same absolute offset T30b.3b named as the world pointer on `0x10003780`. That function is in two vtables (`0x100c1424 + 0xbc` and `0x100c14e0 + 0`, both `pefile`); the world-pointer read is `[0x10003780's this + 0x430]`, which is `Y + 0x430` only if that call uses the primary vtable (`this = Y`). Not resolved here; fn1's use of `Y + 0x430` as an integer count is D.
+
+The expansion's `[this + 0x42c]` of §3.4.6, with expansion `this = Y + 8`, is `Y + 0x434`. That is the address T30b.3j must use for the byte table.
+
+**The node record (D, size `0x1c`).**
+
+Allocation at `0x100048c6` `push 0x1c` / `call 0x100b5f80` when the free list is empty (`[fn2_this + 0x428] == 0`); otherwise the head of that list is reused (`0x100048d4..0x100048f2`). Writes below are fn2 unless named.
+
+| Offset | Size | Who writes | Who reads | Meaning |
+|---|---|---|---|---|
+| `+0` | byte | fn2 `0x1000498a` writes `0`; later `0x100049b9` / `0x10004a59` write `1` | fn2's three `cmp byte [reg], 0` sites | 0/1 flag on the node (the graph-visited byte of §3.4.4). |
+| `+4` | ptr | fn2 `0x10004978` | fn2's tree walk; `0x10001480` | Tree parent (score-ordered insert). |
+| `+8` | ptr | fn2 `0x1000497b` writes `0`; splice writes; fn1 tail `0x1000482a` writes `0` | Open-list `.next`; fn2 tree; `0x10001480` | Next / left. |
+| `+0xc` | ptr | fn2 `0x1000497e` writes `0`; fn1 tail `0x10004827` | Open-list `.prev`; fn2 tree; `0x10001480` | Prev / right. |
+| `+0x10` | ptr | fn2 `0x100048f8` = arg0 | fn1 `0x1000476c` | Chunk pointer from `0x100064b0`. |
+| `+0x14` | u16 | fn2 `0x100048ff` = arg1 | fn1 `0x1000475c` | `x` inside the 4×4 chunk. |
+| `+0x16` | u16 | fn2 `0x10004903` = arg2 | fn1 `0x10004765` | `y` inside the 4×4 chunk. |
+| `+0x18` | u16 | fn2 `0x100048fb` writes `0` | fn2 `0x10004918` / `0x1000493c` compare during insert | Score used to place the node in the tree at `[fn2_this + 0x414]`. |
+| `+0x1a` | 2 bytes | not written in `0x100048f8..0x1000498a` | not read in fn1's loop | Inside the `0x1c` allocation; no use seen in these two functions. |
+
+**The loop as pseudo-code (D, `0x10004749..0x10004867`).** `this` in this block is `edi` = `Y + 4`.
+
+```
+sentinel = [this + 0x418]                          # 0x10004749; = [Y + 0x41c]
+node = [sentinel + 8]                              # 0x1000474f
+if node == sentinel: goto exit                     # 0x10004752
+
+loop:                                              # 0x1000475a
+    x = u16[node + 0x14]                           # 0x1000475c
+    y = u16[node + 0x16]                           # 0x10004765
+    chunk = [node + 0x10]                          # 0x1000476c
+    cell = chunk + (x + y*4)*4                     # 0x10004769, 0x10004773
+    if byte[cell + 3] & 4:                         # 0x1000476e; bit 10 of the high u16
+        r = 0x10003220(this = edi, &node+0x10)     # 0x10004778..0x1000477b
+        if r == 0:
+            if [this + 0x438] == 0: goto exit      # 0x10004784..0x1000478c
+            goto tail                              # 0x10004792; no expansion
+    # bit 10 clear, or 0x10003220 returned non-zero:
+    code = u16[cell + 2] & 0x3ff                   # 0x10004796..0x1000479a
+    if code in 0x80..0x86:
+        jmp table[code - 0x80]                     # 0x10004868, seven dwords
+    else:
+        goto default
+    # table (pefile, 0x10004868):
+    #   0x80 -> 0x100047c5 -> 0x10007b00(this = edi+4, node)
+    #   0x81 -> 0x100047db -> default
+    #   0x82 -> 0x100047ba -> 0x10007770(this = edi+4, node)
+    #   0x83 -> 0x100047db -> default
+    #   0x84 -> 0x100047d0 -> 0x10007ea0(this = edi+4, node)
+    #   0x85 -> 0x100047db -> default
+    #   0x86 -> 0x100047af -> 0x100071c0(this = edi+4, node)
+    default:                                       # 0x100047db
+        0x10006a40(this = edi+4, node)
+
+tail:                                              # 0x100047e4
+    0x10001480(node, sentinel+4, sentinel+8, sentinel+0xc)
+                                                   # 0x100047e4..0x100047f7; unlink
+    [this + 0x420] -= 1                            # 0x100047fc..0x10004806
+    push node on free list [this + 0x424]/[+0x428] # 0x1000480c..0x1000482a
+    [this + 0x42c] += 1                            # 0x10004831..0x1000483e
+    node = [[this + 0x418] + 8]                    # 0x10004844..0x1000484a
+    if node != sentinel: goto loop                 # 0x1000484d
+
+exit:                                              # 0x10004855 — the only ret path
+    return zero_extend([this + 0x439])             # 0x10004857; ret at 0x10004867
+```
+
+There is no other `ret`. The empty-list jump (`0x10004754`) and the abort jump (`0x1000478c`) both land at `0x10004855`.
+
+**Before the loop (`0x10003d90..0x1000474f`).**
+
+1. Prologue (`0x10003d90..0x10003dbf`): frame `0x8c`; `esi = this`; `[this + 0x438] = 1`, `[this + 0x439] = 0`, `[this + 0x444] = 0`.
+2. First array (`0x10003d9b..0x10003f87`): count `[this + 0x4f0]`, base `[this + 0x4f4]`, 8 bytes per entry (two floats). Each pair is divided by `1.0f` at `0x100c1138`, then `fisub [this + 0x4e8]` / `[this + 0x4ec]`, then `__ftol` (`0x100b5f90`). In-range points go through signed-mod-4 and **the only fn2 call in fn1** (`0x10003e7f` `0x100064b0`, `0x10003e8d` fn2). Those are the start nodes: every later open-list node is a descendant of this one constructor. The same walk then calls `0x10017510`, `0x1000b790`, `0x10003aa0` and `or`s a u16 into a cell (`0x10003f73`).
+3. Second array (`0x10003f91..0x1000415f`): count `[this + 0x574]`, base `[this + 0x578]`, same 8-byte float pairs and the same convert. Its `0x100064b0` at `0x1000405c` does **not** call fn2; on a non-null chunk it does `or byte [cell + 3], 4` at `0x10004068` — it **sets** bit 10 of that cell's high u16. §3.4.5's "bit 10 is never set by the search" does not hold for this pre-loop site.
+4. Third array (`0x10004165..0x1000433b`): count `[this + 0x17fc]`, base `[this + 0x1800]`, stride 4. Another `0x100064b0` at `0x1000424a` with the same `or byte [cell + 3], 4` at `0x10004256`.
+5. A further float walk starting `0x10004368` (`fld` of `[p]`, `[p+4]`, `[p+8]`) calls `0x10008540` and `0x1000d6a0`, then `0x100064b0` at `0x10004476` (chunk `+0x40` / `+0x42` used as the chunk's tile origin; no fn2).
+6. Last array (`0x100046cf..0x10004747`): count `[this + 0x1c04]`, base `[this + 0x1c08]`, stride `0xc`. `0x100064b0` at `0x10004726` (`this = edi + 4`); on a non-null chunk, `and word [cell], mask` at `0x10004737` with the u16 from the record. Then the main loop.
+
+**OQ-175.** The loop is now D as above. Bit 10 is a branch selector (set → `0x10003220`; clear → expand), and the pre-loop itself sets that bit on some cells. The yes/no of an ordinary step stays in `0x10006a40` (T30b.3j), with expansion `this = Y + 8` so the byte table is `[Y + 0x434]`.
+
 ### 3.5 Step 7 is BLOCKED on a figure-position reader
 
 Step 7 of T30 calls for building the playbook opening in the running original, reading the tile records of the opening's buildings and the market cart's position tick by tick, and checking each observed tile against the decoded rule. The Wine runner is set up (`docs/testing/original-wine.md`), the opening macro runs (`tools/orig/opening.py`), and `tools/orig/gamestate.py` reads world, players and city stocks. **It has no figure-position reader**, and no decoded figure object layout in memory (the sim's `figure.hpp` has one, but the ORIGINAL's figure layout is different). The reader is a task of its own: find the figure table off `world + ?`, read figure records (position, direction, tile), export them to the harness. **Done here instead:** step 7(a) and (b) are reduced to "memory-compare the five 7168-byte blocks at `0x100d1140` with the DLL image after a scenario loads" (no figure reader needed), left as a next-task sub-step of T30b with a mem-reader call plan. Step 7(c)/(d) wait on T30b's figure reader.

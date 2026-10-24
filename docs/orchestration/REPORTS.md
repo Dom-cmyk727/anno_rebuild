@@ -2157,3 +2157,39 @@ Push and open PR "T30b.2: the walk rule's yes/no method" after committing.
 ### Time spent / subagents used
 
 Inline, no subagents.
+
+
+## T30b.3 — Class X's position test `0x1000dd60` is a chunk cache, not the walkability yes/no — 2026-10-24 — status: READY FOR REVIEW
+- **Branch:** `task/T30b-3-position-test` from `main` at b5e2723; worktree `C:\Users\altin\anno1503-T30b-3`. The executor itself; no reviewer subagent. **Owner reads this before merge (D claims).**
+
+- **The headline:** the orchestrator's hypothesis in round ae (that `0x1000dd60` consumes `[X + 0x430]` for the walk) is **refuted**. `0x1000dd60` reads only `[X + 0x434]`/`[X + 0x438]` (origin coordinates), `[X + 8]`/`[X + 0xc]` (window size), the chunk-pointer array at `[X + 0x18 + …]`, and the free-list fields at `[X + 0x420..0x42c]`. It mutates the chunk's sub-cell u16 with `(v & 0x8007) | 7` (bits 0..2 set) and enqueues the mark on a list — a **claim-this-cell / reservation** write, not a walkability test. The real `[X + 0x430]` dereference lives in **`0x100037cb` inside `0x10003780`** (slot `+0` of vtable `0x100c14e0`), a method of a bigger class whose base chain overlaps class X.
+
+- **Steps:**
+  1. **Set up.** Worktree, no build needed (RE only).
+  2. **`0x1000dd60` to its `ret`** (`tools/disasm.py game/app/AnnoWelt.dll 1000dd60 560`): 11-row table in `transport.md` §3.3.1 with the address range, the `[X + …]` reads, and what each range computes. The function ends at `0x1000df85`. It calls `[esi + 0]` at `0x1000dee7` — since `esi = X + 4` by then, that's `[X + 4]`'s slot 0, i.e. **`0x1000daf0` (the block fetch)**. **D.**
+  3. **The constant `0x100c15a8` = `1.0f`** (bytes `00 00 80 3f`, D via `pefile`). Not a tile size as the orchestrator guessed; the two `fdiv`s are no-ops mathematically.
+  4. **The kind codes (step 4 of T30b.3's spec).** The orchestrator's round-ae correction already answered this: kinds 9 / 10 / 11 go to `0x100abd10` / `0x100abc60` / `0x100abaa0`, with class X holding its kind at `[X + 0x860]` (written as `arg + 2` by slot `+0x50` = `0x1000db60`). I did not re-trace the call sites of `0x1000db60`'s twin on `+0x6aac` because the three handlers are already named; marking **done by delegation**.
+  5. **The 47 slots of vtable `0x100c18b4`** dumped and tagged: table in §3.3.1. Non-stub slots read for their first ~3 instructions. **None reads `[X + 0x430]` as a pointer.**
+  6. **The real `[X + 0x430]` reader.** A whole-DLL `mov reg, [reg + 0x430]` sweep returns four hits, and the only one that treats the field as a pointer (`mov eax, [ecx]; call [eax + 0x128]`) is `0x100037cb` inside `0x10003780`. That function is slot `+0` of vtable `0x100c14e0`, installed by the big constructor at `0x10006344` on a bigger class. **Next address.**
+  7. **Docs:** `transport.md` §3.3.1 is the new section (table of the function's logic, the slot table, the OQ-175 refutation and the next address). OQ-175 gained a T30b.3 update with the correction. No `TASKS.md` edit.
+
+- **Acceptance (as written in the T30b.3 sub-task):**
+  1. **MET** — `0x1000dd60` read to its `ret`; the 11-row table in §3.3.1 names every `[X + …]` read and the return per path (the only return path is `0x1000df7e` → `ret 8`, with the out-param at `*[esp + 0x24]` set to the chunk-data pointer or null).
+  2. **MET** — the constant's value is `1.0f` (not a tile size).
+  3. **MET BY DELEGATION** — the kind codes (9/10/11) and their handlers (`0x100abd10`/`0x100abc60`/`0x100abaa0`) are the orchestrator's round-ae note; I did not re-trace the dispatcher.
+  4. **MET** — the slot table of `0x100c18b4` is in §3.3.1 with per-slot summaries.
+  5. **MET** — nothing of the original in git (addresses, offsets and counts only; no byte dumps, no screenshots).
+  6. **The `+0x434` sub-question of the old T30b.3** was already answered (round ae: window origin, written by `0x1000db60`); confirmed.
+
+- **Open (for a follow-up `T30b.3b` or a merge of this with T30b.5's chain):**
+  - **The real yes/no lives in `0x10003780`'s body and in the virtual method `[*(ptr) + 0x128]`** on whatever is at `[X + 0x430]` at run time. The pointer is zero-initialised by the big constructor (`[esi + 0x430] = 0` at `0x10006362`) and set by the class-X setter `0x1000dd20`; the base chain shared by class X and the bigger class is the next step.
+  - **A memory-compare of `[X + 0x430]` in the running original** (T30b.4's layer-blocks memory compare but on the engine's own field) decides whether the pointer at run time is the layer table at `0x100d1140 + 0x1c00·L` (which would prove the shared-base theory) or a different object.
+  - **OQ-175 stays open** with these two addresses named. The orchestrator's §3.3 note ("where the rule most likely lives: slot `+0x68` = `0x1000dd60`") is explicitly refuted.
+
+- **Not in T30b.3** (per the sub-task scope): any `src/` change (T33), the Wine run (T30b.4+), the figure-position reader (T30b.5), reading `0x10003780` itself (next sub-task — I propose `T30b.3b`: read `0x10003780` and the vtable at `[X + 0x430]` + `0x128`).
+
+- **Scope note (owner's rule, round w; added here to be reported):** the scratchpad script path from T30 round y is not committed as a tool (T30b.1 already committed `tools/anlagen_roads.py`, which supersedes it); no new tool was added here.
+
+- **Commits** (one concern each, model attribution lines included):
+  - `docs(re): T30b.3 — 0x1000dd60 is a chunk cache, not the walkability yes/no (transport.md §3.3.1)`
+  - `docs(orchestration): T30b.3 report (OQ-175 narrowed, next addresses named)`

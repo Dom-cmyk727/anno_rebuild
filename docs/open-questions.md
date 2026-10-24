@@ -1584,7 +1584,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 
 
 ## OQ-175: What the layer-table reader's vtable method decides, and what the secondary table (`[this + 0x434]`) is (new, T30 2026-10-24; OQ-160)
-- **Status:** open, RE / the next address of T30 step 2
+- **Status:** narrowed (orchestrator, 2026-10-25 an; was "answered subject to Wine confirmation" after T30b.3h): bit 10 of the cell's high u16 selects the `0x10003220` branch of the search's main loop, not walkability; the yes/no of an ordinary step is `byte_table[neighbour code & 0x3ff] & bit` in the default expansion `0x10006a40` (`test byte ptr [[this + 0x42c] + code], dl`), with four special expansions for codes `0x80..0x86`; the cells are filled from the world when a chunk is first made (`0x100064b0` → `[[Y + 4]]` slot 0). `transport.md` §3.4.6; T30b.3i–3l read the rest.
 - **Area:** simulation / transport, pathing
 - **What we know (D, `docs/re/transport.md` §3.3):** the reader `0x1000daf0` builds a 16-byte stack buffer of 4 dwords from two tables (`[this + 0x430]` primary, `[this + 0x434]` secondary; indexed by two u16s `p[0]` and `p[2]` of the cell, read 8 bytes apart on each table) and calls the vtable method `[edx + 0xec]` on object `[this + 0x858]` with five arguments, `([this + 0x85c], 0, &buffer, cell + 4, 8)` (corrected by the orchestrator 2026-10-24 aa: the first version listed four and `this + 0x85c`). The function returns `ret 4`, so it has one argument (the cell pointer); it does not itself decide walkability.
 - **The question:**

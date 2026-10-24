@@ -2000,7 +2000,6 @@ Measurement only, as the task says: no walk-rule change, no optimisation, no `ru
   - `docs(sim): T30 proposed walk rule for T33 (state.md §5.9)`
   - `docs(orchestration): T30 report (step 2 partial, step 5 headline, step 7 blocked on a reader)`
 
-<<<<<<< HEAD
 ## T30b.1 — The road table as a tool — 2026-10-24 — status: PARTIAL
 
 - Branch: task/T30b-1-road-table (worktree C:\Users\altin\anno1503-T30b-1); not yet committed or pushed (step 6 commits/PR are the next action)
@@ -2035,7 +2034,6 @@ Measurement only, as the task says: no walk-rule change, no optimisation, no `ru
   - (b) table checked row by row: yes — all 16 ranges match the tool output
   - (c) nothing of the original in git: confirmed — git status shows only docs/open-questions.md, docs/re/transport.md, docs/sim/state.md modified and tools/anlagen_roads.py new; nothing under game/
 - Time spent / subagents used: inline, no subagents
-=======
 ## T30b.2 — The class of `[this + 0x858]` and the method `[edx + 0xec]` — 2026-10-24 — status: PARTIAL
 
 - Branch: task/T30b-2-vtable-method (worktree C:\Users\altin\anno1503-T30b-2); not yet committed or pushed
@@ -2159,4 +2157,3 @@ Push and open PR "T30b.2: the walk rule's yes/no method" after committing.
 ### Time spent / subagents used
 
 Inline, no subagents.
->>>>>>> origin/task/T30b-2-vtable-method

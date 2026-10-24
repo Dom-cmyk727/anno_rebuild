@@ -181,6 +181,60 @@ Vtable verification (raw dword reads, addresses only): `0x100c18b0` slot +0 = `0
 - **Consequence for §3.3 and §3.6: `0x1000daf0` is not a layer-table reader.** With `this = X + 4`, its "primary table" `[this + 0x430]` is `[X + 0x434]` and its "secondary" `[this + 0x434]` is `[X + 0x438]`: the two **origin coordinates**, not pointers. It reads the two u16 of its argument as block coordinates `(p0, p1)`, builds the rectangle `(ox + p0, oy + p1, ox + p0 + 8, oy + p1 + 8)` and asks the world to copy that 8×8 block of layer `kind` into `arg + 4`. The layer table at `[X + 0x430]` is never touched by it; the "two 8-byte spans from two tables", the "33 cell types × 8 bytes" density and the `[this + 0x858]` sub-object reading of §3.3 / §3.6 (a), (c), (d) are superseded (the counts of §3.6 (b) stand as counts). The twin `0x1000ed40` is the same shape on the `+0x6aac` object (constructor `0x10012030`, size `0x27e0`; its fields sit `0x424` lower). Readers 2 and 3 of the T30b.2 tables are therefore the same block fetch for other kinds (OQ-178 narrowed).
 - **Where the rule most likely lives: slot `+0x68` = `0x1000dd60`.** It takes two `float` arguments, divides each by the constant at `0x100c15a8`, subtracts the origin `[X + 0x434]` / `[X + 0x438]` (`fisub`), converts to integers, and rejects a position outside `0 ≤ x < [X + 8] << 3`, `0 ≤ y < [X + 0xc] << 3` (jumps to `0x1000df7e`); the body continues to about `0x1000df8x` and is where the layer table `[X + 0x430]` must be consulted (no class-X method appears in the `xref.py 430` list, so the pointer is read through a register or an adjusted offset). **T30b.3 reads it to the end.** The float arguments are a figure's position (the float walk of §4), which fits a per-step "may the figure stand here" test.
 
+### 3.3.1 The position test `0x1000dd60` is a chunk cache, not the walkability yes/no (T30b.3, 2026-10-24)
+
+Read `0x1000dd60` to its `ret` (`tools/disasm.py` on `AnnoWelt.dll`, instruction by instruction).
+
+**Signature (D):** `(this = X, float x, float y) → ret 8`. Called by vtable slot `+0x68` of `0x100c18b4`. The two floats are the arguments; `this` is in `ecx` (`__thiscall`); return via stack cleanup `ret 8`.
+
+**Step by step (D unless marked; `[X + k]` means offset from `X`, after accounting for `add esi, 4` at `0x1000dd95`):**
+
+| Address range | What it reads from `this` (X) | What it computes |
+|---|---|---|
+| `0x1000dd60`–`0x1000dd92` | `[X + 0x434]` (origin x), `[X + 0x438]` (origin y) | `edi = int(x / 1.0f − origin_x)`, `eax = int(y / 1.0f − origin_y)` via `fld` / `fdiv [0x100c15a8]` / `fisub [X + …]` / `call 0x100b5f90` (`__ftol`). |
+| `0x1000dd98`–`0x1000ddc3` | `[X + 8]` (width in 8-tile blocks), `[X + 0xc]` (height in 8-tile blocks) | Rejects `edi < 0`, `edi ≥ [X+8] << 3`, `eax < 0`, `eax ≥ [X+0xc] << 3`; jumps to `0x1000df7e` (return) on out-of-bounds. |
+| `0x1000ddc4`–`0x1000ddf0` | — | Sign-safe `x mod 8` into `[esp + 0x10]` and `y mod 8` into `[esp + 0x14]` (the `and 0x80000007` / adjust pattern MSVC emits for signed `%` by a power of two). |
+| `0x1000ddf6`–`0x1000de2f` | `[X + 8]` and `[X + 0xc]` again (re-check after block-aligning) | Computes `x_block = edi / 8` and `y_block = eax / 8` (sign-correct), bounds-checks against the window size, jumps to `0x1000df7e` on out-of-range. |
+| `0x1000de38`–`0x1000de41` | `[X + 0x18 + block_idx*4]` where `block_idx = y_block * 16 + x_block` | Reads chunk pointer `edi` at that slot. The Y stride is `16` (fixed, `shl eax, 4`): the chunk array has at most 16 columns, so `[X + 8]` is the usable width (`≤ 16`). |
+| `0x1000de4b`–`0x1000deeb` | `[X + 0xc]`, `[X + 0x10]`, `[X + 0x14 + k]` (chunk-pool head), `[chunk + 0x14]` size, `[chunk + 0x10]` data pointer | If chunk null, allocates / takes from a chunk pool and fills a new 132-byte region of chunk data by calling `[esi + 0]` = slot `+0` of the secondary vtable `0x100c18b0` installed at `[X + 4]`, which is **`0x1000daf0` (the block fetch, §3.3 orchestrator's read)**. The block fetch copies 8×8 tile records of the chunk's block into the chunk data. **D.** |
+| `0x1000deeb`–`0x1000def3` | — | Stores `edi` (chunk data pointer) into `*[esp + 0x24]` (out-param); if `edi` is null, returns (`jmp 0x1000df7e`). |
+| `0x1000def9`–`0x1000df19` | — | Picks the sub-cell u16 at offset `4 + (y_mod8 * 8 + x_mod8) * 2` within the chunk data (`edi`): `edx = word[eax]`, `edx = (edx & 0x8007) | 7`, `word[eax] = edx`. **MUTATES the sub-cell: bits 0..2 are set to all-1 and bit 15 is preserved; bits 3..14 are cleared.** |
+| `0x1000df1a`–`0x1000df5a` | `[X + 0x420]`, `[X + 0x424]`, `[X + 0x428]`, `[X + 0x42c]` free-list fields | Allocates a 28-byte list node (if free list empty, `operator new`), fills its fields, decrements `[X + 0x42c]`. |
+| `0x1000df5c`–`0x1000df7d` | — | `[node + 0x10] = edi`, `[node + 0x14] = y_mod8`, `[node + 0x16] = x_mod8`, `[node + 0x18] = 0`; calls `0x1000d4e0` on `[X + 0x414]` with the node — an enqueue onto the list head at `X + 0x414..0x418`. |
+| `0x1000df7e`–`0x1000df85` | — | Return (`pop edi; pop esi; pop ebp; pop ebx; add esp, 0xc; ret 8`). No explicit `eax` return; the function communicates through the out-param at `*[esp + 0x24]` which is `edi` or null. |
+
+**Does `0x1000dd60` consume the layer table `[X + 0x430]`?** **No.** A grep for `[esi + 0x4(2|3)*]` in the function shows reads of only `[X + 0x434]`, `[X + 0x438]`, `[X + 0x420]`, `[X + 0x424]`, `[X + 0x428]`, `[X + 0x42c]` and the chunk-array at `[X + 0x18 + …]`. The layer-table pointer is **not** read in this method. The function marks a sub-cell as "set" (bits 0..2 = 1, bit 15 preserved) and enqueues the mark on a list; this looks like a **claim-this-cell / reservation** operation during a walk, not a walkability test. T30b.3's hypothesis (that this is the layer-table consumer) is **refuted**.
+
+**The constant `0x100c15a8` = `1.0f`** (bytes `00 00 80 3f`, D via `pefile`). The two `fdiv`s are therefore no-ops mathematically. Likely: the floats are already in tile units (not world units), and the x87 pass may serve a different purpose (precision pin or NaN kill). **The orchestrator's note that the constant is "a world-unit size of a tile or a sub-cell" is wrong for this release: it is 1.0f.**
+
+**Where is `[X + 0x430]` actually read?** A sweep of `AnnoWelt.dll` finds **four** `mov reg, [reg + 0x430]` instructions. Three are red herrings (`0x1000db0e` and `0x1000ed50` read `[X + 0x434]` after the `+4` offset of the secondary base — these are the ORIGIN coordinate, per §3.3 orchestrator's read; `0x1009d2c2` reads `[esp + 0x430]`, a stack access). The **only register-load read of a `+0x430` field as a pointer** is `0x100037cb` (`mov ecx, [esi + 0x430]; mov eax, [ecx]; call [eax + 0x128]`), **inside `0x10003780` (slot 0 of vtable `0x100c14e0`)**, a method of a different class whose `esi` has fields up to at least `[esi + 0x3064]`. The constructor at `0x10006344` installs vtables at `[+0]`, `[+4] = 0x100c14e4`, `[+8] = 0x100c14e0` / `0x100c14dc`, `[+0x2048] = 0x100c14dc` (overwrites) — a bigger class whose base chain includes `0x100c14e4` (world `+0x6aac`). **Likely: this bigger class is the real consumer.** Class X and the bigger class share a base so the setter `0x1000dd20` writes a field that the bigger class dereferences through a virtual method on an object whose vtable it finds at the layer-table pointer (`[eax + 0x128]`). Not proven here (needs the bigger class's base chain and the vtable at the layer-table pointer); T30b.3 names the next address: **`0x10003780` body to its `ret`** and **`0x100c14e0` slot `+0x128`'s class**.
+
+**The 47 slots of `0x100c18b4`** (D via `pefile`; `+0xbc` = `0x41000000` is a float value, not code — the vtable ends at `+0xb8`):
+
+| Slot | Function | What it does (first-20-instruction read) |
+|---|---|---|
+| `+0x00`..`+0x4c` | shared stubs (`0x100b49d0`, `0x100b4a00`–`0x100b4a30`, `0x10001020`–`0x10001090`) | base-class default implementations |
+| `+0x50` | `0x1000db60` | writes `[X + 0x434]`/`[X + 0x438]` with `max(arg, 0)`, `[X + 0x860] = arg + 2` (window setter) |
+| `+0x58` / `+0x5c` | `0x10001240` / `0x10001250` | one-field getters (`mov eax, [reg+N]; ret`) |
+| `+0x60` | `0x100afa50` | one-field getter |
+| `+0x64` | `0x100b4b10` | one-field getter |
+| **`+0x68`** | **`0x1000dd60`** | **the chunk-cache mark-and-enqueue (this section)** |
+| `+0x6c` | `0x1000e3f0` | `sub esp, 0x20; fld [esp+…]; push ebx` (another float-position method; next read) |
+| `+0x70` | `0x1000df90` | `push ecx; fld [esp+…]; push ebx` (float-position method; next read) |
+| `+0x74` | `0x1000e0c0` | `sub esp, 0x70; fld [esp+…]; push ebx` (float-position method; next read) |
+| `+0x7c` | `0x1000dd40` | `(ecx, arg0, arg1) → [ecx + 0x44c] = arg0; [ecx + 0x450] = arg1; ret 8` (setter) |
+| **`+0x80`** | **`0x1000dd20`** | **the layer-table pointer setter: `[X + 0x430] = 0x100d1140 + 0x1c00·arg`** |
+| `+0x84` | `0x1000e800` | `push ebx; push ebp; mov ebp, ecx` (writer or finaliser) |
+| `+0x88` / `+0x8c` | `0x10002290` / `0x100022a0` | one-line setter / getter |
+| `+0x90` / `+0x94` / `+0x98` / `+0x9c` | `0x1000e6c0`, `0x1000e740`, `0x1000e760`, `0x1000e7b0` | window-state readers / mutators |
+| `+0xa4` | `0x1000e8f0` | `mov eax, 0x1018; call 0x100b5fc0` (operator new of 4120 bytes) |
+| `+0xac` / `+0xb0` | `0x100026b0` / `0x100027d0` | `+0x42c` counter inc / byte setter |
+| `+0xb4` / `+0xb8` | `0x10037590` / `0x10037590` | shared stubs |
+
+**None of the 47 slots dereferences `[X + 0x430]` as a pointer.** The setter writes the field, but no reader of class X ever uses it. The real reader `0x100037cb` lives in another class whose base chain overlaps class X.
+
+**OQ-175 narrowed, next addresses:** the walkability "yes/no" is **not** in `0x1000dd60`; `0x1000dd60` is a reservation / mark on a cached chunk. The real `[reg + 0x430]` dereference as a pointer is **`0x100037cb` inside `0x10003780`** (slot 0 of vtable `0x100c14e0`, part of a bigger engine class with vtables at `[+4]`, `[+8]`, `[+0x2048]`; big constructor `0x10006344`). The virtual call `[*(ptr) + 0x128]` on the dereferenced object is the next address. Reading `0x10003780` to its `ret` and the vtable of the object whose address lives at `[X + 0x430]` is what T30b.3 bequeaths to a follow-up.
+
 ### 3.4 The writers of the layer blocks (T30 step 3, D)
 
 - `xref.py --reloc AnnoWelt.dll 0x100d1140`: exactly two absolute references, both inside the two setters above (`1000dd32`, `1000f022`). **No absolute reference points into any address of the five blocks (`0x100d1141`–`0x100d9d3f`)**; the next referenced `.data` address is `0x100dcb44` (`xref --reloc 0x100d1141 0x100e1000`). So any run-time write must go through the stored pointers at `[engine + 0x430]` / `[+0x1030]`.

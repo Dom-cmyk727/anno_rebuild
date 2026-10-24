@@ -2434,3 +2434,21 @@ Inline, no subagents.
 - **Commits:**
   - `docs(re): T30b.3h — the array behind [esi+0x10] is a 4×4-tile Y-class chunk from 0x100064b0; bit 10 of the sub-cell u16 at byte +2 is the walkability flag (static chain complete) (transport.md §3.4.5)`
   - `docs(orchestration): T30b.3h report (static chain complete; OQ-175 answered subject to Wine confirmation)`
+
+## T30b.3h2 — Wine read of real cells — 2026-10-25 — status: STOPPED
+
+- **Branch:** `task/T30b-3h2-wine-cells` from `main` at 0a1d013; worktree `C:\Users\altin\anno1503-T30b-3h2`. Executor itself. No cell values invented.
+
+- **Premise failed.** TASKS.md requires the cell bit map of T30b.3k (predicted low u16 / high u16 per tile kind: dirt road `2527`, cobblestone `2500`, grass, water, building footprint, market entrance) and a compare to a live read. T30b.3k (PR #56) stopped before that map: `[Y + 4]` slot 0 is a stub, and the island tile-dword writer was not found. There is no D prediction to check.
+
+- **Wine on this host.** Native Windows has no `wine`. The documented runner is WSL distro `AnnoHarness` (`docs/testing/original-wine.md`): `wsl -l` shows it Stopped; `wsl -d AnnoHarness` has `/usr/bin/wine` and `/root/anno/game/AnnoWelt.dll`. A session could be started later. It was not started here: without T30b.3k's table a dump would be unguided values, not the acceptance compare, and this task forbids inventing cell dumps.
+
+- **Acceptance:**
+  1. **NOT MET** — no predicted bits (T30b.3k stop).
+  2. **NOT RUN** — no observed bits (no Wine session).
+  3. **MET** — nothing of the original in git.
+
+- **Next:** after a later task writes the tile-dword → cell map, rerun 3h2 in `AnnoHarness` (break / read `Y` at world `+0x6aa8`, dump the named tiles). Until then OQ-175 / OQ-171 stay narrowed.
+
+- **Commits:**
+  - `docs(orchestration): T30b.3h2 stopped — no T30b.3k cell map, no invented dumps`

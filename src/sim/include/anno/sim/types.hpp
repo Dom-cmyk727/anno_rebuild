@@ -197,9 +197,10 @@ struct BuildingType {
     /// TypeRegistry::finish from `flags_word & kRoadFlag` (road) and
     /// `layout.list_for(prodtype)` (a building occupies its footprint) — the rule of
     /// TileTest in transport.cpp, moved to a per-type field (task T27). It is NOT in
-    /// `fields()` and NOT in the registry digest (the digest is a function of the parsed
-    /// file only; types_test "registry digest changes with every field" pins it), so it
-    /// is left out of the per-field mutation list there.
+    /// `fields()` and NOT in the registry digest (types_test "registry digest stable"
+    /// pins the digest; "registry digest changes with every field" leaves it out). Like
+    /// `cls`, which IS hashed, it depends on the layout the registry was built with, not
+    /// only on the parsed file.
     std::uint8_t walk_class = 0;
 };
 

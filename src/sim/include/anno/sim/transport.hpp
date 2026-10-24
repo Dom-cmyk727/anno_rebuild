@@ -134,7 +134,8 @@ struct TransportStats {
 /// 0x1005a400): nullopt when no candidate passes the filter or none is reached with a
 /// score above the start (0 for the cart, -1 for the carrier). `capacity_88` is the
 /// figure type's capacity (the carrier's early stop at 3/4 of it), `rule` its walk.
-/// `stats`, when non-null, is bumped in exactly one bucket (TransportStats).
+/// `stats`, when non-null, is bumped in exactly one bucket by a call that reaches the
+/// candidate filter (TransportStats); a call whose island or city is gone bumps none.
 [[nodiscard]] std::optional<SourceChoice>
 choose_source(const SerialWorld& world, const TypeRegistry& types, std::uint32_t job,
               const Building& home, const BuildingType& home_type, CityRef city,

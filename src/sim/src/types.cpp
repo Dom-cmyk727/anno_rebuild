@@ -215,8 +215,8 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
 
 static_assert(field_count<ProductionType>() == 18,
               "a ProductionType member needs a line in digest_production");
-// 22 since T27: the last member, the derived walk_class, is deliberately NOT hashed
-// (the digest is a function of the parsed file only); digest_type skips it.
+// 22 since T27: the last member, the derived walk_class, is deliberately NOT hashed;
+// digest_type skips it. (cls, also derived from the build layout, is hashed.)
 static_assert(field_count<BuildingType>() == 22,
               "a BuildingType member needs a line in digest_type (walk_class excepted: derived)");
 static_assert(field_count<EntrancePoint>() == 2,

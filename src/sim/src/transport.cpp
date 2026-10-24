@@ -91,8 +91,8 @@ class TileTest {
   public:
     explicit TileTest(const TypeRegistry& types) : types_(types) {}
     /// 0 = free, 1 = road, 2 = building. The class is the tile object's type's
-    /// precomputed walk_class (TypeRegistry::finish, task T27), read once per object id
-    /// (a one-entry memo in front of the registry's binary search).
+    /// precomputed walk_class (TypeRegistry::finish, task T27); a one-entry memo of the
+    /// last object id saves the registry's binary search on runs of equal objects.
     std::uint8_t operator()(const Island& island, std::int32_t x, std::int32_t y) {
         const Slot idx = island.tile_index(x, y);
         if (idx == kNoSlot) {

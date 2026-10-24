@@ -26,8 +26,11 @@
 
 #include <anno/formats/anlagen.hpp>
 #include <anno/sim/building.hpp>
+#include <anno/sim/island.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/scenario_formats.hpp>
+#include <anno/sim/tick.hpp>
+#include <anno/sim/transport.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim/world.hpp>
 #include <anno/sim_load/scenario_load.hpp>
@@ -582,4 +585,93 @@ TEST_CASE("scenario corpus: a shipped town's economy runs 150000 ticks") {
     CHECK(moved_stocks > 0);
     CHECK(gained > 0);
     CHECK(moved > 0);
+}
+
+TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
+    // T27 step 4, measurement only, off unless ANNO_SIM_TRANSPORT_STATS is set and the
+    // game dir is present (the counters are test-only; `src/sim` holds none — lint forbids
+    // getenv, cstdio and mutable statics there). For `S01_07_01` and `single36` the
+    // scenario is run 150 000 ticks (steady state) and then every sender's search is
+    // classified once through choose_source's diagnostic out-param (TransportStats):
+    // a market's cart search (job 0x34) and a HANDWERK workshop's carrier search (0x33).
+    // This is per sender, not per search over the run (the run-count would need a sim-side
+    // sink lint forbids); it answers the structural question of §4.
+    if (std::getenv("ANNO_SIM_TRANSPORT_STATS") == nullptr) {
+        MESSAGE("skipping: set ANNO_SIM_TRANSPORT_STATS=1 (and ANNO1503_GAME_DIR) to run");
+        return;
+    }
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto types = original_registry(*dir);
+    const std::vector<fs::path> files = scenario_files(*dir);
+    for (const char* want : {"0100Kampagne01/S01_07_01.sze", "0201SingleAddOn/single36.sze"}) {
+        const auto it = std::find_if(files.begin(), files.end(),
+                                     [&](const fs::path& p) { return rel_name(*dir, p) == want; });
+        if (it == files.end()) {
+            MESSAGE("not found: " << want);
+            continue;
+        }
+        const auto buf = anno::test::read_file(*it);
+        auto l = sim::load_scenario(buf, *types, sim::SimConfig{});
+        REQUIRE(l);
+        auto w = sim::World::create(l.value().spec, types, sim::SimConfig{});
+        REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+        sim::World world = std::move(w).value();
+        for (int i = 0; i < kAdvances; ++i) {
+            world.advance(kStepMs);
+        }
+        sim::Effects fx;
+        sim::SerialWorld serial(world.islands(), world.config().layout, world.figures(),
+                                world.players(), fx);
+        sim::TransportStats cart, carrier;
+        std::uint64_t markets = 0, workshops = 0, no_figure_type = 0;
+        for (const std::optional<sim::Island>& iso : world.islands()) {
+            if (!iso) {
+                continue;
+            }
+            const sim::Island& is = *iso;
+            for (const auto& [id, key] : is.cache.by_id) {
+                const sim::Building* b = is.find_building(id);
+                if (b == nullptr) {
+                    continue;
+                }
+                const sim::BuildingType* t = types->find(b->type);
+                if (t == nullptr || t->prod.figure_ids.empty()) {
+                    continue;
+                }
+                std::uint32_t job = 0;
+                sim::TransportStats* stats = nullptr;
+                std::uint64_t* count = nullptr;
+                if (std::holds_alternative<sim::Market>(b->payload)) {
+                    job = sim::kJobMarketCart;
+                    stats = &cart;
+                    count = &markets;
+                } else if (std::holds_alternative<sim::Workshop>(b->payload)) {
+                    job = sim::kJobWorkshopCarrier;
+                    stats = &carrier;
+                    count = &workshops;
+                } else {
+                    continue;
+                }
+                const sim::FigureType* ft = types->find_figure_type(t->prod.figure_ids[0]);
+                if (ft == nullptr) {
+                    ++no_figure_type; // not classified (counted apart, T27 review)
+                    continue;
+                }
+                ++*count;
+                static_cast<void>(choose_source(serial, *types, job, *b, *t, key.city,
+                                                ft->capacity_88, sim::walk_rule(ft->layer), stats));
+            }
+        }
+        std::cout << "transport stats: " << want << " markets " << markets
+                  << " (cart: no_candidate " << cart.no_candidate << " unreached " << cart.unreached
+                  << " low_score " << cart.low_score << " found " << cart.found << "); workshops "
+                  << workshops << " (carrier: no_candidate " << carrier.no_candidate
+                  << " unreached " << carrier.unreached << " low_score " << carrier.low_score
+                  << " found " << carrier.found << "); senders without a figure type "
+                  << no_figure_type << "\n";
+    }
 }

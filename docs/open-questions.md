@@ -904,7 +904,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Update 2026-10-22 (community FAQ):** the house's reach counts, not the stall's radius. Stalls sell from the island store. The tavern keeper physically fetches alcohol within the tavern's radius. Reach at the edge is irregular, which suggests walker reach (`community-faq.md` §4).
 
 ## OQ-103: Which walkers need roads (new, tutorial series 2026-10-22)
-- **Status:** open, RE
+- **Status:** **decided 2026-10-24 (owner): the rule comes from the original's code, analysed thoroughly to be 100 % sure (T30); the working rule of 2026-10-22 below is the hypothesis T30 checks clause by clause.** Was: open, RE
 - **Area:** sim (transport, pathing)
 - **Evidence:**
   - The market cart (job `0x34`) searches the road net (`production.md` §5.2, D).
@@ -1483,21 +1483,23 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** read island property `0x11` in the island's property getter and setter and in the island record loader `0x10089130`; read the consumer at `0x1002893b`.
 
 ## OQ-160: Which tiles a cart and a carrier may enter: the walking layers (new, T24 2026-10-23; OQ-103, O-8)
-- **Status:** open, RE; the road rule is the owner's to confirm (OQ-103)
+- **Status:** **decided 2026-10-24 (owner): the walk rule comes from the original's code, analysed thoroughly to be 100 % sure (T30: the static decode and a check in the running original); the stand-in stays until T33 implements the decoded rule.** Was: open, RE; the road rule is the owner's to confirm (OQ-103)
 - **Area:** simulation / transport
 - **What we know (AnnoWelt, `docs/re/transport.md` §3, D):**
   - the figure's searcher takes the walking layer from the figure type's byte `+0xff` (`LOGIC[0x10]`, AnnoGame `0x1000faf0`);
   - the layer selects the table `0x100d1140 + 0x1c00 · layer` (engine `+0x430`);
   - the cells come from the island's tiles through island slot `+0x128` in mode 0, which reads a 9-bit mask per tile (likely the `WALKMASK` of the tile's object; every `ANLAGEN` entry has one, P 921 of 921).
 
-  The tables are `.data` filled at run time and are not read, so it is open which masks a layer accepts. P: figure 220 (the market cart) has layer 3, the only one; 287 figure types have layer 0, among them the carrier 203 and the native cart 390.
+  P: figure 220 (the market cart) has layer 3, the only one; 287 figure types have layer 0, among them the carrier 203 and the native cart 390.
+- **Update 2026-10-23 (T27, `docs/re/transport.md` §3.1; corrected after the round v review 2026-10-24):** D: the layer tables lie in initialised `.data`, `0x1c00` bytes per layer, five used (the sixth block is zero, P); the setters are `0x1000dd20` (`[engine+0x430]`) and `0x1000f010` (`[+0x1030]` of an object with another vtable); the base-relocation table has exactly these two absolute references to the tables and none into them, so a run-time write could only go through the stored pointers (not searched: "not written at run time" is **likely**). The cell a tile gives the search is `table[mask] | byte << 16` (`0x1008ff70`, loop `0x10090050`–`0x1009007b`, the u16 table `0x100c1af8`). P: the blocks hold 42–87 distinct byte values each, so their entries are not plain flags and the `0xff` counts (316 / 409 / 561 / 75 / 613) do not rank the layers. Still **open:** the meaning of an entry. The search functions `0x10003d90` / `0x10004890` do not read `+0x430`; the reader is `0x1000daf0` (vtable `0x100c18b0`; its twin `0x1000ed40`, vtable `0x100c1a30`): the next addresses (T30 step 2).
 - **What the rebuild does (stand-in, `transport.cpp` `walk_rule`):**
   - layer `kRoadLayer` = 3 walks on road tiles only (a tile whose object type has the HEAD flag `0x4000`);
   - every other layer walks on tiles without a building (no object, or an object whose type has no building list) and on roads;
   - the home's footprint and the candidates' footprints may always be entered.
 
   A tile is a whole tile; the original's 3 × 3 sub-cells and the walk masks are not used.
-- **How to resolve:** read the writer of `0x100d1140` (the engine's set-up, `0x1000dd20` and its callers) and `0x10091fa0` mode 0, then compare the masks with `WALKMASK`. Until then the layer value and the rule move into `SimConfig` (the path named at `kRoadLayer`) if the owner wants another rule.
+- **Terrain (T27 step 7; corrected after the round v review):** the stand-in ignores water and rivers. **Rivers are in the sim state:** the islands' `FLUESSE` items are tile objects (D: `scenario_formats.cpp`, the GELAENDE/FLUESSE/PROD2 item loop; `scenario.cpp` writes each `TileObjectSpec` with `set_object` on its footprint's top-left tile only); their types (2701.., P per the review: 2701–2707, no road flag) have no list, so their `walk_class` is 0 and an open-land walker crosses them. Open sea carries no tile object, so the state cannot tell it from open land. T27 step 7 had read "water carries object 0 like open land" for both, which is false for rivers. **Owner decision 2026-10-24:** no stand-in river rule; T30 step 5 reads how the original treats the river tiles (which footprint cells, bridges), T33 implements it with the decoded walk rule. See OQ-170.
+- **How to resolve:** read the reader `0x1000daf0` / `0x1000ed40` and their callers to decode an entry's meaning and how a cell value indexes the block (T30 step 2), compare with the tiles' `WALKMASK` (every `ANLAGEN` entry has one, P 921 of 921), and check it in the running original (T30 step 7). Until then the layer value and the rule stay in `transport.cpp` (`kRoadLayer`).
 
 ## OQ-161: How the original's search expands, and which nodes are goals (new, T24 2026-10-23; O-8)
 - **Status:** open, RE
@@ -1523,7 +1525,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** read the expansion of the engine at world `+0x6aa8` (vtable `0x100c1424`) and the entrance goals; then replace the stand-in with a stream and timeline bump.
 
 ## OQ-162: The walk in integers instead of the original's x87 floats (new, T24 2026-10-23; D13) — owner
-- **Status:** open, owner decision (the default is the integer walk; no float may enter hashed state)
+- **Status:** **decided 2026-10-24 (owner): the float walk** — the original's x87 walk reproduced bit-exactly, emulated in integer code with the floats' bit patterns in the state, so no native float enters hashed state (T34, ADR 0002); the integer walk stays until T34 stage 2. Was: open, owner decision (the default is the integer walk; no float may enter hashed state)
 - **Area:** simulation / transport
 - **What the original does (D, `docs/re/transport.md` §4):** a figure's time is `u16(t − stamp) · 0.2f` in x87 floats; the walk moves `time · speed` along f32 segments of `count / 3` tiles (diagonals × `1.41421354f`); the rest of the time after an action goes on to the next in the same call; the position is three floats.
 - **What the rebuild does (`transport.cpp` `walk`, `figure_type_from_entry`):**
@@ -1551,3 +1553,14 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Why T26 could not do it as "ListLayout data":** `list_for`/`class_for_prodtype` return "not a building" for ≥ 193, and several >192 PRODTYPEs are genuine tile objects (`ROHSTWACHS` 226, `ROHSTDUERR` 227) that the synthetic goldens place as growing objects. Making `list_for(>192)` return the production list reclassifies those as buildings and moves the goldens; extending/altering `block_to_list` or `default_list` changes a hashed layout field and moves **all** goldens. Both break T26's rule that only `scenario_corpus.txt` is re-recorded.
 - **What the rebuild does (T26):** a `DENKMAL`/>192 entry stays `EntryWithoutBuildingItem` (the ~34 corpus monuments are not created).
 - **How to resolve:** a scenario-adapter-only monument path — `create_building` accepting a forced list for an entry whose PRODTYPE is a monument (the base class, `Inert`, tick `None`, footprint claimed) — so the general building classification and the tile-object goldens are untouched; or model the monuments as tile objects. Either way the corpus `create_hash` of the files with monuments moves, so it is re-recorded in that commit.
+
+## OQ-170: Where the transport walk could learn water, river and mountain from (new, T27 2026-10-23; OQ-160, O-53)
+- **Status:** open, RE / design
+- **Area:** simulation / transport, terrain
+- **Why:** the T27 stand-in walk rule (OQ-160) classifies a tile only by its object type's walk class (road, building, or nothing). River pieces are tile objects in the state (`FLUESSE`, OQ-160 "Terrain") but their types have no list and no road flag, so they count as open land and a carrier crosses them; open sea has no object at all, so the state cannot tell it from land. How often this changes a trip in the shipped scenarios was not measured.
+- **The candidates for the information, in order of fidelity:**
+  1. The original's own answer: the walking-layer cells (OQ-160): `table[mask] | byte << 16` per tile, looked up in the layer's block. How water, shore and mountain tiles come out there is **open** until the reader `0x1000daf0` is read (T30 steps 2 and 5).
+  2. For rivers, the state already has the tile objects (`FLUESSE`, with the type's footprint); which of a piece's footprint cells block which layer is the original's rule (T30 step 5). For the sea and other terrain: the island tile record's terrain bits (`docs/re/islands.md`, the tile record's second dword), mapped to a sim terrain class.
+  3. A derived per-tile terrain class in the sim state built at load from the island's `gfx`/`height` (a new field → a `kStateHashVersion` bump; only if 1 and 2 cannot be read).
+- **What the rebuild does meanwhile:** nothing — the walk ignores terrain (stated in OQ-160); by the owner's decision of 2026-10-24 no stand-in rule is added; T33 implements what T30 reads.
+- **How to resolve:** T30 steps 2 and 5, then T33; decide then whether a sim terrain field is still needed for the sea.

@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
-#include <map>
 #include <optional>
 #include <utility>
 #include <variant>
@@ -85,14 +84,15 @@ std::uint64_t isqrt(std::uint64_t v) {
     return r;
 }
 
-/// The tile classes of the stand-in walk (OQ-160), memoised per object id for one
-/// search: a road (kRoadFlag) or a building (a type with a list in the layout: a
-/// building's footprint tiles carry its object, O-5).
+/// The tile classes of the stand-in walk (OQ-160): the tile object's type's
+/// walk_class (0 free, 1 road, 2 building; a building's footprint tiles carry its
+/// object, O-5), precomputed in TypeRegistry::finish (task T27).
 class TileTest {
   public:
-    TileTest(const TypeRegistry& types, const ListLayout& layout)
-        : types_(types), layout_(layout) {}
-    /// 0 = free, 1 = road, 2 = building.
+    explicit TileTest(const TypeRegistry& types) : types_(types) {}
+    /// 0 = free, 1 = road, 2 = building. The class is the tile object's type's
+    /// precomputed walk_class (TypeRegistry::finish, task T27); a one-entry memo of the
+    /// last object id saves the registry's binary search on runs of equal objects.
     std::uint8_t operator()(const Island& island, std::int32_t x, std::int32_t y) {
         const Slot idx = island.tile_index(x, y);
         if (idx == kNoSlot) {
@@ -106,28 +106,14 @@ class TileTest {
             return last_class_;
         }
         last_object_ = object;
-        const auto it = cache_.find(object);
-        if (it != cache_.end()) {
-            last_class_ = it->second;
-            return it->second;
-        }
         const BuildingType* t = types_.find(TypeId{object});
-        std::uint8_t c = 0;
-        if (t != nullptr && (t->flags_word & kRoadFlag) != 0) {
-            c = 1;
-        } else if (t != nullptr && layout_.list_for(t->prodtype).has_value()) {
-            c = 2;
-        }
-        cache_.emplace(object, c);
-        last_class_ = c;
-        return c;
+        last_class_ = t != nullptr ? t->walk_class : std::uint8_t{0};
+        return last_class_;
     }
 
   private:
     const TypeRegistry& types_;
-    const ListLayout& layout_;
-    std::map<std::uint32_t, std::uint8_t> cache_;
-    std::uint32_t last_object_ = 0; // a one-entry memo in front of cache_ (0: none)
+    std::uint32_t last_object_ = 0; // a one-entry memo (0: none)
     std::uint8_t last_class_ = 0;
 };
 
@@ -587,7 +573,8 @@ std::uint64_t segment_length_q24(FixedPos a, FixedPos b) {
 std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRegistry& types,
                                           std::uint32_t job, const Building& home,
                                           const BuildingType& home_type, CityRef city,
-                                          std::uint32_t capacity_88, WalkRule rule) {
+                                          std::uint32_t capacity_88, WalkRule rule,
+                                          TransportStats* stats) {
     const Island* island = world.island(city.island);
     const City* c = world.city(city);
     if (island == nullptr || c == nullptr) {
@@ -625,6 +612,9 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
         }
     }
     if (candidates.empty()) {
+        if (stats != nullptr) {
+            ++stats->no_candidate;
+        }
         return std::nullopt;
     }
     // Goals: the candidates' footprint tiles (the stand-in for their entrance points,
@@ -639,7 +629,7 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
             }
         }
     }
-    TileTest test(types, world.layout());
+    TileTest test(types);
     GridTiles tiles(g, area, *island, std::move(goal_of),
                     [&](std::int32_t x, std::int32_t y, bool is_goal) {
                         if (is_goal || in_footprint(home, home_type, x, y)) {
@@ -653,6 +643,7 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
     std::optional<std::size_t> best;
     GoodsId best_goods = 0;
     TileXY best_tile;
+    bool reached = false; // a goal node was visited (T27 diagnostic)
     auto visit_cart = [&](std::size_t k, std::int32_t x, std::int32_t y) {
         // The callback 0x1005a900.
         const Building& b = *candidates[k].b;
@@ -715,6 +706,7 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
         return available(*candidates[k].b, *candidates[k].t, goods, c) < q;
     };
     auto visit = [&](std::uint32_t k, std::int32_t x, std::int32_t y) {
+        reached = true;
         if (candidates[k].scored) {
             return true; // its further entrances score the same (strict `<`)
         }
@@ -724,6 +716,9 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
     const std::vector<std::uint64_t> parent =
         search(g, footprint_tiles(home, home_type), tiles, visit);
     if (!best) {
+        if (stats != nullptr) {
+            ++(reached ? stats->low_score : stats->unreached);
+        }
         return std::nullopt;
     }
     SourceChoice choice;
@@ -731,18 +726,23 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
     choice.goods = best_goods;
     choice.path = path_to(g, parent, best_tile);
     if (choice.path.empty()) {
+        if (stats != nullptr) {
+            ++stats->unreached;
+        }
         return std::nullopt;
+    }
+    if (stats != nullptr) {
+        ++stats->found;
     }
     return choice;
 }
 
 std::optional<std::vector<TileXY>> path_home(const Island& island, const TypeRegistry& types,
-                                             const ListLayout& layout, const Building& home,
-                                             const BuildingType& home_type, TileXY from,
-                                             WalkRule rule) {
+                                             const Building& home, const BuildingType& home_type,
+                                             TileXY from, WalkRule rule) {
     const SearchArea area = search_area(home, home_type);
     const Grid g = area_grid(area, island);
-    TileTest test(types, layout);
+    TileTest test(types);
     std::vector<std::uint32_t> goal(static_cast<std::size_t>(std::uint64_t{g.w} * g.h), 0);
     for (const TileXY& t : footprint_tiles(home, home_type)) {
         if (const auto i = g.index(t.x, t.y)) {
@@ -859,9 +859,9 @@ void start_home(Job& j) {
         return; // no walk: the arrival follows in the same call
     }
     const Island* island = j.world.island(island_of(j.home->id));
-    const auto path = island != nullptr ? path_home(*island, j.ctx.types, j.world.layout(), *j.home,
-                                                    *j.home_type, at, j.rule)
-                                        : std::nullopt;
+    const auto path = island != nullptr
+                          ? path_home(*island, j.ctx.types, *j.home, *j.home_type, at, j.rule)
+                          : std::nullopt;
     if (!path) {
         tr.step = TransportStep::Done; // figure slot +0xcc found no path (0x10057bb1)
         return;

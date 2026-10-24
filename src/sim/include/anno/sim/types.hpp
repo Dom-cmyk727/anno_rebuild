@@ -150,6 +150,10 @@ struct FigureType {
     std::uint32_t load_ticks = 0;
 };
 
+/// The HEAD flag word bit of a road or bridge (type +0x12, HEAD u16 [0x1c];
+/// docs/re/production.md §2.3; P: 35 of the 921 types).
+inline constexpr std::uint32_t kRoadFlag = 0x4000;
+
 struct BuildingType {
     TypeId id;
     /// The PRODTYPE number (D AnnoGame 0x100138e0), 0 = UNUSED.
@@ -188,6 +192,16 @@ struct BuildingType {
     bool has_prod = false;
     /// Valid when has_prod.
     ProductionType prod;
+    /// DERIVED, not file state: the walk class of the tile this type occupies for the
+    /// transport search (0 = does not block, 1 = road, 2 = a building). Computed in
+    /// TypeRegistry::finish from `flags_word & kRoadFlag` (road) and
+    /// `layout.list_for(prodtype)` (a building occupies its footprint) — the rule of
+    /// TileTest in transport.cpp, moved to a per-type field (task T27). It is NOT in
+    /// `fields()` and NOT in the registry digest (types_test "registry digest stable"
+    /// pins the digest; "registry digest changes with every field" leaves it out). Like
+    /// `cls`, which IS hashed, it depends on the layout the registry was built with, not
+    /// only on the parsed file.
+    std::uint8_t walk_class = 0;
 };
 
 /// The immutable type data of a world.

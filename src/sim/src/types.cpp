@@ -215,8 +215,10 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
 
 static_assert(field_count<ProductionType>() == 18,
               "a ProductionType member needs a line in digest_production");
-static_assert(field_count<BuildingType>() == 21,
-              "a BuildingType member needs a line in digest_type");
+// 22 since T27: the last member, the derived walk_class, is deliberately NOT hashed;
+// digest_type skips it. (cls, also derived from the build layout, is hashed.)
+static_assert(field_count<BuildingType>() == 22,
+              "a BuildingType member needs a line in digest_type (walk_class excepted: derived)");
 static_assert(field_count<EntrancePoint>() == 2,
               "an EntrancePoint member needs a line in digest_type");
 static_assert(field_count<FigureType>() == 5, "a FigureType member needs a line in the digest");
@@ -703,6 +705,14 @@ TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goo
     auto sealed = std::make_shared<Sealed>();
     TypeRegistry& r = *sealed;
     r.digest_ = digest_registry(types, goods_in, classes, figures);
+    // walk_class is DERIVED and set after the digest, so it stays out of it (the rule
+    // of TileTest in transport.cpp, now a per-type field; task T27): road flag -> 1, a
+    // type that occupies a building list -> 2, else 0 (no object or a non-blocking one).
+    for (BuildingType& t : types) {
+        t.walk_class = (t.flags_word & kRoadFlag) != 0               ? std::uint8_t{1}
+                       : cfg.layout.list_for(t.prodtype).has_value() ? std::uint8_t{2}
+                                                                     : std::uint8_t{0};
+    }
     r.types_ = std::move(types);
     r.figure_types_ = std::move(figures);
     r.goods_ = std::move(goods_in);

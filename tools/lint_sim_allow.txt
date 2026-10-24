@@ -58,7 +58,7 @@ src/sim/src/types.cpp:float (?:speed|wait) = f32\(  # load-time conversion: the 
 # --- transport.hpp / transport.cpp (task T24)
 # Job codes (D: the unit job table) and a HEAD flag bit: discriminants, not counts.
 src/sim/include/anno/sim/transport.hpp:kJob(?:MarketCart|WorkshopCarrier) = 0x\w+;  # figure job code (D 0x1006b6d0, 0x100680b0), a discriminant not a count
-src/sim/include/anno/sim/transport.hpp:kRoadFlag = 0x4000;  # HEAD flag word bit of a road (P), a bit not a count
+src/sim/include/anno/sim/types.hpp:kRoadFlag = 0x4000;  # HEAD flag word bit of a road (P), a bit not a count
 # The walking layer of the road rule: a layer value, a stand-in for the unread layer
 # tables (OQ-160), with its path to configuration in the header comment.
 src/sim/include/anno/sim/transport.hpp:kRoadLayer = 3;  # walking layer value of the road rule (P, stand-in OQ-160), not a count

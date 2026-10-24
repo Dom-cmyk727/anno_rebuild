@@ -38,10 +38,6 @@ inline constexpr std::uint32_t kJobMarketCart = 0x34;
 /// The job code of the workshop carrier (D 0x100680b0, docs/re/production.md §4.1).
 inline constexpr std::uint32_t kJobWorkshopCarrier = 0x33;
 
-/// The HEAD flag word bit of a road or bridge (type +0x12, HEAD u16 [0x1c];
-/// docs/re/production.md §2.3; P: 35 of the 921 types).
-inline constexpr std::uint32_t kRoadFlag = 0x4000;
-
 /// The walking layer (FigureType::layer, LOGIC[0x10]) that the stand-in search keeps
 /// on the road net. A STAND-IN for the unread layer tables at 0x100d1140 (OQ-160): P,
 /// the one figure type with layer 3 is the market cart 220 (the cart needs roads,
@@ -122,23 +118,35 @@ struct SourceChoice {
     std::vector<TileXY> path;
 };
 
+/// A diagnostic tally of why a search ended, filled when `choose_source` is passed a
+/// non-null pointer (task T27, measurement only; not sim state, not hashed, not drawn —
+/// a pure classification of the one search). Exactly one counter is bumped per call that
+/// reaches the candidate stage.
+struct TransportStats {
+    std::uint64_t no_candidate = 0; ///< (i) no building passed the filter
+    std::uint64_t unreached = 0;    ///< (ii) candidates, but the search reached no goal
+    std::uint64_t low_score = 0;    ///< (iii) a goal was reached but no score beat the start
+    std::uint64_t found = 0;        ///< (iv) a source was chosen
+};
+
 /// Step A's choice for a cart of market `home` (D 0x1005ad10 with the callback
 /// 0x1005a900) or a carrier of workshop `home` (D 0x1005a530 with the callback
 /// 0x1005a400): nullopt when no candidate passes the filter or none is reached with a
 /// score above the start (0 for the cart, -1 for the carrier). `capacity_88` is the
 /// figure type's capacity (the carrier's early stop at 3/4 of it), `rule` its walk.
-[[nodiscard]] std::optional<SourceChoice> choose_source(const SerialWorld& world,
-                                                        const TypeRegistry& types,
-                                                        std::uint32_t job, const Building& home,
-                                                        const BuildingType& home_type, CityRef city,
-                                                        std::uint32_t capacity_88, WalkRule rule);
+/// `stats`, when non-null, is bumped in exactly one bucket by a call that reaches the
+/// candidate filter (TransportStats); a call whose island or city is gone bumps none.
+[[nodiscard]] std::optional<SourceChoice>
+choose_source(const SerialWorld& world, const TypeRegistry& types, std::uint32_t job,
+              const Building& home, const BuildingType& home_type, CityRef city,
+              std::uint32_t capacity_88, WalkRule rule, TransportStats* stats = nullptr);
 
 /// The stand-in path from the world tile `from` to the nearest tile of the footprint
 /// of `home` inside its area (step C's walk, D 0x10057ae0 with the callback 0x10054240:
 /// the first goal reached); nullopt when there is none.
 [[nodiscard]] std::optional<std::vector<TileXY>>
-path_home(const Island& island, const TypeRegistry& types, const ListLayout& layout,
-          const Building& home, const BuildingType& home_type, TileXY from, WalkRule rule);
+path_home(const Island& island, const TypeRegistry& types, const Building& home,
+          const BuildingType& home_type, TileXY from, WalkRule rule);
 
 /// The length of a straight walk segment in 2^-24 tile: |d| on an axis, |d| · √2 on a
 /// diagonal (the segment builder 0x1002fde0 multiplies by 1.41421354f: 23726566 per

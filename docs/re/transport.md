@@ -382,6 +382,24 @@ The 33 outputs have high nibbles only in `{0, 3, 4, 7, 8, b, c, f}` (pairs 0+3, 
 - The class of the sub-object. No direct write to `[reg + 0x858]` was found (sweep finds zero); the constructor `0x1000eb40` writes `+0x85c` from an argument but not `+0x858`. The outer engine's constructor at `0x10012079` writes `[esi + 0x27d8] = arg` (which is the embedded engine's `+0x434`), but the sub-object's own vtable write wasn't located. The field is likely written **during a later `init` method call** on the engine, not in the constructor. Checking who else calls `[engine + something]` with the newly-allocated engine (`0x100aac23` calls `[eax + 0x80]` which is the layer-table setter `0x1000dd20`) might reach it.
 - Of the 76 `call [reg + 0xec]` sites in `AnnoWelt.dll`, **four match this family's pattern** by eye (two or three dword pushes with the last being a buffer pointer): `0x1000db4a` and `0x1000ed9a` (our targets), `0x1000fa33` (the `+0x40`-stride variant), and `0x1000faed` (another variant nearby). The others look like unrelated virtual methods on different classes. T30b step 2 reads one body to decide which (likely the shared method lives on the sub-object's base class).
 
+#### 3.4.2 Memory compare in the running game: dead data confirmed (T30b.4, 2026-10-24)
+
+**D.** The Wine runner read the five 7168-byte blocks at `annowelt_base + 0xd1140 + 0x1c00·L` (L = 0..4) from the running game's memory and compared each byte to the matching bytes in `game/app/AnnoWelt.dll` on disk (`pefile`). The run (`tools/orig/layer_blocks.py`, two passes with the game loaded):
+
+| Pass | After | Result (per block) |
+|---|---|---|
+| 1 | new-game Citizen (0 game-ms) | layer 0..4: **equal** |
+| 2 | +600 244 game-ms (≈ 10 game minutes) | layer 0..4: **equal** |
+
+All ten cells **equal** — every byte at every offset matches the DLL image. The blocks are not written at run time. Combined with §3.4.1 (zero cross-module references) and §3.3–§3.3.2 (no reader of `[X + 0x430]` as a pointer in class X's vtable; the three chunk-fetch family readers all dispatch on world chunk-row methods), **the walking-layer tables at `0x100d1140` are dead data in the shipped build**. The pointer the class-X setter writes into `[X + 0x430]` is never read as data; the data at `0x100d1140 + 0x1c00·L` is never read nor written at run time.
+
+**Consequence for OQ-175.** The walkability yes/no is **not** in these layer blocks. The remaining theories are:
+
+1. **Sub-cell bit reader** on the sub-cell u16 the three chunk-fetch readers (§3.3.1, §3.3.2) write with `(v & 0x8007) | 7` or `(v & 0xfc07) | 7`. A reader that tests bits 0..2 of the sub-cell must exist somewhere; the search engine on `world + 0x6aa8` vtable `0x100c1424` is the most plausible place (T30b.3e).
+2. The chunk's byte array at `[chunk + 0x10]` filled by `0x1000daf0` (block fetch) and its siblings — the sub-cells themselves carry walkability bits, not the layer-table blocks.
+
+**The run.** Written up in REPORTS.md T30b.4. The write-up includes the one scope note: pass 2's `wait_game_ms` reported `status: timeout` because the loop's deadline (10 real minutes) was reached as the last check, yet `advanced_ms = 600244 ms` shows the game clock DID advance just past 10 game minutes before the final read. The `F4` keypress to accelerate the game to 400 % appears to have been dropped by the WSLg forwarder (game clock advanced at ≈ 1× real time instead of 4×); the memory-compare result is unaffected because the game time did reach the target. The tool `tools/orig/layer_blocks.py` is a committed addition.
+
 ### 3.5 Step 7 is BLOCKED on a figure-position reader
 
 Step 7 of T30 calls for building the playbook opening in the running original, reading the tile records of the opening's buildings and the market cart's position tick by tick, and checking each observed tile against the decoded rule. The Wine runner is set up (`docs/testing/original-wine.md`), the opening macro runs (`tools/orig/opening.py`), and `tools/orig/gamestate.py` reads world, players and city stocks. **It has no figure-position reader**, and no decoded figure object layout in memory (the sim's `figure.hpp` has one, but the ORIGINAL's figure layout is different). The reader is a task of its own: find the figure table off `world + ?`, read figure records (position, direction, tile), export them to the harness. **Done here instead:** step 7(a) and (b) are reduced to "memory-compare the five 7168-byte blocks at `0x100d1140` with the DLL image after a scenario loads" (no figure reader needed), left as a next-task sub-step of T30b with a mem-reader call plan. Step 7(c)/(d) wait on T30b's figure reader.

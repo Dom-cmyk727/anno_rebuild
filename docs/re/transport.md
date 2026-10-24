@@ -632,6 +632,90 @@ Re-disassembled by the orchestrator (`tools/disasm.py`, `pefile`), D unless mark
 
 **What this means for OQ-175 (status back to "narrowed"):** the 4-byte cell of the search engine's 4×4 chunks is the unit of the walk rule. Its low u16 carries a top nibble and the bits `0x2111` that the default expansion tests on a neighbour; its high u16 carries a 10-bit code (`0x80..0x86` select four special expansions, everything else the default) plus bit 10 (the `0x10003220` branch) and the three state bits `| 7` of the marks. The yes/no for an ordinary step is `table[code] & bit`, with the table behind `[this + 0x42c]` of the expansion's `this`. Three readings remain: the rest of `0x10006a40` (T30b.3j), the fill that writes the cells from the island's tiles (T30b.3k: the slot-0 call, the world handler kind, the copy routine, and `0x1008ff70`'s `table[mask] | byte << 16` of §3.1 (b), which now reads as "low u16 = the mapped 9-bit mask, high byte = a tile byte" — exactly the cell), and `0x10003220` with the four special expansions (T30b.3l). The named-road question (OQ-171) is answered where the fill turns a road tile's record into the low u16's bits.
 
+#### 3.4.8 The default expansion `0x10006a40` (T30b.3j, 2026-10-25)
+
+**D.** `tools/disasm.py` on `AnnoWelt.dll` `0x10006a40`. Two `ret 4` epilogues (`0x10006ecf` for the in-chunk right path, `0x10006f27` for the right-edge path); the `jae 0x10006ed2` at `0x10006e79` crosses the first, so the function runs to `0x10006f27`. Helpers read to their `ret`: `0x10006f30` (`ret 0xc`), `0x10006f70` (allocate / mark / tree-insert), `0x10007180` (pop a `0x1c` node), `0x1000d4e0` (score-tree insert), `0x1000b850` (neighbour chunk by direction). T30b.3i's `edi` at the call site is `Y + 4` (PR #54, `transport.md` §3.4.7); fn1 does `lea ecx, [edi + 4]`.
+
+**`this` and absolute offsets (D).**
+
+| Item | Value | Evidence |
+|---|---|---|
+| `this` | `Y + 8` | `0x10006a4e` `mov esi, ecx`. Caller: `lea ecx, [edi + 4]` with `edi = Y + 4`. |
+| `[this + 0x42c]` | `Y + 0x434` | Byte table. Loaded at `0x10006a8e` and every neighbour's table test. Matches §3.4.6's "likely `Y + 0x434`". |
+| `[this + 0x414]` | `Y + 0x41c` | Tree / open-list sentinel. `lea ecx, [esi + 0x414]` then `0x1000d4e0`; `0x10006f70` at `0x1000701d`. Same field as fn1's `[this + 0x418]`. |
+| `[this + 0x420]` / `+0x424` / `+0x428` | `Y + 0x428` / `Y + 0x42c` / `Y + 0x430` | Free list. `0x10007180` is called with `lea ecx, [esi + 0x420]`; `0x10006f70` pops the same triple. |
+| `[this + 0x444]` | — | **Not read or written** in `0x10006a40` or `0x10006f70`. The best score stays the prologue zero until some other function writes it. |
+
+**Per neighbour (D).** Four orthogonal neighbours. No diagonal call in this function (`0x1000b850` is invoked with directions `0`, `2`, `4` only). Fail = skip that neighbour (`je` to the next). Pass = add a cost byte, mark the neighbour's high u16, allocate a `0x1c` node, insert it on the score tree.
+
+| Dir | In-chunk cell | In-chunk mask (low u16) | Edge (`x`/`y` 0 or 3) | `dl` for `[table + code] & dl` | Cost byte | Mark on high u16 | New node |
+|---|---|---|---|---|---|---|---|
+| Up | `cell − 0x10` (`0x10006a81`) if `y > 0` | `0x2111` | `y == 0`: `0x10017510` then maybe `0x1000b790`; test `[nbr + x*4 + 0x30], 0x2111` (`0x10006bab`) — the neighbour chunk's row `y = 3` | `(nibble & 8) << 3` = `0x40` or `0` (`0x10006a9f..0x10006aa4`) | `[table + code*8 + 0x406]` (`0x10006ab9`) | `(v & 0xfc86) \| 0x86` (`0x10006adb..0x10006ae5`) | same chunk, `(x, y−1)`; or neighbour chunk, `(x, 3)` |
+| Down | `cell + 0x10` (`0x10006c66`) if `y < 3` | `0x8444` (`0x10006c69`) | `y == 3`: `0x1000b850(chunk, 2)` (`0x10006cff`); test `[nbr + x*4], 0x8444` (`0x10006d1b`) — neighbour row `y = 0` | `(nibble & 2) << 1` = `0x04` or `0` (`0x10006c8c..0x10006c91`) | `[table + code*8 + 0x402]` (`0x10006ca5`) | `(v & 0xfc82) \| 0x82` (`0x10006cbe..0x10006cc3`) | same chunk, `(x, y+1)`; or neighbour chunk, `(x, 0)` |
+| Left | `cell − 4` (`0x10006dd0`) if `x > 0` | `0x4888` (`0x10006dd0`) | `x == 0`: `0x1000b850(chunk, 0)` (`0x10006e13`); cell at `nbr + y*16 + 0xc` (`0x10006e34..0x10006e37`) — neighbour `x = 3` | in-chunk: `[table + code] & nibble`, then `test dl, 1` (`0x10006df7..0x10006dfc`); edge: `0x10006f30` with `dl = nibble & 1` (`0x10006e2d..0x10006e3b`) | via `0x10006f70` with dir-index `0` → `[table + code*8 + 0x400]` | via `0x10006f70`: low 10 bits become `(old ^ 0x80) & 0x3ff` (`0x10006fb4..0x10006fc4`) | `0x10006f70`: chunk, `(x−1, y)` or `(3, y)` |
+| Right | `cell + 4` (`0x10006e94`) if `x < 3` | `0x1222` (`0x10006e8c`) | `x == 3`: `0x1000b850(chunk, 4)` (`0x10006ed2`); `0x10006f30` on that chunk (`0x10006efe`) | `(nibble & 4) << 2` = `0x10` or `0` (`0x10006e81..0x10006e84`); test in `0x10006f30` | `0x10006f70` with dir-index `4` → `[table + code*8 + 0x404]` | same helper: `(old ^ 0x84) & 0x3ff` in the low 10 bits | `0x10006f70`: chunk, `(x+1, y)` or `(0, y)` |
+
+`0x1000b850(this, chunk, dir)` (`0x1000b85b..0x1000b884`) takes `[chunk + 0x40]` / `[chunk + 0x42]` as the chunk's tile origin, `>> 2` to chunk indices, and a jump table at `0x1000c170` on `dir`. `dir = 0` decrements the x-chunk (`0x1000b88b`). It is not `0x100064b0`; it is the neighbour-chunk fetcher.
+
+`0x10006f30(cell, dl, mask)` (`0x10006f30..0x10006f64`): `test [cell] & mask`; then `test [table + (high u16 & 0x3ff)], dl`; returns `1` or `0`.
+
+**Top nibble (`bx >> 12` at `0x10006a70`) — every use (D).** `bx` is the current cell's **low** u16 shifted down 12. It is not reloaded.
+
+| Nibble bit | Value | Use | Where |
+|---|---|---|---|
+| 3 | `8` | `dl = 0x40` for the up table test | `0x10006a9f`, `0x10006bcd` |
+| 1 | `2` | `dl = 0x04` for the down table test | `0x10006c8c`, `0x10006d3c` |
+| 0 | `1` | left table test (`[table + code] & nibble` bit 0; edge `dl = nibble & 1`) | `0x10006dfa`, `0x10006e3b` |
+| 2 | `4` | `dl = 0x10` for the right table test | `0x10006e81`, `0x10006eea` |
+
+Bit 3 choosing `dl = 0x40` is the up-direction bit of this nibble. The four bits are the current cell's per-direction keys into the neighbour's admission byte.
+
+**Costs and enqueue (D).** There are no immediate cost constants. The cost of a step is a **byte** at `[table + (neighbour_code & 0x3ff)*8 + 0x400 + dir]` (`dir` = 6 up, 2 down, 0 left, 4 right), added to `[node + 0x18]` (`0x10006ac2`, `0x10006cae`, `0x10006fb0`). The new node's `+0x18` is that sum. Enqueue is **not** fn2: `0x10007180` (or the same pop inside `0x10006f70`) takes a `0x1c` record from the free list at `[this + 0x420]`, then `0x1000d4e0` / `0x10006f70`'s tree walk inserts it at `[this + 0x414]` by comparing `+0x18`. `[this + 0x444]` is not touched.
+
+**Pseudo-code (D).** `this` = `esi` = `Y + 8`. `node` = the stack argument (`0x10006a47`).
+
+```
+chunk = [node + 0x10];  x = [node + 0x14];  y = [node + 0x16]     # 0x10006a4b..0x10006a58
+nibble = low_u16[cell] >> 12                                     # 0x10006a6b..0x10006a70
+table = [this + 0x42c]                                           # Y + 0x434
+
+# up
+if y > 0:                                                        # 0x10006a74
+    try_up(cell - 0x10, same chunk, (x, y-1))                    # 0x10006a81..0x10006c3f
+else:
+    nbr = lookup_chunk_above()                                   # 0x10006b1b..0x10006b9f
+    try_up(nbr + x*4 + 0x30, nbr, (x, 3))                        # 0x10006ba5..0x10006c3f
+
+# down
+if y < 3:                                                        # 0x10006c4a
+    try_down(cell + 0x10, same chunk, (x, y+1))                  # 0x10006c54..0x10006dad
+else:
+    nbr = 0x1000b850(this, chunk, 2)                             # 0x10006cff
+    try_down(nbr + x*4, nbr, (x, 0))                             # 0x10006d15..0x10006dad
+
+# left
+if x > 0:                                                        # 0x10006db8
+    if [cell-4] & 0x4888 and (table[code] & nibble) & 1:
+        0x10006f70(..., dir=0)                                   # 0x10006e0e..0x10006e6a
+else:
+    nbr = 0x1000b850(this, chunk, 0)                             # 0x10006e13
+    if 0x10006f30(nbr + y*16 + 0xc, nibble & 1, 0x4888):
+        0x10006f70(nbr, (3, y), dir=0)                           # 0x10006e49..0x10006e6a
+
+# right
+if x < 3:                                                        # 0x10006e75
+    if 0x10006f30(cell+4, (nibble & 4)<<2, 0x1222):              # 0x10006ea0
+        0x10006f70(chunk, (x+1, y), dir=4)                       # 0x10006ec3
+    return                                                       # 0x10006ecf
+else:
+    nbr = 0x1000b850(this, chunk, 4)                             # 0x10006ed2
+    if 0x10006f30(..., (nibble & 4)<<2, 0x1222):
+        0x10006f70(nbr, (0, y), dir=4)                           # 0x10006f1b
+    return                                                       # 0x10006f27
+```
+
+`try_up` / `try_down` are the inlined blocks: mask on the low u16, `test [table + code], dl`, cost byte, mark, `0x10007180`, fill `+0x10/+0x14/+0x16/+0x18`, `0x1000d4e0`.
+
 ### 3.5 Step 7 is BLOCKED on a figure-position reader
 
 Step 7 of T30 calls for building the playbook opening in the running original, reading the tile records of the opening's buildings and the market cart's position tick by tick, and checking each observed tile against the decoded rule. The Wine runner is set up (`docs/testing/original-wine.md`), the opening macro runs (`tools/orig/opening.py`), and `tools/orig/gamestate.py` reads world, players and city stocks. **It has no figure-position reader**, and no decoded figure object layout in memory (the sim's `figure.hpp` has one, but the ORIGINAL's figure layout is different). The reader is a task of its own: find the figure table off `world + ?`, read figure records (position, direction, tile), export them to the harness. **Done here instead:** step 7(a) and (b) are reduced to "memory-compare the five 7168-byte blocks at `0x100d1140` with the DLL image after a scenario loads" (no figure reader needed), left as a next-task sub-step of T30b with a mem-reader call plan. Step 7(c)/(d) wait on T30b's figure reader.

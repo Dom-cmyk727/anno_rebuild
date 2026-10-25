@@ -634,13 +634,13 @@ Inventory only (`docs/re/population.md` §11). No payload, stream or golden chan
 Pointer only (`docs/re/population.md` §12). No payload, stream or golden change here; the DRAFT is §4.7c, P1 implements. Not §5.9.
 
 - **Every 2500 ticks** (`house+0x0a += 2500` after a 16-bit gate): `E` smooth, **house-stock** decay `·127/128` (not a city-store take), `s_j` cap 160, optional walker spawn, mood −2…+2, `VermehrTab[mood]` into `+0x2c`, city counter add/sub, then upgrade (next type `id − id%20 + 20`) or downgrade (`id − id%20 − 20`, else `− 19`).
-- **City store** is reduced by billing with `take = 1` (`0x1002dac0`), which the house tick does not call. T32.3 (OQ-186): the `take = 1` wrapper is **MarketStall** slot `+0xac`.
+- **City store** is reduced by billing with `take = 1` (`0x1002dac0`), which the house tick does not call. T32.3 (OQ-186): the `take = 1` wrapper is **MarketStall** slot `+0xac`. T32.4 (OQ-187): the caller is job `0x35` step B (`0x10056480`).
 - **Taxes** are the city booking every 2000 ticks (`0x10029950`): surcharge `PreisLevel[tax]` on billed consumer goods, `(sum+128)>>8` into player money; not a per-head tax.
 - **Draws** (world PRNG slot `+0xb4`): walker target, upgrade/downgrade variant, SetGroup first-assignment satisfaction. Sites in §12.6.
 
 ### 4.7c Population (DRAFT, T32)
 
-Not implemented. Not §5.9. Evidence: `docs/re/population.md` §11–§13. The orchestrator writes P1 from this section. T26's three pure functions stay; P1 **applies** them (they are not applied today: `HouseRecordNotModelled`).
+Not implemented. Not §5.9. Evidence: `docs/re/population.md` §11–§14. The orchestrator writes P1 from this section. T26's three pure functions stay; P1 **applies** them (they are not applied today: `HouseRecordNotModelled`).
 
 #### House payload (state)
 
@@ -672,7 +672,7 @@ Per group: `BGruppeNr`, `NoUpgrade`/`NoDowngrade`, `n`, lookup id→slot, `Ware`
 
 House update is the **class tick**, not a city_pass. `city_tick` already runs `building_scheduler` first (list L3 = houses, period 2500 in `ClassInfo::gate_period`). `tick_building` gains `TickKind::House` and runs §12.2. It does **not** subtract from `CityStock`.
 
-Nothing moves goods from the city store into a house in one step. **MarketStall** (PRODTYPE 161, list L0, never scheduled) building slot `+0xac` = `0x100702f0` bills with `take = 1` and so **reduces** `CityStock` (OQ-186). PublicService / School `+0xac` bill with `take = 0` (income without a take). House and Market `+0xac` are the 3-arg stub `0x100a3950` (return 0). House stocks are filled by building slot `+0xc0` = `0x10076610` (`stock += amount·16`), already the figure unload path (`0x10057bd0`). P1 does not spawn walkers and does not call stall `+0xac` (who does is OQ-187).
+Nothing moves goods from the city store into a house in one step. **MarketStall** (PRODTYPE 161, list L0, never scheduled) building slot `+0xac` = `0x100702f0` bills with `take = 1` and so **reduces** `CityStock` (OQ-186). The caller is the resident walker, job `0x35` step B arrival `0x10056480` (OQ-187, `population.md` §14): `this` = the building of mask `0x21` at the walker's tile. PublicService / School `+0xac` bill with `take = 0` (income without a take). House and Market `+0xac` are the 3-arg stub `0x100a3950` (return 0). House stocks are filled by building slot `+0xc0` = `0x10076610` (`stock += amount·16`), by job `0x35` step C arrival `0x10057d70` (cart/carrier unload is `0x10057bd0`). P1 does not spawn walkers and does not call stall `+0xac`.
 
 Taxes are city_pass index 3 = `0x10029950` (already named in `Seams::city_pass`, currently null). P4 installs booking there. Stage unlock `0x10029610` is city_pass index 1 (P4 or later).
 
@@ -721,7 +721,7 @@ P1 adds the `House` payload alternative at the end of the building variant (appe
 | **P2** | House tick: `E` smooth, stock decay, mood, `VermehrTab`, floors; no upgrade, no walker. | G7 residents and stocks match the §12.2 integer formulas for N updates; city store unchanged. |
 | **P3** | UpgradeCheck / Upgrade / Downgrade / `SetGroup`. | G7 upgrades when the next tables are > 0 and materials are in store; type id `+ 20`; house_counts move. |
 | **P4** | Booking city_pass (taxes into player money); stage mask optional. | G7 money matches `(sum(Preis+PreisLevel)·billed + 128) >> 8` after a forced billed vector. |
-| **P5** | Delivery `+0xc0`, stall billing `+0xac` `take = 1` (OQ-187), walker spawn. | A stall take reduces `CityStock` and raises billed; a house delivery raises house stock by `amount·16`. |
+| **P5** | Job `0x35` walker (`population.md` §14): spawn `+0x118`; step A search (house `HEAD[0x11]` area, mask `0x21`, highest `+0xd4`); step B stall `+0xac` `take = 1` (`0x10056480`); step C house `+0xc0` (`0x10057d70`). | A stall take reduces `CityStock` and raises billed; a house delivery raises house stock by `amount·16`. |
 
 P1 is the first code stage. P2–P5 may merge if the orchestrator wants one PR; each still has the acceptance row.
 
@@ -731,7 +731,7 @@ P1 is the first code stage. P2–P5 may merge if the orchestrator wants one PR; 
 2. **256 delivered units = 1 t.** **Likely** (delivery `×16`, demand `/16`, booking `>> 8`). **Default:** treat store as tons≪8 and delivered amounts as that unit. Confirm with T1 / M2.1 (no feel change if the likely reading is right).
 3. **Owner decision 2026-10-25: save them**, as a `Rules` option `save_billed_goods` (default **true**, the owner's choice; `false` reproduces the original, which drops them). The billed and taken amounts of every city's store (`CityStock` `+4` / `+8`) then become saved state under that option; with `false` they stay period scratch as below. P4 implements the option with a test for each value. **Billed/taken not saved.** Original drops them. **Default:** drop them (a load mid-period loses unbooked income). Option: save billed.
 4. **City totals hashed or derived.** Original rebuilds on load. **Default:** derived, not in the stream (OQ-165).
-5. **Walker spawn and `NoDowngrade` removal.** Calls D, meaning likely. **Default:** P1–P4 do not spawn a resident walker and do not demolish via island `+0xcc`. P5 after OQ-187.
+5. **Walker spawn and `NoDowngrade` removal.** Spawn is D (job `0x35`, OQ-187 answered T32.4). Island `+0xcc` as remove stays likely. **Default:** P1–P4 do not spawn a resident walker and do not demolish via island `+0xcc`. P5 is the §14 path.
 6. **Climate = island property 7.** **Likely.** **Default:** use `Island::climate` in booking.
 7. **Mood-force flags (fire/plague).** Who sets bits 4/5 is unread (`0x1002ba80`). **Default:** flags stay 0 until that path; a loaded `mood_flags` is kept if we ever save it (P1 may omit the byte and treat flags as 0).
 

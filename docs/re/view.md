@@ -171,3 +171,37 @@ No new original-game session or large snapshot set was started for this static t
 - The in-game volumes come from the profile's `VOLUME` chunk (`tools/orig/userdat.py`,
   `docs/testing/original-wine.md` §2.2); set to (−250, −250) on this PC's copy on 2026-10-25 for
   the owner's "without sound" runs. There is no effects slider.
+
+### 3.2 The arrow keys are polled: the scroll methods (D, orchestrator 2026-10-25, round as)
+
+`AnnoFrame.dll` imports `GetAsyncKeyState` (IAT slot `0x10086208`; `analysis/pe_symbols.json` lists
+it as the module's only key import). The slot is read in exactly two functions (a byte search for the
+slot address in `.text`): **`0x10005a10`** and **`0x1000b090`**. Both, re-disassembled with
+`tools/disasm.py`:
+
+- load the import into `edi` and call it for `VK_UP` `0x26` (sets bit 4 of a mask in `ebx`), else
+  `VK_DOWN` `0x28` (bit 8); then `VK_LEFT` `0x25` (bit 1), else `VK_RIGHT` `0x27` (bit 2)
+  (`0x10005a1d..0x10005a56`, `0x1000b0a4..0x1000b0d5`; `0x1000b090` starts the mask from
+  `[this + 0x1e7c]` and skips the whole block when `[this + 0x16fc] == −1`);
+- if the mask is non-zero: `step = min(arg, 50)` (`arg` at `[esp + 0x28]` / `[esp + 0x34]`, the
+  frame time in ms, capped at `0x32` like the tick loop's 100 ms cap) converted with `fild`, then
+  `step = float([this + 0x15f4]) · [0x1008641c] / step` (`0x10005a76..0x10005a8b`), multiplied by
+  `[0x10086418]` for left/right or `[0x10086414]` for up/down, and passed as one float to
+  **`0x10006850` (left), `0x100068d0` (right), `0x10006950` (up), `0x100069d0` (down)** with
+  `this = esi` (`0x10005a91..0x10005af3`, `0x1000b11d..0x1000b17f`);
+- then `lea edi, [esi + 0x4c]; call 0x100042d0` (and in `0x1000b090` first `0x10004340(arg, 0.8f)`
+  on the same sub-object), the per-frame update of a sub-object at `this + 0x4c`.
+
+So the camera is scrolled by these four methods on the object the pollers run on; its fields, its
+anchor and the screen→tile converter are T15.B1c (`docs/orchestration/TASKS.md`). The earlier
+static search for virtual-key compares (T15.B1b, §3.1) could not find this because nothing compares
+the key codes: they are pushed as arguments.
+
+**First look at `0x10006850` (left; D, `0x10006850..0x100068c1`):** `[this + 0x1608] -= arg * [this + 0x1614]`
+and `[this + 0x1610] -= arg * [this + 0x1618]` (x87, `fchs` + `fadd` + `fstp`), then `0x10004020` on the
+sub-object `this + 0x4c`, then both floats go through `0x10077da8` (the `__ftol` of this module) and the
+integer pair is passed to `0x10002990(this + 0x1658)`, then `0x100041a0` and `0x10003be0([this + 0x1820])`
+on the sub-object. So the **camera position is the float pair `[this + 0x1608]` (x) / `[this + 0x1610]` (y)**
+with per-axis scale factors at `+0x1614` / `+0x1618`, and an integer copy is kept by the object at
+`this + 0x1658`. The unit, the clamp, the other three methods, the object's anchor and the converter are
+T15.B1c.

@@ -138,7 +138,7 @@ from the unrelated comparisons. The live slopes in §2.1 remain observations onl
 building getters remain rejected as converters. T15.B2's frame walk/minimap calibration is
 still the prescribed independent route to obtain a live anchor.
 
-### 2.3 The converter: bounded T15.B1c candidate list (2026-10-25)
+### 2.4 The converter: bounded T15.B1c candidate list (2026-10-25)
 
 **Not decoded.** The scroll fields and HWND anchor are established (§3.2–3.3), but the
 screen→tile writer is not selected within the task's three-function follow-up. All addresses

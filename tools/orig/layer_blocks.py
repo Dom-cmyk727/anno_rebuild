@@ -1,16 +1,14 @@
 """T30b.4 — Read the five walking-layer blocks in the running original and compare
 with the DLL image on disk.
 
-The AnnoWelt.dll setter `0x1000dd20` writes `[X + 0x430] = 0x100d1140 + 0x1c00·L`
-for layer L (0..4). No `AnnoWelt.dll` method the T30/T30b sweeps found reads that
-pointer back as data, and the eight-DLL cross-module sweep (T30b.3d) returned zero
-hits for the whole block range. The leading hypothesis after T30b.3d is that the
-five blocks are **dead data**: they sit in `.data` with the same bytes as the DLL
-image at run time, with no reader writing into them. This tool decides the
-question cheaply: read the five blocks from memory in the running game and compare
-each with the matching bytes read from `AnnoWelt.dll` on disk (`pefile`). "Equal"
-confirms the dead-data hypothesis; a mismatch names the run-time writer path and
-reopens OQ-175.
+The AnnoWelt.dll setter `0x1000dd20` writes the layer-block pointer. Through
+class Y's +4 interface this is `[Y + 0x434]`, read by `0x10006a40`:
+bytes 0..0x3ff are admission masks; bytes at 0x400 + code*8 + dir are
+costs (transport.md section 3.4.12). A memory/image equality check establishes
+unchanged content, not that the tables are dead data.
+
+`--disk-summary` reads only the DLL image, prints admission counts and derived
+entry summaries, and does not start the original or save extracted bytes.
 
 Run twice: right after a new game loads, and after about 10 game minutes (reached
 quickly by pressing F4 for 400 % speed and waiting for the world's game-ms counter
@@ -156,12 +154,32 @@ def main() -> int:
     ap.add_argument("--session", default=f"t30b4-{time.strftime('%Y%m%d-%H%M%S')}")
     ap.add_argument("--dll", default=r"C:\Users\altin\anno1503\game\app\AnnoWelt.dll",
                     help="path to AnnoWelt.dll on disk (for the compare)")
+    ap.add_argument("--disk-summary", action="store_true",
+                    help="summarize admission masks and costs on disk; no game run")
     ap.add_argument("--keep", action="store_true", help="keep the run folder after stop")
     args = ap.parse_args()
 
     if pefile is None:
         print("pefile not importable; install it with pip", file=sys.stderr)
         return 2
+    if args.disk_summary:
+        for layer in range(LAYER_COUNT):
+            block = disk_block(args.dll, layer)
+            if len(block) != BLOCK_SIZE:
+                raise ValueError("short layer block")
+            codes = [code for code in range(0x400) if block[code]]
+            print(f"layer {layer}: nonzero_admission={len(codes)} "
+                  f"fresh_nonzero={sum(bool(v) for v in block[:0x100])} "
+                  f"code7={block[7]} marked_code_admissions="
+                  f"{sum(bool(block[c]) for c in range(0x80, 0x87))}")
+            for code in codes[:3]:
+                costs = tuple(block[0x400 + code * 8:0x408 + code * 8])
+                print(f"  code={code} admission={block[code]} costs={costs}")
+            if layer in (0, 3):
+                for admission in sorted(set(block[:0x100])):
+                    matching = [c for c in range(0x100) if block[c] == admission]
+                    print(f"  fresh_admission={admission} codes={matching}")
+        return 0
     try:
         r = run(args.session, args.dll, keep=args.keep)
     except Exception as ex:  # noqa: BLE001

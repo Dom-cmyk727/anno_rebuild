@@ -2457,9 +2457,31 @@ Inline, no subagents.
   5. **MET** — nothing of the original in git (`git status` under `game/` empty).
 
 - **Left open:** T30b.3j (`0x10006a40` to its `ret`; byte table at `[Y + 0x434]`). The `Y + 0x430` count vs T30b.3b's world-pointer label (two vtables for `0x10003780`) is named, not resolved.
+## T30b.3j — The default expansion `0x10006a40` — 2026-10-25 — status: READY FOR REVIEW
+
+- **Branch:** `task/T30b-3j-default-expansion` from `main` at 0a1d013; worktree `C:\Users\altin\anno1503-T30b-3j`. Executor itself; no reviewer subagent. Docs only. Starts after T30b.3i PR #54 is open (`edi = Y + 4`).
+
+- **Headline:** the ordinary-step expansion is four orthogonal neighbours. Admission is a direction mask on the neighbour's low u16 plus `table[code] & nibble_bit`. Cost is a table byte, not a constant. Enqueue is a `0x1c` node on the score tree; not fn2; `[Y + 0x448]` is not written here. Neighbour chunks go through `0x1000b850`, not `0x100064b0`.
+
+- **Steps** (ranges read; no original bytes in git):
+  1. **Set up.** Worktree from `origin/main` at 0a1d013. `tools/disasm.py` on `game/app/AnnoWelt.dll` `10006a40` 900. Two `ret 4` (`0x10006ecf`, `0x10006f27`); `jae 0x10006ed2` crosses the first, so the function ends at `0x10006f27`. Helpers: `0x10006f30`, `0x10006f70`, `0x10007180`, `0x1000d4e0`, `0x1000b850`.
+  2. **`this` and absolute offsets.** `this = Y + 8` (`0x10006a4e`; caller `lea ecx, [edi + 4]`, `edi = Y + 4` from PR #54). `[this + 0x42c]` = `[Y + 0x434]`; `[this + 0x414]` = `[Y + 0x41c]`; free list `[this + 0x420/424/428]` = `[Y + 0x428/0x42c/0x430]`. `[this + 0x444]` is not read or written.
+  3. **Per-neighbour table.** Up / down / left / right only. Masks `0x2111` / `0x8444` / `0x4888` / `0x1222`. `dl` from nibble bits 3/1/0/2 (`0x40` / `0x04` / `0x01` / `0x10`). Edges: `0x10017510` / `0x1000b790` (up, y=0); `0x1000b850(chunk, 2/0/4)` (down / left / right). Fail = skip; pass = cost + mark + enqueue.
+  4. **Costs and enqueue.** Cost = `[table + (code & 0x3ff)*8 + 0x400 + dir]` (`dir` 6/2/0/4) added to `[node + 0x18]`. Enqueue: `0x10007180` + `0x1000d4e0` (up/down) or `0x10006f70` (left/right). Marks: up `(v & 0xfc86) | 0x86`; down `(v & 0xfc82) | 0x82`; left/right low 10 bits `(old ^ 0x80/0x84) & 0x3ff`.
+  5. **Nibble and pseudo-code.** Every use of `bx >> 12` in §3.4.8. Whole-function pseudo-code with addresses.
+
+- **Acceptance** (TASKS.md T30b.3j):
+  1. **MET** — `this` and the absolute offsets in §3.4.8.
+  2. **MET** — the per-neighbour table (four directions, in-chunk and edge).
+  3. **MET** — the costs and the enqueue (table bytes; not fn2; no `+0x444` write).
+  4. **MET** — pseudo-code with addresses.
+  5. **MET** — nothing of the original in git (`git status` under `game/` empty).
+
+- **Left open:** T30b.3k (the fill; OQ-171). T30b.3l (the four special expansions and `0x10003220`). Whether the four nibble bits are "exit allowed in that direction" stays a reading of the tests, not a named original term.
 
 - **Scope note:** docs only; no `src/`, no tool.
 
 - **Commits:**
   - `docs(re): T30b.3i the search main loop and the node record (transport.md §3.4.7)`
   - `docs(orchestration): T30b.3i report`
+  - `docs(re): T30b.3j the default expansion 0x10006a40`

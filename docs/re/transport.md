@@ -1540,7 +1540,7 @@ reached with mark `0x86`): consistent with §3.4.13's prediction for roads, but 
 scripted opening failed in that game and the AI towns had few roads yet) — the road case is confirmed
 for the fill, not yet measured for the cart's search (T30b.6).
 
-**Result 2 — the chunk coordinates are island-relative.** For 65 of the 155 uniquely matched chunks
+~~**Result 2 — the chunk coordinates are island-relative.** For 65 of the 155 uniquely matched chunks
 `world = island origin + (chunk + 0x40, chunk + 0x42)` exactly; the other 90 sit at other offsets
 of the same island, which the heuristic chunk walk explains: it also returns chunk records of
 earlier searches still in the pool (the engine's super-blocks keep stale records), whose island
@@ -1548,7 +1548,7 @@ differs. So the u16 pair at `chunk + 0x40` / `+0x42` is the chunk's tile origin 
 coordinates**, not world coordinates, and the float positions fn1 converts (§3.4.7) are island
 coordinates too; `Y + 0x4ec` / `+0x4f0` is not a world offset of the chunk origin (what it is
 exactly stays open; it changes per search). For T33: the search runs per island in island tile
-coordinates.
+coordinates.~~ **Corrected by the orchestrator (2026-10-25 ay, §3.4.16 (b), `0x10002b80`):** the u16 pair at `chunk + 0x40` / `+0x42` is the chunk's origin relative to the **search origin** `Y + 0x4ec` / `+0x4f0`, which is the search rectangle clipped to the island (`max(rect.left, island.x)`, `max(rect.top, island.y)`) in world tiles. It equals the island origin only when the search covers the island's top-left corner, which is what the 65 matches at offset 0 show; the other 90 matches are chunks of a search whose origin had already changed when the origin was sampled (the engine is re-used every second or two). For T33: the cells are addressed relative to the clipped search rectangle.
 
 **Not confirmed here:** the admission bytes and costs in a running search (that needs a figure's
 observed route, T30b.5–7), the terrain passes for coast tiles beyond the two bulk cases, and the

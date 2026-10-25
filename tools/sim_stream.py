@@ -52,6 +52,7 @@ added the figure types (u64 count 0 for the empty registry) and the types' entra
 points to the registry digest, the cart reservations to the payloads (the Workshop's
 `reserved` list after `activity`, the Farm's u32 after `activity`) and the stamp and the
 transport state to the figure record (the transcribed registries hold no figure).
+T33.4 (stream 112) added the immutable walk-table digest after the registry digest.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
@@ -72,7 +73,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 111
+STATE_HASH_VERSION = 112
 PRNG_TIMELINE_VERSION = 2
 
 
@@ -153,6 +154,29 @@ def registry_digest(names):
     for cls, tick, payload, gate in CLASSES:
         d += u8(cls) + u8(tick) + u8(payload) + u32(gate)
     d += u64(0)  # no figure types (T24)
+    return fnv(d)
+
+
+def synthetic_walk_tables_digest():
+    """walk_cells.cpp synthetic_walk_tables(), through walk_tables_digest()."""
+    mapper = [0] * 512
+    mapper[0] = 0xFFF
+    d = u32(0) + u32(0) + u64(len(mapper)) + b''.join(u16(x) for x in mapper)
+    layers = []
+    for layer_no in range(5):
+        layer = bytearray(0x400 + 8 * 8)
+        for code in (0, 2, 4):
+            layer[code] = 0 if layer_no == 3 and code == 2 else 0xFF
+            for direction in range(8):
+                layer[0x400 + 8 * code + direction] = 1
+        layers.append(bytes(layer))
+    d += u64(len(layers))
+    for layer in layers:
+        d += u64(len(layer)) + layer
+    d += u64(5)
+    for _ in range(5):
+        for k in range(9):
+            d += u16(1 << k) + u8(k % 3) + u8(k // 3)
     return fnv(d)
 
 
@@ -663,12 +687,13 @@ def timers_monopoly_digest(last_tick=0, entries=None):
 
 
 def state_hash(registry, cursor, ms, last_tick, players, full_tick=False, islands=None,
-               world=(0, 0), steps=0, step_ms=0, monopoly=None):
+               world=(0, 0), steps=0, step_ms=0, monopoly=None, walk_digest=0):
     """`steps` advances of `step_ms` reached `ms`; `monopoly` is the table its first
     advance wrote (None: all entries empty)."""
     header = (u32(STATE_HASH_VERSION) + u32(PRNG_TIMELINE_VERSION) + config_bytes()
               + rules_bytes(full_tick))
-    header += u64(registry) + u64(22) + b''.join(string(b'default') for _ in range(22))
+    header += (u64(registry) + u64(walk_digest) + u64(22)
+               + b''.join(string(b'default') for _ in range(22)))
     clock_rng = u64(ms) + u64(last_tick) + u64(2048) + u64(rng_table_digest()) + u32(cursor)
     islands = islands_digest({}) if islands is None else islands
     # The 7.5 minute accumulator holds every ms (below 450000 within these goldens: the
@@ -723,7 +748,8 @@ def values():
         monopoly = monopoly_entries([(2, [0])], {0: 1}, 0)
         out[key] = state_hash(SYNTHETIC_REGISTRY, 1234, 10 * steps, 10 * steps // 2,
                               players_digest(stamp, cursor, slots), islands=isl, world=(512, 512),
-                              steps=steps, step_ms=10, monopoly=monopoly)
+                              steps=steps, step_ms=10, monopoly=monopoly,
+                              walk_digest=synthetic_walk_tables_digest())
     return out
 
 

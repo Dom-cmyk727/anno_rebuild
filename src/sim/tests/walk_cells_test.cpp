@@ -131,7 +131,7 @@ TEST_CASE("walk_cells: lazy clipping, chunk partitions, disc and scratch isolati
     sim::WalkCells bad(i, *types, *tables, {10, 20, 3, 3}, 0);
     CHECK(bad.get({10, 20}) == sim::WalkCell{});
 }
-TEST_CASE("walk_cells: tables validate without changing registry digest or stream") {
+TEST_CASE("walk_cells: table digest pins state save and load without changing registry digest") {
     sim::TypeRegistry::Builder a;
     a.figure_type({1, 1, 1, 0, 1});
     auto ta = a.build();
@@ -148,8 +148,13 @@ TEST_CASE("walk_cells: tables validate without changing registry digest or strea
     auto wb = sim::World::create(sim::ScenarioSpec{}, tb.value());
     REQUIRE(wa);
     REQUIRE(wb);
-    CHECK(wa.value().state_hash() == wb.value().state_hash());
-    CHECK(wa.value().save() == wb.value().save());
+    CHECK(sim::walk_tables_digest(*ta.value()->walk_tables()) !=
+          sim::walk_tables_digest(*tb.value()->walk_tables()));
+    CHECK(wa.value().state_hash() != wb.value().state_hash());
+    CHECK(wa.value().save() != wb.value().save());
+    auto mismatch = sim::World::load(wa.value().save(), tb.value());
+    CHECK_FALSE(mismatch);
+    CHECK(mismatch.error().find("walk-table digest differs") != std::string::npos);
     a.walk_tables({});
     auto missing = a.build();
     REQUIRE(missing);

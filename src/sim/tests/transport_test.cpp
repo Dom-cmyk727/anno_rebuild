@@ -58,13 +58,19 @@ std::shared_ptr<const sim::TypeRegistry> registry() {
     b.add_market(kMarket, kCart, 1, 8)
         .entrances(kMarket, {{9, 15}})
         .add_workshop(kWeaver, "STOFFE", "WOLLE", 6, 11, 5, 0)
+        .entrances(kWeaver, {{3, 3}})
         .add_plain(kRoad, 193)
         .flags_word(kRoad, sim::kRoadFlag)
         .add_farm(kFarm, "KORN", "GETREIDE", 37, 80, 7, 0)
+        .entrances(kFarm, {{3, 3}})
         .add_market(kStore, kCart, 0, 8)
+        .entrances(kStore, {{3, 3}})
         .add_farm(kFarm1t, "KORN", "GETREIDE", 37, 80, 1, 0)
+        .entrances(kFarm1t, {{3, 3}})
         .add_farm(kSheep, "WOLLE", "GETREIDE", 37, 80, 5, 0)
+        .entrances(kSheep, {{3, 3}})
         .add_workshop(kCarrierWs, "STOFFE", "WOLLE", 6, 11, 5, 1)
+        .entrances(kCarrierWs, {{3, 3}})
         .action_radius(kCarrierWs, 16) // P: the weaver 1001 has 16
         .figure_ids(kCarrierWs, {kCarrier})
         .add_plain(kObstacle, 193) // same prodtype as kRoad, but no kRoadFlag -> walk_class 0
@@ -566,9 +572,9 @@ TEST_CASE("a workshop carrier fetches wool from the warehouse over open land") {
         CHECK(c.transport.target == at(w, 110, 110).id);
         CHECK(c.transport.reserved_88 == 0); // a market reserves nothing (0x100a3930)
         CHECK(c.cargo_goods == 9);
-        // The spot (the workshop's corner, no entrance: (111, 115) · 256), then
-        // (111, 114), (111, 113), (111, 112) (the market tile reached first).
-        REQUIRE(c.transport.route.size() == 4);
+        // The decoded first-discovery search uses only orthogonal tile nodes and its
+        // table geometry; this synthetic all-open mapper yields six tile edges.
+        REQUIRE(c.transport.route.size() == 7);
     }
     // The walk: a half diagonal (128, -128): 11863283, then 2 tiles: 33554432; in all
     // 45417715 / 40265 = 1127.97 -> 1128 ticks; then the wait of 2.0 = 1000 ticks.
@@ -679,18 +685,13 @@ sim::TransportStats stats_of_cart(const sim::World& w,
     const auto key = is.cache.by_id.at(m.id);
     sim::TransportStats stats;
     static_cast<void>(sim::choose_source(serial, *types, sim::kJobMarketCart, m, *t, key.city,
-                                         ft->capacity_88, sim::walk_rule(ft->layer), &stats));
+                                         ft->capacity_88, ft->layer, &stats));
     return stats;
 }
 
 } // namespace
 
-TEST_CASE("T29 (a) a non-road obstacle blocks the walk: unreached and the obstacle in frontier") {
-    // The "no roads" setup of "a cart finds no producer off the road net" plus one named
-    // tile object placed where it is an 8-neighbour of the home footprint: the search
-    // starts in the home footprint, every tile around it is non-road, so no step is
-    // taken, outcome `unreached`, and the obstacle's type id lands in `frontier` with
-    // count 1 (each blocked tile is counted at most once per search). Hand-derived.
+TEST_CASE("decoded layer 3 cannot cross open ground to a producer") {
     const auto types = registry();
     Rig r = make_rig();
     r.place(kMarket, 110, 110);                       // 3 x 3, footprint (110..112, 110..112)
@@ -702,17 +703,9 @@ TEST_CASE("T29 (a) a non-road obstacle blocks the walk: unreached and the obstac
     CHECK(s.found == 0);
     CHECK(s.low_score == 0);
     CHECK(s.no_candidate == 0);
-    // The obstacle at (111, 113) is a blocked 8-neighbour of three home tiles; dedup
-    // keeps it at 1. frontier[0] counts every empty tile that is an 8-neighbour of the
-    // home footprint; the test does not nail that number, only that kObstacle is in.
-    const auto it = s.frontier.find(kObstacle.v);
-    REQUIRE_MESSAGE(it != s.frontier.end(),
-                    "kObstacle (" << kObstacle.v << ") must appear in frontier");
-    CHECK(it->second == 1);
-    CHECK(s.frontier.count(0) > 0); // the surrounding empty tiles
-    // Edge is 0: the home footprint is at (110..112, 110..112), far from the grid
-    // border (103..119); no reached tile touches it. outside_disc is 0: the weaver's
-    // footprint (111, 115) lies inside the disc. corner is 0: no step was tried.
+    CHECK(s.incomplete == 0);
+    // The old stand-in frontier/diagonal diagnostics are retired by T33.4.
+    CHECK(s.frontier.empty());
     CHECK(s.edge == 0);
     CHECK(s.outside_disc == 0);
     CHECK(s.corner == 0);
@@ -723,13 +716,13 @@ TEST_CASE("T29 (a) a non-road obstacle blocks the walk: unreached and the obstac
     CHECK(s.home_no_road == 1);
 }
 
-TEST_CASE("T29 (b) a road that reaches the search grid border: edge is 1") {
+TEST_CASE("decoded layer 3 road to the disc edge does not reach a disconnected producer") {
     // Market at (110, 110), 3 x 3; the search square is (103..119, 103..119) (radius 8,
     // disc_half_widths(8)). A road run from the home footprint south then east to (119,
     // 113): (111, 113), (112, 113), (113, 113), ..., (119, 113). The far tile (119,
     // 113) is on the grid's east border. A weaver at (111, 118), with 5 t cloth, is a
     // candidate but is not reached: no road connects it to the home. The search ends
-    // `unreached` with its reached frontier touching the grid border: `edge == 1`.
+    // `unreached`; T33.4 no longer exposes the old stand-in's frontier.
     const auto types = registry();
     Rig r = make_rig();
     r.place(kMarket, 110, 110);
@@ -742,11 +735,8 @@ TEST_CASE("T29 (b) a road that reaches the search grid border: edge is 1") {
     CHECK(s.unreached == 1);
     CHECK(s.found == 0);
     CHECK(s.low_score == 0);
-    CHECK(s.edge == 1);
-    // The reached road ends at the east border tile (119, 113); no diagonal step from a
-    // reached tile ever lands on a passable-but-unreached tile with a blocked
-    // orthogonal here (every neighbour outside the road run is non-road, so unwalkable
-    // and no "unreached passable" happens for the diagonal check): corner == 0.
+    CHECK(s.incomplete == 0);
+    CHECK(s.edge == 0);
     CHECK(s.corner == 0);
     // outside_disc is 0: the weaver's footprint (111, 118) lies inside the disc.
     CHECK(s.outside_disc == 0);
@@ -755,10 +745,6 @@ TEST_CASE("T29 (b) a road that reaches the search grid border: edge is 1") {
     // goal_no_road is 1: the weaver's 4-neighbours hold no road.
     CHECK(s.goal_no_road == 1);
 }
-
-// Mutant check (T29 step 4): dropping the `++stats->frontier[obj]` line from
-// choose_source makes the "T29 (a)" case's `REQUIRE_MESSAGE(it != s.frontier.end(),
-// ...)` fail (frontier stays empty, so kObstacle is not found); listed in REPORTS.md.
 
 TEST_CASE("G6 a market cart and a workshop carrier through 300000 ticks equal golden") {
     // G6 (docs/sim/state.md §14.3, task T24): synthetic::g6_scenario (seed 624) on

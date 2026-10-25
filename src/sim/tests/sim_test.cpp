@@ -587,8 +587,8 @@ TEST_CASE("state_hash relational properties") {
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
-    CHECK(sim::World().state_hash() == 0xea498b0eb0ed8c35ULL);
-    CHECK(sim::kStateHashVersion == 111);
+    CHECK(sim::World().state_hash() == 0x0261771fd70ce017ULL);
+    CHECK(sim::kStateHashVersion == 112);
     CHECK(sim::kPrngTimelineVersion == 2);
 }
 
@@ -876,7 +876,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     const std::size_t at = bytes.size() - kTailBytes - kIslandsBytes - kPlayersBytes - kIdsBytes -
                            kSettingsBytes - 36; // clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 8) ==
-          std::vector<std::uint8_t>{111, 0, 0, 0, 2, 0, 0, 0});
+          std::vector<std::uint8_t>{112, 0, 0, 0, 2, 0, 0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8
     CHECK(bytes[at + 16] == 0);

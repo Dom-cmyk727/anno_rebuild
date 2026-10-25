@@ -23,6 +23,8 @@ struct WalkCell {
     friend bool operator==(const WalkCell&, const WalkCell&) = default;
 };
 [[nodiscard]] std::string validate_walk_tables(const WalkTables&);
+/// FNV-1a 64 over the complete table input with explicit little-endian fields/counts.
+[[nodiscard]] std::uint64_t walk_tables_digest(const WalkTables&);
 /// Own tiny synthetic data, never a copy of the original tables.
 [[nodiscard]] std::shared_ptr<const WalkTables> synthetic_walk_tables();
 [[nodiscard]] std::uint8_t admission(const WalkTables&, std::uint32_t layer, std::uint16_t code);

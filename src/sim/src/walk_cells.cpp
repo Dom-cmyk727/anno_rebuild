@@ -3,9 +3,33 @@
 #include <utility>
 
 #include <anno/sim/building.hpp>
+#include <anno/sim/hash.hpp>
 #include <anno/sim/walk_cells.hpp>
 namespace anno::sim {
 namespace wf = formats::annowelt;
+std::uint64_t walk_tables_digest(const WalkTables& t) {
+    StateHasher h;
+    h.u32(t.time_date_stamp);
+    h.u32(t.size_of_image);
+    h.u64(t.mapper.size());
+    for (const std::uint16_t v : t.mapper) {
+        h.u16(v);
+    }
+    h.u64(t.layers.size());
+    for (const auto& layer : t.layers) {
+        h.u64(layer.size());
+        h.bytes(layer);
+    }
+    h.u64(t.goal_order.size());
+    for (const auto& row : t.goal_order) {
+        for (const auto& e : row) {
+            h.u16(e.mask);
+            h.u8(e.col);
+            h.u8(e.row);
+        }
+    }
+    return h.value();
+}
 std::string validate_walk_tables(const WalkTables& t) {
     // Nine input mask bits: mapper domain is fixed by the record format.
     if (t.mapper.size() != wf::kMapperCount || t.layers.empty() ||

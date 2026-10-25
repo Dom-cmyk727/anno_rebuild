@@ -75,7 +75,7 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // reservations (Workshop, WeaponsWorkshop, SmallFarm per line, Farm and Mine one) and
 // the alternative Market (tag 6, carts_out); the figure record gains its stamp and
 // the transport state (docs/sim/state.md §4.9, §5.9).
-inline constexpr std::uint32_t kStateHashVersion = 111;
+inline constexpr std::uint32_t kStateHashVersion = 112;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

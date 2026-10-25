@@ -6,11 +6,12 @@
 // of its function plus a kStateHashVersion bump and re-baselined goldens in
 // the same commit.
 //
-// Stream at kStateHashVersion 108 (stage S13), the scopes of §9.3 so far:
+// Stream at kStateHashVersion 112 (task T33.4), the scopes of §9.3 so far:
 //   1 header     u32 kStateHashVersion, u32 kPrngTimelineVersion,
 //                SimConfig (declaration order; vectors as count + elements;
 //                small_farm_animals; layout), Rules (declaration order),
-//                u64 registry digest, seam names (count + str each)
+//                u64 registry digest, u64 walk-table digest,
+//                seam names (count + str each)
 //   2 clock_rng  u64 clock.ms, u64 clock.last_tick, u64 rng.size,
 //                u64 rng.table_digest, u32 rng.cursor  (= core_hash)
 //   3 settings   the WorldSettings
@@ -76,6 +77,7 @@
 #include <anno/sim/settings.hpp>
 #include <anno/sim/timers.hpp>
 #include <anno/sim/types.hpp>
+#include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
 
 namespace anno::sim {
@@ -1114,6 +1116,18 @@ struct StateIO {
             if constexpr (A::kReading) {
                 if (!a.failed() && registry_digest != w.types_->digest()) {
                     a.fail("type registry digest differs from the world's registry");
+                }
+            }
+            std::uint64_t walk_digest = w.types_->walk_tables()
+                                            ? walk_tables_digest(*w.types_->walk_tables())
+                                            : 0;
+            a.u64(walk_digest);
+            if constexpr (A::kReading) {
+                const std::uint64_t expected = w.types_->walk_tables()
+                                                   ? walk_tables_digest(*w.types_->walk_tables())
+                                                   : 0;
+                if (!a.failed() && walk_digest != expected) {
+                    a.fail("walk-table digest differs from the world's tables");
                 }
             }
             std::vector<std::string> names = seam_names(w.seams_);

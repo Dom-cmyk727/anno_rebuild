@@ -1,13 +1,13 @@
-# The view: mouse, hovered tile and camera of the original (observed by running)
+# The view: mouse, hovered tile and camera of the original
 
-**Status:** live first pass plus static T15.B1 stop, 2026-10-25 (orchestrator, owner driving session; T15 play layer stage B,
+**Status:** live first pass plus static T15.B1/T15.B1c findings, 2026-10-25 (orchestrator, owner driving session; T15 play layer stage B,
 `docs/testing/play-original.md` §3 item 1). Method: read-only memory diffing of the running copy
 (`tools/orig/memdiff.py`, snapshots of every committed writable region, narrowed by "changed on this
 input, unchanged on that one"), live reads along controlled mouse sweeps, screenshots. Session
 outputs in `cache/orig/drive-20261025*/` (git-ignored). Host: the owner's Windows 11 PC, the copy at
 `C:\anno1503-original\` through dgVoodoo2, single-player Citizen continuous game, zoom and rotation
-as the game starts (not changed in this session). Addresses below are **process addresses of this
-run** unless written as `module + RVA`; the two variables found live on thread stacks, so they are
+as the game starts (not changed in this session). Addresses in the live observations are **process addresses of this
+run** unless written as `module + RVA`; static sections explicitly use preferred VAs; the two variables found live on thread stacks, so they are
 stable within one run of the game loop and must be re-found per run (§4).
 
 ## 1. The game's mouse position (D, by running)
@@ -126,7 +126,39 @@ replacing that load base with the preferred base gives `0x10023164`. This valida
 not the original classification of the stack word.
 
 
-## 3. The camera (unanchored; T15.B1 stopped)
+### 2.3 The converter: bounded T15.B1c candidate list (2026-10-25)
+
+**Not decoded.** The scroll fields and HWND anchor are established (§3.2–3.3), but the
+screen→tile writer is not selected within the task's three-function follow-up. All addresses
+in this list are preferred VAs in **AnnoFrame.dll**; none is assigned to View.dll.
+
+1. `0x1000b3a0..0x1000b48b`, receiver V, reads two integer input coordinates, divides them
+   by V+0x1eb8 and tests UI regions through the minimap object V+0x1658 and other UI objects
+   (`0x1000b3bf`, `0x1000b410`, `0x1000b449`, `0x1000b476`). It returns a category1..5,
+   not a tile pair. It is a mouse-coordinate consumer, not the selected converter.
+2. `0x100041f0..0x10004220`, receiver S=V+0x4c, **does return an out-pointer u16 pair**:
+   if `[S+8]` is non-null, call its dynamic slots+0x68/+0x6c at `0x10004203` and
+   `0x10004212`, store low16 bits at out+0/+2 (`0x1000420a`, `0x10004215`), return1;
+   otherwise return0. It takes no mouse coordinates and does no projection arithmetic.
+   **Exact stop:** the dynamic receiver `[S+8] = [V+0x54]` is not identified; neither
+   slot target nor the producer of those values was established. Do not equate this pair
+   to the live stack pair in §2.1 solely because both contain two u16s.
+3. `0x10071a50..0x10071c30`, receiver T=S+0x1424=V+0x1470, reached through the
+   matrix refresh `0x100041a0 → 0x10071f00 → 0x10071a50`. It accepts a position pointer,
+   rotation and scale, builds view geometry using viewport bounds, angle tables and
+   four normalized vectors (loop `0x10071b2a..0x10071c1d`). It is not a selected
+   two-pixel-input→tile-output function. T is value/matrix storage addressed by LEA,
+   not a new vtable interface; `0x100041b9` establishes its displacement.
+
+These three were read to their final returns; no fourth candidate body was followed.
+The nearby **zoom selector** is D: group0/1/other → scale1/0.5/0.25 (§3.2). This is
+not yet the pixel pitch per group. `0x10071d70` uses float59.16330337524414 from
+`0x1008e1a0` to build its matrix (`0x10071dbe`); that constant alone is not a tile width
+or height. Rotation is a byte0..3 in the named setter, but complete picking, terrain
+intersection, rounding and final output ownership remain open. T15.B2 can now obtain
+V from the game HWND and validate the fields while recording the live hovered-pair frame.
+
+## 3. The camera (static fields known; live calibration open)
 
 Arrow keys scroll the view (the manual's cursor keys); `P` opens a modal "Pause!" scroll with a
 "Continue game" button at client (0.40, 0.69), during which the arrow keys do nothing and the
@@ -154,6 +186,158 @@ or the owner's minimap calibration described above to provide an independent cam
 This is the remaining question, not a request to manufacture a reader from a stack address.
 No new original-game session or large snapshot set was started for this static task.
 
+### 3.2 The scroll methods and the camera fields (T15.B1c, 2026-10-25)
+
+**D unless P is stated; AnnoFrame.dll, preferred VA base0x10000000.** Addresses such as
+`0x10006850` are preferred VAs; their RVAs omit0x10000000. Static inspection used pefile,
+`tools/disasm.py` and `tools/xref.py`, with the relevant arithmetic re-read. No live camera
+calibration was performed in this task. The earlier unanchored B1 outcome above is historical.
+
+**Receiver identity first:** V is the **base** of tFrameGame or tFrameGameFull. Their
+base vtables `0x10086428` / `0x1008664c` contain the pollers in slot+0x6c (entries
+`0x10086494` / `0x100866b8`); constructors install them at `[V]` at
+`0x100094e8` / `0x1000de5c`. Pollers preserve ecx in esi and call the scroll methods
+with ecx=esi (`0x10005a1f`, `0x10005a9c`; `0x1000b09c`, `0x1000b128`).
+All four leaf methods therefore have this=V. Their direct helper calls use **S=V+0x4c**,
+whose vtable `0x10086360` is installed by `0x1000457a` after the parent constructor's
+`lea ecx,[V+0x4c]` at `0x1000949d`. No class-Y interface displacement applies here.
+
+**Polled keys and corrected step.** The GetAsyncKeyState IAT slot `0x10086208` is loaded
+by `0x10005a10` and `0x1000b090`; the four keys are pushed as arguments, which explains
+B1b's negative comparison search. Up/down select mask4/8, left/right mask1/2; the code
+uses `test ax,ax` (not an isolated high-bit test), with up preferred to down and left to
+right. Full starts from V+0x1e7c. **Two corrections to the round-as first note:**
+
+- Full's test `0x1000b0d8..0x1000b0df` skips keyboard scrolling when V+0x16fc is
+  **not**−1. A value−1 enables that block.
+- `0x10005a79..0x10005a89` loads capped integer dt first, then zoom*10 and executes
+  `fdivp st(1)`: **step=min(dt,50)/(zoom*10)**, not zoom*10/dt. Full repeats it at
+  `0x1000b105..0x1000b115`. P: constants `0x1008641c=10.0f`,
+  `0x10086418=0.1f`, `0x10086414=0.2f`. Horizontal argument is step*0.1,
+  vertical argument step*0.2. V+0x15f4 is the **zoom scale**, not a separately proved
+  user scroll-speed setting. Frame dt is milliseconds (the loop's timer, `tick-loop.md` §1).
+
+**Four complete methods.** Each takes one f32 argument a (ret4). Paraphrase of the x87
+arithmetic, with stores rounded to f32; no simulation rule is implemented:
+
+```text
+# this=V; C=(f32[V+1608], f32[V+1610]); H=(V+1614,V+1618); D=(V+161c,V+1620)
+left(a):  C -= a*H       # 0x10006850..0x10006883; ret4 0x100068cc
+right(a): C += a*H       # 0x100068d0..0x100068ff; ret4 0x10006948
+up(a):    C -= a*D       # 0x10006950..0x10006983; ret4 0x100069cc
+down(a):  C += a*D       # 0x100069d0..0x100069ff; ret4 0x10006a48
+# After each pair of stores, the same ordered calls:
+clamp(S)                # 0x10004020; call sites 6889/6905/6989/6a05 (prefix0x100)
+minimap_update(V+1658, trunc(C.x), trunc(C.z))
+                        # 0x10002990; calls 68ac/6928/69ac/6a28 after 0x10077da8
+refresh_matrices(S)      # 0x100041a0; calls 68b3/692f/69b3/6a2f
+publish_matrix(S, [V+1820]) # 0x10003be0; calls 68c1/693d/69c1/6a3d
+byte[V+28] |= 0x10       # 68c6/6942/69c6/6a42
+```
+
+The truncation helper returns an integer towards zero. `0x10002990..0x100029cb` compares
+the integer pair with **module-global caches** `0x10094a24/0x10094a28`, passes its negation
+to the minimap-related object through `0x10033ad0`, then updates the caches. These are
+last integer coordinates shared by that path, **not a global pointer to V** or a guarantee
+of current float position. The first note's claim that the integer copy lives at V+0x1658
+is superseded by this distinction.
+
+**Fields, absolute and sub-object-relative:**
+
+| Field at V | Type / meaning | Addressed evidence |
+|---|---|---|
+| Receiver V; S=V+0x4c | Base vtable vs embedded view object | Installers/call sites above; all following S offsets translated to V. |
+| +0x1608 / +0x1610 (S+0x15bc/+0x15c4) | f32 x/z translation in **negative world-tile units** | Four stores above; S getter `0x10004170..0x1000418e` copies the three-float position. |
+| +0x160c (S+0x15c0) | f32 vertical translation | Initialized0 at `0x10004580`; not changed by the four scroll leaves. |
+| +0x1614/+0x1618 (S+0x15c8/+0x15cc) | f32 horizontal direction vector | Used by left/right; rotation cases below supply±1. |
+| +0x161c/+0x1620 (S+0x15d0/+0x15d4) | f32 vertical-screen direction vector | Used by up/down; rotation cases supply±1. |
+| +0x58 (S+0xc) | bound world pointer W; its dimensions supply clamp limits | Bind `0x10008ea9 → 0x10003b8b`; clamp calls+0x54/+0x58 at `0x1000406f/0x100040ae`. |
+| +0x15f0 (S+0x15a4) | u8 rotation | Getter `0x100044e0`; T+0x180 written by `0x10071ed9`; setter `0x10003d20`. |
+| +0x15f4 (S+0x15a8) | f32 zoom scale | Passed to T in `0x100041a3..0x100041c3`, stored at T+0x184 by `0x10071edc`; poller divides by scale*10. |
+| +0x1604 (S+0x15b8) | u8 zoom-group selector | `0x10003c30..0x10003c66`:0→1.0,1→0.5,other→0.25; group stored at `0x10003ca3`. |
+| +0x1624 (S+0x15d8) | u32 view dirty flags | Matrix refresh OR0x20 at `0x100041cf..0x100041d9`; zoom/rotation setters OR0x60. |
+| +0x16ec | u32 frame/update mask, not zoom | Init0xfb7f at `0x10009518`, Full0x893f at `0x1000de62`; ORed with derived flags at `0x10005b02..0x10005b0a` / `0x1000b19f..0x1000b1a7`. |
+| +0x16fc | i32−1 sentinel or u32 GetTickCount stamp; gates scrolling | Init−1 at `0x10009560/0x1000de51`; timestamp store `0x1000cd10`, elapsed comparison `0x1000ca96..0x1000cacb`; precise UI-mode name not assigned. |
+| +0x1e7c (Full only) | u32 pre-set edge-scroll direction mask | Zero at `0x1000de36`; mouse-edge tests/set/clear at `0x1000b54c..0x1000b5b2`; consumed at `0x1000b09e`. |
+| +0x4c | Embedded view object S | Constructor `0x10004530..0x100045c4`; both post-scroll functions run with this=S. |
+
+**Clamp and units (D).** `0x10004020..0x100040e0` clamps C.x to[-W.width,0] and
+C.z to[-W.height,0], comparing **negated** translation to0 and to W's dimension getters.
+At equality the bound may be stored again; the result is the same. W's slots+0x54/+0x58
+are AnnoWelt `0x100a3910/0x100a3920`, returning world+0xec/+0xf0. World x/z use one
+unit per tile (`annowelt.md`, terrain vertices, `0x1009b920`, constant `0x100cb840=1.0`).
+No viewport width/height is subtracted by this clamp. This establishes tile-space translation,
+not screen-pixel or fixed-point coordinates; the corresponding positive world x/z location is the
+negation of the stored translation. Their exact relation to the observed minimap rectangle awaits B2.
+
+**Rotation and zoom.** Setter `0x10003d20..0x10003ff6` includes cold case bodies beyond
+its first return. Jump table `0x1000400c` maps new rotations0/1/2/3 to
+`0x10003f77/0x10003f31/0x10003e50/0x10003fb9`. Respectively (H,D) are
+`((1,-1),(-1,-1))`, `((1,1),(1,-1))`, `((-1,1),(1,1))`,
+`((-1,-1),(-1,1))`. The setter also adjusts translation around a height-dependent pivot;
+this is not a complete picking formula. Zoom setter `0x10003c30..0x10003d1a` and matrix
+builder `0x10071d70..0x10071ef8` establish scale/group and rotation fields; full per-group
+pixel pitch remains open (§2.3). T=S+0x1424=V+0x1470 is matrix/value storage; direct LEA
+at `0x100041b9` establishes this address, not another virtual interface.
+
+**The two post-scroll functions, read to final return (step 3).**
+
+- `0x100042d0..0x100042ec`, this=S, returns
+  `(flags&0x20 ? 0x20000 : 0) | (flags&0x40 ? 0x10000 : 0)` from S+0x15d8
+  (=V+0x1624). It converts dirty bits; it does not calculate a visible tile window.
+- `0x10004340..0x100044ba`, this=S, is a **temporary position-jitter refresh**.
+  S+0x15fc (=V+0x1648) enables it. It accumulates dt at S+0x1600 (=V+0x164c),
+  waits until more than50ms after S+0x1604 (=V+0x1650), and requires the negated x/z
+  position inside the integer rectangle S+0x15ec..0x15f8 (=V+0x1638..0x1644).
+  It computes sine(time*0.004)*amplitude (Full passes0.8f at `0x1000b188`), scales two
+  independent rand()%101 values by0.01 and adds those offsets to x/z
+  (`0x100043ea..0x10004456`). It saves all three position floats, clamps and refreshes
+  the temporary position, then **restores the original position** (`0x10004457..0x100044b0`).
+  The refreshed matrix can retain the visual jitter. This is not the persistent scroll step
+  or the screen→tile writer, and the identically numbered fields relative to S are not
+  the parent V's zoom fields.
+
+### 3.3 The view object and its anchor (T15.B1c)
+
+**D, AnnoFrame.dll.** The poller has no direct caller found by the instruction xref; it is
+slot+0x6c of the installed base vtable. The loop `0x100087f0` invokes that slot at `0x100088d0` on its
+unchanged V receiver (the Full loop wrapper `0x100096e0..0x1000976b` calls it at
+`0x1000975f`). Construction is **CreateAnnoFrameGameInstance** `0x10066290..0x1006632a`:
+kind1 allocates0x1ec0 bytes and calls Full constructor `0x1000dd70` (which calls base
+`0x10009470` at `0x1000dd8f`); kind0/2 allocates0x1898 bytes and uses the base constructor.
+The factory returns V through its fourth stack argument at `0x10066325` (cdecl; no ret-pop).
+
+Checked callers: campaign startup `0x100201f3..0x10020203` passes its own+0x88 field as
+that out-pointer; normal startup `0x1002a37b..0x1002a398` first receives it in a local,
+then invokes the object's virtual methods. These are concrete ownership paths, but neither
+has been traced to a persistent module-global pointer in this task. Constructor writes
+must not be mistaken for globals holding an instance.
+
+**Usable runtime anchor:** `0x100087c0..0x100087de`, called with ecx=V by the loop at
+`0x100087fe`, takes the game HWND and does SetWindowLongA(hwnd,−21,V) at `0x100087d0`,
+then installs window procedure `0x10007f20` via index−4 at `0x100087da`. The IAT entries
+`0x10086238/0x1008623c` name SetWindowLongA/GetWindowLongA (P, import table). The installed
+window procedure retrieves V with GetWindowLongA(hwnd,−21) at `0x10007f2b`.
+Thus the chain is:
+
+```text
+game HWND → GWL_USERDATA(-21) → V
+[V] must be AnnoFrame base+0x86428 or base+0x8664c
+V+0x4c → embedded S; V+0x1608/+0x1610 → f32 negative tile-space x/z
+V+0x15f0 → u8 rotation; V+0x15f4 → f32 scale; V+0x1604 → u8 group
+```
+
+This is a **window anchor**, not `module+RVA → pointer → V`. A live HWND and validation
+of the installed vtable are needed; no process address from the old driving session is
+hardcoded. The small global integer caches in §3.2 cannot recover the object pointer,
+rotation or zoom.
+
+**Reader condition (step 5):** no `camera(mem,bases)` or skipping test was added, because
+the specified module-global-to-object anchor was not established. A reader accepting an
+explicit V, or a backend helper using the HWND's userdata, could use the decoded fields;
+that API is left to the already planned T15.B2 calibration. No reader skip line or live
+camera validation is claimed. No original-game input was sent in this static task.
+
 ## 4. Method notes
 
 - `tools/orig/memdiff.py`: `snap` reads every committed writable region ≤ 64 MiB (≈ 182 MiB,
@@ -171,37 +355,3 @@ No new original-game session or large snapshot set was started for this static t
 - The in-game volumes come from the profile's `VOLUME` chunk (`tools/orig/userdat.py`,
   `docs/testing/original-wine.md` §2.2); set to (−250, −250) on this PC's copy on 2026-10-25 for
   the owner's "without sound" runs. There is no effects slider.
-
-### 3.2 The arrow keys are polled: the scroll methods (D, orchestrator 2026-10-25, round as)
-
-`AnnoFrame.dll` imports `GetAsyncKeyState` (IAT slot `0x10086208`; `analysis/pe_symbols.json` lists
-it as the module's only key import). The slot is read in exactly two functions (a byte search for the
-slot address in `.text`): **`0x10005a10`** and **`0x1000b090`**. Both, re-disassembled with
-`tools/disasm.py`:
-
-- load the import into `edi` and call it for `VK_UP` `0x26` (sets bit 4 of a mask in `ebx`), else
-  `VK_DOWN` `0x28` (bit 8); then `VK_LEFT` `0x25` (bit 1), else `VK_RIGHT` `0x27` (bit 2)
-  (`0x10005a1d..0x10005a56`, `0x1000b0a4..0x1000b0d5`; `0x1000b090` starts the mask from
-  `[this + 0x1e7c]` and skips the whole block when `[this + 0x16fc] == −1`);
-- if the mask is non-zero: `step = min(arg, 50)` (`arg` at `[esp + 0x28]` / `[esp + 0x34]`, the
-  frame time in ms, capped at `0x32` like the tick loop's 100 ms cap) converted with `fild`, then
-  `step = float([this + 0x15f4]) · [0x1008641c] / step` (`0x10005a76..0x10005a8b`), multiplied by
-  `[0x10086418]` for left/right or `[0x10086414]` for up/down, and passed as one float to
-  **`0x10006850` (left), `0x100068d0` (right), `0x10006950` (up), `0x100069d0` (down)** with
-  `this = esi` (`0x10005a91..0x10005af3`, `0x1000b11d..0x1000b17f`);
-- then `lea edi, [esi + 0x4c]; call 0x100042d0` (and in `0x1000b090` first `0x10004340(arg, 0.8f)`
-  on the same sub-object), the per-frame update of a sub-object at `this + 0x4c`.
-
-So the camera is scrolled by these four methods on the object the pollers run on; its fields, its
-anchor and the screen→tile converter are T15.B1c (`docs/orchestration/TASKS.md`). The earlier
-static search for virtual-key compares (T15.B1b, §3.1) could not find this because nothing compares
-the key codes: they are pushed as arguments.
-
-**First look at `0x10006850` (left; D, `0x10006850..0x100068c1`):** `[this + 0x1608] -= arg * [this + 0x1614]`
-and `[this + 0x1610] -= arg * [this + 0x1618]` (x87, `fchs` + `fadd` + `fstp`), then `0x10004020` on the
-sub-object `this + 0x4c`, then both floats go through `0x10077da8` (the `__ftol` of this module) and the
-integer pair is passed to `0x10002990(this + 0x1658)`, then `0x100041a0` and `0x10003be0([this + 0x1820])`
-on the sub-object. So the **camera position is the float pair `[this + 0x1608]` (x) / `[this + 0x1610]` (y)**
-with per-axis scale factors at `+0x1614` / `+0x1618`, and an integer copy is kept by the object at
-`this + 0x1658`. The unit, the clamp, the other three methods, the object's anchor and the converter are
-T15.B1c.

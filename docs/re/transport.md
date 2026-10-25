@@ -1504,6 +1504,57 @@ array store at056e1. This corrects the relationship without inventing an extra c
 and figure/path integration (later T30b work), terrain/load stops in §3.4.13. This closes
 the four expansions' local turn/key algebra and the constraint mask, not all transport.
 
+#### 3.4.15 The live cell check in the Wine runner (T30b.3h2, orchestrator, 2026-10-25)
+
+**P by running; the predictions it confirms are the D readings of §3.4.11–3.4.14.** Three fresh
+Citizen games in the `AnnoHarness` Wine runner (silent, `tools/orig/backend.py` `WineBackend`,
+`macros.new_game`; AnnoWelt at `0x580000`), read-only through the agent's `read` and `scan`.
+Scripts in the orchestrator's scratch space, results in `cache/orig/t30b3h2-orch/` (git-ignored;
+no cell dump is in git, only the counts below).
+
+**What was read.** The world (`gamestate.find_world`), the search engine `Y = [world + 0x6aa8]`
+(its vtable `[Y]` = AnnoWelt + `0xc1424`, checked), the chunk records reachable from the super-block
+table at `Y + 0x1c` (walked heuristically: every dword of a super-block that points at a record whose
+u16 pair at `+0x40` / `+0x42` is a multiple of 4), their 16 cells, and every island's 8-byte tile
+records (`[island + 0xc]`, islands found by the vtable AnnoWelt + `0xcac2c`, rect at `+4..+0xa`).
+At 400 % speed the engine is re-used by one search after another (`Y + 0x4ec` / `+0x4f0` and the
+chunk set change every second or two), so samples were taken every second for 4–5 minutes
+(16 to 42 distinct chunk sets per game), 304 chunks with at least three cells whose low word is
+neither `0` nor `0xfff`.
+
+**Result 1 — the fill rule holds (§3.4.11 (e), §3.4.13).** Each of those chunks was matched as a
+4×4 template against every island's predicted cells `mapper[(rec1 >> 16) & 0x1ff]`
+(`0x100c1af8`): 171 chunks match somewhere, 155 of them at exactly one place, with the low word equal
+on **every** non-zero cell (the matched low words: `0xfff` 722, `0` 335, `0x60` 61, `0x801` 58,
+`0x770` 52, `0x300` 44, `0xb83` 41, `0xc` 41, `0xee` 40, `0xc1d` 33, `0xb6d` 32, `0x77c` 5,
+`0xbe3` 2, `0x410` 1 — thirteen of the mapper's 33 values, so an accidental match is excluded).
+In the same cells the **code** (bits 0–9 of the high u16) is the record's byte 8–15 in every fresh
+cell (454 cells; record codes 4 for the tree and bush types 1566–1577 and the house types 3400–3414
+of the AI towns, 2 for empty ground) and one of `7`, `0x80`, `0x82`, `0x84`, `0x86` in every cell a
+search had reached (2 022 cells); **no other value occurred**. Over all samples the open-ground cell
+`mask 0 → 0xfff` was seen 33 813 times and the closed `mask 0x1ff → 0` 15 607 times (the below-water
+closure of §3.4.13). One road tile was in a matched chunk (type 2524, record code 0, low `0xfff`,
+reached with mark `0x86`): consistent with §3.4.13's prediction for roads, but one cell only (the
+scripted opening failed in that game and the AI towns had few roads yet) — the road case is confirmed
+for the fill, not yet measured for the cart's search (T30b.6).
+
+**Result 2 — the chunk coordinates are island-relative.** For 65 of the 155 uniquely matched chunks
+`world = island origin + (chunk + 0x40, chunk + 0x42)` exactly; the other 90 sit at other offsets
+of the same island, which the heuristic chunk walk explains: it also returns chunk records of
+earlier searches still in the pool (the engine's super-blocks keep stale records), whose island
+differs. So the u16 pair at `chunk + 0x40` / `+0x42` is the chunk's tile origin **in island
+coordinates**, not world coordinates, and the float positions fn1 converts (§3.4.7) are island
+coordinates too; `Y + 0x4ec` / `+0x4f0` is not a world offset of the chunk origin (what it is
+exactly stays open; it changes per search). For T33: the search runs per island in island tile
+coordinates.
+
+**Not confirmed here:** the admission bytes and costs in a running search (that needs a figure's
+observed route, T30b.5–7), the terrain passes for coast tiles beyond the two bulk cases, and the
+special-expansion turn costs (static only). **OQ-175: answered.** The cell is the record's mapped
+9-bit mask plus its code byte, filled on first use from the island's tile records; the search marks
+it with its came-from codes; the walk rule is the layer block's admission byte and costs by that
+code, with the geometry bits of the mask (§3.4.8, §3.4.12, §3.4.14).
+
 ### 3.5 Step 7 is BLOCKED on a figure-position reader
 
 Step 7 of T30 calls for building the playbook opening in the running original, reading the tile records of the opening's buildings and the market cart's position tick by tick, and checking each observed tile against the decoded rule. The Wine runner is set up (`docs/testing/original-wine.md`), the opening macro runs (`tools/orig/opening.py`), and `tools/orig/gamestate.py` reads world, players and city stocks. **It has no figure-position reader**, and no decoded figure object layout in memory (the sim's `figure.hpp` has one, but the ORIGINAL's figure layout is different). The reader is a task of its own: find the figure table off `world + ?`, read figure records (position, direction, tile), export them to the harness. **Done here instead:** step 7(a) and (b) are reduced to "memory-compare the five 7168-byte blocks at `0x100d1140` with the DLL image after a scenario loads" (no figure reader needed), left as a next-task sub-step of T30b with a mem-reader call plan. Step 7(c)/(d) wait on T30b's figure reader.

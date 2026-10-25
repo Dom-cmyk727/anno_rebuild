@@ -9,6 +9,7 @@
 #include <anno/sim/config.hpp>
 #include <anno/sim/settings.hpp>
 #include <anno/sim/state_fields.hpp>
+#include <anno/sim/walk_cells.hpp>
 
 namespace anno::sim {
 
@@ -417,6 +418,26 @@ std::string SimConfig::validate() const {
         // A sanity bound for the seam vector (Seams::city_pass is sized from it).
         return bad(kOwner, "city_pass_count",
                    "must be at most 64, is " + std::to_string(city_pass_count));
+    }
+    return {};
+}
+
+std::string SimConfig::validate(const TypeRegistry& types) const {
+    if (auto e = validate(); !e.empty()) {
+        return e;
+    }
+    if (!types.figure_types().empty() && !types.walk_tables()) {
+        return "SimConfig.walk_tables: missing for walking figures";
+    }
+    if (types.walk_tables()) {
+        if (auto e = validate_walk_tables(*types.walk_tables()); !e.empty()) {
+            return e;
+        }
+        for (const auto& figure : types.figure_types()) {
+            if (figure.layer >= types.walk_tables()->layers.size()) {
+                return "SimConfig.walk_tables: figure layer outside tables";
+            }
+        }
     }
     return {};
 }

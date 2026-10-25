@@ -20,6 +20,7 @@
 #include <string_view>
 #include <vector>
 
+#include <anno/formats/annowelt.hpp>
 #include <anno/formats/figuren.hpp>
 #include <anno/formats/result.hpp>
 #include <anno/sim/config.hpp>
@@ -184,11 +185,14 @@ struct BuildingType {
     /// ignored, as there); an unresolved name is a load error.
     std::vector<GoodsId> output_goods, input_goods;
     /// The HEAD record as the original's reader sees it (a 56-byte buffer,
-    /// shorter records zero-filled, D 0x10009334): kept whole, never read (the
-    /// bytes without a known consumer are O-21).
+    /// shorter records zero-filled, D 0x10009334): walk_code reads bytes0x2f/0x30; the
+    /// bytes without a known consumer are O-21.
     std::vector<std::uint8_t> head_raw;
     /// The ENTRANCE points in file order (empty when the entry has none: P 595 of 921).
     std::vector<EntrancePoint> entrances;
+    /// T33.2 input only, unhashed until T33.4: 3 u32 WALKMASK rows per tile row
+    /// (AnnoGame 0x1000990d..0x1000996f).
+    std::vector<std::uint32_t> walk_mask;
     bool has_prod = false;
     /// Valid when has_prod.
     ProductionType prod;
@@ -215,7 +219,7 @@ class TypeRegistry {
     /// (a registry built without FigurenHeader.dat has no figure types).
     [[nodiscard]] const FigureType* find_figure_type(std::uint32_t id) const;
     /// All figure types in ascending id order.
-    [[nodiscard]] std::span<const FigureType> figure_types() const { return figure_types_; }
+
     /// The class table entry of `cls`. A value outside the enum (a registry is
     /// built with exactly RuntimeClass::Count_ entries) gives the first entry.
     [[nodiscard]] const ClassInfo& class_info(RuntimeClass) const;
@@ -230,8 +234,13 @@ class TypeRegistry {
     [[nodiscard]] const BuildingType* find_growing(std::uint32_t object) const;
     /// FNV-1a 64 over every field of every type, the goods and the class
     /// tables (state_fields.hpp style: fixed widths, little endian); hashed once
-    /// in the header scope.
+    /// in the header scope. T33.2 walk_mask and walk_tables side inputs are excluded.
     [[nodiscard]] std::uint64_t digest() const { return digest_; }
+    /// Immutable side input; excluded from digest/save until T33.4.
+    [[nodiscard]] const std::shared_ptr<const formats::annowelt::WalkTables>& walk_tables() const {
+        return walk_tables_;
+    }
+    [[nodiscard]] std::span<const FigureType> figure_types() const { return figure_types_; }
     /// The digest of these tables exactly as given (types in the order given,
     /// which build() sorts by id first), without checking or sealing them: for
     /// tests that perturb one field at a time, including combinations that
@@ -274,7 +283,8 @@ class TypeRegistry {
     /// bytes is a load error naming the entry.
     static formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
     build(std::span<const formats::figuren::Entry> entries, std::vector<GoodsInfo> goods_in,
-          const SimConfig& cfg, std::span<const formats::figuren::Entry> figure_entries);
+          const SimConfig& cfg, std::span<const formats::figuren::Entry> figure_entries,
+          std::shared_ptr<const formats::annowelt::WalkTables> tables = {});
 
     /// A registry without types (the original goods and class tables): what a
     /// default-constructed World holds. Shared, immutable.
@@ -288,7 +298,8 @@ class TypeRegistry {
     static formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
     finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
            std::vector<ClassInfo> classes, const SimConfig& cfg,
-           std::vector<FigureType> figures = {});
+           std::vector<FigureType> figures = {},
+           std::shared_ptr<const formats::annowelt::WalkTables> tables = {});
 
     std::vector<BuildingType> types_;      // ascending id; lookup by binary search
     std::vector<FigureType> figure_types_; // ascending id
@@ -296,6 +307,7 @@ class TypeRegistry {
     std::vector<ClassInfo> classes_;
     std::uint32_t max_footprint_ = 1;
     std::uint64_t digest_ = 0;
+    std::shared_ptr<const formats::annowelt::WalkTables> walk_tables_;
 };
 
 /// A non-null handle to the immutable registry of a world. A moved-from handle
@@ -336,6 +348,7 @@ class RegistryRef {
 class TypeRegistry::Builder {
   public:
     Builder();
+    Builder& walk_tables(std::shared_ptr<const formats::annowelt::WalkTables> tables);
     Builder& goods(std::vector<GoodsInfo> table);
     Builder& classes(std::vector<ClassInfo> table);
     Builder& config(const SimConfig& cfg);
@@ -412,6 +425,7 @@ class TypeRegistry::Builder {
     std::vector<ClassInfo> classes_;
     SimConfig cfg_;
     std::string error_;
+    std::shared_ptr<const formats::annowelt::WalkTables> walk_tables_;
 };
 
 // ---- the tables (types.cpp, goods_table.cpp)

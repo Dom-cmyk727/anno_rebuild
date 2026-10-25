@@ -21,6 +21,7 @@
 #include <anno/sim/production.hpp>
 
 namespace anno::sim {
+class TypeRegistry;
 
 /// Sanity bound for SimConfig::list_min_growth and SimConfig::list_initial_size
 /// (SimConfig::validate checks both against it). Reason: both reach
@@ -431,6 +432,8 @@ struct SimConfig {
     /// docs/sim/state.md §3.1. Empty when valid, else one message naming the
     /// first offending field ("SimConfig.building_div: must be non-zero").
     [[nodiscard]] std::string validate() const;
+    /// World creation validates immutable walking inputs as well as counts.
+    [[nodiscard]] std::string validate(const TypeRegistry&) const;
     /// FNV-1a 64 of the config's field list (state_fields.hpp).
     [[nodiscard]] std::uint64_t digest() const;
 };

@@ -1096,7 +1096,10 @@ struct StateIO {
                         problem = validate_seams(w.seams_, config);
                     }
                     if (problem.empty()) {
-                        problem = w.types_->validate_against(config);
+                        problem = config.validate(*w.types_);
+                        if (problem.empty()) {
+                            problem = w.types_->validate_against(config);
+                        }
                         if (!problem.empty()) {
                             problem = "registry does not fit the configuration: " + problem;
                         }

@@ -271,7 +271,7 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
     if (!types) {
         return std::string("registry: is null");
     }
-    std::string problem = config.validate();
+    std::string problem = config.validate(*types);
     if (problem.empty()) {
         problem = rules.validate();
     }

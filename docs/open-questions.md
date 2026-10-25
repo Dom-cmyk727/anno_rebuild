@@ -1663,3 +1663,11 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   3. A derived per-tile terrain class in the sim state built at load from the island's `gfx`/`height` (a new field → a `kStateHashVersion` bump; only if 1 and 2 cannot be read).
 - **What the rebuild does meanwhile:** nothing — the walk ignores terrain (stated in OQ-160); by the owner's decision of 2026-10-24 no stand-in rule is added; T33 implements what T30 reads.
 - **How to resolve:** T30 steps 2 and 5, then T33; decide then whether a sim terrain field is still needed for the sea.
+
+
+## OQ-200: File HEIGHT to the runtime water-test corner grid (T33.2, 2026-10-25)
+- **Status:** open, water sub-step stopped as instructed.
+- **D (AnnoWelt):** initialization0x1008fea0..0x1008feb2 then0x1008ff00..0x1008ff0e gives default threshold32; whole-tile closure0x10092b40..0x10092c94 compares the mean of four unsigned corners using width+1 stride. `transport.md` section3.4.13 records the chain.
+- **Gap:** sim `Terrain::height` retains width*height file bytes. Establish how the original loader produces the width+1 runtime border before using it as four corners; OQ-060 is not enough to assume that mapping.
+- **T33.2 deviation:** empty tiles code2/mask0, no water closure and no coast pass. Do not infer water from GFXID or invent a height threshold.
+- **Separate placement stop, owner 2026-10-25:** tile-only object placement rotation and footprint offsets are dropped by the adapter; buildings retain theirs. Owner instructed documenting this stop for T33.4, without un-hashed placement metadata in T33.2. New walking inputs explicitly flag unsupported retained tile objects; ordinary invariant1x1 roads remain supported. Resolve before integration, including omitted footprint tiles.

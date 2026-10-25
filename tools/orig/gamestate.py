@@ -20,6 +20,9 @@ Offsets and their evidence (module RVAs relative to AnnoWelt.dll's load base):
                  ("HUMAN", "CG01", "VENEZIANER", ...), +0x64 GUID (the human's = the profile's
                  USGUID), money i32 +0x74                       docs/re/population.md (player
                  money; confirmed by running 2026-10-22, T16)
+  view object V  game HWND -> GetWindowLong(GWL_USERDATA) -> V, [V] = AnnoFrame+0x86428 / +0x8664c;
+                 f32 -x +0x1608, f32 -z +0x1610 (world tiles), u8 rotation +0x15f0, u8 zoom group
+                 +0x1604, f32 scale +0x15f4                    docs/re/view.md section 3.2-3.3
 Standard library only; import-safe under `python -I`.
 """
 
@@ -52,6 +55,16 @@ PLAYER_KIND = 0x44
 PLAYER_TEXT = 32                      # name and kind fields are 32 bytes each (zero padded)
 PLAYER_GUID = 0x64
 PLAYER_MONEY = 0x74
+
+# View object V (AnnoFrame.dll tFrameGame / tFrameGameFull base), reached through the game window's
+# GWL_USERDATA (set at AnnoFrame 0x100087d0). docs/re/view.md section 3.2-3.3.
+GWL_USERDATA = -21
+FRAME_VIEW_VTS = (0x86428, 0x8664C)   # base vtables of tFrameGame / tFrameGameFull (RVAs)
+VIEW_ROTATION = 0x15F0                # u8, 0..3
+VIEW_SCALE = 0x15F4                   # f32, 1.0 / 0.5 / 0.25 for zoom groups 0 / 1 / other
+VIEW_ZOOM_GROUP = 0x1604              # u8
+VIEW_TRANS_X = 0x1608                 # f32, negated world tile x
+VIEW_TRANS_Z = 0x1610                 # f32, negated world tile z
 
 # Plausibility bound for a city capacity read (in store units). A freed or unrelated object that
 # still carries the city vtable (review N1) shows zero or garbage here. The bound only filters
@@ -203,3 +216,40 @@ def cities(mem, welt_base: int) -> list[dict]:
         if rec:
             out.append(rec)
     return out
+
+
+def window_userdata(hwnd: int) -> int | None:
+    """GetWindowLongW(hwnd, GWL_USERDATA) as an unsigned 32-bit value (Windows only, read-only).
+    A WOW64 game window keeps a 32-bit pointer there; None when the call fails or is unavailable."""
+    try:
+        import ctypes  # noqa: PLC0415
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+    except (ImportError, AttributeError, OSError):
+        return None
+    user32.GetWindowLongW.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    user32.GetWindowLongW.restype = ctypes.c_long
+    v = user32.GetWindowLongW(hwnd, GWL_USERDATA) & 0xFFFFFFFF
+    return v or None
+
+
+def camera(mem, hwnd: int, frame_base: int, userdata=window_userdata) -> dict | None:
+    """The original's camera: the view object V from the game window's GWL_USERDATA, accepted only
+    when [V] is one of AnnoFrame's two base vtables (view.md 3.3). Returns the world position in
+    tiles (the stored translation negated, view.md 3.2 'Clamp and units'), rotation, zoom group
+    and scale; None when V is missing or fails the vtable check."""
+    v = userdata(hwnd)
+    if not v:
+        return None
+    head = mem.read(v, 4)
+    if not head or u32(head) not in (frame_base + rva for rva in FRAME_VIEW_VTS):
+        return None
+    rot = mem.read(v + VIEW_ROTATION, 1)
+    grp = mem.read(v + VIEW_ZOOM_GROUP, 1)
+    scale = mem.read(v + VIEW_SCALE, 4)
+    tx = mem.read(v + VIEW_TRANS_X, 4)
+    tz = mem.read(v + VIEW_TRANS_Z, 4)
+    if not (rot and grp and scale and tx and tz):
+        return None
+    f = lambda b: struct.unpack("<f", b)[0]  # noqa: E731
+    return {"v": v, "x": -f(tx), "z": -f(tz), "rotation": rot[0], "zoom_group": grp[0],
+            "scale": f(scale)}

@@ -334,6 +334,10 @@ class WindowsBackend:
             res["cities"] = gamestate.cities(self, welt)
         if what in ("players", "all"):
             res["players"] = gamestate.players(self, welt)
+        if what == "camera":
+            found = self.smoke.find_game_window(self.game_dir)
+            frame = self.module_bases().get("annoframe.dll")
+            res["camera"] = (gamestate.camera(self, found[0], frame) if found and frame else None)
         return res
 
     # screen

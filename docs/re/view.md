@@ -1,6 +1,6 @@
 # The view: mouse, hovered tile and camera of the original (observed by running)
 
-**Status:** live first pass plus static T15.B1 stop, 2026-10-25 (orchestrator, owner driving session; T15 play layer stage B,
+**Status:** live first pass plus static T15.B1/T15.B1b stops, 2026-10-25 (orchestrator, owner driving session; T15 play layer stage B,
 `docs/testing/play-original.md` §3 item 1). Method: read-only memory diffing of the running copy
 (`tools/orig/memdiff.py`, snapshots of every committed writable region, narrowed by "changed on this
 input, unchanged on that one"), live reads along controlled mouse sweeps, screenshots. Session
@@ -126,7 +126,18 @@ replacing that load base with the preferred base gives `0x10023164`. This valida
 not the original classification of the stack word.
 
 
-## 3. The camera (unanchored; T15.B1 stopped)
+### 2.3 The converter: T15.B1b outcome (2026-10-25)
+
+**Open.** The arrow-key sweep in §3.1 did not select a scroll method or camera global.
+Consequently there is no anchored field-loader list to filter for mouse inputs or two integer
+arguments, and **no converter candidate is established by this route**. This is a dependency
+stop before the task's two-function follow-up, not a failed decoding of a selected converter.
+No projection constants, zoom-group pitch table, rotation formula or output pair is assigned
+from the unrelated comparisons. The live slopes in §2.1 remain observations only; §2.2's
+building getters remain rejected as converters. T15.B2's frame walk/minimap calibration is
+still the prescribed independent route to obtain a live anchor.
+
+## 3. The camera (unanchored; T15.B1 and T15.B1b stopped)
 
 Arrow keys scroll the view (the manual's cursor keys); `P` opens a modal "Pause!" scroll with a
 "Continue game" button at client (0.40, 0.69), during which the arrow keys do nothing and the
@@ -153,6 +164,109 @@ move, recording the module load base, live instruction address and dynamic recei
 or the owner's minimap calibration described above to provide an independent camera anchor.
 This is the remaining question, not a request to manufacture a reader from a stack address.
 No new original-game session or large snapshot set was started for this static task.
+
+### 3.1 T15.B1b: literal virtual-key sweep and stop
+
+**Method/scope (2026-10-25).** Read-only static inspection of the licensed files under
+`game/app`; preferred image base `0x10000000` for all addresses below, **module names are
+essential**. Scratch capstone scripts `cache/t15b1b_sweep.py` and
+`cache/t15b1b_candidates.py` use pefile `.text`, x86-32 detail mode and skipdata, following
+`tools/xref.py` / `tools/disasm.py`. Outputs remain ignored under cache; none are fixtures.
+
+The sweep selects comparisons whose second immediate is `0x25..0x28`, checks pairs within
+64 bytes, and looks for `sub reg,0x25` followed within 16 instructions by an indexed jump.
+It also checks equivalent literal LEA/ADD minus 0x25 index formation. **P: 37 comparison
+sites**, reproduced on a second run (12+3+7+5+10); zero literal minus 0x25 index sites and
+therefore zero matching four-case-or-larger switches of that form. The full hit list is:
+
+- **AnnoFrame.dll (12):** `0x10010cae`, `0x1001206d`, `0x100147d9`, `0x1003f29c`,
+  `0x10049b2b`, `0x10049ca5`, `0x1004b468`, `0x1004b604`, `0x1006e52a`,
+  `0x10072ec3`, `0x1007e819`, `0x1007f143`.
+- **AnnoGame.dll (3):** `0x10005d6b`, `0x10013b6f`, `0x10013c2b`.
+- **AnnoScene.dll (7):** `0x1000b179`, `0x1000b17d`, `0x1000b254`, `0x1000b2b4`,
+  `0x10011b70`, `0x10022c84`, `0x10022ca4`.
+- **AnnoDisplay.dll (5):** `0x10001b8f`, `0x10009942`, `0x1000a2b2`, `0x1002be99`,
+  `0x1002bf4e`.
+- **AnnoWelt.dll (10):** `0x10019d6e`, `0x1002a92b`, `0x1002aa6c`, `0x1002d815`,
+  `0x1002d87e`, `0x1002dac9`, `0x1003d100`, `0x10064a94`, `0x10064ace`, `0x10080340`.
+
+**P, table fallback:** a literal contiguous `25,26,27,28` sequence, separately as bytes and
+little-endian u32s, has zero matches in `.data`/`.rdata` of each of the five modules.
+This does **not** exclude a binding table with intervening action ids, another ordering,
+a runtime-loaded table, scan codes, a wider switch range, or a handler in another module.
+Linear-sweep instruction alignment/inline data is another search limitation. There is no
+claim that the original does not handle arrow keys.
+
+**Candidate reads (step 2).** Function starts were checked against padding, direct call
+and relocation targets; inlined switch labels are not function boundaries. In particular,
+AnnoFrame `0x10072ebc` is inside `0x10072bb0`; AnnoScene `0x10011b2a` is inside
+`0x10011a10`; AnnoWelt `0x10019cb4` is inside `0x10019c20` (the small preceding
+`0x10019c10` getter ends with a tail jump at `0x10019c1a`). For long bodies, read the
+first 150 instructions plus the hit neighbourhoods, rather than claiming a whole-function
+proof. Short bodies were read through their final ret, including branches after early rets.
+The comparisons' dataflow was re-read before assigning the narrow findings below.
+
+- **AnnoFrame:** `0x10010ca0..0x10010ce6` and `0x1006e510..0x1006e608` dispatch on
+  argument0 with a second argument used as a value/output record. Their `0x26` cases write
+  one flag or return one field; they do not establish four key-dependent scroll directions.
+  `0x10011020` first 150 end at `0x100111f3`, with the later loop-bound neighbourhood
+  `0x1001204d..0x10012093`; `0x10014410` first 150 end at `0x10014620`, plus
+  `0x100147c2..0x100147ed`: their `0x28` compares bound incrementing loops, not four
+  key cases. `0x10049950` first 150 through `0x10049b1f` and `0x1004b290` through
+  `0x1004b45c`, plus the comparison windows through `0x10049b52` / `0x1004b489` and `0x10049c8d..0x10049ccf` / `0x1004b5ed..0x1004b630`:
+  the `0x27` values cap coordinate-difference-derived counts at 39. These are not proven
+  camera clamp fields. `0x1003f0e0` first 150 through `0x1003f27b`, plus
+  `0x1003f289..0x1003f2b8`, tests a character in a string containing formatting markers;
+  `0x25` is percent here. `0x1007e789` first 150 through `0x1007e92c`, plus
+  `0x1007f12f..0x1007f162`, likewise parses characters, with percent and format-width/type
+  handling. `0x10072bb0` first 150 through `0x10072d82`, plus
+  `0x10072eab..0x10072ef1`: the nearby switch subtracts 3 at `0x10072ec0`, not 0x25;
+  no four-arrow scroll target is selected from the inspected portion.
+- **AnnoGame:** `0x10005b30` first 150 through `0x10005cda`, plus
+  `0x10005d4d..0x10005d97`, increments the compared counter by 3 in a table/string loop.
+  `0x10013b40..0x10013bd0` and `0x10013be0..0x10013ce7` return values from indexed
+  tables across several numeric ranges; `0x28` is an upper range bound. Neither contains
+  four direction-specific calls.
+- **AnnoScene:** `0x1000b150..0x1000b1b4`, `0x1000b230..0x1000b277` and
+  `0x1000b280..0x1000b2d7` scan/copy string tokens. `0x10022bf0` first 150 through
+  `0x10022d86` counts opening/closing parentheses at `0x10022ca4..0x10022cad` and
+  recursively processes their contents. Thus both close pairs
+  (`0x1000b179/0x1000b17d`, `0x10022c84/0x10022ca4`) are character parsing,
+  not cursor-key dispatch. `0x10011a10` first 150 through `0x10011baa` uses a switch
+  based on argument−10 (`0x10011a18`); at `0x10011b70` the compared edi still derives
+  from that adjusted argument. Its two-stage table is not evidence of a VK_UP comparison.
+- **AnnoDisplay:** `0x10001b80..0x10001bf9`, `0x10009930..0x1000999c` and
+  `0x1000a2a0..0x1000a310` have selector/value-record branches; the 0x26 case returns
+  a field or constant through argument1+4. `0x1002be30` first 150 through
+  `0x1002bfe7` compares a file/mapping size and header length with40 at
+  `0x1002be99/0x1002bf4e`, not an arrow-key code.
+- **AnnoWelt:** `0x10019c20` first 150 through `0x10019de7` bounds a value from a type
+  getter in 26..40 at `0x10019d69..0x10019d71`. `0x1002a5e0` first 150 through
+  `0x1002a7c4`, plus `0x1002a916..0x1002a954` and `0x1002aa58..0x1002aa96`,
+  uses incrementing range counters. `0x1002d3b0` first 150 through `0x1002d5a7`,
+  plus `0x1002d801..0x1002d834` / `0x1002d86b..0x1002d89d`, and the complete
+  `0x1002dac0..0x1002daff`, use the26..40 numeric range for indexed quantities.
+  `0x1003c6b0` first 150 through `0x1003c889`, plus
+  `0x1003d0e8..0x1003d12d`, increments a byte and resets it at 40.
+  `0x10064a90..0x10064abb` and `0x10064ac0..0x10064b21` are **two different
+  methods**: their adjacent 0x26 sites are a get/set selector pair for a byte at relative
+  this+0x100, not four keys in one handler. `0x1007f960` first 150 through
+  `0x1007fb1c`, plus `0x10080326..0x10080362`, advances a stride 10 offset until40.
+
+No receiver in this list is identified as the camera. Relative fields in rejected methods
+must not be combined across receivers: their installed interface offsets were not resolved
+because there is no selected scroll method. In particular, neither the AnnoFrame count cap39
+nor AnnoWelt relative this+0x100 is promoted to a camera coordinate or global anchor.
+
+**Stop/result (steps 2–5).** No candidate establishes the required four-key branch mapping,
+and no key-code-to-action table reader is anchored. There is therefore **no verified scroll
+method, camera object/global chain, coordinate units, map clamp, zoom field or rotation field**
+from this pass. The static dependency chain stops at handler selection, with the explicit
+rejected candidates above; it does not stop at an invented virtual camera call. No
+`camera(mem,bases)` reader or skipping test was possible, so none was added and no skip output
+is claimed. The sweep result is useful negative evidence for this literal-pattern route,
+not completion of the camera task. Resume from T15.B2's live frame/camera anchor or a verified
+key-binding/action dispatcher; no original-game input was sent in T15.B1b.
 
 ## 4. Method notes
 

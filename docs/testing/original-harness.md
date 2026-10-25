@@ -120,6 +120,39 @@ the simulation. So the keyed fixtures (`m2-fixtures.md` TL-F2 speeds, TL-F4 paus
 setup can run without the owner at the keyboard, in an agreed session. The copy stays byte-identical
 to `game/app` after a run; no process is left.
 
+## 4b. Owner driving session 2026-10-25 (orchestrator at the keyboard, owner present)
+
+What ran: the copy through dgVoodoo2, driven only by `tools/orig/control.py` (sessions
+`drive-20261025c/d`), memory read by `tools/orig/backend.py` (`WindowsBackend.state('all')`,
+from `main`) and the new `tools/orig/memdiff.py`. Findings that change how the harness is used:
+
+1. **The game warps the cursor itself** (`docs/re/view.md` §1): the B1 "cursor moved since the
+   last action" check aborted every call after the first click. It now aborts only when the cursor
+   left the game's client area; a warp inside the area is logged as `cursor_warp`. The foreground
+   check and the target-inside-client check are unchanged. With that, the whole path intros →
+   Singleplayer → New game → Citizen → OK → a running game, F10, F9, B and the eight categories
+   ran from the script with zero aborts.
+2. **The full-screen game minimizes whenever the terminal takes focus** between calls (its window
+   rect reads (-32000, -32000)); `foreground()` restores it (4f58386), so every call works, but
+   `smoke.find_game_window` returns `None` while it is minimized: use `control.foreground` first.
+3. **`P` opens a modal "Pause!" scroll** ("Continue game" at client (0.40, 0.69)); the arrow keys
+   and the hovered tile are dead while it is up. Slow down with F8 (50 %) for RE, not with P.
+4. **Sound off:** `tools/orig/userdat.py set_volume` on the copy's
+   `SaveGame/ANNOnymous/user.dat` (music was -235, speech 0; now -250/-250). Set before the
+   launch; no effects slider exists.
+5. **Memory readers from `main` work on the Windows copy:** world tick, PRNG table 0/2048
+   mismatches, seven players with money, five cities with stocks. After a quick load two player
+   objects carry the human's vtable (the freed pre-load copy): prune by reachability.
+6. **Disk:** `memdiff snap` writes 182 MiB per snapshot; C: hit 0 bytes free once. Delete mined
+   snapshots at once; keep at most one set.
+7. **Stage-A acceptance:** F10 wrote `Lastgame.sav` (2.7 MB) within 3 s and F9 reloaded it; the
+   deliberate focus-steal test (a key refused and logged when another window is in front) is the
+   one item still to be done with the owner's hand (see REPORTS).
+8. **Stage B:** the hovered tile and the game's mouse position are found (stack locals,
+   `docs/re/view.md`); the camera is open, to be calibrated against the minimap rectangle
+   (owner's hint). The construction menu's category column and grid are measured into
+   `screens.json` (eight categories, pioneer-level cells).
+
 ## 5. Third-party tools (none installed; owner decides each)
 
 Candidates for the questions above; each needs its version, licence and reason before installation, and nothing of them goes into git:

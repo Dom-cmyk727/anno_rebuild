@@ -19,6 +19,7 @@
 #include <anno/sim/ids.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/production.hpp>
+#include <anno/sim/rng.hpp>
 #include <anno/sim/settings.hpp>
 
 namespace anno::sim {
@@ -81,6 +82,20 @@ struct ScenarioSpec {
         /// The warehouse stock in 8.8 tons, exactly SimConfig::warehouse_goods
         /// entries; nullopt = empty.
         std::optional<std::vector<std::uint32_t>> stock;
+        /// The warehouse capacity in 8.8 tons (CityStock::capacity; a savegame or
+        /// scenario city's HEAD2, docs/re/annowelt.md "Scenario cities"); nullopt =
+        /// the constructor's 50 t.
+        std::optional<std::uint32_t> capacity;
+        /// The per-goods trade-list setting (City::goods, size warehouse_goods);
+        /// nullopt = all default. From STADT2 VK/EK (T26, docs/re/annowelt.md
+        /// "Scenario cities" (g)).
+        std::optional<std::vector<GoodsSetting>> goods;
+        /// The build-goods settings (City::build_goods, size build_goods_count);
+        /// nullopt = all default. From STADT2 BAUMAT (T26).
+        std::optional<std::vector<BuildGoods>> build_goods;
+        /// The trade lists (City::trade_lists, size trade_lists); nullopt = empty.
+        /// From STADT2 VK (list 1) and EK (list 0) (T26).
+        std::optional<std::vector<std::vector<TradeEntry>>> trade_lists;
         std::vector<BuildingSpec> buildings;
     };
     struct IslandSpec {
@@ -100,5 +115,11 @@ struct ScenarioSpec {
     /// The island table is as long as the highest slot + 1; unused slots stay null.
     std::vector<IslandSpec> islands;
 };
+
+/// The generator a world made from `spec` starts with (docs/sim/state.md §10 step 2):
+/// the scenario's table or the original one, the cursor spec.seed mod its length
+/// (world property 8, D AnnoWelt 0x100a3230). nullopt for an empty custom table.
+/// World::create and the link resolution at load (resolve_scenario_links) share it.
+[[nodiscard]] std::optional<WorldRng> scenario_rng(const ScenarioSpec& spec);
 
 } // namespace anno::sim

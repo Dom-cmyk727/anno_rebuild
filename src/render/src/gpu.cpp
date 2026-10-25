@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -17,6 +18,7 @@
 
 #include <anno/render/gpu.hpp>
 #include <anno/render/gpu_fluid.hpp>
+#include <anno/render/residency.hpp>
 #include <anno/render/shaders.hpp>
 
 #include "thread_priority.hpp"
@@ -103,6 +105,39 @@ WGPUBindGroupEntry buffer_entry(std::uint32_t binding, WGPUBuffer b, std::uint64
     e.buffer = b;
     e.offset = 0;
     e.size = size;
+    return e;
+}
+
+/// A compute-visible storage buffer binding layout entry (read-only or
+/// read-write). The GPU chunk-build pass (T11 stage 2a) binds its record, bin,
+/// clip, frame-table, keel and output buffers this way.
+WGPUBindGroupLayoutEntry storage_entry(std::uint32_t binding, bool read_write) {
+    WGPUBindGroupLayoutEntry e = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
+    e.binding = binding;
+    e.visibility = WGPUShaderStage_Compute;
+    e.buffer.type =
+        read_write ? WGPUBufferBindingType_Storage : WGPUBufferBindingType_ReadOnlyStorage;
+    return e;
+}
+
+/// A compute-visible uniform buffer binding layout entry.
+WGPUBindGroupLayoutEntry uniform_compute_entry(std::uint32_t binding) {
+    WGPUBindGroupLayoutEntry e = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
+    e.binding = binding;
+    e.visibility = WGPUShaderStage_Compute;
+    e.buffer.type = WGPUBufferBindingType_Uniform;
+    return e;
+}
+
+/// A compute-visible sampled-texture binding layout entry (the chunk-build
+/// pass reads the static sprite atlas, an unfilterable-float 2D array).
+WGPUBindGroupLayoutEntry texture_compute_entry(std::uint32_t binding) {
+    WGPUBindGroupLayoutEntry e = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
+    e.binding = binding;
+    e.visibility = WGPUShaderStage_Compute;
+    e.texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+    e.texture.viewDimension = WGPUTextureViewDimension_2DArray;
+    e.texture.multisampled = 0;
     return e;
 }
 
@@ -264,12 +299,26 @@ constexpr std::size_t kPieceStride = 256;
 /// of the scale, the offset and the filter, then the grid size, taps and padding.
 constexpr std::size_t kScaleBytes = 32;
 
+/// The passes of render() that GpuLimits::gpu_timing times (GpuPassTimes), in the order
+/// they are recorded; measure_river_cost's pass counts as Sea.
+enum class TimedPass : std::uint8_t { Fluid, Terrain, Under, Sea, Objects, Resample };
+constexpr std::size_t kTimedPasses = 6;
+/// Bytes between two passes' ticks in the resolve buffer: WebGPU wants a resolve's
+/// destination offset to be a multiple of 256.
+constexpr std::uint64_t kTimestampSlot = 256;
+
 struct GpuFrame::Impl {
     /// Own references to the device (the Context may move or go away).
     std::unique_ptr<DeviceRef> ref;
     GpuLimits limits;
     /// The device's maxTextureArrayLayers (atlas growth stops there).
     std::uint32_t max_layers = 1;
+    /// The adapter kind (for the atlas budget default, gpu-chunks.md 4.3 rule 6).
+    WGPUAdapterType adapter_type = WGPUAdapterType_Unknown;
+    /// The wave simulation's cells per screen pixel at most (0 = no bound), and whether
+    /// the bound turned it off in the last frame that asked for it.
+    double fluid_cells_cap = 0.0;
+    bool fluid_off = false;
     bool atlas_full_reported = false;
     WGPUTextureFormat format = WGPUTextureFormat_RGBA8Unorm;
     ShaderModule module;
@@ -316,24 +365,23 @@ struct GpuFrame::Impl {
     RiverQuality quality = RiverQuality::High;
     std::vector<RiverCost> costs;
     std::string tier_note;
-    /// Timestamp queries (the device has them and a timed pass asked): the
-    /// sea pass of render() or a measured pass writes ticks 0 and 1 (ts_writes);
-    /// render() writes tick 2 at the start of its first pass (ts_first) and tick 3
-    /// at the end of the resample pass (ts_last; without one the frame ends with
-    /// the sea pass, tick 1), so the whole frame is timed as well.
+    /// Timestamp queries (the device has them and a timed pass asked): every timed
+    /// pass writes a tick at its start and one at its end (ts_pass: queries 2i and
+    /// 2i + 1 for TimedPass i), resolved into its own 256-byte slot of ts_resolve (the
+    /// alignment WebGPU asks of a resolve offset). measure_river_cost times its pass as
+    /// TimedPass::Sea.
     bool timestamps = false;
     float timestamp_period_ns = 0.0F;
     QuerySet ts_set;
     Buffer ts_resolve, ts_read;
-    WGPUPassTimestampWrites ts_writes = WGPU_PASS_TIMESTAMP_WRITES_INIT;
-    WGPUPassTimestampWrites ts_first = WGPU_PASS_TIMESTAMP_WRITES_INIT;
-    WGPUPassTimestampWrites ts_last = WGPU_PASS_TIMESTAMP_WRITES_INIT;
+    std::array<WGPUPassTimestampWrites, kTimedPasses> ts_pass{};
+    /// The passes whose ticks the recording since ts_start() writes, in the order
+    /// they run.
+    std::vector<TimedPass> ts_ran;
     bool ts_recorded = false;
-    /// Ticks resolved by the last timed render() (2 = the sea pass only, 3 or 4 = the
-    /// frame too) and the index of its last tick; the frame's GPU time as of the
-    /// last read_timestamps().
-    std::uint32_t ts_count = 2, ts_frame_end = 1;
+    /// The frame's GPU time and its passes as of the last read_timestamps().
     std::optional<double> last_frame_ms;
+    std::optional<GpuPassTimes> last_passes;
     /// Offscreen texture of pass 1 and its size; terrain height per pixel.
     Texture under_t, terrain_t;
     TextureView under_v, terrain_v;
@@ -602,6 +650,64 @@ struct GpuFrame::Impl {
     bool fluid_failed = false;
     /// The window serial the cross-fade has seen, and the fade-clock time (ms) it changed.
     std::uint64_t fluid_seen_serial = 0, fluid_arrival = 0;
+
+    /// u32 words of one GPU frame-table entry (frame_table.hpp): layer, atlas x,
+    /// atlas y, image w, image h, anchor_y (i32), keel offset (u32), resident.
+    static constexpr std::uint32_t kCbFrameU32 = 8;
+
+    /// GPU-built chunks (T11 stage 2a, docs/render/gpu-chunks.md 5.1-5.3): the
+    /// compute pipeline, a sprite atlas for chunk (Static) frames of its own so
+    /// the per-frame sprite path (Hot) is untouched, the scene-wide GPU frame
+    /// table and keel buffer the compute pass reads, and the residency model that
+    /// decides atlas placement.
+    struct ChunkBuild {
+        BindGroupLayout layout;
+        PipelineLayout pl;
+        ComputePipeline pipe;
+        bool ready = false;  ///< the pipeline is created and usable
+        bool failed = false; ///< the pipeline could not be created (fall back to Cpu)
+
+        /// The static atlas (RGBA8Unorm 2D array), grown by doubling.
+        Texture atlas;
+        TextureView atlas_view;
+        std::uint32_t atlas_layers = 0;
+        std::optional<AtlasResidency> residency;
+
+        /// Scene-wide GPU frame table, kCbFrameU32 words per FrameId; CPU mirror
+        /// plus the storage buffer. Ids are dense and stable (frame_table.hpp).
+        std::vector<std::uint32_t> frame_cpu;
+        Buffer frame_buf;
+        std::uint64_t frame_cap = 0;
+        /// FrameIds whose GPU frame-table entry differs from the CPU mirror
+        /// (placed, re-placed or evicted this frame); flushed per entry, so the
+        /// whole scene-wide table is never re-uploaded per built chunk (G1).
+        std::set<FrameId> frame_dirty;
+        /// Per-column keel of each resident frame, appended once (immutable data,
+        /// stable ids), the offset by FrameId.
+        std::map<FrameId, std::uint32_t> keel_off;
+        std::vector<std::uint32_t> keel_cpu;
+        Buffer keel_buf;
+        std::uint64_t keel_cap = 0;
+        /// u32 words of keel_cpu already on the GPU; only the appended tail is
+        /// uploaded (the keel is immutable and append-only, G1).
+        std::uint64_t keel_uploaded = 0;
+
+        /// Atlas doublings recorded since the last render() (GpuStats).
+        std::size_t grows = 0;
+        /// The current scene's frame table (set each render(); the draw lists'
+        /// FrameIds index it).
+        const FrameTable* ft = nullptr;
+        /// The open-water colour of the current scene (reduce_quad's ground clear
+        /// for a derived GpuList chunk, item 1); set each render().
+        Px water{};
+        /// Atlas texel bytes left to upload this frame (atlas_upload_bytes_per_frame).
+        std::uint64_t upload_left = 0;
+        /// Texel bytes the last cb_resident() uploaded.
+        std::uint64_t last_upload = 0;
+        /// Chunks built and CPU fallbacks this frame (reset each render()).
+        std::size_t built = 0, fallbacks = 0;
+    };
+    ChunkBuild cb;
 
     WGPUDevice dev() const { return ref->device.get(); }
     WGPUQueue queue() const { return ref->queue.get(); }
@@ -893,6 +999,160 @@ struct GpuFrame::Impl {
         return raw;
     }
 
+    /// A plane texture for a GpuList chunk's compute output (objects / base),
+    /// reused from the pool or the warm set, else made: CopyDst (the compute
+    /// copies into it), TextureBinding (the compositor samples it), CopySrc
+    /// (read-back and the derived reduce). No texels are written here.
+    Plane acquire_plane(WGPUTextureFormat fmt, std::uint32_t w, std::uint32_t h) {
+        Plane plane;
+        const auto pooled = std::find_if(plane_pool.begin(), plane_pool.end(), [&](const Plane& p) {
+            return p.format == fmt && p.w == w && p.h == h;
+        });
+        if (pooled != plane_pool.end()) {
+            plane = std::move(*pooled);
+            plane_pool.erase(pooled);
+            pool_planes.store(plane_pool.size());
+        } else if (!take_warm(fmt, w, h, plane)) {
+            plane.format = fmt;
+            plane.w = w;
+            plane.h = h;
+            plane.texture = make_texture(dev(), "gpu-list", fmt, w, h, 1,
+                                         WGPUTextureUsage_TextureBinding |
+                                             WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
+            plane.view = make_view(plane.texture.get(), false);
+        }
+        return plane;
+    }
+
+    /// Readiness of a GpuList chunk's frames in the atlas.
+    enum class CbReady { Ready, Wait, Fallback };
+
+    /// Makes `c`'s draw-list frames resident for the build, within this frame's
+    /// atlas upload budget (the first built chunk always goes, gpu-chunks.md 4.4).
+    /// Ready = build it; Wait = frames not all uploaded yet (keep the placeholder);
+    /// Fallback = they overflow the budget (gpu-chunks.md 4.3 rule 5).
+    CbReady cb_prepare(const render::Chunk& c) {
+        if (!c.draws || c.draws->object_count() == 0) {
+            return CbReady::Ready; // no objects: the normal upload path handles it
+        }
+        if (!cb_init() || cb.ft == nullptr) {
+            return CbReady::Fallback;
+        }
+        const std::uint64_t budget =
+            cb.built == 0 ? std::numeric_limits<std::uint64_t>::max() : cb.upload_left;
+        const EnsureStatus st = cb_resident(c.draws->frame_set, *cb.ft, budget);
+        if (st == EnsureStatus::Overflow) {
+            return CbReady::Fallback;
+        }
+        if (st == EnsureStatus::Deferred) {
+            return CbReady::Wait;
+        }
+        cb.upload_left -= std::min(cb.upload_left, cb.last_upload);
+        return CbReady::Ready;
+    }
+
+    /// Overflow fallback (gpu-chunks.md 4.3 rule 5, item 2): the chunk's frame
+    /// set does not fit the atlas budget, so its objects and base planes are
+    /// built on the window thread by replaying the draw list on the CPU (exactly
+    /// as the Cpu builder does in render_chunk_data), instead of the compute
+    /// pass. Rare: it cannot happen at the default budgets (7.8 MiB per chunk at
+    /// most). The ground/field/terrain/flow planes and the serial come from the
+    /// GpuList chunk unchanged.
+    std::optional<Chunk> cb_cpu_fallback(const ChunkKey& key, const render::Chunk& c) {
+        if (!c.draws || cb.ft == nullptr) {
+            return std::nullopt;
+        }
+        render::Chunk cpu = c; // ground/field/terrain/flow and serial carried over
+        const render::Canvas canvas = render::replay(*c.draws, *cb.ft);
+        std::vector<Px> px(std::size_t{canvas.width} * canvas.height);
+        for (std::size_t i = 0; i < px.size(); ++i) {
+            px[i] = {canvas.pixels[i * 4], canvas.pixels[i * 4 + 1], canvas.pixels[i * 4 + 2],
+                     canvas.pixels[i * 4 + 3]};
+        }
+        if (std::all_of(px.begin(), px.end(), [](const Px& p) { return p[3] == 0; })) {
+            cpu.objects.clear();
+            cpu.base.clear();
+        } else {
+            cpu.objects = std::move(px);
+            cpu.base = canvas.base;
+        }
+        cpu.draws.reset(); // so finish_upload stages the pixels, not the compute pass
+        return upload_chunk(key, &cpu);
+    }
+
+    /// A GPU chunk for `key` to feed a derived reduce (item 1): a built level is
+    /// built via the compute pass (frames made resident first); a derived level
+    /// recurses and reduces its own children. nullopt when the CPU chunk is
+    /// missing or its frames are not yet resident (the caller keeps the
+    /// stand-in). These chunks are temporary: reduce_quad copies their texels,
+    /// then the caller recycles their planes.
+    std::optional<Chunk> gpu_chunk_for_reduce(const ChunkKey& key, const FrameRenderer& frames) {
+        const render::Chunk* c = frames.chunk(key);
+        if (c == nullptr) {
+            return std::nullopt;
+        }
+        const std::size_t g = std::get<0>(key);
+        if (levels != nullptr && g >= levels->built_count() && g < levels->size()) {
+            return build_derived_gpu(key, *c, frames);
+        }
+        if (c->draws && c->draws->object_count() > 0) {
+            if (cb_prepare(*c) != CbReady::Ready) {
+                return std::nullopt;
+            }
+            ++cb.built;
+        }
+        return upload_chunk(key, c);
+    }
+
+    /// A derived GpuList chunk (gpu-chunks.md "Stage 2a: the derived-level
+    /// decision", item 1): its four children are built on the GPU and reduced 2x
+    /// by reduce_quad on the window thread (no read-back, each child built once),
+    /// giving the derived ground/objects/field/terrain. base and flow are not
+    /// derived. The serial and the water flags come from the CPU derived chunk so
+    /// the serial rule still replaces the stand-in. nullopt keeps the stand-in.
+    std::optional<Chunk> build_derived_gpu(const ChunkKey& key, const render::Chunk& derived_cpu,
+                                           const FrameRenderer& frames) {
+        if (!cb_init()) {
+            return std::nullopt;
+        }
+        const auto kids = render::derived_children(key, *levels);
+        std::array<Chunk, 4> up;
+        std::array<const Chunk*, 4> src{};
+        bool ok = true;
+        for (std::size_t q = 0; q < 4 && ok; ++q) {
+            auto child = gpu_chunk_for_reduce(kids[q], frames);
+            if (!child) {
+                ok = false;
+                break;
+            }
+            up[q] = std::move(*child);
+            // An empty source (no planes) is a null quadrant, so reduce_quad
+            // clears it to open water / transparent, as CPU reduce_chunks_2x does.
+            src[q] = up[q].flags != 0 ? &up[q] : nullptr;
+        }
+        std::optional<Chunk> reduced;
+        if (ok) {
+            const auto [group, cx, cy] = key;
+            reduced = reduce_quad(src, chunk_rect(cx, cy), cb.water);
+            if (reduced) {
+                // The serial lets the serial rule replace the stand-in; water
+                // objects are not drawn at a derived level (the compositor reads
+                // that from the scene, not the GPU chunk).
+                reduced->serial = derived_cpu.serial;
+            }
+        }
+        // The children were temporary: recycle their planes for later uploads.
+        for (Chunk& ch : up) {
+            for (Plane& p : ch.planes) {
+                if (plane_pool.size() < kPoolPlanes) {
+                    plane_pool.push_back(std::move(p));
+                }
+            }
+        }
+        pool_planes.store(plane_pool.size());
+        return reduced;
+    }
+
     /// The start of an upload of `chunk` (null: a placeholder with no planes) under `key`.
     Staged begin_upload(const ChunkKey& key, const render::Chunk* chunk,
                         std::shared_ptr<const render::Chunk> hold) {
@@ -991,6 +1251,26 @@ struct GpuFrame::Impl {
     Chunk finish_upload(const ChunkKey& key, Staged&& st) {
         const Rect r = chunk_rect(std::get<1>(key), std::get<2>(key));
         Chunk out = std::move(st.out);
+        // GpuList: the objects and base planes are built by the compute pass from
+        // the draw list (frames made resident by cb_prepare), not uploaded. The
+        // other planes (ground, field, terrain, flow) staged as usual above.
+        if (st.chunk != nullptr && st.chunk->draws && st.chunk->draws->object_count() > 0 &&
+            cb.ready) {
+            const render::ChunkDraws& d = *st.chunk->draws;
+            const auto n = static_cast<std::uint32_t>(kChunk);
+            Plane objp = acquire_plane(WGPUTextureFormat_RGBA8Unorm, n, n);
+            Plane basep = acquire_plane(WGPUTextureFormat_R8Uint, n, n);
+            const CbScratch& s = cb_scratch(d);
+            WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
+            CommandEncoder enc(wgpuDeviceCreateCommandEncoder(dev(), &ed));
+            cb_encode(enc.get(), s, objp.texture.get(), basep.texture.get());
+            submit(enc.get(), "gpu-list chunk");
+            st.views[1] = objp.view.get();
+            st.views[4] = basep.view.get();
+            st.flags |= 2U | 16U; // objects, base present
+            out.planes.push_back(std::move(objp));
+            out.planes.push_back(std::move(basep));
+        }
         out.flow = st.has_flow;
         out.flags = st.flags;
         out.uniform =
@@ -1070,6 +1350,430 @@ struct GpuFrame::Impl {
         pool_planes.store(plane_pool.size());
         released_holds.push_back(std::move(it->second.hold));
         staged.erase(it);
+    }
+
+    // ---- GPU-built chunks (T11 stage 2a) --------------------------------------
+
+    /// The bytes one atlas layer occupies (atlas_size^2 RGBA8).
+    std::uint64_t cb_layer_bytes() const {
+        return std::uint64_t{limits.atlas_size} * limits.atlas_size * 4;
+    }
+
+    /// The resident bytes of the per-frame sprite (Hot) atlas, a separate
+    /// texture that shares the OQ-096 budget with the chunk atlas (G3).
+    std::uint64_t sprite_atlas_bytes() const {
+        return atlas ? std::uint64_t{atlas->layers} * cb_layer_bytes() : 0;
+    }
+
+    /// The chunk atlas budget in bytes (gpu-chunks.md 4.3 rule 6, OQ-096):
+    /// GpuLimits::atlas_budget_mb, or 512 MiB on a discrete adapter / 256 MiB
+    /// otherwise, clamped to what the device's array layers hold. The OQ-096
+    /// budget covers BOTH atlases together, so the per-frame sprite atlas's
+    /// current footprint is subtracted (G3): the two never exceed the budget.
+    std::uint64_t cb_atlas_budget_bytes() const {
+        std::uint64_t mb = limits.atlas_budget_mb;
+        if (mb == 0) {
+            mb = adapter_type == WGPUAdapterType_DiscreteGPU ? 512 : 256;
+        }
+        const std::uint64_t total =
+            std::min(mb << 20, std::uint64_t{max_layers} * cb_layer_bytes());
+        const std::uint64_t sprite = sprite_atlas_bytes();
+        return sprite >= total ? 0 : total - sprite;
+    }
+
+    /// Creates the compute pipeline and the residency model once. cb.failed when
+    /// the pipeline cannot be made (the caller then builds chunks on the CPU).
+    bool cb_init() {
+        if (cb.ready) {
+            return true;
+        }
+        if (cb.failed) {
+            return false;
+        }
+        wgpuDevicePushErrorScope(dev(), WGPUErrorFilter_Validation);
+        cb.layout =
+            layout(dev(), "chunk-build",
+                   {uniform_compute_entry(10), storage_entry(11, false), storage_entry(12, false),
+                    storage_entry(13, false), storage_entry(14, false), storage_entry(15, false),
+                    storage_entry(16, false), storage_entry(17, true), storage_entry(18, true),
+                    texture_compute_entry(19)});
+        const std::array bgls = {cb.layout.get()};
+        WGPUPipelineLayoutDescriptor pld = WGPU_PIPELINE_LAYOUT_DESCRIPTOR_INIT;
+        pld.bindGroupLayoutCount = bgls.size();
+        pld.bindGroupLayouts = bgls.data();
+        cb.pl = PipelineLayout(wgpuDeviceCreatePipelineLayout(dev(), &pld));
+        WGPUComputePipelineDescriptor cd = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+        cd.label = sv("chunk-build");
+        cd.layout = cb.pl.get();
+        cd.compute.module = module.get();
+        cd.compute.entryPoint = sv("chunk_build_cs");
+        cb.pipe = ComputePipeline(wgpuDeviceCreateComputePipeline(dev(), &cd));
+        const std::string err = pop_error_scope(ref->instance.get(), dev());
+        if (!err.empty() || cb.pipe.get() == nullptr) {
+            std::fprintf(stderr, "GPU chunk build disabled: %s\n", err.c_str());
+            cb.failed = true;
+            return false;
+        }
+        cb.residency.emplace(limits.atlas_size, cb_atlas_budget_bytes());
+        cb.ready = true;
+        return true;
+    }
+
+    /// Grows the chunk atlas to at least `need` layers by doubling, copying the
+    /// old layers once (counted in cb.grows / GpuStats::chunk_atlas_grows). The
+    /// doubling is clamped to the residency's layer cap (the OQ-096 budget minus
+    /// the sprite atlas, G3) so the grow's transient old+new peak stays bounded
+    /// and the physical atlas never exceeds the budget; `need` itself never
+    /// exceeds the cap because the residency places no frame beyond it.
+    void cb_grow_atlas(std::uint32_t need) {
+        need = array_layers(need);
+        if (cb.atlas.get() != nullptr && cb.atlas_layers >= need) {
+            return;
+        }
+        const std::uint32_t cap =
+            cb.residency ? static_cast<std::uint32_t>(cb.residency->max_layers()) : need;
+        std::uint32_t target = std::max<std::uint32_t>(cb.atlas_layers, 1);
+        while (target < need) {
+            target *= 2;
+        }
+        if (cap >= need) {
+            target = std::min(target, cap);
+        }
+        target = std::max(target, need);
+        Texture tex = make_texture(dev(), "chunk-atlas", WGPUTextureFormat_RGBA8Unorm,
+                                   limits.atlas_size, limits.atlas_size, target,
+                                   WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst |
+                                       WGPUTextureUsage_CopySrc);
+        if (cb.atlas.get() != nullptr && cb.atlas_layers > 0) {
+            WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
+            CommandEncoder enc(wgpuDeviceCreateCommandEncoder(dev(), &ed));
+            WGPUTexelCopyTextureInfo src = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+            src.texture = cb.atlas.get();
+            WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+            dst.texture = tex.get();
+            const WGPUExtent3D ext = {limits.atlas_size, limits.atlas_size, cb.atlas_layers};
+            wgpuCommandEncoderCopyTextureToTexture(enc.get(), &src, &dst, &ext);
+            submit(enc.get(), "chunk-atlas grow");
+            ++cb.grows;
+        }
+        cb.atlas = std::move(tex);
+        cb.atlas_layers = target;
+        cb.atlas_view = make_view(cb.atlas.get(), true);
+    }
+
+    void cb_ensure_frame_entry(FrameId id) {
+        const std::size_t need = (std::size_t{id} + 1) * kCbFrameU32;
+        if (cb.frame_cpu.size() < need) {
+            cb.frame_cpu.resize(need, 0);
+        }
+    }
+
+    /// Appends frame `id`'s per-column keel to the keel buffer once (immutable
+    /// data, stable id); returns the u32 offset.
+    std::uint32_t cb_append_keel(FrameId id, const FrameData& f) {
+        if (const auto it = cb.keel_off.find(id); it != cb.keel_off.end()) {
+            return it->second;
+        }
+        const auto off = static_cast<std::uint32_t>(cb.keel_cpu.size());
+        cb.keel_cpu.reserve(cb.keel_cpu.size() + f.keel.size());
+        for (const std::uint16_t v : f.keel) {
+            cb.keel_cpu.push_back(v);
+        }
+        cb.keel_off.emplace(id, off);
+        return off;
+    }
+
+    void cb_set_frame_entry(FrameId id, const AtlasPlace& p, const FrameData& f) {
+        cb_ensure_frame_entry(id);
+        std::uint32_t* e = &cb.frame_cpu[std::size_t{id} * kCbFrameU32];
+        e[0] = p.layer;
+        e[1] = p.x;
+        e[2] = p.y;
+        e[3] = f.width();
+        e[4] = f.height();
+        e[5] = static_cast<std::uint32_t>(f.header.anchor_y);
+        e[6] = cb.keel_off.at(id);
+        e[7] = 1; // resident
+        cb.frame_dirty.insert(id);
+    }
+
+    /// Ensures `buf` holds at least `want` bytes (CopyDst|Storage), keeping a
+    /// minimum so the binding is never empty. Returns true when it was (re)made
+    /// (the caller must then re-upload the whole mirror, not only the dirty
+    /// part). Keeps the old contents are NOT preserved on a grow.
+    bool cb_reserve_buffer(Buffer& buf, std::uint64_t& cap, std::uint64_t want, const char* label) {
+        want = std::max<std::uint64_t>(want, 16);
+        if (buf.get() != nullptr && cap >= want) {
+            return false;
+        }
+        std::uint64_t cnew = std::max<std::uint64_t>(cap, 16);
+        while (cnew < want) {
+            cnew *= 2;
+        }
+        buf = make_buffer(dev(), label, cnew, WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst);
+        cap = cnew;
+        return true;
+    }
+
+    /// Flushes the keel buffer: only the appended tail is written (immutable,
+    /// append-only), unless the buffer had to grow (then the whole mirror).
+    /// Returns the bytes written (counted in the upload budget, G1).
+    std::uint64_t cb_flush_keel() {
+        const bool regrew =
+            cb_reserve_buffer(cb.keel_buf, cb.keel_cap, cb.keel_cpu.size() * 4, "cb-keel");
+        if (regrew) {
+            cb.keel_uploaded = 0;
+        }
+        const std::uint64_t have = cb.keel_cpu.size();
+        if (have <= cb.keel_uploaded) {
+            return 0;
+        }
+        const std::uint64_t first = cb.keel_uploaded;
+        const std::uint64_t words = have - first;
+        wgpuQueueWriteBuffer(queue(), cb.keel_buf.get(), first * 4, &cb.keel_cpu[first], words * 4);
+        cb.keel_uploaded = have;
+        return words * 4;
+    }
+
+    /// Flushes the dirty frame-table entries: on a grow the whole mirror, else
+    /// each changed 32-byte entry on its own. Returns the bytes written (G1).
+    std::uint64_t cb_flush_frames() {
+        const bool regrew =
+            cb_reserve_buffer(cb.frame_buf, cb.frame_cap, cb.frame_cpu.size() * 4, "cb-frames");
+        if (regrew) {
+            cb.frame_dirty.clear();
+            if (cb.frame_cpu.empty()) {
+                return 0;
+            }
+            wgpuQueueWriteBuffer(queue(), cb.frame_buf.get(), 0, cb.frame_cpu.data(),
+                                 cb.frame_cpu.size() * 4);
+            return cb.frame_cpu.size() * 4;
+        }
+        std::uint64_t bytes = 0;
+        for (const FrameId id : cb.frame_dirty) {
+            const std::uint64_t off = std::uint64_t{id} * kCbFrameU32;
+            if (off + kCbFrameU32 > cb.frame_cpu.size()) {
+                continue;
+            }
+            wgpuQueueWriteBuffer(queue(), cb.frame_buf.get(), off * 4, &cb.frame_cpu[off],
+                                 kCbFrameU32 * 4);
+            bytes += kCbFrameU32 * 4;
+        }
+        cb.frame_dirty.clear();
+        return bytes;
+    }
+
+    /// Makes every frame of `set` resident in the chunk atlas (residency.hpp),
+    /// uploads the new images and keels and updates the GPU frame table.
+    /// `max_upload_bytes` bounds the texel bytes uploaded this call.
+    EnsureStatus cb_resident(const std::vector<FrameId>& set, const FrameTable& ft,
+                             std::uint64_t max_upload_bytes) {
+        std::vector<FrameRef> refs;
+        refs.reserve(set.size());
+        for (const FrameId id : set) {
+            const auto f = ft.get(id);
+            if (!f || !f->image) {
+                continue; // cannot decode: left out (replay skips it too)
+            }
+            refs.push_back({id, f->width(), f->height()});
+        }
+        cb.residency->begin_frame();
+        // The OQ-096 budget covers both atlases together: the chunk atlas gets
+        // what the per-frame sprite atlas leaves free, refreshed each call (G3).
+        cb.residency->set_budget(cb_atlas_budget_bytes());
+        const EnsureResult r = cb.residency->ensure(refs, AtlasClass::Static, max_upload_bytes);
+        cb.last_upload = r.upload_bytes;
+        if (r.status == EnsureStatus::Deferred || r.status == EnsureStatus::Overflow) {
+            return r.status;
+        }
+        std::uint32_t maxlayer = cb.atlas_layers;
+        for (const auto& [id, p] : r.uploads) {
+            maxlayer = std::max(maxlayer, p.layer + 1);
+        }
+        cb_grow_atlas(maxlayer);
+        for (const auto& [id, p] : r.uploads) {
+            const auto f = ft.get(id);
+            write_layer(queue(), cb.atlas.get(), p.layer, p.x, p.y, p.width, p.height, 4,
+                        f->image->pixels.data(), f->image->pixels.size());
+            cb_append_keel(id, *f);
+        }
+        for (const FrameId id : cb.residency->take_evicted()) {
+            cb_ensure_frame_entry(id);
+            cb.frame_cpu[std::size_t{id} * kCbFrameU32 + 7] = 0;
+            cb.frame_dirty.insert(id);
+        }
+        for (const FrameId id : set) {
+            const auto f = ft.get(id);
+            if (!f || !f->image) {
+                continue;
+            }
+            if (const auto place = cb.residency->place(id)) {
+                cb_set_frame_entry(id, *place, *f);
+            }
+        }
+        // Only the changed frame-table entries and the appended keel tail are
+        // uploaded, not the whole scene-wide buffers per chunk; the metadata
+        // bytes count in the frame's atlas upload budget alongside the texels (G1).
+        cb.last_upload += cb_flush_frames() + cb_flush_keel();
+        return EnsureStatus::Resident;
+    }
+
+    /// The seven per-chunk scratch buffers and the compute bind group, pooled in
+    /// `cb` and reused across chunk builds (G2): each build grows a buffer only
+    /// when it is too small and rebuilds the bind group only when a buffer handle
+    /// changed. Reuse is safe because builds are sequential on the window thread
+    /// and wgpuQueueWriteBuffer is ordered on the queue timeline after the
+    /// previous build's submit (each build gets its own submit).
+    struct CbScratch {
+        Buffer uniform, records, bin_off, bin_idx, clips, objects_out, base_out;
+        std::uint64_t uniform_cap = 0, records_cap = 0, bin_off_cap = 0, bin_idx_cap = 0,
+                      clips_cap = 0, objects_cap = 0, base_cap = 0;
+        BindGroup bind;
+        std::uint32_t w = 0, h = 0;
+        /// The handles the current bind group was built from (atlas/frame/keel
+        /// grow out of band, so they are tracked too).
+        WGPUBuffer sig_frame = nullptr, sig_keel = nullptr;
+        WGPUTextureView sig_atlas = nullptr;
+    };
+    CbScratch scratch;
+
+    /// Grows a pooled scratch buffer to at least `want` bytes (min 16 so the
+    /// binding is never empty), keeping a capacity. Returns true when the handle
+    /// changed (the bind group must then be rebuilt). Old contents are not kept.
+    bool cb_scratch_reserve(Buffer& buf, std::uint64_t& cap, std::uint64_t want,
+                            WGPUBufferUsage usage, const char* label) {
+        want = std::max<std::uint64_t>(want, 16);
+        if (buf.get() != nullptr && cap >= want) {
+            return false;
+        }
+        std::uint64_t cnew = std::max<std::uint64_t>(cap, 16);
+        while (cnew < want) {
+            cnew *= 2;
+        }
+        buf = make_buffer(dev(), label, cnew, usage);
+        cap = cnew;
+        return true;
+    }
+
+    /// Fills the pooled scratch for `d` and returns it. Each storage binding is
+    /// bound at its full buffer capacity: trailing elements are never indexed
+    /// (records by the bins, bins within their ranges, outputs within w*h), so
+    /// the bind group survives a chunk with fewer records without a rebuild.
+    const CbScratch& cb_scratch(const ChunkDraws& d) {
+        CbScratch& s = scratch;
+        s.w = static_cast<std::uint32_t>(d.rect.w);
+        s.h = static_cast<std::uint32_t>(d.rect.h);
+        Bytes u;
+        u.i32(d.rect.x);
+        u.i32(d.rect.y);
+        u.u32(s.w);
+        u.u32(s.h);
+        u.u32(d.bin_px);
+        u.u32(d.bins_x);
+        u.i32(d.base_band);
+        u.u32(d.bases ? 1U : 0U);
+        constexpr WGPUBufferUsage kStore = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+        bool rebuild = false;
+        rebuild |=
+            cb_scratch_reserve(s.uniform, s.uniform_cap, u.b.size(),
+                               WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst, "cb-uniform");
+        wgpuQueueWriteBuffer(queue(), s.uniform.get(), 0, u.b.data(), u.b.size());
+        auto store = [&](Buffer& b, std::uint64_t& cap, const void* data, std::size_t bytes,
+                         const char* label) {
+            rebuild |= cb_scratch_reserve(b, cap, bytes, kStore, label);
+            if (bytes != 0) {
+                wgpuQueueWriteBuffer(queue(), b.get(), 0, data, bytes);
+            }
+        };
+        store(s.records, s.records_cap, d.objects.data(), d.objects.size(), "cb-records");
+        store(s.bin_off, s.bin_off_cap, d.bin_offsets.data(), d.bin_offsets.size() * 4,
+              "cb-binoff");
+        store(s.bin_idx, s.bin_idx_cap, d.bin_indices.data(), d.bin_indices.size() * 4,
+              "cb-binidx");
+        const std::vector<std::uint8_t> clips = clip_table_bytes(d.clips);
+        store(s.clips, s.clips_cap, clips.data(), clips.size(), "cb-clips");
+        const std::uint64_t obytes = std::uint64_t{s.w} * s.h * 4;
+        const std::uint64_t bbytes = std::uint64_t{s.w} * s.h;
+        rebuild |=
+            cb_scratch_reserve(s.objects_out, s.objects_cap, obytes,
+                               WGPUBufferUsage_Storage | WGPUBufferUsage_CopySrc, "cb-objects");
+        rebuild |= cb_scratch_reserve(
+            s.base_out, s.base_cap, bbytes,
+            WGPUBufferUsage_Storage | WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst, "cb-base");
+        if (s.sig_frame != cb.frame_buf.get() || s.sig_keel != cb.keel_buf.get() ||
+            s.sig_atlas != cb.atlas_view.get()) {
+            rebuild = true;
+            s.sig_frame = cb.frame_buf.get();
+            s.sig_keel = cb.keel_buf.get();
+            s.sig_atlas = cb.atlas_view.get();
+        }
+        if (rebuild || s.bind.get() == nullptr) {
+            const std::array entries = {buffer_entry(10, s.uniform.get(), s.uniform_cap),
+                                        buffer_entry(11, s.records.get(), s.records_cap),
+                                        buffer_entry(12, s.bin_off.get(), s.bin_off_cap),
+                                        buffer_entry(13, s.bin_idx.get(), s.bin_idx_cap),
+                                        buffer_entry(14, s.clips.get(), s.clips_cap),
+                                        buffer_entry(15, cb.frame_buf.get(), cb.frame_cap),
+                                        buffer_entry(16, cb.keel_buf.get(), cb.keel_cap),
+                                        buffer_entry(17, s.objects_out.get(), s.objects_cap),
+                                        buffer_entry(18, s.base_out.get(), s.base_cap),
+                                        view_entry(19, cb.atlas_view.get())};
+            WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+            desc.label = sv("chunk-build");
+            desc.layout = cb.layout.get();
+            desc.entryCount = entries.size();
+            desc.entries = entries.data();
+            s.bind = BindGroup(wgpuDeviceCreateBindGroup(dev(), &desc));
+        }
+        return s;
+    }
+
+    /// Copies a tightly-packed buffer into a plane texture's layer 0.
+    /// `bytes_per_row` must be a multiple of 256 (WebGPU's CopyBufferToTexture
+    /// rule). The live path always builds full 512 x 512 chunk planes (base row
+    /// 512, objects row 2048, both multiples of 256); this guard makes a
+    /// narrower edge chunk fail loudly here (counted in errors()) instead of
+    /// deep in device validation, which aborts the process (gpu-chunks.md 5.1,
+    /// G4). False when the copy was refused.
+    bool cb_copy_to_plane(WGPUCommandEncoder enc, WGPUBuffer buf, std::uint32_t bytes_per_row,
+                          WGPUTexture tex, std::uint32_t w, std::uint32_t h) const {
+        if (bytes_per_row % 256 != 0) {
+            std::fprintf(stderr,
+                         "chunk-build base/objects copy bytesPerRow %u is not a multiple of 256 "
+                         "(chunk width %u): the plane is not 512-wide\n",
+                         bytes_per_row, w);
+            ref->errors->fetch_add(1);
+            return false;
+        }
+        WGPUTexelCopyBufferInfo src = WGPU_TEXEL_COPY_BUFFER_INFO_INIT;
+        src.buffer = buf;
+        src.layout.offset = 0;
+        src.layout.bytesPerRow = bytes_per_row;
+        src.layout.rowsPerImage = h;
+        WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+        dst.texture = tex;
+        dst.mipLevel = 0;
+        dst.origin = {0, 0, 0};
+        dst.aspect = WGPUTextureAspect_All;
+        const WGPUExtent3D ext = {w, h, 1};
+        wgpuCommandEncoderCopyBufferToTexture(enc, &src, &dst, &ext);
+        return true;
+    }
+
+    /// Records the compute dispatch and the copies into the objects and base
+    /// plane textures (both w x h). base_out is cleared first (atomicOr needs 0).
+    void cb_encode(WGPUCommandEncoder enc, const CbScratch& s, WGPUTexture objects_tex,
+                   WGPUTexture base_tex) const {
+        wgpuCommandEncoderClearBuffer(enc, s.base_out.get(), 0, std::uint64_t{s.w} * s.h);
+        WGPUComputePassDescriptor pd = WGPU_COMPUTE_PASS_DESCRIPTOR_INIT;
+        WGPUComputePassEncoder cp = wgpuCommandEncoderBeginComputePass(enc, &pd);
+        wgpuComputePassEncoderSetPipeline(cp, cb.pipe.get());
+        wgpuComputePassEncoderSetBindGroup(cp, 0, s.bind.get(), 0, nullptr);
+        wgpuComputePassEncoderDispatchWorkgroups(cp, (s.w + 7) / 8, (s.h + 7) / 8, 1);
+        wgpuComputePassEncoderEnd(cp);
+        wgpuComputePassEncoderRelease(cp);
+        cb_copy_to_plane(enc, s.objects_out.get(), s.w * 4, objects_tex, s.w, s.h);
+        cb_copy_to_plane(enc, s.base_out.get(), s.w, base_tex, s.w, s.h);
     }
 
     /// The chunk at `r` of a derived level: the four chunks of `src` (index
@@ -1247,6 +1951,13 @@ struct GpuFrame::Impl {
         std::size_t uploads = 0;
         bool waiting = false;       // a visible chunk is not (yet) on the GPU
         bool partial_spent = false; // a chunk's upload was cut short by the time budget
+        // A derived level under GpuList: its objects live only in the children's
+        // GPU textures, so the chunk is reduced on the GPU here (item 1), not
+        // taken from the CPU derived chunk (whose GpuList children have no objects
+        // pixels, which showed as empty far-zoom objects).
+        const bool gpu_derived = levels != nullptr && group >= levels->built_count() &&
+                                 group < levels->size() &&
+                                 frames.chunk_builder == render::ChunkBuilder::GpuList;
         const auto begin = Clock::now();
         for (const auto& key : keys) {
             const auto it = chunks.find(key);
@@ -1268,7 +1979,37 @@ struct GpuFrame::Impl {
                 // With a time budget the chunk is uploaded a plane at a time, over as many
                 // frames as that takes; it shows its placeholder or stand-in meanwhile.
                 std::optional<Chunk> got;
-                if (limits.upload_budget_ms > 0.0) {
+                if (gpu_derived) {
+                    // Reduce the four GPU children into this derived chunk; nullopt
+                    // (children not yet resident) keeps the stand-in via !got below.
+                    got = build_derived_gpu(key, *c, frames);
+                    if (!got) {
+                        partial_spent = true;
+                    }
+                } else if (c->draws && c->draws->object_count() > 0) {
+                    // GpuList: make the draw list's frames resident, then build the
+                    // objects and base planes with the compute pass (whole chunk).
+                    const CbReady ready = cb_prepare(*c);
+                    if (ready == CbReady::Ready) {
+                        got = upload_chunk(key, c);
+                        ++cb.built;
+                    } else if (ready == CbReady::Fallback) {
+                        // The frames overflow the atlas budget: build this chunk
+                        // on the CPU (item 2), not a placeholder that never fills.
+                        ++cb.fallbacks;
+                        got = cb_cpu_fallback(key, *c);
+                    } else {
+                        partial_spent = true; // atlas upload budget spent this frame
+                        if (it == chunks.end()) {
+                            const auto p0 = Clock::now();
+                            chunks.emplace(key, upload_chunk(key, nullptr));
+                            ++stats.placeholders;
+                            stats.sync_placeholder_ms += ms_since(p0);
+                        }
+                        stats.sync_real_ms += ms_since(u0);
+                        continue;
+                    }
+                } else if (limits.upload_budget_ms > 0.0) {
                     got = advance_upload(key, frames.chunk_shared(key), begin);
                 } else {
                     got = upload_chunk(key, c);
@@ -1345,8 +2086,33 @@ struct GpuFrame::Impl {
                         continue;
                     }
                     const auto u0 = Clock::now();
+                    const std::size_t kg = std::get<0>(key);
+                    const bool key_gpu_derived =
+                        levels != nullptr && kg >= levels->built_count() && kg < levels->size() &&
+                        frames.chunk_builder == render::ChunkBuilder::GpuList;
                     std::optional<Chunk> got;
-                    if (limits.upload_budget_ms > 0.0) {
+                    if (key_gpu_derived) {
+                        got = build_derived_gpu(key, *c, frames);
+                        if (!got) {
+                            spent = true; // children not resident: upload them, retry next frame
+                            break;
+                        }
+                    } else if (c->draws && c->draws->object_count() > 0) {
+                        const CbReady ready = cb_prepare(*c);
+                        if (ready == CbReady::Fallback) {
+                            // Overflow: build on the CPU (item 2), then end prefetch.
+                            ++cb.fallbacks;
+                            got = cb_cpu_fallback(key, *c);
+                            spent = true;
+                        } else if (ready != CbReady::Ready) {
+                            stats.sync_real_ms += ms_since(u0);
+                            spent = true; // the atlas upload budget ends prefetch
+                            break;
+                        } else {
+                            got = upload_chunk(key, c);
+                            ++cb.built;
+                        }
+                    } else if (limits.upload_budget_ms > 0.0) {
                         got = advance_upload(key, frames.chunk_shared(key), begin);
                     } else {
                         got = upload_chunk(key, c);
@@ -1676,8 +2442,13 @@ struct GpuFrame::Impl {
 
     /// Brings the wave simulation to `time_ms` for `view` (enhanced water),
     /// recording its steps into `enc`; false if it cannot run.
+    /// With `stamps`, the simulation's compute pass writes them and is marked as
+    /// timed (TimedPass::Fluid) when a step was due. `scale` is the screen pixels per
+    /// pixel of `view` (the resample's scale, 1 without one): the window's cells per
+    /// tile are bounded by the cells per screen pixel (fluid_cells_cap); false (the
+    /// analytic waves) where even one cell per tile is above the bound.
     bool update_fluid(WGPUCommandEncoder enc, const Scene& scene, Rect view, std::size_t group,
-                      std::uint64_t time_ms) {
+                      std::uint64_t time_ms, double scale, const WGPUPassTimestampWrites* stamps) {
         if (!fluid && !fluid_failed) {
             auto made = FluidGpu::create(*ref, fluid::FluidConfig{});
             if (made) {
@@ -1701,7 +2472,32 @@ struct GpuFrame::Impl {
         const std::size_t threads = hw > 0 ? hw : 4;
         const fluid::DepthFn depth = [&scene](float x, float y) { return scene.fluid_depth(x, y); };
         const float span = static_cast<float>(view.w) / tw + static_cast<float>(view.h) / th;
-        fluid->update(enc, group, centre, span, time_ms, depth, threads);
+        const auto current = fluid->window();
+        const double tile_px = levels->tile_w(group) * scale;
+        std::uint32_t cpt =
+            fluid::bounded_cells_per_tile(fluid->config(), group, tile_px, fluid_cells_cap,
+                                          current ? current->cells_per_tile : 0U);
+        // Off (even one cell per tile is above the bound) and back on: on again only with
+        // the hysteresis' room to spare (the bound checked on tiles kCellsHysteresis as
+        // wide), so a zoom resting at the threshold does not flip; and with a new window,
+        // so the waves fade in again instead of resuming a stale state.
+        if (fluid_off && cpt != 0 &&
+            fluid::bounded_cells_per_tile(fluid->config(), group, tile_px * fluid::kCellsHysteresis,
+                                          fluid_cells_cap) == 0) {
+            cpt = 0;
+        }
+        if (cpt == 0) {
+            fluid_off = true;
+            return false;
+        }
+        if (fluid_off) {
+            fluid_off = false;
+            fluid->drop_window();
+        }
+        if (fluid->update(enc, group, centre, span, time_ms, depth, threads, cpt, stamps) &&
+            stamps != nullptr) {
+            ts_mark(TimedPass::Fluid);
+        }
         return true;
     }
 
@@ -1715,38 +2511,47 @@ struct GpuFrame::Impl {
             WGPUQuerySetDescriptor qd = WGPU_QUERY_SET_DESCRIPTOR_INIT;
             qd.label = sv("timestamps");
             qd.type = WGPUQueryType_Timestamp;
-            qd.count = 4;
+            qd.count = static_cast<std::uint32_t>(2 * kTimedPasses);
             ts_set = QuerySet(wgpuDeviceCreateQuerySet(dev(), &qd));
-            ts_resolve = make_buffer(dev(), "timestamps", 32,
+            ts_resolve = make_buffer(dev(), "timestamps", kTimestampSlot * kTimedPasses,
                                      WGPUBufferUsage_QueryResolve | WGPUBufferUsage_CopySrc);
-            ts_read = make_buffer(dev(), "timestamps read", 32,
+            ts_read = make_buffer(dev(), "timestamps read", kTimestampSlot * kTimedPasses,
                                   WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead);
-            ts_writes.querySet = ts_set.get();
-            ts_writes.beginningOfPassWriteIndex = 0;
-            ts_writes.endOfPassWriteIndex = 1;
-            ts_first.querySet = ts_set.get();
-            ts_first.beginningOfPassWriteIndex = 2;
-            ts_last.querySet = ts_set.get();
-            ts_last.endOfPassWriteIndex = 3;
+            for (std::size_t i = 0; i < kTimedPasses; ++i) {
+                ts_pass[i] = WGPU_PASS_TIMESTAMP_WRITES_INIT;
+                ts_pass[i].querySet = ts_set.get();
+                ts_pass[i].beginningOfPassWriteIndex = static_cast<std::uint32_t>(2 * i);
+                ts_pass[i].endOfPassWriteIndex = static_cast<std::uint32_t>(2 * i + 1);
+            }
         }
         return static_cast<bool>(ts_set);
     }
 
-    /// After the timed pass: resolves the ticks (the two of the sea pass, or with
-    /// `frame_end` the four of render(): the frame ends at tick `frame_end`) and
+    /// Starts a timed recording: no pass has written ticks yet.
+    void ts_start() { ts_ran.clear(); }
+    /// The timestamp writes of pass `p`; the caller marks it with ts_mark once the
+    /// pass is recorded (a pass that is not recorded writes nothing).
+    const WGPUPassTimestampWrites* ts_writes(TimedPass p) const {
+        return &ts_pass[static_cast<std::size_t>(p)];
+    }
+    void ts_mark(TimedPass p) { ts_ran.push_back(p); }
+
+    /// After the timed passes: resolves the ticks of every pass that wrote them
+    /// (ts_ran; only ticks that were written can be resolved) into its slot and
     /// copies them to the read-back buffer.
-    void resolve_timestamps(WGPUCommandEncoder enc, std::uint32_t frame_end = 0) {
-        // Only ticks that were written can be resolved: 0 and 1, then 2 (frame start),
-        // and 3 only when a resample pass wrote it.
-        ts_count = frame_end == 3 ? 4 : frame_end == 1 ? 3 : 2;
-        ts_frame_end = frame_end;
-        wgpuCommandEncoderResolveQuerySet(enc, ts_set.get(), 0, ts_count, ts_resolve.get(), 0);
+    void resolve_timestamps(WGPUCommandEncoder enc) {
+        for (const TimedPass p : ts_ran) {
+            const auto i = static_cast<std::uint32_t>(p);
+            wgpuCommandEncoderResolveQuerySet(enc, ts_set.get(), 2 * i, 2, ts_resolve.get(),
+                                              kTimestampSlot * i);
+        }
         wgpuCommandEncoderCopyBufferToBuffer(enc, ts_resolve.get(), 0, ts_read.get(), 0,
-                                             std::uint64_t{ts_count} * 8);
-        ts_recorded = true;
+                                             kTimestampSlot * kTimedPasses);
+        ts_recorded = !ts_ran.empty();
     }
 
-    /// The duration (ms) of the last timed pass; waits for the GPU.
+    /// The duration (ms) of the last timed sea pass (Sea and Objects together); waits
+    /// for the GPU. Sets last_frame_ms and last_passes.
     std::optional<double> read_timestamps() {
         if (!ts_recorded || !ts_read) {
             return std::nullopt;
@@ -1754,28 +2559,74 @@ struct GpuFrame::Impl {
         ts_recorded = false;
         wait_idle(ref->instance.get(), dev(), queue());
         last_frame_ms.reset();
-        const std::uint64_t bytes = std::uint64_t{ts_count} * 8;
+        last_passes.reset();
+        const std::uint64_t bytes = kTimestampSlot * kTimedPasses;
         if (!map_read(ref->instance.get(), dev(), ts_read.get(), bytes)) {
             return std::nullopt;
         }
         const auto* t = static_cast<const std::uint64_t*>(
             wgpuBufferGetConstMappedRange(ts_read.get(), 0, bytes));
-        std::optional<double> ms;
-        auto span_ms = [&](std::uint64_t a, std::uint64_t b) {
-            return static_cast<double>(b - a) * static_cast<double>(timestamp_period_ns) * 1e-6;
-        };
-        if (t != nullptr && t[1] > t[0]) {
-            ms = span_ms(t[0], t[1]);
+        if (t == nullptr) {
+            wgpuBufferUnmap(ts_read.get());
+            return std::nullopt;
         }
         // A reading of seconds is a counter that wrapped or a driver that gave a wrong tick
         // (seen on an integrated adapter: 1.2e8 ms): no reading.
         constexpr double kMaxFrameMs = 10000.0;
-        if (t != nullptr && ts_count > 2 && t[ts_frame_end] > t[2] &&
-            span_ms(t[2], t[ts_frame_end]) < kMaxFrameMs) {
-            last_frame_ms = span_ms(t[2], t[ts_frame_end]);
+        // Equal ticks are no reading either: a driver that ignores the writes leaves the
+        // slots equal, and a pass of 0 ms must never read as free (measure_river_cost then
+        // falls back to the wall clock).
+        auto span_ms = [&](std::uint64_t a, std::uint64_t b) -> std::optional<double> {
+            if (b <= a) {
+                return std::nullopt;
+            }
+            const double ms =
+                static_cast<double>(b - a) * static_cast<double>(timestamp_period_ns) * 1e-6;
+            return ms < kMaxFrameMs ? std::optional<double>(ms) : std::nullopt;
+        };
+        constexpr std::size_t kTicksPerSlot = kTimestampSlot / 8;
+        auto begin_tick = [&](TimedPass p) {
+            return t[static_cast<std::size_t>(p) * kTicksPerSlot];
+        };
+        auto end_tick = [&](TimedPass p) {
+            return t[static_cast<std::size_t>(p) * kTicksPerSlot + 1];
+        };
+        GpuPassTimes passes;
+        for (const TimedPass p : ts_ran) {
+            const auto ms = span_ms(begin_tick(p), end_tick(p));
+            switch (p) {
+            case TimedPass::Fluid:
+                passes.fluid = ms;
+                break;
+            case TimedPass::Terrain:
+                passes.terrain = ms;
+                break;
+            case TimedPass::Under:
+                passes.under = ms;
+                break;
+            case TimedPass::Sea:
+                passes.sea = ms;
+                break;
+            case TimedPass::Objects:
+                passes.objects = ms;
+                break;
+            case TimedPass::Resample:
+                passes.resample = ms;
+                break;
+            }
         }
+        if (!ts_ran.empty()) {
+            passes.frame = span_ms(begin_tick(ts_ran.front()), end_tick(ts_ran.back()));
+        }
+        // The sea pass as it was before the split: from the sea's start to the objects' end.
+        std::optional<double> sea = passes.sea;
+        if (passes.sea && passes.objects) {
+            sea = span_ms(begin_tick(TimedPass::Sea), end_tick(TimedPass::Objects));
+        }
+        last_frame_ms = passes.frame;
+        last_passes = passes;
         wgpuBufferUnmap(ts_read.get());
-        return ms;
+        return sea;
     }
 
     BindGroup frame_bind(WGPUTextureView under, WGPUTextureView terrain) const {
@@ -1803,11 +2654,14 @@ struct GpuFrame::Impl {
 
 namespace {
 
+/// A render pass into `view`, cleared to `clear` (or, with `load`, drawing over what
+/// the view holds).
 WGPURenderPassEncoder begin(WGPUCommandEncoder enc, WGPUTextureView view, WGPUColor clear,
-                            const WGPUPassTimestampWrites* timestamps = nullptr) {
+                            const WGPUPassTimestampWrites* timestamps = nullptr,
+                            bool load = false) {
     WGPURenderPassColorAttachment ca = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
     ca.view = view;
-    ca.loadOp = WGPULoadOp_Clear;
+    ca.loadOp = load ? WGPULoadOp_Load : WGPULoadOp_Clear;
     ca.storeOp = WGPUStoreOp_Store;
     ca.clearValue = clear;
     WGPURenderPassDescriptor desc = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
@@ -1839,6 +2693,10 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
     Impl& m = *f->impl_;
     m.ref = std::make_unique<DeviceRef>(c);
     m.limits = limits;
+    m.adapter_type = c.adapter_type;
+    // The wave window's bound (GpuLimits::fluid_max_cells_per_px), the same on every
+    // adapter (OQ-130); a negative or NaN value is no bound.
+    m.fluid_cells_cap = limits.fluid_max_cells_per_px > 0.0 ? limits.fluid_max_cells_per_px : 0.0;
     m.max_layers = std::max(device_limits.maxTextureArrayLayers, 1U);
     if (limits.max_atlas_layers != 0) {
         m.max_layers = std::min(m.max_layers, limits.max_atlas_layers);
@@ -2074,6 +2932,14 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
         }
         m.tier_note += ")";
     }
+    // GPU-built chunks (T11 stage 2a, gpu-chunks.md 6): create the compute
+    // pipeline and the first atlas layer here, as the other pipelines are, not
+    // lazily on the first GpuList frame (that spiked ~55 ms on the window
+    // thread). A device without compute sets cb.failed and GpuList falls back to
+    // the CPU builder, which is not an error for a Cpu-only renderer.
+    if (m.cb_init()) {
+        m.cb_grow_atlas(1);
+    }
     m.prewarm_target.store(m.limits.prewarm_chunks);
     m.start_prewarm();
     return f;
@@ -2120,6 +2986,12 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                           const Resample* resample) {
     Impl& m = *impl_;
     m.levels = &frames.levels();
+    // GpuList chunk build (T11 stage 2a): this scene's frame table and this
+    // frame's atlas upload budget and counters.
+    m.cb.ft = &scene.frame_table;
+    m.cb.water = scene.textures.water();
+    m.cb.upload_left = m.limits.atlas_upload_bytes_per_frame;
+    m.cb.built = m.cb.fallbacks = m.cb.grows = 0;
     // From the first frame on the pre-creation is paced by quiet frames (a
     // stricter condition for the thread, so no wake-up is needed).
     m.warm_paced.store(true);
@@ -2175,6 +3047,13 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                                           frames.adjacent_keys(), fade_now, stats);
     frames.release(std::exchange(m.released_holds, {}));
     stats.planes_warm = m.planes_warm_taken - warm_before;
+    stats.gpu_built_chunks = m.cb.built;
+    stats.chunks_cpu_fallback = m.cb.fallbacks;
+    stats.chunk_atlas_grows = m.cb.grows;
+    if (m.cb.residency) {
+        stats.chunk_atlas_mb =
+            static_cast<double>(m.cb.residency->stats().resident_bytes) / (1024.0 * 1024.0);
+    }
     stats.chunk_sync_ms = lap();
     stats.sync_scan_ms = std::max(0.0, stats.chunk_sync_ms - stats.sync_drop_ms -
                                            stats.sync_real_ms - stats.sync_placeholder_ms);
@@ -2206,11 +3085,24 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     ed.label = sv("frame");
     CommandEncoder enc(wgpuDeviceCreateCommandEncoder(m.dev(), &ed));
     stats.encoder_ms = lap();
+    const bool timed = m.limits.gpu_timing && m.ensure_timestamps();
+    if (timed) {
+        m.ts_start();
+    }
     // Coastal wave simulation (enhanced water only).
-    const bool fluid_on = style == WaterStyle::Enhanced && m.limits.wave_simulation &&
-                          group < kGroups && m.update_fluid(enc.get(), scene, view, group, time_ms);
+    const bool fluid_on =
+        style == WaterStyle::Enhanced && m.limits.wave_simulation && group < kGroups &&
+        m.update_fluid(enc.get(), scene, view, group, time_ms, resampling ? resample->scale : 1.0,
+                       timed ? m.ts_writes(TimedPass::Fluid) : nullptr);
     stats.fluid_ms = lap();
     stats.wave_simulation = fluid_on;
+    if (fluid_on && m.fluid) {
+        stats.fluid_steps = m.fluid->last_steps();
+        if (const auto win = m.fluid->window()) {
+            stats.fluid_cells = static_cast<std::uint64_t>(win->size * win->size);
+            stats.fluid_cells_per_tile = win->cells_per_tile;
+        }
+    }
     stats.fluid_setting_up = fluid_on && m.fluid && m.fluid->setting_up();
     const bool river_flow = style == WaterStyle::Enhanced &&
                             frames.river_flow == RiverFlowMode::Flow && scene.river_active();
@@ -2396,11 +3288,18 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
             wgpuRenderPassEncoderDraw(p, 6, 1, 0, 0);
         }
     };
-    const bool timed = m.limits.gpu_timing && m.ensure_timestamps();
+    // A timed pass writes its ticks (GpuLimits::gpu_timing) and is marked as recorded.
+    auto stamp = [&](TimedPass pass) -> const WGPUPassTimestampWrites* {
+        if (!timed) {
+            return nullptr;
+        }
+        m.ts_mark(pass);
+        return m.ts_writes(pass);
+    };
     {
         WGPURenderPassEncoder p =
             begin(enc.get(), m.terrain_v.get(), {static_cast<double>(kNoTerrain), 0, 0, 0},
-                  timed ? &m.ts_first : nullptr);
+                  stamp(TimedPass::Terrain));
         wgpuRenderPassEncoderSetViewport(p, 0.0F, 0.0F, static_cast<float>(w),
                                          static_cast<float>(h), 0.0F, 1.0F);
         wgpuRenderPassEncoderSetScissorRect(p, 0, 0, w, h);
@@ -2411,7 +3310,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         wgpuRenderPassEncoderRelease(p);
     }
     {
-        WGPURenderPassEncoder p = begin(enc.get(), m.under_v.get(), clear);
+        WGPURenderPassEncoder p = begin(enc.get(), m.under_v.get(), clear, stamp(TimedPass::Under));
         wgpuRenderPassEncoderSetViewport(p, 0.0F, 0.0F, static_cast<float>(w),
                                          static_cast<float>(h), 0.0F, 1.0F);
         wgpuRenderPassEncoderSetScissorRect(p, 0, 0, w, h);
@@ -2430,14 +3329,25 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     }
     {
         // Pass 2 writes the target itself, or the scene grid a resample reads.
-        WGPURenderPassEncoder p = begin(enc.get(), resampling ? m.scene_v.get() : target, clear,
-                                        timed ? &m.ts_writes : nullptr);
-        wgpuRenderPassEncoderSetViewport(p, 0.0F, 0.0F, static_cast<float>(w),
-                                         static_cast<float>(h), 0.0F, 1.0F);
-        wgpuRenderPassEncoderSetScissorRect(p, 0, 0, w, h);
-        wgpuRenderPassEncoderSetBindGroup(p, 0, pass2.get(), 0, nullptr);
+        WGPUTextureView out = resampling ? m.scene_v.get() : target;
+        WGPURenderPassEncoder p = begin(enc.get(), out, clear, stamp(TimedPass::Sea));
+        auto setup = [&] {
+            wgpuRenderPassEncoderSetViewport(p, 0.0F, 0.0F, static_cast<float>(w),
+                                             static_cast<float>(h), 0.0F, 1.0F);
+            wgpuRenderPassEncoderSetScissorRect(p, 0, 0, w, h);
+            wgpuRenderPassEncoderSetBindGroup(p, 0, pass2.get(), 0, nullptr);
+        };
+        setup();
         wgpuRenderPassEncoderSetPipeline(p, m.sea_pipe.get());
         draw_chunks(p, m.sea_fade_pipe.get());
+        if (timed) {
+            // Timed: the objects in a pass of their own over the sea (same picture), so
+            // the sea shading's cost is apart from theirs.
+            wgpuRenderPassEncoderEnd(p);
+            wgpuRenderPassEncoderRelease(p);
+            p = begin(enc.get(), out, clear, stamp(TimedPass::Objects), true);
+            setup();
+        }
         if (m.instances && atlas != nullptr && n_above > 0) {
             wgpuRenderPassEncoderSetPipeline(p, m.sprite_pipe.get());
             wgpuRenderPassEncoderSetBindGroup(p, 1, m.empty_bind.get(), 0, nullptr);
@@ -2486,7 +3396,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         bd.entryCount = entries.size();
         bd.entries = entries.data();
         const BindGroup scale_bind(wgpuDeviceCreateBindGroup(m.dev(), &bd));
-        WGPURenderPassEncoder p = begin(enc.get(), target, clear, timed ? &m.ts_last : nullptr);
+        WGPURenderPassEncoder p = begin(enc.get(), target, clear, stamp(TimedPass::Resample));
         wgpuRenderPassEncoderSetPipeline(p, m.scale_pipe.get());
         wgpuRenderPassEncoderSetBindGroup(p, 0, m.empty_bind.get(), 0, nullptr);
         wgpuRenderPassEncoderSetBindGroup(p, 1, m.empty_bind.get(), 0, nullptr);
@@ -2497,8 +3407,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         wgpuRenderPassEncoderRelease(p);
     }
     if (timed) {
-        // The frame ends with the resample pass (tick 3) or, without one, the sea pass.
-        m.resolve_timestamps(enc.get(), resampling ? 3U : 1U);
+        m.resolve_timestamps(enc.get());
     }
     stats.record_ms = lap();
     Impl::SubmitTimes times;
@@ -2545,6 +3454,10 @@ RiverQuality GpuFrame::river_quality() const {
     return impl_->quality;
 }
 
+double GpuFrame::fluid_max_cells_per_px() const {
+    return impl_->fluid_cells_cap;
+}
+
 const std::vector<RiverCost>& GpuFrame::river_costs() const {
     return impl_->costs;
 }
@@ -2559,6 +3472,10 @@ std::optional<double> GpuFrame::sea_pass_ms() {
 
 std::optional<double> GpuFrame::frame_gpu_ms() const {
     return impl_->last_frame_ms;
+}
+
+std::optional<GpuPassTimes> GpuFrame::pass_gpu_ms() const {
+    return impl_->last_passes;
 }
 
 std::vector<RiverCost> GpuFrame::measure_river_cost(std::size_t repeats,
@@ -2634,8 +3551,12 @@ std::vector<RiverCost> GpuFrame::measure_river_cost(std::size_t repeats,
         wgpuQueueWriteBuffer(m.queue(), m.river_uniform.get(), 0, rb.data(), rb.size());
         WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
         CommandEncoder enc(wgpuDeviceCreateCommandEncoder(m.dev(), &ed));
-        WGPURenderPassEncoder p =
-            begin(enc.get(), target.second.get(), clear, stamps ? &m.ts_writes : nullptr);
+        if (stamps) {
+            m.ts_start();
+            m.ts_mark(TimedPass::Sea);
+        }
+        WGPURenderPassEncoder p = begin(enc.get(), target.second.get(), clear,
+                                        stamps ? m.ts_writes(TimedPass::Sea) : nullptr);
         wgpuRenderPassEncoderSetBindGroup(p, 0, frame_bind.get(), 0, nullptr);
         const std::uint32_t whole = 0;
         wgpuRenderPassEncoderSetBindGroup(p, 2, m.piece_bind.get(), 1, &whole);
@@ -2764,6 +3685,49 @@ std::optional<Chunk> GpuFrame::reduce_chunks_2x(const ChunkQuad& quad, Px open_w
             out.ships = out.ships && c->ships;
         }
     }
+    return out;
+}
+
+std::optional<ChunkPlanes> GpuFrame::build_chunk_planes(const ChunkDraws& draws,
+                                                        const FrameTable& frames) {
+    Impl& m = *impl_;
+    if (!m.cb_init()) {
+        return std::nullopt;
+    }
+    const auto w = static_cast<std::uint32_t>(std::max(draws.rect.w, 0));
+    const auto h = static_cast<std::uint32_t>(std::max(draws.rect.h, 0));
+    if (w == 0 || h == 0) {
+        return std::nullopt;
+    }
+    ChunkPlanes out;
+    if (draws.object_count() == 0) {
+        // No objects: the planes are a blank canvas (transparent, base 255), as
+        // replay() of an empty list gives.
+        out.objects.assign(std::size_t{w} * h, Px{0, 0, 0, 0});
+        out.base.assign(std::size_t{w} * h, draws.bases ? std::uint8_t{255} : std::uint8_t{0});
+        out.bases = draws.bases;
+        return out;
+    }
+    if (m.cb_resident(draws.frame_set, frames, std::numeric_limits<std::uint64_t>::max()) ==
+        EnsureStatus::Overflow) {
+        return std::nullopt; // the caller builds this chunk on the CPU
+    }
+    Texture objects_tex = make_texture(m.dev(), "cb-objects-tex", WGPUTextureFormat_RGBA8Unorm, w,
+                                       h, 1, WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
+    Texture base_tex = make_texture(m.dev(), "cb-base-tex", WGPUTextureFormat_R8Uint, w, h, 1,
+                                    WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
+    const Impl::CbScratch& s = m.cb_scratch(draws);
+    WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
+    CommandEncoder enc(wgpuDeviceCreateCommandEncoder(m.dev(), &ed));
+    m.cb_encode(enc.get(), s, objects_tex.get(), base_tex.get());
+    if (!m.submit(enc.get(), "chunk-build")) {
+        return std::nullopt;
+    }
+    const auto ob = read_back(objects_tex.get(), w, h, 4);
+    out.objects.resize(ob.size() / 4);
+    std::memcpy(out.objects.data(), ob.data(), ob.size());
+    out.base = read_back(base_tex.get(), w, h, 1);
+    out.bases = draws.bases;
     return out;
 }
 

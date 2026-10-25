@@ -179,6 +179,14 @@ For each stage `i` = 0…30 not yet set in the city mask `+0x618`: if `counter.s
 ## 8. Money: income, tax level, upkeep
 
 - **Player money** = `i32` at player `+0x74`. The player vtable is `0x100c2238`: slot `+0x60` get (`0x1001cfc0`), `+0x64` add (`0x1001cfd0`), `+0x68` subtract (`0x1001cfe0`). No clamping, so the balance can go negative. **Confirmed.**
+  - **Confirmed by running** (Wine runner, T16, 2026-10-22). A read-only value scan for the HUD gold (500000, then 499996 after upkeep) left one address. It is `+0x74` of an object whose vtable is AnnoWelt `+0xc2238`, the static address above.
+  - A Citizen game holds seven such objects. In every one, `+0x08` points to the live world object.
+  - Fields seen:
+    - `+0x24`: name, 32 bytes, zero-padded;
+    - `+0x44`: kind, 32 bytes (`HUMAN`, `CG01`, `CG02`, `VENEZIANER`, `DUMMYPLAYER`, empty for the two natives "Yaok" and "Sokkot");
+    - `+0x64`: a 16-byte GUID. The human's equals the profile's `USGUID` (`docs/formats/user-dat.md`); the others are zero.
+  - Money of the others at start: 10000; the two `CG` players had 9696 a few seconds in.
+  - Building costs are debited at once on placement. Placements verified by money and store deltas match `Anlagen.dat` `HEAD` (playbook §14), e.g. a forester −150 gold and −2 tools. Reader: `tools/orig/gamestate.py` `players()`.
 - **Booking** (`0x10029950`, when `(u16)(tick − last) ≥ 2000`, then `last = tick`; **confirmed** from the disassembly):
   ```
   tax     = world property 10                       // 0, 1 or 2
@@ -195,7 +203,9 @@ For each stage `i` = 0…30 not yet set in the city mask `+0x618`: if `counter.s
   - stat 1 `+0x604` and stat 2 `+0x608` are raw per-minute running costs. stat 1 = civil buildings: the house class returns 1 from slot `+0x90` (`0x10025400`). stat 2 is **likely** military ("Military costs" in the city page).
   - stat 4 `+0x5fc` / stat 5 `+0x600` are trade sales and purchases (added by the trade function `0x100ac360`), shown like stat 0.
   - stats 8, 9, 13, 14 are u16 counters.
-- **Upkeep source** (base building `0x10072a60`, on (de)activation): the building's stat kind (slot `+0x90`) loses the type's cost for the old state and gains the cost for the new state. The cost comes from building type slot `+0xcc(2, active)`, so active and inactive costs differ. **Confirmed**. Which `Anlagen.dat` field holds the cost is open.
+- **Upkeep source** (base building `0x10072a60`, on (de)activation): the building's stat kind (slot `+0x90`) loses the type's cost for the old state and gains the cost for the new state. The cost comes from building type slot `+0xcc(2, active)`, so active and inactive costs differ. **Confirmed**. That slot returns the type fields loaded from `PROD3` u16 `0x00` and `0x02` (`production.md` §2.3), so those two values are the running costs.
+  - `0x02` is the cost while active and `0x00` while shut down. The in-game help agrees on all 50 buildings for which it gives both (`docs/research/manual-and-help.md` §1.2).
+  - Per-building values: `docs/research/playbook.md` §14.
 - **City store**: `+0x334`, 56 × 12 bytes indexed by goods id: `u32` amount, then `u16` billed (consumer goods only, reset at each booking), `u16` added, `u16` removed (both × 63/64 every 2500 ticks). Capacity `+0x624`. Add `0x1002da50` (clamped to capacity), remove `0x1002da90`. **Confirmed** fields; the names of the two decaying counters are **likely**.
 
 ## 9. Units
@@ -266,5 +276,5 @@ pioneer houses in the Kontor's yellow range), objects read by `tools/orig/probe.
 - Island property 7 = climate (**guess** from the 0…6 price index); world property 10 = tax rate (**likely**). Whether multiplayer has any tax control at all.
 - The first update of a new house: `+0x0a` starts at the placement tick in single player (the net client's `now`, stale by up to 50 ticks) and at 0 only in multiplayer and after a load, so the 16-bit difference to the current tick decides when it first runs, and a house created with 0 may catch up in several quick steps (up to 131). The rebuild uses the placement tick in both modes (`docs/sim/state.md` F1, §7.3). The house is created by `BuildingIndex::Create`, which also increments the group's house count: `kind - 0x61` selects a 0x118-byte BGRUPPE record and the FIRST BYTE of that record (BGruppeNr) is the counter index `g` (`inc word [city + 0x144 + 0x46 + 2 * g]`, Create 0x10024c13..0x10024c2d; Remove reads the same byte through building slot `+0x88`). For the shipped BGruppen.dat (PIONIER, SIEDLER, BUERGER, KAUFLEUTE, ARISTOKRATEN in file order) `g = kind - 0x61`; for another file order it is not. Corrected 2026-10-19 and in the S6 review round.
 - `0x1002d3b0`, the `+800` sub-object (`0x10027400`), the upgrade queue filler (`+0x30c0`), and the downgrade path `0x1002cdd0` in detail.
-- Which `Anlagen.dat` record holds running costs (active and inactive) and the upgrade material costs (building type slot `+0xcc(2, ·)`, `0x1002c030`).
+- Upgrade material costs (`0x1002c030`). The house `HEAD` materials match the playbook's upgrade figures. The running-cost pair is settled (§8).
 - The display formula for satisfaction in the house panel (percent = `s · 100 / 128`?), for the fixture readout.

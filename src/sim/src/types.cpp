@@ -8,6 +8,8 @@
 // from the AnnoGame.dll pointer tables on 2026-10-19.
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -139,6 +141,27 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
     t.flags_word = formats::u16_le(h, 0x1c);
     t.max_hp = formats::u16_le(h, 0x2c);
     t.can_burn = h[0x31];
+    // ENTRANCE (D AnnoGame 0x10009a48-0x10009aa8): length / 8 points of two f32 (x, y)
+    // in tiles; a tail of fewer than 8 bytes is not read (`shr eax, 3`). The points lie
+    // on sub-cell centres (P); they are kept in sixths of a tile. A point that is not
+    // finite, negative or beyond 2^24 tiles is a load error (the original keeps any
+    // float; none in the file).
+    if (const auto ent = e.record("ENTRANCE")) {
+        for (std::size_t i = 0; i + 8 <= ent->size(); i += 8) {
+            EntrancePoint p;
+            for (std::size_t k = 0; k < 2; ++k) {
+                const auto f = std::bit_cast<float>(formats::u32_le(*ent, i + 4 * k));
+                const double six = static_cast<double>(f) * 6.0;
+                if (!std::isfinite(six) || six < 0.0 || six > 16777216.0 * 6.0) {
+                    return who + "ENTRANCE point " + std::to_string(i / 8) +
+                           " is not a position on the type";
+                }
+                const auto v = static_cast<std::uint32_t>(std::lround(six));
+                (k == 0 ? p.x6 : p.y6) = v;
+            }
+            t.entrances.push_back(p);
+        }
+    }
     const std::string research = e.record_str("FORSCHTYPE").value_or("");
     const auto research_id = research_by_name(research);
     if (!research_id) {
@@ -192,8 +215,13 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
 
 static_assert(field_count<ProductionType>() == 18,
               "a ProductionType member needs a line in digest_production");
-static_assert(field_count<BuildingType>() == 20,
-              "a BuildingType member needs a line in digest_type");
+// 22 since T27: the last member, the derived walk_class, is deliberately NOT hashed;
+// digest_type skips it. (cls, also derived from the build layout, is hashed.)
+static_assert(field_count<BuildingType>() == 22,
+              "a BuildingType member needs a line in digest_type (walk_class excepted: derived)");
+static_assert(field_count<EntrancePoint>() == 2,
+              "an EntrancePoint member needs a line in digest_type");
+static_assert(field_count<FigureType>() == 5, "a FigureType member needs a line in the digest");
 static_assert(field_count<GoodsInfo>() == 2, "a GoodsInfo member needs a line in the digest");
 static_assert(field_count<ClassInfo>() == 4, "a ClassInfo member needs a line in the digest");
 static_assert(field_count<CostEntry>() == 2, "a CostEntry member needs a line in the digest");
@@ -245,12 +273,17 @@ template <class A> void digest_type(A& a, const BuildingType& t) {
     u32s(a, t.output_goods);
     u32s(a, t.input_goods);
     ar::seq(a, t.head_raw, 1, [&](const std::uint8_t& b) { a.u8(b); });
+    ar::seq(a, t.entrances, 8, [&](const EntrancePoint& p) {
+        a.u32(p.x6);
+        a.u32(p.y6);
+    });
     a.boolean(t.has_prod);
     digest_production(a, t.prod);
 }
 
 std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<const GoodsInfo> goods,
-                              std::span<const ClassInfo> classes) {
+                              std::span<const ClassInfo> classes,
+                              std::span<const FigureType> figures) {
     HashArchive a(HashOptions{nullptr, 0, true});
     ar::seq(a, types, 1, [&](const BuildingType& t) { digest_type(a, t); });
     ar::seq(a, goods, 12, [&](const GoodsInfo& g) {
@@ -263,7 +296,57 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         a.enumv(c.payload);
         a.u32(c.gate_period);
     });
+    ar::seq(a, figures, 20, [&](const FigureType& f) {
+        a.u32(f.id);
+        a.u32(f.speed_q24);
+        a.u32(f.capacity_88);
+        a.u32(f.layer);
+        a.u32(f.load_ticks);
+    });
     return a.finish();
+}
+
+/// One FIGUREN/ENTRY of FigurenHeader.dat as the transport reads it (D AnnoGame
+/// 0x1000fe00; docs/re/transport.md §1, §4): HEAD f32 at byte 4 = the speed (type
+/// +0x10), LOGIC (read into a zero-filled 44-byte buffer, 0x100101b9-0x100101cf):
+/// [0x10] the walking layer (+0xff), [0x11] << 8 the capacity (+0xf2), f32 at byte 4
+/// the load wait (+0x30; 1.0 when not above 0). A HEAD shorter than 8 bytes, or a
+/// speed or a wait that is not a finite value of at most 2^16, is a load error.
+formats::Result<FigureType, std::string> figure_type_from_entry(const fig::Entry& e) {
+    const std::string who = "figure " + std::to_string(e.id) + ": ";
+    const auto head = e.record("HEAD");
+    if (!head || head->size() < 8) {
+        return who + "no HEAD record of 8 bytes";
+    }
+    std::array<std::uint8_t, 44> logic{};
+    if (const auto l = e.record("LOGIC")) {
+        std::copy_n(l->begin(), std::min<std::size_t>(l->size(), logic.size()), logic.begin());
+    }
+    auto f32 = [](formats::Bytes b, std::size_t at) {
+        return std::bit_cast<float>(formats::u32_le(b, at));
+    };
+    FigureType t;
+    t.id = e.id;
+    const float speed = f32(*head, 4);
+    // 0.2f is the figure tick's time scale (AnnoWelt 0x100c3270); the product is
+    // formed in double from the two f32 values.
+    const double q24 = static_cast<double>(speed) * static_cast<double>(0.2F) * 16777216.0;
+    if (!std::isfinite(q24) || q24 < 0.0 || q24 > 16777216.0 * 65536.0) {
+        return who + "HEAD speed is not a speed";
+    }
+    t.speed_q24 = static_cast<std::uint32_t>(std::llround(q24));
+    t.layer = logic[0x10];
+    t.capacity_88 = std::uint32_t{logic[0x11]} << 8;
+    float wait = f32(formats::Bytes(logic), 4);
+    if (!(wait > 0.0F)) {
+        wait = 1.0F; // 0x100213bc, the default of 0x1001020b
+    }
+    const double ticks = static_cast<double>(wait) * 500.0;
+    if (!std::isfinite(ticks) || ticks > 65536.0 * 500.0) {
+        return who + "LOGIC load wait is not a duration";
+    }
+    t.load_ticks = static_cast<std::uint32_t>(std::llround(ticks));
+    return t;
 }
 
 /// The Payload alternative a tick kind drives (the class table's tick/payload
@@ -283,6 +366,8 @@ std::optional<PayloadTag> payload_for_tick(TickKind tick) {
         return PayloadTag::Mine;
     case TickKind::SmallFarm:
         return PayloadTag::SmallFarm;
+    case TickKind::Market:
+        return PayloadTag::Market;
     }
     return std::nullopt;
 }
@@ -304,6 +389,7 @@ std::optional<BuildingClass> production_kind_for_tick(TickKind tick) {
         return BuildingClass::Mine;
     case TickKind::SmallFarm:
         return BuildingClass::SmallFarm;
+    case TickKind::Market: // reads prod.max_figures / figure_ids only when present
     case TickKind::None:
         break;
     }
@@ -311,9 +397,15 @@ std::optional<BuildingClass> production_kind_for_tick(TickKind tick) {
 }
 
 /// The checks that depend on the configuration (TypeRegistry::validate_against):
-/// the public-need masks fit the service counters and the build cost goods are
+/// the public-need masks fit the service counters, the build cost goods are
 /// goods that Place charges (SimConfig::build_goods_first .. + build_goods_count,
-/// which SimConfig::validate keeps below warehouse_goods).
+/// which SimConfig::validate keeps below warehouse_goods), and every type's
+/// walk_class matches what cfg.layout would derive — walk_class is built from the
+/// registry's layout and the transport search reads it with no reference to the
+/// world's cfg, so a mismatch means the two disagree on what a building is
+/// (T27b, owner 2026-10-24 w; cls is left out, because Builder::add(t) accepts a
+/// type with a hand-set cls that class_for_prodtype may not reproduce — the
+/// "world create checks that the registry fits the configuration" case uses this).
 std::string check_against_config(std::span<const BuildingType> types, const SimConfig& cfg) {
     const std::uint64_t goods_end = std::uint64_t{cfg.build_goods_first} + cfg.build_goods_count;
     for (const BuildingType& t : types) {
@@ -333,6 +425,19 @@ std::string check_against_config(std::span<const BuildingType> types, const SimC
                        std::to_string(cfg.build_goods_first) + ") .. + build_goods_count (" +
                        std::to_string(cfg.build_goods_count) + ")";
             }
+        }
+        // walk_class is derived from cfg.layout at build (TypeRegistry::finish);
+        // recompute under this configuration's layout and refuse a mismatch, so a
+        // world whose layout would classify a type differently is caught (T27b).
+        const std::uint8_t walk_cfg = (t.flags_word & kRoadFlag) != 0 ? std::uint8_t{1}
+                                      : cfg.layout.list_for(t.prodtype).has_value()
+                                          ? std::uint8_t{2}
+                                          : std::uint8_t{0};
+        if (walk_cfg != t.walk_class) {
+            return who + "the configuration's ListLayout gives walk class " +
+                   std::to_string(static_cast<unsigned>(walk_cfg)) +
+                   ", the registry was built with " +
+                   std::to_string(static_cast<unsigned>(t.walk_class));
         }
     }
     return {};
@@ -516,7 +621,7 @@ std::vector<ClassInfo> original_class_table() {
         {C::Whaler, T::None, P::Inert, 500},                               // 0x10073737
         {C::Shipyard, T::None, P::Inert, 500},                             // 0x10074ea1
         {C::Cannonworks, T::None, P::Inert, 500},                          // 0x1006cc40
-        {C::Market, T::None, P::Inert, 500},                               // 0x1006b6d0
+        {C::Market, T::Market, P::Market, 500},                            // 0x1006b6d0
         {C::MarketCombi, T::None, P::Inert, 500},                          // 0x1006c2e0
         {C::MarketStall, T::None, P::Inert, 5000},                         // 0x100702d0
         {C::Inn, T::None, P::Inert, 5000},          // 0x100755f0 (0x10075608)
@@ -587,7 +692,8 @@ const BuildingType* TypeRegistry::find_growing(std::uint32_t object) const {
 
 formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
 TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
-                     std::vector<ClassInfo> classes, const SimConfig& cfg) {
+                     std::vector<ClassInfo> classes, const SimConfig& cfg,
+                     std::vector<FigureType> figures) {
     if (classes.size() != static_cast<std::size_t>(RuntimeClass::Count_)) {
         return "class table has " + std::to_string(classes.size()) + " entries, RuntimeClass has " +
                std::to_string(static_cast<std::size_t>(RuntimeClass::Count_));
@@ -605,13 +711,31 @@ TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goo
     if (std::string problem = check_consistency(types, classes); !problem.empty()) {
         return problem;
     }
+    // walk_class is DERIVED from cfg.layout, like cls (which is set when a type is
+    // added). Compute it here so check_against_config sees matching values; it is
+    // deliberately NOT in digest_registry below (the rule of TileTest in
+    // transport.cpp, task T27): road flag -> 1, a type that occupies a building list
+    // -> 2, else 0 (no object or a non-blocking one).
+    for (BuildingType& t : types) {
+        t.walk_class = (t.flags_word & kRoadFlag) != 0               ? std::uint8_t{1}
+                       : cfg.layout.list_for(t.prodtype).has_value() ? std::uint8_t{2}
+                                                                     : std::uint8_t{0};
+    }
     if (std::string problem = check_against_config(types, cfg); !problem.empty()) {
         return problem;
     }
+    std::sort(figures.begin(), figures.end(),
+              [](const FigureType& a, const FigureType& b) { return a.id < b.id; });
+    for (std::size_t i = 1; i < figures.size(); ++i) {
+        if (figures[i - 1].id == figures[i].id) {
+            return "duplicate figure type id " + std::to_string(figures[i].id);
+        }
+    }
     auto sealed = std::make_shared<Sealed>();
     TypeRegistry& r = *sealed;
-    r.digest_ = digest_registry(types, goods_in, classes);
+    r.digest_ = digest_registry(types, goods_in, classes, figures);
     r.types_ = std::move(types);
+    r.figure_types_ = std::move(figures);
     r.goods_ = std::move(goods_in);
     r.classes_ = std::move(classes);
     r.max_footprint_ = footprint;
@@ -620,8 +744,15 @@ TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goo
 
 std::uint64_t TypeRegistry::digest_of(std::span<const BuildingType> types,
                                       std::span<const GoodsInfo> goods,
-                                      std::span<const ClassInfo> classes) {
-    return digest_registry(types, goods, classes);
+                                      std::span<const ClassInfo> classes,
+                                      std::span<const FigureType> figures) {
+    return digest_registry(types, goods, classes, figures);
+}
+
+const FigureType* TypeRegistry::find_figure_type(std::uint32_t id) const {
+    const auto it = std::lower_bound(figure_types_.begin(), figure_types_.end(), id,
+                                     [](const FigureType& t, std::uint32_t v) { return t.id < v; });
+    return it != figure_types_.end() && it->id == id ? &*it : nullptr;
 }
 
 std::string TypeRegistry::validate_against(const SimConfig& cfg) const {
@@ -641,6 +772,31 @@ TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> 
         types.push_back(std::move(t.value()));
     }
     return finish(std::move(types), std::move(goods_in), original_class_table(), cfg);
+}
+
+formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
+TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> goods_in,
+                    const SimConfig& cfg, std::span<const fig::Entry> figure_entries) {
+    std::vector<BuildingType> types;
+    types.reserve(entries.size());
+    for (const fig::Entry& e : entries) {
+        auto t = type_from_entry(e, goods_in, cfg);
+        if (!t) {
+            return t.error();
+        }
+        types.push_back(std::move(t.value()));
+    }
+    std::vector<FigureType> figures;
+    figures.reserve(figure_entries.size());
+    for (const fig::Entry& e : figure_entries) {
+        auto f = figure_type_from_entry(e);
+        if (!f) {
+            return f.error();
+        }
+        figures.push_back(f.value());
+    }
+    return finish(std::move(types), std::move(goods_in), original_class_table(), cfg,
+                  std::move(figures));
 }
 
 std::shared_ptr<const TypeRegistry> TypeRegistry::empty() {
@@ -817,12 +973,96 @@ TypeRegistry::Builder& TypeRegistry::Builder::add_mine(TypeId id, std::string_vi
     return *this;
 }
 
+TypeRegistry::Builder& TypeRegistry::Builder::add_market(TypeId id, std::uint32_t cart,
+                                                         std::uint32_t max_carts,
+                                                         std::uint32_t radius, std::uint32_t w,
+                                                         std::uint32_t h) {
+    BuildingType t = make_production(id, 34, "MARKT", BuildingClass::Market, {}, {}, {}, {});
+    t.width = w;
+    t.height = h;
+    t.action_radius = radius;
+    t.prod.max_figures[0] = max_carts;
+    // P: every market and Kontor type of Anlagen.dat has PROD3[4] = 5 (5 t), the source
+    // capacity a workshop carrier's score divides by (0x100728f0).
+    t.prod.capacity[0] = 5 << 8;
+    t.prod.figure_type_count[0] = 1;
+    t.prod.figure_ids[0] = cart;
+    types_.push_back(std::move(t));
+    return *this;
+}
+
+BuildingType* TypeRegistry::Builder::last_with(TypeId id) {
+    for (auto it = types_.rbegin(); it != types_.rend(); ++it) {
+        if (it->id == id) {
+            return &*it;
+        }
+    }
+    if (error_.empty()) {
+        error_ = "Builder: no type " + std::to_string(id.v) + " to change";
+    }
+    return nullptr;
+}
+
+TypeRegistry::Builder& TypeRegistry::Builder::entrances(TypeId id,
+                                                        std::vector<EntrancePoint> points) {
+    if (BuildingType* t = last_with(id)) {
+        t->entrances = std::move(points);
+    }
+    return *this;
+}
+
+TypeRegistry::Builder& TypeRegistry::Builder::footprint(TypeId id, std::uint32_t w,
+                                                        std::uint32_t h) {
+    if (BuildingType* t = last_with(id)) {
+        t->width = w;
+        t->height = h;
+    }
+    return *this;
+}
+
+TypeRegistry::Builder& TypeRegistry::Builder::action_radius(TypeId id, std::uint32_t radius) {
+    if (BuildingType* t = last_with(id)) {
+        t->action_radius = radius;
+    }
+    return *this;
+}
+
+TypeRegistry::Builder& TypeRegistry::Builder::flags_word(TypeId id, std::uint32_t flags) {
+    if (BuildingType* t = last_with(id)) {
+        t->flags_word = flags;
+    }
+    return *this;
+}
+
+TypeRegistry::Builder& TypeRegistry::Builder::figure_ids(TypeId id,
+                                                         std::vector<std::uint32_t> ids) {
+    if (BuildingType* t = last_with(id)) {
+        if (!t->has_prod) {
+            if (error_.empty()) {
+                error_ = "Builder: type " + std::to_string(id.v) + " has no production data";
+            }
+            return *this;
+        }
+        t->prod.figure_ids = ids;
+        t->prod.figure_ids.resize(std::max<std::size_t>(t->prod.figure_ids.size(), 9), 0);
+        if (!t->prod.figure_type_count.empty()) {
+            t->prod.figure_type_count[0] = static_cast<std::uint32_t>(ids.size());
+        }
+    }
+    return *this;
+}
+
+TypeRegistry::Builder& TypeRegistry::Builder::figure_type(FigureType type) {
+    figures_.push_back(type);
+    return *this;
+}
+
 formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
 TypeRegistry::Builder::build() const {
     if (!error_.empty()) {
         return error_;
     }
-    return TypeRegistry::finish(types_, goods_, classes_, cfg_);
+    return TypeRegistry::finish(types_, goods_, classes_, cfg_, figures_);
 }
 
 } // namespace anno::sim

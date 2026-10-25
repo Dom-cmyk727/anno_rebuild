@@ -110,6 +110,7 @@ std::vector<LayoutRow> layout_rows() {
         p.out = {7, 8};
         p.in = {9};
         p.activity = {10, 11, 12};
+        p.reserved = {14, 15};
         p.carriers_out = 13;
         p.status = status(sim::Status::StorageFull, 4, 0x0a0b);
         Stream s = common_bytes(1);
@@ -126,10 +127,14 @@ std::vector<LayoutRow> layout_rows() {
         s.u32(10);
         s.u32(11);
         s.u32(12);
+        s.u64(2);
+        s.u32(14);
+        s.u32(15);
         s.u32(13);
         status_bytes(s, 2, 4, 0x0a0b);
-        // 8 common + last + 3 bools + (count + 2) + (count + 1) + (count + 3) + carriers + 3.
-        rows.push_back({"Workshop", common(p), s, 8 + 1 + 3 + 3 + 2 + 4 + 1 + 3});
+        // 8 common + last + 3 bools + (count + 2) + (count + 1) + (count + 3) + (count + 2)
+        // + carriers + 3.
+        rows.push_back({"Workshop", common(p), s, 8 + 1 + 3 + 3 + 2 + 4 + 3 + 1 + 3});
     }
     {
         sim::WeaponsWorkshop p;
@@ -143,6 +148,7 @@ std::vector<LayoutRow> layout_rows() {
         p.out = {1, 2};
         p.in = {3};
         p.activity = {4, 5};
+        p.reserved = {7};
         p.carriers_out = 6;
         p.status = status(sim::Status::None, 0, 0);
         Stream s = common_bytes(2);
@@ -161,9 +167,11 @@ std::vector<LayoutRow> layout_rows() {
         s.u64(2);
         s.u16(4);
         s.u16(5);
+        s.u64(1);
+        s.u32(7);
         s.u32(6);
         status_bytes(s, 0, 0, 0);
-        rows.push_back({"WeaponsWorkshop", common(p), s, 8 + 1 + 4 + 2 + 3 + 2 + 3 + 1 + 3});
+        rows.push_back({"WeaponsWorkshop", common(p), s, 8 + 1 + 4 + 2 + 3 + 2 + 3 + 2 + 1 + 3});
     }
     {
         sim::Farm p;
@@ -174,6 +182,7 @@ std::vector<LayoutRow> layout_rows() {
         p.out = 0x01020304;
         p.raw = 0x05060708;
         p.activity = 0x0a0b;
+        p.reserved = 0x0c0d;
         p.workers_out = 3;
         p.status = status(sim::Status::MissingInput, 2, 9);
         Stream s = common_bytes(3);
@@ -184,9 +193,10 @@ std::vector<LayoutRow> layout_rows() {
         s.u32(0x01020304);
         s.u32(0x05060708);
         s.u16(0x0a0b);
+        s.u32(0x0c0d);
         s.u32(3);
         status_bytes(s, 1, 2, 9);
-        rows.push_back({"Farm", common(p), s, 8 + 1 + 3 + 3 + 1 + 3});
+        rows.push_back({"Farm", common(p), s, 8 + 1 + 3 + 4 + 1 + 3});
     }
     {
         sim::SmallFarm p;
@@ -198,6 +208,7 @@ std::vector<LayoutRow> layout_rows() {
         p.out = {1, 2};
         p.raw = {3, 4};
         p.activity = {5, 6};
+        p.reserved = {12, 13};
         p.figures_out = {7, 8, 9, 10, 11};
         p.status = status(sim::Status::StorageFull, 1, 2);
         Stream s = common_bytes(4);
@@ -216,12 +227,15 @@ std::vector<LayoutRow> layout_rows() {
         s.u64(2);
         s.u16(5);
         s.u16(6);
+        s.u64(2);
+        s.u32(12);
+        s.u32(13);
         s.u64(5);
         for (std::uint32_t v = 7; v <= 11; ++v) {
             s.u32(v);
         }
         status_bytes(s, 2, 1, 2);
-        rows.push_back({"SmallFarm", common(p), s, 8 + 1 + 3 + 2 + 3 + 3 + 3 + 6 + 3});
+        rows.push_back({"SmallFarm", common(p), s, 8 + 1 + 3 + 2 + 3 + 3 + 3 + 3 + 6 + 3});
     }
     {
         sim::Mine p;
@@ -231,6 +245,7 @@ std::vector<LayoutRow> layout_rows() {
         p.blocked = true;
         p.out = 0x0c0d0e0f;
         p.activity = 0x1011;
+        p.reserved = 0x2122;
         p.deposit = 5;
         p.status = status(sim::Status::None, 3, 4);
         Stream s = common_bytes(5);
@@ -240,10 +255,11 @@ std::vector<LayoutRow> layout_rows() {
         s.boolean(true);
         s.u32(0x0c0d0e0f);
         s.u16(0x1011);
+        s.u32(0x2122);
         s.boolean(true);
         s.u64(5);
         status_bytes(s, 0, 3, 4);
-        rows.push_back({"Mine with a deposit", common(p), s, 8 + 1 + 3 + 2 + 2 + 3});
+        rows.push_back({"Mine with a deposit", common(p), s, 8 + 1 + 3 + 3 + 2 + 3});
         sim::Mine none = p;
         none.deposit.reset();
         Stream t = common_bytes(5);
@@ -253,9 +269,25 @@ std::vector<LayoutRow> layout_rows() {
         t.boolean(true);
         t.u32(0x0c0d0e0f);
         t.u16(0x1011);
+        t.u32(0x2122);
         t.boolean(false);
         status_bytes(t, 0, 3, 4);
-        rows.push_back({"Mine without a deposit", common(none), t, 8 + 1 + 3 + 2 + 1 + 3});
+        rows.push_back({"Mine without a deposit", common(none), t, 8 + 1 + 3 + 3 + 1 + 3});
+    }
+    {
+        sim::Market p;
+        p.last = 0x3132;
+        p.blocked = false;
+        p.suspended = true;
+        p.status = status(sim::Status::StorageFull, 5, 0x4142);
+        p.carts_out = 2;
+        Stream s = common_bytes(6);
+        s.u16(0x3132);
+        s.boolean(false);
+        s.boolean(true);
+        status_bytes(s, 2, 5, 0x4142);
+        s.u32(2);
+        rows.push_back({"Market", common(p), s, 8 + 3 + 3 + 1});
     }
     return rows;
 }
@@ -267,11 +299,12 @@ TEST_CASE("field count canary per struct") {
     // the comment: a member added without a line in fields() fails the build there.
     CHECK(sim::field_count<sim::StatusTracker>() == 4); // code, icons, shows_icons*, time
     CHECK(sim::field_count<sim::Inert>() == 4);         // last, blocked, suspended, status
-    CHECK(sim::field_count<sim::Workshop>() == 9);
-    CHECK(sim::field_count<sim::WeaponsWorkshop>() == 10); // unlocked*
-    CHECK(sim::field_count<sim::Farm>() == 9);
-    CHECK(sim::field_count<sim::SmallFarm>() == 9);
-    CHECK(sim::field_count<sim::Mine>() == 8);
+    CHECK(sim::field_count<sim::Workshop>() == 10);
+    CHECK(sim::field_count<sim::WeaponsWorkshop>() == 11); // unlocked*
+    CHECK(sim::field_count<sim::Farm>() == 10);
+    CHECK(sim::field_count<sim::SmallFarm>() == 10);
+    CHECK(sim::field_count<sim::Mine>() == 9);
+    CHECK(sim::field_count<sim::Market>() == 5);
     CHECK(sim::field_count<sim::Building>() == 8);
     CHECK(sim::field_count<sim::BuildingIndex>() == 4); // service_counters*, house_counts*
     CHECK(sim::field_count<sim::City>() == 8);
@@ -283,12 +316,13 @@ TEST_CASE("field count canary per struct") {
     CHECK(sim::field_count<sim::Island>() == 14);          // cache*
     CHECK(sim::field_count<sim::PlacementRecord>() == 5);
     // (* = derived, not in the stream). Every Payload alternative has a stream tag.
-    CHECK(std::variant_size_v<sim::Payload> == 6);
-    CHECK(sim::kPayloadTags.size() == 6);
+    CHECK(std::variant_size_v<sim::Payload> == 7);
+    CHECK(sim::kPayloadTags.size() == 7);
     for (std::size_t i = 0; i < sim::kPayloadTags.size(); ++i) {
         CHECK(sim::kPayloadTags[i] == i);
     }
     CHECK(sim::kPayloadTags[static_cast<std::size_t>(sim::PayloadTag::Mine)] == 5);
+    CHECK(sim::kPayloadTags[static_cast<std::size_t>(sim::PayloadTag::Market)] == 6);
 }
 
 TEST_CASE("building stream layout per payload") {
@@ -342,7 +376,7 @@ TEST_CASE("building stream layout per payload") {
 
 TEST_CASE("a building stream refuses a payload tag and a status code that do not exist") {
     LayoutRow row = layout_rows()[1]; // the Workshop
-    for (const std::uint8_t tag : {std::uint8_t{6}, std::uint8_t{7}, std::uint8_t{255}}) {
+    for (const std::uint8_t tag : {std::uint8_t{7}, std::uint8_t{8}, std::uint8_t{255}}) {
         std::vector<std::uint8_t> bad = row.expect.v;
         bad[8 + 4 + 4 + 4 + 3] = tag; // the tag byte
         sim::Building b;
@@ -1030,7 +1064,7 @@ TEST_CASE("golden s6 G1 city with a weaver and a farm") {
     auto types = syn::make_synthetic_types();
     REQUIRE(types.ok());
     // The one literal of tools/sim_stream.py for this golden.
-    CHECK(types.value().registry->digest() == 0x00d140f84bf28924ULL);
+    CHECK(types.value().registry->digest() == 0x13e65df34212c0c3ULL);
     auto created =
         sim::World::create(syn::g1_scenario(types.value(), 1234), types.value().registry);
     REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));

@@ -1,5 +1,6 @@
 // The driver: calling the production step functions from the building scheduler
-// (spec: docs/sim/state.md §7.1, §7.2, stage S7).
+// (spec: docs/sim/state.md §7.1, §7.2; stage S7 drove the workshop and the farm, stage
+// S11 the weapons workshop, the fur trapper, the mine and the small farm).
 //
 // tick_building is what the original's building slot +0x8c does for each non-null
 // slot the scheduler reaches: it refreshes the inputs the step derives from other
@@ -20,29 +21,40 @@
 
 namespace anno::sim {
 
-/// Whether tick_building runs the step function of this tick kind. STAGE S7 MASK
-/// (docs/sim/state.md §15, S7): only the Workshop and Farm kinds are driven; the
-/// other ported kinds (WeaponsWorkshop, FurTrapper, SmallFarm, Mine) behave as
-/// TickKind::None (inert, `last` untouched) until stage S11 adds their driver
-/// cases and removes this function, so that no kind is half wired. The classes
-/// without a ported tick are None for good (D15).
-[[nodiscard]] bool tick_kind_enabled(TickKind kind);
+/// The research input of a weapons workshop (docs/sim/state.md §7.1; D: AnnoWelt.dll
+/// 0x10069580-0x10069640): sizes `w.unlocked` to the lines of the payload (one per
+/// entry of `w.out`) and sets line j when the Forsch research id of its output goods
+/// (`type.output_goods[j]`, GoodsInfo::forsch, OQ-034) is 0 or researched by `owner`
+/// (PlayersView::researched: bit 1 of the research state byte). A player that is not
+/// there has researched nothing. `unlocked` is derived and not saved, so it is empty
+/// after a load; tick_building calls this before every weapons_workshop_step.
+void refresh_unlocked(WeaponsWorkshop& w, const BuildingType& type, const TypeRegistry& types,
+                      const PlayersView& players, PlayerId owner);
 
-/// The counter of figures out of `home_counter` of a payload: Workshop and
-/// WeaponsWorkshop `carriers_out`, Farm `workers_out` (counter 0 each), SmallFarm
-/// `figures_out[home_counter]`; nullptr for a counter the payload does not have
-/// and for the payloads without counters (Mine, Inert).
+/// The counter of figures out of `home_counter` of a payload: Market `carts_out`,
+/// Workshop and WeaponsWorkshop `carriers_out`, Farm `workers_out` (counter 0 each),
+/// SmallFarm `figures_out[home_counter]`; nullptr for a counter the payload does not
+/// have and for the payloads without counters (Mine, Inert).
 [[nodiscard]] std::uint32_t* figure_counter(Payload& payload, std::uint32_t home_counter);
 [[nodiscard]] const std::uint32_t* figure_counter(const Payload& payload,
                                                   std::uint32_t home_counter);
-/// How many counters a payload has: 1 for Workshop, WeaponsWorkshop and Farm, the
-/// size of `figures_out` for SmallFarm, 0 for Mine and Inert.
+/// How many counters a payload has: 1 for Market, Workshop, WeaponsWorkshop and Farm,
+/// the size of `figures_out` for SmallFarm, 0 for Mine and Inert.
 [[nodiscard]] std::uint32_t figure_counter_count(const Payload& payload);
 
 /// The output store `out_index` of a payload in 8.8 tons (Workshop, WeaponsWorkshop
 /// and SmallFarm `out[out_index]`, Farm and Mine `out` for index 0); nullptr beyond
 /// the stores and for Inert.
 [[nodiscard]] std::uint32_t* output_store(Payload& payload, std::uint32_t out_index);
+
+/// The reserved part of output store `index` (the stores of output_store; T24,
+/// docs/re/transport.md §1.4); nullptr where output_store has none.
+[[nodiscard]] std::uint32_t* reserved_store(Payload& payload, std::uint32_t index);
+
+/// The input store `index` (Workshop and WeaponsWorkshop `in[index]`, SmallFarm
+/// `raw[index]`, Farm `raw` for index 0); nullptr beyond the stores, for Mine, Market
+/// and Inert.
+[[nodiscard]] std::uint32_t* input_store(Payload& payload, std::uint32_t index);
 
 /// The player-visible blocked flag of any payload.
 [[nodiscard]] bool payload_blocked(const Payload& payload);
@@ -52,19 +64,37 @@ namespace anno::sim {
 /// another island.
 [[nodiscard]] Building* find_building_mut(Island& island, BuildingId id);
 
-/// Where a figure sent by `b` starts: the building's north-west tile in Q24.8. A
-/// STAND-IN (the original's start position is a float from the unit constructor,
-/// O-47, and figures do not move before stage S12).
-[[nodiscard]] FixedPos spawn_position(const Building& b);
+/// Where a figure sent by `b` starts, in Q24.8: the type's first entrance point
+/// (entrance_position), else the building's north-west tile. A STAND-IN (the send
+/// 0x10072d20 starts the figure at a reachable entrance, 0x10072b50, not read; O-59,
+/// O-47).
+[[nodiscard]] FixedPos spawn_position(const Building& b, const BuildingType& type);
+
+/// Entrance point `i` of `b`'s type at the building's rotation (D AnnoGame
+/// 0x100084c0), in Q24.8 world position (sixths rounded to the nearest 1/256); the
+/// type's corner when the type has no such point.
+[[nodiscard]] FixedPos entrance_position(const Building& b, const BuildingType& type,
+                                         std::size_t i);
 
 /// One building's tick (D: building slot +0x8c). The type, the class and the owner
 /// come from the context; the step function of the class runs on the payload, then
-/// `consume` turns its result into counters, spawn requests and UI events.
-/// Returns without effect when the type is unknown or the payload is not the
-/// class's alternative (check_invariants and the loader rule both out: the
-/// release-mode behaviour of a corrupt copy is "do nothing", never an exception),
-/// when the class has no ported tick, and for the kinds masked in stage S7
-/// (tick_kind_enabled).
+/// `consume` turns its result into counters, spawn requests and UI events. Per tick
+/// kind (docs/sim/state.md §7.1):
+///  - Workshop, Farm: workshop_step, farm_step;
+///  - WeaponsWorkshop: refresh_unlocked (the owner's research), then
+///    weapons_workshop_step;
+///  - FurTrapper: fur_trapper_step on the Farm payload; a due trapper is not sent,
+///    because the prey search (D 0x10071da0) finds no animal: the sim has no wildlife
+///    objects (O-12, O-25);
+///  - Mine: mine_step over the island's deposits, the footprint by rotation
+///    (mine_area) and the world's depletion setting (WorldSettings::depletes, the
+///    add-on edition);
+///  - SmallFarm: small_farm_step with a DrawRef over the context's DrawSource
+///    (DrawSite::SmallFarmAnimal) and SimConfig::small_farm_animals.
+/// Returns without effect when the type is unknown, the payload is not the class's
+/// alternative (check_invariants and the loader rule both out: the release-mode
+/// behaviour of a corrupt copy is "do nothing", never an exception), or the class has
+/// no ported tick (TickKind::None: inert, `last` untouched, D15).
 void tick_building(const TickContext& ctx, Island& island, City& city, Building& b, Effects& fx);
 
 /// The consequences of one step (docs/sim/state.md §7.2), in this order:
@@ -75,9 +105,10 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
 ///  - made: nothing (the output stays in the building's store; carriers that move it
 ///    to the city stock arrive with transport);
 ///  - send_figure: the home counter is raised HERE, in the tick, and a SpawnRequest
-///    {kind = the type's first figure id, job (0x0d for the fur trapper, else 0 =
-///    unknown), home_counter 0} is queued; the figure itself is created by the
-///    merge;
+///    {kind = the type's first figure id, job (0x33 for the carrier of a workshop or
+///    weapons workshop, 0x0d for the fur trapper, 0x2a for the small farm's line-0
+///    worker, else 0 = unknown), home_counter 0} is queued; the figure itself is
+///    created by the merge;
 ///  - send_animal (small farm): counter animal_kind - small_farm_animals.base is
 ///    raised and a SpawnRequest {kind = animal_kind, job 0x2e, home_counter = that
 ///    index} is queued; a kind outside the counters sends nothing (F21).

@@ -142,47 +142,48 @@ std::uint64_t hash_events(const std::vector<sim::SimEvent>& events) {
 
 } // namespace
 
-// ------------------------------------------------------------------- the masks
+// --------------------------------------------------------------- inert classes
 
-TEST_CASE("only the workshop and farm ticks are driven in stage S7") {
-    CHECK(sim::tick_kind_enabled(sim::TickKind::Workshop));
-    CHECK(sim::tick_kind_enabled(sim::TickKind::Farm));
-    CHECK_FALSE(sim::tick_kind_enabled(sim::TickKind::None));
-    CHECK_FALSE(sim::tick_kind_enabled(sim::TickKind::WeaponsWorkshop));
-    CHECK_FALSE(sim::tick_kind_enabled(sim::TickKind::FurTrapper));
-    CHECK_FALSE(sim::tick_kind_enabled(sim::TickKind::Mine));
-    CHECK_FALSE(sim::tick_kind_enabled(sim::TickKind::SmallFarm));
-}
-
-TEST_CASE("masked and inert classes do not tick even with an open gate") {
+// Stage S7 also tested its temporary mask here (the weapons workshop, fur trapper, mine
+// and small farm did not tick); stage S11 removed the mask and drives those classes
+// (driver_classes_test.cpp). What stays: a class without a ported tick never ticks. The
+// kit's kontor, the inert example until T24, ticks since then (its own case below): the
+// building in its slot is made a market stall (an inert class) here.
+TEST_CASE("inert classes do not tick even with an open gate") {
     const Kit k = make_kit();
     sim::World w = make_world_with(k, merge_scenario(k), named_seams());
-    // Open every gate: last = 0xF000 makes the 16-bit difference at tick 500 at least 500.
-    payload<sim::WeaponsWorkshop>(w, 0, 4).last = 0xF000;
-    payload<sim::SmallFarm>(w, 0, 3).last = 0xF000;
-    payload<sim::Mine>(w, 0, 5).last = 0xF000;
+    sim::Building& b = building(w, 0, 6);
+    b.type = k.market_stall;
+    b.payload = sim::Inert{};
+    // Open the gate: last = 0xF000 makes the 16-bit difference at tick 500 at least 500.
     payload<sim::Inert>(w, 0, 6).last = 0xF000;
     sim::Effects fx;
     Tick t(w, 500);
     sim::City& c = city(w, 0);
-    for (const std::uint32_t serial : {3U, 4U, 5U, 6U}) {
-        sim::tick_building(t.ctx, island(w), c, building(w, 0, serial), fx);
-    }
-    CHECK(payload<sim::SmallFarm>(w, 0, 3).last == 0xF000);
-    CHECK(payload<sim::WeaponsWorkshop>(w, 0, 4).last == 0xF000);
-    CHECK(payload<sim::Mine>(w, 0, 5).last == 0xF000);
+    sim::tick_building(t.ctx, island(w), c, building(w, 0, 6), fx);
     CHECK(payload<sim::Inert>(w, 0, 6).last == 0xF000);
     CHECK(fx.ui.empty());
     CHECK(fx.spawns.empty());
-    // The same through the scheduler: a full lap at tick 500 ticks nothing of them.
+    // The same through the scheduler: a full lap at tick 500 leaves the stall alone.
     sim::Effects fx2;
     c.index.stamp = 0;
     Tick t2(w, 500);
     sim::building_scheduler(t2.ctx, island(w), c, fx2);
-    CHECK(payload<sim::WeaponsWorkshop>(w, 0, 4).last == 0xF000);
-    CHECK(payload<sim::SmallFarm>(w, 0, 3).last == 0xF000);
-    // No small farm step, so no animal draw was made.
-    CHECK(t2.draw.counts[static_cast<std::size_t>(sim::DrawSite::SmallFarmAnimal)] == 0);
+    CHECK(payload<sim::Inert>(w, 0, 6).last == 0xF000);
+}
+
+TEST_CASE("a market without production data steps its gate and sends no cart") {
+    // The kit's kontor (add_plain, no PROD3): class Market ticks since T24 (D 0x1006b6d0),
+    // its max_figures(0) is 0, so the gate moves (last += 500) and nothing is sent.
+    const Kit k = make_kit();
+    sim::World w = make_world_with(k, merge_scenario(k), named_seams());
+    payload<sim::Market>(w, 0, 6).last = 0xF000;
+    sim::Effects fx;
+    Tick t(w, 500);
+    sim::tick_building(t.ctx, island(w), city(w, 0), building(w, 0, 6), fx);
+    CHECK(payload<sim::Market>(w, 0, 6).last == static_cast<std::uint16_t>(0xF000 + 500));
+    CHECK(payload<sim::Market>(w, 0, 6).carts_out == 0);
+    CHECK(fx.spawns.empty());
 }
 
 // ---------------------------------------------------------------- tick_building
@@ -201,13 +202,14 @@ TEST_CASE("tick_building steps a workshop and raises its carrier counter") {
     CHECK(wk.out[0] == 6);
     CHECK(wk.in[0] == 5 * sim::kTon - 11);
     CHECK(wk.carriers_out == 1);
-    // One spawn: the weaver's first figure id, job unknown, counter 0, owner = the city's.
+    // One spawn: the weaver's first figure id, the carrier job 0x33 (D 0x100680b0), counter 0,
+    // owner = the city's.
     REQUIRE(fx.spawns.size() == 1);
     const sim::SpawnRequest& s = fx.spawns[0];
     CHECK(s.home == b.id);
     CHECK(s.city == cref(0, 0));
     CHECK(s.home_counter == 0);
-    CHECK(s.job == 0);
+    CHECK(s.job == 0x33);
     CHECK(s.figure_kind == 11);
     CHECK(s.owner == sim::PlayerId{0});
     CHECK(s.pos.x == 101 * 256);
@@ -434,7 +436,8 @@ TEST_CASE("consume sends a figure by raising the home counter and queueing a spa
     Tick t(w, 77);
     sim::StepResult send;
     send.send_figure = true;
-    // weaver 1 (kind 11), farm 2 (kind 22); the fur trapper job is 0x0d.
+    // weaver 1 (kind 11, carrier job 0x33), farm 2 (kind 22, job unknown: 0); the fur trapper
+    // job is 0x0d.
     {
         sim::Effects fx;
         sim::Building& b = building(w, 0, 1);
@@ -442,7 +445,7 @@ TEST_CASE("consume sends a figure by raising the home counter and queueing a spa
         CHECK(std::get<sim::Workshop>(b.payload).carriers_out == 1);
         REQUIRE(fx.spawns.size() == 1);
         CHECK(fx.spawns[0].figure_kind == 11);
-        CHECK(fx.spawns[0].job == 0);
+        CHECK(fx.spawns[0].job == 0x33);
         CHECK(fx.spawns[0].home_counter == 0);
     }
     {
@@ -465,7 +468,9 @@ TEST_CASE("consume sends a figure by raising the home counter and queueing a spa
         sim::consume(t.ctx, island(w), city(w, 0), sb, *ck.k.registry->find(ck.k.small_farm), send,
                      fx);
         CHECK(std::get<sim::SmallFarm>(sb.payload).figures_out[0] == 1);
-        CHECK(fx.spawns.size() == 2);
+        REQUIRE(fx.spawns.size() == 2);
+        CHECK(fx.spawns[0].job == 0x33); // the weapons workshop's carrier
+        CHECK(fx.spawns[1].job == 0x2a); // the small farm's line-0 worker
     }
     {
         // The fur trapper (class FurTrapper, a Farm payload) sends job 0x0d. Its payload is
@@ -480,15 +485,24 @@ TEST_CASE("consume sends a figure by raising the home counter and queueing a spa
         CHECK(fx.spawns[0].job == 0x0d);
     }
     {
-        // A payload without a counter (a mine, an inert building) sends nothing.
+        // A payload without a counter (a mine) sends nothing.
         sim::Effects fx;
         sim::Building& mine = building(w, 0, 5);
         sim::consume(t.ctx, island(w), city(w, 0), mine, *ck.k.registry->find(ck.k.iron_mine), send,
                      fx);
+        CHECK(fx.spawns.empty());
+    }
+    {
+        // A market sends a cart (job 0x34) on its carts_out counter (T24, D 0x1006b6d0);
+        // the kit's kontor has no figure ids: kind 0.
+        sim::Effects fx;
         sim::Building& kontor = building(w, 0, 6);
         sim::consume(t.ctx, island(w), city(w, 0), kontor, *ck.k.registry->find(ck.k.kontor), send,
                      fx);
-        CHECK(fx.spawns.empty());
+        CHECK(std::get<sim::Market>(kontor.payload).carts_out == 1);
+        REQUIRE(fx.spawns.size() == 1);
+        CHECK(fx.spawns[0].job == 0x34);
+        CHECK(fx.spawns[0].figure_kind == 0);
     }
 }
 
@@ -594,7 +608,8 @@ TEST_CASE("consume sends a figure and an animal in this order") {
     sim::Effects fx;
     sim::consume(t.ctx, island(w), city(w, 0), b, *ck.k.registry->find(ck.k.small_farm), r, fx);
     REQUIRE(fx.spawns.size() == 2);
-    CHECK(fx.spawns[0].job == 0);
+    // The line-0 worker has job 0x2a (D 0x1006f660, docs/re/production.md §4.5).
+    CHECK(fx.spawns[0].job == 0x2a);
     CHECK(fx.spawns[1].job == 0x2e);
     const auto& farm = std::get<sim::SmallFarm>(b.payload);
     CHECK(farm.figures_out[0] == 1);
@@ -626,10 +641,22 @@ TEST_CASE("figure counters and output stores by payload") {
     CHECK(*sim::figure_counter(csmall, 4) == 5);
     CHECK(sim::figure_counter(csmall, 5) == nullptr);
     // Mine and Inert have none.
-    for (const std::uint32_t serial : {5U, 6U}) {
-        sim::Payload& p = building(w, 0, serial).payload;
+    {
+        sim::Payload& p = building(w, 0, 5).payload;
         CHECK(sim::figure_counter_count(p) == 0);
         CHECK(sim::figure_counter(p, 0) == nullptr);
+        sim::Payload inert = sim::Inert{};
+        CHECK(sim::figure_counter_count(inert) == 0);
+        CHECK(sim::figure_counter(inert, 0) == nullptr);
+    }
+    // A market has its carts (T24).
+    {
+        sim::Payload& p = building(w, 0, 6).payload;
+        CHECK(sim::figure_counter_count(p) == 1);
+        REQUIRE(sim::figure_counter(p, 0) != nullptr);
+        *sim::figure_counter(p, 0) = 2;
+        CHECK(std::get<sim::Market>(p).carts_out == 2);
+        CHECK(sim::figure_counter(p, 1) == nullptr);
     }
     // The pointers point at the right members.
     sim::Payload& wk = building(w, 0, 1).payload;
@@ -711,7 +738,7 @@ TEST_CASE("merge creates figures in order with the world's ids slots and events"
     const sim::FigureRegistry& reg = w.figures();
     REQUIRE(reg.list.slots[0].has_value());
     REQUIRE(reg.list.slots[1].has_value());
-    CHECK(reg.list.slots.size() == 10); // 1 -> 10 with the second insert (D 0x10026a00)
+    CHECK(reg.list.slots.size() == 100); // 1 -> 100 with the second insert (D 0x10099185)
     CHECK(reg.list.hint == 1);
     const sim::Figure& a = *reg.list.slots[0];
     const sim::Figure& b = *reg.list.slots[1];
@@ -732,8 +759,7 @@ TEST_CASE("merge creates figures in order with the world's ids slots and events"
     CHECK(a.cargo_goods == 0);
     CHECK(a.cargo_88 == 0);
     CHECK(a.hp == 0);
-    CHECK_FALSE(a.created_stamp.has_value());
-    CHECK_FALSE(a.marked_for_delete);
+    CHECK_FALSE(a.expiry_stamp.has_value());
     CHECK(w.ids().next_figure == 3);
     CHECK(reg.by_id.at(sim::FigureId{1}) == 0);
     CHECK(reg.by_id.at(sim::FigureId{2}) == 1);
@@ -1321,8 +1347,11 @@ TEST_CASE("merge queues timed events with the world's sequence numbers") {
     first.delay = 25;
     first.e.kind = sim::EventKind::TileCleanup;
     first.e.tile = sim::TileXY{3, 4};
+    // Delay 1, not 0: an event the island phase queues due now is dispatched by step 2
+    // of the same advance (stage S12, world_events_test.cpp), and this case looks at
+    // the queue after the advance.
     sim::EnqueueEvent second;
-    second.delay = 0;
+    second.delay = 1;
     second.e.kind = sim::EventKind::DelayedHit;
     second.e.subtype = 2;
     second.e.value = 7;
@@ -1335,9 +1364,9 @@ TEST_CASE("merge queues timed events with the world's sequence numbers") {
     lap(w); // tick 50
     const auto& q = w.events().q;
     REQUIRE(q.size() == 2);
-    // Keyed (due, seq): the delayed hit is due now (50, seq 2), the cleanup at 75 (seq 1).
+    // Keyed (due, seq): the delayed hit is due at 51 (seq 2), the cleanup at 75 (seq 1).
     auto it = q.begin();
-    CHECK(it->first == sim::EventKey{50, 2});
+    CHECK(it->first == sim::EventKey{51, 2});
     CHECK(it->second.kind == sim::EventKind::DelayedHit);
     CHECK(it->second.value == 7);
     CHECK(it->second.target == sim::FigureId{5});
@@ -1507,9 +1536,10 @@ struct SyncModel {
             }
         }
         if (!found) {
+            // The figure registry's growth: n + n/4, at least 100 (D 0x10099185, T22).
             std::size_t grown = n + n / 4;
-            if (grown < 10) {
-                grown = 10;
+            if (grown < 100) {
+                grown = 100;
             }
             if (grown <= n) {
                 grown = n + 1;
@@ -1565,6 +1595,12 @@ struct SyncModel {
         for (const sim::SimEvent& e : spawned) {
             ui.push_back(e);
         }
+    }
+
+    /// Step 2 of the advance (stage S12): with no handler installed every event due at
+    /// `tick` is taken out of the queue and nothing else happens.
+    void dispatch(std::uint64_t tick) {
+        std::erase_if(events, [&](const auto& e) { return e.first.first <= tick; });
     }
 };
 
@@ -1657,6 +1693,7 @@ TEST_CASE("effects applied after the island ticks equal the synchronous applicat
         // Island order: island 0's buffer, then island 3's.
         model.apply(script.a[static_cast<std::size_t>(lapno)], tick);
         model.apply(script.b[static_cast<std::size_t>(lapno)], tick);
+        model.dispatch(tick);
         INFO("lap " << lapno);
         REQUIRE(w.players().find(sim::PlayerId{0})->money == model.money[0]);
         REQUIRE(w.players().find(sim::PlayerId{1})->money == model.money[1]);
@@ -1697,7 +1734,9 @@ TEST_CASE("effects applied after the island ticks equal the synchronous applicat
         REQUIRE(ui[i].player == model.ui[i].player);
     }
     CHECK(model.figures.size() > 20);
-    CHECK(model.events.size() > 20);
+    CHECK(model.next_seq > 21);      // events queued over the run
+    CHECK(!model.events.empty());    // some still pending at the end
+    CHECK(model.events.size() < 20); // the rest were dispatched (stage S12)
     CHECK(model.ui.size() > 40);
 }
 
@@ -2020,17 +2059,17 @@ TEST_CASE("figure registry creation follows the group list policy") {
     CHECK(r.list.cursor == 0);
     CHECK(r.stamp == 0);
     CHECK(r.expiry.empty());
-    CHECK(r.deferred.empty());
     auto fig = [](std::uint64_t id) {
         sim::Figure f;
         f.id = sim::FigureId{id};
         return f;
     };
-    // The first fits the fresh slot; the second grows the list 1 -> 10.
+    // The first fits the fresh slot; the second grows the list 1 -> 100
+    // (figure_min_growth, D 0x10099185).
     CHECK(sim::add_figure(r, fig(1), cfg, rules) == 0);
     CHECK(r.list.slots.size() == 1);
     CHECK(sim::add_figure(r, fig(2), cfg, rules) == 1);
-    CHECK(r.list.slots.size() == 10);
+    CHECK(r.list.slots.size() == 100);
     CHECK(r.list.hint == 1);
     // An invalid id and a duplicate create nothing.
     CHECK(sim::add_figure(r, sim::Figure{}, cfg, rules) == sim::kNoSlot);
@@ -2047,7 +2086,7 @@ TEST_CASE("figure registry creation follows the group list policy") {
     CHECK(sim::find_figure(r, sim::FigureId{3}) == nullptr);
     r.by_id[sim::FigureId{3}] = 1; // the slot holds figure 2
     CHECK(sim::find_figure(r, sim::FigureId{3}) == nullptr);
-    r.by_id[sim::FigureId{3}] = 700;
+    r.by_id[sim::FigureId{3}] = 7000;
     CHECK(sim::find_figure(r, sim::FigureId{3}) == nullptr);
     r.by_id[sim::FigureId{3}] = static_cast<sim::Slot>(r.list.slots.size()); // one past the end
     CHECK(sim::find_figure(r, sim::FigureId{3}) == nullptr);
@@ -2056,10 +2095,12 @@ TEST_CASE("figure registry creation follows the group list policy") {
     CHECK(r.by_id.size() == 2);
     CHECK(r.by_id.at(sim::FigureId{1}) == 0);
     CHECK(r.by_id.at(sim::FigureId{2}) == 1);
-    // The configuration decides the first size and the growth.
+    // The configuration decides the first size and the growth (figure_min_growth, not
+    // the building lists' list_min_growth).
     sim::SimConfig mod;
     mod.list_initial_size = 3;
-    mod.list_min_growth = 20;
+    mod.figure_min_growth = 20;
+    mod.list_min_growth = 50;
     sim::FigureRegistry m = sim::make_figure_registry(mod);
     CHECK(m.list.slots.size() == 3);
     for (std::uint64_t i = 1; i <= 4; ++i) {
@@ -2115,7 +2156,7 @@ TEST_CASE("counting draw counts per site, forwards every draw and reports the di
     CHECK(between[1].site == sim::DrawSite::Ai);
     CHECK(between[1].count == 2);
     CHECK(sim::draw_records_between(draw.counts, draw.counts).empty());
-    CHECK(sim::kDrawSiteCount == 7);
+    CHECK(sim::kDrawSiteCount == 17);
 }
 
 TEST_CASE("figure registry slot policy is the rules' slot policy") {
@@ -2152,10 +2193,8 @@ TEST_CASE("figure registry validation names each broken fact") {
         sim::add_figure(good, f, cfg, rules);
     }
     good.expiry = {sim::FigureId{2}};
-    good.deferred = {sim::FigureId{3}, sim::FigureId{1}};
-    good.list.slots[1]->created_stamp = 100; // on the expiry list
-    good.list.slots[2]->marked_for_delete = true;
-    good.list.slots[0]->marked_for_delete = true; // both on the deferred list
+    good.list.slots[1]->expiry_stamp = 100;        // on the expiry list, ended: no home
+    good.list.slots[0]->home = sim::BuildingId{5}; // still out: holds a counter
     REQUIRE(sim::validate_figures(good, ids) == "");
     struct Row {
         const char* name;
@@ -2165,8 +2204,8 @@ TEST_CASE("figure registry validation names each broken fact") {
     const std::vector<Row> rows = {
         {"no slot", [](sim::FigureRegistry& r) { r.list.slots.clear(); }, "has no slot"},
         {"hint below", [](sim::FigureRegistry& r) { r.list.hint = -2; }, "figures.list.hint"},
-        {"hint beyond", [](sim::FigureRegistry& r) { r.list.hint = 10; }, "figures.list.hint"},
-        {"cursor beyond", [](sim::FigureRegistry& r) { r.list.cursor = 10; },
+        {"hint beyond", [](sim::FigureRegistry& r) { r.list.hint = 100; }, "figures.list.hint"},
+        {"cursor beyond", [](sim::FigureRegistry& r) { r.list.cursor = 100; },
          "figures.list.cursor"},
         {"id zero",
          [](sim::FigureRegistry& r) {
@@ -2183,23 +2222,17 @@ TEST_CASE("figure registry validation names each broken fact") {
          "used twice"},
         {"expiry unknown", [](sim::FigureRegistry& r) { r.expiry.push_back(sim::FigureId{7}); },
          "figures.expiry[1]"},
-        {"deferred unknown", [](sim::FigureRegistry& r) { r.deferred[0] = sim::FigureId{7}; },
-         "figures.deferred[0]"},
         {"expiry twice", [](sim::FigureRegistry& r) { r.expiry.push_back(sim::FigureId{2}); },
          "figures.expiry[1]: figure 2 is on the list twice"},
-        {"deferred twice", [](sim::FigureRegistry& r) { r.deferred.push_back(sim::FigureId{3}); },
-         "figures.deferred[2]: figure 3 is on the list twice"},
-        {"marked but not deferred",
-         [](sim::FigureRegistry& r) { r.list.slots[1]->marked_for_delete = true; },
-         "slots[1].marked_for_delete: true but the figure is not on the deferred list"},
-        {"deferred but not marked",
-         [](sim::FigureRegistry& r) { r.list.slots[2]->marked_for_delete = false; },
-         "slots[2].marked_for_delete: false but the figure is on the deferred list"},
-        {"stamp without expiry", [](sim::FigureRegistry& r) { r.list.slots[0]->created_stamp = 5; },
-         "slots[0].created_stamp: the figure has a stamp but is not on the expiry list"},
+        {"ended but still holding a counter",
+         [](sim::FigureRegistry& r) { r.list.slots[1]->home = sim::BuildingId{5}; },
+         "slots[1].home: the figure has ended (it has an expiry_stamp) but still holds a "
+         "counter of building 5"},
+        {"stamp without expiry", [](sim::FigureRegistry& r) { r.list.slots[2]->expiry_stamp = 5; },
+         "slots[2].expiry_stamp: the figure has a stamp but is not on the expiry list"},
         {"expiry without stamp",
-         [](sim::FigureRegistry& r) { r.list.slots[1]->created_stamp.reset(); },
-         "slots[1].created_stamp: the figure has no stamp but is on the expiry list"},
+         [](sim::FigureRegistry& r) { r.list.slots[1]->expiry_stamp.reset(); },
+         "slots[1].expiry_stamp: the figure has no stamp but is on the expiry list"},
         {"map differs", [](sim::FigureRegistry& r) { r.by_id[sim::FigureId{1}] = 2; },
          "figures.by_id"},
         {"map extra", [](sim::FigureRegistry& r) { r.by_id[sim::FigureId{9}] = 4; },
@@ -2215,9 +2248,9 @@ TEST_CASE("figure registry validation names each broken fact") {
     // The edges that are fine: the hint -1 and n - 1, the cursor n - 1, id next_figure - 1.
     sim::FigureRegistry edge = good;
     edge.list.hint = -1;
-    edge.list.cursor = 9;
+    edge.list.cursor = 99; // n = 100 (figure_min_growth)
     CHECK(sim::validate_figures(edge, ids) == "");
-    edge.list.hint = 9;
+    edge.list.hint = 99;
     CHECK(sim::validate_figures(edge, ids) == "");
     sim::IdCounters tight;
     tight.next_figure = 4;
@@ -2268,20 +2301,29 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     const std::size_t players_at = island_test::flat_offset(w, "players");
     const std::size_t figures_at = island_test::flat_offset(w, "figures");
     const std::size_t events_at = island_test::flat_offset(w, "events");
+    const std::size_t timers_at = island_test::flat_offset(w, "timers_monopoly");
     REQUIRE(ids_at != std::string::npos);
-    // ids: u64 next_figure 3, u64 next_event_seq 2.
+    // ids: u64 next_figure 3, u64 next_event_seq 2, u32 event750_acc 100 and u32
+    // monopoly.acc 100 (the one advance of 100 ms; the refresh body ran on it), bool
+    // faulted false.
     island_test::Stream ids;
     ids.u64(3);
     ids.u64(2);
+    ids.u32(100);
+    ids.u32(100);
+    ids.u8(0);
     CHECK(players_at - ids_at == ids.v.size());
     CHECK(std::equal(ids.v.begin(), ids.v.end(),
                      bytes.begin() + static_cast<std::ptrdiff_t>(ids_at)));
-    // figures: the list (i64 hint 1, u32 cursor 0, u64 slot count 10, per slot a presence
-    // byte and the Figure), u16 stamp, the expiry ids, the deferred ids.
+    // figures: the list (i64 hint 1, u32 cursor 0, u64 slot count 100, per slot a
+    // presence byte and the Figure), u16 stamp, the expiry ids. The second figure grew
+    // the registry 1 -> max(1 + 1/4, figure_min_growth 100) = 100 (D 0x10099185). Phase B
+    // of the advance ran over the hundred slots once (clamp(50 · 100 / 50, 1, 100) = 100
+    // visits from cursor 0: back at 0) and wrote the stamp 50.
     island_test::Stream figs;
     figs.u64(1);
     figs.u32(0);
-    figs.u64(10);
+    figs.u64(100);
     auto figure = [&](std::uint64_t id, std::uint32_t kind, std::uint32_t owner, std::uint64_t home,
                       std::uint32_t job) {
         figs.u8(1);
@@ -2293,31 +2335,37 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
         figs.u32(job);
         figs.i32(256 * 101 + 7);
         figs.i32(256 * 102);
-        figs.u32(0);  // cargo_goods
-        figs.u32(0);  // cargo_88
-        figs.u32(0);  // hp
-        figs.u32(50); // born
-        figs.u8(0);   // created_stamp absent
-        figs.u8(0);   // marked_for_delete
+        figs.u32(0);                   // cargo_goods
+        figs.u32(0);                   // cargo_88
+        figs.u32(0);                   // hp
+        figs.u32(50);                  // born
+        figs.u16(50);                  // stamp: the spawn's tick (T24)
+        figs.u8(0);                    // transport.step Start
+        figs.u32(0);                   // transport.wait
+        figs.u64(0);                   // transport.route: no points
+        figs.u32(0);                   // transport.next
+        figs.u32(0);                   // transport.along
+        figs.u64(sim::BuildingId{}.v); // transport.target: none
+        figs.u32(0);                   // transport.reserved_88
+        figs.u8(0);                    // expiry_stamp absent
     };
     figure(1, 11, 0, bid(0, 1).v, 7);
     figure(2, 22, 1, bid(0, 2).v, 0);
-    for (int i = 2; i < 10; ++i) {
+    for (int i = 2; i < 100; ++i) {
         figs.u8(0);
     }
-    figs.u16(0);
-    figs.u64(0);
+    figs.u16(50);
     figs.u64(0);
     CHECK(events_at - figures_at == figs.v.size());
     CHECK(std::equal(figs.v.begin(), figs.v.end(),
                      bytes.begin() + static_cast<std::ptrdiff_t>(figures_at)));
-    // A corrupt byte in the second figure (its marked_for_delete: 20 bytes of list head,
-    // the 59 bytes of slot 0, then 58 bytes into slot 1) is reported with the scope path
-    // of that slot.
-    const std::size_t marked_at = figures_at + 20 + 59 + 58;
-    REQUIRE(bytes[marked_at] == 0);
+    // A corrupt byte in the second figure (the presence byte of its expiry_stamp: 20
+    // bytes of list head, the 93 bytes of slot 0, then 92 bytes into slot 1) is reported
+    // with the scope path of that slot.
+    const std::size_t stamp_at = figures_at + 20 + 93 + 92;
+    REQUIRE(bytes[stamp_at] == 0);
     std::vector<std::uint8_t> bad = bytes;
-    bad[marked_at] = 2;
+    bad[stamp_at] = 2;
     sim::World target = make_world_with(k, syn::empty_scenario(), script_seams(&script));
     CHECK(contains(island_test::read_flat(target, bad), "figures/figure[1] (byte"));
     // events: u64 count 1, the key (u64 due 75, u64 seq 1), kind, subtype, value, tile,
@@ -2334,7 +2382,7 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     evs.u64(1);
     evs.u32(2);
     evs.u64(2);
-    CHECK(bytes.size() - events_at == evs.v.size());
+    CHECK(timers_at - events_at == evs.v.size());
     CHECK(std::equal(evs.v.begin(), evs.v.end(),
                      bytes.begin() + static_cast<std::ptrdiff_t>(events_at)));
     // The raw hash is the FNV of the stream and the trace sees the same bytes.
@@ -2358,13 +2406,14 @@ TEST_CASE("a world with figures and events saves loads and continues") {
     sim::World w = make_world_with(k, merge_scenario(k), script_seams(&script));
     lap(w);
     payload<sim::Workshop>(w, 0, 1).carriers_out = 1;
-    payload<sim::Farm>(w, 0, 2).workers_out = 1;
+    payload<sim::Farm>(w, 0, 2).workers_out = 0;
+    // Figure 2 has ended: its counter (the farm's workers_out) went back and its home
+    // is none (end_figure); figure 1 is still out.
     sim::WorldTestAccess::figures(w).expiry = {sim::FigureId{2}};
-    sim::WorldTestAccess::figures(w).deferred = {sim::FigureId{1}};
     sim::WorldTestAccess::figures(w).stamp = 77;
     sim::WorldTestAccess::figures(w).list.cursor = 4;
-    sim::WorldTestAccess::figures(w).list.slots[1]->created_stamp = 1234;
-    sim::WorldTestAccess::figures(w).list.slots[0]->marked_for_delete = true;
+    sim::WorldTestAccess::figures(w).list.slots[1]->expiry_stamp = 1234;
+    sim::WorldTestAccess::figures(w).list.slots[1]->home = sim::BuildingId{};
     sim::WorldTestAccess::figures(w).list.slots[0]->cargo_goods = 9;
     sim::WorldTestAccess::figures(w).list.slots[0]->cargo_88 = 300;
     REQUIRE(w.check_invariants() == "");
@@ -2379,9 +2428,9 @@ TEST_CASE("a world with figures and events saves loads and continues") {
     CHECK(back.figures().by_id.size() == 2);
     CHECK(back.figures().stamp == 77);
     CHECK(back.figures().expiry == std::vector<sim::FigureId>{sim::FigureId{2}});
-    CHECK(back.figures().list.slots[1]->created_stamp == std::optional<std::uint16_t>{1234});
-    CHECK(back.figures().list.slots[0]->marked_for_delete);
-    CHECK_FALSE(back.figures().list.slots[1]->marked_for_delete);
+    CHECK(back.figures().list.slots[1]->expiry_stamp == std::optional<std::uint16_t>{1234});
+    CHECK_FALSE(back.figures().list.slots[1]->home.valid());
+    CHECK(back.figures().list.slots[0]->home == bid(0, 1));
     CHECK(back.figures().list.slots[0]->cargo_88 == 300);
     CHECK(back.events().q.size() == 2);
     CHECK(back.ids().next_figure == 3);
@@ -2432,16 +2481,13 @@ TEST_CASE("ids figures and events reject hostile streams") {
              sim::WorldTestAccess::figures(w).list.slots[1]->id = sim::FigureId{1};
          },
          "used twice"},
-        {"hint beyond", [](sim::World& w) { sim::WorldTestAccess::figures(w).list.hint = 10; },
+        {"hint beyond", [](sim::World& w) { sim::WorldTestAccess::figures(w).list.hint = 100; },
          "figures.list.hint"},
-        {"cursor beyond", [](sim::World& w) { sim::WorldTestAccess::figures(w).list.cursor = 10; },
+        {"cursor beyond", [](sim::World& w) { sim::WorldTestAccess::figures(w).list.cursor = 100; },
          "figures.list.cursor"},
         {"expiry unknown",
          [](sim::World& w) { sim::WorldTestAccess::figures(w).expiry = {sim::FigureId{9}}; },
          "figures.expiry[0]"},
-        {"deferred unknown",
-         [](sim::World& w) { sim::WorldTestAccess::figures(w).deferred = {sim::FigureId{9}}; },
-         "figures.deferred[0]"},
     };
     for (const Row& row : rows) {
         INFO("row " << row.name);
@@ -2529,7 +2575,7 @@ TEST_CASE("event queue stream refuses unordered keys and unknown kinds") {
     std::vector<std::uint8_t> bytes = island_test::flat_stream(w);
     const std::size_t at = island_test::flat_offset(w, "events");
     auto target = [&] { return make_world_with(k, syn::empty_scenario(), script_seams(&script)); };
-    REQUIRE(bytes.size() - at == 8 + 2 * 53);
+    REQUIRE(island_test::flat_offset(w, "timers_monopoly") - at == 8 + 2 * 53);
     // Swap the due ticks (60 and 70): the keys are no longer ascending.
     std::vector<std::uint8_t> swapped = bytes;
     swapped[at + 8] = 71;
@@ -2580,12 +2626,35 @@ TEST_CASE("every field of the figure registry and the event queue moves the hash
         {"cargo_88", [](sim::Figure& f) { f.cargo_88 += 1; }},
         {"hp", [](sim::Figure& f) { f.hp += 1; }},
         {"born", [](sim::Figure& f) { f.born += 1; }},
-        {"created_stamp present",
-         [](sim::Figure& f) { f.created_stamp = std::optional<std::uint16_t>(std::uint16_t{0}); }},
-        {"marked_for_delete", [](sim::Figure& f) { f.marked_for_delete = true; }},
+        {"stamp", [](sim::Figure& f) { f.stamp += 1; }},
+        {"transport.step", [](sim::Figure& f) { f.transport.step = sim::TransportStep::ToHome; }},
+        {"transport.wait", [](sim::Figure& f) { f.transport.wait += 1; }},
+        {"transport.route",
+         [](sim::Figure& f) {
+             f.transport.route = {sim::FixedPos{1, 2}, sim::FixedPos{3, 4}};
+             f.transport.next = 1;
+         }},
+        {"transport.next",
+         [](sim::Figure& f) {
+             f.transport.route = {sim::FixedPos{1, 2}, sim::FixedPos{3, 4}};
+             f.transport.next = 2;
+         }},
+        {"transport.along",
+         [](sim::Figure& f) {
+             f.transport.route = {sim::FixedPos{1, 2}, sim::FixedPos{3, 4}};
+             f.transport.next = 1;
+             f.transport.along = 5;
+         }},
+        {"transport.target", [](sim::Figure& f) { f.transport.target = bid(0, 2); }},
+        {"transport.reserved_88", [](sim::Figure& f) { f.transport.reserved_88 += 1; }},
+        {"expiry_stamp present",
+         [](sim::Figure& f) { f.expiry_stamp = std::optional<std::uint16_t>(std::uint16_t{0}); }},
     };
-    static_assert(sim::field_count<sim::Figure>() == 13);
-    CHECK(figure.size() == 14); // the 13 members, the position being two scalars
+    static_assert(sim::field_count<sim::Figure>() == 14);
+    static_assert(sim::field_count<sim::TransportState>() == 7);
+    // The 14 members, the position being two scalars and the transport state seven
+    // fields.
+    CHECK(figure.size() == 21);
     std::set<std::uint64_t> seen;
     for (const auto& [name, mutate] : figure) {
         INFO("figure " << name);
@@ -2608,7 +2677,6 @@ TEST_CASE("every field of the figure registry and the event queue moves the hash
         {"cursor", [](sim::FigureRegistry& r) { r.list.cursor = 1; }},
         {"stamp", [](sim::FigureRegistry& r) { r.stamp = 1; }},
         {"expiry", [](sim::FigureRegistry& r) { r.expiry.push_back(sim::FigureId{1}); }},
-        {"deferred", [](sim::FigureRegistry& r) { r.deferred.push_back(sim::FigureId{2}); }},
         {"slot removed", [](sim::FigureRegistry& r) { r.list.slots[0].reset(); }},
         {"slot added", [](sim::FigureRegistry& r) { r.list.slots.emplace_back(); }},
     };

@@ -96,6 +96,16 @@ def cases(game):
     if game:
         c.append(('zei', 'zei.py', ['dump'], ['zei'], lambda: files(game, 'zei')))
         c.append(('zei', 'zei.py', ['dump', '--full'], ['zei', '--full'], lambda: files(game, 'zei')))
+    # bigbrother (the scenario script): the accepted fixtures alone (exit 0), then all with the
+    # refused bad_* ones (exit 1 on both sides)
+    bbfix = lambda: [p for p in fixture('bigbrother_synthetic') if not p.name.startswith('bad_')]
+    c.append(('bigbrother', 'bigbrother.py', ['dump'], ['bigbrother'], bbfix))
+    c.append(('bigbrother', 'bigbrother.py', ['dump', '--full'], ['bigbrother', '--full'], bbfix))
+    c.append(('bigbrother', 'bigbrother.py', ['dump'], ['bigbrother'], lambda: fixture('bigbrother_synthetic')))
+    if game:
+        c.append(('bigbrother', 'bigbrother.py', ['dump'], ['bigbrother'], lambda: files(game / 'Scenes', 'sze')))
+        c.append(('bigbrother', 'bigbrother.py', ['dump', '--full'], ['bigbrother', '--full'],
+                  lambda: files(game / 'Scenes', 'sze')))
     return c
 
 

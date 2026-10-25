@@ -4,9 +4,9 @@
 // format (append only). The wire format of §8.5 is explicit little-endian with
 // widened ids and is bounds-checked; it is NOT byte-compatible with the original's.
 //
-// Stage S8 applies SetSpeed and SetProductionLine (apply.cpp). The other bodies are
-// declared, encoded and decoded now (S9's replay log needs them) and answer
-// Reject::Unsupported until stage S10 gives them their rules.
+// Stage S8 applies SetSpeed and SetProductionLine (apply.cpp), stage S10 Build,
+// Demolish, SetTradeFlag and SetTradeSlot; a LegacyRawCmd is decoded, logged, replayed
+// and answers Reject::Unsupported.
 #pragma once
 
 #include <cstddef>
@@ -138,6 +138,13 @@ enum : std::size_t { kMaxRecordPayload = 0xffff };
 [[nodiscard]] formats::Result<std::vector<std::uint8_t>, std::string>
 encode_record(const Body& body);
 
+/// Whether encode_record accepts `body`, decided without allocating: false for a
+/// LegacyRawCmd whose type is native and for a payload longer than kMaxRecordPayload
+/// (a Build of more than 4 095 placements, a Demolish of more than 8 190 tiles). The
+/// session drivers apply only such commands (replay.hpp), so a recorded and an
+/// unrecorded session agree.
+[[nodiscard]] bool has_wire_form(const Body& body);
+
 /// Decodes exactly one ClientRecord. Rejects: input shorter than a header, a length
 /// beyond the input, trailing bytes, a count larger than the payload can hold (checked
 /// before any allocation), a native type with the wrong payload length, a flag byte
@@ -156,5 +163,25 @@ struct TurnEntry {
 encode_turn_entry(const TurnEntry& entry);
 [[nodiscard]] formats::Result<TurnEntry, std::string>
 decode_turn_entry(std::span<const std::uint8_t> bytes);
+
+/// The total size in bytes of the one ClientRecord at the front of `bytes`: its
+/// header (4 bytes) plus the payload length its header announces. An error (a
+/// message) when `bytes` is shorter than a header or than the record the header
+/// claims. It only frames — it does not decode or validate the body — so that the
+/// header read lives in one place (§8.5, §8.7): decode_turn and the replay-log
+/// reader walk a back-to-back record stream through it instead of re-deriving the
+/// framing at each call site. The wire version is NOT per record; it is carried
+/// once in the replay-log header (kCommandWireVersion).
+[[nodiscard]] formats::Result<std::size_t, std::string>
+record_size(std::span<const std::uint8_t> bytes);
+
+/// Decodes a back-to-back stream of TurnEntry records (`{u32 issuer, u32 seq,
+/// ClientRecord}`, §8.5) that fills `bytes` exactly, appending each to `out`.
+/// Framing is by record_size, so no per-record version or separator is needed.
+/// Returns the number of entries appended, or an error (leaving `out` with the
+/// entries decoded so far) for a truncated entry, a body that does not decode, or
+/// a record that does not end on the span boundary. Total on hostile input.
+[[nodiscard]] formats::Result<std::size_t, std::string>
+decode_turn(std::span<const std::uint8_t> bytes, std::vector<TurnEntry>& out);
 
 } // namespace anno::sim

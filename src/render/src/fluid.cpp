@@ -41,7 +41,11 @@ std::size_t to_size(std::int64_t v) {
 } // namespace
 
 std::uint32_t FluidConfig::window_size(std::size_t group, float span_tiles) const {
-    const float cells = span_tiles * static_cast<float>(cells_per_tile.at(group)) +
+    return window_size_for(cells_per_tile.at(group), span_tiles);
+}
+
+std::uint32_t FluidConfig::window_size_for(std::uint32_t cpt, float span_tiles) const {
+    const float cells = span_tiles * static_cast<float>(cpt) +
                         2.0F * static_cast<float>(recentre_cells + sponge_cells);
     const auto c = sat_cast<std::uint32_t>(std::ceil(cells));
     // u32::div_ceil(64) * 64 (wrapping as Rust release builds do). The step
@@ -103,11 +107,49 @@ FluidWindow FluidWindow::centred(const FluidConfig& cfg, std::size_t group,
 
 FluidWindow FluidWindow::with_size(const FluidConfig& cfg, std::size_t group,
                                    std::pair<float, float> centre, std::uint32_t size) {
+    return with_cells(cfg.cells_per_tile.at(group), centre, size);
+}
+
+FluidWindow FluidWindow::with_cells(std::uint32_t cells_per_tile, std::pair<float, float> centre,
+                                    std::uint32_t size) {
     FluidWindow w;
     w.size = std::int64_t{size};
-    w.cells_per_tile = cfg.cells_per_tile.at(group);
+    w.cells_per_tile = cells_per_tile;
     w.origin = w.origin_for(centre);
     return w;
+}
+
+std::uint32_t bounded_cells_per_tile(const FluidConfig& cfg, std::size_t group, double tile_px,
+                                     double max_cells_per_px, std::uint32_t current) {
+    const std::uint32_t base = cfg.cells_per_tile.at(group);
+    if (!(max_cells_per_px > 0.0) || !(tile_px > 0.0)) {
+        return base;
+    }
+    auto fits = [&](std::uint32_t c, double share) {
+        return static_cast<double>(c) / tile_px <= max_cells_per_px * share;
+    };
+    // The finest of base, base / 2, base / 4, ... (integer halving, down to 1) that fits.
+    std::uint32_t c = base;
+    while (c > 1 && !fits(c, 1.0)) {
+        c /= 2;
+    }
+    if (!fits(c, 1.0)) {
+        return 0;
+    }
+    // A coarser window in use (one of the halvings) gives way only to a finer one that
+    // fits with room to spare.
+    bool halving = false;
+    for (std::uint32_t h = base; h > 0 && !halving; h /= 2) {
+        halving = h == current;
+    }
+    if (halving && current < c) {
+        std::uint32_t roomy = c;
+        while (roomy > current && !fits(roomy, kCellsHysteresis)) {
+            roomy /= 2;
+        }
+        return std::max(roomy, current);
+    }
+    return c;
 }
 
 std::pair<std::int64_t, std::int64_t>

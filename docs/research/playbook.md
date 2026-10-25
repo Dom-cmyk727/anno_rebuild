@@ -170,7 +170,7 @@ Per 100 residents per minute:
 - **Food options:** hunters first, then grain chains, which scale best in cost and land [FAQ/industry_planning].
 - **Alcohol:** don't keep small-farm alcohol longer than necessary [V 3; FAQ].
 
-**Costs and upkeep** [P; M 27-29]:
+**Costs and upkeep** [P; M 27-29] (every building's numbers are in §14; the manual gives none):
 - Every working building has a running cost when active and a lower one when stopped (Zzzz). Stop whole chains that are not needed.
 - The panel shows the input and output stock in tons and the use in %.
 - **"?" with a full barrel** = overloaded: carts can't keep up, or the road or entrance is wrong. **"raw material missing"** = under-supplied.
@@ -178,7 +178,7 @@ Per 100 residents per minute:
 - **Tools:** buy them from the Venetians early (a buy order at the Kontor), but build your own chain soon: ore mine → smelter (+ wood) → smith (+ wood) [V 8-11; FAQ/climate_resources].
 - **Money:** the full balance comes from merchants; selling at your own stands pays best [FAQ/trade_strategy; V].
 - **Building materials:** 50 tools / 50 wood are typical start stocks (read on PR #16).
-- **Bankruptcy** comes from staying below −1,000 gold for some time [FAQ].
+- **Bankruptcy:** money at or below **−3,000** gold starts a 300 s deadline (150,000 ticks at normal speed). A player still at or below −3,000 when it ends is bankrupt (D `0x1001b900`, `docs/re/players.md`). The FAQ's "−1,000" is wrong for this build.
 
 ## 6. Settlement development (levels and unlocks)
 
@@ -352,3 +352,165 @@ Per 100 residents per minute:
 - **Missed upgrades:** a burning house cannot upgrade [V 14]. Houses at the fringe of a public building's reach behave unpredictably [FAQ].
 - **Aristocrats' routes:** aristocrats walk errand chains that may be long. Duplicate public buildings can make the route worse [FAQ].
 - **The scoreboard** wraps at 65,535 [FAQ].
+
+## 14. Build and running costs [P]
+
+The manual gives no numbers. It only says how to see them [M 27-28]:
+- the build cost shows in blue in the info bar once a building is selected, and in red when something is missing;
+- the running cost shows in info mode on a placed building;
+- stopping a building (Zzzz) lowers its running cost;
+- demolishing refunds nothing.
+
+All numbers below come from `Anlagen.dat` (the id column):
+- **Build cost** comes from `HEAD`: u16 `[8]` is the gold, and bytes `[3..6]` are bricks, wood, tools and marble (`docs/formats/anlagen.md`). The affordability check reads these fields (D `0x100275d0`, `docs/sim/state.md`).
+  - The in-game help (`game/app/help`) gives the same values for 86 of 94 buildings (580 of 589 values).
+  - Where they differ, the data is used (`manual-and-help.md` §1.1).
+- **Running cost** comes from `PROD3` u16 `0x00` and `0x02`, in gold per game minute. The game takes 1/15 of a city's total every 4 s (`docs/re/population.md` §8; loader in `docs/re/production.md` §2.3).
+  - The larger value (`0x02`) is charged while the building works, and the smaller one (`0x00`) while it is stopped.
+  - **Confirmed:** 50 help pages give "operating costs while active / while shut down", and all 50 equal this pairing.
+  - A single number below means the stopped value is 0; these buildings cannot be stopped.
+- **Houses** cost materials only and have no running cost. Settler to merchant houses are reached by upgrade, which takes these materials (§6).
+- **Not in `Anlagen.dat`:** the upkeep of ships and soldiers. It sits in the figure data and is still open (`docs/sim/state.md` O-49).
+- **Largest running costs:** theatre 200, university 150, library and palace 100 each, bathhouse 90, and the large ore smelter 75 a minute while working.
+
+"–" = 0. Running cost = working / stopped, in gold per minute.
+
+**Houses and infrastructure**
+
+| Building | Id | Gold | Tools | Wood | Bricks | Marble | Running |
+|---|---|---|---|---|---|---|---|
+| Pioneer house | 501 | – | – | 3 | – | – | – |
+| Settler house | 520 | – | 1 | 4 | – | – | – |
+| Citizen house | 540 | – | 2 | 2 | 4 | – | – |
+| Merchant house | 560 | – | 5 | 5 | 4 | – | – |
+| Aristocrat house | 580 | – | 12 | 10 | 20 | 5 | – |
+| Dirt road (per tile) | 2520 | 5 | – | – | – | – | – |
+| Paved road (per tile) | 2500 | 10 | – | – | 1 | – | – |
+| Field tile (one plant) | 700–733 | 5–6 | – | – | – | – | – |
+| Wooden pier | 2529 | 5 | – | 1 | – | – | – |
+| Stone pier | 2509 | 10 | – | – | 1 | – | – |
+| Wooden bridge (rivers only) | 2536 | 15 | – | 1 | – | – | – |
+| Stone bridge (research) | 2516 | 25 | – | – | 1 | – | – |
+| Bridge | 2518 | 500 | – | – | 3 | – | – |
+
+**Trade and supply**
+
+| Building | Id | Gold | Tools | Wood | Bricks | Marble | Running |
+|---|---|---|---|---|---|---|---|
+| Kontor, level 1 | 1302 | 350 | 5 | 12 | – | – | 15 |
+| Kontor, level 2 | 1304 | 500 | 5 | 12 | – | – | 25 |
+| Kontor, level 3 | 1306 | 800 | 10 | 8 | 12 | – | 35 |
+| Market hall, level 1 | 1301 | 250 | 3 | 7 | – | – | 10 |
+| Market hall, level 2 | 1303 | 500 | 5 | 12 | – | – | 15 |
+| Market hall, level 3 | 1305 | 800 | 10 | 8 | 12 | – | 30 |
+| Stand: food and salt | 1310 | 50 | 1 | 1 | – | – | 5 |
+| Stand: cloth and leather | 1314 | 50 | 1 | 1 | – | – | 5 |
+| Stand: tobacco and spices | 1315 | 50 | 1 | 1 | – | – | 5 |
+| Stand: lamp oil | 1317 | 50 | 1 | 1 | – | – | 5 |
+| Stand: silk cloth and clothes | 1318 | 50 | 1 | 1 | – | – | 5 |
+| Stand: jewellery | 1313 | 80 | 1 | – | 1 | – | 5 |
+| Stand: wine | 1316 | 80 | 1 | 1 | – | – | 5 |
+
+**Raw materials**
+
+| Building | Id | Gold | Tools | Wood | Bricks | Marble | Running |
+|---|---|---|---|---|---|---|---|
+| Forester | 801 | 150 | 2 | – | – | – | 12 / 4 |
+| Hunting lodge | 805 | 140 | 1 | 3 | – | – | 20 / 8 |
+| Fisher | 810 | 180 | 2 | 6 | – | – | 20 / 12 |
+| Sheep farm | 807 | 220 | 2 | 4 | – | – | 10 / 5 |
+| Small farm (food and alcohol) | 809 | 250 | 2 | 4 | – | – | 20 / 8 |
+| Hemp plantation | 808 | 200 | 2 | 5 | – | – | 18 / 8 |
+| Grain farm | 811 | 200 | 2 | 3 | 3 | – | 10 / 5 |
+| Cattle farm | 820 | 300 | 5 | 8 | 4 | – | 15 / 10 |
+| Hop farm | 815 | 250 | 5 | 3 | 4 | – | 18 / 10 |
+| Sugar cane plantation | 814 | 310 | 4 | 4 | 4 | – | 18 / 12 |
+| Tobacco plantation | 813 | 350 | 4 | 5 | 8 | – | 30 / 15 |
+| Spice plantation | 812 | 390 | 4 | 5 | 8 | – | 40 / 20 |
+| Cotton plantation | 819 | 380 | 5 | 2 | 4 | – | 20 / 10 |
+| Silk plantation | 817 | 300 | 5 | 5 | 6 | – | 35 / 17 |
+| Dye plantation | 818 | 200 | 3 | 2 | 5 | – | 40 / 20 |
+| Winery | 822 | 400 | 5 | 5 | 8 | – | 45 / 20 |
+| Herb farm (research) | 823 | 200 | 3 | 5 | 5 | – | 15 / 5 |
+| Fur trapper | 824 | 100 | 5 | 6 | – | – | 20 / 5 |
+| Whaler | 821 | 500 | 5 | 5 | 5 | – | 20 / 10 |
+| Quarry (stone) | 1201 | 300 | 3 | 3 | – | – | – |
+| Marble quarry | 1218 | 400 | 3 | 3 | – | – | – |
+| Salt mine | 1203 | 700 | 5 | 15 | – | – | 25 / 10 |
+| Ore mine | 1205 | 1,200 | 5 | 15 | – | – | 40 / 15 |
+| Large ore mine (research) | 1216 | 1,700 | 8 | 20 | 10 | – | 65 / 30 |
+| Gold mine | 1206 | 1,500 | 15 | 12 | 4 | – | 50 / 20 |
+| Gem mine | 1214 | 1,500 | 8 | 4 | 10 | – | 80 / 30 |
+
+**Workshops**
+
+| Building | Id | Gold | Tools | Wood | Bricks | Marble | Running |
+|---|---|---|---|---|---|---|---|
+| Stonemason (bricks) | 804 | 250 | 3 | 3 | – | – | 18 / 7 |
+| Marble mason | 803 | 300 | 5 | 4 | 10 | – | 18 / 7 |
+| Weaving hut | 1001 | 300 | 3 | 4 | – | – | 15 / 10 |
+| Weaving mill (research) | 1005 | 500 | 4 | 2 | 8 | – | 30 / 10 |
+| Tannery | 1023 | 300 | 2 | 5 | – | – | 9 / 5 |
+| Mill | 1002 | 300 | 4 | 3 | 3 | – | 16 / 9 |
+| Bakery | 1004 | 300 | 5 | 3 | 5 | – | 15 / 10 |
+| Butcher | 1018 | 350 | 4 | 5 | 4 | – | 22 / 12 |
+| Brewery (hops) | 1014 | 300 | 3 | 4 | 4 | – | 20 / 10 |
+| Distillery (sugar) | 1013 | 300 | 5 | 6 | 1 | – | 20 / 5 |
+| Tobacco works | 1008 | 300 | 4 | 2 | 6 | – | 16 / 8 |
+| Salt works | 1022 | 400 | 5 | 5 | – | – | 30 / 12 |
+| Ropery | 1030 | 400 | 3 | 5 | – | – | 16 / 6 |
+| Charcoal burner | 1035 | 100 | 2 | 2 | – | – | 12 / 5 |
+| Small ore smelter | 1017 | 800 | 10 | 4 | 10 | – | 40 / 20 |
+| Large ore smelter (charcoal) | 1034 | 1,000 | 10 | 10 | 20 | – | 75 / 32 |
+| Smith (tools) | 1019 | 500 | 3 | 4 | 8 | – | 25 / 15 |
+| Tailor | 1027 | 500 | 5 | 5 | 5 | – | 30 / 15 |
+| Dyer (silk and dyes → silk cloth) | 1009 | 500 | 7 | 2 | 8 | – | 40 / 25 |
+| Lamp-oil maker | 1028 | 500 | 5 | 5 | 5 | – | 20 / 10 |
+| Goldsmith | 1039 | 300 | 6 | 7 | 11 | – | 40 / 20 |
+| Armourer | 1029 | 300 | 5 | 8 | 2 | – | 30 / 15 |
+| Bow maker (research) | 1006 | 500 | 6 | 4 | 4 | – | 30 / 15 |
+| Large weapon smith: axes, lances (research) | 1036 | 300 | 5 | 5 | 3 | – | 35 / 17 |
+| Small weapon smith: swords (research) | 1037 | 200 | 4 | 4 | 2 | – | 40 / 15 |
+| Gunsmith (research) | 1012 | 500 | 6 | 3 | 8 | – | 40 / 15 |
+| War-machine builder (research) | 1010 | 500 | 8 | 6 | 2 | – | – |
+| Cannon foundry (research) | 1038 | 800 | 10 | 10 | 10 | – | – |
+| Small shipyard | 1020 | 1,200 | 15 | 18 | 12 | – | – |
+| Large shipyard | 1021 | 2,000 | 20 | 20 | 18 | – | – |
+
+**Public buildings**
+
+| Building | Id | Gold | Tools | Wood | Bricks | Marble | Running |
+|---|---|---|---|---|---|---|---|
+| Chapel | 1320 | 700 | 6 | 10 | – | – | 15 |
+| Church | 1325 | 1,600 | 9 | 15 | 20 | – | 50 |
+| Cathedral | 1330 | 12,000 | 40 | 30 | 60 | 30 | 80 |
+| Tavern | 1335 | 500 | 5 | 9 | – | – | 20 |
+| Large tavern | 1336 | 900 | 8 | 10 | 8 | – | 50 |
+| School | 1346 | 400 | 5 | 8 | 6 | – | 10 / 10 |
+| University | 1379 | 2,500 | 25 | 30 | 32 | – | 150 |
+| Doctor (research) | 1337 | 500 | 4 | 8 | 5 | – | 20 / 10 |
+| Fire brigade (research) | 1350 | 200 | 4 | 6 | – | – | 15 / 8 |
+| Court (research) | 1339 | 600 | 4 | 7 | 6 | – | 20 |
+| Bathhouse | 1377 | 1,600 | 20 | 15 | 25 | 10 | 90 |
+| Theatre | 1376 | 2,500 | 35 | 15 | 30 | 20 | 200 |
+| Library (research) | 1378 | 2,000 | 20 | 12 | 24 | 12 | 100 |
+| Pavilion (park) | 1386 | 600 | 10 | 5 | 6 | 3 | 40 |
+| Gallows | 1326 | 500 | 5 | 9 | – | – | – |
+| Well (research) | 1341 | 100 | 4 | 2 | 3 | – | – |
+| Palace, main building | 1380 | 15,000 | 40 | 15 | 50 | 20 | 100 |
+| Palace parts | 1381–1385, 1392 | 3,000–10,000 | 30–40 | 10–15 | 30–50 | 15–20 | 5–50 |
+| Monuments | 1388–1391 | 1,500–3,000 | 5–15 | 0–5 | 15–30 | 10–15 | 2–5 |
+
+**Military buildings**
+
+| Building | Id | Gold | Tools | Wood | Bricks | Marble | Running |
+|---|---|---|---|---|---|---|---|
+| Small fortress | 2220 | 600 | 10 | 20 | – | – | – |
+| Medium fortress | 2221 | 1,000 | 10 | 15 | 20 | – | – |
+| Large fortress (castle) | 2223 | 2,500 | 20 | 15 | 30 | – | – |
+| Watchtower (ranged soldiers only) | 2246 | 100 | 2 | 8 | 5 | – | – |
+| Cannon tower (up to 2 cannons with crews) | 2230 | 200 | 3 | 8 | 8 | – | – |
+| Defensive tower (fires over 180°, no cannons) | 2229 | 650 | 10 | 12 | 16 | – | – |
+| Wall (per tile) | 2240 | 50 | – | – | 1 | – | – |
+| Gate | 2234 | 150 | – | 1 | 6 | – | – |
+| Large gate | 2233 | 200 | – | 2 | 10 | – | – |

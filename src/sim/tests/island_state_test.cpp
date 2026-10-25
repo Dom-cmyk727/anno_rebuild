@@ -587,7 +587,7 @@ TEST_CASE("island fields are counted") {
     CHECK(sim::field_count<sim::Deposit>() == 5);
     // Every field of an island with a drought and a deposit is one primitive of the
     // trace: 7 header + 1 digest + sweep 5 + 1 + objmgr 2 + ring 2 + presence 1 +
-    // drought 10 + deposits (count 1 + str 2 + 4) + reserved 1 + tiles scope
+    // drought 9 + mask 2 + deposits (count 1 + str 2 + 4) + reserved 1 + tiles scope
     // (3 dims + 4 columns of 6).
     sim::Island is;
     is.drought.emplace();
@@ -602,10 +602,11 @@ TEST_CASE("island fields are counted") {
         }
     }
     // index, x0, y0, w, h, climate, next_serial (7), terrain digest (1), sweep (5),
-    // event300 (1), objmgr (2), ring (2), drought presence + 10, deposits count +
+    // event300 (1), objmgr (2), ring (2), drought presence + 9 + the city mask (count +
+    // one word, stream 108), deposits count +
     // goods length + goods bytes + x + y + remaining + reserve (7), reserved (1),
     // tiles: 3 dims + 6 x 4 columns, cities: the slot count (no slot in this island).
-    CHECK(prims == 7 + 1 + 5 + 1 + 2 + 2 + 11 + 7 + 1 + 3 + 24 + 1);
+    CHECK(prims == 7 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 3 + 24 + 1);
 }
 
 TEST_CASE("islands scope stream layout") {
@@ -818,7 +819,7 @@ TEST_CASE("island perturbation moves the hash") {
     const sim::World base = make_world(zero_island_scenario());
     const std::uint64_t base_hash = sim::World(base).state_hash();
     const std::vector<std::uint64_t> base_scopes = scope_hashes(base);
-    REQUIRE(base_scopes.size() == 8);
+    REQUIRE(base_scopes.size() == 9);
     for (const auto& [name, mutate] : mutations) {
         INFO("mutation " << name);
         sim::World w = base;
@@ -843,7 +844,8 @@ TEST_CASE("island perturbation moves the hash") {
         {"y", [](sim::Drought& d) { d.y = 1; }},
         {"target_ring", [](sim::Drought& d) { d.target_ring = 7; }},
         {"ring", [](sim::Drought& d) { d.ring = -1; }},
-        {"city_mask", [](sim::Drought& d) { d.city_mask = 1; }},
+        {"city_mask", [](sim::Drought& d) { d.city_mask = {1}; }},
+        {"city_mask words", [](sim::Drought& d) { d.city_mask = {0, 0}; }},
         {"phase", [](sim::Drought& d) { d.phase = 1; }},
         {"step", [](sim::Drought& d) { d.step = 1; }},
         {"state", [](sim::Drought& d) { d.state = 0; }},
@@ -871,7 +873,9 @@ TEST_CASE("island perturbation moves the hash") {
 TEST_CASE("advance ticks the islands but writes no tile") {
     // Stage S7: advance ticks the islands (the sweep cursors, the object manager, the
     // city ring: stamps and cursors move), but the growth sweep has no tile body
-    // before stage S13, so no tile column changes.
+    // before stage S13, so no tile column changes. Stage S12: the world-level steps
+    // move the two accumulators (ids), the registry's stamp (figures) and the timers'
+    // last tick (timers_monopoly).
     sim::World w = make_world(syn::two_island_scenario());
     const std::vector<std::uint64_t> before = scope_hashes(w);
     const sim::World created = w;
@@ -884,9 +888,13 @@ TEST_CASE("advance ticks the islands but writes no tile") {
     CHECK(after[4] != before[4]); // players: the table's stamp and cursor moved
     CHECK(after[0] == before[0]); // header
     CHECK(after[2] == before[2]); // settings
-    CHECK(after[3] == before[3]); // ids: nothing was spawned
-    CHECK(after[6] == before[6]); // figures
+    CHECK(after[3] != before[3]); // ids: nothing was spawned, the accumulators moved
+    CHECK(w.ids().next_figure == created.ids().next_figure);
+    CHECK(w.ids().next_event_seq == created.ids().next_event_seq);
+    CHECK(after[6] != before[6]); // figures: no figure, the registry's stamp moved
+    CHECK(w.figures().by_id.empty());
     CHECK(after[7] == before[7]); // events
+    CHECK(after[8] != before[8]); // timers_monopoly: the timers' last tick moved
     for (std::size_t slot : {std::size_t{0}, std::size_t{3}}) {
         const sim::TileLayer& now = w.islands()[slot]->tiles;
         const sim::TileLayer& then = created.islands()[slot]->tiles;
@@ -1106,11 +1114,18 @@ std::vector<ReadRow> invalid_island_rows() {
              isl(w, 3).drought->target_ring = 0xFFFFFFFFU;
              isl(w, 3).drought->ring = -1;
          },
-         "islands[3].drought.ring: -1 is not in 0 .. target_ring (4294967295)"},
+         "islands[3].drought.target_ring: 4294967295 is above 2147483647 (the ring is an i32)"},
+        {"drought ring below 0 under the largest target",
+         [](sim::World& w) {
+             isl(w, 3).drought.emplace();
+             isl(w, 3).drought->target_ring = 0x7FFFFFFFU;
+             isl(w, 3).drought->ring = -1;
+         },
+         "islands[3].drought.ring: -1 is not in 0 .. target_ring (2147483647)"},
         {"drought city mask beyond the city slots",
          [](sim::World& w) {
              isl(w, 3).drought.emplace();
-             isl(w, 3).drought->city_mask = 1U << 16;
+             isl(w, 3).drought->city_mask = {1U << 16};
          },
          "islands[3].drought.city_mask: bits beyond the 16 city slots are set"},
         {"too many slots", [](sim::World& w) { sim::WorldTestAccess::islands(w).resize(257); },
@@ -1219,7 +1234,7 @@ TEST_CASE("drought record stream layout") {
     d.y = 0x02020202;
     d.target_ring = 0x03030303;
     d.ring = -4;
-    d.city_mask = 0x05060708;
+    d.city_mask = {0x05060708, 0x0F101112};
     d.phase = 0x09;
     d.step = 0x0A;
     d.state = 0xFF;
@@ -1230,7 +1245,9 @@ TEST_CASE("drought record stream layout") {
     want.u32(0x02020202);
     want.u32(0x03030303);
     want.i32(-4);
+    want.u64(2); // the city mask: u64 count + u32 words (O-55, stream 108)
     want.u32(0x05060708);
+    want.u32(0x0F101112);
     want.u8(0x09);
     want.u8(0x0A);
     want.u8(0xFF);
@@ -1239,7 +1256,7 @@ TEST_CASE("drought record stream layout") {
     sim::WriteArchive wa;
     fields(wa, std::as_const(d));
     CHECK(wa.data() == want.v);
-    CHECK(want.v.size() == 4 + 4 + 4 + 4 + 4 + 1 + 1 + 1 + 2 + 2);
+    CHECK(want.v.size() == 4 + 4 + 4 + 4 + 8 + 4 + 4 + 1 + 1 + 1 + 2 + 2);
     // Inside an island it follows the ring behind a presence byte of 1.
     sim::Island is;
     REQUIRE(is.tiles.reset(0, 0, 1, 1, 8));
@@ -1384,7 +1401,7 @@ TEST_CASE("islands scope reads back and validates what it read") {
                  isl(x, 3).drought->x = 504;
                  isl(x, 3).drought->y = 504;
                  isl(x, 3).drought->ring = 6;
-                 isl(x, 3).drought->city_mask = 0xFFFF;
+                 isl(x, 3).drought->city_mask = {0xFFFF};
              }},
             {"drought ring and target 0",
              [](sim::World& x) {
@@ -1395,7 +1412,7 @@ TEST_CASE("islands scope reads back and validates what it read") {
             {"drought ring at the i32 end",
              [](sim::World& x) {
                  isl(x, 3).drought.emplace();
-                 isl(x, 3).drought->target_ring = 0xFFFFFFFFU;
+                 isl(x, 3).drought->target_ring = 0x7FFFFFFFU; // kMaxDroughtRing (S13)
                  isl(x, 3).drought->ring = 0x7FFFFFFF;
              }},
             {"drought plateau",
@@ -1577,7 +1594,9 @@ TEST_CASE("world create drops no tile write") {
 }
 
 TEST_CASE("a drought record needs the city mask to hold the city slots") {
-    auto drought_error = [](std::uint32_t city_slots, std::uint32_t mask) {
+    // O-55 (stage S13): ceil(city_slots / 32) words, bit k % 32 of word k / 32 for city
+    // slot k, no bit at or beyond city_slots.
+    auto drought_error = [](std::uint32_t city_slots, std::vector<std::uint32_t> mask) {
         sim::SimConfig cfg;
         cfg.city_slots = city_slots;
         // neutral_owner must be at most city_slots; every tile is neutral here.
@@ -1589,33 +1608,44 @@ TEST_CASE("a drought record needs the city mask to hold the city slots") {
         }
         sim::World w = make_world(spec, cfg);
         isl(w, 3).drought.emplace();
-        isl(w, 3).drought->city_mask = mask;
+        isl(w, 3).drought->city_mask = std::move(mask);
         return sim::validate_islands(w.islands(), w.config(), w.settings(), w.types());
     };
-    // Up to 32 slots a u32 mask holds one bit per slot.
-    CHECK(drought_error(32, 0xFFFFFFFFU) == "");
-    CHECK(drought_error(31, 0x7FFFFFFFU) == "");
-    CHECK(contains(drought_error(31, 0x80000000U),
+    CHECK(drought_error(32, {0xFFFFFFFFU}) == "");
+    CHECK(drought_error(31, {0x7FFFFFFFU}) == "");
+    CHECK(contains(drought_error(31, {0x80000000U}),
                    "islands[3].drought.city_mask: bits beyond the 31 city slots are set"));
-    CHECK(drought_error(1, 1) == "");
-    CHECK(contains(drought_error(1, 2),
+    CHECK(drought_error(1, {1}) == "");
+    CHECK(contains(drought_error(1, {2}),
                    "islands[3].drought.city_mask: bits beyond the 1 city slots are set"));
-    CHECK(drought_error(16, 0xFFFF) == "");
-    // Beyond 32 slots the mask cannot hold a slot index: a drought is refused (S13
-    // widens the mask before it shifts by a slot index), also through the frame.
-    CHECK(contains(drought_error(33, 0),
-                   "islands[3].drought.city_mask: a u32 mask holds 32 city slots, "
-                   "SimConfig.city_slots is 33"));
-    CHECK(contains(drought_error(300, 1), "a u32 mask holds 32 city slots"));
+    CHECK(drought_error(16, {0xFFFF}) == "");
+    // 33 slots: two words, the second holds slot 32 only.
+    CHECK(drought_error(33, {0xFFFFFFFFU, 1}) == "");
+    CHECK(contains(drought_error(33, {0, 2}),
+                   "islands[3].drought.city_mask: bits beyond the 33 city slots are set"));
+    CHECK(contains(drought_error(33, {0}),
+                   "islands[3].drought.city_mask: has 1 words, SimConfig.city_slots 33 needs 2"));
+    CHECK(contains(drought_error(16, {0, 0}), "has 2 words, SimConfig.city_slots 16 needs 1"));
+    CHECK(contains(drought_error(16, {}), "has 0 words, SimConfig.city_slots 16 needs 1"));
+    // 64 slots: two full words; 300 slots: ten words, the last holds slots 288..299.
+    CHECK(drought_error(64, {0xFFFFFFFFU, 0xFFFFFFFFU}) == "");
+    std::vector<std::uint32_t> ten(10, 0);
+    ten[9] = 0xFFFU;
+    CHECK(drought_error(300, ten) == "");
+    ten[9] = 0x1000U;
+    CHECK(contains(drought_error(300, ten), "bits beyond the 300 city slots are set"));
     {
+        // Through the save frame: a record sized for 33 slots saves and loads with the bit
+        // of slot 32; one word is refused.
         sim::SimConfig cfg;
         cfg.city_slots = 33;
         sim::World w = make_world(syn::two_island_scenario(), cfg);
-        // Without a drought the same world is valid, saves and loads.
-        CHECK(sim::validate_islands(w.islands(), w.config(), w.settings(), w.types()) == "");
         CHECK(island_test::load_error(w.save()) == "");
         isl(w, 3).drought.emplace();
-        CHECK(contains(island_test::load_error(w.save()), "a u32 mask holds 32 city slots"));
+        isl(w, 3).drought->city_mask = {0, 1};
+        CHECK(island_test::load_error(w.save()) == "");
+        isl(w, 3).drought->city_mask = {0};
+        CHECK(contains(island_test::load_error(w.save()), "has 1 words"));
     }
 }
 
@@ -1974,13 +2004,14 @@ TEST_CASE("load refuses a header whose config has a zero divisor before any cont
     const std::vector<std::uint8_t> good = w.save();
     // The header section starts at byte 21 (13 + its u64 length): u32 stream
     // version, u32 PRNG timeline version, then SimConfig. island_slots is its
-    // first field, chunk_edge its 16th, building_div its 20th.
+    // first field, chunk_edge its 16th, building_div its 21st (figure_min_growth, T22,
+    // is the 19th).
     constexpr std::size_t kConfig = 21 + 8;
     REQUIRE(island_test::get32(good, kConfig) == 256);
-    REQUIRE(island_test::get32(good, kConfig + 4 * 19) == 500);
+    REQUIRE(island_test::get32(good, kConfig + 4 * 20) == 500);
     SUBCASE("a zero divisor") {
         std::vector<std::uint8_t> bad = good;
-        island_test::put32(bad, kConfig + 4 * 19, 0);
+        island_test::put32(bad, kConfig + 4 * 20, 0);
         island_test::reseal(bad);
         const std::string err = island_test::load_error(bad);
         CHECK(contains(err, "SimConfig.building_div"));

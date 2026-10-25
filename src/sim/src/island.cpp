@@ -517,7 +517,8 @@ std::string validate_island(const Island& is, std::size_t slot, const SimConfig&
             return dp + ".counter: " + std::to_string(dr.counter) +
                    " is not below SimConfig.drought_plateau_count";
         }
-        // The coordinate space of x and y (island or world) is fixed by S13; both
+        // x and y are world tiles (the drought tick compares them with the island's
+        // origin, D 0x1008afd2..0x1008b014); both
         // are below the world edge, and both are floored to the chunk edge.
         if (dr.x % cfg.chunk_edge != 0 || dr.y % cfg.chunk_edge != 0) {
             return dp + ".x/y: " + std::to_string(dr.x) + ", " + std::to_string(dr.y) +
@@ -530,19 +531,32 @@ std::string validate_island(const Island& is, std::size_t slot, const SimConfig&
         // ring is i32 and runs 0 .. target_ring: an expanding ring past the target
         // turns into the plateau, a retreating one below 0 removes the drought, both
         // in the same tick.
+        if (dr.target_ring > kMaxDroughtRing) {
+            return dp + ".target_ring: " + std::to_string(dr.target_ring) +
+                   " is above 2147483647 (the ring is an i32)";
+        }
         if (dr.ring < 0 || std::int64_t{dr.ring} > std::int64_t{dr.target_ring}) {
             return dp + ".ring: " + std::to_string(dr.ring) + " is not in 0 .. target_ring (" +
                    std::to_string(dr.target_ring) + ")";
         }
-        if (cfg.city_slots > 32) {
-            return dp + ".city_mask: a u32 mask holds 32 city slots, SimConfig.city_slots is " +
-                   std::to_string(cfg.city_slots);
+        // O-55: one bit per city slot in ceil(city_slots / 32) words.
+        const std::uint64_t words = drought_mask_words(cfg.city_slots);
+        if (dr.city_mask.size() != words) {
+            return dp + ".city_mask: has " + std::to_string(dr.city_mask.size()) +
+                   " words, SimConfig.city_slots " + std::to_string(cfg.city_slots) + " needs " +
+                   std::to_string(words);
         }
-        const std::uint32_t slot_bits =
-            cfg.city_slots >= 32 ? 0xFFFFFFFFU : (std::uint32_t{1} << cfg.city_slots) - 1U;
-        if ((dr.city_mask & ~slot_bits) != 0) {
-            return dp + ".city_mask: bits beyond the " + std::to_string(cfg.city_slots) +
-                   " city slots are set";
+        for (std::uint64_t i = 0; i < words; ++i) {
+            // The bits of word i that name a city slot: slots 32 i .. min(32 i + 32,
+            // city_slots) - 1.
+            const std::uint64_t first = 32U * i;
+            const std::uint64_t in_word = std::min<std::uint64_t>(32U, cfg.city_slots - first);
+            const std::uint32_t slot_bits =
+                in_word >= 32U ? 0xFFFFFFFFU : (std::uint32_t{1} << in_word) - 1U;
+            if ((dr.city_mask[static_cast<std::size_t>(i)] & ~slot_bits) != 0) {
+                return dp + ".city_mask: bits beyond the " + std::to_string(cfg.city_slots) +
+                       " city slots are set";
+            }
         }
     }
     if (!t.cache_consistent()) {
@@ -712,6 +726,9 @@ void Island::rect_query(const ListLayout& layout, CityNo no, const TileRect& rec
                     continue;
                 }
                 const BuildingId id = make_building_id(index, serial);
+                if (out.size() > static_cast<std::size_t>(segment) && out.back() == id) {
+                    continue; // the next tile of the footprint just taken
+                }
                 const auto it = cache.by_id.find(id);
                 if (it == cache.by_id.end() || it->second.city.city != no ||
                     find_building(id) == nullptr) {
@@ -720,10 +737,12 @@ void Island::rect_query(const ListLayout& layout, CityNo no, const TileRect& rec
                 out.push_back(id);
             }
         }
-        // The same building is met once per footprint tile in the box.
+        // The same building is met once per footprint tile in the box: the duplicates go
+        // first (by id, no lookup), then the unique ids take the (y, x, id) order.
         const auto first = out.begin() + segment;
-        std::sort(first, out.end(), before);
+        std::sort(first, out.end());
         out.erase(std::unique(first, out.end()), out.end());
+        std::sort(out.begin() + segment, out.end(), before);
     }
 }
 

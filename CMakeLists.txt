@@ -68,29 +68,59 @@ if(ANNO_BUILD_TESTS)
   # test binary after each build), so `ctest -j` spreads the long corpus
   # cases over the cores instead of running each suite as one process.
   include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
-  # anno_add_doctest(<target> [UBSAN_HALT] [PROPERTIES ...]): registers the
-  # cases of a doctest executable as "<target>.<case name>". UBSAN_HALT (asan
-  # preset only; for targets built with SANITIZE_NO_RECOVER) puts
-  # UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 into the environment of
-  # every case. A caller that sets its own ENVIRONMENT property after
-  # PROPERTIES wins over this one.
+  # Heavy test cases (doctest suite "heavy": the corpus cases that render or
+  # parse whole scenes on ANNO_TEST_THREADS threads, up to ~1 GB per thread)
+  # take every CTest slot of the machine, so `ctest -j` runs each one alone.
+  # Three of them side by side plus the other jobs ran past the commit limit
+  # of a 32 GB PC (std::bad_alloc in random tests, T10/T10b); scheduling them
+  # apart removes the overload instead of reacting to it in parallel_indexed.
+  # The count follows the machine, not a literal; CTest caps it at -j.
+  include(ProcessorCount)
+  ProcessorCount(ANNO_HEAVY_TEST_PROCESSORS)
+  if(ANNO_HEAVY_TEST_PROCESSORS EQUAL 0)
+    set(ANNO_HEAVY_TEST_PROCESSORS 1)
+  endif()
+  # anno_add_doctest(<target> [UBSAN_HALT] [LABELS ...] [PROPERTIES ...]):
+  # registers the cases of a doctest executable as "<target>.<case name>".
+  # UBSAN_HALT (asan preset only; for targets built with SANITIZE_NO_RECOVER)
+  # puts UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 into the environment
+  # of every case. A caller that sets its own ENVIRONMENT property in
+  # PROPERTIES wins over this one. LABELS are CTest labels for every case; the
+  # heavy cases get "heavy" beside them (so pass labels here, not in
+  # PROPERTIES, which the heavy label would replace).
+  #
+  # The cases are discovered twice: the "heavy" suite gets PROCESSORS
+  # ANNO_HEAVY_TEST_PROCESSORS and the label "heavy" (`ctest -L heavy`,
+  # `ctest -LE heavy`), the rest the caller's properties only. doctest's
+  # discovery script (2.4.12, doctestAddTests.cmake) passes TEST_SPEC as
+  # "--test-case=<first element>" followed by the other elements as raw
+  # arguments, which is how the suite filters reach --list-test-cases; the
+  # two spec hashes differ, so the two discoveries write separate files.
   function(anno_add_doctest target)
-    set(extra ${ARGN})
-    list(FIND extra UBSAN_HALT halt_at)
-    if(NOT halt_at EQUAL -1)
-      list(REMOVE_AT extra ${halt_at})
+    cmake_parse_arguments(ARG "UBSAN_HALT" "" "PROPERTIES;LABELS" ${ARGN})
+    set(props ${ARG_PROPERTIES})
+    if(ARG_UBSAN_HALT AND ANNO_SANITIZE AND NOT MSVC)
+      list(PREPEND props ENVIRONMENT "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
     endif()
-    if(NOT halt_at EQUAL -1 AND ANNO_SANITIZE AND NOT MSVC)
-      set(ubsan_env "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
-      list(FIND extra PROPERTIES props_at)
-      if(props_at EQUAL -1)
-        list(APPEND extra PROPERTIES ENVIRONMENT "${ubsan_env}")
-      else()
-        math(EXPR env_at "${props_at} + 1")
-        list(INSERT extra ${env_at} ENVIRONMENT "${ubsan_env}")
-      endif()
+    set(heavy_labels heavy ${ARG_LABELS})
+    if(ARG_LABELS)
+      list(APPEND props LABELS "${ARG_LABELS}")
     endif()
-    doctest_discover_tests(${target} TEST_PREFIX "${target}." ${extra})
+    doctest_discover_tests(${target} TEST_PREFIX "${target}."
+      TEST_SPEC "*" "--test-suite-exclude=heavy" TEST_LIST ${target}_TESTS
+      PROPERTIES ${props})
+    doctest_discover_tests(${target} TEST_PREFIX "${target}."
+      TEST_SPEC "*" "--test-suite=heavy" TEST_LIST ${target}_HEAVY_TESTS
+      PROPERTIES ${props} PROCESSORS ${ANNO_HEAVY_TEST_PROCESSORS})
+    # Runs after both discovery files (TEST_INCLUDE_FILES keeps the order).
+    set(label_file "${CMAKE_CURRENT_BINARY_DIR}/${target}_heavy_label.cmake")
+    # The caller's LABELS stay beside "heavy" (set_tests_properties replaces
+    # the property; ctest's reader has no APPEND for tests of an included file).
+    file(WRITE "${label_file}"
+      "if(${target}_HEAVY_TESTS)\n"
+      "  set_tests_properties(\${${target}_HEAVY_TESTS} PROPERTIES LABELS \"${heavy_labels}\")\n"
+      "endif()\n")
+    set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${label_file}")
   endfunction()
   add_test(NAME test_names_are_selectable
            COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
@@ -103,4 +133,5 @@ add_subdirectory(src/assets)
 add_subdirectory(src/render)
 add_subdirectory(src/app)
 add_subdirectory(src/sim)
+add_subdirectory(src/sim_load)
 add_subdirectory(src/tools)

@@ -94,7 +94,10 @@ void count_type(std::vector<std::uint32_t>& service, std::vector<std::uint32_t>&
 /// workshop +0x22, farm / fisher / trapper +0x20, mine +0x1e, and classes 9, 12 and 17
 /// at +0x28, 0x1006ff40). Of the Inert classes that is DualWorkshop (PRODTYPE 12).
 bool has_status_time(const Payload& payload, RuntimeClass cls) {
-    return !std::holds_alternative<Inert>(payload) || cls == RuntimeClass::DualWorkshop;
+    // A market (T24) keeps the Inert rule it had as an unported class: no evidence
+    // that its Create writes the status time.
+    return (!std::holds_alternative<Inert>(payload) && !std::holds_alternative<Market>(payload)) ||
+           cls == RuntimeClass::DualWorkshop;
 }
 
 /// Sets `last` (D: property 0x23, 0x10073380, always writes u16 +0x0a) of any

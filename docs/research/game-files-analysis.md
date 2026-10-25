@@ -1,6 +1,6 @@
 # ANNO 1503 – Analyse der Spieldateien (GOG 2.0.0.5)
 
-Stand 16.10.2026. Quelle: `setup_anno_1503_2.0.0.5.exe` (GOG-ID 1438074791, Inno Setup 5.5.0, nur Englisch), entpackt mit innoextract 1.8 nach `~/Dev/anno1503/game/app`. 6.040 Dateien, ca. 1,5 GB.
+Stand 16.10.2026. **Zweite Durchsicht 22.10.2026:** [`game-files-resurvey.md`](game-files-resurvey.md) (Szenario-Skriptsprache, KI-Profile, Regel-Chunks, Online-Hilfe). Quelle: `setup_anno_1503_2.0.0.5.exe` (GOG-ID 1438074791, Inno Setup 5.5.0, nur Englisch), entpackt mit innoextract 1.8 nach `~/Dev/anno1503/game/app`. 6.040 Dateien, ca. 1,5 GB.
 
 **Version-Gate:** Alle Spiel-DLLs und die EXE haben den PE-Zeitstempel **2006-07-21**, Ausnahmen sind `FileGame.dll` und `DrvMgt.dll` (Januar 2004). Es ist also der Königsedition-Stand, 32-bit x86 (Machine 0x14c), gebaut mit MSVC 6 (Linker 6.0). Die History Edition (64-bit) hat andere Binaries. Alle Aussagen hier gelten nur für diese Version.
 
@@ -73,3 +73,14 @@ Insel-Chunks: INSEL4/5, INFO, HEIGHT, GFXID, GELAENDE, PROD2, FRUCHTBAR, BERGWER
 
 ## Lokale Struktur
 `~/Dev/anno1503/` – `game/` (entpackt, nicht versionieren), `tools/chunks.py`, `analysis/pe_symbols.json`, `.gitignore` (game/, *.exe, *.bin).
+
+## Corpus notes from the 2026-10-24 snapshot
+
+Taken from [`analysis-2026-10-24.md`](analysis-2026-10-24.md) (an independent read-only analysis of the owner's two installs; SHA-256 over both trees):
+
+- The game folder holds **5,951 files** (1,514,836,147 bytes). The 6,040 of the first survey counted the full installer's extras (DirectX, bonus files) that the game folder never receives. Every per-type count the specs use (1,214 `.tex`, 1,213 `.inc`, 11 `.zei`, 50 `.sze`, 465 `.scp`, 16 Figuren volumes, `Anlagen.dat` 205,470,957 bytes) matches. Tests must not assert the 6,040 total.
+- `Speech/` has **1,277** numbered files, not 1,276.
+- `ToolGfx/help8.tex` has no `.inc` mate (the 1,214 against 1,213); `ToolGfx/Questlog_Campaign0101.tex` and `questlog_campaign0101.inc` differ only in case, so a pairing by exact stem on Linux misses them while Windows does not. Corpus tests must not require a mate for every `.tex`.
+- The leftovers `Scenes/Islands/Nord/N_256x256_0010_1B_Mongolen.scp.bug` (a raw `INSEL4` body behind 16 zero bytes) and `ToolGfx/HelpNormal.zei.ok` stay out of the corpora by the extension filters; keep the filters.
+- `ANNO1503_GAME_DIR` must name the folder that contains `Anlagen.dat`. The owner's second copy sits one level down (`E:\Anno 1503 AD\GOG`, byte-identical to `game/app` on all game content, unregistered, pristine); its parent folder makes `anno::test::game_dir` fail with a clear message, not skip. The T15 harness copy (`C:\anno1503-original`, dgVoodoo2 DLLs, caches and saves) is never a test game dir.
+- This SKU keeps its settings in the registry (`HKCU\Software\Max-Design\Anno1503`); there is no `1503addw.ini`. A pristine install has no `SaveGame\`; saves exist only in the harness copy and never enter git.

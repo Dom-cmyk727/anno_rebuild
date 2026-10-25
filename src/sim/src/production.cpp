@@ -219,6 +219,24 @@ bool gate(std::uint16_t& last, std::uint32_t t) {
     return true;
 }
 
+} // namespace
+
+StepResult market_step(Market& m, const ProductionType& type, bool has_prod, std::uint32_t t) {
+    StepResult r;
+    // D 0x1006b6d0: cmp cx, 0x1f4 / add eax, 0x1f4 (the period is added to `last`).
+    if (!gate(m.last, t)) {
+        return r;
+    }
+    r.stepped = true;
+    // Group 0: the carts out against max_figures(0) (type slot +0xb8(0),
+    // 0x1006b70d-0x1006b71c); one send per step.
+    const std::uint32_t max = has_prod && !type.max_figures.empty() ? type.max_figures[0] : 0;
+    r.send_figure = m.carts_out < max;
+    return r;
+}
+
+namespace {
+
 std::uint32_t at(const std::vector<std::uint32_t>& v, std::size_t i) {
     return i < v.size() ? v[i] : 0;
 }
@@ -230,6 +248,7 @@ Workshop make_workshop(const ProductionType& type) {
     w.out.assign(std::max<std::size_t>(type.outputs.size(), 1), 0);
     w.in.assign(type.inputs.size(), 0);
     w.activity.assign(w.out.size(), 0);
+    w.reserved.assign(w.out.size(), 0);
     return w;
 }
 
@@ -241,6 +260,7 @@ WeaponsWorkshop make_weapons_workshop(const ProductionType& type) {
     w.out.assign(lines, 0);
     w.in.assign(type.inputs.size(), 0);
     w.activity.assign(lines, 0);
+    w.reserved.assign(lines, 0);
     return w;
 }
 
@@ -487,6 +507,7 @@ SmallFarm make_small_farm(const ProductionType& type, const SmallFarmAnimals& an
     f.out.assign(lines, 0);
     f.raw.assign(lines, 0);
     f.activity.assign(lines, 0);
+    f.reserved.assign(lines, 0);
     // The original has five counters (+0x2a–+0x2e: line 0's workers and four
     // animal kinds); a modded table that can pick a kind further up gets the
     // counters it needs.

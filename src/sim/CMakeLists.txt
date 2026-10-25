@@ -4,7 +4,9 @@
 add_library(anno_sim src/sim.cpp src/production.cpp src/config.cpp src/types.cpp
             src/goods_table.cpp src/synthetic.cpp src/player.cpp src/island.cpp src/scenario.cpp
             src/save.cpp src/building.cpp src/create.cpp src/invariants.cpp src/figure.cpp
-            src/driver.cpp src/scheduler.cpp src/codec.cpp src/apply.cpp)
+            src/driver.cpp src/scheduler.cpp src/codec.cpp src/apply.cpp src/replay.cpp
+            src/placement.cpp src/legacy_codec.cpp src/events.cpp src/timers.cpp
+            src/island_tick.cpp src/scenario_formats.cpp src/island_links.cpp src/transport.cpp)
 target_include_directories(anno_sim PUBLIC include)
 target_link_libraries(anno_sim PUBLIC anno_formats)
 target_compile_features(anno_sim PUBLIC cxx_std_20)
@@ -17,8 +19,16 @@ if(ANNO_BUILD_TESTS)
                  tests/player_test.cpp tests/tile_hash_test.cpp tests/island_state_test.cpp
                  tests/create_remove_test.cpp tests/building_state_test.cpp
                  tests/world_state_test.cpp tests/scheduler_test.cpp tests/slice_test.cpp tests/alloc_probe.cpp
-                 tests/command_codec_test.cpp tests/command_apply_test.cpp)
-  target_link_libraries(anno_sim_tests PRIVATE anno_sim anno_test_support doctest::doctest)
+                 tests/command_codec_test.cpp tests/command_apply_test.cpp tests/replay_test.cpp
+                 tests/command_build_test.cpp tests/property_test.cpp
+                 tests/driver_classes_test.cpp tests/world_events_test.cpp tests/sweeps_test.cpp
+                 tests/figure_removal_test.cpp tests/scenario_formats_test.cpp
+                 tests/scenario_test.cpp tests/island_links_test.cpp
+                 tests/scenario_links_test.cpp tests/transport_test.cpp)
+  # anno_sim_load: the scenario corpus case reads the island templates of the game
+  # directory for the link resolver (S14 stage 2).
+  target_link_libraries(anno_sim_tests PRIVATE anno_sim anno_sim_load anno_test_support
+                                               doctest::doctest)
   # The goldens (fixtures/synthetic/sim/goldens.txt, docs/sim/state.md §14.3).
   target_compile_definitions(anno_sim_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")

@@ -1,0 +1,50 @@
+{
+ "_doc": "Menu layout of the original (GOG 2.0.0.5) as data for tools/orig/macros.py. Coordinates are FRACTIONS of the game frame (menus: 800x600), measured from Wine-runner screenshots 2026-10-22 (T16; docs/testing/original-wine.md section 2 gives the same points in virtual-desktop pixels). Screen names refer to tools/orig/screens_sig.json. When T15's screens.json (PR #16) is on main, this merges into its menu_navigation block.",
+ "intros": {
+  "_note": "two intro videos before the main menu, each skipped with ESC or a click (owner, 2026-10-22; confirmed: 2 skips in the Wine runner)",
+  "expected_skips": 2,
+  "skip_key": "ESC"
+ },
+ "screens": {
+  "main_menu": {
+   "profile": [0.513, 0.195],
+   "singleplayer": [0.5, 0.385],
+   "credits": [0.5, 0.565],
+   "options": [0.5, 0.662],
+   "quit": [0.5, 0.885]
+  },
+  "options_graphics": {
+   "_note": "main-menu Options = graphics only (resolution, details); no sound settings here. ESC does not leave it, Back does.",
+   "back": [0.5, 0.885]
+  },
+  "singleplayer": {
+   "new_game": [0.5, 0.513],
+   "campaign": [0.5, 0.61],
+   "load_game": [0.5, 0.707],
+   "continue_game": [0.5, 0.805],
+   "back": [0.24, 0.918]
+  },
+  "multiplayer": {
+   "_note": "shown only with HKCU\\Software\\Max-Design\\Anno1503 MULTIPLAYER = 1 (REG_DWORD; community-landscape.md, confirmed in the Wine runner 2026-10-22); the main menu then has Multiplayer at [0.5, 0.475] between Singleplayer and Credits",
+   "open_from_main_menu": [0.5, 0.475],
+   "lan_server": [0.5, 0.507],
+   "lan_client": [0.5, 0.633],
+   "internet": [0.5, 0.757],
+   "back": [0.24, 0.895]
+  },
+  "lan_server_name": {"_note": "session name field (default NoName)", "ok": [0.785, 0.893], "back": [0.2, 0.9]},
+  "lan_client_list": {"_note": "Choose a server: found servers listed as '<name> (Unknown)'", "first_entry": [0.43, 0.36], "ok": [0.79, 0.903], "back": [0.2, 0.9]},
+  "server_game": {"_note": "the host's game menu; New game and Load game open a Choose game list, empty in this build (no multiplayer scenarios shipped, ISS-030)", "new_game": [0.5, 0.513], "load_game": [0.5, 0.707], "back": [0.2, 0.9]},
+  "choose_game": {
+   "rows": {
+    "citizen": [0.35, 0.562],
+    "baron": [0.35, 0.602],
+    "viscount": [0.35, 0.642],
+    "count": [0.35, 0.682],
+    "marquess": [0.35, 0.722]
+   },
+   "ok": [0.79, 0.903],
+   "back": [0.2, 0.9]
+  }
+ }
+}

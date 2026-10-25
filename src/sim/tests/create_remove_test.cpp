@@ -114,14 +114,14 @@ TEST_CASE("create builds the payload of the class and files it in the list of it
     sim::World w = make_world(k, kit_scenario());
     struct Row {
         sim::TypeId type;
-        std::size_t
-            alternative; // Inert 0, Workshop 1, WeaponsWorkshop 2, Farm 3, SmallFarm 4, Mine 5
+        std::size_t alternative; // Inert 0, Workshop 1, WeaponsWorkshop 2, Farm 3, SmallFarm 4,
+                                 // Mine 5, Market 6
         sim::ListId list;
     };
     const std::vector<Row> rows = {
         {k.weaver, 1, 4},    {k.farm, 3, 4},         {k.fur_trapper, 3, 4}, {k.small_farm, 4, 4},
         {k.bow_maker, 2, 4}, {k.iron_mine, 5, 4},    {k.gold_mine, 5, 4},   {k.pioneer_house, 0, 3},
-        {k.kontor, 0, 5},    {k.market_stall, 0, 0}, {k.church, 0, 1},      {k.barracks, 0, 2},
+        {k.kontor, 6, 5},    {k.market_stall, 0, 0}, {k.church, 0, 1},      {k.barracks, 0, 2},
     };
     int x = 101;
     for (const Row& row : rows) {
@@ -1342,10 +1342,11 @@ TEST_CASE("reject names and results") {
     CHECK(sim::reject_name(sim::Reject::None) == "None");
     CHECK(sim::reject_name(sim::Reject::OutOfIsland) == "OutOfIsland");
     CHECK(sim::reject_name(sim::Reject::ListFull) == "ListFull");
+    CHECK(sim::reject_name(sim::Reject::Unencodable) == "Unencodable");
     CHECK(sim::reject_name(static_cast<sim::Reject>(999)) == "?");
-    // Every enumerator has a name of its own.
+    // Every enumerator has a name of its own (Unencodable is the last).
     std::vector<std::string> names;
-    for (std::uint16_t v = 0; v <= static_cast<std::uint16_t>(sim::Reject::ListFull); ++v) {
+    for (std::uint16_t v = 0; v <= static_cast<std::uint16_t>(sim::Reject::Unencodable); ++v) {
         names.emplace_back(sim::reject_name(static_cast<sim::Reject>(v)));
         CHECK(names.back() != "?");
     }

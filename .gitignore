@@ -16,3 +16,8 @@ build/
 
 # Claude Code worktrees of multi-agent runs
 .claude/worktrees/
+
+# The owner's manual and stray logs at the repo root (never committed; the
+# patterns are root-anchored so the sim's golden *.log fixtures stay tracked).
+/*.pdf
+/*.log

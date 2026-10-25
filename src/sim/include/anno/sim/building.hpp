@@ -3,8 +3,9 @@
 // A building is the common part the original's base class holds (D: AnnoWelt.dll
 // base constructor 0x100734c0: position, rotation, the flag bytes +0x0e / +0x0f)
 // plus the payload of its runtime class: one of the production structs of
-// production.hpp, or `Inert` for every class whose tick is not ported (markets,
-// public buildings, houses, military, ships, stalls, the base class). Inert
+// production.hpp, or `Inert` for every class whose tick is not ported (public
+// buildings, houses, military, ships, stalls, the base class; markets have their own
+// payload since T24). Inert
 // holds a slot all the same: the scheduler arithmetic divides by the length of
 // the list including its null holes, so the order in which buildings tick stays
 // faithful while those classes are unported.
@@ -45,7 +46,7 @@ struct Inert {
 
 /// Alternative order = the save tag order of PayloadTag (types.hpp), append-only.
 /// FurTrapper uses Farm; the class comes from the type.
-using Payload = std::variant<Inert, Workshop, WeaponsWorkshop, Farm, SmallFarm, Mine>;
+using Payload = std::variant<Inert, Workshop, WeaponsWorkshop, Farm, SmallFarm, Mine, Market>;
 
 /// The byte +0x0e of a building (D: 0x86 in the base constructor, 0x82 for a
 /// house; property 0x2b sets it from a COMP chunk; meaning open, O-38).

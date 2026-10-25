@@ -29,6 +29,10 @@ the determinism rules of CLAUDE.md forbid in simulation code:
   macro         #define (no layout-hiding or token-hiding macros in the sim)
   static        non-const static / thread_local variables
   global        non-const namespace-scope variables
+  file_io       file system access: <fstream>, <filesystem>, <cstdio>, <stdio.h>,
+                <windows.h>, std::*fstream, std::filesystem, fopen, FILE,
+                FindFirstFile*, CreateFile* (the sim reads no files: the callers
+                hand it bytes, docs/sim/state.md §10)
   constexpr_count  an integral constexpr variable outside config.hpp /
                 production.hpp that is not one of the named sentinels or
                 versions (every original count is configuration data)
@@ -66,6 +70,7 @@ SENTINELS = {
     "kTileBytes",  # bytes of one tile in the stream (layout width, island.hpp)
     "kSaveVersion",  # version of the save frame (world.hpp)
     "kCommandWireVersion",  # version of the command wire layout (command.hpp)
+    "kReplayLogVersion",  # version of the replay-log frame (replay.hpp)
 }
 # Headers where the original's constants live as documented defaults.
 CONSTEXPR_FILES = {"config.hpp", "production.hpp"}
@@ -93,10 +98,21 @@ TOKEN_RULES = [
     ("thread", re.compile(r"\bstd::(?:thread|jthread|async)\b")),
     ("hash", re.compile(r"\bstd::hash\b")),
     ("pointer_key", re.compile(r"\b(?:multi)?(?:set|map)\s*<\s*[^,<>]*\*")),
+    (
+        "file_io",
+        re.compile(
+            r"\b(?:[io]?fstream|filesystem|fopen|freopen|FILE|FindFirstFile\w*|FindNextFile\w*|"
+            r"CreateFile\w*)\b"
+        ),
+    ),
 ]
 # Matched on the source with comments and literals blanked but the
 # preprocessor lines kept (strip_source(keep_preprocessor=True)).
 MACRO_RULE = ("macro", re.compile(r"^\s*#\s*define\b"))
+IO_INCLUDE_RULE = (
+    "file_io",
+    re.compile(r"^\s*#\s*include\s*<(?:fstream|filesystem|cstdio|stdio\.h|windows\.h)>"),
+)
 
 INTEGRAL = (
     r"(?:std::)?(?:u?int(?:8|16|32|64)_t|size_t|ptrdiff_t|int|unsigned(?:\s+int)?|short)"
@@ -253,6 +269,8 @@ def lint_text(path, text):
     for ln, cl in enumerate(strip_source(text, keep_preprocessor=True).splitlines(), 1):
         if MACRO_RULE[1].search(cl):
             add(ln, MACRO_RULE[0])
+        if IO_INCLUDE_RULE[1].search(cl):
+            add(ln, IO_INCLUDE_RULE[0])
     for m in STATIC_VAR.finditer(clean):
         if m.group(2) != "(" and not CONST_WORD.search(m.group(1)):
             add(line_of(clean, m.start()), "static")
@@ -347,6 +365,12 @@ CASES = [
     ("rand", "a.cpp", "void f() { int r = rand(); }\n", {"rand"}),
     ("srand", "a.cpp", "void f() { srand(1); }\n", {"rand"}),
     ("not rand", "a.cpp", "void f() { msvc_rand_sequence(1); my_rand(2); }\n", set()),
+    ("fstream", "a.cpp", "void f() { std::ifstream in(p); }\n", {"file_io"}),
+    ("filesystem", "a.cpp", "void f() { std::filesystem::path p; }\n", {"file_io"}),
+    ("fopen", "a.cpp", "void f() { FILE* f = fopen(p, m); }\n", {"file_io"}),
+    ("FindFirstFile", "a.cpp", "void f() { FindFirstFileA(p, &d); }\n", {"file_io"}),
+    ("io include", "a.cpp", "#include <cstdio>\n#include <filesystem>\n", {"file_io"}),
+    ("not file io", "a.cpp", "void f() { profile(1); file_name(2); s.files = 3; }\n", set()),
     ("time", "a.cpp", "void f() { auto t = time(nullptr); }\n", {"time"}),
     ("not time", "a.cpp", "void f() { game_time(1); s.time = 2; }\n", set()),
     ("chrono", "a.cpp", "#include <chrono>\nvoid f() { std::chrono::seconds s; }\n", {"chrono"}),

@@ -82,6 +82,7 @@
 #include <vector>
 
 #include <anno/app/loader.hpp>
+#include <anno/app/png.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/render/profile.hpp>
@@ -152,6 +153,10 @@ struct Options {
     std::vector<std::size_t> zoom_dump_after{0};
     /// --chunk-profile: the builder thread counts to profile (empty = the frame paths).
     std::vector<std::size_t> profile_threads;
+    /// --chunk-build cpu|gpu: the GpuList builder (T11 stage 2a) on the GPU paths.
+    render::ChunkBuilder chunk_builder = render::ChunkBuilder::Cpu;
+    /// --bin-px: the ChunkDraws bin edge (gpu-chunks.md 9; the bin_px sweep).
+    std::uint32_t bin_px = render::kDefaultBinPx;
     /// --chunk-limit: the chunks nearest the island's centre that are built. 96 is
     /// about four 2560 x 1440 views at group 0 (24 chunks each), a few minutes on
     /// one thread at the measured 100-250 ms per chunk; 0 = all of the island.
@@ -163,6 +168,16 @@ struct Options {
         std::string filter;
     };
     std::vector<ScalePoint> scale_cost;
+    /// --cost-frames n: the frames timed per --scale-cost point (after the settle).
+    int cost_frames = 60;
+    /// --wave-sim on|off: GpuLimits::wave_simulation (enhanced water's wave simulation).
+    std::optional<bool> wave_sim;
+    /// --fluid-cells-per-px x: GpuLimits::fluid_max_cells_per_px (0 = no bound; default:
+    /// fluid::kDefaultMaxCellsPerPx on every adapter).
+    std::optional<double> fluid_cells;
+    /// --cost-png dir: --scale-cost writes the last timed frame of every point as a PNG
+    /// (<scene>_<w>x<h>_<style>_L<group>_s<scale>.png).
+    std::string cost_png;
     /// --fill-time: the first zoom-out (levels 3-5 from group 2), and --derive old|cache.
     bool fill_time = false, derive_from_cache = true;
     /// --derived n: n derived zoom levels after group 2 (the groups 3.. of --groups).
@@ -221,6 +236,10 @@ struct Row {
     std::uint64_t open_px = 0;
     /// The CPU chunk cache after the frame: chunks and bytes (outside `total`).
     std::size_t cache_chunks = 0, cache_bytes = 0;
+    /// GPU-built chunks (T11 2a): the resident chunk atlas (MiB), chunks built by
+    /// the compute pass, and CPU-fallback builds (GpuStats).
+    double chunk_atlas_mb = 0;
+    std::size_t gpu_built = 0, cpu_fallback = 0;
     /// GPU: every window-thread step of the frame (GpuStats::steps, they add up
     /// to the compositor's total), and the counts behind the sync steps.
     std::vector<std::pair<std::string, double>> steps;
@@ -237,6 +256,8 @@ struct Config {
     int w = 0, h = 0;
     std::size_t group = 0;
     render::WaterStyle style = render::WaterStyle::Original;
+    render::ChunkBuilder chunk_builder = render::ChunkBuilder::Cpu;
+    std::uint32_t bin_px = render::kDefaultBinPx;
     bool async_chunks = false;
     std::pair<int, int> centre{0, 0};
     std::size_t frames = 120;
@@ -803,6 +824,19 @@ void run_zoom(const Config& c, Frame&& frame, Ready&& ready, Dump&& dump, Grab&&
                             1048576.0,
                         peak_chunks);
         }
+        // GPU-built chunks (T11 2a): the resident chunk atlas and the build counts.
+        double peak_atlas = 0;
+        std::size_t total_gpu_built = 0, total_fallback = 0;
+        for (const auto& r : rows) {
+            peak_atlas = std::max(peak_atlas, r.chunk_atlas_mb);
+            total_gpu_built += r.gpu_built;
+            total_fallback += r.cpu_fallback;
+        }
+        if (peak_atlas > 0 || total_gpu_built > 0) {
+            std::printf("GPU chunk atlas: peak resident %.1f MiB; %zu chunks built by the compute "
+                        "pass, %zu CPU fallbacks\n",
+                        peak_atlas, total_gpu_built, total_fallback);
+        }
     }
     if (c.zoom_every > 0) {
         // How long each zoom step's transient lasts (wall ms since the step's frame):
@@ -848,6 +882,11 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
     // The GPU compositor draws the ships itself: chunks without them.
     render::FrameRenderer fr(c.threads, g == nullptr);
     fr.river_flow = c.river_flow;
+    // GpuList builder only on the GPU path (the CPU path replays the list).
+    if (g != nullptr) {
+        fr.chunk_builder = c.chunk_builder;
+        fr.bin_px = c.bin_px;
+    }
     if (c.lookahead) {
         fr.max_lookahead_chunks = *c.lookahead;
     }
@@ -899,6 +938,9 @@ void run(const render::Scene& scene, const Config& c, gpu::GpuFrame* g) {
             r.open_px = st.open_sea_px;
             r.cache_chunks = fr.cached();
             r.cache_bytes = fr.cached_bytes();
+            r.chunk_atlas_mb = st.chunk_atlas_mb;
+            r.gpu_built = st.gpu_built_chunks;
+            r.cpu_fallback = st.chunks_cpu_fallback;
             r.fluid_setting_up = st.fluid_setting_up;
             r.sea = st.sea_ms;
             r.sync = st.chunk_sync_ms;
@@ -1101,6 +1143,8 @@ int fill_time(const render::Scene& scene, const Options& o, std::size_t island) 
         return 1;
     }
     render::FrameRenderer fr(o.threads, false);
+    fr.chunk_builder = o.chunk_builder;
+    fr.bin_px = o.bin_px;
     fr.derive_from_cache = o.derive_from_cache;
     fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, o.threads));
     // The sea patterns are not needed to build chunks.
@@ -1163,7 +1207,8 @@ int fill_time(const render::Scene& scene, const Options& o, std::size_t island) 
 /// 1, area from 1). Per point the chunks the grid shows, the chunks cached, the
 /// chunks missing and dropped over the measured frames (a visible chunk trimmed
 /// shows as missing), after a settle until everything is built and uploaded.
-int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, std::size_t island) {
+int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, std::size_t island,
+               const std::string& scene_name) {
     auto filter_of = [](std::string_view s, double scale) {
         if (s == "nearest") {
             return gpu::ResampleFilter::Nearest;
@@ -1185,86 +1230,148 @@ int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                : f == gpu::ResampleFilter::Box      ? "box"
                                                     : "area";
     };
-    const render::WaterStyle style = o.styles.front(); // --styles enhanced for the other
-    std::printf("| window | group | scale | filter | grid | chunks shown | cached | missing | "
-                "dropped | GPU ms p50 | GPU ms max | window thread ms p50 |\n"
-                "|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+    std::printf(
+        "| window | style | group | scale | filter | grid | chunks shown | cached | missing | "
+        "dropped | pass | GPU ms p50 | p95 | p99 | max | frames timed |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
     for (const auto& [w, h] : o.resolutions) {
-        for (const auto& pt : o.scale_cost) {
-            const auto b = island_bounds(scene, pt.group, island);
-            if (!b) {
-                std::fputs("no placement for that island\n", stderr);
-                return 1;
-            }
-            const double cx = b->x + b->w / 2.0 + o.at.first;
-            const double cy = b->y + b->h / 2.0 + o.at.second;
-            const auto filter = filter_of(pt.filter, pt.scale);
-            const auto rv = gpu::resampled_view(cx, cy, static_cast<std::uint32_t>(w),
-                                                static_cast<std::uint32_t>(h), pt.scale, filter);
-            render::FrameRenderer fr(o.threads, false);
-            fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (o.threads + 1) / 2));
-            const auto target =
-                g.offscreen_target(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));
-            std::uint64_t t = 0;
-            auto frame = [&] {
-                const auto st = g.render(fr, scene, rv.view, pt.group, t, style,
-                                         target.second.get(), &rv.resample);
-                t += 16;
-                return st;
-            };
-            // --wave-fade-hold: the window appears at clock 1000 and the weight of the
-            // simulation is then held at k.
-            std::uint64_t fade_clock = 1000;
-            g.set_fade_clock([&] { return fade_clock; });
-            // Settle: until every shown chunk is built and uploaded (30 s at most).
-            const auto settle_start = std::chrono::steady_clock::now();
-            std::size_t quiet = 0;
-            while (quiet < 20 &&
-                   std::chrono::steady_clock::now() - settle_start < std::chrono::seconds(30)) {
-                const auto st = frame();
-                quiet = st.chunks_missing == 0 && st.chunks_uploaded == 0 && st.placeholders == 0
+        for (const render::WaterStyle style : o.styles) {
+            for (const auto& pt : o.scale_cost) {
+                const auto b = island_bounds(scene, pt.group, island);
+                if (!b) {
+                    std::fputs("no placement for that island\n", stderr);
+                    return 1;
+                }
+                const double cx = b->x + b->w / 2.0 + o.at.first;
+                const double cy = b->y + b->h / 2.0 + o.at.second;
+                const auto filter = filter_of(pt.filter, pt.scale);
+                const auto rv =
+                    gpu::resampled_view(cx, cy, static_cast<std::uint32_t>(w),
+                                        static_cast<std::uint32_t>(h), pt.scale, filter);
+                render::FrameRenderer fr(o.threads, false);
+                fr.chunk_builder = o.chunk_builder;
+                fr.bin_px = o.bin_px;
+                fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (o.threads + 1) / 2));
+                const auto target = g.offscreen_target(static_cast<std::uint32_t>(w),
+                                                       static_cast<std::uint32_t>(h));
+                std::uint64_t t = 0;
+                auto frame = [&] {
+                    const auto st = g.render(fr, scene, rv.view, pt.group, t, style,
+                                             target.second.get(), &rv.resample);
+                    t += 16;
+                    return st;
+                };
+                // --wave-fade-hold: the window appears at clock 1000 and the weight of the
+                // simulation is then held at k.
+                std::uint64_t fade_clock = 1000;
+                g.set_fade_clock([&] { return fade_clock; });
+                // Settle: until every shown chunk is built and uploaded (30 s at most).
+                const auto settle_start = std::chrono::steady_clock::now();
+                std::size_t quiet = 0;
+                while (quiet < 20 &&
+                       std::chrono::steady_clock::now() - settle_start < std::chrono::seconds(30)) {
+                    const auto st = frame();
+                    quiet =
+                        st.chunks_missing == 0 && st.chunks_uploaded == 0 && st.placeholders == 0
                             ? quiet + 1
                             : 0;
-                std::this_thread::sleep_for(std::chrono::milliseconds(8));
-            }
-            if (o.wave_fade_hold >= 0.0) {
-                fade_clock = 1000 + static_cast<std::uint64_t>(o.wave_fade_hold * 1000.0);
-            }
-            std::vector<double> gpu_ms, cpu_ms;
-            std::size_t missing = 0, dropped = 0, no_reading = 0;
-            for (int i = 0; i < 60; ++i) {
-                const auto st = frame();
-                missing += st.chunks_missing;
-                dropped += st.chunks_dropped;
-                cpu_ms.push_back(st.total_ms);
-                const auto sea = g.sea_pass_ms(); // waits for the GPU and reads the ticks
-                if (const auto ms = g.frame_gpu_ms(); sea && ms) {
-                    gpu_ms.push_back(*ms);
-                } else {
-                    ++no_reading;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(8));
                 }
-            }
-            auto pct = [](std::vector<double> v, double q) {
-                if (v.empty()) {
-                    return 0.0;
+                if (o.wave_fade_hold >= 0.0) {
+                    fade_clock = 1000 + static_cast<std::uint64_t>(o.wave_fade_hold * 1000.0);
                 }
-                std::sort(v.begin(), v.end());
-                return v[static_cast<std::size_t>(
-                    std::lround(q * static_cast<double>(v.size() - 1)))];
-            };
-            std::printf("| %dx%d | %zu | %.3f | %s | %dx%d | %zu | %zu | %zu | %zu | ", w, h,
-                        pt.group, rv.resample.scale, name_of(filter), rv.view.w, rv.view.h,
-                        render::visible_chunks(rv.view).size(), fr.cached(), missing, dropped);
-            if (gpu_ms.empty()) {
-                std::printf("no GPU timestamps | | %.2f |\n", pct(cpu_ms, 0.5));
-            } else {
-                std::printf("%.2f | %.2f | %.2f |\n", pct(gpu_ms, 0.5), pct(gpu_ms, 1.0),
-                            pct(cpu_ms, 0.5));
+                // Per pass (GpuPassTimes) and the whole frame; a pass that did not run in a
+                // frame (no wave step due) has no sample there.
+                constexpr std::array<const char*, 7> kPassNames = {
+                    "fluid", "terrain", "under", "sea", "objects", "resample", "frame"};
+                std::array<std::vector<double>, 7> pass_ms;
+                std::vector<double> cpu_ms;
+                std::size_t missing = 0, dropped = 0, no_reading = 0;
+                std::uint64_t fluid_steps = 0, fluid_cells = 0;
+                std::uint32_t fluid_cpt = 0;
+                gpu::GpuStats last;
+                for (int i = 0; i < o.cost_frames; ++i) {
+                    const auto st = frame();
+                    missing += st.chunks_missing;
+                    dropped += st.chunks_dropped;
+                    cpu_ms.push_back(st.total_ms);
+                    fluid_steps += st.fluid_steps;
+                    fluid_cells = st.fluid_cells;
+                    fluid_cpt = st.fluid_cells_per_tile;
+                    last = st;
+                    const auto sea = g.sea_pass_ms(); // waits for the GPU and reads the ticks
+                    const auto passes = g.pass_gpu_ms();
+                    if (!sea || !passes || !passes->frame) {
+                        ++no_reading;
+                        continue;
+                    }
+                    const std::array<std::optional<double>, 7> v = {
+                        passes->fluid,   passes->terrain,  passes->under, passes->sea,
+                        passes->objects, passes->resample, passes->frame};
+                    for (std::size_t k = 0; k < v.size(); ++k) {
+                        if (v[k]) {
+                            pass_ms[k].push_back(*v[k]);
+                        }
+                    }
+                }
+                auto pct = [](std::vector<double> v, double q) {
+                    if (v.empty()) {
+                        return 0.0;
+                    }
+                    std::sort(v.begin(), v.end());
+                    return v[static_cast<std::size_t>(
+                        std::lround(q * static_cast<double>(v.size() - 1)))];
+                };
+                const char* style_name =
+                    style == render::WaterStyle::Enhanced ? "enhanced" : "original";
+                for (std::size_t k = 0; k < kPassNames.size(); ++k) {
+                    std::printf(
+                        "| %dx%d | %s | %zu | %.3f | %s | %dx%d | %zu | %zu | %zu | %zu | %s | ", w,
+                        h, style_name, pt.group, rv.resample.scale, name_of(filter), rv.view.w,
+                        rv.view.h, render::visible_chunks(rv.view).size(), fr.cached(), missing,
+                        dropped, kPassNames[k]);
+                    if (pass_ms[k].empty()) {
+                        std::printf("- | - | - | - | 0 |\n");
+                    } else {
+                        std::printf("%.2f | %.2f | %.2f | %.2f | %zu |\n", pct(pass_ms[k], 0.5),
+                                    pct(pass_ms[k], 0.95), pct(pass_ms[k], 0.99),
+                                    pct(pass_ms[k], 1.0), pass_ms[k].size());
+                    }
+                }
+                std::fprintf(stderr,
+                             "%dx%d %s group %zu scale %.3f: window thread ms p50 %.2f; wave "
+                             "window %llu cells (%.2f per window pixel, %u per tile), %.2f "
+                             "steps per frame\n",
+                             w, h, style_name, pt.group, rv.resample.scale, pct(cpu_ms, 0.5),
+                             static_cast<unsigned long long>(fluid_cells),
+                             static_cast<double>(fluid_cells) / (static_cast<double>(w) * h),
+                             fluid_cpt,
+                             static_cast<double>(fluid_steps) / static_cast<double>(o.cost_frames));
+                std::fprintf(stderr,
+                             "  last frame: %zu stand-in chunks (%zu parts), %zu chunks with open "
+                             "sea (%llu px), %zu chunks fading\n",
+                             last.stand_in_chunks, last.stand_in_parts, last.open_sea_chunks,
+                             static_cast<unsigned long long>(last.open_sea_px), last.chunks_fading);
+                if (no_reading > 0) {
+                    std::fprintf(stderr, "%zu of %d frames without a GPU reading\n", no_reading,
+                                 o.cost_frames);
+                }
+                if (!o.cost_png.empty()) {
+                    const auto px = g.read_back(target.first.get(), static_cast<std::uint32_t>(w),
+                                                static_cast<std::uint32_t>(h));
+                    char name[160];
+                    std::snprintf(name, sizeof name, "%s_%dx%d_%s_L%zu_s%.3f.png",
+                                  scene_name.c_str(), w, h, style_name, pt.group,
+                                  rv.resample.scale);
+                    const auto err = anno::app::write_png(std::filesystem::path(o.cost_png) / name,
+                                                          static_cast<std::uint32_t>(w),
+                                                          static_cast<std::uint32_t>(h), px);
+                    if (!err.empty()) {
+                        std::fprintf(stderr, "%s\n", err.c_str());
+                    }
+                }
+                fr.set_workers(nullptr);
             }
-            if (no_reading > 0) {
-                std::fprintf(stderr, "%zu of 60 frames without a GPU reading\n", no_reading);
-            }
-            fr.set_workers(nullptr);
         }
     }
     return 0;
@@ -1298,6 +1405,8 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
     constexpr double kBusyMs = 8.0;
     for (const auto& [w, h] : o.resolutions) {
         render::FrameRenderer fr(o.threads, false);
+        fr.chunk_builder = o.chunk_builder;
+        fr.bin_px = o.bin_px;
         fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (o.threads + 1) / 2));
         const auto target =
             g.offscreen_target(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));
@@ -1584,7 +1693,8 @@ int chunk_profile(const fs::path& dir, const fs::path& file, const Options& o, s
 
 constexpr const char* kUsage =
     "usage: bench_frame <game_dir> <file> [--threads n] [--res WxH,..] [--groups 0,1,2] "
-    "[--styles original,enhanced] [--chunks blocking,async] [--renderer cpu,gpu] [--check] "
+    "[--styles original,enhanced] [--chunks blocking,async] [--renderer cpu,gpu] "
+    "[--chunk-build cpu|gpu] [--bin-px n] [--check] "
     "[--island n] [--at dx,dy] [--t0 ms] [--warmup ms] [--quick] [--zoom k] [--zoom-frames n] "
     "[--pace ms] [--spike ms] [--limits default|interactive] [--settle ms] "
     "[--river-flow legacy|flow] [--river-quality auto|low|medium|high] [--river-gain x] "
@@ -1592,7 +1702,8 @@ constexpr const char* kUsage =
     "[--lookahead-chunks n] "
     "[--zoom-dump dir]\n"
     "       bench_frame <game_dir> <file> --renderer gpu --scale-cost group:scale[:filter],.. "
-    "[--res ..] [--groups ..]\n"
+    "[--res ..] [--styles ..] [--cost-frames n] [--derived n] [--wave-sim on|off] "
+    "[--fluid-cells-per-px x] [--cost-png dir]\n"
     "       bench_frame <game_dir> <file> --chunk-profile threads,.. [--chunk-limit n] "
     "[--groups ..] [--island n]\n"
     "       bench_frame <game_dir> <file> --zoom-factor f [--resample nearest|bilinear|box|area] "
@@ -1679,6 +1790,14 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
                 ok = false;
             }
 #endif
+        } else if (a == "--chunk-build") {
+            ok = v == "cpu" || v == "gpu";
+            o.chunk_builder =
+                v == "gpu" ? render::ChunkBuilder::GpuList : render::ChunkBuilder::Cpu;
+        } else if (a == "--bin-px") {
+            std::uint32_t n = 0;
+            ok = parse(v, n) && n > 0;
+            o.bin_px = n;
         } else if (a == "--island") {
             std::size_t n = 0;
             ok = parse(v, n);
@@ -1692,6 +1811,17 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = v == "legacy" || v == "flow";
             o.river_flow =
                 v == "legacy" ? render::RiverFlowMode::Legacy : render::RiverFlowMode::Flow;
+        } else if (a == "--cost-frames") {
+            ok = parse(v, o.cost_frames) && o.cost_frames > 0;
+        } else if (a == "--cost-png") {
+            o.cost_png = std::string(v);
+        } else if (a == "--fluid-cells-per-px") {
+            double x = 0.0;
+            ok = parse(v, x) && x >= 0.0;
+            o.fluid_cells = x;
+        } else if (a == "--wave-sim") {
+            ok = v == "on" || v == "off";
+            o.wave_sim = v == "on";
         } else if (a == "--wave-fade-hold") {
             ok = parse(v, o.wave_fade_hold) && o.wave_fade_hold >= 0.0 && o.wave_fade_hold <= 1.0;
         } else if (a == "--zoom-sweep") {
@@ -1984,12 +2114,20 @@ int main(int argc, char** argv) {
         if (o->stand_ins) {
             limits.stand_ins = *o->stand_ins;
         }
+        if (o->wave_sim) {
+            limits.wave_simulation = *o->wave_sim;
+        }
+        if (o->fluid_cells) {
+            limits.fluid_max_cells_per_px = *o->fluid_cells;
+        }
         auto f = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
         if (!f) {
             std::fprintf(stderr, "GPU: %s\n", f.error().c_str());
             return 1;
         }
         frame_gpu = std::move(f).value();
+        std::fprintf(stderr, "wave simulation bound: %.3f cells per screen pixel (0 = none)\n",
+                     frame_gpu->fluid_max_cells_per_px());
         // The viewer's window is open for seconds before the first zoom: wait
         // (5 s at most) for the background plane pre-creation, so the benchmark
         // sees the state of a window that has been idle.
@@ -2023,7 +2161,7 @@ int main(int argc, char** argv) {
         for (const auto& pt : o->scale_cost) {
             scene.sea(pt.group);
         }
-        return scale_cost(scene, *o, *frame_gpu, largest);
+        return scale_cost(scene, *o, *frame_gpu, largest, file.stem().string());
     }
 #endif
     for (const auto& [w, h] : o->resolutions) {
@@ -2037,6 +2175,8 @@ int main(int argc, char** argv) {
                             return 1;
                         }
                         Config c;
+                        c.chunk_builder = o->chunk_builder;
+                        c.bin_px = o->bin_px;
                         c.w = w;
                         c.h = h;
                         c.group = group;

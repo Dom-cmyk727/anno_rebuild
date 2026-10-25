@@ -104,6 +104,14 @@ std::string World::check_invariants() const {
                    "ids.next_event_seq " + std::to_string(ids_.next_event_seq);
         }
     }
+    // The script timers and the monopoly table (stage S12).
+    problem = validate_timers(timers_, config_);
+    if (problem.empty()) {
+        problem = validate_monopoly(monopoly_, config_);
+    }
+    if (!problem.empty()) {
+        return problem;
+    }
     // Footprints, then the derived indexes (the second reads what the first
     // guarantees).
     for (std::size_t i = 0; i < islands_.size(); ++i) {
@@ -124,11 +132,13 @@ std::string World::check_invariants() const {
             return "islands[" + std::to_string(i) + "]." + problem;
         }
     }
-    // The counters of figures out equal the figures that refer to them: the tick
-    // raises the counter, the merge creates the figure (docs/sim/state.md §7.2).
+    // The counters of figures out equal the figures that still have that home: the
+    // tick raises the counter, the merge creates the figure (docs/sim/state.md §7.2),
+    // and the figure's end releases it and clears its home (end_figure, D 0x1003b6e0),
+    // so a figure waiting on the expiry list is not counted.
     std::map<std::pair<BuildingId, std::uint32_t>, std::uint32_t> held;
     for (const std::optional<Figure>& f : figures_.list.slots) {
-        if (f.has_value()) {
+        if (f.has_value() && f->home.valid()) {
             ++held[{f->home, f->home_counter}];
         }
     }
@@ -164,6 +174,14 @@ std::string World::check_invariants() const {
                 }
             }
         }
+    }
+    // F24 (stage S12), last so that it hides no structural fact: the last advance's event
+    // dispatch stopped at Rules::events_max_dispatch with a due event left (a game never
+    // reaches the cap). This reads the advance's output, not state: a save and load of
+    // the world, or the next advance, clears it.
+    if (out_.events_capped) {
+        return "events: the last advance stopped its dispatch at Rules::events_max_dispatch (" +
+               std::to_string(rules_.events_max_dispatch) + ") with a due event left";
     }
     return {};
 }

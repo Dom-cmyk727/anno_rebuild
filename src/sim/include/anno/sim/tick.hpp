@@ -31,6 +31,8 @@
 
 namespace anno::sim {
 
+struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
+
 /// The players as a tick sees them: read-only, and deliberately without a money
 /// accessor (money changes only through Effects::money, merged by the world, so
 /// that no island tick can read a balance that a serial phase is about to
@@ -142,6 +144,13 @@ struct TickContext {
     IslandsView islands;
     DrawSource& draw;
     const Seams& seams;
+    /// Diagnostic sink for the transport search (task T29, measurement only; not sim
+    /// state, not hashed, not drawn). Default null: the sim and every caller leave it
+    /// so and the test routes it from World::set_transport_stats, which Scheduler::
+    /// advance copies into every context it builds. Single-threaded today; must stay
+    /// null if island ticks ever run in parallel (stage S16): a concurrent write
+    /// across islands would race on the std::map and the counters.
+    TransportStats* transport_stats = nullptr;
 };
 
 /// A figure a building asks for. The building's own counter was already raised in
@@ -156,11 +165,16 @@ struct SpawnRequest {
     FixedPos pos;
 };
 
-/// A figure ended: the named counter of its home building goes down by one (if the
-/// building still exists and the counter is above 0).
+/// A counter of figures out goes down by one (if the building still exists and the
+/// counter is above 0). With `figure` valid the release goes through the figure, as
+/// the original's unit slot +0x110 = 0x1003b6e0 does: the figure's own home and counter
+/// are released and its home becomes none, and a figure that is gone or has no home
+/// any more releases nothing (`home` / `home_counter` are then not read). That is the
+/// release a behaviour seam asks for; end_figure's own release names the building.
 struct ReleaseCounter {
     BuildingId home;
     std::uint32_t home_counter = 0;
+    FigureId figure;
 };
 
 /// A change of a player's money (i64; saturating at the ends of the type).
@@ -206,6 +220,19 @@ struct Deliver {
     CityRef city;
 };
 
+/// A change of one of a building's goods stores, which the transport body computed
+/// from the state it read (T24: the reservations and the load of a cart, docs/re/
+/// transport.md §1.4): `delta_88` is added to the store `index` of `store` and the
+/// result clamped to 0 .. 0xFFFFFFFF. A building that is gone or a store it does not
+/// have changes nothing.
+struct StoreDelta {
+    enum class Store : std::uint8_t { Output, Reserved, Input };
+    BuildingId building;
+    Store store = Store::Output;
+    std::uint32_t index = 0;
+    std::int64_t delta_88 = 0;
+};
+
 enum class SimEventKind : std::uint8_t {
     StatusMessage,
     Notice,
@@ -220,7 +247,9 @@ enum class SimEventKind : std::uint8_t {
 /// kind uses: StatusMessage {player = the city owner, building, code = Status};
 /// Notice {player, building, code = the message id}; BlockedChanged {player,
 /// building, code = 1 blocked / 0 free, x, y}; FigureSpawned {player, building =
-/// the home, figure, code = the figure kind, x, y = the tile}.
+/// the home, figure, code = the figure kind, x, y = the tile}; Event15a {code =
+/// 0x15a, x, y = the centre tile of the island the 7.5 minute event hit; player,
+/// building and figure stay invalid}; TimerExpired {code = the timer index}.
 struct SimEvent {
     SimEventKind kind = SimEventKind::StatusMessage;
     std::uint64_t tick = 0;
@@ -233,7 +262,7 @@ struct SimEvent {
 
 /// Filled by an island tick or a serial-phase seam, merged by the world (§5.3). Merge
 /// order inside one buffer: spawns, releases, money, goods_moves, reserves,
-/// deliveries, events, ui; each vector in order.
+/// deliveries, store_deltas, events, ui; each vector in order.
 struct Effects {
     std::vector<SpawnRequest> spawns;
     std::vector<ReleaseCounter> releases;
@@ -241,6 +270,7 @@ struct Effects {
     std::vector<GoodsMove> goods_moves;
     std::vector<Reserve> reserves;
     std::vector<Deliver> deliveries;
+    std::vector<StoreDelta> store_deltas;
     std::vector<EnqueueEvent> events;
     std::vector<SimEvent> ui;
     /// Telemetry: the draws the call made, per site (the world fills it).
@@ -296,6 +326,17 @@ class SerialWorld {
     [[nodiscard]] const Figure* find_figure(FigureId id) const {
         return anno::sim::find_figure(figures_, id);
     }
+    /// The figure registry (const): the transport sums a workshop's carriers' loads.
+    [[nodiscard]] const FigureRegistry& figures() const { return figures_; }
+    /// The list layout of the world's configuration.
+    [[nodiscard]] const ListLayout& layout() const { return layout_; }
+    /// Ends the figure a behaviour seam is ticking (end_figure on its fields: the
+    /// release goes into `fx`, home none, the stamp u16(t)); the registry appends it to
+    /// the expiry list after the seam returns (sync_figure_lists). Returns false when the
+    /// figure had ended already.
+    bool end_figure(Figure& figure, std::uint32_t t) {
+        return anno::sim::end_figure(figure, t, fx);
+    }
     [[nodiscard]] const PlayerTable& players() const { return players_; }
 
     /// The buffer the seam writes its consequences to.
@@ -318,6 +359,13 @@ struct SimOutput {
     std::vector<DrawRecord> draws;
     /// The PRNG cursor before the first and after the last draw of the advance.
     std::uint32_t rng_cursor_before = 0, rng_cursor_after = 0;
+    /// The timed events the advance dispatched (both passes of Rules::
+    /// events_flush_after_figures together).
+    std::uint64_t events_dispatched = 0;
+    /// True when a dispatch pass of the advance stopped at Rules::events_max_dispatch
+    /// with a due event left in the queue (F24, pop_due): a game never reaches the cap,
+    /// so World::check_invariants reports it until the next advance.
+    bool events_capped = false;
 };
 
 } // namespace anno::sim

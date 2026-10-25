@@ -285,13 +285,22 @@ std::uint16_t wire_type(const Body& body) {
     return std::visit(Type{}, body);
 }
 
-formats::Result<std::vector<std::uint8_t>, std::string> encode_record(const Body& body) {
+bool has_wire_form(const Body& body) {
     if (const auto* legacy = std::get_if<LegacyRawCmd>(&body);
         legacy != nullptr && is_native_wire_type(legacy->type)) {
-        return std::string("LegacyRaw: the type is a native wire type");
+        return false;
     }
-    if (payload_size(body) > kMaxRecordPayload) {
-        return std::string("record payload longer than 65535 bytes");
+    return payload_size(body) <= kMaxRecordPayload;
+}
+
+formats::Result<std::vector<std::uint8_t>, std::string> encode_record(const Body& body) {
+    // One rule for the recorder, the session drivers and the encoder: has_wire_form;
+    // the message names which of its two refusals applies.
+    if (!has_wire_form(body)) {
+        const auto* legacy = std::get_if<LegacyRawCmd>(&body);
+        return std::string(legacy != nullptr && is_native_wire_type(legacy->type)
+                               ? "LegacyRaw: the type is a native wire type"
+                               : "record payload longer than 65535 bytes");
     }
     PayloadWriter w;
     std::visit(w, body);
@@ -364,6 +373,46 @@ formats::Result<TurnEntry, std::string> decode_turn_entry(std::span<const std::u
     e.seq = formats::u32_le(bytes, 4);
     e.command.body = std::move(body).value();
     return e;
+}
+
+formats::Result<std::size_t, std::string> record_size(std::span<const std::uint8_t> bytes) {
+    if (bytes.size() < kHeaderSize) {
+        return at("record shorter than its header", bytes.size());
+    }
+    const std::uint16_t len = formats::u16_le(bytes, 2);
+    const std::size_t total = kHeaderSize + std::size_t{len};
+    if (total > bytes.size()) {
+        return at("record length beyond the input", bytes.size());
+    }
+    return total;
+}
+
+formats::Result<std::size_t, std::string> decode_turn(std::span<const std::uint8_t> bytes,
+                                                      std::vector<TurnEntry>& out) {
+    // A turn entry is {u32 issuer, u32 seq, ClientRecord}: the issuer/seq header
+    // (8 bytes) in front of a length-framed record. record_size frames the record,
+    // so the version read and the per-record framing live in one place.
+    enum : std::size_t { kEntryHeader = 8 };
+    std::size_t count = 0;
+    std::span<const std::uint8_t> rest = bytes;
+    while (!rest.empty()) {
+        if (rest.size() < kEntryHeader) {
+            return at("turn entry shorter than its header", rest.size());
+        }
+        const auto rs = record_size(rest.subspan(kEntryHeader));
+        if (!rs.ok()) {
+            return rs.error();
+        }
+        const std::size_t entry_size = kEntryHeader + rs.value();
+        auto entry = decode_turn_entry(rest.first(entry_size));
+        if (!entry.ok()) {
+            return entry.error();
+        }
+        out.push_back(std::move(entry).value());
+        rest = rest.subspan(entry_size);
+        ++count;
+    }
+    return count;
 }
 
 } // namespace anno::sim

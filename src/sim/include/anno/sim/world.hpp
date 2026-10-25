@@ -35,9 +35,12 @@
 #include <anno/sim/seams.hpp>
 #include <anno/sim/settings.hpp>
 #include <anno/sim/tick.hpp>
+#include <anno/sim/timers.hpp>
 #include <anno/sim/types.hpp>
 
 namespace anno::sim {
+
+struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 
 // Development counter until the stream is complete (stage S15), then FROZEN
 // as 2 (the first released stream). Values 100, 101, ... are development
@@ -57,13 +60,33 @@ namespace anno::sim {
 // Stream at 105 (stage S7): new scope ids (after settings: u64 next_figure, u64
 // next_event_seq), new scopes figures (the FigureRegistry) and events (the timed-event
 // queue) after islands.
-inline constexpr std::uint32_t kStateHashVersion = 105;
+// Stream at 106 (stage S12): the ids scope gains u32 event750_acc, u32 monopoly.acc and
+// bool faulted; new scope timers_monopoly after events (the script timers and the
+// monopoly entries). advance() now also writes the figure registry's stamp and cursor.
+// Stream at 107 (stage S12 fix-up): Rules gains timer0_clamp (the header scope).
+// Stream at 108 (stage S13): the drought's city_mask is u64 count + u32 words
+// (ceil(city_slots / 32) words, O-55) instead of one u32.
+// Stream at 109 (task T22, OQ-131): the header's SimConfig gains figure_min_growth, the
+// figure record loses marked_for_delete and the figure registry its deferred list.
+// Stream at 110 (stage S14 stage 2): the header's SimConfig gains links (LinkTables, the
+// island-link selection's tables) and Rules gains island_candidate_order.
+// Stream at 111 (task T24, transport stage 1): the header's registry digest gains the
+// building types' entrance points and the figure types; the payloads gain the cart
+// reservations (Workshop, WeaponsWorkshop, SmallFarm per line, Farm and Mine one) and
+// the alternative Market (tag 6, carts_out); the figure record gains its stamp and
+// the transport state (docs/sim/state.md §4.9, §5.9).
+inline constexpr std::uint32_t kStateHashVersion = 111;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;
 /// The PRNG timeline: which original draw sites exist in the sim (docs/sim/
 /// state.md §6). Porting a site is a recorded bump, never a silent desync.
-inline constexpr std::uint32_t kPrngTimelineVersion = 1;
+/// Version 2 (S14 stage 2): the first load-time sites, the island-link selection's
+/// LinkRawMaterial, LinkOre, LinkTemplatePick, LinkSpecialMark and LinkTreasure
+/// (D AnnoScene 0x10009550), and the unported load sites LinkOrePlace,
+/// LinkNativeName, LinkTreasureKind, LinkTreasurePlace (0x10008490) and
+/// ComputerName (0x100025a0) in the manifest.
+inline constexpr std::uint32_t kPrngTimelineVersion = 2;
 
 struct StateIO;
 struct ScenarioSpec;
@@ -143,12 +166,21 @@ class World {
     /// The counters of the ids assigned in the serial merge (figures, event sequence
     /// numbers).
     [[nodiscard]] const IdCounters& ids() const { return ids_; }
-    /// The figure registry (stage S7: created by the merge of SpawnRequests; its tick
-    /// is stage S12).
+    /// The figure registry (stage S7: created by the merge of SpawnRequests; ticked by
+    /// advance since stage S12).
     [[nodiscard]] const FigureRegistry& figures() const { return figures_; }
-    /// The timed-event queue (stage S7: filled by the merge of EnqueueEvents; the
-    /// dispatch is stage S12).
+    /// The timed-event queue (stage S7: filled by the merge of EnqueueEvents;
+    /// dispatched by advance since stage S12).
     [[nodiscard]] const EventQueue& events() const { return events_; }
+    /// The script timers (stage S12; D: the SKTIMER object behind world +0x69c8).
+    [[nodiscard]] const ScriptTimers& timers() const { return timers_; }
+    /// The monopoly table with its accumulator (stage S12; D: world +4, +0xe8).
+    [[nodiscard]] const MonopolyTable& monopoly() const { return monopoly_; }
+    /// The 7.5 minute event's accumulator in ms (stage S12; D: world +0x69e4).
+    [[nodiscard]] std::uint32_t event750_acc() const { return event750_acc_; }
+    /// Whether a draw-guard violation was recorded (docs/sim/state.md §11, stage
+    /// S16). Hashed and saved; nothing sets it before S16, so it is always false.
+    [[nodiscard]] bool faulted() const { return faulted_; }
     /// What the last advance produced for the host (UI events of that advance, the
     /// draws per site, the PRNG cursor before and after). Not state, not hashed.
     [[nodiscard]] const SimOutput& last_output() const { return out_; }
@@ -163,6 +195,13 @@ class World {
     /// How many UI events were dropped for lack of capacity since the world was made
     /// (the per-advance list SimOutput::events is never dropped). Not state.
     [[nodiscard]] std::uint64_t events_dropped() const;
+    /// Routes a transport-stats sink into every TickContext Scheduler::advance builds
+    /// (task T29, measurement only; TransportStats declared in transport.hpp). Not
+    /// state, not hashed, not saved: the pointer is held in a non-state member and is
+    /// not restored by load. Default and test-only; the sim leaves it null.
+    void set_transport_stats(TransportStats* stats);
+    /// The currently installed transport-stats sink (nullptr by default). Not state.
+    [[nodiscard]] TransportStats* transport_stats() const;
     /// The island table, slot order (null slots are unused slots).
     [[nodiscard]] const std::vector<std::optional<Island>>& islands() const { return islands_; }
     /// The island whose rectangle holds the world tile (x, y), or nullptr. The
@@ -210,18 +249,21 @@ class World {
     /// (state_fields.hpp) and to bump kStateHashVersion, so it cannot be left
     /// outside hash and save (docs/sim/state.md §14.4).
     static constexpr void field_list_canary(const World& w) {
-        // host_events_ and out_ are the host-facing output, deliberately not in the
-        // field list (not state).
+        // host_events_, out_ and transport_stats_ are host-facing or diagnostic,
+        // deliberately not in the field list (not state).
         [[maybe_unused]] const auto& [clock_member, rng_member, settings_member, config_member,
                                       rules_member, seams_member, types_member, ids_member,
                                       players_member, islands_member, figures_member, events_member,
-                                      host_events_member, out_member] = w;
+                                      timers_member, monopoly_member, event750_acc_member,
+                                      faulted_member, host_events_member, out_member,
+                                      transport_stats_member] = w;
     }
 
     /// Advances the world by `game_ms` (original order, D: AnnoWelt.dll
-    /// 0x100ae040: islands, timed events, figures, players, timers, 30 s and
-    /// 7.5 min events; stage S7 has the islands (step 1, with the merge of their
-    /// effects) and the player table (step 4); steps 2, 3, 5, 6 and 7 are stage S12).
+    /// 0x100ae040, docs/sim/state.md §5.3): 1. the islands (with the merge of their
+    /// effects, stage S7), 2. the timed events (S12), 3. the figure registry (S12),
+    /// 4. the player table with the AI (S4, S8), 5. the script timers, 6. the monopoly
+    /// refresh and 7. the 7.5 minute event (S12).
     /// `game_ms` == 0 is not special-cased: the original adds 0 and still runs
     /// every subsystem. Returns the new tick.
     std::uint64_t advance(std::uint32_t game_ms);
@@ -265,9 +307,17 @@ class World {
     std::vector<std::optional<Island>> islands_;
     FigureRegistry figures_;
     EventQueue events_;
+    ScriptTimers timers_;
+    MonopolyTable monopoly_;
+    std::uint32_t event750_acc_ = 0;
+    bool faulted_ = false;
     // Not state (never hashed or saved): the host-facing output.
     HostEventQueue host_events_;
     SimOutput out_;
+    // Not state (not hashed, not saved): a transport-stats sink the T29 scenario test
+    // routes into every TickContext Scheduler::advance builds. Default null; nothing
+    // in the sim writes it.
+    TransportStats* transport_stats_ = nullptr;
 };
 
 } // namespace anno::sim

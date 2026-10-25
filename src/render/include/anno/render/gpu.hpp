@@ -30,6 +30,7 @@
 #include <vector>
 
 #include <anno/render/chunk_reduce.hpp>
+#include <anno/render/fluid.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/render/resample.hpp>
 #include <anno/render/scene.hpp>
@@ -131,6 +132,11 @@ struct GpuStats {
     std::size_t ships = 0;
     /// The coastal wave simulation ran for this frame (enhanced water).
     bool wave_simulation = false;
+    /// Its time steps recorded this frame, the cells of its window (size²) and the
+    /// window's cells per tile (0 = no window yet).
+    std::uint32_t fluid_steps = 0;
+    std::uint64_t fluid_cells = 0;
+    std::uint32_t fluid_cells_per_tile = 0;
     /// Visible chunks drawn from another zoom group's chunks because their own
     /// are not built or not uploaded yet (GpuLimits::stand_ins), and the parts
     /// (draws) they took.
@@ -157,6 +163,15 @@ struct GpuStats {
     /// and the cost tier the river shading ran at this frame.
     std::size_t river_chunks = 0;
     RiverQuality river_quality = RiverQuality::High;
+    /// GPU-built chunks (T11 stage 2a, ChunkBuilder::GpuList): chunks whose
+    /// objects and base planes were built by the compute pass this frame, chunks
+    /// that fell back to the CPU because their frames overflowed the atlas
+    /// budget (gpu-chunks.md 4.3 rule 5), atlas doublings copied this frame, and
+    /// the resident chunk-atlas memory in MiB.
+    std::size_t gpu_built_chunks = 0;
+    std::size_t chunks_cpu_fallback = 0;
+    std::size_t chunk_atlas_grows = 0;
+    double chunk_atlas_mb = 0;
 };
 
 /// Tuning of the compositor (Rust constants; data, PLAN §0.1).
@@ -288,6 +303,15 @@ struct GpuLimits {
     /// Run the coastal wave simulation for enhanced water (false: the
     /// shader's analytic waves, as the Rust compositor without it).
     bool wave_simulation = true;
+    /// The wave simulation's cells per screen pixel (along x) at most
+    /// (fluid::bounded_cells_per_tile, T14): its window covers the world area shown, so
+    /// at a continuous zoom below scale 1 its cells, and its GPU time, grow with that
+    /// area; above the bound the cells per tile are halved (coarser cells), and off
+    /// where one cell per tile is still denser. Default fluid::kDefaultMaxCellsPerPx
+    /// (0.25) on every adapter (owner decision OQ-130: the option that scales best in
+    /// dense late-game multiplayer; the unbounded window costs 42-106 ms per frame at the
+    /// far zoom points on the Radeon iGPU, docs/perf/README.md "T14"). 0 = no bound.
+    double fluid_max_cells_per_px = fluid::kDefaultMaxCellsPerPx;
     /// The cost tier of the river flow shading (docs/render/rivers.md 4 and 16).
     /// nullopt = automatic: High on a discrete adapter; on any other adapter the
     /// highest tier whose measured added cost over the legacy shimmer
@@ -305,9 +329,10 @@ struct GpuLimits {
     /// out the tiers not finished are unmeasured and the choice is Low (the floor), so
     /// a slow adapter never waits more than about this plus one pass. 0 = unlimited.
     double river_measure_budget_ms = 500.0;
-    /// Time the sea pass with GPU timestamps (GpuFrame::sea_pass_ms) when the
-    /// device supports them. Costs two query writes and a 16-byte copy per
-    /// frame; for benchmarks.
+    /// Time every pass with GPU timestamps (GpuFrame::sea_pass_ms, pass_gpu_ms)
+    /// when the device supports them. Costs two query writes and a resolve per pass,
+    /// a 1.5 KiB copy per frame, and the sea pass is split in two (GpuPassTimes; the
+    /// frame time within 0.1 ms of the unsplit one); for benchmarks.
     bool gpu_timing = false;
 };
 
@@ -340,6 +365,21 @@ inline constexpr std::size_t kChunkPlaneBytes = std::size_t{512} * 512 * (4 + 4 
     p.mb = static_cast<double>(p.chunks * kChunkPlaneBytes) / (1024.0 * 1024.0);
     return p;
 }
+
+/// GPU time per pass of one render() in milliseconds (GpuLimits::gpu_timing,
+/// GpuFrame::pass_gpu_ms), from timestamps the device writes at the start and end of
+/// each pass; nullopt for a pass that did not run in that frame (no wave-simulation step
+/// was due, no resample). With timing on, the sea pass is recorded as two passes: `sea`
+/// (the sea shading of the chunks) and `objects` (the water objects above the waterline,
+/// the cached objects and the ships, drawn over it); the picture is the same.
+struct GpuPassTimes {
+    /// The coastal wave simulation's compute pass (enhanced water), the terrain heights,
+    /// the ground and the water objects below the waterline (`under`), the sea, the
+    /// objects, the continuous zoom's resample onto the window.
+    std::optional<double> fluid, terrain, under, sea, objects, resample;
+    /// From the start of the first pass to the end of the last (gaps included).
+    std::optional<double> frame;
+};
 
 /// Values of the frame uniform (struct Frame in gpu.wgsl).
 struct FrameUniform {
@@ -414,6 +454,15 @@ using render::resampled_view;
 using render::ResampledView;
 using render::ResampleFilter;
 
+/// A chunk's objects and base planes read back from the GPU build
+/// (GpuFrame::build_chunk_planes): straight-alpha RGBA objects (w x h) and the
+/// R8 base plane (w x h bytes, empty when the chunk tracks no base).
+struct ChunkPlanes {
+    std::vector<Px> objects;
+    std::vector<std::uint8_t> base;
+    bool bases = false;
+};
+
 class GpuFrame {
   public:
     /// Pipelines for targets of `format` (a non-sRGB format: colours are
@@ -449,6 +498,9 @@ class GpuFrame {
     /// The tier the river flow shading runs at (GpuLimits::river_quality, or
     /// the automatic choice made in create()).
     [[nodiscard]] RiverQuality river_quality() const;
+    /// The wave simulation's bound in cells per screen pixel in use
+    /// (GpuLimits::fluid_max_cells_per_px; 0 = none).
+    [[nodiscard]] double fluid_max_cells_per_px() const;
     /// One line describing an automatic choice that was measured (adapter, gate,
     /// the added cost per tier, or that the budget ran out); empty when the tier
     /// was given or decided by the adapter type. For the caller to print.
@@ -472,14 +524,19 @@ class GpuFrame {
     std::vector<RiverCost> measure_river_cost(std::size_t repeats = 5,
                                               std::optional<double> stop_gate = std::nullopt,
                                               double budget_ms = 0.0);
-    /// GPU time of the sea pass of the last render() in milliseconds (needs
-    /// GpuLimits::gpu_timing and a device with timestamp queries; waits for
-    /// the GPU); nullopt otherwise.
+    /// GPU time of the sea pass of the last render() in milliseconds (the sea
+    /// shading and the objects drawn over it; needs GpuLimits::gpu_timing and a
+    /// device with timestamp queries; waits for the GPU); nullopt otherwise. Also
+    /// reads the frame's other passes (frame_gpu_ms, pass_gpu_ms).
     std::optional<double> sea_pass_ms();
     /// GPU time of the whole frame of the render() that the last sea_pass_ms()
     /// read: from the start of its first pass to the end of its last one (the
-    /// resample pass of a continuous zoom included). nullopt without a reading.
+    /// wave simulation's compute pass and the resample pass of a continuous zoom
+    /// included). nullopt without a reading. After measure_river_cost, its last
+    /// measured pass.
     [[nodiscard]] std::optional<double> frame_gpu_ms() const;
+    /// The same frame split by pass (GpuPassTimes). nullopt without a reading.
+    [[nodiscard]] std::optional<GpuPassTimes> pass_gpu_ms() const;
     /// An offscreen target of `w × h` in the frame's format that can be
     /// read back.
     std::pair<Texture, TextureView> offscreen_target(std::uint32_t w, std::uint32_t h) const;
@@ -494,6 +551,15 @@ class GpuFrame {
     /// For the exact-equality tests and tools; the viewer keeps derived chunks on
     /// the GPU. Waits for the GPU; nullopt if the pass could not be submitted.
     std::optional<Chunk> reduce_chunks_2x(const ChunkQuad& quad, Px open_water);
+    /// Builds a chunk's objects and base planes from its draw list on the GPU
+    /// (the binned compute pass, docs/render/gpu-chunks.md 5.1), making the
+    /// frames resident in the chunk atlas, and reads the planes back. The result
+    /// equals replay(draws, frames) (chunk_draws.hpp) bit for bit. For the
+    /// GPU = CPU tests and tools; the viewer keeps GpuList chunks on the GPU.
+    /// Waits for the GPU; nullopt if the compute pipeline could not be made or
+    /// the frames overflow the atlas budget (the caller then uses the CPU).
+    std::optional<ChunkPlanes> build_chunk_planes(const ChunkDraws& draws,
+                                                  const FrameTable& frames);
     /// The clock the chunk dissolves run on (GpuLimits::chunk_fade_ms), in
     /// milliseconds: by default a steady clock of the compositor's own, not
     /// render()'s animation time, which the viewer freezes on pause (a chunk

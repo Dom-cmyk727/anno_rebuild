@@ -72,6 +72,19 @@ std::string check_island_spec(const Spec::IslandSpec& is, std::size_t i, const S
             return cp + ".stock: " + std::to_string(cs.stock->size()) +
                    " entries, SimConfig.warehouse_goods is " + std::to_string(cfg.warehouse_goods);
         }
+        if (cs.goods.has_value() && cs.goods->size() != cfg.warehouse_goods) {
+            return cp + ".goods: " + std::to_string(cs.goods->size()) +
+                   " entries, SimConfig.warehouse_goods is " + std::to_string(cfg.warehouse_goods);
+        }
+        if (cs.build_goods.has_value() && cs.build_goods->size() != cfg.build_goods_count) {
+            return cp + ".build_goods: " + std::to_string(cs.build_goods->size()) +
+                   " entries, SimConfig.build_goods_count is " +
+                   std::to_string(cfg.build_goods_count);
+        }
+        if (cs.trade_lists.has_value() && cs.trade_lists->size() != cfg.trade_lists) {
+            return cp + ".trade_lists: " + std::to_string(cs.trade_lists->size()) +
+                   " lists, SimConfig.trade_lists is " + std::to_string(cfg.trade_lists);
+        }
         for (std::size_t b = 0; b < cs.buildings.size(); ++b) {
             const Spec::BuildingSpec& bs = cs.buildings[b];
             const std::string bp = cp + ".buildings[" + std::to_string(b) + "]";
@@ -209,8 +222,20 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
     for (const std::size_t k : order) {
         const Spec::CitySpec& cs = is.cities[k];
         City city = make_city(cs.no, cs.owner, cfg);
+        if (cs.capacity.has_value()) {
+            city.stock.capacity = *cs.capacity;
+        }
         if (cs.stock.has_value()) {
             city.stock.stock = *cs.stock;
+        }
+        if (cs.goods.has_value()) {
+            city.goods = *cs.goods;
+        }
+        if (cs.build_goods.has_value()) {
+            city.build_goods = *cs.build_goods;
+        }
+        if (cs.trade_lists.has_value()) {
+            city.trade_lists = *cs.trade_lists;
         }
         out.cities[cs.no.v] = std::move(city);
     }
@@ -330,17 +355,17 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
     w.settings_ = spec.settings;
     w.seams_ = std::move(seams);
     w.types_ = RegistryRef(std::move(types));
-    if (spec.rng_table.has_value()) {
-        std::optional<WorldRng> r = WorldRng::from_table(*spec.rng_table, spec.seed);
-        if (!r.has_value()) {
-            return std::string("rng_table: must not be empty");
-        }
-        w.rng_ = std::move(*r);
-    } else {
-        w.rng_.set_cursor(spec.seed);
+    std::optional<WorldRng> rng = scenario_rng(spec);
+    if (!rng.has_value()) {
+        return std::string("rng_table: must not be empty");
     }
+    w.rng_ = std::move(*rng);
     w.players_ = make_player_table(w.config_);
     w.figures_ = make_figure_registry(w.config_);
+    // §10 step 2: the monopoly entries sized from the configuration and empty, the
+    // script timers stopped at 0.
+    w.timers_ = make_script_timers(w.config_);
+    w.monopoly_ = make_monopoly_table(w.config_);
     for (const Spec::PlayerSpec& ps : spec.players) {
         Player p = make_player(ps.id, w.config_);
         p.kind = ps.kind;
@@ -385,6 +410,15 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         return problem;
     }
     return w;
+}
+
+std::optional<WorldRng> scenario_rng(const ScenarioSpec& spec) {
+    if (spec.rng_table.has_value()) {
+        return WorldRng::from_table(*spec.rng_table, spec.seed);
+    }
+    WorldRng rng;
+    rng.set_cursor(spec.seed);
+    return rng;
 }
 
 } // namespace anno::sim

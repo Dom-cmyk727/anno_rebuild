@@ -107,7 +107,7 @@ Ignition, spread, flame variant, damage and timers use only integer arithmetic a
 | `LOGIC` 0x00–0x0c | 4 × f32 | `+0x34, +0x30, +0x38, +0x3c` (≤ 0 → 1, 1, 4, 4) | slot `+0x64(2, 1, 3, 4)` | f0 6.0–8.0 on sailing ships, 1.0 otherwise |
 | `LOGIC` 0x11 | u8 | `+0xf2` as `value << 8` | slot `+0x84` | 50 (**likely** tons per hold, ×256) |
 | `LOGIC` 0x12, 0x27, 0x24, 0x25, 0x28 | u8 / 8 | `+0x14, +0x18 (≥ +0x14), +0x1c, +0x24 (0 → 7), +0x28 (0 → 2)` | slot `+0x68(0, 1, 2, 4, 5)` | 8, 8, 0, 16, 5 |
-| `LOGIC` 0x13, 0x14 | u8 | `+0xf6, +0xf7` | slot `+0x88(0/1)` | e.g. 1501: 4, 12; 1503: 8, 3 (**guess**: cargo holds, cannons) |
+| `LOGIC` 0x13, 0x14 | u8 | `+0xf6, +0xf7` | slot `+0x88(0/1)` | e.g. 1501: 4, 12; 1503: 8, 3. 0x13 is **likely** the cargo holds. 0x14 is **likely** the unit slots: the troops a ship carries, and on war machines the crews (catapult 2, cannon 1, mortar 1, siege tower 2, as in the manual; `docs/research/manual-and-help.md` §1.4) |
 | `LOGIC` 0x15 | u8 | `+0x101` | slot `+0x94(2)` | 10–25 |
 | `LOGIC` 0x16 | u16 | `+0xf4` | slot `+0x94(1)` | 1500–4000 |
 | `LOGIC` 0x1e | u16 | `+0xea` | slot `+0x90` | 6000–14000: **maximum hit points** (§3.2) |

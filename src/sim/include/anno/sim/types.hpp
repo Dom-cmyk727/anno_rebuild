@@ -38,7 +38,9 @@ enum class TickKind : std::uint8_t {
     Farm,
     FurTrapper,
     Mine,
-    SmallFarm
+    SmallFarm,
+    /// The market and the Kontor (D 0x1006b6d0, T24): the cart send.
+    Market
 };
 
 /// The runtime class of a building by PRODTYPE (D: byte table 0x1002528c, jump
@@ -81,7 +83,8 @@ enum class PayloadTag : std::uint8_t {
     WeaponsWorkshop = 2,
     Farm = 3,
     SmallFarm = 4,
-    Mine = 5
+    Mine = 5,
+    Market = 6
 };
 
 struct ClassInfo {
@@ -112,6 +115,44 @@ struct CostEntry {
     GoodsId goods = 0;
     std::uint32_t amount_88 = 0;
 };
+
+/// An entrance point of a building type in sixths of a tile from the type's
+/// north-west corner at rotation 0 (D: AnnoGame.dll 0x10009a48-0x10009aa8, the
+/// ANLAGEN record ENTRANCE: length / 8 points of two f32, x then y, at type +0x1a8,
+/// count +0x67; P: every point lies on a sub-cell centre k/6 with k odd,
+/// docs/re/transport.md §3). The searcher's goals of a building (0x10072be0) and a
+/// figure's start (0x1003acc0) are these points rotated by AnnoGame 0x100084c0
+/// (rotated_entrance in transport.hpp).
+struct EntrancePoint {
+    std::uint32_t x6 = 0, y6 = 0;
+};
+
+/// A figure type of FigurenHeader.dat as the transport reads it (D: AnnoGame.dll
+/// 0x1000fe00 into the type object, vtable 0x10021d10; docs/re/transport.md §1, §4).
+/// Integers only: the f32 values of the file are converted once at load, in double
+/// precision as the production floats are (docs/re/production.md §8).
+struct FigureType {
+    std::uint32_t id = 0;
+    /// The walking speed per tick in 2^-24 tile: round(f32 HEAD byte 4 · 0.2f · 2^24)
+    /// (the type's +0x10, D 0x1000fb10, times the figure tick's time scale 0.2f,
+    /// 0x100c3270; the original multiplies in x87 per call, OQ-162). P: the market
+    /// cart 220, 0.016, gives 53687.
+    std::uint32_t speed_q24 = 0;
+    /// LOGIC[0x11] << 8 (type +0xf2, slot +0x84 = 0x1000fb50): the load a figure
+    /// reserves and takes (docs/re/transport.md §1.1, §1.2).
+    std::uint32_t capacity_88 = 0;
+    /// LOGIC[0x10] (type +0xff, slot +0xac = 0x1000faf0): the searcher's walking layer
+    /// (what a layer allows is open, OQ-160).
+    std::uint32_t layer = 0;
+    /// The load step's wait in ticks: the LOGIC f32 at byte 4 (1.0 when not above 0,
+    /// 0x100101f4-0x10010211, type +0x30) at the wait rate 0.01 (0x10035260) and the
+    /// time scale 0.2: round(500 · v) (OQ-162).
+    std::uint32_t load_ticks = 0;
+};
+
+/// The HEAD flag word bit of a road or bridge (type +0x12, HEAD u16 [0x1c];
+/// docs/re/production.md §2.3; P: 35 of the 921 types).
+inline constexpr std::uint32_t kRoadFlag = 0x4000;
 
 struct BuildingType {
     TypeId id;
@@ -146,9 +187,21 @@ struct BuildingType {
     /// shorter records zero-filled, D 0x10009334): kept whole, never read (the
     /// bytes without a known consumer are O-21).
     std::vector<std::uint8_t> head_raw;
+    /// The ENTRANCE points in file order (empty when the entry has none: P 595 of 921).
+    std::vector<EntrancePoint> entrances;
     bool has_prod = false;
     /// Valid when has_prod.
     ProductionType prod;
+    /// DERIVED, not file state: the walk class of the tile this type occupies for the
+    /// transport search (0 = does not block, 1 = road, 2 = a building). Computed in
+    /// TypeRegistry::finish from `flags_word & kRoadFlag` (road) and
+    /// `layout.list_for(prodtype)` (a building occupies its footprint) — the rule of
+    /// TileTest in transport.cpp, moved to a per-type field (task T27). It is NOT in
+    /// `fields()` and NOT in the registry digest (types_test "registry digest stable"
+    /// pins the digest; "registry digest changes with every field" leaves it out). Like
+    /// `cls`, which IS hashed, it depends on the layout the registry was built with, not
+    /// only on the parsed file.
+    std::uint8_t walk_class = 0;
 };
 
 /// The immutable type data of a world.
@@ -158,6 +211,11 @@ class TypeRegistry {
 
     /// nullptr = unknown id: commands fail closed (F4).
     [[nodiscard]] const BuildingType* find(TypeId) const;
+    /// The figure type with this FigurenHeader id; nullptr when the registry has none
+    /// (a registry built without FigurenHeader.dat has no figure types).
+    [[nodiscard]] const FigureType* find_figure_type(std::uint32_t id) const;
+    /// All figure types in ascending id order.
+    [[nodiscard]] std::span<const FigureType> figure_types() const { return figure_types_; }
     /// The class table entry of `cls`. A value outside the enum (a registry is
     /// built with exactly RuntimeClass::Count_ entries) gives the first entry.
     [[nodiscard]] const ClassInfo& class_info(RuntimeClass) const;
@@ -180,7 +238,8 @@ class TypeRegistry {
     /// build() refuses.
     [[nodiscard]] static std::uint64_t digest_of(std::span<const BuildingType> types,
                                                  std::span<const GoodsInfo> goods,
-                                                 std::span<const ClassInfo> classes);
+                                                 std::span<const ClassInfo> classes,
+                                                 std::span<const FigureType> figures = {});
     /// Whether the registry fits a configuration (docs/sim/state.md §4.4, §9.6):
     /// the checks of build() that depend on `cfg` (the build cost goods lie in
     /// SimConfig::build_goods_first .. + build_goods_count, service masks fit
@@ -210,6 +269,12 @@ class TypeRegistry {
     static formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
     build(std::span<const formats::figuren::Entry> entries, std::vector<GoodsInfo> goods_in,
           const SimConfig& cfg);
+    /// build() plus the figure types of FigurenHeader.dat (FIGUREN/ENTRY: HEAD and
+    /// LOGIC, figure_type_from_entry); a duplicate figure id or a HEAD shorter than 8
+    /// bytes is a load error naming the entry.
+    static formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
+    build(std::span<const formats::figuren::Entry> entries, std::vector<GoodsInfo> goods_in,
+          const SimConfig& cfg, std::span<const formats::figuren::Entry> figure_entries);
 
     /// A registry without types (the original goods and class tables): what a
     /// default-constructed World holds. Shared, immutable.
@@ -222,9 +287,11 @@ class TypeRegistry {
     /// Sorts, checks and seals a set of types (shared by build() and the Builder).
     static formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
     finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
-           std::vector<ClassInfo> classes, const SimConfig& cfg);
+           std::vector<ClassInfo> classes, const SimConfig& cfg,
+           std::vector<FigureType> figures = {});
 
-    std::vector<BuildingType> types_; // ascending id; lookup by binary search
+    std::vector<BuildingType> types_;      // ascending id; lookup by binary search
+    std::vector<FigureType> figure_types_; // ascending id
     std::vector<GoodsInfo> goods_;
     std::vector<ClassInfo> classes_;
     std::uint32_t max_footprint_ = 1;
@@ -304,6 +371,26 @@ class TypeRegistry::Builder {
     /// MINE producing `output` at `rate` per step.
     Builder& add_mine(TypeId id, std::string_view output, std::uint32_t rate,
                       std::uint32_t cap_tons);
+    /// A market (PRODTYPE 34 MARKT, class Market) with figure group 0 = one figure
+    /// type `cart` and at most `max_carts` out, action radius `radius`, footprint w x h,
+    /// and the output capacity 5 t of every shipped market type (P).
+    Builder& add_market(TypeId id, std::uint32_t cart, std::uint32_t max_carts,
+                        std::uint32_t radius, std::uint32_t w = 3, std::uint32_t h = 3);
+    /// Sets the entrance points of the type added last with this id.
+    Builder& entrances(TypeId id, std::vector<EntrancePoint> points);
+    /// Sets the footprint of the type added last with this id.
+    Builder& footprint(TypeId id, std::uint32_t w, std::uint32_t h);
+    /// Sets the action radius (HEAD[0x11], type +0x65) of the type added last with this
+    /// id: the area of its figures' search (docs/re/transport.md §1.1).
+    Builder& action_radius(TypeId id, std::uint32_t radius);
+    /// Sets the HEAD flag word (+0x12, HEAD u16 [0x1c]) of the type added last with
+    /// this id: 0x4000 marks a road or bridge (docs/re/production.md §2.3).
+    Builder& flags_word(TypeId id, std::uint32_t flags);
+    /// Sets the figure ids of figure group 0 (PROD3 0x32, the first `figure_type_count[0]`
+    /// entries) of the production type added last with this id.
+    Builder& figure_ids(TypeId id, std::vector<std::uint32_t> ids);
+    /// Adds a figure type.
+    Builder& figure_type(FigureType type);
 
     /// Seals the registry. Errors: a duplicate id, a goods name that did not
     /// resolve, a class table that does not have RuntimeClass::Count_ entries,
@@ -317,7 +404,10 @@ class TypeRegistry::Builder {
                                  std::string_view output1, std::string_view input0,
                                  std::string_view input1);
 
+    BuildingType* last_with(TypeId id);
+
     std::vector<BuildingType> types_;
+    std::vector<FigureType> figures_;
     std::vector<GoodsInfo> goods_;
     std::vector<ClassInfo> classes_;
     SimConfig cfg_;

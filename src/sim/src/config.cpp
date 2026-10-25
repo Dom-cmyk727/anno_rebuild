@@ -20,6 +20,114 @@ std::string bad(const char* owner, const char* field, const std::string& what) {
 
 } // namespace
 
+// ---- LinkTables
+
+std::vector<std::uint8_t> LinkTables::original_ore_exclusion() {
+    // D AnnoScene 0x10009130: kind k is refused for a link that has ore e when the byte at
+    // 0x1003AF40 + 7·k + e is 0xFF (a 7-byte stride read 9 wide). The bytes from 0x1003AF40
+    // give, row k = the kind to place, column e = a kind the link has (1 = refused):
+    return {
+        1, 0, 0, 0, 0, 0, 0, 0, 1, // k 0: e 0, 8
+        0, 1, 1, 1, 1, 1, 1, 0, 0, // k 1: e 1..6
+        0, 0, 1, 0, 0, 0, 0, 1, 1, // k 2: e 2, 7, 8
+        1, 1, 1, 1, 1, 1, 1, 0, 1, // k 3: e 0..6, 8
+        0, 1, 1, 1, 1, 1, 1, 0, 0, // k 4: e 1..6
+        0, 0, 1, 0, 0, 1, 0, 0, 1, // k 5: e 2, 5, 8
+        0, 1, 1, 1, 1, 1, 1, 0, 0, // k 6: e 1..6
+        0, 0, 0, 0, 0, 0, 0, 0, 0, // k 7: none (no 0xFF in 0x1003AF71..0x1003AF79)
+        0, 0, 0, 0, 0, 0, 0, 0, 0, // k 8: none
+    };
+}
+
+namespace {
+
+/// `n` copies of one row of four widths.
+void rank_rows(std::vector<std::uint32_t>& out, std::size_t n, std::uint32_t a, std::uint32_t b,
+               std::uint32_t c, std::uint32_t d) {
+    for (std::size_t i = 0; i < n; ++i) {
+        out.insert(out.end(), {a, b, c, d});
+    }
+}
+
+} // namespace
+
+std::vector<std::uint32_t> LinkTables::original_raw_width_rank() {
+    // D AnnoScene 0x1003AF74 + 16·round (u32 widths; read at 0x10009210–0x10009224).
+    std::vector<std::uint32_t> t;
+    rank_rows(t, 1, 256, 128, 0, 0);    // round 0
+    rank_rows(t, 1, 256, 128, 80, 80);  // round 1
+    rank_rows(t, 4, 80, 128, 256, 64);  // rounds 2..5
+    rank_rows(t, 19, 64, 80, 128, 256); // rounds 6..24
+    return t;
+}
+
+std::vector<std::uint32_t> LinkTables::original_ore_width_rank() {
+    // D AnnoScene 0x1003B144 + 16·round (read at 0x10009400–0x10009429).
+    std::vector<std::uint32_t> t;
+    rank_rows(t, 1, 256, 128, 0, 0);    // round 0
+    rank_rows(t, 1, 256, 128, 80, 80);  // round 1
+    rank_rows(t, 13, 128, 256, 80, 64); // rounds 2..14
+    rank_rows(t, 10, 64, 80, 128, 256); // rounds 15..24
+    return t;
+}
+
+std::string LinkTables::validate() const {
+    constexpr const char* kOwner = "LinkTables";
+    if (raw_kinds == 0 || raw_kinds > 32) {
+        return bad(kOwner, "raw_kinds", "must be 1..32 (a shift count into a u32 mask)");
+    }
+    const std::pair<const char*, std::uint32_t> non_zero[] = {{"ore_kinds", ore_kinds},
+                                                              {"rounds", rounds},
+                                                              {"best_list_cap", best_list_cap},
+                                                              {"pick_list_cap", pick_list_cap}};
+    for (const auto& [name, value] : non_zero) {
+        if (value == 0) {
+            return bad(kOwner, name, "must be non-zero");
+        }
+    }
+    if (ore_mask_bit.size() != ore_kinds) {
+        return bad(kOwner, "ore_mask_bit", "needs ore_kinds entries");
+    }
+    for (const std::uint32_t b : ore_mask_bit) {
+        if (b >= 32) {
+            return bad(kOwner, "ore_mask_bit", "an entry is not below 32");
+        }
+    }
+    for (const std::uint32_t m : ore_climate_mask) {
+        if (m > 0xff) {
+            return bad(kOwner, "ore_climate_mask",
+                       "an entry is above 0xFF (the original tests a byte)");
+        }
+    }
+    if (static_cast<std::uint64_t>(ore_exclusion.size()) !=
+        static_cast<std::uint64_t>(ore_kinds) * ore_kinds) {
+        return bad(kOwner, "ore_exclusion", "needs ore_kinds x ore_kinds entries");
+    }
+    // The original adds the score bonuses in a byte (raw: + 1, 0x10009236; ore: + 2,
+    // 0x10009449 and 0x1000946c): scores that stay below 256 keep that sum exact.
+    const std::pair<const char*, const std::vector<std::uint32_t>*> scores[] = {
+        {"raw_rank_score", &raw_rank_score}, {"ore_rank_score", &ore_rank_score}};
+    for (const auto& [name, s] : scores) {
+        if (s->empty()) {
+            return bad(kOwner, name, "must not be empty");
+        }
+        for (const std::uint32_t v : *s) {
+            if (v > 253) {
+                return bad(kOwner, name, "an entry is above 253 (the original sums in a byte)");
+            }
+        }
+    }
+    if (static_cast<std::uint64_t>(raw_width_rank.size()) !=
+        static_cast<std::uint64_t>(rounds) * raw_rank_score.size()) {
+        return bad(kOwner, "raw_width_rank", "needs rounds x raw_rank_score entries");
+    }
+    if (static_cast<std::uint64_t>(ore_width_rank.size()) !=
+        static_cast<std::uint64_t>(rounds) * ore_rank_score.size()) {
+        return bad(kOwner, "ore_width_rank", "needs rounds x ore_rank_score entries");
+    }
+    return {};
+}
+
 // ---- ListLayout
 
 std::optional<ListId> ListLayout::list_for(std::uint32_t prodtype) const {
@@ -154,7 +262,10 @@ std::string SimConfig::validate() const {
         {"stat_decay_den", stat_decay_den},
         {"chunk_edge", chunk_edge},
         {"drought_steps", drought_steps},
-        {"drought_phases", drought_phases}};
+        {"drought_phases", drought_phases},
+        // The plateau needs at least one count: with 0 the counter would rest at 0, a
+        // value validate_islands refuses (counter < drought_plateau_count).
+        {"drought_plateau_count", drought_plateau_count}};
     for (const auto& [name, value] : non_zero) {
         if (value == 0) {
             return bad(kOwner, name, "must be non-zero");
@@ -168,6 +279,11 @@ std::string SimConfig::validate() const {
         return bad(kOwner, "list_min_growth",
                    "must be in 1.." + std::to_string(kListSizeBound) + ", is " +
                        std::to_string(list_min_growth));
+    }
+    if (!valid_list_min_growth(figure_min_growth)) {
+        return bad(kOwner, "figure_min_growth",
+                   "must be in 1.." + std::to_string(kListSizeBound) + ", is " +
+                       std::to_string(figure_min_growth));
     }
     if (!valid_list_initial_size(list_initial_size)) {
         return bad(kOwner, "list_initial_size",
@@ -238,6 +354,12 @@ std::string SimConfig::validate() const {
                    "must be at most 255 (the saved phase is a u8), is " +
                        std::to_string(drought_phases));
     }
+    if (drought_radius / chunk_edge > kMaxDroughtRing) {
+        return bad(kOwner, "drought_radius",
+                   "drought_radius / chunk_edge must be at most 2147483647 (the saved ring is an "
+                   "i32), is " +
+                       std::to_string(drought_radius / chunk_edge));
+    }
     if (drought_plateau_count > kMaxDroughtCounter) {
         return bad(kOwner, "drought_plateau_count",
                    "must be at most 65535 (the saved counter is a u16), is " +
@@ -287,6 +409,9 @@ std::string SimConfig::validate() const {
     }
     if (std::string p = layout.validate(); !p.empty()) {
         return p;
+    }
+    if (std::string p = links.validate(); !p.empty()) {
+        return "SimConfig.links: " + p;
     }
     if (city_pass_count > 64) {
         // A sanity bound for the seam vector (Seams::city_pass is sized from it).
@@ -346,6 +471,16 @@ std::string Rules::validate() const {
     }
     if (events_max_dispatch == 0) {
         return bad(kOwner, "events_max_dispatch", "must be at least 1");
+    }
+    if (island_candidate_order == IslandCandidateOrder::Cached) {
+        // The single-player original's InselCache.txt order is a property of the
+        // machine that wrote the cache; no cache is read (OQ-150).
+        return bad(kOwner, "island_candidate_order", "reserved: not implemented (OQ-150)");
+    }
+    if (island_candidate_order != IslandCandidateOrder::Sorted) {
+        return bad(kOwner, "island_candidate_order",
+                   "is not an enumerator (" +
+                       std::to_string(static_cast<std::uint8_t>(island_candidate_order)) + ")");
     }
     if (drought_random_centre) {
         // What a random centre is (which tiles, how many draws, which draw site) is the

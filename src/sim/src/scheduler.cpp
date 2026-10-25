@@ -1,5 +1,5 @@
-// World::advance, the island phase and the effect merge (docs/sim/state.md §5.3–
-// §5.8, §4.11, stage S7).
+// World::advance, the figure registry tick and the effect merge (docs/sim/state.md
+// §5.3, §5.7–§5.10, §4.11; stages S7 and S12). The island phase is island_tick.cpp.
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -17,173 +17,13 @@
 #include <anno/sim/player.hpp>
 #include <anno/sim/scheduler.hpp>
 #include <anno/sim/tick.hpp>
+#include <anno/sim/timers.hpp>
+#include <anno/sim/transport.hpp>
 #include <anno/sim/world.hpp>
 
+#include "scheduler_internal.hpp"
+
 namespace anno::sim {
-
-// ---------------------------------------------------------------------------
-// The island phase.
-
-void advance_sweep_cursor(std::uint32_t& x, std::uint32_t& y, std::uint32_t width,
-                          std::uint32_t height, std::uint32_t chunk_edge) {
-    // A3: x resets on every row wrap; y wraps at the bottom of the island. u64
-    // sums, so a hostile edge cannot wrap the u32.
-    const std::uint64_t nx = std::uint64_t{x} + chunk_edge;
-    if (nx >= width) {
-        x = 0;
-        const std::uint64_t ny = std::uint64_t{y} + chunk_edge;
-        y = ny >= height ? 0 : static_cast<std::uint32_t>(ny);
-    } else {
-        x = static_cast<std::uint32_t>(nx);
-    }
-}
-
-void object_manager_tick(const TickContext& ctx, Island& island, Effects& fx) {
-    // Only the stamp arithmetic is D (0x10095d40); the traversal is the stand-in of
-    // A10: the objects are the deposits in index order.
-    const std::uint64_t n = island.deposits.size();
-    const std::uint64_t count = visit_count(ctx.t, island.objmgr.stamp, n, ctx.cfg.objmgr_div);
-    const Seams::IslandPass body = ctx.seams.object_manager.fn;
-    for (std::uint64_t i = 0; i < count; ++i) {
-        if (body != nullptr) {
-            body(ctx.seams.object_manager.ctx, ctx, island, fx);
-        }
-        island.objmgr.cursor = static_cast<std::uint32_t>((island.objmgr.cursor + 1U) % n);
-    }
-    island.objmgr.stamp = static_cast<std::uint16_t>(ctx.t);
-}
-
-void building_scheduler(const TickContext& ctx, Island& island, City& city, Effects& fx) {
-    run_scheduled_lists(
-        city.index.lists, ctx.cfg.layout.schedule, city.index.stamp, ctx.t, ctx.cfg.building_div,
-        [&](ListId /*list*/, Building& b) { tick_building(ctx, island, city, b, fx); });
-}
-
-void city_tick(const TickContext& ctx, Island& island, City& city, Effects& fx) {
-    building_scheduler(ctx, island, city, fx);
-    for (const Seam<Seams::CityPass>& pass : ctx.seams.city_pass) {
-        if (pass.fn != nullptr) {
-            pass.fn(pass.ctx, ctx, island, city, fx);
-        }
-    }
-    city.tick_stamp = static_cast<std::uint16_t>(ctx.t);
-}
-
-void city_ring_tick(const TickContext& ctx, Island& island, Effects& fx) {
-    const std::uint64_t n = island.cities.size();
-    const std::uint64_t count = visit_count(ctx.t, island.ring.stamp, n, ctx.cfg.city_ring_div);
-    // A cursor at or beyond n is an inconsistent state (A8, validate_islands): nothing
-    // is visited then, and the stamp is still written.
-    if (island.ring.cursor < n) {
-        for (std::uint64_t i = 0; i < count; ++i) {
-            std::optional<City>& slot = island.cities[island.ring.cursor];
-            if (slot.has_value()) {
-                city_tick(ctx, island, *slot, fx);
-            }
-            island.ring.cursor = static_cast<std::uint32_t>((island.ring.cursor + 1U) % n);
-        }
-    }
-    island.ring.stamp = static_cast<std::uint16_t>(ctx.t);
-}
-
-bool start_drought_at(const SimConfig& cfg, Island& island, std::uint32_t x, std::uint32_t y,
-                      std::uint32_t radius, std::uint32_t t) {
-    if (cfg.city_slots > 32) {
-        return false;
-    }
-    Drought d;
-    d.x = x;
-    d.y = y;
-    d.target_ring = radius / cfg.chunk_edge;
-    d.ring = 0;
-    d.city_mask = 0;
-    d.phase = 0;
-    d.step = 0;
-    d.state = 1;
-    d.counter = 0;
-    d.stamp = static_cast<std::uint16_t>(t);
-    island.drought = d;
-    return true;
-}
-
-bool start_drought(const TickContext& ctx, Island& island) {
-    if (island.drought.has_value()) {
-        return false;
-    }
-    const ListId market = ctx.cfg.layout.roles.market_list;
-    for (const std::optional<City>& city : island.cities) {
-        if (!city.has_value() || market >= city->index.lists.size()) {
-            continue;
-        }
-        for (const std::optional<Building>& b : city->index.lists[market].slots) {
-            if (!b.has_value()) {
-                continue;
-            }
-            // Tile coordinates inside the world are non-negative (validate_islands);
-            // floor to the chunk edge.
-            const auto bx = static_cast<std::uint32_t>(b->x);
-            const auto by = static_cast<std::uint32_t>(b->y);
-            return start_drought_at(ctx.cfg, island, bx - bx % ctx.cfg.chunk_edge,
-                                    by - by % ctx.cfg.chunk_edge, ctx.cfg.drought_radius, ctx.t);
-        }
-    }
-    return false;
-}
-
-void event_300s(const TickContext& ctx, Island& island, Effects& /*fx*/) {
-    const std::uint32_t seconds = ctx.t / 500U;
-    const auto gate = static_cast<std::uint16_t>(seconds - island.event300_stamp);
-    if (gate < ctx.cfg.event300_gate_seconds) {
-        return; // the stamp stays
-    }
-    const auto stamp = static_cast<std::uint16_t>(seconds);
-    if (ctx.settings.drought_off()) {
-        island.event300_stamp = stamp; // no draw at all
-        return;
-    }
-    // EXACTLY ONE draw per gate per island, before every other test.
-    const std::uint32_t r = ctx.draw.next(DrawSite::Event300);
-    bool has_city = false;
-    const std::uint64_t scan = std::min<std::uint64_t>(ctx.cfg.neutral_owner, island.cities.size());
-    for (std::uint64_t k = 0; k < scan && !has_city; ++k) {
-        has_city = island.cities[static_cast<std::size_t>(k)].has_value();
-    }
-    if (r % ctx.cfg.event300_modulus == 0 && island.climate != 0 && has_city) {
-        static_cast<void>(start_drought(ctx, island));
-    }
-    island.event300_stamp = stamp;
-}
-
-void island_tick(const TickContext& ctx, Island& island, Effects& fx) {
-    const std::uint32_t t = ctx.t;
-    const TileLayer& tiles = island.tiles;
-    const auto chunks = static_cast<std::uint32_t>(
-        std::min<std::uint64_t>(tiles.chunk_count(), std::numeric_limits<std::uint32_t>::max()));
-    const auto d = static_cast<std::uint16_t>(t - island.sweep.stamp);
-    // Growth sweep. The chunk visit (grow_chunk, D 0x1008b5f0) is stage S13: the
-    // cursor moves exactly as it will then.
-    const std::uint64_t grow_chunks = sweep_chunks(chunks, d, ctx.cfg.grow_period);
-    for (std::uint64_t i = 0; i < grow_chunks; ++i) {
-        advance_sweep_cursor(island.sweep.grow_x, island.sweep.grow_y, tiles.width(),
-                             tiles.height(), ctx.cfg.chunk_edge);
-    }
-    // Fauna sweep: the seam (D: island slot +0x194 = 0x10093480; PRNG, O-12).
-    const std::uint64_t fauna_chunks = sweep_chunks(chunks, d, ctx.cfg.fauna_period);
-    const Seam<Seams::ChunkPass>& wildlife = ctx.seams.wildlife_sweep;
-    for (std::uint64_t i = 0; i < fauna_chunks; ++i) {
-        if (wildlife.fn != nullptr) {
-            wildlife.fn(wildlife.ctx, ctx, island, island.sweep.fauna_x, island.sweep.fauna_y, fx);
-        }
-        advance_sweep_cursor(island.sweep.fauna_x, island.sweep.fauna_y, tiles.width(),
-                             tiles.height(), ctx.cfg.chunk_edge);
-    }
-    object_manager_tick(ctx, island, fx);
-    // [island+0x30] message manager: I/O, not modelled (O-52).
-    city_ring_tick(ctx, island, fx);
-    event_300s(ctx, island, fx);
-    // drought_tick (D: 0x1008aeb0) is stage S13.
-    island.sweep.stamp = static_cast<std::uint16_t>(t);
-}
 
 // ---------------------------------------------------------------------------
 // The world: advance and the effect merge. Scheduler is the friend of World that
@@ -243,16 +83,6 @@ void add_draws(std::vector<DrawRecord>& total, const std::vector<DrawRecord>& mo
 
 } // namespace
 
-struct Scheduler {
-    static std::uint64_t advance(World& w, std::uint32_t game_ms);
-    static void release_counter(World& w, BuildingId home, std::uint32_t home_counter);
-    static void merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t);
-    static void run_player_pass(void* raw, Player& p);
-    static void run_ai(void* raw);
-    static Island* island_of_id(World& w, IslandId id);
-    static City* city_of_ref(World& w, CityRef ref);
-};
-
 Island* Scheduler::island_of_id(World& w, IslandId id) {
     if (!id.valid() || id.v >= w.islands_.size() || !w.islands_[id.v].has_value()) {
         return nullptr;
@@ -274,7 +104,7 @@ void Scheduler::release_counter(World& w, BuildingId home, std::uint32_t home_co
     }
 }
 
-void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t) {
+void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t, bool in_advance) {
     // 1. Spawns: a figure per request, id from the world counter, slot by the group
     // list's policy (A6), and a FigureSpawned event.
     for (const SpawnRequest& s : fx.spawns) {
@@ -290,6 +120,7 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         f.job = s.job;
         f.pos = s.pos;
         f.born = t;
+        f.stamp = static_cast<std::uint16_t>(t); // the unit's +8 from its creation
         if (add_figure(w.figures_, f, w.config_, w.rules_) == kNoSlot) {
             // No figure: the tick raised the home counter for it, so it is taken back
             // here, or the building would count a carrier that no release can ever
@@ -309,9 +140,19 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         e.y = s.pos.y / 256;
         fx.ui.push_back(e);
     }
-    // 2. Releases.
+    // 2. Releases. One that names a figure goes through it (D 0x1003b6e0: only while the
+    // unit's home +0x78 is set, which it then clears), so a figure releases once.
     for (const ReleaseCounter& r : fx.releases) {
-        release_counter(w, r.home, r.home_counter);
+        if (!r.figure.valid()) {
+            release_counter(w, r.home, r.home_counter);
+            continue;
+        }
+        Figure* f = find_figure(w.figures_, r.figure);
+        if (f != nullptr && f->home.valid()) {
+            const BuildingId home = f->home;
+            f->home = BuildingId{};
+            release_counter(w, home, f->home_counter);
+        }
     }
     // 3. Money.
     for (const MoneyDelta& m : fx.money) {
@@ -375,16 +216,149 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
             f->cargo_goods = 0;
         }
     }
+    // 6b. Store deltas (T24: reservations and loads, computed by the transport body).
+    for (const StoreDelta& d : fx.store_deltas) {
+        Island* is = island_of_id(w, island_of(d.building));
+        Building* b = is != nullptr ? find_building_mut(*is, d.building) : nullptr;
+        std::uint32_t* store = nullptr;
+        if (b != nullptr) {
+            switch (d.store) {
+            case StoreDelta::Store::Output:
+                store = output_store(b->payload, d.index);
+                break;
+            case StoreDelta::Store::Reserved:
+                store = reserved_store(b->payload, d.index);
+                break;
+            case StoreDelta::Store::Input:
+                store = input_store(b->payload, d.index);
+                break;
+            }
+        }
+        if (store == nullptr) {
+            continue;
+        }
+        const std::int64_t v = std::int64_t{*store} + d.delta_88;
+        *store = static_cast<std::uint32_t>(
+            std::clamp<std::int64_t>(v, 0, std::numeric_limits<std::uint32_t>::max()));
+    }
     // 7. Timed events.
     for (const EnqueueEvent& e : fx.events) {
         w.events_.enqueue(w.ids_, tick, e.delay, e.e);
     }
-    // 8. UI events, and the telemetry of the call.
+    // 8. UI events, and the telemetry of the call (inside an advance only: between two
+    // advances SimOutput belongs to the last advance and is not touched).
     for (const SimEvent& e : fx.ui) {
-        w.out_.events.push_back(e);
+        if (in_advance) {
+            w.out_.events.push_back(e);
+        }
         w.host_events_.push(e);
     }
-    add_draws(w.out_.draws, fx.draws);
+    if (in_advance) {
+        add_draws(w.out_.draws, fx.draws);
+    }
+}
+
+void Scheduler::destroy_figure(World& w, FigureId id) {
+    // Phase C: D 0x10097520 empties the figure's registry entry, calls the unit's
+    // destructor (0x10031db0, which frees only the unit) and lowers the live count. It
+    // releases nothing: the home counter went back at the figure's end (end_figure,
+    // OQ-131; docs/sim/state.md §5.9).
+    static_cast<void>(remove_figure(w.figures_, id));
+}
+
+void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw) {
+    // D 0x1009a8a0 (world +0x114). Phase A (0x1009a8b0..0x1009aa21, sector re-bucketing
+    // of the float positions, /250) is derived spatial data and not modelled (O-17).
+    FigureRegistry& reg = w.figures_;
+    const std::uint32_t t = ctx.t;
+    // Phase B (0x1009aa2a..0x1009aac1): n = the entries of the vector, read once; an
+    // empty vector skips the phase (0x1009aa2f, 0x1009aa3d). count = clamp(d·n/50, 1,
+    // n), no +1. A cursor at or beyond n (A8, an inconsistent state that
+    // validate_figures refuses) visits nothing.
+    const std::uint64_t n = reg.list.slots.size();
+    if (n > 0 && reg.list.cursor < n) {
+        const std::uint64_t count = visit_count_clamped(t, reg.stamp, n, w.config_.figure_b_div);
+        std::uint64_t cur = reg.list.cursor;
+        const Seam<Seams::FigureTick>& seam = w.seams_.figure_tick;
+        const std::uint32_t interim = w.rules_.interim_figure_return_ticks;
+        for (std::uint64_t i = 0; i < count; ++i) {
+            // The slot is looked up in every iteration (the original re-reads the vector
+            // start, 0x1009aa93): a merge may have grown the list.
+            const auto slot = static_cast<std::size_t>(cur);
+            if (slot < reg.list.slots.size() && reg.list.slots[slot].has_value()) {
+                Figure& fig = *reg.list.slots[slot];
+                if (seam.fn != nullptr) {
+                    // The unit's slot +0x74 (0x1009aaa8) is the behaviour seam (O-8):
+                    // it writes only its own figure and its Effects, merged right after
+                    // it returns (C2).
+                    const FigureId id = fig.id;
+                    const bool had_stamp = fig.expiry_stamp.has_value();
+                    Effects fx;
+                    {
+                        SerialWorld serial(w.islands_, w.config_.layout, reg, w.players_, fx);
+                        const auto before = draw.counts;
+                        seam.fn(seam.ctx, ctx, serial, fig);
+                        fx.draws = draw_records_between(before, draw.counts);
+                    }
+                    fig.id = id; // the identity is the registry's, never the seam's
+                    sync_figure_lists(reg, fig, had_stamp, fx);
+                    merge(w, fx, ctx.tick, t); // may grow the list: `fig` is not used below
+                } else {
+                    // The default body of the market cart and the workshop carrier (T24,
+                    // docs/sim/state.md §5.9): the same protocol as a seam (its own figure
+                    // and its Effects, merged right after the call, C2). It draws nothing.
+                    bool ran = false;
+                    if (transport_runs_job(fig.job)) {
+                        const bool had_stamp = fig.expiry_stamp.has_value();
+                        Effects fx;
+                        {
+                            SerialWorld serial(w.islands_, w.config_.layout, reg, w.players_, fx);
+                            ran = transport_tick(ctx, serial, fig);
+                        }
+                        if (ran) {
+                            sync_figure_lists(reg, fig, had_stamp, fx);
+                            merge(w, fx, ctx.tick, t); // may grow the list: `fig` is not used
+                        }
+                    }
+                    if (!ran && interim > 0 && !fig.expiry_stamp.has_value() &&
+                        static_cast<std::uint32_t>(t - fig.born) >= interim) {
+                        // D12 (OQ-047, off by default): a figure returns after N ticks. It
+                        // ends as the original's do (end_figure: the counter back now, the
+                        // figure on the expiry list), and its slot is freed by phase C
+                        // figure_expiry_ticks later (D: Remove(unit, 0) at 0x10034844).
+                        Effects fx;
+                        end_figure(reg, fig, t, fx);
+                        merge(w, fx, ctx.tick, t);
+                    }
+                }
+            }
+            if (++cur >= n) {
+                cur -= n;
+            }
+        }
+        reg.list.cursor = static_cast<std::uint32_t>(cur); // 0x1009aac1
+    }
+    reg.stamp = static_cast<std::uint16_t>(t); // 0x1009aad9, after phase B
+    // Phase C (0x1009aacc..0x1009ab31): the expiry list from its front; a figure whose
+    // stamp is 7500 ticks old or older (u16 difference, `cmp cx, 0x1d4c; jb` at
+    // 0x1009ab02) is destroyed and the scan goes on, the first younger one ends it. A
+    // figure without the property (here: gone, or without a stamp) is destroyed too
+    // (0x1009aaf8).
+    while (!reg.expiry.empty()) {
+        const FigureId id = reg.expiry.front();
+        const Figure* f = find_figure(reg, id);
+        if (f != nullptr && f->expiry_stamp.has_value() &&
+            static_cast<std::uint16_t>(t - *f->expiry_stamp) < w.config_.figure_expiry_ticks) {
+            break;
+        }
+        destroy_figure(w, id); // also takes `id` off the list
+    }
+    // Cost: phase C erases from the front of a vector and remove_figure searches the
+    // list, O(k n) for k figures destroyed in one tick; a deque or an index is a later
+    // optimisation once bench_sim (stage S15) measures it.
+    // Phase D (0x1009ab33..0x1009ab7c) deletes the records on the list +0x58 through
+    // registry slot +0x3c = 0x10097770: the pooled sector records of registry slot
+    // +0x38, never a figure (OQ-131); not modelled (O-17, OQ-134).
 }
 
 void Scheduler::run_player_pass(void* raw, Player& p) {
@@ -415,8 +389,9 @@ void Scheduler::run_ai(void* raw) {
         fx.draws = draw_records_between(before, c.draws->counts);
     }
     merge(w, fx, c.ctx->tick, c.ctx->t);
+    const InAdvance in_advance{c.ctx, c.draws};
     for (const Command& command : commands) {
-        static_cast<void>(Commands::apply(w, command, true));
+        static_cast<void>(Commands::apply(w, command, &in_advance));
     }
 }
 
@@ -438,7 +413,8 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
                           PlayersView(w.players_),
                           IslandsView(w.islands_),
                           draw,
-                          w.seams_};
+                          w.seams_,
+                          w.transport_stats_};
     // 1. The islands, in table order (D: 0x100a2e60, nulls skipped); each island's
     // Effects are merged right after its tick (C1), so figure ids, registry slots
     // and event sequence numbers follow the island order.
@@ -452,7 +428,19 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
         fx.draws = draw_records_between(before, draw.counts);
         merge(w, fx, tick, t);
     }
-    // 2. timed events (S12), 3. figures (S12).
+    // 2. The timed events (D: 0x100add90; events.cpp).
+    PopResult events = run_events(w, ctx, draw);
+    // 3. The figure registry (D: 0x1009a8a0 via world +0x114, slot +0x20).
+    run_figures(w, ctx, draw);
+    // D4 (OQ-039, off by default): a second event pass after the figure phase, so a
+    // delayed hit a figure enqueued with delay 0 lands in this advance.
+    if (w.rules_.events_flush_after_figures) {
+        const PopResult again = run_events(w, ctx, draw);
+        events.dispatched += again.dispatched;
+        events.capped = events.capped || again.capped;
+    }
+    w.out_.events_dispatched = events.dispatched;
+    w.out_.events_capped = events.capped;
     // 4. The player table (D: 0x1009c4d0 via world +0x118), with the two per-player
     // seams bound to the hooks of player_tick; a seam without a function is the
     // documented default (does nothing), so its hook stays null. Seams::ai is the
@@ -474,7 +462,42 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
         hooks.ai_ctx = &ai_ctx;
     }
     player_table_tick(w.players_, t, w.config_, w.rules_, hooks);
-    // 5. script timers, 6. monopoly, 7. the 7.5 min event (S12).
+    // 5.-7. (timers.cpp): their UI events and draws go through one Effects buffer. Room
+    // for its at most two events is made first: GCC 13 at -O3 otherwise reports a false
+    // -Wstringop-overflow in the reallocation path of the second push_back.
+    Effects fx;
+    fx.ui.reserve(2);
+    const auto before = draw.counts;
+    // 5. The script timers (D: 0x1009cd30 via world +0x69c8, slot +0x14).
+    if (timers_tick(w.timers_, t, w.rules_.timer0_clamp)) {
+        SimEvent e;
+        e.kind = SimEventKind::TimerExpired;
+        e.tick = tick;
+        e.code = 0;
+        fx.ui.push_back(e);
+    }
+    // 6. The monopoly refresh (D: 0x1009d2a0 with this = world + 4, the step in ms);
+    // game seconds = world property 7 = t / 500 + offset (settings.hpp).
+    const std::uint32_t game_seconds = t / 500U + w.settings_.prop7_offset;
+    static_cast<void>(monopoly_refresh(w.monopoly_, game_ms, w.config_, w.rules_, w.islands_,
+                                       w.players_, game_seconds));
+    // 7. The 7.5 minute event (D: 0x100ae140, the step in ms): the message-manager
+    // event 0x15a at the island's centre (D 0x100ae1d6..0x100ae240: x0 + w / 2,
+    // y0 + h / 2).
+    const std::optional<IslandId> hit =
+        event750(w.event750_acc_, game_ms, w.config_, w.rules_, w.settings_, w.islands_, draw);
+    if (hit.has_value()) {
+        const TileRect r = w.islands_[hit->v]->rect();
+        SimEvent e;
+        e.kind = SimEventKind::Event15a;
+        e.tick = tick;
+        e.code = 0x15a;
+        e.x = static_cast<std::int32_t>(static_cast<std::int64_t>(r.x0) + r.w / 2);
+        e.y = static_cast<std::int32_t>(static_cast<std::int64_t>(r.y0) + r.h / 2);
+        fx.ui.push_back(e);
+    }
+    fx.draws = draw_records_between(before, draw.counts);
+    merge(w, fx, tick, t);
     w.clock_.end();
     w.out_.rng_cursor_after = w.rng_.cursor();
     return tick;
@@ -501,6 +524,14 @@ std::uint64_t World::event_capacity() const {
 
 std::uint64_t World::events_dropped() const {
     return host_events_.dropped;
+}
+
+void World::set_transport_stats(TransportStats* stats) {
+    transport_stats_ = stats;
+}
+
+TransportStats* World::transport_stats() const {
+    return transport_stats_;
 }
 
 } // namespace anno::sim

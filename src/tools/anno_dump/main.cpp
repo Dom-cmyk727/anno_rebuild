@@ -14,6 +14,8 @@
 //   anno-dump keyed <file>...                  keyed text lines (tools/text.py keyed)
 //   anno-dump texte [--full] <Texte.dat>...    sections and names (tools/text.py texte)
 //   anno-dump zei [--full] <file.zei>...       font glyphs (tools/zei.py dump)
+//   anno-dump bigbrother [--full] <file.sze|file.sav>...
+//                                              scenario script (tools/bigbrother.py dump)
 //
 // Each file's output starts with `# <path>` (the path as given); lines end
 // with `\n` on every platform.
@@ -48,7 +50,8 @@ constexpr const char* kUsage = "usage: anno-dump chunks <file>...\n"
                                "       anno-dump sze [--full] <file.sze>...\n"
                                "       anno-dump keyed <file>...\n"
                                "       anno-dump texte [--full] <Texte.dat>...\n"
-                               "       anno-dump zei [--full] <file.zei>...\n";
+                               "       anno-dump zei [--full] <file.zei>...\n"
+                               "       anno-dump bigbrother [--full] <file.sze|file.sav>...\n";
 
 using DumpFn = bool (*)(Bytes, bool, std::string&);
 
@@ -80,6 +83,7 @@ const std::map<std::string, Command>& commands() {
         {"keyed", {keyed, false}},
         {"texte", {anno::dump::dump_texte, true}},
         {"zei", {anno::dump::dump_zei, true}},
+        {"bigbrother", {anno::dump::dump_bigbrother, true}},
     };
     return table;
 }

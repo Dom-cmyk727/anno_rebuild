@@ -15,6 +15,7 @@
 #include <anno/sim/building.hpp>
 #include <anno/sim/create.hpp>
 #include <anno/sim/synthetic.hpp>
+#include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
 
 #include "island_helpers.hpp"
@@ -86,7 +87,8 @@ inline Kit make_kit() {
         .add(custom_type(k.barracks, 130, 1, 1))
         .add_plain(k.dual_workshop, 12)
         .add(custom_type(k.library_top, 78, 1, 1, 0x80000000U))
-        .add(custom_type(k.house_list_plain, 110, 1, 1, 0x2));
+        .add(custom_type(k.house_list_plain, 110, 1, 1, 0x2))
+        .walk_tables(anno::sim::synthetic_walk_tables());
     auto built = b.build();
     REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
     k.registry = std::move(built.value());

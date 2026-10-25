@@ -385,6 +385,26 @@ Read in the S3 review of the type registry; each is **D** (disassembly) unless s
 - **Name scans** (state.md F25): the PRODTYPE scan runs index `0..0x1a0` (`0x100097b7`, names `0x100138e0`), the research scan ends at `0x8f` (`0x10013cf0`), the goods scan covers `0..0x8e` (`0x10013be0`); a name that matches nothing leaves the loop without a store, so the field keeps 0 (UNUSED).
 - **HEAD buffer** (state.md F26): 14 dwords are zeroed (`rep stosd`, `0x10009351`) and the record is read into the 56-byte buffer (`0x10009365`).
 
+## Verified by running (T15 stage 1, 2026-10-22)
+
+Read-only, Citizen single-player scenario, the copy through dgVoodoo2, driven by
+`tools/orig/control.py`; objects located by vtable scan (`tools/orig/probe.py`, OQ-T15-BLD).
+
+- **City warehouse layout (5.3) confirmed.** The city vtable value (`AnnoWelt` base + RVA
+  `0xc2f40`) occurs on 5 heap objects (the players' cities/Kontore). Capacity `+0x624`: three at
+  17920 (= 70 t), one at 12800 (= **50 t**, the default), matching the `HEAD2` capacity rule. The
+  12-byte store record at `+0x334 + 12g` (u32 stock in 8.8): for the starting player, goods 41
+  (WERKZEUG) and 42 (HOLZ) each read 12800 = **50 t = exactly the HUD's tools 50 / wood 50**. So
+  the warehouse stock unit (256 = 1 t) and the `+0x334`/`+0x624` offsets are right. This unblocks
+  the city/warehouse fixtures (F10, and the tax fixtures' city side); adding goods to drive F10's
+  cap clamp needs the build/trade UI (a later step).
+- **Type registry (F1) runtime read: open.** A scan for the type vtable `0x1002185c` in
+  `AnnoGame.dll` (base + RVA `0x2185c`) found **no** matching heap object, so the 921 type objects
+  are not reachable by that vtable value as assumed (different module/base, a different first
+  field, or a region the scan skips). F1 stands on the static spot-value match in the `src/sim`
+  type-registry tests (1001 -> 6/11/0, 1017 -> 17/21/13, ...); confirming it against memory needs
+  the correct type-object anchor (OQ-T15-TYPEVT).
+
 ## Open
 - Unit of `dt` (ms assumed) and game-speed scaling between `AnnoFrame` and world slot `+0x84` (Advance); confirm with F14.
 - Flags bits 4/5 at building `+0x0c` (what suspends production); what slot `+0xc8`/`0x10072a60` changes (running cost switch?).

@@ -1,0 +1,429 @@
+{
+ "_doc": "Screen table for driving the original ANNO 1503 (GOG 2.0.0.5). The HUD and construction menu as DATA, so play.py/control.py do not hard-code magic coordinates. Coordinates are WINDOW FRACTIONS (nx, ny in 0..1), exactly as tools/orig/control.py click/move/dbl take them, so they are resolution-independent (the HUD plays at a 1024x768 layout; dgVoodoo2 scales the window). Only coordinates actually measured by running are filled in; everything still to be captured is marked with \"capture\": \"owner-session\" and is NOT fabricated. Fill those in an owner-present session (play-original.md stage A acceptance), one screenshot per civilisation level, and commit the numbers.",
+ "base_resolution": [
+  1024,
+  768
+ ],
+ "coords": "window fractions (nx, ny in 0..1)",
+ "sources": {
+  "M": "German manual Anno_1503_Manual.pdf (full 77-page) / English game/app/Manual.pdf (39-page); key bindings manual p4-5",
+  "ui": "docs/re/ui-and-placement.md sections 1-2, 5, 7 (measured by running 2026-10-22)",
+  "mech": "docs/re/game-mechanics.md section 1 (key bindings, authoritative from the manual)",
+  "pb": "docs/research/playbook.md sections 1, 4"
+ },
+ "civ_levels": [
+  "pioneers",
+  "settlers",
+  "citizens",
+  "merchants",
+  "aristocrats"
+ ],
+ "hud": {
+  "_src": "ui-and-placement.md section 1 (measured)",
+  "minimap": {
+   "region": [
+    0.78,
+    0.02,
+    0.98,
+    0.22
+   ],
+   "zoom_plus": {
+    "capture": "owner-session",
+    "_note": "just below the minimap"
+   },
+   "zoom_minus": {
+    "capture": "owner-session"
+   },
+   "rotate_arrows": {
+    "capture": "owner-session",
+    "_note": "two arrows below the minimap rotate the map"
+   }
+  },
+  "main_tabs": {
+   "_note": "four tabs at y ~= 0.285 (ui-and-placement.md section 1)",
+   "y": 0.285,
+   "construction": [
+    0.8,
+    0.285
+   ],
+   "military": [
+    0.85,
+    0.285
+   ],
+   "help": [
+    0.9,
+    0.285
+   ],
+   "options": [
+    0.95,
+    0.285
+   ]
+  },
+  "nameplate_y": 0.35,
+  "statistics_column": {
+   "_note": "below the nameplate: population, balance, goods in/out, military, a per-minute gold balance (red when negative). Exact rows per field: capture.",
+   "capture": "owner-session"
+  },
+  "resource_bar": {
+   "_note": "bottom bar, left to right. Exact x per icon: capture.",
+   "fields": [
+    "gold",
+    "tools",
+    "wood",
+    "bricks",
+    "civilians",
+    "soldiers",
+    "help"
+   ],
+   "material_colours": {
+    "white": "in stock",
+    "blue": "needed for the building in hand",
+    "red_blink": "missing"
+   }
+  },
+  "selected_building_panel": {
+   "_note": "clicking a placed building replaces the right panel with its / the settlement overview",
+   "capture": "owner-session"
+  }
+ },
+ "construction_menu": {
+  "_src": "ui-and-placement.md section 2 + playbook.md section 1 (manual). Opened with key B.",
+  "open_key": "B",
+  "leave_key": "ESC",
+  "category_column_x": 0.764,
+  "grid_region": [
+   0.8,
+   0.33,
+   0.99,
+   0.95
+  ],
+  "cancel_x": [
+   0.985,
+   0.95
+  ],
+  "categories": [
+   {
+    "index": 1,
+    "key": "public",
+    "banner": "Public buildings",
+    "icon": "house",
+    "source": "M+pb+measured-20261025"
+   },
+   {
+    "index": 2,
+    "key": "roads",
+    "banner": "Squares, Streets",
+    "icon": "path",
+    "source": "M+pb+ui+measured-20261025"
+   },
+   {
+    "index": 3,
+    "key": "farms",
+    "banner": "Farms, Plantations",
+    "icon": "ox",
+    "source": "M+pb+ui+measured-20261025"
+   },
+   {
+    "index": 4,
+    "key": "workshops",
+    "banner": "Workshops",
+    "icon": "anvil",
+    "source": "M+pb+ui+measured-20261025"
+   },
+   {
+    "index": 5,
+    "key": "coastal",
+    "banner": "Coastal buildings",
+    "icon": "tower/figure",
+    "source": "M+pb+measured-20261025"
+   },
+   {
+    "index": 6,
+    "key": "mines",
+    "banner": "Pits, Mines",
+    "icon": "crossed-picks",
+    "source": "M+pb+ui+measured-20261025"
+   },
+   {
+    "index": 7,
+    "key": "military",
+    "banner": "Military installations",
+    "icon": "spear",
+    "source": "M+pb+ui+measured-20261025"
+   },
+   {
+    "index": 8,
+    "key": "ornamental",
+    "banner": "Ornamentals",
+    "icon": "crown",
+    "source": "M+pb+measured-20261025"
+   }
+  ],
+  "category_column_y": {
+   "_src": "measured 2026-10-25 (owner session, 1024x768 screenshots cache/orig/drive-20261025/s30..s38; icon centres)",
+   "public": 0.423,
+   "roads": 0.486,
+   "farms": 0.544,
+   "workshops": 0.603,
+   "coastal": 0.661,
+   "mines": 0.72,
+   "military": 0.779,
+   "ornamental": 0.837
+  },
+  "citizen_start_unlocked": {
+   "_src": "ui-and-placement.md section 2 (observed; building names read from info panels, not all checked against Anlagen.dat INFRA_EVER)",
+   "public": [
+    "Pioneer house (settler residence, 3 wood)",
+    "Main market building (1301, 3 tools/7 wood/250 gold)",
+    "coin/level-I building (unverified)"
+   ],
+   "roads": [
+    "dirt road (5 gold/tile)",
+    "paved square"
+   ],
+   "farms": [
+    "forester (801, 150 gold + 2 tools)"
+   ],
+   "workshops": [
+    "weaver (1001, INFRA_EVER)",
+    "tannery (1023, INFRA_EVER)"
+   ],
+   "mines": [],
+   "military": [],
+   "coastal": [
+    "coin-I coastal building (unverified)",
+    "shipyard (unverified)"
+   ],
+   "ornamental": []
+  },
+  "grid_cells": {
+   "_src": "measured 2026-10-25 at the Citizen start (pioneer level), cells as [row, col] 1-based into construction_menu.grid; '?' cells are locked; names from the icons, unverified unless noted",
+   "pioneers": {
+    "public": {
+     "pioneer house": [
+      1,
+      1
+     ],
+     "locked": [
+      [
+       1,
+       2
+      ]
+     ],
+     "coin-I building": [
+      1,
+      3
+     ],
+     "stall (small hut)": [
+      1,
+      4
+     ],
+     "market tent": [
+      2,
+      4
+     ],
+     "cells": "4 x 7 + 1"
+    },
+    "roads": {
+     "dirt road": [
+      1,
+      1
+     ],
+     "cells": "[1,1],[1,2],[2,1],[2,2],[2,3],[3,1]"
+    },
+    "farms": {
+     "sheep farm": [
+      1,
+      1
+     ],
+     "forester": [
+      1,
+      2
+     ],
+     "hunting lodge (animal)": [
+      2,
+      1
+     ],
+     "farm (building)": [
+      2,
+      2
+     ],
+     "farm with field": [
+      2,
+      3
+     ],
+     "potato farm": [
+      2,
+      4
+     ],
+     "cells": "4 x 8 - 1"
+    },
+    "workshops": {
+     "tannery (hide icon)": [
+      1,
+      1
+     ],
+     "wood workshop with I (logs)": [
+      2,
+      1
+     ],
+     "cells": "[1,1],[2,1..4],[3,1..2],[4,1..3],[5,1..3],[6,1..3]"
+    },
+    "coastal": {
+     "coin-I coastal building": [
+      1,
+      1
+     ],
+     "shipyard (ship)": [
+      2,
+      1
+     ],
+     "cells": "[1,1..3],[2,1..2],[3,1..2]"
+    },
+    "mines": {
+     "cells": "[1,1..3],[2,1..3],[3,1..2],[4,1..2],[5,1..2]; all locked"
+    },
+    "military": {
+     "cells": "[1,1..3],[2,1..4],[3,1..3],[4,1..4],[5,1..3]; all locked"
+    },
+    "ornamental": {
+     "cells": "4 x 7 + 2; all locked"
+    }
+   },
+   "settlers": {
+    "capture": "owner-session"
+   },
+   "citizens": {
+    "capture": "owner-session"
+   },
+   "merchants": {
+    "capture": "owner-session"
+   },
+   "aristocrats": {
+    "capture": "owner-session"
+   }
+  },
+  "grid": {
+   "_src": "measured 2026-10-25: 4 columns x 8 rows of 52 px cells; a category shows only as many cells as it has buildings",
+   "col_x": [
+    0.813,
+    0.864,
+    0.915,
+    0.966
+   ],
+   "row_y": [
+    0.43,
+    0.497,
+    0.563,
+    0.63,
+    0.698,
+    0.766,
+    0.833,
+    0.901
+   ]
+  }
+ },
+ "menu_navigation": {
+  "_src": "ui-and-placement.md section 5 (driven and confirmed by screenshot)",
+  "new_citizen_game": [
+   [
+    "click",
+    0.49,
+    0.39,
+    "Singleplayer"
+   ],
+   [
+    "click",
+    0.49,
+    0.52,
+    "New game"
+   ],
+   [
+    "click",
+    0.36,
+    0.56,
+    "Choose game: Citizen"
+   ],
+   [
+    "click",
+    0.8,
+    0.9,
+    "OK"
+   ]
+  ]
+ },
+ "keys": {
+  "_src": "game-mechanics.md section 1 (manual p4-5, authoritative, English copy)",
+  "zoom_far": "F2",
+  "zoom_mid": "F3",
+  "zoom_near": "F4",
+  "speed_normal": "F5",
+  "speed_double": "F6",
+  "speed_quad": "F7",
+  "speed_half": "F8",
+  "quickload": "F9",
+  "quicksave": "F10",
+  "rotate_map_cw": "X",
+  "rotate_map_ccw": "Y",
+  "rotate_object_cw": "DOT",
+  "rotate_object_ccw": "COMMA",
+  "jump_active": "J",
+  "jump_prev_event": "SPACE",
+  "cycle_cities": "H",
+  "pause": "P",
+  "unit_ident": "M",
+  "next_scout": "N",
+  "fly_flag": "W",
+  "construction_menu": "B",
+  "player_menu": "D",
+  "ship_list": "S",
+  "city_list": "C",
+  "options": "O",
+  "rating": "Q",
+  "screenshot": "SHIFT+S",
+  "align_entrance_to_road": "CTRL (hold while placing)"
+ },
+ "panels": {
+  "_note": "panel layouts (buttons, sliders, list rows) for the required flows of play-original.md section 4. All capture-by-screenshot in an owner session; sliders are set by drag + read-back from memory, not by a fixed coordinate.",
+  "kontor": {
+   "capture": "owner-session",
+   "flows": [
+    "buy (add good; upper slider stock-limit, lower slider price)",
+    "sell (upper slider keep, lower slider price)"
+   ]
+  },
+  "ship": {
+   "capture": "owner-session",
+   "flows": [
+    "load/unload 1/5/10/50 t buttons",
+    "automatic trade route (route point, 4 actions each, anchor)",
+    "white flag",
+    "sell/sink"
+   ]
+  },
+  "house": {
+   "capture": "owner-session",
+   "flows": [
+    "info face/mood, need bars, residents"
+   ]
+  },
+  "school": {
+   "capture": "owner-session",
+   "flows": [
+    "research field selection"
+   ]
+  },
+  "shipyard": {
+   "capture": "owner-session",
+   "flows": [
+    "build ship (gold/wood/cloth/ropes), load cannons, repair"
+   ]
+  },
+  "diplomacy": {
+   "capture": "owner-session",
+   "flows": [
+    "treaty status icons CYCLE state -- read before and after, abort on unexpected change"
+   ]
+  }
+ }
+}

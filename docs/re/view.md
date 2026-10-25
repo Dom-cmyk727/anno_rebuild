@@ -138,7 +138,6 @@ from the unrelated comparisons. The live slopes in §2.1 remain observations onl
 building getters remain rejected as converters. T15.B2's frame walk/minimap calibration is
 still the prescribed independent route to obtain a live anchor.
 
-## 3. The camera (unanchored; T15.B1 and T15.B1b stopped)
 ### 2.3 The converter: bounded T15.B1c candidate list (2026-10-25)
 
 **Not decoded.** The scroll fields and HWND anchor are established (§3.2–3.3), but the

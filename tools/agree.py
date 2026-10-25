@@ -106,6 +106,13 @@ def cases(game):
         c.append(('bigbrother', 'bigbrother.py', ['dump'], ['bigbrother'], lambda: files(game / 'Scenes', 'sze')))
         c.append(('bigbrother', 'bigbrother.py', ['dump', '--full'], ['bigbrother', '--full'],
                   lambda: files(game / 'Scenes', 'sze')))
+    # walk-tables: our synthetic PE (made-up tables, not original bytes) always;
+    # the GOG DLL when a game dir is set.
+    c.append(('walk-tables', 'annowelt_tables.py', ['dump'], ['walk-tables'],
+              lambda: fixture('annowelt_synthetic')))
+    if game:
+        c.append(('walk-tables', 'annowelt_tables.py', ['dump'], ['walk-tables'],
+                  lambda: [game / 'AnnoWelt.dll']))
     return c
 
 

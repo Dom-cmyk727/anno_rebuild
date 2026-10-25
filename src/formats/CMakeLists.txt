@@ -2,6 +2,7 @@
 # Specs: docs/formats/. Standard library only.
 add_library(anno_formats
   src/anlagen.cpp
+  src/annowelt.cpp
   src/bigbrother.cpp
   src/chunk.cpp
   src/colors.cpp
@@ -21,6 +22,7 @@ anno_target_defaults(anno_formats)
 if(ANNO_BUILD_TESTS)
   add_executable(anno_formats_tests
     tests/main.cpp
+    tests/annowelt_test.cpp
     tests/bigbrother_test.cpp
     tests/bigbrother_corpus_test.cpp
     tests/chunk_test.cpp

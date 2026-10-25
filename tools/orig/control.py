@@ -193,8 +193,18 @@ def guard(hwnd: int, kind: str, target_screen: tuple[int, int] | None = None) ->
     if _LAST_CURSOR is not None:
         cx, cy = cursor_pos()
         if abs(cx - _LAST_CURSOR[0]) > 4 or abs(cy - _LAST_CURSOR[1]) > 4:
-            abort(hwnd, f"cursor moved since the last action (owner took the mouse): "
-                        f"expected {_LAST_CURSOR}, got {(cx, cy)}")
+            # The game warps the cursor itself (measured 2026-10-25 with no input at all: it
+            # alternates between the centre of its 800x600 surface and the screen centre about
+            # once a second, and lands 20-25 px off after a click), so a moved cursor INSIDE the
+            # game's client area is the game's doing, not a hand on the mouse. Only a cursor that
+            # left the client area is treated as the owner taking the mouse; the foreground check
+            # above and the target check below keep every input inside the game.
+            left, top, w, h = client_box(hwnd)
+            inside = left <= cx < left + w and top <= cy < top + h
+            if not inside:
+                abort(hwnd, f"cursor moved since the last action and left the game client area "
+                            f"(owner took the mouse): expected {_LAST_CURSOR}, got {(cx, cy)}")
+            log_action("cursor_warp", expected=list(_LAST_CURSOR), got=[cx, cy])
     if target_screen is not None:
         left, top, w, h = client_box(hwnd)
         if not (left <= target_screen[0] < left + w and top <= target_screen[1] < top + h):

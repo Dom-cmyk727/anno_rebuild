@@ -59,12 +59,6 @@ src/sim/src/types.cpp:float (?:speed|wait) = f32\(  # load-time conversion: the 
 # Job codes (D: the unit job table) and a HEAD flag bit: discriminants, not counts.
 src/sim/include/anno/sim/transport.hpp:kJob(?:MarketCart|WorkshopCarrier) = 0x\w+;  # figure job code (D 0x1006b6d0, 0x100680b0), a discriminant not a count
 src/sim/include/anno/sim/types.hpp:kRoadFlag = 0x4000;  # HEAD flag word bit of a road (P), a bit not a count
-# The walking layer of the road rule: a layer value, a stand-in for the unread layer
-# tables (OQ-160), with its path to configuration in the header comment.
-src/sim/include/anno/sim/transport.hpp:kRoadLayer = 3;  # walking layer value of the road rule (P, stand-in OQ-160), not a count
-# The stand-in search's step costs (OQ-161): weights, not counts or limits.
-src/sim/src/transport.cpp:k(?:Straight|Diagonal)Cost = \d+;  # step weights of the stand-in search (OQ-161), not a count
-src/sim/src/transport.cpp:kDiagonalQ24 = 23726566;  # the f32 sqrt(2) of the segment builder (D 0x100c3130) in 2^-24, a ratio not a count
 # List masks of the city's building index (D 0x1005adea, 0x1005a60a): bit sets.
 src/sim/src/transport.cpp:k(?:Cart|Carrier)Mask = 0x[0-9a-f]+;  # list mask of the candidate query (D), a bit set not a count
 # The formula constants of the cart's score and of the filters (D 0x1005aa59,
@@ -72,8 +66,7 @@ src/sim/src/transport.cpp:k(?:Cart|Carrier)Mask = 0x[0-9a-f]+;  # list mask of t
 src/sim/src/transport.cpp:kStopScore = 128;  # the cart's stop score (D 0x1005aa59), a score value not a count
 src/sim/src/transport.cpp:kOneTon = 256;  # 1 t in the 8.8 goods unit (D 0x1005acc7), a unit not a count
 src/sim/src/transport.cpp:kAllGoods = 0x8e;  # the goods id "ALL" (D 0x10025470), a discriminant not a count
-src/sim/src/transport.cpp:kUnreached = std::numeric_limits  # sentinel of the search's parent links
-src/sim/src/transport.cpp:kBuckets = kDiagonalCost \+ 1;  # bucket count derived from the step weights (OQ-161), not a count of the game
+src/sim/src/transport.cpp:kDiagonalQ24 = 23726566;  # the f32 sqrt(2) of the segment builder (D 0x100c3130) in 2^-24, a ratio not a count
 
 # --- scenario_formats.cpp (T26)
 # The original's default trade-list slot counts (VK list ctor 0x10027510 count

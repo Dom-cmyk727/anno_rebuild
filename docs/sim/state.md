@@ -631,12 +631,109 @@ Inventory only (`docs/re/population.md` §11). No payload, stream or golden chan
 
 ### 4.7b House tick order (T32.2, not implemented)
 
-Pointer only (`docs/re/population.md` §12). No payload, stream or golden change here; T32.3 writes the DRAFT, P1 implements. Not §5.9.
+Pointer only (`docs/re/population.md` §12). No payload, stream or golden change here; the DRAFT is §4.7c, P1 implements. Not §5.9.
 
 - **Every 2500 ticks** (`house+0x0a += 2500` after a 16-bit gate): `E` smooth, **house-stock** decay `·127/128` (not a city-store take), `s_j` cap 160, optional walker spawn, mood −2…+2, `VermehrTab[mood]` into `+0x2c`, city counter add/sub, then upgrade (next type `id − id%20 + 20`) or downgrade (`id − id%20 − 20`, else `− 19`).
-- **City store** is reduced by billing with `take = 1` (`0x1002dac0`), which the house tick does not call (OQ-186).
+- **City store** is reduced by billing with `take = 1` (`0x1002dac0`), which the house tick does not call. T32.3 (OQ-186): the `take = 1` wrapper is **MarketStall** slot `+0xac`.
 - **Taxes** are the city booking every 2000 ticks (`0x10029950`): surcharge `PreisLevel[tax]` on billed consumer goods, `(sum+128)>>8` into player money; not a per-head tax.
 - **Draws** (world PRNG slot `+0xb4`): walker target, upgrade/downgrade variant, SetGroup first-assignment satisfaction. Sites in §12.6.
+
+### 4.7c Population (DRAFT, T32)
+
+Not implemented. Not §5.9. Evidence: `docs/re/population.md` §11–§13. The orchestrator writes P1 from this section. T26's three pure functions stay; P1 **applies** them (they are not applied today: `HouseRecordNotModelled`).
+
+#### House payload (state)
+
+Replace `Inert` for `RuntimeClass::House` with a new append-only `PayloadTag` (next after `Mine = 5`). `ClassInfo::payload` / `TickKind` gain `House`. Other unported classes stay `Inert`.
+
+```
+struct House {                                   // D house object 0x50 bytes, vtable 0x100c9958
+    std::uint16_t last = 0;                      // +0x0a; Load does not write it (catch-up, F1)
+    std::uint8_t mood_flags = 0;                 // +0x0c bits 4/5 only (rotation stays on Building)
+    std::int16_t residents_64 = 5 * 64;          // +0x2c; saved as trunc(residents_64 / 64) in header[1]
+    std::uint16_t E = 5 * 128;                   // +0x2e; NOT saved; Load writes residents << 7
+    std::vector<std::uint16_t> stock;            // +0x30+2j; saved as s_j = min(stock·1536/(E·Menge), 160)
+};
+```
+
+Group pointer is not a field: `house_group(cfg, prodtype)` plus the registry group table. Walkers at `+0x18…+0x24` stay the figure registry (already hashed). Mood is not stored (slot `+0x9c` computes it).
+
+**Save / load (faithful, D `0x10077130` / `0x10076e60`):** 8-byte header `{0, residents, n, version 2, 0,0,0,0}` then `n` bytes `s_j`. Load: if `house_reset_applies(group, residents, lower_wohnmax)` then residents = `Wohnmax` and the reset draws run (below); `residents_64 = r << 6`; `E = r << 7`; `stock[j] = house_need_stock(Menge_j, s_j, r)` for `j < min(n, group.n)`. Version 0/1 as `house_satisfaction`. Integer residents: the 1/64 fraction is lost on every save.
+
+**City side:** per-group resident i32s and `BuildingIndex::house_counts` stay **derived** (rebuild on load from the houses; not in the stream; OQ-165). Store billed/taken at `CityStock` `+4`/`+8` is period scratch, **not** in `WARE` — P1 does not add it; P4 does as unhashed or as a documented original-loss (owner Q3).
+
+#### Group table (registry, load-time data, never state)
+
+Parsed from `Data/BGruppen.dat` (`formats::text`; field map §12.1). Held on `TypeRegistry` beside the type table, immutable, sizes from the file (original default: 5 groups, needs per group from the file, 96 goods ids). Not copied into fixtures: tests that need the shipped file read `game/app` and skip without it; synthetic tests build two small groups.
+
+Per group: `BGruppeNr`, `NoUpgrade`/`NoDowngrade`, `n`, lookup id→slot, `Ware`/`Force`/`Menge` per need, `Wohnmax`, `NahrungTab`/`BedarfTab`/`InfraTab` (21 × i8), `VermehrTab` (5 × i8, mood −2…+2), goods-table pointer. `Menge`/`VermehrTab` already integer (loader formulas §1). `Priority` unused. Group `BauFirst`/`BauLast`/`Hiscore`/`Wissen` unread — omit.
+
+#### Tick and its place
+
+House update is the **class tick**, not a city_pass. `city_tick` already runs `building_scheduler` first (list L3 = houses, period 2500 in `ClassInfo::gate_period`). `tick_building` gains `TickKind::House` and runs §12.2. It does **not** subtract from `CityStock`.
+
+Nothing moves goods from the city store into a house in one step. **MarketStall** (PRODTYPE 161, list L0, never scheduled) building slot `+0xac` = `0x100702f0` bills with `take = 1` and so **reduces** `CityStock` (OQ-186). PublicService / School `+0xac` bill with `take = 0` (income without a take). House and Market `+0xac` are the 3-arg stub `0x100a3950` (return 0). House stocks are filled by building slot `+0xc0` = `0x10076610` (`stock += amount·16`), already the figure unload path (`0x10057bd0`). P1 does not spawn walkers and does not call stall `+0xac` (who does is OQ-187).
+
+Taxes are city_pass index 3 = `0x10029950` (already named in `Seams::city_pass`, currently null). P4 installs booking there. Stage unlock `0x10029610` is city_pass index 1 (P4 or later).
+
+Upgrade / downgrade (P3): next type `id − id%20 + 20` / previous `id − id%20 − 20` else `− 19`; `SetGroup`; materials goods `0x29`–`0x2d`. Walker spawn and island `+0xcc` as remove stay **likely** — P1–P3 do not spawn or demolish a house that way (owner Q5).
+
+#### Seams and draws
+
+No new seam for the house tick (it is `tick_building`). Booking and stage unlock fill existing `city_pass` slots by name (`"booking"`, `"stages"`). Upgrade that changes `Building::type` is an `Effects` entry (append-only; P3).
+
+New `DrawSite` values, appended (timeline bump when first drawn):
+
+| Site | Original | When |
+|---|---|---|
+| `HouseLoadReset` | Load `0x10077079`, world `+0xb4` | scenario/load, `DrawPhase::Load`, per forced need when `house_reset_applies` |
+| `HouseSetGroup` | SetGroup `0x10076d7a` | first assignment, `BGruppeNr ≠ 0`, per forced need |
+| `HouseWalkerTarget` | tick `0x10076397` | P5, if min `s < 102` |
+| `HouseUpgradeVariant` | `0x1002ccd3` | P3, next type property `0x32` count ≠ 0 |
+| `HouseDowngradeVariant` | `0x1002ce68` | P3, previous type property `0x32` count ≠ 0 |
+
+Shipped scenarios: reset never fires (annowelt.md (f)); `HouseLoadReset` is still in the timeline so a crafted record draws. `kPrngTimelineVersion` bumps in the stage that first calls `next` on any of these.
+
+#### Stream bump
+
+P1 adds the `House` payload alternative at the end of the building variant (append-only tag). Visit: `u16 last, u8 mood_flags, i16 residents_64, u16 E, u64 n, n × u16 stock` (runtime form). A golden that contains a house moves. `kStateHashVersion` bumps by 1 in that commit (today 111; T33.4 plans 112; P1 takes the next free value after whichever has landed). `tools/sim_stream.py` and `scenario_corpus.txt` re-recorded with the game dir. `HouseRecordNotModelled` is dropped once the record is applied.
+
+#### Synthetic golden G7
+
+`synthetic::g7_scenario` on a tiny `BGruppen` of two groups (pioneers `Wohnmax` 8, `VermehrTab` like the shipped file's first two entries; settlers `Wohnmax` 8, one forced extra need). One island, city 0, one pioneer house at (110,110) with food stock at 100 %, city store holding the settler-house materials (`0x29`–`0x2d`) and the billed consumer goods; tax level 1; seed named in the test. Driver: 20 000 ticks of 10 ms (40 house updates of 2500). Asserts, independent of the hash: residents grow by `VermehrTab[mood]` per update and clamp at `Wohnmax`; house stocks decay `·127/128` and the city store of food is **unchanged** by the house tick; after the house is full and the next group's forced needs score > 0, the type becomes the +20 block (P3); after 8 bookings (2000 ticks) player money has moved by the booking formula on whatever was billed (P4; 0 until stalls bill). Hash golden `t32_g7_end` recorded with `ANNO_UPDATE_GOLDEN=1`.
+
+#### Test list (P1 must have these)
+
+- `house_need_stock` / `house_satisfaction` / `house_reset_applies` existing cases stay.
+- Load v2: `stock[j] == house_need_stock(Menge_j, s_j, r)` and `E == r << 7`.
+- Load reset predicate true: residents become `Wohnmax`; with a counting `DrawSource`, `HouseLoadReset` count equals the number of forced needs from slot 1 (not food).
+- Load reset false: no draw.
+- Save then load: integer residents (fraction dropped), `s_j` round-trip, `E` rebuilt.
+- Corpus: `HouseRecordNotModelled` gone; `resident_sum` equals the sum of loaded `[1]` (before growth).
+- G7 semantic asserts above (P1 subset: growth and decay only, no upgrade/tax until those stages).
+- Mutation: decay omitted → G7 stock assert fails; city store decremented in the house tick → G7 store assert fails.
+
+#### Stages (proposed acceptance)
+
+| Stage | What | Acceptance |
+|---|---|---|
+| **P1** | `House` payload, registry groups, Load/Save, T26 functions applied, derived city totals, `TickKind::House` still a no-op (or the 2500 gate only, no decay). Stream bump, G7 create hash, corpus. | Orchestrator: a loaded `single36` house has residents and stocks; `HouseRecordNotModelled` absent; goldens/corpus re-recorded; no city-store take. |
+| **P2** | House tick: `E` smooth, stock decay, mood, `VermehrTab`, floors; no upgrade, no walker. | G7 residents and stocks match the §12.2 integer formulas for N updates; city store unchanged. |
+| **P3** | UpgradeCheck / Upgrade / Downgrade / `SetGroup`. | G7 upgrades when the next tables are > 0 and materials are in store; type id `+ 20`; house_counts move. |
+| **P4** | Booking city_pass (taxes into player money); stage mask optional. | G7 money matches `(sum(Preis+PreisLevel)·billed + 128) >> 8` after a forced billed vector. |
+| **P5** | Delivery `+0xc0`, stall billing `+0xac` `take = 1` (OQ-187), walker spawn. | A stall take reduces `CityStock` and raises billed; a house delivery raises house stock by `amount·16`. |
+
+P1 is the first code stage. P2–P5 may merge if the orchestrator wants one PR; each still has the acceptance row.
+
+#### Owner questions (faithful default stated)
+
+1. **Catch-up after load.** Original: `last` is 0 after Load, so a house may run many 2500-tick steps on the first visits (F1). **Default:** keep F1 (`last = 0` on load). Option later: store `last`.
+2. **256 delivered units = 1 t.** **Likely** (delivery `×16`, demand `/16`, booking `>> 8`). **Default:** treat store as tons≪8 and delivered amounts as that unit. Confirm with T1 / M2.1 (no feel change if the likely reading is right).
+3. **Billed/taken not saved.** Original drops them. **Default:** drop them (a load mid-period loses unbooked income). Option: save billed.
+4. **City totals hashed or derived.** Original rebuilds on load. **Default:** derived, not in the stream (OQ-165).
+5. **Walker spawn and `NoDowngrade` removal.** Calls D, meaning likely. **Default:** P1–P4 do not spawn a resident walker and do not demolish via island `+0xcc`. P5 after OQ-187.
+6. **Climate = island property 7.** **Likely.** **Default:** use `Island::climate` in booking.
+7. **Mood-force flags (fire/plague).** Who sets bits 4/5 is unread (`0x1002ba80`). **Default:** flags stay 0 until that path; a loaded `mood_flags` is kept if we ever save it (P1 may omit the byte and treat flags as 0).
 
 ### 4.8 `island.hpp`
 ```cpp

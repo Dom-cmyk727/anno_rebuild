@@ -1314,7 +1314,7 @@ The stand-in walk rule (OQ-160): `layer == 3` (`kRoadLayer`) enters road tiles o
   So a **straight** step costs the destination's orthogonal byte, a **turn** its diagonal byte minus the outgoing orthogonal byte (the arithmetic is u16, wrapping; no clamp, no float, no fixed penalty); the geometry masks are the same four.
 - **First discovery decides.** A cell is marked when it is *pushed*, and a marked cell is closed (`L[0x80..0x86] = 0`, clause 2): there is **no relaxation, no decrease-key**; the route to a cell is the one by which it was first reached, which is not always the cheapest. T33 must reproduce this (it changes which routes exist), not "improve" it.
 
-**5. Goals, stopping, the disc (D, §3.4.10, §3.4.16 (d)).** A cell whose high u16 has **bit 10** is a goal cell: the pre-loop sets it on the cell of every goal point (second pre-loop array, `0x10004068`) and every marking keeps it. When such a node is popped, `0x10003220` builds the 9-bit mask `M` of goal sub-cells in the tile (point goals: `tx ≤ gx < tx + 1`, `ty ≤ gy < ty + 1`, bit `col + 3·row` with `col = trunc(3·(gx − tx))`, `row = trunc(3·(gy − ty))`) and, for each set bit in the order of the row of table `0x100c1160` chosen by the node's arrival (rows 0..3 for codes `0x80 / 0x82 / 0x84 / 0x86`, row 4 otherwise), calls the job's callback with the node and the sub-cell. The result `bl` is the AND of the answers: **1** → the node is expanded as usual; **0** → the node is dropped unexpanded and the search goes on, unless the callback also asked to stop (engine slot `+0xb0`), then the search ends (`0x10004784..0x1000478c`). A node without bit 10, or with `M = 0`, is expanded. The cart's and carrier's callbacks (§1.1 item 4, §2) answer 1 until they stop. **The disc** is applied when a chunk is filled (`0x10003780`, `0x100037e5..0x10003a84`, §3.4.12, the disc byte `[Y + 0x4eb]` non-zero enables it): every cell of the chunk **outside** the rounded area is marked `(hi & 0xfc07) | 7` — closed for the whole search, goals outside it unreachable; cells inside are untouched.
+**5. Goals, stopping, the disc (D, §3.4.10, §3.4.16 (d)).** A cell whose high u16 has **bit 10** is a goal cell: the pre-loop sets it on the cell of every goal point (second pre-loop array, `0x10004068`) and every marking keeps it. When such a node is popped, `0x10003220` builds the 9-bit mask `M` of goal sub-cells in the tile (point goals: `tx ≤ gx < tx + 1`, `ty ≤ gy < ty + 1`, bit `col + 3·row` with `col = trunc(3·(gx − tx))`, `row = trunc(3·(gy − ty))`) and, for each set bit in the order of the row of table `0x100c1160` chosen by the node's arrival (rows 0..3 for codes `0x80 / 0x82 / 0x84 / 0x86`, row 4 otherwise), calls the job's callback with the node and the sub-cell. After each callback an explicit stop request returns 0 immediately (`0x1000373f..0x1000377d`, §3.4.16(d)); an answer 0 alone still calls later matching entries. The result `bl` is the AND of the answers: **1** → the node is expanded as usual; **0** → the node is dropped unexpanded and the search goes on, unless the callback also asked to stop (engine slot `+0xb0`), then the search ends (`0x10004784..0x1000478c`). A node without bit 10, or with `M = 0`, is expanded. The cart's and carrier's callbacks (§1.1 item 4, §2) answer 1 until they stop. **The disc** is applied when a chunk is filled (`0x10003780`, `0x100037e5..0x10003a84`, §3.4.12, the disc byte `[Y + 0x4eb]` non-zero enables it): every cell of the chunk **outside** the rounded area is marked `(hi & 0xfc07) | 7` — closed for the whole search, goals outside it unreachable; cells inside are untouched.
 
 **6. The finer route and the retry (D for the shape, DRAFT for the inner rules; §3.4.14).** After the search the wrapper `0x10005750` takes the selected node (slots `+0x94/+0x98/+0x9c`), and `0x10004c90` rebuilds the tile route from the came-from marks (`0x10004e08..0x10005094`), builds and validates a finer **sub-cell route** (`0x100054ef..0x100055d5`, cache `[Y + 0x2048]`). When the validation fails at the pair `(A, B)` of consecutive route tiles it records a **veto** `(B.x, B.y, mask)` in the array at `Y + 0x1c0c` (12 bytes each, at most **four**; the fifth fails the search, `0x1000568f..0x100056b1`) with `mask = 0x10008230(B.x, B.y, A's cell)` (the current code at B is a mark `0x80..0x86` from the failed search or a start cell, the other is A's code: `0xffff` with exactly one bit cleared for the 1 020 recognised code pairs, i.e. the one directed transition that was used; a start cell clears one key bit 12..15; unrecognised pairs give 0; the table is §3.4.14), and the search is **run again** (fn1's pre-loop `AND`s each veto into the low u16 of B before the loop, `0x100046ed..0x10004747`). The walk then follows the sub-cell route (§4). **What decides that a finer route fails is DRAFT** (`0x100054ef..0x100055d5`, the cache `[Y + 0x2048]`); until it is read, a route over tiles is taken as valid and no veto is recorded — a documented deviation of T33 that changes only routes whose sub-cell path is blocked inside a tile the mask geometry allowed.
 
@@ -1344,6 +1344,29 @@ mapping (OQ-200; default threshold32 is decoded), so empty tiles stay2/0; no coa
 (OQ-170); tile-only rotation/footprint metadata awaits T33.4 at the owner's direction.
 Unsupported retained placements are flagged, with closed scratch placeholders; omitted
 footprint tiles remain an adapter limitation. This is not full shore or object coverage.
+
+**T33.3 as implemented (pure search only):** `walk_search.hpp/cpp` implements
+clauses 3-8 over a copy of `WalkCells`. `WalkPoint` supplies an already quantized world
+tile and subcell indices 0..2; entrance/position conversion remains with T33.4. The
+start flood reads the raw blocked bitmap through `WalkCells::record`, because the
+mapped low word is not invertible. Starts retain order and duplicates, accumulate
+edge keys, and enqueue with score0/code7. The ordered open map uses `(u16 score,
+u64 insertion number)`, with no decrease-key; all four came-from rows use the keys,
+orders and destination cost differences above, with modulo16 scores and marks at push.
+Goal points are combined into per-tile masks, deduplicating equal subcells. The
+callback receives tile/subcell, score and marked high word. Its `select` reply replaces
+the selected result; `Expand` returns1, `Skip` returns0 for this node, `Stop` returns0
+and requests termination. Replies are ANDed across matching subcells; a Skip still calls later entries,
+but Stop returns immediately, matching `transport.md` section3.4.16(d),
+`0x1000373f..0x1000377d`. The result contains the last
+explicit selection, the came-from route (start through goal), its u16 cost, queue
+counts, stop/completeness flags and input/chain diagnostics; route length is the number
+of tile edges. Invalid layers/tables are diagnosed, including non-closed start/reached
+codes and malformed goal-order permutations. Unsupported retained records propagate
+`complete=false`. There is no `choose_source` integration, state/hash/save field,
+version change or re-recorded golden. **Deviation:** finer-route validation and retry
+remain omitted (clause6, `0x100054ef..0x100055d5`); T33.2's water/coast and tile-only
+placement stops remain as documented above. No original table bytes are compiled in.
 
 ### 5.10 Players, script timers, monopoly, event 7.5 min
 ```

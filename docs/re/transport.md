@@ -112,8 +112,8 @@ The figure type's speed, capacity, layer and load wait come from `FigurenHeader.
 - **35 types carry `0x4000` in `Anlagen.dat`'s HEAD `flags_word` (kRoadFlag):** 24 named roads, the 2 piers, and 9 BRUECKE pieces without a Texte.dat ANLAGEN name (3955, 3956, 3961, 3990-3993, 3997, 3998). (counts corrected in T30b.1; T30 wrote 36 and 10)
 - **The named-road set is larger than the kRoadFlag set.** 37 entries (the two piers included) in `Anlagen.dat` have a Texte.dat ANLAGEN name among {Cobblestone street, Dirt road, Stone / Grand / Wooden bridge, Stone / Wooden pier}. Of the 37, **26 carry `0x4000`** and **11 carry `0x1000` instead of `0x4000`**: ids 2505–2508 (Cobblestone street `STRASSE`, flags `0x1186`); 2517, 2536–2537 (Stone / Wooden bridge `BRUECKE`, flags `0x1386`); 2525–2528 (Dirt road `STRASSE`, flags `0x1186`). Each `0x4186`/`0x1186` pair, and `0x4386`/`0x1386`, differs exactly in bit 14 (`0x4000`) and bit 12 (`0x1000`), and the two bits are never set together across the 921 Anlagen entries. (counts corrected in T30b.1; T30 wrote 36 and 10)
 - **Named-road PRODTYPE strings:** `STRASSE` (16 ids), `RAMPE` / `RAMPELOW` / `RAMPEHIGH` (6 ids, ramps onto bridges), `BRUECKE` (10 ids), `PIER` (2 ids). The sim's PRODTYPE table (`types.cpp` `kProdtypeNames`) maps these strings to small numbers; the Anlagen file always carries the string.
-- **WALKMASK is 12 zero bytes for every named road** (37 of 37). (counts corrected in T30b.1; T30 wrote 36 and 10) 282 of 921 Anlagen entries carry 12 zero bytes; the rest carry a per-cell u32 mask (one per footprint cell). Named-road walkability therefore is **not stored per cell on the type**: it must come from a different mechanism.
-- **The bridge "transition" pieces that DO carry per-cell WALKMASK:** ids 3955 (`BRUECKE`, 24 bytes `3f000000 … 3f000000`, 6 cells of 6-bit mask), 3956 (12 bytes `ff010000 00000000 ff010000`, 3 cells with `0x1ff` / 0 / `0x1ff`), 3961 (`BRUECKE`, 12 bytes `ff0f0000 … ff0f0000`), 3992 (`BRUECKE`, `07000000 07000000 05000000`), 3993 (`BRUECKE`, `3f000000` × 3). These look like the ramps/approaches where the walkable cells are a subset of the footprint.
+- **WALKMASK is 12 zero bytes for every named road** (37 of 37). (counts corrected in T30b.1; T30 wrote 36 and 10) 282 of 921 Anlagen entries carry 12 zero bytes; ~~the rest carry a per-cell u32 mask (one per footprint cell)~~ **corrected T30b.3n (§3.4.13): WALKMASK stores three u32 subcell rows per footprint tile row; bits across each row cover three subcells per tile column.** Named-road walkability therefore is **not stored per cell on the type**: it must come from a different mechanism.
+- **The bridge "transition" pieces that DO carry per-cell WALKMASK:** ids 3955 (`BRUECKE`, 24 bytes `3f000000 … 3f000000`, six subcell rows), 3956 (12 bytes `ff010000 00000000 ff010000`, three subcell rows with `0x1ff` / 0 / `0x1ff`), 3961 (`BRUECKE`, 12 bytes `ff0f0000 … ff0f0000`), 3992 (`BRUECKE`, `07000000 07000000 05000000`), 3993 (`BRUECKE`, `3f000000` × 3). These look like the ramps/approaches where the walkable cells are a subset of the footprint.
 
 **Named-road ids by group** (reproduced by `tools/anlagen_roads.py`, T30b.1; one row per contiguous id group, checked against the tool output):
 
@@ -1062,6 +1062,217 @@ No low-u16 propagation is missing: only start nodes need the default expansion's
 Up marks `(hi & 0xfc86)|0x86` (`0x10006adb..0x10006ae5`); down `(hi & 0xfc82)|0x82` (`0x10006cbe..0x10006cc8`). The low code bits retained by those AND masks are all set by the OR, so both replace bits0..9 outright. Left/right helper replaces those same bits with `0x80+dir` (`0x10006fb4..0x10006fc4`); dir0 pushes `0x10006e09/0x10006e60`, dir4 `0x10006eb9/0x10006f11`. All preserve high-u16 bits10..15, including goal bit10. No writer of bits11..15 was found in the inspected mode0 fill/start/goal/mark paths; they start zero, and their purpose is not assigned. Odd codes 0x81/83/85 cannot be produced by these even-dir marks. All five layers have zero admission for **every code 0x80..0x86**: a fresh byte there cannot be admitted as a neighbour, so cannot be confused with a reached mark through this path.
 
 **Still open:** tile-record writers (T30b.3n); live cell confirmation (T30b.3h2); the separate constraint mask (`0x10008230`); complete special-expansion turn costs. This closes the block-pointer identity, entry meaning, mode writer, disc fill and start-nibble source, not the full original walk rule.
+
+#### 3.4.13 The tile record's walk bits (T30b.3n, 2026-10-25)
+
+**Scope/confidence.** D = static instruction reading in **AnnoWelt.dll** unless explicitly
+marked **AnnoGame.dll**; P = parsed original file or PE lookup. These are predictions for the
+named stage of the writer, not live cell dumps. The ordinary placement/code/mask chain is
+identified. Terrain additions and the final authored coast/river mask remain conditional below.
+
+**Record and readers (step 1).** `islands.md`, "Tile record", `annowelt.md`, "Create's use of
+the record", and `formats/insel.md`, "Placed objects", distinguish the runtime record from a
+six-byte file item. Runtime tiles are eight bytes at `[island+0xc]+8*(y*width+x)`, island width
+u16 +8, origin u16 +4/+6. First dword: u16 type id +0; byte+2 packs footprint dx bits0..2,
+dy bits3..5 and rotation bits6..7; byte+3 holds phase bits0..5 and flags6/7. Second dword:
+height byte bits0..7; walk-code byte bits8..15; nine mask bits16..24; owner bits25..28; the
+remaining bits are not assigned a universal meaning here. Reset `0x1008c80d..0x1008c821`
+sets it to `0x1e000200`: neutral owner15, code2, mask0. Placement writes the first-dword
+suboffsets/rotation at `0x10082447..0x10082483` and height/phase at `0x10082485..0x100824c5`.
+
+| Named reader | What is actually read |
+|---|---|
+| `0x1008ff70`, mode0 | Second-dword bits16..24 -> mapper; bits8..15 -> high-u16 code (`0x10090050..0x10090078`, §3.4.12). |
+| `0x10090a40`, mode2 | Second dword at `0x10090b3f`; mask extraction at `0x10090b45..0x10090b48`, code from ah at `0x10090b56`; bit7/connection bits select a subcell branch (`0x10090b58..0x10090bbd`). The full mode2 expansion is not decoded here. |
+| `0x100900c0`, kind11 | Height grid plus **first** dword's type/packed offsets, with type height callback (`0x10090295..0x100902ee`); not a second-dword decoder. |
+| `0x10090350`, kind10 | Same distinction: height grid and first-dword type/offsets (`0x1009049d..0x100904fa`); not the walk byte/mask. |
+| `0x100a4730`, kind9 | Separate 64x64 summary-block data at receiver+4, copies dwords at an 8-tile sampling stride or fills0x0fff (`0x100a47b5..0x100a4885`); not `[island+0xc]` tile records. |
+
+The request's grouping of all those copies as readers of the second dword does not hold.
+
+**Candidate writer sweep (step 2).** Scratch script `cache/t30b3n_sweep.py` uses capstone detail
+and skipdata on `.text`: a `mov reg,[reg+0xc]`, register-copy/LEA tracking, scale8, and a later
+memory-destination mov/or/and/xor through the derived pointer within60 instructions. Functions
+are initially split at ret+NOP/int3, then checked against instruction-aligned direct callees and
+island-vtable entries: inline switch data had hidden the starts `0x10082040`, `0x10082c30`,
+`0x10087880`. The first raw grouping at `0x10081ce0`/`0x10087400` was rejected. Results are
+**candidates**, not an exhaustive proof of writes: stack spills/calls are not fully modelled.
+The final60 run finds45 stores in11 functions; a120-instruction robustness run finds71 stores
+in the same11 functions. It was not necessary to loosen an empty60 run. The vtable dump from
+`0x100cac2c` stops after111 text-target slots, last+0x1b8; rows below mark candidate functions
+which are slots. An installed island receiver is base I, because `0x10094c30` writes
+`[ecx]=0x100cac2c`; no Y-class displacement is reused.
+
+| Candidate start | 60-window store addresses (AnnoWelt, prefix `0x100` below) | Island slot / relevant masks |
+|---|---|---|
+| `0x10082040` | 82753, 82a46 | direct helper; 0x1ff, shift16, 0xfe00ffff; 82a46 is another flag |
+| `0x10082c30` | 8303f,83055,831fd,83213,83221,83239,83247,83426,8343b,83459,8346e,8347c,8348f,834a1,834a6,834b7,83646,8365b,83679,8368b,83699,836ac,836be,836c3,836d4,836e6 | direct helper; packed offsets/phase and field copies, 0xff00 / 0x1ff0000 |
+| `0x100853b0` | 854ca | no slot; 0x1e000000 / 0xe1ffffff (owner) |
+| `0x100854f0` | 855fb | no slot; 0xe1ffffff (owner) |
+| `0x10085620` | 85696,85716 | +0x100; 0xe1ffffff (owner) |
+| `0x10087340` | 873a8,873ab | +0x110; type word / byte+3 bit7 |
+| `0x10087880` | 878e6,87a7a,87b4b | +0xc0; bit29, phase0x3f, mask0x1ff / shift16 / 0xfe00ffff |
+| `0x1008c740` | 8c818,8c81b,8c81e,8c821 | +0x178; record reset |
+| `0x1008ea00` | 8ebed,8ec00 | +0x168; packed record flags / phase0x3f |
+| `0x10092b40` | 92c4d | +0x198; OR0x1ff0000 |
+| `0x100a03c0` | a1386 | no island slot; 0x19 / 0xf / 0x7fffffff; unclassified candidate, not used as evidence of a walk writer |
+
+The120 run adds mask/copy writes in `0x10082040` and `0x10082c30`, including
+`0x1008279d/0x100827d4/0x10082823`, `0x10082ed2`, `0x100830bd/0x100830ce`,
+`0x10083281/0x10083292`, `0x100834c9`, `0x100836fd`. Manual tracing of the placer also finds
+`0x100825b7/0x100825d9`, missed by the narrow pointer tracking because the pointer crosses
+spills/calls. The sweep is a navigation aid; addresses tagged D below were read independently.
+
+**Object placement (step 3, D).** Receiver **I = island base**, passed unchanged from island
+slot+0x78 `0x1008ec90` at direct call `0x1008ecbd` to **`0x10082040`**. It takes a placement
+record P and flags (ret8 at `0x10082b0a`): P has type u16+0, world x/y u16+2/+4,
+rotation byte+6, phase byte+7 and height byte+8. Type T comes from `[I+0x1c]` slot+0x70
+(`0x10082063..0x10082070`). This is a type, not the runtime building instance.
+
+| Receiver / field | Evidence |
+|---|---|
+| T is **AnnoGame type base**, vtable `0x1002185c` installed at `[T]` by AnnoGame `0x1000b4ec` | No +4/+8 adjustment. |
+| Type +6/+7 = dimensions; slots+0x50/+0x54 | AnnoGame `0x10007d30/0x10007d40`, HEAD[0]/[1] per `formats/anlagen.md` field table. Odd P.rotation swaps width/height (`0x10082089..0x100820cc`). |
+| Type +0x12 = HEAD flags; slot+0x60 | AnnoGame `0x10007d80`; placement tests **bit0x10**, not0x1000/0x4000 (`0x10082184..0x1008218f`). |
+| Type +0x10 = PRODTYPE; slot+0x5c | AnnoGame `0x10007d20`; placer has special branches for kinds3/13/198 (`0x10082645..0x10082667`) after the common footprint writes. |
+| Type +0x88 = WALKMASK storage; slot+0x84 | AnnoGame `0x10007f10`; loader `0x1000990d..0x1000996f` copies **3*height u32**, not one u32 per tile. |
+| Type +0x75 = base walk code; slot+0x94(rotation) | AnnoGame `0x10007dc0..0x10007ea2`; HEAD inputs/rotation below. |
+
+Ordinary-path pseudo-code (the flags-bit0x10 overlay branch is noted separately):
+
+```text
+T = types[P.type]; (w,h) = T.dimensions, swapped for odd P.rotation
+for each tile in the rotated footprint (split into 8x8 working blocks):
+    write type id, packed dx/dy/rotation, phase/flags, P.height
+        # 0x10082447..0x100824c5
+code = T.slot94(P.rotation)                 # 0x10082503..0x10082513
+wm = T.slot84()                             # 0x10082517
+for each footprint tile:
+    r = tile.second_dword
+    r = (r & 0xffff00ff) | (code << 8)       # 0x100825af..0x100825b7
+    mask = sample_rotated_3x3(wm,dx,dy,w,h,rotation)
+        # 0x100825bf..0x100825c2 -> 0x1007b5e0
+    r = (r & 0xfe00ffff) | ((mask & 0x1ff) << 16)
+        # 0x100825c7..0x100825d9
+# Kind-specific updates and refresh calls follow; do not mistake this for a live final dump.
+```
+
+The overlay branch (T.flags&0x10) still replaces the code (`0x1008236d`) but **ORs** the
+sampled mask (`0x1008239d..0x100823b0`) and can preserve earlier object/terrain state. Its
+sampling helper `0x1007b840` takes explicit dimensions/rotation/offsets; the ordinary helper
+`0x1007b5e0` reads the packed offsets and rotation from the record just written. The repair
+routine `0x10082c30` restores/copies neighbouring footprint fields and walk bits; it is not
+the primary code source. The explicit mask setter at island+0xc0 `0x10087880` branch
+`0x10087af8..0x10087b4b` rotates an input nine-bit mask with `0x1007ba80` and replaces the same
+bits; `0x100878d0` was inside this function, not a separate entry (§3.4.9).
+
+**Walk-code source, D (AnnoGame).** In the zero-filled56-byte HEAD buffer, the loader keeps
+HEAD[0x30] in cl (`0x100093db`), loads HEAD[0x2f] in al (`0x1000940b`), and if either is nonzero
+calls **`0x100091f0(first=HEAD[0x2f], shape=HEAD[0x30])`** at `0x10009426`; stores al at
+T+0x75 (`0x1000942b`). If both are zero, constructor default4 (`0x1000b555`) survives.
+
+```text
+if first < 8: code = first
+else:
+    code = byte((first-8) | 0x80)           # 0x100091fd..0x100091ff
+    if shape <= 4:
+        code |= [0x50,0x48,0x58,0x78,0x10][shape]
+        # jump table0x10009228, branches0x1000920d..0x10009221
+```
+
+`T.slot94(rotation)` reads T+0x75 (`0x10007dc2`). For high-bit codes with canonical connection
+nibbles2/9/10/11, it rotates that four-bit pattern by one position per quarter turn, retaining
+the low3 bits. Other patterns return unchanged. This is a compact description of the checked
+cases, not a general rotation applied to every code: jump tables `0x10007ea8/0x10007ebc`,
+branches `0x10007df6..0x10007e9c`, fallback `0x10007e9f`. No HEAD flag is an input to this getter.
+
+**Mask sampling, D (AnnoWelt `0x1007b5e0..0x1007b837`; explicit twin
+`0x1007b840..0x1007ba71`).** The mask is a **blocked-subcell bitmap**: three u32 rows per
+unrotated footprint tile row, with three consecutive bits per tile column. For output subcell
+(u,v) in tile(dx,dy), let X=3*dx+u, Y=3*dy+v, W=3*w, H=3*h. Read the source bit at:
+
+- rotation0: (X,Y);
+- rotation1: (W−1−Y,X);
+- rotation2: (W−1−X,H−1−Y);
+- rotation3: (Y,H−1−X).
+
+Store it at bit `3*v+u` of the nine-bit result. The branches start
+`0x1007b5fa/0x1007b67c/0x1007b722/0x1007b7af`; no raw file bytes are copied into the high
+mask field. An all-zero WALKMASK gives0 at any rotation. Mapping table `0x100c1af8` confirms
+mask0 -> low0x0fff and mask0x1ff -> low0: the geometry tests need a **nonzero** edge mask,
+so the latter closes all ordinary entries (§3.4.8). This is why a nonzero admission byte alone
+does not mean a whole tile is passable.
+
+**Road predictions / connection hypothesis.** P: 2527 (`flags0x1186`), 2505 (`0x1186`) and2520
+(`0x4186`) are1x1; each has HEAD[0x2f,0x30]=(0,3) and zero WALKMASK. D chain above gives
+**code0 and object mask0 for all rotations**, code store `0x100825b7`, mask store
+`0x100825d9`, encoder AnnoGame `0x100091f0`, getter `0x10007dc0`. On flat dry ground with no
+later additions the cell is0x00000fff: both L3[0] and L0[0] are255, cost10 for each orthogonal
+direction. Thus the named0x1000 roads are admitted for carts; restricting them by0x4000 is
+not faithful. This is an admission result, not a claim that any road through obstructed terrain
+is reachable or that placement permission ignores the type flags.
+
+The round-ap hypothesis is **supported for the specialized high-bit codes, not a universal
+ordinary-road connection rule**. All37 named roads were checked with the existing roads tool:
+16 have code0, one has code1, fourteen have code4, six bridges have0xd2 at rotation0 and0xaa at
+rotation1 (counts recomputed from parsed HEADs). No canonical corner/junction high-bit code
+occurs among those37 named-road types. For bridge2516, inputs(10,0) encode0xd2; L[0xd2]=0x11
+(left/right bits), rotation1 gives0xaa with L[0xaa]=0x44 (up/down). AnnoGame's shape selectors
+1/2/3 also encode corner/three-way/four-way patterns and the getter rotates the canonical
+corner/three-way cases, but that algebra does not prove a particular rendered corner/junction
+road piece has such a byte. Ordinary STRASSE inputs(0,3) remain0 regardless of rotation; no
+neighbour-connection pattern is supplied to the common code store.
+
+**Terrain writer and stop (step 4).** The tile code/mask is reconstructed, not read directly
+from one `.scp` byte: file HEIGHT is a corner-height grid, GFXID selects ground graphics, and
+GELAENDE/PROD2/FLUESSE items go through object/type placement (`formats/insel.md`).
+Reset supplies code2/mask0. The pass at island+0x16c **`0x10081ce0`** samples nine heights
+(`0x10081dbf..0x10081dde`) and ORs mask bits after height comparisons (`0x10081e89`,
+`0x10081f8d`); there are object-height and river-kind198 branches (`0x10081e9a..0x10081f46`),
+including neighbouring edge ORs at `0x10081ff1/0x1008201d`. It leaves the code byte unchanged.
+The below-water whole-mask pass at island+0x198 **`0x10092b40..0x10092c94`** computes the mean
+of four corners from `[I+0x14]`; if it is below the runtime threshold
+`trunc([0x100e34dc]/[0x100ca6fc])`, it ORs0x1ff0000 into the second dword
+(`0x10092bf3..0x10092c4d`). This is a geometric closure, not a zero admission code.
+The threshold is initialized from another runtime global (`0x1008ff00`); no numeric threshold
+is guessed from a zero-initialized image global.
+
+`0x100928a0..0x10092b32` (island+0x19c, called after placement at `0x10082ab9`) can fill
+empty tiles with types2/11 based on corner height and ground data, and can rewrite a code
+(`0x10092a40..0x10092a5d`). Therefore "no original placed-object item" need not mean the
+runtime type word stays0. **Exact stop for a universal grass/coast/water prediction:**
+`0x10081f51`, the island's height-result call, and its threshold/initialisation and load-order
+chain. The three conditional no-object rows below specify their state explicitly; a generic
+coast cannot be assigned one numeric mask here. A river is a FLUESSE object, not the no-object
+case: type2701 has code4 and zero *object contribution*, while the overlay/height/river-edge
+passes can preserve/add mask bits. A final river mask is not established here.
+
+**Predicted cell table for T30b.3h2 (step 5).** Costs are in **up/down/left/right** order;
+only the default expansion's base costs, not the turn algebra queued in T30b.3o. "Object"
+rows assume no terrain additions/earlier overlays unless stated. The market entrance is the
+first point of type1301 ENTRANCE, approximately(2.1666667,0.5), lying in footprint tile(2,0)
+at rotation0; not decoration2550 (PRODTYPE ZIERDE). The2x2 house is type3501, tile(0,0),
+rotation0; ordinary pioneer503/citizen540 are4x4 in HEAD and are not substituted silently.
+
+| Kind and condition | Record byte = code | Record mask | Mapper low u16 | L3 admission; costs UDLR | L0 admission; costs UDLR | Writer / stop |
+|---|---|---|---|---|---|---|
+| Dirt road2527, flat dry | 0 | 0 | 0x0fff | 255;10,10,10,10 | 255;10,10,10,10 | `0x100825b7/0x100825d9` |
+| Cobblestone2505, flat dry | 0 | 0 | 0x0fff | 255;10,10,10,10 | 255;10,10,10,10 | same |
+| Road2520, flat dry | 0 | 0 | 0x0fff | 255;10,10,10,10 | 255;10,10,10,10 | same |
+| Empty dry grass, retained reset code, no mask additions | 2 | 0 | 0x0fff | 0;0,0,0,0 (never used) | 255;20,20,20,20 | `0x1008c821`; final authored tile stop `0x10081f51` |
+| Empty water below threshold, retained reset code after whole-mask pass | 2 | 0x1ff | 0 | 0;0,0,0,0 (unused) | 255;20,20,20,20 (geometry rejects) | `0x10092c4d`; final load-chain stop `0x10081f51` |
+| Empty mixed coast with retained code2 | 2 | M, sample-dependent | mapper[M] | 0;0,0,0,0 (unused) | 255;20,20,20,20 | **stop `0x10081f51`**, no numeric M claimed |
+| 2x2 house3501, object-only tile(0,0) | 4 | 0x1b6 | 0x0770 | 255;40,40,40,40 | 255;15,15,15,15 | `0x100825b7/0x100825d9`, file WALKMASK |
+| Market1301 entrance tile(2,0), object-only | 4 | 0x1f0 | 0x00ee | 255;40,40,40,40 | 255;15,15,15,15 | same |
+| River2701, final geometry unresolved | 4 | **stop**, overlay/terrain-dependent | **stop** | 255;40,40,40,40 | 255;15,15,15,15 | code `0x1008236d`; mask stop `0x10081f51` |
+| Bridge2516 rotation0, object-only | 0xd2 | 0 | 0x0fff | 0x11;10,10,10,10 | 0x11;10,10,10,10 | `0x100825b7/0x100825d9`; AnnoGame getter |
+
+**OQ-171:** answered for the named0x1000 roads: their code0 is admitted for layer3, independently
+of the stand-in's flags test. **OQ-170 tile side:** narrowed; the proposition "water and rivers
+have an admission byte zero in every layer" is false for these decoded codes (empty reset
+code2 has L0=255; river2701 code4 has L0=L3=255). Terrain masks can nevertheless block entry.
+The exact final coast/river values, complete authored-load order and running-original comparison
+remain open. The synthetic tool tests and derived file predictions are not a Wine confirmation.
 
 ### 3.5 Step 7 is BLOCKED on a figure-position reader
 

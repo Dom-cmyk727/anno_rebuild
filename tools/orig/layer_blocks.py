@@ -156,6 +156,7 @@ def main() -> int:
                     help="path to AnnoWelt.dll on disk (for the compare)")
     ap.add_argument("--disk-summary", action="store_true",
                     help="summarize admission masks and costs on disk; no game run")
+    ap.add_argument("--codes", help="comma-separated fresh codes for --disk-summary (0..255)")
     ap.add_argument("--keep", action="store_true", help="keep the run folder after stop")
     args = ap.parse_args()
 
@@ -172,10 +173,13 @@ def main() -> int:
                   f"fresh_nonzero={sum(bool(v) for v in block[:0x100])} "
                   f"code7={block[7]} marked_code_admissions="
                   f"{sum(bool(block[c]) for c in range(0x80, 0x87))}")
-            for code in codes[:3]:
+            selected = [int(v, 0) for v in args.codes.split(',')] if args.codes else codes[:3]
+            if any(code < 0 or code > 0xff for code in selected):
+                raise ValueError("fresh tile codes must be in 0..255")
+            for code in selected:
                 costs = tuple(block[0x400 + code * 8:0x408 + code * 8])
                 print(f"  code={code} admission={block[code]} costs={costs}")
-            if layer in (0, 3):
+            if layer in (0, 3) and not args.codes:
                 for admission in sorted(set(block[:0x100])):
                     matching = [c for c in range(0x100) if block[c] == admission]
                     print(f"  fresh_admission={admission} codes={matching}")

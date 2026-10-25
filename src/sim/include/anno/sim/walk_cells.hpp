@@ -39,6 +39,8 @@ class WalkCells {
     WalkCells(const Island&, const TypeRegistry&, const WalkTables&, TileRect,
               std::uint32_t chunk_edge = 4, std::optional<SearchArea> disc = {});
     [[nodiscard]] WalkCell get(TileXY);
+    /// The mapped low word is not invertible; start floods need the raw bitmap.
+    [[nodiscard]] WalkRecord record(TileXY p) const { return walk_record(island_, types_, p); }
     /// Search marks remain in this scratch store. Outside rectangle writes fail.
     bool set(TileXY, WalkCell);
     [[nodiscard]] TileRect rect() const { return rect_; }

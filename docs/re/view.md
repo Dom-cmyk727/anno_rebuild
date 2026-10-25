@@ -135,8 +135,7 @@ arguments, and **no converter candidate is established by this route**. This is 
 stop before the task's two-function follow-up, not a failed decoding of a selected converter.
 No projection constants, zoom-group pitch table, rotation formula or output pair is assigned
 from the unrelated comparisons. The live slopes in §2.1 remain observations only; §2.2's
-building getters remain rejected as converters. T15.B2's frame walk/minimap calibration is
-still the prescribed independent route to obtain a live anchor.
+building getters remain rejected as converters. T15.B2's live calibration is §2.5.
 
 ### 2.4 The converter: bounded T15.B1c candidate list (2026-10-25)
 
@@ -169,6 +168,122 @@ not yet the pixel pitch per group. `0x10071d70` uses float59.16330337524414 from
 or height. Rotation is a byte0..3 in the named setter, but complete picking, terrain
 intersection, rounding and final output ownership remain open. T15.B2 can now obtain
 V from the game HWND and validate the fields while recording the live hovered-pair frame.
+
+### 2.5 The projection measured live (T15.B2, 2026-10-25; **P**, by running; static confirmation open)
+
+Session `t15b2` (`cache/orig/t15b2/`, git-ignored), the copy through dgVoodoo2, 1024 x 768, driven by
+`tools/orig/control.py` only; camera read through `gamestate.camera` (the window's `GWL_USERDATA`,
+§3.3); the cursor pixel is the game's own (`stack 0x1af950`, §1: the OS cursor is up to 1 px
+off the requested one because of the absolute-move rounding); the hovered pair at `stack 0x1acfbc`
+(same addresses as the first run). Calibration points: a 15 x 14 (group 0) or 11 x 10 (groups 1, 2)
+pixel grid over the map area plus the two sweeps of the task, for each zoom group and each of the four
+rotations (12 configurations, 1 726 rows).
+
+**Findings that change the method.**
+
+- **The hovered pair is not stable; it must be sampled.** The slot flips, several thousand times a
+  second, between the real pair and a sentinel (`33776, 12955` or `25576, 12955`, different per
+  run state). A single read returns the sentinel about half the time; `play.hover` reads 80 times and
+  takes the modal pair below 2048. Over steep land the pair stays on one tile for many pixels
+  (e.g. g0r0 at (307..467, 306): always (656, 476)), so a sweep on land is not a ruler.
+- **Keys:** `F4` = zoom group 0 (scale 1.0), `F3` = group 1 (0.5), `F2` = group 2 (0.25) (the task
+  text had F2 = group 0). `X` steps the rotation 0 -> 1 -> 2 -> 3 -> 0. The game starts in **group 1**,
+  rotation 0, camera (655.0, 476.0), not group 0. Rotation and zoom change the stored camera
+  position (the setter pivots, §3.2): the camera is always read after the change.
+- **Arrow scroll (group 1, one 0.2 s hold):** RIGHT changes the camera by (-4, +4) tiles, LEFT
+  (+4, -4), UP (-8, -8), DOWN (+8, +8) (g1 r0, F8 = 50 % speed; the step is dt-based, §3.2).
+- The picking behaves like a **ray against the terrain** (inferred from the data, not read from code): on flat sea the model below is exact, on land the tile is shifted by
+  up to 4–5 tiles by the terrain height, so the formula is a prediction, and `goto_tile` corrects it
+  by the hovered tile.
+
+**Formula (sea, all four rotations, per group).** With the camera (x, z) in tiles (`camera()`),
+`u = (px - CX) / A`, `v = (py - CY) / B`, (px, py) the game's cursor pixel and (a, b; c, d) the row of
+the rotation table:
+
+```text
+tile_x = floor(x + a*u + b*v)         tile_z = floor(z + c*u + d*v)
+rotation 0: (a,b;c,d) = (-1/2, +1/2; +1/2, +1/2)      rotation 1: (-1/2, -1/2; -1/2, +1/2)
+rotation 2: (+1/2, -1/2; -1/2, -1/2)                  rotation 3: (+1/2, +1/2; +1/2, -1/2)
+```
+
+(rotation 0: one tile right = x - 1, z + 1, one tile down = x + 1, z + 1, §2.1; the other rotations
+turn this by quarter turns.) A, B are the half width and half height of a tile in pixels, (CX, CY)
+the pixel that shows the camera position; fitted jointly over the four rotations of a group by least
+squares on the sea points (blue pixels of the screenshot; one outlier-trim pass), target tile + 0.5:
+
+| zoom group | scale | A (px) | B (px) | centre CX, CY (px) | fit rms (tiles) |
+|---|---|---|---|---|---|
+| 0 | 1 | 41.70 | 20.62 | 389.0, 300.9 | 0.29 |
+| 1 | 0.5 | 20.84 | 10.31 | 388.9, 333.8 | 0.29 |
+| 2 | 0.25 | 10.50 | 5.15 | 390.4, 350.0 | 0.28 |
+
+| config | camera x, z (tiles) | rows | land rows | sea rows | sea exact | sea off by 1 | sea off >1 | land exact | land off by 1 | land off >1 and <100 | stale reads (>=100) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| g0r0 | 655.04, 475.96 | 222 | 164 | 58 | 55 | 1 | 2 | 44 | 79 | 41 | 0 |
+| g0r1 | 659.54, 475.96 | 224 | 155 | 69 | 67 | 0 | 2 | 40 | 72 | 43 | 0 |
+| g0r2 | 659.54, 480.46 | 224 | 131 | 93 | 88 | 2 | 3 | 20 | 46 | 65 | 0 |
+| g0r3 | 651.78, 480.46 | 224 | 114 | 110 | 107 | 2 | 1 | 9 | 47 | 58 | 0 |
+| g1r0 | 651.78, 472.70 | 124 | 99 | 25 | 12 | 0 | 0 | 8 | 23 | 26 | 55 |
+| g1r1 | 656.55, 472.70 | 124 | 92 | 32 | 29 | 2 | 1 | 15 | 39 | 38 | 0 |
+| g1r2 | 656.55, 477.33 | 124 | 78 | 46 | 43 | 2 | 1 | 6 | 28 | 44 | 0 |
+| g1r3 | 648.79, 477.33 | 124 | 69 | 55 | 51 | 2 | 2 | 5 | 20 | 44 | 0 |
+| g2r0 | 648.79, 469.57 | 63 | 42 | 21 | 19 | 2 | 0 | 6 | 9 | 27 | 0 |
+| g2r1 | 656.01, 469.57 | 124 | 83 | 41 | 19 | 1 | 0 | 0 | 14 | 31 | 59 |
+| g2r2 | 656.01, 475.84 | 74 | 37 | 37 | 34 | 2 | 1 | 5 | 10 | 22 | 0 |
+| g2r3 | 648.24, 475.84 | 75 | 42 | 33 | 30 | 3 | 0 | 2 | 9 | 30 | 1 |
+
+The pitch halves with the scale (A = 41.7 x scale, B = 20.6 x scale; B/A = 0.49, 2:1 within the fit), the rms of 0.28 is that of rounding to whole tiles (1/sqrt(12) = 0.29 per axis). CX is
+the same in every group (about 389, the middle of the 778-px map area); CY moves with the group
+(301, 334, 350), which is not understood (the view's pivot is height dependent, §3.2).
+**Misses (listed in the per-configuration table above).** Over the 12 configurations 620 rows are
+sea: 554 are reproduced exactly, 19 are off by one tile (rounding at a tile edge), 13 are off by more than
+one (0–3 per configuration: shoreline and ship pixels the colour test counted as sea) and 34 are stale
+reads (below). On land 160 rows are exact, 396 off by one and 469 off by more (up to 5 tiles): every land row that is
+off is a terrain-height effect (the model is a flat-ground prediction). The rows marked stale (g1 r0: 55,
+g2 r1: 59, g2 r3: 1) are reads where the sampled value was below 2048 but not the tile (a half-written
+pair); they are excluded from the exact/off columns and are why `goto_tile` confirms with a second read.
+
+**Per-configuration sweeps** (cursor pixel -> hovered tile; model in brackets), rotations 0 and 1 of every group:
+
+**g0r0**: camera (655.04, 475.96), group 0, rotation 0, scale 1.0; minimap rectangle bbox [871, 80, 874, 83, 10]
+
+- horizontal sweep (32 px, y=307): (307,306)→(656,476) model (656,475); (339,306)→(656,476) model (655,475); (371,306)→(656,476) model (655,475); (403,306)→(656,476) model (655,476); (435,306)→(656,476) model (654,476); (467,306)→(656,476) model (654,477); (499,306)→(656,476) model (653,477)
+- vertical sweep (16 px, x=307): (307,306)→(656,476) model (656,475); (307,322)→(656,476) model (656,475); (307,338)→(656,476) model (656,475); (307,355)→(656,476) model (657,476); (307,370)→(656,476) model (657,476); (307,386)→(656,476) model (658,477); (307,402)→(656,476) model (658,477)
+
+**g0r1**: camera (659.54, 475.96), group 0, rotation 1, scale 1.0; minimap rectangle bbox [880, 62, 883, 65, 8]
+
+- horizontal sweep (32 px, y=307): (307,306)→(660,477) model (660,477); (339,306)→(656,476) model (660,476); (371,306)→(656,476) model (659,476); (403,306)→(656,476) model (659,475); (435,306)→(656,476) model (658,475); (467,306)→(656,476) model (658,475); (499,306)→(656,476) model (658,474)
+- vertical sweep (16 px, x=307): (307,306)→(660,477) model (660,477); (307,322)→(660,477) model (660,477); (307,338)→(656,476) model (659,477); (307,355)→(656,476) model (659,478); (307,370)→(656,476) model (658,478); (307,386)→(656,476) model (658,479); (307,402)→(656,476) model (658,479)
+
+**g1r0**: camera (651.78, 472.70), group 1, rotation 0, scale 0.5; minimap rectangle bbox [870, 78, 876, 84, 32]
+
+- horizontal sweep (32 px, y=307): (307,306)→(654,472) model (652,469); (339,306)→(654,472) model (651,470); (371,306)→(652,472) model (650,470); (403,306)→(0,0) model (650,471); (435,306)→(0,0) model (649,472); (467,306)→(0,0) model (648,473); (499,306)→(648,474) model (647,473)
+- vertical sweep (16 px, x=307): (307,306)→(0,0) model (652,469); (307,322)→(0,0) model (653,470); (307,338)→(655,472) model (653,470); (307,355)→(655,472) model (654,471); (307,370)→(0,0) model (655,472); (307,386)→(657,474) model (656,473); (307,402)→(658,474) model (657,474)
+
+**g1r1**: camera (656.55, 472.70), group 1, rotation 1, scale 0.5; minimap rectangle bbox [879, 61, 885, 66, 21]
+
+- horizontal sweep (32 px, y=307): (307,306)→(658,474) model (659,473); (339,306)→(657,473) model (659,472); (371,306)→(657,472) model (658,471); (403,306)→(656,472) model (657,471); (435,306)→(654,472) model (656,470); (467,306)→(652,472) model (656,469); (499,306)→(653,469) model (655,468)
+- vertical sweep (16 px, x=307): (307,306)→(658,474) model (659,473); (307,322)→(658,474) model (659,474); (307,338)→(656,476) model (658,474); (307,355)→(656,476) model (657,475); (307,370)→(656,476) model (656,476); (307,386)→(656,476) model (655,477); (307,402)→(654,478) model (655,477)
+
+**g2r0**: camera (648.79, 469.57), group 2, rotation 0, scale 0.25; minimap rectangle bbox [867, 75, 879, 86, 55]
+
+- horizontal sweep (32 px, y=307): (307,306)→(650,463) model (648,461); (339,306)→(648,464) model (646,462); (371,307)→none; (403,307)→none; (435,307)→none; (467,307)→none; (499,307)→none
+- vertical sweep (16 px, x=307): (307,307)→none; (307,322)→(651,464) model (650,462); (307,339)→none; (307,355)→none; (307,371)→none; (307,387)→none; (307,403)→none
+
+**g2r1**: camera (656.01, 469.57), group 2, rotation 1, scale 0.25; minimap rectangle bbox [877, 58, 889, 69, 55]
+
+- horizontal sweep (32 px, y=307): (307,306)→(0,0) model (664,469); (339,306)→(0,0) model (662,467); (371,306)→(0,0) model (661,466); (403,306)→(0,0) model (659,464); (435,306)→(655,465) model (658,463); (467,306)→(0,0) model (656,461); (499,306)→(0,0) model (655,460)
+- vertical sweep (16 px, x=307): (307,306)→(662,470) model (664,469); (307,322)→(661,472) model (662,470); (307,338)→(660,473) model (661,472); (307,355)→(658,474) model (659,474); (307,370)→(656,476) model (658,475); (307,386)→(0,0) model (656,477); (307,402)→(0,0) model (654,478)
+
+**Minimap rectangle** (white rectangle on the minimap, bbox of pixels with all channels >= 235 inside
+`screens.json` `hud.minimap`): its size is 4 x 4 / 7 x 7 / 13 x 12 px at groups 0 / 1 / 2, i.e. the
+view's extent scales with 1/scale. Centre against the camera (group 1, rotation 0, nine scroll rows
+and the group rows; least squares, max residual 0.4 px, but the scroll range was only about 16 tiles so
+the slopes are rough): `px = 903.5 - 0.140 x + 0.128 z`, `py = 2.9 + 0.081 x + 0.053 z`, i.e. about
+one pixel per 7–8 tiles along the minimap diamond (RIGHT, camera (-4, +4): +1 px right; UP, (-8, -8):
+1 px up). Rotation turns the minimap too: centres at camera ~ (659.5, 476) group 0: rot 0 (872.5, 81.5),
+rot 1 (881.5, 63.5), rot 2 (916.5, 67.5), rot 3 (908.0, 85.0) (`calib_*.json` `minimap`). A tighter minimap
+fit needs a longer scroll range (open).
 
 ## 3. The camera (static fields known; live calibration open)
 

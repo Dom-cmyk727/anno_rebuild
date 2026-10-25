@@ -28,6 +28,7 @@ import backend  # noqa: E402
 import gamestate  # noqa: E402
 import live  # noqa: E402
 import opening  # noqa: E402
+import play  # noqa: E402
 import screensig  # noqa: E402
 import timing  # noqa: E402
 import userdat  # noqa: E402
@@ -229,6 +230,16 @@ class Camera(unittest.TestCase):
         self.assertIsNone(gamestate.camera(self.view(0x86430), 1, self.FRAME, userdata=lambda h: self.V))
         self.assertIsNone(gamestate.camera(self.view(), 1, self.FRAME, userdata=lambda h: None))
         self.assertIsNone(gamestate.camera(self.view(), 1, self.FRAME, userdata=lambda h: 0x7000000))
+
+
+class PlayProjection(unittest.TestCase):
+    def test_pixel_and_tile_agree_for_every_group_and_rotation(self):
+        for g in play.CALIB:
+            for r in range(4):
+                cam = {"x": 655.04, "z": 475.96, "rotation": r, "zoom_group": g}
+                for tx, tz in ((655, 476), (640, 490), (670, 460)):
+                    px, py = play.pixel_of(cam, tx + 0.5, tz + 0.5)
+                    self.assertEqual(play.tile_at(cam, px, py), (tx, tz), (g, r, tx, tz))
 
 
 @unittest.skipUnless(sys.platform == "win32", "needs the Windows backend")

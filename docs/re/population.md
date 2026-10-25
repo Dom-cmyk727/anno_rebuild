@@ -1,6 +1,6 @@
 # Population, needs, growth and taxes
 
-**Status:** first pass (2026-10-17), static analysis only. Modules (GOG 2.0.0.5, image base `0x10000000` each): `AnnoGame.dll` (loader for `Data/BGruppen.dat`), `AnnoWelt.dll` (houses, cities, balance), `AnnoFrame.dll` (tax button). Tools: Ghidra 12.1.4 headless (`cache/ghidra/plus/*.c`), `objdump -d -M intel` for every constant quoted below, a scratch model (`cache/pop/model.py`, not committed) for the fixture numbers. `AnnoWelt`/`AnnoGame` have no RTTI, so class names are ours. Addresses are in the module named in each section. Behaviour is paraphrased; no code is copied.
+**Status:** first pass (2026-10-17); house and city field inventory T32.1 (2026-10-25), static analysis only. Modules (GOG 2.0.0.5, image base `0x10000000` each): `AnnoGame.dll` (loader for `Data/BGruppen.dat`), `AnnoWelt.dll` (houses, cities, balance), `AnnoFrame.dll` (tax button). Tools: Ghidra 12.1.4 headless (`cache/ghidra/plus/*.c`), `objdump -d -M intel` for every constant quoted below, a scratch model (`cache/pop/model.py`, not committed) for the fixture numbers. `AnnoWelt`/`AnnoGame` have no RTTI, so class names are ours. Addresses are in the module named in each section. Behaviour is paraphrased; no code is copied.
 
 Confidence as in [`annodisplay.md`](annodisplay.md): **confirmed** = read in the decompiled and/or disassembled function; **likely** = strong inference, not traced end to end; **guess** = hypothesis, repeated under "Open".
 
@@ -65,17 +65,17 @@ A climate name the parser does not know gives index −1, and the write then lan
 
 ## 2. House object (`AnnoWelt.dll`) — **confirmed** unless marked
 
-The building factory `0x10024010` maps building kinds `0x61`–`0x65` to the house class: constructor `0x10077220`, vtable `0x100c9958`, 0x50 bytes, base class `0x10075c60` → `0x100734c0`. It then calls slot `+0x84` (`SetGroup`, `0x10076b90`) with group record `kind − 0x61` and increments the city's house count per group (`+0x18a + 2·group`). Fields:
+The building factory `0x10024010` maps building kinds `0x61`–`0x65` to the house class: constructor `0x10077220`, vtable `0x100c9958`, 0x50 bytes, base class `0x10075c60` → `0x100734c0`. It then calls slot `+0x84` (`SetGroup`, `0x10076b90`) with group record `kind − 0x61` and increments the city's house count: `inc word [BuildingIndex + 0x46 + 2·BGruppeNr]` at `0x10024c2d` (`this` = `city+0x144`; `city+0x18a` = that word for group 0). The counter index is the first byte of the selected `BGRUPPE` record, not `kind − 0x61` for an arbitrary file order. Fields:
 
 | Offset | Type | Meaning |
 |---|---|---|
-| +0x04 | u16 | index in the city's house list |
-| +0x06, +0x08 | u16 | tile position (x, y) — **likely** |
-| +0x0a | u16 | tick of the last population update (base constructor sets 0) |
-| +0x0c | u8 | flags; bits 4/5 force a bad mood (§4); bit 3 = building switched off (**likely**, `0x10072a60`) |
-| +0x10 | ptr | city |
-| +0x14 | ptr | building type (Anlagen data) — **likely** |
-| +0x18…+0x24 | 4 ptr | active walkers sent by the house (§5) — **likely** |
+| +0x04 | u16 | index in the city's house list (**D** T32.1: slot `+0x3c` = `0x10035bf0`) |
+| +0x06, +0x08 | u16 | tile position (x, y) (**D** T32.1: slot `+0x50` = `0x10071ba0`) |
+| +0x0a | u16 | tick of the last population update (base constructor sets 0; Create property `0x23` stores `now`, `0x100733ac`) |
+| +0x0c | u8 | flags; bits 4/5 force a bad mood (§4); bit 2 from the type (`0x10073318`–`0x10073329`); bit 3 = building switched off (**likely**, `0x10072a60`) |
+| +0x10 | ptr | city (**D** T32.1: attach kind `0x1400`, `0x100732fb`) |
+| +0x14 | ptr | building type (**D** T32.1: attach kind `0x700`, `0x1007330b`) |
+| +0x18…+0x24 | 4 ptr | active walkers (**D** T32.1: attach kind `0x1500` into the first free slot, `0x10075b5c`) |
 | +0x28 | ptr | group record (§1) |
 | +0x2c | i16 | **residents · 64** (start 5 · 64) |
 | +0x2e | u16 | **consumption base `E`** ≈ residents · 128, smoothed (start 5 · 128) |
@@ -166,7 +166,7 @@ Not-forced needs (the "Aufstieg !!" ones) do not affect mood; they only matter f
   - On a downgrade, needs that are new to the house start at satisfaction 102, and `E` is reset to `residents · 128`.
   - **First assignment to a non-pioneer group** (a higher house placed directly, e.g. aristocrats or scenario houses): residents = `Wohnmax`, `E = Wohnmax · 128`, and every forced need gets satisfaction `128 − (PRNG & 31)` from the world PRNG.
   - A new pioneer house keeps the constructor values: 5 residents, `E` = 640, food 100 %, everything else 0.
-- **Save/load**: slot `+0x80` (`0x10077130`) writes an 8-byte header (residents as an integer, need count, version 2) and one byte per need with `min(s_j, 160)`. Slot `+0x7c` (`0x10076e60`) restores residents with `E = residents · 128`. **Confirmed** for save. **Likely** for load (Ghidra dropped part of the function).
+- **Save/load**: slot `+0x80` (`0x10077130`) writes an 8-byte header (residents as an integer, need count, version 2) and one byte per need with `min(s_j, 160)`. Slot `+0x7c` (`0x10076e60`) restores residents with `E = residents · 128` and the stocks from the satisfaction bytes (version 0/1/2 as in `annowelt.md` (f)). **Confirmed** for save and load (T32.1 re-read `0x10076e60`–`0x1007711b`).
 
 ## 6. Resident counters per city
 
@@ -222,6 +222,76 @@ For each stage `i` = 0…30 not yet set in the city mask `+0x618`: if `counter.s
 - Floats elsewhere in the city: event message positions in `0x1002ba80`, building positions (`0x10056b10`, `0x10072b50`). They are UI payload or not part of this subsystem. **Likely** harmless.
 - Hard-coded limits our rebuild must turn into data (CLAUDE.md): 5 groups (names in the loader, kinds `0x61`–`0x65`, counter object); 16 needs per house; 96 goods ids; 32 stages (u32 masks, `& 0x7fffff` test); consumer goods `0x1a`–`0x28` and infrastructure `0x4c`–`0x5a` as fixed id ranges; WIRTSHAUS ↔ ALKOHOL special case; 10 queued upgrades; 16 cities per island.
 
+## 11. State or derived (T32.1)
+
+Static re-read of the house constructors, `Load`/`Save`, the house tick's field writes, Create's attach/index stores, and the city counter. No game run. Addresses are AnnoWelt unless named. **This-adjustment:** house methods run with `this` = the house object (vtable `0x100c9958` installed at `[house+0]` by `0x1007722e`); city methods with `this` = the city (vtable `0x100c2f40` at `0x1002fa36`); the resident counter is the embedded object at `city+0x2ec` (vtable `0x100c3018` at `0x1002f9e3`); Create `0x10024010` has `this` = `city+0x144` (BuildingIndex; city ctor `lea ecx, [ebp+0x144]` at `0x1002f9b0`, then `mov edi, ecx` at `0x10024036`).
+
+### 11.1 Function table (first row = `this`)
+
+| Function | this | Why | Range read |
+|---|---|---|---|
+| Base ctor `0x100734c0` | house | `ecx`; writes vtable `0x100c92b8` | `0x100734c0`–`0x100734e1` |
+| House-base ctor `0x10075c60` | house | `ecx`; calls `0x100734c0`; vtable `0x100c9818` | `0x10075c60`–`0x10075c88` |
+| House ctor `0x10077220` | house | `ecx`; calls `0x10075c60`; vtable `0x100c9958` | `0x10077220`–`0x1007724b` |
+| Load slot `+0x7c` `0x10076e60` | house | vtable `0x100c9958+0x7c` | `0x10076e60`–`0x1007711b` |
+| Save slot `+0x80` `0x10077130` | house | vtable `0x100c9958+0x80` | `0x10077130`–`0x10077211` |
+| SetGroup slot `+0x84` `0x10076b90` | house | `ebx = ecx`; vtable `+0x84` | `0x10076b90`–`0x10076e4e` |
+| Tick slot `+0x8c` `0x10076230` | house | `esi = ecx`; vtable `+0x8c` | `0x10076230`–`0x100765af` (gate, `E`, stocks, growth, floors) |
+| Index slot `+0x3c` `0x10035bf0` | house | Create after list insert (`0x10024c04`, `0x1002516d`) | `0x10035bf0`–`0x10035bf9` |
+| Pos slot `+0x50` `0x10071ba0` | house | Create `0x1002467c` | `0x10071ba0`–`0x10071bb2` |
+| Rot slot `+0x68` `0x10071c10` | house | Create `0x1002468a` | `0x10071c10`–`0x10071c25` |
+| Height slot `+0x70` `0x10071c40` | house | Create `0x10024698` | `0x10071c40`–`0x10071c47` |
+| Attach slot `+0x28` `0x10075b10` / `0x100732d0` | house | Create `0x1002465f`, `0x100246be` | `0x10075b10`–`0x10075b5f`, `0x100732d0`–`0x10073330` |
+| Prop slot `+0x4c` `0x10073380` | house | Create property `0x23` → `+0x0a` | `0x10073380`–`0x100733c9` |
+| City ctor (counter init) | city | `ebp`; vtable `0x100c2f40` | `0x1002f9b0`–`0x1002fa74` |
+| City slot `+0x5c` `0x1002dfb0` | city | returns `city+0x2ec` | `0x1002dfb0`–`0x1002dfb6` |
+| Counter get/add/sub | `city+0x2ec` | vtable `0x100c3018` | `0x10022e10`, `0x10022df0`, `0x10022e20`, `0x10022e50`, `0x10022e60` |
+| Create house-count inc | `city+0x144` | `inc word [index + 2·BGruppeNr + 0x46]` | `0x10024c13`–`0x10024c3c` |
+| Billing slot `+0x88` `0x1002dac0` | city | consumer goods `0x1a`–`0x28` | `0x1002dac0`–`0x1002daff` |
+| City save slot `+0x58` `0x1002ebb0` | city | sweep: no `+0x2ec` / `+0x2f0` / `+0x18a` | `0x1002ebb0`–`0x1002f264` |
+
+### 11.2 House fields
+
+| Offset | Type | Meaning | Who writes | Saved? | Rebuild |
+|---|---|---|---|---|---|
+| +0x00 | ptr | vtable `0x100c9958` | ctor `0x1007722e` | no (class) | derived |
+| +0x04 | u16 | list index | slot `+0x3c` `0x10035bf0` from Create after `mov [list+esi*4], house` | no | derived from the list |
+| +0x06, +0x08 | u16 | tile x, y | slot `+0x50` `0x10071ba0` | no (the `PROD/ENTRY` position is the save) | building record |
+| +0x0a | u16 | last population tick | ctor `0x100734ca` = 0; property `0x23` `0x100733ac` = Create `now`; tick `0x1007625e` `last += 2500` | **no** (Load does not write it) | reset on load (Open in §10: catch-up) |
+| +0x0c | u8 | flags (rot bits 0–1; bit 2 from type; bits 4/5 mood force) | base ctor `and 0xc3`; rot slot `+0x68`; type attach `0x10073329` | no | building rotation + runtime flags |
+| +0x0d | u8 | zeroed | `0x100734c4` | no | — |
+| +0x0e | u8 | `0x82` house / `0x86` base | `0x10075c81` after `0x100734dd` | no | `byte0e` already in the sim |
+| +0x0f | u8 | height | slot `+0x70` `0x10071c44` | no (ENTRY byte) | building record |
+| +0x10 | ptr | city | attach kind `0x1400` `0x100732fb` | no | derived |
+| +0x14 | ptr | type | attach kind `0x700` `0x1007330b` | no | derived |
+| +0x18…+0x24 | 4 ptr | walkers | attach kind `0x1500` `0x10075b5c`; ctor zeros | figures (`TASK`) | figure registry, not house payload |
+| +0x28 | ptr | `BGRUPPE` record | SetGroup `0x10076e43`; ctor 0 | no | registry group id (load-time data) |
+| +0x2c | i16 | residents · 64 | ctor `0x140` (5·64); Load `residents<<6`; tick `VermehrTab`; SetGroup | **integer residents** in the 8-byte header (`[1]`, `0x10077161`) | **state** |
+| +0x2e | u16 | `E` | ctor `0x280` (5·128); Load `residents<<7` (`0x10076f01`); tick `E·127/128 + residents` (`0x10076277`–`0x100762a9`) | **no** (Load overwrites from residents) | runtime state; **derived after load** |
+| +0x30+2j | 16 × u16 | stock of need `j` | ctor zeros 32 bytes `0x10077240`; Load from `s_j`; SetGroup; Delivery `0x10076610`; tick decay | **satisfaction bytes** `min(s_j, 160)` (`0x100771ae`–`0x100771d2`), not the raw stock | **state** (save form = `s_j`; runtime = stock) |
+
+Mood is not a field: slot `+0x9c` `0x10075fd0` computes it. The house record the original round-trips is `[1]` residents, `[2]` need count, `[3]` version 2, then `n` bytes `s_j` (`annowelt.md` (f); T32.1 Load/Save re-read). Direct callers of Save are virtual only (reloc `0x100c99d8` = vtable slot `+0x80`; OQ-185).
+
+### 11.3 City population fields
+
+Counter `this` = `city+0x2ec`. Ctor writes vtable `0x100c3018` and zeros **six** 8-byte group slots at `+0x2f0` (`ecx = 6`, `0x1002f9c5`–`0x1002f9db`); getters loop **five** groups (`0x10022df5`). Per group `g`: i32 residents at `[counter + 4 + 8g]` = `city+0x2f0+8g`; the four bytes after each i32 (`city+0x2f4+8g`) are zeroed by the ctor and unused by the five methods read. Slot 0 `0x10022e10` returns that i32; slot 4 `0x10022df0` sums groups 0–4 (total); slot 8 `0x10022e20` sums groups `g`…4; `+0xc`/`+0x10` add/sub that i32 (`0x10022e50`/`0x10022e60`). City slot `+0x5c` = `lea eax, [ecx+0x2ec]`. T15's `city+0x2f0` HUD match is group 0's i32 (pioneers).
+
+| Offset | Type | Meaning | Who writes | Saved? | Rebuild |
+|---|---|---|---|---|---|
+| city+0x2ec | ptr | counter vtable `0x100c3018` | city ctor `0x1002f9e3` | no | embedded object |
+| city+0x2f0+8g | i32 | residents of group `g` | Load `0x10076ef6`/`0x10076f31` (sub old, add new); house tick (remove/add around `VermehrTab`, `0x10076407`…); Create/upgrade/downgrade | **no**: city save `0x1002ebb0`–`0x1002f264` never reads `+0x2ec`/`+0x2f0`; city `VOLK` is unused (`annowelt.md` (g)) | **derived after load** (sum of houses); original keeps it incrementally at run time |
+| BuildingIndex+0x46+2g = city+0x18a+2g | u16 | houses of group `g` | Create `inc word [index+eax*2+0x46]` `0x10024c2d` (`eax` = `BGruppeNr`) | **no** (not in `0x1002ebb0`) | **derived** from the house list |
+| city+0x334+12id+0 | u32 | store amount | `WARE` load; add/remove; billing `take` | **yes** (`WARE`, tons<<8) | already `CityStock` |
+| city+0x334+12id+4 | u16 | billed this booking (ids `0x1a`–`0x28`) | `0x1002dae0`; booking clears | **no** (not in `WARE`'s 8-byte entry) | **derived** / period scratch |
+| city+0x334+12id+8 | u16 | amount taken when `take` | `0x1002daf2` | **no** | period scratch |
+| demand | — | house slot `+0xa4` `0x100765c0` computes `Menge·E·256/44236 − stock/16` | none stored on the city | no | **derived** |
+
+There is no separate city-wide demand or consumption sum object. Billing is per-good at store `+4`; income sums those at booking (`0x10029950`, §8).
+
+### 11.4 Conclusion (OQ-165)
+
+The original **keeps both** at run time: per-house `+0x2c` / stocks / `E`, and the city's per-group i32s. What it **saves** is the house record (integer residents + `s_j`). After a load it **rebuilds** `E` and stocks from that record and **patches** the city counters from each house `Load`. City totals and house counts are not an independent save channel. For the rebuild: house residents and per-need stocks (or the saved `s_j`) are **state**; city group totals and house counts are **derived** (may be cached like the original, rebuilt on load). `E` is runtime state that does not round-trip (Load sets `residents<<7`).
+
 ## Fixture spec (to run on x86 Windows / Wine against the original)
 
 Observables: house residents and the satisfaction shown in the house info panel (or via a debugger: house `+0x2c`, `+0x2e`, `+0x30…`), city stage mask `+0x618`, player money `+0x74`, city statistics page. Times are in ticks since the house's last update (1 tick = 2 ms game time).
@@ -268,6 +338,8 @@ pioneer houses in the Kontor's yellow range), objects read by `tools/orig/probe.
   that decides it.
 
 ## Open
+- T32.1 closed the house field layout, `Load`/`Save`, the city counter and the house-count words (§11). Still open below.
+- Who dispatches house Save slot `+0x80` on a world save (virtual only; OQ-185). Next: `call [eax+0x80]` in `0x100ae700` / the building-list walk.
 - Unit of the city store and of delivered amounts (is 256 = 1 t?); confirm with T1 and a savegame pair (M2.1).
 - Where house flags bits 4/5 (`+0x0c & 0x30`, forced mood −1/−2) are set: fire, plague, riot? (`0x1002ba80`.)
 - Which building class is the market, and the full resident or market-cart round trip (walker task `0x35`, house slots `+0xd4`, `+0xa4`, `+0xc0`); who calls city slot `+0x88` with take = 0 vs 1.

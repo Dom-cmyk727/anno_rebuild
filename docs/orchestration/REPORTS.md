@@ -2781,3 +2781,102 @@ Inline, no subagents.
 - Corrected final runtime gates [x]: after the Stop correction and final FIFO/Skip mutation checks, MSVC focused search:10 cases,7,151 assertions. Both Clang18 ASan/UBSan and GCC13.3 -O3/-Werror direct builds recompiled the changed search/test sources and passed15 cases without the game folder (7,247 assertions) and15 with it (8,492 assertions). Final changed-source -O3/-Werror checks passed GCC13 and Clang18. Final full no-game CTest:997/997,44.55 seconds, two expected scenario skips. Final full game-folder CTest also passed:997/997,403.54 seconds. Prior batching implementation runs are superseded.
 - Final local gates [x]: full MSVC build warning-free; full CTest with16 threads passes997/997 both with and without original files (two expected scenario skips without); all existing goldens and scenario-corpus expectations unchanged. Clang-format23.1.3 across all src .cpp/.hpp, lint_sim and git diff --check pass. Final FIFO reversal and Skip-shortcircuit mutations each failed one assertion in their named case (exit1), then source/timestamps restored and all targets rebuilt. The Clang sanitizer overflow probe proves non-recovery; final sanitizer and GCC runtime counts are above. No render behavior changed or original-game input performed.
 - Acceptance: pure score/FIFO search, start flood/keys, all default/special expansions, first discovery, modulo16 scores, ordered goal callbacks with Skip/Stop distinction, selected came-from route/cost and completeness diagnostics implemented and tested. No stand-in search reuse, choose_source integration, state/hash/save/version change or golden re-recording. Finer-route retry remains the named deviation; T33.2's water/coast and tile-only placement stops remain for T33.4. No original table bytes/assets/listings added. PLAN/TASKS unchanged; no milestone claimed. Local-only workflow: no push/API/PR attempted. Stop after this branch; the orchestrator reviews and merges into local main.
+
+## T32.1 — Inventory, house and city population fields — 2026-10-25 — status: FINISHED
+- Branch: `task/T32-1-population-fields` (commit recorded after git log -1); worktree: `C:\Users\altin\anno1503-T32-1` from local main `76746b0`. No push, no PR (round ba). Did not touch `src/`, goldens, `TASKS.md` or `state.md` §5.9.
+- Built: docs only. `docs/re/population.md` §11 (function table with this-adjustment, house table, city table, OQ-165 conclusion); §2 field tags promoted; `docs/sim/state.md` §4.7a (new, not §5.9); OQ-165 answered; OQ-185 opened. DLL: `E:\Anno 1503 AD\GOG\AnnoWelt.dll` (byte-identical to `game/app`). Tools: `tools/disasm.py`, `tools/xref.py --reloc`. No build, no game run, no Wine.
+- Gates: n.a. (static RE and docs; task forbids build / game / Wine).
+- Evidence: ranges in `population.md` §11.1. This-adjustment: house methods `this` = house (vtable `0x100c9958` at `0x1007722e`); city methods `this` = city (`0x100c2f40` at `0x1002fa36`); counter `this` = `city+0x2ec` (`0x100c3018` at `0x1002f9e3`); Create `0x10024010` `this` = `city+0x144`.
+- Reviewers: none (orchestrator reviews locally).
+- Left open / questions: OQ-185 (who calls house Save `+0x80`); OQ-165 implementation waits for T32.2 / T32.3 / P1. T32.2 not started.
+- Time spent / subagents used: inline; no subagents.
+
+Inventory of every `population.md` rule (tag; next address if not D):
+
+| § | Rule | Tag | Next if not D |
+|---|---|---|---|
+| 1 | Loader `0x10007400` / parser / getter `+0x5fdc` | D | |
+| 1 | Object reached as player slot `+0x6c` (`0x10021450`) | likely | callers of `0x10021450` |
+| 1 | Object vtable slots 0/1/2 | D | |
+| 1 | Parser `[` / `Key: value` / `strtol` / `strtod` | D | |
+| 1 | Goods ids kind `0x20` | D | |
+| 1 | Goods record 96 × 26 at `+0x4` | D | |
+| 1 | Unknown climate → BauFirst/BauLast (original bug) | D | |
+| 1 | Group record 6 × 0x118 at `+0x9c4` | D | |
+| 1 | `Menge` / `VermehrTab` integer formulas | D | |
+| 1 | `Priority` unused | D | |
+| 1 | Post-pass lookup / WIRTSHAUS→ALKOHOL / IdSec | D | |
+| 1 | Data invariants (NAHRUNG slot 0, goods then infra, forced needs of g+1 in g) | D | |
+| 1 | Stage record 32 × 4 at `+0x1054` | D | |
+| 1 | Group `BauFirst`/`BauLast` use | open | readers of group `+0xca`/`+0xcb` |
+| 1 | `Hiscore` use | open | readers of group `+0xce` |
+| 1 | Stage `Wissen` use | open | readers of stage `+1` |
+| 2 | Factory kinds `0x61`–`0x65` → ctor `0x10077220`, vtable `0x100c9958`, size 0x50 | D | |
+| 2 | `+0x04` list index (`0x10035bf0`) | D | T32.1 |
+| 2 | `+0x06`/`+0x08` tile x,y (`0x10071ba0`) | D | T32.1 (was likely) |
+| 2 | `+0x0a` last population tick | D (writers) | Load does not write it: Open catch-up, `state.md` F1 |
+| 2 | `+0x0c` bits 4/5 mood force | D (readers) | who *sets*: `0x1002ba80` |
+| 2 | `+0x0c` bit 3 switched off | likely | `0x10072a60` |
+| 2 | `+0x10` city (attach `0x1400`) | D | T32.1 |
+| 2 | `+0x14` type (attach `0x700`) | D | T32.1 (was likely) |
+| 2 | `+0x18`…`+0x24` walkers (attach `0x1500`) | D | T32.1 (was likely) |
+| 2 | `+0x28` group, `+0x2c` residents·64, `+0x2e` `E`, `+0x30+2j` stocks | D | |
+| 2 | `s_j = stock·1536/(E·Menge)` cap 160; 128 = 100 % | D | |
+| 2 | House-count inc `BuildingIndex+0x46+2·BGruppeNr` | D | T32.1 (`0x10024c2d`) |
+| 3 | World/island/city/building periods and 16-bit diffs | D | |
+| 3 | `+800` sub-object `0x10027400` | open | `0x10027400` |
+| 3 | City events `0x1002ba80` | open | `0x1002ba80` |
+| 3 | Mood statistics `0x1002a5e0` / `+0x844` | likely | `0x1002a5e0` to its `ret` |
+| 3 | `0x1002d3b0` | open | `0x1002d3b0` |
+| 4 | House tick gate, `E` smooth, stock decay, `VermehrTab`, floors, upgrade/downgrade call | D | |
+| 4 | Walker spawn task `0x35` | likely | house slot `+0x118` |
+| 4 | Island slot `+0xcc` = house removed | likely | island slot `+0xcc` |
+| 4 | Counter adjust at `0x10076551` (looks like a bug) | D instr., likely dead | prove via max `VermehrTab` |
+| 4.1 | Mood formula | D | |
+| 5 | Delivery `0x10076610` | D | callers = market/resident: `0x10057bd0` |
+| 5 | Demand `0x100765c0` | D | |
+| 5 | Choice `0x10076670` arithmetic | D | role of supplier: slots `+0xa4`/`+0xc4` |
+| 5 | Billing `0x1002dac0` | D (fn) | who calls take=0 vs 1 |
+| 5 | Upgrade check `0x10075dd0` / queue `0x1002e080` | D | |
+| 5 | Upgrade `0x1002e0d0` | D | |
+| 5 | Downgrade `0x1002cdd0` | likely | `0x1002cdd0` |
+| 5 | `SetGroup` `0x10076b90` | D | |
+| 5 | Save `0x10077130` | D | dispatcher: OQ-185 |
+| 5 | Load `0x10076e60` (v0/v1/v2, reset, `E=res<<7`, counter patch) | D | T32.1 (was likely) |
+| 6 | City counter `+0x2ec` / per-group i32 / slots 0/4/8/add/sub | D | |
+| 7 | Stage unlock `0x10029610` | D | |
+| 8 | Player money `+0x74` | D | |
+| 8 | Booking `0x10029950` | D | |
+| 8 | Island property 7 = climate | likely | island property 7 |
+| 8 | World property 10 = tax (code D, meaning) | likely | HUD bind / T15 |
+| 8 | City stats 0/1/4/5 | D | stat 2 military: who adds |
+| 8 | Upkeep `0x10072a60` / PROD3 `0x00`/`0x02` | D | |
+| 8 | Store `+0x334` amount | D | names of decaying +8/+10: city page |
+| 8 | Store `+4` billed, `+8` taken: not in `WARE` | D | T32.1 |
+| 9 | Periods 2500/2000 ticks | D | |
+| 9 | 256 delivered units = 1 t | likely | T1 / savegame pair M2.1 |
+| 9 | `Wohnmax` / `VermehrTab` / table index | D | |
+| 10 | x87 only in loader | D | |
+| 10 | House/city path integer-only | D | |
+| 10 | Draws use world PRNG | D | |
+| 10 | Other city floats are UI | likely | `0x1002ba80`, `0x10056b10` |
+| 10 | Hard-coded counts as data | D (as inventory) | |
+| 11.2 | House `+0x00`…`+0x28` not in house payload | D | |
+| 11.2 | `+0x2c` residents **state**; `+0x2e` `E` **derived after load**; stocks **state** as `s_j` | D | |
+| 11.2 | Mood not a field | D | |
+| 11.3 | `city+0x2ec` / `+0x2f0+8g` **derived after load** | D | |
+| 11.3 | `city+0x18a+2g` house counts **derived** | D | |
+| 11.3 | Demand not stored on the city | D | |
+| 11.4 | OQ-165: both at run time; save is per-house; city rebuilt on load | D | |
+| T15 | `+0x2f0` HUD match | likely (live, not paused) | paused HUD = `+0x2f0` |
+| T15 | Decline without a market | open | per-house `+0x2c` (OQ-T15-HOUSEGROW) |
+| Open | Infra goods `0x4c`–`0x5a` into house stock | open | service-radius delivery |
+| Open | Display % = `s·100/128`? | open | house-panel reader |
+| Open | Upgrade material costs `0x1002c030` | open | `0x1002c030` |
+| Open | Upgrade queue filler `+0x30c0` | open | `0x1002d350` |
+
+House table (acceptance): every row D or open with next address. Non-D: `+0x0a` after load (Open catch-up); `+0x0c` bit 3 (`0x10072a60`); Save caller (OQ-185). City table: every row D; demand has no city field.
+
+OQ-165: **answered** from that table (status line updated). Implementation is T32.3 / P1.
+
+Acceptance: (tables) MET with the three open house rows named; (OQ-165) MET; nothing of the original in git. T32.2 not taken.

@@ -629,6 +629,15 @@ Inventory only (`docs/re/population.md` §11). No payload, stream or golden chan
 - **Derived, not stored:** mood (slot `+0x9c` computes it); demand (house slot `+0xa4`); billed/taken scratch at store `+4`/`+8` (not in `WARE`).
 - **OQ-165:** house residents and stocks are the hashed fields; city totals are derived (may be a cache rebuilt on load).
 
+### 4.7b House tick order (T32.2, not implemented)
+
+Pointer only (`docs/re/population.md` §12). No payload, stream or golden change here; T32.3 writes the DRAFT, P1 implements. Not §5.9.
+
+- **Every 2500 ticks** (`house+0x0a += 2500` after a 16-bit gate): `E` smooth, **house-stock** decay `·127/128` (not a city-store take), `s_j` cap 160, optional walker spawn, mood −2…+2, `VermehrTab[mood]` into `+0x2c`, city counter add/sub, then upgrade (next type `id − id%20 + 20`) or downgrade (`id − id%20 − 20`, else `− 19`).
+- **City store** is reduced by billing with `take = 1` (`0x1002dac0`), which the house tick does not call (OQ-186).
+- **Taxes** are the city booking every 2000 ticks (`0x10029950`): surcharge `PreisLevel[tax]` on billed consumer goods, `(sum+128)>>8` into player money; not a per-head tax.
+- **Draws** (world PRNG slot `+0xb4`): walker target, upgrade/downgrade variant, SetGroup first-assignment satisfaction. Sites in §12.6.
+
 ### 4.8 `island.hpp`
 ```cpp
 struct Terrain {                                    // static, shared, hashed by digest; STAND-IN (O-53, OQ-060): the sim reads none of it

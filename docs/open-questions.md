@@ -1664,11 +1664,17 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What the rebuild does meanwhile:** nothing — the walk ignores terrain (stated in OQ-160); by the owner's decision of 2026-10-24 no stand-in rule is added; T33 implements what T30 reads.
 - **How to resolve:** T30 steps 2 and 5, then T33; decide then whether a sim terrain field is still needed for the sea.
 
-## OQ-185: Who calls house Save slot `+0x80` on a world save (new, T32.1 2026-10-25; OQ-165)
-- **Status:** open. The Save body is D (`0x10077130`–`0x10077211`, `population.md` §11.2): 8-byte header (integer residents, need count, version 2) then `min(s_j, 160)` per need. Direct `.text` callers of `0x10077130` were not found; the only reloc is the vtable slot `0x100c9958+0x80` = `0x100c99d8`. City save `0x1002ebb0`–`0x1002f264` does not walk the house list into that slot. World save `0x100ae700` has no direct call either.
+## OQ-185: Who calls house Save slot `+0x80` on a world save (new, T32.1 2026-10-25; OQ-165; T32.2 re-check)
+- **Status:** open. The Save body is D (`0x10077130`–`0x10077211`, `population.md` §11.2): 8-byte header (integer residents, need count, version 2) then `min(s_j, 160)` per need. Direct `.text` callers of `0x10077130` were not found; the only reloc is the vtable slot `0x100c9958+0x80` = `0x100c99d8`. City save `0x1002ebb0`–`0x1002f264` does not walk the house list into that slot. T32.2 re-checked: `xref.py --reloc 0x10077130` is still `0x100c99d8` only; a code sweep of `0x10077130` as a direct call is empty. World save `0x100ae700` was not walked (no direct call; the dispatcher is `call [reg+0x80]`).
 - **Area:** simulation / save, population
 - **Why:** T32.1 needs the original's save channel to classify house residents and stocks as state. The record layout is enough for that classification; the dispatcher that actually invokes slot `+0x80` is not named.
-- **How to resolve:** T32.2 or a later save-path read: from world save `0x100ae700` / load `0x100ae270` (T21) follow the building-list walk that calls `[house+0]+0x80`. Next address: the house-list iterator in the city or island save (start at callers of city slot `+0x58` and of building slot `+0x80` via `xref.py --reloc 0x100c99d8` already done; try a disasm sweep of `call [eax+0x80]` in `0x100ae700` and `0x1002ebb0`).
+- **How to resolve:** a later save-path read: from world save `0x100ae700` / load `0x100ae270` (T21) follow the building-list walk that calls `[house+0]+0x80`. Next address: disasm sweep of `call [reg+0x80]` in `0x100ae700` and in any island/city building iterator (reloc of the vtable slot itself is empty because that *is* the slot).
+
+## OQ-186: Who takes consumer goods from the city store (new, T32.2 2026-10-25)
+- **Status:** open. Function D: city slot `+0x88` = `0x1002dac0` (`this` = city). For ids `0x1a`–`0x28` it adds `amount` to billed at store `+4`; if `take ≠ 0` it also does `min(amount, store)` from `+0` and adds that to taken at `+8`. The house tick `0x10076230` never calls it: consumption there is house-stock `·127/128` only (`0x100762e6`–`0x100762fb`). Direct `.text` callers: `0x1006b520` (take = 0), `0x10070120` (take = 0), `0x100702f0` (take = 1). Each is a building method (`this+0x10` = city). Class names are not in RTTI.
+- **Area:** simulation, population / market
+- **Why:** T32.2 step 5 asked for "consumption from the city store" in the house tick. That take is not there. T32.3 / P1 must not subtract city stock inside the house update.
+- **How to resolve:** constructors that install the vtables containing those three methods; then the figure/market path that reaches `0x100702f0`. Next: `xref.py --reloc` of `0x1006b520`, `0x10070120`, `0x100702f0`.
 
 ## OQ-200: File HEIGHT to the runtime water-test corner grid (T33.2, 2026-10-25)
 - **Status:** open, water sub-step stopped as instructed.

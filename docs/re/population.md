@@ -1,6 +1,6 @@
 # Population, needs, growth and taxes
 
-**Status:** first pass (2026-10-17); house and city field inventory T32.1 (2026-10-25), static analysis only. Modules (GOG 2.0.0.5, image base `0x10000000` each): `AnnoGame.dll` (loader for `Data/BGruppen.dat`), `AnnoWelt.dll` (houses, cities, balance), `AnnoFrame.dll` (tax button). Tools: Ghidra 12.1.4 headless (`cache/ghidra/plus/*.c`), `objdump -d -M intel` for every constant quoted below, a scratch model (`cache/pop/model.py`, not committed) for the fixture numbers. `AnnoWelt`/`AnnoGame` have no RTTI, so class names are ours. Addresses are in the module named in each section. Behaviour is paraphrased; no code is copied.
+**Status:** first pass (2026-10-17); house and city field inventory T32.1 (2026-10-25); house tick pseudo-code T32.2 (2026-10-25), static analysis only. Modules (GOG 2.0.0.5, image base `0x10000000` each): `AnnoGame.dll` (loader for `Data/BGruppen.dat`), `AnnoWelt.dll` (houses, cities, balance), `AnnoFrame.dll` (tax button). Tools: Ghidra 12.1.4 headless (`cache/ghidra/plus/*.c`), `objdump -d -M intel` for every constant quoted below, a scratch model (`cache/pop/model.py`, not committed) for the fixture numbers. `AnnoWelt`/`AnnoGame` have no RTTI, so class names are ours. Addresses are in the module named in each section. Behaviour is paraphrased; no code is copied.
 
 Confidence as in [`annodisplay.md`](annodisplay.md): **confirmed** = read in the decompiled and/or disassembled function; **likely** = strong inference, not traced end to end; **guess** = hypothesis, repeated under "Open".
 
@@ -157,9 +157,9 @@ Not-forced needs (the "Aufstieg !!" ones) do not affect mood; they only matter f
 - **Delivery** (slot `+0xc0` = `0x10076610`, `(goods id, amount)`): if the goods id maps to a slot, `stock += amount · 16`. If the good has an `IdSec`, the same amount is delivered again for the `IdSec` good. A good the house does not need returns 0. **Confirmed.** Callers include figure tasks that unload cargo into a building (`0x10057bd0`). **Likely**: the market/resident walker completes here.
 - **Demand** (slot `+0xa4` = `0x100765c0`): `Menge·E·256/44236 − stock/16`. That is the amount the house still wants, up to ≈ 111 % satisfaction. **Confirmed** formula.
 - **Choice between two offered goods** (slot `+0xd4` = `0x10076670`): goods already being fetched by one of the four walkers are skipped. Urgency = `128 − s` for the good itself or, recursively, the highest urgency along its `IdSec` chain (`0x10076960`, `0x100769f0`). A good is accepted only if the supplier's stock (slot `+0xa4`) exceeds `residents · Menge · 256 / 4096` and its slot `+0xc4` allows it. **Confirmed** arithmetic. **Likely** role (supplier = market or walker).
-- **Consumption billing** (city slot `+0x88` = `0x1002dac0`, `(goods id, amount, ·, take)`): only for consumer goods `0x1a`–`0x28`, `billed[id] += amount`. If `take`, `min(amount, store)` is also removed from the city store. Building classes call it with take = 0 (`0x1006b520`, `0x10070120`) or take = 1 (`0x100702f0`). Which class is the market is not traced. **Confirmed** (function), **likely** (meaning).
+- **Consumption billing** (city slot `+0x88` = `0x1002dac0`, `(goods id, amount, ·, take)`): only for consumer goods `0x1a`–`0x28`, `billed[id] += amount`. If `take`, `min(amount, store)` is also removed from the city store. **The house tick does not call this** (T32.2: no xref from `0x10076230`). Direct `.text` callers: `0x1006b520` and `0x10070120` with take = 0, `0x100702f0` with take = 1; each has `this` = a building (`this+0x10` = city). Which class is the market is not traced (OQ-186). **Confirmed** (function and callers), **likely** (class).
 - **Upgrade check** (`0x10075dd0`), **confirmed**: no upgrade if `NoUpgrade`. Otherwise evaluate the **next** group's forced needs with the current house stocks (slot through the current group's lookup; infrastructure capped at 128 here, not 160). The next group's `NahrungTab`, `BedarfTab` and `InfraTab` values must all be **> 0**. Then city slot `+0x94` (`0x1002e080`) must accept: at most 10 queued (`+0x30e8`), house kind `0x61`–`0x80`, and the city store holds the materials of the next house type. That type is `type_id − type_id mod 20 + 20` (house types come in blocks of 20 per level), checked by `0x1002c030` (`0x1002e000`).
-- **Upgrade** (`0x1002e0d0` → `0x1002cbe0`), **confirmed**: removes the materials (goods `0x29`–`0x2d`: WERKZEUG, HOLZ, ZIEGEL, MAMOR) from the store and books them in `+0x5d8`. If the type has variants (property `0x32`) it picks one with the world PRNG. It moves the residents between the per-group counters and house counts, sets the new type, and calls `SetGroup(next record)`. **Downgrade** = `0x1002e120` → `0x1002cdd0` (not read in detail; **likely** symmetric).
+- **Upgrade** (`0x1002e0d0` → `0x1002cbe0`), **confirmed**: removes the materials (goods `0x29`–`0x2d`: WERKZEUG, HOLZ, ZIEGEL, MAMOR, and id `0x2d`) from the store and books them in `+0x5d8`. If the type has variants (property `0x32`) it picks one with the world PRNG. It moves the residents between the per-group counters and house counts, sets the new type, and calls `SetGroup(next record)`. **Downgrade** (`0x1002e120` → `0x1002cdd0`), **confirmed** T32.2: previous type `id − id%20 − 20`, else `id − id%20 − 19`; group `− 0x118`; same variant draw and counter / count / `SetGroup` / type swap.
 - **`SetGroup`** (`0x10076b90`), **confirmed**:
   - From an old group, each need's satisfaction is carried over by goods id. When the new satisfaction is ≥ 102, it is also given to the `IdSec` chain. The new stock is `Menge_new · s · E / 1536`.
   - Needs new to the house get stock 0, except slot 0 (food), which gets `Menge · E / 12` (100 %).
@@ -292,6 +292,145 @@ There is no separate city-wide demand or consumption sum object. Billing is per-
 
 The original **keeps both** at run time: per-house `+0x2c` / stocks / `E`, and the city's per-group i32s. What it **saves** is the house record (integer residents + `s_j`). After a load it **rebuilds** `E` and stocks from that record and **patches** the city counters from each house `Load`. City totals and house counts are not an independent save channel. For the rebuild: house residents and per-need stocks (or the saved `s_j`) are **state**; city group totals and house counts are **derived** (may be cached like the original, rebuilt on load). `E` is runtime state that does not round-trip (Load sets `residents<<7`).
 
+## 12. The house tick as pseudo-code (T32.2)
+
+Static re-read of the house tick, mood, upgrade check, city Upgrade/Downgrade, booking, demand, delivery and `SetGroup`. No game run. AnnoWelt unless named. **This-adjustment:** every method below has `this` = the object in the first column (house vtable `0x100c9958` at `0x1007722e`; city `0x100c2f40` at `0x1002fa36`; counter `city+0x2ec` / `0x100c3018` at `0x1002f9e3`).
+
+| Function | this | Why | Range |
+|---|---|---|---|
+| Tick slot `+0x8c` `0x10076230` | house | `esi = ecx`; vtable `+0x8c` | `0x10076230`–`0x100765b9` |
+| Mood slot `+0x9c` `0x10075fd0` | house | `ebx = ecx`; called at `0x100763ed` | `0x10075fd0`–`0x10076224` |
+| Demand slot `+0xa4` `0x100765c0` | house | `ecx`; not called from the tick | `0x100765c0`–`0x10076607` |
+| Delivery slot `+0xc0` `0x10076610` | house | `ecx`; not called from the tick | `0x10076610`–`0x10076668` |
+| `s_j` helper `0x10076ae0` | house | `ecx`; arg = slot `j` | `0x10076ae0`–`0x10076b27` |
+| Upgrade check `0x10075dd0` | house | `ecx`; called at `0x1007649c` | `0x10075dd0`–`0x10075fc4` |
+| SetGroup slot `+0x84` `0x10076b90` | house | `ebx = ecx` | `0x10076b90`–`0x10076e4e` |
+| Booking `0x10029950` | city | `esi = ecx`; city tick step (e) | `0x10029950`–`0x10029aa4` |
+| Billing slot `+0x88` `0x1002dac0` | city | vtable `0x100c2fc8` | `0x1002dac0`–`0x1002daff` |
+| Queue slot `+0x94` `0x1002e080` | city | from upgrade check | `0x1002e080`–`0x1002e0c1` |
+| Upgrade slot `+0x98` `0x1002e0d0` → `0x1002cbe0` | city | `esi`/`edi = ecx` | `0x1002e0d0`–`0x1002e118`, `0x1002cbe0`–`0x1002cdc4` |
+| Downgrade slot `+0x9c` `0x1002e120` → `0x1002cdd0` | city | `esi`/`edi = ecx` | `0x1002e120`–`0x1002e168`, `0x1002cdd0`–`0x1002cf52` |
+| Materials `0x1002c030` | city | goods `0x29`–`0x2d` | `0x1002c030`–`0x1002c08c` |
+
+### 12.1 `BGruppen.dat` field map (load-time data, never state)
+
+`formats::text` names from `docs/formats/data-text.md`. Offsets are the group record (`[BGRUPPE]`, 0x118 bytes) or the goods record (`[WAREN]`, 26 bytes) as in §1. `Priority` has no reader in this path (§1).
+
+| File field | `formats::text` name | Offset | Reader (first site) |
+|---|---|---|---|
+| group index | `BGruppeNr` | group `+0` | tick `0x1007641c`; Create `0x10024c2d` |
+| need count `n` | (derived from `Ware` lines) | group `+2` | tick `0x100762ad` |
+| no upgrade | `NoUpgrade` | group `+1` bit 0 | upcheck `0x10075dd7` |
+| no downgrade | `NoDowngrade` | group `+1` bit 1 | tick `0x10076519` |
+| goods id of need `j` | `Ware` | group `+0x64+4j` | tick `0x100762ca`; mood; SetGroup |
+| forced flag | `Force` | group `+0x65+4j` | mood `0x1007601d`; SetGroup `0x10076d70` |
+| quantity (integer) | `Menge` | group `+0x66+4j` u16 | tick `0x10076300`; demand; `s_j`; mood |
+| id → slot | (post-pass, §1) | group `+3+id` | delivery `0x1007661b`; demand `0x100765ca` |
+| end of goods needs | (derived) | group `+0xcc` | mood `0x10075ffe` |
+| end of infra needs | (derived) | group `+0xcd` | mood `0x10076077` |
+| residents cap | `Wohnmax` | group `+0xc8` | tick `0x1007645c`; SetGroup `0x10076dac` |
+| prev group's cap | `Wohnmax` | `group−0x50` = prev `+0xc8` | tick `0x10076527` |
+| food table | `NahrungTab` | group `+0xcf` | mood `0x1007615c`; next group at `+0x1e7` in upcheck |
+| goods table | `BedarfTab` | group `+0xe4` | mood `0x1007618e`; next `+0x1fc` |
+| infra table | `InfraTab` | group `+0xf9` | mood `0x100761a8`; next `+0x211` |
+| growth | `VermehrTab` | group `+0x10e` (mood −2…+2 at `+0x110+mood`) | tick `0x1007642c` |
+| goods-table ptr | — | group `+0x114` | tick `0x100762c2` |
+| stage gate of a good | `BauFirst` | goods `+2` | tick `0x100762d3` (player mask bit) |
+| substitute good | `IdSec` | goods `+1` | delivery `0x1007664c` |
+| price / tax surcharge | `Preis` / `PreisLevel` | goods `+4+2·climate` / `+0x12+2·tax` | booking `0x1002999d`–`0x100299de` |
+| group `BauFirst`/`BauLast`, `Hiscore`, `Priority` | those keys | group `+0xca`/`+0xcb`/`+0xce`; unused scratch | **not read** in this path |
+
+### 12.2 House tick (every 2500 ticks)
+
+`s_j = min(stock_j · 1536 / (E · Menge_j), 160)` (`lea eax,[eax+eax*2]; shl 9` = `×1536`; cap `0xa0`). Divisions truncate toward zero (MSVC `cdq` / `idiv`, or `cdq; and edx, 2^k−1; add; sar` for `/128` and `/64`).
+
+The house tick **does not** subtract from the city store (`city+0x334`). It decays **house** stocks. City-store take is billing with `take = 1` (`0x1002dae4`–`0x1002daf6`), not called from `0x10076230`. Units: delivery adds `amount·16` to stock (`0x10076638`); demand subtracts `stock/16`; booking does `(sum + 128) >> 8`. That **256 delivered units = 1 t** (store is tons≪8) stays **likely** (next: T1 / savegame pair, M2.1). Magic `0xbda21029` at `0x100765e4` is signed `/44236`.
+
+```
+# this = house; arg0 = tick
+if (u16)(tick − [house+0x0a]) < 0x9c4: return          # 2500
+[house+0x0a] += 0x9c4
+mask = player property 0x21, second dword               # city+0x10, slot +0x1c, then +0x48(0x21)
+E = E·127/128 + trunc(residents_64 / 64)                # [+0x2e], [+0x2c]; both toward 0
+lowest = +∞
+for j in 0 .. n−1:                                      # n = [group+2]
+    if mask has bit BauFirst(goods[Ware(j)]):
+        stock[j] *= 127/128                             # consumption of house stock
+        lowest = min(lowest, s_j)
+if lowest < 0x66 and walker_count < type.slot+0xb8(0):  # 102; walkers at +0x18…+0x24
+    nvar = type.slot+0xbc(0)
+    r = world.PRNG()                                    # city+0x10 slot +0x18 → +0x18 → +0xb4
+    k = ((r & 1) + y + x + index) % nvar                # [+8],[+6],[+4]
+    target = type.slot+0xb4(0, k)
+    house.slot+0x118(0x35, target, tick)                # walker spawn; role likely
+mood = house.slot+0x9c()                                # −2…+2, §12.3
+g = BGruppeNr
+counter = city.slot+0x5c()                              # city+0x2ec
+counter.sub(g, trunc(residents_64 / 64))
+residents_64 += VermehrTab[mood]                        # i8 at group+0x110+mood
+counter.add(g, trunc(residents_64 / 64))
+if mood >= 0:
+    if residents_64 > Wohnmax·64:
+        counter.sub(g, trunc(residents_64/64) − Wohnmax)
+        residents_64 = Wohnmax·64
+        if UpgradeCheck(): city.slot+0x98(house)        # §12.4
+else:
+    if NoDowngrade or [house+0x0c] & 0x30:
+        floor = 0x40; remove = 1                        # 1 resident
+    else:
+        floor = 48 · Wohnmax(prev); remove = 0          # ¾ of lower cap, in ·64 units
+    if residents_64 < floor:
+        if remove == 0:
+            if residents_64 < 0x40:
+                counter.add(g, trunc(residents_64/64) − 64)   # D instr.; likely dead (VermehrTab)
+                residents_64 = 0x40
+            city.slot+0x9c(house)                       # Downgrade
+        else:
+            island.slot+0xcc(x, y, 0, 0, 0)             # D call; meaning likely: remove
+```
+
+### 12.3 Mood (−2 … +2)
+
+```
+# this = house
+if E == 0: return 0
+food = min(s_0, 128) → f = NahrungTab[(food+4)>>3]
+goods = mean of min(s_j,128) over forced slots 1…(+0xcc−1);
+        forced WIRTSHAUS (Ware 0x4c) in the infra range is added here too;
+        128 if no forced goods → b = BedarfTab[(goods+4)>>3]
+infra = min of s_j (cap 160) over forced slots +0xcc…(+0xcd−1); 160 if none
+        → i = InfraTab[(infra+4)>>3]
+if f, b, i all ≥ 0:
+    if flags & 0x30: return flags & 0x20 ? −2 : −1      # not + shr 5 | −2
+    return (f + b + i + 1) / 3                          # magic 0x55555556
+else:
+    if flags & 0x20: return −2
+    return min(f, b, i)
+```
+
+### 12.4 Upgrade and downgrade (which building)
+
+**Check** (`0x10075dd0`): no if `NoUpgrade`. Else score the **next** group's forced needs (`group+0x118`) through the **current** lookup; infra capped at 128. Next `NahrungTab`/`BedarfTab`/`InfraTab` (at `+0x1e7`/`+0x1fc`/`+0x211`) must all be **> 0**. Then city `+0x94`: queue count `+0x30e8` < 10, current kind in the `0x61…0x80` block (`(id−1) & ~0x1f + 1 == 0x61`), and `0x1002e000` finds the next type (`id − id%20 + 20`) and `0x1002c030` says the store covers goods `0x29`–`0x2d`.
+
+**Upgrade** (`0x1002cbe0`): next PRODTYPE = `id − id%20 + 20` (`div 0x14` at `0x1002cc22`). Remove those materials (city `+0x84`), book them at `+0x5d8`. If the next type has property `0x32` with a non-zero count, draw the world PRNG and pick a variant. Move residents off the old group, `SetGroup(next record)`, onto the new; house counts `city+0x18a` dec old / inc new.
+
+**Downgrade** (`0x1002cdd0`): **D** (was likely). Previous PRODTYPE = `id − id%20 − 20`; if that type is missing, try `id − id%20 − 19` (`0x1002ce21`–`0x1002ce3b`). Same variant draw. Group pointer `− 0x118`. Same counter / count / `SetGroup` / type swap.
+
+### 12.5 Taxes (every 2000 ticks, city — not the house)
+
+Booking `0x10029950`: if `(u16)(tick − [city+0x0a]) < 0x7d0` return; then `[city+0x0a] = tick` (not `+= 2000`). Tax = world property 10; climate = island property 7 (**likely**). Income = Σ_{id=0x1a…0x28} `(Preis[climate] + PreisLevel[tax]) · billed[id]`; billed cleared; `(income + 128) >> 8` added to player `+0x74` (slot `+0x64`). Upkeep `(stat1+stat2)/15` subtracted (unsigned). Taxes are a surcharge on billed consumer goods, not a per-head tax.
+
+### 12.6 PRNG draws (world slot `+0xb4` = `0x100a1740`)
+
+| # | Site | Condition | Use |
+|---|---|---|---|
+| 1 | tick `0x10076397` | `lowest < 102` and walkers < max | walker target index (`(r&1)+x+y+index) % nvar`) |
+| 2 | upgrade `0x1002ccd3` | next type property `0x32` count ≠ 0 | variant of the next house type |
+| 3 | downgrade `0x1002ce68` | previous type property `0x32` count ≠ 0 | variant of the previous house type |
+| 4 | SetGroup `0x10076d7a` | first assignment and `BGruppeNr ≠ 0` and `Force` | per forced need: satisfaction `128 − (r & 31)` |
+
+City events `0x1002ba80` also draw; they are not on this path. Walker spawn's **meaning** (resident fetch) stays **likely** (next: house slot `+0x118`). Island `+0xcc` as remove stays **likely**. Climate = property 7 stays **likely**. OQ-185 (Save dispatcher) still virtual-only (`xref --reloc 0x10077130` → `0x100c99d8` only).
+
 ## Fixture spec (to run on x86 Windows / Wine against the original)
 
 Observables: house residents and the satisfaction shown in the house info panel (or via a debugger: house `+0x2c`, `+0x2e`, `+0x30…`), city stage mask `+0x618`, player money `+0x74`, city statistics page. Times are in ticks since the house's last update (1 tick = 2 ms game time).
@@ -338,15 +477,17 @@ pioneer houses in the Kontor's yellow range), objects read by `tools/orig/probe.
   that decides it.
 
 ## Open
-- T32.1 closed the house field layout, `Load`/`Save`, the city counter and the house-count words (§11). Still open below.
-- Who dispatches house Save slot `+0x80` on a world save (virtual only; OQ-185). Next: `call [eax+0x80]` in `0x100ae700` / the building-list walk.
+- T32.1 closed the house field layout; T32.2 closed the house-tick order, mood, upgrade/downgrade bodies, materials check and booking. Still open below.
+- Who dispatches house Save slot `+0x80` on a world save (virtual only; OQ-185, T32.2 re-check still reloc `0x100c99d8` only). Next: `call [reg+0x80]` in world save `0x100ae700` / the building-list walk.
+- The house tick does **not** take from the city store; decay is house stock only. Who bills with take = 1 is OQ-186 (`0x100702f0` and the constructors of vtables that hold `0x1006b520` / `0x10070120` / `0x100702f0`).
 - Unit of the city store and of delivered amounts (is 256 = 1 t?); confirm with T1 and a savegame pair (M2.1).
 - Where house flags bits 4/5 (`+0x0c & 0x30`, forced mood −1/−2) are set: fire, plague, riot? (`0x1002ba80`.)
-- Which building class is the market, and the full resident or market-cart round trip (walker task `0x35`, house slots `+0xd4`, `+0xa4`, `+0xc0`); who calls city slot `+0x88` with take = 0 vs 1.
+- Which building class is the market, and the full resident or market-cart round trip (walker task `0x35`, house slot `+0x118`, then `+0xd4`, `+0xa4`, `+0xc0`).
 - How infrastructure "goods" (`0x4c`–`0x5a`) reach the house stock (service radius delivery?).
 - Group `BauFirst`/`BauLast`, `Wissen`, goods `BauLast`, `Hiscore`: readers not found yet.
 - Island property 7 = climate (**guess** from the 0…6 price index); world property 10 = tax rate (**likely**). Whether multiplayer has any tax control at all.
 - The first update of a new house: `+0x0a` starts at the placement tick in single player (the net client's `now`, stale by up to 50 ticks) and at 0 only in multiplayer and after a load, so the 16-bit difference to the current tick decides when it first runs, and a house created with 0 may catch up in several quick steps (up to 131). The rebuild uses the placement tick in both modes (`docs/sim/state.md` F1, §7.3). The house is created by `BuildingIndex::Create`, which also increments the group's house count: `kind - 0x61` selects a 0x118-byte BGRUPPE record and the FIRST BYTE of that record (BGruppeNr) is the counter index `g` (`inc word [city + 0x144 + 0x46 + 2 * g]`, Create 0x10024c13..0x10024c2d; Remove reads the same byte through building slot `+0x88`). For the shipped BGruppen.dat (PIONIER, SIEDLER, BUERGER, KAUFLEUTE, ARISTOKRATEN in file order) `g = kind - 0x61`; for another file order it is not. Corrected 2026-10-19 and in the S6 review round.
-- `0x1002d3b0`, the `+800` sub-object (`0x10027400`), the upgrade queue filler (`+0x30c0`), and the downgrade path `0x1002cdd0` in detail.
-- Upgrade material costs (`0x1002c030`). The house `HEAD` materials match the playbook's upgrade figures. The running-cost pair is settled (§8).
+- `0x1002d3b0`, the `+800` sub-object (`0x10027400`), and the upgrade queue filler (`+0x30c0` / `0x1002d350`).
+- Materials check `0x1002c030` is **D** (type slot `+0xcc(0, id)` + queued vs store `city+0x520` minus spent `+0x5d4`, ids `0x29`–`0x2d`). The house `HEAD` materials match the playbook's upgrade figures. The running-cost pair is settled (§8).
 - The display formula for satisfaction in the house panel (percent = `s · 100 / 128`?), for the fixture readout.
+- Walker spawn's meaning (resident fetch) and island slot `+0xcc` as house removal stay **likely** (next: house `+0x118`, island `+0xcc`).

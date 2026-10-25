@@ -905,14 +905,20 @@ Returns (`ret 4`):
 - `eax = 0` (`0x10003774`) when the callback ran and `[Y + 0x43c]` is 0 — fn1 then leaves the loop if that same byte is 0.
 - `eax = [esp + 0x10] & 0xff` (`0x10003757`, the `bl` accumulator) on the normal path. Non-zero → fn1 falls through to the expansion / unlink tail.
 
-**The four special expansions (D).** Each `this = Y + 8`. Same table `[this + 0x42c] = [Y + 0x434]`, same enqueue helpers as §3.4.8 (`0x10006f30`, `0x10006f70`, `0x10007180`, `0x1000d4e0`, `0x1000b850`, `0x10017510`, `0x1000b790`), plus `0x10007540`. ~~Four orthogonal neighbours like the default, **minus one direction**.~~ **T30b.3m correction (§3.4.12):** the neighbour order omits the direction back to the parent; the geometry-bit selection and turn-cost arithmetic also differ from the default. This table specifies order only.
+**The four special expansions (D).** Each `this = Y + 8`. Same table `[this + 0x42c] = [Y + 0x434]`, same enqueue helpers as §3.4.8 (`0x10006f30`, `0x10006f70`, `0x10007180`, `0x1000d4e0`, `0x1000b850`, `0x10017510`, `0x1000b790`), plus `0x10007540`. ~~Four orthogonal neighbours like the default, **minus one direction**.~~ **T30b.3m correction (§3.4.12):** the neighbour order omits the direction back to the parent; the geometry-bit selection and turn-cost arithmetic also differ from the default. T30b.3o extends the table below with bit groups and cost formulas (§3.4.14).
 
-| Code | Function | First `ret 4` | Neighbours (order) | Direction back to parent (omitted) | First in-chunk test |
-|---|---|---|---|---|---|
-| `0x80` | `0x10007b00` | `0x10007e3a` (second `0x10007e98`) | up, down, left | **right**, after left-step mark `0x10006fc4` (dir0) | `[cell − 0x10], 0x2111` (`0x10007b40`) |
-| `0x82` | `0x10007770` | `0x10007afc` | left, right, down | **up**, after down-step mark `0x10006cc8` | `[cell − 4], 0x4888` (`0x100077ba`) |
-| `0x84` | `0x10007ea0` | `0x100081d0` (second `0x10008228`) | up, down, right | **left**, after right-step mark `0x10006fc4` (dir4) | `[cell − 0x10], 0x2111` (`0x10007ee2`) |
-| `0x86` | `0x100071c0` | `0x10007533` | left, right, up | **down**, after up-step mark `0x10006ae5` | `[cell − 4], 0x4888` (`0x10007204`) |
+| Arrival / reached code | Function; ret4 epilogues | Current geometry group | Neighbours in execution order; score increments | Back edge omitted |
+|---|---|---|---|---|
+| **Receiver: this=Y+8** | Installed interface at `0x1000637c`; vtable `0x100c14e0`; fn1 passes Y+8 | L=[Y+0x434] | Detailed predicates, pseudo-code and helper in §3.4.14 | All four share this receiver. |
+| Left /0x80 | `0x10007b00`; `0x10007e3a`, `0x10007e98` | low>>0, bits0..2 | U:C7−C6, D:C1−C2, L:C0 | R |
+| Down /0x82 | `0x10007770`; `0x10007afc` | low>>3, bits3..5 | L:C1−C0, R:C3−C4, D:C2 | U |
+| Right /0x84 | `0x10007ea0`; `0x100081d0`, `0x10008228` | low>>6, bits6..8 | U:C5−C6, D:C3−C2, R:C4 | L |
+| Up /0x86 | `0x100071c0`; `0x10007533` | low>>9, bits9..11 | L:C7−C0, R:C5−C4, U:C6 | D |
+
+**T30b.3o:** Cj means the **destination's** `L[0x400+8*(high16&0x3ff)+j]` byte before marking;
+new score is u16(parent score + increment). These are rotations of one transition/cost rule,
+but their fixed enumeration orders differ. The previous table specified order alone; §3.4.14
+now decodes the keys and turn algebra too.
 
 ~~**Likely** (not D; T30b.3k did not map tile bytes to these codes): each code is a tile that has no exit in the missing direction (a ramp, bridge, pier or entrance facing the opposite way).~~ **Withdrawn by the orchestrator (2026-10-25 ao, §3.4.11 (f)):** the codes `0x80 | dir` are written by the expansion's own marks into the high u16 of a reached cell (`0x10006ae5`, `0x10006cc8`, `0x10006fc4`), so a node with such a code was reached from direction `dir` and its expansion omits the way back to the parent. Codes `0x81` / `0x83` / `0x85` still take the default expansion (`0x10006a40`); no mark produces them.
 
@@ -1053,9 +1059,9 @@ It seeds an interior byte with 10 from the fractional-position components times 
 | 0x2000 | bottom row, any reached subcell | `0x10003d3f..0x10003d54`, helper `0x1000d730` |
 | 0x4000 | right column, any reached subcell | `0x10003d5a..0x10003d6f`, same helper |
 
-Return ax is ORed into start-cell low u16 at `0x10003f73` (also `0x1000414b`, `0x100046b5`). This answers the nibble source: four start-position-to-edge connectivity keys. The pre-loop AND (`0x10004737`) instead uses entry+8 of the 12-byte array at Y+0x1c0c (count Y+0x1c08); it clears exactly bits absent in that supplied u16. Its producer `0x100056e1` takes ax from `0x10008230` at `0x100056d7`; **open here:** the exact meaning of that separately supplied constraint mask, not the start nibble's source.
+Return ax is ORed into start-cell low u16 at `0x10003f73` (also `0x1000414b`, `0x100046b5`). This answers the nibble source: four start-position-to-edge connectivity keys. The pre-loop AND (`0x10004737`) instead uses entry+8 of the 12-byte array at Y+0x1c0c (count Y+0x1c08); it clears exactly bits absent in that supplied u16. Its producer `0x100056e1` takes ax from `0x10008230` at `0x100056d7`; **open in T30b.3m, decoded in §3.4.14:** the exact meaning of that separately supplied constraint mask, not the start nibble's source.
 
-No low-u16 propagation is missing: only start nodes need the default expansion's shift12. The reached nodes select special expansions by their came-from code. Those read the mapped low-u16 bits directly: 0x80 uses low byte (`0x10007b2e`), 0x82 shifts3 (`0x100077ae`), 0x84 shifts6 (`0x10007ed6`), 0x86 shifts9 (`0x100071f3`). Thus §3.4.10's "same as default minus a direction" describes neighbour order only; bit selection and turn costs are not identical (e.g. two cost-byte reads and subtraction `0x1000723d..0x10007253`). Their full turn-cost algebra is not decoded by this task.
+No low-u16 propagation is missing: only start nodes need the default expansion's shift12. The reached nodes select special expansions by their came-from code. Those read the mapped low-u16 bits directly: 0x80 uses low byte (`0x10007b2e`), 0x82 shifts3 (`0x100077ae`), 0x84 shifts6 (`0x10007ed6`), 0x86 shifts9 (`0x100071f3`). Thus §3.4.10's "same as default minus a direction" describes neighbour order only; bit selection and turn costs are not identical (e.g. two cost-byte reads and subtraction `0x1000723d..0x10007253`). Their full turn-cost algebra was not decoded by T30b.3m; T30b.3o decodes it in §3.4.14.
 
 **Store audit / came-from marks (D).** Default expansion's cell-word stores `0x10006ae5` and `0x10006c06` target up-neighbour+2; `0x10006cc8` and `0x10006d74` target down-neighbour+2. Left/right helper's only cell-word store `0x10006fc4` targets neighbour+2. All remaining word stores in these two bodies are node fields: default x/y/score at `0x10006afd`, `0x10006b09`, `0x10006b0d`, `0x10006c25`, `0x10006c29`, `0x10006c2f`, `0x10006ce1`, `0x10006ced`, `0x10006cf1`, `0x10006d93`, `0x10006d97`, `0x10006d9d`; helper `0x10007011`, `0x10007015`, `0x10007019`. No cell+0 word store. Goal test `0x10003220..0x1000377d` has no word stores; goal-flag writes `0x10004068/0x10004256/0x10004513` OR byte cell+3 with4, setting high-u16 bit10 only.
 
@@ -1273,6 +1279,230 @@ have an admission byte zero in every layer" is false for these decoded codes (em
 code2 has L0=255; river2701 code4 has L0=L3=255). Terrain masks can nevertheless block entry.
 The exact final coast/river values, complete authored-load order and running-original comparison
 remain open. The synthetic tool tests and derived file predictions are not a Wine confirmation.
+
+#### 3.4.14 The special expansions and the constraint mask (T30b.3o, 2026-10-25)
+
+All addresses are preferred VAs in **AnnoWelt.dll** (base0x10000000). **D** denotes static
+instruction reading, **P** a PE-derived cross-check; no live search observation is claimed.
+The task requested §3.4.13, already occupied by T30b.3n's tile predictions, so that section
+and its incoming links are preserved and the new note is §3.4.14. No simulation change.
+
+**Receiver and common state.** All four expansions, `0x10007540` and `0x10008230` have
+this=Y+8. Fn1 saves Y+4 then passes `lea ecx,[edi+4]`; the constructor installs
+`[Y+8]=0x100c14e0` at `0x1000637c` (§3.4.12). The constraint call's saved LEA is checked
+separately below. Table offsets are absolute Y offsets after that adjustment:
+
+| Field | Meaning / evidence |
+|---|---|
+| **this=Y+8**, installer `0x1000637c` | Receiver of the four expansions and their helpers; not the +4 interface. |
+| this+0x42c = Y+0x434 | Layer block L, loaded at `0x10007214`, `0x100077ca`, `0x10007b4d`, `0x10007eef`, `0x10007550`. |
+| this+0x414 = Y+0x41c | Open score-tree sentinel pointer (`0x100073d1`, `0x10007602`). |
+| this+0x41c = Y+0x424 | Open-tree count, incremented by `0x10007756`. |
+| this+0x420/+0x424/+0x428 = Y+0x428/+0x42c/+0x430 | Free-list head/tail/count (`0x100075a9..0x100075df`). |
+| node+0x10,+0x14,+0x16,+0x18 | Chunk pointer, u16 local x, u16 local y, u16 score. |
+
+Let p be the current cell in its 4×4 chunk, low=u16(p), and
+`Cj(n)=L[0x400+8*(u16(n+2)&0x3ff)+j]` for a destination cell n **before its mark**.
+A try first requires `(u16(n)&geometry_mask)!=0`, then
+`(L[u16(n+2)&0x3ff]&key)!=0`. A zero key fails. Geometry/key tests are the caller's work;
+helpers `0x10006f70` / `0x10007540` do not add them implicitly.
+
+**Which bits mean which transition.** A reached cell uses one three-bit row selected by
+its arrival direction, not its own top nibble or a value fetched from its parent node.
+Only the specified three bits of the shifted register are used:
+
+- arrival L (entered from R): bits0/1/2 permit exit D/L/U;
+- arrival D (entered from U): bits3/4/5 permit exit R/D/L;
+- arrival R (entered from L): bits6/7/8 permit exit U/R/D;
+- arrival U (entered from D): bits9/10/11 permit exit L/U/R.
+
+Equivalently, geometry columns `0x111/0x222/0x444/0x888` are exits D/L/U/R across the
+three possible other entry edges. A neighbour entered by U/D/L/R is checked for a path
+to its opposite edge using `0x2111/0x8444/0x4888/0x1222`; the high bits in those tests
+are the corresponding start keys. **P:** all512 mapper outputs at `0x100c1af8` have
+reciprocal bit pairs(0,11),(1,7),(2,3),(4,10),(5,6),(8,9), consistent with undirected
+subcell connectivity. A later constraint can clear only one directed member, so this
+reciprocity must not be assumed after constraints have been ANDed in.
+
+**Shared address/mark/enqueue rules.** In-chunk U/D/L/R addresses are p−16/p+16/p−4/p+4.
+At a boundary the same direction fetches the adjacent chunk, then U→(x,3), D→(x,0),
+L→(3,y), R→(0,y); its addresses are respectively chunk+4*x+0x30, chunk+4*x,
+chunk+16*y+0xc, chunk+16*y. First-direction branches inline lookup/fill through
+`0x10017510` / `0x1000b790`; later ones use `0x1000b850` with dir6/2/0/4.
+A null chunk fetch/allocation skips that neighbour. No diagonal **cell** is enqueued.
+
+Every successful try stores `score=u16(parent.score+increment)`, then replaces destination
+high-u16 bits0..9 with `0x80|outdir`, preserving bits10..15 (including goal bit10).
+It allocates a0x1c node, fills chunk/x/y/score and inserts it into the unsigned-u16 score
+tree. Straight steps use `0x10006f70`; the first turn is inlined with `0x10007180` and
+`0x1000d4e0`; the other turn uses `0x10007540`. The two cost indices for a turn belong
+to **the same destination code**: diagonal byte minus outgoing orthogonal byte. No float,
+clamp to zero or extra fixed penalty is present; low16 arithmetic is retained.
+
+**Up arrival, code0x86 (`0x100071c0..0x10007533`).**
+
+| Item / neighbour | Geometry/key | Increment | Evidence, in-chunk / chunk-edge |
+|---|---|---|---|
+| **this=Y+8**, installer `0x1000637c` | g=(low>>9)&7 at `0x100071f3` | — | Current-cell group, independent of parent fields. |
+| L | 0x4888; g&1 | C7−C0 | Tests `0x10007204/0x1000733d`; costs `0x1000723d..0x10007255` / `0x1000736f..0x10007387`; marks `0x1000726b/0x1000739d`. |
+| R | 0x1222; (g&4)<<2 | C5−C4 | Tests `0x10007411/0x1000746a` through06f30; turn call `0x1000748d` passes orth4,diag5. |
+| U | 0x2111; (g&2)<<5 | C6 | Tests `0x100074c2/0x1000750a`; straight call `0x10007527` passes6. |
+
+```text
+# this=Y+8; p=chunk+4*(x+4*y); g=(u16(p)>>9)&7
+try(L, g&1,      0x4888, u16(parent.score+C7(n)-C0(n)))
+try(R, (g&4)<<2, 0x1222, u16(parent.score+C5(n)-C4(n)))
+try(U, (g&2)<<5, 0x2111, u16(parent.score+C6(n)))
+# shared address/mark/enqueue rules above; omit D, the way back
+```
+
+**Down arrival, code0x82 (`0x10007770..0x10007afc`).**
+
+| Item / neighbour | Geometry/key | Increment | Evidence, in-chunk / chunk-edge |
+|---|---|---|---|
+| **this=Y+8**, installer `0x1000637c` | g=(low>>3)&7 at `0x100077ae` | — | Current-cell group. |
+| L | 0x4888; (g>>2)&1 | C1−C0 | Tests `0x100077ba/0x100078fb`; costs `0x100077fb..0x10007813` / `0x10007938..0x10007950`; marks `0x10007829/0x10007966`. |
+| R | 0x1222; (g&1)<<4 | C3−C4 | Tests `0x100079da/0x10007a33`; turn call `0x10007a56` passes orth4,diag3. |
+| D | 0x8444; (g&2)<<1 | C2 | Tests `0x10007a8c/0x10007ad3`; straight call `0x10007af0` passes2. |
+
+```text
+# this=Y+8; p=chunk+4*(x+4*y); g=(u16(p)>>3)&7
+try(L, (g>>2)&1, 0x4888, u16(parent.score+C1(n)-C0(n)))
+try(R, (g&1)<<4, 0x1222, u16(parent.score+C3(n)-C4(n)))
+try(D, (g&2)<<1, 0x8444, u16(parent.score+C2(n)))
+# shared address/mark/enqueue rules; omit U
+```
+
+**Left arrival, code0x80 (`0x10007b00..0x10007e98`).** Both ret4 paths, at
+`0x10007e3a` and `0x10007e98`, were read.
+
+| Item / neighbour | Geometry/key | Increment | Evidence, in-chunk / chunk-edge |
+|---|---|---|---|
+| **this=Y+8**, installer `0x1000637c` | g=low&7; byte read `0x10007b2e` | — | No shift needed. |
+| U | 0x2111; (g&4)<<4 | C7−C6 | Tests `0x10007b40/0x10007cd2`; costs `0x10007b7a..0x10007b9c` / `0x10007d0e..0x10007d26`; marks `0x10007ba6/0x10007d38`. |
+| D | 0x8444; (g&1)<<2 | C1−C2 | Tests `0x10007c16/0x10007db1`; turn call `0x10007dd4` passes orth2,diag1. |
+| L | 0x4888; (g>>1)&1 | C0 | Tests `0x10007e0b/0x10007e6f`; straight calls `0x10007e2e/0x10007e8c` pass0. |
+
+```text
+# this=Y+8; p=chunk+4*(x+4*y); g=u16(p)&7
+try(U, (g&4)<<4, 0x2111, u16(parent.score+C7(n)-C6(n)))
+try(D, (g&1)<<2, 0x8444, u16(parent.score+C1(n)-C2(n)))
+try(L, (g>>1)&1, 0x4888, u16(parent.score+C0(n)))
+# shared address/mark/enqueue rules; omit R
+```
+
+**Right arrival, code0x84 (`0x10007ea0..0x10008228`).** Both ret4 paths, at
+`0x100081d0` and `0x10008228`, were read.
+
+| Item / neighbour | Geometry/key | Increment | Evidence, in-chunk / chunk-edge |
+|---|---|---|---|
+| **this=Y+8**, installer `0x1000637c` | g=(low>>6)&7 at `0x10007ed6` | — | Current-cell group. |
+| U | 0x2111; (g&1)<<6 | C5−C6 | Tests `0x10007ee2/0x10008017`; costs `0x10007f23..0x10007f3b` / `0x1000804f..0x10008067`; marks `0x10007f51/0x1000807d`. |
+| D | 0x8444; g&4 | C3−C2 | Tests `0x100080f1/0x10008148`; turn call `0x1000816b` passes orth2,diag3. |
+| R | 0x1222; (g&2)<<3 | C4 | Tests `0x100081a1/0x100081ff`; straight calls `0x100081c4/0x1000821c` pass4. |
+
+```text
+# this=Y+8; p=chunk+4*(x+4*y); g=(u16(p)>>6)&7
+try(U, (g&1)<<6, 0x2111, u16(parent.score+C5(n)-C6(n)))
+try(D, g&4,      0x8444, u16(parent.score+C3(n)-C2(n)))
+try(R, (g&2)<<3, 0x1222, u16(parent.score+C4(n)))
+# shared address/mark/enqueue rules; omit L
+```
+
+The combined table is in §3.4.10. Unlike the default start expansion's shift12, these
+functions choose an incoming-edge row and charge a destination-dependent turn difference.
+Their cost/bit logic is rotationally consistent; their order stays exactly as listed.
+
+**Turn helper `0x10007540..0x1000775e` (step 3, D).** This=Y+8, seven arguments
+(chunk,x,y,parent,cell,orthdir,diagonal); ret0x1c. After four saved-register pushes those
+are esp+0x14,+0x18,+0x1c,+0x20,+0x24,+0x28,+0x2c. It derives the cost-row pointer
+from destination high-u16&0x3ff (`0x1000754a..0x1000755e`), reads Corth and Cdiag,
+subtracts and adds the parent's u16 score (`0x10007571..0x100075a1`), and marks the
+cell as0x80|orthdir while preserving bits10..15 (`0x1000758f..0x100075a5`). It pops
+the free list or allocates0x1c bytes, writes node fields (`0x100075e5..0x100075fe`),
+then performs an inlined score-tree insert/rebalance: unsigned-u16 comparison, equal
+scores take the right insertion branch (`0x10007611..0x10007639`), rotations04a70/04ac0,
+count increment at `0x10007756`. It returns the incremented count, not the new node pointer.
+It does not perform admission/geometry checks or write Y+0x448's selected/best record.
+
+**Constraint helper `0x10008230..0x1000851d` (step 4, D).** This=Y+8, arguments
+(cache-local tile x, tile y, other-cell pointer); ret0xc. It aligns x/y to4, locates the
+4×4 chunk through the same superblock layout and reads the current cell's code byte at+2,
+then the other pointer's code byte at+2 (`0x10008371..0x10008397`). Valid current-cell
+lookup is a caller precondition: a null lookup path reaches a later dereference; this is
+not a documented null-safe fallback. The byte codes are each increased by0x80 modulo256;
+marked codes80/82/84/86 thereby become switch indices0/2/4/6.
+
+The result is a **directed transition veto**, not an entire direction-column clear.
+For recognized pairs it returns0xffff with exactly the indicated bit cleared; unmatched
+pairs return the initialized **zero** (`0x10008244`, `0x10008516`), which the consumer
+would use to close every low-u16 bit. Raw codes are shown below, before adding0x80:
+
+| Current code / incoming row | Other0x80 (exit L) | Other0x82 (exit D) | Other0x84 (exit R) | Other0x86 (exit U) |
+|---|---|---|---|---|
+| this=Y+8; installer `0x1000637c` | Switch `0x10008520` | Result is u16 | All other *other* codes give0 | No code/high-u16 store here. |
+| 0x80, row0 | 0xfffd (clear1) | 0xfffe (clear0) | 0 | 0xfffb (clear2) |
+| 0x82, row3 | 0xffdf (clear5) | 0xffef (clear4) | 0xfff7 (clear3) | 0 |
+| 0x84, row6 | 0 | 0xfeff (clear8) | 0xff7f (clear7) | 0xffbf (clear6) |
+| 0x86, row9 | 0xfdff (clear9) | 0 | 0xf7ff (clear11) | 0xfbff (clear10) |
+| Any other current code, start nibble | 0xefff (clear12) | 0xdfff (clear13) | 0xbfff (clear14) | 0x7fff (clear15) |
+
+Switch arm ranges: current80 `0x100083b4..0x100083f7`; current82
+`0x10008486..0x100084c5`; current84 `0x100083fa..0x1000843d`; current86
+`0x10008440..0x10008483`; default current `0x100084c8..0x1000851d`.
+Thus a reached cell loses the **one incoming→outgoing connection** used by that route;
+a noncanonical/current start cell loses its corresponding top-nibble key. The reverse
+move, omitted by the expansions, is not mapped to a single-bit mask here and returns0.
+**P validation:** a small ignored branch interpreter checked all65,536 pairs of input
+bytes against this description:1,020 nonzero masks, all others0. This is a static switch
+cross-check, not execution in the original game.
+
+**Who records/applies the constraints, and the corrected caller lead.**
+Producer **`0x10004c90` has this=Y**, called directly with the wrapper's unchanged base.
+Wrapper `0x10005750..0x1000588e` is primary vtable `0x100c1424` slot+0x84, installed
+at `[Y]` by `0x10006401`. Its call through **Y+4** slot+0x84 at `0x10005760` is fn1;
+it then obtains a selected point through Y+4 slots+0x94/+0x98/+0x9c
+(targets `0x10003100/0x10003140/0x100031a0`), and passes the two resulting floats to
+`0x10004c90` at `0x100057b1`. They are not blindly labelled the figure's original position.
+
+The producer reconstructs a tile-coordinate pair list from reached marks
+(`0x10004e08..0x10005094`), constructs/validates a finer subcell route (Y+0x2048 cache,
+`0x100054ef..0x100055d5`), and on a failed validation chooses an adjacent pair:
+
+```text
+A = path[i]; other = tile_cell(A)             # 0x10005633..0x10005671
+B = path[i+1]                               # pointer increment 0x10005678
+if count >= 4: count=0; return -1            # 0x1000568f..0x100056b1
+entry = Y+0x1c0c+12*count; count++           # 0x100056b4..0x100056bf
+entry.x = B.x; entry.y = B.y
+entry.mask = constraint(Y+8, B.x,B.y,other)  # 0x100056d0..0x100056e5
+return 0
+```
+
+The call's this-adjustment is explicit: `lea ecx,[esi+8]` with esi=Y at
+`0x10005662`; its value is saved at base-esp+0x30 (`0x10005665`, after two argument
+pushes). At `0x100056d0` the other-cell pointer is pushed, so esp+0x34 reloads that
+saved **Y+8** at `0x100056d1`; the two remaining pushes are y then x. The three
+arguments and ret0xc balance. Stores are entry.y at `0x100056dd`, mask16 at
+`0x100056e1`, x at `0x100056e5`; only the u16 of the third dword is consumed.
+The coordinates are cache-local, matching fn1's later lookup, not unadjusted world floats.
+
+Return1 tells wrapper05750 validation succeeded; return−1 fails; return0 resets caches
+and retries fn1 (`0x100057b6..0x10005873`). Fn1 then iterates the stride12 array,
+fetches each tile and applies its mask **before the expansion loop**
+(`0x100046ed..0x10004747`, AND low-u16 at `0x10004737`). That gives the table a concrete
+purpose: remove the failed coarse-path transition for the retry without changing the
+record's high-u16 came-from/goal bits. Full subcell-route validation/reconstruction rules
+are not specified by this note; the producer, call path and bit veto are established.
+
+The task's proposed `0x10005890` caller lead does not hold. That primary+0xa4 method
+extracts the subcell direction/count path; its final primary+0xac call at `0x10005b37`
+resolves to `0x100062f0` (cache reset), not04c90. It is not the direct producer of the
+array store at056e1. This corrects the relationship without inventing an extra caller.
+
+**Remaining:** live cells and route confirmation (T30b.3h2), full finer-route validation
+and figure/path integration (later T30b work), terrain/load stops in §3.4.13. This closes
+the four expansions' local turn/key algebra and the constraint mask, not all transport.
 
 ### 3.5 Step 7 is BLOCKED on a figure-position reader
 

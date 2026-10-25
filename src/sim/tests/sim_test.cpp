@@ -503,7 +503,7 @@ TEST_CASE("state_hash relational properties") {
     header.bytes(config_bytes.data());
     header.bytes(rules_bytes.data());
     header.u64(base.types().digest());
-    header.u64(0); // walk-table digest: the test world has no walk tables
+    header.u64(0);  // walk-table digest: the test world has no walk tables
     header.u64(22); // 8 city passes + 14 other seams
     for (int i = 0; i < 22; ++i) {
         header.u64(7);

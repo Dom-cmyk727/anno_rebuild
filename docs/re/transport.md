@@ -883,6 +883,38 @@ Mapper `0x100c1af8` (512 u16, 33 distinct; every value has top nibble 0):
 If this dword were the Y-class cell, the expansion's top nibble would be 0 and bit 10 of the high u16 would be 0 (bits 24–31 are 0). Codes `0x80..0x86` would be tile bytes `0x80..0x86`. **That identity is not shown:** the five `call [reg + 0x128]` sites in `AnnoWelt.dll` are class W (`0x10001232`), the twin engine (`0x10002a4e`), `0x10003220` (`0x10003453`, dest is a stack rect), `0x10003780` (`0x100037df`, world `0x100a52d0`), and `0x10003aa0` (`0x10003b17`, stack dest). None writes the 64 bytes at `chunk + 0`.
 
 **(d) Loader / Place — stopped.** `0x10087b90` is island vtable `0x100cac2c` slot `+0xbc` (also at `0x100ca258` and `0x100ca5ec`). It is a switch on `arg0 − 7` that writes island **object** fields (`+0xac`, `+0xc0`, `+0xc1`, `+0xa6`, `+0xa8`, `+0xc3`, `+0xc6`), not the 8-byte tile records at `[island + 0xc]`. `0x100878d0` has zero code xref and zero reloc — it is not a function entry (the bytes there sit inside a larger body that starts earlier; a mid-function dump is not used as a claim). **Stop addresses:** `0x10087b90` (not the tile-dword writer) and `0x100878d0` (not an entry). The 9-bit mask and the byte at bits 8–15 of the tile record's second dword are still unread as writes. Anlagen flags for the two named types stay P (`transport.md` §3.2): `2527` `0x1186`, `2520` `0x4186`; both named-road WALKMASK records are 12 zero bytes.
+#### 3.4.10 `0x10003220` and the four special expansions (T30b.3l, 2026-10-25)
+
+**D.** `tools/disasm.py` on `AnnoWelt.dll`. fn1 calls `0x10003220` with `ecx = edi` (`edi = Y + 4`, PR #54). It calls the four special expansions with `lea ecx, [edi + 4]` (`this = Y + 8`), same as the default expansion.
+
+**`0x10003220` (D).** `this = esi = Y + 4` (`0x10003229`). One stack argument: the node (`0x10003234`). Ends at two `ret 4` epilogues (`0x1000376a`, `0x1000377d`); the next function is `0x10003780`.
+
+| `[this + k]` | Absolute | Use |
+|---|---|---|
+| `+0x574` | `Y + 0x578` | Count of a goal-point list. Zero → skip the float compare (`0x10003247`). |
+| `+0x578` | `Y + 0x57c` | Goal-point array, 8 bytes each (`lea ebx, [esi + 0x578]`, end `esi + count*8 + 0x578`). |
+| `+0x4e8` / `+0x4ec` | `Y + 0x4ec` / `Y + 0x4f0` | Origin added to `chunk[+0x40] + node.x` / `chunk[+0x42] + node.y`. |
+| `+0x434` | `Y + 0x438` | Island. Slot `+0x12c` at `0x100033bd`; slot `+0x128` = `0x10091fa0` at `0x10003453` with mode 0 and a stack rect. |
+| `+0x2040` | `Y + 0x2044` | Pushed as an argument of that island call. |
+| `+0x438` | `Y + 0x43c` | Continue byte. Zero after the callback → return 0 (`0x1000374a`). |
+| `+0x43c` / `+0x440` | `Y + 0x440` / `Y + 0x444` | Callback pointer and its argument (`call [esi + 0x43c]` at `0x10003737`). |
+
+Position: `x = [chunk + 0x40] + [node + 4] + [Y + 0x4ec]`, then `fild` / `fmul [0x100c1138]` (`1.0f`) at `0x10003269`. Same for y. The float pair is compared to each goal (`fcomp`, `test ah, 0x41`). **This is the goal / arrived test**, not an expansion: it does not call `0x10006f70` / `0x10007180`.
+
+Returns (`ret 4`):
+- `eax = 0` (`0x10003774`) when the callback ran and `[Y + 0x43c]` is 0 — fn1 then leaves the loop if that same byte is 0.
+- `eax = [esp + 0x10] & 0xff` (`0x10003757`, the `bl` accumulator) on the normal path. Non-zero → fn1 falls through to the expansion / unlink tail.
+
+**The four special expansions (D).** Each `this = Y + 8`. Same table `[this + 0x42c] = [Y + 0x434]`, same enqueue helpers as §3.4.8 (`0x10006f30`, `0x10006f70`, `0x10007180`, `0x1000d4e0`, `0x1000b850`, `0x10017510`, `0x1000b790`), plus `0x10007540`. Four orthogonal neighbours like the default, **minus one direction**.
+
+| Code | Function | First `ret 4` | Neighbours (order) | Missing | First in-chunk test |
+|---|---|---|---|---|---|
+| `0x80` | `0x10007b00` | `0x10007e3a` (second `0x10007e98`) | up, down, left | **right** | `[cell − 0x10], 0x2111` (`0x10007b40`) |
+| `0x82` | `0x10007770` | `0x10007afc` | left, right, down | **up** | `[cell − 4], 0x4888` (`0x100077ba`) |
+| `0x84` | `0x10007ea0` | `0x100081d0` (second `0x10008228`) | up, down, right | **left** | `[cell − 0x10], 0x2111` (`0x10007ee2`) |
+| `0x86` | `0x100071c0` | `0x10007533` | left, right, up | **down** | `[cell − 4], 0x4888` (`0x10007204`) |
+
+**Likely** (not D; T30b.3k did not map tile bytes to these codes): each code is a tile that has no exit in the missing direction (a ramp, bridge, pier or entrance facing the opposite way). Codes `0x81` / `0x83` / `0x85` still take the default expansion (`0x10006a40`).
 
 ### 3.5 Step 7 is BLOCKED on a figure-position reader
 

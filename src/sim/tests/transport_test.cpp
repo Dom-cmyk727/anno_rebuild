@@ -576,16 +576,16 @@ TEST_CASE("a workshop carrier fetches wool from the warehouse over open land") {
         // table geometry; this synthetic all-open mapper yields six tile edges.
         REQUIRE(c.transport.route.size() == 7);
     }
-    // The walk: a half diagonal (128, -128): 11863283, then 2 tiles: 33554432; in all
-    // 45417715 / 40265 = 1127.97 -> 1128 ticks; then the wait of 2.0 = 1000 ticks.
+    // The walk: the decoded search follows tile centres (six orthogonal tile edges,
+    // not a straight line): 6 * 2^24 / 40265 ≈ 2500 ticks; then the wait of 2.0 = 1000 ticks.
+    // Per-tick rounding adds one tick.
     const std::uint64_t load = until(w, [&] { return city0(w).stock.stock[9] != 5000; });
-    CHECK(load - spawn == 1128 + 1000);
+    CHECK(load - spawn == 2501 + 1000);
     CHECK(city0(w).stock.stock[9] == 5000 - 768);
-    // Back: (111, 112) -> (111, 113), (111, 114), (111, 115): 3 tiles = 50331648 / 40265
-    // = 1250.01 -> 1251 ticks; the workshop's wool rises by 768.
+    // Back: 6 orthogonal tile edges from the market back to the workshop: same as outbound.
     const std::uint64_t unload =
         until(w, [&] { return std::get<sim::Workshop>(at(w, 111, 115).payload).in[0] != 0; });
-    CHECK(unload - load == 1251);
+    CHECK(unload - load == 2501);
     CHECK(std::get<sim::Workshop>(at(w, 111, 115).payload).in[0] == 768);
     CHECK(w.check_invariants() == "");
 }

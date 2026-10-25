@@ -727,9 +727,9 @@ P1 is the first code stage. P2–P5 may merge if the orchestrator wants one PR; 
 
 #### Owner questions (faithful default stated)
 
-1. **Catch-up after load.** Original: `last` is 0 after Load, so a house may run many 2500-tick steps on the first visits (F1). **Default:** keep F1 (`last = 0` on load). Option later: store `last`.
+1. **Owner decision 2026-10-25: keep it (faithful).** **Catch-up after load.** Original: `last` is 0 after Load, so a house may run many 2500-tick steps on the first visits (F1). **Default:** keep F1 (`last = 0` on load). Option later: store `last`.
 2. **256 delivered units = 1 t.** **Likely** (delivery `×16`, demand `/16`, booking `>> 8`). **Default:** treat store as tons≪8 and delivered amounts as that unit. Confirm with T1 / M2.1 (no feel change if the likely reading is right).
-3. **Billed/taken not saved.** Original drops them. **Default:** drop them (a load mid-period loses unbooked income). Option: save billed.
+3. **Owner decision 2026-10-25: save them**, as a `Rules` option `save_billed_goods` (default **true**, the owner's choice; `false` reproduces the original, which drops them). The billed and taken amounts of every city's store (`CityStock` `+4` / `+8`) then become saved state under that option; with `false` they stay period scratch as below. P4 implements the option with a test for each value. **Billed/taken not saved.** Original drops them. **Default:** drop them (a load mid-period loses unbooked income). Option: save billed.
 4. **City totals hashed or derived.** Original rebuilds on load. **Default:** derived, not in the stream (OQ-165).
 5. **Walker spawn and `NoDowngrade` removal.** Calls D, meaning likely. **Default:** P1–P4 do not spawn a resident walker and do not demolish via island `+0xcc`. P5 after OQ-187.
 6. **Climate = island property 7.** **Likely.** **Default:** use `Island::climate` in booking.

@@ -833,6 +833,56 @@ else:
 ```
 
 `try_up` / `try_down` are the inlined blocks: mask on the low u16, `test [table + code], dl`, cost byte, mark, `0x10007180`, fill `+0x10/+0x14/+0x16/+0x18`, `0x1000d4e0`.
+#### 3.4.9 The fill chain (T30b.3k, 2026-10-25)
+
+**D.** `tools/disasm.py` / `pefile` / `xref.py --reloc` on `AnnoWelt.dll`. The slot-0 call at `0x10006694` does **not** fill the 16 cells and does **not** call the world. The island builder `0x1008ff70` is confirmed; it is not on that path. The loader write that would decide OQ-171 for types `2527` / `2520` was not found at the two named addresses.
+
+**(a) Slot 0 of `[Y + 4]` (D).** Constructor `0x10006344` writes `[esi + 4] = 0x100c14e4` at `0x10006375`. `xref.py --reloc` of `0x100c14e4` is that one hit. A capstone sweep of `mov [reg + 4], imm` in `0x100c1000..0x100c2000` finds no later overwrite of `[Y + 4]`. `0x100066c0` (called first) writes a **byte** to `[esi + 4]`, then `0x10006375` replaces it with the vtable.
+
+| Item | Value | Evidence |
+|---|---|---|
+| Vtable at `[Y + 4]` | `0x100c14e4` | `0x10006375` |
+| Slot 0 | `0x100b4a20` | `pefile` dword |
+| Body | `mov eax, 1; ret` | `0x100b4a20..0x100b4a25` |
+| Fill call | `mov eax, [ecx]; push edi; call [eax]` | `0x10006694..0x10006697`, `ecx = Y + 4` (reloaded `0x1000665c` / `0x100065b1` from the saved `this`) |
+| World call | none | stub has no call |
+
+`0x1000b790` (neighbour-chunk allocate) is the same shape: `call [edx]` on `this` at `0x1000b83d`, same stub. New pool pages come from `0x1000d480` (`push 0x2008; call 0x100b5f80`): the allocator writes `[eax] = 0` and `[eax + 4] = 0` only; it does not write the `0x44`-byte records. After `0x100064b0` returns, fn1's sites at `0x10004068` / `0x10004256` / `0x10004513` **OR bit 10** (`or byte [cell + 3], 4`); they do not store a mapped mask or a tile byte.
+
+**(b) World kind / copy routine — stopped.** There is no kind code and no `0x100abdb0` call on this path. `0x100900c0` / `0x10090350` / `0x100a4730` stay the kind-11 / 10 / 9 copies of §3.3 (`xref` from `0x100abc07` / `0x100abcf8` / `0x100abd83`). `0x100900c0` indexes dest as `*2` (u16 layer), not 4-byte Y cells.
+
+**(c) Cell builder `0x1008ff70` (D, on the island path, not on slot 0).** Only two calls: `0x10091fcb` (mode 0) and `0x100920ff` (mode 6) inside `0x10091fa0`. `0x10091fa0` is island vtable `0x100cac2c` slot `+0x128` (reloc installer `0x10094c30`; `0x100cad54 − 0x128 = 0x100cac2c`; that vtable's slot 0 is the same stub `0x100b4a20`). Modes 0–7 at `0x10092190`: `0x10091fba` / `0x10091ffe` / `0x10091fdc` / `0x1009211a` / `0x1009215e` / `0x1009213c` / `0x100920ee` / `0x1009215e`.
+
+Loop `0x10090050..0x1009007b`: second dword of each 8-byte tile record at `[island + 0xc]`; `mask = bits 16..24 & 0x1ff`; `cell = [0x100c1af8 + mask*2] | ((dword & 0xff00) << 8)`. Low u16 = mapped mask; bits 16–23 = the tile byte; bits 24–31 = 0.
+
+Mapper `0x100c1af8` (512 u16, 33 distinct; every value has top nibble 0):
+
+| Mapped | Count | `& 0x2111` | `& 0x8444` | `& 0x4888` | `& 0x1222` |
+|---|---|---|---|---|---|
+| `0x0fff` | 123 | `0x0111` | `0x0444` | `0x0888` | `0x0222` |
+| `0x030c` | 25 | `0x0100` | `0x0004` | `0x0008` | `0x0200` |
+| `0x0861` | 25 | `0x0001` | `0x0040` | `0x0800` | `0x0020` |
+| `0x000c` | 23 | 0 | `0x0004` | `0x0008` | 0 |
+| `0x0060` | 23 | 0 | `0x0040` | 0 | `0x0020` |
+| `0x0300` | 23 | `0x0100` | 0 | 0 | `0x0200` |
+| `0x0801` | 23 | `0x0001` | 0 | `0x0800` | 0 |
+| `0x0000` | 21 | 0 | 0 | 0 | 0 |
+| `0x00ee` | 20 | 0 | `0x0044` | `0x0088` | `0x0022` |
+| `0x0770` | 20 | `0x0110` | `0x0440` | 0 | `0x0220` |
+| `0x0b83` | 20 | `0x0101` | 0 | `0x0880` | `0x0202` |
+| `0x0c1d` | 20 | `0x0011` | `0x0404` | `0x0808` | 0 |
+| `0x006c` | 12 | 0 | `0x0044` | `0x0008` | `0x0020` |
+| `0x0360` | 12 | `0x0100` | `0x0040` | 0 | `0x0220` |
+| `0x080d` | 12 | `0x0001` | `0x0004` | `0x0808` | 0 |
+| `0x0b01` | 12 | `0x0101` | 0 | `0x0800` | `0x0200` |
+| twelve values with count 7 | `0x036c` `0x03ee` `0x077c` `0x086d` `0x08ef` `0x0b0d` `0x0b61` `0x0b8f` `0x0be3` `0x0c7d` `0x0f1d` `0x0f71` | (nibble 0) | | | |
+| `0x0bef` / `0x0f7d` | 5 each | `0x0101` / `0x0111` | | | |
+| `0x0b6d` | 2 | `0x0101` | | | |
+| `0x0082` / `0x0410` | 1 each | 0 / `0x0010` | | | |
+
+If this dword were the Y-class cell, the expansion's top nibble would be 0 and bit 10 of the high u16 would be 0 (bits 24–31 are 0). Codes `0x80..0x86` would be tile bytes `0x80..0x86`. **That identity is not shown:** the five `call [reg + 0x128]` sites in `AnnoWelt.dll` are class W (`0x10001232`), the twin engine (`0x10002a4e`), `0x10003220` (`0x10003453`, dest is a stack rect), `0x10003780` (`0x100037df`, world `0x100a52d0`), and `0x10003aa0` (`0x10003b17`, stack dest). None writes the 64 bytes at `chunk + 0`.
+
+**(d) Loader / Place — stopped.** `0x10087b90` is island vtable `0x100cac2c` slot `+0xbc` (also at `0x100ca258` and `0x100ca5ec`). It is a switch on `arg0 − 7` that writes island **object** fields (`+0xac`, `+0xc0`, `+0xc1`, `+0xa6`, `+0xa8`, `+0xc3`, `+0xc6`), not the 8-byte tile records at `[island + 0xc]`. `0x100878d0` has zero code xref and zero reloc — it is not a function entry (the bytes there sit inside a larger body that starts earlier; a mid-function dump is not used as a claim). **Stop addresses:** `0x10087b90` (not the tile-dword writer) and `0x100878d0` (not an entry). The 9-bit mask and the byte at bits 8–15 of the tile record's second dword are still unread as writes. Anlagen flags for the two named types stay P (`transport.md` §3.2): `2527` `0x1186`, `2520` `0x4186`; both named-road WALKMASK records are 12 zero bytes.
 
 ### 3.5 Step 7 is BLOCKED on a figure-position reader
 

@@ -2478,6 +2478,26 @@ Inline, no subagents.
   5. **MET** — nothing of the original in git (`git status` under `game/` empty).
 
 - **Left open:** T30b.3k (the fill; OQ-171). T30b.3l (the four special expansions and `0x10003220`). Whether the four nibble bits are "exit allowed in that direction" stays a reading of the tests, not a named original term.
+## T30b.3k — The fill chain: slot 0 is a stub; OQ-171 not closed — 2026-10-25 — status: READY FOR REVIEW
+
+- **Branch:** `task/T30b-3k-chunk-fill` from `main` at 0a1d013; worktree `C:\Users\altin\anno1503-T30b-3k`. Executor itself; no reviewer subagent. Docs only. Starts after T30b.3j PR #55 is open.
+
+- **Headline:** `[Y + 4]` slot 0 is `0x100b4a20` (`mov eax, 1; ret`). The call at `0x10006694` does not fill the 16 cells and does not call the world. `0x1008ff70` is still the island cell builder; its dest in this DLL is a stack buffer, not the Y-class chunk. The tile-dword writer for dirt-road types `2527` / `2520` was not found at `0x10087b90` / `0x100878d0`.
+
+- **Steps** (ranges read; no original bytes in git):
+  1. **Slot 0.** `pefile` `0x100c14e4+0` = `0x100b4a20`. Body `0x100b4a20..0x100b4a25`. Reloc of `0x100c14e4`: `0x10006378` only. Capstone `mov [reg+4], vtable` : no later `[Y+4]` overwrite. Fill call `0x10006694..0x10006697`.
+  2. **World / copy — stopped.** No kind, no `0x100abdb0`. Kind-11/10/9 copies remain `0x100900c0` / `0x10090350` / `0x100a4730` (§3.3).
+  3. **`0x1008ff70`.** Callers `0x10091fcb`, `0x100920ff`. Island vtable `0x100cac2c+0x128`. Mapper 33 values, all nibble 0. Five `call [reg+0x128]` sites named; none write `chunk+0`.
+  4. **Loader — stopped.** `0x10087b90` = island `+0xbc` (object fields). `0x100878d0` is not an entry.
+
+- **Acceptance** (TASKS.md T30b.3k):
+  1. **MET** — slot-0 target `0x100b4a20`; no world call.
+  2. **STOPPED** — no copy routine on this path (premise: a world kind from slot 0).
+  3. **MET** — cell bit map of `0x1008ff70` with address; Y-chunk application not shown.
+  4. **STOPPED** — stop addresses `0x10087b90` / `0x100878d0`; no D write for `2527` / `2520`.
+  5. **MET** — nothing of the original in git.
+
+- **Left open:** who writes the 16 Y-class cells; who writes bits 16–24 and 8–15 of the island tile record (OQ-171). T30b.3l (`0x10003220` and the four special expansions) does not depend on that write.
 
 - **Scope note:** docs only; no `src/`, no tool.
 
@@ -2485,3 +2505,4 @@ Inline, no subagents.
   - `docs(re): T30b.3i the search main loop and the node record (transport.md §3.4.7)`
   - `docs(orchestration): T30b.3i report`
   - `docs(re): T30b.3j the default expansion 0x10006a40`
+  - `docs(re): T30b.3k the fill chain`

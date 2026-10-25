@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <anno/sim/synthetic.hpp>
+#include <anno/sim/walk_cells.hpp>
 
 namespace anno::sim::synthetic {
 
@@ -21,6 +22,7 @@ formats::Result<SyntheticTypes, std::string> make_synthetic_types() {
     s.market_stall = TypeId{9009};
     s.road = TypeId{9010};
     TypeRegistry::Builder b;
+    b.walk_tables(synthetic_walk_tables());
     b.add_workshop(s.weaver, "STOFFE", "WOLLE", 6, 11, 5)
         .add_farm(s.farm, "KORN", "GETREIDE", 37, 80, 5)
         .add_fur_trapper(s.fur_trapper, "PELZE", "PELZTIER", 26, 25, 5)
@@ -48,6 +50,7 @@ formats::Result<SyntheticTypes, std::string> make_transport_types() {
     s.market = TypeId{9021};
     s.carrier_weaver = TypeId{9022};
     TypeRegistry::Builder b;
+    b.walk_tables(synthetic_walk_tables());
     for (const BuildingType& t : s.registry->types()) {
         b.add(t);
     }
@@ -82,6 +85,7 @@ formats::Result<SyntheticTypes, std::string> make_growth_types() {
     s.grass = TypeId{9015};
     s.ripe_grass = TypeId{9016};
     TypeRegistry::Builder b;
+    b.walk_tables(synthetic_walk_tables());
     for (const BuildingType& t : s.registry->types()) {
         b.add(t);
     }
@@ -249,6 +253,7 @@ formats::Result<SyntheticTypes, std::string> make_build_types() {
         {s.kontor, 350, 5, 12, 0, 2, 2},     {s.market_stall, 50, 1, 1, 0, 1, 1},
     };
     TypeRegistry::Builder b;
+    b.walk_tables(synthetic_walk_tables());
     for (const BuildingType& t : s.registry->types()) {
         BuildingType copy = t;
         for (const Cost& c : costs) {

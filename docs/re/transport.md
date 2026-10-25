@@ -1211,6 +1211,18 @@ mask0 -> low0x0fff and mask0x1ff -> low0: the geometry tests need a **nonzero** 
 so the latter closes all ordinary entries (§3.4.8). This is why a nonzero admission byte alone
 does not mean a whole tile is passable.
 
+**T33.2 implementation boundary (2026-10-25).** The pure sim helpers in
+`walk_cells.hpp/cpp` encode the HEAD pair and inverse-rotate WALKMASK samples by the
+formulas above. Building origin/rotation comes from retained `Building` instances;
+ordinary rotation-invariant 1x1 tile objects can be sampled without placement metadata.
+The scenario adapter currently retains only type/phase for tile-only objects, dropping
+rotation and footprint offsets. **Owner-authorized stop for T33.4:** no new metadata or
+tile writes in T33.2; unsupported retained placements return `supported=false` and a
+closed scratch placeholder, and a touched unsupported record makes `WalkCells::complete()`
+false. This placeholder is an incomplete-input signal, not an original object rule.
+Tiles of a multi-tile object's unretained footprint cannot yet be reconstructed. Resolve
+this adapter gap before T33.4 integrates the new search.
+
 **Road predictions / connection hypothesis.** P: 2527 (`flags0x1186`), 2505 (`0x1186`) and2520
 (`0x4186`) are1x1; each has HEAD[0x2f,0x30]=(0,3) and zero WALKMASK. D chain above gives
 **code0 and object mask0 for all rotations**, code store `0x100825b7`, mask store
@@ -1244,6 +1256,24 @@ of four corners from `[I+0x14]`; if it is below the runtime threshold
 (`0x10092bf3..0x10092c4d`). This is a geometric closure, not a zero admission code.
 The threshold is initialized from another runtime global (`0x1008ff00`); no numeric threshold
 is guessed from a zero-initialized image global.
+
+**T33.2 water sub-step (D initializer; STOP at grid mapping, OQ-200).**
+AnnoWelt `0x1008fea0..0x1008feb2` initializes global `0x100e34c8` to
+`f32([0x100ca6fc] * [0x100c127c])`, with constants 0.04f and 16.0f;
+`0x1008ff00..0x1008ff0e` doubles it into global `0x100e34dc`. These two stores,
+re-read independently, yield a default comparison threshold of **32** after division
+by the same 0.04f and truncation. It is a global initialization chain, not a value
+read from each island's file; this does not prove no later writer changes it.
+`0x10092bc0..0x10092c28` reads four unsigned corner bytes from island+0x14 with
+row stride width+1, sums them and divides by4; `0x10092c2b..0x10092c32` compares
+the threshold's low byte strictly above that mean, then ORs mask0x1ff at
+`0x10092c47..0x10092c4d`. The sim's terrain loader retains the file's width*height
+HEIGHT bytes (`formats/insel.md`, `scenario_formats.cpp`); it does not retain the
+runtime (width+1)-stride border reconstruction. No addressed proof of that mapping
+was found in this sub-step. Per the task's stop rule, **no water closure is implemented**:
+empty retained tiles remain code2/mask0 even at low heights. The per-subcell coast
+pass is also omitted (OQ-170). This replaces the earlier unknown-initializer stop,
+not the unresolved HEIGHT-to-runtime mapping.
 
 `0x100928a0..0x10092b32` (island+0x19c, called after placement at `0x10082ab9`) can fill
 empty tiles with types2/11 based on corner height and ground data, and can rewrite a code

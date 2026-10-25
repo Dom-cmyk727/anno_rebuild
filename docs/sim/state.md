@@ -491,6 +491,15 @@ class TypeRegistry {
 
 `Builder` has sensible defaults (the original goods and class tables, `SimConfig{}` limits) and PRODTYPE-block helpers (`add_workshop`, `add_weapons_workshop`, `add_farm`, `add_fur_trapper`, `add_small_farm`, `add_mine`, `add_plain`, and `add` for a fully specified type), so synthetic scenarios never touch `formats::figuren::Entry` (CI has no game files); the helpers resolve their goods names when called (an unknown name is reported by `build()`), and `synthetic.hpp` (`make_synthetic_types()`) uses them for the fixture types of §14.3 under the ids 9001..9010. The class table is also served by `class_for_prodtype(p)` (nullopt for 0 and above 192) and `original_class_table()`; `prodtype_by_name`, `prodtype_name`, `research_by_name`, `original_goods()` and `service_mask_for_goods()` are the free functions behind the tables. The `prodtype → RuntimeClass/TickKind/list` table is data in `types.cpp` with Appendix C as its evidence; the goods table (ids 0..0x8e, D AnnoGame 0x10013be0) is data in `goods_table.cpp`, Appendix A; the research names (FORSCHTYPE → id, D 0x10013cf0) Appendix B. The goods names in the files resolve for all 921 entries (P/D).
 
+**T33.2 side inputs (2026-10-25):** the registry holds shared immutable `WalkTables`
+read by `formats::annowelt` from the game's DLL, and parsed WALKMASK rows per type.
+Both are excluded from its digest and every stream/header/hash field until T33.4
+(owner correction, round az); the existing digest layout and version stay unchanged.
+`SimConfig::validate(types)` checks walking figures have tables and a valid layer at
+world creation/load. Synthetic figure builders supply their own small tables. The app
+viewer loader loads render assets, not a sim registry; the `sim_replay` registry path
+loads AnnoWelt.dll beside Anlagen.dat/FigurenHeader.dat.
+
 ### 4.5 `settings.hpp` (§3), `player.hpp`
 ```cpp
 enum class PlayerState : std::uint8_t { Alive = 0, Bankrupt = 2, Defeated = 3 };   // D player +0x28d: an OPEN byte (names only, any value is kept and counts as not alive; OQ-058)
@@ -1323,6 +1332,18 @@ The stand-in walk rule (OQ-160): `layer == 3` (`kRoadLayer`) enters road tiles o
 7. **What T33 replaces** in `choose_source` (`transport_tick`): the stand-in search over the area's footprint tiles (OQ-160 / OQ-161: "road tiles only for layer 3, no diagonal past a blocked neighbour, footprints always enterable"); a footprint is entered **through its cells** (code 4, its sampled mask, costs 40 / 15), not by a special rule. The goal is the entrance **sub-cell** inside a footprint tile, reported once per goal sub-cell in the arrival order.
 
 **Still open (DRAFT, with the next address):** the shore and river tiles' exact values (`0x10081f51`, the island's height-result call and load order; the threshold of `0x10092b40`); the finer-route validation (`0x100054ef..0x100055d5`, `0x10004c90`); the island's slot `+0x12c`, the disc goals and the third goal list (`0x10003346..0x10003695`; not registered by the cart or the carrier); the callbacks' use of the sub-cell `(col, row)` (they read the tile); whether a veto ever occurs for a cart in play (T30b.5–7, the Wine route comparison, orchestrator).
+
+**T33.2 as implemented (pure inputs only):** `walk_record` derives the type code,
+rotated 3x3 mask for retained building placements and invariant1x1 tile objects;
+`WalkCells` clips a world-coordinate rectangle to one island, fills ordered lazy chunks,
+applies the addressed disc closure and keeps marks local to that search. `admission`
+and `cost` read immutable tables, returning zero for unavailable rows/layers/indices.
+T33.2 does not call these from `choose_source`, change a save/hash field, bump the
+version or re-record a golden. **Stops:** water closure awaits HEIGHT-to-runtime corner
+mapping (OQ-200; default threshold32 is decoded), so empty tiles stay2/0; no coast pass
+(OQ-170); tile-only rotation/footprint metadata awaits T33.4 at the owner's direction.
+Unsupported retained placements are flagged, with closed scratch placeholders; omitted
+footprint tiles remain an adapter limitation. This is not full shore or object coverage.
 
 ### 5.10 Players, script timers, monopoly, event 7.5 min
 ```

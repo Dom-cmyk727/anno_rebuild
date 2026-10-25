@@ -131,8 +131,12 @@ std::shared_ptr<const sim::TypeRegistry> original_registry(const fs::path& game)
     const auto fig_buf = anno::test::read_file(game / "FigurenHeader.dat");
     auto figures = anno::formats::figuren::FigurenHeader::parse(fig_buf);
     REQUIRE_MESSAGE(figures.ok(), (figures.ok() ? std::string() : figures.error()));
-    auto r = sim::TypeRegistry::build(file.value().entries, sim::original_goods(), sim::SimConfig{},
-                                      figures.value().entries);
+    const auto walk_bytes = anno::test::read_file(game / "AnnoWelt.dll");
+    auto walk = anno::formats::annowelt::read_walk_tables(walk_bytes);
+    REQUIRE(walk);
+    auto r = sim::TypeRegistry::build(
+        file.value().entries, sim::original_goods(), sim::SimConfig{}, figures.value().entries,
+        std::make_shared<const anno::formats::annowelt::WalkTables>(std::move(walk).value()));
     REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
     return r.value();
 }

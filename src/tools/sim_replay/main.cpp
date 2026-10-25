@@ -40,6 +40,7 @@
 #include <vector>
 
 #include <anno/formats/anlagen.hpp>
+#include <anno/formats/annowelt.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/scenario_formats.hpp>
 #include <anno/sim/state_fields.hpp>
@@ -332,8 +333,17 @@ std::shared_ptr<const sim::TypeRegistry> scenario_registry() {
     } else {
         std::cout << "no figure types (cannot read " << fp.string() << ")\n";
     }
-    auto r = sim::TypeRegistry::build(file.value().entries, sim::original_goods(), sim::SimConfig{},
-                                      figure_entries);
+    std::ifstream win(std::filesystem::path(dir) / "AnnoWelt.dll", std::ios::binary);
+    const std::vector<std::uint8_t> wbuf{std::istreambuf_iterator<char>(win), {}};
+    auto walk = anno::formats::annowelt::read_walk_tables(wbuf);
+    if (!walk) {
+        std::cout << "registry empty (AnnoWelt.dll: "
+                  << anno::formats::annowelt::error_message(walk.error()) << ")\n";
+        return sim::TypeRegistry::empty();
+    }
+    auto r = sim::TypeRegistry::build(
+        file.value().entries, sim::original_goods(), sim::SimConfig{}, figure_entries,
+        std::make_shared<const anno::formats::annowelt::WalkTables>(std::move(walk).value()));
     if (!r) {
         std::cout << "registry empty (" << r.error() << ")\n";
         return sim::TypeRegistry::empty();

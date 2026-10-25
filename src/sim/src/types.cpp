@@ -21,6 +21,7 @@
 #include <anno/sim/archive.hpp>
 #include <anno/sim/field_count.hpp>
 #include <anno/sim/types.hpp>
+#include <anno/sim/walk_cells.hpp>
 
 namespace anno::sim {
 
@@ -115,6 +116,11 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
     t.head_raw.assign(56, 0);
     for (std::size_t i = 0; i < t.head_raw.size() && i < head->size(); ++i) {
         t.head_raw[i] = (*head)[i];
+    }
+    if (const auto mask = e.record("WALKMASK")) {
+        for (std::size_t i = 0; i + 4 <= mask->size(); i += 4) {
+            t.walk_mask.push_back(formats::u32_le(*mask, i));
+        }
     }
     const formats::Bytes h = t.head_raw;
     const std::string prodtype = e.record_str("PRODTYPE").value_or("");
@@ -215,10 +221,11 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
 
 static_assert(field_count<ProductionType>() == 18,
               "a ProductionType member needs a line in digest_production");
-// 22 since T27: the last member, the derived walk_class, is deliberately NOT hashed;
-// digest_type skips it. (cls, also derived from the build layout, is hashed.)
-static_assert(field_count<BuildingType>() == 22,
-              "a BuildingType member needs a line in digest_type (walk_class excepted: derived)");
+// T33.2: walk_class is derived; walk_mask is a side input until T33.4.
+// digest_type skips both, preserving every existing digest byte. (cls is hashed.)
+static_assert(field_count<BuildingType>() == 23,
+              "a BuildingType member needs a line in digest_type (walk_class derived; walk_mask "
+              "unhashed until T33.4)");
 static_assert(field_count<EntrancePoint>() == 2,
               "an EntrancePoint member needs a line in digest_type");
 static_assert(field_count<FigureType>() == 5, "a FigureType member needs a line in the digest");
@@ -693,7 +700,8 @@ const BuildingType* TypeRegistry::find_growing(std::uint32_t object) const {
 formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
 TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
                      std::vector<ClassInfo> classes, const SimConfig& cfg,
-                     std::vector<FigureType> figures) {
+                     std::vector<FigureType> figures,
+                     std::shared_ptr<const formats::annowelt::WalkTables> tables) {
     if (classes.size() != static_cast<std::size_t>(RuntimeClass::Count_)) {
         return "class table has " + std::to_string(classes.size()) + " entries, RuntimeClass has " +
                std::to_string(static_cast<std::size_t>(RuntimeClass::Count_));
@@ -734,6 +742,7 @@ TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goo
     auto sealed = std::make_shared<Sealed>();
     TypeRegistry& r = *sealed;
     r.digest_ = digest_registry(types, goods_in, classes, figures);
+    r.walk_tables_ = std::move(tables);
     r.types_ = std::move(types);
     r.figure_types_ = std::move(figures);
     r.goods_ = std::move(goods_in);
@@ -776,7 +785,8 @@ TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> 
 
 formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
 TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> goods_in,
-                    const SimConfig& cfg, std::span<const fig::Entry> figure_entries) {
+                    const SimConfig& cfg, std::span<const fig::Entry> figure_entries,
+                    std::shared_ptr<const formats::annowelt::WalkTables> tables) {
     std::vector<BuildingType> types;
     types.reserve(entries.size());
     for (const fig::Entry& e : entries) {
@@ -796,7 +806,7 @@ TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> 
         figures.push_back(f.value());
     }
     return finish(std::move(types), std::move(goods_in), original_class_table(), cfg,
-                  std::move(figures));
+                  std::move(figures), std::move(tables));
 }
 
 std::shared_ptr<const TypeRegistry> TypeRegistry::empty() {
@@ -808,6 +818,12 @@ std::shared_ptr<const TypeRegistry> TypeRegistry::empty() {
 // ---- Builder
 
 TypeRegistry::Builder::Builder() : goods_(original_goods()), classes_(original_class_table()) {}
+
+TypeRegistry::Builder&
+TypeRegistry::Builder::walk_tables(std::shared_ptr<const formats::annowelt::WalkTables> tables) {
+    walk_tables_ = std::move(tables);
+    return *this;
+}
 
 TypeRegistry::Builder& TypeRegistry::Builder::goods(std::vector<GoodsInfo> table) {
     goods_ = std::move(table);
@@ -1054,6 +1070,9 @@ TypeRegistry::Builder& TypeRegistry::Builder::figure_ids(TypeId id,
 
 TypeRegistry::Builder& TypeRegistry::Builder::figure_type(FigureType type) {
     figures_.push_back(type);
+    if (!walk_tables_) {
+        walk_tables_ = synthetic_walk_tables();
+    }
     return *this;
 }
 
@@ -1062,7 +1081,7 @@ TypeRegistry::Builder::build() const {
     if (!error_.empty()) {
         return error_;
     }
-    return TypeRegistry::finish(types_, goods_, classes_, cfg_, figures_);
+    return TypeRegistry::finish(types_, goods_, classes_, cfg_, figures_, walk_tables_);
 }
 
 } // namespace anno::sim

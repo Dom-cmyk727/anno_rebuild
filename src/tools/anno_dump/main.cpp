@@ -16,6 +16,7 @@
 //   anno-dump zei [--full] <file.zei>...       font glyphs (tools/zei.py dump)
 //   anno-dump bigbrother [--full] <file.sze|file.sav>...
 //                                              scenario script (tools/bigbrother.py dump)
+//   anno-dump walk-tables <AnnoWelt.dll>...    walk tables (tools/annowelt_tables.py dump)
 //
 // Each file's output starts with `# <path>` (the path as given); lines end
 // with `\n` on every platform.
@@ -51,7 +52,8 @@ constexpr const char* kUsage = "usage: anno-dump chunks <file>...\n"
                                "       anno-dump keyed <file>...\n"
                                "       anno-dump texte [--full] <Texte.dat>...\n"
                                "       anno-dump zei [--full] <file.zei>...\n"
-                               "       anno-dump bigbrother [--full] <file.sze|file.sav>...\n";
+                               "       anno-dump bigbrother [--full] <file.sze|file.sav>...\n"
+                               "       anno-dump walk-tables <AnnoWelt.dll>...\n";
 
 using DumpFn = bool (*)(Bytes, bool, std::string&);
 
@@ -84,6 +86,7 @@ const std::map<std::string, Command>& commands() {
         {"texte", {anno::dump::dump_texte, true}},
         {"zei", {anno::dump::dump_zei, true}},
         {"bigbrother", {anno::dump::dump_bigbrother, true}},
+        {"walk-tables", {anno::dump::dump_walk_tables, false}},
     };
     return table;
 }

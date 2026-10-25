@@ -19,6 +19,7 @@ Counts refer to GOG 2.0.0.5 (`game/app/`), from `docs/research/game-files-analys
 | Plain-text data | `Data/*.dat` (10 text ones + 2 `.bat`), `Texte.dat` | [`data-text.md`](data-text.md) | partial — line grammar of every file, byte-identical round trip; `Texte.dat` sections and `[ANLAGEN]` names decoded; record meaning open (OQ-029) |
 | Player profile | `SaveGame/*/user.dat` (0 shipped; created at first start) | [`user-dat.md`](user-dat.md) | partial — chunk layout complete; volume order/scale and speech bits open (OQ-111); read by the harness only (`tools/orig/userdat.py`) |
 | Scenario script | `BIGBROTHER` chunk of `.sze` (50) and savegames | [`bigbrother.md`](bigbrother.md) | partial — grammar complete, all 50 parse and re-emit byte-identically (`tools/bigbrother.py`, C++ `anno::formats::bigbrother`, `anno-dump bigbrother`; T20 stage 1); `&&`/`||` grouping and missing `;` traced (`docs/re/annoscene.md` §12, T19); handler semantics open (OQ-122, OQ-123) |
+| Walk tables | `AnnoWelt.dll` (1) | [`annowelt-walk-tables.md`](annowelt-walk-tables.md) | partial — PE identity and the three table RVAs for GOG 2.0.0.5 (`anno::formats::annowelt`, `anno-dump walk-tables`; T33.1); table meanings in `docs/sim/state.md` §5.9 |
 
 Third-party formats (`.wav` RIFF, `.bik` Bink, `.jpg`) get no spec; note only how the game uses them.
 

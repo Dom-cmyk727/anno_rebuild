@@ -26,7 +26,6 @@ The `FigurenHeader.dat` entry layout ([`figuren.md`](figuren.md)): 8-byte prefix
 | Record | Count | Notes | Evidence |
 |---|---|---|---|
 | `VERSION2`, `HEAD`, `PRODTYPE`, `PROD3`, `WARE`, `ROHSTOFF`, `WALKMASK`, `SHOTMASK`, `OWNMASK`, `HAEUSER` | 921 each | `HEAD` bytes 0–1 = footprint width, height in tiles (grass/trees 1 × 1, palace 1380 4 × 7, castle 2223 8 × 8; confirmed by non-overlapping `PROD2` placements, [`insel.md`](insel.md)); `HEAD` is 36, 44, 48, 52 or 56 bytes (the reader zero-fills a 56-byte buffer); the bytes the simulation decodes: `[3..6]` build cost in bricks / wood / tools / marble, u16 `[8..9]` gold cost, `[0x0a]` rubble pattern, `[0x10]` stage count, `[0x11]` action radius, `[0x18]` shift, `[0x19]` fertility, u16 `[0x1c]` type flag word, u16 `[0x2c]` maximum hit points, `[0x31]` can burn (D, [`docs/re/production.md`](../re/production.md) §2.4); `PRODTYPE`, `FORSCHTYPE`, `WARE` and `ROHSTOFF` are names looked up in the name tables of `AnnoGame.dll` (PRODTYPE number 0–416, research id, goods number 0–0x8e; `UNUSED` = 0; `docs/sim/state.md` Appendices A–C); the rest of `HEAD` and the other records ? (M1.4) | P (counts), P + visual (footprint) |
-
 | `COLORS` | 891 | **list of `u32` colour-table ids** (1–3 ids, 4/8/12 bytes), not inline tables; ids are 1–440 = `ANNO/COLORS` table ids, or 0 = unused slot | P: 640 × 1, 195 × 2, 56 × 3 ids; no frame selects a 0 |
 | `INFRAMIN` 822, `OBJECTPOS` 426, `BAUSAMPLE` 409, `ENTRANCE` 326, `FIREPOS` 26, `FORSCHTYPE` 20, `HIGHMAP` 16 | | ? (M1.4) | P (counts) |
 

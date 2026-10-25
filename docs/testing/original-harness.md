@@ -153,6 +153,17 @@ from `main`) and the new `tools/orig/memdiff.py`. Findings that change how the h
    (owner's hint). The construction menu's category column and grid are measured into
    `screens.json` (eight categories, pioneer-level cells).
 
+## 4c. Camera and tile driving (T15.B2, 2026-10-25, owner present)
+
+`gamestate.camera(mem, hwnd, frame_base)` reads the view object through the game window's
+`GWL_USERDATA` (refused unless `[V]` is one of AnnoFrame's two base vtables), `WindowsBackend.state("camera")`
+returns it, and `tools/orig/play.py` adds `goto_tile(backend, x, y)` (scroll with the arrow keys, predict the
+pixel from the measured projection `docs/re/view.md` §2.5, correct by the hovered tile): 10 of 10 random
+land tiles, plus three far ones. Two things to know when reading the game: the hovered-tile slot flips with a
+sentinel (sample it, `play.hover`), and the cursor to use for pixel maths is the game's own (`MOUSE`,
+`stack 0x1af950`). Both stack addresses were identical in the two runs so far; `play.check_addresses`
+verifies the cursor one before use. Zoom keys: F4 / F3 / F2 = groups 0 / 1 / 2; `X` rotates.
+
 ## 5. Third-party tools (none installed; owner decides each)
 
 Candidates for the questions above; each needs its version, licence and reason before installation, and nothing of them goes into git:

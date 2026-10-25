@@ -28,6 +28,7 @@ import backend  # noqa: E402
 import gamestate  # noqa: E402
 import live  # noqa: E402
 import opening  # noqa: E402
+import play  # noqa: E402
 import screensig  # noqa: E402
 import timing  # noqa: E402
 import userdat  # noqa: E402
@@ -203,6 +204,67 @@ class GameState(unittest.TestCase):
         mem = FakeMem({0x5000: city(50 * 256), 0x6000: city(0), 0x7000: city(gamestate.CITY_CAPACITY_SANE + 1)})
         got = gamestate.cities(mem, self.WELT)
         self.assertEqual([(c["addr"], c["capacity_t"], c["tools_t"]) for c in got], [("0x5000", 50.0, 48.0)])
+
+
+class Camera(unittest.TestCase):
+    FRAME = 0x2300000
+    V = 0x3000000
+
+    def view(self, vt_rva=0x86428, x=-670.5, z=-500.25, rot=1, grp=2, scale=0.25):
+        b = bytearray(0x1700)
+        struct.pack_into("<I", b, 0, self.FRAME + vt_rva)
+        struct.pack_into("<f", b, gamestate.VIEW_TRANS_X, x)
+        struct.pack_into("<f", b, gamestate.VIEW_TRANS_Z, z)
+        b[gamestate.VIEW_ROTATION] = rot
+        b[gamestate.VIEW_ZOOM_GROUP] = grp
+        struct.pack_into("<f", b, gamestate.VIEW_SCALE, scale)
+        return FakeMem({self.V: bytes(b)})
+
+    def test_reads_negated_translation_for_both_vtables(self):
+        for rva in gamestate.FRAME_VIEW_VTS:
+            cam = gamestate.camera(self.view(rva), 1, self.FRAME, userdata=lambda h: self.V)
+            self.assertEqual(cam, {"v": self.V, "x": 670.5, "z": 500.25, "rotation": 1,
+                                   "zoom_group": 2, "scale": 0.25})
+
+    def test_refuses_wrong_vtable_and_missing_anchor(self):
+        self.assertIsNone(gamestate.camera(self.view(0x86430), 1, self.FRAME, userdata=lambda h: self.V))
+        self.assertIsNone(gamestate.camera(self.view(), 1, self.FRAME, userdata=lambda h: None))
+        self.assertIsNone(gamestate.camera(self.view(), 1, self.FRAME, userdata=lambda h: 0x7000000))
+
+
+class PlayProjection(unittest.TestCase):
+    def test_pixel_and_tile_agree_for_every_group_and_rotation(self):
+        for g in play.CALIB:
+            for r in range(4):
+                cam = {"x": 655.04, "z": 475.96, "rotation": r, "zoom_group": g}
+                for tx, tz in ((655, 476), (640, 490), (670, 460)):
+                    px, py = play.pixel_of(cam, tx + 0.5, tz + 0.5)
+                    self.assertEqual(play.tile_at(cam, px, py), (tx, tz), (g, r, tx, tz))
+
+
+@unittest.skipUnless(sys.platform == "win32", "needs the Windows backend")
+class CameraLive(unittest.TestCase):
+    """Against a running original on this PC (C:\anno1503-original); skips without one."""
+
+    def test_camera_inside_world(self):
+        be = backend.WindowsBackend()
+        try:
+            be.start()
+        except backend.BackendError as ex:
+            self.skipTest(f"no running game: {ex}")
+        try:
+            st = be.state("world")
+            cam = be.state("camera")["camera"]
+            world = st.get("world")
+            if cam is None or world is None:
+                self.skipTest("game running but no scenario/camera yet")
+            wobj = int(world["addr"], 16)
+            wb = be.read(wobj + 0xEC, 8)
+            width, height = struct.unpack("<ii", wb)
+            self.assertTrue(0 <= cam["x"] <= width and 0 <= cam["z"] <= height, (cam, width, height))
+            self.assertIn(cam["zoom_group"], (0, 1, 2))
+        finally:
+            be.stop()
 
 
 def chunk(name: str, payload: bytes) -> bytes:

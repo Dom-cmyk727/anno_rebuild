@@ -2434,3 +2434,32 @@ Inline, no subagents.
 - **Commits:**
   - `docs(re): T30b.3h — the array behind [esi+0x10] is a 4×4-tile Y-class chunk from 0x100064b0; bit 10 of the sub-cell u16 at byte +2 is the walkability flag (static chain complete) (transport.md §3.4.5)`
   - `docs(orchestration): T30b.3h report (static chain complete; OQ-175 answered subject to Wine confirmation)`
+
+## T30b.3i — The search's main loop and the node record, with absolute `Y` offsets — 2026-10-25 — status: READY FOR REVIEW
+
+- **Branch:** `task/T30b-3i-main-loop` from `main` at 0a1d013; worktree `C:\Users\altin\anno1503-T30b-3i`. Executor itself; no reviewer subagent. Docs only.
+
+- **Headline:** fn1 (`0x10003d90`) has `this = Y + 4`. At `0x1000474f` `edi` is that `this` (loaded at `0x100046cf` from `[esp + 0x10]`). Expansions run as `Y + 8`; `0x10003220` runs as `Y + 4`. Absolute offsets: sentinel `Y + 0x41c`, open count `Y + 0x424`, free list `Y + 0x428` / `Y + 0x42c` / count `Y + 0x430`, continue byte `Y + 0x43c`, return byte `Y + 0x43d`, best score `Y + 0x448`, first array `Y + 0x4f4` / `Y + 0x4f8`. Node is `0x1c` bytes. One `ret`, return = `[Y + 0x43d]`. Start nodes: the only fn2 call (`0x10003e8d`) from the float array at `[Y + 0x4f8]`. The pre-loop **sets** bit 10 on some cells (`0x10004068`, `0x10004256`). Expansion byte table is `[Y + 0x434]`.
+
+- **Steps** (ranges read; no original bytes in git):
+  1. **Set up.** Worktree from `origin/main` at 0a1d013. `tools/disasm.py` and `game/app/AnnoWelt.dll` present. No build.
+  2. **fn1 whole.** `python tools/disasm.py … 10003d90 2800` — one `ret` at `0x10004867`. First table row: `this = Y + 4` (slot `+0x84` of `0x100c14e4` = `0x10003d90` by `pefile`; installer `0x10006375`). `esi` after `0x10003d99`. `edi` loaded at `0x100046cf` from `[esp + 0x10]` (that slot written once, at `0x10003dad`). At `0x1000474f` `edi` is `Y + 4`.
+  3. **Absolute-offset table.** Every named `[this + k]` written as `Y + 4 + k`. fn2's `this = Y + 8` lands on the same list fields (sentinel / open count / free list).
+  4. **Node table.** From fn2 `0x100048f8..0x1000498a` and the `push 0x1c` at `0x100048c6`; tail list ops `0x100047e4..0x1000483e`. `+0x1a` unused in these two functions.
+  5. **Loop pseudo-code.** `0x10004749..0x10004867`. Jump table `0x10004868` = seven dwords: `0x80→0x100047c5`, `0x81→0x100047db`, `0x82→0x100047ba`, `0x83→0x100047db`, `0x84→0x100047d0`, `0x85→0x100047db`, `0x86→0x100047af`.
+  6. **Return and pre-loop.** Only exit `0x10004855` / `ret` `0x10004867`, `eax` = `[Y + 0x43d]`. Pre-loop `0x10003d90..0x1000474f`: first array seeds via fn2; two later `0x100064b0` sites set bit 10; last array `and`s a u16 into the cell.
+
+- **Acceptance** (TASKS.md T30b.3i):
+  1. **MET** — absolute-offset table in §3.4.7.
+  2. **MET** — node table (`+0`..`+0x1c`, size `0x1c`).
+  3. **MET** — loop pseudo-code with every address.
+  4. **MET** — pre-loop described (first array + the one fn2 site; the other walks named with addresses).
+  5. **MET** — nothing of the original in git (`git status` under `game/` empty).
+
+- **Left open:** T30b.3j (`0x10006a40` to its `ret`; byte table at `[Y + 0x434]`). The `Y + 0x430` count vs T30b.3b's world-pointer label (two vtables for `0x10003780`) is named, not resolved.
+
+- **Scope note:** docs only; no `src/`, no tool.
+
+- **Commits:**
+  - `docs(re): T30b.3i the search main loop and the node record (transport.md §3.4.7)`
+  - `docs(orchestration): T30b.3i report`

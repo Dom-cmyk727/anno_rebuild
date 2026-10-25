@@ -77,9 +77,9 @@ Time-boxed RE of OQ-160 (`tools/disasm.py`, `tools/xref.py` on `game/app/AnnoWel
 
 - **(a) The table pointer and where it lives. D.** Two setters compute the per-layer table pointer and store it: `0x1000dd20` writes `[engine + 0x430] = 0x100d1140 + 0x1c00·layer` (`lea edx,[eax*8]; sub edx,eax; shl edx,0xa; add edx,0x100d1140`), and `0x1000f010` writes the same value to `[+0x1030]` of its object. So each walking layer owns a `0x1c00`-byte (7168) block; five blocks are used (P: the sixth `0x1c00` bytes after them are all zero). The base-relocation table (`xref.py --reloc`) lists exactly two absolute references to `0x100d1140`, at `0x1000dd32` and `0x1000f022` inside the two setters, and **none** to any address inside the five blocks (`0x100d1141`–`0x100d9d3f`; the next referenced `.data` address is `0x100dcb44`). `0x1000dd20` is held in the vtables at `0x100c1320`, `0x100c1564` (slot `+0x80` of `0x100c14e4`, the engine at world `+0x6aa8` `+4`, §3) and `0x100c1934`; `0x1000f010` only at `0x100c1abc`, another vtable, so `[+0x1030]` is likely a field of another engine class (open).
 - **The blocks hold initialised data; that they are not written at run time is likely.** D: `0x100d1140` lies in `.data` (characteristics `0xc0000040` = initialised / read / write) with non-zero image content, and no absolute reference points into the blocks (a), so a run-time write would have to go through the stored pointers `[engine + 0x430]` / `[+0x1030]`. Read so far through the pointer: the reader `0x1000daf0` (below); stores through it were not searched. So "not filled at run time" (which would correct §3's earlier "filled at run time") is **likely**; T30 step 7a settles it (a compare with the running original's memory).
-- **(b) The cell value the search reads. D.** `0x10091fa0` dispatches on a mode 0–7 through the table `0x10092190`; mode 0 (the figures', §3) goes to `0x10091fba`, which calls `0x1008ff70`. Its loop `0x10090050`–`0x1009007b` reads each tile record's second dword, takes bits 16–24 (`shr 0x10; and 0x1ff`) as the index into the u16 table `0x100c1af8` (`.rdata`; its only reference is the load at `0x1009005f`), moves bits 8–15 to bits 16–23 (`and 0xff00; shl 8`) and stores `table[mask] | byte << 16` as the cell. So the layer blocks are indexed (somehow, open) by the mapped value, not by the raw 9-bit mask.
+- **(b) The cell value the search reads. D.** `0x10091fa0` dispatches on a mode 0–7 through the table `0x10092190`; mode 0 (the figures', §3) goes to `0x10091fba`, which calls `0x1008ff70`. Its loop `0x10090050`–`0x1009007b` reads each tile record's second dword, takes bits 16–24 (`shr 0x10; and 0x1ff`) as the index into the u16 table `0x100c1af8` (`.rdata`; its only reference is the load at `0x1009005f`), moves bits 8–15 to bits 16–23 (`and 0xff00; shl 8`) and stores `table[mask] | byte << 16` as the cell. ~~So the layer blocks are indexed (somehow, open) by the mapped value, not by the raw 9-bit mask.~~ **Corrected T30b.3m (§3.4.12):** the tile byte supplies the admission/cost index; the mapped mask supplies geometric edge bits.
 - **Image statistics of the blocks (P; their meaning open).** `0xff` bytes per block: layer 0 = 316, layer 1 = 409, layer 2 = 561, **layer 3 = 75**, layer 4 = 613; distinct byte values per block: 50, 53, 74, 42, 87. With that many distinct values an entry is not a plain yes/no flag, so the `0xff` counts do not rank the layers (with `0xff` = passable layer 3, the market cart's (P), would be the most restrictive; with `0xff` = blocked the least). They say nothing about whether the stand-in (layer 3 → roads only, every other layer → open land) has the right shape.
-- **Open, and the next address.** The **meaning** of a block's entries (how a cell value indexes the `0x1c00` block and what the entry says to the search) is not decoded. The search functions `0x10003d90`–`0x10004867` and `0x10004890`–`0x1000588f` do not access `+0x430` (a displacement sweep; their `+0x42c` accesses at `0x10004831`/`0x1000483e` are a counter). The direct reader of the pointer is **`0x1000daf0`** (held in the vtable at `0x100c18b0`): it reads `[engine + 0x430]` at `0x1000db0e` and adds a u16 taken from its argument; a twin with a frame shifted by 4 bytes is `0x1000ed40` (vtable `0x100c1a30`; `+0x430` at `0x1000ed50`, `+0x434` at `0x1000ed77`). Those two and their callers are the next addresses (T30 step 2). The RE of OQ-160 stays open (the owner decided on 2026-10-24 how it is settled: T30), and the stand-in (road-flag tiles for layer 3, open land otherwise) is kept; the statistics above neither confirm nor refute it.
+- **Open, and the next address.** ~~The **meaning** of a block's entries (how a cell value indexes the `0x1c00` block and what the entry says to the search) is not decoded.~~ **Decoded T30b.3m (§3.4.12):** through the Y+4 interface, `0x1000dd20` sets Y+0x434 to the selected layer block; `L[code]` is the admission mask, `L[0x400+code*8+dir]` the default step cost. The rest of this bullet records the earlier investigation. The search functions `0x10003d90`–`0x10004867` and `0x10004890`–`0x1000588f` do not access `+0x430` (a displacement sweep; their `+0x42c` accesses at `0x10004831`/`0x1000483e` are a counter). The direct reader of the pointer is **`0x1000daf0`** (held in the vtable at `0x100c18b0`): it reads `[engine + 0x430]` at `0x1000db0e` and adds a u16 taken from its argument; a twin with a frame shifted by 4 bytes is `0x1000ed40` (vtable `0x100c1a30`; `+0x430` at `0x1000ed50`, `+0x434` at `0x1000ed77`). Those two and their callers are the next addresses (T30 step 2). The RE of OQ-160 stays open (the owner decided on 2026-10-24 how it is settled: T30), and the stand-in (road-flag tiles for layer 3, open land otherwise) is kept; the statistics above neither confirm nor refute it.
 - **(c)** What a tile *without* an object carries in those bits (water, mountain, open land) was not read here; it is the island loader's tile-record set-up (`docs/re/islands.md`, the tile record's second dword; T30 step 5). Rivers are not such tiles: they are `FLUESSE` tile objects (step 7, OQ-170).
 
 ## 4. Movement (d)
@@ -905,14 +905,14 @@ Returns (`ret 4`):
 - `eax = 0` (`0x10003774`) when the callback ran and `[Y + 0x43c]` is 0 — fn1 then leaves the loop if that same byte is 0.
 - `eax = [esp + 0x10] & 0xff` (`0x10003757`, the `bl` accumulator) on the normal path. Non-zero → fn1 falls through to the expansion / unlink tail.
 
-**The four special expansions (D).** Each `this = Y + 8`. Same table `[this + 0x42c] = [Y + 0x434]`, same enqueue helpers as §3.4.8 (`0x10006f30`, `0x10006f70`, `0x10007180`, `0x1000d4e0`, `0x1000b850`, `0x10017510`, `0x1000b790`), plus `0x10007540`. Four orthogonal neighbours like the default, **minus one direction**.
+**The four special expansions (D).** Each `this = Y + 8`. Same table `[this + 0x42c] = [Y + 0x434]`, same enqueue helpers as §3.4.8 (`0x10006f30`, `0x10006f70`, `0x10007180`, `0x1000d4e0`, `0x1000b850`, `0x10017510`, `0x1000b790`), plus `0x10007540`. ~~Four orthogonal neighbours like the default, **minus one direction**.~~ **T30b.3m correction (§3.4.12):** the neighbour order omits the direction back to the parent; the geometry-bit selection and turn-cost arithmetic also differ from the default. This table specifies order only.
 
-| Code | Function | First `ret 4` | Neighbours (order) | Missing | First in-chunk test |
+| Code | Function | First `ret 4` | Neighbours (order) | Direction back to parent (omitted) | First in-chunk test |
 |---|---|---|---|---|---|
-| `0x80` | `0x10007b00` | `0x10007e3a` (second `0x10007e98`) | up, down, left | **right** | `[cell − 0x10], 0x2111` (`0x10007b40`) |
-| `0x82` | `0x10007770` | `0x10007afc` | left, right, down | **up** | `[cell − 4], 0x4888` (`0x100077ba`) |
-| `0x84` | `0x10007ea0` | `0x100081d0` (second `0x10008228`) | up, down, right | **left** | `[cell − 0x10], 0x2111` (`0x10007ee2`) |
-| `0x86` | `0x100071c0` | `0x10007533` | left, right, up | **down** | `[cell − 4], 0x4888` (`0x10007204`) |
+| `0x80` | `0x10007b00` | `0x10007e3a` (second `0x10007e98`) | up, down, left | **right**, after left-step mark `0x10006fc4` (dir0) | `[cell − 0x10], 0x2111` (`0x10007b40`) |
+| `0x82` | `0x10007770` | `0x10007afc` | left, right, down | **up**, after down-step mark `0x10006cc8` | `[cell − 4], 0x4888` (`0x100077ba`) |
+| `0x84` | `0x10007ea0` | `0x100081d0` (second `0x10008228`) | up, down, right | **left**, after right-step mark `0x10006fc4` (dir4) | `[cell − 0x10], 0x2111` (`0x10007ee2`) |
+| `0x86` | `0x100071c0` | `0x10007533` | left, right, up | **down**, after up-step mark `0x10006ae5` | `[cell − 4], 0x4888` (`0x10007204`) |
 
 ~~**Likely** (not D; T30b.3k did not map tile bytes to these codes): each code is a tile that has no exit in the missing direction (a ramp, bridge, pier or entrance facing the opposite way).~~ **Withdrawn by the orchestrator (2026-10-25 ao, §3.4.11 (f)):** the codes `0x80 | dir` are written by the expansion's own marks into the high u16 of a reached cell (`0x10006ae5`, `0x10006cc8`, `0x10006fc4`), so a node with such a code was reached from direction `dir` and its expansion omits the way back to the parent. Codes `0x81` / `0x83` / `0x85` still take the default expansion (`0x10006a40`); no mark produces them.
 
@@ -933,6 +933,135 @@ Returns (`ret 4`):
 **(f) The marks are came-from codes, not tile kinds (D for the writes; T30b.3m confirms the reading).** §3.4.8's up-mark writes the neighbour's **high** u16 (`lea eax, [ebp + eax*4 − 0xe]` = `cell_up + 2` at `0x10006a94`, `mov word [ecx], ax` at `0x10006ae5`) with `(hi & 0xfc86) | 0x86`; the down-mark `(hi & 0xfc82) | 0x82` at `[ecx + 2]` (`0x10006cc8`); `0x10006f70` writes `[ecx + 2]` with bits 0–9 replaced by `0x80 + dir` (`0x10006fb4..0x10006fc4`: `dx = (dir + 0x80) ^ hi; dx &= 0x3ff; dx ^= hi`). So the code of a cell the search has reached becomes `0x80 | dir` with `dir` the step that reached it (`0` left, `2` down, `4` right, `6` up), and a popped node whose code is `0x80..0x86` takes the matching special expansion of §3.4.10, which omits exactly the direction back to the parent (`0x86` = reached going up → no down; `0x82` → no up; `0x80` → no right; `0x84` → no left). §3.4.10's "likely a ramp, bridge, pier or entrance" is withdrawn; the odd codes `0x81` / `0x83` / `0x85` cannot be produced by a mark (`dir` is even). The `| 7` of fn2 and of the disc pass gives code 7 to start and disc cells.
 
 **What this means for OQ-175 / OQ-171 / OQ-160.** The static chain is complete end to end: tile record (8 bytes at `[island + 0xc]`) → `0x10003780` → island `+0x128` mode `[Y + 0x2044]` → `0x1008ff70` → the chunk cell → fn1 (§3.4.7) → `0x10006a40` (§3.4.8) with the byte table `[Y + 0x434]`. Three readings remain before the Wine check: who writes `[Y + 0x434]` and `[Y + 0x2044]` (a capstone sweep of `.text` finds `mov [esi + 0x434], edi` at `0x10002b9e` next to `[esi + 0x203c]` / `[esi + 0x2040]` writes at `0x10002b92` / `0x10002b98`, and `cmp [ebp + 0x2044], 6` at `0x1000576e` in `0x10005890`): if that `edi` is a layer block `0x100d1140 + 0x1c00·layer`, the block's bytes `L[code]` are the admission bits and `L[0x400 + code·8 + dir]` the step costs, which answers §3.1's "meaning of an entry"; who sets the top nibble of the low u16 (the fill leaves it 0, and `dl = 0` admits nothing); and who writes the tile record's byte and 9-bit mask for a road, a footprint and the terrain (OQ-171, OQ-170). T30b.3m and T30b.3n; then T30b.3h2 with the predicted cells.
+
+#### 3.4.12 The fill, the layer table and the marks (T30b.3m, 2026-10-25)
+
+All addresses below are **AnnoWelt.dll**; D denotes the static instruction/PE reading, P the image statistics. No game-memory observation is claimed. This section supersedes the off-by-four readings in §3.4.9 and the unresolved table/nibble paragraphs of §3.4.11.
+
+**Interface proof (D).** Fill `0x10003780`, chunk lookup `0x100064b0`, default expansion `0x10006a40`, helper `0x10006f70`, fn2 and the special expansions have `this = Y + 8`: installer `0x1000637c` writes vtable `0x100c14e0` there, with slot 0 = fill; fn1 passes `lea ecx,[edi+4]` with edi = Y+4 (§3.4.7). Setup `0x10002b80`, disc setter `0x10002a60` and layer setter `0x1000dd20` have `this = Y + 4`: their slots are respectively `0x100c1534`, `0x100c1538`, `0x100c1564`, offsets +0x50/+0x54/+0x80 in `0x100c14e4`, installed at Y+4 by `0x10006375`. Start-key helper `0x10003aa0` is directly called with fn1's saved this = Y+4 (`0x10003f5a..0x10003f6e`). Goal test `0x10003220` is Y+4 (§3.4.10). These are not interchangeable with the other engine families.
+
+**Table A — fill fields (`0x10003780..0x10003a91`, D).**
+
+| Fill [this+k] | Absolute | Use / address |
+|---|---|---|
+| +0x4e4 / +0x4e8 | Y+0x4ec / Y+0x4f0 | Add to chunk u16 origin +0x40/+0x42 (`0x1000379d..0x100037ab`). |
+| +0x430 | Y+0x438 | Island, virtual +0x128 at `0x100037df`. |
+| +0x2038 / +0x203c | Y+0x2040 / Y+0x2044 | Auxiliary parameter and mode (`0x100037b7`, `0x100037d2`). |
+| +0x4e3 | Y+0x4eb | Disc radius/enabling byte; zero skips pass (`0x100037e5..0x100037f1`). |
+| +0x454 / +0x458 | Y+0x45c / Y+0x460 | Left/right centre bounds, chunk-relative (`0x100037f7..0x10003821`). |
+| +0x45c / +0x460 | Y+0x464 / Y+0x468 | Top/bottom centre bounds (`0x1000380f`, `0x1000385c`). |
+| +0x464+i | Y+0x46c+i | Byte half-width table (`0x1000383b`, `0x10003902`, `0x100039fb`). |
+
+**Table B — stack rect (D).** Let S be esp immediately after the four saved-register pushes, before `push 4` at `0x10003799`; x/y include the world origin above. The pointer taken at `0x100037b2` is S+0x1c. Store operands below use esp *at that instruction*, not a common stack frame.
+
+| Store | Operand | Address relative to S | Value / rect offset |
+|---|---|---|---|
+| `0x100037ae` | esp+0x28 | S+0x20 | y / +4 |
+| `0x100037c0` | esp+0x28 | S+0x1c | x / +0 |
+| `0x100037c7` | esp+0x34 | S+0x28 | y+4 / +12 |
+| `0x100037d8` | esp+0x34 | S+0x24 | x+4 / +8 |
+
+Thus the callee reads `(x,y,x+4,y+4)`, exclusive right/bottom, in four consecutive dwords.
+
+**Table C — island +0x128 arguments (D).**
+
+| Callee argument | Push | Value |
+|---|---|---|
+| 0 | `0x100037de` | [Y+0x2044], mode |
+| 1 | `0x100037d1` | [Y+0x2040], auxiliary parameter |
+| 2 | `0x100037b6` | &rect |
+| 3 | `0x100037ad` | chunk destination |
+| 4 | `0x10003799` | 4, destination row width in cells |
+
+Island vtable `0x100cac2c` +0x128 = `0x10091fa0`. Jump table `0x10092190`, modes 0..7: `0x10091fba`, `0x10091ffe`, `0x10091fdc`, `0x1009211a`, `0x1009215e`, `0x1009213c`, `0x100920ee`, `0x1009215e`. Mode 0 forwards rect/dest/width to `0x1008ff70` (`0x10091fba..0x10091fcb`). Mode 6 forwards **the same arguments**, then calls `0x100906f0` with them (`0x100920ee..0x10092109`); it does not substitute the auxiliary parameter. After four register pushes these values are esp+0x1c/+0x20/+0x24. Other modes: 1 inline at `0x10091ffe`; 2 calls `0x10090a40`; 3 calls `0x10090560`; 4/7 inline at `0x1009215e`; 5 calls `0x10090870`. Their bodies were not read for this step.
+
+**Cell builder pseudo-code (D, `0x1008ff70..0x100900b3`).** This = island. Fields +4/+6/+8/+0xa are unsigned u16 x/y/w/h; +0xc is the 8-byte tile-record array. Slot +0x50 = `0x1008caa0..0x1008caa6` returns x; +0x54 = `0x10037570..0x10037576` returns y (pefile targets, bodies read to ret).
+
+```text
+ix0 = max(rect.left - island.x, 0)                 # 0x1008ff9f..0x1008ffad
+ix1 = min(rect.right - island.x, island.w)         # 0x1008ff89..0x1008ff9b
+iy0 = max(rect.top - island.y, 0)                  # 0x1008ffed..0x1008fffa
+iy1 = min(rect.bottom - island.y, island.h)         # 0x1008ffe0..0x1008ffeb
+row = dest + 4*(island.x + ix0 - rect.left
+             + (island.y + iy0 - rect.top)*width) # 0x1008ffb9..0x1009001a
+record = records + 8*(iy0*island.w + ix0)          # 0x1009001d..0x1009002e
+for y in [iy0, iy1):
+    for x in [ix0, ix1):                          # 0x10090047..0x1009007b
+        rec = second_dword(record + 8*(x-ix0))
+        row[x-ix0] = mapper[(rec >> 16) & 0x1ff] | ((rec & 0xff00) << 8)
+    row += width cells; record += island.w records # 0x10090089..0x100900aa
+```
+
+A destination cell is four bytes; row stride is width*4. Mapper = 512 u16 at `0x100c1af8`, 33 distinct values (§3.4.9). At mode-0 fill: bits 0..11 = mapped mask; 12..15 = 0; 16..23 = tile-record byte 8..15 (fresh code); 24..31 = 0. Clipping leaves outside-island cells untouched, hence zero from the superblock/chunk allocation (`0x100065a6..0x100065af`); the builder does not explicitly clear them. Mode6's second pass can replace a cell with 0x0fff (`0x1009081f`), which also leaves the nibble zero.
+
+**Disc pass pseudo-code (D).** The setter `0x10002a60..0x10002b7a` is the area/radius setup described in §1.1: argument0 is the footprint rect and argument1 the radius. Its fields +0x458/+0x45c/+0x460/+0x464/+0x468/+0x4e7, after adding 4, are **the very same** absolute fields Y+0x45c/+0x460/+0x464/+0x468/+0x46c/+0x4eb. The left/right and top/bottom centre bounds account for an even footprint's two centre tiles. The byte table is the rounded-disc half-width profile, not a per-terrain table. Writes at `0x10002a80`, `0x10002aa1`, `0x10002ab9`, `0x10002ad9`, `0x10002af1`, `0x10002b0d`, `0x10002b23`, `0x10002b69`; setup disables it at `0x10002d55`.
+
+```text
+if radius == 0: return                            # 0x100037e5..0x100037f1
+# Corner comparisons select which of the two row bands need work.
+# They use profile[min(radius, distance)] and chunk x/y + 3.
+# flag bits 0/1 = top left/right outside; 2/3 = bottom left/right outside
+flags = corner_outside_tests()                    # 0x100037f7..0x100038a5
+for band in [top, bottom]:                        # 0x100038ab / 0x10003993
+    if corresponding flag pair == 0: continue
+    if top:
+        rows = [max(0, topCentre-radius-chunk.y), min(3, topCentre-chunk.y)]
+        i(row) = topCentre - chunk.y - row        # 0x100038b4..0x10003902
+    else:
+        rows = [max(0, bottomCentre-chunk.y), min(3,bottomCentre+radius-chunk.y)]
+        i(row) = chunk.y + row - bottomCentre     # 0x1000399e..0x100039fb
+    for row in rows inclusive:
+        half = profile[i(row)]
+        endLeft = min(4, leftCentre-chunk.x-half)
+        startRight = max(-1, rightCentre-chunk.x+half)+1
+        for x in [0,endLeft) and [startRight,4):
+            high16(cell(x,row)) = (high16(cell(x,row)) & 0xfc07) | 7
+            # 0x1000393e..0x10003948 / 0x1000396d..0x10003977
+            # 0x10003a3f..0x10003a49 / 0x10003a6e..0x10003a78
+```
+
+These are cells **outside the allowed rounded area**, not its interior. PE read: L[7] = 0 in all five blocks. Therefore a disc-marked cell cannot be newly admitted by `L[code] & direction_bit`; code 7 is closed. fn2 also marks start cells code 7, closing re-entry without removing their already enqueued start nodes.
+
+**The layer pointer and mode (D).** `0x10002b80` begins after `ret 8`/padding at `0x10002b7a` and ends `ret 0x10` at `0x10002d7c`. Direct xrefs: none; relocation slot `0x100c1534`, installed +4-interface as above. edi at `0x10002b9e` is argument0 (entry esp+4; esp+0x14 after four saved registers), the island. Its +0x434 store is **Y+0x438**, not Y+0x434. Argument2 (entry esp+0xc) is stored at this+0x2040 = **Y+0x2044** (`0x10002b98`), so it supplies the mode. Argument3 (entry esp+0x10; esp+0x1c after three pushes at `0x10002b89`) is stored at this+0x203c = Y+0x2040 (`0x10002b92`). The mode is caller-supplied; mode0/mode6 wiring is above, not inferred from the misleading comparison at `0x1000576e` (which precedes `0x10005890`).
+
+The Y-class layer setter is **the shared `0x1000dd20`**, through +4-interface slot +0x80: `[Y+4+0x430] = 0x100d1140 + 0x1c00*arg0` (`0x1000dd24..0x1000dd36`). Thus the expansion's pointer **is a layer block**, despite earlier sections assigning the shared setter only to X. The stores `0x100012ce/0x100012d6` belong to the earlier setup `0x100012a0` (relocation `0x100c12f0`); `0x1000db7d/0x1000db85` to `0x1000db60` (relocation `0x100c1904`), where the value is a rect coordinate/clamp, not a Y layer pointer. A displacement coincidence does not identify either with Y.
+
+The store sweep (pattern/hits in REPORTS) found only `0x10002b92/0x10002b98` for displacements 0x203c/0x2040/0x2044; there is no direct literal +0x2044 store. The two +4-interface stores resolve the actual fields. Every hit is accounted for; no additional mode writer is claimed.
+
+**Entry meaning, now D:** `L[code]` supplies admission bits (default up/down/left/right test bits 0x40/0x04/0x01/0x10); `L[0x400 + code*8 + dir]` supplies a cost byte, default dir 6/2/0/4. Addresses `0x10006ab0`, `0x10006ab9`, `0x10006c9c`, `0x10006ca5`, `0x10006f55`, `0x10006fa7`. The mapper supplies low-u16 geometry, **not** the block index; the fresh tile byte supplies the code. Fill-time codes are 0..255, reached marks 0x80/82/84/86, start/closed code 7; the 0x3ff mask itself is not evidence that the fill produces 1024 code values.
+
+`layer_blocks.py --disk-summary` reports P: nonzero bytes in the full 0..0x3ff lookup window = 648/645/735/411/735, of which fresh-code 0..255 admissions = **216/215/245/137/245** (layers 0..4). Do not rank layers by whole-block 0xff counts. First three nonzero codes and their eight costs (indices 0..7):
+
+| Layer | Code: admission; costs |
+|---|---|
+| 0 | 0:255; (10,13,10,13,10,13,10,13). 1:255; (15,20,15,20,15,20,15,20). 2:255; (20,27,20,27,20,27,20,27). |
+| 1 | Same first three as layer0. |
+| 2 | 0:255; (10,13,10,13,10,13,10,13). 1:255; (20,27,20,27,20,27,20,27). 2:255; (30,41,30,41,30,41,30,41). |
+| 3 | 0:255; (10,13,10,13,10,13,10,13). 1:255; (20,27,20,27,20,27,20,27). 4:255; (40,55,40,55,40,55,40,55). |
+| 4 | 0:255; (50,69,50,69,50,69,50,69). 1:255; same costs. 2:255; (10,13,10,13,10,13,10,13). |
+
+For fresh codes below 128: layer0 has admission 255 iff code mod8 is 0..5; otherwise 0. Layer3 has admission 255 exactly for {0,1,4,24,25,40,41,48,49,72,73,80,81,96,97,120,121}; all other codes below128 have 0. For codes 128..255 both layers agree: each consecutive group of eight codes has admission, in order, 0,64,16,112,4,68,28,124,1,193,17,241,7,199,31,255. This compact mapping covers every possible fresh byte; it is derived from PE reads, not an extracted table committed to git. What road/terrain kinds produce those bytes remains T30b.3n.
+
+**Start nibble (D).** `0x10003aa0` runs with this=Y+4, two arguments = the two dwords of an 8-byte input float-position entry (`0x10003f63..0x10003f6e`). It creates a bordered 3x3 byte buffer using `0x1000d950(3,3)` (stride5, border9; helper read through `0x1000d9d3`). It converts scaled position components using global `0x100e05bc` and conversion helper `0x100b5f90` to obtain tile x/y, then island +0x128 arguments are `(mode=[Y+0x2044]+1, auxiliary=0, rect=(x,y,x+1,y+1), dest=interior buffer, width=5)` (`0x10003af3..0x10003b17`). This is the subcell mode1 for ordinary fill mode0. No value for the runtime scale global is inferred from its zero image content.
+
+It seeds an interior byte with 10 from the fractional-position components times 3 (`0x10003b1d..0x10003b98`), then floods bytes equal to 8 up/left/right/down, writing directions 6/0/4/2 and queuing 4-byte local records (`0x10003bbe..0x10003cb6`). `0x10018740(x,y)` returns buffer+4+x+(y+1)*stride (`0x10018740..0x10018755`). Byte classification at `0x100d1128` is nonzero for direction/seed codes 0..7 and10, zero for unvisited8/border9 (P). The four edge tests set return bits only:
+
+| Bit | Connectivity test | Address |
+|---|---|---|
+| 0x8000 | top row, any reached subcell | `0x10003cbc..0x10003ced` |
+| 0x1000 | left column, any reached subcell | `0x10003cf5..0x10003d39` |
+| 0x2000 | bottom row, any reached subcell | `0x10003d3f..0x10003d54`, helper `0x1000d730` |
+| 0x4000 | right column, any reached subcell | `0x10003d5a..0x10003d6f`, same helper |
+
+Return ax is ORed into start-cell low u16 at `0x10003f73` (also `0x1000414b`, `0x100046b5`). This answers the nibble source: four start-position-to-edge connectivity keys. The pre-loop AND (`0x10004737`) instead uses entry+8 of the 12-byte array at Y+0x1c0c (count Y+0x1c08); it clears exactly bits absent in that supplied u16. Its producer `0x100056e1` takes ax from `0x10008230` at `0x100056d7`; **open here:** the exact meaning of that separately supplied constraint mask, not the start nibble's source.
+
+No low-u16 propagation is missing: only start nodes need the default expansion's shift12. The reached nodes select special expansions by their came-from code. Those read the mapped low-u16 bits directly: 0x80 uses low byte (`0x10007b2e`), 0x82 shifts3 (`0x100077ae`), 0x84 shifts6 (`0x10007ed6`), 0x86 shifts9 (`0x100071f3`). Thus §3.4.10's "same as default minus a direction" describes neighbour order only; bit selection and turn costs are not identical (e.g. two cost-byte reads and subtraction `0x1000723d..0x10007253`). Their full turn-cost algebra is not decoded by this task.
+
+**Store audit / came-from marks (D).** Default expansion's cell-word stores `0x10006ae5` and `0x10006c06` target up-neighbour+2; `0x10006cc8` and `0x10006d74` target down-neighbour+2. Left/right helper's only cell-word store `0x10006fc4` targets neighbour+2. All remaining word stores in these two bodies are node fields: default x/y/score at `0x10006afd`, `0x10006b09`, `0x10006b0d`, `0x10006c25`, `0x10006c29`, `0x10006c2f`, `0x10006ce1`, `0x10006ced`, `0x10006cf1`, `0x10006d93`, `0x10006d97`, `0x10006d9d`; helper `0x10007011`, `0x10007015`, `0x10007019`. No cell+0 word store. Goal test `0x10003220..0x1000377d` has no word stores; goal-flag writes `0x10004068/0x10004256/0x10004513` OR byte cell+3 with4, setting high-u16 bit10 only.
+
+Up marks `(hi & 0xfc86)|0x86` (`0x10006adb..0x10006ae5`); down `(hi & 0xfc82)|0x82` (`0x10006cbe..0x10006cc8`). The low code bits retained by those AND masks are all set by the OR, so both replace bits0..9 outright. Left/right helper replaces those same bits with `0x80+dir` (`0x10006fb4..0x10006fc4`); dir0 pushes `0x10006e09/0x10006e60`, dir4 `0x10006eb9/0x10006f11`. All preserve high-u16 bits10..15, including goal bit10. No writer of bits11..15 was found in the inspected mode0 fill/start/goal/mark paths; they start zero, and their purpose is not assigned. Odd codes 0x81/83/85 cannot be produced by these even-dir marks. All five layers have zero admission for **every code 0x80..0x86**: a fresh byte there cannot be admitted as a neighbour, so cannot be confused with a reached mark through this path.
+
+**Still open:** tile-record writers (T30b.3n); live cell confirmation (T30b.3h2); the separate constraint mask (`0x10008230`); complete special-expansion turn costs. This closes the block-pointer identity, entry meaning, mode writer, disc fill and start-nibble source, not the full original walk rule.
 
 ### 3.5 Step 7 is BLOCKED on a figure-position reader
 

@@ -1,6 +1,6 @@
 # Population, needs, growth and taxes
 
-**Status:** first pass (2026-10-17); house and city field inventory T32.1 (2026-10-25); house tick pseudo-code T32.2 (2026-10-25); city-store take and T26 check T32.3 (2026-10-25). Static analysis only. Modules (GOG 2.0.0.5, image base `0x10000000` each): `AnnoGame.dll` (loader for `Data/BGruppen.dat`), `AnnoWelt.dll` (houses, cities, balance), `AnnoFrame.dll` (tax button). Tools: Ghidra 12.1.4 headless (`cache/ghidra/plus/*.c`), `objdump -d -M intel` for every constant quoted below, a scratch model (`cache/pop/model.py`, not committed) for the fixture numbers. `AnnoWelt`/`AnnoGame` have no RTTI, so class names are ours. Addresses are in the module named in each section. Behaviour is paraphrased; no code is copied.
+**Status:** first pass (2026-10-17); house and city field inventory T32.1 (2026-10-25); house tick pseudo-code T32.2 (2026-10-25); city-store take and T26 check T32.3 (2026-10-25); stand-to-house path T32.4 (2026-10-25). Static analysis only. Modules (GOG 2.0.0.5, image base `0x10000000` each): `AnnoGame.dll` (loader for `Data/BGruppen.dat`), `AnnoWelt.dll` (houses, cities, balance), `AnnoFrame.dll` (tax button). Tools: Ghidra 12.1.4 headless (`cache/ghidra/plus/*.c`), `objdump -d -M intel` for every constant quoted below, a scratch model (`cache/pop/model.py`, not committed) for the fixture numbers. `AnnoWelt`/`AnnoGame` have no RTTI, so class names are ours. Addresses are in the module named in each section. Behaviour is paraphrased; no code is copied.
 
 Confidence as in [`annodisplay.md`](annodisplay.md): **confirmed** = read in the decompiled and/or disassembled function; **likely** = strong inference, not traced end to end; **guess** = hypothesis, repeated under "Open".
 
@@ -122,7 +122,7 @@ for each need slot j:
         lowest = min(lowest, s_j)                       // s_j capped at 160
 if lowest < 102 (0x66) and walkers < type.max_walkers (type slot +0xb8):
     pick a target type with the world PRNG (type slot +0xbc/+0xb4, index from house position + PRNG bit)
-    spawn walker task 0x35 (house slot +0x118)          // likely: a resident goes to fetch goods
+    spawn walker task 0x35 (house slot +0x118)          // resident fetch, §14
 mood = Mood()                                            // slot +0x9c, §4.1
 remove residents·64/64 from the city's per-group counter; residents·64 += VermehrTab[mood]; add back
 if mood < 0:
@@ -154,7 +154,7 @@ Not-forced needs (the "Aufstieg !!" ones) do not affect mood; they only matter f
 
 ## 5. Supply, demand and level change
 
-- **Delivery** (slot `+0xc0` = `0x10076610`, `(goods id, amount)`): if the goods id maps to a slot, `stock += amount · 16`. If the good has an `IdSec`, the same amount is delivered again for the `IdSec` good. A good the house does not need returns 0. **Confirmed.** Callers include figure tasks that unload cargo into a building (`0x10057bd0`). **Likely**: the market/resident walker completes here.
+- **Delivery** (slot `+0xc0` = `0x10076610`, `(goods id, amount)`): if the goods id maps to a slot, `stock += amount · 16`. If the good has an `IdSec`, the same amount is delivered again for the `IdSec` good. A good the house does not need returns 0. **Confirmed.** Callers: cart/carrier step C arrival `0x10057bd0` (one cargo); resident job `0x35` step C arrival `0x10057d70` (cargo slots 0..2, §14). Reloc of `0x10076610` is house vtable `+0xc0` only (`0x100c9a18`).
 - **Demand** (slot `+0xa4` = `0x100765c0`): `Menge·E·256/44236 − stock/16`. That is the amount the house still wants, up to ≈ 111 % satisfaction. **Confirmed** formula.
 - **Choice between two offered goods** (slot `+0xd4` = `0x10076670`): goods already being fetched by one of the four walkers are skipped. Urgency = `128 − s` for the good itself or, recursively, the highest urgency along its `IdSec` chain (`0x10076960`, `0x100769f0`). A good is accepted only if the supplier's stock (slot `+0xa4`) exceeds `residents · Menge · 256 / 4096` and its slot `+0xc4` allows it. **Confirmed** arithmetic. **Likely** role (supplier = market or walker).
 - **Consumption billing** (city slot `+0x88` = `0x1002dac0`, `(goods id, amount, ·, take)`): only for consumer goods `0x1a`–`0x28`, `billed[id] += amount`. If `take`, `min(amount, store)` is also removed from the city store. **The house tick does not call this** (T32.2: no xref from `0x10076230`). Direct `.text` callers: `0x1006b520` and `0x10070120` with take = 0, `0x100702f0` with take = 1; each has `this` = a building (`this+0x10` = city). Which class is the market is not traced (OQ-186). **Confirmed** (function and callers), **likely** (class).
@@ -362,7 +362,7 @@ if lowest < 0x66 and walker_count < type.slot+0xb8(0):  # 102; walkers at +0x18�
     r = world.PRNG()                                    # city+0x10 slot +0x18 → +0x18 → +0xb4
     k = ((r & 1) + y + x + index) % nvar                # [+8],[+6],[+4]
     target = type.slot+0xb4(0, k)
-    house.slot+0x118(0x35, target, tick)                # walker spawn; role likely
+    house.slot+0x118(0x35, target, tick)                # job 0x35 resident walker, §14
 mood = house.slot+0x9c()                                # −2…+2, §12.3
 g = BGruppeNr
 counter = city.slot+0x5c()                              # city+0x2ec
@@ -429,7 +429,7 @@ Booking `0x10029950`: if `(u16)(tick − [city+0x0a]) < 0x7d0` return; then `[ci
 | 3 | downgrade `0x1002ce68` | previous type property `0x32` count ≠ 0 | variant of the previous house type |
 | 4 | SetGroup `0x10076d7a` | first assignment and `BGruppeNr ≠ 0` and `Force` | per forced need: satisfaction `128 − (r & 31)` |
 
-City events `0x1002ba80` also draw; they are not on this path. Walker spawn's **meaning** (resident fetch) stays **likely** (next: house slot `+0x118`). Island `+0xcc` as remove stays **likely**. Climate = property 7 stays **likely**. OQ-185 (Save dispatcher) still virtual-only (`xref --reloc 0x10077130` → `0x100c99d8` only).
+City events `0x1002ba80` also draw; they are not on this path. Walker spawn is **D** (job `0x35`, §14). Island `+0xcc` as remove stays **likely**. Climate = property 7 stays **likely**. OQ-185 (Save dispatcher) still virtual-only (`xref --reloc 0x10077130` → `0x100c99d8` only).
 
 ## 13. Who bills the city store (T32.3, OQ-186)
 
@@ -444,7 +444,7 @@ Static. AnnoWelt. No game run. The house tick does not call city slot `+0x88`. D
 
 **Take = 1 is MarketStall only.** That is who reduces the city store. PublicService and School bill the same goods (`0x1a`–`0x28`) with `take = 0` (billed rises, store unchanged). School then calls city `+0x64` with object `+0x18(amount)` — a statistic, **likely**, not a second take. Classes whose `+0xac` is the 3-arg stub `0x100a3950` (`xor eax,eax; ret 0xc`): House, Market (HAUPT/MARKT/KONTOR), the base building, Doctor. Inn `+0xac` = `0x100756e0` is a **different** 3-arg method (tavern stock at `+0x18`/`+0x1a`), not billing.
 
-Goods do **not** move store → house in one step. House stocks are filled by building slot `+0xc0` = `0x10076610` (`stock += amount·16`). Figure unload `0x10057bd0` calls building `+0xc0`, not `+0xac`. Market `+0xc0` is city add `0x1006b7d0`. Many `call [reg+0xac]` hits are **type** slot `+0xac(i)` (output goods, `ret 4`), including house choice `0x10076670` (`+0xac(0)` / `+0xac(1)`). Who invokes stall `+0xac` with three stack args stays **open** (OQ-187): next is a 3-arg `call [building+0xac]` in a figure/job path.
+Goods do **not** move store → house in one step. House stocks are filled by building slot `+0xc0` = `0x10076610` (`stock += amount·16`). Cart/carrier unload `0x10057bd0` calls building `+0xc0`, not `+0xac`. The resident walker bills at the stall (`+0xac`) and delivers at home (`+0xc0`) — §14, OQ-187 **D**. Market `+0xc0` is city add `0x1006b7d0`. Many `call [reg+0xac]` hits are **type** slot `+0xac(i)` (output goods, `ret 4`), including house choice `0x10076670` (`+0xac(0)` / `+0xac(1)`).
 
 ### 13.1 T26's three functions against T32.1–T32.2
 
@@ -458,7 +458,94 @@ Read-only (`src/sim/src/scenario_formats.cpp`, `scenario_formats.hpp`). Not appl
 
 ### 13.2 Spec pointer
 
-`docs/sim/state.md` §4.7c "Population (DRAFT, T32)": house payload, group table, tick in `tick_building` (not a city_pass), stall take on `+0xac`, stream bump, G7, tests, stages P1…P5, owner questions.
+`docs/sim/state.md` §4.7c "Population (DRAFT, T32)": house payload, group table, tick in `tick_building` (not a city_pass), stall take on `+0xac`, stream bump, G7, tests, stages P1…P5, owner questions. P5 is the job `0x35` path below.
+
+## 14. From the stand to the house (T32.4)
+
+Static. AnnoWelt. No game run. House tick `0x100763e3` calls house slot `+0x118` with job `0x35` and a figure type from the house type (`+0xb4(0, k)`). That slot is the base send `0x10072d20` (reloc includes house vtable `0x100c9958+0x118` = `0x100c9a70`). The job walks to a stall or public building, bills there, and delivers at the house.
+
+| Function | this | Why | Range |
+|---|---|---|---|
+| Base send `0x10072d20` | house (and every other building class that shares the slot) | house vtable `0x100c9958+0x118`; args job `0x35`, figure type, tick | `transport.md` §1.6 |
+| Job factory `0x1003b0e0` | figure slot `+0xa4` | `job − 0xd` through byte table `0x1003b480` / jump `0x1003b450`; job `0x35` → `0x1003b3cf` | alloc 0x50, ctor `0x1003b4e0` |
+| Job `0x35` ctor `0x1003b4e0` | job | `ecx`; base `0x1005d450(this, this+0x34, this+0x40, this+0x4c)` | `0x1003b4e0`–`0x1003b516` |
+| Step A start `0x1005b170` | step A at job `+0x34`, vtable `0x100c4788` | ctor write; type 9 (`0x1005cae0`); figure = stack arg0, home = figure `+0x1c` | `0x1005b170`–`0x1005b3a3` (`ret 8`) |
+| Filter `0x1005b130` | context, not a method | pushed as the query callback at `0x1005b247`; `[ctx+0]` = house | `0x1005b130`–`0x1005b160` |
+| Callback `0x1005b050` | searcher (figure `+0xc8`) | installed at `0x1005b2f9`; context holds the house | `0x1005b050`–`0x1005b12c` (always returns 1) |
+| Step B start `0x10056330` | step B at job `+0x40`, vtable `0x100c4760` | ctor write; type 10 (`0x10056320`) | `0x10056330`–`0x1005647f` (wait / positioning; not billing) |
+| Step B arrival `0x10056480` | step B | `ecx`; figure = stack arg0; building at the step tile is the stall | `0x10056480`–`0x100566c5` (`ret 4`) |
+| Step C start `0x10057ae0` | step C at job `+0x4c`, vtable `0x100c4738` | same walk-home as the cart (`transport.md` §1.3) | `0x10057ae0`–… |
+| Step C arrival `0x10057d70` | step C | `ecx`; home = figure `+0x1c` | `0x10057d70`–`0x10057dd1` (`ret 4`) |
+| Stall billing `0x100702f0` | MarketStall | vtable `0x100c8fe0+0xac` = `0x100c908c` (reloc only) | `0x100702f0`–`0x1007030c`, `take = 1` (§13) |
+| House delivery `0x10076610` | house | vtable `0x100c9958+0xc0` = `0x100c9a18` (reloc only) | `0x10076610`–`0x10076668` |
+
+**Ruled out.** Reloc of stall `+0xac` is still only `0x100c908c`. `0x1005ac10` is a cart search callback (`transport.md` §1.1); it uses building `+0xa4` / `+0xc0`, not `+0xac`. Type slot `+0xac(i)` (`ret 4`) is a different method.
+
+Job `0x35` vs the cart (job `0x34`, 0x48 bytes): eight extra bytes (steps 12 bytes apart at `+0x34` / `+0x40` / `+0x4c`). Step A start is `0x1005b170`, not the cart's `0x1005ad10`. Step B arrival is `0x10056480`, not the cart load. Step C arrival is `0x10057d70`, **not** `0x10057bd0`. Step A abort is the stub `0x10001030` (no reservation to undo).
+
+### 14.1 Spawn
+
+House tick (§12.2): if the lowest need `s_j < 102` and fewer than `type +0xb8(0)` walkers are out, draw the world PRNG, pick `k`, figure type = `type +0xb4(0, k)`, then house `+0x118(0x35, type, t)`. Send `0x10072d20` refuses flags bits 4/5 or no reachable entrance (`0x10072b50`); otherwise it creates the figure at the entrance and the factory builds job `0x35`. **D.** P: house types 501–584 list figure ids 250, 252, 293–305, 324–329, 512; every one has `LOGIC[0x10] = 0` (ZIVILIST except 512 VOGEL). Capacity is `LOGIC[0x11] << 8` (typically 3 → 768).
+
+### 14.2 Step A: which stand, and how far (`0x1005b170`)
+
+**this** = step A. Figure = arg0. Home = figure slot `+0x1c` = the house.
+
+1. **Area** (D, `0x1005b189`–`0x1005b216`): the same centre-square formula as the cart (`transport.md` §1.1). Footprint from house `+0x78`; radius `r` = **house type** byte `+0x65` (type slot `+0x78` = AnnoGame `0x10007d90`, `HEAD[0x11]`). Not the stand's radius. P: of 81 house types, 48 have `HEAD[0x11] = 24`, 31 have 16, 2 have 20. Stands (PRODTYPE 161) have 4. The playbook's "houses walk 24" is the common value; the code uses whichever byte the house type carries.
+
+2. **Candidates** (D, `0x1005b22c`–`0x1005b261`): house `+0x18` → city; city `+0x60` → building index slot `+4` with **mask `0x21`** (stall list L0 `0x20` + public list L1 `0x01`, `state.md` §4.4) in that rectangle. Filter `0x1005b130`: keep if house `+0xd4(candidate, 0) >= 0xc`. No candidate → step A returns 0 → the job goes to step C at home.
+
+3. **Goals and search** (D, `0x1005b272`–`0x1005b30c`): figure `+0xc8(0)` sets up the searcher (walking layer = figure type `LOGIC[0x10]`, `transport.md` §3); each candidate registers entrance points (`+0xf8(figure type, 0, searcher)`); callback `0x1005b050` (`searcher +0x7c`); the walk is figure `+0xcc(0, 4, searcher)`.
+
+4. **Callback** (D, `0x1005b050`–`0x1005b12c`): node tile (`__ftol` `0x100b5f90`) → city query mask `0x21`; none → go on. Score = house `+0xd4(building, &goods)`. Searcher `+0x8c` is the best score so far; replace (`+0x90(node, 4)`, `+0x88(score)`) only if the new score is **strictly greater** (`jge` skips). Always returns 1: no early stop. **The stand is the reachable candidate with the highest house-choice score**, not the nearest. Equal scores keep the first discovery (path-cost order, `state.md` §5.9 clause 7).
+
+5. **After the search** (D, `0x1005b312`–`0x1005b392`): no path → 0. Else store the chosen building's tile on the step (`+4`/`+6`). If that building's type id is `0xa1` = 161 MARKTSTAND: figure `+0x134` then `0x10030090` with float `0x3eaaa64c` (≈ 1/3; **likely** a wait, not read further).
+
+House choice `+0xd4` = `0x10076670` is already D (§5): urgency among needs the supplier can fill. Threshold `0xc` is the keep/take gate on this path.
+
+### 14.3 Step B: stall billing (OQ-187) (`0x10056480`)
+
+**this** = step B. Figure = arg0. Tile = step `+4`/`+6`.
+
+City query mask `0x21` at that tile (`0x1005649a`–`0x100564b8`). None → return 1 with no take. If the building's type is 161, `building +0x2c(figure)` (attach / queue at the stand; not read further). Then for each empty cargo slot `i = 0, 1, 2` (figure `+0x84(i)`; skip if cargo `+4` already has goods):
+
+- house `+0xd4(stand, &goods) >= 0xc`, else the arrival returns 0;
+- amount = min(stand `+0xa4(g)`, house `+0xa4(g)`, figure type capacity `+0x84`);
+- if amount > 0: cargo slot 0 sets the goods; **`stand +0xac(g, amount, third)`** at `0x100565fe` and again at `0x100566ad` for a second empty slot; cargo `+0xc` takes the returned amount.
+
+**D: the caller of MarketStall `+0xac` is job `0x35` step B arrival, `this` = the building of mask `0x21` at the walker's tile.** For a stand that is vtable `0x100c8fe0`, so `0x100702f0`, `take = 1`. Three stack args: goods, amount, and a third (figure-type related at `0x100565e8`); the stall wrapper still hardcodes take = 1 (§13). Stall `+0xa4` = `0x10075100` (city stock, `this+0x10` = city, city `+0x7c`). House `+0xa4` = demand `0x100765c0`. Stall `+0xc0` is the stub `0x100a3930` (stands hold no cargo of their own).
+
+A public building on the same path is the same arrival with a different `+0xac` (PublicService / School, `take = 0`, §13). How those classes' `+0xa4` treat infrastructure ids `0x4c`–`0x5a` is **open** (OQ-102 Q3).
+
+Step B start `0x10056330` is a wait (figure type float through `+0xe0`) plus a type-161 `+0x28` call; it does not bill.
+
+### 14.4 Step C: house delivery (`0x10057d70`)
+
+Start is the cart's walk-home `0x10057ae0`. Arrival **`0x10057d70`** (D, `0x10057d70`–`0x10057dd1`): home = figure `+0x1c`; for cargo slots `i = 0, 1, 2`, if cargo `+4` (goods) is non-zero, `home +0xc0(goods, cargo +8 amount)` at `0x10057dbb`. That is house `0x10076610` (`stock += amount·16`, `IdSec` replay, §5). **`0x10057bd0` is the cart/carrier one-cargo unload, not this walker.** Reloc of `0x10076610` is house vtable `+0xc0` only.
+
+### 14.5 Range, roads, and the owner's rule (OQ-103)
+
+**Range (D).** A house may be served by a stand (or public building) that (1) lies in the **house's** centre-square of radius `HEAD[0x11]`, (2) passes house `+0xd4 >= 0xc`, (3) has a walkable path on the figure's layer from the house entrance to the building's entrance. The stand's own `HEAD[0x11]` (P: 4) is not read on this path. The city's area is not the test; the query is the house rectangle through the home city's index. Community FAQ "the house's reach counts, not the stall's radius" matches the code (OQ-102).
+
+**Road (D for the layer, P for the value).** The search uses the spawned figure's `LOGIC[0x10]`. P: every figure id on house types 501–584 is layer **0**. Layer 0 admits roads (code 0, cost 10), open ground (code 2, cost 20) and building cells (code 4, cost 15) (`state.md` §5.9 clause 2, `transport.md` §3.4.13). A road between house and stand is **not** required; it is the cheaper path. In-game help ("a street connection shortens the way of inhabitants") and aristocrat houses without roads (V14 31:05) agree with layer 0. Next if a later house type's group-0 figure is not layer 0: read that type's `+0xb4(0, k)` then `LOGIC[0x10]` (P: MAEHER 347/375 layer 2 appear on house types outside 501–584, e.g. 3601 / 3304).
+
+**Owner 2026-10-25, clause by clause.**
+
+| Pair | (a) road connection required | (b) building in the range of **any** market/stand, not necessarily the connected one |
+|---|---|---|
+| Producer ↔ market | **Agrees.** Cart layer 3 admits roads and building cells, never open ground (`§5.9` clause 2). | **Agrees** for the searching market's own area (`§5.9` clause 5). "Not necessarily the connected one" = a producer in A's disc whose only road leads to B outside B's disc is served only if a road path from A stays inside A's disc (T30b.7 case (b)). |
+| House ↔ stand | **Disagrees.** Resident layer 0 admits open ground (`0x1005b278` searcher from the house figure; P `LOGIC[0x10] = 0`). | **Disagrees in whose radius.** The area is around the **house** (house type `HEAD[0x11]`), not around the stand. A house is served by a stand inside the house's rectangle with a walkable path, not by "lying in any stand's radius". |
+
+Situation that differs from the owner's house reading, and the T30b.7 Wine case (a):
+
+- House 10 tiles from stand A (house `r = 24` covers it, stand `r = 4` does not): the code will send the walker if the path exists; a stand-radius reading would not.
+- House inside stand A's drawn radius, road only to stand B whose radius-4 does not cover the house: the walker starts at the house; A and B are both candidates if they lie in the house rectangle; layer 0 can reach both over ground; the highest `+0xd4` score among reachable wins. The owner's "road to B, range of A" split is not how the search is set up. T30b.7 still has to watch this in the running original.
+
+### 14.6 OQ-102 (the same path)
+
+1. **Yes**, house walker task `0x35` is the resident going to a stand (and to public buildings under the same mask). Coverage is the house type's action-radius rectangle plus a layer-0 walk search, not the stall's drawn circle and not a footprint overlap.
+2. Stands draw the **city store** directly (`+0xa4` = city stock, `+0xac` take = 1). They have no cargo of their own (`+0xc0` stub).
+3. Infrastructure: public buildings are in the same candidate set (mask `0x01`). Whether a chapel/school `+0xa4` / `+0xac` fills ids `0x4c`–`0x5a` is **open**; city billing still only consumes `0x1a`–`0x28`. Next: PublicService `+0xa4`.
 
 ## Fixture spec (to run on x86 Windows / Wine against the original)
 
@@ -506,17 +593,16 @@ pioneer houses in the Kontor's yellow range), objects read by `tools/orig/probe.
   that decides it.
 
 ## Open
-- T32.1 closed the house field layout; T32.2 closed the house-tick order, mood, upgrade/downgrade bodies, materials check and booking; T32.3 closed the `take = 1` class (MarketStall `+0xac`) and wrote the DRAFT (`state.md` §4.7c). Still open below.
+- T32.1 closed the house field layout; T32.2 closed the house-tick order, mood, upgrade/downgrade bodies, materials check and booking; T32.3 closed the `take = 1` class (MarketStall `+0xac`) and wrote the DRAFT (`state.md` §4.7c); T32.4 closed the stand → house path (job `0x35`, OQ-187) and the owner's house/stand clauses (OQ-103). Still open below.
 - Who dispatches house Save slot `+0x80` on a world save (virtual only; OQ-185, T32.2 re-check still reloc `0x100c99d8` only). Next: `call [reg+0x80]` in world save `0x100ae700` / the building-list walk.
-- Who **calls** MarketStall slot `+0xac` with three stack args (OQ-187). The wrapper itself is D (`0x100702f0`, `take = 1`). Next: 3-arg `call [building+0xac]` in a figure/job path. Type slot `+0xac(i)` (`ret 4`) is a different method.
 - Unit of the city store and of delivered amounts (is 256 = 1 t?); confirm with T1 and a savegame pair (M2.1).
 - Where house flags bits 4/5 (`+0x0c & 0x30`, forced mood −1/−2) are set: fire, plague, riot? (`0x1002ba80`.)
-- The full resident or market-cart round trip (walker task `0x35`, house slot `+0x118`, then `+0xd4`, `+0xa4`, `+0xc0`). Stall billing class is D (OQ-186); who calls stall `+0xac` is OQ-187.
-- How infrastructure "goods" (`0x4c`–`0x5a`) reach the house stock (service radius delivery?).
+- How infrastructure "goods" (`0x4c`–`0x5a`) reach the house stock: public buildings share the job `0x35` candidate mask (`0x01`); PublicService `+0xa4` for those ids is unread (OQ-102 Q3).
+- The third stack arg of stall `+0xac` (figure-type related at `0x100565e8`); take is hardcoded 1 regardless.
 - Group `BauFirst`/`BauLast`, `Wissen`, goods `BauLast`, `Hiscore`: readers not found yet.
 - Island property 7 = climate (**guess** from the 0…6 price index); world property 10 = tax rate (**likely**). Whether multiplayer has any tax control at all.
 - The first update of a new house: `+0x0a` starts at the placement tick in single player (the net client's `now`, stale by up to 50 ticks) and at 0 only in multiplayer and after a load, so the 16-bit difference to the current tick decides when it first runs, and a house created with 0 may catch up in several quick steps (up to 131). The rebuild uses the placement tick in both modes (`docs/sim/state.md` F1, §7.3). The house is created by `BuildingIndex::Create`, which also increments the group's house count: `kind - 0x61` selects a 0x118-byte BGRUPPE record and the FIRST BYTE of that record (BGruppeNr) is the counter index `g` (`inc word [city + 0x144 + 0x46 + 2 * g]`, Create 0x10024c13..0x10024c2d; Remove reads the same byte through building slot `+0x88`). For the shipped BGruppen.dat (PIONIER, SIEDLER, BUERGER, KAUFLEUTE, ARISTOKRATEN in file order) `g = kind - 0x61`; for another file order it is not. Corrected 2026-10-19 and in the S6 review round.
 - `0x1002d3b0`, the `+800` sub-object (`0x10027400`), and the upgrade queue filler (`+0x30c0` / `0x1002d350`).
 - Materials check `0x1002c030` is **D** (type slot `+0xcc(0, id)` + queued vs store `city+0x520` minus spent `+0x5d4`, ids `0x29`–`0x2d`). The house `HEAD` materials match the playbook's upgrade figures. The running-cost pair is settled (§8).
 - The display formula for satisfaction in the house panel (percent = `s · 100 / 128`?), for the fixture readout.
-- Walker spawn's meaning (resident fetch) and island slot `+0xcc` as house removal stay **likely** (next: house `+0x118`, island `+0xcc`).
+- Island slot `+0xcc` as house removal stays **likely** (next: island `+0xcc`). Walker spawn is D (§14).

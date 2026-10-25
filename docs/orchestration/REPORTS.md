@@ -2946,3 +2946,27 @@ T26 vs T32.1–T32.2 (read only, `src/sim` not changed):
 OQ-186 (acceptance: class of `take = 1` D or open with next address): **D** — MarketStall slot `+0xac`. Caller of that slot: OQ-187.
 
 Acceptance: (OQ-186) MET; (T26 table) MET; (DRAFT §4.7c: payload, group table, tick place, seams, stream bump, G7, tests, P1… with acceptance, owner questions with faithful defaults) MET; orchestrator can write P1 from §4.7c alone; nothing of the original in git. Nothing after T32.3 taken.
+
+## T32.4 — The stand → house path and the owner's market-stand rule — 2026-10-25 — status: FINISHED
+- Branch: `task/T32-4-stand-path` (commit recorded after git log -1); worktree: `C:\Users\altin\anno1503-T32-4` from local main `276c7b6`. No push, no PR (round ba). Did not touch `src/`, goldens, `TASKS.md` or `state.md` §5.9. Did not start anything after T32.4.
+- Built: docs only. `docs/re/population.md` §14 "From the stand to the house (T32.4)"; `docs/sim/state.md` §4.7c P5 row (not §5.9); OQ-187 answered; OQ-103 house clauses; OQ-102 Q1/Q2 answered. DLL: `C:\Users\altin\anno1503\game\app\AnnoWelt.dll`. Tools: `tools/disasm.py`, `tools/xref.py --reloc`. No build, no game run, no Wine.
+- Gates: n.a. (static RE and docs; task forbids build / game / Wine).
+- Evidence: ranges in `population.md` §14 function table. Reloc only: stall `+0xac` `0x100702f0` → `0x100c908c`; house `+0xc0` `0x10076610` → `0x100c9a18`; house `+0x118` `0x10072d20` → `0x100c9a70` (among other classes).
+- Reviewers: none (orchestrator reviews locally).
+- Left open / questions: OQ-185 (Save dispatcher); island `+0xcc` as remove likely; PublicService `+0xa4` for infra ids (OQ-102 Q3); third stack arg of stall `+0xac`; T30b.7 Wine cases. Nothing after T32.4 started.
+- Time spent / subagents used: inline; no subagents.
+
+OQ-187 (acceptance: caller D or open with next address): **D** — job `0x35` step B arrival `0x10056480`, `this` = mask-`0x21` building at the walker's tile.
+
+Resident walker (acceptance: spawn, destination, cargo, house `+0xc0` D or next address): **D**. House `+0x118` = `0x10072d20(0x35, type +0xb4(0,k), t)`. Step A `0x1005b170` searches mask `0x21` in the **house** `HEAD[0x11]` centre-square; callback `0x1005b050` picks the highest house `+0xd4` score (no early stop). Step B bills stall `+0xac`; cargo amount = min(stand `+0xa4`, house demand `+0xa4`, capacity). Step C `0x10057d70` calls home `+0xc0` for cargo slots 0..2. `0x10057bd0` is cart/carrier unload, not this walker. `0x1005ac10` is a cart callback, not a stand caller.
+
+Range and road (acceptance: D or next address): **D**. Area = house footprint centre ± house type radius (`HEAD[0x11]`; P: 24 / 16 / 20, stands 4). Walking layer = figure `LOGIC[0x10]`; P: every figure id on house types 501–584 is layer 0, which admits open ground. Road is not required.
+
+Owner's rule OQ-103 2026-10-25:
+
+| Pair | (a) road required | (b) in range of **any**, not necessarily the connected one |
+|---|---|---|
+| Producer ↔ market | Agrees (cart layer 3, §5.9 clause 2). | Agrees for the searching market's own disc (§5.9 clause 5). Differing case: producer in A's disc, road only to B outside B's disc — served iff a road path from A stays inside A's disc (T30b.7 (b)). |
+| House ↔ stand | **Disagrees** (resident layer 0). | **Disagrees in whose radius** (area around the house, not the stand). Differing case / T30b.7 (a): house inside stand A's drawn radius, road only to B whose radius does not cover it — walker starts at the house; A and B are candidates if they lie in the house rectangle; layer 0 can reach either; highest `+0xd4` wins. |
+
+Acceptance: (1) OQ-187 MET; (2) walker path MET; (3) range and road MET; (4) owner's four clauses MET (agrees / disagrees / situation that differs); no `src/` change; nothing of the original in git. Nothing after T32.4 taken.

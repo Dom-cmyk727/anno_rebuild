@@ -2925,3 +2925,24 @@ Draws (world slot `+0xb4` = `0x100a1740`): (1) tick `0x10076397` walker index if
 Field map: `population.md` §12.1 (every tick-read `BGruppen` field → `formats::text` name → reader address). Unused in this path: group `BauFirst`/`BauLast`, `Hiscore`, `Wissen`, `Priority`.
 
 Acceptance: (pseudo-code) MET with gaps named (city-store take = OQ-186; 256=1 t likely; walker/remove likely; OQ-185); (field map) MET; (draw list) MET; nothing of the original in git. T32.3 not taken.
+
+## T32.3 — Population spec draft — 2026-10-25 — status: FINISHED
+- Branch: `task/T32-3-population-spec` (commit recorded after git log -1); worktree: `C:\Users\altin\anno1503-T32-3` from local main `998f0b9`. No push, no PR (round ba). Did not touch `src/`, goldens, `TASKS.md` or `state.md` §5.9. Did not start anything after T32.3.
+- Built: docs only. `docs/re/population.md` §13 (OQ-186: MarketStall `+0xac` `take = 1`; T26 difference table); `docs/sim/state.md` §4.7c "Population (DRAFT, T32)" (payload, group table, tick placement, seams, stream bump, G7, tests, P1…P5, owner questions) — not §5.9; OQ-186 answered; OQ-187 opened (caller of stall `+0xac`); OQ-165 how-to-resolve points at the DRAFT. DLL: `E:\Anno 1503 AD\GOG\AnnoWelt.dll` (byte-identical to `game/app`). Tools: `tools/disasm.py`, `tools/xref.py --reloc`. No build, no game run, no Wine.
+- Gates: n.a. (static RE and docs; task forbids build / game / Wine).
+- Evidence: ranges in `population.md` §13 function table. Reloc only: `0x1006b520` → `0x100c8634`; `0x10070120` → `0x100c8f4c`; `0x100702f0` → `0x100c908c`.
+- Reviewers: none (orchestrator reviews locally).
+- Left open / questions: OQ-185 (Save dispatcher); OQ-187 (who calls stall `+0xac`); 256 = 1 t likely (M2.1); walker `+0x118` and island `+0xcc` likely. Owner questions in §4.7c, each with the faithful default. Nothing after T32.3 started.
+- Time spent / subagents used: inline; no subagents.
+
+T26 vs T32.1–T32.2 (read only, `src/sim` not changed):
+
+| Function | Tag | Difference |
+|---|---|---|
+| `house_need_stock` | Load oracle D | Formula is Load (`0x1007702b`–`0x10077119`), not the tick decay. Header comment "city +0x30" is house `+0x30+2j`. Leave; P1 applies on Load. |
+| `house_satisfaction` | D | OOB byte = 0; original has no length test. Corpus all v2 in-range. Keep. |
+| `house_reset_applies` | D (predicate) | Matches `0x10076e9e`–`0x10076ecb`. Does not set Wohnmax or draw. Draw site `0x10077079`–`0x1007709c` (world `+0xb4`). P1 applies + `HouseLoadReset`. |
+
+OQ-186 (acceptance: class of `take = 1` D or open with next address): **D** — MarketStall slot `+0xac`. Caller of that slot: OQ-187.
+
+Acceptance: (OQ-186) MET; (T26 table) MET; (DRAFT §4.7c: payload, group table, tick place, seams, stream bump, G7, tests, P1… with acceptance, owner questions with faithful defaults) MET; orchestrator can write P1 from §4.7c alone; nothing of the original in git. Nothing after T32.3 taken.

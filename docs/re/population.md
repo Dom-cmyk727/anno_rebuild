@@ -1,6 +1,6 @@
 # Population, needs, growth and taxes
 
-**Status:** first pass (2026-10-17); house and city field inventory T32.1 (2026-10-25); house tick pseudo-code T32.2 (2026-10-25), static analysis only. Modules (GOG 2.0.0.5, image base `0x10000000` each): `AnnoGame.dll` (loader for `Data/BGruppen.dat`), `AnnoWelt.dll` (houses, cities, balance), `AnnoFrame.dll` (tax button). Tools: Ghidra 12.1.4 headless (`cache/ghidra/plus/*.c`), `objdump -d -M intel` for every constant quoted below, a scratch model (`cache/pop/model.py`, not committed) for the fixture numbers. `AnnoWelt`/`AnnoGame` have no RTTI, so class names are ours. Addresses are in the module named in each section. Behaviour is paraphrased; no code is copied.
+**Status:** first pass (2026-10-17); house and city field inventory T32.1 (2026-10-25); house tick pseudo-code T32.2 (2026-10-25); city-store take and T26 check T32.3 (2026-10-25). Static analysis only. Modules (GOG 2.0.0.5, image base `0x10000000` each): `AnnoGame.dll` (loader for `Data/BGruppen.dat`), `AnnoWelt.dll` (houses, cities, balance), `AnnoFrame.dll` (tax button). Tools: Ghidra 12.1.4 headless (`cache/ghidra/plus/*.c`), `objdump -d -M intel` for every constant quoted below, a scratch model (`cache/pop/model.py`, not committed) for the fixture numbers. `AnnoWelt`/`AnnoGame` have no RTTI, so class names are ours. Addresses are in the module named in each section. Behaviour is paraphrased; no code is copied.
 
 Confidence as in [`annodisplay.md`](annodisplay.md): **confirmed** = read in the decompiled and/or disassembled function; **likely** = strong inference, not traced end to end; **guess** = hypothesis, repeated under "Open".
 
@@ -431,6 +431,35 @@ Booking `0x10029950`: if `(u16)(tick − [city+0x0a]) < 0x7d0` return; then `[ci
 
 City events `0x1002ba80` also draw; they are not on this path. Walker spawn's **meaning** (resident fetch) stays **likely** (next: house slot `+0x118`). Island `+0xcc` as remove stays **likely**. Climate = property 7 stays **likely**. OQ-185 (Save dispatcher) still virtual-only (`xref --reloc 0x10077130` → `0x100c99d8` only).
 
+## 13. Who bills the city store (T32.3, OQ-186)
+
+Static. AnnoWelt. No game run. The house tick does not call city slot `+0x88`. Direct `.text` callers of billing `0x1002dac0` stay the three wrappers T32.2 named; `xref.py --reloc` of each wrapper is **reloc only** (the building vtable slot). **This-adjustment:** each wrapper is building slot `+0xac` (three stack args, `ret 0xc`); `this+0x10` is the city, then city `+0x88`.
+
+| Function | this | Why | Range | `take` |
+|---|---|---|---|---|
+| `0x1006b520` | PublicService building | ctor `0x1006b550` installs vtable `0x100c8588`; slot `+0xac` at `0x100c8634` | `0x1006b520`–`0x1006b540` | 0 |
+| `0x10070120` | School building | ctor `0x10070160` installs vtable `0x100c8ea0`; slot `+0xac` at `0x100c8f4c` | `0x10070120`–`0x10070154` | 0 |
+| `0x100702f0` | MarketStall building | ctor `0x10070730` installs vtable `0x100c8fe0`; slot `+0xac` at `0x100c908c` | `0x100702f0`–`0x1007030c` | **1** |
+| `0x1002dac0` | city | city vtable `0x100c2f40` slot `+0x88` | `0x1002dac0`–`0x1002daff` | arg |
+
+**Take = 1 is MarketStall only.** That is who reduces the city store. PublicService and School bill the same goods (`0x1a`–`0x28`) with `take = 0` (billed rises, store unchanged). School then calls city `+0x64` with object `+0x18(amount)` — a statistic, **likely**, not a second take. Classes whose `+0xac` is the 3-arg stub `0x100a3950` (`xor eax,eax; ret 0xc`): House, Market (HAUPT/MARKT/KONTOR), the base building, Doctor. Inn `+0xac` = `0x100756e0` is a **different** 3-arg method (tavern stock at `+0x18`/`+0x1a`), not billing.
+
+Goods do **not** move store → house in one step. House stocks are filled by building slot `+0xc0` = `0x10076610` (`stock += amount·16`). Figure unload `0x10057bd0` calls building `+0xc0`, not `+0xac`. Market `+0xc0` is city add `0x1006b7d0`. Many `call [reg+0xac]` hits are **type** slot `+0xac(i)` (output goods, `ret 4`), including house choice `0x10076670` (`+0xac(0)` / `+0xac(1)`). Who invokes stall `+0xac` with three stack args stays **open** (OQ-187): next is a 3-arg `call [building+0xac]` in a figure/job path.
+
+### 13.1 T26's three functions against T32.1–T32.2
+
+Read-only (`src/sim/src/scenario_formats.cpp`, `scenario_formats.hpp`). Not applied today (`HouseRecordNotModelled`).
+
+| Function | T26 | T32.1–T32.2 | Difference |
+|---|---|---|---|
+| `house_need_stock(menge, s, residents)` | `trunc(Menge · s · residents · 128 / 1536)` (D Load `0x1007702b`–`0x10077119`) | Runtime tick never uses this: it decays `stock · 127/128` and rebuilds `s_j = stock · 1536 / (E · Menge)` (`0x100762e6`–`0x1007631a`). Load writes `E = r << 7`, so at load `residents` ≡ `E/128` and the formula matches. Header comment "city +0x30 + 2j" is wrong: stocks live at **house** `+0x30+2j`. | Load oracle, not the tick. Comment offset is house, not city. Leave the code; P1 applies it on Load only. |
+| `house_satisfaction(version, n, bytes)` | v0 empty; v1 second byte of each pair; else one byte per need; a byte past the block is 0 | Matches Load `0x10076f34` / `0x10076f69` / `0x1007702b`. Original has no length test. Corpus: every house v2, in-range (`annowelt.md` (f)). | Defensive OOB = 0 vs original no bounds check. Corpus never hits it. Keep. |
+| `house_reset_applies(group, residents, lower_wohnmax)` | `group != 0 && residents < lower_wohnmax / 2` | Predicate D `0x10076e9e`–`0x10076ecb`. T26 does not set `Wohnmax` and does not draw. Draw: city `+0x18` → `+0x18` → world `+0xb4` at `0x10077079`–`0x1007709c`; `s_0 = 128`, each later forced need `128 − (r & 31)` (same as SetGroup first-assignment). Shipped scenarios never enter the branch. | Predicate matches. Apply + draw site is P1 (`HouseLoadReset`). |
+
+### 13.2 Spec pointer
+
+`docs/sim/state.md` §4.7c "Population (DRAFT, T32)": house payload, group table, tick in `tick_building` (not a city_pass), stall take on `+0xac`, stream bump, G7, tests, stages P1…P5, owner questions.
+
 ## Fixture spec (to run on x86 Windows / Wine against the original)
 
 Observables: house residents and the satisfaction shown in the house info panel (or via a debugger: house `+0x2c`, `+0x2e`, `+0x30…`), city stage mask `+0x618`, player money `+0x74`, city statistics page. Times are in ticks since the house's last update (1 tick = 2 ms game time).
@@ -477,12 +506,12 @@ pioneer houses in the Kontor's yellow range), objects read by `tools/orig/probe.
   that decides it.
 
 ## Open
-- T32.1 closed the house field layout; T32.2 closed the house-tick order, mood, upgrade/downgrade bodies, materials check and booking. Still open below.
+- T32.1 closed the house field layout; T32.2 closed the house-tick order, mood, upgrade/downgrade bodies, materials check and booking; T32.3 closed the `take = 1` class (MarketStall `+0xac`) and wrote the DRAFT (`state.md` §4.7c). Still open below.
 - Who dispatches house Save slot `+0x80` on a world save (virtual only; OQ-185, T32.2 re-check still reloc `0x100c99d8` only). Next: `call [reg+0x80]` in world save `0x100ae700` / the building-list walk.
-- The house tick does **not** take from the city store; decay is house stock only. Who bills with take = 1 is OQ-186 (`0x100702f0` and the constructors of vtables that hold `0x1006b520` / `0x10070120` / `0x100702f0`).
+- Who **calls** MarketStall slot `+0xac` with three stack args (OQ-187). The wrapper itself is D (`0x100702f0`, `take = 1`). Next: 3-arg `call [building+0xac]` in a figure/job path. Type slot `+0xac(i)` (`ret 4`) is a different method.
 - Unit of the city store and of delivered amounts (is 256 = 1 t?); confirm with T1 and a savegame pair (M2.1).
 - Where house flags bits 4/5 (`+0x0c & 0x30`, forced mood −1/−2) are set: fire, plague, riot? (`0x1002ba80`.)
-- Which building class is the market, and the full resident or market-cart round trip (walker task `0x35`, house slot `+0x118`, then `+0xd4`, `+0xa4`, `+0xc0`).
+- The full resident or market-cart round trip (walker task `0x35`, house slot `+0x118`, then `+0xd4`, `+0xa4`, `+0xc0`). Stall billing class is D (OQ-186); who calls stall `+0xac` is OQ-187.
 - How infrastructure "goods" (`0x4c`–`0x5a`) reach the house stock (service radius delivery?).
 - Group `BauFirst`/`BauLast`, `Wissen`, goods `BauLast`, `Hiscore`: readers not found yet.
 - Island property 7 = climate (**guess** from the 0…6 price index); world property 10 = tax rate (**likely**). Whether multiplayer has any tax control at all.

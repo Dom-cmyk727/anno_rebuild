@@ -606,3 +606,5 @@ pioneer houses in the Kontor's yellow range), objects read by `tools/orig/probe.
 - Materials check `0x1002c030` is **D** (type slot `+0xcc(0, id)` + queued vs store `city+0x520` minus spent `+0x5d4`, ids `0x29`–`0x2d`). The house `HEAD` materials match the playbook's upgrade figures. The running-cost pair is settled (§8).
 - The display formula for satisfaction in the house panel (percent = `s · 100 / 128`?), for the fixture readout.
 - Island slot `+0xcc` as house removal stays **likely** (next: island `+0xcc`). Walker spawn is D (§14).
+
+**Verified by running (2026-10-25, orchestrator, Wine runner):** a pioneer house with no road within two tiles is supplied by a food stand beside it (residents to 8, its food stock refilled between decays, the city's food store falling); details OQ-103.

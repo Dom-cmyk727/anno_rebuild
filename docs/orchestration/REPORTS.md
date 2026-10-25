@@ -2880,3 +2880,48 @@ House table (acceptance): every row D or open with next address. Non-D: `+0x0a` 
 OQ-165: **answered** from that table (status line updated). Implementation is T32.3 / P1.
 
 Acceptance: (tables) MET with the three open house rows named; (OQ-165) MET; nothing of the original in git. T32.2 not taken.
+
+## T32.2 — House tick pseudo-code — 2026-10-25 — status: FINISHED
+- Branch: `task/T32-2-house-tick` (commit recorded after git log -1); worktree: `C:\Users\altin\anno1503-T32-2` from local main `8a2abfa`. No push, no PR (round ba). Did not touch `src/`, goldens, `TASKS.md` or `state.md` §5.9. Did not start T32.3.
+- Built: docs only. `docs/re/population.md` §12 (this-adjustment function table, `BGruppen` field map, ordered pseudo-code, draw list); §5 downgrade promoted to D; `docs/sim/state.md` §4.7b (new, not §5.9); OQ-185 still open (T32.2 re-check); OQ-186 opened. DLL: `E:\Anno 1503 AD\GOG\AnnoWelt.dll` (byte-identical to `game/app`). Tools: `tools/disasm.py`, `tools/xref.py --reloc`. No build, no game run, no Wine.
+- Gates: n.a. (static RE and docs; task forbids build / game / Wine).
+- Evidence: ranges in `population.md` §12 function table. City store is **not** reduced in `0x10076230`; decay is house stock. Downgrade body `0x1002cdd0` is D.
+- Reviewers: none (orchestrator reviews locally).
+- Left open / questions: OQ-185 (Save dispatcher); OQ-186 (billing class / city-store take); 256 = 1 t likely (M2.1); walker `+0x118` and island `+0xcc` likely. T32.3 not started.
+- Time spent / subagents used: inline; no subagents.
+
+Step 5 rules (acceptance: each D or open with next address):
+
+| Rule | Tag | Next if not D |
+|---|---|---|
+| Gate `(u16)(tick−last) < 2500`; `last += 2500` (`0x1007624b`–`0x1007625e`) | D | |
+| Player mask property `0x21` second dword (`0x10076264`–`0x10076272`) | D | |
+| `E = E·127/128 + trunc(res/64)` toward 0 (`0x10076277`–`0x100762a9`) | D | |
+| Need loop: `BauFirst` bit, stock `·127/128`, `s_j` cap 160, min (`0x100762ad`–`0x1007633f`) | D | |
+| City store take inside the house tick | D (absent) | take is billing, OQ-186 |
+| 256 delivered units = 1 t | likely | T1 / savegame pair M2.1 |
+| Walker spawn if min `s < 102` and count < type `+0xb8`; index `(r&1)+y+x+index) % nvar`; slot `+0x118(0x35,…)` | D (call) | meaning likely: house `+0x118` |
+| Mood −2…+2 (`0x10075fd0`) | D | |
+| Flags `& 0x30` → bit5 −2 else −1 (`0x100761c2`–`0x100761d1`) | D | who *sets*: `0x1002ba80` |
+| Counter sub/add around `VermehrTab[mood]` (`0x10076407`–`0x10076453`) | D | |
+| Mood ≥ 0: clamp `Wohnmax·64`, UpgradeCheck, city `+0x98` | D | |
+| Mood < 0: floor `48·Wohnmax(prev)` or 64; Downgrade or island `+0xcc` | D (calls) | island `+0xcc` meaning likely |
+| Counter adjust `0x10076551` | D instr., likely dead | max `VermehrTab` |
+| UpgradeCheck `0x10075dd0`: NoUpgrade; next group forced needs cap 128; next tables > 0; city `+0x94` | D | |
+| Queue `0x1002e080`: count < 10; kind block `0x61`–`0x80`; `0x1002e000` | D | filler `+0x30c0` / `0x1002d350` |
+| Next type `id − id%20 + 20` (`0x1002cc22`) | D | |
+| Materials `0x1002c030` goods `0x29`–`0x2d` vs store−spent | D | |
+| Upgrade `0x1002cbe0` / wrapper `0x1002e0d0` | D | |
+| Downgrade `0x1002cdd0`: `id − id%20 − 20` else `− 19`; group `−0x118` | D | |
+| Demand `Menge·E·256/44236 − stock/16` (`0x100765c0`) | D | not called from the tick |
+| Delivery `stock += amount·16`; IdSec (`0x10076610`) | D | not called from the tick |
+| Booking `0x10029950`: 2000-tick gate, `last = tick`; tax world prop 10; income `(sum+128)>>8` | D | |
+| Climate = island property 7 | likely | world slot `+0xc4(7)` / island prop 7 |
+| SetGroup first-assignment draw `128 − (r&31)` (`0x10076d7a`) | D | |
+| House Save dispatcher | open | OQ-185: `call [reg+0x80]` in `0x100ae700` |
+
+Draws (world slot `+0xb4` = `0x100a1740`): (1) tick `0x10076397` walker index if min s < 102; (2) upgrade `0x1002ccd3` if property `0x32` count ≠ 0; (3) downgrade `0x1002ce68` same; (4) SetGroup `0x10076d7a` first assignment, `BGruppeNr ≠ 0`, per forced need.
+
+Field map: `population.md` §12.1 (every tick-read `BGruppen` field → `formats::text` name → reader address). Unused in this path: group `BauFirst`/`BauLast`, `Hiscore`, `Wissen`, `Priority`.
+
+Acceptance: (pseudo-code) MET with gaps named (city-store take = OQ-186; 256=1 t likely; walker/remove likely; OQ-185); (field map) MET; (draw list) MET; nothing of the original in git. T32.3 not taken.

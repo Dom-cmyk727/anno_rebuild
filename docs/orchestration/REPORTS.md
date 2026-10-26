@@ -3390,3 +3390,25 @@ In `docs/sim/state.md` §5.9, the paragraph "Differences to the original's tile 
   - (b) the three tests ran: MET, with (c) measured at 0.25 s for the reason above;
   - (c) nothing of the original in git: MET.
 - **Next:** T30b.6, the cart's and the carrier's tiles against the walk record (the orchestrator).
+
+## T30b.6 — The cart's and the carrier's tiles against the walk rule — 2026-10-26 — status: DONE (run by the orchestrator)
+
+- **Branch:** `task/T30b-6-wine-walk-check` from local `main` at `c1987d3` (after T30b.5); worktree `E:\anno1503-worktrees\anno1503-T30b-6`. Local only.
+- **Harness:**
+  - `gamestate.tile_record(mem, island, x, y)`: the 8-byte record, field by field after `transport.md` §3.4.17;
+  - `gamestate.walkers(mem, welt, types, world)`: the figures of the given types, each with the record under it;
+  - `state("walkers", types=[…])` on both backends.
+  - Test: `test_walkers_read_the_tile_record_under_each_figure` (a figure off the island → `record` None; on it → every field by hand). `python -I tools/orig/test_orig.py`: `Ran 61 tests … OK (skipped=3)`.
+- **Run:** Wine runner `:91`, session `t30b6-walkers`. A fresh Citizen game, the opening (14 placements), then 1 076 samples every 0.25 s for 300 s (ticks 36 106–186 015). The outputs stay in `cache/orig/t30b6-walkers/`.
+- **Result (`transport.md` §3.7):** no contradiction. All 137 245 observations (97 254 cart, 39 991 carrier) stood on a code the figure's layer admits, by the layer blocks read from `AnnoWelt.dll`.
+  - The carrier (layer 0) walks between its workshop and the hunting lodge or sheep farm over code-2 tiles (raw-material plants and trees). It used no road.
+  - No cart left its market or warehouse. Its non-zero rate was 0.001, not the start wait's 0.01 (OQ-216).
+  - No road tile was seen under a walker, so the road-shape question stays open.
+- **Corrected while writing:** I first wrote "the start wait (rate 0.01)" for the carts. The samples show 0.001, and the doc says so.
+- **Acceptance:**
+  - (a) the tile-id tables: MET (ids, PRODTYPE, codes);
+  - (b) the cart's and the carrier's tile lists: MET for the carrier; the cart's list is its home tiles only;
+  - (c) the contradictions: none;
+  - (d) the road ids and their shapes: NOT MET, no road tile under a walker;
+  - (e) nothing of the original in git: MET.
+- **Next:** T30b.7 builds the cases: a producer joined to the market by road (a positive cart trip, and (d)); a sheep farm and a forester without a road; a road at a non-entrance edge.

@@ -3928,3 +3928,20 @@ OQ-220 (the three addon pages do not state the six levels), OQ-221 (a money bull
   3. status "Proposed": MET.
   4. report; not merged: MET. Not pushed.
 - Time spent / subagents used: inline, no subagents. One scenario load, no other heavy job.
+
+## T31.1 — Monuments, data and claims — 2026-10-26 — status: FINISHED
+
+- Branch: `task/T31-monuments-re` at `c2e1dc9` (the note; the commit that adds this section is the branch head). Worktree: `E:\anno1503-worktrees\anno1503-T31`. Started from local `main` at `631e206`. Not merged, not pushed.
+- Built: `docs/re/monuments.md`. No `src/` change. Scratch (`cache/t31_types.py`, `cache/texte-full.txt`, `cache/anlagen-dump.txt`, `cache/pypdf-pkg/`) is gitignored and not committed. The manual PDF was read from `E:\anno1503\Anno_1503_Manual.pdf` and was not copied.
+- Step 1: worktree `E:\anno1503-worktrees\anno1503-T31`, branch `task/T31-monuments-re`, from local `main`. `anno-dump` is the existing main build, not rebuilt.
+- Step 2: `anno-dump anlagen` reports `ANLAGEN entries=921 volumes=3`. 55 entries are `DENKMAL` (28), `TRIUMPH` (1) or `ZIERDE` (26). 19 have an `ANLAGEN` name; 36 do not (34 of them `INFRA_EVER`, and 1394 and 3713 have no `INFRAMIN` record). Names from `anno-dump texte` (118 sections, `ANLAGEN` 326 names). Field bytes from `tools/figuren.py` at the `production.md` §2.4 offsets. `BGruppen.dat` has 31 `Stufe` lines; the last two are `INFRA_STUFE_DENKMAL, 4, 65000` and `INFRA_STUFE_TRIUMPH, 4, 65000`. `population.md` §1's name-table summary (30 `DENKMAL`, 31 `FORSCH`, no `TRIUMPH`) does not match that file order. The bit index waits for the name table in T31.2.
+- Step 3: help pages `B_Belohnungsbauten.htm`, `Denkmal.htm`, `Triumphbogen.htm`, `Schloss.htm`, `Zieranlagen_und_Prunkbauten.htm`. Manual printed p. 31 (ornamentals and the palace as the reward example) and printed p. 12 (general demolish). Community: the Howgego FAQ (the 30 minutes is the writer's bracketed guess), the AnnoZone Zieranlagen page, and AnnoZone forum thread 1810. Sixteen claims, C1–C16, each with a source, in `monuments.md` §7. The code column is empty until T31.2.
+- Gates: docs only. `git diff --cached --check` on `c2e1dc9` was clean. No build, no ctest, no clang-format, no GCC, no agree.py, no asan.
+- Acceptance for T31.1 (steps 1–3 of the T31 entry):
+  1. data of the monument types, with ids, names, costs, flags, stages: MET (`monuments.md` §1–§3).
+  2. texts cited by section and index, paraphrased: MET (§4).
+  3. claims from the manual, the help and community, each with its source: MET (§5–§7). Matching them to the code is T31.2.
+  4. nothing of the original in git: MET.
+  5. this report, not merged: MET.
+- Left open: the eight items in `monuments.md` §8, for T31.2. No new OQ. OQ-180–184 were free on `main` at `631e206` and were not used. OQ-144 and OQ-166 were not edited.
+- Time spent / subagents used: inline, no subagents. `anno-dump anlagen` and `anno-dump texte` only. No disassembly yet.

@@ -2,7 +2,15 @@
 
 **Who writes this file:** the orchestrator session (Claude Fable, the owner's "main" session). **Who reads it:** the executor session (Claude Sonnet with subagents). The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-Last update: 2026-10-26 bm — **T33.5 stage 2 stopped correctly; fix-up F1** (the overlay path does write the id; bit 7 is the 8×8 block anchor) for the main executor; T30b.7, then P1, for the orchestrator (round bm below).
+Last update: 2026-10-26 bn — **the LAN endless lane opens** (§3 "The LAN endless lane": T36 game setup, T37 world-generator spec, T38 AI inventory, T39 network ADR). The main executor finishes **T33.5 stage 2 fix-up F1** first; T30b.7, then P1, for the orchestrator (round bn below).
+
+**Round bn (2026-10-26, the regular orchestrator):** the owner decided D1–D11 of `docs/plan/lan-endless.md` with the co-developer (plan §7, PLAN §0.7). From them, four tasks start the lane; their full steps are in §3, "The LAN endless lane".
+- **T36 (W1):** `GameSetup`, the two rules presets table, the original's twelve endless presets recorded. `src/sim`, new files only.
+- **T37 (W2):** the world-generator spec, with the template inventory and the originals measured.
+- **T38 (W7 / T-AI.1):** the inventory of `CompLogic.dll` and `CompLogicClassic.dll` (D5: the original AI first).
+- **T39 (W3):** ADR 0003, the network design with join-in-progress, host migration, resilience and long-session hashing (D3).
+- **Order:** the main executor works T33.5 F1 → T36 → T37 → T38 → T39. A second executor may take T37, T38 and T39 (docs only) at once.
+- **OQ ranges:** T36 OQ-220, T37 OQ-230, T38 OQ-240, T39 OQ-250. T33.5 stage 2 keeps OQ-206 and up; the orchestrator used OQ-215 and OQ-216.
 
 **Round bm (2026-10-26, the regular orchestrator): T33.5 stage 2 review of `802910d` (not merged).**
 - The executor stopped exactly where the task told it to: 121 600 scenario tile objects of flag-`0x10` types would have lost their id.
@@ -391,6 +399,156 @@ Main executor (prompt handed over by the owner): T15 B1, then T11 stage 2a to th
 ## 3. Task queue
 
 Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report says so), `REVIEW` (reported, orchestrator reviewing), `OWNER-CHECK` (waits for the owner's look), `DONE`, `BLOCKED`, `LATER`.
+
+### The LAN endless lane (`docs/plan/lan-endless.md`, owner decisions D1–D11 of 2026-10-26; round bn)
+**Order** for the main executor: **after T33.5 stage 2 fix-up F1**, then T36 → T37 → T38 → T39. A second executor takes the docs-only tasks (T37, T38, T39) at any time, in that order.
+
+**Common to all four tasks:**
+- **Paths:** the main checkout is `E:\anno1503`; each task has its own worktree under `E:\anno1503-worktrees\`, created from local `main` at the round-bn board commit or later.
+- **Workflow:** local-only (round ba): commit on the task branch; no push, no PR, no merge.
+- **Original files:** in `E:\anno1503\game\app`, read-only; nothing of them goes into git (no text copied from `.htm` files, no bytes, no listings).
+- **No guessing** (owner's rule): whatever would need a guess is checked against the original files, and what stays unclear goes into the report in detail as an OQ in the task's range.
+- **Gates:** a task with `src/` changes runs the full gates of §1 item 4 and round ba. A docs-only task runs `git diff --check`, plus `python -I tools/orig/test_orig.py` or `tools/agree.py` where it touches those tools.
+
+#### T36 — W1: the game setup, the two rules presets, the original's endless presets · `READY` (round bn) · `PARALLEL-OK` with T33.5 (new files only) · branch `task/T36-game-setup` · worktree `E:\anno1503-worktrees\anno1503-T36` · new OQs from OQ-220
+- **Files:**
+  - new: `src/sim/include/anno/sim/game_setup.hpp`, `src/sim/src/game_setup.cpp`, `src/sim/tests/game_setup_test.cpp`, `docs/formats/endless-presets.md`, `docs/sim/rules-presets.md`;
+  - one line each in the sim library's and the sim tests' `CMakeLists.txt`;
+  - the W1 status line in `docs/plan/lan-endless.md`.
+  - **Not** `state_fields.hpp`, `config.hpp` or `world.hpp`: T33.5 edits those. `GameSetup`'s `fields()` lives in its own header.
+- **Steps (in order; each written into REPORTS before the next):**
+  1. **Set up:** `git -C E:\anno1503 worktree add E:/anno1503-worktrees/anno1503-T36 -b task/T36-game-setup main`, then from the worktree `cmake --preset msvc` and `cmake --build --preset msvc`.
+  2. **The original's endless presets (docs):** for each of the nine `.sze` in `E:\anno1503\game\app\Scenes\0010SingleEndlos` and the three in `E:\anno1503\game\app\Scenes\0011SingleEndlosAddon`, record as values:
+     - **From the scenario file** (`E:\anno1503\build\msvc\src\tools\anno_dump\Release\anno-dump.exe sze --full` / `insel --full`, or the worktree's own build):
+       - the world width and height;
+       - every party with its kind (human, computer, Venetians, pirates, natives, neutral), from the `SPIELER` records;
+       - the `INSELLNK` count, their sizes as a histogram, their climates, and the share of the world area they cover;
+       - `LIMITS`; the scene `HEAD` world properties (`settings.hpp` names them);
+       - the start money and goods, if the file holds them.
+     - **From the `.htm` descriptions:** the eight `<size> <difficulty> <island size>_910nn.htm` and `00_1024_easyentry_01.htm` in `0010SingleEndlos`, and `AUFTRAGText_Endless_01..03.htm` in `0011SingleEndlosAddon`. For each, the level it gives for islands (many / average / few), island size, ores, soil fertility, pirates and money, **as values, with no sentence copied**.
+     - Match each description to its `.sze` by name and say how. Write `docs/formats/endless-presets.md`: one table, one row per preset, an evidence column (file + how read). A field or match that stays unclear is an OQ.
+  3. **The rules presets table (docs):** `docs/sim/rules-presets.md`, one row per `Rules` field (`E:\anno1503-worktrees\anno1503-T36\src\sim\include\anno\sim\config.hpp` from line 445) and per render style option (water style and river flow, `src/render`, `src/app`), with these columns:
+     - the field;
+     - the **original** value (today's default, with its D number or OQ);
+     - the **enhanced** proposal;
+     - the evidence (the ISS entry in `docs/research/original-issues.md`, the OQ decision, the `Rules` comment);
+     - **owner**, marked where the choice changes how the game feels.
+
+     The owner's rule (memory "bugs vs. feeling"): an obvious bug gets the fix as the enhanced proposal; a feel question is marked and **not decided**. Below the table, list every ISS entry tagged FIX or RULE that has no `Rules` option yet (the gaps), and the feel questions for the owner.
+  4. **`GameSetup` (code, `game_setup.hpp` / `.cpp`; integer and enum fields only):**
+     - `enum class SeatKind : std::uint8_t { Human, Computer }`;
+     - `struct Seat { SeatKind kind; std::string name; std::uint32_t colour; std::uint32_t team; }`;
+     - `enum class IslandSize : std::uint8_t { Small, Medium, Large }`, `enum class IslandQuantity : std::uint8_t { Less, Default, Many }`, `enum class StartMode : std::uint8_t { Together, Spread }`;
+     - `enum class PirateLevel : std::uint8_t { None, NotVeryAggressive, Aggressive }` (the original's three, step 2);
+     - `enum class RulesPreset : std::uint8_t { Enhanced, Original }`;
+     - `struct WorldOptions { std::uint32_t base_edge_4p = 1280; IslandSize size; IslandQuantity quantity; StartMode start; }`;
+     - `struct GameSetup { std::vector<Seat> seats; WorldOptions world; PirateLevel pirates; <start resources>; std::uint64_t seed; RulesPreset rules; }`. The start resources are an enum with exactly the money levels step 2 found, or a stop with an OQ if step 2 found none.
+     - `struct SetupLimits { std::uint32_t max_seats = 6; std::uint32_t max_name_bytes = 32; }`: the defaults of this release, each with a comment giving the reason and how to change it (CLAUDE.md "no hardcoded limits").
+     - `validate(const GameSetup&, const SetupLimits&, std::uint32_t colour_count) -> formats::Result<…>`. It rejects 0 seats, more than `max_seats`, a duplicate colour, a colour `>= colour_count`, a name that is too long, and an enum value outside its range.
+     - `fields(A&, S&)` for every struct, in this header, with the archive concept of `archive.hpp`; `digest(const GameSetup&)` through `HashArchive`. **Not** in `World` or the state stream yet (no `kStateHashVersion` change): W4 adds it to the save.
+  5. **Tests (`game_setup_test.cpp`):**
+     - a round trip through `WriteArchive` / `ReadArchive` equals the input;
+     - every field changed alone changes the digest (one case per field);
+     - every rejection of step 4;
+     - `max_seats = 8` accepts 8 seats;
+     - a hostile read (a seat count above the remaining bytes) is refused before allocating.
+  6. **Docs and gates:** the W1 status line in the plan; REPORTS "T36"; the full gates. Commit on the branch; report the head; not merged.
+- **Acceptance:**
+  1. `endless-presets.md`: twelve rows, every value with its evidence;
+  2. `rules-presets.md`: every `Rules` field and render option, the gaps and the owner questions;
+  3. `GameSetup` with validation, `fields()`, a digest, and the tests;
+  4. gates green with totals;
+  5. nothing of the original in git;
+  6. report.
+
+#### T37 — W2: the spec of the enhanced world generator · `READY` (round bn; after T36 step 2, whose table it uses: read it from T36's branch if T36 is not merged) · `PARALLEL-OK` (docs and one Python reference tool) · branch `task/T37-world-spec` · worktree `E:\anno1503-worktrees\anno1503-T37` · new OQs from OQ-230
+- **Files:** new `docs/sim/world-scaling.md`, new `tools/world_measure.py` (a read-only reference tool that prints measurements and commits no data), REPORTS. Also the PLAN M4.1 and plan W2 status lines.
+- **Steps:**
+  1. **Set up:** `git -C E:\anno1503 worktree add E:/anno1503-worktrees/anno1503-T37 -b task/T37-world-spec main`.
+  2. **The template inventory:** the 465 island templates in `E:\anno1503\game\app\Scenes\Islands`, counted per climate (the name prefixes `po_ t_ n_ pr_ d_ s_ w_`, `docs/re/annoscene.md` §5) and per size (width × height). Mark the ones the original's selection excludes (`PIRAT` in the name; INFO byte 8, §5 step 1). Use `tools/world_measure.py inventory <Islands dir>`; the table goes into the spec.
+  3. **The originals measured:** for the twelve endless worlds of T36 step 2, use `tools/world_measure.py world <file.sze>`. Per world:
+     - the area and the land share;
+     - the size mix of the links, and the climate bands by y;
+     - **where each party starts.** Find how an endless scenario defines a player's start (a ship, a position, a city) from the file and `annoscene.md`. If it is not readable, write OQ-230 and go on without it.
+     - the distance from each start to the nearest free island and to the nearest rival;
+     - per player, the fairness measures of PLAN M4.1: buildable land by climate and size class, the raw materials and ores within reach.
+  4. **The spec `docs/sim/world-scaling.md`**, every original value with its evidence:
+     - **inputs:** the `GameSetup` world options (T36), the player count, the seed, the generator version;
+     - **size:** edge(n) = round(B · √(n/4)) with B from `WorldOptions::base_edge_4p`, integer square root, bounded by `kWorldEdgeBound`;
+     - **island size small / medium / large → the link size mix,** and **quantity less / default / many → the land share,** calibrated on step 3's presets (their "few / average / many" and "large / normal" levels);
+     - **the climate bands** as the originals;
+     - **the start modes:** *together* as the originals do it (step 3), and *spread* with a minimum distance rule, both with the fairness floor 99 % per measure;
+     - **the parties:** natives scale with the islands, one Venetian party, pirates by `PirateLevel`;
+     - **the output:** links in the form `resolve_island_links` takes (`src/sim/include/anno/sim/island_links.hpp`), so the original's island selection runs unchanged;
+     - **determinism:** integers, the sim's seeded generator, ordered containers, versioning, the world hash in the handshake;
+     - **a test plan:** property tests over many seeds, player counts 1–6 and every option combination; the cross-platform world hash.
+  5. **Owner questions:** every choice that changes how the game feels (for example the minimum distance in *spread*), listed with a proposal and not decided.
+  6. **Report, commit; not merged.**
+- **Acceptance:**
+  1. the inventory and the twelve measured worlds, with numbers;
+  2. the spec, complete for an implementer;
+  3. owner questions listed;
+  4. nothing of the original in git;
+  5. report.
+
+#### T38 — W7 / T-AI.1: the inventory of the original's AI (`CompLogic.dll`, `CompLogicClassic.dll`) · `READY` (round bn) · `PARALLEL-OK` (docs only) · branch `task/T38-ai-inventory` · worktree `E:\anno1503-worktrees\anno1503-T38` · new OQs from OQ-240
+- **Why:** the owner's decision D5 is to rebuild the original AI first, from a thorough analysis of the original files. This first sub-task measures what is there and fixes the order of the rest. It is static RE, with no behaviour claimed yet.
+- **Files:** new `docs/re/complogic.md`, REPORTS. Read `docs/re/annoscene.md` §11 and `docs/re/tick-loop.md` (the 35 call sites) first.
+- **Steps:**
+  1. **Set up:** `git -C E:\anno1503 worktree add E:/anno1503-worktrees/anno1503-T38 -b task/T38-ai-inventory main`. Tools: `tools/disasm.py`, `tools/xref.py --reloc`, `analysis/pe_symbols.json`. Modules: `E:\anno1503\game\app\CompLogic.dll` (454 656 bytes) and `E:\anno1503\game\app\CompLogicClassic.dll` (438 272 bytes).
+  2. **The PE facts per module:** the timestamp, sections and sizes, exports, imports by module (which AnnoWelt, AnnoGame and AnnoFrame functions or interfaces it uses), and the strings that name files or chunk records (profiles, `COMPPROFIL2`).
+  3. **Classes:**
+     - every RTTI class with its vtable(s), the installer address of each (the constructor's store), its base classes, and the slot count;
+     - the factory by player type (`annoscene.md` §11.5: 12/13 computer, 14 natives, 15 pirates, 16 Venetians) re-read with addresses;
+     - the differences between the two modules: same classes? same factory? which one the game loads, when, and how.
+  4. **The entry points:** where the world calls into the AI (the player tick and its seam, `annoscene.md` §11.4), what the AI receives (`this` traced to its vtable, the arguments), and **whether the AI changes the world directly or through the functions the player's commands use**. Name the call sites on both sides. This decides how the port is wired (plan W7 step 1.2).
+  5. **The 35 world-PRNG call sites** (`tick-loop.md`): address, containing function and its class, and the draw's use if it is plain (a modulus, a table index). The meaning of each decision is for later sub-tasks.
+  6. **The profiles and parameters:** the `COMPPROFIL2` record layout and the 36-index parameter setter (`annoscene.md` §11.3, §11.6), confirmed or extended with addresses.
+  7. **The size and the plan:** per class, the function count and bytes of code (a linear sweep over the vtables and their callees); a proposed split into sub-tasks T-AI.2… by behaviour area (settling, building and chains, city growth and needs, trade, military and diplomacy, pirates, Venetians), each with its start addresses.
+  8. **Docs:** `docs/re/complogic.md` with every item and its addresses (D / likely / open tags, as `docs/re/annowelt.md`); OQs; REPORTS "T38".
+- **Acceptance:**
+  1. items 2–7 each D or open with the next address;
+  2. the wiring question of step 4 answered or narrowed;
+  3. the sub-task split;
+  4. nothing of the original in git (no listings);
+  5. report.
+
+#### T39 — W3: ADR 0003, the network transport and session design · `READY` (round bn) · `PARALLEL-OK` (docs only) · branch `task/T39-net-adr` · worktree `E:\anno1503-worktrees\anno1503-T39` · new OQs from OQ-250
+- **Why:** owner decision D3: our own UDP layer, with stability and performance first and flexibility. Required in v1:
+  - joining a running game;
+  - the host leaving and another player becoming host;
+  - no crash for everyone on short drops;
+  - an efficient hash system that keeps long sessions free of desyncs.
+
+  The ADR is the design an implementer can build from; the owner approves it. (0002 is reserved for the float walk, T34.)
+- **Read first:**
+  - `docs/plan/lan-endless.md` §4 and W3;
+  - `docs/re/tick-loop.md` §4–5 (the original's protocol: turns every 100 ms, resends, keep-alives, the 60 s MD5 check);
+  - `docs/sim/state.md` §8 (commands and turns);
+  - `src/sim/include/anno/sim/command.hpp` and `replay.hpp` (`Turn`, the turn entry codec);
+  - `hash.hpp` and `hash_tree.hpp` (the hierarchical hash and `diff_trees`);
+  - the save frame (`World::save` / `load`).
+- **Files:** new `docs/adr/0003-network-transport.md`, REPORTS. Optionally a measurement under the worktree's `cache/`, not committed.
+- **The ADR's sections:**
+  1. Context and the owner's requirements (R14, D3, D9, D10).
+  2. Decision: own UDP; ENet and GameNetworkingSockets as rejected alternatives, with reasons.
+  3. **The packet format:** a header with a magic, the protocol version, a session id, a sequence number, acks and a channel; explicit little-endian fields, as CLAUDE.md asks of every layout.
+  4. **The channels:** reliable ordered (turns, commands, snapshot fragments) and unreliable (keep-alive, pings, hash reports); selective acknowledgement and resend; MTU and fragmentation; flow control for snapshots.
+  5. **The session states:** discovery (UDP broadcast on a configured port; direct IP), the handshake (§4 of the plan: the content hash, the build and stream versions, the rules preset digest, the generator inputs, `GameSetup`), the lobby, the game, pause.
+  6. **Turns:** the period (100 ms default, the original's), the command delay (2 turns default), how the commands get their target turn, and what a turn carries.
+  7. **Hash checks:** the cadence (every K turns), what is hashed (the root of the hierarchical hash), the full check with the autosave every N minutes, and the mismatch path (pause, `diff_trees` report, host snapshot, resume).
+  8. **Join-in-progress:** the snapshot plus the turn backlog, and the replay to the present.
+  9. **Host migration:** the deterministic successor (the lowest connected seat), turn continuity, resending the last turns, resending pending commands with their numbers so duplicates are harmless, and what each peer does on the way.
+  10. **Drops and outages:** buffers, timeouts, the wait dialog, the AI takeover after 60 s (D9), rejoin. **Every number is configuration with a default and a reason.**
+  11. The transport interface for internet play later.
+  12. Security for LAN v1: version and content checks, input bounds on every field (the decoders refuse before allocating), no authentication; and what internet play adds.
+  13. **Budgets to measure before the ADR is accepted:** the cost of one root-hash check on the largest scenario (`S01_07_01`) and the snapshot size, measured with the existing sim (`anno-sim-replay` or a small test in the worktree's `cache/`, not committed); and the expected bandwidth per peer at 6 players.
+  14. The `netsim` test plan (the plan's W3 acceptance cases).
+- **Acceptance:**
+  1. all fourteen sections, every number with a reason or a measurement;
+  2. the open choices listed for the owner;
+  3. status "Proposed";
+  4. report; not merged.
 
 **Order (2026-10-24 v, the sim track; it overrides the older orders below for the sim. The render track (T11 `OWNER-CHECK`, T14 stage 2, T5/T6) and PR #16 are unchanged):**
 1. **The fix-ups, in parallel:** the T27 fix-up (the executor itself, last bullet of T27) and the T26 fix-up (one subagent, last bullet of T26). Each pushes to its PR, adds a "Fix-up (round v)" paragraph to its REPORTS section and stops. Then the orchestrator merges **#39, then #40**.

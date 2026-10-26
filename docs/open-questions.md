@@ -1745,3 +1745,15 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Area:** original harness / transport.
 - **What was seen.** In the T30b.6 Wine run (`docs/re/transport.md` §3.7), every market cart (220) with a non-zero rate stood on its market's or warehouse's edge subcell with rate `0.001`. The start wait of §1.1 runs at `0.01` (`0x10035260`, `0x3c23d70a`). No cart left its building in five game minutes.
 - **How to resolve:** find a store of `0x3a83126f` (0.001f) into figure `+0x40` (the rate) among the figure's action setters (§4, `0x10035260` and its siblings). Then repeat the run with a road-connected producer (T30b.7) and see whether the cart walks after that action.
+
+## OQ-240: Which function calls the AI on each advance (T38, 2026-10-26)
+- **Status:** open. The load path and the factory are read (`docs/re/complogic.md` §2–§3). The per-tick call is not.
+- **Area:** simulation / AI.
+- **What was read.** `AnnoWelt.dll` `0x1009c630` stores the manager at holder `+0x94`. That function is slot `+0x14` of vtable `0x100cb858`. Holder slot 0 (`0x1009c330`) does not touch `+0x94` in its first 500 bytes. The property-44 getter `0x10020ab9` has one `.text` relocation, `0x10020c30`. `CompLogic.dll` does not import `AnnoFrame.dll` `0x100589a0`, so the AI does not call the command function by address.
+- **How to resolve:** holder slot `+0x18` at `0x1009c740`, then world advance `0x100ae040`, for a load of `+0x94` or of player `+0xc` followed by an indirect call.
+
+## OQ-241: Whether CompLogic's slot `+0xb4` calls are the world PRNG (T38, 2026-10-26)
+- **Status:** open. The call sites and the arithmetic on the result are read (`docs/re/complogic.md` §5). The object is not.
+- **Area:** simulation / AI / determinism.
+- **What was read.** 43 `call [reg+0xb4]` instructions in `CompLogic.dll`. 32 mask or divide the result immediately. 11 do not. World slot `+0xb4` is the world PRNG (`docs/re/tick-loop.md` §3). None of the 43 regions is a slot of the player vtables, so the class is unread too.
+- **How to resolve:** at `0x100011d3`, `0x10030fbb` and one unmasked site (`0x1000e809`), the instruction that loads the call's register, walked back to a field. A world pointer there makes the masked sites the world draw. The same walk on `0x1002e3f3` decides the unmasked group.

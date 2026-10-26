@@ -1,6 +1,6 @@
 # Monuments and ornamentals
 
-**Status:** T31.1 (2026-10-26), data and claims only. The code is not read yet (T31.2). No `src/` change.
+**Status:** T31.1 data and claims, T31.2 the award (2026-10-26). No `src/` change.
 
 Tags: **P** parsed from the original files this pass; **D** already written in another note (module + address there, not re-read here); **H** the English in-game help; **M** the owner's German manual (`Anno_1503_Manual.pdf` at the repo root, untracked, not added to git). Printed page numbers are the ones in the manual's headers. Community claims cite a URL and stay community until T31.2 matches them to the code.
 
@@ -78,9 +78,9 @@ Stages used by the 19 named types, with the file's line index:
 | 29 | INFRA_STUFE_DENKMAL | 4 aristocrats | 65000 | 2553 |
 | 30 | INFRA_STUFE_TRIUMPH | 4 aristocrats | 65000 | 2780 |
 
-The file's last two lines are `INFRA_STUFE_DENKMAL, 4, 65000` and `INFRA_STUFE_TRIUMPH, 4, 65000`. There is no `Stufe` line for `INFRA_STUFE_FORSCH`. 65000 fits the u16 count field ([`population.md`](population.md) §1). The documented check would set the bit when aristocrats-or-better reach 65000.
+The file's last two lines are `INFRA_STUFE_DENKMAL, 4, 65000` and `INFRA_STUFE_TRIUMPH, 4, 65000`. There is no `Stufe` line for `INFRA_STUFE_FORSCH`. 65000 fits the u16 count field ([`population.md`](population.md) §1).
 
-The bit number is the name's slot in the code's stage-name table, not the file line index. [`population.md`](population.md) §1 summarises that table as 0 `INFRA_EVER` … 30 `INFRA_STUFE_DENKMAL`, 31 `INFRA_STUFE_FORSCH`, and does not mention `TRIUMPH`. The file order above puts `DENKMAL` at line 29 and `TRIUMPH` at line 30. T31.2 reads the name table (`AnnoGame` `0x10013d60`, table `0x10024bd0`) before either number is used as a bit.
+The bit number is the name's slot in the code table, not the file line. The table at `AnnoGame` `0x10024bd0` (the kind-`0x21` table, referenced from `0x10013d71`; 32 names, then the people names `GOTT`, `SPIELER`, …) was read this pass. Slots 0–28 match the file line index. Slot 29 is `INFRA_STUFE_TRIUMPH`, slot 30 is `INFRA_STUFE_DENKMAL`, slot 31 is `INFRA_STUFE_FORSCH`. The file lists those last two names in the other order. The parser stores a `Stufe` at the name's slot ([`population.md`](population.md) §1, already D), so the monument's 65000 sits on bit 30 and the arch's 65000 on bit 29. [`population.md`](population.md) §1's summary "30 `DENKMAL`, 31 `FORSCH`" matches the table and omits `TRIUMPH` at 29.
 
 ## 4. Texts
 
@@ -139,11 +139,79 @@ Each claim is what a source says. The files column is §2–§6. The code is T31
 | C15 | Palace: from 1000 aristocrats the main part plus four, four more at 3000, no limit at 5000, and the 5000 must be on one island. At least 1900 residents as well. Once built, palace and cathedral stay if the aristocrats leave. After a save and load, unlimited palace parts need the aristocrats again. The unlimited count is really 200. Cathedral once per game: destroy it and it cannot be rebuilt. | H `Schloss.htm` for 1000 / 3000 / 5000. The island, the 1900, the save/load and the 200 are the [FAQ](https://anno-capsu.netlify.app/1503/colony_buildings). | Palace `INFRAMIN` values are 5C, 5D and 5E per piece (§6), not one stage for the first four pieces. 5F (5000) is not the `INFRAMIN` of the seven palace ids checked. Cathedral 1330 is `KIRCHE`. |
 | C16 | A scenario's monument is created on the scenario path and was left uncreated by T26. | T23, T25 (j), OQ-144, OQ-166. | 3207 and 3312 are unnamed `INFRA_EVER` entries in the 36 (§2). Whether that creation counts as "earned" is the code. |
 
-## 8. Open for the code pass (T31.2)
+## 8. The award (T31.2)
 
-- Who sets the `INFRA_STUFE_DENKMAL` and `INFRA_STUFE_TRIUMPH` bits, and which index the name table gives them (§3).
-- Whether any timer of 30 minutes, or any satisfaction streak, exists (C3, C4, C6).
-- What the award writes: a per-player count, a per-city bit, a message, a build-menu entry; and whether that is saved (C2, C4, C7, C9).
-- The building: class, tick, effect, demolition, save. T25 (j) already has the scenario-path base class. C5 and C10 need the interactive object.
-- Status text index 249 (C14) and flag bits 2 and 7.
-- The owner's three clauses, which are C1, C2 and C3, answered from the code.
+`this` for `0x1002a5e0` is the city. It is city-tick step h ([`population.md`](population.md) §3, already D). Read here: `0x1002a5e0`–`0x1002b65f`. One tick is 2 ms ([`tick-loop.md`](tick-loop.md), already D).
+
+**Gate.** `(u16)(tick − city+0x12) < 500` returns (`0x1002a5f4`–`0x1002a608`). The exit stores the passed tick at `city+0x12` (`0x1002b652`). 500 ticks is 1 second.
+
+**Houses visited.** Building-index `city+0x144`, slot `+0x24(0x61)` (`0x1002a620`–`0x1002a62e`): the house list. The visit count is `elapsed · count / 15000`, and at least 1, capped at the count (`0x1002a631`–`0x1002a660`; the multiplier `0x45e7b273` then `sar 12` divides by 15000). The cursor is the word at `city+0x65c`, incremented once per visit (`0x1002a742`). Over 15000 ticks of elapsed time that walks the list about once.
+
+**Mood histogram.** For each visited house, slot `+0x9c` is the mood (`0x10075fd0`, already D, range −2…+2) and slot `+0xcc` is `0x10076b30`: the signed value at house `+0x2c` (residents · 64) shifted right by 6, so the resident count. That count is added to the word at `city + 0x844 + 2·mood` (`0x1002a6e6`). Mood −2 lands on `city+0x840`, mood +2 on `city+0x848`. If any of the five words is at least the city's total population capped at 65000, all five are halved (`0x1002a71a`–`0x1002a73c`). The cap is counter vtable slot `+4` (total, [`population.md`](population.md) §6) clamped with the immediate `0xfde8` (`0x1002a670`–`0x1002a680`). That 65000 is a cap on the total, not the aristocrat stage count.
+
+**The 30-second sample.** The ten counters `city+0x628`…`+0x64c` grow by the elapsed ticks (`0x1002a7f9`–`0x1002a886`, already noted in [`annowelt.md`](annowelt.md) (g)). When `+0x644` reaches 15000 ticks, 30 seconds, it is zeroed (`0x1002aafc`–`0x1002ab14`). The five mood words are turned into percentages, `count · 100 / sum`, integer division (`0x1002ab1c`–`0x1002ab5d`). Unhappy is the sum of the −2 and −1 percentages. Happy is the sum of the +1 and +2 percentages.
+
+- Unhappy ≥ 30 (`0x1002ab74`): zero `+0x628`, `+0x638`, `+0x62c` and `+0x648` (`0x1002ab79`–`0x1002ab8d`).
+- Happy ≥ 80 (`0x1002aba3`): zero `+0x630` and `+0x64c`. Happy < 80: zero `+0x62c` and `+0x648` (`0x1002abb6`).
+
+So `+0x628` keeps running while every 30-second sample stays under 30 percent unhappy. It is not a test that the population is fully satisfied.
+
+**The monument bit.** When `+0x628` reaches `0x124f80` = 1 200 000 ticks = 40 minutes (`0x1002adbc`), it is set back to 0 (`0x1002add7`; `ebp` is 0 on every path through the sample check, which this call always reaches). Then property `0x21` is read from `city+0x20` slot `+0x48` (`0x1002adcc`–`0x1002ade1`). `city+0x20` is set with the owner at `+0x330` (`0x1002f440`, [`annowelt.md`](annowelt.md) (g)). The tested value is the second dword, which [`population.md`](population.md) §4 already calls the reached-stage mask. Bit 11 of that dword must be set (`test ah, 8` at `0x1002adeb`). Bit 11 is stage slot 11, `INFRA_STUFE_3A`, 120 citizens or better (§3). The uncapped total from counter slot `+4` must be at least 300 (`0x1002adf0`, immediate `0x12c`). Then `0x10027640` is called, and virtual `+0xd0` on the object from `city+0x1c` slot `+0x18`, with `0x20` among the arguments (`0x1002ae17`–`0x1002ae2c`). What that call shows was not followed (OQ-182). The same property is read again and written back through slot `+0x4c` with bit 30 ORed in (`0x1002ae32`–`0x1002ae5b`, immediate `0x40000000`). Bit 30 is `INFRA_STUFE_DENKMAL` (§3). The write is one bit on the player, not a count and not the city mask `+0x618`.
+
+The ordinary stage check still exists beside this. [`population.md`](population.md) §7 (already D, `0x10029610`, every 2500 ticks) sets city bit `i` for `i` = 0…30 when residents of that group or higher reach the count, then ORs the city mask into the player's. Slot 30 is the monument and slot 29 the arch, both at 65000 aristocrats. That path can set the same player bit without the mood streak. The mood path does not write `city+0x618`.
+
+No immediate `0x20000000` (bit 29) is ORed in `0x1002a5e0`. A sweep of `AnnoWelt` for that immediate and for `0x40000000` found the monument OR at `0x1002ae4c` and did not find a defeat path that sets bit 29 (OQ-180). Type ids 2553, 1388, 1389, 1390 and 1391 are not immediates in `AnnoWelt`, `AnnoGame`, `AnnoScene` or `AnnoDisplay`. Id 2780 is an immediate at `AnnoWelt` `0x1007f082`, inside `0x1007ef60`, which returns 1 for a handful of plaza ids; the preceding compare sends every id above 2551 to `0x1007f33c`, so 2553 and 2780 do not take that return.
+
+**Saved.** `city+0x628` is one of the five `STAT2` dwords the city reader restores; `+0x644`, the 30-second sample timer, is among the three the writer stores and the reader does not restore ([`annowelt.md`](annowelt.md) (g), already D). Whether property `0x21` itself is in the player save was not read (OQ-181).
+
+**The object.** Scenario `Create` `0x10024010` builds PRODTYPE 289 as the base class in the production list, tick the no-op `0x10001030` (T25 (j), already D). That path does not execute `0x1002ae4c`. The 34 corpus entries are ids 3207 and 3312, both unnamed `INFRA_EVER` scenery (§2), not type 2553. Interactive Place skips `Create` for PRODTYPE ≥ 193 (`0x10027b32`, already D). What a player places when bit 30 is set, and whether it can be demolished, was not read (OQ-182). `INFRAMIN` is stored as a byte at type `+0x23` (`AnnoGame` `0x100098fe`–`0x10009905`); the scan index stops at `0x20` (`0x100098f4`) and `edi` is cleared at the enclosing function's entry `0x1000926f`. Who tests that byte against the mask was not read (OQ-182).
+
+`WARE` is the name `UNUSED` on all 55 (§1). The id that name resolves to was not read. The public-need mask is 0 for a goods id outside `0x4c`–`0x5a` ([`production.md`](production.md) §2.4, already D). House mood is computed from the house's own needs ([`population.md`](population.md) §4.1) and does not read a monument. No effect of a placed monument on mood was found in the award function.
+
+## 9. The claims against the code
+
+| # | Verdict |
+|---|---|
+| C1 | The award is a decoration in the help and the type data. The code sets player bit 30. It does not spawn the building. |
+| C2 | The check is city-tick step h, in every game whose cities tick. No game-mode test in `0x1002a5e0`–`0x1002ae5e`. Endless is not a separate flag in that range. |
+| C3 | Corrected. 40 minutes (1 200 000 ticks), interrupted when a 30-second sample is at least 30 percent unhappy. Also total residents ≥ 300 and stage bit 11 (120 citizens or better). |
+| C4 | The 30 minutes and the "as in 1602" guess do not match §8. One bit on the player, fed by each city's own timer. Not a per-city count. |
+| C5 | No score write in the award function. Open (OQ-182). |
+| C6 | A city's residents, and an uninterrupted stretch, agree in shape with §8. The duration on the page is not 40 minutes, and the code tests "under 30 percent unhappy", not a positive satisfaction streak. The arch's defeat rule was not found (OQ-180). |
+| C7 | A single bit cannot be stockpiled. Whether a new award overwrites an unplaced one depends on something clearing the bit (OQ-181). |
+| C8 | The arch's stage count is 65000 aristocrats on bit 29. The mood award requires bit 11, which is 120 citizens, and that test is on the monument path, not on a defeat path. |
+| C9 | The award is one bit, so it does not by itself count "once, then again". The clear was not found (OQ-181). |
+| C10 | Demolish was not read (OQ-182). 2553 and 2780 cost nothing in the file (§2). |
+| C11 | The four paid monuments are ordinary stage bits (slots 15, 17, 18, 20) via `0x10029610`. The menu's group word matches the stage group (§4). |
+| C12 | Obelisk, well and palace gate are slot 23 (500 aristocrats). Flower bed and the squares are slot 21 (1500 merchants). Hedges and trees are `ZAUN` on the same stage (§6), not bit 30. The FAQ's grouping of them with the reward monument does not match the type data. |
+| C13 | Unchanged from §2. The code does not alter the costs. |
+| C14 | No research id on these types. Who shows status text 249 was not found (OQ-182). |
+| C15 | Palace and cathedral stay outside this award. Their piece counts and the 200 limit were not read. |
+| C16 | Scenario `Create` does not set bit 30. The corpus entries are `INFRA_EVER` scenery, not the reward type 2553. |
+
+## 10. The owner's three clauses
+
+1. **"A decoration a player earns."** The code earns a player stage bit (bit 30, `INFRA_STUFE_DENKMAL`), from a city's mood timer (`0x1002ae4c`). The help and `Denkmal.htm` call the monument a decoration. Place does not `Create` a building for this PRODTYPE (`0x10027b32`). The earned thing in the code is the bit.
+
+2. **"For reaching a threshold in a running game, endless games too."** The threshold is the 40-minute timer plus 300 residents and stage bit 11, inside the ordinary city tick. Nothing in `0x1002a5e0`–`0x1002ae5e` tests a scenario id or an endless flag. A caller of the city tick that skipped step h in endless was not searched; the documented caller is `0x1002d9a0` ([`population.md`](population.md) §3).
+
+3. **"For example the population satisfied for 30 minutes in a row."** The duration is 40 minutes, and the sample that resets it is 30 percent or more of the histogram in mood −2 or −1. A fully satisfied population is not what the compare tests. The 30 minutes in the FAQ is that writer's bracketed guess (§7 C4).
+
+## 11. Open
+
+- OQ-180: who sets bit 29, the triumphal arch, other than the 65000-aristocrat check.
+- OQ-181: what clears bit 30, and whether property `0x21` is saved.
+- OQ-182: the `+0xd0` call, the build-menu test of type `+0x23`, demolition, and any score effect.
+- Flag word `0x0084` on all 55 (§1): bits 2 and 7 are still unnamed.
+- The population ladder after the award (`0x1002ae91` onward, compares of `city+0x654` with 500, 1000, 1500, …) was not identified. It is not the monument bit.
+
+## 12. What the sim needs
+
+For the earned monument, before any placing:
+
+- Per city, the five mood words at `+0x840`, the streak dword `+0x628`, and the 30-second dword `+0x644`. `+0x628` is already a `STAT2` field the reader restores; `+0x644` is not.
+- The house visit of step h: mood and resident count, round robin, about one full pass per 15000 ticks, and the halve.
+- The sample: unhappy percentage ≥ 30 clears the streak; the other clears in §8 are other timers.
+- The award: streak ≥ 1 200 000 ticks, total residents ≥ 300, player stage bit 11 already set, then set player bit 30. Also keep the ordinary stage check, which sets bit 30 and bit 29 at 65000 aristocrats.
+- Do not treat the 34 corpus `DENKMAL` entries as this award. They are `INFRA_EVER` scenery created, in the original, as inert production-list objects (T25 (j)). T31b still chooses scenario-adapter-only creation or tile objects (OQ-166); this pass does not change that.
+- Placing, demolishing, and a second award after the first are OQ-181 and OQ-182. The sim should not invent a 30-minute satisfaction streak.

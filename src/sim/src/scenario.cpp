@@ -195,26 +195,22 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
             out.tiles.set_owner(at++, owner);
         }
     }
-    for (const Spec::TileObjectSpec& o : is.objects) {
-        out.tiles.set_object(o.index, o.object);
-        out.tiles.set_phase(o.index, o.phase);
-    }
-    // Task T33.4 fix-up F5, step 3(a): write the per-tile walk record for every
-    // tile object, in file order, on its full footprint. The object column stays
-    // top-left tile only; the walk code/mask cover the whole rotated footprint.
-    // Buildings are created afterwards (step 3(b)), so a building overwrites
-    // scenery under it. An item dropped as DuplicateObject / ObjectTileTaken
-    // writes nothing (it never reached this loop).
+    // One placement record per tile object, in file order (AnnoWelt 0x10082040
+    // through island slot +0x78). Buildings are created afterwards, so a building
+    // overwrites scenery under it. An item dropped as DuplicateObject /
+    // ObjectTileTaken never reaches this loop. An unknown id is already skipped
+    // by the loader (0x10089619); a type missing from this registry has no
+    // footprint, so it writes nothing.
     for (const Spec::TileObjectSpec& o : is.objects) {
         const BuildingType* ty = types.find(TypeId{o.object});
         if (ty == nullptr) {
-            continue; // unknown object: no walk record (already warned)
+            continue;
         }
         const std::int32_t ox =
             out.tiles.x0() + static_cast<std::int32_t>(o.index % out.tiles.width());
         const std::int32_t oy =
             out.tiles.y0() + static_cast<std::int32_t>(o.index / out.tiles.width());
-        write_walk_record(out.tiles, *ty, ox, oy, o.rotation);
+        static_cast<void>(place_object_record(out.tiles, types, *ty, ox, oy, o.rotation, o.phase));
     }
     out.deposits.reserve(is.deposits.size());
     for (const Spec::DepositSpec& d : is.deposits) {

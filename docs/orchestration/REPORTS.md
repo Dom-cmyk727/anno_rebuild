@@ -3412,3 +3412,24 @@ In `docs/sim/state.md` §5.9, the paragraph "Differences to the original's tile 
   - (d) the road ids and their shapes: NOT MET, no road tile under a walker;
   - (e) nothing of the original in git: MET.
 - **Next:** T30b.7 builds the cases: a producer joined to the market by road (a positive cart trip, and (d)); a sheep farm and a forester without a road; a road at a non-entrance edge.
+
+## T38 — Inventory of CompLogic.dll and CompLogicClassic.dll — 2026-10-26 — status: FINISHED
+
+- Branch: `task/T38-ai-inventory`; worktree: `E:\anno1503-worktrees\anno1503-T38`. Start commit `6ace6c8`. Work commit: `cf07cee` (`docs/re/complogic.md`, OQ-240, OQ-241). The branch head is the commit that adds this section. Not merged, not pushed.
+- Built: `docs/re/complogic.md`. No `src/` change. Scratch sweeps stayed in the worktree `cache/` and are not committed.
+- Read first, as the task asked: `docs/re/annoscene.md` §11 and `docs/re/tick-loop.md` (the 35 slot-`+0xb4` sites).
+- Step 2, PE: both files match the sizes in the task (454 656 and 438 272). Timestamps 2006-07-21 12:07:09 and 12:07:27 UTC. Exports `CompCreateInstance` and `GetAnnoComplogicDllGuid` only. Imports `KERNEL32.dll` only, 59 each. No AnnoWelt, AnnoGame or AnnoFrame import. RTTI signatures `.?AV` / `.?AU` / `.?AT` occur 0 times, matching `analysis/pe_symbols.json`. `COMPPROFIL2` occurs 0 times; the `COMP` key strings are in `.data` from `0x10065340`.
+- Step 3, classes: no RTTI, so the classes are the vtable runs. Factory `0x1003dc50` re-read: types 11, 12=13, 14, 15, 16, and type 17 now followed (`0x10001040`, allocation `0x1da4`). Classic factory `0x1003b160` has the same `type - 11` test; its type-17 jump target is the failure path `0x1003b2f9`. Player vtables are 42 slots in `CompLogic.dll` and 41 in Classic. Slot `+4` is `0x10004550` on every player vtable.
+- Step 4, wiring: the loader `AnnoWelt.dll` `0x1009c630` was re-read. It picks the DLL from property 14 bit 1 and stores the manager at holder `+0x94`. The AI does not call `AnnoFrame.dll` `0x100589a0`. The per-tick caller was not found (OQ-240). The port cannot treat the original as already emitting turn commands.
+- Step 5: 43 `call [reg+0xb4]` instructions in `CompLogic.dll` (39 in Classic). 32 of the 43 mask or divide the result in the next few instructions; 11 do not. The object is untraced (OQ-241). The earlier count of 35 is the same slot with a tighter "followed by a mask" rule.
+- Step 6: the 36-index setter was not re-walked. Slot `+4` was confirmed as `0x10004550` on each player vtable. The case table remains `annoscene.md` §11.5.
+- Step 7: callee closures cover most of `.text` (base alone, 113 regions, about 318 KB of 398 KB), so the split is by unshared vtable slots: computer 20, Venetian 11, type 11 has 10, native 6, pirate 12. Sub-tasks T-AI.2 through T-AI.9 are in `complogic.md` §7, each with start addresses. Settling, building, growth and trade are not separated yet; they sit inside the computer class's 20 slots until a slot is read.
+- Gates: docs only. `git diff --check` on the work commit is clean. `agree.py` not run. No build.
+- Acceptance:
+  - items 2–7 each D or open with a next address: MET (`complogic.md` §1–§7 and §8);
+  - the wiring question answered or narrowed: MET, narrowed (not the command function; the tick caller is OQ-240);
+  - the sub-task split: MET (§7);
+  - nothing of the original in git: MET (addresses and key names already used in `annoscene.md`; no listings, no bytes);
+  - this report: MET.
+- Left open: OQ-240, OQ-241, and the shorter opens in §8 (holder class, type-17 vtable, the 32-slot interfaces, Classic's missing slot, the `user32.dll` string).
+- Time spent / subagents used: inline, no subagents.

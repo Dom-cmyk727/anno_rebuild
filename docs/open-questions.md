@@ -1745,3 +1745,15 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Area:** original harness / transport.
 - **What was seen.** In the T30b.6 Wine run (`docs/re/transport.md` §3.7), every market cart (220) with a non-zero rate stood on its market's or warehouse's edge subcell with rate `0.001`. The start wait of §1.1 runs at `0.01` (`0x10035260`, `0x3c23d70a`). No cart left its building in five game minutes.
 - **How to resolve:** find a store of `0x3a83126f` (0.001f) into figure `+0x40` (the rate) among the figure's action setters (§4, `0x10035260` and its siblings). Then repeat the run with a road-connected producer (T30b.7) and see whether the cart walks after that action.
+
+## OQ-250: Which UDP port the LAN session binds (T39, 2026-10-26)
+- **Status:** open. No default is set in ADR 0003.
+- **Area:** network.
+- **What was checked.** `docs/re/tick-loop.md` §4–§5 records the socket thread, the 100 ms `select` timeout, keep-alives and the turn period. It does not record a port number. No other number was invented for the bind.
+- **How to resolve:** the owner picks `net.port`. Until it is set, the host refuses to open a socket (ADR 0003 §5).
+
+## OQ-251: Root-hash time and snapshot size on S01_07_01 (T39, 2026-10-26)
+- **Status:** open. ADR 0003 stays Proposed until both are measured.
+- **Area:** network / budgets.
+- **What was measured.** The existing `anno-sim-replay.exe` (`E:\anno1503\build\msvc\src\tools\sim_replay\Release\anno-sim-replay.exe`, not rebuilt in the T39 worktree) on `Scenes\0100Kampagne01\S01_07_01.sze` with `--ticks 0`: 24 islands, 662 buildings, 113017 tile objects, hash `4ff82ec96d856be3`, load 47 ms, create 13 ms, run 5 ms. In `src/tools/sim_replay/main.cpp` the create timestamp is taken before `state_hash()` is printed, and the run timestamp is taken before the second hash, so those milliseconds are not the hash. The tool does not call `World::save()`, so the snapshot size was not printed.
+- **How to resolve:** after the same create, time `state_hash()` over several calls and print `save().size()`. Do not treat the 13 ms create time as the hash cost.

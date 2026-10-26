@@ -3928,3 +3928,24 @@ OQ-220 (the three addon pages do not state the six levels), OQ-221 (a money bull
   3. status "Proposed": MET.
   4. report; not merged: MET. Not pushed.
 - Time spent / subagents used: inline, no subagents. One scenario load, no other heavy job.
+
+## T34 stage 1 — float-walk reverse engineering and ADR 0002 — 2026-10-27 — status: FINISHED
+- Branch: `task/T34-float-walk-re` at the commit that adds this section; worktree: `E:\anno1503-worktrees\anno1503-T34`. Content commits: `81921592` (`docs/re/transport.md` §4), `bc361a3c` (`docs/adr/0002-float-walk.md`), `77872170` (OQ-162, OQ-195, OQ-196). Started from `main` at `631e206`. No rebase, no amend, no merge, no push.
+- Built: docs only. §4 of `docs/re/transport.md` (the walk's operations and every rounding point). `docs/adr/0002-float-walk.md`, status Proposed. OQ-162 status set to the model in that ADR. New questions are OQ-195 and OQ-196. OQ-197 through OQ-199 were not used. No `src` change. `docs/orchestration/TASKS.md` was not edited. Scratch under `cache/` is gitignored and not committed.
+- Gates: docs only. `git diff --check` clean on each commit. No msvc build, no ctest, no clang-format, no GCC, no agree.py, no asan. No Wine and no run of the original. No cmake, ctest, or wsl was started.
+- Evidence: the ranges named at the end of `docs/re/transport.md` §4, each read twice. AnnoWelt `0x10034760`–`0x100348a5`, `0x10057ae0`–`0x10057bbe`, `0x10034df0`–`0x1003506a`, `0x1002fde0`–`0x1002ff1b` plus the eight dwords at `0x1002ff20`, `0x100343c0`–`0x10034710`, `0x10034c20`–`0x10034d64`, `0x100348f0`–`0x10034913`, `0x100b5f90`–`0x100b5fb6`, `0x10084e10`–`0x10085050`. AnnoGame `0x1000fb10`–`0x1000fb17`. Startup: `1503Startup.exe` `0x004021b2`, `0x0040330d`, `0x0040583c`–`0x004059c6`, and the AnnoWelt copy `0x100b5f30` / `0x100b6e12`. DirectDraw: AnnoDisplay `0x1000ca09`–`0x1000cafb` and `0x1002c01d`–`0x1002c0fb`. An aligned `fldcw` sweep of the executable sections found none inside the walk ranges. No disassembly listing and no original bytes were committed. Constant bit patterns in §4.2 were read from the image.
+- Reviewers: none.
+- Left open / questions for the orchestrator or owner:
+  - OQ-195. The game sets a 53-bit mantissa and does not pass `DDSCL_FPUSETUP` or `DDSCL_FPUPRESERVE`. Whether `DDRAW.dll` then changes the word is not in the game binary. ADR 0002 uses 53-bit until that is closed. Numbers 195–199 were free on this branch (stage 3's OQ-260, T40's OQ-270, and T31's OQ-180–OQ-182 are other branches). OQ-183 and OQ-184 were left unused.
+  - OQ-196. The height register `0x10084e10` leaves in st0. The empty-tile arm returns +0.0. The occupied-tile arm was not reduced. Trip time does not read it.
+  - OQ-161 stays the producer of the `{direction, count}` pairs (`0x10005890`). This stage decoded the segment record the consumer writes (`0x1002fde0`) and did not re-read the pathfinder.
+  - `docs/re/tick-loop.md` still calls the in-game control word a guess. This stage did not edit that file. §4.1 is the reading.
+  - No pull request. Round ba: GitHub is suspended, and this session was told not to push. Not merged.
+- Acceptance:
+  1. Precision and rounding, with addresses, or open with what was searched: MET. 53-bit mantissa from the startup setter (`0x00405869`, mask `0x30000`, value `0x10000`). Rounding is not changed by that setter. `__ftol` (`0x100b5f9f`) sets toward-zero for one `fistp` and restores the word. The walk ranges contain no `fldcw`. The system DirectDraw is OQ-195.
+  2. The walk's operation sequence, every rounding point named: MET in §4.3–§4.6. The height formula and the pair encoder are the two stops above, not gaps in the walk's own stores.
+  3. ADR 0002 with the test plan: MET. Proposed. Soft-float at 53-bit with the x87 exponent range, binary32 at each `fstp dword`, at least 10^8 operands per operation, a hand-derived trace, `bench_sim` before and after. Native float is rejected.
+  4. Nothing of the original in git: MET. `git status` after the content commits showed only this report still to add. `cache/` is ignored.
+  5. Report, and not merged: MET. No PR, for the reason above.
+- Time spent / subagents used: inline, no subagents. Documents only, so no heavy job was queued behind T35.
+- Stage 2 was not started.

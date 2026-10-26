@@ -2,7 +2,27 @@
 
 **Who writes this file:** the orchestrator session (Claude Fable, the owner's "main" session). **Who reads it:** the executor session (Claude Sonnet with subagents). The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-Last update: 2026-10-26 bn — **the LAN endless lane opens** (§3 "The LAN endless lane": T36 game setup, T37 world-generator spec, T38 AI inventory, T39 network ADR). The main executor finishes **T33.5 stage 2 fix-up F1** first; T30b.7, then P1, for the orchestrator (round bn below).
+Last update: 2026-10-26 bo — **five branches merged locally** (T33.5 stage 2 + F1, T36, T37, T38, T39). Next: **T33.5 stage 3**, **T40** (T-AI.2), **T41** (the ADR budgets) and **T42** (a flaky render test); T30b.7, then P1, for the orchestrator (round bo below).
+
+**Round bo (2026-10-26, the regular orchestrator): review and local merges.**
+- **T33.5 stage 2 + F1, merged as `c290945`** (`task/T33-5b-tile-record` at `d569911`):
+  - read against the original: the block order, the anchor, the overlay skip, the second loop over skipped tiles, the clear arm from any tile through the stored offset;
+  - the orchestrator's own run of the branch: 1007 of 1008 tests passed. The one failure was `anno_render_tests.a flow that is not ready …`, which passed alone three times; the branch does not touch `src/render`, so it is T42.
+  - **Follow-up, stage 3:** `remove_building` clears from the origin tile, and under the overlay skip that tile can hold a mountain's id.
+- **T36, merged as `46a7ba4`:** `GameSetup` (enum ranges checked on read, limits with reasons, a bounded seat read, not in the world state), twelve presets with evidence and no copied text, the rules presets table with its owner questions. OQ-220..222.
+- **T37, merged as `3d1d0e4`:** 465 templates (429 eligible), the twelve worlds measured, the spec, seven owner questions. **New fact:** in the original's endless worlds every competing player starts on its own ship at its own position, 39–621 tiles apart, **not at one shared point**. The owner's "together, as in the original" start mode needs the owner's word (spec §15 question 1).
+- **T38, merged as `de7effa`.** Re-disassembled by the orchestrator:
+  - both modules export only `CompCreateInstance` and `GetAnnoComplogicDllGuid` and import 59 `KERNEL32` functions;
+  - both factories open with the `type − 11` test (`0x1003dc50`, `0x1003b160`);
+  - `AnnoWelt` `0x1009c630` reads property 14 (`push 0xe`, slot `+0x74`), tests bit 2 to choose the module, and keeps the manager at holder `+0x94`.
+
+  OQ-240, OQ-241; the split T-AI.2..9.
+- **T39, merged as `9ac3268`:** ADR 0003 **Proposed**. Its hash-cost and snapshot-size budgets are T41 (OQ-251); the UDP port is the owner's (OQ-250).
+- **Gates on the merged `main` (`9ac3268`), run by the orchestrator:**
+  - MSVC build;
+  - ctest **1013/1013** with the game folder and **1013/1013** without it (2 replay cases skipped);
+  - `sim_stream.py --check`: goldens agree; `lint_sim: ok`; `test_orig.py` OK.
+- **New tasks:** T33.5 stage 3 (under T33.5), T40, T41 and T42 (in the lane section). OQ ranges: T33.5 stage 3 from OQ-260, T40 from OQ-270, T41 from OQ-280.
 
 **Round bn (2026-10-26, the regular orchestrator):** the owner decided D1–D11 of `docs/plan/lan-endless.md` with the co-developer (plan §7, PLAN §0.7). From them, four tasks start the lane; their full steps are in §3, "The LAN endless lane".
 - **T36 (W1):** `GameSetup`, the two rules presets table, the original's twelve endless presets recorded. `src/sim`, new files only.
@@ -549,6 +569,78 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   2. the open choices listed for the owner;
   3. status "Proposed";
   4. report; not merged.
+
+**T36, T37, T38 and T39 are `DONE`:** merged locally as `46a7ba4`, `3d1d0e4`, `de7effa` and `9ac3268`, round bo. ADR 0003 stays **Proposed** until T41's measurements and the owner's approval.
+
+#### T40 — W7 / T-AI.2: the AI's per-tick entry and how it changes the world (OQ-240) · `READY` (round bo) · `PARALLEL-OK` (docs only) · branch `task/T40-ai-tick` · worktree `E:\anno1503-worktrees\anno1503-T40` · new OQs from OQ-270
+- **Why:** this decides how the original AI is wired into the port (plan W7 step 1.2). If the AI changes the world only through the functions the player's commands also reach, the port can emit commands. If not, the port must make the same deterministic calls on every peer.
+- **Read first:** `docs/re/complogic.md` (T38; §7's table names this task), `docs/re/annoscene.md` §11.4–§11.6, and `docs/re/tick-loop.md` (`Advance` `0x100ae040`, the open question "host only or every client").
+- **Steps:**
+  1. **Set up:** `git -C E:\anno1503 worktree add E:/anno1503-worktrees/anno1503-T40 -b task/T40-ai-tick main`. Tools: `E:\anno1503\tools\disasm.py`, `E:\anno1503\tools\xref.py --reloc`. Modules: `E:\anno1503\game\app\AnnoWelt.dll`, `E:\anno1503\game\app\CompLogic.dll`, `E:\anno1503\game\app\CompLogicClassic.dll`.
+  2. **The tick:** from `AnnoWelt.dll` `0x1009c740`, then the world's `Advance` `0x100ae040`, find where and how often each computer player's AI object is called. Give `this` traced to its vtable, the slot, the arguments, and the condition around the call (property 9 "AI not loaded", the multiplayer flag, the host check).
+  3. **What the AI is handed:** the interface objects (the manager at holder `+0x94`; what the AI receives at creation), each traced to its vtable in AnnoWelt, AnnoGame or AnnoFrame.
+  4. **Every way the AI changes the world.** List the interface slots the AI calls on the objects of step 3, resolved to their targets. Mark each one whether it is also reached by the player's command path:
+     - AnnoFrame `0x100589a0` modes 2, 6, 7, 8 and 9, and `0x10058e90`;
+     - the city slots `+0xa0` Build `0x100276a0`, `+0xac` Place `0x100279a0`, `+0xb4` RemoveAt `0x10028fd0`, `+0xc0` `0x1002c830`.
+
+     Answer OQ-240 with that table.
+  5. **Host only or everywhere:** whether anything around the AI's tick depends on the machine (multiplayer role, wall time, frame rate, UI state). Answer the `tick-loop.md` open question, or narrow it with the next address.
+  6. **Docs:** `docs/re/complogic.md` §2 (the wiring) and §8 (opens); OQ-240 status; REPORTS "T40"; not merged.
+- **Acceptance:**
+  1. the call chain of step 2 D, with addresses;
+  2. the world-change table of step 4, every row D or open with the next address;
+  3. step 5 answered or narrowed;
+  4. nothing of the original in git;
+  5. report.
+
+#### T41 — W3: the budgets ADR 0003 waits for (OQ-251) · `READY` (round bo) · `PARALLEL-OK` (`src/tools/sim_replay` only) · branch `task/T41-net-budgets` · worktree `E:\anno1503-worktrees\anno1503-T41` · new OQs from OQ-280
+- **Steps:**
+  1. **Set up:** `git -C E:\anno1503 worktree add E:/anno1503-worktrees/anno1503-T41 -b task/T41-net-budgets main`; build with the `msvc` preset.
+  2. **A `measure` command** in `anno-sim-replay` (`E:\anno1503-worktrees\anno1503-T41\src\tools\sim_replay\main.cpp`): `anno-sim-replay measure <scenario> [--ticks N] [--reps R]`.
+     - It loads and creates the world, advances N ticks (default 30 000), then prints:
+       - the wall time of `state_hash()` over R repetitions (default 50: min, median, p95, max in µs), first with every chunk clean, then after one tile write on each island (the incremental case);
+       - the size of `save()` in bytes;
+       - the tile and chunk counts.
+     - Timing lives in the tool only: no clock enters `src/sim`.
+     - A test in the tool's test list runs it on a synthetic world with R = 2 and checks that the output names every field.
+  3. **Run it** (`ANNO1503_GAME_DIR=E:\anno1503\game\app`) on `E:\anno1503\game\app\Scenes\0100Kampagne01\S01_07_01.sze`, `E:\anno1503\game\app\Scenes\0011SingleEndlosAddon\endless02.sze` (the largest file) and `E:\anno1503\game\app\Scenes\0010SingleEndlos\03_1024_med_256.sze`. Paste the outputs in REPORTS.
+  4. **The ADR:** fill §13 of `E:\anno1503-worktrees\anno1503-T41\docs\adr\0003-network-transport.md`:
+     - the hash-check cost per check and per second at the ADR's cadence;
+     - the snapshot size and its transfer time at 100 Mbit/s and 1 Gbit/s;
+     - whether the cadence holds.
+
+     Close OQ-251 or narrow it. The status stays "Proposed" (the owner approves).
+  5. **Gates:** full ctest with and without the game folder, `tools/check_unix_warnings.sh`, clang-format 23.1.3. REPORTS "T41"; not merged.
+- **Acceptance:**
+  1. the command with its test;
+  2. the three measured outputs;
+  3. ADR §13 filled;
+  4. gates green;
+  5. report.
+
+#### T42 — The render test that fails under load · `READY` (round bo) · `PARALLEL-OK` (`src/render/tests` only) · branch `task/T42-flow-test` · worktree `E:\anno1503-worktrees\anno1503-T42`
+- **Why:** in the round-bo gate run, `anno_render_tests.a flow that is not ready draws the legacy look and is rebuilt later, never waited for (game files)` failed once at `ctest -j 16` with the game folder, and passed alone three times. The branch under test did not touch `src/render`. A test that depends on timing is a red gate waiting to happen.
+- **Steps:**
+  1. **Set up:** `git -C E:\anno1503 worktree add E:/anno1503-worktrees/anno1503-T42 -b task/T42-flow-test main`; build.
+  2. Read the test (find it with `git -C E:\anno1503-worktrees\anno1503-T42 grep -n "flow that is not ready"`) and the code it drives. Name the timing assumption: a wall-clock wait, a race with the background builder, or a fixed sleep.
+  3. **Reproduce:** run the whole suite at `-j 16` with `ANNO_TEST_THREADS=16` five times, or that test 50 times while a corpus test runs beside it. Report the failure rate and the failing assertion.
+  4. **Make it deterministic:** a completion signal the test waits on, or a builder the test drives step by step. Keep the behaviour it checks: the legacy look first, the rebuild later, never a wait on the window thread. No longer sleep, and no retry loop.
+  5. Run step 3 again: 0 failures. Gates; REPORTS "T42"; not merged.
+- **Acceptance:**
+  1. the cause named;
+  2. the test deterministic, with the before/after failure counts;
+  3. gates green;
+  4. report.
+
+**Order (round bo):**
+- **The main executor:** T33.5 stage 3 → T41 → T42.
+- **A second executor:** T40, then T-AI.3 (the 43 draws) when the orchestrator writes it.
+
+**Waiting for the owner:**
+- ADR 0003's approval, after T41;
+- OQ-250, the UDP port;
+- the seven questions of `docs/sim/world-scaling.md` §15;
+- the feel questions of `docs/sim/rules-presets.md`.
 
 **Order (2026-10-24 v, the sim track; it overrides the older orders below for the sim. The render track (T11 `OWNER-CHECK`, T14 stage 2, T5/T6) and PR #16 are unchanged):**
 1. **The fix-ups, in parallel:** the T27 fix-up (the executor itself, last bullet of T27) and the T26 fix-up (one subagent, last bullet of T26). Each pushes to its PR, adds a "Fix-up (round v)" paragraph to its REPORTS section and stops. Then the orchestrator merges **#39, then #40**.
@@ -1290,6 +1382,34 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
         1. §3.4.17 and OQ-203 corrected, with every address confirmed;
         2. the anchor column and the block-ordered writer, with unit cases: a 3×3 object across a block corner has four anchors; an overlay over another overlay's anchor tile is skipped there and written elsewhere; an overlay over a non-overlay object takes its tiles;
         3. stage 2 acceptance items 2–9.
+  - **Stage 2 and F1 are `DONE`:** merged locally as `c290945`, round bo.
+  - **Stage 3 — removal from the tile the original passes (`READY`, round bo; `src/sim`; the main executor) · branch `task/T33-5c-remove-tile` from local `main` at the round-bo board commit · worktree `E:\anno1503-worktrees\anno1503-T33-5c` · new OQs from OQ-260.**
+    - **Why:** `remove_building` (`E:\anno1503\src\sim\src\create.cpp`) calls `clear_object_record` at the building's **origin** tile.
+      - Mines and quarries are overlay types (flag `0x10`) placed over mountains (`FELSEN`, also overlay). Where a mountain's anchor tile lies under a mine's footprint, the overlay skip leaves the mountain's id there.
+      - If that tile is the mine's origin, the clear reads the mountain's id and clears the mountain. The mine's ids then stay on tiles without a building.
+      - The original's `RemoveAt` (`0x10028fd0`) passes the tile its building lookup used (`0x100292d8..0x100292ef`), not necessarily the origin.
+    - **Steps:**
+      1. **RE (D or open):**
+         - the building lookup `[[city + 0x1c]] + 0x94` that `RemoveAt` calls at `0x10028fed`, on the in-game island vtable `0x100cac2c` (`python E:\anno1503\tools\disasm.py E:\anno1503\game\app\AnnoWelt.dll <va>`): does it find the building through the tile's id, or through the city's building lists or rectangles?
+         - which (x, y) `RemoveAt` hands to island slot `+0x7c` (the stack slots read at `0x100292d8` and `0x100292e7`, traced to `RemoveAt`'s arguments);
+         - the tile the demolish command (AnnoFrame `0x10058e90` mode 6, `0x10058f7a`) and the city removal (`0x10058f80`, D9) pass.
+
+         Write it in `docs/re/transport.md` §3.4.17 (removal) and OQ-201.
+      2. **Measure:** with the game folder, over the 50 corpus files after load, count the buildings with at least one footprint tile that does not hold their own id (the overlay skip under buildings), and those whose **origin** tile does not. Per file, in REPORTS.
+      3. **Fix, as step 1 found:**
+         - If the original clears from a tile that holds the building's id, `remove_building` and `demolish` pass such a tile: the named tile when it holds the id, else the first footprint tile in the writer's order that does. That is the faithful rule and needs no option.
+         - If the original can clear another object (the mountain), that is the original's bug. Then add `Rules::removal_clear_tile` (default: the original's behaviour; the enhanced value: a tile holding the building's id), a row in `docs/sim/rules-presets.md`, and the validation as the other `Rules` options.
+      4. **Tests:**
+         - a synthetic mine-like overlay building over a mountain-like overlay object whose anchor tile is the building's origin: after removal no tile holds the building's id, and the mountain is as the rule of step 3 says;
+         - the same with the anchor elsewhere;
+         - a mutation (clear from the origin regardless) fails.
+      5. **Gates** (§1 item 4, round ba); goldens and corpus only if they move (say why); REPORTS "T33.5 stage 3"; not merged.
+    - **Acceptance:**
+      1. step 1 D or open with next addresses;
+      2. the step 2 counts;
+      3. the fix with its tests and the mutation;
+      4. gates green with totals;
+      5. report.
 
 ### T34 — The float walk: the original's x87 walk reproduced bit-exactly (OQ-162; owner decision 2026-10-24: "float number walk") · stage 1 `READY after T31` (round v; **one subagent**; RE and ADR, docs only) · stage 2 `LATER` (after T33 and the approval of ADR 0002) · stage 1 `PARALLEL-OK` (docs only: `docs/re/transport.md` §4, a new `docs/adr/0002-float-walk.md`, `open-questions.md` OQ-162 and new ones) · branch `task/T34-float-walk-re` from `main` · worktree `C:\Users\altin\anno1503-T34` · new OQs from **OQ-195** (to 199)
 - **Why:** the owner chose the float walk, so trips take the original's time. The ground rule stays (CLAUDE.md, `lint_sim.py`): `src/sim` computes in integers and no float enters hashed state. So the walk's floats become their bit patterns in the state, and the arithmetic becomes an integer emulation of exactly what the x87 did: the original's result on every platform. That needs the precision mode and every rounding point, or the "float" would not be the original's float.

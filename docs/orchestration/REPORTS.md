@@ -3911,3 +3911,20 @@ OQ-220 (the three addon pages do not state the six levels), OQ-221 (a money bull
   - this report: MET.
 - Left open: OQ-240, OQ-241, and the shorter opens in §8 (holder class, type-17 vtable, the 32-slot interfaces, Classic's missing slot, the `user32.dll` string).
 - Time spent / subagents used: inline, no subagents.
+
+## T39 — W3: ADR 0003, the network transport — 2026-10-26 — status: FINISHED
+- Branch: task/T39-net-adr at 5259ede (the ADR; the report commit is the branch head); worktree: E:\anno1503-worktrees\anno1503-T39
+- Built: `docs/adr/0003-network-transport.md` (status Proposed, fourteen sections); OQ-250 and OQ-251 in `docs/open-questions.md`. No `src` change. Scratch `cache/t39-scenario.txt` is gitignored and not committed.
+- Gates: docs only. `git diff --check` clean on the ADR commit. No build, no ctest, no clang-format, no GCC, no agree.py (no tool and no dump command touched), no asan.
+- Evidence: `anno-sim-replay scenario Scenes\0100Kampagne01\S01_07_01.sze --ticks 0` with `ANNO1503_GAME_DIR=E:\anno1503\game\app`, binary `E:\anno1503\build\msvc\src\tools\sim_replay\Release\anno-sim-replay.exe` (the main checkout's existing build, not rebuilt here; the worktree is at the same start commit as `main`, `6ace6c8`). First lines of the counts: islands 24, links 0, players 8, cities 14, buildings 662, tile_objects 113017, deposits 0. `hash after create 4ff82ec96d856be3`. `time load 47 ms, create 13 ms, run 5 ms`. The create timestamp in `src/tools/sim_replay/main.cpp` is taken before `state_hash()` is printed, and the run timestamp before the second hash, so those times are not the root-hash cost. The tool does not call `World::save()`.
+- Reviewers: none.
+- Left open / questions for the orchestrator or owner:
+  - OQ-250: the UDP port. `tick-loop.md` §4–§5 has no port. No default was set.
+  - OQ-251: wall time of one `state_hash()` on `S01_07_01`, and `save().size()`. The ADR stays Proposed until both are measured. The 13 ms create time must not be read as the hash cost.
+  - Steady-state empty-turn traffic is calculated in the ADR §13 (69 bytes per empty turn datagram, 3450 bytes/s host outbound at 6 peers). The snapshot burst is OQ-251.
+- Acceptance:
+  1. all fourteen sections, every number with a reason or a measurement: MET. Defaults cite the plan or `tick-loop.md`. The two unmeasured budgets are named and not given a number (OQ-251).
+  2. the open choices listed for the owner: MET (OQ-250, OQ-251, and the "Open choices" section).
+  3. status "Proposed": MET.
+  4. report; not merged: MET. Not pushed.
+- Time spent / subagents used: inline, no subagents. One scenario load, no other heavy job.

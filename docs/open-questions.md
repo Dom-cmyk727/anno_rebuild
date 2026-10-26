@@ -1793,3 +1793,15 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Area:** simulation / AI / determinism.
 - **What was read.** 43 `call [reg+0xb4]` instructions in `CompLogic.dll`. 32 mask or divide the result immediately. 11 do not. World slot `+0xb4` is the world PRNG (`docs/re/tick-loop.md` §3). None of the 43 regions is a slot of the player vtables, so the class is unread too.
 - **How to resolve:** at `0x100011d3`, `0x10030fbb` and one unmasked site (`0x1000e809`), the instruction that loads the call's register, walked back to a field. A world pointer there makes the masked sites the world draw. The same walk on `0x1002e3f3` decides the unmasked group.
+
+## OQ-250: Which UDP port the LAN session binds (T39, 2026-10-26)
+- **Status:** open. No default is set in ADR 0003.
+- **Area:** network.
+- **What was checked.** `docs/re/tick-loop.md` §4–§5 records the socket thread, the 100 ms `select` timeout, keep-alives and the turn period. It does not record a port number. No other number was invented for the bind.
+- **How to resolve:** the owner picks `net.port`. Until it is set, the host refuses to open a socket (ADR 0003 §5).
+
+## OQ-251: Root-hash time and snapshot size on S01_07_01 (T39, 2026-10-26)
+- **Status:** open. ADR 0003 stays Proposed until both are measured.
+- **Area:** network / budgets.
+- **What was measured.** The existing `anno-sim-replay.exe` (`E:\anno1503\build\msvc\src\tools\sim_replay\Release\anno-sim-replay.exe`, not rebuilt in the T39 worktree) on `Scenes\0100Kampagne01\S01_07_01.sze` with `--ticks 0`: 24 islands, 662 buildings, 113017 tile objects, hash `4ff82ec96d856be3`, load 47 ms, create 13 ms, run 5 ms. In `src/tools/sim_replay/main.cpp` the create timestamp is taken before `state_hash()` is printed, and the run timestamp is taken before the second hash, so those milliseconds are not the hash. The tool does not call `World::save()`, so the snapshot size was not printed.
+- **How to resolve:** after the same create, time `state_hash()` over several calls and print `save().size()`. Do not treat the 13 ms create time as the hash cost.

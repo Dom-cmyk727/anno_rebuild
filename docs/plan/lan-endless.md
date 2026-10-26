@@ -130,6 +130,8 @@ Each item is recorded in `docs/PLAN.md` §0.7; the owner confirmed them on 2026-
 Each workstream has stages. A stage becomes one or more board tasks (`docs/orchestration/TASKS.md`), each with steps, files, acceptance and gates, as for T33. The sizes are relative: S (days), M (one to two weeks), L (several weeks), XL (more).
 
 ### W1. Game setup and the enhanced preset (S) — the shared contract
+
+**Status (T36, 2026-10-26):** `GameSetup`, the two presets table and the twelve endless files are recorded. Not in the save or the handshake yet.
 1. **`GameSetup`** (sim data, hashed, part of the handshake and the save):
    - the seats: kind, name, colour index into the colour table, team (unused in v1);
    - the world options: size by player count, island size, island quantity;

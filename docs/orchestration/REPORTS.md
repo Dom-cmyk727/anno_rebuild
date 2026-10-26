@@ -3809,3 +3809,46 @@ Stage 2:
 - `853cbf3` docs(re): the overlay path writes the id, and bit 7 is the block anchor
 
 The branch is `task/T33-5b-tile-record`. The commit of this section is the branch head. Nothing in `E:\anno1503` was edited. Not merged, not pushed.
+
+## T36 — Game setup, the two presets, the twelve endless files — 2026-10-26 — status: DONE
+
+- **Branch:** `task/T36-game-setup` from local `main` at `6ace6c8`. Worktree `E:\anno1503-worktrees\anno1503-T36`. Local only. Not merged, not pushed.
+- **`kStateHashVersion`:** unchanged. `GameSetup` is not in `World` and not in the state stream.
+
+### Steps
+
+1. **Set up.** `git worktree add` of this path on `task/T36-game-setup` at `6ace6c8`. `cmake --preset msvc` and `cmake --build --preset msvc` under the heavy-job lock: exit 0 (VS 18 2026, MSVC 19.51).
+2. **The twelve files.** Nine in `Scenes/0010SingleEndlos`, three in `Scenes/0011SingleEndlosAddon`. `anno-dump sze` (these sources) gives edition, `SPIELER` count and `INSELLNK` count. World size, `HEAD`, party kind, `HEAD+0x04` money, `LIMITS`, climates, area and city `WARE` are a field read of the layouts in `sze.md`, `settings.hpp`, `annoscene.md` §3 and §6, `insel.md`. No sentence and no byte copied. Result: `docs/formats/endless-presets.md`, one row per file. The description match is the `AUFTRAGTEXT` file name. Two page titles are stale (`00`'s title names Endlos01, `91005`'s title still says easy); the match does not use the title. Unclear points are OQ-220, OQ-221 and OQ-222, not guesses in the table.
+3. **The two presets.** `docs/sim/rules-presets.md`: every `Rules` field and water style and river flow. Feel rows are marked and not decided. `events_max_dispatch`, `free_build_cheat` and `island_candidate_order` are the same on both presets (a cap, a cheat, and OQ-150 already decided). The gaps section is every `original-issues.md` row whose implication is tagged FIX or RULE and which is not a `Rules` field.
+4. **`GameSetup`.** `game_setup.hpp` / `game_setup.cpp`. Integer and enum fields only. `StartMoney` is the four bullets the base pages use (little, sufficient, lots, more than enough). Step 2 did find levels, so the step was not stopped; a bullet is not one amount, which is OQ-221 (the other option, one enumerator per amount, was not taken). `validate` rejects no seats, too many seats, a duplicate colour, a colour past `colour_count`, a name past `max_name_bytes`, and an enumerator outside its range. `fields` covers `Seat`, `WorldOptions`, `GameSetup` and `SetupLimits`. `digest` is `HashArchive` in raw mode. Not in the save.
+5. **Tests.** `game_setup_test.cpp`. Round trip; each leaf field changes the digest; every rejection; `max_seats = 8` accepts 8; a seat count of 1000000 with no further bytes is refused and the vector stays empty. MSVC: 5 cases, 39 assertions, passed.
+6. **Docs and gates.** W1 status line in `docs/plan/lan-endless.md`. Gates below.
+
+### Mutation
+
+`validate`'s `seats.empty()` check was temporarily `seats.size() > 1000000`. The case `game setup validate rejects each illegal setup` failed: the CHECK of `"seats: none"` threw `bad variant access` (the empty setup was accepted; the Release build has asserts off). Reverted. The gates are of the reverted code.
+
+### Gates
+
+- MSVC `cmake --build --preset msvc`: warning-free, exit 0. `game_setup.cpp` and `game_setup_test.cpp` compiled with no warning line.
+- ctest `--preset msvc -j 16`, `ANNO_TEST_THREADS=16`, with `ANNO1503_GAME_DIR=E:\anno1503\game\app`: `100% tests passed out of 1004`, 0 failed, no skipped test. Real time 424.95 s.
+- The same without `ANNO1503_GAME_DIR`: `100% tests passed out of 1004`, 0 failed. Two tests did not run: `anno_sim_replay_scenario_single_01`, `anno_sim_replay_scenario_endless_03_links`. Real time 36.38 s.
+- clang-format 23.1.3 `--dry-run --Werror` on the three files this task added: clean. The same over all 267 `src` `.cpp`/`.hpp` files also reports pre-existing violations in `transport.hpp`, `replay.cpp` and `scenario_test.cpp`, which this branch does not modify.
+- `tools/check_unix_warnings.sh` in WSL: GCC 13.3.0, 160 files, clean; Clang 18.1.3, 160 files, clean; Clang without GPU, 9 files, clean. Exit 0.
+- GCC 13.3.0 `-O3 -DNDEBUG -Werror` with the CI warning flags, `anno_sim_tests` linked and run (`ubsan_probe.cpp` left out; it has its own `main` and is not in the CMake test binary). Without the game dir: 640 passed, 3121381 assertions. With the game dir: 640 passed, 3138520 assertions.
+- ASan/UBSan: `clang++` from `~/clang18` does not link (`libclang_rt.asan-x86_64.a` and the static and cxx archives are absent). The sim tests were compiled and run with g++ 13.3.0 at `-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all`. Without the game dir: 640 passed, 2626276 assertions. With the game dir: 640 passed, 2643415 assertions.
+- `python tools/lint_sim.py`: `lint_sim: ok`.
+- `tools/agree.py`: not applicable (no `anno-dump` change).
+
+### Acceptance
+
+1. `docs/formats/endless-presets.md`, twelve rows, every value with the file and how it was read: MET.
+2. `docs/sim/rules-presets.md`, every `Rules` field and the two render options, the gaps, the owner questions: MET. Feel rows are not decided.
+3. `GameSetup` validates, has `fields` and `digest`, and the tests above pass: MET.
+4. Gates green, totals above: MET.
+5. Nothing of the original in git: MET (`git status` has no `game/` path).
+6. This report: MET.
+
+### Open questions
+
+OQ-220 (the three addon pages do not state the six levels), OQ-221 (a money bullet is not one human amount; `StartMoney` uses the four bullets), OQ-222 (pirate `COMP TYP` runs 2..7 and is not the three description words; `PirateLevel` uses the three words). No disassembly was required: the layouts used are the ones already specified.

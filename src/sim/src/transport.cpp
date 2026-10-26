@@ -475,8 +475,8 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
     std::vector<WalkPoint> goals;
     for (std::size_t k = 0; k < candidates.size(); ++k) {
         for (const WalkPoint& p : entrance_points(*candidates[k].b, *candidates[k].t)) {
-            const auto duplicate = std::find_if(
-                mapped_goals.begin(), mapped_goals.end(), [&](const Goal& g) { return g.point == p; });
+            const auto duplicate = std::find_if(mapped_goals.begin(), mapped_goals.end(),
+                                                [&](const Goal& g) { return g.point == p; });
             if (duplicate == mapped_goals.end()) {
                 mapped_goals.push_back(Goal{p, k});
                 goals.push_back(p);
@@ -570,9 +570,11 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
         stats->start_outside_rect += found.start_outside_rect;
     }
     if (!found.complete) {
-        // Deviation: the scenario adapter discarded a retained tile-only object's
-        // placement rotation/offsets (T33.2), so an exact cell cannot be built. Do not
-        // choose a route from incomplete geometry.
+        // Deviation (formerly the T33.2 tile-object stop): the per-tile walk record
+        // now covers every tile of every placed object's footprint
+        // (walk_cells.hpp write_walk_record, transport.md §3.4.13), so
+        // WalkCells::complete_ is always true. Kept for API compatibility; nothing
+        // sets it false any more.
         if (stats != nullptr) {
             ++stats->incomplete;
         }
@@ -611,10 +613,9 @@ std::optional<std::vector<TileXY>> path_home(const Island& island, const TypeReg
     WalkCells cells(island, types, *tables, area.square(), 4, area);
     const std::array starts{walk_point(from)};
     const std::vector<WalkPoint> goals = entrance_points(home, home_type);
-    const SearchResult found = search(cells, *tables, layer, starts, goals,
-                                      [](const SearchVisit&) {
-                                          return SearchDecision{GoalAction::Stop, true};
-                                      });
+    const SearchResult found = search(cells, *tables, layer, starts, goals, [](const SearchVisit&) {
+        return SearchDecision{GoalAction::Stop, true};
+    });
     if (!found.complete || !found.selected || found.route.empty()) {
         return std::nullopt;
     }
@@ -885,14 +886,8 @@ bool transport_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
         ticks = static_cast<std::uint16_t>(static_cast<std::uint16_t>(t) - fig.stamp);
         fig.stamp = static_cast<std::uint16_t>(t);
     }
-    Job j{ctx,
-          world,
-          fig,
-          ft,
-          ft->layer,
-          home,
-          home_type,
-          home != nullptr ? city_of(world, home->id) : std::nullopt};
+    Job j{ctx,       world, fig,       ft,
+          ft->layer, home,  home_type, home != nullptr ? city_of(world, home->id) : std::nullopt};
     // Every pass waits for time or moves to a later step (Start, ToSource, Load, ToHome,
     // Done), so a call ends after at most five passes.
     for (int pass = 0; pass < 8; ++pass) {

@@ -33,6 +33,16 @@ struct WalkCell {
 [[nodiscard]] std::uint16_t walk_code(const BuildingType&, std::uint32_t rotation);
 [[nodiscard]] std::uint16_t walk_mask(const BuildingType&, std::uint32_t dx, std::uint32_t dy,
                                       std::uint32_t rotation);
+/// The original's per-tile walk-record writer (transport.md §3.4.13). For every
+/// tile (dx, dy) of footprint(type, rotation) sets walk_code =
+/// walk_code(type, rotation) and walk_mask = walk_mask(type, dx, dy, rotation).
+/// A type whose HEAD flags word has bit 0x10 (BuildingType::flags_word, type
+/// +0x12; AnnoWelt placement test 0x10082184..0x1008218f) ORs the sampled mask
+/// into the old one (0x1008239d..0x100823b0). Every other type replaces the
+/// mask (0x100825c7..0x100825d9). The code is always replaced
+/// (0x100825af..0x100825b7). Tiles outside the layer are skipped.
+void write_walk_record(TileLayer&, const BuildingType&, std::int32_t x0, std::int32_t y0,
+                       std::uint32_t rotation);
 [[nodiscard]] WalkRecord walk_record(const Island&, const TypeRegistry&, TileXY);
 /// Per-search scratch; source island, types and tables must outlive it and stay unchanged.
 /// Coordinates are world tiles; rectangle clipped to island (0x10002b80).

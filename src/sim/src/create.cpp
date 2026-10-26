@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <anno/sim/create.hpp>
+#include <anno/sim/walk_cells.hpp>
 
 namespace anno::sim {
 
@@ -221,7 +222,7 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     }
     island.next_serial = serial + 1;
 
-    // 8. The derived indexes, and the footprint tiles' object (stand-in, O-5).
+    // 8. The derived indexes, and the footprint tiles' object and walk record.
     const BuildingKey key{CityRef{island.index, city.number}, *list, slot};
     island.cache.by_id[make_building_id(island.index, serial)] = key;
     fill_box(grid_of(island.cache, cfg, island.tiles, *list), tiles.width(), box, serial);
@@ -231,6 +232,13 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
             island.tiles.set_object(static_cast<std::uint64_t>(y * tiles.width() + x), ty->id.v);
         }
     }
+    // Task T33.4 fix-up F5, step 3(b): write the per-tile walk record over the
+    // building's full footprint at its rotation. Buildings are created after the
+    // tile objects (scenario.cpp step 3(a)), so a building overwrites scenery
+    // under it; this order is documented in docs/sim/state.md §5.9 "As implemented".
+    // `b` was moved into the slot; the placed copy still holds x, y and rotation.
+    const Building& placed = *target.slots[slot];
+    write_walk_record(island.tiles, *ty, placed.x, placed.y, placed.rotation);
     // 9. The shared tail (residents, running-cost statistics): no stored state yet
     // (O-9, O-23).
     return key;
@@ -272,7 +280,10 @@ bool remove_building(const SimConfig& cfg, const TypeRegistry& types, PlayerTabl
         }
         for (std::int64_t y = box.y0; y < box.y1; ++y) {
             for (std::int64_t x = box.x0; x < box.x1; ++x) {
-                island.tiles.set_object(static_cast<std::uint64_t>(y * tiles.width() + x), 0);
+                const std::uint64_t idx = static_cast<std::uint64_t>(y * tiles.width() + x);
+                island.tiles.set_object(idx, 0);
+                island.tiles.set_walk_code(idx, 2);
+                island.tiles.set_walk_mask(idx, 0);
             }
         }
     }

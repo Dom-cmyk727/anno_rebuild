@@ -1152,6 +1152,7 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
             ScenarioSpec::TileObjectSpec t;
             t.index = tile;
             t.object = o.anlage;
+            t.rotation = static_cast<std::uint8_t>(o.rotation);
             t.phase = o.phase(); // low 6 bits of state (D AnnoWelt 0x1007aa40)
             is.objects.push_back(t);
         }

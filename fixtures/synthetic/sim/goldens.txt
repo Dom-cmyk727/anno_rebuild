@@ -83,13 +83,13 @@
 # players), 7ff0bfae5f95af02, 1d998748f6990f83 (S5 islands), 9c0e107e4f9e93e7 and
 # cf98c83f259a74f9 (S6 G1). The values come from tools/sim_stream.py, which transcribes
 # the new scopes and the monopoly body independently of the C++ code.
-g0_step1 S1 112 a654fffef07fc12f
-g0_step100 S1 112 9d561364a3e76cec
-g0_step1000 S1 112 d57d62696f8e19c6
-g1_players_step100 S4 112 30577b74bfbbf369
-g1_players_step700 S4 112 333bae269f506a4c
-s5_islands_create S5 112 f985e6bd6012ba65
-s5_islands_step100 S5 112 8d1f2f3d16020d12
+g0_step1 S1 113 16923244163cfeed
+g0_step100 S1 113 476d5a002acfa45e
+g0_step1000 S1 113 d69e5c107b553c94
+g1_players_step100 S4 113 89036f407b7f04b6
+g1_players_step700 S4 113 d8bd150cee2ddeff
+s5_islands_create S5 113 5c5bb9f7448a1d61
+s5_islands_step100 S5 113 ecce20a563f47e12
 #
 # S6 G1 scenario (synthetic::g1_scenario: one player, island 0 with city 0 holding
 # the weaver with 5 t of wool at (110,110) and the grain farm with 5 t of raw
@@ -97,8 +97,8 @@ s5_islands_step100 S5 112 8d1f2f3d16020d12
 # after World::create and after advance(10) x 100. tools/sim_stream.py transcribes
 # the city, the building lists and the Workshop and Farm payloads independently of
 # the C++ code; the registry digest of the synthetic types is its one literal.
-s6_g1_create S6 112 567065a96ca9bd8e
-s6_g1_step100 S6 112 a8852651a255fa2d
+s6_g1_create S6 113 b26a54b5c9d83657
+s6_g1_step100 S6 113 167eaeb13dd2ae42
 #
 # S7 G1 (stage S7): the S6 G1 scenario run through the real scheduler (synthetic::
 # g1_scenario: the weaver with 5 t of wool and the grain farm with 5 t of raw material).
@@ -126,10 +126,10 @@ s6_g1_step100 S6 112 a8852651a255fa2d
 # unchanged (no UI event of S12 occurs in these runs: no timer runs, the 7.5 minute event
 # is not reached). g2.log and g3.log were re-recorded (their initial saves carry the
 # stream version).
-s7_g1_mp_checkpoints S7 112 621160e0af86e456
-s7_g1_mp_end S7 112 eb34a3604f97b665
-s7_g1_events S7 112 d705f409820828d2
-s7_g1_sp_end S7 112 bf3bfbca5e7b3206
+s7_g1_mp_checkpoints S7 113 f42ca2a5d14db88a
+s7_g1_mp_end S7 113 fcb02ce24531153e
+s7_g1_events S7 113 d705f409820828d2
+s7_g1_sp_end S7 113 9a67670ab7bd1abd
 #
 # S10 G2 (stage S10): the G1 scenario on the types with build costs (synthetic::
 # g2_scenario, synthetic::make_build_types) driven by the recorded command log
@@ -141,7 +141,7 @@ s7_g1_sp_end S7 112 bf3bfbca5e7b3206
 # with slot 1 freed and the hint kept), the charges (4 x 300 gold, 12 t tools, 16 t wood)
 # and the rejection reasons independently of the hash. The log carries the stream version
 # in its initial save, so a stream bump re-records it.
-s10_g2_end S10 112 194a01f4c382227e
+s10_g2_end S10 113 f454c6890dd69a71
 #
 # S11 G3 (stage S11): synthetic::g3_scenario on synthetic::make_synthetic_types (two
 # players, two islands, two cities; a weaver, a grain farm, a fur trapper, a small farm, a
@@ -155,9 +155,9 @@ s10_g2_end S10 112 194a01f4c382227e
 # every building to values derived by hand from docs/sim/production.md (F2 weavers, F6
 # farm, the trapper's 20 steps, the small farm's lines, 143 bow steps on one line and 160
 # on two, the mine's 768 from the two deposits), the draw count and the notice 0x19.
-s11_g3_checkpoints S11 112 5e494e97b6e08118
-s11_g3_end S11 112 4d81fadb9958e08c
-s11_g3_events S11 112 3140bd8e1eb7db86
+s11_g3_checkpoints S11 113 2e444200c505b561
+s11_g3_end S11 113 b94bf5402e552b53
+s11_g3_events S11 113 3140bd8e1eb7db86
 #
 # S12 G4 (stage S12): synthetic::g4_scenario (seed 508; three players, islands in slots 0,
 # 2 and 4 with five cities, a weaver and a grain farm) with the state a scenario cannot
@@ -177,9 +177,9 @@ s11_g3_events S11 112 3140bd8e1eb7db86
 # bankruptcy tick, the timers, the queue, the figures' end ticks, the monopoly entries, the
 # draw counts per site (worked out from the PRNG table for seed 508) and the two UI events
 # to values derived by hand.
-s12_g4_checkpoints S12 112 652054fd55afe70e
-s12_g4_end S12 112 53fe4037530d0681
-s12_g4_events S12 112 39c10f583d4b7cc8
+s12_g4_checkpoints S12 113 2b5201d944cefe1b
+s12_g4_end S12 113 581832ebb2a7d33b
+s12_g4_events S12 113 39c10f583d4b7cc8
 #
 # Re-baselined at stream version 107 (stage S12 fix-up: Rules gained timer0_clamp, owner
 # decision on OQ-133, one more byte of the header scope; and G4 runs timer 0 the original's
@@ -254,8 +254,8 @@ s12_g4_events S12 112 39c10f583d4b7cc8
 # g5.log); sweeps_test.cpp holds the growth counters, the ripe ticks, the six draws (worked
 # out from the PRNG table for seed 514), the drought starts, states and city mask to values
 # derived by hand.
-s13_g5_checkpoints S13 112 882b24788b5256ce
-s13_g5_end S13 112 6ec897497a9ff521
+s13_g5_checkpoints S13 113 b80dfafb971c7dd7
+s13_g5_end S13 113 fbf7e5942914c53f
 # Re-baselined at stream version 111 (task T24, transport stage 1: the header's registry
 # digest gains the types' entrance points and the figure types, the market class ticks
 # (Market payload, tag 6), the payloads gain the cart reservations and the figure record its
@@ -280,8 +280,8 @@ s13_g5_end S13 112 6ec897497a9ff521
 # before the first and after every 300th advance, t24_g6_end the hash at tick 300 000. SELF-BASELINED like the
 # S7 .. S13 goldens (ANNO_UPDATE_GOLDEN also rewrites g6.log); transport_test.cpp holds
 # the cart's and the carrier's trips tick by tick to values derived by hand.
-t24_g6_checkpoints T24 112 29bd632c0d5f4d72
-t24_g6_end T24 112 f9cc4bf8ec572f20
+t24_g6_checkpoints T24 113 6f81e91ec1ceb88b
+t24_g6_end T24 113 ca9524d5c23d4376
 
 # Re-baselined at stream version 112 (T33.4 F5, 2026-10-26). The code has hashed
 # version 112, including the walk-table digest in the header, since bd336ce; this
@@ -304,3 +304,14 @@ t24_g6_end T24 112 f9cc4bf8ec572f20
 # s12_g4_end 3b7293fa3d1cd44d, s12_g4_events 39c10f583d4b7cc8,
 # s13_g5_checkpoints 76407f56e8997aff, s13_g5_end 6212572d3509c4f9,
 # t24_g6_checkpoints 5f55db6944a0ac1c, t24_g6_end e0c2748d19e26b16.
+
+# Re-baselined at stream version 113 (T33.5 stage 2 F1, 2026-10-26). The version
+# was already 113 and had not been recorded. Each footprint tile now stores the
+# id, the offset, the rotation and the block anchor (23 bytes). G0 and G1 have no
+# tiles, so only the header moves them. The three event digests are unchanged.
+# A 1x1 synthetic building (9001, 9002) is the only written tile of its world
+# block, so its anchor is 1; tools/sim_stream.py agrees on g0, g1, s5 and s6.
+# g2.log-g6.log grew by 6 bytes per tile (foot_dx, foot_dy, foot_rotation,
+# foot_anchor): g2 +24576 (4096 tiles), g3 +28176 (4696), g4 +6528 (1088),
+# g5 +15840 (2640), g6 +7680 (1280). producers_moved and warehouses_moved
+# did not change on any corpus file.

@@ -1,6 +1,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>
@@ -112,45 +113,120 @@ TEST_CASE("walk_cells: house instances retain rotation and water is explicitly s
     CHECK(cells.get({11, 21}) == sim::WalkCell{103, 4});
     CHECK(cells.complete());
 }
-TEST_CASE("place_object_record writes the footprint and the overlay leaves the id") {
+namespace {
+auto registry_of(std::initializer_list<sim::BuildingType> types) {
+    sim::TypeRegistry::Builder b;
+    for (const sim::BuildingType& t : types) {
+        b.add(t);
+    }
+    auto r = b.build();
+    REQUIRE(r);
+    return r.value();
+}
+} // namespace
+TEST_CASE("place_object_record writes one anchor per block") {
     sim::BuildingType block;
     block.id = sim::TypeId{7001};
-    block.width = 2;
+    block.width = 3;
     block.height = 3;
     block.walk_mask = {1};
+    const auto types = registry_of({block});
     sim::TileLayer layer;
-    REQUIRE(layer.reset(0, 0, 6, 6, 8));
-    sim::place_object_record(layer, block, 1, 1, 0, 9);
-    for (std::uint32_t dy = 0; dy < 3; ++dy) {
-        for (std::uint32_t dx = 0; dx < 2; ++dx) {
-            const auto i = layer.index_of(1 + static_cast<std::int32_t>(dx),
-                                          1 + static_cast<std::int32_t>(dy));
-            INFO("tile " << dx << "," << dy);
+    REQUIRE(layer.reset(0, 0, 16, 16, 8));
+    CHECK(sim::place_object_record(layer, *types, block, 6, 6, 0, 9) == 0);
+    std::uint32_t anchor_n = 0;
+    for (std::int32_t y = 6; y <= 8; ++y) {
+        for (std::int32_t x = 6; x <= 8; ++x) {
+            const auto i = layer.index_of(x, y);
+            INFO("tile " << x << "," << y);
             CHECK(layer.object(i) == 7001);
-            CHECK(layer.foot_dx(i) == dx);
-            CHECK(layer.foot_dy(i) == dy);
+            CHECK(layer.foot_dx(i) == static_cast<std::uint16_t>(x - 6));
+            CHECK(layer.foot_dy(i) == static_cast<std::uint16_t>(y - 6));
             CHECK(layer.foot_rotation(i) == 0);
             CHECK(layer.phase(i) == 9);
             CHECK(layer.walk_code(i) == 4);
+            const bool anchor = (x == 6 && y == 6) || (x == 8 && y == 6) || (x == 6 && y == 8) ||
+                                (x == 8 && y == 8);
+            CHECK(layer.foot_anchor(i) == (anchor ? 1 : 0));
+            anchor_n += layer.foot_anchor(i);
         }
     }
-    CHECK(layer.object(layer.index_of(0, 1)) == 0);
+    CHECK(anchor_n == 4);
+    CHECK(layer.object(layer.index_of(5, 6)) == 0);
+}
+TEST_CASE("place_object_record overlay keeps another overlay's anchor tile") {
+    sim::BuildingType rock;
+    rock.id = sim::TypeId{7101};
+    rock.width = 3;
+    rock.height = 3;
+    rock.flags_word = 0x10;
+    rock.walk_mask = {1};
+    sim::BuildingType later;
+    later.id = sim::TypeId{7102};
+    later.width = 3;
+    later.height = 3;
+    later.flags_word = 0x10;
+    later.walk_mask = {2};
+    later.head_raw.assign(56, 0);
+    later.head_raw[0x2f] = 1;
+    const auto types = registry_of({rock, later});
+    sim::TileLayer layer;
+    REQUIRE(layer.reset(0, 0, 16, 16, 8));
+    CHECK(sim::place_object_record(layer, *types, rock, 6, 6, 0, 4) == 0);
+    CHECK(sim::place_object_record(layer, *types, later, 6, 6, 0, 7) == 4);
+    const auto anchor = layer.index_of(6, 6);
+    CHECK(layer.object(anchor) == 7101);
+    CHECK(layer.foot_dx(anchor) == 0);
+    CHECK(layer.foot_dy(anchor) == 0);
+    CHECK(layer.foot_rotation(anchor) == 0);
+    CHECK(layer.phase(anchor) == 4);
+    CHECK(layer.foot_anchor(anchor) == 1);
+    CHECK(layer.walk_code(anchor) == 1);
+    // (6,6) was skipped, so (7,6) is the first written tile of block (0,0)
+    // and takes the anchor (0x10082289 clears it only after a write).
+    const auto written = layer.index_of(7, 6);
+    CHECK(layer.object(written) == 7102);
+    CHECK(layer.foot_dx(written) == 1);
+    CHECK(layer.foot_dy(written) == 0);
+    CHECK(layer.phase(written) == 7);
+    CHECK(layer.foot_anchor(written) == 1);
+    CHECK(layer.walk_code(written) == 1);
+    const auto second = layer.index_of(7, 7);
+    CHECK(layer.object(second) == 7102);
+    CHECK(layer.foot_anchor(second) == 0);
+}
+TEST_CASE("place_object_record overlay takes a non-overlay object's tiles") {
+    sim::BuildingType house;
+    house.id = sim::TypeId{7201};
+    house.width = 2;
+    house.height = 3;
+    house.walk_mask = {1};
     sim::BuildingType overlay;
-    overlay.id = sim::TypeId{7002};
+    overlay.id = sim::TypeId{7202};
     overlay.width = 2;
     overlay.height = 3;
     overlay.flags_word = 0x10;
     overlay.walk_mask = {2};
     overlay.head_raw.assign(56, 0);
     overlay.head_raw[0x2f] = 1;
-    sim::place_object_record(layer, overlay, 1, 1, 1, 3);
-    const auto kept = layer.index_of(1, 1);
-    CHECK(layer.object(kept) == 7001);
-    CHECK(layer.foot_dx(kept) == 0);
-    CHECK(layer.foot_dy(kept) == 0);
-    CHECK(layer.foot_rotation(kept) == 0);
-    CHECK(layer.phase(kept) == 9);
-    CHECK(layer.walk_code(kept) == 1);
+    const auto types = registry_of({house, overlay});
+    sim::TileLayer layer;
+    REQUIRE(layer.reset(0, 0, 8, 8, 8));
+    CHECK(sim::place_object_record(layer, *types, house, 1, 1, 0, 9) == 0);
+    CHECK(layer.foot_anchor(layer.index_of(1, 1)) == 1);
+    CHECK(sim::place_object_record(layer, *types, overlay, 1, 1, 0, 3) == 0);
+    for (std::uint32_t dy = 0; dy < 3; ++dy) {
+        for (std::uint32_t dx = 0; dx < 2; ++dx) {
+            const auto i = layer.index_of(1 + static_cast<std::int32_t>(dx),
+                                          1 + static_cast<std::int32_t>(dy));
+            INFO("tile " << dx << "," << dy);
+            CHECK(layer.object(i) == 7202);
+            CHECK(layer.phase(i) == 3);
+            CHECK(layer.walk_code(i) == 1);
+        }
+    }
+    CHECK(layer.foot_anchor(layer.index_of(1, 1)) == 1);
+    CHECK(layer.object(layer.index_of(0, 1)) == 0);
 }
 
 TEST_CASE("walk_cells: footprint record rotates, overlays and resets") {

@@ -203,35 +203,73 @@ void write_walk_record(TileLayer& layer, const BuildingType& type, std::int32_t 
         }
     }
 }
-void place_object_record(TileLayer& layer, const BuildingType& type, std::int32_t x0,
-                         std::int32_t y0, std::uint32_t rotation, std::uint8_t phase) {
-    // D AnnoWelt 0x10082040..0x100825fe. Ordinary path: id 0x1008244a, dx
-    // 0x1008245c, dy 0x10082474, rotation 0x10082480, phase 0x100824c5, then
-    // the code and the mask. Overlay (flags bit 0x10) skips those stores.
-    // Byte 3 bit 6 is not modelled. deviation OQ-203: byte 3 bit 7 is not
-    // modelled. The largest shipped footprint edge is 8 (T33.5 step 1, type
-    // 1021), so dx and dy fit the original's 3 bits and this u16.
+namespace {
+/// D AnnoWelt 0x10082109..0x10082116: MSVC's signed remainder by 8, then
+/// subtract. C++ toward-zero division matches it, including a negative origin.
+std::int32_t placement_block_origin(std::int32_t v) {
+    const std::int64_t n = v;
+    const std::int64_t edge = kPlacementBlockEdge;
+    return static_cast<std::int32_t>(n - n % edge);
+}
+} // namespace
+std::uint32_t place_object_record(TileLayer& layer, const TypeRegistry& types,
+                                  const BuildingType& type, std::int32_t x0, std::int32_t y0,
+                                  std::uint32_t rotation, std::uint8_t phase) {
+    // D AnnoWelt 0x10082040..0x10082637. Y blocks outer (0x1008262e), X blocks
+    // inner (0x1008260c); inside a block, rows outer and columns inner.
+    // Ordinary stores: id 0x1008244a, dx 0x1008245c, dy 0x10082474, rotation
+    // 0x10082480, phase 0x100824c5, anchor 0x100824af..0x100824c8. Overlay
+    // stores: 0x10082215..0x10082286, skip 0x100821e6..0x1008220c, anchor clear
+    // only after a write (0x10082289). The code and the mask then cover every
+    // footprint tile (0x10082342..0x100823e2), a skipped tile included.
+    // Byte 3 bit 6 is not modelled. deviation: the height byte (0x10082260,
+    // 0x10082494) is not a column (Terrain, OQ-060). A tile outside the layer
+    // is skipped and does not clear the anchor: the original indexes the
+    // island grid, and this layer has no record there. A missing type does not
+    // satisfy the flag test (the catalogue load at 0x100821fa is not given a
+    // null in the range read). The largest shipped edge is 8 (T33.5 step 1,
+    // type 1021), so dx and dy fit the original's 3 bits and this u16.
     const bool overlay = (type.flags_word & 0x10U) != 0;
-    if (!overlay) {
-        const auto [fw, fh] = footprint(type, static_cast<std::uint8_t>(rotation));
-        for (std::uint32_t dy = 0; dy < fh; ++dy) {
-            for (std::uint32_t dx = 0; dx < fw; ++dx) {
-                const std::int64_t px = std::int64_t{x0} + std::int64_t{dx};
-                const std::int64_t py = std::int64_t{y0} + std::int64_t{dy};
-                const std::uint64_t i =
-                    layer.index_of(static_cast<std::int32_t>(px), static_cast<std::int32_t>(py));
-                if (i == kNoSlot) {
-                    continue;
+    const auto [fw, fh] = footprint(type, static_cast<std::uint8_t>(rotation));
+    const std::int64_t x_end = std::int64_t{x0} + fw;
+    const std::int64_t y_end = std::int64_t{y0} + fh;
+    std::uint32_t skipped = 0;
+    for (std::int64_t by = placement_block_origin(y0); by < y_end; by += kPlacementBlockEdge) {
+        for (std::int64_t bx = placement_block_origin(x0); bx < x_end; bx += kPlacementBlockEdge) {
+            bool anchor = true;
+            const std::int64_t y_lo = std::max(by, std::int64_t{y0});
+            const std::int64_t y_hi = std::min(by + kPlacementBlockEdge, y_end);
+            const std::int64_t x_lo = std::max(bx, std::int64_t{x0});
+            const std::int64_t x_hi = std::min(bx + kPlacementBlockEdge, x_end);
+            for (std::int64_t y = y_lo; y < y_hi; ++y) {
+                for (std::int64_t x = x_lo; x < x_hi; ++x) {
+                    const std::uint64_t i =
+                        layer.index_of(static_cast<std::int32_t>(x), static_cast<std::int32_t>(y));
+                    if (i == kNoSlot) {
+                        continue;
+                    }
+                    if (overlay) {
+                        const std::uint32_t id = layer.object(i);
+                        const BuildingType* cur = id == 0 ? nullptr : types.find(TypeId{id});
+                        if (cur != nullptr && (cur->flags_word & 0x10U) != 0 &&
+                            layer.foot_anchor(i) != 0) {
+                            ++skipped;
+                            continue;
+                        }
+                    }
+                    layer.set_object(i, type.id.v);
+                    layer.set_foot_dx(i, static_cast<std::uint16_t>(x - x0));
+                    layer.set_foot_dy(i, static_cast<std::uint16_t>(y - y0));
+                    layer.set_foot_rotation(i, static_cast<std::uint8_t>(rotation));
+                    layer.set_phase(i, phase);
+                    layer.set_foot_anchor(i, anchor ? std::uint8_t{1} : std::uint8_t{0});
+                    anchor = false;
                 }
-                layer.set_object(i, type.id.v);
-                layer.set_foot_dx(i, static_cast<std::uint16_t>(dx));
-                layer.set_foot_dy(i, static_cast<std::uint16_t>(dy));
-                layer.set_foot_rotation(i, static_cast<std::uint8_t>(rotation));
-                layer.set_phase(i, phase);
             }
         }
     }
     write_walk_record(layer, type, x0, y0, rotation);
+    return skipped;
 }
 WalkRecord walk_record(const Island& island, const TypeRegistry& types, TileXY p) {
     static_cast<void>(types); // kept for API compatibility; the record is read from the tile layer

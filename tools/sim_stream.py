@@ -458,15 +458,18 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
         tiles[index][0] = obj
         tiles[index][1] = phase
         # Ids 9001..9010 are make_synthetic_types: empty HEAD, 1x1, empty WALKMASK,
-        # flags_word 0. write_walk_record stores code 4 (HEAD bytes 0x2f and 0x30
-        # are both 0, the constructor default) and mask 0 on that one tile.
-        # create_building writes the same record on the same tile, so one store
-        # matches both. An id the registry does not hold is skipped, as the C++
-        # writer skips a null find. The S5 islands use the empty registry, so
-        # 1201/1202/1203/2001/2002 stay at the reset code 2, mask 0.
+        # flags_word 0. place_object_record stores code 4 (HEAD bytes 0x2f and
+        # 0x30 are both 0, the constructor default) and mask 0, and the first
+        # dword: offset 0, rotation 0, and the block anchor. Each transcribed
+        # building is the only written tile of its world 8x8 block, so the
+        # anchor is 1. create_building writes the same record on the same tile,
+        # so one store matches both. An id the registry does not hold is written
+        # on the named tile only and does not take an anchor. The S5 islands use
+        # the empty registry, so 1201/1202/1203/2001/2002 stay at the reset.
         if obj in range(9001, 9011):
             tiles[index][4] = 4
             tiles[index][5] = 0
+            tiles[index][9] = 1
     td = terrain_digest(*terrain) if terrain else 0
     b = (u32(slot) + struct.pack('<i', x0) + struct.pack('<i', y0) + u32(w) + u32(h)
          + u32(climate) + u32(next_serial) + u64(td))

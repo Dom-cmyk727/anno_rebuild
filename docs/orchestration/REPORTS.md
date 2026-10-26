@@ -3928,3 +3928,36 @@ OQ-220 (the three addon pages do not state the six levels), OQ-221 (a money bull
   3. status "Proposed": MET.
   4. report; not merged: MET. Not pushed.
 - Time spent / subagents used: inline, no subagents. One scenario load, no other heavy job.
+
+## T35 — `Result::value()` and `error()` must not throw in Release — 2026-10-26 — status: FINISHED
+- Branch: `task/T35-result-abort` from local `main` at `631e206`. Worktree: `E:\anno1503-worktrees\anno1503-T35` (the entry's `C:\Users\altin\anno1503-T35` is the old host). Work commits: `6a428a7` (the abort), `12b89d0` (the test), `14a1bec` (the README sentence). The commit that adds this section is the branch head. Not merged, not pushed. No PR: this session was told not to push; round ba records that GitHub is unavailable.
+- Built:
+  - `src/formats/include/anno/formats/result.hpp`: private `require(bool)` calls `std::abort()` when the arm is wrong (`[[unlikely]]` on that branch). The three `value()` overloads and `error()` are otherwise unchanged. `<cassert>` is gone (`assert` is not called; the word remains in the comment that says why). `<cstdlib>` is included for `std::abort`.
+  - `src/formats/tests/result_test.cpp`, and the one `CMakeLists.txt` line that lists it. The executable names its sources, so the new file would not have been built without that line.
+  - `docs/formats/README.md`: the file had no Result section. One sentence under a new `## Result contract` heading: a misuse of `value()` or `error()` aborts, and it never throws.
+- Step 1: `cmake --preset msvc` (exit 0) and `cmake --build --preset msvc` (exit 0) on the unchanged tree, then the edit, then `cmake --build --preset msvc` again (exit 0). No warning line was printed. Warnings are errors in this preset.
+- Gates of step 4 (`ANNO_TEST_THREADS=16`; with the game dir `E:\anno1503\game\app`, the worktree has none):
+  - `ctest --preset msvc -j 16 -R formats` with `ANNO1503_GAME_DIR`: `100% tests passed out of 67`, real time 2.94 sec. `anno_formats_tests.Result value and error return the stored objects` passed (0.01 sec).
+  - The same without `ANNO1503_GAME_DIR`: `100% tests passed out of 67`, real time 0.22 sec. The same case passed (0.02 sec). Corpus cases skipped cleanly; `LastTest.log` showed, among others, `skipping figuren corpus: ANNO1503_GAME_DIR not set`, `skipping chunk corpus: ANNO1503_GAME_DIR not set`, `skipping anlagen corpus: ANNO1503_GAME_DIR not set`, `skipping scene corpus: ANNO1503_GAME_DIR not set`, and `ANNO1503_GAME_DIR not set: skipped` for the two bigbrother corpus cases. Each of those was `1 passed | 0 failed`.
+  - clang-format 23.1.3 (`cache\cfpkg\bin\clang-format.exe --version` prints `clang-format version 23.1.3`). `--dry-run --Werror` on `result.hpp` and `result_test.cpp`: exit 0, no output.
+  - `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`:
+    ```
+    == GCC, viewer and GPU on: g++-13 (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, 161 files
+    == GCC, viewer and GPU on: clean
+    == Clang, viewer and GPU on: Ubuntu clang version 18.1.3 (1ubuntu1), 161 files
+    == Clang, viewer and GPU on: clean
+    == Clang, viewer without GPU: Ubuntu clang version 18.1.3 (1ubuntu1), 9 files
+    == Clang, viewer without GPU: clean
+    ```
+  - `agree.py`: not run (no `anno-dump` change). asan: not run. Step 4 names the warning script, which does not sanitize. `lint_sim`: not run (`src/sim` untouched). Full ctest beyond `-R formats`: not run; the entry names the formats filter.
+- Evidence: test `Result value and error return the stored objects` checks `ok()` and `operator bool` on both arms, `value()` on an ok result (non-const, const, and the temporary overload) and `error()` on an error result. Doctest is 2.4.12. Its header has no death-test assertion; `SIGABRT` is reported as a crash (`reportFatal` in `doctest.h`). The abort path is therefore not a unit test, as step 3 says.
+- Mutation (not committed): `T& value() &` changed from `require(ok())` to `require(!ok())`, `anno_formats_tests` rebuilt, `ctest --preset msvc -R "Result value and error" --output-on-failure` failed 0/1 with `FATAL ERROR: test case CRASHED: SIGABRT - Abort (abnormal termination) signal` (2 assertions passed, then the crash on `value()`; ctest exit 8). Source restored with `git checkout -- src/formats/include/anno/formats/result.hpp` (`git diff` showed no change to that file). `cmake --build --preset msvc --target anno_formats_tests`, then the same filter: `100% tests passed out of 1`, the case passed in 0.01 sec, ctest exit 0.
+- Reviewers: none. No subagents.
+- Left open / questions: none. No new OQ. The `CMakeLists.txt` line is the only file the entry did not name; the test file is not built without it.
+- Acceptance:
+  1. no `assert` guards the variant access; a misuse aborts: MET (`require` then `std::abort`; the mutation above crashes with `SIGABRT`).
+  2. the positive-path test: MET (the case above, both ctest runs).
+  3. the gates of step 4 pasted: MET (the lines above).
+  4. the README sentence: MET (`docs/formats/README.md`, `## Result contract`).
+  5. report, not merged: MET for the report. Not merged. PR not opened (no push).
+- Time spent / subagents used: inline, no subagents. Heavy jobs on this PC (T41's ctest and warning script, then T42's build) were waited out; none was started beside them.

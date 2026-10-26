@@ -1801,7 +1801,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** the owner picks `net.port`. Until it is set, the host refuses to open a socket (ADR 0003 §5).
 
 ## OQ-251: Root-hash time and snapshot size on S01_07_01 (T39, 2026-10-26)
-- **Status:** open. ADR 0003 stays Proposed until both are measured.
+- **Status:** closed (T41, 2026-10-26). ADR 0003 stays Proposed until the owner approves it.
 - **Area:** network / budgets.
-- **What was measured.** The existing `anno-sim-replay.exe` (`E:\anno1503\build\msvc\src\tools\sim_replay\Release\anno-sim-replay.exe`, not rebuilt in the T39 worktree) on `Scenes\0100Kampagne01\S01_07_01.sze` with `--ticks 0`: 24 islands, 662 buildings, 113017 tile objects, hash `4ff82ec96d856be3`, load 47 ms, create 13 ms, run 5 ms. In `src/tools/sim_replay/main.cpp` the create timestamp is taken before `state_hash()` is printed, and the run timestamp is taken before the second hash, so those milliseconds are not the hash. The tool does not call `World::save()`, so the snapshot size was not printed.
-- **How to resolve:** after the same create, time `state_hash()` over several calls and print `save().size()`. Do not treat the 13 ms create time as the hash cost.
+- **What was measured.** `anno-sim-replay measure` after 30 000 ticks, 50 repetitions, on `Scenes\0100Kampagne01\S01_07_01.sze`. Every chunk was still dirty (`dirty_chunks_unprepared` 6480 of 6480): `state_hash()` median 7920 µs, p95 8591 µs. After `prepare_hash`: median 342 µs, p95 438 µs. `save()` is 11 474 169 bytes. The same command on `endless02.sze` and `03_1024_med_256.sze` is in ADR 0003 §13. The earlier 13 ms create time was not a hash.
+- **How to resolve:** done. The numbers are §13.

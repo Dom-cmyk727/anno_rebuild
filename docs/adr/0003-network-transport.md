@@ -5,7 +5,7 @@
 
 ADR 0002 is reserved for the float walk (T34) and is not this document.
 
-This is the design of the `net` library. It does not add code. The owner approves it before W3 step 2. Numbers are either taken from a decision or from the original, or they are named as unmeasured in [§13](#13-budgets). Nothing here is a guess stated as a measurement.
+This is the design of the `net` library. It does not add code. The owner approves it before W3 step 2. Numbers are either taken from a decision or from the original, or they are the measurements in [§13](#13-budgets). Nothing here is a guess stated as a measurement.
 
 ## 1. Context and the owner's requirements
 
@@ -220,19 +220,23 @@ Internet play adds, later, authentication of the seat and encryption of the data
 
 ## 13. Budgets
 
-Measured with the existing `anno-sim-replay.exe` in the main checkout's build (`E:\anno1503\build\msvc\src\tools\sim_replay\Release\anno-sim-replay.exe`), not rebuilt in this worktree. The worktree is at the same commit as `main` (`6ace6c8`). The command was `scenario` on `Scenes\0100Kampagne01\S01_07_01.sze` with `--ticks 0` and `ANNO1503_GAME_DIR` set. Output, counts only:
+Measured with this worktree's `anno-sim-replay measure`, after 30 000 ticks (600 advances of 100 ms), 50 repetitions, `ANNO1503_GAME_DIR=E:\anno1503\game\app`. The clock is the tool's `steady_clock`. `src/sim` has none. Create marks every chunk dirty and the tick never calls `prepare_hash`, and `state_hash()` is const so it recomputes a dirty chunk on every call and does not clear the bit (`world.hpp`). `dirty_chunks_unprepared` equals the chunk count on each file, so that series is a full recompute. `prepare_hash` then fills the cache: the clean series only reads it. The incremental series is one `set_object` of the same id on each island's origin tile after that, so one dirty chunk per island (`dirty_chunks` below). Median of an even count is the integer average of the two middle samples. p95 is the nearest rank, `ceil(0.95 * 50)` = the 48th sample.
 
-- 24 islands, 0 links, 8 players, 14 cities, 662 buildings, 113 017 tile objects;
-- `hash after create` `4ff82ec96d856be3`;
-- `time load 47 ms, create 13 ms, run 5 ms`.
+| Scenario | Unprepared µs min / median / p95 / max | Clean µs | Incremental µs | `save()` bytes | Tiles | Chunks | Dirty after one tile each |
+|---|---|---|---|---|---|---|---|
+| `0100Kampagne01/S01_07_01.sze` | 7778 / 7920 / 8591 / 8795 | 332 / 342 / 438 / 450 | 361 / 373 / 517 / 764 | 11 474 169 | 414 720 | 6 480 | 24 |
+| `0011SingleEndlosAddon/endless02.sze` | 13678 / 14213 / 15109 / 15861 | 196 / 199 / 248 / 259 | 231 / 234 / 285 / 365 | 20 349 454 | 750 336 | 11 724 | 30 |
+| `0010SingleEndlos/03_1024_med_256.sze` | 8624 / 8788 / 9404 / 9981 | 88 / 89 / 108 / 145 | 119 / 119 / 143 / 154 | 12 906 633 | 477 696 | 7 464 | 27 |
 
-That timer does **not** include `state_hash()`. In `src/tools/sim_replay/main.cpp` the create timestamp is taken before the hash is printed, and the run timestamp is taken before the second hash. So 13 ms is the world build, not the root-hash cost. The snapshot size was not printed: the tool has no `save()` call.
+**Hash check.** `hash_every` is 10 turns and the turn is 100 ms, so the root is checked once per second. The cost of one check is the unprepared column when the caller has not run `prepare_hash` since the world was created: median 7.9 ms on `S01_07_01`, 14.2 ms on `endless02` (the largest file), 8.8 ms on the 1024-tile endless world. Per second that is the same number, once. After `prepare_hash` the check is the clean column, under 0.5 ms median on all three. One dirty chunk per island adds a few tens of microseconds on these files (the incremental column minus the clean column).
 
-**OQ-251.** The two budgets the plan asks to measure before this ADR is accepted are still open: the wall time of one `state_hash()` on this world, and `save().size()`. The next measurement is those two calls after the same `scenario` create, repeated enough times that the first call is not the only sample. Until they are in, this ADR stays Proposed and does not claim a millisecond or a byte size.
+The cadence holds. The slowest sample is 15.9 ms (`endless02` unprepared max), which is 1.6 % of the one-second interval. A check does not have to wait for the snapshot: channel 1 is separate from channel 0 (§4).
 
-What can be calculated without them is the steady-state traffic, because an empty turn does not depend on the save.
+**Snapshot.** `save().size()` is the byte column. At line rate, ignoring the snapshot window's round trips: `S01_07_01` is 0.918 s at 100 Mbit/s and 0.092 s at 1 Gbit/s; `endless02` is 1.628 s and 0.163 s; `03_1024_med_256` is 1.033 s and 0.103 s. The full check that sends this save is every 10 minutes (§7), not every hash. The in-flight window is 32 × 1200 = 38 400 bytes (§4). At the netsim's 150 ms latency that window is 2.048 Mbit/s if it stays full, and `endless02` then takes 79.5 s. That is the join and the resync, not the one-second hash.
 
-An empty turn payload is 8 + 4 + 4 = 16 bytes. With the 25-byte header and 28 bytes of IPv4+UDP, one datagram is 69 bytes. At 10 turns per second that is 690 bytes/s from the host to each other peer. At 6 peers the host sends to 5 others: 3 450 bytes/s, plus one hash report of the same order once per second per peer. A single placement's `TurnEntry` is a few dozen bytes (`state.md` §8.5), so a command on every turn from every seat stays in the same thousands of bytes per second. The snapshot is the burst, and its size is OQ-251. The acceptance of the ADR waits on that number; the steady-state figure above does not.
+**OQ-251 is closed** by the `S01_07_01` row: one `state_hash()` is 7.9 ms median with every chunk dirty and 0.34 ms median after `prepare_hash`, and `save()` is 11 474 169 bytes. The status of this ADR stays Proposed until the owner approves it.
+
+An empty turn payload is 8 + 4 + 4 = 16 bytes. With the 25-byte header and 28 bytes of IPv4+UDP, one datagram is 69 bytes. At 10 turns per second that is 690 bytes/s from the host to each other peer. At 6 peers the host sends to 5 others: 3 450 bytes/s, plus one hash report of the same order once per second per peer. A single placement's `TurnEntry` is a few dozen bytes (`state.md` §8.5), so a command on every turn from every seat stays in the same thousands of bytes per second. The snapshot is the burst measured above. The steady-state figure does not include it.
 
 ## 14. The `netsim` test plan
 
@@ -253,6 +257,6 @@ Two real PCs on a LAN finding each other is a person test (`docs/plan/lan-endles
 ## Open choices
 
 - **OQ-250.** The UDP port. No original value was found in `tick-loop.md`. No default is set.
-- **OQ-251.** Root-hash time and snapshot size on `S01_07_01`, [§13](#13-budgets).
+- **OQ-251.** Closed in [§13](#13-budgets): `S01_07_01` `state_hash()` is 7.9 ms median with every chunk dirty and 0.34 ms after `prepare_hash`; `save()` is 11 474 169 bytes.
 
 The command delay of 2, the 100 ms turn, the 60 s grace and the 10-minute full check are the plan's and the original's defaults. They are configuration, not new decisions.

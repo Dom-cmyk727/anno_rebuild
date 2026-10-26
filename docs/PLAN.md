@@ -91,10 +91,14 @@ The owner's first target is a LAN multiplayer endless game. The plan, with its w
   - six fixed player colours to choose from;
   - "last one remaining" as the only end condition for now;
   - a custom multiplayer menu; up to 4K.
-- **Changes to the goals above** (to be confirmed by the owner, plan §7 D11):
-  - The playable game uses the **enhanced** rules only. The faithful rules stay in the code as the tested reference (`--rules faithful` for comparisons), but M5's "faithful mode selectable" no longer applies to the menu.
-  - §0.6's "up to 4 players a world is used as authored" does not apply to the enhanced endless game: its worlds are generated at every player count, under §0.6's own generator rules.
-  - 6 is this release's default maximum. §0.6's 8 stays the project's target. Nothing hard-codes either (§0.1).
+- **The owner's decisions** (2026-10-26, with the co-developer; plan §7 D1–D11):
+  - **Rules presets:** the **enhanced** rules are the default. The **original game settings** (the faithful rules, bugs and glitches included) are an option, off by default, so §0.2 and M5's "faithful mode selectable" stand.
+  - **World:** §0.6's "up to 4 players a world is used as authored" does not apply to the enhanced endless game. Its worlds are generated at every player count and scale with it, under §0.6's own generator rules.
+  - **Start modes:** two, together at one point as in the original, or spread at random.
+  - **Network:** our own UDP layer, with join-in-progress, host migration, resilience to short drops, and an efficient hash system for long sessions.
+  - **AI:** the original AI is rebuilt first, from the original files (M5's AI line is decided).
+  - **Colours:** one recolouring system for flags, units and ships over a colour table that is data.
+  - **Players:** 6 is this release's default maximum. §0.6's 8 stays the project's target. Nothing hard-codes either (§0.1).
 
 ## 1. Milestone M0 — Repository and tooling skeleton
 

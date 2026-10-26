@@ -280,8 +280,8 @@ class ThreadExecutor final : public sim::Executor {
 };
 
 /// An archive that visits the tile columns through TileIO and changes the
-/// `at`-th value (counting object, phase, owner, aux columns in order) without
-/// going through a setter: a write that skipped the dirty mark.
+/// `at`-th value (counting object, phase, owner, aux, walk_code, walk_mask in
+/// order) without going through a setter: a write that skipped the dirty mark.
 struct CorruptingArchive {
     static constexpr bool kReading = false;
     std::uint64_t at = 0;
@@ -289,6 +289,11 @@ struct CorruptingArchive {
     void u32(std::uint32_t& v) {
         if (seen++ == at) {
             v ^= 1U;
+        }
+    }
+    void u16(std::uint16_t& v) {
+        if (seen++ == at) {
+            v = static_cast<std::uint16_t>(v ^ 1U);
         }
     }
     void u8(std::uint8_t& v) {

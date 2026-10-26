@@ -588,7 +588,7 @@ TEST_CASE("island fields are counted") {
     // Every field of an island with a drought and a deposit is one primitive of the
     // trace: 7 header + 1 digest + sweep 5 + 1 + objmgr 2 + ring 2 + presence 1 +
     // drought 9 + mask 2 + deposits (count 1 + str 2 + 4) + reserved 1 + tiles scope
-    // (3 dims + 4 columns of 6).
+    // (3 dims + 6 columns of 6).
     sim::Island is;
     is.drought.emplace();
     is.deposits.emplace_back();
@@ -605,8 +605,8 @@ TEST_CASE("island fields are counted") {
     // event300 (1), objmgr (2), ring (2), drought presence + 9 + the city mask (count +
     // one word, stream 108), deposits count +
     // goods length + goods bytes + x + y + remaining + reserve (7), reserved (1),
-    // tiles: 3 dims + 6 x 4 columns, cities: the slot count (no slot in this island).
-    CHECK(prims == 7 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 3 + 24 + 1);
+    // tiles: 3 dims + 6 x 6 columns, cities: the slot count (no slot in this island).
+    CHECK(prims == 7 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 3 + 36 + 1);
 }
 
 TEST_CASE("islands scope stream layout") {
@@ -614,7 +614,7 @@ TEST_CASE("islands scope stream layout") {
     const std::vector<std::uint8_t> bytes = island_test::flat_stream(w);
     // The scope is followed only by the figures and the events scopes of a world
     // without either: u64 slot count, then per slot a presence byte and the island;
-    // the tiles of an island are 13 bytes each.
+    // the tiles of an island are 17 bytes each.
     Stream want;
     want.u64(4);
     auto island = [&](const sim::Island& is, std::int32_t x0, std::int32_t y0, std::uint32_t wd,
@@ -664,6 +664,12 @@ TEST_CASE("islands scope stream layout") {
         for (std::uint64_t i = 0; i < is.tiles.tile_count(); ++i) {
             want.u32(is.tiles.aux(i));
         }
+        for (std::uint64_t i = 0; i < is.tiles.tile_count(); ++i) {
+            want.u16(is.tiles.walk_code(i));
+        }
+        for (std::uint64_t i = 0; i < is.tiles.tile_count(); ++i) {
+            want.u16(is.tiles.walk_mask(i));
+        }
         // The scope cities: 16 slots, the island's one city present.
         want.u64(16);
         for (std::uint32_t slot = 0; slot < 16; ++slot) {
@@ -683,7 +689,7 @@ TEST_CASE("islands scope stream layout") {
     CHECK(std::equal(want.v.begin(), want.v.end(),
                      bytes.end() -
                          static_cast<std::ptrdiff_t>(island_test::kTailBytes + want.v.size())));
-    // 13 bytes per tile: the two islands hold 4096 + 600 tiles.
+    // 17 bytes per tile: the two islands hold 4096 + 600 tiles.
     CHECK(want.v.size() > (4096 + 600) * sim::kTileBytes);
     // The scope opens where the trace says.
     const std::size_t scope_at = bytes.size() - island_test::kTailBytes - want.v.size();
@@ -811,10 +817,14 @@ TEST_CASE("island perturbation moves the hash") {
         {"first tile phase", [](sim::Island& i) { i.tiles.set_phase(0, 1); }},
         {"first tile owner", [](sim::Island& i) { i.tiles.set_owner(0, 1); }},
         {"first tile aux", [](sim::Island& i) { i.tiles.set_aux(0, 1); }},
+        {"first tile walk_code", [](sim::Island& i) { i.tiles.set_walk_code(0, 4); }},
+        {"first tile walk_mask", [](sim::Island& i) { i.tiles.set_walk_mask(0, 1); }},
         {"last tile object", [](sim::Island& i) { i.tiles.set_object(599, 1); }},
         {"last tile phase", [](sim::Island& i) { i.tiles.set_phase(599, 1); }},
         {"last tile owner", [](sim::Island& i) { i.tiles.set_owner(599, 1); }},
         {"last tile aux", [](sim::Island& i) { i.tiles.set_aux(599, 1); }},
+        {"last tile walk_code", [](sim::Island& i) { i.tiles.set_walk_code(599, 4); }},
+        {"last tile walk_mask", [](sim::Island& i) { i.tiles.set_walk_mask(599, 1); }},
     };
     const sim::World base = make_world(zero_island_scenario());
     const std::uint64_t base_hash = sim::World(base).state_hash();
@@ -1474,7 +1484,7 @@ TEST_CASE("islands scope reads back and validates what it read") {
 // ----------------------------------------------------- rectangles before build
 
 TEST_CASE("world create checks the rectangles before it builds anything") {
-    // A tile costs 13 bytes. The island of every row below is within the per-island
+    // A tile costs 17 bytes. The island of every row below is within the per-island
     // bound but its rectangle cannot lie in the 512 x 512 world, so the error has to
     // come before any tile column is sized: the executor that builds the islands is
     // never asked to run, and the test itself allocates nothing.
@@ -2096,7 +2106,7 @@ TEST_CASE("load rejects tile dimensions beyond remaining bytes") {
     };
     // 60 million tiles are inside kIslandTileBound but the section does not hold them.
     CHECK(contains(patched({{w_at, 30000}, {tw_at, 30000}, {h_at, 2000}, {th_at, 2000}}),
-                   "tile columns need 60000000 x 13 bytes"));
+                   "tile columns need 60000000 x 17 bytes"));
     // Above the bound.
     CHECK(contains(patched({{w_at, 16384}, {tw_at, 16384}, {h_at, 16384}, {th_at, 16384}}),
                    "more than 67108864 tiles"));

@@ -66,6 +66,8 @@ bool TileLayer::reset(std::int32_t x0, std::int32_t y0, std::uint32_t w, std::ui
     phase_.assign(n, 0);
     owner_.assign(n, 0);
     aux_.assign(n, 0);
+    walk_code_.assign(n, 2);
+    walk_mask_.assign(n, 0);
     const auto chunks = static_cast<std::size_t>(chunk_count());
     digest_.assign(chunks, 0);
     dirty_.assign(chunks, 1);
@@ -99,6 +101,12 @@ std::uint32_t TileLayer::owner(std::uint64_t idx) const {
 }
 std::uint32_t TileLayer::aux(std::uint64_t idx) const {
     return idx < aux_.size() ? aux_[static_cast<std::size_t>(idx)] : 0;
+}
+std::uint16_t TileLayer::walk_code(std::uint64_t idx) const {
+    return idx < walk_code_.size() ? walk_code_[static_cast<std::size_t>(idx)] : std::uint16_t{2};
+}
+std::uint16_t TileLayer::walk_mask(std::uint64_t idx) const {
+    return idx < walk_mask_.size() ? walk_mask_[static_cast<std::size_t>(idx)] : std::uint16_t{0};
 }
 
 std::uint64_t TileLayer::chunk_of(std::uint64_t idx) const {
@@ -148,6 +156,22 @@ void TileLayer::set_aux(std::uint64_t idx, std::uint32_t v) {
     aux_[static_cast<std::size_t>(idx)] = v;
     mark(idx);
 }
+void TileLayer::set_walk_code(std::uint64_t idx, std::uint16_t v) {
+    if (idx >= walk_code_.size()) {
+        ++ignored_writes_;
+        return;
+    }
+    walk_code_[static_cast<std::size_t>(idx)] = v;
+    mark(idx);
+}
+void TileLayer::set_walk_mask(std::uint64_t idx, std::uint16_t v) {
+    if (idx >= walk_mask_.size()) {
+        ++ignored_writes_;
+        return;
+    }
+    walk_mask_[static_cast<std::size_t>(idx)] = v;
+    mark(idx);
+}
 
 std::uint64_t TileLayer::chunk_digest_uncached(std::uint64_t chunk) const {
     if (chunk >= chunk_count()) {
@@ -168,6 +192,8 @@ std::uint64_t TileLayer::chunk_digest_uncached(std::uint64_t chunk) const {
             h.u8(phase_[i]);
             h.u32(owner_[i]);
             h.u32(aux_[i]);
+            h.u16(walk_code_[i]);
+            h.u16(walk_mask_[i]);
         }
     }
     return h.value();

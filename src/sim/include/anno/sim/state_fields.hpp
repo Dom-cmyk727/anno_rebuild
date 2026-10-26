@@ -459,15 +459,22 @@ struct TileIO {
         for (auto& v : t.aux_) {
             a.u32(v);
         }
+        for (auto& v : t.walk_code_) {
+            a.u16(v);
+        }
+        for (auto& v : t.walk_mask_) {
+            a.u16(v);
+        }
     }
 };
 
 /// The scope `tiles` of an island: `u32 width, u32 height, u32 chunk_edge`, then
-/// the four columns `object[]` (u32), `phase[]` (u8), `owner[]` (u32), `aux[]`
-/// (u32), each w · h elements (kTileBytes = 13 per tile). `x0`, `y0`, `w` and `h`
-/// are the island's own rectangle, which the island scope wrote just before; the
-/// layer's dimensions must equal them. Reading rejects before allocating:
-/// chunk_edge 0, more than kIslandTileBound tiles, or w · h · 13 > remaining()
+/// the six columns `object[]` (u32), `phase[]` (u8), `owner[]` (u32), `aux[]`
+/// (u32), `walk_code[]` (u16), `walk_mask[]` (u16), each w · h elements
+/// (kTileBytes = 17 per tile). `x0`, `y0`, `w` and `h` are the island's own
+/// rectangle, which the island scope wrote just before; the layer's dimensions
+/// must equal them. Reading rejects before allocating:
+/// chunk_edge 0, more than kIslandTileBound tiles, or w · h · 17 > remaining()
 /// (in u64); the generic count check of ReadArchive does not cover the bulk
 /// columns. The hierarchical hash feeds the dimensions and, for every chunk in
 /// row-major chunk order, the cached chunk digest (u64) instead of the columns;
@@ -1118,14 +1125,12 @@ struct StateIO {
                     a.fail("type registry digest differs from the world's registry");
                 }
             }
-            std::uint64_t walk_digest = w.types_->walk_tables()
-                                            ? walk_tables_digest(*w.types_->walk_tables())
-                                            : 0;
+            std::uint64_t walk_digest =
+                w.types_->walk_tables() ? walk_tables_digest(*w.types_->walk_tables()) : 0;
             a.u64(walk_digest);
             if constexpr (A::kReading) {
-                const std::uint64_t expected = w.types_->walk_tables()
-                                                   ? walk_tables_digest(*w.types_->walk_tables())
-                                                   : 0;
+                const std::uint64_t expected =
+                    w.types_->walk_tables() ? walk_tables_digest(*w.types_->walk_tables()) : 0;
                 if (!a.failed() && walk_digest != expected) {
                     a.fail("walk-table digest differs from the world's tables");
                 }

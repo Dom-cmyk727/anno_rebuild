@@ -101,6 +101,11 @@ FIG_BYTES = FIG_HOME + 4
 FTYPE_ID = 0x04                       # u32 figure id (callers use the low 16 bits)
 FTYPE_CLASS = 0x08                    # u32 BEWOHNTYPE index
 FTYPE_LAYER = 0xFF                    # u8 walking layer (LOGIC[0x10])
+# Island tile records (docs/re/transport.md section 3.4.17; reader 0x10083a90): origin u16 x +4,
+# y +6, width u16 +8, height u16 +0xa (likely: read beside them at 0x100853b0), records +0xc,
+# 8 bytes per tile at (y - y0) * width + (x - x0).
+ISL_X0, ISL_Y0, ISL_W, ISL_H, ISL_TILES = 0x04, 0x06, 0x08, 0x0A, 0x0C
+TILE_RECORD = 8
 
 # Plausibility bound for a city capacity read (in store units). A freed or unrelated object that
 # still carries the city vtable (review N1) shows zero or garbage here. The bound only filters
@@ -285,6 +290,38 @@ def figure_fields(mem, obj: int, welt_base: int) -> dict | None:
             "tile": (int(x), int(z)) if all(abs(v) < 1e6 for v in (x, z)) else None,
             "vel": [_f32(b, FIG_VEL + 4 * k) for k in range(3)],
             "remain": _f32(b, FIG_REMAIN), "rate": _f32(b, FIG_RATE)}
+
+
+def tile_record(mem, island: int, x: int, y: int) -> dict | None:
+    """The original's 8-byte record of world tile (x, y) on `island`, field by field as
+    transport.md section 3.4.17 names them, or None outside the island or when unreadable."""
+    h = mem.read(island + ISL_X0, ISL_TILES + 4 - ISL_X0)
+    if not h:
+        return None
+    x0, y0, w, hgt = (u16(h, off - ISL_X0) for off in (ISL_X0, ISL_Y0, ISL_W, ISL_H))
+    base = u32(h, ISL_TILES - ISL_X0)
+    if not base or not (x0 <= x < x0 + w and y0 <= y < y0 + hgt):
+        return None
+    r = mem.read(base + ((y - y0) * w + (x - x0)) * TILE_RECORD, TILE_RECORD)
+    if not r or len(r) != TILE_RECORD:
+        return None
+    hi = u32(r, 4)
+    return {"id": u16(r, 0), "dx": r[2] & 7, "dy": (r[2] >> 3) & 7, "rotation": r[2] >> 6,
+            "phase": r[3] & 0x3F, "byte3": r[3], "height": hi & 0xFF, "code": (hi >> 8) & 0xFF,
+            "mask": (hi >> 16) & 0x1FF, "bits25_31": hi >> 25}
+
+
+def walkers(mem, welt_base: int, types, world: int | None = None) -> list[dict]:
+    """The figures whose type id is in `types`, each with the record of the tile it stands on
+    (`record`, None when the tile is not on its island)."""
+    want = set(types)
+    out = []
+    for f in figures(mem, welt_base, world):
+        if f["type"] in want:
+            isl = int(f["island"], 16)
+            f["record"] = tile_record(mem, isl, *f["tile"]) if isl and f["tile"] else None
+            out.append(f)
+    return out
 
 
 def figures(mem, welt_base: int, world: int | None = None) -> list[dict]:

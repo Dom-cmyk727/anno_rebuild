@@ -856,7 +856,7 @@ class Instance:
             self.world = gamestate.find_world(self.mem, welt, settle=0.05)
             return self.world
 
-    def state(self, what: str = "world") -> dict:
+    def state(self, what: str = "world", types: list | None = None) -> dict:
         self.need_game()
         welt = self.bases.get("annowelt.dll")
         res: dict = {"pid": self.pid}
@@ -871,6 +871,8 @@ class Instance:
             res["players"] = gamestate.players(self.mem, welt, self.find_world())
         if what == "figures":       # not part of "all": hundreds of records per call
             res["figures"] = gamestate.figures(self.mem, welt, self.find_world())
+        if what == "walkers":       # the figures of `types` with the tile record under each
+            res["walkers"] = gamestate.walkers(self.mem, welt, types or [], self.find_world())
         return res
 
     def clocks(self) -> dict:

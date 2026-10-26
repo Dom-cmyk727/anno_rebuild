@@ -281,6 +281,30 @@ class GameState(unittest.TestCase):
                           gamestate.FIG_HOME, gamestate.FTYPE_ID, gamestate.FTYPE_CLASS, gamestate.FTYPE_LAYER),
                          (0x14, 0x24, 0x3C, 0x40, 0x78, 4, 8, 0xFF))
 
+    def test_walkers_read_the_tile_record_under_each_figure(self):
+        # Island 0x8800: origin (100, 200), 4 x 3 tiles, records at 0xA000. The figure stands at
+        # (101.75, 205.25), outside it; a second copy at (102.5, 201.1) stands on tile (102, 201).
+        isl = bytearray(gamestate.ISL_TILES + 4)
+        struct.pack_into("<HHHH", isl, gamestate.ISL_X0, 100, 200, 4, 3)
+        struct.pack_into("<I", isl, gamestate.ISL_TILES, 0xA000)
+        recs = bytearray(4 * 3 * gamestate.TILE_RECORD)
+        i = ((201 - 200) * 4 + (102 - 100)) * gamestate.TILE_RECORD
+        struct.pack_into("<HBB", recs, i, 2527, (1 << 6) | (1 << 3) | 2, 0x80 | 5)
+        struct.pack_into("<I", recs, i + 4, (0xF << 25) | (0x1A5 << 16) | (0x00 << 8) | 7)
+        objs = self.figure_objects()
+        on = bytearray(objs[0x4000])
+        struct.pack_into("<ff", on, gamestate.FIG_POS, 102.5, 0.0)
+        struct.pack_into("<f", on, gamestate.FIG_POS + 8, 201.1)
+        objs[0x4800] = bytes(on)
+        mem = FakeMem(self.figure_world([0x4000, 0x4800]) | objs | {0x8800: bytes(isl), 0xA000: bytes(recs)})
+        got = gamestate.walkers(mem, self.WELT, [220], 0x1000)
+        self.assertEqual([w["tile"] for w in got], [(101, 205), (102, 201)])
+        self.assertIsNone(got[0]["record"])                    # (101, 205) is not on the island
+        self.assertEqual(got[1]["record"], {"id": 2527, "dx": 2, "dy": 1, "rotation": 1, "phase": 5,
+                                            "byte3": 0x85, "height": 7, "code": 0, "mask": 0x1A5,
+                                            "bits25_31": 0xF})
+        self.assertEqual(gamestate.walkers(mem, self.WELT, [203], 0x1000), [])
+
 
 class Camera(unittest.TestCase):
     FRAME = 0x2300000

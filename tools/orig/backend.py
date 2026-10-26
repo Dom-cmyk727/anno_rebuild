@@ -11,8 +11,9 @@ Interface (frame coordinates are FRACTIONS 0..1 of the game frame, as in tools/o
   screenshot(name) -> path              recognize() -> {"screen": ..., "scores": ...}
   quicksave(keep_as=None) / quickload()
   read(addr, n) -> bytes | None         module_bases() -> {"annowelt.dll": base, ...}
-  state(what="world"|"prng"|"cities"|"players"|"all"|"figures")   (tools/orig/gamestate.py readers;
-                                                                   "figures" is not in "all")
+  state(what="world"|"prng"|"cities"|"players"|"all"|"figures"|"walkers", types=None)
+                                        (tools/orig/gamestate.py readers; "figures" and "walkers"
+                                        are not in "all"; "walkers" takes the figure type ids)
 
 Backends:
   WineBackend     tools/orig/wine/agent.py inside the AnnoHarness WSL distro, spoken to over the
@@ -207,8 +208,11 @@ class WineBackend:
     def module_bases(self) -> dict:
         return {k: int(v, 16) for k, v in self.call("module_bases").items()}
 
-    def state(self, what: str = "world") -> dict:
-        return self.call("state", {"what": what}, timeout=300)
+    def state(self, what: str = "world", types: list | None = None) -> dict:
+        args: dict = {"what": what}
+        if types is not None:
+            args["types"] = list(types)
+        return self.call("state", args, timeout=300)
 
     # Wine runner extras
     def poll_start(self, label: str):
@@ -322,7 +326,7 @@ class WindowsBackend:
     def module_bases(self) -> dict:
         return {n.lower(): b for n, b, _s in self.smoke.enum_modules(self.pid)}
 
-    def state(self, what: str = "world") -> dict:
+    def state(self, what: str = "world", types: list | None = None) -> dict:
         import gamestate  # noqa: PLC0415
         welt = self.module_bases().get("annowelt.dll")
         res: dict = {"pid": self.pid}
@@ -337,6 +341,8 @@ class WindowsBackend:
             res["players"] = gamestate.players(self, welt)
         if what == "figures":       # not part of "all": hundreds of records per call
             res["figures"] = gamestate.figures(self, welt)
+        if what == "walkers":       # the figures of `types` with the tile record under each
+            res["walkers"] = gamestate.walkers(self, welt, types or [])
         if what == "camera":
             found = self.smoke.find_game_window(self.game_dir)
             frame = self.module_bases().get("annoframe.dll")

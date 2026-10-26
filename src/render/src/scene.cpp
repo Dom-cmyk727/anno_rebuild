@@ -41,8 +41,12 @@ struct Scene::FlowSlot {
 struct Scene::FlowBuild {
     std::mutex mutex;
     std::condition_variable wake;
+    std::condition_variable idle;
     std::deque<std::size_t> queue;
     bool stop = false, paused = false;
+    /// Builds popped from the queue and not finished yet. With `queue` empty
+    /// and this at 0, nothing is in flight (wait_river_flow_builders).
+    unsigned inflight = 0;
     std::vector<std::thread> threads;
 };
 
@@ -1379,8 +1383,16 @@ void Scene::start_flow_builders() const {
                     }
                     index = fb->queue.front();
                     fb->queue.pop_front();
+                    ++fb->inflight;
                 }
                 build_flow(index);
+                {
+                    const std::lock_guard lock(fb->mutex);
+                    --fb->inflight;
+                    if (fb->queue.empty() && fb->inflight == 0) {
+                        fb->idle.notify_all();
+                    }
+                }
             }
         });
     }
@@ -1462,6 +1474,15 @@ void Scene::pause_river_flow_builders(bool pause) const {
         flow_build_->paused = pause;
     }
     flow_build_->wake.notify_all();
+}
+
+void Scene::wait_river_flow_builders() const {
+    if (!flow_build_) {
+        return;
+    }
+    std::unique_lock lock(flow_build_->mutex);
+    flow_build_->idle.wait(
+        lock, [fb = flow_build_.get()] { return fb->queue.empty() && fb->inflight == 0; });
 }
 
 bool Scene::river_flow_done(std::size_t index) const {

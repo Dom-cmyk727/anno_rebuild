@@ -618,28 +618,24 @@ TEST_CASE("a flow that is not ready draws the legacy look and is rebuilt later, 
     // The flow builders are paused: the flow cannot be ready.
     scene.pause_river_flow_builders(true);
     render::FrameRenderer frames(4, true);
-    frames.set_workers(std::make_unique<render::ChunkWorkers>(scene, 2));
+    auto owned = std::make_unique<render::ChunkWorkers>(scene, 2);
+    render::ChunkWorkers* workers = owned.get();
+    frames.set_workers(std::move(owned));
     std::vector<std::uint32_t> pending_px(static_cast<std::size_t>(view.w) *
                                           static_cast<std::size_t>(view.h));
-    double worst_update_ms = 0;
-    auto settle = [&] {
-        // Until every visible chunk is in the cache (updates never block).
-        for (int guard = 0; guard < 2000; ++guard) {
-            const auto t = Clock::now();
-            const auto [built, ms, missing] = frames.update_chunks(scene, view, group);
-            (void)built;
-            (void)ms;
-            worst_update_ms =
-                std::max(worst_update_ms,
-                         std::chrono::duration<double, std::milli>(Clock::now() - t).count());
-            if (missing == 0 && !frames.busy()) {
-                return;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
-        FAIL("chunks did not arrive");
+    // update_chunks submits and returns. The test waits on the workers, which
+    // is not the window thread. One submit covers this view (a few chunks).
+    auto drain = [&] {
+        frames.update_chunks(scene, view, group);
+        workers->wait_idle();
+        return std::get<2>(frames.update_chunks(scene, view, group));
     };
-    settle();
+    REQUIRE(drain() == 0);
+    // The chunks are cached and the flow is still not done, so update_chunks
+    // did not wait for a flow build. The old form slept until the workers
+    // finished and compared that wall time with half a synchronous flow build.
+    // Under ctest -j 16 that wall time moves (0.2 ms alone, 15 ms beside the
+    // render suite) and the comparison is what a loaded gate can fail.
     CHECK_FALSE(scene.river_flow_done(0));
     std::size_t pending_chunks = 0, with_flow = 0;
     for (const auto& [cx, cy] : render::visible_chunks(view)) {
@@ -650,21 +646,6 @@ TEST_CASE("a flow that is not ready draws the legacy look and is rebuilt later, 
     }
     CHECK(pending_chunks > 0);
     CHECK(with_flow == 0);
-    // The window thread's calls never waited for a build: structurally (the
-    // flow is still not done although the chunks were requested and built),
-    // and in time against the build itself (a blocking build costs at least
-    // that much).
-    const auto build_t0 = Clock::now();
-    {
-        const auto probe_flow =
-            river::RiverFlow::build(scene.river_mask(0, scene.river_cfg), scene.river_cfg);
-        CHECK(probe_flow.stats().wet_cells > 0);
-    }
-    const double build_ms =
-        std::chrono::duration<double, std::milli>(Clock::now() - build_t0).count();
-    MESSAGE("island flow build " << build_ms << " ms; worst update_chunks " << worst_update_ms
-                                 << " ms");
-    CHECK(worst_update_ms < std::max(0.5 * build_ms, 30.0));
     frames.river_flow = render::RiverFlowMode::Flow;
     frames.render(scene, view, group, 700, render::WaterStyle::Enhanced, pending_px.data());
     // The legacy look on the correct mask: identical to the legacy mode.
@@ -672,19 +653,15 @@ TEST_CASE("a flow that is not ready draws the legacy look and is rebuilt later, 
     frames.river_flow = render::RiverFlowMode::Legacy;
     frames.render(scene, view, group, 700, render::WaterStyle::Enhanced, legacy_px.data());
     CHECK(pending_px == legacy_px);
-    // The flow arrives: the chunks are rebuilt with the lattice, and now differ.
+    // The flow arrives: the builders were paused, so this wait is the queue
+    // draining, then one rebuild of the chunks that were pending.
     scene.pause_river_flow_builders(false);
-    bool rebuilt = false;
-    for (int guard = 0; guard < 6000 && !rebuilt; ++guard) {
-        frames.update_chunks(scene, view, group);
-        rebuilt = true;
-        for (const auto& [cx, cy] : render::visible_chunks(view)) {
-            const render::Chunk* c = frames.chunk({group, cx, cy});
-            rebuilt = rebuilt && c != nullptr && !c->flow_pending();
-        }
-        if (!rebuilt) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
+    scene.wait_river_flow_builders();
+    REQUIRE(drain() == 0);
+    bool rebuilt = true;
+    for (const auto& [cx, cy] : render::visible_chunks(view)) {
+        const render::Chunk* c = frames.chunk({group, cx, cy});
+        rebuilt = rebuilt && c != nullptr && !c->flow_pending();
     }
     REQUIRE(rebuilt);
     CHECK(scene.river_flow_done(0));

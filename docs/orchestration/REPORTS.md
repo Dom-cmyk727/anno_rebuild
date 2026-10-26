@@ -3962,3 +3962,18 @@ OQ-220 (the three addon pages do not state the six levels), OQ-221 (a money bull
   5. nothing of the original in git: MET.
   6. this report, not merged: MET.
 - Time spent / subagents used: inline, no subagents. `disasm.py` and `xref.py` only.
+
+## T31.3 — Monuments, the open points — 2026-10-26 — status: FINISHED
+
+- Branch: `task/T31-monuments-re`. The open-point commit is `5c660f3`. The commit that adds this section is the branch head. Worktree: `E:\anno1503-worktrees\anno1503-T31`. Not merged, not pushed. T34 was not started.
+- Built: status lines on OQ-144, OQ-145 and OQ-166; new OQ-180, OQ-181, OQ-182 (OQ-183 and OQ-184 stay free; OQ-260 and OQ-270 were not used); one sentence in `docs/formats/sze.md`; "What the sim needs" is `docs/re/monuments.md` §12, committed in `9677acd`. No `src/` change. `TASKS.md` was not edited.
+- Gates: docs only. No build, no ctest, no clang-format, no GCC, no agree.py, no asan.
+- Acceptance for the whole of T31:
+  1. the award rule with addresses, and what is open with the next search: MET. Bit 30 is `0x1002ae4c`. Bit 29 other than the 65000 check is OQ-180.
+  2. the monument as a building: MET for the scenario object (base class, tick `0x10001030`, no mood effect, streak saved in `STAT2`). Interactive place, demolition and the menu test are OQ-182.
+  3. every claim of steps 2–3 with its source, matched to the code: MET (`monuments.md` §7 and §9).
+  4. the owner's three clauses: MET (§10). The 30-minute example is corrected to 40 minutes under 30 percent unhappy.
+  5. nothing of the original in git: MET.
+  6. this report, not merged: MET. Not pushed.
+- Left open: OQ-180, OQ-181, OQ-182, and the unnamed flag bits `0x0084`. T31b is the sim, later.
+- Time spent / subagents used: inline, no subagents.

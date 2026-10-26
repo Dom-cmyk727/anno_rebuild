@@ -3281,3 +3281,81 @@ Listed commits are `git log --oneline 7ed152c..480a667` (the report commit inclu
 - `18750e6` feat(sim): store a walk code and mask on every tile
 
 Branch head is the commit with subject `docs(orchestration): correct the T33.4 F5 branch head`.
+
+## T33.5 stage 1 — The tile record across an object's life — 2026-10-26 — status: FINISHED
+
+- Branch: `task/T33-5-tile-record-re` at the commit that adds this section, parent `8f14206`; worktree: `E:\anno1503-worktrees\anno1503-T33-5`. Base `acd45cd`. Local only: `git ls-remote` from `E:\anno1503` returned HTTP 403. Not pushed, not merged. `E:\anno1503` was not edited. Scratch listings are under this worktree's `cache/` (git-ignored). C: was left alone; it had about 29 GB free.
+- Built: docs only. `docs/re/transport.md` §3.4.17; `docs/sim/state.md` §5.9 differences paragraph; `docs/open-questions.md` OQ-201, OQ-202, OQ-203, OQ-204, OQ-205. No `src/` change.
+- Gates: not run. No source change, so no msvc build, no ctest, no clang-format, no GCC, no agree.py, no asan.
+- Evidence: the address ranges in §3.4.17. No listing is in a committed file.
+
+### Step 2 — field table
+
+In §3.4.17. Stride 8 is the reader `0x10083aba`, growth `0x1008b714`, and the reset `lea [base+index*8]`.
+
+| Field | Tag |
+|---|---|
+| u16 object id | D. Placement `0x1008244a`, growth `0x1008b6c6`, reset `0x1008c818` writes 0, clear arm `0x10082f13` writes 0, replacement `0x10082e7e`. Reader `0x10083abd`. |
+| Byte 2 bits 0–2, dx | D. Placement `0x1008245c`. Reader `0x10083acc`. |
+| Byte 2 bits 3–5, dy | D. Placement `0x10082474`. The `* 0x1f` is `−1 (mod 8)`. Reader `0x10083ade`. |
+| Byte 2 bits 6–7, rotation | D. Placement `0x10082480`. Reader `0x10083af2`. |
+| Byte 3 bits 0–5, phase | D. Placement `0x100824c5`, growth `0x1008b681` and `0x1008b6a6`. Reader `0x10083afb`. |
+| Byte 3 bit 6, growth parity | D. Growth reads `0x1008b665` and writes `0x1008b681`. |
+| Byte 3 bit 7 | Open. Stores are read (placement `0x100824c5`, replacement `0x10082e8a`, keep at `0x100873ab` and `0x1008b6ca`). No test of the bit. Next address: a reader of bit `0x80` of byte 3. OQ-203. |
+| Second dword bits 0–7, height | D. Placement `0x10082494`. Reader `0x10083b01`. Reset is 0 inside `0x1e000200`. |
+| Bits 8–15, walk code | D. Overlay `0x1008236d`, ordinary `0x100825b7`. Cell fill `0x10090067`. Reset is code 2. |
+| Bits 16–24, 9-bit mask | D. Replace `0x100825d9`, overlay OR `0x100823b0`. Cell fill `0x10090054`. |
+| Bits 25–28 | Open for the value and the reader. Reset writes 15. `0x100854ca` replaces the nibble when it is 15; `cl` is `[esp+0x20]` at `0x10085481`, not traced to an argument. Next address: that stack slot, then a test of `0x1e000000`. OQ-205. |
+| Bits 29–31 | Open. Placement clears them (`0x100824a7`). Reset leaves 0. The clear arm keeps them. Next address: `0x10087880`. OQ-204. |
+
+No bit is marked unused.
+
+### Step 3 — growth calls
+
+`0x1008b5f0`, `this` = `ebx` = entry `ecx` (island fields `+4/+6/+8/+0xc/+0x1c`). Own stores: byte 3 and `inc word` of the id. No store to byte 2 or the second dword.
+
+| Call | Receiver, vtable, installer | Target | Writes byte 2 / second dword |
+|---|---|---|---|
+| `[edx+0x70]` `0x1008b637` | `[island+0x1c]`. Installer of the catalogue vtable `0x100213d0` is AnnoGame `0x10003766`. The store into island `+0x1c` was not read. | `0x100037e0` if the vtable is `0x100213d0`, `0x100214b0`, `0x100215a4` or `0x10021694`. | No, for `0x100037e0`. Open if the vtable differs. Next address: the store to `[island+0x1c]`. |
+| `[edx+0xe8]` `0x1008b648` | The pointer returned by the lookup. Type vtable `0x1002185c`, installer AnnoGame `0x1000b4ee` and `0x1000b3f1`. The array store was not read. | `0x1000a570` (u16 at type `+0x1fe`). | No, for that function. Next address: writer of `[catalogue+0x214+4·id]`. |
+| `[eax+0x80]` `0x1008b687` | Same pointer. | `0x10007db0` (byte at type `+0x6e`). | No. Same open link. |
+| `[edx+0x7c]` `0x1008b6b4` | Same pointer. | `0x10007da0` (byte at type `+0x66`). | No. Same open link. |
+| `[edx+0x188]` `0x1008b709` | The island, `[ebx]`. In-game island vtable `0x100cac2c` (installer `0x10094c32` and `0x10094c6a`) slot `+0x188` is `0x1008f2d0`. Also `0x100ca530+0x188`. Base `0x100ca19c+0x188` was not read. | `0x1008f2d0`. Kind `0xce` is jump-table index 5, entry `0x1008f2f0`. | No. That arm increments chunk-record byte `+5` only. |
+
+`0x1008f321` (`[edx+0xbc]` on `[island+0x20]`) and `0x1008f367` (`[edx+0xc]`) are kind `0xcc`, not `0xce`. `0x1008f463` is the next function, not a call inside `0x1008f2d0`. `0x1008cb30` (`0x1008cb30..0x1008cbd9`) zeros island fields and stores vtable `0x100ca19c`. It writes no tile byte.
+
+OQ-202: answered (a). The walk code and the mask stay as placement wrote them. Growth does not read byte 2. It does not walk a footprint: each tile that holds the id word advances on its own visit.
+
+### Step 4 — removal
+
+`0x100589a0` is in both images. AnnoWelt there is four instructions (`fld` / `fmul` / `fstp` / `ret`). AnnoFrame `0x100589a0` is the command function. Its modes 6, 9, 2, 8 and 7 do not call `RemoveAt`. The `+0xb4` call is AnnoFrame `0x10058f7a` inside `0x10058e90` mode 6, then slot `+0x78` at `0x10058f84`. On the city vtable those are `0x10028fd0` and `0x1002f7f0`.
+
+`RemoveAt` `0x10028fd0`, `this` = city. A null building lookup returns at `0x1002945c` and does not call slot `+0x7c`. When a building is found, `0x100292ef` calls `[city+0x1c]` slot `+0x7c` with third argument 0. In-game island slot `+0x7c` is `0x1008ee70`, which then calls `0x10082c30(x, y, 0)`.
+
+`0x10082c30` recovers the origin from byte 2 of the clicked tile. An id of 0 jumps to the epilogue `0x10083808` and writes nothing. A matching footprint tile is either cleared (`0x10082f00`: id 0, byte 2 = 0, phase kept, code 2, mask 0, height and bits 25–31 kept) or rewritten from the type selected by the high nibble of `[island+0x18]` (`0x10082e43..0x10082efc`). That is not `0x1e000200` and not a saved walk record. The low-byte rewrite calls `0x10008f90`, which was not read. `0x100835f1..0x10083807` was not read.
+
+OQ-201: narrowed. The non-building command path is open at AnnoFrame `0x10058e11` and `0x1005913f`. The `+0x18` grid's writer is open.
+
+### Step 5 — `src/sim` list
+
+In `docs/sim/state.md` §5.9, the paragraph "Differences to the original's tile record (for T33.5 stage 2)". Production sites and the test hits are listed there. `walk_cells.cpp` has no `object(`, `set_object(` or `set_phase(`. `transport_test.cpp:93,94,704` are the helper name `tile_object(` and were skipped.
+
+### Acceptance
+
+1. Field table: MET. Every bit is D or open with a next address. None unused.
+2. Five growth calls: PARTIAL. The functions at the named slots do not write byte 2 or the second dword, and kind `0xce` does not. The store to island `+0x1c` and the store into the catalogue array were not read. OQ-202 is answered (a) for the functions that were read.
+3. OQ-201: PARTIAL. The building path is narrowed with addresses. The non-building command path, the `+0x18` grid, `0x10008f90`, and `0x100835f1..0x10083807` stay open.
+4. §5.9 list: MET.
+5. Nothing of the original in git: MET. `cache/` stays untracked. `git status` shows no `game/`.
+6. Report and commits: MET by this section. Not merged. Not pushed.
+
+### Commits
+
+`git log --oneline acd45cd..8f14206` (this section is the commit after `8f14206`):
+
+- `8f14206` docs: answer OQ-201 and OQ-202 from the tile-record read
+- `ec6c42a` docs(sim): record the tile-record differences for T33.5 stage 2
+- `97e38f5` re(annowelt): record the tile record across an object's life
+
+- Left open: OQ-201 (non-building path, island `+0x18`), OQ-203, OQ-204, OQ-205. OQ-202 answered (a), with the island `+0x1c` store still unread.
+- Time spent / subagents used: continued in this session; no subagents.

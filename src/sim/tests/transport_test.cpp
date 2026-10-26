@@ -16,13 +16,18 @@
 
 #include <doctest/doctest.h>
 
+#include <anno/formats/anlagen.hpp>
+#include <anno/formats/annowelt.hpp>
+#include <anno/formats/figuren.hpp>
 #include <anno/sim/building.hpp>
 #include <anno/sim/driver.hpp>
 #include <anno/sim/hash.hpp>
 #include <anno/sim/replay.hpp>
+#include <anno/sim/scenario_formats.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/world.hpp>
+#include <anno/test/game_dir.hpp>
 
 #include "golden.hpp"
 #include "island_helpers.hpp"
@@ -859,4 +864,79 @@ TEST_CASE("G6 a market cart and a workshop carrier through 300000 ticks equal go
         }
         CHECK_MESSAGE(problem.empty(), problem);
     }
+}
+
+TEST_CASE("S01_07_01 tick 0 search store is complete" * doctest::test_suite("corpus")) {
+    // Step 5(b): every market and workshop at tick 0. incomplete counts a search
+    // whose WalkCells store was not complete. The per-tile record makes that 0.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("ANNO1503_GAME_DIR not set: skipping S01_07_01 search store");
+        return;
+    }
+    const auto ab = anno::test::read_file(*dir / "Anlagen.dat");
+    auto an = anno::formats::anlagen::AnlagenFile::parse(ab);
+    REQUIRE(an);
+    const auto fig_buf = anno::test::read_file(*dir / "FigurenHeader.dat");
+    auto figures = anno::formats::figuren::FigurenHeader::parse(fig_buf);
+    REQUIRE(figures);
+    const auto walk_bytes = anno::test::read_file(*dir / "AnnoWelt.dll");
+    auto walk = anno::formats::annowelt::read_walk_tables(walk_bytes);
+    REQUIRE(walk);
+    auto types = sim::TypeRegistry::build(
+        an.value().entries, sim::original_goods(), sim::SimConfig{}, figures.value().entries,
+        std::make_shared<const anno::formats::annowelt::WalkTables>(std::move(walk).value()));
+    REQUIRE(types);
+    const auto sb = anno::test::read_file(*dir / "Scenes" / "0100Kampagne01" / "S01_07_01.sze");
+    auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{});
+    REQUIRE(loaded);
+    auto made = sim::World::create(loaded.value().spec, types.value());
+    REQUIRE(made);
+    sim::World world = std::move(made).value();
+    sim::Effects fx;
+    sim::SerialWorld serial(world.islands(), world.config().layout, world.figures(),
+                            world.players(), fx);
+    sim::TransportStats cart, carrier;
+    std::uint64_t markets = 0, workshops = 0;
+    for (const auto& slot : world.islands()) {
+        if (!slot) {
+            continue;
+        }
+        const sim::Island& is = *slot;
+        for (const auto& [id, key] : is.cache.by_id) {
+            const sim::Building* b = is.find_building(id);
+            if (b == nullptr) {
+                continue;
+            }
+            const sim::BuildingType* t = types.value()->find(b->type);
+            if (t == nullptr || t->prod.figure_ids.empty()) {
+                continue;
+            }
+            const sim::FigureType* ft = types.value()->find_figure_type(t->prod.figure_ids[0]);
+            if (ft == nullptr) {
+                continue;
+            }
+            std::uint32_t job = 0;
+            sim::TransportStats* stats = nullptr;
+            if (std::holds_alternative<sim::Market>(b->payload)) {
+                job = sim::kJobMarketCart;
+                stats = &cart;
+                ++markets;
+            } else if (std::holds_alternative<sim::Workshop>(b->payload)) {
+                job = sim::kJobWorkshopCarrier;
+                stats = &carrier;
+                ++workshops;
+            } else {
+                continue;
+            }
+            static_cast<void>(sim::choose_source(serial, *types.value(), job, *b, *t, key.city,
+                                                 ft->capacity_88, ft->layer, stats));
+        }
+    }
+    MESSAGE("S01_07_01 tick 0 markets " << markets << " incomplete " << cart.incomplete
+                                        << " workshops " << workshops << " incomplete "
+                                        << carrier.incomplete);
+    CHECK(markets + workshops > 0);
+    CHECK(cart.incomplete == 0);
+    CHECK(carrier.incomplete == 0);
 }

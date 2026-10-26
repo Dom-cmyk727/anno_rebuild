@@ -8,6 +8,7 @@
 #include <doctest/doctest.h>
 
 #include <anno/sim/building.hpp>
+#include <anno/sim/walk_cells.hpp>
 #include <anno/sim/walk_search.hpp>
 namespace sim = anno::sim;
 namespace {
@@ -72,6 +73,7 @@ TEST_CASE("walk_search: start flood uses blocked subcells and reached edge keys"
     REQUIRE(types);
     g.types = types.value();
     g.island.tiles.set_object(1, 100);
+    sim::write_walk_record(g.island.tiles, blocked, 1, 0, 0);
     auto cells = g.cells();
     open(cells, {0, 0});
     open(cells, {1, 0}, 4); // geometry alone cannot supply the start keys
@@ -401,7 +403,8 @@ TEST_CASE("walk_search: generated grids are deterministic and never enter closed
     }
 }
 
-TEST_CASE("walk_search: unsupported records are reported and coordinate extremes stay bounded") {
+TEST_CASE(
+    "walk_search: a written tile record stays complete and coordinate extremes stay bounded") {
     Grid g(2, 1);
     sim::BuildingType partial;
     partial.id = sim::TypeId{100};
@@ -412,14 +415,26 @@ TEST_CASE("walk_search: unsupported records are reported and coordinate extremes
     REQUIRE(types);
     g.types = types.value();
     g.island.tiles.set_object(1, 100);
-    sim::WalkCells unsupported(g.island, *g.types, g.tables, g.island.rect());
-    const auto r = run(unsupported, g.tables, point(0, 0), point(1, 0));
+    // The object id does not store a walk record. The columns stay at the reset
+    // and the search stays complete: the T33.2 tile-object stop is gone (F5).
+    sim::WalkCells untouched(g.island, *g.types, g.tables, g.island.rect());
+    const auto open_land = run(untouched, g.tables, point(0, 0), point(1, 0));
+    CHECK(open_land.error.empty());
+    CHECK(open_land.complete);
+    CHECK(untouched.record({1, 0}).supported);
+    CHECK(untouched.record({1, 0}).code == 2);
+    CHECK(untouched.record({1, 0}).mask9 == 0);
+    sim::write_walk_record(g.island.tiles, partial, 1, 0, 0);
+    sim::WalkCells written(g.island, *g.types, g.tables, g.island.rect());
+    CHECK(written.record({1, 0}).code == 4);
+    CHECK(written.record({1, 0}).mask9 == 7);
+    const auto r = run(written, g.tables, point(0, 0), point(1, 0));
     CHECK(r.error.empty());
-    CHECK_FALSE(r.complete);
-    CHECK_FALSE(r.selected);
-    const auto start = run(unsupported, g.tables, point(1, 0), point(0, 0));
-    CHECK_FALSE(start.complete);
-    CHECK(start.enqueued == 0);
+    CHECK(r.complete);
+    const auto start = run(written, g.tables, point(1, 0), point(0, 0));
+    CHECK(start.error.empty());
+    CHECK(start.complete);
+    CHECK(start.enqueued >= 1);
     Grid edge(2, 1);
     const auto x = std::numeric_limits<std::int32_t>::max(),
                y = std::numeric_limits<std::int32_t>::min();

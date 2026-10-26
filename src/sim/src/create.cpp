@@ -274,14 +274,11 @@ bool remove_building(const SimConfig& cfg, const TypeRegistry& types, PlayerTabl
                 }
             }
         }
-        for (std::int64_t y = box.y0; y < box.y1; ++y) {
-            for (std::int64_t x = box.x0; x < box.x1; ++x) {
-                const std::uint64_t idx = static_cast<std::uint64_t>(y * tiles.width() + x);
-                island.tiles.set_object(idx, 0);
-                island.tiles.set_walk_code(idx, 2);
-                island.tiles.set_walk_mask(idx, 0);
-            }
-        }
+        // The clear arm, from the building's origin (0x100292ef → island +0x7c
+        // 0x1008ee70 → 0x1008eec3 → 0x10082c30). RemoveAt passes the clicked
+        // tile; the origin names the same footprint while that tile still holds
+        // this building.
+        clear_object_record(island.tiles, types, b.x, b.y);
     }
     island.cache.by_id.erase(b.id);
     list.remove(key.slot);

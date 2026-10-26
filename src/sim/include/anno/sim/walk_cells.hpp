@@ -64,6 +64,17 @@ inline constexpr std::uint32_t kPlacementBlockEdge = 8;
 std::uint32_t place_object_record(TileLayer&, const TypeRegistry&, const BuildingType&,
                                   std::int32_t x0, std::int32_t y0, std::uint32_t rotation,
                                   std::uint8_t phase);
+/// The clear arm of AnnoWelt 0x10082c30 (`0x10082f00..0x10082f1f`). An id of 0
+/// writes nothing (`0x10082c6a`). Otherwise the origin is `(x − foot_dx, y −
+/// foot_dy)` and the rotation is the tile's `foot_rotation`
+/// (`0x10082ca5..0x10082cda`). Each footprint tile whose id, rotation and offset
+/// match (`0x10082d98..0x10082de7`) gets id 0, `foot_dx` / `foot_dy` /
+/// `foot_rotation` 0, `foot_anchor` 0 (`and al, 0x3f` at `0x10082f11` keeps
+/// phase bits 0–5 and clears bit 7), code 2 and mask 0. deviation: the
+/// replacement arm (the high nibble of island `+0x18`, `0x10082e43..0x10082efc`)
+/// is not modelled (OQ-201). The arm also keeps the height byte and second-dword
+/// bits 25–31; those are not columns (OQ-060, OQ-204, OQ-205).
+void clear_object_record(TileLayer&, const TypeRegistry&, std::int32_t x, std::int32_t y);
 [[nodiscard]] WalkRecord walk_record(const Island&, const TypeRegistry&, TileXY);
 /// Per-search scratch; source island, types and tables must outlive it and stay unchanged.
 /// Coordinates are world tiles; rectangle clipped to island (0x10002b80).

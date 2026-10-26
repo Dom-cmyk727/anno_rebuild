@@ -271,6 +271,57 @@ std::uint32_t place_object_record(TileLayer& layer, const TypeRegistry& types,
     write_walk_record(layer, type, x0, y0, rotation);
     return skipped;
 }
+void clear_object_record(TileLayer& layer, const TypeRegistry& types, std::int32_t x,
+                         std::int32_t y) {
+    // D AnnoWelt 0x10082c30, the clear arm 0x10082f00..0x10082f1f. deviation:
+    // the replacement arm (island +0x18 high nibble, 0x10082e43..0x10082efc)
+    // is not modelled (OQ-201). The arm keeps the height byte and bits 25–31;
+    // those are not columns (OQ-060, OQ-204, OQ-205).
+    const std::uint64_t clicked = layer.index_of(x, y);
+    if (clicked == kNoSlot) {
+        return;
+    }
+    const std::uint32_t id = layer.object(clicked);
+    if (id == 0) {
+        return; // 0x10082c6a: a zero id writes nothing
+    }
+    const BuildingType* type = types.find(TypeId{id});
+    if (type == nullptr) {
+        return; // no footprint without a type; the catalogue load is not given a null
+    }
+    const std::uint8_t rotation = layer.foot_rotation(clicked);
+    // Widened byte 2 (T33.5 step 1: no shipped edge above 8, so the low 3 + 3
+    // bits are the whole offset). The origin is clicked − (dx, dy) (0x10082ca5).
+    const std::int64_t x0 = std::int64_t{x} - std::int64_t{layer.foot_dx(clicked)};
+    const std::int64_t y0 = std::int64_t{y} - std::int64_t{layer.foot_dy(clicked)};
+    const auto [fw, fh] = footprint(*type, rotation);
+    for (std::uint32_t dy = 0; dy < fh; ++dy) {
+        for (std::uint32_t dx = 0; dx < fw; ++dx) {
+            const std::int64_t px = x0 + std::int64_t{dx};
+            const std::int64_t py = y0 + std::int64_t{dy};
+            if (px < INT32_MIN || px > INT32_MAX || py < INT32_MIN || py > INT32_MAX) {
+                continue;
+            }
+            const std::uint64_t i =
+                layer.index_of(static_cast<std::int32_t>(px), static_cast<std::int32_t>(py));
+            if (i == kNoSlot) {
+                continue;
+            }
+            // 0x10082d98..0x10082de7: id, rotation and the in-footprint offset.
+            if (layer.object(i) != id || layer.foot_rotation(i) != rotation ||
+                layer.foot_dx(i) != dx || layer.foot_dy(i) != dy) {
+                continue;
+            }
+            layer.set_object(i, 0);
+            layer.set_foot_dx(i, 0);
+            layer.set_foot_dy(i, 0);
+            layer.set_foot_rotation(i, 0);
+            layer.set_foot_anchor(i, 0); // and al, 0x3f (0x10082f11); phase stays
+            layer.set_walk_code(i, 2);
+            layer.set_walk_mask(i, 0);
+        }
+    }
+}
 WalkRecord walk_record(const Island& island, const TypeRegistry& types, TileXY p) {
     static_cast<void>(types); // kept for API compatibility; the record is read from the tile layer
     const auto i = island.tiles.index_of(p.x, p.y);

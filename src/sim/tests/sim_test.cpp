@@ -589,7 +589,7 @@ TEST_CASE("state_hash relational properties") {
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
     CHECK(sim::World().state_hash() == 0x0261771fd70ce017ULL);
-    CHECK(sim::kStateHashVersion == 112);
+    CHECK(sim::kStateHashVersion == 113);
     CHECK(sim::kPrngTimelineVersion == 2);
 }
 

@@ -68,6 +68,9 @@ bool TileLayer::reset(std::int32_t x0, std::int32_t y0, std::uint32_t w, std::ui
     aux_.assign(n, 0);
     walk_code_.assign(n, 2);
     walk_mask_.assign(n, 0);
+    foot_dx_.assign(n, 0);
+    foot_dy_.assign(n, 0);
+    foot_rotation_.assign(n, 0);
     const auto chunks = static_cast<std::size_t>(chunk_count());
     digest_.assign(chunks, 0);
     dirty_.assign(chunks, 1);
@@ -107,6 +110,16 @@ std::uint16_t TileLayer::walk_code(std::uint64_t idx) const {
 }
 std::uint16_t TileLayer::walk_mask(std::uint64_t idx) const {
     return idx < walk_mask_.size() ? walk_mask_[static_cast<std::size_t>(idx)] : std::uint16_t{0};
+}
+std::uint16_t TileLayer::foot_dx(std::uint64_t idx) const {
+    return idx < foot_dx_.size() ? foot_dx_[static_cast<std::size_t>(idx)] : std::uint16_t{0};
+}
+std::uint16_t TileLayer::foot_dy(std::uint64_t idx) const {
+    return idx < foot_dy_.size() ? foot_dy_[static_cast<std::size_t>(idx)] : std::uint16_t{0};
+}
+std::uint8_t TileLayer::foot_rotation(std::uint64_t idx) const {
+    return idx < foot_rotation_.size() ? foot_rotation_[static_cast<std::size_t>(idx)]
+                                       : std::uint8_t{0};
 }
 
 std::uint64_t TileLayer::chunk_of(std::uint64_t idx) const {
@@ -172,6 +185,30 @@ void TileLayer::set_walk_mask(std::uint64_t idx, std::uint16_t v) {
     walk_mask_[static_cast<std::size_t>(idx)] = v;
     mark(idx);
 }
+void TileLayer::set_foot_dx(std::uint64_t idx, std::uint16_t v) {
+    if (idx >= foot_dx_.size()) {
+        ++ignored_writes_;
+        return;
+    }
+    foot_dx_[static_cast<std::size_t>(idx)] = v;
+    mark(idx);
+}
+void TileLayer::set_foot_dy(std::uint64_t idx, std::uint16_t v) {
+    if (idx >= foot_dy_.size()) {
+        ++ignored_writes_;
+        return;
+    }
+    foot_dy_[static_cast<std::size_t>(idx)] = v;
+    mark(idx);
+}
+void TileLayer::set_foot_rotation(std::uint64_t idx, std::uint8_t v) {
+    if (idx >= foot_rotation_.size()) {
+        ++ignored_writes_;
+        return;
+    }
+    foot_rotation_[static_cast<std::size_t>(idx)] = v;
+    mark(idx);
+}
 
 std::uint64_t TileLayer::chunk_digest_uncached(std::uint64_t chunk) const {
     if (chunk >= chunk_count()) {
@@ -194,6 +231,9 @@ std::uint64_t TileLayer::chunk_digest_uncached(std::uint64_t chunk) const {
             h.u32(aux_[i]);
             h.u16(walk_code_[i]);
             h.u16(walk_mask_[i]);
+            h.u16(foot_dx_[i]);
+            h.u16(foot_dy_[i]);
+            h.u8(foot_rotation_[i]);
         }
     }
     return h.value();

@@ -39,13 +39,13 @@
 namespace anno::sim {
 
 /// Bytes one tile takes in the save and in the raw hash: 4 (object) + 1 (phase)
-/// + 4 (owner) + 4 (aux) + 2 (walk code) + 2 (walk mask) (docs/sim/state.md
-/// §9.2). The walk code/mask are the per-tile walk record (task T33.4 fix-up F5):
-/// every tile holds the code and the rotated 3x3 WALKMASK sample written by the
-/// original's placement writer (transport.md §3.4.13, AnnoWelt
-/// 0x100825af..0x100825d9); empty land resets to code 2 / mask 0
-/// (AnnoWelt 0x1008c80d..0x1008c821).
-inline constexpr std::uint32_t kTileBytes = 17;
+/// + 4 (owner) + 4 (aux) + 2 (walk code) + 2 (walk mask) + 2 (foot dx) + 2
+/// (foot dy) + 1 (foot rotation) (docs/sim/state.md §9.2). The walk code/mask
+/// are the per-tile walk record (task T33.4 fix-up F5). The three foot columns
+/// are the original's byte 2, widened (task T33.5 stage 2; AnnoWelt
+/// 0x10082447..0x10082480). Empty land resets the walk code to 2, the mask to 0
+/// and byte 2 to 0 (AnnoWelt 0x1008c80d..0x1008c821).
+inline constexpr std::uint32_t kTileBytes = 22;
 
 /// The static terrain of an island: shared, immutable, identified in the state
 /// by its digest (the blobs travel in the save frame, §9.5). STAND-IN (O-53,
@@ -140,6 +140,17 @@ class TileLayer {
     /// value 0; object tiles hold their type's sampled mask
     /// (AnnoWelt 0x1007b5e0).
     [[nodiscard]] std::uint16_t walk_mask(std::uint64_t idx) const;
+    /// In-footprint dx, the original's byte 2 bits 0–2 widened to u16
+    /// (AnnoWelt 0x1008245c). Reset 0 (0x1008c81b writes the whole byte 2 as 0).
+    /// T33.5 stage 2 step 1 measured the largest footprint edge in Anlagen.dat as 8
+    /// (type 1021), so the original's 3 bits hold every shipped offset. The
+    /// column is wider than those 3 bits (CLAUDE.md: widen when data enters
+    /// the engine).
+    [[nodiscard]] std::uint16_t foot_dx(std::uint64_t idx) const;
+    /// In-footprint dy, byte 2 bits 3–5 widened to u16 (0x10082474). Reset 0.
+    [[nodiscard]] std::uint16_t foot_dy(std::uint64_t idx) const;
+    /// Placement rotation, byte 2 bits 6–7 widened to u8 (0x10082480). Reset 0.
+    [[nodiscard]] std::uint8_t foot_rotation(std::uint64_t idx) const;
 
     // The writers mark the chunk of the tile dirty. An index beyond the layer is
     // defined behaviour, not a feature to rely on: the write is dropped and
@@ -154,6 +165,9 @@ class TileLayer {
     void set_walk_code(std::uint64_t idx, std::uint16_t v);
     /// Set the walk mask of the tile (task T33.4 fix-up F5).
     void set_walk_mask(std::uint64_t idx, std::uint16_t v);
+    void set_foot_dx(std::uint64_t idx, std::uint16_t v);
+    void set_foot_dy(std::uint64_t idx, std::uint16_t v);
+    void set_foot_rotation(std::uint64_t idx, std::uint8_t v);
     /// The number of writes dropped for an index beyond the layer since the last
     /// reset(); 0 in every correct run. A diagnostic, not state: never hashed or
     /// saved.
@@ -165,7 +179,8 @@ class TileLayer {
     /// reads.
     [[nodiscard]] std::uint64_t chunk_of(std::uint64_t idx) const;
     /// The digest of one chunk: FNV-1a 64 over (object u32, phase u8, owner u32,
-    /// aux u32, walk_code u16, walk_mask u16) of the chunk's in-bounds tiles,
+    /// aux u32, walk_code u16, walk_mask u16, foot_dx u16, foot_dy u16,
+    /// foot_rotation u8) of the chunk's in-bounds tiles,
     /// row-major (docs/sim/state.md §9.2). 0 for a chunk beyond the layer. This
     /// const overload NEVER writes
     /// the cache: a clean chunk returns its cached value, a dirty one is computed
@@ -203,6 +218,15 @@ class TileLayer {
     std::vector<std::uint16_t> walk_code_;
     /// Per-tile walk mask (task T33.4 fix-up F5). Reset value 0, 9 bits used.
     std::vector<std::uint16_t> walk_mask_;
+    /// In-footprint dx (task T33.5 stage 2). Reset 0.
+    /// deviation OQ-203: byte 3 bit 7 is not a column.
+    /// deviation OQ-204: second-dword bits 29–31 are not a column.
+    /// deviation OQ-205: second-dword bits 25–28 are not a column.
+    std::vector<std::uint16_t> foot_dx_;
+    /// In-footprint dy (task T33.5 stage 2). Reset 0.
+    std::vector<std::uint16_t> foot_dy_;
+    /// Placement rotation (task T33.5 stage 2). Reset 0.
+    std::vector<std::uint8_t> foot_rotation_;
     // Derived, never saved: one digest and one dirty byte per chunk. Only
     // non-const members write them, so a const layer can be read by several
     // threads at once.

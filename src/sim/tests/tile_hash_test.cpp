@@ -30,7 +30,8 @@ using island_test::ThreadExecutor;
 namespace {
 
 /// The digest of chunk (kx, ky) transcribed from the spec: FNV-1a 64 over (object
-/// u32, phase u8, owner u32, aux u32, walk_code u16, walk_mask u16) of the
+/// u32, phase u8, owner u32, aux u32, walk_code u16, walk_mask u16, foot_dx u16,
+/// foot_dy u16, foot_rotation u8) of the
 /// chunk's in-bounds tiles, row-major.
 std::uint64_t expected_chunk(const sim::TileLayer& t, std::uint32_t kx, std::uint32_t ky) {
     sim::StateHasher h;
@@ -44,6 +45,9 @@ std::uint64_t expected_chunk(const sim::TileLayer& t, std::uint32_t kx, std::uin
             h.u32(t.aux(i));
             h.u16(t.walk_code(i));
             h.u16(t.walk_mask(i));
+            h.u16(t.foot_dx(i));
+            h.u16(t.foot_dy(i));
+            h.u8(t.foot_rotation(i));
         }
     }
     return h.value();
@@ -112,6 +116,9 @@ TEST_CASE("tile layer default constructed and reset") {
         REQUIRE(t.aux(i) == 0);
         REQUIRE(t.walk_code(i) == 2);
         REQUIRE(t.walk_mask(i) == 0);
+        REQUIRE(t.foot_dx(i) == 0);
+        REQUIRE(t.foot_dy(i) == 0);
+        REQUIRE(t.foot_rotation(i) == 0);
     }
     CHECK(t.dirty_chunks() == 6);
 
@@ -228,6 +235,9 @@ TEST_CASE("tile setters mark chunks dirty") {
         {"aux", [](sim::TileLayer& l, std::uint64_t i) { l.set_aux(i, 0x80); }},
         {"walk_code", [](sim::TileLayer& l, std::uint64_t i) { l.set_walk_code(i, 4); }},
         {"walk_mask", [](sim::TileLayer& l, std::uint64_t i) { l.set_walk_mask(i, 1); }},
+        {"foot_dx", [](sim::TileLayer& l, std::uint64_t i) { l.set_foot_dx(i, 3); }},
+        {"foot_dy", [](sim::TileLayer& l, std::uint64_t i) { l.set_foot_dy(i, 2); }},
+        {"foot_rotation", [](sim::TileLayer& l, std::uint64_t i) { l.set_foot_rotation(i, 1); }},
     };
     for (const auto& [name, set] : setters) {
         for (const std::uint64_t idx : {std::uint64_t{0}, std::uint64_t{9 * 20 + 9},
@@ -416,6 +426,9 @@ TEST_CASE("edge chunks of a non-multiple-of-8 island are clipped") {
             want.u32(t.aux(i));
             want.u16(t.walk_code(i));
             want.u16(t.walk_mask(i));
+            want.u16(t.foot_dx(i));
+            want.u16(t.foot_dy(i));
+            want.u8(t.foot_rotation(i));
         }
     }
     CHECK(t.chunk_digest(1) == want.value());
@@ -431,6 +444,9 @@ TEST_CASE("edge chunks of a non-multiple-of-8 island are clipped") {
             first.u32(t.aux(i));
             first.u16(t.walk_code(i));
             first.u16(t.walk_mask(i));
+            first.u16(t.foot_dx(i));
+            first.u16(t.foot_dy(i));
+            first.u8(t.foot_rotation(i));
         }
     }
     CHECK(t.chunk_digest(0) == first.value());
@@ -446,6 +462,9 @@ TEST_CASE("edge chunks of a non-multiple-of-8 island are clipped") {
     corner.u32(u.aux(80));
     corner.u16(u.walk_code(80));
     corner.u16(u.walk_mask(80));
+    corner.u16(u.foot_dx(80));
+    corner.u16(u.foot_dy(80));
+    corner.u8(u.foot_rotation(80));
     CHECK(u.chunk_digest(3) == corner.value());
     // A write to the last column of the last row dirties only the corner chunk.
     u.refresh(sim::serial_executor());
@@ -496,11 +515,13 @@ TEST_CASE("cache assertion finds a write that skipped the dirty mark") {
     REQUIRE(t.dirty_chunks() == 0);
     REQUIRE(t.cache_consistent());
     // Columns in order: object (81), phase (81), owner (81), aux (81),
-    // walk_code (81), walk_mask (81). Corrupt one value of each column; the
-    // cached digest of its chunk is now stale.
+    // walk_code (81), walk_mask (81), foot_dx (81), foot_dy (81),
+    // foot_rotation (81). Corrupt one value of each column; the cached digest
+    // of its chunk is now stale.
     for (const std::uint64_t at :
          {std::uint64_t{0}, std::uint64_t{81 + 80}, std::uint64_t{162 + 40},
-          std::uint64_t{243 + 80}, std::uint64_t{324 + 8}, std::uint64_t{405 + 80}}) {
+          std::uint64_t{243 + 80}, std::uint64_t{324 + 8}, std::uint64_t{405 + 80},
+          std::uint64_t{486}, std::uint64_t{567 + 8}, std::uint64_t{648 + 80}}) {
         INFO("value " << at);
         sim::TileLayer copy = t;
         island_test::CorruptingArchive a;
@@ -641,7 +662,8 @@ TEST_CASE("island hash parallel equals serial") {
 
 TEST_CASE("tiles scope byte layout and raw hash") {
     // A 3 x 2 layer at (5, 6): one chunk of edge 8. Columns object[], phase[],
-    // owner[], aux[], walk_code[], walk_mask[], 17 bytes per tile.
+    // owner[], aux[], walk_code[], walk_mask[], foot_dx[], foot_dy[],
+    // foot_rotation[], 22 bytes per tile.
     sim::Island is;
     is.index = sim::IslandId{2};
     REQUIRE(is.tiles.reset(5, 6, 3, 2, 8));
@@ -702,6 +724,15 @@ TEST_CASE("tiles scope byte layout and raw hash") {
     }
     for (std::uint32_t i = 0; i < 6; ++i) {
         want.u16(0); // walk_mask reset
+    }
+    for (std::uint32_t i = 0; i < 6; ++i) {
+        want.u16(0); // foot_dx reset
+    }
+    for (std::uint32_t i = 0; i < 6; ++i) {
+        want.u16(0); // foot_dy reset
+    }
+    for (std::uint32_t i = 0; i < 6; ++i) {
+        want.u8(0); // foot_rotation reset
     }
     want.u64(0); // the scope cities of stage S6: the slot count, no slot in this island
     CHECK(want.v.size() == before_tiles + 12 + 6 * sim::kTileBytes + 8);
@@ -774,7 +805,7 @@ TEST_CASE("tiles scope reads back and refuses what it cannot size") {
         REQUIRE(r.failed());
     }
     // A stream that is short by less than one tile still fails on the size check
-    // (the 17 bytes of a tile), not later inside a column.
+    // (the 22 bytes of a tile), not later inside a column.
     for (const std::size_t cut :
          {std::size_t{1}, std::size_t{5}, std::size_t{12}, std::size_t{13}, std::size_t{14},
           std::size_t{25}, std::size_t{26}, std::size_t{260}}) {
@@ -784,11 +815,11 @@ TEST_CASE("tiles scope reads back and refuses what it cannot size") {
         sim::ReadArchive r(std::span<const std::uint8_t>(bytes.data(), bytes.size() - 8 - cut));
         fields(r, back);
         REQUIRE(r.failed());
-        CHECK(r.error().find("tile columns need 20 x 17 bytes") != std::string::npos);
+        CHECK(r.error().find("tile columns need 20 x 22 bytes") != std::string::npos);
     }
     // The tiles scope starts 4+4+4+4+4+4+4+8 (to the sweep) + 14 + 2 + 6 + 6 + 1 + 8 +
     // 8 bytes into the island: find it from the end instead (3 x 4 header, then
-    // 20 x 13 column bytes).
+    // 20 x 22 column bytes).
     const std::size_t tiles_at = bytes.size() - 8 - 12 - 20 * sim::kTileBytes;
     auto patched = [&](std::size_t at, std::uint32_t v) {
         std::vector<std::uint8_t> b = bytes;
@@ -817,7 +848,7 @@ TEST_CASE("tiles scope reads back and refuses what it cannot size") {
         sim::ReadArchive r(b);
         fields(r, back);
         REQUIRE(r.failed());
-        // 60 million tiles are within kIslandTileBound but 17 bytes each are not there.
+        // 60 million tiles are within kIslandTileBound but 22 bytes each are not there.
         CHECK(r.error().find("tile columns need") != std::string::npos);
         CHECK(back.tiles.width() == 0);
     }
@@ -838,7 +869,7 @@ TEST_CASE("tiles scope reads back and refuses what it cannot size") {
         REQUIRE(r.failed());
         INFO("h " << h);
         if (h == (1U << 26)) {
-            CHECK(r.error().find("tile columns need 67108864 x 17 bytes") != std::string::npos);
+            CHECK(r.error().find("tile columns need 67108864 x 22 bytes") != std::string::npos);
             CHECK(r.error().find("more than") == std::string::npos);
         } else {
             CHECK(r.error().find("more than 67108864 tiles") != std::string::npos);

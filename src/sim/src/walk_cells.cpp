@@ -287,7 +287,18 @@ void clear_object_record(TileLayer& layer, const TypeRegistry& types, std::int32
     }
     const BuildingType* type = types.find(TypeId{id});
     if (type == nullptr) {
-        return; // no footprint without a type; the catalogue load is not given a null
+        // The original calls the type lookup (0x10082c7f) and uses the pointer
+        // at once (0x10082c84); it is not given a null. The loader skips an id
+        // the catalogue does not hold (0x10089619). A spec that still names one
+        // is written on that tile only, so the clear undoes that one tile.
+        layer.set_object(clicked, 0);
+        layer.set_foot_dx(clicked, 0);
+        layer.set_foot_dy(clicked, 0);
+        layer.set_foot_rotation(clicked, 0);
+        layer.set_foot_anchor(clicked, 0);
+        layer.set_walk_code(clicked, 2);
+        layer.set_walk_mask(clicked, 0);
+        return;
     }
     const std::uint8_t rotation = layer.foot_rotation(clicked);
     // Widened byte 2 (T33.5 step 1: no shipped edge above 8, so the low 3 + 3

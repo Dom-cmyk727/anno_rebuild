@@ -514,7 +514,7 @@ void remove_city(Env& env, Island& is, CityNo no) {
         for (std::size_t s = 0; s < n; ++s) {
             if (city.index.lists[l].slots[s].has_value()) {
                 static_cast<void>(
-                    remove_building(env.cfg, env.types, env.players, is,
+                    remove_building(env.cfg, env.rules, env.types, env.players, is,
                                     BuildingKey{CityRef{is.index, no}, static_cast<ListId>(l),
                                                 static_cast<Slot>(s)}));
             }
@@ -565,7 +565,7 @@ ApplyResult demolish(Env& env, const Command& c, const DemolishCmd& cmd) {
             } else {
                 const BuildingKey k = key->second;
                 run_building_seam(env, env.seams.on_removed, is, *city, *b);
-                r.status = remove_building(env.cfg, env.types, env.players, is, k)
+                r.status = remove_building(env.cfg, env.rules, env.types, env.players, is, k, tile)
                                ? Reject::None
                                : Reject::NoBuildingAtTile;
                 r.building = id;

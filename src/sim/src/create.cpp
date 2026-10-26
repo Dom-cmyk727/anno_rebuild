@@ -240,8 +240,9 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     return key;
 }
 
-bool remove_building(const SimConfig& cfg, const TypeRegistry& types, PlayerTable& players,
-                     Island& island, const BuildingKey& key) {
+bool remove_building(const SimConfig& cfg, const Rules& rules, const TypeRegistry& types,
+                     PlayerTable& players, Island& island, const BuildingKey& key,
+                     std::optional<TileXY> named) {
     if (key.city.island != island.index) {
         return false;
     }
@@ -274,11 +275,18 @@ bool remove_building(const SimConfig& cfg, const TypeRegistry& types, PlayerTabl
                 }
             }
         }
-        // The clear arm, from the building's origin (0x100292ef → island +0x7c
-        // 0x1008ee70 → 0x1008eec3 → 0x10082c30). RemoveAt passes the clicked
-        // tile; the origin names the same footprint while that tile still holds
-        // this building.
-        clear_object_record(island.tiles, types, b.x, b.y);
+        // RemoveAt clears the (x, y) it was given (0x100292d8..0x100292ef →
+        // island +0x7c 0x1008ee70 → 0x1008eec3 → 0x10082c30), and the lookup
+        // is the type for the id on that tile (0x1008cad0). `named` is that
+        // tile: the command tile, or the origin when the caller has none
+        // (D9, building +6/+8). F37 (`removal_clear_tile`) starts the clear
+        // at a tile that holds this building's id, so an overlay skip under
+        // the origin does not make the clear remove the object underneath.
+        const std::int32_t named_x = named.has_value() ? named->x : b.x;
+        const std::int32_t named_y = named.has_value() ? named->y : b.y;
+        const auto [clear_x, clear_y] = removal_clear_xy(
+            island.tiles, *ty, b.x, b.y, b.rotation, named_x, named_y, rules.removal_clear_tile);
+        clear_object_record(island.tiles, types, clear_x, clear_y);
     }
     island.cache.by_id.erase(b.id);
     list.remove(key.slot);

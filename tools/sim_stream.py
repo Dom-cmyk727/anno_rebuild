@@ -54,7 +54,9 @@ points to the registry digest, the cart reservations to the payloads (the Worksh
 transport state to the figure record (the transcribed registries hold no figure).
 T33.4 (stream 112) added the immutable walk-table digest after the registry digest.
 T33.5 stage 2 (stream 113) adds foot_dx (u16), foot_dy (u16), foot_rotation
-(u8) and, in fix-up F1, foot_anchor (u8) to each tile. The version stays 113.
+(u8) and, in fix-up F1, foot_anchor (u8) to each tile.
+T33.5 stage 3 (stream 114) adds Rules::removal_clear_tile, one byte of the
+header. The tile columns are unchanged.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
@@ -75,7 +77,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 113
+STATE_HASH_VERSION = 114
 PRNG_TIMELINE_VERSION = 2
 
 
@@ -233,10 +235,10 @@ def rules_bytes(full_tick=False):
     # monopoly_every_30s, player_table_full_tick, drought centre, atomic, empty city),
     # event750_keep_overshoot, prng_mode, interim_figure_return_ticks, free_build_cheat,
     # enforce_research, stat_decay_wide, bankrupt_deadline_wrap_safe, timer0_clamp,
-    # island_candidate_order (S14 stage 2: Sorted = 0)
+    # island_candidate_order (S14 stage 2: Sorted = 0), removal_clear_tile (F37)
     flags = bytes([0, 0, 1 if full_tick else 0, 0, 0, 0])
     return (u8(0) + u8(0) + u8(0) + u64(1 << 20) + flags + u8(0) + u8(0) + u32(0) + u8(0)
-            + u8(0) + u8(0) + u8(0) + u8(0) + u8(0))
+            + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u8(0))
 
 
 def settings_bytes(width=0, height=0):

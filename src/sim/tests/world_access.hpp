@@ -50,8 +50,8 @@ struct WorldTestAccess {
     }
     /// remove_building with the world's own configuration, registry and players.
     static bool remove(World& w, const BuildingKey& key) {
-        return remove_building(w.config_, *w.types_, w.players_, *w.islands_[key.city.island.v],
-                               key);
+        return remove_building(w.config_, w.rules_, *w.types_, w.players_,
+                               *w.islands_[key.city.island.v], key);
     }
 };
 

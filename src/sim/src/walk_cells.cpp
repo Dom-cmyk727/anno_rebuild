@@ -271,6 +271,52 @@ std::uint32_t place_object_record(TileLayer& layer, const TypeRegistry& types,
     write_walk_record(layer, type, x0, y0, rotation);
     return skipped;
 }
+std::pair<std::int32_t, std::int32_t> removal_clear_xy(const TileLayer& layer,
+                                                       const BuildingType& type,
+                                                       std::int32_t origin_x, std::int32_t origin_y,
+                                                       std::uint8_t rotation, std::int32_t named_x,
+                                                       std::int32_t named_y, bool holding_id) {
+    // F37. Off: the coordinates RemoveAt was given (0x100292d8..0x100292ef).
+    // On: a tile whose object id is this building, so clear_object_record reads
+    // that id and not an overlay the writer skipped (0x100821e6..0x1008220c).
+    if (!holding_id) {
+        return {named_x, named_y};
+    }
+    const auto holds = [&](std::int32_t x, std::int32_t y) {
+        const std::uint64_t i = layer.index_of(x, y);
+        return i != kNoSlot && layer.object(i) == type.id.v;
+    };
+    if (holds(named_x, named_y)) {
+        return {named_x, named_y};
+    }
+    // The same block order as place_object_record (Y blocks outer, X inner,
+    // rows outer, columns inner).
+    const auto [fw, fh] = footprint(type, rotation);
+    const std::int64_t x_end = std::int64_t{origin_x} + fw;
+    const std::int64_t y_end = std::int64_t{origin_y} + fh;
+    for (std::int64_t by = placement_block_origin(origin_y); by < y_end;
+         by += kPlacementBlockEdge) {
+        for (std::int64_t bx = placement_block_origin(origin_x); bx < x_end;
+             bx += kPlacementBlockEdge) {
+            const std::int64_t y_lo = std::max(by, std::int64_t{origin_y});
+            const std::int64_t y_hi = std::min(by + kPlacementBlockEdge, y_end);
+            const std::int64_t x_lo = std::max(bx, std::int64_t{origin_x});
+            const std::int64_t x_hi = std::min(bx + kPlacementBlockEdge, x_end);
+            for (std::int64_t y = y_lo; y < y_hi; ++y) {
+                for (std::int64_t x = x_lo; x < x_hi; ++x) {
+                    const auto tx = static_cast<std::int32_t>(x);
+                    const auto ty = static_cast<std::int32_t>(y);
+                    if (holds(tx, ty)) {
+                        return {tx, ty};
+                    }
+                }
+            }
+        }
+    }
+    // Every footprint tile was an overlay skip, or the building was not written.
+    // The named tile is still what the caller passed.
+    return {named_x, named_y};
+}
 void clear_object_record(TileLayer& layer, const TypeRegistry& types, std::int32_t x,
                          std::int32_t y) {
     // D AnnoWelt 0x10082c30, the clear arm 0x10082f00..0x10082f1f. deviation:

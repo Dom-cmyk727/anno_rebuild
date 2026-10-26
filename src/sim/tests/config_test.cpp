@@ -187,6 +187,7 @@ void expected_config(Stream& s) {
     s.boolean(false); // bankrupt_deadline_wrap_safe
     s.boolean(false); // timer0_clamp
     s.u8(0);          // island_candidate_order (Sorted)
+    s.boolean(false); // removal_clear_tile
 }
 
 void expected_settings(Stream& s) {
@@ -346,6 +347,7 @@ std::vector<std::pair<const char*, RulesMut>> rules_mutations() {
     m.emplace_back("island_candidate_order", [](sim::Rules& r) {
         r.island_candidate_order = sim::IslandCandidateOrder::Cached;
     });
+    m.emplace_back("removal_clear_tile", [](sim::Rules& r) { r.removal_clear_tile = true; });
     return m;
 }
 
@@ -551,8 +553,9 @@ TEST_CASE("rules defaults are faithful") {
     CHECK_FALSE(r.bankrupt_deadline_wrap_safe);
     CHECK_FALSE(r.timer0_clamp);
     CHECK(r.island_candidate_order == sim::IslandCandidateOrder::Sorted);
+    CHECK_FALSE(r.removal_clear_tile);
     CHECK(r.validate().empty());
-    static_assert(sim::field_count<sim::Rules>() == 19);
+    static_assert(sim::field_count<sim::Rules>() == 20);
 }
 
 TEST_CASE("sim config defaults are the originals") {
@@ -1461,7 +1464,7 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u8(0);  // no player
     }
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 113);
+    CHECK(sim::kStateHashVersion == 114);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);

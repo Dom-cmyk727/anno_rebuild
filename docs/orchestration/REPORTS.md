@@ -3945,3 +3945,20 @@ OQ-220 (the three addon pages do not state the six levels), OQ-221 (a money bull
   5. this report, not merged: MET.
 - Left open: the eight items in `monuments.md` §8, for T31.2. No new OQ. OQ-180–184 were free on `main` at `631e206` and were not used. OQ-144 and OQ-166 were not edited.
 - Time spent / subagents used: inline, no subagents. `anno-dump anlagen` and `anno-dump texte` only. No disassembly yet.
+
+## T31.2 — Monuments, the award — 2026-10-26 — status: FINISHED
+
+- Branch: `task/T31-monuments-re` at `9677acd` (the note; the commit that adds this section is the branch head). Worktree: `E:\anno1503-worktrees\anno1503-T31`. Not merged, not pushed.
+- Built: `docs/re/monuments.md` §3 (name-table slots), §8–§12. No `src/` change. Disassembly stayed in `cache/` and is not committed.
+- Step 4: the stage-name table `AnnoGame` `0x10024bd0` was read (32 names). Slot 29 is `INFRA_STUFE_TRIUMPH`, slot 30 is `INFRA_STUFE_DENKMAL`, slot 31 is `INFRA_STUFE_FORSCH`. The file lists the last two the other way round. The award is city-tick step h, `AnnoWelt` `0x1002a5e0`–`0x1002b65f`: a per-city timer `+0x628` reaches 1 200 000 ticks (40 minutes) while 30-second samples stay under 30 percent unhappy, with total residents at least 300 and player stage bit 11 set, then player property `0x21` bit 30 is set (`0x1002ae4c`). The ordinary stage check `0x10029610` can also set bits 29 and 30 at 65000 aristocrats. Scenario `Create` does not set the bit. The 34 corpus entries are `INFRA_EVER` scenery, not type 2553.
+- Step 5: clause 1, the code earns the bit, and Place does not `Create` the building (`0x10027b32`). Clause 2, the check is the ordinary city tick, with no mode test in the range read. Clause 3, corrected: 40 minutes, reset by 30 percent unhappy, not 30 minutes of satisfaction. `monuments.md` §10.
+- The arch's defeat writer, the clear of bit 30, the message call, the menu test and demolition are open (OQ-180, OQ-181, OQ-182, written in T31.3).
+- Gates: docs only. `git diff --cached --check` on `9677acd` was clean. No build, no ctest, no clang-format, no GCC, no agree.py, no asan.
+- Acceptance for T31.2 (steps 4–5):
+  1. the award rule with addresses, and the arch left open with the next search: MET (`monuments.md` §8, OQ-180).
+  2. the monument as a building: the scenario object is the base class already D in T25 (j); interactive place and demolition are OQ-182.
+  3. claims C1–C16 matched: MET (§9).
+  4. the owner's three clauses: MET (§10).
+  5. nothing of the original in git: MET.
+  6. this report, not merged: MET.
+- Time spent / subagents used: inline, no subagents. `disasm.py` and `xref.py` only.

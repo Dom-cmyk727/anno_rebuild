@@ -3359,3 +3359,125 @@ In `docs/sim/state.md` §5.9, the paragraph "Differences to the original's tile 
 
 - Left open: OQ-201 (non-building path, island `+0x18`), OQ-203, OQ-204, OQ-205. OQ-202 answered (a), with the island `+0x1c` store still unread.
 - Time spent / subagents used: continued in this session; no subagents.
+
+## T33.5 stage 2 — The tile layer as the original's record — 2026-10-26 — status: QUESTION
+
+- Branch: `task/T33-5b-tile-record` from `edb1a3a`; worktree: `E:\anno1503-worktrees\anno1503-T33-5b`. `git ls-remote` from `E:\anno1503` returned HTTP 403. Local only. `E:\anno1503` was not edited. The baseline `cmake --preset msvc` and `cmake --build --preset msvc` finished before any change (exit 0). C: had about 29 GB free. Scratch is under this worktree's `cache/`.
+
+### Step 1 — limits
+
+Through `TypeRegistry::build` of `Anlagen.dat` (921 types) and `load_scenario` (which calls `island_from_insel`) over the 50 `Scenes/**/*.sze` files. A temporary case in `scenario_test.cpp` printed the numbers and is not part of a commit.
+
+- Largest footprint width: **8** (type id 1021). Largest footprint height: **8** (type id 1021). `TypeRegistry::max_footprint()` is 8. Types with an edge above 8: **0**. No OQ-206. The original's 3-bit dx/dy hold every shipped offset (`0x10082447..0x10082474`).
+- Scenario tile objects whose type has `flags_word & 0x10`: **121600** of 2497856 objects that `island_from_insel` kept. Missing types: 0. The overlay path of `0x10082040` does not execute the first-dword stores (`je 0x100823ed` when the bit is clear; the bit set skips `0x10082447`). A single `place_object_record` in place of today's origin `set_object` plus `write_walk_record` would leave these objects with no id on any tile. The count is above 0, so this task **stops before step 4**. The orchestrator decides.
+
+Per file (objects that would lose the id). Files not listed are 0:
+
+| File | Objects |
+|---|---|
+| `0010SingleEndlos/00_1024_easyentry_01.sze` | 2314 |
+| `0010SingleEndlos/01_1024_easy_256.sze` | 1 |
+| `0011SingleEndlosAddon/endless01.sze` | 4746 |
+| `0011SingleEndlosAddon/endless02.sze` | 8951 |
+| `0011SingleEndlosAddon/endless03.sze` | 5118 |
+| `0100Kampagne01/S01_01_01.sze` | 5745 |
+| `0100Kampagne01/S01_02_01.sze` | 3614 |
+| `0100Kampagne01/S01_03_01.sze` | 4719 |
+| `0100Kampagne01/S01_04_01.sze` | 632 |
+| `0100Kampagne01/S01_05_01.sze` | 1470 |
+| `0100Kampagne01/S01_06_01.sze` | 2449 |
+| `0100Kampagne01/S01_07_01.sze` | 4297 |
+| `0100Kampagne01/S01_08_01.sze` | 411 |
+| `0100Kampagne01/S01_09_01.sze` | 3840 |
+| `0100Kampagne01/S01_10_01.sze` | 4478 |
+| `0100Kampagne01/S01_11_01.sze` | 430 |
+| `0100Kampagne01/S01_12_01.sze` | 5188 |
+| `0100Kampagne01/S01_13_01.sze` | 1565 |
+| `0200Single/Single_01.sze` | 4609 |
+| `0200Single/Single_05.sze` | 504 |
+| `0200Single/Single_06.sze` | 1226 |
+| `0200Single/Single_08.sze` | 285 |
+| `0200Single/Single_10.sze` | 2697 |
+| `0200Single/Single_12.sze` | 596 |
+| `0200Single/Single_14.sze` | 1900 |
+| `0200Single/Single_15.sze` | 385 |
+| `0200Single/Single_16.sze` | 284 |
+| `0200Single/Single_24.sze` | 927 |
+| `0201SingleAddOn/single30.sze` | 7476 |
+| `0201SingleAddOn/single31.sze` | 2552 |
+| `0201SingleAddOn/single32.sze` | 2460 |
+| `0201SingleAddOn/single33.sze` | 3769 |
+| `0201SingleAddOn/single34.sze` | 2939 |
+| `0201SingleAddOn/single36.sze` | 6587 |
+| `0201SingleAddOn/single38.sze` | 3984 |
+| `0201SingleAddOn/single39.sze` | 3671 |
+| `0201SingleAddOn/single40.sze` | 4364 |
+| `0201SingleAddOn/single41.sze` | 2906 |
+| `0201SingleAddOn/single42.sze` | 6362 |
+| `0201SingleAddOn/single43.sze` | 256 |
+| `Tutorial/01Discover01.sze` | 107 |
+| `Tutorial/02Trade01.sze` | 466 |
+| `Tutorial/03T_Combat_01.sze` | 320 |
+
+Zero: `0010SingleEndlos/02_1024_easy_128.sze`, `03_1024_med_256.sze`, `04_1024_med_128.sze`, `05_800_Med_128.sze`, `06_1024_heavy_256.sze`, `07_1024_heavy_128.sze`, `08_800_heavy_128.sze`.
+
+### Step 2 — the three columns
+
+Commit `18081a6`. `TileLayer` gains `foot_dx` (u16), `foot_dy` (u16) and `foot_rotation` (u8), reset 0. The original writes the whole of byte 2 as 0 at `0x1008c81b` (the reset dword `0x1e000200` is at `0x1008c80d`). The columns are byte 2 widened: bits 0–2, 3–5 and 6–7 (`0x1008245c`, `0x10082474`, `0x10082480`). Step 1's largest edge is 8 (type 1021), so every shipped dx and dy fits those 3 bits; the comment on `foot_dx` says so. `kTileBytes` is 22 (4+1+4+4+2+2+2+2+1). The chunk digest, `TileIO` and `tools/sim_stream.py` append the three fields after `walk_mask`. `kStateHashVersion` is 113. The bound comment uses 22 bytes: 2^28 tiles ask for 5,905,580,032 bytes (5.9 GB) and 2^26 tiles for 1,476,395,008 bytes (about 1476 MB). The bound itself is unchanged. `state.md` §9.2, the tile-bound paragraph, the layer sketch and the three `w·h·17` remaining-byte sentences now say 22 and name the columns. §5.9 was left as it stood (step 9).
+
+`// deviation` on `foot_dx_`: OQ-203 (byte 3 bit 7), OQ-204 (second-dword bits 29–31), OQ-205 (second-dword bits 25–28). The OQ-201 comment belongs on the clear function and is absent because step 5 was not started.
+
+The layout tests that name the columns were updated with them (`tile_hash_test.cpp`, `island_state_test.cpp`, the version checks). The temporary step-1 case was removed from `scenario_test.cpp` before the commit and is not in the tree.
+
+### Step 3 — the placement writer
+
+Commit `1d5bf5e`. `place_object_record` (`walk_cells.hpp` / `walk_cells.cpp`) is the original's writer `0x10082040..0x100825fe`.
+
+- Ordinary path (`flags_word & 0x10` clear, the `je 0x100823ed` taken from the test at `0x10082184..0x1008218f`): on every in-layer tile `(dx, dy)` of `footprint(type, rotation)` it writes the object id (`0x1008244a`), `foot_dx` (`0x1008245c`), `foot_dy` (`0x10082474`), `foot_rotation` (`0x10082480`) and the phase (`0x100824c5`), then `write_walk_record` (code replaced `0x100825af..0x100825b7`, mask replaced `0x100825c7..0x100825d9`).
+- Overlay path (the bit set, so that `je` is not taken): it skips the stores at `0x10082447` and calls `write_walk_record`, which replaces the code and ORs the mask (`0x1008239d..0x100823b0`).
+
+Byte 3 bit 6 is not modelled. `// deviation` OQ-203 names byte 3 bit 7 in the declaration and in the function. The case `place_object_record writes the footprint and the overlay leaves the id` checks a 2×3 type 7001 at (1, 1), rotation 0, phase 9: the six tiles hold id 7001, dx, dy, rotation 0, phase 9 and walk code 4, and (0, 1) stays id 0. An overlay type 7002 (`flags_word` 0x10, `head_raw[0x2f] = 1`) placed on the same origin at rotation 1, phase 3, leaves that origin at 7001 / dx 0 / dy 0 / rotation 0 / phase 9 and sets the walk code to 1.
+
+Step 1's flag-`0x10` count is 121600, listed per file above. Switching `build_island` and `create_building` to this writer would leave those objects with no id on any tile, because the overlay path does not execute `0x1008244a` and today's load writes the id on the origin before `write_walk_record`. **Stop before step 4.** The orchestrator decides. `scenario.cpp` and `create.cpp` still call `set_object` / `set_phase` and `write_walk_record`. `place_object_record` has no production caller, so the new columns stay 0 in every loaded world.
+
+### Steps 4–9
+
+Not started. The stop is step 3's own stop, before step 4.
+
+- Step 4 callers (`build_island`, `create_building` step 8, "nothing else writes object ids") are unchanged.
+- Step 5 `clear_object_record` and its callers (`remove_building`, the clear-tile branch of `demolish`) were not written. The replacement arm (`0x10082e43..0x10082efc`, OQ-201) therefore has no `// deviation` comment in the code yet.
+- Step 6's four readers were not re-measured. With the callers unchanged, `grow_chunk`, `stand_in_placement_rule` (`placement.cpp:50`), the road-neighbour statistic (`transport.cpp:441`) and the footprint check (`create.cpp:458`) still see an id only on the origin of a tile object, as `state.md` §5.9 already says.
+- Step 7(a)–(c) were not written. The one new case is the step-3 writer check. It does not cover rotations 1–3, a clear, a growth-changed id, building removal, scenery-then-building, the S01_07_01 tick-0 snapshot, or the three mutations.
+- Step 8 was not run. The before binary at `E:\anno1503-worktrees\anno1503-T33-4\build\msvc\src\sim\Release\anno_sim_tests.exe` was not executed.
+- Step 9 was not done. Goldens, `goldens.txt` and `scenario_corpus.txt` still record stream 112. §5.9 "As implemented" and the OQ-201 status line were not rewritten. No per-golden or per-corpus field movement was measured, because the corpus was not re-run. The building, tile-object and warning counts were not re-counted.
+
+### Checks that were run
+
+- Baseline, before any edit: `cmake --preset msvc` and `cmake --build --preset msvc` from this worktree, exit 0.
+- After the column and writer edits: `cmake --build --preset msvc --target anno_sim_tests`, exit 0. Then `anno_sim_tests.exe` with `-tc="place_object_record*" -tc="*tile*" -tc="*Tile*" -tc="islands scope*" -tc="*chunk*"`, `ANNO1503_GAME_DIR` unset: `[doctest] test cases: 15 | 15 passed | 0 failed | 622 skipped` and `[doctest] assertions: 1237 | 1237 passed | 0 failed`.
+- clang-format 23.1.3 (`cache/cfpkg/bin/clang-format.exe`) `--dry-run --Werror` on the thirteen changed `.cpp` / `.hpp` files: exit 0.
+- `python tools/lint_sim.py`: `lint_sim: ok`.
+
+The full gates of §1 item 4 and round ba were not run. `tools/sim_stream.py --check` was not run. A full ctest would compare saved worlds with the stream-112 goldens and the corpus file; those files were left as they were, on purpose, because step 9 is past the stop. That mismatch is not a reason to re-record them or to continue into step 4.
+
+### Acceptance
+
+1. Step 1's two numbers — **MET** (edge 8, type 1021; 121600 flag-`0x10` tile objects, per file above).
+2. The three columns hashed, saved and mirrored, stream 113 — **MET** in the code and in `tools/sim_stream.py`. The recorded goldens still say 112 (acceptance 6).
+3. One writer with both paths, one clear function, and the callers of steps 4–5 — **PARTIAL**. The writer and both paths are in `place_object_record`. `clear_object_record` does not exist. `build_island` and `create_building` were not switched. Stop before step 4.
+4. Tests 7(a)–(c) with the mutations failing — **NOT MET**.
+5. The measurement — **NOT MET**.
+6. Goldens and corpus re-recorded, counts unchanged — **NOT MET**. Not re-recorded and not re-run.
+7. Docs — **PARTIAL**. §9.2, the bound paragraph and the hostile-load byte counts name the 22-byte record. §5.9 "As implemented" and the OQ-201 status line wait for step 9.
+8. Gates green with totals — **NOT MET**. The focused run above is 15/15. No full ctest total was produced, so none is pasted.
+9. Report and commit, not merged — **MET** by the commit of this section. The branch was not pushed and was not merged into `E:\anno1503`.
+
+### Commits
+
+`git log --oneline edb1a3a..HEAD` at the time of this section, plus this report as the last commit:
+
+- `18081a6` feat(sim): store the tile record's footprint offset
+- `1d5bf5e` feat(sim): write the original placement record, overlay path included
+- this section (`docs(orchestration): T33.5 stage 2 stopped before step 4`)
+
+Branch: `task/T33-5b-tile-record`. Worktree: `E:\anno1503-worktrees\anno1503-T33-5b`. Base: `edb1a3a`. Not merged. Not pushed.

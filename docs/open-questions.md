@@ -1739,3 +1739,9 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Area:** original harness / unit registry.
 - **What was seen.** In a fresh Citizen game in the Wine runner, registry slots 1, 2 and 9 hold units whose vtable's class getter (slot `+0x14`) is `0x10031da0`, the figure class `0x1500`. But their figure-type pointer (`+0x14`) does not read, x is 0, z is 0.96 and the rate is about 1e-37 (`docs/re/transport.md` §3.5). So they share the class getter and not the layout.
 - **How to resolve:** read their vtable values in the next Wine run (the reader's `vt` field before the type check), then find that vtable's installer and the factory code that builds it (`0x1009a110`).
+
+## OQ-216: The market cart's action at rate 0.001 (T30b.6, 2026-10-26)
+- **Status:** open. Found by running.
+- **Area:** original harness / transport.
+- **What was seen.** In the T30b.6 Wine run (`docs/re/transport.md` §3.7), every market cart (220) with a non-zero rate stood on its market's or warehouse's edge subcell with rate `0.001`. The start wait of §1.1 runs at `0.01` (`0x10035260`, `0x3c23d70a`). No cart left its building in five game minutes.
+- **How to resolve:** find a store of `0x3a83126f` (0.001f) into figure `+0x40` (the rate) among the figure's action setters (§4, `0x10035260` and its siblings). Then repeat the run with a road-connected producer (T30b.7) and see whether the cart walks after that action.

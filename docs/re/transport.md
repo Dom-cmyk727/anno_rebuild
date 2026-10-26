@@ -1697,7 +1697,7 @@ The object is `0x7c` bytes (`new(0x7c)` in the factory).
 - `+8` u32 = the `BEWOHNTYPE` index (slot `+0x50` = `0x1000fad0`);
 - the walking layer is byte `+0xff` (slot `+0xac` = `0x1000faf0`, §3).
 
-**Tile.** The reader gives `tile = (trunc(x), trunc(z))`. That is how the search callback turns a node's two floats into a world tile (`__ftol`, `0x1005a914` / `0x1005a926`, then world slot `+0x170`). The live check below shows coherent world-tile positions.
+**Tile.** The reader gives `tile = (trunc(x), trunc(z))`. That is how the search callback turns a node's two floats into a world tile (`__ftol`, `0x1005a914` / `0x1005a926`, then world slot `+0x170`). The live check below shows coherent world-tile positions. In T30b.6 every one of 137 245 observations resolved to a tile record of the figure's own island, and the record held the building the figure was working at (§3.7). So the position is in world tiles, **confirmed by running**.
 
 **Live check (Wine runner, 2026-10-26, a fresh Citizen game with the playbook opening, 179 samples every 0.25 s over 60 s, ticks 36 134–66 024; the samples stay in `cache/orig/t30b5-figures/`):**
 - Before a game exists the reader returns `[]`.
@@ -1711,3 +1711,26 @@ The object is `0x7c` bytes (`new(0x7c)` in the factory).
 - `entry`, `slot`, `type`, `cls`, `layer`, `flags`, `stamp`;
 - `x`, `height`, `z`, `tile`, `vel`, `remain`, `rate`;
 - the pointers `island`, `job`, `home` and `vt`.
+
+### 3.7 The Wine run (T30b.6, orchestrator, 2026-10-26): the tiles under the market cart and the workshop carrier
+
+**Method.** A fresh Citizen game in the Wine runner, the playbook opening (14 placements, all checked by the macro), then **1 076 samples every 0.25 s for 300 s**, ticks 36 106–186 015, about five game minutes. The run is `t30b6-walkers`; the samples stay in `cache/orig/`, not in git.
+- **What one sample reads:** `tools/orig/gamestate.py` `walkers(…, [220, 203])` returns every market cart (220, layer 3) and workshop carrier (203, layer 0) with the original's record of the tile it stands on (`tile_record`, the 8-byte layout of §3.4.17, found through the figure's island `+0x1c`: origin `+4`/`+6`, width `+8`, height `+0xa` (likely), records `+0xc`).
+- **The check:** each observed `(layer, code)` against the layer block that `tools/annowelt_tables.py` reads from `AnnoWelt.dll` (`layers[layer][code & 0x3ff] ≠ 0`, the admission the sim uses, `walk_cells.cpp` `admission`).
+
+**Result: no contradiction.** All 137 245 observations stood on a tile whose code the figure's layer admits (97 254 cart, 39 991 carrier).
+
+| Figure | Active observations (rate ≠ 0) | Tiles | Codes under it | Object ids under it (`Anlagen.dat` PRODTYPE) |
+|---|---|---|---|---|
+| Cart 220, layer 3 | 344 | 6 | 4 only | 1301 `MARKT`, 1302 `KONTOR` |
+| Carrier 203, layer 0 | 772 | 40 | 4: 612, 2: 160 | 4 (buildings): 1001 and 1023 `HANDWERK`, 805 `JAGDHAUS`, 807 `SCHAFFARM`, 1301 `MARKT`. 2: 409, 1, 2, 68–72, 105, 111 (`ROHSTOFF` / `ROHSTWACH`, 1×1, HEAD walk bytes (2, 3)) |
+
+- **The carrier walks over open ground.** It goes from its workshop across trees and raw-material plants (code 2) to the hunting lodge or the sheep farm and back. It never stands on a road tile: the opening builds a single road of 3 + 4 tiles. This matches layer 0 admitting code 2 (§3.4.12, `state.md` §5.9).
+  - A carrier's tile list: weaving hut 1001 (646, 461) → workshop 1023 (650, 463) → plant 409 (650, 462) → hunting lodge 805 (650, 461), (649, 461), (649, 460), (649, 461), (650, 461) → plant 409 (650, 462) → workshop 1023 (650, 463) → weaving hut 1001 (646, 461).
+  - Its fractional positions sit at the edge subcells (0.17 / 0.5 / 0.83).
+- **No cart left its market or warehouse in the five minutes.** Every cart observation is on a 1301 or 1302 tile, at subcell positions on the building's edge (fractional 0.17 / 0.5 / 0.83).
+  - 344 observations have rate **0.001**. That is not the 0.01 of the start wait (§1.1), so which action runs at rate 0.001 is open (OQ-216). The other 96 910 have rate 0.
+  - Most likely, the carts found no reachable source. In the opening no producer is joined to a market by road, and layer 3 does not admit code 2. That fits the rule, but it is an absence, not a positive observation of a cart trip. A positive one needs a producer joined to the market by road (T30b.7).
+- **Still open:**
+  - No road tile was observed under a walker, so the T30b.1 shape question (which road ids are straight, corner or junction) stays open.
+  - The subcell under the figure was not tested against the record's 9-bit mask: the bit order of the 3 × 3 sample against the fractional position is not decoded here, and reading it into the samples would be a guess.

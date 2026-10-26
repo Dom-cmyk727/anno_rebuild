@@ -53,6 +53,8 @@ points to the registry digest, the cart reservations to the payloads (the Worksh
 `reserved` list after `activity`, the Farm's u32 after `activity`) and the stamp and the
 transport state to the figure record (the transcribed registries hold no figure).
 T33.4 (stream 112) added the immutable walk-table digest after the registry digest.
+T33.5 stage 2 (stream 113) adds foot_dx (u16), foot_dy (u16), foot_rotation
+(u8) and, in fix-up F1, foot_anchor (u8) to each tile. The version stays 113.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
@@ -73,7 +75,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 112
+STATE_HASH_VERSION = 113
 PRNG_TIMELINE_VERSION = 2
 
 
@@ -354,10 +356,12 @@ def terrain_digest(height, gfx, fertility):
 
 
 def tiles_digest(w, h, tiles):
-    """tiles: a list of (object, phase, owner, aux, walk_code, walk_mask) in
-    row-major order. The scope `tiles`: u32 w, u32 h, u32 chunk_edge, then the
-    digest of every chunk (row-major chunk order) over its in-bounds tiles
-    (object u32, phase u8, owner u32, aux u32, walk_code u16, walk_mask u16)."""
+    """tiles: a list of (object, phase, owner, aux, walk_code, walk_mask,
+    foot_dx, foot_dy, foot_rotation, foot_anchor) in row-major order. The
+    scope `tiles`: u32 w, u32 h, u32 chunk_edge, then the digest of every
+    chunk (row-major chunk order) over its in-bounds tiles (object u32,
+    phase u8, owner u32, aux u32, walk_code u16, walk_mask u16, foot_dx u16,
+    foot_dy u16, foot_rotation u8, foot_anchor u8)."""
     cx = (w + CHUNK_EDGE - 1) // CHUNK_EDGE
     cy = (h + CHUNK_EDGE - 1) // CHUNK_EDGE
     d = u32(w) + u32(h) + u32(CHUNK_EDGE)
@@ -366,8 +370,9 @@ def tiles_digest(w, h, tiles):
             c = b''
             for y in range(ky * CHUNK_EDGE, min(h, (ky + 1) * CHUNK_EDGE)):
                 for x in range(kx * CHUNK_EDGE, min(w, (kx + 1) * CHUNK_EDGE)):
-                    o, ph, ow, ax, wc, wm = tiles[y * w + x]
-                    c += u32(o) + u8(ph) + u32(ow) + u32(ax) + u16(wc) + u16(wm)
+                    o, ph, ow, ax, wc, wm, fdx, fdy, frot, fanc = tiles[y * w + x]
+                    c += (u32(o) + u8(ph) + u32(ow) + u32(ax) + u16(wc) + u16(wm)
+                          + u16(fdx) + u16(fdy) + u8(frot) + u8(fanc))
             d += u64(fnv(c))
     return fnv(d)
 
@@ -443,7 +448,7 @@ def building_bytes(serial, island, type_id, x, y, byte0e, tag, payload):
 def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, terrain=None,
                   cities=None, next_serial=1, sweep=(0, 0, 0, 0, 0), e300=0, objmgr=(0, 0),
                   ring=(0, 0)):
-    tiles = [[0, 0, NEUTRAL_OWNER, 0, 2, 0] for _ in range(w * h)]
+    tiles = [[0, 0, NEUTRAL_OWNER, 0, 2, 0, 0, 0, 0, 0] for _ in range(w * h)]
     at = 0
     for owner, length in owner_runs:
         for _ in range(length):
@@ -453,15 +458,18 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
         tiles[index][0] = obj
         tiles[index][1] = phase
         # Ids 9001..9010 are make_synthetic_types: empty HEAD, 1x1, empty WALKMASK,
-        # flags_word 0. write_walk_record stores code 4 (HEAD bytes 0x2f and 0x30
-        # are both 0, the constructor default) and mask 0 on that one tile.
-        # create_building writes the same record on the same tile, so one store
-        # matches both. An id the registry does not hold is skipped, as the C++
-        # writer skips a null find. The S5 islands use the empty registry, so
-        # 1201/1202/1203/2001/2002 stay at the reset code 2, mask 0.
+        # flags_word 0. place_object_record stores code 4 (HEAD bytes 0x2f and
+        # 0x30 are both 0, the constructor default) and mask 0, and the first
+        # dword: offset 0, rotation 0, and the block anchor. Each transcribed
+        # building is the only written tile of its world 8x8 block, so the
+        # anchor is 1. create_building writes the same record on the same tile,
+        # so one store matches both. An id the registry does not hold is written
+        # on the named tile only and does not take an anchor. The S5 islands use
+        # the empty registry, so 1201/1202/1203/2001/2002 stay at the reset.
         if obj in range(9001, 9011):
             tiles[index][4] = 4
             tiles[index][5] = 0
+            tiles[index][9] = 1
     td = terrain_digest(*terrain) if terrain else 0
     b = (u32(slot) + struct.pack('<i', x0) + struct.pack('<i', y0) + u32(w) + u32(h)
          + u32(climate) + u32(next_serial) + u64(td))

@@ -1,6 +1,8 @@
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>
@@ -15,6 +17,7 @@
 #include <anno/sim/world.hpp>
 #include <anno/test/game_dir.hpp>
 
+#include "building_helpers.hpp"
 #include "world_access.hpp"
 namespace sim = anno::sim;
 namespace {
@@ -112,6 +115,122 @@ TEST_CASE("walk_cells: house instances retain rotation and water is explicitly s
     CHECK(cells.get({11, 21}) == sim::WalkCell{103, 4});
     CHECK(cells.complete());
 }
+namespace {
+auto registry_of(std::initializer_list<sim::BuildingType> types) {
+    sim::TypeRegistry::Builder b;
+    for (const sim::BuildingType& t : types) {
+        b.add(t);
+    }
+    auto r = b.build();
+    REQUIRE(r);
+    return r.value();
+}
+} // namespace
+TEST_CASE("place_object_record writes one anchor per block") {
+    sim::BuildingType block;
+    block.id = sim::TypeId{7001};
+    block.width = 3;
+    block.height = 3;
+    block.walk_mask = {1};
+    const auto types = registry_of({block});
+    sim::TileLayer layer;
+    REQUIRE(layer.reset(0, 0, 16, 16, 8));
+    CHECK(sim::place_object_record(layer, *types, block, 6, 6, 0, 9) == 0);
+    std::uint32_t anchor_n = 0;
+    for (std::int32_t y = 6; y <= 8; ++y) {
+        for (std::int32_t x = 6; x <= 8; ++x) {
+            const auto i = layer.index_of(x, y);
+            INFO("tile " << x << "," << y);
+            CHECK(layer.object(i) == 7001);
+            CHECK(layer.foot_dx(i) == static_cast<std::uint16_t>(x - 6));
+            CHECK(layer.foot_dy(i) == static_cast<std::uint16_t>(y - 6));
+            CHECK(layer.foot_rotation(i) == 0);
+            CHECK(layer.phase(i) == 9);
+            CHECK(layer.walk_code(i) == 4);
+            const bool anchor = (x == 6 && y == 6) || (x == 8 && y == 6) || (x == 6 && y == 8) ||
+                                (x == 8 && y == 8);
+            CHECK(layer.foot_anchor(i) == (anchor ? 1 : 0));
+            anchor_n += layer.foot_anchor(i);
+        }
+    }
+    CHECK(anchor_n == 4);
+    CHECK(layer.object(layer.index_of(5, 6)) == 0);
+}
+TEST_CASE("place_object_record overlay keeps another overlay's anchor tile") {
+    sim::BuildingType rock;
+    rock.id = sim::TypeId{7101};
+    rock.width = 3;
+    rock.height = 3;
+    rock.flags_word = 0x10;
+    rock.walk_mask = {1};
+    sim::BuildingType later;
+    later.id = sim::TypeId{7102};
+    later.width = 3;
+    later.height = 3;
+    later.flags_word = 0x10;
+    later.walk_mask = {2};
+    later.head_raw.assign(56, 0);
+    later.head_raw[0x2f] = 1;
+    const auto types = registry_of({rock, later});
+    sim::TileLayer layer;
+    REQUIRE(layer.reset(0, 0, 16, 16, 8));
+    CHECK(sim::place_object_record(layer, *types, rock, 6, 6, 0, 4) == 0);
+    CHECK(sim::place_object_record(layer, *types, later, 6, 6, 0, 7) == 4);
+    const auto anchor = layer.index_of(6, 6);
+    CHECK(layer.object(anchor) == 7101);
+    CHECK(layer.foot_dx(anchor) == 0);
+    CHECK(layer.foot_dy(anchor) == 0);
+    CHECK(layer.foot_rotation(anchor) == 0);
+    CHECK(layer.phase(anchor) == 4);
+    CHECK(layer.foot_anchor(anchor) == 1);
+    CHECK(layer.walk_code(anchor) == 1);
+    // (6,6) was skipped, so (7,6) is the first written tile of block (0,0)
+    // and takes the anchor (0x10082289 clears it only after a write).
+    const auto written = layer.index_of(7, 6);
+    CHECK(layer.object(written) == 7102);
+    CHECK(layer.foot_dx(written) == 1);
+    CHECK(layer.foot_dy(written) == 0);
+    CHECK(layer.phase(written) == 7);
+    CHECK(layer.foot_anchor(written) == 1);
+    CHECK(layer.walk_code(written) == 1);
+    const auto second = layer.index_of(7, 7);
+    CHECK(layer.object(second) == 7102);
+    CHECK(layer.foot_anchor(second) == 0);
+}
+TEST_CASE("place_object_record overlay takes a non-overlay object's tiles") {
+    sim::BuildingType house;
+    house.id = sim::TypeId{7201};
+    house.width = 2;
+    house.height = 3;
+    house.walk_mask = {1};
+    sim::BuildingType overlay;
+    overlay.id = sim::TypeId{7202};
+    overlay.width = 2;
+    overlay.height = 3;
+    overlay.flags_word = 0x10;
+    overlay.walk_mask = {2};
+    overlay.head_raw.assign(56, 0);
+    overlay.head_raw[0x2f] = 1;
+    const auto types = registry_of({house, overlay});
+    sim::TileLayer layer;
+    REQUIRE(layer.reset(0, 0, 8, 8, 8));
+    CHECK(sim::place_object_record(layer, *types, house, 1, 1, 0, 9) == 0);
+    CHECK(layer.foot_anchor(layer.index_of(1, 1)) == 1);
+    CHECK(sim::place_object_record(layer, *types, overlay, 1, 1, 0, 3) == 0);
+    for (std::uint32_t dy = 0; dy < 3; ++dy) {
+        for (std::uint32_t dx = 0; dx < 2; ++dx) {
+            const auto i = layer.index_of(1 + static_cast<std::int32_t>(dx),
+                                          1 + static_cast<std::int32_t>(dy));
+            INFO("tile " << dx << "," << dy);
+            CHECK(layer.object(i) == 7202);
+            CHECK(layer.phase(i) == 3);
+            CHECK(layer.walk_code(i) == 1);
+        }
+    }
+    CHECK(layer.foot_anchor(layer.index_of(1, 1)) == 1);
+    CHECK(layer.object(layer.index_of(0, 1)) == 0);
+}
+
 TEST_CASE("walk_cells: footprint record rotates, overlays and resets") {
     // 2x2, only the unrotated source subcell (sx=0, sy=0) blocked. w = h = 6.
     // Rotation 0 samples that bit at output (dx=0, dy=0, u=0, v=0): mask 1.
@@ -417,4 +536,237 @@ TEST_CASE("walk_cells: original S01_07_01 road and house cells" * doctest::test_
     CHECK(sim::admission(tables.value(), 0, 2) != 0);
     CHECK(sim::admission(tables.value(), 3, 2) == 0);
     MESSAGE("S01_07_01 checked dirt-road tiles=" << roads << ", house origins=" << houses);
+}
+
+TEST_CASE("place_object_record writes a 2x3 at rotations 0 to 3") {
+    sim::BuildingType t;
+    t.id = sim::TypeId{7301};
+    t.width = 2;
+    t.height = 3;
+    t.walk_mask = {1}; // unrotated subcell (0, 0) only
+    const auto types = registry_of({t});
+    // Hand masks. The subcell grid is 3 * width by 3 * height, 6 by 9.
+    // rot 0: source (0, 0) is output tile (0, 0), bit 0, mask 1.
+    // rot 1: sx = 5 - y, sy = x, so source (0, 0) is x = 0, y = 5: tile (0, 1), bit 6, mask 64.
+    // rot 2: sx = 5 - x, sy = 8 - y, so x = 5, y = 8: tile (1, 2), bit 8, mask 256.
+    // rot 3: sx = y, sy = 8 - x, so y = 0, x = 8: tile (2, 0), bit 2, mask 4.
+    const std::array<std::uint16_t, 4> marked_mask{1, 64, 256, 4};
+    const std::array<int, 4> marked_dx{0, 0, 1, 2};
+    const std::array<int, 4> marked_dy{0, 1, 2, 0};
+    for (std::uint32_t r = 0; r < 4; ++r) {
+        sim::TileLayer layer;
+        REQUIRE(layer.reset(0, 0, 8, 8, 4));
+        CHECK(sim::place_object_record(layer, *types, t, 1, 1, r, 5) == 0);
+        const auto [fw, fh] = sim::footprint(t, static_cast<std::uint8_t>(r));
+        for (std::uint32_t dy = 0; dy < fh; ++dy) {
+            for (std::uint32_t dx = 0; dx < fw; ++dx) {
+                const auto i = layer.index_of(1 + static_cast<std::int32_t>(dx),
+                                              1 + static_cast<std::int32_t>(dy));
+                INFO("rot " << r << " tile " << dx << "," << dy);
+                CHECK(layer.object(i) == 7301);
+                CHECK(layer.foot_dx(i) == dx);
+                CHECK(layer.foot_dy(i) == dy);
+                CHECK(layer.foot_rotation(i) == r);
+                CHECK(layer.phase(i) == 5);
+                CHECK(layer.walk_code(i) == 4);
+                const bool hit =
+                    static_cast<int>(dx) == marked_dx[r] && static_cast<int>(dy) == marked_dy[r];
+                CHECK(layer.walk_mask(i) == (hit ? marked_mask[r] : 0));
+                CHECK(layer.foot_anchor(i) == (dx == 0 && dy == 0 ? 1 : 0));
+            }
+        }
+    }
+}
+
+TEST_CASE("clear_object_record clears a 2x3 from every tile and keeps the phase") {
+    sim::BuildingType t;
+    t.id = sim::TypeId{7302};
+    t.width = 2;
+    t.height = 3;
+    t.walk_mask = {1};
+    const auto types = registry_of({t});
+    const auto [fw, fh] = sim::footprint(t, 0);
+    for (std::uint32_t cy = 0; cy < fh; ++cy) {
+        for (std::uint32_t cx = 0; cx < fw; ++cx) {
+            sim::TileLayer layer;
+            REQUIRE(layer.reset(0, 0, 8, 8, 4));
+            CHECK(sim::place_object_record(layer, *types, t, 1, 1, 0, 5) == 0);
+            sim::clear_object_record(layer, *types, 1 + static_cast<std::int32_t>(cx),
+                                     1 + static_cast<std::int32_t>(cy));
+            for (std::uint32_t dy = 0; dy < fh; ++dy) {
+                for (std::uint32_t dx = 0; dx < fw; ++dx) {
+                    const auto i = layer.index_of(1 + static_cast<std::int32_t>(dx),
+                                                  1 + static_cast<std::int32_t>(dy));
+                    INFO("cleared from " << cx << "," << cy << " tile " << dx << "," << dy);
+                    CHECK(layer.object(i) == 0);
+                    CHECK(layer.foot_dx(i) == 0);
+                    CHECK(layer.foot_dy(i) == 0);
+                    CHECK(layer.foot_rotation(i) == 0);
+                    CHECK(layer.foot_anchor(i) == 0);
+                    CHECK(layer.phase(i) == 5);
+                    CHECK(layer.walk_code(i) == 2);
+                    CHECK(layer.walk_mask(i) == 0);
+                }
+            }
+            CHECK(layer.object(layer.index_of(0, 1)) == 0);
+            CHECK(layer.walk_code(layer.index_of(0, 1)) == 2);
+        }
+    }
+}
+
+TEST_CASE("clear_object_record skips a tile whose id growth changed") {
+    sim::BuildingType t;
+    t.id = sim::TypeId{7303};
+    t.width = 2;
+    t.height = 3;
+    t.walk_mask = {1};
+    const auto types = registry_of({t});
+    sim::TileLayer layer;
+    REQUIRE(layer.reset(0, 0, 8, 8, 4));
+    CHECK(sim::place_object_record(layer, *types, t, 1, 1, 0, 5) == 0);
+    const auto grown = layer.index_of(2, 1);
+    layer.set_object(grown, 7399);
+    sim::clear_object_record(layer, *types, 1, 1);
+    CHECK(layer.object(grown) == 7399);
+    CHECK(layer.phase(grown) == 5);
+    CHECK(layer.walk_code(grown) == 4);
+    CHECK(layer.foot_dx(grown) == 1);
+    const auto kept = layer.index_of(1, 1);
+    CHECK(layer.object(kept) == 0);
+    CHECK(layer.phase(kept) == 5);
+    CHECK(layer.walk_code(kept) == 2);
+}
+
+TEST_CASE("a building placed after scenery owns its tiles") {
+    const auto k = building_test::make_kit();
+    sim::World w = building_test::make_world(k, building_test::kit_scenario());
+    sim::Island& is = *sim::WorldTestAccess::islands(w)[0];
+    const sim::BuildingType* scenery = k.registry->find(k.big_house);
+    REQUIRE(scenery != nullptr);
+    CHECK(sim::place_object_record(is.tiles, *k.registry, *scenery, 140, 140, 0, 4) == 0);
+    auto made = sim::WorldTestAccess::create(w, 0, 0, building_test::record(k.church, 140, 140));
+    REQUIRE(made);
+    CHECK(is.tiles.object(is.tiles.index_of(140, 140)) == k.church.v);
+    CHECK(is.tiles.phase(is.tiles.index_of(140, 140)) == 0);
+    CHECK(is.tiles.object(is.tiles.index_of(141, 140)) == k.big_house.v);
+    CHECK(is.tiles.phase(is.tiles.index_of(141, 140)) == 4);
+}
+
+TEST_CASE("remove_building restores code 2 and mask 0") {
+    const auto k = building_test::make_kit();
+    sim::World w = building_test::make_world(k, building_test::kit_scenario());
+    sim::Island& is = *sim::WorldTestAccess::islands(w)[0];
+    auto made = sim::WorldTestAccess::create(w, 0, 0, building_test::record(k.big_house, 140, 140));
+    REQUIRE(made);
+    CHECK(is.tiles.object(is.tiles.index_of(140, 140)) == k.big_house.v);
+    CHECK(is.tiles.walk_code(is.tiles.index_of(142, 141)) == 4);
+    CHECK(sim::WorldTestAccess::remove(w, made.value()));
+    for (std::int32_t y = 140; y < 142; ++y) {
+        for (std::int32_t x = 140; x < 143; ++x) {
+            const auto i = is.tiles.index_of(x, y);
+            INFO("tile " << x << "," << y);
+            CHECK(is.tiles.object(i) == 0);
+            CHECK(is.tiles.foot_dx(i) == 0);
+            CHECK(is.tiles.foot_dy(i) == 0);
+            CHECK(is.tiles.foot_rotation(i) == 0);
+            CHECK(is.tiles.foot_anchor(i) == 0);
+            CHECK(is.tiles.walk_code(i) == 2);
+            CHECK(is.tiles.walk_mask(i) == 0);
+        }
+    }
+}
+
+TEST_CASE("S01_07_01 tick 0 tile records match placement" * doctest::test_suite("corpus")) {
+    const auto game = anno::test::game_dir();
+    if (!game) {
+        MESSAGE("ANNO1503_GAME_DIR not set: skipping S01_07_01 tile records");
+        return;
+    }
+    const auto ab = anno::test::read_file(*game / "Anlagen.dat");
+    auto an = anno::formats::anlagen::AnlagenFile::parse(ab);
+    REQUIRE(an);
+    auto types =
+        sim::TypeRegistry::build(an.value().entries, sim::original_goods(), sim::SimConfig{});
+    REQUIRE(types);
+    const auto sb = anno::test::read_file(*game / "Scenes" / "0100Kampagne01" / "S01_07_01.sze");
+    const sim::SimConfig cfg;
+    auto loaded = sim::load_scenario(sb, *types.value(), cfg);
+    REQUIRE(loaded);
+    auto world = sim::World::create(loaded.value().spec, types.value(), cfg);
+    REQUIRE(world);
+    std::uint64_t held = 0, replaced = 0, bad = 0;
+    for (const sim::ScenarioSpec::IslandSpec& is : loaded.value().spec.islands) {
+        const sim::Island& built = *world.value().islands()[is.slot.v];
+        sim::TileLayer shadow;
+        REQUIRE(shadow.reset(is.x0, is.y0, is.w, is.h, cfg.chunk_edge));
+        auto place_one = [&](const sim::BuildingType& ty, std::int32_t x, std::int32_t y,
+                             std::uint32_t rotation, std::uint8_t phase) {
+            static_cast<void>(
+                sim::place_object_record(shadow, *types.value(), ty, x, y, rotation, phase));
+        };
+        for (const sim::ScenarioSpec::TileObjectSpec& o : is.objects) {
+            const sim::BuildingType* ty = types.value()->find(sim::TypeId{o.object});
+            if (ty == nullptr) {
+                shadow.set_object(o.index, o.object);
+                shadow.set_phase(o.index, o.phase);
+                continue;
+            }
+            const std::int32_t ox = is.x0 + static_cast<std::int32_t>(o.index % is.w);
+            const std::int32_t oy = is.y0 + static_cast<std::int32_t>(o.index / is.w);
+            place_one(*ty, ox, oy, o.rotation, o.phase);
+            const auto [fw, fh] = sim::footprint(*ty, o.rotation);
+            for (std::uint32_t dy = 0; dy < fh; ++dy) {
+                for (std::uint32_t dx = 0; dx < fw; ++dx) {
+                    const auto i = built.tiles.index_of(ox + static_cast<std::int32_t>(dx),
+                                                        oy + static_cast<std::int32_t>(dy));
+                    if (i == sim::kNoSlot) {
+                        continue;
+                    }
+                    if (built.tiles.object(i) == o.object && built.tiles.foot_dx(i) == dx &&
+                        built.tiles.foot_dy(i) == dy &&
+                        built.tiles.foot_rotation(i) == o.rotation) {
+                        ++held;
+                    } else {
+                        ++replaced;
+                    }
+                }
+            }
+        }
+        std::vector<std::size_t> order(is.cities.size());
+        for (std::size_t k = 0; k < order.size(); ++k) {
+            order[k] = k;
+        }
+        std::sort(order.begin(), order.end(),
+                  [&](std::size_t a, std::size_t b) { return is.cities[a].no < is.cities[b].no; });
+        for (const std::size_t k : order) {
+            for (const sim::ScenarioSpec::BuildingSpec& bs : is.cities[k].buildings) {
+                const sim::BuildingType* ty = types.value()->find(bs.type);
+                if (ty == nullptr) {
+                    continue;
+                }
+                place_one(*ty, bs.x, bs.y, bs.rotation, 0);
+            }
+        }
+        REQUIRE(shadow.tile_count() == built.tiles.tile_count());
+        for (std::uint64_t i = 0; i < shadow.tile_count(); ++i) {
+            const bool same = shadow.object(i) == built.tiles.object(i) &&
+                              shadow.phase(i) == built.tiles.phase(i) &&
+                              shadow.foot_dx(i) == built.tiles.foot_dx(i) &&
+                              shadow.foot_dy(i) == built.tiles.foot_dy(i) &&
+                              shadow.foot_rotation(i) == built.tiles.foot_rotation(i) &&
+                              shadow.foot_anchor(i) == built.tiles.foot_anchor(i) &&
+                              shadow.walk_code(i) == built.tiles.walk_code(i) &&
+                              shadow.walk_mask(i) == built.tiles.walk_mask(i);
+            if (!same) {
+                if (bad == 0) {
+                    MESSAGE("first mismatch index " << i << " shadow id " << shadow.object(i)
+                                                    << " world id " << built.tiles.object(i));
+                }
+                ++bad;
+            }
+        }
+    }
+    CHECK(held > 0);
+    CHECK(bad == 0);
+    MESSAGE("S01_07_01 footprint tiles holding their object " << held << ", replaced " << replaced);
 }

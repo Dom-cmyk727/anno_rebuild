@@ -74,3 +74,9 @@ src/sim/src/transport.cpp:kDiagonalQ24 = 23726566;  # the f32 sqrt(2) of the seg
 # limits: HEAD2 [0x26]/[0x27] override them and the lists grow to the entries read
 # (TradeEntryBeyondSlots); a modded warehouse would carry its own (OQ-155).
 src/sim/src/scenario_formats.cpp:kDefaultVkSlots = 4, kDefaultEkSlots = 6;  # the original's trade-list slot defaults, overridden by HEAD2, the lists grow
+
+# --- walk_cells.hpp (T33.5 F1)
+# The original's working block is 8 tiles (AnnoWelt 0x100820e6, the steps of 8
+# at 0x1008262e and 0x1008260c). The edge is the block the writer walks, not a
+# cap on the footprint or the map.
+src/sim/include/anno/sim/walk_cells.hpp:kPlacementBlockEdge = 8;  # the original's 8-tile placement block (D 0x100820e6), not a limit

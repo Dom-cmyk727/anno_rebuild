@@ -571,16 +571,11 @@ ApplyResult demolish(Env& env, const Command& c, const DemolishCmd& cmd) {
                 r.building = id;
             }
         } else if (!tile_has_building(is, idx) && is.tiles.object(idx) != 0) {
-            // A tile object without a building: cleared (stand-in for island slot +0x7c,
-            // O-5). A building of another city on this city's tile is left alone.
-            // Only this tile's walk record is reset. The object id lives on the
-            // item's origin tile, and the placement rotation is not stored, so
-            // the rest of a multi-tile footprint cannot be named from the state
-            // (OQ-201). A building takes the branch above and remove_building
-            // resets its whole footprint, which does store the rotation.
-            is.tiles.set_object(idx, 0);
-            is.tiles.set_walk_code(idx, 2);
-            is.tiles.set_walk_mask(idx, 0);
+            // deviation: the non-building command path is still open (OQ-201).
+            // This branch uses the building clear arm (0x10082c30) as a stand-in.
+            // The named tile may be any tile of the object. A building of another
+            // city on this city's tile is left alone (the branch above).
+            clear_object_record(is.tiles, env.types, tile.x, tile.y);
         } else {
             r.status = Reject::NoBuildingAtTile;
         }

@@ -6,7 +6,7 @@
 // of its function plus a kStateHashVersion bump and re-baselined goldens in
 // the same commit.
 //
-// Stream at kStateHashVersion 112 (task T33.4), the scopes of §9.3 so far:
+// Stream at kStateHashVersion 113 (task T33.5 stage 2), the scopes of §9.3 so far:
 //   1 header     u32 kStateHashVersion, u32 kPrngTimelineVersion,
 //                SimConfig (declaration order; vectors as count + elements;
 //                small_farm_animals; layout), Rules (declaration order),
@@ -465,16 +465,29 @@ struct TileIO {
         for (auto& v : t.walk_mask_) {
             a.u16(v);
         }
+        for (auto& v : t.foot_dx_) {
+            a.u16(v);
+        }
+        for (auto& v : t.foot_dy_) {
+            a.u16(v);
+        }
+        for (auto& v : t.foot_rotation_) {
+            a.u8(v);
+        }
+        for (auto& v : t.foot_anchor_) {
+            a.u8(v);
+        }
     }
 };
 
 /// The scope `tiles` of an island: `u32 width, u32 height, u32 chunk_edge`, then
-/// the six columns `object[]` (u32), `phase[]` (u8), `owner[]` (u32), `aux[]`
-/// (u32), `walk_code[]` (u16), `walk_mask[]` (u16), each w · h elements
-/// (kTileBytes = 17 per tile). `x0`, `y0`, `w` and `h` are the island's own
+/// the ten columns `object[]` (u32), `phase[]` (u8), `owner[]` (u32), `aux[]`
+/// (u32), `walk_code[]` (u16), `walk_mask[]` (u16), `foot_dx[]` (u16),
+/// `foot_dy[]` (u16), `foot_rotation[]` (u8), `foot_anchor[]` (u8), each w · h
+/// elements (kTileBytes = 23 per tile). `x0`, `y0`, `w` and `h` are the island's own
 /// rectangle, which the island scope wrote just before; the layer's dimensions
 /// must equal them. Reading rejects before allocating:
-/// chunk_edge 0, more than kIslandTileBound tiles, or w · h · 17 > remaining()
+/// chunk_edge 0, more than kIslandTileBound tiles, or w · h · 23 > remaining()
 /// (in u64); the generic count check of ReadArchive does not cover the bulk
 /// columns. The hierarchical hash feeds the dimensions and, for every chunk in
 /// row-major chunk order, the cached chunk digest (u64) instead of the columns;

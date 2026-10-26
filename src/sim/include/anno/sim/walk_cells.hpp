@@ -43,6 +43,38 @@ struct WalkCell {
 /// (0x100825af..0x100825b7). Tiles outside the layer are skipped.
 void write_walk_record(TileLayer&, const BuildingType&, std::int32_t x0, std::int32_t y0,
                        std::uint32_t rotation);
+/// The original's working block (AnnoWelt 0x100820e6 and 0x10082109, step
+/// 0x1008260c / 0x1008262e). The rule, not a limit: a larger footprint uses
+/// more blocks.
+inline constexpr std::uint32_t kPlacementBlockEdge = 8;
+/// The original's placement writer (transport.md §3.4.17, AnnoWelt
+/// 0x10082040..0x10082637). Blocks run row by row, then column by column;
+/// inside a block, rows are outer and columns inner. The ordinary path writes
+/// the id, the world dx/dy, the rotation, the phase and the anchor (1 on the
+/// first written tile of the block, then 0), then the walk code and mask. The overlay
+/// path (HEAD flags bit 0x10, 0x10082184..0x1008218f) writes the same fields
+/// except on a tile whose id is non-zero, whose type has flag 0x10 and whose
+/// anchor is set (0x100821e6..0x1008220c); the anchor flag stays set across a
+/// skipped tile (0x10082289). The code is replaced and the mask is ORed on
+/// every footprint tile, including one the first pass skipped
+/// (0x10082342..0x100823e2). Returns how many first-dword writes that skip
+/// suppressed. Byte 3 bit 6 is not stored. deviation: the height byte
+/// (0x10082260, 0x10082494) is not a tile column; heights stay in Terrain
+/// (OQ-060).
+std::uint32_t place_object_record(TileLayer&, const TypeRegistry&, const BuildingType&,
+                                  std::int32_t x0, std::int32_t y0, std::uint32_t rotation,
+                                  std::uint8_t phase);
+/// The clear arm of AnnoWelt 0x10082c30 (`0x10082f00..0x10082f1f`). An id of 0
+/// writes nothing (`0x10082c6a`). Otherwise the origin is `(x − foot_dx, y −
+/// foot_dy)` and the rotation is the tile's `foot_rotation`
+/// (`0x10082ca5..0x10082cda`). Each footprint tile whose id, rotation and offset
+/// match (`0x10082d98..0x10082de7`) gets id 0, `foot_dx` / `foot_dy` /
+/// `foot_rotation` 0, `foot_anchor` 0 (`and al, 0x3f` at `0x10082f11` keeps
+/// phase bits 0–5 and clears bit 7), code 2 and mask 0. deviation: the
+/// replacement arm (the high nibble of island `+0x18`, `0x10082e43..0x10082efc`)
+/// is not modelled (OQ-201). The arm also keeps the height byte and second-dword
+/// bits 25–31; those are not columns (OQ-060, OQ-204, OQ-205).
+void clear_object_record(TileLayer&, const TypeRegistry&, std::int32_t x, std::int32_t y);
 [[nodiscard]] WalkRecord walk_record(const Island&, const TypeRegistry&, TileXY);
 /// Per-search scratch; source island, types and tables must outlive it and stay unchanged.
 /// Coordinates are world tiles; rectangle clipped to island (0x10002b80).

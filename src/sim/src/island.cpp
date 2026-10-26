@@ -123,7 +123,8 @@ std::uint8_t TileLayer::foot_rotation(std::uint64_t idx) const {
                                        : std::uint8_t{0};
 }
 std::uint8_t TileLayer::foot_anchor(std::uint64_t idx) const {
-    return idx < foot_anchor_.size() ? foot_anchor_[static_cast<std::size_t>(idx)] : std::uint8_t{0};
+    return idx < foot_anchor_.size() ? foot_anchor_[static_cast<std::size_t>(idx)]
+                                     : std::uint8_t{0};
 }
 
 std::uint64_t TileLayer::chunk_of(std::uint64_t idx) const {

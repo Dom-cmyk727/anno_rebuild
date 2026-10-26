@@ -699,7 +699,7 @@ TEST_CASE("decoded layer 3 cannot cross open ground to a producer") {
     r.tile_object(111, 113, kObstacle);               // 8-neighbour of (110..112, 112)
     sim::World w = create(r, types);
     const sim::TransportStats s = stats_of_cart(w, types, 110, 110);
-    CHECK(s.unreached == 1);
+    CHECK(s.no_goal_reached == 1);
     CHECK(s.found == 0);
     CHECK(s.low_score == 0);
     CHECK(s.no_candidate == 0);
@@ -732,7 +732,7 @@ TEST_CASE("decoded layer 3 road to the disc edge does not reach a disconnected p
     }
     sim::World w = create(r, types);
     const sim::TransportStats s = stats_of_cart(w, types, 110, 110);
-    CHECK(s.unreached == 1);
+    CHECK(s.no_goal_reached == 1);
     CHECK(s.found == 0);
     CHECK(s.low_score == 0);
     CHECK(s.incomplete == 0);

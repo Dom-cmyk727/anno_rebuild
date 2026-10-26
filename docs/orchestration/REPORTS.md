@@ -3928,3 +3928,24 @@ OQ-220 (the three addon pages do not state the six levels), OQ-221 (a money bull
   3. status "Proposed": MET.
   4. report; not merged: MET. Not pushed.
 - Time spent / subagents used: inline, no subagents. One scenario load, no other heavy job.
+
+## T42 — The render test that fails under load — 2026-10-26 — status: FINISHED
+
+- Branch: `task/T42-flow-test`; worktree: `E:\anno1503-worktrees\anno1503-T42`. Start commit `631e206`. Work commit: `356d314`. The branch head is the commit that adds this section. Not merged, not pushed.
+- Cause. The test `a flow that is not ready draws the legacy look and is rebuilt later, never waited for (game files)` (`src/render/tests/river_flow_corpus_test.cpp`) had three timing assumptions. It slept 10 ms and retried, up to 2000 times for chunk arrival and 6000 times for the rebuild. It then required `worst_update_ms < max(0.5 * build_ms, 30.0)`, where `worst_update_ms` is the wall time of `update_chunks` and `build_ms` is a synchronous `RiverFlow::build` on the test thread. `update_chunks` does not build the flow. Its wall time is scheduling. Alone it was 0.21 ms against a 136 ms build. Beside `ctest -j 16 -R anno_render_tests` it reached 15.3 ms (run 4 of 50, build 253 ms, allowance 126 ms). The round-bo gate failed this test once and did not keep the assertion text. That comparison, and the two sleep polls, are the load-sensitive parts. The behaviour checks (pending chunks, legacy pixels, rebuild, lattice equal to a blocking build) are not.
+- Before, 50 runs of that test while `ctest --preset msvc -j 16 -R anno_render_tests -E "flow that is not ready"` ran beside them, `ANNO1503_GAME_DIR=E:\anno1503\game\app`, `ANNO_TEST_THREADS=16`: **0 failures / 50**. No assertion failed in this session. The largest `worst_update_ms` was 15.2689 ms.
+- The fix. `ChunkWorkers::wait_idle` blocks until nothing is queued or in flight. `Scene::wait_river_flow_builders` blocks until the flow queue is empty and no build is in progress (`inflight`). `update_chunks` calls neither, so the window thread still does not wait. The test submits, waits, then collects, once while the builders are paused and once after they drain. The clock check, the synchronous probe build, and both sleep loops in this test are gone. The other sleep polls in the file were not this test and are unchanged.
+- After, the same 50 runs beside the same render ctest: **0 failures / 50**.
+- Gates:
+  - MSVC full build warning-free.
+  - ctest with `ANNO1503_GAME_DIR=E:\anno1503\game\app`, `ANNO_TEST_THREADS=16`, `ctest --preset msvc -j 16`: 1013/1013 passed, 0 failed, real 381.58 s (`cache/ctest-with-game.log`).
+  - ctest without the game folder: 1013 listed, 0 failed, 2 skipped (`anno_sim_replay_scenario_single_01`, `anno_sim_replay_scenario_endless_03_links`), real 34.10 s (`cache/ctest-without-game.log`).
+  - `tools/check_unix_warnings.sh`: GCC 13.3.0, 160 files, clean; Clang 18.1.3, 160 files, clean; Clang without GPU, 9 files, clean.
+  - clang-format 23.1.3 `--dry-run --Werror` on the five files: clean.
+  - `git diff --check` clean. `agree.py` not run (no dump command). No ASan: this task does not touch `src/sim` or `src/formats`.
+- Acceptance:
+  1. the cause named: MET (wall-clock comparison of `update_chunks` with half a synchronous flow build, plus the 10 ms sleep polls).
+  2. the test deterministic, with the before/after counts: MET (0/50 before, 0/50 after; the clock and the sleeps are gone).
+  3. gates green: MET.
+  4. this report: MET. Not merged, not pushed.
+- Time spent / subagents used: inline, no subagents.

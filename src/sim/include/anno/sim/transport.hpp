@@ -108,7 +108,8 @@ struct SourceChoice {
 /// Exactly one outcome counter is bumped per call that reaches the candidate stage.
 struct TransportStats {
     std::uint64_t no_candidate = 0; ///< (i) no building passed the filter
-    std::uint64_t unreached = 0;    ///< (ii) candidates, but the search reached no goal
+    std::uint64_t unreached = 0;    ///< (ii-a) candidates, search completed but path empty (goal reached, no route built)
+    std::uint64_t no_goal_reached = 0; ///< (ii-b) search completed but no goal cell was visited at all
     std::uint64_t low_score = 0;    ///< (iii) a goal was reached but no score beat the start
     std::uint64_t found = 0;        ///< (iv) a source was chosen
     /// (v) exact cells unavailable (the retained tile-only placement lost metadata).
@@ -136,6 +137,9 @@ struct TransportStats {
     /// disc (candidates come from `area.square()` but only tiles inside the disc are
     /// walkable, T27 review). Counted once per search.
     std::uint64_t outside_disc = 0;
+    /// Starts whose position lies outside the search rectangle and are silently skipped
+    /// (T33.4 F1 diagnostic). Counted once per skipped start.
+    std::uint64_t start_outside_rect = 0;
 };
 
 /// Step A's choice for a cart of market `home` (D 0x1005ad10 with the callback

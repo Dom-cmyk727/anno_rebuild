@@ -566,6 +566,9 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
         return cart ? visit_cart(k) : visit_carrier(k);
     };
     const SearchResult found = search(cells, *tables, layer, starts, goals, visit);
+    if (stats != nullptr) {
+        stats->start_outside_rect += found.start_outside_rect;
+    }
     if (!found.complete) {
         // Deviation: the scenario adapter discarded a retained tile-only object's
         // placement rotation/offsets (T33.2), so an exact cell cannot be built. Do not
@@ -577,7 +580,7 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
     }
     if (!best) {
         if (stats != nullptr) {
-            ++(reached ? stats->low_score : stats->unreached);
+            ++(reached ? stats->low_score : stats->no_goal_reached);
         }
         return std::nullopt;
     }

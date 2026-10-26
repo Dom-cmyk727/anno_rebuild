@@ -73,6 +73,7 @@ void seed(Open& open, SearchResult& result, WalkCells& cells, std::span<const Wa
     // D0x10003d9b..0x10003f87, fn2 and0x10003f73: do not deduplicate starts.
     for (const auto& point : starts) {
         if (!inside(cells.rect(), point.tile) || point.col >= 3 || point.row >= 3) {
+            ++result.start_outside_rect; // T33.4 F1: start outside rect, silently skipped
             continue;
         }
         auto cell = cells.get(point.tile);

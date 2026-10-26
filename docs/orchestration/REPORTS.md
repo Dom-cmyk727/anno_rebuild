@@ -3481,3 +3481,278 @@ The full gates of §1 item 4 and round ba were not run. `tools/sim_stream.py --c
 - this section (`docs(orchestration): T33.5 stage 2 stopped before step 4`)
 
 Branch: `task/T33-5b-tile-record`. Worktree: `E:\anno1503-worktrees\anno1503-T33-5b`. Base: `edb1a3a`. Not merged. Not pushed.
+
+## T33.5 stage 2 fix-up F1 — 2026-10-26 — status: DONE
+
+- Branch `task/T33-5b-tile-record` at `802910d`, status empty. `E:\anno1503` is at `6d62af6`, which contains `1982234` (round bm). `git ls-remote` returned HTTP 403. Local only. C: had about 28.7 GB free.
+
+### F1 step 1 — the overlay path re-read
+
+Disassembled `AnnoWelt.dll` `0x10082040` for 1600 bytes, `0x1008ec90` for 300 bytes, the loader window `0x1008962a`, and the reset at `0x1008c80d`. Listings stayed in `cache/`. The addresses in the F1 entry hold. The reading does not differ, so the step does not stop.
+
+Confirmed:
+
+- Island vtable `0x100cac2c` slot `+0x78` is `0x1008ec90` (dword at `0x100caca4`); slot `+0x7c` is still `0x1008ee70`.
+- `0x1008ec90` calls `0x10082040` at `0x1008ecbd` unless the flag has bit 31 (`test edi, 0x80000000` at `0x1008ecaf`, `jne 0x1008ecc2`). The loader pushes `0x4000000` at `0x10089638` and calls slot `+0x78` at `0x10089676`. The record stores end at `0x1008966c`.
+- The flag test `0x10082184..0x1008218f` (`call [edx+0x60]`, `test al, 0x10`, `je 0x100823ed`) runs once per entered block.
+- Overlay first-dword stores `0x1008220e..0x10082286`: id `0x10082215`, dx `0x10082227`, dy `0x1008223d`, rotation `0x1008224c`, height `0x10082260`, phase `0x10082270`, bit 7 `0x10082286`.
+- The skip is all three of: id non-zero (`0x100821e6..0x100821ed`), that type's flag `0x10` (`0x100821ef..0x10082206`), byte 3 bit 7 (`0x10082208`, `jne 0x1008228b`).
+- The second overlay loop `0x10082342..0x100823e2` replaces the code and ORs the mask on every tile of the clipped block, **including a tile the first loop skipped**. It has no skip test.
+- Block origins are the MSVC signed remainder by 8 (`and 0x80000007` plus the sign fix, then `sub`): Y at `0x100820e6..0x100820f3`, X at `0x10082109..0x10082116`. For the zero-extended u16 that is `n & ~7`. Y blocks are outer (step `0x1008262e`), X blocks inner (step `0x1008260c`). Inside a block, rows are outer and columns inner. Rotations 0 and 2 keep width/height (`0x1008209a`); 1 and 3 swap them (`0x100820b4`); the table is `0x10082b10`.
+- The anchor flag is `mov bl, 1` at `0x1008213b`, copied to `[esp+0x74]` at `0x1008213d`. The ordinary path reads that byte (`0x100824af`) and clears it after every tile (`0x100824c8`). The overlay path keeps the flag in `bl` (`shl bl, 7` at `0x10082258`); from `0x100821d0` the column cursor reuses `[esp+0x74]`. `xor bl, bl` at `0x10082289` runs only after a written tile. Reset writes byte 3 as 0 at `0x1008c81e`.
+
+`§3.4.17` "Placement's two paths" and the byte-3 bit-7 row are corrected. OQ-203 is answered: the bit is the block-anchor flag. Readers: the skip test `0x10082208`; the same function at `0x10082a0c`, which on a matching anchor sets second-dword bit 31 at `0x10082a46`; `0x10083bbd`. A same-shaped skip and store at `0x1008defe` / `0x1008df21` (function entry not named). `0x1009b47f` tests `[esi+3]` but the window does not show a tile record, so it is not claimed. OQ-204 stays open; the new bit-31 store is recorded there and is not modelled.
+
+### F1 step 2 — the anchor column
+
+Commit `936d5a3`. `foot_anchor` is a u8, 0 or 1, reset 0 (`0x1008c81e` writes byte 3 as 0). It is hashed, saved and mirrored after `foot_rotation`. `kTileBytes` is 23. `kStateHashVersion` stays 113. The bound comment uses 23 bytes: 2^28 tiles ask for 6,174,015,488 bytes (6.2 GB) and 2^26 tiles for 1,543,503,872 bytes (about 1544 MB). The OQ-203 deviation comment is gone, because the bit is now the column. OQ-204 and OQ-205 stay on `foot_dx_`. Layout tests: 47 cases, 133389 assertions, 0 failed (`-tc=*tile*,*Tile*,*chunk*,place_object*,islands scope*`).
+
+### F1 step 3 — the block-ordered writer
+
+Commit `5bac1d7`. `place_object_record` walks the footprint in world-aligned blocks of `kPlacementBlockEdge` = 8 (`0x100820e6`, `0x10082109`, steps `0x1008262e` and `0x1008260c`). The block origin is toward-zero `n - n % 8`, the MSVC signed remainder. Y blocks are outer, X blocks inner. Inside a block, rows are outer and columns inner, clipped to the rectangle (`0x10082145..0x10082180`).
+
+The ordinary path writes the id, the world dx and dy, the rotation and the phase, then the anchor: 1 on the first written tile of the block, then 0 (`0x100824af..0x100824c8`). The overlay path uses the same stores and skips a tile only when its id is non-zero, that type has flag `0x10`, and `foot_anchor` is set (`0x100821e6..0x1008220c`). A skip does not clear the anchor flag (`xor bl, bl` at `0x10082289` runs only after a write), so the next written tile of the block takes it. `write_walk_record` then replaces the code and ORs or replaces the mask on every footprint tile, a skipped tile included (`0x10082342..0x100823e2` has no skip). The function returns how many first-dword writes the skip suppressed.
+
+The height byte (`0x10082260`, `0x10082494`) is not a column: a `// deviation` names Terrain and OQ-060. A tile outside the layer does not clear the anchor. A missing catalogue type does not satisfy the flag test.
+
+Three cases, 112 assertions, 0 failed:
+
+- A 3×3 at world (6, 6) has anchors at (6, 6), (8, 6), (6, 8) and (8, 8). The call returns 0. (5, 6) stays empty.
+- Overlay 7102 over overlay 7101, both flag `0x10`, the same 3×3: the second call returns 4. (6, 6) keeps 7101, phase 4 and anchor 1, and its walk code becomes 1. (7, 6) is the first written tile of that block, so it becomes 7102 with anchor 1. (7, 7) is 7102 with anchor 0.
+- Overlay 7202 over non-overlay 7201, a 2×3 at (1, 1): the second call returns 0. All six tiles become 7202. The anchor at (1, 1) stays 1. (0, 1) stays empty.
+
+Mutations, each reverted and not committed:
+
+- Anchor always written 0. The four-anchor case fails: (6, 6), (8, 6), (6, 8) and (8, 8) have anchor 0, and the count is 0. The overlay-keep case also fails, because the first object sets no anchor, so the skip never fires (return 0, and (6, 6) becomes 7102). The non-overlay case fails its anchor checks at (1, 1).
+- Skip test disabled. Only the overlay-keep case fails: return 0, (6, 6) becomes 7102 with phase 7, and (7, 6) has anchor 0 because (6, 6) took it. The other two cases pass.
+- Skip on any occupied id. The non-overlay case fails: return 6, and all six tiles stay 7201 with phase 9. The overlay-keep case also fails: return 9, and (7, 6) and (7, 7) stay 7101. The four-anchor case passes.
+
+### F1 step 4 — callers, and the writes the skip suppressed
+
+Commit `53cf741`. `build_island` calls `place_object_record` once per tile object, in file order, and no longer writes the origin id on its own. `create_building` step 8 uses the same writer in place of the box loop and `write_walk_record`. Buildings are still created after the tile objects. A created building stores phase 0: `PlacementRecord` has no phase (`BuildingSpec` carries type, origin, rotation and `byte0f`), and byte 3 resets to 0 (`0x1008c81e`). An unknown id never enters `IslandSpec::objects` from a scenario file (the loader skips it at `0x10089619`). A spec that still names a type this registry does not hold has no footprint: the id and the phase stay on the tile it names, which is the synthetic fixtures' 1201 / 1202 / 1203. That origin write is the one case `place_object_record` cannot cover. Commit `3de5820`.
+
+The count is the sum of `place_object_record`'s return over that same order: tile objects in file order, then cities by number, then each city's buildings with phase 0. The probe was a temporary test, deleted before `53cf741`. It does not go through `create_building`, so a building the creator would refuse is still placed; the corpus has no `BuildingRefused`. The count is above 0. That is no longer a stop. Total **20803** tile writes suppressed, of 50 files:
+
+| File | Skipped writes |
+|---|---|
+| `0010SingleEndlos/00_1024_easyentry_01.sze` | 347 |
+| `0010SingleEndlos/01_1024_easy_256.sze` | 0 |
+| `0010SingleEndlos/02_1024_easy_128.sze` | 0 |
+| `0010SingleEndlos/03_1024_med_256.sze` | 0 |
+| `0010SingleEndlos/04_1024_med_128.sze` | 0 |
+| `0010SingleEndlos/05_800_Med_128.sze` | 0 |
+| `0010SingleEndlos/06_1024_heavy_256.sze` | 0 |
+| `0010SingleEndlos/07_1024_heavy_128.sze` | 0 |
+| `0010SingleEndlos/08_800_heavy_128.sze` | 0 |
+| `0011SingleEndlosAddon/endless01.sze` | 771 |
+| `0011SingleEndlosAddon/endless02.sze` | 1340 |
+| `0011SingleEndlosAddon/endless03.sze` | 838 |
+| `0100Kampagne01/S01_01_01.sze` | 928 |
+| `0100Kampagne01/S01_02_01.sze` | 590 |
+| `0100Kampagne01/S01_03_01.sze` | 847 |
+| `0100Kampagne01/S01_04_01.sze` | 83 |
+| `0100Kampagne01/S01_05_01.sze` | 356 |
+| `0100Kampagne01/S01_06_01.sze` | 475 |
+| `0100Kampagne01/S01_07_01.sze` | 876 |
+| `0100Kampagne01/S01_08_01.sze` | 67 |
+| `0100Kampagne01/S01_09_01.sze` | 778 |
+| `0100Kampagne01/S01_10_01.sze` | 970 |
+| `0100Kampagne01/S01_11_01.sze` | 112 |
+| `0100Kampagne01/S01_12_01.sze` | 1065 |
+| `0100Kampagne01/S01_13_01.sze` | 204 |
+| `0200Single/Single_01.sze` | 970 |
+| `0200Single/Single_05.sze` | 79 |
+| `0200Single/Single_06.sze` | 273 |
+| `0200Single/Single_08.sze` | 50 |
+| `0200Single/Single_10.sze` | 521 |
+| `0200Single/Single_12.sze` | 111 |
+| `0200Single/Single_14.sze` | 324 |
+| `0200Single/Single_15.sze` | 37 |
+| `0200Single/Single_16.sze` | 25 |
+| `0200Single/Single_24.sze` | 191 |
+| `0201SingleAddOn/single30.sze` | 1356 |
+| `0201SingleAddOn/single31.sze` | 436 |
+| `0201SingleAddOn/single32.sze` | 491 |
+| `0201SingleAddOn/single33.sze` | 585 |
+| `0201SingleAddOn/single34.sze` | 242 |
+| `0201SingleAddOn/single36.sze` | 1175 |
+| `0201SingleAddOn/single38.sze` | 445 |
+| `0201SingleAddOn/single39.sze` | 336 |
+| `0201SingleAddOn/single40.sze` | 683 |
+| `0201SingleAddOn/single41.sze` | 572 |
+| `0201SingleAddOn/single42.sze` | 1057 |
+| `0201SingleAddOn/single43.sze` | 51 |
+| `Tutorial/01Discover01.sze` | 16 |
+| `Tutorial/02Trade01.sze` | 50 |
+| `Tutorial/03T_Combat_01.sze` | 80 |
+
+Eight files suppress nothing (`01` through `08` of `0010SingleEndlos`). `S01_07_01` suppresses 876 writes and `single36` suppresses 1175.
+
+`place_object_record` is the placement writer of a non-zero object id. The only other non-zero store is a spec whose type is missing, on that one named tile, and `grow_chunk`'s successor store (`island_tick.cpp`). The removal and demolish paths are step 5.
+
+### Stage 2 step 5 — the clear arm
+
+Commit `f447e67`. `clear_object_record` follows the clear arm of `0x10082c30`. An id of 0 writes nothing (`0x10082c6a`). Otherwise the origin is the clicked tile minus `foot_dx` / `foot_dy`, and the rotation is that tile's `foot_rotation` (`0x10082ca5..0x10082cda`). A footprint tile is written only when its id, rotation and offset match (`0x10082d98..0x10082de7`): id 0, the three footprint columns 0, `foot_anchor` 0 (`and al, 0x3f` at `0x10082f11` keeps the phase), code 2 and mask 0. A `// deviation` names the unmodelled replacement arm (island `+0x18`, `0x10082e43..0x10082efc`, OQ-201). The arm also keeps the height byte and bits 25–31, which are not columns (OQ-060, OQ-204, OQ-205).
+
+`remove_building` calls it at the building's origin. `RemoveAt` passes the clicked tile (`0x100292ef` → `0x1008ee70` → `0x1008eec3`); the origin names the same footprint while that tile still holds the building. The demolish clear-tile branch calls it with the named tile, which may be any tile of the object. A comment says that branch uses the building clear arm as a stand-in, because the non-building command path is still open (OQ-201).
+
+### Stage 2 step 6 — readers that change without a code change
+
+- `grow_chunk` (`island_tick.cpp`) still visits every in-bounds tile of the chunk and grows the type of `tiles.object`. A multi-tile item used to carry its id on the origin only, so only that tile advanced. Every footprint tile now holds the id, so each advances on its own visit, which is the original's growth rule. Tiles of one item that sit in different chunks advance on different visits.
+- `stand_in_placement_rule` (`placement.cpp`, the object test in the footprint loop) now sees the id on every tile of a tile object. A building over any tile of a 2×2 rock is `Occupied`. Previously only the origin tile refused. Scenario load does not use this rule: `create_building` refuses another building, and a building still overwrites scenery.
+- The road-neighbour statistic (`transport.cpp`, `has_road_4nei`) reads the object id of the four orthogonal neighbours and keeps a neighbour whose `walk_class` is 1. Roads are 1×1, so that id was already on the road's only tile. A multi-tile object that is not a road does not become a road neighbour by gaining an id on its other tiles. Expect no change in `home_no_road` / `goal_no_road`. Step 8's measurement is the numeric check.
+- The footprint check in `create.cpp` (the `tiles.object(idx) == 0` refusal, previously cited at line 458) still requires a non-zero id on every building footprint tile. `place_object_record` writes one, and an overlay skip leaves the previous non-zero id, so the check's condition is unchanged.
+
+### Stage 2 step 7 — tests
+
+Commit `1e73ac4`.
+
+(a) Synthetic, all passed (581 assertions across the five new cases, plus the three writer cases from step 3):
+
+- A 2×3 at (1, 1), rotations 0–3. Every footprint tile holds id 7301, the world dx/dy, the rotation, phase 5 and code 4. The one blocked subcell, by hand: rotation 0 mask 1 on (0, 0); rotation 1 mask 64 on (0, 1); rotation 2 mask 256 on (1, 2); rotation 3 mask 4 on (2, 0). The other tiles have mask 0. The anchor is the first tile only.
+- The stage-2 sentence "an overlay keeps the old object's id" is the reading F1 corrected. The step-3 cases are the ones that hold: an overlay keeps another overlay's anchor tile (id, offset, rotation, phase) and replaces the code there; it writes every other tile. An overlay over a non-overlay takes every tile.
+- `clear_object_record` from each of the six tiles of the 2×3 clears all six, keeps phase 5, and writes code 2 and mask 0.
+- A tile whose id was changed to 7399 is skipped. The origin, which still has 7303, is cleared.
+- `remove_building` of the 3×2 kit house restores id 0, code 2 and mask 0 on all six tiles.
+- A 3×2 scenery record, then a 1×1 church on its origin: the church tile holds the church at phase 0, and the next tile keeps the scenery id and phase 4.
+
+(b) `S01_07_01` at tick 0. The loaded columns match a replay of `place_object_record` in `build_island`'s order: 0 mismatches. Of the tile objects' footprint tiles, 123168 still hold that object with the matching dx/dy/rotation, and 9559 do not. Those 9559 are a later object, a building, or an overlay skip. The sentence "every footprint tile holds its id" is not true of the loaded world for that reason; the replay match is the check. The T33.4 tick-0 snapshot still holds: markets 55 incomplete 0, workshops 88 incomplete 0.
+
+(c) Mutations, each reverted and not committed:
+
+- The writer stores the first dword on the origin only. The 2×3 case fails: rotation 0 tile (1, 0) stays id 0. 83 assertions failed, 118 passed.
+- The clear treats the clicked tile as the origin. Clearing from offset (1, 0) leaves the real origin as 7302. 105 assertions failed, 208 passed.
+- The overlay skip is disabled, so the id is written on an anchor tile too. The overlay-keep case fails: the call returns 0, (6, 6) becomes 7102 with phase 7, and (7, 6) has anchor 0. 4 assertions failed, 15 passed.
+
+### Stage 2 step 8 — the measurement
+
+Before is `E:\anno1503-worktrees\anno1503-T33-4\build\msvc\src\sim\Release\anno_sim_tests.exe` (not rebuilt). After is this worktree's binary. Both runs used `ANNO_SIM_TRANSPORT_STATS=1` and `ANNO1503_GAME_DIR=E:\anno1503\game\app`. The two runs printed the same lines. `found` is not below the before run. `home_no_road` and `goal_no_road` are unchanged, which is the step 6 road check.
+
+`S01_07_01`, totals over 150000 ticks. Each total is the sum of its row.
+
+| | no_candidate | no_goal_reached | low_score | unreached | incomplete | found | total |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| before | 26094 | 4948 | 4458 | 0 | 0 | 404 | 35904 |
+| after | 26094 | 4948 | 4458 | 0 | 0 | 404 | 35904 |
+
+```
+transport run: 0100Kampagne01/S01_07_01.sze ticks 150000 (choose_source: no_candidate 26094 unreached 0 no_goal_reached 4948 low_score 4458 found 404 incomplete 0 home_no_road 1660 goal_no_road 3232 edge 0 corner 0 outside_disc 0 start_outside_rect 0)
+```
+
+`single36`, totals over 150000 ticks.
+
+| | no_candidate | no_goal_reached | low_score | unreached | incomplete | found | total |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| before | 13260 | 836 | 2638 | 0 | 0 | 77 | 16811 |
+| after | 13260 | 836 | 2638 | 0 | 0 | 77 | 16811 |
+
+```
+transport run: 0201SingleAddOn/single36.sze ticks 150000 (choose_source: no_candidate 13260 unreached 0 no_goal_reached 836 low_score 2638 found 77 incomplete 0 home_no_road 3046 goal_no_road 6978 edge 0 corner 0 outside_disc 0 start_outside_rect 0)
+```
+
+Tick 0, the same on both binaries:
+
+```
+transport snapshot: 0100Kampagne01/S01_07_01.sze tick 0 markets 55 (cart: no_candidate 7 unreached 0 no_goal_reached 8 low_score 12 found 28 incomplete 0 home_no_road 8 goal_no_road 35 edge 0 corner 0 outside_disc 0 start_outside_rect 0); workshops 88 (carrier: no_candidate 35 unreached 0 no_goal_reached 3 low_score 0 found 50 incomplete 0 home_no_road 3 goal_no_road 5 edge 0 corner 0 outside_disc 0 start_outside_rect 0); senders without a figure type 0
+transport snapshot: 0201SingleAddOn/single36.sze tick 0 markets 49 (cart: no_candidate 34 unreached 0 no_goal_reached 2 low_score 5 found 8 incomplete 0 home_no_road 15 goal_no_road 40 edge 0 corner 0 outside_disc 0 start_outside_rect 0); workshops 11 (carrier: no_candidate 7 unreached 0 no_goal_reached 0 low_score 0 found 4 incomplete 0 home_no_road 1 goal_no_road 1 edge 0 corner 0 outside_disc 0 start_outside_rect 0); senders without a figure type 2
+```
+
+The corpus case printed, for all 50 files, the same `producers_moved` and `warehouses_moved` as the file recorded at stream 112. No file changes those two fields. In all: producers 734 of 2147, warehouses 91 of 272. Buildings 8526, tile objects 3251239, and every warning total are the same on every file. `create_hash` changed on all 50 files. The header moved from `# kStateHashVersion=112` to `# kStateHashVersion=113`. The hashes move because every footprint tile now stores the id, the offset, the rotation and the anchor, and a building writes phase 0 over the scenery it covers. The walk code and mask were already per tile (T33.4). The search totals above did not move.
+
+### Stage 2 step 9 — goldens, corpus, docs
+
+`goldens.txt` was still stream 112. The code has hashed version 113 since `936d5a3`, and 113 had not been recorded. G0 and G1 have no tiles, so their move is the header version, not the new columns. The three event digests are not state hashes and did not change. Every other golden is a state hash, so it moves because each footprint tile now contributes the id, `foot_dx`, `foot_dy`, `foot_rotation` and `foot_anchor`. A 1×1 synthetic building is the only written tile of its world block, so its anchor is 1; `tools/sim_stream.py` agrees on g0, g1, s5 and s6.
+
+| golden | was (112) | now (113) |
+| --- | --- | --- |
+| g0_step1 | a654fffef07fc12f | 16923244163cfeed |
+| g0_step100 | 9d561364a3e76cec | 476d5a002acfa45e |
+| g0_step1000 | d57d62696f8e19c6 | d69e5c107b553c94 |
+| g1_players_step100 | 30577b74bfbbf369 | 89036f407b7f04b6 |
+| g1_players_step700 | 333bae269f506a4c | d8bd150cee2ddeff |
+| s5_islands_create | f985e6bd6012ba65 | 5c5bb9f7448a1d61 |
+| s5_islands_step100 | 8d1f2f3d16020d12 | ecce20a563f47e12 |
+| s6_g1_create | 567065a96ca9bd8e | b26a54b5c9d83657 |
+| s6_g1_step100 | a8852651a255fa2d | 167eaeb13dd2ae42 |
+| s7_g1_mp_checkpoints | 621160e0af86e456 | f42ca2a5d14db88a |
+| s7_g1_mp_end | eb34a3604f97b665 | fcb02ce24531153e |
+| s7_g1_events | d705f409820828d2 | d705f409820828d2 |
+| s7_g1_sp_end | bf3bfbca5e7b3206 | 9a67670ab7bd1abd |
+| s10_g2_end | 194a01f4c382227e | f454c6890dd69a71 |
+| s11_g3_checkpoints | 5e494e97b6e08118 | 2e444200c505b561 |
+| s11_g3_end | 4d81fadb9958e08c | b94bf5402e552b53 |
+| s11_g3_events | 3140bd8e1eb7db86 | 3140bd8e1eb7db86 |
+| s12_g4_checkpoints | 652054fd55afe70e | 2b5201d944cefe1b |
+| s12_g4_end | 53fe4037530d0681 | 581832ebb2a7d33b |
+| s12_g4_events | 39c10f583d4b7cc8 | 39c10f583d4b7cc8 |
+| s13_g5_checkpoints | 882b24788b5256ce | b80dfafb971c7dd7 |
+| s13_g5_end | 6ec897497a9ff521 | fbf7e5942914c53f |
+| t24_g6_checkpoints | 29bd632c0d5f4d72 | 6f81e91ec1ceb88b |
+| t24_g6_end | f9cc4bf8ec572f20 | ca9524d5c23d4376 |
+
+`g2.log`–`g6.log` grew by 6 bytes per tile, the four new columns: g2 79758 → 104334 (+24576, 4096 tiles), g3 114536 → 142712 (+28176, 4696), g4 183293 → 189821 (+6528, 1088), g5 309959 → 325799 (+15840, 2640), g6 104307 → 111987 (+7680, 1280).
+
+`scenario_corpus.txt`: the version header 112 → 113, and `create_hash` on all 50 files, for the same reason as the goldens. No file changed buildings, tile objects, any warning count, `producers_moved` or `warehouses_moved`.
+
+`state.md` §5.9 now has "T33.5 as implemented": the columns, the writer's two paths, the clear arm, and the deviations (OQ-201 replacement arm, the height byte, bits 25–31). OQ-203 is the anchor. OQ-201's status says the sim uses the building clear arm for removal and for clearing; the replacement arm and the non-building command path stay open. §9.2 was already 23 bytes in `936d5a3`.
+
+A type the registry does not hold is written on the named tile only. The original lookup at `0x10082c7f` is used at once (`0x10082c84`) and is not given a null, and the loader skips such an id (`0x10089619`). The clear undoes that one tile. Without that, `demolish` left synthetic id 1201 in place, and the build on the freed scenery tile stayed `Occupied`.
+
+### Gates
+
+The re-record run (`ANNO_UPDATE_GOLDEN=1`, game dir) printed `99% tests passed, 10 tests failed out of 1008`. The ten were `build occupied`, `demolish skips unowned tiles` (the typeless tile above), `state_hash relational properties` and `world core stream layout round trip and rejects` (both still expected stream 112; the empty-world hash is `9402dc344f281265`, the Python transcription), `anno_sim_tests_lint_sim_passes` (`kPlacementBlockEdge` is the original's block edge, allowed as not a limit), and `anno_sim_replay_g2_run` through `g6_run` (the replay binary was still the old one). Those were fixed and `anno-sim-replay` rebuilt before the gate. That run is not the gate. Log copied to `cache/ctest-rerecord.log`.
+
+Gate, with the game dir, `ANNO_UPDATE_GOLDEN` unset: `100% tests passed out of 1008`. 0 failed. Log copied to `cache/ctest-with-game.log`.
+
+Gate, without the game dir: `100% tests passed out of 1008`. 0 failed. Two tests did not run: `anno_sim_replay_scenario_single_01` and `anno_sim_replay_scenario_endless_03_links`. Log copied to `cache/ctest-without-game.log`.
+
+`tools/check_unix_warnings.sh`: GCC 13.3.0, 158 files, clean; Clang 18.1.3, 158 files, clean; Clang without GPU, 9 files, clean. Exit 0.
+
+clang-format 23.1.3 `--dry-run --Werror` on the 15 changed `.cpp` / `.hpp` files: clean, after wrapping `TileLayer::foot_anchor`.
+
+`python tools/lint_sim.py`: `lint_sim: ok`.
+
+`python tools/sim_stream.py --check`: `goldens agree`.
+
+Sanitizers. The sim tests were compiled and linked with g++ 13.3.0 at `-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all` plus the warning flags from `check_unix_warnings.sh`, doctest from `build/msvc/_deps`. Without `ANNO1503_GAME_DIR`: 644 passed, 0 failed, 2660232 assertions, SUCCESS. With `ANNO1503_GAME_DIR=/mnt/e/anno1503/game/app`: 644 passed, 0 failed, 2677425 assertions, SUCCESS.
+
+### Acceptance
+
+F1:
+
+1. §3.4.17 and OQ-203 corrected, every address confirmed. Done in `853cbf3`. The second overlay loop writes the code and ORs the mask on skipped tiles too.
+2. The anchor column and the block-ordered writer, with the three unit cases and the three mutations. Done in `936d5a3` and `5bac1d7`.
+3. Stage 2 acceptance items 2–9. Done, below.
+
+Stage 2:
+
+1. Step 1's two numbers are in the stopped stage 2 report: largest footprint edge 8, and the flag-`0x10` object counts. The skip-suppressed write counts (20803 in all) are in F1 step 4 above.
+2. `foot_dx`, `foot_dy`, `foot_rotation` and `foot_anchor` are hashed, saved and mirrored. `kTileBytes` is 23. `kStateHashVersion` is 113.
+3. One writer with both paths, one clear function, and the callers of steps 4 and 5.
+4. Tests 7(a)–(c). The three mutations fail the cases they are meant to kill, and were reverted.
+5. The measurement. Before and after printed the same lines. `found` is not below the before run.
+6. Goldens and the corpus re-recorded, with the moves above. Buildings, tile objects and warnings are unchanged on every file.
+7. `state.md` §5.9 and §9.2, and the OQ-201 status line.
+8. The gates above, with the totals.
+9. This report, committed on the branch, not merged and not pushed.
+
+### Commits
+
+`git log --oneline 802910d..HEAD` before this report commit:
+
+- `f22e5a7` style(sim): wrap the foot_anchor reader
+- `7ecfc86` docs: record the tile-record writer, the clear arm and the open replacement path
+- `2cffd92` test(sim): re-record goldens and corpus for the tile record
+- `4f7dfd6` fix(tools): store the block anchor on a 1x1 synthetic building
+- `f0e641d` chore(sim): allow the 8-tile placement block constant
+- `42deeda` test(sim): pin the empty world and the stream header at version 113
+- `021c96b` fix(sim): clear a catalogue-less object on the tile the spec named
+- `1e73ac4` test(sim): check the tile record on a footprint, a clear and a loaded scenario
+- `3de5820` fix(sim): keep a typeless tile object's id on its named tile
+- `f447e67` feat(sim): clear a footprint from any of its tiles
+- `53cf741` feat(sim): place tile objects and buildings through the record writer
+- `5bac1d7` feat(sim): walk placement in the original's 8x8 blocks
+- `936d5a3` feat(sim): store the tile record's block anchor
+- `853cbf3` docs(re): the overlay path writes the id, and bit 7 is the block anchor
+
+The branch is `task/T33-5b-tile-record`. The commit of this section is the branch head. Nothing in `E:\anno1503` was edited. Not merged, not pushed.

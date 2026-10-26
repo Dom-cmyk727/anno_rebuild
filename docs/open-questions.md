@@ -1716,15 +1716,15 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **The question:** when a growing item advances, does the original leave the walk record that placement wrote, or write the successor's code and mask? The successor's record still needs a rotation, and the tile state does not store one. F5 does not guess that rotation and does not tune the samples.
 
 ## OQ-203: What byte 3 bit 7 of the tile record means (T33.5 stage 1, 2026-10-26)
-- **Status:** open.
+- **Status:** answered (T33.5 F1, 2026-10-26, `transport.md` §3.4.17). It is the 8×8 block-anchor flag. Placement sets it on the first footprint tile it writes in each world-aligned 8×8 block (`mov bl, 1` at `0x1008213b`; ordinary clear `0x100824c8`; overlay clear only after a written tile, `0x10082289`). A footprint whose edge is at most 8 therefore has at most four anchors.
 - **Area:** simulation / tile record.
-- **What was read.** The bit is stored by placement (`0x100824af..0x100824c5`; the stack flag starts at 1 at `0x1008213b` and is cleared after each tile at `0x100824c8`, so the first tile of that inner loop gets 1), by the replacement arm of `0x10082c30` (`0x10082e8a`, the whole byte becomes `0x80`), and is kept by `0x100873ab` (only when the type of `id−1` has slot `+0x5c` equal to `0xe2`) and by growth's successor `and` at `0x1008b6ca`. The reader `0x10083a90` masks it off. No test of the bit was found.
-- **How to resolve:** find a reader that tests bit `0x80` of tile byte 3 and branches on it.
+- **Readers.** The overlay path skips a first-dword write when the tile's id is non-zero, that type has HEAD flag `0x10`, and this bit is set (`0x10082208`). The same function tests it at `0x10082a0c` and, on a matching id and origin, sets second-dword bit 31 (`0x10082a46`). `0x10083bbd` tests it and compares the dx bits with `x` mod 8. A same-shaped skip and store, pointer at the record base, sit at `0x1008defe` / `0x1008df21`; that function's entry was not named. `0x1009b47f` is `test byte [esi+3], 0x80` choosing two virtual calls; the window does not show that `esi` is a tile record, so it is not claimed as a reader of this field. The out-record reader `0x10083a90` still masks the bit off.
+- **What stage 1 had.** The stores were already read. The skip test was missed, and the cell was left open.
 
 ## OQ-204: What bits 29–31 of the tile record's second dword are (T33.5 stage 1, 2026-10-26)
 - **Status:** open. Not marked unused: the clear arm keeps them.
 - **Area:** simulation / tile record.
-- **What was read.** Placement clears them (`and 0x3fffffff` at `0x100824a7`). The reset dword `0x1e000200` leaves them 0. The clear arm of `0x10082c30` keeps them (`0xfe0002ff` at `0x10082f05`). No store of a nonzero value, and no reader, was found in the functions read.
+- **What was read.** Placement's ordinary path clears them (`and 0x3fffffff` at `0x100824a7`); the overlay path does the same at `0x1008227b`. The reset dword `0x1e000200` leaves them 0. The clear arm of `0x10082c30` keeps them (`0xfe0002ff` at `0x10082f05`). T33.5 F1 found one nonzero store: `or dword [record+4], 0x80000000` at `0x10082a46` sets bit 31 on an anchor tile whose id and byte-2 origin match the placement record, after compares with `0x45` and `0x46` (`0x1008299d`, `0x100829a6`) and a nonzero return from `[island+0x20]` slot `+0x74` with argument 5 (`0x100829b6`). No reader of the bit was found in that pass.
 - **How to resolve:** read `0x10087880`, the earlier sweep's candidate for bit 29 (`transport.md` §3.4.13), then any other store into those three bits.
 
 ## OQ-205: Who supplies the 4-bit field in bits 25–28, and who reads it (T33.5 stage 1, 2026-10-26)

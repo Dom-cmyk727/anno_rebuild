@@ -3081,14 +3081,15 @@ OQ-201 is written: what the original puts in a demolished or cleared footprint, 
 
 ### Commits
 
-`git log --oneline 7ed152c..HEAD` at the time this section was written:
+Listed commits are `git log --oneline 7ed152c..480a667` (the report commit included; the correction commit is not listed):
 
+- `480a667` docs(orchestration): T33.4 F5 per-tile walk record report
 - `730f317` docs: record the per-tile walk record and the growth stop
 - `d4a509e` test(sim): re-record goldens and corpus for the per-tile walk record
 - `b7fcfec` test(sim): check rotated walk records and a complete search
 - `722aa2c` feat(sim): write and read the per-tile walk record
 - `18750e6` feat(sim): store a walk code and mask on every tile
 
-This report is the next commit. Branch head before it: `730f317`.
+Branch head is the commit with subject `docs(orchestration): correct the T33.4 F5 branch head`.
 
 

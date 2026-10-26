@@ -3852,3 +3852,42 @@ The branch is `task/T33-5b-tile-record`. The commit of this section is the branc
 ### Open questions
 
 OQ-220 (the three addon pages do not state the six levels), OQ-221 (a money bullet is not one human amount; `StartMoney` uses the four bullets), OQ-222 (pirate `COMP TYP` runs 2..7 and is not the three description words; `PirateLevel` uses the three words). No disassembly was required: the layouts used are the ones already specified.
+
+## T37 — Spec of the enhanced world generator — 2026-10-26 — status: FINISHED
+
+- Branch: `task/T37-world-spec`; worktree: `E:\anno1503-worktrees\anno1503-T37`. Start commit `6ace6c8`. Work commits: `2f14ae2` (tool), `6c1c6a0` (spec). The branch head is the commit that adds this section. Not merged, not pushed.
+- Built:
+  - `tools/world_measure.py` — read-only. `inventory` counts `Scenes/Islands` per climate prefix and size and marks the selection exclusions. `world` prints one scenario's area, land share, size mix, climate y ranges, ship starts, rival distances, and per-start land and admitted raw/ore kinds. It writes nothing.
+  - `docs/sim/world-scaling.md` — the generator an implementer builds: edge, link count, size mix, climate bands, placement, starts, parties, `LinkInputs`, the `resolve_island_links` output, the 99% floor, determinism, the test plan.
+  - `docs/open-questions.md` — OQ-230 (pirate `COMP TYP`), OQ-231 (`endless02` `ERZE` bytes 205 with no links).
+  - Status lines: `docs/PLAN.md` M4.1 spec checkbox, `docs/plan/lan-endless.md` W2.
+- T36's preset table was not available: no `task/T36-game-setup` branch and no `docs/sim/endless-presets.md`. The twelve files named in T36 step 2 were measured directly. Description levels are the bullet order of each scenario's `AUFTRAGTEXT` file, stored as the plan's enum words. No `.htm` sentence was copied.
+- Tool, first lines (`python tools/world_measure.py inventory E:\anno1503\game\app\Scenes\Islands`):
+  - `inventory files=465`
+  - `summary bad=0 prefix_info_mismatch=0 name_size_mismatch=2`
+  - `group climate=po size=64x64 files=13 pirat=0 dummy=1 info8=0 scan=12 eligible=12 special=6 ...`
+  - Eligible total 429. The 15 `PIRAT` names are exactly the 15 files with `INFO[8] ≠ 0`, all nord. 21 dummies. No `w_` group. No 400×400 template.
+- Twelve worlds (land share, links / authored islands, competing players). All have `prop0=0`, `not_multiple_of_8=0`, `outside=0`, `overlap_pairs=0`:
+  - `00` 1024, 39.4%, 16 links + 4 islands, 3 competing, no pirate. Starts on islands, closest pair 302.93.
+  - `01` 1024, 46.2%, 27+1, 4, pirate `TYP=2 KAMPFTYP=0`. Closest pair 39.01.
+  - `02` 1024, 29.6%, 28+1, 4, `TYP=2`. Closest pair 240.03.
+  - `03` 1024, 45.6%, 27+0, 5, `TYP=3`. Reference for the large mix, the bands and the budgets.
+  - `04` 1024, 29.0%, 28+0, 5, `TYP=4`. Reference for the normal mix.
+  - `05` 800, 37.9%, 23+0, 4, `TYP=4`. Closest pair 67.08.
+  - `06` 1024, 45.6%, 27+0, 5, `TYP=5`. Same geometry as `03`.
+  - `07` 1024, 29.0%, 28+0, 5, `TYP=6`. Same geometry as `04`.
+  - `08` 800, 28.4%, 25+0, 4, `TYP=5`.
+  - `endless01` 800, 58.6%, 0 links + 23 islands, 1 competing, no pirate.
+  - `endless02` 1024, 71.6%, 0+30 including one 400×400, 2 competing, pirate `TYP=7`. `ERZE` bytes 205, unused because the link list is empty (OQ-231).
+  - `endless03` 800, 39.1%, 0+12, 5 competing, two pirates `TYP=2` and `TYP=6`.
+- Many versus average does not change the link count or the land share on a 1024 map. Large versus normal does (45.6% with four 256-tile links, 29.0% with none). Few is only the two 800-edge presets, and they are not one mix. Small is not in the presets.
+- Starts are readable: every competing player has one ship, and that `f32` position is the start. They are not one shared point (closest pairs from 39.01 to 302.93 on the 0010 presets). A nearest-start split of the land misses 99% (on `01`, 1.7% against an equal 25%). The spec's together mode follows W2's one point and records the conflict as owner question 1.
+- Gates: docs only, no build. `git diff --check` on the two work commits is clean. `agree.py` not run (those tools were not touched). `python -m py_compile tools/world_measure.py` ok. The inventory command above was run once; `world` was run on all twelve files.
+- Acceptance:
+  - inventory and the twelve worlds, with numbers: MET (`docs/sim/world-scaling.md` §2–§3);
+  - spec an implementer can build from: MET (§4–§14);
+  - owner questions listed, each with a proposal, none decided: MET (§15, seven questions);
+  - nothing of the original in git: MET (`git status` has no `game/` path; the tool prints counts and coordinates only);
+  - this report: MET.
+- Left open: OQ-230, OQ-231, and the seven feel choices in `world-scaling.md` §15. The generator code is W2 step 2, not this task.
+- Time spent / subagents used: inline, no subagents.

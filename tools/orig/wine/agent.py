@@ -869,6 +869,8 @@ class Instance:
             res["cities"] = gamestate.cities(self.mem, welt)
         if what in ("players", "all"):
             res["players"] = gamestate.players(self.mem, welt, self.find_world())
+        if what == "figures":       # not part of "all": hundreds of records per call
+            res["figures"] = gamestate.figures(self.mem, welt, self.find_world())
         return res
 
     def clocks(self) -> dict:

@@ -11,7 +11,8 @@ Interface (frame coordinates are FRACTIONS 0..1 of the game frame, as in tools/o
   screenshot(name) -> path              recognize() -> {"screen": ..., "scores": ...}
   quicksave(keep_as=None) / quickload()
   read(addr, n) -> bytes | None         module_bases() -> {"annowelt.dll": base, ...}
-  state(what="world"|"prng"|"cities"|"players"|"all")   (tools/orig/gamestate.py readers)
+  state(what="world"|"prng"|"cities"|"players"|"all"|"figures")   (tools/orig/gamestate.py readers;
+                                                                   "figures" is not in "all")
 
 Backends:
   WineBackend     tools/orig/wine/agent.py inside the AnnoHarness WSL distro, spoken to over the
@@ -334,6 +335,8 @@ class WindowsBackend:
             res["cities"] = gamestate.cities(self, welt)
         if what in ("players", "all"):
             res["players"] = gamestate.players(self, welt)
+        if what == "figures":       # not part of "all": hundreds of records per call
+            res["figures"] = gamestate.figures(self, welt)
         if what == "camera":
             found = self.smoke.find_game_window(self.game_dir)
             frame = self.module_bases().get("annoframe.dll")

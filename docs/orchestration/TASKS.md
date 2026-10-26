@@ -2,7 +2,22 @@
 
 **Who writes this file:** the orchestrator session (Claude Fable, the owner's "main" session). **Who reads it:** the executor session (Claude Sonnet with subagents). The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-Last update: 2026-10-26 bl — **T30b.5 and T30b.6 done by the orchestrator and merged locally** (`c1987d3`, `58ac91d`); T33.5 stage 2 with the main executor (unchanged); T30b.7 next for the orchestrator, then P1 (round bl below).
+Last update: 2026-10-26 bm — **T33.5 stage 2 stopped correctly; fix-up F1** (the overlay path does write the id; bit 7 is the 8×8 block anchor) for the main executor; T30b.7, then P1, for the orchestrator (round bm below).
+
+**Round bm (2026-10-26, the regular orchestrator): T33.5 stage 2 review of `802910d` (not merged).**
+- The executor stopped exactly where the task told it to: 121 600 scenario tile objects of flag-`0x10` types would have lost their id.
+- The cause is the orchestrator's: round bk accepted stage 1's "the overlay path does not execute the first-dword stores". The overlay path has its own (`0x1008220e..0x10082286`) and skips only another overlay object's anchor tile.
+- **Re-read by the orchestrator:**
+  - the loader `0x1008962a..0x10089676` builds the placement record and calls island slot `+0x78`;
+  - `0x1008ec90` calls `0x10082040` at `0x1008ecbd`;
+  - the overlay test at `0x10082184..0x1008218f` is unconditional;
+  - the block loops and the anchor flag (`0x1008213b`, `0x100824c8`, `0x10082289`, `0x1008260c`, `0x1008262e`).
+- **Accepted from the branch:**
+  - step 1's numbers: the largest footprint edge is 8 (type 1021), and 121 600 flag-`0x10` objects in 43 of the 50 files;
+  - `18081a6` (the three columns, stream 113);
+  - `1d5bf5e` (the writer's two paths; its overlay path is corrected by F1).
+- **Fix-up F1** is in the T33.5 entry under stage 2.
+- **Owner request 2026-10-26:** a testable LAN multiplayer endless game, with its plan in `docs/plan/lan-endless.md` (written by the orchestrator; no executor task from it yet).
 
 **Round bl (2026-10-26, the regular orchestrator): T30b.5 and T30b.6, run by the orchestrator in the Wine runner.**
 - **T30b.5, merged as `c1987d3`:** the figure-position reader `tools/orig/gamestate.py` `figures()` / `state("figures")`. The figure table in memory is `transport.md` §3.5: the registry at world `+0x114`, the class test on vtable slot `+0x14` = `0x10031da0`, the position f32 at `+0x24`/`+0x2c`, and the type with its layer byte `+0xff`. Live result:
@@ -1092,6 +1107,31 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
       7. docs;
       8. gates green with totals;
       9. report and commit, not merged.
+    - **Fix-up F1 (round bm, orchestrator review of `802910d`; continue on the same branch and worktree, new commits on top, no history rewrite; each step written in REPORTS before the next).**
+      - **Why:** the executor stopped correctly at step 3: by the stage-1 text, 121 600 scenario tile objects of flag-`0x10` types (rocks `FELSEN`, stones `STEIN`, cliffs `KLIPPE`, rivers `FLUSS`, waterfalls, an ice hole, mines and quarries) would get no id on any tile.
+      - **The stage-1 text was wrong, and the orchestrator missed it in round bk.** The scenario loader places every item through `0x10082040`:
+        - island slot `+0x78` = `0x1008ec90` builds the placement record at `0x1008962a..0x1008966c` and calls `0x10082040` at `0x1008ecbd` unless flag bit 31 is set; the loader passes `0x4000000`.
+        - The overlay path has **its own first-dword stores** at `0x1008220e..0x10082286`: the id (`0x10082215`), the dx bits (`0x10082227`), the dy bits (`0x1008223d`), the rotation (`0x1008224c`), the height byte (`0x10082260`), the phase (`0x10082270`), and bit 7 (`0x10082286`).
+        - It skips one tile only: one whose current id is non-zero, whose type has HEAD flag `0x10` (`0x100821e6..0x10082206`), and whose byte 3 has bit 7 set (`0x10082208..0x1008220c`).
+        - Then a second loop replaces the code and ORs the mask (`0x10082342..0x100823e2`).
+      - **Bit 7 (OQ-203) is the block-anchor flag.** The writer walks the footprint in world-aligned 8×8 working blocks: the block origin is `x & ~7` at `0x10082109..0x10082116`, and the blocks step by 8 at `0x1008260c` / `0x1008262e`.
+        - At each block start the flag is set: `mov bl, 1` at `0x1008213b`, copied to `[esp + 0x74]` at `0x1008213d`.
+        - The ordinary path clears it after every tile (`0x100824c8`).
+        - The overlay path clears it only after a tile it wrote (`0x10082289`; a skipped tile jumps to `0x1008228b`, past the clear).
+        - So the first written footprint tile of each 8×8 block gets bit 7: at most four per object, since step 1 found no edge above 8.
+      - **Steps:**
+        1. **Read it yourself first** (`python E:\anno1503-worktrees\anno1503-T33-5b\tools\disasm.py E:\anno1503\game\app\AnnoWelt.dll 10082040 1600` and `… 1008ec90 300`). Confirm or correct each address above in `E:\anno1503-worktrees\anno1503-T33-5b\docs\re\transport.md` §3.4.17: the paragraph "Placement's two paths" and the byte-3 bit-7 row. Write OQ-203's new status line, with the meaning and the readers found (the skip test is one), in `E:\anno1503-worktrees\anno1503-T33-5b\docs\open-questions.md`. Also state whether the second overlay loop (`0x10082342..0x100823e2`) writes the code and mask on skipped tiles too. If any reading differs from the above, **stop** and write the difference in REPORTS.
+        2. **One more column:** `foot_anchor(idx)` (u8, 0 or 1; reset 0, `0x1008c81e` writes byte 3 = 0), hashed, saved and mirrored like step 2's columns; `kTileBytes` 23, `kStateHashVersion` stays **113**.
+        3. **`place_object_record` as the original:** iterate the footprint in world-aligned 8×8 blocks with the original's loop order. Blocks go row by row, then column by column; inside a block, rows outer and columns inner, clipped to the footprint (read the order from the code; don't assume it).
+           - **Ordinary path:** write the first-dword fields and the anchor (1 on the first tile of each block, then 0), then the code and mask.
+           - **Overlay path:** the same first-dword fields with the skip test above, and the anchor cleared only after a written tile; then the code and mask as step 1 found.
+           - The height byte is not a tile column (the sim's heights are `Terrain`, OQ-060): a `// deviation` comment.
+           - The working-block edge 8 is the original's rule, not a limit: a named constant with the addresses and a comment.
+        4. **Then go on** with the stage 2 entry from step 4. Step 3's stop condition is replaced: report per file how many tile writes the overlay skip test suppressed.
+      - **Acceptance:**
+        1. §3.4.17 and OQ-203 corrected, with every address confirmed;
+        2. the anchor column and the block-ordered writer, with unit cases: a 3×3 object across a block corner has four anchors; an overlay over another overlay's anchor tile is skipped there and written elsewhere; an overlay over a non-overlay object takes its tiles;
+        3. stage 2 acceptance items 2–9.
 
 ### T34 — The float walk: the original's x87 walk reproduced bit-exactly (OQ-162; owner decision 2026-10-24: "float number walk") · stage 1 `READY after T31` (round v; **one subagent**; RE and ADR, docs only) · stage 2 `LATER` (after T33 and the approval of ADR 0002) · stage 1 `PARALLEL-OK` (docs only: `docs/re/transport.md` §4, a new `docs/adr/0002-float-walk.md`, `open-questions.md` OQ-162 and new ones) · branch `task/T34-float-walk-re` from `main` · worktree `C:\Users\altin\anno1503-T34` · new OQs from **OQ-195** (to 199)
 - **Why:** the owner chose the float walk, so trips take the original's time. The ground rule stays (CLAUDE.md, `lint_sim.py`): `src/sim` computes in integers and no float enters hashed state. So the walk's floats become their bit patterns in the state, and the arithmetic becomes an integer emulation of exactly what the x87 did: the original's result on every platform. That needs the precision mode and every rounding point, or the "float" would not be the original's float.

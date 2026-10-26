@@ -148,7 +148,7 @@ Read by the sim adapter: since T23 `HEAD2` (capacity), `WARE`, `ID3`/`ID2`, `PRO
 
 P: 8 538 entries sit exactly on a `PROD2` item's origin and 23 on another tile; 7 460 carry class bytes. The `PROD2` items of building types are the tile layer's copy of the buildings: of the 8 810, 212 are second copies of an equal item on the same origin, 8 526 are named by an entry and 72 by none; 34 entries name a `DENKMAL` item (PRODTYPE 289, not a building of the layout) and one a tile without an item (OQ-144).
 
-A `DENKMAL` entry makes `Create` build a base-class object (`0x100734c0`, `0x18` bytes) in the production list, like every PRODTYPE above 192; its bytes are skipped by the base `Load` (`0x10031840`) (D, T25; `docs/re/annowelt.md` "Scenario cities" (j)).
+A `DENKMAL` entry makes `Create` build a base-class object (`0x100734c0`, `0x18` bytes) in the production list, like every PRODTYPE above 192; its bytes are skipped by the base `Load` (`0x10031840`) (D, T25; `docs/re/annowelt.md` "Scenario cities" (j)). T31 (`docs/re/monuments.md`): those corpus entries are unnamed `INFRA_EVER` scenery, not the earned monument (type 2553, player stage bit 30), and they stay uncreated.
 
 ### `HEAD2` byte map
 

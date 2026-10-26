@@ -198,12 +198,14 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
     // One placement record per tile object, in file order (AnnoWelt 0x10082040
     // through island slot +0x78). Buildings are created afterwards, so a building
     // overwrites scenery under it. An item dropped as DuplicateObject /
-    // ObjectTileTaken never reaches this loop. An unknown id is already skipped
-    // by the loader (0x10089619); a type missing from this registry has no
-    // footprint, so it writes nothing.
+    // ObjectTileTaken never reaches this loop. The loader already skips an
+    // unknown id (0x10089619). A spec that still names one has no footprint, so
+    // the id and the phase stay on the tile it names.
     for (const Spec::TileObjectSpec& o : is.objects) {
         const BuildingType* ty = types.find(TypeId{o.object});
         if (ty == nullptr) {
+            out.tiles.set_object(o.index, o.object);
+            out.tiles.set_phase(o.index, o.phase);
             continue;
         }
         const std::int32_t ox =

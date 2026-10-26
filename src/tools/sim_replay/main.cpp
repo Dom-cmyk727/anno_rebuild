@@ -8,6 +8,11 @@
 //        [--dump-scope PATH]  instead, the scope's fields as text (PrintArchive); PATH
 //                             as `tree` prints it or diff_trees returns it
 //   golden <log>              a stable, committable fingerprint of the whole run
+//   measure <scenario>        wall time of state_hash after N ticks (default
+//         [--ticks N]         30000) over R reps (default 50): every chunk clean,
+//         [--reps R]          then one tile write on each island. Also save()
+//                             bytes and the tile and chunk counts. The clock is
+//                             this tool's; src/sim has none.
 //
 // The log carries the registry's digest, not the registry itself, so a world is
 // rebuilt from the log's initial save on the code-built registry whose digest the log
@@ -456,15 +461,191 @@ int cmd_scenario(const std::string& path, std::uint64_t ticks, std::uint32_t ste
     return problem.empty() ? 0 : 1;
 }
 
+/// One sample at the lower and upper middle, averaged, so an even count stays an
+/// integer microsecond. p95 is the nearest rank: the sample at ceil(0.95 * n).
+struct UsecStats {
+    std::uint64_t min = 0;
+    std::uint64_t median = 0;
+    std::uint64_t p95 = 0;
+    std::uint64_t max = 0;
+};
+
+UsecStats usec_stats(std::vector<std::uint64_t> samples) {
+    std::sort(samples.begin(), samples.end());
+    const std::size_t n = samples.size();
+    UsecStats s;
+    if (n == 0) {
+        return s;
+    }
+    s.min = samples.front();
+    s.max = samples.back();
+    if (n % 2 == 0) {
+        s.median = (samples[n / 2 - 1] + samples[n / 2]) / 2;
+    } else {
+        s.median = samples[n / 2];
+    }
+    const std::size_t rank = static_cast<std::size_t>((n * 95 + 99) / 100);
+    s.p95 = samples[rank - 1];
+    return s;
+}
+
+/// Same object id, so the saved bytes do not change. set_object still marks that
+/// chunk dirty (island.cpp). state_hash() is const and does not clear the bit
+/// (world.hpp; the const chunk_digest recomputes a dirty chunk on every call),
+/// so one write then R hashes are all incremental.
+void dirty_one_tile_per_island(sim::World& world) {
+    for (const auto& slot : world.islands()) {
+        if (!slot || slot->tiles.tile_count() == 0) {
+            continue;
+        }
+        sim::Island* live = world.island_at(slot->tiles.x0(), slot->tiles.y0());
+        if (live == nullptr) {
+            continue;
+        }
+        const sim::Slot idx = live->tiles.index_of(live->tiles.x0(), live->tiles.y0());
+        if (idx == sim::kNoSlot) {
+            continue;
+        }
+        live->tiles.set_object(idx, live->tiles.object(idx));
+    }
+}
+
+UsecStats time_state_hash(const sim::World& world, std::uint64_t reps) {
+    std::vector<std::uint64_t> samples;
+    samples.reserve(static_cast<std::size_t>(reps));
+    volatile std::uint64_t sink = 0;
+    for (std::uint64_t i = 0; i < reps; ++i) {
+        const auto t0 = std::chrono::steady_clock::now();
+        const std::uint64_t hash = world.state_hash();
+        const auto t1 = std::chrono::steady_clock::now();
+        sink = hash;
+        samples.push_back(static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()));
+    }
+    // A volatile store-then-load keeps the hashes in the timed region under LTO.
+    // The load is the use: a store alone is -Wunused-but-set-variable.
+    static volatile std::uint64_t published = 0;
+    published = sink;
+    const std::uint64_t kept = published;
+    if (kept != published) {
+        samples.push_back(kept);
+    }
+    return usec_stats(std::move(samples));
+}
+
+std::uint64_t count_tiles(const sim::World& world) {
+    std::uint64_t n = 0;
+    for (const auto& slot : world.islands()) {
+        if (slot) {
+            n += slot->tiles.tile_count();
+        }
+    }
+    return n;
+}
+
+std::uint64_t count_chunks(const sim::World& world) {
+    std::uint64_t n = 0;
+    for (const auto& slot : world.islands()) {
+        if (slot) {
+            n += slot->tiles.chunk_count();
+        }
+    }
+    return n;
+}
+
+std::uint64_t count_dirty(const sim::World& world) {
+    std::uint64_t n = 0;
+    for (const auto& slot : world.islands()) {
+        if (slot) {
+            n += slot->tiles.dirty_chunks();
+        }
+    }
+    return n;
+}
+
+int cmd_measure(const std::string& path, std::uint64_t ticks, std::uint64_t reps) {
+    // `synthetic` is the code-built two-island world (synthetic.hpp). It needs no
+    // game files, so the tool test can require every field name. A path is a .sze.
+    std::shared_ptr<const sim::TypeRegistry> types;
+    sim::ScenarioSpec spec;
+    if (path == "synthetic") {
+        types = sim::TypeRegistry::empty();
+        spec = sim::synthetic::two_island_scenario();
+    } else {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) {
+            std::cerr << "cannot read " << path << "\n";
+            return 1;
+        }
+        const std::vector<std::uint8_t> buf{std::istreambuf_iterator<char>(in), {}};
+        types = scenario_registry();
+        const anno::sim_load::IslandTemplates templates = scenario_templates();
+        const sim::SimConfig load_cfg;
+        auto resolved =
+            anno::sim_load::load_scenario_with_links(buf, templates, *types, load_cfg, {});
+        if (!resolved) {
+            std::cout << "refused: " << resolved.error() << "\n";
+            return 1;
+        }
+        spec = std::move(resolved.value().loaded.spec);
+    }
+    const sim::SimConfig cfg;
+    const ThreadExecutor ex;
+    auto w = sim::World::create(spec, types, cfg, {}, {}, ex);
+    if (!w) {
+        std::cout << "create refused: " << w.error() << "\n";
+        return 1;
+    }
+    sim::World world = std::move(w).value();
+    // The same step as `scenario`'s default: 100 ms per advance, and a tick is 2 ms.
+    constexpr std::uint32_t kStepMs = 100;
+    const std::uint64_t target = world.clock().tick() + ticks;
+    while (world.clock().tick() < target) {
+        world.advance(kStepMs);
+    }
+    // Create marks every chunk dirty, and the tick never calls prepare_hash.
+    // state_hash() is const, so it recomputes those chunks on every call and
+    // does not clear them (world.hpp). That is the check with no prepare.
+    const std::uint64_t dirty_before = count_dirty(world);
+    const UsecStats unprepared = time_state_hash(world, reps);
+    // Clean: prepare_hash fills every chunk digest and clears the dirty bits.
+    // The timed calls are const and only read those digests.
+    world.prepare_hash(ex);
+    const UsecStats clean = time_state_hash(world, reps);
+    dirty_one_tile_per_island(world);
+    const std::uint64_t dirty = count_dirty(world);
+    const UsecStats incremental = time_state_hash(world, reps);
+    const std::uint64_t save_bytes = world.save().size();
+    std::cout << "measure ticks=" << world.clock().tick() << " reps=" << reps
+              << " hash_unprepared_us min=" << unprepared.min << " median=" << unprepared.median
+              << " p95=" << unprepared.p95 << " max=" << unprepared.max
+              << " dirty_chunks_unprepared=" << dirty_before << " hash_clean_us min=" << clean.min
+              << " median=" << clean.median << " p95=" << clean.p95 << " max=" << clean.max
+              << " hash_incremental_us min=" << incremental.min << " median=" << incremental.median
+              << " p95=" << incremental.p95 << " max=" << incremental.max
+              << " save_bytes=" << save_bytes << " tiles=" << count_tiles(world)
+              << " chunks=" << count_chunks(world) << " dirty_chunks=" << dirty << "\n";
+    const std::string problem = world.check_invariants();
+    if (!problem.empty()) {
+        std::cout << "check_invariants " << problem << "\n";
+        return 1;
+    }
+    return 0;
+}
+
 void usage() {
-    std::cerr << "usage: anno-sim-replay <run|hashes|first-diff|tree|golden|scenario> ...\n"
+    std::cerr << "usage: anno-sim-replay <run|hashes|first-diff|tree|golden|scenario|measure> "
+                 "...\n"
                  "  run <log>\n"
                  "  hashes <log>\n"
                  "  first-diff <a> <b>\n"
                  "  tree <log> [--entry N] [--depth D] [--dump-scope PATH]\n"
                  "  golden <log>\n"
                  "  scenario <file.sze> [--ticks N] [--step-ms M]   (the registry of "
-                 "ANNO1503_GAME_DIR)\n";
+                 "ANNO1503_GAME_DIR)\n"
+                 "  measure <file.sze|synthetic> [--ticks N] [--reps R]\n"
+                 "      N default 30000, R default 50; hash times in us, clean then\n"
+                 "      one dirty chunk per island. synthetic needs no game files.\n";
 }
 
 } // namespace
@@ -551,6 +732,35 @@ int main(int argc, char** argv) {
             }
         }
         return cmd_scenario(args[1], ticks, step_ms);
+    }
+    if (sub == "measure" && args.size() >= 2) {
+        std::uint64_t ticks = 30000;
+        std::uint64_t reps = 50;
+        for (std::size_t i = 2; i < args.size(); ++i) {
+            if (args[i] == "--ticks" && i + 1 < args.size()) {
+                const auto v = parse_u64(args[++i]);
+                if (!v) {
+                    std::cerr << "bad --ticks value '" << args[i]
+                              << "': expected a non-negative decimal integer\n";
+                    usage();
+                    return 2;
+                }
+                ticks = *v;
+            } else if (args[i] == "--reps" && i + 1 < args.size()) {
+                const auto v = parse_u64(args[++i]);
+                if (!v || *v == 0) {
+                    std::cerr << "bad --reps value '" << args[i]
+                              << "': expected a decimal integer from 1\n";
+                    usage();
+                    return 2;
+                }
+                reps = *v;
+            } else {
+                usage();
+                return 2;
+            }
+        }
+        return cmd_measure(args[1], ticks, reps);
     }
     usage();
     return 2;

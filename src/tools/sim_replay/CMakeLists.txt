@@ -83,4 +83,16 @@ if(ANNO_BUILD_TESTS)
                    -P ${PROJECT_SOURCE_DIR}/cmake/RunScenarioTool.cmake)
   set_tests_properties(anno_sim_replay_scenario_endless_03_links PROPERTIES
                        SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
+  # T41: the measure line names every timed field. A synthetic scenario, R = 2,
+  # no game files. --ticks 0 still creates the world and hashes it.
+  add_test(NAME anno_sim_replay_measure_synthetic
+           COMMAND sim_replay measure synthetic --ticks 0 --reps 2)
+  set_tests_properties(anno_sim_replay_measure_synthetic PROPERTIES
+                       PASS_REGULAR_EXPRESSION
+                       "hash_clean_us min=.*median=.*p95=.*max=.*hash_incremental_us min=.*median=.*p95=.*max=.*save_bytes=.*tiles=.*chunks=")
+  anno_sim_replay_arg_test(measure_reps_not_a_number "measure|x.sze|--reps|abc"
+                           "bad --reps value 'abc'")
+  anno_sim_replay_arg_test(measure_reps_zero "measure|x.sze|--reps|0" "bad --reps value '0'")
+  anno_sim_replay_arg_test(measure_ticks_negative "measure|x.sze|--ticks|-1"
+                           "bad --ticks value '-1'")
 endif()

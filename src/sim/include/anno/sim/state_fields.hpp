@@ -474,17 +474,20 @@ struct TileIO {
         for (auto& v : t.foot_rotation_) {
             a.u8(v);
         }
+        for (auto& v : t.foot_anchor_) {
+            a.u8(v);
+        }
     }
 };
 
 /// The scope `tiles` of an island: `u32 width, u32 height, u32 chunk_edge`, then
-/// the nine columns `object[]` (u32), `phase[]` (u8), `owner[]` (u32), `aux[]`
+/// the ten columns `object[]` (u32), `phase[]` (u8), `owner[]` (u32), `aux[]`
 /// (u32), `walk_code[]` (u16), `walk_mask[]` (u16), `foot_dx[]` (u16),
-/// `foot_dy[]` (u16), `foot_rotation[]` (u8), each w · h elements
-/// (kTileBytes = 22 per tile). `x0`, `y0`, `w` and `h` are the island's own
+/// `foot_dy[]` (u16), `foot_rotation[]` (u8), `foot_anchor[]` (u8), each w · h
+/// elements (kTileBytes = 23 per tile). `x0`, `y0`, `w` and `h` are the island's own
 /// rectangle, which the island scope wrote just before; the layer's dimensions
 /// must equal them. Reading rejects before allocating:
-/// chunk_edge 0, more than kIslandTileBound tiles, or w · h · 22 > remaining()
+/// chunk_edge 0, more than kIslandTileBound tiles, or w · h · 23 > remaining()
 /// (in u64); the generic count check of ReadArchive does not cover the bulk
 /// columns. The hierarchical hash feeds the dimensions and, for every chunk in
 /// row-major chunk order, the cached chunk digest (u64) instead of the columns;

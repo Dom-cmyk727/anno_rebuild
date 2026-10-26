@@ -88,11 +88,11 @@ inline constexpr std::uint32_t kWorldEdgeBound = 1U << 14;
 
 /// Sanity bound for the number of tiles of ONE island (TileLayer::reset refuses
 /// more, the world builder and the loader check it before sizing anything).
-/// Reason: a tile costs 22 bytes in the columns (docs/sim/state.md §9.2: object,
-/// phase, owner, aux, walk_code, walk_mask, foot_dx, foot_dy, foot_rotation), so
-/// an island of w · h tiles with w and h up to kWorldEdgeBound (2^14) would ask
-/// for 5.9 GB from a single field of a hostile header. 2^26 tiles (8192 x 8192,
-/// about 1476 MB of columns) is far
+/// Reason: a tile costs 23 bytes in the columns (docs/sim/state.md §9.2: object,
+/// phase, owner, aux, walk_code, walk_mask, foot_dx, foot_dy, foot_rotation,
+/// foot_anchor), so an island of w · h tiles with w and h up to kWorldEdgeBound
+/// (2^14) would ask for 6.2 GB from a single field of a hostile header. 2^26
+/// tiles (8192 x 8192, about 1544 MB of columns) is far
 /// above the originals (islands a few hundred tiles wide). It bounds one island,
 /// not the sum: what a whole scenario or save allocates is bounded by its input
 /// (the loader checks w · h · kTileBytes against the bytes that remain) or, for

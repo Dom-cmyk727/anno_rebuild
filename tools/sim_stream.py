@@ -53,8 +53,8 @@ points to the registry digest, the cart reservations to the payloads (the Worksh
 `reserved` list after `activity`, the Farm's u32 after `activity`) and the stamp and the
 transport state to the figure record (the transcribed registries hold no figure).
 T33.4 (stream 112) added the immutable walk-table digest after the registry digest.
-T33.5 stage 2 (stream 113) adds foot_dx (u16), foot_dy (u16) and foot_rotation
-(u8) to each tile. The callers still leave those columns at 0.
+T33.5 stage 2 (stream 113) adds foot_dx (u16), foot_dy (u16), foot_rotation
+(u8) and, in fix-up F1, foot_anchor (u8) to each tile. The version stays 113.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
@@ -357,11 +357,11 @@ def terrain_digest(height, gfx, fertility):
 
 def tiles_digest(w, h, tiles):
     """tiles: a list of (object, phase, owner, aux, walk_code, walk_mask,
-    foot_dx, foot_dy, foot_rotation) in row-major order. The scope `tiles`:
-    u32 w, u32 h, u32 chunk_edge, then the digest of every chunk (row-major
-    chunk order) over its in-bounds tiles (object u32, phase u8, owner u32,
-    aux u32, walk_code u16, walk_mask u16, foot_dx u16, foot_dy u16,
-    foot_rotation u8)."""
+    foot_dx, foot_dy, foot_rotation, foot_anchor) in row-major order. The
+    scope `tiles`: u32 w, u32 h, u32 chunk_edge, then the digest of every
+    chunk (row-major chunk order) over its in-bounds tiles (object u32,
+    phase u8, owner u32, aux u32, walk_code u16, walk_mask u16, foot_dx u16,
+    foot_dy u16, foot_rotation u8, foot_anchor u8)."""
     cx = (w + CHUNK_EDGE - 1) // CHUNK_EDGE
     cy = (h + CHUNK_EDGE - 1) // CHUNK_EDGE
     d = u32(w) + u32(h) + u32(CHUNK_EDGE)
@@ -370,9 +370,9 @@ def tiles_digest(w, h, tiles):
             c = b''
             for y in range(ky * CHUNK_EDGE, min(h, (ky + 1) * CHUNK_EDGE)):
                 for x in range(kx * CHUNK_EDGE, min(w, (kx + 1) * CHUNK_EDGE)):
-                    o, ph, ow, ax, wc, wm, fdx, fdy, frot = tiles[y * w + x]
+                    o, ph, ow, ax, wc, wm, fdx, fdy, frot, fanc = tiles[y * w + x]
                     c += (u32(o) + u8(ph) + u32(ow) + u32(ax) + u16(wc) + u16(wm)
-                          + u16(fdx) + u16(fdy) + u8(frot))
+                          + u16(fdx) + u16(fdy) + u8(frot) + u8(fanc))
             d += u64(fnv(c))
     return fnv(d)
 
@@ -448,7 +448,7 @@ def building_bytes(serial, island, type_id, x, y, byte0e, tag, payload):
 def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, terrain=None,
                   cities=None, next_serial=1, sweep=(0, 0, 0, 0, 0), e300=0, objmgr=(0, 0),
                   ring=(0, 0)):
-    tiles = [[0, 0, NEUTRAL_OWNER, 0, 2, 0, 0, 0, 0] for _ in range(w * h)]
+    tiles = [[0, 0, NEUTRAL_OWNER, 0, 2, 0, 0, 0, 0, 0] for _ in range(w * h)]
     at = 0
     for owner, length in owner_runs:
         for _ in range(length):

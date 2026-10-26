@@ -1745,3 +1745,27 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Area:** original harness / transport.
 - **What was seen.** In the T30b.6 Wine run (`docs/re/transport.md` §3.7), every market cart (220) with a non-zero rate stood on its market's or warehouse's edge subcell with rate `0.001`. The start wait of §1.1 runs at `0.01` (`0x10035260`, `0x3c23d70a`). No cart left its building in five game minutes.
 - **How to resolve:** find a store of `0x3a83126f` (0.001f) into figure `+0x40` (the rate) among the figure's action setters (§4, `0x10035260` and its siblings). Then repeat the run with a road-connected producer (T30b.7) and see whether the cart walks after that action.
+
+## OQ-220: The three addon endless pages do not state the six levels (T36, 2026-10-26)
+
+- **Status:** open.
+- **Area:** scenario data / game setup.
+- **What was read.** `AUFTRAGText_Endless_01.htm`, `_02.htm` and `_03.htm` in `Scenes/0011SingleEndlosAddon`, and the `AUFTRAGTEXT` record of `endless01.sze`, `endless02.sze` and `endless03.sze`, which names those files. The pages have no bullet list for island quantity, island size, ores, fertility, pirates or money. The heading inside `_03.htm` is Expertenmaske. `HEAD` was read (`docs/formats/endless-presets.md`): `prop2` is 0, 2 and 3, which is not a clean easy / medium / heavy scale (O-29), and `prop6` does not separate the pirate words.
+- **Options:** (a) those three worlds are fixed scenarios, not the base slider levels; (b) the levels live in a field that was recorded and not equated, or in a `COMP` key that was not compared for the non-pirate parties.
+- **How to resolve:** the owner picks (a), or a disassembly shows which field the menu reads for these three.
+
+## OQ-221: A money bullet is not one human starting amount (T36, 2026-10-26)
+
+- **Status:** open. `StartMoney` uses the four bullets. The amounts stay beside them.
+- **Area:** scenario data / game setup.
+- **What was read.** Human `HEAD+0x04` (`sze.md`) against the bullet on the nine base pages. "More than enough" is 500000 (`00` only). "Lots" is 50000 (`01`) and 45000 (`02`). "Sufficient" is 30000 (`03`, `04`, `05`). "Little" is 25000 (`06`) and 20000 (`07`, `08`). Addon human amounts, with no money bullet: 10000000, 300000, 23000.
+- **Options:** (a) four enumerators, the four bullets, which is what `StartMoney` is; (b) one enumerator per distinct human amount (nine).
+- **How to resolve:** the owner picks the menu's mapping, or a disassembly of the start-money control shows one amount per step.
+
+## OQ-222: Pirate COMP TYP is not the three description words (T36, 2026-10-26)
+
+- **Status:** open. `PirateLevel` is the three words.
+- **Area:** scenario data / game setup.
+- **What was read.** State-series `COMP` of every kind-15 party (`annoscene.md` §6, column 0). `00` and `endless01` have none. `TYP` is 2 on both "not very aggressive" pages (`01`, `02`), then 3 (`03`), 4 (`04`, `05`), 5 (`06`, `08`), 6 (`07`) on pages that all say "aggressive", 7 on `endless02`, and 2 plus 6 on `endless03`. `prop6` is 38 on the no-pirate page and on both "not very aggressive" pages.
+- **Options:** (a) the page's three words are the level, which is what `PirateLevel` is; (b) `TYP` 0..7 is the level and the words are a coarser label.
+- **How to resolve:** the owner picks (a) or (b), or a disassembly shows which value the pirate slider writes.

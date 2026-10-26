@@ -203,6 +203,36 @@ void write_walk_record(TileLayer& layer, const BuildingType& type, std::int32_t 
         }
     }
 }
+void place_object_record(TileLayer& layer, const BuildingType& type, std::int32_t x0,
+                         std::int32_t y0, std::uint32_t rotation, std::uint8_t phase) {
+    // D AnnoWelt 0x10082040..0x100825fe. Ordinary path: id 0x1008244a, dx
+    // 0x1008245c, dy 0x10082474, rotation 0x10082480, phase 0x100824c5, then
+    // the code and the mask. Overlay (flags bit 0x10) skips those stores.
+    // Byte 3 bit 6 is not modelled. deviation OQ-203: byte 3 bit 7 is not
+    // modelled. The largest shipped footprint edge is 8 (T33.5 step 1, type
+    // 1021), so dx and dy fit the original's 3 bits and this u16.
+    const bool overlay = (type.flags_word & 0x10U) != 0;
+    if (!overlay) {
+        const auto [fw, fh] = footprint(type, static_cast<std::uint8_t>(rotation));
+        for (std::uint32_t dy = 0; dy < fh; ++dy) {
+            for (std::uint32_t dx = 0; dx < fw; ++dx) {
+                const std::int64_t px = std::int64_t{x0} + std::int64_t{dx};
+                const std::int64_t py = std::int64_t{y0} + std::int64_t{dy};
+                const std::uint64_t i =
+                    layer.index_of(static_cast<std::int32_t>(px), static_cast<std::int32_t>(py));
+                if (i == kNoSlot) {
+                    continue;
+                }
+                layer.set_object(i, type.id.v);
+                layer.set_foot_dx(i, static_cast<std::uint16_t>(dx));
+                layer.set_foot_dy(i, static_cast<std::uint16_t>(dy));
+                layer.set_foot_rotation(i, static_cast<std::uint8_t>(rotation));
+                layer.set_phase(i, phase);
+            }
+        }
+    }
+    write_walk_record(layer, type, x0, y0, rotation);
+}
 WalkRecord walk_record(const Island& island, const TypeRegistry& types, TileXY p) {
     static_cast<void>(types); // kept for API compatibility; the record is read from the tile layer
     const auto i = island.tiles.index_of(p.x, p.y);

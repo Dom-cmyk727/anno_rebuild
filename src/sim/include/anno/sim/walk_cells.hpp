@@ -43,6 +43,17 @@ struct WalkCell {
 /// (0x100825af..0x100825b7). Tiles outside the layer are skipped.
 void write_walk_record(TileLayer&, const BuildingType&, std::int32_t x0, std::int32_t y0,
                        std::uint32_t rotation);
+/// The original's placement writer (transport.md §3.4.17, AnnoWelt
+/// 0x10082040..0x100825fe). The ordinary path writes the object id, the
+/// in-footprint dx/dy, the rotation and the phase on every tile of
+/// footprint(type, rotation), then the walk code and mask as
+/// write_walk_record. The overlay path (HEAD flags bit 0x10, the branch taken
+/// when the test at 0x10082184..0x1008218f does not jump to 0x100823ed) writes
+/// only the code and ORs the mask; it does not execute the first-dword stores
+/// at 0x10082447. Byte 3 bit 6 (growth parity) is not stored. deviation OQ-203:
+/// byte 3 bit 7 is not stored.
+void place_object_record(TileLayer&, const BuildingType&, std::int32_t x0, std::int32_t y0,
+                         std::uint32_t rotation, std::uint8_t phase);
 [[nodiscard]] WalkRecord walk_record(const Island&, const TypeRegistry&, TileXY);
 /// Per-search scratch; source island, types and tables must outlive it and stay unchanged.
 /// Coordinates are world tiles; rectangle clipped to island (0x10002b80).

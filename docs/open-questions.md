@@ -1781,3 +1781,15 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Area:** formats / scenarios.
 - **What was read.** `Scenes/0011SingleEndlosAddon/endless02.sze` has an empty `INSELLNK` list, so island selection returns at AnnoScene `0x10009562` before the ore distribution. The `ERZE` record's six consumed kind bytes are each 205 (0xCD), and the special-count byte is 0. `ROHSTOFF` and `SCHATZ` are 0. The file has 30 authored `INSEL5` islands, including one 400×400, and a `BERGWERK2` chunk of 30 records (6432 bytes). No eligible `Scenes/Islands` template is 400×400 (`tools/world_measure.py inventory`).
 - **How to resolve:** the `BERGWERK2` layout, which is OQ-024, read from this file's 30 records. Until that lands, 205 stays unread.
+
+## OQ-240: Which function calls the AI on each advance (T38, 2026-10-26)
+- **Status:** open. The load path and the factory are read (`docs/re/complogic.md` §2–§3). The per-tick call is not.
+- **Area:** simulation / AI.
+- **What was read.** `AnnoWelt.dll` `0x1009c630` stores the manager at holder `+0x94`. That function is slot `+0x14` of vtable `0x100cb858`. Holder slot 0 (`0x1009c330`) does not touch `+0x94` in its first 500 bytes. The property-44 getter `0x10020ab9` has one `.text` relocation, `0x10020c30`. `CompLogic.dll` does not import `AnnoFrame.dll` `0x100589a0`, so the AI does not call the command function by address.
+- **How to resolve:** holder slot `+0x18` at `0x1009c740`, then world advance `0x100ae040`, for a load of `+0x94` or of player `+0xc` followed by an indirect call.
+
+## OQ-241: Whether CompLogic's slot `+0xb4` calls are the world PRNG (T38, 2026-10-26)
+- **Status:** open. The call sites and the arithmetic on the result are read (`docs/re/complogic.md` §5). The object is not.
+- **Area:** simulation / AI / determinism.
+- **What was read.** 43 `call [reg+0xb4]` instructions in `CompLogic.dll`. 32 mask or divide the result immediately. 11 do not. World slot `+0xb4` is the world PRNG (`docs/re/tick-loop.md` §3). None of the 43 regions is a slot of the player vtables, so the class is unread too.
+- **How to resolve:** at `0x100011d3`, `0x10030fbb` and one unmasked site (`0x1000e809`), the instruction that loads the call's register, walked back to a field. A world pointer there makes the masked sites the world draw. The same walk on `0x1002e3f3` decides the unmasked group.

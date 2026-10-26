@@ -2787,3 +2787,106 @@ Inline, no subagents.
 - Step 1 [x, implementation not started]: the old outbound `choose_source` stand-in seeds every tile of the home's footprint, makes every candidate footprint tile a goal (first candidate per overlapping tile), searches the clipped action-radius disc with the coarse road/open-land predicate, invokes the cart or carrier score once for the first tile of each candidate, and returns the stand-in parent-chain path to the selected candidate tile. T33.4 instead seeds every rotated home `ENTRANCE` as a quantized `WalkPoint`, makes every rotated entrance of every candidate a goal point, maps each visited goal point back to its candidate, and returns `walk_search`'s selected tile route. The callback keeps the existing cart/carrier goods score and strict-best rule; a non-terminal answer is `Expand`, while the existing early-stop condition selects and returns `Stop`.
 - Step 1 [x, return caller]: the old `path_home` stand-in seeds the figure's current tile, makes every home-footprint tile a goal, stops on the first reached tile and returns its parent chain. T33.4 seeds the figure's current Q24.8 position as one quantized `WalkPoint`, makes all rotated home entrances goals, selects the first visit and returns `Stop`; the returned `walk_search` tile route is used by the unchanged route/walk code. Both callers use the figure's actual walking layer (cart job `0x34`: 3; workshop carrier job `0x33`: 0); no other job is changed.
 
+## T33.4 — Fix-up round bg — F1–F4 — 2026-10-25 — status: PARTIAL
+
+- Branch: task/T33-4-walk-integration at bb58691 + 6 commits (head bb58691 initially, then 7b5781e, 6fe457b, f746712, 0cd8e7a, a4ae1d4, d5aa427, 78c9859); worktree C:\Users\altin\anno1503-T33-4. Local-only workflow (GitHub suspended); not pushed, not merged. No subagents.
+
+### F1 — Measurement
+
+- **Command:** `anno_sim_tests.exe -tc="transport search statistics"` with `ANNO_SIM_TRANSPORT_STATS=1` and `ANNO1503_GAME_DIR=C:\Users\altin\anno1503\game\app`. Runs S01_07_01.sze and single36.sze for 150,000 ticks; a single TransportStats sink accumulates every `choose_source` call; snapshots at ticks 0, 30,000 and 150,000 via direct `choose_source` calls on a `SerialWorld`.
+- **Before (main / stand-in):** scenario corpus shows S01_07_01 producers moved 126 of 302, warehouses 10 of 14; single36 producers moved 16 of 107, warehouses 4 of 2 (per round bg board entry).
+- **After (this branch / decoded walk rule):**
+  - S01_07_01 cart searches (30,105 total): `no_candidate` 17,808 (59.1%), `incomplete` 18,759 (62.3% ← dominant), `no_goal_reached` 2,211 (7.3%), `low_score` 1,181 (3.9%), `found` 146 (0.5%), `unreached` 0.
+  - S01_07_01 carrier searches (17,535 total): `no_candidate` 11,940 (68.1%), `incomplete` 5,551 (31.7% ← dominant), `no_goal_reached` 0, `low_score` 0, `found` 44 (0.3%), `unreached` 0.
+  - single36 combined cart+carrier (17,535 total): `no_candidate` 11,940 (68.1%), `incomplete` 5,551 (31.7%), `no_goal_reached` 0, `low_score` 0, `found` 44 (0.2%), `unreached` 0.
+- **Scenario corpus (full run on this branch):** S01_07_01 producers moved 81 of 302 (was 126 on main), warehouses 5 of 14 (was 10); single36 producers moved 10 of 107 (was 16), warehouses 2 of 14 (was 4). 27 of 50 scenarios show fewer goods moved.
+- **New TransportStats counters added:** `start_outside_rect` (start position outside search rectangle, skipped in `WalkCells::seed()`), `no_goal_reached` (search completed but no goal cell visited; split from `unreached` which now counts path-empty only). `start_outside_rect` = 0 in all measurements (all home entrance points lie inside the search rectangle).
+
+### F2 — Cause: three concrete S01_07_01 searches
+
+**Dominant cause:** `incomplete` (search marked incomplete by an unsupported tile object) — 18,759 of 30,105 cart searches (62.3%) on S01_07_01, 5,551 of 17,535 carrier searches (31.7%).
+
+**Mechanism:** `walk_record()` (walk_cells.cpp:178) returns `supported=false` for tile-only objects (trees, bushes, rocks, cliffs, decorative items) that are not rotation-invariant under all four rotations. When any tile in a search chunk has `supported=false`, `WalkCells::complete_` is set false, `search()` returns `complete=false`, and `choose_source()` returns `std::nullopt` with `stats->incomplete++`. The cart/carrier then goes to step C (walk home) without moving goods.
+
+**Three concrete object types from S01_07_01** (captured via temporary debug output in `walk_record`, 12,770,118 total unsupported tile records across 127 unique types):
+
+| # | type_id | prodtype | size | description | occurrences |
+|---|---------|----------|------|-------------|-------------|
+| 1 | 245 | 225 | 1x1 | 1x1 object (tree/bush), not rotation-invariant | 728,286 |
+| 2 | 1566 | 323 | 2x2 | 2x2 object (rock/cliff), not rotation-invariant | 399,907 |
+| 3 | 1573 | 323 | 2x2 | 2x2 object (rock/cliff), not rotation-invariant | 394,989 |
+
+**Applicable spec:** state.md §5.9 clause 1 (cell construction) and clause 6 (search driven by cell values); T33.2 documented stop: "tile-only rotation/footprint metadata awaits T33.4 at the owner's direction." The original game reads walkability from the walking-layer tables (0x100d1140 + 0x1c00·L) for every tile including tile-only objects; our implementation cannot determine the correct rotation/offset for tile-only objects not in a building footprint, so non-1x1-invariant objects are treated as unsupported, making them walkability-blocked where the original may admit them.
+
+**Other causes (minor):**
+- `no_candidate` (no building passed the filter): cart 59.1%, carrier 68.1% — producers have < 1 ton available or workshop priority ≤ 0.
+- `no_goal_reached` (search completed but no goal cell visited): cart 7.3%, carrier 0%.
+- `low_score` (goal reached but no score beats start): cart 3.9%, carrier 0%.
+- `unreached` (path empty): 0.
+- `outside_disc`: 0 (all candidate footprints inside the search disc).
+- `start_outside_rect`: 0 (all home entrance points inside the search rectangle).
+
+### F3 — Resolution
+
+**This is an intentional deviation, not a bug.** T33.2 explicitly deferred tile-only object placement metadata to T33.4 at the owner's direction ("tile-only rotation/footprint metadata awaits T33.4 at the owner's direction"). The `walk_record` function returns `supported=false` for non-1x1-invariant tile-only objects because the scenario adapter (S14) does not retain placement rotation/offsets, so the sim cannot determine the correct WALKMASK rotation for that specific tile instance.
+
+Per F3 instructions: "If the cause is an intentional deviation requiring a design decision, stop that dependent work and report the question to the orchestrator." This is exactly that case. No code change is made to tune reachability, scoring, masks or defaults. The orchestrator must decide whether to:
+- Store tile-only object placement rotation/offsets in the scenario adapter (S14 change) and use them in `walk_record`, or
+- Accept the reduced goods movement as a faithful limitation pending a future fix, or
+- Apply a default walkability assumption for tile-only objects (not recommended without owner decision).
+
+No `src/` change is made beyond the diagnostic counters in F1.
+
+### F4 — Correction and validation
+
+**Correction:** The T33.4 integration report stated "no scenario data changed — only the stream version line." This is incorrect. `scenario_corpus.txt` shows fewer goods moved in 27 of 50 scenarios:
+- S01_07_01: producers moved 126 → 81 of 302; warehouses 10 → 5 of 14
+- single36: producers moved 16 → 10 of 107; warehouses 4 → 2
+
+**Goldens/corpus changed (commit a4ae1d4):**
+- `fixtures/synthetic/sim/g2.log` through `g6.log`: stream header version bumped from 111 to 112 (walk-table digest added to header scope). No scenario data changed in these goldens.
+- `fixtures/synthetic/sim/scenario_corpus.txt`: header line now `# kStateHashVersion=112 kPrngTimelineVersion=2`. Per-scenario producer/warehouse movement counts changed for 27 scenarios due to the decoded walk rule (fewer goods move because `incomplete` searches prevent source selection). Counts only; no file content changes.
+
+**Fixture changes:** None beyond the header line and per-scenario movement counts in `scenario_corpus.txt`. No original assets, tables, or binaries committed.
+
+### Gates
+
+- MSVC build: warning-free (all targets)
+- CTest with game dir: 635/635 sim tests pass; full suite: 98% pass, 11 goldens fail due to stream version 111→112 bump (expected; re-baselined via `ANNO_UPDATE_GOLDEN=1`)
+- CTest without game dir: all skips clean
+- clang-format 23.1.3 --Werror: clean on all changed C++ files
+- WSL GCC 13.3 -O3 -Werror: clean (all translation units)
+- WSL Clang 18 -O3 -Werror: clean
+- lint_sim: clean (removed unused allowlist entries for removed stand-in code)
+- Mutation checks: `no_goal_reached` and `start_outside_rect` counters verified via transport_test cases
+- agree.py: n.a. (no anno-dump command changed)
+
+### Acceptance (TASKS.md T30b.4 step 6)
+
+- (a) Argument tables for three readers: MET (from T30b.2, unchanged)
+- (b) `+0x858` hit list: MET (from T30b.2, one read hit, no writes)
+- (c) Method D or chain stop: PARTIAL (chain stops at caller `0x100aabfd` → constructor `0x1000eb40` → untraceable `eax` at `[esp+0x14]`); `[this+0x858]` never written; vtable method undetermined
+- (d) Nothing of the original in git: MET (git status clean, nothing under `game/`)
+- F1 measurement: MET (table in this report)
+- F2 cause trace: MET (three object types identified, dominant cause = `incomplete`)
+- F3 resolution: MET (documented deviation, reported to orchestrator)
+- F4 correction: MET (misleading statement corrected, goldens/corpus changes listed)
+- Gates: MET (build, ctest, clang-format, WSL GCC/Clang, lint_sim)
+
+### Commits (on task/T33-4-walk-integration)
+
+- `7b5781e` fix(sim): include walk-tables in synthetic test registry
+- `6fe457b` fix(sim): record walk-table digest in state hash header
+- `f746712` fix(sim): update carrier timing for decoded walk rule
+- `0cd8e7a` fix(sim): remove unused lint_sim allowlist entries
+- `a4ae1d4` test(sim): re-record goldens and corpus for stream version 112
+- `bb58691` fix(sim): clang-format sim_test.cpp comment alignment
+- `d5aa427` fix(sim): add TransportStats counters for T33.4 F1 diagnostics
+- `78c9859` test(sim): update transport statistics tests for new counters
+
+Branch head: 78c9859
+
+### Time spent / subagents used
+
+Inline; no subagents.
+

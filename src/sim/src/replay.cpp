@@ -16,6 +16,7 @@
 #include <anno/sim/hash.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/replay.hpp>
+#include <anno/sim/walk_cells.hpp>
 
 namespace anno::sim {
 
@@ -114,6 +115,9 @@ Recorder::Recorder(World& world) : world_(world) {
     log_.config_digest = world_.config().digest();
     log_.rules_digest = world_.rules().digest();
     log_.registry_digest = world_.types().digest();
+    log_.walk_tables_digest = world_.types().walk_tables()
+                                  ? walk_tables_digest(*world_.types().walk_tables())
+                                  : 0;
     log_.seams_digest = seams_digest(world_.seams());
     log_.prng_timeline_version = kPrngTimelineVersion;
     log_.prng_timeline_missing = prng_timeline_missing();
@@ -207,6 +211,7 @@ formats::Result<std::vector<std::uint8_t>, std::string> write_log(const ReplayLo
     w.u64(log.config_digest);
     w.u64(log.rules_digest);
     w.u64(log.registry_digest);
+    w.u64(log.walk_tables_digest);
     w.u64(log.seams_digest);
     w.u32(log.prng_timeline_version);
     w.count(log.prng_timeline_missing.size(), 8);
@@ -276,6 +281,7 @@ formats::Result<ReplayLog, std::string> read_log(std::span<const std::uint8_t> b
     r.u64(log.config_digest);
     r.u64(log.rules_digest);
     r.u64(log.registry_digest);
+    r.u64(log.walk_tables_digest);
     r.u64(log.seams_digest);
     r.u32(log.prng_timeline_version);
     {
@@ -382,6 +388,12 @@ formats::Result<ReplayOutcome, std::string> replay(World& world, const ReplayLog
     }
     if (log.registry_digest != world.types().digest()) {
         return std::string("replay refused: type registry digest differs from the log's");
+    }
+    const std::uint64_t walk_digest = world.types().walk_tables()
+                                          ? walk_tables_digest(*world.types().walk_tables())
+                                          : 0;
+    if (log.walk_tables_digest != walk_digest) {
+        return std::string("replay refused: walk-table digest differs from the log's");
     }
     if (log.seams_digest != seams_digest(world.seams())) {
         return std::string("replay refused: seams digest differs from the log's");

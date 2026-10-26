@@ -3,9 +3,33 @@
 #include <utility>
 
 #include <anno/sim/building.hpp>
+#include <anno/sim/hash.hpp>
 #include <anno/sim/walk_cells.hpp>
 namespace anno::sim {
 namespace wf = formats::annowelt;
+std::uint64_t walk_tables_digest(const WalkTables& t) {
+    StateHasher h;
+    h.u32(t.time_date_stamp);
+    h.u32(t.size_of_image);
+    h.u64(t.mapper.size());
+    for (const std::uint16_t v : t.mapper) {
+        h.u16(v);
+    }
+    h.u64(t.layers.size());
+    for (const auto& layer : t.layers) {
+        h.u64(layer.size());
+        h.bytes(layer);
+    }
+    h.u64(t.goal_order.size());
+    for (const auto& row : t.goal_order) {
+        for (const auto& e : row) {
+            h.u16(e.mask);
+            h.u8(e.col);
+            h.u8(e.row);
+        }
+    }
+    return h.value();
+}
 std::string validate_walk_tables(const WalkTables& t) {
     // Nine input mask bits: mapper domain is fixed by the record format.
     if (t.mapper.size() != wf::kMapperCount || t.layers.empty() ||
@@ -151,45 +175,41 @@ std::uint16_t walk_mask(const BuildingType& t, std::uint32_t dx, std::uint32_t d
     }
     return mask;
 }
+void write_walk_record(TileLayer& layer, const BuildingType& type, std::int32_t x0, std::int32_t y0,
+                       std::uint32_t rotation) {
+    // D AnnoWelt 0x100825af..0x100825d9: code store 0x100825af..0x100825b7,
+    // mask store 0x100825c7..0x100825d9. The overlay test is the type's HEAD
+    // flags bit 0x10 (slot +0x60, 0x10082184..0x1008218f), not the walk code;
+    // that branch ORs the sampled mask (0x1008239d..0x100823b0).
+    const std::uint16_t code = walk_code(type, rotation);
+    const bool overlay = (type.flags_word & 0x10U) != 0;
+    const auto [fw, fh] = footprint(type, static_cast<std::uint8_t>(rotation));
+    for (std::uint32_t dy = 0; dy < fh; ++dy) {
+        for (std::uint32_t dx = 0; dx < fw; ++dx) {
+            const std::int64_t px = std::int64_t{x0} + std::int64_t{dx};
+            const std::int64_t py = std::int64_t{y0} + std::int64_t{dy};
+            const std::uint64_t i =
+                layer.index_of(static_cast<std::int32_t>(px), static_cast<std::int32_t>(py));
+            if (i == kNoSlot) {
+                continue; // outside the island: skipped
+            }
+            layer.set_walk_code(i, code);
+            const std::uint16_t mask = walk_mask(type, dx, dy, rotation);
+            if (overlay) {
+                layer.set_walk_mask(i, static_cast<std::uint16_t>(layer.walk_mask(i) | mask));
+            } else {
+                layer.set_walk_mask(i, mask);
+            }
+        }
+    }
+}
 WalkRecord walk_record(const Island& island, const TypeRegistry& types, TileXY p) {
+    static_cast<void>(types); // kept for API compatibility; the record is read from the tile layer
     const auto i = island.tiles.index_of(p.x, p.y);
     if (i == kNoSlot) {
         return {0, 0x1ff};
     }
-    const auto* type = types.find(TypeId{island.tiles.object(i)});
-    if (!type) {
-        // deviation OQ-200: HEIGHT-to-runtime corner grid unresolved; no water guess.
-        // deviation OQ-170: no per-subcell coast pass0x10081ce0.
-        return {2, 0};
-    }
-    for (const auto& city : island.cities) {
-        if (!city) {
-            continue;
-        }
-        for (const auto& list : city->index.lists) {
-            for (const auto& slot : list.slots) {
-                if (!slot || slot->type != type->id) {
-                    continue;
-                }
-                const auto& b = *slot;
-                const auto [w, h] = footprint(*type, b.rotation);
-                const std::int64_t dx = std::int64_t{p.x} - b.x, dy = std::int64_t{p.y} - b.y;
-                if (dx >= 0 && dy >= 0 && dx < w && dy < h) {
-                    return {walk_code(*type, b.rotation),
-                            walk_mask(*type, static_cast<std::uint32_t>(dx),
-                                      static_cast<std::uint32_t>(dy), b.rotation)};
-                }
-            }
-        }
-    }
-    // Owner-authorized stop: tile-only placements dropped rotation/offsets.
-    // Only a 1x1 object invariant under ALL rotations is known from retained state.
-    const auto code = walk_code(*type, 0), mask = walk_mask(*type, 0, 0, 0);
-    bool known = type->width == 1 && type->height == 1;
-    for (std::uint32_t r = 1; r < 4; ++r) {
-        known = known && walk_code(*type, r) == code && walk_mask(*type, 0, 0, r) == mask;
-    }
-    return known ? WalkRecord{code, mask, true} : WalkRecord{0, 0x1ff, false};
+    return {island.tiles.walk_code(i), island.tiles.walk_mask(i), true};
 }
 WalkCells::WalkCells(const Island& island, const TypeRegistry& types, const WalkTables& tables,
                      TileRect rect, std::uint32_t edge, std::optional<SearchArea> disc)
@@ -224,13 +244,14 @@ std::vector<WalkCell>* WalkCells::chunk(TileXY p) {
                 }
                 const TileXY world{static_cast<std::int32_t>(px), static_cast<std::int32_t>(py)};
                 const auto r = walk_record(island_, types_, world);
-                complete_ = complete_ && r.supported;
+                // walk_record always returns supported = true now (task T33.4 fix-up F5):
+                // the per-tile walk record is read from the tile layer's walk_code /
+                // walk_mask columns, which the placement writers fill for every tile
+                // of an object's footprint. Nothing sets complete_ false any more.
+                complete_ = true;
                 WalkCell c{r.mask9 < tables_.mapper.size() ? tables_.mapper[r.mask9]
                                                            : std::uint16_t{0},
                            r.code};
-                if (!r.supported) {
-                    c = {};
-                }
                 // D0x100037e5..0x10003a84: outside disc closes high word, low unchanged.
                 if (disc_ && !disc_->contains(world.x, world.y)) {
                     c.high = static_cast<std::uint16_t>((c.high & 0xfc07) | 7);

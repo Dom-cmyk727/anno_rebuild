@@ -1405,7 +1405,7 @@ TEST_CASE("state stream header and settings scopes") {
     const sim::World w;
     const std::vector<std::uint8_t> bytes = save_fields(w);
     // The whole stream, transcribed from docs/sim/state.md §9.3: header
-    // (versions, SimConfig, Rules, registry digest, seam names), clock_rng,
+    // (versions, SimConfig, Rules, registry and walk-table digests, seam names), clock_rng,
     // settings, ids (next_figure, next_event_seq, the two accumulators, faulted),
     // players (32 absent slots, stamp, cursor), islands (slot count 0), figures (the
     // registry of one empty slot), events (count 0) and timers_monopoly (5 stopped
@@ -1415,6 +1415,7 @@ TEST_CASE("state stream header and settings scopes") {
     expected.u32(sim::kPrngTimelineVersion);
     expected_config(expected);
     expected.u64(sim::TypeRegistry::empty()->digest());
+    expected.u64(0); // no walk tables in the empty registry
     expected.u64(22);
     for (int i = 0; i < 22; ++i) {
         expected.str("default");
@@ -1460,7 +1461,7 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u8(0);  // no player
     }
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 111);
+    CHECK(sim::kStateHashVersion == 112);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);

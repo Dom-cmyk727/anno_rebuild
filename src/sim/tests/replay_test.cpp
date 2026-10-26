@@ -152,6 +152,7 @@ TEST_CASE("write_log matches the documented frame byte for byte") {
     log.config_digest = 0x1111111111111111ULL;
     log.rules_digest = 0x2222222222222222ULL;
     log.registry_digest = 0x3333333333333333ULL;
+    log.walk_tables_digest = 0x3434343434343434ULL;
     log.seams_digest = 0x4444444444444444ULL;
     log.prng_timeline_version = 1;
     log.prng_timeline_missing = {"Ai"};
@@ -176,11 +177,12 @@ TEST_CASE("write_log matches the documented frame byte for byte") {
     for (const char c : std::string("A3RP")) {
         s.u8(static_cast<std::uint8_t>(c)); // magic
     }
-    s.u32(1);                     // kReplayLogVersion
+    s.u32(2);                     // kReplayLogVersion
     s.u32(1);                     // kCommandWireVersion, once
     s.u64(0x1111111111111111ULL); // config digest
     s.u64(0x2222222222222222ULL); // rules digest
     s.u64(0x3333333333333333ULL); // registry digest
+    s.u64(0x3434343434343434ULL); // walk-table digest
     s.u64(0x4444444444444444ULL); // seams digest
     s.u32(1);                     // PRNG timeline version
     s.u64(1);                     // one missing site
@@ -268,6 +270,15 @@ TEST_CASE("replay refuses a config mismatch") {
     sim::World empty_reg = island_test::make_world(spec);
     auto refused_reg = sim::replay(empty_reg, log);
     CHECK_FALSE(refused_reg.ok());
+
+    // The immutable walk tables are a separate compatibility input even when the
+    // registry digest itself is unchanged.
+    sim::ReplayLog bad_walk = log;
+    bad_walk.walk_tables_digest ^= 1;
+    sim::World same = bt::make_world(k, spec);
+    auto refused_walk = sim::replay(same, bad_walk);
+    CHECK_FALSE(refused_walk.ok());
+    CHECK(refused_walk.error().find("walk-table") != std::string::npos);
 }
 
 TEST_CASE("run_turn applies commands before steps") {
@@ -323,6 +334,8 @@ TEST_CASE("log header records the prng timeline") {
     CHECK(log.config_digest == w.config().digest());
     CHECK(log.rules_digest == w.rules().digest());
     CHECK(log.registry_digest == w.types().digest());
+    REQUIRE(w.types().walk_tables());
+    CHECK(log.walk_tables_digest == sim::walk_tables_digest(*w.types().walk_tables()));
     CHECK(log.seams_digest == sim::seams_digest(w.seams()));
     CHECK_FALSE(log.initial_save.empty());
 }

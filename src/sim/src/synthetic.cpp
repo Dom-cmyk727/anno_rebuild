@@ -57,7 +57,10 @@ formats::Result<SyntheticTypes, std::string> make_transport_types() {
     b.flags_word(s.road, 0x4000)
         .add_market(s.market, 220, 1, 8)
         .entrances(s.market, {{9, 15}})
+        .entrances(s.weaver, {{3, 3}})
+        .entrances(s.farm, {{3, 3}})
         .add_workshop(s.carrier_weaver, "STOFFE", "WOLLE", 6, 11, 5, 1)
+        .entrances(s.carrier_weaver, {{3, 3}})
         .action_radius(s.carrier_weaver, 16)
         .figure_ids(s.carrier_weaver, {203})
         // round(0.016f · 0.2f · 2^24) = 53687, round(0.012f · 0.2f · 2^24) = 40265; waits

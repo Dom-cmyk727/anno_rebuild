@@ -13,22 +13,11 @@
 
 #include <anno/sim/driver.hpp>
 #include <anno/sim/transport.hpp>
+#include <anno/sim/walk_search.hpp>
 
 namespace anno::sim {
 
 namespace {
-
-/// The cost of a straight and a diagonal step of the stand-in search (own design,
-/// OQ-161: the original's step costs are in the unread engine; 5 : 7 keeps the
-/// ratio near the √2 of the segment builder 0x1002fde0).
-constexpr std::uint32_t kStraightCost = 5;
-constexpr std::uint32_t kDiagonalCost = 7;
-
-/// The eight directions in the order of the segment builder's codes 0 .. 7 (D
-/// 0x1002fde0, table 0x1002ff20: -x, -x+y, +y, +x+y, +x, +x-y, -y, -x-y). The stand-in
-/// search expands its neighbours in this order (OQ-161).
-constexpr std::array<std::pair<std::int32_t, std::int32_t>, 8> kDirections = {
-    {{-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}}};
 
 /// √2 · 2^24 rounded (the f32 1.41421354 of 0x100c3130 times 2^24).
 constexpr std::uint64_t kDiagonalQ24 = 23726566;
@@ -59,7 +48,26 @@ std::int32_t clamp32(std::int64_t v) {
 
 /// Floor division by 256 for a Q24.8 coordinate (the tile of a position).
 std::int32_t tile_of(std::int32_t q) {
-    return q >= 0 ? q / 256 : -((-q + 255) / 256);
+    const std::int64_t v = q;
+    return static_cast<std::int32_t>(v >= 0 ? v / 256 : -((-v + 255) / 256));
+}
+
+WalkPoint walk_point(FixedPos p) {
+    const TileXY tile{tile_of(p.x), tile_of(p.y)};
+    const auto subcell = [](std::int32_t q, std::int32_t t) {
+        const std::int64_t within = std::int64_t{q} - std::int64_t{t} * 256;
+        return static_cast<std::uint32_t>(within * 3 / 256);
+    };
+    return WalkPoint{tile, subcell(p.x, tile.x), subcell(p.y, tile.y)};
+}
+
+std::vector<WalkPoint> entrance_points(const Building& b, const BuildingType& type) {
+    std::vector<WalkPoint> out;
+    out.reserve(type.entrances.size());
+    for (std::size_t i = 0; i < type.entrances.size(); ++i) {
+        out.push_back(walk_point(entrance_position(b, type, i)));
+    }
+    return out;
 }
 
 FixedPos centre(TileXY t) {
@@ -84,39 +92,6 @@ std::uint64_t isqrt(std::uint64_t v) {
     return r;
 }
 
-/// The tile classes of the stand-in walk (OQ-160): the tile object's type's
-/// walk_class (0 free, 1 road, 2 building; a building's footprint tiles carry its
-/// object, O-5), precomputed in TypeRegistry::finish (task T27).
-class TileTest {
-  public:
-    explicit TileTest(const TypeRegistry& types) : types_(types) {}
-    /// 0 = free, 1 = road, 2 = building. The class is the tile object's type's
-    /// precomputed walk_class (TypeRegistry::finish, task T27); a one-entry memo of the
-    /// last object id saves the registry's binary search on runs of equal objects.
-    std::uint8_t operator()(const Island& island, std::int32_t x, std::int32_t y) {
-        const Slot idx = island.tile_index(x, y);
-        if (idx == kNoSlot) {
-            return 2;
-        }
-        const std::uint32_t object = island.tiles.object(idx);
-        if (object == 0) {
-            return 0;
-        }
-        if (object == last_object_) {
-            return last_class_;
-        }
-        last_object_ = object;
-        const BuildingType* t = types_.find(TypeId{object});
-        last_class_ = t != nullptr ? t->walk_class : std::uint8_t{0};
-        return last_class_;
-    }
-
-  private:
-    const TypeRegistry& types_;
-    std::uint32_t last_object_ = 0; // a one-entry memo (0: none)
-    std::uint8_t last_class_ = 0;
-};
-
 bool in_footprint(const Building& b, const BuildingType& type, std::int32_t x, std::int32_t y) {
     const auto [w, h] = footprint(type, b.rotation);
     return x >= b.x && y >= b.y && std::int64_t{x} < std::int64_t{b.x} + w &&
@@ -132,179 +107,6 @@ std::vector<TileXY> footprint_tiles(const Building& b, const BuildingType& type)
         }
     }
     return out;
-}
-
-/// The local grid of a search: the candidate square cut to the island.
-struct Grid {
-    std::int32_t x0 = 0, y0 = 0;
-    std::uint32_t w = 0, h = 0;
-    [[nodiscard]] std::optional<std::uint64_t> index(std::int32_t x, std::int32_t y) const {
-        if (x < x0 || y < y0 || std::int64_t{x} >= std::int64_t{x0} + w ||
-            std::int64_t{y} >= std::int64_t{y0} + h) {
-            return std::nullopt;
-        }
-        return static_cast<std::uint64_t>(y - y0) * w + static_cast<std::uint64_t>(x - x0);
-    }
-    [[nodiscard]] TileXY tile(std::uint64_t i) const {
-        return TileXY{x0 + static_cast<std::int32_t>(i % w), y0 + static_cast<std::int32_t>(i / w)};
-    }
-};
-
-Grid area_grid(const SearchArea& area, const Island& island) {
-    const TileRect sq = area.square();
-    const TileRect is = island.rect();
-    const std::int64_t x0 = std::max<std::int64_t>(sq.x0, is.x0);
-    const std::int64_t y0 = std::max<std::int64_t>(sq.y0, is.y0);
-    const std::int64_t x1 =
-        std::min<std::int64_t>(std::int64_t{sq.x0} + sq.w, std::int64_t{is.x0} + is.w);
-    const std::int64_t y1 =
-        std::min<std::int64_t>(std::int64_t{sq.y0} + sq.h, std::int64_t{is.y0} + is.h);
-    Grid g;
-    if (x1 <= x0 || y1 <= y0) {
-        return g;
-    }
-    g.x0 = static_cast<std::int32_t>(x0);
-    g.y0 = static_cast<std::int32_t>(y0);
-    g.w = static_cast<std::uint32_t>(x1 - x0);
-    g.h = static_cast<std::uint32_t>(y1 - y0);
-    return g;
-}
-
-constexpr std::uint64_t kUnreached = std::numeric_limits<std::uint64_t>::max();
-
-/// The tiles of a search's grid (derived, not state): the goal on a tile (0 = none,
-/// else the goal's number + 1), given, and whether a tile may be entered: it lies in
-/// the area and on the island and is `open(x, y, is_goal)` (the home's footprint, a goal
-/// or a walkable class), worked out when the search first asks (a search on the road
-/// net reads few tiles of its area).
-template <class Open> class GridTiles {
-  public:
-    GridTiles(const Grid& g, const SearchArea& area, const Island& island,
-              std::vector<std::uint32_t> goal, Open open)
-        : g_(g), area_(area), island_(island), goal_(std::move(goal)), open_(std::move(open)),
-          state_(goal_.size(), 0) {}
-
-    [[nodiscard]] bool walkable(std::uint64_t i) {
-        std::uint8_t& s = state_[static_cast<std::size_t>(i)];
-        if (s == 0) {
-            const TileXY t = g_.tile(i);
-            s = area_.contains(t.x, t.y) && island_.tiles.contains(t.x, t.y) &&
-                        open_(t.x, t.y, goal_[static_cast<std::size_t>(i)] != 0)
-                    ? 2
-                    : 1;
-        }
-        return s == 2;
-    }
-    [[nodiscard]] std::uint32_t goal(std::uint64_t i) const {
-        return goal_[static_cast<std::size_t>(i)];
-    }
-
-  private:
-    const Grid& g_;
-    const SearchArea& area_;
-    const Island& island_;
-    std::vector<std::uint32_t> goal_;
-    Open open_;
-    std::vector<std::uint8_t> state_; // 0 = not asked yet, 1 = blocked, 2 = walkable
-};
-
-/// The stand-in search (OQ-161): a Dijkstra over the tiles of `g` from the `starts`
-/// (cost 0, in the order given), expanding in the direction-code order with the costs
-/// above and the tie order (cost, insertion); a diagonal step needs both of its
-/// orthogonal neighbours walkable (no corner cutting, own design). `tiles` says which
-/// tiles may be entered and which are goals; reaching a goal calls `visit(goal, x, y)`
-/// (the original's callback on a goal node, 0x10003d90), which answers false to stop
-/// the search (0x10003210). A goal is not walked through. Returns the parent links of
-/// the reached tiles (local index -> parent; a start points to itself).
-template <class Tiles, class Visit>
-std::vector<std::uint64_t> search(const Grid& g, const std::vector<TileXY>& starts, Tiles& tiles,
-                                  Visit&& visit) {
-    const std::uint64_t n = std::uint64_t{g.w} * g.h;
-    auto walkable = [&](std::int32_t x, std::int32_t y) {
-        const auto j = g.index(x, y);
-        return j && tiles.walkable(*j);
-    };
-    std::vector<std::uint64_t> parent(static_cast<std::size_t>(n), kUnreached);
-    std::vector<std::uint32_t> cost(static_cast<std::size_t>(n),
-                                    std::numeric_limits<std::uint32_t>::max());
-    // The open set in (cost, insertion) order as a bucket queue: one FIFO per cost modulo
-    // kBuckets. Every queued cost lies in [c, c + kDiagonalCost] while cost c is taken,
-    // so kDiagonalCost + 1 buckets never mix two costs, and a FIFO keeps the insertion
-    // order within a cost (the order of a binary heap on (cost, seq)).
-    static_assert(kDiagonalCost >= kStraightCost);
-    constexpr std::size_t kBuckets = kDiagonalCost + 1;
-    std::array<std::vector<std::uint64_t>, kBuckets> open;
-    std::array<std::size_t, kBuckets> head{};
-    std::uint64_t queued = 0;
-    for (const TileXY& s : starts) {
-        const auto i = g.index(s.x, s.y);
-        if (!i || cost[*i] == 0) {
-            continue;
-        }
-        cost[*i] = 0;
-        parent[*i] = *i;
-        open[0].push_back(*i);
-        ++queued;
-    }
-    std::uint32_t c = 0;
-    while (queued > 0) {
-        const std::size_t b = c % kBuckets;
-        if (head[b] == open[b].size()) {
-            open[b].clear();
-            head[b] = 0;
-            ++c;
-            continue;
-        }
-        const std::uint64_t i = open[b][head[b]++];
-        --queued;
-        if (c != cost[i]) {
-            continue; // a stale entry: the node was reached cheaper (it is done then)
-        }
-        const TileXY t = g.tile(i);
-        if (parent[i] != i && tiles.goal(i) != 0) {
-            if (!visit(tiles.goal(i) - 1, t.x, t.y)) {
-                break;
-            }
-            continue;
-        }
-        for (const auto& [dx, dy] : kDirections) {
-            const std::int32_t nx = t.x + dx, ny = t.y + dy;
-            const auto j = g.index(nx, ny);
-            if (!j || !tiles.walkable(*j)) {
-                continue;
-            }
-            const bool diagonal = dx != 0 && dy != 0;
-            if (diagonal && (!walkable(t.x + dx, t.y) || !walkable(t.x, t.y + dy))) {
-                continue;
-            }
-            const std::uint32_t nc = c + (diagonal ? kDiagonalCost : kStraightCost);
-            if (nc < cost[*j]) { // false for a done node (its cost <= c)
-                cost[*j] = nc;
-                parent[*j] = i;
-                open[nc % kBuckets].push_back(*j);
-                ++queued;
-            }
-        }
-    }
-    return parent;
-}
-
-std::vector<TileXY> path_to(const Grid& g, const std::vector<std::uint64_t>& parent, TileXY end) {
-    std::vector<TileXY> path;
-    const auto i = g.index(end.x, end.y);
-    if (!i || parent[*i] == kUnreached) {
-        return path;
-    }
-    std::uint64_t cur = *i;
-    while (true) {
-        path.push_back(g.tile(cur));
-        if (parent[cur] == cur) {
-            break;
-        }
-        cur = parent[cur];
-    }
-    std::reverse(path.begin(), path.end());
-    return path;
 }
 
 /// The building's city (its BuildingKey), or nullopt.
@@ -383,10 +185,6 @@ std::int64_t output_capacity(const BuildingType& t) {
 }
 
 } // namespace
-
-WalkRule walk_rule(std::uint32_t layer) {
-    return layer == kRoadLayer ? WalkRule::Roads : WalkRule::OpenLand;
-}
 
 bool transport_runs_job(std::uint32_t job) {
     return job == kJobMarketCart || job == kJobWorkshopCarrier;
@@ -573,7 +371,7 @@ std::uint64_t segment_length_q24(FixedPos a, FixedPos b) {
 std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRegistry& types,
                                           std::uint32_t job, const Building& home,
                                           const BuildingType& home_type, CityRef city,
-                                          std::uint32_t capacity_88, WalkRule rule,
+                                          std::uint32_t capacity_88, std::uint32_t layer,
                                           TransportStats* stats) {
     const Island* island = world.island(city.island);
     const City* c = world.city(city);
@@ -661,38 +459,42 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
             }
         }
     }
-    // Goals: the candidates' footprint tiles (the stand-in for their entrance points,
-    // 0x10072be0); a tile names the first candidate covering it.
-    const Grid g = area_grid(area, *island);
-    std::vector<std::uint32_t> goal_of(static_cast<std::size_t>(std::uint64_t{g.w} * g.h), 0);
+    const auto& tables = types.walk_tables();
+    if (!tables) {
+        if (stats != nullptr) {
+            ++stats->incomplete;
+        }
+        return std::nullopt;
+    }
+    const std::vector<WalkPoint> starts = entrance_points(home, home_type);
+    struct Goal {
+        WalkPoint point;
+        std::size_t candidate = 0;
+    };
+    std::vector<Goal> mapped_goals;
+    std::vector<WalkPoint> goals;
     for (std::size_t k = 0; k < candidates.size(); ++k) {
-        for (const TileXY& t : footprint_tiles(*candidates[k].b, *candidates[k].t)) {
-            const auto i = g.index(t.x, t.y);
-            if (i && goal_of[*i] == 0) {
-                goal_of[*i] = static_cast<std::uint32_t>(k + 1);
+        for (const WalkPoint& p : entrance_points(*candidates[k].b, *candidates[k].t)) {
+            const auto duplicate = std::find_if(mapped_goals.begin(), mapped_goals.end(),
+                                                [&](const Goal& g) { return g.point == p; });
+            if (duplicate == mapped_goals.end()) {
+                mapped_goals.push_back(Goal{p, k});
+                goals.push_back(p);
             }
         }
     }
-    TileTest test(types);
-    GridTiles tiles(g, area, *island, std::move(goal_of),
-                    [&](std::int32_t x, std::int32_t y, bool is_goal) {
-                        if (is_goal || in_footprint(home, home_type, x, y)) {
-                            return true;
-                        }
-                        const std::uint8_t cls = test(*island, x, y);
-                        return cls == 1 || (rule == WalkRule::OpenLand && cls == 0);
-                    });
+    WalkCells cells(*island, types, *tables, area.square(), 4, area);
     // The best score starts at 0 for every search (0x10003dbf).
     std::int64_t best_score = 0;
     std::optional<std::size_t> best;
     GoodsId best_goods = 0;
-    TileXY best_tile;
     bool reached = false; // a goal node was visited (T27 diagnostic)
-    auto visit_cart = [&](std::size_t k, std::int32_t x, std::int32_t y) {
+    auto visit_cart = [&](std::size_t k) {
         // The callback 0x1005a900.
         const Building& b = *candidates[k].b;
         const BuildingType& t = *candidates[k].t;
         const std::int64_t cap = output_capacity(t); // type +0xc0, for both outputs
+        bool selected = false;
         for (std::size_t i = 0; i < 2; ++i) {
             const GoodsId goods = listed_goods(t.output_goods, i);
             if (i == 1 && goods == 0) {
@@ -724,122 +526,70 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
             best_score = score;
             best = k;
             best_goods = goods;
-            best_tile = TileXY{x, y};
+            selected = true;
             if (score >= kStopScore &&
                 (!raw_goods(goods) || 2 * cap >= std::int64_t{c->stock.stock[goods]})) {
-                return false; // the early stop (0x1005aa83, 0x1005ac00)
+                return SearchDecision{GoalAction::Stop, true};
             }
         }
-        return true;
+        return SearchDecision{GoalAction::Expand, selected};
     };
-    auto visit_carrier = [&](std::size_t k, std::int32_t x, std::int32_t y) {
+    auto visit_carrier = [&](std::size_t k) {
         // The callback 0x1005a400.
         GoodsId goods = 0;
         const std::int64_t v =
             workshop_offer(world, types, home, home_type, *candidates[k].b, c, goods);
         if (best_score >= v) {
-            return true;
+            return SearchDecision{};
         }
         best_score = v;
         best = k;
         best_goods = goods;
-        best_tile = TileXY{x, y};
         // Stop when the source holds 3/4 of the carrier's capacity (0x1005a6a7, the
         // context's +4; 0x1005a4d9).
         const std::int64_t q = std::int64_t{capacity_88} * 3 / 4;
-        return available(*candidates[k].b, *candidates[k].t, goods, c) < q;
+        const bool keep_going = available(*candidates[k].b, *candidates[k].t, goods, c) < q;
+        return SearchDecision{keep_going ? GoalAction::Expand : GoalAction::Stop, true};
     };
-    auto visit = [&](std::uint32_t k, std::int32_t x, std::int32_t y) {
+    auto visit = [&](const SearchVisit& v) {
         reached = true;
+        const auto goal = std::find_if(mapped_goals.begin(), mapped_goals.end(),
+                                       [&](const Goal& g) { return g.point == v.point; });
+        if (goal == mapped_goals.end()) {
+            return SearchDecision{};
+        }
+        const std::size_t k = goal->candidate;
         if (candidates[k].scored) {
-            return true; // its further entrances score the same (strict `<`)
+            return SearchDecision{}; // its further entrances score the same (strict `<`)
         }
         candidates[k].scored = true;
-        return cart ? visit_cart(k, x, y) : visit_carrier(k, x, y);
+        return cart ? visit_cart(k) : visit_carrier(k);
     };
-    const std::vector<std::uint64_t> parent =
-        search(g, footprint_tiles(home, home_type), tiles, visit);
+    const SearchResult found = search(cells, *tables, layer, starts, goals, visit);
+    if (stats != nullptr) {
+        stats->start_outside_rect += found.start_outside_rect;
+    }
+    if (!found.complete) {
+        // Deviation (formerly the T33.2 tile-object stop): the per-tile walk record
+        // now covers every tile of every placed object's footprint
+        // (walk_cells.hpp write_walk_record, transport.md §3.4.13), so
+        // WalkCells::complete_ is always true. Kept for API compatibility; nothing
+        // sets it false any more.
+        if (stats != nullptr) {
+            ++stats->incomplete;
+        }
+        return std::nullopt;
+    }
     if (!best) {
         if (stats != nullptr) {
-            ++(reached ? stats->low_score : stats->unreached);
-            if (!reached) {
-                // T29 frontier/edge/corner/outside_disc (unreached only): read from the
-                // search's `parent` array (every reached tile has parent != kUnreached).
-                // The walk itself is unchanged; this is a pure classification. Each
-                // blocked tile counts once per search (seen_blocked), each diagonal
-                // corner refusal counts per (reached_tile, direction).
-                const std::uint64_t n = std::uint64_t{g.w} * g.h;
-                std::vector<std::uint8_t> seen_blocked(static_cast<std::size_t>(n), 0);
-                bool any_border = false;
-                const std::int32_t x_lo = g.x0;
-                const std::int32_t x_hi = g.x0 + static_cast<std::int32_t>(g.w) - 1;
-                const std::int32_t y_lo = g.y0;
-                const std::int32_t y_hi = g.y0 + static_cast<std::int32_t>(g.h) - 1;
-                for (std::uint64_t i = 0; i < n; ++i) {
-                    if (parent[static_cast<std::size_t>(i)] == kUnreached) {
-                        continue;
-                    }
-                    const TileXY tp = g.tile(i);
-                    if (tp.x == x_lo || tp.x == x_hi || tp.y == y_lo || tp.y == y_hi) {
-                        any_border = true;
-                    }
-                    for (const auto& [dx, dy] : kDirections) {
-                        const std::int32_t nx = tp.x + dx, ny = tp.y + dy;
-                        const auto j = g.index(nx, ny);
-                        if (!j) {
-                            continue;
-                        }
-                        const bool nei_walkable = tiles.walkable(*j);
-                        if (!nei_walkable && seen_blocked[static_cast<std::size_t>(*j)] == 0) {
-                            seen_blocked[static_cast<std::size_t>(*j)] = 1;
-                            std::uint32_t obj = 0;
-                            const Slot idx = island->tile_index(nx, ny);
-                            if (idx != kNoSlot) {
-                                obj = island->tiles.object(idx);
-                            }
-                            ++stats->frontier[obj];
-                        }
-                        // Corner refusal: diagonal step from this reached tile to a
-                        // walkable, unreached neighbour where at least one of the two
-                        // orthogonals is blocked (search's own `!walkable(ortho)` test).
-                        if (nei_walkable && dx != 0 && dy != 0 &&
-                            parent[static_cast<std::size_t>(*j)] == kUnreached) {
-                            const auto o1 = g.index(tp.x + dx, tp.y);
-                            const auto o2 = g.index(tp.x, tp.y + dy);
-                            const bool w1 = o1 && tiles.walkable(*o1);
-                            const bool w2 = o2 && tiles.walkable(*o2);
-                            if (!w1 || !w2) {
-                                ++stats->corner;
-                            }
-                        }
-                    }
-                }
-                if (any_border) {
-                    ++stats->edge;
-                }
-                bool all_outside = true;
-                for (const Candidate& cnd : candidates) {
-                    for (const TileXY& t : footprint_tiles(*cnd.b, *cnd.t)) {
-                        if (area.contains(t.x, t.y)) {
-                            all_outside = false;
-                            break;
-                        }
-                    }
-                    if (!all_outside) {
-                        break;
-                    }
-                }
-                if (all_outside) {
-                    ++stats->outside_disc;
-                }
-            }
+            ++(reached ? stats->low_score : stats->no_goal_reached);
         }
         return std::nullopt;
     }
     SourceChoice choice;
     choice.building = candidates[*best].b->id;
     choice.goods = best_goods;
-    choice.path = path_to(g, parent, best_tile);
+    choice.path = found.route;
     if (choice.path.empty()) {
         if (stats != nullptr) {
             ++stats->unreached;
@@ -854,38 +604,22 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
 
 std::optional<std::vector<TileXY>> path_home(const Island& island, const TypeRegistry& types,
                                              const Building& home, const BuildingType& home_type,
-                                             TileXY from, WalkRule rule) {
+                                             FixedPos from, std::uint32_t layer) {
     const SearchArea area = search_area(home, home_type);
-    const Grid g = area_grid(area, island);
-    TileTest test(types);
-    std::vector<std::uint32_t> goal(static_cast<std::size_t>(std::uint64_t{g.w} * g.h), 0);
-    for (const TileXY& t : footprint_tiles(home, home_type)) {
-        if (const auto i = g.index(t.x, t.y)) {
-            goal[static_cast<std::size_t>(*i)] = 1;
-        }
-    }
-    GridTiles tiles(g, area, island, std::move(goal),
-                    [&](std::int32_t x, std::int32_t y, bool is_goal) {
-                        if (is_goal || (x == from.x && y == from.y)) {
-                            return true;
-                        }
-                        const std::uint8_t cls = test(island, x, y);
-                        return cls == 1 || (rule == WalkRule::OpenLand && cls == 0);
-                    });
-    std::optional<TileXY> reached;
-    auto visit = [&](std::uint32_t, std::int32_t x, std::int32_t y) {
-        reached = TileXY{x, y}; // 0x10054240: the first goal is the best node, then stop
-        return false;
-    };
-    const std::vector<std::uint64_t> parent = search(g, {from}, tiles, visit);
-    if (!reached) {
+    const auto& tables = types.walk_tables();
+    if (!tables) {
         return std::nullopt;
     }
-    std::vector<TileXY> path = path_to(g, parent, *reached);
-    if (path.empty()) {
+    WalkCells cells(island, types, *tables, area.square(), 4, area);
+    const std::array starts{walk_point(from)};
+    const std::vector<WalkPoint> goals = entrance_points(home, home_type);
+    const SearchResult found = search(cells, *tables, layer, starts, goals, [](const SearchVisit&) {
+        return SearchDecision{GoalAction::Stop, true};
+    });
+    if (!found.complete || !found.selected || found.route.empty()) {
         return std::nullopt;
     }
-    return path;
+    return found.route;
 }
 
 namespace {
@@ -951,7 +685,7 @@ struct Job {
     SerialWorld& world;
     Figure& fig;
     const FigureType* ft;
-    WalkRule rule;
+    std::uint32_t layer;
     const Building* home;
     const BuildingType* home_type;
     std::optional<CityRef> home_city;
@@ -974,9 +708,9 @@ void start_home(Job& j) {
         return; // no walk: the arrival follows in the same call
     }
     const Island* island = j.world.island(island_of(j.home->id));
-    const auto path = island != nullptr
-                          ? path_home(*island, j.ctx.types, *j.home, *j.home_type, at, j.rule)
-                          : std::nullopt;
+    const auto path = island != nullptr ? path_home(*island, j.ctx.types, *j.home, *j.home_type,
+                                                    j.fig.pos, j.layer)
+                                        : std::nullopt;
     if (!path) {
         tr.step = TransportStep::Done; // figure slot +0xcc found no path (0x10057bb1)
         return;
@@ -999,7 +733,7 @@ void start_source(Job& j) {
     }
     const std::uint32_t capacity = j.ft != nullptr ? j.ft->capacity_88 : 0;
     const auto choice = choose_source(j.world, j.ctx.types, j.fig.job, *j.home, *j.home_type,
-                                      *j.home_city, capacity, j.rule, j.ctx.transport_stats);
+                                      *j.home_city, capacity, j.layer, j.ctx.transport_stats);
     const Building* target = choice ? j.world.find_building(choice->building) : nullptr;
     const BuildingType* target_type = target != nullptr ? j.ctx.types.find(target->type) : nullptr;
     if (target == nullptr || target_type == nullptr) {
@@ -1152,14 +886,8 @@ bool transport_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
         ticks = static_cast<std::uint16_t>(static_cast<std::uint16_t>(t) - fig.stamp);
         fig.stamp = static_cast<std::uint16_t>(t);
     }
-    Job j{ctx,
-          world,
-          fig,
-          ft,
-          walk_rule(ft->layer),
-          home,
-          home_type,
-          home != nullptr ? city_of(world, home->id) : std::nullopt};
+    Job j{ctx,       world, fig,       ft,
+          ft->layer, home,  home_type, home != nullptr ? city_of(world, home->id) : std::nullopt};
     // Every pass waits for time or moves to a later step (Start, ToSource, Load, ToHome,
     // Done), so a call ends after at most five passes.
     for (int pass = 0; pass < 8; ++pass) {

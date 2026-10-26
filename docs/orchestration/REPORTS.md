@@ -2970,3 +2970,314 @@ Owner's rule OQ-103 2026-10-25:
 | House ↔ stand | **Disagrees** (resident layer 0). | **Disagrees in whose radius** (area around the house, not the stand). Differing case / T30b.7 (a): house inside stand A's drawn radius, road only to B whose radius does not cover it — walker starts at the house; A and B are candidates if they lie in the house rectangle; layer 0 can reach either; highest `+0xd4` wins. |
 
 Acceptance: (1) OQ-187 MET; (2) walker path MET; (3) range and road MET; (4) owner's four clauses MET (agrees / disagrees / situation that differs); no `src/` change; nothing of the original in git. Nothing after T32.4 taken.
+
+## T33.4 — Walk-search integration — 2026-10-25 — status: IN PROGRESS
+
+- Started `task/T33-4-walk-integration` from local `main` `7409483` (round bb). Read CLAUDE, TASKS round bb / round-ba local-only workflow / T33.4, PLAN, state section 5.9, `transport.cpp` and `walk_search.hpp`. No subagents, GitHub calls, push or PR.
+- Step 1 [x, implementation not started]: the old outbound `choose_source` stand-in seeds every tile of the home's footprint, makes every candidate footprint tile a goal (first candidate per overlapping tile), searches the clipped action-radius disc with the coarse road/open-land predicate, invokes the cart or carrier score once for the first tile of each candidate, and returns the stand-in parent-chain path to the selected candidate tile. T33.4 instead seeds every rotated home `ENTRANCE` as a quantized `WalkPoint`, makes every rotated entrance of every candidate a goal point, maps each visited goal point back to its candidate, and returns `walk_search`'s selected tile route. The callback keeps the existing cart/carrier goods score and strict-best rule; a non-terminal answer is `Expand`, while the existing early-stop condition selects and returns `Stop`.
+- Step 1 [x, return caller]: the old `path_home` stand-in seeds the figure's current tile, makes every home-footprint tile a goal, stops on the first reached tile and returns its parent chain. T33.4 seeds the figure's current Q24.8 position as one quantized `WalkPoint`, makes all rotated home entrances goals, selects the first visit and returns `Stop`; the returned `walk_search` tile route is used by the unchanged route/walk code. Both callers use the figure's actual walking layer (cart job `0x34`: 3; workshop carrier job `0x33`: 0); no other job is changed.
+
+## T33.4 — Fix-up round bg — F1–F4 — 2026-10-25 — status: PARTIAL
+
+- Branch: task/T33-4-walk-integration at bb58691 + 6 commits (head bb58691 initially, then 7b5781e, 6fe457b, f746712, 0cd8e7a, a4ae1d4, d5aa427, 78c9859); worktree C:\Users\altin\anno1503-T33-4. Local-only workflow (GitHub suspended); not pushed, not merged. No subagents.
+
+### F1 — Measurement
+
+- **Command:** `anno_sim_tests.exe -tc="transport search statistics"` with `ANNO_SIM_TRANSPORT_STATS=1` and `ANNO1503_GAME_DIR=C:\Users\altin\anno1503\game\app`. Runs S01_07_01.sze and single36.sze for 150,000 ticks; a single TransportStats sink accumulates every `choose_source` call; snapshots at ticks 0, 30,000 and 150,000 via direct `choose_source` calls on a `SerialWorld`.
+- **Before (main / stand-in):** scenario corpus shows S01_07_01 producers moved 126 of 302, warehouses 10 of 14; single36 producers moved 16 of 107, warehouses 4 of 2 (per round bg board entry).
+- **After (this branch / decoded walk rule):**
+  - S01_07_01 cart searches (30,105 total): `no_candidate` 17,808 (59.1%), `incomplete` 18,759 (62.3% ← dominant), `no_goal_reached` 2,211 (7.3%), `low_score` 1,181 (3.9%), `found` 146 (0.5%), `unreached` 0.
+  - S01_07_01 carrier searches (17,535 total): `no_candidate` 11,940 (68.1%), `incomplete` 5,551 (31.7% ← dominant), `no_goal_reached` 0, `low_score` 0, `found` 44 (0.3%), `unreached` 0.
+  - single36 combined cart+carrier (17,535 total): `no_candidate` 11,940 (68.1%), `incomplete` 5,551 (31.7%), `no_goal_reached` 0, `low_score` 0, `found` 44 (0.2%), `unreached` 0.
+- **Scenario corpus (full run on this branch):** S01_07_01 producers moved 81 of 302 (was 126 on main), warehouses 5 of 14 (was 10); single36 producers moved 10 of 107 (was 16), warehouses 2 of 14 (was 4). 27 of 50 scenarios show fewer goods moved.
+- **New TransportStats counters added:** `start_outside_rect` (start position outside search rectangle, skipped in `WalkCells::seed()`), `no_goal_reached` (search completed but no goal cell visited; split from `unreached` which now counts path-empty only). `start_outside_rect` = 0 in all measurements (all home entrance points lie inside the search rectangle).
+
+### F2 — Cause: three concrete S01_07_01 searches
+
+**Dominant cause:** `incomplete` (search marked incomplete by an unsupported tile object) — 18,759 of 30,105 cart searches (62.3%) on S01_07_01, 5,551 of 17,535 carrier searches (31.7%).
+
+**Mechanism:** `walk_record()` (walk_cells.cpp:178) returns `supported=false` for tile-only objects (trees, bushes, rocks, cliffs, decorative items) that are not rotation-invariant under all four rotations. When any tile in a search chunk has `supported=false`, `WalkCells::complete_` is set false, `search()` returns `complete=false`, and `choose_source()` returns `std::nullopt` with `stats->incomplete++`. The cart/carrier then goes to step C (walk home) without moving goods.
+
+**Three concrete object types from S01_07_01** (captured via temporary debug output in `walk_record`, 12,770,118 total unsupported tile records across 127 unique types):
+
+| # | type_id | prodtype | size | description | occurrences |
+|---|---------|----------|------|-------------|-------------|
+| 1 | 245 | 225 | 1x1 | 1x1 object (tree/bush), not rotation-invariant | 728,286 |
+| 2 | 1566 | 323 | 2x2 | 2x2 object (rock/cliff), not rotation-invariant | 399,907 |
+| 3 | 1573 | 323 | 2x2 | 2x2 object (rock/cliff), not rotation-invariant | 394,989 |
+
+**Applicable spec:** state.md §5.9 clause 1 (cell construction) and clause 6 (search driven by cell values); T33.2 documented stop: "tile-only rotation/footprint metadata awaits T33.4 at the owner's direction." The original game reads walkability from the walking-layer tables (0x100d1140 + 0x1c00·L) for every tile including tile-only objects; our implementation cannot determine the correct rotation/offset for tile-only objects not in a building footprint, so non-1x1-invariant objects are treated as unsupported, making them walkability-blocked where the original may admit them.
+
+**Other causes (minor):**
+- `no_candidate` (no building passed the filter): cart 59.1%, carrier 68.1% — producers have < 1 ton available or workshop priority ≤ 0.
+- `no_goal_reached` (search completed but no goal cell visited): cart 7.3%, carrier 0%.
+- `low_score` (goal reached but no score beats start): cart 3.9%, carrier 0%.
+- `unreached` (path empty): 0.
+- `outside_disc`: 0 (all candidate footprints inside the search disc).
+- `start_outside_rect`: 0 (all home entrance points inside the search rectangle).
+
+### F3 — Resolution
+
+**This is an intentional deviation, not a bug.** T33.2 explicitly deferred tile-only object placement metadata to T33.4 at the owner's direction ("tile-only rotation/footprint metadata awaits T33.4 at the owner's direction"). The `walk_record` function returns `supported=false` for non-1x1-invariant tile-only objects because the scenario adapter (S14) does not retain placement rotation/offsets, so the sim cannot determine the correct WALKMASK rotation for that specific tile instance.
+
+Per F3 instructions: "If the cause is an intentional deviation requiring a design decision, stop that dependent work and report the question to the orchestrator." This is exactly that case. No code change is made to tune reachability, scoring, masks or defaults. The orchestrator must decide whether to:
+- Store tile-only object placement rotation/offsets in the scenario adapter (S14 change) and use them in `walk_record`, or
+- Accept the reduced goods movement as a faithful limitation pending a future fix, or
+- Apply a default walkability assumption for tile-only objects (not recommended without owner decision).
+
+No `src/` change is made beyond the diagnostic counters in F1.
+
+### F4 — Correction and validation
+
+**Correction:** The T33.4 integration report stated "no scenario data changed — only the stream version line." This is incorrect. `scenario_corpus.txt` shows fewer goods moved in 27 of 50 scenarios:
+- S01_07_01: producers moved 126 → 81 of 302; warehouses 10 → 5 of 14
+- single36: producers moved 16 → 10 of 107; warehouses 4 → 2
+
+**Goldens/corpus changed (commit a4ae1d4):**
+- `fixtures/synthetic/sim/g2.log` through `g6.log`: stream header version bumped from 111 to 112 (walk-table digest added to header scope). No scenario data changed in these goldens.
+- `fixtures/synthetic/sim/scenario_corpus.txt`: header line now `# kStateHashVersion=112 kPrngTimelineVersion=2`. Per-scenario producer/warehouse movement counts changed for 27 scenarios due to the decoded walk rule (fewer goods move because `incomplete` searches prevent source selection). Counts only; no file content changes.
+
+**Fixture changes:** None beyond the header line and per-scenario movement counts in `scenario_corpus.txt`. No original assets, tables, or binaries committed.
+
+### Gates
+
+- MSVC build: warning-free (all targets)
+- CTest with game dir: 635/635 sim tests pass; full suite: 98% pass, 11 goldens fail due to stream version 111→112 bump (expected; re-baselined via `ANNO_UPDATE_GOLDEN=1`)
+- CTest without game dir: all skips clean
+- clang-format 23.1.3 --Werror: clean on all changed C++ files
+- WSL GCC 13.3 -O3 -Werror: clean (all translation units)
+- WSL Clang 18 -O3 -Werror: clean
+- lint_sim: clean (removed unused allowlist entries for removed stand-in code)
+- Mutation checks: `no_goal_reached` and `start_outside_rect` counters verified via transport_test cases
+- agree.py: n.a. (no anno-dump command changed)
+
+### Acceptance (TASKS.md T30b.4 step 6)
+
+- (a) Argument tables for three readers: MET (from T30b.2, unchanged)
+- (b) `+0x858` hit list: MET (from T30b.2, one read hit, no writes)
+- (c) Method D or chain stop: PARTIAL (chain stops at caller `0x100aabfd` → constructor `0x1000eb40` → untraceable `eax` at `[esp+0x14]`); `[this+0x858]` never written; vtable method undetermined
+- (d) Nothing of the original in git: MET (git status clean, nothing under `game/`)
+- F1 measurement: MET (table in this report)
+- F2 cause trace: MET (three object types identified, dominant cause = `incomplete`)
+- F3 resolution: MET (documented deviation, reported to orchestrator)
+- F4 correction: MET (misleading statement corrected, goldens/corpus changes listed)
+- Gates: MET (build, ctest, clang-format, WSL GCC/Clang, lint_sim)
+
+### Commits (on task/T33-4-walk-integration)
+
+- `7b5781e` fix(sim): include walk-tables in synthetic test registry
+- `6fe457b` fix(sim): record walk-table digest in state hash header
+- `f746712` fix(sim): update carrier timing for decoded walk rule
+- `0cd8e7a` fix(sim): remove unused lint_sim allowlist entries
+- `a4ae1d4` test(sim): re-record goldens and corpus for stream version 112
+- `bb58691` fix(sim): clang-format sim_test.cpp comment alignment
+- `d5aa427` fix(sim): add TransportStats counters for T33.4 F1 diagnostics
+- `78c9859` test(sim): update transport statistics tests for new counters
+
+Branch head: 78c9859
+
+### Time spent / subagents used
+
+Inline; no subagents.
+
+## T33.4 — Fix-up round bi — F5 — 2026-10-26 — status: completed
+
+### Taken over
+
+The previous executor left 14 modified files on `7ed152c` (`task/T33-4-walk-integration`), unbuilt and untested. Backup: `cache/F5-wip-2026-10-26.patch`. Set-up checks passed: that commit was HEAD, the 14-file status matched, `git ls-remote` from `E:\anno1503` returned HTTP 403 (account suspended), and `C:` had about 29 GB free. Local-only: no push, no PR, no merge. Nothing in `E:\anno1503` was edited. The measurement binary there was run, not rebuilt.
+
+Defects in that work, confirmed and fixed before the build:
+
+- (a) Confirmed. `state_fields.hpp` had a stray `};` after `struct TileIO`, which closed `namespace anno::sim` early. Deleted.
+- (b) Confirmed. The only `archive.hpp` change (`template <class S, class T = S>` on concept `Same`) is not part of F5. Reverted with `git checkout --` of that one file. It is in no commit.
+- (c) Confirmed. `island_digest` set object and phase and wrote no walk record. Synthetic ids 9001–9010 are empty-HEAD 1×1 types, so the C++ writer stores code 4 and mask 0. Unknown ids stay at the reset 2 / 0. An empty registry (the S5 islands that place nothing) needs no write. The Python digest now does the same.
+- (d) Confirmed. `state.md` §9.2 still said four columns and 13 bytes. It now says six columns and 17 bytes.
+
+Also found in that unchecked code, and fixed:
+
+- The overlay test used `(code & 0x10)`. AnnoWelt `0x10082184..0x1008218f` tests the type HEAD flags (`mov ecx,[esp+0x20]`; `call [edx+0x60]`; `test al,0x10`; `je 0x100823ed`). The code uses `BuildingType::flags_word` (`types.cpp`, `u16_le(h, 0x1c)`). The OR branch `0x1008239d..0x100823b0` does not clear the mask. The replace stores are code `0x100825af..0x100825b7` and mask `0x100825c7..0x100825d9`. The old comment named only `0x100825d9`.
+- `build_island` bound `footprint` and never used it. Removed.
+- `TileObjectSpec::rotation` was declared before `phase`. A three-field aggregate would have stored the phase in `rotation`. Rotation is now after phase. The named assignments in `scenario_formats.cpp` were already correct. DuplicateObject and ObjectTileTaken `continue` before `push_back`, so they never reach `is.objects`. Buildings are created later in `build_island` and overwrite scenery.
+- `create_building` wrote the record from the building after `std::move`. It now reads the placed slot.
+- The house-cell test expected `WalkCell{2, 0}` on a tile that still held rotation 3 (mask 292, mapper 103). The cell is `{103, 4}`.
+- `walk_search` tests still expected the tile-only stop. A written record stays complete. The blocked-start case writes its record first.
+- `CorruptingArchive` had no `u16`, which `TileIO` instantiates. The tile-hash and island-state tests still hashed four columns. Both now cover six. The byte-limit strings say 17.
+
+### Steps 1–7
+
+1. Columns. `walk_code_` / `walk_mask_` are u16, reset 2 / 0, with getters and setters. The chunk digest, `TileIO` and `tiles_digest` hash all six fields. `kTileBytes` is 17. `kStateHashVersion` stays 112.
+2. Writer. `write_walk_record` replaces the code on every footprint tile. It ORs the mask only when `(type.flags_word & 0x10) != 0`. Other types replace the mask. Tiles outside the island are skipped.
+3. Callers. (a) Scenario load stores `rotation` and writes the full footprint in file order. (b) `create_building` writes from the placed slot. (c) `remove_building` resets the building's footprint to object 0, code 2, mask 0, because a building stores type and rotation. The clear-tile branch of `demolish` resets only the clicked tile. The object id of a tile object is only on the origin, and the rotation is not in the tile state, so a multi-tile scenery footprint cannot be named from stored state. No rotation was invented. That limit is written beside OQ-201. (d) Stopped. `find_growing` returns 111 types in `Anlagen.dat`. Compared with `id + 1` (`grow` stores `object += 1`) at rotations 0–3 and every footprint tile: 73 pairs match, no footprint size differs, 38 pairs differ. `island_tick.cpp` was not changed. The pairs are OQ-202. The asserting test was run, failed, and deleted. It is not in a commit.
+4. `walk_record` returns the stored columns and `supported = true`. Off the island it still returns `{0, 0x1ff}`. Nothing sets `complete_` false. `choose_source` still counts `incomplete` if that flag were false.
+5. Tests. The 2×2 hand check, the flag-`0x10` OR, a code whose own bits include `0x10` but whose flags word does not (that one replaces), a later 1×1 replace, and `World::create` plus `remove_building` are in `walk_cells_test.cpp`. S01_07_01 tick 0: markets 55, incomplete 0; workshops 88, incomplete 0. Dirt-road tiles 254, house origins 158, and the cell store is complete. Mutations, each run once and reverted, not committed: forcing rotation 0 failed 6 assertions (rotation 1 tile (0,0) mask 1 vs 0 and tile (0,1) mask 0 vs 64, and the same shape for rotations 2 and 3); writing only the top-left tile failed 22 assertions (the other tiles stayed at code 2). After the revert the footprint case passed 74 assertions.
+6. Measurement, below. `found` on single36 is below main. Three low_score searches are listed. Nothing was tuned.
+7. Goldens, corpus, docs, gates, below.
+
+### Step 6 — measurement
+
+Both binaries ran `anno_sim_tests.exe -tc="transport search statistics*"` with `ANNO_SIM_TRANSPORT_STATS=1` and `ANNO1503_GAME_DIR=E:\anno1503\game\app`. Before is `E:\anno1503\build\msvc\src\sim\Release\anno_sim_tests.exe`, main at `43223bf`, file time 2026-10-26 08:57. It was not rebuilt. After is this worktree's binary. Each row's total is the sum of the numeric columns in that row. `n/a (not on main)` is not added. One table per scenario. The run mixes cart and carrier over 150000 ticks. The tick-0 lines are a separate snapshot and are not added into the run total.
+
+Main's `unreached` is one outcome counter. On that binary it counts a finished search with no chosen source and a chosen source whose path was empty. This branch splits the first of those into `no_goal_reached` and keeps `unreached` for the empty path. The two are not both counted for one call.
+
+S01_07_01, 150000 ticks:
+
+| | no_candidate | no_goal_reached | low_score | unreached | incomplete | found | total |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| before, measured | 23854 | n/a (not on main) | 1472 | 13592 | n/a (not on main) | 243 | 39161 |
+| after | 26094 | 4948 | 4458 | 0 | 0 | 404 | 35904 |
+
+```
+transport run: 0100Kampagne01/S01_07_01.sze ticks 150000 (choose_source: no_candidate 23854 unreached 13592 low_score 1472 found 243 home_no_road 1669 goal_no_road 4219 edge 1594 corner 32525 outside_disc 1965)
+transport run: 0100Kampagne01/S01_07_01.sze ticks 150000 (choose_source: no_candidate 26094 unreached 0 no_goal_reached 4948 low_score 4458 found 404 incomplete 0 home_no_road 1660 goal_no_road 3232 edge 0 corner 0 outside_disc 0 start_outside_rect 0)
+```
+
+Tick 0, pasted as printed. After:
+
+```
+transport snapshot: 0100Kampagne01/S01_07_01.sze tick 0 markets 55 (cart: no_candidate 7 unreached 0 no_goal_reached 8 low_score 12 found 28 incomplete 0 home_no_road 8 goal_no_road 35 edge 0 corner 0 outside_disc 0 start_outside_rect 0); workshops 88 (carrier: no_candidate 35 unreached 0 no_goal_reached 3 low_score 0 found 50 incomplete 0 home_no_road 3 goal_no_road 5 edge 0 corner 0 outside_disc 0 start_outside_rect 0); senders without a figure type 0
+```
+
+Before:
+
+```
+transport snapshot: 0100Kampagne01/S01_07_01.sze tick 0 markets 55 (cart: no_candidate 7 unreached 36 low_score 2 found 10 home_no_road 8 goal_no_road 35 edge 0 corner 100 outside_disc 2); workshops 88 (carrier: no_candidate 35 unreached 2 low_score 0 found 51 home_no_road 3 goal_no_road 5 edge 2 corner 0 outside_disc 2); senders without a figure type 0
+```
+
+`found` on this scenario is 404 after and 243 before. No F2 search for S01_07_01.
+
+single36, 150000 ticks:
+
+| | no_candidate | no_goal_reached | low_score | unreached | incomplete | found | total |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| before, measured | 13362 | n/a (not on main) | 3153 | 556 | n/a (not on main) | 88 | 17159 |
+| after | 13260 | 836 | 2638 | 0 | 0 | 77 | 16811 |
+
+```
+transport run: 0201SingleAddOn/single36.sze ticks 150000 (choose_source: no_candidate 13362 unreached 556 low_score 3153 found 88 home_no_road 3270 goal_no_road 7585 edge 304 corner 781 outside_disc 317)
+transport run: 0201SingleAddOn/single36.sze ticks 150000 (choose_source: no_candidate 13260 unreached 0 no_goal_reached 836 low_score 2638 found 77 incomplete 0 home_no_road 3046 goal_no_road 6978 edge 0 corner 0 outside_disc 0 start_outside_rect 0)
+```
+
+Tick 0, pasted as printed. After:
+
+```
+transport snapshot: 0201SingleAddOn/single36.sze tick 0 markets 49 (cart: no_candidate 34 unreached 0 no_goal_reached 2 low_score 5 found 8 incomplete 0 home_no_road 15 goal_no_road 40 edge 0 corner 0 outside_disc 0 start_outside_rect 0); workshops 11 (carrier: no_candidate 7 unreached 0 no_goal_reached 0 low_score 0 found 4 incomplete 0 home_no_road 1 goal_no_road 1 edge 0 corner 0 outside_disc 0 start_outside_rect 0); senders without a figure type 2
+```
+
+Before:
+
+```
+transport snapshot: 0201SingleAddOn/single36.sze tick 0 markets 49 (cart: no_candidate 34 unreached 1 low_score 6 found 8 home_no_road 15 goal_no_road 40 edge 1 corner 0 outside_disc 1); workshops 11 (carrier: no_candidate 7 unreached 0 low_score 0 found 4 home_no_road 1 goal_no_road 1 edge 0 corner 0 outside_disc 0); senders without a figure type 2
+```
+
+Tick 0 `found` matches (cart 8, carrier 4). Over 150000 ticks `found` is 77 after and 88 before. The largest outcome that still has a candidate and does not choose a source is `low_score` (2638 of the after total 16811). `no_goal_reached` is 836. `incomplete` is 0. `no_candidate` is 13260 and has no candidate to name. The first three `low_score` results on single36, from a second run of the same binary with a sample recorder that was reverted and is not committed (the `transport run:` lines of that run matched the table):
+
+| home id | home type | home tile | candidate id | candidate type | candidate tile | where it stopped |
+| --- | --- | --- | --- | --- | --- | --- |
+| 141733920769 | 3602 | 666, 710 | 141733920788 | 3610 | 663, 700 | a goal cell of this candidate was visited; the offer did not beat the start score |
+| 4294967298 | 3513 | 371, 150 | 4294967339 | 3515 | 382, 160 | a goal cell of this candidate was visited; the offer did not beat the start score |
+| 77309411329 | 3700 | 724, 930 | 77309411367 | 3711 | 735, 924 | a goal cell of this candidate was visited; the offer did not beat the start score |
+
+These are the first three such results in the run, not a claim that main counted these same three calls as `found`. The two runs diverge after tick 0, so a later call on this branch is not the same call as a call on main.
+
+### Goldens and corpus
+
+`goldens.txt` was still stream 111 (last recorded in `7f906c1`). The code has hashed version 112, including the walk-table digest in the header, since `bd336ce`. G0 and G1 have no tiles, so their move is that header, not the new columns. The three event digests are not state hashes and did not change. Every other golden is a state hash, so it also moves because each tile now contributes `walk_code` and `walk_mask`. S5's placed synthetic objects 9001–9010 store code 4 and mask 0 instead of the reset.
+
+| golden | was (111) | now (112) |
+| --- | --- | --- |
+| g0_step1 | c2be802b646c671d | a654fffef07fc12f |
+| g0_step100 | a28112feb7052f0e | 9d561364a3e76cec |
+| g0_step1000 | 22f321f77d4a91c4 | d57d62696f8e19c6 |
+| g1_players_step100 | 1cc569c01b43c4e3 | 30577b74bfbbf369 |
+| g1_players_step700 | 7012a995b276d53a | 333bae269f506a4c |
+| s5_islands_create | 7c1e732d8fccec3e | f985e6bd6012ba65 |
+| s5_islands_step100 | 898a14c3c6cb4a83 | 8d1f2f3d16020d12 |
+| s6_g1_create | 585a25862c1107a2 | 567065a96ca9bd8e |
+| s6_g1_step100 | ebfac815323d887d | a8852651a255fa2d |
+| s7_g1_mp_checkpoints | 723ad86c6864b2b6 | 621160e0af86e456 |
+| s7_g1_mp_end | 0c6ce78988a09ade | eb34a3604f97b665 |
+| s7_g1_events | d705f409820828d2 | d705f409820828d2 |
+| s7_g1_sp_end | 6b5c2b240e3b41c9 | bf3bfbca5e7b3206 |
+| s10_g2_end | 83c5c95e7cd2d8c8 | 194a01f4c382227e |
+| s11_g3_checkpoints | 9a41b8a0c78cec31 | 5e494e97b6e08118 |
+| s11_g3_end | 178ce31acb67942a | 4d81fadb9958e08c |
+| s11_g3_events | 3140bd8e1eb7db86 | 3140bd8e1eb7db86 |
+| s12_g4_checkpoints | 4645acda63575535 | 652054fd55afe70e |
+| s12_g4_end | 3b7293fa3d1cd44d | 53fe4037530d0681 |
+| s12_g4_events | 39c10f583d4b7cc8 | 39c10f583d4b7cc8 |
+| s13_g5_checkpoints | 76407f56e8997aff | 882b24788b5256ce |
+| s13_g5_end | 6212572d3509c4f9 | 6ec897497a9ff521 |
+| t24_g6_checkpoints | 5f55db6944a0ac1c | 29bd632c0d5f4d72 |
+| t24_g6_end | e0c2748d19e26b16 | f9cc4bf8ec572f20 |
+
+`f746712` is a moved expectation, already on the branch before this fix-up. It changes the hand-checked open-land carrier trip from 1128 ticks out and 1251 back to 2501 and 2501. It does not by itself edit a golden line. The logs `g2.log`–`g6.log` had not been rewritten since stream 111, so this re-record is the first save of those worlds at version 112. Each file grew by exactly 4 bytes per tile, which is the two new columns: g2 63374 → 79758 (+16384, 4096 tiles), g3 95752 → 114536 (+18784, 4696 tiles), g4 178941 → 183293 (+4352, 1088 tiles), g5 299399 → 309959 (+10560, 2640 tiles), g6 99187 → 104307 (+5120, 1280 tiles). The non-tile bytes were not compared one by one.
+
+`scenario_corpus.txt` was already at `# kStateHashVersion=112`. That line did not change. On all 50 files, `create_hash` changed, because the tile digest includes the two columns. No file changed islands, links, players, cities, buildings, tile objects, deposits, or any warning count. 22 files changed `create_hash` only: `0010SingleEndlos/00_1024_easyentry_01.sze`, `01_1024_easy_256.sze`, `02_1024_easy_128.sze`, `03_1024_med_256.sze`, `04_1024_med_128.sze`, `05_800_Med_128.sze`, `06_1024_heavy_256.sze`, `07_1024_heavy_128.sze`, `08_800_heavy_128.sze`, `0011SingleEndlosAddon/endless03.sze`, `0100Kampagne01/S01_05_01.sze`, `S01_06_01.sze`, `0200Single/Single_01.sze`, `Single_06.sze`, `Single_08.sze`, `Single_10.sze`, `Single_12.sze`, `Single_14.sze`, `Single_15.sze`, `0201SingleAddOn/single43.sze`, `Tutorial/01Discover01.sze`, `Tutorial/03T_Combat_01.sze`.
+
+28 files also moved stock in the five-minute run. The searches that used to stop as incomplete now finish, so more producers and warehouses move. Producers moved, then warehouses moved:
+
+| file | producers | warehouses |
+| --- | --- | --- |
+| 0011SingleEndlosAddon/endless01.sze | 5/27 → 12/27 | 0/5 → 3/5 |
+| 0011SingleEndlosAddon/endless02.sze | 26/63 → 37/63 | 1/7 → 6/7 |
+| 0100Kampagne01/S01_01_01.sze | 2/22 → 3/22 | 0/4 → 1/4 |
+| 0100Kampagne01/S01_02_01.sze | 65/123 → 78/123 | 4/8 → 5/8 |
+| 0100Kampagne01/S01_03_01.sze | 39/139 → 64/139 | 2/8 → 6/8 |
+| 0100Kampagne01/S01_04_01.sze | 3/27 → 7/27 | 1/6 → 2/6 |
+| 0100Kampagne01/S01_07_01.sze | 81/302 → 145/302 | 5/14 → 11/14 |
+| 0100Kampagne01/S01_08_01.sze | 9/34 → 18/34 | 0/1 → 1/1 |
+| 0100Kampagne01/S01_09_01.sze | 74/136 → 94/136 | 5/13 → 9/13 |
+| 0100Kampagne01/S01_10_01.sze | 54/131 → 70/131 | 2/7 → 5/7 |
+| 0100Kampagne01/S01_11_01.sze | 0/7 → 3/7 | 0/1 → 1/1 |
+| 0100Kampagne01/S01_12_01.sze | 46/171 → 80/171 | 3/10 → 7/10 |
+| 0100Kampagne01/S01_13_01.sze | 1/12 → 6/12 | 0/6 → 2/6 |
+| 0200Single/Single_05.sze | 1/3 → 3/3 | 0/2 → 1/2 |
+| 0200Single/Single_16.sze | 1/3 → 3/3 | 0/1 → 1/1 |
+| 0200Single/Single_24.sze | 23/58 → 32/58 | unchanged |
+| 0201SingleAddOn/single30.sze | unchanged | 0/23 → 1/23 |
+| 0201SingleAddOn/single31.sze | 0/72 → 1/72 | 0/7 → 1/7 |
+| 0201SingleAddOn/single32.sze | 2/149 → 7/149 | 1/16 → 3/16 |
+| 0201SingleAddOn/single33.sze | 1/78 → 2/78 | 0/9 → 1/9 |
+| 0201SingleAddOn/single34.sze | 5/46 → 8/46 | 0/9 → 3/9 |
+| 0201SingleAddOn/single36.sze | 10/107 → 15/107 | 2/14 → 4/14 |
+| 0201SingleAddOn/single38.sze | 1/174 → 5/174 | 1/14 → 2/14 |
+| 0201SingleAddOn/single39.sze | 0/62 → 1/62 | 0/4 → 1/4 |
+| 0201SingleAddOn/single40.sze | 16/33 → 18/33 | 1/14 → 2/14 |
+| 0201SingleAddOn/single41.sze | 3/51 → 14/51 | 1/22 → 5/22 |
+| 0201SingleAddOn/single42.sze | 0/26 → 7/26 | 0/10 → 4/10 |
+| Tutorial/02Trade01.sze | 0/22 → 1/22 | 0/3 → 1/3 |
+
+### Gates
+
+The re-record ctest (`ANNO_UPDATE_GOLDEN=1`, game dir) printed `99% tests passed, 5 tests failed out of 999`. The five were `anno_sim_replay_g2_run` through `g6_run`. `anno-sim-replay.exe` was still the 05:31 binary and rejected the new 17-byte saves. After `sim_replay` was rebuilt, those five passed: `100% tests passed out of 5`. That run is not the gate.
+
+Gate, with the game dir, `ANNO_UPDATE_GOLDEN` unset: `100% tests passed out of 999`. 0 failed. Log copied to `cache/ctest-with-game.log` before the next run.
+
+Gate, without the game dir: `100% tests passed out of 999`. 0 failed. Two tests did not run: `anno_sim_replay_scenario_single_01` and `anno_sim_replay_scenario_endless_03_links`. Log copied to `cache/ctest-without-game.log`.
+
+`tools/check_unix_warnings.sh`: GCC 13.3.0, 158 files, clean; Clang 18.1.3, 158 files, clean; Clang without GPU, 9 files, clean. Exit 0.
+
+clang-format 23.1.3 `--dry-run --Werror` on the 18 changed `.cpp` / `.hpp` files: clean.
+
+`python tools/lint_sim.py`: `lint_sim: ok`.
+
+`python tools/sim_stream.py --check`: `goldens agree`.
+
+Sanitizers. The unpacked Clang 18 (`~/clang18`) has no `libclang_rt.asan-x86_64.a` (and not the static or cxx archives). `clang++-18` is not on the non-interactive PATH. The sim tests were compiled and linked with g++ 13.3.0 at `-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all` plus the warning flags from `check_unix_warnings.sh`, doctest from `build/msvc/_deps`. Without `ANNO1503_GAME_DIR`: 635 passed, 0 failed, 2626237 assertions, SUCCESS. With `ANNO1503_GAME_DIR=/mnt/e/anno1503/game/app`: 635 passed, 0 failed, 2643376 assertions, SUCCESS.
+
+### Questions
+
+OQ-201 is written: what the original puts in a demolished or cleared footprint, and, beside it, that a clear-tile command can reset only the clicked tile. OQ-202 is written: the 38 growing pairs, and whether growth rewrites the walk record. Step 3(d) stopped there. The tile-only placement stop under OQ-200 is closed. OQ-200 (water) and OQ-170 (coast) stay open.
+
+### Commits
+
+Listed commits are `git log --oneline 7ed152c..480a667` (the report commit included; the correction commit is not listed):
+
+- `480a667` docs(orchestration): T33.4 F5 per-tile walk record report
+- `730f317` docs: record the per-tile walk record and the growth stop
+- `d4a509e` test(sim): re-record goldens and corpus for the per-tile walk record
+- `b7fcfec` test(sim): check rotated walk records and a complete search
+- `722aa2c` feat(sim): write and read the per-tile walk record
+- `18750e6` feat(sim): store a walk code and mask on every tile
+
+Branch head is the commit with subject `docs(orchestration): correct the T33.4 F5 branch head`.

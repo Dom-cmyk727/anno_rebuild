@@ -34,6 +34,9 @@ struct SearchResult {
     std::uint16_t cost = 0;
     std::uint64_t enqueued = 0, popped = 0;
     bool stopped = false, complete = true;
+    /// Starts skipped because their position lies outside the search rectangle
+    /// (T33.4 F1 diagnostic).
+    std::uint64_t start_outside_rect = 0;
     std::string error;
     friend bool operator==(const SearchResult&, const SearchResult&) = default;
 };

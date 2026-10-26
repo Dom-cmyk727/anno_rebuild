@@ -58,6 +58,10 @@ struct ScenarioSpec {
         std::uint32_t index = 0;
         std::uint32_t object = 0;
         std::uint8_t phase = 0;
+        /// The item's rotation (quarter turns; insel.md item `id` bits 14–15,
+        /// read at AnnoWelt 0x1008964e). Follows `phase` so a positional
+        /// `{index, object, phase}` aggregate keeps its phase. Default 0.
+        std::uint8_t rotation = 0;
     };
     /// A building placed at load (PROD2 record stand-in): created at tick 0
     /// through create_building, no cost charged.

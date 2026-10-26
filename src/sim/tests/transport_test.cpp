@@ -16,13 +16,18 @@
 
 #include <doctest/doctest.h>
 
+#include <anno/formats/anlagen.hpp>
+#include <anno/formats/annowelt.hpp>
+#include <anno/formats/figuren.hpp>
 #include <anno/sim/building.hpp>
 #include <anno/sim/driver.hpp>
 #include <anno/sim/hash.hpp>
 #include <anno/sim/replay.hpp>
+#include <anno/sim/scenario_formats.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/world.hpp>
+#include <anno/test/game_dir.hpp>
 
 #include "golden.hpp"
 #include "island_helpers.hpp"
@@ -58,13 +63,19 @@ std::shared_ptr<const sim::TypeRegistry> registry() {
     b.add_market(kMarket, kCart, 1, 8)
         .entrances(kMarket, {{9, 15}})
         .add_workshop(kWeaver, "STOFFE", "WOLLE", 6, 11, 5, 0)
+        .entrances(kWeaver, {{3, 3}})
         .add_plain(kRoad, 193)
         .flags_word(kRoad, sim::kRoadFlag)
         .add_farm(kFarm, "KORN", "GETREIDE", 37, 80, 7, 0)
+        .entrances(kFarm, {{3, 3}})
         .add_market(kStore, kCart, 0, 8)
+        .entrances(kStore, {{3, 3}})
         .add_farm(kFarm1t, "KORN", "GETREIDE", 37, 80, 1, 0)
+        .entrances(kFarm1t, {{3, 3}})
         .add_farm(kSheep, "WOLLE", "GETREIDE", 37, 80, 5, 0)
+        .entrances(kSheep, {{3, 3}})
         .add_workshop(kCarrierWs, "STOFFE", "WOLLE", 6, 11, 5, 1)
+        .entrances(kCarrierWs, {{3, 3}})
         .action_radius(kCarrierWs, 16) // P: the weaver 1001 has 16
         .figure_ids(kCarrierWs, {kCarrier})
         .add_plain(kObstacle, 193) // same prodtype as kRoad, but no kRoadFlag -> walk_class 0
@@ -566,20 +577,20 @@ TEST_CASE("a workshop carrier fetches wool from the warehouse over open land") {
         CHECK(c.transport.target == at(w, 110, 110).id);
         CHECK(c.transport.reserved_88 == 0); // a market reserves nothing (0x100a3930)
         CHECK(c.cargo_goods == 9);
-        // The spot (the workshop's corner, no entrance: (111, 115) · 256), then
-        // (111, 114), (111, 113), (111, 112) (the market tile reached first).
-        REQUIRE(c.transport.route.size() == 4);
+        // The decoded first-discovery search uses only orthogonal tile nodes and its
+        // table geometry; this synthetic all-open mapper yields six tile edges.
+        REQUIRE(c.transport.route.size() == 7);
     }
-    // The walk: a half diagonal (128, -128): 11863283, then 2 tiles: 33554432; in all
-    // 45417715 / 40265 = 1127.97 -> 1128 ticks; then the wait of 2.0 = 1000 ticks.
+    // The walk: the decoded search follows tile centres (six orthogonal tile edges,
+    // not a straight line): 6 * 2^24 / 40265 ≈ 2500 ticks; then the wait of 2.0 = 1000 ticks.
+    // Per-tick rounding adds one tick.
     const std::uint64_t load = until(w, [&] { return city0(w).stock.stock[9] != 5000; });
-    CHECK(load - spawn == 1128 + 1000);
+    CHECK(load - spawn == 2501 + 1000);
     CHECK(city0(w).stock.stock[9] == 5000 - 768);
-    // Back: (111, 112) -> (111, 113), (111, 114), (111, 115): 3 tiles = 50331648 / 40265
-    // = 1250.01 -> 1251 ticks; the workshop's wool rises by 768.
+    // Back: 6 orthogonal tile edges from the market back to the workshop: same as outbound.
     const std::uint64_t unload =
         until(w, [&] { return std::get<sim::Workshop>(at(w, 111, 115).payload).in[0] != 0; });
-    CHECK(unload - load == 1251);
+    CHECK(unload - load == 2501);
     CHECK(std::get<sim::Workshop>(at(w, 111, 115).payload).in[0] == 768);
     CHECK(w.check_invariants() == "");
 }
@@ -679,18 +690,13 @@ sim::TransportStats stats_of_cart(const sim::World& w,
     const auto key = is.cache.by_id.at(m.id);
     sim::TransportStats stats;
     static_cast<void>(sim::choose_source(serial, *types, sim::kJobMarketCart, m, *t, key.city,
-                                         ft->capacity_88, sim::walk_rule(ft->layer), &stats));
+                                         ft->capacity_88, ft->layer, &stats));
     return stats;
 }
 
 } // namespace
 
-TEST_CASE("T29 (a) a non-road obstacle blocks the walk: unreached and the obstacle in frontier") {
-    // The "no roads" setup of "a cart finds no producer off the road net" plus one named
-    // tile object placed where it is an 8-neighbour of the home footprint: the search
-    // starts in the home footprint, every tile around it is non-road, so no step is
-    // taken, outcome `unreached`, and the obstacle's type id lands in `frontier` with
-    // count 1 (each blocked tile is counted at most once per search). Hand-derived.
+TEST_CASE("decoded layer 3 cannot cross open ground to a producer") {
     const auto types = registry();
     Rig r = make_rig();
     r.place(kMarket, 110, 110);                       // 3 x 3, footprint (110..112, 110..112)
@@ -698,21 +704,13 @@ TEST_CASE("T29 (a) a non-road obstacle blocks the walk: unreached and the obstac
     r.tile_object(111, 113, kObstacle);               // 8-neighbour of (110..112, 112)
     sim::World w = create(r, types);
     const sim::TransportStats s = stats_of_cart(w, types, 110, 110);
-    CHECK(s.unreached == 1);
+    CHECK(s.no_goal_reached == 1);
     CHECK(s.found == 0);
     CHECK(s.low_score == 0);
     CHECK(s.no_candidate == 0);
-    // The obstacle at (111, 113) is a blocked 8-neighbour of three home tiles; dedup
-    // keeps it at 1. frontier[0] counts every empty tile that is an 8-neighbour of the
-    // home footprint; the test does not nail that number, only that kObstacle is in.
-    const auto it = s.frontier.find(kObstacle.v);
-    REQUIRE_MESSAGE(it != s.frontier.end(),
-                    "kObstacle (" << kObstacle.v << ") must appear in frontier");
-    CHECK(it->second == 1);
-    CHECK(s.frontier.count(0) > 0); // the surrounding empty tiles
-    // Edge is 0: the home footprint is at (110..112, 110..112), far from the grid
-    // border (103..119); no reached tile touches it. outside_disc is 0: the weaver's
-    // footprint (111, 115) lies inside the disc. corner is 0: no step was tried.
+    CHECK(s.incomplete == 0);
+    // The old stand-in frontier/diagonal diagnostics are retired by T33.4.
+    CHECK(s.frontier.empty());
     CHECK(s.edge == 0);
     CHECK(s.outside_disc == 0);
     CHECK(s.corner == 0);
@@ -723,13 +721,13 @@ TEST_CASE("T29 (a) a non-road obstacle blocks the walk: unreached and the obstac
     CHECK(s.home_no_road == 1);
 }
 
-TEST_CASE("T29 (b) a road that reaches the search grid border: edge is 1") {
+TEST_CASE("decoded layer 3 road to the disc edge does not reach a disconnected producer") {
     // Market at (110, 110), 3 x 3; the search square is (103..119, 103..119) (radius 8,
     // disc_half_widths(8)). A road run from the home footprint south then east to (119,
     // 113): (111, 113), (112, 113), (113, 113), ..., (119, 113). The far tile (119,
     // 113) is on the grid's east border. A weaver at (111, 118), with 5 t cloth, is a
     // candidate but is not reached: no road connects it to the home. The search ends
-    // `unreached` with its reached frontier touching the grid border: `edge == 1`.
+    // `unreached`; T33.4 no longer exposes the old stand-in's frontier.
     const auto types = registry();
     Rig r = make_rig();
     r.place(kMarket, 110, 110);
@@ -739,14 +737,11 @@ TEST_CASE("T29 (b) a road that reaches the search grid border: edge is 1") {
     }
     sim::World w = create(r, types);
     const sim::TransportStats s = stats_of_cart(w, types, 110, 110);
-    CHECK(s.unreached == 1);
+    CHECK(s.no_goal_reached == 1);
     CHECK(s.found == 0);
     CHECK(s.low_score == 0);
-    CHECK(s.edge == 1);
-    // The reached road ends at the east border tile (119, 113); no diagonal step from a
-    // reached tile ever lands on a passable-but-unreached tile with a blocked
-    // orthogonal here (every neighbour outside the road run is non-road, so unwalkable
-    // and no "unreached passable" happens for the diagonal check): corner == 0.
+    CHECK(s.incomplete == 0);
+    CHECK(s.edge == 0);
     CHECK(s.corner == 0);
     // outside_disc is 0: the weaver's footprint (111, 118) lies inside the disc.
     CHECK(s.outside_disc == 0);
@@ -755,10 +750,6 @@ TEST_CASE("T29 (b) a road that reaches the search grid border: edge is 1") {
     // goal_no_road is 1: the weaver's 4-neighbours hold no road.
     CHECK(s.goal_no_road == 1);
 }
-
-// Mutant check (T29 step 4): dropping the `++stats->frontier[obj]` line from
-// choose_source makes the "T29 (a)" case's `REQUIRE_MESSAGE(it != s.frontier.end(),
-// ...)` fail (frontier stays empty, so kObstacle is not found); listed in REPORTS.md.
 
 TEST_CASE("G6 a market cart and a workshop carrier through 300000 ticks equal golden") {
     // G6 (docs/sim/state.md §14.3, task T24): synthetic::g6_scenario (seed 624) on
@@ -873,4 +864,79 @@ TEST_CASE("G6 a market cart and a workshop carrier through 300000 ticks equal go
         }
         CHECK_MESSAGE(problem.empty(), problem);
     }
+}
+
+TEST_CASE("S01_07_01 tick 0 search store is complete" * doctest::test_suite("corpus")) {
+    // Step 5(b): every market and workshop at tick 0. incomplete counts a search
+    // whose WalkCells store was not complete. The per-tile record makes that 0.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("ANNO1503_GAME_DIR not set: skipping S01_07_01 search store");
+        return;
+    }
+    const auto ab = anno::test::read_file(*dir / "Anlagen.dat");
+    auto an = anno::formats::anlagen::AnlagenFile::parse(ab);
+    REQUIRE(an);
+    const auto fig_buf = anno::test::read_file(*dir / "FigurenHeader.dat");
+    auto figures = anno::formats::figuren::FigurenHeader::parse(fig_buf);
+    REQUIRE(figures);
+    const auto walk_bytes = anno::test::read_file(*dir / "AnnoWelt.dll");
+    auto walk = anno::formats::annowelt::read_walk_tables(walk_bytes);
+    REQUIRE(walk);
+    auto types = sim::TypeRegistry::build(
+        an.value().entries, sim::original_goods(), sim::SimConfig{}, figures.value().entries,
+        std::make_shared<const anno::formats::annowelt::WalkTables>(std::move(walk).value()));
+    REQUIRE(types);
+    const auto sb = anno::test::read_file(*dir / "Scenes" / "0100Kampagne01" / "S01_07_01.sze");
+    auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{});
+    REQUIRE(loaded);
+    auto made = sim::World::create(loaded.value().spec, types.value());
+    REQUIRE(made);
+    sim::World world = std::move(made).value();
+    sim::Effects fx;
+    sim::SerialWorld serial(world.islands(), world.config().layout, world.figures(),
+                            world.players(), fx);
+    sim::TransportStats cart, carrier;
+    std::uint64_t markets = 0, workshops = 0;
+    for (const auto& slot : world.islands()) {
+        if (!slot) {
+            continue;
+        }
+        const sim::Island& is = *slot;
+        for (const auto& [id, key] : is.cache.by_id) {
+            const sim::Building* b = is.find_building(id);
+            if (b == nullptr) {
+                continue;
+            }
+            const sim::BuildingType* t = types.value()->find(b->type);
+            if (t == nullptr || t->prod.figure_ids.empty()) {
+                continue;
+            }
+            const sim::FigureType* ft = types.value()->find_figure_type(t->prod.figure_ids[0]);
+            if (ft == nullptr) {
+                continue;
+            }
+            std::uint32_t job = 0;
+            sim::TransportStats* stats = nullptr;
+            if (std::holds_alternative<sim::Market>(b->payload)) {
+                job = sim::kJobMarketCart;
+                stats = &cart;
+                ++markets;
+            } else if (std::holds_alternative<sim::Workshop>(b->payload)) {
+                job = sim::kJobWorkshopCarrier;
+                stats = &carrier;
+                ++workshops;
+            } else {
+                continue;
+            }
+            static_cast<void>(sim::choose_source(serial, *types.value(), job, *b, *t, key.city,
+                                                 ft->capacity_88, ft->layer, stats));
+        }
+    }
+    MESSAGE("S01_07_01 tick 0 markets " << markets << " incomplete " << cart.incomplete
+                                        << " workshops " << workshops << " incomplete "
+                                        << carrier.incomplete);
+    CHECK(markets + workshops > 0);
+    CHECK(cart.incomplete == 0);
+    CHECK(carrier.incomplete == 0);
 }

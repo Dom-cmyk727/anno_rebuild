@@ -234,9 +234,10 @@ class TypeRegistry {
     [[nodiscard]] const BuildingType* find_growing(std::uint32_t object) const;
     /// FNV-1a 64 over every field of every type, the goods and the class
     /// tables (state_fields.hpp style: fixed widths, little endian); hashed once
-    /// in the header scope. T33.2 walk_mask and walk_tables side inputs are excluded.
+    /// in the header scope. `walk_mask` remains derived type input; T33.4 writes the
+    /// separate immutable walk-table digest beside this registry digest.
     [[nodiscard]] std::uint64_t digest() const { return digest_; }
-    /// Immutable side input; excluded from digest/save until T33.4.
+    /// Immutable side input; its separate digest is in the state/replay headers.
     [[nodiscard]] const std::shared_ptr<const formats::annowelt::WalkTables>& walk_tables() const {
         return walk_tables_;
     }

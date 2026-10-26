@@ -6,11 +6,12 @@
 // of its function plus a kStateHashVersion bump and re-baselined goldens in
 // the same commit.
 //
-// Stream at kStateHashVersion 108 (stage S13), the scopes of §9.3 so far:
+// Stream at kStateHashVersion 112 (task T33.4), the scopes of §9.3 so far:
 //   1 header     u32 kStateHashVersion, u32 kPrngTimelineVersion,
 //                SimConfig (declaration order; vectors as count + elements;
 //                small_farm_animals; layout), Rules (declaration order),
-//                u64 registry digest, seam names (count + str each)
+//                u64 registry digest, u64 walk-table digest,
+//                seam names (count + str each)
 //   2 clock_rng  u64 clock.ms, u64 clock.last_tick, u64 rng.size,
 //                u64 rng.table_digest, u32 rng.cursor  (= core_hash)
 //   3 settings   the WorldSettings
@@ -76,6 +77,7 @@
 #include <anno/sim/settings.hpp>
 #include <anno/sim/timers.hpp>
 #include <anno/sim/types.hpp>
+#include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
 
 namespace anno::sim {
@@ -457,15 +459,22 @@ struct TileIO {
         for (auto& v : t.aux_) {
             a.u32(v);
         }
+        for (auto& v : t.walk_code_) {
+            a.u16(v);
+        }
+        for (auto& v : t.walk_mask_) {
+            a.u16(v);
+        }
     }
 };
 
 /// The scope `tiles` of an island: `u32 width, u32 height, u32 chunk_edge`, then
-/// the four columns `object[]` (u32), `phase[]` (u8), `owner[]` (u32), `aux[]`
-/// (u32), each w · h elements (kTileBytes = 13 per tile). `x0`, `y0`, `w` and `h`
-/// are the island's own rectangle, which the island scope wrote just before; the
-/// layer's dimensions must equal them. Reading rejects before allocating:
-/// chunk_edge 0, more than kIslandTileBound tiles, or w · h · 13 > remaining()
+/// the six columns `object[]` (u32), `phase[]` (u8), `owner[]` (u32), `aux[]`
+/// (u32), `walk_code[]` (u16), `walk_mask[]` (u16), each w · h elements
+/// (kTileBytes = 17 per tile). `x0`, `y0`, `w` and `h` are the island's own
+/// rectangle, which the island scope wrote just before; the layer's dimensions
+/// must equal them. Reading rejects before allocating:
+/// chunk_edge 0, more than kIslandTileBound tiles, or w · h · 17 > remaining()
 /// (in u64); the generic count check of ReadArchive does not cover the bulk
 /// columns. The hierarchical hash feeds the dimensions and, for every chunk in
 /// row-major chunk order, the cached chunk digest (u64) instead of the columns;
@@ -1114,6 +1123,16 @@ struct StateIO {
             if constexpr (A::kReading) {
                 if (!a.failed() && registry_digest != w.types_->digest()) {
                     a.fail("type registry digest differs from the world's registry");
+                }
+            }
+            std::uint64_t walk_digest =
+                w.types_->walk_tables() ? walk_tables_digest(*w.types_->walk_tables()) : 0;
+            a.u64(walk_digest);
+            if constexpr (A::kReading) {
+                const std::uint64_t expected =
+                    w.types_->walk_tables() ? walk_tables_digest(*w.types_->walk_tables()) : 0;
+                if (!a.failed() && walk_digest != expected) {
+                    a.fail("walk-table digest differs from the world's tables");
                 }
             }
             std::vector<std::string> names = seam_names(w.seams_);

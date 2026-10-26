@@ -1,6 +1,8 @@
 #include <array>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <doctest/doctest.h>
@@ -12,6 +14,8 @@
 #include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
 #include <anno/test/game_dir.hpp>
+
+#include "world_access.hpp"
 namespace sim = anno::sim;
 namespace {
 sim::BuildingType house() {
@@ -67,8 +71,8 @@ TEST_CASE("walk_cells: house instances retain rotation and water is explicitly s
     REQUIRE(built);
     auto types = built.value();
     auto i = island();
-    i.tiles.set_object(0, 102);
-    i.tiles.set_object(4, 101);
+    // Road at world (10, 20) = index 0; house at world (11, 21) = index 4.
+    write_walk_record(i.tiles, road, 10, 20, 0);
     i.cities.resize(1);
     i.cities[0] = sim::make_city(sim::CityNo{0}, sim::PlayerId{0}, sim::SimConfig{});
     auto& slots = i.cities[0]->index.lists[0].slots;
@@ -82,6 +86,8 @@ TEST_CASE("walk_cells: house instances retain rotation and water is explicitly s
     auto tables = *sim::synthetic_walk_tables();
     for (std::size_t r = 0; r < 4; ++r) {
         b.rotation = static_cast<std::uint8_t>(r);
+        // Write the per-tile walk record for the house at this rotation (F5 step 3(b)).
+        write_walk_record(i.tiles, t, 11, 21, b.rotation);
         tables.mapper[masks[r]] = static_cast<std::uint16_t>(100 + r);
         const auto record = sim::walk_record(i, *types, {11, 21});
         CHECK(record.supported);
@@ -96,11 +102,155 @@ TEST_CASE("walk_cells: house instances retain rotation and water is explicitly s
     const auto water = sim::walk_record(i, *types, {12, 22});
     CHECK(water.code == 2);
     CHECK(water.mask9 == 0); // OQ-200 fallback, no guessed threshold
-    i.cities.clear();
-    CHECK_FALSE(sim::walk_record(i, *types, {11, 21}).supported);
-    sim::WalkCells unsupported(i, *types, tables, {10, 20, 3, 3});
-    CHECK(unsupported.get({11, 21}).low == 0);
-    CHECK_FALSE(unsupported.complete());
+    // Rotation 3 is still stored: code 4, mask 292, and mapper[292] was set to 103.
+    // An untouched tile is mapper[0] = 0xfff with code 2 ({12, 22} above).
+    const auto kept = sim::walk_record(i, *types, {11, 21});
+    CHECK(kept.supported);
+    CHECK(kept.code == 4);
+    CHECK(kept.mask9 == 292);
+    sim::WalkCells cells(i, *types, tables, {10, 20, 3, 3});
+    CHECK(cells.get({11, 21}) == sim::WalkCell{103, 4});
+    CHECK(cells.complete());
+}
+TEST_CASE("walk_cells: footprint record rotates, overlays and resets") {
+    // 2x2, only the unrotated source subcell (sx=0, sy=0) blocked. w = h = 6.
+    // Rotation 0 samples that bit at output (dx=0, dy=0, u=0, v=0): mask 1.
+    // Rotation 1: sx = 5 - y, sy = x, so y = 5 and x = 0, which is
+    // (dx=0, dy=1, u=0, v=2), output bit 6, mask 64, on tile (0, 1).
+    // Rotation 2: sx = 5 - x, sy = 5 - y, so x = y = 5, tile (1, 1), bit 8, mask 256.
+    // Rotation 3: sx = y, sy = 5 - x, so y = 0 and x = 5, tile (1, 0), bit 2, mask 4.
+    // Empty HEAD: code 4 on every tile of the footprint. The other tiles stay 0.
+    sim::BuildingType scenery;
+    scenery.id = sim::TypeId{5001};
+    scenery.width = 2;
+    scenery.height = 2;
+    scenery.walk_mask = {1};
+    const std::uint16_t expect[4][4] = {
+        {1, 0, 0, 0},
+        {0, 0, 64, 0},
+        {0, 0, 0, 256},
+        {0, 4, 0, 0},
+    };
+    sim::TileLayer layer;
+    for (std::uint32_t r = 0; r < 4; ++r) {
+        REQUIRE(layer.reset(0, 0, 4, 4, 4));
+        sim::write_walk_record(layer, scenery, 0, 0, r);
+        for (std::uint32_t dy = 0; dy < 2; ++dy) {
+            for (std::uint32_t dx = 0; dx < 2; ++dx) {
+                const auto i =
+                    layer.index_of(static_cast<std::int32_t>(dx), static_cast<std::int32_t>(dy));
+                INFO("rotation " << r << " tile " << dx << "," << dy);
+                CHECK(layer.walk_code(i) == 4);
+                CHECK(layer.walk_mask(i) == expect[r][dy * 2 + dx]);
+            }
+        }
+        CHECK(layer.walk_code(layer.index_of(2, 0)) == 2);
+        CHECK(layer.walk_mask(layer.index_of(2, 0)) == 0);
+    }
+
+    // Flag 0x10 ORs. The walk code is 1, which does not have bit 0x10, so the
+    // OR is the HEAD flags word (AnnoWelt 0x1008218d) and not the code.
+    // Sampled mask of {2} at rotation 0, tile (0, 0), is bit u=1: mask 2.
+    // 1 | 2 = 3. The other three tiles of the 2x2 had mask 0 and become code 1.
+    sim::BuildingType overlay;
+    overlay.id = sim::TypeId{5003};
+    overlay.width = 2;
+    overlay.height = 2;
+    overlay.flags_word = 0x10;
+    overlay.walk_mask = {2};
+    overlay.head_raw.assign(56, 0);
+    overlay.head_raw[0x2f] = 1;
+    REQUIRE(layer.reset(0, 0, 4, 4, 4));
+    sim::write_walk_record(layer, scenery, 0, 0, 0);
+    sim::write_walk_record(layer, overlay, 0, 0, 0);
+    CHECK(layer.walk_code(0) == 1);
+    CHECK(layer.walk_mask(0) == 3);
+    CHECK(layer.walk_code(1) == 1);
+    CHECK(layer.walk_mask(1) == 0);
+    CHECK(layer.walk_code(4) == 1);
+    CHECK(layer.walk_mask(4) == 0);
+
+    // A code that itself has bit 0x10 (first 8, shape 4 -> 0x90) with flags_word
+    // 0 replaces. The old test of the walk code would have ORed this to 3.
+    sim::BuildingType coded;
+    coded.id = sim::TypeId{5004};
+    coded.width = 1;
+    coded.height = 1;
+    coded.walk_mask = {2};
+    coded.head_raw.assign(56, 0);
+    coded.head_raw[0x2f] = 8;
+    coded.head_raw[0x30] = 4;
+    sim::write_walk_record(layer, coded, 1, 0, 0);
+    CHECK(layer.walk_code(1) == 0x90);
+    CHECK(layer.walk_mask(1) == 2);
+
+    // A later object with the flag clear replaces its own footprint only.
+    sim::BuildingType later;
+    later.id = sim::TypeId{5005};
+    later.width = 1;
+    later.height = 1;
+    later.walk_mask = {4};
+    later.head_raw.assign(56, 0);
+    later.head_raw[0x2f] = 2;
+    sim::write_walk_record(layer, later, 0, 0, 0);
+    CHECK(layer.walk_code(0) == 2);
+    CHECK(layer.walk_mask(0) == 4);
+    CHECK(layer.walk_code(4) == 1);
+    CHECK(layer.walk_mask(4) == 0);
+
+    // A building placed after the scenery overwrites the tiles it covers, and
+    // remove_building resets that footprint to code 2, mask 0.
+    sim::BuildingType house;
+    house.id = sim::TypeId{5002};
+    house.prodtype = 97;
+    house.cls = sim::class_for_prodtype(97).value();
+    house.width = 1;
+    house.height = 1;
+    house.walk_mask = {4};
+    house.head_raw.assign(56, 0);
+    house.head_raw[0x2f] = 3;
+    sim::TypeRegistry::Builder builder;
+    builder.add(scenery).add(house);
+    auto built = builder.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    sim::ScenarioSpec spec = sim::synthetic::empty_scenario(1);
+    sim::ScenarioSpec::PlayerSpec player;
+    player.id = sim::PlayerId{0};
+    spec.players.push_back(player);
+    sim::ScenarioSpec::IslandSpec isle = sim::synthetic::plain_island(0, 0, 0, 4, 4);
+    isle.owner_runs = {{0, 16}};
+    isle.objects.push_back(sim::ScenarioSpec::TileObjectSpec{0, 5001, 0, 0});
+    sim::ScenarioSpec::CitySpec city = sim::synthetic::plain_city(0, 0);
+    sim::ScenarioSpec::BuildingSpec placed;
+    placed.type = sim::TypeId{5002};
+    placed.x = 0;
+    placed.y = 0;
+    city.buildings.push_back(placed);
+    isle.cities.push_back(std::move(city));
+    spec.islands.push_back(std::move(isle));
+    auto made = sim::World::create(spec, built.value());
+    REQUIRE_MESSAGE(made.ok(), (made.ok() ? std::string() : made.error()));
+    sim::World world = std::move(made).value();
+    const sim::Island& loaded_island = *world.islands()[0];
+    const auto at = [&](std::int32_t x, std::int32_t y) {
+        return loaded_island.tiles.index_of(x, y);
+    };
+    CHECK(loaded_island.tiles.walk_code(at(0, 0)) == 3);
+    CHECK(loaded_island.tiles.walk_mask(at(0, 0)) == 4);
+    CHECK(loaded_island.tiles.object(at(0, 0)) == 5002);
+    CHECK(loaded_island.tiles.walk_code(at(1, 0)) == 4);
+    CHECK(loaded_island.tiles.walk_mask(at(1, 0)) == 0);
+    CHECK(loaded_island.tiles.walk_code(at(0, 1)) == 4);
+    CHECK(loaded_island.tiles.walk_code(at(1, 1)) == 4);
+    CHECK(loaded_island.tiles.walk_code(at(2, 0)) == 2);
+    REQUIRE(loaded_island.cache.by_id.size() == 1);
+    const sim::BuildingKey key = loaded_island.cache.by_id.begin()->second;
+    REQUIRE(sim::WorldTestAccess::remove(world, key));
+    CHECK(loaded_island.tiles.walk_code(at(0, 0)) == 2);
+    CHECK(loaded_island.tiles.walk_mask(at(0, 0)) == 0);
+    CHECK(loaded_island.tiles.object(at(0, 0)) == 0);
+    CHECK(loaded_island.tiles.walk_code(at(1, 0)) == 4);
+    CHECK(loaded_island.tiles.walk_mask(at(1, 0)) == 0);
 }
 TEST_CASE("walk_cells: lazy clipping, chunk partitions, disc and scratch isolation") {
     auto i = island();
@@ -131,7 +281,7 @@ TEST_CASE("walk_cells: lazy clipping, chunk partitions, disc and scratch isolati
     sim::WalkCells bad(i, *types, *tables, {10, 20, 3, 3}, 0);
     CHECK(bad.get({10, 20}) == sim::WalkCell{});
 }
-TEST_CASE("walk_cells: tables validate without changing registry digest or stream") {
+TEST_CASE("walk_cells: table digest pins state save and load without changing registry digest") {
     sim::TypeRegistry::Builder a;
     a.figure_type({1, 1, 1, 0, 1});
     auto ta = a.build();
@@ -148,8 +298,13 @@ TEST_CASE("walk_cells: tables validate without changing registry digest or strea
     auto wb = sim::World::create(sim::ScenarioSpec{}, tb.value());
     REQUIRE(wa);
     REQUIRE(wb);
-    CHECK(wa.value().state_hash() == wb.value().state_hash());
-    CHECK(wa.value().save() == wb.value().save());
+    CHECK(sim::walk_tables_digest(*ta.value()->walk_tables()) !=
+          sim::walk_tables_digest(*tb.value()->walk_tables()));
+    CHECK(wa.value().state_hash() != wb.value().state_hash());
+    CHECK(wa.value().save() != wb.value().save());
+    auto mismatch = sim::World::load(wa.value().save(), tb.value());
+    CHECK_FALSE(mismatch);
+    CHECK(mismatch.error().find("walk-table digest differs") != std::string::npos);
     a.walk_tables({});
     auto missing = a.build();
     REQUIRE(missing);
@@ -201,6 +356,8 @@ TEST_CASE("walk_cells: original S01_07_01 road and house cells" * doctest::test_
                 if (i.tiles.object(index) == 2527) {
                     CHECK(cells.get(tile) == sim::WalkCell{0xfff, 0});
                     ++roads;
+                } else {
+                    static_cast<void>(cells.get(tile));
                 }
             }
         }
@@ -249,6 +406,7 @@ TEST_CASE("walk_cells: original S01_07_01 road and house cells" * doctest::test_
                 }
             }
         }
+        CHECK(cells.complete());
     }
     CHECK(roads > 0);
     CHECK(houses > 0);

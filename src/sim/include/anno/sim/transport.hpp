@@ -7,9 +7,8 @@
 // 0x1005ad10, the carrier 0x1005a530); B, wait and load (0x100551b0 / 0x100551f0);
 // C, walk home and hand the cargo to the home (0x10057ae0 / 0x10057bd0); then the
 // figure ends (the end path 0x1003af00). The choice of the source, its scores, the
-// reservations, the loads and the area are the original's; the search over the
-// island's tiles is a STAND-IN (the original's engine at world +0x6aa8 and what its
-// walking layers allow are not read: OQ-160, OQ-161) and the walk is integer-only
+// reservations, the loads, the area and the tile search are the original's decoded
+// rules; the finer sub-cell route/retry is not decoded. The walk is integer-only
 // (Q24.8 positions, the speed in 2^-24 tile per tick; OQ-162).
 //
 // The body reads the world through the SerialWorld and writes only its own figure
@@ -38,21 +37,6 @@ namespace anno::sim {
 inline constexpr std::uint32_t kJobMarketCart = 0x34;
 /// The job code of the workshop carrier (D 0x100680b0, docs/re/production.md §4.1).
 inline constexpr std::uint32_t kJobWorkshopCarrier = 0x33;
-
-/// The walking layer (FigureType::layer, LOGIC[0x10]) that the stand-in search keeps
-/// on the road net. A STAND-IN for the unread layer tables at 0x100d1140 (OQ-160): P,
-/// the one figure type with layer 3 is the market cart 220 (the cart needs roads,
-/// docs/re/production.md §5.2 and the tutorial series); every other layer walks open
-/// land (P: 287 types have layer 0, among them the carrier 203 and the native cart
-/// 390). Path to configurable: move it into SimConfig once the tables are read.
-inline constexpr std::uint32_t kRoadLayer = 3;
-
-/// How the stand-in search may walk (OQ-160): on the road net only, or on every tile
-/// that holds no building (roads included).
-enum class WalkRule : std::uint8_t { Roads, OpenLand };
-
-/// The rule of a walking layer (kRoadLayer -> Roads, every other -> OpenLand).
-[[nodiscard]] WalkRule walk_rule(std::uint32_t layer);
 
 /// Whether the transport body runs figures of this job: the market cart and the
 /// workshop carrier.
@@ -112,7 +96,7 @@ struct SearchArea {
                                           const Building& source, const City* source_city,
                                           GoodsId& goods);
 
-/// Step A's choice: the source building, its goods and the stand-in path to it.
+/// Step A's choice: the source building, its goods and the decoded tile path to it.
 struct SourceChoice {
     BuildingId building;
     GoodsId goods = 0;
@@ -120,18 +104,18 @@ struct SourceChoice {
 };
 
 /// A diagnostic tally of why a search ended, filled when `choose_source` is passed a
-/// non-null pointer (task T27, measurement only; not sim state, not hashed, not drawn —
-/// a pure classification of the one search). Exactly one of the four outcome counters
-/// is bumped per call that reaches the candidate stage; the T29 fields are secondary
-/// counts over the same call, so one call that lands on `unreached` can bump several.
+/// non-null pointer (task T27, measurement only; not sim state, not hashed, not drawn).
+/// Exactly one outcome counter is bumped per call that reaches the candidate stage.
 struct TransportStats {
     std::uint64_t no_candidate = 0; ///< (i) no building passed the filter
-    std::uint64_t unreached = 0;    ///< (ii) candidates, but the search reached no goal
+    std::uint64_t unreached = 0;    ///< (ii-a) candidates, search completed but path empty (goal reached, no route built)
+    std::uint64_t no_goal_reached = 0; ///< (ii-b) search completed but no goal cell was visited at all
     std::uint64_t low_score = 0;    ///< (iii) a goal was reached but no score beat the start
     std::uint64_t found = 0;        ///< (iv) a source was chosen
-    // T29 secondary counters: filled by every call that reaches the candidate stage
-    // (home_no_road, goal_no_road unconditionally; the others only when the outcome is
-    // `unreached`, so they explain the (ii) bucket).
+    /// (v) exact cells unavailable (the retained tile-only placement lost metadata).
+    std::uint64_t incomplete = 0;
+    // Historical T29 stand-in diagnostics. The decoded search no longer fills
+    // frontier/edge/corner/outside_disc; home/goal_no_road remain layout observations.
     /// Per blocked tile inside the search grid that is an 8-neighbour of a reached tile
     /// (unreached searches only): the type id of the tile's object (0 = no object), each
     /// tile counted once per search. T30 reads the top ids with `anno-dump anlagen`.
@@ -153,26 +137,29 @@ struct TransportStats {
     /// disc (candidates come from `area.square()` but only tiles inside the disc are
     /// walkable, T27 review). Counted once per search.
     std::uint64_t outside_disc = 0;
+    /// Starts whose position lies outside the search rectangle and are silently skipped
+    /// (T33.4 F1 diagnostic). Counted once per skipped start.
+    std::uint64_t start_outside_rect = 0;
 };
 
 /// Step A's choice for a cart of market `home` (D 0x1005ad10 with the callback
 /// 0x1005a900) or a carrier of workshop `home` (D 0x1005a530 with the callback
 /// 0x1005a400): nullopt when no candidate passes the filter or none is reached with a
 /// score above the start (0 for the cart, -1 for the carrier). `capacity_88` is the
-/// figure type's capacity (the carrier's early stop at 3/4 of it), `rule` its walk.
+/// figure type's capacity (the carrier's early stop at 3/4 of it), `layer` its decoded
+/// walking-table layer.
 /// `stats`, when non-null, is bumped in exactly one bucket by a call that reaches the
 /// candidate filter (TransportStats); a call whose island or city is gone bumps none.
 [[nodiscard]] std::optional<SourceChoice>
 choose_source(const SerialWorld& world, const TypeRegistry& types, std::uint32_t job,
               const Building& home, const BuildingType& home_type, CityRef city,
-              std::uint32_t capacity_88, WalkRule rule, TransportStats* stats = nullptr);
+              std::uint32_t capacity_88, std::uint32_t layer, TransportStats* stats = nullptr);
 
-/// The stand-in path from the world tile `from` to the nearest tile of the footprint
-/// of `home` inside its area (step C's walk, D 0x10057ae0 with the callback 0x10054240:
-/// the first goal reached); nullopt when there is none.
+/// The decoded tile path from the Q24.8 position `from` to the first reached entrance
+/// of `home` inside its area (step C's walk, D 0x10057ae0 / callback 0x10054240).
 [[nodiscard]] std::optional<std::vector<TileXY>>
 path_home(const Island& island, const TypeRegistry& types, const Building& home,
-          const BuildingType& home_type, TileXY from, WalkRule rule);
+          const BuildingType& home_type, FixedPos from, std::uint32_t layer);
 
 /// The length of a straight walk segment in 2^-24 tile: |d| on an axis, |d| · √2 on a
 /// diagonal (the segment builder 0x1002fde0 multiplies by 1.41421354f: 23726566 per

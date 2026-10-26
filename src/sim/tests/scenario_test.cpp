@@ -654,20 +654,26 @@ TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
                 }
                 ++*count;
                 static_cast<void>(choose_source(serial, *types, job, *b, *t, key.city,
-                                                ft->capacity_88, sim::walk_rule(ft->layer), stats));
+                                                ft->capacity_88, ft->layer, stats));
             }
         }
         std::cout << "transport snapshot: " << want << " tick " << tick << " markets " << markets
                   << " (cart: no_candidate " << cart.no_candidate << " unreached " << cart.unreached
-                  << " low_score " << cart.low_score << " found " << cart.found << " home_no_road "
-                  << cart.home_no_road << " goal_no_road " << cart.goal_no_road << " edge "
-                  << cart.edge << " corner " << cart.corner << " outside_disc " << cart.outside_disc
-                  << "); workshops " << workshops << " (carrier: no_candidate "
-                  << carrier.no_candidate << " unreached " << carrier.unreached << " low_score "
-                  << carrier.low_score << " found " << carrier.found << " home_no_road "
-                  << carrier.home_no_road << " goal_no_road " << carrier.goal_no_road << " edge "
-                  << carrier.edge << " corner " << carrier.corner << " outside_disc "
-                  << carrier.outside_disc << "); senders without a figure type " << no_figure_type
+                  << " no_goal_reached " << cart.no_goal_reached << " low_score " << cart.low_score
+                  << " found " << cart.found << " incomplete " << cart.incomplete
+                  << " home_no_road " << cart.home_no_road << " goal_no_road "
+                  << cart.goal_no_road << " edge " << cart.edge << " corner " << cart.corner
+                  << " outside_disc " << cart.outside_disc
+                  << " start_outside_rect " << cart.start_outside_rect << "); workshops "
+                  << workshops << " (carrier: no_candidate " << carrier.no_candidate
+                  << " unreached " << carrier.unreached << " no_goal_reached "
+                  << carrier.no_goal_reached << " low_score " << carrier.low_score
+                  << " found " << carrier.found << " incomplete " << carrier.incomplete
+                  << " home_no_road " << carrier.home_no_road << " goal_no_road "
+                  << carrier.goal_no_road << " edge " << carrier.edge << " corner "
+                  << carrier.corner << " outside_disc " << carrier.outside_disc
+                  << " start_outside_rect " << carrier.start_outside_rect
+                  << "); senders without a figure type " << no_figure_type
                   << "\n";
     };
     for (const char* want : {"0100Kampagne01/S01_07_01.sze", "0201SingleAddOn/single36.sze"}) {
@@ -700,10 +706,13 @@ TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
         world.set_transport_stats(nullptr);
         std::cout << "transport run: " << want << " ticks " << world.clock().tick()
                   << " (choose_source: no_candidate " << run_stats.no_candidate << " unreached "
-                  << run_stats.unreached << " low_score " << run_stats.low_score << " found "
-                  << run_stats.found << " home_no_road " << run_stats.home_no_road
+                  << run_stats.unreached << " no_goal_reached " << run_stats.no_goal_reached
+                  << " low_score " << run_stats.low_score << " found "
+                  << run_stats.found << " incomplete " << run_stats.incomplete << " home_no_road "
+                  << run_stats.home_no_road
                   << " goal_no_road " << run_stats.goal_no_road << " edge " << run_stats.edge
                   << " corner " << run_stats.corner << " outside_disc " << run_stats.outside_disc
+                  << " start_outside_rect " << run_stats.start_outside_rect
                   << ")\n";
         // Top-15 frontier type ids by count, with prodtype, flags_word (hex), walk_class.
         std::vector<std::pair<std::uint32_t, std::uint64_t>> top(run_stats.frontier.begin(),

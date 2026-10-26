@@ -39,8 +39,13 @@
 namespace anno::sim {
 
 /// Bytes one tile takes in the save and in the raw hash: 4 (object) + 1 (phase)
-/// + 4 (owner) + 4 (aux) (docs/sim/state.md §9.2).
-inline constexpr std::uint32_t kTileBytes = 13;
+/// + 4 (owner) + 4 (aux) + 2 (walk code) + 2 (walk mask) (docs/sim/state.md
+/// §9.2). The walk code/mask are the per-tile walk record (task T33.4 fix-up F5):
+/// every tile holds the code and the rotated 3x3 WALKMASK sample written by the
+/// original's placement writer (transport.md §3.4.13, AnnoWelt
+/// 0x100825af..0x100825d9); empty land resets to code 2 / mask 0
+/// (AnnoWelt 0x1008c80d..0x1008c821).
+inline constexpr std::uint32_t kTileBytes = 17;
 
 /// The static terrain of an island: shared, immutable, identified in the state
 /// by its digest (the blobs travel in the save frame, §9.5). STAND-IN (O-53,
@@ -126,6 +131,15 @@ class TileLayer {
     [[nodiscard]] std::uint32_t owner(std::uint64_t idx) const;
     /// The remaining record bits (flag 0x80 of byte +3, ...): O-11.
     [[nodiscard]] std::uint32_t aux(std::uint64_t idx) const;
+    /// Walk code of the tile (the record's byte 8..15, high u16 of the cell).
+    /// Reset value 2 (empty land); object tiles hold their type's code
+    /// (HEAD pair through AnnoGame 0x100091f0 and the rotation getter).
+    [[nodiscard]] std::uint16_t walk_code(std::uint64_t idx) const;
+    /// Walk mask of the tile (the rotated 3x3 WALKMASK sample, bits 16..24 of
+    /// the record's second dword, low 9 bits of the cell's low u16). Reset
+    /// value 0; object tiles hold their type's sampled mask
+    /// (AnnoWelt 0x1007b5e0).
+    [[nodiscard]] std::uint16_t walk_mask(std::uint64_t idx) const;
 
     // The writers mark the chunk of the tile dirty. An index beyond the layer is
     // defined behaviour, not a feature to rely on: the write is dropped and
@@ -136,6 +150,10 @@ class TileLayer {
     void set_phase(std::uint64_t idx, std::uint8_t v);
     void set_owner(std::uint64_t idx, std::uint32_t v);
     void set_aux(std::uint64_t idx, std::uint32_t v);
+    /// Set the walk code of the tile (task T33.4 fix-up F5).
+    void set_walk_code(std::uint64_t idx, std::uint16_t v);
+    /// Set the walk mask of the tile (task T33.4 fix-up F5).
+    void set_walk_mask(std::uint64_t idx, std::uint16_t v);
     /// The number of writes dropped for an index beyond the layer since the last
     /// reset(); 0 in every correct run. A diagnostic, not state: never hashed or
     /// saved.
@@ -147,8 +165,9 @@ class TileLayer {
     /// reads.
     [[nodiscard]] std::uint64_t chunk_of(std::uint64_t idx) const;
     /// The digest of one chunk: FNV-1a 64 over (object u32, phase u8, owner u32,
-    /// aux u32) of the chunk's in-bounds tiles, row-major (docs/sim/state.md
-    /// §9.2). 0 for a chunk beyond the layer. This const overload NEVER writes
+    /// aux u32, walk_code u16, walk_mask u16) of the chunk's in-bounds tiles,
+    /// row-major (docs/sim/state.md §9.2). 0 for a chunk beyond the layer. This
+    /// const overload NEVER writes
     /// the cache: a clean chunk returns its cached value, a dirty one is computed
     /// from the columns and not stored, so any number of threads may hash one
     /// const layer (World::state_hash is const and calls this one).
@@ -180,6 +199,10 @@ class TileLayer {
     std::vector<std::uint8_t> phase_;
     std::vector<std::uint32_t> owner_;
     std::vector<std::uint32_t> aux_;
+    /// Per-tile walk code (task T33.4 fix-up F5). Reset value 2.
+    std::vector<std::uint16_t> walk_code_;
+    /// Per-tile walk mask (task T33.4 fix-up F5). Reset value 0, 9 bits used.
+    std::vector<std::uint16_t> walk_mask_;
     // Derived, never saved: one digest and one dirty byte per chunk. Only
     // non-const members write them, so a const layer can be read by several
     // threads at once.

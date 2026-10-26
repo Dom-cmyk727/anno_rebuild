@@ -18,6 +18,7 @@
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
 #include <anno/sim/placement.hpp>
+#include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
 
 #include "scheduler_internal.hpp"
@@ -572,7 +573,14 @@ ApplyResult demolish(Env& env, const Command& c, const DemolishCmd& cmd) {
         } else if (!tile_has_building(is, idx) && is.tiles.object(idx) != 0) {
             // A tile object without a building: cleared (stand-in for island slot +0x7c,
             // O-5). A building of another city on this city's tile is left alone.
+            // Only this tile's walk record is reset. The object id lives on the
+            // item's origin tile, and the placement rotation is not stored, so
+            // the rest of a multi-tile footprint cannot be named from the state
+            // (OQ-201). A building takes the branch above and remove_building
+            // resets its whole footprint, which does store the rotation.
             is.tiles.set_object(idx, 0);
+            is.tiles.set_walk_code(idx, 2);
+            is.tiles.set_walk_mask(idx, 0);
         } else {
             r.status = Reject::NoBuildingAtTile;
         }

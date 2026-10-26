@@ -36,7 +36,7 @@ namespace anno::sim {
 
 /// The version of the replay-log frame (a format version, like kCommandWireVersion
 /// and kSaveVersion; a reader refuses a log written with another one).
-inline constexpr std::uint32_t kReplayLogVersion = 1;
+inline constexpr std::uint32_t kReplayLogVersion = 2;
 
 /// One recorded step of a session: an advance by `ms`, a block of commands applied
 /// in stream order, or a checkpoint carrying the tick and the state hash at that
@@ -61,6 +61,7 @@ struct ReplayLog {
     std::uint64_t config_digest = 0;
     std::uint64_t rules_digest = 0;
     std::uint64_t registry_digest = 0;
+    std::uint64_t walk_tables_digest = 0;
     std::uint64_t seams_digest = 0;
     std::uint32_t prng_timeline_version = 0;
     std::vector<std::string> prng_timeline_missing;

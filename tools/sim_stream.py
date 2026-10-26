@@ -52,6 +52,7 @@ added the figure types (u64 count 0 for the empty registry) and the types' entra
 points to the registry digest, the cart reservations to the payloads (the Workshop's
 `reserved` list after `activity`, the Farm's u32 after `activity`) and the stamp and the
 transport state to the figure record (the transcribed registries hold no figure).
+T33.4 (stream 112) added the immutable walk-table digest after the registry digest.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
@@ -72,7 +73,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 111
+STATE_HASH_VERSION = 112
 PRNG_TIMELINE_VERSION = 2
 
 
@@ -153,6 +154,29 @@ def registry_digest(names):
     for cls, tick, payload, gate in CLASSES:
         d += u8(cls) + u8(tick) + u8(payload) + u32(gate)
     d += u64(0)  # no figure types (T24)
+    return fnv(d)
+
+
+def synthetic_walk_tables_digest():
+    """walk_cells.cpp synthetic_walk_tables(), through walk_tables_digest()."""
+    mapper = [0] * 512
+    mapper[0] = 0xFFF
+    d = u32(0) + u32(0) + u64(len(mapper)) + b''.join(u16(x) for x in mapper)
+    layers = []
+    for layer_no in range(5):
+        layer = bytearray(0x400 + 8 * 8)
+        for code in (0, 2, 4):
+            layer[code] = 0 if layer_no == 3 and code == 2 else 0xFF
+            for direction in range(8):
+                layer[0x400 + 8 * code + direction] = 1
+        layers.append(bytes(layer))
+    d += u64(len(layers))
+    for layer in layers:
+        d += u64(len(layer)) + layer
+    d += u64(5)
+    for _ in range(5):
+        for k in range(9):
+            d += u16(1 << k) + u8(k % 3) + u8(k // 3)
     return fnv(d)
 
 
@@ -330,9 +354,10 @@ def terrain_digest(height, gfx, fertility):
 
 
 def tiles_digest(w, h, tiles):
-    """tiles: a list of (object, phase, owner, aux) in row-major order. The scope
-    `tiles`: u32 w, u32 h, u32 chunk_edge, then the digest of every chunk (row-major
-    chunk order) over its in-bounds tiles (object u32, phase u8, owner u32, aux u32)."""
+    """tiles: a list of (object, phase, owner, aux, walk_code, walk_mask) in
+    row-major order. The scope `tiles`: u32 w, u32 h, u32 chunk_edge, then the
+    digest of every chunk (row-major chunk order) over its in-bounds tiles
+    (object u32, phase u8, owner u32, aux u32, walk_code u16, walk_mask u16)."""
     cx = (w + CHUNK_EDGE - 1) // CHUNK_EDGE
     cy = (h + CHUNK_EDGE - 1) // CHUNK_EDGE
     d = u32(w) + u32(h) + u32(CHUNK_EDGE)
@@ -341,8 +366,8 @@ def tiles_digest(w, h, tiles):
             c = b''
             for y in range(ky * CHUNK_EDGE, min(h, (ky + 1) * CHUNK_EDGE)):
                 for x in range(kx * CHUNK_EDGE, min(w, (kx + 1) * CHUNK_EDGE)):
-                    o, ph, ow, ax = tiles[y * w + x]
-                    c += u32(o) + u8(ph) + u32(ow) + u32(ax)
+                    o, ph, ow, ax, wc, wm = tiles[y * w + x]
+                    c += u32(o) + u8(ph) + u32(ow) + u32(ax) + u16(wc) + u16(wm)
             d += u64(fnv(c))
     return fnv(d)
 
@@ -418,7 +443,7 @@ def building_bytes(serial, island, type_id, x, y, byte0e, tag, payload):
 def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, terrain=None,
                   cities=None, next_serial=1, sweep=(0, 0, 0, 0, 0), e300=0, objmgr=(0, 0),
                   ring=(0, 0)):
-    tiles = [[0, 0, NEUTRAL_OWNER, 0] for _ in range(w * h)]
+    tiles = [[0, 0, NEUTRAL_OWNER, 0, 2, 0] for _ in range(w * h)]
     at = 0
     for owner, length in owner_runs:
         for _ in range(length):
@@ -427,6 +452,16 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
     for index, obj, phase in objects:
         tiles[index][0] = obj
         tiles[index][1] = phase
+        # Ids 9001..9010 are make_synthetic_types: empty HEAD, 1x1, empty WALKMASK,
+        # flags_word 0. write_walk_record stores code 4 (HEAD bytes 0x2f and 0x30
+        # are both 0, the constructor default) and mask 0 on that one tile.
+        # create_building writes the same record on the same tile, so one store
+        # matches both. An id the registry does not hold is skipped, as the C++
+        # writer skips a null find. The S5 islands use the empty registry, so
+        # 1201/1202/1203/2001/2002 stay at the reset code 2, mask 0.
+        if obj in range(9001, 9011):
+            tiles[index][4] = 4
+            tiles[index][5] = 0
     td = terrain_digest(*terrain) if terrain else 0
     b = (u32(slot) + struct.pack('<i', x0) + struct.pack('<i', y0) + u32(w) + u32(h)
          + u32(climate) + u32(next_serial) + u64(td))
@@ -663,12 +698,13 @@ def timers_monopoly_digest(last_tick=0, entries=None):
 
 
 def state_hash(registry, cursor, ms, last_tick, players, full_tick=False, islands=None,
-               world=(0, 0), steps=0, step_ms=0, monopoly=None):
+               world=(0, 0), steps=0, step_ms=0, monopoly=None, walk_digest=0):
     """`steps` advances of `step_ms` reached `ms`; `monopoly` is the table its first
     advance wrote (None: all entries empty)."""
     header = (u32(STATE_HASH_VERSION) + u32(PRNG_TIMELINE_VERSION) + config_bytes()
               + rules_bytes(full_tick))
-    header += u64(registry) + u64(22) + b''.join(string(b'default') for _ in range(22))
+    header += (u64(registry) + u64(walk_digest) + u64(22)
+               + b''.join(string(b'default') for _ in range(22)))
     clock_rng = u64(ms) + u64(last_tick) + u64(2048) + u64(rng_table_digest()) + u32(cursor)
     islands = islands_digest({}) if islands is None else islands
     # The 7.5 minute accumulator holds every ms (below 450000 within these goldens: the
@@ -723,7 +759,8 @@ def values():
         monopoly = monopoly_entries([(2, [0])], {0: 1}, 0)
         out[key] = state_hash(SYNTHETIC_REGISTRY, 1234, 10 * steps, 10 * steps // 2,
                               players_digest(stamp, cursor, slots), islands=isl, world=(512, 512),
-                              steps=steps, step_ms=10, monopoly=monopoly)
+                              steps=steps, step_ms=10, monopoly=monopoly,
+                              walk_digest=synthetic_walk_tables_digest())
     return out
 
 

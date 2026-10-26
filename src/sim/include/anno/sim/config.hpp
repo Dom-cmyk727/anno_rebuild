@@ -88,13 +88,14 @@ inline constexpr std::uint32_t kWorldEdgeBound = 1U << 14;
 
 /// Sanity bound for the number of tiles of ONE island (TileLayer::reset refuses
 /// more, the world builder and the loader check it before sizing anything).
-/// Reason: a tile costs 13 bytes in the columns (docs/sim/state.md §9.2), so an
-/// island of w · h tiles with w and h up to kWorldEdgeBound (2^14) would ask for
-/// 3.5 GB from a single field of a hostile header. 2^26 tiles (8192 x 8192, about
-/// 870 MB of columns) is far above the originals (islands a few hundred tiles
-/// wide). It bounds one island, not the sum: what a whole scenario or save
-/// allocates is bounded by its input (the loader checks w · h · 13 against the
-/// bytes that remain) or, for World::create, by the world's own area, because the
+/// Reason: a tile costs 17 bytes in the columns (docs/sim/state.md §9.2: object,
+/// phase, owner, aux, walk_code, walk_mask), so an island of w · h tiles with w
+/// and h up to kWorldEdgeBound (2^14) would ask for 4.6 GB from a single field of
+/// a hostile header. 2^26 tiles (8192 x 8192, about 1140 MB of columns) is far
+/// above the originals (islands a few hundred tiles wide). It bounds one island,
+/// not the sum: what a whole scenario or save allocates is bounded by its input
+/// (the loader checks w · h · kTileBytes against the bytes that remain) or, for
+/// World::create, by the world's own area, because the
 /// rectangles are checked inside the world and disjoint BEFORE any tile is
 /// allocated (validate_island_rects). The host that builds worlds from untrusted
 /// scenarios must still expect `std::bad_alloc` on a host that has less memory

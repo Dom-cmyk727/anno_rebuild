@@ -1733,3 +1733,9 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What was read.** `0x100853b0..0x100854ca`. The new value is the low 4 bits of `cl` shifted by 25. `cl` comes from `[esp+0x20]` at `0x10085481`, and that stack slot was not traced to an argument. `0x10083a90` and the cell fill `0x1008ff70` do not read these bits.
 - **How to resolve:** the instruction that writes `[esp+0x20]` in `0x100853b0`, then a test of mask `0x1e000000`.
 
+
+## OQ-215: Three figure-class units with another layout (T30b.5, 2026-10-26)
+- **Status:** open. Found by running; harmless for the reader, which leaves them out.
+- **Area:** original harness / unit registry.
+- **What was seen.** In a fresh Citizen game in the Wine runner, registry slots 1, 2 and 9 hold units whose vtable's class getter (slot `+0x14`) is `0x10031da0`, the figure class `0x1500`. But their figure-type pointer (`+0x14`) does not read, x is 0, z is 0.96 and the rate is about 1e-37 (`docs/re/transport.md` §3.5). So they share the class getter and not the layout.
+- **How to resolve:** read their vtable values in the next Wine run (the reader's `vt` field before the type check), then find that vtable's installer and the factory code that builds it (`0x1009a110`).

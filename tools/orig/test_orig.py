@@ -205,6 +205,82 @@ class GameState(unittest.TestCase):
         got = gamestate.cities(mem, self.WELT)
         self.assertEqual([(c["addr"], c["capacity_t"], c["tools_t"]) for c in got], [("0x5000", 50.0, 48.0)])
 
+    # Figures (T30b.5): world 0x1000 -> registry 0x2000 -> vector 0x3000; units 0x4000 (figure)
+    # and 0x5000 (another class); vtables 0x6000 / 0x6100; figure type 0x7000.
+    def figure_world(self, units: list[int], n_entries: int | None = None) -> dict[int, bytes]:
+        world = world_obj(self.WELT + gamestate.WELT_WORLD_VT, 5000, 2500)
+        struct.pack_into("<I", world, gamestate.WORLD_REGISTRY, 0x2000)
+        reg = bytearray(gamestate.REG_VEC_END + 4)
+        n = len(units) if n_entries is None else n_entries
+        struct.pack_into("<II", reg, gamestate.REG_VEC_BEGIN, 0x3000, 0x3000 + n * gamestate.REG_ENTRY)
+        vec = bytearray(len(units) * gamestate.REG_ENTRY)
+        for k, unit in enumerate(units):
+            struct.pack_into("<I", vec, k * gamestate.REG_ENTRY + gamestate.REG_ENTRY_UNIT, unit)
+        return {0x1000: bytes(world), 0x2000: bytes(reg), 0x3000: bytes(vec)}
+
+    def figure_objects(self) -> dict[int, bytes]:
+        fig = bytearray(gamestate.FIG_BYTES)
+        struct.pack_into("<IHHH", fig, 0, 0x6000, 7, 0x208, 1234)
+        struct.pack_into("<I", fig, gamestate.FIG_TYPE, 0x7000)
+        struct.pack_into("<I", fig, gamestate.FIG_ISLAND, 0x8800)
+        struct.pack_into("<fff", fig, gamestate.FIG_POS, 101.75, 0.5, 205.25)
+        struct.pack_into("<fff", fig, gamestate.FIG_VEL, 0.016, 0.0, 0.0)
+        struct.pack_into("<ff", fig, gamestate.FIG_REMAIN, 0.5, 0.016)
+        struct.pack_into("<I", fig, gamestate.FIG_HOME, 0x9900)
+        other = bytearray(fig)
+        struct.pack_into("<I", other, 0, 0x6100)
+        vt = bytearray(gamestate.FIGURE_CLASS_SLOT + 4)
+        struct.pack_into("<I", vt, gamestate.FIGURE_CLASS_SLOT, self.WELT + gamestate.WELT_FIGURE_CLASS_FN)
+        vt_other = bytearray(vt)
+        struct.pack_into("<I", vt_other, gamestate.FIGURE_CLASS_SLOT, self.WELT + 0x12340)
+        ftype = bytearray(gamestate.FTYPE_LAYER + 1)
+        struct.pack_into("<II", ftype, gamestate.FTYPE_ID, 0x10000 | 220, 17)
+        ftype[gamestate.FTYPE_LAYER] = 3
+        return {0x4000: bytes(fig), 0x5000: bytes(other), 0x6000: bytes(vt), 0x6100: bytes(vt_other),
+                0x7000: bytes(ftype)}
+
+    def test_figures_empty_without_world_or_units(self):
+        self.assertEqual(gamestate.figures(FakeMem({}), self.WELT), [])
+        fresh = self.figure_world([0])                       # a fresh registry: one zero entry
+        self.assertEqual(gamestate.figures(FakeMem(fresh), self.WELT, 0x1000), [])
+
+    def test_figures_reads_a_figure_and_skips_other_classes(self):
+        objs = self.figure_objects()
+        untyped = bytearray(objs[0x4000])                     # figure class, unreadable type pointer
+        struct.pack_into("<I", untyped, gamestate.FIG_TYPE, 0xBAD000)
+        objs[0x4800] = bytes(untyped)
+        mem = FakeMem(self.figure_world([0, 0x4000, 0x5000, 0x4800]) | objs)
+        got = gamestate.figures(mem, self.WELT, 0x1000)
+        self.assertEqual(len(got), 1)
+        f = got[0]
+        self.assertEqual((f["entry"], f["slot"], f["flags"], f["stamp"]), (1, 7, 0x208, 1234))
+        self.assertEqual((f["type"], f["cls"], f["layer"]), (220, 17, 3))
+        self.assertEqual((f["tile"], f["island"], f["home"], f["job"]), ((101, 205), "0x8800", "0x9900", "0x0"))
+        self.assertAlmostEqual(f["x"], 101.75)
+        self.assertAlmostEqual(f["rate"], 0.016, places=6)
+
+    def test_figures_refuses_a_vector_longer_than_the_slot_range(self):
+        mem = FakeMem(self.figure_world([0x4000], n_entries=gamestate.REG_SLOTS_MAX + 1) | self.figure_objects())
+        self.assertEqual(gamestate.figures(mem, self.WELT, 0x1000), [])
+
+    def test_figures_offsets_match_the_doc(self):
+        with open(os.path.join(REPO, "docs", "re", "transport.md"), encoding="utf-8") as f:
+            doc = f.read()
+        sec = doc[doc.index("### 3.5 The figure table in memory"):]
+        for needle in ("world `+0x114` holds the unit registry", "from begin `+0x14` to end `+0x18`",
+                       "entry `+0xc` is the unit", "slot `+0x14` is `0x10031da0`",
+                       "| `+0x14` | the figure type", "| `+0x24`/`+0x28`/`+0x2c` | f32 position x, height, z",
+                       "| `+0x3c` / `+0x40` | f32 remaining amount / rate", "| `+0x78` | the home building",
+                       "`+4` u32 = the figure id", "`+8` u32 = the `BEWOHNTYPE` index",
+                       "the walking layer is byte `+0xff`"):
+            self.assertIn(needle, sec)
+        self.assertEqual((gamestate.WORLD_REGISTRY, gamestate.REG_VEC_BEGIN, gamestate.REG_VEC_END,
+                          gamestate.REG_ENTRY_UNIT, gamestate.WELT_FIGURE_CLASS_FN + 0x10000000),
+                         (0x114, 0x14, 0x18, 0xC, 0x10031DA0))
+        self.assertEqual((gamestate.FIG_TYPE, gamestate.FIG_POS, gamestate.FIG_REMAIN, gamestate.FIG_RATE,
+                          gamestate.FIG_HOME, gamestate.FTYPE_ID, gamestate.FTYPE_CLASS, gamestate.FTYPE_LAYER),
+                         (0x14, 0x24, 0x3C, 0x40, 0x78, 4, 8, 0xFF))
+
 
 class Camera(unittest.TestCase):
     FRAME = 0x2300000

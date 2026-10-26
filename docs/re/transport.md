@@ -1658,6 +1658,56 @@ The five virtual calls, and whether the target writes byte 2 or the second dword
 
 **OQ-201.** For a building, the footprint is found from any tile through byte 2, and each matching tile is either cleared as in the clear arm or rewritten from the type selected by the high nibble of `[island+0x18]`. It does not become the reset dword, and no saved pre-placement walk record was found in the range read. For a tile object that is not a building, `RemoveAt` returns without the island call. Which command mode writes that record is open at the addresses above.
 
-### 3.5 Step 7 is BLOCKED on a figure-position reader
+### 3.5 The figure table in memory, and the reader (T30b.5, orchestrator, 2026-10-26)
 
-Step 7 of T30 calls for building the playbook opening in the running original, reading the tile records of the opening's buildings and the market cart's position tick by tick, and checking each observed tile against the decoded rule. The Wine runner is set up (`docs/testing/original-wine.md`), the opening macro runs (`tools/orig/opening.py`), and `tools/orig/gamestate.py` reads world, players and city stocks. **It has no figure-position reader**, and no decoded figure object layout in memory (the sim's `figure.hpp` has one, but the ORIGINAL's figure layout is different). The reader is a task of its own: find the figure table off `world + ?`, read figure records (position, direction, tile), export them to the harness. **Done here instead:** step 7(a) and (b) are reduced to "memory-compare the five 7168-byte blocks at `0x100d1140` with the DLL image after a scenario loads" (no figure reader needed), left as a next-task sub-step of T30b with a mem-reader call plan. Step 7(c)/(d) wait on T30b's figure reader.
+*History:* T30 step 7 stopped here because the harness had no figure-position reader and the original's figure layout in memory was not written down (the sim's `figure.hpp` is our own layout). T30b.5 adds both. AnnoWelt unless a module is named; read with `tools/disasm.py` and a vtable-slot printer (scratch, not committed).
+
+**Where the figures are (D).**
+- **Registry pointer:** world `+0x114` holds the unit registry (`docs/re/annowelt.md` "Unit registry": created by the world's Init `0x100aa910` → `0x1009d820`, constructor `0x10098c80`, vtable `0x100ccd74`).
+- **Vector:** the registry's vector of 16-byte entries runs from begin `+0x14` to end `+0x18`.
+- **Entries:** entry `+0xc` is the unit, and a null unit is a free slot. A fresh registry holds one zero entry.
+- **Bound:** the original keeps a unit's slot as a u16 (`0x10035bf0` stores the word at unit `+4`) and reserves 65 536 slot bits (registry `+0x80`), so the reader refuses a longer vector.
+
+**Which units are figures (D).** The factory `0x1009a110` builds the carrier, worker and animal classes with the constructor `0x1003b7c0` (base `0x10035ce0`) and one of four vtables, `0x100c4950`, `0x100cb4d8`, `0x100cb1b0` and `0x100cb344` (annowelt.md). On all four:
+- slot `+0x14` is `0x10031da0` (`mov eax, 0x1500; ret`): the class id `0x1500`, the class the small farm's attach `0x1006fdb0` tests (`cmp eax, 0x1500` at `0x1006fdbf`);
+- slot `+0x78` is `0x100a3cb0` (`mov eax, [ecx + 0x14]`): the figure type;
+- slot `+0x40` is `0x10035be0` (the u16 at `+4`): the slot.
+
+The reader keeps a unit when its vtable's slot `+0x14` is `0x10031da0`. So a fifth vtable that shares the getter is kept too; a unit class with another getter is left out.
+
+**The figure's fields** (D unless marked):
+
+| Offset | Field | Evidence |
+|---|---|---|
+| `+0x04` | u16 registry slot | `0x10035bf0` / `0x10035be0` |
+| `+0x06` | u16 flags | slot `+0x8c(0)`; the constructor writes 8 (`0x10035d0e`) |
+| `+0x08` | u16 stamp (property 0x23) | `0x10035c70` / `0x10035ca0` |
+| `+0x14` | the figure type (AnnoGame object) | slot `+0x78` = `0x100a3cb0`; used at `0x1006fdd7` |
+| `+0x1c` | the figure's island | §3 "Area set-up" (`0x1003acc0`) |
+| `+0x20` | the job object | annowelt.md |
+| `+0x24`/`+0x28`/`+0x2c` | f32 position x, height, z | §4 (`0x100347b1`–`0x10034808`) |
+| `+0x30`/`+0x34`/`+0x38` | f32 velocity per time unit | §4 |
+| `+0x3c` / `+0x40` | f32 remaining amount / rate (0 = idle) | §4; annowelt.md |
+| `+0x78` | the home building | annowelt.md (`0x1003b730`) |
+
+The object is `0x7c` bytes (`new(0x7c)` in the factory).
+
+**The figure type (AnnoGame, vtable `0x10021d10`, D):**
+- `+4` u32 = the figure id; slot `+0x40` = `0x10010a50`, and the caller at `0x1006fded` keeps the low 16 bits;
+- `+8` u32 = the `BEWOHNTYPE` index (slot `+0x50` = `0x1000fad0`);
+- the walking layer is byte `+0xff` (slot `+0xac` = `0x1000faf0`, §3).
+
+**Tile.** The reader gives `tile = (trunc(x), trunc(z))`. That is how the search callback turns a node's two floats into a world tile (`__ftol`, `0x1005a914` / `0x1005a926`, then world slot `+0x170`). The live check below shows coherent world-tile positions.
+
+**Live check (Wine runner, 2026-10-26, a fresh Citizen game with the playbook opening, 179 samples every 0.25 s over 60 s, ticks 36 134–66 024; the samples stay in `cache/orig/t30b5-figures/`):**
+- Before a game exists the reader returns `[]`.
+- A fresh game already holds 2 579 figure-class units (mostly wild animals). After the opening it holds 4 492, of 55 figure types. Every type id is a `FigurenHeader.dat` id: 90 market carts (220) and 44 workshop carriers (203) among them.
+- **The layer byte `+0xff` equals `FigurenHeader` `LOGIC[0x10]` for all 55 types** (confirmed by running): the cart 220 is layer 3 and the carrier 203 layer 0, as §3 states.
+- Positions run 0…966 in both axes.
+- Of 794 657 consecutive sample pairs of the same figure, 676 520 kept their tile, 118 133 moved by one, and 4 by two (Chebyshev). The two-tile moves came from types 103 (twice, two figures together) and 383 (twice), most likely the slow pipe read between two samples. The task's "at most one tile between second N and N + 1" does not fit a cart, which walks 1.6 tiles per second (§4), hence the 0.25 s sampling.
+- **Three units at slots 1, 2 and 9 pass the class test but are not of this layout:** their type pointer does not read, x is 0 and the rate is about 1e-37. The reader leaves a unit out when its type does not read. Their vtables are open, and so is the class they belong to (OQ-215).
+
+**The reader:** `tools/orig/gamestate.py` `figures(mem, welt_base, world)`, exposed as `state("figures")` on both backends. It is read-only and not part of `state("all")`. One record per figure, in slot order, with these fields:
+- `entry`, `slot`, `type`, `cls`, `layer`, `flags`, `stamp`;
+- `x`, `height`, `z`, `tile`, `vel`, `remain`, `rate`;
+- the pointers `island`, `job`, `home` and `vt`.

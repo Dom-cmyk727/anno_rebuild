@@ -23,6 +23,15 @@ Offsets and their evidence (module RVAs relative to AnnoWelt.dll's load base):
   view object V  game HWND -> GetWindowLong(GWL_USERDATA) -> V, [V] = AnnoFrame+0x86428 / +0x8664c;
                  f32 -x +0x1608, f32 -z +0x1610 (world tiles), u8 rotation +0x15f0, u8 zoom group
                  +0x1604, f32 scale +0x15f4                    docs/re/view.md section 3.2-3.3
+  unit registry  world +0x114 -> registry; vector of 16-byte entries begin +0x14 / end +0x18, the
+                 unit at entry +0xc (null = free slot)         docs/re/annowelt.md "Unit registry"
+  figure         class getter slot +0x14 = AnnoWelt+0x31da0 (returns 0x1500) on the four figure
+                 vtables; u16 slot +4, u16 flags +6, u16 stamp +8, figure type +0x14 (slot +0x78),
+                 island +0x1c, job +0x20, f32 position x/height/z +0x24/+0x28/+0x2c, f32 velocity
+                 +0x30/+0x34/+0x38, f32 remaining +0x3c, f32 rate +0x40, home +0x78
+                                                               docs/re/transport.md section 3.5
+  figure type    AnnoGame vtable 0x10021d10: id +4 (slot +0x40), BEWOHNTYPE class +8 (slot +0x50),
+                 walking layer byte +0xff (slot +0xac)         docs/re/transport.md section 3.5
 Standard library only; import-safe under `python -I`.
 """
 
@@ -65,6 +74,33 @@ VIEW_SCALE = 0x15F4                   # f32, 1.0 / 0.5 / 0.25 for zoom groups 0 
 VIEW_ZOOM_GROUP = 0x1604              # u8
 VIEW_TRANS_X = 0x1608                 # f32, negated world tile x
 VIEW_TRANS_Z = 0x1610                 # f32, negated world tile z
+
+# Unit registry and figures (docs/re/annowelt.md "Unit registry"; docs/re/transport.md section 3.5).
+WORLD_REGISTRY = 0x114                # world -> unit registry pointer
+REG_VEC_BEGIN = 0x14                  # registry: begin / end of the vector of 16-byte entries
+REG_VEC_END = 0x18
+REG_ENTRY = 16
+REG_ENTRY_UNIT = 0xC                  # entry: the unit (null = free slot)
+# The original keeps a unit's slot as a u16 (0x10035bf0) and reserves 65 536 slot bits, so a
+# longer vector is not a registry: the bound filters bad reads, it is the original's own limit.
+REG_SLOTS_MAX = 1 << 16
+WELT_FIGURE_CLASS_FN = 0x31DA0        # AnnoWelt RVA of the class getter (mov eax, 0x1500; ret)
+FIGURE_CLASS_SLOT = 0x14              # vtable slot of the class getter
+FIG_SLOT = 0x04                       # u16 registry slot
+FIG_FLAGS = 0x06                      # u16 flags
+FIG_STAMP = 0x08                      # u16 stamp (property 0x23)
+FIG_TYPE = 0x14                       # figure type object (AnnoGame)
+FIG_ISLAND = 0x1C                     # island object
+FIG_JOB = 0x20                        # job object (0 = none)
+FIG_POS = 0x24                        # f32 x, height, z
+FIG_VEL = 0x30                        # f32 x, height, z per time unit
+FIG_REMAIN = 0x3C                     # f32 remaining amount of the current action
+FIG_RATE = 0x40                       # f32 rate (0 = idle)
+FIG_HOME = 0x78                       # home building (0 = none)
+FIG_BYTES = FIG_HOME + 4
+FTYPE_ID = 0x04                       # u32 figure id (callers use the low 16 bits)
+FTYPE_CLASS = 0x08                    # u32 BEWOHNTYPE index
+FTYPE_LAYER = 0xFF                    # u8 walking layer (LOGIC[0x10])
 
 # Plausibility bound for a city capacity read (in store units). A freed or unrelated object that
 # still carries the city vtable (review N1) shows zero or garbage here. The bound only filters
@@ -215,6 +251,68 @@ def cities(mem, welt_base: int) -> list[dict]:
         rec = city_fields(mem, obj)
         if rec:
             out.append(rec)
+    return out
+
+
+def _f32(b: bytes, off: int) -> float:
+    return struct.unpack_from("<f", b, off)[0]
+
+
+def figure_fields(mem, obj: int, welt_base: int) -> dict | None:
+    """One registered unit as a figure, or None when it is not of the figure class (its vtable's
+    class getter is not AnnoWelt+0x31da0), its figure type does not read, or a field is
+    unreadable. A fresh Citizen game holds three units at low slots that pass the class test but
+    whose type pointer does not read (x 0, rate ~1e-37: another layout; T30b.5 live run); they are
+    left out. `tile` truncates the x and z floats toward zero, as the original's __ftol does for a
+    search node (transport.md section 3.5)."""
+    b = mem.read(obj, FIG_BYTES)
+    if not b or len(b) != FIG_BYTES:
+        return None
+    vt = mem.read(u32(b, 0) + FIGURE_CLASS_SLOT, 4)
+    if not vt or u32(vt) != welt_base + WELT_FIGURE_CLASS_FN:
+        return None
+    ftype = u32(b, FIG_TYPE)
+    t = mem.read(ftype, FTYPE_LAYER + 1) if ftype else None
+    if not t or len(t) != FTYPE_LAYER + 1:
+        return None
+    x, h, z = (_f32(b, FIG_POS + 4 * k) for k in range(3))
+    return {"addr": hex(obj), "vt": hex(u32(b, 0) - welt_base),
+            "slot": u16(b, FIG_SLOT), "flags": u16(b, FIG_FLAGS), "stamp": u16(b, FIG_STAMP),
+            "type": u32(t, FTYPE_ID) & 0xFFFF, "cls": u32(t, FTYPE_CLASS), "layer": t[FTYPE_LAYER],
+            "island": hex(u32(b, FIG_ISLAND)), "job": hex(u32(b, FIG_JOB)),
+            "home": hex(u32(b, FIG_HOME)),
+            "x": x, "height": h, "z": z,
+            "tile": (int(x), int(z)) if all(abs(v) < 1e6 for v in (x, z)) else None,
+            "vel": [_f32(b, FIG_VEL + 4 * k) for k in range(3)],
+            "remain": _f32(b, FIG_REMAIN), "rate": _f32(b, FIG_RATE)}
+
+
+def figures(mem, welt_base: int, world: int | None = None) -> list[dict]:
+    """Every registered unit of the figure class, in slot order (read-only). An empty list when
+    no world is loaded, its registry is unreadable, or the vector is longer than the original's
+    65 536 slots."""
+    world = world if world is not None else find_world(mem, welt_base)
+    if world is None:
+        return []
+    rp = mem.read(world + WORLD_REGISTRY, 4)
+    reg = mem.read(u32(rp), REG_VEC_END + 4) if rp and u32(rp) else None
+    if not reg:
+        return []
+    begin, end = u32(reg, REG_VEC_BEGIN), u32(reg, REG_VEC_END)
+    n = (end - begin) // REG_ENTRY if end >= begin else 0
+    if not begin or n > REG_SLOTS_MAX:
+        return []
+    vec = mem.read(begin, n * REG_ENTRY) if n else b""
+    if vec is None:
+        return []
+    out = []
+    for k in range(n):
+        unit = u32(vec, k * REG_ENTRY + REG_ENTRY_UNIT)
+        if unit:
+            rec = figure_fields(mem, unit, welt_base)
+            if rec:
+                rec["entry"] = k
+                out.append(rec)
     return out
 
 

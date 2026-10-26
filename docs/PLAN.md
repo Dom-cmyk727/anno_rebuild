@@ -298,7 +298,7 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
   - the growth rule: world area and island links per player above 4;
   - the layout: extend the template, or build a new one;
   - how raw materials, ores, treasures, natives, pirates and Venetians scale.
-- [ ] **Spec** `docs/sim/world-scaling.md`, written before code:
+- [x] **Spec** `docs/sim/world-scaling.md`, written before code (T37, 2026-10-26). The enhanced endless game generates a world at every player count, edge(n) = round(B · √(n / 4)) with default B = 1280 (`docs/plan/lan-endless.md` D1); the "only above 4 players, extend the template" wording in the bullets below is the older M4.1 rule and does not apply to that mode:
   - The fairness measures, defined and measured on the nine original endless worlds at their own player counts. Per player: buildable land by climate and island size class; raw-material and ore kinds within reach; distance from the start to the nearest free islands and to the nearest rival.
   - The growth rule as configuration, with the defaults from OQ-100.
   - The generator: input (template world, player count, seed, parameters, version); output (world size, the links: position, size, climate, start regions); integer-only; uses the sim's seeded generator.

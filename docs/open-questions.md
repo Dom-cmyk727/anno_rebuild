@@ -1745,3 +1745,15 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Area:** original harness / transport.
 - **What was seen.** In the T30b.6 Wine run (`docs/re/transport.md` §3.7), every market cart (220) with a non-zero rate stood on its market's or warehouse's edge subcell with rate `0.001`. The start wait of §1.1 runs at `0.01` (`0x10035260`, `0x3c23d70a`). No cart left its building in five game minutes.
 - **How to resolve:** find a store of `0x3a83126f` (0.001f) into figure `+0x40` (the rate) among the figure's action setters (§4, `0x10035260` and its siblings). Then repeat the run with a road-connected producer (T30b.7) and see whether the cart walks after that action.
+
+## OQ-230: Which `COMP TYP` a pirate level selects (T37, 2026-10-26)
+- **Status:** open. The world generator does not set `TYP`. It only decides whether a kind-15 party exists (`docs/sim/world-scaling.md` §10).
+- **Area:** simulation / world generator / AI parameters.
+- **What was read.** The eight `0010SingleEndlos` presets that have a pirate each have one kind-15 player, no ship and no city. Their `COMP` strings were split on NUL. `KAMPFTYP` is 0 on all eight. `TYP` is 2 on `01_1024_easy_256` and `02_1024_easy_128` (the two whose description level is "not very aggressive"), and 3, 4, 4, 5, 6, 5 on `03`, `04`, `05`, `06`, `07`, `08` (all "aggressive"). `docs/re/annoscene.md` §11.6 reads `TYP` as a time-interval parameter of the computer class. Easyentry has no kind-15 player. The three addon files are authored parties, not this preset pattern (`endless02` has `TYP` 7; `endless03` has two pirates, `TYP` 2 and 6).
+- **How to resolve:** W7 / T38, whether the pirate class reads the same `TYP` parameter as the computer class, and which of 3, 4, 5, 6 the single "aggressive" level should use. Not a map-geometry question.
+
+## OQ-231: `endless02.sze` `ERZE` bytes are 205 with no links (T37, 2026-10-26)
+- **Status:** open. Not used by the generator. Recorded so 205 is not taken as a deposit budget.
+- **Area:** formats / scenarios.
+- **What was read.** `Scenes/0011SingleEndlosAddon/endless02.sze` has an empty `INSELLNK` list, so island selection returns at AnnoScene `0x10009562` before the ore distribution. The `ERZE` record's six consumed kind bytes are each 205 (0xCD), and the special-count byte is 0. `ROHSTOFF` and `SCHATZ` are 0. The file has 30 authored `INSEL5` islands, including one 400×400, and a `BERGWERK2` chunk of 30 records (6432 bytes). No eligible `Scenes/Islands` template is 400×400 (`tools/world_measure.py inventory`).
+- **How to resolve:** the `BERGWERK2` layout, which is OQ-024, read from this file's 30 records. Until that lands, 205 stays unread.

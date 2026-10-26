@@ -146,6 +146,8 @@ Each workstream has stages. A stage becomes one or more board tasks (`docs/orche
 - **Acceptance:** `GameSetup` round-trips through save and load and goes into the handshake digest. The presets table is complete, and every row has an evidence note or an owner decision.
 
 ### W2. The enhanced world generator (L) — R3, R4, R5, R6
+
+**Status (T37, 2026-10-26):** the spec is `docs/sim/world-scaling.md`. Measurements are `tools/world_measure.py`. The generator, the fairness tool and the property tests are not written. The owner has not decided the feel numbers in that spec's §15.
 1. **Spec `docs/sim/world-scaling.md`** (PLAN M4.1, rewritten for R3), before any code:
    - **Size:** the world scales with the player count (D1): world edge(n) = round(B · √(n / 4)), where B is the 4-player edge. B is configuration. Its default is 1280, larger than the original's 800 or 1024 (R3), to be checked by the fairness tool and the 4K frame. Five players give about 1431.
    - **The start modes (R15):**

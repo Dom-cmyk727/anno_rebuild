@@ -81,6 +81,21 @@ By the end of the project a game holds **up to 8 players**, in multiplayer and a
 - **Limits:** nothing hard-codes 4 or 8 (§0.1). The player count, the world edge (`WorldSettings`, bounded by `kWorldEdgeBound` = 16,384 tiles) and the island count are data. 8 is the project's target and the default maximum of the game setup, not an engine limit.
 - **Measured, not assumed (§0.3):** a fairness report per generated world, as a tool and in tests over many seeds. The sim tick and the frame on the largest 8-player world go into `docs/perf/README.md`.
 
+## 0.7 First product target: a testable LAN multiplayer endless game (owner request 2026-10-26)
+
+The owner's first target is a LAN multiplayer endless game. The plan, with its workstreams, checkpoints and decisions, is [`docs/plan/lan-endless.md`](plan/lan-endless.md).
+- **Scope:**
+  - up to 6 players on one LAN, empty seats filled by computer players;
+  - a generated world larger than the original's and scaled to the player count;
+  - island size and quantity options; pirates as an option;
+  - six fixed player colours to choose from;
+  - "last one remaining" as the only end condition for now;
+  - a custom multiplayer menu; up to 4K.
+- **Changes to the goals above** (to be confirmed by the owner, plan §7 D11):
+  - The playable game uses the **enhanced** rules only. The faithful rules stay in the code as the tested reference (`--rules faithful` for comparisons), but M5's "faithful mode selectable" no longer applies to the menu.
+  - §0.6's "up to 4 players a world is used as authored" does not apply to the enhanced endless game: its worlds are generated at every player count, under §0.6's own generator rules.
+  - 6 is this release's default maximum. §0.6's 8 stays the project's target. Nothing hard-codes either (§0.1).
+
 ## 1. Milestone M0 — Repository and tooling skeleton
 
 Goal: a workspace that builds on all targets with CI, before any game code.

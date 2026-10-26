@@ -35,6 +35,7 @@ if(ANNO_BUILD_TESTS)
     tests/sze_test.cpp
     tests/sze_corpus_test.cpp
     tests/text_zei_test.cpp
+    tests/result_test.cpp
   )
   target_link_libraries(anno_formats_tests PRIVATE anno_formats anno_test_support doctest::doctest)
   # Our own synthetic files (fixtures/synthetic, shared with the Python references).

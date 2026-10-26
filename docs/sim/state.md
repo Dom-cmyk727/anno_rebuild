@@ -1499,6 +1499,23 @@ returns the stored columns and `supported = true`. Off the island it still retur
 counts `incomplete` if that flag were false. OQ-200 and OQ-170 are unchanged.
 `kStateHashVersion` stays 112.
 
+**Differences to the original's tile record (for T33.5 stage 2).** The original record is 8 bytes (`docs/re/transport.md` §3.4.17). The sim's tile layer is not that record. A tile object's object id and phase are written only on the origin tile (`scenario.cpp` `build_island`). There is no column for byte 2, so the in-footprint dx, dy and rotation are not in the tile state; rotation is applied only while `write_walk_record` runs, from `TileObjectSpec::rotation`. Byte 4 of the original record (height) is not a tile column: the sim's heights are `Terrain::height` (the file HEIGHT bytes, one per tile, `state.md` §5.2, OQ-060). The original's corner grid is island `+0x14` with stride width+1 (OQ-200). Buildings do store the type id on every footprint tile (`create.cpp`). Walk code and walk mask are already per tile (T33.4) and are the original's second-dword code and 9-bit mask; they are not the rest of the 8 bytes. `walk_cells.cpp` reads and writes `walk_code` / `walk_mask` and does not call `object`, `set_object` or `set_phase`.
+
+Every `object(`, `set_object(` and `set_phase(` under `src/sim`, and the assumption each one makes:
+
+- `src/sim/include/anno/sim/island.hpp:127,149,150` — the declarations of the three accessors. The object id and the phase are columns of the tile layer.
+- `src/sim/src/island.cpp:93,127,135` — the definitions. They read or write that one tile's column and mark the chunk dirty. They do not walk a footprint.
+- `src/sim/src/scenario.cpp:199-200` — `build_island` writes the object id and the phase on `o.index` only. A tile object's id lives on one tile.
+- `src/sim/src/island_tick.cpp:49,61,64` — `grow_chunk` reads the visited tile's id and phase and writes the successor back on that same tile. Growth is per stored id, not per footprint, and these lines do not touch the walk columns.
+- `src/sim/src/apply.cpp:573,581` — `demolish`, when the tile has no building and the id is nonzero, sets the object id to 0 on the clicked tile only. The id on that one tile names the object.
+- `src/sim/src/create.cpp:232` — a new building writes its type id on every footprint tile.
+- `src/sim/src/create.cpp:284` — `remove_building` sets the object id to 0 on every footprint tile of the building.
+- `src/sim/src/create.cpp:458` — the building-footprint check treats object id 0 as a tile that carries no object. A building's footprint is expected to hold an id on every tile.
+- `src/sim/src/placement.cpp:50` — `stand_in_placement_rule` refuses a tile whose object id is nonzero. Occupancy is the id stored on the tile being tested, so a tile object's non-origin tiles look empty.
+- `src/sim/src/transport.cpp:441` — the road-neighbour statistic reads the object id of a neighbour tile and treats a nonzero id whose type has walk class 1 as a road. The id on that tile is the object.
+
+`src/sim/src/walk_cells.cpp` has none of the three calls. The test hits set or check the same columns and do not add a placement rule: `building_state_test.cpp:967,1041`; `command_build_test.cpp:580,582,1115,1120`; `container_probe_test.cpp:373,374,535,549,576`; `create_remove_test.cpp:330,495,501,535,537,998,999`; `island_state_test.cpp:115,117,119,121,169,170,656,760,816,817,822,823,914,1349,2201`; `sweeps_test.cpp:86`; `tile_hash_test.cpp:41,57,58,82,91,109,143,155,159,225,226,255,256,260,263,334,335,338,344,345,349,375,377,394,399,413,428,443,469,472,545,548,649,650,744,760`; `walk_cells_test.cpp:240,251,356`; `walk_search_test.cpp:75,417`; `world_state_test.cpp:401`. `transport_test.cpp:93,94,704` matched the helper name `tile_object(` and were skipped; that helper pushes a scenario item and does not touch the tile layer.
+
 ### 5.10 Players, script timers, monopoly, event 7.5 min
 ```
 players_tick(t):                                          // D 0x1009c4d0

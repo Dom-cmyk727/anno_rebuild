@@ -3,7 +3,7 @@
 // std::expected once the project moves to C++23.
 #pragma once
 
-#include <cassert>
+#include <cstdlib>
 #include <utility>
 #include <variant>
 
@@ -18,26 +18,33 @@ template <class T, class E> class Result {
     explicit operator bool() const { return ok(); }
 
     T& value() & {
-        assert(ok());
+        require(ok());
         return std::get<0>(v_);
     }
     const T& value() const& {
-        assert(ok());
+        require(ok());
         return std::get<0>(v_);
     }
     /// On a temporary, the value itself (moved out), not a reference: a
     /// range-for over `f().value()` would otherwise dangle (C++20 does not
     /// extend the temporary's lifetime there).
     T value() && {
-        assert(ok());
+        require(ok());
         return std::get<0>(std::move(v_));
     }
     const E& error() const {
-        assert(!ok());
+        require(!ok());
         return std::get<1>(v_);
     }
 
   private:
+    // NDEBUG removes assert, and std::get then throws std::bad_variant_access.
+    static void require(bool condition) {
+        if (!condition) [[unlikely]] {
+            std::abort();
+        }
+    }
+
     std::variant<T, E> v_;
 };
 

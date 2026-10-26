@@ -68,3 +68,7 @@ All integers little-endian unless stated otherwise; offsets relative to <payload
 ```
 
 Reminder: a field without P or D evidence is a hypothesis. Log it in `docs/open-questions.md` first, then reference the OQ number in the Evidence column.
+
+## Result contract
+
+A misuse of `anno::formats::Result::value()` or `error()` aborts, and it never throws.

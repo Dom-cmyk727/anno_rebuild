@@ -3359,3 +3359,34 @@ In `docs/sim/state.md` §5.9, the paragraph "Differences to the original's tile 
 
 - Left open: OQ-201 (non-building path, island `+0x18`), OQ-203, OQ-204, OQ-205. OQ-202 answered (a), with the island `+0x1c` store still unread.
 - Time spent / subagents used: continued in this session; no subagents.
+
+## T30b.5 — The figure-position reader — 2026-10-26 — status: DONE (run by the orchestrator)
+
+- **Branch:** `task/T30b-5-figure-reader` from local `main` at `edb1a3a`; worktree `E:\anno1503-worktrees\anno1503-T30b-5`. Local only (GitHub suspended, round ba).
+- **Layout (D, `docs/re/transport.md` §3.5):**
+  - the unit registry at world `+0x114`, its vector from `+0x14` to `+0x18`, 16-byte entries with the unit at `+0xc` (from `docs/re/annowelt.md`);
+  - the figure class, tested by the vtable's slot `+0x14` = `0x10031da0`. The four figure vtables `0x100c4950`, `0x100cb4d8`, `0x100cb1b0` and `0x100cb344` all hold `0x10031da0` / `0x100a3cb0` / `0x10035be0` at `+0x14` / `+0x78` / `+0x40` (re-read with a vtable-slot printer);
+  - the figure type at `+0x14` (slot `+0x78` = `0x100a3cb0`, used at `0x1006fdd7`); position f32 at `+0x24` / `+0x28` / `+0x2c`; rate `+0x40`; home `+0x78`;
+  - in AnnoGame (vtable `0x10021d10`): the type id at `+4` (slot `+0x40` = `0x10010a50`), the class at `+8` (`0x1000fad0`), the layer byte at `+0xff`.
+- **Reader:**
+  - `tools/orig/gamestate.py`: `figures(mem, welt_base, world)` and `figure_fields`;
+  - `state("figures")` on both backends (`tools/orig/wine/agent.py`, `tools/orig/backend.py`). It is not part of `"all"`.
+  - Read-only. The vector bound is the original's 65 536 slots.
+- **Tests (`tools/orig/test_orig.py`, synthetic):**
+  - no world, or a fresh registry → `[]`;
+  - a registry with a free entry, a figure, a unit of another class and a figure-class unit whose type does not read → one record, fields checked;
+  - a vector above 65 536 entries → `[]`;
+  - the constants against the text of §3.5.
+
+  Result: `python -I tools/orig/test_orig.py`: `Ran 60 tests … OK (skipped=3)`.
+- **Live check** (Wine runner, `:91`, session `t30b5-figures`; driver script in the orchestrator's scratch, outputs in `cache/orig/t30b5-figures/`, not in git). The first run's driver crashed in its own check code after the run; the second run was saved, and its analysis is below.
+  - (a) No game → `[]`.
+  - (b) 2 579 figure-class units at game start, 4 492 after the opening (14 placements, all checked by the opening macro). 55 figure types, every one a `FigurenHeader.dat` id. **The layer byte equals `LOGIC[0x10]` for all 55** (cart 220 = 3, carrier 203 = 0).
+  - (c) Sampled every 0.25 s for 60 s (179 samples): of 794 657 pairs, 676 520 moved by 0 tiles, 118 133 by 1 and 4 by 2. The task's "one tile per second" does not fit a cart at 1.6 tiles/s (§4), hence the 0.25 s sampling.
+  - Three units at slots 1, 2 and 9 pass the class test with another layout (no readable type). The reader now leaves them out; they are OQ-215.
+- **Gates:** n.a. for C++ (no `src/` change). The harness unit tests are above. `git diff --check` is clean.
+- **Acceptance:**
+  - (a) the reader: MET;
+  - (b) the three tests ran: MET, with (c) measured at 0.25 s for the reason above;
+  - (c) nothing of the original in git: MET.
+- **Next:** T30b.6, the cart's and the carrier's tiles against the walk record (the orchestrator).

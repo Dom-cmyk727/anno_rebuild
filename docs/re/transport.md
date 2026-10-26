@@ -83,10 +83,121 @@ Time-boxed RE of OQ-160 (`tools/disasm.py`, `tools/xref.py` on `game/app/AnnoWel
 - **(c)** What a tile *without* an object carries in those bits (water, mountain, open land) was not read here; it is the island loader's tile-record set-up (`docs/re/islands.md`, the tile record's second dword; T30 step 5). Rivers are not such tiles: they are `FLUESSE` tile objects (step 7, OQ-170).
 
 ## 4. Movement (d)
-- **Time**: the figure tick turns the ticks since the figure's stamp into time units: `u16(t − stamp) · 0.2f` (`0x1003476a`–`0x10034784`, constant `0x100c3270`). An action moves `time · rate` along its remaining amount `+0x3c` and the position by `time · velocity` (`+0x30`/`+0x34`/`+0x38` added to `+0x24`/`+0x28`/`+0x2c`); a longer step is cut at the remaining amount and the rest of the time goes on to the next action in the same call (`0x100347b1`–`0x10034808`). **D.**
-- **Waits**: rate 0.01 (`0x10035260`): a wait of `d` lasts `d / 0.01 / 0.2 = 500·d` ticks (the last walk's 15.0: 7500 ticks). **D.**
-- **Walking**: figure slot `+0xcc` = `0x10034df0` takes the path the searcher builds (engine `+0xa4` through `0x10005890`: a list of `{direction, count}` byte pairs, `count` in thirds of a tile, `0x100c1298` = 1/3) and makes one segment per pair (`0x1002fde0`): direction 0 = −x, 1 = −x+y, 2 = +y, 3 = +x+y, 4 = +x, 5 = +x−y, 6 = −y, 7 = −x−y (table `0x1002ff20`); the length is `count / 3` tiles, times `√2` (`0x100c3130` = 1.41421354f) on a diagonal; the rate is the type's speed (type slot `+0x60(1.0)` = AnnoGame `0x1000fb10`: `HEAD` f32 `[4]` at type `+0x10`); the velocity is the rate along the axis, `rate · 0.70710677f` per axis on a diagonal. A segment is walked one tile at a time (`0x100343c0`: lengths above 1.0 are split; the height axis `+0x28` follows the terrain, display only). **D.** P: the cart 220 walks 0.016 tiles per time unit = 0.0032 per tick = 1.6 tiles per second; the carrier 203 0.012 (1.2 tiles per second). Without a path (`+0xa4` gives no step) the walk counts as done when the target is within 1/6 tile (`0x10034e96`–`0x10034ecb`, `0x100c1294`). **D.**
-- **The integer design** (no float in state or in a hashed path; `docs/sim/state.md` §5.9): the figure's position stays `FixedPos` (Q24.8, D13); a walk is a list of tile waypoints; the progress along a segment is a `u32` in 2^-24 tile; the speed of a figure type is precomputed at load as `round(f32(HEAD[4]) · 0.2f · 2^24)` per tick (double precision, as the production floats, `production.md` §8); a diagonal segment is `23726566` (= round(1.41421354 · 2^24)) long. What the original does with x87 floats (the `0.2f` product rounded to f32, the per-axis velocities, the time carried between actions) is approximated: the trip time may differ from the original's by rounding (OQ-162, owner).
+
+T34 stage 1 (2026-10-27) re-read the walk. Addresses are AnnoWelt.dll unless named. An `fst` or `fstp dword` rounds to binary32 (nearest, ties to even, under the mode below). A value left on the x87 stack keeps the control word's precision. The earlier sentence that height `+0x28` is display only is withdrawn: the integrator writes it, and the piece installer writes the height velocity.
+
+### 4.1 Precision and rounding
+
+The walk functions contain no `fldcw`. An aligned sweep of the executable sections (an `fldcw` counts only when the previous decoded instruction ends on it) puts every AnnoWelt `fldcw` in the C runtime: `__ftol` at `0x100b5fa6` and `0x100b5fac`, the local word `0x133f` at `0x100b7412` and `0x100b7479`, the helpers that load a word only when it is not already `0x027f` (`0x100b760e`, `0x100b7647`, `0x100b76c6`, `0x100b76f0`, `0x100b7755`), and `_controlfp` at `0x100ba3ed` and `0x100be709`. None of those addresses lies in `0x10057ae0`–`0x10057bbe`, `0x10034df0`–`0x1003506a`, `0x1002fde0`–`0x1002ff1b`, `0x100343c0`–`0x10034710`, `0x10034c20`–`0x10034d64`, `0x10034760`–`0x100348a5`, or `0x10084e10`–`0x10085050`.
+
+**The word the game sets. D.** `1503Startup.exe` `0x004021b2` (a pointer to it sits in `.data` at `0x0040ec44`; no relative call targets it) calls `0x0040330d`, which pushes `0x30000` and `0x10000` and calls `0x00405871`. That calls `0x0040583c`: `fnstcw`, convert the current word to the abstract form (`0x004058b1`), keep the bits the mask leaves clear, insert the new bits the mask allows, convert back (`0x00405943`), and `fldcw` at `0x00405869`. The mask `0x30000` is the precision field only. Abstract `0x10000` becomes raw precision bits 10, which is a 53-bit mantissa. Rounding and the exception masks are not written. AnnoWelt has the same setter: `0x100b5f30` calls `0x100b6e12`, which pushes the same two constants and calls `0x100ba3f5` (`fldcw` at `0x100ba3ed`). `_fpreset` at `0x00405887` is `fninit` then `0x0040330d`. `fninit` loads the architectural word `0x037f` (64-bit mantissa, nearest, all six exceptions masked); the setter that follows would leave `0x027f`. No relative call and no relocation targets `0x00405887`. FileGame's copy at `0x10025c10` is the same `fninit` plus its setter, and no relative call targets `0x10025c10` either. The startup path that is actually referenced sets the mantissa to 53 bits and does not change the rounding mode.
+
+**DirectDraw does not pass an FPU flag. D for the flags; the system DLL is open (OQ-195).** AnnoDisplay imports only `DirectDrawCreateEx` (thunk `0x10026ae0`). Both call sites follow it with slot `+0x50` of the returned object, which on `IDirectDraw7` is `SetCooperativeLevel`. The GUID stored at `0x1003e538` is `IDirectDraw7`. At `0x1002c03e` the flags immediate is `8` (`DDSCL_NORMAL`) and the window is the 0 just stored at `0x1002c01d`. At `0x1000ca62` the windowed arm stores `8`, and at `0x1000caa0` the other arm stores `0x13` (`DDSCL_FULLSCREEN | DDSCL_EXCLUSIVE | DDSCL_ALLOWREBOOT`); `0x1000cafb` passes that dword. Neither value has bit `0x1000` (`DDSCL_FPUSETUP`) or bit `0x2000` (`DDSCL_FPUPRESERVE`). A raw search of the game modules found no pushed immediate that combines those two bits with a cooperative-level constant. The GUID at `0x1003e528` is `IDirect3D7`. Slot `+0x10` of the object `QueryInterface` returns (`0x1002c0fb`) is `CreateDevice`, called with three pointers and no numeric flag. What `DDRAW.dll` does when neither FPU bit is set is not in the game binary (OQ-195).
+
+**Conversions. D.** The integrator has no float-to-int. The only conversions in `0x10057ae0` are two calls to `__ftol` (`0x100b5f90`). It saves the control word (`0x100b5f97`), sets rounding to toward zero (`or ah, 0xc` at `0x100b5f9f`, precision unchanged), `fistp qword` (`0x100b5fa9`), restores the saved word (`0x100b5fac`), and returns the low 32 bits (`0x100b5faf`). After it returns, the walk is back on the ambient mode.
+
+**What that means for a result.** Under a 53-bit mantissa, the product of two binary32 values is exact, so an `fmul` of two memory floats followed by one `fstp dword` has a single rounding, and it matches a 24-bit multiply of the same values. A division that stays on the stack does not. The cut step's carried time and the piece installer's update of the running position are that case (§4.3, §4.5). The exponent range is the x87 range (15-bit exponent). Precision control does not narrow it. State fields are the binary32 bit patterns the `fstp dword` and the integer `mov` of a constant produce.
+
+### 4.2 Constants
+
+Read from the image as f32:
+
+| Address | Bits | Value |
+|---|---|---|
+| `0x100c3270` | `0x3e4ccccd` | 0.2 |
+| `0x100c1128` | `0x00000000` | 0.0 |
+| `0x100c3570`, `0x100c6dc0` | `0x3f800000` | 1.0 |
+| `0x100c1298` | `0x3eaaaaab` | 1/3 |
+| `0x100c1294` | `0x3e2aaaab` | 1/6 |
+| `0x100c3130` | `0x3fb504f3` | √2 (1.4142135381698608) |
+| `0x100c3134` | `0x3f3504f3` | 1/√2 (0.7071067690849304) |
+
+The figure's x is `+0x24`, its height is `+0x28`, its z is `+0x2c`. The earlier "y" in this section is z. Velocity is `+0x30`, `+0x34`, `+0x38`. Remaining amount is `+0x3c`, rate is `+0x40`, both f32. The route pointer is `+0x50`. A second position is `+0x58`, `+0x5c`, `+0x60`. The stamp is the u16 at `+8`.
+
+### 4.3 The figure tick (`0x10034760`, ret 4)
+
+The argument is the tick `t`. **D**, `0x10034760`–`0x100348a5`.
+
+1. `ax = u16(t) − u16[figure+8]`, zero-extended. `fild`, `fmul` the 0.2 at `0x100c3270`, `fstp dword` back to the stack slot. That store is a rounding point. Call the result `time`.
+2. `fcomp` of the rate `+0x40` with 0.0. `test ah, 0x40` is C3 (equal or unordered). If it is set, return, and do not write the stamp.
+3. The same test on `time`. If it compares equal or unordered to 0.0, the same return.
+4. `dist = time * rate`, both copies of `time` loaded from the slot, so `dist` is the 53-bit product and one copy of `time` stays on the stack. `fcom` with remaining `+0x3c`. `test ah, 0x41` is C0 or C3 (below, equal, or unordered). If `dist` is strictly greater than remaining, pop both and replace them with `time_used = remaining / rate` (the quotient stays on the stack; it is not stored) and `dist = remaining` (a second load of the same f32). Otherwise `time_used` is the stacked copy of `time` and `dist` is the product.
+5. For each axis, `fstp(position + time_used * velocity)` to `+0x24`, then `+0x28`, then `+0x2c`. Three rounding points. `time_used` stays on the stack.
+6. `fstp(remaining − dist)` to `+0x3c`. On the cut path `dist` is the second load of remaining, so the difference is exact 0. On the other path `dist` is the 53-bit product. Rounding point.
+7. `fstp(time − time_used)` back to the stack slot. On the uncut path both copies of `time` are the same value, so the difference is exact 0. On the cut path `time_used` is the unstored quotient, so the stored value is the binary32 rounding of `time − remaining / rate`. This is the rounding that a 24-bit mantissa would do differently. The leftover time is not recomputed from the stamp inside this call.
+8. `fcomp` of 0.0 against remaining. `test ah, 1` is C0, meaning 0.0 < remaining. If remaining is still positive, skip the dispatch. Otherwise, in order: flag bit 1 sets the rate's bits to 0, sets flag bit 2, and calls the registry slot already recorded for removal; else figure slot `+0x18c`; else if the route `+0x50` is not null, slot `+0x17c` (`0x100343c0`); else if the job `+0x20` is not null, slot `+0x178`; else slot `+0x174` (`0x1003af00`).
+9. Store `t` into the stamp. `fcomp` the rate with 0.0. If it does not compare equal or unordered, go back to step 3 with the leftover `time`. The stamp write does not rebuild `time`.
+
+### 4.4 Starting a walk (`0x10057ae0`, ret 8)
+
+**D**, `0x10057ae0`–`0x10057bbe`. The figure is the first stack argument (`0x10057ae5`).
+
+Figure slot `+0x1c` returns the island. The island's slot `+0x78` fills a rectangle on the stack. Figure slot `+0x54` (`0x100348f0`) is `fld [this+0x24]; ret`. That value is stored with `fstp dword` (a rounding point; a just-loaded f32 comes back as the same bits). Slot `+0x5c` (`0x10034910`) is `fld [this+0x2c]; ret`. Each coordinate is divided by the 1.0 at `0x100c6dc0` (exact) and passed to `__ftol`, so the tiles are the toward-zero truncations of x and of z. The figure is inside the rectangle when the rectangle's first u16 is less than or equal to the truncated x and the truncated x is less than that u16 plus the following byte, and the same for the second u16 against the truncated z. Inside, the function returns 1 and does not walk. Outside, it calls figure slot `+0xc8` (the searcher), figure slot `+0x78` with `(searcher, 0)`, the home's slot `+0xf8` (goals, §3), the searcher's slot `+0x7c` with the callback `0x10054240` and 0, then figure slot `+0xcc` with `(0, 4, searcher)`.
+
+### 4.5 The segment (`0x1002fde0`) and the path (`0x10034df0`)
+
+**What a segment is. D.** `0x1002fde0` (thiscall, the destination in `ecx`, ret `0xc`) writes six dwords:
+
+| Offset | Field |
+|---|---|
+| `+0x00` | vx |
+| `+0x04` | vy, always the integer 0 on these eight arms |
+| `+0x08` | vz |
+| `+0x0c` | length |
+| `+0x10` | rate, a bit copy of the speed argument |
+| `+0x14` | the integer 8 |
+
+The direction byte selects the arm through the table `0x1002ff20` (eight dwords, read as data):
+
+| Dir | Arm | vx | vz | Length |
+|---|---|---|---|---|
+| 0 | `0x1002fe02` | `fstp(−speed)` | 0, bit copy | the caller's f32, bit copy |
+| 1 | `0x1002fec6` | `fstp(−(k·speed))` | `fstp(+(k·speed))` | `fstp(√2 · length)` |
+| 2 | `0x1002fe59` | 0, bit copy | `+speed`, bit copy | bit copy |
+| 3 | `0x1002fe9d` | `fst(+(k·speed))` | `fstp` of the same value | `fstp(√2 · length)` |
+| 4 | `0x1002fe21` | `+speed`, bit copy | 0, bit copy | bit copy |
+| 5 | `0x1002fe72` | `fst(+(k·speed))` | `fstp(−(k·speed))` | `fstp(√2 · length)` |
+| 6 | `0x1002fe3a` | 0, bit copy | `fstp(−speed)` | bit copy |
+| 7 | `0x1002fef3` | `fst(−(k·speed))` | `fstp` of the same value | `fstp(√2 · length)` |
+
+`k` is the 1/√2 at `0x100c3134`. `√2` is `0x100c3130`. Each `fst` and `fstp` is its own rounding point. A bit copy does not round. Orthogonal length is the caller's already-rounded `count / 3`. A diagonal multiplies that f32 by √2 and rounds again. Negating with `fchs` before the store rounds the negation; nearest-even gives the negated bits of the positive store.
+
+**Where the pairs come from.** Searcher vtable `0x100c1424` slot `+0xa4` is `0x10005890` (the dword re-read). T30b.3e read that function as the float-to-tile dump and a byte-run encoder at `0x10005b0b`, and left the rules that turn cells into `{direction, count}` pairs open (OQ-161). This stage does not re-read it. The consumer is below.
+
+**Building the route. D**, `0x10034df0`–`0x1003506a` (this is figure slot `+0xcc` on every vtable that holds `0x10034df0`; the call from `0x10057bad` passes `(0, 4, searcher)`). If the searcher's slot `+0x84` returns 0, this function returns 0. It then calls the searcher's `+0x94`, `+0x98` (`0x10004bb0`) and `+0x9c` (`0x10010810`). The two `fstp dword` results sit at stack slots used by the distance test. Slot `+0xa4` is called with the pair buffer and returns the pair count in `eax`.
+
+If the count is not positive: `dx` and `dz` are the differences of figure `+0x24` / `+0x2c` and those two stored f32s. The compare is `dx² + dz²` against `(1.0 · 1/6)²` (`0x10034e96`–`0x10034ebe`). `test ah, 0x41; je` at `0x10034ec6` returns 0 when the squared distance is strictly greater. Otherwise the function returns 1. Equal counts as done.
+
+If the count is positive: `fstp` the f32 at `[esp+0x1c]` into figure `+0x24` and the f32 at `[esp+0x20]` into `+0x2c` (`0x10034ee2`, `0x10034ef0`). Those two slots are outputs of slot `+0xa4`; what they mean is part of OQ-161. The stores round. Flag bit `0x0800` is cleared (`and` with `0xf7ff`). The running position is then a bit copy of `+0x24`, `+0x28`, `+0x2c` into `+0x58`, `+0x5c`, `+0x60` (`0x10034f62`–`0x10034f73`). The speed is type slot `+0x60` with the bits `0x3f800000` pushed (`0x10034f7b`). AnnoGame `0x1000fb10` is `fld` of that argument, `fmul` the f32 at type `+0x10`, `ret 4`. The caller `fstp`s it (`0x10034f83`). Multiplying an f32 by 1.0 is exact at a 24-bit or wider mantissa, so the stored speed matches the type's f32 bits. P, from the earlier reading of `HEAD`: the cart 220 is 0.016 tiles per time unit and the carrier 203 is 0.012.
+
+For each pair, length is `fstp((1.0 · 1/3) · count)` with `fimul` of the count byte (`0x10034fb6`–`0x10034fd5`). That `fstp` is a rounding point. `0x1002fde0` is then called with the direction byte, that length, and the speed. The six dwords are copied to the route node at `+8`. After the loop, figure slot `+0xd8` is called with the route base plus 8 (`0x1003504f`). The route pointer `+0x50` was set to the route base before the loop (`0x10034f5f`) and the loop does not store it again.
+
+Slot `+0xd8` is `0x10034c20` on those same vtables (ret 4, `0x10034c20`–`0x10034d64`). It copies the six dwords onto the figure at `+0x30` and then sets `+0x3c` to the integer 0, which is the bits of +0.0. The copied length does not survive. It calls `0x10088b50` with the record's vx and vz and stores the byte at figure `+0xe`. The first tick therefore sees remaining 0 and a non-zero rate, takes the cut arm of §4.3 with a zero quotient, and dispatches slot `+0x17c` in the same call.
+
+Two stack dwords are set to the bits `0x3a83126f` before the path call (`0x10034e22`). The figure stores that follow read other slots. This stage did not follow `0x3a83126f` into figure state.
+
+### 4.6 Installing one piece (`0x100343c0`, the walk arm)
+
+**D**, `0x100343c0`–`0x10034706`. The route node is `[figure+0x50]`. The dword at node `+0x1c` is the segment's kind field (payload `+0x14`). `add ebx, 8` makes `ebx` the payload. The low nibble is compared with 7; 8, which is what `0x1002fde0` writes, takes the arm at `0x1003458c`. Other nibbles are other action kinds and are not the walk.
+
+The arm copies the six payload dwords onto the figure at `+0x30`. `0x10088b50` is called with vx and vz. `0x100342c0` is called twice and its results are compared; a difference takes the facing update through slot `+0x150`. Neither call is an `fldcw` site.
+
+`fld` 1.0, `fcomp` the payload length. `test ah, 1` means 1.0 < length.
+
+- Length greater than 1.0 (`0x10034684`): `fstp(length − 1.0)` back onto the payload (rounding point). Figure `+0x3c` is set to the bits of 1.0 by a `mov` of `0x100c3570`, not by a float store. The route pointer is not advanced. `time = fstp(1.0 / rate)` to a stack slot (rounding point).
+- Length less than or equal to 1.0 (`0x10034632`): `time = fstp(remaining / rate)`. Remaining is the length just copied. The route pointer becomes `[node+4]` (`0x10034677`).
+
+Both arms then call island slot `+0xa4` with the predicted end, `fstp(x + vx · time)` and `fstp(z + vz · time)`, two rounding points. The island vtable slot `+0xa4` is `0x10084e10` (ret 8). It leaves a height in st0. `vy = fstp((st0 − height) / time)` to `+0x34` (rounding point). The value `0x10084e10` returns is OQ-196. Trip time does not read it: time is the amount divided by the rate. The empty-tile arm of `0x10084e10` returns +0.0 (`fld` of a dword set to integer 0, `0x10084f6e` and `0x10085045`). The other arm returns at `0x10084f2d` with a value still on the stack.
+
+Both arms then fall into `0x100346e2`: `time = remaining / rate` again, this quotient not stored, and `fstp(running + time · velocity)` to `+0x58`, `+0x5c`, `+0x60`. Three more rounding points. This is a second position. The integrator's `+0x24` / `+0x28` / `+0x2c` is the one a tick advances. They are not the same update.
+
+### 4.7 Waits, and what the rebuild does today
+
+**Waits**, earlier reading, not re-opened: rate 0.01 (`0x10035260`). A wait of `d` lasts `d / 0.01 / 0.2 = 500·d` ticks. **D.**
+
+The rebuild's walk is still the integer one (`docs/sim/state.md` §5.9): `FixedPos` in Q24.8, tile waypoints, progress in units of 2^-24 tile, a speed precomputed as `round(f32 · 0.2 · 2^24)` per tick. Stage 1 does not change that code. The model that replaces it is ADR 0002. The owner's decision of 2026-10-24 stands: reproduce this x87 sequence, with the bit patterns in the state (OQ-162).
+
+Ranges read for the claims marked D above, each of them twice: `0x10034760`–`0x100348a5`, `0x10057ae0`–`0x10057bbe`, `0x10034df0`–`0x1003506a`, `0x1002fde0`–`0x1002ff3f` (the table at `0x1002ff20` as eight dwords, not as instructions), `0x100343c0`–`0x10034710`, `0x10034c20`–`0x10034d64`, `0x100348f0`–`0x10034913`, `0x100b5f90`–`0x100b5fb6`, `0x10084e10`–`0x10085050`, AnnoGame `0x1000fb10`–`0x1000fb17`, and the startup and DirectDraw ranges named in §4.1.
 
 ## 5. The figure's save record (e)
 `TASK`/`ENTRY` (`0x1005b7a0` / `0x1005b9a0`, job slots `+0x3c`/`+0x40`) was not read (no save compatibility in M3); the fields T24 needs are named above from the code that uses them.

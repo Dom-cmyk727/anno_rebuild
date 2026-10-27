@@ -5108,3 +5108,21 @@ Nothing pushed; stopping for review.
 **Still unresolved (unchanged):** the class of Y and its slots `+0xdc` and `+0x4c`; the writers of the record table `[X + 0x14]`; the callers of the type-12 slot `+0x98` and the source of `[target + 0]` / `[target + 0x5c]`; the bodies of `0x10057670`, `0x10057830`, `0x100579e0`; the function of `0x100af311`. No record-preservation, world-purity or live-index claim is made.
 
 **Acceptance:** all operand widths and null-path effects agree with the instructions (yes); call-site address correct (yes); provenance claims stop at the unread calls and writers (yes); OQ-341 status consistent (yes); the report separates the original claims from the corrections (yes). `git diff --check` clean. Nothing pushed; stopping for review.
+
+
+## T59 F2 — Zero-store conditions, class labels, conditional Y, unread links — 2026-10-27 — status: FINISHED (static RE/docs only)
+
+**Head:** continues `codex/T59-ai-word2-target-effects` from `ec6b28364f233db5f23bd558be8aa1171c9cc83a` (start check: clean, that head); the commit carrying this section is the new head. Main (`814d7c6`) was not merged or rebased in; the board was read in the main checkout. Only the T59 subsection of `docs/re/complogic.md` and this report changed (OQ-340 contains none of the corrected wording, so it is unchanged). The earlier T59 and T59 F1 sections are kept as written. No bytes or listings committed; no board or ADR edit. Prompt and board agree.
+
+**Re-read in this pass:** `AnnoWelt.dll` `0x100a3850..0x100a38b3` (including the stores at `0x100a385e`, `0x100a386d`, `0x100a38a7`), the vtable store `0x100a39c9`, the dwords at `+0x48` / `+0xa0` of vtables `0x100cc92c` and `0x100ccdd8`; `CompLogic.dll` `0x1003ee0a..0x1003ee7a`.
+
+**Items corrected**
+1. *`0x100a38a7`.* All three calls between `xor ebp, ebp` (`0x100a385a`) and the store are named: `0x100a386a` (`call [eax + 0x1c]`), `0x100a3889` (`call 0x100a2840`) and `0x100a38a4` (`call [edx + 0x5c]`); the stored value is 0 only if all three preserve `ebp`. "Only compared" is replaced by what `ebp` does: comparison operand at `0x100a385c`, `0x100a3882`, `0x100a389a` and store source at `0x100a386d`.
+2. *Class labels.* `0x100a3850` (stores vtable `0x100cc92c` at `0x100a385e`) is now "the destructor of the class whose vtable is `0x100cc92c`", and the function containing `0x100a3a6f` (stores the same vtable at `0x100a39c9`) "the initializer that stores vtable `0x100cc92c`". `0x100cc92c` and the world vtable `0x100ccdd8` share slot `+0xa0` (`0x100a34d0`) and differ at `+0x48` (`0x10001050` against `0x100aeeb0`); a base-class relation is plausible and unproved. The "world destructor" / "field-initializing function" labels are gone; the `[AI + 4]` receiver is described as the object that `0x1003d240` also uses and earlier sections call the world.
+3. *§3 Y.* "So Y = …" is now conditional: if X is the `0x100ccd74` object stored at `0x100aaa15` (the only non-null store the sweep found; other writers not excluded).
+4. *§9 unread links.* Added `0x10057830`, `0x100579e0` and the function containing `0x100af311`.
+5. *Optional nit (done).* The `[target + 0x68]` store is the null-tested pointer adjustment `AI + 4` (`0x1003ee6b`, `0x1003ee71`, `0x1003ee76`, store `0x1003ee7a`); the null arm is unreachable because `edi` is dereferenced at `0x1003ee14`; `+4` is no longer called a "world field". The §8 re-read list names this pass's ranges.
+
+**Acceptance, item by item:** zero-store conditions name every intervening call (yes); class labels match the vtable evidence (yes); the Y conclusion is conditional on the X writer (yes); the unread links are complete (yes); F1 history kept (yes); no other text changed (`git diff` is 5 lines of the subsection). `git diff --check` clean.
+
+**Open (unchanged):** Y's class and slots `+0xdc` / `+0x4c`; writers of `[X + 0x14]`; callers of slot `+0x98` and the source of `[target + 0]` / `[target + 0x5c]`; the bodies of `0x10057670`, `0x10057830`, `0x100579e0`; the function containing `0x100af311`; the base relation between vtables `0x100cc92c` and `0x100ccdd8`; OQ-341 unchanged and outside scope. Stopping for review.

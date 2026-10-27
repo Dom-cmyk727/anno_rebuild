@@ -1887,7 +1887,9 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** `0x1003d8e0`. A call through the stored pointer names the slot. If a start path other than `0x10002e4e` writes a different pointer, that caller is the next read after `0x10001232`.
 
 ## OQ-330: Which object world slot `+0x20` returns for key `0x1300` (T48, 2026-10-27)
-- **Status:** open. OQ-331..339 were not used.
+- **Status:** narrowed by round-bw review. OQ-331..339 were not used.
 - **Area:** simulation / AI.
 - **What was read.** `CompLogic.dll` `0x1002e3b4` loads the first dword of the `+0x4c` pointer. §10 shows that dword is the world. `0x1002e3c4` calls its slot `+0x20` with `0x1300` and a masked byte. The slot is `AnnoWelt.dll` `0x100aee00` (vtable `0x100ccdd8`, the dword at `0x100ccdf8`, `ret 8`). The `0x1300` case, `0x100aee1b`, returns `[world + byte*4 + 0x6530]`. `0x1002e3d6` calls slot `+0xf8` on that pointer with the masked byte. `0x1002e3f3` calls slot `+0xb4` on the `+0xf8` return with three arguments. The array element's vtable was not read. `0x100aae00` was not entered. The no-argument world slot `+0xb4` (`0x100a1740`) is a different call.
 - **How to resolve:** one store into the `[world + 0x6530]` array that names the element's vtable, then that vtable's slot `+0xf8` and the three-argument slot `+0xb4`. Not a guess from the slot number, and not `0x100a1740`.
+
+- **Review evidence (round bw):** reuse `state.md` island insertion evidence at `0x100a19a0`; the store is `0x100a19d4`. Fresh island vtable `0x100cac2c` slot `+0xf8` is `0x100863e0`, returning `[island + argument*4 + 0x38]`. City vtable `0x100c2f40` slot `+0xb4` is `0x10028fd0`, RemoveAt (`transport.md` §3.4.17). T49 must tie the AI lookup to the creation/publication paths and its arguments before claiming the complete call effect. The target search should not repeat already documented slot discovery.

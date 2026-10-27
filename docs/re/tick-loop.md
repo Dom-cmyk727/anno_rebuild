@@ -168,7 +168,7 @@ object located at `0x2726db0` (`AnnoWelt.dll` base `0x2530000`, vtable RVA `0xcc
 - What the world sub-systems at `+0x114`, `+0x118`, `+0x69c8` and island slots `+0x190`/`+0x194` are (figures, ships, trade?); survey them for x87 and PRNG use.
 - Whether savegames store the PRNG cursor (world property 8) and the 64-bit game-ms clock; links to OQ-020 and M2.1.
 - Meaning of all command types `0x68`–`0x97` (needed for the `sim` command catalogue); turn header byte layout beyond type, number and bitmap; the `+0xdea` (recording/replay?) mode in the turn builder.
-- Whether `CompLogic` (AI) runs on every client or only on the host in multiplayer, and whether its 35 slot-`0xb4` calls really hit the world PRNG.
+- Whether `CompLogic` (AI) runs on every client or only on the host: the entry runs inside world `Advance`, and both step functions call that slot with no host test (`docs/re/complogic.md` §4). A kind slot could still branch on the machine (OQ-271). The 35 slot-`+0xb4` calls remain OQ-241.
 - Unit of the render/animation tick (`annowelt.md`): **guess** that it is the world tick (2 ms).
 - The x87 precision-control word in effect during the update (default MSVC 53-bit; DirectDraw-only display, so probably unchanged — guess).
 - Resync path `0x100582e0`: confirm the reload from the agreed snapshot instruction by instruction, and the role of `+0x26c`.

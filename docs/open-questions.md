@@ -1783,10 +1783,10 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** the `BERGWERK2` layout, which is OQ-024, read from this file's 30 records. Until that lands, 205 stays unread.
 
 ## OQ-240: Which function calls the AI on each advance (T38, 2026-10-26)
-- **Status:** open. The load path and the factory are read (`docs/re/complogic.md` §2–§3). The per-tick call is not.
+- **Status:** answered (T40, 2026-10-26). `docs/re/complogic.md` §4. `Advance` `AnnoWelt.dll` `0x100ae0f5` calls holder slot `+0x24` (`0x1009c4d0`) with the world tick. That function calls manager slot `+0x14` once, when holder `+0x94` is not null. Holder slot `+0x18` (`0x1009c740`) only returns `+0x94`.
 - **Area:** simulation / AI.
-- **What was read.** `AnnoWelt.dll` `0x1009c630` stores the manager at holder `+0x94`. That function is slot `+0x14` of vtable `0x100cb858`. Holder slot 0 (`0x1009c330`) does not touch `+0x94` in its first 500 bytes. The property-44 getter `0x10020ab9` has one `.text` relocation, `0x10020c30`. `CompLogic.dll` does not import `AnnoFrame.dll` `0x100589a0`, so the AI does not call the command function by address.
-- **How to resolve:** holder slot `+0x18` at `0x1009c740`, then world advance `0x100ae040`, for a load of `+0x94` or of player `+0xc` followed by an indirect call.
+- **What was read.** `AnnoWelt.dll` `0x100ae040..0x100ae134`, `0x1009c4d0..0x1009c5e1`, `0x1009c740..0x1009c746`. `CompLogic.dll` `0x1003d880..0x1003d8d0`. The load path and the factory stay as T38 read them, with the property-9 gate added in §2.
+- **Left open:** what the nine kind slots write (OQ-271), the manager loop's return (OQ-270), and calls on the object at world `+0x110` (OQ-272).
 
 ## OQ-241: Whether CompLogic's slot `+0xb4` calls are the world PRNG (T38, 2026-10-26)
 - **Status:** open. The call sites and the arithmetic on the result are read (`docs/re/complogic.md` §5). The object is not.
@@ -1828,3 +1828,21 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What was checked.** `0x10084e10`–`0x10085050` (ret 8). The empty-tile arm, taken when the tile's object is null or its kind is `0xe1` or `0x141`, returns +0.0 (`fld` of a dword set to the integer 0 at `0x10084f6e`, returned at `0x10085045`). The other arm returns at `0x10084f2d` by adding a stack value to whatever slot `+0x9c` of the tile object left in st0. That arm also loads the table at `0x100e2d90` and calls `0x100b5390`. Neither return stores to binary32 before `ret`. Trip time does not read the result (`docs/re/transport.md` §4.6).
 - **Options:** (a) stage 2 takes the returned register as an input of the walk test and leaves the formula unread; (b) a later reading reduces the occupied-tile arm to operations, including whether st0 is still wider than binary32 at the `ret`.
 - **How to resolve:** (b) if a bit-exact height is required. (a) is enough for the arithmetic tests in ADR 0002.
+
+## OQ-270: What the call after the AI list walk does (T40, 2026-10-26)
+- **Status:** open.
+- **Area:** simulation / AI.
+- **What was read.** `CompLogic.dll` `0x1003d880..0x1003d8d0` walks the list, then pushes the world tick and calls `0x1003e1c0` with the manager as `this` (`0x1003d8c0..0x1003d8c7`). The repeat branch goes to the null test (`0x1003d8be` → `0x1003d893`), so the walk stops on a null link before the next division. `0x10003a20` returns the dword at `[esp+0x10]` (`0x10003ad2`). At entry that slot is the quotient. `0x10003940`, called from the kind loop, was not read.
+- **How to resolve:** `0x1003e1c0` for any world write. Then `0x10003940`, for a store into the caller's `[esp+0x10]`. Classic's matching call is `0x1003b660`.
+
+## OQ-271: Whether a kind slot calls a city command slot (T40, 2026-10-26)
+- **Status:** open. The entry chain does not (`docs/re/complogic.md` §4).
+- **Area:** simulation / AI / network.
+- **What was read.** `0x10003a20` calls nine slots of the player object for kinds 0..8. The computer targets are `0x10041860`, `0x10006790`, `0x1004a150`, `0x10006d30`, `0x100497c0`, `0x10043aa0`, `0x100444c0`, `0x10008080`, `0x10045bb0`. None of those functions was entered. `AnnoFrame.dll` `0x100589a0` and `0x10058e90`, and city slots `+0xa0`, `+0xac`, `+0xb4` and `+0xc0`, are not called by the functions §4 read to their `ret`.
+- **How to resolve:** `0x10041860`, then the other eight. A call of one of those city slots, or of the two `AnnoFrame` functions, is a command-path write. No such call means the AI changes the world by some other slot, which still has to be named.
+
+## OQ-272: What the AI calls on the object at world `+0x110` (T40, 2026-10-26)
+- **Status:** open.
+- **Area:** simulation / AI.
+- **What was read.** `AnnoWelt.dll` `0x1009d848` stores `Init`'s third argument at world `+0x110`. `AnnoScene.dll` `0x10002e4e..0x10002e67`, taken when scene byte `+0x164` is not 0, passes scene `+0x154`. `AnnoGame.dll` `0x10007663` stores vtable `0x100215a4` in the object `CreateAnnoServerInstance` builds for kind `0x101`. The loader passes that pointer as the second argument of manager slot `+0xc`, which stores it at manager `+0x24` (`CompLogic.dll` `0x1003df37`) and later passes it to `0x1003d8e0` (`0x1003df7d`). The tick `0x1003d880` does not load `+0x24`. Other `call [reg+0x50]` sites in `AnnoScene.dll` were not walked (`0x10001232` is the first).
+- **How to resolve:** `0x1003d8e0`. A call through the stored pointer names the slot. If a start path other than `0x10002e4e` writes a different pointer, that caller is the next read after `0x10001232`.

@@ -4224,3 +4224,24 @@ The test plan no longer says binary64 is wider than 53 bits. Binary64 has exactl
 4. Truth table corrected in the ADR and in `transport.md` §4; both `test ah, 1` sites named: MET.
 5. Both unordered cases are planned edge tests: MET.
 6. Report corrected; `git diff --check` on the fix commit was clean; ADR stays Proposed; stage 2 not started: MET. Not merged, not pushed.
+
+## T40 — The AI tick entry — 2026-10-26 — status: FINISHED
+- Branch: task/T40-ai-tick; worktree: E:\anno1503-worktrees\anno1503-T40. Start commit 631e206. Work commit 5aef806 (`docs/re/complogic.md` §2 and §4, `docs/re/tick-loop.md` one open bullet, `docs/open-questions.md` OQ-240 and OQ-270..OQ-272). The branch head is the commit that adds this section. Not merged, not pushed.
+- Built: docs only. No `src` change. Scratch under `cache\` is gitignored and not committed. Nothing from `game/` was copied.
+- Gates: docs only, so `git diff --check` on the work commit (clean, no output). No build, no ctest, no clang-format, no GCC, no agree.py, no asan. A heavy ctest was already running for another task; this task did not start a second one.
+- Evidence: static reading of the original DLLs, addresses only. Ranges that were read to a `ret` or to the cited instruction: `AnnoWelt.dll` `0x1009c630..0x1009c731`, `0x1009c4d0..0x1009c5e1`, `0x1009c740..0x1009c746`, `0x100ae040..0x100ae134` (the player-table call re-read at `0x100ae0e6..0x100ae0f5`), `0x100a340e..0x100a3416`, `0x1009cb3f`. `CompLogic.dll` `0x1003d880..0x1003d8d0`, `0x1003dc50..0x1003dd00` and the link tail `0x1003dd85..0x1003dd9f`, `0x10003a20..0x10003ad9`, jump table dwords `0x10003adc` (nine), computer vtable `0x10063550` slots `+0x28..+0x48`. `CompLogicClassic.dll` `0x1003ad90..0x1003ade0`. `AnnoFrame.dll` `0x1005b110..0x1005b177`, `0x1005fe10..0x1005ffc0` (the two `+0x84` calls at `0x1005ff12` and `0x1005ff9a`; no `+0x3c8` displacement in that span). World, holder and manager vtable slots were read as dwords, not as a listing.
+- Reviewers: none.
+- Left open / questions for the orchestrator or owner:
+  - OQ-240 answered. The per-advance caller is holder slot `+0x24` (`0x1009c4d0`), from `Advance` `0x100ae0f5`, calling manager slot `+0x14`.
+  - OQ-270: `0x1003e1c0` after the list walk, and whether `0x10003940` changes the dword `0x10003a20` returns. The walk itself retests the link (`0x1003d8be` → `0x1003d893`).
+  - OQ-271: the nine kind slots. Next `0x10041860`. None of the functions read to their `ret` calls `AnnoFrame.dll` `0x100589a0` / `0x10058e90` or a city slot `+0xa0` / `+0xac` / `+0xb4` / `+0xc0`. The port cannot yet treat the AI as emitting commands, and cannot yet wrap those slots, until this is read. The entry itself runs on every peer that runs `Advance`.
+  - OQ-272: calls on the object at world `+0x110`. Next `0x1003d8e0`. The one `Init` caller that was read (`AnnoScene.dll` `0x10002e4e`) passes scene `+0x154`. Other `call [reg+0x50]` sites were not walked; next `0x10001232`.
+  - OQ-241 was not this task.
+  - Section numbers: the task said "§2 (the wiring)". T38 had put the wiring in §4 and left §2 as the loader. The property-9 gate is in §2. The tick chain and the world-change table are in §4. §2 points at §4. The sections were not renumbered.
+- Acceptance:
+  1. Call chain of the tick, with addresses: MET. `Advance` `0x100ae0f5` → holder `+0x24` `0x1009c4d0` → manager `+0x14` `0x1003d880` → `0x10003a20` on each linked object whose byte `+0x1a89` is not 0. Once per `Advance`, not once per visited player. Property 9 gates the load (`0x1009c647..0x1009c656`), not this call. `0x1009c740` is only the getter of `+0x94`.
+  2. World-change table, every row D or open with the next address: MET. The rows in §4 for world slots `+0x74`, `+0x18`, `+0xa4`, `+0x30`, `+0x20`, `+0x58`, `+0x54` and holder slot `+8` are D and are not the command path. The nine kind slots are open at `0x10041860` (OQ-271). The call after the walk is open at `0x1003e1c0` (OQ-270). The object at world `+0x110` is open at `0x1003d8e0` (OQ-272).
+  3. Host, clock, frame, UI: MET, narrowed. Both step functions call `Advance` with no host test in the windows read, and the multiplayer step span has no `+0x3c8`. `CompLogic.dll` imports no clock. The argument is the world tick. A kind slot could still branch on the machine; that is OQ-271. How often `Advance` runs stays the caller's (frame step, or the turn loop).
+  4. Nothing of the original in git: MET. No listings, no bytes. `git status` shows no `game/` path.
+  5. This report: MET. Not merged.
+- Time spent / subagents used: inline, no subagents. No build and no test.

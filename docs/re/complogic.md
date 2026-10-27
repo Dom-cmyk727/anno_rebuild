@@ -1,6 +1,6 @@
 # `CompLogic.dll` and `CompLogicClassic.dll` — inventory
 
-**Status:** T38, 2026-10-26. Static reading only. No behaviour of a computer player is claimed here beyond the instructions that were read. Tags as in [`annowelt.md`](annowelt.md): **D** = read at the address, **likely** = the reading fits and was not proved, **open** = not read, with the next address.
+**Status:** T38, 2026-10-26, and T40, 2026-10-26 (the per-advance call, §2 and §4). Static reading only. No behaviour of a computer player is claimed here beyond the instructions that were read. Tags as in [`annowelt.md`](annowelt.md): **D** = read at the address, **likely** = the reading fits and was not proved, **open** = not read, with the next address.
 
 Image base of both modules is `0x10000000`. Tools: `tools/disasm.py`, `tools/xref.py --reloc`, `analysis/pe_symbols.json`, and a capstone sweep whose output stayed in the worktree `cache/` (not committed). The profile hand-over already written in [`annoscene.md`](annoscene.md) §11 is cited where this pass re-read the same address, and left standing where it was not re-walked.
 
@@ -28,16 +28,17 @@ Image base of both modules is `0x10000000`. Tools: `tools/disasm.py`, `tools/xre
 
 ## 2. Which module the game loads
 
-**D.** `AnnoWelt.dll` `0x1009c630` (re-read). The holder's field `+0x94` is returned immediately when it is already set. Otherwise:
+**D.** `AnnoWelt.dll` `0x1009c630` (re-read, `0x1009c630..0x1009c731`). The holder's field `+0x94` is returned immediately when it is already set (`0x1009c639..0x1009c641`). Otherwise:
 
-- property 14 is read by slot `+0x74` of the object at `+0x90`, with argument `0xe`, and bit 1 of the result is tested (`0x1009c67e`, `0x1009c681`);
+- property 9 of the object at `+0x90` is read by that object's slot `+0x74` with argument 9 (`0x1009c647..0x1009c651`). A non-zero result skips the load and returns the still-null `+0x94` (`0x1009c654..0x1009c656`). §4 shows `+0x90` is the world, and world slot `+0x74` is `0x100a3380`. Case 9 of its jump table (`0x100a3480` → `0x100a340e`) returns the byte at world `+0x69ce`. A non-zero byte is the "AI not loaded" gate. The tick in §4 does not test the byte again: once `+0x94` is set, this function returns it and ignores property 9.
+- when `+0x98` is null (`0x1009c65c..0x1009c664`; a set handle skips to the call of `+0x9c`), property 14 is read by slot `+0x74` of the same object, with argument `0xe`, and bit 1 of the result is tested (`0x1009c67e`, `0x1009c681`);
 - bit 1 set pushes `CompLogic.dll` (`0x100dcfa8`); bit 1 clear pushes `CompLogicClassic.dll` (`0x100dcf90`);
 - the module handle is stored at `+0x98` (`0x1009c6ac`);
 - `CompCreateInstance` (`0x100dcf7c`) is resolved and stored at `+0x9c` (`0x1009c6c9`);
 - that pointer is called with argument 0, and the result is stored at `+0x94` (`0x1009c6db`, `0x1009c6e6`);
 - the new object's slot `+0x18` is called with argument 3, then its slot `+0xc` with two pointers (`0x1009c703`, `0x1009c721`).
 
-The function is slot `+0x14` of the vtable at `0x100cb858` (the dword is at `0x100cb86c`). The only relocations of that vtable address are the stores at `0x1009cb41` and `0x1009cbc1`. **Open:** the class, which has no RTTI. Next: those two stores. It is not the world vtable (`0x100ccdd8`, [`transport.md`](transport.md)).
+The function is slot `+0x14` of the vtable at `0x100cb858` (the dword is at `0x100cb86c`). The holder constructor stores that vtable at `[holder+0]` (`0x1009cb3f`; the relocated immediate is `0x1009cb41`). A second relocation, `0x1009cbc1`, was not re-read. The class has no RTTI name. It is not the world vtable (`0x100ccdd8`, [`transport.md`](transport.md)). The per-advance use of this object is §4.
 
 `CompCreateInstance` in `CompLogic.dll` is the manager constructor `0x1003d590` (cited from §11.5; this pass did not re-enter it). In `CompLogicClassic.dll`, `0x100149d0` allocates `0x38` bytes, calls `0x1003aaa0`, and stores the result at the global `0x100672a4`. **D.**
 
@@ -83,13 +84,79 @@ The 36-index setter body was not re-walked. §11.5 and §11.6 stand for the case
 
 **D.** Creation is §2. The per-player object is created by the factory when the player reader calls manager slot `+0x1c` (§11.5, and the slot address was re-read). The script `SET_PROFILE` path calls slot `+4` on player property 44 (§11.7). Neither of those is the per-tick call.
 
-**Open (OQ-240).** No function was found that, once per advance, calls the manager at holder `+0x94` or the object at player `+0xc`. The property-44 getter `AnnoWelt.dll` `0x10020ab9` has a single `.text` relocation, `0x10020c30`, which is inside the property dispatcher rather than a tick. Holder slot 0 (`0x1009c330`) was read for 500 bytes and does not touch `+0x94`. Next: holder slot `+0x18` at `0x1009c740`, then world advance `0x100ae040`, looking for a load of `+0x94` or of player `+0xc` followed by an indirect call.
+**D (T40, answers OQ-240).** Holder slot `+0x18` (`0x1009c740`, the dword at `0x100cb870`) is only `mov eax, [ecx+0x94]; ret`. It does not call the AI. The per-advance call is the player-table tick, slot `+0x24` of the same vtable (`0x1009c4d0`, the dword at `0x100cb87c`).
 
-**D, the wiring that can already be decided.** `CompLogic.dll` has no import and no embedded address of `AnnoFrame.dll` `0x100589a0`, the function single-player and the turn dispatcher both use to apply a player command ([`tick-loop.md`](tick-loop.md) §4). It cannot put a command on the turn stream by calling that function. Anything it changes, it changes through a vtable slot of an object it was given (the two pointers passed to manager slot `+0xc` at load, and whatever slot 0 of the per-player object stored).
+`this` of each method below is the object whose first dword is the vtable the slot was taken from. The world constructor stores `0x100ccdd8` at `[world+0]` (`0x100af442`). The holder constructor stores `0x100cb858` at `[holder+0]` (`0x1009cb3f`). The manager constructor stores `0x100634f8` at `[manager+0]` (`0x1003d594`). The computer constructor stores `0x10063550` at `[object+0]` (`0x1003ecfb`).
 
-Call displacements of `+0xa0` and `+0xac` are common in the module (115 and 82 indirect calls). Those are the city slots the command function uses for build and place, and they are also ordinary field offsets. A displacement does not say which object is in the register. **Open:** whether any of those calls use a city object. Next: one call of `[reg+0xa0]` whose register is loaded from a known city pointer; the first such site has not been isolated.
+| step | call | this | slot | argument |
+|---|---|---|---|---|
+| 1 | `AnnoWelt.dll` `0x100ae0e6..0x100ae0f5`, inside `Advance` `0x100ae040..0x100ae134` | the object at world `+0x118` (the holder) | `+0x24` = `0x1009c4d0` | the new world tick at world `+0x10c` |
+| 2 | `0x1009c5b3..0x1009c5c0`, inside `0x1009c4d0..0x1009c5e1` | the manager at holder `+0x94`, and only when that pointer is not null | the manager's `+0x14` | the same tick |
+| 3 | `CompLogic.dll` `0x1003d8a1..0x1003d8ae`, inside manager `+0x14` = `0x1003d880..0x1003d8d0` | each object on the list at manager `+0x34`, linked by `+0x9ac`, whose byte `+0x1a89` is not 0 | a direct call, `0x10003a20`, not a slot | the signed quotient of the running value divided by the running count, then the tick |
 
-So the port is not "the AI already emits commands". W7 step 1.2's choice is still open in one direction and closed in the other: either every peer runs these calls, or the port wraps them as commands. The original does not wrap them.
+`Advance` has no test before step 1. `0x1009c4d0` calls step 2 once per entry, after the per-player visit loop and on both sides of the `+0x8a` ring (`0x1009c55c` jumps to `0x1009c59c`, which is the call, not past it). It does not test property 9, a multiplayer flag, or a host pointer. The visit loop (slot `+0x5c` of each player) is not the AI call.
+
+`CompLogicClassic.dll` manager slot `+0x14` is `0x1003ad90..0x1003ade0` (`ret 4`). The same list, the same division, and the same shape. The byte is `+0x1a19`, the direct call is `0x10002320`, and the call after the loop is `0x1003b660`. The repeat branch goes to the null test (`0x1003adce` → `0x1003ada3`).
+
+**D.** The list is every object the factory linked, not only types 12 and 13. On success the factory (`0x1003ddbd..0x1003ddda`) inserts the new object at the head: its `+0x9ac` becomes the old head, the old head's `+0x9a8` becomes the new object, manager `+0x34` becomes the new object, and manager `+0x1c` is incremented. The tick reads `+0x14` into the running value and `+0x1c` into the count, divides (signed), calls, subtracts the return value from the running value, and decrements the count. A zero byte skips the call and the subtraction, and still decrements the count and follows `+0x9ac`. The repeat (`0x1003d8be`) goes to the null test at `0x1003d893`, so a null link ends the walk before the next division. The walk also ends when the running value is `< 0`, including before the first node (`0x1003d88f`). After the walk, the tick pushes the same world tick and calls `0x1003e1c0` with the manager as `this` (`0x1003d8c0..0x1003d8c7`). That function was not entered (OQ-270).
+
+**D.** Slot 0 of the player object (`0x10005690..0x100056d9`, shared by the classes whose slot 0 is not the type-11 override) sets `+0x1a89` to 1 when its second argument is 1, and to 0 otherwise. The factory's call (`0x1003dd85..0x1003dd9f`) passes `[esp+0x2c]` as that argument. Seven prologue pushes put the factory's fourth argument at `+0x2c`, and the three pushes just above are taken back by `0x10021e20` (`ret 0xc` at `0x100223c7`, the first `ret` of a linear sweep from `0x10021e20`). The `COMP` reader pushes that fourth argument as the immediate 1 (`AnnoWelt.dll` `0x1001e423`). A new object therefore starts with `+0x1a89` = 1. `SUSPEND` clears the byte (§11.5).
+
+**D.** The running value is manager `+0x14`. Slot `+0x18` (`0x1003d7a0..0x1003d7b5`) stores `([manager+0x10] * argument)` divided by the `0x10624dd3` / `shr 5` reciprocal. The constructor stores `0x7a120` at `+0x10` (`0x1003d5c5`). The loader calls slot `+0x18` with 3 (`0x1009c701`) before anything else writes `+0x10`, so that call stores 3000. Other writers of `+0x10` were not searched.
+
+### What creation hands the manager
+
+**D.** `0x1009c190` stores its argument at holder `+0x90` (`0x1009c1a3`). Its only caller (`0x100aa982`, inside world `Init` `0x100aa910`) passes the world. World slot `+0x18` (`0x100a37d0`) returns `[world+0x110]`. The loader (`0x1009c706..0x1009c721`) calls manager slot `+0xc` with `(world, [world+0x110])`.
+
+**D.** Manager slot `+0xc` (`0x1003df00..0x1003e051`) stores those two at manager `+0x20` and `+0x24` (`0x1003df34`, `0x1003df37`) and returns at once if manager `+4` is already set. `[world+0x110]` is `Init`'s third argument, stored by `0x1009d848`. The caller read at `AnnoScene.dll` `0x10002e4e..0x10002e67` (taken when scene byte `+0x164` is not 0) passes scene `+0x154`. That field is the object `AnnoGame.dll` `CreateAnnoServerInstance` builds for kind `0x101` (`0x10013760` calls `0x10007650`, which stores vtable `0x100215a4` at `[object+0]`, `0x10007663`). Other `call [reg+0x50]` sites in `AnnoScene.dll` were not walked. Next, if a second caller passes a different pointer: `0x10001232`.
+
+The `COMP` reader does not call the factory until the manager exists (`0x1001e3e2..0x1001e434`): `[player+8]` slot `+0xa4`, then slot `+0x14` of the result. Player slot `+0x28` (`0x100209a0..0x100209c7`) stores its argument at player `+8` when that argument's slot `+0x14` returns `0xf00`. The holder stores the world there (`0x1009c407..0x1009c412`), and world slot `+0x14` (`0x100a37c0`) returns `0xf00`. World slot `+0xa4` (`0x100a34c0`) returns `[world+0x118]`, the holder, whose slot `+0x14` is the loader. So the first `COMP` record is what loads the AI, subject to property 9.
+
+### Slots the AI calls on those two objects
+
+Read in the loader, in manager slot `+0xc` (`0x1003df00..0x1003e051`), and in `0x1003dac0` (the factory calls it with the world, `0x1003ddac..0x1003ddb2`). None of these functions calls `AnnoFrame.dll` `0x100589a0` or `0x10058e90`. `CompLogic.dll` still imports only `KERNEL32.dll`. A city slot is not among the calls below.
+
+| site | object | slot | target | effect in the function that was read | command path |
+|---|---|---|---|---|---|
+| `0x1009c651` | world | `+0x74` (9) | `0x100a3380` | returns world `+0x69ce` | no |
+| `0x1009c67e` | world | `+0x74` (`0xe`) | `0x100a3380` | returns property 14 | no |
+| `0x1009c70e` | world | `+0x18` | `0x100a37d0` | returns `[world+0x110]` | no |
+| `0x1003df3e` | world | `+0xa4` | `0x100a34c0` | returns the holder | no |
+| `0x1003df48` | holder | `+8` | `0x1009c4b0` | returns `0x20` | no |
+| `0x1003df5f`, `0x1003dad2` | world | `+0x30` (`0x1300`) | `0x100a37e0` | returns `[world+0xf4]`, the island count; any other id returns 0 | no |
+| `0x1003df76`, `0x1003dafb` | world | `+0x20` (`0x1300`, index) | `0x100aee00` | returns `[world+index*4+0x6530]`; `0xc00`, `0x3800` and `0x3900` return other fields; anything else returns 0 | no |
+| `0x1003e008` | world | `+0x58` | `0x100a3920` | returns `[world+0xf0]` | no |
+| `0x1003e010` | world | `+0x54` | `0x100a3910` | returns `[world+0xec]` | no |
+
+`0x100aee00` was read through `0x100aee52`. The two getters `+0x54` and `+0x58` are the fields `0x1009d84e` and `0x1009d854` store from `Init`'s first and second arguments. No store in any function in this table writes the world.
+
+**Open (OQ-272).** The object at world `+0x110` (vtable `0x100215a4`) is saved at manager `+0x24`. `0x1003d880` does not load `+0x24`. Slot `+0xc` passes the pointer to `0x1003d8e0` (`0x1003df7d`). Next: `0x1003d8e0`.
+
+### What the per-advance call does
+
+**D.** `0x10003a20..0x10003ad9` clears byte `+0x1a84`, then takes records from `0x10003940` and, for a kind `0..8`, calls one slot of the player object (`cmp ecx, 8` / `ja` at `0x10003a4b`; jump table `0x10003adc`). Kind above 8 does not call. The slots on the computer vtable `0x10063550`:
+
+| kind | call | slot | computer target |
+|---|---|---|---|
+| 0 | `0x10003a5a` | `+0x38` | `0x10041860` |
+| 1 | `0x10003a64` | `+0x28` | `0x10006790` |
+| 2 | `0x10003a6e` | `+0x34` | `0x1004a150` |
+| 3 | `0x10003a78` | `+0x30` | `0x10006d30` |
+| 4 | `0x10003a82` | `+0x2c` | `0x100497c0` |
+| 5 | `0x10003a8c` | `+0x3c` | `0x10043aa0` |
+| 6 | `0x10003a96` | `+0x40` | `0x100444c0` |
+| 7 | `0x10003aa0` | `+0x44` | `0x10008080` |
+| 8 | `0x10003aaa` | `+0x48` | `0x10045bb0` |
+
+After the loop, if `[esp+0x14]` is not `> 0`, it calls `0x10003b00`. The value returned to the manager is loaded from `[esp+0x10]` (`0x10003ad2`). At entry that slot is the quotient. Whether `0x10003940` writes it was not read (OQ-270).
+
+**Open (OQ-271).** None of the nine targets was entered. City slots `+0xa0` (Build `0x100276a0`), `+0xac` (Place `0x100279a0`), `+0xb4` (RemoveAt `0x10028fd0`) and `+0xc0` (`0x1002c830`), and `AnnoFrame.dll` `0x100589a0` modes 2, 6, 7, 8 and 9 and `0x10058e90`, are not called by any function this section read to its `ret`. They can still be called inside a kind slot. Next: `0x10041860`, then the other eight targets.
+
+The port still cannot treat the original as already emitting turn commands: the entry does not call the command function. It also cannot yet be wrapped as commands, because the writes inside the nine slots are unread. What is settled is where the call sits: inside `Advance`, once per advance, on the manager, then on each linked object whose `+0x1a89` is set.
+
+### Host, clock, frame, UI
+
+**D.** Both step functions call world slot `+0x84` on the object at the net client's `+8`. Single-player `AnnoFrame.dll` `0x1005b110` reaches it at `0x1005b164..0x1005b16a` (`ecx` = `[esi+8]`, argument the piece in `ebx`). Multiplayer `0x1005fe10` reaches it at `0x1005ff08..0x1005ff12` and `0x1005ff8d..0x1005ff9a` (`edi` = `[esi+8]`, `ebp` = that object's vtable). Neither window tests a host or server pointer, and `0x1005fe10..0x1005ffc0` contains no `+0x3c8` displacement. The multiplayer function returns before those calls when byte `+0x6f4` is 0 (`0x1005fe6a..0x1005fe83`); that is the in-game flag already in [`tick-loop.md`](tick-loop.md), not a host test. `CompLogic.dll` imports no timer function (59 `KERNEL32` imports, none whose name is a clock). The argument the AI receives is the world tick. The functions read here do not read the frame timer, `GetTickCount`, or a UI field. How often `Advance` runs is the caller's: the frame step in single-player, the turn loop in multiplayer ([`tick-loop.md`](tick-loop.md) §2). A kind slot could still branch on the machine. That is the same unread range as OQ-271.
 
 ## 5. The world-PRNG slot
 
@@ -173,7 +240,7 @@ The behaviour areas in W7 (settling, building, growth, trade, military) are not 
 
 | id | what | start here |
 |---|---|---|
-| T-AI.2 | the per-tick entry, and whether world changes go through the command slots (OQ-240) | `AnnoWelt.dll` `0x1009c740`, then `0x100ae040` |
+| T-AI.2 | done for the entry (§4). The nine kind slots and the command-slot question remain OQ-271 | `0x10041860`, then the other eight targets in §4 |
 | T-AI.3 | the 43 draws: which object, which decision (OQ-241) | the table in §5, the 11 unmasked sites first |
 | T-AI.4 | the computer class. Settling, building, growth, trade and military are inside these 20 slots until a slot is read and moved out | `0x10041090` and the rest of the computer row in §6. Military already has `0x10043210` and `0x10004df0` from §11.6 |
 | T-AI.5 | pirates | `0x10053660`, then the 12 pirate slots. `0x10055a30` and `0x10054710` are the two already named |
@@ -186,9 +253,12 @@ Classic is not a separate behaviour task. It is the same factory with no type 17
 
 ## 8. Open
 
-- **OQ-240.** Which function calls the AI on each advance.
+- **OQ-240.** Answered in §4. `Advance` `0x100ae0f5` calls holder slot `+0x24` (`0x1009c4d0`), which calls manager slot `+0x14` once.
 - **OQ-241.** Whether each `call [reg+0xb4]` is the world PRNG, and what the 11 unmasked sites do.
-- The holder's class (`0x1009cb41`).
+- **OQ-270.** What `0x1003e1c0` does after the list walk, and whether `0x10003940` changes the dword `0x10003a20` returns (`0x10003ad2` loads `[esp+0x10]`). Next: `0x1003e1c0`, then `0x10003940`.
+- **OQ-271.** Whether any of the nine kind slots calls a city command slot or `AnnoFrame.dll` `0x100589a0` / `0x10058e90`. Next: `0x10041860`.
+- **OQ-272.** Calls on the object at world `+0x110` (vtable `0x100215a4`, stored at manager `+0x24`). Next: `0x1003d8e0`.
+- The holder's vtable is `0x100cb858` (§4). Its RTTI name was not read (`0x1009cb3f`).
 - Type 17's vtable (`0x10002880`).
 - The 32-slot interfaces (`0x100632e8`).
 - Which slot Classic dropped (`0x10060490` against `0x10063550`).

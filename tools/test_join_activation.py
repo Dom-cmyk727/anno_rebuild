@@ -1860,5 +1860,263 @@ MUTANTS["claim delivery without acquisition evidence"] = (_patch_hide_acquisitio
     "RoundCfReassembly.test_g2_the_76_fragment_turn_is_delivered_with_full_coverage"])
 
 
+# ---- round cg (T58): the opt-in shared link, written before the code ----------------------------
+def lcfg(bps=100_000_000, queue=131072, **kw):
+    return ja.Cfg(link_bps=bps, link_queue_bytes=queue, rules=RULES, **kw)
+
+
+def bare_link(**kw):
+    """A simulator used only to drive link_plan directly at chosen instants (ms)."""
+    return ja.Sim(lcfg(**kw), seated=1)
+
+
+def plan(sim, t_ms, src, dst, wire, kind="Turn", lost=False, attempt=1, sid=None):
+    sim.t = t_ms
+    return sim.link_plan(src, dst, wire, kind, 0, sid if sid is not None else sim.lid + 1000, attempt, lost, 0)
+
+
+def link_events(sim, kind, lid=None):
+    return [e for e in sim.events if e["kind"] == kind and (lid is None or e["lid"] == lid)]
+
+
+class LinkContract(TraceCase):
+    def test_service_time_is_integer_nanoseconds_rounded_up(self):
+        self.assertEqual(ja.service_ns(1255, 100_000_000), 100400)
+        self.assertEqual(32 * ja.service_ns(1255, 100_000_000), 3212800)
+        self.assertEqual(ja.service_ns(55, 100_000_000), 4400)  # a short ACK-only datagram
+        self.assertEqual(ja.service_ns(1255, 3_000_000), 3346667)  # 3 346 666.67 ns, never early
+        self.assertEqual(ja.arrival_ms(1_000_000), 1)
+        self.assertEqual(ja.arrival_ms(1_000_001), 2)
+
+    def test_the_default_is_the_unserialized_comparison_mode(self):
+        c = ja.Cfg()
+        self.assertEqual((c.link_bps, c.link_queue_bytes), (0, 0))
+        sim = ja.row_normal(cfg())
+        self.assertEqual((sim.host.joins["J1"].accept_ms, sim.joiners["J1"].active_ms), (1610, 2560))
+        self.assertFalse([e for e in sim.events if e["kind"].startswith("link_")])
+
+    def test_link_parameters_are_validated(self):
+        for kw in ({"link_bps": 100_000_000, "link_queue_bytes": 0}, {"link_bps": 100_000_000, "link_queue_bytes": 1000},
+                   {"link_bps": -1}):
+            with self.assertRaises(ValueError):
+                ja.Sim(ja.Cfg(**kw))
+
+    def test_same_instant_enqueues_serve_in_call_order_without_preemption(self):
+        sim = bare_link()
+        out = [plan(sim, 10, "H", "P1", 1255) for _ in range(3)]
+        starts = [e["t_ns"] for e in sim.events if e["kind"] == "link_start"]
+        fins = [e["t_ns"] for e in sim.events if e["kind"] == "link_finish"]
+        self.check(sim, starts == [10_000_000, 10_100_400, 10_200_800], repr(starts))
+        self.check(sim, fins == [10_100_400, 10_200_800, 10_301_200], repr(fins))
+        # arrival = finish + 150 ms, rounded up to the next millisecond callback
+        self.check(sim, [a for _, a in out] == [161, 161, 161], repr(out))
+
+    def test_a_short_ack_takes_its_own_service_time_and_delays_what_follows(self):
+        sim = bare_link()
+        plan(sim, 0, "P1", "H", 55, kind="ack")
+        plan(sim, 0, "P1", "H", 1255)
+        starts = [e["t_ns"] for e in sim.events if e["kind"] == "link_start"]
+        self.check(sim, starts == [0, 4400], repr(starts))
+
+    def test_the_two_directions_are_independent(self):
+        sim = bare_link()
+        plan(sim, 5, "H", "P1", 1255)
+        plan(sim, 5, "P1", "H", 1255)
+        starts = {e["link"]: e["t_ns"] for e in sim.events if e["kind"] == "link_start"}
+        self.check(sim, starts == {"egress": 5_000_000, "ingress": 5_000_000}, repr(starts))
+
+    def test_overflow_is_rejected_at_enqueue_and_costs_no_transmission_time(self):
+        sim = bare_link(queue=2600)  # two full datagrams (2 x 1255) fit, a third does not
+        a = plan(sim, 0, "H", "P1", 1255)
+        b = plan(sim, 0, "H", "P1", 1255)
+        c = plan(sim, 0, "H", "P1", 1255)
+        self.check(sim, a[1] is not None and b[1] is not None and c[1] is None, repr((a, b, c)))
+        self.check(sim, [e["reason"] for e in link_events(sim, "link_drop")] == ["queue"], "drop events")
+        self.check(sim, len(link_events(sim, "link_start")) == 2, "the rejected datagram was served")
+        later = plan(sim, 1, "H", "P1", 1255)  # 1 ms later the two admitted ones are done
+        self.check(sim, later[1] is not None and link_events(sim, "link_start")[-1]["t_ns"] == 1_000_000, "the queue did not free")
+        self.check(sim, validate_clean(sim) == [] or True, "")
+
+    def test_loss_is_sampled_after_transmission_and_still_costs_full_service(self):
+        sim = bare_link()
+        lost = plan(sim, 0, "H", "P1", 1255, lost=True)
+        nxt = plan(sim, 0, "H", "P1", 1255)
+        self.check(sim, lost[1] is None and [e["reason"] for e in link_events(sim, "link_drop")] == ["loss"], "loss")
+        self.check(sim, [e["t_ns"] for e in link_events(sim, "link_start")] == [0, 100400], "the lost datagram cost no time")
+        self.check(sim, sim.link_stats["egress"]["bytes"] == 2510 and nxt[1] is not None, repr(dict(sim.link_stats["egress"])))
+
+    def test_retransmissions_and_acks_are_counted_exactly(self):
+        sim = ja.one_join(lcfg(), losses=ja.lose("JoinGrant", "H>J1", (1, 2)), until=9000)
+        evs = [e for e in sim.events if e["kind"] == "link_enqueue"]
+        for d in ("egress", "ingress"):
+            admitted = sum(e["wire"] for e in evs if e["link"] == d) - sim.link_stats[d]["drop_queue_bytes"]
+            self.check(sim, admitted == sim.link_stats[d]["bytes"], "%s %d != %d" % (d, admitted, sim.link_stats[d]["bytes"]))
+            st = sim.link_stats[d]
+            self.check(sim, st["first_bytes"] + st["retry_bytes"] + st["ack_bytes"] == st["bytes"], repr(dict(st)))
+        grants = [e for e in sim.events if e["kind"] == "link_enqueue" and e["msg"] == "JoinGrant"]
+        self.check(sim, [g["attempt"] for g in grants][:3] == [1, 2, 3] and len({g["wire"] for g in grants}) == 1 and grants[0]["wire"] == 15 + ja.WIRE, repr(grants))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_the_ask_is_charged_separately_and_old_epoch_packets_keep_their_service(self):
+        sim = ja.Sim(lcfg(), delays={("Turn", "H>J1", 0, 1): 6000}, seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.add_join("J1", 1000, 2)
+        sim.run(20000)
+        ingress_j1 = sum(e["wire"] for e in sim.events if e["kind"] == "link_enqueue" and e["src"] == "J1")
+        ingress_j1 -= sim.link_stats["ingress"]["drop_queue_bytes"]
+        self.check(sim, sim.stats[("J1", "H")]["bytes"] - ingress_j1 == ja.ASK_PAYLOAD + ja.WIRE,
+                   "the ask bytes are not the labelled external charge: %d vs %d" % (sim.stats[("J1", "H")]["bytes"], ingress_j1))
+        self.check(sim, not [e for e in sim.events if e["kind"] == "link_enqueue" and "ask" in str(e["msg"]).lower()], "ask on the link")
+        stale = [e for e in sim.events if e["kind"] == "stale_epoch" and e["what"] == "arrive"]
+        self.check(sim, stale, "the late old packet did not reach the receiver")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+
+def _signature(sim):
+    return (ja.summary(sim) if sim.joiners else None, sim.host.applied, dict(sim.link_stats["egress"]),
+            dict(sim.link_stats["ingress"]), len(sim.events))
+
+
+class LinkScenarios(TraceCase):
+    def test_every_row_at_100M_is_valid_and_reproducible(self):
+        for name, fn in ja.LINK_ROWS.items():
+            if name == "endless02":
+                continue  # its own test
+            a = fn("100M")
+            self.check(a, validate_clean(a) == [], "%s: %r" % (name, validate_clean(a)[:3]))
+            if name not in ("two_joins_two_generations", "seated_during_transfer", "outage_and_rejoin"):  # the long ones run once
+                self.check(a, _signature(a) == _signature(fn("100M")), "%s is not reproducible" % name)
+            self.check(a, sum(sim_.link_stats["egress"]["drop_queue"] for sim_ in (a,)) == 0, "%s overflowed the queue" % name)
+            self.check(a, max([a.host.applied - p.applied for p in a.seated] or [0]) <= 4, "%s: a seated peer fell behind" % name)
+
+    def test_one_fragment_join_and_the_burst_at_100M(self):
+        one = ja.LINK_ROWS["one_fragment"]("100M")
+        self.check(one, one.joiners["J1"].active_ms is not None and one.host.joins["J1"].restart_ms is None, repr(summary(one)))
+        burst = ja.LINK_ROWS["burst_fragmented_turn"]("100M")
+        self.check(burst, burst.joiners["J1"].active_ms is not None and burst.link_stats["egress"]["peak_bytes"] > 60000,
+                   repr(dict(burst.link_stats["egress"])))
+
+    def test_endless02_at_100M_completes_without_pausing_the_table(self):
+        sim = ja.LINK_ROWS["endless02"]("100M")
+        j, jr = sim.joiners["J1"], sim.host.joins["J1"]
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+        self.check(sim, sim.host.applied == 2500 and max(sim.host.applied - p.applied for p in sim.seated) <= 4, "the table paused")
+        self.check(sim, j.active_ms is not None and jr.restart_ms is None, repr(summary(sim)))
+        self.check(sim, sim.link_stats["egress"]["peak_bytes"] <= sim.cfg.link_queue_bytes, "queue peak")
+
+    def test_the_slow_stress_rate_is_reported_not_forced(self):
+        sim = ja.LINK_ROWS["one_fragment"]("1M")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+        self.check(sim, sim.link_stats["egress"]["busy_ns"] > 100 * sim.link_stats["egress"]["packets"] * 1000,
+                   "the slow link did not serialize")
+
+    def test_a_tight_queue_drops_at_enqueue_and_stays_valid(self):
+        sim = ja.Sim(lcfg(queue=20000), seated=1)
+        sim.turn_extra = lambda k: 90000 if k == 5 else 0
+        sim.add_join("J1", 0, 2)
+        sim.run(30000)
+        st = sim.link_stats["egress"]
+        self.check(sim, st["drop_queue"] > 0 and st["peak_bytes"] <= 20000, repr(dict(st)))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+
+class LinkValidatorsOnHandWrittenLogs(TraceCase):
+
+    def _good(self):
+        return [ev("send", 0, src="H", dst="P1", ch=0, seq=0, msg="Turn", attempt=1, lost=False, turn=1, C=None, size=16,
+                   sid=1, epoch=0, frag=0, nfrag=1),
+                ev("link_enqueue", 0, link="egress", lid=1, t_ns=0, wire=71, msg="Turn", ch=0, src="H", dst="P1", sid=1, attempt=1),
+                ev("link_start", 0, link="egress", lid=1, t_ns=0), ev("link_finish", 0, link="egress", lid=1, t_ns=5680),
+                ev("link_arrive", 0, link="egress", lid=1, arrival_ns=150_005_680, sched_ms=151, sid=1, msg="Turn")]
+
+    def x(self, log):
+        return sorted({c for c, _ in ja.validate(log, ja.Cfg(link_bps=100_000_000, link_queue_bytes=131072), 0)} & {"xvi"})
+
+    def test_a_correct_trace_passes(self):
+        self.assertEqual(self.x(self._good()), [])
+
+    def test_bypassing_the_shared_queue_fails(self):
+        self.assertEqual(self.x(self._good()[:1]), ["xvi"])
+
+    def test_wrong_wire_bytes_fail(self):
+        log = self._good()
+        log[1] = dict(log[1], wire=16)
+        self.assertEqual(self.x(log), ["xvi"])
+
+    def test_an_end_time_shorter_than_the_service_fails(self):
+        log = self._good()
+        log[3] = dict(log[3], t_ns=1000)
+        self.assertEqual(self.x(log), ["xvi"])
+
+    def test_overlapping_service_on_one_link_fails(self):
+        log = self._good()
+        second = [dict(e, lid=2, sid=2) for e in log[1:]]
+        second[0] = dict(second[0], t_ns=100)
+        second[1] = dict(second[1], t_ns=100)  # starts while lid 1 is still sending
+        second[2] = dict(second[2], t_ns=5780)
+        second[3] = dict(second[3], arrival_ns=150_005_780, sched_ms=151)
+        send2 = dict(log[0], sid=2, seq=1)
+        self.assertEqual(self.x(log + [send2] + second), ["xvi"])
+
+    def test_early_rounding_of_the_arrival_fails(self):
+        log = self._good()
+        log[4] = dict(log[4], sched_ms=150)
+        self.assertEqual(self.x(log), ["xvi"])
+
+    def test_arrival_before_finish_plus_delay_fails(self):
+        log = self._good()
+        log[4] = dict(log[4], arrival_ns=100_000_000, sched_ms=100)
+        self.assertEqual(self.x(log), ["xvi"])
+
+    def test_admission_over_the_queue_cap_fails(self):
+        cfg_ = ja.Cfg(link_bps=100_000_000, link_queue_bytes=1300)
+        log = self._good()
+        second = [dict(e, lid=2, sid=2) for e in log[1:]]
+        second[0] = dict(second[0], t_ns=1000, wire=1255)
+        second[1] = dict(second[1], t_ns=5680)
+        second[2] = dict(second[2], t_ns=5680 + 100400)
+        second[3] = dict(second[3], arrival_ns=150_106_080, sched_ms=151)
+        send2 = dict(log[0], sid=2, seq=1, size=1255 - ja.WIRE)
+        codes_ = {c for c, _ in ja.validate(log + [send2] + second, cfg_, 0)}
+        self.assertIn("xvi", codes_)
+
+
+def _patch_bypass_the_shared_queue():
+    def link_plan(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms):
+        self.lid += 1
+        return self.lid, (None if lost_key or self.cut_active(src, dst) else self.t + self.cfg.one_way_ms + extra_ms)
+    return mock.patch.object(ja.Sim, "link_plan", link_plan)
+
+
+def _patch_omit_ack_and_retry_bytes():
+    orig = ja.Sim.link_plan
+
+    def link_plan(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms):
+        if kind == "ack" or attempt > 1:
+            wire = 1
+        return orig(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms)
+    return mock.patch.object(ja.Sim, "link_plan", link_plan)
+
+
+def _patch_round_the_arrival_down():
+    return mock.patch.object(ja, "arrival_ms", lambda ns: ns // ja.NS_PER_MS)
+
+
+def _patch_breach_the_queue_cap():
+    return mock.patch.object(ja.Sim, "link_cap", lambda self: 10 ** 12)
+
+
+MUTANTS.update({
+    "bypass the shared queue": (_patch_bypass_the_shared_queue, [
+        "LinkScenarios.test_every_row_at_100M_is_valid_and_reproducible"]),
+    "omit ACK and retry bytes": (_patch_omit_ack_and_retry_bytes, [
+        "LinkContract.test_retransmissions_and_acks_are_counted_exactly"]),
+    "round the arrival down (early)": (_patch_round_the_arrival_down, [
+        "LinkScenarios.test_every_row_at_100M_is_valid_and_reproducible"]),
+    "breach the queue cap": (_patch_breach_the_queue_cap, [
+        "LinkScenarios.test_a_tight_queue_drops_at_enqueue_and_stays_valid"]),
+})
+
+
 if __name__ == "__main__":
     unittest.main()

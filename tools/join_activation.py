@@ -49,6 +49,18 @@ EPOCH_BYTES = 2
 IP_UDP = 28
 WIRE = HEADER + EPOCH_BYTES + IP_UDP
 ASK_PAYLOAD = 5  # JoinAsk: epoch u16, seat u8, ask id u16
+NS_PER_MS = 10 ** 6
+
+
+def service_ns(wire, bps):
+    """Time a wire datagram occupies a link, in whole nanoseconds, rounded up (never early)."""
+    return max(1, -(-wire * 8 * 10 ** 9 // bps))
+
+
+def arrival_ms(arrival_ns):
+    """The millisecond callback of a datagram that reaches its receiver at arrival_ns: rounded up,
+    so no datagram is delivered before it arrived."""
+    return -(-arrival_ns // NS_PER_MS)
 FRAGMENT_HEAD = 12
 
 REASON_SEAT_BUSY = 9
@@ -86,6 +98,11 @@ class Cfg:
     # is the smoothed ACK round trip of the host-to-joiner pair; rtt_initial_ms stands in
     # until the first ACK sample (the JoinGrant's) arrives.
     rtt_initial_ms: int = 1000
+    # T58 (opt-in): an ASSUMED full-duplex bottleneck at the host, not a measured LAN. One egress
+    # serializer carries every host-to-peer datagram, one independent ingress serializer every
+    # peer-to-host datagram. link_bps 0 keeps the un-serialized comparison mode (the default).
+    link_bps: int = 0
+    link_queue_bytes: int = 0  # finite wire bytes admitted and not yet fully transmitted, per direction
     select_margin_ms: int = 100
     deadline_rtts: int = 2
     # F3 liveness limit for a seated peer without an outage record (validator iv), in turns.
@@ -143,6 +160,10 @@ class Cfg:
             problems.append("tail_bytes %d is below the required empty-turn charge %d" % (self.tail_bytes, max(self.turn_store_cap, turn_bytes(()))))
         if self.turn_buffer < 1:
             problems.append("turn_buffer < 1")
+        if self.link_bps < 0:
+            problems.append("link_bps < 0")
+        if self.link_bps and self.link_queue_bytes < self.payload_max + EPOCH_BYTES + HEADER + IP_UDP:
+            problems.append("link_queue_bytes %d cannot hold one full datagram" % self.link_queue_bytes)
         if self.reassembly_fragments_max < 1 or self.fragment_max < 1:
             problems.append("reassembly limits < 1")
         if problems:
@@ -231,6 +252,9 @@ class Sim:
         self.joiners = {}
         self.turn_extra = lambda k: 0
         self.mid = 0
+        self.lid = 0
+        self.links = {}
+        self.link_stats = {"egress": Counter(), "ingress": Counter()}
         self.assembly_closed = set()  # retired pair; reset_pair alone opens a new incarnation
         self.reasm_frags = 0  # fragments held in all reassembly buffers right now
         self.reasm_bytes = 0
@@ -457,8 +481,68 @@ class Sim:
         c.frag = 0
         self.pump("H", dst, 0)
 
-    def cut_active(self, src, dst):
-        return any(self.t >= a and self.t < b and peer in (src, dst) for peer, a, b in self.cuts)
+    def cut_active(self, src, dst, t=None):
+        t = self.t if t is None else t
+        return any(t >= a and t < b and peer in (src, dst) for peer, a, b in self.cuts)
+
+    def link_cap(self):
+        return self.cfg.link_queue_bytes
+
+    def link_plan(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms):
+        """Route one datagram through the shared link of its direction (egress: from the host,
+        ingress: to the host). Returns (lid, arrival millisecond) or (lid, None) when it is rejected
+        at enqueue or lost after transmission.
+
+        Contract (T58): non-preemptive FIFO service in order of enqueue (equal enqueue instants keep
+        the order in which the simulator calls this method); the queue owns every admitted datagram
+        until its last bit is sent, and admits one only if the bytes owned plus its wire size fit
+        `link_queue_bytes`; a rejected enqueue costs no transmission time; loss and outages are
+        sampled when transmission ends, so a lost datagram still cost its full service time; the
+        arrival is the end of transmission plus the one-way delay (plus any labeled extra delay),
+        rounded up to the next millisecond callback. Packets of an old epoch already queued stay
+        queued and are rejected at the receiver."""
+        cfg = self.cfg
+        self.lid += 1
+        lid = self.lid
+        direction = "egress" if src == "H" else ("ingress" if dst == "H" else None)
+        now = self.t * NS_PER_MS
+        if direction is None:
+            lost = lost_key or self.cut_active(src, dst)
+            return lid, (None if lost else self.t + cfg.one_way_ms + extra_ms)
+        L = self.links.setdefault(direction, {"busy": 0, "inflight": deque(), "occ": 0})
+        st = self.link_stats[direction]
+        while L["inflight"] and L["inflight"][0][0] <= now:
+            L["occ"] -= L["inflight"].popleft()[1]
+        self.ev("link_enqueue", link=direction, lid=lid, t_ns=now, wire=wire, msg=kind, ch=ch, src=src, dst=dst,
+                sid=sid, attempt=attempt)
+        if L["occ"] + wire > self.link_cap():
+            self.ev("link_drop", link=direction, lid=lid, t_ns=now, reason="queue", wire=wire)
+            st["drop_queue"] += 1
+            st["drop_queue_bytes"] += wire
+            return lid, None
+        start = max(now, L["busy"])
+        fin = start + service_ns(wire, cfg.link_bps)
+        L["busy"] = fin
+        L["inflight"].append((fin, wire))
+        L["occ"] += wire
+        st["peak_bytes"] = max(st["peak_bytes"], L["occ"])
+        st["peak_packets"] = max(st["peak_packets"], len(L["inflight"]))
+        st["bytes"] += wire
+        st["packets"] += 1
+        st["busy_ns"] += fin - start
+        st["ack_bytes" if kind == "ack" else ("retry_bytes" if attempt > 1 else "first_bytes")] += wire
+        self.ev("link_start", link=direction, lid=lid, t_ns=start)
+        self.ev("link_finish", link=direction, lid=lid, t_ns=fin)
+        fin_ms = fin // NS_PER_MS
+        lost = lost_key or self.cut_active(src, dst, fin_ms)
+        if lost:
+            self.ev("link_drop", link=direction, lid=lid, t_ns=fin, reason="loss", wire=wire)
+            st["drop_loss"] += 1
+            return lid, None
+        arr = fin + (cfg.one_way_ms + extra_ms) * NS_PER_MS
+        sched = arrival_ms(arr)
+        self.ev("link_arrive", link=direction, lid=lid, arrival_ns=arr, sched_ms=sched, sid=sid, msg=kind)
+        return lid, sched
 
     def key(self, kind, src, dst, seq, attempt):
         return (kind, "%s>%s" % (src, dst), seq, attempt)
@@ -480,15 +564,19 @@ class Sim:
         self.stat(src, dst, "data")
         self.stat(src, dst, "bytes", wire)
         tag = "send" if d["attempt"] == 1 else "RESEND#%d" % d["attempt"]
-        lost = self.lost(key) or self.cut_active(src, dst)
+        delay = self.delays.get(key, self.delays.get((key[0], key[1], None, key[3]), 0))
+        if self.cfg.link_bps:
+            lid, link_arrival = self.link_plan(src, dst, wire, d["kind"], ch, d["sid"], d["attempt"], self.lost(key), delay)
+            lost = link_arrival is None
+        else:
+            lost = self.lost(key) or self.cut_active(src, dst)
         self.ev("send", src=src, dst=dst, ch=ch, seq=d["seq"], msg=d["kind"], attempt=d["attempt"],
                 lost=lost, turn=d.get("turn"), C=d.get("C"), size=d["size"], sid=d["sid"], epoch=d["epoch"],
                 frag=d.get("frag", 0), nfrag=d.get("nfrag", 1), mid=d.get("mid"))
         if lost:
             self.log("%s %s>%s ch%d seq%d %s -- LOST" % (tag, src, dst, ch, d["seq"], d["kind"]))
         else:
-            arrive = self.t + self.cfg.one_way_ms + self.delays.get(
-                key, self.delays.get((key[0], key[1], None, key[3]), 0))
+            arrive = link_arrival if self.cfg.link_bps else self.t + self.cfg.one_way_ms + delay
             self.log("%s %s>%s ch%d seq%d %s -> arrives %d" % (
                 tag, src, dst, ch, d["seq"], d["kind"], arrive))
             self.schedule(arrive, P_DELIVER, self.arrive, src, dst, ch, d, d["epoch"])
@@ -724,15 +812,22 @@ class Sim:
         self.stat(dst, src, "ack")
         self.ack_ch[(dst, src, ch)] += 1
         self.stat(dst, src, "bytes", WIRE)
-        if self.lost(key) or self.cut_active(dst, src):
+        lid = None
+        if self.cfg.link_bps:
+            lid, ack_arrival = self.link_plan(dst, src, WIRE, "ack", ch, None, 1, self.lost(key), 0)
+            lost = ack_arrival is None
+        else:
+            lost = self.lost(key) or self.cut_active(dst, src)
+            ack_arrival = self.t + self.cfg.one_way_ms
+        if lost:
             self.log("ack-only %s>%s ch%d #%d ack=%d -- LOST" % (dst, src, ch, idx, ack))
             return
         self.log("ack-only %s>%s ch%d #%d ack=%d bits=%x" % (dst, src, ch, idx, ack, bits))
         # the ACK-only datagram carries the acker's epoch in its wire field
-        self.schedule(self.t + self.cfg.one_way_ms, P_ACK, self.take_ack, src, dst, ch, ack, bits,
-                      self.ep_of(dst, src))
+        self.schedule(ack_arrival, P_ACK, self.take_ack, src, dst, ch, ack, bits,
+                      self.ep_of(dst, src), lid)
 
-    def take_ack(self, src, dst, ch, ack, bits, epoch=None):
+    def take_ack(self, src, dst, ch, ack, bits, epoch=None, lid=None):
         """The sender src learns what dst received."""
         if epoch is not None and self.stale(src, dst, epoch, "ack"):  # compared with src's own epoch
             return
@@ -751,7 +846,7 @@ class Sim:
                 sample = self.t - d["first"]
                 old = self.rtt.get((src, dst))
                 self.rtt[(src, dst)] = sample if old is None else (7 * old + sample) // 8
-        self.ev("ack", src=src, dst=dst, ch=ch, seqs=tuple(sorted(named)), epoch=epoch)
+        self.ev("ack", src=src, dst=dst, ch=ch, seqs=tuple(sorted(named)), epoch=epoch, lid=lid)
         if freed:
             c.last_ack = self.t
             if c.outage:
@@ -1718,6 +1813,8 @@ def validate(events, cfg, end_t, oracle_lag=None):
     out += _check_generations(events, cfg)
     out += _check_input_drop(events)
     out += _check_reassembly(events, cfg)
+    if cfg.link_bps:
+        out += _check_link(events, cfg)
     return out
 
 
@@ -2060,6 +2157,85 @@ def _check_reassembly(events, cfg):
     return out[:3]
 
 
+def _check_link(events, cfg):
+    """(xvi) Rebuild the shared link from the raw events alone. For each direction, in enqueue
+    order: the wire size equals the send record's size plus the overhead (ACK-only: the overhead),
+    start = max(enqueue, previous finish) and finish = start + ceil(wire * 8e9 / bps) are
+    recomputed and compared with the recorded start and finish; the bytes owned (admitted, not yet
+    finished by the recomputed finish) never pass link_queue_bytes, and a queue drop happens only
+    when the datagram did not fit; the arrival is not earlier than finish + one-way delay and its
+    millisecond callback is not earlier than the arrival; every send is enqueued and every arrival
+    or ACK event matches a link arrival of its own datagram."""
+    out = []
+    busy, owned, recorded, expected_fin = {}, {}, {}, {}
+    send_size, enq_for_send, link_arr, drops, arr_keys = {}, set(), {}, {}, set()
+    for e in events:
+        k = e["kind"]
+        if k == "send" and e.get("sid") is not None and (e["src"] == "H" or e["dst"] == "H"):
+            send_size[(e["sid"], e["attempt"])] = (e["size"], e["t"])
+        elif k == "link_enqueue":
+            d, lid, now, wire = e["link"], e["lid"], e["t_ns"], e["wire"]
+            enq_for_send.add((e.get("sid"), e.get("attempt")))
+            if e["msg"] == "ack":
+                want = WIRE
+            else:
+                size = send_size.get((e.get("sid"), e.get("attempt")))
+                want = None if size is None else size[0] + WIRE
+            if want is not None and wire != want:
+                out.append(("xvi", "t=%d lid %d is %d wire bytes, the datagram needs %d" % (e["t"], lid, wire, want)))
+            q = owned.setdefault(d, deque())
+            while q and q[0][0] <= now:
+                q.popleft()
+            tot = sum(w for f, w in q)
+            recorded[lid] = {"enq": now, "wire": wire, "link": d, "fits": tot + wire <= cfg.link_queue_bytes}
+        elif k == "link_drop" and e["reason"] == "queue":
+            r = recorded.get(e["lid"])
+            drops[e["lid"]] = "queue"
+            if r and r["fits"]:
+                out.append(("xvi", "t=%d lid %d rejected although it fit the queue" % (e["t"], e["lid"])))
+        elif k == "link_start":
+            r = recorded.get(e["lid"])
+            if r is None:
+                out.append(("xvi", "lid %d starts without an enqueue" % e["lid"]))
+                continue
+            d = r["link"]
+            if not r["fits"]:
+                out.append(("xvi", "t=%d lid %d admitted over link_queue_bytes" % (r["enq"] // NS_PER_MS, e["lid"])))
+            start = max(r["enq"], busy.get(d, 0))
+            fin = start + max(1, -(-r["wire"] * 8 * 10 ** 9 // cfg.link_bps))
+            r["want_start"], r["want_fin"] = start, fin
+            if e["t_ns"] != start:
+                out.append(("xvi", "lid %d starts at %d ns, the shared capacity allows %d" % (e["lid"], e["t_ns"], start)))
+            busy[d] = fin
+            owned[d].append((fin, r["wire"]))
+        elif k == "link_finish":
+            r = recorded.get(e["lid"])
+            if r and "want_fin" in r and e["t_ns"] != r["want_fin"]:
+                out.append(("xvi", "lid %d finishes at %d ns, service needs %d" % (e["lid"], e["t_ns"], r["want_fin"])))
+        elif k == "link_arrive":
+            r = recorded.get(e["lid"])
+            link_arr[e["lid"]] = e
+            arr_keys.add((e.get("sid"), e["sched_ms"]))
+            if r and "want_fin" in r:
+                if e["arrival_ns"] < r["want_fin"] + cfg.one_way_ms * NS_PER_MS:
+                    out.append(("xvi", "lid %d arrives before finish + one-way delay" % e["lid"]))
+                if e["sched_ms"] * NS_PER_MS < e["arrival_ns"]:
+                    out.append(("xvi", "lid %d is delivered at %d ms, before its arrival at %d ns" % (
+                        e["lid"], e["sched_ms"], e["arrival_ns"])))
+        elif k == "ack" and e.get("lid") is not None:
+            la = link_arr.get(e["lid"])
+            if la is None or la["sched_ms"] != e["t"]:
+                out.append(("xvi", "t=%d an ACK is accepted without a matching link arrival" % e["t"]))
+        elif k == "arrive" and e.get("sid") is not None and (e["src"] == "H" or e["dst"] == "H"):
+            if (e["sid"], e["t"]) not in arr_keys:
+                out.append(("xvi", "t=%d a datagram arrives without a matching link arrival (sid %s)" % (e["t"], e["sid"])))
+    for key, (size, t) in send_size.items():
+        if key not in enq_for_send:
+            out.append(("xvi", "t=%d a datagram (sid %s attempt %s) bypasses the shared link" % (t, key[0], key[1])))
+            break
+    return out[:3]
+
+
 def _check_generations(events, cfg):
     """(xiii) Generation identities are never reused, at most max_generations are live, an image is
     freed only when no live attempt owns it, and none outlives its last owner."""
@@ -2342,6 +2518,112 @@ def queue_caps(cfg, destinations=5, joiners=2):
     return caps
 
 
+# ---- T58: serialized rows (opt-in; the un-serialized ROWS below stay the comparison) ----
+LINK_RATES = {"100M": 100_000_000, "1M": 1_000_000}  # 100 Mbit/s and one explicit slow stress rate
+LINK_QUEUE_BYTES = 131072  # per direction; a proposal (OQ-373), roughly three full windows of 32 datagrams
+
+
+def link_cfg(rate, **kw):
+    return Cfg(link_bps=LINK_RATES[rate], link_queue_bytes=LINK_QUEUE_BYTES, **kw)
+
+
+def lrow_one_fragment(rate):
+    return one_join(link_cfg(rate), until=12000)
+
+
+def lrow_endless02(rate):
+    """The measured save as 17 130 channel-1 datagrams. The horizon passes catchup_ms (600 000 ms) at
+    the slow rate, where the transfer needs 172 s of pure serialization on top of the window."""
+    sim = Sim(link_cfg(rate), seated=1)
+    sim.add_join("J1", 0, 2, fragments=17130)
+    sim.run(250000 if rate == "100M" else 650000)
+    return sim
+
+
+def lrow_two_joins_one_generation(rate):
+    sim = Sim(link_cfg(rate), seated=2)
+    sim.add_join("J1", 0, 3)
+    sim.add_join("J2", 200, 4)
+    sim.run(20000)
+    return sim
+
+
+def lrow_two_joins_two_generations(rate):
+    """J1's save is 7 000 fragments (a window-bound transfer past snapshot_age_ms), J2 asks at 61 000."""
+    sim = Sim(link_cfg(rate), seated=2)
+    sim.add_join("J1", 0, 3, fragments=7000)
+    sim.add_join("J2", 61000, 4, fragments=1)
+    sim.run(120000 if rate == "100M" else 300000)
+    return sim
+
+
+def lrow_seated_during_transfer(rate):
+    sim = Sim(link_cfg(rate), seated=2)
+    sim.add_join("J1", 0, 3, fragments=5000)
+    sim.run(60000)
+    return sim
+
+
+def lrow_loss_and_retry(rate):
+    losses = lose("Snap-frag", "H>J1", (1, 2), seq=4) | lose("JoinGrant", "H>J1", (1,))
+    return one_join(link_cfg(rate), losses=losses, until=12000)
+
+
+def lrow_outage_and_rejoin(rate):
+    sim = Sim(link_cfg(rate), seated=1)
+    sim.add_join("J1", 0, 2)
+    sim.cuts.append(("J1", 6000, 80000))
+    sim.add_join("J1", 85000, 2)
+    sim.run(110000)
+    return sim
+
+
+def lrow_short_outage(rate):
+    sim = Sim(link_cfg(rate), seated=1)
+    sim.add_join("J1", 0, 2)
+    sim.cuts.append(("J1", 6000, 9000))
+    sim.run(30000)
+    return sim
+
+
+def lrow_burst_fragmented_turn(rate):
+    sim = Sim(link_cfg(rate), seated=1)
+    sim.turn_extra = lambda k: 90000 if k == 5 else 0
+    sim.add_join("J1", 0, 2)
+    sim.run(30000)
+    return sim
+
+
+LINK_ROWS = {
+    "one_fragment": lrow_one_fragment,
+    "endless02": lrow_endless02,
+    "two_joins_one_generation": lrow_two_joins_one_generation,
+    "two_joins_two_generations": lrow_two_joins_two_generations,
+    "seated_during_transfer": lrow_seated_during_transfer,
+    "loss_and_retry": lrow_loss_and_retry,
+    "short_outage": lrow_short_outage,
+    "outage_and_rejoin": lrow_outage_and_rejoin,
+    "burst_fragmented_turn": lrow_burst_fragmented_turn,
+}
+
+
+def link_report(sim):
+    """One line of outcomes per joiner, the lag of the seated peers, link bytes and queue peaks."""
+    out = []
+    for jn in sorted(sim.joiners):
+        jr = sim.host.joins.get(jn)
+        j = sim.joiners[jn]
+        out.append("%s input=%s restart=%s" % (jn, j.active_ms, (jr.restart_ms, jr.restart_reason) if jr else None))
+    lag = max([sim.host.applied - p.applied for p in sim.seated] or [0])
+    for d in ("egress", "ingress"):
+        st = sim.link_stats[d]
+        out.append("%s: %d B in %d packets (first %d, retry %d, ACK %d), peak queue %d B / %d packets, drops queue %d loss %d, busy %d ms" % (
+            d, st["bytes"], st["packets"], st["first_bytes"], st["retry_bytes"], st["ack_bytes"], st["peak_bytes"],
+            st["peak_packets"], st["drop_queue"], st["drop_loss"], st["busy_ns"] // NS_PER_MS))
+    out.append("seated lag %d turns, host turn %d, validators %d" % (lag, sim.host.applied, len(validate_sim(sim))))
+    return out
+
+
 ROWS = {
     "normal": row_normal,
     "lost_watermark": row_lost_watermark,
@@ -2369,6 +2651,18 @@ def main(argv=None):
     show_trace = "--trace" in argv
     if show_trace:
         argv.remove("--trace")
+    if "--link" in argv:
+        argv.remove("--link")
+        rate = "100M"
+        for r in LINK_RATES:
+            if r in argv:
+                rate = r
+                argv.remove(r)
+        for name in argv or list(LINK_ROWS):
+            print("%s @ %s (link_bps %d, queue %d B per direction)" % (name, rate, LINK_RATES[rate], LINK_QUEUE_BYTES))
+            for line in link_report(LINK_ROWS[name](rate)):
+                print("    " + line)
+        return 0
     names = argv or list(ROWS)
     cfg = Cfg(rules=rules)
     if "queue" in names:

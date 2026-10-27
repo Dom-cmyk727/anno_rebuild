@@ -5070,3 +5070,44 @@ T57 verification head `4e34ccd80d487de9770afe7f3c344a2442a59197` is accepted as 
 The two verification commits change REPORTS only. The integrated checker and tests are byte-equivalent after newline normalization to tested `43cf5f0`: the previous orchestrator run and the executor's independent run both passed 142 join tests including mutants, five expected F1 failures and 64 unchanged snapshot tests. This integration checked exact source identity, syntax, whitespace, conflict markers, question-heading uniqueness and preservation of both report histories; it did not repeat the unchanged full suites. The two modified documentation files were merged by retaining current AI evidence and adding the network questions/reports, not by reverting later RE work. No source beyond the two Python oracle files, original data, C++ gates, or live-network measurement is involved.
 
 T52 is complete as the bounded zero-jitter, unserialized-link protocol oracle. It is not a production network implementation, measured link, or ADR approval. Assumed-delivered asks, epoch-wrap lifetime, shared-link serialization/jitter, reorder-buffer limits and OQ-373 policies remain explicit. T57 proves concrete getters and cached player-number words only on the named receiver/publication paths and arithmetic/bounds conditions; other type-12 calls and AI recipients, count/rectangle writers and object lifetime remain open. Next tasks are T58 (shared-link serialization) and T59 (the remaining type-12 word-2 target-object calls). The orchestrator handles review, local integration and the board; implementation remains with the executor. Nothing pushed; both ADRs stay Proposed; T34 stage 2 and T-AI.4 stay later.
+
+
+## T58 — Shared-link serialization in the join oracle — 2026-10-27 — status: FINISHED
+
+**Branch / base:** `codex/T58-shared-link-serialization`, from main `3078e0765a2dd642dd79244fc878925cc26929e0` (round cg). Not merged, not pushed. ADR 0003 stays Proposed. `docs/orchestration/TASKS.md` and `AGENTS.md` untouched.
+
+**Changed:** `tools/join_activation.py`, `tools/test_join_activation.py`, `docs/adr/0003-network-transport.md` (new §8.8; current summaries and uncertainty sentences marked as un-serialized comparisons), `docs/open-questions.md` (OQ-320, OQ-371, OQ-373). `tools/snapshot_catchup.py` and `tools/test_snapshot_catchup.py` are byte-identical to main.
+
+**What was built.** An opt-in mode (`Cfg.link_bps` > 0 with `Cfg.link_queue_bytes`; default 0 keeps every existing row, default and un-serialized result). Assumed topology: a full-duplex bottleneck at the host, one egress serializer (all host→peer datagrams: turns, snapshot fragments, controls, roots, ACK-only datagrams, retransmissions) and one ingress serializer (all peer→host). Integer-nanosecond service `ceil(wire × 8e9 / bps)`, non-preemptive FIFO in enqueue order; the queue owns admitted bytes until the last bit is sent and admits only if owned + wire ≤ `link_queue_bytes` (a rejected enqueue costs no time; the resend timer recovers it); loss, cuts and outages are sampled at the end of transmission (a lost datagram still costs its service); arrival = finish + one-way delay, callback = next whole ms at or after it. The ask datagram stays a labelled external input (60 B, in the peer's byte statistics, not on the link). Old-epoch packets keep their service and are rejected at the receiver. Events: `link_enqueue`, `link_start`, `link_finish`, `link_drop` (reason `queue`/`loss`), `link_arrive`; the `ack` event carries the link id of its datagram. Per-direction statistics: bytes, packets, first/retry/ACK bytes, peak queue bytes and packets, queue-rejected bytes, lost datagrams, busy time.
+
+**Independent validator (xvi, `_check_link`)** recomputes from the raw events alone: wire size, start (`max(enqueue, previous finish)`), finish (start + ceil service), the owned bytes against the cap, queue drops, arrival ≥ finish + one-way, callback ≥ arrival, every send enqueued, every arrival/ACK tied to a link arrival of its own datagram. The existing validators run on serialized runs too.
+
+**Tests (`tools/test_join_activation.py`):** classes `LinkContract`, `LinkScenarios`, `LinkValidatorsOnHandWrittenLogs` (23 tests: service arithmetic, FIFO order, queue admission/rejection, loss at transmission end, ACK and retry accounting, old-epoch service, cap validation, hand-written positive and negative traces), plus four named mutants in the table: bypass the shared queue; omit ACK and retry bytes; round the arrival down (early); breach the queue cap.
+
+**Failing-first evidence (main `3078e07`, new tests on the old checker):** 23 of 23 new link tests error (`Cfg` has no `link_bps`, no `LINK_ROWS`, no `service_ns`).
+
+**Commands and results** (logs in ignored `cache/` and the session scratchpad):
+- `python -I -B tools/test_join_activation.py -v`: Ran 165 tests, OK (198 s), including the mutation table.
+- `JOIN_RULES=F1 python -I -B tools/test_join_activation.py RoundCbRegressions`: 5 tests, FAILED (failures=5), as required; env unset afterwards.
+- `python -I -B tools/test_snapshot_catchup.py -v`: 64 tests, OK.
+- `ast.parse` of both Python files: ok. `git diff --check`: clean. Snapshot model and tests: empty diff against main.
+
+**Rows** (`python -I -B tools/join_activation.py --link [100M|1M] [row]`; 150 ms one-way, `resend_ms` 300, queue 131 072 B per direction; all validators clean; seated lag ≤ 2 turns everywhere):
+
+| Row | 100 Mbit/s | 1 Mbit/s |
+|---|---|---|
+| one fragment | input 2 565 ms (un-serialized 2 560) | 2 567 ms |
+| `endless02` (17 130 datagrams) | input 180 765 ms; egress 43 714 876 B; peak queue 39 117 B / 34 packets; busy 3 497 ms | restart 5 475 ms, reason 4; peak queue 131 061 B; 54 queue rejects |
+| two joins, one generation | 2 565 / 2 565 | 2 568 / 2 569 |
+| two joins, two generations | J2 63 565, J1 74 465 | J2 63 568; J1 restart 5 793 (reason 4, 78 rejects) |
+| seated during transfer | J1 53 665 | J1 restart 5 793 (reason 4) |
+| loss and retry | 2 565 | 2 567 |
+| short outage (3 s) | 2 565 (165 datagrams lost) | 2 567 |
+| drop and rejoin | input 87 565 | 87 567 |
+| burst-fragmented turn (90 000 B) | 2 665; peak queue 72 932 B / 60 packets | restart 3 513 (reason 4; 273 rejects) |
+
+**Finding:** with `resend_ms` = 300 ms = the round trip, once serialization makes an ACK even slightly late, every reliable datagram is resent once (one-fragment join: 17 208 retry bytes against 17 634 first-transmission bytes; `endless02`: 21 852 000 against 21 852 426). With `resend_ms` 400 or 500 the loss-free join resends nothing. The default is unchanged; it is an owner choice (OQ-373). At 1 Mbit/s the doubled load fills the 131 072 B queue and the host abandons the joiner's pair after eight sends (reason 4); the joiner restarts, seated peers and the other joiner continue. No protocol limit was raised and no old timestamp was forced.
+
+**Acceptance, item by item:** opt-in serialization with unchanged defaults (yes); complete datagram accounting incl. ACK-only and retries (yes); bounded queue (yes, rejected datagrams recorded); independent event validators (xvi plus hand-written logs); mutation tests (four new named mutants, all killed); ADR §8.8 and directly affected summaries (yes); OQ-320/371/373 (yes); snapshot files untouched (yes).
+
+**Not modelled / open:** jitter; a measured LAN; the ask's loss and retry; queue disciplines other than FIFO; multi-hop paths; per-pair pacing or fairness; adoption of the proposed `link_queue_bytes`, `resend_ms` and stress rate; the 1–60 ms replay domain is not re-derived under a shared link. Nothing pushed; stopping for review.

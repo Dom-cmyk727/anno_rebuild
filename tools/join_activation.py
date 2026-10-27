@@ -50,6 +50,7 @@ REASON_SEAT_BUSY = 9
 REASON_SUPERSEDED = 10
 REASON_NO_SLOT = 11
 REASON_BACKLOG = 12
+REASON_TAIL = 13
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,16 @@ class Cfg:
     receive_backlog_turns: int = 4096
     max_outstanding_reports: int = 2
     max_outstanding_req: int = 2
+    # F5 retained-turn contract (ADR 8.3/8.4, 10). The rolling log keeps the last turn_buffer turns;
+    # a pin keeps the turns a live join still needs; the union is capped by tail_turns_max turns and
+    # tail_bytes_max bytes. Each retained turn is charged once: max(turn_store_cap, its encoded
+    # bytes) (a fragmented burst turn is larger than the nominal charge and is charged what it is).
+    # tail_bytes_max 0 means tail_turns_max * turn_store_cap.
+    turn_buffer: int = 600
+    tail_turns_max: int = 4096
+    turn_store_cap: int = 1200
+    tail_bytes_max: int = 0
+    max_generations: int = 2
     # F4 seated upstream traffic: bytes of commands each seated peer sends to the host per turn
     # (0 = none) and whether it sends the section-7 hash report every hash_every turns.
     seated_cmd_bytes: int = 0
@@ -108,6 +119,10 @@ class Cfg:
     @property
     def f1(self):
         return self.rules == "F1"
+
+    @property
+    def tail_bytes(self):
+        return self.tail_bytes_max or self.tail_turns_max * self.turn_store_cap
 
     def deadline_for(self, hash_turn, rtt=0):
         """Accept deadline of a root: when the host applied it plus two hash periods plus
@@ -159,6 +174,9 @@ class Sim:
         self.deliveries = []
         self.violations = []
         self.rtt = {}
+        self.last_sid = {}  # (src, dst, ch, seq) -> sid of the datagram in the receive buffer
+        self.epochs = {}  # unordered pair -> transport epoch
+        self.sid = 0
         self.ack_ch = Counter()  # ACK-only datagrams by (acker, receiver, channel)
         self.max_out = {}  # (src, dst, message kind) -> most outstanding at once
         self.cuts = []  # (peer, from_ms, to_ms): everything sent to or from the peer inside is lost
@@ -247,6 +265,33 @@ class Sim:
     def stat(self, src, dst, field, amount=1):
         entry = self.stats.setdefault((src, dst), {"data": 0, "ack": 0, "bytes": 0, "seq": 0})
         entry[field] += amount
+
+    @staticmethod
+    def pair_key(a, b):
+        return tuple(sorted((a, b)))
+
+    def epoch_of(self, a, b):
+        return self.epochs.get(self.pair_key(a, b), 0)
+
+    def reset_pair(self, a, b, why):
+        """R1: a new transport epoch for the pair. The sender and receiver state of every channel in
+        both directions is retired together; datagrams, ACKs and timers of the old epoch are
+        rejected when they fire (they carry the epoch they were created in)."""
+        k = self.pair_key(a, b)
+        self.epochs[k] = self.epochs.get(k, 0) + 1
+        for key in list(self.chans):
+            x, y = (key[1], key[2]) if key[0] == "recv" else (key[0], key[1])
+            if self.pair_key(x, y) == k:
+                del self.chans[key]
+        self.log("transport epoch of %s<>%s is now %d (%s)" % (a, b, self.epochs[k], why))
+        self.ev("epoch_bump", a=a, b=b, epoch=self.epochs[k], why=why)
+
+    def stale(self, src, dst, epoch, what):
+        if epoch == self.epoch_of(src, dst):
+            return False
+        self.log("stale-epoch %s %s>%s (epoch %d, now %d)" % (what, src, dst, epoch, self.epoch_of(src, dst)))
+        self.ev("stale_epoch", src=src, dst=dst, what=what, epoch=epoch)
+        return True
 
     def srtt(self, a, b):
         """Smoothed round trip of the ACKs a sender a received from b, or None before a sample."""
@@ -370,6 +415,10 @@ class Sim:
     def transmit(self, src, dst, ch, d):
         d["attempt"] += 1
         d["last"] = self.t
+        if "sid" not in d:
+            self.sid += 1
+            d["sid"] = self.sid
+            d["epoch"] = self.epoch_of(src, dst)
         key = self.key(d["kind"], src, dst, d["seq"], d["attempt"])
         wire = d["size"] + HEADER + IP_UDP
         self.stat(src, dst, "data")
@@ -377,7 +426,7 @@ class Sim:
         tag = "send" if d["attempt"] == 1 else "RESEND#%d" % d["attempt"]
         lost = self.lost(key) or self.cut_active(src, dst)
         self.ev("send", src=src, dst=dst, ch=ch, seq=d["seq"], msg=d["kind"], attempt=d["attempt"],
-                lost=lost, turn=d.get("turn"), C=d.get("C"), size=d["size"])
+                lost=lost, turn=d.get("turn"), C=d.get("C"), size=d["size"], sid=d["sid"], epoch=d["epoch"])
         if lost:
             self.log("%s %s>%s ch%d seq%d %s -- LOST" % (tag, src, dst, ch, d["seq"], d["kind"]))
         else:
@@ -385,12 +434,12 @@ class Sim:
                 key, self.delays.get((key[0], key[1], None, key[3]), 0))
             self.log("%s %s>%s ch%d seq%d %s -> arrives %d" % (
                 tag, src, dst, ch, d["seq"], d["kind"], arrive))
-            self.schedule(arrive, P_DELIVER, self.arrive, src, dst, ch, d)
+            self.schedule(arrive, P_DELIVER, self.arrive, src, dst, ch, d, d["epoch"])
         if ch != 2 and not self.cfg.legacy:
             gap = self.cfg.resend_ms
             if self.is_seated_pair(src, dst) and d["attempt"] >= self.cfg.max_attempts:
                 gap = self.cfg.outage_resend_ms
-            self.schedule(self.t + gap, P_RESEND, self.resend, src, dst, ch, d["seq"])
+            self.schedule(self.t + gap, P_RESEND, self.resend, src, dst, ch, d["seq"], d["epoch"])
 
     def is_seated_pair(self, src, dst):
         """True for a pair between the host and a peer that holds a seat (seated or finished join)."""
@@ -404,7 +453,9 @@ class Sim:
                 names.add(name)
         return names
 
-    def resend(self, src, dst, ch, seq):
+    def resend(self, src, dst, ch, seq, epoch=None):
+        if epoch is not None and self.stale(src, dst, epoch, "resend"):
+            return
         c = self.chan(src, dst, ch)
         d = c.out.get(seq)
         if d is None or c.dead:
@@ -441,19 +492,26 @@ class Sim:
             self.ev("drop_seated", peer=peer)
             self.host.drop_seat(peer)
 
-    def arrive(self, src, dst, ch, d):
+    def arrive(self, src, dst, ch, d, epoch=None):
+        if epoch is not None and self.stale(src, dst, epoch, "arrive"):
+            return
         c = self.recv_state(src, dst, ch)
         seq = d["seq"]
         dup = seq in c.recv
         c.recv.setdefault(seq, d)
+        self.last_sid[(src, dst, ch, seq)] = c.recv[seq].get("sid")
         c.highest = max(c.highest, seq)
         self.log("arrive %s>%s ch%d seq%d %s%s" % (src, dst, ch, seq, d["kind"], " (dup)" if dup else ""))
-        self.ev("arrive", src=src, dst=dst, ch=ch, seq=seq, msg=d["kind"], dup=dup, turn=d.get("turn"))
+        self.ev("arrive", src=src, dst=dst, ch=ch, seq=seq, msg=d["kind"], dup=dup, turn=d.get("turn"),
+                sid=d.get("sid"), epoch=d.get("epoch"))
         if not dup:
             self.peers[dst].on_arrive(src, ch, d)
         if ch == 2 or self.cfg.legacy:
             if not dup and d["msg"] is not None:
                 self.deliver(src, dst, ch, seq, d["msg"])
+            for old in [q for q in c.recv if q < c.highest - 64]:
+                del c.recv[old]
+                self.last_sid.pop((src, dst, ch, old), None)
         else:
             while c.deliv in c.recv:
                 nxt = c.recv[c.deliv]
@@ -461,9 +519,14 @@ class Sim:
                     nxt["delivered"] = True
                     self.deliver(src, dst, ch, c.deliv, nxt["msg"])
                 c.deliv += 1
+            # Only the 32 sequences below the highest are ever reported in an ACK: older entries of
+            # the delivered prefix are released (bounded receive state).
+            for old in [q for q in c.recv if q < min(c.deliv, c.highest) - 40]:
+                del c.recv[old]
+                self.last_sid.pop((src, dst, ch, old), None)
         if ch != 2 and not c.ack_pending:
             c.ack_pending = True
-            self.schedule(self.t, P_FLUSH, self.flush_ack, src, dst, ch)
+            self.schedule(self.t, P_FLUSH, self.flush_ack, src, dst, ch, self.epoch_of(src, dst))
 
     def recv_state(self, src, dst, ch):
         key = ("recv", src, dst, ch)
@@ -473,7 +536,8 @@ class Sim:
 
     def deliver(self, src, dst, ch, seq, msg):
         self.deliveries.append((self.t, src, dst, ch, seq, msg["kind"]))
-        self.ev("deliver", src=src, dst=dst, ch=ch, seq=seq, msg=msg["kind"], turn=msg.get("turn"))
+        self.ev("deliver", src=src, dst=dst, ch=ch, seq=seq, msg=msg["kind"], turn=msg.get("turn"),
+                sid=self.last_sid.get((src, dst, ch, seq)), epoch=self.epoch_of(src, dst))
         if not self.cfg.legacy and ch == 0:
             c = self.recv_state(src, dst, ch)
             if seq > c.deliv:
@@ -481,7 +545,9 @@ class Sim:
         self.log("deliver %s>%s ch%d seq%d %s" % (src, dst, ch, seq, msg["kind"]))
         self.peers[dst].on_msg(src, msg)
 
-    def flush_ack(self, src, dst, ch):
+    def flush_ack(self, src, dst, ch, epoch=None):
+        if epoch is not None and self.stale(src, dst, epoch, "flush"):
+            return
         c = self.recv_state(src, dst, ch)
         c.ack_pending = False
         ack = c.highest
@@ -499,10 +565,13 @@ class Sim:
             self.log("ack-only %s>%s ch%d #%d ack=%d -- LOST" % (dst, src, ch, idx, ack))
             return
         self.log("ack-only %s>%s ch%d #%d ack=%d bits=%x" % (dst, src, ch, idx, ack, bits))
-        self.schedule(self.t + self.cfg.one_way_ms, P_ACK, self.take_ack, src, dst, ch, ack, bits)
+        self.schedule(self.t + self.cfg.one_way_ms, P_ACK, self.take_ack, src, dst, ch, ack, bits,
+                      self.epoch_of(src, dst))
 
-    def take_ack(self, src, dst, ch, ack, bits):
+    def take_ack(self, src, dst, ch, ack, bits, epoch=None):
         """The sender src learns what dst received."""
+        if epoch is not None and self.stale(src, dst, epoch, "ack"):
+            return
         c = self.chan(src, dst, ch)
         named = {ack}
         for i in range(32):
@@ -518,7 +587,7 @@ class Sim:
                 sample = self.t - d["first"]
                 old = self.rtt.get((src, dst))
                 self.rtt[(src, dst)] = sample if old is None else (7 * old + sample) // 8
-        self.ev("ack", src=src, dst=dst, ch=ch, seqs=tuple(sorted(named)))
+        self.ev("ack", src=src, dst=dst, ch=ch, seqs=tuple(sorted(named)), epoch=self.epoch_of(src, dst))
         if freed:
             c.last_ack = self.t
             if c.outage:
@@ -646,7 +715,12 @@ class Host(Peer):
         self.attempts = {}
         self.gens = []
         self.gen_state = {}
-        self.log_turns = {}
+        self.log_turns = {}  # OPERATIONAL: the retained turns (rolling log plus pins), see retain()
+        self.turn_charge = {}  # turn -> bytes charged once for it
+        self.retained_bytes = 0
+        self.peak_turns = 0
+        self.peak_bytes = 0
+        self.max_gen_state = 0
         self.max_slots = 0
 
     # ---- turns ----
@@ -657,7 +731,7 @@ class Host(Peer):
         events.sort(key=lambda e: e[0])
         self.apply_events(events)
         self.applied = k
-        self.log_turns[k] = tuple(events)
+        self.retain(k, tuple(events))
         sim.ev("produce", turn=k)
         self.log_applied(k)
         if k % cfg.hash_every == 0:
@@ -676,6 +750,71 @@ class Host(Peer):
             if k % cfg.hash_every == 0 and cfg.f1:
                 sim.send("H", name, 2, "HashRoot", 20, turn=k, root=self.roots[k])
         sim.schedule((k + 1) * cfg.turn_ms, P_PRODUCE, self.produce, k + 1)
+
+    # ---- the retained-turn contract (R2) ----
+    def charge_of(self, events, k):
+        """Charged once, whoever needs the turn: the nominal turn_store_cap, or the turn's encoded
+        bytes when a command burst makes it larger (a fragmented turn is charged what it is)."""
+        return max(self.sim.cfg.turn_store_cap, turn_bytes(events, self.sim.turn_extra(k)))
+
+    def pin_floor(self):
+        """First turn a live join still needs (S + 1); None without one."""
+        starts = [jr.S + 1 for jr in self.joins.values() if jr.state not in ("dead", "done")]
+        return min(starts) if starts else None
+
+    def retain(self, k, events):
+        """Apply the limits BEFORE turn k is kept. If keeping it would pass tail_turns_max turns or
+        tail_bytes bytes, the live attempts of the oldest generation are restarted (reason 13) until
+        it fits; a younger pin that still fits stays. Deadlines (priority 0) already ran in this
+        millisecond; the cap check is the first thing production does."""
+        sim, cfg = self.sim, self.sim.cfg
+        charge = self.charge_of(events, k)
+        while True:
+            floor = self.pin_floor()
+            span = 0 if floor is None else k - floor + 1
+            over_turns = span > cfg.tail_turns_max
+            over_bytes = self.retained_bytes + charge > cfg.tail_bytes
+            if not (over_turns or over_bytes):
+                break
+            live = [jr for jr in self.joins.values() if jr.state not in ("dead", "done")]
+            if not live:
+                break  # the rolling log alone is bounded by turn_buffer below
+            oldest = min(jr.S for jr in live)
+            for jr in sorted(live, key=lambda j: j.name):
+                if jr.S == oldest:
+                    sim.log("host: keeping turn %d would pass the tail cap, restarts %s" % (k, jr.name))
+                    sim.ev("tail_cap", name=jr.name, attempt=jr.attempt, turn=k, span=span,
+                           bytes=self.retained_bytes + charge)
+                    self.restart(jr, REASON_TAIL)
+            self.release()
+        self.log_turns[k] = events
+        self.turn_charge[k] = charge
+        self.retained_bytes += charge
+        sim.ev("retain", turn=k, bytes=charge, total_bytes=self.retained_bytes, count=len(self.log_turns))
+        self.release()
+        self.peak_turns = max(self.peak_turns, len(self.log_turns))
+        self.peak_bytes = max(self.peak_bytes, self.retained_bytes)
+
+    def release(self):
+        """Drop every retained turn that no consumer needs: older than the rolling window, below
+        every live join's pin and behind no peer's send cursor."""
+        sim, cfg = self.sim, self.sim.cfg
+        top = self.applied
+        floors = [top - cfg.turn_buffer + 1]
+        pin = self.pin_floor()
+        if pin is not None:
+            floors.append(pin)
+        for key, c in sim.chans.items():
+            if key[0] != "H" or key[2] != 0 or c.log_next is None:
+                continue
+            if key[1] in sim.dropped:
+                continue
+            floors.append(c.log_next)
+        floor = min(floors)
+        for q in [q for q in self.log_turns if q < floor]:
+            self.retained_bytes -= self.turn_charge.pop(q)
+            del self.log_turns[q]
+            sim.ev("release", turn=q)
 
     def drop_seat(self, peer):
         """Past grace_ms the seat goes to the AI by an ownership event in the turn stream (ADR 10)."""
@@ -706,6 +845,7 @@ class Host(Peer):
         for h in list(self.roots):
             if h not in keep:
                 del self.roots[h]
+                self.root_sent.pop(h, None)
         self.max_slots = max(self.max_slots, len(self.roots))
 
     def pinned_span(self):
@@ -744,6 +884,12 @@ class Host(Peer):
             self.history.append(prev)
         attempt = self.attempts.get(name, 0) + 1
         self.attempts[name] = attempt
+        if attempt > 1:
+            # R1: the ask of a peer that was here before carries a new transport epoch, so both
+            # endpoints retire the old channels together. The ask is one datagram (8-byte payload).
+            sim.stat(name, "H", "data")
+            sim.stat(name, "H", "bytes", 8 + HEADER + IP_UDP)
+            sim.reset_pair("H", name, "re-ask, attempt %d" % attempt)
         holder = self.seat_holder(seat, name)
         live = sum(1 for n, j in self.joins.items() if n != name and j.state not in ("dead", "done"))
         if holder is None and live >= sim.cfg.concurrent_transfers:
@@ -760,6 +906,10 @@ class Host(Peer):
             return
         S = self.applied
         gen = None
+        live_gens = {j.gen for j in self.joins.values() if j.state not in ("dead", "done")}
+        for g in [g for g in self.gen_state if g not in live_gens]:
+            del self.gen_state[g]  # the saved image goes when no live join needs it
+        self.gens = [(g, gs, gt) for g, gs, gt in self.gens if g in live_gens]
         for g, gs, gt in self.gens:
             live = any(j.gen == g and j.state not in ("dead", "done") for j in self.joins.values())
             if live and sim.t - gt <= sim.cfg.snapshot_age_ms:
@@ -769,6 +919,7 @@ class Host(Peer):
             gen = len(self.gens) + 1
             self.gens.append((gen, S, sim.t))
             self.gen_state[gen] = (dict(self.owners), self.hw)
+            self.max_gen_state = max(self.max_gen_state, len(self.gen_state))
         jr = JoinHost(name, seat, S, gen, attempt, sim.t)
         jr.prev_owner = self.owners.get(seat)  # as published in the stream: None for an empty seat
         self.joins[name] = jr
@@ -937,6 +1088,7 @@ class Host(Peer):
         jr.restart_reason = reason
         self.sim.log("host restarts %s, reason %d (table keeps running)" % (jr.name, reason))
         self.sim.ev("attempt_end", name=jr.name, attempt=jr.attempt, how="dead")
+        self.sim.chan("H", jr.name, 0).log_next = None  # a dead attempt needs no more turns
         if jr.A is not None and not self.sim.cfg.f1:
             # The ownership event is already in the history. Release the seat the same way,
             # to the owner the stream showed before the attempt (an empty seat stays empty).
@@ -993,6 +1145,7 @@ class Joiner(Peer):
 
     def reset_for(self, msg):
         """A JoinGrant opens a new attempt: everything of the previous attempt is retired."""
+        self.close_input("new attempt")
         self.gen = msg["gen"]
         self.attempt = msg["attempt"]
         self.S = msg["S"]
@@ -1323,10 +1476,12 @@ def validate(events, cfg, end_t, oracle_lag=None):
     out += _check_order(events)
     out += _check_window(events, cfg)
     out += _check_agreement(events)
-    out += _check_seated_lag(events, cfg)
+    out += _check_seated_lag(events, cfg, end_t)
     out += _check_input_lag(events, oracle_lag)
     out += _check_seats(events)
-    out += _check_retained(events)
+    out += _check_retained(events, end_t)
+    out += _check_tail(events, cfg)
+    out += _check_epochs(events)
     out += _check_grants(events)
     out += _check_outage_bounded(events, cfg)
     return out
@@ -1339,7 +1494,7 @@ def _check_order(events):
     for e in events:
         if e.get("ch") != 0:
             continue
-        pair = (e.get("src"), e.get("dst"))
+        pair = (e.get("src"), e.get("dst"), e.get("epoch"))
         if e["kind"] == "arrive":
             seen = arrived.setdefault(pair, set())
             seen.add(e["seq"])
@@ -1406,22 +1561,29 @@ def _live_peers(events):
     return seated, attempts
 
 
-def _check_seated_lag(events, cfg):
-    """(iv) At the end of the run every seated peer is within seated_lag_max of the host or has
-    a logged outage. Peers whose attempt finished count as seated."""
+def _check_seated_lag(events, cfg, end_t=None):
+    """(iv) At the end of the run every seated peer is within seated_lag_max of the host or is in an
+    outage that is open at that moment. An outage that ended (outage_end) or ended in a drop excuses
+    nothing afterwards. Peers whose attempt finished count as seated; dropped peers are not live."""
     seated, attempts = _live_peers(events)
     seated = set(seated) | {n for n, (_, _, how) in attempts.items() if how == "done"}
     host = max((e["turn"] for e in events if e["kind"] == "produce"), default=0)
     applied = {}
+    open_outage = set()
     for e in events:
         if e["kind"] == "apply" and e["peer"] != "H":
             applied[e["peer"]] = max(applied.get(e["peer"], 0), e["turn"])
-    outage = {e["peer"] for e in events if e["kind"] == "outage"}
+        elif e["kind"] == "outage":
+            open_outage.add(e["peer"])
+        elif e["kind"] in ("outage_end", "drop_seated"):
+            open_outage.discard(e["peer"])
+        elif e["kind"] == "admit":
+            applied[e["name"]] = e["S"]  # a new attempt applies from its snapshot turn
     out = []
     for peer in sorted(seated):
         lag = host - applied.get(peer, 0)
-        if lag > cfg.seated_lag_max and peer not in outage:
-            out.append(("iv", "%s is %d turns behind the host (host %d) without an outage record" % (
+        if lag > cfg.seated_lag_max and peer not in open_outage:
+            out.append(("iv", "%s is %d turns behind the host (host %d) without an open outage" % (
                 peer, lag, host)))
     return out
 
@@ -1477,19 +1639,111 @@ def _check_seats(events):
     return out
 
 
-def _check_retained(events):
-    """(vii) Every produced turn is delivered to, or still retained for, every live peer. Turns are
-    retained in the host's log for as long as the peer is live; a peer is not live once its attempt
-    died or its seat was dropped. A turn refused by a queue, a send on a closed pair, or an
-    abandoned pair to a live peer loses the turn."""
-    seated, attempts = _live_peers(events)
-    live = set(seated) | {n for n, (_, _, how) in attempts.items() if how != "dead"}
+def _check_retained(events, end_t=None):
+    """(vii) Every produced turn a live peer still needs is delivered to it, in transit to it in the
+    current transport epoch (a send record: the sender's window holds it), or retained by the host.
+    Reconstructed from the raw events: `retain` / `release` (retention lifecycle), `produce`,
+    `deliver`, `send`, `epoch_bump`, and the live set from `seated`, `admit`, `attempt_end`
+    and `drop_seated`. A release of a turn some live peer still lacks, or a produced turn that at
+    the end is neither delivered, in transit nor retained, is a violation. The absence of an error
+    event is not evidence."""
     out = []
+    live = {}  # peer -> first turn it does not need (its start)
+    delivered, transit, retained, produced = set(), set(), set(), []
     for e in events:
-        if e["kind"] in ("overflow", "drop_dead") and e["msg"] == "Turn" and e["dst"] in live:
-            out.append(("vii", "turn %s refused for live %s (%s)" % (e["turn"], e["dst"], e["kind"])))
-        elif e["kind"] == "abandon" and e["src"] == "H" and e["dst"] in seated:
+        k = e["kind"]
+        if k == "seated":
+            live[e["peer"]] = 0
+        elif k == "admit":
+            live[e["name"]] = e["S"]
+            delivered = {x for x in delivered if x[0] != e["name"]}
+            transit = {x for x in transit if x[0] != e["name"]}
+        elif k == "attempt_end" and e["how"] == "dead":
+            live.pop(e["name"], None)
+        elif k == "drop_seated":
+            live.pop(e["peer"], None)
+        elif k == "epoch_bump":
+            for peer in (e["a"], e["b"]):
+                transit = {x for x in transit if x[0] != peer}
+                delivered = {x for x in delivered if x[0] != peer}
+        elif k == "produce":
+            produced.append(e["turn"])
+        elif k == "retain":
+            retained.add(e["turn"])
+        elif k == "send" and e["src"] == "H" and e["ch"] == 0 and str(e["msg"]).startswith("Turn"):
+            transit.add((e["dst"], e["turn"]))
+        elif k == "deliver" and e["msg"] == "Turn":
+            delivered.add((e["dst"], e["turn"]))
+        elif k == "release":
+            t = e["turn"]
+            retained.discard(t)
+            for peer, start in sorted(live.items()):
+                if t > start and (peer, t) not in delivered and (peer, t) not in transit:
+                    out.append(("vii", "t=%d turn %d released while live %s has neither it nor a send of it" % (
+                        e["t"], t, peer)))
+        elif k in ("overflow", "drop_dead") and e["msg"] == "Turn" and e["dst"] in live:
+            out.append(("vii", "turn %s refused for live %s (%s)" % (e["turn"], e["dst"], k)))
+        elif k == "abandon" and e["src"] == "H" and e["dst"] in live and e["dst"].startswith("P"):
             out.append(("vii", "t=%d the pair to seated %s was abandoned" % (e["t"], e["dst"])))
+    for peer, start in sorted(live.items()):
+        for t in produced:
+            if t > start and (peer, t) not in delivered and (peer, t) not in transit and t not in retained:
+                out.append(("vii", "turn %d is neither delivered to, in transit to, nor retained for %s at the end" % (
+                    t, peer)))
+                break
+    return out[:3]
+
+
+def _check_tail(events, cfg):
+    """(x) The retained set, rebuilt from retain / release events, never passes tail_turns_max turns
+    or tail_bytes bytes, and the span from the oldest live join's snapshot to a newly retained turn
+    never passes tail_turns_max."""
+    out = []
+    held = {}
+    live = {}
+    for e in events:
+        k = e["kind"]
+        if k == "retain":
+            held[e["turn"]] = e["bytes"]
+            if len(held) > cfg.tail_turns_max or sum(held.values()) > cfg.tail_bytes:
+                out.append(("x", "t=%d retained %d turns, %d bytes" % (e["t"], len(held), sum(held.values()))))
+            if live:
+                span = e["turn"] - min(live.values())
+                if span > cfg.tail_turns_max:
+                    out.append(("x", "t=%d turn %d retained under a pin of span %d" % (e["t"], e["turn"], span)))
+        elif k == "release":
+            held.pop(e["turn"], None)
+        elif k == "admit":
+            live[e["name"]] = e["S"]
+        elif k == "attempt_end":
+            live.pop(e["name"], None)
+    return out[:3]
+
+
+def _check_epochs(events):
+    """(xi) A transport epoch is a number of `epoch_bump` events of the pair. Every send, arrive,
+    deliver and ack that carries an epoch label carries the pair's current count, and no datagram
+    is delivered or acknowledged in a later epoch than the one it was sent in (by sid)."""
+    out = []
+    bumps = {}
+    sent_at = {}
+    for e in events:
+        k = e["kind"]
+        if k == "epoch_bump":
+            key = tuple(sorted((e["a"], e["b"])))
+            bumps[key] = bumps.get(key, 0) + 1
+        elif k in ("send", "arrive", "deliver", "ack") and e.get("epoch") is not None:
+            key = tuple(sorted((e["src"], e["dst"])))
+            now = bumps.get(key, 0)
+            if e["epoch"] != now:
+                out.append(("xi", "t=%d %s %s>%s carries epoch %s, the pair is at %d" % (
+                    e["t"], k, e["src"], e["dst"], e["epoch"], now)))
+            sid = e.get("sid")
+            if k == "send" and sid is not None:
+                sent_at.setdefault(sid, now)
+            elif k in ("arrive", "deliver") and sid is not None and sent_at.get(sid, now) != now:
+                out.append(("xi", "t=%d sid %s sent in epoch %d was accepted in epoch %d" % (
+                    e["t"], sid, sent_at[sid], now)))
     return out[:3]
 
 

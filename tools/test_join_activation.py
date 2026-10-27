@@ -34,14 +34,15 @@ def first_seq(kind, direction, **kw):
 
 
 def in_order(sim):
-    """True when each (src, dst) pair delivered channel-0 sequences in increasing order."""
+    """True when each (src, dst, channel, transport epoch) delivered channel-0 sequences in increasing order."""
     last = {}
-    for _, src, dst, ch, seq, _ in sim.deliveries:
-        if ch != 0:
+    for e in sim.events:
+        if e["kind"] != "deliver" or e["ch"] != 0:
             continue
-        if seq <= last.get((src, dst), -1):
+        key = (e["src"], e["dst"], e["epoch"])
+        if e["seq"] <= last.get(key, -1):
             return False
-        last[(src, dst)] = seq
+        last[key] = e["seq"]
     return True
 
 
@@ -355,7 +356,7 @@ class TransportAccounting(TraceCase):
 
 ORACLE_LAG = 8  # host turn minus joiner applied turn at the millisecond input opens (input_lag_max 6 + 2)
 DOMAIN_END = 650000
-DOMAIN_STEP_MAX = 73
+DOMAIN_STEP_MAX = 60
 LATENCY_MAX = 1500  # one-way ms; the window of 32 datagrams per round trip ends it, see the next test
 ADR_RESTART_SNAPSHOT_TURN = 0  # the restarted J2 shares generation 1, whose snapshot is turn 0
 
@@ -422,9 +423,10 @@ class RoundCcJoinSide(TraceCase):
         self.assertEqual(bad, [])
 
     def test_b3_endless02_replay_steps_do_not_restart(self):
-        # The domain: replay at least 1.37 times faster than the table (73 ms per 100 ms turn or
-        # less), so that endless02's 1 606-turn backlog is gone inside catchup_ms. See below.
-        steps = sorted(set(range(1, DOMAIN_STEP_MAX + 1)) | {15, 24, 25, 29, 30, 34, 40, 45, 50, 70})
+        # The domain: replay at least 1.64 times faster than the table (60 ms per 100 ms turn or
+        # less), so that endless02's 1 606-turn backlog is gone before the pin passes tail_turns_max
+        # (turn 4096, 409 600 ms). See below.
+        steps = sorted(set(range(1, DOMAIN_STEP_MAX + 1)) | {15, 24, 25, 29, 30, 34, 40, 45, 50})
         bad = []
         for step in steps:
             sim = ja.Sim(cfg(replay_step_ms=step))
@@ -436,14 +438,15 @@ class RoundCcJoinSide(TraceCase):
         self.assertEqual(bad, [])
 
     def test_b3_endless02_beyond_the_domain_ends_in_the_catchup_limit_only(self):
-        # Replay slower than 73 ms per turn cannot clear the backlog inside catchup_ms. That is the
-        # join-only catch-up restart (reason 6), nothing else, and the table keeps running.
-        for step in (74, 80, 100):
+        # Replay slower than 60 ms per turn cannot clear the backlog before the pin passes
+        # tail_turns_max: the oldest pin is restarted (reason 13) when turn 4097 would be kept, and
+        # the table keeps running.
+        for step in (61, 74, 80, 100):
             sim = ja.Sim(cfg(replay_step_ms=step))
             sim.add_join("J1", 0, 2, snapshot_ms=160650)
             sim.run(DOMAIN_END)
             jr = sim.host.joins["J1"]
-            self.check(sim, jr.restart_reason == 6 and jr.restart_ms == 600000, "step %d: %r" % (step, summary(sim)))
+            self.check(sim, jr.restart_reason == ja.REASON_TAIL and jr.restart_ms == 409700, "step %d: %r" % (step, summary(sim)))
             self.check(sim, sim.host.applied == DOMAIN_END // 100, "the table stopped")
 
     def test_b3_the_latency_limit_is_the_window_not_the_deadline(self):
@@ -453,7 +456,7 @@ class RoundCcJoinSide(TraceCase):
         # the log-backed cursor keeps every turn. The deadline and input_ready_ms do not end it.
         c = cfg(one_way_ms=2000, resend_ms=4000)
         sim = ja.one_join(c, until=DOMAIN_END, snapshot_ms=2000)
-        self.check(sim, sim.host.joins["J1"].restart_reason == 6, repr(summary(sim)))
+        self.check(sim, sim.host.joins["J1"].restart_reason == ja.REASON_TAIL, repr(summary(sim)))
         self.check(sim, sim.host.applied == DOMAIN_END // 100, "the table stopped")
 
     def test_b3_expiry_of_one_checkpoint_reselects_instead_of_restarting(self):
@@ -636,13 +639,59 @@ class ValidatorsOnHandWrittenLogs(unittest.TestCase):
         self.assertEqual(codes(freed), [])
 
     def test_vii_a_produced_turn_must_be_delivered_or_retained(self):
-        base = [ev("seated", peer="P1", seat=1), ev("produce", turn=1), ev("produce", turn=2)]
-        self.assertEqual(codes(base), [])  # held in the host's log for the live peer
-        refused = base + [ev("overflow", src="H", dst="P1", ch=0, msg="Turn", turn=2)]
+        # Nothing delivered, nothing retained: the absence of an error event is not evidence.
+        bare = [ev("seated", peer="P1", seat=1), ev("produce", turn=1), ev("produce", turn=2)]
+        self.assertEqual(codes(bare), ["vii"])
+        # Retained but not yet sent (a healthy backlog behind the window): clean.
+        kept = [ev("seated", peer="P1", seat=1), ev("retain", turn=1, bytes=1200, total_bytes=1200, count=1),
+                ev("produce", turn=1), ev("retain", turn=2, bytes=1200, total_bytes=2400, count=2),
+                ev("produce", turn=2)]
+        self.assertEqual(codes(kept), [])
+        refused = kept + [ev("overflow", src="H", dst="P1", ch=0, msg="Turn", turn=2)]
         self.assertEqual(codes(refused), ["vii"])
-        self.assertEqual(codes(base + [ev("abandon", src="H", dst="P1", ch=0, seq=1)]), ["vii"])
-        # A dropped seat is no longer live.
-        self.assertEqual(codes(refused + [ev("drop_seated", peer="P1")]), [])
+        self.assertEqual(codes(kept + [ev("abandon", src="H", dst="P1", ch=0, seq=1)]), ["vii"])
+        # Pruned too early: released while the live peer has neither it nor a send of it.
+        self.assertEqual(codes(kept + [ev("release", turn=1)]), ["vii"])
+        arrived = ev("arrive", src="H", dst="P1", ch=0, seq=0, msg="Turn", dup=False, turn=1)
+        delivered = ev("deliver", src="H", dst="P1", ch=0, seq=0, msg="Turn", turn=1)
+        self.assertEqual(codes(kept + [arrived, delivered, ev("release", turn=1)]), [])
+        # A dropped seat is no longer live; a rejoin makes it live again from its snapshot turn.
+        dropped = kept + [ev("drop_seated", peer="P1")]
+        self.assertEqual(codes(dropped), [])
+        rejoin = dropped + [ev("admit", name="P1", attempt=2, seat=1, gen=1, S=1), ev("release", turn=2)]
+        self.assertEqual(codes(rejoin), ["vii"])
+        retained_again = dropped + [ev("admit", name="P1", attempt=2, seat=1, gen=1, S=1)]
+        self.assertEqual(codes(retained_again), [])
+
+    def test_iv_a_recovered_outage_does_not_excuse_a_later_silent_stall(self):
+        log = [ev("seated", peer="P1", seat=1), ev("outage", 1000, peer="P1", src="H", dst="P1", ch=0, age=2000),
+               ev("outage_end", 4000, peer="P1")] + [ev("produce", 100000, turn=1000)]
+        self.assertIn("iv", codes(log))
+        # The same stall with the outage still open at the end is explicit.
+        open_ = [ev("seated", peer="P1", seat=1), ev("outage", 1000, peer="P1", src="H", dst="P1", ch=0, age=2000),
+                 ev("produce", 1500, turn=1000)]
+        self.assertNotIn("iv", codes(open_))
+
+    def test_x_the_retained_set_is_bounded_from_retain_and_release_events(self):
+        cfg = ja.Cfg(tail_turns_max=3)
+        log = [ev("retain", turn=k, bytes=1200, total_bytes=0, count=0) for k in range(1, 5)]
+        self.assertEqual(sorted({c for c, _ in ja.validate(log, cfg, 0)}), ["x"])
+        log2 = log[:3] + [ev("release", turn=1)] + log[3:]
+        self.assertNotIn("x", {c for c, _ in ja.validate(log2, cfg, 0)})
+        spanned = [ev("admit", name="J1", attempt=1, seat=2, gen=1, S=0), ev("retain", turn=4, bytes=1200, total_bytes=0, count=0)]
+        self.assertIn("x", {c for c, _ in ja.validate(spanned, cfg, 0)})
+
+    def test_xi_epoch_labels_and_stale_datagrams(self):
+        bump = ev("epoch_bump", a="H", b="J1", epoch=1, why="re-ask")
+        send0 = ev("send", src="H", dst="J1", ch=0, seq=0, msg="Turn", attempt=1, lost=False, turn=1, C=None, size=1, sid=1, epoch=0)
+        late = ev("arrive", src="H", dst="J1", ch=0, seq=0, msg="Turn", dup=False, turn=1, sid=1, epoch=0)
+        self.assertIn("xi", {c for c, _ in ja.validate([send0, bump, late], ja.Cfg(), 0)})
+        # A reused label: the bump happened but the datagram still carries the old number.
+        relabeled = dict(late, epoch=1)
+        self.assertIn("xi", {c for c, _ in ja.validate([send0, bump, relabeled], ja.Cfg(), 0)})
+        fresh = dict(send0, sid=2, epoch=1)
+        ok = [bump, fresh, dict(late, sid=2, epoch=1)]
+        self.assertNotIn("xi", {c for c, _ in ja.validate(ok, ja.Cfg(), 0)})
 
     def test_ix_an_outage_must_end_or_drop(self):
         log = [ev("outage", 1000, peer="P1", src="H", dst="P1", ch=0, age=2000), ev("produce", 70000, turn=700)]
@@ -956,6 +1005,214 @@ class RoundCcAccounting(TraceCase):
         sim.run(5000)
         sizes = {e["msg"]: e["size"] for e in sim.events if e["kind"] == "send" and e["msg"] in ("JoinAbort", "JoinRestart")}
         self.assertEqual(sizes, {"JoinAbort": 8, "JoinRestart": 4})
+
+
+# ---- round cd (F5) regressions: written first, shown failing at d9a58ae -----------------------
+def reask_after_losses(losses, ask=4000, clear=3500, until=30000, seated=1, **kw):
+    sim = ja.Sim(cfg(**kw), losses=losses, seated=seated)
+    sim.add_join("J1", 0, 2)
+    sim.schedule(clear, 0, sim.losses.clear)
+    sim.add_join("J1", ask, 2)
+    sim.run(until)
+    return sim
+
+
+class RoundCdReliableRecovery(TraceCase):
+    def _recovered(self, sim, why):
+        jr, j = sim.host.joins["J1"], sim.joiners["J1"]
+        self.check(sim, jr.attempt == 2 and j.attempt == 2, "%s: attempts host %d joiner %r" % (why, jr.attempt, j.attempt))
+        self.check(sim, j.active_ms is not None and jr.restart_ms is None, "%s: %r" % (why, summary(sim)))
+        self.check(sim, sim.seated[0].applied >= sim.host.applied - 4, "%s: an unrelated peer stalled" % why)
+        self.check(sim, validate_clean(sim) == [] and sim.root_conflicts() == [], "%s: %r" % (why, validate_clean(sim)[:3]))
+        self.check(sim, sim.host.owners.get(2) == "human" and sim.seated[0].owners.get(2) == "human", "%s: seat 2" % why)
+
+    def test_r1_abandoned_joingrant_channel_one_host_to_joiner(self):
+        sim = reask_after_losses(ja.lose("JoinGrant", "H>J1", range(1, 9)))
+        self.check(sim, [e for e in sim.events if e["kind"] == "abandon" and e["ch"] == 1], "channel 1 was not abandoned")
+        self._recovered(sim, "ch1 H>J1")
+
+    def test_r1_abandoned_turn_stream_channel_zero_host_to_joiner(self):
+        sim = reask_after_losses(ja.lose("Turn", "H>J1", range(1, 9)))
+        self.check(sim, [e for e in sim.events if e["kind"] == "abandon" and e["ch"] == 0 and e["dst"] == "J1"],
+                   "channel 0 H>J1 was not abandoned")
+        self._recovered(sim, "ch0 H>J1")
+
+    def test_r1_abandoned_joiner_to_host_channel_zero(self):
+        sim = reask_after_losses(ja.lose("JoinWatermark", "J1>H", range(1, 9)))
+        self.check(sim, [e for e in sim.events if e["kind"] == "abandon" and e["src"] == "J1"], "J1>H was not abandoned")
+        self._recovered(sim, "ch0 J1>H")
+
+    def test_r1_old_datagrams_acks_and_timers_cannot_enter_the_new_epoch(self):
+        # Attempt 1's first turn is delayed 6 s; the peer cancels, asks again, and the old datagram
+        # lands inside attempt 2's stream with sequence 0 of its own.
+        sim = ja.Sim(cfg(), delays={("Turn", "H>J1", 0, 1): 6000}, seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.add_join("J1", 1000, 2)  # the same peer asks again while attempt 1 is still running
+        sim.run(20000)
+        stale = [e for e in sim.events if e["kind"] == "stale_epoch"]
+        self.check(sim, any(e["what"] == "arrive" for e in stale), "no stale arrival was rejected: %r" % (stale[:3],))
+        self.check(sim, any(e["what"] in ("ack", "resend", "flush") for e in stale), "no stale ACK or timer: %r" % (stale[:3],))
+        self._recovered(sim, "late old traffic")
+        bumps = [e for e in sim.events if e["kind"] == "epoch_bump"]
+        self.check(sim, len(bumps) == 1 and bumps[0]["epoch"] == 1, repr(bumps))
+
+    def test_r1_the_ask_is_one_counted_datagram(self):
+        sim = reask_after_losses(ja.lose("JoinGrant", "H>J1", range(1, 9)))
+        self.check(sim, sim.stats[("J1", "H")]["bytes"] >= 8 + ja.HEADER + ja.IP_UDP, "the ask is not in the accounting")
+
+
+class RoundCdRetention(TraceCase):
+    SLOW = 10 ** 9  # a labeled snapshot that never arrives: the join only pins
+
+    def test_r2_the_pin_cap_restarts_the_old_join_before_turn_4097_is_kept(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.add_join("J1", 0, 2, snapshot_ms=self.SLOW)
+        sim.run(409600)  # turn 4096 is produced: span 4096 still fits
+        self.check(sim, sim.host.joins["J1"].restart_ms is None and len(sim.host.log_turns) == 4096,
+                   "restarted early or retained %d" % len(sim.host.log_turns))
+        sim.run(409700)  # keeping turn 4097 would make the span 4097
+        jr = sim.host.joins["J1"]
+        self.check(sim, jr.restart_ms == 409700 and jr.restart_reason == ja.REASON_TAIL, repr(summary(sim)))
+        self.check(sim, 4097 not in sim.host.log_turns or len(sim.host.log_turns) <= 4096, "turn 4097 kept over the cap")
+        self.check(sim, sim.host.peak_turns <= sim.cfg.tail_turns_max, "peak %d" % sim.host.peak_turns)
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_r2_only_the_oldest_generation_is_restarted(self):
+        sim = ja.Sim(cfg(), seated=2)
+        sim.add_join("J1", 0, 3, snapshot_ms=self.SLOW)
+        sim.add_join("J2", 62000, 4, snapshot_ms=self.SLOW)  # past snapshot_age_ms: its own generation, S = 619
+        sim.run(410000)
+        j1, j2 = sim.host.joins["J1"], sim.host.joins["J2"]
+        self.check(sim, j1.gen != j2.gen, "same generation")
+        self.check(sim, j1.restart_reason == ja.REASON_TAIL and j2.restart_ms is None,
+                   "J1 %r J2 %r" % (j1.restart_reason, j2.restart_ms))
+        self.check(sim, len(sim.host.log_turns) <= sim.cfg.tail_turns_max, "retained %d" % len(sim.host.log_turns))
+        sim.run(480000)
+        self.check(sim, sim.host.joins["J2"].restart_reason == ja.REASON_TAIL, "J2 not restarted at its own cap")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_r2_a_shared_generation_keeps_its_pin_when_one_joiner_cancels(self):
+        sim = ja.Sim(cfg(), seated=2)
+        sim.add_join("J1", 0, 3, snapshot_ms=self.SLOW)
+        sim.add_join("J2", 200, 4, snapshot_ms=self.SLOW)
+        sim.cancel("J1", 100000)
+        sim.run(200000)
+        self.check(sim, sim.host.joins["J2"].S == 0 and sim.host.joins["J1"].S == 0, "not shared")
+        self.check(sim, len(sim.host.log_turns) == 2000, "the pin of the remaining joiner was released: %d turns" % len(sim.host.log_turns))
+        sim.run(410000)
+        self.check(sim, sim.host.joins["J2"].restart_reason == ja.REASON_TAIL, repr(sim.host.joins["J2"].restart_reason))
+
+    def test_r2_a_long_healthy_run_retains_only_the_rolling_log(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.run(700000)
+        host = sim.host
+        self.check(sim, len(host.log_turns) == sim.cfg.turn_buffer and sorted(host.log_turns)[0] == 7000 - 599,
+                   "retained %d from %d" % (len(host.log_turns), min(host.log_turns)))
+        self.check(sim, host.peak_turns <= sim.cfg.turn_buffer + 1 and host.peak_bytes <= (sim.cfg.turn_buffer + 1) * 1200,
+                   "peak %d turns %d bytes" % (host.peak_turns, host.peak_bytes))
+        self.check(sim, sim.seated[0].applied >= 6996, "the seated peer fell behind")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_r2_the_byte_cap_and_the_per_turn_charge(self):
+        # A 1 216-byte burst makes each turn 1 232 bytes, above the nominal 1 200: charged what it is.
+        c = cfg(tail_bytes_max=1000 * 1232)
+        sim = ja.Sim(c, seated=1)
+        sim.turn_extra = lambda k: 1216
+        sim.add_join("J1", 0, 2, snapshot_ms=self.SLOW)
+        sim.run(100100)
+        self.check(sim, set(sim.host.turn_charge.values()) == {1232}, repr(set(sim.host.turn_charge.values())))
+        jr = sim.host.joins["J1"]
+        self.check(sim, jr.restart_ms == 100100 and jr.restart_reason == ja.REASON_TAIL, repr(summary(sim)))
+        self.check(sim, sim.host.peak_bytes <= c.tail_bytes, "peak %d" % sim.host.peak_bytes)
+        plain = ja.Sim(cfg(), seated=1)
+        plain.run(1000)
+        self.check(sim, set(plain.host.turn_charge.values()) == {1200}, "nominal charge")
+
+    def test_r2_receive_and_generation_state_is_bounded_and_history_is_separate(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.run(60000)
+        biggest = max(len(c.recv) for c in sim.chans.values())
+        self.check(sim, biggest <= 80, "receive state holds %d sequences" % biggest)
+        self.check(sim, len(sim.host.gen_state) <= sim.cfg.max_generations, "generation images %d" % len(sim.host.gen_state))
+        self.check(sim, len(sim.host.root_sent) <= sim.cfg.root_slots + sim.cfg.max_root_pins + 2,
+                   "root bookkeeping %d" % len(sim.host.root_sent))
+
+
+class RoundCdValidatorsOnRealRuns(TraceCase):
+    def _scenario_cut(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.cuts.append(("P1", 1000, 9000))  # 80 turns: more than the window of 32 can hold in flight
+        sim.run(16000)
+        return sim
+
+    def _scenario_open_outage(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.cuts.append(("P1", 1000, 40000))
+        sim.run(40000)
+        return sim
+
+    def _scenario_reask(self):
+        return reask_after_losses(ja.lose("JoinGrant", "H>J1", range(1, 9)))
+
+    def test_retention_holds_on_a_cut_and_a_long_run(self):
+        sim = self._scenario_cut()
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_the_open_outage_is_the_explicit_state(self):
+        sim = self._scenario_open_outage()
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_epochs_hold_across_a_reask(self):
+        sim = self._scenario_reask()
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+
+def _patch_skip_a_turn():
+    orig = ja.Sim.next_datagram
+
+    def next_datagram(self, c):
+        if c.log_next == 50 and c.frag == 0 and c is self.chans.get(("H", "P1", 0)):
+            c.log_next = 51  # the turn is never sent to P1
+        return orig(self, c)
+    return mock.patch.object(ja.Sim, "next_datagram", next_datagram)
+
+
+def _patch_prune_too_early():
+    def release(self):
+        for q in [q for q in self.log_turns if q < self.applied - 5]:
+            self.sim.ev("release", turn=q)  # evidence says released; data kept so the run goes on
+            self.log_turns_released = getattr(self, "log_turns_released", set()) | {q}
+    return mock.patch.object(ja.Host, "release", release)
+
+
+def _patch_suppress_outage():
+    def check_outage(self, src, dst, ch, c, d):
+        return None
+    return mock.patch.object(ja.Sim, "check_outage", check_outage)
+
+
+def _patch_reuse_epoch():
+    def reset_pair(self, a, b, why):
+        for key in list(self.chans):
+            x, y = (key[1], key[2]) if key[0] == "recv" else (key[0], key[1])
+            if self.pair_key(x, y) == self.pair_key(a, b):
+                del self.chans[key]
+        self.ev("epoch_bump", a=a, b=b, epoch=self.epoch_of(a, b), why=why)  # the old number again
+    return mock.patch.object(ja.Sim, "reset_pair", reset_pair)
+
+
+MUTANTS.update({
+    "skip a required turn": (_patch_skip_a_turn, [
+        "RoundCdValidatorsOnRealRuns.test_retention_holds_on_a_cut_and_a_long_run"]),
+    "prune one too early": (_patch_prune_too_early, [
+        "RoundCdValidatorsOnRealRuns.test_retention_holds_on_a_cut_and_a_long_run"]),
+    "suppress a current outage": (_patch_suppress_outage, [
+        "RoundCdValidatorsOnRealRuns.test_the_open_outage_is_the_explicit_state"]),
+    "reuse an old transport epoch": (_patch_reuse_epoch, [
+        "RoundCdValidatorsOnRealRuns.test_epochs_hold_across_a_reask",
+        "RoundCdReliableRecovery.test_r1_old_datagrams_acks_and_timers_cannot_enter_the_new_epoch"]),
+})
 
 
 if __name__ == "__main__":

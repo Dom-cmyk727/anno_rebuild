@@ -1788,11 +1788,11 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What was read.** `AnnoWelt.dll` `0x100ae040..0x100ae134`, `0x1009c4d0..0x1009c5e1`, `0x1009c740..0x1009c746`. `CompLogic.dll` `0x1003d880..0x1003d8d0`. The load path and the factory stay as T38 read them, with the property-9 gate added in §2.
 - **Left open:** what the nine kind slots write (OQ-271), the manager loop's return (OQ-270), and calls on the object at world `+0x110` (OQ-272).
 
-## OQ-241: Whether CompLogic's slot `+0xb4` calls are the world PRNG (T38, 2026-10-26)
-- **Status:** open. The call sites and the arithmetic on the result are read (`docs/re/complogic.md` §5). The object is not.
+## OQ-241: Which CompLogic `call [reg+0xb4]` sites are the world PRNG (T38, narrowed T44, 2026-10-27)
+- **Status:** narrowed. Not closed. `docs/re/complogic.md` §5.
 - **Area:** simulation / AI / determinism.
-- **What was read.** 43 `call [reg+0xb4]` instructions in `CompLogic.dll`. 32 mask or divide the result immediately. 11 do not. World slot `+0xb4` is the world PRNG (`docs/re/tick-loop.md` §3). None of the 43 regions is a slot of the player vtables, so the class is unread too.
-- **How to resolve:** at `0x100011d3`, `0x10030fbb` and one unmasked site (`0x1000e809`), the instruction that loads the call's register, walked back to a field. A world pointer there makes the masked sites the world draw. The same walk on `0x1002e3f3` decides the unmasked group.
+- **What was read.** 43 instructions in `CompLogic.dll` and 39 in `CompLogicClassic.dll`, each one a real instruction. World slot `+0xb4` is `AnnoWelt.dll` `0x100a1740` (`ret`, no stack argument). `0x100692d0` and Classic `0x10066248` are the world, and `0x1000e809` / `0x1000d029` call that function and discard `eax`. `[object+4]` is the world when `0x10021e20` wrote it and is manager `+0x24` when `0x10021610` wrote it. Type 17 uses the second store, so `0x100011d3` and `0x100217eb` are not the world PRNG. Eight of the eleven unmasked calls push three arguments and are not `0x100a1740` either. A mask is not evidence of the receiver.
+- **How to resolve:** OQ-290 for the remaining masked sites, OQ-291 for the 3-argument receiver. No gameplay name until the receiver is one of those two pointers.
 
 ## OQ-250: Which UDP port the LAN session binds (T39, 2026-10-26)
 - **Status:** open. No default is set in ADR 0003.
@@ -1828,6 +1828,18 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What was checked.** `0x10084e10`–`0x10085050` (ret 8). The empty-tile arm, taken when the tile's object is null or its kind is `0xe1` or `0x141`, returns +0.0 (`fld` of a dword set to the integer 0 at `0x10084f6e`, returned at `0x10085045`). The other arm returns at `0x10084f2d` by adding a stack value to whatever slot `+0x9c` of the tile object left in st0. That arm also loads the table at `0x100e2d90` and calls `0x100b5390`. Neither return stores to binary32 before `ret`. Trip time does not read the result (`docs/re/transport.md` §4.6).
 - **Options:** (a) stage 2 takes the returned register as an input of the walk test and leaves the formula unread; (b) a later reading reduces the occupied-tile arm to operations, including whether st0 is still wider than binary32 at the `ret`.
 - **How to resolve:** (b) if a bit-exact height is required. (a) is enough for the arithmetic tests in ADR 0002.
+
+## OQ-290: Which AI class owns each remaining `call [reg+0xb4]` (T44, 2026-10-27)
+- **Status:** open. OQ-292..299 were not used.
+- **Area:** simulation / AI / determinism.
+- **What was read.** Two stores write `[object+4]`. `0x10021e38` writes the world. `0x1002161f` writes manager `+0x24`. A later `call [reg+0xb4]` on that dword is `0x100a1740` or, for the second store and vtable `0x100215a4`, `AnnoGame.dll` `0x100023a0`. The masked sites in `docs/re/complogic.md` §5 other than `0x100011d3` and `0x100217eb` load `[reg+4]`, `[reg]`, or a further field, and the register was not walked to either store.
+- **How to resolve:** at each open row, the function's `this` walked to `0x10021e20` or `0x10021610`, or to a different writer. Not a guess from the mask.
+
+## OQ-291: What object the 3-argument `+0xb4` calls (T44, 2026-10-27)
+- **Status:** open.
+- **Area:** simulation / AI.
+- **What was read.** `0x1002e3f3` calls slot `+0xb4` on the return of slot `+0xf8`, and that call's `this` is `[reg+0x4c]` at `0x1001c726` / `0x1001c831`. `0x10034471` is a 0-argument call on `[this]` of the same `+0x4c` pointer (`0x10010f53`) and pushes the result into slot `+0x7c`. The other 3-argument sites in §5 are the `+0xf8` return or an unread stack slot. None of them is `0x100a1740`. The writer of `+0x4c` was not read, and `0x100aae00` (world slot `+0xf8`, `ret 4`) was not reduced to the vtable of its return.
+- **How to resolve:** the store of `+0x4c`, then the vtable of that object and of the `+0xf8` return. `0x100aae00` is the next function if the `+0xf8` object is the world.
 
 ## OQ-270: What the call after the AI list walk does (T40, 2026-10-26)
 - **Status:** open.

@@ -184,7 +184,12 @@ def assumptions():
         "A deadline, tail cap, or horizon that stops during the step keeps "
         "the last completed cursor, including when the step would end on "
         "that millisecond. A limit before load completion does not start "
-        "replay. The 2% rows still drop turn data only; an ACK drop is a separate "
+        "replay. Channel-0 arrivals are stored through that load and through "
+        "an unfinished replay step. Table.note_backlog sees the unique "
+        "buffered count at the arrival, after deadline and tail. A duplicate "
+        "is one stored turn. A turn past a hole still occupies storage. The "
+        "received cursor stays the contiguous prefix. The 2% rows still drop "
+        "turn data only; an ACK drop is a separate "
         "schedule. The fluid count stays the optimistic comparison. "
         "command_delay stays 2.",
     )
@@ -1558,7 +1563,7 @@ def frontiers_at(t_ms, cfg, snapshot_turn=0, arrivals=None):
     """Frontiers after host apply and channel-0 delivery at `t_ms`.
 
     Joiner apply is not this function. It completes `replay_step_ms` later.
-    Order at one timestamp: host produce/apply, then deliveries with
+    Order at one timestamp: deadline, then tail, then deliveries with
     arrival <= t, then a joiner apply only if its step has elapsed.
     """
     produced, host_applied = host_frontier(t_ms, snapshot_turn, cfg)
@@ -1659,18 +1664,50 @@ def _received_rel(t_ms, cfg, arrivals):
     return got
 
 
+def unique_arrived(t_ms, cfg, arrivals):
+    """Turns whose first arrival is at or before `t_ms`.
+
+    A schedule keeps one timestamp per turn, so a resend is not a second
+    stored turn. On the in-order clock this count equals the contiguous prefix.
+    """
+    if t_ms < 0:
+        raise ValueError("elapsed")
+    if arrivals is None:
+        host_relative = t_ms // cfg.turn_ms
+        return min(receivable_relative(t_ms, cfg), host_relative)
+    return sum(1 for when in arrivals.values() if when <= t_ms)
+
+
+def _contiguous_stored(stored):
+    relative_k = 1
+    while relative_k in stored:
+        relative_k += 1
+    return relative_k - 1
+
+
 def catchup_state_at(query_ms, cfg, load_done, snapshot_turn=0, arrivals=None):
-    """Joiner cursors at `query_ms`, after delivery and before an unfinished apply."""
+    """Joiner cursors at `query_ms`, after delivery and before an unfinished apply.
+
+    Receipt does not wait for the snapshot to load. Applied stays on the
+    snapshot turn until load has completed and a replay step has finished.
+    `buffered` counts unique arrived turns that are not yet applied, including
+    turns past a hole. This helper has no owner and no backlog cap.
+    """
     if query_ms < 0:
         raise ValueError("query")
     if query_ms < load_done:
         produced, host_applied = host_frontier(query_ms, snapshot_turn, cfg)
+        rec = _received_rel(query_ms, cfg, arrivals)
+        if rec is None:
+            rec = 0
         return {
             "t_ms": query_ms,
             "host_produced": produced,
             "host_applied": host_applied,
-            "received": snapshot_turn,
+            "received": snapshot_turn + rec,
             "applied": snapshot_turn,
+            "due": snapshot_turn + due_relative(query_ms, cfg),
+            "buffered": unique_arrived(query_ms, cfg, arrivals),
             "on_frontier": False,
         }
     step = replay_step_ms(cfg)
@@ -1709,6 +1746,7 @@ def catchup_state_at(query_ms, cfg, load_done, snapshot_turn=0, arrivals=None):
         "received": snapshot_turn + rec,
         "applied": snapshot_turn + applied_rel,
         "due": snapshot_turn + due_relative(query_ms, cfg),
+        "buffered": unique_arrived(query_ms, cfg, arrivals) - applied_rel,
         "on_frontier": applied_rel == rec,
     }
 
@@ -1802,8 +1840,12 @@ def evaluate_causal(save_bytes, cfg, transfer=None, snapshot_turn=0,
     A replay step is credited only after that walk. A deadline, tail cap, or
     horizon that stops the walk keeps the last completed cursor, including a
     step that would end on the deadline. A limit before load completion does
-    not start replay. The optimistic fluid join is stored on the result and
-    is not this test. The table is not paused.
+    not start replay. Channel-0 arrivals are stored anyway. At one millisecond
+    the order is deadline, then tail, then Table.note_backlog for arrivals at
+    that millisecond, then a replay credit. The backlog count is unique
+    unapplied turns, so a duplicate is one slot and a turn past a hole still
+    counts. The optimistic fluid join is stored on the result and is not this
+    test. The table is not paused.
     """
     optimistic_cfg = cfg
     fragments = fragment_count(save_bytes, cfg.save_per_fragment)
@@ -1836,12 +1878,13 @@ def evaluate_causal(save_bytes, cfg, transfer=None, snapshot_turn=0,
     first_arrival = turn_arrival_ms(1, cfg) if arrivals is None else arrivals.get(1, -1)
 
     step = replay_step_ms(cfg)
-    t_ms = load_done
-    applied_rel = 0
     ready_ms = -1
     peak = 0
-    guard = 0
+    applied = 0
+    stored = set()
+    step_end = None
     stop_reason = None
+    t_ms = 0
     table = Table(cfg)
     word, _gen = table.attach(_CAUSAL_JOINER, 0, save_bytes, snapshot_turn, 0)
     if word not in ("opened", "shared"):
@@ -1873,114 +1916,144 @@ def evaluate_causal(save_bytes, cfg, transfer=None, snapshot_turn=0,
             return "missing_prefix"
         return "catchup_ms"
 
-    if load_done > limit:
-        # The snapshot is still loading. Do not rewind into replay.
-        reason, at = owner_stop(limit)
-        t_ms = at if reason is not None else limit
-        stop_reason = reason if reason is not None else quiet_limit_reason()
+    def note():
+        """Hand the unique unapplied count to the shared owner."""
+        nonlocal peak
+        count = len(stored) - applied
+        if count < 0:
+            raise ValueError("backlog")
+        if count > peak:
+            peak = count
+        word_now = table.note_backlog(_CAUSAL_JOINER, count)
+        if word_now == "restart":
+            return "backlog"
+        if word_now != "held":
+            raise ValueError("backlog")
+        return None
 
-    while stop_reason is None and t_ms <= limit and guard <= limit + 2:
+    if arrivals is None:
+        events = []
+        relative_k = 1
+        while True:
+            when = turn_arrival_ms(relative_k, cfg)
+            if when > limit:
+                break
+            events.append((when, relative_k))
+            relative_k += 1
+    else:
+        events = [(when, relative_k)
+                  for relative_k, when in arrivals.items() if when <= limit]
+        events.sort()
+    index = 0
+
+    def next_target():
+        opts = []
+        if index < len(events):
+            when = events[index][0]
+            if when <= t_ms:
+                raise ValueError("clock")
+            opts.append(when)
+        if step_end is not None and t_ms < step_end <= limit:
+            opts.append(step_end)
+        if t_ms < load_done <= limit:
+            opts.append(load_done)
+        if t_ms < limit:
+            opts.append(limit)
+        if not opts:
+            return None
+        return min(opts)
+
+    guard = 0
+    guard_limit = limit + len(events) + (limit // step) + 5
+    while stop_reason is None and guard <= guard_limit:
         guard += 1
-        stop_reason, at = owner_stop(t_ms)
+        added = False
+        while index < len(events) and events[index][0] == t_ms:
+            when, turn_k = events[index]
+            earliest = turn_produce_ms(turn_k, cfg) + cfg.one_way_ms
+            if when < earliest:
+                stop_reason = "future_turn"
+                break
+            index += 1
+            if turn_k not in stored:
+                stored.add(turn_k)
+                added = True
         if stop_reason is not None:
-            t_ms = at
             break
-        rec = _received_rel(t_ms, cfg, arrivals)
-        if rec is None:
-            stop_reason = "future_turn"
-            break
-        backlog = rec - applied_rel
-        if backlog > peak:
-            peak = backlog
-        if peak > cfg.receive_backlog_turns:
-            stop_reason = "backlog"
-            break
-        if applied_rel > rec:
-            stop_reason = "future_turn"
-            break
-        if prefix_is_due(applied_rel, rec, t_ms, cfg):
-            if ready_ms < 0:
-                ready_ms = t_ms
-            applied_abs = snapshot_turn + applied_rel
-            hash_at = hash_target(applied_abs, snapshot_turn, cfg.hash_every)
-            if applied_abs >= hash_at:
-                if not hash_matches:
-                    stop_reason = "hash_mismatch"
-                    break
-                return _success_causal(
-                    snapshot_turn, ready_ms, t_ms, applied_rel, rec, hash_at, peak,
-                    transfer.done_ms, first_arrival, optimistic, schedule, cfg)
-        if applied_rel < rec:
-            completion = t_ms + step
-            if completion > limit:
-                reason, at = owner_stop(limit)
-                t_ms = at if reason is not None else limit
-                stop_reason = reason if reason is not None else quiet_limit_reason()
-                break
-            reason, at = owner_stop(completion)
-            if reason is not None or at < completion:
-                t_ms = at
-                stop_reason = reason if reason is not None else quiet_limit_reason()
-                break
-            applied_rel += 1
-            t_ms = completion
-            continue
-        nxt = applied_rel + 1
-        if arrivals is None:
-            arrive = turn_arrival_ms(nxt, cfg)
-        else:
-            arrive = arrivals.get(nxt)
-            if arrive is None:
-                stop_reason = "missing_prefix"
-                break
-        if arrive < turn_produce_ms(nxt, cfg) + cfg.one_way_ms:
-            stop_reason = "future_turn"
-            break
-        if arrive <= t_ms:
-            stop_reason = "missing_prefix"
-            break
-        if arrive > limit:
-            stop_reason, at = owner_stop(limit)
+        if added:
+            stop_reason = note()
             if stop_reason is not None:
-                t_ms = at
                 break
-            t_ms = limit + 1
-            break
-        t_ms = arrive
-
-    if stop_reason is None and table.now_ms < limit:
-        stop_reason, at = owner_stop(limit)
+        if step_end is not None and t_ms == step_end:
+            if applied >= _contiguous_stored(stored):
+                raise ValueError("replay")
+            applied += 1
+            step_end = None
+            stop_reason = note()
+            if stop_reason is not None:
+                break
+        if t_ms >= load_done:
+            rec_now = _contiguous_stored(stored)
+            if applied > rec_now:
+                stop_reason = "future_turn"
+            elif prefix_is_due(applied, rec_now, t_ms, cfg):
+                if ready_ms < 0:
+                    ready_ms = t_ms
+                applied_abs = snapshot_turn + applied
+                hash_at = hash_target(applied_abs, snapshot_turn, cfg.hash_every)
+                if applied_abs >= hash_at:
+                    if not hash_matches:
+                        stop_reason = "hash_mismatch"
+                    else:
+                        return _success_causal(
+                            snapshot_turn, ready_ms, t_ms, applied, rec_now, hash_at, peak,
+                            transfer.done_ms, first_arrival, optimistic, schedule, cfg)
+            if (stop_reason is None and step_end is None and applied < rec_now
+                    and t_ms < limit):
+                step_end = t_ms + step
+            caught_up = step_end is None and applied == rec_now
+            if stop_reason is None and caught_up and arrivals is not None:
+                if (applied + 1) not in arrivals:
+                    stop_reason = "missing_prefix"
+            if stop_reason is None and caught_up and arrivals is None:
+                nxt_turn = applied + 1
+                if turn_arrival_ms(nxt_turn, cfg) <= t_ms:
+                    stop_reason = "missing_prefix"
         if stop_reason is not None:
+            break
+        if t_ms >= limit:
+            stop_reason = quiet_limit_reason()
+            break
+        target = next_target()
+        if target is None or target <= t_ms:
+            raise ValueError("clock")
+        reason, at = owner_stop(target)
+        if reason is not None:
             t_ms = at
+            stop_reason = reason
+            break
+        t_ms = at
+
     if stop_reason is None:
-        if horizon_ms is not None and horizon_ms <= cfg.catchup_ms and t_ms > horizon_ms:
-            stop_reason = "unmet_boundary"
-        elif cfg.replay_turns_per_s <= cfg.live_turns_per_s:
-            stop_reason = "cannot_outrun"
-        elif arrivals is not None and first_arrival < 0:
-            stop_reason = "missing_prefix"
-        else:
-            stop_reason = "catchup_ms"
+        stop_reason = quiet_limit_reason()
     if t_ms > limit:
         t_ms = limit
-    if t_ms < load_done:
-        rec = 0
-    else:
-        rec = _received_rel(t_ms, cfg, arrivals)
-        if rec is None:
-            rec = min(applied_rel, t_ms // cfg.turn_ms)
+    terminal = len(stored) - applied
+    if terminal > peak:
+        peak = terminal
+    rec = _contiguous_stored(stored)
     missing = 1
     if stop_reason == "tail_turns":
         missing = span_of(t_ms)
     elif stop_reason == "backlog":
         missing = peak
     elif stop_reason == "missing_prefix":
-        missing = max((t_ms // cfg.turn_ms) - applied_rel, 1)
+        missing = max((t_ms // cfg.turn_ms) - applied, 1)
     elif stop_reason in ("cannot_outrun", "catchup_ms", "unmet_boundary", "deadline"):
-        missing = max((t_ms // cfg.turn_ms) - applied_rel, 1)
+        missing = max((t_ms // cfg.turn_ms) - applied, 1)
     return _fail_causal(
         "restart", stop_reason, snapshot_turn, transfer.done_ms, t_ms, missing, cfg,
-        optimistic, schedule, ready_ms, snapshot_turn + applied_rel,
+        optimistic, schedule, ready_ms, snapshot_turn + applied,
         snapshot_turn + rec, peak)
 
 

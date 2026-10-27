@@ -1368,13 +1368,16 @@ class CausalReadiness(unittest.TestCase):
         late = _complete(3000)
         early = model.evaluate_causal(1188, budgets, transfer=late, horizon_ms=2000)
         state = model.catchup_state_at(2000, budgets, 3000)
+        wire = model.frontiers_at(2000, budgets)
+        self.assertEqual(wire["received"], 18)
         self.assertEqual(early.status, "restart")
         self.assertEqual(early.reason, "unmet_boundary")
         self.assertEqual(early.done_ms, 2000)
-        self.assertEqual((early.applied, early.received), (0, 0))
-        self.assertEqual((state["applied"], state["received"]), (0, 0))
+        self.assertEqual((early.applied, early.received), (0, 18))
+        self.assertEqual((state["applied"], state["received"]), (0, 18))
+        self.assertEqual(state["buffered"], 18)
         self.assertEqual(early.pin_turns, 0)
-        self.assertEqual(early.backlog_turns, 0)
+        self.assertEqual(early.backlog_turns, 18)
         self.assertEqual(early.host_applied, 20)
         self.assertEqual(early.host_span, early.host_applied - early.snapshot_turn)
         self.assertFalse(early.input_enabled)
@@ -1385,22 +1388,23 @@ class CausalReadiness(unittest.TestCase):
         during = model.evaluate_causal(
             1188, loaded, transfer=late, horizon_ms=2000)
         self.assertEqual(during.done_ms, 2000)
-        self.assertEqual((during.applied, during.received, during.pin_turns), (0, 0, 0))
-        self.assertEqual(during.backlog_turns, 0)
+        self.assertEqual((during.applied, during.received, during.pin_turns), (0, 18, 0))
+        self.assertEqual(during.backlog_turns, 18)
         self.assertEqual(during.host_span, 20)
         self.assertFalse(during.input_enabled)
         self.assertFalse(during.paused)
         self.assertTrue(during.honest(loaded))
 
         # Transfer has finished; load has not. The horizon still cannot replay.
+        mid_cfg = model.replace(budgets, load_ms=1000)
         mid_load = model.evaluate_causal(
-            1188, model.replace(budgets, load_ms=1000),
-            transfer=_complete(1500), horizon_ms=2000)
+            1188, mid_cfg, transfer=_complete(1500), horizon_ms=2000)
         self.assertEqual(mid_load.done_ms, 2000)
-        self.assertEqual(mid_load.applied, 0)
+        self.assertEqual((mid_load.applied, mid_load.received), (0, 18))
+        self.assertEqual(mid_load.backlog_turns, 18)
         self.assertEqual(mid_load.pin_turns, 0)
         self.assertFalse(mid_load.input_enabled)
-        self.assertTrue(mid_load.honest(model.replace(budgets, load_ms=1000)))
+        self.assertTrue(mid_load.honest(mid_cfg))
 
     def test_an_unfinished_replay_step_is_not_applied(self):
         budgets = model.proposed_budgets()
@@ -1462,6 +1466,93 @@ class CausalReadiness(unittest.TestCase):
         self.assertFalse(at_deadline.input_enabled)
         self.assertFalse(at_deadline.paused)
         self.assertTrue(at_deadline.honest(tight))
+
+    def test_arrivals_fill_the_backlog_before_load_and_during_replay(self):
+        budgets = model.proposed_budgets()
+        late = _complete(3000)
+        self.assertEqual(model.frontiers_at(2000, budgets)["received"], 18)
+
+        capped = model.replace(budgets, receive_backlog_turns=5)
+        sixth = model.evaluate_causal(1188, capped, transfer=late, horizon_ms=2000)
+        self.assertEqual(sixth.status, "restart")
+        self.assertEqual(sixth.reason, "backlog")
+        self.assertEqual(sixth.done_ms, 750)
+        self.assertEqual((sixth.applied, sixth.received, sixth.backlog_turns), (0, 6, 6))
+        self.assertEqual(sixth.pin_turns, 0)
+        self.assertFalse(sixth.input_enabled)
+        self.assertFalse(sixth.paused)
+        self.assertTrue(sixth.honest(capped))
+        held = model.catchup_state_at(650, capped, 3000)
+        self.assertEqual((held["applied"], held["received"], held["buffered"]), (0, 5, 5))
+
+        loaded = model.replace(budgets, load_ms=500, receive_backlog_turns=5)
+        during = model.evaluate_causal(1188, loaded, transfer=late, horizon_ms=2000)
+        self.assertEqual(during.reason, "backlog")
+        self.assertEqual(during.done_ms, 750)
+        self.assertEqual((during.applied, during.received, during.backlog_turns), (0, 6, 6))
+        self.assertTrue(during.honest(loaded))
+
+        slow = model.replace(budgets, replay_turns_per_s=8)
+        self.assertEqual(model.replay_step_ms(slow), 125)
+        open_cap = model.evaluate_causal(1188, slow, horizon_ms=360)
+        self.assertEqual(open_cap.status, "restart")
+        self.assertEqual(open_cap.reason, "unmet_boundary")
+        self.assertEqual(open_cap.done_ms, 360)
+        self.assertEqual((open_cap.applied, open_cap.received, open_cap.backlog_turns), (0, 2, 2))
+        self.assertFalse(open_cap.input_enabled)
+        probe = model.catchup_state_at(360, slow, open_cap.transfer_ms)
+        self.assertEqual((probe["applied"], probe["received"], probe["buffered"]), (0, 2, 2))
+
+        tight_cap = model.replace(slow, receive_backlog_turns=1)
+        overflow = model.evaluate_causal(1188, tight_cap, horizon_ms=360)
+        self.assertEqual(overflow.reason, "backlog")
+        self.assertEqual(overflow.done_ms, 350)
+        self.assertEqual((overflow.applied, overflow.received, overflow.backlog_turns), (0, 2, 2))
+        self.assertFalse(overflow.input_enabled)
+        self.assertTrue(overflow.honest(tight_cap))
+
+        def delay_turn_one(relative_k, attempt):
+            del attempt
+            return 400 if relative_k == 1 else 0
+
+        hole_cfg = model.replace(budgets, receive_backlog_turns=2)
+        hole = model.evaluate_causal(
+            1188, hole_cfg, transfer=late, reorder=delay_turn_one, horizon_ms=2000)
+        self.assertEqual(hole.reason, "backlog")
+        self.assertEqual(hole.done_ms, 550)
+        self.assertEqual((hole.applied, hole.received, hole.backlog_turns), (0, 0, 3))
+        self.assertFalse(hole.input_enabled)
+        hole_wire = model.build_turn_schedule(8, budgets, reorder=delay_turn_one)
+        hole_state = model.catchup_state_at(550, hole_cfg, 3000, arrivals=hole_wire.arrivals)
+        self.assertEqual(hole_state["received"], 0)
+        self.assertEqual(hole_state["buffered"], 3)
+
+        def drop_acks(relative_k, attempt):
+            del relative_k, attempt
+            return True
+
+        dup_cfg = model.replace(budgets, receive_backlog_turns=4)
+        dup = model.evaluate_causal(
+            1188, dup_cfg, transfer=late, ack_drop=drop_acks, horizon_ms=550)
+        self.assertGreater(dup.duplicates, 0)
+        self.assertEqual(dup.reason, "unmet_boundary")
+        self.assertEqual(dup.done_ms, 550)
+        self.assertEqual((dup.applied, dup.received, dup.backlog_turns), (0, 4, 4))
+        self.assertFalse(dup.input_enabled)
+
+        # Deadline, then tail, then the arrival. Turn 6 arrives at 750 ms.
+        # The deadline restarts first, so that arrival stays unstored.
+        # catchup_state_at has no owner and still counts it.
+        tied = model.replace(budgets, catchup_ms=750, receive_backlog_turns=5)
+        deadline = model.evaluate_causal(1188, tied, transfer=late, horizon_ms=2000)
+        self.assertEqual(deadline.reason, "deadline")
+        self.assertEqual(deadline.done_ms, 750)
+        self.assertEqual((deadline.applied, deadline.received, deadline.backlog_turns), (0, 5, 5))
+        self.assertFalse(deadline.input_enabled)
+        self.assertTrue(deadline.honest(tied))
+        stateless = model.catchup_state_at(750, tied, 3000)
+        self.assertEqual((stateless["applied"], stateless["received"], stateless["buffered"]),
+                         (0, 6, 6))
 
     def test_adr_names_the_causal_boundary_and_stays_proposed(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

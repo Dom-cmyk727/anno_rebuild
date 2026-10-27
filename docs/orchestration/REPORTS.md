@@ -5081,3 +5081,31 @@ T58: independently ran 165 join tests (178.576 s, OK), five expected legacy F1 f
 Timer finding confirmed: at 100 Mbit/s the small loss-free join sends 17634 first-send bytes and 17208 retry bytes at 300 ms; 400/500 yield zero retry bytes and input at the same 2565 ms. In only the first 12000 ms of the 1 Mbit/s endless02 transfer, 300 ms restarts at 5475 (reason 4; 54 rejects), whereas 400/500 have no restart yet and zero rejects but retain 749108/15202 retry bytes. No complete-transfer conclusion or default change follows from those short runs. F1 adds matched full-horizon sensitivity/loss rows; running those comparisons needs no owner policy decision.
 
 T59: fresh instruction reads support the basic target-pool/state filter, call order, observed X publication/getter and bounded AI-list path. Corrections required: the `0x10056b7a` load is dword-wide at target +0x60; `0x10056b50` stores target +0x64 even for null Y; the call of `0x10006340` is at `0x10005176`; OQ-341 is still open/narrowed, not closed. The publisher also calls `0x10057830` or `0x100579e0` before publishing the target; those unread links must remain explicit. Main's question status is unchanged. TASKS limits F1 to these documentation/evidence corrections, not a broad AI implementation or tick-ledger pass. Original bytes and disassembly are not committed. No C++, live-link or original-runtime gates needed or claimed.
+
+
+## Orchestrator review — round ci — 2026-10-27
+
+Reviewed exact clean T58 F1 head `dafd9baea49b6dc6a070200ab439f2933003d868` (on `aa022b9`) and T59 F1 head `ec6b28364f233db5f23bd558be8aa1171c9cc83a` (on `e9997f4`) against main `6f8d34d88e5254f0221524c9736e78244fa42599`. Neither is integrated yet; both get a small F2 in TASKS. No task-branch edits, merge, push or executor dispatch. The pre-existing untracked AGENTS.md is preserved.
+
+**T58 checks run:**
+- 186 join tests: OK (179.5 s), mutation table included.
+- Five expected `JOIN_RULES=F1` failures.
+- 64 snapshot tests: OK.
+- Both snapshot files are identical to main, and `git diff --check` is clean.
+- `--sensitivity` reproduces all 18 ADR §8.8 rows exactly.
+
+**What the probes show** (ignored `cache/orch-ci/review_t58_f1.py` and `.out`):
+- The round-ch retry and ACK mutants are now caught.
+- The fragment-loss row loses attempts 1–2 of `Snap-frag` seq 4 and recovers with attempt 3 at 751 ms (763 ms at 1 Mbit/s).
+- Three new runtime mutants still leave every validator clean:
+  - **V1:** a negative labelled extra delay gives zero propagation and input at 1215 ms. The F1 rebuild dropped the `aa022b9` floor `arrival >= finish + one_way` and trusts the recorded label.
+  - **V2:** a retry recorded and charged as a 1-byte payload passes, although attempt 1 and the retry's `arrive` event carry the real size.
+  - **V3:** six served, non-lost `Snap-frag` arrivals discarded silently at the receiver leave no record. The closed-receiver path also emits none.
+
+**T59:** fresh reads of the decisive `CompLogic.dll` and `AnnoWelt.dll` instructions and of vtables `0x100cc92c` / `0x100ccdd8` confirm the F1 corrections. Four wording items remain for F2:
+- the omitted virtual call at `0x100a38a4` before the `0x100a38a7` zero store, and the `0x100a386d` store source;
+- "world destructor"/"world" labels on functions that store vtable `0x100cc92c`, which differs from the world vtable `0x100ccdd8` at `+0x48`;
+- an unconditional Y conclusion although other `[world + 0x114]` writers are not excluded;
+- unread links that omit `0x10057830`, `0x100579e0` and the function of `0x100af311`.
+
+Original bytes and disassembly are not committed. No C++, live-link or original-runtime gates were needed or claimed.

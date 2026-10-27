@@ -328,7 +328,23 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 
 **Historical status 2026-10-26 (round bj; superseded by round bq below):** **T33 is done** (T33.1–T33.4 merged locally, T33.4 as `acd45cd`; GitHub is suspended, so `main` is unpushed). The market cart and the workshop carrier find sources by the original's decoded walk rule, and every tile stores the original's walk code and mask (stream 112). Open: OQ-200 (water), OQ-170 (coast), OQ-201 (cleared footprint, narrowed), OQ-203..205 (tile-record bits). T33.5 stage 1 (the original's tile record, `transport.md` §3.4.17) merged as `d30d20b` (round bk); OQ-202 answered: growth leaves the walk record as placement wrote it. Live lane: T33.5 stage 2 (the tile layer as the original's record, the main executor); T30b.5–7 (the Wine validation, the orchestrator); P1 (population, from `state.md` §4.7c).
 
-**Orchestration (2026-10-27, round ch; current):** T58 `aa022b9` and T59 `e9997f4`, both from main `3078e07`, are reviewed and remain unmerged. T52 F7 and T57 remain integrated within the round-cg boundaries. The board records exact reproducers and corrections; implementation stays with the executor.
+**Orchestration (2026-10-27, round ci; current):** T58 F1 (`dafd9ba`) and T59 F1 (`ec6b283`) are reviewed and remain unmerged.
+- **T58 F1** fixes the round-ch findings:
+  - the validator is order-independent with mandatory datagram identity;
+  - the fragment-loss row really loses and recovers `Snap-frag` seq 4;
+  - the matched 300/400/500 ms comparison at 100 Mbit/s and 1 Mbit/s reproduces exactly;
+  - 186 join tests, 64 snapshot tests and the five expected legacy failures are verified.
+
+  Three validator holes remain, each reproduced by a runtime mutant with every validator clean:
+  - a negative labelled delay gives zero-propagation arrivals (the aa022b9 floor check was lost);
+  - a retry recorded and charged as a 1-byte payload passes;
+  - a served arrival can vanish without any record.
+
+  T58 F2 closes them without protocol or default changes.
+- **T59 F1** is correct in substance: the dword at `+0x60`, the null-Y paths, the call at `0x10005176`, the unread publisher calls, OQ-341 unchanged. T59 F2 fixes four wording items: the full call list before the `0x100a38a7` zero store, class labels by vtable `0x100cc92c` rather than "world", the Y conclusion conditional on the X writer, and complete unread links.
+- **Next:** T58 F2, then T59 F2. Nothing pushed; ADRs remain Proposed; T34 stage 2, T-AI.4 and production networking stay later. No gameplay milestone is complete.
+
+**Historical orchestration (2026-10-27, round ch):** T58 `aa022b9` and T59 `e9997f4`, both from main `3078e07`, are reviewed and remain unmerged. T52 F7 and T57 remain integrated within the round-cg boundaries. The board records exact reproducers and corrections; implementation stays with the executor.
 - T58's 165 join tests, 64 unchanged snapshot tests and five expected legacy failures are verified. Independent probes nevertheless bypass byte/ACK accounting, shared-direction identity and complete link-service evidence without validator errors. The published fragment-loss row never sends its named fragment. T58 F1 corrects those validation/coverage gaps and publishes matched 300/400/500 ms retry comparisons without changing defaults. At 100 Mbit/s a one-fragment probe loses its redundant retries at 400/500 ms; short slow-link probes are not complete-transfer evidence. Serialization, jitter, ask delivery, epoch lifetime and OQ-373 policies retain their explicit boundaries.
 - T59's concrete helper chain is useful but needs F1 documentation corrections: target `+0x60` is read as a dword, the null-Y `0x10056b40` path still writes the target state, the call address is `0x10005176`, and OQ-341 remains open/narrowed outside scope. Preserve unresolved Y effects and conditional provenance across unread calls. Next executor tasks: **T58 F1**, then **T59 F1**, on their existing branches without merging/rebasing main. Nothing pushed; ADRs remain Proposed; T34 stage 2, T-AI.4 and production networking stay later. No gameplay milestone is complete.
 

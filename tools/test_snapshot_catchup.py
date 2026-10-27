@@ -1363,6 +1363,106 @@ class CausalReadiness(unittest.TestCase):
         self.assertEqual(shared.running(), 0)
         self.assertFalse(shared.paused)
 
+    def test_a_horizon_before_load_applies_nothing(self):
+        budgets = model.proposed_budgets()
+        late = _complete(3000)
+        early = model.evaluate_causal(1188, budgets, transfer=late, horizon_ms=2000)
+        state = model.catchup_state_at(2000, budgets, 3000)
+        self.assertEqual(early.status, "restart")
+        self.assertEqual(early.reason, "unmet_boundary")
+        self.assertEqual(early.done_ms, 2000)
+        self.assertEqual((early.applied, early.received), (0, 0))
+        self.assertEqual((state["applied"], state["received"]), (0, 0))
+        self.assertEqual(early.pin_turns, 0)
+        self.assertEqual(early.backlog_turns, 0)
+        self.assertEqual(early.host_applied, 20)
+        self.assertEqual(early.host_span, early.host_applied - early.snapshot_turn)
+        self.assertFalse(early.input_enabled)
+        self.assertFalse(early.paused)
+        self.assertTrue(early.honest(budgets))
+
+        loaded = model.replace(budgets, load_ms=500)
+        during = model.evaluate_causal(
+            1188, loaded, transfer=late, horizon_ms=2000)
+        self.assertEqual(during.done_ms, 2000)
+        self.assertEqual((during.applied, during.received, during.pin_turns), (0, 0, 0))
+        self.assertEqual(during.backlog_turns, 0)
+        self.assertEqual(during.host_span, 20)
+        self.assertFalse(during.input_enabled)
+        self.assertFalse(during.paused)
+        self.assertTrue(during.honest(loaded))
+
+        # Transfer has finished; load has not. The horizon still cannot replay.
+        mid_load = model.evaluate_causal(
+            1188, model.replace(budgets, load_ms=1000),
+            transfer=_complete(1500), horizon_ms=2000)
+        self.assertEqual(mid_load.done_ms, 2000)
+        self.assertEqual(mid_load.applied, 0)
+        self.assertEqual(mid_load.pin_turns, 0)
+        self.assertFalse(mid_load.input_enabled)
+        self.assertTrue(mid_load.honest(model.replace(budgets, load_ms=1000)))
+
+    def test_an_unfinished_replay_step_is_not_applied(self):
+        budgets = model.proposed_budgets()
+        self.assertEqual(model.replay_step_ms(budgets), 10)
+        for ms in (1155, 1159):
+            tight = model.replace(budgets, catchup_ms=ms)
+            stopped = model.evaluate_causal(1188, tight)
+            state = model.catchup_state_at(ms, tight, 150)
+            self.assertEqual(stopped.status, "restart")
+            self.assertEqual(stopped.reason, "deadline")
+            self.assertEqual(stopped.done_ms, ms)
+            self.assertEqual(stopped.applied, 9)
+            self.assertNotEqual(stopped.applied, 10)
+            self.assertEqual(stopped.applied, state["applied"])
+            self.assertEqual(stopped.received, state["received"])
+            self.assertEqual(stopped.pin_turns, stopped.applied - stopped.snapshot_turn)
+            self.assertEqual(
+                stopped.host_applied,
+                stopped.snapshot_turn + stopped.done_ms // budgets.turn_ms)
+            self.assertEqual(stopped.host_span, stopped.host_applied - stopped.snapshot_turn)
+            self.assertEqual(stopped.backlog_turns, state["received"] - state["applied"])
+            self.assertFalse(stopped.input_enabled)
+            self.assertFalse(stopped.paused)
+            self.assertTrue(stopped.honest(tight))
+
+        cut = model.evaluate_causal(1188, budgets, horizon_ms=1155)
+        state = model.catchup_state_at(1155, budgets, 150)
+        self.assertEqual(cut.status, "restart")
+        self.assertEqual(cut.reason, "unmet_boundary")
+        self.assertEqual(cut.done_ms, 1155)
+        self.assertEqual(cut.applied, 9)
+        self.assertEqual(cut.applied, state["applied"])
+        self.assertEqual(cut.received, state["received"])
+        self.assertEqual(cut.pin_turns, 9)
+        self.assertEqual(cut.host_span, cut.host_applied)
+        self.assertEqual(cut.host_applied, 11)
+        self.assertEqual(cut.backlog_turns, 1)
+        self.assertFalse(cut.input_enabled)
+        self.assertFalse(cut.paused)
+        self.assertTrue(cut.honest(budgets))
+
+        plain = model.evaluate_causal(1188, budgets)
+        finished = model.catchup_state_at(1160, budgets, 150)
+        self.assertEqual(
+            (plain.status, plain.done_ms, plain.applied, plain.received, plain.host_applied),
+            ("success", 1160, 10, 10, 11))
+        self.assertEqual(finished["applied"], 10)
+        self.assertTrue(plain.input_enabled)
+        self.assertTrue(plain.honest(budgets))
+        tight = model.replace(budgets, catchup_ms=1160)
+        at_deadline = model.evaluate_causal(1188, tight)
+        self.assertEqual(at_deadline.status, "restart")
+        self.assertEqual(at_deadline.reason, "deadline")
+        self.assertEqual(at_deadline.done_ms, 1160)
+        self.assertEqual(at_deadline.applied, 9)
+        self.assertEqual(at_deadline.pin_turns, 9)
+        self.assertEqual(at_deadline.host_span, 11)
+        self.assertEqual(at_deadline.backlog_turns, 1)
+        self.assertFalse(at_deadline.input_enabled)
+        self.assertFalse(at_deadline.paused)
+        self.assertTrue(at_deadline.honest(tight))
+
     def test_adr_names_the_causal_boundary_and_stays_proposed(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         with open(os.path.join(root, "docs", "adr", "0003-network-transport.md"),

@@ -180,7 +180,11 @@ def assumptions():
         "multiple of that shorter prefix does not enable input. Input waits "
         "for hash_every on the due prefix. Table.advance restarts a "
         "still-running join at catchup_ms before success at that millisecond. "
-        "The 2% rows still drop turn data only; an ACK drop is a separate "
+        "A replay step is credited only after Table.advance walks that step. "
+        "A deadline, tail cap, or horizon that stops during the step keeps "
+        "the last completed cursor, including when the step would end on "
+        "that millisecond. A limit before load completion does not start "
+        "replay. The 2% rows still drop turn data only; an ACK drop is a separate "
         "schedule. The fluid count stays the optimistic comparison. "
         "command_delay stays 2.",
     )
@@ -1795,8 +1799,11 @@ def evaluate_causal(save_bytes, cfg, transfer=None, snapshot_turn=0,
     applied and the contiguous arrived prefix is not enough while a due turn
     is missing. `Table.advance` runs at the clock sample before that success
     test, so a still-running join at `elapsed >= catchup_ms` restarts instead.
-    The optimistic fluid join is stored on the result and is not this test.
-    The table is not paused.
+    A replay step is credited only after that walk. A deadline, tail cap, or
+    horizon that stops the walk keeps the last completed cursor, including a
+    step that would end on the deadline. A limit before load completion does
+    not start replay. The optimistic fluid join is stored on the result and
+    is not this test. The table is not paused.
     """
     optimistic_cfg = cfg
     fragments = fragment_count(save_bytes, cfg.save_per_fragment)
@@ -1851,9 +1858,26 @@ def evaluate_causal(save_bytes, cfg, transfer=None, snapshot_turn=0,
             return None, at
         return _owner_stop_reason(reason, cfg), at
 
-    if t_ms > limit:
-        stop_reason, at = owner_stop(limit)
-        t_ms = at if stop_reason is not None else limit
+    def quiet_limit_reason():
+        """Label a stop `Table.advance` did not itself return.
+
+        The deadline comparison stays in the owner. A horizon earlier
+        than that deadline is `unmet_boundary`, and it does not move
+        the applied cursor.
+        """
+        if horizon_ms is not None and horizon_ms < cfg.catchup_ms:
+            return "unmet_boundary"
+        if cfg.replay_turns_per_s <= cfg.live_turns_per_s:
+            return "cannot_outrun"
+        if arrivals is not None and first_arrival < 0:
+            return "missing_prefix"
+        return "catchup_ms"
+
+    if load_done > limit:
+        # The snapshot is still loading. Do not rewind into replay.
+        reason, at = owner_stop(limit)
+        t_ms = at if reason is not None else limit
+        stop_reason = reason if reason is not None else quiet_limit_reason()
 
     while stop_reason is None and t_ms <= limit and guard <= limit + 2:
         guard += 1
@@ -1887,8 +1911,19 @@ def evaluate_causal(save_bytes, cfg, transfer=None, snapshot_turn=0,
                     snapshot_turn, ready_ms, t_ms, applied_rel, rec, hash_at, peak,
                     transfer.done_ms, first_arrival, optimistic, schedule, cfg)
         if applied_rel < rec:
+            completion = t_ms + step
+            if completion > limit:
+                reason, at = owner_stop(limit)
+                t_ms = at if reason is not None else limit
+                stop_reason = reason if reason is not None else quiet_limit_reason()
+                break
+            reason, at = owner_stop(completion)
+            if reason is not None or at < completion:
+                t_ms = at
+                stop_reason = reason if reason is not None else quiet_limit_reason()
+                break
             applied_rel += 1
-            t_ms += step
+            t_ms = completion
             continue
         nxt = applied_rel + 1
         if arrivals is None:
@@ -1928,9 +1963,12 @@ def evaluate_causal(save_bytes, cfg, transfer=None, snapshot_turn=0,
             stop_reason = "catchup_ms"
     if t_ms > limit:
         t_ms = limit
-    rec = _received_rel(t_ms, cfg, arrivals)
-    if rec is None:
-        rec = min(applied_rel, t_ms // cfg.turn_ms)
+    if t_ms < load_done:
+        rec = 0
+    else:
+        rec = _received_rel(t_ms, cfg, arrivals)
+        if rec is None:
+            rec = min(applied_rel, t_ms // cfg.turn_ms)
     missing = 1
     if stop_reason == "tail_turns":
         missing = span_of(t_ms)

@@ -4,7 +4,8 @@
 This is not a transport and not a measurement of a network. The three save
 sizes, the 1188-byte fragment payload, the window of 32 and the fluid times
 80.3 s / 160.6 s are the T41 figures. Everything else below is an explicit
-model assumption (A1-A13 in `assumptions()`).
+model assumption (A1-A14 in `assumptions()`). A8 is the optimistic fluid
+turn receipt. A14 is the causal per-turn clock. The fluid figures stay.
 
 Run:
 
@@ -165,6 +166,17 @@ def assumptions():
         "Table.note_backlog restarts a backlog past receive_backlog_turns. "
         "The table is not paused. This bounds the proposal's intermediate "
         "state. It is not a measured join and not original netcode.",
+        "A14. The causal clock does not replace A8. Turn k after the snapshot "
+        "is produced at k * turn_ms and cannot arrive before that time plus "
+        "one_way_ms. Channel 1 keeps the snapshot window. Channel 0 sends one "
+        "turn datagram at production and does not wait for channel 1. "
+        "Serialization of that window plus one turn datagram is left off this "
+        "clock only while the sum is below the one-way delay. A shared queue, "
+        "jitter and the channel-2 hash flight are not modeled. Readiness is "
+        "the receivable prefix, not equality with the host, when one_way_ms "
+        "is at least turn_ms. Input waits for hash_every. The 2% rows still "
+        "drop turn data only; an ACK drop is a separate schedule. The fluid "
+        "count stays the optimistic comparison. command_delay stays 2.",
     )
 
 
@@ -197,6 +209,8 @@ class Budgets:
     # can tighten one without the other.
     receive_backlog_turns: int = 4096
     max_generations: int = 2
+    # ADR §7. Not a join budget. Existing rows do not read it.
+    hash_every: int = 10
 
     @property
     def rtt_ms(self):
@@ -1308,6 +1322,589 @@ def t45_report_lines():
     return lines
 
 
+def replay_step_ms(cfg):
+    if cfg.replay_turns_per_s <= 0:
+        raise ValueError("rate")
+    return (1000 + cfg.replay_turns_per_s - 1) // cfg.replay_turns_per_s
+
+
+def host_frontier(t_ms, snapshot_turn, cfg):
+    """Host-produced and host-applied frontiers at `t_ms`.
+
+    A10 gives them the same timestamp: the host applies turn k when it
+    produces it, at k * turn_ms after the snapshot. The names stay separate
+    so a later split is not hidden inside one cursor.
+    """
+    if t_ms < 0 or cfg.turn_ms <= 0:
+        raise ValueError("frontier")
+    produced = snapshot_turn + t_ms // cfg.turn_ms
+    return produced, produced
+
+
+def turn_produce_ms(relative_k, cfg):
+    if relative_k < 1:
+        raise ValueError("turn")
+    return relative_k * cfg.turn_ms
+
+
+def turn_arrival_ms(relative_k, cfg):
+    """Earliest arrival. One-way delay is part of the arrival, not optional."""
+    return turn_produce_ms(relative_k, cfg) + cfg.one_way_ms
+
+
+def receivable_relative(t_ms, cfg):
+    """In-order zero-loss prefix. Turn k has arrived when t >= k*turn + one_way."""
+    if t_ms < 0:
+        raise ValueError("elapsed")
+    if t_ms < cfg.turn_ms + cfg.one_way_ms:
+        return 0
+    return (t_ms - cfg.one_way_ms) // cfg.turn_ms
+
+
+def delivery_lag(t_ms, cfg):
+    host = t_ms // cfg.turn_ms
+    got = receivable_relative(t_ms, cfg)
+    if got > host:
+        raise ValueError("future")
+    return host - got
+
+
+def max_delivery_lag(cfg):
+    """Largest host lead over the receivable prefix, in turns.
+
+    It is ceil(one_way_ms / turn_ms). When that is at least 1, the joiner
+    cannot sit on the host's current frontier: the newest produced turn is
+    still in flight.
+    """
+    if cfg.turn_ms <= 0 or cfg.one_way_ms < 0:
+        raise ValueError("lag")
+    if cfg.one_way_ms == 0:
+        return 0
+    lag = 0
+    last = cfg.turn_ms + cfg.one_way_ms + cfg.turn_ms
+    for t_ms in range(0, last + 1):
+        lag = max(lag, delivery_lag(t_ms, cfg))
+    return lag
+
+
+def equality_reachable(cfg):
+    """Instant apply of an arrived turn can match the host only when the
+    one-way delay is shorter than one turn. A delay of one turn or more
+    moves the host frontier before that turn can be applied."""
+    return 0 <= cfg.one_way_ms < cfg.turn_ms
+
+
+def hash_target(applied_abs, snapshot_turn, hash_every):
+    """Next ordinary hash turn at or after the applied frontier.
+
+    The snapshot boundary itself is not a new check. A frontier that already
+    lands on a later multiple uses that multiple.
+    """
+    if hash_every <= 0:
+        raise ValueError("hash_every")
+    if applied_abs > snapshot_turn and applied_abs % hash_every == 0:
+        return applied_abs
+    if applied_abs % hash_every == 0:
+        target = applied_abs + hash_every
+    else:
+        target = applied_abs + (hash_every - applied_abs % hash_every)
+    if target <= snapshot_turn:
+        step = hash_every - (snapshot_turn % hash_every)
+        target = snapshot_turn + (hash_every if step == 0 else step)
+    return target
+
+
+def channel_bandwidth_us(cfg, bits_per_s=100_000_000):
+    """Serialization of one channel-1 window and one channel-0 datagram.
+
+    The channels are independent in this model: the window does not delay
+    the turn. The pair is the bandwidth assumption, not a shared queue.
+    """
+    if bits_per_s <= 0:
+        raise ValueError("rate")
+    snapshot = window_serialize_us(cfg.window, cfg.payload_max, bits_per_s)
+    turn = window_serialize_us(1, cfg.turn_datagram_bytes, bits_per_s)
+    return snapshot, turn, snapshot + turn, cfg.one_way_ms * 1000
+
+
+@dataclass(frozen=True)
+class TurnSchedule:
+    arrivals: dict
+    duplicates: int
+    acks_lost: int
+    data_drops: int
+    sends: int
+
+
+def build_turn_schedule(turn_count, cfg, data_drop=None, ack_drop=None, reorder=None):
+    """Per-turn channel-0 sends. A custom drop replaces the LCG.
+
+    Data loss moves that turn's first arrival to a later attempt. ACK loss
+    resends and counts a duplicate; it does not move the first arrival.
+    `reorder` may only add delay. Arrival stays at or after produce+one_way.
+    """
+    if turn_count < 0:
+        raise ValueError("turns")
+    rng = LCG(cfg.seed)
+    arrivals = {}
+    duplicates = 0
+    acks_lost = 0
+    data_drops = 0
+    sends = 0
+    for relative_k in range(1, turn_count + 1):
+        send = turn_produce_ms(relative_k, cfg)
+        earliest = send + cfg.one_way_ms
+        for attempt in range(cfg.max_attempts):
+            sends += 1
+            if data_drop is None:
+                dropped = rng.below(cfg.loss_per_million)
+            else:
+                dropped = bool(data_drop(relative_k, attempt))
+            extra = 0 if reorder is None else reorder(relative_k, attempt)
+            if extra < 0:
+                raise ValueError("reorder")
+            if dropped:
+                data_drops += 1
+                send += cfg.resend_ms
+                continue
+            arrive = send + cfg.one_way_ms + extra
+            if arrive < earliest:
+                raise ValueError("latency")
+            if relative_k not in arrivals:
+                arrivals[relative_k] = arrive
+            else:
+                duplicates += 1
+            if ack_drop is not None and ack_drop(relative_k, attempt):
+                acks_lost += 1
+                send += cfg.resend_ms
+                continue
+            break
+    return TurnSchedule(arrivals, duplicates, acks_lost, data_drops, sends)
+
+
+def prefix_received(t_ms, arrivals):
+    relative_k = 1
+    while relative_k in arrivals and arrivals[relative_k] <= t_ms:
+        relative_k += 1
+    return relative_k - 1
+
+
+def hole_at(t_ms, arrivals, host_relative):
+    """A later turn is present while an earlier one is not."""
+    prefix = prefix_received(t_ms, arrivals)
+    for relative_k in range(prefix + 1, host_relative + 1):
+        when = arrivals.get(relative_k)
+        if when is not None and when <= t_ms:
+            return True
+    return False
+
+
+def frontiers_at(t_ms, cfg, snapshot_turn=0, arrivals=None):
+    """Frontiers after host apply and channel-0 delivery at `t_ms`.
+
+    Joiner apply is not this function. It completes `replay_step_ms` later.
+    Order at one timestamp: host produce/apply, then deliveries with
+    arrival <= t, then a joiner apply only if its step has elapsed.
+    """
+    produced, host_applied = host_frontier(t_ms, snapshot_turn, cfg)
+    host_relative = produced - snapshot_turn
+    if arrivals is None:
+        relative = min(receivable_relative(t_ms, cfg), host_relative)
+        hole = False
+        first = turn_arrival_ms(1, cfg) if host_relative > 0 or t_ms >= 0 else -1
+    else:
+        relative = prefix_received(t_ms, arrivals)
+        if relative > host_relative:
+            raise ValueError("future")
+        hole = hole_at(t_ms, arrivals, host_relative)
+        first = arrivals.get(1, -1)
+    return {
+        "t_ms": t_ms,
+        "host_produced": produced,
+        "host_applied": host_applied,
+        "received": snapshot_turn + relative,
+        "hole": hole,
+        "first_arrival_ms": first,
+    }
+
+
+@dataclass(frozen=True)
+class CausalJoin:
+    status: str
+    reason: str
+    paused: bool
+    snapshot_turn: int
+    ready_ms: int
+    done_ms: int
+    host_produced: int
+    host_applied: int
+    received: int
+    applied: int
+    missing: int
+    first_arrival_ms: int
+    input_enabled: bool
+    hash_turn: int
+    pin_turns: int
+    host_span: int
+    transfer_ms: int
+    backlog_turns: int
+    optimistic_status: str
+    optimistic_done_ms: int
+    optimistic_replayed: int
+    optimistic_host: int
+    duplicates: int = 0
+    acks_lost: int = 0
+    data_drops: int = 0
+
+    def honest(self, cfg):
+        if self.paused or (self.input_enabled and self.status != "success"):
+            return False
+        if self.applied > self.snapshot_turn and self.first_arrival_ms >= 0:
+            if self.first_arrival_ms < cfg.turn_ms + cfg.one_way_ms:
+                return False
+        if self.applied > self.received or self.received > self.host_applied:
+            return False
+        if self.host_produced != self.host_applied:
+            return False
+        if self.host_produced != self.snapshot_turn + self.done_ms // cfg.turn_ms:
+            return False
+        if self.pin_turns != max(self.applied - self.snapshot_turn, 0):
+            return False
+        if self.host_span != self.host_applied - self.snapshot_turn:
+            return False
+        if self.status != "success":
+            return self.status in ("refuse", "restart") and not self.input_enabled
+        if self.missing != 0 or not self.input_enabled:
+            return False
+        if self.applied != self.received:
+            return False
+        if cfg.one_way_ms >= cfg.turn_ms and self.host_applied > self.snapshot_turn:
+            if self.applied >= self.host_applied:
+                return False
+        if self.host_span > cfg.tail_turns_max:
+            return False
+        if self.backlog_turns > cfg.receive_backlog_turns:
+            return False
+        return self.done_ms <= cfg.catchup_ms
+
+
+def _received_rel(t_ms, cfg, arrivals):
+    host_relative = t_ms // cfg.turn_ms
+    if arrivals is None:
+        return min(receivable_relative(t_ms, cfg), host_relative)
+    got = prefix_received(t_ms, arrivals)
+    if got > host_relative:
+        return None
+    return got
+
+
+def catchup_state_at(query_ms, cfg, load_done, snapshot_turn=0, arrivals=None):
+    """Joiner cursors at `query_ms`, after delivery and before an unfinished apply."""
+    if query_ms < 0:
+        raise ValueError("query")
+    if query_ms < load_done:
+        produced, host_applied = host_frontier(query_ms, snapshot_turn, cfg)
+        return {
+            "t_ms": query_ms,
+            "host_produced": produced,
+            "host_applied": host_applied,
+            "received": snapshot_turn,
+            "applied": snapshot_turn,
+            "on_frontier": False,
+        }
+    step = replay_step_ms(cfg)
+    t_ms = load_done
+    applied_rel = 0
+    guard = 0
+    while guard <= query_ms + 2:
+        guard += 1
+        rec = _received_rel(t_ms, cfg, arrivals)
+        if rec is None or t_ms >= query_ms:
+            break
+        if applied_rel < rec:
+            if t_ms + step > query_ms:
+                break
+            applied_rel += 1
+            t_ms += step
+            continue
+        nxt = applied_rel + 1
+        if arrivals is None:
+            arrive = turn_arrival_ms(nxt, cfg)
+        else:
+            arrive = arrivals.get(nxt)
+            if arrive is None or arrive > query_ms:
+                break
+        if arrive <= t_ms:
+            break
+        t_ms = arrive
+    rec = _received_rel(query_ms, cfg, arrivals)
+    if rec is None:
+        rec = min(applied_rel, query_ms // cfg.turn_ms)
+    produced, host_applied = host_frontier(query_ms, snapshot_turn, cfg)
+    return {
+        "t_ms": query_ms,
+        "host_produced": produced,
+        "host_applied": host_applied,
+        "received": snapshot_turn + rec,
+        "applied": snapshot_turn + applied_rel,
+        "on_frontier": applied_rel == rec,
+    }
+
+
+def _fail_causal(status, reason, snapshot_turn, transfer_ms, done_ms, missing, cfg,
+                 optimistic, schedule=None, ready_ms=-1, applied=None, received=None,
+                 backlog=0):
+    if applied is None:
+        applied = snapshot_turn
+    if received is None:
+        received = snapshot_turn
+    host, host_applied = host_frontier(max(done_ms, 0), snapshot_turn, cfg)
+    sched = schedule or TurnSchedule({}, 0, 0, 0, 0)
+    first = -1 if schedule is None else schedule.arrivals.get(1, -1)
+    if schedule is None and cfg.one_way_ms >= 0:
+        first = turn_arrival_ms(1, cfg)
+    return CausalJoin(
+        status, reason, False, snapshot_turn, ready_ms, done_ms, host, host_applied,
+        received, applied, missing, first, False, -1,
+        max(applied - snapshot_turn, 0), host_applied - snapshot_turn,
+        transfer_ms, backlog, optimistic.status, optimistic.done_ms,
+        optimistic.replayed, optimistic.host_produced, sched.duplicates,
+        sched.acks_lost, sched.data_drops)
+
+
+def evaluate_causal(save_bytes, cfg, transfer=None, snapshot_turn=0,
+                    data_drop=None, ack_drop=None, reorder=None, hash_matches=True,
+                    horizon_ms=None):
+    """Causal join. Success is the hash after the receivable prefix.
+
+    The optimistic fluid join is computed on the same snapshot transfer and
+    stored on the result. It is not this function's success test. The table
+    is not paused. A hole, a cap, or a frontier the joiner has not reached
+    is a refusal or a restart.
+    """
+    optimistic_cfg = cfg
+    fragments = fragment_count(save_bytes, cfg.save_per_fragment)
+    if fragments > cfg.fragment_max:
+        dummy = JoinResult("refuse", "fragment_cap", False, snapshot_turn,
+                           snapshot_turn + 1, snapshot_turn, 0, 0, 0, 0,
+                           snapshot_turn, snapshot_turn, snapshot_turn, 0, 0)
+        return _fail_causal("refuse", "fragment_cap", snapshot_turn, 0, 0, 0, cfg, dummy)
+
+    if transfer is None:
+        transfer = run_transfer(fragments, cfg)
+    optimistic = evaluate_join(save_bytes, optimistic_cfg, transfer=transfer,
+                               snapshot_turn=snapshot_turn)
+    if transfer.status != "complete":
+        reason = "missing_fragments" if transfer.status == "incomplete" else transfer.status
+        missing = transfer.fragments - transfer.cursor
+        return _fail_causal("restart", reason, snapshot_turn, transfer.done_ms,
+                            transfer.done_ms, missing, cfg, optimistic)
+
+    load_done = transfer.done_ms + cfg.load_ms
+    limit = cfg.catchup_ms if horizon_ms is None else min(cfg.catchup_ms, horizon_ms)
+    needs_schedule = (cfg.loss_per_million > 0 or data_drop is not None
+                      or ack_drop is not None or reorder is not None)
+    schedule = None
+    arrivals = None
+    if needs_schedule:
+        turn_count = limit // cfg.turn_ms + cfg.max_attempts + 2
+        schedule = build_turn_schedule(turn_count, cfg, data_drop, ack_drop, reorder)
+        arrivals = schedule.arrivals
+    first_arrival = turn_arrival_ms(1, cfg) if arrivals is None else arrivals.get(1, -1)
+
+    step = replay_step_ms(cfg)
+    t_ms = load_done
+    applied_rel = 0
+    ready_ms = -1
+    hash_at = -1
+    peak = 0
+    guard = 0
+    stop_reason = None
+
+    def span_of(now):
+        return now // cfg.turn_ms
+
+    while t_ms <= limit and guard <= limit + 2:
+        guard += 1
+        rec = _received_rel(t_ms, cfg, arrivals)
+        host_relative = span_of(t_ms)
+        if rec is None:
+            stop_reason = "future_turn"
+            break
+        backlog = rec - applied_rel
+        if backlog > peak:
+            peak = backlog
+        if host_relative > cfg.tail_turns_max:
+            stop_reason = "tail_turns"
+            break
+        if host_relative * cfg.turn_store_cap > cfg.tail_bytes_max:
+            stop_reason = "tail_bytes"
+            break
+        if peak > cfg.receive_backlog_turns:
+            stop_reason = "backlog"
+            break
+        if applied_rel > rec:
+            stop_reason = "future_turn"
+            break
+        on_frontier = applied_rel == rec
+        if on_frontier and ready_ms < 0:
+            ready_ms = t_ms
+            hash_at = hash_target(snapshot_turn + applied_rel, snapshot_turn, cfg.hash_every)
+        if on_frontier and hash_at >= 0 and snapshot_turn + applied_rel >= hash_at:
+            if not hash_matches:
+                stop_reason = "hash_mismatch"
+                break
+            return _success_causal(
+                snapshot_turn, ready_ms, t_ms, applied_rel, rec, hash_at, peak,
+                transfer.done_ms, first_arrival, optimistic, schedule, cfg)
+        if applied_rel < rec:
+            applied_rel += 1
+            t_ms += step
+            continue
+        nxt = applied_rel + 1
+        if arrivals is None:
+            arrive = turn_arrival_ms(nxt, cfg)
+        else:
+            arrive = arrivals.get(nxt)
+            if arrive is None:
+                stop_reason = "missing_prefix"
+                break
+        if arrive < turn_produce_ms(nxt, cfg) + cfg.one_way_ms:
+            stop_reason = "future_turn"
+            break
+        if arrive <= t_ms:
+            stop_reason = "missing_prefix"
+            break
+        if (arrive // cfg.turn_ms) > cfg.tail_turns_max and host_relative <= cfg.tail_turns_max:
+            t_ms = (cfg.tail_turns_max + 1) * cfg.turn_ms
+            continue
+        if arrive > limit:
+            t_ms = limit + 1
+            break
+        t_ms = arrive
+
+    if stop_reason is None:
+        if horizon_ms is not None and horizon_ms <= cfg.catchup_ms and t_ms > horizon_ms:
+            stop_reason = "unmet_boundary"
+        elif cfg.replay_turns_per_s <= cfg.live_turns_per_s:
+            stop_reason = "cannot_outrun"
+        elif arrivals is not None and first_arrival < 0:
+            stop_reason = "missing_prefix"
+        else:
+            stop_reason = "catchup_ms"
+    if t_ms > limit:
+        t_ms = limit
+    rec = _received_rel(t_ms, cfg, arrivals)
+    if rec is None:
+        rec = min(applied_rel, t_ms // cfg.turn_ms)
+    missing = 1
+    if stop_reason == "tail_turns":
+        missing = span_of(t_ms)
+    elif stop_reason == "backlog":
+        missing = peak
+    elif stop_reason == "missing_prefix":
+        missing = max((t_ms // cfg.turn_ms) - applied_rel, 1)
+    elif stop_reason in ("cannot_outrun", "catchup_ms", "unmet_boundary"):
+        missing = max((t_ms // cfg.turn_ms) - applied_rel, 1)
+    return _fail_causal(
+        "restart", stop_reason, snapshot_turn, transfer.done_ms, t_ms, missing, cfg,
+        optimistic, schedule, ready_ms, snapshot_turn + applied_rel,
+        snapshot_turn + rec, peak)
+
+
+def _success_causal(snapshot_turn, ready_ms, done_ms, applied_rel, rec, hash_at, peak,
+                    transfer_ms, first_arrival, optimistic, schedule, cfg):
+    applied = snapshot_turn + applied_rel
+    received = snapshot_turn + rec
+    host, host_applied = host_frontier(done_ms, snapshot_turn, cfg)
+    sched = schedule or TurnSchedule({}, 0, 0, 0, 0)
+    return CausalJoin(
+        "success", "caught_up", False, snapshot_turn, ready_ms, done_ms,
+        host, host_applied, received, applied, 0, first_arrival, True, hash_at,
+        applied - snapshot_turn, host_applied - snapshot_turn, transfer_ms, peak,
+        optimistic.status, optimistic.done_ms, optimistic.replayed,
+        optimistic.host_produced, sched.duplicates, sched.acks_lost, sched.data_drops)
+
+
+def causal_report_lines(cfg=None):
+    """Labeled causal rows. Fluid equality stays on `report_lines`."""
+    if cfg is None:
+        cfg = proposed_budgets()
+    snap_us, turn_us, both_us, one_way_us = channel_bandwidth_us(cfg)
+    lines = [
+        "causal-join model",
+        "status: proposal, not a measured network",
+        "causal defaults_unchanged load_ms=%d replay_turns_per_s=%d turn_store_cap=%d "
+        "one_way_ms=%d hash_every=%d command_delay=2"
+        % (cfg.load_ms, cfg.replay_turns_per_s, cfg.turn_store_cap,
+           cfg.one_way_ms, cfg.hash_every),
+        "causal bandwidth snapshot_window_us=%d turn_datagram_us=%d sum_us=%d "
+        "one_way_us=%d independent_channels=1 shared_queue=0"
+        % (snap_us, turn_us, both_us, one_way_us),
+        "causal lag_max=%d equality_reachable=%d"
+        % (max_delivery_lag(cfg), 1 if equality_reachable(cfg) else 0),
+        "causal fluid_unchanged endless02_rtt150_tenths=%d endless02_rtt300_tenths=%d"
+        % (fluid_tenths(PUBLISHED_FRAGMENTS["endless02"], cfg.window, 150),
+           fluid_tenths(PUBLISHED_FRAGMENTS["endless02"], cfg.window, 300)),
+    ]
+    one = evaluate_causal(cfg.save_per_fragment, cfg)
+    lines.append(
+        "causal one_fragment produce_ms=%d arrival_ms=%d ready_ms=%d done_ms=%d "
+        "applied=%d received=%d host_produced=%d host_applied=%d input_enabled=%s "
+        "hash_turn=%d paused=%s optimistic_done_ms=%d optimistic_replayed=%d "
+        "optimistic_host=%d equal_frontier=0"
+        % (turn_produce_ms(1, cfg), one.first_arrival_ms, one.ready_ms, one.done_ms,
+           one.applied, one.received, one.host_produced, one.host_applied,
+           str(one.input_enabled).lower(), one.hash_turn, str(one.paused).lower(),
+           one.optimistic_done_ms, one.optimistic_replayed, one.optimistic_host))
+    for name, size in MEASURED_SAVES:
+        result = evaluate_causal(size, cfg)
+        lines.append(
+            "causal default %s bytes=%d status=%s reason=%s ready_ms=%d done_ms=%d "
+            "applied=%d received=%d host_produced=%d host_applied=%d pin_turns=%d "
+            "host_span=%d backlog_peak=%d transfer_ms=%d paused=%s "
+            "optimistic_status=%s optimistic_done_ms=%d optimistic_replayed=%d "
+            "input_enabled=%s"
+            % (name, size, result.status, result.reason, result.ready_ms, result.done_ms,
+               result.applied, result.received, result.host_produced, result.host_applied,
+               result.pin_turns, result.host_span, result.backlog_turns, result.transfer_ms,
+               str(result.paused).lower(), result.optimistic_status,
+               result.optimistic_done_ms, result.optimistic_replayed,
+               str(result.input_enabled).lower()))
+    rate_keys = ("script_duration", "script_median", "script_p95", "script_max",
+                 "empty_duration", "empty_max")
+    for name, size in T45_SAVE_BYTES:
+        for key in rate_keys:
+            labeled = t45_budgets(name, key)
+            result = evaluate_causal(size, labeled)
+            lines.append(
+                "causal t45 %s rate_key=%s replay=%d load_ms=%d status=%s reason=%s "
+                "done_ms=%d applied=%d host_applied=%d pin_turns=%d host_span=%d "
+                "optimistic_done_ms=%d optimistic_replayed=%d paused=%s input_enabled=%s"
+                % (name, key, labeled.replay_turns_per_s, labeled.load_ms, result.status,
+                   result.reason, result.done_ms, result.applied, result.host_applied,
+                   result.pin_turns, result.host_span, result.optimistic_done_ms,
+                   result.optimistic_replayed, str(result.paused).lower(),
+                   str(result.input_enabled).lower()))
+        loss = replace(t45_budgets(name, "empty_max"), loss_per_million=20_000, seed=1)
+        result = evaluate_causal(size, loss)
+        horizon_turns = loss.catchup_ms // loss.turn_ms + loss.max_attempts + 2
+        lines.append(
+            "causal t45_loss %s rate_key=empty_max seed=1 data_only status=%s reason=%s "
+            "transfer_ms=%d done_ms=%d applied=%d host_applied=%d horizon_turns=%d "
+            "horizon_data_drops=%d acks_lost=%d paused=%s optimistic_done_ms=%d "
+            "optimistic_replayed=%d"
+            % (name, result.status, result.reason, result.transfer_ms, result.done_ms,
+               result.applied, result.host_applied, horizon_turns, result.data_drops,
+               result.acks_lost, str(result.paused).lower(), result.optimistic_done_ms,
+               result.optimistic_replayed))
+    lines.append(
+        "causal limits not_end_to_end=1 shared_link_unmeasured=1 hash_flight_unmeasured=1 "
+        "jitter_unmeasured=1 real_play_unmeasured=1 other_hosts_unmeasured=1 "
+        "defaults_kept=1 adr_proposed=1")
+    return lines
+
+
 def report_lines(cfg=None, with_loss=False):
     if cfg is None:
         cfg = proposed_budgets()
@@ -1369,6 +1966,8 @@ def main():
     for line in report_lines(with_loss=True):
         print(line)
     for line in t45_report_lines():
+        print(line)
+    for line in causal_report_lines():
         print(line)
 
 

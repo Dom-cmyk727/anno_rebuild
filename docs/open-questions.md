@@ -1807,11 +1807,26 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** done. The numbers are §13.
 
 ## OQ-280: Snapshot transfer against the 60 s turn buffer (T41 F1, 2026-10-27)
-- **Status:** open. ADR 0003 stays Proposed. No choice is made here.
+- **Status:** narrowed (T43, 2026-10-27). ADR 0003 stays Proposed. The recommendation is recorded. The owner still approves the ADR.
 - **Area:** network / budgets.
-- **What is known.** A fragment carries 1188 save bytes. The measured saves need 9 659, 17 130 and 10 865 fragments (`S01_07_01` 11 474 169 bytes, `endless02` 20 349 454, `03_1024_med_256` 12 906 633). `fragment_max` 4096 admits 4 866 048 bytes, so those snapshots are not transferable at that cap. The proposed cap is 17 130 fragments, 20 350 440 bytes. In an ideal full window of 32 fragments, `endless02` takes 80.3 s at 150 ms RTT and 160.6 s if 150 ms is one-way delay. `turn_buffer` holds 600 turns, 60 s. A live join does not pause the table. §7 stores a snapshot every 10 minutes and does not send it; the document does not say a fresh save is written at join.
-- **The question:** for a join or a resync, does the host keep a longer turn buffer, write a snapshot at the moment of the transfer, or pause the table while the snapshot is in flight? The ideal times are not measured end-to-end join or resync times.
-- **How to resolve:** the owner chooses one. Until then the ADR names the gap and does not pick it.
+- **What is known.** A fragment carries 1188 save bytes. The measured saves need 9 659, 17 130 and 10 865 fragments (`S01_07_01` 11 474 169 bytes, `endless02` 20 349 454, `03_1024_med_256` 12 906 633). `fragment_max` 4096 admits 4 866 048 bytes, so those snapshots are not transferable at that cap. The proposed cap is 17 130 fragments, 20 350 440 bytes. In an ideal full window of 32 fragments, `endless02` takes 80.3 s at 150 ms RTT and 160.6 s if 150 ms is one-way delay. `turn_buffer` holds 600 turns, 60 s. A live join does not pause the table. §7 stores a snapshot every 10 minutes and does not send it. The T43 model (`tools/snapshot_catchup.py`) keeps those fluid figures and adds a discrete clock: `endless02` completes in 160 650 ms with no loss at a 300 ms round trip. Seed 1 at 2% loss completes in 198 750 ms of transfer and a pin of 2 208 turns. Those are model results.
+- **Recommendation.** A fresh `World::save()` at the ask, turn index `S`, first replayed turn `S+1`, and a pin of every later turn until the joiner reaches the host or a cap trips. The 60 s log stays the short-outage buffer. The periodic image is not the join payload. A mismatch may pause, and the image it sends is taken after the pause, so that tail is empty. A rolling log alone refuses `endless02` at the acceptance round trip. Pausing the table for a join is not offered: it fails the no-pause requirement on its own. When a cap trips, only the joiner is refused or restarted. The table is not paused, and a turn another running pin still needs is not evicted.
+- **Still for the owner.** The proposed defaults: `tail_turns_max` 4096, `catchup_ms` 600000, `concurrent_transfers` 2, `snapshot_age_ms` 60000, `loss_scale` 2, and `resend_ms` 300 on the 300 ms round-trip case (the LAN default stays 50). OQ-281 and OQ-282. OQ-283 through OQ-289 were not used.
+- **How to resolve:** the owner accepts or changes those defaults by approving ADR 0003. Until then the ADR stays Proposed and no `net` code is written.
+
+## OQ-281: Joiner load time and replay rate (T43, 2026-10-27)
+- **Status:** open. The T43 admission math uses placeholders. ADR 0003 stays Proposed.
+- **Area:** network / budgets.
+- **What was needed.** The wall time of `World::load` on the three measured saves, and how many `run_turn` calls a joiner can apply per second while the host keeps playing at 10 turns/s.
+- **What was checked.** T41 measured `state_hash` and `save().size()`. It did not measure `World::load` or a catch-up replay. The model therefore uses `load_ms` 0 and `replay_turns_per_s` 100 (assumption A6 in `tools/snapshot_catchup.py`). A configured rate at or below 10 turns/s is an admission refusal. A joiner who falls behind `catchup_ms` or `tail_turns_max` is restarted.
+- **How to resolve:** time `World::load` and a replay of a recorded turn log on the three saves, on this host, and replace the two placeholders. The pin rule does not wait on that measurement.
+
+## OQ-282: Bytes charged for one retained turn (T43, 2026-10-27)
+- **Status:** open. The cap is `payload_max`. ADR 0003 stays Proposed.
+- **Area:** network / budgets.
+- **What was needed.** The distribution of turn payload sizes during play, so the pin's byte charge is a measured size rather than a cap.
+- **What was checked.** ADR 0003 §13: an empty turn payload is 16 bytes, and the datagram with the 25-byte header and 28 bytes of IPv4+UDP is 69 bytes. A placement is described there as a few dozen bytes. No play session was measured. The model charges `turn_store_cap` 1200 bytes, equal to `payload_max`, for every retained turn. The 69-byte figure is used only to compare channel-0 flight time with the snapshot.
+- **How to resolve:** a measured per-turn size from a scripted session, with a configured cap still above it. Until then the allocation bound uses 1200.
 
 ## OQ-195: Whether DirectDraw changes the x87 control word (T34 stage 1, 2026-10-27)
 - **Status:** open. ADR 0002 uses the word the game's own startup writes (53-bit mantissa, rounding left unchanged). Stage 2 does not treat a 24-bit mantissa as the model while this is open.

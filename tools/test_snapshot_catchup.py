@@ -226,6 +226,11 @@ class Retention(unittest.TestCase):
         wider = cfg(fragment_max=fragments, tail_turns_max=8192)
         decision, reason, need = model.admit(doubled, wider)
         self.assertEqual((decision, reason, need), ("refuse", "catchup_ms", 7137))
+        quad = dict(model.SYNTHETIC_SAVES)["synthetic_4x_endless02"]
+        self.assertEqual(model.fragment_count(quad), 68517)
+        self.assertEqual(model.tail_turns_needed(model.fragment_count(quad),
+                                                 cfg(fragment_max=model.fragment_count(quad))),
+                         14277)
 
     def test_tail_cap_restarts_a_permitted_join(self):
         # Admitted under the proposed cap, then the same bytes are evaluated
@@ -298,10 +303,43 @@ class Ownership(unittest.TestCase):
         self.assertEqual(resync["tail_turns"], 0)
 
 
+class ProposalText(unittest.TestCase):
+    def test_adr_stays_proposed_and_quotes_the_model(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "docs", "adr", "0003-network-transport.md"),
+                  encoding="utf-8") as adr_file:
+            adr = adr_file.read()
+        with open(os.path.join(root, "docs", "open-questions.md"),
+                  encoding="utf-8") as oq_file:
+            oq = oq_file.read()
+        self.assertIn("**Status:** Proposed", adr)
+        self.assertNotIn("**Status:** Accepted", adr)
+        for token in (
+                "tail_turns_max=4096",
+                "tail_bytes_max=4915200",
+                "allocation_bound_bytes=87113760",
+                "endless02_discrete_zero_loss_ms=160650",
+                "endless02_loss2_seed1_transfer_ms=198750",
+                "endless02_loss2_seed1_done_ms=220830",
+                "endless02_loss2_seed1_pin_turns=2208",
+                "tools/snapshot_catchup.py",
+                "80.3 s",
+                "160.6 s",
+                ):
+            self.assertIn(token, adr)
+        self.assertIn("narrowed (T43, 2026-10-27)", oq)
+        self.assertIn("## OQ-281:", oq)
+        self.assertIn("## OQ-282:", oq)
+        self.assertNotIn("## OQ-283:", oq)
+
+
 class Proposal(unittest.TestCase):
     def test_tail_cap_is_the_power_of_two_above_the_largest_save(self):
         budgets = model.proposed_budgets()
-        need = model.tail_turns_needed(model.PUBLISHED_FRAGMENTS["endless02"], budgets)
+        needs = [model.tail_turns_needed(model.PUBLISHED_FRAGMENTS[name], budgets)
+                 for name, _size in model.MEASURED_SAVES]
+        self.assertEqual(needs, [2010, 3570, 2264])
+        need = needs[1]
         self.assertEqual(budgets.tail_turns_max, model.next_pow2(need))
         self.assertGreaterEqual(budgets.tail_turns_max, need)
         for name, _size in model.MEASURED_SAVES:

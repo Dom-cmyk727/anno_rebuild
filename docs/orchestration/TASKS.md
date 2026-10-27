@@ -4,7 +4,76 @@
 
 **Round bp (2026-10-26, owner instruction):** for every task after the one an executor has in progress now, **subagents are allowed again where necessary and helpful**. §1 item 5 has the rules: the task stays the executor's, subagents' results are checked against the files before they enter a commit, one heavy job at a time on the PC, the orchestrator's review stays. §1 item 11 no longer forbids them inside a sub-task.
 
-Last update: 2026-10-27 cb — **T53 approved and merged locally; T52 needs F2.** Next executor tasks: **T52 F2**, then **T54** (city owner registration and the remaining RemoveAt argument ledger). ADRs 0002/0003 remain Proposed; T34 stage 2 and T-AI.4 stay `LATER`. Nothing pushed.
+Last update: 2026-10-27 cc — **T52 F2 and T54 reviewed: both need executor fix-ups, nothing merged.** Next executor tasks, in this order: **T54 F1** (the city slot `+0xb8` reading of argument 3), **T52 F3** (independent validators and join-side correctness), **T52 F4** (seated-peer outages, log-backed sending, the snapshot channel, accounting). ADRs 0002/0003 remain Proposed; T34 stage 2 and T-AI.4 stay `LATER`. Nothing pushed.
+
+**Round cc (2026-10-27, orchestrator): T52 F2 / T54 review.**
+- Baseline main `813b1379f7fd9cf102e05cb489d6a6eb280f1651`. Exact clean heads verified: T52 F2 `5ea1f34`, T54 `e6f34b5` (base `813b137`). Neither is merged. No push. The pre-existing untracked `AGENTS.md` is untouched.
+- **T52 F2 progress retained.**
+  - The checker models ordered channel-0 delivery with real per-pair/channel sequences, resends on the same sequence, ACK-only datagrams and a 32-sequence window that really blocks.
+  - The five round-cb regressions were written first and fail under `JOIN_RULES=F1`. Rerun here: 30 tests pass, 5/5 fail under F1, 64 `snapshot_catchup` tests pass with both files unchanged.
+  - Ownership events travel in turn `A`, with a session-wide `event_id` high-water mark and snapshot coverage `A <= S` (checked at S = A-1, A, A+1).
+  - Roots are keyed by turn. With two generations, either one can expire and the other completes.
+- **T52 F2: changes required.** An independent probe review found the defects below, and the orchestrator re-ran the decisive probes. The probe scripts are in `E:\anno1503\cache\orch-cc\t52probe\` (git-ignored; each imports the checker from the T52 worktree; run with `python -I -B`).
+  - **B1, stale grant opens input** (`p2_stale_grant.py`):
+    - With `InputGrant` H→J1 seq 23 lost on attempts 1–7, input opens at 4360 ms with applied 21 / received 21 against grant C 21. In the same millisecond the rest of the batch brings received to 42 (lag 21, host 43).
+    - Losing attempts 1–4 gives lag 12 at host 34.
+    - Losing `Turn` seq 22 on attempts 1–7 gives lag 22.
+    - Validators report 0 in every case. The gate (`join_activation.py` ~792) runs per message inside the ordered-delivery loop, and C is the host turn when the grant was sent. ADR §8.7 "Input" item 2's freshness claim is false.
+  - **B2, grant names a turn not yet sent** (`p3_boundary_grant.py`, `p3d_latency_scan_fixed.py`):
+    - A watermark delivered at t = k·100 is handled (priority 20) before `produce(k)` (priority 40). So `C = t // turn_ms` names turn k, which has not been sent, and every grant is rejected with received C-1.
+    - Loss-free failures: one-way 145 ms with a 10 ms replay step (grants at 2000, 2300, 3300, … all rejected; then restart reason 5 at 21590 and the seat is released), and 4 of 63 scanned configurations ((140,20), (145,10), (190,20), (195,10)).
+  - **B3, late selection, and expiry discards the transfer** (`p11c_trace30.py`, `p11d_scan.py`):
+    - At 30 ms per turn on endless02 the host selects H=2270 at 228900 with deadline 229000 and restarts the join at 229000 (reason 1). The 160 s snapshot is thrown away.
+    - 10 of 38 loss-free replay steps restart this way: 15, 24, 25, 29, 30, 34, 40, 45, 50 and 70 ms per turn (14–67 turns/s, all faster than live).
+    - `selectable` only requires `t < deadline`.
+    - No join completes at a one-way delay of 500 ms or more (`p12`): the fixed 2 000 ms deadline is an unstated latency ceiling.
+  - **B4, seated peer cut off silently** (`p7_seated_outage.py`, `p14_p10.py`):
+    - A 3 s two-way cut abandons H→P1 at 3300. P1 stays at applied 9 while the host reaches 120, and 87 turns go to a dead pair.
+    - A 600 ms cut with `resend_ms` 50 abandons at 1300.
+    - Losing only P1's ACKs (every turn delivered) also abandons.
+    - Turn A lost 8 times to seated P2 leaves P2 at applied 17 with `owners[3]=None` while the host says `human`.
+    - In every case violations=[] and root_conflicts=0. This contradicts ADR §10 ("0.5–5 s does not drop a peer") and §8.7 "the turn is not lost".
+  - **Should-fix:**
+    - **S1, shared generation overflows** (`p6`): a second joiner sharing generation 1 overflows `wait_cap` and is restarted (reason 7) when it asks at 9500, 9700, 20000 or 50000 ms. `admit` queues the whole backlog, while §8.4 allows sharing for 60 s.
+    - **S2, seat exclusivity** (`p14_p10.py`): two joins on the same seat both become active. A join on a seated human's seat ends with that seat given to the AI. A failed join on an empty seat creates an AI. Release is unconditionally `"ai"`.
+    - **S3, restart is not the same peer** (`p4`): a restarted joiner cannot re-ask as the same peer. The shipped "restart" row uses a new peer with snapshot turn 0, while the ADR says 12. Attempt numbers are chosen by the caller.
+    - **S4, snapshot and JoinGrant are not transport messages** (`p5`, `p3c`): a lost `JoinGrant` leaves the joiner loading until `catchup_ms`. Channel 1, its window, the `concurrent_transfers` refusal and the receive-backlog cap are not modelled, although the ADR says every row comes from the checker.
+    - **S5, validators re-read the state they check** (`p1_validators.py`, `p1b_suite_under_mutant.py`): a mutant that delivers past holes passes all validators and `test_every_named_row_has_no_transport_violation`. An independent trace check flags it. `window_exceeded` cannot fire.
+    - **S6, seated traffic only partly counted** (`p16_p17.py`): host→seated ACK-only and seated→host data are 0 (no commands or §7 reports are modelled).
+    - **S7, overflow loses turns for good** (`p7` P8): with `wait_cap` 8, seated overflow loses turns permanently.
+  - **Nits:**
+    - Grant race: input opens at 2260 after the host restarted the attempt at 2250.
+    - ADR text that does not match the checker:
+      - the ACK flush timing (priority 25 in the code);
+      - the deadline counted from the "first send of its root", which F2 does not send;
+      - "each watermark pins" its root, although there are 4 outstanding watermarks and only 2 pins;
+      - the JoinAbort `reason` field and the JoinRestart byte count;
+      - the 568-byte reverse cap counts JoinAbort, which goes on channel 2, and outstanding HashReports are unbounded;
+      - the 424 kbit/s ACK figure ignores channel-0 ACKs.
+    - Tests:
+      - the burst test stops 100 ms before abandonment;
+      - the two-generation test allows 7 root slots against the stated 4 + 1 per attempt;
+      - the `seq` statistic is always 0.
+  - The supersede rule did not livelock in any probe at 150 ms one-way, and T45-range rates (333–1000 turns/s) accept. The endless02 point the executor raised is therefore B3, not a livelock.
+- **T54 step 1 accepted (D), re-read here:**
+  - The `STADT2` reader `0x1001d240` is player vtable `0x100c2238` slot `+0x54`, its only relocation. It keeps `this` in `ebp` (`0x1001d25f`). The one arm that reuses `ebp` (`0x1001e51a`) restores it from the saved slot `[esp + 0x8c]` (`0x1001d262` / `0x1001e5e3`) before rejoining the record loop. The `STADT2` record is read at `[esp + 0x90]` (D `0x400`), so the save is not overwritten.
+  - `0x1001e339` calls island `+0xf4` (`0x100861c0`, the same on all three island vtables) with the player as argument 1.
+  - `0x100967e0` stores the new city (`0x1002f990`, vtable `0x100c2f40`) in its out argument at `0x10096963` (D `0xc0`).
+  - `0x1008620f` calls player slot `+0x8c` = `0x1001c5e0` with (out, 2, city). The kind-2 arm calls city slot `+0x28` (`0x1002f3d0`) with the player, and player slot `+0x14` returns `0x1000`, so `0x1002f416` stores the player at `[city + 0x20]`.
+- **T54 step 2 / step 3 verified:**
+  - Player slot `+0x48` key `0x2c` goes to byte 9 and target `0x10020ab9`: returns 1 and writes `[player + 0xc]`, `ret 8`.
+  - On the bypass and the type-12 fall-through, RemoveAt's depth at `0x10029409` is `0x2ec`, so the read is argument 3. At `0x10029430` it is `0x2e8`, also argument 3.
+  - Type slot `+0x78` (AnnoGame `0x10007d90`) is a plain `ret`, so the pushes at `0x1002943c` / `0x1002943e` are city slot `+0xb8`'s arguments 4 / 3.
+  - `0x1002d090` has no operand at the argument-3 slot.
+- **T54: changes required.** The statement that city slot `+0xb8` (`0x100286c0`) "addresses only its arguments 1 and 2" is false, and so is "on both read paths, the third argument is forwarded to a callee that does not read it". The base depth is `0x2948`: `__chkstk` `0x2938`, then four saves. The saved `this` is written at `0x100286e8` and read at `0x10028e19`, which anchors the block's depth, and island `+0x8c` (`0x10083830`, `ret 8`) balances its two pushes. So `0x10028e3a` `mov eax, [esp + 0x2954]` reads argument 3. `0x10028e47` pushes it as argument 3 of `call [edx + 0xb4]` at `0x10028e5b` on `edi`. On the path from `0x10028d12`, `edi` is `[esp + 0xa4]`, which `0x10028b47` stores from island slot `+0xf8` with argument 0. Slot `+0xb4` of a city is RemoveAt, so this is a candidate nested RemoveAt with the same tick, not yet proved. Smaller: at `0x100292e7` the depth is `0x2f4`, not `0x2f0` (the reading as argument 1 stands).
+- **Verification:**
+  - branch diffs and whitespace;
+  - the T52 suites rerun, the F1 regressions rerun, and 12 probes rerun by the orchestrator;
+  - fresh bounded instruction reads (`tools/disasm.py`) of `0x1001c5e0`, `0x100861c0`, `0x100967e0`, `0x1001d240`, `0x10028fd0`, `0x1002d090`, `0x100286c0`, `0x10083830`, `0x10020a00` and AnnoGame `0x10007d90`;
+  - vtable and jump-table reads.
+
+  One read-only subagent wrote and ran the T52 probes; every finding above was reproduced before it was recorded. No C++ build, CTest, sanitizer or live-original run, none needed. Docs only on main.
+- **Queue:** T54 F1, then T52 F3, then T52 F4, each on its existing branch, each committed and reported separately. If T52 F3 ends `BLOCKED` or `QUESTION`, do not start F4. No merge, push or `TASKS.md` edit. OQ-341 stays open until T54 F1. OQ-320/370..373 stay open on the T52 branch; new T52 questions use OQ-374..379, new T54 questions OQ-390..399. ADRs Proposed; T34 stage 2, T-AI.4 and production networking later; other lanes unchanged.
 
 
 **Round cb (2026-10-27, Codex orchestrator): T52 F1 / T53 review.**
@@ -533,13 +602,13 @@ Main executor (prompt handed over by the owner): T15 B1, then T11 stage 2a to th
 
 7. **Steps, not judgement calls (since round u; the executor is a simpler model).** A task section lists numbered steps with the files, the functions and the commands. Do the steps in order; do not add scope, do not refactor what a step does not name, do not change a default the owner has to decide (`rules` options, OQ decisions). **Allowed without asking (owner, 2026-10-24 w), when listed in the report:** tests for the code the step changed, and fixes of sentences (docs, comments) that would otherwise contradict that code. Anything else is a question. When a step is unclear, when a file or function it names does not exist, or when a measurement contradicts the step's premise: stop that step, write the question with what you found into REPORTS.md under the task, and continue with the next step that does not depend on it. Report numbers as measured, including the ones that miss the acceptance. Every claim about the original carries module + address, every mapping in code cites its address in a comment. The acceptance list is ticked item by item in REPORTS.md with the evidence (the test name, the command's output line).
 
-## 2. Current status (2026-10-27 cb, executor review)
+## 2. Current status (2026-10-27 cc, executor review)
 
-- **Local Git:** T53 merged as `3d6acd2`; T52 remains unmerged pending F2. T51 F1 and T47 stay merged as `4e48914` and `41a9844`. This update records the review and next bounded tasks. Nothing pushed or remotely checked. The owner-supplied untracked `AGENTS.md` is left alone.
+- **Local Git:** T52 (F2 head `5ea1f34`) and T54 (`e6f34b5`) are reviewed and unmerged, pending T52 F3/F4 and T54 F1. T53, T51 F1 and T47 stay merged as `3d6acd2`, `4e48914` and `41a9844`. This update records the review and the fix-up tasks. Nothing pushed or remotely checked. The owner-supplied untracked `AGENTS.md` is left alone.
 - **Versions on main:** state stream 114, PRNG timeline 2, command wire 1.
 - **Implemented:** C++ formats/assets/viewer and deterministic simulation through S14, scenario cities and production, market/workshop transport, decoded walk search and per-tile records including named-tile removal. The renderer still consumes scenario data rather than a live simulation game loop.
 - **LAN groundwork:** T36 setup, T37 generator spec, T38/T40 AI inventory and tick-entry RE, T39/T41 network ADR and budgets. No C++ networking, generator, AI behavior or playable LAN loop yet. Population implementation, float walking, ships/trade, combat, fire and win/loss remain unfinished.
-- **Next executor tasks:** T52 F2 then T54 (full instructions below). ADRs 0002/0003 remain Proposed; T34 stage 2 and T-AI.4 are later. T31/T35 remain unreviewed branches. T30b.7 and then P1 remain separate orchestrator work.
+- **Next executor tasks:** T54 F1, then T52 F3, then T52 F4 (full instructions below). ADRs 0002/0003 remain Proposed; T34 stage 2 and T-AI.4 are later. T31/T35 remain unreviewed branches. T30b.7 and then P1 remain separate orchestrator work.
 - **Host/gates:** Windows/MSVC, GCC/Clang and sanitizers in WSL. Canonical repo `E:\anno1503`, worktrees `E:\anno1503-worktrees`, read-only originals `E:\anno1503\game\app`. One heavy job at a time; round ba's local workflow continues. See round br for actual combined checks, rather than treating older branch reports as new runs.
 
 ## 3. Task queue
@@ -902,7 +971,99 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   4. Check decisive claims against original instructions, run `git diff --check`, append REPORTS with head/evidence/limits and acceptance, commit and stop. Docs-only work needs no heavy C++ gates. No merge, push or TASKS edit.
 - **Acceptance:** concrete record caller/producer evidence advances OQ-340 beyond the already known consumer, or a precise evidenced stop is recorded; OQ-341 advances past the already known owner-field writer/island return into actual cleanup/use evidence or a concrete remaining target; argument/branch claims and report agree with instructions; scope preserved.
 
-#### T52 — Join activation, hash delivery and shared-link design (OQ-320) · `F2 READY` (round cb) · existing branch `codex/T52-join-activation-design`
+#### T52 — Join activation, hash delivery and shared-link design (OQ-320) · `F3 READY` after T54 F1, then `F4` (round cc) · existing branch `codex/T52-join-activation-design`, worktree `E:\anno1503-worktrees\anno1503-T52`
+- **Common to F3 and F4.**
+  - Continue on the branch, F3 from `5ea1f34`. Read this board on main first. Do not merge or rebase main.
+  - Allowed files, the same five as F2:
+    - `tools/join_activation.py`
+    - `tools/test_join_activation.py`
+    - `docs/adr/0003-network-transport.md` (§8, §10 only where an outage rule changes, §13, §14, Open choices)
+    - `docs/open-questions.md` (OQ-320, OQ-370..373; new questions OQ-374..379 only)
+    - `docs/orchestration/REPORTS.md` (append)
+  - `snapshot_catchup.py`, its tests, `src/` and defaults stay unchanged. No sockets. The ADR stays Proposed.
+  - The round-cc probes in `E:\anno1503\cache\orch-cc\t52probe\` are read-only references. Turn each counterexample into a named regression test in `tools/test_join_activation.py`. Never commit the probe files.
+  - The checker may use the host cursor and other global state as an **oracle in its validators**. The protocol rules must not.
+  - Each regression is written before its fix and shown failing at the current head. Paste its name and failure text into the report.
+- **F3: independent validators, then the join-side defects (B1, B2, B3, S2, S3, the grant race).**
+  1. **Validators first (S5).** Add a validator that re-derives everything from the raw event log (send / arrive / deliver / apply / ownership / input records). It must not use the `Chan` cursors that drive delivery. It checks:
+     - (i) per directed pair and channel, channel-0 deliveries follow the contiguous arrived prefix (never past a hole);
+     - (ii) the window span, recomputed from send records;
+     - (iii) every peer's ownership table and root agree at every turn both applied, not only at hash turns;
+     - (iv) at the end of a run, every seated peer is within a stated lag bound of the host or is in an explicit, logged outage state; a silent stall is a violation;
+     - (v) at the millisecond input opens, and again after every delivery in that millisecond, host current minus joiner applied is at most a stated bound (an oracle check);
+     - (vi) a seat is held by at most one live attempt or seated human;
+     - (vii) every produced turn is delivered to, or still retained for, every live peer.
+
+     Then run the suite against these mutants: delivery past holes (the `p1` mutant), window + 1, the grant freshness gate removed, release always to `"ai"`, and C one turn ahead. List in the report which named test catches each. A mutant no test catches is a finding to fix before step 2.
+  2. **B1, stale grant** (`p2_stale_grant.py`). Regressions:
+     - `InputGrant` H→J1 seq 23 lost on attempts 1–7;
+     - the same lost on attempts 1–4;
+     - `Turn` seq 22 lost on attempts 1–7.
+
+     Input must not open while the joiner, after everything deliverable in that millisecond, or counting turns already arrived in its transport buffer, is more than `input_lag_max` behind. Validator (v) must pass. Choose the rule that makes a delayed grant unable to open input, and justify it in the ADR. Either the joiner's check covers arrived-but-undelivered turns and the whole millisecond batch, or a final host-side confirmation applies a bound (not equality) on the joiner's applied turn. "Ordered delivery proves freshness" is withdrawn.
+  3. **B2, grant names a turn not yet sent** (`p3_boundary_grant.py`, `p3d_latency_scan_fixed.py`). A grant must name a turn already sent ahead of it on that pair. Fix either by naming the last turn actually enqueued on that pair, or by defining the same-millisecond order of watermark handling and production. Add a loss-free scan, one-way 100–200 ms in 5 ms steps × replay step 10 and 20 ms: every configuration opens input and none restarts. Include (140,20), (145,10), (190,20) and (195,10).
+  4. **B3, late selection, and expiry discards the transfer** (`p11c_trace30.py`, `p11d_scan.py`, `p12_latency_ceiling.py`).
+     - Do not select an H that cannot complete before its deadline. Use an observable margin, for example an RTT measured from ACKs, and state it.
+     - The expiry of one checkpoint without a report must lead to re-selection from later watermarks, not a restart of the whole join. Restart only on root mismatch, `catchup_ms`, a cap, or an abandoned pair.
+     - Make the deadline RTT-relative, or record the latency ceiling (no join completes at one-way ≥ 500 ms today) as a design limit in OQ-373.
+     - Scans: loss-free endless02 at replay steps 1–100 ms per turn (it must include 15, 24, 25, 29, 30, 34, 40, 45, 50 and 70), and the normal row at one-way 0–450 ms. No restart inside the stated domain, and the domain is written in the ADR. State the liveness condition of the supersede rule (round trip against the hash period).
+  5. **S2, seats** (`p14_p10.py`).
+     - `admit` refuses, before reserving any pin or queue, a seat held by a seated human or reserved by another live attempt.
+     - A restart or cancel after `A` restores the seat's previous owner as published in the stream: an empty seat stays empty, and an AI seat returns to the AI.
+     - Regressions: P10a (two joins on seat 2), P10b (cancel releases the other joiner's seat), P10c (a join on P1's seat). Correct `test_restart_after_a_releases_the_seat_everywhere` and the ADR "Release" text.
+  6. **S3 and the grant race** (`p4_same_peer_restart.py`, `p16_p17.py`).
+     - The host assigns attempt numbers.
+     - A restarted joiner can ask again as the same peer, and the old attempt's state is retired.
+     - The "cancel and restart before A" row uses the same peer and the snapshot turn the ADR states (or the ADR row is corrected to the checker).
+     - The host rejects `InputOn`, and any command, from a dead attempt. A joiner that opened input closes it on `JoinRestart`.
+     - Regression: `input_ready_ms` 640..660, where input opened at 2260 after the restart at 2250.
+  7. **Finish.**
+     - Recompute the rows.
+     - Correct ADR §8.7 for every changed rule and for these text mismatches:
+       - the ACK flush timing (match the code's priority order or change the code);
+       - the deadline origin ("first send of its root");
+       - "each watermark pins" against `max_root_pins`.
+     - Update OQ-373 with any new limits.
+     - Run: both suites, `JOIN_RULES=F1` regressions, `test_snapshot_catchup.py` (64, unchanged), the syntax check, `git diff --check`.
+     - Append `T52 F3` to REPORTS with: the mutant table, the failing-first evidence, the scans, and the acceptance item by item.
+     - Commit and stop F3.
+- **F3 acceptance:**
+  1. The validators are independent of delivery state, and every listed mutant is caught by a named test.
+  2. The B1/B2/B3/S2/S3/grant-race regressions pass.
+  3. No loss-free configuration in the stated domain restarts or fails to open input, and validator (v) holds in every row and scan.
+  4. Seats are exclusive and restored to their previous owner.
+  5. ADR, OQ and report agree.
+- **F4: seated-peer outages, log-backed sending, the snapshot channel, accounting (B4, S1, S4, S6, S7, remaining nits).** Starts after the F3 report, on the same branch.
+  1. **B4 / S7, outages** (`p7_seated_outage.py` P7, P7 with `resend_ms` 50, P7b, P8; `p14_p10.py` P14).
+     - A seated peer's reliable pair is not abandoned inside ADR §10's outage tolerance (0.5–5 s does not drop a peer). Losing ACKs alone never abandons a pair.
+     - After the link returns, the peer catches up from the retained log. Turns are resent from the log and never lost.
+     - Beyond the tolerance, the peer enters an explicit, logged outage state with a defined recovery or drop path (§10). Validator (iv) flags any silent stall.
+     - Turn `A` lost 8 times to a seated peer must still end with equal ownership on every peer.
+     - Regressions for each probe case, plus a 3 s cut whose turns all arrive once the link returns.
+  2. **S1, log-backed sending** (`p6_shared_gen_overflow.py`).
+     - Each pair keeps a send cursor into the retained turn log. The window and `wait_cap` cover only datagrams in flight or staged; the backlog is never copied into the queue.
+     - A joiner sharing a generation, admitted anywhere inside `snapshot_age_ms`, completes. Regressions: asks at 9500, 9700, 20000 and 50000 ms.
+     - Charge the log once in the byte caps and say so.
+  3. **S4, the snapshot is a channel-1 transfer** (`p5_joingrant_lost.py`, `p3c_trace155.py`).
+     - `JoinGrant` and the snapshot fragments are transport datagrams with window, ACK, loss and resend. A lost `JoinGrant` is resent.
+     - Model the `concurrent_transfers` refusal and the receive-backlog cap.
+     - Simulate the one-fragment and small multi-fragment cases per datagram. For endless02's 17 130 fragments, either simulate them or use a labeled transfer-duration input. In the second case the ADR must say which part of that row is an input, not checker output.
+  4. **S6, seated traffic.** Model seated peers' upstream traffic (§7 hash reports; commands at least as a configurable stream) and the ACKs on channels 0 and 1 in both directions. Otherwise, remove the ADR claims that they are counted. Correct the 424 kbit/s and 568-byte figures.
+  5. **Nits:**
+     - the JoinAbort `reason` field and the JoinRestart byte count in the message table;
+     - a bound on outstanding HashReports;
+     - the burst test runs past 2 500 ms under the F4 outage rule;
+     - the two-generation root-slot assertion matches 4 + 1 per attempt;
+     - the `seq` statistic is filled or removed.
+  6. **Finish.** Rerun everything in F3 step 7. Correct ADR §8.4/§8.7/§10/§13/§14 and the OQs. Append `T52 F4` to REPORTS with the acceptance item by item. Commit and stop.
+- **F4 acceptance:**
+  1. No seated peer loses a turn or stalls silently inside the §10 tolerance, and recovery beyond it is explicit.
+  2. Shared generations complete across the whole sharing window.
+  3. Snapshot and `JoinGrant` loss are handled on channel 1.
+  4. Traffic in both directions is counted, or the claims are withdrawn.
+  5. The nits are closed.
+  6. ADR stays Proposed, and the remaining uncertainties are explicit.
+- **Historical F2 instructions (reviewed in round cc; progress retained, defects in round cc):**
 - **F2: validate one causal protocol, including every message.** Continue from `3020900c6c9f369e89ac4797d286643ae7678e4a`; read this board on main first. Scope is ADR/OQ/report corrections plus a small standalone deterministic Python protocol checker (`tools/join_activation.py`, `tools/test_join_activation.py`). This is newly authorized for F2, superseding the earlier docs-only/no-model-expansion restriction only for these two files. Leave `snapshot_catchup.py` and its tests unchanged. No sockets, `src/`, real networking, default adoption, ADR approval, T34 stage 2 or T-AI.4. Use OQ-370..379 for remaining design choices.
   1. Write failing regressions for the concrete round-cb counterexamples before changing the proposed rules. Drive one event queue with per-directed-pair/per-channel sequences, first sends/resends, ACKs, selective windows, ordered delivery and completed replay steps. Hash roots may be symbolic deterministic values; this is a protocol oracle, not a game simulation. Do not use `catchup_state_at` as the protocol's delivered cursor after a control-packet loss, and do not assign an application arrival before an earlier sequence has been delivered. Cover the missing 1960 reliable report versus the 2310 watermark, lost watermark retransmission, and early eligible H=1770 on endless02. State all losses by message/direction/sequence/attempt and emit full event traces for failed assertions.
   2. Separate seat ownership at future A from enabling the joiner's input. Every peer replays the ownership transition at the same turn; input remains off while the joiner has a stale received/applied prefix. Define an observable current-progress check that does not require host-cursor equality or assume an unobservable ideal due frontier. A turn delayed after H must not open input at applied 14 / received 32. Allow ownership A to be replayed with input still off, then enable only on the proved fresh boundary or restart that joiner. Define a late-control/cancel/restart outcome once A has been published. Preserve all unapplied turns on completion by retaining or explicitly transferring the backlog to the live buffer; pin/cache lifetimes must cover every outstanding use.
@@ -938,7 +1099,33 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   4. Update complogic/OQ-341 and only necessary cross-references with module/address evidence, compatible path and pointer provenance, tested search limits, and the precise next unread link. Preserve named-tile clear/null behavior and OQ-340. Re-read decisive instructions, whitespace check, append REPORTS with head/evidence/limits and itemized acceptance, commit and stop. No heavy C++ gates for docs-only work; no merge/push/TASKS edit.
 - **Acceptance:** actual island-field producer advances beyond T51's missing link or a new concrete bounded stop is evidenced; owner-vtable/cleanup conclusions follow receiver provenance; any argument-3 use is on one compatible path with a complete ledger, otherwise explicitly unresolved; docs/report agree and no implementation claim is made.
 
-#### T54 — City owner registration and RemoveAt argument 3 · `READY` (round cb; after reporting T52 F2 for one executor) · branch `codex/T54-city-owner-registration` from main after round cb
+#### T54 — City owner registration and RemoveAt argument 3 · `F1 READY` (round cc; first in the queue) · existing branch `codex/T54-city-owner-registration`, worktree `E:\anno1503-worktrees\anno1503-T54`
+- **F1: city slot `+0xb8` reads argument 3; close or narrow the forwarding ledger.** Continue from `e6f34b5`; read this board on main first; do not merge main. Static RE, docs only. Files: `docs/re/complogic.md` §11 (T54 part), `docs/open-questions.md` OQ-341 (new questions OQ-390..399 only), `docs/re/transport.md` §3.4.17 only for a newly proved detail, `docs/orchestration/REPORTS.md` (append). Step 1 (the `STADT2` owner registration) is accepted and stays. Write every depth as `D` = bytes pushed since entry; argument n is at `[esp + D + 4n]`.
+  1. **Correct the `+0xb8` claim.** Re-read `AnnoWelt.dll` `0x100286c0` yourself.
+     - Base depth `0x2948`: `__chkstk` of `0x2938` at `0x100286c0`/`0x100286c5`, then four saves `0x100286ca`..`0x100286e0`.
+     - `0x100286e8` saves `this` at `[esp + 0x18]`, and `0x10028e19` reads it back as the city: that anchors the block's depth.
+     - Island slot `+0x8c` is `0x10083830`, `ret 8` at `0x1008396e` / `0x10083988`. It balances the two pushes at `0x10028e2a` / `0x10028e2f`.
+     - So `0x10028e3a` `mov eax, [esp + 0x2954]` reads argument 3, and `0x10028e47` pushes it as argument 3 of `call [edx + 0xb4]` at `0x10028e5b` on `edi`. Arguments 1 and 2 are the two u16 values the island `+0x8c` call wrote at frame `+0x74` / `+0x76`.
+     - Replace "addresses only its arguments 1 and 2" and "on both read paths … a callee that does not read it" everywhere they appear (complogic §11, OQ-341 status and T54 lines, the T54 report's acceptance item 3, which you mark superseded in a new section).
+  2. **The nested receiver.**
+     - List every entry into the block `0x10028de7`..`0x10028e5b`: the jumps at `0x10028d6f` and `0x10028d73`, and any other a sweep of the function finds. Give `edi` on each, with the writes to `edi` between.
+     - On the path from `0x10028d12`, `edi = [esp + 0xa4]`, stored at `0x10028b47` from the call at `0x10028b3f` (island slot `+0xf8`, pushed argument 0). Prove that call's receiver (`ecx` at `0x10028b39`) and what slot `+0xf8` returns (`0x100863e0`: `[island + arg*4 + 0x38]`), including the null branch at `0x10028b4e`.
+     - Prove the vtable of the returned object, and therefore slot `+0xb4`'s target. If it is a city with vtable `0x100c2f40`, slot `+0xb4` is RemoveAt `0x10028fd0`: a nested RemoveAt with the same tick.
+     - Record every branch condition on the way: `0x10028d6c`..`0x10028d79`, and the `je 0x10028e7d` at `0x10028e38` on island `+0x8c`'s result.
+     - Where `edi`'s class cannot be proved, stop with that exact link.
+  3. **Close or narrow the ledger by hand.** For RemoveAt `0x10028fd0`..`0x10029465`, `0x1002d090`..`0x1002d29c` and `0x100286c0`..`0x10028faa`, list every stack operand, `lea` included, that could reach the argument-3 slot at its live depth, plus every copy of `esp`. Give each one's D derivation in a table.
+     - If the only reads are `0x10029409` → `0x1002d090` (none), `0x10029430` → `0x100286c0` → `0x10028e3a` → the proved nested RemoveAt, state the result exactly that way: inside this closed set the tick is only forwarded, recursion included, and never otherwise read. Give the conditions (PRODTYPE, getter results, the paths).
+     - Do not call the tick unused outside the proved set. Name any receiver that is not proved as the next link.
+  4. **Housekeeping.**
+     - Say why the scratch tracker missed `0x10028e3a`, and either fix or retire it (it stays uncommitted).
+     - Correct the depth at `0x100292e7` to `0x2f4` (two pushes after `0x100292d8`; still argument 1).
+     - Re-read the decisive instructions, run `git diff --check`, append `## T54 F1 — …` to REPORTS with the acceptance item by item, commit, and stop.
+- **F1 acceptance:**
+  1. The `+0xb8` read of argument 3 is documented with its depth proof, and the false statements are corrected everywhere.
+  2. The nested receiver and slot `+0xb4` target are proved, or a precise stop is given.
+  3. The forwarding ledger over the three functions is a complete hand table.
+  4. Any closure claim is limited to the proved set and its conditions, and docs and report agree.
+- **Historical T54 instructions (reviewed in round cc; step 1 accepted, F1 above):**
 - **Scope:** bounded static RE/docs for OQ-341, continuing T-AI.3. Read complogic §11 including T53 and the round-cb reviewer continuation, city/player loading notes in annowelt/players, transport §3.4.17, and OQ-341. No T-AI.4, AI/sim/net implementation, command wrapping, goldens or broad mutation sweep. Do not retrace OQ-340's record forwarders. New OQs OQ-390..399 only if needed; original files read-only, scratch/listings ignored.
 - **Steps:**
   1. Start from the concrete AnnoWelt candidate `0x1001c5e0`, player vtable `0x100c2238` slot `+0x8c`. The kind-2 arm pushes player `ebx` at `0x1001c695` and calls slot `+0x28` of third-argument `esi` at `0x1001c698`. Tie the actual city argument to its creation/vtable through its callers; existing city HEAD/HEAD2/player STADT2 notes are starting evidence, not a replacement for reading the caller. Record `this` adjustments, callee arguments, kind/null conditions, and intervening virtual returns. Prove a reached `0x1002f3d0` / `0x1002f416` store of that actual player or identify a precise next unread link. No new search for the already-proved island `+0x80` writer.
@@ -952,7 +1139,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 - **A second executor:** T40, then T-AI.3 (the 43 draws) when the orchestrator writes it.
 
 **Waiting for the owner:**
-- ADR 0003's design/default approval remains pending, but technical work also remains: OQ-320 (shared link/hash flight and observable activation), now T52 F2; ordered delivery, fresh input readiness, ownership-event replay and queue bounds are technical corrections before approval. T47 is merged within its model scope. T45 is measured evidence, not end-to-end validation; an owner approval alone does not resolve those gaps;
+- ADR 0003's design/default approval remains pending, but technical work also remains: OQ-320 (shared link/hash flight and observable activation), now T52 F3/F4. Input freshness under delayed grants, grant/production order, checkpoint expiry, seat exclusivity, seated-peer outages, log-backed sending and the snapshot channel are technical corrections before approval. T47 is merged within its model scope. T45 is measured evidence, not end-to-end validation; an owner approval alone does not resolve those gaps;
 - OQ-250, the UDP port;
 - the seven questions of `docs/sim/world-scaling.md` §15;
 - the feel questions of `docs/sim/rules-presets.md`.

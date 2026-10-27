@@ -1788,11 +1788,11 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What was read.** `AnnoWelt.dll` `0x100ae040..0x100ae134`, `0x1009c4d0..0x1009c5e1`, `0x1009c740..0x1009c746`. `CompLogic.dll` `0x1003d880..0x1003d8d0`. The load path and the factory stay as T38 read them, with the property-9 gate added in §2.
 - **Left open:** what the nine kind slots write (OQ-271), the manager loop's return (OQ-270), and calls on the object at world `+0x110` (OQ-272).
 
-## OQ-241: Which CompLogic `call [reg+0xb4]` sites are the world PRNG (T38, narrowed T44, 2026-10-27)
+## OQ-241: Which CompLogic `call [reg+0xb4]` sites are the world PRNG (T38, narrowed T44, corrected T44 F1, 2026-10-27)
 - **Status:** narrowed. Not closed. `docs/re/complogic.md` §5.
 - **Area:** simulation / AI / determinism.
-- **What was read.** 43 instructions in `CompLogic.dll` and 39 in `CompLogicClassic.dll`, each one a real instruction. World slot `+0xb4` is `AnnoWelt.dll` `0x100a1740` (`ret`, no stack argument). `0x100692d0` and Classic `0x10066248` are the world, and `0x1000e809` / `0x1000d029` call that function and discard `eax`. `[object+4]` is the world when `0x10021e20` wrote it and is manager `+0x24` when `0x10021610` wrote it. Type 17 uses the second store, so `0x100011d3` and `0x100217eb` are not the world PRNG. Eight of the eleven unmasked calls push three arguments and are not `0x100a1740` either. A mask is not evidence of the receiver.
-- **How to resolve:** OQ-290 for the remaining masked sites, OQ-291 for the 3-argument receiver. No gameplay name until the receiver is one of those two pointers.
+- **What was read.** 43 instructions in `CompLogic.dll` and 39 in `CompLogicClassic.dll`, each one a real instruction. World slot `+0xb4` is `AnnoWelt.dll` `0x100a1740` (`ret`, no stack argument). `0x100692d0` and Classic `0x10066248` are the world, and `0x1000e809` / `0x1000d029` call that function and discard `eax` by a later full write. T44 F1: after three pushes in `0x10021610`, `[esp+0x14]` is argument 2. The factory `0x1003de49..0x1003de4b` pushes the mask, the world (`[manager+0x20]`) and manager `+0x24`, with `this` = `object+4`, so the world is stored at `[object+4]` (`0x1002161f`) and manager `+0x24` at `[object+8]` (`0x10021621`). `0x100011d3`, `0x10002622` and `0x100217eb` call `0x100a1740`. The classification of the first and third as `AnnoGame.dll` `0x100023a0` is withdrawn. Eight of the eleven unmasked calls push three arguments and are not `0x100a1740`. A mask is not evidence of the receiver. `mov al, 1` does not by itself discard the return (OQ-291).
+- **How to resolve:** OQ-290 for the remaining masked sites, OQ-291 for the 3-argument receiver and the unread upper bits. No gameplay name until the receiver is proved.
 
 ## OQ-250: Which UDP port the LAN session binds (T39, 2026-10-26)
 - **Status:** open. No default is set in ADR 0003.
@@ -1829,17 +1829,18 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Options:** (a) stage 2 takes the returned register as an input of the walk test and leaves the formula unread; (b) a later reading reduces the occupied-tile arm to operations, including whether st0 is still wider than binary32 at the `ret`.
 - **How to resolve:** (b) if a bit-exact height is required. (a) is enough for the arithmetic tests in ADR 0002.
 
-## OQ-290: Which AI class owns each remaining `call [reg+0xb4]` (T44, 2026-10-27)
+## OQ-290: Which AI class owns each remaining `call [reg+0xb4]` (T44, corrected T44 F1, 2026-10-27)
 - **Status:** open. OQ-292..299 were not used.
 - **Area:** simulation / AI / determinism.
-- **What was read.** Two stores write `[object+4]`. `0x10021e38` writes the world. `0x1002161f` writes manager `+0x24`. A later `call [reg+0xb4]` on that dword is `0x100a1740` or, for the second store and vtable `0x100215a4`, `AnnoGame.dll` `0x100023a0`. The masked sites in `docs/re/complogic.md` §5 other than `0x100011d3` and `0x100217eb` load `[reg+4]`, `[reg]`, or a further field, and the register was not walked to either store.
+- **What was read.** Both stores write the world at `[object+4]`. `0x10021e38` writes manager `+0x20`. `0x1002161f` writes the same field; `0x10021621` writes manager `+0x24` at `[object+8]`. A later `call [reg+0xb4]` on `[object+4]` is `0x100a1740`. T44 F1 moves `0x100011d3`, `0x10002622` and `0x100217eb` to that function. The masked sites in `docs/re/complogic.md` §5 other than those three load `[reg+4]`, `[reg]`, or a further field, and the register was not walked to either writer.
 - **How to resolve:** at each open row, the function's `this` walked to `0x10021e20` or `0x10021610`, or to a different writer. Not a guess from the mask.
 
-## OQ-291: What object the 3-argument `+0xb4` calls (T44, 2026-10-27)
-- **Status:** open.
+## OQ-291: What object the 3-argument `+0xb4` calls, and who reads the upper bits after `mov al, 1` (T44, corrected T44 F1, 2026-10-27)
+- **Status:** open. OQ-292..299 were not used.
 - **Area:** simulation / AI.
 - **What was read.** `0x1002e3f3` calls slot `+0xb4` on the return of slot `+0xf8`, and that call's `this` is `[reg+0x4c]` at `0x1001c726` / `0x1001c831`. `0x10034471` is a 0-argument call on `[this]` of the same `+0x4c` pointer (`0x10010f53`) and pushes the result into slot `+0x7c`. The other 3-argument sites in §5 are the `+0xf8` return or an unread stack slot. None of them is `0x100a1740`. The writer of `+0x4c` was not read, and `0x100aae00` (world slot `+0xf8`, `ret 4`) was not reduced to the vtable of its return.
-- **How to resolve:** the store of `+0x4c`, then the vtable of that object and of the `+0xf8` return. `0x100aae00` is the next function if the `+0xf8` object is the world.
+- **T44 F1, the return.** `mov al, 1` at `0x1002e3f9`, `0x1002e502`, `0x1002e646` and `0x100357e4` writes AL only. `0x1002e4f9`'s caller tests AL and then clears EAX (`0x1001be05`). `0x1002e63d`'s caller replaces EAX with no read (`0x100109e7`). Five callers of `0x10035710` do the same. Two do not: `0x10010792` and `0x10011300` push EAX after a further `mov al`. `0x1002e3f3`'s EAX is returned through `0x1001c72f` / `0x1001c83a` and again through `0x10005239` / `0x1000529c`. The code sweep of `0x10005180..0x10005294` found only local jumps, and that range has no relocation of those two entries. What the next reader does with bits 8..31 is unread. Classic `0x1002bb69`, `0x1002bc72`, `0x1002bdb6` and `0x10032f44` are the same partial write; their callers were not read.
+- **How to resolve:** the store of `+0x4c`, then the vtable of that object and of the `+0xf8` return. `0x100aae00` is the next function if the `+0xf8` object is the world. Separately, the caller of `0x10005230` / `0x10005293`, and the callees that receive the dword pushed at `0x10010792` and `0x10011300`.
 
 ## OQ-270: What the call after the AI list walk does (T40, 2026-10-26)
 - **Status:** open.

@@ -164,7 +164,7 @@ The port still cannot treat the original as already emitting turn commands: the 
 
 Of the 43, 32 use the returned value as a mask or a division in the next few instructions. 11 do not. A mask does not make the receiver the world. T44 traces the register. World slot `+0xb4` is the world PRNG ([`tick-loop.md`](tick-loop.md) §3), re-read: the dword at `0x100ccdd8+0xb4` is `0x100a1740`, and that function ends `mov ax, [edx*2+0x100cb8f8]; ret` with no stack argument. A call that pushes three values and does not adjust `esp` afterwards is not that function.
 
-`fn` is the start of the `int3`-padded region that contains the call. A region can hold more than one logical function; `0x10034162` in particular holds eight of these calls.
+`fn` is the start of the `int3`-padded region that contains the call. A region can hold more than one logical function; `0x10034162` in particular holds eight of these calls. T44 F1: `0x100217eb` is listed at `0x10021770`, the function that begins after `ret 0xc` at `0x1002176d`. The earlier label `0x100216c0` is an address inside `0x10021610`.
 
 | call | region | use of the result |
 |---|---|---|
@@ -174,7 +174,7 @@ Of the 43, 32 use the returned value as a mask or a division in the next few ins
 | `0x10007e6d` | `0x10007985` | `and 3` |
 | `0x10007ee7` | `0x10007985` | `and 7`, then a table of 8 at `0x100654c4` / `0x10065484` |
 | `0x1000e809` | `0x1000e381` | not masked in the next 8 instructions |
-| `0x100217eb` | `0x100216c0` | `and 3`, then a float table |
+| `0x100217eb` | `0x10021770` | `and 3`, then a float table |
 | `0x100289b3` | `0x100260ae` | low 6 bits (`and 0x3f`) |
 | `0x100289e6` | `0x100260ae` | low 6 bits |
 | `0x10028b3f` | `0x100260ae` | low 6 bits |
@@ -225,11 +225,13 @@ What each draw decides is not named here. The plain uses above are only the arit
 | call | function | what `[esp+…]` is after the prologue | stored at `[this]` by |
 |---|---|---|---|
 | `0x1003dd79` | `0x10021e20` (`sub esp, 0xa4`, three pushes, `ret 0xc`) | `[esp+0xb8]` is the second argument, manager `+0x20` | `0x10021e38` |
-| `0x1003de4f` | `0x10021610` (three pushes, no frame, `ret` not re-read) | `[esp+0x14]` is the first argument, manager `+0x24` | `0x1002161f` |
+| `0x1003de4f` | `0x10021610` (three pushes, no frame, `ret 0xc` at `0x1002176d`) | `[esp+0x14]` is argument 2, manager `+0x20` | world at `[this]` by `0x1002161f`; manager `+0x24` at `[this+4]` by `0x10021621` |
 
-`0x1003de1f` calls `0x10001040` and `0x1003de24` keeps the result in `edi`. `0x1003de26..0x1003de34` does not write `edi`, and `0x1003de34` skips the call when `edi` is 0. `0x10001040` is the type-17 constructor: it calls `0x10002880` and stores vtable `0x10063100` (`0x100010bf`). Manager `+0x24` is the slot's second argument (`0x1003df37`). §4 reads that as `[world+0x110]`, vtable `0x100215a4` for the one `AnnoScene` caller it followed. The dword at `AnnoGame.dll` `0x100215a4+0xb4` is `0x100023a0`. `0x100023a0` was not entered past its frame. A second `Init` caller is the open note in §4, not a new guess.
+`0x1003de1f` calls `0x10001040` and `0x1003de24` keeps the result in `edi`. `0x1003de26..0x1003de34` does not write `edi`, and `0x1003de34` skips the call when `edi` is 0. `0x10001040` is the type-17 constructor: it calls `0x10002880` and stores vtable `0x10063100` (`0x100010bf`). Manager `+0x24` is the slot's second argument (`0x1003df37`). §4 reads that as `[world+0x110]`, vtable `0x100215a4` for the one `AnnoScene` caller it followed. A second `Init` caller is the open note in §4, not a new guess.
 
-`0x10021e38` then calls slot `+0x54` on the stored pointer (`0x10021e3d`), which §4 has as the world getter `0x100a3910`. So the factory path `0x1003dd79` really does store the world at `[object+4]`. The type-17 path stores the other pointer.
+**D (T44 F1).** `0x10021610` reads argument 1 from `[esp+4]` before `push ebx` / `push esi` / `push edi` (`0x10021610..0x10021616`). After those three pushes `[esp+0x10]` is argument 1 and `[esp+0x14]` is argument 2. The factory pushes the mask, then `[esi+0x20]`, then `[esi+0x24]` (`0x1003de49..0x1003de4b`) and calls with `lea ecx, [edi+4]` (`0x1003de4c`). Argument 2 is manager `+0x20`, the world from `0x1003df34`, and it is stored at `[this]` (`0x1002161f`), so at `[object+4]`. Argument 1 is manager `+0x24` and it is stored at `[this+4]` (`0x10021621`), so at `[object+8]`. Both factory paths store the world at `[object+4]`. The earlier reading that `[esp+0x14]` was argument 1, and that this path stored manager `+0x24` at `[object+4]`, is withdrawn.
+
+`0x10021e38` then calls slot `+0x54` on the stored pointer (`0x10021e3d`), which §4 has as the world getter `0x100a3910`. That agrees with the world store at `[object+4]`.
 
 Classic's copy of the global is `0x10066248`. The only store is `0x1000b31c`, in `0x1000b2f0`, the same frame as `0x1000cab0`, also writing `[this+0x1d14]`. The only caller is `0x1003b4c3`. The function starts at `0x1003b3a0`: `esi` is the first argument (`0x1003b3cc`), stored at `+0x20` (`0x1003b3d4`), and is the object of slot `+0xa4` (`0x1003b3de`). The call pushes `esi` last. Same proof. The call that uses it is `0x1000d029`.
 
@@ -240,30 +242,30 @@ Classic's copy of the global is `0x10066248`. The only store is `0x1000b31c`, in
 | call | arguments | receiver | what happens to `eax` |
 |---|---|---|---|
 | `0x1000e809` | none | `[0x100692d0]`, the world. Target `AnnoWelt.dll` `0x100a1740` | overwritten at `0x1000e80f` (`mov eax, [esi]`) with no read. The call is skipped when `0x1000e7f8` (slot `+0xc`) returned null (`0x1000e7fd..0x1000e7ff`). One call. The cursor still moves |
-| `0x1002e3f3` | 3 | return of `call [edx+0xf8]` at `0x1002e3d6`. That call's object is `[ecx]` at `0x1002e3b4`, and `0x1002e3b0`'s callers `0x1001c726` and `0x1001c831` pass `[reg+0x4c]`. Not `0x100a1740` | `mov al, 1` at `0x1002e3f9`, then `ret 0x10`. Discarded. Skipped when the `+0xf8` return is null (`0x1002e3dc`) |
-| `0x1002e4f9` | 3 | `ebx`, from `call [eax+0xf8]` at `0x1002e43f` | `mov al, 1` at `0x1002e502`. Discarded. Not `0x100a1740` |
-| `0x1002e63d` | 3 | `[esp+0x14]` at `0x1002e620`. The store into that slot was not walked | `mov al, 1` at `0x1002e646`. Discarded. Not `0x100a1740` |
+| `0x1002e3f3` | 3 | return of `call [edx+0xf8]` at `0x1002e3d6`. That call's object is `[ecx]` at `0x1002e3b4`, and `0x1002e3b0`'s callers `0x1001c726` and `0x1001c831` pass `[reg+0x4c]`. Not `0x100a1740` | `mov al, 1` at `0x1002e3f9` writes AL only; the other exit is `xor al, al` at `0x1002e400`. Both callers return that EAX (`ret 8` at `0x1001c72f` in `0x1001c610`, and `ret 8` at `0x1001c83a`). `0x10005230` and `0x10005293` return it again (`ret 4`). Bits 8..31 at the next caller were not read |
+| `0x1002e4f9` | 3 | `ebx`, from `call [eax+0xf8]` at `0x1002e43f` | `mov al, 1` at `0x1002e502` writes AL only. The only caller, `0x1001bdf7`, tests AL (`0x1001bdfc`) and on this path executes `xor eax, eax` at `0x1001be05` before a use. Not `0x100a1740` |
+| `0x1002e63d` | 3 | `[esp+0x14]` at `0x1002e620`. The store into that slot was not walked | `mov al, 1` at `0x1002e646` writes AL only. The only caller, `0x100109e2`, replaces EAX at `0x100109e7` (`mov eax, [esi+0x24]`) with no read. Not `0x100a1740` |
 | `0x1002e88e` | 3 | `[esp+0x30]` at `0x1002e883`. The store was not walked | not read. `dec ebp` / `jne 0x1002e879` repeats the call. The last `eax` is still live at `ret 0x18` (`0x1002e8a1`). Not `0x100a1740` |
 | `0x1003435b` | 3 | `esi`, from `call [eax+0xf8]` at `0x10034269` | overwritten at `0x10034361` by the loop count. Discarded. Not `0x100a1740` |
 | `0x10034471` | none | `[ebx]`, and `ebx` is `ecx` on entry of `0x10034440` (`0x1003444e`). The caller `0x10010f57` sets `ecx` from `[ebp+0x4c]` (`0x10010f53`). Writer of `+0x4c` not read (OQ-291) | pushed at `0x1003447e` into `call [edi+0x7c]` (`0x1003448b`) with two other pushes. Raw value, no mask |
 | `0x10034593` | 3 | `esi`, from `call [edx+0xf8]` at `0x100344af` | overwritten at `0x10034599` by the loop count. Discarded. Not `0x100a1740` |
 | `0x10035676` | none | `[[esp+0x10]]` (`0x10035669`, `0x1003566d`). The store of that slot was not walked. The call is reached only when `call [eax+0xac]` (`0x1003564b`) returned none of `0x46`, `0x38..0x44`, `0x16` | pushed at `0x10035684` into `call [esi+0x7c]` (`0x1003568b`) with `[esp+0x58]` and the immediate `0x68`. Raw value. Not shown to be `0x100a1740` |
-| `0x100357dc` | 3 | `ebx`, from `call [eax+0xf8]` at `0x1003573e` | `mov al, 1` at `0x100357e4`. Discarded. Not `0x100a1740` |
+| `0x100357dc` | 3 | `ebx`, from `call [eax+0xf8]` at `0x1003573e` | `mov al, 1` at `0x100357e4` writes AL only. `0x1000fe52`, `0x10010136` and `0x1001043c` replace EAX with no read. `0x1001c454` and `0x1001c4ad` reach `xor eax, eax` at `0x1001c4dd` with no read. `0x1001076a` and `0x100112ee` then write AL from memory and push the full EAX (`0x10010792`, `0x10011300`); bits 8..31 there were not read. Not `0x100a1740` |
 | `0x10035cfb` | 3 | `[esp+0x40]` at `0x10035cef`. The walk stopped on `call [edx+4]` at `0x10035cc4`, which moves `esp`; the store of the slot was not read | not read. `dec edi` / `jne` repeats the call (`0x10035d04`). The last `eax` is live at `ret 0x14`. Not `0x100a1740` |
 
-`0x100011d3` is not in the eleven, but it is the one masked site whose receiver is settled. `0x100011b0` (slot `+0x58` of `0x10063100`) does `lea ebx, [esi+4]`, calls `0x10027950`, and on a non-zero return loads `[ebx]` and calls slot `+0xb4` with no stack argument (`0x100011cf..0x100011d3`), then `and eax, 7` (`0x100011d9`). `[esi+4]` is the type-17 pointer from `0x10021610`, so the target is `AnnoGame.dll` `0x100023a0`, not `0x100a1740`. `0x10027950` itself does `mov ecx, [ecx]` and then slot `+0xa4`, slot `+8`, slot `+0xc`: on a type-17 object that `+0xa4` is not the world's.
+`0x100011d3` is not in the eleven. `0x100011b0` is slot `+0x58` of vtable `0x10063100` (the dword is at `0x10063158`). It does `lea ebx, [esi+4]` (`0x100011bc`), calls `0x10027950` with that pointer as `this`, and on a non-zero return loads `[ebx]` and calls slot `+0xb4` with no stack argument (`0x100011cf..0x100011d3`), then `and eax, 7` (`0x100011d9`). `[object+4]` is the world stored by `0x1002161f`, and world slot `+0xb4` is `0x100a1740`. The classification of this call as `AnnoGame.dll` `0x100023a0` is withdrawn. `0x10027950` does `mov ecx, [ecx]` and then slot `+0xa4`, slot `+8` and slot `+0xc` on that same world pointer.
 
 ### The other 32, and Classic
 
-The global chain is proved at `0x1000e809` and `0x1000d029` only. It was not found at the other 42. A site that loads `[this+4]`, or `[this]` of a method entered by `lea ecx, [reg+4]`, is the world PRNG only when that object was initialised by `0x10021e20`, and it is `0x100023a0` when the object was initialised by `0x10021610`. Those two stores are the writers. The class of each remaining call was not walked onto one of them (OQ-290). The expressions actually read:
+The world PRNG is proved at `0x1000e809`, Classic `0x1000d029`, `0x100011d3`, `0x10002622` and `0x100217eb`. A site that loads `[object+4]`, or `[this]` of a method entered by `lea ecx, [reg+4]` on an object initialised by `0x10021e20` or `0x10021610`, is `0x100a1740` when that dword is the world stored above. The earlier split, world for `0x10021e20` and `0x100023a0` for `0x10021610`, is withdrawn. The class of each remaining call was not walked onto one of those two writers (OQ-290). The expressions actually read:
 
 | call | object expression | result |
 |---|---|---|
 | `0x1000225e` | `[ebx+4]`, `ebx` = `ecx` on entry. Callers `0x100021f4` and `0x10002215` forward `ecx` and push two dwords; the class was not read. The call itself has no further push. `and eax, 7`, and `ebp` counts down from 4 (`0x10002254`) so the call can repeat | open |
-| `0x10002622` | `[ebp]`. `ebp` was live from outside the straight block. `and eax, 3` | open |
+| `0x10002622` | `[ebp]`. In `0x10002520` (slot `+0x38` of `0x10063100`, the dword at `0x10063138`) `ebp` is set by `lea ebp, [esi+4]` at `0x100025b6`, and `esi` is `ecx` on entry. `[object+4]` is the world. No stack argument. `and eax, 3` | `0x100a1740` |
 | `0x10007e6d` | `[edi+4]`, `edi` = `ecx` of `0x10007e50`. The `push esi` at `0x10007e64` is popped by the caller at `0x10007e87`. `and eax, 3`, then that many steps along `[esi]` (`0x10007e78`). Conditional on `0x1000c3a0` returning non-null. The only caller of the wrapper is `0x10007ec9`, and that function's callers are `0x10007e20` and `0x10007ffe`; neither was tied to an initializer | open |
 | `0x10007ee7` | `[eax+4]` at `0x10007ee2`. `eax` is `[esp+0x10]` (`0x10007ed8`). The walk stopped on `call 0x10007e50` (`0x10007ec9`) because that call moves `esp`; the store of the slot was not read. `and eax, 7` | open |
-| `0x100217eb` | `[esi]`, `esi` = `ecx` of `0x10021610`, which has just stored manager `+0x24` there (`0x1002161f`). No stack argument. `and eax, 3`. This is the type-17 pointer, so the target is `0x100023a0` if the vtable is `0x100215a4` | not the world PRNG |
+| `0x100217eb` | `[esi]` in `0x10021770`, which starts after `ret 0xc` at `0x1002176d`. The only caller is `0x10002646`: `mov ecx, ebp` with `ebp` from `0x100025b6`, so `this` is `object+4` and `[esi]` is the world. No stack argument. `and eax, 3`. Registers from `0x10021610` are not live here | `0x100a1740` |
 | `0x100289b3`, `0x100289e6` | `[esi]`, `esi` = `ecx` of `0x100289a0`. Callers `0x1004da73` and `0x1004db85`. `0x1004da70` is `lea ecx, [ebp+4]`. `ebp` was not tied to either initializer. Result moved to `ebp` and masked with `0x3f` | open |
 | `0x10028b3f`, `0x10028b57` | `[esi]`, `esi` from `ecx` at `0x10028a96`. `and eax, 0x3f` | open |
 | `0x10030fbb` | `[esi]`, two reaching defs (`[esp+0x2c]` and `ecx` at `0x10030e70`). `div` | open |
@@ -283,9 +285,9 @@ The global chain is proved at `0x1000e809` and `0x1000d029` only. It was not fou
 | `0x10055041` | `[ebp]`. `and eax, 7` | open |
 | `0x10056d96`, `0x10056ef4`, `0x10057013` | `[[esi+0x68]]` or `[[edi+0x68]]`. A store of `+0x68` is `0x1003ee7a`; the value in `eax` there was not read. `and eax, 7` | open |
 
-Classic has the same 39 call encodings, each an instruction. The ten unmasked shapes other than the global have one Classic site each, with the same slot chain and the same use of `eax`: `0x1002bb63`, `0x1002bc69`, `0x1002bdad`, `0x1002bffe`, `0x10031abb`, `0x10031bd1`, `0x10031cf3`, `0x10032dd6`, `0x10032f3c`, `0x1003345b`. Classic has no vtable `0x10063100` (§3: no type 17), so `0x100011d3` and the `0x10021610` store have no counterpart there. `0x100217eb` therefore has none either. Matching the remaining masked sites one to one was not done; Classic's list is four calls shorter, and it also has a pair (`0x10051acb`, `0x10051adb`) on one `[edi+4]` where this module's inventory has a single call at `0x100547ed`. Forcing the counts to agree would invent a match.
+Classic has the same 39 call encodings, each an instruction. The ten unmasked shapes other than the global have one Classic site each, with the same slot chain: `0x1002bb63`, `0x1002bc69`, `0x1002bdad`, `0x1002bffe`, `0x10031abb`, `0x10031bd1`, `0x10031cf3`, `0x10032dd6`, `0x10032f3c`, `0x1003345b`. Four of those returns are `mov al, 1` (`0x1002bb69`, `0x1002bc72`, `0x1002bdb6`, `0x10032f44`). That writes AL only. Their callers were not read, so those four Classic discards are not proved. `0x10031ac1` and `0x10031cf9` are full `mov eax, [esp+…]` and do replace EAX. No checked-in tracer folds `mov al` into a full EAX write; the four CompLogic rows above were the conclusions that did. `0x10034361` and `0x10034599` are also full `mov eax, [esp+…]`, and those two discards stand. Classic has no vtable `0x10063100` (§3: no type 17), so `0x100011d3` and the `0x10021610` store have no counterpart there. `0x100217eb` therefore has none either. Matching the remaining masked sites one to one was not done; Classic's list is four calls shorter, and it also has a pair (`0x10051acb`, `0x10051adb`) on one `[edi+4]` where this module's inventory has a single call at `0x100547ed`. Forcing the counts to agree would invent a match.
 
-No name was given to a decision. A mask, a `div`, or a discarded `eax` is what the instructions do. OQ-270..272 are untouched.
+No name was given to a decision. A mask, a `div`, or what the next instruction does with `eax` is the use. `mov al, 1` leaves bits 8..31 of the return in EAX (the four rows above and OQ-291). OQ-270..272 are untouched.
 
 ## 6. How big each class is
 
@@ -312,7 +314,7 @@ The behaviour areas in W7 (settling, building, growth, trade, military) are not 
 | id | what | start here |
 |---|---|---|
 | T-AI.2 | done for the entry (§4). The nine kind slots and the command-slot question remain OQ-271 | `0x10041860`, then the other eight targets in §4 |
-| T-AI.3 | done for the receiver of `0x1000e809`, `0x1000d029` and `0x100011d3`, and for the negative on every 3-argument call (§5). The class of the other masked sites is OQ-290; the `+0x4c` / `+0xf8` object is OQ-291. No decision is named | the table in §5 |
+| T-AI.3 | done for the receiver of `0x1000e809`, `0x1000d029`, `0x100011d3`, `0x10002622` and `0x100217eb` (all `0x100a1740`), and for the exclusion of every 3-argument call (§5). The class of the other masked sites is OQ-290; the `+0x4c` / `+0xf8` object is OQ-291. No decision is named | the table in §5 |
 | T-AI.4 | the computer class. Settling, building, growth, trade and military are inside these 20 slots until a slot is read and moved out | `0x10041090` and the rest of the computer row in §6. Military already has `0x10043210` and `0x10004df0` from §11.6 |
 | T-AI.5 | pirates | `0x10053660`, then the 12 pirate slots. `0x10055a30` and `0x10054710` are the two already named |
 | T-AI.6 | Venetians | `0x1004c0c0`, then the 11 Venetian slots, first `0x1004cfc0` |
@@ -325,7 +327,7 @@ Classic is not a separate behaviour task. It is the same factory with no type 17
 ## 8. Open
 
 - **OQ-240.** Answered in §4. `Advance` `0x100ae0f5` calls holder slot `+0x24` (`0x1009c4d0`), which calls manager slot `+0x14` once.
-- **OQ-241.** Narrowed in §5. `0x1000e809` and Classic `0x1000d029` are the world PRNG, and the return is discarded. `0x100011d3` and `0x100217eb` call `AnnoGame.dll` `0x100023a0` when `[world+0x110]` has vtable `0x100215a4`. Every call that pushes three arguments is not `0x100a1740`. The other masked sites are OQ-290. The 3-argument receiver and the 0-argument call on `[reg+0x4c]` are OQ-291.
+- **OQ-241.** Narrowed again in §5 (T44 F1). `0x1000e809` and Classic `0x1000d029` are the world PRNG, and those two returns are discarded by a later full write of EAX. `0x100011d3`, `0x10002622` and `0x100217eb` are the same function: `[object+4]` is the world for an object initialised by `0x10021610` as well as by `0x10021e20`. Every call that pushes three arguments is not `0x100a1740`. The other masked sites are OQ-290. The 3-argument receiver, the 0-argument call on `[reg+0x4c]`, and the unread upper bits after `mov al, 1` are OQ-291.
 - **OQ-270.** What `0x1003e1c0` does after the list walk, and whether `0x10003940` changes the dword `0x10003a20` returns (`0x10003ad2` loads `[esp+0x10]`). Next: `0x1003e1c0`, then `0x10003940`.
 - **OQ-271.** Whether any of the nine kind slots calls a city command slot or `AnnoFrame.dll` `0x100589a0` / `0x10058e90`. Next: `0x10041860`.
 - **OQ-272.** Calls on the object at world `+0x110` (vtable `0x100215a4`, stored at manager `+0x24`). Next: `0x1003d8e0`.

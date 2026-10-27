@@ -4123,3 +4123,55 @@ Current `demolish` finds the building with `Island::building_at`, which reads th
 5. Demolish through the footprint, original list selection from the named tile's type: MET.
 6. This report appended; no code or golden change: MET. `git diff --check` on the fix commit was clean.
 7. Stop for re-review: MET. Not merged, not pushed.
+
+## T41 — W3: the budgets ADR 0003 waits for (OQ-251) — 2026-10-26 — status: FINISHED
+
+- Branch: `task/T41-net-budgets`; worktree: `E:\anno1503-worktrees\anno1503-T41`. Start commit `631e206`. Work commits: `2d80aaf` (`anno-sim-replay measure`), `6e550f2` (ADR 0003 §13, OQ-251 closed). The branch head is the commit that adds this section. Not merged, not pushed.
+- No new OQ. The OQ-280 range was not used. OQ-250 stays open (the UDP port). OQ-251 is closed.
+- The command prints three hash series. Unprepared is a bare `state_hash()` after create and the ticks: create marks every chunk dirty, the tick never calls `prepare_hash`, and the const hash recomputes a dirty chunk without clearing it, so `dirty_chunks_unprepared` equals the chunk count. Clean is after `prepare_hash`. Incremental is one `set_object` of the same id on each island's origin tile. The clock is `steady_clock` in the tool. `src/sim` has none. A volatile store-then-load of the hash sits outside the timed region so LTO keeps the call; the load is also the use GCC and Clang require (`-Wunused-but-set-variable`). An empty sample list returns zeros (`-Wnull-dereference` on `front()`).
+- Synthetic test world, ticks 0, reps 2 (no game files): `measure ticks=0 reps=2 hash_unprepared_us min=90 median=96 p95=103 max=103 dirty_chunks_unprepared=76 hash_clean_us min=7 median=10 p95=14 max=14 hash_incremental_us min=9 median=9 p95=9 max=9 save_bytes=115364 tiles=4696 chunks=76 dirty_chunks=2`
+- Step 3, 30 000 ticks, 50 reps, `ANNO1503_GAME_DIR=E:\anno1503\game\app`:
+  - `Scenes\0100Kampagne01\S01_07_01.sze`: `measure ticks=30000 reps=50 hash_unprepared_us min=7778 median=7920 p95=8591 max=8795 dirty_chunks_unprepared=6480 hash_clean_us min=332 median=342 p95=438 max=450 hash_incremental_us min=361 median=373 p95=517 max=764 save_bytes=11474169 tiles=414720 chunks=6480 dirty_chunks=24`
+  - `Scenes\0011SingleEndlosAddon\endless02.sze`: `measure ticks=30000 reps=50 hash_unprepared_us min=13678 median=14213 p95=15109 max=15861 dirty_chunks_unprepared=11724 hash_clean_us min=196 median=199 p95=248 max=259 hash_incremental_us min=231 median=234 p95=285 max=365 save_bytes=20349454 tiles=750336 chunks=11724 dirty_chunks=30`
+  - `Scenes\0010SingleEndlos\03_1024_med_256.sze`: `measure ticks=30000 reps=50 hash_unprepared_us min=8624 median=8788 p95=9404 max=9981 dirty_chunks_unprepared=7464 hash_clean_us min=88 median=89 p95=108 max=145 hash_incremental_us min=119 median=119 p95=143 max=154 save_bytes=12906633 tiles=477696 chunks=7464 dirty_chunks=27`
+- Cadence: `hash_every` 10 turns at 100 ms is one root hash per second. The bare check is the unprepared column (median 7.9 ms, 14.2 ms, 8.8 ms). The slowest sample is 15.9 ms, 1.6 % of that second. The cadence holds. After `prepare_hash` the medians are 0.34 ms, 0.20 ms and 0.09 ms. Channel 1 is separate from channel 0, so the snapshot does not block the hash.
+- Transfer, line rate, save bytes only, ignoring headers and the window: S01 0.918 s at 100 Mbit/s and 0.092 s at 1 Gbit/s; endless02 1.628 s and 0.163 s; 03_1024 1.033 s and 0.103 s. The 2026-10-26 sentences that followed (a window of 32 × 1200 = 38 400 bytes, 2.048 Mbit/s at 150 ms, endless02 in 79.5 s, and the full check sending that save every 10 minutes) are withdrawn. The round-bq F1 section has the correction. Steady-state empty-turn traffic is unchanged (69-byte datagram, 3450 bytes/s host outbound at 6 peers).
+- Gates:
+  - MSVC full build warning-free, then `sim_replay` rebuilt warning-free after the sink and empty-sample fix.
+  - ctest with `ANNO1503_GAME_DIR=E:\anno1503\game\app`, `ANNO_TEST_THREADS=16`, `ctest --preset msvc -j 16`: 1017/1017 passed, 0 failed, real 408.64 s (`cache/ctest-with-game.log`). That run is the measure command before the warning fix. The fix is outside the timed region. The four measure and argument tests were re-run on the rebuilt binary: 4/4 passed.
+  - ctest without the game folder: 1017 listed, 0 failed, 2 skipped (`anno_sim_replay_scenario_single_01`, `anno_sim_replay_scenario_endless_03_links`), real 38.07 s (`cache/ctest-without-game.log`). Same tree as the with-game run.
+  - `tools/check_unix_warnings.sh` on the committed tree: GCC 13.3.0, 160 files, clean; Clang 18.1.3, 160 files, clean; Clang without GPU, 9 files, clean. The first run failed on the unused volatile and on `front()` of an empty sample list; both are fixed above.
+  - clang-format 23.1.3 `--dry-run --Werror` on `src/tools/sim_replay/main.cpp`: clean.
+  - `git diff --check` clean. `agree.py` not run (no dump command). No ASan: this task does not touch `src/sim`, and the task's gate list does not ask for it.
+- Acceptance:
+  1. the command with its test: MET (`measure`, `anno_sim_replay_measure_synthetic`, three argument tests).
+  2. the three measured outputs: MET (pasted above).
+  3. ADR §13 filled: MET. OQ-251 closed. Status stays Proposed.
+  4. gates green: MET.
+  5. this report: MET. Not merged, not pushed.
+- Time spent / subagents used: inline, no subagents. One full MSVC build, two full ctest runs, three scenario measures, two unix-warning runs.
+
+## T41 — round-bq F1 — 2026-10-27 — status: READY FOR RE-REVIEW
+
+- Branch `task/T41-net-budgets`. Worktree `E:\anno1503-worktrees\anno1503-T41`. Previous head `24fecef6a5c0913d618c92a7b6977eeeb6b68f7f`. The documentation fix is `6600a0fde1fd0a8b7466db75e033ae98f1b60884`. The commit that adds this section is the branch head. Not merged, not pushed. Docs only. No code change, no scenario re-run. ADR 0003 stays Proposed. `E:\anno1503` was not edited.
+
+### What changed
+
+The measurements already in the 2026-10-26 report are the inputs. A fragment carries 1200 - 12 = 1188 save bytes. `fragment_max` 4096 admits 4 866 048 bytes. The saves of 11 474 169, 20 349 454 and 12 906 633 bytes need 9 659, 17 130 and 10 865 fragments. The old "above any save" reason is false, and these three snapshots are not transferable under 4096.
+
+Proposed default: 17 130 fragments, an allocation of 17 130 × 1188 = 20 350 440 bytes, the smallest cap that admits `endless02` with no spare fragment. The cap stays configuration. No UDP port was chosen (OQ-250). No new hash time was introduced.
+
+A window of 32 fragments carries 38 016 save bytes. The 38 400 figure is 32 × 1200, which includes 384 bytes of fragment heads. Ideal full-window model, one window per RTT, save bytes only: `endless02` is 80.3 s at 150 ms RTT and 160.6 s if 150 ms is one-way delay (RTT 300 ms). The other two saves are 45.3 s and 50.9 s at 150 ms RTT, and 90.6 s and 101.9 s at 150 ms one-way. §14 now defines latency as one-way delay. These are optimistic payload bounds, not measured end-to-end join or resync times. The 79.5 s figure used 1200-byte pieces and treated 150 ms as the window time.
+
+`turn_buffer` is 600 turns, 60 s. A live join does not pause the others, so `endless02` overruns the buffer on either reading (about 803 or 1 606 turns). At 150 ms RTT the other two snapshot bounds are under 60 s; at 150 ms one-way they are not. Headers, loss, the turns after the snapshot, `World::load` and `run_turn` are outside the bound. §7 stores a snapshot every 10 minutes and does not broadcast it. The document does not say a fresh save is written at join, so a snapshot up to 10 minutes old also exceeds the 60 s buffer. That choice is OQ-280. No option was picked.
+
+### Acceptance (round bq F1)
+
+1. §4 and §10 reconciled with §13; 1188 save bytes; cap 4 866 048; fragment counts 9 659 / 17 130 / 10 865; old rationale withdrawn; snapshots not transferable at 4096: MET.
+2. Configurable bound with its memory rationale (17 130 fragments, 20 350 440 bytes): MET. OQ-280 records the separate buffer gap, not the cap.
+3. Window is 38 016 save bytes; 80.3 s at 150 ms RTT and 160.6 s if 150 ms is one-way: MET.
+4. Latency defined as one-way delay in §14: MET.
+5. Bounds named as optimistic payload times, not measured join/resync: MET.
+6. Compared with the 60 s buffer; remaining gap named (OQ-280): MET.
+7. §7 stores the periodic snapshot and does not send it: MET.
+8. Report updated; ADR stays Proposed; stop for re-review: MET. `git diff --check` on the fix commit was clean. Not merged, not pushed.

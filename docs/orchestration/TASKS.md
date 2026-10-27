@@ -1,10 +1,24 @@
 # Executor task board (read this first, every time)
 
-**Who writes this file:** the orchestrator session (Claude Fable, the owner's "main" session). **Who reads it:** the executor session (Claude Sonnet with subagents). The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
+**Who writes this file:** the orchestrator session (Codex for round bq, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
 **Round bp (2026-10-26, owner instruction):** for every task after the one an executor has in progress now, **subagents are allowed again where necessary and helpful**. §1 item 5 has the rules: the task stays the executor's, subagents' results are checked against the files before they enter a commit, one heavy job at a time on the PC, the orchestrator's review stays. §1 item 11 no longer forbids them inside a sub-task.
 
-Last update: 2026-10-26 bo — **five branches merged locally** (T33.5 stage 2 + F1, T36, T37, T38, T39). Next: **T33.5 stage 3**, **T40** (T-AI.2), **T41** (the ADR budgets) and **T42** (a flaky render test); T30b.7, then P1, for the orchestrator (round bo below).
+Last update: 2026-10-27 bq — **local review, no merges or pushes this round.** T42 approved for integration; T33.5 stage 3 needs an evidence-note correction; T41 and T34 stage 1 need the documentation fixes below. T34 stage 2 stays `LATER`. T40 has a reported local head but was not part of this review request.
+
+**Round bq (2026-10-27, Codex orchestrator): repository inventory and executor review.**
+- **Git at review start:** local `main` `631e206`, 107 commits ahead of the recorded `origin/main`; the remote was not contacted. The canonical checkout is `E:\anno1503`, reached also through `C:\Users\altin\anno1503`. Only the pre-existing untracked `AGENTS.md` was present. All four reviewed worktrees were clean and their heads matched the owner's handoff. No originals were changed or added. The round-ba local-only workflow continues.
+- **T33.5 stage 3, `0e8c15eafe2877797534a562ced074253eb59889`: implementation approved, documentation fix F1 `READY`.** Command removal passes the named tile, city removal defaults to the origin, and the opt-in rule is serialized and hashed in stream 114. Counts 50 files / 8526 buildings / 59 footprint mismatches / 12 origin mismatches are supported by the saved output. No OQ-260 was opened.
+  - **F1, on the existing branch, docs only:** correct `docs/re/transport.md` §3.4.17 and the T33.5 stage 3 report: type slot `+0x5c` is called at `0x10029011` before city-list processing and again at `0x100292f7` after the clear at `0x100292ef`. It is not called "only afterwards", and `0x100292f2` is setup, not that call. The named-coordinate clear conclusion survives; do not expand it into a claim that all RemoveAt bookkeeping is reproduced. Current demolish finds a building through its footprint; the original selects list processing from the named tile's type. Append the correction and stop for re-review; no code or golden change is requested.
+- **T41, `24fecef6a5c0913d618c92a7b6977eeeb6b68f7f`: measurements accepted; ADR fix F1 `READY`, not approved for integration yet.** The unprepared/clean/incremental distinction is correct, and the one-second hash cadence fits the measured scenes. OQ-251's measurement question is answered; ADR 0003 remains Proposed.
+  - **F1, on the existing branch, docs only:** reconcile §4/§10's `fragment_max=4096` with §13. A fragment carries 1200 minus 12 = 1188 save bytes; the cap permits only 4,866,048 bytes. The three saves need 9,659 / 17,130 / 10,865 fragments. The old "above any save" rationale is false. Propose a configurable bound with its memory rationale, or explicitly record the unresolved design blocker (new questions from the reserved OQ-280 range); do not present these snapshots as transferable under the current cap.
+  - Correct the window arithmetic and its assumptions: 32 fragments carry 38,016 save bytes. At **150 ms RTT**, endless02 needs about **80.3 s** in an ideal full-window model; if 150 ms means one-way latency, about **160.6 s**. Define latency in the netsim plan. These are optimistic payload bounds, not measured end-to-end join/resync times. Check their compatibility with the 60 s turn buffer and catch-up requirements, and name any remaining gap. Distinguish periodic snapshot creation/storage (§7) from an actual broadcast; §7 does not prescribe sending every periodic snapshot. Update the report and stop for re-review.
+- **T42, `7c09b24713bdf680d3d5dcd80793718f3a94584c`: `APPROVED FOR LOCAL INTEGRATION`.** Completion waits replace timing and polling in the test, preserve the legacy-pixel and rebuilt-flow assertions, and are not called by the frame update. The two production test hooks are necessary for task step 4 despite the original header's tests-only shorthand. Before and after were both 0 failures / 50; the historical failing assertion was not retained, so the exact cause of the old failure is not proven. Accepted as removal of the identified timing assumptions, not a reproduced before/after failure. Independent targeted run with originals: 1 case, 71 assertions passed. Integrating and checking the combined tree is still pending.
+- **T34 stage 1, `6809c78ebdca0a4b2de167526fad717275259310`: docs-only fix F1 `READY`; stage 2 stays `LATER`.** The saved listings support binary32 stores and the two divisions consumed before a store. The startup's precision setting supports the proposed 53-bit model; the live post-DirectDraw control word remains OQ-195, occupied-tile height OQ-196, and route pairs OQ-161. OQ-197..199 remain unused. ADR 0002 stays Proposed.
+  - **F1, on the existing branch:** ADR 0002's test plan must not say binary64 is wider than 53 bits. Binary64 has exactly 53 significant bits and a narrower exponent range than x87. Specify an independent reference with controlled precision, exponent range and rounding (or an explicitly controlled x87 PC53 oracle); restrict native binary64 comparisons to their valid domain. Retain the random and edge-case coverage.
+  - Correct the compare truth table in the ADR and `transport.md` §4: masked unordered comparisons set C0 as well as C2 and C3. Thus `test ah,1` at `0x10034815` skips dispatch for unordered remaining, and at `0x1003462d` takes the long-piece arm for unordered length. Add both to the planned edge tests. Correct the report's acceptance, run `git diff --check`, report and stop. No stage 2 implementation, stream bump or owner approval is implied.
+- **Verification boundary:** three read-only subagents reviewed T33.5, T41 and T34; the orchestrator checked their decisive claims against the files and saved instruction listings and reviewed T42 directly. T33.5's synthetic removal case and Python stream goldens, T41's synthetic measure command, and T42's named case were independently rerun. Saved logs support T33.5's 1015 listed / 651 sanitizer cases both ways, T41's 1017 listed, and T42's 1013 listed (two replay skips in each no-game full run). T41 discloses that its full suites preceded the final warning-only fixes, followed by four targeted tests. No full suite, sanitizer run, fresh disassembly or live original-game control-word observation was repeated in this round.
+- **Next integration order:** T42 can land independently; T33.5 after F1; T41 after F1 and budget re-review; T34 stage 1 after F1, still Proposed. Preserve every appended report when merging. T40 `862475a`, and the older unmerged T31/T35 branches, require their own review; none is silently accepted here. T30b.7 and then P1 remain the orchestrator's separate work. No executor was messaged or started by this review.
 
 **Round bo (2026-10-26, the regular orchestrator): review and local merges.**
 - **T33.5 stage 2 + F1, merged as `c290945`** (`task/T33-5b-tile-record` at `d569911`):
@@ -418,16 +432,16 @@ Main executor (prompt handed over by the owner): T15 B1, then T11 stage 2a to th
 
 7. **Steps, not judgement calls (since round u; the executor is a simpler model).** A task section lists numbered steps with the files, the functions and the commands. Do the steps in order; do not add scope, do not refactor what a step does not name, do not change a default the owner has to decide (`rules` options, OQ decisions). **Allowed without asking (owner, 2026-10-24 w), when listed in the report:** tests for the code the step changed, and fixes of sentences (docs, comments) that would otherwise contradict that code. Anything else is a question. When a step is unclear, when a file or function it names does not exist, or when a measurement contradicts the step's premise: stop that step, write the question with what you found into REPORTS.md under the task, and continue with the next step that does not depend on it. Report numbers as measured, including the ones that miss the acceptance. Every claim about the original carries module + address, every mapping in code cites its address in a comment. The acceptance list is ticked item by item in REPORTS.md with the evidence (the test name, the command's output line).
 
-## 2. Current status (2026-10-25 ao, verified by the orchestrator)
+## 2. Current status (2026-10-27 bq, local review)
 
-- `main` = `origin/main`; CI green on every job of every merge and board commit (20 jobs: the C++ matrix, the Rust reference, lint and format). Versions in code: `kStateHashVersion` 111, `kPrngTimelineVersion` 2, `kCommandWireVersion` 1; the goldens g1–g6 and `fixtures/synthetic/sim/scenario_corpus.txt` are recorded for them.
-- **Open PRs:** none. Merged on 2026-10-25: #59 (T30b.3m, 4cb3997), #60 (T15.B1 stopped, c8ad3c1), #61 (T30b.3n, a5af265), #62 (T15.B1b stopped, f912277), #63 (T15.B1c, the camera decoded), #64 (T15.B2, `camera()`, the projection, `goto_tile`), #65 (T30b.3o, the special expansions and the constraint mask), #66 (T30b.8, the consolidated rule), #67 (T33.1, the walk-table reader). **Executors (round bb):** the main one on T33.4 (`src/sim`); a parallel one on T32.1–T32.3 (static RE, docs); T15.C (play layer) not started, to be scheduled with the owner. **#16 (T15 stage 1) merged as 780a6f9 on 2026-10-25 (CI 20/20)**: `tools/orig/control.py`, `probe.py`, `fixtures.py`, `screens.py` + `screens.json`, `memdiff.py`, `docs/re/view.md`, the fixture plan and the T15 notes are on `main`; `WindowsBackend` has its input; #15/#17/#18 are merged or superseded (T13 done, T11 stage 2a merged as 9f54fec and `OWNER-CHECK`, the preview shipped).
-- **Done:** M0; M1 in C++20 except the `anno-extract` port and the removal of the Rust crates; M2 static RE (the fixtures against the running original are T15, open); M3 through S14 and T22–T30 (`docs/sim/state.md` §15, PLAN §4 M3 paragraph): all 50 shipped scenarios load and run, their cities carry 8 526 buildings, stocks, trade lists, build goods and people names; the market cart and the workshop carrier move goods under a stand-in walk rule (OQ-160); the population, the monuments, the decoded walk rule, the float walk, fire, ships, combat, AI and the original savegames are not in the state yet (§3 names the task for each).
-- **Live lane (one sub-task at a time, §1 item 11):** T30b.3m `DONE` (4cb3997); T15.B1 `STOPPED` (PR #60, round aq); T30b.3n `DONE` (PR #61 merged as a5af265); T15.B1b `STOPPED` (PR #62, round as); T15.B1c `DONE` (PR #63 merged, round at: the camera is decoded); T30b.3o `DONE` (PR #65 merged); T30b.3h2 `DONE` (the orchestrator, round ax, fbab166); T30b.8 `DONE` (PR #66 merged); T33.1 `DONE` (PR #67 merged); T33.2 `DONE` (merged locally, round ba); T33.3 `DONE` (merged locally, round bb) → **T33.4** (integration, goldens); then T30b.5–7 as validation (orchestrator, Wine) (the Wine read of real cells against T30b.3n's predicted table) → T30b.5 → T30b.6 → T30b.7 → T30b.8 (the executor), then T31.1–T31.3, T32, T34 stage 1, T33, S15 stage 1, T35. `LATER`: T28, T31b, T34 stage 2, the population stages, S15 freeze, S16. Done in round ao: T30b.3i, 3j, 3k (corrected), 3l; 3h2 stopped and re-queued.
-- **Executor:** a Nemotron 3.5 Super VL model since round aa, no subagents; the orchestrator (the Fable session) reviews every PR, re-disassembles every D claim of an RE task, and merges. Earlier executors: Sonnet with subagents (rounds a–k), Opus 5.5 / 4.7 / 4.8 (rounds l–z; rounds v–z were run by that session as orchestrator at the owner's request and reviewed in round aa).
-- **Host:** the owner's Windows 11 PC (Ryzen 9800X3D, 16 threads, RTX 4090 and a Radeon iGPU, 32 GB), MSVC through the `msvc` preset (Ninja is not installed); GCC 13 / Clang 18 checks in WSL Ubuntu; the original runs on this PC through dgVoodoo2 (`C:\anno1503-original`, the T15 harness copy, never a test game dir) and in the Wine runner (`docs/testing/original-wine.md`, silent runs pre-authorized). Test game dir: `C:\Users\altin\anno1503\game\app` (or `E:\Anno 1503 AD\GOG`, byte-identical); Claude Code's low-memory guard stops long background shells, so builds and ctest run in the foreground, one step per call.
-- **Owner working mode:** small steps, the owner checks every visible render change in the viewer before the next (`build\msvc\src\app\Release\anno1503.exe --view <scene> --game-dir game\app --water enhanced`); anything that changes the game's feel is the owner's decision behind a `rules` option; the owner's first-hand game knowledge outranks community claims and the files and disassembly outrank both.
-- **Open owner decisions:** OQ-155 (the `VK`/`EK` naming, before trade code), the LICENSE (PLAN M0), the tracked preview zip under `share/`, T11 stage 2a and T14 stage 2 viewer checks, the T15 driving session, the river flow look (PLAN §7 item 0).
+- **Local Git:** review baseline `main` is `631e206`, 107 commits ahead of the last recorded `origin/main`. The round-bq board/plan commit follows that baseline. No remote check, push or merge this round. The untracked owner-supplied `AGENTS.md` is left alone.
+- **Versions on main:** `kStateHashVersion` 113, `kPrngTimelineVersion` 2, `kCommandWireVersion` 1. Stream 114 belongs to the unmerged T33.5 stage 3 branch, not main.
+- **Implemented:** C++ formats/assets/viewer and deterministic sim through S14; scenario cities, production, market carts and workshop carriers, decoded walk search T33.1–4, and per-tile records T33.5 stages 1–2. All 50 shipped scenarios load. The renderer still consumes scenario data rather than a live sim game loop.
+- **LAN groundwork on main:** T36 setup/preset work, T37 world-generator spec, T38 AI inventory, and T39 network ADR (Proposed). No C++ network transport, world generator, AI behavior or playable LAN app has landed. Population implementation, float walking, ships/trade, combat, fire and win/loss remain substantial work. Population RE T32.1–4 is merged; P1 is not implemented.
+- **Review queue:** T42 approved but unmerged; T33.5 stage 3 implementation approved with evidence-note F1; T41 measurement code accepted with ADR F1; T34 stage 1 needs ADR/spec F1 and stage 2 remains later. Exact heads and acceptance limits are in round bq above. T40 has reported head `862475a` but is not reviewed here. T31 and T35 also have unmerged branches; do not read their old READY headings as proof no work exists.
+- **Next separate work:** T30b.7 (the Wine road/cart and house-supply validation), then P1. Long determinism acceptance and LAN checkpoints remain open. Do not start T34 stage 2 without corrected ADR 0002 and owner approval.
+- **Host and gates:** Windows 11, Ryzen 9800X3D, RTX 4090 plus Radeon iGPU; MSVC here, GCC/Clang and sanitizers in WSL. Canonical repo `E:\anno1503`, task worktrees `E:\anno1503-worktrees`, originals read-only at `E:\anno1503\game\app`. One heavy job at a time. Round ba governs local gates while remote work is suspended; this review did not retest remote availability.
+- **Working mode:** executors report on their own branches; the orchestrator reviews and integrates. Subagents are permitted under round bp. Visible changes and feel choices still need the owner's checks/decisions. ADRs 0002/0003 stay Proposed; the UDP port, world-generation choices and rules-preset feel choices remain open.
 
 ## 3. Task queue
 
@@ -443,7 +457,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 - **No guessing** (owner's rule): whatever would need a guess is checked against the original files, and what stays unclear goes into the report in detail as an OQ in the task's range.
 - **Gates:** a task with `src/` changes runs the full gates of §1 item 4 and round ba. A docs-only task runs `git diff --check`, plus `python -I tools/orig/test_orig.py` or `tools/agree.py` where it touches those tools.
 
-#### T36 — W1: the game setup, the two rules presets, the original's endless presets · `READY` (round bn) · `PARALLEL-OK` with T33.5 (new files only) · branch `task/T36-game-setup` · worktree `E:\anno1503-worktrees\anno1503-T36` · new OQs from OQ-220
+#### T36 — W1: the game setup, the two rules presets, the original's endless presets · `DONE` (merged locally as `46a7ba4`, round bo) · `PARALLEL-OK` with T33.5 (new files only) · branch `task/T36-game-setup` · worktree `E:\anno1503-worktrees\anno1503-T36` · new OQs from OQ-220
 - **Files:**
   - new: `src/sim/include/anno/sim/game_setup.hpp`, `src/sim/src/game_setup.cpp`, `src/sim/tests/game_setup_test.cpp`, `docs/formats/endless-presets.md`, `docs/sim/rules-presets.md`;
   - one line each in the sim library's and the sim tests' `CMakeLists.txt`;
@@ -494,7 +508,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   5. nothing of the original in git;
   6. report.
 
-#### T37 — W2: the spec of the enhanced world generator · `READY` (round bn; after T36 step 2, whose table it uses: read it from T36's branch if T36 is not merged) · `PARALLEL-OK` (docs and one Python reference tool) · branch `task/T37-world-spec` · worktree `E:\anno1503-worktrees\anno1503-T37` · new OQs from OQ-230
+#### T37 — W2: the spec of the enhanced world generator · `DONE` (merged locally as `3d1d0e4`, round bo) · `PARALLEL-OK` (docs and one Python reference tool) · branch `task/T37-world-spec` · worktree `E:\anno1503-worktrees\anno1503-T37` · new OQs from OQ-230
 - **Files:** new `docs/sim/world-scaling.md`, new `tools/world_measure.py` (a read-only reference tool that prints measurements and commits no data), REPORTS. Also the PLAN M4.1 and plan W2 status lines.
 - **Steps:**
   1. **Set up:** `git -C E:\anno1503 worktree add E:/anno1503-worktrees/anno1503-T37 -b task/T37-world-spec main`.
@@ -524,7 +538,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   4. nothing of the original in git;
   5. report.
 
-#### T38 — W7 / T-AI.1: the inventory of the original's AI (`CompLogic.dll`, `CompLogicClassic.dll`) · `READY` (round bn) · `PARALLEL-OK` (docs only) · branch `task/T38-ai-inventory` · worktree `E:\anno1503-worktrees\anno1503-T38` · new OQs from OQ-240
+#### T38 — W7 / T-AI.1: the inventory of the original's AI (`CompLogic.dll`, `CompLogicClassic.dll`) · `DONE` (merged locally as `de7effa`, round bo) · `PARALLEL-OK` (docs only) · branch `task/T38-ai-inventory` · worktree `E:\anno1503-worktrees\anno1503-T38` · new OQs from OQ-240
 - **Why:** the owner's decision D5 is to rebuild the original AI first, from a thorough analysis of the original files. This first sub-task measures what is there and fixes the order of the rest. It is static RE, with no behaviour claimed yet.
 - **Files:** new `docs/re/complogic.md`, REPORTS. Read `docs/re/annoscene.md` §11 and `docs/re/tick-loop.md` (the 35 call sites) first.
 - **Steps:**
@@ -546,7 +560,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   4. nothing of the original in git (no listings);
   5. report.
 
-#### T39 — W3: ADR 0003, the network transport and session design · `READY` (round bn) · `PARALLEL-OK` (docs only) · branch `task/T39-net-adr` · worktree `E:\anno1503-worktrees\anno1503-T39` · new OQs from OQ-250
+#### T39 — W3: ADR 0003, the network transport and session design · `DONE` (merged locally as `9ac3268`, round bo) · `PARALLEL-OK` (docs only) · branch `task/T39-net-adr` · worktree `E:\anno1503-worktrees\anno1503-T39` · new OQs from OQ-250
 - **Why:** owner decision D3: our own UDP layer, with stability and performance first and flexibility. Required in v1:
   - joining a running game;
   - the host leaving and another player becoming host;
@@ -585,7 +599,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 
 **T36, T37, T38 and T39 are `DONE`:** merged locally as `46a7ba4`, `3d1d0e4`, `de7effa` and `9ac3268`, round bo. ADR 0003 stays **Proposed** until T41's measurements and the owner's approval.
 
-#### T40 — W7 / T-AI.2: the AI's per-tick entry and how it changes the world (OQ-240) · `READY` (round bo) · `PARALLEL-OK` (docs only) · branch `task/T40-ai-tick` · worktree `E:\anno1503-worktrees\anno1503-T40` · new OQs from OQ-270
+#### T40 — W7 / T-AI.2: the AI's per-tick entry and how it changes the world (OQ-240) · `REVIEW` (reported at `862475a`; not reviewed in round bq) · `PARALLEL-OK` (docs only) · branch `task/T40-ai-tick` · worktree `E:\anno1503-worktrees\anno1503-T40` · new OQs from OQ-270
 - **Why:** this decides how the original AI is wired into the port (plan W7 step 1.2). If the AI changes the world only through the functions the player's commands also reach, the port can emit commands. If not, the port must make the same deterministic calls on every peer.
 - **Read first:** `docs/re/complogic.md` (T38; §7's table names this task), `docs/re/annoscene.md` §11.4–§11.6, and `docs/re/tick-loop.md` (`Advance` `0x100ae040`, the open question "host only or every client").
 - **Steps:**
@@ -606,7 +620,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   4. nothing of the original in git;
   5. report.
 
-#### T41 — W3: the budgets ADR 0003 waits for (OQ-251) · `READY` (round bo) · `PARALLEL-OK` (`src/tools/sim_replay` only) · branch `task/T41-net-budgets` · worktree `E:\anno1503-worktrees\anno1503-T41` · new OQs from OQ-280
+#### T41 — W3: the budgets ADR 0003 waits for (OQ-251) · `F1 READY` (round bq; measurements accepted, ADR correction above) · `PARALLEL-OK` (`src/tools/sim_replay` only) · branch `task/T41-net-budgets` · worktree `E:\anno1503-worktrees\anno1503-T41` · new OQs from OQ-280
 - **Steps:**
   1. **Set up:** `git -C E:\anno1503 worktree add E:/anno1503-worktrees/anno1503-T41 -b task/T41-net-budgets main`; build with the `msvc` preset.
   2. **A `measure` command** in `anno-sim-replay` (`E:\anno1503-worktrees\anno1503-T41\src\tools\sim_replay\main.cpp`): `anno-sim-replay measure <scenario> [--ticks N] [--reps R]`.
@@ -631,7 +645,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   4. gates green;
   5. report.
 
-#### T42 — The render test that fails under load · `READY` (round bo) · `PARALLEL-OK` (`src/render/tests` only) · branch `task/T42-flow-test` · worktree `E:\anno1503-worktrees\anno1503-T42`
+#### T42 — The render test that fails under load · `APPROVED FOR LOCAL INTEGRATION` (round bq; not merged) · `PARALLEL-OK` (`src/render/tests` only) · branch `task/T42-flow-test` · worktree `E:\anno1503-worktrees\anno1503-T42`
 - **Why:** in the round-bo gate run, `anno_render_tests.a flow that is not ready draws the legacy look and is rebuilt later, never waited for (game files)` failed once at `ctest -j 16` with the game folder, and passed alone three times. The branch under test did not touch `src/render`. A test that depends on timing is a red gate waiting to happen.
 - **Steps:**
   1. **Set up:** `git -C E:\anno1503 worktree add E:/anno1503-worktrees/anno1503-T42 -b task/T42-flow-test main`; build.
@@ -645,7 +659,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   3. gates green;
   4. report.
 
-**Order (round bo):**
+**Order (round bo, superseded by round bq review/fix-ups above):**
 - **The main executor:** T33.5 stage 3 → T41 → T42.
 - **A second executor:** T40, then T-AI.3 (the 43 draws) when the orchestrator writes it.
 
@@ -1396,7 +1410,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
         2. the anchor column and the block-ordered writer, with unit cases: a 3×3 object across a block corner has four anchors; an overlay over another overlay's anchor tile is skipped there and written elsewhere; an overlay over a non-overlay object takes its tiles;
         3. stage 2 acceptance items 2–9.
   - **Stage 2 and F1 are `DONE`:** merged locally as `c290945`, round bo.
-  - **Stage 3 — removal from the tile the original passes (`READY`, round bo; `src/sim`; the main executor) · branch `task/T33-5c-remove-tile` from local `main` at the round-bo board commit · worktree `E:\anno1503-worktrees\anno1503-T33-5c` · new OQs from OQ-260.**
+  - **Stage 3 — removal from the tile the original passes (`F1 READY`, round bq; implementation reviewed; `src/sim`; the main executor) · branch `task/T33-5c-remove-tile` from local `main` at the round-bo board commit · worktree `E:\anno1503-worktrees\anno1503-T33-5c` · new OQs from OQ-260.**
     - **Why:** `remove_building` (`E:\anno1503\src\sim\src\create.cpp`) calls `clear_object_record` at the building's **origin** tile.
       - Mines and quarries are overlay types (flag `0x10`) placed over mountains (`FELSEN`, also overlay). Where a mountain's anchor tile lies under a mine's footprint, the overlay skip leaves the mountain's id there.
       - If that tile is the mine's origin, the clear reads the mountain's id and clears the mountain. The mine's ids then stay on tiles without a building.
@@ -1424,7 +1438,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
       4. gates green with totals;
       5. report.
 
-### T34 — The float walk: the original's x87 walk reproduced bit-exactly (OQ-162; owner decision 2026-10-24: "float number walk") · stage 1 `READY after T31` (round v; **one subagent**; RE and ADR, docs only) · stage 2 `LATER` (after T33 and the approval of ADR 0002) · stage 1 `PARALLEL-OK` (docs only: `docs/re/transport.md` §4, a new `docs/adr/0002-float-walk.md`, `open-questions.md` OQ-162 and new ones) · branch `task/T34-float-walk-re` from `main` · worktree `C:\Users\altin\anno1503-T34` · new OQs from **OQ-195** (to 199)
+### T34 — The float walk: the original's x87 walk reproduced bit-exactly (OQ-162; owner decision 2026-10-24: "float number walk") · stage 1 `F1 READY` (round bq; docs-only review fixes above; reported at `6809c78`) · stage 2 `LATER` (after T33 and the approval of ADR 0002) · stage 1 `PARALLEL-OK` (docs only: `docs/re/transport.md` §4, a new `docs/adr/0002-float-walk.md`, `open-questions.md` OQ-162 and new ones) · branch `task/T34-float-walk-re` from `main` · worktree `C:\Users\altin\anno1503-T34` · new OQs from **OQ-195** (to 199)
 - **Why:** the owner chose the float walk, so trips take the original's time. The ground rule stays (CLAUDE.md, `lint_sim.py`): `src/sim` computes in integers and no float enters hashed state. So the walk's floats become their bit patterns in the state, and the arithmetic becomes an integer emulation of exactly what the x87 did: the original's result on every platform. That needs the precision mode and every rounding point, or the "float" would not be the original's float.
 - **Stage 1 steps (in order; §1 item 7):**
   1. **Set up** from `main`.

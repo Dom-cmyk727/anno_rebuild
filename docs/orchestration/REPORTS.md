@@ -4634,7 +4634,9 @@ The test plan no longer says binary64 is wider than 53 bits. Binary64 has exactl
 - Left open: OQ-320. OQ-321..329 were not used. The owner still approves ADR 0003 and the budget defaults.
 - Time spent / subagents used: inline, no subagents. No C++ build.
 
-## T52 — join activation, hash delivery, shared link — 2026-10-27 — status: FINISHED
+## T52 — join activation, hash delivery, shared link — 2026-10-27 — status: SUPERSEDED by T52 F1
+
+The acceptance marks below are the withdrawn claim. Round ca: the 1 160 ms equality is not `SeatActive`, `A = H + 2` is already past when the host can see the report, and the send order did not bound acknowledgements or control queues. The T52 F1 section is the contract.
 
 - Branch: `codex/T52-join-activation-design`. Worktree: `E:\anno1503-worktrees\anno1503-T52`. Branched from local main `689ce48a7b2e89928cbf796f656f65c43755fe56` (round bz). The commit that adds this section is the branch head.
 - Scope held. Docs only. ADR 0003 stays Proposed. `tools/snapshot_catchup.py` was not edited. No `src/net`, no sockets, no sim change, no default change, no golden change. OQ-320 is narrowed and stays open. New questions are OQ-370 and OQ-371. OQ-372..379 were not used.
@@ -4647,4 +4649,33 @@ The test plan no longer says binary64 is wider than 53 bits. Binary64 has exactl
   3. Shared-link queues protect seated peers and keep the existing caps: MET. Four-step order, round-robin inside a step, `snapshot_window` 32, `concurrent_transfers` 2, a third ask refused, a joiner over the §8.3 cap restarts alone. The 32-sequence `ack_bits` window is unchanged. 69 bytes is the empty datagram only.
   4. Worked cases, remaining evidence, and owner choices are explicit; ADR stays Proposed; scope held: MET. Rows for one fragment, the lost hash, the unfinished load, `endless02`, and two joins. OQ-320 stays open. Owner choices are ADR approval, OQ-250, OQ-280, OQ-281, OQ-282, OQ-370, OQ-371. §8.5, §8.6, §8.7, §13, §14 case 4, and the open-choice list name the same checkpoint.
 - `git diff --check` before the commit. No cmake, ctest, or WSL. No model run was required: the cited rows are the tests and §13 already on this branch. No Wine and no run of the original.
+- Time spent / subagents used: inline, no subagents.
+
+## T52 F1 — checkpoint is not activation — 2026-10-27 — status: FINISHED
+
+- Branch: `codex/T52-join-activation-design`. Worktree: `E:\anno1503-worktrees\anno1503-T52`. Continued from `6a3299116b1e573a5354914115a60d30be0f8c0b`. Not rebased onto round-ca main. The commit that adds this section is the branch head.
+- Files. `docs/adr/0003-network-transport.md` (§8.4 completion sentence, §8.5 steps 4–5, §8.6 model-gate sentence, §8.7, §13 note, §14 case 4, open choices). `docs/open-questions.md` (OQ-320, OQ-370, OQ-371). This section. `tools/snapshot_catchup.py` was not edited. No `src/`, no default change. ADR 0003 stays Proposed.
+- Evidence. Cursors are `catchup_state_at` / `evaluate_causal` on the unchanged `proposed_budgets()` (`load_ms` 0, `replay_turns_per_s` 100, `turn_store_cap` 1200), one-fragment load completion 150 ms and `endless02` load completion 160 650 ms. `evaluate_causal(1188)` still returns 1 160 / applied 10 / received 10 / host 11. `evaluate_causal(20349454)` still returns 179 160 / applied 1 790 / host 1 791. The unfinished-load row was re-read from `test_a_horizon_before_load_applies_nothing` and was not re-run as a suite. Byte products are integer arithmetic at 100 Mbit/s. An ignored checker under `cache/` called those functions and was not committed. No cmake, ctest, or WSL. No Wine and no run of the original.
+- Assumption that moved, where a row changed. `A` is `C + command_delay` at the accept millisecond, not `H + command_delay`. The checkpoint timer is two hash intervals (2 000 ms) from the root send, not one, because one interval expires as the next hash turn is born. The last `endless02` fragment is 202 save bytes, so 1 717.11 ms is a padded upper bound.
+- Recomputed timelines. Model cursors are host / received / applied.
+  - Zero loss. Model gate 1 160 stays applied 10, received 10, host 11. Accept 1 310 (host 13, received 11, applied 11), `H = 10`, `A = 15`. `SeatActive` arrives 1 460 (host 14, received 13, applied 13) and is not the install. Install 1 560 (host 15, received 14, applied 14). First stamp 19 at 1 710. The ACK of `SeatActive` arrives at 1 610, the resend millisecond, and is processed first.
+  - Channel-2 root lost, watermark delivered. Select `H = 10` at 1 310. Root arrives 1 460 (applied 13). Accept 1 610 (host 16, received 14, applied 14), `A = 18`. Install 1 860 (host 18, received 17, applied 17).
+  - Channel-2 root and watermark lost. Retry arrives 1 650 (host 16, received 15, applied 14) and compares the stored root for 10. Accept 1 800 (host 18, received 16, applied 16), `A = 20`. `SeatActive` at 1 950 (host 19, received 18, applied 17) is not the install. Install 2 060 (host 20, received 19, applied 19).
+  - That retry also lost. Accept 2 100 (host 21, received 19, applied 19), `A = 23`. Install 2 360. One lost retry is inside the 3 000 deadline.
+  - Every retry lost. Deadline 3 000 (host 30, received 28, applied 28) restarts that joiner. A report at 3 000 loses to the deadline. A report at 2 999 would accept with `A = 31`. The old 2 000 ms restart was the one-interval timer.
+  - Load unfinished. Unchanged: horizon 2 000, transfer 3 000, `restart` / `unmet_boundary`, applied 0, received 18, host 20, backlog 18. No report for `H`. Input off.
+  - `endless02`. Gate 179 160, applied 1 790, host 1 791, stays the model gate. Accept 179 310 (host 1 793, received 1 791, applied 1 791), `H = 1 790`, `A = 1 795`. Install 179 560. Fluid 80.3 s at a 150 ms round trip and 160.6 s at 300 ms stay labeled comparisons. Exact serialization 1 717.032 ms. Padded upper bound 1 717.111 ms.
+  - Supersede. `H = 10` selected at 1 310. The joiner's report for 10 is lost until 2 410. The report for 20 arrives at 2 310 (host 23, received 21, applied 21) and replaces `H`. `A = 25`. The 2 410 report matches turn 10 and does not open the seat. Install 2 560.
+  - Post-`H` hole. Turn 12 arrives at 3 350 instead of 1 350. Samples at 1 310, 1 560 and 3 349 stay received 11, applied 11. Install 3 380 (host 33, received 32, applied 14), not at 1 160 or 1 560.
+  - Missing turn 9. At 1 160, host 11, received 8, applied 8, due 10. No `H`. Still received 8 at 3 000.
+  - Lost `SeatActive`. Accept stays 1 310, `A = 15`. Resend arrives 1 760. That pair's delivered applied cursor stays 13 until then; the model cursor at 1 760 is not the delivered prefix. Install 1 770. Eight lost sends abandon at 3 710. Other pairs are not stalled.
+  - Two joins. Joiner 1 installs at 1 560 with `A = 15`. Joiner 2 restarts at 3 000. The third ask is refused. Host pass `5 × 1 362 + 2 × 40 096 + 4 × 82 + 5 × 73 = 87 695` bytes, 7 015.6 µs. Reverse 305 bytes, 24.4 µs. 6 960.16 µs remains the separate full-window-plus-burst upper bound. Host queue cap 281 302 bytes. `ack_bits` stays 32. Empty datagram 69 bytes. Burst fragments 1 253 and 109 bytes.
+- What did not move. `load_ms` 0, `replay_turns_per_s` 100, `turn_store_cap` 1200. `command_delay` 2. `concurrent_transfers` 2. `hash_retry_ms` 500. Acceptance `resend_ms` 300. Jitter 0 (OQ-371). One-way 150 ms and round trip 300 ms stay distinct. `paused` stays false on every join-only outcome.
+- Acceptance:
+  1. One observable protocol passes the normal case and the stale-prefix / late-message cases: MET. States and the recheck in §8.7. Zero-loss installs at 1 560, not at the 1 160 model gate. The turn-9 hole never selects `H`. The turn-12 hole installs at 3 380. The turn-10 report after supersede does not open the seat. A report at the 3 000 deadline loses.
+  2. Roots and retries have finite lifetimes and compare equal turns: MET. Four slots, 20 bytes each, pin until accept, supersede or deadline. Deadline is 2 000 ms from the root send. Comparison uses the stored root for that turn.
+  3. Future `A` and command ownership are causal: MET. `A = C + 2` at accept, `SeatActive` queued before turn `A`, AI seam through `A - 1`, empty human list from `A` until the first stamp.
+  4. Both directions, acknowledgements and retries fit a finite queue, and the one-join and two-join rows are worked: MET. Per-pair window of 32, ACK-only 53 bytes, host cap 281 302 bytes, joiner reverse cap 40 275 bytes, nonpreemptible unit one 1 253-byte datagram. The two-join pass is 7 015.6 µs and 24.4 µs reverse.
+  5. ADR stays Proposed, gaps stay explicit, scope held: MET. OQ-320 and OQ-371 stay open. OQ-370 is narrowed to owner approval of `A = C + command_delay` and no longer offers `A = H + command_delay`. No `src/net`, no model edit, no default change, no T34 stage 2, no T-AI.4.
+- `git diff --check` before the commit. No cmake, ctest, or WSL.
 - Time spent / subagents used: inline, no subagents.

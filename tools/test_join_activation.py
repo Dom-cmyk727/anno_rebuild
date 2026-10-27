@@ -331,22 +331,24 @@ class TransportAccounting(TraceCase):
         self.check(sim, sim.joiners["J1"].max_root_slots <= cap, "joiner %d" % sim.joiners["J1"].max_root_slots)
 
     def test_queue_caps_arithmetic(self):
+        # Every datagram carries the u16 epoch field: 25 + 2 header bytes, 28 IP/UDP.
         caps = ja.queue_caps(cfg())
-        self.assertEqual(caps["datagram"], 1253)
-        self.assertEqual(caps["ch0_in_flight_per_pair"], 40096)
-        self.assertEqual(caps["ch0_waiting_per_pair"], 80192)
-        self.assertEqual(caps["ch0_host"], 601440)
-        self.assertEqual(caps["ch1_host"], 80192)
-        self.assertEqual(caps["ch2_host"], 630)
-        self.assertEqual(caps["host_total"], 682262)
-        # 4 watermarks (75), 2 reports (75), 2 InputReqs (69), InputOn (59), JoinAbort (61).
-        self.assertEqual(caps["joiner_reverse"], 4 * 75 + 2 * 75 + 2 * 69 + 59 + 61)
-        self.assertEqual(caps["ack_kbit_per_s_ch0_and_ch1"], 848.0)
+        self.assertEqual(caps["datagram"], 1255)
+        self.assertEqual(caps["ch0_in_flight_per_pair"], 40160)
+        self.assertEqual(caps["ch0_waiting_per_pair"], 80320)
+        self.assertEqual(caps["ch0_host"], 602400)
+        self.assertEqual(caps["ch1_host"], 80320)
+        self.assertEqual(caps["ch2_host"], 650)
+        self.assertEqual(caps["host_total"], 683370)
+        # 4 watermarks (77), 2 reports (77), 2 InputReqs (71), InputOn (61), JoinAbort (63).
+        self.assertEqual(caps["joiner_reverse"], 4 * 77 + 2 * 77 + 2 * 71 + 61 + 63)
+        self.assertEqual(caps["ack_kbit_per_s_ch0_and_ch1"], 880.0)
 
     def test_wire_sizes(self):
         self.assertEqual(ja.turn_bytes([]), 16)
         self.assertEqual(ja.turn_bytes([(1, 2, "human")]), 16 + 14)
-        self.assertEqual(ja.HEADER + ja.IP_UDP, 53)
+        self.assertEqual(ja.HEADER + ja.EPOCH_BYTES + ja.IP_UDP, 55)
+        self.assertEqual(ja.WIRE, 55)
 
 
 # ---- round cc (F3) regressions: written first, shown failing at 5ea1f34 ----------------------
@@ -614,7 +616,13 @@ class ValidatorsOnHandWrittenLogs(unittest.TestCase):
         log = [ev("seated", peer="P1", seat=1)] + [ev("produce", turn=k) for k in range(1, 41)]
         log += [ev("apply", peer="P1", turn=3, owners=(), root="r")]
         self.assertIn("iv", codes(log))
-        self.assertNotIn("iv", codes(log + [ev("outage", peer="P1")]))
+        open_ = ev("outage", peer="P1", src="H", dst="P1", ch=0, age=2000)
+        self.assertNotIn("iv", codes(log + [open_]))
+        # An outage on another path (channel 1, or the reverse direction) excuses nothing.
+        other = ev("outage", peer="P1", src="H", dst="P1", ch=1, age=2000)
+        self.assertIn("iv", codes(log + [other]))
+        reverse = ev("outage", peer="P1", src="P1", dst="H", ch=0, age=2000)
+        self.assertIn("iv", codes(log + [reverse]))
 
     def test_v_input_lag_at_the_instant_and_later_in_the_millisecond(self):
         log = [ev("produce", turn=k, t=k) for k in range(1, 31)]
@@ -665,7 +673,7 @@ class ValidatorsOnHandWrittenLogs(unittest.TestCase):
 
     def test_iv_a_recovered_outage_does_not_excuse_a_later_silent_stall(self):
         log = [ev("seated", peer="P1", seat=1), ev("outage", 1000, peer="P1", src="H", dst="P1", ch=0, age=2000),
-               ev("outage_end", 4000, peer="P1")] + [ev("produce", 100000, turn=1000)]
+               ev("outage_end", 4000, peer="P1", src="H", dst="P1", ch=0)] + [ev("produce", 100000, turn=1000)]
         self.assertIn("iv", codes(log))
         # The same stall with the outage still open at the end is explicit.
         open_ = [ev("seated", peer="P1", seat=1), ev("outage", 1000, peer="P1", src="H", dst="P1", ch=0, age=2000),
@@ -694,9 +702,13 @@ class ValidatorsOnHandWrittenLogs(unittest.TestCase):
         self.assertNotIn("xi", {c for c, _ in ja.validate(ok, ja.Cfg(), 0)})
 
     def test_ix_an_outage_must_end_or_drop(self):
-        log = [ev("outage", 1000, peer="P1", src="H", dst="P1", ch=0, age=2000), ev("produce", 70000, turn=700)]
-        self.assertIn("ix", codes(log))
-        self.assertNotIn("ix", codes(log + [ev("outage_end", 5000, peer="P1")]))
+        log = [ev("outage", 1000, peer="P1", src="H", dst="P1", ch=0, age=2000)]
+        self.assertIn("ix", {c for c, _ in ja.validate(log, ja.Cfg(), 70000)})
+        ended = log + [ev("outage_end", 5000, peer="P1", src="H", dst="P1", ch=0)]
+        self.assertNotIn("ix", {c for c, _ in ja.validate(ended, ja.Cfg(), 70000)})
+        # Another path recovering does not close this one.
+        wrong = log + [ev("outage_end", 5000, peer="P1", src="H", dst="P1", ch=1)]
+        self.assertIn("ix", {c for c, _ in ja.validate(wrong, ja.Cfg(), 70000)})
 
     def test_viii_a_grant_must_name_a_turn_already_sent(self):
         grant = ev("send", 5, src="H", dst="J1", ch=0, seq=9, msg="InputGrant", attempt=1, lost=False,
@@ -1179,7 +1191,7 @@ def _patch_skip_a_turn():
 
 
 def _patch_prune_too_early():
-    def release(self):
+    def release(self, floor):
         for q in [q for q in self.log_turns if q < self.applied - 5]:
             self.sim.ev("release", turn=q)  # evidence says released; data kept so the run goes on
             self.log_turns_released = getattr(self, "log_turns_released", set()) | {q}
@@ -1212,6 +1224,340 @@ MUTANTS.update({
     "reuse an old transport epoch": (_patch_reuse_epoch, [
         "RoundCdValidatorsOnRealRuns.test_epochs_hold_across_a_reask",
         "RoundCdReliableRecovery.test_r1_old_datagrams_acks_and_timers_cannot_enter_the_new_epoch"]),
+})
+
+
+# ---- round ce (F6) regressions: written first, shown failing at 8e2493a ------------------------
+def _pair_after_reask(**kw):
+    """J1 joins at 0 and asks again at 1000 (epoch 1); returns the sim run to 3000 ms."""
+    sim = ja.Sim(cfg(**kw), seated=1)
+    sim.add_join("J1", 0, 2)
+    sim.add_join("J1", 1000, 2)
+    sim.run(3000)
+    return sim
+
+
+def _old_datagram(**extra):
+    d = {"kind": "Turn", "size": 16, "msg": {"kind": "Turn", "turn": 7, "events": ()}, "attempt": 1, "acked": False,
+         "turn": 7, "C": None, "seq": 0, "first": 0, "sid": 99999, "epoch": 0, "frag": 0, "nfrag": 1}
+    d.update(extra)
+    return d
+
+
+class RoundCeWireEpoch(TraceCase):
+    def test_e1_identical_sequence_numbers_differ_in_the_packet_field(self):
+        sim = _pair_after_reask()
+        zero = [e for e in sim.events if e["kind"] == "send" and e["src"] == "H" and e["dst"] == "J1"
+                and e["ch"] == 0 and e["seq"] == 0]
+        self.check(sim, {e["epoch"] for e in zero} >= {0, 1}, "sequence 0 only seen in epochs %r" % ({e["epoch"] for e in zero},))
+        self.check(sim, ja.EPOCH_BYTES == 2 and ja.WIRE == ja.HEADER + 2 + ja.IP_UDP, "the field is not counted")
+
+    def test_e1_a_stale_data_packet_is_rejected_by_its_field_alone(self):
+        sim = _pair_after_reask()
+        before = len(sim.events)
+        sim.arrive("H", "J1", 0, _old_datagram(epoch=0))  # no timer epoch is passed: only the packet's field
+        new = sim.events[before:]
+        self.check(sim, [e for e in new if e["kind"] == "stale_epoch" and e["what"] == "arrive"], "not rejected")
+        self.check(sim, not [e for e in new if e["kind"] in ("arrive", "deliver")], "the old packet was accepted")
+
+    def test_e1_a_stale_ack_is_rejected_by_its_field_alone(self):
+        sim = _pair_after_reask()
+        c = sim.chan("H", "J1", 0)
+        c.out[500] = {"seq": 500, "attempt": 1, "first": sim.t, "kind": "Turn", "size": 1}
+        sim.take_ack("H", "J1", 0, 500, 0, 0)  # an ACK-only datagram whose field says epoch 0
+        self.check(sim, 500 in c.out, "a stale ACK freed a sequence of the new stream")
+        self.check(sim, [e for e in sim.events if e["kind"] == "stale_epoch" and e["what"] == "ack"], "not logged")
+        sim.take_ack("H", "J1", 0, 500, 0, sim.ep_of("J1", "H"))  # the current epoch is accepted
+        self.check(sim, 500 not in c.out, "the current ACK was not accepted")
+
+    def test_e1_stale_timers_are_local_and_rejected_separately(self):
+        sim = _pair_after_reask()
+        c = sim.chan("H", "J1", 0)
+        c.out[501] = {"seq": 501, "attempt": 1, "first": sim.t, "kind": "Turn", "size": 1, "msg": None, "turn": None,
+                      "C": None, "sid": 5, "epoch": 1}
+        sent = len([e for e in sim.events if e["kind"] == "send"])
+        sim.resend("H", "J1", 0, 501, 0)  # a resend timer of epoch 0
+        sim.flush_ack("H", "J1", 0, 0)  # a flush timer of epoch 0
+        whats = {e["what"] for e in sim.events if e["kind"] == "stale_epoch"}
+        self.check(sim, {"resend", "flush"} <= whats, repr(whats))
+        self.check(sim, len([e for e in sim.events if e["kind"] == "send"]) == sent, "a stale timer sent a datagram")
+
+    def test_e1_bytes_of_the_epoch_field_and_the_ask_are_counted(self):
+        sim = _pair_after_reask()
+        for a, b in (("H", "J1"), ("J1", "H"), ("H", "P1"), ("P1", "H")):
+            data = sum(e["size"] + ja.WIRE for e in sim.events if e["kind"] == "send" and e["src"] == a and e["dst"] == b)
+            acks = sim.ack_ch_total(a, b) if hasattr(sim, "ack_ch_total") else sum(
+                n for (x, y, ch), n in sim.ack_ch.items() if x == a and y == b)
+            ask = (ja.ASK_PAYLOAD + ja.WIRE) if (a, b) == ("J1", "H") else 0
+            self.check(sim, sim.stats[(a, b)]["bytes"] == data + acks * ja.WIRE + ask,
+                       "%s>%s bytes %d != %d" % (a, b, sim.stats[(a, b)]["bytes"], data + acks * ja.WIRE + ask))
+
+    def test_e1_a_late_old_packet_never_enters_the_new_stream_in_a_run(self):
+        sim = ja.Sim(cfg(), delays={("Turn", "H>J1", 0, 1): 6000}, seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.add_join("J1", 1000, 2)
+        sim.run(20000)
+        self.check(sim, [e for e in sim.events if e["kind"] == "stale_epoch" and e["what"] == "arrive"], "no stale arrival")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+
+def _timeline_e2(**kw):
+    sim = ja.Sim(cfg(**kw), seated=1)
+    sim.add_join("J1", 0, 2)
+    sim.cuts.append(("J1", 6000, 80000))
+    sim.cuts.append(("J1", 92000, 95000))
+    sim.add_join("J1", 85000, 2)
+    sim.run(110000)
+    return sim
+
+
+class RoundCeDropRejoin(TraceCase):
+    def test_e2_the_rejoined_peer_survives_the_next_short_cut(self):
+        sim = _timeline_e2()
+        j1 = sim.joiners["J1"]
+        self.check(sim, [e for e in sim.events if e["kind"] == "drop_seated" and e["peer"] == "J1"], "never dropped")
+        self.check(sim, "J1" not in sim.dropped, "the old drop still classifies the peer")
+        self.check(sim, j1.active_ms is not None and sim.host.joins["J1"].attempt == 2, repr(summary(sim)))
+        self.check(sim, not [e for e in sim.events if e["kind"] == "abandon" and e["t"] > 85000], "abandoned after the rejoin")
+        self.check(sim, sim.host.applied - j1.P <= 4, "J1 is %d turns behind" % (sim.host.applied - j1.P))
+        self.check(sim, [e for e in sim.events if e["kind"] == "outage" and e["t"] > 92000], "no outage for the 3 s cut")
+        self.check(sim, [e for e in sim.events if e["kind"] == "outage_end" and e["t"] > 92000], "the outage did not end")
+        self.check(sim, sim.host.owners.get(2) == "human" and sim.seated[0].owners.get(2) == "human", "seat 2 differs")
+        self.check(sim, validate_clean(sim) == [] and sim.root_conflicts() == [], repr(validate_clean(sim)[:3]))
+
+    def test_e2_input_is_closed_when_the_seat_is_dropped(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.cuts.append(("J1", 6000, 80000))
+        sim.run(80000)
+        drop = next(e for e in sim.events if e["kind"] == "drop_seated")
+        off = [e for e in sim.events if e["kind"] == "input_off" and e["peer"] == "J1" and e["t"] <= drop["t"]]
+        self.check(sim, off and sim.joiners["J1"].state == "restarted", "input stayed open: %r" % (off,))
+        self.check(sim, "xii" not in {c for c, _ in validate_clean(sim)}, repr(validate_clean(sim)[:3]))
+
+    def test_e2_a_second_grace_expiry_drops_the_rejoined_peer_again(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.cuts.append(("J1", 6000, 80000))
+        sim.add_join("J1", 85000, 2)
+        sim.cuts.append(("J1", 100000, 400000))
+        sim.run(200000)
+        drops = [e for e in sim.events if e["kind"] == "drop_seated" and e["peer"] == "J1"]
+        self.check(sim, len(drops) == 2 and drops[1]["t"] > 100000, repr(drops))
+        self.check(sim, sim.host.owners.get(2) == "ai" and sim.seated[0].owners.get(2) == "ai", "seat 2 is not the AI")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_e2_another_peer_can_take_the_vacated_seat(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.cuts.append(("J1", 6000, 400000))
+        sim.add_join("J2", 70000, 2)
+        sim.run(90000)
+        self.check(sim, [e for e in sim.events if e["kind"] == "drop_seated" and e["peer"] == "J1"], "J1 not dropped")
+        self.check(sim, sim.joiners["J2"].active_ms is not None, repr(summary(sim, "J2")))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_e2_late_old_traffic_after_the_rejoin_is_rejected(self):
+        sim = ja.Sim(cfg(), delays={("Turn", "H>J1", 3, 1): 90000}, seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.cuts.append(("J1", 6000, 80000))
+        sim.add_join("J1", 85000, 2)
+        sim.run(100000)
+        self.check(sim, [e for e in sim.events if e["kind"] == "stale_epoch"], "nothing stale arrived")
+        self.check(sim, sim.joiners["J1"].active_ms is not None and validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+
+class RoundCeBudgets(TraceCase):
+    SLOW = 10 ** 9
+
+    def test_e3_seven_fragment_turns_never_pass_the_byte_cap(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.turn_extra = lambda k: 8300
+        sim.run(70000)
+        host = sim.host
+        self.check(sim, host.peak_bytes <= sim.cfg.tail_bytes, "peak %d > %d" % (host.peak_bytes, sim.cfg.tail_bytes))
+        self.check(sim, host.retained_bytes <= sim.cfg.tail_bytes and len(host.log_turns) < sim.cfg.turn_buffer,
+                   "the rolling window did not shrink: %d turns" % len(host.log_turns))
+        self.check(sim, set(host.turn_charge.values()) == {8316}, repr(set(host.turn_charge.values())))
+        self.check(sim, not [e for e in sim.events if e["kind"] == "drop_seated"], "a healthy peer was dropped")
+        self.check(sim, sim.seated[0].applied >= host.applied - 4, "the seated peer fell behind")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_e3_byte_boundary_exactly_n_turns(self):
+        sim = ja.Sim(cfg(tail_bytes_max=10 * 1200), seated=1)
+        sim.run(5000)
+        self.check(sim, len(sim.host.log_turns) == 10 and sim.host.retained_bytes == 12000,
+                   "%d turns %d bytes" % (len(sim.host.log_turns), sim.host.retained_bytes))
+
+    def test_e3_a_stalled_seated_cursor_is_dropped_at_the_cap_not_discarded(self):
+        sim = ja.Sim(cfg(tail_bytes_max=50 * 1200), seated=2)
+        sim.cuts.append(("P1", 1000, 40000))
+        sim.run(12000)
+        drops = [e for e in sim.events if e["kind"] == "drop_seated"]
+        self.check(sim, len(drops) == 1 and drops[0]["peer"] == "P1" and drops[0]["why"] == "log cap", repr(drops))
+        self.check(sim, drops[0]["t"] < 1000 + sim.cfg.grace_ms, "dropped at the grace, not at the cap")
+        self.check(sim, sim.host.peak_bytes <= sim.cfg.tail_bytes, "peak %d" % sim.host.peak_bytes)
+        self.check(sim, sim.host.owners.get(1) == "ai" and sim.seated[1].owners.get(1) == "ai", "seat 1 is not the AI")
+        self.check(sim, sim.seated[1].applied >= sim.host.applied - 4, "the other peer fell behind")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_e3_an_oversized_single_turn_rejects_its_commands(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.turn_extra = lambda k: 6000000 if k == 5 else 0
+        sim.run(3000)
+        self.check(sim, [e for e in sim.events if e["kind"] == "oversized_turn" and e["turn"] == 5], "not detected")
+        self.check(sim, ("oversized_turn", 5) == sim.violations[0][:2], repr(sim.violations))
+        self.check(sim, sim.host.peak_bytes <= sim.cfg.tail_bytes and sim.seated[0].applied >= sim.host.applied - 4, "cap or peer")
+        self.check(sim, 5 in sim.host.log_turns and sim.host.turn_charge[5] == 1200, "the empty turn was not kept")
+
+    def test_e3_unneeded_rolling_entries_do_not_cause_a_restart(self):
+        # Cap of 100 turns. A join asking at turn 300 pins from 301: it fits until turn 400 and is
+        # restarted when turn 401 would be kept, not earlier because of turns below 301.
+        sim = ja.Sim(cfg(tail_bytes_max=100 * 1200, tail_turns_max=100), seated=1)
+        sim.add_join("J1", 30000, 2, snapshot_ms=self.SLOW)
+        sim.run(40000)
+        self.check(sim, sim.host.joins["J1"].restart_ms is None, "restarted early: %r" % (summary(sim),))
+        sim.run(40100)
+        jr = sim.host.joins["J1"]
+        self.check(sim, jr.restart_ms == 40100 and jr.restart_reason == ja.REASON_TAIL, repr(summary(sim)))
+
+    def test_e3_max_generations_is_enforced_and_a_shareable_one_is_kept(self):
+        sim = ja.Sim(cfg(max_generations=1), seated=2)
+        sim.add_join("J1", 0, 3, snapshot_ms=self.SLOW)
+        sim.add_join("J2", 30000, 4, snapshot_ms=self.SLOW)  # shareable: allowed although the table is full
+        sim.run(31000)
+        self.check(sim, sim.host.joins["J2"].gen == sim.host.joins["J1"].gen == 1, "not shared")
+        sim = ja.Sim(cfg(max_generations=1), seated=2)
+        sim.add_join("J1", 0, 3, snapshot_ms=self.SLOW)
+        sim.add_join("J2", 62000, 4, snapshot_ms=self.SLOW)  # past snapshot_age_ms: needs a second generation
+        sim.run(63000)
+        jr2 = sim.host.joins["J2"]
+        self.check(sim, jr2.restart_reason == ja.REASON_NO_GEN and jr2.gen == 0 and len(sim.host.gen_state) == 1, repr(summary(sim, "J2")))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_e3_generation_identities_are_never_reused(self):
+        sim = ja.Sim(cfg(), seated=3)
+        sim.add_join("J1", 0, 4, snapshot_ms=self.SLOW)
+        sim.add_join("J2", 62000, 5, snapshot_ms=self.SLOW)
+        sim.cancel("J1", 63000)
+        sim.add_join("J3", 124000, 6, snapshot_ms=self.SLOW)
+        sim.run(125000)
+        gens = {n: sim.host.joins[n].gen for n in ("J1", "J2", "J3")}
+        self.check(sim, len(set(gens.values())) == 3, "reused: %r" % (gens,))
+        self.check(sim, sorted(sim.host.gen_state) == [gens["J2"], gens["J3"]], "images %r" % (sorted(sim.host.gen_state),))
+        self.check(sim, sim.host.gen_state[gens["J2"]] != sim.host.gen_state[gens["J3"]] or
+                   sim.host.joins["J2"].S != sim.host.joins["J3"].S, "same snapshot state")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_e3_the_last_owner_frees_the_image_and_the_operational_state_is_bounded(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.run(30000)
+        op = sim.host.operational()
+        self.check(sim, op["images"] == 0, "an image outlived its last owner: %r" % (op,))
+        self.check(sim, op["log_bytes"] <= sim.cfg.tail_bytes and op["in_flight"] <= 3 * 2 * sim.cfg.window, repr(op))
+        self.check(sim, op["reassembly"] <= 80 * 6 and op["waiting"] <= sim.cfg.wait_cap * 6, repr(op))
+
+
+def _hand(*events):
+    return list(events)
+
+
+class RoundCeFragments(TraceCase):
+    def _base(self, nfrag=2):
+        return [ev("seated", peer="P1", seat=1), ev("retain", turn=1, bytes=2432, total_bytes=2432, count=1, nfrag=nfrag),
+                ev("produce", turn=1)]
+
+    def _send(self, frag, seq, nfrag=2, attempt=1):
+        return ev("send", src="H", dst="P1", ch=0, seq=seq, msg="Turn" if frag == nfrag - 1 else "Turn-frag", attempt=attempt,
+                  lost=False, turn=1, C=None, size=1200, sid=seq + 1, epoch=0, frag=frag, nfrag=nfrag)
+
+    def _arrive(self, frag, seq, nfrag=2):
+        return ev("arrive", src="H", dst="P1", ch=0, seq=seq, msg="Turn", dup=False, turn=1, sid=seq + 1, epoch=0,
+                  frag=frag, nfrag=nfrag)
+
+    def test_e4_an_early_fragment_is_not_retention_of_the_turn(self):
+        log = self._base() + [self._send(0, 0), ev("release", turn=1)]
+        self.assertEqual(codes(log), ["vii"])
+
+    def test_e4_all_fragments_in_the_window_are_wholly_held(self):
+        log = self._base() + [self._send(0, 0), self._send(1, 1), ev("release", turn=1)]
+        self.assertEqual(codes(log), [])
+
+    def test_e4_fragments_split_between_the_window_and_the_receiver_are_wholly_held(self):
+        log = self._base() + [self._send(0, 0), self._send(1, 1), self._arrive(0, 0),
+                              ev("ack", src="H", dst="P1", ch=0, seqs=(0,), epoch=0), ev("release", turn=1)]
+        self.assertEqual(codes(log), [])
+
+    def test_e4_an_acknowledged_fragment_nobody_holds_is_lost(self):
+        # ACKed but never recorded as arrived: the ACK alone does not make the receiver the owner.
+        log = self._base() + [self._send(0, 0), self._send(1, 1), ev("ack", src="H", dst="P1", ch=0, seqs=(0,), epoch=0),
+                              ev("release", turn=1)]
+        self.assertEqual(codes(log), ["vii"])
+
+    def test_e4_holdings_do_not_survive_an_epoch_change_or_a_drop(self):
+        held = self._base() + [self._send(0, 0), self._send(1, 1)]
+        bump = held + [ev("epoch_bump", a="H", b="P1", epoch=1, why="re-ask"), ev("release", turn=1)]
+        self.assertIn("vii", codes(bump))
+        drop = held + [ev("drop_seated", peer="P1"), ev("admit", name="P1", attempt=2, seat=1, gen=1, S=0), ev("release", turn=1)]
+        self.assertIn("vii", codes(drop))
+
+    def test_e4_the_end_of_the_observation_is_checked(self):
+        # Released earlier with full coverage is fine; a turn not retained and only half held fails at the end.
+        log = self._base() + [self._send(0, 0), ev("release", turn=1)]
+        self.assertEqual(codes(log), ["vii"])
+        self.assertEqual(codes(self._base() + [self._send(0, 0)]), [])  # still retained by the host at the end
+
+    def test_e4_a_fragmented_run_with_a_cut_holds_every_fragment(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.turn_extra = lambda k: 1216 if k <= 60 else 0
+        sim.cuts.append(("P1", 2000, 6000))
+        sim.run(70000)
+        self.check(sim, any(e.get("nfrag", 1) == 2 for e in sim.events if e["kind"] == "retain"), "no fragmented turns")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+
+def _patch_drop_a_fragment():
+    orig = ja.Sim.next_datagram
+
+    def next_datagram(self, c):
+        if c is self.chans.get(("H", "P1", 0)) and c.log_next == 20 and c.frag == 1:
+            c.log_next, c.frag = 21, 0  # the second fragment of turn 20 is never sent
+        return orig(self, c)
+    return mock.patch.object(ja.Sim, "next_datagram", next_datagram)
+
+
+def _patch_free_generations_early():
+    def collect(self):
+        for g in list(self.gen_state):
+            del self.gen_state[g]
+            self.sim.ev("gen_free", gen=g)
+        self.gens = []
+    return mock.patch.object(ja.Host, "collect_gens", collect)
+
+
+def _patch_reuse_generation_ids():
+    orig = ja.Host.collect_gens
+
+    def collect(self):
+        orig(self)
+        self.next_gen = 1 + len(self.gens)
+    return mock.patch.object(ja.Host, "collect_gens", collect)
+
+
+def _patch_accept_stale_incarnations():
+    return mock.patch.object(ja.Sim, "stale", lambda self, local, remote, epoch, what: False)
+
+
+MUTANTS.update({
+    "drop one fragment": (_patch_drop_a_fragment, [
+        "RoundCeFragments.test_e4_a_fragmented_run_with_a_cut_holds_every_fragment"]),
+    "release a generation too early": (_patch_free_generations_early, [
+        "RoundCeBudgets.test_e3_generation_identities_are_never_reused"]),
+    "reuse generation identities": (_patch_reuse_generation_ids, [
+        "RoundCeBudgets.test_e3_generation_identities_are_never_reused"]),
+    "carry holdings into a new incarnation": (_patch_accept_stale_incarnations, [
+        "RoundCeWireEpoch.test_e1_a_late_old_packet_never_enters_the_new_stream_in_a_run"]),
 })
 
 

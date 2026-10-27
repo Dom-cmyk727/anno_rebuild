@@ -43,7 +43,12 @@ from dataclasses import dataclass, replace
 P_DEADLINE, P_ACK, P_DELIVER, P_FLUSH, P_REPLAY, P_CHECK, P_PRODUCE, P_RESEND = (
     0, 10, 20, 25, 30, 35, 40, 50)
 HEADER = 25
+# E1: every data datagram and every ACK-only datagram carries a u16 `epoch` field after the
+# 25-byte header. The receiver compares it with its own endpoint epoch for the pair.
+EPOCH_BYTES = 2
 IP_UDP = 28
+WIRE = HEADER + EPOCH_BYTES + IP_UDP
+ASK_PAYLOAD = 5  # JoinAsk: epoch u16, seat u8, ask id u16
 FRAGMENT_HEAD = 12
 
 REASON_SEAT_BUSY = 9
@@ -51,6 +56,7 @@ REASON_SUPERSEDED = 10
 REASON_NO_SLOT = 11
 REASON_BACKLOG = 12
 REASON_TAIL = 13
+REASON_NO_GEN = 14
 
 
 @dataclass(frozen=True)
@@ -175,7 +181,8 @@ class Sim:
         self.violations = []
         self.rtt = {}
         self.last_sid = {}  # (src, dst, ch, seq) -> sid of the datagram in the receive buffer
-        self.epochs = {}  # unordered pair -> transport epoch
+        self.epochs = {}  # unordered pair -> number of epoch bumps (a diagnostic count)
+        self.ep = {}  # (endpoint, peer) -> the u16 epoch that endpoint stamps on and expects in packets
         self.sid = 0
         self.ack_ch = Counter()  # ACK-only datagrams by (acker, receiver, channel)
         self.max_out = {}  # (src, dst, message kind) -> most outstanding at once
@@ -199,6 +206,7 @@ class Sim:
             self.chan("H", name, 0).log_next = 1
         self.joiners = {}
         self.turn_extra = lambda k: 0
+        self.truncated = set()  # turns whose commands were rejected because one turn exceeded tail_bytes
         self.schedule(cfg.turn_ms, P_PRODUCE, self.host.produce, 1)
 
     # ---- event queue ----
@@ -270,27 +278,35 @@ class Sim:
     def pair_key(a, b):
         return tuple(sorted((a, b)))
 
-    def epoch_of(self, a, b):
-        return self.epochs.get(self.pair_key(a, b), 0)
+    def ep_of(self, endpoint, peer):
+        return self.ep.get((endpoint, peer), 0)
 
     def reset_pair(self, a, b, why):
-        """R1: a new transport epoch for the pair. The sender and receiver state of every channel in
-        both directions is retired together; datagrams, ACKs and timers of the old epoch are
-        rejected when they fire (they carry the epoch they were created in)."""
+        """R1/E1: a new incarnation of the pair. The ask (assumed delivered, a labeled input) carries
+        the next u16 epoch; both endpoints adopt it and retire the sender and receiver state of every
+        channel in both directions together. Datagrams and ACK-only datagrams carry the epoch in a
+        wire field; a receiver drops one whose field differs from its own epoch. Timers are local
+        and carry the epoch they were created in."""
         k = self.pair_key(a, b)
         self.epochs[k] = self.epochs.get(k, 0) + 1
+        e = self.epochs[k] % 65536
+        self.ep[(a, b)] = self.ep[(b, a)] = e
         for key in list(self.chans):
             x, y = (key[1], key[2]) if key[0] == "recv" else (key[0], key[1])
             if self.pair_key(x, y) == k:
                 del self.chans[key]
-        self.log("transport epoch of %s<>%s is now %d (%s)" % (a, b, self.epochs[k], why))
-        self.ev("epoch_bump", a=a, b=b, epoch=self.epochs[k], why=why)
+        self.log("transport epoch of %s<>%s is now %d (%s)" % (a, b, e, why))
+        self.ev("epoch_bump", a=a, b=b, epoch=e, why=why)
 
-    def stale(self, src, dst, epoch, what):
-        if epoch == self.epoch_of(src, dst):
+    def stale(self, local, remote, epoch, what):
+        """True (and logged) when `epoch`, read from a packet or a timer at `local`, is not the epoch
+        `local` currently holds for `remote`. The event keeps the direction of the datagram."""
+        if epoch == self.ep_of(local, remote):
             return False
-        self.log("stale-epoch %s %s>%s (epoch %d, now %d)" % (what, src, dst, epoch, self.epoch_of(src, dst)))
-        self.ev("stale_epoch", src=src, dst=dst, what=what, epoch=epoch)
+        self.log("stale-epoch %s at %s from %s (field %d, now %d)" % (
+            what, local, remote, epoch, self.ep_of(local, remote)))
+        src, dst = (remote, local) if what in ("arrive", "flush_ack_in") else (local, remote)
+        self.ev("stale_epoch", src=src, dst=dst, local=local, what=what, epoch=epoch)
         return True
 
     def srtt(self, a, b):
@@ -335,9 +351,12 @@ class Sim:
         oldest = min(c.out) if c.out else c.next_seq
         return c.next_seq - oldest < self.cfg.window
 
+    def extra(self, k):
+        return 0 if k in self.truncated else self.turn_extra(k)
+
     def turn_sizes(self, k):
         cfg = self.cfg
-        size = turn_bytes(self.host.log_turns[k], self.turn_extra(k))
+        size = turn_bytes(self.host.log_turns[k], self.extra(k))
         if size <= cfg.payload_max:
             return [size]
         data = cfg.payload_max - FRAGMENT_HEAD
@@ -367,7 +386,7 @@ class Sim:
             last = i == len(sizes) - 1
             msg = {"kind": "Turn", "turn": k, "events": self.host.log_turns[k]}
             d = {"kind": "Turn" if last else "Turn-frag", "size": sizes[i], "msg": msg if last else None,
-                 "attempt": 0, "acked": False, "turn": k, "C": None}
+                 "attempt": 0, "acked": False, "turn": k, "C": None, "frag": i, "nfrag": len(sizes)}
             c.frag += 1
             if c.frag == len(sizes):
                 c.log_next += 1
@@ -418,15 +437,16 @@ class Sim:
         if "sid" not in d:
             self.sid += 1
             d["sid"] = self.sid
-            d["epoch"] = self.epoch_of(src, dst)
+            d["epoch"] = self.ep_of(src, dst)  # the wire field
         key = self.key(d["kind"], src, dst, d["seq"], d["attempt"])
-        wire = d["size"] + HEADER + IP_UDP
+        wire = d["size"] + WIRE
         self.stat(src, dst, "data")
         self.stat(src, dst, "bytes", wire)
         tag = "send" if d["attempt"] == 1 else "RESEND#%d" % d["attempt"]
         lost = self.lost(key) or self.cut_active(src, dst)
         self.ev("send", src=src, dst=dst, ch=ch, seq=d["seq"], msg=d["kind"], attempt=d["attempt"],
-                lost=lost, turn=d.get("turn"), C=d.get("C"), size=d["size"], sid=d["sid"], epoch=d["epoch"])
+                lost=lost, turn=d.get("turn"), C=d.get("C"), size=d["size"], sid=d["sid"], epoch=d["epoch"],
+                frag=d.get("frag", 0), nfrag=d.get("nfrag", 1))
         if lost:
             self.log("%s %s>%s ch%d seq%d %s -- LOST" % (tag, src, dst, ch, d["seq"], d["kind"]))
         else:
@@ -486,14 +506,30 @@ class Sim:
             self.log("OUTAGE %s (no ACK for %d ms on %s>%s ch%d)" % (peer, age, src, dst, ch))
             self.ev("outage", peer=peer, src=src, dst=dst, ch=ch, age=age)
         if age >= cfg.grace_ms and peer not in self.dropped:
-            self.dropped.add(peer)
             c.dead = True
-            self.log("DROP %s: grace of %d ms passed, seat goes to the AI" % (peer, cfg.grace_ms))
-            self.ev("drop_seated", peer=peer)
-            self.host.drop_seat(peer)
+            self.drop_peer(peer, "grace")
+
+    def drop_peer(self, peer, why):
+        """The seat goes to the AI by an ownership event and the peer is closed: its input (if any)
+        is closed first, its pairs stop, its cursor stops holding the log. A later successful
+        re-ask is a new lifecycle (Host.admit clears the classification)."""
+        if peer in self.dropped:
+            return
+        self.dropped.add(peer)
+        for key, c in self.chans.items():
+            x, y = (key[1], key[2]) if key[0] == "recv" else (key[0], key[1])
+            if peer in (x, y):
+                c.dead = True
+        pj = self.peers.get(peer)
+        if hasattr(pj, "close_input"):
+            pj.close_input("seat dropped")
+            pj.state = "restarted"
+        self.log("DROP %s (%s), seat goes to the AI" % (peer, why))
+        self.ev("drop_seated", peer=peer, why=why)
+        self.host.drop_seat(peer)
 
     def arrive(self, src, dst, ch, d, epoch=None):
-        if epoch is not None and self.stale(src, dst, epoch, "arrive"):
+        if self.stale(dst, src, d["epoch"], "arrive"):  # the field of the packet, not a simulator label
             return
         c = self.recv_state(src, dst, ch)
         seq = d["seq"]
@@ -503,7 +539,7 @@ class Sim:
         c.highest = max(c.highest, seq)
         self.log("arrive %s>%s ch%d seq%d %s%s" % (src, dst, ch, seq, d["kind"], " (dup)" if dup else ""))
         self.ev("arrive", src=src, dst=dst, ch=ch, seq=seq, msg=d["kind"], dup=dup, turn=d.get("turn"),
-                sid=d.get("sid"), epoch=d.get("epoch"))
+                sid=d.get("sid"), epoch=d.get("epoch"), frag=d.get("frag", 0), nfrag=d.get("nfrag", 1))
         if not dup:
             self.peers[dst].on_arrive(src, ch, d)
         if ch == 2 or self.cfg.legacy:
@@ -526,7 +562,7 @@ class Sim:
                 self.last_sid.pop((src, dst, ch, old), None)
         if ch != 2 and not c.ack_pending:
             c.ack_pending = True
-            self.schedule(self.t, P_FLUSH, self.flush_ack, src, dst, ch, self.epoch_of(src, dst))
+            self.schedule(self.t, P_FLUSH, self.flush_ack, src, dst, ch, self.ep_of(dst, src))
 
     def recv_state(self, src, dst, ch):
         key = ("recv", src, dst, ch)
@@ -537,7 +573,7 @@ class Sim:
     def deliver(self, src, dst, ch, seq, msg):
         self.deliveries.append((self.t, src, dst, ch, seq, msg["kind"]))
         self.ev("deliver", src=src, dst=dst, ch=ch, seq=seq, msg=msg["kind"], turn=msg.get("turn"),
-                sid=self.last_sid.get((src, dst, ch, seq)), epoch=self.epoch_of(src, dst))
+                sid=self.last_sid.get((src, dst, ch, seq)), epoch=self.ep_of(dst, src))
         if not self.cfg.legacy and ch == 0:
             c = self.recv_state(src, dst, ch)
             if seq > c.deliv:
@@ -546,7 +582,7 @@ class Sim:
         self.peers[dst].on_msg(src, msg)
 
     def flush_ack(self, src, dst, ch, epoch=None):
-        if epoch is not None and self.stale(src, dst, epoch, "flush"):
+        if epoch is not None and self.stale(dst, src, epoch, "flush"):  # local timer at the acker
             return
         c = self.recv_state(src, dst, ch)
         c.ack_pending = False
@@ -560,17 +596,18 @@ class Sim:
         key = ("Ack", "%s>%s" % (dst, src), idx, 1)
         self.stat(dst, src, "ack")
         self.ack_ch[(dst, src, ch)] += 1
-        self.stat(dst, src, "bytes", HEADER + IP_UDP)
+        self.stat(dst, src, "bytes", WIRE)
         if self.lost(key) or self.cut_active(dst, src):
             self.log("ack-only %s>%s ch%d #%d ack=%d -- LOST" % (dst, src, ch, idx, ack))
             return
         self.log("ack-only %s>%s ch%d #%d ack=%d bits=%x" % (dst, src, ch, idx, ack, bits))
+        # the ACK-only datagram carries the acker's epoch in its wire field
         self.schedule(self.t + self.cfg.one_way_ms, P_ACK, self.take_ack, src, dst, ch, ack, bits,
-                      self.epoch_of(src, dst))
+                      self.ep_of(dst, src))
 
     def take_ack(self, src, dst, ch, ack, bits, epoch=None):
         """The sender src learns what dst received."""
-        if epoch is not None and self.stale(src, dst, epoch, "ack"):
+        if epoch is not None and self.stale(src, dst, epoch, "ack"):  # compared with src's own epoch
             return
         c = self.chan(src, dst, ch)
         named = {ack}
@@ -587,14 +624,14 @@ class Sim:
                 sample = self.t - d["first"]
                 old = self.rtt.get((src, dst))
                 self.rtt[(src, dst)] = sample if old is None else (7 * old + sample) // 8
-        self.ev("ack", src=src, dst=dst, ch=ch, seqs=tuple(sorted(named)), epoch=self.epoch_of(src, dst))
+        self.ev("ack", src=src, dst=dst, ch=ch, seqs=tuple(sorted(named)), epoch=epoch)
         if freed:
             c.last_ack = self.t
             if c.outage:
                 c.outage = False
                 peer = dst if src == "H" else src
                 self.log("OUTAGE over for %s" % peer)
-                self.ev("outage_end", peer=peer)
+                self.ev("outage_end", peer=peer, src=src, dst=dst, ch=ch)
         self.pump(src, dst, ch)
         self.peers[src].on_acked(dst, ch)
 
@@ -715,6 +752,7 @@ class Host(Peer):
         self.attempts = {}
         self.gens = []
         self.gen_state = {}
+        self.next_gen = 1
         self.log_turns = {}  # OPERATIONAL: the retained turns (rolling log plus pins), see retain()
         self.turn_charge = {}  # turn -> bytes charged once for it
         self.retained_bytes = 0
@@ -755,66 +793,120 @@ class Host(Peer):
     def charge_of(self, events, k):
         """Charged once, whoever needs the turn: the nominal turn_store_cap, or the turn's encoded
         bytes when a command burst makes it larger (a fragmented turn is charged what it is)."""
-        return max(self.sim.cfg.turn_store_cap, turn_bytes(events, self.sim.turn_extra(k)))
+        return max(self.sim.cfg.turn_store_cap, turn_bytes(events, self.sim.extra(k)))
 
-    def pin_floor(self):
-        """First turn a live join still needs (S + 1); None without one."""
-        starts = [jr.S + 1 for jr in self.joins.values() if jr.state not in ("dead", "done")]
-        return min(starts) if starts else None
+    def collect_gens(self):
+        """Free the saved image of every generation that no live attempt owns."""
+        live = {j.gen for j in self.joins.values() if j.state not in ("dead", "done")}
+        for g in [g for g in self.gen_state if g not in live]:
+            del self.gen_state[g]
+            self.sim.ev("gen_free", gen=g)
+        self.gens = [(g, gs, gt) for g, gs, gt in self.gens if g in live]
+
+    def consumers(self):
+        """Who needs old turns, as (first needed turn, kind, name): live joins (their pin) and the
+        send cursors of live peers. The rolling window is not a consumer."""
+        out = []
+        for name, jr in sorted(self.joins.items()):
+            if jr.state not in ("dead", "done"):
+                out.append((jr.S + 1, "join", name))
+        for key, c in self.sim.chans.items():  # insertion order is deterministic; callers sort
+            if key[0] != "H" or key[2] != 0 or c.log_next is None or key[1] in self.sim.dropped:
+                continue
+            jr = self.joins.get(key[1])
+            if jr is not None and jr.state not in ("dead", "done"):
+                continue  # a live join is already counted by its pin
+            out.append((c.log_next, "peer", key[1]))
+        return out
+
+    def kept_floor(self, top, extra):
+        """The lowest turn kept when turn `top` (charged `extra`, not yet stored) is added: the lower
+        of the consumers' need and the rolling window, which shrinks until the bytes fit. Releases
+        are projected here, before deciding that a new turn does not fit."""
+        cfg = self.sim.cfg
+        need = [f for f, _, _ in self.consumers()]
+        cf = min(need) if need else top
+        rf = max(1, top - cfg.turn_buffer + 1)
+        total = extra
+        low = top
+        for t in range(top - 1, rf - 1, -1):
+            c = self.turn_charge.get(t)
+            if c is None:
+                break
+            if total + c > cfg.tail_bytes:
+                break
+            total += c
+            low = t
+        rf = max(rf, low)
+        return min(cf, rf)
+
+    def kept_bytes(self, floor, top, extra):
+        return extra + sum(self.turn_charge.get(t, 0) for t in range(floor, top))
 
     def retain(self, k, events):
-        """Apply the limits BEFORE turn k is kept. If keeping it would pass tail_turns_max turns or
-        tail_bytes bytes, the live attempts of the oldest generation are restarted (reason 13) until
-        it fits; a younger pin that still fits stays. Deadlines (priority 0) already ran in this
-        millisecond; the cap check is the first thing production does."""
+        """Keep turn k only inside the budget (`tail_turns_max` turns, `tail_bytes` bytes), checked
+        before it is stored and after projecting every release that is already due.
+
+        Policy when it would not fit, in this order:
+          1. the rolling window shrinks (a returning peer past it rejoins through section 8);
+          2. the consumer with the oldest need goes: a live join is restarted (reason 13), a seated
+             peer's cursor is dropped to the AI as at the grace (`drop_seated`, why `log cap`);
+             a younger consumer that fits stays;
+          3. a single turn larger than `tail_bytes` is never stored: its commands are rejected and an
+             empty turn takes its place (`oversized_turn`, also a recorded violation).
+        A turn some live consumer still needs is never discarded silently."""
         sim, cfg = self.sim, self.sim.cfg
         charge = self.charge_of(events, k)
+        if charge > cfg.tail_bytes:
+            sim.log("host: turn %d is %d bytes, over tail_bytes; commands rejected" % (k, charge))
+            sim.ev("oversized_turn", turn=k, bytes=charge)
+            sim.violations.append(("oversized_turn", k, charge))
+            sim.truncated.add(k)
+            charge = self.charge_of(events, k)  # the ownership events stay; the commands are what is rejected
         while True:
-            floor = self.pin_floor()
-            span = 0 if floor is None else k - floor + 1
-            over_turns = span > cfg.tail_turns_max
-            over_bytes = self.retained_bytes + charge > cfg.tail_bytes
-            if not (over_turns or over_bytes):
+            floor = self.kept_floor(k, charge)
+            over = (self.kept_bytes(floor, k, charge) > cfg.tail_bytes
+                    or k - floor + 1 > cfg.tail_turns_max)
+            if not over:
                 break
-            live = [jr for jr in self.joins.values() if jr.state not in ("dead", "done")]
-            if not live:
-                break  # the rolling log alone is bounded by turn_buffer below
-            oldest = min(jr.S for jr in live)
-            for jr in sorted(live, key=lambda j: j.name):
-                if jr.S == oldest:
-                    sim.log("host: keeping turn %d would pass the tail cap, restarts %s" % (k, jr.name))
-                    sim.ev("tail_cap", name=jr.name, attempt=jr.attempt, turn=k, span=span,
-                           bytes=self.retained_bytes + charge)
-                    self.restart(jr, REASON_TAIL)
-            self.release()
+            need = sorted(self.consumers())
+            if not need:
+                break  # nothing but the shrunk rolling window remains
+            first, kind, name = need[0]
+            sim.log("host: keeping turn %d would pass the cap; %s %s (needs from %d) goes" % (k, kind, name, first))
+            sim.ev("tail_cap", name=name, consumer=kind, turn=k, bytes=self.kept_bytes(floor, k, charge))
+            if kind == "join":
+                oldest = min(jr.S for jr in self.joins.values() if jr.state not in ("dead", "done"))
+                for jn, jr in sorted(self.joins.items()):
+                    if jr.state not in ("dead", "done") and jr.S == oldest:
+                        self.restart(jr, REASON_TAIL)
+            else:
+                sim.drop_peer(name, "log cap")
+        floor = self.kept_floor(k, charge)
+        self.release(floor)
         self.log_turns[k] = events
         self.turn_charge[k] = charge
         self.retained_bytes += charge
-        sim.ev("retain", turn=k, bytes=charge, total_bytes=self.retained_bytes, count=len(self.log_turns))
-        self.release()
+        sim.ev("retain", turn=k, bytes=charge, total_bytes=self.retained_bytes, count=len(self.log_turns),
+               nfrag=len(sim.turn_sizes(k)))
         self.peak_turns = max(self.peak_turns, len(self.log_turns))
         self.peak_bytes = max(self.peak_bytes, self.retained_bytes)
 
-    def release(self):
-        """Drop every retained turn that no consumer needs: older than the rolling window, below
-        every live join's pin and behind no peer's send cursor."""
-        sim, cfg = self.sim, self.sim.cfg
-        top = self.applied
-        floors = [top - cfg.turn_buffer + 1]
-        pin = self.pin_floor()
-        if pin is not None:
-            floors.append(pin)
-        for key, c in sim.chans.items():
-            if key[0] != "H" or key[2] != 0 or c.log_next is None:
-                continue
-            if key[1] in sim.dropped:
-                continue
-            floors.append(c.log_next)
-        floor = min(floors)
+    def release(self, floor):
+        """Drop every retained turn below `floor`."""
         for q in [q for q in self.log_turns if q < floor]:
             self.retained_bytes -= self.turn_charge.pop(q)
             del self.log_turns[q]
-            sim.ev("release", turn=q)
+            self.sim.ev("release", turn=q)
+
+    def operational(self):
+        """What the host holds for the protocol right now (diagnostics excluded)."""
+        sim = self.sim
+        return {"log_turns": len(self.log_turns), "log_bytes": self.retained_bytes,
+                "images": len(self.gen_state),
+                "in_flight": sum(len(c.out) for k, c in sim.chans.items() if k[0] != "recv"),
+                "waiting": sum(len(c.wait) for k, c in sim.chans.items() if k[0] != "recv"),
+                "reassembly": sum(len(c.recv) for k, c in sim.chans.items() if k[0] == "recv")}
 
     def drop_seat(self, peer):
         """Past grace_ms the seat goes to the AI by an ownership event in the turn stream (ADR 10)."""
@@ -871,7 +963,7 @@ class Host(Peer):
             if not (prev is not None and prev.seat == seat and prev.state not in ("done",)):
                 return "seated human"
         for other, jr in sorted(self.joins.items()):
-            if other != name and jr.seat == seat and jr.state != "dead":
+            if other != name and jr.seat == seat and jr.state != "dead" and other not in self.sim.dropped:
                 return "attempt of " + other
         return None
 
@@ -884,21 +976,31 @@ class Host(Peer):
             self.history.append(prev)
         attempt = self.attempts.get(name, 0) + 1
         self.attempts[name] = attempt
+        sim.dropped.discard(name)  # a new ask opens a new lifecycle: the old drop no longer classifies the peer
         if attempt > 1:
             # R1: the ask of a peer that was here before carries a new transport epoch, so both
             # endpoints retire the old channels together. The ask is one datagram (8-byte payload).
             sim.stat(name, "H", "data")
-            sim.stat(name, "H", "bytes", 8 + HEADER + IP_UDP)
+            sim.stat(name, "H", "bytes", ASK_PAYLOAD + WIRE)
             sim.reset_pair("H", name, "re-ask, attempt %d" % attempt)
         holder = self.seat_holder(seat, name)
         live = sum(1 for n, j in self.joins.items() if n != name and j.state not in ("dead", "done"))
+        self.collect_gens()
+        shareable = None
+        for g, gs, gt in self.gens:
+            if sim.t - gt <= sim.cfg.snapshot_age_ms:
+                shareable = (g, gs)
+                break
         if holder is None and live >= sim.cfg.concurrent_transfers:
             holder = "no free transfer slot"
+        if holder is None and shareable is None and len(self.gens) >= sim.cfg.max_generations:
+            holder = "no free generation"
         if holder is not None:
             jr = JoinHost(name, seat, 0, 0, attempt, sim.t)
             jr.state = "dead"
             jr.restart_ms = sim.t
-            jr.restart_reason = REASON_NO_SLOT if holder == "no free transfer slot" else REASON_SEAT_BUSY
+            jr.restart_reason = {"no free transfer slot": REASON_NO_SLOT,
+                                 "no free generation": REASON_NO_GEN}.get(holder, REASON_SEAT_BUSY)
             self.joins[name] = jr
             sim.log("host refuses %s seat %d (%s), attempt %d" % (name, seat, holder, attempt))
             sim.ev("refuse", name=name, attempt=attempt, seat=seat, holder=holder)
@@ -906,20 +1008,15 @@ class Host(Peer):
             return
         S = self.applied
         gen = None
-        live_gens = {j.gen for j in self.joins.values() if j.state not in ("dead", "done")}
-        for g in [g for g in self.gen_state if g not in live_gens]:
-            del self.gen_state[g]  # the saved image goes when no live join needs it
-        self.gens = [(g, gs, gt) for g, gs, gt in self.gens if g in live_gens]
-        for g, gs, gt in self.gens:
-            live = any(j.gen == g and j.state not in ("dead", "done") for j in self.joins.values())
-            if live and sim.t - gt <= sim.cfg.snapshot_age_ms:
-                gen, S = g, gs  # a shared generation is the saved image, not a new one
-                break
+        if shareable is not None:
+            gen, S = shareable  # a shared generation is the saved image, not a new one
         if gen is None:
-            gen = len(self.gens) + 1
+            gen = self.next_gen  # identities are never reused
+            self.next_gen += 1
             self.gens.append((gen, S, sim.t))
             self.gen_state[gen] = (dict(self.owners), self.hw)
             self.max_gen_state = max(self.max_gen_state, len(self.gen_state))
+            sim.ev("gen_new", gen=gen, S=S)
         jr = JoinHost(name, seat, S, gen, attempt, sim.t)
         jr.prev_owner = self.owners.get(seat)  # as published in the stream: None for an empty seat
         self.joins[name] = jr
@@ -967,6 +1064,7 @@ class Host(Peer):
             jr.state = "done"
             jr.done_ms = self.sim.t
             self.sim.ev("attempt_end", name=jr.name, attempt=jr.attempt, how="done")
+            self.collect_gens()
             self.sim.log("host: %s has input, pin released" % jr.name)
 
     def selectable(self, h, jr):
@@ -1089,6 +1187,7 @@ class Host(Peer):
         self.sim.log("host restarts %s, reason %d (table keeps running)" % (jr.name, reason))
         self.sim.ev("attempt_end", name=jr.name, attempt=jr.attempt, how="dead")
         self.sim.chan("H", jr.name, 0).log_next = None  # a dead attempt needs no more turns
+        self.collect_gens()
         if jr.A is not None and not self.sim.cfg.f1:
             # The ownership event is already in the history. Release the seat the same way,
             # to the owner the stream showed before the attempt (an empty seat stays empty).
@@ -1483,7 +1582,9 @@ def validate(events, cfg, end_t, oracle_lag=None):
     out += _check_tail(events, cfg)
     out += _check_epochs(events)
     out += _check_grants(events)
-    out += _check_outage_bounded(events, cfg)
+    out += _check_outage_bounded(events, cfg, end_t)
+    out += _check_generations(events, cfg)
+    out += _check_input_drop(events)
     return out
 
 
@@ -1549,42 +1650,65 @@ def _check_agreement(events):
 
 
 def _live_peers(events):
-    """Seated peers and the peers of attempts that were not restarted, derived from the log."""
-    dropped = {e["peer"] for e in events if e["kind"] == "drop_seated"}
-    seated = {e["peer"] for e in events if e["kind"] == "seated"} - dropped
+    """Seated peers and the peers of attempts that were not restarted, derived chronologically from
+    the log: a drop removes a peer, a later admit makes it live again as a new attempt."""
+    seated = set()
     attempts = {}
     for e in events:
-        if e["kind"] == "admit":
+        k = e["kind"]
+        if k == "seated":
+            seated.add(e["peer"])
+        elif k == "admit":
             attempts[e["name"]] = (e["attempt"], e["S"], "live")
-        elif e["kind"] == "attempt_end" and e["name"] in attempts and attempts[e["name"]][0] == e["attempt"]:
+            seated.discard(e["name"])
+        elif k == "attempt_end" and e["name"] in attempts and attempts[e["name"]][0] == e["attempt"]:
             attempts[e["name"]] = (e["attempt"], attempts[e["name"]][1], e["how"])
+        elif k == "drop_seated":
+            seated.discard(e["peer"])
+            attempts.pop(e["peer"], None)
     return seated, attempts
 
 
+def _open_outages(events):
+    """Chronological set of (peer, src, channel) outages open at the end. A recovery of one path
+    does not close another; a drop, a new attempt or a new epoch closes every path of the peer."""
+    open_ = set()
+    for e in events:
+        k = e["kind"]
+        if k == "outage":
+            open_.add((e["peer"], e["src"], e["ch"]))
+        elif k == "outage_end":
+            open_.discard((e["peer"], e["src"], e["ch"]))
+        elif k == "drop_seated":
+            open_ = {o for o in open_ if o[0] != e["peer"]}
+        elif k == "admit":
+            open_ = {o for o in open_ if o[0] != e["name"]}
+        elif k == "epoch_bump":
+            open_ = {o for o in open_ if o[0] not in (e["a"], e["b"])}
+    return open_
+
+
 def _check_seated_lag(events, cfg, end_t=None):
-    """(iv) At the end of the run every seated peer is within seated_lag_max of the host or is in an
-    outage that is open at that moment. An outage that ended (outage_end) or ended in a drop excuses
-    nothing afterwards. Peers whose attempt finished count as seated; dropped peers are not live."""
+    """(iv) At the end of the run every live seated peer is within seated_lag_max of the host or has
+    an outage open on the host-to-peer turn path (channel 0) at that moment. A recovered outage, an
+    outage on another path or one before a drop excuses nothing. Peers whose attempt finished count
+    as seated; dropped peers are not live until they are admitted again."""
     seated, attempts = _live_peers(events)
     seated = set(seated) | {n for n, (_, _, how) in attempts.items() if how == "done"}
     host = max((e["turn"] for e in events if e["kind"] == "produce"), default=0)
     applied = {}
-    open_outage = set()
     for e in events:
         if e["kind"] == "apply" and e["peer"] != "H":
             applied[e["peer"]] = max(applied.get(e["peer"], 0), e["turn"])
-        elif e["kind"] == "outage":
-            open_outage.add(e["peer"])
-        elif e["kind"] in ("outage_end", "drop_seated"):
-            open_outage.discard(e["peer"])
         elif e["kind"] == "admit":
             applied[e["name"]] = e["S"]  # a new attempt applies from its snapshot turn
+    open_ = _open_outages(events)
     out = []
     for peer in sorted(seated):
         lag = host - applied.get(peer, 0)
-        if lag > cfg.seated_lag_max and peer not in open_outage:
-            out.append(("iv", "%s is %d turns behind the host (host %d) without an open outage" % (
-                peer, lag, host)))
+        if lag > cfg.seated_lag_max and (peer, "H", 0) not in open_:
+            out.append(("iv", "%s is %d turns behind the host (host %d) without an open outage on H>%s ch0" % (
+                peer, lag, host, peer)))
     return out
 
 
@@ -1615,71 +1739,107 @@ def _check_input_lag(events, bound):
 
 
 def _check_seats(events):
-    """(vi) A seat is held by at most one live attempt or seated human."""
+    """(vi) A seat is held by at most one live attempt or seated human. A dropped peer's seat is free
+    (it went to the AI); a dead attempt's seat is free."""
     out = []
     held = {}
     for e in events:
-        if e["kind"] == "seat_init":
+        k = e["kind"]
+        if k == "seat_init":
             for seat, owner in e["seats"]:
                 if owner == "human" and seat != 0:
-                    held[seat] = "seated human"
-        elif e["kind"] == "admit":
+                    held[seat] = ("seated", "?")
+        elif k == "seated":
+            held[e["seat"]] = ("seated", e["peer"])
+        elif k == "admit":
             if e["seat"] in held:
                 out.append(("vi", "t=%d seat %d admitted for %s while held by %s" % (
                     e["t"], e["seat"], e["name"], held[e["seat"]])))
-            held[e["seat"]] = "attempt of " + e["name"]
-        elif e["kind"] == "attempt_end":
-            who = "attempt of " + e["name"]
-            for seat, holder in list(held.items()):
-                if holder == who:
+            held[e["seat"]] = ("attempt", e["name"])
+        elif k == "attempt_end":
+            for seat, (kind, name) in list(held.items()):
+                if kind == "attempt" and name == e["name"]:
                     if e["how"] == "dead":
                         del held[seat]
                     else:
-                        held[seat] = "seated human"
+                        held[seat] = ("seated", name)
+        elif k == "drop_seated":
+            for seat, (kind, name) in list(held.items()):
+                if name == e["peer"]:
+                    del held[seat]
     return out
 
 
 def _check_retained(events, end_t=None):
-    """(vii) Every produced turn a live peer still needs is delivered to it, in transit to it in the
-    current transport epoch (a send record: the sender's window holds it), or retained by the host.
-    Reconstructed from the raw events: `retain` / `release` (retention lifecycle), `produce`,
-    `deliver`, `send`, `epoch_bump`, and the live set from `seated`, `admit`, `attempt_end`
-    and `drop_seated`. A release of a turn some live peer still lacks, or a produced turn that at
-    the end is neither delivered, in transit nor retained, is a violation. The absence of an error
-    event is not evidence."""
+    """(vii) Every logical turn a live peer still needs is delivered to it, wholly retained in the
+    host log, or wholly held in flight: each of its fragments is either unacknowledged in the sender's
+    window or already in the receiver's reassembly buffer, in the CURRENT incarnation. A fragment
+    sent once is not ownership of the turn; an early fragment is not enough. Rebuilt from the raw
+    events (`retain` with its fragment count, `release`, `produce`, `send`/`arrive` with fragment
+    index and count, `ack`, `deliver`, `epoch_bump`, and the lifecycle events). Checked at every
+    release and once more at the end of the observation."""
     out = []
-    live = {}  # peer -> first turn it does not need (its start)
-    delivered, transit, retained, produced = set(), set(), set(), []
+    live = {}
+    produced, nfrag, retained = [], {}, set()
+    delivered = set()
+    sender_held, recv_held, seq_map = {}, {}, {}
+
+    def clear(peer):
+        nonlocal delivered, sender_held, recv_held, seq_map
+        delivered = {x for x in delivered if x[0] != peer}
+        sender_held = {x: v for x, v in sender_held.items() if x[0] != peer}
+        recv_held = {x: v for x, v in recv_held.items() if x[0] != peer}
+        seq_map = {x: v for x, v in seq_map.items() if x[0] != peer}
+
+    def safe(peer, t):
+        if (peer, t) in delivered or t in retained:
+            return True
+        n = nfrag.get(t, 1)
+        have = sender_held.get((peer, t), set()) | recv_held.get((peer, t), set())
+        return all(i in have for i in range(n))
+
     for e in events:
         k = e["kind"]
         if k == "seated":
             live[e["peer"]] = 0
+            clear(e["peer"])
         elif k == "admit":
             live[e["name"]] = e["S"]
-            delivered = {x for x in delivered if x[0] != e["name"]}
-            transit = {x for x in transit if x[0] != e["name"]}
+            clear(e["name"])
         elif k == "attempt_end" and e["how"] == "dead":
             live.pop(e["name"], None)
+            clear(e["name"])
         elif k == "drop_seated":
             live.pop(e["peer"], None)
+            clear(e["peer"])
         elif k == "epoch_bump":
-            for peer in (e["a"], e["b"]):
-                transit = {x for x in transit if x[0] != peer}
-                delivered = {x for x in delivered if x[0] != peer}
+            clear(e["a"])
+            clear(e["b"])
         elif k == "produce":
             produced.append(e["turn"])
         elif k == "retain":
             retained.add(e["turn"])
-        elif k == "send" and e["src"] == "H" and e["ch"] == 0 and str(e["msg"]).startswith("Turn"):
-            transit.add((e["dst"], e["turn"]))
+            nfrag[e["turn"]] = e.get("nfrag", 1)
+        elif k == "send" and e["src"] == "H" and e["ch"] == 0 and str(e["msg"]).startswith("Turn") and e["attempt"] == 1:
+            seq_map[(e["dst"], e["seq"])] = (e["turn"], e.get("frag", 0))
+            sender_held.setdefault((e["dst"], e["turn"]), set()).add(e.get("frag", 0))
+            nfrag.setdefault(e["turn"], e.get("nfrag", 1))
+        elif k == "ack" and e["src"] == "H" and e["ch"] == 0:
+            for q in e["seqs"]:
+                tf = seq_map.get((e["dst"], q))
+                if tf:
+                    sender_held.get((e["dst"], tf[0]), set()).discard(tf[1])
+        elif k == "arrive" and e["src"] == "H" and e["ch"] == 0 and str(e["msg"]).startswith("Turn") and not e.get("dup"):
+            recv_held.setdefault((e["dst"], e["turn"]), set()).add(e.get("frag", 0))
         elif k == "deliver" and e["msg"] == "Turn":
             delivered.add((e["dst"], e["turn"]))
+            recv_held.pop((e["dst"], e["turn"]), None)
         elif k == "release":
             t = e["turn"]
             retained.discard(t)
             for peer, start in sorted(live.items()):
-                if t > start and (peer, t) not in delivered and (peer, t) not in transit:
-                    out.append(("vii", "t=%d turn %d released while live %s has neither it nor a send of it" % (
+                if t > start and not safe(peer, t):
+                    out.append(("vii", "t=%d turn %d released while live %s holds only part of it or none" % (
                         e["t"], t, peer)))
         elif k in ("overflow", "drop_dead") and e["msg"] == "Turn" and e["dst"] in live:
             out.append(("vii", "turn %s refused for live %s (%s)" % (e["turn"], e["dst"], k)))
@@ -1687,11 +1847,57 @@ def _check_retained(events, end_t=None):
             out.append(("vii", "t=%d the pair to seated %s was abandoned" % (e["t"], e["dst"])))
     for peer, start in sorted(live.items()):
         for t in produced:
-            if t > start and (peer, t) not in delivered and (peer, t) not in transit and t not in retained:
-                out.append(("vii", "turn %d is neither delivered to, in transit to, nor retained for %s at the end" % (
+            if t > start and not safe(peer, t):
+                out.append(("vii", "turn %d is neither delivered to, wholly held for, nor retained for %s at the end" % (
                     t, peer)))
                 break
     return out[:3]
+
+
+def _check_generations(events, cfg):
+    """(xiii) Generation identities are never reused, at most max_generations are live, an image is
+    freed only when no live attempt owns it, and none outlives its last owner."""
+    out = []
+    seen, live, owners, gen_of = set(), set(), {}, {}
+    for e in events:
+        k = e["kind"]
+        if k == "gen_new":
+            if e["gen"] in seen:
+                out.append(("xiii", "t=%d generation %d allocated twice" % (e["t"], e["gen"])))
+            seen.add(e["gen"])
+            live.add(e["gen"])
+            if len(live) > cfg.max_generations:
+                out.append(("xiii", "t=%d %d live generations, limit %d" % (e["t"], len(live), cfg.max_generations)))
+        elif k == "admit":
+            gen_of[e["name"]] = e["gen"]
+            owners.setdefault(e["gen"], set()).add(e["name"])
+        elif k == "attempt_end":
+            g = gen_of.get(e["name"])
+            if g is not None:
+                owners.get(g, set()).discard(e["name"])
+        elif k == "gen_free":
+            if owners.get(e["gen"]):
+                out.append(("xiii", "t=%d generation %d freed while owned by %r" % (
+                    e["t"], e["gen"], sorted(owners[e["gen"]]))))
+            live.discard(e["gen"])
+    for g in sorted(live):
+        if not owners.get(g):
+            out.append(("xiii", "generation %d still held with no owner at the end" % g))
+    return out[:3]
+
+
+def _check_input_drop(events):
+    """(xii) A peer that loses its seat has no input open afterwards."""
+    out = []
+    open_ = set()
+    for e in events:
+        if e["kind"] == "input_on":
+            open_.add(e["peer"])
+        elif e["kind"] == "input_off":
+            open_.discard(e["peer"])
+        elif e["kind"] == "drop_seated" and e["peer"] in open_:
+            out.append(("xii", "t=%d %s keeps input open after its seat was dropped" % (e["t"], e["peer"])))
+    return out
 
 
 def _check_tail(events, cfg):
@@ -1747,20 +1953,28 @@ def _check_epochs(events):
     return out[:3]
 
 
-def _check_outage_bounded(events, cfg):
-    """(ix) An outage is explicit and ends: either an ACK ends it or the seat is dropped within
-    grace_ms plus one backed-off resend."""
+def _check_outage_bounded(events, cfg, end_t=None):
+    """(ix) An outage is explicit and ends: an ACK on that path ends it, or the seat is dropped
+    within grace_ms plus one backed-off resend. Tracked per peer and path (source, channel); the
+    end of the observation is `end_t` (the last event time when omitted)."""
     out = []
     started = {}
     for e in events:
-        if e["kind"] == "outage":
-            started.setdefault(e["peer"], e["t"])
-        elif e["kind"] in ("outage_end", "drop_seated"):
-            started.pop(e["peer"], None)
-    end = events[-1]["t"] if events else 0
-    for peer, t0 in sorted(started.items()):
+        k = e["kind"]
+        if k == "outage":
+            started.setdefault((e["peer"], e["src"], e["ch"]), e["t"])
+        elif k == "outage_end":
+            started.pop((e["peer"], e["src"], e["ch"]), None)
+        elif k == "drop_seated":
+            started = {x: v for x, v in started.items() if x[0] != e["peer"]}
+        elif k == "admit":
+            started = {x: v for x, v in started.items() if x[0] != e["name"]}
+        elif k == "epoch_bump":
+            started = {x: v for x, v in started.items() if x[0] not in (e["a"], e["b"])}
+    end = end_t if end_t is not None else (events[-1]["t"] if events else 0)
+    for (peer, src, ch), t0 in sorted(started.items()):
         if end - t0 > cfg.grace_ms + cfg.outage_resend_ms:
-            out.append(("ix", "%s has been in an outage since %d without end or drop" % (peer, t0)))
+            out.append(("ix", "%s has been in an outage on %s ch%d since %d without end or drop" % (peer, src, ch, t0)))
     return out
 
 
@@ -1899,7 +2113,7 @@ def queue_caps(cfg, destinations=5, joiners=2):
     The waiting queue holds datagram references. The turn bytes behind them are charged to the
     turn store, so counting them again here is a deliberate upper bound.
     """
-    dgram = cfg.payload_max + HEADER + IP_UDP
+    dgram = cfg.payload_max + EPOCH_BYTES + HEADER + IP_UDP
     ch0_pair = cfg.window * dgram
     wait_pair = cfg.wait_cap * dgram
     caps = {
@@ -1908,16 +2122,16 @@ def queue_caps(cfg, destinations=5, joiners=2):
         "ch0_waiting_per_pair": wait_pair,
         "ch0_host": destinations * (ch0_pair + wait_pair),
         "ch1_host": joiners * ch0_pair,
-        "ch2_host": destinations * (73 + 53),
+        "ch2_host": destinations * (73 + 2 + 53 + 2),
     }
     caps["host_total"] = caps["ch0_host"] + caps["ch1_host"] + caps["ch2_host"]
     # One joiner's reverse queue: control messages only, each bounded by its own rule.
-    wire = lambda payload: payload + HEADER + IP_UDP
+    wire = lambda payload: payload + WIRE
     # 4 watermarks, 2 reports, 2 InputReqs (16 B payload), InputOn (6 B), JoinAbort (8 B, channel 2).
     caps["joiner_reverse"] = (cfg.max_outstanding_wm * wire(22) + cfg.max_outstanding_reports * wire(22)
                               + cfg.max_outstanding_req * wire(16) + wire(6) + wire(8))
     # One ACK-only per channel per millisecond at most: channels 0 and 1 each 53 bytes x 1000 / s.
-    caps["ack_kbit_per_s_per_channel"] = 53 * 8 * 1000 / 1000.0
+    caps["ack_kbit_per_s_per_channel"] = (HEADER + EPOCH_BYTES + IP_UDP) * 8 * 1000 / 1000.0
     caps["ack_kbit_per_s_ch0_and_ch1"] = 2 * caps["ack_kbit_per_s_per_channel"]
     return caps
 

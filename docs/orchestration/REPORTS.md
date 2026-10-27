@@ -4245,3 +4245,30 @@ The test plan no longer says binary64 is wider than 53 bits. Binary64 has exactl
   4. Nothing of the original in git: MET. No listings, no bytes. `git status` shows no `game/` path.
   5. This report: MET. Not merged.
 - Time spent / subagents used: inline, no subagents. No build and no test.
+
+## T43 — Snapshot and catch-up retention design (OQ-280) — 2026-10-27 — status: FINISHED
+
+- Branch: `task/T43-snapshot-catchup`. Worktree: `E:\anno1503-worktrees\anno1503-T43`. Started from local `main` `44ee5e9785ee81f2a1526b93f217d350483d8da0`. Content commits: `e0317f6d25c9203849fe0d197ed8ead0fd3692f0` (the model), `f621656298aee7bb169b7febde6b59dc2746e7c1` (ADR 0003, OQ-280..282, the ADR quote test). The commit that adds this section is the branch head. Not merged, not pushed. `E:\anno1503` was not edited. `docs/orchestration/TASKS.md` was not edited.
+- Built: docs and a model only. `tools/snapshot_catchup.py`, `tools/test_snapshot_catchup.py`, `docs/adr/0003-network-transport.md` (status stays Proposed), `docs/open-questions.md` (OQ-280 narrowed; OQ-281 and OQ-282 opened). No `src/` change, no socket code, no new dependency. OQ-283 through OQ-289 were not used.
+- Gates: docs and Python only. `python -I -m py_compile tools/snapshot_catchup.py tools/test_snapshot_catchup.py` passed. `python -I tools/test_snapshot_catchup.py`: 26 tests, OK, 1.722 s. `git diff --cached --check` on both content commits was clean (no output). No MSVC build, no ctest, no clang-format, no GCC, no agree.py, no ASan. No cmake, ctest, or wsl job was started. No Wine and no run of the original.
+- Evidence: the T41 measured sizes are the inputs (11 474 169, 20 349 454, 12 906 633 bytes; fragments 9 659, 17 130, 10 865; fluid 80.3 s at 150 ms RTT and 160.6 s at 300 ms RTT for `endless02`). The discrete zero-loss completions at a 300 ms round trip are 90 450 ms, 160 650 ms and 101 850 ms. Seed 1 at 2% loss, `load_ms` 0, replay 100 turns/s: transfer/done/pin = `S01_07_01` 113250/125830/1258, `endless02` 198750/220830/2208, `03_1024_med_256` 127050/141170/1412, each `missing=0` and `paused=False`. Admission pins under the ×2 allowance are 2010, 3570 and 2264; `tail_turns_max` is 4096. Allocation bound is 87 113 760 bytes. Synthetic `2 × 20 349 454` (34 259 fragments) and `4 × 20 349 454` (68 517 fragments) are refused at `fragment_max` 17 130. The double, with only the fragment cap raised, refuses on `tail_turns` (7 137). With `tail_turns_max` 8192 it still refuses on `catchup_ms`. The quadruple allowance is 14 277 turns.
+- Reviewers: none.
+- Left open / questions for the orchestrator or owner:
+  - OQ-280 narrowed, not closed. The recommendation is a fresh save at turn `S`, first retained turn `S+1`, and a pin through the host's current turn until catch-up or a cap. The 60 s log is the short-outage buffer. The 10-minute image is not the payload. A join does not pause the table. A mismatch may pause, and that image is taken after the pause so its tail is empty.
+  - Owner defaults still inside the Proposed ADR: `tail_turns_max` 4096, `catchup_ms` 600000, `concurrent_transfers` 2, `snapshot_age_ms` 60000, `loss_scale` 2, acceptance `resend_ms` 300 (LAN default stays 50).
+  - OQ-281: `World::load` and the joiner replay rate were not measured. The model uses 0 ms and 100 turns/s.
+  - OQ-282: retained turns are charged 1200 bytes, the payload cap. Play was not measured.
+  - OQ-250 stays open. No UDP port was chosen.
+  - The F1 fluid figures 80.3 s and 160.6 s are unchanged. The discrete times are a separate model result.
+- Acceptance:
+  1. Reviewable bounded proposal, ADR still Proposed: MET. `**Status:** Proposed` remains. No `src/net`.
+  2. One tick/retention contract: MET. Snapshot tick is `WorldClock::tick()` in the save taken after `run_turn(S)` and before `S+1`. First retained turn is `S+1`. Last retained turn is the host index `H` at which the joiner's applied index meets `H`. §8.1.
+  3. Fresh pin compared with rolling retention, plus ownership for two joiners, cancel, completion and host migration: MET. §8.2 and §8.4. A rolling-only `endless02` join at 300 ms RTT is `refuse` / `gap_not_retained`. The pinned join is `success` with turn `S+1` still held after the rolling log would have dropped it.
+  4. Budgets and the total allocation, not one fragment count: MET. §8.3 and §13. Bound 87 113 760 bytes. `fragment_max` 17 130 admits only the measured largest save.
+  5. Labeled larger cases: MET. The 2× and 4× sizes are marked synthetic. Both refuse. Raising one cap is not enough for the double.
+  6. Slow-join failure: MET. Replay at 5 turns/s returns `restart` / `cannot_outrun` with `missing > 0` and `paused` false. A pin of one turn on a one-fragment save returns `restart` / `tail_turns`. A skipped hole returns `restart`, not success.
+  7. Window and ack: MET. `ack` is the highest sequence received; `ack_bits` names the previous 32. The contiguous cursor is local. The sender does not run more than 32 ahead of the oldest unacked sequence. A window of 64 with holes skipped does not complete. `resend_ms` 50 on a 300 ms round trip repeats a clean window; the acceptance case uses 300.
+  8. Model checks: MET. 26 tests. Covered: old periodic snapshot (6 000 turns, 5 400 missing, refuse), fresh transfer past 60 s, loss and reorder, two joiners with cancel and migration, bounded refusal, catch-up that closes and catch-up that does not. A success requires `missing = 0`.
+  9. Measured, fluid, and model results are labeled apart: MET. No new save size and no real-network time was invented. `load_ms` and the replay rate are assumptions A6 / OQ-281.
+  10. This report: MET. Not merged, not pushed.
+- Time spent / subagents used: inline, no subagents. No heavy job.

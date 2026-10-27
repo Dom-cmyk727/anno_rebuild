@@ -1,7 +1,7 @@
 # ADR 0003: Network transport and sessions
 
 - **Status:** Proposed
-- **Date:** 2026-10-26. Corrected 2026-10-27 (round bq F1): the fragment cap and the window time. Status stays Proposed.
+- **Date:** 2026-10-26. Corrected 2026-10-27 (round bq F1): the fragment cap and the window time. Retention proposal 2026-10-27 (T43). Round bs F1, 2026-10-27: progress cursors, global caps, joiner backlog, acknowledgement loss. Round bt F2, 2026-10-27: the shared owner enforces tail and deadline caps on each host advance, before the new turn is retained. Status stays Proposed.
 
 ADR 0002 is reserved for the float walk (T34) and is not this document.
 
@@ -46,10 +46,12 @@ Bytes 0..3 are `41 33 4E 54` (`A3NT`). The following fields:
 | 6 | `u32` | `session_id`, chosen by the host when the session is created |
 | 10 | `u8` | `channel` ([§4](#4-the-channels)) |
 | 11 | `u32` | `sequence`, per sender, per channel, starting at 0 |
-| 15 | `u32` | `ack`, the highest contiguous sequence the sender has received on this channel |
-| 19 | `u32` | `ack_bits`, bit `i` set means `ack - (i+1)` was also received |
+| 15 | `u32` | `ack`, the highest sequence the sender has received on this channel |
+| 19 | `u32` | `ack_bits`, bit `i` set means sequence `ack - (i+1)` was also received |
 | 23 | `u16` | `payload_len` |
 | 25 | bytes | `payload`, exactly `payload_len` bytes, and no trailing byte |
+
+`ack` and `ack_bits` together name 33 sequences: `ack` itself and the 32 before it. That is the selective acknowledgement in [§4](#4-the-channels). The highest contiguous sequence stays on the peer. An ordered channel delivers payload only through the first missing sequence. Putting that contiguous value in `ack` would leave a packet received ahead of a hole unnamed, so the sender would not see the loss until the hole was already gone.
 
 The header is 25 bytes. `payload_len` above the configured maximum is refused before the payload is copied. The maximum is `net.payload_max`, default 1200. Reason: an Ethernet frame of 1500 bytes minus a 20-byte IPv4 header and an 8-byte UDP header leaves 1472, and 1200 stays under that with room for options, so the LAN path does not depend on IP fragmentation. It is configuration because a later internet path may need a smaller value.
 
@@ -65,7 +67,9 @@ The header is 25 bytes. `payload_len` above the configured maximum is refused be
 
 Channel 1 is separate from channel 0 so a snapshot cannot sit in front of a turn. The plan's "without stopping the others" on a join (`docs/plan/lan-endless.md` §4) is the reason. One ordered stream for both would stall the players who are already in the game.
 
-**Selective acknowledgement.** `ack` and `ack_bits` name the last 33 packets the sender has seen on that channel. A packet not covered is resent. The resend wait is `net.resend_ms`, default 50. Reason: the turn period is 100 ms, and a resend at 50 ms still lands inside the next period on a LAN. It is configuration because an internet path will want a larger value.
+**Selective acknowledgement.** `ack` is the highest sequence received on that channel, and `ack_bits` names the 32 sequences before it ([§3](#3-the-packet-format)). A clear bit in that range is a hole and is resent. A sequence that is still unacked at or below `ack - 32` is resent too, because the field can no longer name it. The sender does not transmit a new sequence more than 32 ahead of its oldest unacked sequence. `snapshot_window` limits how many fragments are in flight. It does not widen the bitfield. A sender that raises the window and slides it across a hole delivers a short snapshot; the model records that as a failed transfer (`tools/snapshot_catchup.py`), and the join is restarted.
+
+The resend wait is `net.resend_ms`, default 50. Reason: the turn period is 100 ms, and a resend at 50 ms still lands inside the next period on a LAN whose round trip is under 50 ms. It is configuration because a longer round trip needs a longer wait. The acceptance case in [§14](#14-the-netsim-test-plan) is 150 ms one way, a 300 ms round trip. There the model sets `resend_ms` to 300, so the acknowledgement can return before a clean window is repeated. The same model with `resend_ms` 50 on that path repeats the window. The LAN default in [§10](#10-drops-and-outages) stays 50.
 
 **Keep-alive.** On channel 2, each peer sends one every `net.keepalive_ms`, default 1000. Reason: the original's in-game keep-alive is 1000 ms (`tick-loop.md` §5). A peer that has sent any packet in the interval skips the extra one.
 
@@ -75,7 +79,7 @@ The previous default, 4096, permits 4096 × 1188 = 4 866 048 save bytes. The thr
 
 Proposed default: 17 130. It is the smallest count that admits the largest measured save, `ceil(20 349 454 / 1188)`. The allocation that count allows is 17 130 × 1188 = 20 350 440 bytes, the `endless02` save rounded up to whole fragments. A hostile `count` can force that allocation and no larger one. There is no spare fragment: a bigger save is refused until the config is raised. This default is part of the proposal. The pieces are delivered upward only when every index is present.
 
-**Snapshot flow control.** At most `net.snapshot_window` fragments of channel 1 are in flight, default 32. Those 32 fragments carry 32 × 1188 = 38 016 save bytes. Their datagram payloads are 32 × 1200 = 38 400 bytes, and that payload total is the bound on the host's outstanding channel-1 buffer. The 384 bytes of fragment heads are not save bytes. Turns on channel 0 are not part of that window. When the window is full the host waits for acks. It does not drop turns to make room. The time that window takes is [§13](#13-budgets), not this paragraph.
+**Snapshot flow control.** At most `net.snapshot_window` fragments of channel 1 are in flight, default 32. Those 32 fragments carry 32 × 1188 = 38 016 save bytes. Their datagram payloads are 32 × 1200 = 38 400 bytes, and that payload total is the bound on the host's outstanding channel-1 buffer. The 384 bytes of fragment heads are not save bytes. Turns on channel 0 are not part of that window. When the window is full the host waits for acks. It does not drop turns to make room. The time that window takes is [§13](#13-budgets), not this paragraph. The window is the flight limit. The turn log is the pin in [§8](#8-join-in-progress). A larger window does not remove that pin, and it does not let the sender run more than 32 sequences ahead of a hole.
 
 ## 5. The session states
 
@@ -127,26 +131,89 @@ Two checks, both of `World::state_hash()`, which is the root of the hierarchical
 
 **Often.** Every `net.hash_every` turns, default 10. Reason: the plan's default, one second at the 100 ms period, against the original's 60 s MD5 (`tick-loop.md` §5). `state.md` §9.4 says peers exchange the root every turn. The plan narrows that to every K turns. This ADR follows the plan; the every-turn sentence in the spec stays until the owner accepts this document. Each peer sends on channel 2 the turn index (`u64`) and the root (`u64`). The host compares. A lost report is asked for again on channel 0 after `net.hash_retry_ms`, default 500. Reason: the original's server asks for a missing digest every 500 ms (`0x10057470`). If it is still missing after one check interval, the host pauses. A mismatch also pauses.
 
-**The full check.** Every `net.full_check_min` minutes of real time, default 10, the host writes `World::save()` and each peer checks that its own `save()` bytes match the hash it already trusts, and exchanges the root again. Reason for 10: the original's single-player autosave interval is 10 minutes of real time (`tick-loop.md` fixture F9). The snapshot from that save is the one a later resync loads. Pairing them is the plan's rule (`docs/plan/lan-endless.md` §4, "together with the host's autosave snapshot"). Writing the save stores the snapshot. It is not a broadcast, and this check does not send those bytes. A send is the mismatch path below, or a join ([§8](#8-join-in-progress)).
+**The full check.** Every `net.full_check_min` minutes of real time, default 10, the host writes `World::save()` and each peer checks that its own `save()` bytes match the hash it already trusts, and exchanges the root again. Reason for 10: the original's single-player autosave interval is 10 minutes of real time (`tick-loop.md` fixture F9). Writing the save stores the snapshot. It is not a broadcast, and this check does not send those bytes. A send is the mismatch path below, or a join ([§8](#8-join-in-progress)). The stored image can be 10 minutes old. The rolling turn log holds 60 s ([§10](#10-drops-and-outages)). The mismatch path therefore writes a new image at the pause, and a join writes a new image at the ask. Neither sends the periodic image.
 
 **On a mismatch.**
 
 1. The host pauses.
 2. The peers that differ record a `HashTree`, starting at depth 0 (the sections). They exchange only the nodes that differ and walk down those branches, up to depth 4 (buildings, the depth `state.md` §9.4 names). `diff_trees` names the path. A matching branch is not sent.
-3. The host sends its latest snapshot on channel 1. Every peer `World::load`s it. `load` already refuses a bad version, a bad checksum and a hostile length before it allocates (`state.md` §9.5).
-4. The host resumes at the turn after the snapshot's tick. Turns between the snapshot and that point are replayed from the host's buffer, through `run_turn`, so the joiner and the resumed peers land on the same hash before anyone plays again.
+3. The host writes a fresh `World::save()` after the pause, at the last applied turn `S`, before turn `S+1`. That image is what channel 1 sends. Every peer `World::load`s it. `load` already refuses a bad version, a bad checksum and a hostile length before it allocates (`state.md` §9.5).
+4. The replay tail is empty: the pause stopped new turns before the save. The host resumes at turn `S+1`. Peers who load that image are on the same boundary, and the next hash is taken after that resume.
 
 The cost of step 2's tree is paid only on a mismatch, not every check.
 
 ## 8. Join-in-progress
 
-A new player asks the host, naming a free seat or a seat the AI is holding. The host:
+A new player asks the host, naming a free seat or a seat the AI is holding. The host does the handshake of [§5](#5-the-session-states) against the running session's setup. The joiner does not change it. The peers already in the game keep playing. Pause remains the mismatch path ([§7](#7-hash-checks)) and the host hand-over ([§9](#9-host-migration)).
 
-1. does the handshake of [§5](#5-the-session-states) against the running session's setup (the joiner does not get to change it);
-2. sends the latest snapshot on channel 1, without pausing the other peers;
-3. sends every turn after that snapshot's turn, from the buffer, on channel 0.
+### 8.1 Snapshot tick and retained turns
 
-The joiner `load`s the snapshot and `run_turn`s until its turn index equals the host's latest, then compares `state_hash()` with the next ordinary check. On a match it may send commands. On a mismatch it is dropped from the join and the others are not paused: a bad join is the joiner's failure, not a desync of the table, unless the check says an existing peer disagrees too.
+The host calls `World::save()` only at a turn boundary: `run_turn(S)` has returned, and `run_turn(S+1)` has not started. The snapshot's turn index is `S`. Its tick is `WorldClock::tick()` inside that save (`clock.hpp`: one tick is 2 game ms). At 100% a turn is 10 steps of 10 game ms, so the clock advances 50 ticks a turn while the speed stays there. A speed change breaks that multiple. Peers do not recompute the tick from `S`. The save already holds the clock. Retention uses `S`.
+
+The first retained turn is `S+1`. Turns at or before `S` are inside the snapshot and are not replayed. The save does not choose a last index. While a pin is held, the host retains every index `k` with `S+1 <= k <= H`, where `H` is the latest turn it has applied. The joiner is caught up when it has applied that same `H`. That index is the last retained turn. Turn `H+1` is ordinary live play.
+
+The rolling log is a different range. It holds `turn_buffer` indexes ending at `H`, from `H - turn_buffer + 1` through `H`. Turn `S+1` leaves that range when `H >= S + turn_buffer + 1`. At the defaults that is 60.1 s after the save, 601 turns. A live pin keeps `S+1` anyway. Freeing a pinned index is not how the host makes room.
+
+### 8.2 Fresh image and pin, and the rolling log
+
+Both rules below were scored against the same requirement: the peers already playing are not paused. The save sizes are the three T41 measurements ([§13](#13-budgets)). The acceptance round trip is 300 ms.
+
+| Rule | What the joiner receives | `endless02` at a 300 ms round trip | When the budget trips |
+|---|---|---|---|
+| Fresh save at the ask, and a pin of the turns after `S` | The bytes of `S`, then every turn `S+1` through `H` | Admitted. The zero-loss discrete completion is 160 650 ms, 1 606 turns before the chase, which is past the 600-turn log. | This joiner is refused or restarted. The pin is released. The table is not paused. |
+| Rolling log only (`turn_buffer` 600) | The turns after `S` that are still inside the last 60 s | Refused. The transfer outlasts the log. A load that skips the missing turns is a failure, not a caught-up peer. | The same refusal. The log is the whole memory for this rule. |
+
+The periodic save ([§7](#7-hash-checks)) was the third image. It is up to 10 minutes old, 6 000 turns at a 100 ms period when the host does not pause. The rolling log has already dropped 5 400 of them. Asking about that image returns `unavailable`. That is an availability check: `transfer_ms` is 0 and the status is not `success`. A save that is still inside the log at the ask is `available` on the same terms. `endless02`, 20 349 454 bytes and 599 turns old, is `available` and is not a join. The rolling join then counts the transfer, the load and the turns the host produces while those run. That image's zero-loss transfer is 160 650 ms, the log has dropped 1 605 of the needed turns by load, and the join is `refuse` / `gap_not_retained`. The full check still writes the save, and it still does not broadcast it.
+
+Pausing the table for the whole transfer would hold `H` still, and a 60 s log would then cover a tail that is not growing. That pause is the thing the plan rules out for a join. This proposal does not offer it. Mismatch resync may pause, and the image it sends is taken after that pause, so its tail is empty.
+
+The proposed join rule is the fresh save plus the pin. The rolling log stays the short-outage path: a cut of 0.5–5 s, and a peer who already has the world and whose missed turns are still in the log. A new joiner, and a rejoin whose gap is longer than the log, use the pin.
+
+### 8.3 Budgets
+
+The numbers are configuration. The defaults are the proposal in [§13](#13-budgets). The model states each one as an assumption. They are not measured transfer times.
+
+| Name | Proposed default | What trips a refusal or a restart |
+|---|---:|---|
+| `fragment_max` | 17 130 | The save needs more fragments than the measured largest save |
+| `snapshot_window` | 32 | Flight limit on channel 1. The ack field stays 32 bits |
+| `snapshot_age_ms` | 60 000 | A later ask does not attach to this image |
+| `concurrent_transfers` | 2 | A third joiner is refused |
+| `tail_turns_max` | 4 096 | The pin would grow past this many turns |
+| `turn_store_cap` | 1 200 | Bytes charged for one retained turn, the payload cap (OQ-282) |
+| `catchup_ms` | 600 000 | The joiner has not reached the host |
+| `load_ms` | 0 | Time added after the bytes arrive, before replay (OQ-281) |
+| `replay_turns_per_s` | 100 | Chase rate used at admission. The live rate is 10 (OQ-281) |
+| `loss_scale` | 2 | Admission multiplies the zero-loss discrete completion by this |
+
+Admission takes the zero-loss discrete completion, multiplies by `loss_scale`, adds `load_ms`, and calls that duration's turn count `gap`. When `replay_turns_per_s > live_turns_per_s`, the reserved pin length is `J = gap + ceil(live * gap / (replay - live))`. When the replay rate is at or below the live rate, admission refuses: the gap does not close. `J` above `tail_turns_max`, a `gap` above `receive_backlog_turns`, or an estimate above `catchup_ms`, is also a refusal. `J` is an upper bound held for admission. It is not the turn the joiner has applied.
+
+The model keeps three cursors: turns the host has produced, the contiguous turns the joiner has received, and the turns the joiner has replayed. A success is the first time the replayed cursor equals the host cursor, the received cursor covers that prefix, and the replayed cursor has not passed the host. One fragment is 1 188 save bytes. Its reserved bound is 2 turns, which the old clock placed at 170 ms. The cursors meet at 160 ms on turn 1. At 170 ms the host has produced one turn, because `170 // 100` is 1. Counterexample tokens: counterexample_1188_done_ms=160, counterexample_1188_replayed=1.
+
+A joiner who passed admission and then crosses a cap is restarted. The partial reassembly and that joiner's backlog are discarded. The next ask takes a new `S`. The restarted join does not apply a prefix of the turns and report success. `paused` is false on every join outcome here.
+
+The model applies that rule in `Table.advance`, before the new host turn is part of the retained span. A joiner's deadline is that joiner's own start time plus `catchup_ms`. At that millisecond a joiner who is still running is restarted; one millisecond earlier is not. `complete` before the deadline leaves the joiner complete. When the union of open pins would pass `tail_turns_max` or `tail_bytes_max`, the owner restarts every running joiner on the oldest generation, then the next oldest, until the remaining union fits. Order is snapshot turn, then the time the generation was saved, then the order the generations were opened. Joiners on one generation share its pin and restart together. A younger generation whose own pin still fits is kept, including a turn the rolling log has already dropped. Opening a generation, and the terminal result of `evaluate_join`, do not by themselves keep this intermediate span inside the cap. Asking what a later host turn would retain is not an advance.
+
+The byte bound is the sum of every cap in [§13](#13-budgets): the snapshot store, reassembly, the channel-1 windows, the channel-0 flight window, the host pin, each joiner's received-turn backlog, and the rolling log.
+
+### 8.4 Who owns the bytes
+
+A generation is the immutable save at `S` and the pin of turns after it. The host stores the save. Each joiner has a reassembly buffer of at most `fragment_max × 1188` bytes. The host's outstanding channel-1 buffer is `snapshot_window × payload_max` bytes per transfer.
+
+Concurrency, the number of overlapping generations and the retained-turn span are global. A generation does not keep a private copy of `concurrent_transfers`. A second joiner who asks while `t - t_save <= snapshot_age_ms`, and while the table still has a free transfer slot, shares that generation. The pin is the union of the turns those joiners still need. An image older than `snapshot_age_ms` is not shared; the running join on it is not evicted by age. The next ask opens another generation when `max_generations` and the tail span allow it. Three joiners on two generations, with a cap of two, refuse the third even though each generation holds only one joiner. An ask that finds the global slots taken is refused. The joins already running stay as they are. A new generation whose span would pass `tail_turns_max` is refused, and turns already pinned stay.
+
+Cancel or disconnect frees that joiner's reassembly buffer and backlog and drops that joiner's reference. The pin remains while any join that still needs the turn is running, including a turn the rolling log has already left, so one cancel does not evict the other joiner's turns. A released slot can be taken by a later ask. When the last joiner who needs a turn finishes or leaves, that turn follows the rolling rule again. Completion means the joiner's replayed cursor equals the host cursor, the next ordinary hash matches, and the joiner then receives channel 0 with the rest of the table. The reassembly buffer and the backlog are freed at that point. Turns received on channel 0 during the transfer sit in that backlog until replay, and [§13](#13-budgets) charges them.
+
+On host migration ([§9](#9-host-migration)) an in-progress joiner is not a connected seat. The successor is not handed this generation's save. Each running join restarts on the new host, which writes its own fresh image. The §9 pause is the role change the plan already specifies. The restart does not add a pause. Peers who already have the world keep it; they use the rolling log and the resend §9 already describes.
+
+### 8.5 Procedure
+
+1. Admit or refuse under §8.3. A refusal ends at the ask.
+2. Share an open generation when §8.4 allows it. Otherwise save at the current boundary `S` and open the pin at `S+1`.
+3. Send the image on channel 1. Send turns `S+1` onward on channel 0 during that transfer. A full channel-1 window does not delay channel 0.
+4. The joiner `load`s the image, then `run_turn`s from `S+1` until its index equals the host's. `load_ms` and `replay_turns_per_s` are the model's names for those two costs. Both are unmeasured (OQ-281).
+5. A matching hash at the next ordinary check lets the joiner send commands. A mismatch of the joiner alone drops the join and does not pause the others. A mismatch that includes a peer already in the game is [§7](#7-hash-checks).
+6. A cap that trips during the transfer or the chase restarts this joiner only. Turns still named by another running pin stay. The table is not paused. `Table.advance` does this before it retains the new host turn. An older generation is selected first when the union overflows. A younger pin that still fits stays. `Table.attach` refuses a save past `fragment_max` before a generation is stored, and it refuses an ask whose clock is not the owner's clock. `Table.note_backlog` restarts a backlog past `receive_backlog_turns`. Those calls are the path for the parts in the byte bound. A caller does not retain a later turn by querying the span.
 
 This is the plan's OpenTTD-style join (`docs/plan/lan-endless.md` §4). The snapshot is `World::save()` / `World::load`, not a second format.
 
@@ -165,7 +232,7 @@ On the way:
 5. the successor's first turn is the next index, not a restart at 0;
 6. the table resumes when every connected peer has acked that turn and the roots match.
 
-If the successor also vanishes before step 6, the next-lowest seat repeats the same steps. The game ends only when no human seat is connected ([§10](#10-drops-and-outages)).
+If the successor also vanishes before step 6, the next-lowest seat repeats the same steps. The game ends only when no human seat is connected ([§10](#10-drops-and-outages)). A join that was still receiving a snapshot restarts on the successor, as [§8](#8-join-in-progress) defines. That restart is not a further pause.
 
 ## 10. Drops and outages
 
@@ -185,10 +252,20 @@ Every number in this section is configuration. The defaults and the reasons:
 | `hash_retry_ms` | 500 | the original's missing-digest poll |
 | `full_check_min` | 10 | the original's 10-minute autosave |
 | `payload_max` | 1200 | [§3](#3-the-packet-format) |
-| `fragment_max` | 17130 | the largest measured save, [§4](#4-the-channels) |
-| `snapshot_window` | 32 | [§4](#4-the-channels) |
+| `fragment_max` | 17130 | the largest measured save, [§4](#4-the-channels). A larger save is refused until this is raised |
+| `snapshot_window` | 32 | [§4](#4-the-channels). Does not widen the 32-bit ack field |
+| `snapshot_age_ms` | 60000 | a second joiner shares the image for one rolling-log interval, then the next ask gets a new save ([§8](#8-join-in-progress)) |
+| `concurrent_transfers` | 2 | allocation is linear in this count; the third joiner is refused on the whole table, including when the running joins sit on two generations |
+| `tail_turns_max` | 4096 | power of two at or above the admission pin for `endless02` ([§13](#13-budgets)) |
+| `turn_store_cap` | 1200 | bytes charged per retained turn: `payload_max`, a cap (OQ-282) |
+| `catchup_ms` | 600000 | 10 minutes, the same real-time interval as `full_check_min`. A join still behind the host is restarted |
+| `load_ms` | 0 | unmeasured `World::load` allowance (OQ-281) |
+| `replay_turns_per_s` | 100 | admission chase rate, 10× the live 10 turns/s. Unmeasured (OQ-281) |
+| `loss_scale` | 2 | admission multiplies the zero-loss discrete completion by this. An allowance, not a measured multiplier |
 
-A peer silent past `wait_ms` raises the wait dialog on the others and the host keeps sending turns into the buffer. The game is not ended. Past `grace_ms` the seat is marked computer: the AI seam on every peer produces that seat's commands (`state.md` §8.2 item 4), and nothing for that seat is required on the wire (D9). A rejoin inside or after the grace follows [§8](#8-join-in-progress) and the seat is returned to the human.
+A peer silent past `wait_ms` raises the wait dialog on the others and the host keeps sending turns into the buffer. The game is not ended. Past `grace_ms` the seat is marked computer: the AI seam on every peer produces that seat's commands (`state.md` §8.2 item 4), and nothing for that seat is required on the wire (D9). A rejoin inside or after the grace follows [§8](#8-join-in-progress) and the seat is returned to the human. If the missed turns are still in the rolling log, that log is enough. If they are not, the rejoin is a fresh save and a pin, and a cap that trips restarts the rejoining seat only.
+
+`turn_buffer` is that rolling log. It is not the join tail. A pin keeps the turns a running join still needs after the rolling range has moved on, up to `tail_turns_max`. The host does not evict those turns to free the log, and it does not pause the table so the log will stop growing. `resend_ms` 50 in the table is the LAN setting. The 300 ms round-trip case uses 300, as [§4](#4-the-channels) says.
 
 The original dropped a client after four unanswered 1 s keep-alives (`tick-loop.md` §5). That rule is not used. R14 says a short drop must not take the table down, and a 4 s silence is inside `grace_ms`.
 
@@ -240,13 +317,56 @@ The cadence holds. The slowest sample is 15.9 ms (`endless02` unprepared max), w
 
 A fragment carries 1188 save bytes (§4). The three saves need 9 659, 17 130 and 10 865 fragments. `fragment_max` 4096 admits 4 866 048 bytes and refuses all three, so none of these snapshots is transferable under that cap. The times below assume the proposed cap of 17 130, which does admit them.
 
-The in-flight window is 32 fragments, 38 016 save bytes (§4). The model is ideal and full-window: the window stays full, nothing is lost or resent, and one window completes per RTT. It counts save bytes only. It is not a measured join or resync.
+The in-flight window is 32 fragments, 38 016 save bytes (§4). The fluid bound is ideal and full-window: the window stays full, nothing is lost or resent, and one window completes per RTT. It counts save bytes only. It is not a measured join or resync. The discrete clock later in this section is a separate model result.
 
 [§14](#14-the-netsim-test-plan) defines latency as one-way delay, so the plan's "150 ms latency" is 150 ms each way and a 300 ms RTT. `endless02` then takes 17 130 / 32 × 0.300 s = 160.6 s. If that 150 ms is instead the RTT, it takes 17 130 / 32 × 0.150 s = 80.3 s. The same model gives 90.6 s and 101.9 s for the other two saves at 300 ms RTT, and 45.3 s and 50.9 s at 150 ms RTT (`S01_07_01`, then `03_1024_med_256`).
 
 `turn_buffer` is 600 turns, 60 s at the 100 ms period (§10). A live join does not pause the other peers (§8), so turns keep being issued during the send. At 160.6 s that is about 1 606 turns, and at 80.3 s about 803 turns. Either is more than 600, so for `endless02` the rolling buffer drops the earliest turns of the snapshot's interval before the joiner has the snapshot. At a 150 ms RTT the other two ideal snapshot times are under 60 s (about 453 and 509 turns). At 150 ms one-way they are not (about 906 and 1 019 turns). A time under 60 s is only the snapshot. The turns the joiner must still receive, the headers, loss, `World::load` and `run_turn` are outside the bound.
 
-§7 stores a snapshot every 10 minutes and does not send it. §8 sends the latest snapshot and the turns after it from the buffer. This document does not say a fresh save is written when a peer joins. A snapshot that is up to 10 minutes old already spans more turns than a 60 s buffer, before the transfer time is added. A larger buffer, a snapshot taken at the join, or a pause for the transfer is not chosen (OQ-280).
+§7 stores a snapshot every 10 minutes and does not send it. A join or a resync sends a save taken at the moment [§8](#8-join-in-progress) and [§7](#7-hash-checks) name, plus the turns after that boundary. The 10-minute image is older than the 60 s log, so it is not the payload.
+
+**T43 model.** `tools/snapshot_catchup.py` is an integer discrete-event model of that proposal. It is not a socket, and it is not a measured network. `python -I tools/snapshot_catchup.py` prints the rows below; `python -I tools/test_snapshot_catchup.py` checks them. Assumptions A1–A13 are in the tool. A8 is still a fluid channel-0 receipt with no second one-way delay. A12 still drops data only on the 2% rows. A13 is the owner's runtime cap on `Table.advance`. None of those is an end-to-end measured time.
+
+The fluid tenths above stay the T41 F1 quotients: 45.3 s, 80.3 s and 50.9 s at a 150 ms round trip, and 90.6 s, 160.6 s and 101.9 s at a 300 ms round trip, for `S01_07_01`, `endless02` and `03_1024_med_256`. The discrete clock is a different quantity. With a burst of 32, no serialization delay and no loss, fragment `n-1` arrives at `((n-1)//32) × RTT + one_way`:
+
+| Scenario | 150 ms round trip | 300 ms round trip |
+|---|---:|---:|
+| `S01_07_01` | 45 225 ms | 90 450 ms |
+| `endless02` | 80 325 ms | 160 650 ms |
+| `03_1024_med_256` | 50 925 ms | 101 850 ms |
+
+One window of 32 payloads of 1 200 bytes serializes in 3 072 µs at 100 Mbit/s and 307 µs at 1 Gbit/s. Both sit under a 150 ms one-way delay, which is why the event clock omits serialization (assumption A3). The line-rate save-byte times earlier in this section are the other bound, and on these sizes the window's round trip is the slower one.
+
+Admission multiplies the 300 ms zero-loss completion by `loss_scale` 2, with `load_ms` 0 and `replay_turns_per_s` 100. The reserved pin lengths are 2 010, 3 570 and 2 264 turns. `tail_turns_max` is the power of two at or above the largest, 4 096. At `turn_store_cap` 1 200 that pin is 4 915 200 bytes. The rolling log at the same cap is 600 × 1 200 = 720 000 bytes.
+
+The allocation bound, with `concurrent_transfers` 2, `max_generations` 2 and `fragment_max` 17 130, is the sum of the caps. Each joiner's received-turn backlog is `receive_backlog_turns` × 1 200, and the channel-0 window that delivers those turns is `snapshot_window` × 69 bytes per joiner. The snapshot store, reassembly, channel-1 windows, host pin and rolling log sum to 87 113 760 bytes. That figure omits the backlog and the channel-0 flight. The total includes both.
+
+| Part | Bytes |
+|---|---:|
+| Snapshot store, two generations at the fragment cap | 40 700 880 |
+| Reassembly, two joiners at the fragment cap | 40 700 880 |
+| Channel-1 windows, 2 × 32 × 1 200 | 76 800 |
+| Channel-0 flight, 2 × 32 × 69 | 4 416 |
+| Pinned turns, one shared host pin | 4 915 200 |
+| Joiner backlog, 2 × 4 096 × 1 200 | 9 830 400 |
+| Rolling log | 720 000 |
+| Total | 96 948 576 |
+
+T43 model constants, acceptance case: tail_turns_max=4096, tail_bytes_max=4915200, allocation_bound_bytes=96948576, joiner_backlog_bytes=9830400, channel0_flight_bytes=4416, endless02_discrete_zero_loss_ms=160650, counterexample_1188_done_ms=160, counterexample_1188_replayed=1.
+
+Seed 1 at 2% loss (20 000 per 1 000 000) drops data datagrams only. Acknowledgements are not dropped on this row, and a duplicate arrival does not generate an acknowledgement here. Acknowledgement loss, and a duplicate that does generate an acknowledgement, are separate schedules in `tools/snapshot_catchup.py`. This row is a model result for that seed. It is not a measured join, and it is not general datagram-loss coverage.
+
+The caught-up column is the replayed cursor. It equals the host cursor at that millisecond. `S01_07_01` and `endless02` already met that test at the times below. `03_1024_med_256` meets it at 141 160 ms on turn 1 411.
+
+| Scenario | Transfer ms | Caught up ms | Replayed turns | Host turns |
+|---|---:|---:|---:|---:|
+| `S01_07_01` | 113 250 | 125 830 | 1 258 | 1 258 |
+| `endless02` | 198 750 | 220 830 | 2 208 | 2 208 |
+| `03_1024_med_256` | 127 050 | 141 160 | 1 411 | 1 411 |
+
+T43 model constants, seed 1: endless02_loss2_seed1_transfer_ms=198750, endless02_loss2_seed1_done_ms=220830, endless02_loss2_seed1_pin_turns=2208, 03_1024_loss2_seed1_done_ms=141160, 03_1024_loss2_seed1_replayed=1411.
+
+The seed-1 pins sit under the ×2 admission allowance. A worse draw that passes `tail_turns_max`, `catchup_ms` or `max_attempts` (8) restarts that joiner. Two labeled synthetic sizes, `2 × 20 349 454 = 40 698 908` bytes (34 259 fragments) and `4 × 20 349 454 = 81 397 816` bytes (68 517 fragments), are not measured worlds. At `fragment_max` 17 130 both are refused before a transfer. Raising the fragment cap to 34 259 and leaving the other defaults refuses the double on `tail_turns` (the allowance asks for 7 137 turns). Raising `tail_turns_max` to 8 192 as well still refuses it, because the ×2 completion is 642 300 ms and `catchup_ms` is 600 000. The quadruple allowance is 14 277 turns and fails the same two caps. Growing a world past the measured save is a configuration change of more than one knob, and the joiner is the seat that is refused.
 
 The one-second hash is not this transfer. Channel 1 is separate from channel 0.
 
@@ -258,7 +378,9 @@ An empty turn payload is 8 + 4 + 4 = 16 bytes. With the 25-byte header and 28 by
 
 `netsim` runs N peers in one process. The link between them can delay, jitter, drop, reorder and disconnect. Each human seat has a command bot. No game files are required for the cases below; they build a world the sim can construct without `Anlagen.dat`. The scenario measurement of [§13](#13-budgets) stays a separate, manual run.
 
-**Latency.** Latency in this plan is the one-way delay the link adds to each datagram. It is not the round trip. The acknowledgement comes back under the same delay, and the model adds no processing time, so the RTT is twice the latency. The acceptance line "150 ms latency" is 150 ms one-way and 300 ms RTT. [§13](#13-budgets) also records the transfer bound for the other reading, 150 ms as the RTT, because the earlier text did not say which it was. The §13 bounds are ideal payload times. They are not measured end-to-end join or resync times. Case 2's "the snapshot loads" does not say that the three measured saves fit in `fragment_max` 4096 or in the 60 s buffer (OQ-280).
+**Latency.** Latency in this plan is the one-way delay the link adds to each datagram. It is not the round trip. The acknowledgement comes back under the same delay, and the model adds no processing time, so the RTT is twice the latency. The acceptance line "150 ms latency" is 150 ms one-way and 300 ms RTT. [§13](#13-budgets) also records the transfer bound for the other reading, 150 ms as the RTT, because the earlier text did not say which it was. The §13 fluid figures and the discrete completions are payload bounds and model times. They are not measured end-to-end join or resync times. Case 2 loads the fresh image taken after the pause ([§7](#7-hash-checks)), which has an empty tail. Case 4 uses the pin ([§8](#8-join-in-progress)). Neither case is satisfied by `fragment_max` 4096, and neither case treats the 60 s rolling log as the join tail.
+
+The model already runs the retention cases this harness will have to reproduce once `net` exists: a 10-minute image is unavailable, not a successful join; a fresh `endless02` image whose transfer passes 60 s succeeds only with the pin; a skipped hole is a restart; a reordered prefix waits for the contiguous sequence; two joiners share a generation and one cancel leaves the other's pin; three joiners on two generations stop at the global cap of two; a synthetic save past the caps is a refusal or a restart; a replay rate below the live rate does not catch up. Those runs set `paused` false on every join outcome. The mismatch resync is the path that sets it true. `netsim` itself is not implemented here, and this model is not that harness.
 
 From W3's acceptance (`docs/plan/lan-endless.md`):
 
@@ -276,6 +398,8 @@ Two real PCs on a LAN finding each other is a person test (`docs/plan/lan-endles
 
 - **OQ-250.** The UDP port. No original value was found in `tick-loop.md`. No default is set.
 - **OQ-251.** Closed in [§13](#13-budgets): `S01_07_01` `state_hash()` is 7.9 ms median with every chunk dirty and 0.34 ms after `prepare_hash`; `save()` is 11 474 169 bytes.
-- **OQ-280.** The 60 s turn buffer against an ideal snapshot transfer that exceeds 60 s, and against a stored snapshot that can be 10 minutes old. No choice among a larger buffer, a snapshot at join, or pausing. [§13](#13-budgets).
+- **OQ-280.** Narrowed by the T43 proposal in [§8](#8-join-in-progress) and [§13](#13-budgets), and by the round-bs correction of the cursors, the global caps and the byte total. The recommended contract is a fresh save at the ask and a pin of the turns after it. The joiner is caught up when the replayed cursor equals the host cursor, and a cap trips only that joiner. The 60 s log stays the short-outage buffer. The periodic image is an availability check, not the join payload. The table is not paused for a join. Still for the owner, because this ADR is Proposed: the budget defaults (`tail_turns_max` 4096, `catchup_ms` 600000, `concurrent_transfers` 2, `snapshot_age_ms` 60000, `loss_scale` 2, acceptance `resend_ms` 300), and OQ-281 and OQ-282. OQ-283 through OQ-289 were not used.
+- **OQ-281.** `World::load` time and the joiner's `run_turn` rate are unmeasured. The model uses `load_ms` 0 and `replay_turns_per_s` 100 until a measurement replaces them.
+- **OQ-282.** Bytes per retained turn are unmeasured. The pin charges `turn_store_cap` 1200, which is `payload_max`.
 
 The command delay of 2, the 100 ms turn, the 60 s grace and the 10-minute full check are the plan's and the original's defaults. They are configuration, not new decisions.

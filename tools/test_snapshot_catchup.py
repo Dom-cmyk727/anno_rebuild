@@ -131,19 +131,79 @@ class SelectiveAck(unittest.TestCase):
                          (second.done_ms, second.sends, second.cursor))
         self.assertGreater(first.sends, 200)
         self.assertEqual(first.cursor, 200)
+        self.assertEqual(first.acks_lost, 0)
+
+    def test_ack_loss_recovers_from_a_duplicate_and_refuses_when_it_cannot(self):
+        budgets = cfg(window=4, max_attempts=4, resend_ms=300)
+
+        def drop_first(highest, duplicate):
+            del highest
+            return not duplicate
+
+        recovered = model.run_transfer(
+            4, budgets, ack_drop=drop_first, ack_duplicates=True)
+        self.assertEqual(recovered.status, "complete")
+        self.assertTrue(recovered.sender_released)
+        self.assertGreater(recovered.acks_lost, 0)
+        self.assertGreater(recovered.duplicate_deliveries, 0)
+        self.assertGreater(recovered.acks_sent, 0)
+
+        def drop_all(highest, duplicate):
+            del highest, duplicate
+            return True
+
+        lost = model.run_transfer(4, budgets, ack_drop=drop_all, ack_duplicates=True)
+        self.assertEqual(lost.status, "unacked")
+        self.assertFalse(lost.sender_released)
+        self.assertGreater(lost.acks_lost, 0)
+        self.assertEqual(lost.cursor, lost.fragments)
+        joined = model.evaluate_join(4 * 1188, budgets, transfer=lost)
+        self.assertEqual(joined.status, "restart")
+        self.assertEqual(joined.reason, "unacked")
+        self.assertFalse(joined.paused)
+        self.assertNotEqual(joined.status, "success")
+
+    def test_the_two_percent_path_drops_data_only(self):
+        text = " ".join(model.assumptions())
+        self.assertIn("drops data datagrams only", text)
+        self.assertIn("does not drop acknowledgements", text)
+        self.assertIn("duplicate arrival does not generate", text)
+        quiet = model.run_transfer(8, cfg(resend_ms=50, one_way_ms=150))
+        self.assertGreater(quiet.duplicate_deliveries, 0)
+        self.assertEqual(quiet.acks_lost, 0)
+        named = model.run_transfer(
+            8, cfg(resend_ms=50, one_way_ms=150), ack_duplicates=True)
+        self.assertGreater(named.acks_sent, quiet.acks_sent)
+
+
+def assert_joined_clock(test, result, turn_ms):
+    """Host cursor from the completion clock, not from the reserved bound."""
+    test.assertEqual(result.status, "success")
+    test.assertEqual(result.missing, 0)
+    test.assertFalse(result.paused)
+    test.assertEqual(result.host_produced, result.snapshot_turn + result.done_ms // turn_ms)
+    test.assertEqual(result.replayed, result.host_produced)
+    test.assertGreaterEqual(result.received, result.replayed)
+    test.assertLessEqual(result.replayed, result.host_produced)
+    test.assertEqual(result.pin_turns, result.replayed - result.snapshot_turn)
+    test.assertGreaterEqual(result.reserved_turns, result.pin_turns)
+    test.assertTrue(result.honest(turn_ms))
 
 
 class Retention(unittest.TestCase):
-    def test_periodic_snapshot_is_refused_without_a_pause(self):
+    def test_periodic_snapshot_is_not_a_join(self):
         budgets = model.proposed_budgets()
         age = model.periodic_age_turns(budgets)
         self.assertEqual(age, 6000)
         result = model.evaluate_join(0, budgets, mode="periodic", age_turns=age)
-        self.assertEqual(result.status, "refuse")
-        self.assertEqual(result.reason, "gap_not_retained")
+        self.assertEqual(result.status, "unavailable")
+        self.assertEqual(result.reason, "initial_availability")
+        self.assertNotEqual(result.status, "success")
         self.assertEqual(result.missing, 5400)
+        self.assertEqual(result.transfer_ms, 0)
+        self.assertEqual(result.replayed, result.snapshot_turn)
         self.assertFalse(result.paused)
-        self.assertTrue(result.honest())
+        self.assertFalse(result.honest())
 
     def test_fresh_snapshot_longer_than_60s_keeps_the_tail(self):
         budgets = model.proposed_budgets()
@@ -151,29 +211,28 @@ class Retention(unittest.TestCase):
         pinned = model.evaluate_join(size, budgets, mode="pinned")
         rolling = model.evaluate_join(size, budgets, mode="rolling")
         self.assertGreater(pinned.transfer_ms, 60_000)
-        self.assertEqual(pinned.status, "success")
-        self.assertEqual(pinned.missing, 0)
+        assert_joined_clock(self, pinned, budgets.turn_ms)
         self.assertGreater(pinned.pin_turns, budgets.turn_buffer)
-        self.assertFalse(pinned.paused)
-        self.assertTrue(pinned.honest())
+        self.assertEqual(pinned.backlog_turns, pinned.transfer_ms // budgets.turn_ms)
         self.assertEqual(rolling.status, "refuse")
         self.assertEqual(rolling.reason, "gap_not_retained")
+        self.assertGreater(rolling.transfer_ms, 0)
+        self.assertGreater(rolling.missing, 0)
         self.assertFalse(rolling.paused)
-        host = pinned.snapshot_turn + pinned.pin_turns
-        generation = model.Generation(pinned.snapshot_turn, 0, size)
-        self.assertEqual(generation.attach("a", 0, budgets), "opened")
+        self.assertTrue(rolling.honest(budgets.turn_ms))
+        host = pinned.host_produced
+        table = model.Table(budgets)
+        self.assertEqual(table.attach("a", 0, size, pinned.snapshot_turn, host)[0], "opened")
         self.assertFalse(model.rolling_contains(1, 0, host, budgets))
-        self.assertTrue(generation.retained(1, host, budgets))
+        self.assertTrue(table.retained(1, host))
 
     def test_all_three_measured_saves_at_the_acceptance_rtt(self):
         budgets = model.proposed_budgets()
         for name, size in model.MEASURED_SAVES:
             pinned = model.evaluate_join(size, budgets, mode="pinned")
             rolling = model.evaluate_join(size, budgets, mode="rolling")
-            self.assertEqual(pinned.status, "success", name)
+            assert_joined_clock(self, pinned, budgets.turn_ms)
             self.assertGreater(pinned.transfer_ms, budgets.turn_buffer * budgets.turn_ms, name)
-            self.assertEqual(pinned.missing, 0, name)
-            self.assertTrue(pinned.honest(), name)
             self.assertEqual(rolling.status, "refuse", name)
             self.assertFalse(rolling.paused, name)
             decision, reason, _need = model.admit(size, budgets)
@@ -183,23 +242,30 @@ class Retention(unittest.TestCase):
         budgets = cfg(loss_per_million=20_000, seed=1)
         for name, size in model.MEASURED_SAVES:
             result = model.evaluate_join(size, budgets)
-            self.assertEqual(result.status, "success", name)
-            self.assertEqual(result.missing, 0, name)
+            assert_joined_clock(self, result, budgets.turn_ms)
             self.assertEqual(
                 (result.transfer_ms, result.done_ms, result.pin_turns),
                 {"S01_07_01": (113250, 125830, 1258),
                  "endless02": (198750, 220830, 2208),
-                 "03_1024_med_256": (127050, 141170, 1412)}[name],
+                 "03_1024_med_256": (127050, 141160, 1411)}[name],
                 name)
+            self.assertEqual(result.replayed, result.done_ms // budgets.turn_ms, name)
             self.assertLessEqual(result.pin_turns, budgets.tail_turns_max, name)
-            self.assertFalse(result.paused, name)
-            self.assertTrue(result.honest(), name)
+            self.assertLessEqual(result.backlog_turns, budgets.receive_backlog_turns, name)
+        # The published loss row for 03_1024 applied turn 1412 at 141170 ms.
+        # 141170 // 100 is 1411, so that turn was ahead of the host.
+        self.assertEqual(141170 // budgets.turn_ms, 1411)
 
     def test_catchup_can_and_cannot_outrun_live_turns(self):
         fast = model.evaluate_join(1188, cfg(replay_turns_per_s=100))
-        self.assertEqual(fast.status, "success")
-        self.assertEqual(fast.missing, 0)
+        assert_joined_clock(self, fast, 100)
         self.assertGreater(fast.pin_turns, 0)
+        # The rejected reading applied turn 2 at 170 ms. The host has produced
+        # one turn by then: 170 // 100 == 1.
+        self.assertEqual(170 // 100, 1)
+        self.assertEqual((fast.done_ms, fast.replayed, fast.host_produced), (160, 1, 1))
+        self.assertEqual(fast.reserved_turns, 2)
+        self.assertNotEqual((fast.done_ms, fast.replayed), (170, 2))
         slow = model.evaluate_join(
             1188, cfg(replay_turns_per_s=5, tail_turns_max=1_000_000, catchup_ms=60_000))
         self.assertEqual(slow.status, "restart")
@@ -207,6 +273,7 @@ class Retention(unittest.TestCase):
         self.assertGreater(slow.missing, 0)
         self.assertFalse(slow.paused)
         self.assertTrue(slow.honest())
+        self.assertLessEqual(slow.replayed, slow.host_produced)
 
     def test_synthetic_sizes_trip_a_bound_and_do_not_pause(self):
         budgets = model.proposed_budgets()
@@ -233,16 +300,67 @@ class Retention(unittest.TestCase):
                          14277)
 
     def test_tail_cap_restarts_a_permitted_join(self):
-        # Admitted under the proposed cap, then the same bytes are evaluated
-        # against a cap of one turn: the pin cannot be honoured, so the joiner
-        # restarts. The result is not a success with a missing turn.
-        budgets = cfg(tail_turns_max=1)
+        # The one-fragment join replays one turn. A cap of one holds it.
+        # A cap of zero cannot, so that joiner restarts. The table is not paused.
+        held = model.evaluate_join(1188, cfg(tail_turns_max=1))
+        assert_joined_clock(self, held, 100)
+        self.assertEqual(held.pin_turns, 1)
+        budgets = cfg(tail_turns_max=0)
         result = model.evaluate_join(1188, budgets)
         self.assertEqual(result.status, "restart")
         self.assertEqual(result.reason, "tail_turns")
         self.assertFalse(result.paused)
         self.assertTrue(result.honest())
+        self.assertLessEqual(result.replayed, result.host_produced)
         self.assertNotEqual(result.status, "success")
+
+    def test_a_599_turn_old_save_is_not_a_join_and_expires_during_transfer(self):
+        budgets = model.proposed_budgets()
+        size = dict(model.MEASURED_SAVES)["endless02"]
+        self.assertEqual(size, 20349454)
+        avail = model.evaluate_join(size, budgets, mode="periodic", age_turns=599)
+        self.assertEqual(avail.status, "available")
+        self.assertEqual(avail.reason, "initial_availability")
+        self.assertNotEqual(avail.status, "success")
+        self.assertEqual(avail.transfer_ms, 0)
+        self.assertEqual(avail.done_ms, 0)
+        self.assertEqual(avail.replayed, avail.snapshot_turn)
+        rolled = model.evaluate_join(size, budgets, mode="rolling", age_turns=599)
+        self.assertEqual(rolled.status, "refuse")
+        self.assertEqual(rolled.reason, "gap_not_retained")
+        self.assertEqual(rolled.transfer_ms, 160650)
+        self.assertEqual(rolled.missing, 1605)
+        self.assertEqual(rolled.host_produced, 599 + 160650 // budgets.turn_ms)
+        self.assertFalse(rolled.paused)
+        self.assertTrue(rolled.honest(budgets.turn_ms))
+
+    def test_rolling_tail_expires_when_load_runs_past_the_log(self):
+        budgets = cfg(load_ms=2000)
+        result = model.evaluate_join(1188, budgets, mode="rolling", age_turns=590)
+        self.assertEqual(result.status, "refuse")
+        self.assertEqual(result.reason, "gap_not_retained")
+        self.assertEqual(result.transfer_ms, 150)
+        self.assertGreater(result.done_ms, result.transfer_ms)
+        self.assertGreater(result.missing, 0)
+        self.assertFalse(result.paused)
+
+    def test_tick_boundaries_match_the_host_clock(self):
+        budgets = model.proposed_budgets()
+
+        def at(ms):
+            transfer = model.TransferResult("complete", ms, 1, 1, 1, False, 0, 0)
+            return model.evaluate_join(1188, budgets, transfer=transfer)
+
+        before = at(99)
+        assert_joined_clock(self, before, budgets.turn_ms)
+        self.assertEqual((before.done_ms, before.replayed), (99, 0))
+        opened = at(100)
+        assert_joined_clock(self, opened, budgets.turn_ms)
+        self.assertEqual((opened.done_ms, opened.replayed), (110, 1))
+        boundary = at(200)
+        assert_joined_clock(self, boundary, budgets.turn_ms)
+        self.assertEqual((boundary.done_ms, boundary.replayed), (220, 2))
+        self.assertEqual(169 // budgets.turn_ms, 1)
 
     def test_window_serialization_stays_under_the_one_way_delay(self):
         budgets = model.proposed_budgets()
@@ -257,43 +375,106 @@ class Ownership(unittest.TestCase):
     def test_two_joiners_share_cancel_and_migrate_without_pausing(self):
         budgets = model.proposed_budgets()
         size = 1188 * 4
-        generation = model.Generation(0, 0, size)
-        self.assertEqual(generation.attach("a", 0, budgets), "opened")
-        self.assertEqual(generation.attach("b", 1000, budgets), "shared")
-        self.assertEqual(generation.attach("c", 1000, budgets), "refuse")
-        self.assertEqual(generation.running(), 2)
-        late = model.Generation(0, 0, size)
-        late.attach("a", 0, budgets)
-        self.assertEqual(late.attach("b", budgets.snapshot_age_ms, budgets), "shared")
-        self.assertEqual(late.attach("d", budgets.snapshot_age_ms + 1, budgets), "fresh_snapshot")
+        table = model.Table(budgets)
+        self.assertEqual(table.attach("a", 0, size, 0, 0)[0], "opened")
+        self.assertEqual(table.attach("b", 1000, size, 0, 0)[0], "shared")
+        self.assertEqual(table.attach("c", 1000, size, 0, 0)[0], "refuse")
+        self.assertEqual(table.running(), 2)
+        self.assertEqual(table.attach("b2", budgets.snapshot_age_ms, size, 0, 0)[0], "refuse")
 
         host = budgets.turn_buffer + 1
         self.assertFalse(model.rolling_contains(1, 0, host, budgets))
-        self.assertTrue(generation.retained(1, host, budgets))
-        generation.cancel("b")
-        self.assertEqual(generation.running(), 1)
-        self.assertTrue(generation.retained(1, host, budgets))
+        self.assertTrue(table.retained(1, host))
+        table.cancel("b")
+        self.assertEqual(table.running(), 1)
+        self.assertTrue(table.retained(1, host))
         both = model.evaluate_join(size, budgets)
         other = model.evaluate_join(size, budgets)
-        self.assertEqual(both.status, "success")
-        self.assertEqual(other.status, "success")
+        assert_joined_clock(self, both, budgets.turn_ms)
+        assert_joined_clock(self, other, budgets.turn_ms)
         self.assertFalse(both.paused or other.paused)
-        generation.complete("a")
-        self.assertEqual(generation.running(), 0)
-        self.assertFalse(generation.retained(1, host, budgets))
+        table.complete("a")
+        self.assertEqual(table.running(), 0)
+        self.assertFalse(table.retained(1, host))
 
-        restarted = generation.migrate()
-        self.assertEqual(restarted, [])
-        generation.attach("e", 0, budgets)
-        self.assertEqual(generation.migrate(), ["e"])
-        self.assertEqual(generation.running(), 0)
-        self.assertFalse(generation.pin_holds(1, host))
+        self.assertEqual(table.migrate(), [])
+        self.assertEqual(table.attach("e", 0, size, 0, 0)[0], "opened")
+        self.assertEqual(table.migrate(), ["e"])
+        self.assertEqual(table.running(), 0)
+        self.assertFalse(table.retained(1, host))
 
-        rounded = generation.rounded(budgets)
-        peak = model.actual_allocation(1, 2, host, budgets, rounded)
-        self.assertLessEqual(peak, model.allocation_bound(budgets)["total"])
-        self.assertGreater(model.allocation_bound(budgets)["total"],
-                           budgets.fragment_max)
+        fresh = model.Table(budgets)
+        self.assertEqual(fresh.attach("a", 0, size, 0, 0)[0], "opened")
+        opened, gen = fresh.attach("d", budgets.snapshot_age_ms + 1, size, 40, 40)
+        self.assertEqual(opened, "opened")
+        self.assertEqual(gen.snapshot_turn, 40)
+        self.assertEqual(fresh.running(), 2)
+
+    def test_three_joiners_two_generations_use_one_global_cap(self):
+        budgets = cfg(concurrent_transfers=2, max_generations=2)
+        size = 1188 * 4
+        table = model.Table(budgets)
+        word, first = table.attach("a", 0, size, 0, 0)
+        self.assertEqual(word, "opened")
+        word, second = table.attach("b", budgets.snapshot_age_ms + 1, size, 0, 0)
+        self.assertEqual(word, "opened")
+        self.assertIsNot(first, second)
+        self.assertEqual(first.running(), 1)
+        self.assertEqual(second.running(), 1)
+        # Each generation has a free local slot. The global cap of two refuses.
+        self.assertEqual(table.attach("c", budgets.snapshot_age_ms + 1, size, 0, 0)[0],
+                         "refuse")
+        self.assertEqual(table.running(), 2)
+        host = budgets.turn_buffer + 40
+        self.assertFalse(model.rolling_contains(1, 0, host, budgets))
+        self.assertTrue(table.retained(1, host))
+        table.cancel("b")
+        self.assertEqual(table.running(), 1)
+        self.assertTrue(table.retained(1, host))
+        word, _third = table.attach("c", budgets.snapshot_age_ms + 1, size, 80, host)
+        self.assertEqual(word, "opened")
+        self.assertTrue(table.retained(1, host))
+        self.assertEqual(table.running(), 2)
+        table.complete("a")
+        self.assertFalse(table.retained(1, host))
+        self.assertEqual(table.running(), 1)
+        self.assertEqual(table.migrate(), ["c"])
+        self.assertEqual(table.running(), 0)
+        self.assertFalse(table.retained(81, host))
+
+    def test_a_new_generation_does_not_evict_a_tail_that_still_fits(self):
+        budgets = cfg(tail_turns_max=10, concurrent_transfers=2, max_generations=2)
+        table = model.Table(budgets)
+        self.assertEqual(table.attach("a", 0, 1188, 100, 110)[0], "opened")
+        # The first image is too old to share, so this ask would open a second
+        # generation. Its span does not fit, and A's turns stay.
+        self.assertEqual(
+            table.attach("b", budgets.snapshot_age_ms + 1, 1188, 0, 110)[0], "tail")
+        self.assertTrue(table.retained(101, 110))
+        self.assertEqual(table.running(), 1)
+
+    def test_joiner_backlog_is_capped_without_pausing_the_other(self):
+        budgets = model.proposed_budgets()
+        table = model.Table(budgets)
+        self.assertEqual(table.attach("a", 0, 1188, 0, 0)[0], "opened")
+        self.assertEqual(table.attach("b", 1000, 1188, 0, 0)[0], "shared")
+        self.assertEqual(table.note_backlog("a", 10), "held")
+        self.assertEqual(table.note_backlog("b", budgets.receive_backlog_turns + 1), "restart")
+        self.assertEqual(table.running(), 1)
+        self.assertEqual(table.backlog["a"], 10)
+        mem = table.memory_bytes(0)
+        self.assertEqual(mem["joiner_backlog"], 10 * budgets.turn_store_cap)
+        self.assertEqual(mem["total"], sum(value for key, value in mem.items() if key != "total"))
+        self.assertLessEqual(mem["total"], model.allocation_bound(budgets)["total"])
+        over = model.evaluate_join(1188, cfg(receive_backlog_turns=0))
+        self.assertEqual(over.status, "restart")
+        self.assertEqual(over.reason, "backlog")
+        self.assertFalse(over.paused)
+        self.assertNotEqual(over.status, "success")
+        decision, reason, detail = model.admit(
+            dict(model.MEASURED_SAVES)["endless02"], cfg(receive_backlog_turns=1000))
+        self.assertEqual((decision, reason), ("refuse", "backlog"))
+        self.assertGreater(detail, 1000)
 
     def test_mismatch_resync_may_pause_and_has_an_empty_tail(self):
         resync = model.mismatch_resync(40)
@@ -317,11 +498,17 @@ class ProposalText(unittest.TestCase):
         for token in (
                 "tail_turns_max=4096",
                 "tail_bytes_max=4915200",
-                "allocation_bound_bytes=87113760",
+                "allocation_bound_bytes=96948576",
+                "joiner_backlog_bytes=9830400",
+                "channel0_flight_bytes=4416",
                 "endless02_discrete_zero_loss_ms=160650",
                 "endless02_loss2_seed1_transfer_ms=198750",
                 "endless02_loss2_seed1_done_ms=220830",
                 "endless02_loss2_seed1_pin_turns=2208",
+                "03_1024_loss2_seed1_done_ms=141160",
+                "03_1024_loss2_seed1_replayed=1411",
+                "counterexample_1188_done_ms=160",
+                "counterexample_1188_replayed=1",
                 "tools/snapshot_catchup.py",
                 "80.3 s",
                 "160.6 s",
@@ -365,6 +552,12 @@ class Proposal(unittest.TestCase):
                                              if key != "total"))
         self.assertEqual(bound["pinned_turns"], budgets.tail_turns_max * budgets.turn_store_cap)
         self.assertEqual(bound["rolling_turns"], budgets.turn_buffer * budgets.turn_store_cap)
+        self.assertEqual(bound["joiner_backlog"], 9830400)
+        self.assertEqual(bound["channel0_flight"], 4416)
+        self.assertEqual(bound["total"], 96948576)
+        without_backlog = bound["total"] - bound["joiner_backlog"] - bound["channel0_flight"]
+        self.assertEqual(without_backlog, 87113760)
+        self.assertGreater(bound["total"], without_backlog)
 
 
 if __name__ == "__main__":

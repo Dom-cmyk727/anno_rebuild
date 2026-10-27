@@ -85,9 +85,13 @@ def assumptions():
         "A7. Each retained turn is charged turn_store_cap 1200 bytes, the "
         "payload cap. That is not a measured command size (OQ-282). The "
         "empty-turn datagram of 69 bytes is only the concurrent-wire check.",
-        "A8. Turns use channel 0 while the snapshot uses channel 1. The join "
-        "waits for the slower of the two. With a 69-byte turn datagram the "
-        "snapshot is slower for every measured save.",
+        "A8. Turns use channel 0 while the snapshot uses channel 1. A full "
+        "channel-1 window does not delay channel 0. Receipt on this clock is "
+        "the fluid bulk time of the turn datagrams, not a second one-way "
+        "delay on top of the snapshot. With a 69-byte turn datagram the "
+        "snapshot is slower for every measured save, so at load every turn "
+        "the host has produced is in that joiner's backlog. The host pin and "
+        "each joiner's backlog are both charged.",
         "A9. The acceptance case sets resend_ms to the RTT, 300. The LAN "
         "default of 50 ms stays the LAN default. At a 300 ms RTT a 50 ms "
         "resend repeats a window before its ack returns. The sender also "
@@ -95,6 +99,15 @@ def assumptions():
         "larger window does not step past that field.",
         "A10. No host processing is added beyond load_ms and the replay rate. "
         "The results are not end-to-end join times.",
+        "A11. tail_turns_needed is a reserved upper bound. It is not a turn "
+        "the joiner has applied. Success is the first time the replayed "
+        "cursor equals the host cursor, with the received cursor covering "
+        "that prefix and no replay past the host.",
+        "A12. loss_per_million drops data datagrams only. It does not drop "
+        "acknowledgements, and on that path a duplicate arrival does not "
+        "generate an acknowledgement. ack_duplicates=True generates one. "
+        "ack_drop drops acknowledgements. Those two schedules are separate "
+        "from the 2% rows. The 2% rows are not general datagram-loss coverage.",
     )
 
 
@@ -123,6 +136,10 @@ class Budgets:
     tail_turns_max: int = 4096
     loss_per_million: int = 0
     seed: int = 1
+    # Caps joined to tail_turns_max by proposed_budgets. Separate so a test
+    # can tighten one without the other.
+    receive_backlog_turns: int = 4096
+    max_generations: int = 2
 
     @property
     def rtt_ms(self):
@@ -139,7 +156,8 @@ def proposed_budgets():
     base = Budgets()
     need = tail_turns_needed(fragment_count(20349454, base.save_per_fragment), base)
     cap = next_pow2(need)
-    return replace(base, tail_turns_max=cap)
+    return replace(base, tail_turns_max=cap, receive_backlog_turns=cap,
+                   max_generations=base.concurrent_transfers)
 
 
 def next_pow2(n):
@@ -208,20 +226,34 @@ def estimate_transfer_ms(fragments, cfg):
     return (base * cfg.loss_scale_num + cfg.loss_scale_den - 1) // cfg.loss_scale_den
 
 
-def tail_turns_needed(fragments, cfg):
-    """Pin length the admission rule holds for this fragment count.
+def reserved_pin(gap, cfg):
+    """Upper bound on turns a constant replay rate might have to hold.
 
-    gap turns arise during the estimated transfer and load. The chase
-    `J = gap + ceil(live * gap / (replay - live))` is the model's catch-up
-    rule (A6), an integer upper bound under a constant replay rate.
+    This is not the host cursor and not the replayed cursor. Callers that
+    report progress use `simulate_catchup`.
+    """
+    if gap < 0:
+        raise ValueError("gap")
+    if gap == 0:
+        return 0
+    if cfg.replay_turns_per_s <= cfg.live_turns_per_s:
+        return None
+    den = cfg.replay_turns_per_s - cfg.live_turns_per_s
+    extra = (cfg.live_turns_per_s * gap + den - 1) // den
+    return gap + extra
+
+
+def tail_turns_needed(fragments, cfg):
+    """Reserved pin the admission rule holds for this fragment count.
+
+    gap turns are the host turns at the estimated transfer plus load. `J` is
+    `reserved_pin(gap)`, an integer upper bound under a constant replay rate
+    (A6, A11). It is not a claim that the joiner applied `J` turns.
     """
     if cfg.replay_turns_per_s <= cfg.live_turns_per_s:
         return None
     t = estimate_transfer_ms(fragments, cfg) + cfg.load_ms
-    gap = t // cfg.turn_ms
-    den = cfg.replay_turns_per_s - cfg.live_turns_per_s
-    extra = (cfg.live_turns_per_s * gap + den - 1) // den
-    return gap + extra
+    return reserved_pin(t // cfg.turn_ms, cfg)
 
 
 def catchup_ms_after_load(gap, cfg):
@@ -313,10 +345,14 @@ class TransferResult:
     waited: bool
     highest_ack: int
     max_span: int
+    acks_sent: int = 0
+    acks_lost: int = 0
+    duplicate_deliveries: int = 0
+    sender_released: bool = False
 
 
 def run_transfer(fragments, cfg, drop=None, reorder=None, policy="selective",
-                 horizon_ms=None):
+                 horizon_ms=None, ack_drop=None, ack_duplicates=False):
     """Discrete channel-1 transfer.
 
     `policy="selective"` resends a hole the ack names, a sequence that has
@@ -324,6 +360,13 @@ def run_transfer(fragments, cfg, drop=None, reorder=None, policy="selective",
     `policy="skip"` advances the send window from the highest received
     sequence and does not resend. A skip that finishes the send loop with a
     hole returns status `incomplete`.
+
+    `drop` applies to data datagrams. `ack_drop(highest, duplicate)` drops
+    an acknowledgement when it returns true. A duplicate data arrival
+    generates an acknowledgement only when `ack_duplicates` is true (A12).
+    The 2% rows leave it false. `done_ms` is the receiver cursor completing.
+    Status `complete` also requires the sender's in-flight set to drain.
+    Status `unacked` means the receiver finished and the sender did not.
     """
     if policy not in ("selective", "skip"):
         raise ValueError(policy)
@@ -356,11 +399,21 @@ def run_transfer(fragments, cfg, drop=None, reorder=None, policy="selective",
     waited = False
     exhausted = False
     max_span = 0
+    acks_sent = 0
+    acks_lost = 0
+    duplicate_deliveries = 0
+    receiver_done = None
 
     def push(when, kind, seq, attempt, bits=0, ack_sent=0):
         nonlocal serial
         heapq.heappush(queue, (when, prio[kind], serial, kind, seq, attempt, bits, ack_sent))
         serial += 1
+
+    def finish(status, at):
+        done = receiver_done if receiver_done is not None else at
+        return TransferResult(status, done, fragments, cursor, sends, waited, highest,
+                              max_span, acks_sent, acks_lost, duplicate_deliveries,
+                              not inflight and cursor == fragments)
 
     def start(seq, attempt, when):
         nonlocal sends, exhausted, max_span
@@ -396,25 +449,42 @@ def run_transfer(fragments, cfg, drop=None, reorder=None, policy="selective",
             return
         start(seq, attempt + 1, when)
 
+    def emit_ack(now, duplicate):
+        nonlocal acks_sent, acks_lost
+        if highest < 0:
+            return
+        if ack_drop is not None and ack_drop(highest, duplicate):
+            acks_lost += 1
+            return
+        acks_sent += 1
+        push(now + cfg.one_way_ms, "ack", highest, 0,
+             ack_bits(highest, have), now)
+
     pump()
-    while queue and cursor < fragments and not exhausted:
+    while queue and not exhausted:
         now, _p, _s, kind, seq, attempt, bits, ack_sent = heapq.heappop(queue)
         if now > horizon_ms:
-            return TransferResult("timeout", now, fragments, cursor, sends, waited, highest,
-                                  max_span)
+            return finish("timeout", now)
         if kind == "deliver":
-            if seq in have:
-                continue
-            if seq > cursor:
-                waited = True
-            have.add(seq)
-            if seq > highest:
-                highest = seq
-            while cursor in have:
-                cursor += 1
-            if cursor < fragments and highest >= 0:
-                push(now + cfg.one_way_ms, "ack", highest, 0,
-                     ack_bits(highest, have), now)
+            duplicate = seq in have
+            if duplicate:
+                duplicate_deliveries += 1
+                # The 2% rows leave this off: a duplicate does not generate an
+                # acknowledgement, and `drop` never sees an ack-only resend.
+                # Recovery tests pass ack_duplicates=True.
+                if ack_duplicates:
+                    emit_ack(now, True)
+            else:
+                if seq > cursor:
+                    waited = True
+                have.add(seq)
+                if seq > highest:
+                    highest = seq
+                while cursor in have:
+                    cursor += 1
+                emit_ack(now, False)
+                if cursor == fragments and receiver_done is None:
+                    receiver_done = now
         elif kind == "ack":
             if policy == "skip":
                 for old in list(inflight):
@@ -437,24 +507,31 @@ def run_transfer(fragments, cfg, drop=None, reorder=None, policy="selective",
             if current is None or current[0] != attempt:
                 continue
             start(seq, attempt + 1, now)
+        if cursor == fragments and not inflight:
+            return finish("complete", now)
         if exhausted:
             break
         pump()
 
+    if cursor == fragments and not inflight:
+        return finish("complete", now)
+    if cursor == fragments and inflight:
+        return finish("unacked", now)
     if exhausted:
-        return TransferResult("exhausted", now, fragments, cursor, sends, waited, highest,
-                              max_span)
-    if cursor == fragments:
-        return TransferResult("complete", now, fragments, cursor, sends, waited, highest,
-                              max_span)
+        return finish("exhausted", now)
     if not queue and next_seq >= fragments and not inflight:
-        return TransferResult("incomplete", now, fragments, cursor, sends, waited, highest,
-                              max_span)
-    return TransferResult("timeout", now, fragments, cursor, sends, waited, highest, max_span)
+        return finish("incomplete", now)
+    return finish("timeout", now)
 
 
 @dataclass(frozen=True)
 class JoinResult:
+    """Cursors are turn indexes. `pin_turns` is how many of them were replayed.
+
+    `reserved_turns` is the admission upper bound. A success does not copy it
+    into `replayed`.
+    """
+
     status: str
     reason: str
     paused: bool
@@ -465,20 +542,36 @@ class JoinResult:
     transfer_ms: int
     done_ms: int
     pin_turns: int
+    host_produced: int
+    received: int
+    replayed: int
+    reserved_turns: int
+    backlog_turns: int
 
-    def honest(self):
-        if self.paused:
+    def honest(self, turn_ms=100):
+        if self.paused or self.replayed > self.host_produced or self.received > self.host_produced:
             return False
-        if self.status == "success":
-            return self.missing == 0 and self.last_turn == self.snapshot_turn + self.pin_turns and (
-                self.pin_turns == 0 or self.first_turn == self.snapshot_turn + 1
-            )
-        return self.status in ("refuse", "restart")
+        if self.status != "success":
+            return self.status in ("refuse", "restart")
+        host_from_clock = self.snapshot_turn + self.done_ms // turn_ms
+        return (self.missing == 0
+                and self.replayed == self.host_produced
+                and self.host_produced == host_from_clock
+                and self.received >= self.replayed
+                and self.pin_turns == self.replayed - self.snapshot_turn
+                and self.last_turn == self.replayed
+                and (self.pin_turns == 0 or self.first_turn == self.snapshot_turn + 1)
+                and self.reserved_turns >= self.pin_turns)
 
 
-def _fail(status, reason, snapshot_turn, transfer_ms, done_ms, missing):
+def _fail(status, reason, snapshot_turn, transfer_ms, done_ms, missing, turn_ms=100,
+          reserved=0, backlog=0, host=None):
+    if host is None:
+        host = snapshot_turn + done_ms // turn_ms
+    replayed = snapshot_turn
     return JoinResult(status, reason, False, snapshot_turn, snapshot_turn + 1,
-                      snapshot_turn, missing, transfer_ms, done_ms, 0)
+                      snapshot_turn, missing, transfer_ms, done_ms, 0,
+                      host, replayed, replayed, reserved, backlog)
 
 
 def remaining_at_deadline(transfer_ms, cfg):
@@ -499,69 +592,218 @@ def rolling_contains(turn, snapshot_turn, host_turn, cfg):
     return turn >= oldest
 
 
+@dataclass(frozen=True)
+class Progress:
+    reached: bool
+    done_ms: int
+    host_produced: int
+    received: int
+    replayed: int
+    backlog_turns: int
+    future: bool
+
+
+def turns_received(elapsed_ms, cfg):
+    """Turns after the snapshot that channel 0 has delivered by `elapsed_ms`.
+
+    The count is the fluid bulk time (A8) and never exceeds the turns the
+    host has produced. It is not a second one-way delay.
+    """
+    if elapsed_ms < 0:
+        raise ValueError("elapsed")
+    produced = elapsed_ms // cfg.turn_ms
+    if produced <= 0:
+        return 0
+    if turn_fluid_ms(produced, cfg) <= elapsed_ms:
+        return produced
+    lo = 0
+    hi = produced
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if turn_fluid_ms(mid, cfg) <= elapsed_ms:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
+
+
+def load_ready_ms(transfer_ms, cfg):
+    """When the snapshot and the channel-0 backlog have both arrived.
+
+    A slower turn wire extends the wait and that extension produces more
+    turns. Measured saves converge on the snapshot time at the first pass.
+    """
+    ready = transfer_ms
+    for _ in range(8):
+        wire_ms = turn_fluid_ms(ready // cfg.turn_ms, cfg)
+        if wire_ms <= ready:
+            return ready
+        ready = wire_ms
+    return ready
+
+
+def simulate_catchup(load_done, cfg, snapshot_turn=0, age_turns=0):
+    """Replay from `load_done` until the replayed cursor equals the host.
+
+    Applying a turn takes `ceil(1000 / replay_turns_per_s)` ms. The joiner
+    applies a turn only when the host has produced it and channel 0 has
+    delivered it. The 1 188-byte acceptance case loads at 150 ms. The reserved
+    bound for that gap is 2 turns at 170 ms. The host at 170 ms has produced
+    1 turn, and this loop meets the host at 160 ms on that turn.
+    """
+    if cfg.turn_ms <= 0 or cfg.replay_turns_per_s <= 0:
+        raise ValueError("rate")
+    step = (1000 + cfg.replay_turns_per_s - 1) // cfg.replay_turns_per_s
+    t = load_done
+    replayed = snapshot_turn
+    peak = 0
+    limit = cfg.catchup_ms
+
+    def host_at(tt):
+        return snapshot_turn + age_turns + tt // cfg.turn_ms
+
+    def received_at(tt):
+        # `age_turns` are already in the joiner's buffer when this starts.
+        # Turns produced during the wait follow the fluid channel-0 clock.
+        got = snapshot_turn + age_turns + turns_received(tt, cfg)
+        host = host_at(tt)
+        if got > host:
+            return host
+        return got
+
+    guard = 0
+    while t <= limit and guard <= limit:
+        guard += 1
+        host = host_at(t)
+        received = received_at(t)
+        backlog = received - replayed
+        if backlog > peak:
+            peak = backlog
+        if replayed > host or received > host:
+            return Progress(False, t, host, min(received, host), min(replayed, host),
+                            peak, True)
+        if replayed == host and received >= replayed:
+            return Progress(True, t, host, received, replayed, peak, False)
+        if replayed < host and replayed < received:
+            replayed += 1
+            t += step
+            continue
+        nxt = (host - snapshot_turn - age_turns + 1) * cfg.turn_ms
+        if nxt <= t:
+            break
+        t = nxt
+    if t > limit:
+        t = limit
+    host = host_at(t)
+    received = min(received_at(t), host)
+    replayed = min(replayed, host)
+    return Progress(False, t, host, received, replayed, peak, False)
+
+
+def rolling_missing(load_done, snapshot_turn, age_turns, cfg):
+    """Turns at or after `snapshot_turn + 1` that the rolling log has dropped.
+
+    `age_turns` is the host's lead at the ask. Transfer and load add the live
+    turns `load_done // turn_ms`. A positive result is a hole, not a join.
+    """
+    host = snapshot_turn + age_turns + load_done // cfg.turn_ms
+    oldest = host - cfg.turn_buffer + 1
+    first = snapshot_turn + 1
+    if first < oldest:
+        return oldest - first
+    return 0
+
+
+def _caught(snapshot_turn, transfer_ms, prog, reserved):
+    pin = prog.replayed - snapshot_turn
+    first = snapshot_turn + 1 if pin else snapshot_turn
+    return JoinResult("success", "caught_up", False, snapshot_turn, first,
+                      prog.replayed, 0, transfer_ms, prog.done_ms, pin,
+                      prog.host_produced, prog.received, prog.replayed, reserved,
+                      prog.backlog_turns)
+
+
+def _stopped(status, reason, snapshot_turn, transfer_ms, prog, missing, reserved):
+    return JoinResult(status, reason, False, snapshot_turn, snapshot_turn + 1,
+                      prog.replayed, missing, transfer_ms, prog.done_ms, 0,
+                      prog.host_produced, prog.received, prog.replayed, reserved,
+                      prog.backlog_turns)
+
+
 def evaluate_join(save_bytes, cfg, mode="pinned", transfer=None, snapshot_turn=0,
                   age_turns=0):
     """Join outcomes.
 
-    `pinned` is the proposed contract: a save at `snapshot_turn` and a pin of
-    every later turn until catch-up or a budget trip.
-    `rolling` uses only the 600-turn log. A gap that log no longer holds is
-    a refusal, never a success with a hole.
-    `periodic` is a stored snapshot `age_turns` behind the host with no pin.
+    `pinned` keeps every turn after `snapshot_turn` until the replayed cursor
+    equals the host cursor, or a cap trips.
+    `rolling` uses only the turn log. Transfer, load and the live turns they
+    contain can drop the tail. That is a refusal, never a success with a hole.
+    `periodic` reports whether the stored image is inside the log at the ask.
+    The status is `available` or `unavailable`. It is not a join success.
     """
+    if mode not in ("pinned", "rolling", "periodic"):
+        raise ValueError(mode)
     if mode == "periodic":
+        host = snapshot_turn + age_turns
         missing = age_turns - cfg.turn_buffer if age_turns > cfg.turn_buffer else 0
-        if missing > 0:
-            return _fail("refuse", "gap_not_retained", snapshot_turn, 0, 0, missing)
-        return JoinResult("success", "within_rolling_buffer", False, snapshot_turn,
-                          snapshot_turn + 1, snapshot_turn + age_turns, 0, 0, 0, age_turns)
+        status = "unavailable" if missing else "available"
+        return JoinResult(status, "initial_availability", False, snapshot_turn,
+                          snapshot_turn + 1, snapshot_turn, missing, 0, 0, 0,
+                          host, snapshot_turn, snapshot_turn, 0, 0)
 
     fragments = fragment_count(save_bytes, cfg.save_per_fragment)
     if fragments > cfg.fragment_max:
-        return _fail("refuse", "fragment_cap", snapshot_turn, 0, 0, 0)
+        return _fail("refuse", "fragment_cap", snapshot_turn, 0, 0, 0, cfg.turn_ms)
     if transfer is None:
         transfer = run_transfer(fragments, cfg)
     if transfer.status != "complete":
         reason = "missing_fragments" if transfer.status == "incomplete" else transfer.status
         missing = transfer.fragments - transfer.cursor
-        return _fail("restart", reason, snapshot_turn, transfer.done_ms, transfer.done_ms, missing)
+        return _fail("restart", reason, snapshot_turn, transfer.done_ms,
+                     transfer.done_ms, missing, cfg.turn_ms)
 
-    # A8: channel 0 carries the turns that appear while the snapshot is in
-    # flight. If that wire is slower, the load waits for it, and the extra
-    # wait can itself create turns. Two passes close the integer fixed point
-    # for the rates in this model (turn datagrams are one window slot each).
-    ready_ms = transfer.done_ms
-    for _ in range(2):
-        wire_ms = turn_fluid_ms(ready_ms // cfg.turn_ms, cfg)
-        if wire_ms > ready_ms:
-            ready_ms = wire_ms
+    ready_ms = load_ready_ms(transfer.done_ms, cfg)
     load_done = ready_ms + cfg.load_ms
     gap = load_done // cfg.turn_ms
-    if load_done > cfg.catchup_ms or (
-            cfg.replay_turns_per_s <= cfg.live_turns_per_s and gap > 0):
+    if mode == "rolling":
+        gap += age_turns
+    reserved = reserved_pin(gap, cfg)
+    reserved_n = 0 if reserved is None else reserved
+    if mode == "rolling":
+        missing = rolling_missing(load_done, snapshot_turn, age_turns, cfg)
+        if missing > 0:
+            host = snapshot_turn + age_turns + load_done // cfg.turn_ms
+            return _fail("refuse", "gap_not_retained", snapshot_turn, transfer.done_ms,
+                         load_done, missing, cfg.turn_ms, reserved_n, host=host)
+    if load_done > cfg.catchup_ms or (cfg.replay_turns_per_s <= cfg.live_turns_per_s and gap > 0):
         return _fail("restart", "cannot_outrun", snapshot_turn, transfer.done_ms,
-                     cfg.catchup_ms, max(remaining_at_deadline(transfer.done_ms, cfg), 1))
+                     cfg.catchup_ms, max(remaining_at_deadline(transfer.done_ms, cfg), 1),
+                     cfg.turn_ms, reserved_n)
 
-    extra_ms = catchup_ms_after_load(gap, cfg)
-    if extra_ms is None:
-        return _fail("restart", "cannot_outrun", snapshot_turn, transfer.done_ms,
-                     cfg.catchup_ms, max(remaining_at_deadline(transfer.done_ms, cfg), 1))
-    done_ms = load_done + extra_ms
-    den = cfg.replay_turns_per_s - cfg.live_turns_per_s
-    extra_turns = 0 if gap == 0 else (cfg.live_turns_per_s * gap + den - 1) // den
-    pin = gap + extra_turns
-    if mode == "rolling" and pin > cfg.turn_buffer:
-        return _fail("refuse", "gap_not_retained", snapshot_turn, transfer.done_ms,
-                     done_ms, pin - cfg.turn_buffer)
-    if done_ms > cfg.catchup_ms:
-        return _fail("restart", "catchup_ms", snapshot_turn, transfer.done_ms,
-                     cfg.catchup_ms, max(remaining_at_deadline(transfer.done_ms, cfg), 1))
+    prog = simulate_catchup(load_done, cfg, snapshot_turn,
+                            age_turns if mode == "rolling" else 0)
+    if prog.future:
+        return _stopped("restart", "future_turn", snapshot_turn, transfer.done_ms, prog, 1,
+                        reserved_n)
+    if not prog.reached:
+        reason = "cannot_outrun" if cfg.replay_turns_per_s <= cfg.live_turns_per_s else "catchup_ms"
+        missing = max(prog.host_produced - prog.replayed, 1)
+        return _stopped("restart", reason, snapshot_turn, transfer.done_ms, prog, missing,
+                        reserved_n)
+    pin = prog.replayed - snapshot_turn
+    if prog.backlog_turns > cfg.receive_backlog_turns:
+        return _stopped("restart", "backlog", snapshot_turn, transfer.done_ms, prog,
+                        prog.backlog_turns, reserved_n)
     if pin > cfg.tail_turns_max:
-        return _fail("restart", "tail_turns", snapshot_turn, transfer.done_ms, done_ms, pin)
+        return _stopped("restart", "tail_turns", snapshot_turn, transfer.done_ms, prog, pin,
+                        reserved_n)
     if pin * cfg.turn_store_cap > cfg.tail_bytes_max:
-        return _fail("restart", "tail_bytes", snapshot_turn, transfer.done_ms, done_ms, pin)
-    return JoinResult("success", "caught_up", False, snapshot_turn, snapshot_turn + 1,
-                      snapshot_turn + pin, 0, transfer.done_ms, done_ms, pin)
+        return _stopped("restart", "tail_bytes", snapshot_turn, transfer.done_ms, prog, pin,
+                        reserved_n)
+    if prog.done_ms > cfg.catchup_ms:
+        return _stopped("restart", "catchup_ms", snapshot_turn, transfer.done_ms, prog,
+                        max(prog.host_produced - prog.replayed, 1), reserved_n)
+    return _caught(snapshot_turn, transfer.done_ms, prog, reserved_n)
 
 
 def admit(save_bytes, cfg, active_transfers=0):
@@ -581,37 +823,48 @@ def admit(save_bytes, cfg, active_transfers=0):
     chase = catchup_ms_after_load(gap, cfg)
     if chase is None or est + chase > cfg.catchup_ms:
         return "refuse", "catchup_ms", need
+    # `gap` turns are sitting in the joiner's buffer at load, before replay.
+    if gap > cfg.receive_backlog_turns:
+        return "refuse", "backlog", gap
     return "admit", "within_budgets", need
 
 
 def allocation_bound(cfg):
-    """Worst-case bytes the proposal allows at once. Caps, not one save."""
+    """Worst-case bytes the proposal allows at once.
+
+    Every part is a cap. `joiner_backlog` is each running joiner's received
+    turns waiting for load and replay. `channel0_flight` is the channel-0
+    window that delivers those turns. The total is the sum of the parts.
+    """
     frag_bytes = cfg.fragment_max * cfg.save_per_fragment
     parts = {
-        "snapshot_store": cfg.concurrent_transfers * frag_bytes,
+        "snapshot_store": cfg.max_generations * frag_bytes,
         "reassembly": cfg.concurrent_transfers * frag_bytes,
         "send_windows": cfg.concurrent_transfers * cfg.window * cfg.payload_max,
+        "channel0_flight": cfg.concurrent_transfers * cfg.window * cfg.turn_datagram_bytes,
         "pinned_turns": cfg.tail_turns_max * cfg.turn_store_cap,
+        "joiner_backlog": cfg.concurrent_transfers * cfg.receive_backlog_turns * cfg.turn_store_cap,
         "rolling_turns": cfg.turn_buffer * cfg.turn_store_cap,
     }
     parts["total"] = sum(parts.values())
     return parts
 
 
-def actual_allocation(generations, reassemblies, pinned_turns, cfg, rounded_save):
+def actual_allocation(generations, reassemblies, pinned_turns, joiner_backlog_turns, cfg,
+                      rounded_save):
     return (generations * rounded_save
             + reassemblies * rounded_save
             + reassemblies * cfg.window * cfg.payload_max
+            + reassemblies * cfg.window * cfg.turn_datagram_bytes
             + pinned_turns * cfg.turn_store_cap
+            + joiner_backlog_turns * cfg.turn_store_cap
             + cfg.turn_buffer * cfg.turn_store_cap)
 
 
 class Generation:
-    """One snapshot image and the joiners allowed to use it.
+    """One snapshot image. Transfer slots and the tail live on `Table`.
 
-    A joiner who asks at time t shares this image when
-    `t - created_ms <= snapshot_age_ms` and a transfer slot is free.
-    The pin is turns (S, H] and stays while any joiner is running.
+    The pin is turns (S, H] and stays while any joiner on this image is running.
     """
 
     def __init__(self, snapshot_turn, created_ms, save_bytes):
@@ -626,11 +879,7 @@ class Generation:
     def running(self):
         return sum(1 for state in self.joiners.values() if state == "running")
 
-    def attach(self, joiner_id, now_ms, cfg):
-        if now_ms - self.created_ms > cfg.snapshot_age_ms:
-            return "fresh_snapshot"
-        if self.running() >= cfg.concurrent_transfers:
-            return "refuse"
+    def add(self, joiner_id):
         self.joiners[joiner_id] = "running"
         return "shared" if self.running() > 1 else "opened"
 
@@ -662,6 +911,114 @@ class Generation:
         if self.pin_holds(turn, host_turn):
             return True
         return rolling_contains(turn, self.snapshot_turn, host_turn, cfg)
+
+
+class Table:
+    """Shared owner of generations, transfer slots, pins and joiner backlogs.
+
+    `concurrent_transfers`, `max_generations` and `tail_turns_max` are global.
+    A generation does not keep its own copy of the transfer cap.
+    """
+
+    def __init__(self, cfg):
+        self.cfg = cfg
+        self.generations = []
+        self.backlog = {}
+
+    def running(self):
+        return sum(g.running() for g in self.generations)
+
+    def active_generations(self):
+        return [g for g in self.generations if g.running() > 0]
+
+    def distinct_turns(self, host_turn):
+        held = set()
+        for gen in self.active_generations():
+            if host_turn <= gen.snapshot_turn:
+                continue
+            for turn in range(gen.snapshot_turn + 1, host_turn + 1):
+                held.add(turn)
+        return held
+
+    def tail_allows(self, snapshot_turn, host_turn):
+        held = set(self.distinct_turns(host_turn))
+        if host_turn > snapshot_turn:
+            for turn in range(snapshot_turn + 1, host_turn + 1):
+                held.add(turn)
+        return len(held) <= self.cfg.tail_turns_max
+
+    def attach(self, joiner_id, now_ms, save_bytes, snapshot_turn, host_turn):
+        if self.running() >= self.cfg.concurrent_transfers:
+            return "refuse", None
+        for gen in self.active_generations():
+            if (gen.save_bytes == save_bytes
+                    and now_ms - gen.created_ms <= self.cfg.snapshot_age_ms):
+                word = gen.add(joiner_id)
+                self.backlog[joiner_id] = 0
+                return word, gen
+        if len(self.active_generations()) >= self.cfg.max_generations:
+            return "refuse", None
+        if not self.tail_allows(snapshot_turn, host_turn):
+            return "tail", None
+        gen = Generation(snapshot_turn, now_ms, save_bytes)
+        word = gen.add(joiner_id)
+        self.generations.append(gen)
+        self.backlog[joiner_id] = 0
+        return word, gen
+
+    def _release(self, joiner_id, state):
+        for gen in self.generations:
+            if gen.joiners.get(joiner_id) == "running":
+                gen.joiners[joiner_id] = state
+        self.backlog.pop(joiner_id, None)
+
+    def cancel(self, joiner_id):
+        self._release(joiner_id, "cancelled")
+
+    def complete(self, joiner_id):
+        self._release(joiner_id, "complete")
+
+    def migrate(self):
+        restarted = []
+        for gen in self.generations:
+            restarted.extend(gen.migrate())
+        self.backlog.clear()
+        return restarted
+
+    def retained(self, turn, host_turn):
+        for gen in self.active_generations():
+            if gen.retained(turn, host_turn, self.cfg):
+                return True
+        return False
+
+    def note_backlog(self, joiner_id, turns):
+        running = False
+        for gen in self.generations:
+            if gen.joiners.get(joiner_id) == "running":
+                running = True
+        if not running:
+            return "absent"
+        if turns > self.cfg.receive_backlog_turns:
+            self._release(joiner_id, "restart")
+            return "restart"
+        self.backlog[joiner_id] = turns
+        return "held"
+
+    def memory_bytes(self, host_turn):
+        cfg = self.cfg
+        n = self.running()
+        gens = self.active_generations()
+        parts = {
+            "snapshot_store": sum(gen.rounded(cfg) for gen in gens),
+            "reassembly": sum(gen.running() * gen.rounded(cfg) for gen in gens),
+            "send_windows": n * cfg.window * cfg.payload_max,
+            "channel0_flight": n * cfg.window * cfg.turn_datagram_bytes,
+            "pinned_turns": len(self.distinct_turns(host_turn)) * cfg.turn_store_cap,
+            "joiner_backlog": sum(self.backlog.values()) * cfg.turn_store_cap,
+            "rolling_turns": cfg.turn_buffer * cfg.turn_store_cap,
+        }
+        parts["total"] = sum(parts.values())
+        return parts
 
 
 def mismatch_resync(host_turn):
@@ -705,6 +1062,8 @@ def report_lines(cfg=None, with_loss=False):
         "reassembly_bytes: %d" % bound["reassembly"],
         "send_window_bytes: %d" % bound["send_windows"],
         "pinned_turn_bytes: %d" % bound["pinned_turns"],
+        "joiner_backlog_bytes: %d" % bound["joiner_backlog"],
+        "channel0_flight_bytes: %d" % bound["channel0_flight"],
         "rolling_turn_bytes: %d" % bound["rolling_turns"],
         "one_way_ms: %d" % cfg.one_way_ms,
         "rtt_ms: %d" % cfg.rtt_ms,
@@ -729,10 +1088,18 @@ def report_lines(cfg=None, with_loss=False):
             loss_cfg = replace(cfg, loss_per_million=20_000, seed=1)
             result = evaluate_join(size, loss_cfg)
             lines.append(
-                "model %s loss=2pct seed=1 status=%s reason=%s transfer_ms=%d "
-                "done_ms=%d pin_turns=%d missing=%d paused=%s"
+                "model %s loss=2pct seed=1 data_only status=%s reason=%s "
+                "transfer_ms=%d done_ms=%d pin_turns=%d host_produced=%d "
+                "received=%d replayed=%d reserved_turns=%d missing=%d paused=%s"
                 % (name, result.status, result.reason, result.transfer_ms,
-                   result.done_ms, result.pin_turns, result.missing, result.paused))
+                   result.done_ms, result.pin_turns, result.host_produced,
+                   result.received, result.replayed, result.reserved_turns,
+                   result.missing, result.paused))
+    one = evaluate_join(cfg.save_per_fragment, cfg)
+    lines.append("counterexample_1188_done_ms=%d" % one.done_ms)
+    lines.append("counterexample_1188_replayed=%d" % one.replayed)
+    lines.append("counterexample_1188_host=%d" % one.host_produced)
+    lines.append("counterexample_1188_reserved=%d" % one.reserved_turns)
     lines.append("periodic_age_turns: %d" % periodic_age_turns(cfg))
     lines.extend("assumption: " + item for item in assumptions())
     return lines

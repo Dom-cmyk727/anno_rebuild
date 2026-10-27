@@ -1715,7 +1715,10 @@ class RoundCfValidators(TraceCase):
         part = ev("deliver", src="H", dst="P1", ch=0, seq=1, msg="Turn", turn=1, sid=2, epoch=0, parts=((1, 2),), nfrag=2)
         full = dict(part, parts=((0, 1), (1, 2)))
         self.assertIn("xiv", codes(self._log() + [part]))
-        self.assertNotIn("xiv", codes(self._log() + [full]))
+        self.assertIn("xiv", codes(self._log() + [full]))
+        evidence = [self._send(0, 0), self._send(1, 1), self._arrive(0, 0), self._acq(0, 0),
+                    self._arrive(1, 1), self._acq(1, 1)]
+        self.assertNotIn("xiv", codes(self._log() + evidence + [full]))
 
     def test_assembly_may_not_survive_an_epoch_change_without_release(self):
         carry = self._log() + [self._acq(0, 0), ev("epoch_bump", a="H", b="P1", epoch=1, why="re-ask")]
@@ -1725,8 +1728,12 @@ class RoundCfValidators(TraceCase):
         self.assertNotIn("xv", codes(clean))
 
     def test_the_reassembly_buffer_limit_is_checked_from_acquire_events(self):
-        log = [ev("reasm_acquire", src="H", dst="P1", ch=0, mid=("T", 1), turn=1, frag=i, nfrag=99, size=1, sid=i, held=i + 1)
-               for i in range(5)]
+        log = []
+        for i in range(5):
+            common = dict(src="H", dst="P1", ch=0, mid=("T", 1), turn=1, frag=i, nfrag=99, size=1, sid=i, epoch=0)
+            log.extend([ev("send", **common, seq=i, msg="Turn-frag", attempt=1),
+                        ev("arrive", **common, seq=i, msg="Turn-frag", dup=False),
+                        ev("reasm_acquire", **common, held=i + 1)])
         self.assertIn("xv", {c for c, _ in ja.validate(log, ja.Cfg(reassembly_fragments_max=3), 0)})
 
 
@@ -1789,6 +1796,68 @@ MUTANTS.update({
     "retain assembly across an attempt end or epoch": (_patch_forget_assembly_at_an_epoch, [
         "RoundCfReassembly.test_g2_epoch_reset_releases_a_partial_assembly"]),
 })
+
+
+class RoundCfCompletion(unittest.TestCase):
+    def test_complete_parts_without_acquisition_do_not_prove_delivery(self):
+        log = [ev("deliver", src="H", dst="P1", ch=0, seq=1, msg="Turn", turn=1,
+                  sid=2, epoch=0, mid=("T", 1), parts=((0, 1), (1, 2)), nfrag=2)]
+        self.assertIn("xiv", {c for c, _ in ja._check_reassembly(log, ja.Cfg())})
+
+    def test_released_parts_cannot_be_reused_for_delivery(self):
+        base = ja.Sim(ja.Cfg(), seated=1)
+        base.turn_extra = lambda k: 1216 if k == 1 else 0
+        base.run(1000)
+        log = list(base.events)
+        d = next(e for e in log if e["kind"] == "deliver" and e.get("nfrag", 1) > 1)
+        log.append(dict(d, t=1001))
+        self.assertIn("xiv", {c for c, _ in ja._check_reassembly(log, ja.Cfg())})
+
+    def test_irreducible_ownership_turn_is_rejected_before_application(self):
+        sim = ja.Sim(ja.Cfg(turn_store_cap=16, tail_bytes_max=16), seated=0)
+        sim.host.pending_events[1] = [(1, 1, "human")]
+        with self.assertRaises(ValueError):
+            sim.run(100)
+        self.assertEqual(sim.host.applied, 0)
+        self.assertNotIn(1, sim.host.owners)
+        self.assertEqual(sim.host.retained_bytes, 0)
+
+    def test_byte_cap_must_hold_the_empty_turn_even_with_a_small_nominal_charge(self):
+        with self.assertRaises(ValueError):
+            ja.Sim(ja.Cfg(turn_store_cap=1, tail_bytes_max=1))
+
+    def test_an_active_joiner_overflow_closes_input_and_drops_its_seat(self):
+        sim = ja.Sim(ja.Cfg(reassembly_fragments_max=30), seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.turn_extra = lambda k: 90000 if k == 50 else 0
+        sim.run(8000)
+        self.assertIsNotNone(sim.joiners["J1"].active_ms)
+        self.assertIn("J1", sim.dropped)
+        self.assertTrue(any(e["kind"] == "input_off" and e["peer"] == "J1" for e in sim.events))
+        self.assertEqual(sim.host.owners.get(2), "ai")
+
+    def test_dead_attempt_does_not_reacquire_inflight_snapshot_fragments(self):
+        sim = ja.Sim(ja.Cfg(), seated=1)
+        sim.add_join("J1", 0, 2, fragments=100)
+        sim.cancel("J1", 350)
+        sim.run(8000)
+        end = next(e["t"] for e in sim.events if e["kind"] == "attempt_end" and e["how"] == "dead")
+        self.assertFalse([e for e in sim.events if e["kind"] == "reasm_acquire" and e["dst"] == "J1" and e["t"] > end])
+        self.assertEqual(sim.reasm_frags, 0)
+
+
+def _patch_hide_acquisition_evidence():
+    original = ja.Sim.ev
+
+    def event(self, kind, **fields):
+        if kind == "reasm_acquire":
+            return
+        original(self, kind, **fields)
+    return mock.patch.object(ja.Sim, "ev", event)
+
+
+MUTANTS["claim delivery without acquisition evidence"] = (_patch_hide_acquisition_evidence, [
+    "RoundCfReassembly.test_g2_the_76_fragment_turn_is_delivered_with_full_coverage"])
 
 
 if __name__ == "__main__":

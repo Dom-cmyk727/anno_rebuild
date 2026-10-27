@@ -95,4 +95,34 @@ if(ANNO_BUILD_TESTS)
   anno_sim_replay_arg_test(measure_reps_zero "measure|x.sze|--reps|0" "bad --reps value '0'")
   anno_sim_replay_arg_test(measure_ticks_negative "measure|x.sze|--ticks|-1"
                            "bad --ticks value '-1'")
+  # T45: load and run_turn on the code-built world. The test checks the
+  # validation line and the turn mapping, not a wall-time threshold.
+  add_test(NAME anno_sim_replay_join_synthetic
+           COMMAND sim_replay join synthetic --ticks 0 --reps 2 --warmup 1 --catchup 3
+                   --replay-reps 2)
+  set_tests_properties(anno_sim_replay_join_synthetic PROPERTIES
+                       PASS_REGULAR_EXPRESSION
+                       "join_ok validation=ok replay_method=run_turn age_method=advance ticks_per_turn=50 commands_rejected=0 speed_bad=0 burst_over_cap=1 empty_payload_bytes=0 scripted_commands=1")
+  anno_sim_replay_arg_test(join_reps_not_a_number "join|synthetic|--reps|abc"
+                           "bad --reps value 'abc'")
+  anno_sim_replay_arg_test(join_reps_zero "join|synthetic|--reps|0" "bad --reps value '0'")
+  anno_sim_replay_arg_test(join_warmup_negative "join|synthetic|--warmup|-1"
+                           "bad --warmup value '-1'")
+  anno_sim_replay_arg_test(join_catchup_zero "join|synthetic|--catchup|0"
+                           "bad --catchup value '0'")
+  anno_sim_replay_arg_test(join_replay_reps_zero "join|synthetic|--replay-reps|0"
+                           "bad --replay-reps value '0'")
+  anno_sim_replay_arg_test(join_ticks_negative "join|synthetic|--ticks|-1"
+                           "bad --ticks value '-1'")
+  anno_sim_replay_arg_test(join_no_path "join" "usage: anno-sim-replay")
+  add_test(NAME anno_sim_replay_join_missing
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   "-DARGS=join|no-such.sze|--ticks|0|--reps|1|--warmup|0|--catchup|1|--replay-reps|1"
+                   -DEXPECT_RC=1 "-DEXPECT=cannot read no-such.sze"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunToolExpectError.cmake)
+  add_test(NAME anno_sim_replay_join_refuses_a_non_scenario
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   "-DARGS=join|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sze_synthetic/noscene.sze|--ticks|0|--reps|1|--warmup|0|--catchup|1|--replay-reps|1"
+                   -DEXPECT_RC=1 "-DEXPECT=validation=fail"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunToolExpectError.cmake)
 endif()

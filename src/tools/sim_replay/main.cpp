@@ -13,6 +13,14 @@
 //         [--reps R]          then one tile write on each island. Also save()
 //                             bytes and the tile and chunk counts. The clock is
 //                             this tool's; src/sim has none.
+//   join <scenario>           wall time of World::load on an already serialized
+//         [--ticks N]         save, then of catch-up through run_turn. The age
+//         [--reps R]          is the same advance(100) loop as measure. A turn
+//         [--warmup W]        is run_turn of 10 steps of 10 game ms (50 ticks),
+//         [--catchup T]       not one advance and not one tick. Load is timed
+//         [--replay-reps N]   apart from file I/O, scenario parsing, registry
+//                             creation and save generation. A hash mismatch
+//                             drops the timings. synthetic needs no game files.
 //
 // The log carries the registry's digest, not the registry itself, so a world is
 // rebuilt from the log's initial save on the code-built registry whose digest the log
@@ -42,6 +50,7 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <variant>
 #include <vector>
 
 #include <anno/formats/anlagen.hpp>
@@ -633,8 +642,554 @@ int cmd_measure(const std::string& path, std::uint64_t ticks, std::uint64_t reps
     return 0;
 }
 
+/// ADR 0003 §3 / §13 comparison lines. Not a sim default and not a packet this
+/// tool writes. An encoded turn is only the back-to-back TurnEntry stream.
+constexpr std::size_t kAdrPayloadMax = 1200;
+constexpr std::size_t kAdrHeaderBytes = 25;
+constexpr std::size_t kAdrIpv4UdpBytes = 28;
+constexpr std::size_t kAdrEmptyPayloadBytes = 16;
+/// Multiplayer turn at 100% (clock.hpp Timing, ADR 0003 §6): 10 steps of 10
+/// game ms. One tick is 2 game ms, so the turn is 50 ticks. The age loop below
+/// is a different call: World::advance(100), the same one measure uses.
+constexpr std::uint32_t kMpStepMs = 10;
+constexpr std::uint32_t kMpSteps = 10;
+constexpr std::uint32_t kAgeStepMs = 100;
+constexpr std::uint32_t kTickGameMs = 2;
+
+const char* compiler_name() {
+#if defined(_MSC_VER)
+    return "msvc";
+#elif defined(__clang__)
+    return "clang";
+#elif defined(__GNUC__)
+    return "gcc";
+#else
+    return "unknown";
+#endif
+}
+
+template <class F> std::uint64_t time_call_us(F&& fn) {
+    const auto t0 = std::chrono::steady_clock::now();
+    std::forward<F>(fn)();
+    const auto t1 = std::chrono::steady_clock::now();
+    return static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
+}
+
+std::uint64_t floor_per_s(std::uint64_t us) {
+    if (us == 0) {
+        return 0;
+    }
+    return 1000000ULL / us;
+}
+
+std::uint64_t ceil_ms(std::uint64_t us) {
+    return (us + 999ULL) / 1000ULL;
+}
+
+std::string one_line(std::string text) {
+    for (char& c : text) {
+        if (c == '\n' || c == '\r') {
+            c = ' ';
+        }
+    }
+    return text;
+}
+
+int fail_join(const std::string& reason) {
+    // No timing line. A failed check must not be quotable as a measurement.
+    std::cout << "join validation=fail reason=" << one_line(reason) << "\n";
+    return 1;
+}
+
+sim::Command speed_command(std::uint32_t percent) {
+    sim::Command command;
+    command.issuer = sim::PlayerId{0};
+    command.body = sim::SetSpeedCmd{percent};
+    return command;
+}
+
+std::uint32_t scripted_percent(std::uint64_t index) {
+    static constexpr std::uint32_t kSpeeds[3] = {50, 100, 200};
+    return kSpeeds[static_cast<std::size_t>(index % 3)];
+}
+
+struct EncodedTurn {
+    std::vector<std::uint8_t> bytes;
+    std::string error;
+};
+
+EncodedTurn encode_commands(const std::vector<sim::Command>& commands) {
+    EncodedTurn out;
+    for (std::size_t i = 0; i < commands.size(); ++i) {
+        sim::TurnEntry entry;
+        entry.command = commands[i];
+        entry.seq = static_cast<std::uint32_t>(i);
+        auto encoded = sim::encode_turn_entry(entry);
+        if (!encoded.ok()) {
+            out.error = encoded.error();
+            out.bytes.clear();
+            return out;
+        }
+        const std::vector<std::uint8_t>& piece = encoded.value();
+        out.bytes.insert(out.bytes.end(), piece.begin(), piece.end());
+    }
+    return out;
+}
+
+struct Prepared {
+    std::shared_ptr<const sim::TypeRegistry> types;
+    std::vector<std::uint8_t> save;
+    std::uint64_t source_hash = 0;
+    std::uint64_t start_tick = 0;
+    std::uint64_t age_tick = 0;
+    std::uint64_t age_advances = 0;
+    std::uint64_t io_us = 0;
+    std::uint64_t registry_us = 0;
+    std::uint64_t templates_us = 0;
+    std::uint64_t parse_us = 0;
+    std::uint64_t create_age_us = 0;
+    std::uint64_t save_generation_us = 0;
+    int file_io = 0;
+};
+
+struct LoadOutcome {
+    std::optional<sim::World> world;
+    std::string error;
+};
+
+LoadOutcome load_save(const std::vector<std::uint8_t>& bytes,
+                      const std::shared_ptr<const sim::TypeRegistry>& types) {
+    LoadOutcome out;
+    auto loaded = sim::World::load(bytes, types, {});
+    if (!loaded.ok()) {
+        out.error = loaded.error();
+        return out;
+    }
+    out.world = std::move(loaded).value();
+    return out;
+}
+
+int prepare_join(const std::string& path, std::uint64_t ticks, Prepared& out) {
+    sim::ScenarioSpec spec;
+    if (path == "synthetic") {
+        out.file_io = 0;
+        out.io_us = 0;
+        out.registry_us = time_call_us([&] { out.types = sim::TypeRegistry::empty(); });
+        out.templates_us = 0;
+        out.parse_us = time_call_us([&] { spec = sim::synthetic::two_island_scenario(); });
+    } else {
+        out.file_io = 1;
+        std::vector<std::uint8_t> buf;
+        bool opened = false;
+        out.io_us = time_call_us([&] {
+            std::ifstream in(path, std::ios::binary);
+            opened = static_cast<bool>(in);
+            if (opened) {
+                buf.assign(std::istreambuf_iterator<char>(in), {});
+            }
+        });
+        if (!opened) {
+            std::cerr << "cannot read " << path << "\n";
+            return 1;
+        }
+        out.registry_us = time_call_us([&] { out.types = scenario_registry(); });
+        anno::sim_load::IslandTemplates templates;
+        out.templates_us = time_call_us([&] { templates = scenario_templates(); });
+        const sim::SimConfig load_cfg;
+        bool parsed = false;
+        std::string parse_error;
+        out.parse_us = time_call_us([&] {
+            auto resolved =
+                anno::sim_load::load_scenario_with_links(buf, templates, *out.types, load_cfg, {});
+            if (!resolved) {
+                parse_error = resolved.error();
+                return;
+            }
+            spec = std::move(resolved.value().loaded.spec);
+            parsed = true;
+        });
+        if (!parsed) {
+            return fail_join("refused: " + parse_error);
+        }
+    }
+    const sim::SimConfig cfg;
+    const ThreadExecutor ex;
+    std::optional<sim::World> created;
+    std::string create_error;
+    out.create_age_us = time_call_us([&] {
+        auto made = sim::World::create(spec, out.types, cfg, {}, {}, ex);
+        if (!made) {
+            create_error = made.error();
+            return;
+        }
+        sim::World world = std::move(made).value();
+        out.start_tick = world.clock().tick();
+        const std::uint64_t target = out.start_tick + ticks;
+        while (world.clock().tick() < target) {
+            world.advance(kAgeStepMs);
+            ++out.age_advances;
+        }
+        out.age_tick = world.clock().tick();
+        created = std::move(world);
+    });
+    if (!created) {
+        return fail_join("create refused: " + create_error);
+    }
+    out.save_generation_us = time_call_us([&] { out.save = created->save(); });
+    out.source_hash = created->state_hash();
+    return 0;
+}
+
+struct ApplyTally {
+    std::uint64_t accepted = 0;
+    std::uint64_t rejected = 0;
+    std::uint64_t speed_ok = 0;
+    std::uint64_t speed_bad = 0;
+};
+
+void tally_apply(sim::World& world, const sim::Command& command, ApplyTally& tally) {
+    const sim::ApplyResult result = world.apply(command);
+    if (!result.ok()) {
+        ++tally.rejected;
+        return;
+    }
+    ++tally.accepted;
+    if (const auto* speed = std::get_if<sim::SetSpeedCmd>(&command.body)) {
+        if (world.settings().speed_percent == speed->percent) {
+            ++tally.speed_ok;
+        } else {
+            ++tally.speed_bad;
+        }
+    }
+}
+
+void advance_turn_steps(sim::World& world) {
+    for (std::uint32_t step = 0; step < kMpSteps; ++step) {
+        world.advance(kMpStepMs);
+    }
+}
+
+void run_script_turn(sim::World& world, const std::vector<sim::Command>& commands,
+                     std::uint64_t index) {
+    sim::Turn turn;
+    turn.index = index;
+    turn.step_ms = kMpStepMs;
+    turn.commands = commands;
+    sim::run_turn(world, nullptr, turn, kMpSteps);
+}
+
+struct WorkloadResult {
+    std::string name;
+    UsecStats times;
+    UsecStats payload;
+    std::uint64_t samples = 0;
+    std::uint64_t duration_us = 0;
+    std::uint64_t commands_per_turn = 0;
+    std::uint64_t container_capacity = 0;
+    std::uint64_t accepted = 0;
+    std::uint64_t rejected = 0;
+    std::uint64_t speed_ok = 0;
+    std::uint64_t speed_bad = 0;
+    int over_cap = 0;
+    std::string error;
+};
+
+std::vector<std::vector<sim::Command>> script_turns(const std::string& name, std::uint64_t catchup,
+                                                    std::string& error) {
+    std::vector<std::vector<sim::Command>> turns;
+    if (name == "empty") {
+        turns.assign(static_cast<std::size_t>(catchup), {});
+        return turns;
+    }
+    if (name == "scripted") {
+        turns.reserve(static_cast<std::size_t>(catchup));
+        for (std::uint64_t i = 0; i < catchup; ++i) {
+            turns.push_back({speed_command(scripted_percent(i))});
+        }
+        return turns;
+    }
+    // One synthetic turn whose encoded TurnEntry stream is past the ADR cap.
+    // The count is however many records the wire needs. It is not a play session.
+    std::vector<sim::Command> burst;
+    for (;;) {
+        const std::uint32_t percent = (burst.size() % 2 == 0) ? 50U : 100U;
+        std::vector<sim::Command> trial = burst;
+        trial.push_back(speed_command(percent));
+        EncodedTurn encoded = encode_commands(trial);
+        if (!encoded.error.empty()) {
+            error = encoded.error;
+            return {};
+        }
+        burst.push_back(speed_command(percent));
+        if (encoded.bytes.size() > kAdrPayloadMax) {
+            break;
+        }
+        // A record that encodes to nothing would not move the size. Stop rather
+        // than loop. The SetSpeed record is longer than the cap long before this.
+        if (burst.size() > 10000) {
+            error = "burst did not pass the payload cap";
+            return {};
+        }
+    }
+    turns.push_back(std::move(burst));
+    return turns;
+}
+
+int check_script(const Prepared& prepared, const std::vector<std::vector<sim::Command>>& turns,
+                 ApplyTally& tally) {
+    LoadOutcome via_run = load_save(prepared.save, prepared.types);
+    if (!via_run.world) {
+        return fail_join("reference load: " + via_run.error);
+    }
+    for (std::size_t i = 0; i < turns.size(); ++i) {
+        run_script_turn(*via_run.world, turns[i], static_cast<std::uint64_t>(i));
+    }
+    const std::uint64_t run_hash = via_run.world->state_hash();
+    via_run.world.reset();
+
+    LoadOutcome via_apply = load_save(prepared.save, prepared.types);
+    if (!via_apply.world) {
+        return fail_join("apply reference load: " + via_apply.error);
+    }
+    for (const std::vector<sim::Command>& turn : turns) {
+        for (const sim::Command& command : turn) {
+            tally_apply(*via_apply.world, command, tally);
+        }
+        advance_turn_steps(*via_apply.world);
+    }
+    const std::uint64_t apply_hash = via_apply.world->state_hash();
+    if (apply_hash != run_hash) {
+        return fail_join("run_turn hash " + hex64(run_hash) + " differs from checked apply " +
+                         hex64(apply_hash));
+    }
+    return 0;
+}
+
+int measure_replay(const Prepared& prepared, const std::string& name, std::uint64_t catchup,
+                   std::uint64_t warmup, std::uint64_t reps, WorkloadResult& out) {
+    out.name = name;
+    std::string script_error;
+    const std::uint64_t turn_count = name == "burst" ? 1 : catchup;
+    const std::vector<std::vector<sim::Command>> turns =
+        script_turns(name, turn_count, script_error);
+    if (!script_error.empty()) {
+        return fail_join(script_error);
+    }
+    if (turns.empty()) {
+        return fail_join("workload " + name + " has no turns");
+    }
+    std::vector<std::uint64_t> sizes;
+    sizes.reserve(turns.size());
+    for (const std::vector<sim::Command>& turn : turns) {
+        EncodedTurn encoded = encode_commands(turn);
+        if (!encoded.error.empty()) {
+            return fail_join(encoded.error);
+        }
+        sizes.push_back(static_cast<std::uint64_t>(encoded.bytes.size()));
+        if (encoded.bytes.capacity() > out.container_capacity) {
+            out.container_capacity = static_cast<std::uint64_t>(encoded.bytes.capacity());
+        }
+    }
+    out.payload = usec_stats(std::move(sizes));
+    out.commands_per_turn = static_cast<std::uint64_t>(turns.front().size());
+    out.over_cap = out.payload.max > kAdrPayloadMax ? 1 : 0;
+
+    ApplyTally tally;
+    if (const int failed = check_script(prepared, turns, tally)) {
+        return failed;
+    }
+    out.accepted = tally.accepted;
+    out.rejected = tally.rejected;
+    out.speed_ok = tally.speed_ok;
+    out.speed_bad = tally.speed_bad;
+    if (tally.rejected != 0 || tally.speed_bad != 0) {
+        return fail_join(name + " commands rejected=" + std::to_string(tally.rejected) +
+                         " speed_bad=" + std::to_string(tally.speed_bad));
+    }
+    if (name != "empty" && tally.accepted == 0) {
+        return fail_join(name + " accepted no commands");
+    }
+
+    LoadOutcome reference = load_save(prepared.save, prepared.types);
+    if (!reference.world) {
+        return fail_join("replay reference load: " + reference.error);
+    }
+    for (std::size_t i = 0; i < turns.size(); ++i) {
+        run_script_turn(*reference.world, turns[i], static_cast<std::uint64_t>(i));
+    }
+    const std::uint64_t reference_hash = reference.world->state_hash();
+    reference.world.reset();
+
+    std::vector<std::uint64_t> samples;
+    samples.reserve(static_cast<std::size_t>(reps * turns.size()));
+    for (std::uint64_t rep = 0; rep < warmup + reps; ++rep) {
+        const bool keep = rep >= warmup;
+        LoadOutcome loaded = load_save(prepared.save, prepared.types);
+        if (!loaded.world) {
+            return fail_join("replay load: " + loaded.error);
+        }
+        for (std::size_t i = 0; i < turns.size(); ++i) {
+            const std::uint64_t us = time_call_us(
+                [&] { run_script_turn(*loaded.world, turns[i], static_cast<std::uint64_t>(i)); });
+            if (keep) {
+                samples.push_back(us);
+            }
+        }
+        // The hash is outside the timer. A mismatch drops every sample.
+        if (loaded.world->state_hash() != reference_hash) {
+            return fail_join(name + " replay hash mismatch expected " + hex64(reference_hash) +
+                             " got " + hex64(loaded.world->state_hash()));
+        }
+    }
+    out.samples = static_cast<std::uint64_t>(samples.size());
+    out.duration_us = 0;
+    for (const std::uint64_t us : samples) {
+        out.duration_us += us;
+    }
+    out.times = usec_stats(std::move(samples));
+    return 0;
+}
+
+void print_span(const char* label, const UsecStats& stats) {
+    std::cout << label << " min=" << stats.min << " median=" << stats.median << " p95=" << stats.p95
+              << " max=" << stats.max;
+}
+
+std::uint64_t per_s_from_sum(std::uint64_t samples, std::uint64_t duration_us) {
+    if (duration_us == 0) {
+        return 0;
+    }
+    return samples * 1000000ULL / duration_us;
+}
+
+int cmd_join(const std::string& path, std::uint64_t ticks, std::uint64_t warmup, std::uint64_t reps,
+             std::uint64_t catchup, std::uint64_t replay_reps) {
+    Prepared prepared;
+    if (const int failed = prepare_join(path, ticks, prepared)) {
+        return failed;
+    }
+    LoadOutcome checked = load_save(prepared.save, prepared.types);
+    if (!checked.world) {
+        return fail_join("load: " + checked.error);
+    }
+    if (checked.world->state_hash() != prepared.source_hash) {
+        return fail_join("load hash mismatch expected " + hex64(prepared.source_hash) + " got " +
+                         hex64(checked.world->state_hash()));
+    }
+    checked.world.reset();
+    std::vector<std::uint64_t> load_samples;
+    load_samples.reserve(static_cast<std::size_t>(reps));
+    for (std::uint64_t rep = 0; rep < warmup + reps; ++rep) {
+        LoadOutcome loaded;
+        const std::uint64_t us =
+            time_call_us([&] { loaded = load_save(prepared.save, prepared.types); });
+        if (!loaded.world) {
+            return fail_join("load: " + loaded.error);
+        }
+        // Hash after the timer. One mismatch invalidates the series.
+        if (loaded.world->state_hash() != prepared.source_hash) {
+            return fail_join("load hash mismatch expected " + hex64(prepared.source_hash) +
+                             " got " + hex64(loaded.world->state_hash()));
+        }
+        if (rep >= warmup) {
+            load_samples.push_back(us);
+        }
+    }
+    const UsecStats load_times = usec_stats(std::move(load_samples));
+
+    WorkloadResult empty;
+    WorkloadResult scripted;
+    WorkloadResult burst;
+    if (const int failed = measure_replay(prepared, "empty", catchup, warmup, replay_reps, empty)) {
+        return failed;
+    }
+    if (const int failed =
+            measure_replay(prepared, "scripted", catchup, warmup, replay_reps, scripted)) {
+        return failed;
+    }
+    if (const int failed = measure_replay(prepared, "burst", catchup, warmup, replay_reps, burst)) {
+        return failed;
+    }
+
+    const unsigned threads = std::thread::hardware_concurrency();
+    const std::uint32_t ticks_per_turn = (kMpStepMs * kMpSteps) / kTickGameMs;
+    std::cout << "join validation=ok path=" << path << "\n";
+    std::cout << "join age_tick=" << prepared.age_tick << " start_tick=" << prepared.start_tick
+              << " ticks_advanced=" << (prepared.age_tick - prepared.start_tick)
+              << " state_version=" << sim::kStateHashVersion
+              << " save_version=" << sim::kSaveVersion
+              << " wire_version=" << sim::kCommandWireVersion << "\n";
+    std::cout << "join build compiler=" << compiler_name()
+#if defined(_MSC_VER)
+              << " msvc_ver=" << _MSC_VER
+#endif
+              << " ndebug="
+#if defined(NDEBUG)
+              << "1"
+#else
+              << "0"
+#endif
+              << " threads=" << threads
+              << " create_executor=threads load_executor=none clock=steady_clock"
+              << " timing_includes_hash=0\n";
+    std::cout << "join phases samples=1 file_io=" << prepared.file_io << " io_us=" << prepared.io_us
+              << " registry_us=" << prepared.registry_us
+              << " templates_us=" << prepared.templates_us << " parse_us=" << prepared.parse_us
+              << " create_age_us=" << prepared.create_age_us
+              << " save_generation_us=" << prepared.save_generation_us
+              << " save_bytes=" << prepared.save.size() << "\n";
+    std::cout << "join load warmup=" << warmup << " reps=" << reps << " ";
+    print_span("load_us", load_times);
+    std::cout << " load_ms_ceil_median=" << ceil_ms(load_times.median) << "\n";
+    std::cout << "join mapping tick_game_ms=" << kTickGameMs
+              << " age_method=advance age_step_ms=" << kAgeStepMs
+              << " age_advances=" << prepared.age_advances
+              << " replay_method=run_turn step_ms=" << kMpStepMs << " steps=" << kMpSteps
+              << " ticks_per_turn=" << ticks_per_turn << "\n";
+
+    const WorkloadResult* rows[] = {&empty, &scripted, &burst};
+    std::uint64_t rejected = 0;
+    std::uint64_t speed_bad = 0;
+    for (const WorkloadResult* row : rows) {
+        rejected += row->rejected;
+        speed_bad += row->speed_bad;
+        std::cout << "join replay workload=" << row->name << " warmup=" << warmup
+                  << " reps=" << replay_reps << " turns=" << (row->name == "burst" ? 1 : catchup)
+                  << " samples=" << row->samples << " ";
+        print_span("run_turn_us", row->times);
+        std::cout << " duration_us=" << row->duration_us
+                  << " throughput_turns_per_s_floor_median=" << floor_per_s(row->times.median)
+                  << " throughput_turns_per_s_from_sum="
+                  << per_s_from_sum(row->samples, row->duration_us)
+                  << " commands_per_turn=" << row->commands_per_turn
+                  << " commands_accepted=" << row->accepted
+                  << " commands_rejected=" << row->rejected << " speed_ok=" << row->speed_ok
+                  << " speed_bad=" << row->speed_bad << "\n";
+        std::cout << "join encoded workload=" << row->name << " ";
+        print_span("payload_bytes", row->payload);
+        std::cout << " commands_per_turn=" << row->commands_per_turn
+                  << " container_capacity_bytes=" << row->container_capacity
+                  << " adr_header_bytes=" << kAdrHeaderBytes
+                  << " adr_ipv4_udp_bytes=" << kAdrIpv4UdpBytes
+                  << " adr_empty_payload_bytes=" << kAdrEmptyPayloadBytes
+                  << " adr_empty_datagram_bytes="
+                  << (kAdrHeaderBytes + kAdrEmptyPayloadBytes + kAdrIpv4UdpBytes)
+                  << " packet_overhead=adr_proposal not_a_packet=1 cap_payload_max="
+                  << kAdrPayloadMax << " over_cap=" << row->over_cap << "\n";
+    }
+    std::cout << "join_ok validation=ok replay_method=run_turn age_method=advance"
+              << " ticks_per_turn=" << ticks_per_turn << " commands_rejected=" << rejected
+              << " speed_bad=" << speed_bad << " burst_over_cap=" << burst.over_cap
+              << " empty_payload_bytes=" << empty.payload.max
+              << " scripted_commands=" << scripted.commands_per_turn
+              << " state_version=" << sim::kStateHashVersion
+              << " save_bytes=" << prepared.save.size() << "\n";
+    return 0;
+}
+
 void usage() {
-    std::cerr << "usage: anno-sim-replay <run|hashes|first-diff|tree|golden|scenario|measure> "
+    std::cerr << "usage: anno-sim-replay <run|hashes|first-diff|tree|golden|scenario|measure|join> "
                  "...\n"
                  "  run <log>\n"
                  "  hashes <log>\n"
@@ -645,7 +1200,13 @@ void usage() {
                  "ANNO1503_GAME_DIR)\n"
                  "  measure <file.sze|synthetic> [--ticks N] [--reps R]\n"
                  "      N default 30000, R default 50; hash times in us, clean then\n"
-                 "      one dirty chunk per island. synthetic needs no game files.\n";
+                 "      one dirty chunk per island. synthetic needs no game files.\n"
+                 "  join <file.sze|synthetic> [--ticks N] [--reps R] [--warmup W]\n"
+                 "      [--catchup T] [--replay-reps N]\n"
+                 "      Times World::load of an in-memory save, then run_turn.\n"
+                 "      N ticks default 30000, R and replay reps default 5, warmup 1,\n"
+                 "      catch-up turns 20. Age is advance(100). A turn is 10x10 ms.\n"
+                 "      synthetic needs no game files. A failed check prints no times.\n";
 }
 
 } // namespace
@@ -761,6 +1322,52 @@ int main(int argc, char** argv) {
             }
         }
         return cmd_measure(args[1], ticks, reps);
+    }
+    if (sub == "join" && args.size() >= 2) {
+        std::uint64_t ticks = 30000;
+        std::uint64_t reps = 5;
+        std::uint64_t warmup = 1;
+        std::uint64_t catchup = 20;
+        std::uint64_t replay_reps = 5;
+        for (std::size_t i = 2; i < args.size(); ++i) {
+            const auto take = [&](const char* flag, std::uint64_t& dest, bool allow_zero) -> int {
+                if (args[i] != flag) {
+                    return 0;
+                }
+                if (i + 1 >= args.size()) {
+                    usage();
+                    return 2;
+                }
+                const auto v = parse_u64(args[++i]);
+                if (!v || (!allow_zero && *v == 0)) {
+                    std::cerr << "bad " << flag << " value '" << args[i] << "': expected a decimal "
+                              << (allow_zero ? "integer from 0\n" : "integer from 1\n");
+                    usage();
+                    return 2;
+                }
+                dest = *v;
+                return 1;
+            };
+            int taken = 0;
+            if (args[i] == "--ticks") {
+                taken = take("--ticks", ticks, true);
+            } else if (args[i] == "--reps") {
+                taken = take("--reps", reps, false);
+            } else if (args[i] == "--warmup") {
+                taken = take("--warmup", warmup, true);
+            } else if (args[i] == "--catchup") {
+                taken = take("--catchup", catchup, false);
+            } else if (args[i] == "--replay-reps") {
+                taken = take("--replay-reps", replay_reps, false);
+            } else {
+                usage();
+                return 2;
+            }
+            if (taken == 2) {
+                return 2;
+            }
+        }
+        return cmd_join(args[1], ticks, warmup, reps, catchup, replay_reps);
     }
     usage();
     return 2;

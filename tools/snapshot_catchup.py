@@ -174,9 +174,15 @@ def assumptions():
         "clock only while the sum is below the one-way delay. A shared queue, "
         "jitter and the channel-2 hash flight are not modeled. Readiness is "
         "the receivable prefix, not equality with the host, when one_way_ms "
-        "is at least turn_ms. Input waits for hash_every. The 2% rows still "
-        "drop turn data only; an ACK drop is a separate schedule. The fluid "
-        "count stays the optimistic comparison. command_delay stays 2.",
+        "is at least turn_ms. That prefix is every turn whose earliest "
+        "arrival is at or before t. Applied equal to the turns that happened "
+        "to arrive is not readiness while a due turn is missing, and a hash "
+        "multiple of that shorter prefix does not enable input. Input waits "
+        "for hash_every on the due prefix. Table.advance restarts a "
+        "still-running join at catchup_ms before success at that millisecond. "
+        "The 2% rows still drop turn data only; an ACK drop is a separate "
+        "schedule. The fluid count stays the optimistic comparison. "
+        "command_delay stays 2.",
     )
 
 
@@ -1067,6 +1073,22 @@ class Table:
         self.host_turn = host_turn
         return restarted
 
+    def next_deadline_ms(self):
+        """Earliest millisecond at which a running joiner meets the deadline.
+
+        The comparison itself is `_enforce_deadlines`. This is only the
+        instant a caller must not skip when it samples `advance`.
+        """
+        soonest = None
+        for gen in self.generations:
+            for joiner_id, state in gen.joiners.items():
+                if state != "running":
+                    continue
+                at = gen.started_ms[joiner_id] + self.cfg.catchup_ms
+                if soonest is None or at < soonest:
+                    soonest = at
+        return soonest
+
     def _enforce_deadlines(self, now_ms):
         restarted = []
         for gen in self.generations:
@@ -1361,6 +1383,22 @@ def receivable_relative(t_ms, cfg):
     return (t_ms - cfg.one_way_ms) // cfg.turn_ms
 
 
+def due_relative(t_ms, cfg):
+    """Required prefix at `t_ms`: turns that have had time to arrive.
+
+    This is not the contiguous prefix that happened to arrive. A missing or
+    still-reordered turn inside this prefix blocks readiness. Checking only
+    whether a later turn has arrived does not cover a missing last due turn.
+    """
+    return receivable_relative(t_ms, cfg)
+
+
+def prefix_is_due(applied_rel, received_rel, t_ms, cfg):
+    """Applied, arrived, and due prefixes are the same count."""
+    due = due_relative(t_ms, cfg)
+    return applied_rel == received_rel == due
+
+
 def delivery_lag(t_ms, cfg):
     host = t_ms // cfg.turn_ms
     got = receivable_relative(t_ms, cfg)
@@ -1412,6 +1450,19 @@ def hash_target(applied_abs, snapshot_turn, hash_every):
         step = hash_every - (snapshot_turn % hash_every)
         target = snapshot_turn + (hash_every if step == 0 else step)
     return target
+
+
+def command_input_open(applied_rel, received_rel, t_ms, cfg, snapshot_turn=0,
+                       hash_matches=True):
+    """Input opens only on the due prefix at a hash turn.
+
+    A hash multiple of a shorter arrived prefix stays closed while a due
+    turn is missing or still reordered.
+    """
+    if not hash_matches or not prefix_is_due(applied_rel, received_rel, t_ms, cfg):
+        return False
+    applied_abs = snapshot_turn + applied_rel
+    return applied_abs >= hash_target(applied_abs, snapshot_turn, cfg.hash_every)
 
 
 def channel_bandwidth_us(cfg, bits_per_s=100_000_000):
@@ -1508,6 +1559,7 @@ def frontiers_at(t_ms, cfg, snapshot_turn=0, arrivals=None):
     """
     produced, host_applied = host_frontier(t_ms, snapshot_turn, cfg)
     host_relative = produced - snapshot_turn
+    due = due_relative(t_ms, cfg)
     if arrivals is None:
         relative = min(receivable_relative(t_ms, cfg), host_relative)
         hole = False
@@ -1523,6 +1575,7 @@ def frontiers_at(t_ms, cfg, snapshot_turn=0, arrivals=None):
         "host_produced": produced,
         "host_applied": host_applied,
         "received": snapshot_turn + relative,
+        "due": snapshot_turn + due,
         "hole": hole,
         "first_arrival_ms": first,
     }
@@ -1578,6 +1631,9 @@ class CausalJoin:
             return False
         if self.applied != self.received:
             return False
+        due = self.snapshot_turn + due_relative(self.done_ms, cfg)
+        if self.applied != due or self.received != due:
+            return False
         if cfg.one_way_ms >= cfg.turn_ms and self.host_applied > self.snapshot_turn:
             if self.applied >= self.host_applied:
                 return False
@@ -1585,7 +1641,8 @@ class CausalJoin:
             return False
         if self.backlog_turns > cfg.receive_backlog_turns:
             return False
-        return self.done_ms <= cfg.catchup_ms
+        # Success at the deadline millisecond loses to Table.advance.
+        return self.done_ms < cfg.catchup_ms
 
 
 def _received_rel(t_ms, cfg, arrivals):
@@ -1647,6 +1704,7 @@ def catchup_state_at(query_ms, cfg, load_done, snapshot_turn=0, arrivals=None):
         "host_applied": host_applied,
         "received": snapshot_turn + rec,
         "applied": snapshot_turn + applied_rel,
+        "due": snapshot_turn + due_relative(query_ms, cfg),
         "on_frontier": applied_rel == rec,
     }
 
@@ -1672,15 +1730,73 @@ def _fail_causal(status, reason, snapshot_turn, transfer_ms, done_ms, missing, c
         sched.acks_lost, sched.data_drops)
 
 
+_CAUSAL_JOINER = "causal"
+
+
+def _owner_stop_reason(reason, cfg):
+    """Keep the owner's restart reason.
+
+    A chase that cannot outrun live turns still reports `cannot_outrun` when
+    the deadline is what stops the clock. The comparison that fires the
+    deadline stays in `Table.advance`.
+    """
+    if reason == "deadline" and cfg.replay_turns_per_s <= cfg.live_turns_per_s:
+        return "cannot_outrun"
+    return reason
+
+
+def _owner_until(table, joiner_id, target_ms, snapshot_turn, cfg):
+    """Move `table` to `target_ms` through `Table.advance`.
+
+    The walk samples the owner's deadline instant and each host tick so a
+    later jump cannot skip them. A restart of `joiner_id` ends the walk at
+    that instant. Success is the caller's decision, and only after this
+    returns no reason.
+    """
+    if target_ms < 0 or target_ms < table.now_ms:
+        raise ValueError("clock")
+    guard = 0
+    limit = target_ms + 2
+    while table.now_ms < target_ms:
+        guard += 1
+        if guard > limit:
+            raise ValueError("clock")
+        nxt = target_ms
+        deadline = table.next_deadline_ms()
+        if deadline is not None and table.now_ms < deadline < target_ms:
+            nxt = deadline
+        tick = (table.now_ms // cfg.turn_ms + 1) * cfg.turn_ms
+        if table.now_ms < tick < nxt:
+            nxt = tick
+        host = snapshot_turn + nxt // cfg.turn_ms
+        if host < table.host_turn:
+            host = table.host_turn
+        restarted = table.advance(nxt, host)
+        for jid, reason in restarted:
+            if jid == joiner_id:
+                return reason, nxt
+    host = snapshot_turn + target_ms // cfg.turn_ms
+    if host < table.host_turn:
+        host = table.host_turn
+    if table.now_ms < target_ms or table.host_turn < host:
+        restarted = table.advance(target_ms, host)
+        for jid, reason in restarted:
+            if jid == joiner_id:
+                return reason, target_ms
+    return None, table.now_ms
+
+
 def evaluate_causal(save_bytes, cfg, transfer=None, snapshot_turn=0,
                     data_drop=None, ack_drop=None, reorder=None, hash_matches=True,
                     horizon_ms=None):
-    """Causal join. Success is the hash after the receivable prefix.
+    """Causal join. Success is the hash on the due prefix.
 
-    The optimistic fluid join is computed on the same snapshot transfer and
-    stored on the result. It is not this function's success test. The table
-    is not paused. A hole, a cap, or a frontier the joiner has not reached
-    is a refusal or a restart.
+    The due prefix is every turn that has had time to arrive. Equality of
+    applied and the contiguous arrived prefix is not enough while a due turn
+    is missing. `Table.advance` runs at the clock sample before that success
+    test, so a still-running join at `elapsed >= catchup_ms` restarts instead.
+    The optimistic fluid join is stored on the result and is not this test.
+    The table is not paused.
     """
     optimistic_cfg = cfg
     fragments = fragment_count(save_bytes, cfg.save_per_fragment)
@@ -1716,47 +1832,60 @@ def evaluate_causal(save_bytes, cfg, transfer=None, snapshot_turn=0,
     t_ms = load_done
     applied_rel = 0
     ready_ms = -1
-    hash_at = -1
     peak = 0
     guard = 0
     stop_reason = None
+    table = Table(cfg)
+    word, _gen = table.attach(_CAUSAL_JOINER, 0, save_bytes, snapshot_turn, 0)
+    if word not in ("opened", "shared"):
+        why = "fragment_cap" if word == "fragment" else "refuse"
+        return _fail_causal("refuse", why, snapshot_turn, transfer.done_ms, 0, 0, cfg,
+                            optimistic, schedule)
 
     def span_of(now):
         return now // cfg.turn_ms
 
-    while t_ms <= limit and guard <= limit + 2:
+    def owner_stop(target):
+        reason, at = _owner_until(table, _CAUSAL_JOINER, target, snapshot_turn, cfg)
+        if reason is None:
+            return None, at
+        return _owner_stop_reason(reason, cfg), at
+
+    if t_ms > limit:
+        stop_reason, at = owner_stop(limit)
+        t_ms = at if stop_reason is not None else limit
+
+    while stop_reason is None and t_ms <= limit and guard <= limit + 2:
         guard += 1
+        stop_reason, at = owner_stop(t_ms)
+        if stop_reason is not None:
+            t_ms = at
+            break
         rec = _received_rel(t_ms, cfg, arrivals)
-        host_relative = span_of(t_ms)
         if rec is None:
             stop_reason = "future_turn"
             break
         backlog = rec - applied_rel
         if backlog > peak:
             peak = backlog
-        if host_relative > cfg.tail_turns_max:
-            stop_reason = "tail_turns"
-            break
-        if host_relative * cfg.turn_store_cap > cfg.tail_bytes_max:
-            stop_reason = "tail_bytes"
-            break
         if peak > cfg.receive_backlog_turns:
             stop_reason = "backlog"
             break
         if applied_rel > rec:
             stop_reason = "future_turn"
             break
-        on_frontier = applied_rel == rec
-        if on_frontier and ready_ms < 0:
-            ready_ms = t_ms
-            hash_at = hash_target(snapshot_turn + applied_rel, snapshot_turn, cfg.hash_every)
-        if on_frontier and hash_at >= 0 and snapshot_turn + applied_rel >= hash_at:
-            if not hash_matches:
-                stop_reason = "hash_mismatch"
-                break
-            return _success_causal(
-                snapshot_turn, ready_ms, t_ms, applied_rel, rec, hash_at, peak,
-                transfer.done_ms, first_arrival, optimistic, schedule, cfg)
+        if prefix_is_due(applied_rel, rec, t_ms, cfg):
+            if ready_ms < 0:
+                ready_ms = t_ms
+            applied_abs = snapshot_turn + applied_rel
+            hash_at = hash_target(applied_abs, snapshot_turn, cfg.hash_every)
+            if applied_abs >= hash_at:
+                if not hash_matches:
+                    stop_reason = "hash_mismatch"
+                    break
+                return _success_causal(
+                    snapshot_turn, ready_ms, t_ms, applied_rel, rec, hash_at, peak,
+                    transfer.done_ms, first_arrival, optimistic, schedule, cfg)
         if applied_rel < rec:
             applied_rel += 1
             t_ms += step
@@ -1775,14 +1904,19 @@ def evaluate_causal(save_bytes, cfg, transfer=None, snapshot_turn=0,
         if arrive <= t_ms:
             stop_reason = "missing_prefix"
             break
-        if (arrive // cfg.turn_ms) > cfg.tail_turns_max and host_relative <= cfg.tail_turns_max:
-            t_ms = (cfg.tail_turns_max + 1) * cfg.turn_ms
-            continue
         if arrive > limit:
+            stop_reason, at = owner_stop(limit)
+            if stop_reason is not None:
+                t_ms = at
+                break
             t_ms = limit + 1
             break
         t_ms = arrive
 
+    if stop_reason is None and table.now_ms < limit:
+        stop_reason, at = owner_stop(limit)
+        if stop_reason is not None:
+            t_ms = at
     if stop_reason is None:
         if horizon_ms is not None and horizon_ms <= cfg.catchup_ms and t_ms > horizon_ms:
             stop_reason = "unmet_boundary"
@@ -1804,7 +1938,7 @@ def evaluate_causal(save_bytes, cfg, transfer=None, snapshot_turn=0,
         missing = peak
     elif stop_reason == "missing_prefix":
         missing = max((t_ms // cfg.turn_ms) - applied_rel, 1)
-    elif stop_reason in ("cannot_outrun", "catchup_ms", "unmet_boundary"):
+    elif stop_reason in ("cannot_outrun", "catchup_ms", "unmet_boundary", "deadline"):
         missing = max((t_ms // cfg.turn_ms) - applied_rel, 1)
     return _fail_causal(
         "restart", stop_reason, snapshot_turn, transfer.done_ms, t_ms, missing, cfg,

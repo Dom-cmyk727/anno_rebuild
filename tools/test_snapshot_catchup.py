@@ -1189,6 +1189,180 @@ class CausalReadiness(unittest.TestCase):
         self.assertEqual((again.load_ms, again.replay_turns_per_s, again.turn_store_cap),
                          (0, 100, 1200))
 
+    def test_a_missing_due_turn_is_not_hidden_by_the_arrived_prefix(self):
+        budgets = model.proposed_budgets()
+        late = _complete(3000)
+
+        def drop_turn_11(relative_k, attempt):
+            del attempt
+            return relative_k == 11
+
+        schedule = model.build_turn_schedule(40, budgets, data_drop=drop_turn_11)
+        self.assertNotIn(11, schedule.arrivals)
+        self.assertLessEqual(schedule.arrivals[12], 3100)
+        probed = model.frontiers_at(3100, budgets, arrivals=schedule.arrivals)
+        self.assertEqual(probed["received"], 10)
+        self.assertEqual(probed["due"], 29)
+        self.assertEqual(probed["host_produced"], 31)
+        self.assertTrue(probed["hole"])
+        self.assertFalse(model.prefix_is_due(10, 10, 3100, budgets))
+        self.assertFalse(model.command_input_open(10, 10, 3100, budgets))
+        state = model.catchup_state_at(3100, budgets, 3000, arrivals=schedule.arrivals)
+        self.assertEqual((state["applied"], state["received"], state["due"]), (10, 10, 29))
+        result = model.evaluate_causal(
+            1188, budgets, transfer=late, data_drop=drop_turn_11)
+        self.assertEqual(result.status, "restart")
+        self.assertEqual(result.reason, "missing_prefix")
+        self.assertEqual(
+            (result.done_ms, result.applied, result.received,
+             result.host_applied, result.host_produced),
+            (3100, 10, 10, 31, 31))
+        self.assertFalse(result.input_enabled)
+        self.assertGreater(result.missing, 0)
+        self.assertFalse(result.paused)
+        self.assertTrue(result.honest(budgets))
+        forged = model.replace(
+            result, status="success", reason="caught_up", input_enabled=True,
+            missing=0, hash_turn=10)
+        self.assertFalse(forged.honest(budgets))
+
+    def test_input_stays_off_until_the_due_prefix_and_the_hash(self):
+        budgets = model.proposed_budgets()
+        held = model.catchup_state_at(960, budgets, 150)
+        self.assertEqual((held["applied"], held["received"], held["due"]), (8, 8, 8))
+        self.assertTrue(model.prefix_is_due(8, 8, 960, budgets))
+        self.assertFalse(model.command_input_open(8, 8, 960, budgets))
+        opened = model.command_input_open(10, 10, 1160, budgets)
+        self.assertTrue(opened)
+
+        def delay_turn_11(relative_k, attempt):
+            del attempt
+            return 2000 if relative_k == 11 else 0
+
+        schedule = model.build_turn_schedule(40, budgets, reorder=delay_turn_11)
+        self.assertEqual(schedule.arrivals[11], 3250)
+        self.assertLessEqual(schedule.arrivals[12], 3100)
+        hole = model.frontiers_at(3100, budgets, arrivals=schedule.arrivals)
+        self.assertTrue(hole["hole"])
+        self.assertEqual((hole["received"], hole["due"], hole["host_produced"]), (10, 29, 31))
+        self.assertFalse(model.command_input_open(10, 10, 3100, budgets))
+        waiting = model.catchup_state_at(
+            3100, budgets, 3000, arrivals=schedule.arrivals)
+        self.assertEqual((waiting["applied"], waiting["received"]), (10, 10))
+        self.assertFalse(model.command_input_open(
+            waiting["applied"], waiting["received"], 3100, budgets))
+        filled = model.evaluate_causal(
+            1188, budgets, transfer=_complete(3000), reorder=delay_turn_11)
+        self.assertEqual(filled.status, "success")
+        self.assertTrue(filled.input_enabled)
+        self.assertFalse(filled.paused)
+        self.assertEqual(
+            (filled.ready_ms, filled.done_ms, filled.applied, filled.received,
+             filled.host_applied, filled.hash_turn),
+            (3480, 4160, 40, 40, 41, 40))
+        self.assertEqual(
+            filled.applied,
+            filled.snapshot_turn + model.due_relative(filled.done_ms, budgets))
+        self.assertTrue(model.command_input_open(
+            filled.applied, filled.received, filled.done_ms, budgets))
+        self.assertTrue(filled.honest(budgets))
+        before = model.catchup_state_at(
+            filled.done_ms - budgets.turn_ms, budgets, 3000, arrivals=schedule.arrivals)
+        self.assertFalse(model.command_input_open(
+            before["applied"], before["received"], filled.done_ms - budgets.turn_ms, budgets))
+
+    def test_a_missing_last_due_turn_is_not_a_hole(self):
+        budgets = model.proposed_budgets()
+
+        def drop_turn_11(relative_k, attempt):
+            del attempt
+            return relative_k == 11
+
+        schedule = model.build_turn_schedule(20, budgets, data_drop=drop_turn_11)
+        probed = model.frontiers_at(1300, budgets, arrivals=schedule.arrivals)
+        self.assertEqual(probed["received"], 10)
+        self.assertEqual(probed["due"], 11)
+        self.assertFalse(probed["hole"])
+        self.assertLess(probed["received"], probed["due"])
+        self.assertFalse(model.command_input_open(10, 10, 1300, budgets))
+        result = model.evaluate_causal(
+            1188, budgets, transfer=_complete(1200), data_drop=drop_turn_11)
+        self.assertEqual(result.status, "restart")
+        self.assertEqual(result.reason, "missing_prefix")
+        self.assertEqual((result.done_ms, result.applied, result.received), (1300, 10, 10))
+        self.assertEqual(result.host_applied, 13)
+        self.assertFalse(result.input_enabled)
+        self.assertFalse(result.paused)
+        self.assertTrue(result.honest(budgets))
+
+    def test_deadline_runs_before_one_fragment_success(self):
+        budgets = model.proposed_budgets()
+        tight = model.replace(budgets, catchup_ms=1160)
+        table = model.Table(tight)
+        self.assertEqual(table.attach("old", 0, 1188, 0, 0)[0], "opened")
+        self.assertEqual(table.advance(1159, 11), [])
+        self.assertEqual(table.running(), 1)
+        self.assertEqual(table.advance(1160, 11), [("old", "deadline")])
+        self.assertEqual(table.running(), 0)
+        self.assertFalse(table.paused)
+        self.assertEqual(table.advance(1161, 11), [])
+        self.assertEqual(table.running(), 0)
+        early = model.evaluate_causal(1188, tight, horizon_ms=1159)
+        self.assertNotEqual(early.status, "success")
+        self.assertFalse(early.input_enabled)
+        self.assertFalse(early.paused)
+        at_deadline = model.evaluate_causal(1188, tight)
+        self.assertEqual(at_deadline.status, "restart")
+        self.assertEqual(at_deadline.reason, "deadline")
+        self.assertEqual(at_deadline.done_ms, 1160)
+        self.assertFalse(at_deadline.input_enabled)
+        self.assertFalse(at_deadline.paused)
+        self.assertTrue(at_deadline.honest(tight))
+        forged = model.replace(
+            at_deadline, status="success", reason="caught_up", input_enabled=True,
+            missing=0, hash_turn=10)
+        self.assertFalse(forged.honest(tight))
+        plain = model.evaluate_causal(1188, budgets)
+        self.assertEqual((plain.status, plain.done_ms, plain.applied, plain.host_applied),
+                         ("success", 1160, 10, 11))
+        self.assertTrue(plain.honest(budgets))
+
+    def test_deadline_beats_the_tail_and_a_younger_join_stays(self):
+        collision = model.replace(
+            model.proposed_budgets(), catchup_ms=1000, tail_turns_max=9)
+        table = model.Table(collision)
+        self.assertEqual(table.attach("a", 0, 1188, 0, 0)[0], "opened")
+        self.assertEqual(table.advance(999, 9), [])
+        self.assertEqual(table.running(), 1)
+        self.assertEqual(table.advance(1000, 10), [("a", "deadline")])
+        self.assertEqual(table.running(), 0)
+        self.assertFalse(table.paused)
+        caught = model.evaluate_causal(1188, collision)
+        self.assertEqual(caught.status, "restart")
+        self.assertEqual(caught.reason, "deadline")
+        self.assertEqual(caught.done_ms, 1000)
+        self.assertFalse(caught.input_enabled)
+        self.assertFalse(caught.paused)
+        self.assertTrue(caught.honest(collision))
+
+        tight = model.replace(model.proposed_budgets(), catchup_ms=1160)
+        shared = model.Table(tight)
+        self.assertEqual(shared.attach("old", 0, 1188, 0, 0)[0], "opened")
+        self.assertEqual(shared.advance(1000, 10), [])
+        self.assertEqual(shared.attach("young", 1000, 1188, 0, 10)[0], "shared")
+        self.assertEqual(shared.advance(1159, 11), [])
+        self.assertEqual(shared.running(), 2)
+        self.assertEqual(shared.advance(1160, 11), [("old", "deadline")])
+        self.assertEqual(shared.running(), 1)
+        self.assertFalse(shared.paused)
+        self.assertEqual(shared.advance(1161, 11), [])
+        self.assertEqual(shared.running(), 1)
+        self.assertEqual(shared.advance(2159, 21), [])
+        self.assertEqual(shared.running(), 1)
+        self.assertEqual(shared.advance(2160, 21), [("young", "deadline")])
+        self.assertEqual(shared.running(), 0)
+        self.assertFalse(shared.paused)
+
     def test_adr_names_the_causal_boundary_and_stays_proposed(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         with open(os.path.join(root, "docs", "adr", "0003-network-transport.md"),

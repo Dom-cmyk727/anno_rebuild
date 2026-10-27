@@ -1894,11 +1894,11 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 
 - **Review evidence (round bw):** reuse `state.md` island insertion evidence at `0x100a19a0`; the store is `0x100a19d4`. Fresh island vtable `0x100cac2c` slot `+0xf8` is `0x100863e0`, returning `[island + argument*4 + 0x38]`. City vtable `0x100c2f40` slot `+0xb4` is `0x10028fd0`, RemoveAt (`transport.md` §3.4.17). T49 ties the AI lookup to those creation paths and to the three arguments.
 
-## OQ-340: Which store replaces the type-12 node's `0xff` index bytes (T49, 2026-10-27)
-- **Status:** open. OQ-341 is the other question from this pass. OQ-342..349 were not used.
+## OQ-340: Source and validity of the type-12 node's island/city index pair (T49, 2026-10-27)
+- **Status:** open, narrowed by round-bx review. The direct writer is identified. OQ-341 is the other question from this pass. OQ-342..349 were not used.
 - **Area:** simulation / AI.
-- **What was read.** The constructor in `complogic.md` §10 writes `0xff` at `[node + 0x120]` and `[node + 0x121]`. §11 shows the AI path uses bits 0..7 of that word as the island-table index and bits 8..15 as the city-ring index. No later store of an in-range pair was read.
-- **How to resolve:** the store that writes `[node + 0x120]` after `0x1001698e` on the type-12 object published at `0x100414b0`.
+- **What was read.** The constructor in `complogic.md` §10 writes `0xff` at `[node + 0x120]` and `[node + 0x121]`. §11 shows the AI path uses bits 0..7 of that word as the island-table index and bits 8..15 as the city-ring index. Review found `CompLogic.dll` `0x10041329`, which stores the low 16 bits of type-12 slot `+0x5c` (`0x100410f0`)'s first argument at `[node + 0x120]`, before publication at `0x100414b0`. The load at `0x1004131a` and its stack ledger are in §11's review addendum. This does not establish that either index is in range or selects a live object.
+- **How to resolve:** follow the caller that supplies argument 1 to `0x100410f0`, including its packed-byte source, bounds and null/lifetime conditions. Do not repeat the already identified field-store search. T50 is the bounded continuation.
 
 ## OQ-341: Whether RemoveAt reads its third argument (T49, 2026-10-27)
 - **Status:** open.

@@ -4815,7 +4815,7 @@ None. All work inline.
 
 **Acceptance, item by item.**
 1. **The validators are independent of delivery state, and every listed mutant is caught by a named test: MET.** `validate()` takes only the event log and the config; the table above. One mutant escaped on the first run and led to the extended B1 tests.
-2. **The B1/B2/B3/S2/S3/grant-race regressions pass: MET.** `RoundCcJoinSide`, `RoundCcSeats`, `RoundCcSamePeer` (19 tests in the final file).
+2. **The B1/B2/B3/S2/S3/grant-race regressions pass: MET.** `RoundCcJoinSide`, `RoundCcSeats`, `RoundCcSamePeer` (18 tests in the final file).
 3. **No loss-free configuration in the stated domain restarts or fails to open input, and validator (v) holds in every row and scan: MET** for the domain stated in the ADR (replay ≤ 73 ms/turn on `endless02`, one-way ≤ 1 500 ms in the normal row, 100–200 ms × 10/20 ms scan). Outside it the restarts are the named join-only reasons 6 and 7.
 4. **Seats are exclusive and restored to their previous owner: MET.** P10a/b/c, the empty-seat and AI-seat tests, validator (vi).
 5. **ADR, OQ and report agree: MET** for F3. OQ-320 stays open; OQ-373 carries the new limits and the two domains; no OQ-374..379 used. Open for F4: seated-peer outages (B4/S7), log-backed sending (S1), the snapshot and `JoinGrant` on channel 1 (S4), seated upstream traffic (S6) and the F4 nits.

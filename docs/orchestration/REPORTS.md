@@ -4764,3 +4764,58 @@ None. All work inline.
 5. **Exact-deadline and normal-progress regressions pass, ADR 0003 stays Proposed, uncertainties written down: MET.** 3 000 ms does not accept, 2 999 ms does; normal row 1 610 / 2 260. ADR status line unchanged; the open items are above and in OQ-320/370/371/372/373.
 
 - Time spent / subagents used: inline, no subagents.
+
+## T52 F3 — Independent validators and join-side fixes — 2026-10-27 — status: FINISHED
+
+- Branch `codex/T52-join-activation-design`, worktree `E:\anno1503-worktrees\anno1503-T52`. Started clean at `5ea1f347b55f236694d80fb534add042ae337ef0`; the commit that adds this section is the branch head. Board read from `E:\anno1503` main at `1393d0d` (round cc). Files changed: `tools/join_activation.py`, `tools/test_join_activation.py`, `docs/adr/0003-network-transport.md` (§8.4, §8.5, §8.7, Open choices OQ-373), `docs/open-questions.md` (OQ-320, OQ-370, OQ-373), this section. `snapshot_catchup.py` and its tests unchanged (`git diff 5ea1f34 -- tools/snapshot_catchup.py tools/test_snapshot_catchup.py` is empty). No `src/`, no sockets, no `TASKS.md`/`AGENTS.md`, nothing merged or pushed. ADR stays Proposed. The probe files in `E:\anno1503\cache\orch-cc\t52probe\` were read and not copied or committed. No subagents, no C++ build.
+- Differences from the board text: none that change a step. Two choices the board left open: (1) B1 uses both of its offered rules together — the joiner's check covers the transport buffer and is taken at the end of the millisecond's delivery batch, and the host confirms with a bound (not equality) through a new `InputReq` / `InputGo` exchange whose elapsed time the joiner bounds with its own clock; (2) the replay-speed domain is 1–73 ms per 100 ms turn, not 1–100, because the catch-up arithmetic ends it (stated in the ADR and OQ-373; 74–100 end in the join-only catch-up restart, reason 6, which a test pins). The ADR's "snapshot turn 12" for the restarted peer is corrected to the checker's 0 (a live generation inside `snapshot_age_ms` is shared).
+
+**Step 1: validators and mutants.**
+- `validate(events, cfg, end_t, oracle_lag)` in `tools/join_activation.py` reads only the raw event log (`Sim.events`: send, arrive, deliver, ack, enqueue, overflow, abandon, produce, apply, input_on/off, admit, refuse, attempt_end, seated, seat_init, outage) and the configuration. It does not read `Chan` or peers. Checks (i)–(vii) as on the board, plus (viii) a grant names a turn already sent. Each fires on a hand-written log (`ValidatorsOnHandWrittenLogs`, 9 tests) and passes on every named row and every scan.
+- Mutant table (`MutantTable`; each named test fails under its mutant and passes without it):
+
+| Mutant | Caught by (named tests that fail) |
+|---|---|
+| deliver past holes (the `p1` mutant) | `TransportAccounting.test_every_named_row_has_no_transport_violation`, `OwnershipAndInput.test_unapplied_turns_survive_activation` |
+| window + 1 | `TransportAccounting.test_window_of_32_holds_with_fragmented_turns_and_blocked_acks` |
+| grant freshness gate removed (joiner `fresh()` and the host's `InputReq` bound) | `RoundCcJoinSide.test_b1_input_grant_lost_seven_times_cannot_open_stale_input`, `..._four_times_...`, `test_b1_turn_before_the_grant_lost_seven_times_...` |
+| release always to `"ai"` | `RoundCcSeats.test_a_failed_join_on_an_empty_seat_does_not_create_an_ai`, `OwnershipAndInput.test_restart_after_a_releases_the_seat_everywhere` |
+| C one turn ahead | `RoundCcJoinSide.test_b2_grant_names_a_turn_already_sent`, `OwnershipAndInput.test_normal_row_values` |
+| no seat exclusivity (extra) | `RoundCcSeats.test_p10a_...`, `test_p10c_...` |
+
+  The first run of the freshness mutant was **not** caught (a finding): at 10 ms per replayed turn the round trip of the new exchange lets the joiner catch up before it opens, which hides the missing gate. The three B1 tests were extended to replay steps 10, 40, 60 and 80 ms; at 40–80 ms the mutant opens input 9 to 23 turns behind and is caught.
+
+**Failing-first evidence at `5ea1f34`** (new tests run against the old checker; full output saved outside git in the session scratch). Names and failure text:
+- `test_b1_input_grant_lost_seven_times...`: "input opened with host - applied = 22"; `..._four_times...`: "= 13"; `test_b1_turn_before_the_grant_lost_seven_times...`: "= 23".
+- `test_b2_grant_names_a_turn_already_sent`: "one-way 145, replay step 10: … 'input_ms': None … 'restart': (21590, 5)"; `test_b2_loss_free_latency_by_replay_step_scan`: failures at (140, 20), (145, 10), (190, 20), (195, 10) and others.
+- `test_b3_endless02_replay_steps_do_not_restart`: "[(15, 189000, 1), (24, 211000, 1), (25, 21…" (restart reason 1); `test_b3_expiry_of_one_checkpoint_reselects_instead_of_restarting`: "'restart': (3000, 1)"; `test_b3_normal_row_across_latencies`: "[(500, (3000, 1)), (600, (3000, 1)), (900, (3000, 1))]".
+- `test_p10a_two_joins_for_one_seat_only_one_is_admitted`: "joiners with input on seat 2: ['J1', 'J2']"; `test_p10c_a_join_on_a_seated_humans_seat_is_refused`: "owner 'ai'"; `test_a_failed_join_on_an_empty_seat_does_not_create_an_ai`: "seat 2 after the cancel: host 'ai' seated 'ai'".
+- `test_s3_the_same_peer_can_ask_again_after_a_restart`: "J2 did not join on its second ask"; `test_s3_the_restart_row_snapshot_turn_matches_the_adr`: "attempt 1"; `test_grant_race_input_never_opens_after_the_host_restarted_the_attempt`: "input_ready_ms=640: input on at 2260 after the restart at 2250".
+- 14 of the 16 first-written regressions failed; the other two (`test_p10b`, `test_a_failed_join_on_an_ai_seat...`) pass at the old head by accident of the old rules and stay as guards. The final test file, run against the old checker, adds four `AttributeError` errors only where a test calls the new `validate_sim`.
+
+**Steps 2–6, what changed in the checker.**
+- B1: grant → `InputReq(applied, nonce)` → `InputGo` → `InputOn`. Decisions at the end of the delivery batch (priority 35). `known` = highest turn in the transport buffer, delivered or not. Host bound: `host_turn - applied <= input_host_lag_max + ceil(rtt/turn_ms)`. Joiner bound on the elapsed time of the exchange: `1.5 · srtt + turn_ms`. Round trips are smoothed ACK samples (Karn: only datagrams never resent).
+- B2: `current()` is the last produced turn, so `C` and the grant name a turn already sent (validator viii); `A = C + command_delay` is unchanged off the boundary.
+- B3: selection needs `now + rtt + 100 < deadline`; the deadline is the host's production time of that turn + 2 hash periods + 2 measured round trips; a superseding watermark waits one round trip + margin; expiry returns the attempt to `Waiting` with a floor (no restart).
+- S2: admission refuses (reason 9) before reserving anything when a seated human or another live attempt holds the seat; release restores `prev_owner` (empty stays empty).
+- S3: the host assigns attempts; the same peer asks again (the old attempt is retired, reason 10); a joiner takes a newer `JoinGrant` in any state and closes input on `JoinRestart`; the host does not restart under an `InputGo` in flight.
+- The `row_expiry_and_restart` row now asks again as the same peer J2; `row_deadline_collision` takes its delay from the deadline and delays only the first report.
+
+**Scans (all pass; counts from the test run).**
+- B2 scan: one-way 100–200 ms in 5 ms steps × replay step 10 and 20 (42 configurations, including (140,20), (145,10), (190,20), (195,10)): every one opens input, none restarts, validators clean.
+- B3 `endless02`: replay steps 1–73 plus 15, 24, 25, 29, 30, 34, 40, 45, 50, 70: no restart, input opens, validators clean. Steps 74, 80, 100: restart reason 6 at 600 000 ms, the table keeps running. The edge follows from `1606 / (1/step − 1/100) <= 439 350 ms`, i.e. 73.2.
+- B3 normal row, one-way 0 to 450 in 25 ms steps and 500, 600, 900, 1 200, 1 500: all complete, no restart. 2 000 ms: restart reason 7 (the 32-datagram window), table keeps running.
+- B1 at replay steps 10/40/60/80: opens with host − applied at most 6.
+
+**Recomputed rows** (ADR §8.7 table replaced; `python -I -B tools/join_activation.py`): normal accept 1 610 / A 18 / input 2 560 (24, 24); lost watermark 1 910 / 21 / 3 160; lost checkpoint 1 910 / 21 / 2 860; report blocks later watermark 2 810 / 30 / 3 760; deadline exact: H = 10 expires at 3 600, H = 20 accepted 3 900 / A 40 / input 4 760; one ms earlier 3 599 / 37 / 4 460; turn lost after H 2 700 / 28 / 3 560; missing turn before H restart 3 300 reason 4; all control lost restart 3 710 reason 4; `endless02` H = 1 770 accept 178 800 / A 1 789 / input 179 660; two joins one generation 1 610 / 18 / 2 560 both; two generations J2 62 610 / 628 / 63 560, J1 72 450 / 726 / 73 360; cancel and restart: J2 attempt 2, S = 0, accept 1 900 / A 20 / input 2 760. Every row: validators clean, no transport violation, no root conflict.
+
+**ADR text mismatches corrected:** ACK flush timing (priority 25: after the data deliveries, before replay completion); deadline origin (the host's production time of that turn, since F2 does not send the root to the joiner); "each watermark pins" (only a watermark offering a hash turn pins, at most 2 pins); the supersede and expiry rules; the Release text; the J2b row; reason codes; the "ordered delivery proves freshness" claim withdrawn. Not changed (F4): the JoinAbort `reason` field and JoinRestart byte count, the 424 kbit/s and 568-byte figures, the outstanding-HashReport bound.
+
+**Commands.** `python -I -B tools/test_join_activation.py -v`: 59 tests OK. `JOIN_RULES=F1 python -I -B tools/test_join_activation.py RoundCbRegressions`: 5 of 5 fail (as designed). `python -I -B tools/test_snapshot_catchup.py`: 64 tests OK. `ast.parse` of both new files: ok. `git diff --check`: clean (CRLF notice only). `git status --short`: the four modified files before this report, the report file added.
+
+**Acceptance, item by item.**
+1. **The validators are independent of delivery state, and every listed mutant is caught by a named test: MET.** `validate()` takes only the event log and the config; the table above. One mutant escaped on the first run and led to the extended B1 tests.
+2. **The B1/B2/B3/S2/S3/grant-race regressions pass: MET.** `RoundCcJoinSide`, `RoundCcSeats`, `RoundCcSamePeer` (19 tests in the final file).
+3. **No loss-free configuration in the stated domain restarts or fails to open input, and validator (v) holds in every row and scan: MET** for the domain stated in the ADR (replay ≤ 73 ms/turn on `endless02`, one-way ≤ 1 500 ms in the normal row, 100–200 ms × 10/20 ms scan). Outside it the restarts are the named join-only reasons 6 and 7.
+4. **Seats are exclusive and restored to their previous owner: MET.** P10a/b/c, the empty-seat and AI-seat tests, validator (vi).
+5. **ADR, OQ and report agree: MET** for F3. OQ-320 stays open; OQ-373 carries the new limits and the two domains; no OQ-374..379 used. Open for F4: seated-peer outages (B4/S7), log-backed sending (S1), the snapshot and `JoinGrant` on channel 1 (S4), seated upstream traffic (S6) and the F4 nits.

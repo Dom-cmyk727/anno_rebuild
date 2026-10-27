@@ -6,9 +6,11 @@ fail against the guards published at 3020900; the default is the F2 proposal.
 A failing assertion prints the full event trace.
 """
 
+import contextlib
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import join_activation as ja
@@ -51,6 +53,11 @@ def owners_everywhere(sim, seat):
 
 def summary(sim, name="J1"):
     return ja.summary(sim, name)
+
+
+def validate_clean(sim, **kw):
+    """The independent validators of join_activation.validate(), from the raw event log."""
+    return ja.validate_sim(sim, **kw)
 
 
 class RoundCbRegressions(TraceCase):
@@ -115,7 +122,8 @@ class OwnershipAndInput(TraceCase):
         jr = sim.host.joins["J1"]
         j = sim.joiners["J1"]
         self.check(sim, (jr.H, jr.accept_ms, jr.A) == (10, 1610, 18), "accept row %r" % ((jr.H, jr.accept_ms, jr.A),))
-        self.check(sim, j.active_ms == 2260 and j.active_cursors == (20, 21), "input row %r" % (j.active_cursors,))
+        self.check(sim, j.active_ms == 2560 and j.active_cursors == (24, 24), "input row %r at %s" % (
+            j.active_cursors, j.active_ms))
         self.check(sim, sim.violations == [] and sim.root_conflicts() == [], "violations or conflicts")
 
     def test_ownership_is_replayed_with_input_still_off(self):
@@ -149,8 +157,8 @@ class OwnershipAndInput(TraceCase):
         jr = sim.host.joins["J1"]
         self.check(sim, jr.restart_reason == 5 and jr.released_at is not None,
                    "expected a restart for input that never became fresh: %r" % (summary(sim),))
-        self.check(sim, sim.host.owners[2] == "ai" and sim.seated[0].owners[2] == "ai",
-                   "seat not released: %r" % owners_everywhere(sim, 2))
+        self.check(sim, sim.host.owners.get(2) is None and sim.seated[0].owners.get(2) is None,
+                   "seat 2 not restored to its previous (empty) owner: %r" % owners_everywhere(sim, 2))
         self.check(sim, sim.root_conflicts() == [], "roots differ")
 
     def test_cancel_after_a_is_published_releases_the_seat(self):
@@ -160,8 +168,8 @@ class OwnershipAndInput(TraceCase):
         sim.run(5000)
         jr = sim.host.joins["J1"]
         self.check(sim, jr.accept_ms == 1610 and jr.restart_reason == 8, "state %r" % (summary(sim),))
-        self.check(sim, sim.host.owners[2] == "ai" and sim.seated[0].owners[2] == "ai",
-                   "seat not released on every peer")
+        self.check(sim, sim.host.owners.get(2) is None and sim.seated[0].owners.get(2) is None,
+                   "seat not restored to its previous (empty) owner on every peer")
         self.check(sim, sim.root_conflicts() == [], "roots differ")
 
     def test_late_control_for_a_dead_attempt_is_ignored(self):
@@ -210,9 +218,10 @@ class OverlappingJoins(TraceCase):
 
     def test_expiry_and_restart_from_a_snapshot_before_a(self):
         sim = ja.row_expiry_and_restart(cfg())
-        j1, j2, j2b = (sim.host.joins[n] for n in ("J1", "J2", "J2b"))
-        self.check(sim, j2.restart_reason == 8 and j2b.S < j1.A, "J2b did not start before A: %r" % ((j2b.S, j1.A),))
-        self.check(sim, sim.joiners["J2b"].active_ms is not None, "J2b not active")
+        j1, j2, j2b = sim.host.joins["J1"], sim.host.history[-1], sim.host.joins["J2"]
+        self.check(sim, j2.attempt == 1 and j2.restart_reason == 8 and j2b.attempt == 2 and j2b.S < j1.A,
+                   "the second ask did not start before A: %r" % ((j2b.S, j1.A),))
+        self.check(sim, sim.joiners["J2"].active_ms is not None, "J2 not active on its second attempt")
         self._same_everywhere(sim, (3, 4))
 
     def test_snapshot_after_a_covers_the_event(self):
@@ -236,15 +245,18 @@ class OverlappingJoins(TraceCase):
 
 
 class Deadlines(TraceCase):
-    def test_exact_deadline_does_not_accept(self):
+    def test_exact_deadline_does_not_accept_and_does_not_restart(self):
+        # Deadline 3600 = root produced at 1000 + 2 hash periods + 2 round trips of 300 ms.
         sim = ja.row_deadline_collision(cfg(), True)
         jr = sim.host.joins["J1"]
-        self.check(sim, jr.accept_ms is None and jr.restart_ms == 3000 and jr.restart_reason == 1, repr(summary(sim)))
+        self.check(sim, jr.expired[:1] == [(3600, 10)], "expired %r" % (jr.expired,))
+        self.check(sim, jr.restart_ms is None and jr.H == 20 and jr.accept_ms == 3900,
+                   "the join did not go on with a later checkpoint: %r" % (summary(sim),))
 
     def test_one_ms_earlier_accepts(self):
         sim = ja.row_deadline_collision(cfg(), False)
         jr = sim.host.joins["J1"]
-        self.check(sim, jr.accept_ms == 2999 and jr.A == 31, repr(summary(sim)))
+        self.check(sim, jr.accept_ms == 3599 and jr.A == 37 and jr.expired == [], repr(summary(sim)))
 
     def test_all_control_lost_ends_in_a_join_only_restart(self):
         sim = ja.row_all_control_lost(cfg())
@@ -265,6 +277,7 @@ class TransportAccounting(TraceCase):
             self.check(sim, sim.violations == [], name)
             self.check(sim, in_order(sim), name + " delivered out of order")
             self.check(sim, sim.root_conflicts() == [], name + " roots differ")
+            self.check(sim, validate_clean(sim) == [], "%s: %r" % (name, validate_clean(sim)[:3]))
 
     def test_window_of_32_holds_with_fragmented_turns_and_blocked_acks(self):
         # A 1216-byte command burst every turn is two datagrams (1200 + 56 payload),
@@ -303,7 +316,7 @@ class TransportAccounting(TraceCase):
     def test_ack_only_does_not_consume_a_sequence(self):
         sim = ja.row_normal(cfg())
         c = sim.chan("J1", "H", 0)
-        self.check(sim, c.next_seq <= 6 and sim.stats[("J1", "H")]["ack"] > c.next_seq, "ack %d seq %d" % (
+        self.check(sim, c.next_seq <= 7 and sim.stats[("J1", "H")]["ack"] > c.next_seq, "ack %d seq %d" % (
             sim.stats[("J1", "H")]["ack"], c.next_seq))
 
     def test_root_caches_stay_bounded(self):
@@ -327,6 +340,429 @@ class TransportAccounting(TraceCase):
         self.assertEqual(ja.turn_bytes([]), 16)
         self.assertEqual(ja.turn_bytes([(1, 2, "human")]), 16 + 14)
         self.assertEqual(ja.HEADER + ja.IP_UDP, 53)
+
+
+# ---- round cc (F3) regressions: written first, shown failing at 5ea1f34 ----------------------
+# These use only what a test can observe without the checker's own bookkeeping: the joiner's
+# input-open time and cursors, and the host turn computed from the clock (the host produces
+# turn k at k * turn_ms), as the oracle.
+
+ORACLE_LAG = 8  # host turn minus joiner applied turn at the millisecond input opens (input_lag_max 6 + 2)
+DOMAIN_END = 650000
+DOMAIN_STEP_MAX = 73
+LATENCY_MAX = 1500  # one-way ms; the window of 32 datagrams per round trip ends it, see the next test
+ADR_RESTART_SNAPSHOT_TURN = 0  # the restarted J2 shares generation 1, whose snapshot is turn 0
+
+
+def host_lag_at_open(sim, name="J1"):
+    j = sim.joiners[name]
+    if j.active_ms is None:
+        return None
+    return j.active_ms // sim.cfg.turn_ms - j.active_cursors[0]
+
+
+class RoundCcJoinSide(TraceCase):
+    def _opens_fresh(self, sim, text):
+        lag = host_lag_at_open(sim)
+        self.check(sim, lag is not None, text + ": input never opened")
+        self.check(sim, lag <= ORACLE_LAG, text + ": input opened with host - applied = %d" % lag)
+        self.check(sim, validate_clean(sim, oracle_lag=ORACLE_LAG) == [],
+                   text + ": validators %r" % (validate_clean(sim, oracle_lag=ORACLE_LAG)[:3],))
+
+    # A joiner that replays slowly still has a backlog when the hole fills, so the freshness
+    # gates are what keeps input shut; at 10 ms per turn the round trip alone hides the defect.
+    REPLAY_STEPS = (10, 40, 60, 80)
+
+    def test_b1_input_grant_lost_seven_times_cannot_open_stale_input(self):
+        for step in self.REPLAY_STEPS:
+            seq = ja.first_seq(cfg(replay_step_ms=step), "InputGrant", "H>J1")
+            losses = {("InputGrant", "H>J1", seq, a) for a in range(1, 8)}
+            self._opens_fresh(ja.one_join(cfg(replay_step_ms=step), losses=losses, until=20000),
+                              "grant lost 1-7, replay %d ms" % step)
+
+    def test_b1_input_grant_lost_four_times_cannot_open_stale_input(self):
+        for step in self.REPLAY_STEPS:
+            seq = ja.first_seq(cfg(replay_step_ms=step), "InputGrant", "H>J1")
+            losses = {("InputGrant", "H>J1", seq, a) for a in range(1, 5)}
+            self._opens_fresh(ja.one_join(cfg(replay_step_ms=step), losses=losses, until=20000),
+                              "grant lost 1-4, replay %d ms" % step)
+
+    def test_b1_turn_before_the_grant_lost_seven_times_cannot_open_stale_input(self):
+        for step in self.REPLAY_STEPS:
+            seq = ja.first_seq(cfg(replay_step_ms=step), "InputGrant", "H>J1") - 1
+            losses = {("Turn", "H>J1", seq, a) for a in range(1, 8)}
+            self._opens_fresh(ja.one_join(cfg(replay_step_ms=step), losses=losses, until=20000),
+                              "turn %d lost 1-7, replay %d ms" % (seq, step))
+
+    def test_b2_grant_names_a_turn_already_sent(self):
+        # Boundary configurations of the round-cc scan (watermark delivered on a turn boundary).
+        for one_way, step in ((145, 10), (140, 20), (195, 10), (190, 20)):
+            c = cfg(one_way_ms=one_way, replay_step_ms=step, resend_ms=2 * one_way)
+            sim = ja.one_join(c, until=25000, snapshot_ms=one_way)
+            jr = sim.host.joins["J1"]
+            self.check(sim, sim.joiners["J1"].active_ms is not None and jr.restart_ms is None,
+                       "one-way %d, replay step %d: %r" % (one_way, step, summary(sim)))
+            self.check(sim, validate_clean(sim) == [], "validators %r" % (validate_clean(sim)[:3],))
+
+    def test_b2_loss_free_latency_by_replay_step_scan(self):
+        bad = []
+        for one_way in range(100, 201, 5):
+            for step in (10, 20):
+                c = cfg(one_way_ms=one_way, replay_step_ms=step, resend_ms=2 * one_way)
+                sim = ja.one_join(c, until=25000, snapshot_ms=one_way)
+                if sim.joiners["J1"].active_ms is None or sim.host.joins["J1"].restart_ms is not None \
+                        or validate_clean(sim):
+                    bad.append((one_way, step, summary(sim)["restart"], validate_clean(sim)[:1]))
+        self.assertEqual(bad, [])
+
+    def test_b3_endless02_replay_steps_do_not_restart(self):
+        # The domain: replay at least 1.37 times faster than the table (73 ms per 100 ms turn or
+        # less), so that endless02's 1 606-turn backlog is gone inside catchup_ms. See below.
+        steps = sorted(set(range(1, DOMAIN_STEP_MAX + 1)) | {15, 24, 25, 29, 30, 34, 40, 45, 50, 70})
+        bad = []
+        for step in steps:
+            sim = ja.Sim(cfg(replay_step_ms=step))
+            sim.add_join("J1", 0, 2, snapshot_ms=160650)
+            sim.run(DOMAIN_END)
+            jr = sim.host.joins["J1"]
+            if jr.restart_ms is not None or sim.joiners["J1"].active_ms is None or validate_clean(sim):
+                bad.append((step, jr.restart_ms, jr.restart_reason, validate_clean(sim)[:1]))
+        self.assertEqual(bad, [])
+
+    def test_b3_endless02_beyond_the_domain_ends_in_the_catchup_limit_only(self):
+        # Replay slower than 73 ms per turn cannot clear the backlog inside catchup_ms. That is the
+        # join-only catch-up restart (reason 6), nothing else, and the table keeps running.
+        for step in (74, 80, 100):
+            sim = ja.Sim(cfg(replay_step_ms=step))
+            sim.add_join("J1", 0, 2, snapshot_ms=160650)
+            sim.run(DOMAIN_END)
+            jr = sim.host.joins["J1"]
+            self.check(sim, jr.restart_reason == 6 and jr.restart_ms == 600000, "step %d: %r" % (step, summary(sim)))
+            self.check(sim, sim.host.applied == DOMAIN_END // 100, "the table stopped")
+
+    def test_b3_the_latency_limit_is_the_window_not_the_deadline(self):
+        # At 2 000 ms one way the round trip is 4 s: 40 turns per round trip want 40 sequences
+        # against the window of 32, the waiting queue passes wait_cap and the joiner is restarted
+        # for queue overflow (reason 7). The deadline and input_ready_ms are not what ends it.
+        c = cfg(one_way_ms=2000, resend_ms=4000)
+        sim = ja.one_join(c, until=200000, snapshot_ms=2000)
+        self.check(sim, sim.host.joins["J1"].restart_reason == 7, repr(summary(sim)))
+        self.check(sim, sim.host.applied == 2000, "the table stopped")
+
+    def test_b3_expiry_of_one_checkpoint_reselects_instead_of_restarting(self):
+        # The first report is lost nine times (a limit of twenty sends keeps the pair alive), so
+        # everything behind it on the ordered channel waits. Its checkpoint expires; when the hole
+        # fills, a later watermark selects a later hash turn and the join completes. No restart.
+        seq = first_seq("HashReport", "J1>H")
+        losses = {("HashReport", "J1>H", seq, a) for a in range(1, 10)}
+        sim = ja.one_join(cfg(max_attempts=20), losses=losses, until=20000)
+        jr = sim.host.joins["J1"]
+        self.check(sim, jr.expired and jr.restart_ms is None and sim.joiners["J1"].active_ms is not None,
+                   "expired %r, restart or no input: %r" % (jr.expired, summary(sim),))
+        self.check(sim, len(jr.selected) >= 2 and jr.H > jr.expired[0][1],
+                   "no re-selection above the expired checkpoint: %r" % (jr.selected,))
+        self.check(sim, validate_clean(sim) == [], "validators")
+
+    def test_b3_normal_row_across_latencies(self):
+        bad = []
+        for one_way in list(range(0, 451, 25)) + [500, 600, 900, 1200, LATENCY_MAX]:
+            c = cfg(one_way_ms=one_way, resend_ms=max(2 * one_way, 100))
+            sim = ja.one_join(c, until=60000, snapshot_ms=max(one_way, 1))
+            if sim.joiners["J1"].active_ms is None or sim.host.joins["J1"].restart_ms is not None \
+                    or validate_clean(sim):
+                bad.append((one_way, summary(sim)["restart"], validate_clean(sim)[:1]))
+        self.assertEqual(bad, [])
+
+
+class RoundCcSeats(TraceCase):
+    def _no_conflicts(self, sim):
+        self.check(sim, sim.root_conflicts() == [], "roots differ")
+
+    def test_p10a_two_joins_for_one_seat_only_one_is_admitted(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.add_join("J2", 0, 2)
+        sim.run(6000)
+        active = [n for n in ("J1", "J2") if sim.joiners[n].active_ms is not None]
+        self.check(sim, len(active) == 1, "joiners with input on seat 2: %r" % (active,))
+        self.check(sim, sim.host.owners.get(2) == "human", "seat 2 owner %r" % sim.host.owners.get(2))
+        self.check(sim, validate_clean(sim) == [], "validators %r" % (validate_clean(sim)[:3],))
+        self._no_conflicts(sim)
+
+    def test_p10b_a_refused_joiner_cancelling_does_not_release_the_other_seat(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.add_join("J2", 0, 2)
+        sim.cancel("J2", 2300)
+        sim.run(6000)
+        self.check(sim, sim.joiners["J1"].state == "active" and sim.host.owners.get(2) == "human",
+                   "J1 %s, seat 2 %r" % (sim.joiners["J1"].state, sim.host.owners.get(2)))
+        self.check(sim, sim.seated[0].owners.get(2) == "human", "seated peer sees %r" % sim.seated[0].owners.get(2))
+        self._no_conflicts(sim)
+
+    def test_p10c_a_join_on_a_seated_humans_seat_is_refused(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.add_join("J1", 0, 1)  # seat 1 is P1's
+        sim.run(25000)
+        self.check(sim, sim.joiners["J1"].active_ms is None and sim.host.owners.get(1) == "human",
+                   "join on P1's seat: %r, owner %r" % (summary(sim), sim.host.owners.get(1)))
+        self.check(sim, not [l for l in sim.trace if "owner seat 1 -> ai" in l], "the seat was given to the AI")
+        self.check(sim, validate_clean(sim) == [], "validators %r" % (validate_clean(sim)[:3],))
+
+    def test_a_failed_join_on_an_empty_seat_does_not_create_an_ai(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.cancel("J1", 1700)  # after A was published, before turn A
+        sim.run(5000)
+        self.check(sim, sim.host.owners.get(2) in (None, "empty") and sim.seated[0].owners.get(2) in (None, "empty"),
+                   "seat 2 after the cancel: host %r seated %r" % (sim.host.owners.get(2), sim.seated[0].owners.get(2)))
+
+    def test_a_failed_join_on_an_ai_seat_returns_it_to_the_ai(self):
+        sim = ja.Sim(cfg(), seated=1)
+        for p in sim.peers.values():
+            p.owners[3] = "ai"
+        sim.add_join("J1", 0, 3)
+        sim.cancel("J1", 1700)
+        sim.run(5000)
+        self.check(sim, sim.host.owners.get(3) == "ai" and sim.seated[0].owners.get(3) == "ai",
+                   "seat 3 after the cancel: host %r seated %r" % (sim.host.owners.get(3), sim.seated[0].owners.get(3)))
+
+
+class RoundCcSamePeer(TraceCase):
+    def test_s3_the_same_peer_can_ask_again_after_a_restart(self):
+        sim = ja.Sim(cfg(), seated=2)
+        sim.add_join("J1", 0, 3)
+        sim.add_join("J2", 100, 4)
+        sim.cancel("J2", 1000)
+        sim.add_join("J2", 1200, 4)
+        sim.run(30000)
+        j2 = sim.joiners["J2"]
+        self.check(sim, j2.active_ms is not None and sim.host.owners.get(4) == "human",
+                   "J2 did not join on its second ask: %r" % (summary(sim, "J2"),))
+        self.check(sim, sim.joiners["J1"].active_ms is not None, "J1 not active")
+        self.check(sim, sim.root_conflicts() == [], "roots differ")
+
+    def test_s3_the_restart_row_snapshot_turn_matches_the_adr(self):
+        sim = ja.row_expiry_and_restart(cfg())
+        jr = sim.host.joins["J2"]
+        self.check(sim, jr.attempt == 2, "attempt %r" % (jr.attempt,))
+        self.check(sim, jr.S == ADR_RESTART_SNAPSHOT_TURN, "snapshot turn %r" % (jr.S,))
+
+    def test_grant_race_input_never_opens_after_the_host_restarted_the_attempt(self):
+        for ready in range(640, 661):
+            sim = ja.one_join(cfg(input_ready_ms=ready), until=8000)
+            j, jr = sim.joiners["J1"], sim.host.joins["J1"]
+            late = j.active_ms is not None and jr.restart_ms is not None and j.active_ms > jr.restart_ms
+            self.check(sim, not late, "input_ready_ms=%d: input on at %s after the restart at %s" % (
+                ready, j.active_ms, jr.restart_ms))
+            if jr.restart_ms is not None:
+                self.check(sim, j.state == "restarted", "input_ready_ms=%d: joiner state %s" % (ready, j.state))
+
+
+# ---- the independent validators, on hand-written logs and under mutants (F3 step 1) -----------
+def ev(kind, t=0, **kw):
+    kw.update(kind=kind, t=t)
+    return kw
+
+
+def codes(events, **kw):
+    return sorted({c for c, _ in ja.validate(events, ja.Cfg(), 0, **kw)})
+
+
+class ValidatorsOnHandWrittenLogs(unittest.TestCase):
+    """Each validator fires on a log written by hand: none of them reads a peer or a Chan."""
+
+    def arrive(self, seq, t=1):
+        return ev("arrive", t, src="H", dst="P1", ch=0, seq=seq, msg="Turn", dup=False, turn=seq)
+
+    def deliver(self, seq, t=2):
+        return ev("deliver", t, src="H", dst="P1", ch=0, seq=seq, msg="Turn", turn=seq)
+
+    def test_i_delivery_past_a_hole(self):
+        log = [self.arrive(0), self.arrive(2), self.deliver(2)]
+        self.assertEqual(codes(log), ["i"])
+        self.assertEqual(codes([self.arrive(0), self.arrive(1), self.deliver(0), self.deliver(1)]), [])
+
+    def test_i_delivery_twice(self):
+        log = [self.arrive(0), self.deliver(0), self.deliver(0)]
+        self.assertEqual(codes(log), ["i"])
+
+    def test_ii_window_span_from_send_records(self):
+        sends = [ev("send", i, src="H", dst="P1", ch=0, seq=i, msg="Turn", attempt=1, lost=False,
+                    turn=i, C=None, size=10) for i in range(33)]
+        self.assertEqual(codes(sends), ["ii"])
+        acked = sends[:1] + [ev("ack", 1, src="H", dst="P1", ch=0, seqs=(0,))] + sends[1:]
+        self.assertEqual(codes(acked), [])
+
+    def test_iii_tables_must_agree_at_every_applied_turn(self):
+        a = ev("apply", peer="H", turn=3, owners=((0, "human"),), root="r")
+        b = ev("apply", peer="P1", turn=3, owners=((0, "human"), (2, "ai")), root="r2")
+        self.assertEqual(codes([a, b]), ["iii"])
+        self.assertEqual(codes([a, dict(b, owners=a["owners"], root="r")]), [])
+
+    def test_iv_a_silent_stall_and_a_logged_outage(self):
+        log = [ev("seated", peer="P1", seat=1)] + [ev("produce", turn=k) for k in range(1, 41)]
+        log += [ev("apply", peer="P1", turn=3, owners=(), root="r")]
+        self.assertIn("iv", codes(log))
+        self.assertNotIn("iv", codes(log + [ev("outage", peer="P1")]))
+
+    def test_v_input_lag_at_the_instant_and_later_in_the_millisecond(self):
+        log = [ev("produce", turn=k, t=k) for k in range(1, 31)]
+        opened = [ev("input_on", 30, peer="J1", applied=20, received=20, known=20)]
+        self.assertEqual(codes(log + opened, oracle_lag=8), ["v"])
+        self.assertEqual(codes(log + opened, oracle_lag=10), [])
+        # Within the bound at the instant, over it after a later event of the same millisecond.
+        ok = [ev("produce", turn=k, t=k) for k in range(1, 29)]
+        late = ok + [ev("input_on", 28, peer="J1", applied=20, received=20, known=20),
+                     ev("produce", 28, turn=29)]
+        self.assertEqual(codes(late, oracle_lag=8), ["v"])
+
+    def test_vi_two_attempts_or_a_seated_human_hold_a_seat(self):
+        init = ev("seat_init", seats=((0, "human"), (1, "human")))
+        self.assertEqual(codes([init, ev("admit", name="J1", attempt=1, seat=1, gen=1, S=0)]), ["vi"])
+        two = [init, ev("admit", name="J1", attempt=1, seat=2, gen=1, S=0),
+               ev("admit", name="J2", attempt=1, seat=2, gen=1, S=0)]
+        self.assertEqual(codes(two), ["vi"])
+        freed = [init, ev("admit", name="J1", attempt=1, seat=2, gen=1, S=0),
+                 ev("attempt_end", name="J1", attempt=1, how="dead"),
+                 ev("admit", name="J2", attempt=1, seat=2, gen=1, S=0)]
+        self.assertEqual(codes(freed), [])
+
+    def test_vii_a_produced_turn_must_be_delivered_or_retained(self):
+        base = [ev("seated", peer="P1", seat=1), ev("produce", turn=1), ev("produce", turn=2)]
+        self.assertEqual(codes(base), ["vii"])
+        kept = base + [ev("enqueue", src="H", dst="P1", ch=0, msg="Turn", turn=1),
+                       ev("enqueue", src="H", dst="P1", ch=0, msg="Turn", turn=2)]
+        self.assertEqual(codes(kept), [])
+        self.assertEqual(codes(kept + [ev("abandon", src="H", dst="P1", ch=0, seq=1)]), ["vii"])
+
+    def test_viii_a_grant_must_name_a_turn_already_sent(self):
+        grant = ev("send", 5, src="H", dst="J1", ch=0, seq=9, msg="InputGrant", attempt=1, lost=False,
+                   turn=None, C=7, size=14)
+        sent = ev("send", 4, src="H", dst="J1", ch=0, seq=8, msg="Turn", attempt=1, lost=False,
+                  turn=7, C=None, size=14)
+        self.assertEqual(codes([grant]), ["viii"])
+        self.assertEqual(codes([sent, grant]), [])
+
+
+MUTANT_TABLE = []  # (name, patch factory, tests that must fail under it)
+
+
+def _patch_deliver_past_holes():
+    def arrive(self, src, dst, ch, d):
+        c = self.recv_state(src, dst, ch)
+        seq = d["seq"]
+        dup = seq in c.recv
+        c.recv.setdefault(seq, d)
+        c.highest = max(c.highest, seq)
+        self.ev("arrive", src=src, dst=dst, ch=ch, seq=seq, msg=d["kind"], dup=dup, turn=d.get("turn"))
+        if not dup:
+            self.peers[dst].on_arrive(src, ch, d)
+        if ch == 2:
+            if not dup and d["msg"] is not None:
+                self.deliver(src, dst, ch, seq, d["msg"])
+        else:
+            while c.deliv <= c.highest:
+                nxt = c.recv.get(c.deliv)
+                if nxt is not None and nxt["msg"] is not None and not nxt.get("delivered"):
+                    nxt["delivered"] = True
+                    self.deliver(src, dst, ch, c.deliv, nxt["msg"])
+                c.deliv += 1
+        if ch != 2 and not c.ack_pending:
+            c.ack_pending = True
+            self.schedule(self.t, ja.P_FLUSH, self.flush_ack, src, dst, ch)
+    return mock.patch.object(ja.Sim, "arrive", arrive)
+
+
+def _patch_window_plus_one():
+    def room(self, c):
+        oldest = min(c.out) if c.out else c.next_seq
+        return c.next_seq - oldest < self.cfg.window + 1
+    return mock.patch.object(ja.Sim, "window_room", room)
+
+
+def _patch_no_freshness_gate():
+    def req(self, jr, msg):
+        if jr.state == "accepted" and msg["applied"] >= jr.A:
+            jr.go_ms = self.sim.t
+            self.sim.send("H", jr.name, 0, "InputGo", 14, gen=jr.gen, attempt=jr.attempt, nonce=msg["nonce"])
+    stack = contextlib.ExitStack()
+    stack.enter_context(mock.patch.object(ja.Host, "on_input_req", req))
+    stack.enter_context(mock.patch.object(ja.Joiner, "fresh", lambda self: True))
+    return stack
+
+
+def _patch_release_to_ai():
+    orig = ja.Host.admit
+
+    def admit(self, name, seat, snapshot_ms, load_ms):
+        orig(self, name, seat, snapshot_ms, load_ms)
+        jr = self.joins.get(name)
+        if jr is not None and jr.state != "dead":
+            jr.prev_owner = "ai"
+    return mock.patch.object(ja.Host, "admit", admit)
+
+
+def _patch_c_one_ahead():
+    return mock.patch.object(ja.Host, "current", lambda self: self.applied + 1)
+
+
+def _patch_no_seat_exclusivity():
+    return mock.patch.object(ja.Host, "seat_holder", lambda self, seat, name: None)
+
+
+MUTANTS = {
+    "deliver past holes": (_patch_deliver_past_holes, [
+        "TransportAccounting.test_every_named_row_has_no_transport_violation",
+        "OwnershipAndInput.test_unapplied_turns_survive_activation"]),
+    "window + 1": (_patch_window_plus_one, [
+        "TransportAccounting.test_window_of_32_holds_with_fragmented_turns_and_blocked_acks"]),
+    "grant freshness gate removed": (_patch_no_freshness_gate, [
+        "RoundCcJoinSide.test_b1_input_grant_lost_seven_times_cannot_open_stale_input",
+        "RoundCcJoinSide.test_b1_input_grant_lost_four_times_cannot_open_stale_input",
+        "RoundCcJoinSide.test_b1_turn_before_the_grant_lost_seven_times_cannot_open_stale_input"]),
+    "release always to ai": (_patch_release_to_ai, [
+        "RoundCcSeats.test_a_failed_join_on_an_empty_seat_does_not_create_an_ai",
+        "OwnershipAndInput.test_restart_after_a_releases_the_seat_everywhere"]),
+    "C one turn ahead": (_patch_c_one_ahead, [
+        "RoundCcJoinSide.test_b2_grant_names_a_turn_already_sent",
+        "OwnershipAndInput.test_normal_row_values"]),
+    "no seat exclusivity": (_patch_no_seat_exclusivity, [
+        "RoundCcSeats.test_p10a_two_joins_for_one_seat_only_one_is_admitted",
+        "RoundCcSeats.test_p10c_a_join_on_a_seated_humans_seat_is_refused"]),
+}
+
+
+def failing_under(patch, names):
+    """Names (among `names`) of the tests that fail while `patch` is applied."""
+    loader = unittest.TestLoader()
+    module = sys.modules[__name__]
+    failed = []
+    with patch():
+        for name in names:
+            suite = loader.loadTestsFromName(name, module)
+            result = unittest.TestResult()
+            suite.run(result)
+            if result.failures or result.errors:
+                failed.append(name)
+    return failed
+
+
+class MutantTable(unittest.TestCase):
+    """Every mutant of the F3 list is caught by the named tests of the suite (the report's table)."""
+
+    def test_every_mutant_is_caught_by_each_named_test(self):
+        for mutant, (patch, names) in MUTANTS.items():
+            failed = failing_under(patch, names)
+            self.assertEqual(failed, names, "mutant %r: caught only by %r" % (mutant, failed))
+
+    def test_the_named_tests_pass_without_a_mutant(self):
+        loader = unittest.TestLoader()
+        for _, (_, names) in MUTANTS.items():
+            for name in names:
+                result = unittest.TestResult()
+                loader.loadTestsFromName(name, sys.modules[__name__]).run(result)
+                self.assertTrue(result.wasSuccessful(), name)
 
 
 if __name__ == "__main__":

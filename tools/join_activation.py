@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ordered join-activation protocol checker (T52 F2, ADR 0003 section 8).
+"""Ordered join-activation protocol checker (T52 F2/F3, ADR 0003 section 8).
 
 This is a protocol oracle, not a game simulation and not a measurement. Hash
 roots are symbolic deterministic values. Every message goes through one event
@@ -14,9 +14,15 @@ checker does not use `catchup_state_at` or `frontiers_at` of
 Tie order inside one millisecond (lower first, then insertion order):
 
   0 deadline and expiry timers      30 replay step completion
-  10 inbound ACK-only datagrams     40 host turn production, join asks
-  20 data deliveries                50 resend checks
-  25 ACK-only flush (coalesced)
+  10 inbound ACK-only datagrams     35 input decisions (end of the delivery batch)
+  20 data deliveries                40 host turn production, join asks
+  25 ACK-only flush (coalesced)     50 resend checks
+
+Every send, arrival, delivery, acknowledgement, applied turn, ownership change,
+input change and admission is also appended to `Sim.events`. `validate()` re-derives
+its checks from that log and the configuration alone. It does not read the `Chan`
+cursors that drive delivery, and the protocol rules do not read the host's
+cursor except where the host itself decides (the host knows its own turn).
 
 `rules="F1"` reproduces the guards published at 3020900 so the round-cb
 regressions can be run against them. `rules="F2"` is the proposal.
@@ -34,11 +40,14 @@ import sys
 from collections import deque
 from dataclasses import dataclass, replace
 
-P_DEADLINE, P_ACK, P_DELIVER, P_FLUSH, P_REPLAY, P_PRODUCE, P_RESEND = (
-    0, 10, 20, 25, 30, 40, 50)
+P_DEADLINE, P_ACK, P_DELIVER, P_FLUSH, P_REPLAY, P_CHECK, P_PRODUCE, P_RESEND = (
+    0, 10, 20, 25, 30, 35, 40, 50)
 HEADER = 25
 IP_UDP = 28
 FRAGMENT_HEAD = 12
+
+REASON_SEAT_BUSY = 9
+REASON_SUPERSEDED = 10
 
 
 @dataclass(frozen=True)
@@ -59,9 +68,19 @@ class Cfg:
     catchup_ms: int = 600000
     snapshot_age_ms: int = 60000
     input_lag_max: int = 6
+    input_host_lag_max: int = 6
     input_ready_ms: int = 20000
     max_root_pins: int = 2
     max_outstanding_wm: int = 4
+    # B3: the host's observable margin. A checkpoint is offered only if the report can come
+    # back before its deadline: now + rtt + select_margin_ms < deadline. The round-trip time
+    # is the smoothed ACK round trip of the host-to-joiner pair; rtt_initial_ms stands in
+    # until the first ACK sample (the JoinGrant's) arrives.
+    rtt_initial_ms: int = 1000
+    select_margin_ms: int = 100
+    deadline_rtts: int = 2
+    # F3 liveness limit for a seated peer without an outage record (validator iv), in turns.
+    seated_lag_max: int = 20
     rules: str = "F2"
 
     @property
@@ -72,9 +91,11 @@ class Cfg:
     def f1(self):
         return self.rules == "F1"
 
-    def deadline_for(self, hash_turn):
-        """Accept deadline: the host's first send of that root plus two intervals."""
-        return hash_turn * self.turn_ms + self.deadline_intervals * self.hash_every * self.turn_ms
+    def deadline_for(self, hash_turn, rtt=0):
+        """Accept deadline of a root: when the host applied it plus two hash periods plus
+        `deadline_rtts` round trips (the round trips are 0 in the F1 and ADR-v1 arithmetic)."""
+        return (hash_turn * self.turn_ms + self.deadline_intervals * self.hash_every * self.turn_ms
+                + self.deadline_rtts * rtt)
 
 
 def root_of(turn, owners):
@@ -98,12 +119,13 @@ class Chan:
 
 
 class Sim:
-    def __init__(self, cfg, losses=(), delays=None, seated=1):
+    def __init__(self, cfg, losses=(), delays=None, seated=1, ai=()):
         self.cfg = cfg
         self.t = 0
         self.q = []
         self.n = 0
         self.trace = []
+        self.events = []
         self.losses = set(losses)
         self.blocked_acks = set()  # directions such as "P1>H" whose ACK-only datagrams are all lost
         self.max_span = {}
@@ -113,18 +135,22 @@ class Sim:
         self.peers = {}
         self.deliveries = []
         self.violations = []
+        self.rtt = {}
         self.host = Host(self)
         self.peers["H"] = self.host
         self.seated = []
         initial = {0: "human"}
         initial.update({i + 1: "human" for i in range(seated)})
+        initial.update({seat: "ai" for seat in ai})
         self.host.owners = dict(initial)
+        self.ev("seat_init", seats=tuple(sorted(initial.items())))
         for i in range(seated):
             name = "P%d" % (i + 1)
             peer = Seated(self, name, i + 1)
             peer.owners = dict(initial)
             self.peers[name] = peer
             self.seated.append(peer)
+            self.ev("seated", peer=name, seat=i + 1)
         self.joiners = {}
         self.turn_extra = lambda k: 0
         self.schedule(cfg.turn_ms, P_PRODUCE, self.host.produce, 1)
@@ -137,6 +163,11 @@ class Sim:
     def log(self, text):
         self.trace.append("%7d %s" % (self.t, text))
 
+    def ev(self, kind, **fields):
+        fields["kind"] = kind
+        fields["t"] = self.t
+        self.events.append(fields)
+
     def run(self, until):
         while self.q and self.q[0][0] <= until:
             t, _, _, fn, args = heapq.heappop(self.q)
@@ -148,12 +179,13 @@ class Sim:
         return "\n".join(self.trace)
 
     # ---- joiners ----
-    def add_join(self, name, ask_ms, seat, snapshot_ms=150, load_ms=None, attempt=1):
+    def add_join(self, name, ask_ms, seat, snapshot_ms=150, load_ms=None, attempt=None):
+        """`attempt` is accepted for old callers and ignored: the host assigns attempt numbers."""
         joiner = self.peers.get(name) or Joiner(self, name)
         self.peers[name] = joiner
         self.joiners[name] = joiner
         self.schedule(ask_ms, P_PRODUCE + 1, self.host.admit, name, seat, snapshot_ms,
-                      self.cfg.load_ms if load_ms is None else load_ms, attempt)
+                      self.cfg.load_ms if load_ms is None else load_ms)
         return joiner
 
     def cancel(self, name, at_ms):
@@ -183,11 +215,16 @@ class Sim:
         entry = self.stats.setdefault((src, dst), {"data": 0, "ack": 0, "bytes": 0, "seq": 0})
         entry[field] += amount
 
+    def srtt(self, a, b):
+        """Smoothed round trip of the ACKs a sender a received from b, or None before a sample."""
+        return self.rtt.get((a, b))
+
     def send(self, src, dst, ch, kind, size, **msg):
         """Queue one message; fragments over payload_max. Returns False on overflow."""
         c = self.chan(src, dst, ch)
         if c.dead:
             self.log("DROP-DEAD %s>%s ch%d %s" % (src, dst, ch, kind))
+            self.ev("drop_dead", src=src, dst=dst, ch=ch, msg=kind, turn=msg.get("turn"))
             return False
         cfg = self.cfg
         if size <= cfg.payload_max:
@@ -200,12 +237,15 @@ class Sim:
             self.log("OVERFLOW %s>%s ch%d %s waiting=%d" % (src, dst, ch, kind, len(c.wait)))
             self.stat(src, dst, "seq", 0)
             self.violations.append(("overflow", src, dst, ch, kind))
+            self.ev("overflow", src=src, dst=dst, ch=ch, msg=kind, turn=msg.get("turn"))
             return False
         msg["kind"] = kind
+        self.ev("enqueue", src=src, dst=dst, ch=ch, msg=kind, turn=msg.get("turn"))
         for i, s in enumerate(sizes):
             last = i == len(sizes) - 1
             c.wait.append({"kind": kind if last else kind + "-frag", "size": s,
-                           "msg": msg if last else None, "attempt": 0, "acked": False})
+                           "msg": msg if last else None, "attempt": 0, "acked": False,
+                           "turn": msg.get("turn"), "C": msg.get("C")})
         self.pump(src, dst, ch)
         return True
 
@@ -219,6 +259,7 @@ class Sim:
             d = c.wait.popleft()
             d["seq"] = c.next_seq
             c.next_seq += 1
+            d["first"] = self.t
             if ch != 2:
                 c.out[d["seq"]] = d
                 span = d["seq"] - min(c.out) + 1
@@ -244,7 +285,10 @@ class Sim:
         self.stat(src, dst, "data")
         self.stat(src, dst, "bytes", wire)
         tag = "send" if d["attempt"] == 1 else "RESEND#%d" % d["attempt"]
-        if self.lost(key):
+        lost = self.lost(key)
+        self.ev("send", src=src, dst=dst, ch=ch, seq=d["seq"], msg=d["kind"], attempt=d["attempt"],
+                lost=lost, turn=d.get("turn"), C=d.get("C"), size=d["size"])
+        if lost:
             self.log("%s %s>%s ch%d seq%d %s -- LOST" % (tag, src, dst, ch, d["seq"], d["kind"]))
         else:
             arrive = self.t + self.cfg.one_way_ms + self.delays.get(
@@ -263,6 +307,7 @@ class Sim:
         if d["attempt"] >= self.cfg.max_attempts:
             c.dead = True
             self.log("ABANDON %s>%s ch%d seq%d after %d sends" % (src, dst, ch, seq, d["attempt"]))
+            self.ev("abandon", src=src, dst=dst, ch=ch, seq=seq)
             self.peers[src].abandoned(dst, ch)
             return
         self.transmit(src, dst, ch, d)
@@ -274,6 +319,9 @@ class Sim:
         c.recv.setdefault(seq, d)
         c.highest = max(c.highest, seq)
         self.log("arrive %s>%s ch%d seq%d %s%s" % (src, dst, ch, seq, d["kind"], " (dup)" if dup else ""))
+        self.ev("arrive", src=src, dst=dst, ch=ch, seq=seq, msg=d["kind"], dup=dup, turn=d.get("turn"))
+        if not dup:
+            self.peers[dst].on_arrive(src, ch, d)
         if ch == 2 or self.cfg.legacy:
             if not dup and d["msg"] is not None:
                 self.deliver(src, dst, ch, seq, d["msg"])
@@ -296,6 +344,7 @@ class Sim:
 
     def deliver(self, src, dst, ch, seq, msg):
         self.deliveries.append((self.t, src, dst, ch, seq, msg["kind"]))
+        self.ev("deliver", src=src, dst=dst, ch=ch, seq=seq, msg=msg["kind"], turn=msg.get("turn"))
         if not self.cfg.legacy and ch == 0:
             c = self.recv_state(src, dst, ch)
             if seq > c.deliv:
@@ -330,7 +379,13 @@ class Sim:
             if bits >> i & 1:
                 named.add(ack - (i + 1))
         for seq in sorted(named):
-            c.out.pop(seq, None)
+            d = c.out.pop(seq, None)
+            if d is not None and d["attempt"] == 1:
+                # Karn: only a datagram that was never resent gives a round-trip sample.
+                sample = self.t - d["first"]
+                old = self.rtt.get((src, dst))
+                self.rtt[(src, dst)] = sample if old is None else (7 * old + sample) // 8
+        self.ev("ack", src=src, dst=dst, ch=ch, seqs=tuple(sorted(named)))
         self.pump(src, dst, ch)
         self.peers[src].on_acked(dst, ch)
 
@@ -363,8 +418,18 @@ class Peer:
                 self.sim.log("%s skips duplicate event %d" % (self.name, event_id))
                 continue
             self.hw = event_id
-            self.owners[seat] = owner
+            if owner is None:
+                self.owners.pop(seat, None)  # an empty seat has no entry
+            else:
+                self.owners[seat] = owner
             self.sim.log("%s owner seat %d -> %s (event %d)" % (self.name, seat, owner, event_id))
+
+    def log_applied(self, turn):
+        self.sim.ev("apply", peer=self.name, turn=turn, owners=tuple(sorted(self.owners.items())),
+                    root=root_of(turn, self.owners))
+
+    def on_arrive(self, src, ch, d):
+        pass
 
     def on_acked(self, dst, ch):
         pass
@@ -389,6 +454,7 @@ class Seated(Peer):
                 m = self.pending.pop(self.applied + 1)
                 self.applied += 1
                 self.apply_events(m["events"])
+                self.log_applied(self.applied)
                 if self.applied % self.sim.cfg.hash_every == 0:
                     self.root_log[self.applied] = root_of(self.applied, self.owners)
 
@@ -403,6 +469,9 @@ class JoinHost:
         self.ask_ms = ask_ms
         self.state = "waiting"  # waiting checkpoint accepted done dead
         self.H = None
+        self.floor = 0  # a re-selection must be above every expired checkpoint
+        self.sel_ms = None
+        self.deadline = None
         self.A = None
         self.event_id = None
         self.accept_ms = None
@@ -410,8 +479,11 @@ class JoinHost:
         self.restart_reason = None
         self.released_at = None
         self.done_ms = None
+        self.go_ms = None
+        self.prev_owner = None
         self.watermarks = []
         self.selected = []
+        self.expired = []
 
 
 class Host(Peer):
@@ -425,6 +497,8 @@ class Host(Peer):
         self.pending_events = {}
         self.next_event = 1
         self.joins = {}
+        self.history = []
+        self.attempts = {}
         self.gens = []
         self.gen_state = {}
         self.log_turns = {}
@@ -435,10 +509,12 @@ class Host(Peer):
         sim = self.sim
         cfg = sim.cfg
         events = self.pending_events.pop(k, [])
-        events.sort()
+        events.sort(key=lambda e: e[0])
         self.apply_events(events)
         self.applied = k
         self.log_turns[k] = tuple(events)
+        sim.ev("produce", turn=k)
+        self.log_applied(k)
         if k % cfg.hash_every == 0:
             self.roots[k] = root_of(k, self.owners)
             self.root_log[k] = self.roots[k]
@@ -460,7 +536,9 @@ class Host(Peer):
         sim.schedule((k + 1) * cfg.turn_ms, P_PRODUCE, self.produce, k + 1)
 
     def current(self):
-        return self.sim.t // self.sim.cfg.turn_ms
+        """The last turn the host has produced, hence enqueued to every live peer (B2): never a
+        turn that is still to be produced in this millisecond."""
+        return self.applied
 
     def pins(self):
         return {jr.H for jr in self.joins.values()
@@ -479,9 +557,49 @@ class Host(Peer):
         starts = [jr.S + 1 for jr in self.joins.values() if jr.state not in ("dead", "done")]
         return self.applied - min(starts) + 1 if starts else 0
 
+    def rtt_for(self, name):
+        sample = self.sim.srtt("H", name)
+        return self.sim.cfg.rtt_initial_ms if sample is None else sample
+
+    def deadline(self, h, name):
+        """Accept deadline: the host applied root h at root_sent[h]; two hash periods and
+        `deadline_rtts` measured round trips are allowed after that."""
+        cfg = self.sim.cfg
+        return (self.root_sent[h] + cfg.deadline_intervals * cfg.hash_every * cfg.turn_ms
+                + cfg.deadline_rtts * self.rtt_for(name))
+
     # ---- admission ----
-    def admit(self, name, seat, snapshot_ms, load_ms, attempt):
+    def seat_holder(self, seat, name):
+        """Who holds a seat: the seated human or a live attempt of another peer, else None."""
+        if self.owners.get(seat) == "human":
+            prev = self.joins.get(name)
+            if not (prev is not None and prev.seat == seat and prev.state not in ("done",)):
+                return "seated human"
+        for other, jr in sorted(self.joins.items()):
+            if other != name and jr.seat == seat and jr.state != "dead":
+                return "attempt of " + other
+        return None
+
+    def admit(self, name, seat, snapshot_ms, load_ms):
         sim = self.sim
+        prev = self.joins.get(name)
+        if prev is not None:
+            if prev.state not in ("dead", "done"):
+                self.restart(prev, REASON_SUPERSEDED)  # the same peer asks again: retire the old attempt
+            self.history.append(prev)
+        attempt = self.attempts.get(name, 0) + 1
+        self.attempts[name] = attempt
+        holder = self.seat_holder(seat, name)
+        if holder is not None:
+            jr = JoinHost(name, seat, 0, 0, attempt, sim.t)
+            jr.state = "dead"
+            jr.restart_ms = sim.t
+            jr.restart_reason = REASON_SEAT_BUSY
+            self.joins[name] = jr
+            sim.log("host refuses %s seat %d (%s), attempt %d" % (name, seat, holder, attempt))
+            sim.ev("refuse", name=name, attempt=attempt, seat=seat, holder=holder)
+            sim.send("H", name, 0, "JoinRestart", 8, attempt=attempt, reason=REASON_SEAT_BUSY)
+            return
         S = self.applied
         gen = None
         for g, gs, gt in self.gens:
@@ -494,8 +612,11 @@ class Host(Peer):
             self.gens.append((gen, S, sim.t))
             self.gen_state[gen] = (dict(self.owners), self.hw)
         jr = JoinHost(name, seat, S, gen, attempt, sim.t)
+        jr.prev_owner = self.owners.get(seat)  # as published in the stream: None for an empty seat
         self.joins[name] = jr
-        sim.log("host admits %s seat %d, generation %d, snapshot turn %d" % (name, seat, gen, S))
+        sim.log("host admits %s seat %d, generation %d, snapshot turn %d, attempt %d" % (
+            name, seat, gen, S, attempt))
+        sim.ev("admit", name=name, attempt=attempt, seat=seat, gen=gen, S=S)
         sim.send("H", name, 0, "JoinGrant", 15, gen=gen, S=S, seat=seat, attempt=attempt)
         # Turns S+1 .. applied (produced since a shared image) follow on channel 0.
         for k in range(S + 1, self.applied + 1):
@@ -522,19 +643,25 @@ class Host(Peer):
             self.on_report(jr, msg)
         elif msg["kind"] == "JoinAbort":
             self.restart(jr, msg["reason"])
+        elif msg["kind"] == "InputReq":
+            self.on_input_req(jr, msg)
         elif msg["kind"] == "InputOn":
             jr.state = "done"
             jr.done_ms = self.sim.t
+            self.sim.ev("attempt_end", name=jr.name, attempt=jr.attempt, how="done")
             self.sim.log("host: %s has input, pin released" % jr.name)
 
-    def selectable(self, h):
+    def selectable(self, h, jr):
         cfg = self.sim.cfg
         if h <= 0 or h not in self.roots:
             return False
         newest = max(self.roots)
         if h < newest - (cfg.root_slots - 1) * cfg.hash_every and h not in self.pins():
             return False
-        return self.sim.t < cfg.deadline_for(h)
+        if cfg.f1:
+            return self.sim.t < cfg.deadline_for(h)
+        # The report must be able to come back: one round trip plus a margin before the deadline.
+        return self.sim.t + self.rtt_for(jr.name) + cfg.select_margin_ms < self.deadline(h, jr.name)
 
     def on_watermark(self, jr, msg):
         cfg = self.sim.cfg
@@ -546,17 +673,25 @@ class Host(Peer):
                 self.sim.send("H", jr.name, 0, "InputGrant", 14, gen=jr.gen,
                               attempt=jr.attempt, C=self.current())
             return
+        if jr.state == "checkpoint" and not cfg.f1:
+            # Supersede only once the report of the current checkpoint has had a round trip.
+            if self.sim.t < jr.sel_ms + self.rtt_for(jr.name) + cfg.select_margin_ms:
+                self.sim.log("host: watermark applied=%d waits for the report of H=%d" % (
+                    msg["applied"], jr.H))
+                return
         h = msg["applied"] // cfg.hash_every * cfg.hash_every
-        while h > jr.S and not self.selectable(h):
+        while h > jr.S and not self.selectable(h, jr):
             h -= cfg.hash_every
-        if h <= jr.S or (jr.H is not None and h <= jr.H):
+        if h <= jr.S or h <= jr.floor or (jr.H is not None and h <= jr.H):
             self.sim.log("host: watermark applied=%d selects nothing" % msg["applied"])
             return
         jr.H = h
         jr.state = "checkpoint"
+        jr.sel_ms = self.sim.t
+        jr.deadline = cfg.deadline_for(h) if cfg.f1 else self.deadline(h, jr.name)
         jr.selected.append((self.sim.t, h))
-        self.sim.log("host selects H=%d for %s (deadline %d)" % (h, jr.name, cfg.deadline_for(h)))
-        self.sim.schedule(cfg.deadline_for(h), P_DEADLINE, self.expire, jr.name, jr.attempt, h)
+        self.sim.log("host selects H=%d for %s (deadline %d)" % (h, jr.name, jr.deadline))
+        self.sim.schedule(jr.deadline, P_DEADLINE, self.expire, jr.name, jr.attempt, h)
         if not cfg.f1:
             self.sim.send("H", jr.name, 0, "JoinCheckpoint", 22, gen=jr.gen, attempt=jr.attempt,
                           turn=h, root=self.roots[h])
@@ -564,15 +699,24 @@ class Host(Peer):
     def expire(self, name, attempt, h):
         jr = self.joins.get(name)
         if jr and jr.attempt == attempt and jr.H == h and jr.state == "checkpoint":
-            self.restart(jr, 1)
+            if self.sim.cfg.f1:
+                self.restart(jr, 1)
+                return
+            # F3: one checkpoint expiring is not a failed join. Wait for a later watermark.
+            jr.state = "waiting"
+            jr.floor = max(jr.floor, h)
+            jr.expired.append((self.sim.t, h))
+            self.sim.log("host: checkpoint H=%d of %s expired, waits for a later watermark" % (h, name))
+            self.sim.ev("checkpoint_expired", name=name, attempt=attempt, H=h)
 
     def on_report(self, jr, msg):
         cfg = self.sim.cfg
         if jr.state != "checkpoint" or msg["turn"] != jr.H:
             self.sim.log("host ignores report for %s H=%s (selected %s)" % (jr.name, msg["turn"], jr.H))
             return
-        if self.sim.t >= cfg.deadline_for(jr.H):
-            self.sim.log("host: report for %d is at/after its deadline %d" % (jr.H, cfg.deadline_for(jr.H)))
+        deadline = cfg.deadline_for(jr.H) if cfg.f1 else jr.deadline
+        if self.sim.t >= deadline:
+            self.sim.log("host: report for %d is at/after its deadline %d" % (jr.H, deadline))
             return
         if msg["root"] != self.roots[jr.H]:
             self.restart(jr, 2)
@@ -593,9 +737,31 @@ class Host(Peer):
             self.sim.schedule(self.sim.t + cfg.input_ready_ms, P_DEADLINE, self.input_expire,
                               jr.name, jr.attempt)
 
+    def on_input_req(self, jr, msg):
+        """B1: the joiner asks to open input and states how far it has applied. The host knows
+        its own turn, so a bound on the difference is a protocol rule here, not an oracle."""
+        cfg = self.sim.cfg
+        if jr.state != "accepted":
+            return
+        lag = self.applied - msg["applied"]
+        # The request is one one-way old: allow the round trip's worth of turns on top.
+        bound = cfg.input_host_lag_max + -(-self.rtt_for(jr.name) // cfg.turn_ms)
+        if msg["applied"] < jr.A or lag > bound:
+            self.sim.log("host: %s InputReq applied=%d refused (host %d, A=%d)" % (
+                jr.name, msg["applied"], self.applied, jr.A))
+            return
+        jr.go_ms = self.sim.t
+        self.sim.log("host: %s InputReq applied=%d accepted (host %d)" % (jr.name, msg["applied"], self.applied))
+        self.sim.send("H", jr.name, 0, "InputGo", 14, gen=jr.gen, attempt=jr.attempt, nonce=msg["nonce"])
+
     def input_expire(self, name, attempt):
         jr = self.joins.get(name)
         if jr and jr.attempt == attempt and jr.state == "accepted":
+            grace = 2 * self.rtt_for(name) + 2 * self.sim.cfg.turn_ms
+            if jr.go_ms is not None and self.sim.t < jr.go_ms + grace:
+                # An InputGo is in flight: let it land, the host will not restart under it.
+                self.sim.schedule(jr.go_ms + grace, P_DEADLINE, self.input_expire, name, attempt)
+                return
             self.restart(jr, 5)
 
     def restart(self, jr, reason):
@@ -603,13 +769,15 @@ class Host(Peer):
         jr.restart_ms = self.sim.t
         jr.restart_reason = reason
         self.sim.log("host restarts %s, reason %d (table keeps running)" % (jr.name, reason))
+        self.sim.ev("attempt_end", name=jr.name, attempt=jr.attempt, how="dead")
         if jr.A is not None and not self.sim.cfg.f1:
-            # The ownership event is already in the history. Release the seat the same way.
+            # The ownership event is already in the history. Release the seat the same way,
+            # to the owner the stream showed before the attempt (an empty seat stays empty).
             r = self.current() + self.sim.cfg.command_delay
             jr.released_at = r
-            self.pending_events.setdefault(r, []).append((self.next_event, jr.seat, "ai"))
-            self.sim.log("host queues SeatRelease event %d for seat %d in turn %d" % (
-                self.next_event, jr.seat, r))
+            self.pending_events.setdefault(r, []).append((self.next_event, jr.seat, jr.prev_owner))
+            self.sim.log("host queues SeatRelease event %d for seat %d in turn %d (to %s)" % (
+                self.next_event, jr.seat, r, jr.prev_owner))
             self.next_event += 1
         self.sim.send("H", jr.name, 0, "JoinRestart", 8, attempt=jr.attempt, reason=reason)
 
@@ -627,6 +795,7 @@ class Joiner(Peer):
         self.turns = {}
         self.R = 0
         self.P = 0
+        self.known = 0
         self.busy = False
         self.load_done = None
         self.roots = {}
@@ -640,31 +809,89 @@ class Joiner(Peer):
         self.H = None
         self.active_ms = None
         self.active_cursors = None
+        self.closed_ms = None
         self.freed = []
         self.applied_log = []
         self.last_wm = 0
         self.grants_rejected = []
         self.max_root_slots = 0
+        self.pending_grant = False
+        self.pending_go = False
+        self.decide_scheduled = False
+        self.grant_C = None
+        self.reqs = {}  # nonce -> millisecond the InputReq was sent
+        self.go_nonce = None
+        self.nonce = 0
+
+    def reset_for(self, msg):
+        """A JoinGrant opens a new attempt: everything of the previous attempt is retired."""
+        self.gen = msg["gen"]
+        self.attempt = msg["attempt"]
+        self.S = msg["S"]
+        self.seat = msg["seat"]
+        self.R = self.P = self.known = self.S
+        self.turns = {}
+        self.roots = {}
+        self.host_roots = {}
+        self.pins = []
+        self.A = self.H = None
+        self.busy = False
+        self.load_done = None
+        self.active_ms = None
+        self.active_cursors = None
+        self.closed_ms = None
+        self.freed = []
+        self.applied_log = []
+        self.last_wm = 0
+        self.grants_rejected = []
+        self.pending_grant = self.pending_go = self.decide_scheduled = False
+        self.grant_C = None
+        self.reqs = {}
+        self.go_nonce = None
+        self.state = "loading"
+
+    def close_input(self, why):
+        if self.state == "active":
+            self.closed_ms = self.sim.t
+            self.sim.ev("input_off", peer=self.name, why=why)
+            self.sim.log("%s closes input (%s)" % (self.name, why))
 
     def cancel(self):
         if self.state in ("restarted", "idle"):
             return
         self.sim.log("%s cancels its join" % self.name)
+        self.close_input("cancel")
         self.state = "restarted"
         self.sim.send(self.name, "H", 2, "JoinAbort", 6, gen=self.gen, attempt=self.attempt, reason=8)
 
+    def on_arrive(self, src, ch, d):
+        # A datagram in the transport buffer already shows its turn number, even one that is
+        # still held behind a hole. The input decision uses it (B1).
+        if ch == 0 and d.get("turn") is not None and d["kind"].startswith("Turn"):
+            self.known = max(self.known, d["turn"])
+
     def on_msg(self, src, msg):
         kind = msg["kind"]
-        if self.state == "restarted" and kind != "JoinRestart":
-            return
         if kind == "JoinGrant":
-            self.gen = msg["gen"]
+            if self.attempt is not None and msg["attempt"] <= self.attempt:
+                return  # an old attempt's grant, or a duplicate
+            self.reset_for(msg)
+            return
+        if kind == "JoinRestart":
+            if self.attempt is not None and msg["attempt"] < self.attempt:
+                return
             self.attempt = msg["attempt"]
-            self.S = msg["S"]
-            self.seat = msg["seat"]
-            self.R = self.P = self.S
-            self.state = "loading"
-        elif kind == "Turn":
+            self.close_input("JoinRestart")
+            self.state = "restarted"
+            self.sim.log("%s restarts its join (reason %d)" % (self.name, msg["reason"]))
+            return
+        if self.state == "restarted":
+            return
+        if msg.get("attempt") is not None and msg["attempt"] != self.attempt:
+            return
+        if kind == "Turn":
+            if self.state == "idle":
+                return
             if msg["turn"] > self.R:
                 self.turns[msg["turn"]] = msg["events"]
             while self.R + 1 in self.turns:
@@ -679,9 +906,8 @@ class Joiner(Peer):
             self.on_checkpoint(msg)
         elif kind == "InputGrant":
             self.on_input_grant(msg)
-        elif kind == "JoinRestart":
-            self.state = "restarted"
-            self.sim.log("%s restarts its join (reason %d)" % (self.name, msg["reason"]))
+        elif kind == "InputGo":
+            self.on_input_go(msg)
 
     def trim(self, cache):
         """Keep the newest root_slots entries plus the pinned ones."""
@@ -692,7 +918,7 @@ class Joiner(Peer):
         self.max_root_slots = max(self.max_root_slots, len(cache))
 
     def snapshot(self, gen, S, snap, load_ms, attempt):
-        if self.state == "restarted" or attempt != self.attempt:
+        if self.state != "loading" or attempt != self.attempt:
             return
         self.owners, self.hw = dict(snap[0]), snap[1]
         self.load_done = self.sim.t + load_ms
@@ -706,9 +932,11 @@ class Joiner(Peer):
         if self.sim.t < self.load_done or self.P + 1 not in self.turns:
             return
         self.busy = True
-        self.sim.schedule(self.sim.t + self.sim.cfg.replay_step_ms, P_REPLAY, self.complete)
+        self.sim.schedule(self.sim.t + self.sim.cfg.replay_step_ms, P_REPLAY, self.complete, self.attempt)
 
-    def complete(self):
+    def complete(self, attempt=None):
+        if attempt is not None and attempt != self.attempt:
+            return
         self.busy = False
         if self.state == "restarted":
             return
@@ -718,6 +946,7 @@ class Joiner(Peer):
         self.apply_events(events)
         self.P = k
         self.applied_log.append(k)
+        self.log_applied(k)
         cfg = self.sim.cfg
         if k % cfg.hash_every == 0:
             self.roots[k] = root_of(k, self.owners)
@@ -786,22 +1015,67 @@ class Joiner(Peer):
                       turn=h, root=self.roots[h])
         self.H = h
 
+    # ---- input (B1): grant -> request -> go, each decided at the end of the delivery batch ----
     def on_input_grant(self, msg):
         if msg["attempt"] != self.attempt or self.state != "owned":
             return
-        lag = self.R - self.P
-        fresh = self.R >= msg["C"] and lag <= self.sim.cfg.input_lag_max
-        if fresh and self.owners.get(self.seat) == "human":
-            self.state = "active"
-            self.active_ms = self.sim.t
-            self.active_cursors = (self.P, self.R)
-            self.sim.log("%s INPUT ON: applied=%d received=%d grant C=%d lag=%d (kept %d unapplied turns)" % (
-                self.name, self.P, self.R, msg["C"], lag, len(self.turns)))
-            self.sim.send(self.name, "H", 0, "InputOn", 6, gen=self.gen, attempt=self.attempt)
-        else:
-            self.grants_rejected.append((self.sim.t, self.P, self.R, msg["C"]))
-            self.sim.log("%s keeps input off: applied=%d received=%d grant C=%d" % (
-                self.name, self.P, self.R, msg["C"]))
+        self.pending_grant = True
+        self.grant_C = msg["C"]
+        self.schedule_decision()
+
+    def on_input_go(self, msg):
+        if msg["attempt"] != self.attempt or self.state != "owned" or msg["nonce"] not in self.reqs:
+            return
+        self.pending_go = True
+        self.go_nonce = msg["nonce"]
+        self.schedule_decision()
+
+    def schedule_decision(self):
+        if not self.decide_scheduled:
+            self.decide_scheduled = True
+            self.sim.schedule(self.sim.t, P_CHECK, self.decide, self.attempt)
+
+    def fresh(self):
+        """Local freshness: the highest turn seen in the transport buffer, delivered or not,
+        is at most input_lag_max beyond the applied turn."""
+        return self.known - self.P <= self.sim.cfg.input_lag_max
+
+    def decide(self, attempt):
+        self.decide_scheduled = False
+        if attempt != self.attempt or self.state != "owned":
+            self.pending_grant = self.pending_go = False
+            return
+        cfg = self.sim.cfg
+        if self.pending_go:
+            self.pending_go = False
+            srtt = self.sim.srtt(self.name, "H")
+            srtt = cfg.rtt_initial_ms if srtt is None else srtt
+            took = self.sim.t - self.reqs[self.go_nonce]
+            limit = 3 * srtt // 2 + cfg.turn_ms
+            if self.fresh() and took <= limit and self.owners.get(self.seat) == "human":
+                self.state = "active"
+                self.active_ms = self.sim.t
+                self.active_cursors = (self.P, self.R)
+                self.sim.ev("input_on", peer=self.name, applied=self.P, received=self.R,
+                            known=self.known)
+                self.sim.log("%s INPUT ON: applied=%d received=%d known=%d (kept %d unapplied turns)" % (
+                    self.name, self.P, self.R, self.known, len(self.turns)))
+                self.sim.send(self.name, "H", 0, "InputOn", 6, gen=self.gen, attempt=self.attempt)
+                return
+            self.grants_rejected.append((self.sim.t, self.P, self.R, "go", took))
+            self.sim.log("%s keeps input off at InputGo: applied=%d known=%d took=%d limit=%d" % (
+                self.name, self.P, self.known, took, limit))
+        if self.pending_grant:
+            self.pending_grant = False
+            if self.fresh() and self.R >= self.grant_C and self.owners.get(self.seat) == "human":
+                self.nonce += 1
+                self.reqs[self.nonce] = self.sim.t
+                self.sim.send(self.name, "H", 0, "InputReq", 14, gen=self.gen, attempt=self.attempt,
+                              applied=self.P, nonce=self.nonce)
+            else:
+                self.grants_rejected.append((self.sim.t, self.P, self.R, self.grant_C))
+                self.sim.log("%s keeps input off: applied=%d received=%d known=%d grant C=%d" % (
+                    self.name, self.P, self.R, self.known, self.grant_C))
 
     # ---- F1 guards ----
     def on_seat_active(self, msg):
@@ -820,6 +1094,7 @@ class Joiner(Peer):
             self.state = "active"
             self.active_ms = self.sim.t
             self.active_cursors = (self.P, self.R)
+            self.sim.ev("input_on", peer=self.name, applied=self.P, received=self.R, known=self.R)
             unapplied = sorted(self.turns)
             self.freed = unapplied
             self.turns.clear()
@@ -829,8 +1104,229 @@ class Joiner(Peer):
     def abandoned(self, dst, ch):
         self.sim.log("%s: pair to %s abandoned" % (self.name, dst))
         if self.state != "restarted":
+            self.close_input("abandoned")
             self.state = "restarted"
             self.sim.send(self.name, "H", 2, "JoinAbort", 6, gen=self.gen, attempt=self.attempt, reason=4)
+
+
+# ---- independent validators ---------------------------------------------------------------
+def validate(events, cfg, end_t, oracle_lag=None):
+    """Re-derive the transport and protocol checks from the raw event log.
+
+    Uses only `events` and `cfg`: no `Chan` cursor, no peer object. Returns a list of
+    (check, detail) pairs; an empty list is a pass. `oracle_lag` is the bound for check (v).
+    """
+    if oracle_lag is None:
+        # The host's own bound (input_host_lag_max plus one round trip of turns) and two turns
+        # for the InputGo's trip back.
+        oracle_lag = cfg.input_host_lag_max + -(-2 * cfg.one_way_ms // cfg.turn_ms) + 2
+    out = []
+    out += _check_order(events)
+    out += _check_window(events, cfg)
+    out += _check_agreement(events)
+    out += _check_seated_lag(events, cfg)
+    out += _check_input_lag(events, oracle_lag)
+    out += _check_seats(events)
+    out += _check_retained(events)
+    out += _check_grants(events)
+    return out
+
+
+def _check_order(events):
+    """(i) Channel-0 deliveries follow the contiguous arrived prefix, in order, once each."""
+    out = []
+    arrived, prefix, last = {}, {}, {}
+    for e in events:
+        if e.get("ch") != 0:
+            continue
+        pair = (e.get("src"), e.get("dst"))
+        if e["kind"] == "arrive":
+            seen = arrived.setdefault(pair, set())
+            seen.add(e["seq"])
+            n = prefix.get(pair, 0)
+            while n in seen:
+                n += 1
+            prefix[pair] = n
+        elif e["kind"] == "deliver":
+            # Every sequence up to and including this one must have arrived: prefix > seq.
+            if prefix.get(pair, 0) <= e["seq"]:
+                seen = arrived.get(pair, set())
+                missing = [s for s in range(e["seq"] + 1) if s not in seen]
+                out.append(("i", "t=%d %s>%s delivered seq %d past hole %r" % (
+                    e["t"], pair[0], pair[1], e["seq"], missing[:3])))
+            if e["seq"] <= last.get(pair, -1):
+                out.append(("i", "t=%d %s>%s delivered seq %d again or out of order" % (
+                    e["t"], pair[0], pair[1], e["seq"])))
+            last[pair] = max(last.get(pair, -1), e["seq"])
+    return out
+
+
+def _check_window(events, cfg):
+    """(ii) The span from the oldest unacknowledged sequence to a new one, from send records."""
+    out = []
+    unacked = {}
+    for e in events:
+        key = (e.get("src"), e.get("dst"), e.get("ch"))
+        if e["kind"] == "send" and e["ch"] != 2 and e["attempt"] == 1:
+            u = unacked.setdefault(key, set())
+            u.add(e["seq"])
+            span = e["seq"] - min(u) + 1
+            if span > cfg.window:
+                out.append(("ii", "t=%d %s>%s ch%d seq %d spans %d > %d" % (
+                    e["t"], key[0], key[1], key[2], e["seq"], span, cfg.window)))
+        elif e["kind"] == "ack":
+            unacked.get(key, set()).difference_update(e["seqs"])
+    return out
+
+
+def _check_agreement(events):
+    """(iii) Every pair of peers that applied the same turn has the same ownership table and root."""
+    out = []
+    seen = {}
+    for e in events:
+        if e["kind"] != "apply":
+            continue
+        first = seen.setdefault(e["turn"], (e["peer"], e["owners"], e["root"]))
+        if first[1:] != (e["owners"], e["root"]):
+            out.append(("iii", "turn %d: %s has %r, %s has %r" % (
+                e["turn"], first[0], first[1], e["peer"], e["owners"])))
+    return out
+
+
+def _live_peers(events):
+    """Seated peers and the peers of attempts that were not restarted, derived from the log."""
+    seated = {e["peer"] for e in events if e["kind"] == "seated"}
+    attempts = {}
+    for e in events:
+        if e["kind"] == "admit":
+            attempts[e["name"]] = (e["attempt"], e["S"], "live")
+        elif e["kind"] == "attempt_end" and e["name"] in attempts and attempts[e["name"]][0] == e["attempt"]:
+            attempts[e["name"]] = (e["attempt"], attempts[e["name"]][1], e["how"])
+    return seated, attempts
+
+
+def _check_seated_lag(events, cfg):
+    """(iv) At the end of the run every seated peer is within seated_lag_max of the host or has
+    a logged outage. Peers whose attempt finished count as seated."""
+    seated, attempts = _live_peers(events)
+    seated = set(seated) | {n for n, (_, _, how) in attempts.items() if how == "done"}
+    host = max((e["turn"] for e in events if e["kind"] == "produce"), default=0)
+    applied = {}
+    for e in events:
+        if e["kind"] == "apply" and e["peer"] != "H":
+            applied[e["peer"]] = max(applied.get(e["peer"], 0), e["turn"])
+    outage = {e["peer"] for e in events if e["kind"] == "outage"}
+    out = []
+    for peer in sorted(seated):
+        lag = host - applied.get(peer, 0)
+        if lag > cfg.seated_lag_max and peer not in outage:
+            out.append(("iv", "%s is %d turns behind the host (host %d) without an outage record" % (
+                peer, lag, host)))
+    return out
+
+
+def _check_input_lag(events, bound):
+    """(v) At the instant input opens, and after every later event of that millisecond, the
+    host's current turn minus the joiner's applied turn is at most `bound`."""
+    out = []
+    host_cur = 0
+    applied = {}
+    watching = {}  # peer -> millisecond in which input opened
+    for e in events:
+        for peer, t in list(watching.items()):
+            if e["t"] != t:
+                del watching[peer]
+        if e["kind"] == "produce":
+            host_cur = e["turn"]
+        elif e["kind"] == "apply" and e["peer"] != "H":
+            applied[e["peer"]] = e["turn"]
+        elif e["kind"] == "input_on":
+            watching[e["peer"]] = e["t"]
+            applied[e["peer"]] = e["applied"]
+        for peer in sorted(watching):
+            lag = host_cur - applied.get(peer, 0)
+            if lag > bound:
+                out.append(("v", "t=%d %s: host %d - applied %d = %d > %d (after %s)" % (
+                    e["t"], peer, host_cur, applied.get(peer, 0), lag, bound, e["kind"])))
+    return out
+
+
+def _check_seats(events):
+    """(vi) A seat is held by at most one live attempt or seated human."""
+    out = []
+    held = {}
+    for e in events:
+        if e["kind"] == "seat_init":
+            for seat, owner in e["seats"]:
+                if owner == "human" and seat != 0:
+                    held[seat] = "seated human"
+        elif e["kind"] == "admit":
+            if e["seat"] in held:
+                out.append(("vi", "t=%d seat %d admitted for %s while held by %s" % (
+                    e["t"], e["seat"], e["name"], held[e["seat"]])))
+            held[e["seat"]] = "attempt of " + e["name"]
+        elif e["kind"] == "attempt_end":
+            who = "attempt of " + e["name"]
+            for seat, holder in list(held.items()):
+                if holder == who:
+                    if e["how"] == "dead":
+                        del held[seat]
+                    else:
+                        held[seat] = "seated human"
+    return out
+
+
+def _check_retained(events):
+    """(vii) Every produced turn is delivered to, or still retained for, every live peer."""
+    seated, attempts = _live_peers(events)
+    live = {p: 0 for p in seated}
+    for n, (_, S, how) in attempts.items():
+        if how != "dead":
+            live[n] = S
+    produced = [e["turn"] for e in events if e["kind"] == "produce"]
+    delivered, enqueued, refused, abandoned = set(), set(), set(), set()
+    outage = {e["peer"] for e in events if e["kind"] == "outage"}
+    for e in events:
+        if e["kind"] == "deliver" and e["msg"] == "Turn":
+            delivered.add((e["dst"], e["turn"]))
+        elif e["kind"] == "enqueue" and e["msg"] == "Turn":
+            enqueued.add((e["dst"], e["turn"]))
+        elif e["kind"] in ("overflow", "drop_dead") and e["msg"] == "Turn":
+            refused.add((e["dst"], e["turn"]))
+        elif e["kind"] == "abandon":
+            abandoned.add(e["dst"])
+    out = []
+    for peer in sorted(live):
+        if peer in outage:
+            continue
+        for k in produced:
+            if k <= live[peer] or (peer, k) in delivered:
+                continue
+            if (peer, k) in refused or (peer, k) not in enqueued:
+                out.append(("vii", "turn %d was never enqueued or was refused for %s" % (k, peer)))
+                break
+            if peer in abandoned:
+                out.append(("vii", "turn %d is retained only on a pair abandoned to %s" % (k, peer)))
+                break
+    return out
+
+
+def _check_grants(events):
+    """(viii) An InputGrant names a turn that was already sent to that peer."""
+    out = []
+    sent = {}
+    for e in events:
+        if e["kind"] == "send" and e["src"] == "H" and e["msg"] == "Turn" and e["attempt"] == 1:
+            sent.setdefault(e["dst"], set()).add(e["turn"])
+        elif e["kind"] == "send" and e["msg"] == "InputGrant" and e["attempt"] == 1:
+            if e["C"] not in sent.get(e["dst"], set()):
+                out.append(("viii", "t=%d grant to %s names turn %s, not yet sent" % (
+                    e["t"], e["dst"], e["C"])))
+    return out
+
+
+def validate_sim(sim, **kw):
+    return validate(sim.events, sim.cfg, sim.t, **kw)
 
 
 # ---- scenario helpers ----
@@ -879,11 +1375,15 @@ def row_report_blocks_later_watermark(cfg):
 
 
 def row_deadline_collision(cfg, at_deadline):
-    # The first report is delayed so it arrives at the deadline (3000) or one ms before.
-    # Its resends are lost, so the delayed first copy is the only one that can arrive.
-    losses = lose("HashReport", "J1>H", (2, 3, 4, 5, 6))
-    extra = 1390 if at_deadline else 1389
-    return one_join(cfg, losses, delays={("HashReport", "J1>H", None, 1): extra}, until=4000)
+    # The first report is delayed so it arrives at the deadline or one ms before. Its resends
+    # are lost, so the delayed first copy is the only one that can arrive; later messages on the
+    # ordered channel wait behind it. The report is first sent at 1460 and would arrive at 1610.
+    # Its deadline is the root's production time plus two hash periods plus two round trips.
+    seq = first_seq(cfg, "HashReport", "J1>H")
+    losses = lose("HashReport", "J1>H", (2, 3, 4, 5, 6, 7, 8), seq=seq)
+    deadline = cfg.deadline_for(10, 2 * cfg.one_way_ms)
+    extra = deadline - 1610 - (0 if at_deadline else 1)
+    return one_join(cfg, losses, delays={("HashReport", "J1>H", seq, 1): extra}, until=9000)
 
 
 def row_post_h_hole(cfg):
@@ -920,12 +1420,13 @@ def row_two_joins_two_generations(cfg):
 
 
 def row_expiry_and_restart(cfg):
-    """J2 cancels before J1's seat transition; J2b asks again with a snapshot before it."""
+    """J2 cancels before J1's seat transition and asks again as the same peer (attempt 2),
+    with a snapshot before it."""
     sim = Sim(cfg, seated=2)
     sim.add_join("J1", 0, 3)
     sim.add_join("J2", 100, 4)
     sim.cancel("J2", 1000)
-    sim.add_join("J2b", 1200, 4, attempt=2)
+    sim.add_join("J2", 1200, 4)
     sim.run(6000)
     return sim
 
@@ -1006,7 +1507,8 @@ def main(argv=None):
         print("%-30s rules=%s" % (name, rules))
         for jname in sorted(sim.joiners):
             print("    %-4s %s" % (jname, summary(sim, jname)))
-        print("    violations=%d root_conflicts=%d" % (len(sim.violations), len(sim.root_conflicts())))
+        print("    violations=%d root_conflicts=%d validators=%d" % (
+            len(sim.violations), len(sim.root_conflicts()), len(validate_sim(sim))))
         if show_trace:
             print(sim.dump())
     return 0

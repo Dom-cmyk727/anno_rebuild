@@ -1561,5 +1561,235 @@ MUTANTS.update({
 })
 
 
+# ---- round cf (F7) regressions: written first, shown failing at 604107c --------------------------
+class RoundCfCaps(TraceCase):
+    def _no_drop(self, sim):
+        drops = [e for e in sim.events if e["kind"] == "drop_seated"]
+        self.check(sim, not drops, "a healthy peer was dropped: %r" % (drops,))
+
+    def test_g1_count_cap_probe_keeps_the_healthy_peer(self):
+        sim = ja.Sim(cfg(tail_turns_max=100, tail_bytes_max=4915200), seated=1)
+        sim.run(12000)
+        self._no_drop(sim)
+        self.check(sim, len(sim.host.log_turns) <= 100 and sim.host.peak_turns <= 100,
+                   "retained %d, peak %d" % (len(sim.host.log_turns), sim.host.peak_turns))
+        self.check(sim, sim.seated[0].applied >= sim.host.applied - 4, "the peer fell behind")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_g1_no_consumers_at_all(self):
+        sim = ja.Sim(cfg(tail_turns_max=50), seated=0)
+        sim.run(12000)
+        self.check(sim, len(sim.host.log_turns) == 50 and sim.host.peak_turns <= 50,
+                   "retained %d peak %d" % (len(sim.host.log_turns), sim.host.peak_turns))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_g1_exact_boundaries_and_a_cap_below_the_rolling_window(self):
+        for turns in (1, 5, 10):
+            sim = ja.Sim(cfg(tail_turns_max=turns), seated=1)
+            sim.run(5000)
+            self.check(sim, len(sim.host.log_turns) == turns, "cap %d keeps %d" % (turns, len(sim.host.log_turns)))
+            self._no_drop(sim)
+        # byte-limited below the count cap, and count-limited below the byte cap
+        sim = ja.Sim(cfg(tail_bytes_max=7 * 1200, tail_turns_max=100), seated=1)
+        sim.run(5000)
+        self.check(sim, len(sim.host.log_turns) == 7 and sim.host.retained_bytes == 8400, "byte-limited")
+        sim = ja.Sim(cfg(tail_bytes_max=100 * 1200, tail_turns_max=9), seated=1)
+        sim.run(5000)
+        self.check(sim, len(sim.host.log_turns) == 9, "count-limited")
+
+    def test_g1_a_genuinely_stalled_consumer_is_dropped_the_healthy_one_is_not(self):
+        sim = ja.Sim(cfg(tail_turns_max=50), seated=2)
+        sim.cuts.append(("P1", 1000, 40000))
+        sim.run(12000)
+        drops = [e for e in sim.events if e["kind"] == "drop_seated"]
+        self.check(sim, [(d["peer"], d["why"]) for d in drops] == [("P1", "log cap")], repr(drops))
+        self.check(sim, len(sim.host.log_turns) <= 50 and sim.seated[1].applied >= sim.host.applied - 4, "P2 or the cap")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_g1_impossible_configurations_are_rejected(self):
+        for kw in ({"tail_turns_max": 0}, {"tail_bytes_max": 100}, {"turn_buffer": 0}, {"reassembly_fragments_max": 0}):
+            with self.assertRaises(ValueError):
+                ja.Sim(cfg(**kw))
+
+
+def _asm_probe(**kw):
+    sim = ja.Sim(cfg(turn_buffer=1, **kw), seated=1)
+    sim.turn_extra = lambda k: 90000 if k == 1 else 0
+    return sim
+
+
+class RoundCfReassembly(TraceCase):
+    def _delivered_turn1(self, sim):
+        return [e for e in sim.events if e["kind"] == "deliver" and e["dst"] == "P1" and e["msg"] == "Turn" and e["turn"] == 1]
+
+    def test_g2_the_76_fragment_turn_is_delivered_with_full_coverage(self):
+        sim = _asm_probe()
+        sim.run(800)
+        asm = sim.chans[("recv", "H", "P1", 0)].asm
+        held = len(asm.get(("T", 1), {}))
+        self.check(sim, 20 <= held < 76 and 1 not in sim.host.log_turns and not self._delivered_turn1(sim),
+                   "mid-flight: reassembly holds %d, log has turn 1: %r" % (held, 1 in sim.host.log_turns))
+        self.check(sim, validate_clean(sim) == [], "mid-flight: %r" % (validate_clean(sim)[:3],))
+        sim.run(3000)
+        d = self._delivered_turn1(sim)
+        self.check(sim, len(d) == 1 and d[0]["nfrag"] == 76 and sorted(f for f, _ in d[0]["parts"]) == list(range(76)), repr(d))
+        self.check(sim, sim.seated[0].applied >= sim.host.applied - 4, "the peer fell behind")
+        self.check(sim, sim.peak_reasm_frags >= 44 and sim.reasm_frags == 0, "peak %d, held at the end %d" % (
+            sim.peak_reasm_frags, sim.reasm_frags))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_g2_a_lost_early_or_late_fragment_is_retried_and_duplicates_take_no_slot(self):
+        for kind, seq in (("Turn-frag", 3), ("Turn", 75)):
+            sim = _asm_probe()
+            sim.losses = ja.lose(kind, "H>P1", (1, 2), seq=seq)
+            sim.run(6000)
+            d = self._delivered_turn1(sim)
+            self.check(sim, len(d) == 1 and len(d[0]["parts"]) == 76, "%s %d: %r" % (kind, seq, d))
+            acq = [(e["mid"], e["frag"]) for e in sim.events if e["kind"] == "reasm_acquire" and e["dst"] == "P1" and e["mid"] == ("T", 1)]
+            self.check(sim, len(acq) == len(set(acq)) == 76, "acquired %d distinct %d" % (len(acq), len(set(acq))))
+            self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_g2_the_buffer_has_a_limit_and_overflow_is_finite(self):
+        sim = _asm_probe(reassembly_fragments_max=30)
+        sim.run(4000)
+        self.check(sim, [e for e in sim.events if e["kind"] == "reasm_overflow"], "no overflow")
+        drops = [e for e in sim.events if e["kind"] == "drop_seated"]
+        self.check(sim, drops and drops[0]["why"] == "reassembly cap", repr(drops))
+        self.check(sim, sim.reasm_frags == 0 and sim.peak_reasm_frags <= 30, "peak %d held %d" % (sim.peak_reasm_frags, sim.reasm_frags))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_g2_a_snapshot_over_fragment_max_aborts_that_joiner_only(self):
+        sim = ja.Sim(cfg(fragment_max=50), seated=1)
+        sim.add_join("J1", 0, 2, fragments=100)
+        sim.run(8000)
+        self.check(sim, sim.host.joins["J1"].restart_reason == ja.REASON_BACKLOG, repr(summary(sim)))
+        self.check(sim, sim.seated[0].applied >= sim.host.applied - 4 and validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_g2_epoch_reset_releases_a_partial_assembly(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.turn_extra = lambda k: 90000 if k == 13 else 0
+        sim.add_join("J1", 0, 2)
+        sim.add_join("J1", 1900, 2)  # the same peer asks again while the 76 fragments are on their way
+        sim.run(30000)
+        rel = [e for e in sim.events if e["kind"] == "reasm_release" and e["reason"] in ("epoch", "attempt end") and e["dst"] == "J1"]
+        self.check(sim, rel, "no explicit release when the old attempt ended at the re-ask")
+        self.check(sim, sim.joiners["J1"].active_ms is not None and validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_g2_a_dropped_peer_releases_its_assembly(self):
+        sim = _asm_probe()
+        sim.cuts.append(("P1", 300, 400000))
+        sim.run(70000)
+        rel = [e for e in sim.events if e["kind"] == "reasm_release" and e["reason"] == "drop"]
+        self.check(sim, [e for e in sim.events if e["kind"] == "drop_seated"] and validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+        self.check(sim, sim.reasm_frags == 0, "fragments still held: %d" % sim.reasm_frags)
+
+
+class RoundCfValidators(TraceCase):
+    def _log(self):
+        return [ev("seated", peer="P1", seat=1), ev("retain", turn=1, bytes=2432, total_bytes=2432, count=1, nfrag=2),
+                ev("produce", turn=1)]
+
+    def _send(self, frag, seq):
+        return ev("send", src="H", dst="P1", ch=0, seq=seq, msg="Turn" if frag else "Turn-frag", attempt=1, lost=False, turn=1,
+                  C=None, size=1200, sid=seq + 1, epoch=0, frag=frag, nfrag=2)
+
+    def _arrive(self, frag, seq):
+        return ev("arrive", src="H", dst="P1", ch=0, seq=seq, msg="Turn", dup=False, turn=1, sid=seq + 1, epoch=0, frag=frag, nfrag=2)
+
+    def _acq(self, frag, seq):
+        return ev("reasm_acquire", src="H", dst="P1", ch=0, mid=("T", 1), turn=1, frag=frag, nfrag=2, size=1200, sid=seq + 1, held=1)
+
+    def test_early_fragment_moved_to_the_reassembly_owner_passes(self):
+        log = self._log() + [self._send(0, 0), self._send(1, 1), self._arrive(0, 0), self._acq(0, 0),
+                             ev("ack", src="H", dst="P1", ch=0, seqs=(0,), epoch=0), ev("release", turn=1)]
+        self.assertEqual(codes(log), [])
+
+    def test_pruning_an_incomplete_fragment_fails(self):
+        log = self._log() + [self._send(0, 0), self._send(1, 1), self._arrive(0, 0), self._acq(0, 0),
+                             ev("ack", src="H", dst="P1", ch=0, seqs=(0,), epoch=0),
+                             ev("reasm_release", src="H", dst="P1", ch=0, mid=("T", 1), turn=1, frags=(0,), reason="prune"),
+                             ev("release", turn=1)]
+        self.assertEqual(codes(log), ["vii"])
+
+    def test_delivery_needs_every_fragment_index(self):
+        part = ev("deliver", src="H", dst="P1", ch=0, seq=1, msg="Turn", turn=1, sid=2, epoch=0, parts=((1, 2),), nfrag=2)
+        full = dict(part, parts=((0, 1), (1, 2)))
+        self.assertIn("xiv", codes(self._log() + [part]))
+        self.assertNotIn("xiv", codes(self._log() + [full]))
+
+    def test_assembly_may_not_survive_an_epoch_change_without_release(self):
+        carry = self._log() + [self._acq(0, 0), ev("epoch_bump", a="H", b="P1", epoch=1, why="re-ask")]
+        self.assertIn("xv", codes(carry))
+        clean = self._log() + [self._acq(0, 0), ev("reasm_release", src="H", dst="P1", ch=0, mid=("T", 1), turn=1, frags=(0,),
+                                                 reason="epoch"), ev("epoch_bump", a="H", b="P1", epoch=1, why="re-ask")]
+        self.assertNotIn("xv", codes(clean))
+
+    def test_the_reassembly_buffer_limit_is_checked_from_acquire_events(self):
+        log = [ev("reasm_acquire", src="H", dst="P1", ch=0, mid=("T", 1), turn=1, frag=i, nfrag=99, size=1, sid=i, held=i + 1)
+               for i in range(5)]
+        self.assertIn("xv", {c for c, _ in ja.validate(log, ja.Cfg(reassembly_fragments_max=3), 0)})
+
+
+def _patch_prune_an_incomplete_fragment():
+    orig = ja.Sim.reassemble
+
+    def reassemble(self, src, dst, ch, c, d, seq):
+        ok = orig(self, src, dst, ch, c, d, seq)
+        frags = c.asm.get(d.get("mid"))
+        if ch == 0 and d.get("nfrag", 1) > 1 and d.get("frag") == 5 and frags and 5 in frags:
+            size = frags.pop(5)[0]
+            self.asm_account(c, -1, -size)
+            self.ev("reasm_release", src=src, dst=dst, ch=ch, mid=d["mid"], turn=d.get("turn"), frags=(5,), reason="prune")
+        return ok
+    return mock.patch.object(ja.Sim, "reassemble", reassemble)
+
+
+def _patch_deliver_from_the_final_fragment_alone():
+    def reassemble(self, src, dst, ch, c, d, seq):
+        if d["msg"] is not None:
+            self.deliver(src, dst, ch, seq, d["msg"], parts=((d.get("frag", 0), d.get("sid")),), nfrag=d.get("nfrag", 1))
+        return True
+    return mock.patch.object(ja.Sim, "reassemble", reassemble)
+
+
+def _patch_skip_the_count_cap():
+    def kept_floor(self, top, extra):
+        cfg_ = self.sim.cfg
+        need = [f for f, _, _ in self.consumers()]
+        cf = min(need) if need else top
+        rf = max(1, top - cfg_.turn_buffer + 1)
+        total, low = extra, top
+        for t in range(top - 1, rf - 1, -1):
+            c = self.turn_charge.get(t)
+            if c is None or total + c > cfg_.tail_bytes:
+                break
+            total += c
+            low = t
+        return min(cf, max(rf, low))
+    return mock.patch.object(ja.Host, "kept_floor", kept_floor)
+
+
+def _patch_forget_assembly_at_an_epoch():
+    orig = ja.Sim.release_assembly
+
+    def release_assembly(self, a, b, reason):
+        if reason in ("epoch", "attempt end"):
+            return None  # the buffers go with the old channels, but nothing is released explicitly
+        return orig(self, a, b, reason)
+    return mock.patch.object(ja.Sim, "release_assembly", release_assembly)
+
+
+MUTANTS.update({
+    "prune an incomplete fragment": (_patch_prune_an_incomplete_fragment, [
+        "RoundCfReassembly.test_g2_the_76_fragment_turn_is_delivered_with_full_coverage"]),
+    "deliver from the final fragment alone": (_patch_deliver_from_the_final_fragment_alone, [
+        "RoundCfReassembly.test_g2_the_76_fragment_turn_is_delivered_with_full_coverage"]),
+    "skip the count-cap pruning": (_patch_skip_the_count_cap, [
+        "RoundCfCaps.test_g1_count_cap_probe_keeps_the_healthy_peer"]),
+    "retain assembly across an attempt end or epoch": (_patch_forget_assembly_at_an_epoch, [
+        "RoundCfReassembly.test_g2_epoch_reset_releases_a_partial_assembly"]),
+})
+
+
 if __name__ == "__main__":
     unittest.main()

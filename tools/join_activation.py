@@ -112,6 +112,13 @@ class Cfg:
     turn_store_cap: int = 1200
     tail_bytes_max: int = 0
     max_generations: int = 2
+    # G2: a receiver owns the fragments of every incomplete logical message in a reassembly buffer,
+    # separate from the ACK history. Per pair and channel: channel 0 (turns) holds at most
+    # reassembly_fragments_max fragments (a turn of 76 fragments is 90 000 bytes of commands);
+    # channel 1 (the snapshot) at most fragment_max (ADR 4, 17 130 for the largest measured save).
+    # Overflow is finite: the buffer is released, a joiner aborts (reason 12), a seated peer is dropped.
+    reassembly_fragments_max: int = 4096
+    fragment_max: int = 17130
     # F4 seated upstream traffic: bytes of commands each seated peer sends to the host per turn
     # (0 = none) and whether it sends the section-7 hash report every hash_every turns.
     seated_cmd_bytes: int = 0
@@ -125,6 +132,22 @@ class Cfg:
     @property
     def f1(self):
         return self.rules == "F1"
+
+    def validate(self):
+        """Reject a configuration that cannot hold a single turn (G1): the caps must admit at least
+        one turn of the nominal charge, and the rolling window and the reassembly buffer must exist."""
+        problems = []
+        if self.tail_turns_max < 1:
+            problems.append("tail_turns_max < 1")
+        if self.tail_bytes < self.turn_store_cap:
+            problems.append("tail_bytes %d is below the nominal turn charge %d" % (self.tail_bytes, self.turn_store_cap))
+        if self.turn_buffer < 1:
+            problems.append("turn_buffer < 1")
+        if self.reassembly_fragments_max < 1 or self.fragment_max < 1:
+            problems.append("reassembly limits < 1")
+        if problems:
+            raise ValueError("impossible join configuration: " + "; ".join(problems))
+        return self
 
     @property
     def tail_bytes(self):
@@ -159,12 +182,13 @@ class Chan:
         self.frag = 0  # next fragment of that turn
         self.last_ack = 0  # millisecond of the last ACK that freed a sequence
         self.snap = None  # channel 1: the snapshot fragments still to send
+        self.asm = {}  # G2: message id -> {fragment index: (bytes, sid)} of incomplete logical messages
         self.outage = False
 
 
 class Sim:
     def __init__(self, cfg, losses=(), delays=None, seated=1, ai=()):
-        self.cfg = cfg
+        self.cfg = cfg.validate()
         self.t = 0
         self.q = []
         self.n = 0
@@ -206,6 +230,11 @@ class Sim:
             self.chan("H", name, 0).log_next = 1
         self.joiners = {}
         self.turn_extra = lambda k: 0
+        self.mid = 0
+        self.reasm_frags = 0  # fragments held in all reassembly buffers right now
+        self.reasm_bytes = 0
+        self.peak_reasm_frags = 0
+        self.peak_reasm_bytes = 0
         self.truncated = set()  # turns whose commands were rejected because one turn exceeded tail_bytes
         self.schedule(cfg.turn_ms, P_PRODUCE, self.host.produce, 1)
 
@@ -288,6 +317,7 @@ class Sim:
         wire field; a receiver drops one whose field differs from its own epoch. Timers are local
         and carry the epoch they were created in."""
         k = self.pair_key(a, b)
+        self.release_assembly(a, b, "epoch")  # explicit: no fragment survives into the new incarnation
         self.epochs[k] = self.epochs.get(k, 0) + 1
         e = self.epochs[k] % 65536
         self.ep[(a, b)] = self.ep[(b, a)] = e
@@ -334,12 +364,15 @@ class Sim:
             self.ev("overflow", src=src, dst=dst, ch=ch, msg=kind, turn=msg.get("turn"))
             return False
         msg["kind"] = kind
+        self.mid += 1
+        mid = ("M", self.mid)
         self.ev("enqueue", src=src, dst=dst, ch=ch, msg=kind, turn=msg.get("turn"))
         for i, s in enumerate(sizes):
             last = i == len(sizes) - 1
             c.wait.append({"kind": kind if last else kind + "-frag", "size": s,
                            "msg": msg if last else None, "attempt": 0, "acked": False,
                            "turn": msg.get("turn"), "C": msg.get("C"),
+                           "mid": mid, "frag": i, "nfrag": len(sizes),
                            # control items wait until the log cursor has passed this turn
                            "barrier": self.host.applied if (src == "H" and ch == 0) else -1})
         self.pump(src, dst, ch)
@@ -372,12 +405,13 @@ class Sim:
             return c.wait.popleft()
         if c.snap is not None and c.snap["left"] > 0:
             # S4: the snapshot streams from the host's saved image, one fragment per window slot.
+            idx = c.snap["total"] - c.snap["left"]
             c.snap["left"] -= 1
             last = c.snap["left"] == 0
             d = {"kind": "SnapshotDone" if last else "Snap-frag",
                  "size": c.snap["last_size"] if last else self.cfg.payload_max,
                  "msg": c.snap["msg"] if last else None, "attempt": 0, "acked": False,
-                 "turn": None, "C": None}
+                 "turn": None, "C": None, "mid": c.snap["mid"], "frag": idx, "nfrag": c.snap["total"]}
             return d
         if logged and c.log_next <= self.host.applied:
             k = c.log_next
@@ -386,7 +420,8 @@ class Sim:
             last = i == len(sizes) - 1
             msg = {"kind": "Turn", "turn": k, "events": self.host.log_turns[k]}
             d = {"kind": "Turn" if last else "Turn-frag", "size": sizes[i], "msg": msg if last else None,
-                 "attempt": 0, "acked": False, "turn": k, "C": None, "frag": i, "nfrag": len(sizes)}
+                 "attempt": 0, "acked": False, "turn": k, "C": None, "frag": i, "nfrag": len(sizes),
+                 "mid": ("T", k)}
             c.frag += 1
             if c.frag == len(sizes):
                 c.log_next += 1
@@ -516,6 +551,7 @@ class Sim:
         if peer in self.dropped:
             return
         self.dropped.add(peer)
+        self.release_assembly("H", peer, "drop")
         for key, c in self.chans.items():
             x, y = (key[1], key[2]) if key[0] == "recv" else (key[0], key[1])
             if peer in (x, y):
@@ -532,6 +568,8 @@ class Sim:
         if self.stale(dst, src, d["epoch"], "arrive"):  # the field of the packet, not a simulator label
             return
         c = self.recv_state(src, dst, ch)
+        if c.dead:  # a closed receive side (drop, overflow) takes nothing more
+            return
         seq = d["seq"]
         dup = seq in c.recv
         c.recv.setdefault(seq, d)
@@ -551,9 +589,10 @@ class Sim:
         else:
             while c.deliv in c.recv:
                 nxt = c.recv[c.deliv]
-                if nxt["msg"] is not None and not nxt.get("delivered"):
-                    nxt["delivered"] = True
-                    self.deliver(src, dst, ch, c.deliv, nxt["msg"])
+                if not nxt.get("passed"):
+                    nxt["passed"] = True
+                    if not self.reassemble(src, dst, ch, c, nxt, c.deliv):
+                        break
                 c.deliv += 1
             # Only the 32 sequences below the highest are ever reported in an ACK: older entries of
             # the delivered prefix are released (bounded receive state).
@@ -570,10 +609,81 @@ class Sim:
             self.chans[key] = Chan()
         return self.chans[key]
 
-    def deliver(self, src, dst, ch, seq, msg):
+    def asm_account(self, c, frags, size):
+        self.reasm_frags += frags
+        self.reasm_bytes += size
+        self.peak_reasm_frags = max(self.peak_reasm_frags, self.reasm_frags)
+        self.peak_reasm_bytes = max(self.peak_reasm_bytes, self.reasm_bytes)
+
+    def reassemble(self, src, dst, ch, c, d, seq):
+        """A datagram passes the ordered channel in sequence. The fragments of an unfinished logical
+        message move into the pair's reassembly buffer, which is the only owner of the pieces once
+        the ACK history is pruned. The message is delivered when the buffer holds every fragment
+        index 0..nfrag-1 of it; the last datagram alone does not deliver it. Returns False when the
+        buffer overflowed (the channel stops)."""
+        n = d.get("nfrag", 1)
+        if n == 1:
+            if d["msg"] is not None:
+                self.deliver(src, dst, ch, seq, d["msg"], parts=((0, d.get("sid")),), nfrag=1)
+            return True
+        frags = c.asm.setdefault(d["mid"], {})
+        if d["frag"] in frags:
+            return True  # a duplicate never takes a second slot
+        limit = self.cfg.reassembly_fragments_max if ch == 0 else self.cfg.fragment_max
+        held = sum(len(f) for f in c.asm.values())
+        if held + 1 > limit:
+            self.log("REASSEMBLY OVERFLOW %s>%s ch%d (%d fragments held, limit %d)" % (src, dst, ch, held, limit))
+            self.ev("reasm_overflow", src=src, dst=dst, ch=ch, mid=d["mid"], held=held, limit=limit)
+            self.release_assembly_chan(src, dst, ch, c, "overflow")
+            c.dead = True
+            self.reassembly_overflow(src, dst, ch)
+            return False
+        frags[d["frag"]] = (d["size"], d.get("sid"))
+        self.asm_account(c, 1, d["size"])
+        self.ev("reasm_acquire", src=src, dst=dst, ch=ch, mid=d["mid"], turn=d.get("turn"), frag=d["frag"],
+                nfrag=n, size=d["size"], sid=d.get("sid"), held=held + 1)
+        if len(frags) == n and set(frags) == set(range(n)):
+            parts = tuple(sorted((f, v[1]) for f, v in frags.items()))
+            size = sum(v[0] for v in frags.values())
+            del c.asm[d["mid"]]
+            self.asm_account(c, -n, -size)
+            self.ev("reasm_release", src=src, dst=dst, ch=ch, mid=d["mid"], turn=d.get("turn"),
+                    frags=tuple(sorted(frags)), reason="delivered")
+            self.deliver(src, dst, ch, seq, d["msg"], parts=parts, nfrag=n)
+        return True
+
+    def release_assembly_chan(self, src, dst, ch, c, reason):
+        for mid, frags in list(c.asm.items()):
+            size = sum(v[0] for v in frags.values())
+            self.ev("reasm_release", src=src, dst=dst, ch=ch, mid=mid,
+                    turn=mid[1] if mid[0] == "T" else None, frags=tuple(sorted(frags)), reason=reason)
+            self.asm_account(c, -len(frags), -size)
+            del c.asm[mid]
+
+    def release_assembly(self, a, b, reason):
+        """Explicit cleanup of every reassembly buffer between two endpoints (epoch, drop, attempt end)."""
+        for key, c in list(self.chans.items()):
+            if key[0] == "recv" and {key[1], key[2]} == {a, b}:
+                self.release_assembly_chan(key[1], key[2], key[3], c, reason)
+
+    def reassembly_overflow(self, src, dst, ch):
+        """Finite overflow behavior: the receiving side gives up this stream. A joiner aborts, a
+        seated peer is dropped by the host, a host-side buffer is a recorded violation."""
+        peer = self.peers.get(dst)
+        if dst == "H":
+            self.violations.append(("reassembly_overflow", src, dst, ch))
+        elif hasattr(peer, "check_backlog"):
+            peer.state = "restarted"
+            self.send(dst, "H", 2, "JoinAbort", 8, gen=getattr(peer, "gen", None), attempt=getattr(peer, "attempt", None),
+                      reason=REASON_BACKLOG)
+        else:
+            self.drop_peer(dst, "reassembly cap")
+
+    def deliver(self, src, dst, ch, seq, msg, parts=None, nfrag=1):
         self.deliveries.append((self.t, src, dst, ch, seq, msg["kind"]))
         self.ev("deliver", src=src, dst=dst, ch=ch, seq=seq, msg=msg["kind"], turn=msg.get("turn"),
-                sid=self.last_sid.get((src, dst, ch, seq)), epoch=self.ep_of(dst, src))
+                sid=self.last_sid.get((src, dst, ch, seq)), epoch=self.ep_of(dst, src),
+                parts=parts if parts is not None else ((0, self.last_sid.get((src, dst, ch, seq))),), nfrag=nfrag)
         if not self.cfg.legacy and ch == 0:
             c = self.recv_state(src, dst, ch)
             if seq > c.deliv:
@@ -826,7 +936,7 @@ class Host(Peer):
         cfg = self.sim.cfg
         need = [f for f, _, _ in self.consumers()]
         cf = min(need) if need else top
-        rf = max(1, top - cfg.turn_buffer + 1)
+        rf = max(1, top - cfg.turn_buffer + 1, top - cfg.tail_turns_max + 1)  # rolling window, and the count cap
         total = extra
         low = top
         for t in range(top - 1, rf - 1, -1):
@@ -902,7 +1012,7 @@ class Host(Peer):
     def operational(self):
         """What the host holds for the protocol right now (diagnostics excluded)."""
         sim = self.sim
-        return {"log_turns": len(self.log_turns), "log_bytes": self.retained_bytes,
+        return {"reasm_fragments": sim.reasm_frags, "reasm_bytes": sim.reasm_bytes, "log_turns": len(self.log_turns), "log_bytes": self.retained_bytes,
                 "images": len(self.gen_state),
                 "in_flight": sum(len(c.out) for k, c in sim.chans.items() if k[0] != "recv"),
                 "waiting": sum(len(c.wait) for k, c in sim.chans.items() if k[0] != "recv"),
@@ -1032,7 +1142,8 @@ class Host(Peer):
             msg = {"kind": "SnapshotDone", "gen": gen, "S": S, "attempt": attempt,
                    "snap": self.gen_state[gen], "load_ms": load_ms}
             c1 = sim.chan("H", name, 1)
-            c1.snap = {"left": fragments, "msg": msg, "last_size": 100}
+            c1.snap = {"left": fragments, "total": fragments, "msg": msg, "last_size": 100,
+                       "mid": ("S", name, attempt)}
             sim.pump("H", name, 1)
         else:  # a LABELED INPUT: the snapshot is loaded snapshot_ms after the ask
             sim.schedule(sim.t + snapshot_ms, P_DELIVER, sim.peers[name].snapshot, gen, S,
@@ -1185,6 +1296,7 @@ class Host(Peer):
         jr.restart_ms = self.sim.t
         jr.restart_reason = reason
         self.sim.log("host restarts %s, reason %d (table keeps running)" % (jr.name, reason))
+        self.sim.release_assembly("H", jr.name, "attempt end")  # explicit, before the lifecycle event
         self.sim.ev("attempt_end", name=jr.name, attempt=jr.attempt, how="dead")
         self.sim.chan("H", jr.name, 0).log_next = None  # a dead attempt needs no more turns
         self.collect_gens()
@@ -1585,6 +1697,7 @@ def validate(events, cfg, end_t, oracle_lag=None):
     out += _check_outage_bounded(events, cfg, end_t)
     out += _check_generations(events, cfg)
     out += _check_input_drop(events)
+    out += _check_reassembly(events, cfg)
     return out
 
 
@@ -1831,6 +1944,9 @@ def _check_retained(events, end_t=None):
                     sender_held.get((e["dst"], tf[0]), set()).discard(tf[1])
         elif k == "arrive" and e["src"] == "H" and e["ch"] == 0 and str(e["msg"]).startswith("Turn") and not e.get("dup"):
             recv_held.setdefault((e["dst"], e["turn"]), set()).add(e.get("frag", 0))
+        elif k == "reasm_release" and e["src"] == "H" and e["ch"] == 0 and e.get("turn") is not None:
+            # the receiver gave these fragments up: delivered, or reset, pruned, overflowed
+            recv_held.get((e["dst"], e["turn"]), set()).difference_update(e["frags"])
         elif k == "deliver" and e["msg"] == "Turn":
             delivered.add((e["dst"], e["turn"]))
             recv_held.pop((e["dst"], e["turn"]), None)
@@ -1851,6 +1967,52 @@ def _check_retained(events, end_t=None):
                 out.append(("vii", "turn %d is neither delivered to, wholly held for, nor retained for %s at the end" % (
                     t, peer)))
                 break
+    return out[:3]
+
+
+def _check_reassembly(events, cfg):
+    """(xiv)/(xv) A logical message of several fragments is delivered only with every fragment index
+    held by the receiver's reassembly buffer, taken from acquire events and not from the last datagram;
+    the parts it was built from were sent in the current incarnation; the buffer never passes its limit;
+    nothing is carried across an epoch change, a drop or an attempt end without an explicit release."""
+    out = []
+    held = {}  # (src, dst, ch) -> {mid: set(frag)}
+    sids = {}
+    bumps = {}
+    sent_at = {}
+    for e in events:
+        k = e["kind"]
+        if k == "send" and e.get("sid") is not None:
+            sent_at.setdefault(e["sid"], bumps.get(tuple(sorted((e["src"], e["dst"]))), 0))
+        elif k == "reasm_acquire":
+            key = (e["src"], e["dst"], e["ch"])
+            held.setdefault(key, {}).setdefault(e["mid"], set()).add(e["frag"])
+            sids[(key, e["mid"], e["frag"])] = e["sid"]
+            limit = cfg.reassembly_fragments_max if e["ch"] == 0 else cfg.fragment_max
+            if sum(len(v) for v in held[key].values()) > limit:
+                out.append(("xv", "t=%d %s>%s ch%d holds more than %d fragments" % (e["t"], key[0], key[1], e["ch"], limit)))
+        elif k == "reasm_release":
+            key = (e["src"], e["dst"], e["ch"])
+            held.get(key, {}).pop(e["mid"], None)
+        elif k == "deliver" and e.get("nfrag", 1) > 1:
+            idx = {f for f, _ in e["parts"]}
+            if idx != set(range(e["nfrag"])):
+                out.append(("xiv", "t=%d %s>%s delivered a %d-fragment message from fragments %r" % (
+                    e["t"], e["src"], e["dst"], e["nfrag"], sorted(idx)[:6])))
+            for _, sid in e["parts"]:
+                now = bumps.get(tuple(sorted((e["src"], e["dst"]))), 0)
+                if sid is not None and sent_at.get(sid, now) != now:
+                    out.append(("xiv", "t=%d a part (sid %s) of a delivered message belongs to another incarnation" % (e["t"], sid)))
+                    break
+        elif k in ("epoch_bump", "drop_seated", "attempt_end"):
+            who = {e["a"], e["b"]} if k == "epoch_bump" else {"H", e.get("peer") or e.get("name")}
+            for key, msgs in held.items():
+                if {key[0], key[1]} == who and any(msgs.values()) and (k != "attempt_end" or e["how"] == "dead"):
+                    out.append(("xv", "t=%d %s leaves fragments held for %s without an explicit release" % (e["t"], k, sorted(who))))
+                    msgs.clear()
+        if k == "epoch_bump":
+            kk = tuple(sorted((e["a"], e["b"])))
+            bumps[kk] = bumps.get(kk, 0) + 1
     return out[:3]
 
 

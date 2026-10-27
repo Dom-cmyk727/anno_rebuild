@@ -3939,7 +3939,7 @@ Disassembled from `E:\anno1503\game\app`. Listings stayed in this worktree's `ca
 
 `RemoveAt` is `AnnoWelt.dll` `0x10028fd0..0x10029465` (`ret 0xc`). `this` is the city. The first argument is in `edx` before `sub esp, 0x2dc` (`0x10028fd0`). After `push ebp` / `push esi` / `push edi`, `[esp+0x2f0]` is the second argument (`0x10028fdd`). The lookup is `[[city+0x1c]]` slot `+0x94` with those two arguments (`0x10028fe6..0x10028fed`). A null return jumps to the epilogue `0x1002945c` (`0x10028ff5..0x10028ff7`) and never calls slot `+0x7c`. After `push ebx` (`0x10029002`) the arguments sit at `[esp+0x2f0]` and `[esp+0x2f4]`. The tail `0x100292d8..0x100292ef` pushes `0`, then y, then x, and calls island slot `+0x7c`. The coordinates are not moved to a tile that holds a particular id.
 
-The lookup is island vtable `0x100cac2c` slot `+0x94` = `0x1008cad0` (`0x1008cad0..0x1008cb09`, `ret 8`). It indexes the tile record from the `(x, y)` it is given (`0x1008cad0..0x1008caf8`, record at `[island+0xc] + index * 8`), reads the u16 id, and calls `[[island+0x1c]+0x70](id)` (`0x1008cb01..0x1008cb05`). It does not walk the city's building lists or rectangles. If `island+0x1c` is the catalogue, AnnoGame slot `+0x70` is `0x100037e0` (`mov eax, [ecx+eax*4+0x214]; ret 4`), a type pointer keyed by that id. Either way the key is the tile id. A non-null type, including scenery or a mountain, reaches the clear. Type slot `+0x5c` (PRODTYPE, AnnoGame `0x10007d20`) runs only after the clear (`0x100292f2`).
+The lookup is island vtable `0x100cac2c` slot `+0x94` = `0x1008cad0` (`0x1008cad0..0x1008cb09`, `ret 8`). It indexes the tile record from the `(x, y)` it is given (`0x1008cad0..0x1008caf8`, record at `[island+0xc] + index * 8`), reads the u16 id, and calls `[[island+0x1c]+0x70](id)` (`0x1008cb01..0x1008cb05`). It does not walk the city's building lists or rectangles. If `island+0x1c` is the catalogue, AnnoGame slot `+0x70` is `0x100037e0` (`mov eax, [ecx+eax*4+0x214]; ret 4`), a type pointer keyed by that id. Either way the key is the tile id. A non-null type, including scenery or a mountain, reaches the clear. Type slot `+0x5c` (PRODTYPE, AnnoGame `0x10007d20`) was reported here as running only after the clear (`0x100292f2`). That sentence is withdrawn. The round-bq F1 section below is the reading.
 
 Island slot `+0x7c` is `0x1008ee70`. When its third argument is 0 (`0x1008eeb5..0x1008eec3`) it calls `0x10082c30` with the same `(x, y)` and 0. The clear uses the id on that exact tile.
 
@@ -4070,3 +4070,35 @@ Sanitizers. `clang++-18` is not on PATH. The unpacked Clang 18 at `~/clang18` (`
 - `95f3ee1` docs(re): RemoveAt clears the tile it was given
 
 The branch is `task/T33-5c-remove-tile`. The commit of this section is the branch head. Not merged, not pushed.
+
+## T33.5 stage 3 — round-bq F1 — 2026-10-27 — status: READY FOR RE-REVIEW
+
+- Branch `task/T33-5c-remove-tile`. Worktree `E:\anno1503-worktrees\anno1503-T33-5c`. Previous head `0e8c15eafe2877797534a562ced074253eb59889`. The documentation fix is `25841d320d2fc70d954cf7553c183bb2949f99c2`. The commit that adds this section is the branch head. Not merged, not pushed. Docs only. No `src/` change, no golden change, no new OQ. `E:\anno1503` was not edited.
+
+### What was wrong
+
+The stage-3 report and `docs/re/transport.md` §3.4.17 said type slot `+0x5c` (PRODTYPE, AnnoGame `0x10007d20`) runs only after the clear, and named `0x100292f2` as that call.
+
+### What was read
+
+`python tools/disasm.py E:\anno1503\game\app\AnnoWelt.dll 10028fd0 1280`. The listing is in this worktree's `cache/` and is not committed. `ebp` is the slot `+0x94` return (`mov ebp, eax` at `0x10028ff3`) and is not reassigned before either call.
+
+- `0x10029011` `call dword ptr [edx+0x5c]` with `ecx = ebp`, before the city-index call. The return is `dec` / `and 0xffffffe0` (`0x10029014..0x10029015`), compared with `0xa0`. The jump table at `0x10029027` writes 1, 8, 4, `0x10`, 2 or `0x20` into `ebx` (`0x1002902e..0x10029051`). A nonzero `ebx` is passed to `[city+0x144]` slot `+8` (`0x1002909d`). A zero `ebx` jumps to `0x10029201` and skips that call. The byte table at `0x10029484` was not re-read, so those six constants are not assigned to PRODTYPE groups here.
+- `0x100292ef` `call dword ptr [edx+0x7c]` still pushes `0`, then RemoveAt's y, then RemoveAt's x (`0x100292e4..0x100292ee`). The coordinates are not moved to a tile that holds a particular id.
+- `0x100292f2` is `mov edx, dword ptr [ebp]`. `0x100292f5` is `mov ecx, ebp`. The second `call dword ptr [edx+0x5c]` is `0x100292f7`. Its return is consumed by the jump table at `0x10029316`. That table, and the calls between the two `+0x5c` sites, were not reproduced.
+
+### What stays
+
+The named-coordinate clear stands. A null `+0x94` return is still the only skip. A mountain id on the named tile is still what the clear removes. This note does not claim that all of `RemoveAt`'s bookkeeping is in the sim.
+
+Current `demolish` finds the building with `Island::building_at`, which reads the footprint grid `fill_box` writes on every tile of the box. The original selects the list processing above from the type on the named tile.
+
+### Acceptance (round bq F1)
+
+1. §3.4.17 names both calls, and `0x100292f2` as setup: MET (`docs/re/transport.md`, the lookup paragraph and the correction paragraph).
+2. Not "only afterwards": MET.
+3. The named-coordinate clear is unchanged: MET.
+4. All of `RemoveAt`'s bookkeeping is not claimed as reproduced: MET.
+5. Demolish through the footprint, original list selection from the named tile's type: MET.
+6. This report appended; no code or golden change: MET. `git diff --check` on the fix commit was clean.
+7. Stop for re-review: MET. Not merged, not pushed.

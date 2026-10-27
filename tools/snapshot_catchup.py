@@ -28,6 +28,51 @@ SYNTHETIC_SAVES = (
     ("synthetic_2x_endless02", 2 * 20349454),
     ("synthetic_4x_endless02", 4 * 20349454),
 )
+# T45 remeasure of save() at the same 30_000-tick age, stream 114.
+# Each file is one byte above the T41 figure. These sizes do not replace
+# MEASURED_SAVES. The fragment counts are unchanged.
+T45_SAVE_BYTES = (
+    ("S01_07_01", 11474170),
+    ("endless02", 20349455),
+    ("03_1024_med_256", 12906634),
+)
+# anno-sim-replay join, 2026-10-27. load_* is World::load of bytes already
+# in memory, 20 samples after 2 warm-up loads. empty_* and script_* are one
+# run_turn (10 steps of 10 game ms), 150 samples: 5 repetitions of 30 turns
+# after 2 warm-up sequences. The hash is not in these times.
+T45_REPLAY_SAMPLES = 150
+T45_TIMING_US = {
+    "S01_07_01": {
+        "load_min": 24335, "load_median": 26807, "load_p95": 27702, "load_max": 27977,
+        "empty_min": 232, "empty_median": 604, "empty_p95": 1473, "empty_max": 1616,
+        "empty_duration": 104088,
+        "script_min": 232, "script_median": 659, "script_p95": 1627, "script_max": 1966,
+        "script_duration": 113867,
+    },
+    "endless02": {
+        "load_min": 42858, "load_median": 46004, "load_p95": 51401, "load_max": 54239,
+        "empty_min": 237, "empty_median": 426, "empty_p95": 976, "empty_max": 2278,
+        "empty_duration": 80699,
+        "script_min": 234, "script_median": 397, "script_p95": 925, "script_max": 2222,
+        "script_duration": 78319,
+    },
+    "03_1024_med_256": {
+        "load_min": 25018, "load_median": 27647, "load_p95": 31175, "load_max": 32570,
+        "empty_min": 171, "empty_median": 214, "empty_p95": 288, "empty_max": 533,
+        "empty_duration": 33791,
+        "script_min": 171, "script_median": 217, "script_p95": 330, "script_max": 635,
+        "script_duration": 35330,
+    },
+}
+# Encoded TurnEntry bytes from the same runs. The empty command stream is 0.
+# One scripted SetSpeed record is 16. The burst is 76 records, 1216 bytes.
+# None of these is the ADR empty datagram, and none replaces turn_store_cap.
+T45_EMPTY_PAYLOAD = 0
+T45_SCRIPT_PAYLOAD = 16
+T45_SCRIPT_COMMANDS = 1
+T45_BURST_PAYLOAD = 1216
+T45_BURST_COMMANDS = 76
+T45_BURST_CAPACITY = 1228
 PUBLISHED_FRAGMENTS = {
     "S01_07_01": 9659,
     "endless02": 17130,
@@ -80,10 +125,13 @@ def assumptions():
         "A5. Admission multiplies the zero-loss discrete completion by 2. "
         "That factor is a budget allowance, not a measured loss multiplier.",
         "A6. load_ms defaults to 0 and replay_turns_per_s defaults to 100. "
-        "Neither was measured (OQ-281). The runtime refuses a joiner the "
-        "allowance cannot hold.",
+        "T45 measured World::load and run_turn on one host. Those inputs are "
+        "a labeled scenario and do not replace these defaults (OQ-281). The "
+        "runtime refuses a joiner the allowance cannot hold.",
         "A7. Each retained turn is charged turn_store_cap 1200 bytes, the "
-        "payload cap. That is not a measured command size (OQ-282). The "
+        "payload cap. T45 measured an empty command stream, one scripted "
+        "SetSpeed per turn, and a synthetic burst. Those sizes do not replace "
+        "the cap, and a real-play distribution was not measured (OQ-282). The "
         "empty-turn datagram of 69 bytes is only the concurrent-wire check.",
         "A8. Turns use channel 0 while the snapshot uses channel 1. A full "
         "channel-1 window does not delay channel 0. Receipt on this clock is "
@@ -1142,6 +1190,124 @@ def _scenario_rows(cfg):
     return rows
 
 
+def t45_ceil_ms(us):
+    if us < 0:
+        raise ValueError("us")
+    return (us + 999) // 1000
+
+
+def t45_floor_per_s(us):
+    if us <= 0:
+        raise ValueError("us")
+    return 1_000_000 // us
+
+
+def t45_sum_per_s(duration_us, samples=T45_REPLAY_SAMPLES):
+    if duration_us <= 0 or samples <= 0:
+        raise ValueError("duration")
+    return (samples * 1_000_000) // duration_us
+
+
+def t45_load_ms(name):
+    return t45_ceil_ms(T45_TIMING_US[name]["load_median"])
+
+
+def t45_replay_rate(name, key):
+    row = T45_TIMING_US[name]
+    if key not in row:
+        raise KeyError(key)
+    if key.endswith("_duration"):
+        return t45_sum_per_s(row[key])
+    return t45_floor_per_s(row[key])
+
+
+def t45_budgets(name, rate_key):
+    """A copy of the proposed defaults with one scenario's measured load and rate.
+
+    `proposed_budgets()` is not modified. `load_ms` is the ceil of the load
+    median. A `*_duration` key is the sequence throughput, samples per second
+    of the summed sample. Any other key is the floor of one turn per second
+    from that sample's microseconds.
+    """
+    return replace(proposed_budgets(),
+                   load_ms=t45_load_ms(name),
+                   replay_turns_per_s=t45_replay_rate(name, rate_key))
+
+
+def t45_report_lines():
+    """Labeled comparison. The baseline printout above this is unchanged."""
+    lines = [
+        "t45 measurement",
+        "t45 host cpu=AMD_Ryzen_7_9800X3D cores=8 threads=16 compiler=msvc msvc_ver=1951 ndebug=1",
+        "t45 defaults_unchanged load_ms=0 replay_turns_per_s=100 turn_store_cap=1200",
+        "t45 encoded empty_payload=%d script_payload=%d script_commands=%d "
+        "burst_payload=%d burst_commands=%d burst_capacity=%d burst_over_cap=1 "
+        "adr_empty_payload=%d not_a_packet=1"
+        % (T45_EMPTY_PAYLOAD, T45_SCRIPT_PAYLOAD, T45_SCRIPT_COMMANDS,
+           T45_BURST_PAYLOAD, T45_BURST_COMMANDS, T45_BURST_CAPACITY,
+           EMPTY_TURN_PAYLOAD),
+    ]
+    base = proposed_budgets()
+    t41 = dict(MEASURED_SAVES)
+    rate_keys = ("script_duration", "script_median", "script_p95", "script_max",
+                 "empty_duration", "empty_max")
+    for name, size in T45_SAVE_BYTES:
+        row = T45_TIMING_US[name]
+        fragments = fragment_count(size)
+        lines.append(
+            "t45 save %s bytes=%d t41_bytes=%d delta=%d fragments=%d"
+            % (name, size, t41[name], size - t41[name], fragments))
+        lines.append(
+            "t45 load %s us_min=%d us_median=%d us_p95=%d us_max=%d load_ms_ceil_median=%d"
+            % (name, row["load_min"], row["load_median"], row["load_p95"],
+               row["load_max"], t45_load_ms(name)))
+        for workload, prefix in (("empty", "empty"), ("scripted", "script")):
+            duration = row[prefix + "_duration"]
+            lines.append(
+                "t45 replay %s workload=%s us_min=%d us_median=%d us_p95=%d us_max=%d "
+                "samples=%d duration_us=%d rate_median=%d rate_p95=%d rate_max=%d rate_sum=%d"
+                % (name, workload, row[prefix + "_min"], row[prefix + "_median"],
+                   row[prefix + "_p95"], row[prefix + "_max"], T45_REPLAY_SAMPLES,
+                   duration, t45_floor_per_s(row[prefix + "_median"]),
+                   t45_floor_per_s(row[prefix + "_p95"]),
+                   t45_floor_per_s(row[prefix + "_max"]),
+                   t45_sum_per_s(duration)))
+        base_fragments = fragment_count(t41[name])
+        base_est = estimate_transfer_ms(base_fragments, base)
+        base_gap = (base_est + base.load_ms) // base.turn_ms
+        base_decision, _base_reason, base_need = admit(t41[name], base)
+        base_result = evaluate_join(t41[name], base)
+        for key in rate_keys:
+            labeled = t45_budgets(name, key)
+            decision, reason, need = admit(size, labeled)
+            result = evaluate_join(size, labeled)
+            est = estimate_transfer_ms(fragments, labeled)
+            gap = (est + labeled.load_ms) // labeled.turn_ms
+            lines.append(
+                "t45 compare %s rate_key=%s replay=%d load_ms=%d admit=%s reason=%s need=%d "
+                "baseline_admit=%s baseline_need=%d status=%s paused=%s pin_turns=%d "
+                "baseline_pin_turns=%d done_ms=%d baseline_done_ms=%d gap_turns=%d "
+                "baseline_gap_turns=%d"
+                % (name, key, labeled.replay_turns_per_s, labeled.load_ms,
+                   decision, reason, need, base_decision, base_need,
+                   result.status, str(result.paused).lower(), result.pin_turns,
+                   base_result.pin_turns, result.done_ms, base_result.done_ms,
+                   gap, base_gap))
+        for key in ("script_duration", "script_max", "empty_max"):
+            loss = replace(t45_budgets(name, key), loss_per_million=20_000, seed=1)
+            result = evaluate_join(size, loss)
+            lines.append(
+                "t45 loss %s rate_key=%s seed=1 data_only status=%s reason=%s "
+                "transfer_ms=%d done_ms=%d pin_turns=%d replayed=%d host_produced=%d paused=%s"
+                % (name, key, result.status, result.reason, result.transfer_ms,
+                   result.done_ms, result.pin_turns, result.replayed,
+                   result.host_produced, str(result.paused).lower()))
+    lines.append(
+        "t45 limits A8_unchanged=1 A12_data_only=1 not_end_to_end=1 "
+        "real_play_unmeasured=1 other_hosts_unmeasured=1 defaults_kept=1")
+    return lines
+
+
 def report_lines(cfg=None, with_loss=False):
     if cfg is None:
         cfg = proposed_budgets()
@@ -1201,6 +1367,8 @@ def report_lines(cfg=None, with_loss=False):
 
 def main():
     for line in report_lines(with_loss=True):
+        print(line)
+    for line in t45_report_lines():
         print(line)
 
 

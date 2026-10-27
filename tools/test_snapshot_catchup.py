@@ -739,5 +739,155 @@ class Proposal(unittest.TestCase):
         self.assertGreater(bound["total"], without_backlog)
 
 
+def _fields(line):
+    found = {}
+    for part in line.split():
+        if "=" in part:
+            key, value = part.split("=", 1)
+            found[key] = value
+    return found
+
+
+class T45Measurements(unittest.TestCase):
+    def test_defaults_stay(self):
+        budgets = model.proposed_budgets()
+        self.assertEqual((budgets.load_ms, budgets.replay_turns_per_s, budgets.turn_store_cap),
+                         (0, 100, 1200))
+        self.assertEqual(model.MEASURED_SAVES, (
+            ("S01_07_01", 11474169),
+            ("endless02", 20349454),
+            ("03_1024_med_256", 12906633),
+        ))
+        labeled = model.t45_budgets("endless02", "empty_max")
+        again = model.proposed_budgets()
+        self.assertEqual(again.load_ms, 0)
+        self.assertEqual(again.replay_turns_per_s, 100)
+        self.assertEqual(labeled.turn_store_cap, 1200)
+        self.assertEqual(labeled.tail_turns_max, budgets.tail_turns_max)
+        self.assertEqual(labeled.fragment_max, budgets.fragment_max)
+        base = "\n".join(model.report_lines())
+        self.assertIn("load_ms: 0", base)
+        self.assertIn("replay_turns_per_s: 100", base)
+        self.assertIn("bytes=20349454", base)
+        self.assertNotIn("bytes=20349455", base)
+
+    def test_remeasured_saves_keep_the_fragment_counts(self):
+        previous = dict(model.MEASURED_SAVES)
+        self.assertEqual(model.T45_TIMING_US["S01_07_01"]["load_median"], 26807)
+        self.assertEqual(model.T45_TIMING_US["endless02"]["load_median"], 46004)
+        self.assertEqual(model.T45_TIMING_US["03_1024_med_256"]["load_median"], 27647)
+        self.assertEqual(model.t45_load_ms("S01_07_01"), 27)
+        self.assertEqual(model.t45_load_ms("endless02"), 47)
+        self.assertEqual(model.t45_load_ms("03_1024_med_256"), 28)
+        self.assertEqual(model.t45_replay_rate("S01_07_01", "script_duration"), 1317)
+        self.assertEqual(model.t45_replay_rate("S01_07_01", "script_p95"), 614)
+        self.assertEqual(model.t45_replay_rate("endless02", "script_duration"), 1915)
+        self.assertEqual(model.t45_replay_rate("endless02", "empty_max"), 438)
+        self.assertEqual(model.t45_replay_rate("03_1024_med_256", "script_duration"), 4245)
+        for name, size in model.T45_SAVE_BYTES:
+            self.assertEqual(size, previous[name] + 1)
+            self.assertEqual(model.fragment_count(size), model.PUBLISHED_FRAGMENTS[name])
+
+    def test_encoded_workloads(self):
+        budgets = model.proposed_budgets()
+        self.assertEqual(model.T45_EMPTY_PAYLOAD, 0)
+        self.assertEqual(model.T45_SCRIPT_PAYLOAD, 16)
+        self.assertEqual(model.T45_SCRIPT_COMMANDS, 1)
+        self.assertEqual(model.T45_BURST_COMMANDS, 76)
+        self.assertEqual(model.T45_BURST_PAYLOAD, 1216)
+        self.assertEqual(model.T45_BURST_CAPACITY, 1228)
+        self.assertNotEqual(model.T45_EMPTY_PAYLOAD, model.EMPTY_TURN_PAYLOAD)
+        self.assertLess(model.T45_SCRIPT_PAYLOAD, budgets.payload_max)
+        self.assertGreater(model.T45_BURST_PAYLOAD, budgets.turn_store_cap)
+        self.assertEqual(76 * 16, 1216)
+
+    def test_labeled_rows_admit_and_catch_up(self):
+        lines = model.t45_report_lines()
+        text = "\n".join(lines)
+        self.assertIn("defaults_unchanged load_ms=0 replay_turns_per_s=100 turn_store_cap=1200", text)
+        self.assertIn("not_end_to_end=1", text)
+        self.assertIn("real_play_unmeasured=1", text)
+        self.assertIn("other_hosts_unmeasured=1", text)
+        compares = [line for line in lines if line.startswith("t45 compare ")]
+        losses = [line for line in lines if line.startswith("t45 loss ")]
+        self.assertEqual(len(compares), 18)
+        self.assertEqual(len(losses), 9)
+        for line in compares:
+            row = _fields(line)
+            self.assertEqual(row["admit"], "admit")
+            self.assertEqual(row["reason"], "within_budgets")
+            self.assertEqual(row["baseline_admit"], "admit")
+            self.assertEqual(row["status"], "success")
+            self.assertEqual(row["paused"], "false")
+            self.assertLessEqual(int(row["need"]), int(row["baseline_need"]))
+            self.assertLessEqual(int(row["need"]), 4096)
+            self.assertLessEqual(int(row["pin_turns"]), int(row["baseline_pin_turns"]))
+            self.assertLessEqual(int(row["done_ms"]), int(row["baseline_done_ms"]))
+            self.assertEqual(row["gap_turns"], row["baseline_gap_turns"])
+        binding = _fields(next(line for line in compares
+                               if "endless02" in line and "rate_key=empty_max" in line))
+        self.assertEqual(binding["replay"], "438")
+        self.assertEqual(binding["load_ms"], "47")
+        self.assertEqual(binding["need"], "3289")
+        self.assertEqual(binding["baseline_need"], "3570")
+        self.assertEqual(binding["gap_turns"], "3213")
+        self.assertEqual(binding["pin_turns"], "1656")
+        self.assertEqual(binding["baseline_pin_turns"], "1784")
+        published_transfer = {
+            "S01_07_01": "113250",
+            "endless02": "198750",
+            "03_1024_med_256": "127050",
+        }
+        for line in losses:
+            row = _fields(line)
+            self.assertEqual(row["status"], "success")
+            self.assertEqual(row["paused"], "false")
+            self.assertEqual(row["replayed"], row["host_produced"])
+            self.assertEqual(row["pin_turns"], row["replayed"])
+            for name, transfer in published_transfer.items():
+                if line.startswith("t45 loss " + name + " "):
+                    self.assertEqual(row["transfer_ms"], transfer)
+        slow = _fields(next(line for line in losses
+                            if line.startswith("t45 loss endless02 ")
+                            and "rate_key=empty_max" in line))
+        self.assertEqual(slow["done_ms"], "204944")
+        self.assertEqual(slow["pin_turns"], "2049")
+        self.assertLess(int(slow["pin_turns"]), 2208)
+
+    def test_assumptions_keep_the_defaults(self):
+        text = " ".join(model.assumptions())
+        self.assertIn("load_ms defaults to 0 and replay_turns_per_s defaults to 100", text)
+        self.assertIn("do not replace these defaults", text)
+        self.assertIn("real-play distribution was not measured", text)
+        self.assertIn("drops data datagrams only", text)
+
+    def test_adr_records_the_labeled_result(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "docs", "adr", "0003-network-transport.md"),
+                  encoding="utf-8") as adr_file:
+            adr = adr_file.read()
+        with open(os.path.join(root, "docs", "open-questions.md"),
+                  encoding="utf-8") as oq_file:
+            oq = oq_file.read()
+        self.assertIn("**Status:** Proposed", adr)
+        self.assertNotIn("**Status:** Accepted", adr)
+        for token in (
+                "t45_load_ms_ceil_median=27/47/28",
+                "t45_endless02_empty_max_replay=438",
+                "t45_endless02_empty_max_need=3289",
+                "t45_gap_turns_unchanged=1809/3213/2037",
+                "t45_burst_payload=1216",
+                "t45_empty_payload=0",
+                "t45_script_payload=16",
+                "11 474 169",
+                "11 474 170",
+                ):
+            self.assertIn(token, adr)
+        self.assertIn("narrowed (T45, 2026-10-27)", oq)
+        self.assertIn("## OQ-281:", oq)
+        self.assertIn("## OQ-282:", oq)
+        self.assertNotIn("## OQ-300:", oq)
+
+
 if __name__ == "__main__":
     unittest.main()

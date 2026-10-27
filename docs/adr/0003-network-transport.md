@@ -1,7 +1,7 @@
 # ADR 0003: Network transport and sessions
 
 - **Status:** Proposed
-- **Date:** 2026-10-26. Corrected 2026-10-27 (round bq F1): the fragment cap and the window time. Retention proposal 2026-10-27 (T43). Round bs F1, 2026-10-27: progress cursors, global caps, joiner backlog, acknowledgement loss. Round bt F2, 2026-10-27: the shared owner enforces tail and deadline caps on each host advance, before the new turn is retained. Status stays Proposed.
+- **Date:** 2026-10-26. Corrected 2026-10-27 (round bq F1): the fragment cap and the window time. Retention proposal 2026-10-27 (T43). Round bs F1, 2026-10-27: progress cursors, global caps, joiner backlog, acknowledgement loss. Round bt F2, 2026-10-27: the shared owner enforces tail and deadline caps on each host advance, before the new turn is retained. T45 measurement 2026-10-27: labeled `World::load` and `run_turn` costs, and encoded turn sizes. The defaults below are unchanged. Status stays Proposed.
 
 ADR 0002 is reserved for the float walk (T34) and is not this document.
 
@@ -180,10 +180,10 @@ The numbers are configuration. The defaults are the proposal in [§13](#13-budge
 | `snapshot_age_ms` | 60 000 | A later ask does not attach to this image |
 | `concurrent_transfers` | 2 | A third joiner is refused |
 | `tail_turns_max` | 4 096 | The pin would grow past this many turns |
-| `turn_store_cap` | 1 200 | Bytes charged for one retained turn, the payload cap (OQ-282) |
+| `turn_store_cap` | 1 200 | Bytes charged for one retained turn, the payload cap. T45 did not replace it (OQ-282) |
 | `catchup_ms` | 600 000 | The joiner has not reached the host |
-| `load_ms` | 0 | Time added after the bytes arrive, before replay (OQ-281) |
-| `replay_turns_per_s` | 100 | Chase rate used at admission. The live rate is 10 (OQ-281) |
+| `load_ms` | 0 | Default. Time added after the bytes arrive, before replay. T45 measured 27–47 ms on one host and left the default (OQ-281) |
+| `replay_turns_per_s` | 100 | Default chase rate. The live rate is 10. T45 measured faster turns on one host and left the default (OQ-281) |
 | `loss_scale` | 2 | Admission multiplies the zero-loss discrete completion by this |
 
 Admission takes the zero-loss discrete completion, multiplies by `loss_scale`, adds `load_ms`, and calls that duration's turn count `gap`. When `replay_turns_per_s > live_turns_per_s`, the reserved pin length is `J = gap + ceil(live * gap / (replay - live))`. When the replay rate is at or below the live rate, admission refuses: the gap does not close. `J` above `tail_turns_max`, a `gap` above `receive_backlog_turns`, or an estimate above `catchup_ms`, is also a refusal. `J` is an upper bound held for admission. It is not the turn the joiner has applied.
@@ -211,7 +211,7 @@ On host migration ([§9](#9-host-migration)) an in-progress joiner is not a conn
 1. Admit or refuse under §8.3. A refusal ends at the ask.
 2. Share an open generation when §8.4 allows it. Otherwise save at the current boundary `S` and open the pin at `S+1`.
 3. Send the image on channel 1. Send turns `S+1` onward on channel 0 during that transfer. A full channel-1 window does not delay channel 0.
-4. The joiner `load`s the image, then `run_turn`s from `S+1` until its index equals the host's. `load_ms` and `replay_turns_per_s` are the model's names for those two costs. Both are unmeasured (OQ-281).
+4. The joiner `load`s the image, then `run_turn`s from `S+1` until its index equals the host's. `load_ms` and `replay_turns_per_s` are the model's names for those two costs. The defaults stay 0 and 100. T45 measured both on one host and records them as a labeled scenario in [§13](#13-budgets). The defaults were not replaced (OQ-281).
 5. A matching hash at the next ordinary check lets the joiner send commands. A mismatch of the joiner alone drops the join and does not pause the others. A mismatch that includes a peer already in the game is [§7](#7-hash-checks).
 6. A cap that trips during the transfer or the chase restarts this joiner only. Turns still named by another running pin stay. The table is not paused. `Table.advance` does this before it retains the new host turn. An older generation is selected first when the union overflows. A younger pin that still fits stays. `Table.attach` refuses a save past `fragment_max` before a generation is stored, and it refuses an ask whose clock is not the owner's clock. `Table.note_backlog` restarts a backlog past `receive_backlog_turns`. Those calls are the path for the parts in the byte bound. A caller does not retain a later turn by querying the span.
 
@@ -257,10 +257,10 @@ Every number in this section is configuration. The defaults and the reasons:
 | `snapshot_age_ms` | 60000 | a second joiner shares the image for one rolling-log interval, then the next ask gets a new save ([§8](#8-join-in-progress)) |
 | `concurrent_transfers` | 2 | allocation is linear in this count; the third joiner is refused on the whole table, including when the running joins sit on two generations |
 | `tail_turns_max` | 4096 | power of two at or above the admission pin for `endless02` ([§13](#13-budgets)) |
-| `turn_store_cap` | 1200 | bytes charged per retained turn: `payload_max`, a cap (OQ-282) |
+| `turn_store_cap` | 1200 | bytes charged per retained turn: `payload_max`, a cap. T45 did not replace it (OQ-282) |
 | `catchup_ms` | 600000 | 10 minutes, the same real-time interval as `full_check_min`. A join still behind the host is restarted |
-| `load_ms` | 0 | unmeasured `World::load` allowance (OQ-281) |
-| `replay_turns_per_s` | 100 | admission chase rate, 10× the live 10 turns/s. Unmeasured (OQ-281) |
+| `load_ms` | 0 | default `World::load` allowance. T45 measured 27–47 ms on one host and left this default (OQ-281) |
+| `replay_turns_per_s` | 100 | default admission chase rate, 10× the live 10 turns/s. T45 measured faster turns on one host and left this default (OQ-281) |
 | `loss_scale` | 2 | admission multiplies the zero-loss discrete completion by this. An allowance, not a measured multiplier |
 
 A peer silent past `wait_ms` raises the wait dialog on the others and the host keeps sending turns into the buffer. The game is not ended. Past `grace_ms` the seat is marked computer: the AI seam on every peer produces that seat's commands (`state.md` §8.2 item 4), and nothing for that seat is required on the wire (D9). A rejoin inside or after the grace follows [§8](#8-join-in-progress) and the seat is returned to the human. If the missed turns are still in the rolling log, that log is enough. If they are not, the rejoin is a fresh save and a pin, and a cap that trips restarts the rejoining seat only.
@@ -337,7 +337,7 @@ The fluid tenths above stay the T41 F1 quotients: 45.3 s, 80.3 s and 50.9 s at a
 
 One window of 32 payloads of 1 200 bytes serializes in 3 072 µs at 100 Mbit/s and 307 µs at 1 Gbit/s. Both sit under a 150 ms one-way delay, which is why the event clock omits serialization (assumption A3). The line-rate save-byte times earlier in this section are the other bound, and on these sizes the window's round trip is the slower one.
 
-Admission multiplies the 300 ms zero-loss completion by `loss_scale` 2, with `load_ms` 0 and `replay_turns_per_s` 100. The reserved pin lengths are 2 010, 3 570 and 2 264 turns. `tail_turns_max` is the power of two at or above the largest, 4 096. At `turn_store_cap` 1 200 that pin is 4 915 200 bytes. The rolling log at the same cap is 600 × 1 200 = 720 000 bytes.
+Admission multiplies the 300 ms zero-loss completion by `loss_scale` 2, with `load_ms` 0 and `replay_turns_per_s` 100. The reserved pin lengths are 2 010, 3 570 and 2 264 turns. `tail_turns_max` is the power of two at or above the largest, 4 096. At `turn_store_cap` 1 200 that pin is 4 915 200 bytes. The rolling log at the same cap is 600 × 1 200 = 720 000 bytes. The T45 labeled rates are a later subsection. They do not replace this row.
 
 The allocation bound, with `concurrent_transfers` 2, `max_generations` 2 and `fragment_max` 17 130, is the sum of the caps. Each joiner's received-turn backlog is `receive_backlog_turns` × 1 200, and the channel-0 window that delivers those turns is `snapshot_window` × 69 bytes per joiner. The snapshot store, reassembly, channel-1 windows, host pin and rolling log sum to 87 113 760 bytes. That figure omits the backlog and the channel-0 flight. The total includes both.
 
@@ -374,6 +374,47 @@ The one-second hash is not this transfer. Channel 1 is separate from channel 0.
 
 An empty turn payload is 8 + 4 + 4 = 16 bytes. With the 25-byte header and 28 bytes of IPv4+UDP, one datagram is 69 bytes. At 10 turns per second that is 690 bytes/s from the host to each other peer. At 6 peers the host sends to 5 others: 3 450 bytes/s, plus one hash report of the same order once per second per peer. A single placement's `TurnEntry` is a few dozen bytes (`state.md` §8.5), so a command on every turn from every seat stays in the same thousands of bytes per second. The snapshot is the save measured above, and it is sent on a join or a resync, not on the one-second hash. The steady-state figure does not include it.
 
+### T45 measurement (2026-10-27)
+
+This subsection does not replace the T41 table. The unprepared `state_hash` medians stay 7.9 / 14.2 / 8.8 ms. The T41 save sizes stay 11 474 169, 20 349 454 and 12 906 633 bytes. `anno-sim-replay join` remeasured `save()` on stream 114 at the same 30 000-tick age. Each file is one byte larger: 11 474 170, 20 349 455 and 12 906 634. The fragment counts stay 9 659, 17 130 and 10 865, so `fragment_max` 17 130 still admits the remeasured `endless02` save. The extra byte was not attributed to a field.
+
+The host is an AMD Ryzen 7 9800X3D, 8 cores and 16 logical processors, Windows, MSVC 19.51 Release (`msvc_ver` 1951, `NDEBUG`). The tool reported `threads=16`, `create_executor=threads`, `load_executor=none`, `clock=steady_clock` and `timing_includes_hash=0`. Warm-up was 2. Load used 20 repetitions. Replay used 5 repetitions of 30 turns, 150 samples. These times are this host only. They are not a weaker machine and not a network.
+
+A tick is 2 game ms. The age is 30 000 ticks from tick 0, reached by 600 calls to `World::advance(100)`. One multiplayer turn in the tool is `run_turn` with `step_ms` 10 and `steps` 10: 100 game ms, 50 ticks. The live rate in the model stays 10 such turns per second. `World::advance` only ages the measured world. The timed replay is `run_turn`.
+
+`World::load` below is the load of bytes already in memory. File I/O, the registry, templates, scenario parsing, world creation and `save()` were timed as separate one-sample phases and are not this distribution. `docs/perf/README.md` lists those phases. Each timed load's hash matched the source. Each timed replay matched an untimed `run_turn` reference, and that reference matched apply-then-advance. A failed check prints `join validation=fail` and no timing line. All three runs printed `validation=ok`.
+
+| Scenario | Path under `game/app` | `World::load` µs min / median / p95 / max | Ceil of median |
+|---|---|---:|---:|
+| `S01_07_01` | `Scenes/0100Kampagne01/S01_07_01.sze` | 24 335 / 26 807 / 27 702 / 27 977 | 27 ms |
+| `endless02` | `Scenes/0011SingleEndlosAddon/endless02.sze` | 42 858 / 46 004 / 51 401 / 54 239 | 47 ms |
+| `03_1024_med_256` | `Scenes/0010SingleEndlos/03_1024_med_256.sze` | 25 018 / 27 647 / 31 175 / 32 570 | 28 ms |
+
+The empty workload is `run_turn` with no commands. Accepted 0 is that empty script. Rejected was 0. The scripted workload is one `SetSpeed` per turn from host player 0, percent cycling through 50, 100 and 200. All 30 were accepted and `speed_percent` matched. The burst is one synthetic turn: `SetSpeed` records grown until the encoded stream passes 1 200 bytes. 75 records are 1 200 bytes and are not over the cap. 76 records are 1 216 bytes. All 76 were accepted. It is not a play distribution.
+
+| Scenario | Workload | µs min / median / p95 / max | Duration µs | Turns/s, median floor | Turns/s, sum | Turns/s, p95 floor | Turns/s, max floor |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `S01_07_01` | empty | 232 / 604 / 1 473 / 1 616 | 104 088 | 1 655 | 1 441 | 678 | 618 |
+| `S01_07_01` | scripted | 232 / 659 / 1 627 / 1 966 | 113 867 | 1 517 | 1 317 | 614 | 508 |
+| `endless02` | empty | 237 / 426 / 976 / 2 278 | 80 699 | 2 347 | 1 858 | 1 024 | 438 |
+| `endless02` | scripted | 234 / 397 / 925 / 2 222 | 78 319 | 2 518 | 1 915 | 1 081 | 450 |
+| `03_1024_med_256` | empty | 171 / 214 / 288 / 533 | 33 791 | 4 672 | 4 439 | 3 472 | 1 876 |
+| `03_1024_med_256` | scripted | 171 / 217 / 330 / 635 | 35 330 | 4 608 | 4 245 | 3 030 | 1 574 |
+
+Encoded sizes are `TurnEntry` bytes only. The same three numbers came out of every scenario. The empty command stream is 0 bytes. One scripted record is 16 bytes: issuer `u32`, sequence `u32`, type `u16`, length `u16`, percent `u32`. The burst is 76 commands and 1 216 bytes. The `std::vector` capacity on this MSVC build was 0, 16 and 1 228 bytes. That capacity is allocator storage, not a budget. The tool also printed the ADR header of 25 bytes, IPv4+UDP of 28 bytes and the ADR empty payload of 16 bytes, marked `packet_overhead=adr_proposal` and `not_a_packet=1`. Those bytes were not added to the payload, and the tool does not write a packet. The scripted 16-byte record is a different quantity from the 16-byte empty datagram defined above.
+
+`proposed_budgets()` stays `load_ms` 0, `replay_turns_per_s` 100 and `turn_store_cap` 1 200. `tools/snapshot_catchup.py` feeds each scenario through `replace()`: the ceil of the load median, and one measured rate at a time. Every labeled row admits with `within_budgets`. The admission turn gap is unchanged, because 27, 47 and 28 ms do not cross a 100 ms boundary on these estimates: 1 809, 3 213 and 2 037 turns. The reserved pin shrinks. The scripted sequence rates ask for 1 823, 3 230 and 2 042 turns, against the baseline 2 010, 3 570 and 2 264. The slowest measured turn is the empty-workload maximum on `endless02`, 2 278 µs, 438 turns/s. That row asks for 3 289 turns. `tail_turns_max` 4 096 still holds it. Zero-loss catch-up still succeeds, and that slowest row's pin is 1 656 turns against the baseline 1 784. Seed 1 at 2% data loss keeps the published transfer times 113 250, 198 750 and 127 050 ms, because the fragment counts did not change. The replayed cursor still meets the host. On `endless02` that meeting is 200 805 ms on turn 2 008 at the scripted sequence rate, and 204 944 ms on turn 2 049 at 438 turns/s, against the baseline 220 830 ms on turn 2 208.
+
+A8 and A12 are unchanged. Assumption A10 still applies: no host processing is added beyond `load_ms` and the replay rate. This is not an end-to-end join, not a real network, and not a claim about another machine. Real-play turn sizes were not measured.
+
+Headroom, with the defaults left as they are:
+
+- Keep `replay_turns_per_s` at 100. It is slower than every measured summary on this host, including 438 turns/s, so it reserves the larger pin.
+- Keep `load_ms` at 0. The slowest ceil-of-median load is 47 ms and it adds no admission turn on these three saves. An allowance of 50 ms would cover that median on this host. It is not adopted.
+- Keep `turn_store_cap` at 1 200. The measured empty stream is 0 bytes and the scripted turn is 16. The synthetic burst of 1 216 bytes shows that 1 200 is not a size every encoded turn stays under. The cap is not lowered, and it is not a universal bound.
+
+T45 model tokens: t45_load_ms_ceil_median=27/47/28, t45_endless02_empty_max_replay=438, t45_endless02_empty_max_need=3289, t45_gap_turns_unchanged=1809/3213/2037, t45_burst_payload=1216, t45_empty_payload=0, t45_script_payload=16. OQ-300 through OQ-309 were not used.
+
 ## 14. The `netsim` test plan
 
 `netsim` runs N peers in one process. The link between them can delay, jitter, drop, reorder and disconnect. Each human seat has a command bot. No game files are required for the cases below; they build a world the sim can construct without `Anlagen.dat`. The scenario measurement of [§13](#13-budgets) stays a separate, manual run.
@@ -398,8 +439,8 @@ Two real PCs on a LAN finding each other is a person test (`docs/plan/lan-endles
 
 - **OQ-250.** The UDP port. No original value was found in `tick-loop.md`. No default is set.
 - **OQ-251.** Closed in [§13](#13-budgets): `S01_07_01` `state_hash()` is 7.9 ms median with every chunk dirty and 0.34 ms after `prepare_hash`; `save()` is 11 474 169 bytes.
-- **OQ-280.** Narrowed by the T43 proposal in [§8](#8-join-in-progress) and [§13](#13-budgets), and by the round-bs correction of the cursors, the global caps and the byte total. The recommended contract is a fresh save at the ask and a pin of the turns after it. The joiner is caught up when the replayed cursor equals the host cursor, and a cap trips only that joiner. The 60 s log stays the short-outage buffer. The periodic image is an availability check, not the join payload. The table is not paused for a join. Still for the owner, because this ADR is Proposed: the budget defaults (`tail_turns_max` 4096, `catchup_ms` 600000, `concurrent_transfers` 2, `snapshot_age_ms` 60000, `loss_scale` 2, acceptance `resend_ms` 300), and OQ-281 and OQ-282. OQ-283 through OQ-289 were not used.
-- **OQ-281.** `World::load` time and the joiner's `run_turn` rate are unmeasured. The model uses `load_ms` 0 and `replay_turns_per_s` 100 until a measurement replaces them.
-- **OQ-282.** Bytes per retained turn are unmeasured. The pin charges `turn_store_cap` 1200, which is `payload_max`.
+- **OQ-280.** Narrowed by the T43 proposal in [§8](#8-join-in-progress) and [§13](#13-budgets), and by the round-bs correction of the cursors, the global caps and the byte total. The recommended contract is a fresh save at the ask and a pin of the turns after it. The joiner is caught up when the replayed cursor equals the host cursor, and a cap trips only that joiner. The 60 s log stays the short-outage buffer. The periodic image is an availability check, not the join payload. The table is not paused for a join. Still for the owner, because this ADR is Proposed: the budget defaults (`tail_turns_max` 4096, `catchup_ms` 600000, `concurrent_transfers` 2, `snapshot_age_ms` 60000, `loss_scale` 2, acceptance `resend_ms` 300). OQ-281 and OQ-282 are narrowed by T45 and their defaults stay in that list. OQ-283 through OQ-289 were not used.
+- **OQ-281.** Narrowed by the T45 measurement in [§13](#13-budgets). `World::load` and `run_turn` were timed on one host. The model defaults stay `load_ms` 0 and `replay_turns_per_s` 100. Other machines are unmeasured.
+- **OQ-282.** Narrowed by the same measurement. An empty command stream is 0 bytes, one scripted `SetSpeed` is 16, and a synthetic burst is 1 216. The pin still charges `turn_store_cap` 1200. Real-play sizes are unmeasured, and 1200 is not a universal bound.
 
 The command delay of 2, the 100 ms turn, the 60 s grace and the 10-minute full check are the plan's and the original's defaults. They are configuration, not new decisions.

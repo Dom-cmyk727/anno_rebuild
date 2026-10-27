@@ -4651,7 +4651,7 @@ The acceptance marks below are the withdrawn claim. Round ca: the 1 160 ms equal
 - `git diff --check` before the commit. No cmake, ctest, or WSL. No model run was required: the cited rows are the tests and §13 already on this branch. No Wine and no run of the original.
 - Time spent / subagents used: inline, no subagents.
 
-## T52 F1 — checkpoint is not activation — 2026-10-27 — status: FINISHED
+## T52 F1 — checkpoint is not activation — 2026-10-27 — status: SUPERSEDED by T52 F2 (its worked rows and "MET" marks are withdrawn: they chose arrival times independently of ordered delivery)
 
 - Branch: `codex/T52-join-activation-design`. Worktree: `E:\anno1503-worktrees\anno1503-T52`. Continued from `6a3299116b1e573a5354914115a60d30be0f8c0b`. Not rebased onto round-ca main. The commit that adds this section is the branch head.
 - Files. `docs/adr/0003-network-transport.md` (§8.4 completion sentence, §8.5 steps 4–5, §8.6 model-gate sentence, §8.7, §13 note, §14 case 4, open choices). `docs/open-questions.md` (OQ-320, OQ-370, OQ-371). This section. `tools/snapshot_catchup.py` was not edited. No `src/`, no default change. ADR 0003 stays Proposed.
@@ -4678,4 +4678,89 @@ The acceptance marks below are the withdrawn claim. Round ca: the 1 160 ms equal
   4. Both directions, acknowledgements and retries fit a finite queue, and the one-join and two-join rows are worked: MET. Per-pair window of 32, ACK-only 53 bytes, host cap 281 302 bytes, joiner reverse cap 40 275 bytes, nonpreemptible unit one 1 253-byte datagram. The two-join pass is 7 015.6 µs and 24.4 µs reverse.
   5. ADR stays Proposed, gaps stay explicit, scope held: MET. OQ-320 and OQ-371 stay open. OQ-370 is narrowed to owner approval of `A = C + command_delay` and no longer offers `A = H + command_delay`. No `src/net`, no model edit, no default change, no T34 stage 2, no T-AI.4.
 - `git diff --check` before the commit. No cmake, ctest, or WSL.
+- Time spent / subagents used: inline, no subagents.
+
+## T52 F2 — Ordered join protocol, ownership events and queue bounds — 2026-10-27 — status: FINISHED
+
+- Branch: `codex/T52-join-activation-design`. Worktree: `E:\anno1503-worktrees\anno1503-T52`. Continued from `3020900c6c9f369e89ac4797d286643ae7678e4a` (clean start, checked). Main was `813b137` (round cb, checked). The commit that adds this section is the branch head.
+- Commits, oldest first: `0bdc395` checker with the F1 guards and the regressions (failing first); `f0bdfd7` F2 rules in the checker; `e523a0a` ADR 0003 §8/§13/§14/Open choices and OQ-320/370/371/372/373; then this report.
+- Files changed (the five allowed): `tools/join_activation.py` (new), `tools/test_join_activation.py` (new), `docs/adr/0003-network-transport.md`, `docs/open-questions.md`, `docs/orchestration/REPORTS.md` (append, plus the status word of the F1 section). `tools/snapshot_catchup.py` and `tools/test_snapshot_catchup.py` are untouched (`git diff 3020900` over both is empty). No `src/`, no default, no ADR status change (Proposed), no T34 stage 2, no T-AI.4.
+- Differences from the prompt file. None that matter. The prompt and the board agree. One interpretation: "F1 guards as published" is the `rules="F1"` switch. It is my encoding of the F1 text, not a copy of it: F1 uses independent arrival times and no resend (so ordered delivery cannot hold), a single report sent with the watermark, `SeatActive` as the activation step with the `A - 1 <= applied < A` recheck that frees the backlog, and a watermark gate "received minus H at most one hash interval" for the start of the exchange. The F1 text's endless02 table that starts at H = 1 790 cannot be reproduced from one stated F1 rule; the switch gives H = 1 780 as the first selection.
+
+### Failing-first evidence (before the F2 rules existed)
+
+Commit `0bdc395` contained only the F1 path. `JOIN_RULES=F1 python -I -B tools/test_join_activation.py -v` failed **5 of 5** regressions (`RoundCbRegressions`):
+
+| Test | F1 failure text |
+|---|---|
+| `test_a1_turn_delayed_after_h_never_opens_stale_input` | `input opened at applied=14 received=32` |
+| `test_a2_turn_lost_after_h_never_opens_stale_input` | `joiner never became active` (F1 has no resend, so a lost turn never arrives; this one fails for a transport reason, a1 is the stale-prefix evidence) |
+| `test_b1_retried_report_blocks_the_later_watermark` | `accepted at 2310, before the earlier report could be delivered` |
+| `test_b2_lost_watermark_is_retransmitted_on_channel_zero` | `watermark was not delivered by its channel-0 retransmission at 1610: [(2310, 20, 20)]` |
+| `test_c_endless02_early_candidate_is_selected` | `first selection [(178600, 1780)]` |
+
+The (c) test was tightened from "H at most 1 770" to "first selection (178 500, 1 770)" after the first run; it also fails under F1 (final run above). The same five pass with the default rules F2 (`python -I -B tools/test_join_activation.py RoundCbRegressions`: 5 tests OK).
+
+### Commands
+
+| Command (in the worktree) | Result |
+|---|---|
+| `python -I -B tools/test_join_activation.py -v` | Ran **30** tests, OK |
+| `JOIN_RULES=F1 python -I -B tools/test_join_activation.py RoundCbRegressions` | Ran 5, FAILED (failures=5), as above |
+| `python -I -B tools/join_activation.py` | 13 rows; first lines: `normal rules=F2` / `J1 {'H': 10, 'A': 18, 'accept_ms': 1610, 'input_ms': 2260, 'applied_received': (20, 21), ...}` / `violations=0 root_conflicts=0`. Also `queue` (burst row), `--trace`, `--rules F1`, a row name |
+| `python -I -B tools/join_activation.py queue` | `turns=24 sequences_used=32 window_span=32 waiting=16`; caps: host total 682 262, joiner reverse 568 |
+| `python -I -B tools/test_snapshot_catchup.py` | Ran **64** tests, OK (unchanged) |
+| `python -I -B -c "import ast,sys; ..." tools\join_activation.py tools\test_join_activation.py` | syntax ok |
+| `git diff --check` | clean (only the usual LF/CRLF notice) |
+| `git status --short` | only the five allowed files before the report commit |
+
+No C++ build, ctest, WSL, Wine or live original run: none was needed for Python and docs.
+
+### Rows (from the checker; all F2)
+
+| Row | Loss / delay (message, direction, seq, attempt) | H | Accept ms (C) | A | Input ms (applied, received) |
+|---|---|---:|---:|---:|---|
+| normal, one fragment | none | 10 | 1 610 (16) | 18 | 2 260 (20, 21) |
+| lost watermark | `JoinWatermark` J1→H first send lost (resent 1 460, delivered 1 610) | 10 | 1 910 (19) | 21 | 2 860 (26, 27) |
+| lost checkpoint | `JoinCheckpoint` H→J1 attempt 1 | 10 | 1 910 (19) | 21 | 2 560 (23, 24) |
+| report blocks later watermark | `HashReport` J1→H attempts 1–4 | 10 | 2 810 (28) | 30 | 3 460 (32, 33) |
+| deadline, exact ms | first report +1 390 ms (arrives 3 000), copies 2–6 lost | 10 | none | — | restart 3 000, reason 1 |
+| deadline, one ms earlier | +1 389 ms (arrives 2 999) | 10 | 2 999 (29) | 31 | 3 560 (33, 34) |
+| turn lost after H | `Turn` seq 12 H→J1 attempts 1–4 | 10 | 2 700 (27) | 29 | 3 360 (31, 32) |
+| turn missing at/before H | `Turn` seq 9 H→J1 attempts 1–8 | none | none | — | restart 3 300, reason 4 |
+| all control lost | `JoinWatermark` J1→H attempts 1–8 | none | none | — | restart 3 710, reason 4 |
+| endless02 (snapshot done 160 650) | none | 1 770 @ 178 500, 1 780 @ 178 600 | 178 900 (1 789) | 1 791 | 179 560 (1 793, 1 794) |
+| two joins, one generation | none | 10 / 10 | 1 610 / 1 610 | 18 / 18 | 2 260 / 2 260 |
+| two joins, two generations | slow first snapshot (65 000) | 620 / 720 | 62 610 / 72 650 | 628 / 728 | 63 260 / 73 260 |
+| cancel + restart before A | J2 cancels 1 000; J2b asks 1 200 (snapshot turn 12) | 10 / — / 10 | 1 610 / — / 1 900 | 18 / — / 21 | 2 260 / — / 2 560 |
+
+Every row: 0 transport violations, 0 root conflicts between any two peers at matching turns. The F1 timestamps (1 310, 1 460, 1 560, 3 380 and the like) are not acceptance targets and are marked superseded in the ADR; §8.6's 1 160 ms / 179 160 ms rows are labelled model comparisons.
+
+### Design as implemented (summary; the ADR §8.7 is the contract)
+
+- Ownership is an event `(event_id, seat, owner)` inside turn `A = C + command_delay` of the retained turn stream. All peers replay it, including the other joiner and a restarted joiner. Duplicates are dropped by a high-water `event_id`. A snapshot at `S` covers events with `A <= S`. A restart or cancel after `A` releases the seat by a second event.
+- Input is separate: the joiner replays its seat (`Owned`, input off), reports progress, and the host answers with `InputGrant{C}` behind all turns it produced; the joiner opens input only if received minus applied is at most `input_lag_max`. The check uses no host cursor, no due frontier, no equality. Unapplied turns stay in the live buffer.
+- Roots are keyed by turn; pins are per attempt, so a new generation drops nothing (conflict (e) resolved).
+- Bounded transport: window 32 per pair and channel, waiting references capped at `wait_cap`, ACK-only datagrams outside the window, overflow restarts only a joiner, turns stay in the log.
+
+### What remains open
+
+- OQ-320 (narrowed, open): no real jitter, link serialization or selective fast resend in the checker; a `netsim` case or a measured link is still needed.
+- OQ-370 (narrowed): owner acceptance of the future-turn rule, the event-in-turn design and the release event.
+- OQ-371 (open): jitter unmeasured. OQ-372 (new): ACK-only wire form and message sizes are design assumptions. OQ-373 (new): the design limits `input_lag_max`, `max_outstanding_wm`, `max_root_pins`, `wait_cap`, `input_ready_ms`; the rationale in OQ-373 is design reasoning, not measurement.
+- The `endless02` row uses the checker's 10 ms replay step, not the T45 rates; at that step the accept waits until the chase slows below the round trip (each new hash turn supersedes the checkpoint). That is a property of the supersede rule worth the orchestrator's eye.
+- A seated peer whose pair is abandoned is only recorded as an outage in the checker (the §10 path); it is not modelled further.
+
+### Subagents
+
+None. All work inline.
+
+### Acceptance (F2), item by item
+
+1. **Every protocol row reproduces from ordered transport events: MET.** The 13 rows come from `tools/join_activation.py`; `test_every_named_row_has_no_transport_violation` checks in-order delivery, the window bound and root agreement for each; the loss list uses (message, direction, sequence, attempt). Caveat: fixed delay, no jitter or serialization.
+2. **A stale prefix can neither enable input nor lose backlog: MET.** `test_a1`/`test_a2` (delayed and lost turn after H), `test_unapplied_turns_survive_activation`, `test_stale_grants_are_rejected_not_latched`; the F1 switch opens input at applied 14 / received 32.
+3. **Ownership transitions replay identically on every relevant peer and generation: MET.** Two joins on one generation, on two generations, and cancel + restart from a snapshot before A: same ownership and same roots at matching turns on the host, seated peers and all replaying joiners; snapshot-after-A and duplicate-event tests.
+4. **Roots and packet/turn queues stay bounded through loss, fragmentation and restart: MET within the checker.** Root caches ≤ 4 + pins on the endless02 chase; window span ≤ 32 with fragmented turns and blocked ACKs (24 periods want 48, use 32, 16 wait, 24 turns in the log); overflow restarts only the joiner and the table reaches turn 50; ACK-only traffic counted both ways; `queue_caps` arithmetic tested.
+5. **Exact-deadline and normal-progress regressions pass, ADR 0003 stays Proposed, uncertainties written down: MET.** 3 000 ms does not accept, 2 999 ms does; normal row 1 610 / 2 260. ADR status line unchanged; the open items are above and in OQ-320/370/371/372/373.
+
 - Time spent / subagents used: inline, no subagents.

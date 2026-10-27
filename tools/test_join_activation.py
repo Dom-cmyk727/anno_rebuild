@@ -1935,7 +1935,12 @@ class LinkContract(TraceCase):
         self.check(sim, len(link_events(sim, "link_start")) == 2, "the rejected datagram was served")
         later = plan(sim, 1, "H", "P1", 1255)  # 1 ms later the two admitted ones are done
         self.check(sim, later[1] is not None and link_events(sim, "link_start")[-1]["t_ns"] == 1_000_000, "the queue did not free")
-        self.check(sim, validate_clean(sim) == [] or True, "")
+        for kind in ("link_start", "link_finish"):  # exactly the three admitted datagrams and the later one are served
+            self.check(sim, len(link_events(sim, kind)) == 3, "%s: %d" % (kind, len(link_events(sim, kind))))
+        self.check(sim, sim.link_stats["egress"]["drop_queue"] == 1 and sim.link_stats["egress"]["peak_bytes"] <= 2600,
+                   repr(dict(sim.link_stats["egress"])))
+        self.check(sim, ja._check_link(sim.events, sim.cfg) != [], "direct link_plan calls have no transmission records, "
+                   "the validator must say so")
 
     def test_loss_is_sampled_after_transmission_and_still_costs_full_service(self):
         sim = bare_link()
@@ -2020,82 +2025,243 @@ class LinkScenarios(TraceCase):
         self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
 
 
+# ---- round ch (T58 F1): independent link validation, exercised loss, sensitivity ----------------
+def _lk(t_ns=0, lid=1, sid=1, attempt=1, src="H", dst="P1", ch=0, epoch=0, size=16, extra_ms=0, link=None, fin_ns=None,
+        lost=False, with_service=True):
+    """One data datagram in the order in which the simulator emits it: enqueue, start, finish, arrival (or loss),
+    then the send record. The delivery event is separate (_dv)."""
+    wire = size + ja.WIRE
+    link = link or ("egress" if src == "H" else "ingress")
+    fin = t_ns + ja.service_ns(wire, 100_000_000) if fin_ns is None else fin_ns
+    out = [ev("link_enqueue", t_ns // 1_000_000, link=link, lid=lid, t_ns=t_ns, wire=wire, msg="Turn", ch=ch, src=src,
+              dst=dst, sid=sid, attempt=attempt, epoch=epoch, idx=None, extra_ms=extra_ms)]
+    if with_service:
+        out += [ev("link_start", t_ns // 1_000_000, link=link, lid=lid, t_ns=t_ns),
+                ev("link_finish", t_ns // 1_000_000, link=link, lid=lid, t_ns=fin)]
+    if lost:
+        out.append(ev("link_drop", t_ns // 1_000_000, link=link, lid=lid, t_ns=fin, reason="loss", wire=wire))
+    else:
+        arrival = fin + (150 + extra_ms) * 1_000_000
+        out.append(ev("link_arrive", t_ns // 1_000_000, link=link, lid=lid, arrival_ns=arrival, sched_ms=-(-arrival // 1_000_000),
+                      sid=sid, msg="Turn"))
+    out.append(ev("send", t_ns // 1_000_000, src=src, dst=dst, ch=ch, seq=0, msg="Turn", attempt=attempt, lost=lost,
+                  turn=1, C=None, size=size, sid=sid, epoch=epoch, frag=0, nfrag=1, mid=None, lid=lid))
+    return out
+
+
+def _dv(lk, **kw):
+    """The delivery event of the datagram built by _lk (default: its own lid and attempt)."""
+    snd = [e for e in lk if e["kind"] == "send"][0]
+    arr = [e for e in lk if e["kind"] == "link_arrive"][0]
+    e = ev("arrive", arr["sched_ms"], src=snd["src"], dst=snd["dst"], ch=snd["ch"], seq=0, msg="Turn", dup=False,
+           turn=1, sid=snd["sid"], epoch=snd["epoch"], frag=0, nfrag=1, mid=None, size=snd["size"], lid=snd["lid"],
+           attempt=snd["attempt"])
+    e.update(kw)
+    return e
+
+
+def _ak(t_ns=0, lid=9, idx=0, acker="P1", to="H", ch=0, epoch=0, extra_ms=0, link=None, lost=False):
+    """One ACK-only datagram from `acker` to `to` in the simulator's order, then the ack event the sender processes."""
+    link = link or ("egress" if acker == "H" else "ingress")
+    fin = t_ns + ja.service_ns(ja.WIRE, 100_000_000)
+    out = [ev("link_enqueue", t_ns // 1_000_000, link=link, lid=lid, t_ns=t_ns, wire=ja.WIRE, msg="ack", ch=ch, src=acker,
+              dst=to, sid=None, attempt=1, epoch=epoch, idx=idx, extra_ms=0),
+           ev("link_start", t_ns // 1_000_000, link=link, lid=lid, t_ns=t_ns),
+           ev("link_finish", t_ns // 1_000_000, link=link, lid=lid, t_ns=fin)]
+    arrival = fin + 150 * 1_000_000
+    if lost:
+        out.append(ev("link_drop", t_ns // 1_000_000, link=link, lid=lid, t_ns=fin, reason="loss", wire=ja.WIRE))
+    else:
+        out.append(ev("link_arrive", t_ns // 1_000_000, link=link, lid=lid, arrival_ns=arrival,
+                      sched_ms=-(-arrival // 1_000_000), sid=None, msg="ack"))
+    out.append(ev("ack_send", t_ns // 1_000_000, src=acker, dst=to, ch=ch, idx=idx, wire=ja.WIRE, epoch=epoch, lid=lid, lost=lost))
+    return out
+
+
+def _ack_event(lk, **kw):
+    arr = [e for e in lk if e["kind"] == "link_arrive"][0]
+    snd = [e for e in lk if e["kind"] == "ack_send"][0]
+    e = ev("ack", arr["sched_ms"], src=snd["dst"], dst=snd["src"], ch=snd["ch"], seqs=(0,), epoch=snd["epoch"],
+           lid=snd["lid"], idx=snd["idx"])
+    e.update(kw)
+    return e
+
+
 class LinkValidatorsOnHandWrittenLogs(TraceCase):
+    """xvi on logs written by hand, in the order in which the simulator emits them (the link records of a
+    datagram come before its send record). Complete positive traces pass; each invalid one is rejected by xvi."""
 
-    def _good(self):
-        return [ev("send", 0, src="H", dst="P1", ch=0, seq=0, msg="Turn", attempt=1, lost=False, turn=1, C=None, size=16,
-                   sid=1, epoch=0, frag=0, nfrag=1),
-                ev("link_enqueue", 0, link="egress", lid=1, t_ns=0, wire=71, msg="Turn", ch=0, src="H", dst="P1", sid=1, attempt=1),
-                ev("link_start", 0, link="egress", lid=1, t_ns=0), ev("link_finish", 0, link="egress", lid=1, t_ns=5680),
-                ev("link_arrive", 0, link="egress", lid=1, arrival_ns=150_005_680, sched_ms=151, sid=1, msg="Turn")]
+    def x(self, log, queue=131072):
+        return sorted({c for c, _ in ja.validate(log, ja.Cfg(link_bps=100_000_000, link_queue_bytes=queue), 0)} & {"xvi"})
 
-    def x(self, log):
-        return sorted({c for c, _ in ja.validate(log, ja.Cfg(link_bps=100_000_000, link_queue_bytes=131072), 0)} & {"xvi"})
+    def good(self):
+        d = _lk()
+        a = _ak(t_ns=200_000_000, lid=2)
+        return d, a
 
-    def test_a_correct_trace_passes(self):
-        self.assertEqual(self.x(self._good()), [])
+    def test_complete_data_and_ack_traces_pass(self):
+        d, a = self.good()
+        self.assertEqual(self.x(d + [_dv(d)] + a + [_ack_event(a)]), [])
+        self.assertEqual(self.x(d), [])  # an arrival after the horizon needs no delivery event
+
+    def test_a_lost_datagram_with_full_service_passes(self):
+        d = _lk(lost=True)
+        self.assertEqual(self.x(d), [])
+
+    def test_a_queue_rejection_without_service_passes(self):
+        d1 = _lk(size=1200, lid=1, sid=1)
+        d2 = _lk(size=1200, lid=2, sid=2, with_service=False)
+        d2 = [e for e in d2 if e["kind"] != "link_arrive"]
+        d2.insert(1, ev("link_drop", 0, link="egress", lid=2, t_ns=0, reason="queue", wire=1255))
+        d2[-1] = dict(d2[-1], lost=True)
+        self.assertEqual(self.x(d1 + d2, queue=1300), [])
 
     def test_bypassing_the_shared_queue_fails(self):
-        self.assertEqual(self.x(self._good()[:1]), ["xvi"])
+        d = _lk()
+        self.assertEqual(self.x([e for e in d if not e["kind"].startswith("link_")]), ["xvi"])
 
-    def test_wrong_wire_bytes_fail(self):
-        log = self._good()
-        log[1] = dict(log[1], wire=16)
-        self.assertEqual(self.x(log), ["xvi"])
+    def test_wrong_wire_bytes_fail_whatever_the_emission_order(self):
+        d = _lk()
+        d[0] = dict(d[0], wire=16)
+        self.assertEqual(self.x(d), ["xvi"])
+        self.assertEqual(self.x(d[-1:] + d[:-1]), ["xvi"])  # the send record first: same verdict
+
+    def test_a_one_byte_retry_charge_fails(self):
+        first, retry = _lk(lid=1, attempt=1), _lk(lid=2, attempt=2, t_ns=300_000_000)
+        retry[0] = dict(retry[0], wire=1)
+        self.assertEqual(self.x(first + retry), ["xvi"])
+
+    def test_an_ack_with_the_wrong_size_fails(self):
+        a = _ak()
+        a[0] = dict(a[0], wire=1)
+        self.assertEqual(self.x(a), ["xvi"])
+
+    def test_an_ack_without_a_link_record_or_lid_fails(self):
+        a = _ak()
+        self.assertEqual(self.x([e for e in a if not e["kind"].startswith("link_")]), ["xvi"])
+        self.assertEqual(self.x(a + [_ack_event(a, lid=None)]), ["xvi"])
+
+    def test_invented_lane_names_fail(self):
+        self.assertEqual(self.x(_lk(link="egress-P1")), ["xvi"])
+        self.assertEqual(self.x(_lk(src="P1", dst="H", link="egress")), ["xvi"])  # wrong direction for the endpoints
+
+    def test_simultaneous_service_from_the_host_on_two_labels_fails(self):
+        one, two = _lk(lid=1, sid=1, dst="P1"), _lk(lid=2, sid=2, dst="P2", link="egress-P2")
+        self.assertEqual(self.x(one + two), ["xvi"])
+        two = _lk(lid=2, sid=2, dst="P2")  # the right label but service that starts while lid 1 still sends
+        two = [dict(e, t_ns=100) if e["kind"] in ("link_enqueue", "link_start") else e for e in two]
+        self.assertEqual(self.x(one + two), ["xvi"])
+
+    def test_missing_service_records_fail(self):
+        d = _lk()
+        self.assertEqual(self.x([e for e in d if e["kind"] not in ("link_start", "link_finish")]), ["xvi"])
+        self.assertEqual(self.x([e for e in d if e["kind"] != "link_finish"]), ["xvi"])
+
+    def test_orphan_duplicate_and_unserved_records_fail(self):
+        d = _lk()
+        self.assertEqual(self.x(d + [dict(d[3], lid=77)]), ["xvi"])  # an arrival with no enqueue
+        self.assertEqual(self.x(d + [d[3]]), ["xvi"])  # the arrival twice
+        self.assertEqual(self.x(d + [d[-1]]), ["xvi"])  # the send twice
+        self.assertEqual(self.x(d + [d[1]]), ["xvi"])  # service started twice
+
+    def test_a_rejected_datagram_that_is_served_fails(self):
+        d = _lk()
+        self.assertEqual(self.x(d[:1] + [ev("link_drop", 0, link="egress", lid=1, t_ns=0, reason="queue", wire=71)] + d[1:]), ["xvi"])
+
+    def test_a_delivery_must_be_its_own_transmission(self):
+        first, retry = _lk(lid=1, attempt=1), _lk(lid=2, attempt=2, t_ns=300_000_000)
+        base = first + retry
+        self.assertEqual(self.x(base + [_dv(first), _dv(retry)]), [])
+        self.assertEqual(self.x(base + [_dv(first, attempt=2)]), ["xvi"])  # attempt 1's lid, attempt 2's identity
+        self.assertEqual(self.x(base + [_dv(retry, lid=1)]), ["xvi"])  # another transmission's lid
+        self.assertEqual(self.x(base + [_dv(first, dst="P2")]), ["xvi"])  # another endpoint
+        self.assertEqual(self.x(base + [_dv(first, lid=None)]), ["xvi"])  # no identity
+        self.assertEqual(self.x(base + [_dv(first), _dv(first)]), ["xvi"])  # one arrival used twice
+        self.assertEqual(self.x(base + [_dv(first, t=first[3]["sched_ms"] + 1)]), ["xvi"])  # not at the callback
+
+    def test_an_ack_must_be_its_own_transmission(self):
+        a, b = _ak(lid=3, idx=0), _ak(lid=4, idx=1, t_ns=1_000_000)
+        self.assertEqual(self.x(a + b + [_ack_event(a), _ack_event(b)]), [])
+        self.assertEqual(self.x(a + b + [_ack_event(a, idx=1)]), ["xvi"])
+        self.assertEqual(self.x(a + b + [_ack_event(a, lid=4)]), ["xvi"])
+        self.assertEqual(self.x(a + b + [_ack_event(a, src="P2")]), ["xvi"])
+
+    def test_the_lost_flag_must_match_the_link(self):
+        d = _lk()
+        d[-1] = dict(d[-1], lost=True)
+        self.assertEqual(self.x(d), ["xvi"])
 
     def test_an_end_time_shorter_than_the_service_fails(self):
-        log = self._good()
-        log[3] = dict(log[3], t_ns=1000)
-        self.assertEqual(self.x(log), ["xvi"])
+        self.assertEqual(self.x(_lk(fin_ns=1000)), ["xvi"])
 
-    def test_overlapping_service_on_one_link_fails(self):
-        log = self._good()
-        second = [dict(e, lid=2, sid=2) for e in log[1:]]
-        second[0] = dict(second[0], t_ns=100)
-        second[1] = dict(second[1], t_ns=100)  # starts while lid 1 is still sending
-        second[2] = dict(second[2], t_ns=5780)
-        second[3] = dict(second[3], arrival_ns=150_005_780, sched_ms=151)
-        send2 = dict(log[0], sid=2, seq=1)
-        self.assertEqual(self.x(log + [send2] + second), ["xvi"])
+    def test_early_rounding_and_early_arrival_fail(self):
+        d = _lk()
+        d[3] = dict(d[3], sched_ms=150)
+        self.assertEqual(self.x(d), ["xvi"])
+        d = _lk()
+        d[3] = dict(d[3], arrival_ns=100_000_000, sched_ms=100)
+        self.assertEqual(self.x(d), ["xvi"])
 
-    def test_early_rounding_of_the_arrival_fails(self):
-        log = self._good()
-        log[4] = dict(log[4], sched_ms=150)
-        self.assertEqual(self.x(log), ["xvi"])
+    def test_admission_over_the_queue_cap_and_a_missed_rejection_fail(self):
+        a, b = _lk(lid=1, sid=1, size=1200), _lk(lid=2, sid=2, size=1200, t_ns=1000)
+        self.assertEqual(self.x(a + b, queue=1300), ["xvi"])  # the second does not fit and is served
+        c = _lk(lid=2, sid=2, size=100, t_ns=1000, with_service=False)
+        c = [e for e in c if e["kind"] != "link_arrive"]
+        c.insert(1, ev("link_drop", 0, link="egress", lid=2, t_ns=1000, reason="queue", wire=155))
+        c[-1] = dict(c[-1], lost=True)
+        self.assertEqual(self.x(a + c, queue=1500), ["xvi"])  # 1255 + 155 fits 1500: the rejection was wrong
+        self.assertEqual(self.x(a + c, queue=1300), [])  # it did not fit 1300: the rejection is right
 
-    def test_arrival_before_finish_plus_delay_fails(self):
-        log = self._good()
-        log[4] = dict(log[4], arrival_ns=100_000_000, sched_ms=100)
-        self.assertEqual(self.x(log), ["xvi"])
 
-    def test_admission_over_the_queue_cap_fails(self):
-        cfg_ = ja.Cfg(link_bps=100_000_000, link_queue_bytes=1300)
-        log = self._good()
-        second = [dict(e, lid=2, sid=2) for e in log[1:]]
-        second[0] = dict(second[0], t_ns=1000, wire=1255)
-        second[1] = dict(second[1], t_ns=5680)
-        second[2] = dict(second[2], t_ns=5680 + 100400)
-        second[3] = dict(second[3], arrival_ns=150_106_080, sched_ms=151)
-        send2 = dict(log[0], sid=2, seq=1, size=1255 - ja.WIRE)
-        codes_ = {c for c, _ in ja.validate(log + [send2] + second, cfg_, 0)}
-        self.assertIn("xvi", codes_)
+def _wrap_link_plan(fn):
+    orig = ja.Sim.link_plan
+
+    def link_plan(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        return fn(orig, self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw)
+    return mock.patch.object(ja.Sim, "link_plan", link_plan)
 
 
 def _patch_bypass_the_shared_queue():
-    def link_plan(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms):
+    def fn(orig, self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
         self.lid += 1
         return self.lid, (None if lost_key or self.cut_active(src, dst) else self.t + self.cfg.one_way_ms + extra_ms)
-    return mock.patch.object(ja.Sim, "link_plan", link_plan)
+    return _wrap_link_plan(fn)
 
 
-def _patch_omit_ack_and_retry_bytes():
-    orig = ja.Sim.link_plan
+def _patch_one_byte_retries():
+    def fn(orig, self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        return orig(self, src, dst, 1 if attempt > 1 and kind != "ack" else wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw)
+    return _wrap_link_plan(fn)
 
-    def link_plan(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms):
-        if kind == "ack" or attempt > 1:
-            wire = 1
-        return orig(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms)
-    return mock.patch.object(ja.Sim, "link_plan", link_plan)
+
+def _patch_one_byte_first_sends():
+    def fn(orig, self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        return orig(self, src, dst, 1 if attempt == 1 and kind != "ack" else wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw)
+    return _wrap_link_plan(fn)
+
+
+def _patch_acks_bypass_the_link():
+    def fn(orig, self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        if kind == "ack":
+            return None, self.t + self.cfg.one_way_ms
+        return orig(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw)
+    return _wrap_link_plan(fn)
+
+
+def _patch_one_byte_acks():
+    def fn(orig, self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        return orig(self, src, dst, 1 if kind == "ack" else wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw)
+    return _wrap_link_plan(fn)
+
+
+def _patch_no_service_records():
+    orig = ja.Sim.ev
+
+    def ev_(self, kind, **kw):
+        if kind in ("link_start", "link_finish"):
+            return None
+        return orig(self, kind, **kw)
+    return mock.patch.object(ja.Sim, "ev", ev_)
 
 
 def _patch_round_the_arrival_down():
@@ -2106,12 +2272,98 @@ def _patch_breach_the_queue_cap():
     return mock.patch.object(ja.Sim, "link_cap", lambda self: 10 ** 12)
 
 
+class LinkValidation(TraceCase):
+    """Each runtime mutant of the link accounting is caught by its own test; every test passes unmutated."""
+
+    def _run(self):
+        return ja.one_join(lcfg(), losses=ja.lose("JoinGrant", "H>J1", (1,)), until=12000)
+
+    def _clean(self, sim):
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_every_data_attempt_is_charged_its_wire_size(self):
+        self._clean(self._run())
+
+    def test_retransmissions_are_charged_their_wire_size(self):
+        sim = self._run()
+        self.check(sim, [e for e in sim.events if e["kind"] == "link_enqueue" and e["attempt"] > 1], "the run has no retransmission")
+        self._clean(sim)
+
+    def test_acks_pass_through_the_shared_link(self):
+        sim = self._run()
+        self.check(sim, [e for e in sim.events if e["kind"] == "ack_send"], "the run has no ACK-only datagram")
+        self._clean(sim)
+
+    def test_acks_are_charged_their_wire_size(self):
+        self._clean(self._run())
+
+    def test_service_records_are_required(self):
+        self._clean(self._run())
+
+    def test_the_shared_capacity_is_enforced(self):
+        self._clean(self._run())
+
+    def test_the_arrival_is_never_early(self):
+        self._clean(self._run())
+
+
+class LinkRows(TraceCase):
+    """The fragment-loss row exercises the loss it names; the grant-loss row stays identifiable."""
+
+    def _row(self, rate):
+        return ja.LINK_ROWS["fragment_loss_and_retry"](rate)
+
+    def _check_fragment_loss(self, rate):
+        sim = self._row(rate)
+        seq = ja.FRAGMENT_LOSS_SEQ
+        sends = [e for e in sim.events if e["kind"] == "send" and e["msg"] == "Snap-frag" and e["seq"] == seq]
+        self.check(sim, [e["attempt"] for e in sends][:3] == [1, 2, 3], "the named fragment was sent %r" % [e["attempt"] for e in sends])
+        self.check(sim, [e["lost"] for e in sends][:3] == [True, True, False], "lost flags %r" % [e["lost"] for e in sends])
+        for e in sends[:2]:
+            lid = e["lid"]
+            self.check(sim, any(x["kind"] == "link_drop" and x["lid"] == lid and x["reason"] == "loss" for x in sim.events), "no loss record")
+            fin = [x for x in sim.events if x["kind"] == "link_finish" and x["lid"] == lid]
+            self.check(sim, len(fin) == 1, "a lost datagram must be served in full")
+        arrive = [e for e in sim.events if e["kind"] == "arrive" and e["msg"] == "Snap-frag" and e["seq"] == seq and not e["dup"]]
+        self.check(sim, [e["attempt"] for e in arrive] == [3] and arrive[0]["lid"] == sends[2]["lid"], repr(arrive))
+        done = [e for e in sim.events if e["kind"] == "deliver" and e["msg"] == "SnapshotDone" and e["dst"] == "J1"]
+        self.check(sim, len(done) == 1 and done[0]["t"] == arrive[0]["t"], "the snapshot message was not delivered by the retry arrival")
+        rel = [e for e in sim.events if e["kind"] == "reasm_release" and e["dst"] == "J1" and e["mid"] == done[0]["mid"]]
+        self.check(sim, len(rel) == 1 and rel[0]["t"] >= done[0]["t"], "the reassembly was not completed and released")
+        j = sim.joiners["J1"]
+        self.check(sim, j.active_ms is not None and sim.host.joins["J1"].restart_ms is None, repr(ja.summary(sim)))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+        return sim
+
+    def test_the_named_snapshot_fragment_is_lost_twice_and_recovered_at_100M(self):
+        self._check_fragment_loss("100M")
+
+    def test_the_named_snapshot_fragment_is_lost_twice_and_recovered_at_1M(self):
+        self._check_fragment_loss("1M")
+
+    def test_grant_loss_is_a_separate_identifiable_row(self):
+        sim = ja.LINK_ROWS["grant_loss_and_retry"]("100M")
+        sends = [e for e in sim.events if e["kind"] == "send" and e["msg"] == "JoinGrant"]
+        self.check(sim, [e["lost"] for e in sends][:2] == [True, False], repr([(e["attempt"], e["lost"]) for e in sends]))
+        self.check(sim, validate_clean(sim) == [], "")
+
+
 MUTANTS.update({
+    "charge every retry one byte": (_patch_one_byte_retries, [
+        "LinkValidation.test_retransmissions_are_charged_their_wire_size"]),
+    "charge every first transmission one byte": (_patch_one_byte_first_sends, [
+        "LinkValidation.test_every_data_attempt_is_charged_its_wire_size"]),
+    "bypass the link for all ACKs": (_patch_acks_bypass_the_link, [
+        "LinkValidation.test_acks_pass_through_the_shared_link"]),
+    "charge every ACK one byte": (_patch_one_byte_acks, [
+        "LinkValidation.test_acks_are_charged_their_wire_size"]),
+    "omit the service records": (_patch_no_service_records, [
+        "LinkValidation.test_service_records_are_required"]),
     "bypass the shared queue": (_patch_bypass_the_shared_queue, [
+        "LinkValidation.test_the_shared_capacity_is_enforced",
         "LinkScenarios.test_every_row_at_100M_is_valid_and_reproducible"]),
-    "omit ACK and retry bytes": (_patch_omit_ack_and_retry_bytes, [
-        "LinkContract.test_retransmissions_and_acks_are_counted_exactly"]),
     "round the arrival down (early)": (_patch_round_the_arrival_down, [
+        "LinkValidation.test_the_arrival_is_never_early",
         "LinkScenarios.test_every_row_at_100M_is_valid_and_reproducible"]),
     "breach the queue cap": (_patch_breach_the_queue_cap, [
         "LinkScenarios.test_a_tight_queue_drops_at_enqueue_and_stays_valid"]),

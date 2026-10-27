@@ -499,6 +499,15 @@ struct Rules {
     /// AnnoScene 0x10008187–0x100082ad) and the same on every machine; Cached (the
     /// single-player InselCache.txt order) is reserved.
     IslandCandidateOrder island_candidate_order = IslandCandidateOrder::Sorted;
+    /// F37 (T33.5 stage 3). Off: `remove_building` clears the tile the caller
+    /// names. That is RemoveAt's own (x, y) (AnnoWelt `0x100292d8..0x100292ef`):
+    /// the building origin for the city removal (building `+6`/`+8`,
+    /// `0x10086320`), and the command tile for demolish (AnnoFrame `0x10058f7a`).
+    /// The lookup is the type for the id on that tile (`0x1008cad0`), so a mine
+    /// whose origin still holds a mountain clears the mountain and leaves the
+    /// mine's ids. On: the named tile when it holds this building's id, otherwise
+    /// the first footprint tile in `place_object_record`'s order that does.
+    bool removal_clear_tile = false;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed

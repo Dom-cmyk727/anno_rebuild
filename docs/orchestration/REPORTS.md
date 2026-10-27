@@ -3949,3 +3949,177 @@ OQ-220 (the three addon pages do not state the six levels), OQ-221 (a money bull
   3. gates green: MET.
   4. this report: MET. Not merged, not pushed.
 - Time spent / subagents used: inline, no subagents.
+
+## T33.5 stage 3 — removal from the tile the original passes — 2026-10-26 — status: DONE
+
+- Branch `task/T33-5c-remove-tile`. Worktree `E:\anno1503-worktrees\anno1503-T33-5c`. Start commit `95b0061` (round bo). Work commits `95f3ee1` (the reading) and `fd32293` (the rule, stream 114, the tests, the goldens). The commit of this section is the branch head. Not merged, not pushed. Nothing in `E:\anno1503` was edited. No new OQ: step 1 is answered, so OQ-260 was not opened. OQ-202 still holds who is stored at `island+0x1c`.
+
+### Step 1 — the tile, D
+
+Disassembled from `E:\anno1503\game\app`. Listings stayed in this worktree's `cache/` and are not committed.
+
+`RemoveAt` is `AnnoWelt.dll` `0x10028fd0..0x10029465` (`ret 0xc`). `this` is the city. The first argument is in `edx` before `sub esp, 0x2dc` (`0x10028fd0`). After `push ebp` / `push esi` / `push edi`, `[esp+0x2f0]` is the second argument (`0x10028fdd`). The lookup is `[[city+0x1c]]` slot `+0x94` with those two arguments (`0x10028fe6..0x10028fed`). A null return jumps to the epilogue `0x1002945c` (`0x10028ff5..0x10028ff7`) and never calls slot `+0x7c`. After `push ebx` (`0x10029002`) the arguments sit at `[esp+0x2f0]` and `[esp+0x2f4]`. The tail `0x100292d8..0x100292ef` pushes `0`, then y, then x, and calls island slot `+0x7c`. The coordinates are not moved to a tile that holds a particular id.
+
+The lookup is island vtable `0x100cac2c` slot `+0x94` = `0x1008cad0` (`0x1008cad0..0x1008cb09`, `ret 8`). It indexes the tile record from the `(x, y)` it is given (`0x1008cad0..0x1008caf8`, record at `[island+0xc] + index * 8`), reads the u16 id, and calls `[[island+0x1c]+0x70](id)` (`0x1008cb01..0x1008cb05`). It does not walk the city's building lists or rectangles. If `island+0x1c` is the catalogue, AnnoGame slot `+0x70` is `0x100037e0` (`mov eax, [ecx+eax*4+0x214]; ret 4`), a type pointer keyed by that id. Either way the key is the tile id. A non-null type, including scenery or a mountain, reaches the clear. Type slot `+0x5c` (PRODTYPE, AnnoGame `0x10007d20`) was reported here as running only after the clear (`0x100292f2`). That sentence is withdrawn. The round-bq F1 section below is the reading.
+
+Island slot `+0x7c` is `0x1008ee70`. When its third argument is 0 (`0x1008eeb5..0x1008eec3`) it calls `0x10082c30` with the same `(x, y)` and 0. The clear uses the id on that exact tile.
+
+Demolish is AnnoFrame `0x10058e90` mode 6 (`[esp+0x13a0] == 6` at `0x10058e9a`). The loop at `0x10058ef5` walks 4-byte records. A record whose island slot `+0xec` (`0x100860c0`) does not match city slot `+0x40` is skipped. The match is passed to RemoveAt at `0x10058f65..0x10058f7a` as `(u16 [edi], u16 [edi+2], [ebx+0x10])`. Those two words are the command record's coordinates. `[ebx+0x10]` is RemoveAt's third argument and is not the clear's third argument (the clear pushes 0). It was not traced further; the tile answer does not need it.
+
+City removal at `0x10058f80` is city slot `+0x78` with no arguments (`0x1002f7f0`, `mov eax, [ecx+0x624]; ret`). When that returns 0, island slot `+0xfc` = `0x10086320` calls RemoveAt with building `+6` and `+8` (slots `+0x54` = `0x10074840` and `+0x58` = `0x10071bc0`, the placement origin). So D9 passes the origin, not a tile chosen because it holds the building id.
+
+This is the original's bug, not a tile the original already picks. Written in `docs/re/transport.md` §3.4.17 and the OQ-201 status line. The replacement arm and the non-building command path stay open.
+
+### Step 2 — the counts, after load, before the fix
+
+`place_object_record` was not changed. A mismatch is a footprint tile whose index is missing or whose object id is not the building's type. The permanent case is `T33.5 stage 3: buildings whose footprint does not hold their id` (suite `corpus`). It checks 50 files and unknown types 0, and prints the lines. The sanitizer run with the game folder printed the same total.
+
+50 files, 8526 buildings, 59 with at least one such tile, 12 whose origin does not hold their id, 0 unknown types.
+
+| File | Buildings | Any tile | Origin |
+|---|---:|---:|---:|
+| `0010SingleEndlos/00_1024_easyentry_01.sze` | 3 | 0 | 0 |
+| `0010SingleEndlos/01_1024_easy_256.sze` | 73 | 0 | 0 |
+| `0010SingleEndlos/02_1024_easy_128.sze` | 137 | 0 | 0 |
+| `0010SingleEndlos/03_1024_med_256.sze` | 0 | 0 | 0 |
+| `0010SingleEndlos/04_1024_med_128.sze` | 0 | 0 | 0 |
+| `0010SingleEndlos/05_800_Med_128.sze` | 0 | 0 | 0 |
+| `0010SingleEndlos/06_1024_heavy_256.sze` | 0 | 0 | 0 |
+| `0010SingleEndlos/07_1024_heavy_128.sze` | 0 | 0 | 0 |
+| `0010SingleEndlos/08_800_heavy_128.sze` | 0 | 0 | 0 |
+| `0011SingleEndlosAddon/endless01.sze` | 131 | 2 | 0 |
+| `0011SingleEndlosAddon/endless02.sze` | 334 | 3 | 0 |
+| `0011SingleEndlosAddon/endless03.sze` | 180 | 0 | 0 |
+| `0100Kampagne01/S01_01_01.sze` | 107 | 1 | 0 |
+| `0100Kampagne01/S01_02_01.sze` | 318 | 4 | 3 |
+| `0100Kampagne01/S01_03_01.sze` | 385 | 3 | 0 |
+| `0100Kampagne01/S01_04_01.sze` | 138 | 0 | 0 |
+| `0100Kampagne01/S01_05_01.sze` | 55 | 0 | 0 |
+| `0100Kampagne01/S01_06_01.sze` | 39 | 1 | 0 |
+| `0100Kampagne01/S01_07_01.sze` | 662 | 9 | 1 |
+| `0100Kampagne01/S01_08_01.sze` | 125 | 0 | 0 |
+| `0100Kampagne01/S01_09_01.sze` | 437 | 4 | 0 |
+| `0100Kampagne01/S01_10_01.sze` | 391 | 4 | 1 |
+| `0100Kampagne01/S01_11_01.sze` | 34 | 0 | 0 |
+| `0100Kampagne01/S01_12_01.sze` | 460 | 5 | 1 |
+| `0100Kampagne01/S01_13_01.sze` | 113 | 0 | 0 |
+| `0200Single/Single_01.sze` | 0 | 0 | 0 |
+| `0200Single/Single_05.sze` | 29 | 0 | 0 |
+| `0200Single/Single_06.sze` | 17 | 0 | 0 |
+| `0200Single/Single_08.sze` | 0 | 0 | 0 |
+| `0200Single/Single_10.sze` | 0 | 0 | 0 |
+| `0200Single/Single_12.sze` | 0 | 0 | 0 |
+| `0200Single/Single_14.sze` | 6 | 0 | 0 |
+| `0200Single/Single_15.sze` | 0 | 0 | 0 |
+| `0200Single/Single_16.sze` | 32 | 0 | 0 |
+| `0200Single/Single_24.sze` | 198 | 2 | 0 |
+| `0201SingleAddOn/single30.sze` | 120 | 0 | 0 |
+| `0201SingleAddOn/single31.sze` | 276 | 2 | 0 |
+| `0201SingleAddOn/single32.sze` | 736 | 7 | 1 |
+| `0201SingleAddOn/single33.sze` | 421 | 0 | 0 |
+| `0201SingleAddOn/single34.sze` | 269 | 0 | 0 |
+| `0201SingleAddOn/single36.sze` | 759 | 2 | 1 |
+| `0201SingleAddOn/single38.sze` | 552 | 6 | 3 |
+| `0201SingleAddOn/single39.sze` | 279 | 1 | 0 |
+| `0201SingleAddOn/single40.sze` | 184 | 0 | 0 |
+| `0201SingleAddOn/single41.sze` | 257 | 2 | 0 |
+| `0201SingleAddOn/single42.sze` | 164 | 1 | 1 |
+| `0201SingleAddOn/single43.sze` | 15 | 0 | 0 |
+| `Tutorial/01Discover01.sze` | 0 | 0 | 0 |
+| `Tutorial/02Trade01.sze` | 77 | 0 | 0 |
+| `Tutorial/03T_Combat_01.sze` | 13 | 0 | 0 |
+
+The 12 origin misses are the buildings a removal from the origin would clear as the object underneath.
+
+### Step 3 — the rule
+
+`Rules::removal_clear_tile`, default `false`, one byte after `island_candidate_order`. `field_count<Rules>()` is 20. `kStateHashVersion` is 114. `kPrngTimelineVersion` stays 2. `kSaveVersion` stays 1. The empty world hashes to `0x89f2f3b5e5afd6c6`. `bool` needs no extra `validate` arm.
+
+Off, `remove_building` and `demolish` clear the tile the caller passes: the origin when there is no named tile (D9 and `remove_city`), the command tile for demolish. One `clear_object_record`. If that tile holds a mountain, the mountain goes and the building's ids stay. That is the original.
+
+On, the named tile is used when it holds the building's id, otherwise the first footprint tile in `place_object_record`'s order that does. If none does, the named tile is still used. One clear from a building-id tile removes the building and leaves the mountain. The row is in `docs/sim/rules-presets.md` (original `false`, enhanced proposal `true`, owner "yes, feel") and F37 in `docs/sim/state.md` §13. `GameSetup` does not copy the field; the table is the proposal.
+
+### Step 4 — tests and the mutation
+
+`removal_clear_tile: overlay building over a mountain anchor` in `walk_cells_test.cpp`. Mountain 8101 and building 8102 are both flag `0x10`.
+
+- Origin is the mountain's 2×2 anchor. Enhanced: after removal, 8102 is on no tile and 8101 remains on the origin. Original: 8101 is gone and three tiles still hold 8102.
+- Demolish of `(1, 0)`, which holds 8102, with the rule off: the building is gone and the mountain remains. The command passes the clicked tile.
+- Anchor elsewhere (1×1 mountain at `(1, 0)`): both rule values remove the building and leave the mountain.
+
+The test copies the `BuildingKey` out of `cache.by_id` before the call. `remove_building` erases that map node and then reads the key's slot. A reference into the node is freed mid-call. Demolish already copies `key->second`, and `remove_city` builds a temporary.
+
+Mutation, reverted and not committed: the first line of `removal_clear_xy` forced `holding_id = false`, so every clear used the named tile (the origin for `remove`). Subcase "origin is the mountain anchor" failed: `count_id(..., 8102) == 0` got 3, `count_id(..., 8101) == 1` got 0, and the origin object was 0 rather than 8101. The demolish subcase and the anchor-elsewhere subcase still passed, because those already clear a tile that holds the building or an origin that holds it.
+
+### Goldens and the corpus
+
+They moved because the header gained the version and one rules byte. Tick-0 tiles did not, and no golden removes an overlay building. The three event digests are unchanged (`s7_g1_events` `d705f409820828d2`, `s11_g3_events` `3140bd8e1eb7db86`, `s12_g4_events` `39c10f583d4b7cc8`). `g2.log`–`g6.log` each grew by 1 byte (104334→104335, 142712→142713, 189821→189822, 325799→325800, 111987→111988). `scenario_corpus.txt` is version 114. All 50 data lines are identical once `create_hash` is stripped: buildings, tile objects, warnings, `producers_moved` and `warehouses_moved` did not change. `python tools/sim_stream.py --check` prints `goldens agree`.
+
+### Gates
+
+MSVC build warning-free, including the rebuild of `walk_cells_test.cpp` after the key copy. Exit 0.
+
+ctest `--preset msvc -j 16`, `ANNO_TEST_THREADS=16`, `ANNO_UPDATE_GOLDEN` unset, after that rebuild:
+
+- With `ANNO1503_GAME_DIR=E:\anno1503\game\app`: `100% tests passed out of 1015`. 0 failed. Real time 402.21 sec. Log `cache/ctest-with-game.log`.
+- Without the game folder: `100% tests passed out of 1015`. 0 failed. Two tests did not run: `anno_sim_replay_scenario_single_01` and `anno_sim_replay_scenario_endless_03_links`. Real time 39.41 sec. Log `cache/ctest-without-game.log`.
+
+`tools/check_unix_warnings.sh` on this tree: GCC 13.3.0, 160 files, clean; Clang 18.1.3, 160 files, clean; Clang without GPU, 9 files, clean. Exit 0.
+
+clang-format 23.1.3 `--dry-run --Werror` on the changed `.cpp` and `.hpp` files: clean.
+
+`python tools/lint_sim.py`: `lint_sim: ok`. `python tools/sim_stream.py --check`: `goldens agree`. `git diff --check` clean (Git's LF-to-CRLF notice on `scenario_corpus.txt` is `core.autocrlf`). `agree.py` not run: no `anno-dump` command changed.
+
+Sanitizers. `clang++-18` is not on PATH. The unpacked Clang 18 at `~/clang18` (`Ubuntu clang version 18.1.3`) links without the sanitizer runtime: `/usr/bin/ld` cannot find `libclang_rt.asan-x86_64.a`, `libclang_rt.asan_cxx-x86_64.a` or `libclang_rt.asan_static-x86_64.a`. The sim tests were compiled and linked with g++ 13.3.0 at `-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all` plus the warning flags from `check_unix_warnings.sh`, doctest from `build/msvc/_deps`. The first run without the game folder aborted: heap-use-after-free in `remove_building` at `create.cpp:292`, the new test's `BuildingKey` argument aliasing the `by_id` node erased at line 291. The test now copies the key. After that:
+
+- Without `ANNO1503_GAME_DIR`: 651 passed, 0 failed, 2660348 assertions, SUCCESS.
+- With `ANNO1503_GAME_DIR=/mnt/e/anno1503/game/app`: 651 passed, 0 failed, 2677645 assertions, SUCCESS. The overlay-skip total was again 8526 / 59 / 12 / unknown 0.
+
+### Acceptance
+
+1. Step 1 is D, with the addresses above. Not left open.
+2. The step 2 counts are the table. 8526 buildings, 59 any-tile misses, 12 origin misses, 0 unknown.
+3. `Rules::removal_clear_tile` (default off, the original; on, a tile that holds the building id), the three subcases, and the mutation that fails the enhanced origin-is-anchor checks.
+4. The gates above, with the totals.
+5. This report, committed on the branch, not merged and not pushed.
+
+### Commits
+
+`git log --oneline 95b0061..HEAD` before this report commit:
+
+- `fd32293` feat(sim): optional clear from a tile that holds the building
+- `95f3ee1` docs(re): RemoveAt clears the tile it was given
+
+The branch is `task/T33-5c-remove-tile`. The commit of this section is the branch head. Not merged, not pushed.
+
+## T33.5 stage 3 — round-bq F1 — 2026-10-27 — status: READY FOR RE-REVIEW
+
+- Branch `task/T33-5c-remove-tile`. Worktree `E:\anno1503-worktrees\anno1503-T33-5c`. Previous head `0e8c15eafe2877797534a562ced074253eb59889`. The documentation fix is `25841d320d2fc70d954cf7553c183bb2949f99c2`. The commit that adds this section is the branch head. Not merged, not pushed. Docs only. No `src/` change, no golden change, no new OQ. `E:\anno1503` was not edited.
+
+### What was wrong
+
+The stage-3 report and `docs/re/transport.md` §3.4.17 said type slot `+0x5c` (PRODTYPE, AnnoGame `0x10007d20`) runs only after the clear, and named `0x100292f2` as that call.
+
+### What was read
+
+`python tools/disasm.py E:\anno1503\game\app\AnnoWelt.dll 10028fd0 1280`. The listing is in this worktree's `cache/` and is not committed. `ebp` is the slot `+0x94` return (`mov ebp, eax` at `0x10028ff3`) and is not reassigned before either call.
+
+- `0x10029011` `call dword ptr [edx+0x5c]` with `ecx = ebp`, before the city-index call. The return is `dec` / `and 0xffffffe0` (`0x10029014..0x10029015`), compared with `0xa0`. The jump table at `0x10029027` writes 1, 8, 4, `0x10`, 2 or `0x20` into `ebx` (`0x1002902e..0x10029051`). A nonzero `ebx` is passed to `[city+0x144]` slot `+8` (`0x1002909d`). A zero `ebx` jumps to `0x10029201` and skips that call. The byte table at `0x10029484` was not re-read, so those six constants are not assigned to PRODTYPE groups here.
+- `0x100292ef` `call dword ptr [edx+0x7c]` still pushes `0`, then RemoveAt's y, then RemoveAt's x (`0x100292e4..0x100292ee`). The coordinates are not moved to a tile that holds a particular id.
+- `0x100292f2` is `mov edx, dword ptr [ebp]`. `0x100292f5` is `mov ecx, ebp`. The second `call dword ptr [edx+0x5c]` is `0x100292f7`. Its return is consumed by the jump table at `0x10029316`. That table, and the calls between the two `+0x5c` sites, were not reproduced.
+
+### What stays
+
+The named-coordinate clear stands. A null `+0x94` return is still the only skip. A mountain id on the named tile is still what the clear removes. This note does not claim that all of `RemoveAt`'s bookkeeping is in the sim.
+
+Current `demolish` finds the building with `Island::building_at`, which reads the footprint grid `fill_box` writes on every tile of the box. The original selects the list processing above from the type on the named tile.
+
+### Acceptance (round bq F1)
+
+1. §3.4.17 names both calls, and `0x100292f2` as setup: MET (`docs/re/transport.md`, the lookup paragraph and the correction paragraph).
+2. Not "only afterwards": MET.
+3. The named-coordinate clear is unchanged: MET.
+4. All of `RemoveAt`'s bookkeeping is not claimed as reproduced: MET.
+5. Demolish through the footprint, original list selection from the named tile's type: MET.
+6. This report appended; no code or golden change: MET. `git diff --check` on the fix commit was clean.
+7. Stop for re-review: MET. Not merged, not pushed.

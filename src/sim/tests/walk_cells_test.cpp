@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdint>
 #include <filesystem>
 #include <initializer_list>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -18,6 +20,7 @@
 #include <anno/test/game_dir.hpp>
 
 #include "building_helpers.hpp"
+#include "command_helpers.hpp"
 #include "world_access.hpp"
 namespace sim = anno::sim;
 namespace {
@@ -769,4 +772,214 @@ TEST_CASE("S01_07_01 tick 0 tile records match placement" * doctest::test_suite(
     CHECK(held > 0);
     CHECK(bad == 0);
     MESSAGE("S01_07_01 footprint tiles holding their object " << held << ", replaced " << replaced);
+}
+
+namespace {
+sim::BuildingType overlay_type(std::uint32_t id, std::uint32_t w, std::uint32_t h, bool building) {
+    sim::BuildingType t;
+    t.id = sim::TypeId{id};
+    t.width = w;
+    t.height = h;
+    t.flags_word = 0x10;
+    t.head_raw.assign(56, 0);
+    t.head_raw[0x2f] = 1;
+    if (building) {
+        t.prodtype = 97;
+        t.cls = sim::class_for_prodtype(97).value();
+    }
+    return t;
+}
+
+/// Mountain (tile object) under a 2x2 overlay building. `anchor_at_origin`: the
+/// mountain is 2x2 at (0, 0), so the building's origin is the mountain's anchor
+/// and the overlay skip leaves 8101 there. Otherwise the mountain is 1x1 at
+/// (1, 0): the origin holds the building and (1, 0) holds the mountain.
+sim::World overlay_world(bool anchor_at_origin, bool holding_id) {
+    sim::TypeRegistry::Builder builder;
+    builder.add(overlay_type(8101, anchor_at_origin ? 2U : 1U, anchor_at_origin ? 2U : 1U, false))
+        .add(overlay_type(8102, 2, 2, true));
+    auto built = builder.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    sim::ScenarioSpec spec = sim::synthetic::empty_scenario(1);
+    sim::ScenarioSpec::PlayerSpec player;
+    player.id = sim::PlayerId{0};
+    spec.players.push_back(player);
+    sim::ScenarioSpec::IslandSpec isle = sim::synthetic::plain_island(0, 0, 0, 4, 4);
+    isle.owner_runs = {{0, 16}};
+    isle.objects.push_back(
+        sim::ScenarioSpec::TileObjectSpec{anchor_at_origin ? 0U : 1U, 8101, 0, 0});
+    sim::ScenarioSpec::CitySpec city = sim::synthetic::plain_city(0, 0);
+    sim::ScenarioSpec::BuildingSpec placed;
+    placed.type = sim::TypeId{8102};
+    city.buildings.push_back(placed);
+    isle.cities.push_back(std::move(city));
+    spec.islands.push_back(std::move(isle));
+    sim::Rules rules;
+    rules.removal_clear_tile = holding_id;
+    auto made = sim::World::create(spec, built.value(), sim::SimConfig{}, rules);
+    REQUIRE_MESSAGE(made.ok(), (made.ok() ? std::string() : made.error()));
+    return std::move(made).value();
+}
+
+int count_id(const sim::Island& island, std::uint32_t id) {
+    int n = 0;
+    for (std::uint64_t i = 0; i < island.tiles.tile_count(); ++i) {
+        n += island.tiles.object(i) == id ? 1 : 0;
+    }
+    return n;
+}
+
+const sim::Island& only_island(const sim::World& world) {
+    REQUIRE(world.islands()[0]);
+    return *world.islands()[0];
+}
+} // namespace
+
+TEST_CASE("removal_clear_tile: overlay building over a mountain anchor") {
+    // A mutation that always clears from the origin fails the enhanced
+    // anchor-at-origin case: the mountain id is gone, or the building id remains.
+    SUBCASE("origin is the mountain anchor") {
+        sim::World enhanced = overlay_world(true, true);
+        const sim::Island& before = only_island(enhanced);
+        CHECK(before.tiles.object(before.tiles.index_of(0, 0)) == 8101);
+        CHECK(before.tiles.foot_anchor(before.tiles.index_of(0, 0)) == 1);
+        CHECK(before.tiles.object(before.tiles.index_of(1, 0)) == 8102);
+        CHECK(before.tiles.object(before.tiles.index_of(0, 1)) == 8102);
+        CHECK(before.tiles.object(before.tiles.index_of(1, 1)) == 8102);
+        REQUIRE(before.cache.by_id.size() == 1);
+        // Copy the key. remove_building erases by_id before it reads the slot,
+        // so a reference into that map is freed mid-call.
+        const sim::BuildingKey enhanced_key = before.cache.by_id.begin()->second;
+        REQUIRE(sim::WorldTestAccess::remove(enhanced, enhanced_key));
+        // The writer left the mountain only on the anchor; the other three tiles hold the building.
+        CHECK(count_id(only_island(enhanced), 8102) == 0);
+        CHECK(count_id(only_island(enhanced), 8101) == 1);
+        CHECK(only_island(enhanced).tiles.object(only_island(enhanced).tiles.index_of(0, 0)) ==
+              8101);
+
+        sim::World original = overlay_world(true, false);
+        const sim::Island& laid = only_island(original);
+        const sim::BuildingKey original_key = laid.cache.by_id.begin()->second;
+        REQUIRE(sim::WorldTestAccess::remove(original, original_key));
+        // The original clears the id on the origin, which is the mountain.
+        CHECK(count_id(only_island(original), 8101) == 0);
+        CHECK(count_id(only_island(original), 8102) == 3);
+    }
+    SUBCASE("demolish of a building tile keeps the mountain under the origin") {
+        sim::World world = overlay_world(true, false);
+        const sim::Island& island = only_island(world);
+        CHECK(island.tiles.object(island.tiles.index_of(0, 0)) == 8101);
+        const sim::CityRef city{island.index, sim::CityNo{0}};
+        CHECK(world.apply(command_test::demolish(0, city, {sim::TileXY{1, 0}})).ok());
+        // The command tile holds 8102, so the original clear removes the building.
+        // Clearing the origin instead would remove the mountain and leave 8102.
+        CHECK(count_id(only_island(world), 8102) == 0);
+        CHECK(count_id(only_island(world), 8101) == 1);
+    }
+    SUBCASE("the mountain anchor is not the origin") {
+        for (const bool holding : {false, true}) {
+            sim::World world = overlay_world(false, holding);
+            const sim::Island& before = only_island(world);
+            CHECK(before.tiles.object(before.tiles.index_of(0, 0)) == 8102);
+            CHECK(before.tiles.object(before.tiles.index_of(1, 0)) == 8101);
+            CHECK(before.tiles.foot_anchor(before.tiles.index_of(1, 0)) == 1);
+            const sim::BuildingKey key = before.cache.by_id.begin()->second;
+            REQUIRE(sim::WorldTestAccess::remove(world, key));
+            CHECK(count_id(only_island(world), 8102) == 0);
+            CHECK(count_id(only_island(world), 8101) == 1);
+        }
+    }
+}
+
+TEST_CASE("T33.5 stage 3: buildings whose footprint does not hold their id" *
+          doctest::test_suite("corpus")) {
+    const auto game = anno::test::game_dir();
+    if (!game) {
+        MESSAGE("ANNO1503_GAME_DIR not set: skipping overlay-origin counts");
+        return;
+    }
+    const auto ab = anno::test::read_file(*game / "Anlagen.dat");
+    auto an = anno::formats::anlagen::AnlagenFile::parse(ab);
+    REQUIRE(an);
+    auto types =
+        sim::TypeRegistry::build(an.value().entries, sim::original_goods(), sim::SimConfig{});
+    REQUIRE(types);
+    std::vector<std::filesystem::path> files;
+    for (const auto& e : std::filesystem::recursive_directory_iterator(*game / "Scenes")) {
+        if (!e.is_regular_file()) {
+            continue;
+        }
+        std::string ext = e.path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (ext == ".sze") {
+            files.push_back(e.path());
+        }
+    }
+    std::sort(files.begin(), files.end());
+    CHECK(files.size() == 50);
+    std::uint64_t buildings = 0, any_miss = 0, origin_miss = 0, unknown = 0;
+    for (const auto& path : files) {
+        const std::string name = std::filesystem::relative(path, *game / "Scenes").generic_string();
+        const auto sb = anno::test::read_file(path);
+        auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{});
+        REQUIRE_MESSAGE(loaded.ok(), name);
+        auto made = sim::World::create(loaded.value().spec, types.value());
+        REQUIRE_MESSAGE(made.ok(), (name + ": " + (made.ok() ? std::string() : made.error())));
+        sim::World world = std::move(made).value();
+        std::uint64_t file_buildings = 0, file_any = 0, file_origin = 0;
+        for (const auto& slot : world.islands()) {
+            if (!slot) {
+                continue;
+            }
+            const sim::Island& island = *slot;
+            for (const auto& city_slot : island.cities) {
+                if (!city_slot) {
+                    continue;
+                }
+                for (const auto& list : city_slot->index.lists) {
+                    for (const auto& building_slot : list.slots) {
+                        if (!building_slot) {
+                            continue;
+                        }
+                        const sim::Building& b = *building_slot;
+                        const sim::BuildingType* type = types.value()->find(b.type);
+                        if (type == nullptr) {
+                            ++unknown;
+                            continue;
+                        }
+                        ++file_buildings;
+                        const auto [fw, fh] = sim::footprint(*type, b.rotation);
+                        bool missed = false;
+                        for (std::uint32_t dy = 0; dy < fh; ++dy) {
+                            for (std::uint32_t dx = 0; dx < fw; ++dx) {
+                                const auto i =
+                                    island.tiles.index_of(b.x + static_cast<std::int32_t>(dx),
+                                                          b.y + static_cast<std::int32_t>(dy));
+                                if (i == sim::kNoSlot || island.tiles.object(i) != b.type.v) {
+                                    missed = true;
+                                }
+                            }
+                        }
+                        const auto origin = island.tiles.index_of(b.x, b.y);
+                        const bool origin_bad =
+                            origin == sim::kNoSlot || island.tiles.object(origin) != b.type.v;
+                        file_any += missed ? 1U : 0U;
+                        file_origin += origin_bad ? 1U : 0U;
+                    }
+                }
+            }
+        }
+        buildings += file_buildings;
+        any_miss += file_any;
+        origin_miss += file_origin;
+        const std::string line =
+            "overlay-skip " + name + " buildings " + std::to_string(file_buildings) + " any " +
+            std::to_string(file_any) + " origin " + std::to_string(file_origin);
+        std::cout << line << "\n";
+        MESSAGE(line);
+    }
+    std::cout << "overlay-skip total buildings " << buildings << " any " << any_miss << " origin "
+              << origin_miss << " unknown " << unknown << "\n";
+    CHECK(unknown == 0);
 }

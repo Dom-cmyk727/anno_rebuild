@@ -41,6 +41,7 @@ cannot be one of those until it exists.
 | `bankrupt_deadline_wrap_safe` | `false` | not decided | D22, OQ-057, open, owner decides. Near tick 2^32 the grace period wraps. The fix would keep it. | yes, feel |
 | `timer0_clamp` | `false` | not decided | F5, OQ-133. Owner 2026-10-23: stay on the original bug, the clamp is the optional fix. That decision is the `Rules` default. Whether the enhanced preset turns the clamp on is still a feel question (script timing). | yes, feel |
 | `island_candidate_order` | `Sorted` | `Sorted` | OQ-150, decided 2026-10-23. `Cached` stays rejected. | no, already decided |
+| `removal_clear_tile` | `false` | `true` | F37, T33.5 stage 3. Off, `RemoveAt` clears the tile it was given, so a mine whose origin is a mountain anchor removes the mountain. On, the clear starts at a tile that holds the building's id. | yes, feel |
 | water style | `WaterStyle::Original` (`iso.hpp`; `cli.hpp` default) | not decided | PLAN §0.2: the owner leans toward the enhanced water. That lean is not a lock for this preset. | yes, feel |
 | river flow | the original look is `RiverFlowMode::Legacy`. The viewer's default is `Flow` (`cli.hpp`). | not decided | `iso.hpp`, `cli.hpp`. The two facts differ, so the original column keeps both. | yes, feel |
 

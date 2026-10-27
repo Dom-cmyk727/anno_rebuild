@@ -13,6 +13,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include <anno/formats/result.hpp>
@@ -58,14 +59,19 @@ create_building(const SimConfig& cfg, const Rules& rules, const TypeRegistry& ty
                 const Payload* initial = nullptr);
 
 /// Removes the building at `key` (D 0x100255c0): undoes the derived counters,
-/// erases the id and the footprint from the cache, clears the footprint tiles'
-/// object (stand-in, O-5), empties the list slot (hint, cursor and the vector's
+/// erases the id and the footprint from the cache, clears the footprint through
+/// `clear_object_record`, empties the list slot (hint, cursor and the vector's
 /// length stay) and, when the list is the market list of the layout's roles,
 /// raises the owner's defeat_pending flag (D: player byte +0x295; consumer
-/// 0x10020550, O-22). Returns false and changes nothing when `key` names no
-/// building (another island, no such city or list, a slot out of range or empty).
-bool remove_building(const SimConfig& cfg, const TypeRegistry& types, PlayerTable& players,
-                     Island& island, const BuildingKey& key);
+/// 0x10020550, O-22). `named` is the tile the caller hands over: the command
+/// tile for demolish, and nullopt for the origin (the D9 city removal,
+/// building +6/+8). `rules.removal_clear_tile` chooses whether that tile is
+/// used as RemoveAt uses it, or replaced by a tile that holds this building's
+/// id (F37). Returns false and changes nothing when `key` names no building
+/// (another island, no such city or list, a slot out of range or empty).
+bool remove_building(const SimConfig& cfg, const Rules& rules, const TypeRegistry& types,
+                     PlayerTable& players, Island& island, const BuildingKey& key,
+                     std::optional<TileXY> named = std::nullopt);
 
 /// Rebuilds the derived indexes of one island from scratch: the id map, the
 /// footprint grids and, in every city, the service counters and house counts.

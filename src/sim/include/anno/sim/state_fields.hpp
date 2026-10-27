@@ -6,7 +6,7 @@
 // of its function plus a kStateHashVersion bump and re-baselined goldens in
 // the same commit.
 //
-// Stream at kStateHashVersion 113 (task T33.5 stage 2), the scopes of §9.3 so far:
+// Stream at kStateHashVersion 114 (task T33.5 stage 3), the scopes of §9.3 so far:
 //   1 header     u32 kStateHashVersion, u32 kPrngTimelineVersion,
 //                SimConfig (declaration order; vectors as count + elements;
 //                small_farm_animals; layout), Rules (declaration order),
@@ -260,7 +260,7 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     fields(a, s.links);
 }
 
-static_assert(field_count<Rules>() == 19, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<Rules>() == 20, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -282,6 +282,7 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.boolean(s.bankrupt_deadline_wrap_safe);
     a.boolean(s.timer0_clamp);
     a.enumv(s.island_candidate_order);
+    a.boolean(s.removal_clear_tile);
 }
 
 // ---- settings scope

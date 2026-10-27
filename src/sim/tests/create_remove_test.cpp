@@ -1218,12 +1218,12 @@ TEST_CASE("remove_building refuses a key of another island") {
     // The key names island 3; handing it island 0 must not touch island 0's city 1.
     create_ok(w, 0, 1, record(k.weaver, 101, 101));
     const std::uint64_t with_other = w.state_hash();
-    CHECK_FALSE(sim::remove_building(w.config(), w.types(), sim::WorldTestAccess::players(w),
-                                     isl(w, 0), key));
+    CHECK_FALSE(sim::remove_building(w.config(), w.rules(), w.types(),
+                                     sim::WorldTestAccess::players(w), isl(w, 0), key));
     CHECK(w.state_hash() == with_other);
     CHECK(with_other != before);
-    CHECK(sim::remove_building(w.config(), w.types(), sim::WorldTestAccess::players(w), isl(w, 3),
-                               key));
+    CHECK(sim::remove_building(w.config(), w.rules(), w.types(), sim::WorldTestAccess::players(w),
+                               isl(w, 3), key));
 }
 
 TEST_CASE("house groups come from the layout's house block and the house class") {

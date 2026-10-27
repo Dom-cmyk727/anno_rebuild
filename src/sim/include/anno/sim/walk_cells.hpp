@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <anno/formats/annowelt.hpp>
@@ -75,6 +76,16 @@ std::uint32_t place_object_record(TileLayer&, const TypeRegistry&, const Buildin
 /// is not modelled (OQ-201). The arm also keeps the height byte and second-dword
 /// bits 25–31; those are not columns (OQ-060, OQ-204, OQ-205).
 void clear_object_record(TileLayer&, const TypeRegistry&, std::int32_t x, std::int32_t y);
+/// The tile `remove_building` passes to `clear_object_record` (F37).
+/// `holding_id` false: `(named_x, named_y)`, the coordinates RemoveAt was given
+/// (AnnoWelt `0x100292d8..0x100292ef`). `holding_id` true: that tile when its
+/// object id is `type.id`, otherwise the first footprint tile in
+/// `place_object_record`'s block order that holds the id, otherwise the named
+/// tile (no footprint tile holds it).
+[[nodiscard]] std::pair<std::int32_t, std::int32_t>
+removal_clear_xy(const TileLayer& layer, const BuildingType& type, std::int32_t origin_x,
+                 std::int32_t origin_y, std::uint8_t rotation, std::int32_t named_x,
+                 std::int32_t named_y, bool holding_id);
 [[nodiscard]] WalkRecord walk_record(const Island&, const TypeRegistry&, TileXY);
 /// Per-search scratch; source island, types and tables must outlive it and stay unchanged.
 /// Coordinates are world tiles; rectangle clipped to island (0x10002b80).

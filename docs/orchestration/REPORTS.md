@@ -4245,3 +4245,25 @@ The test plan no longer says binary64 is wider than 53 bits. Binary64 has exactl
   4. Nothing of the original in git: MET. No listings, no bytes. `git status` shows no `game/` path.
   5. This report: MET. Not merged.
 - Time spent / subagents used: inline, no subagents. No build and no test.
+
+## T44 / T-AI.3 — Identify the AI's suspected random draws (OQ-241) — 2026-10-27 — status: FINISHED
+
+- Branch: `task/T44-ai-random-calls`. Worktree: `E:\anno1503-worktrees\anno1503-T44`. Started from local `main` `44ee5e9785ee81f2a1526b93f217d350483d8da0`. Content commit: `db6970e72096c831714eaa035d5da011e106c850`. The commit that adds this section is the branch head. Not merged, not pushed. `E:\anno1503` was not edited. `docs/orchestration/TASKS.md` was not edited. The T40 branch was not committed on.
+- Built: docs only. `docs/re/complogic.md` §5 and §8, `docs/re/tick-loop.md` (the CompLogic consumer sentence and the OQ-241 line), `docs/open-questions.md` (OQ-241 narrowed; OQ-290 and OQ-291 opened). No `src/` change. OQ-292 through OQ-299 were not used. T-AI.4 was not started.
+- Gates: docs only. `git diff --cached --check` on the content commit was clean (no output). No MSVC build, no ctest, no clang-format, no GCC, no agree.py, no ASan. No cmake, ctest, or wsl job was started. No Wine and no run of the original. Listings stayed in the worktree's ignored `cache\`.
+- Evidence: 43 `call [reg+0xb4]` instructions in `CompLogic.dll` and 39 in `CompLogicClassic.dll`, each reached as an instruction. No 44th call encoding. The disp32 `0xb4` occurs 96 times in CompLogic's executable bytes; `0x1000cad8` is a stack displacement, not a call. World slot `+0xb4` is `0x100a1740`, `ret`, no stack argument. `0x100692d0` and Classic `0x10066248` are the world. `0x1000e809` and `0x1000d029` call it and discard `eax`. `0x10021e38` stores the world at `[object+4]`; `0x1002161f` stores manager `+0x24` there for the type-17 object. `0x100011d3` and `0x100217eb` are therefore not the world PRNG: the dword at `AnnoGame.dll` `0x100215a4+0xb4` is `0x100023a0`. Eight unmasked calls push three arguments and are not `0x100a1740`.
+- Reviewers: none.
+- Left open / questions for the orchestrator or owner:
+  - OQ-241 narrowed, not closed. One site (and its Classic twin) is the world PRNG. The 3-argument calls are not. The remaining masked sites are not claimed.
+  - OQ-290: tie each open masked site's `this` to `0x10021e20` or `0x10021610`, or to another writer.
+  - OQ-291: the writer of `+0x4c`, then the vtable of that object and of the slot `+0xf8` return. `0x10034471` and `0x10035676` are 0-argument and still unresolved.
+  - OQ-270, OQ-271 and OQ-272 were not closed and were not re-read.
+  - Classic is four calls shorter. The ten other unmasked shapes each have one Classic address. A forced 1:1 of the masked sites was not made. Classic has a pair at `0x10051acb` / `0x10051adb` against one CompLogic call at `0x100547ed`.
+- Acceptance:
+  1. Every inventoried site has a receiver conclusion or a concrete stop: MET. §5 names `0x100a1740` at `0x1000e809` / `0x1000d029`, names `0x100023a0` at `0x100011d3` / `0x100217eb`, and for every other site gives the object expression and the instruction the walk stopped on.
+  2. All 11 unmasked returns traced or narrowed: MET. The eleven-row table. Eight discard or leave `eax` and take three arguments. `0x1000e809` discards the PRNG value. `0x10034471` and `0x10035676` push the raw value into slot `+0x7c`; their receivers stop at `+0x4c` and an unread stack slot.
+  3. Classic comparison: MET. Same 39 encodings, all instructions. Global proof repeated at `0x1003b3a0` / `0x1000b31c` / `0x1000d029`. The ten other unmasked shapes are listed with Classic addresses. Type 17's vtable `0x10063100` is absent there, as §3 already said.
+  4. No original listings or assets committed: MET. `cache\` only. `git status` shows no `game/` path.
+  5. No invented gameplay semantics: MET. Masks, `div`, discarded `eax` and argument counts are the uses. No decision was named.
+  6. This report, then stop: MET. OQ-270..272 stay open. Not merged.
+- Time spent / subagents used: inline, no subagents. No build and no test.

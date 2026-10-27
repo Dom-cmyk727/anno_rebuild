@@ -1,7 +1,7 @@
 # ADR 0003: Network transport and sessions
 
 - **Status:** Proposed
-- **Date:** 2026-10-26
+- **Date:** 2026-10-26. Corrected 2026-10-27 (round bq F1): the fragment cap and the window time. Status stays Proposed.
 
 ADR 0002 is reserved for the float walk (T34) and is not this document.
 
@@ -69,9 +69,13 @@ Channel 1 is separate from channel 0 so a snapshot cannot sit in front of a turn
 
 **Keep-alive.** On channel 2, each peer sends one every `net.keepalive_ms`, default 1000. Reason: the original's in-game keep-alive is 1000 ms (`tick-loop.md` §5). A peer that has sent any packet in the interval skips the extra one.
 
-**Fragmentation.** A payload larger than `payload_max` is not one datagram. The sender splits it into pieces of at most `payload_max` minus a 12-byte fragment head (`u32 id`, `u32 index`, `u32 count`), on the channel that owns the message. The receiver refuses `count` above `net.fragment_max`, default 4096, before allocating. Reason: 4096 times 1200 bytes is about 4.9 MB, above any save this sim has described, and the cap is what stops a hostile `count` from allocating. The pieces are delivered upward only when every index is present.
+**Fragmentation.** A payload larger than `payload_max` is not one datagram. The sender splits it into pieces of at most `payload_max` minus a 12-byte fragment head (`u32 id`, `u32 index`, `u32 count`), on the channel that owns the message. Each fragment therefore carries at most 1200 - 12 = 1188 save bytes at the default `payload_max`. The receiver refuses `count` above `net.fragment_max` before allocating. The cap is what stops a hostile `count` from allocating the reassembled save.
 
-**Snapshot flow control.** At most `net.snapshot_window` fragments of channel 1 are in flight, default 32. Reason: 32 times 1200 bytes is 38 400 bytes outstanding, which is a bound on the host's buffer while a joiner catches up, and turns on channel 0 are not part of that window. When the window is full the host waits for acks. It does not drop turns to make room.
+The previous default, 4096, permits 4096 × 1188 = 4 866 048 save bytes. The three measured saves are larger. [§13](#13-budgets) needs 9 659 fragments for `S01_07_01` (11 474 169 bytes), 17 130 for `endless02` (20 349 454 bytes) and 10 865 for `03_1024_med_256` (12 906 633 bytes). None of those snapshots is transferable at 4096. The old reason, "4096 times 1200 bytes is about 4.9 MB, above any save", counted the fragment head as save bytes and compared the product with saves this section had not measured.
+
+Proposed default: 17 130. It is the smallest count that admits the largest measured save, `ceil(20 349 454 / 1188)`. The allocation that count allows is 17 130 × 1188 = 20 350 440 bytes, the `endless02` save rounded up to whole fragments. A hostile `count` can force that allocation and no larger one. There is no spare fragment: a bigger save is refused until the config is raised. This default is part of the proposal. The pieces are delivered upward only when every index is present.
+
+**Snapshot flow control.** At most `net.snapshot_window` fragments of channel 1 are in flight, default 32. Those 32 fragments carry 32 × 1188 = 38 016 save bytes. Their datagram payloads are 32 × 1200 = 38 400 bytes, and that payload total is the bound on the host's outstanding channel-1 buffer. The 384 bytes of fragment heads are not save bytes. Turns on channel 0 are not part of that window. When the window is full the host waits for acks. It does not drop turns to make room. The time that window takes is [§13](#13-budgets), not this paragraph.
 
 ## 5. The session states
 
@@ -123,7 +127,7 @@ Two checks, both of `World::state_hash()`, which is the root of the hierarchical
 
 **Often.** Every `net.hash_every` turns, default 10. Reason: the plan's default, one second at the 100 ms period, against the original's 60 s MD5 (`tick-loop.md` §5). `state.md` §9.4 says peers exchange the root every turn. The plan narrows that to every K turns. This ADR follows the plan; the every-turn sentence in the spec stays until the owner accepts this document. Each peer sends on channel 2 the turn index (`u64`) and the root (`u64`). The host compares. A lost report is asked for again on channel 0 after `net.hash_retry_ms`, default 500. Reason: the original's server asks for a missing digest every 500 ms (`0x10057470`). If it is still missing after one check interval, the host pauses. A mismatch also pauses.
 
-**The full check.** Every `net.full_check_min` minutes of real time, default 10, the host writes `World::save()` and each peer checks that its own `save()` bytes match the hash it already trusts, and exchanges the root again. Reason for 10: the original's single-player autosave interval is 10 minutes of real time (`tick-loop.md` fixture F9). The snapshot from that save is the one a later resync loads. Pairing them is the plan's rule (`docs/plan/lan-endless.md` §4, "together with the host's autosave snapshot").
+**The full check.** Every `net.full_check_min` minutes of real time, default 10, the host writes `World::save()` and each peer checks that its own `save()` bytes match the hash it already trusts, and exchanges the root again. Reason for 10: the original's single-player autosave interval is 10 minutes of real time (`tick-loop.md` fixture F9). The snapshot from that save is the one a later resync loads. Pairing them is the plan's rule (`docs/plan/lan-endless.md` §4, "together with the host's autosave snapshot"). Writing the save stores the snapshot. It is not a broadcast, and this check does not send those bytes. A send is the mismatch path below, or a join ([§8](#8-join-in-progress)).
 
 **On a mismatch.**
 
@@ -181,7 +185,7 @@ Every number in this section is configuration. The defaults and the reasons:
 | `hash_retry_ms` | 500 | the original's missing-digest poll |
 | `full_check_min` | 10 | the original's 10-minute autosave |
 | `payload_max` | 1200 | [§3](#3-the-packet-format) |
-| `fragment_max` | 4096 | [§4](#4-the-channels) |
+| `fragment_max` | 17130 | the largest measured save, [§4](#4-the-channels) |
 | `snapshot_window` | 32 | [§4](#4-the-channels) |
 
 A peer silent past `wait_ms` raises the wait dialog on the others and the host keeps sending turns into the buffer. The game is not ended. Past `grace_ms` the seat is marked computer: the AI seam on every peer produces that seat's commands (`state.md` §8.2 item 4), and nothing for that seat is required on the wire (D9). A rejoin inside or after the grace follows [§8](#8-join-in-progress) and the seat is returned to the human.
@@ -232,15 +236,29 @@ Measured with this worktree's `anno-sim-replay measure`, after 30 000 ticks (600
 
 The cadence holds. The slowest sample is 15.9 ms (`endless02` unprepared max), which is 1.6 % of the one-second interval. A check does not have to wait for the snapshot: channel 1 is separate from channel 0 (§4).
 
-**Snapshot.** `save().size()` is the byte column. At line rate, ignoring the snapshot window's round trips: `S01_07_01` is 0.918 s at 100 Mbit/s and 0.092 s at 1 Gbit/s; `endless02` is 1.628 s and 0.163 s; `03_1024_med_256` is 1.033 s and 0.103 s. The full check that sends this save is every 10 minutes (§7), not every hash. The in-flight window is 32 × 1200 = 38 400 bytes (§4). At the netsim's 150 ms latency that window is 2.048 Mbit/s if it stays full, and `endless02` then takes 79.5 s. That is the join and the resync, not the one-second hash.
+**Snapshot.** `save().size()` is the byte column. At line rate, counting save bytes only and ignoring headers and the window: `S01_07_01` is 0.918 s at 100 Mbit/s and 0.092 s at 1 Gbit/s; `endless02` is 1.628 s and 0.163 s; `03_1024_med_256` is 1.033 s and 0.103 s. Those figures are payload bounds. They are not measured transfer times.
+
+A fragment carries 1188 save bytes (§4). The three saves need 9 659, 17 130 and 10 865 fragments. `fragment_max` 4096 admits 4 866 048 bytes and refuses all three, so none of these snapshots is transferable under that cap. The times below assume the proposed cap of 17 130, which does admit them.
+
+The in-flight window is 32 fragments, 38 016 save bytes (§4). The model is ideal and full-window: the window stays full, nothing is lost or resent, and one window completes per RTT. It counts save bytes only. It is not a measured join or resync.
+
+[§14](#14-the-netsim-test-plan) defines latency as one-way delay, so the plan's "150 ms latency" is 150 ms each way and a 300 ms RTT. `endless02` then takes 17 130 / 32 × 0.300 s = 160.6 s. If that 150 ms is instead the RTT, it takes 17 130 / 32 × 0.150 s = 80.3 s. The same model gives 90.6 s and 101.9 s for the other two saves at 300 ms RTT, and 45.3 s and 50.9 s at 150 ms RTT (`S01_07_01`, then `03_1024_med_256`).
+
+`turn_buffer` is 600 turns, 60 s at the 100 ms period (§10). A live join does not pause the other peers (§8), so turns keep being issued during the send. At 160.6 s that is about 1 606 turns, and at 80.3 s about 803 turns. Either is more than 600, so for `endless02` the rolling buffer drops the earliest turns of the snapshot's interval before the joiner has the snapshot. At a 150 ms RTT the other two ideal snapshot times are under 60 s (about 453 and 509 turns). At 150 ms one-way they are not (about 906 and 1 019 turns). A time under 60 s is only the snapshot. The turns the joiner must still receive, the headers, loss, `World::load` and `run_turn` are outside the bound.
+
+§7 stores a snapshot every 10 minutes and does not send it. §8 sends the latest snapshot and the turns after it from the buffer. This document does not say a fresh save is written when a peer joins. A snapshot that is up to 10 minutes old already spans more turns than a 60 s buffer, before the transfer time is added. A larger buffer, a snapshot taken at the join, or a pause for the transfer is not chosen (OQ-280).
+
+The one-second hash is not this transfer. Channel 1 is separate from channel 0.
 
 **OQ-251 is closed** by the `S01_07_01` row: one `state_hash()` is 7.9 ms median with every chunk dirty and 0.34 ms median after `prepare_hash`, and `save()` is 11 474 169 bytes. The status of this ADR stays Proposed until the owner approves it.
 
-An empty turn payload is 8 + 4 + 4 = 16 bytes. With the 25-byte header and 28 bytes of IPv4+UDP, one datagram is 69 bytes. At 10 turns per second that is 690 bytes/s from the host to each other peer. At 6 peers the host sends to 5 others: 3 450 bytes/s, plus one hash report of the same order once per second per peer. A single placement's `TurnEntry` is a few dozen bytes (`state.md` §8.5), so a command on every turn from every seat stays in the same thousands of bytes per second. The snapshot is the burst measured above. The steady-state figure does not include it.
+An empty turn payload is 8 + 4 + 4 = 16 bytes. With the 25-byte header and 28 bytes of IPv4+UDP, one datagram is 69 bytes. At 10 turns per second that is 690 bytes/s from the host to each other peer. At 6 peers the host sends to 5 others: 3 450 bytes/s, plus one hash report of the same order once per second per peer. A single placement's `TurnEntry` is a few dozen bytes (`state.md` §8.5), so a command on every turn from every seat stays in the same thousands of bytes per second. The snapshot is the save measured above, and it is sent on a join or a resync, not on the one-second hash. The steady-state figure does not include it.
 
 ## 14. The `netsim` test plan
 
 `netsim` runs N peers in one process. The link between them can delay, jitter, drop, reorder and disconnect. Each human seat has a command bot. No game files are required for the cases below; they build a world the sim can construct without `Anlagen.dat`. The scenario measurement of [§13](#13-budgets) stays a separate, manual run.
+
+**Latency.** Latency in this plan is the one-way delay the link adds to each datagram. It is not the round trip. The acknowledgement comes back under the same delay, and the model adds no processing time, so the RTT is twice the latency. The acceptance line "150 ms latency" is 150 ms one-way and 300 ms RTT. [§13](#13-budgets) also records the transfer bound for the other reading, 150 ms as the RTT, because the earlier text did not say which it was. The §13 bounds are ideal payload times. They are not measured end-to-end join or resync times. Case 2's "the snapshot loads" does not say that the three measured saves fit in `fragment_max` 4096 or in the 60 s buffer (OQ-280).
 
 From W3's acceptance (`docs/plan/lan-endless.md`):
 
@@ -258,5 +276,6 @@ Two real PCs on a LAN finding each other is a person test (`docs/plan/lan-endles
 
 - **OQ-250.** The UDP port. No original value was found in `tick-loop.md`. No default is set.
 - **OQ-251.** Closed in [§13](#13-budgets): `S01_07_01` `state_hash()` is 7.9 ms median with every chunk dirty and 0.34 ms after `prepare_hash`; `save()` is 11 474 169 bytes.
+- **OQ-280.** The 60 s turn buffer against an ideal snapshot transfer that exceeds 60 s, and against a stored snapshot that can be 10 minutes old. No choice among a larger buffer, a snapshot at join, or pausing. [§13](#13-budgets).
 
 The command delay of 2, the 100 ms turn, the 60 s grace and the 10-minute full check are the plan's and the original's defaults. They are configuration, not new decisions.

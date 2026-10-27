@@ -930,6 +930,40 @@ def row_expiry_and_restart(cfg):
     return sim
 
 
+def row_burst_acks_blocked(cfg, periods=24):
+    """Queue row (f): a 1216-byte burst every turn to one seated peer whose ACKs never arrive."""
+    sim = Sim(replace(cfg, wait_cap=64), seated=1)
+    sim.turn_extra = lambda k: 1216
+    sim.blocked_acks.add("P1>H")
+    sim.run(periods * cfg.turn_ms)
+    return sim
+
+
+def queue_caps(cfg, destinations=5, joiners=2):
+    """Design bounds on bytes queued at the host, counting every datagram at its full wire size.
+
+    The waiting queue holds datagram references. The turn bytes behind them are charged to the
+    turn store, so counting them again here is a deliberate upper bound.
+    """
+    dgram = cfg.payload_max + HEADER + IP_UDP
+    ch0_pair = cfg.window * dgram
+    wait_pair = cfg.wait_cap * dgram
+    caps = {
+        "datagram": dgram,
+        "ch0_in_flight_per_pair": ch0_pair,
+        "ch0_waiting_per_pair": wait_pair,
+        "ch0_host": destinations * (ch0_pair + wait_pair),
+        "ch1_host": joiners * ch0_pair,
+        "ch2_host": destinations * (73 + 53),
+    }
+    caps["host_total"] = caps["ch0_host"] + caps["ch1_host"] + caps["ch2_host"]
+    # One joiner's reverse queue: control messages only, each bounded by its own rule.
+    wire = lambda payload: payload + HEADER + IP_UDP
+    caps["joiner_reverse"] = (cfg.max_outstanding_wm * wire(22) + cfg.max_root_pins * wire(22)
+                              + wire(6) + wire(6))
+    return caps
+
+
 ROWS = {
     "normal": row_normal,
     "lost_watermark": row_lost_watermark,
@@ -959,6 +993,14 @@ def main(argv=None):
         argv.remove("--trace")
     names = argv or list(ROWS)
     cfg = Cfg(rules=rules)
+    if "queue" in names:
+        names.remove("queue")
+        sim = row_burst_acks_blocked(cfg)
+        c = sim.chan("H", "P1", 0)
+        print("queue: burst 1216 B every turn, ACKs blocked, 24 periods: turns=%d sequences_used=%d "
+              "window_span=%d waiting=%d" % (sim.host.applied, c.next_seq, sim.max_span[("H", "P1", 0)],
+                                             len(c.wait)))
+        print("queue caps: %r" % (queue_caps(cfg),))
     for name in names:
         sim = ROWS[name](cfg)
         print("%-30s rules=%s" % (name, rules))

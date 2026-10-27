@@ -312,6 +312,17 @@ class TransportAccounting(TraceCase):
         self.check(sim, sim.host.max_slots <= cap, "host %d" % sim.host.max_slots)
         self.check(sim, sim.joiners["J1"].max_root_slots <= cap, "joiner %d" % sim.joiners["J1"].max_root_slots)
 
+    def test_queue_caps_arithmetic(self):
+        caps = ja.queue_caps(cfg())
+        self.assertEqual(caps["datagram"], 1253)
+        self.assertEqual(caps["ch0_in_flight_per_pair"], 40096)
+        self.assertEqual(caps["ch0_waiting_per_pair"], 80192)
+        self.assertEqual(caps["ch0_host"], 601440)
+        self.assertEqual(caps["ch1_host"], 80192)
+        self.assertEqual(caps["ch2_host"], 630)
+        self.assertEqual(caps["host_total"], 682262)
+        self.assertEqual(caps["joiner_reverse"], 4 * 75 + 2 * 75 + 59 + 59)
+
     def test_wire_sizes(self):
         self.assertEqual(ja.turn_bytes([]), 16)
         self.assertEqual(ja.turn_bytes([(1, 2, "human")]), 16 + 14)

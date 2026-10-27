@@ -291,7 +291,11 @@ class TransportAccounting(TraceCase):
         self.check(sim, sim.host.applied == 24, "turns produced %d" % sim.host.applied)
         self.check(sim, sim.max_span[key] == 32, "span %r" % sim.max_span)
         self.check(sim, chan.next_seq == 32, "sequences used %d" % chan.next_seq)
-        self.check(sim, len(chan.wait) == 16, "waiting datagrams %d" % len(chan.wait))
+        # S1: the backlog is not copied into a queue; the pair's cursor stands at turn 17 (16 turns x
+        # 2 fragments = 32 datagrams sent) and turns 17..24 are still in the host's log.
+        self.check(sim, len(chan.wait) == 0 and chan.log_next == 17, "waiting %d cursor %r" % (
+            len(chan.wait), chan.log_next))
+        self.check(sim, sim.stats[("H", "P1")]["seq"] == 32, "seq statistic %r" % sim.stats[("H", "P1")])
         self.check(sim, sim.violations == [], "violations")
         self.check(sim, sorted(sim.host.log_turns) == list(range(1, 25)), "turn log")
 
@@ -334,7 +338,9 @@ class TransportAccounting(TraceCase):
         self.assertEqual(caps["ch1_host"], 80192)
         self.assertEqual(caps["ch2_host"], 630)
         self.assertEqual(caps["host_total"], 682262)
-        self.assertEqual(caps["joiner_reverse"], 4 * 75 + 2 * 75 + 59 + 59)
+        # 4 watermarks (75), 2 reports (75), 2 InputReqs (69), InputOn (59), JoinAbort (61).
+        self.assertEqual(caps["joiner_reverse"], 4 * 75 + 2 * 75 + 2 * 69 + 59 + 61)
+        self.assertEqual(caps["ack_kbit_per_s_ch0_and_ch1"], 848.0)
 
     def test_wire_sizes(self):
         self.assertEqual(ja.turn_bytes([]), 16)
@@ -442,12 +448,13 @@ class RoundCcJoinSide(TraceCase):
 
     def test_b3_the_latency_limit_is_the_window_not_the_deadline(self):
         # At 2 000 ms one way the round trip is 4 s: 40 turns per round trip want 40 sequences
-        # against the window of 32, the waiting queue passes wait_cap and the joiner is restarted
-        # for queue overflow (reason 7). The deadline and input_ready_ms are not what ends it.
+        # against the window of 32, so the pair delivers 8 turns a second against 10 produced. The
+        # joiner never reaches the host (no selection) and ends in the catch-up restart (reason 6);
+        # the log-backed cursor keeps every turn. The deadline and input_ready_ms do not end it.
         c = cfg(one_way_ms=2000, resend_ms=4000)
-        sim = ja.one_join(c, until=200000, snapshot_ms=2000)
-        self.check(sim, sim.host.joins["J1"].restart_reason == 7, repr(summary(sim)))
-        self.check(sim, sim.host.applied == 2000, "the table stopped")
+        sim = ja.one_join(c, until=DOMAIN_END, snapshot_ms=2000)
+        self.check(sim, sim.host.joins["J1"].restart_reason == 6, repr(summary(sim)))
+        self.check(sim, sim.host.applied == DOMAIN_END // 100, "the table stopped")
 
     def test_b3_expiry_of_one_checkpoint_reselects_instead_of_restarting(self):
         # The first report is lost nine times (a limit of twenty sends keeps the pair alive), so
@@ -630,11 +637,17 @@ class ValidatorsOnHandWrittenLogs(unittest.TestCase):
 
     def test_vii_a_produced_turn_must_be_delivered_or_retained(self):
         base = [ev("seated", peer="P1", seat=1), ev("produce", turn=1), ev("produce", turn=2)]
-        self.assertEqual(codes(base), ["vii"])
-        kept = base + [ev("enqueue", src="H", dst="P1", ch=0, msg="Turn", turn=1),
-                       ev("enqueue", src="H", dst="P1", ch=0, msg="Turn", turn=2)]
-        self.assertEqual(codes(kept), [])
-        self.assertEqual(codes(kept + [ev("abandon", src="H", dst="P1", ch=0, seq=1)]), ["vii"])
+        self.assertEqual(codes(base), [])  # held in the host's log for the live peer
+        refused = base + [ev("overflow", src="H", dst="P1", ch=0, msg="Turn", turn=2)]
+        self.assertEqual(codes(refused), ["vii"])
+        self.assertEqual(codes(base + [ev("abandon", src="H", dst="P1", ch=0, seq=1)]), ["vii"])
+        # A dropped seat is no longer live.
+        self.assertEqual(codes(refused + [ev("drop_seated", peer="P1")]), [])
+
+    def test_ix_an_outage_must_end_or_drop(self):
+        log = [ev("outage", 1000, peer="P1", src="H", dst="P1", ch=0, age=2000), ev("produce", 70000, turn=700)]
+        self.assertIn("ix", codes(log))
+        self.assertNotIn("ix", codes(log + [ev("outage_end", 5000, peer="P1")]))
 
     def test_viii_a_grant_must_name_a_turn_already_sent(self):
         grant = ev("send", 5, src="H", dst="J1", ch=0, seq=9, msg="InputGrant", attempt=1, lost=False,
@@ -763,6 +776,186 @@ class MutantTable(unittest.TestCase):
                 result = unittest.TestResult()
                 loader.loadTestsFromName(name, sys.modules[__name__]).run(result)
                 self.assertTrue(result.wasSuccessful(), name)
+
+
+# ---- round cc (F4) regressions ---------------------------------------------------------------
+def delivered_turns(sim, dst):
+    return {e["turn"] for e in sim.events if e["kind"] == "deliver" and e["dst"] == dst and e["msg"] == "Turn"}
+
+
+class RoundCcOutages(TraceCase):
+    def _caught_up(self, sim, peer, slack=4):
+        self.check(sim, sim.host.applied - peer.applied <= slack,
+                   "%s applied %d, host %d" % (peer.name, peer.applied, sim.host.applied))
+
+    def test_b4_a_three_second_two_way_cut_does_not_drop_the_peer_and_it_catches_up(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.cuts.append(("P1", 1000, 4000))
+        sim.run(12000)
+        p1 = sim.seated[0]
+        self.check(sim, not [e for e in sim.events if e["kind"] == "abandon"], "the pair was abandoned")
+        self.check(sim, [e for e in sim.events if e["kind"] == "outage"], "no logged outage for a 3 s cut")
+        self.check(sim, [e for e in sim.events if e["kind"] == "outage_end"], "the outage never ended")
+        self._caught_up(sim, p1)
+        self.check(sim, set(range(1, p1.applied + 1)) <= delivered_turns(sim, "P1"), "a turn was not delivered")
+        self.check(sim, validate_clean(sim) == [] and sim.root_conflicts() == [], repr(validate_clean(sim)[:3]))
+
+    def test_b4_a_600_ms_cut_with_a_50_ms_resend_does_not_abandon(self):
+        sim = ja.Sim(cfg(resend_ms=50), seated=1)
+        sim.cuts.append(("P1", 1000, 1600))
+        sim.run(8000)
+        self.check(sim, not [e for e in sim.events if e["kind"] == "abandon"], "abandoned")
+        self._caught_up(sim, sim.seated[0])
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_b4_losing_only_the_acks_never_abandons_and_ends_in_a_logged_outage(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.blocked_acks.add("P1>H")
+        sim.schedule(9000, 0, lambda: sim.blocked_acks.discard("P1>H"))
+        sim.run(16000)
+        self.check(sim, not [e for e in sim.events if e["kind"] == "abandon"], "abandoned on lost ACKs")
+        self.check(sim, [e for e in sim.events if e["kind"] == "outage"], "the stall was silent")
+        self._caught_up(sim, sim.seated[0])
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_b4_turn_a_lost_eight_times_to_a_seated_peer_ends_with_equal_ownership(self):
+        base = ja.Sim(cfg(), seated=2)
+        base.add_join("J1", 0, 3)
+        base.run(6000)
+        A = base.host.joins["J1"].A
+        seq = next(e["seq"] for e in base.events if e["kind"] == "send" and e["dst"] == "P2" and e["msg"] == "Turn"
+                   and e["turn"] == A and e["attempt"] == 1)
+        sim = ja.Sim(cfg(), losses={("Turn", "H>P2", seq, a) for a in range(1, 9)}, seated=2)
+        sim.add_join("J1", 0, 3)
+        sim.run(12000)
+        p2 = sim.seated[1]
+        self.check(sim, p2.owners.get(3) == "human" and sim.host.owners.get(3) == "human",
+                   "P2 sees seat 3 as %r, host %r, P2 applied %d" % (p2.owners.get(3), sim.host.owners.get(3), p2.applied))
+        self._caught_up(sim, p2)
+        self.check(sim, validate_clean(sim) == [] and sim.root_conflicts() == [], repr(validate_clean(sim)[:3]))
+
+    def test_s7_a_small_wait_cap_never_loses_a_turn_of_a_seated_peer(self):
+        sim = ja.Sim(cfg(wait_cap=8), seated=1)
+        sim.turn_extra = lambda k: 1216
+        sim.blocked_acks.add("P1>H")
+        sim.schedule(4000, 0, lambda: sim.blocked_acks.discard("P1>H"))
+        sim.run(12000)
+        self.check(sim, sim.violations == [], "queue violations %r" % (sim.violations[:2],))
+        self._caught_up(sim, sim.seated[0])
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_the_burst_row_runs_past_2500_ms_without_an_abandonment(self):
+        sim = ja.row_burst_acks_blocked(cfg(), periods=60)
+        self.check(sim, not [e for e in sim.events if e["kind"] == "abandon"], "abandoned")
+        outage = [e for e in sim.events if e["kind"] == "outage"]
+        self.check(sim, outage and 2000 <= outage[0]["t"] <= 2400, "outage record %r" % (outage[:1],))
+        self.check(sim, sim.max_span[("H", "P1", 0)] == 32, "span %r" % sim.max_span)
+
+    def test_beyond_the_grace_the_seat_goes_to_the_ai_on_every_peer(self):
+        sim = ja.Sim(cfg(), seated=2)
+        sim.cuts.append(("P1", 1000, 90000))
+        sim.run(80000)
+        drops = [e for e in sim.events if e["kind"] == "drop_seated"]
+        self.check(sim, len(drops) == 1 and drops[0]["peer"] == "P1", "drops %r" % (drops,))
+        self.check(sim, 61000 <= drops[0]["t"] <= 63000, "dropped at %d" % drops[0]["t"])
+        self.check(sim, sim.host.owners.get(1) == "ai" and sim.seated[1].owners.get(1) == "ai",
+                   "seat 1: host %r, P2 %r" % (sim.host.owners.get(1), sim.seated[1].owners.get(1)))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+
+class RoundCcSnapshotChannel(TraceCase):
+    def test_s1_a_joiner_sharing_a_generation_completes_wherever_it_asks(self):
+        for ask in (9500, 9700, 20000, 50000):
+            sim = ja.Sim(cfg(), seated=2)
+            sim.add_join("J1", 0, 3, snapshot_ms=65000)
+            sim.add_join("J2", ask, 4)
+            sim.run(ask + 40000)
+            j2, jr2 = sim.joiners["J2"], sim.host.joins["J2"]
+            self.check(sim, jr2.gen == sim.host.joins["J1"].gen and jr2.S == 0, "ask %d: not shared %r" % (ask, summary(sim, "J2")))
+            self.check(sim, j2.active_ms is not None and jr2.restart_ms is None, "ask %d: %r" % (ask, summary(sim, "J2")))
+            self.check(sim, sim.violations == [] and validate_clean(sim) == [], "ask %d: %r" % (ask, validate_clean(sim)[:3]))
+
+    def test_s4_a_lost_joingrant_is_resent_on_channel_1(self):
+        sim = ja.one_join(cfg(), losses=ja.lose("JoinGrant", "H>J1", (1, 2)), until=9000)
+        self.check(sim, sim.joiners["J1"].active_ms is not None, repr(summary(sim)))
+        grants = [e for e in sim.events if e["kind"] == "send" and e["msg"] == "JoinGrant"]
+        self.check(sim, [g["attempt"] for g in grants] == [1, 2, 3] and all(g["ch"] == 1 for g in grants), repr(grants))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_s4_snapshot_fragments_are_datagrams_with_loss_and_resend(self):
+        base = ja.Sim(cfg(), seated=1)
+        base.add_join("J1", 0, 2, fragments=5)
+        base.run(9000)
+        sim = ja.Sim(cfg(), losses=ja.lose("Snap-frag", "H>J1", (1,)), seated=1)
+        sim.add_join("J1", 0, 2, fragments=5)
+        sim.run(9000)
+        loaded = lambda x: next(e["t"] for e in x.events if e["kind"] == "deliver" and e["msg"] == "SnapshotDone")
+        self.check(sim, loaded(sim) > loaded(base), "the lost fragment did not delay the load: %d vs %d" % (loaded(sim), loaded(base)))
+        self.check(sim, sim.joiners["J1"].active_ms is not None, repr(summary(sim)))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_s4_endless02_is_simulated_per_datagram(self):
+        # 17 130 fragments through the window of 32 at a 300 ms round trip: 535.3 windows.
+        sim = ja.Sim(cfg())
+        sim.add_join("J1", 0, 2, fragments=17130)
+        sim.run(DOMAIN_END)
+        j = sim.joiners["J1"]
+        done = next(e["t"] for e in sim.events if e["kind"] == "deliver" and e["msg"] == "SnapshotDone")
+        self.check(sim, 160000 <= done <= 162000, "snapshot delivered at %d ms" % done)
+        self.check(sim, j.active_ms is not None and sim.host.joins["J1"].restart_ms is None, repr(summary(sim)))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_s4_the_third_concurrent_transfer_is_refused_before_anything_is_reserved(self):
+        sim = ja.Sim(cfg(), seated=3)
+        for i, name in enumerate(("J1", "J2", "J3")):
+            sim.add_join(name, 0, 4 + i)
+        sim.run(8000)
+        jr3 = sim.host.joins["J3"]
+        self.check(sim, jr3.restart_reason == ja.REASON_NO_SLOT and jr3.gen == 0, repr(summary(sim, "J3")))
+        self.check(sim, all(sim.joiners[n].active_ms is not None for n in ("J1", "J2")), "J1/J2 did not complete")
+        self.check(sim, sim.host.owners.get(6) is None, "the refused seat was published")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_the_receive_backlog_cap_restarts_that_joiner_only(self):
+        sim = ja.Sim(cfg(receive_backlog_turns=5), seated=1)
+        sim.add_join("J1", 0, 2, snapshot_ms=3000)
+        sim.run(8000)
+        jr = sim.host.joins["J1"]
+        self.check(sim, jr.restart_reason == ja.REASON_BACKLOG, repr(summary(sim)))
+        self.check(sim, sim.host.applied == 80 and sim.seated[0].applied >= 76, "the table was disturbed")
+
+
+class RoundCcAccounting(TraceCase):
+    def test_s6_seated_upstream_traffic_and_both_channels_acks_are_counted(self):
+        sim = ja.Sim(cfg(seated_cmd_bytes=40), seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.run(6000)
+        st = sim.stats
+        self.check(sim, st[("P1", "H")]["data"] > 50, "seated -> host data %r" % st[("P1", "H")])
+        self.check(sim, st[("H", "P1")]["ack"] > 50, "host -> seated ACK-only %r" % st[("H", "P1")])
+        self.check(sim, any(e["kind"] == "send" and e["msg"] == "SeatHash" and e["ch"] == 2 for e in sim.events),
+                   "no section-7 hash report from the seated peer")
+        self.check(sim, sim.ack_ch[("J1", "H", 1)] > 0 and sim.ack_ch[("H", "J1", 0)] > 0 and sim.ack_ch[("H", "P1", 0)] > 0,
+                   "ACKs per channel %r" % (dict(sim.ack_ch),))
+
+    def test_control_messages_have_bounded_outstanding_counts(self):
+        seq = first_seq("HashReport", "J1>H")
+        sim = ja.one_join(cfg(max_attempts=20), losses={("HashReport", "J1>H", seq, a) for a in range(1, 10)}, until=20000)
+        self.check(sim, sim.max_out.get(("J1", "H", "HashReport"), 0) <= sim.cfg.max_outstanding_reports, repr(sim.max_out))
+        self.check(sim, sim.max_out.get(("J1", "H", "InputReq"), 0) <= sim.cfg.max_outstanding_req, repr(sim.max_out))
+        self.check(sim, sim.max_out.get(("J1", "H", "JoinWatermark"), 0) <= sim.cfg.max_outstanding_wm, repr(sim.max_out))
+
+    def test_two_generations_hold_four_recent_roots_plus_one_pin_per_attempt(self):
+        sim = ja.row_two_joins_two_generations(cfg())
+        self.check(sim, sim.host.max_slots <= sim.cfg.root_slots + 2, "host slots %d" % sim.host.max_slots)
+
+    def test_join_abort_and_restart_carry_a_reason(self):
+        sim = ja.Sim(cfg(), seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.cancel("J1", 1700)
+        sim.run(5000)
+        sizes = {e["msg"]: e["size"] for e in sim.events if e["kind"] == "send" and e["msg"] in ("JoinAbort", "JoinRestart")}
+        self.assertEqual(sizes, {"JoinAbort": 8, "JoinRestart": 4})
 
 
 if __name__ == "__main__":

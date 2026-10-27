@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import heapq
 import sys
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass, replace
 
 P_DEADLINE, P_ACK, P_DELIVER, P_FLUSH, P_REPLAY, P_CHECK, P_PRODUCE, P_RESEND = (
@@ -48,6 +48,8 @@ FRAGMENT_HEAD = 12
 
 REASON_SEAT_BUSY = 9
 REASON_SUPERSEDED = 10
+REASON_NO_SLOT = 11
+REASON_BACKLOG = 12
 
 
 @dataclass(frozen=True)
@@ -81,6 +83,22 @@ class Cfg:
     deadline_rtts: int = 2
     # F3 liveness limit for a seated peer without an outage record (validator iv), in turns.
     seated_lag_max: int = 20
+    # F4 outages (ADR 10): a seated peer's pair is never abandoned. Without an ACK for wait_ms
+    # the peer is in a logged outage; after grace_ms the seat goes to the AI and the pair closes.
+    # Resends of a seated pair back off to outage_resend_ms after max_attempts sends.
+    wait_ms: int = 2000
+    grace_ms: int = 60000
+    outage_resend_ms: int = 1000
+    # F4 caps: concurrent_transfers (ADR 10), the joiner's received-but-unapplied backlog, and the
+    # outstanding HashReports / InputReqs of one joiner.
+    concurrent_transfers: int = 2
+    receive_backlog_turns: int = 4096
+    max_outstanding_reports: int = 2
+    max_outstanding_req: int = 2
+    # F4 seated upstream traffic: bytes of commands each seated peer sends to the host per turn
+    # (0 = none) and whether it sends the section-7 hash report every hash_every turns.
+    seated_cmd_bytes: int = 0
+    seated_hash_reports: bool = True
     rules: str = "F2"
 
     @property
@@ -116,6 +134,11 @@ class Chan:
         self.ack_pending = False
         self.acks_sent = 0
         self.dead = False
+        self.log_next = None  # next host turn to feed from the retained log, or None
+        self.frag = 0  # next fragment of that turn
+        self.last_ack = 0  # millisecond of the last ACK that freed a sequence
+        self.snap = None  # channel 1: the snapshot fragments still to send
+        self.outage = False
 
 
 class Sim:
@@ -136,6 +159,10 @@ class Sim:
         self.deliveries = []
         self.violations = []
         self.rtt = {}
+        self.ack_ch = Counter()  # ACK-only datagrams by (acker, receiver, channel)
+        self.max_out = {}  # (src, dst, message kind) -> most outstanding at once
+        self.cuts = []  # (peer, from_ms, to_ms): everything sent to or from the peer inside is lost
+        self.dropped = set()
         self.host = Host(self)
         self.peers["H"] = self.host
         self.seated = []
@@ -151,6 +178,7 @@ class Sim:
             self.peers[name] = peer
             self.seated.append(peer)
             self.ev("seated", peer=name, seat=i + 1)
+            self.chan("H", name, 0).log_next = 1
         self.joiners = {}
         self.turn_extra = lambda k: 0
         self.schedule(cfg.turn_ms, P_PRODUCE, self.host.produce, 1)
@@ -179,13 +207,18 @@ class Sim:
         return "\n".join(self.trace)
 
     # ---- joiners ----
-    def add_join(self, name, ask_ms, seat, snapshot_ms=150, load_ms=None, attempt=None):
-        """`attempt` is accepted for old callers and ignored: the host assigns attempt numbers."""
+    def add_join(self, name, ask_ms, seat, snapshot_ms=None, load_ms=None, attempt=None, fragments=1):
+        """`attempt` is accepted for old callers and ignored: the host assigns attempt numbers.
+
+        The JoinGrant and `fragments` snapshot datagrams travel on channel 1 (window, ACK, loss,
+        resend). `snapshot_ms` instead replaces the fragments by a LABELED INPUT: the snapshot is
+        loaded that many ms after the ask (used where simulating 17 130 datagrams per run is too
+        slow for a scan); the JoinGrant is still a channel-1 datagram."""
         joiner = self.peers.get(name) or Joiner(self, name)
         self.peers[name] = joiner
         self.joiners[name] = joiner
         self.schedule(ask_ms, P_PRODUCE + 1, self.host.admit, name, seat, snapshot_ms,
-                      self.cfg.load_ms if load_ms is None else load_ms)
+                      self.cfg.load_ms if load_ms is None else load_ms, fragments)
         return joiner
 
     def cancel(self, name, at_ms):
@@ -245,20 +278,67 @@ class Sim:
             last = i == len(sizes) - 1
             c.wait.append({"kind": kind if last else kind + "-frag", "size": s,
                            "msg": msg if last else None, "attempt": 0, "acked": False,
-                           "turn": msg.get("turn"), "C": msg.get("C")})
+                           "turn": msg.get("turn"), "C": msg.get("C"),
+                           # control items wait until the log cursor has passed this turn
+                           "barrier": self.host.applied if (src == "H" and ch == 0) else -1})
         self.pump(src, dst, ch)
+        key = (src, dst, kind)
+        self.max_out[key] = max(self.max_out.get(key, 0), self.outstanding(src, dst, ch, kind))
         return True
 
     def window_room(self, c):
         oldest = min(c.out) if c.out else c.next_seq
         return c.next_seq - oldest < self.cfg.window
 
+    def turn_sizes(self, k):
+        cfg = self.cfg
+        size = turn_bytes(self.host.log_turns[k], self.turn_extra(k))
+        if size <= cfg.payload_max:
+            return [size]
+        data = cfg.payload_max - FRAGMENT_HEAD
+        count = -(-size // data)
+        return [cfg.payload_max] * (count - 1) + [size - data * (count - 1) + FRAGMENT_HEAD]
+
+    def next_datagram(self, c):
+        """The next datagram of a pair: a waiting control item once the log cursor has passed
+        the turn it was queued behind, else the next fragment of the next turn in the retained
+        log (S1: the backlog is never copied into the queue), else nothing."""
+        logged = c.log_next is not None
+        if c.wait and (not logged or c.wait[0]["barrier"] < c.log_next):
+            return c.wait.popleft()
+        if c.snap is not None and c.snap["left"] > 0:
+            # S4: the snapshot streams from the host's saved image, one fragment per window slot.
+            c.snap["left"] -= 1
+            last = c.snap["left"] == 0
+            d = {"kind": "SnapshotDone" if last else "Snap-frag",
+                 "size": c.snap["last_size"] if last else self.cfg.payload_max,
+                 "msg": c.snap["msg"] if last else None, "attempt": 0, "acked": False,
+                 "turn": None, "C": None}
+            return d
+        if logged and c.log_next <= self.host.applied:
+            k = c.log_next
+            sizes = self.turn_sizes(k)
+            i = c.frag
+            last = i == len(sizes) - 1
+            msg = {"kind": "Turn", "turn": k, "events": self.host.log_turns[k]}
+            d = {"kind": "Turn" if last else "Turn-frag", "size": sizes[i], "msg": msg if last else None,
+                 "attempt": 0, "acked": False, "turn": k, "C": None}
+            c.frag += 1
+            if c.frag == len(sizes):
+                c.log_next += 1
+                c.frag = 0
+            return d
+        return None
+
     def pump(self, src, dst, ch):
         c = self.chan(src, dst, ch)
-        while c.wait and self.window_room(c) and not c.dead:
-            d = c.wait.popleft()
+        while not c.dead and self.window_room(c):
+            d = self.next_datagram(c)
+            if d is None:
+                break
             d["seq"] = c.next_seq
             c.next_seq += 1
+            self.stat(src, dst, "seq")
             d["first"] = self.t
             if ch != 2:
                 c.out[d["seq"]] = d
@@ -268,6 +348,16 @@ class Sim:
                 if span > self.cfg.window:
                     self.violations.append(("window_exceeded", src, dst, ch, span))
             self.transmit(src, dst, ch, d)
+
+    def feed_log(self, dst, start):
+        """Give the pair host -> dst a send cursor into the retained turn log, at turn `start`."""
+        c = self.chan("H", dst, 0)
+        c.log_next = start
+        c.frag = 0
+        self.pump("H", dst, 0)
+
+    def cut_active(self, src, dst):
+        return any(self.t >= a and self.t < b and peer in (src, dst) for peer, a, b in self.cuts)
 
     def key(self, kind, src, dst, seq, attempt):
         return (kind, "%s>%s" % (src, dst), seq, attempt)
@@ -285,7 +375,7 @@ class Sim:
         self.stat(src, dst, "data")
         self.stat(src, dst, "bytes", wire)
         tag = "send" if d["attempt"] == 1 else "RESEND#%d" % d["attempt"]
-        lost = self.lost(key)
+        lost = self.lost(key) or self.cut_active(src, dst)
         self.ev("send", src=src, dst=dst, ch=ch, seq=d["seq"], msg=d["kind"], attempt=d["attempt"],
                 lost=lost, turn=d.get("turn"), C=d.get("C"), size=d["size"])
         if lost:
@@ -297,12 +387,34 @@ class Sim:
                 tag, src, dst, ch, d["seq"], d["kind"], arrive))
             self.schedule(arrive, P_DELIVER, self.arrive, src, dst, ch, d)
         if ch != 2 and not self.cfg.legacy:
-            self.schedule(self.t + self.cfg.resend_ms, P_RESEND, self.resend, src, dst, ch, d["seq"])
+            gap = self.cfg.resend_ms
+            if self.is_seated_pair(src, dst) and d["attempt"] >= self.cfg.max_attempts:
+                gap = self.cfg.outage_resend_ms
+            self.schedule(self.t + gap, P_RESEND, self.resend, src, dst, ch, d["seq"])
+
+    def is_seated_pair(self, src, dst):
+        """True for a pair between the host and a peer that holds a seat (seated or finished join)."""
+        other = dst if src == "H" else src
+        return other in self.seated_names() and other not in self.dropped
+
+    def seated_names(self):
+        names = {p.name for p in self.seated}
+        for name, jr in self.host.joins.items():
+            if jr.state == "done":
+                names.add(name)
+        return names
 
     def resend(self, src, dst, ch, seq):
         c = self.chan(src, dst, ch)
         d = c.out.get(seq)
         if d is None or c.dead:
+            return
+        if self.is_seated_pair(src, dst):
+            # B4/S7: a seated pair is never abandoned. Its outage is explicit and bounded.
+            self.check_outage(src, dst, ch, c, d)
+            if c.dead:
+                return
+            self.transmit(src, dst, ch, d)
             return
         if d["attempt"] >= self.cfg.max_attempts:
             c.dead = True
@@ -311,6 +423,23 @@ class Sim:
             self.peers[src].abandoned(dst, ch)
             return
         self.transmit(src, dst, ch, d)
+
+    def check_outage(self, src, dst, ch, c, d):
+        """An unacknowledged datagram older than wait_ms puts the peer in a logged outage; one
+        older than grace_ms drops the seat to the AI and closes the pair (ADR 10)."""
+        cfg = self.cfg
+        peer = dst if src == "H" else src
+        age = self.t - max(d["first"], c.last_ack)
+        if age >= cfg.wait_ms and not c.outage:
+            c.outage = True
+            self.log("OUTAGE %s (no ACK for %d ms on %s>%s ch%d)" % (peer, age, src, dst, ch))
+            self.ev("outage", peer=peer, src=src, dst=dst, ch=ch, age=age)
+        if age >= cfg.grace_ms and peer not in self.dropped:
+            self.dropped.add(peer)
+            c.dead = True
+            self.log("DROP %s: grace of %d ms passed, seat goes to the AI" % (peer, cfg.grace_ms))
+            self.ev("drop_seated", peer=peer)
+            self.host.drop_seat(peer)
 
     def arrive(self, src, dst, ch, d):
         c = self.recv_state(src, dst, ch)
@@ -364,8 +493,9 @@ class Sim:
         c.acks_sent += 1
         key = ("Ack", "%s>%s" % (dst, src), idx, 1)
         self.stat(dst, src, "ack")
+        self.ack_ch[(dst, src, ch)] += 1
         self.stat(dst, src, "bytes", HEADER + IP_UDP)
-        if self.lost(key):
+        if self.lost(key) or self.cut_active(dst, src):
             self.log("ack-only %s>%s ch%d #%d ack=%d -- LOST" % (dst, src, ch, idx, ack))
             return
         self.log("ack-only %s>%s ch%d #%d ack=%d bits=%x" % (dst, src, ch, idx, ack, bits))
@@ -378,14 +508,24 @@ class Sim:
         for i in range(32):
             if bits >> i & 1:
                 named.add(ack - (i + 1))
+        freed = 0
         for seq in sorted(named):
             d = c.out.pop(seq, None)
+            if d is not None:
+                freed += 1
             if d is not None and d["attempt"] == 1:
                 # Karn: only a datagram that was never resent gives a round-trip sample.
                 sample = self.t - d["first"]
                 old = self.rtt.get((src, dst))
                 self.rtt[(src, dst)] = sample if old is None else (7 * old + sample) // 8
         self.ev("ack", src=src, dst=dst, ch=ch, seqs=tuple(sorted(named)))
+        if freed:
+            c.last_ack = self.t
+            if c.outage:
+                c.outage = False
+                peer = dst if src == "H" else src
+                self.log("OUTAGE over for %s" % peer)
+                self.ev("outage_end", peer=peer)
         self.pump(src, dst, ch)
         self.peers[src].on_acked(dst, ch)
 
@@ -455,8 +595,13 @@ class Seated(Peer):
                 self.applied += 1
                 self.apply_events(m["events"])
                 self.log_applied(self.applied)
-                if self.applied % self.sim.cfg.hash_every == 0:
+                cfg = self.sim.cfg
+                if self.applied % cfg.hash_every == 0:
                     self.root_log[self.applied] = root_of(self.applied, self.owners)
+                    if cfg.seated_hash_reports:  # section 7: the unreliable hash report to the host
+                        self.sim.send(self.name, "H", 2, "SeatHash", 20, turn=self.applied)
+                if cfg.seated_cmd_bytes:  # a configurable command stream, reliable and ordered
+                    self.sim.send(self.name, "H", 0, "Cmd", cfg.seated_cmd_bytes, turn=None)
 
 
 class JoinHost:
@@ -521,19 +666,29 @@ class Host(Peer):
             self.root_sent[k] = sim.t
             sim.log("host applies %d, root sent (deadline %d)" % (k, cfg.deadline_for(k)))
             self.prune_roots()
-        size = turn_bytes(events, sim.turn_extra(k))
         for peer in sim.seated:
-            sim.send("H", peer.name, 0, "Turn", size, turn=k, events=tuple(events))
+            if peer.name not in sim.dropped:
+                sim.pump("H", peer.name, 0)
         for name, jr in sorted(self.joins.items()):
             if jr.state == "dead" or k <= jr.S:  # a finished join is an ordinary seated peer
                 continue
-            ok = sim.send("H", name, 0, "Turn", size, turn=k, events=tuple(events))
-            if not ok and jr.state != "dead":
-                self.restart(jr, 7)
-                continue
+            sim.pump("H", name, 0)
             if k % cfg.hash_every == 0 and cfg.f1:
                 sim.send("H", name, 2, "HashRoot", 20, turn=k, root=self.roots[k])
         sim.schedule((k + 1) * cfg.turn_ms, P_PRODUCE, self.produce, k + 1)
+
+    def drop_seat(self, peer):
+        """Past grace_ms the seat goes to the AI by an ownership event in the turn stream (ADR 10)."""
+        seat = next((p.seat for p in self.sim.seated if p.name == peer), None)
+        if seat is None and peer in self.joins:
+            seat = self.joins[peer].seat
+        if seat is None:
+            return
+        r = self.applied + self.sim.cfg.command_delay
+        self.pending_events.setdefault(r, []).append((self.next_event, seat, "ai"))
+        self.sim.log("host queues the AI for seat %d of dropped %s in turn %d (event %d)" % (
+            seat, peer, r, self.next_event))
+        self.next_event += 1
 
     def current(self):
         """The last turn the host has produced, hence enqueued to every live peer (B2): never a
@@ -580,7 +735,7 @@ class Host(Peer):
                 return "attempt of " + other
         return None
 
-    def admit(self, name, seat, snapshot_ms, load_ms):
+    def admit(self, name, seat, snapshot_ms, load_ms, fragments=1):
         sim = self.sim
         prev = self.joins.get(name)
         if prev is not None:
@@ -590,15 +745,18 @@ class Host(Peer):
         attempt = self.attempts.get(name, 0) + 1
         self.attempts[name] = attempt
         holder = self.seat_holder(seat, name)
+        live = sum(1 for n, j in self.joins.items() if n != name and j.state not in ("dead", "done"))
+        if holder is None and live >= sim.cfg.concurrent_transfers:
+            holder = "no free transfer slot"
         if holder is not None:
             jr = JoinHost(name, seat, 0, 0, attempt, sim.t)
             jr.state = "dead"
             jr.restart_ms = sim.t
-            jr.restart_reason = REASON_SEAT_BUSY
+            jr.restart_reason = REASON_NO_SLOT if holder == "no free transfer slot" else REASON_SEAT_BUSY
             self.joins[name] = jr
             sim.log("host refuses %s seat %d (%s), attempt %d" % (name, seat, holder, attempt))
             sim.ev("refuse", name=name, attempt=attempt, seat=seat, holder=holder)
-            sim.send("H", name, 0, "JoinRestart", 8, attempt=attempt, reason=REASON_SEAT_BUSY)
+            sim.send("H", name, 0, "JoinRestart", 4, attempt=attempt, reason=jr.restart_reason)
             return
         S = self.applied
         gen = None
@@ -617,13 +775,20 @@ class Host(Peer):
         sim.log("host admits %s seat %d, generation %d, snapshot turn %d, attempt %d" % (
             name, seat, gen, S, attempt))
         sim.ev("admit", name=name, attempt=attempt, seat=seat, gen=gen, S=S)
-        sim.send("H", name, 0, "JoinGrant", 15, gen=gen, S=S, seat=seat, attempt=attempt)
-        # Turns S+1 .. applied (produced since a shared image) follow on channel 0.
-        for k in range(S + 1, self.applied + 1):
-            sim.send("H", name, 0, "Turn", turn_bytes(self.log_turns[k], sim.turn_extra(k)),
-                     turn=k, events=self.log_turns[k])
-        sim.schedule(sim.t + snapshot_ms, P_DELIVER, sim.peers[name].snapshot, gen, S,
-                     self.gen_state[gen], load_ms, attempt)
+        # S4: the grant and the snapshot are channel-1 datagrams with window, ACK, loss and resend.
+        sim.send("H", name, 1, "JoinGrant", 15, gen=gen, S=S, seat=seat, attempt=attempt)
+        # S1: turns S+1 onward follow on channel 0 from the retained log, through a cursor.
+        sim.feed_log(name, S + 1)
+        if snapshot_ms is None:
+            data = sim.cfg.payload_max - FRAGMENT_HEAD
+            msg = {"kind": "SnapshotDone", "gen": gen, "S": S, "attempt": attempt,
+                   "snap": self.gen_state[gen], "load_ms": load_ms}
+            c1 = sim.chan("H", name, 1)
+            c1.snap = {"left": fragments, "msg": msg, "last_size": 100}
+            sim.pump("H", name, 1)
+        else:  # a LABELED INPUT: the snapshot is loaded snapshot_ms after the ask
+            sim.schedule(sim.t + snapshot_ms, P_DELIVER, sim.peers[name].snapshot, gen, S,
+                         self.gen_state[gen], load_ms, attempt)
         sim.schedule(sim.t + sim.cfg.catchup_ms, P_DEADLINE, self.catchup_expire, name, attempt)
 
     def catchup_expire(self, name, attempt):
@@ -633,6 +798,8 @@ class Host(Peer):
 
     # ---- messages from joiners ----
     def on_msg(self, src, msg):
+        if msg["kind"] in ("Cmd", "SeatHash"):
+            return  # seated upstream traffic: counted, not interpreted by the join checker
         jr = self.joins.get(src)
         if jr is None or msg.get("attempt") != jr.attempt or jr.state in ("dead", "done"):
             self.sim.log("host ignores stale %s from %s" % (msg["kind"], src))
@@ -752,7 +919,7 @@ class Host(Peer):
             return
         jr.go_ms = self.sim.t
         self.sim.log("host: %s InputReq applied=%d accepted (host %d)" % (jr.name, msg["applied"], self.applied))
-        self.sim.send("H", jr.name, 0, "InputGo", 14, gen=jr.gen, attempt=jr.attempt, nonce=msg["nonce"])
+        self.sim.send("H", jr.name, 0, "InputGo", 8, gen=jr.gen, attempt=jr.attempt, nonce=msg["nonce"])
 
     def input_expire(self, name, attempt):
         jr = self.joins.get(name)
@@ -779,7 +946,7 @@ class Host(Peer):
             self.sim.log("host queues SeatRelease event %d for seat %d in turn %d (to %s)" % (
                 self.next_event, jr.seat, r, jr.prev_owner))
             self.next_event += 1
-        self.sim.send("H", jr.name, 0, "JoinRestart", 8, attempt=jr.attempt, reason=reason)
+        self.sim.send("H", jr.name, 0, "JoinRestart", 4, attempt=jr.attempt, reason=reason)
 
     def abandoned(self, dst, ch):
         jr = self.joins.get(dst)
@@ -819,6 +986,7 @@ class Joiner(Peer):
         self.pending_go = False
         self.decide_scheduled = False
         self.grant_C = None
+        self.stash = {}  # turns that arrived before the JoinGrant of this attempt
         self.reqs = {}  # nonce -> millisecond the InputReq was sent
         self.go_nonce = None
         self.nonce = 0
@@ -830,7 +998,11 @@ class Joiner(Peer):
         self.S = msg["S"]
         self.seat = msg["seat"]
         self.R = self.P = self.known = self.S
-        self.turns = {}
+        self.turns = {k: e for k, e in self.stash.items() if k > self.S}
+        self.stash = {}
+        while self.R + 1 in self.turns:
+            self.R += 1
+        self.known = max(self.known, self.R)
         self.roots = {}
         self.host_roots = {}
         self.pins = []
@@ -862,7 +1034,7 @@ class Joiner(Peer):
         self.sim.log("%s cancels its join" % self.name)
         self.close_input("cancel")
         self.state = "restarted"
-        self.sim.send(self.name, "H", 2, "JoinAbort", 6, gen=self.gen, attempt=self.attempt, reason=8)
+        self.sim.send(self.name, "H", 2, "JoinAbort", 8, gen=self.gen, attempt=self.attempt, reason=8)
 
     def on_arrive(self, src, ch, d):
         # A datagram in the transport buffer already shows its turn number, even one that is
@@ -876,6 +1048,15 @@ class Joiner(Peer):
             if self.attempt is not None and msg["attempt"] <= self.attempt:
                 return  # an old attempt's grant, or a duplicate
             self.reset_for(msg)
+            return
+        if kind == "SnapshotDone":
+            self.snapshot(msg["gen"], msg["S"], msg["snap"], msg["load_ms"], msg["attempt"])
+            return
+        if kind == "Turn" and self.state in ("idle", "restarted"):
+            # Turns on channel 0 can overtake the grant on channel 1: keep them for the next attempt.
+            if msg["turn"] > self.R:
+                self.stash[msg["turn"]] = msg["events"]
+                self.check_backlog()
             return
         if kind == "JoinRestart":
             if self.attempt is not None and msg["attempt"] < self.attempt:
@@ -896,6 +1077,7 @@ class Joiner(Peer):
                 self.turns[msg["turn"]] = msg["events"]
             while self.R + 1 in self.turns:
                 self.R += 1
+            self.check_backlog()
             self.kick()
         elif kind == "HashRoot":
             self.host_roots[msg["turn"]] = msg["root"]
@@ -908,6 +1090,17 @@ class Joiner(Peer):
             self.on_input_grant(msg)
         elif kind == "InputGo":
             self.on_input_go(msg)
+
+    def check_backlog(self):
+        """The receive-backlog cap: received but not applied turns, plus the ones stashed before the
+        grant. Past it the joiner asks to be restarted; the table keeps running."""
+        if len(self.turns) + len(self.stash) > self.sim.cfg.receive_backlog_turns and self.state != "restarted":
+            self.sim.log("%s: backlog %d passes the cap, aborts" % (self.name, len(self.turns) + len(self.stash)))
+            self.close_input("backlog")
+            self.state = "restarted"
+            self.stash = {}
+            self.sim.send(self.name, "H", 2, "JoinAbort", 8, gen=self.gen, attempt=self.attempt,
+                          reason=REASON_BACKLOG)
 
     def trim(self, cache):
         """Keep the newest root_slots entries plus the pinned ones."""
@@ -1011,6 +1204,10 @@ class Joiner(Peer):
             return
         if self.roots[h] != msg["root"]:
             self.sim.log("%s: root mismatch at %d" % (self.name, h))
+        if self.sim.outstanding(self.name, "H", 0, "HashReport") >= self.sim.cfg.max_outstanding_reports:
+            self.sim.log("%s holds back the report for %d: %d outstanding" % (
+                self.name, h, self.sim.cfg.max_outstanding_reports))
+            return
         self.sim.send(self.name, "H", 0, "HashReport", 22, gen=self.gen, attempt=self.attempt,
                       turn=h, root=self.roots[h])
         self.H = h
@@ -1067,10 +1264,12 @@ class Joiner(Peer):
                 self.name, self.P, self.known, took, limit))
         if self.pending_grant:
             self.pending_grant = False
-            if self.fresh() and self.R >= self.grant_C and self.owners.get(self.seat) == "human":
+            if self.sim.outstanding(self.name, "H", 0, "InputReq") >= cfg.max_outstanding_req:
+                self.sim.log("%s holds back an InputReq: %d outstanding" % (self.name, cfg.max_outstanding_req))
+            elif self.fresh() and self.R >= self.grant_C and self.owners.get(self.seat) == "human":
                 self.nonce += 1
                 self.reqs[self.nonce] = self.sim.t
-                self.sim.send(self.name, "H", 0, "InputReq", 14, gen=self.gen, attempt=self.attempt,
+                self.sim.send(self.name, "H", 0, "InputReq", 16, gen=self.gen, attempt=self.attempt,
                               applied=self.P, nonce=self.nonce)
             else:
                 self.grants_rejected.append((self.sim.t, self.P, self.R, self.grant_C))
@@ -1106,7 +1305,7 @@ class Joiner(Peer):
         if self.state != "restarted":
             self.close_input("abandoned")
             self.state = "restarted"
-            self.sim.send(self.name, "H", 2, "JoinAbort", 6, gen=self.gen, attempt=self.attempt, reason=4)
+            self.sim.send(self.name, "H", 2, "JoinAbort", 8, gen=self.gen, attempt=self.attempt, reason=4)
 
 
 # ---- independent validators ---------------------------------------------------------------
@@ -1129,6 +1328,7 @@ def validate(events, cfg, end_t, oracle_lag=None):
     out += _check_seats(events)
     out += _check_retained(events)
     out += _check_grants(events)
+    out += _check_outage_bounded(events, cfg)
     return out
 
 
@@ -1195,7 +1395,8 @@ def _check_agreement(events):
 
 def _live_peers(events):
     """Seated peers and the peers of attempts that were not restarted, derived from the log."""
-    seated = {e["peer"] for e in events if e["kind"] == "seated"}
+    dropped = {e["peer"] for e in events if e["kind"] == "drop_seated"}
+    seated = {e["peer"] for e in events if e["kind"] == "seated"} - dropped
     attempts = {}
     for e in events:
         if e["kind"] == "admit":
@@ -1277,37 +1478,35 @@ def _check_seats(events):
 
 
 def _check_retained(events):
-    """(vii) Every produced turn is delivered to, or still retained for, every live peer."""
+    """(vii) Every produced turn is delivered to, or still retained for, every live peer. Turns are
+    retained in the host's log for as long as the peer is live; a peer is not live once its attempt
+    died or its seat was dropped. A turn refused by a queue, a send on a closed pair, or an
+    abandoned pair to a live peer loses the turn."""
     seated, attempts = _live_peers(events)
-    live = {p: 0 for p in seated}
-    for n, (_, S, how) in attempts.items():
-        if how != "dead":
-            live[n] = S
-    produced = [e["turn"] for e in events if e["kind"] == "produce"]
-    delivered, enqueued, refused, abandoned = set(), set(), set(), set()
-    outage = {e["peer"] for e in events if e["kind"] == "outage"}
-    for e in events:
-        if e["kind"] == "deliver" and e["msg"] == "Turn":
-            delivered.add((e["dst"], e["turn"]))
-        elif e["kind"] == "enqueue" and e["msg"] == "Turn":
-            enqueued.add((e["dst"], e["turn"]))
-        elif e["kind"] in ("overflow", "drop_dead") and e["msg"] == "Turn":
-            refused.add((e["dst"], e["turn"]))
-        elif e["kind"] == "abandon":
-            abandoned.add(e["dst"])
+    live = set(seated) | {n for n, (_, _, how) in attempts.items() if how != "dead"}
     out = []
-    for peer in sorted(live):
-        if peer in outage:
-            continue
-        for k in produced:
-            if k <= live[peer] or (peer, k) in delivered:
-                continue
-            if (peer, k) in refused or (peer, k) not in enqueued:
-                out.append(("vii", "turn %d was never enqueued or was refused for %s" % (k, peer)))
-                break
-            if peer in abandoned:
-                out.append(("vii", "turn %d is retained only on a pair abandoned to %s" % (k, peer)))
-                break
+    for e in events:
+        if e["kind"] in ("overflow", "drop_dead") and e["msg"] == "Turn" and e["dst"] in live:
+            out.append(("vii", "turn %s refused for live %s (%s)" % (e["turn"], e["dst"], e["kind"])))
+        elif e["kind"] == "abandon" and e["src"] == "H" and e["dst"] in seated:
+            out.append(("vii", "t=%d the pair to seated %s was abandoned" % (e["t"], e["dst"])))
+    return out[:3]
+
+
+def _check_outage_bounded(events, cfg):
+    """(ix) An outage is explicit and ends: either an ACK ends it or the seat is dropped within
+    grace_ms plus one backed-off resend."""
+    out = []
+    started = {}
+    for e in events:
+        if e["kind"] == "outage":
+            started.setdefault(e["peer"], e["t"])
+        elif e["kind"] in ("outage_end", "drop_seated"):
+            started.pop(e["peer"], None)
+    end = events[-1]["t"] if events else 0
+    for peer, t0 in sorted(started.items()):
+        if end - t0 > cfg.grace_ms + cfg.outage_resend_ms:
+            out.append(("ix", "%s has been in an outage since %d without end or drop" % (peer, t0)))
     return out
 
 
@@ -1330,14 +1529,14 @@ def validate_sim(sim, **kw):
 
 
 # ---- scenario helpers ----
-def one_join(cfg, losses=(), delays=None, until=6000, snapshot_ms=150, seated=1):
+def one_join(cfg, losses=(), delays=None, until=6000, snapshot_ms=None, seated=1):
     sim = Sim(cfg, losses, delays, seated=seated)
     sim.add_join("J1", 0, 2, snapshot_ms=snapshot_ms)
     sim.run(until)
     return sim
 
 
-def first_seq(cfg, kind, direction, snapshot_ms=150):
+def first_seq(cfg, kind, direction, snapshot_ms=None):
     """Channel-0 sequence of the first `kind` on `direction` in a loss-free run."""
     sim = one_join(cfg, until=3000, snapshot_ms=snapshot_ms)
     for _, src, dst, ch, seq, k in sim.deliveries:
@@ -1460,8 +1659,12 @@ def queue_caps(cfg, destinations=5, joiners=2):
     caps["host_total"] = caps["ch0_host"] + caps["ch1_host"] + caps["ch2_host"]
     # One joiner's reverse queue: control messages only, each bounded by its own rule.
     wire = lambda payload: payload + HEADER + IP_UDP
-    caps["joiner_reverse"] = (cfg.max_outstanding_wm * wire(22) + cfg.max_root_pins * wire(22)
-                              + wire(6) + wire(6))
+    # 4 watermarks, 2 reports, 2 InputReqs (16 B payload), InputOn (6 B), JoinAbort (8 B, channel 2).
+    caps["joiner_reverse"] = (cfg.max_outstanding_wm * wire(22) + cfg.max_outstanding_reports * wire(22)
+                              + cfg.max_outstanding_req * wire(16) + wire(6) + wire(8))
+    # One ACK-only per channel per millisecond at most: channels 0 and 1 each 53 bytes x 1000 / s.
+    caps["ack_kbit_per_s_per_channel"] = 53 * 8 * 1000 / 1000.0
+    caps["ack_kbit_per_s_ch0_and_ch1"] = 2 * caps["ack_kbit_per_s_per_channel"]
     return caps
 
 

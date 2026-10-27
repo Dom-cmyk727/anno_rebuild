@@ -1862,11 +1862,12 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What remains.** OQ-310, the non-zero store. The caller of the function that returns at `0x10005239` / `0x1000529c`. The four Classic `mov al, 1` callers. OQ-290 and OQ-270..272 were not closed.
 - **How to resolve:** OQ-310. Not a guess that the zeroed field is the world.
 
-## OQ-310: Which store writes a non-zero pointer to vtable `0x100633d0` field `+0x4c` (T46, 2026-10-27)
+## OQ-310: Which interface is stored in the base-initialized AI field `+0x4c` (T46, review narrowed, 2026-10-27)
 - **Status:** open. OQ-311..319 were not used.
 - **Area:** simulation / AI.
 - **What was read.** Constructor `0x10016950` (`mov esi, ecx` at `0x10016953`) writes `[esi] = 0x100633d0` at `0x100169f0` and `[esi+0x4c] = 0` at `0x10016a0f` after `xor ebx, ebx` at `0x1001695e`. The same vtable is written again at `0x10016bb6`. The table has 32 code slots (`+0x00` `0x10016b90` through `+0x7c` `0x10017720`); the dword at `+0x80` is `0x3d4ccccd`, not a code address. Each slot was read until a `ret` followed by `0xcc` or `0x90`, and slot `+0x38` through `0x1001dcee`. No store of `[this+0x4c]` is in that range. Stores of displacement `0x4c` there write `esi` taken from a stack slot, or `edi` at `0x1001d7ec` while `this` is `esi`. `0x1002e3b0` and `0x10034440` dereference the field and call slot `+0x20` or slot `+0xb4` on its first dword. Slot `+0xf8` is called on the return of slot `+0x20`. The vtable of that return is not known while the field's live value is not known. `AnnoWelt.dll` `0x100aae00` was not entered.
-- **How to resolve:** the instruction that stores a non-zero value at `[this+0x4c]` on an object whose first dword is `0x100633d0`, then the vtable of that value. Not a guess from the slot number.
+- **Review evidence (round bv):** `0x10051304` constructs through `0x10016950`; `0x10051309` retains the object in ESI; `0x1005135f` stores `EDI ? EBP : 0` at `[esi+0x4c]`; `0x10051378` publishes the object at `[edi+0x9b8]`. The EBP/EDI provenance and pointed-to interface remain unread. The live-vtable restriction was too narrow: `0x1000f983` calls the same base constructor, then `0x1000f98a` installs derived vtable `0x100632e8`.
+- **How to resolve:** start at writer `0x1005135f`, trace EBP/EDI and the enclosing creation path to the concrete interface, then follow the `+0x20`/`+0xf8` return chain. Include derived objects and normalize adjusted `this`; do not repeat only the base table scan or guess from slot numbers.
 
 ## OQ-270: What the call after the AI list walk does (T40, 2026-10-26)
 - **Status:** open.

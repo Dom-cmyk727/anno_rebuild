@@ -754,3 +754,25 @@ The wave window at the far points: 2.17 M -> 0.69 M cells at 1280 x 800 (as at g
 | 2560x1440 | original | group 2 at 0.475 | 5440x3072 | - | 0.42 / 0.42 / 0.42 / 0.42 | 1.20 / 1.20 / 1.20 / 1.20 |
 
 The wave window on the RTX 4090 now has the iGPU's cells (0.69 M at the 1280 x 800 far points, 1.81 / 1.98 M at 2560 x 1440). Every frame is under 3 ms; the absolute values move with the card's clock state between runs (the scale-1 rows with the same window as before read 0.14-1.3 ms here against 0.47-4.1 ms in the first run), so the comparison is within this table, not across runs.
+
+## T45 — `World::load` and `run_turn` (2026-10-27)
+
+`anno-sim-replay join` on stream 114, age 30 000 ticks (600 calls to `World::advance(100)` from tick 0). One timed turn is `run_turn` with `step_ms` 10 and `steps` 10, which is 100 game ms and 50 ticks. A tick is 2 game ms. The clock is `steady_clock`. The hash is outside the timer. Host: AMD Ryzen 7 9800X3D, 8 cores, 16 logical processors, Windows, MSVC 19.51 Release, `threads=16`. Load repetitions 20 after 2 warm-up loads. Replay samples 150 (5 repetitions of 30 turns) after 2 warm-up sequences. Raw logs stayed in the worktree `cache\` and are not committed. The budget reading is ADR 0003 §13. The model defaults were not changed.
+
+`World::load` is the in-memory save only. The phases below are one sample each. The registry and template samples include their status line (`island templates 429`). They are not the load distribution.
+
+| Scenario | io µs | registry µs | templates µs | parse µs | create+age µs | save µs | save bytes |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `Scenes/0100Kampagne01/S01_07_01.sze` | 8 947 | 832 759 | 253 483 | 26 555 | 393 920 | 30 868 | 11 474 170 |
+| `Scenes/0011SingleEndlosAddon/endless02.sze` | 25 002 | 826 977 | 201 932 | 57 606 | 241 427 | 54 178 | 20 349 455 |
+| `Scenes/0010SingleEndlos/03_1024_med_256.sze` | 195 | 829 847 | 198 558 | 37 820 | 82 658 | 34 271 | 12 906 634 |
+
+T41's save sizes at the same age were 11 474 169, 20 349 454 and 12 906 633 bytes. Each remeasured file is one byte larger. The fragment counts stay 9 659, 17 130 and 10 865. The extra byte was not attributed to a field. The T41 hash medians were not remeasured.
+
+| Scenario | `World::load` µs min / median / p95 / max | `run_turn` scripted µs min / median / p95 / max | scripted turns/s, sum |
+|---|---:|---:|---:|
+| `S01_07_01` | 24 335 / 26 807 / 27 702 / 27 977 | 232 / 659 / 1 627 / 1 966 | 1 317 |
+| `endless02` | 42 858 / 46 004 / 51 401 / 54 239 | 234 / 397 / 925 / 2 222 | 1 915 |
+| `03_1024_med_256` | 25 018 / 27 647 / 31 175 / 32 570 | 171 / 217 / 330 / 635 | 4 245 |
+
+The empty workload's slowest sample is `endless02` at 2 278 µs (438 turns/s). Encoded command bytes, the same on every scenario: empty 0, one `SetSpeed` 16, synthetic burst 76 commands and 1 216 bytes. The burst is over the 1 200-byte cap. It is not a play distribution. Packet overhead was labeled and not added. Detail, the empty-workload rows, and the labeled model result are in ADR 0003 §13.

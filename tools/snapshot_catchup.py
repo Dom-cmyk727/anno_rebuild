@@ -4,7 +4,7 @@
 This is not a transport and not a measurement of a network. The three save
 sizes, the 1188-byte fragment payload, the window of 32 and the fluid times
 80.3 s / 160.6 s are the T41 figures. Everything else below is an explicit
-model assumption (A1-A10 in `assumptions()`).
+model assumption (A1-A13 in `assumptions()`).
 
 Run:
 
@@ -108,6 +108,15 @@ def assumptions():
         "generate an acknowledgement. ack_duplicates=True generates one. "
         "ack_drop drops acknowledgements. Those two schedules are separate "
         "from the 2% rows. The 2% rows are not general datagram-loss coverage.",
+        "A13. Table.advance is the shared owner's host and time step. Before "
+        "the new turn is retained it restarts a running joiner whose own "
+        "start is at least catchup_ms earlier, then restarts the oldest "
+        "generations until the remaining pin fits in tail_turns_max and "
+        "tail_bytes_max. A younger pin that still fits stays. Table.attach "
+        "refuses a save past fragment_max without storing it. "
+        "Table.note_backlog restarts a backlog past receive_backlog_turns. "
+        "The table is not paused. This bounds the proposal's intermediate "
+        "state. It is not a measured join and not original netcode.",
     )
 
 
@@ -872,6 +881,7 @@ class Generation:
         self.created_ms = created_ms
         self.save_bytes = save_bytes
         self.joiners = {}
+        self.started_ms = {}
 
     def rounded(self, cfg):
         return fragment_count(self.save_bytes, cfg.save_per_fragment) * cfg.save_per_fragment
@@ -879,8 +889,9 @@ class Generation:
     def running(self):
         return sum(1 for state in self.joiners.values() if state == "running")
 
-    def add(self, joiner_id):
+    def add(self, joiner_id, now_ms):
         self.joiners[joiner_id] = "running"
+        self.started_ms[joiner_id] = now_ms
         return "shared" if self.running() > 1 else "opened"
 
     def cancel(self, joiner_id):
@@ -917,13 +928,18 @@ class Table:
     """Shared owner of generations, transfer slots, pins and joiner backlogs.
 
     `concurrent_transfers`, `max_generations` and `tail_turns_max` are global.
-    A generation does not keep its own copy of the transfer cap.
+    A generation does not keep its own copy of the transfer cap. Host turn
+    and time move only through `advance`. That step applies deadline and
+    tail caps before the new turn is retained (A13).
     """
 
     def __init__(self, cfg):
         self.cfg = cfg
         self.generations = []
         self.backlog = {}
+        self.host_turn = 0
+        self.now_ms = 0
+        self.paused = False
 
     def running(self):
         return sum(g.running() for g in self.generations)
@@ -931,37 +947,110 @@ class Table:
     def active_generations(self):
         return [g for g in self.generations if g.running() > 0]
 
-    def distinct_turns(self, host_turn):
+    def _turns_held(self, gens, host_turn):
         held = set()
-        for gen in self.active_generations():
-            if host_turn <= gen.snapshot_turn:
+        for gen in gens:
+            if gen.running() <= 0 or host_turn <= gen.snapshot_turn:
                 continue
             for turn in range(gen.snapshot_turn + 1, host_turn + 1):
                 held.add(turn)
         return held
 
-    def tail_allows(self, snapshot_turn, host_turn):
-        held = set(self.distinct_turns(host_turn))
-        if host_turn > snapshot_turn:
-            for turn in range(snapshot_turn + 1, host_turn + 1):
+    def distinct_turns(self):
+        return self._turns_held(self.active_generations(), self.host_turn)
+
+    def _span_count(self, gens, host_turn):
+        return len(self._turns_held(gens, host_turn))
+
+    def _tail_reason(self, count):
+        if count > self.cfg.tail_turns_max:
+            return "tail_turns"
+        if count * self.cfg.turn_store_cap > self.cfg.tail_bytes_max:
+            return "tail_bytes"
+        return None
+
+    def _active_ordered(self):
+        """Oldest snapshot, then earliest save time, then open order."""
+        ranked = []
+        for index, gen in enumerate(self.generations):
+            if gen.running() > 0:
+                ranked.append((gen.snapshot_turn, gen.created_ms, index, gen))
+        ranked.sort()
+        return [item[3] for item in ranked]
+
+    def tail_allows(self, snapshot_turn):
+        held = set(self.distinct_turns())
+        if self.host_turn > snapshot_turn:
+            for turn in range(snapshot_turn + 1, self.host_turn + 1):
                 held.add(turn)
-        return len(held) <= self.cfg.tail_turns_max
+        return self._tail_reason(len(held)) is None
+
+    def advance(self, now_ms, host_turn):
+        """Move the shared clock. Caps are applied before `host_turn` is kept.
+
+        A running joiner is restarted when `now_ms - started_ms >= catchup_ms`.
+        If the prospective pin still exceeds the tail count or the tail bytes,
+        running joiners on the oldest generation restart, then the next oldest,
+        until the remaining union fits. A younger generation whose own pin
+        fits is kept. The table is not paused.
+        """
+        if now_ms == self.now_ms and host_turn == self.host_turn:
+            return []
+        if now_ms < self.now_ms or host_turn < self.host_turn:
+            raise ValueError("clock")
+        restarted = []
+        restarted.extend(self._enforce_deadlines(now_ms))
+        restarted.extend(self._enforce_tail(host_turn))
+        self.now_ms = now_ms
+        self.host_turn = host_turn
+        return restarted
+
+    def _enforce_deadlines(self, now_ms):
+        restarted = []
+        for gen in self.generations:
+            for joiner_id, state in list(gen.joiners.items()):
+                if state != "running":
+                    continue
+                if now_ms - gen.started_ms[joiner_id] >= self.cfg.catchup_ms:
+                    self._release(joiner_id, "restart")
+                    restarted.append((joiner_id, "deadline"))
+        return restarted
+
+    def _enforce_tail(self, host_turn):
+        gens = self._active_ordered()
+        restarted = []
+        keep_from = 0
+        while keep_from < len(gens):
+            reason = self._tail_reason(self._span_count(gens[keep_from:], host_turn))
+            if reason is None:
+                break
+            gen = gens[keep_from]
+            for joiner_id, state in list(gen.joiners.items()):
+                if state == "running":
+                    self._release(joiner_id, "restart")
+                    restarted.append((joiner_id, reason))
+            keep_from += 1
+        return restarted
 
     def attach(self, joiner_id, now_ms, save_bytes, snapshot_turn, host_turn):
+        if fragment_count(save_bytes, self.cfg.save_per_fragment) > self.cfg.fragment_max:
+            return "fragment", None
+        if now_ms != self.now_ms or host_turn != self.host_turn:
+            return "clock", None
         if self.running() >= self.cfg.concurrent_transfers:
             return "refuse", None
         for gen in self.active_generations():
             if (gen.save_bytes == save_bytes
                     and now_ms - gen.created_ms <= self.cfg.snapshot_age_ms):
-                word = gen.add(joiner_id)
+                word = gen.add(joiner_id, now_ms)
                 self.backlog[joiner_id] = 0
                 return word, gen
         if len(self.active_generations()) >= self.cfg.max_generations:
             return "refuse", None
-        if not self.tail_allows(snapshot_turn, host_turn):
+        if not self.tail_allows(snapshot_turn):
             return "tail", None
         gen = Generation(snapshot_turn, now_ms, save_bytes)
-        word = gen.add(joiner_id)
+        word = gen.add(joiner_id, now_ms)
         self.generations.append(gen)
         self.backlog[joiner_id] = 0
         return word, gen
@@ -985,9 +1074,9 @@ class Table:
         self.backlog.clear()
         return restarted
 
-    def retained(self, turn, host_turn):
+    def retained(self, turn):
         for gen in self.active_generations():
-            if gen.retained(turn, host_turn, self.cfg):
+            if gen.retained(turn, self.host_turn, self.cfg):
                 return True
         return False
 
@@ -1004,7 +1093,7 @@ class Table:
         self.backlog[joiner_id] = turns
         return "held"
 
-    def memory_bytes(self, host_turn):
+    def memory_bytes(self):
         cfg = self.cfg
         n = self.running()
         gens = self.active_generations()
@@ -1013,12 +1102,17 @@ class Table:
             "reassembly": sum(gen.running() * gen.rounded(cfg) for gen in gens),
             "send_windows": n * cfg.window * cfg.payload_max,
             "channel0_flight": n * cfg.window * cfg.turn_datagram_bytes,
-            "pinned_turns": len(self.distinct_turns(host_turn)) * cfg.turn_store_cap,
+            "pinned_turns": len(self.distinct_turns()) * cfg.turn_store_cap,
             "joiner_backlog": sum(self.backlog.values()) * cfg.turn_store_cap,
             "rolling_turns": cfg.turn_buffer * cfg.turn_store_cap,
         }
         parts["total"] = sum(parts.values())
         return parts
+
+    def over_cap(self):
+        mem = self.memory_bytes()
+        bound = allocation_bound(self.cfg)
+        return [key for key in bound if mem[key] > bound[key]]
 
 
 def mismatch_resync(host_turn):

@@ -1,7 +1,7 @@
 # ADR 0003: Network transport and sessions
 
 - **Status:** Proposed
-- **Date:** 2026-10-26. Corrected 2026-10-27 (round bq F1): the fragment cap and the window time. Retention proposal 2026-10-27 (T43). Round bs F1, 2026-10-27: progress cursors, global caps, joiner backlog, acknowledgement loss. Status stays Proposed.
+- **Date:** 2026-10-26. Corrected 2026-10-27 (round bq F1): the fragment cap and the window time. Retention proposal 2026-10-27 (T43). Round bs F1, 2026-10-27: progress cursors, global caps, joiner backlog, acknowledgement loss. Round bt F2, 2026-10-27: the shared owner enforces tail and deadline caps on each host advance, before the new turn is retained. Status stays Proposed.
 
 ADR 0002 is reserved for the float walk (T34) and is not this document.
 
@@ -192,6 +192,8 @@ The model keeps three cursors: turns the host has produced, the contiguous turns
 
 A joiner who passed admission and then crosses a cap is restarted. The partial reassembly and that joiner's backlog are discarded. The next ask takes a new `S`. The restarted join does not apply a prefix of the turns and report success. `paused` is false on every join outcome here.
 
+The model applies that rule in `Table.advance`, before the new host turn is part of the retained span. A joiner's deadline is that joiner's own start time plus `catchup_ms`. At that millisecond a joiner who is still running is restarted; one millisecond earlier is not. `complete` before the deadline leaves the joiner complete. When the union of open pins would pass `tail_turns_max` or `tail_bytes_max`, the owner restarts every running joiner on the oldest generation, then the next oldest, until the remaining union fits. Order is snapshot turn, then the time the generation was saved, then the order the generations were opened. Joiners on one generation share its pin and restart together. A younger generation whose own pin still fits is kept, including a turn the rolling log has already dropped. Opening a generation, and the terminal result of `evaluate_join`, do not by themselves keep this intermediate span inside the cap. Asking what a later host turn would retain is not an advance.
+
 The byte bound is the sum of every cap in [§13](#13-budgets): the snapshot store, reassembly, the channel-1 windows, the channel-0 flight window, the host pin, each joiner's received-turn backlog, and the rolling log.
 
 ### 8.4 Who owns the bytes
@@ -211,7 +213,7 @@ On host migration ([§9](#9-host-migration)) an in-progress joiner is not a conn
 3. Send the image on channel 1. Send turns `S+1` onward on channel 0 during that transfer. A full channel-1 window does not delay channel 0.
 4. The joiner `load`s the image, then `run_turn`s from `S+1` until its index equals the host's. `load_ms` and `replay_turns_per_s` are the model's names for those two costs. Both are unmeasured (OQ-281).
 5. A matching hash at the next ordinary check lets the joiner send commands. A mismatch of the joiner alone drops the join and does not pause the others. A mismatch that includes a peer already in the game is [§7](#7-hash-checks).
-6. A cap that trips during the transfer or the chase restarts this joiner only. Turns still named by another running pin stay. The table is not paused.
+6. A cap that trips during the transfer or the chase restarts this joiner only. Turns still named by another running pin stay. The table is not paused. `Table.advance` does this before it retains the new host turn. An older generation is selected first when the union overflows. A younger pin that still fits stays. `Table.attach` refuses a save past `fragment_max` before a generation is stored, and it refuses an ask whose clock is not the owner's clock. `Table.note_backlog` restarts a backlog past `receive_backlog_turns`. Those calls are the path for the parts in the byte bound. A caller does not retain a later turn by querying the span.
 
 This is the plan's OpenTTD-style join (`docs/plan/lan-endless.md` §4). The snapshot is `World::save()` / `World::load`, not a second format.
 
@@ -323,7 +325,7 @@ The in-flight window is 32 fragments, 38 016 save bytes (§4). The fluid bound i
 
 §7 stores a snapshot every 10 minutes and does not send it. A join or a resync sends a save taken at the moment [§8](#8-join-in-progress) and [§7](#7-hash-checks) name, plus the turns after that boundary. The 10-minute image is older than the 60 s log, so it is not the payload.
 
-**T43 model.** `tools/snapshot_catchup.py` is an integer discrete-event model of that proposal. It is not a socket, and it is not a measured network. `python -I tools/snapshot_catchup.py` prints the rows below; `python -I tools/test_snapshot_catchup.py` checks them. Assumptions A1–A10 are in the tool.
+**T43 model.** `tools/snapshot_catchup.py` is an integer discrete-event model of that proposal. It is not a socket, and it is not a measured network. `python -I tools/snapshot_catchup.py` prints the rows below; `python -I tools/test_snapshot_catchup.py` checks them. Assumptions A1–A13 are in the tool. A8 is still a fluid channel-0 receipt with no second one-way delay. A12 still drops data only on the 2% rows. A13 is the owner's runtime cap on `Table.advance`. None of those is an end-to-end measured time.
 
 The fluid tenths above stay the T41 F1 quotients: 45.3 s, 80.3 s and 50.9 s at a 150 ms round trip, and 90.6 s, 160.6 s and 101.9 s at a 300 ms round trip, for `S01_07_01`, `endless02` and `03_1024_med_256`. The discrete clock is a different quantity. With a burst of 32, no serialization delay and no loss, fragment `n-1` arrives at `((n-1)//32) × RTT + one_way`:
 

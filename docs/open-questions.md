@@ -1887,9 +1887,21 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** `0x1003d8e0`. A call through the stored pointer names the slot. If a start path other than `0x10002e4e` writes a different pointer, that caller is the next read after `0x10001232`.
 
 ## OQ-330: Which object world slot `+0x20` returns for key `0x1300` (T48, 2026-10-27)
-- **Status:** narrowed by round-bw review. OQ-331..339 were not used.
+- **Status:** answered for a non-null slot (T49, 2026-10-27). OQ-331..339 were not used.
 - **Area:** simulation / AI.
-- **What was read.** `CompLogic.dll` `0x1002e3b4` loads the first dword of the `+0x4c` pointer. §10 shows that dword is the world. `0x1002e3c4` calls its slot `+0x20` with `0x1300` and a masked byte. The slot is `AnnoWelt.dll` `0x100aee00` (vtable `0x100ccdd8`, the dword at `0x100ccdf8`, `ret 8`). The `0x1300` case, `0x100aee1b`, returns `[world + byte*4 + 0x6530]`. `0x1002e3d6` calls slot `+0xf8` on that pointer with the masked byte. `0x1002e3f3` calls slot `+0xb4` on the `+0xf8` return with three arguments. The array element's vtable was not read. `0x100aae00` was not entered. The no-argument world slot `+0xb4` (`0x100a1740`) is a different call.
-- **How to resolve:** one store into the `[world + 0x6530]` array that names the element's vtable, then that vtable's slot `+0xf8` and the three-argument slot `+0xb4`. Not a guess from the slot number, and not `0x100a1740`.
+- **What was read.** `CompLogic.dll` `0x1002e3b4` loads the first dword of the `+0x4c` pointer. §10 shows that dword is the world. `0x1002e3c4` calls its slot `+0x20` with `0x1300` and a masked byte. The slot is `AnnoWelt.dll` `0x100aee00` (vtable `0x100ccdd8`, the dword at `0x100ccdf8`, `ret 8`). The `0x1300` case, `0x100aee1b`, returns `[world + byte*4 + 0x6530]`. `0x1002e3d6` calls slot `+0xf8` on that pointer with the masked byte. `0x1002e3f3` calls slot `+0xb4` on the `+0xf8` return with three arguments. `0x100aae00` was not entered. The no-argument world slot `+0xb4` (`0x100a1740`) is a different call.
+- **Resolution (T49).** `0x100a19d4` stores the object passed to `0x100a19a0`. The callers that construct it use world slot `+0x1c4` (`0x100aed70`), which calls `0x10094c60`. That function writes vtable `0x100cac2c`. A null allocation is not stored. Slot `+0xf8` of that vtable is `0x100863e0`, returning `[island + byte*4 + 0x38]`. Island slot `+0xf4` (`0x100861c0`) publishes there, through `lea ecx, [island + 0x38]` and `call 0x100967e0`. `0x100968a4` stores the pointer `0x1002f990` returns, and `0x1002fa36` has written vtable `0x100c2f40` on it. Slot `+0xb4` of that vtable is `0x10028fd0`, RemoveAt. The argument ledger is `docs/re/complogic.md` §11. The `0x1300` case does not test the slot before `0x1002e3cb` loads its first dword.
 
-- **Review evidence (round bw):** reuse `state.md` island insertion evidence at `0x100a19a0`; the store is `0x100a19d4`. Fresh island vtable `0x100cac2c` slot `+0xf8` is `0x100863e0`, returning `[island + argument*4 + 0x38]`. City vtable `0x100c2f40` slot `+0xb4` is `0x10028fd0`, RemoveAt (`transport.md` §3.4.17). T49 must tie the AI lookup to the creation/publication paths and its arguments before claiming the complete call effect. The target search should not repeat already documented slot discovery.
+- **Review evidence (round bw):** reuse `state.md` island insertion evidence at `0x100a19a0`; the store is `0x100a19d4`. Fresh island vtable `0x100cac2c` slot `+0xf8` is `0x100863e0`, returning `[island + argument*4 + 0x38]`. City vtable `0x100c2f40` slot `+0xb4` is `0x10028fd0`, RemoveAt (`transport.md` §3.4.17). T49 ties the AI lookup to those creation paths and to the three arguments.
+
+## OQ-340: Which store replaces the type-12 node's `0xff` index bytes (T49, 2026-10-27)
+- **Status:** open. OQ-341 is the other question from this pass. OQ-342..349 were not used.
+- **Area:** simulation / AI.
+- **What was read.** The constructor in `complogic.md` §10 writes `0xff` at `[node + 0x120]` and `[node + 0x121]`. §11 shows the AI path uses bits 0..7 of that word as the island-table index and bits 8..15 as the city-ring index. No later store of an in-range pair was read.
+- **How to resolve:** the store that writes `[node + 0x120]` after `0x1001698e` on the type-12 object published at `0x100414b0`.
+
+## OQ-341: Whether RemoveAt reads its third argument (T49, 2026-10-27)
+- **Status:** open.
+- **Area:** simulation / AI.
+- **What was read.** On the AI path the third argument is the dword Advance stores at world `+0x10c` (`complogic.md` §11). The clear at `0x100292e4` pushes a literal 0, then the second argument, then the first. `0x10028fd0` also reads `[esp + 0x2f8]` at `0x100290cb`, `0x1002922e`, `0x100292ba` and `0x10029409`. Virtual calls between `push ebx` (`0x10029002`) and those reads were not measured, so the displacement was not assigned to the third argument.
+- **How to resolve:** the `ret` immediate of each virtual call between `0x10029002` and `0x10029409`, then the same stack ledger. A read that still addresses the entry's third argument names the use. None means the tick is unused by RemoveAt.

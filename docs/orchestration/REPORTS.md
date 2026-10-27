@@ -3943,9 +3943,37 @@ OQ-220 (the three addon pages do not state the six levels), OQ-221 (a money bull
   - No pull request. Round ba: GitHub is suspended, and this session was told not to push. Not merged.
 - Acceptance:
   1. Precision and rounding, with addresses, or open with what was searched: MET. 53-bit mantissa from the startup setter (`0x00405869`, mask `0x30000`, value `0x10000`). Rounding is not changed by that setter. `__ftol` (`0x100b5f9f`) sets toward-zero for one `fistp` and restores the word. The walk ranges contain no `fldcw`. The system DirectDraw is OQ-195.
-  2. The walk's operation sequence, every rounding point named: MET in §4.3–§4.6. The height formula and the pair encoder are the two stops above, not gaps in the walk's own stores.
-  3. ADR 0002 with the test plan: MET. Proposed. Soft-float at 53-bit with the x87 exponent range, binary32 at each `fstp dword`, at least 10^8 operands per operation, a hand-derived trace, `bench_sim` before and after. Native float is rejected.
+  2. The walk's operation sequence, every rounding point named: MET in §4.3–§4.6 for the stores. The `test ah, 1` sentences in that text treated C0 as ordered only. That part is withdrawn; the round-bq F1 section is the reading.
+  3. ADR 0002 with the test plan: the document was Proposed, and the random and edge coverage stands. The sentence that host binary64 is wider than 53 bits is withdrawn. The round-bq F1 section replaces it. Stage 2 was not started.
   4. Nothing of the original in git: MET. `git status` after the content commits showed only this report still to add. `cache/` is ignored.
   5. Report, and not merged: MET. No PR, for the reason above.
 - Time spent / subagents used: inline, no subagents. Documents only, so no heavy job was queued behind T35.
 - Stage 2 was not started.
+
+## T34 stage 1 — round-bq F1 — 2026-10-27 — status: READY FOR RE-REVIEW
+
+- Branch `task/T34-float-walk-re`. Worktree `E:\anno1503-worktrees\anno1503-T34`. Previous head `6809c78ebdca0a4b2de167526fad717275259310`. The documentation fix is `ec32db5ae784e612944a3063cf6bd86c5c7e33d3`. The commit that adds this section is the branch head. Not merged, not pushed. Docs only. No stage 2, no stream bump, no code, no golden change. ADR 0002 stays Proposed. `E:\anno1503` was not edited.
+
+### Compare
+
+Re-read `AnnoWelt.dll` `0x10034760` (400 bytes) and `0x10034580` (400 bytes). Listings stayed in this worktree's `cache/` and are not committed.
+
+`fcomp` with the invalid-operation exception masked sets C0, C2 and C3 together on an unordered compare. `fnstsw ax` leaves C0 in AH bit 0. `test ah, 1` is that bit.
+
+- `0x1003480a` loads 0.0, `0x10034810` compares it with remaining, `0x10034815` tests C0, `0x10034818` is `jne 0x1003488b`. The dispatch at `0x1003481a` runs only when C0 is clear. An unordered remaining sets C0 and skips dispatch.
+- `0x10034622` loads 1.0, `0x10034628` compares it with the payload length, `0x1003462d` tests C0, `0x10034630` is `jne 0x10034684`. That target is the long-piece arm. An unordered length takes it. Ordered length ≤ 1.0 falls through to `0x10034632`.
+
+The condition table is in `docs/re/transport.md` §4.3 and in ADR 0002. Both unordered cases are planned edge tests: a quiet NaN remaining skips dispatch, and a quiet NaN length takes the long-piece arm. The 10^8 random operands and the other edges stay.
+
+### Oracle
+
+The test plan no longer says binary64 is wider than 53 bits. Binary64 has exactly 53 significant bits, and its exponent range is narrower than x87. The reference is integer arithmetic with a 53-bit significand, the x87 15-bit exponent, and round-to-nearest, ties to even, or an x87 unit whose control word is set to precision 53, nearest, and exceptions masked. A host `double` is compared only when every operand and the rounded result are a binary64 normal or a zero. No hash-time number and no port were added.
+
+### Acceptance (round bq F1)
+
+1. The test plan does not call binary64 wider than 53 bits: MET.
+2. Independent reference with controlled precision, exponent range and rounding, and native binary64 limited to its valid domain: MET.
+3. Random and edge coverage retained: MET.
+4. Truth table corrected in the ADR and in `transport.md` §4; both `test ah, 1` sites named: MET.
+5. Both unordered cases are planned edge tests: MET.
+6. Report corrected; `git diff --check` on the fix commit was clean; ADR stays Proposed; stage 2 not started: MET. Not merged, not pushed.

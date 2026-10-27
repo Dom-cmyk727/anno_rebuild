@@ -118,6 +118,17 @@ The figure's x is `+0x24`, its height is `+0x28`, its z is `+0x2c`. The earlier 
 
 The argument is the tick `t`. **D**, `0x10034760`–`0x100348a5`.
 
+**Compare conditions.** `fnstsw ax` leaves C0 in AH bit 0, C2 in AH bit 2 and C3 in AH bit 6. For `fcom` / `fcomp`, with the invalid-operation exception masked, the codes are:
+
+| ST(0) against the source | C3 | C2 | C0 |
+|---|---:|---:|---:|
+| greater | 0 | 0 | 0 |
+| less | 0 | 0 | 1 |
+| equal | 1 | 0 | 0 |
+| unordered | 1 | 1 | 1 |
+
+Unordered sets C0 as well as C2 and C3. `test ah, 1` is C0. `test ah, 0x40` is C3. `test ah, 0x41` is C0 or C3. The walk does not test C2.
+
 1. `ax = u16(t) − u16[figure+8]`, zero-extended. `fild`, `fmul` the 0.2 at `0x100c3270`, `fstp dword` back to the stack slot. That store is a rounding point. Call the result `time`.
 2. `fcomp` of the rate `+0x40` with 0.0. `test ah, 0x40` is C3 (equal or unordered). If it is set, return, and do not write the stamp.
 3. The same test on `time`. If it compares equal or unordered to 0.0, the same return.
@@ -125,7 +136,7 @@ The argument is the tick `t`. **D**, `0x10034760`–`0x100348a5`.
 5. For each axis, `fstp(position + time_used * velocity)` to `+0x24`, then `+0x28`, then `+0x2c`. Three rounding points. `time_used` stays on the stack.
 6. `fstp(remaining − dist)` to `+0x3c`. On the cut path `dist` is the second load of remaining, so the difference is exact 0. On the other path `dist` is the 53-bit product. Rounding point.
 7. `fstp(time − time_used)` back to the stack slot. On the uncut path both copies of `time` are the same value, so the difference is exact 0. On the cut path `time_used` is the unstored quotient, so the stored value is the binary32 rounding of `time − remaining / rate`. This is the rounding that a 24-bit mantissa would do differently. The leftover time is not recomputed from the stamp inside this call.
-8. `fcomp` of 0.0 against remaining. `test ah, 1` is C0, meaning 0.0 < remaining. If remaining is still positive, skip the dispatch. Otherwise, in order: flag bit 1 sets the rate's bits to 0, sets flag bit 2, and calls the registry slot already recorded for removal; else figure slot `+0x18c`; else if the route `+0x50` is not null, slot `+0x17c` (`0x100343c0`); else if the job `+0x20` is not null, slot `+0x178`; else slot `+0x174` (`0x1003af00`).
+8. `fld` of 0.0 (`0x1003480a`), `fcomp` remaining (`0x10034810`), `fnstsw` (`0x10034813`), `test ah, 1` (`0x10034815`), `jne 0x1003488b`. C0 is set when 0.0 < remaining and when the compare is unordered. Both skip the dispatch. The dispatch at `0x1003481a` runs only when C0 is clear, which is an ordered remaining ≤ 0. Then, in order: flag bit 1 sets the rate's bits to 0, sets flag bit 2, and calls the registry slot already recorded for removal; else figure slot `+0x18c`; else if the route `+0x50` is not null, slot `+0x17c` (`0x100343c0`); else if the job `+0x20` is not null, slot `+0x178`; else slot `+0x174` (`0x1003af00`).
 9. Store `t` into the stamp. `fcomp` the rate with 0.0. If it does not compare equal or unordered, go back to step 3 with the leftover `time`. The stamp write does not rebuild `time`.
 
 ### 4.4 Starting a walk (`0x10057ae0`, ret 8)
@@ -182,10 +193,10 @@ Two stack dwords are set to the bits `0x3a83126f` before the path call (`0x10034
 
 The arm copies the six payload dwords onto the figure at `+0x30`. `0x10088b50` is called with vx and vz. `0x100342c0` is called twice and its results are compared; a difference takes the facing update through slot `+0x150`. Neither call is an `fldcw` site.
 
-`fld` 1.0, `fcomp` the payload length. `test ah, 1` means 1.0 < length.
+`fld` 1.0 (`0x10034622`), `fcomp` the payload length (`0x10034628`), `test ah, 1` (`0x1003462d`), `jne 0x10034684`. C0 set takes the long-piece arm: ordered length > 1.0, and an unordered length. C0 clear falls through to `0x10034632`: ordered length ≤ 1.0.
 
-- Length greater than 1.0 (`0x10034684`): `fstp(length − 1.0)` back onto the payload (rounding point). Figure `+0x3c` is set to the bits of 1.0 by a `mov` of `0x100c3570`, not by a float store. The route pointer is not advanced. `time = fstp(1.0 / rate)` to a stack slot (rounding point).
-- Length less than or equal to 1.0 (`0x10034632`): `time = fstp(remaining / rate)`. Remaining is the length just copied. The route pointer becomes `[node+4]` (`0x10034677`).
+- Long piece, C0 set (`0x10034684`): `fstp(length − 1.0)` back onto the payload (rounding point). Figure `+0x3c` is set to the bits of 1.0 by a `mov` of `0x100c3570`, not by a float store. The route pointer is not advanced. `time = fstp(1.0 / rate)` to a stack slot (rounding point).
+- Short piece, C0 clear (`0x10034632`): `time = fstp(remaining / rate)`. Remaining is the length just copied. The route pointer becomes `[node+4]` (`0x10034677`). An unordered length does not take this arm.
 
 Both arms then call island slot `+0xa4` with the predicted end, `fstp(x + vx · time)` and `fstp(z + vz · time)`, two rounding points. The island vtable slot `+0xa4` is `0x10084e10` (ret 8). It leaves a height in st0. `vy = fstp((st0 − height) / time)` to `+0x34` (rounding point). The value `0x10084e10` returns is OQ-196. Trip time does not read it: time is the amount divided by the rate. The empty-tile arm of `0x10084e10` returns +0.0 (`fld` of a dword set to integer 0, `0x10084f6e` and `0x10085045`). The other arm returns at `0x10084f2d` with a value still on the stack.
 

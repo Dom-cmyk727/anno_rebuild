@@ -4466,3 +4466,21 @@ The test plan no longer says binary64 is wider than 53 bits. Binary64 has exactl
   5. Report and scope preserved: MET. This section. Docs only. `git diff --check` on the content commit was clean.
 - `git diff --check` on the content commit was clean. No cmake, ctest, or WSL compile. Listings stayed under `cache\` and were not added.
 - Time spent / subagents used: inline, no subagents. No build and no test.
+
+## T49 — AI island/city call reconciled with RemoveAt — 2026-10-27 — status: FINISHED
+
+- Branch: `codex/T49-ai-city-call`. Worktree: `E:\anno1503-worktrees\anno1503-T49`. Content commit: `2440470f46d68482b693dfd175e3c90a5dace857`. The commit that adds this section is the branch head. Base: local main `ade4612120f55418c993417e6d86d8f109d62804`. Docs only. No `src/sim`, no T-AI.4, no production networking, `TASKS.md` not edited. Not merged, not pushed.
+- Modules. `CompLogic.dll` `SizeOfImage` is `0x72000`, so `0x100aee00` is AnnoWelt. At `0x1002e3f3` CompLogic is `ff 92 b4 00 00 00`; AnnoWelt at that address is `c0 74 06 88 85 d8`. Both images prefer base `0x10000000`.
+- Island. `0x100a19d4` stores the argument of `0x100a19a0` at `[world + byte*4 + 0x6530]`. The byte is the low byte of island slot `+0x40` (`0x1008c690`, the word at `+0x98`). World slot `+0x1c4` (`0x100aed70`) calls `0x10094c60`, which writes vtable `0x100cac2c`. A null allocation is not inserted (`0x100a1f2b`, `0x100a204e`, `0x100a262d`, `0x100a2f74`). `0x100af3bf` reinserts pointers already in the table. `0x100aee1b` returns the slot with no null test, and `0x1002e3cb` loads its vtable.
+- City. Island slot `+0xf4` (`0x100861c0`) does `lea ecx, [island + 0x38]` and calls `0x100967e0`. `0x100968a4` stores the pointer `0x1002f990` returns. `0x1002fa36` has written vtable `0x100c2f40`. Slot `+0xb4` is `0x10028fd0`. Slot `+0xf8` (`0x100863e0`) reads `[island + byte*4 + 0x38]`. A null city skips the call (`0x1002e3de`).
+- Arguments. RemoveAt receives `(sign-extended word at [record + 2], sign-extended word at [record + 4], dword at world + 0x10c)`. The words are selected by record word 15 (`0x1001c610`) and word 16 (`0x1001c740`) in `0x10004e60`, and only for type 12. The third dword is world slot `+0x48` key `0x23` (`0x100aeed0`), which Advance writes at `0x100ae07b` from a 64-bit shift by 1 of world `+0x100`. The island index is bits 0..7 of `[node + 0x120]`; the city index is bits 8..15. The high half of that pushed dword is not read by either `and 0xff`.
+- Effect. RemoveAt's lookup and its clear use those two words. The clear pushes a literal 0 (`0x100292e4`). A null lookup jumps to `0x1002945c`. This path does not call AnnoFrame `0x100589a0` or `0x10058e90`. The call is also gated inside the two wrappers (`0x1001c651`, `0x1001c6f6`, `0x1001c70e`, `0x1001c75a`, `0x1001c819`).
+- Limits. OQ-330 is answered for a non-null slot. OQ-340: the constructor still writes `0xff` at `[node + 0x120]` and `[node + 0x121]`; the store of an in-range pair was not read. OQ-341: reads of `[esp + 0x2f8]` inside RemoveAt were not assigned to the third argument. OQ-342..349 were not used. OQ-320 stays on the T47 branch and was not taken. OQ-290 and OQ-270..272 stay open.
+- Round-bw acceptance:
+  1. Island/city publication provenance reconciled: MET. Insertion `0x100a19d4` holds the `0x10094c60` island. Publication `0x100968a4` holds the `0x1002f990` city at the address `0x100863e0` reads.
+  2. Target and calling convention proved for the scoped path, or a precise blocker: MET. `0x1002e3f3` is `call [edx + 0xb4]` with three pushes, `this` the city, target `0x10028fd0` when the published vtable is current. A null city returns 0. A null island is not tested.
+  3. Argument origins and conditionality recorded: MET. Ledger in `complogic.md` §11. The clear uses the two record words. The tick's other uses inside RemoveAt are OQ-341.
+  4. No invented gameplay semantics or implementation: MET. Docs only. No `src/sim`, no command wrapper, no PRNG change.
+  5. Report and scope preserved: MET. This section. `git diff --check` on the content commit was clean.
+- `git diff --check` on the content commit was clean. No cmake, ctest, or WSL compile. Listings stayed under `cache\t49\` and were not added.
+- Time spent / subagents used: inline, no subagents. No build and no test.

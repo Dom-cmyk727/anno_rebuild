@@ -1,7 +1,7 @@
 # ADR 0003: Network transport and sessions
 
 - **Status:** Proposed
-- **Date:** 2026-10-26. Corrected 2026-10-27 (round bq F1): the fragment cap and the window time. Retention proposal 2026-10-27 (T43). Round bs F1, 2026-10-27: progress cursors, global caps, joiner backlog, acknowledgement loss. Round bt F2, 2026-10-27: the shared owner enforces tail and deadline caps on each host advance, before the new turn is retained. T45 measurement 2026-10-27: labeled `World::load` and `run_turn` costs, and encoded turn sizes. T47 F3, 2026-10-27: channel-0 arrivals during load and replay enter the backlog through `Table.note_backlog`. The defaults below are unchanged. Status stays Proposed.
+- **Date:** 2026-10-26. Corrected 2026-10-27 (round bq F1): the fragment cap and the window time. Retention proposal 2026-10-27 (T43). Round bs F1, 2026-10-27: progress cursors, global caps, joiner backlog, acknowledgement loss. Round bt F2, 2026-10-27: the shared owner enforces tail and deadline caps on each host advance, before the new turn is retained. T45 measurement 2026-10-27: labeled `World::load` and `run_turn` costs, and encoded turn sizes. T47 F3, 2026-10-27: channel-0 arrivals during load and replay enter the backlog through `Table.note_backlog`. T52, 2026-10-27: observable join activation, hash-report delivery and a shared-link schedule ([§8.7](#87-observable-activation-and-the-shared-link)). The model and the defaults below are unchanged. Status stays Proposed.
 
 ADR 0002 is reserved for the float walk (T34) and is not this document.
 
@@ -202,7 +202,7 @@ A generation is the immutable save at `S` and the pin of turns after it. The hos
 
 Concurrency, the number of overlapping generations and the retained-turn span are global. A generation does not keep a private copy of `concurrent_transfers`. A second joiner who asks while `t - t_save <= snapshot_age_ms`, and while the table still has a free transfer slot, shares that generation. The pin is the union of the turns those joiners still need. An image older than `snapshot_age_ms` is not shared; the running join on it is not evicted by age. The next ask opens another generation when `max_generations` and the tail span allow it. Three joiners on two generations, with a cap of two, refuse the third even though each generation holds only one joiner. An ask that finds the global slots taken is refused. The joins already running stay as they are. A new generation whose span would pass `tail_turns_max` is refused, and turns already pinned stay.
 
-Cancel or disconnect frees that joiner's reassembly buffer and backlog and drops that joiner's reference. The pin remains while any join that still needs the turn is running, including a turn the rolling log has already left, so one cancel does not evict the other joiner's turns. A released slot can be taken by a later ask. When the last joiner who needs a turn finishes or leaves, that turn follows the rolling rule again. Completion means the joiner has applied the receivable prefix of [§8.6](#86-causal-readiness), the next ordinary hash matches, and the joiner then receives channel 0 with the rest of the table. The fluid equality in [§8.3](#83-budgets) is the optimistic comparison, not this completion. The reassembly buffer and the backlog are freed at that point. Turns received on channel 0 during the transfer sit in that backlog until replay, and [§13](#13-budgets) charges them.
+Cancel or disconnect frees that joiner's reassembly buffer and backlog and drops that joiner's reference. The pin remains while any join that still needs the turn is running, including a turn the rolling log has already left, so one cancel does not evict the other joiner's turns. A released slot can be taken by a later ask. When the last joiner who needs a turn finishes or leaves, that turn follows the rolling rule again. Completion means the joiner has applied through the checkpoint `H` of [§8.7](#87-observable-activation-and-the-shared-link), the hash report for that turn matches, and `SeatActive` has named `A`. The receivable prefix in [§8.6](#86-causal-readiness) is the model form of that checkpoint. The joiner then receives channel 0 with the rest of the table. The fluid equality in [§8.3](#83-budgets) is the optimistic comparison, not this completion. The reassembly buffer and the backlog are freed at that point. Turns received on channel 0 during the transfer sit in that backlog until replay, and [§13](#13-budgets) charges them.
 
 On host migration ([§9](#9-host-migration)) an in-progress joiner is not a connected seat. The successor is not handed this generation's save. Each running join restarts on the new host, which writes its own fresh image. The §9 pause is the role change the plan already specifies. The restart does not add a pause. Peers who already have the world keep it; they use the rolling log and the resend §9 already describes.
 
@@ -212,7 +212,7 @@ On host migration ([§9](#9-host-migration)) an in-progress joiner is not a conn
 2. Share an open generation when §8.4 allows it. Otherwise save at the current boundary `S` and open the pin at `S+1`.
 3. Send the image on channel 1. Send turns `S+1` onward on channel 0 during that transfer. A full channel-1 window does not delay channel 0.
 4. The joiner `load`s the image, then `run_turn`s from `S+1` until [§8.6](#86-causal-readiness) says the receivable prefix is applied. `load_ms` and `replay_turns_per_s` are the model's names for those two costs. The defaults stay 0 and 100. T45 measured both on one host and records them as a labeled scenario in [§13](#13-budgets). The defaults were not replaced (OQ-281). The fluid equality with the host cursor stays the optimistic comparison in [§8.3](#83-budgets).
-5. A matching hash at the next ordinary check lets the joiner send commands. A mismatch of the joiner alone drops the join and does not pause the others. A mismatch that includes a peer already in the game is [§7](#7-hash-checks).
+5. The joiner sends commands only after the checkpoint in [§8.7](#87-observable-activation-and-the-shared-link): applied and received both reach the named turn `H`, the hash report for that same turn matches, and the host has named a later activation turn `A`. A mismatch or an expired report for the joiner alone restarts the joiner. `paused` stays false. A mismatch that includes a peer already in the game is [§7](#7-hash-checks).
 6. A cap that trips during the transfer or the chase restarts this joiner only. Turns still named by another running pin stay. The table is not paused. `Table.advance` does this before it retains the new host turn. An older generation is selected first when the union overflows. A younger pin that still fits stays. `Table.attach` refuses a save past `fragment_max` before a generation is stored, and it refuses an ask whose clock is not the owner's clock. `Table.note_backlog` restarts a backlog past `receive_backlog_turns`. Those calls are the path for the parts in the byte bound. A caller does not retain a later turn by querying the span.
 
 This is the plan's OpenTTD-style join (`docs/plan/lan-endless.md` §4). The snapshot is `World::save()` / `World::load`, not a second format.
@@ -240,11 +240,97 @@ A replay rate at or below the live 10 turns/s does not reach the boundary; the r
 
 Joiner-applied counts a turn only after its `replay_step_ms` interval has elapsed. The shared owner walks that interval before the cursor moves. A deadline, a tail cap, or a horizon that stops the walk keeps the last completed turn. A walk that ends on `catchup_ms` is that stop: the owner restarts and the turn is not counted, so input stays disabled. On the one-fragment clock the step for turn 10 runs from 1 150 ms to 1 160 ms. `catchup_ms` of 1 155 or 1 159 therefore restarts with applied 9, the same applied cursor as `catchup_state_at` at that instant. At 1 160 ms that helper reports applied 10, because it has no owner; the deadline restart at that millisecond reports applied 9. A horizon of 1 155 under the 600 000 ms deadline stops the same unfinished step with applied 9. The 600 000 ms deadline still enables input at 1 160 ms on turn 10, because that step finishes while the joiner is still running. A horizon or deadline before `transfer.done_ms + load_ms` does not start replay. Channel 0 still delivers during that interval. A snapshot that completes at 3 000 ms, read with `horizon_ms` 2 000, stops at 2 000 ms with applied 0, received 18 and backlog 18. Input stays disabled. A nonzero `load_ms` that leaves load completion after the horizon keeps those cursors. `receive_backlog_turns` 5 restarts that joiner at the sixth arrival, 750 ms, with applied 0. A deadline on an arrival's millisecond restarts before that arrival is stored. `catchup_state_at` has no owner and still counts the arrival. `pin_turns` is the applied cursor, and `host_span` is the host frontier at the stop time.
 
-Channel 1 keeps the window of 32. One window of 32 payloads of 1 200 bytes serializes in 3 072 µs at 100 Mbit/s. One channel-0 datagram of 69 bytes serializes in 6 µs. The sum, 3 078 µs, is under the 150 ms one-way delay, which is why this clock omits both. The channels are not placed on one queue. A shared link, jitter, and the flight of the channel-2 hash datagram are not in the model (OQ-320). The fluid quotients are not recomputed: `17 130 * 150 = 2 569 500`, and `2 569 500 = 32 * 80 296 + 28`, so the 150 ms-RTT figure remains 80.3 s; `17 130 * 300 = 5 139 000 = 32 * 160 593 + 24`, so the 300 ms-RTT figure remains 160.6 s.
+Channel 1 keeps the window of 32. One window of 32 payloads of 1 200 bytes serializes in 3 072 µs at 100 Mbit/s. One channel-0 datagram of 69 bytes serializes in 6 µs. The sum, 3 078 µs, is under the 150 ms one-way delay, which is why this clock omits both. The channels are not placed on one queue. A shared link, jitter, and the flight of the channel-2 hash datagram are not in the model. [§8.7](#87-observable-activation-and-the-shared-link) is the design for those three. It does not change this clock, and OQ-320 stays open until a `netsim` case or a measured link tests it. The fluid quotients are not recomputed: `17 130 * 150 = 2 569 500`, and `2 569 500 = 32 * 80 296 + 28`, so the 150 ms-RTT figure remains 80.3 s; `17 130 * 300 = 5 139 000 = 32 * 160 593 + 24`, so the 300 ms-RTT figure remains 160.6 s.
 
 The one-fragment row makes the two clocks visible. The snapshot fragment arrives at 150 ms. The fluid comparison then applies turn 1 at 160 ms (`counterexample_1188_done_ms=160`). On the causal clock that turn is not receivable until 250 ms, readiness with an empty prefix is 150 ms, and input is enabled at 1 160 ms on turn 10 while the host is on turn 11. Tokens: causal_one_fragment_arrival_ms=250, causal_one_fragment_done_ms=1160. Those tokens are the 600 000 ms deadline. They are not the 1 160 ms deadline above.
 
 Admission is unchanged. `J` is still the reserved upper bound, not the applied frontier. The defaults `load_ms` 0, `replay_turns_per_s` 100 and `turn_store_cap` 1200 are unchanged. The numbers below are model output from those inputs and from the T45 labeled rates. They are not a measured join.
+
+### 8.7 Observable activation and the shared link
+
+[§8.6](#86-causal-readiness) is a model clock. Its due prefix and its boolean hash match are inputs of `evaluate_causal`. They are not messages. This section names the messages, the hash-report lifetime, and a bounded schedule for one shared link. `tools/snapshot_catchup.py` is unchanged. Every millisecond below that comes from that model is cited as model output. Every other millisecond is design arithmetic from the constants already in this ADR. Jitter is unmeasured, and the arithmetic rows use none (OQ-371).
+
+**Identity.** `session_id` is the field in [§3](#3-the-packet-format). A generation is still the save at `S` plus the pin after it ([§8.4](#84-who-owns-the-bytes)). The host assigns that generation a `u32 generation_id` when it saves. The fragment head's existing `u32 id` carries this value, with `index` and `count` unchanged. A new save, including a restart and a host migration, is a new id. A message whose id is not the joiner's current generation is kept only as a stale record.
+
+**Watermarks.** `JoinGrant`, `JoinWatermark`, `JoinCheckpoint` and `SeatActive` travel on reliable channel 0. `HashReport` travels on unreliable channel 2, and the retry below repeats it on channel 0. Nobody treats the joiner's applied turn as equal to the host's current turn.
+
+| Message | Direction | Fields the other side learns |
+|---|---|---|
+| `JoinGrant` | host → joiner | `generation_id`, snapshot turn `S`, seat |
+| `JoinWatermark` | joiner → host | `generation_id`, `received_through`, `applied_through` |
+| `HashReport` | either way | `generation_id`, turn index, `state_hash` root |
+| `JoinCheckpoint` | host → joiner | `generation_id`, the fixed hash turn `H`, the activation turn `A` |
+| `SeatActive` | host → joiner | `generation_id`, seat, `A` |
+
+`received_through` is the joiner's contiguous channel-0 prefix. `applied_through` is how far `run_turn` has gone, and it stays at or behind `received_through`. The host's produced turn is the turn index on each ordinary channel-0 turn ([§6](#6-turns)). The joiner reads that index from the turn it received. It does not subtract its own cursor from the host's to decide readiness.
+
+**Checkpoint.** `H` is a turn the host has already applied, `H > S`, and `H - S` is a multiple of `hash_every` (default 10). The host chooses `H` and sends it in `JoinCheckpoint`. The joiner does not infer `H` from the host's current turn. `A = H + command_delay`. With the default delay of 2, `A = H + 2`. The host stamps a joiner command for `current + command_delay` and refuses a stamp below `A`. That is the same assignment rule as [§6](#6-turns). OQ-370 records that `A = H + command_delay` is this proposal, waiting with the rest of this ADR.
+
+**When input opens.** All four are required.
+
+1. The joiner has loaded `generation_id`.
+2. `applied_through = received_through = H`, so the prefix `S+1` through `H` has no hole.
+3. A `HashReport` for this `generation_id` and this same `H` matches the local root at `H`. A report for any earlier turn, including an earlier multiple of `hash_every`, does not open input.
+4. `SeatActive` for this generation has named `A`, and the host has accepted the joiner's report for `H`.
+
+The joiner may send a command after step 3. The host accepts it only after step 4, and the accepted command lands on `current + command_delay`, which is at least `A`. Turns between `H + 1` and that stamped turn carry the seat's ordinary empty or AI commands. Peers already in the game keep advancing. `paused` stays false.
+
+**Hash lifetime.** The channel-2 payload is `generation_id` (`u32`), the turn (`u64`) and the root (`u64`): 20 bytes. Channel 2 is unreliable ([§4](#4-the-channels)). The same three fields are what the channel-0 retry carries after `hash_retry_ms` (default 500).
+
+| Arrival | What the receiver does |
+|---|---|
+| Before `applied_through` reaches `H` | Store the report under (`generation_id`, turn). Compare it when apply reaches that turn. Only the stored report for `H` can open input. |
+| After apply has reached `H` | Compare on arrival. |
+| Duplicate of the same id, turn and root | Ignore. |
+| Turn other than `H`, or an older generation | Do not open input. A shorter prefix stays a record of that turn. |
+| Root mismatch for the joiner alone | Restart that joiner. The table is not paused. |
+| Root mismatch for a peer already in the game | [§7](#7-hash-checks). That path may pause. |
+| Still missing one `hash_every` interval after the host's first send for `H` | Restart the joiner. The interval is `hash_every * turn_ms`, 1 000 ms at the defaults. A seated peer's missing report still follows [§7](#7-hash-checks). |
+
+A new `generation_id` retires the previous id's stored reports. They cannot activate the new join.
+
+**Shared-link schedule.** One link carries every direction. The design rate is the 100 Mbit/s already used for the 3 072 µs window in [§8.6](#86-causal-readiness). The acceptance delay stays 150 ms one way, 300 ms round trip ([§14](#14-the-netsim-test-plan)). Loss in the worked rows is either zero or one named drop of the channel-2 report. Link overhead outside IPv4 and UDP (preamble, inter-frame gap, checksum) is outside the byte count, which is the same cut the 69-byte empty datagram already uses.
+
+Byte count, in this order: message payload, the 25-byte header, then 20 bytes of IPv4 and 8 bytes of UDP.
+
+| Datagram | Payload | On the wire, header included | Source of the payload size |
+|---|---:|---:|---|
+| Empty turn | 16 | 69 | [§13](#13-budgets): 8 + 4 + 4, plus 25, plus 28 |
+| Hash report | 20 | 73 | The three fields above |
+| One snapshot fragment | 1 200 | 1 253 | `payload_max` 1200, of which 12 are the fragment head |
+| Synthetic 1 216-byte turn | 1 232, in two pieces | 1 253 and 109 | T45 burst is 1 216 `TurnEntry` bytes; the turn head adds 16 |
+
+The 69-byte row is the empty turn only. The T45 burst is 1 216 bytes of commands (`t45_burst_payload=1216` in [§13](#13-budgets)). Adding the 16-byte turn head makes 1 232 payload bytes, which is above `payload_max`, so the fragmentation rule in [§4](#4-the-channels) splits it. Each piece holds at most 1 188 message bytes: 1 188 + 44. The fragment payloads are 1 200 and 56, and the datagrams are 1 253 and 109. A later real-play turn can be a third size. `turn_store_cap` stays 1 200 (OQ-282).
+
+The host sends in this order, round-robin inside each step, and then repeats:
+
+1. Channel 0 for every seated peer: the turn, and any hash retry that peer is owed.
+2. Channel 0 for each joiner: the same turn, plus `JoinGrant`, `JoinCheckpoint` and `SeatActive` when those are due.
+3. Channel 1, at most `snapshot_window` fragments in flight per joiner. The window stays 32 and does not widen `ack_bits`. A full window waits for an acknowledgement.
+4. Channel 2 hash reports and keep-alives. A report for a generation that is no longer current is dropped here. The channel-0 retry for the current `H` is step 1 or 2 and is not dropped to make room.
+
+`concurrent_transfers` stays 2. A third ask is refused before it has a queue. Two snapshot windows therefore sit behind the seated turns, and they do not share sequence numbers with channel 0. A joiner whose backlog or pin crosses [§8.3](#83-budgets) restarts alone. The seated turns in step 1 have already been sent.
+
+**Design arithmetic at 100 Mbit/s.** These products are not measurements and do not change a default.
+
+- One hash datagram: 73 × 8 = 584 bits, 5.84 µs.
+- One snapshot datagram: 1 253 × 8 = 10 024 bits, 100.24 µs. The published 3 072 µs is 32 payloads of 1 200 bytes and leaves the 25-byte header and the 28-byte IP/UDP out. Adding those 53 bytes on each of 32 fragments is 1 696 bytes, 135.68 µs, so one full window of datagrams is 3 207.68 µs.
+- Two joiners, two full windows: 6 415.36 µs of snapshot datagrams.
+- The 1 216-byte burst to the other five peers of the six-peer acceptance case: each peer gets 1 362 bytes, five peers get 6 810 bytes, 54 480 bits, 544.8 µs.
+- Those snapshots and that burst together are 6 960.16 µs, inside one 100 ms turn. Step 1 sends the seated copies before either window, so the two joins do not hold a seated turn for the rest of the period.
+- `endless02` is 17 130 fragments ([§4](#4-the-channels)). Payload serialization is 17 130 × 1 200 × 8 = 164 448 000 bits, 1 644.48 ms. The same fragments as 1 253-byte datagrams add 53 × 17 130 = 907 890 bytes, 72.63 ms, 1 717.11 ms in all. The fluid comparisons stay 80.3 s at a 150 ms round trip and 160.6 s at 300 ms (`17 130 * 150 = 2 569 500 = 32 * 80 296 + 28`, and the 300 ms line in [§8.6](#86-causal-readiness)). Those two figures omit this serialization. 1 717 ms is the whole-snapshot link time at that rate, just under six 300 ms rounds, and it is not a new join time. One window is 3 207.68 µs, which is the part that sits inside a single round.
+
+**Worked rows.** The model columns are `evaluate_causal` on the defaults `load_ms` 0, `replay_turns_per_s` 100 and `turn_store_cap` 1200. The test is `CausalReadiness` in `tools/test_snapshot_catchup.py`.
+
+| Row | What is cited | What this design adds |
+|---|---|---|
+| One fragment, zero loss | Arrival of turn 1 at 250 ms, `ready_ms` 150, input gate 1 160 ms, applied 10, received 10, host 11, `hash_turn` 10, `input_enabled` (`test_one_fragment_turn_cannot_arrive_before_one_way`) | `H = 10`, `A = 12`. The host sends the channel-2 report when it applies turn 10, at 1 000 ms. At 150 ms one way it is stored at 1 150 ms and compared when apply reaches 10 at 1 160 ms. The joiner's report arrives at the host at 1 310 ms. Host current is then 13, so the stamp is 15, which is at least `A`, and `SeatActive` arrives at 1 460 ms. Those two times are the design exchange. They are not part of the 1 160 ms token. |
+| Same fragment, channel-2 report lost | The same model row. The model itself does not drop this report. | The host retries on channel 0 at 1 000 + `hash_retry_ms` = 1 500 ms. The retry carries the root, so the joiner can match at 1 650 ms. The joiner's answer reaches the host at 1 800 ms, inside the 1 000 ms expiry that runs from 1 000 to 2 000 ms, and `SeatActive` arrives at 1 950 ms. A lost retry as well leaves the report missing at 2 000 ms and restarts the joiner. `paused` stays false. |
+| Load still unfinished | `horizon_ms` 2 000, transfer complete at 3 000: `restart` / `unmet_boundary`, applied 0, received 18, host 20, backlog 18 (`test_a_horizon_before_load_applies_nothing`) | Arrivals during the load stay in the backlog. No report for `H` is compared, and input stays off. |
+| `endless02`, zero loss | Causal input 179 160 ms, applied 1 790, host 1 791 ([§13](#13-budgets)). 1 790 is a multiple of `hash_every`. Fluid 80.3 s / 160.6 s as above | `H = 1790`, `A = 1792`. The 179 160 ms figure remains the model gate. The 1 717 ms serialization above is additional design arithmetic, not a replacement. |
+| Two joins, one lost hash | `concurrent_transfers` 2, and a cap restarts the joiner who crossed it ([§8.3](#83-budgets)) | The joiner whose report expires restarts alone. The other joiner keeps its generation. Seated peers keep the step-1 turns. The table is not paused. |
+
+**Decision.** The recommended contract is the messages in the table, `H` chosen by the host on a hash multiple, `A = H + command_delay`, joiner-only expiry as a restart, and the four-step send order with the existing window of 32. Status stays Proposed. Still for the owner, together with the choices already listed under [Open choices](#open-choices): approving the ADR, the UDP port (OQ-250), the budget defaults (OQ-280), `load_ms` and `replay_turns_per_s` (OQ-281), `turn_store_cap` (OQ-282), this activation lead (OQ-370), and a measured jitter or a `netsim` shared link (OQ-320, OQ-371). No default moves.
 
 ## 9. Host migration
 
@@ -401,7 +487,7 @@ The one-second hash is not this transfer. Channel 1 is separate from channel 0.
 
 **OQ-251 is closed** by the `S01_07_01` row: one `state_hash()` is 7.9 ms median with every chunk dirty and 0.34 ms median after `prepare_hash`, and `save()` is 11 474 169 bytes. The status of this ADR stays Proposed until the owner approves it.
 
-An empty turn payload is 8 + 4 + 4 = 16 bytes. With the 25-byte header and 28 bytes of IPv4+UDP, one datagram is 69 bytes. At 10 turns per second that is 690 bytes/s from the host to each other peer. At 6 peers the host sends to 5 others: 3 450 bytes/s, plus one hash report of the same order once per second per peer. A single placement's `TurnEntry` is a few dozen bytes (`state.md` §8.5), so a command on every turn from every seat stays in the same thousands of bytes per second. The snapshot is the save measured above, and it is sent on a join or a resync, not on the one-second hash. The steady-state figure does not include it.
+An empty turn payload is 8 + 4 + 4 = 16 bytes. With the 25-byte header and 28 bytes of IPv4+UDP, one datagram is 69 bytes. That 69 is this empty datagram. A turn whose commands are the T45 1 216-byte burst is two fragments, accounted in [§8.7](#87-observable-activation-and-the-shared-link). At 10 turns per second that is 690 bytes/s from the host to each other peer. At 6 peers the host sends to 5 others: 3 450 bytes/s, plus one hash report of the same order once per second per peer. A single placement's `TurnEntry` is a few dozen bytes (`state.md` §8.5), so a command on every turn from every seat stays in the same thousands of bytes per second. The snapshot is the save measured above, and it is sent on a join or a resync, not on the one-second hash. The steady-state figure does not include it.
 
 ### T45 measurement (2026-10-27)
 
@@ -464,7 +550,7 @@ The T45 rates are `replace()` copies. The slowest row is still `endless02` empty
 
 Seed 1 at 2% data loss keeps the snapshot transfer times 113 250, 198 750 and 127 050 ms. Channel 0 draws its own LCG from the same seed over the 6 010-turn catch-up horizon (`catchup_ms / turn_ms + max_attempts + 2`) and drops 128 data sends on that horizon. It does not drop acknowledgements. `endless02` at 438 turns/s then enables input at 205 153 ms, applied turn 2 050, host turn 2 051. The fluid comparison on that transfer still meets at 204 944 ms on turn 2 049. The host span 2 051 stays inside 4 096.
 
-What this establishes is the boundary, the refusal rules, and that these measured inputs fit the existing caps without pausing the table. What it does not establish is a shared link, jitter, the channel-2 hash's own flight, another machine, or a real play. Those remain OQ-320 and the `netsim` plan. No socket is added.
+What this establishes is the boundary, the refusal rules, and that these measured inputs fit the existing caps without pausing the table. What it does not establish is a shared link, jitter, the channel-2 hash's own flight, another machine, or a real play. [§8.7](#87-observable-activation-and-the-shared-link) is the design for the link and the hash flight. OQ-320 stays open until `netsim` or a measured link tests it. No socket is added.
 
 ## 14. The `netsim` test plan
 
@@ -479,7 +565,7 @@ From W3's acceptance (`docs/plan/lan-endless.md`):
 1. 6 peers, 150 ms latency, 2 % loss, 10 000 turns. The roots match at every check.
 2. One peer's world is changed under the test. The mismatch is seen within one `hash_every` interval, `diff_trees` names a path, the snapshot loads, and the roots match again.
 3. A peer is dropped and rejoins inside `grace_ms`. It catches up and the roots match. The seat is the same seat.
-4. A new peer joins a running game, takes a free seat, replays to the [§8.6](#86-causal-readiness) boundary, and the roots match at the next ordinary hash. The others do not pause. Equality with the host's current turn is not the pass condition when the one-way delay is at least one turn.
+4. A new peer joins a running game, takes a free seat, and replays until `applied_through` and `received_through` both equal the checkpoint `H` from [§8.7](#87-observable-activation-and-the-shared-link). The hash report for that `H` matches, `SeatActive` names `A = H + command_delay`, and the first accepted command is stamped `current + command_delay`. The others do not pause. Equality with the host's current turn is not the pass condition when the one-way delay is at least one turn. A lost channel-2 report retries on channel 0; a report that is still missing after one `hash_every` interval restarts that joiner only. A report for an earlier turn does not open input. Two overlapping joins use the step order in §8.7, and the seated turns go out before either snapshot window.
 5. The host is killed at 20 turns chosen by the test. Each time the lowest remaining seat becomes host and the roots match afterwards.
 6. The link is cut for 0.5 s, 2 s and 5 s. No seat is given to the AI (all three are inside `grace_ms`), and every peer catches up from the buffer.
 7. A long run, the plan's 8-hour 6-peer session, is not part of the ordinary test. It is the W9 run. `netsim` keeps the same assertions so that run is the same harness with a longer limit.
@@ -490,9 +576,11 @@ Two real PCs on a LAN finding each other is a person test (`docs/plan/lan-endles
 
 - **OQ-250.** The UDP port. No original value was found in `tick-loop.md`. No default is set.
 - **OQ-251.** Closed in [§13](#13-budgets): `S01_07_01` `state_hash()` is 7.9 ms median with every chunk dirty and 0.34 ms after `prepare_hash`; `save()` is 11 474 169 bytes.
-- **OQ-280.** Narrowed by the T43 proposal in [§8](#8-join-in-progress) and [§13](#13-budgets), and by the round-bs correction of the cursors, the global caps and the byte total. The recommended contract is a fresh save at the ask and a pin of the turns after it. The joiner reaches the receivable-prefix boundary and matching-hash condition in §8.6; equality with the current host cursor is only the older fluid comparison. A cap trips only that joiner. The 60 s log stays the short-outage buffer. The periodic image is an availability check, not the join payload. The table is not paused for a join. Still for the owner, because this ADR is Proposed: the budget defaults (`tail_turns_max` 4096, `catchup_ms` 600000, `concurrent_transfers` 2, `snapshot_age_ms` 60000, `loss_scale` 2, acceptance `resend_ms` 300). OQ-281 and OQ-282 are narrowed by T45 and their defaults stay in that list. OQ-283 through OQ-289 were not used.
+- **OQ-280.** Narrowed by the T43 proposal in [§8](#8-join-in-progress) and [§13](#13-budgets), and by the round-bs correction of the cursors, the global caps and the byte total. The recommended contract is a fresh save at the ask and a pin of the turns after it. The joiner reaches the receivable-prefix boundary and matching-hash condition in §8.6; §8.7 names the checkpoint messages for that condition. Equality with the current host cursor is only the older fluid comparison. A cap trips only that joiner. The 60 s log stays the short-outage buffer. The periodic image is an availability check, not the join payload. The table is not paused for a join. Still for the owner, because this ADR is Proposed: the budget defaults (`tail_turns_max` 4096, `catchup_ms` 600000, `concurrent_transfers` 2, `snapshot_age_ms` 60000, `loss_scale` 2, acceptance `resend_ms` 300). OQ-281 and OQ-282 are narrowed by T45 and their defaults stay in that list. OQ-283 through OQ-289 were not used.
 - **OQ-281.** Narrowed by the T45 measurement in [§13](#13-budgets). `World::load` and `run_turn` were timed on one host. The model defaults stay `load_ms` 0 and `replay_turns_per_s` 100. Other machines are unmeasured.
 - **OQ-282.** Narrowed by the same measurement. An empty command stream is 0 bytes, one scripted `SetSpeed` is 16, and a synthetic burst is 1 216. The pin still charges `turn_store_cap` 1200. Real-play sizes are unmeasured, and 1200 is not a universal bound.
-- **OQ-320.** Open. The causal clock gives each turn its own one-way delay and keeps channel 0 independent of channel 1. A shared link, jitter, and the channel-2 hash datagram are not in that clock. OQ-321 through OQ-329 were not used.
+- **OQ-320.** Narrowed, still open. The causal clock gives each turn its own one-way delay and keeps channel 0 independent of channel 1. [§8.7](#87-observable-activation-and-the-shared-link) is the design for a shared link, for hash-report delivery, and for the send order that puts seated turns ahead of two snapshot windows. The arithmetic there is not a measured link, and `tools/snapshot_catchup.py` does not schedule that queue. A `netsim` case or a measured link is still required. OQ-321 through OQ-329 were not used.
+- **OQ-370.** Open. The activation turn in §8.7 is proposed as `A = H + command_delay`. The owner accepts it with this ADR, which stays Proposed.
+- **OQ-371.** Open. Jitter on the shared link is unmeasured. The §8.7 rows use zero jitter and, for a lost hash, the configured `hash_retry_ms` of 500. OQ-372 through OQ-379 were not used.
 
 The command delay of 2, the 100 ms turn, the 60 s grace and the 10-minute full check are the plan's and the original's defaults. They are configuration, not new decisions.

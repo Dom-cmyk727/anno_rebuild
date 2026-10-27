@@ -1887,10 +1887,11 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** `0x1003d8e0`. A call through the stored pointer names the slot. If a start path other than `0x10002e4e` writes a different pointer, that caller is the next read after `0x10001232`.
 
 ## OQ-320: Whether one link delays channel 0 behind the snapshot (T47, 2026-10-27)
-- **Status:** open. OQ-321..329 were not used.
+- **Status:** narrowed (T52, 2026-10-27), still open. OQ-321..329 were not used. ADR 0003 stays Proposed.
 - **Area:** network / join.
 - **What is known.** ADR 0003 §8.6 gives each turn its own one-way delay. Channel 1 keeps the window of 32. At 100 Mbit/s that window serializes in 3072 µs and one 69-byte turn datagram serializes in 6 µs. The sum is under 150 ms, so the model clock omits both and does not put the bytes on one queue. Jitter and the channel-2 hash datagram have no flight time in the model. `command_delay` stays 2. The due prefix is every turn whose earliest arrival is at or before `t`. A hash multiple of a shorter arrived prefix does not enable input, and `Table.advance` restarts a still-running join at `catchup_ms` before success at that millisecond. The measured rows reach that boundary inside the existing caps. That is not a socket and not a measured join.
-- **How to resolve:** `netsim` case 4 on one shared link, or a measured join between two machines. Not a production transport while ADR 0003 is Proposed.
+- **Design (T52).** §8.7 names `generation_id`, the watermarks, a host-chosen hash turn `H` and activation turn `A = H + command_delay`. Channel 2 carries the hash report. A report that arrives before apply reaches `H` is stored. A lost report retries on channel 0 after `hash_retry_ms` 500. A joiner whose report is still missing one `hash_every` interval later restarts alone. The host sends seated channel-0 turns before either snapshot window. The 1 216-byte T45 burst is two fragments; 69 bytes stays the empty datagram. The one-fragment model gate stays 1 160 ms, applied 10, received 10, host 11. The `endless02` fluid figures stay 80.3 s and 160.6 s. `tools/snapshot_catchup.py` was not changed. The §8.7 products are design arithmetic, not new measurements.
+- **How to resolve:** `netsim` case 4 on one shared link, or a measured join between two machines. Not a production transport while ADR 0003 is Proposed. Arithmetic in §8.7 does not close this.
 
 ## OQ-330: Which object world slot `+0x20` returns for key `0x1300` (T48, 2026-10-27)
 - **Status:** answered for a non-null slot (T49, 2026-10-27). OQ-331..339 were not used.
@@ -1913,3 +1914,15 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Reviewer narrowing (round by):** `complogic.md` §11 records the fresh common return of island `+0x150` (`0x10086e0f`, `ret 0xc`) and the concrete `[city + 0x20]` writer `0x1002f416` in city slot `+0x28` (`0x1002f3d0`). It stores argument 1 when that object's slot `+0x14` returns `0x1000`; the `0x1300` arm stores the island at `+0x1c` instead. Existing city notes already identify `+0x20` as the owner. The initialization caller and concrete `+0x48` target still need proof.
 - **Review (round bz):** T51's reported pointer use is not accepted. At `0x1002d0aa`, entry delta `0xc38` makes `[esp+0xc3c]` callee argument 1 (the local rectangle), not argument 3. Also, second-switch arm `0x100293d7` selects PRODTYPE `0x41`, which the first switch maps to `ebx=1`; a proof through `ebx==0` does not establish that path unless an intervening getter-result change is proved. See `complogic.md` §11's review addendum. T51 F1 must correct the callee ledger and feasible-path claim before integration.
 - **How to resolve:** preserve the conditional owner/virtual-target proof, establish the relevant feasible RemoveAt path and its stack delta, then follow the actual third argument of `0x1002d090` (at `[esp+0xc44]` immediately after the four register saves) to its use or a precise unresolved call. Literal-return opcode searches alone do not prove the owner receiver's vtable. Do not close this from the clear's literal 0 or from the reads of callee argument 1.
+
+## OQ-370: Activation turn for a joiner (T52, 2026-10-27)
+- **Status:** open. ADR 0003 stays Proposed.
+- **Area:** network / join.
+- **What is proposed.** ADR 0003 §8.7 sets the joiner's activation turn to `A = H + command_delay`, where `H` is the host-chosen hash checkpoint. The host still stamps `current + command_delay` and refuses a stamp below `A`. The default delay stays 2.
+- **How to resolve:** the owner accepts or changes `A` when approving ADR 0003.
+
+## OQ-371: Jitter on the shared link (T52, 2026-10-27)
+- **Status:** open. OQ-372..379 were not used.
+- **Area:** network / join.
+- **What is known.** No jitter sample is in the model or in ADR 0003 §13. The §8.7 rows use zero jitter. A lost channel-2 hash uses the configured `hash_retry_ms` of 500, which is a retry, not a measured delay.
+- **How to resolve:** a `netsim` schedule with an explicit jitter, or a measurement between two machines. Until then the design rows stay at zero jitter.

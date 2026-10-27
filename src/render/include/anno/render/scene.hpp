@@ -250,6 +250,9 @@ class Scene {
     /// build (queued islands stay pending), so the "flow not ready" path can be
     /// exercised deterministically.
     void pause_river_flow_builders(bool pause) const;
+    /// Test hook (tests only): blocks until the flow queue is empty and no
+    /// build is in progress. The window thread does not call this.
+    void wait_river_flow_builders() const;
     /// Test hook (never set in production): called on the building thread
     /// before the flow of an island is built; throwing makes that build fail,
     /// which is the "failed" state (no flow, final, never pending).

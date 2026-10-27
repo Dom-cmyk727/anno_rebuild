@@ -421,7 +421,15 @@ void ChunkWorkers::run() {
         } else {
             failed_.insert(key);
         }
+        if (jobs_.empty() && busy_.empty()) {
+            idle_.notify_all();
+        }
     }
+}
+
+void ChunkWorkers::wait_idle() {
+    std::unique_lock lock(mutex_);
+    idle_.wait(lock, [this] { return jobs_.empty() && busy_.empty(); });
 }
 
 bool ChunkWorkers::submit(const std::vector<ChunkJob>& wanted, bool ships, ChunkBuilder builder,

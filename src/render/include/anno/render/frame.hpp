@@ -168,6 +168,10 @@ class ChunkWorkers {
                 ChunkBuilder builder = ChunkBuilder::Cpu, std::uint32_t bin_px = kDefaultBinPx);
     /// Finished chunks since the last call.
     std::vector<std::pair<ChunkKey, Chunk>> take_done();
+    /// Blocks until nothing is queued or being built. `update_chunks` does not
+    /// call this: the window thread returns while workers are still running.
+    /// A test waits here instead of sleeping and retrying.
+    void wait_idle();
     /// Smoothed time one worker takes to build a chunk, in milliseconds (the
     /// latency of a request that finds a free worker); 100 until the first chunk.
     [[nodiscard]] double build_ms() const { return build_ms_.load(); }
@@ -182,7 +186,7 @@ class ChunkWorkers {
 
     const Scene& scene_;
     std::mutex mutex_;
-    std::condition_variable ready_, garbage_ready_;
+    std::condition_variable ready_, garbage_ready_, idle_;
     std::vector<ChunkPtr> garbage_;
     std::thread reaper_;
     std::deque<ChunkJob> jobs_;

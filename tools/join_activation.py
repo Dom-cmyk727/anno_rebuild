@@ -355,7 +355,7 @@ class Sim:
         self.log("transport epoch of %s<>%s is now %d (%s)" % (a, b, e, why))
         self.ev("epoch_bump", a=a, b=b, epoch=e, why=why)
 
-    def stale(self, local, remote, epoch, what):
+    def stale(self, local, remote, epoch, what, lid=None):
         """True (and logged) when `epoch`, read from a packet or a timer at `local`, is not the epoch
         `local` currently holds for `remote`. The event keeps the direction of the datagram."""
         if epoch == self.ep_of(local, remote):
@@ -363,7 +363,7 @@ class Sim:
         self.log("stale-epoch %s at %s from %s (field %d, now %d)" % (
             what, local, remote, epoch, self.ep_of(local, remote)))
         src, dst = (remote, local) if what in ("arrive", "flush_ack_in") else (local, remote)
-        self.ev("stale_epoch", src=src, dst=dst, local=local, what=what, epoch=epoch)
+        self.ev("stale_epoch", src=src, dst=dst, local=local, what=what, epoch=epoch, lid=lid)
         return True
 
     def srtt(self, a, b):
@@ -658,10 +658,13 @@ class Sim:
         self.host.drop_seat(peer)
 
     def arrive(self, src, dst, ch, d, epoch=None, lid=None, attempt=None):
-        if self.stale(dst, src, d["epoch"], "arrive"):  # the field of the packet, not a simulator label
+        if self.stale(dst, src, d["epoch"], "arrive", lid):  # the field of the packet, not a simulator label
             return
         c = self.recv_state(src, dst, ch)
         if c.dead:  # a closed receive side (drop, overflow) takes nothing more
+            self.ev("arrive_refused", src=src, dst=dst, ch=ch, seq=d["seq"], msg=d["kind"], lid=lid, attempt=attempt,
+                    sid=d.get("sid"), epoch=d.get("epoch"), size=d["size"], frag=d.get("frag", 0),
+                    nfrag=d.get("nfrag", 1), mid=d.get("mid"), why="closed")
             return
         seq = d["seq"]
         dup = seq in c.recv
@@ -834,7 +837,7 @@ class Sim:
 
     def take_ack(self, src, dst, ch, ack, bits, epoch=None, lid=None, idx=None):
         """The sender src learns what dst received."""
-        if epoch is not None and self.stale(src, dst, epoch, "ack"):  # compared with src's own epoch
+        if epoch is not None and self.stale(src, dst, epoch, "ack", lid):  # compared with src's own epoch
             return
         c = self.chan(src, dst, ch)
         named = {ack}
@@ -1793,7 +1796,7 @@ class Joiner(Peer):
 
 
 # ---- independent validators ---------------------------------------------------------------
-def validate(events, cfg, end_t, oracle_lag=None):
+def validate(events, cfg, end_t, oracle_lag=None, delays=None):
     """Re-derive the transport and protocol checks from the raw event log.
 
     Uses only `events` and `cfg`: no `Chan` cursor, no peer object. Returns a list of
@@ -1819,7 +1822,7 @@ def validate(events, cfg, end_t, oracle_lag=None):
     out += _check_input_drop(events)
     out += _check_reassembly(events, cfg)
     if cfg.link_bps:
-        out += _check_link(events, cfg)
+        out += _check_link(events, cfg, end_t, delays)
     return out
 
 
@@ -2162,7 +2165,7 @@ def _check_reassembly(events, cfg):
     return out[:3]
 
 
-def _check_link(events, cfg):
+def _check_link(events, cfg, end_t=None, delays=None):
     """(xvi) Rebuild the shared link from the raw events alone, in two passes so that the result does
     not depend on the order in which the simulator emitted the records of one datagram.
 
@@ -2182,16 +2185,26 @@ def _check_link(events, cfg):
     millisecond at or after it. The `lost` flag of each transmission must agree with its link
     outcome. Every `arrive` and `ack` event must name the lid and attempt of its own transmission,
     that transmission's endpoints, channel and epoch, occur at the callback millisecond, and use each
-    link arrival at most once."""
+    link arrival at most once.
+
+    F2 (round ci): (V1) whatever any label says, no arrival is before finish + one-way delay, a
+    negative labelled extra delay is rejected, and the labelled extra delay of each enqueue must equal
+    the delay the scenario declared for that datagram (`delays`, keyed as `Sim.transmit` looks it up;
+    0 for ACK-only datagrams and when none is declared); (V2) all attempts of one sid carry one
+    payload size and one message identity, and a delivery carries the size and identity of its own
+    transmission; (V3) with a horizon `end_t`, every served, non-lost link arrival whose callback is at
+    or before it is consumed by exactly one recorded outcome: `arrive` (a duplicate included), `ack`,
+    `stale_epoch` or `arrive_refused`, each naming the lid; one after the horizon is a reservation."""
     out = []
     ns = NS_PER_MS
+    delays = delays or {}
 
     def bad(t, text):
         out.append(("xvi", "t=%s %s" % (t, text)))
 
     tx, by_lid = {}, {}
     enq, start, fin, drop, arr, order = {}, {}, {}, {}, {}, []
-    deliveries, acks = [], []
+    deliveries, acks, others = [], [], []
     for e in events:
         k = e["kind"]
         if k == "send" and e.get("sid") is not None and (e["src"] == "H" or e["dst"] == "H"):
@@ -2212,10 +2225,12 @@ def _check_link(events, cfg):
             table[e["lid"]] = e
             if k == "link_enqueue":
                 order.append(e["lid"])
-        elif k == "arrive" and e.get("src") is not None and (e["src"] == "H" or e["dst"] == "H"):
+        elif k in ("arrive", "arrive_refused") and e.get("src") is not None and (e["src"] == "H" or e["dst"] == "H"):
             deliveries.append(e)
         elif k == "ack":
             acks.append(e)
+        elif k == "stale_epoch" and e.get("lid") is not None:
+            others.append(e)
     # transmissions and their enqueue records
     claimed = {}
     for ident, t in tx.items():
@@ -2229,7 +2244,8 @@ def _check_link(events, cfg):
         q = enq[lid]
         want = (t["size"] + WIRE) if ident[0] == "d" else WIRE
         if q["wire"] != want:
-            bad(t["t"], "lid %s is %d wire bytes, the datagram needs %d" % (lid, q["wire"], want))
+            bad(t["t"], "lid %s (%s) is %d wire bytes, the datagram needs %d" % (
+                lid, "data attempt %d" % t["attempt"] if ident[0] == "d" else "ACK-only", q["wire"], want))
         if ident[0] == "d":
             if (q["src"], q["dst"], q["ch"], q["epoch"], q["sid"], q["attempt"]) != (
                     t["src"], t["dst"], t["ch"], t["epoch"], t["sid"], t["attempt"]):
@@ -2238,6 +2254,19 @@ def _check_link(events, cfg):
             bad(t["t"], "lid %s does not describe ACK-only transmission %r" % (lid, ident))
         if t["lost"] != (lid in drop):
             bad(t["t"], "lid %s: the transmission says lost=%s, the link says dropped=%s" % (lid, t["lost"], lid in drop))
+    def identity(e):
+        return (e["src"], e["dst"], e["ch"], e["seq"], e["msg"], e["frag"], e["nfrag"], e["mid"])
+
+    first = {}
+    for ident in sorted((i for i in tx if i[0] == "d"), key=lambda i: (i[1], i[2])):
+        t = tx[ident]
+        base = first.setdefault(ident[1], t)
+        if t["size"] != base["size"]:
+            bad(t["t"], "attempt %d of sid %s records size %d, attempt %d records %d" % (
+                t["attempt"], ident[1], t["size"], base["attempt"], base["size"]))
+        if identity(t) != identity(base):
+            bad(t["t"], "attempt %d of sid %s changes the message identity %r -> %r" % (
+                t["attempt"], ident[1], identity(base), identity(t)))
     for lid in order:
         if lid not in claimed:
             bad(enq[lid]["t"], "lid %s is enqueued without a transmission record" % lid)
@@ -2298,44 +2327,81 @@ def _check_link(events, cfg):
             bad(q["t"], "lid %s completes service but neither arrives nor is lost" % lid)
         else:
             a = arr[lid]
-            want_arr = want_fin + (cfg.one_way_ms + q["extra_ms"]) * ns
+            t = tx.get(claimed.get(lid))
+            if t is not None and claimed[lid][0] == "d":
+                kind, pair = t["msg"], "%s>%s" % (t["src"], t["dst"])
+                declared = delays.get((kind, pair, t["seq"], t["attempt"]), delays.get((kind, pair, None, t["attempt"]), 0))
+            else:
+                declared = 0
+            if q["extra_ms"] < 0:
+                bad(q["t"], "lid %s has a negative labelled extra delay (%d ms)" % (lid, q["extra_ms"]))
+            if q["extra_ms"] != declared:
+                bad(q["t"], "lid %s labels an extra delay of %d ms, which differs from the declared %d ms" % (
+                    lid, q["extra_ms"], declared))
+            floor = want_fin + cfg.one_way_ms * ns
+            if a["arrival_ns"] < floor:
+                bad(q["t"], "lid %s arrives at %d ns, before the physical floor finish + one-way delay (%d ns)" % (
+                    lid, a["arrival_ns"], floor))
+            want_arr = want_fin + (cfg.one_way_ms + declared) * ns
             if a["arrival_ns"] != want_arr:
                 bad(q["t"], "lid %s arrives at %d ns, finish + delay is %d" % (lid, a["arrival_ns"], want_arr))
             if a["sched_ms"] != -(-want_arr // ns):
                 bad(q["t"], "lid %s is called back at %d ms, the next millisecond at or after %d ns is %d" % (
                     lid, a["sched_ms"], want_arr, -(-want_arr // ns)))
-    # deliveries and ACKs use their own link arrival, once
-    used = set()
+    # deliveries, ACKs and receiver-side refusals consume their own link arrival, exactly once
+    consumed = Counter()
 
-    def take(e, ident, what):
+    def consume(e, what):
+        lid = e.get("lid")
+        a = arr.get(lid)
+        if a is None:
+            bad(e["t"], "%s uses lid %r which has no link arrival" % (what, lid))
+            return False
+        consumed[lid] += 1
+        if consumed[lid] > 1:
+            bad(e["t"], "lid %s is consumed by more than one recorded outcome" % lid)
+        if a["sched_ms"] != e["t"]:
+            bad(e["t"], "%s of lid %s happens at %d, its callback is %d" % (what, lid, e["t"], a["sched_ms"]))
+        return True
+
+    def transmission(e, ident, what):
         t = tx.get(ident)
         if t is None:
             bad(e["t"], "%s names no recorded transmission %r" % (what, ident))
             return None
-        lid = e.get("lid")
-        if lid is None or lid != t.get("lid"):
-            bad(e["t"], "%s carries lid %r, its transmission %r is lid %r" % (what, lid, ident, t.get("lid")))
+        if e.get("lid") is None or e.get("lid") != t.get("lid"):
+            bad(e["t"], "%s carries lid %r, its transmission %r is lid %r" % (what, e.get("lid"), ident, t.get("lid")))
             return None
-        if lid in used:
-            bad(e["t"], "lid %s is delivered twice" % lid)
-        used.add(lid)
-        a = arr.get(lid)
-        if a is None:
-            bad(e["t"], "%s uses lid %s which has no link arrival" % (what, lid))
-            return None
-        if a["sched_ms"] != e["t"]:
-            bad(e["t"], "%s of lid %s happens at %d, its callback is %d" % (what, lid, e["t"], a["sched_ms"]))
         return t
 
     for e in deliveries:
-        t = take(e, ("d", e["sid"], e.get("attempt")), "a datagram arrival")
-        if t is not None and (t["src"], t["dst"], t["ch"], t["epoch"]) != (e["src"], e["dst"], e["ch"], e["epoch"]):
-            bad(e["t"], "arrival of lid %s does not match the endpoints/channel/epoch of its transmission" % e["lid"])
+        what = "a datagram arrival" if e["kind"] == "arrive" else "a closed-receiver refusal"
+        t = transmission(e, ("d", e["sid"], e.get("attempt")), what)
+        if t is None:
+            continue
+        if consume(e, what):
+            if (t["src"], t["dst"], t["ch"], t["epoch"]) != (e["src"], e["dst"], e["ch"], e["epoch"]):
+                bad(e["t"], "arrival of lid %s does not match the endpoints/channel/epoch of its transmission" % e["lid"])
+            if e.get("size") != t["size"] or identity(e) != identity(t):
+                bad(e["t"], "the delivery of lid %s carries size %r / identity %r, its transmission size %r / identity %r" % (
+                    e["lid"], e.get("size"), identity(e), t["size"], identity(t)))
     for e in acks:
-        t = take(e, ("a", e["dst"], e["src"], e["ch"], e.get("epoch"), e.get("idx")), "an ACK")
-        if t is not None and t["epoch"] != e["epoch"]:
+        t = transmission(e, ("a", e["dst"], e["src"], e["ch"], e.get("epoch"), e.get("idx")), "an ACK")
+        if t is not None and consume(e, "an ACK") and t["epoch"] != e["epoch"]:
             bad(e["t"], "ACK of lid %s carries another epoch than its transmission" % e["lid"])
-    return out[:6]
+    for e in others:
+        q = enq.get(e["lid"])
+        if not consume(e, "a stale-epoch record"):
+            continue
+        if q is not None:
+            pair = (e["src"], e["dst"]) if e["what"] == "arrive" else (e["dst"], e["src"])
+            if e["what"] not in ("arrive", "ack") or pair != (q["src"], q["dst"]):
+                bad(e["t"], "the stale-epoch record (%s) of lid %s names other endpoints than its datagram" % (e["what"], e["lid"]))
+    if end_t is not None:
+        for lid, a in arr.items():
+            if a["sched_ms"] <= end_t and consumed[lid] == 0:
+                bad(a["sched_ms"], "lid %s arrived (served, not lost) at %d ms, consumed by no recorded outcome" % (lid, a["sched_ms"]))
+    return out[:12]
 
 
 def _check_generations(events, cfg):
@@ -2477,6 +2543,7 @@ def _check_grants(events):
 
 
 def validate_sim(sim, **kw):
+    kw.setdefault("delays", sim.delays)  # the scenario's declared extra delays are an input, not a record
     return validate(sim.events, sim.cfg, sim.t, **kw)
 
 

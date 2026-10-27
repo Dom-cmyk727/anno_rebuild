@@ -5140,3 +5140,45 @@ T52 is complete as the bounded zero-jitter, unserialized-link protocol oracle. I
 **Acceptance, item by item:** each round-ch invalid trace and runtime mutant is rejected by its own test and valid traces pass (yes); the named snapshot-fragment loss occurs and recovers (yes, asserted at both rates); sensitivity rows use explicit horizons and preserve defaults (yes); suites and docs agree (ADR §8.8, OQ-373 sentence updated; OQ-320/371 unchanged in substance); no broader validation or approval claim.
 
 **Not done / open:** jitter, a measured LAN, the ask's loss, other queue disciplines, adoption of any timer or queue value. Stopping for review; T59 F1 follows separately.
+
+
+## T58 F2 — Early arrival, retry size and arrival consumption in the link validator — 2026-10-27 — status: FINISHED
+
+**Head:** continues `codex/T58-shared-link-serialization` from `dafd9baea49b6dc6a070200ab439f2933003d868` (start check: clean, that head); the commit that carries this section is the new head. Main (`814d7c6`, round ci) was not merged or rebased in; the board was read in the main checkout. Earlier T58 sections are kept as written. Files changed: `tools/join_activation.py`, `tools/test_join_activation.py`, ADR 0003 §8.8, this report. OQ-373 needed no change (no sentence became false). Defaults (`link_bps` 0, `resend_ms` 300), un-serialized rows and both snapshot files are unchanged; protocol behaviour is unchanged (only evidence records and the validator).
+
+**Difference between prompt and board:** none found; the prompt's step list matches the board's F2 steps.
+
+**Failing-first at `dafd9ba`** (`cache/f2_failing_first.txt`, `cache/f2_mutants_old.txt`): 10 of the new handwritten/record tests fail (V1 floor, V1 negative label, V1 declared label, V2 attempts, V2 delivery, V3 horizon, V3 outcomes, V3 ACK outcomes, the closed-receiver record, the stale-lid record). The three new runtime mutants are uncaught by the old validator (each named test passes while the mutant is applied): V1 negative extra delay (input 1215 ms instead of 2565, validators clean), V2 retry recorded and charged as 1 byte, V3 silent discard of served `Snap-frag` arrivals.
+
+**What changed.**
+- *V1.* `xvi` rejects any arrival before `finish + one_way` whatever the label (message "physical floor"), a negative labelled extra delay ("negative labelled extra delay") and a label that differs from the declared delay ("differs from the declared"). `validate(..., delays=...)` takes the scenario's `Sim.delays` as a separate argument (keyed as `transmit` looks it up: exact sequence, then any sequence; 0 for ACK-only datagrams and when none is declared); `validate_sim` passes `sim.delays`. The ceiling-millisecond callback check stays.
+- *V2.* All attempts of one sid must record one payload size ("records size") and one message identity (src, dst, ch, seq, msg, frag, nfrag, mid; "identity"); a delivery must carry its transmission's size and identity ("delivery of lid"). Wire-size messages now name the class: "(data attempt N) is" / "(ACK-only) is".
+- *V3.* New records carrying the lid: `stale_epoch.lid` (data and ACK arrivals), new event `arrive_refused` (closed receive side in `Sim.arrive`, with src, dst, ch, seq, msg, sid, attempt, epoch, size, frag, nfrag, mid, why) next to the existing `arrive` and `ack`. `take_ack` has no early return other than the stale one. `end_t` reaches xvi: every served, non-lost link arrival with callback at or before the horizon must be consumed by exactly one of `arrive` (duplicates included), `ack`, `stale_epoch`, `arrive_refused` ("consumed by no recorded outcome"; two outcomes: "more than one recorded outcome"); stale records must name the datagram's own endpoints; one after the horizon is a reservation. Hand-written negatives and positives cover each outcome, double use, wrong direction and wrong callback.
+- *Nits.* Each `LinkValidation` test asserts only the specific xvi message its mutant produces; the overflow test now allows only "is enqueued without a transmission record"; ADR §8.8 qualifies "off the critical path" (300/400 ms: input unchanged at 2 565/2 567 ms; 500 ms: 2 665/2 667 ms) and describes F2.
+
+**Mutant table** (all in `MUTANTS`; each named test passes unmutated and fails under its mutant — `MutantTable` ran green):
+
+| Mutant | Named test (`LinkValidation.` unless noted) | Killing xvi message |
+|---|---|---|
+| charge every retry one byte | `test_retransmissions_are_charged_their_wire_size` | "(data attempt 2) is 1 wire bytes" |
+| charge every first transmission one byte | `test_every_data_attempt_is_charged_its_wire_size` | "(data attempt 1) is" |
+| bypass the link for all ACKs | `test_acks_pass_through_the_shared_link` | "transmission ('a', …) has no link enqueue" |
+| charge every ACK one byte | `test_acks_are_charged_their_wire_size` | "(ACK-only) is" |
+| omit the service records | `test_service_records_are_required` | "without a complete service record" |
+| bypass the shared queue | `test_the_shared_capacity_is_enforced` (+ `LinkScenarios` row test) | "transmission ('d', …) has no link enqueue" |
+| round the arrival down | `test_the_arrival_is_never_early` (+ `LinkScenarios`) | "called back at" |
+| breach the queue cap | `LinkScenarios.test_a_tight_queue_drops_at_enqueue_and_stays_valid` | "admitted over link_queue_bytes" (that test asserts a clean validator, as before) |
+| **V1** negative extra delay, zero propagation | `test_v1_no_link_arrival_is_before_finish_plus_one_way_delay` | "negative labelled extra delay", "physical floor" |
+| **V2** retry recorded and charged as 1-byte payload | `test_v2_every_attempt_of_a_sid_records_one_payload` | "records size 1, attempt 1 records …" |
+| **V3** receiver silently discards served `Snap-frag` | `test_v3_every_served_arrival_has_a_recorded_outcome` | "consumed by no recorded outcome" |
+
+**Results** (logs in ignored `cache/f2_*.txt`):
+- `python -I -B tools/test_join_activation.py -v`: Ran 200 tests, OK (162 s), including the mutation table.
+- `JOIN_RULES=F1 python -I -B tools/test_join_activation.py RoundCbRegressions`: 5 tests, FAILED (failures=5), as required; variable unset afterwards.
+- `python -I -B tools/test_snapshot_catchup.py -v`: 64 tests, OK. `git diff 3078e07 -- tools/snapshot_catchup.py tools/test_snapshot_catchup.py`: empty. `ast.parse` of both files ok; `git diff --check` clean; `git status`: only the allowed files.
+- Reproducer `python -I -B E:\anno1503\cache\orch-ci\review_t58_f1.py` (`cache/f2_reproducer.txt`): N1, N2 and N3 now report 12, 12 and 6 validator errors (were 0); both round-ch lines still report errors (12); the fragment-loss rows are clean.
+- `--link 100M`, `--link 1M` (every row) and `--sensitivity`: **byte-identical** to the F1 outputs (`diff` of `cache/f1_link_rows.txt`/`f1_sensitivity.txt` against `cache/f2_*`), all validators 0: no record that changes a number was changed, and every real row and sensitivity run passes the new consumption check.
+
+**Acceptance, item by item:** V1, V2 and V3 are each rejected by their own named test with the specific message and each test passes unmutated (yes); handwritten negatives fail and positives pass (yes); all real rows and sensitivity runs stay validator-clean with unchanged numbers (yes); nits done (yes).
+
+**Open / not done:** the real closed-receiver path is covered by a direct unit test (a receive side marked dead), not by a scripted scenario that reaches it; jitter, a measured LAN, the ask's loss and any adoption of timer or queue values stay open (OQ-373). Stopping for review; T59 F2 follows.

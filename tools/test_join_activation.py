@@ -1939,8 +1939,9 @@ class LinkContract(TraceCase):
             self.check(sim, len(link_events(sim, kind)) == 3, "%s: %d" % (kind, len(link_events(sim, kind))))
         self.check(sim, sim.link_stats["egress"]["drop_queue"] == 1 and sim.link_stats["egress"]["peak_bytes"] <= 2600,
                    repr(dict(sim.link_stats["egress"])))
-        self.check(sim, ja._check_link(sim.events, sim.cfg) != [], "direct link_plan calls have no transmission records, "
-                   "the validator must say so")
+        said = [m for _, m in ja._check_link(sim.events, sim.cfg)]
+        self.check(sim, said and all("is enqueued without a transmission record" in m for m in said),
+                   "direct link_plan calls have no transmission records; the only error allowed is that one: %r" % said)
 
     def test_loss_is_sampled_after_transmission_and_still_costs_full_service(self):
         sim = bare_link()
@@ -2027,7 +2028,7 @@ class LinkScenarios(TraceCase):
 
 # ---- round ch (T58 F1): independent link validation, exercised loss, sensitivity ----------------
 def _lk(t_ns=0, lid=1, sid=1, attempt=1, src="H", dst="P1", ch=0, epoch=0, size=16, extra_ms=0, link=None, fin_ns=None,
-        lost=False, with_service=True):
+        lost=False, with_service=True, arr_ns=None):
     """One data datagram in the order in which the simulator emits it: enqueue, start, finish, arrival (or loss),
     then the send record. The delivery event is separate (_dv)."""
     wire = size + ja.WIRE
@@ -2041,7 +2042,7 @@ def _lk(t_ns=0, lid=1, sid=1, attempt=1, src="H", dst="P1", ch=0, epoch=0, size=
     if lost:
         out.append(ev("link_drop", t_ns // 1_000_000, link=link, lid=lid, t_ns=fin, reason="loss", wire=wire))
     else:
-        arrival = fin + (150 + extra_ms) * 1_000_000
+        arrival = fin + (150 + extra_ms) * 1_000_000 if arr_ns is None else arr_ns
         out.append(ev("link_arrive", t_ns // 1_000_000, link=link, lid=lid, arrival_ns=arrival, sched_ms=-(-arrival // 1_000_000),
                       sid=sid, msg="Turn"))
     out.append(ev("send", t_ns // 1_000_000, src=src, dst=dst, ch=ch, seq=0, msg="Turn", attempt=attempt, lost=lost,
@@ -2091,8 +2092,18 @@ class LinkValidatorsOnHandWrittenLogs(TraceCase):
     """xvi on logs written by hand, in the order in which the simulator emits them (the link records of a
     datagram come before its send record). Complete positive traces pass; each invalid one is rejected by xvi."""
 
-    def x(self, log, queue=131072):
-        return sorted({c for c, _ in ja.validate(log, ja.Cfg(link_bps=100_000_000, link_queue_bytes=queue), 0)} & {"xvi"})
+    def _run_xvi(self, log, queue, end, delays):
+        kw = {} if delays is None else {"delays": delays}
+        return [(c, m) for c, m in ja.validate(log, ja.Cfg(link_bps=100_000_000, link_queue_bytes=queue), end, **kw) if c == "xvi"]
+
+    def x(self, log, queue=131072, end=0, delays=None):
+        return sorted({c for c, _ in self._run_xvi(log, queue, end, delays)})
+
+    def msgs(self, log, queue=131072, end=0, delays=None):
+        return [m for _, m in self._run_xvi(log, queue, end, delays)]
+
+    def says(self, log, needle, **kw):
+        return any(needle in m for m in self.msgs(log, **kw))
 
     def good(self):
         d = _lk()
@@ -2212,6 +2223,69 @@ class LinkValidatorsOnHandWrittenLogs(TraceCase):
         self.assertEqual(self.x(a + c, queue=1500), ["xvi"])  # 1255 + 155 fits 1500: the rejection was wrong
         self.assertEqual(self.x(a + c, queue=1300), [])  # it did not fit 1300: the rejection is right
 
+    # ---- round ci (T58 F2): V1 early arrival, V2 payload identity, V3 arrival consumption ----
+    def test_v1_an_arrival_at_the_finish_fails_whatever_the_label_says(self):
+        d = _lk(arr_ns=5680)  # label 0, but zero propagation: the physical floor is finish + 150 ms
+        self.assertEqual(self.x(d), ["xvi"])
+        self.assertTrue(self.says(d, "physical floor"), self.msgs(d))
+
+    def test_v1_a_negative_label_fails(self):
+        d = _lk(extra_ms=-150)  # the label and the arrival agree with each other; both are impossible
+        self.assertTrue(self.says(d, "negative labelled extra delay"), self.msgs(d))
+        self.assertTrue(self.says(d, "physical floor"), self.msgs(d))
+
+    def test_v1_the_label_must_equal_the_declared_delay(self):
+        d = _lk(extra_ms=40)
+        self.assertTrue(self.says(d, "differs from the declared"), self.msgs(d))  # nothing declared: 0
+        self.assertEqual(self.x(d, delays={("Turn", "H>P1", None, 1): 40}), [])  # declared by kind, direction, any seq
+        self.assertEqual(self.x(d, delays={("Turn", "H>P1", 0, 1): 40}), [])  # declared by the exact sequence
+        self.assertTrue(self.says(d, "differs from the declared", delays={("Turn", "H>P1", 0, 2): 40}), "wrong attempt")
+        self.assertEqual(self.x(_lk(), delays={}), [])
+
+    def test_v2_attempts_of_one_sid_carry_one_payload(self):
+        first, retry = _lk(lid=1, attempt=1, size=1200), _lk(lid=2, attempt=2, t_ns=300_000_000, size=1)  # consistently charged 1 byte
+        self.assertTrue(self.says(first + retry, "records size"), self.msgs(first + retry))
+        same = _lk(lid=2, attempt=2, t_ns=300_000_000, size=1200)
+        self.assertEqual(self.x(first + same), [])
+        other = _lk(lid=2, attempt=2, t_ns=300_000_000, size=1200)
+        other[-1] = dict(other[-1], seq=9)
+        self.assertTrue(self.says(first + other, "identity"), self.msgs(first + other))
+
+    def test_v2_a_delivery_carries_the_size_and_identity_of_its_transmission(self):
+        d = _lk(size=1)
+        self.assertTrue(self.says(d + [_dv(d, size=1200)], "delivery"), self.msgs(d + [_dv(d, size=1200)]))
+        d = _lk(size=1200)
+        self.assertEqual(self.x(d + [_dv(d)], end=200), [])
+        self.assertTrue(self.says(d + [_dv(d, mid=("T", 1))], "delivery"), "message identity")
+        self.assertTrue(self.says(d + [_dv(d, frag=3)], "delivery"), "fragment identity")
+
+    def test_v3_a_served_arrival_without_a_recorded_outcome_fails_at_the_horizon(self):
+        d = _lk()
+        self.assertTrue(self.says(d, "consumed by no recorded outcome", end=200), self.msgs(d, end=200))
+        self.assertEqual(self.x(d, end=100), [])  # the callback is at 151 ms, after the horizon: a reservation
+
+    def test_v3_each_recorded_outcome_consumes_the_arrival_exactly_once(self):
+        d = _lk()
+        stale = ev("stale_epoch", 151, src="H", dst="P1", local="P1", what="arrive", epoch=0, lid=1)
+        refused = ev("arrive_refused", 151, src="H", dst="P1", ch=0, seq=0, msg="Turn", lid=1, attempt=1, sid=1, epoch=0,
+                     size=16, frag=0, nfrag=1, mid=None, why="closed")
+        for outcome in (_dv(d), stale, refused):
+            self.assertEqual(self.x(d + [outcome], end=200), [], outcome["kind"])
+        for pair in ((_dv(d), stale), (_dv(d), _dv(d, dup=True)), (stale, refused)):
+            self.assertTrue(self.says(d + list(pair), "more than one", end=200), pair[1]["kind"])
+        wrong = dict(stale, src="P1", dst="H")  # a stale record of the other direction is not this datagram's
+        self.assertTrue(self.says(d + [wrong], "endpoints", end=200), self.msgs(d + [wrong], end=200))
+        late = dict(stale, t=152)
+        self.assertTrue(self.says(d + [late], "callback", end=200), self.msgs(d + [late], end=200))
+
+    def test_v3_an_ack_arrival_is_consumed_by_an_ack_or_a_stale_record(self):
+        a = _ak(lid=9)
+        self.assertTrue(self.says(a, "consumed by no recorded outcome", end=200), self.msgs(a, end=200))
+        self.assertEqual(self.x(a + [_ack_event(a)], end=200), [])
+        stale = ev("stale_epoch", 151, src="H", dst="P1", local="H", what="ack", epoch=0, lid=9)
+        self.assertEqual(self.x(a + [stale], end=200), [])
+        self.assertTrue(self.says(a + [_ack_event(a), stale], "more than one", end=200), "twice")
+
 
 def _wrap_link_plan(fn):
     orig = ja.Sim.link_plan
@@ -2273,38 +2347,112 @@ def _patch_breach_the_queue_cap():
 
 
 class LinkValidation(TraceCase):
-    """Each runtime mutant of the link accounting is caught by its own test; every test passes unmutated."""
+    """Each runtime mutant of the link accounting is caught by its own test, on the specific xvi message that
+    mutant produces (a mutant caught by an unrelated check does not count). Every test passes unmutated."""
 
     def _run(self):
         return ja.one_join(lcfg(), losses=ja.lose("JoinGrant", "H>J1", (1,)), until=12000)
 
-    def _clean(self, sim):
-        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+    def _no_message(self, sim, needle):
+        hit = [m for c, m in validate_clean(sim) if c == "xvi" and needle in m]
+        self.check(sim, not hit, "xvi says %r" % hit[:2])
 
     def test_every_data_attempt_is_charged_its_wire_size(self):
-        self._clean(self._run())
+        sim = self._run()
+        self.check(sim, [e for e in sim.events if e["kind"] == "link_enqueue" and e["attempt"] == 1], "no first transmission")
+        self._no_message(sim, "(data attempt 1) is")
 
     def test_retransmissions_are_charged_their_wire_size(self):
         sim = self._run()
         self.check(sim, [e for e in sim.events if e["kind"] == "link_enqueue" and e["attempt"] > 1], "the run has no retransmission")
-        self._clean(sim)
+        self._no_message(sim, "(data attempt 2) is")
 
     def test_acks_pass_through_the_shared_link(self):
         sim = self._run()
         self.check(sim, [e for e in sim.events if e["kind"] == "ack_send"], "the run has no ACK-only datagram")
-        self._clean(sim)
+        self._no_message(sim, "transmission ('a'")
 
     def test_acks_are_charged_their_wire_size(self):
-        self._clean(self._run())
+        self._no_message(self._run(), "(ACK-only) is")
 
     def test_service_records_are_required(self):
-        self._clean(self._run())
+        self._no_message(self._run(), "without a complete service record")
 
     def test_the_shared_capacity_is_enforced(self):
-        self._clean(self._run())
+        self._no_message(self._run(), "transmission ('d'")
 
     def test_the_arrival_is_never_early(self):
-        self._clean(self._run())
+        self._no_message(self._run(), "called back at")
+
+    def test_v1_no_link_arrival_is_before_finish_plus_one_way_delay(self):
+        sim = self._run()
+        self._no_message(sim, "negative labelled extra delay")
+        self._no_message(sim, "physical floor")
+
+    def test_v1_the_labelled_extra_delay_is_the_declared_one(self):
+        sim = ja.Sim(lcfg(), delays={("Turn", "H>J1", None, 1): 40}, seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.run(6000)
+        self._no_message(sim, "differs from the declared")
+
+    def test_v2_every_attempt_of_a_sid_records_one_payload(self):
+        sim = self._run()
+        self.check(sim, [e for e in sim.events if e["kind"] == "send" and e["attempt"] > 1], "no retransmission")
+        self._no_message(sim, "records size")
+
+    def test_v3_every_served_arrival_has_a_recorded_outcome(self):
+        sim = ja.fragment_loss_sim(lcfg())
+        self.check(sim, [e for e in sim.events if e["kind"] == "link_arrive"], "no arrival")
+        self._no_message(sim, "consumed by no recorded outcome")
+
+    def test_a_closed_receiver_leaves_a_refusal_record_with_the_lid(self):
+        sim = ja.Sim(lcfg(), seated=1)
+        sim.recv_state("H", "P1", 0).dead = True
+        sim.arrive("H", "P1", 0, _old_datagram(epoch=0, sid=77, attempt=1), 0, 5, 1)
+        refused = [e for e in sim.events if e["kind"] == "arrive_refused"]
+        self.assertEqual([(e["lid"], e["attempt"], e["why"]) for e in refused], [(5, 1, "closed")])
+
+    def test_a_stale_epoch_arrival_and_ack_record_the_lid(self):
+        sim = ja.Sim(lcfg(), delays={("Turn", "H>J1", 0, 1): 6000}, seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.add_join("J1", 1000, 2)
+        sim.run(20000)
+        stale = [e for e in sim.events if e["kind"] == "stale_epoch" and e["what"] in ("arrive", "ack")]
+        self.assertTrue(stale and all(e.get("lid") is not None for e in stale), stale[:2])
+
+
+def _patch_negative_extra_delay():
+    def fn(orig, self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        return orig(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms - self.cfg.one_way_ms, *a, **kw)
+    return _wrap_link_plan(fn)
+
+
+@contextlib.contextmanager
+def _patch_small_retry_payload():
+    """Every retry is recorded as a 1-byte payload on its send record and charged 1 + WIRE on the link."""
+    orig_plan, orig_ev = ja.Sim.link_plan, ja.Sim.ev
+
+    def link_plan(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        if kind != "ack" and attempt > 1:
+            wire = 1 + ja.WIRE
+        return orig_plan(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw)
+
+    def ev_(self, kind, **kw):
+        if kind == "send" and kw.get("attempt", 1) > 1 and kw.get("lid") is not None:
+            kw["size"] = 1
+        return orig_ev(self, kind, **kw)
+    with mock.patch.object(ja.Sim, "link_plan", link_plan), mock.patch.object(ja.Sim, "ev", ev_):
+        yield
+
+
+def _patch_silent_snapshot_discard():
+    orig = ja.Sim.arrive
+
+    def arrive(self, src, dst, ch, d, epoch=None, lid=None, attempt=None):
+        if d["kind"] == "Snap-frag" and attempt == 1:
+            return None
+        return orig(self, src, dst, ch, d, epoch, lid, attempt)
+    return mock.patch.object(ja.Sim, "arrive", arrive)
 
 
 class LinkRows(TraceCase):
@@ -2367,6 +2515,12 @@ MUTANTS.update({
         "LinkScenarios.test_every_row_at_100M_is_valid_and_reproducible"]),
     "breach the queue cap": (_patch_breach_the_queue_cap, [
         "LinkScenarios.test_a_tight_queue_drops_at_enqueue_and_stays_valid"]),
+    "V1: negative extra delay, zero propagation": (_patch_negative_extra_delay, [
+        "LinkValidation.test_v1_no_link_arrival_is_before_finish_plus_one_way_delay"]),
+    "V2: retry recorded and charged as a 1-byte payload": (_patch_small_retry_payload, [
+        "LinkValidation.test_v2_every_attempt_of_a_sid_records_one_payload"]),
+    "V3: the receiver silently discards served Snap-frag arrivals": (_patch_silent_snapshot_discard, [
+        "LinkValidation.test_v3_every_served_arrival_has_a_recorded_outcome"]),
 })
 
 

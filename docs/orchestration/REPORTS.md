@@ -4175,3 +4175,52 @@ A window of 32 fragments carries 38 016 save bytes. The 38 400 figure is 32 × 1
 6. Compared with the 60 s buffer; remaining gap named (OQ-280): MET.
 7. §7 stores the periodic snapshot and does not send it: MET.
 8. Report updated; ADR stays Proposed; stop for re-review: MET. `git diff --check` on the fix commit was clean. Not merged, not pushed.
+
+## T34 stage 1 — float-walk reverse engineering and ADR 0002 — 2026-10-27 — status: FINISHED
+- Branch: `task/T34-float-walk-re` at the commit that adds this section; worktree: `E:\anno1503-worktrees\anno1503-T34`. Content commits: `81921592` (`docs/re/transport.md` §4), `bc361a3c` (`docs/adr/0002-float-walk.md`), `77872170` (OQ-162, OQ-195, OQ-196). Started from `main` at `631e206`. No rebase, no amend, no merge, no push.
+- Built: docs only. §4 of `docs/re/transport.md` (the walk's operations and every rounding point). `docs/adr/0002-float-walk.md`, status Proposed. OQ-162 status set to the model in that ADR. New questions are OQ-195 and OQ-196. OQ-197 through OQ-199 were not used. No `src` change. `docs/orchestration/TASKS.md` was not edited. Scratch under `cache/` is gitignored and not committed.
+- Gates: docs only. `git diff --check` clean on each commit. No msvc build, no ctest, no clang-format, no GCC, no agree.py, no asan. No Wine and no run of the original. No cmake, ctest, or wsl was started.
+- Evidence: the ranges named at the end of `docs/re/transport.md` §4, each read twice. AnnoWelt `0x10034760`–`0x100348a5`, `0x10057ae0`–`0x10057bbe`, `0x10034df0`–`0x1003506a`, `0x1002fde0`–`0x1002ff1b` plus the eight dwords at `0x1002ff20`, `0x100343c0`–`0x10034710`, `0x10034c20`–`0x10034d64`, `0x100348f0`–`0x10034913`, `0x100b5f90`–`0x100b5fb6`, `0x10084e10`–`0x10085050`. AnnoGame `0x1000fb10`–`0x1000fb17`. Startup: `1503Startup.exe` `0x004021b2`, `0x0040330d`, `0x0040583c`–`0x004059c6`, and the AnnoWelt copy `0x100b5f30` / `0x100b6e12`. DirectDraw: AnnoDisplay `0x1000ca09`–`0x1000cafb` and `0x1002c01d`–`0x1002c0fb`. An aligned `fldcw` sweep of the executable sections found none inside the walk ranges. No disassembly listing and no original bytes were committed. Constant bit patterns in §4.2 were read from the image.
+- Reviewers: none.
+- Left open / questions for the orchestrator or owner:
+  - OQ-195. The game sets a 53-bit mantissa and does not pass `DDSCL_FPUSETUP` or `DDSCL_FPUPRESERVE`. Whether `DDRAW.dll` then changes the word is not in the game binary. ADR 0002 uses 53-bit until that is closed. Numbers 195–199 were free on this branch (stage 3's OQ-260, T40's OQ-270, and T31's OQ-180–OQ-182 are other branches). OQ-183 and OQ-184 were left unused.
+  - OQ-196. The height register `0x10084e10` leaves in st0. The empty-tile arm returns +0.0. The occupied-tile arm was not reduced. Trip time does not read it.
+  - OQ-161 stays the producer of the `{direction, count}` pairs (`0x10005890`). This stage decoded the segment record the consumer writes (`0x1002fde0`) and did not re-read the pathfinder.
+  - `docs/re/tick-loop.md` still calls the in-game control word a guess. This stage did not edit that file. §4.1 is the reading.
+  - No pull request. Round ba: GitHub is suspended, and this session was told not to push. Not merged.
+- Acceptance:
+  1. Precision and rounding, with addresses, or open with what was searched: MET. 53-bit mantissa from the startup setter (`0x00405869`, mask `0x30000`, value `0x10000`). Rounding is not changed by that setter. `__ftol` (`0x100b5f9f`) sets toward-zero for one `fistp` and restores the word. The walk ranges contain no `fldcw`. The system DirectDraw is OQ-195.
+  2. The walk's operation sequence, every rounding point named: MET in §4.3–§4.6 for the stores. The `test ah, 1` sentences in that text treated C0 as ordered only. That part is withdrawn; the round-bq F1 section is the reading.
+  3. ADR 0002 with the test plan: the document was Proposed, and the random and edge coverage stands. The sentence that host binary64 is wider than 53 bits is withdrawn. The round-bq F1 section replaces it. Stage 2 was not started.
+  4. Nothing of the original in git: MET. `git status` after the content commits showed only this report still to add. `cache/` is ignored.
+  5. Report, and not merged: MET. No PR, for the reason above.
+- Time spent / subagents used: inline, no subagents. Documents only, so no heavy job was queued behind T35.
+- Stage 2 was not started.
+
+## T34 stage 1 — round-bq F1 — 2026-10-27 — status: READY FOR RE-REVIEW
+
+- Branch `task/T34-float-walk-re`. Worktree `E:\anno1503-worktrees\anno1503-T34`. Previous head `6809c78ebdca0a4b2de167526fad717275259310`. The documentation fix is `ec32db5ae784e612944a3063cf6bd86c5c7e33d3`. The commit that adds this section is the branch head. Not merged, not pushed. Docs only. No stage 2, no stream bump, no code, no golden change. ADR 0002 stays Proposed. `E:\anno1503` was not edited.
+
+### Compare
+
+Re-read `AnnoWelt.dll` `0x10034760` (400 bytes) and `0x10034580` (400 bytes). Listings stayed in this worktree's `cache/` and are not committed.
+
+`fcomp` with the invalid-operation exception masked sets C0, C2 and C3 together on an unordered compare. `fnstsw ax` leaves C0 in AH bit 0. `test ah, 1` is that bit.
+
+- `0x1003480a` loads 0.0, `0x10034810` compares it with remaining, `0x10034815` tests C0, `0x10034818` is `jne 0x1003488b`. The dispatch at `0x1003481a` runs only when C0 is clear. An unordered remaining sets C0 and skips dispatch.
+- `0x10034622` loads 1.0, `0x10034628` compares it with the payload length, `0x1003462d` tests C0, `0x10034630` is `jne 0x10034684`. That target is the long-piece arm. An unordered length takes it. Ordered length ≤ 1.0 falls through to `0x10034632`.
+
+The condition table is in `docs/re/transport.md` §4.3 and in ADR 0002. Both unordered cases are planned edge tests: a quiet NaN remaining skips dispatch, and a quiet NaN length takes the long-piece arm. The 10^8 random operands and the other edges stay.
+
+### Oracle
+
+The test plan no longer says binary64 is wider than 53 bits. Binary64 has exactly 53 significant bits, and its exponent range is narrower than x87. The reference is integer arithmetic with a 53-bit significand, the x87 15-bit exponent, and round-to-nearest, ties to even, or an x87 unit whose control word is set to precision 53, nearest, and exceptions masked. A host `double` is compared only when every operand and the rounded result are a binary64 normal or a zero. No hash-time number and no port were added.
+
+### Acceptance (round bq F1)
+
+1. The test plan does not call binary64 wider than 53 bits: MET.
+2. Independent reference with controlled precision, exponent range and rounding, and native binary64 limited to its valid domain: MET.
+3. Random and edge coverage retained: MET.
+4. Truth table corrected in the ADR and in `transport.md` §4; both `test ah, 1` sites named: MET.
+5. Both unordered cases are planned edge tests: MET.
+6. Report corrected; `git diff --check` on the fix commit was clean; ADR stays Proposed; stage 2 not started: MET. Not merged, not pushed.

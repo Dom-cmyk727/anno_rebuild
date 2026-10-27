@@ -889,5 +889,698 @@ class T45Measurements(unittest.TestCase):
         self.assertNotIn("## OQ-300:", oq)
 
 
+def _complete(done_ms, fragments=1):
+    return model.TransferResult(
+        "complete", done_ms, fragments, fragments, fragments, False, 0, 0)
+
+
+class CausalReadiness(unittest.TestCase):
+    def test_one_fragment_turn_cannot_arrive_before_one_way(self):
+        budgets = model.proposed_budgets()
+        self.assertEqual(model.turn_produce_ms(1, budgets), 100)
+        self.assertEqual(model.turn_arrival_ms(1, budgets), 250)
+        self.assertEqual(model.max_delivery_lag(budgets), 2)
+        self.assertFalse(model.equality_reachable(budgets))
+        wire = model.frontiers_at(160, budgets)
+        self.assertEqual(wire["host_produced"], 1)
+        self.assertEqual(wire["host_applied"], 1)
+        self.assertEqual(wire["received"], 0)
+        self.assertFalse(wire["hole"])
+        joiner = model.catchup_state_at(160, budgets, 150)
+        self.assertEqual(joiner["applied"], 0)
+        self.assertEqual(joiner["received"], 0)
+        arrived = model.frontiers_at(250, budgets)
+        self.assertEqual(arrived["received"], 1)
+        self.assertEqual(arrived["host_produced"], 2)
+        result = model.evaluate_causal(1188, budgets)
+        self.assertEqual(result.status, "success")
+        self.assertEqual(result.reason, "caught_up")
+        self.assertFalse(result.paused)
+        self.assertTrue(result.input_enabled)
+        self.assertEqual(result.first_arrival_ms, 250)
+        self.assertEqual(result.ready_ms, 150)
+        self.assertEqual(
+            (result.done_ms, result.applied, result.received,
+             result.host_produced, result.host_applied, result.hash_turn),
+            (1160, 10, 10, 11, 11, 10))
+        self.assertLess(result.applied, result.host_applied)
+        self.assertEqual(
+            (result.optimistic_done_ms, result.optimistic_replayed, result.optimistic_host),
+            (160, 1, 1))
+        self.assertNotEqual(result.done_ms, result.optimistic_done_ms)
+        self.assertTrue(result.honest(budgets))
+        fluid = model.evaluate_join(1188, budgets)
+        self.assertEqual((fluid.done_ms, fluid.replayed, fluid.host_produced), (160, 1, 1))
+
+    def test_tick_order_is_produce_then_deliver_then_apply(self):
+        budgets = model.replace(model.proposed_budgets(), one_way_ms=0)
+        at_produce = model.catchup_state_at(100, budgets, 0)
+        self.assertEqual(at_produce["host_produced"], 1)
+        self.assertEqual(at_produce["host_applied"], 1)
+        self.assertEqual(at_produce["received"], 1)
+        self.assertEqual(at_produce["applied"], 0)
+        self.assertLess(at_produce["applied"], at_produce["received"])
+        at_apply = model.catchup_state_at(110, budgets, 0)
+        self.assertEqual(at_apply["applied"], 1)
+        self.assertEqual(at_apply["received"], 1)
+        self.assertLessEqual(at_apply["applied"], at_apply["received"])
+        self.assertLessEqual(at_apply["received"], at_apply["host_produced"])
+        delayed = model.proposed_budgets()
+        before = model.catchup_state_at(100, delayed, 0)
+        self.assertEqual(before["host_produced"], 1)
+        self.assertEqual(before["received"], 0)
+        self.assertEqual(before["applied"], 0)
+
+    def test_zero_delay_can_match_and_a_full_turn_of_delay_cannot(self):
+        zero = model.replace(model.proposed_budgets(), one_way_ms=0)
+        self.assertTrue(model.equality_reachable(zero))
+        matched = model.evaluate_causal(1188, zero)
+        self.assertEqual(matched.status, "success")
+        self.assertEqual(matched.applied, matched.host_applied)
+        self.assertEqual((matched.done_ms, matched.applied), (1010, 10))
+        self.assertFalse(matched.paused)
+        short = model.replace(model.proposed_budgets(), one_way_ms=50)
+        self.assertTrue(model.equality_reachable(short))
+        early = model.evaluate_causal(1188, short)
+        self.assertEqual(early.status, "success")
+        self.assertEqual(early.first_arrival_ms, 150)
+        self.assertEqual((early.done_ms, early.applied, early.host_applied), (1060, 10, 10))
+        long = model.proposed_budgets()
+        self.assertFalse(model.equality_reachable(long))
+        behind = model.evaluate_causal(1188, long)
+        self.assertLess(behind.applied, behind.host_applied)
+        self.assertGreaterEqual(long.one_way_ms, long.turn_ms)
+
+    def test_catchup_faster_than_live_reaches_the_boundary(self):
+        budgets = model.proposed_budgets()
+        late = _complete(5000)
+        fast = model.evaluate_causal(1188, budgets, transfer=late)
+        self.assertEqual(fast.status, "success")
+        self.assertFalse(fast.paused)
+        self.assertTrue(fast.input_enabled)
+        self.assertEqual(fast.missing, 0)
+        self.assertEqual(fast.applied, fast.received)
+        self.assertLess(fast.applied, fast.host_applied)
+        self.assertEqual((fast.done_ms, fast.applied, fast.host_applied), (6160, 60, 61))
+        self.assertTrue(fast.honest(budgets))
+        slow_cfg = model.replace(budgets, replay_turns_per_s=5, catchup_ms=60_000)
+        slow = model.evaluate_causal(1188, slow_cfg, transfer=late)
+        self.assertEqual(slow.status, "restart")
+        self.assertEqual(slow.reason, "cannot_outrun")
+        self.assertFalse(slow.paused)
+        self.assertFalse(slow.input_enabled)
+        self.assertNotEqual(slow.status, "success")
+        self.assertGreater(slow.missing, 0)
+        self.assertLessEqual(slow.applied, slow.host_applied)
+        self.assertTrue(slow.honest(slow_cfg))
+
+    def test_missing_or_reordered_prefix_is_not_success(self):
+        budgets = model.proposed_budgets()
+
+        def drop_turn_one(relative_k, attempt):
+            del attempt
+            return relative_k == 1
+
+        missing = model.evaluate_causal(
+            1188, budgets, data_drop=drop_turn_one, horizon_ms=2000)
+        self.assertEqual(missing.status, "restart")
+        self.assertEqual(missing.reason, "missing_prefix")
+        self.assertFalse(missing.input_enabled)
+        self.assertFalse(missing.paused)
+        self.assertNotEqual(missing.status, "success")
+
+        def delay_turn_one(relative_k, attempt):
+            del attempt
+            return 400 if relative_k == 1 else 0
+
+        schedule = model.build_turn_schedule(4, budgets, reorder=delay_turn_one)
+        self.assertEqual(schedule.arrivals[1], 650)
+        self.assertEqual(schedule.arrivals[2], 350)
+        probed = model.frontiers_at(400, budgets, arrivals=schedule.arrivals)
+        self.assertTrue(probed["hole"])
+        self.assertEqual(probed["received"], 0)
+        self.assertGreater(probed["host_produced"], 1)
+        early = model.evaluate_causal(
+            1188, budgets, reorder=delay_turn_one, horizon_ms=600)
+        self.assertNotEqual(early.status, "success")
+        self.assertEqual(early.reason, "unmet_boundary")
+        self.assertFalse(early.paused)
+        filled = model.evaluate_causal(1188, budgets, reorder=delay_turn_one)
+        self.assertEqual(filled.status, "success")
+        self.assertEqual(filled.first_arrival_ms, 650)
+        self.assertGreaterEqual(filled.first_arrival_ms, 250)
+        self.assertTrue(filled.honest(budgets))
+
+    def test_data_loss_delays_arrival_and_ack_loss_does_not(self):
+        budgets = model.proposed_budgets()
+
+        def drop_first(relative_k, attempt):
+            return relative_k == 1 and attempt == 0
+
+        delayed = model.build_turn_schedule(3, budgets, data_drop=drop_first)
+        self.assertEqual(delayed.arrivals[1], 550)
+        self.assertGreaterEqual(delayed.arrivals[1], 250)
+        self.assertEqual(delayed.data_drops, 1)
+        self.assertEqual(delayed.acks_lost, 0)
+        hole = model.frontiers_at(400, budgets, arrivals=delayed.arrivals)
+        self.assertTrue(hole["hole"])
+        self.assertEqual(hole["received"], 0)
+        self.assertLessEqual(delayed.arrivals[2], 400)
+
+        def drop_acks(relative_k, attempt):
+            del relative_k, attempt
+            return True
+
+        quiet = model.build_turn_schedule(12, budgets, ack_drop=drop_acks)
+        self.assertEqual(quiet.arrivals[1], 250)
+        self.assertEqual(quiet.data_drops, 0)
+        self.assertGreater(quiet.acks_lost, 0)
+        self.assertGreater(quiet.duplicates, 0)
+        joined = model.evaluate_causal(1188, budgets, ack_drop=drop_acks)
+        plain = model.evaluate_causal(1188, budgets)
+        self.assertEqual(joined.status, "success")
+        self.assertEqual(joined.done_ms, plain.done_ms)
+        self.assertEqual(joined.first_arrival_ms, 250)
+        self.assertEqual(joined.data_drops, 0)
+        self.assertGreater(joined.acks_lost, 0)
+        self.assertFalse(joined.paused)
+        self.assertTrue(joined.honest(budgets))
+
+    def test_cap_restarts_one_joiner_and_the_host_keeps_playing(self):
+        budgets = model.replace(
+            model.proposed_budgets(), tail_turns_max=4, snapshot_age_ms=0)
+        stopped = model.evaluate_causal(1188, budgets)
+        self.assertEqual(stopped.status, "restart")
+        self.assertEqual(stopped.reason, "tail_turns")
+        self.assertFalse(stopped.paused)
+        self.assertFalse(stopped.input_enabled)
+        self.assertNotEqual(stopped.status, "success")
+        self.assertEqual(stopped.done_ms, 500)
+        self.assertEqual(stopped.host_span, 5)
+        table = model.Table(budgets)
+        self.assertEqual(table.attach("old", 0, 1188, 0, 0)[0], "opened")
+        self.assertEqual(table.advance(400, 4), [])
+        self.assertEqual(table.attach("young", 400, 1188, 4, 4)[0], "opened")
+        produced, host_applied = model.host_frontier(500, 0, budgets)
+        self.assertEqual((produced, host_applied), (5, 5))
+        restarted = table.advance(500, produced)
+        self.assertEqual(restarted, [("old", "tail_turns")])
+        self.assertEqual(table.running(), 1)
+        self.assertFalse(table.paused)
+        self.assertEqual(table.host_turn, 5)
+        self.assertEqual(table.now_ms, 500)
+        self.assertFalse(table.retained(1))
+        self.assertTrue(table.retained(5))
+        self.assertGreater(table.host_turn, 4)
+        mismatch = model.evaluate_causal(1188, model.proposed_budgets(), hash_matches=False)
+        self.assertEqual(mismatch.status, "restart")
+        self.assertEqual(mismatch.reason, "hash_mismatch")
+        self.assertFalse(mismatch.paused)
+        self.assertFalse(mismatch.input_enabled)
+
+    def test_measured_saves_meet_the_boundary_inside_the_caps(self):
+        budgets = model.proposed_budgets()
+        self.assertEqual((budgets.load_ms, budgets.replay_turns_per_s, budgets.turn_store_cap),
+                         (0, 100, 1200))
+        expected = {
+            "S01_07_01": (90450, 100480, 101160, 1010, 1011, 903, 100490, 1004),
+            "endless02": (160650, 178480, 179160, 1790, 1791, 1605, 178490, 1784),
+            "03_1024_med_256": (101850, 113140, 113160, 1130, 1131, 1017, 113160, 1131),
+        }
+        for name, size in model.MEASURED_SAVES:
+            result = model.evaluate_causal(size, budgets)
+            self.assertEqual(result.status, "success", name)
+            self.assertFalse(result.paused, name)
+            self.assertTrue(result.input_enabled, name)
+            self.assertEqual(result.missing, 0, name)
+            self.assertLess(result.applied, result.host_applied, name)
+            self.assertEqual(result.applied, result.received, name)
+            self.assertLessEqual(result.host_span, budgets.tail_turns_max, name)
+            self.assertLessEqual(result.backlog_turns, budgets.receive_backlog_turns, name)
+            self.assertLessEqual(result.done_ms, budgets.catchup_ms, name)
+            self.assertTrue(result.honest(budgets), name)
+            (transfer, ready, done, applied, host, peak, opt_done, opt_replayed) = expected[name]
+            self.assertEqual(
+                (result.transfer_ms, result.ready_ms, result.done_ms, result.applied,
+                 result.host_applied, result.backlog_turns, result.optimistic_done_ms,
+                 result.optimistic_replayed),
+                (transfer, ready, done, applied, host, peak, opt_done, opt_replayed),
+                name)
+        # Same millisecond, different cursor: the fluid row names the host turn.
+        split = model.evaluate_causal(dict(model.MEASURED_SAVES)["03_1024_med_256"], budgets)
+        self.assertEqual(split.done_ms, split.optimistic_done_ms)
+        self.assertNotEqual(split.applied, split.optimistic_replayed)
+        binding = model.t45_budgets("endless02", "empty_max")
+        self.assertEqual(binding.replay_turns_per_s, 438)
+        self.assertEqual(binding.load_ms, 47)
+        self.assertEqual(binding.turn_store_cap, 1200)
+        decision, reason, need = model.admit(dict(model.T45_SAVE_BYTES)["endless02"], binding)
+        self.assertEqual((decision, reason, need), ("admit", "within_budgets", 3289))
+        caught = model.evaluate_causal(dict(model.T45_SAVE_BYTES)["endless02"], binding)
+        self.assertEqual(caught.status, "success")
+        self.assertEqual(
+            (caught.done_ms, caught.applied, caught.host_applied, caught.pin_turns,
+             caught.host_span, caught.optimistic_done_ms, caught.optimistic_replayed),
+            (166153, 1660, 1661, 1660, 1661, 165665, 1656))
+        self.assertLess(caught.host_span, binding.tail_turns_max)
+        self.assertLess(caught.optimistic_replayed, 1784)
+        loss = model.replace(binding, loss_per_million=20_000, seed=1)
+        lost = model.evaluate_causal(dict(model.T45_SAVE_BYTES)["endless02"], loss)
+        self.assertEqual(lost.status, "success")
+        self.assertEqual(lost.acks_lost, 0)
+        self.assertEqual(
+            (lost.transfer_ms, lost.done_ms, lost.applied, lost.host_applied,
+             lost.optimistic_done_ms, lost.optimistic_replayed),
+            (198750, 205153, 2050, 2051, 204944, 2049))
+        self.assertFalse(lost.paused)
+        self.assertLess(lost.applied, lost.host_applied)
+        self.assertTrue(lost.honest(loss))
+
+    def test_channels_stay_independent_and_the_fluid_quotient_stays(self):
+        budgets = model.proposed_budgets()
+        snapshot_us, turn_us, both_us, one_way_us = model.channel_bandwidth_us(budgets)
+        self.assertEqual((snapshot_us, turn_us, both_us, one_way_us), (3072, 6, 3078, 150000))
+        self.assertLess(both_us, one_way_us)
+        self.assertEqual(model.fluid_tenths(17130, 32, 150), 803)
+        self.assertEqual(model.fluid_tenths(17130, 32, 300), 1606)
+        # 17130 * 150 = 2569500; 2569500 = 32 * 80296 + 28, and 28/32 is 0.875 ms.
+        # 17130 * 300 = 5139000; 5139000 = 32 * 160593 + 24, and 24/32 is 0.75 ms.
+        self.assertEqual(17130 * 150, 2569500)
+        self.assertEqual(divmod(2569500, 32), (80296, 28))
+        self.assertEqual(17130 * 300, 5139000)
+        self.assertEqual(divmod(5139000, 32), (160593, 24))
+        lines = model.causal_report_lines()
+        text = "\n".join(lines)
+        self.assertIn("defaults_unchanged load_ms=0 replay_turns_per_s=100 turn_store_cap=1200",
+                      text)
+        self.assertIn("command_delay=2", text)
+        self.assertIn("independent_channels=1 shared_queue=0", text)
+        self.assertIn("arrival_ms=250", text)
+        self.assertIn("optimistic_done_ms=160", text)
+        self.assertIn("equal_frontier=0", text)
+        self.assertIn("fluid_unchanged endless02_rtt150_tenths=803 endless02_rtt300_tenths=1606",
+                      text)
+        self.assertIn("not_end_to_end=1", text)
+        self.assertIn("shared_link_unmeasured=1", text)
+        fluid = "\n".join(model.report_lines())
+        self.assertIn("counterexample_1188_done_ms=160", fluid)
+        self.assertNotIn("causal one_fragment", fluid)
+        again = model.proposed_budgets()
+        self.assertEqual((again.load_ms, again.replay_turns_per_s, again.turn_store_cap),
+                         (0, 100, 1200))
+
+    def test_a_missing_due_turn_is_not_hidden_by_the_arrived_prefix(self):
+        budgets = model.proposed_budgets()
+        late = _complete(3000)
+
+        def drop_turn_11(relative_k, attempt):
+            del attempt
+            return relative_k == 11
+
+        schedule = model.build_turn_schedule(40, budgets, data_drop=drop_turn_11)
+        self.assertNotIn(11, schedule.arrivals)
+        self.assertLessEqual(schedule.arrivals[12], 3100)
+        probed = model.frontiers_at(3100, budgets, arrivals=schedule.arrivals)
+        self.assertEqual(probed["received"], 10)
+        self.assertEqual(probed["due"], 29)
+        self.assertEqual(probed["host_produced"], 31)
+        self.assertTrue(probed["hole"])
+        self.assertFalse(model.prefix_is_due(10, 10, 3100, budgets))
+        self.assertFalse(model.command_input_open(10, 10, 3100, budgets))
+        state = model.catchup_state_at(3100, budgets, 3000, arrivals=schedule.arrivals)
+        self.assertEqual((state["applied"], state["received"], state["due"]), (10, 10, 29))
+        result = model.evaluate_causal(
+            1188, budgets, transfer=late, data_drop=drop_turn_11)
+        self.assertEqual(result.status, "restart")
+        self.assertEqual(result.reason, "missing_prefix")
+        self.assertEqual(
+            (result.done_ms, result.applied, result.received,
+             result.host_applied, result.host_produced),
+            (3100, 10, 10, 31, 31))
+        self.assertFalse(result.input_enabled)
+        self.assertGreater(result.missing, 0)
+        self.assertFalse(result.paused)
+        self.assertTrue(result.honest(budgets))
+        forged = model.replace(
+            result, status="success", reason="caught_up", input_enabled=True,
+            missing=0, hash_turn=10)
+        self.assertFalse(forged.honest(budgets))
+
+    def test_input_stays_off_until_the_due_prefix_and_the_hash(self):
+        budgets = model.proposed_budgets()
+        held = model.catchup_state_at(960, budgets, 150)
+        self.assertEqual((held["applied"], held["received"], held["due"]), (8, 8, 8))
+        self.assertTrue(model.prefix_is_due(8, 8, 960, budgets))
+        self.assertFalse(model.command_input_open(8, 8, 960, budgets))
+        opened = model.command_input_open(10, 10, 1160, budgets)
+        self.assertTrue(opened)
+
+        def delay_turn_11(relative_k, attempt):
+            del attempt
+            return 2000 if relative_k == 11 else 0
+
+        schedule = model.build_turn_schedule(40, budgets, reorder=delay_turn_11)
+        self.assertEqual(schedule.arrivals[11], 3250)
+        self.assertLessEqual(schedule.arrivals[12], 3100)
+        hole = model.frontiers_at(3100, budgets, arrivals=schedule.arrivals)
+        self.assertTrue(hole["hole"])
+        self.assertEqual((hole["received"], hole["due"], hole["host_produced"]), (10, 29, 31))
+        self.assertFalse(model.command_input_open(10, 10, 3100, budgets))
+        waiting = model.catchup_state_at(
+            3100, budgets, 3000, arrivals=schedule.arrivals)
+        self.assertEqual((waiting["applied"], waiting["received"]), (10, 10))
+        self.assertFalse(model.command_input_open(
+            waiting["applied"], waiting["received"], 3100, budgets))
+        filled = model.evaluate_causal(
+            1188, budgets, transfer=_complete(3000), reorder=delay_turn_11)
+        self.assertEqual(filled.status, "success")
+        self.assertTrue(filled.input_enabled)
+        self.assertFalse(filled.paused)
+        self.assertEqual(
+            (filled.ready_ms, filled.done_ms, filled.applied, filled.received,
+             filled.host_applied, filled.hash_turn),
+            (3480, 4160, 40, 40, 41, 40))
+        self.assertEqual(
+            filled.applied,
+            filled.snapshot_turn + model.due_relative(filled.done_ms, budgets))
+        self.assertTrue(model.command_input_open(
+            filled.applied, filled.received, filled.done_ms, budgets))
+        self.assertTrue(filled.honest(budgets))
+        before = model.catchup_state_at(
+            filled.done_ms - budgets.turn_ms, budgets, 3000, arrivals=schedule.arrivals)
+        self.assertFalse(model.command_input_open(
+            before["applied"], before["received"], filled.done_ms - budgets.turn_ms, budgets))
+
+    def test_a_missing_last_due_turn_is_not_a_hole(self):
+        budgets = model.proposed_budgets()
+
+        def drop_turn_11(relative_k, attempt):
+            del attempt
+            return relative_k == 11
+
+        schedule = model.build_turn_schedule(20, budgets, data_drop=drop_turn_11)
+        probed = model.frontiers_at(1300, budgets, arrivals=schedule.arrivals)
+        self.assertEqual(probed["received"], 10)
+        self.assertEqual(probed["due"], 11)
+        self.assertFalse(probed["hole"])
+        self.assertLess(probed["received"], probed["due"])
+        self.assertFalse(model.command_input_open(10, 10, 1300, budgets))
+        result = model.evaluate_causal(
+            1188, budgets, transfer=_complete(1200), data_drop=drop_turn_11)
+        self.assertEqual(result.status, "restart")
+        self.assertEqual(result.reason, "missing_prefix")
+        self.assertEqual((result.done_ms, result.applied, result.received), (1300, 10, 10))
+        self.assertEqual(result.host_applied, 13)
+        self.assertFalse(result.input_enabled)
+        self.assertFalse(result.paused)
+        self.assertTrue(result.honest(budgets))
+
+    def test_deadline_runs_before_one_fragment_success(self):
+        budgets = model.proposed_budgets()
+        tight = model.replace(budgets, catchup_ms=1160)
+        table = model.Table(tight)
+        self.assertEqual(table.attach("old", 0, 1188, 0, 0)[0], "opened")
+        self.assertEqual(table.advance(1159, 11), [])
+        self.assertEqual(table.running(), 1)
+        self.assertEqual(table.advance(1160, 11), [("old", "deadline")])
+        self.assertEqual(table.running(), 0)
+        self.assertFalse(table.paused)
+        self.assertEqual(table.advance(1161, 11), [])
+        self.assertEqual(table.running(), 0)
+        early = model.evaluate_causal(1188, tight, horizon_ms=1159)
+        self.assertNotEqual(early.status, "success")
+        self.assertFalse(early.input_enabled)
+        self.assertFalse(early.paused)
+        at_deadline = model.evaluate_causal(1188, tight)
+        self.assertEqual(at_deadline.status, "restart")
+        self.assertEqual(at_deadline.reason, "deadline")
+        self.assertEqual(at_deadline.done_ms, 1160)
+        self.assertFalse(at_deadline.input_enabled)
+        self.assertFalse(at_deadline.paused)
+        self.assertTrue(at_deadline.honest(tight))
+        forged = model.replace(
+            at_deadline, status="success", reason="caught_up", input_enabled=True,
+            missing=0, hash_turn=10)
+        self.assertFalse(forged.honest(tight))
+        plain = model.evaluate_causal(1188, budgets)
+        self.assertEqual((plain.status, plain.done_ms, plain.applied, plain.host_applied),
+                         ("success", 1160, 10, 11))
+        self.assertTrue(plain.honest(budgets))
+
+    def test_deadline_beats_the_tail_and_a_younger_join_stays(self):
+        collision = model.replace(
+            model.proposed_budgets(), catchup_ms=1000, tail_turns_max=9)
+        table = model.Table(collision)
+        self.assertEqual(table.attach("a", 0, 1188, 0, 0)[0], "opened")
+        self.assertEqual(table.advance(999, 9), [])
+        self.assertEqual(table.running(), 1)
+        self.assertEqual(table.advance(1000, 10), [("a", "deadline")])
+        self.assertEqual(table.running(), 0)
+        self.assertFalse(table.paused)
+        caught = model.evaluate_causal(1188, collision)
+        self.assertEqual(caught.status, "restart")
+        self.assertEqual(caught.reason, "deadline")
+        self.assertEqual(caught.done_ms, 1000)
+        self.assertFalse(caught.input_enabled)
+        self.assertFalse(caught.paused)
+        self.assertTrue(caught.honest(collision))
+
+        tight = model.replace(model.proposed_budgets(), catchup_ms=1160)
+        shared = model.Table(tight)
+        self.assertEqual(shared.attach("old", 0, 1188, 0, 0)[0], "opened")
+        self.assertEqual(shared.advance(1000, 10), [])
+        self.assertEqual(shared.attach("young", 1000, 1188, 0, 10)[0], "shared")
+        self.assertEqual(shared.advance(1159, 11), [])
+        self.assertEqual(shared.running(), 2)
+        self.assertEqual(shared.advance(1160, 11), [("old", "deadline")])
+        self.assertEqual(shared.running(), 1)
+        self.assertFalse(shared.paused)
+        self.assertEqual(shared.advance(1161, 11), [])
+        self.assertEqual(shared.running(), 1)
+        self.assertEqual(shared.advance(2159, 21), [])
+        self.assertEqual(shared.running(), 1)
+        self.assertEqual(shared.advance(2160, 21), [("young", "deadline")])
+        self.assertEqual(shared.running(), 0)
+        self.assertFalse(shared.paused)
+
+    def test_a_horizon_before_load_applies_nothing(self):
+        budgets = model.proposed_budgets()
+        late = _complete(3000)
+        early = model.evaluate_causal(1188, budgets, transfer=late, horizon_ms=2000)
+        state = model.catchup_state_at(2000, budgets, 3000)
+        wire = model.frontiers_at(2000, budgets)
+        self.assertEqual(wire["received"], 18)
+        self.assertEqual(early.status, "restart")
+        self.assertEqual(early.reason, "unmet_boundary")
+        self.assertEqual(early.done_ms, 2000)
+        self.assertEqual((early.applied, early.received), (0, 18))
+        self.assertEqual((state["applied"], state["received"]), (0, 18))
+        self.assertEqual(state["buffered"], 18)
+        self.assertEqual(early.pin_turns, 0)
+        self.assertEqual(early.backlog_turns, 18)
+        self.assertEqual(early.host_applied, 20)
+        self.assertEqual(early.host_span, early.host_applied - early.snapshot_turn)
+        self.assertFalse(early.input_enabled)
+        self.assertFalse(early.paused)
+        self.assertTrue(early.honest(budgets))
+
+        loaded = model.replace(budgets, load_ms=500)
+        during = model.evaluate_causal(
+            1188, loaded, transfer=late, horizon_ms=2000)
+        self.assertEqual(during.done_ms, 2000)
+        self.assertEqual((during.applied, during.received, during.pin_turns), (0, 18, 0))
+        self.assertEqual(during.backlog_turns, 18)
+        self.assertEqual(during.host_span, 20)
+        self.assertFalse(during.input_enabled)
+        self.assertFalse(during.paused)
+        self.assertTrue(during.honest(loaded))
+
+        # Transfer has finished; load has not. The horizon still cannot replay.
+        mid_cfg = model.replace(budgets, load_ms=1000)
+        mid_load = model.evaluate_causal(
+            1188, mid_cfg, transfer=_complete(1500), horizon_ms=2000)
+        self.assertEqual(mid_load.done_ms, 2000)
+        self.assertEqual((mid_load.applied, mid_load.received), (0, 18))
+        self.assertEqual(mid_load.backlog_turns, 18)
+        self.assertEqual(mid_load.pin_turns, 0)
+        self.assertFalse(mid_load.input_enabled)
+        self.assertTrue(mid_load.honest(mid_cfg))
+
+    def test_an_unfinished_replay_step_is_not_applied(self):
+        budgets = model.proposed_budgets()
+        self.assertEqual(model.replay_step_ms(budgets), 10)
+        for ms in (1155, 1159):
+            tight = model.replace(budgets, catchup_ms=ms)
+            stopped = model.evaluate_causal(1188, tight)
+            state = model.catchup_state_at(ms, tight, 150)
+            self.assertEqual(stopped.status, "restart")
+            self.assertEqual(stopped.reason, "deadline")
+            self.assertEqual(stopped.done_ms, ms)
+            self.assertEqual(stopped.applied, 9)
+            self.assertNotEqual(stopped.applied, 10)
+            self.assertEqual(stopped.applied, state["applied"])
+            self.assertEqual(stopped.received, state["received"])
+            self.assertEqual(stopped.pin_turns, stopped.applied - stopped.snapshot_turn)
+            self.assertEqual(
+                stopped.host_applied,
+                stopped.snapshot_turn + stopped.done_ms // budgets.turn_ms)
+            self.assertEqual(stopped.host_span, stopped.host_applied - stopped.snapshot_turn)
+            self.assertEqual(stopped.backlog_turns, state["received"] - state["applied"])
+            self.assertFalse(stopped.input_enabled)
+            self.assertFalse(stopped.paused)
+            self.assertTrue(stopped.honest(tight))
+
+        cut = model.evaluate_causal(1188, budgets, horizon_ms=1155)
+        state = model.catchup_state_at(1155, budgets, 150)
+        self.assertEqual(cut.status, "restart")
+        self.assertEqual(cut.reason, "unmet_boundary")
+        self.assertEqual(cut.done_ms, 1155)
+        self.assertEqual(cut.applied, 9)
+        self.assertEqual(cut.applied, state["applied"])
+        self.assertEqual(cut.received, state["received"])
+        self.assertEqual(cut.pin_turns, 9)
+        self.assertEqual(cut.host_span, cut.host_applied)
+        self.assertEqual(cut.host_applied, 11)
+        self.assertEqual(cut.backlog_turns, 1)
+        self.assertFalse(cut.input_enabled)
+        self.assertFalse(cut.paused)
+        self.assertTrue(cut.honest(budgets))
+
+        plain = model.evaluate_causal(1188, budgets)
+        finished = model.catchup_state_at(1160, budgets, 150)
+        self.assertEqual(
+            (plain.status, plain.done_ms, plain.applied, plain.received, plain.host_applied),
+            ("success", 1160, 10, 10, 11))
+        self.assertEqual(finished["applied"], 10)
+        self.assertTrue(plain.input_enabled)
+        self.assertTrue(plain.honest(budgets))
+        tight = model.replace(budgets, catchup_ms=1160)
+        at_deadline = model.evaluate_causal(1188, tight)
+        self.assertEqual(at_deadline.status, "restart")
+        self.assertEqual(at_deadline.reason, "deadline")
+        self.assertEqual(at_deadline.done_ms, 1160)
+        self.assertEqual(at_deadline.applied, 9)
+        self.assertEqual(at_deadline.pin_turns, 9)
+        self.assertEqual(at_deadline.host_span, 11)
+        self.assertEqual(at_deadline.backlog_turns, 1)
+        self.assertFalse(at_deadline.input_enabled)
+        self.assertFalse(at_deadline.paused)
+        self.assertTrue(at_deadline.honest(tight))
+
+    def test_arrivals_fill_the_backlog_before_load_and_during_replay(self):
+        budgets = model.proposed_budgets()
+        late = _complete(3000)
+        self.assertEqual(model.frontiers_at(2000, budgets)["received"], 18)
+
+        capped = model.replace(budgets, receive_backlog_turns=5)
+        sixth = model.evaluate_causal(1188, capped, transfer=late, horizon_ms=2000)
+        self.assertEqual(sixth.status, "restart")
+        self.assertEqual(sixth.reason, "backlog")
+        self.assertEqual(sixth.done_ms, 750)
+        self.assertEqual((sixth.applied, sixth.received, sixth.backlog_turns), (0, 6, 6))
+        self.assertEqual(sixth.pin_turns, 0)
+        self.assertFalse(sixth.input_enabled)
+        self.assertFalse(sixth.paused)
+        self.assertTrue(sixth.honest(capped))
+        held = model.catchup_state_at(650, capped, 3000)
+        self.assertEqual((held["applied"], held["received"], held["buffered"]), (0, 5, 5))
+
+        loaded = model.replace(budgets, load_ms=500, receive_backlog_turns=5)
+        during = model.evaluate_causal(1188, loaded, transfer=late, horizon_ms=2000)
+        self.assertEqual(during.reason, "backlog")
+        self.assertEqual(during.done_ms, 750)
+        self.assertEqual((during.applied, during.received, during.backlog_turns), (0, 6, 6))
+        self.assertTrue(during.honest(loaded))
+
+        slow = model.replace(budgets, replay_turns_per_s=8)
+        self.assertEqual(model.replay_step_ms(slow), 125)
+        open_cap = model.evaluate_causal(1188, slow, horizon_ms=360)
+        self.assertEqual(open_cap.status, "restart")
+        self.assertEqual(open_cap.reason, "unmet_boundary")
+        self.assertEqual(open_cap.done_ms, 360)
+        self.assertEqual((open_cap.applied, open_cap.received, open_cap.backlog_turns), (0, 2, 2))
+        self.assertFalse(open_cap.input_enabled)
+        probe = model.catchup_state_at(360, slow, open_cap.transfer_ms)
+        self.assertEqual((probe["applied"], probe["received"], probe["buffered"]), (0, 2, 2))
+
+        tight_cap = model.replace(slow, receive_backlog_turns=1)
+        overflow = model.evaluate_causal(1188, tight_cap, horizon_ms=360)
+        self.assertEqual(overflow.reason, "backlog")
+        self.assertEqual(overflow.done_ms, 350)
+        self.assertEqual((overflow.applied, overflow.received, overflow.backlog_turns), (0, 2, 2))
+        self.assertFalse(overflow.input_enabled)
+        self.assertTrue(overflow.honest(tight_cap))
+
+        def delay_turn_one(relative_k, attempt):
+            del attempt
+            return 400 if relative_k == 1 else 0
+
+        hole_cfg = model.replace(budgets, receive_backlog_turns=2)
+        hole = model.evaluate_causal(
+            1188, hole_cfg, transfer=late, reorder=delay_turn_one, horizon_ms=2000)
+        self.assertEqual(hole.reason, "backlog")
+        self.assertEqual(hole.done_ms, 550)
+        self.assertEqual((hole.applied, hole.received, hole.backlog_turns), (0, 0, 3))
+        self.assertFalse(hole.input_enabled)
+        hole_wire = model.build_turn_schedule(8, budgets, reorder=delay_turn_one)
+        hole_state = model.catchup_state_at(550, hole_cfg, 3000, arrivals=hole_wire.arrivals)
+        self.assertEqual(hole_state["received"], 0)
+        self.assertEqual(hole_state["buffered"], 3)
+
+        def drop_acks(relative_k, attempt):
+            del relative_k, attempt
+            return True
+
+        dup_cfg = model.replace(budgets, receive_backlog_turns=4)
+        dup = model.evaluate_causal(
+            1188, dup_cfg, transfer=late, ack_drop=drop_acks, horizon_ms=550)
+        self.assertGreater(dup.duplicates, 0)
+        self.assertEqual(dup.reason, "unmet_boundary")
+        self.assertEqual(dup.done_ms, 550)
+        self.assertEqual((dup.applied, dup.received, dup.backlog_turns), (0, 4, 4))
+        self.assertFalse(dup.input_enabled)
+
+        # Deadline, then tail, then the arrival. Turn 6 arrives at 750 ms.
+        # The deadline restarts first, so that arrival stays unstored.
+        # catchup_state_at has no owner and still counts it.
+        tied = model.replace(budgets, catchup_ms=750, receive_backlog_turns=5)
+        deadline = model.evaluate_causal(1188, tied, transfer=late, horizon_ms=2000)
+        self.assertEqual(deadline.reason, "deadline")
+        self.assertEqual(deadline.done_ms, 750)
+        self.assertEqual((deadline.applied, deadline.received, deadline.backlog_turns), (0, 5, 5))
+        self.assertFalse(deadline.input_enabled)
+        self.assertTrue(deadline.honest(tied))
+        stateless = model.catchup_state_at(750, tied, 3000)
+        self.assertEqual((stateless["applied"], stateless["received"], stateless["buffered"]),
+                         (0, 6, 6))
+
+    def test_adr_names_the_causal_boundary_and_stays_proposed(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "docs", "adr", "0003-network-transport.md"),
+                  encoding="utf-8") as adr_file:
+            adr = adr_file.read()
+        with open(os.path.join(root, "docs", "open-questions.md"),
+                  encoding="utf-8") as oq_file:
+            oq = oq_file.read()
+        self.assertIn("**Status:** Proposed", adr)
+        self.assertNotIn("**Status:** Accepted", adr)
+        for token in (
+                "causal_one_fragment_arrival_ms=250",
+                "causal_one_fragment_done_ms=1160",
+                "causal_endless02_done_ms=179160",
+                "causal_endless02_applied=1790",
+                "causal_endless02_host=1791",
+                "causal_03_same_ms_applied=1130",
+                "causal_03_same_ms_fluid=1131",
+                "t45_endless02_empty_max_causal_applied=1660",
+                "t45_endless02_empty_max_fluid_pin=1656",
+                "OQ-320",
+                ):
+            self.assertIn(token, adr)
+        self.assertIn("## OQ-320:", oq)
+        self.assertIn("OQ-321..329 were not used", oq)
+        self.assertNotIn("## OQ-321:", oq)
+
+
 if __name__ == "__main__":
     unittest.main()

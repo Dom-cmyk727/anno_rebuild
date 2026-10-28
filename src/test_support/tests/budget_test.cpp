@@ -16,11 +16,16 @@
 namespace {
 
 std::atomic<std::uint64_t> g_free{0};
+std::atomic<std::uint64_t> g_total{0};
 std::atomic<std::uint64_t> g_private{0};
 std::atomic<int> g_waits{0};
 
 std::optional<std::uint64_t> free_of() {
     return g_free.load();
+}
+
+std::optional<std::uint64_t> total_of() {
+    return g_total.load();
 }
 
 std::optional<std::uint64_t> private_of() {
@@ -34,11 +39,15 @@ void count_wait() {
 anno::test::BudgetHooks hooks_free() {
     anno::test::BudgetHooks hooks;
     hooks.free_bytes = &free_of;
+    // The capacity is the free memory of the reset: a request above it can
+    // never fit and is refused; any other shortfall waits.
+    hooks.total_bytes = &total_of;
     return hooks;
 }
 
 void reset(std::uint64_t free_bytes) {
     g_free = free_bytes;
+    g_total = free_bytes;
     g_private = 0;
     g_waits = 0;
 }

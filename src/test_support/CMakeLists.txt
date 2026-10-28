@@ -1,5 +1,6 @@
 # Helpers shared by the test suites: the game directory and file lists.
-add_library(anno_test_support src/game_dir.cpp src/memory.cpp src/budget.cpp src/coord.cpp)
+add_library(anno_test_support src/game_dir.cpp src/memory.cpp src/budget.cpp src/coord.cpp
+  src/coord_server.cpp)
 target_include_directories(anno_test_support PUBLIC include)
 target_include_directories(anno_test_support PRIVATE src)
 target_compile_features(anno_test_support PUBLIC cxx_std_20)

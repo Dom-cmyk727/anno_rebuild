@@ -5,6 +5,8 @@
 // ANNO_TEST_F2_PORT pins every case to one port (the coordinator before F2
 // listened on a fixed port only, so its fail-first run sets 47632).
 #include <atomic>
+#include <cctype>
+#include <cstdio>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -528,4 +530,101 @@ TEST_CASE("a coordinator wait that cannot be served ends at its deadline without
     CHECK(info.refused);
     CHECK(info.reason == "wait deadline");
     CHECK(holder->reserved() == 80);
+}
+
+namespace {
+
+std::atomic<std::uint64_t> g_total{100};
+
+std::optional<std::uint64_t> total_of() {
+    return g_total.load();
+}
+
+} // namespace
+
+TEST_CASE("a request above the total is refused as over capacity even while others hold" *
+          doctest::test_suite("budget")) {
+    // Permanent and temporary shortfalls are told apart: 120 can never fit in
+    // 100, whatever is released; 60 behind a hold of 80 only waits.
+    reset(100);
+    g_total = 100;
+    auto hooks = both_hooks();
+    hooks.total_bytes = &total_of;
+    auto budget = anno::test::Budget::memory(hooks, 0);
+    auto held = budget->try_reserve(80);
+    REQUIRE(held);
+    anno::test::Admit over;
+    CHECK_FALSE(budget->reserve(120, &over));
+    CHECK(over.refused);
+    CHECK(over.reason == "exceeds capacity");
+    anno::test::Admit later;
+    CHECK_FALSE(budget->try_reserve(60, &later));
+    CHECK_FALSE(later.refused);
+    CHECK(later.reason == "waiting");
+
+    Scope scope("total", 9);
+    auto holder = anno::test::Budget::file(scope.path, hooks, 0);
+    auto remote = holder->reserve(80);
+    REQUIRE(remote);
+    auto other = anno::test::Budget::file(scope.path, hooks, 0);
+    anno::test::Admit remote_over;
+    CHECK_FALSE(other->reserve(120, &remote_over));
+    CHECK(remote_over.refused);
+    CHECK(remote_over.reason == "exceeds capacity");
+    anno::test::Admit remote_later;
+    CHECK_FALSE(other->try_reserve(60, &remote_later));
+    CHECK_FALSE(remote_later.refused);
+    CHECK(remote_later.reason == "waiting");
+}
+
+TEST_CASE("the process budget's coordinator measures the host itself" *
+          doctest::test_suite("budget")) {
+    // The internal meter, on this test's own port: the client's hooks are not
+    // asked for free memory. On Windows the reading is GlobalMemoryStatusEx; in
+    // WSL it comes from Windows through the PowerShell meter, so its total is
+    // the host's, not the VM's.
+    Scope scope("internal", 10);
+    scope.set("ANNO_TEST_BUDGET_METER", "internal");
+    anno::test::BudgetHooks hooks;
+    hooks.free_bytes = &free_of; // ignored by an internal meter
+    hooks.process_private = &private_of;
+    reset(1);
+    auto budget = anno::test::Budget::file(scope.path, hooks, 0);
+    anno::test::Admit info;
+    anno::test::Reservation hold;
+    // The WSL meter needs a few seconds to start; until then it has no number.
+    REQUIRE(eventually(
+        [&] {
+            hold = budget->try_reserve(1, &info);
+            return static_cast<bool>(hold) || info.refused;
+        },
+        60000ms));
+    INFO("free=" << info.free << " total=" << info.total << " reason=" << info.reason);
+    CHECK(hold);
+    CHECK(info.free > 1024ULL * 1024 * 1024);
+    const auto own_total = anno::test::total_memory_bytes();
+    REQUIRE(own_total);
+#if defined(_WIN32) || !defined(__linux__)
+    CHECK(info.total == *own_total);
+#else
+    if (anno::test::child::sibling("anno_budget_coord").empty()) {
+        return;
+    }
+    std::FILE* version = std::fopen("/proc/version", "r");
+    char text[512] = {};
+    if (version != nullptr) {
+        const std::size_t n = std::fread(text, 1, sizeof(text) - 1, version);
+        text[n] = '\0';
+        std::fclose(version);
+    }
+    std::string lower = text;
+    for (char& c : lower) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (lower.find("microsoft") != std::string::npos) {
+        CHECK(info.total != *own_total); // Windows' memory, not the VM's
+    } else {
+        CHECK(info.total == *own_total);
+    }
+#endif
 }

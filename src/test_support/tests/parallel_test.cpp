@@ -177,6 +177,7 @@ TEST_CASE("parallel_indexed refuses a job that cannot fit and does not run it") 
     g_free = 10;
     anno::test::BudgetHooks hooks;
     hooks.free_bytes = &injected_free;
+    hooks.total_bytes = &injected_free; // 10 bytes is all there will ever be
     auto budget = anno::test::Budget::memory(hooks, 0);
     auto opt = quiet_options(2);
     opt.budget = kGiB;

@@ -34,51 +34,103 @@ inline std::uint64_t sat_add(std::uint64_t a, std::uint64_t b) {
                : a + b;
 }
 
-enum class Decision { Admit, Wait, Refuse };
+inline std::uint64_t sat_sub(std::uint64_t a, std::uint64_t b) {
+    return a > b ? a - b : 0;
+}
 
-struct View {
-    bool free_known = false;
-    std::uint64_t free = 0;
-    std::uint64_t headroom = 0;
-    std::uint64_t stop_below = 0;
+/// NotReady: the coordinator has no reading taken after the last event that
+/// lowered the pending bytes; the request stays queued until it has one.
+enum class Decision { Admit, Wait, Refuse, NotReady };
+
+/// One memory domain the request allocates from (docs/perf/README.md, T10c
+/// F2). A Windows or plain Linux request has one (the host); a WSL request
+/// has its VM and, behind it, the host.
+struct Constraint {
+    /// Something can measure this domain at all. Without a meter the request
+    /// is refused: no reading will ever arrive.
+    bool meter = false;
+    /// The reading postdates every event that lowered `pending`. A reading
+    /// taken before a release (or before a holder's allocation was credited
+    /// as resident) does not show those bytes as used.
+    bool ready = true;
+    std::optional<std::uint64_t> free;
+    /// The most this domain can ever hold (physical memory and the commit
+    /// limit, or the VM size). Unknown: no request is called over capacity;
+    /// one that does not fit waits until its deadline.
+    std::optional<std::uint64_t> total;
+    /// Reserved bytes not yet visible in `free`, and those already allocated.
     std::uint64_t pending = 0;
     std::uint64_t resident = 0;
+};
+
+struct View {
+    std::uint64_t headroom = 0;
+    std::uint64_t stop_below = 0;
     std::uint64_t oldest_bytes = 0;
     std::uint64_t oldest_seq = 0;
     std::uint64_t self_seq = 0;
+    /// [0] is the host (or the only) domain; it fills the reported numbers.
+    std::vector<Constraint> constraints;
 };
 
 inline Decision decide(const View& view, std::uint64_t bytes, Admit& info) {
     info = Admit{};
     info.estimate = bytes;
     info.headroom = view.headroom;
-    info.pending = view.pending;
-    info.resident = view.resident;
-    if (!view.free_known) {
-        // An unknown reading must not authorize the request. The caller can
-        // retry once a measurement exists; it is not admitted in the meantime.
+    auto refuse = [&](const char* why) {
         info.refused = true;
-        info.reason = "free memory unknown";
+        info.reason = why;
         return Decision::Refuse;
+    };
+    if (view.constraints.empty()) {
+        return refuse("free memory unknown");
     }
-    const std::uint64_t blocked = sat_add(view.headroom, view.pending);
-    info.available = view.free > blocked ? view.free - blocked : 0;
-    const std::uint64_t with_release = sat_add(view.free, view.resident);
-    const std::uint64_t max_possible =
-        with_release > view.headroom ? with_release - view.headroom : 0;
-    if (view.stop_below > 0 && view.free < view.stop_below) {
-        info.refused = true;
-        info.reason = "low-memory stop";
-        return Decision::Refuse;
+    const Constraint& first = view.constraints.front();
+    info.pending = first.pending;
+    info.resident = first.resident;
+    info.free = first.free.value_or(0);
+    info.total = first.total.value_or(0);
+    for (const Constraint& c : view.constraints) {
+        if (!c.meter) {
+            return refuse("free memory unknown");
+        }
     }
-    if (bytes > max_possible) {
-        info.refused = true;
-        info.reason = "exceeds capacity";
-        return Decision::Refuse;
+    for (const Constraint& c : view.constraints) {
+        if (!c.ready) {
+            info.reason = "waiting for a fresh reading";
+            return Decision::NotReady;
+        }
     }
-    bool allowed = bytes <= info.available;
+    for (const Constraint& c : view.constraints) {
+        if (!c.free) {
+            // A meter exists but gave no number: wait for the next reading
+            // (bounded by the caller's deadline). Never an admission.
+            info.reason = "free memory unknown";
+            return Decision::Wait;
+        }
+    }
+    for (const Constraint& c : view.constraints) {
+        if (view.stop_below > 0 && *c.free < view.stop_below) {
+            return refuse("low-memory stop");
+        }
+    }
+    // Permanent: more than the domain can ever give. Everything else that does
+    // not fit is temporary and waits: reservations end, and memory used outside
+    // the budget can come back.
+    for (const Constraint& c : view.constraints) {
+        if (c.total && bytes > sat_sub(*c.total, view.headroom)) {
+            return refuse("exceeds capacity");
+        }
+    }
+    std::uint64_t available = std::numeric_limits<std::uint64_t>::max();
+    for (const Constraint& c : view.constraints) {
+        const std::uint64_t here = sat_sub(*c.free, sat_add(view.headroom, c.pending));
+        available = here < available ? here : available;
+    }
+    info.available = available;
+    bool allowed = bytes <= available;
     if (allowed && view.oldest_bytes > 0 && view.self_seq != view.oldest_seq) {
-        allowed = info.available - bytes >= view.oldest_bytes;
+        allowed = available - bytes >= view.oldest_bytes;
     }
     if (allowed) {
         info.admitted = true;

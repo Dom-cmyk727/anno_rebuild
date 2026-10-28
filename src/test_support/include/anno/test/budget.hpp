@@ -46,6 +46,10 @@ struct BudgetHooks {
     std::optional<std::uint64_t> (*process_private)() = nullptr;
     /// Called once, without the budget lock, when a reserve starts waiting.
     void (*on_wait)() = nullptr;
+    /// The most memory the domain can ever give (total_memory_bytes()). A
+    /// request above it minus the headroom is refused as "exceeds capacity";
+    /// any other shortfall waits. Null: unknown.
+    std::optional<std::uint64_t> (*total_bytes)() = nullptr;
 };
 
 struct Admit {
@@ -58,9 +62,18 @@ struct Admit {
     std::uint64_t headroom = 0;
     std::uint64_t pending = 0;
     std::uint64_t resident = 0;
+    /// Free memory and capacity of the host domain the decision used (0:
+    /// unknown).
+    std::uint64_t free = 0;
+    std::uint64_t total = 0;
 };
 
 class Budget;
+
+/// The most memory this host can ever give a process: Windows the smaller
+/// of physical memory and the commit limit (GlobalMemoryStatusEx ullTotalPhys,
+/// ullTotalPageFile), Linux MemTotal. Nullopt when the query fails.
+std::optional<std::uint64_t> total_memory_bytes();
 
 /// Private bytes of this process (Windows: PrivateUsage; Linux: RssAnon, or
 /// VmRSS when RssAnon is absent). Nullopt when the query fails.

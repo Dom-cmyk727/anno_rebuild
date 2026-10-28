@@ -1,24 +1,25 @@
-// Host coordinator for test reservations. Windows LockFileEx and Linux flock
-// do not exclude each other, and a PID is only meaningful in the OS that
-// created it, so admission lives in one process. The shared coordinator binds
-// inside WSL on 0.0.0.0; Windows connects to 127.0.0.1. Same-OS unit tests use
-// a loopback port instead. A recv timeout never admits: it only re-reads free
-// memory and asks the coordinator to decide again.
+// Client of the host coordinator for test reservations (coord_server.cpp).
+// Windows LockFileEx and Linux flock do not exclude each other, and a PID is
+// only meaningful in the OS that created it, so admission lives in one
+// process. The shared coordinator binds inside WSL on 0.0.0.0; Windows
+// connects to 127.0.0.1. Same-OS unit tests use a loopback port instead.
+//
+// The coordinator decides; this side only reports. It answers the
+// coordinator's residency samples and, for a budget whose clients are the
+// meters (unit tests with injected readings), its reading requests from the
+// reader thread. A timeout never admits: it pings, and silence for the
+// liveness period ends the wait with a refusal.
 #include <algorithm>
-#include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
-#include <cstdio>
-#include <cstring>
+#include <cstdlib>
 #include <deque>
-#include <limits>
+#include <filesystem>
 #include <mutex>
 #include <optional>
-#include <random>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -27,315 +28,19 @@
 
 #include "admit_detail.hpp"
 #include "coord_session.hpp"
+#include "coord_wire.hpp"
 
-#if defined(_WIN32)
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else
-#include <arpa/inet.h>
-#include <cerrno>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <poll.h>
-#include <signal.h>
+#if !defined(_WIN32)
 #include <spawn.h>
-#include <sys/socket.h>
-#include <unistd.h>
 extern char** environ;
 #endif
 
 namespace anno::test {
 namespace {
 
-using namespace detail;
-
-constexpr std::uint32_t kWireMagic = 0x31434E41u; // 'ANC1'
-constexpr std::size_t kFrameBytes = 96;
-constexpr std::uint16_t kSharedPort = 47631;
-constexpr std::uint16_t kLocalPort = 47632;
-constexpr std::uint64_t kUnknown = std::numeric_limits<std::uint64_t>::max();
-
-constexpr std::uint32_t kOpHello = 1;
-constexpr std::uint32_t kOpReserve = 2;
-constexpr std::uint32_t kOpTry = 3;
-constexpr std::uint32_t kOpRelease = 4;
-constexpr std::uint32_t kOpCpuAcquire = 5;
-constexpr std::uint32_t kOpCpuRelease = 6;
-constexpr std::uint32_t kOpCancel = 7;
-constexpr std::uint32_t kOpHeartbeat = 8;
-
-constexpr std::uint32_t kStAdmit = 101;
-constexpr std::uint32_t kStWait = 102;
-constexpr std::uint32_t kStRefuse = 103;
-constexpr std::uint32_t kStOk = 104;
-
-constexpr std::uint32_t kWhyAdmitted = 1;
-constexpr std::uint32_t kWhyWaiting = 2;
-constexpr std::uint32_t kWhyLow = 3;
-constexpr std::uint32_t kWhyExceeds = 4;
-constexpr std::uint32_t kWhyUnknown = 5;
-constexpr std::uint32_t kWhyCancelled = 6;
-constexpr std::uint32_t kWhyLost = 7;
-
-using Native = std::uintptr_t;
-constexpr Native kInvalid = static_cast<Native>(-1);
-
-struct Frame {
-    std::uint8_t bytes[kFrameBytes]{};
-};
-
-void put32(std::uint8_t* bytes, std::size_t offset, std::uint32_t value) {
-    for (int i = 0; i < 4; ++i) {
-        bytes[offset + static_cast<std::size_t>(i)] =
-            static_cast<std::uint8_t>((value >> (8 * i)) & 0xffu);
-    }
-}
-
-void put64(std::uint8_t* bytes, std::size_t offset, std::uint64_t value) {
-    for (int i = 0; i < 8; ++i) {
-        bytes[offset + static_cast<std::size_t>(i)] =
-            static_cast<std::uint8_t>((value >> (8 * i)) & 0xffu);
-    }
-}
-
-std::uint32_t get32(const std::uint8_t* bytes, std::size_t offset) {
-    std::uint32_t value = 0;
-    for (int i = 0; i < 4; ++i) {
-        value |= static_cast<std::uint32_t>(bytes[offset + static_cast<std::size_t>(i)]) << (8 * i);
-    }
-    return value;
-}
-
-std::uint64_t get64(const std::uint8_t* bytes, std::size_t offset) {
-    std::uint64_t value = 0;
-    for (int i = 7; i >= 0; --i) {
-        value = (value << 8) | bytes[offset + static_cast<std::size_t>(i)];
-    }
-    return value;
-}
-
-std::uint32_t frame_op(const Frame& frame) {
-    return get32(frame.bytes, 4);
-}
-std::uint64_t frame_budget(const Frame& frame) {
-    return get64(frame.bytes, 8);
-}
-std::uint64_t frame_token(const Frame& frame) {
-    return get64(frame.bytes, 16);
-}
-std::uint64_t frame_req(const Frame& frame) {
-    return get64(frame.bytes, 24);
-}
-std::uint64_t frame_a(const Frame& frame) {
-    return get64(frame.bytes, 32);
-}
-std::uint64_t frame_b(const Frame& frame) {
-    return get64(frame.bytes, 40);
-}
-std::uint64_t frame_c(const Frame& frame) {
-    return get64(frame.bytes, 48);
-}
-std::uint64_t frame_d(const Frame& frame) {
-    return get64(frame.bytes, 56);
-}
-std::uint64_t frame_e(const Frame& frame) {
-    return get64(frame.bytes, 64);
-}
-std::uint32_t frame_g(const Frame& frame) {
-    return get32(frame.bytes, 80);
-}
-
-void fill_header(Frame& frame, std::uint32_t op, std::uint64_t budget, std::uint64_t token,
-                 std::uint64_t req) {
-    put32(frame.bytes, 0, kWireMagic);
-    put32(frame.bytes, 4, op);
-    put64(frame.bytes, 8, budget);
-    put64(frame.bytes, 16, token);
-    put64(frame.bytes, 24, req);
-}
-
-std::uint32_t why_code(const std::string& reason) {
-    if (reason == "admitted") {
-        return kWhyAdmitted;
-    }
-    if (reason == "waiting") {
-        return kWhyWaiting;
-    }
-    if (reason == "low-memory stop") {
-        return kWhyLow;
-    }
-    if (reason == "exceeds capacity") {
-        return kWhyExceeds;
-    }
-    if (reason == "free memory unknown") {
-        return kWhyUnknown;
-    }
-    if (reason == "cancelled") {
-        return kWhyCancelled;
-    }
-    return kWhyLost;
-}
-
-std::string why_text(std::uint32_t code) {
-    switch (code) {
-    case kWhyAdmitted:
-        return "admitted";
-    case kWhyWaiting:
-        return "waiting";
-    case kWhyLow:
-        return "low-memory stop";
-    case kWhyExceeds:
-        return "exceeds capacity";
-    case kWhyUnknown:
-        return "free memory unknown";
-    case kWhyCancelled:
-        return "cancelled";
-    default:
-        return "coordinator lost";
-    }
-}
-
-void startup_sockets() {
-    static const int ready = [] {
-#if defined(_WIN32)
-        WSADATA data{};
-        return WSAStartup(MAKEWORD(2, 2), &data) == 0 ? 1 : 0;
-#else
-        ::signal(SIGPIPE, SIG_IGN);
-        return 1;
-#endif
-    }();
-    if (ready != 1) {
-        throw std::runtime_error("could not start the test budget sockets");
-    }
-}
-
-int last_socket_error() {
-#if defined(_WIN32)
-    return WSAGetLastError();
-#else
-    return errno;
-#endif
-}
-
-bool would_block(int error) {
-#if defined(_WIN32)
-    return error == WSAEWOULDBLOCK || error == WSAEINPROGRESS || error == WSAEINTR;
-#else
-    return error == EAGAIN || error == EWOULDBLOCK || error == EINTR;
-#endif
-}
-
-void close_fd(Native fd) {
-    if (fd == kInvalid) {
-        return;
-    }
-#if defined(_WIN32)
-    ::closesocket(static_cast<SOCKET>(fd));
-#else
-    ::close(static_cast<int>(fd));
-#endif
-}
-
-void shutdown_fd(Native fd) {
-    if (fd == kInvalid) {
-        return;
-    }
-#if defined(_WIN32)
-    ::shutdown(static_cast<SOCKET>(fd), SD_BOTH);
-#else
-    ::shutdown(static_cast<int>(fd), SHUT_RDWR);
-#endif
-}
-
-void set_nodelay(Native fd) {
-    int on = 1;
-#if defined(_WIN32)
-    ::setsockopt(static_cast<SOCKET>(fd), IPPROTO_TCP, TCP_NODELAY,
-                 reinterpret_cast<const char*>(&on), sizeof(on));
-#else
-    ::setsockopt(static_cast<int>(fd), IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
-#endif
-}
-
-bool send_all(Native fd, const Frame& frame) {
-    std::size_t sent = 0;
-    while (sent < kFrameBytes) {
-#if defined(_WIN32)
-        const int n =
-            ::send(static_cast<SOCKET>(fd), reinterpret_cast<const char*>(frame.bytes + sent),
-                   static_cast<int>(kFrameBytes - sent), 0);
-#else
-        const ssize_t n =
-            ::send(static_cast<int>(fd), frame.bytes + sent, kFrameBytes - sent, MSG_NOSIGNAL);
-#endif
-        if (n > 0) {
-            sent += static_cast<std::size_t>(n);
-            continue;
-        }
-        if (n < 0 && would_block(last_socket_error())) {
-            continue;
-        }
-        return false;
-    }
-    return true;
-}
-
-void set_recv_timeout(Native fd, int milliseconds) {
-#if defined(_WIN32)
-    const DWORD timeout = static_cast<DWORD>(milliseconds);
-    ::setsockopt(static_cast<SOCKET>(fd), SOL_SOCKET, SO_RCVTIMEO,
-                 reinterpret_cast<const char*>(&timeout), sizeof(timeout));
-#else
-    timeval timeout{};
-    timeout.tv_sec = milliseconds / 1000;
-    timeout.tv_usec = (milliseconds % 1000) * 1000;
-    ::setsockopt(static_cast<int>(fd), SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-#endif
-}
-
-bool recv_full(Native fd, Frame& frame) {
-    std::size_t got = 0;
-    while (got < kFrameBytes) {
-#if defined(_WIN32)
-        const int n = ::recv(static_cast<SOCKET>(fd), reinterpret_cast<char*>(frame.bytes + got),
-                             static_cast<int>(kFrameBytes - got), 0);
-#else
-        const ssize_t n = ::recv(static_cast<int>(fd), frame.bytes + got, kFrameBytes - got, 0);
-#endif
-        if (n > 0) {
-            got += static_cast<std::size_t>(n);
-            continue;
-        }
-        if (n < 0 && would_block(last_socket_error())) {
-            continue;
-        }
-        return false;
-    }
-    return get32(frame.bytes, 0) == kWireMagic;
-}
-
-// Positive: bytes read. 0: the peer closed. -2: no byte is ready yet.
-int recv_some(Native fd, std::uint8_t* dest, std::size_t cap) {
-#if defined(_WIN32)
-    const int n =
-        ::recv(static_cast<SOCKET>(fd), reinterpret_cast<char*>(dest), static_cast<int>(cap), 0);
-#else
-    const ssize_t n = ::recv(static_cast<int>(fd), dest, cap, 0);
-#endif
-    if (n < 0 && would_block(last_socket_error())) {
-        return -2;
-    }
-    return static_cast<int>(n);
-}
+using namespace wire;
+using detail::CoordResult;
+using detail::CoordSession;
 
 Native connect_loopback(std::uint16_t port) {
     startup_sockets();
@@ -359,92 +64,14 @@ Native connect_loopback(std::uint16_t port) {
         ::closesocket(fd);
         return kInvalid;
     }
-    set_nodelay(static_cast<Native>(fd));
-    return static_cast<Native>(fd);
 #else
     if (::connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
         ::close(fd);
         return kInvalid;
     }
+#endif
     set_nodelay(static_cast<Native>(fd));
     return static_cast<Native>(fd);
-#endif
-}
-
-std::uint64_t fnv(std::string_view text) {
-    std::uint64_t hash = 14695981039346656037ull;
-    for (const char raw : text) {
-        hash ^= static_cast<unsigned char>(raw);
-        hash *= 1099511628211ull;
-    }
-    return hash == 0 ? 1 : hash;
-}
-
-std::uint64_t this_pid() {
-#if defined(_WIN32)
-    return static_cast<std::uint64_t>(GetCurrentProcessId());
-#else
-    return static_cast<std::uint64_t>(::getpid());
-#endif
-}
-
-std::uint32_t this_namespace() {
-#if defined(_WIN32)
-    return 1;
-#else
-    return 2;
-#endif
-}
-
-std::uint64_t process_started() {
-#if defined(_WIN32)
-    FILETIME created{};
-    FILETIME exited{};
-    FILETIME kernel{};
-    FILETIME user{};
-    if (GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user) == 0) {
-        return 0;
-    }
-    ULARGE_INTEGER stamp{};
-    stamp.LowPart = created.dwLowDateTime;
-    stamp.HighPart = created.dwHighDateTime;
-    return stamp.QuadPart;
-#else
-    const int fd = ::open("/proc/self/stat", O_RDONLY);
-    if (fd < 0) {
-        return 0;
-    }
-    char buffer[1024];
-    const ssize_t n = ::read(fd, buffer, sizeof(buffer));
-    ::close(fd);
-    if (n <= 0) {
-        return 0;
-    }
-    const std::string text(buffer, static_cast<std::size_t>(n));
-    const auto mark = text.rfind(')');
-    if (mark == std::string::npos || mark + 2 >= text.size()) {
-        return 0;
-    }
-    // starttime is the 20th field after comm (field 2), i.e. field 22.
-    std::uint64_t start = 0;
-    std::size_t index = mark + 2;
-    for (int field = 0; field < 19; ++field) {
-        while (index < text.size() && text[index] == ' ') {
-            ++index;
-        }
-        while (index < text.size() && text[index] != ' ') {
-            ++index;
-        }
-    }
-    while (index < text.size() && text[index] == ' ') {
-        ++index;
-    }
-    while (index < text.size() && text[index] >= '0' && text[index] <= '9') {
-        start = start * 10 + static_cast<std::uint64_t>(text[index] - '0');
-        ++index;
-    }
-    return start;
-#endif
 }
 
 std::uint32_t configured_cpu() {
@@ -457,22 +84,6 @@ std::uint32_t configured_cpu() {
         return 0xffffffffu;
     }
     return static_cast<std::uint32_t>(n);
-}
-
-std::uint64_t recheck_ms() {
-    return static_cast<std::uint64_t>(detail::recheck_period().count());
-}
-
-/// How long a client waits for any frame from the coordinator before it
-/// treats the connection as lost (ANNO_TEST_BUDGET_LIVENESS_MS, default 10 s).
-/// A waiting client pings every recheck period and the coordinator answers at
-/// once, so silence this long means it has stopped or hung.
-std::chrono::milliseconds liveness() {
-    std::uint64_t n = detail::env_count("ANNO_TEST_BUDGET_LIVENESS_MS").value_or(10000);
-    if (n < 100) {
-        n = 100;
-    }
-    return std::chrono::milliseconds(n > 600000 ? 600000 : n);
 }
 
 std::uint16_t coordinator_port(bool shared) {
@@ -576,16 +187,20 @@ bool ensure_wsl_coordinator(std::uint16_t port) {
         return !stamp_error && binary_time >= source_time;
     };
     const std::filesystem::path source_dir = root / "src" / "test_support" / "src";
-    const bool up_to_date = fresh(source_dir / "coord.cpp") &&
-                            fresh(source_dir / "budget_coord.cpp") &&
-                            fresh(source_dir / "admit_detail.hpp");
+    const std::filesystem::path header =
+        root / "src" / "test_support" / "include" / "anno" / "test" / "budget.hpp";
+    const bool up_to_date =
+        fresh(source_dir / "coord_server.cpp") && fresh(source_dir / "coord_wire.hpp") &&
+        fresh(source_dir / "budget_coord.cpp") && fresh(source_dir / "admit_detail.hpp") &&
+        fresh(source_dir / "memory.cpp") && fresh(header);
     bool compiled = up_to_date;
     if (!up_to_date) {
         const std::string include = to_wsl_path(root / "src" / "test_support" / "include");
         const std::string out = to_wsl_path(binary);
         const std::string cmd = "wsl.exe -d Ubuntu -- g++ -std=c++20 -O2 -pthread -I" + include +
                                 " " + to_wsl_path(source_dir / "budget_coord.cpp") + " " +
-                                to_wsl_path(source_dir / "coord.cpp") + " -o " + out;
+                                to_wsl_path(source_dir / "coord_server.cpp") + " " +
+                                to_wsl_path(source_dir / "memory.cpp") + " -o " + out;
         compiled = std::system(cmd.c_str()) == 0;
     }
     if (mutex != nullptr) {
@@ -685,517 +300,16 @@ bool use_shared_coordinator(bool host_wide) {
 #endif
 }
 
-struct RemoteHold {
-    std::uint64_t id = 0;
-    std::uint64_t bytes = 0;
-};
-
-struct WaitReq {
-    std::uint64_t seq = 0;
-    std::uint64_t req = 0;
-    std::uint64_t bytes = 0;
-    std::uint64_t headroom = 0;
-    std::uint64_t stop = 0;
-    bool free_known = false;
-    std::uint64_t free = 0;
-    bool cpu = false;
-};
-
-struct SClient {
-    Native fd = kInvalid;
-    bool hello = false;
-    std::uint64_t token = 0;
-    std::uint64_t budget = 0;
-    std::uint32_t ns = 0;
-    std::uint64_t pid = 0;
-    std::uint64_t started = 0;
-    std::vector<RemoteHold> holds;
-    std::uint64_t resident = 0;
-    std::uint32_t cpu = 0;
-    std::vector<WaitReq> waiting;
-    std::vector<std::uint64_t> cancelled;
-    std::vector<std::uint8_t> incoming;
-};
-
-struct SBudget {
-    std::uint64_t id = 0;
-    std::uint32_t cpu_budget = 0;
-    std::uint32_t cpu_in_use = 0;
-    std::uint64_t next_hold = 1;
-    std::uint64_t next_seq = 1;
-};
-
-struct Server {
-    std::vector<SClient> clients;
-    std::vector<SBudget> budgets;
-};
-
-SBudget* find_budget(Server& server, std::uint64_t id, bool create) {
-    for (SBudget& budget : server.budgets) {
-        if (budget.id == id) {
-            return &budget;
-        }
+/// ANNO_TEST_BUDGET_METER=internal: the coordinator measures this budget
+/// itself, as for the process budget (a test of that path on its own port).
+bool wants_internal_meter(bool host_wide) {
+    if (host_wide) {
+        return true;
     }
-    if (!create) {
-        return nullptr;
+    if (const char* env = std::getenv("ANNO_TEST_BUDGET_METER")) {
+        return std::string(env) == "internal";
     }
-    SBudget created;
-    created.id = id;
-    server.budgets.push_back(created);
-    return &server.budgets.back();
-}
-
-std::uint64_t client_reserved(const SClient& client) {
-    std::uint64_t sum = 0;
-    for (const RemoteHold& hold : client.holds) {
-        sum = detail::sat_add(sum, hold.bytes);
-    }
-    return sum;
-}
-
-Frame decision_frame(std::uint32_t status, const SClient& client, std::uint64_t req,
-                     std::uint64_t hold, const Admit& info) {
-    Frame frame;
-    fill_header(frame, status, client.budget, client.token, req);
-    put64(frame.bytes, 32, hold);
-    put64(frame.bytes, 40, info.available);
-    put64(frame.bytes, 48, info.pending);
-    put64(frame.bytes, 56, info.resident);
-    put64(frame.bytes, 64, info.headroom);
-    put32(frame.bytes, 80, why_code(info.reason));
-    return frame;
-}
-
-void send_frame(SClient& client, const Frame& frame) {
-    if (client.fd == kInvalid) {
-        return;
-    }
-    if (!send_all(client.fd, frame)) {
-        client.fd = kInvalid;
-    }
-}
-
-View view_for(Server& server, const SClient& self, const WaitReq& wait) {
-    View view;
-    view.headroom = wait.headroom;
-    view.stop_below = wait.stop;
-    view.free_known = wait.free_known;
-    view.free = wait.free;
-    view.self_seq = wait.seq;
-    std::uint64_t oldest_seq = 0;
-    std::uint64_t oldest_bytes = 0;
-    for (const SClient& client : server.clients) {
-        if (client.budget != self.budget) {
-            continue;
-        }
-        const std::uint64_t reserved = client_reserved(client);
-        std::uint64_t resident = client.resident;
-        if (resident > reserved) {
-            resident = reserved;
-        }
-        view.resident = detail::sat_add(view.resident, resident);
-        view.pending = detail::sat_add(view.pending, reserved - resident);
-        for (const WaitReq& other : client.waiting) {
-            if (other.cpu || other.seq == 0) {
-                continue;
-            }
-            if (oldest_seq == 0 || other.seq < oldest_seq) {
-                oldest_seq = other.seq;
-                oldest_bytes = other.bytes;
-            }
-        }
-    }
-    view.oldest_seq = oldest_seq;
-    view.oldest_bytes = oldest_bytes;
-    return view;
-}
-
-struct WaitRef {
-    std::size_t client = 0;
-    std::uint64_t req = 0;
-    std::uint64_t seq = 0;
-    bool cpu = false;
-};
-
-void pump(Server& server, std::uint64_t budget_id) {
-    auto collect = [&](bool cpu) {
-        std::vector<WaitRef> refs;
-        for (std::size_t i = 0; i < server.clients.size(); ++i) {
-            const SClient& client = server.clients[i];
-            if (client.budget != budget_id || client.fd == kInvalid) {
-                continue;
-            }
-            for (const WaitReq& wait : client.waiting) {
-                if (wait.cpu == cpu) {
-                    refs.push_back(WaitRef{i, wait.req, wait.seq, wait.cpu});
-                }
-            }
-        }
-        std::sort(refs.begin(), refs.end(),
-                  [](const WaitRef& left, const WaitRef& right) { return left.seq < right.seq; });
-        return refs;
-    };
-    auto finish = [&](std::size_t index, std::uint64_t req, std::uint32_t status,
-                      std::uint64_t hold, const Admit& info) {
-        SClient& client = server.clients[index];
-        send_frame(client, decision_frame(status, client, req, hold, info));
-        std::erase_if(client.cancelled, [&](std::uint64_t id) { return id == req; });
-        std::erase_if(client.waiting, [&](const WaitReq& wait) { return wait.req == req; });
-    };
-    bool progressed = true;
-    while (progressed) {
-        progressed = false;
-        SBudget* budget = find_budget(server, budget_id, false);
-        if (budget == nullptr) {
-            return;
-        }
-        for (const WaitRef& ref : collect(false)) {
-            if (ref.client >= server.clients.size()) {
-                break;
-            }
-            SClient& client = server.clients[ref.client];
-            WaitReq* wait = nullptr;
-            for (WaitReq& one : client.waiting) {
-                if (one.req == ref.req) {
-                    wait = &one;
-                    break;
-                }
-            }
-            if (wait == nullptr) {
-                continue;
-            }
-            const bool cancelled = std::find(client.cancelled.begin(), client.cancelled.end(),
-                                             wait->req) != client.cancelled.end();
-            if (cancelled) {
-                Admit info;
-                info.refused = true;
-                info.reason = "cancelled";
-                info.estimate = wait->bytes;
-                finish(ref.client, wait->req, kStRefuse, 0, info);
-                progressed = true;
-                break;
-            }
-            Admit info;
-            const Decision decision = decide(view_for(server, client, *wait), wait->bytes, info);
-            if (decision == Decision::Wait) {
-                // Leave it queued. A later waiter may still fit beside it.
-                // Nothing here admits just because a poll timed out.
-                continue;
-            }
-            std::uint64_t hold_id = 0;
-            if (decision == Decision::Admit) {
-                RemoteHold hold;
-                hold.id = budget->next_hold++;
-                hold.bytes = wait->bytes;
-                hold_id = hold.id;
-                client.holds.push_back(hold);
-                finish(ref.client, ref.req, kStAdmit, hold_id, info);
-            } else {
-                finish(ref.client, ref.req, kStRefuse, 0, info);
-            }
-            progressed = true;
-            break;
-        }
-        if (progressed) {
-            continue;
-        }
-        const std::vector<WaitRef> cpu = collect(true);
-        if (cpu.empty()) {
-            return;
-        }
-        const WaitRef& ref = cpu.front();
-        if (ref.client >= server.clients.size()) {
-            return;
-        }
-        SClient& client = server.clients[ref.client];
-        const bool cancelled = std::find(client.cancelled.begin(), client.cancelled.end(),
-                                         ref.req) != client.cancelled.end();
-        if (cancelled) {
-            Admit info;
-            info.refused = true;
-            info.reason = "cancelled";
-            finish(ref.client, ref.req, kStRefuse, 0, info);
-            progressed = true;
-            continue;
-        }
-        if (budget->cpu_budget != 0 && budget->cpu_in_use >= budget->cpu_budget) {
-            return;
-        }
-        budget->cpu_in_use += 1;
-        client.cpu += 1;
-        Admit info;
-        info.admitted = true;
-        info.reason = "admitted";
-        finish(ref.client, ref.req, kStAdmit, 0, info);
-        progressed = true;
-    }
-}
-
-void note_resident(SClient& client, std::uint64_t reported) {
-    const std::uint64_t reserved = client_reserved(client);
-    client.resident = reported > reserved ? reserved : reported;
-}
-
-bool take_cancel(SClient& client, std::uint64_t req) {
-    const auto found = std::find(client.cancelled.begin(), client.cancelled.end(), req);
-    if (found == client.cancelled.end()) {
-        return false;
-    }
-    client.cancelled.erase(found);
-    return true;
-}
-
-void handle_frame(Server& server, SClient& client, const Frame& frame) {
-    if (get32(frame.bytes, 0) != kWireMagic) {
-        client.fd = kInvalid;
-        return;
-    }
-    const std::uint32_t op = frame_op(frame);
-    if (!client.hello) {
-        if (op != kOpHello) {
-            client.fd = kInvalid;
-            return;
-        }
-        client.hello = true;
-        client.budget = frame_budget(frame);
-        client.ns = static_cast<std::uint32_t>(frame_c(frame));
-        client.pid = frame_a(frame);
-        client.started = frame_b(frame);
-        std::uint64_t token = 0;
-        while (token == 0) {
-            token =
-                (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^ std::random_device{}();
-        }
-        client.token = token;
-        SBudget* budget = find_budget(server, client.budget, true);
-        if (budget->cpu_budget == 0) {
-            budget->cpu_budget = static_cast<std::uint32_t>(frame_d(frame));
-        }
-        Frame reply;
-        fill_header(reply, kStOk, client.budget, client.token, frame_req(frame));
-        send_frame(client, reply);
-        return;
-    }
-    if (frame_token(frame) != client.token || frame_budget(frame) != client.budget) {
-        client.fd = kInvalid;
-        return;
-    }
-    SBudget* budget = find_budget(server, client.budget, true);
-    if (op == kOpHeartbeat) {
-        note_resident(client, frame_b(frame));
-        const bool known = frame_c(frame) != kUnknown;
-        for (WaitReq& wait : client.waiting) {
-            if (!wait.cpu) {
-                wait.free_known = known;
-                wait.free = known ? frame_c(frame) : 0;
-            }
-        }
-        Frame reply;
-        fill_header(reply, kStOk, client.budget, client.token, frame_req(frame));
-        send_frame(client, reply);
-        pump(server, client.budget);
-        return;
-    }
-    if (op == kOpCancel) {
-        client.cancelled.push_back(frame_a(frame));
-        Frame reply;
-        fill_header(reply, kStOk, client.budget, client.token, frame_req(frame));
-        send_frame(client, reply);
-        pump(server, client.budget);
-        return;
-    }
-    if (op == kOpRelease) {
-        const std::uint64_t id = frame_a(frame);
-        std::erase_if(client.holds, [&](const RemoteHold& hold) { return hold.id == id; });
-        note_resident(client, frame_b(frame));
-        Frame reply;
-        fill_header(reply, kStOk, client.budget, client.token, frame_req(frame));
-        send_frame(client, reply);
-        pump(server, client.budget);
-        return;
-    }
-    if (op == kOpCpuRelease) {
-        if (client.cpu > 0) {
-            client.cpu -= 1;
-        }
-        if (budget->cpu_in_use > 0) {
-            budget->cpu_in_use -= 1;
-        }
-        Frame reply;
-        fill_header(reply, kStOk, client.budget, client.token, frame_req(frame));
-        send_frame(client, reply);
-        pump(server, client.budget);
-        return;
-    }
-    if (op == kOpCpuAcquire) {
-        if (take_cancel(client, frame_req(frame))) {
-            Admit info;
-            info.refused = true;
-            info.reason = "cancelled";
-            send_frame(client, decision_frame(kStRefuse, client, frame_req(frame), 0, info));
-            return;
-        }
-        if (budget->cpu_budget == 0 || budget->cpu_in_use < budget->cpu_budget) {
-            budget->cpu_in_use += 1;
-            client.cpu += 1;
-            Admit info;
-            info.admitted = true;
-            info.reason = "admitted";
-            send_frame(client, decision_frame(kStAdmit, client, frame_req(frame), 0, info));
-            return;
-        }
-        WaitReq wait;
-        wait.seq = budget->next_seq++;
-        wait.req = frame_req(frame);
-        wait.cpu = true;
-        client.waiting.push_back(wait);
-        Frame reply;
-        fill_header(reply, kStWait, client.budget, client.token, frame_req(frame));
-        send_frame(client, reply);
-        return;
-    }
-    if (op != kOpReserve && op != kOpTry) {
-        return;
-    }
-    note_resident(client, frame_b(frame));
-    WaitReq wait;
-    wait.req = frame_req(frame);
-    wait.bytes = frame_a(frame);
-    wait.headroom = frame_d(frame);
-    wait.stop = frame_e(frame);
-    wait.free_known = frame_c(frame) != kUnknown;
-    wait.free = wait.free_known ? frame_c(frame) : 0;
-    if (take_cancel(client, wait.req)) {
-        Admit info;
-        info.refused = true;
-        info.reason = "cancelled";
-        info.estimate = wait.bytes;
-        send_frame(client, decision_frame(kStRefuse, client, wait.req, 0, info));
-        return;
-    }
-    Admit info;
-    const Decision decision = decide(view_for(server, client, wait), wait.bytes, info);
-    if (decision == Decision::Admit) {
-        RemoteHold hold;
-        hold.id = budget->next_hold++;
-        hold.bytes = wait.bytes;
-        client.holds.push_back(hold);
-        send_frame(client, decision_frame(kStAdmit, client, wait.req, hold.id, info));
-        return;
-    }
-    if (decision == Decision::Refuse || op == kOpTry) {
-        const std::uint32_t status = decision == Decision::Refuse ? kStRefuse : kStWait;
-        send_frame(client, decision_frame(status, client, wait.req, 0, info));
-        return;
-    }
-    wait.seq = budget->next_seq++;
-    client.waiting.push_back(wait);
-    Frame queued;
-    fill_header(queued, kStWait, client.budget, client.token, wait.req);
-    put32(queued.bytes, 80, kWhyWaiting);
-    send_frame(client, queued);
-}
-
-void erase_client(Server& server, std::size_t index) {
-    if (index >= server.clients.size()) {
-        return;
-    }
-    SClient& client = server.clients[index];
-    const std::uint64_t budget_id = client.budget;
-    if (client.cpu > 0) {
-        if (SBudget* budget = find_budget(server, budget_id, false)) {
-            if (budget->cpu_in_use >= client.cpu) {
-                budget->cpu_in_use -= client.cpu;
-            } else {
-                budget->cpu_in_use = 0;
-            }
-        }
-    }
-    close_fd(client.fd);
-    client.fd = kInvalid;
-    server.clients.erase(server.clients.begin() + static_cast<std::ptrdiff_t>(index));
-    if (budget_id != 0) {
-        pump(server, budget_id);
-    }
-}
-
-void accept_client(Server& server, Native listen_fd) {
-#if defined(_WIN32)
-    const SOCKET fd = ::accept(static_cast<SOCKET>(listen_fd), nullptr, nullptr);
-    if (fd == INVALID_SOCKET) {
-        return;
-    }
-    const Native native = static_cast<Native>(fd);
-#else
-    const int fd = ::accept(static_cast<int>(listen_fd), nullptr, nullptr);
-    if (fd < 0) {
-        return;
-    }
-    const Native native = static_cast<Native>(fd);
-#endif
-    set_nodelay(native);
-    SClient client;
-    client.fd = native;
-    server.clients.push_back(std::move(client));
-}
-
-void pull_client(Server& server, std::size_t index) {
-    SClient& client = server.clients[index];
-    std::uint8_t buffer[kFrameBytes];
-    const std::size_t need = kFrameBytes - client.incoming.size();
-    const int n = recv_some(client.fd, buffer, need);
-    if (n == -2) {
-        return;
-    }
-    if (n <= 0) {
-        erase_client(server, index);
-        return;
-    }
-    client.incoming.insert(client.incoming.end(), buffer, buffer + n);
-    if (client.incoming.size() < kFrameBytes) {
-        return;
-    }
-    Frame frame;
-    std::memcpy(frame.bytes, client.incoming.data(), kFrameBytes);
-    client.incoming.clear();
-    handle_frame(server, server.clients[index], frame);
-    if (index < server.clients.size() && server.clients[index].fd == kInvalid) {
-        erase_client(server, index);
-    }
-}
-
-Native listen_on(std::uint16_t port, bool all_interfaces) {
-    startup_sockets();
-#if defined(_WIN32)
-    const SOCKET fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (fd == INVALID_SOCKET) {
-        return kInvalid;
-    }
-#else
-    const int fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (fd < 0) {
-        return kInvalid;
-    }
-#endif
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_port = htons(port);
-    address.sin_addr.s_addr = htonl(all_interfaces ? 0u : 0x7f000001u);
-#if defined(_WIN32)
-    if (::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
-        ::listen(fd, 128) != 0) {
-        ::closesocket(fd);
-        return kInvalid;
-    }
-    return static_cast<Native>(fd);
-#else
-    if (::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
-        ::listen(fd, 128) != 0) {
-        ::close(fd);
-        return kInvalid;
-    }
-    return static_cast<Native>(fd);
-#endif
+    return false;
 }
 
 struct Pending {
@@ -1211,6 +325,7 @@ struct Session final : CoordSession {
     std::uint64_t budget = 0;
     std::uint64_t token = 0;
     BudgetHooks hooks{};
+    bool meter = false;
     std::mutex write_mu;
     std::mutex mu;
     std::condition_variable cv;
@@ -1261,20 +376,56 @@ void mark_dead(Session& session, const char* why) {
     shutdown_fd(session.fd);
 }
 
-struct Snap {
-    std::uint64_t resident = 0;
-    std::optional<std::uint64_t> free;
-};
-
-Snap snapshot(Session& session) {
+/// Resident bytes of this client's holds, read now.
+std::uint64_t resident_now(Session& session) {
     std::lock_guard<std::mutex> lock(session.mu);
     detail::observe(session.holds, session.base, session.hooks);
-    Snap snap;
-    snap.resident = detail::sum_resident(session.holds);
-    if (session.hooks.free_bytes != nullptr) {
-        snap.free = session.hooks.free_bytes();
+    return detail::sum_resident(session.holds);
+}
+
+bool send_request(Session& session, Frame& frame, std::uint64_t req) {
+    fill_header(frame, frame_op(frame), session.budget, session.token, req);
+    bool sent = false;
+    {
+        std::lock_guard<std::mutex> lock(session.write_mu);
+        sent = send_all(session.fd, frame);
     }
-    return snap;
+    if (!sent) {
+        mark_dead(session, "coordinator lost");
+    }
+    return sent;
+}
+
+/// The coordinator's questions, answered on the reader thread so a busy or
+/// blocked caller does not delay them. Residency is computed before the free
+/// reading so the reading postdates the allocation it credits.
+void answer(Session& session, const Frame& frame) {
+    const std::uint32_t op = frame_op(frame);
+    if (op == kStSample) {
+        Frame reply;
+        put32(reply.bytes, 4, kOpSampleReply);
+        put64(reply.bytes, 40, resident_now(session));
+        send_request(session, reply, 0);
+        return;
+    }
+    if (op == kStRefresh && session.meter) {
+        const std::uint64_t resident = resident_now(session);
+        std::optional<std::uint64_t> free_bytes;
+        std::optional<std::uint64_t> total;
+        if (session.hooks.free_bytes != nullptr) {
+            free_bytes = session.hooks.free_bytes();
+        }
+        if (session.hooks.total_bytes != nullptr) {
+            total = session.hooks.total_bytes();
+        }
+        Frame reply;
+        put32(reply.bytes, 4, kOpMeterReply);
+        put64(reply.bytes, 32, frame_a(frame));
+        put64(reply.bytes, 40, resident);
+        put64(reply.bytes, 48, free_bytes ? *free_bytes : kUnknown);
+        put64(reply.bytes, 56, total ? *total : kUnknown);
+        send_request(session, reply, 0);
+    }
 }
 
 void reader_main(Session* session) {
@@ -1297,20 +448,30 @@ void reader_main(Session* session) {
             std::memcpy(frame.bytes, incoming.data(), kFrameBytes);
             incoming.erase(incoming.begin(),
                            incoming.begin() + static_cast<std::ptrdiff_t>(kFrameBytes));
-            std::lock_guard<std::mutex> lock(session->mu);
-            if (get32(frame.bytes, 0) != kWireMagic) {
-                mark_dead_locked(*session, "coordinator lost");
-                return;
-            }
-            // Any frame shows the coordinator is alive, also the answer to a
-            // ping whose request was already forgotten.
-            session->last_rx = std::chrono::steady_clock::now();
-            for (Pending& pending : session->pending) {
-                if (pending.req == frame_req(frame)) {
-                    pending.frames.push_back(frame);
+            bool question = false;
+            {
+                std::lock_guard<std::mutex> lock(session->mu);
+                if (get32(frame.bytes, 0) != kMagic) {
+                    mark_dead_locked(*session, "coordinator lost");
+                    return;
                 }
+                // Any frame shows the coordinator is alive, also the answer
+                // to a ping whose request was already forgotten.
+                session->last_rx = std::chrono::steady_clock::now();
+                const std::uint32_t op = frame_op(frame);
+                question = op == kStSample || op == kStRefresh;
+                if (!question) {
+                    for (Pending& pending : session->pending) {
+                        if (pending.req == frame_req(frame)) {
+                            pending.frames.push_back(frame);
+                        }
+                    }
+                }
+                session->cv.notify_all();
             }
-            session->cv.notify_all();
+            if (question) {
+                answer(*session, frame);
+            }
         }
     }
 }
@@ -1374,19 +535,6 @@ bool silent_too_long(Session& session, std::chrono::steady_clock::time_point sin
     return std::chrono::steady_clock::now() - seen > liveness();
 }
 
-bool send_request(Session& session, Frame& frame, std::uint64_t req) {
-    fill_header(frame, frame_op(frame), session.budget, session.token, req);
-    bool sent = false;
-    {
-        std::lock_guard<std::mutex> lock(session.write_mu);
-        sent = send_all(session.fd, frame);
-    }
-    if (!sent) {
-        mark_dead(session, "coordinator lost");
-    }
-    return sent;
-}
-
 /// Sends a frame whose answer only proves liveness. Its request is forgotten
 /// at once; the reader still notes the reply's arrival.
 void send_unanswered(Session& session, Frame& frame) {
@@ -1423,9 +571,8 @@ Admit admit_from(const Frame& frame, std::uint64_t bytes, bool waited) {
     info.pending = frame_c(frame);
     info.resident = frame_d(frame);
     info.headroom = frame_e(frame);
-    if (status == kStWait && info.reason.empty()) {
-        info.reason = "waiting";
-    }
+    info.free = frame_f(frame);
+    info.total = frame_i(frame);
     return info;
 }
 
@@ -1437,12 +584,11 @@ void remember_hold(Session& session, std::uint64_t id, std::uint64_t bytes) {
     session.holds.push_back(hold);
 }
 
-void fill_reserve(Frame& frame, std::uint32_t op, std::uint64_t bytes, const Snap& snap,
+void fill_reserve(Frame& frame, std::uint32_t op, std::uint64_t bytes, std::uint64_t resident,
                   std::uint64_t headroom, std::uint64_t stop) {
     put32(frame.bytes, 4, op);
     put64(frame.bytes, 32, bytes);
-    put64(frame.bytes, 40, snap.resident);
-    put64(frame.bytes, 48, snap.free ? *snap.free : kUnknown);
+    put64(frame.bytes, 40, resident);
     put64(frame.bytes, 56, headroom);
     put64(frame.bytes, 64, stop);
 }
@@ -1458,6 +604,13 @@ CoordResult finish_lost(std::uint64_t bytes, bool waited, const std::string& rea
 
 std::string seconds_text(std::chrono::steady_clock::duration span) {
     return std::to_string(std::chrono::duration_cast<std::chrono::seconds>(span).count());
+}
+
+std::string wait_text(const Admit& last) {
+    return " available=" + std::to_string(last.available) + " free=" + std::to_string(last.free) +
+           " headroom=" + std::to_string(last.headroom) + " pending=" +
+           std::to_string(last.pending) + " resident=" + std::to_string(last.resident) +
+           " reason=" + last.reason;
 }
 
 CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool block,
@@ -1484,10 +637,20 @@ CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool 
     bool waited = false;
     bool saw_wait = false;
     bool deadline_hit = false;
+    Admit last;
     const auto start = std::chrono::steady_clock::now();
     const auto deadline = start + detail::admit_deadline();
     auto next_note = start + std::chrono::seconds(30);
-    const auto step = std::min(std::chrono::milliseconds(recheck_ms()), liveness() / 2);
+    const auto step = std::min(detail::recheck_period(), liveness() / 2);
+    auto note_wait = [&] {
+        if (call_wait && !saw_wait) {
+            saw_wait = true;
+            waited = true;
+            if (session.hooks.on_wait != nullptr) {
+                session.hooks.on_wait();
+            }
+        }
+    };
     for (;;) {
         Frame reply;
         const Got got = wait_frame(session, req, block ? step : liveness(), reply);
@@ -1504,13 +667,7 @@ CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool 
                 cleanup();
                 return finish_lost(bytes, waited, "coordinator not responding");
             }
-            if (call_wait && !saw_wait) {
-                saw_wait = true;
-                waited = true;
-                if (session.hooks.on_wait != nullptr) {
-                    session.hooks.on_wait();
-                }
-            }
+            note_wait();
             const auto now = std::chrono::steady_clock::now();
             if (!deadline_hit && now >= deadline) {
                 // Bounded wait: withdraw the request. If the coordinator
@@ -1524,16 +681,14 @@ CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool 
             if (now >= next_note && session.log) {
                 next_note = now + std::chrono::seconds(30);
                 session.log("[anno-test memory] still waiting estimate=" + std::to_string(bytes) +
-                            " for " + seconds_text(now - start) + " s");
+                            " for " + seconds_text(now - start) + " s" + wait_text(last));
             }
-            // A ping: the coordinator re-decides with a fresh reading, and
-            // its answer shows it is alive. The answer is not awaited here.
-            const Snap snap = snapshot(session);
-            Frame beat;
-            put32(beat.bytes, 4, kOpHeartbeat);
-            put64(beat.bytes, 40, snap.resident);
-            put64(beat.bytes, 48, snap.free ? *snap.free : kUnknown);
-            send_unanswered(session, beat);
+            // A ping keeps the liveness check honest and reports this
+            // client's residency. Its answer is not awaited here.
+            Frame ping;
+            put32(ping.bytes, 4, kOpPing);
+            put64(ping.bytes, 40, resident_now(session));
+            send_unanswered(session, ping);
             continue;
         }
         const std::uint32_t op = frame_op(reply);
@@ -1541,13 +696,8 @@ CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool 
             continue;
         }
         if (op == kStWait && block) {
-            if (call_wait && !saw_wait) {
-                saw_wait = true;
-                waited = true;
-                if (session.hooks.on_wait != nullptr) {
-                    session.hooks.on_wait();
-                }
-            }
+            last = admit_from(reply, bytes, true);
+            note_wait();
             continue;
         }
         CoordResult result;
@@ -1557,7 +707,19 @@ CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool 
             remember_hold(session, result.hold_id, bytes);
         }
         if (deadline_hit && result.info.refused && result.info.reason == "cancelled") {
+            // The diagnostic: what the last decision before the deadline saw.
+            const std::string seen = wait_text(last);
+            result.info = last;
+            result.info.admitted = false;
+            result.info.refused = true;
+            result.info.waited = true;
+            result.info.estimate = bytes;
             result.info.reason = "wait deadline";
+            if (session.log) {
+                session.log("[anno-test memory] deadline estimate=" + std::to_string(bytes) +
+                            " after " + seconds_text(std::chrono::steady_clock::now() - start) +
+                            " s; last decision" + seen);
+            }
         }
         cleanup();
         return result;
@@ -1572,22 +734,33 @@ std::shared_ptr<CoordSession> detail::coord_connect(const std::filesystem::path&
     const bool shared = use_shared_coordinator(host_wide);
     const std::uint64_t budget =
         fnv(!budget_name.empty() ? budget_name : identity.generic_string());
+    const bool internal = wants_internal_meter(host_wide);
+    const bool meter = !internal && hooks.free_bytes != nullptr;
     Native fd = connect_coordinator(shared);
     Frame hello;
-    put32(hello.bytes, 0, kWireMagic);
+    put32(hello.bytes, 0, kMagic);
     put32(hello.bytes, 4, kOpHello);
     put64(hello.bytes, 8, budget);
     put64(hello.bytes, 32, this_pid());
     put64(hello.bytes, 40, process_started());
     put64(hello.bytes, 48, this_namespace());
     put64(hello.bytes, 56, configured_cpu());
+    put64(hello.bytes, 72, kProtocol);
+    put32(hello.bytes, 80, (internal ? kFlagInternalMeter : 0u) | (meter ? kFlagClientMeter : 0u));
+    put32(hello.bytes, 84, this_domain());
     if (!send_all(fd, hello)) {
         close_fd(fd);
         throw std::runtime_error("could not register with the test budget coordinator");
     }
     set_recv_timeout(fd, static_cast<int>(liveness().count()));
     Frame reply;
-    if (!recv_full(fd, reply) || frame_op(reply) != kStOk || frame_token(reply) == 0) {
+    if (!recv_full(fd, reply)) {
+        close_fd(fd);
+        throw std::runtime_error("the test budget coordinator on port " +
+                                 std::to_string(coordinator_port(shared)) +
+                                 " closed the connection or speaks another protocol");
+    }
+    if (frame_op(reply) != kStOk || frame_token(reply) == 0) {
         close_fd(fd);
         throw std::runtime_error("the test budget coordinator rejected the client");
     }
@@ -1597,6 +770,7 @@ std::shared_ptr<CoordSession> detail::coord_connect(const std::filesystem::path&
     session->budget = budget;
     session->token = frame_token(reply);
     session->hooks = hooks;
+    session->meter = meter;
     Session* raw = session.get();
     session->reader = std::thread([raw] { reader_main(raw); });
     return session;
@@ -1605,18 +779,16 @@ std::shared_ptr<CoordSession> detail::coord_connect(const std::filesystem::path&
 detail::CoordResult detail::coord_try(CoordSession& base, std::uint64_t bytes,
                                       std::uint64_t headroom, std::uint64_t stop) {
     auto& session = static_cast<Session&>(base);
-    const Snap snap = snapshot(session);
     Frame request;
-    fill_reserve(request, kOpTry, bytes, snap, headroom, stop);
+    fill_reserve(request, kOpTry, bytes, resident_now(session), headroom, stop);
     return transact(session, request, bytes, false, false);
 }
 
 detail::CoordResult detail::coord_reserve(CoordSession& base, std::uint64_t bytes,
                                           std::uint64_t headroom, std::uint64_t stop) {
     auto& session = static_cast<Session&>(base);
-    const Snap snap = snapshot(session);
     Frame request;
-    fill_reserve(request, kOpReserve, bytes, snap, headroom, stop);
+    fill_reserve(request, kOpReserve, bytes, resident_now(session), headroom, stop);
     return transact(session, request, bytes, true, true);
 }
 
@@ -1682,11 +854,12 @@ void detail::coord_cancel(CoordSession& base) {
 
 void detail::coord_wake(CoordSession& base) {
     auto& session = static_cast<Session&>(base);
-    const Snap snap = snapshot(session);
     Frame request;
-    put32(request.bytes, 4, kOpHeartbeat);
-    put64(request.bytes, 40, snap.resident);
-    put64(request.bytes, 48, snap.free ? *snap.free : kUnknown);
+    put32(request.bytes, 4, kOpPing);
+    put64(request.bytes, 40, resident_now(session));
+    // A wake asks the coordinator to measure again (free memory may have
+    // changed outside the budget).
+    put32(request.bytes, 80, 1);
     round_trip(session, request);
 }
 
@@ -1694,83 +867,6 @@ std::uint64_t detail::coord_local_reserved(CoordSession& base) {
     auto& session = static_cast<Session&>(base);
     std::lock_guard<std::mutex> lock(session.mu);
     return detail::sum_reserved(session.holds);
-}
-
-int run_budget_server(std::uint16_t port, bool all_interfaces) {
-#if !defined(_WIN32)
-    for (int fd = 3; fd < 256; ++fd) {
-        ::close(fd);
-    }
-#endif
-    const Native listen_fd = listen_on(port, all_interfaces);
-    if (listen_fd == kInvalid) {
-        std::printf("BIND-FAILED %u\n", static_cast<unsigned>(port));
-        std::fflush(stdout);
-        return 3;
-    }
-    // A test that starts its own coordinator waits for this line.
-    std::printf("LISTENING %u\n", static_cast<unsigned>(port));
-    std::fflush(stdout);
-    Server server;
-    auto idle_since = std::chrono::steady_clock::now();
-    while (true) {
-#if defined(_WIN32)
-        std::vector<WSAPOLLFD> polls(server.clients.size() + 1);
-#else
-        std::vector<pollfd> polls(server.clients.size() + 1);
-#endif
-        // .at: GCC 13 -O3 -Wnull-dereference treats operator[] on a freshly
-        // sized vector as a possible null write.
-        polls.at(0).fd =
-#if defined(_WIN32)
-            static_cast<SOCKET>(listen_fd);
-#else
-            static_cast<int>(listen_fd);
-#endif
-        polls.at(0).events = POLLIN;
-        for (std::size_t i = 0; i < server.clients.size(); ++i) {
-            polls.at(i + 1).fd =
-#if defined(_WIN32)
-                static_cast<SOCKET>(server.clients[i].fd);
-#else
-                static_cast<int>(server.clients[i].fd);
-#endif
-            polls.at(i + 1).events = POLLIN;
-        }
-#if defined(_WIN32)
-        const int ready = WSAPoll(polls.data(), static_cast<ULONG>(polls.size()), 200);
-#else
-        const int ready = ::poll(polls.data(), static_cast<nfds_t>(polls.size()), 200);
-#endif
-        if (ready > 0 && (polls.at(0).revents & POLLIN) != 0) {
-            accept_client(server, listen_fd);
-        }
-        if (ready > 0) {
-            for (std::size_t i = 0; i + 1 < polls.size(); ++i) {
-                const short revents = polls.at(i + 1).revents;
-                if ((revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-                    erase_client(server, i);
-                    break;
-                }
-                if ((revents & POLLIN) != 0) {
-                    const std::size_t before = server.clients.size();
-                    pull_client(server, i);
-                    if (server.clients.size() != before) {
-                        break;
-                    }
-                }
-            }
-        }
-        if (server.clients.empty()) {
-            if (std::chrono::steady_clock::now() - idle_since > std::chrono::seconds(30)) {
-                break;
-            }
-        } else {
-            idle_since = std::chrono::steady_clock::now();
-        }
-    }
-    close_fd(listen_fd);
-    return 0;
 }
 
 } // namespace anno::test

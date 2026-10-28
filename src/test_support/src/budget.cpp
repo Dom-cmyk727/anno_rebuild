@@ -93,13 +93,14 @@ struct MemEval {
 
 MemEval evaluate_mem(MemTable& table, int slot, std::uint64_t bytes, std::uint64_t headroom,
                      std::uint64_t stop_below, std::uint64_t self_seq) {
-    std::uint64_t pending = 0;
-    std::uint64_t resident = 0;
+    // In one process every reading is taken here, under the table lock, after
+    // every release and residency change it could have missed.
+    Constraint c;
     for (MemTable::Slot& one : table.slots) {
         observe(one.holds, one.base, one.hooks);
         for (const Hold& hold : one.holds) {
-            resident = sat_add(resident, hold.resident_bytes);
-            pending = sat_add(pending, hold.bytes - hold.resident_bytes);
+            c.resident = sat_add(c.resident, hold.resident_bytes);
+            c.pending = sat_add(c.pending, hold.bytes - hold.resident_bytes);
         }
     }
     std::uint64_t oldest_seq = 0;
@@ -113,18 +114,18 @@ MemEval evaluate_mem(MemTable& table, int slot, std::uint64_t bytes, std::uint64
     View view;
     view.headroom = headroom;
     view.stop_below = stop_below;
-    view.pending = pending;
-    view.resident = resident;
     view.oldest_bytes = oldest_bytes;
     view.oldest_seq = oldest_seq;
     view.self_seq = self_seq;
     const BudgetHooks& hooks = table.slots.at(static_cast<std::size_t>(slot)).hooks;
-    if (hooks.free_bytes != nullptr) {
-        if (const std::optional<std::uint64_t> free_bytes = hooks.free_bytes()) {
-            view.free_known = true;
-            view.free = *free_bytes;
-        }
+    c.meter = hooks.free_bytes != nullptr;
+    if (c.meter) {
+        c.free = hooks.free_bytes();
     }
+    if (hooks.total_bytes != nullptr) {
+        c.total = hooks.total_bytes();
+    }
+    view.constraints.push_back(c);
     MemEval out;
     out.decision = decide(view, bytes, out.info);
     return out;
@@ -290,6 +291,7 @@ Budget& Budget::process() {
         BudgetHooks hooks;
         hooks.free_bytes = &free_memory_bytes;
         hooks.process_private = &process_private_bytes;
+        hooks.total_bytes = &total_memory_bytes;
         auto created = open_coord(default_budget_path(), hooks, memory_headroom_bytes(), true);
         created->logging_ = true;
         created->state_->coord->log = [path = created->state_->log_path](const std::string& line) {

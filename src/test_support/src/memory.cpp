@@ -58,6 +58,38 @@ std::optional<std::uint64_t> free_memory_bytes() {
 #endif
 }
 
+std::optional<std::uint64_t> total_memory_bytes() {
+#if defined(_WIN32)
+    MEMORYSTATUSEX status{};
+    status.dwLength = sizeof(status);
+    if (GlobalMemoryStatusEx(&status) == 0) {
+        return std::nullopt;
+    }
+    return std::min<std::uint64_t>(status.ullTotalPhys, status.ullTotalPageFile);
+#elif defined(__linux__)
+    std::FILE* f = std::fopen("/proc/meminfo", "r");
+    if (f == nullptr) {
+        return std::nullopt;
+    }
+    char line[256];
+    std::optional<std::uint64_t> kib;
+    while (std::fgets(line, sizeof(line), f) != nullptr) {
+        unsigned long long v = 0;
+        if (std::sscanf(line, "MemTotal: %llu kB", &v) == 1) {
+            kib = v;
+            break;
+        }
+    }
+    std::fclose(f);
+    if (!kib) {
+        return std::nullopt;
+    }
+    return *kib * 1024;
+#else
+    return std::nullopt;
+#endif
+}
+
 std::optional<std::uint64_t> process_private_bytes() {
 #if defined(_WIN32)
     PROCESS_MEMORY_COUNTERS_EX counters{};

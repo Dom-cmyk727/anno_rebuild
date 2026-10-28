@@ -1,6 +1,7 @@
 // T10c F1 regressions. Injected counters and isolated coordinator files only:
 // nothing here allocates enough memory to exhaust the host.
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -249,8 +250,10 @@ TEST_CASE("unknown free memory does not admit the request" * doctest::test_suite
     auto budget = anno::test::Budget::memory(hooks, 0);
     anno::test::Admit info;
     const auto hold = budget->try_reserve(1, &info);
+    // A meter that gave no number: not admitted, and a blocking reserve would
+    // wait for a reading (bounded by its deadline) instead of failing at once.
     CHECK_FALSE(hold);
-    CHECK(info.refused);
+    CHECK_FALSE(info.admitted);
     CHECK(info.reason == "free memory unknown");
     CHECK(budget->reserved() == 0);
 }
@@ -355,11 +358,23 @@ TEST_CASE("a killed owner lets a memory waiter and a cpu waiter continue" *
 TEST_CASE("a live Windows owner is not reclaimed by a WSL client" * doctest::test_suite("budget")) {
     const auto exe = probe_executable();
     REQUIRE(std::filesystem::exists(exe));
-    const auto root = std::filesystem::path("E:/anno1503-worktrees/anno1503-T10c/cache/f1");
+    // The worktree this test was built from, as WSL sees it.
+    const auto source = std::filesystem::path(__FILE__).parent_path().parent_path();
+    const auto tree = source.parent_path().parent_path();
+    const auto root = tree / "cache" / "f1";
     std::filesystem::create_directories(root);
     const auto path = root / "foreign.bin";
     std::error_code error;
     std::filesystem::remove(path, error);
+    auto wsl = [](const std::filesystem::path& p) {
+        const std::string text = p.generic_string();
+        if (text.size() >= 2 && text[1] == ':') {
+            return std::string("/mnt/") +
+                   static_cast<char>(std::tolower(static_cast<unsigned char>(text[0]))) +
+                   text.substr(2);
+        }
+        return text;
+    };
     _putenv("ANNO_TEST_BUDGET_ID=f1-foreign");
     _putenv("ANNO_TEST_BUDGET_COORD=wsl");
     auto holder = start_probe(exe, "holder \"" + path.string() + "\" 80");
@@ -367,20 +382,18 @@ TEST_CASE("a live Windows owner is not reclaimed by a WSL client" * doctest::tes
     REQUIRE(ready.find("READY 1") != std::string::npos);
 
     const auto linux_probe = root / "budget_probe_linux";
-    const std::string compile =
-        "wsl -d Ubuntu -- g++ -std=c++20 -O1 -g -pthread "
-        "-I/mnt/e/anno1503-worktrees/anno1503-T10c/src/test_support/include "
-        "/mnt/e/anno1503-worktrees/anno1503-T10c/src/test_support/src/budget.cpp "
-        "/mnt/e/anno1503-worktrees/anno1503-T10c/src/test_support/src/coord.cpp "
-        "/mnt/e/anno1503-worktrees/anno1503-T10c/src/test_support/src/memory.cpp "
-        "/mnt/e/anno1503-worktrees/anno1503-T10c/src/test_support/tests/budget_probe.cpp "
-        "-o /mnt/e/anno1503-worktrees/anno1503-T10c/cache/f1/budget_probe_linux";
+    const std::string compile = "wsl -d Ubuntu -- g++ -std=c++20 -O1 -g -pthread -I" +
+                                wsl(source / "include") + " " + wsl(source / "src" / "budget.cpp") +
+                                " " + wsl(source / "src" / "coord.cpp") + " " +
+                                wsl(source / "src" / "coord_server.cpp") + " " +
+                                wsl(source / "src" / "memory.cpp") + " " +
+                                wsl(source / "tests" / "budget_probe.cpp") + " -o " +
+                                wsl(linux_probe);
     REQUIRE(std::system(compile.c_str()) == 0);
 
-    const std::string run =
-        "wsl -d Ubuntu -- env ANNO_TEST_BUDGET_ID=f1-foreign ANNO_TEST_BUDGET_COORD=wsl "
-        "/mnt/e/anno1503-worktrees/anno1503-T10c/cache/f1/budget_probe_linux try "
-        "/mnt/e/anno1503-worktrees/anno1503-T10c/cache/f1/foreign.bin 80";
+    const std::string run = "wsl -d Ubuntu -- env ANNO_TEST_BUDGET_ID=f1-foreign "
+                            "ANNO_TEST_BUDGET_COORD=wsl " +
+                            wsl(linux_probe) + " try " + wsl(path) + " 80";
     FILE* pipe = _popen(run.c_str(), "r");
     REQUIRE(pipe != nullptr);
     std::string output;

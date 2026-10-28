@@ -5499,3 +5499,62 @@ Reviewed exact clean T58 F3 head `dd897b4c358883da59ada43914a2cc6b16e37290` (on 
 **Not done:** no C++, live-link or original-runtime gates were needed or claimed. ADR 0003 stays Proposed.
 
 **Next lane (round cm board):** P1, population stage 1 (the `#### P1` entry in TASKS §3), written from `state.md` §4.7c with ten orchestrator decisions. The decisions correct the draft where it is stale (`PayloadTag::House` is 7, the stream version goes from 114 to 115) or self-contradictory: the own save is exact while the original's record is only imported, G7's growth asserts belong to P2, and the reset on import is warned, not drawn. The code anchors were mapped by a read-only subagent and spot-checked against the files: the class-table row, `kPayloadTags`, the loader's house branch, `payload_for_tick` / `check_consistency` and `tick_building`.
+
+## P1 — House payload, group table, scenario import — 2026-10-28 — status: BLOCKED
+
+- Branch: `task/P1-house-payload`. Worktree: `E:\anno1503-worktrees\anno1503-P1`.
+- Base: `507e41a36bb2d47276133ab326779cdd6b455ffa` (merge-base with local `main`). `e7d9a5433a8dd02ef5ece7173c32cdfd5ff8199f` is not an ancestor. No merge commit and no rebase onto `main`.
+- Commits this session:
+  - `69e0d858d2ebb92b15cff80379f40c72f74ed676` `feat(sim): give houses a payload and load it from the scenario` (the uncommitted steps 2–6 tree: 44 files, +1602/−234).
+  - `15bcfa3ca4e490261edb96ede4b2acc5eccd3d2b` `style(sim): apply clang-format 23.1.3 to replay.cpp and transport.hpp` (those two files only, +10/−10).
+  - This report is the next commit. Its parent is `15bcfa3ca4e490261edb96ede4b2acc5eccd3d2b`. That commit is the branch tip.
+- `git diff --check` before the implementation commit and before the format commit: no whitespace errors (Git printed LF-to-CRLF warnings for files it already treats that way). The same check is run again on this report commit.
+
+**Why BLOCKED.** Round cn step 4 fired during `ctest --preset msvc -L heavy` with the game dir. Free RAM fell from 12.24 GB to 1.2 GB. The run was killed and was not restarted. No later heavy job was started (no second heavy ctest, no ctest without the game dir, no WSL compile).
+
+- Heavy progress when stopped: 1 of 10 finished. Test #228 `anno_render_tests.scene renders match the recorded digests (the Rust reference's, except the enhanced river lines)` passed in 55.49 s. Test #229 `anno_render_tests.legacy river shading reproduces the previous enhanced digests (game files)` had been started. No ctest summary line.
+- Sampler: `2026-10-28T10:09:22.5663737+01:00 free_GB=1.2` (`cache/p1-mem-with-game-heavy.txt`).
+- The killed heavy run wrote no `[anno-test memory]` line. `build/msvc/Testing/Temporary/LastTest.log` is the 162-byte `-N` stub from 10:08:22 (start and end at the same minute). The last such line from the completed non-heavy run is: `[anno-test memory] 50 items on 7 of 8 requested threads; 0 memory waits (0 ms, 0 ran out), 0 bad_alloc items, 0 retries; free 8983 MiB, budget 1024 MiB per thread`.
+- Stdout log: `cache/ctest-with-game-heavy.log`.
+
+**Corpus summary** (from the passing non-heavy run, `cache/ctest-with-game-le-heavy-LastTest.log`):
+
+`scenario corpus: houses 3283, residents in the records 43162, residents of the created houses 43162, HouseResetNotApplied 0`
+
+**Gates**
+
+| Gate | Result |
+| --- | --- |
+| `cmake --build --preset msvc` | exit 0. Log: `cache/p1-msvc-build.log`. |
+| With game dir, `$env:ANNO_TEST_THREADS=8; ctest --preset msvc -j 8 -LE heavy` | `100% tests passed out of 1032`. The log has no `Failed` line (0 failed out of 1032). Real time 218.94 s. Lowest sampler reading 6.75 GB free; `[anno-test memory]` lines show 0 waits and 0 `bad_alloc`. Logs: `cache/ctest-with-game-le-heavy.log`, `cache/ctest-with-game-le-heavy-ctest-output.log`, `cache/ctest-with-game-le-heavy-LastTest.log`. |
+| With game dir, `ctest --preset msvc -L heavy` | Stopped. 1/10 passed, #229 started, no summary. Log: `cache/ctest-with-game-heavy.log`. |
+| Without `ANNO1503_GAME_DIR` (`-LE heavy`, then `-L heavy`) | Not run. The memory stop fired first. |
+| clang-format 23.1.3 `--dry-run --Werror` on 270 `src/**/*.cpp` and `src/**/*.hpp` | 0 failing batches. `cache/cfpkg/bin/clang-format.exe`. |
+| `python -I tools/sim_stream.py --check` | `goldens agree`, exit 0. |
+| `python -I tools/lint_sim.py` | `lint_sim: ok`, exit 0. |
+| WSL GCC 13 and Clang (§1 items 4 and 9) | Not run. Heavy compile; the stop rule forbids another heavy job. |
+
+**Mutations** (from `cache/p1_mutations.txt`, recorded on the tree committed as `69e0d85`; not re-run after the stop). The committed source is the unmutated form: import sets `e = residents << 7`, `stock[j]` from `s_j[j]`, adds `HouseResetNotApplied`, `TickKind::House` returns immediately, the digest includes the group table, and a non-empty table of the wrong length is refused.
+
+| Mutant | Named test | Result |
+| --- | --- | --- |
+| `e = r << 6` on import | `P1 import: a v2 house record*` | exit 1. `CHECK( h.e == 10U * 128U )` failed. |
+| stock index shifted by one (`s_{j+1}`) | `P1 import: a v2 house record*` | exit 1. `CHECK( h.stock[0] == 4373 )` failed. |
+| the reset warning never added | `P1 import: the reset predicate*` | exit 1. `CHECK( warnings_of(fires, Kind::HouseResetNotApplied) == 2 )` failed. |
+| the House tick writes `last` | `G7 (P1)*` | exit 1. `CHECK( after.last == before.last )` failed. |
+| the group table left out of the registry digest | `registry digest: the group table*` | exit 1. three `CHECK( ... != d/s )` failed. |
+| a non-empty group table of the wrong size accepted | `registry: a non-empty group table*` | exit 1. `REQUIRE_FALSE( r.ok() )` failed. |
+
+**Acceptance**
+
+- A loaded `single36` house has residents and stocks. Met, in the passing test `scenario corpus: every .sze loads, creates and runs five minutes`: `CHECK(r.record_residents > 0)` and `CHECK(r.houses_with_stock > 0)` for `single36`.
+- `HouseRecordNotModelled` is gone and `HouseResetNotApplied` is 0 across the corpus. Met. No `HouseRecordNotModelled` under `src/`. Corpus summary `HouseResetNotApplied 0`, and `CHECK` of that total passed. Every corpus row in `fixtures/synthetic/sim/scenario_corpus.txt` has `HouseResetNotApplied=0`.
+- The created houses' residents sum to `resident_sum`. Met. Summary 43162 and 43162, and `CHECK(total_record_residents == total_created_residents)` passed.
+- Save then load is exact. Met for the tests that ran: corpus `CHECK(r.save_identity)` passed for every file, and `P1 import: created houses sum to resident_sum, save then load is exact` is in the 1032 that passed.
+- The House tick changes nothing. Met. `TickKind::House` returns at once (`driver.cpp`), and `G7 (P1): the created population world, and the House tick changes nothing` is in the 1032 that passed.
+- Goldens and corpus are re-recorded at version 115, with `p1_g7_create`. Met in the committed fixtures (`goldens.txt` line `p1_g7_create P1 115 2caa5c9c9118e6e0`, corpus header `kStateHashVersion=115 kPrngTimelineVersion=2`). `sim_stream.py --check` agrees. `kStateHashVersion == 115` is asserted in `sim_test.cpp` and `config_test.cpp`, both in the passing 1032.
+- No city-store take, no draw, no `kPrngTimelineVersion` change. Met in the committed source: the house import writes the payload and the warning and does not draw; `kPrngTimelineVersion` is 2. The passing reset test is `P1 import: the reset predicate is warned, never applied`.
+- Every gate passes, and every listed mutation fails its test. Not met. The six cached mutants fail their tests. The with-game non-heavy ctest, the MSVC build, clang-format, `sim_stream.py --check` and `lint_sim.py` passed. The with-game heavy ctest was killed at 1.2 GB free. The without-game ctest pair and the WSL GCC/Clang builds did not run.
+- Nothing from `game/` is in git. Met for these commits: the diff is sim, tools, docs and `fixtures/synthetic/sim` only.
+
+**Not done:** do not merge, do not push. `TASKS.md` and `AGENTS.md` were not edited. No ADR approval, no T34 stage 2, no T-AI.4.

@@ -133,3 +133,22 @@ add_subdirectory(src/app)
 add_subdirectory(src/sim)
 add_subdirectory(src/sim_load)
 add_subdirectory(src/tools)
+
+# The coordinator is a separate executable. Multi-config and per-library
+# output directories do not put it next to every test, and a client looks
+# beside its own executable. Copy it there after each of those tests links.
+if(ANNO_BUILD_TESTS)
+  set(anno_coord_hosts anno_formats_tests anno_assets_tests anno_render_tests anno_sim_tests)
+  foreach(host anno_app_tests anno_render_gpu_tests)
+    if(TARGET ${host})
+      list(APPEND anno_coord_hosts ${host})
+    endif()
+  endforeach()
+  foreach(host ${anno_coord_hosts})
+    add_dependencies(${host} anno_budget_coord)
+    add_custom_command(TARGET ${host} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              $<TARGET_FILE:anno_budget_coord> $<TARGET_FILE_DIR:${host}>
+      VERBATIM)
+  endforeach()
+endif()

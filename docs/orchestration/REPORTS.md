@@ -5224,3 +5224,29 @@ Reviewed exact clean T58 F3 head `dd897b4c358883da59ada43914a2cc6b16e37290` (on 
 - **P7:** a behavioural off-by-one passes. The cap is lowered by one inside `Sim.reassemble` only, so the run overflows one fragment early, with a record of held 3 / limit 3 while `cfg.fragment_max` is 4.
 
 **T59:** see the integration section above. Original bytes and disassembly are not committed. No C++, live-link or original-runtime gates were needed or claimed.
+
+## Orchestrator review — round cl — 2026-10-28
+
+**Scope:** T58 F4, `7b0085bbacc8e685a6bdd81794594d85ba2d964c` on `dd897b4`, reviewed from main `983683e`. Not merged; T58 gets a final F5 in TASKS. No task-branch edits, push or executor dispatch. The pre-existing untracked AGENTS.md is preserved.
+
+**T58 checks run:**
+- 213 join tests: OK (184.6 s), mutation table included.
+- Five expected `JOIN_RULES=F1` failures.
+- 64 snapshot tests: OK. Both snapshot files are identical to `3078e07`, and `git diff --check dd897b4 7b0085b` is clean.
+- `--sensitivity` and `--link 100M` / `--link 1M` (all rows): byte-identical to the `dd897b4` oracle run from a scratch copy; all validators 0.
+- Failing first, run independently: F4's test file against the `dd897b4` oracle fails the three handwritten overflow negatives and passes the justified positive. P5 and P7 pass their named tests under the mutant.
+- `review_t58_f3.py`: P5 1 xv error, P7 2 xv errors, P6 3 xiv errors, both baselines clean. `review_t58_f2.py`: P1, P2 and P4 are caught (6/6/3), baseline clean. `review_t58_f1.py`: the round-ch lines and N1–N3 stay caught.
+- V7 counts what the simulator counts. `Sim.reassemble` sums the fragments of every message in the channel's buffer; `Sim.reset_pair` deletes the channel. The cap is chosen by channel in the same way.
+
+**What the new probes show** (ignored `cache/orch-ck/review_t58_f4.py`, `closure_rows.py` and their `.out`):
+- **P8:** `c.dead` is set back to False after an overflow (fragment-loss scenario, `fragment_max` 3).
+  - The overflow record (751 ms, held 3, limit 3) and its releases are written, but the receive side H>J1 ch1 stays open.
+  - Attempt 4 of seq 4 (lid 68, 1 051 ms) is recorded as a duplicate `arrive` instead of `arrive_refused`, and the side sends an extra ACK at 1 202 ms.
+  - Every validator is clean.
+
+  V4 requires a closure before a refusal; nothing requires a refusal after a closure. This gap dates from F3, and the round-ck review missed it.
+- **Real runs:** in every `--link` row at both rates and in both fragment-loss scenarios, the closed side receives only `arrive_refused` between a closure record and the pair's next `epoch_bump`. The closures are the seat drop of J1 at 66 200 ms in `outage_and_rejoin` and the overflow at 751 ms.
+
+**Accepted as written:** the xvi positive's `_held(4)` acquisitions have no sends or arrivals; that test asserts only xvi/xvii and its helper says so. The full-evidence V7 positive is `OverflowRecordsOnHandWrittenLogs`.
+
+**Next:** T58 F5 (V8), the final validator round. The orchestrator integrates T58 after its review. A further gap that changes no row result is recorded at integration as a stated boundary rather than as an F6. No C++, live-link or original-runtime gates were needed or claimed.

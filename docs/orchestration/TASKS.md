@@ -4,7 +4,36 @@
 
 **Round bp (2026-10-26, owner instruction):** for every task after the one an executor has in progress now, **subagents are allowed again where necessary and helpful**. §1 item 5 has the rules: the task stays the executor's, subagents' results are checked against the files before they enter a commit, one heavy job at a time on the PC, the orchestrator's review stays. §1 item 11 no longer forbids them inside a sub-task.
 
-Last update: 2026-10-28 ck — **T59 integrated (`1974d22`); T58 F3 reviewed and stays unmerged.** Next executor task: **T58 F4** (the reassembly-overflow record that F3's closure check relies on is not justified; boundary sentences), the last planned validator round. Continue the existing branch; do not merge/rebase main into it. ADRs remain Proposed; T34 stage 2 and T-AI.4 stay `LATER`. Nothing pushed.
+Last update: 2026-10-28 cl — **T58 F4 verified and stays unmerged for one final round.** Next executor task: **T58 F5** (a closure record must also close its receive side: V8, the converse of F3's V4), the final validator round; the orchestrator integrates T58 after its review. Continue the existing branch; do not merge/rebase main into it. ADRs remain Proposed; T34 stage 2 and T-AI.4 stay `LATER`. Nothing pushed.
+
+**Round cl (2026-10-28, orchestrator): T58 F4 review.**
+- Baseline main `983683e46b1acdf8a0b398ef1945b08403b050e4`. Exact clean head: T58 F4 `7b0085bbacc8e685a6bdd81794594d85ba2d964c` (on `dd897b4`). Not merged. No push; the pre-existing untracked `AGENTS.md` is untouched. The orchestrator changed no branch.
+- **T58 F4 verified.**
+  - 213 join tests pass (184.6 s), including the mutation table. The five `JOIN_RULES=F1` regressions fail as required. 64 snapshot tests pass; both snapshot files are identical to `3078e07`; `git diff --check` is clean.
+  - `--sensitivity` and every `--link` row at both rates are byte-identical to the `dd897b4` oracle run from a scratch copy (62 lines per rate, all validators 0).
+  - Failing first reproduced independently: F4's test file against the `dd897b4` oracle fails the three handwritten overflow negatives, passes the justified positive, and P5 and P7 pass their named tests under the mutant.
+  - `review_t58_f3.py`:
+    - P5: 1 xv error ("not justified: 0 fragments held").
+    - P7: 2 xv errors ("not justified: 3 fragments held"; "records limit 3, the configured cap is 4").
+    - P6: still caught by xiv (3 errors).
+    - Both baselines: clean.
+  - `review_t58_f2.py`: P1, P2 and P4 caught (6/6/3), baseline clean. `review_t58_f1.py`: the round-ch lines and N1–N3 stay caught.
+  - V7 counts what the simulator counts. `Sim.reassemble` sums the fragments of every message in that receive channel's buffer, and `Sim.reset_pair` deletes the channel. That is xv's per-(src, dst, ch), current-epoch count. The cap is chosen the same way (channel 0: `reassembly_fragments_max`).
+  - Accepted as written: the xvi positive's `_held(4)` acquisitions carry no sends or arrivals. That test asserts only xvi/xvii, and the helper's docstring says so. The full-evidence V7 positive is `OverflowRecordsOnHandWrittenLogs`.
+- **T58 F5 required (V8).** This gap dates from F3's V4; F4 did not open it, and round ck missed it. Reproducer: `E:\anno1503\cache\orch-ck\review_t58_f4.py` (ignored; `.out` alongside).
+  - **V8, a closure record need not close anything.** V4 makes a refusal require a closure record; nothing checks the converse.
+  - **P8:** after an overflow, `c.dead` is set back to False (`join_activation.py:737` undone). The run is the fragment-loss scenario with `fragment_max` 3.
+    - The overflow record is still written and its buffer released (751 ms), but the receive side H>J1 ch1 stays open.
+    - Attempt 4 of seq 4 (lid 68, 1 051 ms) is recorded as a duplicate `arrive` instead of `arrive_refused`, and the closed side sends an extra ACK at 1 202 ms.
+    - Every validator is clean.
+
+    This is a single-point simulator error: the class the F4 boundary sentence says the link validators target.
+  - **Real runs agree with V8.** In every `--link` row at both rates, and in both fragment-loss scenarios (`fragment_max` 3 and 4), the closed side receives only `arrive_refused` between a closure record and the pair's next `epoch_bump` (`E:\anno1503\cache\orch-ck\closure_rows.out`). The closure records are:
+    - the seat drop of J1 at 66 200 ms in `outage_and_rejoin`;
+    - the overflow at 751 ms in each fragment-loss scenario.
+
+    V8 should therefore leave every row clean.
+- **Queue:** T58 F5 on its existing branch, the **final** validator round. After its review the orchestrator integrates T58. A further gap that changes no row result is then recorded at integration as a stated boundary (ADR §8.8 or OQ-373), not as an F6. After that the orchestrator queues the next lane. ADRs remain Proposed; T34 stage 2, T-AI.4 and production networking stay later. No C++ or live-original run is needed or claimed.
 
 **Round ck (2026-10-28, orchestrator): T58 F3 / T59 F3 review, T59 integration.**
 - Baseline main `2496686146093bbe9c51ae28e491c5b0634faede`. Exact clean heads: T58 F3 `dd897b4c358883da59ada43914a2cc6b16e37290` (on `138fddd`), T59 F3 `51fda008175d0d07eb41b25e0b84b692b4c7a179` (on `1c631af`). No push; the pre-existing untracked `AGENTS.md` is untouched. The orchestrator changed neither branch.
@@ -716,13 +745,13 @@ Main executor (prompt handed over by the owner): T15 B1, then T11 stage 2a to th
 
 7. **Steps, not judgement calls (since round u; the executor is a simpler model).** A task section lists numbered steps with the files, the functions and the commands. Do the steps in order; do not add scope, do not refactor what a step does not name, do not change a default the owner has to decide (`rules` options, OQ decisions). **Allowed without asking (owner, 2026-10-24 w), when listed in the report:** tests for the code the step changed, and fixes of sentences (docs, comments) that would otherwise contradict that code. Anything else is a question. When a step is unclear, when a file or function it names does not exist, or when a measurement contradicts the step's premise: stop that step, write the question with what you found into REPORTS.md under the task, and continue with the next step that does not depend on it. Report numbers as measured, including the ones that miss the acceptance. Every claim about the original carries module + address, every mapping in code cites its address in a comment. The acceptance list is ticked item by item in REPORTS.md with the evidence (the test name, the command's output line).
 
-## 2. Current status (2026-10-28 ck, executor review)
+## 2. Current status (2026-10-28 cl, executor review)
 
-- **Local Git:** T57 (`7f9e605`), T52 F7 (`8f30605`) and T59 (`1974d22`) are integrated within their documented scope. T58 F3 `dd897b4` is reviewed and unmerged, pending F4. Nothing pushed or remotely checked; pre-existing untracked `AGENTS.md` left alone.
+- **Local Git:** T57 (`7f9e605`), T52 F7 (`8f30605`) and T59 (`1974d22`) are integrated within their documented scope. T58 F4 `7b0085b` is reviewed and unmerged, pending the final F5. Nothing pushed or remotely checked; pre-existing untracked `AGENTS.md` left alone.
 - **Versions on main:** state stream 114, PRNG timeline 2, command wire 1.
 - **Implemented:** C++ formats/assets/viewer and deterministic simulation through S14, scenario cities and production, market/workshop transport, decoded walk search and per-tile records including named-tile removal. The renderer still consumes scenario data rather than a live simulation game loop.
 - **LAN groundwork:** T36 setup, T37 generator spec, T38/T40 AI inventory and tick-entry RE, T39/T41 network ADR and budgets. No C++ networking, generator, AI behavior or playable LAN loop yet. Population implementation, float walking, ships/trade, combat, fire and win/loss remain unfinished.
-- **Next executor task:** T58 F4 on its existing branch without merging/rebasing main; after its review the executor queue is empty until the orchestrator queues the next lane. ADRs 0002/0003 remain Proposed; T34 stage 2 and T-AI.4 are later. T31/T35 remain unreviewed branches. T30b.7 and then P1 remain separate orchestrator work.
+- **Next executor task:** T58 F5, the final validator round, on its existing branch without merging/rebasing main. After its review the orchestrator integrates T58; the executor queue is then empty until the orchestrator queues the next lane. ADRs 0002/0003 remain Proposed; T34 stage 2 and T-AI.4 are later. T31/T35 remain unreviewed branches. T30b.7 and then P1 remain separate orchestrator work.
 - **Host/gates:** Windows/MSVC, GCC/Clang and sanitizers in WSL. Canonical repo `E:\anno1503`, worktrees `E:\anno1503-worktrees`, read-only originals `E:\anno1503\game\app`. One heavy job at a time; round ba's local workflow continues. See round br for actual combined checks, rather than treating older branch reports as new runs.
 
 ## 3. Task queue
@@ -1309,8 +1338,53 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   4. Re-read decisive original instructions/table entries independently, update the concise chain and OQ-340, append REPORTS with exact base/head, itemized acceptance and next unread links, run `git diff --check`, commit and stop for review. No merge/push/TASKS edit or C++ gates.
 - **Acceptance:** both helper paths and receiver chains are traced with widths/cleanup; direct and nested effects are proved or bounded at concrete stops; cached-word interpretation follows return evidence; docs agree without treating unresolved mutation/lifetime paths as disproved.
 
-#### T58 — Shared-link serialization in the join oracle (OQ-320) · `F4 READY` (round ck)
-- **Current task — F4 (the last planned validator round; the orchestrator integrates T58 after its review unless F4 opens a new hole):**
+#### T58 — Shared-link serialization in the join oracle (OQ-320) · `F5 READY` (round cl)
+- **Current task — F5 (the final validator round; the orchestrator integrates T58 after its review):**
+  - **Branch and scope:**
+    - Continue `codex/T58-shared-link-serialization` in `E:\anno1503-worktrees\anno1503-T58` from `7b0085bbacc8e685a6bdd81794594d85ba2d964c`. Read this updated board on main; do not merge/rebase main into the task branch.
+    - **Files:** `tools/join_activation.py`, `tools/test_join_activation.py`, ADR 0003 §8.8 (only the validator paragraph), OQ-373 only if a sentence becomes false, and appended REPORTS.
+    - Preserve defaults (`link_bps` 0, `resend_ms` 300), the un-serialized rows, both snapshot files and Proposed status. No simulator, timer, pacing, jitter, socket or protocol change: only a validator rule and tests.
+  - **Reproducer:** `E:\anno1503\cache\orch-ck\review_t58_f4.py` (read-only, never commit; `python -I -B E:\anno1503\cache\orch-ck\review_t58_f4.py`; output alongside in `review_t58_f4.out`). Its line P8 is V8; its baseline line must stay clean. `E:\anno1503\cache\orch-ck\closure_rows.py` lists, for every `--link` row and both fragment-loss scenarios, the receive-side records between each closure record and the pair's next `epoch_bump` (only `arrive_refused` today).
+- **F5 steps:**
+  1. **Failing first.**
+     - Add P8 as a runtime mutant to `MUTANTS`, with its own named test that asserts the specific message. P8 is the reproducer's body: after `Sim.reassemble` returns False, `c.dead` is set back to False, so the overflowed receive side stays open.
+     - Add handwritten traces in the simulator's emission order:
+       - **Negatives:** a `reasm_overflow` of H>P1 ch0 followed by an `arrive` on H>P1 ch0 (one non-duplicate, one duplicate); a `drop_seated` of P1 followed by an `arrive` on P1>H.
+       - **Positives:** after the overflow, an `arrive` on another channel (H>P1 ch1) and one in the reverse direction (P1>H ch0); an `arrive` on H>P1 ch0 after the pair's next `epoch_bump`.
+     - Show the mutant and each negative uncaught at `7b0085b`, and save the output in ignored `cache\`.
+  2. **V8, a closure binds its receive side.**
+     - In `_check_link` (xvi), beside V4 and with the same closure bookkeeping: after a closure record of a receive side and before the pair's next `epoch_bump`, no `arrive` record (duplicates included) may name that (src, dst, ch). The closure records are the two V4 accepts: a `drop_seated` of the non-host endpoint (every channel, both directions), or a `reasm_overflow` of the same (src, dst, ch).
+     - Such an arrival must be consumed by `arrive_refused`, as `Sim.arrive` does after its stale check. An arrival with a stale epoch field stays a `stale_epoch`.
+     - ACK arrivals (`ack` records) are outside V8: `Sim.take_ack` has no closed-side return.
+     - With V4, a data arrival on a link is then refused exactly when its receive side is closed.
+     - If an existing test or row trips V8, compare the trace with the simulator's real emission order. Fix a trace the simulator would not write; if the simulator does write it, stop with a QUESTION. Do not change the simulator.
+     - Read `Sim.drop_peer` and `Sim.recv_state`. `drop_peer` sets `dead` only on the channels that exist at the drop, so a receive channel first created between a seat drop and the next `epoch_bump` would accept data. Say in the report whether any path can create one; if so, record it as an open point. No simulator change.
+  3. **ADR §8.8 (one or two sentences):** state V8 in the validator paragraph, including that ACK arrivals are outside it. Keep the F4 boundary sentences.
+  4. **Checks and report.**
+     - Run the full join suite; the five expected F1 legacy failures (`JOIN_RULES=F1 … RoundCbRegressions`, then unset the variable); the 64-test snapshot suite; the `ast` syntax check; `git diff 3078e07 -- tools/snapshot_catchup.py tools/test_snapshot_catchup.py` (empty); `git diff --check`.
+     - Run `--sensitivity` and every `--link` row at both rates; no number should change.
+     - Run all four reproducers:
+       - `review_t58_f4.py`: P8 now shows an xvi error and the baseline stays clean.
+       - `E:\anno1503\cache\orch-cj\review_t58_f3.py`: P5 and P7 stay caught by xv, P6 by xiv, and both baselines stay clean.
+       - `E:\anno1503\cache\orch-cj\review_t58_f2.py`: P1, P2 and P4 stay caught, and the baseline stays clean.
+       - `E:\anno1503\cache\orch-ci\review_t58_f1.py`: the round-ch lines and N1–N3 stay caught.
+     - Append `## T58 F5 — A closure binds its receive side — …` to REPORTS with:
+       - the exact head;
+       - the failing-first evidence;
+       - the mutant table row for P8;
+       - the V8 sentence as written in the ADR;
+       - the `drop_peer` finding;
+       - the acceptance, item by item.
+
+       Commit and stop for review.
+- **F5 acceptance:**
+  - P8 is rejected by its own named test with the specific xvi message, and the test passes unmutated.
+  - The handwritten negatives fail and the positives pass.
+  - All rows and sensitivity runs stay validator-clean with unchanged numbers.
+  - ADR §8.8 states V8 and its ACK boundary.
+  - The `drop_peer` question is answered in the report.
+  - No simulator, protocol, default or snapshot-file change.
+- **Historical F4 instructions (reviewed in round cl; F5 above is current):**
   - **Branch and scope:**
     - Continue `codex/T58-shared-link-serialization` in `E:\anno1503-worktrees\anno1503-T58` from `dd897b4c358883da59ada43914a2cc6b16e37290`. Read this updated board on main; do not merge/rebase main into the task branch.
     - **Files:** `tools/join_activation.py`, `tools/test_join_activation.py`, ADR 0003 §8.8 (only the validator paragraph), OQ-373 only if a sentence becomes false, and appended REPORTS.
@@ -1480,14 +1554,14 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   5. Re-read decisive original instructions and table entries independently. Update the concise chain and OQ-340, append REPORTS with exact base/head, read ranges, itemized acceptance and remaining conditions; run `git diff --check`, commit and stop for review. No merge/push/TASKS edit or C++ gates.
 - **Acceptance:** returned-object provenance is proved or bounded at an exact stop; all three helper paths have argument/receiver/effect ledgers; direct and nested effects are separated from unresolved ones; no unsupported record-preservation, world-purity or live-index conclusion; docs and report agree.
 
-**Current executor order (round ck):** T58 F4 on its existing branch, committed and reported. Stop for review. Do not merge/rebase main into either branch. No merge, push, TASKS/AGENTS edits, ADR approval, T34 stage 2, T-AI.4 or production networking. The orchestrator handles review and integration.
+**Current executor order (round cl):** T58 F5 on its existing branch, committed and reported. Stop for review. Do not merge/rebase main into either branch. No merge, push, TASKS/AGENTS edits, ADR approval, T34 stage 2, T-AI.4 or production networking. The orchestrator handles review and integration.
 
 **Order (round bo, superseded by round bq review/fix-ups above):**
 - **The main executor:** T33.5 stage 3 → T41 → T42.
 - **A second executor:** T40, then T-AI.3 (the 43 draws) when the orchestrator writes it.
 
 **Waiting for the owner:**
-- ADR 0003's design/default approval remains pending. T52 F7 supplies the bounded protocol oracle. T58 adds opt-in serialization; F1 published the matched 300/400/500 ms comparison and real fragment-loss coverage; F2 closed the early-arrival, retry-size and vanished-arrival holes; F3 tied the receiver-side outcome records to closure and staleness evidence and added the fragment payload rule; F4 must justify the reassembly-overflow record that closure evidence relies on. The retry timer is an owner choice (OQ-373), informed by that comparison. Jitter and a measured link (OQ-371), assumed-delivered asks/epoch lifetime and adoption of OQ-373 limits/policies remain open. Owner approval alone does not resolve technical gaps;
+- ADR 0003's design/default approval remains pending. T52 F7 supplies the bounded protocol oracle. T58 adds opt-in serialization; F1 published the matched 300/400/500 ms comparison and real fragment-loss coverage; F2 closed the early-arrival, retry-size and vanished-arrival holes; F3 tied the receiver-side outcome records to closure and staleness evidence and added the fragment payload rule; F4 justified the reassembly-overflow record that closure evidence relies on and stated the seat-drop and forgery boundaries; F5, the final round, must make a closure record bind its receive side. The retry timer is an owner choice (OQ-373), informed by that comparison. Jitter and a measured link (OQ-371), assumed-delivered asks/epoch lifetime and adoption of OQ-373 limits/policies remain open. Owner approval alone does not resolve technical gaps;
 - OQ-250, the UDP port;
 - the seven questions of `docs/sim/world-scaling.md` §15;
 - the feel questions of `docs/sim/rules-presets.md`.

@@ -18,7 +18,8 @@ if(ANNO_BUILD_TESTS)
   anno_target_defaults(anno_budget_probe)
 
   add_executable(anno_test_support_tests tests/main.cpp tests/game_dir_test.cpp
-    tests/parallel_test.cpp tests/budget_test.cpp tests/budget_f1_test.cpp)
+    tests/parallel_test.cpp tests/budget_test.cpp tests/budget_f1_test.cpp
+    tests/budget_f2_test.cpp)
   target_link_libraries(anno_test_support_tests PRIVATE anno_test_support doctest::doctest)
   anno_target_defaults(anno_test_support_tests)
   anno_add_doctest(anno_test_support_tests)

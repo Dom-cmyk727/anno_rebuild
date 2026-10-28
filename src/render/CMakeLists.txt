@@ -40,6 +40,7 @@ if(ANNO_BUILD_TESTS)
   )
   target_link_libraries(anno_render_tests PRIVATE anno_render anno_test_support doctest::doctest)
   anno_target_defaults(anno_render_tests)
+  anno_stage_budget_coord(anno_render_tests)
   anno_add_doctest(anno_render_tests)
 endif()
 
@@ -69,6 +70,7 @@ if(ANNO_HAVE_WGPU)
     target_compile_definitions(anno_render_gpu_tests PRIVATE
       ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
     anno_target_defaults(anno_render_gpu_tests)
+    anno_stage_budget_coord(anno_render_gpu_tests)
     # One GPU case at a time: each opens its own device. The label "gpu" lets a
     # host without a useful adapter leave them out (`ctest -LE gpu`): CI's
     # windows-msvc job, whose only adapter is the WARP software rasterizer,

@@ -35,6 +35,7 @@ if(ANNO_BUILD_TESTS)
   target_compile_definitions(anno_sim_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
   anno_target_defaults(anno_sim_tests SANITIZE_NO_RECOVER)
+  anno_stage_budget_coord(anno_sim_tests)
   # GCC 13 with -fsanitize=address treats a one-element initializer_list
   # assignment as an out-of-bounds memmove (-Warray-bounds,
   # -Wstringop-overread). The copy length is the list length. UBSan still

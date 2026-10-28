@@ -9,6 +9,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <limits>
@@ -459,11 +460,35 @@ std::uint32_t configured_cpu() {
 }
 
 std::uint64_t recheck_ms() {
-    const std::uint64_t n = detail::env_count("ANNO_TEST_BUDGET_RECHECK_MS").value_or(200);
-    if (n == 0) {
-        return 200;
+    return static_cast<std::uint64_t>(detail::recheck_period().count());
+}
+
+/// How long a client waits for any frame from the coordinator before it
+/// treats the connection as lost (ANNO_TEST_BUDGET_LIVENESS_MS, default 10 s).
+/// A waiting client pings every recheck period and the coordinator answers at
+/// once, so silence this long means it has stopped or hung.
+std::chrono::milliseconds liveness() {
+    std::uint64_t n = detail::env_count("ANNO_TEST_BUDGET_LIVENESS_MS").value_or(10000);
+    if (n < 100) {
+        n = 100;
     }
-    return n > 60000 ? 60000 : n;
+    return std::chrono::milliseconds(n > 600000 ? 600000 : n);
+}
+
+std::uint16_t coordinator_port(bool shared) {
+    if (const auto port = detail::env_count("ANNO_TEST_BUDGET_PORT")) {
+        if (*port > 0 && *port <= 65535) {
+            return static_cast<std::uint16_t>(*port);
+        }
+    }
+    return shared ? kSharedPort : kLocalPort;
+}
+
+/// ANNO_TEST_BUDGET_SPAWN=0: never start a coordinator, only connect. Tests
+/// that run their own coordinator set it so a client cannot start another.
+bool may_spawn() {
+    const auto n = detail::env_count("ANNO_TEST_BUDGET_SPAWN");
+    return !n || *n != 0;
 }
 
 std::filesystem::path module_directory() {
@@ -603,10 +628,14 @@ bool wait_until_connected(std::uint16_t port, int attempts, Native& out) {
 }
 
 Native connect_coordinator(bool shared) {
-    const std::uint16_t port = shared ? kSharedPort : kLocalPort;
+    const std::uint16_t port = coordinator_port(shared);
     Native fd = connect_loopback(port);
     if (fd != kInvalid) {
         return fd;
+    }
+    if (!may_spawn()) {
+        throw std::runtime_error("no test budget coordinator on port " + std::to_string(port) +
+                                 " and ANNO_TEST_BUDGET_SPAWN=0");
     }
 #if defined(_WIN32)
     if (shared) {
@@ -1174,6 +1203,9 @@ struct Pending {
     std::deque<Frame> frames;
 };
 
+// Lock order: write_mu may be taken first and mu inside it, never the other
+// way round. No helper that locks mu is called while mu is held: the
+// *_locked helpers below expect the caller to hold it.
 struct Session final : CoordSession {
     Native fd = kInvalid;
     std::uint64_t budget = 0;
@@ -1185,6 +1217,8 @@ struct Session final : CoordSession {
     std::thread reader;
     bool dead = false;
     bool stopping = false;
+    std::string lost_reason = "coordinator lost";
+    std::chrono::steady_clock::time_point last_rx = std::chrono::steady_clock::now();
     std::uint64_t next_req = 1;
     std::vector<Pending> pending;
     std::vector<detail::Hold> holds;
@@ -1209,6 +1243,23 @@ struct Session final : CoordSession {
         fd = kInvalid;
     }
 };
+
+void mark_dead_locked(Session& session, const char* why) {
+    if (!session.dead) {
+        session.dead = true;
+        session.lost_reason = why;
+    }
+    session.cv.notify_all();
+}
+
+/// Ends the connection, so the reader thread and every waiting call return.
+void mark_dead(Session& session, const char* why) {
+    {
+        std::lock_guard<std::mutex> lock(session.mu);
+        mark_dead_locked(session, why);
+    }
+    shutdown_fd(session.fd);
+}
 
 struct Snap {
     std::uint64_t resident = 0;
@@ -1237,8 +1288,7 @@ void reader_main(Session* session) {
         }
         if (n <= 0) {
             std::lock_guard<std::mutex> lock(session->mu);
-            session->dead = true;
-            session->cv.notify_all();
+            mark_dead_locked(*session, "coordinator lost");
             return;
         }
         incoming.insert(incoming.end(), buffer, buffer + n);
@@ -1247,13 +1297,14 @@ void reader_main(Session* session) {
             std::memcpy(frame.bytes, incoming.data(), kFrameBytes);
             incoming.erase(incoming.begin(),
                            incoming.begin() + static_cast<std::ptrdiff_t>(kFrameBytes));
+            std::lock_guard<std::mutex> lock(session->mu);
             if (get32(frame.bytes, 0) != kWireMagic) {
-                std::lock_guard<std::mutex> lock(session->mu);
-                session->dead = true;
-                session->cv.notify_all();
+                mark_dead_locked(*session, "coordinator lost");
                 return;
             }
-            std::lock_guard<std::mutex> lock(session->mu);
+            // Any frame shows the coordinator is alive, also the answer to a
+            // ping whose request was already forgotten.
+            session->last_rx = std::chrono::steady_clock::now();
             for (Pending& pending : session->pending) {
                 if (pending.req == frame_req(frame)) {
                     pending.frames.push_back(frame);
@@ -1264,8 +1315,9 @@ void reader_main(Session* session) {
     }
 }
 
-bool wait_frame(Session& session, std::uint64_t req, std::chrono::milliseconds timeout,
-                Frame& out) {
+enum class Got { Frame, Timeout, Dead };
+
+Got wait_frame(Session& session, std::uint64_t req, std::chrono::milliseconds timeout, Frame& out) {
     std::unique_lock<std::mutex> lock(session.mu);
     // begin_req can reallocate pending while this wait has released mu.
     // Look the request up again under the lock; a pointer would dangle.
@@ -1277,22 +1329,26 @@ bool wait_frame(Session& session, std::uint64_t req, std::chrono::milliseconds t
         }
         return nullptr;
     };
-    const bool signaled = session.cv.wait_for(lock, timeout, [&] {
+    session.cv.wait_for(lock, timeout, [&] {
         const Pending* pending = find();
         return pending == nullptr || session.dead || !pending->frames.empty();
     });
     Pending* pending = find();
-    if (!signaled || pending == nullptr || pending->frames.empty()) {
-        return false;
+    if (pending != nullptr && !pending->frames.empty()) {
+        out = pending->frames.front();
+        pending->frames.pop_front();
+        return Got::Frame;
     }
-    out = pending->frames.front();
-    pending->frames.pop_front();
-    return true;
+    return session.dead ? Got::Dead : Got::Timeout;
+}
+
+void forget_pending_locked(Session& session, std::uint64_t req) {
+    std::erase_if(session.pending, [&](const Pending& pending) { return pending.req == req; });
 }
 
 void forget_pending(Session& session, std::uint64_t req) {
     std::lock_guard<std::mutex> lock(session.mu);
-    std::erase_if(session.pending, [&](const Pending& pending) { return pending.req == req; });
+    forget_pending_locked(session, req);
 }
 
 std::uint64_t begin_req(Session& session) {
@@ -1302,16 +1358,57 @@ std::uint64_t begin_req(Session& session) {
     return req;
 }
 
+bool is_dead(Session& session, std::string* why = nullptr) {
+    std::lock_guard<std::mutex> lock(session.mu);
+    if (session.dead && why != nullptr) {
+        *why = session.lost_reason;
+    }
+    return session.dead;
+}
+
+/// No frame since `since` (or since the last one, if later) for longer than
+/// the liveness period.
+bool silent_too_long(Session& session, std::chrono::steady_clock::time_point since) {
+    std::lock_guard<std::mutex> lock(session.mu);
+    const auto seen = session.last_rx > since ? session.last_rx : since;
+    return std::chrono::steady_clock::now() - seen > liveness();
+}
+
 bool send_request(Session& session, Frame& frame, std::uint64_t req) {
     fill_header(frame, frame_op(frame), session.budget, session.token, req);
-    std::lock_guard<std::mutex> lock(session.write_mu);
-    if (!send_all(session.fd, frame)) {
-        std::lock_guard<std::mutex> state(session.mu);
-        session.dead = true;
-        session.cv.notify_all();
-        return false;
+    bool sent = false;
+    {
+        std::lock_guard<std::mutex> lock(session.write_mu);
+        sent = send_all(session.fd, frame);
     }
-    return true;
+    if (!sent) {
+        mark_dead(session, "coordinator lost");
+    }
+    return sent;
+}
+
+/// Sends a frame whose answer only proves liveness. Its request is forgotten
+/// at once; the reader still notes the reply's arrival.
+void send_unanswered(Session& session, Frame& frame) {
+    const std::uint64_t req = begin_req(session);
+    forget_pending(session, req);
+    send_request(session, frame, req);
+}
+
+/// One request and its single answer, bounded by the liveness period. A dead
+/// session sends nothing.
+void round_trip(Session& session, Frame& frame) {
+    if (is_dead(session)) {
+        return;
+    }
+    const std::uint64_t req = begin_req(session);
+    if (send_request(session, frame, req)) {
+        Frame reply;
+        if (wait_frame(session, req, liveness(), reply) == Got::Timeout) {
+            mark_dead(session, "coordinator not responding");
+        }
+    }
+    forget_pending(session, req);
 }
 
 Admit admit_from(const Frame& frame, std::uint64_t bytes, bool waited) {
@@ -1350,76 +1447,63 @@ void fill_reserve(Frame& frame, std::uint32_t op, std::uint64_t bytes, const Sna
     put64(frame.bytes, 64, stop);
 }
 
-CoordResult finish_lost(std::uint64_t bytes, bool waited) {
+CoordResult finish_lost(std::uint64_t bytes, bool waited, const std::string& reason) {
     CoordResult result;
     result.info.refused = true;
     result.info.waited = waited;
-    result.info.reason = "coordinator lost";
+    result.info.reason = reason;
     result.info.estimate = bytes;
     return result;
 }
 
+std::string seconds_text(std::chrono::steady_clock::duration span) {
+    return std::to_string(std::chrono::duration_cast<std::chrono::seconds>(span).count());
+}
+
 CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool block,
                      bool call_wait) {
+    std::string why;
+    if (is_dead(session, &why)) {
+        return finish_lost(bytes, false, why);
+    }
     const std::uint64_t req = begin_req(session);
+    auto cleanup = [&] {
+        std::lock_guard<std::mutex> lock(session.mu);
+        std::erase_if(session.blocking, [&](std::uint64_t id) { return id == req; });
+        forget_pending_locked(session, req);
+    };
     if (block) {
         std::lock_guard<std::mutex> lock(session.mu);
         session.blocking.push_back(req);
     }
     if (!send_request(session, request, req)) {
-        forget_pending(session, req);
-        return finish_lost(bytes, false);
+        cleanup();
+        is_dead(session, &why);
+        return finish_lost(bytes, false, why);
     }
     bool waited = false;
     bool saw_wait = false;
-    const auto timeout = std::chrono::milliseconds(recheck_ms());
+    bool deadline_hit = false;
+    const auto start = std::chrono::steady_clock::now();
+    const auto deadline = start + detail::admit_deadline();
+    auto next_note = start + std::chrono::seconds(30);
+    const auto step = std::min(std::chrono::milliseconds(recheck_ms()), liveness() / 2);
     for (;;) {
         Frame reply;
-        const bool got =
-            wait_frame(session, req, block ? timeout : std::chrono::milliseconds(5000), reply);
-        if (!got) {
-            std::lock_guard<std::mutex> lock(session.mu);
-            if (session.dead) {
-                std::erase_if(session.blocking, [&](std::uint64_t id) { return id == req; });
-                forget_pending(session, req);
-                return finish_lost(bytes, waited);
-            }
-            if (!block) {
-                std::erase_if(session.blocking, [&](std::uint64_t id) { return id == req; });
-                forget_pending(session, req);
-                return finish_lost(bytes, false);
-            }
-            if (call_wait && !saw_wait) {
-                // The coordinator has the request (it has not admitted it).
-                // Publish that we are waiting, then re-read. The timeout
-                // itself is not an admission.
-            }
-        } else if (frame_op(reply) == kStOk) {
-            continue;
-        } else if (frame_op(reply) == kStWait && block && !saw_wait) {
-            saw_wait = true;
-            waited = true;
-            if (call_wait && session.hooks.on_wait != nullptr) {
-                session.hooks.on_wait();
-            }
-            continue;
-        } else if (frame_op(reply) == kStWait && block) {
-            continue;
-        } else {
-            CoordResult result;
-            result.info = admit_from(reply, bytes, waited);
-            result.hold_id = frame_a(reply);
-            if (result.info.admitted && bytes > 0 && frame_op(reply) == kStAdmit) {
-                remember_hold(session, result.hold_id, bytes);
-            }
-            {
-                std::lock_guard<std::mutex> lock(session.mu);
-                std::erase_if(session.blocking, [&](std::uint64_t id) { return id == req; });
-            }
-            forget_pending(session, req);
-            return result;
+        const Got got = wait_frame(session, req, block ? step : liveness(), reply);
+        if (got == Got::Dead) {
+            cleanup();
+            is_dead(session, &why);
+            return finish_lost(bytes, waited, why);
         }
-        if (block) {
+        if (got == Got::Timeout) {
+            if (!block || silent_too_long(session, start)) {
+                // Nothing at all came back within the liveness period: the
+                // coordinator stopped answering. Refuse; never admit.
+                mark_dead(session, "coordinator not responding");
+                cleanup();
+                return finish_lost(bytes, waited, "coordinator not responding");
+            }
             if (call_wait && !saw_wait) {
                 saw_wait = true;
                 waited = true;
@@ -1427,21 +1511,56 @@ CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool 
                     session.hooks.on_wait();
                 }
             }
+            const auto now = std::chrono::steady_clock::now();
+            if (!deadline_hit && now >= deadline) {
+                // Bounded wait: withdraw the request. If the coordinator
+                // admitted it first, that admission is what comes back.
+                deadline_hit = true;
+                Frame cancel;
+                put32(cancel.bytes, 4, kOpCancel);
+                put64(cancel.bytes, 32, req);
+                send_unanswered(session, cancel);
+            }
+            if (now >= next_note && session.log) {
+                next_note = now + std::chrono::seconds(30);
+                session.log("[anno-test memory] still waiting estimate=" + std::to_string(bytes) +
+                            " for " + seconds_text(now - start) + " s");
+            }
+            // A ping: the coordinator re-decides with a fresh reading, and
+            // its answer shows it is alive. The answer is not awaited here.
             const Snap snap = snapshot(session);
-            const std::uint64_t heart = begin_req(session);
             Frame beat;
             put32(beat.bytes, 4, kOpHeartbeat);
             put64(beat.bytes, 40, snap.resident);
             put64(beat.bytes, 48, snap.free ? *snap.free : kUnknown);
-            if (!send_request(session, beat, heart)) {
-                forget_pending(session, heart);
-                forget_pending(session, req);
-                return finish_lost(bytes, waited);
-            }
-            Frame ignore;
-            wait_frame(session, heart, std::chrono::milliseconds(1000), ignore);
-            forget_pending(session, heart);
+            send_unanswered(session, beat);
+            continue;
         }
+        const std::uint32_t op = frame_op(reply);
+        if (op == kStOk) {
+            continue;
+        }
+        if (op == kStWait && block) {
+            if (call_wait && !saw_wait) {
+                saw_wait = true;
+                waited = true;
+                if (session.hooks.on_wait != nullptr) {
+                    session.hooks.on_wait();
+                }
+            }
+            continue;
+        }
+        CoordResult result;
+        result.info = admit_from(reply, bytes, waited);
+        result.hold_id = frame_a(reply);
+        if (result.info.admitted && bytes > 0 && op == kStAdmit) {
+            remember_hold(session, result.hold_id, bytes);
+        }
+        if (deadline_hit && result.info.refused && result.info.reason == "cancelled") {
+            result.info.reason = "wait deadline";
+        }
+        cleanup();
+        return result;
     }
 }
 
@@ -1466,7 +1585,7 @@ std::shared_ptr<CoordSession> detail::coord_connect(const std::filesystem::path&
         close_fd(fd);
         throw std::runtime_error("could not register with the test budget coordinator");
     }
-    set_recv_timeout(fd, 5000);
+    set_recv_timeout(fd, static_cast<int>(liveness().count()));
     Frame reply;
     if (!recv_full(fd, reply) || frame_op(reply) != kStOk || frame_token(reply) == 0) {
         close_fd(fd);
@@ -1519,16 +1638,11 @@ std::uint64_t detail::coord_release(CoordSession& base, std::uint64_t hold_id) n
                           [&](const detail::Hold& hold) { return hold.id == hold_id; });
             resident = detail::sum_resident(session.holds);
         }
-        const std::uint64_t req = begin_req(session);
         Frame request;
         put32(request.bytes, 4, kOpRelease);
         put64(request.bytes, 32, hold_id);
         put64(request.bytes, 40, resident);
-        if (send_request(session, request, req)) {
-            Frame reply;
-            wait_frame(session, req, std::chrono::milliseconds(5000), reply);
-        }
-        forget_pending(session, req);
+        round_trip(session, request);
     } catch (...) {
     }
     return released;
@@ -1544,14 +1658,9 @@ detail::CoordResult detail::coord_cpu_acquire(CoordSession& base) {
 void detail::coord_cpu_release(CoordSession& base) noexcept {
     try {
         auto& session = static_cast<Session&>(base);
-        const std::uint64_t req = begin_req(session);
         Frame request;
         put32(request.bytes, 4, kOpCpuRelease);
-        if (send_request(session, request, req)) {
-            Frame reply;
-            wait_frame(session, req, std::chrono::milliseconds(5000), reply);
-        }
-        forget_pending(session, req);
+        round_trip(session, request);
     } catch (...) {
     }
 }
@@ -1564,31 +1673,21 @@ void detail::coord_cancel(CoordSession& base) {
         reqs = session.blocking;
     }
     for (const std::uint64_t blocked : reqs) {
-        const std::uint64_t req = begin_req(session);
         Frame request;
         put32(request.bytes, 4, kOpCancel);
         put64(request.bytes, 32, blocked);
-        if (send_request(session, request, req)) {
-            Frame reply;
-            wait_frame(session, req, std::chrono::milliseconds(5000), reply);
-        }
-        forget_pending(session, req);
+        round_trip(session, request);
     }
 }
 
 void detail::coord_wake(CoordSession& base) {
     auto& session = static_cast<Session&>(base);
     const Snap snap = snapshot(session);
-    const std::uint64_t req = begin_req(session);
     Frame request;
     put32(request.bytes, 4, kOpHeartbeat);
     put64(request.bytes, 40, snap.resident);
     put64(request.bytes, 48, snap.free ? *snap.free : kUnknown);
-    if (send_request(session, request, req)) {
-        Frame reply;
-        wait_frame(session, req, std::chrono::milliseconds(5000), reply);
-    }
-    forget_pending(session, req);
+    round_trip(session, request);
 }
 
 std::uint64_t detail::coord_local_reserved(CoordSession& base) {
@@ -1605,8 +1704,13 @@ int run_budget_server(std::uint16_t port, bool all_interfaces) {
 #endif
     const Native listen_fd = listen_on(port, all_interfaces);
     if (listen_fd == kInvalid) {
-        return 0;
+        std::printf("BIND-FAILED %u\n", static_cast<unsigned>(port));
+        std::fflush(stdout);
+        return 3;
     }
+    // A test that starts its own coordinator waits for this line.
+    std::printf("LISTENING %u\n", static_cast<unsigned>(port));
+    std::fflush(stdout);
     Server server;
     auto idle_since = std::chrono::steady_clock::now();
     while (true) {

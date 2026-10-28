@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -13,6 +14,8 @@ namespace anno::test::detail {
 
 struct CoordSession {
     virtual ~CoordSession() = default;
+    /// Progress lines of a long wait (the process budget logs them).
+    std::function<void(const std::string&)> log;
 };
 
 struct CoordResult {

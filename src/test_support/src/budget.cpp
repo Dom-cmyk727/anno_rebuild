@@ -3,6 +3,7 @@
 // and WSL clients subtract the same pending bytes from free memory.
 #include "anno/test/budget.hpp"
 
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdio>
@@ -291,6 +292,9 @@ Budget& Budget::process() {
         hooks.process_private = &process_private_bytes;
         auto created = open_coord(default_budget_path(), hooks, memory_headroom_bytes(), true);
         created->logging_ = true;
+        created->state_->coord->log = [path = created->state_->log_path](const std::string& line) {
+            emit_log(true, path, line);
+        };
         created->set_stop_below(memory_stop_bytes());
         return created;
     }();
@@ -345,7 +349,22 @@ Reservation Budget::reserve(std::uint64_t bytes, Admit* info) {
         const std::uint64_t seen = slot.cancel_gen;
         std::uint64_t my_seq = 0;
         bool hooked = false;
+        const auto deadline = std::chrono::steady_clock::now() + admit_deadline();
         for (;;) {
+            if (std::chrono::steady_clock::now() >= deadline) {
+                std::erase_if(state_->mem->waiters,
+                              [&](const Waiter& waiter) { return waiter.seq == my_seq; });
+                state_->mem->cv.notify_all();
+                Admit out;
+                out.refused = true;
+                out.waited = hooked;
+                out.reason = "wait deadline";
+                out.estimate = bytes;
+                if (info != nullptr) {
+                    *info = out;
+                }
+                return Reservation{};
+            }
             if (slot.cancel_gen != seen) {
                 std::erase_if(state_->mem->waiters,
                               [&](const Waiter& waiter) { return waiter.seq == my_seq; });
@@ -401,7 +420,9 @@ Reservation Budget::reserve(std::uint64_t bytes, Admit* info) {
                 lock.lock();
                 continue;
             }
-            state_->mem->cv.wait(lock);
+            // A timed recheck: free memory can change outside the budget
+            // (external pressure or recovery). It only re-decides.
+            state_->mem->cv.wait_for(lock, recheck_period());
         }
     }
 

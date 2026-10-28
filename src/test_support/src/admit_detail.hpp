@@ -1,6 +1,7 @@
 // Admission decision shared by the in-memory budget and the host coordinator.
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -8,8 +9,24 @@
 #include <vector>
 
 #include <anno/test/budget.hpp>
+#include <anno/test/parallel.hpp>
 
 namespace anno::test::detail {
+
+/// How often a waiting request re-reads memory (ANNO_TEST_BUDGET_RECHECK_MS,
+/// default 200). A recheck only re-decides; it never admits by itself.
+inline std::chrono::milliseconds recheck_period() {
+    const std::uint64_t n = env_count("ANNO_TEST_BUDGET_RECHECK_MS").value_or(200);
+    return std::chrono::milliseconds(n == 0 ? 200 : (n > 60000 ? 60000 : n));
+}
+
+/// The longest a blocking reserve or CPU acquire waits before it is refused
+/// with "wait deadline" (ANNO_TEST_ADMIT_WAIT_S, default 1800 s). The bound is
+/// a refusal; it never starts work that was not admitted.
+inline std::chrono::milliseconds admit_deadline() {
+    const std::uint64_t s = env_count("ANNO_TEST_ADMIT_WAIT_S").value_or(1800);
+    return std::chrono::milliseconds((s == 0 ? 1800 : (s > 86400 ? 86400 : s)) * 1000);
+}
 
 inline std::uint64_t sat_add(std::uint64_t a, std::uint64_t b) {
     return a > std::numeric_limits<std::uint64_t>::max() - b

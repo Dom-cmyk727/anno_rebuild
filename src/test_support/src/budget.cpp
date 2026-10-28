@@ -30,10 +30,16 @@ namespace {
 
 using namespace detail;
 
-void emit_log(bool enabled, const std::filesystem::path& log_path, const std::string& line) {
+void emit_log(bool enabled, const std::filesystem::path& log_path, const std::string& text) {
     if (!enabled) {
         return;
     }
+    // Wall-clock milliseconds, so a line can be matched with the memory
+    // sampler's rows (tools/sample_memory.ps1). Test support only.
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+    const std::string line = text + " t=" + std::to_string(ms);
     std::fprintf(stderr, "%s\n", line.c_str());
     std::fflush(stderr);
     if (log_path.empty()) {
@@ -59,10 +65,12 @@ std::string num(std::uint64_t value) {
 }
 
 std::string admit_line(const char* kind, const Admit& info) {
+    const std::optional<std::uint64_t> own = process_private_bytes();
     return std::string("[anno-test memory] ") + kind + " estimate=" + num(info.estimate) +
-           " available=" + num(info.available) + " headroom=" + num(info.headroom) +
-           " pending=" + num(info.pending) + " resident=" + num(info.resident) +
-           " reason=" + info.reason;
+           " available=" + num(info.available) + " free=" + num(info.free) +
+           " headroom=" + num(info.headroom) + " pending=" + num(info.pending) +
+           " resident=" + num(info.resident) +
+           " private=" + (own ? num(*own) : std::string("unknown")) + " reason=" + info.reason;
 }
 
 struct Waiter {

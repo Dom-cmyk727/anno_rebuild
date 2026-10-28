@@ -38,6 +38,7 @@
 // render in the river flow corpus test: no non-river pixel changes).
 // Set ANNO_PRINT_DIGESTS=1 to print the lines.
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -97,6 +98,45 @@ std::string hex(std::uint64_t v) {
 const char* style_name(render::WaterStyle s) {
     return s == render::WaterStyle::Original ? "Original" : "Enhanced";
 }
+
+/// ANNO_TEST_MEASURE_ITEMS=1: the highest private bytes of this process while
+/// a corpus item runs (sampled every 5 ms), printed against the item's
+/// reservation (docs/perf/README.md, T10c F2). With ANNO_TEST_THREADS=1 items
+/// do not overlap and the growth is the item's own.
+class ItemPeak {
+  public:
+    static ItemPeak& get() {
+        static ItemPeak peak;
+        return peak;
+    }
+    bool on() const noexcept { return on_; }
+    /// The private bytes now; the peak restarts from them.
+    std::uint64_t start() {
+        const std::uint64_t now = anno::test::process_private_bytes().value_or(0);
+        peak_.store(now);
+        return now;
+    }
+    std::uint64_t peak() const noexcept { return peak_.load(); }
+
+  private:
+    ItemPeak() : on_(std::getenv("ANNO_TEST_MEASURE_ITEMS") != nullptr) {
+        if (on_) {
+            thread_ = std::jthread([this](const std::stop_token& stop) {
+                while (!stop.stop_requested()) {
+                    if (const auto now = anno::test::process_private_bytes()) {
+                        std::uint64_t seen = peak_.load();
+                        while (*now > seen && !peak_.compare_exchange_weak(seen, *now)) {
+                        }
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                }
+            });
+        }
+    }
+    bool on_ = false;
+    std::atomic<std::uint64_t> peak_{0};
+    std::jthread thread_;
+};
 
 /// The digest lines of the corpus, four per scenario in file order; `only`:
 /// just the scenarios with these file names (empty: all); `river_flow`: how
@@ -199,6 +239,8 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
                 return hold;
             };
             auto picture = reserve_picture(pixels);
+            ItemPeak& measure = ItemPeak::get();
+            std::uint64_t private_start = measure.on() ? measure.start() : 0;
             ensure_catalog();
             auto render_cpu = anno::test::Budget::process().acquire_cpu();
             std::unique_ptr<render::Scene> scene;
@@ -265,6 +307,7 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
                     render_cpu.release();
                     pixels = actual;
                     picture = reserve_picture(pixels);
+                    private_start = measure.on() ? measure.start() : 0;
                     ensure_catalog();
                     render_cpu = anno::test::Budget::process().acquire_cpu();
                     build_scene();
@@ -278,25 +321,41 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
             render::Layers layers = render::Layers::all();
             layers.water_style = style;
             layers.river_flow = river_flow;
+            std::string line;
             if (ci < 2) {
                 const std::uint64_t time = ci == 0 ? 0 : 2500;
                 const auto rect = *scene->bounds(2);
                 layers.time_ms = time;
                 const auto [c, st] = scene->render(rect, 2, layers);
-                return name + " g2 t" + std::to_string(time) + " " + style_name(style) + " " +
+                line = name + " g2 t" + std::to_string(time) + " " + style_name(style) + " " +
                        std::to_string(rect.w) + "x" + std::to_string(rect.h) + " " +
                        hex(fnv(c.pixels)) + " drawn=" + std::to_string(st.objects.drawn) +
                        " inv=" + std::to_string(st.objects.invisible) +
                        " failed=" + std::to_string(st.objects.failed) +
                        " units=" + std::to_string(st.units);
+            } else {
+                const auto b = *scene->bounds(1);
+                const render::Rect rect{b.x + b.w / 2 - 800, b.y + b.h / 2 - 450, 1600, 900};
+                layers.time_ms = 700;
+                const auto [c, st] = scene->render(rect, 1, layers);
+                line = name + " g1 region " + style_name(style) + " " + hex(fnv(c.pixels)) +
+                       " drawn=" + std::to_string(st.objects.drawn) +
+                       " units=" + std::to_string(st.units);
             }
-            const auto b = *scene->bounds(1);
-            const render::Rect rect{b.x + b.w / 2 - 800, b.y + b.h / 2 - 450, 1600, 900};
-            layers.time_ms = 700;
-            const auto [c, st] = scene->render(rect, 1, layers);
-            return name + " g1 region " + style_name(style) + " " + hex(fnv(c.pixels)) +
-                   " drawn=" + std::to_string(st.objects.drawn) +
-                   " units=" + std::to_string(st.units);
+            if (measure.on()) {
+                const std::uint64_t peak = measure.peak();
+                std::fprintf(stderr,
+                             "[anno-test memory] item %s case=%zu pixels=%llu reserved=%llu "
+                             "private_start=%llu private_peak=%llu growth=%llu\n",
+                             name.c_str(), ci, static_cast<unsigned long long>(pixels),
+                             static_cast<unsigned long long>(picture.bytes()),
+                             static_cast<unsigned long long>(private_start),
+                             static_cast<unsigned long long>(peak),
+                             static_cast<unsigned long long>(
+                                 peak > private_start ? peak - private_start : 0));
+                std::fflush(stderr);
+            }
+            return line;
         },
         opt);
     return per_case;

@@ -243,6 +243,45 @@ TEST_CASE("a smaller job does not take the bytes a waiting larger job needs" *
     CHECK(budget->reserved() == 80);
 }
 
+TEST_CASE("a ceiling above the private growth waits instead of refusing" *
+          doctest::test_suite("budget")) {
+    // The estimate is 90 and only 40 of it shows up in the private total, so
+    // free has fallen by 40. The same-sized next job still fits once the hold
+    // is released; it must wait, not be refused as over capacity.
+    reset(100);
+    auto hooks = hooks_free();
+    hooks.process_private = &private_of;
+    hooks.on_wait = &count_wait;
+    auto budget = anno::test::Budget::memory(hooks, 10);
+    auto held = budget->reserve(90);
+    REQUIRE(held);
+    g_private = 40;
+    g_free = 60;
+    anno::test::Reservation second;
+    anno::test::Admit info;
+    std::atomic<int> done{0};
+    std::thread waiter([&] {
+        second = budget->reserve(90, &info);
+        done.store(1);
+    });
+    while (done.load() == 0 && g_waits.load() == 0) {
+        std::this_thread::yield();
+    }
+    if (g_waits.load() > 0) {
+        // Releasing the allocation returns the private bytes and the free
+        // memory, which is what the waiter then sees.
+        g_private = 0;
+        g_free = 100;
+        held.release();
+    }
+    waiter.join();
+    CHECK(g_waits.load() > 0);
+    CHECK(second);
+    CHECK(info.admitted);
+    CHECK(info.waited);
+    CHECK_FALSE(info.refused);
+}
+
 TEST_CASE("resident reservations are not subtracted from free memory twice" *
           doctest::test_suite("budget")) {
     reset(100);

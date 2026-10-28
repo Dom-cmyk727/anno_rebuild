@@ -112,7 +112,13 @@ Decision decide(const View& view, std::uint64_t bytes, Admit& info) {
 struct Hold {
     std::uint64_t id = 0;
     std::uint64_t bytes = 0;
-    bool resident = false;
+    /// Bytes of this hold already visible in the process private total.
+    /// The estimate is a ceiling, so a hold can be partly resident: the rest
+    /// stays pending until the private total catches up. Marking the whole
+    /// hold pending after the allocation has already lowered free memory
+    /// counts those bytes twice and refuses a later job that would fit once
+    /// this hold is released.
+    std::uint64_t resident_bytes = 0;
 };
 
 void observe(std::vector<Hold>& holds, bool& baseline_set, std::uint64_t& baseline,
@@ -131,10 +137,11 @@ void observe(std::vector<Hold>& holds, bool& baseline_set, std::uint64_t& baseli
     std::uint64_t grown = *private_bytes > baseline ? *private_bytes - baseline : 0;
     for (Hold& hold : holds) {
         if (grown >= hold.bytes) {
-            hold.resident = true;
+            hold.resident_bytes = hold.bytes;
             grown -= hold.bytes;
         } else {
-            hold.resident = false;
+            hold.resident_bytes = grown;
+            grown = 0;
         }
     }
 }
@@ -150,9 +157,7 @@ std::uint64_t sum_reserved(const std::vector<Hold>& holds) {
 std::uint64_t sum_resident(const std::vector<Hold>& holds) {
     std::uint64_t sum = 0;
     for (const Hold& hold : holds) {
-        if (hold.resident) {
-            sum = sat_add(sum, hold.bytes);
-        }
+        sum = sat_add(sum, hold.resident_bytes);
     }
     return sum;
 }
@@ -225,11 +230,8 @@ MemEval evaluate_mem(MemTable& table, int slot, std::uint64_t bytes, std::uint64
     for (MemTable::Slot& one : table.slots) {
         observe(one.holds, one.baseline_set, one.baseline, one.hooks);
         for (const Hold& hold : one.holds) {
-            if (hold.resident) {
-                resident = sat_add(resident, hold.bytes);
-            } else {
-                pending = sat_add(pending, hold.bytes);
-            }
+            resident = sat_add(resident, hold.resident_bytes);
+            pending = sat_add(pending, hold.bytes - hold.resident_bytes);
         }
     }
     std::uint64_t oldest_seq = 0;

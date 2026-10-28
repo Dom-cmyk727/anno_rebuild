@@ -99,6 +99,20 @@ const char* style_name(render::WaterStyle s) {
     return s == render::WaterStyle::Original ? "Original" : "Enhanced";
 }
 
+// What one render of digest_lines reserves. This path measured, not the fresh
+// viewer's (budget.hpp): private bytes from admission to the item's peak,
+// ANNO_TEST_MEASURE_ITEMS=1, one worker, the 40 renders of the legacy-river
+// case on 2026-10-28 (docs/perf/README.md, T10c F2). An item without its
+// picture (scene, ground textures, a 1600×900 region) grew at most 108085248;
+// a group-2 map at most (4475035648 - 108085248) / 155523200 = 28.08 bytes per
+// pixel above that (Single_01); the catalog the first item loads stays at about
+// 743718912. Reserved: 256 MiB per item (2.4×), 36 bytes per pixel (1.28×) and
+// 1 GiB for the catalog (1.44×) while it is not loaded. The whole-scene case's
+// items are checked against the same numbers in its own measured run.
+constexpr std::uint64_t kCorpusItemBytes = 256ULL * 1024 * 1024;
+constexpr std::uint64_t kCorpusBytesPerPixel = 36;
+constexpr std::uint64_t kCorpusCatalogBytes = 1024ULL * 1024 * 1024;
+
 /// ANNO_TEST_MEASURE_ITEMS=1: the highest private bytes of this process while
 /// a corpus item runs (sampled every 5 ms), printed against the item's
 /// reservation (docs/perf/README.md, T10c F2). With ANNO_TEST_THREADS=1 items
@@ -158,6 +172,7 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
     };
     std::shared_ptr<Catalog> catalog;
     std::once_flag catalog_once;
+    std::atomic<bool> catalog_ready{false};
     auto ensure_catalog = [&]() {
         std::call_once(catalog_once, [&] {
             auto loaded = std::make_shared<Catalog>();
@@ -176,6 +191,7 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
                 }
             }
             catalog = std::move(loaded);
+            catalog_ready.store(true);
         });
     };
     auto files = anno::test::files_with_ext(dir / "Scenes" / "0200Single", "sze");
@@ -226,10 +242,10 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
                 pixels = static_cast<std::uint64_t>(island_bounds->w) *
                          static_cast<std::uint64_t>(island_bounds->h);
             }
-            auto reserve_picture = [](std::uint64_t px) {
+            auto reserve_picture = [&](std::uint64_t px) {
                 anno::test::Admit info;
-                const std::uint64_t bytes = anno::test::cpu_render_setup_bytes() +
-                                            anno::test::cpu_render_additional_bytes(px);
+                const std::uint64_t bytes = kCorpusItemBytes + px * kCorpusBytesPerPixel +
+                                            (catalog_ready.load() ? 0 : kCorpusCatalogBytes);
                 auto hold = anno::test::Budget::process().reserve(bytes, &info);
                 if (!hold) {
                     throw std::runtime_error(

@@ -488,8 +488,7 @@ inline bool is_wsl() {
         for (char& c : text) {
             c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         }
-        return text.find("microsoft") != std::string::npos ||
-               text.find("wsl") != std::string::npos;
+        return text.find("microsoft") != std::string::npos || text.find("wsl") != std::string::npos;
     }();
     return wsl;
 #endif

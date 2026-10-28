@@ -38,9 +38,9 @@ void waiting() {
 }
 
 long long ms_since(std::chrono::steady_clock::time_point t0) {
-    return static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                      std::chrono::steady_clock::now() - t0)
-                                      .count());
+    return static_cast<long long>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0)
+            .count());
 }
 
 /// Reads stdin until 'q' or end of input; runs `on` for every other command.

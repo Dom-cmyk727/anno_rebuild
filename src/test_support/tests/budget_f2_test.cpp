@@ -6,9 +6,9 @@
 // listened on a fixed port only, so its fail-first run sets 47632).
 #include <atomic>
 #include <cctype>
-#include <cstdio>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>

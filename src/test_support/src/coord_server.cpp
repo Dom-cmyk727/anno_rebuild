@@ -203,7 +203,7 @@ class HostMeter {
         std::string a3 = "-ExecutionPolicy";
         std::string a4 = "Bypass";
         std::string a5 = "-EncodedCommand";
-        char* argv[] = {exe.data(), a1.data(), a2.data(), a3.data(),
+        char* argv[] = {exe.data(), a1.data(), a2.data(),      a3.data(),
                         a4.data(),  a5.data(), encoded.data(), nullptr};
         pid_t pid = 0;
         const int rc = posix_spawn(&pid, fixed, &actions, nullptr, argv, environ);
@@ -541,9 +541,8 @@ class Journal {
                 }
                 const Owner owner{ns, pid, started};
                 if (kind == 'A') {
-                    holds[{b, h}] = Orphan{b, h, bytes,
-                                           domain == kDomainGuest ? kDomainGuest : kDomainHost,
-                                           owner};
+                    holds[{b, h}] = Orphan{
+                        b, h, bytes, domain == kDomainGuest ? kDomainGuest : kDomainHost, owner};
                 } else if (kind == 'R') {
                     holds.erase({b, h});
                 } else if (kind == 'C') {
@@ -1338,8 +1337,8 @@ void pull_client(Server& server, std::size_t index) {
 std::optional<bool> owner_alive(Server& server, const Owner& owner) {
     if (owner.ns == this_namespace()) {
 #if defined(_WIN32)
-        const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
-                                           static_cast<DWORD>(owner.pid));
+        const HANDLE process =
+            OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(owner.pid));
         if (process == nullptr) {
             return GetLastError() == ERROR_INVALID_PARAMETER ? std::optional<bool>(false)
                                                              : std::nullopt;
@@ -1421,8 +1420,8 @@ std::vector<std::string> journal_state(const Server& server) {
             continue;
         }
         for (const RemoteHold& hold : client.holds) {
-            lines.push_back(Journal::hold_line(client.budget, hold.id, hold.bytes,
-                                               owner_of(client), client.domain));
+            lines.push_back(Journal::hold_line(client.budget, hold.id, hold.bytes, owner_of(client),
+                                               client.domain));
         }
         for (std::uint32_t i = 0; i < client.cpu; ++i) {
             lines.push_back(Journal::cpu_line('C', client.budget, owner_of(client)));

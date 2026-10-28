@@ -608,9 +608,9 @@ std::string seconds_text(std::chrono::steady_clock::duration span) {
 
 std::string wait_text(const Admit& last) {
     return " available=" + std::to_string(last.available) + " free=" + std::to_string(last.free) +
-           " headroom=" + std::to_string(last.headroom) + " pending=" +
-           std::to_string(last.pending) + " resident=" + std::to_string(last.resident) +
-           " reason=" + last.reason;
+           " headroom=" + std::to_string(last.headroom) +
+           " pending=" + std::to_string(last.pending) +
+           " resident=" + std::to_string(last.resident) + " reason=" + last.reason;
 }
 
 CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool block,
@@ -765,10 +765,9 @@ std::shared_ptr<CoordSession> detail::coord_connect(const std::filesystem::path&
         }
         if (!stepped_aside || attempt >= 3) {
             throw std::runtime_error(
-                mismatch.empty()
-                    ? "the test budget coordinator on port " + std::to_string(port) +
-                          " closed the connection or speaks another protocol"
-                    : mismatch);
+                mismatch.empty() ? "the test budget coordinator on port " + std::to_string(port) +
+                                       " closed the connection or speaks another protocol"
+                                 : mismatch);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
     }
@@ -779,10 +778,10 @@ std::shared_ptr<CoordSession> detail::coord_connect(const std::filesystem::path&
     session->token = frame_token(reply);
     session->hooks = hooks;
     session->meter = meter;
-    session->identity = "build=" + hex64(frame_a(reply)) + " incarnation=" +
-                        hex64(frame_b(reply)) + " protocol=" + std::to_string(frame_c(reply)) +
-                        " pid=" + std::to_string(frame_d(reply)) + " port=" +
-                        std::to_string(port) + (shared ? " shared" : " local") +
+    session->identity = "build=" + hex64(frame_a(reply)) + " incarnation=" + hex64(frame_b(reply)) +
+                        " protocol=" + std::to_string(frame_c(reply)) +
+                        " pid=" + std::to_string(frame_d(reply)) + " port=" + std::to_string(port) +
+                        (shared ? " shared" : " local") +
                         (internal ? " meter=internal" : " meter=clients");
     Session* raw = session.get();
     session->reader = std::thread([raw] { reader_main(raw); });

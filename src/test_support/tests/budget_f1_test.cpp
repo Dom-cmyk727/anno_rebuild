@@ -387,15 +387,13 @@ TEST_CASE("a live Windows owner is not reclaimed by a WSL client" * doctest::tes
     char build[32];
     std::snprintf(build, sizeof(build), "0x%016llxULL",
                   static_cast<unsigned long long>(anno::test::coordinator_build()));
-    const std::string compile = "wsl -d Ubuntu -- g++ -std=c++20 -O1 -g -pthread "
-                                "-DANNO_COORD_BUILD=" +
-                                std::string(build) + " -I" +
-                                wsl(source / "include") + " " + wsl(source / "src" / "budget.cpp") +
-                                " " + wsl(source / "src" / "coord.cpp") + " " +
-                                wsl(source / "src" / "coord_server.cpp") + " " +
-                                wsl(source / "src" / "memory.cpp") + " " +
-                                wsl(source / "tests" / "budget_probe.cpp") + " -o " +
-                                wsl(linux_probe);
+    const std::string compile =
+        "wsl -d Ubuntu -- g++ -std=c++20 -O1 -g -pthread "
+        "-DANNO_COORD_BUILD=" +
+        std::string(build) + " -I" + wsl(source / "include") + " " +
+        wsl(source / "src" / "budget.cpp") + " " + wsl(source / "src" / "coord.cpp") + " " +
+        wsl(source / "src" / "coord_server.cpp") + " " + wsl(source / "src" / "memory.cpp") + " " +
+        wsl(source / "tests" / "budget_probe.cpp") + " -o " + wsl(linux_probe);
     REQUIRE(std::system(compile.c_str()) == 0);
 
     const std::string run = "wsl -d Ubuntu -- env ANNO_TEST_BUDGET_ID=f1-foreign "

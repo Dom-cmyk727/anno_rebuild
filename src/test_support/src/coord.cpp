@@ -1267,19 +1267,22 @@ void reader_main(Session* session) {
 bool wait_frame(Session& session, std::uint64_t req, std::chrono::milliseconds timeout,
                 Frame& out) {
     std::unique_lock<std::mutex> lock(session.mu);
-    Pending* pending = nullptr;
-    for (Pending& one : session.pending) {
-        if (one.req == req) {
-            pending = &one;
-            break;
+    // begin_req can reallocate pending while this wait has released mu.
+    // Look the request up again under the lock; a pointer would dangle.
+    auto find = [&]() -> Pending* {
+        for (Pending& one : session.pending) {
+            if (one.req == req) {
+                return &one;
+            }
         }
-    }
-    if (pending == nullptr) {
-        return false;
-    }
-    const bool signaled = session.cv.wait_for(
-        lock, timeout, [&] { return session.dead || !pending->frames.empty(); });
-    if (!signaled || pending->frames.empty()) {
+        return nullptr;
+    };
+    const bool signaled = session.cv.wait_for(lock, timeout, [&] {
+        const Pending* pending = find();
+        return pending == nullptr || session.dead || !pending->frames.empty();
+    });
+    Pending* pending = find();
+    if (!signaled || pending == nullptr || pending->frames.empty()) {
         return false;
     }
     out = pending->frames.front();

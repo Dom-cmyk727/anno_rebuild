@@ -260,6 +260,39 @@ TEST_CASE("resident reservations are not subtracted from free memory twice" *
     CHECK(budget->reserved() == 100);
 }
 
+TEST_CASE("two threads of one file client both reserve" * doctest::test_suite("budget")) {
+    // The file lock is per process. Both threads share one handle; without an
+    // in-process mutex the second LockFileEx waits forever.
+    reset(100);
+    std::random_device device;
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("anno1503-budget-threads-" + std::to_string(device()));
+    std::filesystem::remove(path);
+    auto budget = anno::test::Budget::file(path, hooks_free(), 0);
+    std::atomic<int> started{0};
+    anno::test::Reservation holds[2];
+    std::thread threads[2];
+    for (int i = 0; i < 2; ++i) {
+        threads[i] = std::thread([&, i] {
+            started.fetch_add(1);
+            while (started.load() < 2) {
+                std::this_thread::yield();
+            }
+            holds[i] = budget->reserve(30);
+        });
+    }
+    for (auto& thread : threads) {
+        thread.join();
+    }
+    CHECK(holds[0]);
+    CHECK(holds[1]);
+    CHECK(budget->reserved() == 60);
+    holds[0].release();
+    holds[1].release();
+    budget.reset();
+    std::filesystem::remove(path);
+}
+
 TEST_CASE("two file clients cannot reserve the same free bytes" * doctest::test_suite("budget")) {
     reset(100);
     std::random_device device;

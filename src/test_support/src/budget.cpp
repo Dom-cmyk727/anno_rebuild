@@ -469,6 +469,11 @@ struct OsFile {
     int fd = -1;
     sem_t* sem = nullptr;
 #endif
+    // LockFileEx / flock are per process. A second thread in this process
+    // that locks the same handle waits for the process to release it, which
+    // never happens while the first thread is the one holding it. The mutex
+    // lets only one thread of this process take the file lock.
+    std::mutex threads;
 
     explicit OsFile(const std::filesystem::path& path) {
         std::error_code error;
@@ -527,14 +532,17 @@ struct OsFile {
     OsFile& operator=(const OsFile&) = delete;
 
     void lock() {
+        threads.lock();
 #if defined(_WIN32)
         OVERLAPPED overlapped{};
         if (LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK, 0, 0xffffffffu, 0xffffffffu, &overlapped) ==
             0) {
+            threads.unlock();
             throw std::runtime_error("could not lock the test budget file");
         }
 #else
         if (flock(fd, LOCK_EX) != 0) {
+            threads.unlock();
             throw std::runtime_error("could not lock the test budget file");
         }
 #endif
@@ -547,6 +555,7 @@ struct OsFile {
 #else
         flock(fd, LOCK_UN);
 #endif
+        threads.unlock();
     }
 
     std::vector<std::uint8_t> read_all() {

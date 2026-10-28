@@ -111,6 +111,8 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
     struct Catalog {
         std::vector<std::uint8_t> felder_buf;
         std::vector<std::uint8_t> anl_buf;
+        /// FigurenHeader entries view this buffer. It has to outlive `header`.
+        std::vector<std::uint8_t> header_buf;
         std::optional<fig::FigurenHeader> header;
         std::vector<std::vector<std::uint8_t>> vols{3};
     };
@@ -121,8 +123,8 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
             auto loaded = std::make_shared<Catalog>();
             loaded->felder_buf = anno::test::read_file(dir / "Textures" / "Felder.tex");
             loaded->anl_buf = anno::test::read_file(dir / "Anlagen.dat");
-            const auto hbuf = anno::test::read_file(dir / "FigurenHeader.dat");
-            loaded->header = fig::FigurenHeader::parse(hbuf).value();
+            loaded->header_buf = anno::test::read_file(dir / "FigurenHeader.dat");
+            loaded->header = fig::FigurenHeader::parse(loaded->header_buf).value();
             for (std::uint32_t g = 0; g < 3; ++g) {
                 for (std::uint32_t part = 0;; ++part) {
                     const auto path = dir / fig::volume_file_name(g, part);

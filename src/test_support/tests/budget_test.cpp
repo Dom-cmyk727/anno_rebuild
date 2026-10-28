@@ -48,8 +48,9 @@ void reset(std::uint64_t free_bytes) {
 TEST_CASE("cpu render reservation is the measured per-pixel ceiling" *
           doctest::test_suite("budget")) {
     // Single_01 group 2: 16960 * 9170 pixels, measured additional 6628712448.
-    CHECK(anno::test::cpu_render_additional_bytes(155523200) == 6687497600ULL);
+    CHECK(anno::test::cpu_render_additional_bytes(155523200) == 7154067200ULL);
     CHECK(anno::test::cpu_render_additional_bytes(0) == 0);
+    CHECK(anno::test::cpu_render_setup_bytes() == 530382848ULL);
 }
 
 TEST_CASE("free memory below the stop threshold refuses admission" *

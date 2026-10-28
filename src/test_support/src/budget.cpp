@@ -517,11 +517,10 @@ void Budget::cancel() {
     detail::coord_cancel(*state_->coord);
 }
 
-Reservation reserve_cpu_render(std::uint64_t pixels) {
-    if (pixels == 0) {
+static Reservation reserve_bytes(std::uint64_t bytes) {
+    if (bytes == 0) {
         return Reservation{};
     }
-    const std::uint64_t bytes = cpu_render_additional_bytes(pixels);
     Admit info;
     Reservation hold = Budget::process().reserve(bytes, &info);
     if (!hold) {
@@ -530,6 +529,17 @@ Reservation reserve_cpu_render(std::uint64_t pixels) {
                                  " available=" + std::to_string(info.available));
     }
     return hold;
+}
+
+Reservation reserve_cpu_render(std::uint64_t pixels) {
+    if (pixels == 0) {
+        return Reservation{};
+    }
+    return reserve_bytes(cpu_render_additional_bytes(pixels));
+}
+
+Reservation reserve_cpu_setup() {
+    return reserve_bytes(cpu_render_setup_bytes());
 }
 
 } // namespace anno::test

@@ -139,27 +139,15 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
             const std::size_t fi = ti / kCases;
             const std::size_t ci = ti % kCases;
             const auto& p = files[fi];
+            // Setup is reserved before the scene exists. The render reservation
+            // uses the rectangle render() will draw, not the pre-scene island
+            // boxes (those were short of Single_01's 16960×9170).
+            const auto setup_memory = anno::test::reserve_cpu_setup();
+            const auto render_cpu = anno::test::Budget::process().acquire_cpu();
+            (void)setup_memory;
+            (void)render_cpu;
             const auto buf = anno::test::read_file(p);
             auto islands = anno::formats::insel::islands(buf).value();
-            std::vector<render::IslandBox> boxes;
-            boxes.reserve(islands.size());
-            for (const auto& island : islands) {
-                boxes.push_back(render::IslandBox::of(island));
-            }
-            std::uint64_t pixels = 1600ULL * 900ULL;
-            if (ci < 2) {
-                const auto placements = render::layout(boxes, 2);
-                if (const auto bounds = render::scene_bounds(placements)) {
-                    if (bounds->w > 0 && bounds->h > 0) {
-                        pixels = static_cast<std::uint64_t>(bounds->w) *
-                                 static_cast<std::uint64_t>(bounds->h);
-                    }
-                }
-            }
-            const auto render_memory = anno::test::reserve_cpu_render(pixels);
-            const auto render_cpu = anno::test::Budget::process().acquire_cpu();
-            (void)render_memory;
-            (void)render_cpu;
             auto anlagen = anno::formats::anlagen::AnlagenFile::parse(anl_buf).value();
             const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
             auto textures = anno::assets::island::GroundTextures::load(felder).value();
@@ -212,6 +200,13 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
             render::Layers layers = render::Layers::all();
             layers.water_style = style;
             layers.river_flow = river_flow;
+            std::uint64_t pixels = 1600ULL * 900ULL;
+            if (ci < 2) {
+                const auto full = *scene.bounds(2);
+                pixels = static_cast<std::uint64_t>(full.w) * static_cast<std::uint64_t>(full.h);
+            }
+            const auto render_memory = anno::test::reserve_cpu_render(pixels);
+            (void)render_memory;
             if (ci < 2) {
                 const std::uint64_t time = ci == 0 ? 0 : 2500;
                 const auto rect = *scene.bounds(2);

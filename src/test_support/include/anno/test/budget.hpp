@@ -11,17 +11,31 @@
 
 namespace anno::test {
 
-/// Additional bytes a CPU full-map render allocated above the memory already
-/// resident when the render started, per pixel. Ceiling of the measured
-/// Single_01 group-2 ratio 42.622 (enhanced legacy, 6628712448 additional
-/// bytes over 155523200 pixels). The other measured maps were lower per pixel.
-inline constexpr std::uint64_t kCpuRenderBytesPerPixel = 43;
+/// Additional bytes a CPU full-map render allocated above the scene-load high
+/// water, per pixel. Measured 2026-10-28 (docs/perf/README.md). Single_01
+/// group 2, enhanced legacy, 16960×9170: peak private 7620632576 minus the
+/// load high water 530382848 is 7090249728 bytes over 155523200 pixels,
+/// 45.590 bytes/pixel. Single_24 group 2, 7200×2811, peaked at 1268985856;
+/// above its own early peak of 356696064 that is 45.062 bytes/pixel. The
+/// rate is one byte above the higher ratio.
+inline constexpr std::uint64_t kCpuRenderBytesPerPixel = 46;
+
+/// Highest private-byte peak of loading Single_01 without the full-map image:
+/// a 1600×900 group-1 view at tile 800,400 (530382848). The full-map run's
+/// peak at 0.729 s, before that image grew, was 529973248. Three other
+/// 1600×900 views peaked between 529661952 and 530006016. Reserved before
+/// the scene is built, so the setup allocations are a reservation.
+inline constexpr std::uint64_t kCpuRenderSetupBytes = 530382848;
 
 inline std::uint64_t cpu_render_additional_bytes(std::uint64_t pixels) {
     if (pixels > std::numeric_limits<std::uint64_t>::max() / kCpuRenderBytesPerPixel) {
         return std::numeric_limits<std::uint64_t>::max();
     }
     return pixels * kCpuRenderBytesPerPixel;
+}
+
+inline std::uint64_t cpu_render_setup_bytes() {
+    return kCpuRenderSetupBytes;
 }
 
 /// Injected queries. Null function pointers mean "not provided".
@@ -144,6 +158,9 @@ class Budget : public std::enable_shared_from_this<Budget> {
 /// Reserves cpu_render_additional_bytes(pixels) on the process budget.
 /// Zero pixels reserves nothing. A refusal throws std::runtime_error.
 Reservation reserve_cpu_render(std::uint64_t pixels);
+
+/// Reserves cpu_render_setup_bytes() on the process budget. A refusal throws.
+Reservation reserve_cpu_setup();
 
 /// Process entry for anno_budget_coord. Binds `port` on loopback, or on every
 /// interface when `all_interfaces` is set (the WSL host coordinator).

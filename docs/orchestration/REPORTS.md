@@ -5543,3 +5543,29 @@ Reviewed exact clean T58 F3 head `dd897b4c358883da59ada43914a2cc6b16e37290` (on 
 - The preflight passed each check that should pass, and correctly failed main's status while the new tools were still untracked.
 - The executor's running F3 prompt references only blocks that stay in `TASKS.md`: the Round cs/cr blocks, §1 items 4, 5, 7, 9, 11 and 12, and the T10c entry.
 - No control characters are in either board file. One bell character from a mangled `\a` in a path was repaired before the commit.
+
+## Orchestrator review — round cu — 2026-10-28
+
+T10c F3 (`codex/T10c-test-memory` at `94cf3cb`, three commits on `43cd10f`, stacked on P1 `416993fa`), reviewed by reading the code at that head. The suites were not rerun while the owner uses the PC. The board's Round cu block has the anchors.
+
+**Accepted:**
+- **D1:** the hello is decided by `kCompatVersion`, the build id is provenance, and the exact build is an opt-in (`ANNO_TEST_BUDGET_EXACT_BUILD=1`).
+  - The bounded, cancellable retry ends with the infrastructure diagnostic.
+  - No fallback to a second port.
+  - The step-aside race is safe: the erase-then-`break` order ends the poll pass before a later hello is served.
+- **D2:** close-on-exec sockets and pipes, closefrom on both spawns, and non-inheritable Windows sockets. The inode-intersection criterion is correct.
+- Also accepted: the C1 nit, the F1/F2 test fixes and the `CLAUDE.md` sentence.
+- **The executor's question on the handover wording:** confirmed. "Drained" means idle.
+
+**Required (F4):**
+- **E1:** the hold-id collision across coordinator incarnations, which the executor found by reading and which I confirmed by reading (`coord_server.cpp:482`, `:522-550`, `:998`, `:1153-1159`, `:1411`). The fix includes compatibility version 3, by F3's own bump rule.
+- **E2:** a cancel lost for a second waiter, because `session_for` reads the generation after `connect_mu`.
+- **E3:** the mutation table is stale, and four defence layers have no observation of their own.
+- **E4:** +10 % on the 4-worker legacy-river case, attributed to host variance without measuring it. An interleaved A/B decides it.
+- **E5:** report gaps:
+  - no coordinator build or version per gate log;
+  - acceptance not itemized;
+  - no two-worktree paragraph;
+  - two report errors and two doc nits.
+
+**Next:** F4 Part A, then, once its gates pass, P1 steps 7–8 on the combined head (Part B). The assignment is a task packet (`cache/orch-cu/packet.md`). Nothing merged or pushed.

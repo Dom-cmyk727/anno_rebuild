@@ -330,7 +330,18 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 
 **Orchestration tooling (2026-10-28, round ct):** the live board `docs/orchestration/TASKS.md` keeps only current rounds and open tasks (786 lines, down from 2 946). History is in `docs/orchestration/HISTORY.md`, moved verbatim. Each executor assignment comes as one packet (`tools/orch/packet.py`: instructions plus verbatim board excerpts) with one start check (`tools/orch/preflight.py`); board §1 item 13.
 
-**Orchestration (2026-10-28, round cs; current):** T10c F2 (`43cd10f`, code `c95f819`) is reviewed. C1–C4 are fixed and independently verified:
+**Orchestration (2026-10-28, round cu; current):** T10c F3 (`94cf3cb`) is reviewed. D1 is accepted as implemented: the coordinator decides by an explicit compatibility version, the build id is provenance, and an exact build is an opt-in. Incompatible or exact-build requesters wait boundedly and never stop a peer. D2 is accepted: no inherited descriptors on Linux or Windows.
+
+F4 is required for:
+- **E1:** hold ids restart at 1 in every coordinator, so a journaled promise can be lost after two restarts. The fix comes with compatibility version 3.
+- **E2:** a cancel that misses a second waiter.
+- **E3:** mutation layers masked by one another.
+- **E4:** an unmeasured +10 % on the legacy-river case.
+- **E5:** gaps in the report.
+
+P1's steps 7–8 follow on the combined head as F4 Part B; then P1 and T10c integrate. Nothing merged or pushed.
+
+**Orchestration (2026-10-28, round cs):** T10c F2 (`43cd10f`, code `c95f819`) is reviewed. C1–C4 are fixed and independently verified:
 - coherent admission: temporary shortage waits, and stale readings are refused;
 - bounded coordinator loss;
 - journal-fenced replacement;

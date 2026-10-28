@@ -829,3 +829,48 @@ The per-pixel rate and the setup high water below replace the 43 bytes/pixel fig
 A Single_01 group-2 reservation is `530382848 + 7154067200 = 7684450048` bytes. Two of those plus the 4294967296-byte headroom are 19663867392 bytes, which is above the 16507674624 bytes free at the start of the one-worker baseline. The second job waits or is refused. It is not admitted beside the first.
 
 On this head a one-worker legacy-river run (`ANNO_TEST_THREADS=1`, 2026-10-28) was refused before the picture: estimate 7560404608, available 6967738368, pending 0, resident 0, reason `exceeds capacity`. Available physical at that decision was 11262695664 bytes. The same case on the pre-F1 head finished in 297.646 s at peak private 8044425216 (about 7.49 GiB). That comparison is a refusal against a completed run, because today's free memory was below estimate plus headroom. The combined with-game CTest on this head is in `docs/orchestration/REPORTS.md` (1061 passed, 6 failed, every failure `exceeds capacity`). Minimum available physical during that run was 5099106304; the maximum was 13402222592.
+
+## T10c F2 — the corpus path measured, coherent admission (2026-10-28)
+
+Head `231807807de14f4abf57d13257c9b75dd0784a61` (clean), coordinator build `bb12b56e5c8930cb`, MSVC Release, host as above (33408942080 bytes physical, commit limit 108272488448). Sampler `tools/sample_memory.ps1` at 1 Hz. `ANNO_TEST_MEASURE_ITEMS=1` samples the test process's private bytes every 5 ms and prints each item's reservation, its private bytes at admission and the peak while it ran; the highest 5 ms sample was within 20480 bytes of the process's `PeakPagefileUsage`. Logs in the worktree `cache/f2/` (not committed).
+
+### Admission
+
+The coordinator measures; clients only report (`src/test_support/src/coord_server.cpp`). A grant uses free memory read after the last event that lowered the pending bytes (a release, a client that left with holds, residency that became visible): each such event starts an epoch, and a reading of an older epoch does not count. The process budget is measured at decision time: `GlobalMemoryStatusEx` on Windows, `/proc/meminfo` on Linux, and from WSL both the VM and the Windows host through a PowerShell meter process. A WSL request is bounded by the VM and by the host, a Windows request by the host. Over capacity is only a request above a domain's total (physical memory and commit limit, or `MemTotal`) minus the headroom; any other shortfall waits, bounded by `ANNO_TEST_ADMIT_WAIT_S` (default 1800 s), with a progress line every 30 s. Every promise is journaled before the client hears of it; a replacement coordinator counts its predecessor's open promises as fully pending until their owners are gone.
+
+### The corpus path, one worker
+
+The 40 renders of `legacy river shading reproduces the previous enhanced digests` (5 scenarios × 4 renders × 2 river modes), measured first on the 46 bytes/pixel model (head `62ad87d` plus the measurement edit, 2026-10-28):
+
+| item | pixels | reserved (old model) | growth from admission |
+|---|---:|---:|---:|
+| Single_01 g2 | 155523200 | 7684450048 | 4475035648 |
+| Single_10 g2 | 159244640 | 7855636288 | 3842318336 |
+| Single_14 g2 | 130817280 | 6547977728 | 3097452544 |
+| Single_06 g2 | 32403280 | 2020933728 | 818515968 |
+| Single_24 g2 | 20239200 | 1461386048 | 508313600 |
+| any g1 region | 1440000 | 596622848 | at most 108085248 |
+
+The catalog (Felder, Anlagen, figure header and volumes) the first item loads stays at about 743718912 bytes for the rest of the call. Above the item's own scene, Single_01 is (4475035648 − 108085248) / 155523200 = 28.08 bytes per pixel; the fresh-viewer figure of 46 overstates this path by 1.6×. That run spent 387 of 662 s waiting for admission at about 12 GB free. The corpus test now reserves 256 MiB per item (2.4× the 108085248 maximum), 36 bytes per pixel (1.28× the 28.08 maximum) and 1 GiB more while the catalog is not loaded (1.44× its 743718912). The headroom stays 4096 MiB. Single_01 group 2 is now 5867270656 bytes (with the catalog 6941012480).
+
+Checked on the committed head, one worker, both heavy cases:
+
+| case | items | worst growth / reservation | largest non-picture growth | refusals | process peak private |
+|---|---:|---:|---:|---:|---:|
+| legacy river (47 assertions) | 40 | 0.763 (Single_01 g2) | 108085248 | 0 | 5226291200 |
+| scene digests (45 assertions) | 44 | 0.763 (Single_01 g2, 28.08 bytes/pixel) | 120647680 | 0 | 5223342080 |
+
+### Legacy river: one worker against budgeted overlap
+
+Same head, same 47 assertions, both runs with `ANNO_TEST_MEASURE_ITEMS=1`, free memory 17–19 GB at the start:
+
+| run | elapsed s | admissions | admitted while another was open | most open | refusals | peak private | min available physical |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `ANNO_TEST_THREADS=1` | 266.369 | 44 | 0 | 1 | 0 | 5226291200 | 13854380032 |
+| `ANNO_TEST_THREADS=4` | 186.351 | 44 | 42 | 4 | 0 | 10401538048 | 9155538944 |
+
+Budgeted overlap is 30.0 % less wall time than one worker. The largest pending sum at an admission in the overlapping run was 12322760448 bytes (other items' unallocated reservations), and available physical stayed 4.86 GB above the headroom. For the record, the pre-F1 one-worker baseline (P1 head `416993fa`, old buffers) was 297.646 s at peak private 8044425216; F1's four-worker 246.1 s was on the 46-byte model with different free memory and is not this head.
+
+### Memory used outside the budget
+
+During the first one-worker run on the committed head an owner application held 11.46 GiB private and free memory fell to about 4.3 GB. The first item (6843933440 bytes) waited 1212 s with `pending=0 resident=0 reason=waiting` and a line every 30 s, was not admitted on any older reading and not refused, and was admitted once free memory returned (15851536384). Its items then took 267.9 s. That run's 1479.8 s elapsed is that wait, not the render cost; the timing pair above was taken afterwards.

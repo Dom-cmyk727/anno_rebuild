@@ -1125,14 +1125,15 @@ void handle_frame(Server& server, SClient& client, const Frame& frame) {
                 (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^ std::random_device{}();
         }
         client.token = token;
-        if (find_budget(server, client.budget) == nullptr) {
+        SBudget* budget = find_budget(server, client.budget);
+        if (budget == nullptr) {
             SBudget created;
             created.id = client.budget;
             created.internal = (flags & kFlagInternalMeter) != 0;
             created.last_tick = std::chrono::steady_clock::now();
             server.budgets.push_back(created);
+            budget = &server.budgets.back();
         }
-        SBudget* budget = find_budget(server, client.budget);
         if (budget->cpu_budget == 0) {
             budget->cpu_budget = static_cast<std::uint32_t>(frame_d(frame));
         }

@@ -77,9 +77,11 @@ Decision decide(const View& view, std::uint64_t bytes, Admit& info) {
     info.pending = view.pending;
     info.resident = view.resident;
     if (!view.free_known) {
-        info.admitted = true;
+        // An unknown reading must not authorize the request. The caller can
+        // retry once a measurement exists; it is not admitted in the meantime.
+        info.refused = true;
         info.reason = "free memory unknown";
-        return Decision::Admit;
+        return Decision::Refuse;
     }
     const std::uint64_t blocked = sat_add(view.headroom, view.pending);
     info.available = view.free > blocked ? view.free - blocked : 0;
@@ -121,28 +123,81 @@ struct Hold {
     std::uint64_t resident_bytes = 0;
 };
 
-void observe(std::vector<Hold>& holds, bool& baseline_set, std::uint64_t& baseline,
-             const BudgetHooks& hooks) {
+/// Private and free readings taken while this client held nothing, or folded
+/// forward by the resident bytes of a hold that has since been released.
+/// Retained allocations stay in the baseline, so a later unallocated job is
+/// not marked resident just because the process still has the old cache.
+struct ReadingBase {
+    bool set = false;
+    std::uint64_t private_bytes = 0;
+    bool free_set = false;
+    std::uint64_t free_bytes = 0;
+};
+
+void snap_base(ReadingBase& base, std::uint64_t private_bytes,
+               const std::optional<std::uint64_t>& free_bytes) {
+    base.private_bytes = private_bytes;
+    base.set = true;
+    if (free_bytes) {
+        base.free_bytes = *free_bytes;
+        base.free_set = true;
+    }
+}
+
+void observe(std::vector<Hold>& holds, ReadingBase& base, const BudgetHooks& hooks) {
     if (hooks.process_private == nullptr) {
         return;
     }
     const std::optional<std::uint64_t> private_bytes = hooks.process_private();
     if (!private_bytes) {
+        for (Hold& hold : holds) {
+            hold.resident_bytes = 0;
+        }
         return;
     }
-    if (!baseline_set) {
-        baseline = *private_bytes;
-        baseline_set = true;
+    std::optional<std::uint64_t> free_bytes;
+    if (hooks.free_bytes != nullptr) {
+        free_bytes = hooks.free_bytes();
     }
-    std::uint64_t grown = *private_bytes > baseline ? *private_bytes - baseline : 0;
+    // No live hold: the current readings are the new baseline. Memory the
+    // process kept after the previous job is not residency of the next one.
+    if (holds.empty()) {
+        snap_base(base, *private_bytes, free_bytes);
+        return;
+    }
+    if (!base.set) {
+        snap_base(base, *private_bytes, free_bytes);
+    }
+    const std::uint64_t growth =
+        *private_bytes > base.private_bytes ? *private_bytes - base.private_bytes : 0;
+    // Residency is only the part that shows up in both the private total and
+    // the free-memory drop. Private commit alone is not physical residency,
+    // and a missing free reading credits nothing.
+    std::uint64_t credit = 0;
+    if (free_bytes && base.free_set) {
+        const std::uint64_t drop =
+            base.free_bytes > *free_bytes ? base.free_bytes - *free_bytes : 0;
+        credit = growth < drop ? growth : drop;
+    }
     for (Hold& hold : holds) {
-        if (grown >= hold.bytes) {
+        if (credit >= hold.bytes) {
             hold.resident_bytes = hold.bytes;
-            grown -= hold.bytes;
+            credit -= hold.bytes;
         } else {
-            hold.resident_bytes = grown;
-            grown = 0;
+            hold.resident_bytes = credit;
+            credit = 0;
         }
+    }
+}
+
+void fold_released(ReadingBase& base, const Hold& hold) {
+    if (!base.set || hold.resident_bytes == 0) {
+        return;
+    }
+    base.private_bytes = sat_add(base.private_bytes, hold.resident_bytes);
+    if (base.free_set) {
+        base.free_bytes =
+            base.free_bytes > hold.resident_bytes ? base.free_bytes - hold.resident_bytes : 0;
     }
 }
 
@@ -209,8 +264,7 @@ struct MemTable {
     struct Slot {
         BudgetHooks hooks;
         std::vector<Hold> holds;
-        bool baseline_set = false;
-        std::uint64_t baseline = 0;
+        ReadingBase base;
     };
     std::vector<Slot> slots;
     std::vector<Waiter> waiters;
@@ -228,7 +282,7 @@ MemEval evaluate_mem(MemTable& table, int slot, std::uint64_t bytes, std::uint64
     std::uint64_t pending = 0;
     std::uint64_t resident = 0;
     for (MemTable::Slot& one : table.slots) {
-        observe(one.holds, one.baseline_set, one.baseline, one.hooks);
+        observe(one.holds, one.base, one.hooks);
         for (const Hold& hold : one.holds) {
             resident = sat_add(resident, hold.resident_bytes);
             pending = sat_add(pending, hold.bytes - hold.resident_bytes);
@@ -774,8 +828,7 @@ struct FileTable {
     OsFile os;
     std::vector<Hold> holds;
     std::vector<Waiter> waiters;
-    bool baseline_set = false;
-    std::uint64_t baseline = 0;
+    ReadingBase base;
     std::uint64_t token = 0;
     std::uint32_t slot = 0;
     std::uint64_t next_id = 1;
@@ -907,7 +960,7 @@ struct FileTable {
 
 MemEval evaluate_file(FileTable& table, Image& image, const BudgetHooks& hooks, std::uint64_t bytes,
                       std::uint64_t headroom, std::uint64_t stop_below, std::uint64_t self_seq) {
-    observe(table.holds, table.baseline_set, table.baseline, hooks);
+    observe(table.holds, table.base, hooks);
     table.sync_slot(image);
     std::uint64_t pending = 0;
     std::uint64_t resident = 0;
@@ -1271,8 +1324,14 @@ void Budget::release_id(std::uint64_t id) noexcept {
     try {
         if (state_->kind == State::Kind::Memory) {
             std::lock_guard<std::mutex> lock(state_->mem->mu);
-            auto& holds = state_->mem->slots.at(static_cast<std::size_t>(slot_)).holds;
-            std::erase_if(holds, [&](const Hold& hold) { return hold.id == id; });
+            auto& slot = state_->mem->slots.at(static_cast<std::size_t>(slot_));
+            observe(slot.holds, slot.base, slot.hooks);
+            for (const Hold& hold : slot.holds) {
+                if (hold.id == id) {
+                    fold_released(slot.base, hold);
+                }
+            }
+            std::erase_if(slot.holds, [&](const Hold& hold) { return hold.id == id; });
             state_->mem->cv.notify_all();
             return;
         }
@@ -1281,9 +1340,11 @@ void Budget::release_id(std::uint64_t id) noexcept {
         {
             FileLock lock(table.os);
             Image image = table.locked_image();
+            observe(table.holds, table.base, hooks_);
             for (const Hold& hold : table.holds) {
                 if (hold.id == id) {
                     released = hold.bytes;
+                    fold_released(table.base, hold);
                 }
             }
             std::erase_if(table.holds, [&](const Hold& hold) { return hold.id == id; });

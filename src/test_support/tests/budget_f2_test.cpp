@@ -206,18 +206,29 @@ TEST_CASE("C1: a release that leaves its bytes allocated does not admit on an ol
     reset(100);
     Scope scope("stale", 0);
     auto holder = anno::test::Budget::file(scope.path, both_hooks(), 0);
-    auto held = holder->reserve(80);
+    // try_reserve, not reserve: a regression that makes the holder wait would
+    // otherwise block this case for the whole admission deadline (T10c F3,
+    // nit). The first claim fits, so a refusal here is the regression itself.
+    anno::test::Admit held_info;
+    auto held = holder->try_reserve(80, &held_info);
+    INFO("holder's claim of 80 on free 100: " << held_info.reason);
     REQUIRE(held);
     auto waiter = anno::test::Budget::file(scope.path, both_hooks(true), 0);
-    std::atomic<int> done{0};
-    anno::test::Reservation got;
-    anno::test::Admit info;
-    std::thread thread([&] {
-        got = waiter->reserve(60, &info);
-        done = 1;
+    // The waiter's state is shared with its thread: a waiter that never returns
+    // (a regression) fails this case with a message and is detached, so the
+    // case cannot hang (T10c F3, nit; mutant M1 hung the old version for 60 s).
+    struct Waiting {
+        std::atomic<int> done{0};
+        anno::test::Reservation got;
+        anno::test::Admit info;
+    };
+    auto waiting = std::make_shared<Waiting>();
+    std::thread thread([waiting, waiter] {
+        waiting->got = waiter->reserve(60, &waiting->info);
+        waiting->done = 1;
     });
-    REQUIRE(eventually([&] { return g_waits.load() > 0 || done.load() != 0; }, 5000ms));
-    REQUIRE(done.load() == 0);
+    REQUIRE(eventually([&] { return g_waits.load() > 0 || waiting->done.load() != 0; }, 5000ms));
+    REQUIRE(waiting->done.load() == 0);
     g_private = 80;
     g_free = 20;
     held.release();
@@ -227,9 +238,17 @@ TEST_CASE("C1: a release that leaves its bytes allocated does not admit on an ol
     anno::test::Admit sync;
     CHECK_FALSE(third->try_reserve(90, &sync));
     waiter->cancel();
-    thread.join();
-    CHECK_FALSE(got);
-    CHECK(info.reason == "cancelled");
+    const bool ended = eventually([&] { return waiting->done.load() != 0; }, 5000ms);
+    CHECK_MESSAGE(ended, "the waiter did not end within 5 s of a cancel after the release (it "
+                         "waits on an old reading)");
+    if (ended) {
+        thread.join();
+    } else {
+        thread.detach();
+        return;
+    }
+    CHECK_FALSE(waiting->got);
+    CHECK(waiting->info.reason == "cancelled");
     CHECK(waiter->reserved() == 0);
 
     // The cached bytes are returned: the same request now fits.
@@ -459,23 +478,21 @@ TEST_CASE("C3: a replacement coordinator does not admit against its predecessor'
     CHECK(has(cpu, "ADMITTED 1"));
 }
 
-TEST_CASE("C3: a coordinator from another build is not used" * doctest::test_suite("budget")) {
+TEST_CASE("C3: a compatible coordinator of another build is used (T10c F3, D1)" *
+          doctest::test_suite("budget")) {
+    // The build id is provenance: a coordinator of another build that speaks the
+    // same compatibility version is served, not refused. The full rule (two
+    // builds sharing one busy coordinator; the incompatible and exact-build
+    // waits; the handover) is in budget_f3_test.cpp.
     reset(100);
     Scope scope("build", 7, {"--build-id", "0123456789abcdef"});
-    bool threw = false;
-    std::string message;
-    try {
-        auto budget = anno::test::Budget::file(scope.path, both_hooks(), 0);
-        (void)budget->try_reserve(1);
-    } catch (const std::exception& error) {
-        threw = true;
-        message = error.what();
-    }
-    INFO("connect to a foreign build: " << message);
-    CHECK(threw);
-    CHECK(has(message, "build"));
-    // It held nothing, so it steps aside for the build that asked.
-    CHECK(eventually([&] { return !scope.coord.running(); }, 5000ms));
+    anno::test::Admit info;
+    auto budget = anno::test::Budget::file(scope.path, both_hooks(), 0);
+    auto hold = budget->try_reserve(1, &info);
+    INFO("claim against a coordinator of another build: " << info.reason);
+    CHECK(hold);
+    CHECK(info.admitted);
+    CHECK(scope.coord.running());
 }
 
 TEST_CASE("a budget wait that cannot be served ends at its deadline without admission" *

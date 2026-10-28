@@ -3,7 +3,7 @@
 // a real allocation.
 //
 //   anno_budget_probe <mode> <path> <bytes> [free]
-//   holder      reserve, print "READY 1", then read commands from stdin:
+//   holder      reserve, print "READY 1 reason=<r>", then read commands from stdin:
 //               r = release ("RELEASED ms=<n>"), t = try the bytes again
 //               ("CLAIM <0|1> ms=<n> reason=<r>"), q or end of input = exit
 //   cpu-holder  acquire a CPU token, print "READY 1", hold until q/end of input
@@ -11,14 +11,40 @@
 //               waiter then holds until q/end of input
 //   cpu-waiter  acquire a CPU token, print "ADMITTED <0|1> ms=<n>"
 //   try         one try_reserve, print "claim=<0|1> ... reason=<r>"
+//   reqwait     reserve on a worker thread; print "WAITING" when the reservation
+//               starts to wait; a line "c" cancels it. Prints "RESULT <0|1>
+//               reason=<r>" when it ends; an admitted reservation then holds
+//               until q/end of input
+//   silent      listen on the TCP port given as <path> (a number) and accept
+//               nothing; print "SILENT 1"; exit on q/end of input
+//   Any exception from the library prints "EXCEPTION <what>" and exits 3.
+#include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <optional>
 #include <string>
+#include <thread>
 
 #include <anno/test/budget.hpp>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 namespace {
 
@@ -57,9 +83,69 @@ template <class F> void serve(F on) {
     }
 }
 
-} // namespace
+/// A TCP listener that never accepts: a connection completes in the kernel's
+/// backlog and no hello is ever answered.
+int silent_listener(std::uint16_t port) {
+#if defined(_WIN32)
+    WSADATA data{};
+    if (WSAStartup(MAKEWORD(2, 2), &data) != 0) {
+        return 1;
+    }
+    const SOCKET fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (fd == INVALID_SOCKET) {
+        return 1;
+    }
+#else
+    const int fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (fd < 0) {
+        return 1;
+    }
+#endif
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    address.sin_addr.s_addr = htonl(0x7f000001u);
+#if defined(_WIN32)
+    if (::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
+        ::listen(fd, 8) != 0) {
+        ::closesocket(fd);
+        return 1;
+    }
+#else
+    if (::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
+        ::listen(fd, 8) != 0) {
+        ::close(fd);
+        return 1;
+    }
+#endif
+    // A stuck coordinator still accepts connections and answers none of them:
+    // accept in a thread and keep every connection open, so the backlog never
+    // fills (a listener that never accepts refuses new connections once its
+    // backlog is full, which is a different condition).
+    std::cout << "SILENT 1" << std::endl;
+    std::thread acceptor([fd] {
+        for (;;) {
+#if defined(_WIN32)
+            const SOCKET client = ::accept(fd, nullptr, nullptr);
+            if (client == INVALID_SOCKET) {
+                return;
+            }
+#else
+            const int client = ::accept(fd, nullptr, nullptr);
+            if (client < 0) {
+                return;
+            }
+#endif
+            // Held open on purpose; the process exit closes it.
+            (void)client;
+        }
+    });
+    acceptor.detach();
+    serve([](char) {});
+    return 0; // the exit closes the listener and every held connection
+}
 
-int main(int argc, char** argv) {
+int run(int argc, char** argv) {
     if (argc < 2) {
         return 2;
     }
@@ -86,6 +172,12 @@ int main(int argc, char** argv) {
                   << std::endl;
         return two ? 1 : 0;
     }
+    if (mode == "silent") {
+        if (argc < 3) {
+            return 2;
+        }
+        return silent_listener(static_cast<std::uint16_t>(std::stoul(argv[2])));
+    }
     if (argc < 4) {
         return 2;
     }
@@ -106,6 +198,37 @@ int main(int argc, char** argv) {
     // release it before the other client runs.
     anno::test::Reservation hold;
     anno::test::CpuToken cpu;
+    if (mode == "reqwait") {
+        std::atomic<bool> done{false};
+        std::atomic<bool> quit{false};
+        std::thread reader([&] {
+            std::string line;
+            while (std::getline(std::cin, line)) {
+                if (!line.empty() && line[0] == 'c') {
+                    budget->cancel();
+                }
+                if (!line.empty() && line[0] == 'q') {
+                    break;
+                }
+            }
+            quit = true;
+        });
+        reader.detach();
+        anno::test::Admit waited;
+        std::thread worker([&] {
+            hold = budget->reserve(bytes, &waited);
+            done = true;
+        });
+        worker.join();
+        std::cout << "RESULT " << static_cast<int>(static_cast<bool>(hold))
+                  << " reason=" << waited.reason << std::endl;
+        if (hold) {
+            while (!quit.load()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+        }
+        return hold ? 0 : 1;
+    }
     if (mode == "holder" || mode == "cpu-holder") {
         if (mode == "holder") {
             hold = budget->reserve(bytes, &info);
@@ -154,4 +277,15 @@ int main(int argc, char** argv) {
               << " pending=" << info.pending << " resident=" << info.resident
               << " reason=" << info.reason << std::endl;
     return hold ? 0 : 1;
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    try {
+        return run(argc, argv);
+    } catch (const std::exception& error) {
+        std::cout << "EXCEPTION " << error.what() << std::endl;
+        return 3;
+    }
 }

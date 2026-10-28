@@ -10,10 +10,11 @@ endif()
 anno_target_defaults(anno_test_support)
 
 # The coordinator's build id: the first 64 bits of a SHA-256 over the sources
-# that make up the coordinator (its protocol and its decisions). A client
-# refuses a coordinator of another id (T10c F2), and the WSL coordinator a
-# Windows client compiles is named by it. Editing one of these files
-# reconfigures, so the id follows the sources.
+# that make up the coordinator. It is provenance only (T10c F3, D1): logged in
+# every gate line, and the WSL coordinator a Windows client compiles is named by
+# it. Compatibility is the compatibility version (wire::kCompatVersion), so two
+# builds with different ids share one budget when their versions agree. Editing
+# one of these files reconfigures, so the id follows the sources.
 set(ANNO_COORD_SOURCES
   src/coord_server.cpp src/coord_wire.hpp src/admit_detail.hpp src/budget_coord.cpp
   src/memory.cpp include/anno/test/budget.hpp include/anno/test/parallel.hpp)
@@ -39,7 +40,7 @@ if(ANNO_BUILD_TESTS)
 
   add_executable(anno_test_support_tests tests/main.cpp tests/game_dir_test.cpp
     tests/parallel_test.cpp tests/budget_test.cpp tests/budget_f1_test.cpp
-    tests/budget_f2_test.cpp)
+    tests/budget_f2_test.cpp tests/budget_f3_test.cpp)
   target_link_libraries(anno_test_support_tests PRIVATE anno_test_support doctest::doctest)
   anno_target_defaults(anno_test_support_tests)
   anno_add_doctest(anno_test_support_tests)

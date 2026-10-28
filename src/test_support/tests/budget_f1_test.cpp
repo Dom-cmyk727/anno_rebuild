@@ -60,6 +60,21 @@ anno::test::BudgetHooks both_hooks() {
     return hooks;
 }
 
+// A try never waits: on a cold coordinator the first call starts it and answers
+// "not ready" (T10c F3, found under ASan). Wait until it serves before a case
+// measures a try, so the case does not depend on whether an earlier process
+// started the coordinator.
+void await_coordinator(anno::test::Budget& budget) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (std::chrono::steady_clock::now() < deadline) {
+        anno::test::Admit info;
+        if (budget.try_reserve(1, &info)) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+}
+
 #if defined(_WIN32)
 std::filesystem::path probe_executable() {
     wchar_t buffer[MAX_PATH];
@@ -263,7 +278,10 @@ TEST_CASE("a timed recheck does not admit until the budget fits" * doctest::test
     g_private = 0;
     const auto path = work_file("recheck.bin");
     auto budget = anno::test::Budget::file(path, both_hooks(), 0);
-    const auto held = budget->try_reserve(40);
+    await_coordinator(*budget);
+    anno::test::Admit held_info;
+    const auto held = budget->try_reserve(40, &held_info);
+    INFO("first reservation refused: " << held_info.reason);
     REQUIRE(held);
     std::atomic<int> done{0};
     anno::test::Reservation second;
@@ -297,7 +315,10 @@ TEST_CASE("cancelling a waiter does not release the bytes it is waiting on" *
     const auto path = work_file("cancel.bin");
     auto holder = anno::test::Budget::file(path, both_hooks(), 0);
     auto waiter = anno::test::Budget::file(path, hooks, 0);
-    const auto held = holder->try_reserve(80);
+    await_coordinator(*holder);
+    anno::test::Admit held_info;
+    const auto held = holder->try_reserve(80, &held_info);
+    INFO("first reservation refused: " << held_info.reason);
     REQUIRE(held);
     anno::test::Admit info;
     anno::test::Reservation waited;
@@ -378,7 +399,20 @@ TEST_CASE("a live Windows owner is not reclaimed by a WSL client" * doctest::tes
     _putenv("ANNO_TEST_BUDGET_ID=f1-foreign");
     _putenv("ANNO_TEST_BUDGET_COORD=wsl");
     auto holder = start_probe(exe, "holder \"" + path.string() + "\" 80");
-    const std::string ready = read_for(holder, std::chrono::milliseconds(60000));
+    // The probe prints WAITING while the shared coordinator's memory is full
+    // (a legitimate wait in a full run), then READY once admitted. Read until
+    // READY or the bound: one read ends at the first line (T10c F3).
+    std::string ready;
+    std::string first_line;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    while (ready.find("READY 1") == std::string::npos &&
+           std::chrono::steady_clock::now() < deadline) {
+        const std::string chunk = read_for(holder, std::chrono::milliseconds(1000));
+        if (first_line.empty() && !chunk.empty())
+            first_line = chunk.substr(0, chunk.find('\n'));
+        ready += chunk;
+    }
+    INFO("holder probe first line: '" << first_line << "'; output: '" << ready << "'");
     REQUIRE(ready.find("READY 1") != std::string::npos);
 
     const auto linux_probe = root / "budget_probe_linux";

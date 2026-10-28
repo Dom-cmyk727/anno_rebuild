@@ -43,35 +43,29 @@ using detail::CoordResult;
 using detail::CoordSession;
 
 Native connect_loopback(std::uint16_t port) {
-    startup_sockets();
-#if defined(_WIN32)
-    const SOCKET fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (fd == INVALID_SOCKET) {
+    const Native fd = open_socket();
+    if (fd == kInvalid) {
         return kInvalid;
     }
-#else
-    const int fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (fd < 0) {
-        return kInvalid;
-    }
-#endif
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_port = htons(port);
     address.sin_addr.s_addr = htonl(0x7f000001u);
 #if defined(_WIN32)
-    if (::connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
-        ::closesocket(fd);
+    if (::connect(static_cast<SOCKET>(fd), reinterpret_cast<sockaddr*>(&address),
+                  sizeof(address)) != 0) {
+        ::closesocket(static_cast<SOCKET>(fd));
         return kInvalid;
     }
 #else
-    if (::connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
-        ::close(fd);
+    if (::connect(static_cast<int>(fd), reinterpret_cast<sockaddr*>(&address), sizeof(address)) !=
+        0) {
+        ::close(static_cast<int>(fd));
         return kInvalid;
     }
 #endif
-    set_nodelay(static_cast<Native>(fd));
-    return static_cast<Native>(fd);
+    set_nodelay(fd);
+    return fd;
 }
 
 std::uint32_t configured_cpu() {
@@ -136,6 +130,8 @@ std::string to_wsl_path(const std::filesystem::path& path) {
 
 bool spawn_local(const std::filesystem::path& exe, std::uint16_t port, bool all_interfaces) {
 #if defined(_WIN32)
+    // CreateProcessW with bInheritHandles FALSE: no handle is inherited. Our
+    // sockets are not inheritable either (open_socket, accept_socket).
     std::wstring command = L"\"" + exe.wstring() + L"\" " + std::to_wstring(port) +
                            (all_interfaces ? L" any" : L" local");
     std::vector<wchar_t> mutable_command(command.begin(), command.end());
@@ -157,12 +153,21 @@ bool spawn_local(const std::filesystem::path& exe, std::uint16_t port, bool all_
         return false;
     }
     posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSID);
+    // The coordinator is detached: it keeps stdio and no other descriptor of
+    // the starting client (T10c F3, D2).
+    posix_spawn_file_actions_t actions;
+    if (posix_spawn_file_actions_init(&actions) != 0) {
+        posix_spawnattr_destroy(&attr);
+        return false;
+    }
+    close_descriptors_from_3(&actions);
     std::string path = exe.string();
     std::string port_text = std::to_string(port);
     std::string mode = all_interfaces ? "any" : "local";
     char* args[] = {path.data(), port_text.data(), mode.data(), nullptr};
     pid_t child = 0;
-    const int rc = posix_spawn(&child, path.c_str(), nullptr, &attr, args, environ);
+    const int rc = posix_spawn(&child, path.c_str(), &actions, &attr, args, environ);
+    posix_spawn_file_actions_destroy(&actions);
     posix_spawnattr_destroy(&attr);
     return rc == 0;
 #endif
@@ -223,50 +228,44 @@ bool ensure_wsl_coordinator(std::uint16_t port) {
 }
 #endif
 
-bool wait_until_connected(std::uint16_t port, int attempts, Native& out) {
-    for (int i = 0; i < attempts; ++i) {
-        out = connect_loopback(port);
-        if (out != kInvalid) {
-            return true;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-    return false;
-}
-
-Native connect_coordinator(bool shared) {
-    const std::uint16_t port = coordinator_port(shared);
-    Native fd = connect_loopback(port);
-    if (fd != kInvalid) {
-        return fd;
-    }
-    if (!may_spawn()) {
-        throw std::runtime_error("no test budget coordinator on port " + std::to_string(port) +
-                                 " and ANNO_TEST_BUDGET_SPAWN=0");
-    }
+/// Starts this build's coordinator on `port`, detached. False when it cannot be
+/// started at all (the build failed, or the start was refused).
+bool start_coordinator_process(bool shared, std::uint16_t port) {
 #if defined(_WIN32)
     if (shared) {
-        if (!ensure_wsl_coordinator(port)) {
-            throw std::runtime_error("could not start the WSL test budget coordinator");
-        }
-    } else {
-        const auto exe = module_directory() / "anno_budget_coord.exe";
-        if (!spawn_local(exe, port, false)) {
-            throw std::runtime_error("could not start the local test budget coordinator at " +
-                                     exe.string());
-        }
+        return ensure_wsl_coordinator(port);
     }
+    return spawn_local(module_directory() / "anno_budget_coord.exe", port, false);
 #else
-    const auto exe = module_directory() / "anno_budget_coord";
-    if (!spawn_local(exe, port, shared)) {
-        throw std::runtime_error("could not start the local test budget coordinator at " +
-                                 exe.string());
-    }
+    return spawn_local(module_directory() / "anno_budget_coord", port, shared);
 #endif
-    if (!wait_until_connected(port, shared ? 150 : 30, fd)) {
-        throw std::runtime_error("the test budget coordinator did not accept a connection");
+}
+
+/// Client settings that are not budget settings: the build id and the
+/// compatibility version this client reports. Both default to this build's own
+/// values; the environment overrides exist for tests only, and say so in the
+/// report (T10c F3, decision "test hooks").
+std::uint64_t client_build() {
+    if (const char* env = std::getenv("ANNO_TEST_BUDGET_CLIENT_BUILD")) {
+        if (env[0] != '\0') {
+            return std::strtoull(env, nullptr, 16);
+        }
     }
-    return fd;
+    return coordinator_build();
+}
+
+std::uint64_t client_compat() {
+    if (const auto value = detail::env_count("ANNO_TEST_BUDGET_CLIENT_COMPAT")) {
+        return *value;
+    }
+    return kCompatVersion;
+}
+
+/// ANNO_TEST_BUDGET_EXACT_BUILD=1: this client validates the coordinator's exact
+/// build (the gate that tests the coordinator itself). Off by default.
+bool exact_build_required() {
+    const char* env = std::getenv("ANNO_TEST_BUDGET_EXACT_BUILD");
+    return env != nullptr && std::string(env) == "1";
 }
 
 bool use_shared_coordinator(bool host_wide) {
@@ -600,8 +599,6 @@ std::string hex64(std::uint64_t value) {
     return text;
 }
 
-bool hello_once(Native& fd, std::uint64_t budget, bool internal, bool meter, Frame& reply);
-
 std::string seconds_text(std::chrono::steady_clock::duration span) {
     return std::to_string(std::chrono::duration_cast<std::chrono::seconds>(span).count());
 }
@@ -728,104 +725,185 @@ CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool 
 
 } // namespace
 
-std::shared_ptr<CoordSession> detail::coord_connect(const std::filesystem::path& identity,
-                                                    const std::string& budget_name, bool host_wide,
-                                                    BudgetHooks hooks) {
-    const bool shared = use_shared_coordinator(host_wide);
-    const std::uint64_t budget =
-        fnv(!budget_name.empty() ? budget_name : identity.generic_string());
-    const bool internal = wants_internal_meter(host_wide);
-    const bool meter = !internal && hooks.free_bytes != nullptr;
-    const std::uint16_t port = coordinator_port(shared);
-    Native fd = kInvalid;
-    Frame reply;
-    std::string mismatch;
-    // A coordinator of another build that was idle steps aside; then this
-    // build's own is started (or found) on the next attempt.
-    for (int attempt = 0;; ++attempt) {
-        try {
-            fd = connect_coordinator(shared);
-        } catch (const std::exception& error) {
-            if (mismatch.empty()) {
-                throw;
-            }
-            throw std::runtime_error(mismatch + "; then: " + error.what());
-        }
-        if (hello_once(fd, budget, internal, meter, reply)) {
-            break;
-        }
-        const bool stepped_aside = frame_op(reply) == kStReject && frame_g(reply) == 1;
-        if (frame_op(reply) == kStReject) {
-            mismatch = "the test budget coordinator on port " + std::to_string(port) +
-                       " runs build " + hex64(frame_a(reply)) + " (pid " +
-                       std::to_string(frame_d(reply)) + "), this client is build " +
-                       hex64(coordinator_build()) +
-                       (stepped_aside ? "; it was idle and exited"
-                                      : "; it still serves other clients, so it stays");
-        }
-        if (!stepped_aside || attempt >= 3) {
-            throw std::runtime_error(
-                mismatch.empty() ? "the test budget coordinator on port " + std::to_string(port) +
-                                       " closed the connection or speaks another protocol"
-                                 : mismatch);
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));
-    }
-    set_recv_timeout(fd, 0);
-    auto session = std::shared_ptr<Session>(new Session());
-    session->fd = fd;
-    session->budget = budget;
-    session->token = frame_token(reply);
-    session->hooks = hooks;
-    session->meter = meter;
-    session->identity = "build=" + hex64(frame_a(reply)) + " incarnation=" + hex64(frame_b(reply)) +
-                        " protocol=" + std::to_string(frame_c(reply)) +
-                        " pid=" + std::to_string(frame_d(reply)) + " port=" + std::to_string(port) +
-                        (shared ? " shared" : " local") +
-                        (internal ? " meter=internal" : " meter=clients");
-    Session* raw = session.get();
-    session->reader = std::thread([raw] { reader_main(raw); });
-    return session;
-}
-
 namespace {
 
-/// One hello. True with the coordinator's OK in `reply`; false (connection
-/// closed) with a rejection or an empty frame in `reply`.
-bool hello_once(Native& fd, std::uint64_t budget, bool internal, bool meter, Frame& reply) {
+/// What a hello got back.
+enum class Hello {
+    Served,  ///< the coordinator accepted this client (an OK frame)
+    Refused, ///< the coordinator rejected it (a reject frame, with its reason)
+    Silent,  ///< the connection was accepted but no reply came within the liveness bound
+    Closed,  ///< the connection closed during the hello
+    Foreign, ///< a reply that is not a coordinator's frame: another protocol
+};
+
+struct HelloRequest {
+    std::uint64_t budget = 0;
+    bool internal = false;
+    bool meter = false;
+    bool exact = false;
+    std::uint64_t build = 0;
+    std::uint64_t compat = kCompatVersion;
+};
+
+Hello exchange_hello(Native fd, const HelloRequest& request, Frame& reply) {
     Frame hello;
     put32(hello.bytes, 0, kMagic);
     put32(hello.bytes, 4, kOpHello);
-    put64(hello.bytes, 8, budget);
+    put64(hello.bytes, 8, request.budget);
     put64(hello.bytes, 32, this_pid());
     put64(hello.bytes, 40, process_started());
     put64(hello.bytes, 48, this_namespace());
     put64(hello.bytes, 56, configured_cpu());
-    put64(hello.bytes, 72, kProtocol);
-    put32(hello.bytes, 80, (internal ? kFlagInternalMeter : 0u) | (meter ? kFlagClientMeter : 0u));
+    put64(hello.bytes, 64, request.build);
+    put64(hello.bytes, 72, request.compat);
+    std::uint32_t flags = (request.internal ? kFlagInternalMeter : 0u) |
+                          (request.meter ? kFlagClientMeter : 0u) |
+                          (request.exact ? kFlagExactBuild : 0u);
+    put32(hello.bytes, 80, flags);
     put32(hello.bytes, 84, this_domain());
-    put64(hello.bytes, 64, coordinator_build());
     reply = Frame{};
     if (!send_all(fd, hello)) {
-        close_fd(fd);
-        fd = kInvalid;
-        return false;
+        return Hello::Closed;
     }
     set_recv_timeout(fd, static_cast<int>(liveness().count()));
-    const bool got = recv_full(fd, reply);
-    if (!got || frame_op(reply) != kStOk || frame_token(reply) == 0 ||
-        frame_a(reply) != coordinator_build() || frame_c(reply) != kProtocol) {
-        if (!got) {
-            reply = Frame{};
-        }
-        close_fd(fd);
-        fd = kInvalid;
-        return false;
+    switch (recv_reply(fd, reply)) {
+    case Recv::Timeout:
+        return Hello::Silent;
+    case Recv::Closed:
+        return Hello::Closed;
+    case Recv::Foreign:
+        return Hello::Foreign;
+    case Recv::Frame:
+        break;
     }
-    return true;
+    if (frame_op(reply) == kStReject) {
+        return Hello::Refused;
+    }
+    if (frame_op(reply) == kStOk && frame_token(reply) != 0) {
+        return Hello::Served;
+    }
+    return Hello::Foreign;
 }
 
 } // namespace
+
+detail::ConnectOutcome detail::coord_connect_once(const ConnectArgs& args,
+                                                  ConnectProgress& progress) {
+    ConnectOutcome out;
+    const bool shared = use_shared_coordinator(args.host_wide);
+    const std::uint64_t budget =
+        fnv(!args.budget_name.empty() ? args.budget_name : args.identity.generic_string());
+    const bool internal = wants_internal_meter(args.host_wide);
+    const bool meter = !internal && args.hooks.free_bytes != nullptr;
+    const std::uint16_t port = coordinator_port(shared);
+    const std::string where = "the test budget coordinator on port " + std::to_string(port);
+    Native fd = connect_loopback(port);
+    if (fd == kInvalid) {
+        out.kind = Attempt::NotReady;
+        if (!may_spawn()) {
+            out.diagnostic = "no test budget coordinator is listening on port " +
+                             std::to_string(port) + " (ANNO_TEST_BUDGET_SPAWN=0)";
+            return out;
+        }
+        const auto now = std::chrono::steady_clock::now();
+        if (now < progress.next_spawn) {
+            out.diagnostic = "no test budget coordinator is listening on port " +
+                             std::to_string(port) + "; the last start was less than 2 s ago";
+            return out;
+        }
+        progress.next_spawn = now + std::chrono::seconds(2);
+        if (!start_coordinator_process(shared, port)) {
+            out.kind = Attempt::Failed;
+            out.diagnostic =
+                "could not start the test budget coordinator on port " + std::to_string(port);
+            return out;
+        }
+        out.diagnostic = "no test budget coordinator was listening on port " +
+                         std::to_string(port) + "; one was started";
+        return out;
+    }
+    const HelloRequest request{budget,         internal,       meter, exact_build_required(),
+                               client_build(), client_compat()};
+    Frame reply;
+    const Hello result = exchange_hello(fd, request, reply);
+    if (result == Hello::Served) {
+        if (frame_c(reply) != request.compat) {
+            // The coordinator checked the same number; a mismatch here is a defect.
+            close_fd(fd);
+            out.kind = Attempt::Failed;
+            out.diagnostic = where + " speaks compatibility version " +
+                             std::to_string(frame_c(reply)) + ", this client speaks " +
+                             std::to_string(request.compat);
+            return out;
+        }
+        if (request.exact && frame_a(reply) != request.build) {
+            // The coordinator checks this too; a mismatch here is a defect.
+            close_fd(fd);
+            out.kind = Attempt::Busy;
+            out.diagnostic = where + " runs build " + hex64(frame_a(reply)) +
+                             ", not the exact build " + hex64(request.build) + " this client needs";
+            return out;
+        }
+        set_recv_timeout(fd, 0);
+        auto session = std::shared_ptr<Session>(new Session());
+        session->fd = fd;
+        session->budget = budget;
+        session->token = frame_token(reply);
+        session->hooks = args.hooks;
+        session->meter = meter;
+        session->identity =
+            "build=" + hex64(frame_a(reply)) + " compat=" + std::to_string(frame_c(reply)) +
+            " incarnation=" + hex64(frame_b(reply)) + " pid=" + std::to_string(frame_d(reply)) +
+            " port=" + std::to_string(port) + (shared ? " shared" : " local") +
+            (internal ? " meter=internal" : " meter=clients");
+        Session* raw = session.get();
+        session->reader = std::thread([raw] { reader_main(raw); });
+        out.kind = Attempt::Connected;
+        out.session = session;
+        return out;
+    }
+    close_fd(fd);
+    switch (result) {
+    case Hello::Refused: {
+        const std::uint32_t reason = frame_h(reply);
+        const bool stepped = (frame_g(reply) & kRejectSteppingAside) != 0;
+        if (stepped) {
+            out.kind = Attempt::NotReady;
+            out.diagnostic = where + " (build " + hex64(frame_a(reply)) +
+                             ", compatibility version " + std::to_string(frame_c(reply)) +
+                             ") was idle and stepped aside; the next attempt starts or finds the "
+                             "coordinator of this client";
+            return out;
+        }
+        const char* why = reason == kRejectIncompatible ? "an incompatible compatibility version"
+                          : reason == kRejectBuild      ? "an exact build is required"
+                                                        : "not accepted";
+        out.kind = Attempt::Busy;
+        out.diagnostic = "infrastructure blocker: " + where + " runs build " +
+                         hex64(frame_a(reply)) + " (compatibility version " +
+                         std::to_string(frame_c(reply)) + "), this client is build " +
+                         hex64(request.build) + " (compatibility version " +
+                         std::to_string(request.compat) + "); the coordinator is busy with " +
+                         std::to_string(frame_e(reply)) +
+                         " client(s) and does not accept this client (" + why + ")";
+        return out;
+    }
+    case Hello::Silent:
+        out.kind = Attempt::NotReady;
+        out.diagnostic = where + " accepted the connection but did not answer the hello within " +
+                         std::to_string(liveness().count()) + " ms: not ready";
+        return out;
+    case Hello::Closed:
+        out.kind = Attempt::NotReady;
+        out.diagnostic = where + " closed the connection during the hello: not ready";
+        return out;
+    case Hello::Foreign:
+    default:
+        out.kind = Attempt::Failed;
+        out.diagnostic = where + " speaks another protocol";
+        return out;
+    }
+}
 
 detail::CoordResult detail::coord_try(CoordSession& base, std::uint64_t bytes,
                                       std::uint64_t headroom, std::uint64_t stop) {

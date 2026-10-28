@@ -34,6 +34,7 @@
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <signal.h>
+#include <spawn.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
@@ -43,7 +44,18 @@ namespace anno::test::wire {
 /// 'ANC2'. Version 1 ('ANC1', T10c F1) is not understood: a client of one
 /// version and a coordinator of the other close the connection.
 constexpr std::uint32_t kMagic = 0x32434E41u;
-constexpr std::uint32_t kProtocol = 2;
+/// The compatibility version (T10c F3, D1). A client and a coordinator share a
+/// host budget when this number is equal, whatever their build ids: the build
+/// id (a hash of the coordinator's sources) is provenance only.
+///
+/// Bump it, and say why in docs/perf/README.md ("T10c F3 — compatibility"), for
+/// any change of the wire format or of the reservation, journal, residency or
+/// recovery semantics that an older peer would not reproduce. Do not bump it for
+/// provenance, diagnostics, test hooks or code that changes no semantics. It is
+/// 2 since F2 (the journal and the orphan fence); F3 changes no semantics, and an
+/// F2 peer refuses an F3 peer by build id, so mixing them is refused, not shared.
+/// Pinned by the test "F3 (D1, pin)".
+constexpr std::uint32_t kCompatVersion = 2;
 constexpr std::size_t kFrameBytes = 96;
 constexpr std::uint16_t kSharedPort = 47631;
 constexpr std::uint16_t kLocalPort = 47632;
@@ -85,6 +97,15 @@ constexpr std::uint32_t kWhyFresh = 8;
 /// Hello flags.
 constexpr std::uint32_t kFlagInternalMeter = 1; ///< the coordinator measures (host budget)
 constexpr std::uint32_t kFlagClientMeter = 2;   ///< this client answers kStRefresh
+/// The client needs the coordinator's exact build (the gate that validates the
+/// coordinator itself). Set by ANNO_TEST_BUDGET_EXACT_BUILD=1; never by default.
+constexpr std::uint32_t kFlagExactBuild = 4;
+
+/// Reject frame (kStReject): why the coordinator did not accept the hello.
+constexpr std::uint32_t kRejectIncompatible = 1; ///< another compatibility version
+constexpr std::uint32_t kRejectBuild = 2;        ///< exact build required, another build
+/// Reject frame flags (offset 80): the coordinator is idle and steps aside now.
+constexpr std::uint32_t kRejectSteppingAside = 1;
 
 /// Memory domains. A WSL client allocates from its VM (guest) and, through
 /// the VM, from the Windows host; a Windows or plain Linux client only from
@@ -325,8 +346,13 @@ inline void set_recv_timeout(Native fd, int milliseconds) {
 #endif
 }
 
-/// A whole frame, or false on a timeout, a closed peer or a foreign magic.
-inline bool recv_full(Native fd, Frame& frame) {
+/// What a reply read ended with. A timeout means the peer accepted the
+/// connection but has not answered (not ready); a closed peer means it went
+/// away; only a frame with another magic means a foreign protocol.
+enum class Recv { Frame, Timeout, Closed, Foreign };
+
+/// Reads one whole frame within the socket's receive timeout.
+inline Recv recv_reply(Native fd, Frame& frame) {
     std::size_t got = 0;
     while (got < kFrameBytes) {
 #if defined(_WIN32)
@@ -339,15 +365,123 @@ inline bool recv_full(Native fd, Frame& frame) {
             got += static_cast<std::size_t>(n);
             continue;
         }
-#if !defined(_WIN32)
-        if (n < 0 && errno == EINTR) {
+        if (n == 0) {
+            return Recv::Closed;
+        }
+        const int error = last_socket_error();
+#if defined(_WIN32)
+        if (error == WSAETIMEDOUT || error == WSAEWOULDBLOCK) {
+            return Recv::Timeout;
+        }
+#else
+        if (error == EINTR) {
             continue;
         }
+        if (error == EAGAIN || error == EWOULDBLOCK) {
+            return Recv::Timeout;
+        }
 #endif
+        return Recv::Closed;
+    }
+    return get32(frame.bytes, 0) == kMagic ? Recv::Frame : Recv::Foreign;
+}
+
+/// Sets close-on-exec on a POSIX descriptor (no-op where it is already set).
+inline void set_cloexec(int fd) {
+#if !defined(_WIN32)
+    ::fcntl(fd, F_SETFD, FD_CLOEXEC);
+#else
+    (void)fd;
+#endif
+}
+
+/// A TCP stream socket that no helper process inherits (T10c F3, D2).
+///  - Linux: SOCK_CLOEXEC at creation. Elsewhere on POSIX: FD_CLOEXEC right after
+///    creation (no exec happens in between in this single-threaded use).
+///  - Windows: WSA_FLAG_NO_HANDLE_INHERIT. A plain socket() is inheritable there
+///    (cache/f3/exp/windows-socket-inheritance.out).
+inline Native open_socket() {
+    startup_sockets();
+#if defined(_WIN32)
+    const SOCKET fd = ::WSASocketW(AF_INET, SOCK_STREAM, IPPROTO_TCP, nullptr, 0,
+                                   WSA_FLAG_OVERLAPPED | WSA_FLAG_NO_HANDLE_INHERIT);
+    return fd == INVALID_SOCKET ? kInvalid : static_cast<Native>(fd);
+#else
+#if defined(SOCK_CLOEXEC)
+    const int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
+#else
+    const int fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+#endif
+    if (fd < 0) {
+        return kInvalid;
+    }
+    set_cloexec(fd);
+    return static_cast<Native>(fd);
+#endif
+}
+
+/// Accepts a connection that no helper process inherits. On Windows an accepted
+/// socket is inheritable too, so the flag is cleared (verified by experiment).
+inline Native accept_socket(Native listen_fd) {
+#if defined(_WIN32)
+    const SOCKET fd = ::accept(static_cast<SOCKET>(listen_fd), nullptr, nullptr);
+    if (fd == INVALID_SOCKET) {
+        return kInvalid;
+    }
+    ::SetHandleInformation(reinterpret_cast<HANDLE>(fd), HANDLE_FLAG_INHERIT, 0);
+    return static_cast<Native>(fd);
+#else
+#if defined(__linux__)
+    const int fd = ::accept4(static_cast<int>(listen_fd), nullptr, nullptr, SOCK_CLOEXEC);
+#else
+    const int fd = ::accept(static_cast<int>(listen_fd), nullptr, nullptr);
+    if (fd >= 0) {
+        set_cloexec(fd);
+    }
+#endif
+    return fd < 0 ? kInvalid : static_cast<Native>(fd);
+#endif
+}
+
+#if !defined(_WIN32)
+/// A pipe whose ends are both close-on-exec: the child gets its own ends through
+/// dup2 onto 0, 1 and 2, which clears the flag on those.
+inline bool make_pipe(int fds[2]) {
+#if defined(__linux__)
+    return ::pipe2(fds, O_CLOEXEC) == 0;
+#else
+    if (::pipe(fds) != 0) {
         return false;
     }
-    return get32(frame.bytes, 0) == kMagic;
+    set_cloexec(fds[0]);
+    set_cloexec(fds[1]);
+    return true;
+#endif
 }
+
+/// Adds to a spawn a close of every descriptor above stdio, so a helper process
+/// inherits nothing but 0, 1 and 2 (T10c F3, D2).
+///  - glibc 2.34 and later: posix_spawn_file_actions_addclosefrom_np (declared in
+///    <spawn.h> under __USE_GNU; glibc 2.39 in WSL Ubuntu, checked in
+///    cache/f3/exp/fdexp.out).
+///  - Elsewhere: one close action per descriptor from 3 to the open-file limit,
+///    capped at 4096. A close of a descriptor that is not open succeeds in glibc
+///    (checked in cache/f3/exp/fdexp.out), so the loop is safe.
+inline void close_descriptors_from_3(posix_spawn_file_actions_t* actions) {
+#if defined(__GLIBC__) && defined(__USE_GNU) &&                                                    \
+    (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 34))
+    posix_spawn_file_actions_addclosefrom_np(actions, 3);
+#else
+    long limit = ::sysconf(_SC_OPEN_MAX);
+    if (limit < 0 || limit > 4096) {
+        limit = 4096;
+    }
+    for (int fd = 3; fd < static_cast<int>(limit); ++fd) {
+        posix_spawn_file_actions_addclose(actions, fd);
+    }
+#endif
+}
+#endif
 
 /// Positive: bytes read. 0: the peer closed. -2: no byte is ready yet.
 inline int recv_some(Native fd, std::uint8_t* dest, std::size_t cap) {

@@ -11,6 +11,10 @@
 
 namespace anno::test {
 
+namespace detail {
+struct CoordSession;
+} // namespace detail
+
 /// Additional bytes a CPU full-map render allocated above the scene-load high
 /// water, per pixel. Measured 2026-10-28 (docs/perf/README.md). Single_01
 /// group 2, enhanced legacy, 16960×9170: peak private 7620632576 minus the
@@ -158,6 +162,12 @@ class Budget : public std::enable_shared_from_this<Budget> {
     void release_id(std::uint64_t id) noexcept;
     void release_cpu() noexcept;
     Reservation make_hold(std::uint64_t id, std::uint64_t bytes);
+    /// File budgets: the session if one is connected, else null.
+    std::shared_ptr<detail::CoordSession> session_now() const;
+    /// File budgets: the session, connecting first if needed. Unconnected and
+    /// `waiting`, this retries until connected, cancelled or the admission
+    /// deadline; otherwise it makes one attempt. On null, `refused` says why.
+    std::shared_ptr<detail::CoordSession> session_for(bool waiting, Admit& refused);
 
     struct State;
     std::shared_ptr<State> state_;
@@ -175,20 +185,25 @@ Reservation reserve_cpu_render(std::uint64_t pixels);
 /// Reserves cpu_render_setup_bytes() on the process budget. A refusal throws.
 Reservation reserve_cpu_setup();
 
-/// The build id of the coordinator this library speaks to: a hash of the
-/// coordinator's sources (src/test_support/CMakeLists.txt). A client refuses a
-/// coordinator of another id, so a detached daemon of another build is never
-/// what a test run measures (T10c F2).
+/// The build id of this library's coordinator sources: a hash of the sources
+/// that make up the coordinator (src/test_support/CMakeLists.txt). It is
+/// provenance: logged in every gate line, and never a compatibility test by
+/// itself (T10c F3, D1). Compatibility is the compatibility version
+/// (wire::kCompatVersion).
 std::uint64_t coordinator_build();
 
 struct BudgetServerOptions {
     std::uint16_t port = 47631;
     /// Every interface (the WSL host coordinator), else loopback only.
     bool all_interfaces = false;
-    /// The promise journal; empty: coord-<port>.journal in the user's cache.
+    /// The promise journal; empty: ANNO_TEST_BUDGET_JOURNAL, else
+    /// coord-<port>.journal in the user's cache.
     std::filesystem::path journal;
-    /// Tests: run as another build.
+    /// Provenance only (the build id). Default: coordinator_build().
     std::optional<std::uint64_t> build;
+    /// The compatibility version this coordinator speaks. Default: the built-in
+    /// version. Tests use another value to make an incompatible peer.
+    std::optional<std::uint64_t> compat;
 };
 
 /// Process entry for anno_budget_coord. Prints "LISTENING <port> ..." once it

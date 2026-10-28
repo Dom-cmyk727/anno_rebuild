@@ -180,11 +180,11 @@ class HostMeter {
         std::string encoded = base64(utf16);
         int in_pipe[2];
         int out_pipe[2];
-        if (::pipe(in_pipe) != 0) {
+        if (!make_pipe(in_pipe)) {
             unavailable_ = true;
             return;
         }
-        if (::pipe(out_pipe) != 0) {
+        if (!make_pipe(out_pipe)) {
             ::close(in_pipe[0]);
             ::close(in_pipe[1]);
             unavailable_ = true;
@@ -197,6 +197,9 @@ class HostMeter {
         posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
         posix_spawn_file_actions_addclose(&actions, in_pipe[1]);
         posix_spawn_file_actions_addclose(&actions, out_pipe[0]);
+        // The meter inherits no coordinator descriptor: the listening socket
+        // stayed open in this child after the coordinator died (T10c F3, D2).
+        close_descriptors_from_3(&actions);
         std::string exe = fixed;
         std::string a1 = "-NoProfile";
         std::string a2 = "-NonInteractive";
@@ -656,6 +659,9 @@ struct Server {
     Journal journal;
     std::vector<Orphan> orphans;
     std::uint64_t build = 0;
+    /// The compatibility version this coordinator speaks (wire::kCompatVersion
+    /// unless a test sets another).
+    std::uint64_t compat = kCompatVersion;
     std::uint64_t incarnation = 0;
     bool exit_requested = false;
     std::chrono::steady_clock::time_point next_orphan_check{};
@@ -1088,24 +1094,42 @@ void handle_frame(Server& server, SClient& client, const Frame& frame) {
     }
     const std::uint32_t op = frame_op(frame);
     if (!client.hello) {
-        if (op != kOpHello || frame_f(frame) != kProtocol) {
+        if (op != kOpHello) {
             client.fd = kInvalid;
             return;
         }
-        if (frame_e(frame) != server.build) {
-            // Another build must not be served as if it were tested here. An
-            // idle coordinator (nothing held, no other client, no orphan)
-            // steps aside so the client's own build can start.
+        // Compatibility is decided by the compatibility version, never by the
+        // build id (T10c F3, D1). A client of another build but the same version
+        // is served; the build id is provenance. Only a client that asks for the
+        // exact build (ANNO_TEST_BUDGET_EXACT_BUILD=1) is refused on a build id.
+        const std::uint32_t hello_flags = frame_g(frame);
+        std::uint32_t reason = 0;
+        if (frame_f(frame) != server.compat) {
+            reason = kRejectIncompatible;
+        } else if ((hello_flags & kFlagExactBuild) != 0 && frame_e(frame) != server.build) {
+            reason = kRejectBuild;
+        }
+        if (reason != 0) {
+            // Refused, and the client waits and retries. The coordinator steps
+            // aside only when it is idle: nothing held, no orphan, no other client.
+            // A busy coordinator stays and serves its clients (never terminated).
             bool idle = server.orphans.empty();
+            std::uint64_t busy = server.orphans.size();
             for (const SClient& other : server.clients) {
-                idle = idle && (&other == &client || !other.hello);
+                if (&other != &client && other.hello) {
+                    idle = false;
+                    ++busy;
+                }
             }
             Frame reject;
             fill_header(reject, kStReject, frame_budget(frame), 0, frame_req(frame));
             put64(reject.bytes, 32, server.build);
             put64(reject.bytes, 40, server.incarnation);
+            put64(reject.bytes, 48, server.compat);
             put64(reject.bytes, 56, this_pid());
-            put32(reject.bytes, 80, idle ? 1u : 0u);
+            put64(reject.bytes, 64, busy);
+            put32(reject.bytes, 80, idle ? kRejectSteppingAside : 0u);
+            put32(reject.bytes, 84, reason);
             send_frame(client, reject);
             client.fd = kInvalid;
             server.exit_requested = server.exit_requested || idle;
@@ -1116,7 +1140,7 @@ void handle_frame(Server& server, SClient& client, const Frame& frame) {
         client.ns = static_cast<std::uint32_t>(frame_c(frame));
         client.pid = frame_a(frame);
         client.started = frame_b(frame);
-        const std::uint32_t flags = frame_g(frame);
+        const std::uint32_t flags = hello_flags;
         client.meter = (flags & kFlagClientMeter) != 0;
         client.domain = frame_h(frame) == kDomainGuest ? kDomainGuest : kDomainHost;
         std::uint64_t token = 0;
@@ -1141,7 +1165,7 @@ void handle_frame(Server& server, SClient& client, const Frame& frame) {
         fill_header(reply, kStOk, client.budget, client.token, frame_req(frame));
         put64(reply.bytes, 32, server.build);
         put64(reply.bytes, 40, server.incarnation);
-        put64(reply.bytes, 48, kProtocol);
+        put64(reply.bytes, 48, server.compat);
         put64(reply.bytes, 56, this_pid());
         send_frame(client, reply);
         return;
@@ -1289,19 +1313,10 @@ void erase_client(Server& server, std::size_t index) {
 }
 
 void accept_client(Server& server, Native listen_fd) {
-#if defined(_WIN32)
-    const SOCKET fd = ::accept(static_cast<SOCKET>(listen_fd), nullptr, nullptr);
-    if (fd == INVALID_SOCKET) {
+    const Native native = accept_socket(listen_fd);
+    if (native == kInvalid) {
         return;
     }
-    const Native native = static_cast<Native>(fd);
-#else
-    const int fd = ::accept(static_cast<int>(listen_fd), nullptr, nullptr);
-    if (fd < 0) {
-        return;
-    }
-    const Native native = static_cast<Native>(fd);
-#endif
     set_nodelay(native);
     SClient client;
     client.fd = native;
@@ -1432,6 +1447,13 @@ std::vector<std::string> journal_state(const Server& server) {
 }
 
 std::filesystem::path default_journal(std::uint16_t port) {
+    // ANNO_TEST_BUDGET_JOURNAL (tests only): one journal for a coordinator and
+    // the successor a client starts with the same environment (T10c F3).
+    if (const char* env = std::getenv("ANNO_TEST_BUDGET_JOURNAL")) {
+        if (env[0] != '\0') {
+            return env;
+        }
+    }
     const std::string name = "coord-" + std::to_string(port) + ".journal";
 #if defined(_WIN32)
     if (const char* local = std::getenv("LOCALAPPDATA")) {
@@ -1450,46 +1472,42 @@ std::filesystem::path default_journal(std::uint16_t port) {
 }
 
 Native listen_on(std::uint16_t port, bool all_interfaces) {
-    startup_sockets();
-#if defined(_WIN32)
-    const SOCKET fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (fd == INVALID_SOCKET) {
+    const Native fd = open_socket();
+    if (fd == kInvalid) {
         return kInvalid;
     }
+#if defined(_WIN32)
+    const SOCKET sock = static_cast<SOCKET>(fd);
     // No second listener may share the port (Windows' SO_REUSEADDR would let
     // one in).
     int exclusive = 1;
-    ::setsockopt(fd, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&exclusive),
+    ::setsockopt(sock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&exclusive),
                  sizeof(exclusive));
 #else
-    const int fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (fd < 0) {
-        return kInvalid;
-    }
+    const int sock = static_cast<int>(fd);
     // Linux never lets two sockets listen on one port; this only lets a
     // replacement bind while the predecessor's closed connections linger.
     int reuse = 1;
-    ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    ::setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 #endif
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_port = htons(port);
     address.sin_addr.s_addr = htonl(all_interfaces ? 0u : 0x7f000001u);
 #if defined(_WIN32)
-    if (::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
-        ::listen(fd, 128) != 0) {
-        ::closesocket(fd);
+    if (::bind(sock, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
+        ::listen(sock, 128) != 0) {
+        ::closesocket(sock);
         return kInvalid;
     }
-    return static_cast<Native>(fd);
 #else
-    if (::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
-        ::listen(fd, 128) != 0) {
-        ::close(fd);
+    if (::bind(sock, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
+        ::listen(sock, 128) != 0) {
+        ::close(sock);
         return kInvalid;
     }
-    return static_cast<Native>(fd);
 #endif
+    return fd;
 }
 
 } // namespace
@@ -1518,6 +1536,7 @@ int run_budget_server(const BudgetServerOptions& options) {
     // Only the process that holds the port owns the journal.
     Server server;
     server.build = options.build ? *options.build : coordinator_build();
+    server.compat = options.compat ? *options.compat : kCompatVersion;
     while (server.incarnation == 0) {
         server.incarnation =
             (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^ std::random_device{}();
@@ -1532,8 +1551,9 @@ int run_budget_server(const BudgetServerOptions& options) {
     }
     server.meters.start();
     // A test that starts its own coordinator waits for this line.
-    std::printf("LISTENING %u build=%016llx incarnation=%016llx orphans=%zu\n",
+    std::printf("LISTENING %u build=%016llx compat=%llu incarnation=%016llx orphans=%zu\n",
                 static_cast<unsigned>(port), static_cast<unsigned long long>(server.build),
+                static_cast<unsigned long long>(server.compat),
                 static_cast<unsigned long long>(server.incarnation), server.orphans.size());
     std::fflush(stdout);
     const auto period = detail::recheck_period();

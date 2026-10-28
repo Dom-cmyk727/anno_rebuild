@@ -6,6 +6,10 @@
 #include <anno/test/budget.hpp>
 
 // anno_budget_coord <port> <any|local> [--journal <path>] [--build-id <hex>]
+//                   [--compat-version <n>]
+// --build-id is provenance: tests start a coordinator "of another build" with it.
+// --compat-version sets the compatibility version this coordinator speaks (tests
+// only; the default is wire::kCompatVersion).
 int main(int argc, char** argv) {
     anno::test::BudgetServerOptions options;
     unsigned long port = 47631;
@@ -23,6 +27,8 @@ int main(int argc, char** argv) {
             options.journal = argv[i + 1];
         } else if (flag == "--build-id") {
             options.build = std::stoull(argv[i + 1], nullptr, 16);
+        } else if (flag == "--compat-version") {
+            options.compat = std::stoull(argv[i + 1], nullptr, 10);
         } else {
             return 2;
         }

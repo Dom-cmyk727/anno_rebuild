@@ -3,11 +3,14 @@
 // and WSL clients subtract the same pending bytes from free memory.
 #include "anno/test/budget.hpp"
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -188,8 +191,18 @@ std::filesystem::path log_path_for(const std::filesystem::path& budget_path) {
 struct Budget::State {
     enum class Kind { Memory, File } kind = Kind::Memory;
     std::shared_ptr<MemTable> mem;
+    /// File budgets. `coord` is null until a connection is made; `session_mu`
+    /// guards it for short reads. `connect_mu` serializes the connection attempts
+    /// of this budget and is held while one waits, so cancel() never takes it.
+    std::mutex session_mu;
     std::shared_ptr<detail::CoordSession> coord;
+    std::mutex connect_mu;
+    detail::ConnectArgs connect_args;
+    detail::ConnectProgress connect_progress;
+    std::atomic<std::uint64_t> cancel_gen{0};
     std::filesystem::path log_path;
+    std::function<void(const std::string&)> log;
+    bool logging = false;
 };
 
 std::shared_ptr<Budget> Budget::open_coord(const std::filesystem::path& path, BudgetHooks hooks,
@@ -205,11 +218,94 @@ std::shared_ptr<Budget> Budget::open_coord(const std::filesystem::path& path, Bu
             name = id;
         }
     }
-    budget->state_->coord = detail::coord_connect(path, name, host_wide, hooks);
+    budget->state_->connect_args.identity = path;
+    budget->state_->connect_args.budget_name = name;
+    budget->state_->connect_args.host_wide = host_wide;
+    budget->state_->connect_args.hooks = hooks;
     budget->state_->log_path = log_path_for(path);
     budget->headroom_ = headroom;
     budget->hooks_ = hooks;
+    // One attempt now. A coordinator that is busy, silent or not yet listening
+    // is not an error here: the first reservation waits for it (session_for).
+    // A failure that is not a wait (a foreign protocol, a start that failed)
+    // throws, as before.
+    detail::ConnectOutcome out =
+        detail::coord_connect_once(budget->state_->connect_args, budget->state_->connect_progress);
+    if (out.kind == detail::Attempt::Connected) {
+        std::lock_guard<std::mutex> lock(budget->state_->session_mu);
+        budget->state_->coord = out.session;
+    } else if (out.kind == detail::Attempt::Failed) {
+        throw std::runtime_error(out.diagnostic);
+    }
     return budget;
+}
+
+std::shared_ptr<detail::CoordSession> Budget::session_now() const {
+    std::lock_guard<std::mutex> lock(state_->session_mu);
+    return state_->coord;
+}
+
+std::shared_ptr<detail::CoordSession> Budget::session_for(bool waiting, Admit& refused) {
+    std::shared_ptr<detail::CoordSession> ready = session_now();
+    if (ready) {
+        return ready;
+    }
+    std::lock_guard<std::mutex> attempts(state_->connect_mu);
+    ready = session_now();
+    if (ready) {
+        return ready;
+    }
+    const std::uint64_t seen = state_->cancel_gen.load();
+    const auto start = std::chrono::steady_clock::now();
+    const auto deadline = start + admit_deadline();
+    auto pause = std::chrono::milliseconds(50);
+    bool told = false;
+    for (;;) {
+        detail::ConnectOutcome out =
+            detail::coord_connect_once(state_->connect_args, state_->connect_progress);
+        if (out.kind == detail::Attempt::Connected) {
+            if (state_->log) {
+                out.session->log = state_->log;
+            }
+            {
+                std::lock_guard<std::mutex> lock(state_->session_mu);
+                state_->coord = out.session;
+            }
+            if (state_->logging) {
+                emit_log(true, state_->log_path,
+                         "[anno-test memory] coordinator " + out.session->identity);
+            }
+            return out.session;
+        }
+        refused = Admit{};
+        refused.refused = true;
+        refused.reason = out.diagnostic;
+        if (out.kind == detail::Attempt::Failed || !waiting) {
+            return nullptr;
+        }
+        if (!told) {
+            told = true;
+            if (state_->connect_args.hooks.on_wait != nullptr) {
+                state_->connect_args.hooks.on_wait();
+            }
+        }
+        if (state_->cancel_gen.load() != seen) {
+            refused.reason = "cancelled";
+            return nullptr;
+        }
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline) {
+            const auto waited =
+                std::chrono::duration_cast<std::chrono::seconds>(now - start).count();
+            refused.reason = out.diagnostic + "; wait deadline after " +
+                             num(static_cast<std::uint64_t>(waited)) +
+                             " s (ANNO_TEST_ADMIT_WAIT_S)";
+            return nullptr;
+        }
+        std::this_thread::sleep_for(
+            std::min<std::chrono::steady_clock::duration>(pause, deadline - now));
+        pause = std::min(pause * 2, detail::recheck_period());
+    }
 }
 
 Reservation::Reservation(Reservation&& other) noexcept
@@ -302,12 +398,17 @@ Budget& Budget::process() {
         hooks.total_bytes = &total_memory_bytes;
         auto created = open_coord(default_budget_path(), hooks, memory_headroom_bytes(), true);
         created->logging_ = true;
-        created->state_->coord->log = [path = created->state_->log_path](const std::string& line) {
+        created->state_->logging = true;
+        created->state_->log = [path = created->state_->log_path](const std::string& line) {
             emit_log(true, path, line);
         };
-        // Which coordinator build this test process measures against.
-        emit_log(true, created->state_->log_path,
-                 "[anno-test memory] coordinator " + created->state_->coord->identity);
+        // Which coordinator this test process measures against, when it is connected
+        // now; a later connection logs the same line (session_for).
+        if (const std::shared_ptr<detail::CoordSession> session = created->session_now()) {
+            session->log = created->state_->log;
+            emit_log(true, created->state_->log_path,
+                     "[anno-test memory] coordinator " + session->identity);
+        }
         created->set_stop_below(memory_stop_bytes());
         return created;
     }();
@@ -339,8 +440,17 @@ Reservation Budget::try_reserve(std::uint64_t bytes, Admit* info) {
         state_->mem->cv.notify_all();
         return make_hold(hold.id, bytes);
     }
-    const detail::CoordResult result =
-        detail::coord_try(*state_->coord, bytes, headroom_, stop_below_);
+    Admit refused;
+    const std::shared_ptr<detail::CoordSession> session = session_for(false, refused);
+    if (!session) {
+        refused.estimate = bytes;
+        emit_log(logging_, state_->log_path, admit_line("refuse", refused));
+        if (info != nullptr) {
+            *info = refused;
+        }
+        return Reservation{};
+    }
+    const detail::CoordResult result = detail::coord_try(*session, bytes, headroom_, stop_below_);
     if (result.info.admitted) {
         emit_log(logging_, state_->log_path, admit_line("admit", result.info));
     } else if (result.info.refused) {
@@ -439,8 +549,18 @@ Reservation Budget::reserve(std::uint64_t bytes, Admit* info) {
         }
     }
 
+    Admit refused;
+    const std::shared_ptr<detail::CoordSession> session = session_for(true, refused);
+    if (!session) {
+        refused.estimate = bytes;
+        emit_log(logging_, state_->log_path, admit_line("refuse", refused));
+        if (info != nullptr) {
+            *info = refused;
+        }
+        return Reservation{};
+    }
     const detail::CoordResult result =
-        detail::coord_reserve(*state_->coord, bytes, headroom_, stop_below_);
+        detail::coord_reserve(*session, bytes, headroom_, stop_below_);
     if (result.info.admitted) {
         emit_log(logging_, state_->log_path, admit_line("admit", result.info));
     } else if (result.info.refused) {
@@ -461,7 +581,12 @@ CpuToken Budget::acquire_cpu() {
     if (state_->kind != State::Kind::File) {
         return CpuToken{};
     }
-    const detail::CoordResult result = detail::coord_cpu_acquire(*state_->coord);
+    Admit refused;
+    const std::shared_ptr<detail::CoordSession> session = session_for(true, refused);
+    if (!session) {
+        return CpuToken{};
+    }
+    const detail::CoordResult result = detail::coord_cpu_acquire(*session);
     if (!result.info.admitted) {
         return CpuToken{};
     }
@@ -489,7 +614,11 @@ void Budget::release_id(std::uint64_t id) noexcept {
             state_->mem->cv.notify_all();
             return;
         }
-        const std::uint64_t released = detail::coord_release(*state_->coord, id);
+        const std::shared_ptr<detail::CoordSession> session = session_now();
+        if (!session) {
+            return; // no session, so no promise was ever made here
+        }
+        const std::uint64_t released = detail::coord_release(*session, id);
         if (logging_) {
             const std::optional<std::uint64_t> private_bytes =
                 hooks_.process_private != nullptr ? hooks_.process_private() : std::nullopt;
@@ -506,7 +635,9 @@ void Budget::release_cpu() noexcept {
         return;
     }
     try {
-        detail::coord_cpu_release(*state_->coord);
+        if (const std::shared_ptr<detail::CoordSession> session = session_now()) {
+            detail::coord_cpu_release(*session);
+        }
     } catch (...) {
     }
 }
@@ -519,7 +650,8 @@ std::uint64_t Budget::reserved() const {
         std::lock_guard<std::mutex> lock(state_->mem->mu);
         return sum_reserved(state_->mem->slots.at(static_cast<std::size_t>(slot_)).holds);
     }
-    return detail::coord_local_reserved(*state_->coord);
+    const std::shared_ptr<detail::CoordSession> session = session_now();
+    return session ? detail::coord_local_reserved(*session) : 0;
 }
 
 void Budget::set_stop_below(std::uint64_t bytes) {
@@ -534,7 +666,9 @@ void Budget::wake() {
         state_->mem->cv.notify_all();
         return;
     }
-    detail::coord_wake(*state_->coord);
+    if (const std::shared_ptr<detail::CoordSession> session = session_now()) {
+        detail::coord_wake(*session);
+    }
 }
 
 void Budget::cancel() {
@@ -548,7 +682,12 @@ void Budget::cancel() {
         state_->mem->cv.notify_all();
         return;
     }
-    detail::coord_cancel(*state_->coord);
+    // Ends the waits of this budget's connection attempts and its blocked
+    // requests (T10c F3). The session pointer is read without the connect lock.
+    state_->cancel_gen.fetch_add(1);
+    if (const std::shared_ptr<detail::CoordSession> session = session_now()) {
+        detail::coord_cancel(*session);
+    }
 }
 
 static Reservation reserve_bytes(std::uint64_t bytes) {

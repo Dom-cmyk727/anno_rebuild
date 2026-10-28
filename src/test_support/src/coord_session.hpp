@@ -1,7 +1,9 @@
-// Client of the host test-budget coordinator. The coordinator process owns
-// admission; a file plus a local PID check is not shared by Windows and WSL.
+// Client of the test-budget coordinator (coord_server.cpp). The coordinator
+// decides; a client only reports and waits. Admission is by compatibility
+// version (wire::kCompatVersion), not by build id (T10c F3, D1).
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -17,7 +19,7 @@ struct CoordSession {
     /// Progress lines of a long wait (the process budget logs them).
     std::function<void(const std::string&)> log;
     /// The coordinator this session talks to, for the gate logs: build,
-    /// incarnation, pid, port and meter.
+    /// compatibility version, incarnation, pid, port and meter.
     std::string identity;
 };
 
@@ -26,12 +28,39 @@ struct CoordResult {
     std::uint64_t hold_id = 0;
 };
 
-/// `budget_name` empty means "hash identity". `host_wide` is the process
-/// budget: it prefers the shared coordinator (WSL on this machine, the local
-/// host when already there) so Windows and WSL subtract the same bytes.
-std::shared_ptr<CoordSession> coord_connect(const std::filesystem::path& identity,
-                                            const std::string& budget_name, bool host_wide,
-                                            BudgetHooks hooks);
+/// What one connection attempt to the coordinator found.
+enum class Attempt {
+    Connected, ///< the coordinator accepted this client
+    NotReady,  ///< no coordinator is listening, or it did not answer yet: retry
+    Busy,      ///< a coordinator is there but does not accept this client now
+    Failed,    ///< a foreign protocol, or a coordinator that cannot be started
+};
+
+/// The identity of a budget's connection (fixed when the budget is created).
+struct ConnectArgs {
+    std::filesystem::path identity;
+    std::string budget_name; ///< empty: hash of the identity
+    bool host_wide = false;
+    BudgetHooks hooks{};
+};
+
+/// Per-budget state of the connection attempts (spawning is throttled).
+struct ConnectProgress {
+    std::chrono::steady_clock::time_point next_spawn{};
+    std::uint64_t attempts = 0;
+};
+
+struct ConnectOutcome {
+    Attempt kind = Attempt::NotReady;
+    std::shared_ptr<CoordSession> session;
+    /// Why not connected: what was found, in words for a gate log.
+    std::string diagnostic;
+};
+
+/// One attempt: connect, spawn the coordinator if none listens (throttled),
+/// send the hello, read the reply. Never waits for a busy or silent coordinator;
+/// the caller decides how long to retry.
+ConnectOutcome coord_connect_once(const ConnectArgs& args, ConnectProgress& progress);
 
 CoordResult coord_try(CoordSession& session, std::uint64_t bytes, std::uint64_t headroom,
                       std::uint64_t stop);

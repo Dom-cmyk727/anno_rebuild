@@ -59,20 +59,14 @@ anno::test::BudgetHooks both_hooks() {
     return hooks;
 }
 
-std::filesystem::path probe_executable() {
 #if defined(_WIN32)
+std::filesystem::path probe_executable() {
     wchar_t buffer[MAX_PATH];
     const DWORD n = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
     REQUIRE(n > 0);
     return std::filesystem::path(buffer).parent_path() / "anno_budget_probe.exe";
-#else
-    char buffer[4096];
-    const ssize_t n = ::readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
-    REQUIRE(n > 0);
-    buffer[n] = '\0';
-    return std::filesystem::path(buffer).parent_path() / "anno_budget_probe";
-#endif
 }
+#endif
 
 std::filesystem::path work_file(const char* name) {
     const auto dir = std::filesystem::temp_directory_path() / "anno1503-f1";

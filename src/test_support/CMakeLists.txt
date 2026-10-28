@@ -36,6 +36,7 @@ if(ANNO_BUILD_TESTS)
 
   add_executable(anno_budget_probe tests/budget_probe.cpp)
   target_link_libraries(anno_budget_probe PRIVATE anno_test_support)
+  target_include_directories(anno_budget_probe PRIVATE src)
   anno_target_defaults(anno_budget_probe)
 
   add_executable(anno_test_support_tests tests/main.cpp tests/game_dir_test.cpp

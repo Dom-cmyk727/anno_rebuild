@@ -512,6 +512,19 @@ struct Orphan {
 /// Append-only record of the open promises. Lines: A (memory hold admitted),
 /// R (released), C (CPU token admitted), D (returned). Replayed at start and
 /// rewritten (compacted) from the live state.
+/// fopen with close-on-exec on POSIX so a meter child does not inherit the
+/// journal (T10c F4, N3). glibc 'e' in the mode; Windows uses bInheritHandles
+/// FALSE on helper spawns instead.
+std::FILE* fopen_cloexec(const char* path, const char* mode) {
+#if defined(_WIN32)
+    return std::fopen(path, mode);
+#else
+    std::string with_e = mode;
+    with_e.push_back('e');
+    return std::fopen(path, with_e.c_str());
+#endif
+}
+
 class Journal {
   public:
     /// Largest hold id in any A or R line, over every budget. A successor
@@ -525,7 +538,7 @@ class Journal {
         std::filesystem::create_directories(path.parent_path(), error);
         std::map<std::pair<std::uint64_t, std::uint64_t>, Orphan> holds;
         std::map<std::pair<std::uint64_t, Owner>, std::uint64_t> cpu;
-        if (std::FILE* in = std::fopen(path.string().c_str(), "r")) {
+        if (std::FILE* in = fopen_cloexec(path.string().c_str(), "r")) {
             char line[512];
             while (std::fgets(line, sizeof(line), in) != nullptr) {
                 char kind = 0;
@@ -625,7 +638,7 @@ class Journal {
             file_ = nullptr;
         }
         const std::filesystem::path tmp = path_.string() + ".tmp";
-        std::FILE* out = std::fopen(tmp.string().c_str(), "w");
+        std::FILE* out = fopen_cloexec(tmp.string().c_str(), "w");
         if (out == nullptr) {
             return false;
         }
@@ -639,7 +652,7 @@ class Journal {
         if (!ok || error) {
             return false;
         }
-        file_ = std::fopen(path_.string().c_str(), "a");
+        file_ = fopen_cloexec(path_.string().c_str(), "a");
         appended_ = 0;
         return file_ != nullptr;
     }
@@ -1563,6 +1576,17 @@ int run_budget_server(const BudgetServerOptions& options) {
         return 4;
     }
     server.next_hold = server.journal.max_hold_id() + 1;
+#if !defined(_WIN32)
+    // Test-only (T10c F4, N4). Never set in production. Opened without
+    // O_CLOEXEC after the start-up close of 3..255, so a meter spawn that
+    // forgets closefrom inherits it. Documented with the other test-only hooks.
+    if (const char* leak = std::getenv("ANNO_TEST_COORD_LEAK_FD")) {
+        if (leak[0] != '\0') {
+            const int leaked = ::open(leak, O_RDONLY);
+            (void)leaked;
+        }
+    }
+#endif
     server.meters.start();
     // A test that starts its own coordinator waits for this line.
     std::printf("LISTENING %u build=%016llx compat=%llu incarnation=%016llx orphans=%zu\n",

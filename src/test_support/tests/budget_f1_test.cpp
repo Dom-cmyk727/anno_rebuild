@@ -424,7 +424,7 @@ TEST_CASE("a live Windows owner is not reclaimed by a WSL client" * doctest::tes
     const std::string compile =
         "wsl -d Ubuntu -- g++ -std=c++20 -O1 -g -pthread "
         "-DANNO_COORD_BUILD=" +
-        std::string(build) + " -I" + wsl(source / "include") + " " +
+        std::string(build) + " -I" + wsl(source / "include") + " -I" + wsl(source / "src") + " " +
         wsl(source / "src" / "budget.cpp") + " " + wsl(source / "src" / "coord.cpp") + " " +
         wsl(source / "src" / "coord_server.cpp") + " " + wsl(source / "src" / "memory.cpp") + " " +
         wsl(source / "tests" / "budget_probe.cpp") + " -o " + wsl(linux_probe);

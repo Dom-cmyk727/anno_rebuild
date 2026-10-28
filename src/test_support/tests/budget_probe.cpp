@@ -16,15 +16,20 @@
 //               reason=<r>" when it ends; an admitted reservation then holds
 //               until q/end of input
 //   silent      listen on the TCP port given as <path> (a number) and accept
-//               nothing; print "SILENT 1"; exit on q/end of input
+//               and hold connections; print "SILENT 1"; exit on q/end of input
 //   reqwait2    two threads reserve on the same budget; print "WAITING" once
 //               from on_wait; a line "c" cancels once. Each thread prints
 //               "RESULT <t> <0|1> reason=<r>" with t 1 or 2
+//   rawhello    <port> <flags> <build-hex> <compat>: one hello frame, no
+//               client-side check; print "REPLY op=<n> reason=<n> flags=<n>"
+//   ANNO_TEST_PROBE_LEAK_FD=<path>  POSIX: open the path without O_CLOEXEC
+//               and keep it, so a spawn can be observed
 //   Any exception from the library prints "EXCEPTION <what>" and exits 3.
 #include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <mutex>
@@ -33,6 +38,8 @@
 #include <thread>
 
 #include <anno/test/budget.hpp>
+
+#include "../src/coord_wire.hpp"
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -45,6 +52,7 @@
 #include <ws2tcpip.h>
 #else
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -73,6 +81,83 @@ void waiting_once() {
     if (g_reqwait2_waits.fetch_add(1) == 0) {
         std::cout << "WAITING" << std::endl;
     }
+}
+
+void open_probe_leak() {
+#if !defined(_WIN32)
+    const char* path = std::getenv("ANNO_TEST_PROBE_LEAK_FD");
+    if (path == nullptr || path[0] == '\0') {
+        return;
+    }
+    // Kept open on purpose; no O_CLOEXEC, so a spawn without closefrom inherits
+    // it. Dup to a descriptor above the coordinator's start-up close of 3..255
+    // (coord_server.cpp run_budget_server) so that layer does not hide a missing
+    // client-spawn closefrom (T10c F4, N4b).
+    const int fd = ::open(path, O_RDONLY);
+    if (fd >= 0) {
+        const int high = ::fcntl(fd, F_DUPFD, 256);
+        if (high >= 0 && high != fd) {
+            ::close(fd);
+        }
+    }
+#endif
+}
+
+int raw_hello(std::uint16_t port, std::uint32_t flags, std::uint64_t build, std::uint64_t compat) {
+    using namespace anno::test::wire;
+    const Native fd = open_socket();
+    if (fd == kInvalid) {
+        std::cout << "REPLY op=0 reason=0 flags=0" << std::endl;
+        return 1;
+    }
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    address.sin_addr.s_addr = htonl(0x7f000001u);
+#if defined(_WIN32)
+    if (::connect(static_cast<SOCKET>(fd), reinterpret_cast<sockaddr*>(&address),
+                  sizeof(address)) != 0) {
+        close_fd(fd);
+        std::cout << "REPLY op=0 reason=0 flags=0" << std::endl;
+        return 1;
+    }
+#else
+    if (::connect(static_cast<int>(fd), reinterpret_cast<sockaddr*>(&address), sizeof(address)) !=
+        0) {
+        close_fd(fd);
+        std::cout << "REPLY op=0 reason=0 flags=0" << std::endl;
+        return 1;
+    }
+#endif
+    set_nodelay(fd);
+    Frame hello;
+    put32(hello.bytes, 0, kMagic);
+    put32(hello.bytes, 4, kOpHello);
+    put64(hello.bytes, 8, 0);
+    put64(hello.bytes, 32, this_pid());
+    put64(hello.bytes, 40, process_started());
+    put64(hello.bytes, 48, this_namespace());
+    put64(hello.bytes, 56, 1);
+    put64(hello.bytes, 64, build);
+    put64(hello.bytes, 72, compat);
+    put32(hello.bytes, 80, flags);
+    put32(hello.bytes, 84, this_domain());
+    if (!send_all(fd, hello)) {
+        close_fd(fd);
+        std::cout << "REPLY op=0 reason=0 flags=0" << std::endl;
+        return 1;
+    }
+    set_recv_timeout(fd, 5000);
+    Frame reply;
+    const Recv got = recv_reply(fd, reply);
+    close_fd(fd);
+    if (got != Recv::Frame) {
+        std::cout << "REPLY op=0 reason=0 flags=0" << std::endl;
+        return 1;
+    }
+    std::cout << "REPLY op=" << frame_op(reply) << " reason=" << frame_h(reply)
+              << " flags=" << frame_g(reply) << std::endl;
+    return 0;
 }
 
 long long ms_since(std::chrono::steady_clock::time_point t0) {
@@ -161,6 +246,7 @@ int run(int argc, char** argv) {
     if (argc < 2) {
         return 2;
     }
+    open_probe_leak();
     const std::string mode = argv[1];
     anno::test::BudgetHooks hooks;
     hooks.free_bytes = &free_of;
@@ -189,6 +275,14 @@ int run(int argc, char** argv) {
             return 2;
         }
         return silent_listener(static_cast<std::uint16_t>(std::stoul(argv[2])));
+    }
+    if (mode == "rawhello") {
+        if (argc < 6) {
+            return 2;
+        }
+        return raw_hello(static_cast<std::uint16_t>(std::stoul(argv[2])),
+                         static_cast<std::uint32_t>(std::stoul(argv[3])),
+                         std::stoull(argv[4], nullptr, 16), std::stoull(argv[5]));
     }
     if (argc < 4) {
         return 2;

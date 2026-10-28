@@ -1758,7 +1758,13 @@ TEST_CASE("P1 import: created houses sum to resident_sum, save then load is exac
     sim::World w = std::move(made).value();
     CHECK(w.check_invariants() == "");
     std::uint32_t residents = 0;
-    for (const auto& list : w.islands()[7]->city(sim::CityNo{2})->index.lists) {
+    // Named before the walk: GCC 13 -O3 -Wnull-dereference treats optional::operator->
+    // on the chained expression as a possible null iterator.
+    REQUIRE(w.islands().size() > 7);
+    REQUIRE(w.islands()[7].has_value());
+    const auto* city = w.islands()[7]->city(sim::CityNo{2});
+    REQUIRE(city != nullptr);
+    for (const auto& list : city->index.lists) {
         for (const auto& slot : list.slots) {
             if (slot.has_value()) {
                 if (const auto* h = std::get_if<sim::House>(&slot->payload)) {
@@ -1770,7 +1776,12 @@ TEST_CASE("P1 import: created houses sum to resident_sum, save then load is exac
     CHECK(residents == s.resident_sum);
     // A fraction (residents_64 not a multiple of 64) survives a save: our own save is the
     // runtime form (P1 decision 4), unlike the original's integer record.
-    for (auto& list : sim::WorldTestAccess::islands(w)[7]->city(sim::CityNo{2})->index.lists) {
+    auto& mutable_islands = sim::WorldTestAccess::islands(w);
+    REQUIRE(mutable_islands.size() > 7);
+    REQUIRE(mutable_islands[7].has_value());
+    auto* mutable_city = mutable_islands[7]->city(sim::CityNo{2});
+    REQUIRE(mutable_city != nullptr);
+    for (auto& list : mutable_city->index.lists) {
         for (auto& slot : list.slots) {
             if (slot.has_value()) {
                 if (auto* h = std::get_if<sim::House>(&slot->payload)) {

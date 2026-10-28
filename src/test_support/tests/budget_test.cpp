@@ -193,20 +193,24 @@ TEST_CASE("an exception releases the reservation" * doctest::test_suite("budget"
 
 TEST_CASE("reserve waits until memory is published and does not skip the wait" *
           doctest::test_suite("budget")) {
-    reset(0);
+    // Free memory alone cannot hold the request, but a releasable reservation
+    // can, so the call waits instead of refusing. on_wait publishes the memory.
+    reset(50);
     auto hooks = hooks_free();
     hooks.on_wait = [] {
         count_wait();
         g_free = 100;
     };
     auto budget = anno::test::Budget::memory(hooks, 0);
+    const auto blocker = budget->try_reserve(45);
+    REQUIRE(blocker);
     anno::test::Admit info;
     const auto hold = budget->reserve(10, &info);
     CHECK(hold);
     CHECK(info.admitted);
     CHECK(info.waited);
     CHECK(g_waits.load() == 1);
-    CHECK(budget->reserved() == 10);
+    CHECK(budget->reserved() == 55);
 }
 
 TEST_CASE("a smaller job does not take the bytes a waiting larger job needs" *

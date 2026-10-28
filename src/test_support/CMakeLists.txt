@@ -2,6 +2,9 @@
 add_library(anno_test_support src/game_dir.cpp src/memory.cpp src/budget.cpp)
 target_include_directories(anno_test_support PUBLIC include)
 target_compile_features(anno_test_support PUBLIC cxx_std_20)
+if(WIN32)
+  target_link_libraries(anno_test_support PRIVATE psapi)
+endif()
 anno_target_defaults(anno_test_support)
 
 if(ANNO_BUILD_TESTS)

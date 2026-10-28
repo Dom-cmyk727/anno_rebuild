@@ -48,6 +48,10 @@ struct Admit {
 
 class Budget;
 
+/// Private bytes of this process (Windows: PrivateUsage; Linux: RssAnon, or
+/// VmRSS when RssAnon is absent). Nullopt when the query fails.
+std::optional<std::uint64_t> process_private_bytes();
+
 /// Holds one admission until release or destruction. Move-only.
 class Reservation {
   public:
@@ -120,11 +124,13 @@ class Budget : public std::enable_shared_from_this<Budget> {
     Budget() = default;
     void release_id(std::uint64_t id) noexcept;
     void release_cpu() noexcept;
+    Reservation make_hold(std::uint64_t id, std::uint64_t bytes);
 
     struct State;
     std::shared_ptr<State> state_;
     int slot_ = -1;
     std::uint64_t headroom_ = 0;
+    std::uint64_t stop_below_ = 0;
     BudgetHooks hooks_{};
     bool logging_ = false;
 };

@@ -1,6 +1,7 @@
 // Free memory, for the thread bound in anno/test/parallel.hpp.
 #include <algorithm>
 
+#include "anno/test/budget.hpp"
 #include "anno/test/parallel.hpp"
 
 #if defined(_WIN32)
@@ -10,6 +11,7 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#include <psapi.h>
 #include <windows.h>
 #elif defined(__linux__)
 #include <cstdio>
@@ -49,6 +51,42 @@ std::optional<std::uint64_t> free_memory_bytes() {
     return *kib * 1024;
 #else
     return std::nullopt; // unknown: no memory bound
+#endif
+}
+
+std::optional<std::uint64_t> process_private_bytes() {
+#if defined(_WIN32)
+    PROCESS_MEMORY_COUNTERS_EX counters{};
+    counters.cb = sizeof(counters);
+    if (GetProcessMemoryInfo(GetCurrentProcess(),
+                             reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters),
+                             sizeof(counters)) == 0) {
+        return std::nullopt;
+    }
+    return counters.PrivateUsage;
+#elif defined(__linux__)
+    std::FILE* file = std::fopen("/proc/self/status", "r");
+    if (file == nullptr) {
+        return std::nullopt;
+    }
+    char line[256];
+    std::optional<std::uint64_t> anon;
+    std::optional<std::uint64_t> rss;
+    while (std::fgets(line, sizeof(line), file) != nullptr) {
+        unsigned long long value = 0;
+        if (std::sscanf(line, "RssAnon: %llu kB", &value) == 1) {
+            anon = value * 1024;
+        } else if (std::sscanf(line, "VmRSS: %llu kB", &value) == 1) {
+            rss = value * 1024;
+        }
+    }
+    std::fclose(file);
+    if (anon) {
+        return anon;
+    }
+    return rss;
+#else
+    return std::nullopt;
 #endif
 }
 

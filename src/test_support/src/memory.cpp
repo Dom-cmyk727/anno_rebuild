@@ -11,8 +11,12 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <psapi.h>
+// psapi.h uses the Windows types. clang-format would sort these
+// alphabetically and put psapi.h first, which does not compile.
+// clang-format off
 #include <windows.h>
+#include <psapi.h>
+// clang-format on
 #elif defined(__linux__)
 #include <cstdio>
 #endif

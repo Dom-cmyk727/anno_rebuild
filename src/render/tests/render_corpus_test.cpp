@@ -46,6 +46,7 @@
 #include <deque>
 #include <filesystem>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <string>
@@ -142,58 +143,63 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
             // Setup is reserved before the scene exists. The render reservation
             // uses the rectangle render() will draw, not the pre-scene island
             // boxes (those were short of Single_01's 16960×9170).
-            const auto setup_memory = anno::test::reserve_cpu_setup();
+            auto setup_memory = anno::test::reserve_cpu_setup();
             const auto render_cpu = anno::test::Budget::process().acquire_cpu();
-            (void)setup_memory;
             (void)render_cpu;
             const auto buf = anno::test::read_file(p);
-            auto islands = anno::formats::insel::islands(buf).value();
-            auto anlagen = anno::formats::anlagen::AnlagenFile::parse(anl_buf).value();
-            const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
-            auto textures = anno::assets::island::GroundTextures::load(felder).value();
-            if (const auto c = render::water_colour(anlagen)) {
-                textures.set_water(*c);
-            }
-            render::Scene scene("", std::move(islands), std::move(textures), std::move(anlagen),
-                                render::kHeightLift);
-            if (auto s = anno::formats::sze::Scene::parse(buf)) {
-                const anno::assets::unit::VolumeReader read =
-                    [&vols](std::uint32_t g, std::uint64_t o,
-                            std::uint64_t l) -> std::optional<std::vector<std::uint8_t>> {
-                    if (g >= vols.size() || o + l > vols[g].size()) {
-                        return std::nullopt;
-                    }
-                    const auto b = vols[g].begin() + static_cast<std::ptrdiff_t>(o);
-                    return std::vector<std::uint8_t>(b, b + static_cast<std::ptrdiff_t>(l));
-                };
-                const std::array kinds = {anno::assets::unit::UnitKind::Ship,
-                                          anno::assets::unit::UnitKind::Soldier};
-                auto units =
-                    anno::assets::unit::units(s.value(), header, kinds,
-                                              anno::assets::figure::kOriginalPlayerColours, read)
-                        .value();
-                for (auto& u : units.units) {
-                    std::optional<float> z;
-                    if (u.kind == anno::assets::unit::UnitKind::Soldier) {
-                        z = scene.ground_height(u.x, u.y);
-                        if (!z) {
-                            continue;
-                        }
-                    }
-                    render::UnitSprite sprite{u.x, u.y, z, {}, {}};
-                    for (const auto& f : u.frames) {
-                        sprite.frames.push_back(f ? std::optional<render::UnitFrame>(
-                                                        render::to_unit_frame(*f, u.figure, false))
-                                                  : std::nullopt);
-                    }
-                    for (const auto& f : u.shadows) {
-                        sprite.shadows.push_back(f ? std::optional<render::UnitFrame>(
-                                                         render::to_unit_frame(*f, u.figure, true))
-                                                   : std::nullopt);
-                    }
-                    scene.units.push_back(std::move(sprite));
+            std::unique_ptr<render::Scene> scene;
+            auto build_scene = [&]() {
+                auto islands = anno::formats::insel::islands(buf).value();
+                auto anlagen = anno::formats::anlagen::AnlagenFile::parse(anl_buf).value();
+                const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
+                auto textures = anno::assets::island::GroundTextures::load(felder).value();
+                if (const auto c = render::water_colour(anlagen)) {
+                    textures.set_water(*c);
                 }
-            }
+                scene = std::make_unique<render::Scene>("", std::move(islands), std::move(textures),
+                                                        std::move(anlagen), render::kHeightLift);
+                if (auto s = anno::formats::sze::Scene::parse(buf)) {
+                    const anno::assets::unit::VolumeReader read =
+                        [&vols](std::uint32_t g, std::uint64_t o,
+                                std::uint64_t l) -> std::optional<std::vector<std::uint8_t>> {
+                        if (g >= vols.size() || o + l > vols[g].size()) {
+                            return std::nullopt;
+                        }
+                        const auto b = vols[g].begin() + static_cast<std::ptrdiff_t>(o);
+                        return std::vector<std::uint8_t>(b, b + static_cast<std::ptrdiff_t>(l));
+                    };
+                    const std::array kinds = {anno::assets::unit::UnitKind::Ship,
+                                              anno::assets::unit::UnitKind::Soldier};
+                    auto units = anno::assets::unit::units(
+                                     s.value(), header, kinds,
+                                     anno::assets::figure::kOriginalPlayerColours, read)
+                                     .value();
+                    for (auto& u : units.units) {
+                        std::optional<float> z;
+                        if (u.kind == anno::assets::unit::UnitKind::Soldier) {
+                            z = scene->ground_height(u.x, u.y);
+                            if (!z) {
+                                continue;
+                            }
+                        }
+                        render::UnitSprite sprite{u.x, u.y, z, {}, {}};
+                        for (const auto& f : u.frames) {
+                            sprite.frames.push_back(
+                                f ? std::optional<render::UnitFrame>(
+                                        render::to_unit_frame(*f, u.figure, false))
+                                  : std::nullopt);
+                        }
+                        for (const auto& f : u.shadows) {
+                            sprite.shadows.push_back(
+                                f ? std::optional<render::UnitFrame>(
+                                        render::to_unit_frame(*f, u.figure, true))
+                                  : std::nullopt);
+                        }
+                        scene->units.push_back(std::move(sprite));
+                    }
+                }
+            };
+            build_scene();
             const std::string name = p.filename().string();
             const render::WaterStyle style =
                 ci % 2 == 0 ? render::WaterStyle::Original : render::WaterStyle::Enhanced;
@@ -202,16 +208,29 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
             layers.river_flow = river_flow;
             std::uint64_t pixels = 1600ULL * 900ULL;
             if (ci < 2) {
-                const auto full = *scene.bounds(2);
+                const auto full = *scene->bounds(2);
                 pixels = static_cast<std::uint64_t>(full.w) * static_cast<std::uint64_t>(full.h);
             }
-            const auto render_memory = anno::test::reserve_cpu_render(pixels);
+            // Several heavy cases can each hold a built scene under the small
+            // setup reservation. A blocking reserve for the picture then waits
+            // on free memory those scenes themselves occupy. Drop the scene
+            // before waiting, and build it again once the picture is admitted.
+            auto render_memory = anno::test::Budget::process().try_reserve(
+                anno::test::cpu_render_additional_bytes(pixels));
+            if (!render_memory) {
+                scene.reset();
+                setup_memory.release();
+                setup_memory = anno::test::reserve_cpu_setup();
+                render_memory = anno::test::reserve_cpu_render(pixels);
+                build_scene();
+            }
+            (void)setup_memory;
             (void)render_memory;
             if (ci < 2) {
                 const std::uint64_t time = ci == 0 ? 0 : 2500;
-                const auto rect = *scene.bounds(2);
+                const auto rect = *scene->bounds(2);
                 layers.time_ms = time;
-                const auto [c, st] = scene.render(rect, 2, layers);
+                const auto [c, st] = scene->render(rect, 2, layers);
                 return name + " g2 t" + std::to_string(time) + " " + style_name(style) + " " +
                        std::to_string(rect.w) + "x" + std::to_string(rect.h) + " " +
                        hex(fnv(c.pixels)) + " drawn=" + std::to_string(st.objects.drawn) +
@@ -219,10 +238,10 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
                        " failed=" + std::to_string(st.objects.failed) +
                        " units=" + std::to_string(st.units);
             }
-            const auto b = *scene.bounds(1);
+            const auto b = *scene->bounds(1);
             const render::Rect rect{b.x + b.w / 2 - 800, b.y + b.h / 2 - 450, 1600, 900};
             layers.time_ms = 700;
-            const auto [c, st] = scene.render(rect, 1, layers);
+            const auto [c, st] = scene->render(rect, 1, layers);
             return name + " g1 region " + style_name(style) + " " + hex(fnv(c.pixels)) +
                    " drawn=" + std::to_string(st.objects.drawn) +
                    " units=" + std::to_string(st.units);

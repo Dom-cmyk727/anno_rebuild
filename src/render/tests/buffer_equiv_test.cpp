@@ -47,7 +47,14 @@ ByteBuffer rec(std::string_view name, const ByteBuffer& payload) {
     return out;
 }
 
-anno::formats::insel::Island island_at(std::uint16_t x, std::uint16_t y) {
+/// `Island` records are spans into `bytes` (`formats::Bytes`). The buffer has
+/// to outlive every `Scene` built from `island`.
+struct OwnedIsland {
+    ByteBuffer bytes;
+    anno::formats::insel::Island island;
+};
+
+OwnedIsland island_at(std::uint16_t x, std::uint16_t y) {
     ByteBuffer gfx;
     for (int i = 0; i < 3; ++i) {
         put_u16(gfx, 0);
@@ -62,7 +69,11 @@ anno::formats::insel::Island island_at(std::uint16_t x, std::uint16_t y) {
     append(payload, rec("GFXID", anno::formats::insel::encode_blocks(gfx, 3, 1, 2)[0]));
     auto island = anno::formats::insel::Island::from_insel5(payload);
     REQUIRE(island);
-    return std::move(island).value();
+    // Moving the vector keeps its heap buffer, so the spans stay valid.
+    OwnedIsland owned;
+    owned.bytes = std::move(payload);
+    owned.island = std::move(island).value();
+    return owned;
 }
 
 anno::render::Scene scene_of(std::vector<anno::formats::insel::Island> islands) {
@@ -207,7 +218,9 @@ void expect_same_masks(const anno::render::Scene& scene, anno::render::sea::Wate
 } // namespace
 
 TEST_CASE("omitted ground pixels keep the probe") {
-    const auto scene = scene_of({island_at(0, 0), island_at(4, 0)});
+    const auto left = island_at(0, 0);
+    const auto right = island_at(4, 0);
+    const auto scene = scene_of({left.island, right.island});
     const auto bounds = scene.bounds(2);
     REQUIRE(bounds);
     check_omitted(scene, *bounds);

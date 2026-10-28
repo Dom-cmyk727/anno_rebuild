@@ -47,14 +47,6 @@ ByteBuffer rec(std::string_view name, const ByteBuffer& payload) {
     return out;
 }
 
-ByteBuffer cat(std::initializer_list<ByteBuffer> parts) {
-    ByteBuffer out;
-    for (const auto& p : parts) {
-        append(out, p);
-    }
-    return out;
-}
-
 anno::formats::insel::Island island_at(std::uint16_t x, std::uint16_t y) {
     ByteBuffer gfx;
     for (int i = 0; i < 3; ++i) {
@@ -145,7 +137,9 @@ anno::render::Canvas crop(const anno::render::Canvas& full, anno::render::Rect f
     int y1 = -1;
     for (int y = 0; y < static_cast<int>(full.height); ++y) {
         for (int x = 0; x < static_cast<int>(full.width); ++x) {
-            if (full.pixels[static_cast<std::size_t>(y * full.width + x) * 4 + 3] == 0) {
+            const auto index =
+                (static_cast<std::size_t>(y) * full.width + static_cast<std::size_t>(x)) * 4 + 3;
+            if (full.pixels[index] == 0) {
                 continue;
             }
             x0 = std::min(x0, x);

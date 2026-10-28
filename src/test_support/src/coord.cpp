@@ -1612,33 +1612,35 @@ int run_budget_server(std::uint16_t port, bool all_interfaces) {
 #else
         std::vector<pollfd> polls(server.clients.size() + 1);
 #endif
-        polls[0].fd =
+        // .at: GCC 13 -O3 -Wnull-dereference treats operator[] on a freshly
+        // sized vector as a possible null write.
+        polls.at(0).fd =
 #if defined(_WIN32)
             static_cast<SOCKET>(listen_fd);
 #else
             static_cast<int>(listen_fd);
 #endif
-        polls[0].events = POLLIN;
+        polls.at(0).events = POLLIN;
         for (std::size_t i = 0; i < server.clients.size(); ++i) {
-            polls[i + 1].fd =
+            polls.at(i + 1).fd =
 #if defined(_WIN32)
                 static_cast<SOCKET>(server.clients[i].fd);
 #else
                 static_cast<int>(server.clients[i].fd);
 #endif
-            polls[i + 1].events = POLLIN;
+            polls.at(i + 1).events = POLLIN;
         }
 #if defined(_WIN32)
         const int ready = WSAPoll(polls.data(), static_cast<ULONG>(polls.size()), 200);
 #else
         const int ready = ::poll(polls.data(), static_cast<nfds_t>(polls.size()), 200);
 #endif
-        if (ready > 0 && (polls[0].revents & POLLIN) != 0) {
+        if (ready > 0 && (polls.at(0).revents & POLLIN) != 0) {
             accept_client(server, listen_fd);
         }
         if (ready > 0) {
             for (std::size_t i = 0; i + 1 < polls.size(); ++i) {
-                const short revents = polls[i + 1].revents;
+                const short revents = polls.at(i + 1).revents;
                 if ((revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
                     erase_client(server, i);
                     break;

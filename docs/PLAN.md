@@ -328,6 +328,8 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 
 **Historical status 2026-10-26 (round bj; superseded by round bq below):** **T33 is done** (T33.1–T33.4 merged locally, T33.4 as `acd45cd`; GitHub is suspended, so `main` is unpushed). The market cart and the workshop carrier find sources by the original's decoded walk rule, and every tile stores the original's walk code and mask (stream 112). Open: OQ-200 (water), OQ-170 (coast), OQ-201 (cleared footprint, narrowed), OQ-203..205 (tile-record bits). T33.5 stage 1 (the original's tile record, `transport.md` §3.4.17) merged as `d30d20b` (round bk); OQ-202 answered: growth leaves the walk record as placement wrote it. Live lane: T33.5 stage 2 (the tile layer as the original's record, the main executor); T30b.5–7 (the Wine validation, the orchestrator); P1 (population, from `state.md` §4.7c).
 
+**Orchestration tooling (2026-10-28, round ct):** the live board `docs/orchestration/TASKS.md` keeps only current rounds and open tasks (786 lines, down from 2 946). History is in `docs/orchestration/HISTORY.md`, moved verbatim. Each executor assignment comes as one packet (`tools/orch/packet.py`: instructions plus verbatim board excerpts) with one start check (`tools/orch/preflight.py`); board §1 item 13.
+
 **Orchestration (2026-10-28, round cs; current):** T10c F2 (`43cd10f`, code `c95f819`) is reviewed. C1–C4 are fixed and independently verified:
 - coherent admission: temporary shortage waits, and stale readings are refused;
 - bounded coordinator loss;

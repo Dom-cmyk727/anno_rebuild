@@ -5516,3 +5516,30 @@ Reviewed exact clean T58 F3 head `dd897b4c358883da59ada43914a2cc6b16e37290` (on 
 - **D2:** the listening socket is inherited by the `powershell.exe` meter child. `ss` shows it held as fd 3 after the coordinator dies. A replacement gets `BIND-FAILED`, and a client dies with "speaks another protocol" for about 1 s.
 
 **Owner input:** the `FC27` memory pressure in the executor's report was the owner's own application, so the wait without admission was correct. A new standing rule, board §1 item 12: prompts are more precise, the executor checks against the original files rather than guessing, and REPORTS carries a "Decisions and reasoning" list.
+
+## Orchestrator — round ct — board archive and task packets — 2026-10-28
+
+**Why:** owner request (2026-10-28). The executor spent about 8–12 calls before real work: it read the prompt, then searched the 2 946-line board for the same blocks, made separate git checks, and read `CLAUDE.md` and `AGENTS.md`. `AGENTS.md` differs from `CLAUDE.md` only in its title line and its own file name (verified with `diff`), and Claude Code loads `CLAUDE.md` by itself.
+
+**What changed:**
+- **`tools/orch/preflight.py`:** all start checks in one call:
+  - main at a commit or a descendant;
+  - only the allowed untracked files;
+  - the board unchanged since the packet;
+  - each worktree's head, branch and cleanliness.
+
+  It prints one PASS/FAIL table and exits non-zero on any failure.
+- **`tools/orch/packet.py`:** one file per assignment, made of the orchestrator's instructions, the exact preflight command, and board blocks cut verbatim at one commit.
+  - The selectors are `round:`, `section:`, `item:1.<n>`, `task:` and `block:<task>:<label>`. `@k` names the k-th match, for example `item:1.7@2`, because two §1 items carry the number 7.
+  - A selector that matches nothing, or more than one place, stops the build.
+- **The board archive:** `TASKS.md` keeps the header, rounds cp–cs, §1–§2, the open entries of §3 (P1, T10c, the active order and owner list, and the tasks with a `READY`, `LATER`, `OWNER-CHECK`, staged or unreviewed part) and a §4 pointer.
+  - Rounds co and older, the superseded orders, the finished task entries and the old §4 review log moved verbatim to `HISTORY.md`.
+  - The split script asserted that the multiset of original lines equals the multiset of lines in the two files: every line is placed once and unchanged.
+  - Sizes: 786 lines / 286 KB live, against 2 946 lines / about 957 KB before.
+- **§1:** item 1 gains a sentence (the packet replaces reading the board; no re-read of `CLAUDE.md`/`AGENTS.md`). New item 13 describes the packet procedure.
+
+**Checked:**
+- A test packet from the committed board (`round:cs round:cr item:1.4 item:1.7@2 item:1.12 section:2` and the T10c F3/F2 blocks) cut every block at its boundaries.
+- The preflight passed each check that should pass, and correctly failed main's status while the new tools were still untracked.
+- The executor's running F3 prompt references only blocks that stay in `TASKS.md`: the Round cs/cr blocks, §1 items 4, 5, 7, 9, 11 and 12, and the T10c entry.
+- No control characters are in either board file. One bell character from a mangled `\a` in a path was repaired before the commit.

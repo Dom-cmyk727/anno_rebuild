@@ -330,7 +330,15 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 
 **Orchestration tooling (2026-10-28, round ct):** the live board `docs/orchestration/TASKS.md` keeps only current rounds and open tasks (786 lines, down from 2 946). History is in `docs/orchestration/HISTORY.md`, moved verbatim. Each executor assignment comes as one packet (`tools/orch/packet.py`: instructions plus verbatim board excerpts) with one start check (`tools/orch/preflight.py`); board §1 item 13.
 
-**Orchestration (2026-10-28, round cu; current):** T10c F3 (`94cf3cb`) is reviewed. D1 is accepted as implemented: the coordinator decides by an explicit compatibility version, the build id is provenance, and an exact build is an opt-in. Incompatible or exact-build requesters wait boundedly and never stop a peer. D2 is accepted: no inherited descriptors on Linux or Windows.
+**Orchestration (2026-10-29, round cv; current):** T10c F4 Part A (`1104a7d`) is reviewed and accepted except one verdict:
+- hold ids are unique across coordinator incarnations (compatibility version 3);
+- one cancel ends every waiter of a budget;
+- every defence layer fails a test of its own when it is removed;
+- every gate is green (CTest 1096/1096 with and without game files, ASan/UBSan, GCC/Clang warnings, formatting, lint).
+
+The throughput A/B needs one repeat pair: the only pair without budget waits is +3.9 %, inside the 5 % band, and the band is one-sided. The F4 continuation runs that pair, fixes three perf-note gaps, then P1's steps 7–8 on the combined head. Then P1 and T10c integrate. Nothing merged or pushed.
+
+**Orchestration (2026-10-28, round cu):** T10c F3 (`94cf3cb`) is reviewed. D1 is accepted as implemented: the coordinator decides by an explicit compatibility version, the build id is provenance, and an exact build is an opt-in. Incompatible or exact-build requesters wait boundedly and never stop a peer. D2 is accepted: no inherited descriptors on Linux or Windows.
 
 F4 is required for:
 - **E1:** hold ids restart at 1 in every coordinator, so a journaled promise can be lost after two restarts. The fix comes with compatibility version 3.

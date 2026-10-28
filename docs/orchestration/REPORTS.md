@@ -5569,3 +5569,26 @@ T10c F3 (`codex/T10c-test-memory` at `94cf3cb`, three commits on `43cd10f`, stac
   - two report errors and two doc nits.
 
 **Next:** F4 Part A, then, once its gates pass, P1 steps 7–8 on the combined head (Part B). The assignment is a task packet (`cache/orch-cu/packet.md`). Nothing merged or pushed.
+
+## Orchestrator review — round cv — 2026-10-29
+
+T10c F4 Part A (`codex/T10c-test-memory` at `1104a7d`, six commits on `94cf3cb`, one concern each), reviewed by reading the diffs and the executor's logs in the worktree's `cache\f4\`. No suites were rerun while the owner uses the PC. The board's Round cv block has the anchors.
+
+**Accepted:**
+- **E1:** the largest replayed hold id seeds one server-wide counter, so no id in the journal is reissued; compatibility version 3 with its reason. Both two-restart cases fail at `94cf3cb` and pass now.
+- **E2:** the cancel generation is read before `connect_mu`. The two-waiter case fails at `94cf3cb` and passes now.
+- **E3:** every F3 and F4 mutant fails a named case, on MSVC and in WSL, from exact replacements kept in the worktree (`cache\f4\mutants\`).
+- **E5:** the report items, the gate table with the coordinator build and version, and the perf-note fixes.
+- **Gates at `1104a7d`:** CTest 1096/1096 with and without game files, ASan/UBSan, GCC 13 / Clang 18 warnings, clang-format and `lint_sim.py`.
+
+**The executor's question (the A/B):**
+- The 5 % band is one-sided; the wording "within 5 %" was mine.
+- The first pair had budget waits in both runs, and the packet's rule to repeat such a pair once was not applied. The only wait-free pair is +3.9 %.
+- One repeat pair decides the verdict.
+
+**Also:**
+- Two test-only hooks are missing from the perf note's list.
+- The F3 timing paragraph still says "host variance".
+- A misplaced doc comment in `coord_server.cpp` is deferred on purpose: moving it would change the coordinator build and repeat every gate.
+
+**Next:** the F4 continuation, then F4 Part B (P1 steps 7–8) on the combined head. The assignment is a task packet (`cache/orch-cv/packet.md`). Nothing merged or pushed.

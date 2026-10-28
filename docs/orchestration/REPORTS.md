@@ -5205,3 +5205,22 @@ Nothing pushed; stopping for review.
 ## Orchestrator integration — round ck — 2026-10-28
 
 Integrated T59 (`codex/T59-ai-word2-target-effects`, exact head `51fda008175d0d07eb41b25e0b84b692b4c7a179`, commits `e9997f4`, `ec6b283`, `1c631af`, `51fda00` on base `3078e07`) into local main as one docs commit: the T59 subsection of `docs/re/complogic.md` §11, the OQ-340 status/"What T59 added" text, and the four T59 report sections above (copied from the branch as written). Main had not changed `docs/re/complogic.md` or `docs/open-questions.md` since `3078e07`, so the branch diff applied unchanged. Before integrating, the orchestrator re-read `CompLogic.dll` `0x1003edf0..0x1003ee78` and `AnnoWelt.dll` `0x100a3850..0x100a38b3`, which confirm the F3 sentence and the F2 corrections. Static RE/docs only; no original bytes or listings committed; no C++ or runtime gates apply. T58 is not integrated (F4 queued). Nothing pushed.
+
+## Orchestrator review — round ck — 2026-10-28
+
+Reviewed exact clean T58 F3 head `dd897b4c358883da59ada43914a2cc6b16e37290` (on `138fddd`) and T59 F3 head `51fda008175d0d07eb41b25e0b84b692b4c7a179` (on `1c631af`) against main `2496686146093bbe9c51ae28e491c5b0634faede`. T59 is integrated (`1974d22`, section above). T58 gets an F4 in TASKS. No task-branch edits, push or executor dispatch. The pre-existing untracked AGENTS.md is preserved.
+
+**T58 checks run:**
+- 207 join tests: OK (188.4 s), mutation table included.
+- Five expected `JOIN_RULES=F1` failures.
+- 64 snapshot tests: OK. Both snapshot files are identical to `3078e07`, and `git diff --check` is clean.
+- `--sensitivity` is identical to round cj.
+- `review_t58_f2.py`: P1, P2 and P4 are caught, and the baseline is clean. `review_t58_f1.py`: the round-ch lines and N1–N3 stay caught.
+
+**What the new probes show** (ignored `cache/orch-cj/review_t58_f3.py` and `.out`):
+- Both baselines (fragment-loss scenario with `fragment_max` 3 and 4) are validator-clean: one overflow and one real refusal each.
+- **P5:** a forged `reasm_overflow` record (held 0) on a live receiver, followed by six refusals, passes every validator (input 2565). V4 accepts the record as closure, and no check ties it to the fragments held.
+- **P6:** a forged `drop_seated` of the joiner, followed by refusals, is caught, but only because xiv rejects the later acquisitions.
+- **P7:** a behavioural off-by-one passes. The cap is lowered by one inside `Sim.reassemble` only, so the run overflows one fragment early, with a record of held 3 / limit 3 while `cfg.fragment_max` is 4.
+
+**T59:** see the integration section above. Original bytes and disassembly are not committed. No C++, live-link or original-runtime gates were needed or claimed.

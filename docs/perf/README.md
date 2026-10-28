@@ -874,3 +874,28 @@ Budgeted overlap is 30.0 % less wall time than one worker. The largest pending s
 ### Memory used outside the budget
 
 During the first one-worker run on the committed head an owner application held 11.46 GiB private and free memory fell to about 4.3 GB. The first item (6843933440 bytes) waited 1212 s with `pending=0 resident=0 reason=waiting` and a line every 30 s, was not admitted on any older reading and not refused, and was admitted once free memory returned (15851536384). Its items then took 267.9 s. That run's 1479.8 s elapsed is that wait, not the render cost; the timing pair above was taken afterwards.
+## T10c F3 — compatibility version and no inherited descriptors (2026-10-28)
+
+**Compatibility, not build id.** A test coordinator and its clients share one host budget when they speak the same compatibility version, `wire::kCompatVersion` (`src/test_support/src/coord_wire.hpp`), whatever their build ids. The build id (a hash of the coordinator's sources, `ANNO_COORD_BUILD`) is provenance: every gate logs it with the compatibility version and the incarnation (`[anno-test memory] coordinator build=… compat=… incarnation=…`).
+
+**When the version is bumped.** Bump `kCompatVersion`, and say why here, for any change of the wire format or of the reservation, journal, residency or recovery semantics that an older peer would not reproduce. Do not bump it for provenance, diagnostics, test hooks or code that changes no semantics. The value is 2 (since F2; F3 changes no semantics). A test pins it (`F3 (D1, pin)`).
+
+**What a mismatch does.**
+- Same version, another build: served; both reservations count against the one budget (`F3 (D1): two compatible builds share one busy coordinator`).
+- Another version, or a gate that asks for the exact build (`ANNO_TEST_BUDGET_EXACT_BUILD=1`): refused while the coordinator is busy. The requester waits, retrying with backoff, bounded by `ANNO_TEST_ADMIT_WAIT_S`; it ends with `wait deadline` and an infrastructure diagnostic (both builds, both versions, "busy"), or with `cancelled`. It never stops the busy peer and never opens a second budget.
+- A coordinator that is idle when refused steps aside. The requester's next attempt finds nothing listening and starts its own coordinator on the same port: the handover. A promise journaled by the predecessor and still open (its owner alive) is counted by the successor as an orphan until the owner exits (`F3 (D1, crash handover)`).
+
+**Test-only hooks.** `ANNO_TEST_BUDGET_CLIENT_BUILD` (the build id a client sends), `ANNO_TEST_BUDGET_CLIENT_COMPAT` (the version a client sends), `ANNO_TEST_BUDGET_EXACT_BUILD=1` (the exact-build opt-in), `ANNO_TEST_BUDGET_JOURNAL` (the journal a coordinator this process starts uses), `anno_budget_coord --compat-version N`. Production runs set none of them.
+
+**No inherited descriptors (D2).** Linux: every coordinator socket is close-on-exec (`SOCK_CLOEXEC`, `accept4(…, SOCK_CLOEXEC)`), every pipe too, and every helper spawn closes everything above stdio (`posix_spawn_file_actions_addclosefrom_np` on glibc 2.34 and later, one `addclose` per descriptor elsewhere). Windows: the listener and client sockets are created `WSA_FLAG_NO_HANDLE_INHERIT`, accepted sockets have the inherit flag cleared, and the process creations use `bInheritHandles = FALSE`. Evidence in `cache\f3\exp`: Winsock sockets are inheritable by default; `addclosefrom_np` closes an inherited socket; `addclose` of an unopened descriptor succeeds.
+
+**Silent is not foreign.** A connection that is accepted and answers no hello within `ANNO_TEST_BUDGET_LIVENESS_MS` is "not ready" and is retried within the admission bound. Only a reply that is not a coordinator's frame is "speaks another protocol".
+
+
+No render or simulation code changed in F3, so no speed-up is claimed. The legacy-river digest case (legacy river shading*, 4 workers, cache\f2\run_legacy.ps1) was timed twice on the F3 head to check that the coordinator change did not slow the test path:
+
+- run A: 216.9 s, with three "still waiting" lines (about 90 s of budget wait; 16.7 GB free at the start, about 3.4 GB available against a 6 GB request while owner applications ran). Not comparable.
+- run B: 205.4 s, no budget wait.
+- The F2 baseline of 186.4 s was not reproduced on this host state. Render sources are unchanged since that baseline, so the gap is host variance, not a measured effect of F3.
+
+Both runs pass the case (47 assertions).

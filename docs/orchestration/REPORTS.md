@@ -5864,3 +5864,84 @@ That is 30.0 % less wall time. The earlier one-worker run on the same head waite
 - The WSL coordinator is compiled from the worktree's sources under the client's configure-time id: sources edited after configure and before a rebuild would be labelled with the old id.
 
 **Not done:** no merge, no push. `TASKS.md` and `AGENTS.md` not edited. No ADR approval, P2, T34 stage 2 or T-AI.4.
+
+## T10c F3 — Compatibility version, no inherited descriptors — 2026-10-28 — status: FINISHED (one defect found and recorded as open, not fixed)
+
+Worktree `E:\anno1503-worktrees\anno1503-T10c`, branch `codex/T10c-test-memory`, from `43cd10f086eb6907373608c054c7598385393605` (F2). Preflight: main checkout `e30777db6811f5d1fe08af05b2a79dfd53aa6e61` with only `?? AGENTS.md`; worktree clean; P1 `416993fa6a6f9dc821455df5d414cff5833ac7f0`. Binding text: the Round cs block, §1 item 12 and the F3 block of `docs/orchestration/TASKS.md`; the prompt file `cache/orch-cs/executor-prompt-round-cs.md` was read in full and agrees with the board.
+
+### Decisions and reasoning (written as made)
+
+1. **Fail-first build.** The c95f819 scratch copy is `cache\f3\failfirst-src`, made with `git archive` and overlaid with only the two new test files and one CMake line. Its coordinator build id is `a969992d481424ed`, not `49fb6ac65eb9178a` (the worktree's id at c95f819). The only difference is line endings from `git archive`; the sources are otherwise identical. That is D1 in miniature: identical code, a different build id. Alternative considered: `git worktree add` (rejected: it writes to the repository's worktree list; the archive stays in the ignored folder). Evidence: `cmake --preset msvc` output in the copy.
+2. **Test file.** New `src/test_support/tests/budget_f3_test.cpp`, registered next to `budget_f2_test.cpp` in `src/test_support/CMakeLists.txt`. Reason: the F2 file keeps its history; the F3 cases are black-box (real processes) and compile against c95f819, which the fail-first run needs.
+3. **Probe modes.** `anno_budget_probe` gained `reqwait` (a reservation on a worker thread that prints `WAITING`, takes `c` to cancel, and `RESULT`) and `silent` (a TCP listener that never accepts, so a connection completes in the backlog and no hello is answered). Every probe output path is wrapped in `EXCEPTION`. The existing modes print exactly what they printed before (the F2 cases depend on it).
+4. **Ports.** This file uses 47810–47818; F2 uses 47700–47760; the production ports are 47631/47632.
+5. **Honest limit of the fail-first run.** One test binary is one build. At c95f819 the holder and the requester are the same build as each other, and the coordinator's `--build-id` is the only way to make them differ. So the first observable failure of the requester-side cases (b) and (c) is the holder's refusal (the same D1 mismatch). The requester's own wait is never reached at c95f819. Recorded per case in the table below.
+6. **Compatibility version, not build id (D1).** `kProtocol` is renamed `kCompatVersion = 2` with a bump rule (only for wire format or reservation, journal, residency or recovery semantics an older peer would not reproduce). The build id stays a hash of the coordinator sources, now provenance only. Reason: every source edit changed it, so a busy coordinator refused a client of a sibling build with identical semantics. Evidence: fail-first case 01 (holder refused on build mismatch); `F3 (D1): two compatible builds share one busy coordinator` passes.
+7. **Exact build is an opt-in (D1).** `ANNO_TEST_BUDGET_EXACT_BUILD=1` sends hello flag `kFlagExactBuild` (4). Only then does the coordinator refuse another build (`kRejectBuild`), and the client re-checks the reply. Reason: a gate that must prove one binary can ask for it without changing the default for everyone.
+8. **Busy or incompatible requesters wait, then a bounded diagnostic (D1).** Retry with backoff from 50 ms, doubling up to the recheck period, bounded by `ANNO_TEST_ADMIT_WAIT_S`. The end reason names both builds, both versions, the busy count, "infrastructure blocker", and `wait deadline`; a cancel ends with `cancelled`. It never stops the busy peer and never opens a second budget. Tests: `F3 (D1, incompatible)`, `F3 (D1, exact build)`.
+9. **Handover: wording deviation from the board (flagged for the orchestrator).** The F3 text (c) says a successor starts when the coordinator has "no clients and no orphans". I implemented two rules. An idle coordinator (nothing held, no orphan, no other client) that refuses a client steps aside with `kRejectSteppingAside` and exits, and the next attempt starts its successor. A coordinator with open promises does not step aside. Its successor counts each journaled promise whose owner is alive as an orphan until that owner exits (`F3 (D1, crash handover)`, `F3 (D1, handover)`). So "a promise journaled and still open is still counted" holds across the handover, while "no orphans" is not a precondition for starting one. Please confirm this reading.
+10. **Silent is not foreign (D1).** A connection that answers nothing within `ANNO_TEST_BUDGET_LIVENESS_MS`, or closes during the hello, is "not ready": retried within the admission bound with a diagnostic. Only a reply that is not a coordinator's frame is "speaks another protocol". Fail-first cases 07 and 08 printed "closed the connection or speaks another protocol"; `F3 (D1, silent)` cases now pass.
+11. **No inherited descriptors (D2).** Linux: `SOCK_CLOEXEC` on sockets (`accept4`), `O_CLOEXEC` on pipes (`pipe2`), and every helper spawn closes descriptors 3 and up (`posix_spawn_file_actions_addclosefrom_np` on glibc 2.34 and later, an `addclose` loop from 3 to `min(sysconf, 4096)` otherwise). Windows: sockets from `WSASocketW(... WSA_FLAG_NO_HANDLE_INHERIT)`, accepted sockets with `SetHandleInformation(HANDLE_FLAG_INHERIT, 0)`, `CreateProcess` with `bInheritHandles = FALSE`. Evidence in `cache\f3\exp`: `fdexp.out.md` (glibc 2.39: a plain socket is inherited, `addclosefrom_np` closes it, `addclose` of an unopened descriptor returns 0); `windows-socket-inheritance.out` (`socket()` inheritable; `WSASocketW` with `NO_HANDLE_INHERIT` not inheritable; an accepted socket inheritable until cleared). Test criterion for the WSL meter child (`F3 (D2)`): the child's socket inodes must not intersect the coordinator's. Measured: shared 0, coordinator sockets 1 (`meter_fds.sh`: the child holds its own interop sockets, inodes 7803 to 7807, which is why "no socket at all" was the wrong criterion).
+12. **Layers checked one at a time (WSL).** N3 (no `SOCK_CLOEXEC`) and N4 (spawn closes nothing) are each masked by the other layer: with both off (N34) the shared inode appears (caught). N4b (client spawn closes nothing) is not observable: the client holds no descriptor without CLOEXEC, so it is defence in depth, not a separate behaviour.
+13. **Probe design fixes.** A listener that never accepts fills its backlog, so connects are refused and the diagnostic said "not listening"; `silent` now accepts and holds connections. A client compared the reply's version against the built-in constant instead of its request: now compares `request.compat`. A replacement relaunched in its own WSL session died with that session: relaunch and wait now run in one session.
+14. **C1 nit (bounded).** `C1: a release that leaves its bytes allocated` used a blocking reserve for the holder, which hung under mutant M1. The holder now uses `try_reserve` with `INFO` and `REQUIRE(held)`; the waiter state is shared and the wait after cancel is `eventually(5 s)`, detaching on timeout. M1 now fails at once with a message.
+15. **Test-only hooks (none set in production).** `ANNO_TEST_BUDGET_CLIENT_BUILD`, `ANNO_TEST_BUDGET_CLIENT_COMPAT`, `ANNO_TEST_BUDGET_EXACT_BUILD`, `ANNO_TEST_BUDGET_JOURNAL`, and `anno_budget_coord --compat-version N`.
+16. **The intermittent F1 failure was a bug in the test, not the product.** `live Windows owner is not reclaimed by a WSL client` read only the holder's first line. While the host's memory is full the holder prints `WAITING`, a legitimate wait, then `READY`. The test now reads until `READY` (60 s bound) and puts the first line in the message. Standalone pass: 11.9 s.
+17. **Full-run failure of 15 cases was a stale build, not a product regression.** The first full with-game CTest after the F3 changes failed 15 render and sim cases with "the test budget coordinator on port 47631 closed the connection or speaks another protocol". The render and sim executables dated 17:20; the test_support sources changed at 19:16–19:17. Those executables linked the old client, which the new coordinator refuses. I rebuilt everything and the gate script now builds first (`run_ctest_f3.ps1`). That failure is not a result of this change.
+18. **ASan failure in two F1 cases was a test assumption.** `a timed recheck does not admit until the budget fits` and `cancelling a waiter does not release the bytes it is waiting on` failed under WSL ASan with `first reservation refused: no test budget coordinator is listening on port 47632; the last start was less than 2 s ago`. A `try` never waits: on a cold coordinator the first call starts it and reports "not ready". The cases only passed when another process had warmed the coordinator, so they depended on order. Fixed with `await_coordinator` (up to 10 s, a 1-byte warm-up). Confirmed by running them alone under ASan (both pass) and the whole budget suite under ASan (42/42).
+19. **Formatting.** One line I added (`budget_f1_test.cpp:411`) failed clang-format 23.1.3; formatted, nothing else changed.
+
+### Gate results (head `43cd10f` plus the F3 working tree; nothing committed when measured)
+
+| Gate | Result |
+|---|---|
+| MSVC build, `cmake --build --preset msvc` | exit 0; final rebuild before the last run |
+| CTest with game files (`run_ctest_f3.ps1 -Mode game`, builds first) | 1089/1089, 528.2 s |
+| CTest without game files (`-Mode nogame`) | 1089/1089, 33.8 s |
+| `anno_test_support` group with game files after the last test edits | 58/58, 12.9 s |
+| WSL ASan/UBSan (`asan_build.sh`, `asan_run.sh`), budget suite | 42/42 cases, 354 assertions |
+| WSL ASan/UBSan, render `omitted ground` / `cropped fall` | pass |
+| WSL ASan/UBSan, sim with and without game files | 664/664 each |
+| `tools/check_unix_warnings.sh` (GCC 13.3 and Clang 18.1.3, `-Werror`) | 0 warnings; exit 0 (172 files each, plus 9 without GPU) |
+| clang-format 23.1.3 `--dry-run --Werror` over all changed C++ files | exit 0 after the one formatting fix (item 19) |
+| `python -I tools\lint_sim.py` | ok |
+| Legacy river, 4 workers (`cache\f2\run_legacy.ps1 -Threads 4`) | 216.9 s with about 90 s of budget wait; 205.4 s with no wait; the 186.4 s baseline was not reproduced. Render sources are unchanged in F3, so this is host variance, not a measured effect. No speed claim (see `docs/perf/README.md`, F3 section). |
+| Orchestrator probes rebuilt against F3 (`cache\f3\orch\orch_probes_f3.py`) | Probe E: a C5 client against a busy B0 coordinator (same version) gives `RESULT 1 reason=admitted`. run_holder: no listener on the port after the coordinator stops (none at 0 s and at 3 s). Both as expected. |
+
+### Fail-first (`c95f819` in `cache\f3\failfirst-src`, logs in `cache\f3\failfirst`)
+
+All nine cases fail for the defect they target. Case 02 cannot express an incompatible version at c95f819 (its `--compat-version` is unknown), and cases 03 to 05 stop at the holder's refusal because one binary cannot make the holder and the requester differ at c95f819 (item 5). Those limits are recorded, not hidden.
+
+| Case | Expected at c95f819 | Observed |
+|---|---|---|
+| 01 two compatible builds share | served | holder refused "runs build…" |
+| 02 incompatible version waited for | wait, then diagnostic | no LISTENING: `--compat-version` unknown |
+| 03 to 05 requester waits, cancel, exact build | wait / cancel / refuse | holder refused first (D1) |
+| 06 crash handover | journaled promise counted | shared inode 1 vs 0 expected; the gap client "speaks another protocol" |
+| 07, 08 silent listener | retried, then served / "not ready" | "closed the connection or speaks another protocol" |
+| 09 pin | `compat=2` in LISTENING | no compat field |
+
+### Mutation table (`cache\f3\mutants\summary.txt`, MSVC)
+
+Measured before the last test-only edits (items 16 to 19). The production sources have not changed since, but the table was not re-run. "Caught" counts the cases that failed under the mutant; N3, N4 and N4b are POSIX code, so on MSVC they were not evaluated (0 is not a result for them; see item 12 for WSL).
+
+| Mutant | Caught | Cases still passing | Note |
+|---|---|---|---|
+| M1 fresh, M3 host bound, M5 liveness, M7 nested lock, M9 deadline | 1 each | 0 | |
+| M2 temporary, M4 replay, M8 drain | 2 each | 0 | |
+| N1 compat by build | 2 | 0 | |
+| N2 exact opt-in ignored | 0 | 1 | Survived on MSVC: the client-side re-check masks it. N2b (both checks removed) caught. |
+| N3, N4, N4b | not evaluated on MSVC | | WSL: masked by the other layer; N34 caught (item 12) |
+| N5 silent is failure | 2 | 0 | |
+| N6 steps aside never | 1 | 1 | The crash case passes; the handover fails |
+| N7 cancel ignored while connecting, N8 wait without deadline, N9 busy is served | 1 each | 0 | |
+
+### Open items
+
+- **Defect found by reading, not reproduced: hold ids collide across a handover.** `coord_server.cpp` numbers holds per budget from 1 in each coordinator process (`next_hold = 1` at line 482, `hold.id = budget->next_hold++` at line 998). The journal replay keys holds by `(budget, hold id)`: an `A` line overwrites and an `R` line erases (lines 546 to 550). After a handover, a successor's new hold can take the same key as a predecessor's promise that is still open. The replay then drops one of them, and the orphan count after the next restart is wrong (the same effect when the successor's `R` removes the predecessor's entry). Proposed fix: seed the id counter above the largest id in the journal, or make ids unique across incarnations. It needs a fail-first case: predecessor orphan, successor hold, restart, and the count checked. Not done in F3; it is within (c) of F3 and should go next.
+- **Commits are by area, not by concern.** `coord.cpp` and `coord_server.cpp` each contain both D1 and D2 changes, and splitting them needs interactive staging, which this environment does not support. Commits: the test-support sources (D1 and D2 together), the test files and probes, and the docs.
+- **The mutation table is not re-run** after the last test-only edits (items 16 to 19).
+- **No performance claim** (item above and `docs/perf/README.md`).
+
+### Commits
+Listed in `git log` on `codex/T10c-test-memory`. Each commit ends with the attribution lines. No merge, no push, no PR; TASKS.md and AGENTS.md untouched; P1 (`416993fa`) untouched.

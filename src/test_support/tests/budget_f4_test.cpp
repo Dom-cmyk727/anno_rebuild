@@ -12,6 +12,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <doctest/doctest.h>
@@ -28,6 +29,7 @@ using namespace std::chrono_literals;
 
 constexpr std::uint16_t kPortOrphanReuse = 47820; // E1, orphan kept
 constexpr std::uint16_t kPortLiveHold = 47821;    // E1, live hold kept
+constexpr std::uint16_t kPortCancelAll = 47822;   // E2
 
 std::filesystem::path f4_dir() {
     const auto dir = std::filesystem::temp_directory_path() / "anno1503-f4";
@@ -187,4 +189,60 @@ TEST_CASE("F4 (E1): a successor's live hold survives the orphan owner's exit and
 
     holder_q.send("q\n");
     c3.stop();
+}
+
+TEST_CASE("F4 (E2): one cancel ends every waiter of a budget" * doctest::test_suite("budget")) {
+    // Bound: one connection attempt (an immediate reject here) plus one pause
+    // of at most ANNO_TEST_BUDGET_RECHECK_MS (100). 3 s is the margin. At
+    // 94cf3cb the second thread does not end within the bound; the case fails
+    // with the lines seen and the probe is killed with this Child.
+    const auto journal = f4_dir() / "c.journal";
+    const auto budget_path = (f4_dir() / "c.budget").string();
+    remove_file(journal);
+    std::string listening;
+    Child coord =
+        start_coordinator(kPortCancelAll, journal, 0xc1c1c1c1c1c1c1c1ULL, std::nullopt, listening);
+    const Vars vars = client_vars(kPortCancelAll, "f4-c", "60");
+
+    std::string seen;
+    Child holder;
+    {
+        Env env(vars);
+        holder = probe({"holder", budget_path, "50"});
+    }
+    REQUIRE(has(want(holder, "READY", 15000ms, &seen), "READY 1"));
+
+    Child requester;
+    {
+        Env env(vars);
+        Env exact({{"ANNO_TEST_BUDGET_EXACT_BUILD", "1"}});
+        requester = probe({"reqwait2", budget_path, "30"});
+    }
+    seen.clear();
+    const std::string waiting = want(requester, "WAITING", 15000ms, &seen);
+    INFO("requester: " << seen);
+    REQUIRE(has(waiting, "WAITING"));
+    std::this_thread::sleep_for(300ms);
+    requester.send("c\n");
+
+    const auto deadline = std::chrono::steady_clock::now() + 3000ms;
+    std::string first;
+    std::string second;
+    auto remain = [&] {
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline) {
+            return 0ms;
+        }
+        return std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+    };
+    first = want(requester, "RESULT", remain(), &seen);
+    second = want(requester, "RESULT", remain(), &seen);
+    INFO("after cancel: " << seen);
+    CHECK(has(first, "RESULT"));
+    CHECK(has(second, "RESULT"));
+    CHECK(has(seen, "RESULT 1 0"));
+    CHECK(has(seen, "RESULT 2 0"));
+    CHECK(has(seen, "cancelled"));
+    CHECK(holder.running());
+    CHECK(coord.running());
 }

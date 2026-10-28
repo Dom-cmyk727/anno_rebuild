@@ -250,12 +250,22 @@ std::shared_ptr<detail::CoordSession> Budget::session_for(bool waiting, Admit& r
     if (ready) {
         return ready;
     }
+    // Read before waiting for connect_mu: a cancel issued while this thread
+    // is queued for the mutex must end it too (T10c F4, E2). A cancel issued
+    // before the thread enters session_for is a different generation and does
+    // not end a later wait (the same rule as F3).
+    const std::uint64_t seen = state_->cancel_gen.load();
     std::lock_guard<std::mutex> attempts(state_->connect_mu);
     ready = session_now();
     if (ready) {
         return ready;
     }
-    const std::uint64_t seen = state_->cancel_gen.load();
+    if (state_->cancel_gen.load() != seen) {
+        refused = Admit{};
+        refused.refused = true;
+        refused.reason = "cancelled";
+        return nullptr;
+    }
     const auto start = std::chrono::steady_clock::now();
     const auto deadline = start + admit_deadline();
     auto pause = std::chrono::milliseconds(50);

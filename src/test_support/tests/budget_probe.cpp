@@ -17,6 +17,9 @@
 //               until q/end of input
 //   silent      listen on the TCP port given as <path> (a number) and accept
 //               nothing; print "SILENT 1"; exit on q/end of input
+//   reqwait2    two threads reserve on the same budget; print "WAITING" once
+//               from on_wait; a line "c" cancels once. Each thread prints
+//               "RESULT <t> <0|1> reason=<r>" with t 1 or 2
 //   Any exception from the library prints "EXCEPTION <what>" and exits 3.
 #include <atomic>
 #include <chrono>
@@ -24,6 +27,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
@@ -61,6 +65,14 @@ std::optional<std::uint64_t> private_of() {
 
 void waiting() {
     std::cout << "WAITING" << std::endl;
+}
+
+std::atomic<int> g_reqwait2_waits{0};
+
+void waiting_once() {
+    if (g_reqwait2_waits.fetch_add(1) == 0) {
+        std::cout << "WAITING" << std::endl;
+    }
 }
 
 long long ms_since(std::chrono::steady_clock::time_point t0) {
@@ -186,6 +198,9 @@ int run(int argc, char** argv) {
     if (argc > 4) {
         g_free = static_cast<std::uint64_t>(std::stoull(argv[4]));
     }
+    if (mode == "reqwait2") {
+        hooks.on_wait = &waiting_once;
+    }
     std::shared_ptr<anno::test::Budget> budget;
     try {
         budget = anno::test::Budget::file(path, hooks, 0);
@@ -198,6 +213,43 @@ int run(int argc, char** argv) {
     // release it before the other client runs.
     anno::test::Reservation hold;
     anno::test::CpuToken cpu;
+    if (mode == "reqwait2") {
+        std::atomic<bool> quit{false};
+        std::thread reader([&] {
+            std::string line;
+            while (std::getline(std::cin, line)) {
+                if (!line.empty() && line[0] == 'c') {
+                    budget->cancel();
+                }
+                if (!line.empty() && line[0] == 'q') {
+                    break;
+                }
+            }
+            quit = true;
+        });
+        reader.detach();
+        anno::test::Admit waited1;
+        anno::test::Admit waited2;
+        anno::test::Reservation hold1;
+        anno::test::Reservation hold2;
+        std::mutex io;
+        std::thread worker1([&] {
+            hold1 = budget->reserve(bytes, &waited1);
+            std::lock_guard<std::mutex> lock(io);
+            std::cout << "RESULT 1 " << static_cast<int>(static_cast<bool>(hold1))
+                      << " reason=" << waited1.reason << std::endl;
+        });
+        std::thread worker2([&] {
+            hold2 = budget->reserve(bytes, &waited2);
+            std::lock_guard<std::mutex> lock(io);
+            std::cout << "RESULT 2 " << static_cast<int>(static_cast<bool>(hold2))
+                      << " reason=" << waited2.reason << std::endl;
+        });
+        worker1.join();
+        worker2.join();
+        (void)quit;
+        return (hold1 || hold2) ? 0 : 1;
+    }
     if (mode == "reqwait") {
         std::atomic<bool> done{false};
         std::atomic<bool> quit{false};

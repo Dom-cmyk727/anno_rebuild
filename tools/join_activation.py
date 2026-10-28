@@ -2104,11 +2104,17 @@ def _check_reassembly(events, cfg):
     """Rebuild current assembly ownership from sends, arrivals, acquisitions and releases.
     A claimed parts list is not evidence: every part must still be held by this receiver,
     for this message, after a matching arrival in the current epoch. Partial releases remove
-    only the named pieces; a delivered message cannot consume the same pieces twice."""
+    only the named pieces; a delivered message cannot consume the same pieces twice.
+
+    F4 (round ck): a `reasm_overflow` record is checked against the fragments rebuilt here, because
+    the link validator accepts it as the closure of a receive side. The fragments held on that
+    (src, dst, ch) in the current epoch, plus the one that arrived, must exceed the configured cap
+    (`cfg.reassembly_fragments_max` for channel 0, `cfg.fragment_max` otherwise, never the record's
+    own `limit`), and the record's `held` and `limit` must equal that count and that cap."""
     out, sent, arrived, held, bumps, completed, closed = [], {}, {}, {}, {}, set(), set()
     for e in events:
         k = e["kind"]
-        if k in ("send", "arrive", "reasm_acquire", "reasm_release", "deliver"):
+        if k in ("send", "arrive", "reasm_acquire", "reasm_release", "deliver", "reasm_overflow"):
             key = (e["src"], e["dst"], e["ch"])
             pair = tuple(sorted(key[:2]))
             epoch = bumps.get(pair, 0)
@@ -2135,6 +2141,19 @@ def _check_reassembly(events, cfg):
             count = sum(len(v) for (path, ep, _), v in held.items() if path == key and ep == epoch)
             if count > limit or not 0 <= e["size"] <= cfg.payload_max:
                 out.append(("xv", "t=%d assembly exceeds fragment/byte bound" % e["t"]))
+        elif k == "reasm_overflow":
+            limit = cfg.reassembly_fragments_max if e["ch"] == 0 else cfg.fragment_max
+            count = sum(len(v) for (path, ep, _), v in held.items() if path == key and ep == epoch)
+            where = "%s>%s ch%d" % (e["src"], e["dst"], e["ch"])
+            if count + 1 <= limit:
+                out.append(("xv", "t=%d reassembly overflow on %s is not justified: %d fragments held in the current epoch, "
+                            "one more does not exceed the cap %d" % (e["t"], where, count, limit)))
+            if e["limit"] != limit:
+                out.append(("xv", "t=%d reassembly overflow on %s records limit %s, the configured cap is %d" % (
+                    e["t"], where, e["limit"], limit)))
+            if e["held"] != count:
+                out.append(("xv", "t=%d reassembly overflow on %s records held %s, %d fragments are held" % (
+                    e["t"], where, e["held"], count)))
         elif k == "reasm_release":
             parts = held.get(identity, {})
             for f in e["frags"]:

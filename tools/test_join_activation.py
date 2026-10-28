@@ -2102,6 +2102,13 @@ def _closed(kind="drop_seated", t=150, **kw):
               limit=4)
 
 
+def _held(n, ch=0, src="H", dst="P1", t=100):
+    """n fragments of one logical message acquired on the receive side, as Sim.reassemble records them before an
+    overflow (the matching sends and arrivals are not needed by the xvi/xvii assertions made with them)."""
+    return [ev("reasm_acquire", t, src=src, dst=dst, ch=ch, mid=("M", 1), turn=None, frag=i, nfrag=99, size=1, sid=100 + i,
+               held=i + 1) for i in range(n)]
+
+
 def _refused(**kw):
     e = ev("arrive_refused", 151, src="H", dst="P1", ch=0, seq=0, msg="Turn", lid=1, attempt=1, sid=1, epoch=0, size=16, frag=0,
            nfrag=1, mid=None, why="closed")
@@ -2115,14 +2122,65 @@ def _stale(**kw):
     return e
 
 
+class OverflowRecordsOnHandWrittenLogs(unittest.TestCase):
+    """V7 (F4): a reasm_overflow record is justified by the fragments the validator rebuilt on that receive side in the
+    current epoch and by the cap in cfg, in the order in which Sim.reassemble emits them (acquisitions, then the overflow).
+    The caps here are reassembly_fragments_max 4 (channel 0) and fragment_max 3 (channel 1)."""
+
+    CFG = dict(reassembly_fragments_max=4, fragment_max=3)
+
+    def acq(self, n, ch=0, mid=("M", 1)):
+        out = []
+        for i in range(n):
+            common = dict(src="H", dst="P1", ch=ch, mid=mid, turn=None, frag=i, nfrag=99, size=1, sid=100 + 10 * ch + i, epoch=0)
+            out += [ev("send", 1, **common, seq=i, msg="Snap-frag", attempt=1),
+                    ev("arrive", 2, **common, seq=i, msg="Snap-frag", dup=False),
+                    ev("reasm_acquire", 2, **common, held=i + 1)]
+        return out
+
+    def over(self, held, limit, ch=0, **kw):
+        return ev("reasm_overflow", 3, src="H", dst="P1", ch=ch, mid=("M", 1), held=held, limit=limit, **kw)
+
+    def msgs(self, log):
+        return [m for c, m in ja.validate(log, ja.Cfg(**self.CFG), 0) if c == "xv"]
+
+    def says(self, log, needle):
+        return any(needle in m for m in self.msgs(log))
+
+    def test_v7_a_justified_overflow_is_clean_on_both_channels(self):
+        self.assertEqual(self.msgs(self.acq(4) + [self.over(4, 4)]), [])  # channel 0: 4 held, the 5th exceeds 4
+        self.assertEqual(self.msgs(self.acq(3, ch=1) + [self.over(3, 3, ch=1)]), [])  # channel 1 takes fragment_max (3)
+
+    def test_v7_an_overflow_whose_count_plus_one_does_not_exceed_the_cap_is_rejected(self):
+        log = self.acq(3) + [self.over(3, 4)]  # 3 held + 1 = 4 does not exceed 4
+        self.assertTrue(self.says(log, "is not justified"), self.msgs(log))
+        self.assertFalse(self.says(log, "records held") or self.says(log, "records limit"), self.msgs(log))
+        self.assertTrue(self.says([self.over(0, 4)], "is not justified"), "forged, nothing held")
+        carry = self.acq(4) + [ev("reasm_release", 3, src="H", dst="P1", ch=0, mid=("M", 1), turn=None, frags=(0, 1, 2, 3),
+                                  reason="epoch"), ev("epoch_bump", 3, a="H", b="P1", epoch=1, why="ask"), self.over(4, 4)]
+        self.assertTrue(self.says(carry, "is not justified"), "fragments of the old epoch are not held in the new one")
+
+    def test_v7_an_overflow_whose_limit_differs_from_the_configured_cap_is_rejected(self):
+        log = self.acq(4) + [self.over(4, 5)]  # justified by the count, but the record names another cap
+        self.assertTrue(self.says(log, "records limit 5, the configured cap is 4"), self.msgs(log))
+        self.assertFalse(self.says(log, "is not justified") or self.says(log, "records held"), self.msgs(log))
+        wrong_channel = self.acq(3, ch=1) + [self.over(3, 4, ch=1)]  # channel 1 uses fragment_max, not the channel-0 cap
+        self.assertTrue(self.says(wrong_channel, "records limit 4, the configured cap is 3"), self.msgs(wrong_channel))
+
+    def test_v7_an_overflow_whose_held_differs_from_the_rebuilt_count_is_rejected(self):
+        log = self.acq(4) + [self.over(5, 4)]
+        self.assertTrue(self.says(log, "records held 5, 4 fragments are held"), self.msgs(log))
+        self.assertFalse(self.says(log, "is not justified") or self.says(log, "records limit"), self.msgs(log))
+
+
 class LinkValidatorsOnHandWrittenLogs(TraceCase):
     """xvi on logs written by hand, in the order in which the simulator emits them (the link records of a
     datagram come before its send record). Complete positive traces pass; each invalid one is rejected by xvi."""
 
     def _run_xvi(self, log, queue, end, delays):
         kw = {} if delays is None else {"delays": delays}
-        return [(c, m) for c, m in ja.validate(log, ja.Cfg(link_bps=100_000_000, link_queue_bytes=queue), end, **kw)
-                if c in ("xvi", "xvii")]
+        cfg_ = ja.Cfg(link_bps=100_000_000, link_queue_bytes=queue, reassembly_fragments_max=4, fragment_max=4)
+        return [(c, m) for c, m in ja.validate(log, cfg_, end, **kw) if c in ("xvi", "xvii")]
 
     def x(self, log, queue=131072, end=0, delays=None):
         return sorted({c for c, _ in self._run_xvi(log, queue, end, delays)})
@@ -2316,7 +2374,7 @@ class LinkValidatorsOnHandWrittenLogs(TraceCase):
         d = _lk()
         self.assertTrue(self.says(d + [_refused()], "no closure record", end=200), self.msgs(d + [_refused()], end=200))
         self.assertEqual(self.x(d + [_closed(), _refused()], end=200), [])  # the seat drop of the non-host endpoint
-        self.assertEqual(self.x(d + [_closed("reasm_overflow"), _refused()], end=200), [])  # the overflow of the same channel
+        self.assertEqual(self.x(d + _held(4) + [_closed("reasm_overflow"), _refused()], end=200), [])  # the overflow of the same channel
         for other in (_closed(peer="P2"), _closed("reasm_overflow", ch=1), _closed("reasm_overflow", src="P1", dst="H")):
             self.assertTrue(self.says(d + [other, _refused()], "no closure record", end=200), other)
         self.assertTrue(self.says(d + [_closed(), _bump(), _refused()], "no closure record", end=200), "closure before the bump")
@@ -2509,6 +2567,18 @@ class LinkValidation(TraceCase):
         self._no_message(sim, "non-last fragment", "xvii")
         self._no_message(sim, "exceeds payload_max", "xvii")
 
+    def test_v7_a_forged_overflow_record_is_not_a_closure(self):
+        sim = self._refusal_sim()  # a real overflow (held 3, limit 3) closes the receive side
+        self.check(sim, [e for e in sim.events if e["kind"] == "reasm_overflow"], "no overflow record")
+        self._no_message(sim, "is not justified", "xv")
+        self._no_message(sim, "records held", "xv")
+
+    def test_v7_an_overflow_exceeds_the_configured_cap_not_one_fragment_less(self):
+        sim = ja.fragment_loss_sim(lcfg(fragment_max=4))
+        self.check(sim, [e for e in sim.events if e["kind"] == "reasm_overflow"], "no overflow record")
+        self._no_message(sim, "records limit", "xv")
+        self._no_message(sim, "is not justified", "xv")
+
     def test_a_real_closure_is_followed_by_a_refusal_and_a_valid_run(self):
         sim = self._refusal_sim()
         over = [e for e in sim.events if e["kind"] == "reasm_overflow"]
@@ -2580,6 +2650,40 @@ def _patch_stale_record_for_a_current_epoch():
             return None
         return orig(self, src, dst, ch, d, epoch, lid, attempt)
     return mock.patch.object(ja.Sim, "arrive", arrive)
+
+
+def _patch_forged_overflow_then_refusals():
+    """P5: on a live receiver the first Snap-frag arrival writes an unjustified reasm_overflow record (held 0) and is
+    refused; the later ones are refused too, so the F3 closure check is satisfied by the forged record."""
+    orig = ja.Sim.arrive
+
+    def arrive(self, src, dst, ch, d, epoch=None, lid=None, attempt=None):
+        if d["kind"] == "Snap-frag" and attempt == 1 and d["epoch"] == self.ep_of(dst, src):
+            if not getattr(self, "_forged", False):
+                self._forged = True
+                self.ev("reasm_overflow", src=src, dst=dst, ch=ch, mid=d["mid"], held=0, limit=self.cfg.fragment_max)
+            self.ev("arrive_refused", src=src, dst=dst, ch=ch, seq=d["seq"], msg=d["kind"], lid=lid, attempt=attempt,
+                    sid=d.get("sid"), epoch=d.get("epoch"), size=d["size"], frag=d.get("frag", 0),
+                    nfrag=d.get("nfrag", 1), mid=d.get("mid"), why="closed")
+            return None
+        return orig(self, src, dst, ch, d, epoch, lid, attempt)
+    return mock.patch.object(ja.Sim, "arrive", arrive)
+
+
+def _patch_overflow_one_fragment_early():
+    """P7: the snapshot cap is lowered by one only while Sim.reassemble runs, so the reassembly overflows one
+    fragment early and the record says held = limit = fragment_max - 1."""
+    orig = ja.Sim.reassemble
+
+    def reassemble(self, src, dst, ch, c, d, seq):
+        if ch == 0:
+            return orig(self, src, dst, ch, c, d, seq)
+        object.__setattr__(self.cfg, "fragment_max", self.cfg.fragment_max - 1)
+        try:
+            return orig(self, src, dst, ch, c, d, seq)
+        finally:
+            object.__setattr__(self.cfg, "fragment_max", self.cfg.fragment_max + 1)
+    return mock.patch.object(ja.Sim, "reassemble", reassemble)
 
 
 def _patch_one_byte_snapshot_fragments():
@@ -2665,6 +2769,10 @@ MUTANTS.update({
         "LinkValidation.test_v5_every_stale_record_with_a_lid_is_stale"]),
     "V6: every snapshot fragment shrunk to a 1-byte payload": (_patch_one_byte_snapshot_fragments, [
         "LinkValidation.test_v6_every_non_last_fragment_is_a_full_payload"]),
+    "V7/P5: a forged reasm_overflow record on a live receiver, then refusals": (_patch_forged_overflow_then_refusals, [
+        "LinkValidation.test_v7_a_forged_overflow_record_is_not_a_closure"]),
+    "V7/P7: the reassembly overflows one fragment early": (_patch_overflow_one_fragment_early, [
+        "LinkValidation.test_v7_an_overflow_exceeds_the_configured_cap_not_one_fragment_less"]),
 })
 
 

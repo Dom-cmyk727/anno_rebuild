@@ -5655,3 +5655,93 @@ Mutation, not committed: `bytes > max_possible` flipped to `bytes < max_possible
 - ASan/UBSan were not run here (no Ninja). The CTest totals above were not repeated after `0f803ee` and `7311a12`.
 
 **Not done:** do not merge, do not push. `TASKS.md` and `AGENTS.md` were not edited. No ADR approval, no T34 stage 2, no T-AI.4, no P2.
+
+## T10c F1 — reservation accounting, cross-OS coordinator, estimates (2026-10-28)
+
+Worktree `E:\anno1503-worktrees\anno1503-T10c`, branch `codex/T10c-test-memory`. Continued from `d8c3461b9738b0955e191abdbca24ce59c740c84`. Head under test: `f2ded2141905d761245c0703a7be614c8cafc251`. Not rebased onto main and no merge from main: `git merge-base HEAD 4959437cf9893e27275e6c46fb4d9b59c5a84848` is still `507e41a36bb2d47276133ab326779cdd6b455ffa`. P1 `task/P1-house-payload` and `E:\anno1503-worktrees\anno1503-P1` are still `416993fa6a6f9dc821455df5d414cff5833ac7f0`. This section does not rewrite the P1 report or the pre-F1 T10c section above.
+
+### Commits after `d8c3461`
+
+| Hash | What it contains |
+| --- | --- |
+| `1478c6f9c2ff1d80a77393c3f58da20fdebf4c70` | Failing regressions: retained credit, unknown free, recheck, cancel, killed owner, live Windows owner seen from WSL |
+| `155e8bd73b2c69a99f5d91df4dfb0ad4ca74b841` | Retained private growth is not credited to a new unallocated reservation |
+| `b116fc5c4ac0b1785ed8ddd42b312f9c86796e4f` | One host coordinator for Windows and WSL; owner namespace; waiter recovery on disconnect |
+| `75fd2fc16a904811f87ae762b93627dc1e29b09b` | Reserve setup (530382848) and 46 bytes/pixel of the rectangle that is drawn |
+| `03f193d49feedafb2de31637379e48c554566825` | Synthetic equivalence: omitted ground pixels, cropped fall masks |
+| `4bce675c1f99113ef9d2f2b75ccad2f8ed5e1729` | WSL path helper compiles only on Windows |
+| `0b5e49efc2dd665c1df57a7bcfca5bd73abf1f44` | Probe executable helper compiles only on Windows |
+| `19e66bf6fec295eed64e065a646262b160fcc05a` | Unix warnings on the new budget sources |
+| `ef417450c4ca71dbd5a0e2dcb377cf1eae5de42b` | Sea-face shift is unsigned (UBSan) |
+| `ba345887cc6f5463a33e05971829f9ad9b74ad5b` | Synthetic island bytes outlive the scene |
+| `c8da2bc6e1b4efd23b5a73dcec8bad042d61e529` | GCC ASan false positive on `anno_sim_tests` suppressed |
+| `63d594b6dc4a1a62e99e47373c4add37fefe99f3` | Coordinator reply lookup does not keep a pointer across the wait |
+| `58cd212b06ce218bfa339038b3ac3c68139381c2` | Coordinator copy from the root directory (CMake rejected it) |
+| `c3a53895afa8025bdae94e24e54ff790b2aa1d8b` | Coordinator staged from each test's own directory |
+| `cba9e707032638dcb40079b4a6377a0c462784c9` | Drop a scene that blocked its own render reservation (still re-took setup) |
+| `6a30b91554505583ee37be49aff82263359b95a6` | One picture reservation before the scene exists |
+| `fba86b32e73878f2c42ba00800f4446a1c0170cc` | Scene catalogs load only after that reservation is held |
+| `f2ded2141905d761245c0703a7be614c8cafc251` | Figuren header buffer outlives the parsed header |
+
+`git diff --check` was clean before each of these commits. `cache/`, `game/`, `TASKS.md` and `AGENTS.md` were not staged.
+
+### R1–R5
+
+**R1.** `1478c6f` adds `retained private bytes are not credited to a new reservation` before `155e8bd` changes the accounting. A hold is resident only for the overlap of private growth and the free-memory drop. On release that resident part folds into the baseline. An empty hold list snaps the baseline to the current readings. Unknown private zeros residency. Unknown free refuses with `free memory unknown`. A timed recheck wakes waiters and does not admit until `decide` says admit.
+
+**R2.** Windows `LockFileEx` does not exclude a WSL `flock` on `/mnt/e`. The coordinator listens in WSL on `0.0.0.0:47631`; Windows connects to `127.0.0.1:47631`. Identity is the TCP connection, the OS namespace, the pid, and the process start stamp. `a live Windows owner is not reclaimed by a WSL client` is the regression. Foreign pids are not killed.
+
+**R3.** Client disconnect drops that client's holds and CPU tokens and re-evaluates waiters. A killed owner unblocks a memory waiter and a CPU waiter. Server loss is a refuse (`coordinator lost`), not an admission. `cancelling a waiter does not release the bytes it is waiting on`. No timeout path admits.
+
+**R4.** Setup is 530382848 bytes. The pixel rate is 46. Both are measured (`docs/perf/README.md`, T10c F1). Group 2 reserves `scene.bounds(2)` after the islands are placed; unit sprites can extend that union, and the scene is dropped and the real rectangle reserved while nothing is held. Group 1 reserves 1600×900. Catalog files (Felder, Anlagen, figure volumes) load after the reservation, once per process. Two Single_01 group-2 reservations (7684450048 each) plus 4 GiB headroom do not fit in the baseline start free of 16507674624.
+
+**R5.** ASan/UBSan used WSL GCC 13.3, Unix Makefiles, `ANNO_SANITIZE=ON`, RelWithDebInfo, viewer and GPU off, cmake 3.31.8 from `$HOME/cmake-lnx`, build `$HOME/anno-t10c-asan`. The heavy render corpus was not run under ASan (one Single_01 reservation is about 7.68e9 bytes before sanitizer overhead). `render_corpus_test.cpp` was rebuilt on this head and the two synthetic cases re-run.
+
+### Regression and deadlock evidence
+
+The retained-credit, foreign-owner, and killed-owner tests are `1478c6f`, parent `d8c3461`, and the accounting and coordinator fixes are the following commits. Windows budget suite after the coordinator pointer fix: 22 cases, 128 assertions. Linux ASan budget suite: 20 cases, 97 assertions (the two Windows-only cases are not compiled).
+
+Before the picture was reserved first, four heavy `anno_render_tests` processes sat on built scenes (working set about 512 MB, a few seconds of CPU) while setup reservations of 530382848 stacked and the picture was refused `exceeds capacity`. Sampler `cache/f1/ctest-with-game-mem2.csv`: 96 rows, minimum available physical 11776266240, maximum 13071216640. That run was killed. It is not a gate result. `cba9e70` dropped the scene and then took setup again, which still left the picture over capacity. `6a30b91` takes one reservation for setup plus the picture before `build_scene`.
+
+A following one-worker run then crashed: `legacy river shading` admitted a 596622848-byte region reservation and died with SIGSEGV. `FigurenHeader` views the file buffer, and that buffer was a temporary. `f2ded21` keeps `header_buf` in the catalog. The rerun (`cache/f1/legacy-1worker-2.log`, 26.81 s) did not crash. It threw `refused estimate=7560404608 reason=exceeds capacity available=6967738368` with pending 0 and resident 0.
+
+### Gates on `f2ded21`
+
+| Gate | Result |
+| --- | --- |
+| `cmake --build --preset msvc` | exit 0, `render_corpus_test.cpp` rebuilt |
+| with-game `ctest --preset msvc -j 16`, `ANNO_TEST_THREADS=16`, game dir `E:\anno1503\game\app` | 1061 passed, 6 failed, 1067 total, real 297.65 s. gpu 180.39 s·proc (89). heavy 2098.47 s·proc (10) |
+| without-game `ctest --preset msvc -j 16`, `ANNO_TEST_THREADS=16` | 1067 passed, real 55.97 s. 2 skipped not-run: `anno_sim_replay_scenario_single_01`, `anno_sim_replay_scenario_endless_03_links` |
+| clang-format 23.1.3 `--dry-run --Werror` over `src` | 0 files |
+| `tools/check_unix_warnings.sh` (WSL GCC 13.3.0, Clang 18.1.3) | clean (169 files with viewer and GPU, 9 without GPU) |
+| `python -I tools/lint_sim.py` | `lint_sim: ok` |
+| `python -I tools/sim_stream.py --check` | goldens agree |
+| ASan/UBSan budget suite | 20/20, 97 assertions, max RSS 25284 kB |
+| ASan/UBSan omitted ground / cropped masks, rebuilt on this head | 69904 and 57 assertions, both success |
+| ASan/UBSan `anno_sim_tests` without game dir | 664/664, 2660755 assertions, max RSS 1262516 kB |
+| ASan/UBSan `anno_sim_tests` with game dir | first run 662/664 (coordinator binary not beside `anno_sim_tests`); scenario-corpus rerun 3 passed, 661 skipped, 674 assertions, max RSS 1221212 kB. With that rerun the two failures are covered |
+
+The six with-game failures are all `exceeds capacity`, no digest mismatch:
+
+- `legacy river shading` — estimate 7855636288, available 1335762912, pending 5513011232, resident 442757120
+- `scene renders match the recorded digests` — estimate 7560404608, available 1206263776, pending 5955768352, resident 0
+- `scenario corpus: every .sze loads` — estimate 1073741824
+- `water field: empty cells hold on every island` — estimate 1073741824
+- `chunk draw lists replay` — estimate 1073741824
+- `render_chunk: the Cpu builder keeps the planes` — estimate 1073741824
+
+Sampler `cache/f1/ctest-with-game-mem4.csv` (313 rows, 1 Hz): minimum available physical 5099106304, maximum 13402222592. At the 7855636288 refusal, free physical was about 11.14e9 bytes (`available + headroom + pending`). `max_possible` (`free + resident - headroom`) was 7291521264, short of the estimate by 564115024 bytes. The run was not killed and was not repeated.
+
+Logs: `cache/f1/ctest-with-game-final.log`, `ctest-output-with-game-final.log`, `LastTest-with-game-final.log`, `ctest-without-game-final.log`, `warnings-final.txt`, `asan-render.txt`.
+
+### Pre-F1 and P1, left as they were
+
+Pre-F1 legacy river, 47 assertions, one worker: 297.646 s, peak private 8044425216 (about 7.49 GiB), minimum available physical 8656285696. After the buffer cut, one worker 276.195 s / 5226586112 (about 4.87 GiB). Four budgeted workers 246.1 s / 6116012032 (about 5.70 GiB), minimum available 8590499840. Combined CTest at `677a4df`: with and without game, non-heavy 1049/1049 and heavy 10/10. Original P1: with-game non-heavy 1032/1032; heavy killed at about 1.2 GB free after test 228. Those figures are not this head.
+
+### Limitations
+
+- On this PC during the final with-game run, one Single_01-sized reservation (7684450048, or the island-bounds estimate 7560404608 / 7855636288) plus 4 GiB headroom did not fit in free memory, so the heavy digest cases and three 1 GiB cases were refused. No digest was rewritten. The 8-worker overload was not repeated. ASan did not run the heavy render corpus.
+- If the detached coordinator process dies, a later client sees an empty server. The death test kills the holder, not the server.
+- `58cd212` is a broken intermediate (CMake `TARGET was not created in this directory`). `c3a5389` is the configure that stages the coordinator. It was not amended.
+
+**Not done:** do not merge, do not push. `TASKS.md` and `AGENTS.md` were not edited. No ADR approval, no T34 stage 2, no T-AI.4, no P2.

@@ -814,3 +814,18 @@ Single_01 group 2 is 16960 × 9170 = 155523200 pixels. The scheduler's per-pixel
 The legacy-river process peak is 423813120 bytes above the fresh Single_01 `--png` peak. That gap is memory the harness already held (figuren volumes, Anlagen, Felder). The reservation is the additional render bytes. Free memory already excludes what is resident, so those bytes are not reserved again.
 
 Two full-map renders, about twice the 6628712448-byte additional, do not fit in the 16507674624 bytes free at the start of the one-worker run once 4 GiB of headroom is kept. The headroom default is 4 GiB because that run's minimum available physical memory was 8656285696 bytes: one large render did not need a lower headroom to be admitted.
+
+## T10c F1 — setup plus the drawn rectangle (2026-10-28)
+
+The per-pixel rate and the setup high water below replace the 43 bytes/pixel figure in the section above. They are the constants in `src/test_support/include/anno/test/budget.hpp` on head `f2ded2141905d761245c0703a7be614c8cafc251`. Sampler `tools/sample_memory.ps1` at 200 ms. Peak is `PeakPagefileUsage`. Viewer `build/msvc/src/app/Release/anno1503.exe`, one fresh process per run, CPU renderer, enhanced legacy water. CSVs stayed in the worktree `cache/`.
+
+| run | pixels | peak private | subtracted high water | additional | bytes/pixel |
+|---|---:|---:|---:|---:|---:|
+| Single_01 group 2, 16960×9170 | 155523200 | 7620632576 | 530382848 | 7090249728 | 45.590 |
+| Single_24 group 2, 7200×2811 | 20245320 | 1268985856 | 356696064 | 912289792 | 45.062 |
+
+`kCpuRenderBytesPerPixel` is 46, one byte above the higher ratio. `46 × 155523200 = 7154067200`. `kCpuRenderSetupBytes` is 530382848, the private peak of a 1600×900 group-1 view of Single_01 at tile 800,400. The full-map run's private peak at 0.729 s, before that image grew, was 529973248. Three other 1600×900 views peaked between 529661952 and 530006016. None of those region views raised a high water above the scene load by a separate full-image amount. The reservation is still setup plus 46 bytes for every pixel of the rectangle that is drawn.
+
+A Single_01 group-2 reservation is `530382848 + 7154067200 = 7684450048` bytes. Two of those plus the 4294967296-byte headroom are 19663867392 bytes, which is above the 16507674624 bytes free at the start of the one-worker baseline. The second job waits or is refused. It is not admitted beside the first.
+
+On this head a one-worker legacy-river run (`ANNO_TEST_THREADS=1`, 2026-10-28) was refused before the picture: estimate 7560404608, available 6967738368, pending 0, resident 0, reason `exceeds capacity`. Available physical at that decision was 11262695664 bytes. The same case on the pre-F1 head finished in 297.646 s at peak private 8044425216 (about 7.49 GiB). That comparison is a refusal against a completed run, because today's free memory was below estimate plus headroom. The combined with-game CTest on this head is in `docs/orchestration/REPORTS.md` (1061 passed, 6 failed, every failure `exceeds capacity`). Minimum available physical during that run was 5099106304; the maximum was 13402222592.

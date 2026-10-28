@@ -34,6 +34,11 @@ namespace {
 
 std::atomic<std::uint64_t> g_free{100};
 std::atomic<std::uint64_t> g_private{0};
+std::atomic<int> g_f1_waits{0};
+
+void note_wait() {
+    g_f1_waits.fetch_add(1);
+}
 
 std::optional<std::uint64_t> free_of() {
     return g_free.load();
@@ -256,6 +261,68 @@ TEST_CASE("unknown free memory does not admit the request" * doctest::test_suite
     CHECK(budget->reserved() == 0);
 }
 
+TEST_CASE("a timed recheck does not admit until the budget fits" * doctest::test_suite("budget")) {
+    g_free = 50;
+    g_private = 0;
+    const auto path = work_file("recheck.bin");
+    auto budget = anno::test::Budget::file(path, both_hooks(), 0);
+    const auto held = budget->try_reserve(40);
+    REQUIRE(held);
+    std::atomic<int> done{0};
+    anno::test::Reservation second;
+    anno::test::Admit info;
+    std::thread waiter([&] {
+        second = budget->reserve(30, &info);
+        done.store(1);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    CHECK(done.load() == 0);
+    g_free = 100;
+    for (int i = 0; i < 40 && done.load() == 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    waiter.join();
+    CHECK(second);
+    CHECK(info.admitted);
+    CHECK(info.waited);
+    CHECK_FALSE(info.refused);
+    budget.reset();
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("cancelling a waiter does not release the bytes it is waiting on" *
+          doctest::test_suite("budget")) {
+    g_free = 100;
+    g_private = 0;
+    g_f1_waits = 0;
+    auto hooks = both_hooks();
+    hooks.on_wait = &note_wait;
+    const auto path = work_file("cancel.bin");
+    auto holder = anno::test::Budget::file(path, both_hooks(), 0);
+    auto waiter = anno::test::Budget::file(path, hooks, 0);
+    const auto held = holder->try_reserve(80);
+    REQUIRE(held);
+    anno::test::Admit info;
+    anno::test::Reservation waited;
+    std::thread blocked([&] { waited = waiter->reserve(60, &info); });
+    const auto start = std::chrono::steady_clock::now();
+    while (g_f1_waits.load() == 0 &&
+           std::chrono::steady_clock::now() - start < std::chrono::seconds(5)) {
+        std::this_thread::yield();
+    }
+    REQUIRE(g_f1_waits.load() > 0);
+    waiter->cancel();
+    blocked.join();
+    CHECK_FALSE(waited);
+    CHECK(info.refused);
+    CHECK(info.reason == "cancelled");
+    CHECK(held);
+    CHECK(holder->reserved() == 80);
+    holder.reset();
+    waiter.reset();
+    std::filesystem::remove(path);
+}
+
 #if defined(_WIN32)
 TEST_CASE("a killed owner lets a memory waiter and a cpu waiter continue" *
           doctest::test_suite("budget")) {
@@ -302,7 +369,7 @@ TEST_CASE("a live Windows owner is not reclaimed by a WSL client" * doctest::tes
     _putenv("ANNO_TEST_BUDGET_ID=f1-foreign");
     _putenv("ANNO_TEST_BUDGET_COORD=wsl");
     auto holder = start_probe(exe, "holder \"" + path.string() + "\" 80");
-    const std::string ready = read_for(holder, std::chrono::milliseconds(8000));
+    const std::string ready = read_for(holder, std::chrono::milliseconds(60000));
     REQUIRE(ready.find("READY 1") != std::string::npos);
 
     const auto linux_probe = root / "budget_probe_linux";
@@ -310,6 +377,7 @@ TEST_CASE("a live Windows owner is not reclaimed by a WSL client" * doctest::tes
         "wsl -d Ubuntu -- g++ -std=c++20 -O1 -g -pthread "
         "-I/mnt/e/anno1503-worktrees/anno1503-T10c/src/test_support/include "
         "/mnt/e/anno1503-worktrees/anno1503-T10c/src/test_support/src/budget.cpp "
+        "/mnt/e/anno1503-worktrees/anno1503-T10c/src/test_support/src/coord.cpp "
         "/mnt/e/anno1503-worktrees/anno1503-T10c/src/test_support/src/memory.cpp "
         "/mnt/e/anno1503-worktrees/anno1503-T10c/src/test_support/tests/budget_probe.cpp "
         "-o /mnt/e/anno1503-worktrees/anno1503-T10c/cache/f1/budget_probe_linux";

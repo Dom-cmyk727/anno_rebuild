@@ -115,13 +115,19 @@ class Budget : public std::enable_shared_from_this<Budget> {
     /// Zero disables the stop. The process budget uses ANNO_TEST_STOP_MB.
     void set_stop_below(std::uint64_t bytes);
     /// Wakes threads blocked in reserve or acquire_cpu. Tests use this after
-    /// changing an injected free-memory value.
+    /// changing an injected free-memory value. A timed recheck does this too;
+    /// neither path admits a request the budget does not fit.
     void wake();
+    /// Refuses this client's blocked reserve and acquire_cpu calls. Held
+    /// reservations stay held.
+    void cancel();
 
   private:
     friend class Reservation;
     friend class CpuToken;
     Budget() = default;
+    static std::shared_ptr<Budget> open_coord(const std::filesystem::path& path, BudgetHooks hooks,
+                                              std::uint64_t headroom, bool host_wide);
     void release_id(std::uint64_t id) noexcept;
     void release_cpu() noexcept;
     Reservation make_hold(std::uint64_t id, std::uint64_t bytes);
@@ -138,5 +144,9 @@ class Budget : public std::enable_shared_from_this<Budget> {
 /// Reserves cpu_render_additional_bytes(pixels) on the process budget.
 /// Zero pixels reserves nothing. A refusal throws std::runtime_error.
 Reservation reserve_cpu_render(std::uint64_t pixels);
+
+/// Process entry for anno_budget_coord. Binds `port` on loopback, or on every
+/// interface when `all_interfaces` is set (the WSL host coordinator).
+int run_budget_server(std::uint16_t port, bool all_interfaces);
 
 } // namespace anno::test

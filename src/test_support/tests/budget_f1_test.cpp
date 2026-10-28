@@ -382,7 +382,14 @@ TEST_CASE("a live Windows owner is not reclaimed by a WSL client" * doctest::tes
     REQUIRE(ready.find("READY 1") != std::string::npos);
 
     const auto linux_probe = root / "budget_probe_linux";
-    const std::string compile = "wsl -d Ubuntu -- g++ -std=c++20 -O1 -g -pthread -I" +
+    // The same coordinator build id as this binary: a client of another id
+    // is refused by the shared coordinator.
+    char build[32];
+    std::snprintf(build, sizeof(build), "0x%016llxULL",
+                  static_cast<unsigned long long>(anno::test::coordinator_build()));
+    const std::string compile = "wsl -d Ubuntu -- g++ -std=c++20 -O1 -g -pthread "
+                                "-DANNO_COORD_BUILD=" +
+                                std::string(build) + " -I" +
                                 wsl(source / "include") + " " + wsl(source / "src" / "budget.cpp") +
                                 " " + wsl(source / "src" / "coord.cpp") + " " +
                                 wsl(source / "src" / "coord_server.cpp") + " " +

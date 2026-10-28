@@ -297,6 +297,9 @@ Budget& Budget::process() {
         created->state_->coord->log = [path = created->state_->log_path](const std::string& line) {
             emit_log(true, path, line);
         };
+        // Which coordinator build this test process measures against.
+        emit_log(true, created->state_->log_path,
+                 "[anno-test memory] coordinator " + created->state_->coord->identity);
         created->set_stop_below(memory_stop_bytes());
         return created;
     }();

@@ -607,9 +607,6 @@ TEST_CASE("the process budget's coordinator measures the host itself" *
 #if defined(_WIN32) || !defined(__linux__)
     CHECK(info.total == *own_total);
 #else
-    if (anno::test::child::sibling("anno_budget_coord").empty()) {
-        return;
-    }
     std::FILE* version = std::fopen("/proc/version", "r");
     char text[512] = {};
     if (version != nullptr) {

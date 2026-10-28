@@ -16,6 +16,9 @@ struct CoordSession {
     virtual ~CoordSession() = default;
     /// Progress lines of a long wait (the process budget logs them).
     std::function<void(const std::string&)> log;
+    /// The coordinator this session talks to, for the gate logs: build,
+    /// incarnation, pid, port and meter.
+    std::string identity;
 };
 
 struct CoordResult {

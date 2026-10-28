@@ -121,6 +121,8 @@ std::filesystem::path module_directory() {
 #endif
 }
 
+std::string hex64(std::uint64_t value);
+
 #if defined(_WIN32)
 std::string to_wsl_path(const std::filesystem::path& path) {
     const std::string text = path.generic_string();
@@ -170,35 +172,25 @@ bool spawn_local(const std::filesystem::path& exe, std::uint16_t port, bool all_
 bool ensure_wsl_coordinator(std::uint16_t port) {
     const std::filesystem::path root =
         std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path();
-    const std::filesystem::path binary = root / "cache" / "coord" / "anno_budget_coord";
+    // Named by the build id (the hash of the coordinator's sources at
+    // configure time): a binary of this name is this build's coordinator.
+    const std::string id = hex64(coordinator_build());
+    const std::filesystem::path binary = root / "cache" / "coord" / ("anno_budget_coord-" + id);
     std::error_code error;
     std::filesystem::create_directories(binary.parent_path(), error);
     const HANDLE mutex = CreateMutexW(nullptr, FALSE, L"Local\\anno1503-coord-build");
     if (mutex != nullptr) {
         WaitForSingleObject(mutex, 120000);
     }
-    const auto fresh = [&](const std::filesystem::path& source) {
-        std::error_code stamp_error;
-        if (!std::filesystem::exists(binary, stamp_error)) {
-            return false;
-        }
-        const auto source_time = std::filesystem::last_write_time(source, stamp_error);
-        const auto binary_time = std::filesystem::last_write_time(binary, stamp_error);
-        return !stamp_error && binary_time >= source_time;
-    };
     const std::filesystem::path source_dir = root / "src" / "test_support" / "src";
-    const std::filesystem::path header =
-        root / "src" / "test_support" / "include" / "anno" / "test" / "budget.hpp";
-    const bool up_to_date =
-        fresh(source_dir / "coord_server.cpp") && fresh(source_dir / "coord_wire.hpp") &&
-        fresh(source_dir / "budget_coord.cpp") && fresh(source_dir / "admit_detail.hpp") &&
-        fresh(source_dir / "memory.cpp") && fresh(header);
-    bool compiled = up_to_date;
-    if (!up_to_date) {
+    bool compiled = std::filesystem::exists(binary, error);
+    if (!compiled) {
         const std::string include = to_wsl_path(root / "src" / "test_support" / "include");
         const std::string out = to_wsl_path(binary);
-        const std::string cmd = "wsl.exe -d Ubuntu -- g++ -std=c++20 -O2 -pthread -I" + include +
-                                " " + to_wsl_path(source_dir / "budget_coord.cpp") + " " +
+        const std::string cmd = "wsl.exe -d Ubuntu -- g++ -std=c++20 -O2 -pthread "
+                                "-DANNO_COORD_BUILD=0x" +
+                                id + "ULL -I" + include + " " +
+                                to_wsl_path(source_dir / "budget_coord.cpp") + " " +
                                 to_wsl_path(source_dir / "coord_server.cpp") + " " +
                                 to_wsl_path(source_dir / "memory.cpp") + " -o " + out;
         compiled = std::system(cmd.c_str()) == 0;
@@ -602,6 +594,14 @@ CoordResult finish_lost(std::uint64_t bytes, bool waited, const std::string& rea
     return result;
 }
 
+std::string hex64(std::uint64_t value) {
+    char text[17];
+    std::snprintf(text, sizeof(text), "%016llx", static_cast<unsigned long long>(value));
+    return text;
+}
+
+bool hello_once(Native& fd, std::uint64_t budget, bool internal, bool meter, Frame& reply);
+
 std::string seconds_text(std::chrono::steady_clock::duration span) {
     return std::to_string(std::chrono::duration_cast<std::chrono::seconds>(span).count());
 }
@@ -736,7 +736,64 @@ std::shared_ptr<CoordSession> detail::coord_connect(const std::filesystem::path&
         fnv(!budget_name.empty() ? budget_name : identity.generic_string());
     const bool internal = wants_internal_meter(host_wide);
     const bool meter = !internal && hooks.free_bytes != nullptr;
-    Native fd = connect_coordinator(shared);
+    const std::uint16_t port = coordinator_port(shared);
+    Native fd = kInvalid;
+    Frame reply;
+    std::string mismatch;
+    // A coordinator of another build that was idle steps aside; then this
+    // build's own is started (or found) on the next attempt.
+    for (int attempt = 0;; ++attempt) {
+        try {
+            fd = connect_coordinator(shared);
+        } catch (const std::exception& error) {
+            if (mismatch.empty()) {
+                throw;
+            }
+            throw std::runtime_error(mismatch + "; then: " + error.what());
+        }
+        if (hello_once(fd, budget, internal, meter, reply)) {
+            break;
+        }
+        const bool stepped_aside = frame_op(reply) == kStReject && frame_g(reply) == 1;
+        if (frame_op(reply) == kStReject) {
+            mismatch = "the test budget coordinator on port " + std::to_string(port) +
+                       " runs build " + hex64(frame_a(reply)) + " (pid " +
+                       std::to_string(frame_d(reply)) + "), this client is build " +
+                       hex64(coordinator_build()) +
+                       (stepped_aside ? "; it was idle and exited"
+                                      : "; it still serves other clients, so it stays");
+        }
+        if (!stepped_aside || attempt >= 3) {
+            throw std::runtime_error(
+                mismatch.empty()
+                    ? "the test budget coordinator on port " + std::to_string(port) +
+                          " closed the connection or speaks another protocol"
+                    : mismatch);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    }
+    set_recv_timeout(fd, 0);
+    auto session = std::shared_ptr<Session>(new Session());
+    session->fd = fd;
+    session->budget = budget;
+    session->token = frame_token(reply);
+    session->hooks = hooks;
+    session->meter = meter;
+    session->identity = "build=" + hex64(frame_a(reply)) + " incarnation=" +
+                        hex64(frame_b(reply)) + " protocol=" + std::to_string(frame_c(reply)) +
+                        " pid=" + std::to_string(frame_d(reply)) + " port=" +
+                        std::to_string(port) + (shared ? " shared" : " local") +
+                        (internal ? " meter=internal" : " meter=clients");
+    Session* raw = session.get();
+    session->reader = std::thread([raw] { reader_main(raw); });
+    return session;
+}
+
+namespace {
+
+/// One hello. True with the coordinator's OK in `reply`; false (connection
+/// closed) with a rejection or an empty frame in `reply`.
+bool hello_once(Native& fd, std::uint64_t budget, bool internal, bool meter, Frame& reply) {
     Frame hello;
     put32(hello.bytes, 0, kMagic);
     put32(hello.bytes, 4, kOpHello);
@@ -748,33 +805,28 @@ std::shared_ptr<CoordSession> detail::coord_connect(const std::filesystem::path&
     put64(hello.bytes, 72, kProtocol);
     put32(hello.bytes, 80, (internal ? kFlagInternalMeter : 0u) | (meter ? kFlagClientMeter : 0u));
     put32(hello.bytes, 84, this_domain());
+    put64(hello.bytes, 64, coordinator_build());
+    reply = Frame{};
     if (!send_all(fd, hello)) {
         close_fd(fd);
-        throw std::runtime_error("could not register with the test budget coordinator");
+        fd = kInvalid;
+        return false;
     }
     set_recv_timeout(fd, static_cast<int>(liveness().count()));
-    Frame reply;
-    if (!recv_full(fd, reply)) {
+    const bool got = recv_full(fd, reply);
+    if (!got || frame_op(reply) != kStOk || frame_token(reply) == 0 ||
+        frame_a(reply) != coordinator_build() || frame_c(reply) != kProtocol) {
+        if (!got) {
+            reply = Frame{};
+        }
         close_fd(fd);
-        throw std::runtime_error("the test budget coordinator on port " +
-                                 std::to_string(coordinator_port(shared)) +
-                                 " closed the connection or speaks another protocol");
+        fd = kInvalid;
+        return false;
     }
-    if (frame_op(reply) != kStOk || frame_token(reply) == 0) {
-        close_fd(fd);
-        throw std::runtime_error("the test budget coordinator rejected the client");
-    }
-    set_recv_timeout(fd, 0);
-    auto session = std::shared_ptr<Session>(new Session());
-    session->fd = fd;
-    session->budget = budget;
-    session->token = frame_token(reply);
-    session->hooks = hooks;
-    session->meter = meter;
-    Session* raw = session.get();
-    session->reader = std::thread([raw] { reader_main(raw); });
-    return session;
+    return true;
 }
+
+} // namespace
 
 detail::CoordResult detail::coord_try(CoordSession& base, std::uint64_t bytes,
                                       std::uint64_t headroom, std::uint64_t stop) {

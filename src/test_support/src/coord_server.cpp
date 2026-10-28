@@ -16,6 +16,14 @@
 // A WSL request is bounded by both its VM and the host; a Windows request by
 // the host. Holders are sampled for residency while requests wait.
 //
+// Replacement (review round cr, C3). Every promise (a memory hold or a CPU
+// token) is written to a journal before the client hears of it. A coordinator
+// that starts finds its predecessor's open promises there and counts them as
+// fully pending ("orphans") until their owner process is gone, checked by pid
+// and creation stamp. It never starts from an empty budget while old work may
+// still run. A client of another build (or protocol) is refused; an idle
+// coordinator of another build steps aside for it.
+//
 // Shortfalls. More than a domain can ever give (its total minus the headroom)
 // is refused as "exceeds capacity". Anything else waits: reservations end, and
 // memory used outside the budget can come back. Waits are bounded by the
@@ -24,10 +32,14 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <map>
 #include <optional>
 #include <random>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -389,6 +401,18 @@ class Meters {
         return local_reading();
     }
 
+    /// Whether a Windows process still runs, asked from WSL. Nullopt: unknown.
+    std::optional<bool> windows_alive(std::uint64_t pid, std::uint64_t started) {
+#if !defined(_WIN32)
+        if (wsl_) {
+            return host_.alive(pid, started);
+        }
+#endif
+        (void)pid;
+        (void)started;
+        return std::nullopt;
+    }
+
     /// The VM a WSL client allocates from; no meter outside WSL.
     Reading guest() {
 #if !defined(_WIN32)
@@ -461,11 +485,199 @@ struct SBudget {
     std::chrono::steady_clock::time_point last_tick{};
 };
 
+/// The process that holds a promise: OS, pid and creation stamp.
+struct Owner {
+    std::uint32_t ns = 0;
+    std::uint64_t pid = 0;
+    std::uint64_t started = 0;
+    bool operator<(const Owner& other) const {
+        return std::tie(ns, pid, started) < std::tie(other.ns, other.pid, other.started);
+    }
+    bool operator==(const Owner& other) const {
+        return ns == other.ns && pid == other.pid && started == other.started;
+    }
+};
+
+/// A predecessor's promise whose owner may still be working.
+struct Orphan {
+    std::uint64_t budget = 0;
+    std::uint64_t hold = 0; ///< 0: a CPU token
+    std::uint64_t bytes = 0;
+    std::uint32_t domain = kDomainHost;
+    Owner owner;
+};
+
+/// Append-only record of the open promises. Lines: A (memory hold admitted),
+/// R (released), C (CPU token admitted), D (returned). Replayed at start and
+/// rewritten (compacted) from the live state.
+class Journal {
+  public:
+    bool open(const std::filesystem::path& path, std::vector<Orphan>& orphans) {
+        path_ = path;
+        std::error_code error;
+        std::filesystem::create_directories(path.parent_path(), error);
+        std::map<std::pair<std::uint64_t, std::uint64_t>, Orphan> holds;
+        std::map<std::pair<std::uint64_t, Owner>, std::uint64_t> cpu;
+        if (std::FILE* in = std::fopen(path.string().c_str(), "r")) {
+            char line[512];
+            while (std::fgets(line, sizeof(line), in) != nullptr) {
+                char kind = 0;
+                unsigned long long b = 0;
+                unsigned long long h = 0;
+                unsigned long long bytes = 0;
+                unsigned ns = 0;
+                unsigned long long pid = 0;
+                unsigned long long started = 0;
+                unsigned domain = 0;
+                if (std::sscanf(line, "A %llu %llu %llu %u %llu %llu %u", &b, &h, &bytes, &ns, &pid,
+                                &started, &domain) == 7) {
+                    kind = 'A';
+                } else if (std::sscanf(line, "R %llu %llu", &b, &h) == 2) {
+                    kind = 'R';
+                } else if (std::sscanf(line, "C %llu %u %llu %llu", &b, &ns, &pid, &started) == 4) {
+                    kind = 'C';
+                } else if (std::sscanf(line, "D %llu %u %llu %llu", &b, &ns, &pid, &started) == 4) {
+                    kind = 'D';
+                }
+                const Owner owner{ns, pid, started};
+                if (kind == 'A') {
+                    holds[{b, h}] = Orphan{b, h, bytes,
+                                           domain == kDomainGuest ? kDomainGuest : kDomainHost,
+                                           owner};
+                } else if (kind == 'R') {
+                    holds.erase({b, h});
+                } else if (kind == 'C') {
+                    cpu[{b, owner}] += 1;
+                } else if (kind == 'D') {
+                    auto found = cpu.find({b, owner});
+                    if (found != cpu.end() && --found->second == 0) {
+                        cpu.erase(found);
+                    }
+                }
+            }
+            std::fclose(in);
+        }
+        for (const auto& [key, orphan] : holds) {
+            orphans.push_back(orphan);
+        }
+        for (const auto& [key, count] : cpu) {
+            for (std::uint64_t i = 0; i < count; ++i) {
+                Orphan token;
+                token.budget = key.first;
+                token.owner = key.second;
+                orphans.push_back(token);
+            }
+        }
+        return rewrite(lines_for(orphans));
+    }
+
+    static std::vector<std::string> lines_for(const std::vector<Orphan>& orphans) {
+        std::vector<std::string> lines;
+        for (const Orphan& o : orphans) {
+            lines.push_back(o.hold != 0 ? hold_line(o.budget, o.hold, o.bytes, o.owner, o.domain)
+                                        : cpu_line('C', o.budget, o.owner));
+        }
+        return lines;
+    }
+
+    static std::string hold_line(std::uint64_t budget, std::uint64_t hold, std::uint64_t bytes,
+                                 const Owner& owner, std::uint32_t domain) {
+        return "A " + std::to_string(budget) + " " + std::to_string(hold) + " " +
+               std::to_string(bytes) + " " + std::to_string(owner.ns) + " " +
+               std::to_string(owner.pid) + " " + std::to_string(owner.started) + " " +
+               std::to_string(domain);
+    }
+
+    static std::string cpu_line(char kind, std::uint64_t budget, const Owner& owner) {
+        return std::string(1, kind) + " " + std::to_string(budget) + " " +
+               std::to_string(owner.ns) + " " + std::to_string(owner.pid) + " " +
+               std::to_string(owner.started);
+    }
+
+    /// Writes one line and flushes it to the OS before the caller acts on
+    /// it. False: the promise must not be made.
+    bool append(const std::string& line) {
+        if (file_ == nullptr) {
+            return false;
+        }
+        if (std::fputs((line + "\n").c_str(), file_) < 0 || std::fflush(file_) != 0) {
+            return false;
+        }
+        appended_ += 1;
+        return true;
+    }
+
+    bool wants_compaction() const noexcept { return appended_ > 20000; }
+
+    /// Replaces the file with exactly `lines` (written beside it, then renamed).
+    bool rewrite(const std::vector<std::string>& lines) {
+        if (file_ != nullptr) {
+            std::fclose(file_);
+            file_ = nullptr;
+        }
+        const std::filesystem::path tmp = path_.string() + ".tmp";
+        std::FILE* out = std::fopen(tmp.string().c_str(), "w");
+        if (out == nullptr) {
+            return false;
+        }
+        bool ok = true;
+        for (const std::string& line : lines) {
+            ok = ok && std::fputs((line + "\n").c_str(), out) >= 0;
+        }
+        ok = std::fclose(out) == 0 && ok;
+        std::error_code error;
+        std::filesystem::rename(tmp, path_, error);
+        if (!ok || error) {
+            return false;
+        }
+        file_ = std::fopen(path_.string().c_str(), "a");
+        appended_ = 0;
+        return file_ != nullptr;
+    }
+
+    Journal() = default;
+    Journal(const Journal&) = delete;
+    Journal& operator=(const Journal&) = delete;
+    ~Journal() {
+        if (file_ != nullptr) {
+            std::fclose(file_);
+        }
+    }
+
+  private:
+    std::filesystem::path path_;
+    std::FILE* file_ = nullptr;
+    std::uint64_t appended_ = 0;
+};
+
 struct Server {
     std::vector<SClient> clients;
     std::vector<SBudget> budgets;
     Meters meters;
+    Journal journal;
+    std::vector<Orphan> orphans;
+    std::uint64_t build = 0;
+    std::uint64_t incarnation = 0;
+    bool exit_requested = false;
+    std::chrono::steady_clock::time_point next_orphan_check{};
 };
+
+Owner owner_of(const SClient& client) {
+    return Owner{client.ns, client.pid, client.started};
+}
+
+std::uint32_t orphan_cpu(const Server& server, std::uint64_t budget) {
+    std::uint32_t n = 0;
+    for (const Orphan& orphan : server.orphans) {
+        n += orphan.budget == budget && orphan.hold == 0 ? 1u : 0u;
+    }
+    return n;
+}
+
+bool cpu_free(const Server& server, const SBudget& budget) {
+    return budget.cpu_budget == 0 ||
+           budget.cpu_in_use + orphan_cpu(server, budget.id) < budget.cpu_budget;
+}
 
 SBudget* find_budget(Server& server, std::uint64_t id) {
     for (SBudget& budget : server.budgets) {
@@ -587,6 +799,14 @@ Constraint constraint_for(Server& server, const SBudget& budget, std::uint32_t d
             const std::uint64_t resident = client_resident(client);
             c.resident = detail::sat_add(c.resident, resident);
             c.pending = detail::sat_add(c.pending, client_reserved(client) - resident);
+        }
+    }
+    // A predecessor's promise: nothing is known about its residency, so all of
+    // it is pending (its allocated part is counted twice, never zero times).
+    for (const Orphan& orphan : server.orphans) {
+        if (orphan.budget == budget.id && orphan.hold != 0 &&
+            (domain == kDomainHost || orphan.domain == domain)) {
+            c.pending = detail::sat_add(c.pending, orphan.bytes);
         }
     }
     if (budget.internal) {
@@ -773,6 +993,17 @@ void pump(Server& server, std::uint64_t budget_id) {
                 hold.id = budget->next_hold++;
                 hold.bytes = wait->bytes;
                 hold_id = hold.id;
+                // Written before the client hears of it: a successor must find
+                // every promise a client may be acting on.
+                if (!server.journal.append(Journal::hold_line(budget->id, hold.id, hold.bytes,
+                                                              owner_of(client), client.domain))) {
+                    info.admitted = false;
+                    info.refused = true;
+                    info.reason = "journal unavailable";
+                    finish(client, wait->req, kStRefuse, 0, info);
+                    progressed = true;
+                    break;
+                }
                 client.holds.push_back(hold);
                 finish(client, wait->req, kStAdmit, hold_id, info);
             } else {
@@ -798,12 +1029,19 @@ void pump(Server& server, std::uint64_t budget_id) {
             progressed = true;
             continue;
         }
-        if (budget->cpu_budget != 0 && budget->cpu_in_use >= budget->cpu_budget) {
+        if (!cpu_free(server, *budget)) {
             break;
+        }
+        Admit info;
+        if (!server.journal.append(Journal::cpu_line('C', budget->id, owner_of(client)))) {
+            info.refused = true;
+            info.reason = "journal unavailable";
+            finish(client, ref.req, kStRefuse, 0, info);
+            progressed = true;
+            continue;
         }
         budget->cpu_in_use += 1;
         client.cpu += 1;
-        Admit info;
         info.admitted = true;
         info.reason = "admitted";
         finish(client, ref.req, kStAdmit, 0, info);
@@ -855,6 +1093,25 @@ void handle_frame(Server& server, SClient& client, const Frame& frame) {
             client.fd = kInvalid;
             return;
         }
+        if (frame_e(frame) != server.build) {
+            // Another build must not be served as if it were tested here. An
+            // idle coordinator (nothing held, no other client, no orphan)
+            // steps aside so the client's own build can start.
+            bool idle = server.orphans.empty();
+            for (const SClient& other : server.clients) {
+                idle = idle && (&other == &client || !other.hello);
+            }
+            Frame reject;
+            fill_header(reject, kStReject, frame_budget(frame), 0, frame_req(frame));
+            put64(reject.bytes, 32, server.build);
+            put64(reject.bytes, 40, server.incarnation);
+            put64(reject.bytes, 56, this_pid());
+            put32(reject.bytes, 80, idle ? 1u : 0u);
+            send_frame(client, reject);
+            client.fd = kInvalid;
+            server.exit_requested = server.exit_requested || idle;
+            return;
+        }
         client.hello = true;
         client.budget = frame_budget(frame);
         client.ns = static_cast<std::uint32_t>(frame_c(frame));
@@ -882,6 +1139,8 @@ void handle_frame(Server& server, SClient& client, const Frame& frame) {
         }
         Frame reply;
         fill_header(reply, kStOk, client.budget, client.token, frame_req(frame));
+        put64(reply.bytes, 32, server.build);
+        put64(reply.bytes, 40, server.incarnation);
         put64(reply.bytes, 48, kProtocol);
         put64(reply.bytes, 56, this_pid());
         send_frame(client, reply);
@@ -926,6 +1185,10 @@ void handle_frame(Server& server, SClient& client, const Frame& frame) {
         return;
     case kOpRelease: {
         const std::uint64_t id = frame_a(frame);
+        if (std::any_of(client.holds.begin(), client.holds.end(),
+                        [&](const RemoteHold& hold) { return hold.id == id; })) {
+            server.journal.append("R " + std::to_string(budget->id) + " " + std::to_string(id));
+        }
         std::erase_if(client.holds, [&](const RemoteHold& hold) { return hold.id == id; });
         client.resident = frame_b(frame);
         bump(*budget);
@@ -936,6 +1199,7 @@ void handle_frame(Server& server, SClient& client, const Frame& frame) {
     case kOpCpuRelease:
         if (client.cpu > 0) {
             client.cpu -= 1;
+            server.journal.append(Journal::cpu_line('D', budget->id, owner_of(client)));
         }
         if (budget->cpu_in_use > 0) {
             budget->cpu_in_use -= 1;
@@ -944,10 +1208,16 @@ void handle_frame(Server& server, SClient& client, const Frame& frame) {
         pump(server, client.budget);
         return;
     case kOpCpuAcquire: {
-        if (budget->cpu_budget == 0 || budget->cpu_in_use < budget->cpu_budget) {
+        if (cpu_free(server, *budget) && waiters_of(server, budget->id, true).empty()) {
+            Admit info;
+            if (!server.journal.append(Journal::cpu_line('C', budget->id, owner_of(client)))) {
+                info.refused = true;
+                info.reason = "journal unavailable";
+                send_frame(client, decision_frame(kStRefuse, client, frame_req(frame), 0, info));
+                return;
+            }
             budget->cpu_in_use += 1;
             client.cpu += 1;
-            Admit info;
             info.admitted = true;
             info.reason = "admitted";
             send_frame(client, decision_frame(kStAdmit, client, frame_req(frame), 0, info));
@@ -995,8 +1265,16 @@ void erase_client(Server& server, std::size_t index) {
     const std::uint64_t budget_id = client.budget;
     SBudget* budget = client.hello ? find_budget(server, budget_id) : nullptr;
     if (budget != nullptr) {
+        for (const RemoteHold& hold : client.holds) {
+            server.journal.append("R " + std::to_string(budget->id) + " " +
+                                  std::to_string(hold.id));
+        }
+        for (std::uint32_t i = 0; i < client.cpu; ++i) {
+            server.journal.append(Journal::cpu_line('D', budget->id, owner_of(client)));
+        }
         if (client.cpu > 0) {
-            budget->cpu_in_use = budget->cpu_in_use >= client.cpu ? budget->cpu_in_use - client.cpu : 0;
+            budget->cpu_in_use =
+                budget->cpu_in_use >= client.cpu ? budget->cpu_in_use - client.cpu : 0;
         }
         if (!client.holds.empty()) {
             bump(*budget);
@@ -1055,6 +1333,122 @@ void pull_client(Server& server, std::size_t index) {
     }
 }
 
+/// Whether the owner of an orphan still runs. Nullopt: cannot tell (the
+/// orphan is kept: fail closed).
+std::optional<bool> owner_alive(Server& server, const Owner& owner) {
+    if (owner.ns == this_namespace()) {
+#if defined(_WIN32)
+        const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
+                                           static_cast<DWORD>(owner.pid));
+        if (process == nullptr) {
+            return GetLastError() == ERROR_INVALID_PARAMETER ? std::optional<bool>(false)
+                                                             : std::nullopt;
+        }
+        FILETIME created{};
+        FILETIME exited{};
+        FILETIME kernel{};
+        FILETIME user{};
+        DWORD code = 0;
+        const bool times = GetProcessTimes(process, &created, &exited, &kernel, &user) != 0;
+        const bool status = GetExitCodeProcess(process, &code) != 0;
+        CloseHandle(process);
+        if (!times || !status) {
+            return std::nullopt;
+        }
+        ULARGE_INTEGER stamp{};
+        stamp.LowPart = created.dwLowDateTime;
+        stamp.HighPart = created.dwHighDateTime;
+        return stamp.QuadPart == owner.started && code == STILL_ACTIVE;
+#else
+        const std::string stat = "/proc/" + std::to_string(owner.pid) + "/stat";
+        if (::access(stat.c_str(), F_OK) != 0) {
+            return false;
+        }
+        if (linux_zombie(stat)) {
+            return false;
+        }
+        const std::uint64_t started = linux_start_time(stat);
+        if (started == 0) {
+            return std::nullopt;
+        }
+        return started == owner.started;
+#endif
+    }
+    if (owner.ns == 1) {
+        return server.meters.windows_alive(owner.pid, owner.started);
+    }
+    return std::nullopt;
+}
+
+/// Drops the orphans whose owner has stopped; their budgets decide again.
+void check_orphans(Server& server) {
+    std::map<Owner, bool> gone;
+    for (const Orphan& orphan : server.orphans) {
+        if (gone.count(orphan.owner) == 0) {
+            const std::optional<bool> alive = owner_alive(server, orphan.owner);
+            gone[orphan.owner] = alive.has_value() && !*alive;
+        }
+    }
+    std::vector<std::uint64_t> touched;
+    for (const Orphan& orphan : server.orphans) {
+        if (gone[orphan.owner]) {
+            touched.push_back(orphan.budget);
+            server.journal.append(orphan.hold != 0
+                                      ? "R " + std::to_string(orphan.budget) + " " +
+                                            std::to_string(orphan.hold)
+                                      : Journal::cpu_line('D', orphan.budget, orphan.owner));
+        }
+    }
+    if (touched.empty()) {
+        return;
+    }
+    std::erase_if(server.orphans, [&](const Orphan& orphan) { return gone[orphan.owner]; });
+    std::sort(touched.begin(), touched.end());
+    touched.erase(std::unique(touched.begin(), touched.end()), touched.end());
+    for (const std::uint64_t id : touched) {
+        if (SBudget* budget = find_budget(server, id)) {
+            bump(*budget);
+            pump(server, id);
+        }
+    }
+}
+
+/// The open promises now: live holds and tokens, then orphans.
+std::vector<std::string> journal_state(const Server& server) {
+    std::vector<std::string> lines = Journal::lines_for(server.orphans);
+    for (const SClient& client : server.clients) {
+        if (!client.hello) {
+            continue;
+        }
+        for (const RemoteHold& hold : client.holds) {
+            lines.push_back(Journal::hold_line(client.budget, hold.id, hold.bytes,
+                                               owner_of(client), client.domain));
+        }
+        for (std::uint32_t i = 0; i < client.cpu; ++i) {
+            lines.push_back(Journal::cpu_line('C', client.budget, owner_of(client)));
+        }
+    }
+    return lines;
+}
+
+std::filesystem::path default_journal(std::uint16_t port) {
+    const std::string name = "coord-" + std::to_string(port) + ".journal";
+#if defined(_WIN32)
+    if (const char* local = std::getenv("LOCALAPPDATA")) {
+        if (local[0] != '\0') {
+            return std::filesystem::path(local) / "anno1503" / name;
+        }
+    }
+#else
+    if (const char* home = std::getenv("HOME")) {
+        if (home[0] != '\0') {
+            return std::filesystem::path(home) / ".cache" / "anno1503" / name;
+        }
+    }
+#endif
+    return std::filesystem::temp_directory_path() / "anno1503" / name;
+}
+
 Native listen_on(std::uint16_t port, bool all_interfaces) {
     startup_sockets();
 #if defined(_WIN32)
@@ -1100,22 +1494,47 @@ Native listen_on(std::uint16_t port, bool all_interfaces) {
 
 } // namespace
 
-int run_budget_server(std::uint16_t port, bool all_interfaces) {
+std::uint64_t coordinator_build() {
+#if defined(ANNO_COORD_BUILD)
+    return ANNO_COORD_BUILD;
+#else
+    return 0;
+#endif
+}
+
+int run_budget_server(const BudgetServerOptions& options) {
 #if !defined(_WIN32)
     for (int fd = 3; fd < 256; ++fd) {
         ::close(fd);
     }
 #endif
-    const Native listen_fd = listen_on(port, all_interfaces);
+    const std::uint16_t port = options.port;
+    const Native listen_fd = listen_on(port, options.all_interfaces);
     if (listen_fd == kInvalid) {
         std::printf("BIND-FAILED %u\n", static_cast<unsigned>(port));
         std::fflush(stdout);
         return 3;
     }
+    // Only the process that holds the port owns the journal.
     Server server;
+    server.build = options.build ? *options.build : coordinator_build();
+    while (server.incarnation == 0) {
+        server.incarnation =
+            (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^ std::random_device{}();
+    }
+    const std::filesystem::path journal =
+        options.journal.empty() ? default_journal(port) : options.journal;
+    if (!server.journal.open(journal, server.orphans)) {
+        std::printf("JOURNAL-FAILED %s\n", journal.string().c_str());
+        std::fflush(stdout);
+        close_fd(listen_fd);
+        return 4;
+    }
     server.meters.start();
     // A test that starts its own coordinator waits for this line.
-    std::printf("LISTENING %u\n", static_cast<unsigned>(port));
+    std::printf("LISTENING %u build=%016llx incarnation=%016llx orphans=%zu\n",
+                static_cast<unsigned>(port), static_cast<unsigned long long>(server.build),
+                static_cast<unsigned long long>(server.incarnation), server.orphans.size());
     std::fflush(stdout);
     const auto period = detail::recheck_period();
     auto idle_since = std::chrono::steady_clock::now();
@@ -1169,6 +1588,16 @@ int run_budget_server(std::uint16_t port, bool all_interfaces) {
         }
         server.meters.poll();
         const auto now = std::chrono::steady_clock::now();
+        if (!server.orphans.empty() && now >= server.next_orphan_check) {
+            server.next_orphan_check = now + std::chrono::milliseconds(250);
+            check_orphans(server);
+        }
+        if (server.journal.wants_compaction()) {
+            server.journal.rewrite(journal_state(server));
+        }
+        if (server.exit_requested) {
+            break;
+        }
         for (std::size_t b = 0; b < server.budgets.size(); ++b) {
             if (now - server.budgets[b].last_tick >= period) {
                 server.budgets[b].last_tick = now;
@@ -1176,7 +1605,8 @@ int run_budget_server(std::uint16_t port, bool all_interfaces) {
             }
         }
         if (server.clients.empty()) {
-            if (now - idle_since > std::chrono::seconds(30)) {
+            // Orphans keep it alive: a successor would only find them again.
+            if (server.orphans.empty() && now - idle_since > std::chrono::seconds(30)) {
                 break;
             }
         } else {

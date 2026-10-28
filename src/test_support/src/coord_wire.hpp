@@ -430,6 +430,23 @@ inline std::uint64_t linux_start_time(const std::string& stat_path) {
 }
 #endif
 
+#if !defined(_WIN32)
+/// True when /proc/<pid>/stat says the process has exited but is not reaped.
+inline bool linux_zombie(const std::string& stat_path) {
+    std::FILE* file = std::fopen(stat_path.c_str(), "r");
+    if (file == nullptr) {
+        return false;
+    }
+    char buffer[1024];
+    const std::size_t n = std::fread(buffer, 1, sizeof(buffer) - 1, file);
+    std::fclose(file);
+    const std::string text(buffer, n);
+    const auto mark = text.rfind(')');
+    return mark != std::string::npos && mark + 2 < text.size() &&
+           (text[mark + 2] == 'Z' || text[mark + 2] == 'X');
+}
+#endif
+
 /// The creation stamp that, with the pid, names one process: Windows
 /// GetProcessTimes creation (FILETIME), Linux /proc starttime.
 inline std::uint64_t process_started() {

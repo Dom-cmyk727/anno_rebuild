@@ -175,8 +175,24 @@ Reservation reserve_cpu_render(std::uint64_t pixels);
 /// Reserves cpu_render_setup_bytes() on the process budget. A refusal throws.
 Reservation reserve_cpu_setup();
 
-/// Process entry for anno_budget_coord. Binds `port` on loopback, or on every
-/// interface when `all_interfaces` is set (the WSL host coordinator).
-int run_budget_server(std::uint16_t port, bool all_interfaces);
+/// The build id of the coordinator this library speaks to: a hash of the
+/// coordinator's sources (src/test_support/CMakeLists.txt). A client refuses a
+/// coordinator of another id, so a detached daemon of another build is never
+/// what a test run measures (T10c F2).
+std::uint64_t coordinator_build();
+
+struct BudgetServerOptions {
+    std::uint16_t port = 47631;
+    /// Every interface (the WSL host coordinator), else loopback only.
+    bool all_interfaces = false;
+    /// The promise journal; empty: coord-<port>.journal in the user's cache.
+    std::filesystem::path journal;
+    /// Tests: run as another build.
+    std::optional<std::uint64_t> build;
+};
+
+/// Process entry for anno_budget_coord. Prints "LISTENING <port> ..." once it
+/// owns the port and the journal, "BIND-FAILED" or "JOURNAL-FAILED" otherwise.
+int run_budget_server(const BudgetServerOptions& options);
 
 } // namespace anno::test

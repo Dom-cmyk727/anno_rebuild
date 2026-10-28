@@ -677,7 +677,8 @@ struct OsFile {
     static std::uint64_t hash_path(const std::filesystem::path& path) {
         const std::string text = path.generic_string();
         std::uint64_t hash = 14695981039346656037ull;
-        for (const unsigned char c : text) {
+        for (const char raw : text) {
+            const auto c = static_cast<unsigned char>(raw);
             hash ^= c;
             hash *= 1099511628211ull;
         }

@@ -5558,3 +5558,100 @@ Reviewed exact clean T58 F3 head `dd897b4c358883da59ada43914a2cc6b16e37290` (on 
 - Nothing from `game/` is in git. Met for these commits: the diff is sim, tools, docs and `fixtures/synthetic/sim` only.
 
 **Not done:** do not merge, do not push. `TASKS.md` and `AGENTS.md` were not edited. No ADR approval, no T34 stage 2, no T-AI.4.
+
+## T10c — memory-budgeted tests (2026-10-28)
+
+Branch `codex/T10c-test-memory`, worktree `E:\anno1503-worktrees\anno1503-T10c`, from P1 `416993fa6a6f9dc821455df5d414cff5833ac7f0`. Not rebased onto main and not merged with main: `git merge-base HEAD 4959437cf9893e27275e6c46fb4d9b59c5a84848` is `507e41a36bb2d47276133ab326779cdd6b455ffa` (P1's base). P1's branch `task/P1-house-payload` and worktree `E:\anno1503-worktrees\anno1503-P1` are still `416993fa6a6f9dc821455df5d414cff5833ac7f0`. This report does not rewrite P1's section above.
+
+Hardware for every measurement below: AMD Ryzen 7 9800X3D, 16 logical processors, 33408942080 bytes physical RAM, commit limit 108272488448. Game dir `E:\anno1503\game\app`. Sampler `tools/sample_memory.ps1` (1 Hz, GlobalMemoryStatusEx plus process private bytes). Logs under this worktree's `cache\` (git-ignored).
+
+### Commits
+
+| Hash | Subject |
+| --- | --- |
+| `f08cbfacdc7fcec9f5c53c8e316cd85d1a978b56` | docs(perf): one-worker baseline and the sampler |
+| `47c8475aa080d4922c3c6c99a771d5dfa6a45707` | test(test): scheduler regressions (stub failed 13 of 14) |
+| `7db05a3962bf80aa276f11bb6f0af45c0994944d` | feat(test): reserve measured render memory before admission |
+| `f36ea828121e63a7a17b699368a8bfec46a009b5` | feat(test): heavy CTest slots follow the budget (`ANNO_HEAVY_TEST_PROCESSORS` 4) |
+| `594b9e27e481aa018568ba26f36f0c08ccaa879d` | fix(test): `windows.h` before `psapi.h` |
+| `7866b879eb99605953b5d861c79238db1ce62de2` | perf(render): drop full-size buffers the caller discards |
+| `39ba66097f0834f8d17c7c51dc513d2b0321628e` | fix(test): in-process mutex before the per-process file lock |
+| `677a4dfd2e7cd643a80b4f3e452ea5f413032ef1` | fix(test): a reservation counts as resident as the private total grows |
+| `0f803ee06a35635fac322abdf6e848c420b8f4d2` | fix(test): explicit unsigned cast in the budget-path hash |
+| `7311a125bc5b042580c47dd8a0ba4c4fbef5cbd4` | test(sim): name the house city before the walk (GCC 13 `-Wnull-dereference`) |
+
+The report commit follows `7311a12`. `git diff --check` was clean before each commit.
+
+### Original P1 results (historical, not re-run, not this head)
+
+From the P1 section above, head `416993fa`: with-game non-heavy **1032/1032**; with-game heavy killed at about 1.2 GB free after test 228 passed and test 229 (`legacy river shading`) started; without-game ctest and WSL GCC/Clang did not run.
+
+### Baseline (unchanged P1 sources, one worker)
+
+`ANNO_TEST_THREADS=1`, test `*legacy river shading*` / suite `heavy`, head in the log `416993fa6a6f9dc821455df5d414cff5833ac7f0`. 1 passed, 47 assertions. Sampled elapsed **297.646 s**. Peak private **8044425216**. Minimum available physical **8656285696** (start free 16507674624). Not killed. The unsafe eight-worker run was not repeated.
+
+Representative fresh-process `--png` group-2 renders, additional private = pagefile peak minus the max private in the first 1.5 s (`docs/perf/README.md`):
+
+| Run | Additional bytes | Bytes/pixel | Elapsed s |
+| --- | --- | --- | --- |
+| Single_01 enhanced legacy, 16960×9170 | 6628712448 | 42.622 | 38.891 |
+| Single_01 original | 6627360768 | 42.613 | 17.485 |
+| Single_01 enhanced flow | 6626652160 | 42.609 | 38.926 |
+| Single_10 enhanced legacy | 6604652544 | 41.475 | 35.841 |
+| Single_14 enhanced legacy | 5299826688 | 40.513 | 27.690 |
+| Single_24 enhanced legacy | 319037440 | 15.763 | 5.170 |
+
+The reservation rate is **43 bytes/pixel**, the integer ceiling of 42.622. `43 * 155523200 = 6687497600`, about 56 MiB above the measured Single_01 additional. Headroom default **4096 MiB**: the one-worker minimum available was 8.06 GiB, so 4 GiB was not crossed by one large render. Stop threshold **2048 MiB**.
+
+### After the buffer cut and the budget
+
+Same legacy-river case, buffer-reduced binary, one worker: 1 passed, 47 assertions, sampled elapsed **276.195 s**, peak private **5226586112**, minimum available physical **8691441664**. The same digests, about 2.62 GiB less peak private than the baseline.
+
+Four workers (`ANNO_TEST_THREADS=4`), head `677a4dfd2e7cd643a80b4f3e452ea5f413032ef1`: 1 passed, 47 assertions, sampled elapsed **246.1 s** (11:48:11 to 11:52:18 +01:00), peak private **6116012032**, minimum available physical **8590499840**. Stderr of that process (`cache/after-legacy-river-4worker.stderr.txt`): **40 admits, 40 ends, 22 waits, 0 refusals, at most 4 reservations open, 28 admits while another was still open.** A group-2 reservation (6571542080 bytes) and a group-1 region (61920000 bytes) were both admitted before either ended. Two group-2 maps of Single_01 (about 6.57 GiB each) plus 4 GiB headroom do not both fit in the free RAM this host had at the start (about 13 GiB); the second waits.
+
+Against the one-worker baseline: wall time 297.646 s → 246.1 s (**17% less**, 51.5 s). Peak private 8044425216 → 6116012032 on the overlapping run, and 5226586112 when one worker runs the reduced buffers. The overlapping run uses more peak than the one-worker reduced run because a second job is resident, and still less than the baseline.
+
+Two earlier four-worker attempts were stopped and kept, not repeated unchanged. The first sat for about 493 s at about 0.5 GiB private and 1.7 s of CPU, four threads in an executive wait: `LockFileEx` is per process, so a second thread locking the same handle never ran. The second admitted a large job and a small job together, then refused the next large job as `exceeds capacity` with `resident=0` while the estimate (a ceiling) was still fully pending after free memory had already fallen. Partial resident bytes fixed that. Neither attempt was a low-memory stop (the floor stayed above 2 GiB).
+
+### Combined-head gates
+
+CTest below is head `677a4df` (before the two warning-only commits). Those two commits do not change admission or digests: the hash cast is the conversion the compiler already did, and the house-walk edit only names the city the test already walked. That house test was rebuilt and passed (17 assertions). WSL was run again on `7311a12`.
+
+| Gate | Combined head | Original P1 |
+| --- | --- | --- |
+| With game, `ctest --preset msvc -j 16 -LE heavy`, `ANNO_TEST_THREADS=16` | **1049/1049**, 205.48 s, exit 0 | 1032/1032 (fewer tests; the budget cases did not exist) |
+| With game, `ctest -j 16 -L heavy` | **10/10**, real 357.41 s, proc-sum 3014.95 s, minimum available physical **7897989120** (7.36 GiB), not killed. Four heavy tests started together | Killed, no summary |
+| Without game dir, `-LE heavy` | **1049/1049**, exit 0 | Not run |
+| Without game dir, `-L heavy` | **10/10**, exit 0 | Not run |
+| WSL `tools/check_unix_warnings.sh` | GCC 13.3.0 and Clang 18.1.3 clean (viewer+GPU, and Clang without GPU), exit 0, on `7311a12` | Not run |
+| Budget suite | 16/16 after the resident fix and again after the hash cast | n/a |
+| `python -I tools/sim_stream.py --check` | `goldens agree`, exit 0 | Passed on P1 |
+| `python -I tools/lint_sim.py` | `lint_sim: ok`, exit 0 | Passed on P1 |
+| clang-format 23.1.3 `--dry-run --Werror` on the C++ this branch changed | exit 0 | P1's full-tree run is historical |
+| ASan/UBSan | Not run. The `asan` preset needs Ninja, which is not installed here | Not run |
+
+Mutation, not committed: `bytes > max_possible` flipped to `bytes < max_possible`. `a job larger than capacity is refused` failed (`info.refused` false, reason `waiting`). Reverted and the suite rebuilt.
+
+`ANNO_HEAVY_TEST_PROCESSORS` is 4. The GPU `RESOURCE_LOCK` is unchanged. `-j 16` is a slot ceiling; the shared budget file is what limits concurrent full-map renders.
+
+### Acceptance
+
+- Coverage and digests unchanged. Met. Legacy river 47 assertions on the baseline and on both after runs. With-game heavy 10/10 includes the digest cases. No golden or scenario file changed.
+- Measured peak supports the estimate and the headroom. Met on this PC. 43 bytes/pixel is the ceiling of the measured 42.622, and 4 GiB headroom sat under the one-worker minimum of 8.06 GiB free. After the buffer cut the process peak is lower, so the same ceiling is loose rather than tight.
+- No forced admission. Met. The timeout bypass is gone. A job that does not fit waits or is refused; the regressions cover both, and `wait_timeouts` stays 0.
+- Concurrent jobs inside the shared budget. Met. Four-worker stderr: 28 admits while another reservation was open, never more than 4, 22 waits, 0 refusals. Heavy CTest ran four labelled tests at once and stayed at or above 7.36 GiB free.
+- The memory trace survives a stop. Met. The sampler flushes every row. The deadlock and the refusal runs are in `cache/` and were not overwritten by the successful rerun (the refusal stderr/csv were copied first).
+- Gates reported against the head that ran them. Met, in the table above. The full CTest is `677a4df`. WSL and the two follow-up tests are `7311a12`.
+- Throughput comparison. Met. 297.646 s → 246.1 s on the same legacy-river workload. The buffer cut alone, still one worker, was 276.195 s.
+
+### Limitations
+
+- The pre-scene bound used for the reservation is slightly smaller than the rect that is rendered. On Single_01 the reservation was 6571542080 bytes (152826560 pixels) and the digest rect is 16960×9170 (155523200 pixels, 43 bytes each = 6687497600). The measured peak after the buffer cut is still under the smaller figure. The rate was not lowered, and it was not replaced with an unmeasured guess.
+- A group-1 full map was not measured. The group-1 task reserves `1600 * 900 * 43`. Other parallel callers still reserve the previous 1 GiB default. That default is now charged to the same budget, so they wait, but it is not a new measurement.
+- The ground probe is still the full rect (it is the result the water field reads). River sprites are still drawn into an island-sized canvas and then cropped. One box around every river sprite on the island can still be large when the sprites are far apart. Neither is a GPU change.
+- Two Single_01 group-2 renders do not both fit under the 4 GiB headroom on this 32 GB host. The second waits. That wait is the budget working.
+- 4 GiB headroom is justified by the measurement on this PC. The GitHub runner's RAM was not measured. A job that cannot fit even alone is refused with `exceeds capacity` instead of being force-started.
+- Linux/WSL uses the same Windows budget file when `/mnt/c/Users/$USER/AppData/Local` exists. That path was not given its own measurement in this session. The Windows file client and the two-thread same-handle case were tested.
+- ASan/UBSan were not run here (no Ninja). The CTest totals above were not repeated after `0f803ee` and `7311a12`.
+
+**Not done:** do not merge, do not push. `TASKS.md` and `AGENTS.md` were not edited. No ADR approval, no T34 stage 2, no T-AI.4, no P2.

@@ -886,7 +886,7 @@ During the first one-worker run on the committed head an owner application held 
 - Another version, or a gate that asks for the exact build (`ANNO_TEST_BUDGET_EXACT_BUILD=1`): refused while the coordinator is busy. The requester waits, retrying with backoff, bounded by `ANNO_TEST_ADMIT_WAIT_S`; it ends with `wait deadline` and an infrastructure diagnostic (both builds, both versions, "busy"), or with `cancelled`. It never stops the busy peer and never opens a second budget.
 - A coordinator that is idle when refused steps aside. The requester's next attempt finds nothing listening and starts its own coordinator on the same port: the handover. A promise journaled by the predecessor and still open (its owner alive) is counted by the successor as an orphan until the owner exits (`F3 (D1, crash handover)`).
 
-**Test-only hooks.** `ANNO_TEST_BUDGET_CLIENT_BUILD` (the build id a client sends), `ANNO_TEST_BUDGET_CLIENT_COMPAT` (the version a client sends), `ANNO_TEST_BUDGET_EXACT_BUILD=1` (the exact-build opt-in), `ANNO_TEST_BUDGET_JOURNAL` (the journal a coordinator this process starts uses), `anno_budget_coord --compat-version N`. Production runs set none of them.
+**Test-only hooks.** `ANNO_TEST_BUDGET_CLIENT_BUILD` (the build id a client sends), `ANNO_TEST_BUDGET_CLIENT_COMPAT` (the version a client sends), `ANNO_TEST_BUDGET_EXACT_BUILD=1` (the exact-build opt-in), `ANNO_TEST_BUDGET_JOURNAL` (the journal a coordinator this process starts uses), `anno_budget_coord --compat-version N`, `ANNO_TEST_COORD_LEAK_FD=<path>` (POSIX coordinator: at start, after it closes descriptors 3..255, opens the path without close-on-exec and keeps it open; case `F4 (N4)`), `ANNO_TEST_PROBE_LEAK_FD=<path>` (POSIX `anno_budget_probe`: opens the path without close-on-exec and moves it to descriptor 256 or above, so the coordinator's start-up close does not hide the client spawn's closefrom; case `F4 (N4b)`). Production runs set none of them.
 
 **No inherited descriptors (D2).** Linux: every coordinator socket is close-on-exec (`SOCK_CLOEXEC`, `accept4(…, SOCK_CLOEXEC)`), every pipe too, and every helper spawn closes everything above stdio (`posix_spawn_file_actions_addclosefrom_np` on glibc 2.34 and later, one `addclose` per descriptor elsewhere). Windows: the listener and client sockets are created `WSA_FLAG_NO_HANDLE_INHERIT`, accepted sockets have the inherit flag cleared, and the process creations use `bInheritHandles = FALSE`. Evidence in `cache\f3\exp`: Winsock sockets are inheritable by default; `addclosefrom_np` closes an inherited socket; `addclose` of an unopened descriptor succeeds.
 
@@ -898,7 +898,7 @@ No render or simulation code changed in F3, so no speed-up is claimed. The legac
 
 - run A: 216.9 s, with three "still waiting" lines (about 90 s of budget wait; 16.7 GB free at the start, about 3.4 GB available against a 6 GB request while owner applications ran). Not comparable.
 - run B: 205.4 s, no budget wait.
-- The F2 baseline of 186.4 s was not reproduced on this host state. Render sources are unchanged since that baseline, so the gap is host variance, not a measured effect of F3.
+- The F2 baseline of 186.4 s was not reproduced on this host state. The interleaved A/B of T10c F4 (below) measured the F2 code and the F4 head side by side on one host state.
 
 Both runs pass the case (47 assertions).
 
@@ -912,11 +912,13 @@ Both runs pass the case (47 assertions).
 
 **E4, interleaved A/B** of the 4-worker legacy-river digest case (`cache\f4\ab\run_legacy_ab.ps1`, ports 47851 / 47852). A is F2 `43cd10f` (scratch `cache\f4\ab\f2-src`, coordinator `a969992d481424ed` protocol=2). B is this F4 tree (coordinator `cee55b5e74257911` compat=3).
 
-| run | elapsed_s | exit | cases | assertions | still-waiting lines | wait notes | free_kb at start | coordinator |
-|---|---|---|---|---|---|---|---|---|
-| A1 | 223.734 | 0 | 1 / 1 | 47 / 47 | 3 | 3 × "for 30 s" | 16895944 | build=a969992d481424ed protocol=2 |
-| B1 | 205.784 | 0 | 1 / 1 | 47 / 47 | 3 | 3 × "for 30 s" | 17098608 | build=cee55b5e74257911 compat=3 |
-| A2 | 197.070 | 0 | 1 / 1 | 47 / 47 | 0 | none | 17241036 | build=a969992d481424ed protocol=2 |
-| B2 | 204.759 | 0 | 1 / 1 | 47 / 47 | 0 | none | 17260440 | build=cee55b5e74257911 compat=3 |
+| run | elapsed_s | exit | cases | assertions | still-waiting lines | wait notes | counted | free_kb at start | coordinator |
+|---|---|---|---|---|---|---|---|---|---|
+| A1 | 223.734 | 0 | 1 / 1 | 47 / 47 | 3 | 3 × "for 30 s" | no | 16895944 | build=a969992d481424ed protocol=2 |
+| B1 | 205.784 | 0 | 1 / 1 | 47 / 47 | 3 | 3 × "for 30 s" | no | 17098608 | build=cee55b5e74257911 compat=3 |
+| A2 | 197.070 | 0 | 1 / 1 | 47 / 47 | 0 | none | yes | 17241036 | build=a969992d481424ed protocol=2 |
+| B2 | 204.759 | 0 | 1 / 1 | 47 / 47 | 0 | none | yes | 17260440 | build=cee55b5e74257911 compat=3 |
+| A3 | 193.437 | 0 | 1 / 1 | 47 / 47 | 0 | none | no | 16939468 | build=a969992d481424ed protocol=2 |
+| B3 | 199.742 | 0 | 1 / 1 | 47 / 47 | 2 | 2 × "for 30 s" | no | 16973616 | build=cee55b5e74257911 compat=3 |
 
-B1 vs A1: 205.784 / 223.734 = −8.0 %. B2 vs A2: 204.759 / 197.070 = +3.9 %. The 5 % band required for "no throughput regression measured" is missed on B1. The four numbers are a QUESTION (logs in `cache\f4\ab\legacy-*`).
+B/A to three decimals: A1/B1 205.784 / 223.734 = 0.920; A2/B2 204.759 / 197.070 = 1.039; A3/B3 199.742 / 193.437 = 1.033. A1/B1 does not count (three `still waiting` lines in each run). A2/B2 counts (no wait, no other test). A3/B3 does not count (B3 logged two `still waiting` lines). Rule (one-sided): the F4 head may be at most 5 % slower than the F2 code in every counted pair, and a pair with a budget wait does not count, because its time measures the host's free memory. A3/B3 waited, so the verdict rests on A2/B2 alone. **No throughput regression measured:** at least one pair counts and every counted pair has B/A ≤ 1.050 (A2/B2 = 1.039). Logs in `cache\f4\ab\legacy-*`.

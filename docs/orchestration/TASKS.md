@@ -4,7 +4,30 @@
 
 **Round bp (2026-10-26, owner instruction):** for every task after the one an executor has in progress now, **subagents are allowed again where necessary and helpful**. §1 item 5 has the rules: the task stays the executor's, subagents' results are checked against the files before they enter a commit, one heavy job at a time on the PC, the orchestrator's review stays. §1 item 11 no longer forbids them inside a sub-task.
 
-Last update: 2026-10-28 cm — **T58 integrated (`723029c`); next lane P1 (population stage 1).** Next executor task: **P1**, the house payload, the `BGruppen.dat` group table and scenario import, on a new branch from local main (the `#### P1` entry in §3). ADRs remain Proposed; T34 stage 2 and T-AI.4 stay `LATER`. Nothing pushed.
+Last update: 2026-10-28 cn — **P1 in progress: commit, then finish the gates at reduced parallelism.** Next executor task: **P1 steps 7–8**, on the existing branch `task/P1-house-payload`, by the Round cn block below. ADRs remain Proposed; T34 stage 2 and T-AI.4 stay `LATER`. Nothing pushed.
+
+**Round cn (2026-10-28, orchestrator): answer to the P1 executor's mid-task stop.**
+- **What happened.** Steps 2–6 are written and uncommitted in `E:\anno1503-worktrees\anno1503-P1`: 41 modified and 3 new files. All six mutations fail their tests, the sim test executable passes 664/664 with the game dir, and `sim_stream.py --check` passes. The executor stopped the full `ctest` with the game dir at about test 944 of 1042 on a low-memory warning and did not restart it.
+- **Orchestrator check of the stopped run** (`build\msvc\Testing\Temporary\LastTest.log.tmp*` in the worktree):
+  - 943 tests passed, none failed. The last ones running were the `anno_render_gpu_tests` game-file cases and `anno_dump_agrees_with_python`.
+  - Every `[anno-test memory]` line shows 6–10 GB free of 31 GB, 5–7 of 16 threads used, 0 memory waits and 0 `bad_alloc`. The other desktop applications held most of the RAM, and the harness's own cap worked.
+  - Nothing points at P1. A house adds one small stock vector, and the record's `n` is a byte.
+- **Pre-existing gate failure on main.** clang-format 23.1.3 `--dry-run --Werror` fails on `src/sim/src/replay.cpp` and `src/sim/include/anno/sim/transport.hpp` on main itself (verified at `507e41a`). Every file P1 changed or added is clean.
+- **Instructions (binding; P1 steps 7–8 continue from here):**
+  1. **Commit the current state first**, on `task/P1-house-payload`, before any further run.
+     - Use concern-sized commits as far as the files allow: the group table; the payload and tags; scenario import; G7; version, goldens and corpus; docs.
+     - Where one file carries several concerns, one combined `feat(sim)` commit naming them is fine. Intermediate commits need not build on their own; the final head must pass every gate.
+  2. **Fix the two pre-existing format failures** in one separate commit, `style(sim): apply clang-format 23.1.3 to replay.cpp and transport.hpp`.
+     - Formatting only: `clang-format -i` on exactly those two files, and nothing else in them.
+     - Then the clang-format gate covers all of `src` as §1 item 4 requires.
+  3. **Rerun the gates at reduced parallelism, one heavy job at a time.**
+     - With the game dir: `$env:ANNO_TEST_THREADS=8; ctest --preset msvc -j 8 -LE heavy`, then `ctest --preset msvc -L heavy`.
+     - Then the same pair without `ANNO1503_GAME_DIR`.
+     - After each run, copy `build\msvc\Testing\ctest-output.log` and `build\msvc\Testing\Temporary\LastTest.log` into the worktree's ignored `cache\`.
+     - Then the WSL GCC 13 and Clang checks (§1 items 4 and 9), `python -I tools\sim_stream.py --check` and `python -I tools\lint_sim.py`. Never run two of these at once, and never with a `ctest` running.
+  4. **If memory runs low again,** stop that run and do not restart it. In the report, give the test number reached, the last `[anno-test memory]` line and the free RAM, then stop with `BLOCKED`.
+  5. **Then step 8:** the REPORTS section, with the mutation table from `cache\p1_mutations.txt` and the gate lines from the logs of step 3. Commit and stop.
+- **Queue:** P1 only. Nothing else changes.
 
 **Round cm (2026-10-28, orchestrator): T58 F5 review, T58 integration, P1 queued.**
 - Baseline main `6b60e0e580608654905926d1ee2adc99cd3720bc`. Exact clean head: T58 F5 `85474134ba317c3a044b671c87efae29569cc26e` (on `7b0085b`). No push; the pre-existing untracked `AGENTS.md` is untouched.
@@ -762,13 +785,13 @@ Main executor (prompt handed over by the owner): T15 B1, then T11 stage 2a to th
 
 7. **Steps, not judgement calls (since round u; the executor is a simpler model).** A task section lists numbered steps with the files, the functions and the commands. Do the steps in order; do not add scope, do not refactor what a step does not name, do not change a default the owner has to decide (`rules` options, OQ decisions). **Allowed without asking (owner, 2026-10-24 w), when listed in the report:** tests for the code the step changed, and fixes of sentences (docs, comments) that would otherwise contradict that code. Anything else is a question. When a step is unclear, when a file or function it names does not exist, or when a measurement contradicts the step's premise: stop that step, write the question with what you found into REPORTS.md under the task, and continue with the next step that does not depend on it. Report numbers as measured, including the ones that miss the acceptance. Every claim about the original carries module + address, every mapping in code cites its address in a comment. The acceptance list is ticked item by item in REPORTS.md with the evidence (the test name, the command's output line).
 
-## 2. Current status (2026-10-28 cm, executor review)
+## 2. Current status (2026-10-28 cn, executor review)
 
 - **Local Git:** T57 (`7f9e605`), T52 F7 (`8f30605`), T59 (`1974d22`) and T58 (`723029c`, with the open point `88070b1`) are integrated within their documented scope. Nothing pushed or remotely checked; pre-existing untracked `AGENTS.md` left alone.
 - **Versions on main:** state stream 114, PRNG timeline 2, command wire 1.
 - **Implemented:** C++ formats/assets/viewer and deterministic simulation through S14, scenario cities and production, market/workshop transport, decoded walk search and per-tile records including named-tile removal. The renderer still consumes scenario data rather than a live simulation game loop.
 - **LAN groundwork:** T36 setup, T37 generator spec, T38/T40 AI inventory and tick-entry RE, T39/T41 network ADR and budgets. No C++ networking, generator, AI behavior or playable LAN loop yet. Population implementation, float walking, ships/trade, combat, fire and win/loss remain unfinished.
-- **Next executor task:** P1 (population stage 1: the house payload, the `BGruppen.dat` group table and scenario import) on a new branch from local main; full C++ gates. ADRs 0002/0003 remain Proposed; T34 stage 2 and T-AI.4 are later. T31/T35 remain unreviewed branches. T30b.7 and then P1 remain separate orchestrator work.
+- **Next executor task:** P1 (population stage 1) steps 7–8 on `task/P1-house-payload`: commit the current state, then the full C++ gates at reduced parallelism and the report (Round cn). ADRs 0002/0003 remain Proposed; T34 stage 2 and T-AI.4 are later. T31/T35 remain unreviewed branches. T30b.7 and then P1 remain separate orchestrator work.
 - **Host/gates:** Windows/MSVC, GCC/Clang and sanitizers in WSL. Canonical repo `E:\anno1503`, worktrees `E:\anno1503-worktrees`, read-only originals `E:\anno1503\game\app`. One heavy job at a time; round ba's local workflow continues. See round br for actual combined checks, rather than treating older branch reports as new runs.
 
 ## 3. Task queue
@@ -1666,7 +1689,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   5. Re-read decisive original instructions and table entries independently. Update the concise chain and OQ-340, append REPORTS with exact base/head, read ranges, itemized acceptance and remaining conditions; run `git diff --check`, commit and stop for review. No merge/push/TASKS edit or C++ gates.
 - **Acceptance:** returned-object provenance is proved or bounded at an exact stop; all three helper paths have argument/receiver/effect ledgers; direct and nested effects are separated from unresolved ones; no unsupported record-preservation, world-purity or live-index conclusion; docs and report agree.
 
-**Current executor order (round cm):** P1 on its new branch `task/P1-house-payload`, committed and reported. Stop for review. Do not merge main into the branch after it is created. No merge, push, TASKS/AGENTS edits, ADR approval, T34 stage 2, T-AI.4 or production networking. The orchestrator handles review and integration.
+**Current executor order (round cn):** P1 on its existing branch `task/P1-house-payload`: commit the current state, then the gates and the report by the Round cn block. Stop for review. Do not merge main into the branch after it is created. No merge, push, TASKS/AGENTS edits, ADR approval, T34 stage 2, T-AI.4 or production networking. The orchestrator handles review and integration.
 
 **Order (round bo, superseded by round bq review/fix-ups above):**
 - **The main executor:** T33.5 stage 3 → T41 → T42.

@@ -49,6 +49,7 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -140,13 +141,45 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
             const std::size_t fi = ti / kCases;
             const std::size_t ci = ti % kCases;
             const auto& p = files[fi];
-            // Setup is reserved before the scene exists. The render reservation
-            // uses the rectangle render() will draw, not the pre-scene island
-            // boxes (those were short of Single_01's 16960×9170).
-            auto setup_memory = anno::test::reserve_cpu_setup();
-            const auto render_cpu = anno::test::Budget::process().acquire_cpu();
-            (void)render_cpu;
             const auto buf = anno::test::read_file(p);
+            // One reservation covers setup and the picture, taken before the
+            // scene exists. A waiter that also held the setup reservation
+            // kept that byte count pending, and the picture was then refused
+            // as "exceeds capacity" while every worker still held its setup.
+            // Island layout is a lower bound: unit sprites extend the union
+            // (Single_01 group 2 is 16960×9170, past the island boxes). When
+            // the built scene is larger, drop it and reserve the real
+            // rectangle while holding nothing.
+            std::uint64_t pixels = 1600ULL * 900ULL;
+            if (ci < 2) {
+                const auto islands = anno::formats::insel::islands(buf).value();
+                std::vector<render::IslandBox> boxes;
+                boxes.reserve(islands.size());
+                for (const auto& island : islands) {
+                    boxes.push_back(render::IslandBox::of(island));
+                }
+                const auto placed = render::layout(boxes, 2);
+                const auto island_bounds = render::scene_bounds(placed);
+                if (!island_bounds) {
+                    throw std::runtime_error(p.filename().string() + " has no group-2 bounds");
+                }
+                pixels = static_cast<std::uint64_t>(island_bounds->w) *
+                         static_cast<std::uint64_t>(island_bounds->h);
+            }
+            auto reserve_picture = [](std::uint64_t px) {
+                anno::test::Admit info;
+                const std::uint64_t bytes = anno::test::cpu_render_setup_bytes() +
+                                            anno::test::cpu_render_additional_bytes(px);
+                auto hold = anno::test::Budget::process().reserve(bytes, &info);
+                if (!hold) {
+                    throw std::runtime_error(
+                        "[anno-test memory] refused estimate=" + std::to_string(bytes) +
+                        " reason=" + info.reason + " available=" + std::to_string(info.available));
+                }
+                return hold;
+            };
+            auto picture = reserve_picture(pixels);
+            auto render_cpu = anno::test::Budget::process().acquire_cpu();
             std::unique_ptr<render::Scene> scene;
             auto build_scene = [&]() {
                 auto islands = anno::formats::insel::islands(buf).value();
@@ -200,32 +233,28 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
                 }
             };
             build_scene();
+            if (ci < 2) {
+                const auto full = *scene->bounds(2);
+                const std::uint64_t actual =
+                    static_cast<std::uint64_t>(full.w) * static_cast<std::uint64_t>(full.h);
+                if (actual > pixels) {
+                    scene.reset();
+                    picture.release();
+                    render_cpu.release();
+                    pixels = actual;
+                    picture = reserve_picture(pixels);
+                    render_cpu = anno::test::Budget::process().acquire_cpu();
+                    build_scene();
+                }
+            }
+            (void)picture;
+            (void)render_cpu;
             const std::string name = p.filename().string();
             const render::WaterStyle style =
                 ci % 2 == 0 ? render::WaterStyle::Original : render::WaterStyle::Enhanced;
             render::Layers layers = render::Layers::all();
             layers.water_style = style;
             layers.river_flow = river_flow;
-            std::uint64_t pixels = 1600ULL * 900ULL;
-            if (ci < 2) {
-                const auto full = *scene->bounds(2);
-                pixels = static_cast<std::uint64_t>(full.w) * static_cast<std::uint64_t>(full.h);
-            }
-            // Several heavy cases can each hold a built scene under the small
-            // setup reservation. A blocking reserve for the picture then waits
-            // on free memory those scenes themselves occupy. Drop the scene
-            // before waiting, and build it again once the picture is admitted.
-            auto render_memory = anno::test::Budget::process().try_reserve(
-                anno::test::cpu_render_additional_bytes(pixels));
-            if (!render_memory) {
-                scene.reset();
-                setup_memory.release();
-                setup_memory = anno::test::reserve_cpu_setup();
-                render_memory = anno::test::reserve_cpu_render(pixels);
-                build_scene();
-            }
-            (void)setup_memory;
-            (void)render_memory;
             if (ci < 2) {
                 const std::uint64_t time = ci == 0 ? 0 : 2500;
                 const auto rect = *scene->bounds(2);

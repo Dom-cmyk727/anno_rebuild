@@ -6096,3 +6096,66 @@ Same compatibility version: one coordinator, every reservation counts against on
 ### Commits
 
 On `codex/T10c-test-memory`, one concern each, PowerShell here-string, `git diff --check` clean, attribution `Co-Authored-By: Cursor Grok 4.6`. Nothing under `game/`, `cache/`, `TASKS.md` or `AGENTS.md`. P1 untouched. No merge, no push.
+
+## T10c F4 continuation — A/B repeat and docs — 2026-10-29 — status: FINISHED
+
+Worktree `E:\anno1503-worktrees\anno1503-T10c`, branch `codex/T10c-test-memory`. Start `1104a7d0a9a2422b430afdc80b1579c2835a1eaa`. P1 `task/P1-house-payload` stays at `416993fa6a6f9dc821455df5d414cff5833ac7f0`. Binding text: packet `E:\anno1503\cache\orch-cv\packet.md` (board at `dc265568a7f9`). No merge, push, rebase or TASKS/AGENTS edit. No file under `src/`, `tools/`, `cmake/` or any `CMakeLists.txt` changed.
+
+### Heads
+
+| rev | subject |
+|---|---|
+| `1104a7d0a9a2422b430afdc80b1579c2835a1eaa` | start (F4 Part A report) |
+| `dd32d762225dc9f93ed94334827944b7b37a7372` | docs(perf): T10c F4 A/B repeat pair and the F4 test-only hooks |
+| (this commit) | docs: report T10c F4 continuation |
+
+### Decisions and reasoning
+
+1. **C0 facts match the packet.** `git log --oneline 94cf3cb..HEAD` lists the six named commits ending `1104a7d docs: report T10c F4`; `git status --short` was empty. `run_legacy_ab.ps1` takes `-Exe`, `-Port`, `-Tag` and writes `cache\f4\ab\legacy-<Tag>\` (`meta.txt`, `memory.log`, `waits.txt`, `coord.txt`) and stops the WSL coordinator of that port via `_stop_<port>.sh`. `run_ab_all.ps1` names A as `cache\f4\ab\f2-src\build\msvc\src\render\Release\anno_render_tests.exe`, B as `build\msvc\src\render\Release\anno_render_tests.exe`, and `Stop-WorktreeCoords` kills only Windows `anno_budget_coord*` whose Path contains `anno1503-T10c`. Both binaries existed. A1 `coord.txt`: `build=a969992d481424ed protocol=2`. B1: `build=cee55b5e74257911 compat=3`. Evidence: `cache\f4\cont\c0.txt`. Alternative: re-read the scripts from memory (rejected: packet C0 says read them).
+2. **C1.1 rebuild did not replace the B binary.** `cmake --build --preset msvc` exit 0. MSBuild listed the usual targets; it compiled `budget_probe.cpp`, `budget_f3_test.cpp` and `budget_f4_test.cpp`. The B `anno_render_tests.exe` stayed 2013696 bytes, last write 2026-10-28T21:23:39.9218331Z; `anno_budget_coord.exe` stayed 118272 bytes, last write 2026-10-28T21:23:39.5444816Z. Evidence: `cache\f4\cont\c1-build.txt`, `cache\f4\cont\c1-procs.txt`. Alternative: treat the listed `.vcxproj ->` lines as a new B (rejected: timestamps and length unchanged).
+3. **No coordinator or test to stop.** Windows `anno_budget_coord*`: none. WSL `pgrep -af anno_budget_coord`: none. `anno_*_tests` / `ctest`: none. Nothing was killed. Other-test-running: no. Evidence: `cache\f4\cont\c1-procs.txt`. Alternative: wait 30 minutes (rejected: nothing was running).
+4. **A3/B3 pair script.** Copied `run_ab_all.ps1` to `cache\f4\ab\run_ab_pair3.ps1`, same `$A`/`$B`/`$script`/`Stop-WorktreeCoords`, only `-Tag A3` then `-Tag B3`. Ran with no other build, test or subagent job. Evidence: `cache\f4\cont\c1-pair3.txt`.
+5. **Coordinator lines of the pair are the required builds.** A3: `build=a969992d481424ed incarnation=876fc359b0c386f4 protocol=2`. B3: `build=cee55b5e74257911 compat=3 incarnation=a067f12911061862`. The pair compares the same A/B binaries as A1–B2. Evidence: `cache\f4\ab\legacy-A3\coord.txt`, `legacy-B3\coord.txt`. Alternative: QUESTION and skip Part 2 (rejected: the lines match).
+6. **A3/B3 does not count; the verdict rests on A2/B2.** A pair counts only when neither run logged `still waiting` and no other test ran. A1/B1: three waits each, does not count. A2/B2: no waits, counts. A3: no waits; B3: two `still waiting … for 30 s` (free 13994565632 and 14088884224). Packet: if A3 or B3 waited, do not repeat; verdict rests on A2/B2. B/A to three decimals: 0.920, 1.039, 1.033. Rule: at least one counted pair and every counted pair B/A ≤ 1.050. A2/B2 = 1.039. **No throughput regression measured.** Evidence: `cache\f4\cont\c1-record.txt`, `cache\f4\ab\legacy-*\meta.txt`. Alternative: treat B3's 1.033 as a counted pair (rejected: a wait pair measures host free memory). Alternative: QUESTION because A1/B1 was mixed (rejected: one-sided rule and the wait rule, board Round cv).
+7. **Hook wording from the sources.** `ANNO_TEST_COORD_LEAK_FD`: POSIX `run_budget_server` (`coord_server.cpp:1549`, leak block `:1583-1588`) opens the path with `::open(…, O_RDONLY)` after the start-up close of descriptors 3..255 and does not close it (no `O_CLOEXEC`). `ANNO_TEST_PROBE_LEAK_FD`: POSIX `open_probe_leak` (`budget_probe.cpp:86-102`) opens the path the same way and `fcntl(F_DUPFD, 256)` so the coordinator's 3..255 close cannot hide the client-spawn closefrom. Cases `F4 (N4)` and `F4 (N4b)`. Alternative: copy the code comments only (rejected: packet C2 says read those blocks and describe exactly what they do).
+8. **"counted" is per pair.** The column is yes only for A2 and B2. A3 had no wait of its own; the pair does not count because B3 waited. Alternative: mark A3 yes (rejected: the packet defines when a pair counts).
+
+### Six-run A/B
+
+`cache\f4\ab\run_legacy_ab.ps1` and `run_ab_pair3.ps1`, 4-worker legacy-river, ports 47851 / 47852. Other test running: no.
+
+| run | elapsed_s | exit | cases | assertions | still-waiting | wait notes | counted | free_kb | coordinator line | other test |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A1 | 223.734 | 0 | 1 / 1 | 47 / 47 | 3 | 3 × "for 30 s" | no | 16895944 | `build=a969992d481424ed incarnation=63f8330520d1f259 protocol=2 pid=14085 port=47851` | no |
+| B1 | 205.784 | 0 | 1 / 1 | 47 / 47 | 3 | 3 × "for 30 s" | no | 17098608 | `build=cee55b5e74257911 compat=3 incarnation=a035c0aa98f5fdc5 pid=14102 port=47852` | no |
+| A2 | 197.070 | 0 | 1 / 1 | 47 / 47 | 0 | none | yes | 17241036 | `build=a969992d481424ed incarnation=329dedbb649679e9 protocol=2 pid=14123 port=47851` | no |
+| B2 | 204.759 | 0 | 1 / 1 | 47 / 47 | 0 | none | yes | 17260440 | `build=cee55b5e74257911 compat=3 incarnation=32d2e2b08be551fe pid=14144 port=47852` | no |
+| A3 | 193.437 | 0 | 1 / 1 | 47 / 47 | 0 | none | no | 16939468 | `build=a969992d481424ed incarnation=876fc359b0c386f4 protocol=2 pid=21008 port=47851` | no |
+| B3 | 199.742 | 0 | 1 / 1 | 47 / 47 | 2 | 2 × "for 30 s" | no | 16973616 | `build=cee55b5e74257911 compat=3 incarnation=a067f12911061862 pid=21029 port=47852` | no |
+
+Ratios B/A: A1/B1 0.920 (does not count); A2/B2 1.039 (counts); A3/B3 1.033 (does not count). **No throughput regression measured.** Part B may start.
+
+### C1 step 1 build (`cache\f4\cont\c1-build.txt`)
+
+`cmake --build --preset msvc` in this worktree: exit 0. Compiled `budget_probe.cpp`, `budget_f3_test.cpp`, `budget_f4_test.cpp`. MSBuild also listed the existing targets (SDL3-static, formats, assets, render, app, tests, tools) as `->` their outputs. B `anno_render_tests.exe` and `anno_budget_coord.exe` timestamps unchanged (see decision 2).
+
+### C1 steps 2–3 processes (`cache\f4\cont\c1-procs.txt`)
+
+```
+Get-Process anno_budget_coord*: (none)
+wsl -d Ubuntu -- pgrep -af anno_budget_coord: (none)
+Get-Process anno_*_tests, ctest: (none)
+```
+
+### `git diff --stat 1104a7d HEAD` after the perf-note commit
+
+```
+ docs/perf/README.md | 22 ++++++++++++----------
+ 1 file changed, 12 insertions(+), 10 deletions(-)
+```
+
+Only `docs/` files. Part A's gates at `1104a7d` stand for this head.
+
+### Commits
+
+On `codex/T10c-test-memory`, one concern each, PowerShell here-string, `git diff --check` clean, attribution `Co-Authored-By: Cursor Grok 4.6`. Nothing under `game/`, `cache/`, `TASKS.md` or `AGENTS.md`. P1 untouched. No merge, no push.

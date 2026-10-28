@@ -62,6 +62,10 @@ struct Canvas {
     std::size_t width = 0, height = 0;
     std::pair<int, int> origin{0, 0};
     std::vector<std::uint8_t> pixels;
+    /// When false, `put` does not write. Width, height and origin still
+    /// describe the canvas, so a ground probe can be filled without the RGBA
+    /// buffer (the probe is written by the ground texel, before the store).
+    bool store_pixels = true;
     /// Optional (empty = not tracked): per pixel, how many rows the drawn
     /// object pixel lies above that object's lowest pixel in its column
     /// (0–254; 255 = no object). blit_sprite and composite keep it; the GPU

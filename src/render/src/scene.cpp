@@ -3,6 +3,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdio>
+#include <cstring>
 #include <deque>
 #include <exception>
 #include <iterator>
@@ -94,6 +95,20 @@ Canvas blank(Rect rect) {
     c.height = static_cast<std::size_t>(std::max(rect.h, 0));
     c.origin = {rect.x, rect.y};
     c.pixels.assign(c.width * c.height * 4, 0);
+    return c;
+}
+
+/// Same geometry as `blank`. `store_pixels` false leaves `pixels` empty so a
+/// caller that only needs the ground probe does not hold the RGBA buffer.
+Canvas canvas_for(Rect rect, bool store_pixels) {
+    if (store_pixels) {
+        return blank(rect);
+    }
+    Canvas c;
+    c.width = static_cast<std::size_t>(std::max(rect.w, 0));
+    c.height = static_cast<std::size_t>(std::max(rect.h, 0));
+    c.origin = {rect.x, rect.y};
+    c.store_pixels = false;
     return c;
 }
 
@@ -350,7 +365,7 @@ const sea::IslandWater* Scene::island_water(std::size_t i) const {
 }
 
 sea::WaterField Scene::water_field(Rect rect, std::size_t group) const {
-    const auto probe = ground_with_probe(rect, group).second;
+    const auto probe = ground_with_probe(rect, group, false).second;
     return water_field_from(rect, probe, group);
 }
 
@@ -516,29 +531,83 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
     // the sea as one surface instead of ending at hard-edged sprite patches
     // (tester feedback 2026-10-18). Falls get rapids, mouths stay calm.
     // Original water ignores river pixels (flag bit 1) and draws the sprites.
-    // The three masks are created on the first sprite pixel that reaches them:
-    // compositing a transparent canvas changes nothing, and with all three
-    // blank apply_fall_masks changes nothing either (af = am = ab = 0 gives
-    // a = 0 and bed = -kBedEdge * kBedDepth = -2 <= -0.5 at every pixel), so a
-    // chunk without river sprite pixels skips both.
+    // A chunk without opaque river sprite pixels skips the masks. A clear
+    // sample is what a full-field mask stored outside the sprites, and
+    // af = am = ab = 0 gives a = 0 and bed = -kBedEdge * kBedDepth = -2
+    // <= -0.5, so apply_fall_masks would change nothing there either.
     static_assert((0.0F - kBedEdge) * kBedDepth <= -0.5F,
                   "blank masks must leave apply_fall_masks without effect");
-    Canvas falls, mouths, beds;
-    auto add = [&](Canvas& mask, const Canvas& local, std::pair<int, int> off) {
-        bool opaque = false;
-        for (std::size_t k = 3; k < local.pixels.size(); k += 4) {
-            if (local.pixels[k] != 0) {
-                opaque = true;
-                break;
-            }
-        }
-        if (!opaque) {
+    // Opaque sprite pixels only. A clear pixel composites as a no-op (`over`
+    // returns when alpha is 0), so cropping to the opaque box keeps the
+    // composite. The mask is that box grown by the blur reach and clipped to
+    // the field: outside it the blur is 0 (iso.md, "Bounded blur").
+    struct Piece {
+        Canvas tight;
+        std::pair<int, int> off;
+    };
+    std::vector<Piece> fall_pieces, mouth_pieces, bed_pieces;
+    auto keep_opaque = [](std::vector<Piece>& out, Canvas local, std::pair<int, int> off) {
+        if (local.width == 0 || local.height == 0 || local.pixels.empty()) {
             return;
         }
-        if (mask.pixels.empty()) {
-            mask = blank(rect);
+        const int lw = static_cast<int>(local.width), lh = static_cast<int>(local.height);
+        int x0 = lw, y0 = lh, x1 = -1, y1 = -1;
+        for (int y = 0; y < lh; ++y) {
+            const std::uint8_t* row =
+                local.pixels.data() + static_cast<std::size_t>(y) * local.width * 4;
+            for (int x = 0; x < lw; ++x) {
+                if (row[static_cast<std::size_t>(x) * 4 + 3] == 0) {
+                    continue;
+                }
+                x0 = std::min(x0, x);
+                x1 = std::max(x1, x);
+                y0 = std::min(y0, y);
+                y1 = std::max(y1, y);
+            }
         }
-        composite(mask, local, off);
+        if (x1 < 0) {
+            return;
+        }
+        Canvas tight;
+        tight.width = static_cast<std::size_t>(x1 - x0 + 1);
+        tight.height = static_cast<std::size_t>(y1 - y0 + 1);
+        tight.origin = {local.origin.first + x0, local.origin.second + y0};
+        tight.pixels.resize(tight.width * tight.height * 4);
+        for (int y = 0; y < y1 - y0 + 1; ++y) {
+            const std::size_t src =
+                (static_cast<std::size_t>(y0 + y) * local.width + static_cast<std::size_t>(x0)) * 4;
+            const std::size_t dst = static_cast<std::size_t>(y) * tight.width * 4;
+            std::memcpy(tight.pixels.data() + dst, local.pixels.data() + src, tight.width * 4);
+        }
+        out.push_back(Piece{std::move(tight), off});
+    };
+    auto mask_from = [&](const std::vector<Piece>& pieces, int margin) {
+        if (pieces.empty()) {
+            return Canvas{};
+        }
+        Rect box{pieces[0].tight.origin.first + pieces[0].off.first,
+                 pieces[0].tight.origin.second + pieces[0].off.second,
+                 static_cast<int>(pieces[0].tight.width), static_cast<int>(pieces[0].tight.height)};
+        for (std::size_t i = 1; i < pieces.size(); ++i) {
+            const Rect scene{pieces[i].tight.origin.first + pieces[i].off.first,
+                             pieces[i].tight.origin.second + pieces[i].off.second,
+                             static_cast<int>(pieces[i].tight.width),
+                             static_cast<int>(pieces[i].tight.height)};
+            box = box.unite(scene);
+        }
+        // Closed bed mask reaches 2r+1; falls and mouths reach 2r. The extra
+        // pixel on those two is transparent, so their blur window still has a
+        // zero border (iso.md).
+        const Rect grown{box.x - margin, box.y - margin, box.w + 2 * margin, box.h + 2 * margin};
+        const auto clipped = grown.intersect(rect);
+        if (!clipped) {
+            return Canvas{};
+        }
+        Canvas dst = blank(*clipped);
+        for (const auto& piece : pieces) {
+            composite(dst, piece.tight, piece.off);
+        }
+        return dst;
     };
     bool any = false;
     for (const auto& p : layouts[group]) {
@@ -565,7 +634,7 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
         if (!o.river_sprites.empty()) {
             Canvas local = blank(Rect{r->x - off.first, r->y - off.second, r->w, r->h});
             draw_prepared_tested(local, o.river_sprites, anlagen, group, lift, 0, sprites, 0, keep);
-            add(beds, local, off);
+            keep_opaque(bed_pieces, std::move(local), off);
         }
         for (const bool fall : {true, false}) {
             std::vector<Prepared> below, above;
@@ -585,16 +654,16 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
             Canvas local = blank(Rect{r->x - off.first, r->y - off.second, r->w, r->h});
             draw_prepared_tested(local, below, anlagen, group, lift, 0, sprites, 0, all);
             draw_prepared_tested(local, above, anlagen, group, lift, 0, sprites, 0, keep);
-            add(fall ? falls : mouths, local, off);
+            keep_opaque(fall ? fall_pieces : mouth_pieces, std::move(local), off);
         }
     }
-    if (any && !(falls.pixels.empty() && mouths.pixels.empty() && beds.pixels.empty())) {
+    if (any && !(fall_pieces.empty() && mouth_pieces.empty() && bed_pieces.empty())) {
         stage.emplace(profile::Stage::fall_masks);
-        for (Canvas* mask : {&falls, &mouths, &beds}) {
-            if (mask->pixels.empty()) {
-                *mask = blank(rect);
-            }
-        }
+        const int radius = std::max(1, static_cast<int>(kTile[group].h) / 10);
+        const int margin = 2 * radius + 1;
+        const Canvas falls = mask_from(fall_pieces, margin);
+        const Canvas mouths = mask_from(mouth_pieces, margin);
+        const Canvas beds = mask_from(bed_pieces, margin);
         apply_fall_masks(f, falls, mouths, beds, group);
     }
     stage.emplace(profile::Stage::river_blend);
@@ -606,16 +675,43 @@ void Scene::apply_fall_masks(sea::WaterField& f, const Canvas& falls, const Canv
                              const Canvas& beds, std::size_t group) const {
     // Soft, rounded edges: about 4 px at zoom group 0.
     const int radius = std::max(1, static_cast<int>(kTile[group].h) / 10);
-    const std::vector<float> af = detail::blurred_alpha(falls, radius, false),
-                             am = detail::blurred_alpha(mouths, radius, false),
-                             ab = detail::blurred_alpha(beds, radius, true);
+    const std::vector<float> af = falls.pixels.empty()
+                                      ? std::vector<float>{}
+                                      : detail::blurred_alpha(falls, radius, false),
+                             am = mouths.pixels.empty()
+                                      ? std::vector<float>{}
+                                      : detail::blurred_alpha(mouths, radius, false),
+                             ab = beds.pixels.empty() ? std::vector<float>{}
+                                                      : detail::blurred_alpha(beds, radius, true);
+    // Canvas pixel (x, y) is scene (origin + (x, y)). Outside the window the
+    // full-field mask was 0, which is what a miss returns.
+    auto sample = [](const std::vector<float>& plane, const Canvas& mask, int sx, int sy) {
+        if (plane.empty() || mask.width == 0 || mask.height == 0) {
+            return 0.0F;
+        }
+        const int x = sx - mask.origin.first, y = sy - mask.origin.second;
+        if (x < 0 || y < 0 || static_cast<std::size_t>(x) >= mask.width ||
+            static_cast<std::size_t>(y) >= mask.height) {
+            return 0.0F;
+        }
+        return plane[static_cast<std::size_t>(y) * mask.width + static_cast<std::size_t>(x)];
+    };
     auto byte = [](float v) { return sat_cast<std::uint8_t>(clampf(v, 0.0F, 255.0F)); };
+    const int fw = f.rect.w;
+    if (fw <= 0) {
+        return;
+    }
     for (std::size_t i = 0; i < f.flags.size(); ++i) {
-        const float a = fmaxf(af[i], am[i]);
+        const int sx = f.rect.x + static_cast<int>(i % static_cast<std::size_t>(fw));
+        const int sy = f.rect.y + static_cast<int>(i / static_cast<std::size_t>(fw));
+        const float a_f = sample(af, falls, sx, sy);
+        const float a_m = sample(am, mouths, sx, sy);
+        const float a_b = sample(ab, beds, sx, sy);
+        const float a = fmaxf(a_f, a_m);
         // River pieces: the closed sprite mask, blurred, is 1 inside the bed
         // and 0.5 on its edge; the depth is 0 there (kBedDepth per unit of
         // alpha above it), so even a neck of a few pixels is full water.
-        const float bed = (ab[i] - kBedEdge) * kBedDepth;
+        const float bed = (a_b - kBedEdge) * kBedDepth;
         if (a <= 0.01F && bed <= -0.5F) {
             continue;
         }
@@ -636,7 +732,7 @@ void Scene::apply_fall_masks(sea::WaterField& f, const Canvas& falls, const Canv
             q = std::uint32_t{f.flags[i]} >> 2U;
         }
         // Rapids on the falls (slope_of: 1/2 units per step).
-        q = std::max(q, sat_cast<std::uint32_t>(roundf(af[i] * kFallRapids * 2.0F)));
+        q = std::max(q, sat_cast<std::uint32_t>(roundf(a_f * kFallRapids * 2.0F)));
         if (!sea_px) {
             f.cover[i] = 1 + sea::kRiverOpenness;
             f.shore[i] = 255;
@@ -928,8 +1024,9 @@ std::vector<std::uint16_t> terrain_plane(const sea::SceneProbe& probe,
     return out;
 }
 
-std::pair<Canvas, sea::SceneProbe> Scene::ground_with_probe(Rect rect, std::size_t group) const {
-    Canvas canvas = blank(rect);
+std::pair<Canvas, sea::SceneProbe> Scene::ground_with_probe(Rect rect, std::size_t group,
+                                                            bool store_pixels) const {
+    Canvas canvas = canvas_for(rect, store_pixels);
     const std::size_t n = canvas.width * canvas.height;
     sea::SceneProbe probe{std::vector<std::uint32_t>(n, sea::kNoIsland),
                           std::vector<std::array<float, 2>>(n, {0.0F, 0.0F})};
@@ -943,11 +1040,14 @@ std::pair<Canvas, sea::SceneProbe> Scene::ground_with_probe(Rect rect, std::size
         if (!g) {
             continue;
         }
-        Canvas local = blank(Rect{r->x - p.offset.first, r->y - p.offset.second, r->w, r->h});
+        Canvas local = canvas_for(Rect{r->x - p.offset.first, r->y - p.offset.second, r->w, r->h},
+                                  store_pixels);
         GroundProbe lp = GroundProbe::for_canvas(local);
         draw_ground_grids(local, island.width, island.height, g->first, g->second, textures, group,
                           lift, &lp);
-        composite(canvas, local, p.offset);
+        if (store_pixels) {
+            composite(canvas, local, p.offset);
+        }
         const auto idx = static_cast<std::uint32_t>(p.index);
         for (std::size_t k = 0; k < lp.pos.size(); ++k) {
             if (std::isnan(lp.pos[k][0])) {
@@ -1026,7 +1126,7 @@ Scene::render_with_terrain(Rect rect, std::size_t group, Layers layers,
                     // Depth test against the terrain seen at each pixel, as
                     // the original's depth buffer.
                     if (terrain == nullptr && !probe) {
-                        probe = ground_with_probe(rect, group).second;
+                        probe = ground_with_probe(rect, group, false).second;
                     }
                     const auto off = p.offset;
                     auto keep = [&](int x, int y, std::uint8_t h) {
@@ -1054,7 +1154,7 @@ Scene::render_with_terrain(Rect rect, std::size_t group, Layers layers,
         }
         if (pass == 0 && layers.sea) {
             if (const sea::SeaPattern* pattern = sea(group)) {
-                const auto field_probe = ground_with_probe(rect, group).second;
+                const auto field_probe = ground_with_probe(rect, group, false).second;
                 const sea::WaterField field = water_field_from(rect, field_probe, group);
                 // Enhanced rivers: the flow lattice of the region, built here
                 // (blocking: this is the headless path).
@@ -1531,7 +1631,7 @@ river::FlowPlane Scene::flow_plane(Rect area, std::size_t group, const sea::Scen
     auto add_strip = [&](Rect r) {
         if (const auto c = r.intersect(need)) {
             const profile::Scope stage(profile::Stage::apron);
-            extra.push_back({*c, ground_with_probe(*c, group).second});
+            extra.push_back({*c, ground_with_probe(*c, group, false).second});
         }
     };
     const int need_r = need.x + need.w, need_b = need.y + need.h;

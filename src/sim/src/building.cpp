@@ -55,7 +55,18 @@ std::optional<std::uint32_t> house_group(const SimConfig& cfg, std::uint32_t pro
     return std::nullopt;
 }
 
-Payload make_payload(const BuildingType& type, const ClassInfo& cls, const SimConfig& cfg) {
+std::size_t house_need_count(const BuildingType& type, const SimConfig& cfg,
+                             const TypeRegistry& types) {
+    const auto group = house_group(cfg, type.prodtype);
+    const auto groups = types.house_groups();
+    if (!group || *group >= groups.size()) {
+        return 0;
+    }
+    return groups[*group].needs.size();
+}
+
+Payload make_payload(const BuildingType& type, const ClassInfo& cls, const SimConfig& cfg,
+                     const TypeRegistry& types) {
     switch (cls.payload) {
     case PayloadTag::Workshop:
         return make_workshop(type.prod);
@@ -69,6 +80,13 @@ Payload make_payload(const BuildingType& type, const ClassInfo& cls, const SimCo
         return Mine{};
     case PayloadTag::Market:
         return Market{};
+    case PayloadTag::House: {
+        // The constructor's state (population.md §11.2, D 0x100734ca ff.): the default
+        // residents and E of the struct, every stock 0, `last` 0 (P1 decision 8).
+        House h;
+        h.stock.assign(house_need_count(type, cfg, types), 0);
+        return h;
+    }
     case PayloadTag::Inert:
         break;
     }
@@ -93,6 +111,8 @@ const char* payload_name(std::size_t index) {
         return "Mine";
     case 6:
         return "Market";
+    case 7:
+        return "House";
     default:
         return "?";
     }
@@ -106,7 +126,7 @@ std::string sizes(const char* what, std::size_t have, std::size_t want) {
 } // namespace
 
 std::string payload_problem(const Payload& payload, const BuildingType& type, const ClassInfo& cls,
-                            const SimConfig& cfg) {
+                            const SimConfig& cfg, const TypeRegistry& types) {
     const std::size_t want = static_cast<std::size_t>(cls.payload);
     if (payload.index() != want) {
         return std::string("holds ") + payload_name(payload.index()) + ", the class needs " +
@@ -114,7 +134,7 @@ std::string payload_problem(const Payload& payload, const BuildingType& type, co
     }
     // The reference payload as make_payload sizes it: the step functions index
     // out / in / activity / line_on / figures_out by these counts.
-    const Payload ref = make_payload(type, cls, cfg);
+    const Payload ref = make_payload(type, cls, cfg, types);
     if (const auto* w = std::get_if<Workshop>(&payload)) {
         const auto& r = std::get<Workshop>(ref);
         if (w->out.size() != r.out.size()) {
@@ -165,6 +185,11 @@ std::string payload_problem(const Payload& payload, const BuildingType& type, co
         }
         if (sf->reserved.size() != r.reserved.size()) {
             return sizes("reserved", sf->reserved.size(), r.reserved.size());
+        }
+    } else if (const auto* h = std::get_if<House>(&payload)) {
+        const auto& r = std::get<House>(ref);
+        if (h->stock.size() != r.stock.size()) {
+            return sizes("stock", h->stock.size(), r.stock.size());
         }
     } else if (std::holds_alternative<Mine>(payload)) {
         if (type.prod.outputs.empty()) {

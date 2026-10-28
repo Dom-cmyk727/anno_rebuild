@@ -68,6 +68,17 @@ formats::Result<SyntheticTypes, std::string> make_growth_types();
 /// converted as the registry converts FigurenHeader.dat (task T24, the golden G6).
 formats::Result<SyntheticTypes, std::string> make_transport_types();
 
+/// make_synthetic_types with a group table of two small groups written in code (P1, the
+/// golden G7): the registry's SimConfig has `house_groups` 2, so a world made from it
+/// takes `population_config()`. Group 0 (pioneers): Wohnmax 8, the needs NAHRUNG
+/// (forced, Menge 41) and LEDER (forced, Menge 16); group 1 (settlers): Wohnmax 8, those
+/// two and STOFFE (forced, Menge 20) as the one extra forced need; both with the VermehrTab
+/// -16, -9, 0, 12, 32 (the integers of -0.25, -0.15, 0, 0.2, 0.5). Nothing of BGruppen.dat.
+formats::Result<SyntheticTypes, std::string> make_population_types();
+
+/// The SimConfig of the population registry: `house_groups` 2.
+SimConfig population_config();
+
 /// The settings of the synthetic worlds: a 512 x 512 tile world, the add-on
 /// edition flag at its default (3), everything else as WorldSettings{}.
 WorldSettings synthetic_settings();
@@ -170,5 +181,13 @@ ScenarioSpec g5_scenario(const SyntheticTypes& types, std::uint32_t seed = 514);
 /// material (roads (111, 113), (111, 114), (112, 114), (113, 114), (114, 114)); the carrier
 /// weaver at (106, 114) without wool. The warehouse holds 30 t of wool.
 ScenarioSpec g6_scenario(const SyntheticTypes& types, std::uint32_t seed = 624);
+
+/// The scenario of the golden G7 (docs/sim/state.md §4.7c, task P1), on
+/// make_population_types. One player; one island in slot 0, 40 x 32 tiles at (100, 100),
+/// every tile city 0's. City 0: one pioneer house at (110, 110) with 5 residents and the
+/// food stock of a 100 % satisfaction (s = 128), and a warehouse holding the settler-house
+/// materials (goods 0x29..0x2d, 20 t each) and 10 t of food and 5 t of leather. P1 adds no
+/// house behaviour: the golden is the created world (`p1_g7_create`).
+ScenarioSpec g7_scenario(const SyntheticTypes& types, std::uint32_t seed = 700);
 
 } // namespace anno::sim::synthetic

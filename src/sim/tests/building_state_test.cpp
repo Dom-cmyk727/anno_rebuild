@@ -289,6 +289,22 @@ std::vector<LayoutRow> layout_rows() {
         s.u32(2);
         rows.push_back({"Market", common(p), s, 8 + 3 + 3 + 1});
     }
+    {
+        // The House (P1): u16 last, i32 residents_64, u32 e, u64 count, count x u32 stock.
+        sim::House p;
+        p.last = 0x3132;
+        p.residents_64 = 0x0102'0304;
+        p.e = 0x0a0b'0c0d;
+        p.stock = {0x11, 0x2233};
+        Stream s = common_bytes(7);
+        s.u16(0x3132);
+        s.u32(0x0102'0304);
+        s.u32(0x0a0b'0c0d);
+        s.u64(2);
+        s.u32(0x11);
+        s.u32(0x2233);
+        rows.push_back({"House", common(p), s, 8 + 4 + 2});
+    }
     return rows;
 }
 
@@ -305,6 +321,7 @@ TEST_CASE("field count canary per struct") {
     CHECK(sim::field_count<sim::SmallFarm>() == 10);
     CHECK(sim::field_count<sim::Mine>() == 9);
     CHECK(sim::field_count<sim::Market>() == 5);
+    CHECK(sim::field_count<sim::House>() == 4); // last, residents_64, e, stock
     CHECK(sim::field_count<sim::Building>() == 8);
     CHECK(sim::field_count<sim::BuildingIndex>() == 4); // service_counters*, house_counts*
     CHECK(sim::field_count<sim::City>() == 8);
@@ -316,13 +333,14 @@ TEST_CASE("field count canary per struct") {
     CHECK(sim::field_count<sim::Island>() == 14);          // cache*
     CHECK(sim::field_count<sim::PlacementRecord>() == 5);
     // (* = derived, not in the stream). Every Payload alternative has a stream tag.
-    CHECK(std::variant_size_v<sim::Payload> == 7);
-    CHECK(sim::kPayloadTags.size() == 7);
+    CHECK(std::variant_size_v<sim::Payload> == 8);
+    CHECK(sim::kPayloadTags.size() == 8);
     for (std::size_t i = 0; i < sim::kPayloadTags.size(); ++i) {
         CHECK(sim::kPayloadTags[i] == i);
     }
     CHECK(sim::kPayloadTags[static_cast<std::size_t>(sim::PayloadTag::Mine)] == 5);
     CHECK(sim::kPayloadTags[static_cast<std::size_t>(sim::PayloadTag::Market)] == 6);
+    CHECK(sim::kPayloadTags[static_cast<std::size_t>(sim::PayloadTag::House)] == 7);
 }
 
 TEST_CASE("building stream layout per payload") {
@@ -360,7 +378,13 @@ TEST_CASE("building stream layout per payload") {
         fields(again, std::as_const(back));
         CHECK(again.data() == row.expect.v);
         CHECK(back.payload.index() == row.building.payload.index());
-        std::visit([](const auto& p) { CHECK(p.status.shows_icons); }, back.payload);
+        std::visit(
+            [](const auto& p) {
+                if constexpr (requires { p.status; }) {
+                    CHECK(p.status.shows_icons);
+                }
+            },
+            back.payload);
         if (const auto* w = std::get_if<sim::WeaponsWorkshop>(&back.payload)) {
             CHECK(w->unlocked.empty());
         }
@@ -376,7 +400,7 @@ TEST_CASE("building stream layout per payload") {
 
 TEST_CASE("a building stream refuses a payload tag and a status code that do not exist") {
     LayoutRow row = layout_rows()[1]; // the Workshop
-    for (const std::uint8_t tag : {std::uint8_t{7}, std::uint8_t{8}, std::uint8_t{255}}) {
+    for (const std::uint8_t tag : {std::uint8_t{8}, std::uint8_t{9}, std::uint8_t{255}}) {
         std::vector<std::uint8_t> bad = row.expect.v;
         bad[8 + 4 + 4 + 4 + 3] = tag; // the tag byte
         sim::Building b;
@@ -479,14 +503,19 @@ std::vector<Mutation> stream_mutations() {
         {"building byte0f", [](sim::World& w) { bld(w, 0, 4, 0).byte0f = 1; }},
         {"building payload alternative",
          [](sim::World& w) { bld(w, 0, 3, 0).payload = sim::Farm{}; }},
-        // ---- Inert (the house)
-        {"inert last", [](sim::World& w) { pay<sim::Inert>(w, 3, 0).last = 1; }},
-        {"inert blocked", [](sim::World& w) { pay<sim::Inert>(w, 3, 0).blocked = true; }},
-        {"inert suspended", [](sim::World& w) { pay<sim::Inert>(w, 3, 0).suspended = true; }},
+        // ---- House (P1: the pioneer house, list 3 slot 0)
+        {"house last", [](sim::World& w) { pay<sim::House>(w, 3, 0).last = 1; }},
+        {"house residents_64", [](sim::World& w) { pay<sim::House>(w, 3, 0).residents_64 += 1; }},
+        {"house e", [](sim::World& w) { pay<sim::House>(w, 3, 0).e += 1; }},
+        {"house stock", [](sim::World& w) { pay<sim::House>(w, 3, 0).stock.push_back(1); }},
+        // ---- Inert (the church, list 1 slot 0)
+        {"inert last", [](sim::World& w) { pay<sim::Inert>(w, 1, 0).last = 1; }},
+        {"inert blocked", [](sim::World& w) { pay<sim::Inert>(w, 1, 0).blocked = true; }},
+        {"inert suspended", [](sim::World& w) { pay<sim::Inert>(w, 1, 0).suspended = true; }},
         {"inert status code",
-         [](sim::World& w) { pay<sim::Inert>(w, 3, 0).status.code = sim::Status::StorageFull; }},
-        {"inert status icons", [](sim::World& w) { pay<sim::Inert>(w, 3, 0).status.icons = 4; }},
-        {"inert status time", [](sim::World& w) { pay<sim::Inert>(w, 3, 0).status.time = 4; }},
+         [](sim::World& w) { pay<sim::Inert>(w, 1, 0).status.code = sim::Status::StorageFull; }},
+        {"inert status icons", [](sim::World& w) { pay<sim::Inert>(w, 1, 0).status.icons = 4; }},
+        {"inert status time", [](sim::World& w) { pay<sim::Inert>(w, 1, 0).status.time = 4; }},
         // ---- Workshop (the weaver)
         {"workshop last", [](sim::World& w) { pay<sim::Workshop>(w, 4, 0).last = 1; }},
         {"workshop switched_on",
@@ -1064,7 +1093,7 @@ TEST_CASE("golden s6 G1 city with a weaver and a farm") {
     auto types = syn::make_synthetic_types();
     REQUIRE(types.ok());
     // The one literal of tools/sim_stream.py for this golden.
-    CHECK(types.value().registry->digest() == 0x13e65df34212c0c3ULL);
+    CHECK(types.value().registry->digest() == 0x20bd3120bcf7e4f2ULL);
     auto created =
         sim::World::create(syn::g1_scenario(types.value(), 1234), types.value().registry);
     REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));

@@ -121,6 +121,12 @@ void fp_payload(Fp& f, const sim::SmallFarm& p) {
     fp_vec(f, p.figures_out);
     fp_status(f, p.status);
 }
+void fp_payload(Fp& f, const sim::House& p) {
+    f.add(p.last);
+    f.add(static_cast<std::uint32_t>(p.residents_64));
+    f.add(p.e);
+    fp_vec(f, p.stock);
+}
 void fp_payload(Fp& f, const sim::Market& p) {
     f.add(p.last);
     f.add(p.blocked ? 1U : 0U);

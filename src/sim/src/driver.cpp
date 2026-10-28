@@ -148,7 +148,15 @@ std::uint32_t* input_store(Payload& payload, std::uint32_t index) {
 }
 
 bool payload_blocked(const Payload& payload) {
-    return std::visit([](const auto& alternative) { return alternative.blocked; }, payload);
+    return std::visit(
+        [](const auto& alternative) {
+            if constexpr (std::is_same_v<std::decay_t<decltype(alternative)>, House>) {
+                return false; // a house is never blocked
+            } else {
+                return alternative.blocked;
+            }
+        },
+        payload);
 }
 
 Building* find_building_mut(Island& island, BuildingId id) {
@@ -228,6 +236,9 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
     switch (ci.tick) {
     case TickKind::None:
         return; // inert: `last` untouched (D15)
+    case TickKind::House:
+        return; // P1: the house holds its state but has no update yet (P2); `last` untouched, like
+                // None
     case TickKind::Workshop: {
         auto* w = std::get_if<Workshop>(&b.payload);
         if (w == nullptr) {

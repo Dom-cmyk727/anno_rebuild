@@ -44,9 +44,32 @@ struct Inert {
     StatusTracker status;
 };
 
+/// The state of a house (docs/sim/state.md §4.7c, docs/re/population.md §11.2; D house
+/// object, vtable 0x100c9958). The group is not a field: it follows from the type
+/// (house_group) and the registry's group table. Mood is computed, not stored; the
+/// walkers are the figure registry's; the original's mood flags (+0x0c bits 4/5) are
+/// omitted because nothing writes them yet (owner question 7).
+struct House {
+    /// +0x0a. The constructor writes 0 and property 0x23 the creation time; P1 leaves
+    /// it 0 and nothing reads it before P2.
+    std::uint16_t last = 0;
+    /// +0x2c, residents * 64 (the original's i16, widened: CLAUDE.md "no hardcoded
+    /// limits"; the constructor writes 5 * 64).
+    std::int32_t residents_64 = 5 * 64;
+    /// +0x2e, the original's u16 `E` (the decayed resident sum the satisfaction is
+    /// scaled by), widened; the constructor writes 5 * 128. Not in the original's save
+    /// (Load writes residents << 7); our own save keeps it.
+    std::uint32_t e = 5 * 128;
+    /// +0x30 + 2j, the stock of need j of the house's group (the original's u16,
+    /// widened, 16 slots; here one entry per need of the group, as the group table
+    /// says).
+    std::vector<std::uint32_t> stock;
+};
+
 /// Alternative order = the save tag order of PayloadTag (types.hpp), append-only.
 /// FurTrapper uses Farm; the class comes from the type.
-using Payload = std::variant<Inert, Workshop, WeaponsWorkshop, Farm, SmallFarm, Mine, Market>;
+using Payload =
+    std::variant<Inert, Workshop, WeaponsWorkshop, Farm, SmallFarm, Mine, Market, House>;
 
 /// The byte +0x0e of a building (D: 0x86 in the base constructor, 0x82 for a
 /// house; property 0x2b sets it from a COMP chunk; meaning open, O-38).
@@ -161,9 +184,17 @@ struct TileBox {
 /// F2): the make_* constructor of its class, sized from the type and the config
 /// (the small farm's counters come from SimConfig::small_farm_animals), Inert for
 /// a class without a ported tick. Mine::deep is set (step 3), the deposit search
-/// and the placement stamp are create_building's.
+/// and the placement stamp are create_building's. A house holds one stock entry per
+/// need of its group (house_need_count).
 [[nodiscard]] Payload make_payload(const BuildingType& type, const ClassInfo& cls,
-                                   const SimConfig& cfg);
+                                   const SimConfig& cfg, const TypeRegistry& types);
+
+/// The number of needs of the group a house type belongs to: the group is
+/// house_group(cfg, type.prodtype) and the needs come from the registry's group
+/// table; 0 for a type that is no house, a registry without a group table and a
+/// group the table does not hold.
+[[nodiscard]] std::size_t house_need_count(const BuildingType& type, const SimConfig& cfg,
+                                           const TypeRegistry& types);
 
 /// The structural facts a payload must have for its type (§9.6 "payload matches
 /// the type"): the alternative named by ClassInfo::payload, the vector sizes
@@ -172,7 +203,8 @@ struct TileBox {
 /// Workshop needs Workshop"). `derived` fields (WeaponsWorkshop::unlocked) are
 /// not checked.
 [[nodiscard]] std::string payload_problem(const Payload& payload, const BuildingType& type,
-                                          const ClassInfo& cls, const SimConfig& cfg);
+                                          const ClassInfo& cls, const SimConfig& cfg,
+                                          const TypeRegistry& types);
 
 /// The footprint a mine searches from (D 0x1006ddf0): position and rotated size.
 [[nodiscard]] MineArea mine_area(const Building& b, const BuildingType& type);

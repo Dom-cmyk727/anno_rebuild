@@ -77,7 +77,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 114
+STATE_HASH_VERSION = 115
 PRNG_TIMELINE_VERSION = 2
 
 
@@ -143,7 +143,7 @@ CLASSES = [
     (19, 0, 0, 500),   # School (0x1006b4e0, shared)
     (20, 0, 0, 0),     # Castle (no stamp gate)
     (21, 0, 0, 500),   # FireBrigade
-    (22, 0, 0, 2500),  # House
+    (22, 8, 7, 2500),  # House 0x10076230 (P1: TickKind::House, PayloadTag::House; the tick does nothing)
     (23, 0, 0, 166),   # Tower
     (24, 0, 0, 166),   # CannonTower 0x1006ab6a
 ]
@@ -158,6 +158,7 @@ def registry_digest(names):
     for cls, tick, payload, gate in CLASSES:
         d += u8(cls) + u8(tick) + u8(payload) + u32(gate)
     d += u64(0)  # no figure types (T24)
+    d += u64(0)  # no group table (P1)
     return fnv(d)
 
 
@@ -611,7 +612,7 @@ def islands_digest(by_slot):
 # The registry digest of synthetic::make_synthetic_types() (the golden test in
 # building_state_test.cpp checks it);
 # a literal here because the type table is not transcribed by this script.
-SYNTHETIC_REGISTRY = 0x13E65DF34212C0C3
+SYNTHETIC_REGISTRY = 0x20BD3120BCF7E4F2
 
 
 def g1_scenario(steps=0, step_ms=10):

@@ -145,18 +145,15 @@ enum class ScenarioWarningKind : std::uint8_t {
     /// A STST2/STAT city statistics history: the rebuild has no sampled history
     /// (state.md §4.7); the original's STAT is skipped too. Once per scope.
     StatisticsHistoryNotModelled,
-    /// A house record (PROD/ENTRY of a house type): its residents, stocks and the
-    /// reset rule (D AnnoWelt 0x10076e60) are not applied, because the sim has no
-    /// house population state (no resident/stock field on the house payload, which is
-    /// Inert) and no BGruppen group data (Menge/Wohnmax; the population model is not
-    /// ported (no stage in state.md §15 yet; PLAN M3 orders it after transport)), and
-    /// T26 adds no state field (OQ-165). The record is read and
-    /// consumed (so it is not UndecodedBuildingRecord) and its residents counted for
-    /// the economy diagnostic; the s_j -> stock formula and the reset rule are
-    /// implemented and unit-tested as pure functions but not applied here. Once per
-    /// scenario. This subsumes the task's planned HouseResetNotModelled (the reset
-    /// condition cannot be evaluated without the group's Wohnmax).
-    HouseRecordNotModelled,
+    /// A house record (PROD/ENTRY of a house type) whose reset rule fires
+    /// (house_reset_applies: group above the pioneers and residents below half the
+    /// lower group's Wohnmax, D AnnoWelt 0x10076e9e): the original sets the residents to
+    /// the group's Wohnmax and draws once per forced need (0x10077079). The loader has no
+    /// draw source and the place of that draw in the load-phase order is unread
+    /// (OQ-451), so the record is loaded as stored and no draw is made (the
+    /// ComputerNameNotDrawn precedent). Once per record. The shipped scenarios never
+    /// enter this branch.
+    HouseResetNotApplied,
 };
 
 /// The stable name of a kind ("UnknownRecord", …): the corpus expectations file
@@ -167,13 +164,9 @@ enum class ScenarioWarningKind : std::uint8_t {
 
 // --- The house record's population reading (T26). Pure functions, derived from
 // docs/re/population.md §2/§5 and docs/re/annowelt.md "Scenario cities" (f). They
-// are NOT applied to any state in T26: a house is the Inert payload with no
-// population field and the sim has no BGruppen group data (Menge/Wohnmax), so the
-// residents and stocks a loaded house carries have nowhere to go (HouseRecordNotModelled,
-// OQ-165). They are kept and unit-tested so the formula is written down once (a spec
-// oracle) and the mutation checks have a target, for the population stage to use (the
-// population model is not ported (no stage in state.md §15 yet; PLAN M3 orders it after
-// transport)).
+// applied on import by P1 (house_need_stock, house_satisfaction): the house payload holds the
+// residents and the stocks (OQ-165). house_reset_applies is evaluated and its result only
+// warned (HouseResetNotApplied).
 
 /// The warehouse-stock value (8.8 units, city +0x30 + 2j) that gives satisfaction
 /// byte `s` for a need of quantity `menge` at `residents` residents (D AnnoWelt
@@ -230,8 +223,8 @@ struct LoadedScenario {
     std::uint64_t links_total = 0, links_placed = 0;
     /// T26 economy diagnostic (not state, not hashed): house records read, those
     /// whose [1] residents byte is non-zero, and the sum of those residents. The
-    /// residents are read from the file but not applied to any state field (houses
-    /// are Inert; HouseRecordNotModelled, OQ-165).
+    /// residents are applied to the house payload (houses
+    /// the created houses' `residents_64 >> 6` sum to resident_sum, P1).
     std::uint64_t houses = 0, houses_with_residents = 0, resident_sum = 0;
 };
 

@@ -24,6 +24,8 @@
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/world.hpp>
 
+#include "world_access.hpp"
+
 namespace sim = anno::sim;
 namespace syn = anno::sim::synthetic;
 using Buf = std::vector<std::uint8_t>;
@@ -1031,8 +1033,8 @@ TEST_CASE("scenario city entries: refused buildings and entries without an item"
     // create_building's rules (F32: the original creates blindly): a footprint that
     // leaves the island or overlaps an earlier building is refused with the reason. An
     // entry whose tile holds no building item is skipped (the original's type lookup
-    // fails). A house record with bytes is consumed and warns HouseRecordNotModelled
-    // once per scenario (T26: no house population state).
+    // fails). A house record with bytes is applied to the house payload (P1; a registry
+    // without a group table has no stocks).
     Buf prod2;
     item(prod2, kBigHouse, 0, 0, 0, 15, 3); // 2 x 2 from (15, 3): leaves the 16-wide island
     item(prod2, kHouse, 0, 0, 0, 8, 4);
@@ -1048,8 +1050,8 @@ TEST_CASE("scenario city entries: refused buildings and entries without an item"
     append(prod, entry(0, 0));       // EntryWithoutBuildingItem: no item
     append(prod, entry(99, 0));      // EntryWithoutBuildingItem: off the island
     append(prod, entry(5, 5));       // EntryWithoutBuildingItem: the road (OQ-144)
-    append(prod, entry(10, 4, {1})); // placed; HouseRecordNotModelled (the house record)
-    append(prod, entry(11, 4, {2})); // placed; the same scope: no second warning
+    append(prod, entry(10, 4, {1})); // placed; the house record
+    append(prod, entry(11, 4, {2})); // placed; the house record
     Buf c = {2, 0};
     put16(c, 41);
     put16(c, 61);
@@ -1063,8 +1065,8 @@ TEST_CASE("scenario city entries: refused buildings and entries without an item"
     CHECK(b[2].x == 51);
     CHECK(warnings_of(s, Kind::BuildingRefused) == 2);
     CHECK(warnings_of(s, Kind::EntryWithoutBuildingItem) == 3);
-    CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 0);  // the houses are their own kind
-    CHECK(warnings_of(s, Kind::HouseRecordNotModelled) == 1);   // the two house records (T26)
+    CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 0); // the houses are their own kind
+    CHECK(warnings_of(s, Kind::HouseResetNotApplied) == 0); // the two house records: no group table
     CHECK(warnings_of(s, Kind::BuildingItemWithoutEntry) == 0); // every item is named
     std::vector<std::string> reasons, skipped;
     for (const sim::ScenarioWarning& w : s.warnings) {
@@ -1129,7 +1131,7 @@ TEST_CASE("scenario warning kinds") {
         put32(ware, 0);
         append(city_records, record("WARE", ware));
         Buf prod = entry(0, 7);               // no item there: EntryWithoutBuildingItem
-        append(prod, entry(8, 4, Buf{1, 2})); // the house with bytes: HouseRecordNotModelled (T26)
+        append(prod, entry(8, 4, Buf{1, 2})); // the house with bytes
         append(prod, entry(8, 4));            // the house again: BuildingRefused
         append(prod, entry(6, 6, Buf{1, 2})); // the Inn with bytes: UndecodedBuildingRecord
         append(city_records, record("PROD", prod));
@@ -1182,7 +1184,7 @@ TEST_CASE("scenario warning kinds") {
     CHECK(warnings_of(s, Kind::EntryWithoutBuildingItem) == 1);
     CHECK(warnings_of(s, Kind::BuildingRefused) == 1);
     CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 1); // the Inn
-    CHECK(warnings_of(s, Kind::HouseRecordNotModelled) == 1);  // the house with bytes (T26)
+    CHECK(warnings_of(s, Kind::HouseResetNotApplied) == 0); // the house with bytes: no group table
     CHECK(warnings_of(s, Kind::UnknownGoods) == 1);
     CHECK(warnings_of(s, Kind::OwnerTileOutsideIsland) == 1);
     for (const sim::ScenarioWarning& w : s.warnings) {
@@ -1196,7 +1198,8 @@ TEST_CASE("scenario warning kinds") {
     // statistics); only their reachability is checked there, not here.
     static constexpr Kind kT26Dedicated[] = {
         Kind::MarketNumberNotKept, Kind::BuildGoodsOutOfRange,  Kind::TradeEntryBeyondSlots,
-        Kind::Head2FieldNotMapped, Kind::StatisticsNotModelled, Kind::StatisticsHistoryNotModelled};
+        Kind::Head2FieldNotMapped, Kind::StatisticsNotModelled, Kind::StatisticsHistoryNotModelled,
+        Kind::HouseResetNotApplied};
     for (const Kind k : sim::all_warning_kinds()) {
         INFO(sim::warning_kind_name(k));
         CHECK(sim::warning_kind_name(k) != "?");
@@ -1603,4 +1606,183 @@ TEST_CASE("scenario link template: its building items are reported, never placed
     auto world = sim::World::create(s.spec, registry(), sim::SimConfig{});
     REQUIRE_MESSAGE(world.ok(), (world.ok() ? std::string() : world.error()));
     CHECK(world.value().check_invariants().empty());
+}
+
+// ---- P1: the house record is applied to the house payload (docs/sim/state.md §4.7c,
+// docs/re/population.md §11.2). The group table here is built in code: two small groups.
+
+namespace {
+
+constexpr std::uint32_t kHouse1 = 112; // PRODTYPE 98: the second group's house
+
+sim::SimConfig house_config() {
+    sim::SimConfig cfg;
+    cfg.house_groups = 2;
+    return cfg;
+}
+
+/// Two groups: group 0 Wohnmax 8 with the needs (Menge 41, 16); group 1 Wohnmax 15 with
+/// (37, 12, 20). The Menge values are the loader's integers (Menge * 40.96 + 0.5).
+std::vector<sim::HouseGroup> house_groups_two() {
+    sim::HouseGroup g0;
+    g0.number = 0;
+    g0.wohnmax = 8;
+    g0.needs = {{26, true, 41}, {27, true, 16}};
+    sim::HouseGroup g1;
+    g1.number = 1;
+    g1.wohnmax = 15;
+    g1.needs = {{26, true, 37}, {27, true, 12}, {33, false, 20}};
+    return {g0, g1};
+}
+
+std::shared_ptr<const sim::TypeRegistry> house_registry(bool with_groups = true) {
+    sim::TypeRegistry::Builder b;
+    b.config(house_config());
+    b.add_plain(sim::TypeId{kHouse}, 97);
+    b.add_plain(sim::TypeId{kHouse1}, 98);
+    if (with_groups) {
+        b.house_groups(house_groups_two());
+    }
+    auto r = b.build();
+    REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
+    return r.value();
+}
+
+struct HouseAt {
+    std::uint32_t type;
+    std::uint8_t x, y;
+    Buf rec;
+};
+
+/// A scenario with the given houses on one 16 x 8 island and one city.
+sim::LoadedScenario load_houses(const std::vector<HouseAt>& houses, bool with_groups = true) {
+    Buf prod2, prod;
+    for (const HouseAt& h : houses) {
+        item(prod2, h.type, 0, 0, 0, h.x, h.y);
+        append(prod, entry(h.x, h.y, h.rec));
+    }
+    Buf kids = chunk("HEAD", head_bytes());
+    append(kids, chunk("SPIELER", spieler(0, record("HEAD", player_head(8, 1, "A", 1)))));
+    append(kids, insel5(40, 60, 16, 8, 7, 2, block_record("PROD2", prod2)));
+    Buf c = {2, 0};
+    put16(c, 41);
+    put16(c, 61);
+    append(c, record("PROD", prod));
+    append(kids, chunk("SPIELER", spieler(0, record("STADT2", c))));
+    auto r = sim::load_scenario(scene("ANNO", kids), *house_registry(with_groups), house_config());
+    REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
+    return std::move(r).value();
+}
+
+/// A house record: [1] residents, [2] n, [3] version, then the bytes.
+Buf house_rec(std::uint8_t residents, std::uint8_t n, std::uint8_t version, const Buf& bytes) {
+    Buf b = {0, residents, n, version, 0, 0, 0, 0};
+    append(b, bytes);
+    return b;
+}
+
+const sim::House& house_of(const sim::LoadedScenario& s, std::size_t i) {
+    const auto& bs = s.spec.islands[0].cities[0].buildings[i];
+    REQUIRE(bs.payload.has_value());
+    const auto* h = std::get_if<sim::House>(&*bs.payload);
+    REQUIRE(h != nullptr);
+    return *h;
+}
+
+} // namespace
+
+TEST_CASE("P1 import: a v2 house record sets residents, E and the stocks of its group") {
+    // 10 residents, group 0 (needs with Menge 41 and 16), s = 128 and 64. D 0x1007702b:
+    // stock = trunc(Menge * s * residents * 128 / 1536): 41*128*10*128/1536 = 4373.33,
+    // 16*64*10*128/1536 = 853.33.
+    const auto s = load_houses({{kHouse, 8, 4, house_rec(10, 2, 2, {128, 64})}});
+    REQUIRE(s.spec.islands[0].cities[0].buildings.size() == 1);
+    const sim::House& h = house_of(s, 0);
+    CHECK(h.residents_64 == 10 * 64);
+    CHECK(h.e == 10U * 128U);
+    CHECK(h.last == 0);
+    REQUIRE(h.stock.size() == 2);
+    CHECK(h.stock[0] == 4373);
+    CHECK(h.stock[1] == 853);
+    CHECK(warnings_of(s, Kind::HouseResetNotApplied) == 0);
+    CHECK(s.houses == 1);
+    CHECK(s.resident_sum == 10);
+}
+
+TEST_CASE("P1 import: version 1 reads the second byte of each pair, version 0 no bytes") {
+    const auto s = load_houses({{kHouse, 8, 4, house_rec(10, 2, 1, {7, 128, 9, 64})},
+                                {kHouse, 10, 4, house_rec(10, 2, 0, {128, 64})}});
+    CHECK(house_of(s, 0).stock == std::vector<std::uint32_t>{4373, 853});
+    CHECK(house_of(s, 1).stock == std::vector<std::uint32_t>{0, 0}); // the constructor's 0
+    CHECK(house_of(s, 1).residents_64 == 10 * 64);
+}
+
+TEST_CASE("P1 import: n above and below the group's need count") {
+    // Group 0 has two needs. n = 4 drops the bytes beyond them; n = 1 leaves need 1 at 0
+    // (the constructor zeroes every slot).
+    const auto s = load_houses({{kHouse, 8, 4, house_rec(10, 4, 2, {128, 64, 255, 255})},
+                                {kHouse, 10, 4, house_rec(10, 1, 2, {128, 64})}});
+    CHECK(house_of(s, 0).stock == std::vector<std::uint32_t>{4373, 853});
+    CHECK(house_of(s, 1).stock == std::vector<std::uint32_t>{4373, 0});
+    // A record shorter than its n reads the missing bytes as 0.
+    const auto t = load_houses({{kHouse, 8, 4, house_rec(10, 2, 2, {128})}});
+    CHECK(house_of(t, 0).stock == std::vector<std::uint32_t>{4373, 0});
+}
+
+TEST_CASE("P1 import: the reset predicate is warned, never applied") {
+    // Group 1 above group 0 (Wohnmax 8): residents below 8 / 2 = 4 fire the reset.
+    // The original would set 15 residents and draw per forced need; here the record is
+    // loaded as stored and HouseResetNotApplied is added once per record.
+    const auto fires = load_houses({{kHouse1, 8, 4, house_rec(3, 3, 2, {128, 128, 128})},
+                                    {kHouse1, 10, 4, house_rec(0, 0, 2, {})}});
+    CHECK(warnings_of(fires, Kind::HouseResetNotApplied) == 2);
+    CHECK(house_of(fires, 0).residents_64 == 3 * 64);
+    CHECK(house_of(fires, 0).e == 3U * 128U);
+    // 4 residents is not below 4; group 0 never resets, whatever the residents.
+    const auto quiet = load_houses({{kHouse1, 8, 4, house_rec(4, 3, 2, {128, 128, 128})},
+                                    {kHouse, 10, 4, house_rec(0, 2, 2, {128, 128})}});
+    CHECK(warnings_of(quiet, Kind::HouseResetNotApplied) == 0);
+    // Without a group table there is no Wohnmax to compare with: nothing is evaluated.
+    const auto none = load_houses({{kHouse1, 8, 4, house_rec(3, 3, 2, {128, 128, 128})}}, false);
+    CHECK(warnings_of(none, Kind::HouseResetNotApplied) == 0);
+    CHECK(house_of(none, 0).stock.empty());
+    CHECK(house_of(none, 0).residents_64 == 3 * 64);
+}
+
+TEST_CASE("P1 import: created houses sum to resident_sum, save then load is exact") {
+    const auto s = load_houses({{kHouse, 8, 4, house_rec(10, 2, 2, {128, 64})},
+                                {kHouse1, 10, 4, house_rec(9, 3, 2, {128, 100, 50})}});
+    CHECK(s.resident_sum == 19);
+    auto made = sim::World::create(s.spec, house_registry(), house_config());
+    REQUIRE_MESSAGE(made.ok(), (made.ok() ? std::string() : made.error()));
+    sim::World w = std::move(made).value();
+    CHECK(w.check_invariants() == "");
+    std::uint32_t residents = 0;
+    for (const auto& list : w.islands()[7]->city(sim::CityNo{2})->index.lists) {
+        for (const auto& slot : list.slots) {
+            if (slot.has_value()) {
+                if (const auto* h = std::get_if<sim::House>(&slot->payload)) {
+                    residents += static_cast<std::uint32_t>(h->residents_64 >> 6);
+                }
+            }
+        }
+    }
+    CHECK(residents == s.resident_sum);
+    // A fraction (residents_64 not a multiple of 64) survives a save: our own save is the
+    // runtime form (P1 decision 4), unlike the original's integer record.
+    for (auto& list : sim::WorldTestAccess::islands(w)[7]->city(sim::CityNo{2})->index.lists) {
+        for (auto& slot : list.slots) {
+            if (slot.has_value()) {
+                if (auto* h = std::get_if<sim::House>(&slot->payload)) {
+                    h->residents_64 += 37;
+                    h->e += 5;
+                }
+            }
+        }
+    }
+    const std::uint64_t before = w.state_hash();
+    auto back = sim::World::load(w.save(), house_registry());
+    REQUIRE_MESSAGE(back.ok(), (back.ok() ? std::string() : back.error()));
+    CHECK(back.value().state_hash() == before);
+    CHECK(back.value().check_invariants() == "");
 }

@@ -290,7 +290,8 @@ template <class A> void digest_type(A& a, const BuildingType& t) {
 
 std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<const GoodsInfo> goods,
                               std::span<const ClassInfo> classes,
-                              std::span<const FigureType> figures) {
+                              std::span<const FigureType> figures,
+                              std::span<const HouseGroup> groups) {
     HashArchive a(HashOptions{nullptr, 0, true});
     ar::seq(a, types, 1, [&](const BuildingType& t) { digest_type(a, t); });
     ar::seq(a, goods, 12, [&](const GoodsInfo& g) {
@@ -309,6 +310,28 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         a.u32(f.capacity_88);
         a.u32(f.layer);
         a.u32(f.load_ticks);
+    });
+    // The group table (P1, stream 115): u64 count, then per group the slot, the two
+    // flags, Wohnmax, the needs (u64 count; goods id, forced flag, Menge) and the
+    // four tables as bytes (the i8 values as their two's complement).
+    ar::seq(a, groups, 1, [&](const HouseGroup& g) {
+        a.u32(g.number);
+        a.boolean(g.no_upgrade);
+        a.boolean(g.no_downgrade);
+        a.u16(g.wohnmax);
+        ar::seq(a, g.needs, 7, [&](const HouseNeed& n) {
+            a.u32(n.ware);
+            a.boolean(n.force);
+            a.u16(n.menge);
+        });
+        for (const auto* table : {&g.nahrung, &g.bedarf, &g.infra}) {
+            for (const std::int8_t v : *table) {
+                a.u8(static_cast<std::uint8_t>(v));
+            }
+        }
+        for (const std::int8_t v : g.vermehr) {
+            a.u8(static_cast<std::uint8_t>(v));
+        }
     });
     return a.finish();
 }
@@ -375,6 +398,8 @@ std::optional<PayloadTag> payload_for_tick(TickKind tick) {
         return PayloadTag::SmallFarm;
     case TickKind::Market:
         return PayloadTag::Market;
+    case TickKind::House:
+        return PayloadTag::House;
     }
     return std::nullopt;
 }
@@ -397,6 +422,7 @@ std::optional<BuildingClass> production_kind_for_tick(TickKind tick) {
     case TickKind::SmallFarm:
         return BuildingClass::SmallFarm;
     case TickKind::Market: // reads prod.max_figures / figure_ids only when present
+    case TickKind::House:  // no production data (P1: the tick does nothing yet)
     case TickKind::None:
         break;
     }
@@ -637,7 +663,7 @@ std::vector<ClassInfo> original_class_table() {
         {C::School, T::None, P::Inert, 500},        // 0x1006b4e0 (shared with PublicService)
         {C::Castle, T::None, P::Inert, 0},          // 0x1006f1d0: no stamp gate
         {C::FireBrigade, T::None, P::Inert, 500},   // 0x10067b50
-        {C::House, T::None, P::Inert, 2500},        // 0x10076230
+        {C::House, T::House, P::House, 2500},       // 0x10076230
         {C::Tower, T::None, P::Inert, 166},         // 0x10070c50 (0x10070c62)
         {C::CannonTower, T::None, P::Inert, 166},   // 0x1006ab50 (0x1006ab6a)
     };
@@ -697,11 +723,14 @@ const BuildingType* TypeRegistry::find_growing(std::uint32_t object) const {
     return t != nullptr && t->has_prod && t->prod.kind == BuildingClass::GrowingItem ? t : nullptr;
 }
 
-formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
-TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
-                     std::vector<ClassInfo> classes, const SimConfig& cfg,
-                     std::vector<FigureType> figures,
-                     std::shared_ptr<const formats::annowelt::WalkTables> tables) {
+formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::finish(
+    std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
+    std::vector<ClassInfo> classes, const SimConfig& cfg, std::vector<FigureType> figures,
+    std::shared_ptr<const formats::annowelt::WalkTables> tables, std::vector<HouseGroup> groups) {
+    if (!groups.empty() && groups.size() != cfg.house_groups) {
+        return "the group table has " + std::to_string(groups.size()) +
+               " groups, SimConfig::house_groups is " + std::to_string(cfg.house_groups);
+    }
     if (classes.size() != static_cast<std::size_t>(RuntimeClass::Count_)) {
         return "class table has " + std::to_string(classes.size()) + " entries, RuntimeClass has " +
                std::to_string(static_cast<std::size_t>(RuntimeClass::Count_));
@@ -741,7 +770,8 @@ TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goo
     }
     auto sealed = std::make_shared<Sealed>();
     TypeRegistry& r = *sealed;
-    r.digest_ = digest_registry(types, goods_in, classes, figures);
+    r.digest_ = digest_registry(types, goods_in, classes, figures, groups);
+    r.house_groups_ = std::move(groups);
     r.walk_tables_ = std::move(tables);
     r.types_ = std::move(types);
     r.figure_types_ = std::move(figures);
@@ -754,8 +784,9 @@ TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goo
 std::uint64_t TypeRegistry::digest_of(std::span<const BuildingType> types,
                                       std::span<const GoodsInfo> goods,
                                       std::span<const ClassInfo> classes,
-                                      std::span<const FigureType> figures) {
-    return digest_registry(types, goods, classes, figures);
+                                      std::span<const FigureType> figures,
+                                      std::span<const HouseGroup> groups) {
+    return digest_registry(types, goods, classes, figures, groups);
 }
 
 const FigureType* TypeRegistry::find_figure_type(std::uint32_t id) const {
@@ -765,6 +796,10 @@ const FigureType* TypeRegistry::find_figure_type(std::uint32_t id) const {
 }
 
 std::string TypeRegistry::validate_against(const SimConfig& cfg) const {
+    if (!house_groups_.empty() && house_groups_.size() != cfg.house_groups) {
+        return "the group table has " + std::to_string(house_groups_.size()) +
+               " groups, SimConfig::house_groups is " + std::to_string(cfg.house_groups);
+    }
     return check_against_config(types_, cfg);
 }
 
@@ -786,7 +821,8 @@ TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> 
 formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
 TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> goods_in,
                     const SimConfig& cfg, std::span<const fig::Entry> figure_entries,
-                    std::shared_ptr<const formats::annowelt::WalkTables> tables) {
+                    std::shared_ptr<const formats::annowelt::WalkTables> tables,
+                    std::vector<HouseGroup> groups) {
     std::vector<BuildingType> types;
     types.reserve(entries.size());
     for (const fig::Entry& e : entries) {
@@ -806,7 +842,7 @@ TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> 
         figures.push_back(f.value());
     }
     return finish(std::move(types), std::move(goods_in), original_class_table(), cfg,
-                  std::move(figures), std::move(tables));
+                  std::move(figures), std::move(tables), std::move(groups));
 }
 
 std::shared_ptr<const TypeRegistry> TypeRegistry::empty() {
@@ -822,6 +858,11 @@ TypeRegistry::Builder::Builder() : goods_(original_goods()), classes_(original_c
 TypeRegistry::Builder&
 TypeRegistry::Builder::walk_tables(std::shared_ptr<const formats::annowelt::WalkTables> tables) {
     walk_tables_ = std::move(tables);
+    return *this;
+}
+
+TypeRegistry::Builder& TypeRegistry::Builder::house_groups(std::vector<HouseGroup> groups) {
+    house_groups_ = std::move(groups);
     return *this;
 }
 
@@ -1081,7 +1122,8 @@ TypeRegistry::Builder::build() const {
     if (!error_.empty()) {
         return error_;
     }
-    return TypeRegistry::finish(types_, goods_, classes_, cfg_, figures_, walk_tables_);
+    return TypeRegistry::finish(types_, goods_, classes_, cfg_, figures_, walk_tables_,
+                                house_groups_);
 }
 
 } // namespace anno::sim

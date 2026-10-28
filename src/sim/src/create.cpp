@@ -107,9 +107,16 @@ void stamp_placement(Payload& payload, RuntimeClass cls, std::uint16_t value) {
     const bool with_time = has_status_time(payload, cls);
     std::visit(
         [value, with_time](auto& p) {
-            p.last = value;
-            if (with_time) {
-                p.status.time = value;
+            if constexpr (std::is_same_v<std::decay_t<decltype(p)>, House>) {
+                // P1 decision 8: the house keeps last = 0; P2, its first reader, writes the
+                // creation time (the original's property 0x23 does, 0x100733ac).
+                (void)value;
+                (void)with_time;
+            } else {
+                p.last = value;
+                if (with_time) {
+                    p.status.time = value;
+                }
             }
         },
         payload);
@@ -162,7 +169,7 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
         return Reject::Occupied;
     }
     const ClassInfo& cls = types.class_info(ty->cls);
-    if (initial != nullptr && !payload_problem(*initial, *ty, cls, cfg).empty()) {
+    if (initial != nullptr && !payload_problem(*initial, *ty, cls, cfg, types).empty()) {
         return Reject::BadValue;
     }
     // A given mine names a deposit of this island or none (validate_cities' fact).
@@ -177,13 +184,13 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     // 2.-3. The payload of the class, every bit zero (F2); a mine's deep flag
     // (D: type attach, slot +0x28, before the position).
     Building b;
-    b.payload = initial != nullptr ? *initial : make_payload(*ty, cls, cfg);
+    b.payload = initial != nullptr ? *initial : make_payload(*ty, cls, cfg, types);
     if (initial == nullptr) {
         // The registry guarantees that make_payload fits the type (TypeRegistry::
         // build), so this cannot fail today; it keeps "a rejected creation changes
         // nothing, an accepted one keeps the invariants" self-contained should
         // make_payload and payload_problem ever diverge. Nothing is touched yet.
-        if (!payload_problem(b.payload, *ty, cls, cfg).empty()) {
+        if (!payload_problem(b.payload, *ty, cls, cfg, types).empty()) {
             return Reject::BadValue;
         }
         if (auto* mine = std::get_if<Mine>(&b.payload)) {

@@ -112,7 +112,37 @@ struct FileResult {
     std::uint64_t hash = 0, create_hash = 0;
     std::uint32_t link_draws = 0; // the resolver's draws
     Moved moved;
+    /// P1: the residents of the created houses (`residents_64 >> 6` summed) against the
+    /// records' (`resident_sum`), and the houses with residents and a non-zero stock.
+    std::uint64_t created_residents = 0, record_residents = 0, houses_with_stock = 0;
+    std::uint64_t houses = 0;
 };
+
+/// The residents and the stocked houses of a created world (the House payloads).
+void house_totals(const sim::World& w, std::uint64_t& residents, std::uint64_t& stocked) {
+    for (const std::optional<sim::Island>& is : w.islands()) {
+        if (!is) {
+            continue;
+        }
+        for (const std::optional<sim::City>& c : is->cities) {
+            if (!c) {
+                continue;
+            }
+            for (const sim::BuildingList& l : c->index.lists) {
+                for (const auto& b : l.slots) {
+                    const auto* h = b ? std::get_if<sim::House>(&b->payload) : nullptr;
+                    if (h == nullptr) {
+                        continue;
+                    }
+                    residents += static_cast<std::uint64_t>(h->residents_64 >> 6);
+                    const bool any = std::any_of(h->stock.begin(), h->stock.end(),
+                                                 [](std::uint32_t s) { return s != 0; });
+                    stocked += h->residents_64 > 0 && any ? 1U : 0U;
+                }
+            }
+        }
+    }
+}
 
 /// The header line of the expectations file: the versions the hashes were made at
 /// (the standing note of docs/orchestration/TASKS.md round r; tools/sim_stream.py
@@ -134,9 +164,15 @@ std::shared_ptr<const sim::TypeRegistry> original_registry(const fs::path& game)
     const auto walk_bytes = anno::test::read_file(game / "AnnoWelt.dll");
     auto walk = anno::formats::annowelt::read_walk_tables(walk_bytes);
     REQUIRE(walk);
+    // The population group table (P1): Data/BGruppen.dat, parsed against the goods table.
+    const auto goods = sim::original_goods();
+    auto groups =
+        sim::parse_house_groups(anno::test::read_file(game / "Data" / "BGruppen.dat"), goods);
+    REQUIRE_MESSAGE(groups.ok(), (groups.ok() ? std::string() : groups.error()));
     auto r = sim::TypeRegistry::build(
-        file.value().entries, sim::original_goods(), sim::SimConfig{}, figures.value().entries,
-        std::make_shared<const anno::formats::annowelt::WalkTables>(std::move(walk).value()));
+        file.value().entries, goods, sim::SimConfig{}, figures.value().entries,
+        std::make_shared<const anno::formats::annowelt::WalkTables>(std::move(walk).value()),
+        std::move(groups).value());
     REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
     return r.value();
 }
@@ -267,6 +303,38 @@ FileResult run_file(const fs::path& game, const fs::path& p,
         }
         sim::World world = std::move(w).value();
         r.create_hash = world.state_hash();
+        r.created_residents = r.houses_with_stock = 0;
+        house_totals(world, r.created_residents, r.houses_with_stock);
+        if (r.name.find("single36") != std::string::npos) {
+            // The first loaded house with residents and a stock, for the report.
+            bool shown = false;
+            for (const std::optional<sim::Island>& is : world.islands()) {
+                for (const std::optional<sim::City>& c :
+                     is ? is->cities : std::vector<std::optional<sim::City>>{}) {
+                    for (const sim::BuildingList& l :
+                         c ? c->index.lists : std::vector<sim::BuildingList>{}) {
+                        for (const auto& b : l.slots) {
+                            const auto* h =
+                                b && !shown ? std::get_if<sim::House>(&b->payload) : nullptr;
+                            if (h != nullptr && h->residents_64 > 0 &&
+                                std::any_of(h->stock.begin(), h->stock.end(),
+                                            [](std::uint32_t s) { return s != 0; })) {
+                                shown = true;
+                                std::cout << "scenario corpus: a single36 house: type " << b->type.v
+                                          << " residents " << (h->residents_64 >> 6) << " E "
+                                          << h->e << " stock";
+                                for (const std::uint32_t s : h->stock) {
+                                    std::cout << ' ' << s;
+                                }
+                                std::cout << "\n";
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        r.record_residents = loaded_scenario.resident_sum;
+        r.houses = loaded_scenario.houses;
         const auto before = snapshot(world);
         const auto stock_before = warehouses(world);
         for (int i = 0; i < advances; ++i) {
@@ -363,6 +431,7 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
                   with_island = 0, links_only = 0, resolved = 0, unresolved = 0, link_draws = 0,
                   link_files = 0, link_files_complete = 0;
     Moved moved;
+    std::uint64_t total_houses = 0, total_record_residents = 0, total_created_residents = 0;
     std::vector<std::string> lines;
     for (const FileResult& r : results) {
         INFO(r.name);
@@ -372,6 +441,13 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
         CHECK(r.save_error == "");
         CHECK(r.deterministic);
         CHECK(r.save_identity);
+        // P1: the created houses carry exactly the residents the records name, and a house
+        // that has residents in a file with group data has a stock (single36 below).
+        CHECK(r.created_residents == r.record_residents);
+        if (r.name.find("single36") != std::string::npos) {
+            CHECK(r.record_residents > 0);
+            CHECK(r.houses_with_stock > 0);
+        }
         // Every PROD2 id resolves in the registry.
         CHECK(r.prod2_unknown == 0);
         lines.push_back(r.line);
@@ -399,6 +475,9 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
         moved.producers_moved += r.moved.producers_moved;
         moved.warehouses += r.moved.warehouses;
         moved.warehouses_moved += r.moved.warehouses_moved;
+        total_houses += r.houses;
+        total_record_residents += r.record_residents;
+        total_created_residents += r.created_residents;
         // T24: what the run moved, per scenario.
         std::cout << "scenario corpus: moved " << r.name << " producers " << r.moved.producers_moved
                   << " of " << r.moved.producers << ", warehouses " << r.moved.warehouses_moved
@@ -407,6 +486,12 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
     std::cout << "scenario corpus: moved in all: producers " << moved.producers_moved << " of "
               << moved.producers << ", warehouses " << moved.warehouses_moved << " of "
               << moved.warehouses << "\n";
+    std::cout << "scenario corpus: houses " << total_houses << ", residents in the records "
+              << total_record_residents << ", residents of the created houses "
+              << total_created_residents << ", HouseResetNotApplied "
+              << totals[sim::ScenarioWarningKind::HouseResetNotApplied] << "\n";
+    CHECK(total_record_residents == total_created_residents);
+    CHECK(totals[sim::ScenarioWarningKind::HouseResetNotApplied] == 0);
     // T23: the cities' PROD/ENTRY records place buildings.
     CHECK(buildings > 0);
     std::cout << "scenario corpus: " << results.size() << " files, " << with_island
@@ -581,7 +666,7 @@ TEST_CASE("scenario corpus: a shipped town's economy runs 150000 ticks") {
               << " with more output in stock; warehouses that moved: " << moved << " of "
               << stock_before.size() << "\n";
     // T26 acceptance (3): the houses and residents the records carry (read for this
-    // diagnostic; not applied to state, HouseRecordNotModelled, OQ-165).
+    // diagnostic; applied to the house payload since P1, OQ-165).
     std::cout << "scenario economy: houses " << loaded->houses << ", with residents > 0 "
               << loaded->houses_with_residents << ", sum of residents " << loaded->resident_sum
               << "\n";
@@ -661,20 +746,18 @@ TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
                   << " (cart: no_candidate " << cart.no_candidate << " unreached " << cart.unreached
                   << " no_goal_reached " << cart.no_goal_reached << " low_score " << cart.low_score
                   << " found " << cart.found << " incomplete " << cart.incomplete
-                  << " home_no_road " << cart.home_no_road << " goal_no_road "
-                  << cart.goal_no_road << " edge " << cart.edge << " corner " << cart.corner
-                  << " outside_disc " << cart.outside_disc
-                  << " start_outside_rect " << cart.start_outside_rect << "); workshops "
-                  << workshops << " (carrier: no_candidate " << carrier.no_candidate
-                  << " unreached " << carrier.unreached << " no_goal_reached "
-                  << carrier.no_goal_reached << " low_score " << carrier.low_score
-                  << " found " << carrier.found << " incomplete " << carrier.incomplete
-                  << " home_no_road " << carrier.home_no_road << " goal_no_road "
-                  << carrier.goal_no_road << " edge " << carrier.edge << " corner "
-                  << carrier.corner << " outside_disc " << carrier.outside_disc
+                  << " home_no_road " << cart.home_no_road << " goal_no_road " << cart.goal_no_road
+                  << " edge " << cart.edge << " corner " << cart.corner << " outside_disc "
+                  << cart.outside_disc << " start_outside_rect " << cart.start_outside_rect
+                  << "); workshops " << workshops << " (carrier: no_candidate "
+                  << carrier.no_candidate << " unreached " << carrier.unreached
+                  << " no_goal_reached " << carrier.no_goal_reached << " low_score "
+                  << carrier.low_score << " found " << carrier.found << " incomplete "
+                  << carrier.incomplete << " home_no_road " << carrier.home_no_road
+                  << " goal_no_road " << carrier.goal_no_road << " edge " << carrier.edge
+                  << " corner " << carrier.corner << " outside_disc " << carrier.outside_disc
                   << " start_outside_rect " << carrier.start_outside_rect
-                  << "); senders without a figure type " << no_figure_type
-                  << "\n";
+                  << "); senders without a figure type " << no_figure_type << "\n";
     };
     for (const char* want : {"0100Kampagne01/S01_07_01.sze", "0201SingleAddOn/single36.sze"}) {
         const auto it = std::find_if(files.begin(), files.end(),
@@ -707,13 +790,12 @@ TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
         std::cout << "transport run: " << want << " ticks " << world.clock().tick()
                   << " (choose_source: no_candidate " << run_stats.no_candidate << " unreached "
                   << run_stats.unreached << " no_goal_reached " << run_stats.no_goal_reached
-                  << " low_score " << run_stats.low_score << " found "
-                  << run_stats.found << " incomplete " << run_stats.incomplete << " home_no_road "
-                  << run_stats.home_no_road
-                  << " goal_no_road " << run_stats.goal_no_road << " edge " << run_stats.edge
-                  << " corner " << run_stats.corner << " outside_disc " << run_stats.outside_disc
-                  << " start_outside_rect " << run_stats.start_outside_rect
-                  << ")\n";
+                  << " low_score " << run_stats.low_score << " found " << run_stats.found
+                  << " incomplete " << run_stats.incomplete << " home_no_road "
+                  << run_stats.home_no_road << " goal_no_road " << run_stats.goal_no_road
+                  << " edge " << run_stats.edge << " corner " << run_stats.corner
+                  << " outside_disc " << run_stats.outside_disc << " start_outside_rect "
+                  << run_stats.start_outside_rect << ")\n";
         // Top-15 frontier type ids by count, with prodtype, flags_word (hex), walk_class.
         std::vector<std::pair<std::uint32_t, std::uint64_t>> top(run_stats.frontier.begin(),
                                                                  run_stats.frontier.end());

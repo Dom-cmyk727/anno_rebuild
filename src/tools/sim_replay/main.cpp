@@ -355,9 +355,18 @@ std::shared_ptr<const sim::TypeRegistry> scenario_registry() {
                   << anno::formats::annowelt::error_message(walk.error()) << ")\n";
         return sim::TypeRegistry::empty();
     }
+    std::ifstream gin(std::filesystem::path(dir) / "Data" / "BGruppen.dat", std::ios::binary);
+    const std::vector<std::uint8_t> gbuf{std::istreambuf_iterator<char>(gin), {}};
+    const auto goods = sim::original_goods();
+    auto groups = sim::parse_house_groups(gbuf, goods);
+    if (!groups) {
+        std::cout << "registry empty (BGruppen.dat: " << groups.error() << ")\n";
+        return sim::TypeRegistry::empty();
+    }
     auto r = sim::TypeRegistry::build(
-        file.value().entries, sim::original_goods(), sim::SimConfig{}, figure_entries,
-        std::make_shared<const anno::formats::annowelt::WalkTables>(std::move(walk).value()));
+        file.value().entries, goods, sim::SimConfig{}, figure_entries,
+        std::make_shared<const anno::formats::annowelt::WalkTables>(std::move(walk).value()),
+        std::move(groups).value());
     if (!r) {
         std::cout << "registry empty (" << r.error() << ")\n";
         return sim::TypeRegistry::empty();

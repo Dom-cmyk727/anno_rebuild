@@ -883,9 +883,14 @@ TEST_CASE("S01_07_01 tick 0 search store is complete" * doctest::test_suite("cor
     const auto walk_bytes = anno::test::read_file(*dir / "AnnoWelt.dll");
     auto walk = anno::formats::annowelt::read_walk_tables(walk_bytes);
     REQUIRE(walk);
+    const auto goods = sim::original_goods();
+    auto groups =
+        sim::parse_house_groups(anno::test::read_file(*dir / "Data" / "BGruppen.dat"), goods);
+    REQUIRE(groups);
     auto types = sim::TypeRegistry::build(
-        an.value().entries, sim::original_goods(), sim::SimConfig{}, figures.value().entries,
-        std::make_shared<const anno::formats::annowelt::WalkTables>(std::move(walk).value()));
+        an.value().entries, goods, sim::SimConfig{}, figures.value().entries,
+        std::make_shared<const anno::formats::annowelt::WalkTables>(std::move(walk).value()),
+        std::move(groups).value());
     REQUIRE(types);
     const auto sb = anno::test::read_file(*dir / "Scenes" / "0100Kampagne01" / "S01_07_01.sze");
     auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{});

@@ -80,7 +80,11 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // F1 adds the anchor without a further bump: 113 had not been recorded yet.
 // Stream at 114 (task T33.5 stage 3): Rules gains removal_clear_tile, one byte
 // of the hashed header. The tile columns are unchanged.
-inline constexpr std::uint32_t kStateHashVersion = 114;
+// Stream at 115 (task P1, population stage 1): the building variant gains the alternative
+// House (tag 7: u16 last, i32 residents_64, u32 e, u64 count + u32 stock); the class table's
+// House row is tick House / payload House; the registry digest gains the group table
+// (u64 count, 0 when there is none). No PRNG site is drawn (the timeline stays 2).
+inline constexpr std::uint32_t kStateHashVersion = 115;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

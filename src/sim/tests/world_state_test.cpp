@@ -97,7 +97,7 @@ TEST_CASE("invariant payload alternative vs type") {
              "lists[4].slots[5].payload: holds Inert, the class needs Mine"},
             {"a house with a farm payload",
              [](sim::World& w) { bld(w, 0, 3, 0).payload = sim::Farm{}; },
-             "lists[3].slots[0].payload: holds Farm, the class needs Inert"},
+             "lists[3].slots[0].payload: holds Farm, the class needs House"},
             {"a market building with a workshop payload",
              [](sim::World& w) { bld(w, 0, 5, 0).payload = sim::Workshop{}; },
              "lists[5].slots[0].payload: holds Workshop, the class needs Market"},
@@ -161,13 +161,14 @@ TEST_CASE("invariant mine without outputs") {
     t.prod.outputs.clear();
     const sim::ClassInfo& cls = k.registry->class_info(sim::RuntimeClass::Mine);
     const sim::Payload mine = sim::Mine{};
-    CHECK(sim::payload_problem(mine, t, cls, sim::SimConfig{}) ==
+    CHECK(sim::payload_problem(mine, t, cls, sim::SimConfig{}, *k.registry) ==
           "a Mine type has no output goods");
     // With an output the same payload is fine, and any other class does not need one.
-    CHECK(sim::payload_problem(mine, *k.registry->find(k.iron_mine), cls, sim::SimConfig{}) == "");
+    CHECK(sim::payload_problem(mine, *k.registry->find(k.iron_mine), cls, sim::SimConfig{},
+                               *k.registry) == "");
     sim::BuildingType house = *k.registry->find(k.pioneer_house);
-    CHECK(sim::payload_problem(sim::Inert{}, house, k.registry->class_info(house.cls),
-                               sim::SimConfig{}) == "");
+    CHECK(sim::payload_problem(sim::House{}, house, k.registry->class_info(house.cls),
+                               sim::SimConfig{}, *k.registry) == "");
     const sim::World good = all_classes_world(k);
     run_rows(k, good,
              {

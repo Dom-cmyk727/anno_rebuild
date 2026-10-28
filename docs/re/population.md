@@ -448,7 +448,7 @@ Goods do **not** move store → house in one step. House stocks are filled by bu
 
 ### 13.1 T26's three functions against T32.1–T32.2
 
-Read-only (`src/sim/src/scenario_formats.cpp`, `scenario_formats.hpp`). Not applied today (`HouseRecordNotModelled`).
+Read-only (`src/sim/src/scenario_formats.cpp`, `scenario_formats.hpp`). Applied on scenario import since P1 (2026-10-28); the reset predicate is warned, not applied (`HouseResetNotApplied`, OQ-451).
 
 | Function | T26 | T32.1–T32.2 | Difference |
 |---|---|---|---|

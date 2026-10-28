@@ -104,7 +104,7 @@ std::string check_island_spec(const Spec::IslandSpec& is, std::size_t i, const S
             }
             if (bs.payload.has_value()) {
                 const std::string problem =
-                    payload_problem(*bs.payload, *ty, types.class_info(ty->cls), cfg);
+                    payload_problem(*bs.payload, *ty, types.class_info(ty->cls), cfg, types);
                 if (!problem.empty()) {
                     return bp + ".payload: " + problem;
                 }

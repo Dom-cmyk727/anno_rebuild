@@ -5591,4 +5591,9 @@ T10c F4 Part A (`codex/T10c-test-memory` at `1104a7d`, six commits on `94cf3cb`,
 - The F3 timing paragraph still says "host variance".
 - A misplaced doc comment in `coord_server.cpp` is deferred on purpose: moving it would change the coordinator build and repeat every gate.
 
-**Next:** the F4 continuation, then F4 Part B (P1 steps 7–8) on the combined head. The assignment is a task packet (`cache/orch-cv/packet.md`). Nothing merged or pushed.
+**Next:** one overnight packet (`cache/orch-cv/packet.md`), at the owner's request:
+1. the F4 continuation;
+2. F4 Part B (P1 steps 7–8) on the combined head;
+3. T32.5, static RE of the player's reached-stage mask. P2's house tick gates decay on that mask, and its source is unread.
+
+Nothing merged or pushed.

@@ -336,7 +336,7 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 - every defence layer fails a test of its own when it is removed;
 - every gate is green (CTest 1096/1096 with and without game files, ASan/UBSan, GCC/Clang warnings, formatting, lint).
 
-The throughput A/B needs one repeat pair: the only pair without budget waits is +3.9 %, inside the 5 % band, and the band is one-sided. The F4 continuation runs that pair, fixes three perf-note gaps, then P1's steps 7–8 on the combined head. Then P1 and T10c integrate. Nothing merged or pushed.
+The throughput A/B needs one repeat pair: the only pair without budget waits is +3.9 %, inside the 5 % band, and the band is one-sided. The F4 continuation runs that pair and fixes three perf-note gaps; then P1's steps 7–8 run on the combined head. Then P1 and T10c integrate. At the owner's request the same overnight packet adds T32.5: static RE of the player's reached-stage mask, the one input of P2's house tick that is still unread. Nothing merged or pushed.
 
 **Orchestration (2026-10-28, round cu):** T10c F3 (`94cf3cb`) is reviewed. D1 is accepted as implemented: the coordinator decides by an explicit compatibility version, the build id is provenance, and an exact build is an opt-in. Incompatible or exact-build requesters wait boundedly and never stop a peer. D2 is accepted: no inherited descriptors on Linux or Windows.
 

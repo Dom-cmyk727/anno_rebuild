@@ -5945,3 +5945,154 @@ Measured before the last test-only edits (items 16 to 19). The production source
 
 ### Commits
 Listed in `git log` on `codex/T10c-test-memory`. Each commit ends with the attribution lines. No merge, no push, no PR; TASKS.md and AGENTS.md untouched; P1 (`416993fa`) untouched.
+
+## T10c F4 — unique hold ids, cancel of every waiter, observed layers — 2026-10-28 — status: QUESTION (A/B throughput; Part B not started)
+
+Worktree `E:\anno1503-worktrees\anno1503-T10c`, branch `codex/T10c-test-memory`. Start `94cf3cb0a09969339401f7bcd8f4a73e4cb62375`. P1 `task/P1-house-payload` stays at `416993fa6a6f9dc821455df5d414cff5833ac7f0`. Binding text: packet `cache/orch-cu/packet.md` (board at `348caa289a35`). No merge, push, rebase or TASKS/AGENTS edit.
+
+A mid-resume preflight (`tools/orch/preflight.py` with `--clean`) failed only the T10c-clean row, because this worktree already held unfinished F4 sources. The other eight rows passed (main `348caa289a35`, only `?? AGENTS.md`; P1 clean at `416993fa`). The owner resume was to continue that work, not discard it. Fail-first used a `git archive` of `94cf3cb` plus an overlay (`cache\f4\failfirst-src`), so the dirty tree did not contaminate the 94cf3cb baseline.
+
+### Heads
+
+| rev | subject |
+|---|---|
+| `94cf3cb0a09969339401f7bcd8f4a73e4cb62375` | start (F3 docs) |
+| `e4482a85853896e3b297b8569ba6c1b546ea6c3e` | refactor(test_support): share the F3 budget process harness |
+| `47ae9772b642ef57912b4002165347feca31a4d0` | fix(test_support): hold ids unique across coordinator incarnations (compat 3) |
+| `2fc77df33c846ae5878d4f3cab62daa5b2271cdc` | fix(test_support): one cancel ends every waiter of a budget |
+| `57d1241f65804dfe70f33e532172f039a1ad6af9` | test(test_support): observe each descriptor and exact-build layer on its own |
+| `6cdf628a7a18326024a71fa260c6644814194055` | docs(perf): T10c F4 hold-id uniqueness, cancel bound, A/B |
+| (this commit) | docs: report T10c F4 |
+
+Coordinator build of the gated tree: `cee55b5e74257911`, `compat=3`.
+
+### Decisions and reasoning
+
+1. **Harness header.** F3 helpers moved unchanged into `src/test_support/tests/budget_proc_harness.hpp` (unnamed namespace, one copy per TU). Alternative: duplicate them in the F4 file (rejected: two copies would drift). Evidence: commit `e4482a8` changes no F3 assertion; pin still said `compat=2` in that commit.
+2. **E1 id scheme (i).** One server-wide `u64` counter seeded at `journal.max_hold_id() + 1` (`coord_server.cpp`, `Server::next_hold`). Uniqueness is required per budget; a single counter needs no per-budget map; a `u64` will not overflow in a test run. Alternative (ii), a seed per budget at creation, was not taken.
+3. **E2 cancel-before-lock.** `Budget::session_for` loads `cancel_gen` before `connect_mu`. After the lock, if there is still no session and the generation changed, it returns `cancelled`. A `cancel()` issued before a thread enters `session_for` does not end that later wait (same rule as F3). Evidence: case 3; `budget.cpp`.
+4. **Journal CLOEXEC.** Case 5 listed the journal as a non-socket fd without `O_CLOEXEC`. `fopen_cloexec` uses glibc `"ae"`. Decision recorded as required when a non-socket lacks CLOEXEC while the meter is spawned.
+5. **N4b leak above 255.** The coordinator closes fds 3..255 at start (`run_budget_server`). A leak opened on a low fd is gone before the meter spawn and hides N4b. The probe now `fcntl(F_DUPFD, 256)`. Evidence: first N4b survivor, then `CHECK(coord_has==0)` under N4b.
+6. **WSL scripts via `sh`.** `wsl_script` runs `sh <script> [arg]`; the file does not need `+x`. The first N3 "catch" was `Permission denied` on `/tmp/.../wsl-0.sh`, an artefact, not CLOEXEC. After the fix, N3 fails `CHECK(all_sockets_cloexec)`.
+7. **`coord_wire.hpp` include path.** `check_unix_warnings.sh` only adds `-I src/*/include`. Quoted `"coord_wire.hpp"` from `tests/` does not find `src/test_support/src`. The tests and the probe include `"../src/coord_wire.hpp"` (relative to the source file). Alternative: edit the warning script (rejected: not named in F4). First unix-warning run failed those three files; second run is clean.
+8. **A/B verdict.** B1 is 8.0 % faster than A1 (outside the 5 % band); B2 is 3.9 % slower than A2 (inside). Not "no throughput regression measured". Packet: report the four numbers as a QUESTION and stop after Part A.
+9. **Part B.** Not started (B0: every A8 gate and the A6 verdict "no throughput regression measured").
+
+### A0, file wins over the packet's `94cf3cb` line numbers
+
+The packet's Journal / hello / `next_hold` lines were correct at `94cf3cb`. After `fopen_cloexec` and `max_hold_id`, `class Journal` is at `coord_server.cpp:528` (packet `:513`); `hold.id = server.next_hold++` is at `:1024` (packet `:998`); `server.next_hold` is seeded at `:1578`. Replay still keys by `(budget, hold id)`; an `A` sets and an `R` erases. `session_for` now reads `cancel_gen` *before* `connect_mu` (packet described the pre-fix order).
+
+### Fail-first (`94cf3cb` overlay in `cache\f4\failfirst-src`, logs in `cache\f4\failfirst`)
+
+| Case | Expected at `94cf3cb` | Observed first failure |
+|---|---|---|
+| 1 orphan reuse | `orphans=0`, `pending=0`, `claim=1` | `CHECK(has(c3_listen, "orphans=1"))` — C3 `orphans=0`, `try 90` `claim=1 pending=0` (`01-orphan-reuse.txt`). Targeted E1 collision, not a test artefact. |
+| 2 live hold | `pending=0`, `claim=1` | `CHECK(has(c3_listen, "orphans=1"))` — C3 `orphans=0`, `try 90` `claim=1 pending=0` (`02-live-hold.txt`). Targeted: C2's `R b 1` for P erased Q's `A b 1`. |
+| 3 cancel all | one `RESULT`, then nothing in 3 s | `CHECK(has(second, "RESULT"))` (`03-cancel-all.txt`). Targeted: second waiter still holds `connect_mu` wait. |
+| 4 raw hello | pass (layer exists) | PASS 1/1, 13 assertions (`04-rawhello.txt`). Fail evidence is A5 N2. |
+| 5 sockets CLOEXEC | pass (layer exists) | PASS 1/1, 4 assertions (`05-cloexec.txt`); journal listed without CLOEXEC (decision 4). Fail evidence is A5 N3. |
+| 6 meter leak hook | precondition fail | `REQUIRE(coord_has != "0")` (`06-meter-leak.txt`): hook absent at `94cf3cb`. |
+| 7 client leak | pass (layer exists) | MSVC overlay skipped (Windows MESSAGE, `coord.cpp` `bInheritHandles = FALSE`). Fail evidence is A5 N4b on WSL. |
+
+### Mutation table (A5, `cache\f4\mutants\summary-final.txt`)
+
+Unmutated MSVC: 51 passed / 0 failed / 14 skipped, 484 assertions. Unmutated WSL: 49 passed / 0 failed / 14 skipped, 471 assertions. Every named mutant `build_exit=0` and failed a named case. No survivors on the final run.
+
+| Mutant | Platform | First failing case / assertion |
+|---|---|---|
+| M1-fresh | MSVC | C1 leaves its bytes allocated — `REQUIRE(held)` `budget_f2_test.cpp:215` |
+| M2-temporary | MSVC | stale residency + shortage — `CHECK(done.load()==0)` `budget_f2_test.cpp:321` |
+| M3-host-bound | MSVC | guest request bounded — `CHECK(claim=0)` `budget_f2_test.cpp:382` |
+| M4-replay | MSVC | replacement + crash handover — `CHECK(claim=0)` `budget_f2_test.cpp:464` |
+| M5-liveness | MSVC | stops answering — `CHECK(ADMITTED 0)` `budget_f2_test.cpp:441` |
+| M7-nested-lock | MSVC | losing the coordinator — `CHECK(ADMITTED 0)` `budget_f2_test.cpp:412` |
+| M8-drain | MSVC | replacement + crash handover — `CHECK(ADMITTED 1)` `budget_f2_test.cpp:475` |
+| M9-deadline | MSVC | coordinator wait cannot be served — `CHECK(done!=0 by 6s)` `budget_f2_test.cpp:540` |
+| N1-compat-by-build | MSVC | two compatible + incompatible — `CHECK(READY 1)` `budget_f3_test.cpp:106` |
+| N2-exact-opt-in | MSVC | coordinator alone refuses — `CHECK(op=kStReject)` `budget_f4_test.cpp:342` |
+| N2b-exact | MSVC | exact-build requester — `REQUIRE(WAITING)` `budget_f3_test.cpp:205` |
+| N5-silent | MSVC | answers no hello + never answers — `REQUIRE(WAITING)` `budget_f3_test.cpp:475` |
+| N6-steps-aside | MSVC | drained busy coordinator — `REQUIRE(coord exits)` `budget_f3_test.cpp:253` |
+| N7-cancel-ignored | MSVC | exact-build requester — `REQUIRE(RESULT 0)` `budget_f3_test.cpp:209` |
+| N8-wait-no-deadline | MSVC | incompatible — `REQUIRE(RESULT 0)` `budget_f3_test.cpp:162` |
+| N9-busy-is-served | MSVC | incompatible — `REQUIRE(WAITING)` `budget_f3_test.cpp:159` |
+| M-E1 | MSVC | orphan survives + live hold — `CHECK(orphans=1)` `budget_f4_test.cpp:243` |
+| M-E2 | MSVC | one cancel ends every waiter — `CHECK(second RESULT)` `budget_f4_test.cpp:308` |
+| N3-cloexec | WSL | every socket — `CHECK(all_sockets_cloexec)` `budget_f4_test.cpp:431` |
+| N4-meter | WSL | coordinator leak fd — `CHECK(meter_has==0)` `budget_f4_test.cpp:480` |
+| N4b-client | WSL | client leak fd — `CHECK(coord_has==0)` `budget_f4_test.cpp:513` |
+| N34-both | WSL | F3 D2 — `CHECK(shared==0)` `budget_f3_test.cpp:392` |
+
+### Gate results (final sources; coordinator `cee55b5e74257911` / `compat=3` unless noted)
+
+| Gate | Result | coordinator build / compat (from the log) |
+|---|---|---|
+| `cmake --build --preset msvc` (via `cache\f4\run_ctest_f4.ps1`) | exit 0 | (build id `cee55b5e74257911` from CMake) |
+| CTest with game (`run_ctest_f4.ps1 -Mode game`) | **PASS** 1096/1096, 912.31 s real (F3 was 1089; +7 F4 cases) | `cee55b5e74257911` `compat=3` (`cache\f4\ctest-game\memory.log`) |
+| CTest without game (`-Mode nogame`) | **PASS** 1096/1096, 34.16 s; game cases skip cleanly | no `[anno-test memory] coordinator` line (no `memory.log`); same MSVC binaries as the game gate |
+| WSL ASan/UBSan budget suite (`asan_build.sh`, `asan_run.sh`) | **PASS** 49/49, 467 assertions; omitted-ground / cropped-fall pass; sim 664/664 with and without game | `cee55b5e74257911` `compat=3` (`cache\f4\asan\sim-game.txt`; ASan configure printed the same build id) |
+| `tools/check_unix_warnings.sh` | **PASS** after decision 7: GCC 13.3 and Clang 18.1.3, 173 files clean; Clang without GPU, 9 files clean | n/a (compile only) |
+| clang-format 23.1.3 `--dry-run --Werror` on every new/changed `.cpp`/`.hpp` | **PASS** | n/a |
+| `python -I tools/lint_sim.py` | **PASS** `lint_sim: ok` | n/a |
+| A5 mutation table | **PASS** no survivors | see table |
+| A6 A/B verdict | **QUESTION** (not "no throughput regression measured") | A: `a969992d481424ed` `protocol=2`; B: `cee55b5e74257911` `compat=3` |
+
+### E4 A/B (`cache\f4\ab\run_legacy_ab.ps1`, 4-worker legacy-river, ports 47851 / 47852)
+
+`ANNO_TEST_BUDGET_PORT` moves the shared port at F2 `43cd10f` (`coordinator_port` in `coord.cpp`, same as `:83-90` at `94cf3cb`).
+
+| run | elapsed_s | exit | cases / assertions | still-waiting lines | free_kb at start | coordinator |
+|---|---|---|---|---|---|---|
+| A1 | 223.734 | 0 | 1 / 47 | 3 (3 × "for 30 s") | 16895944 | `a969992d481424ed` `protocol=2` |
+| B1 | 205.784 | 0 | 1 / 47 | 3 (3 × "for 30 s") | 17098608 | `cee55b5e74257911` `compat=3` |
+| A2 | 197.070 | 0 | 1 / 47 | 0 | 17241036 | `a969992d481424ed` `protocol=2` |
+| B2 | 204.759 | 0 | 1 / 47 | 0 | 17260440 | `cee55b5e74257911` `compat=3` |
+
+B1 vs A1 = −8.0 % (outside the 5 % band). B2 vs A2 = +3.9 % (inside). **QUESTION.** Part B was not started.
+
+### Acceptance
+
+**D1** (F3, still required):
+- Different compatible builds share one busy coordinator — `F3 (D1): two compatible builds share one busy coordinator` (pin `compat=3`).
+- Build id is provenance only; hello decides by `kCompatVersion` — `coord_server.cpp` hello; `F3 (D1, pin)`.
+- Exact-build is opt-in `ANNO_TEST_BUDGET_EXACT_BUILD=1` / `kFlagExactBuild=4` — `F3 (D1, exact build)` and F4 case 4 (server alone).
+- Incompatible or exact-build requester waits, bounded infrastructure diagnostic, cancel → `cancelled` — `F3 (D1, incompatible)`, `F3 (D1, exact build)`.
+- Incarnation remains the lost-promise fence — LISTENING line still prints it.
+- Drain / crash handover still count a live journaled promise — `F3 (D1, handover)`, `F3 (D1, crash handover)`.
+
+**D2** (F3, still required):
+- Listening and accepted sockets are close-on-exec — F4 case 5 (`/proc/.../fdinfo` `O_CLOEXEC`).
+- Helper spawn closefrom (meter and client-start) — F4 cases 6 and 7; F3 D2 inode intersection.
+- Windows: `bInheritHandles = FALSE`, non-inheritable sockets — case 7 MESSAGE cites `coord.cpp`.
+- Accepted / no hello is "not ready", retried — `F3 (D1, silent)` (header now says silent accepts and holds).
+- After death the port is free; replacement and client never fail with "speaks another protocol" — `F3 (D2)`.
+
+**E1:**
+- Journaled promise survives two restarts, orphan kept — case 1.
+- Journaled promise survives two restarts, live hold kept — case 2.
+- `kCompatVersion = 3` with the recovery reason — `coord_wire.hpp`, perf note, `F3 (D1, pin)`.
+
+**E2:**
+- One cancel ends every waiter within one connection attempt plus one pause — case 3 (3 s margin).
+
+**F4 list:**
+- E1 both orders: yes (cases 1 and 2).
+- E2 cancel bound: yes (case 3).
+- Every step-4 mutant fails a named case; unmutated pass: yes (A5).
+- A/B no regression **or** numbers as QUESTION: **QUESTION** (table above).
+- Report has build/version per gate, item-by-item acceptance, two-worktree paragraph, F3 corrections: this section.
+- Every gate passes: A8 compile/test/format/lint/ASan/warnings pass; A6 is a QUESTION, not a failed command.
+- Part B: **not started**.
+
+### Two worktrees on one host budget
+
+Same compatibility version: one coordinator, every reservation counts against one host budget, and the logs name the build (`F3 (D1): two compatible builds share one busy coordinator`; every `[anno-test memory] coordinator build=… compat=…` line). A different version: the newcomer is refused while the coordinator is busy, waits with backoff, and takes over once the busy peer is idle (`F3 (D1, incompatible)`, `F3 (D1, exact build)`, drain / crash handover). F4's bump to 3 makes leftover F2/F3 coordinators the "different version" case, so they are refused by version rather than by an accidental id collision.
+
+### F3 corrections (written here; the F3 section is unchanged)
+
+- F3 report item 3 said `silent` never accepts. Item 13 already changed the probe to accept and hold. The probe header now says that.
+- F3 fail-first rows 04 / 05 / 06 were mislabelled. 04 is the drain handover, 05 the crash handover, 06 the D2 meter case.
+
+### Commits
+
+On `codex/T10c-test-memory`, one concern each, PowerShell here-string, `git diff --check` clean, attribution `Co-Authored-By: Cursor Grok 4.6`. Nothing under `game/`, `cache/`, `TASKS.md` or `AGENTS.md`. P1 untouched. No merge, no push.

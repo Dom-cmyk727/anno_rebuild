@@ -668,50 +668,50 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   - **T32.2 — `BGruppen.dat` fields and the house tick (steps 4–5 below) · `DONE` (round bd: re-read — the downgrade target `id − id % 20 − 20`, else `− 19` (`0x1002ce0f..0x1002ce35`); the house tick `0x10076230` calls no city billing slot `+0x88`, it decays the house's own stocks by 127/128 (`0x1007628e..0x100762f8`); **so a house never takes goods from the city store itself: goods arrive by delivery (`0x10076610`) and the store is drawn by billing with `take = 1` from another caller, OQ-186** — T32.3's spec routes consumption that way; OQ-185 still open).** Branch `task/T32-2-house-tick`. Output: `population.md` §12 "The house tick as pseudo-code (T32.2)": which `BGruppen.dat` fields are read and where (the field map: field → `formats::text` name → reader address); the tick every 2 500 ticks in order — consumption from the city store (the formula with its units, 1 t = 256, the rounding), the stock decay, satisfaction and mood (−2 … +2), growth through `VermehrTab`, up- and downgrade (conditions, which building replaces which), and taxes every 2 000 ticks into the player's money — every PRNG draw with its site and condition; each rule D with its address, else open with the next address. Acceptance: the pseudo-code complete or every gap with its next address; the field map; the draw list.
   - **T32.3 — The scenario side and the spec draft (steps 6–8 below; `READY`, round bd; first finish OQ-186: the take is answered (round bd: the market stand, PRODTYPE 161, slot `+0xac` = `0x100702f0`, `take = 1`; chapels, churches, baths, theatres, libraries, pavilions, schools bill without taking); read the remaining path — the walker class behind house slot `+0x118`, who calls the stand's slot `+0xac`, and who calls the house's delivery slot `+0xc0` (`0x10076610`) — because the spec routes consumption city store → stand → walker → house); and test the **owner's rule** recorded in OQ-103 (2026-10-25: the stand is to houses what the market building is to producers — a road connection to a stand plus lying within the range of **any** stand): find the stand's range test and the road requirement in the code and state for each clause whether the code agrees, with addresses).** Branch `task/T32-3-population-spec`. Output: T26's three pure functions (`house_need_stock`, `house_satisfaction`, `house_reset_applies` in `src/sim`) checked against T32.1–T32.2 (read the code, do not change it; list every difference); the new `state.md` section "Population (DRAFT, T32)" (the house payload fields, the group table in the registry, the tick and its place in the city tick, the seams, the stream bump, a synthetic golden G7, the test list, stages P1… each with a proposed acceptance); owner questions for anything that may change the feel, each with the faithful default. Acceptance: the orchestrator can write P1 from the section alone.
   - **T32.4 — The stand → house path and the owner's market-stand rule (`READY`, round be; static RE and docs only; the parallel executor).** Branch `task/T32-4-stand-path` from local `main`. Read `population.md` §11–§13, `state.md` §4.7c, OQ-103 (the owner's rule of 2026-10-25), OQ-186, OQ-187. Steps: (1) **OQ-187, who calls the market stand's slot `+0xac` (`0x100702f0`):** sweep for virtual calls through slot `+0xac` whose receiver is a building of the stand's class (vtable `0x100c8fe0`, constructor `0x10070730`; check the receiver by its origin, not by the slot number alone — slot numbers repeat across classes, and `0x1005ac10` is a search callback, not a stand caller); name the caller and the object it runs on. (2) **The resident walker:** the house tick calls house slot `+0x118` (`population.md` §12, `0x100763e3`); read that slot to its end: what it spawns (figure type, job), where it sends it (which stand; how the stand is chosen — nearest, first in a list, a search with which layer), what it carries back, and who calls the house's delivery slot `+0xc0` (`0x10076610`) with the goods (`0x10057bd0` is named as the figure unload path; confirm). (3) **The range test and the road requirement for houses:** where the code decides that a house may be served by a stand — a radius around the stand (`HEAD` action radius `+0x65`, as for markets), the city's area, a walk search over roads (which walking layer) — each D with its address. (4) **The owner's rule (OQ-103, 2026-10-25)** clause by clause — (a) a road connection between stand and house is required; (b) the house lies within the range of **any** stand, not necessarily the one it is connected to by road — and the same two clauses for producers and market buildings (the market cart's area and road search, `state.md` §5.9 clauses 2 and 5, are decoded): for each, agrees / disagrees / undecided statically, with the addresses, and the exact situation in which code and rule would differ (that is the case for T30b.7's Wine check). (5) Docs: `population.md` §14 "From the stand to the house (T32.4)", OQ-187 and OQ-103 status lines, `state.md` §4.7c's P5 row with what was found, REPORTS T32.4. Acceptance: (1)–(4) each D with addresses or stopped with the next address; no `src/` change; commit on the branch, report the branch and commit.
-  - **T32.5 — The stage mask: where the reached-stage bits live, who writes them, whether they are saved (`READY`, round cv; static RE and docs only; part 3 of the overnight packet).**
-    - **Branch and files:** branch `task/T32-5-stage-mask` from local `main` at the round-cv board commit or later; worktree `E:\anno1503-worktrees\anno1503-T32-5`. Files: `docs/re/population.md` (a new §15), `docs/sim/state.md` §4.7c (one DRAFT paragraph and the P2 row), `docs/open-questions.md` (new OQs from **OQ-460**, to 469), REPORTS. Never `src/`, goldens, `fixtures/`, TASKS.md or AGENTS.md. No build, game run or Wine.
-    - **Why:** P2's house tick decays a need's stock, and counts it as the lowest need, only when the player's reached-stage mask has bit `BauFirst` of the need's good (`population.md` §4 and §12.2; AnnoWelt `0x100762c2`–`0x100762f8`). The rebuild has no stage mask. Where the original's comes from (a file record, a save, or recomputation by the stage unlock `0x10029610`) is unread, and P2's decisions depend on it.
-    - **Steps** (in order; §1 items 7, 11 and 12; each result written into REPORTS before the next step):
-      1. **The read in the house tick** (`0x10076230`–`0x100762f8`). Name each object on the path `city +0x10` → slot `+0x1c` → slot `+0x48(0x21)` by the this-adjustment rule (first table row "this = …, because …"). Say which function slot `+0x48` is and how it maps property `0x21` to storage (a field offset, or a computed value). Then say which dword is tested ("second dword"), and the bit index (`BauFirst` = goods record `+2`).
-      2. **Every writer of that storage.** The constructor's initial value (player constructor `0x10021600..0x10021836`, `players.md`); the property setter (a case `0x21`, if any, near `0x1001be0d`); the stage unlock's OR into the player (`0x10029610`, `population.md` §7); and every other site found by `tools/xref.py` (the field offset by the code sweep, the function by `--reloc`). For each, give the address, the condition and the value.
-      3. **The city mask `+0x618`:** its constructor value, every writer, and every reader. Confirm that the house tick reads the player's mask, not the city's.
-      4. **Saved or derived, for both masks:**
-         - Does a save path write the value? Check the player's save, the city save `0x1002ebb0`–`0x1002f264` (sweep it for `+0x618`) and the world save `0x100ae700`. Does a load path read it back? Check the `SPIELER` reader through player slot `+0x54` (`players.md`, "World reader → player") and the city load.
-         - If saved: name the record and field (chunk, offset, width), and check them against the shipped scenarios with our readers. Report counts and value histograms only; nothing from the files goes into git.
-         - If not saved: give its value after a load, and how many ticks a loaded scenario's mask needs to catch up.
-      5. **The stage unlock `0x10029610`, for the spec:**
-         - the 2500-tick gate (the 16-bit difference, its `last` field and the update);
-         - the loop over stages 0..30, through counter slot 8 and the `[BAUSTUFEN]` record (`+0` group, `+2` count);
-         - the "low 23 bits numerically below" comparison and the OR;
-         - the announcement: is there any sim-side effect or PRNG draw, or is it UI only?
-
-         Each item D with its address, or the next address.
-      6. **The answer table.** One row per mask (player property `0x21`, city `+0x618`), with the columns: object and offset; width; initial value; writers; saved (yes or no, with the address); value after loading a shipped scenario; state or derived in the rebuild. Use T32.1's rule: what the original keeps and saves is state, and what it recomputes is derived.
-      7. **The DRAFT paragraph "Stage mask (T32.5)"** in `state.md` §4.7c. It covers:
-         - the field or fields the rebuild needs, and where they are loaded;
-         - how P2 tests the bit;
-         - how, and in which stage, the stage unlock updates the mask;
-         - the stream impact (a new field, and which scope);
-         - each owner question, with its faithful default stated.
-
-         Update the §4.7c P2 row so that it names the mask dependency.
-      8. **Docs, report and commits.**
-         - Write `population.md` §15: D with addresses and the address ranges read, never disassembly text or bytes.
-         - Open OQs from OQ-460 for whatever stays open.
-         - Write REPORTS `## T32.5 — The stage mask — <date> — status: …` with "Decisions and reasoning" and the acceptance item by item.
-         - Commit one concern at a time (RE notes; the DRAFT; the OQs), then stop.
-      9. **Only after steps 1–8:**
-         - (a) OQ-185, who dispatches house Save slot `+0x80` on a world save: read world save `0x100ae700` and its building-list walk for `call [reg+0x80]`.
-         - (b) Which code sets house flag bits 4/5 (`+0x0c & 0x30`, the forced bad mood); start at the city events `0x1002ba80`.
-
-         Each is D with addresses, or the next address. Put each in its own subsection of the T32.5 report, with its own commit.
-    - **Acceptance:**
-      - step 6's table, D per row or the next address;
-      - the DRAFT paragraph, complete enough for the orchestrator to write P2's stage-mask decision;
-      - every claim with module, address and the range read;
-      - no disassembly text and no bytes of the original;
-      - report and commits; not merged.
   - **P1 — The house payload, the registry groups, Load/Save (superseded in round cm by the `#### P1` entry in the LAN lane, which is the binding text; was `READY after T33.4`, round be; `src/sim`, stream change; the main executor after T33.4).** Written from `state.md` §4.7c's P1 row, its test list and its stream bump (the next free `kStateHashVersion` after T33.4's 112). The orchestrator writes the full step list when T33.4 is merged. Owner decisions of 2026-10-25 (round be): question 1, the catch-up after a load, stays faithful (`last` not saved); question 3, the billed goods, are saved, as a `Rules` option `save_billed_goods` with default `true` (`false` = the original) — P4. The other five questions take their stated faithful defaults.
+- **T32.5 — The stage mask: where the reached-stage bits live, who writes them, whether they are saved (`READY`, round cv; static RE and docs only; part 3 of the overnight packet).**
+  - **Branch and files:** branch `task/T32-5-stage-mask` from local `main` at the round-cv board commit or later; worktree `E:\anno1503-worktrees\anno1503-T32-5`. Files: `docs/re/population.md` (a new §15), `docs/sim/state.md` §4.7c (one DRAFT paragraph and the P2 row), `docs/open-questions.md` (new OQs from **OQ-460**, to 469), REPORTS. Never `src/`, goldens, `fixtures/`, TASKS.md or AGENTS.md. No build, game run or Wine.
+  - **Why:** P2's house tick decays a need's stock, and counts it as the lowest need, only when the player's reached-stage mask has bit `BauFirst` of the need's good (`population.md` §4 and §12.2; AnnoWelt `0x100762c2`–`0x100762f8`). The rebuild has no stage mask. Where the original's comes from (a file record, a save, or recomputation by the stage unlock `0x10029610`) is unread, and P2's decisions depend on it.
+  - **Steps** (in order; §1 items 7, 11 and 12; each result written into REPORTS before the next step):
+    1. **The read in the house tick** (`0x10076230`–`0x100762f8`). Name each object on the path `city +0x10` → slot `+0x1c` → slot `+0x48(0x21)` by the this-adjustment rule (first table row "this = …, because …"). Say which function slot `+0x48` is and how it maps property `0x21` to storage (a field offset, or a computed value). Then say which dword is tested ("second dword"), and the bit index (`BauFirst` = goods record `+2`).
+    2. **Every writer of that storage.** The constructor's initial value (player constructor `0x10021600..0x10021836`, `players.md`); the property setter (a case `0x21`, if any, near `0x1001be0d`); the stage unlock's OR into the player (`0x10029610`, `population.md` §7); and every other site found by `tools/xref.py` (the field offset by the code sweep, the function by `--reloc`). For each, give the address, the condition and the value.
+    3. **The city mask `+0x618`:** its constructor value, every writer, and every reader. Confirm that the house tick reads the player's mask, not the city's.
+    4. **Saved or derived, for both masks:**
+       - Does a save path write the value? Check the player's save, the city save `0x1002ebb0`–`0x1002f264` (sweep it for `+0x618`) and the world save `0x100ae700`. Does a load path read it back? Check the `SPIELER` reader through player slot `+0x54` (`players.md`, "World reader → player") and the city load.
+       - If saved: name the record and field (chunk, offset, width), and check them against the shipped scenarios with our readers. Report counts and value histograms only; nothing from the files goes into git.
+       - If not saved: give its value after a load, and how many ticks a loaded scenario's mask needs to catch up.
+    5. **The stage unlock `0x10029610`, for the spec:**
+       - the 2500-tick gate (the 16-bit difference, its `last` field and the update);
+       - the loop over stages 0..30, through counter slot 8 and the `[BAUSTUFEN]` record (`+0` group, `+2` count);
+       - the "low 23 bits numerically below" comparison and the OR;
+       - the announcement: is there any sim-side effect or PRNG draw, or is it UI only?
+
+       Each item D with its address, or the next address.
+    6. **The answer table.** One row per mask (player property `0x21`, city `+0x618`), with the columns: object and offset; width; initial value; writers; saved (yes or no, with the address); value after loading a shipped scenario; state or derived in the rebuild. Use T32.1's rule: what the original keeps and saves is state, and what it recomputes is derived.
+    7. **The DRAFT paragraph "Stage mask (T32.5)"** in `state.md` §4.7c. It covers:
+       - the field or fields the rebuild needs, and where they are loaded;
+       - how P2 tests the bit;
+       - how, and in which stage, the stage unlock updates the mask;
+       - the stream impact (a new field, and which scope);
+       - each owner question, with its faithful default stated.
+
+       Update the §4.7c P2 row so that it names the mask dependency.
+    8. **Docs, report and commits.**
+       - Write `population.md` §15: D with addresses and the address ranges read, never disassembly text or bytes.
+       - Open OQs from OQ-460 for whatever stays open.
+       - Write REPORTS `## T32.5 — The stage mask — <date> — status: …` with "Decisions and reasoning" and the acceptance item by item.
+       - Commit one concern at a time (RE notes; the DRAFT; the OQs), then stop.
+    9. **Only after steps 1–8:**
+       - (a) OQ-185, who dispatches house Save slot `+0x80` on a world save: read world save `0x100ae700` and its building-list walk for `call [reg+0x80]`.
+       - (b) Which code sets house flag bits 4/5 (`+0x0c & 0x30`, the forced bad mood); start at the city events `0x1002ba80`.
+
+       Each is D with addresses, or the next address. Put each in its own subsection of the T32.5 report, with its own commit.
+  - **Acceptance:**
+    - step 6's table, D per row or the next address;
+    - the DRAFT paragraph, complete enough for the orchestrator to write P2's stage-mask decision;
+    - every claim with module, address and the range read;
+    - no disassembly text and no bytes of the original;
+    - report and commits; not merged.
 - **The original step list (reference for the sub-tasks):**
 - **Why (unchanged):** a house is the `Inert` payload, nothing consumes, and the files' residents are dropped (T26: `single36` 388 houses, 2 283 residents). Population is the next subsystem in PLAN M3's order after transport, and T26's pure functions (`house_need_stock`, `house_satisfaction`, `house_reset_applies`) wait for it. The owner on OQ-165: "maybe both", settled from the original's files.
 - **Steps (in order; §1 item 7):**

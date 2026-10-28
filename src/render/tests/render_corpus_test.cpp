@@ -48,6 +48,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -103,21 +104,38 @@ const char* style_name(render::WaterStyle s) {
 std::vector<std::string>
 digest_lines(const std::filesystem::path& dir, const std::vector<std::string_view>& only = {},
              render::RiverFlowMode river_flow = render::RiverFlowMode::Flow) {
-    const auto felder_buf = anno::test::read_file(dir / "Textures" / "Felder.tex");
-    const auto anl_buf = anno::test::read_file(dir / "Anlagen.dat");
-    const auto hbuf = anno::test::read_file(dir / "FigurenHeader.dat");
-    const auto header = fig::FigurenHeader::parse(hbuf).value();
-    std::vector<std::vector<std::uint8_t>> vols(3);
-    for (std::uint32_t g = 0; g < 3; ++g) {
-        for (std::uint32_t part = 0;; ++part) {
-            const auto p = dir / fig::volume_file_name(g, part);
-            if (!std::filesystem::exists(p)) {
-                break;
+    // Felder, Anlagen and the figure volumes are hundreds of megabytes. Loaded
+    // on the way into the test, four heavy processes pin them before any
+    // picture is admitted and the full map no longer fits. Load them once,
+    // after this process holds a reservation.
+    struct Catalog {
+        std::vector<std::uint8_t> felder_buf;
+        std::vector<std::uint8_t> anl_buf;
+        std::optional<fig::FigurenHeader> header;
+        std::vector<std::vector<std::uint8_t>> vols{3};
+    };
+    std::shared_ptr<Catalog> catalog;
+    std::once_flag catalog_once;
+    auto ensure_catalog = [&]() {
+        std::call_once(catalog_once, [&] {
+            auto loaded = std::make_shared<Catalog>();
+            loaded->felder_buf = anno::test::read_file(dir / "Textures" / "Felder.tex");
+            loaded->anl_buf = anno::test::read_file(dir / "Anlagen.dat");
+            const auto hbuf = anno::test::read_file(dir / "FigurenHeader.dat");
+            loaded->header = fig::FigurenHeader::parse(hbuf).value();
+            for (std::uint32_t g = 0; g < 3; ++g) {
+                for (std::uint32_t part = 0;; ++part) {
+                    const auto path = dir / fig::volume_file_name(g, part);
+                    if (!std::filesystem::exists(path)) {
+                        break;
+                    }
+                    const auto data = anno::test::read_file(path);
+                    loaded->vols[g].insert(loaded->vols[g].end(), data.begin(), data.end());
+                }
             }
-            const auto d = anno::test::read_file(p);
-            vols[g].insert(vols[g].end(), d.begin(), d.end());
-        }
-    }
+            catalog = std::move(loaded);
+        });
+    };
     auto files = anno::test::files_with_ext(dir / "Scenes" / "0200Single", "sze");
     files.push_back(dir / "Scenes" / "Islands" / "Nord" / "N_064x064_0001_0B.scp");
     if (!only.empty()) {
@@ -179,12 +197,13 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
                 return hold;
             };
             auto picture = reserve_picture(pixels);
+            ensure_catalog();
             auto render_cpu = anno::test::Budget::process().acquire_cpu();
             std::unique_ptr<render::Scene> scene;
             auto build_scene = [&]() {
                 auto islands = anno::formats::insel::islands(buf).value();
-                auto anlagen = anno::formats::anlagen::AnlagenFile::parse(anl_buf).value();
-                const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
+                auto anlagen = anno::formats::anlagen::AnlagenFile::parse(catalog->anl_buf).value();
+                const auto felder = anno::formats::tex::TexFile::parse(catalog->felder_buf).value();
                 auto textures = anno::assets::island::GroundTextures::load(felder).value();
                 if (const auto c = render::water_colour(anlagen)) {
                     textures.set_water(*c);
@@ -193,8 +212,9 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
                                                         std::move(anlagen), render::kHeightLift);
                 if (auto s = anno::formats::sze::Scene::parse(buf)) {
                     const anno::assets::unit::VolumeReader read =
-                        [&vols](std::uint32_t g, std::uint64_t o,
-                                std::uint64_t l) -> std::optional<std::vector<std::uint8_t>> {
+                        [&](std::uint32_t g, std::uint64_t o,
+                            std::uint64_t l) -> std::optional<std::vector<std::uint8_t>> {
+                        const auto& vols = catalog->vols;
                         if (g >= vols.size() || o + l > vols[g].size()) {
                             return std::nullopt;
                         }
@@ -204,7 +224,7 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
                     const std::array kinds = {anno::assets::unit::UnitKind::Ship,
                                               anno::assets::unit::UnitKind::Soldier};
                     auto units = anno::assets::unit::units(
-                                     s.value(), header, kinds,
+                                     s.value(), *catalog->header, kinds,
                                      anno::assets::figure::kOriginalPlayerColours, read)
                                      .value();
                     for (auto& u : units.units) {
@@ -243,6 +263,7 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
                     render_cpu.release();
                     pixels = actual;
                     picture = reserve_picture(pixels);
+                    ensure_catalog();
                     render_cpu = anno::test::Budget::process().acquire_cpu();
                     build_scene();
                 }

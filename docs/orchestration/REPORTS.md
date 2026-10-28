@@ -5130,3 +5130,78 @@ Reviewed exact clean T58 F2 head `138fddddc6d56cc0119a504f944159e079ea9d45` (on 
 **T59:** fresh reads of `AnnoWelt.dll` `0x100a3850..0x100a38b3` and `CompLogic.dll` `0x1003edf0..0x1003ee78` confirm every F2 correction. One phrase remains: "`edi` is dereferenced at `0x1003ee14`" (wording from the round-ci board). That instruction is `mov eax, [ebx]` with `ebx = edi + 0xb04`, and `edi` at `0x1003ee6b` depends on the calls `0x10059c6f` and `0x10056530` preserving it.
 
 Original bytes and disassembly are not committed. No C++, live-link or original-runtime gates were needed or claimed.
+
+
+## T59 — Type-12 word-2 arm: target object and helper effects — 2026-10-27 — status: FINISHED (static RE/docs only)
+
+**Branch / base:** `codex/T59-ai-word2-target-effects`, from main `3078e0765a2dd642dd79244fc878925cc26929e0` (it does not contain T58's commit). Not merged, not pushed. No `TASKS.md`/`AGENTS.md` edit, no ADR change, no code change, nothing from `game/` copied (addresses and field names only). OQ-341 untouched and not reopened.
+
+**Changed:** `docs/re/complogic.md` (new §11 subsection "T59 (round cg, 2026-10-27)"), `docs/open-questions.md` (OQ-340: status and "What T59 added"), this report. Scratch listings stayed in this worktree's ignored `cache/`.
+
+**Proved (details with addresses in the subsection):**
+- `0x1000bdc0` is a read-only filter over the AI object's pool `[AI + 0xb04 + 4i]`, count `[AI + 0xba8]`: first entry with `[+0x64]` in `0xa..0xc`. The entries are AI-owned 0x78-byte targets (pool of 40; added by type-12 vtable slot `+0x98` = `0x1003edf0`; constructor `0x10056530`; `[target + 0x68] = &[AI + 4]` at `0x1003ee71`..`0x1003ee7a`). The arm's compare is a **byte** compare of `[R + 0x14]` with `[target + 0x5c]`.
+- `0x10056bb0` and `0x10056b40` both resolve `[target + 0x68]` → world → world slot `+0xa0` (`AnnoWelt.dll` `0x100a34d0` = `[world + 0x114]`, X) → X slot `+8` (`0x100980a0`: 16-byte record `[target + 0]` in `[X + 0x14]`, field `+0xc`, no bounds check) = Y. If Y is non-null: `Y.slot(+0xdc)()` then `[target + 0x14] = 1` (`0x10056bb0`); `[target + 0x64] = arg` always, then `Y.slot(+0x4c)(0x2b, &buffer)` with a packed dword (`0x10056b40`, arg `0xb` from the arm). Null Y: no further call or write.
+- `0x10006340` (args: target pointer unread; byte `1`): finds or creates the key-1 node in `[AI + 0x9a0]` (`0x188` bytes, creation via `0x100037f0` with `(0, 1, 2, 0, 0, 0)`, AI vtable `+0x54` = `0x1003f070` read-only), zeroes node `+0x38..+0x187`, stores `[AI + 0x9b0]` at `+0x38`, returns 1; sets `[AI + 0x1a8a] = 1` only on creation; its only world interaction is the key `0x23` property read.
+- Ledger table (receiver / stack arguments / cleanup / effect) and the AI-side vs world/command/PRNG split are in §7 of the subsection; no PRNG call and no command enqueue was seen in the five bodies read.
+
+**Exact unresolved boundaries:** the class of Y and its slots `+0xdc` and `+0x4c` (they run on an object found through `[world + 0x114]` and may write outside the AI node); the writers of the record array `[X + 0x14]`; the thirteen `call [reg + 0x98]` sites and the source of `[target + 0]`, `[target + 0x5c]`; `0x10057670`; whether the vtable boundary of `0x100ccd74` (25 slots) is as inferred. Consequently: no record-preservation claim, no world-purity claim, no live-index claim, no statement that Y is always (non-)null.
+
+**Independent re-read** of the decisive instructions (compare, call order and arguments, the two `0xff` stores at `0x10005166`/`0x10005169`, both helper bodies, `0x1000bdc0`, `0x100980a0`, `0x100a34d0`, `0x10006340` pushes, the frame offsets of `0x100037f0`, the `0x1003f070` jump table) is recorded in §8 of the subsection. `git diff --check` clean.
+
+Nothing pushed; stopping for review.
+
+
+## T59 F1 — Operand widths, null-Y effects, call address, provenance boundaries, OQ-341 status — 2026-10-27 — status: FINISHED (static RE/docs only)
+
+**Branch / base:** continues `codex/T59-ai-word2-target-effects` from `e9997f401cf79abc8b923e9664be5a8c27fef641`; main was not merged or rebased in. The T59 report above is kept as written; this section corrects it. Docs only: `docs/re/complogic.md` (§11 T59), `docs/open-questions.md` (OQ-340), this report. No original bytes or listings committed; no source, ADR, `TASKS.md` or `AGENTS.md` edit.
+
+**Corrections to the previous T59 report and subsection**
+1. *Packed value of `0x10056b40`.* The previous text wrote the three terms as bytes. The instructions at `0x10056b6b`..`0x10056b87` are: `edx = u32(u8[+0x5f])`, `ecx = u32(u8[+0x5e])`, `edx = (edx << 8) + ecx`, `ecx = u32[+0x60]` (**dword**, `mov ecx, [esi + 0x60]` at `0x10056b7a`), `edx = (edx << 8) | ecx`, `ecx = u32(u8[+0x64])`, `edx |= ecx`. Value: `(((u32(u8[+0x5f]) << 8) + u32(u8[+0x5e])) << 8) | u32[+0x60] | u32(u8[+0x64])`. The dword keeps all 32 bits, its bits 8..31 overlap the shifted bytes, and nothing assumes its upper bits are zero. The text now says so and names `+0x60` as a dword wherever it is cited.
+2. *Null Y.* `0x10056b40` stores `[target + 0x64]` at `0x10056b50` **before** the lookup, so the state byte is written whether or not Y is null; `je 0x10056b9b` (`0x10056b69`) skips only the packing and the `Y.slot(+0x4c)` call. `0x10056bb0` skips its `Y.slot(+0xdc)` call and its `[target + 0x14] = 1` store when Y is null (`je 0x10056bdf`) and has no other store. The earlier "none if Y is null" and "no write if null" summaries (ledger table and OQ-340) are replaced by these two distinct statements.
+3. *Call address.* The call to `0x10006340` is the instruction at **`0x10005176`** (after `push 1` at `0x10005171`, `push edi` at `0x10005173`, `mov ecx, esi` at `0x10005174`); `0x10005177` was an interior byte. Fixed in the ledger, §8 and OQ-340.
+4. *Provenance.* The publisher `0x1003edf0` calls `0x10057670` (`0x1003ee7d`) and then `0x10057830` when `[target + 0x75]` is non-zero (`0x1003ee8b`) or `0x100579e0` (`0x1003ee92`) **before** copying `+0x18`/`+0x1c` to `+0x50`/`+0x54` and storing the pointer at `0x1003eea3`; the previous summary omitted the second and third call. None of the three was read, so every statement about target-field values at the time of the arm is now explicitly conditional on them and on later writers; only the constructor values, the publisher's own stores and the arm's stores are claimed.
+5. *Writers of `[world + 0x114]`.* The previous text called `0x100aaa15` the only non-null store. It is the one non-null store that a displacement sweep for `mov`/`lea` stores found; indexed, block-copy and callee-written forms are not excluded, so no "only writer" claim remains. The reviewer's seeds were read: `0x100a38a7` is in the world destructor body `0x100a3850` (called from the deleting destructor `0x100a3960`), and `ebp` was zeroed at `0x100a385a` and is only compared in between, so it stores 0 (conditional on the callees preserving `ebp`); `0x100a3a6f` is in a field-initializing function in which `ebx` was zeroed at `0x100a3995` and is used only as a source (conditional on the callees preserving `ebx`), so it stores 0. `0x100af311` stores the constant 0 (its function unread); `0x10023893` is a word store through another base (unread).
+6. *OQ-341.* The subsection said the ledger "stays closed". Replaced by: unchanged and outside this task's scope (open and narrowed on main); this work neither closes nor reopens it.
+
+**Re-read in this pass:** `0x10056b6b`..`0x10056ba2` (widths, jump target, `ret 4`), `0x1000516c`..`0x1000517f`, `0x1003ee7d`..`0x1003eea3`, and the AnnoWelt anchors `0x100a385a`/`0x100a38a7` and `0x100a3995`/`0x100a3a6f`, each from the module again (the disassembly helper's second argument is a byte count; earlier short reads were extended).
+
+**Still unresolved (unchanged):** the class of Y and its slots `+0xdc` and `+0x4c`; the writers of the record table `[X + 0x14]`; the callers of the type-12 slot `+0x98` and the source of `[target + 0]` / `[target + 0x5c]`; the bodies of `0x10057670`, `0x10057830`, `0x100579e0`; the function of `0x100af311`. No record-preservation, world-purity or live-index claim is made.
+
+**Acceptance:** all operand widths and null-path effects agree with the instructions (yes); call-site address correct (yes); provenance claims stop at the unread calls and writers (yes); OQ-341 status consistent (yes); the report separates the original claims from the corrections (yes). `git diff --check` clean. Nothing pushed; stopping for review.
+
+
+## T59 F2 — Zero-store conditions, class labels, conditional Y, unread links — 2026-10-27 — status: FINISHED (static RE/docs only)
+
+**Head:** continues `codex/T59-ai-word2-target-effects` from `ec6b28364f233db5f23bd558be8aa1171c9cc83a` (start check: clean, that head); the commit carrying this section is the new head. Main (`814d7c6`) was not merged or rebased in; the board was read in the main checkout. Only the T59 subsection of `docs/re/complogic.md` and this report changed (OQ-340 contains none of the corrected wording, so it is unchanged). The earlier T59 and T59 F1 sections are kept as written. No bytes or listings committed; no board or ADR edit. Prompt and board agree.
+
+**Re-read in this pass:** `AnnoWelt.dll` `0x100a3850..0x100a38b3` (including the stores at `0x100a385e`, `0x100a386d`, `0x100a38a7`), the vtable store `0x100a39c9`, the dwords at `+0x48` / `+0xa0` of vtables `0x100cc92c` and `0x100ccdd8`; `CompLogic.dll` `0x1003ee0a..0x1003ee7a`.
+
+**Items corrected**
+1. *`0x100a38a7`.* All three calls between `xor ebp, ebp` (`0x100a385a`) and the store are named: `0x100a386a` (`call [eax + 0x1c]`), `0x100a3889` (`call 0x100a2840`) and `0x100a38a4` (`call [edx + 0x5c]`); the stored value is 0 only if all three preserve `ebp`. "Only compared" is replaced by what `ebp` does: comparison operand at `0x100a385c`, `0x100a3882`, `0x100a389a` and store source at `0x100a386d`.
+2. *Class labels.* `0x100a3850` (stores vtable `0x100cc92c` at `0x100a385e`) is now "the destructor of the class whose vtable is `0x100cc92c`", and the function containing `0x100a3a6f` (stores the same vtable at `0x100a39c9`) "the initializer that stores vtable `0x100cc92c`". `0x100cc92c` and the world vtable `0x100ccdd8` share slot `+0xa0` (`0x100a34d0`) and differ at `+0x48` (`0x10001050` against `0x100aeeb0`); a base-class relation is plausible and unproved. The "world destructor" / "field-initializing function" labels are gone; the `[AI + 4]` receiver is described as the object that `0x1003d240` also uses and earlier sections call the world.
+3. *§3 Y.* "So Y = …" is now conditional: if X is the `0x100ccd74` object stored at `0x100aaa15` (the only non-null store the sweep found; other writers not excluded).
+4. *§9 unread links.* Added `0x10057830`, `0x100579e0` and the function containing `0x100af311`.
+5. *Optional nit (done).* The `[target + 0x68]` store is the null-tested pointer adjustment `AI + 4` (`0x1003ee6b`, `0x1003ee71`, `0x1003ee76`, store `0x1003ee7a`); the null arm is unreachable because `edi` is dereferenced at `0x1003ee14`; `+4` is no longer called a "world field". The §8 re-read list names this pass's ranges.
+
+**Acceptance, item by item:** zero-store conditions name every intervening call (yes); class labels match the vtable evidence (yes); the Y conclusion is conditional on the X writer (yes); the unread links are complete (yes); F1 history kept (yes); no other text changed (`git diff` is 5 lines of the subsection). `git diff --check` clean.
+
+**Open (unchanged):** Y's class and slots `+0xdc` / `+0x4c`; writers of `[X + 0x14]`; callers of slot `+0x98` and the source of `[target + 0]` / `[target + 0x5c]`; the bodies of `0x10057670`, `0x10057830`, `0x100579e0`; the function containing `0x100af311`; the base relation between vtables `0x100cc92c` and `0x100ccdd8`; OQ-341 unchanged and outside scope. Stopping for review.
+
+
+## T59 F3 — Null-arm condition at 0x1003ee14 — 2026-10-28 — status: FINISHED (static RE/docs only)
+
+**Head:** continues `codex/T59-ai-word2-target-effects` from `1c631af71fd6fba75016748656342ed49b73ceab` (start check: clean, that head); the commit that carries this section is the new head. Main (`2496686`, round cj) was not merged or rebased in. Earlier T59 sections are kept as written. Only `docs/re/complogic.md` (§11 T59, item 1, one phrase) and this report changed; no original bytes or listings committed.
+
+**Difference between prompt and board:** none.
+
+**Where the imprecision came from:** the round-ci board wording ("the null arm is unreachable because `edi` is dereferenced at `0x1003ee14`"), which my F2 text took over for the optional nit. The instruction at `0x1003ee14` is `mov eax, [ebx]`, not a dereference of `edi`; and `edi` at `0x1003ee6b` equals the entry `this` only if the calls in between preserve it.
+
+**Re-read in this pass (`CompLogic.dll`):** `0x1003ee0a..0x1003ee16` (`mov edi, ecx` at `0x1003ee0a`; `xor ebp, ebp`; `lea ebx, [edi + 0xb04]` at `0x1003ee0e`; `mov eax, [ebx]` at `0x1003ee14`; `xor esi, esi` at `0x1003ee16`) and `0x1003ee67..0x1003ee78` (`mov eax, [esp + 0x24]`; `test edi, edi` at `0x1003ee6b`; `mov [esi], eax` at `0x1003ee6d`; `je 0x1003ee76` at `0x1003ee6f`; `lea eax, [edi + 4]` at `0x1003ee71`; `jmp 0x1003ee78`; `xor eax, eax` at `0x1003ee76`). Not read, as the board says: `0x10059c6f` and `0x10056530`.
+
+**Corrected sentence (item 1):** "a null AI would already fault at `0x1003ee14` (`mov eax, [ebx]`, with `ebx = edi + 0xb04` from the `lea` at `0x1003ee0e`), so the null arm at `0x1003ee76` is not taken, provided the calls `0x10059c6f` and `0x10056530` preserve `edi` (callee-saved behaviour, not read);" It replaces "the null arm is unreachable here because `edi` is dereferenced at `0x1003ee14`;". The rest of item 1 is unchanged.
+
+**Acceptance:** the sentence names the instruction actually at `0x1003ee14` and the callee-saved condition (yes); no other text changes (`git diff` is one line of `docs/re/complogic.md`) (yes); the F1/F2 history is kept (yes). `git diff --check` clean. Nothing pushed; stopping for review.
+
+## Orchestrator integration — round ck — 2026-10-28
+
+Integrated T59 (`codex/T59-ai-word2-target-effects`, exact head `51fda008175d0d07eb41b25e0b84b692b4c7a179`, commits `e9997f4`, `ec6b283`, `1c631af`, `51fda00` on base `3078e07`) into local main as one docs commit: the T59 subsection of `docs/re/complogic.md` §11, the OQ-340 status/"What T59 added" text, and the four T59 report sections above (copied from the branch as written). Main had not changed `docs/re/complogic.md` or `docs/open-questions.md` since `3078e07`, so the branch diff applied unchanged. Before integrating, the orchestrator re-read `CompLogic.dll` `0x1003edf0..0x1003ee78` and `AnnoWelt.dll` `0x100a3850..0x100a38b3`, which confirm the F3 sentence and the F2 corrections. Static RE/docs only; no original bytes or listings committed; no C++ or runtime gates apply. T58 is not integrated (F4 queued). Nothing pushed.

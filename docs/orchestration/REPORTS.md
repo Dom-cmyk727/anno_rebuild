@@ -5499,3 +5499,20 @@ Reviewed exact clean T58 F3 head `dd897b4c358883da59ada43914a2cc6b16e37290` (on 
 **Not done:** no C++, live-link or original-runtime gates were needed or claimed. ADR 0003 stays Proposed.
 
 **Next lane (round cm board):** P1, population stage 1 (the `#### P1` entry in TASKS §3), written from `state.md` §4.7c with ten orchestrator decisions. The decisions correct the draft where it is stale (`PayloadTag::House` is 7, the stream version goes from 114 to 115) or self-contradictory: the own save is exact while the original's record is only imported, G7's growth asserts belong to P2, and the reset on import is warned, not drawn. The code anchors were mapped by a read-only subagent and spot-checked against the files: the class-table row, `kPayloadTags`, the loader's house branch, `payload_for_tick` / `check_consistency` and `tick_building`.
+
+## Orchestrator review — round cs — 2026-10-28
+
+**Scope:** T10c F2, `43cd10f086eb6907373608c054c7598385393605` (code `c95f819`) on `af8aa01`, stacked on unchanged P1 `416993fa`. Not merged. No task-branch edits, push or executor dispatch. The pre-existing untracked AGENTS.md is preserved. The full suites were not rerun, because the owner was using the PC. The executor's saved logs were inspected instead: with game 1080/1080, without game 1080/1080, GCC/Clang clean, and nine mutants caught (M2 after its case was strengthened; M1 by a hang).
+
+**Independent probes** (ignored `cache/orch-cs/`):
+- The round-cr probe and a new two-build compatibility probe were rebuilt from the F2 sources under WSL GCC ASan/UBSan, on isolated ports and journals. The drivers stopped only their own processes, and no sanitizer diagnostic appeared.
+- **C1 fixed:** a temporary shortage waits and ends with `wait deadline`; the stale reading after a release is not admitted (`available=0`).
+- **C2 fixed:** a waiter gets `coordinator lost` at once.
+- **C3 fixed:** the replacement recovers `orphans=1`, the new request waits, and it is admitted when the old owner exits.
+- **C4:** the calibration method (5 ms samples against `PeakPagefileUsage`) and its margin (worst 0.763) are accepted.
+
+**Defects (F3):**
+- **D1:** a build-id mismatch rejects a compatible client. Probe E's client of build C5 throws at once against a busy coordinator of build B0, with the same protocol. The round-cr clarification `e4f1685` is not implemented, and its three regressions are absent.
+- **D2:** the listening socket is inherited by the `powershell.exe` meter child. `ss` shows it held as fd 3 after the coordinator dies. A replacement gets `BIND-FAILED`, and a client dies with "speaks another protocol" for about 1 s.
+
+**Owner input:** the `FC27` memory pressure in the executor's report was the owner's own application, so the wait without admission was correct. A new standing rule, board §1 item 12: prompts are more precise, the executor checks against the original files rather than guessing, and REPORTS carries a "Decisions and reasoning" list.

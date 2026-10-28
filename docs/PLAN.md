@@ -328,7 +328,19 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 
 **Historical status 2026-10-26 (round bj; superseded by round bq below):** **T33 is done** (T33.1–T33.4 merged locally, T33.4 as `acd45cd`; GitHub is suspended, so `main` is unpushed). The market cart and the workshop carrier find sources by the original's decoded walk rule, and every tile stores the original's walk code and mask (stream 112). Open: OQ-200 (water), OQ-170 (coast), OQ-201 (cleared footprint, narrowed), OQ-203..205 (tile-record bits). T33.5 stage 1 (the original's tile record, `transport.md` §3.4.17) merged as `d30d20b` (round bk); OQ-202 answered: growth leaves the walk record as placement wrote it. Live lane: T33.5 stage 2 (the tile layer as the original's record, the main executor); T30b.5–7 (the Wine validation, the orchestrator); P1 (population, from `state.md` §4.7c).
 
-**Orchestration (2026-10-28, round cr; current):** T10c F1 head `af8aa01` reviewed; F2 is IN PROGRESS on its existing branch above unchanged P1 `416993fa`. Coordinator build provenance must not unnecessarily exclude compatible concurrent worktrees; TASKS F2 step 3 clarifies compatibility, exact-build validation and safe handover. T58/T59 integration and their documented open points are unchanged.
+**Orchestration (2026-10-28, round cs; current):** T10c F2 (`43cd10f`, code `c95f819`) is reviewed. C1–C4 are fixed and independently verified:
+- coherent admission: temporary shortage waits, and stale readings are refused;
+- bounded coordinator loss;
+- journal-fenced replacement;
+- the corpus calibrated on its own path; with game files 1080/1080; four budgeted workers 30 % faster than one.
+
+F3 is required for two defects:
+- the coordinator build id is used as an exclusion rule against the round-cr clarification, so a compatible client of another build fails against a busy coordinator;
+- the WSL coordinator's listening socket leaks into its PowerShell meter child, so a replacement cannot bind and clients fail for about a second after a coordinator dies.
+
+P1 `416993fa` stays BLOCKED until T10c is accepted; then both integrate. Owner instruction: executor prompts are more precise, and the executor checks the original files rather than guessing and records its decisions (board §1 item 12). Nothing merged or pushed.
+
+**Historical orchestration (2026-10-28, round cr):** T10c F1 head `af8aa01` reviewed; F2 is IN PROGRESS on its existing branch above unchanged P1 `416993fa`. Coordinator build provenance must not unnecessarily exclude compatible concurrent worktrees; TASKS F2 step 3 clarifies compatibility, exact-build validation and safe handover. T58/T59 integration and their documented open points are unchanged.
 - **P1 remains unaccepted:** combined F1 Windows CTest is 1061 passed / 6 capacity refusals with game files, 1067/1067 without (two named replay skips). Saved WSL sanitizer logs cover budget 20/20, sim without game 664/664, the later scenario-corpus rerun, and synthetic renderer equality. Heavy render ASan remains unrun. Main stays at state stream 114.
 - **T10c needs corrected admission and recovery:** independent small real-client probes reproduce a grant using stale free memory, temporary pressure classified as permanent capacity, a waiter hanging after coordinator death, and a replacement forgetting live reservations. See TASKS round cr C1-C4 and F2 acceptance. Buffer reductions and equivalence tests remain useful; the earlier 297.646-to-246.1-second speedup is historical, because F1's one-worker successor was refused before rendering.
 - **Policy unchanged:** useful concurrency within a shared memory/CPU budget; no blanket one-heavy-job restriction. The executor fixes, validates and reports the combined head; the orchestrator reviews before integration. No merge or push. ADRs remain Proposed; P2, T34 stage 2, T-AI.4 and production networking stay later. Other lanes are unchanged; no gameplay milestone is complete.

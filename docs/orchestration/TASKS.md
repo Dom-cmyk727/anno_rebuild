@@ -4,7 +4,38 @@
 
 **Round bp (2026-10-26, owner instruction):** for every task after the one an executor has in progress now, **subagents are allowed again where necessary and helpful**. §1 item 5 has the rules: the task stays the executor's, subagents' results are checked against the files before they enter a commit, resource-budgeted concurrency under round cp, the orchestrator's review stays. §1 item 11 no longer forbids them inside a sub-task.
 
-Last update: 2026-10-28 cr (compatibility clarification) — **T10c F1 reviewed: changes required; F2 is IN PROGRESS on the existing branch from `af8aa01`.** Build identity is evidence, not an automatic cross-worktree exclusion rule; see F2 step 3. The new equivalence and sanitizer evidence is useful. Six with-game gates still fail, and independent probes reproduce stale-reading over-admission, a transient shortage misclassified as impossible, and unsafe coordinator-loss behavior. P1 remains unaccepted. Memory-budgeted concurrency stays the policy; no blanket heavy-job lock. Nothing merged or pushed.
+Last update: 2026-10-28 cs — **T10c F2 reviewed: C1–C4 fixed and verified; F3 required for two defects** (build id used as an exclusion rule, against the round-cr clarification; the coordinator's listening socket leaks into its PowerShell meter child). Next executor task: **T10c F3** on the existing branch from `43cd10f`. P1 stays BLOCKED until T10c is accepted; the two then integrate together. Memory-budgeted concurrency stays the policy. Nothing merged or pushed.
+
+**Round cs (2026-10-28, orchestrator): T10c F2 review.**
+- **Exact state:** clean `codex/T10c-test-memory` at `43cd10f086eb6907373608c054c7598385393605`, last code commit `c95f819`, on `af8aa01` (12 commits). P1 is unchanged at `416993fa`. `git diff --check af8aa01 43cd10f` is clean. The `CLAUDE.md` edit is within T10c's scope ("stale memory instructions"). Rewording the unpushed `2318078` once, and the report-path fix `43cd10f`, are recorded in the report. The orchestrator changed neither branch.
+- **Evidence checked (executor logs in the worktree's `cache\f2\`):**
+  - With game files: 1080/1080, and the log names `coordinator build=49fb6ac65eb9178a … protocol=2`. Without game files: 1080/1080.
+  - GCC 13 and Clang 18 are clean (`warnings2.txt`).
+  - Nine mutants are each caught, and the unmutated cases pass. M2 was caught only after its case was strengthened (`M2-temporary-b`). M1 was "caught" by hanging until it was killed after 60 s.
+  - The C4 calibration samples private bytes every 5 ms, agreeing with `PeakPagefileUsage` to within 20 KB. The worst item uses 0.763 of its reservation (Single_01: 28.08 B/px measured against 36 reserved). Throughput: one worker 266.4 s, four budgeted workers 186.4 s.
+  - The owner confirmed (2026-10-28) that the roughly 11.5 GB external pressure during one measurement run (`FC27`) was the owner's own application. The fail-closed wait without admission was therefore the intended behaviour.
+  - The orchestrator did not rerun the full suites while the owner was using the PC.
+- **Independent probes** (ignored `E:\anno1503\cache\orch-cs\`):
+  - The round-cr probe and the new `probe_compat.cpp` were rebuilt from the F2 sources under WSL GCC with `-fsanitize=address,undefined`, as two builds (`bx/C5…`, `bx/B0…`, via `build2.sh`).
+  - Each case used its own port (49641–49646) and journal under `/tmp`, and the driver stopped only its own processes. No sanitizer diagnostic appeared.
+  - Results are in `review-results*.txt`.
+- **Verified fixed:**
+  - **C1:** a waiter whose owner still holds 80 of 100 waits and ends with `wait deadline`, not `exceeds capacity`. The stale reading after a release with retained bytes is not admitted (`available=0`).
+  - **C2:** a blocked waiter gets `coordinator lost` at once when its coordinator dies.
+  - **C3:** a replacement reports `orphans=1` from the journal. A new 80-byte request waits while the old 80 is open, and is admitted the moment the old holder exits (`run_fence.py`).
+  - **C4:** accepted as calibrated, with a reasoned margin.
+- **D1 — the round-cr compatibility clarification is not implemented.**
+  - `coord.cpp:815-823` (`hello_once`) refuses any coordinator whose build id, a SHA-256 over the coordinator sources, differs from its own. `coord_server.cpp:1096-1112` rejects such a client; an idle server exits, and a busy one stays.
+  - **Probe E:** a build-B0 coordinator with a B0 holder, and a build-C5 client with the same protocol 2. The client throws at once: "… runs build b0b0b0b0b0b0b0b0 …; it still serves other clients, so it stays".
+  - That fails an ordinary test run on a source-hash mismatch alone, which `e4f1685` (F2 step 3, "Mid-task clarification") rules out. Once integrated, the orchestrator's runs on main and an executor's runs on a branch that edits `src/test_support` cannot overlap.
+  - The three regressions the clarification requires are absent: two compatible builds sharing reservations, an incompatible or exact-build requester while the coordinator is busy, and safe handover. The case "C3: a coordinator from another build is not used" asserts the opposite behaviour. The report does not mention the clarification.
+- **D2 — the coordinator's listening socket leaks into its meter child.**
+  - The WSL coordinator spawns `powershell.exe` as its Windows meter (`coord_server.cpp:193-209`, `posix_spawn` with file actions only for stdin/stdout). `listen_on` creates the socket without `SOCK_CLOEXEC` (`coord_server.cpp:1465`).
+  - After the coordinator was killed and reaped, `ss -tlnp` showed `LISTEN 127.0.0.1:49645 users:(("powershell.exe",pid=296,fd=3))` for about a second (`run_holder.py`).
+  - In that window a replacement fails with `BIND-FAILED` (exit 3). A client connects to the orphaned listener and dies with an uncaught "… closed the connection or speaks another protocol" (`run_d.py`, `review-results-d.txt`). A replacement bound about 1.1 s later (`run_bind.py`).
+  - The F2 replacement tests run on ports with an injected meter, so they do not exercise this real path.
+- **Owner instruction (2026-10-28):** prompts must be more elaborate and precise. When in doubt, the executor checks against the original game files (or the disassembly, or a measurement for host/tool questions) rather than guessing, and writes its decisions and reasoning down. This is now §1 item 12 for every task.
+- **Decision:** F2 is accepted for C1–C4 and is not accepted overall. T10c F3 below is the only executor assignment. P1 stays BLOCKED; after T10c is accepted, the orchestrator integrates P1 and then T10c. No merge, push, ADR approval or next feature task.
 
 **Round cr (2026-10-28, orchestrator): T10c F1 review.**
 - **Exact state:** clean `codex/T10c-test-memory` at `af8aa01fae68daf4d2e6afb0a6301ba1085bf7fc`; latest code `f2ded2141905d761245c0703a7be614c8cafc251`, followed by the report. Clean P1 remains `416993fa6a6f9dc821455df5d414cff5833ac7f0`. Merge-base with review main `fa3933e` is `507e41a`; no merge from main. `git diff --check 416993fa af8aa01` is clean. The orchestrator changed neither task branch and ran no heavy corpus.
@@ -820,13 +851,27 @@ Main executor (prompt handed over by the owner): T15 B1, then T11 stage 2a to th
 
 7. **Steps, not judgement calls (since round u; the executor is a simpler model).** A task section lists numbered steps with the files, the functions and the commands. Do the steps in order; do not add scope, do not refactor what a step does not name, do not change a default the owner has to decide (`rules` options, OQ decisions). **Allowed without asking (owner, 2026-10-24 w), when listed in the report:** tests for the code the step changed, and fixes of sentences (docs, comments) that would otherwise contradict that code. Anything else is a question. When a step is unclear, when a file or function it names does not exist, or when a measurement contradicts the step's premise: stop that step, write the question with what you found into REPORTS.md under the task, and continue with the next step that does not depend on it. Report numbers as measured, including the ones that miss the acceptance. Every claim about the original carries module + address, every mapping in code cites its address in a comment. The acceptance list is ticked item by item in REPORTS.md with the evidence (the test name, the command's output line).
 
-## 2. Current status (2026-10-28 cr, T10c F1 review)
+12. **Check, do not guess; write down decisions and reasoning (owner instruction, 2026-10-28, round cs).** It applies to every task.
+    - **When in doubt, check the evidence before you act.** Never fill a gap with a plausible value.
+      - **The game's data, formats or behaviour:** read the original files in `E:\anno1503\game\app` (read-only; nothing from them into git) or the disassembly (`tools/disasm.py`, module + address).
+      - **The project's own code, tools or the host:** read the code, or run a bounded measurement.
+    - **If the evidence does not settle it,** stop that step and write the question into REPORTS (item 7), or add an OQ in the task's range.
+    - **Every REPORTS section has a "Decisions and reasoning" list.** Each choice the steps left to you gets one entry:
+      - what you decided;
+      - the alternatives;
+      - the evidence (file, address, command output);
+      - why.
+
+      This covers a name, an interface shape, a bound, a test design, and anything you checked against the original files and what it showed.
+    - Where a decision would change the game's look or feel, it is the owner's (item 7), not yours.
+
+## 2. Current status (2026-10-28 cs, T10c F2 review)
 
 - **Local Git:** T57 (`7f9e605`), T52 F7 (`8f30605`), T59 (`1974d22`) and T58 (`723029c`, with the open point `88070b1`) are integrated within their documented scope. Nothing pushed or remotely checked; pre-existing untracked `AGENTS.md` left alone.
 - **Versions on main:** state stream 114, PRNG timeline 2, command wire 1.
 - **Implemented:** C++ formats/assets/viewer and deterministic simulation through S14, scenario cities and production, market/workshop transport, decoded walk search and per-tile records including named-tile removal. The renderer still consumes scenario data rather than a live simulation game loop.
 - **LAN groundwork:** T36 setup, T37 generator spec, T38/T40 AI inventory and tick-entry RE, T39/T41 network ADR and budgets. No C++ networking, generator, AI behavior or playable LAN loop yet. Population implementation, float walking, ships/trade, combat, fire and win/loss remain unfinished.
-- **Next executor task:** T10c F2 on existing `codex/T10c-test-memory` from `af8aa01`; correct C1-C3 before the C4 measurements/gates and report the combined P1/T10c head. P1 remains BLOCKED until validation and review complete. ADRs stay Proposed; T34 stage 2, T-AI.4 and P2 stay later; unrelated lanes unchanged.
+- **Next executor task:** T10c F3 on existing `codex/T10c-test-memory` from `43cd10f`: the compatibility version separate from the build id (D1) and no inherited coordinator sockets (D2), with their regressions. P1 remains BLOCKED until T10c is accepted. ADRs stay Proposed; T34 stage 2, T-AI.4 and P2 stay later; unrelated lanes unchanged.
 - **Host/gates:** Windows/MSVC, GCC/Clang and sanitizers in WSL. Canonical repo `E:\anno1503`, worktrees `E:\anno1503-worktrees`, read-only originals `E:\anno1503\game\app`. Memory-budgeted concurrency under round cp; round ba's local workflow continues. See round br for actual combined checks, rather than treating older branch reports as new runs.
 
 ## 3. Task queue
@@ -1724,7 +1769,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   5. Re-read decisive original instructions and table entries independently. Update the concise chain and OQ-340, append REPORTS with exact base/head, read ranges, itemized acceptance and remaining conditions; run `git diff --check`, commit and stop for review. No merge/push/TASKS edit or C++ gates.
 - **Acceptance:** returned-object provenance is proved or bounded at an exact stop; all three helper paths have argument/receiver/effect ledgers; direct and nested effects are separated from unresolved ones; no unsupported record-preservation, world-purity or live-index conclusion; docs and report agree.
 
-**Current executor order (round cn):** P1 on its existing branch `task/P1-house-payload`: commit the current state, then the gates and the report by the Round cn block. Stop for review. Do not merge main into the branch after it is created. No merge, push, TASKS/AGENTS edits, ADR approval, T34 stage 2, T-AI.4 or production networking. The orchestrator handles review and integration.
+**Current executor order (round cs):** T10c F3 on its existing branch, committed and reported. Stop for review. P1 stays at `416993fa` and is not edited. No merge, push, TASKS/AGENTS edits, ADR approval, P2, T34 stage 2, T-AI.4 or production networking. The orchestrator handles review and integration.
 
 **Order (round bo, superseded by round bq review/fix-ups above):**
 - **The main executor:** T33.5 stage 3 → T41 → T42.
@@ -2012,8 +2057,43 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   4. Carry over to T8 (S9) as requirements: the framing helper above; the net layer drops a peer after N decode errors (M4 note); an AI-issued `SetSpeed` inside `advance` is allowed by spec §8.2 item 4 and stays so (the seam is trusted code, not a rules question).
 - Then gates (sim: MSVC, GCC -O3, ASan in WSL as before), report, and the orchestrator merges.
 
-### T10c — Faster tests within a measured memory budget · `REVIEW — F1 changes required; F2 IN PROGRESS` (round cr)
-- **F2 (round cr; current assignment, supersedes F1):** continue `codex/T10c-test-memory` in `E:\anno1503-worktrees\anno1503-T10c` from `af8aa01fae68daf4d2e6afb0a6301ba1085bf7fc`. Read PLAN and this board on main without merging/rebasing it. P1 stays at `416993fa`.
+### T10c — Faster tests within a measured memory budget · `REVIEW — F2 changes required; F3 READY` (round cs)
+- **F3 (round cs; current assignment):** continue `codex/T10c-test-memory` in `E:\anno1503-worktrees\anno1503-T10c` from `43cd10f086eb6907373608c054c7598385393605`. Read PLAN and this board on main without merging/rebasing it. P1 stays at `416993fa`. Keep everything F2 fixed (C1–C4) and its regressions.
+  1. **Failing regressions first** (bounded; isolated coordinator endpoints; real clients; no real RAM exhaustion). Prove each fails at `c95f819`, then passes:
+     - (a) Two builds with different build ids and the same compatibility version share one busy coordinator. The second build's client is served, and both builds' reservations count against the one budget.
+     - (b) A requester of an incompatible compatibility version, or a gate that asks for the exact coordinator build, while the coordinator is busy. It waits cancellably and ends with a bounded diagnostic that names an infrastructure blocker, not a product failure. It never throws at once, never stops an active peer and never opens a second, independent budget.
+     - (c) The handover after (b): once the busy coordinator has drained, the requested coordinator takes over without losing a journaled promise.
+     - (d) Coordinator death with a real child process spawned the way the meter is spawned. No descriptor of the coordinator stays open in the child, and the port is free when the coordinator exits. A replacement binds at once. A client that connects during the handover waits or retries within its bound with a clear diagnostic; it never dies with "speaks another protocol".
+     - The orchestrator's reproducers are references only: probe E in `E:\anno1503\cache\orch-cs\run_review_f2.py`, plus `run_holder.py` and `run_d.py`. They are built from a copy of the `43cd10f` sources by `build2.sh`. Do not edit that folder; copy what you need into your worktree's ignored `cache\`.
+  2. **D1, three identities** (the round-cr clarification, F2 step 3).
+     - (a) The build id stays provenance only: logged in every gate log, never a compatibility test by itself.
+     - (b) Add an explicit compatibility version covering the wire format **and** the reservation, journal and recovery semantics. Write in a comment, and in the perf note, which changes must bump it. A test pins its value.
+     - (c) The incarnation stays the lost-promise fence.
+     - The hello carries all three, and the server decides compatibility by (b). Exact-build validation is an explicit opt-in for the gate that tests the coordinator itself; name it in the perf note. Then that gate waits for drain/handover as in 1(b).
+     - Replace or rewrite the case "C3: a coordinator from another build is not used" to match.
+  3. **D2, no inherited descriptors.**
+     - Create every coordinator socket, listening and accepted, close-on-exec (`SOCK_CLOEXEC` / `FD_CLOEXEC`).
+     - Make every `posix_spawn` of a helper close everything but its stdio: the meter in `coord_server.cpp`, and the client's start of the coordinator in `coord.cpp`.
+     - Check that the Windows paths create no inheritable handles (`CreateProcessW` with `bInheritHandles = FALSE`, non-inheritable sockets).
+     - A connection that is accepted but answers no hello within the liveness bound is "coordinator not ready". It is retried within the request's bounded wait, not thrown at once.
+  4. **Nit:** under mutant M1, the C1 case "a release that leaves its bytes allocated does not admit on an old reading" hung until killed after 60 s. Bound its own wait so that a regression fails with a message.
+  5. **Gates on the final head:**
+     - the budget suite and every mutation, old and new, each caught and each unmutated case passing;
+     - Windows full CTest with and without game files, under the memory-budgeted overlap;
+     - WSL ASan/UBSan for the budget suite;
+     - GCC 13 / Clang 18 warnings, clang-format, `lint_sim.py`.
+     - Re-run the 4-worker legacy-river case once to show no throughput regression. The full one-worker comparison is not repeated, because admission arithmetic does not change.
+     - Record the coordinator build and compatibility version from each gate log.
+  6. **Commit and stop.**
+     - Concern-sized commits, then REPORTS with: the exact heads; the fail-first and mutation results; the gate totals; D1/D2 acceptance item by item; and how two worktrees of different builds now share one budget. Add the §1 item 12 "Decisions and reasoning" list: the version's value and bump rule, the opt-in name, the retry bound, the fd-closing method, and each regression's design.
+     - No task-branch merge/rebase from main, push, TASKS/AGENTS edits, ADR approval, P2, T34 stage 2 or T-AI.4.
+- **F3 acceptance:**
+  - Different compatible builds share one budget while the coordinator is busy.
+  - An incompatible or exact-build request waits and ends with a bounded infrastructure diagnostic, then takes over after drain without losing a promise.
+  - After coordinator death no child holds its port; replacement and client reconnection are bounded and never fail with "speaks another protocol".
+  - C1–C4 stay fixed with their regressions.
+  - Every gate passes.
+- **F2 (round cr; reviewed in round cs, historical; C1–C4 accepted):** continue `codex/T10c-test-memory` in `E:\anno1503-worktrees\anno1503-T10c` from `af8aa01fae68daf4d2e6afb0a6301ba1085bf7fc`. Read PLAN and this board on main without merging/rebasing it. P1 stays at `416993fa`.
   1. **Failing regressions first.** Port the C1-C3 review probes into bounded automated tests with isolated coordinator endpoints. Cover release with retained allocations while a waiter has an old reading; an allocated owner whose residency report is stale; external pressure/recovery; conflicting host/WSL memory readings; coordinator loss with memory/CPU waiters and already admitted work; replacement while old promises remain. Distinguish permanent capacity from temporary unavailability. Prove failures on `af8aa01`, then pass with fixes. Keep the earlier retained-memory, owner-death, cancellation and cross-OS tests. Add named mutations for the new safety invariants and show the same tests pass unmutated. No real RAM exhaustion or arbitrary sleeps as the correctness oracle.
   2. **C1, make admission use coherent current capacity.** Fix `coord.cpp` (`view_for`, `pump`, release/heartbeat handling), `admit_detail.hpp` and the memory-query boundary as needed. Every grant must account for outstanding unallocated promises and current usable host memory without crediting released cached bytes. A stale per-request sample cannot authorize a grant on another client's release. Explicitly combine host physical/commit constraints and any WSL-local limit; do not substitute guest availability for host availability. Missing/stale readings fail closed or wait for refresh. A temporary shortage waits/rechecks with cancellation and a bounded, clearly reported diagnostic outcome; a truly oversized request is separately identified. No timed forced admission and no revived blanket heavy-job lock. Test both the in-memory model and real Windows/WSL clients.
   3. **C2/C3, handle coordinator failure safely.** Remove the nested mutex acquisition; pending calls and cleanup must finish within a tested bound on connection loss or a nonresponsive server. Fence a replacement from admitting against promises issued by its predecessor until those promises are recovered or the old work has safely drained/stopped. A fail-closed recovery protocol is sufficient. Include a coordinator incarnation/protocol compatibility check so a detached daemon from another build is not silently used as the tested implementation. Record the actual coordinator build in gate logs. Tests must not kill unrelated coordinators or task processes.

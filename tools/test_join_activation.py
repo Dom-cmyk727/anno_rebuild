@@ -1860,5 +1860,958 @@ MUTANTS["claim delivery without acquisition evidence"] = (_patch_hide_acquisitio
     "RoundCfReassembly.test_g2_the_76_fragment_turn_is_delivered_with_full_coverage"])
 
 
+# ---- round cg (T58): the opt-in shared link, written before the code ----------------------------
+def lcfg(bps=100_000_000, queue=131072, **kw):
+    return ja.Cfg(link_bps=bps, link_queue_bytes=queue, rules=RULES, **kw)
+
+
+def bare_link(**kw):
+    """A simulator used only to drive link_plan directly at chosen instants (ms)."""
+    return ja.Sim(lcfg(**kw), seated=1)
+
+
+def plan(sim, t_ms, src, dst, wire, kind="Turn", lost=False, attempt=1, sid=None):
+    sim.t = t_ms
+    return sim.link_plan(src, dst, wire, kind, 0, sid if sid is not None else sim.lid + 1000, attempt, lost, 0)
+
+
+def link_events(sim, kind, lid=None):
+    return [e for e in sim.events if e["kind"] == kind and (lid is None or e["lid"] == lid)]
+
+
+class LinkContract(TraceCase):
+    def test_service_time_is_integer_nanoseconds_rounded_up(self):
+        self.assertEqual(ja.service_ns(1255, 100_000_000), 100400)
+        self.assertEqual(32 * ja.service_ns(1255, 100_000_000), 3212800)
+        self.assertEqual(ja.service_ns(55, 100_000_000), 4400)  # a short ACK-only datagram
+        self.assertEqual(ja.service_ns(1255, 3_000_000), 3346667)  # 3 346 666.67 ns, never early
+        self.assertEqual(ja.arrival_ms(1_000_000), 1)
+        self.assertEqual(ja.arrival_ms(1_000_001), 2)
+
+    def test_the_default_is_the_unserialized_comparison_mode(self):
+        c = ja.Cfg()
+        self.assertEqual((c.link_bps, c.link_queue_bytes), (0, 0))
+        sim = ja.row_normal(cfg())
+        self.assertEqual((sim.host.joins["J1"].accept_ms, sim.joiners["J1"].active_ms), (1610, 2560))
+        self.assertFalse([e for e in sim.events if e["kind"].startswith("link_")])
+
+    def test_link_parameters_are_validated(self):
+        for kw in ({"link_bps": 100_000_000, "link_queue_bytes": 0}, {"link_bps": 100_000_000, "link_queue_bytes": 1000},
+                   {"link_bps": -1}):
+            with self.assertRaises(ValueError):
+                ja.Sim(ja.Cfg(**kw))
+
+    def test_same_instant_enqueues_serve_in_call_order_without_preemption(self):
+        sim = bare_link()
+        out = [plan(sim, 10, "H", "P1", 1255) for _ in range(3)]
+        starts = [e["t_ns"] for e in sim.events if e["kind"] == "link_start"]
+        fins = [e["t_ns"] for e in sim.events if e["kind"] == "link_finish"]
+        self.check(sim, starts == [10_000_000, 10_100_400, 10_200_800], repr(starts))
+        self.check(sim, fins == [10_100_400, 10_200_800, 10_301_200], repr(fins))
+        # arrival = finish + 150 ms, rounded up to the next millisecond callback
+        self.check(sim, [a for _, a in out] == [161, 161, 161], repr(out))
+
+    def test_a_short_ack_takes_its_own_service_time_and_delays_what_follows(self):
+        sim = bare_link()
+        plan(sim, 0, "P1", "H", 55, kind="ack")
+        plan(sim, 0, "P1", "H", 1255)
+        starts = [e["t_ns"] for e in sim.events if e["kind"] == "link_start"]
+        self.check(sim, starts == [0, 4400], repr(starts))
+
+    def test_the_two_directions_are_independent(self):
+        sim = bare_link()
+        plan(sim, 5, "H", "P1", 1255)
+        plan(sim, 5, "P1", "H", 1255)
+        starts = {e["link"]: e["t_ns"] for e in sim.events if e["kind"] == "link_start"}
+        self.check(sim, starts == {"egress": 5_000_000, "ingress": 5_000_000}, repr(starts))
+
+    def test_overflow_is_rejected_at_enqueue_and_costs_no_transmission_time(self):
+        sim = bare_link(queue=2600)  # two full datagrams (2 x 1255) fit, a third does not
+        a = plan(sim, 0, "H", "P1", 1255)
+        b = plan(sim, 0, "H", "P1", 1255)
+        c = plan(sim, 0, "H", "P1", 1255)
+        self.check(sim, a[1] is not None and b[1] is not None and c[1] is None, repr((a, b, c)))
+        self.check(sim, [e["reason"] for e in link_events(sim, "link_drop")] == ["queue"], "drop events")
+        self.check(sim, len(link_events(sim, "link_start")) == 2, "the rejected datagram was served")
+        later = plan(sim, 1, "H", "P1", 1255)  # 1 ms later the two admitted ones are done
+        self.check(sim, later[1] is not None and link_events(sim, "link_start")[-1]["t_ns"] == 1_000_000, "the queue did not free")
+        for kind in ("link_start", "link_finish"):  # exactly the three admitted datagrams and the later one are served
+            self.check(sim, len(link_events(sim, kind)) == 3, "%s: %d" % (kind, len(link_events(sim, kind))))
+        self.check(sim, sim.link_stats["egress"]["drop_queue"] == 1 and sim.link_stats["egress"]["peak_bytes"] <= 2600,
+                   repr(dict(sim.link_stats["egress"])))
+        said = [m for _, m in ja._check_link(sim.events, sim.cfg)]
+        self.check(sim, said and all("is enqueued without a transmission record" in m for m in said),
+                   "direct link_plan calls have no transmission records; the only error allowed is that one: %r" % said)
+
+    def test_loss_is_sampled_after_transmission_and_still_costs_full_service(self):
+        sim = bare_link()
+        lost = plan(sim, 0, "H", "P1", 1255, lost=True)
+        nxt = plan(sim, 0, "H", "P1", 1255)
+        self.check(sim, lost[1] is None and [e["reason"] for e in link_events(sim, "link_drop")] == ["loss"], "loss")
+        self.check(sim, [e["t_ns"] for e in link_events(sim, "link_start")] == [0, 100400], "the lost datagram cost no time")
+        self.check(sim, sim.link_stats["egress"]["bytes"] == 2510 and nxt[1] is not None, repr(dict(sim.link_stats["egress"])))
+
+    def test_retransmissions_and_acks_are_counted_exactly(self):
+        sim = ja.one_join(lcfg(), losses=ja.lose("JoinGrant", "H>J1", (1, 2)), until=9000)
+        evs = [e for e in sim.events if e["kind"] == "link_enqueue"]
+        for d in ("egress", "ingress"):
+            admitted = sum(e["wire"] for e in evs if e["link"] == d) - sim.link_stats[d]["drop_queue_bytes"]
+            self.check(sim, admitted == sim.link_stats[d]["bytes"], "%s %d != %d" % (d, admitted, sim.link_stats[d]["bytes"]))
+            st = sim.link_stats[d]
+            self.check(sim, st["first_bytes"] + st["retry_bytes"] + st["ack_bytes"] == st["bytes"], repr(dict(st)))
+        grants = [e for e in sim.events if e["kind"] == "link_enqueue" and e["msg"] == "JoinGrant"]
+        self.check(sim, [g["attempt"] for g in grants][:3] == [1, 2, 3] and len({g["wire"] for g in grants}) == 1 and grants[0]["wire"] == 15 + ja.WIRE, repr(grants))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_the_ask_is_charged_separately_and_old_epoch_packets_keep_their_service(self):
+        sim = ja.Sim(lcfg(), delays={("Turn", "H>J1", 0, 1): 6000}, seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.add_join("J1", 1000, 2)
+        sim.run(20000)
+        ingress_j1 = sum(e["wire"] for e in sim.events if e["kind"] == "link_enqueue" and e["src"] == "J1")
+        ingress_j1 -= sim.link_stats["ingress"]["drop_queue_bytes"]
+        self.check(sim, sim.stats[("J1", "H")]["bytes"] - ingress_j1 == ja.ASK_PAYLOAD + ja.WIRE,
+                   "the ask bytes are not the labelled external charge: %d vs %d" % (sim.stats[("J1", "H")]["bytes"], ingress_j1))
+        self.check(sim, not [e for e in sim.events if e["kind"] == "link_enqueue" and "ask" in str(e["msg"]).lower()], "ask on the link")
+        stale = [e for e in sim.events if e["kind"] == "stale_epoch" and e["what"] == "arrive"]
+        self.check(sim, stale, "the late old packet did not reach the receiver")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+
+def _signature(sim):
+    return (ja.summary(sim) if sim.joiners else None, sim.host.applied, dict(sim.link_stats["egress"]),
+            dict(sim.link_stats["ingress"]), len(sim.events))
+
+
+class LinkScenarios(TraceCase):
+    def test_every_row_at_100M_is_valid_and_reproducible(self):
+        for name, fn in ja.LINK_ROWS.items():
+            if name == "endless02":
+                continue  # its own test
+            a = fn("100M")
+            self.check(a, validate_clean(a) == [], "%s: %r" % (name, validate_clean(a)[:3]))
+            if name not in ("two_joins_two_generations", "seated_during_transfer", "outage_and_rejoin"):  # the long ones run once
+                self.check(a, _signature(a) == _signature(fn("100M")), "%s is not reproducible" % name)
+            self.check(a, sum(sim_.link_stats["egress"]["drop_queue"] for sim_ in (a,)) == 0, "%s overflowed the queue" % name)
+            self.check(a, max([a.host.applied - p.applied for p in a.seated] or [0]) <= 4, "%s: a seated peer fell behind" % name)
+
+    def test_one_fragment_join_and_the_burst_at_100M(self):
+        one = ja.LINK_ROWS["one_fragment"]("100M")
+        self.check(one, one.joiners["J1"].active_ms is not None and one.host.joins["J1"].restart_ms is None, repr(summary(one)))
+        burst = ja.LINK_ROWS["burst_fragmented_turn"]("100M")
+        self.check(burst, burst.joiners["J1"].active_ms is not None and burst.link_stats["egress"]["peak_bytes"] > 60000,
+                   repr(dict(burst.link_stats["egress"])))
+
+    def test_endless02_at_100M_completes_without_pausing_the_table(self):
+        sim = ja.LINK_ROWS["endless02"]("100M")
+        j, jr = sim.joiners["J1"], sim.host.joins["J1"]
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+        self.check(sim, sim.host.applied == 2500 and max(sim.host.applied - p.applied for p in sim.seated) <= 4, "the table paused")
+        self.check(sim, j.active_ms is not None and jr.restart_ms is None, repr(summary(sim)))
+        self.check(sim, sim.link_stats["egress"]["peak_bytes"] <= sim.cfg.link_queue_bytes, "queue peak")
+
+    def test_the_slow_stress_rate_is_reported_not_forced(self):
+        sim = ja.LINK_ROWS["one_fragment"]("1M")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+        self.check(sim, sim.link_stats["egress"]["busy_ns"] > 100 * sim.link_stats["egress"]["packets"] * 1000,
+                   "the slow link did not serialize")
+
+    def test_a_tight_queue_drops_at_enqueue_and_stays_valid(self):
+        sim = ja.Sim(lcfg(queue=20000), seated=1)
+        sim.turn_extra = lambda k: 90000 if k == 5 else 0
+        sim.add_join("J1", 0, 2)
+        sim.run(30000)
+        st = sim.link_stats["egress"]
+        self.check(sim, st["drop_queue"] > 0 and st["peak_bytes"] <= 20000, repr(dict(st)))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+
+# ---- round ch (T58 F1): independent link validation, exercised loss, sensitivity ----------------
+def _lk(t_ns=0, lid=1, sid=1, attempt=1, src="H", dst="P1", ch=0, epoch=0, size=16, extra_ms=0, link=None, fin_ns=None,
+        lost=False, with_service=True, arr_ns=None):
+    """One data datagram in the order in which the simulator emits it: enqueue, start, finish, arrival (or loss),
+    then the send record. The delivery event is separate (_dv)."""
+    wire = size + ja.WIRE
+    link = link or ("egress" if src == "H" else "ingress")
+    fin = t_ns + ja.service_ns(wire, 100_000_000) if fin_ns is None else fin_ns
+    out = [ev("link_enqueue", t_ns // 1_000_000, link=link, lid=lid, t_ns=t_ns, wire=wire, msg="Turn", ch=ch, src=src,
+              dst=dst, sid=sid, attempt=attempt, epoch=epoch, idx=None, extra_ms=extra_ms)]
+    if with_service:
+        out += [ev("link_start", t_ns // 1_000_000, link=link, lid=lid, t_ns=t_ns),
+                ev("link_finish", t_ns // 1_000_000, link=link, lid=lid, t_ns=fin)]
+    if lost:
+        out.append(ev("link_drop", t_ns // 1_000_000, link=link, lid=lid, t_ns=fin, reason="loss", wire=wire))
+    else:
+        arrival = fin + (150 + extra_ms) * 1_000_000 if arr_ns is None else arr_ns
+        out.append(ev("link_arrive", t_ns // 1_000_000, link=link, lid=lid, arrival_ns=arrival, sched_ms=-(-arrival // 1_000_000),
+                      sid=sid, msg="Turn"))
+    out.append(ev("send", t_ns // 1_000_000, src=src, dst=dst, ch=ch, seq=0, msg="Turn", attempt=attempt, lost=lost,
+                  turn=1, C=None, size=size, sid=sid, epoch=epoch, frag=0, nfrag=1, mid=None, lid=lid))
+    return out
+
+
+def _dv(lk, **kw):
+    """The delivery event of the datagram built by _lk (default: its own lid and attempt)."""
+    snd = [e for e in lk if e["kind"] == "send"][0]
+    arr = [e for e in lk if e["kind"] == "link_arrive"][0]
+    e = ev("arrive", arr["sched_ms"], src=snd["src"], dst=snd["dst"], ch=snd["ch"], seq=0, msg="Turn", dup=False,
+           turn=1, sid=snd["sid"], epoch=snd["epoch"], frag=0, nfrag=1, mid=None, size=snd["size"], lid=snd["lid"],
+           attempt=snd["attempt"])
+    e.update(kw)
+    return e
+
+
+def _ak(t_ns=0, lid=9, idx=0, acker="P1", to="H", ch=0, epoch=0, extra_ms=0, link=None, lost=False):
+    """One ACK-only datagram from `acker` to `to` in the simulator's order, then the ack event the sender processes."""
+    link = link or ("egress" if acker == "H" else "ingress")
+    fin = t_ns + ja.service_ns(ja.WIRE, 100_000_000)
+    out = [ev("link_enqueue", t_ns // 1_000_000, link=link, lid=lid, t_ns=t_ns, wire=ja.WIRE, msg="ack", ch=ch, src=acker,
+              dst=to, sid=None, attempt=1, epoch=epoch, idx=idx, extra_ms=0),
+           ev("link_start", t_ns // 1_000_000, link=link, lid=lid, t_ns=t_ns),
+           ev("link_finish", t_ns // 1_000_000, link=link, lid=lid, t_ns=fin)]
+    arrival = fin + 150 * 1_000_000
+    if lost:
+        out.append(ev("link_drop", t_ns // 1_000_000, link=link, lid=lid, t_ns=fin, reason="loss", wire=ja.WIRE))
+    else:
+        out.append(ev("link_arrive", t_ns // 1_000_000, link=link, lid=lid, arrival_ns=arrival,
+                      sched_ms=-(-arrival // 1_000_000), sid=None, msg="ack"))
+    out.append(ev("ack_send", t_ns // 1_000_000, src=acker, dst=to, ch=ch, idx=idx, wire=ja.WIRE, epoch=epoch, lid=lid, lost=lost))
+    return out
+
+
+def _ack_event(lk, **kw):
+    arr = [e for e in lk if e["kind"] == "link_arrive"][0]
+    snd = [e for e in lk if e["kind"] == "ack_send"][0]
+    e = ev("ack", arr["sched_ms"], src=snd["dst"], dst=snd["src"], ch=snd["ch"], seqs=(0,), epoch=snd["epoch"],
+           lid=snd["lid"], idx=snd["idx"])
+    e.update(kw)
+    return e
+
+
+def _bump(t=150, a="H", b="P1", epoch=1):
+    """A new incarnation of the pair (Sim.reset_pair writes this record)."""
+    return ev("epoch_bump", t, a=a, b=b, epoch=epoch, why="ask")
+
+
+def _closed(kind="drop_seated", t=150, **kw):
+    """A record that closes a receive side: the seat drop of its non-host endpoint, or the reassembly overflow
+    of that (src, dst, channel)."""
+    if kind == "drop_seated":
+        return ev("drop_seated", t, peer=kw.get("peer", "P1"), why="grace")
+    return ev("reasm_overflow", t, src=kw.get("src", "H"), dst=kw.get("dst", "P1"), ch=kw.get("ch", 0), mid=("M", 1), held=4,
+              limit=4)
+
+
+def _held(n, ch=0, src="H", dst="P1", t=100):
+    """n fragments of one logical message acquired on the receive side, as Sim.reassemble records them before an
+    overflow (the matching sends and arrivals are not needed by the xvi/xvii assertions made with them)."""
+    return [ev("reasm_acquire", t, src=src, dst=dst, ch=ch, mid=("M", 1), turn=None, frag=i, nfrag=99, size=1, sid=100 + i,
+               held=i + 1) for i in range(n)]
+
+
+def _refused(**kw):
+    e = ev("arrive_refused", 151, src="H", dst="P1", ch=0, seq=0, msg="Turn", lid=1, attempt=1, sid=1, epoch=0, size=16, frag=0,
+           nfrag=1, mid=None, why="closed")
+    e.update(kw)
+    return e
+
+
+def _stale(**kw):
+    e = ev("stale_epoch", 151, src="H", dst="P1", local="P1", what="arrive", epoch=0, lid=1)
+    e.update(kw)
+    return e
+
+
+class OverflowRecordsOnHandWrittenLogs(unittest.TestCase):
+    """V7 (F4): a reasm_overflow record is justified by the fragments the validator rebuilt on that receive side in the
+    current epoch and by the cap in cfg, in the order in which Sim.reassemble emits them (acquisitions, then the overflow).
+    The caps here are reassembly_fragments_max 4 (channel 0) and fragment_max 3 (channel 1)."""
+
+    CFG = dict(reassembly_fragments_max=4, fragment_max=3)
+
+    def acq(self, n, ch=0, mid=("M", 1)):
+        out = []
+        for i in range(n):
+            common = dict(src="H", dst="P1", ch=ch, mid=mid, turn=None, frag=i, nfrag=99, size=1, sid=100 + 10 * ch + i, epoch=0)
+            out += [ev("send", 1, **common, seq=i, msg="Snap-frag", attempt=1),
+                    ev("arrive", 2, **common, seq=i, msg="Snap-frag", dup=False),
+                    ev("reasm_acquire", 2, **common, held=i + 1)]
+        return out
+
+    def over(self, held, limit, ch=0, **kw):
+        return ev("reasm_overflow", 3, src="H", dst="P1", ch=ch, mid=("M", 1), held=held, limit=limit, **kw)
+
+    def msgs(self, log):
+        return [m for c, m in ja.validate(log, ja.Cfg(**self.CFG), 0) if c == "xv"]
+
+    def says(self, log, needle):
+        return any(needle in m for m in self.msgs(log))
+
+    def test_v7_a_justified_overflow_is_clean_on_both_channels(self):
+        self.assertEqual(self.msgs(self.acq(4) + [self.over(4, 4)]), [])  # channel 0: 4 held, the 5th exceeds 4
+        self.assertEqual(self.msgs(self.acq(3, ch=1) + [self.over(3, 3, ch=1)]), [])  # channel 1 takes fragment_max (3)
+
+    def test_v7_an_overflow_whose_count_plus_one_does_not_exceed_the_cap_is_rejected(self):
+        log = self.acq(3) + [self.over(3, 4)]  # 3 held + 1 = 4 does not exceed 4
+        self.assertTrue(self.says(log, "is not justified"), self.msgs(log))
+        self.assertFalse(self.says(log, "records held") or self.says(log, "records limit"), self.msgs(log))
+        self.assertTrue(self.says([self.over(0, 4)], "is not justified"), "forged, nothing held")
+        carry = self.acq(4) + [ev("reasm_release", 3, src="H", dst="P1", ch=0, mid=("M", 1), turn=None, frags=(0, 1, 2, 3),
+                                  reason="epoch"), ev("epoch_bump", 3, a="H", b="P1", epoch=1, why="ask"), self.over(4, 4)]
+        self.assertTrue(self.says(carry, "is not justified"), "fragments of the old epoch are not held in the new one")
+
+    def test_v7_an_overflow_whose_limit_differs_from_the_configured_cap_is_rejected(self):
+        log = self.acq(4) + [self.over(4, 5)]  # justified by the count, but the record names another cap
+        self.assertTrue(self.says(log, "records limit 5, the configured cap is 4"), self.msgs(log))
+        self.assertFalse(self.says(log, "is not justified") or self.says(log, "records held"), self.msgs(log))
+        wrong_channel = self.acq(3, ch=1) + [self.over(3, 4, ch=1)]  # channel 1 uses fragment_max, not the channel-0 cap
+        self.assertTrue(self.says(wrong_channel, "records limit 4, the configured cap is 3"), self.msgs(wrong_channel))
+
+    def test_v7_an_overflow_whose_held_differs_from_the_rebuilt_count_is_rejected(self):
+        log = self.acq(4) + [self.over(5, 4)]
+        self.assertTrue(self.says(log, "records held 5, 4 fragments are held"), self.msgs(log))
+        self.assertFalse(self.says(log, "is not justified") or self.says(log, "records limit"), self.msgs(log))
+
+
+class LinkValidatorsOnHandWrittenLogs(TraceCase):
+    """xvi on logs written by hand, in the order in which the simulator emits them (the link records of a
+    datagram come before its send record). Complete positive traces pass; each invalid one is rejected by xvi."""
+
+    def _run_xvi(self, log, queue, end, delays):
+        kw = {} if delays is None else {"delays": delays}
+        cfg_ = ja.Cfg(link_bps=100_000_000, link_queue_bytes=queue, reassembly_fragments_max=4, fragment_max=4)
+        return [(c, m) for c, m in ja.validate(log, cfg_, end, **kw) if c in ("xvi", "xvii")]
+
+    def x(self, log, queue=131072, end=0, delays=None):
+        return sorted({c for c, _ in self._run_xvi(log, queue, end, delays)})
+
+    def msgs(self, log, queue=131072, end=0, delays=None):
+        return [m for _, m in self._run_xvi(log, queue, end, delays)]
+
+    def says(self, log, needle, **kw):
+        return any(needle in m for m in self.msgs(log, **kw))
+
+    def good(self):
+        d = _lk()
+        a = _ak(t_ns=200_000_000, lid=2)
+        return d, a
+
+    def test_complete_data_and_ack_traces_pass(self):
+        d, a = self.good()
+        self.assertEqual(self.x(d + [_dv(d)] + a + [_ack_event(a)]), [])
+        self.assertEqual(self.x(d), [])  # an arrival after the horizon needs no delivery event
+
+    def test_a_lost_datagram_with_full_service_passes(self):
+        d = _lk(lost=True)
+        self.assertEqual(self.x(d), [])
+
+    def test_a_queue_rejection_without_service_passes(self):
+        d1 = _lk(size=1200, lid=1, sid=1)
+        d2 = _lk(size=1200, lid=2, sid=2, with_service=False)
+        d2 = [e for e in d2 if e["kind"] != "link_arrive"]
+        d2.insert(1, ev("link_drop", 0, link="egress", lid=2, t_ns=0, reason="queue", wire=1255))
+        d2[-1] = dict(d2[-1], lost=True)
+        self.assertEqual(self.x(d1 + d2, queue=1300), [])
+
+    def test_bypassing_the_shared_queue_fails(self):
+        d = _lk()
+        self.assertEqual(self.x([e for e in d if not e["kind"].startswith("link_")]), ["xvi"])
+
+    def test_wrong_wire_bytes_fail_whatever_the_emission_order(self):
+        d = _lk()
+        d[0] = dict(d[0], wire=16)
+        self.assertEqual(self.x(d), ["xvi"])
+        self.assertEqual(self.x(d[-1:] + d[:-1]), ["xvi"])  # the send record first: same verdict
+
+    def test_a_one_byte_retry_charge_fails(self):
+        first, retry = _lk(lid=1, attempt=1), _lk(lid=2, attempt=2, t_ns=300_000_000)
+        retry[0] = dict(retry[0], wire=1)
+        self.assertEqual(self.x(first + retry), ["xvi"])
+
+    def test_an_ack_with_the_wrong_size_fails(self):
+        a = _ak()
+        a[0] = dict(a[0], wire=1)
+        self.assertEqual(self.x(a), ["xvi"])
+
+    def test_an_ack_without_a_link_record_or_lid_fails(self):
+        a = _ak()
+        self.assertEqual(self.x([e for e in a if not e["kind"].startswith("link_")]), ["xvi"])
+        self.assertEqual(self.x(a + [_ack_event(a, lid=None)]), ["xvi"])
+
+    def test_invented_lane_names_fail(self):
+        self.assertEqual(self.x(_lk(link="egress-P1")), ["xvi"])
+        self.assertEqual(self.x(_lk(src="P1", dst="H", link="egress")), ["xvi"])  # wrong direction for the endpoints
+
+    def test_simultaneous_service_from_the_host_on_two_labels_fails(self):
+        one, two = _lk(lid=1, sid=1, dst="P1"), _lk(lid=2, sid=2, dst="P2", link="egress-P2")
+        self.assertEqual(self.x(one + two), ["xvi"])
+        two = _lk(lid=2, sid=2, dst="P2")  # the right label but service that starts while lid 1 still sends
+        two = [dict(e, t_ns=100) if e["kind"] in ("link_enqueue", "link_start") else e for e in two]
+        self.assertEqual(self.x(one + two), ["xvi"])
+
+    def test_missing_service_records_fail(self):
+        d = _lk()
+        self.assertEqual(self.x([e for e in d if e["kind"] not in ("link_start", "link_finish")]), ["xvi"])
+        self.assertEqual(self.x([e for e in d if e["kind"] != "link_finish"]), ["xvi"])
+
+    def test_orphan_duplicate_and_unserved_records_fail(self):
+        d = _lk()
+        self.assertEqual(self.x(d + [dict(d[3], lid=77)]), ["xvi"])  # an arrival with no enqueue
+        self.assertEqual(self.x(d + [d[3]]), ["xvi"])  # the arrival twice
+        self.assertEqual(self.x(d + [d[-1]]), ["xvi"])  # the send twice
+        self.assertEqual(self.x(d + [d[1]]), ["xvi"])  # service started twice
+
+    def test_a_rejected_datagram_that_is_served_fails(self):
+        d = _lk()
+        self.assertEqual(self.x(d[:1] + [ev("link_drop", 0, link="egress", lid=1, t_ns=0, reason="queue", wire=71)] + d[1:]), ["xvi"])
+
+    def test_a_delivery_must_be_its_own_transmission(self):
+        first, retry = _lk(lid=1, attempt=1), _lk(lid=2, attempt=2, t_ns=300_000_000)
+        base = first + retry
+        self.assertEqual(self.x(base + [_dv(first), _dv(retry)]), [])
+        self.assertEqual(self.x(base + [_dv(first, attempt=2)]), ["xvi"])  # attempt 1's lid, attempt 2's identity
+        self.assertEqual(self.x(base + [_dv(retry, lid=1)]), ["xvi"])  # another transmission's lid
+        self.assertEqual(self.x(base + [_dv(first, dst="P2")]), ["xvi"])  # another endpoint
+        self.assertEqual(self.x(base + [_dv(first, lid=None)]), ["xvi"])  # no identity
+        self.assertEqual(self.x(base + [_dv(first), _dv(first)]), ["xvi"])  # one arrival used twice
+        self.assertEqual(self.x(base + [_dv(first, t=first[3]["sched_ms"] + 1)]), ["xvi"])  # not at the callback
+
+    def test_an_ack_must_be_its_own_transmission(self):
+        a, b = _ak(lid=3, idx=0), _ak(lid=4, idx=1, t_ns=1_000_000)
+        self.assertEqual(self.x(a + b + [_ack_event(a), _ack_event(b)]), [])
+        self.assertEqual(self.x(a + b + [_ack_event(a, idx=1)]), ["xvi"])
+        self.assertEqual(self.x(a + b + [_ack_event(a, lid=4)]), ["xvi"])
+        self.assertEqual(self.x(a + b + [_ack_event(a, src="P2")]), ["xvi"])
+
+    def test_the_lost_flag_must_match_the_link(self):
+        d = _lk()
+        d[-1] = dict(d[-1], lost=True)
+        self.assertEqual(self.x(d), ["xvi"])
+
+    def test_an_end_time_shorter_than_the_service_fails(self):
+        self.assertEqual(self.x(_lk(fin_ns=1000)), ["xvi"])
+
+    def test_early_rounding_and_early_arrival_fail(self):
+        d = _lk()
+        d[3] = dict(d[3], sched_ms=150)
+        self.assertEqual(self.x(d), ["xvi"])
+        d = _lk()
+        d[3] = dict(d[3], arrival_ns=100_000_000, sched_ms=100)
+        self.assertEqual(self.x(d), ["xvi"])
+
+    def test_admission_over_the_queue_cap_and_a_missed_rejection_fail(self):
+        a, b = _lk(lid=1, sid=1, size=1200), _lk(lid=2, sid=2, size=1200, t_ns=1000)
+        self.assertEqual(self.x(a + b, queue=1300), ["xvi"])  # the second does not fit and is served
+        c = _lk(lid=2, sid=2, size=100, t_ns=1000, with_service=False)
+        c = [e for e in c if e["kind"] != "link_arrive"]
+        c.insert(1, ev("link_drop", 0, link="egress", lid=2, t_ns=1000, reason="queue", wire=155))
+        c[-1] = dict(c[-1], lost=True)
+        self.assertEqual(self.x(a + c, queue=1500), ["xvi"])  # 1255 + 155 fits 1500: the rejection was wrong
+        self.assertEqual(self.x(a + c, queue=1300), [])  # it did not fit 1300: the rejection is right
+
+    # ---- round ci (T58 F2): V1 early arrival, V2 payload identity, V3 arrival consumption ----
+    def test_v1_an_arrival_at_the_finish_fails_whatever_the_label_says(self):
+        d = _lk(arr_ns=5680)  # label 0, but zero propagation: the physical floor is finish + 150 ms
+        self.assertEqual(self.x(d), ["xvi"])
+        self.assertTrue(self.says(d, "physical floor"), self.msgs(d))
+
+    def test_v1_a_negative_label_fails(self):
+        d = _lk(extra_ms=-150)  # the label and the arrival agree with each other; both are impossible
+        self.assertTrue(self.says(d, "negative labelled extra delay"), self.msgs(d))
+        self.assertTrue(self.says(d, "physical floor"), self.msgs(d))
+
+    def test_v1_the_label_must_equal_the_declared_delay(self):
+        d = _lk(extra_ms=40)
+        self.assertTrue(self.says(d, "differs from the declared"), self.msgs(d))  # nothing declared: 0
+        self.assertEqual(self.x(d, delays={("Turn", "H>P1", None, 1): 40}), [])  # declared by kind, direction, any seq
+        self.assertEqual(self.x(d, delays={("Turn", "H>P1", 0, 1): 40}), [])  # declared by the exact sequence
+        self.assertTrue(self.says(d, "differs from the declared", delays={("Turn", "H>P1", 0, 2): 40}), "wrong attempt")
+        self.assertEqual(self.x(_lk(), delays={}), [])
+
+    def test_v2_attempts_of_one_sid_carry_one_payload(self):
+        first, retry = _lk(lid=1, attempt=1, size=1200), _lk(lid=2, attempt=2, t_ns=300_000_000, size=1)  # consistently charged 1 byte
+        self.assertTrue(self.says(first + retry, "records size"), self.msgs(first + retry))
+        same = _lk(lid=2, attempt=2, t_ns=300_000_000, size=1200)
+        self.assertEqual(self.x(first + same), [])
+        other = _lk(lid=2, attempt=2, t_ns=300_000_000, size=1200)
+        other[-1] = dict(other[-1], seq=9)
+        self.assertTrue(self.says(first + other, "identity"), self.msgs(first + other))
+
+    def test_v2_a_delivery_carries_the_size_and_identity_of_its_transmission(self):
+        d = _lk(size=1)
+        self.assertTrue(self.says(d + [_dv(d, size=1200)], "delivery"), self.msgs(d + [_dv(d, size=1200)]))
+        d = _lk(size=1200)
+        self.assertEqual(self.x(d + [_dv(d)], end=200), [])
+        self.assertTrue(self.says(d + [_dv(d, mid=("T", 1))], "delivery"), "message identity")
+        self.assertTrue(self.says(d + [_dv(d, frag=3)], "delivery"), "fragment identity")
+
+    def test_v3_a_served_arrival_without_a_recorded_outcome_fails_at_the_horizon(self):
+        d = _lk()
+        self.assertTrue(self.says(d, "consumed by no recorded outcome", end=200), self.msgs(d, end=200))
+        self.assertEqual(self.x(d, end=100), [])  # the callback is at 151 ms, after the horizon: a reservation
+
+    def test_v3_each_recorded_outcome_consumes_the_arrival_exactly_once(self):
+        d = _lk()
+        for outcome in ([_dv(d)], [_bump(), _stale()], [_closed(), _refused()]):
+            self.assertEqual(self.x(d + outcome, end=200), [], outcome[-1]["kind"])
+        ready = d + [_bump(), _closed()]  # an epoch change, then a closure: both outcomes are valid on their own
+        for pair in ((_dv(d), _stale()), (_dv(d), _dv(d, dup=True)), (_stale(), _refused())):
+            self.assertTrue(self.says(ready + list(pair), "more than one", end=200), pair[1]["kind"])
+        wrong = _stale(src="P1", dst="H")  # a stale record of the other direction is not this datagram's
+        self.assertTrue(self.says(d + [_bump(), wrong], "endpoints", end=200), self.msgs(d + [_bump(), wrong], end=200))
+        late = _stale(t=152)
+        self.assertTrue(self.says(d + [_bump(), late], "callback", end=200), self.msgs(d + [_bump(), late], end=200))
+
+    def test_v3_an_ack_arrival_is_consumed_by_an_ack_or_a_stale_record(self):
+        a = _ak(lid=9)
+        self.assertTrue(self.says(a, "consumed by no recorded outcome", end=200), self.msgs(a, end=200))
+        self.assertEqual(self.x(a + [_ack_event(a)], end=200), [])
+        stale = _stale(local="H", what="ack", lid=9)
+        self.assertEqual(self.x(a + [_bump(), stale], end=200), [])
+        self.assertTrue(self.says(a + [_bump(), _ack_event(a), stale], "more than one", end=200), "twice")
+
+    def test_v4_a_refusal_needs_a_closure_record_of_its_receive_side(self):
+        d = _lk()
+        self.assertTrue(self.says(d + [_refused()], "no closure record", end=200), self.msgs(d + [_refused()], end=200))
+        self.assertEqual(self.x(d + [_closed(), _refused()], end=200), [])  # the seat drop of the non-host endpoint
+        self.assertEqual(self.x(d + _held(4) + [_closed("reasm_overflow"), _refused()], end=200), [])  # the overflow of the same channel
+        for other in (_closed(peer="P2"), _closed("reasm_overflow", ch=1), _closed("reasm_overflow", src="P1", dst="H")):
+            self.assertTrue(self.says(d + [other, _refused()], "no closure record", end=200), other)
+        self.assertTrue(self.says(d + [_closed(), _bump(), _refused()], "no closure record", end=200), "closure before the bump")
+        self.assertTrue(self.says(d + [_refused(), _closed()], "no closure record", end=200), "closure after the refusal")
+        self.assertEqual(self.x(d + [_bump(), _closed(), _refused()], end=200), [], "closure after the bump")
+
+    def test_v8_a_closed_receive_side_takes_no_arrival(self):
+        over = _closed("reasm_overflow")  # H>P1 ch0
+        d = _lk()  # a data datagram H>P1 ch0, epoch 0
+        needle = "after its receive side was closed"
+        self.assertTrue(self.says(d + [over, _dv(d)], needle, end=200), self.msgs(d + [over, _dv(d)], end=200))
+        self.assertTrue(self.says(d + [over, _dv(d, dup=True)], "(duplicate) on H>P1 ch0 " + needle, end=200), "duplicate")
+        up = _lk(src="P1", dst="H")  # P1>H ch0
+        self.assertTrue(self.says(up + [_closed(), _dv(up)], "on P1>H ch0 " + needle, end=200), "seat drop, other direction")
+        self.assertEqual(self.x(d + [_closed(), _refused()], end=200), [])  # a refusal is the closed side's outcome
+        # not closed: another channel, the reverse direction of an overflow, the epoch after the next bump
+        other = _lk(ch=1)
+        self.assertEqual(self.x(other + [over, _dv(other)], end=200), [], "H>P1 ch1 after the ch0 overflow")
+        self.assertEqual(self.x(up + [over, _dv(up)], end=200), [], "P1>H ch0 after the H>P1 ch0 overflow")
+        later = _lk(epoch=1)
+        self.assertEqual(self.x(later[:0] + [over, _bump()] + later + [_dv(later)], end=200), [], "after the next bump")
+        self.assertEqual(self.x(d + [_closed(peer="P2"), _dv(d)], end=200), [], "the seat drop of another peer")
+        self.assertEqual(self.x(d + [_dv(d)], end=200), [], "no closure")
+
+    def test_v5_a_stale_record_must_be_stale_and_the_transmissions_own(self):
+        d = _lk()
+        self.assertTrue(self.says(d + [_stale()], "is not stale", end=200), self.msgs(d + [_stale()], end=200))  # epoch 0 is current
+        self.assertEqual(self.x(d + [_bump(), _stale()], end=200), [])
+        self.assertTrue(self.says(d + [_bump(), _stale(what="ack")], "but its transmission is", end=200), "type")
+        self.assertTrue(self.says(d + [_bump(), _stale(epoch=3)], "its transmission carries epoch", end=200), "epoch")
+        a = _ak(lid=9)
+        self.assertTrue(self.says(a + [_bump(), _stale(local="H", what="arrive", lid=9)], "but its transmission is", end=200), "ACK")
+        self.assertTrue(self.says(a + [_stale(local="H", what="ack", lid=9)], "is not stale", end=200), "ACK, no bump")
+        wrapped = d + [_bump(epoch=e % 65536) for e in range(1, 65537)]  # the epoch is the count of bumps mod 65536
+        self.assertTrue(self.says(wrapped + [_stale()], "is not stale", end=200), "65536 bumps")
+        self.assertEqual(self.x(wrapped + [_bump(epoch=1), _stale()], end=200), [], "65537 bumps")
+
+    def test_v6_a_non_last_fragment_carries_the_full_payload(self):
+        def frag(size, i, n):
+            log = _lk(size=size)
+            log[-1] = dict(log[-1], frag=i, nfrag=n)
+            return log
+        self.assertEqual([m for m in self.msgs(frag(1200, 0, 3)) if "non-last" in m or "payload_max" in m], [])
+        self.assertTrue(self.says(frag(1199, 0, 3), "non-last fragment"), self.msgs(frag(1199, 0, 3)))
+        self.assertTrue(self.says(frag(1, 1, 3), "non-last fragment"), "middle fragment")
+        self.assertFalse(self.says(frag(100, 2, 3), "non-last fragment"), "the last fragment's size is the message model's")
+        self.assertFalse(self.says(frag(1, 0, 1), "non-last fragment"), "a single datagram is its own last fragment")
+        self.assertTrue(self.says(frag(1201, 2, 3), "exceeds payload_max"), "no payload exceeds the cap")
+        self.assertTrue(self.says(frag(1201, 0, 1), "exceeds payload_max"), "not even a single datagram")
+
+def _wrap_link_plan(fn):
+    orig = ja.Sim.link_plan
+
+    def link_plan(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        return fn(orig, self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw)
+    return mock.patch.object(ja.Sim, "link_plan", link_plan)
+
+
+def _patch_bypass_the_shared_queue():
+    def fn(orig, self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        self.lid += 1
+        return self.lid, (None if lost_key or self.cut_active(src, dst) else self.t + self.cfg.one_way_ms + extra_ms)
+    return _wrap_link_plan(fn)
+
+
+def _patch_one_byte_retries():
+    def fn(orig, self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        return orig(self, src, dst, 1 if attempt > 1 and kind != "ack" else wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw)
+    return _wrap_link_plan(fn)
+
+
+def _patch_one_byte_first_sends():
+    def fn(orig, self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        return orig(self, src, dst, 1 if attempt == 1 and kind != "ack" else wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw)
+    return _wrap_link_plan(fn)
+
+
+def _patch_acks_bypass_the_link():
+    def fn(orig, self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        if kind == "ack":
+            return None, self.t + self.cfg.one_way_ms
+        return orig(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw)
+    return _wrap_link_plan(fn)
+
+
+def _patch_one_byte_acks():
+    def fn(orig, self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        return orig(self, src, dst, 1 if kind == "ack" else wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw)
+    return _wrap_link_plan(fn)
+
+
+def _patch_no_service_records():
+    orig = ja.Sim.ev
+
+    def ev_(self, kind, **kw):
+        if kind in ("link_start", "link_finish"):
+            return None
+        return orig(self, kind, **kw)
+    return mock.patch.object(ja.Sim, "ev", ev_)
+
+
+def _patch_round_the_arrival_down():
+    return mock.patch.object(ja, "arrival_ms", lambda ns: ns // ja.NS_PER_MS)
+
+
+def _patch_breach_the_queue_cap():
+    return mock.patch.object(ja.Sim, "link_cap", lambda self: 10 ** 12)
+
+
+class LinkValidation(TraceCase):
+    """Each runtime mutant of the link accounting is caught by its own test, on the specific xvi message that
+    mutant produces (a mutant caught by an unrelated check does not count). Every test passes unmutated."""
+
+    def _run(self):
+        return ja.one_join(lcfg(), losses=ja.lose("JoinGrant", "H>J1", (1,)), until=12000)
+
+    def _no_message(self, sim, needle, code="xvi"):
+        hit = [m for c, m in validate_clean(sim) if c == code and needle in m]
+        self.check(sim, not hit, "%s says %r" % (code, hit[:2]))
+
+    def _refusal_sim(self):
+        """A real closure: the snapshot may hold three fragments, so the fourth overflows the reassembly and closes the
+        receive side; datagrams already in flight are served on the closed side and the simulator refuses them."""
+        return ja.fragment_loss_sim(lcfg(fragment_max=3))
+
+    def _two_ask_sim(self):
+        sim = ja.Sim(lcfg(), delays={("Turn", "H>J1", 0, 1): 6000}, seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.add_join("J1", 1000, 2)
+        sim.run(20000)
+        return sim
+
+    def test_every_data_attempt_is_charged_its_wire_size(self):
+        sim = self._run()
+        self.check(sim, [e for e in sim.events if e["kind"] == "link_enqueue" and e["attempt"] == 1], "no first transmission")
+        self._no_message(sim, "(data attempt 1) is")
+
+    def test_retransmissions_are_charged_their_wire_size(self):
+        sim = self._run()
+        self.check(sim, [e for e in sim.events if e["kind"] == "link_enqueue" and e["attempt"] > 1], "the run has no retransmission")
+        self._no_message(sim, "(data attempt 2) is")
+
+    def test_acks_pass_through_the_shared_link(self):
+        sim = self._run()
+        self.check(sim, [e for e in sim.events if e["kind"] == "ack_send"], "the run has no ACK-only datagram")
+        self._no_message(sim, "transmission ('a'")
+
+    def test_acks_are_charged_their_wire_size(self):
+        self._no_message(self._run(), "(ACK-only) is")
+
+    def test_service_records_are_required(self):
+        self._no_message(self._run(), "without a complete service record")
+
+    def test_the_shared_capacity_is_enforced(self):
+        self._no_message(self._run(), "transmission ('d'")
+
+    def test_the_arrival_is_never_early(self):
+        self._no_message(self._run(), "called back at")
+
+    def test_v1_no_link_arrival_is_before_finish_plus_one_way_delay(self):
+        sim = self._run()
+        self._no_message(sim, "negative labelled extra delay")
+        self._no_message(sim, "physical floor")
+
+    def test_v1_the_labelled_extra_delay_is_the_declared_one(self):
+        sim = ja.Sim(lcfg(), delays={("Turn", "H>J1", None, 1): 40}, seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.run(6000)
+        self._no_message(sim, "differs from the declared")
+
+    def test_v2_every_attempt_of_a_sid_records_one_payload(self):
+        sim = self._run()
+        self.check(sim, [e for e in sim.events if e["kind"] == "send" and e["attempt"] > 1], "no retransmission")
+        self._no_message(sim, "records size")
+
+    def test_v3_every_served_arrival_has_a_recorded_outcome(self):
+        sim = ja.fragment_loss_sim(lcfg())
+        self.check(sim, [e for e in sim.events if e["kind"] == "link_arrive"], "no arrival")
+        self._no_message(sim, "consumed by no recorded outcome")
+
+    def test_a_closed_receiver_leaves_a_refusal_record_with_the_lid(self):
+        sim = ja.Sim(lcfg(), seated=1)
+        sim.recv_state("H", "P1", 0).dead = True
+        sim.arrive("H", "P1", 0, _old_datagram(epoch=0, sid=77, attempt=1), 0, 5, 1)
+        refused = [e for e in sim.events if e["kind"] == "arrive_refused"]
+        self.assertEqual([(e["lid"], e["attempt"], e["why"]) for e in refused], [(5, 1, "closed")])
+
+    def test_a_stale_epoch_arrival_and_ack_record_the_lid(self):
+        sim = self._two_ask_sim()
+        stale = [e for e in sim.events if e["kind"] == "stale_epoch" and e["what"] in ("arrive", "ack")]
+        self.assertTrue(stale and all(e.get("lid") is not None for e in stale), stale[:2])
+        self.assertEqual({e["what"] for e in stale}, {"arrive", "ack"})
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_v4_every_refusal_follows_a_closure_of_its_receive_side(self):
+        for sim in (ja.fragment_loss_sim(lcfg()), self._refusal_sim()):
+            self._no_message(sim, "no closure record")
+
+    def test_v5_every_stale_record_with_a_lid_is_stale(self):
+        for sim in (ja.fragment_loss_sim(lcfg()), self._two_ask_sim()):
+            self._no_message(sim, "is not stale")
+            self._no_message(sim, "but its transmission is")
+            self._no_message(sim, "its transmission carries epoch")
+
+    def test_v6_every_non_last_fragment_is_a_full_payload(self):
+        sim = ja.fragment_loss_sim(lcfg())
+        self.check(sim, [e for e in sim.events if e["kind"] == "send" and e["msg"] == "Snap-frag"], "no snapshot fragment")
+        self._no_message(sim, "non-last fragment", "xvii")
+        self._no_message(sim, "exceeds payload_max", "xvii")
+
+    def test_v8_an_overflowed_receive_side_takes_no_arrival(self):
+        sim = self._refusal_sim()  # a real overflow of H>J1 ch1, then a real refusal
+        self.check(sim, [e for e in sim.events if e["kind"] == "reasm_overflow"], "no overflow record")
+        self._no_message(sim, "after its receive side was closed")
+
+    def test_v7_a_forged_overflow_record_is_not_a_closure(self):
+        sim = self._refusal_sim()  # a real overflow (held 3, limit 3) closes the receive side
+        self.check(sim, [e for e in sim.events if e["kind"] == "reasm_overflow"], "no overflow record")
+        self._no_message(sim, "is not justified", "xv")
+        self._no_message(sim, "records held", "xv")
+
+    def test_v7_an_overflow_exceeds_the_configured_cap_not_one_fragment_less(self):
+        sim = ja.fragment_loss_sim(lcfg(fragment_max=4))
+        self.check(sim, [e for e in sim.events if e["kind"] == "reasm_overflow"], "no overflow record")
+        self._no_message(sim, "records limit", "xv")
+        self._no_message(sim, "is not justified", "xv")
+
+    def test_a_real_closure_is_followed_by_a_refusal_and_a_valid_run(self):
+        sim = self._refusal_sim()
+        over = [e for e in sim.events if e["kind"] == "reasm_overflow"]
+        refused = [e for e in sim.events if e["kind"] == "arrive_refused"]
+        self.check(sim, len(over) == 1 and refused, "overflow %r, refusals %r" % (over, refused))
+        o = over[0]
+        self.check(sim, all((e["src"], e["dst"], e["ch"]) == (o["src"], o["dst"], o["ch"]) and e["t"] >= o["t"] for e in refused),
+                   "a refusal is not on the closed receive side after the overflow: %r" % refused)
+        served = [e for e in sim.events if e["kind"] == "link_arrive" and e["lid"] in {r["lid"] for r in refused}]
+        self.check(sim, len(served) == len(refused), "every refusal consumes a served link arrival")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+
+def _patch_negative_extra_delay():
+    def fn(orig, self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        return orig(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms - self.cfg.one_way_ms, *a, **kw)
+    return _wrap_link_plan(fn)
+
+
+@contextlib.contextmanager
+def _patch_small_retry_payload():
+    """Every retry is recorded as a 1-byte payload on its send record and charged 1 + WIRE on the link."""
+    orig_plan, orig_ev = ja.Sim.link_plan, ja.Sim.ev
+
+    def link_plan(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw):
+        if kind != "ack" and attempt > 1:
+            wire = 1 + ja.WIRE
+        return orig_plan(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, *a, **kw)
+
+    def ev_(self, kind, **kw):
+        if kind == "send" and kw.get("attempt", 1) > 1 and kw.get("lid") is not None:
+            kw["size"] = 1
+        return orig_ev(self, kind, **kw)
+    with mock.patch.object(ja.Sim, "link_plan", link_plan), mock.patch.object(ja.Sim, "ev", ev_):
+        yield
+
+
+def _patch_silent_snapshot_discard():
+    orig = ja.Sim.arrive
+
+    def arrive(self, src, dst, ch, d, epoch=None, lid=None, attempt=None):
+        if d["kind"] == "Snap-frag" and attempt == 1:
+            return None
+        return orig(self, src, dst, ch, d, epoch, lid, attempt)
+    return mock.patch.object(ja.Sim, "arrive", arrive)
+
+
+def _patch_refuse_on_a_live_receiver():
+    """The first Snap-frag arrival is refused by a receiver that was never closed, with the F2 closed-receiver record."""
+    orig = ja.Sim.arrive
+
+    def arrive(self, src, dst, ch, d, epoch=None, lid=None, attempt=None):
+        if d["kind"] == "Snap-frag" and attempt == 1 and d["epoch"] == self.ep_of(dst, src):
+            self.ev("arrive_refused", src=src, dst=dst, ch=ch, seq=d["seq"], msg=d["kind"], lid=lid, attempt=attempt,
+                    sid=d.get("sid"), epoch=d.get("epoch"), size=d["size"], frag=d.get("frag", 0),
+                    nfrag=d.get("nfrag", 1), mid=d.get("mid"), why="closed")
+            return None
+        return orig(self, src, dst, ch, d, epoch, lid, attempt)
+    return mock.patch.object(ja.Sim, "arrive", arrive)
+
+
+def _patch_stale_record_for_a_current_epoch():
+    """The first Snap-frag arrival of the current epoch is dropped with a stale_epoch record that carries its lid."""
+    orig = ja.Sim.arrive
+
+    def arrive(self, src, dst, ch, d, epoch=None, lid=None, attempt=None):
+        if d["kind"] == "Snap-frag" and attempt == 1 and d["epoch"] == self.ep_of(dst, src):
+            self.ev("stale_epoch", src=src, dst=dst, local=dst, what="arrive", epoch=d["epoch"], lid=lid)
+            return None
+        return orig(self, src, dst, ch, d, epoch, lid, attempt)
+    return mock.patch.object(ja.Sim, "arrive", arrive)
+
+
+def _patch_forged_overflow_then_refusals():
+    """P5: on a live receiver the first Snap-frag arrival writes an unjustified reasm_overflow record (held 0) and is
+    refused; the later ones are refused too, so the F3 closure check is satisfied by the forged record."""
+    orig = ja.Sim.arrive
+
+    def arrive(self, src, dst, ch, d, epoch=None, lid=None, attempt=None):
+        if d["kind"] == "Snap-frag" and attempt == 1 and d["epoch"] == self.ep_of(dst, src):
+            if not getattr(self, "_forged", False):
+                self._forged = True
+                self.ev("reasm_overflow", src=src, dst=dst, ch=ch, mid=d["mid"], held=0, limit=self.cfg.fragment_max)
+            self.ev("arrive_refused", src=src, dst=dst, ch=ch, seq=d["seq"], msg=d["kind"], lid=lid, attempt=attempt,
+                    sid=d.get("sid"), epoch=d.get("epoch"), size=d["size"], frag=d.get("frag", 0),
+                    nfrag=d.get("nfrag", 1), mid=d.get("mid"), why="closed")
+            return None
+        return orig(self, src, dst, ch, d, epoch, lid, attempt)
+    return mock.patch.object(ja.Sim, "arrive", arrive)
+
+
+def _patch_overflow_leaves_the_side_open():
+    """P8: the overflow is recorded and the buffer released, but the receive side is set open again."""
+    orig = ja.Sim.reassemble
+
+    def reassemble(self, src, dst, ch, c, d, seq):
+        ok = orig(self, src, dst, ch, c, d, seq)
+        if not ok:
+            c.dead = False
+        return ok
+    return mock.patch.object(ja.Sim, "reassemble", reassemble)
+
+
+def _patch_overflow_one_fragment_early():
+    """P7: the snapshot cap is lowered by one only while Sim.reassemble runs, so the reassembly overflows one
+    fragment early and the record says held = limit = fragment_max - 1."""
+    orig = ja.Sim.reassemble
+
+    def reassemble(self, src, dst, ch, c, d, seq):
+        if ch == 0:
+            return orig(self, src, dst, ch, c, d, seq)
+        object.__setattr__(self.cfg, "fragment_max", self.cfg.fragment_max - 1)
+        try:
+            return orig(self, src, dst, ch, c, d, seq)
+        finally:
+            object.__setattr__(self.cfg, "fragment_max", self.cfg.fragment_max + 1)
+    return mock.patch.object(ja.Sim, "reassemble", reassemble)
+
+
+def _patch_one_byte_snapshot_fragments():
+    """Every snapshot fragment is shrunk to a 1-byte payload before its first record, so all records agree."""
+    orig = ja.Sim.transmit
+
+    def transmit(self, src, dst, ch, d):
+        if "sid" not in d and d["kind"] == "Snap-frag":
+            d["size"] = 1
+        return orig(self, src, dst, ch, d)
+    return mock.patch.object(ja.Sim, "transmit", transmit)
+
+
+class LinkRows(TraceCase):
+    """The fragment-loss row exercises the loss it names; the grant-loss row stays identifiable."""
+
+    def _row(self, rate):
+        return ja.LINK_ROWS["fragment_loss_and_retry"](rate)
+
+    def _check_fragment_loss(self, rate):
+        sim = self._row(rate)
+        seq = ja.FRAGMENT_LOSS_SEQ
+        sends = [e for e in sim.events if e["kind"] == "send" and e["msg"] == "Snap-frag" and e["seq"] == seq]
+        self.check(sim, [e["attempt"] for e in sends][:3] == [1, 2, 3], "the named fragment was sent %r" % [e["attempt"] for e in sends])
+        self.check(sim, [e["lost"] for e in sends][:3] == [True, True, False], "lost flags %r" % [e["lost"] for e in sends])
+        for e in sends[:2]:
+            lid = e["lid"]
+            self.check(sim, any(x["kind"] == "link_drop" and x["lid"] == lid and x["reason"] == "loss" for x in sim.events), "no loss record")
+            fin = [x for x in sim.events if x["kind"] == "link_finish" and x["lid"] == lid]
+            self.check(sim, len(fin) == 1, "a lost datagram must be served in full")
+        arrive = [e for e in sim.events if e["kind"] == "arrive" and e["msg"] == "Snap-frag" and e["seq"] == seq and not e["dup"]]
+        self.check(sim, [e["attempt"] for e in arrive] == [3] and arrive[0]["lid"] == sends[2]["lid"], repr(arrive))
+        done = [e for e in sim.events if e["kind"] == "deliver" and e["msg"] == "SnapshotDone" and e["dst"] == "J1"]
+        self.check(sim, len(done) == 1 and done[0]["t"] == arrive[0]["t"], "the snapshot message was not delivered by the retry arrival")
+        rel = [e for e in sim.events if e["kind"] == "reasm_release" and e["dst"] == "J1" and e["mid"] == done[0]["mid"]]
+        self.check(sim, len(rel) == 1 and rel[0]["t"] >= done[0]["t"], "the reassembly was not completed and released")
+        j = sim.joiners["J1"]
+        self.check(sim, j.active_ms is not None and sim.host.joins["J1"].restart_ms is None, repr(ja.summary(sim)))
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+        return sim
+
+    def test_the_named_snapshot_fragment_is_lost_twice_and_recovered_at_100M(self):
+        self._check_fragment_loss("100M")
+
+    def test_the_named_snapshot_fragment_is_lost_twice_and_recovered_at_1M(self):
+        self._check_fragment_loss("1M")
+
+    def test_grant_loss_is_a_separate_identifiable_row(self):
+        sim = ja.LINK_ROWS["grant_loss_and_retry"]("100M")
+        sends = [e for e in sim.events if e["kind"] == "send" and e["msg"] == "JoinGrant"]
+        self.check(sim, [e["lost"] for e in sends][:2] == [True, False], repr([(e["attempt"], e["lost"]) for e in sends]))
+        self.check(sim, validate_clean(sim) == [], "")
+
+
+MUTANTS.update({
+    "charge every retry one byte": (_patch_one_byte_retries, [
+        "LinkValidation.test_retransmissions_are_charged_their_wire_size"]),
+    "charge every first transmission one byte": (_patch_one_byte_first_sends, [
+        "LinkValidation.test_every_data_attempt_is_charged_its_wire_size"]),
+    "bypass the link for all ACKs": (_patch_acks_bypass_the_link, [
+        "LinkValidation.test_acks_pass_through_the_shared_link"]),
+    "charge every ACK one byte": (_patch_one_byte_acks, [
+        "LinkValidation.test_acks_are_charged_their_wire_size"]),
+    "omit the service records": (_patch_no_service_records, [
+        "LinkValidation.test_service_records_are_required"]),
+    "bypass the shared queue": (_patch_bypass_the_shared_queue, [
+        "LinkValidation.test_the_shared_capacity_is_enforced",
+        "LinkScenarios.test_every_row_at_100M_is_valid_and_reproducible"]),
+    "round the arrival down (early)": (_patch_round_the_arrival_down, [
+        "LinkValidation.test_the_arrival_is_never_early",
+        "LinkScenarios.test_every_row_at_100M_is_valid_and_reproducible"]),
+    "breach the queue cap": (_patch_breach_the_queue_cap, [
+        "LinkScenarios.test_a_tight_queue_drops_at_enqueue_and_stays_valid"]),
+    "V1: negative extra delay, zero propagation": (_patch_negative_extra_delay, [
+        "LinkValidation.test_v1_no_link_arrival_is_before_finish_plus_one_way_delay"]),
+    "V2: retry recorded and charged as a 1-byte payload": (_patch_small_retry_payload, [
+        "LinkValidation.test_v2_every_attempt_of_a_sid_records_one_payload"]),
+    "V3: the receiver silently discards served Snap-frag arrivals": (_patch_silent_snapshot_discard, [
+        "LinkValidation.test_v3_every_served_arrival_has_a_recorded_outcome"]),
+    "V4: a live receiver refuses a Snap-frag with the closed-receiver record": (_patch_refuse_on_a_live_receiver, [
+        "LinkValidation.test_v4_every_refusal_follows_a_closure_of_its_receive_side"]),
+    "V5: a stale_epoch record for a datagram of the current epoch": (_patch_stale_record_for_a_current_epoch, [
+        "LinkValidation.test_v5_every_stale_record_with_a_lid_is_stale"]),
+    "V6: every snapshot fragment shrunk to a 1-byte payload": (_patch_one_byte_snapshot_fragments, [
+        "LinkValidation.test_v6_every_non_last_fragment_is_a_full_payload"]),
+    "V7/P5: a forged reasm_overflow record on a live receiver, then refusals": (_patch_forged_overflow_then_refusals, [
+        "LinkValidation.test_v7_a_forged_overflow_record_is_not_a_closure"]),
+    "V7/P7: the reassembly overflows one fragment early": (_patch_overflow_one_fragment_early, [
+        "LinkValidation.test_v7_an_overflow_exceeds_the_configured_cap_not_one_fragment_less"]),
+    "V8/P8: the overflow is recorded but the receive side stays open": (_patch_overflow_leaves_the_side_open, [
+        "LinkValidation.test_v8_an_overflowed_receive_side_takes_no_arrival"]),
+})
+
+
 if __name__ == "__main__":
     unittest.main()

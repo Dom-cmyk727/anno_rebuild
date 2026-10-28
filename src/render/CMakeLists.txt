@@ -24,6 +24,7 @@ anno_target_defaults(anno_render)
 
 if(ANNO_BUILD_TESTS)
   add_executable(anno_render_tests
+    tests/buffer_equiv_test.cpp
     tests/chunk_draws_corpus_test.cpp
     tests/chunk_draws_test.cpp
     tests/chunk_reduce_test.cpp

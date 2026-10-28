@@ -352,6 +352,12 @@ class Scene {
     /// pixel store, and the store is what `store_pixels` skips.
     [[nodiscard]] std::pair<Canvas, sea::SceneProbe>
     ground_with_probe(Rect rect, std::size_t group, bool store_pixels = true) const;
+    /// Enhanced river water in the shapes of the waterfall and mouth
+    /// sprites. Each mask covers its opaque sprite pixels plus the blur
+    /// margin, clipped to the field; samples outside that window are 0, the
+    /// value the full-field mask stored there (iso.md, bounded blur).
+    void apply_fall_masks(sea::WaterField& f, const Canvas& falls, const Canvas& mouths,
+                          const Canvas& beds, std::size_t group) const;
     /// Renders `layers` of `rect` at `group` into a new canvas.
     [[nodiscard]] std::pair<Canvas, SceneStats> render(Rect rect, std::size_t group,
                                                        Layers layers) const;
@@ -407,12 +413,6 @@ class Scene {
     };
 
     const sea::IslandWater* island_water(std::size_t i) const;
-    /// Enhanced river water in the shapes of the waterfall and mouth
-    /// sprites. Each mask covers its opaque sprite pixels plus the blur
-    /// margin, clipped to the field; samples outside that window are 0, the
-    /// value the full-field mask stored there (iso.md, bounded blur).
-    void apply_fall_masks(sea::WaterField& f, const Canvas& falls, const Canvas& mouths,
-                          const Canvas& beds, std::size_t group) const;
     /// River pixels near the sea: distance (shore byte) and cover blend.
     void blend_rivers_into_sea(sea::WaterField& f, std::size_t group) const;
     std::pair<DrawStats, std::size_t> draw_island_objects(Canvas& local, const Placement& p,

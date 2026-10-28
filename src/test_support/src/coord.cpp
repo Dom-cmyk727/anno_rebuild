@@ -485,6 +485,7 @@ std::filesystem::path module_directory() {
 #endif
 }
 
+#if defined(_WIN32)
 std::string to_wsl_path(const std::filesystem::path& path) {
     const std::string text = path.generic_string();
     if (text.size() >= 2 && text[1] == ':') {
@@ -493,6 +494,7 @@ std::string to_wsl_path(const std::filesystem::path& path) {
     }
     return text;
 }
+#endif
 
 bool spawn_local(const std::filesystem::path& exe, std::uint16_t port, bool all_interfaces) {
 #if defined(_WIN32)

@@ -4,7 +4,24 @@
 
 **Round bp (2026-10-26, owner instruction):** for every task after the one an executor has in progress now, **subagents are allowed again where necessary and helpful**. §1 item 5 has the rules: the task stays the executor's, subagents' results are checked against the files before they enter a commit, one heavy job at a time on the PC, the orchestrator's review stays. §1 item 11 no longer forbids them inside a sub-task.
 
-Last update: 2026-10-28 cl — **T58 F4 verified and stays unmerged for one final round.** Next executor task: **T58 F5** (a closure record must also close its receive side: V8, the converse of F3's V4), the final validator round; the orchestrator integrates T58 after its review. Continue the existing branch; do not merge/rebase main into it. ADRs remain Proposed; T34 stage 2 and T-AI.4 stay `LATER`. Nothing pushed.
+Last update: 2026-10-28 cm — **T58 integrated (`723029c`); next lane P1 (population stage 1).** Next executor task: **P1**, the house payload, the `BGruppen.dat` group table and scenario import, on a new branch from local main (the `#### P1` entry in §3). ADRs remain Proposed; T34 stage 2 and T-AI.4 stay `LATER`. Nothing pushed.
+
+**Round cm (2026-10-28, orchestrator): T58 F5 review, T58 integration, P1 queued.**
+- Baseline main `6b60e0e580608654905926d1ee2adc99cd3720bc`. Exact clean head: T58 F5 `85474134ba317c3a044b671c87efae29569cc26e` (on `7b0085b`). No push; the pre-existing untracked `AGENTS.md` is untouched.
+- **T58 F5 verified.**
+  - 215 join tests pass (188.3 s), including the mutation table. The five `JOIN_RULES=F1` regressions fail as required. 64 snapshot tests pass; both snapshot files are identical to `3078e07`; `git diff --check` and the `ast` check are clean.
+  - Every `--link` row at both rates and `--sensitivity` are byte-identical to F4.
+  - Failing first, reproduced against the `7b0085b` oracle: the handwritten V8 test fails, and P8 passes its named test under the mutant.
+  - `review_t58_f4.py`: P8 has 1 xvi error at 1 051 ms. `review_t58_f3.py`: P5 13, P6 15, P7 2; V8 also rejects the real arrivals after the forged closures. `review_t58_f2.py` and `review_t58_f1.py` are unchanged. `closure_rows.out` is unchanged.
+- **T58 integrated** as `723029c` (squash of `aa022b9..8547413`).
+  - The two Python files and ADR 0003 are blob-identical to the branch. `open-questions.md` is the branch plus main's T59 OQ-340 lines. The six T58 report sections are appended.
+  - On main: 215 join tests, 64 snapshot tests, and the five legacy failures.
+- **Open point recorded, not an F6** (`88070b1`): `Sim.drop_peer` closes only the channels that exist at the drop (ADR 0003 §8.8, OQ-320).
+- **Next lane: P1.**
+  - The LAN plan's critical path is W6 (`docs/plan/lan-endless.md` §6). P1 has been `READY after T33.4` since round be, and T33.4 is merged.
+  - The `#### P1` entry corrects the T32 draft where it is stale (tags, version) or self-contradictory (the save form, G7's stage), and lists the P1 decisions.
+  - The AI RE chain (T-AI.3, last T59) pauses: its next links are in complogic §11 T59 §9 and OQ-340.
+- **Queue:** P1 only. ADRs remain Proposed; T34 stage 2, T-AI.4 and production networking stay later. T30b.7 (the orchestrator's Wine check of the owner's road rule) and the unreviewed T31/T35 branches keep their lanes.
 
 **Round cl (2026-10-28, orchestrator): T58 F4 review.**
 - Baseline main `983683e46b1acdf8a0b398ef1945b08403b050e4`. Exact clean head: T58 F4 `7b0085bbacc8e685a6bdd81794594d85ba2d964c` (on `dd897b4`). Not merged. No push; the pre-existing untracked `AGENTS.md` is untouched. The orchestrator changed no branch.
@@ -745,13 +762,13 @@ Main executor (prompt handed over by the owner): T15 B1, then T11 stage 2a to th
 
 7. **Steps, not judgement calls (since round u; the executor is a simpler model).** A task section lists numbered steps with the files, the functions and the commands. Do the steps in order; do not add scope, do not refactor what a step does not name, do not change a default the owner has to decide (`rules` options, OQ decisions). **Allowed without asking (owner, 2026-10-24 w), when listed in the report:** tests for the code the step changed, and fixes of sentences (docs, comments) that would otherwise contradict that code. Anything else is a question. When a step is unclear, when a file or function it names does not exist, or when a measurement contradicts the step's premise: stop that step, write the question with what you found into REPORTS.md under the task, and continue with the next step that does not depend on it. Report numbers as measured, including the ones that miss the acceptance. Every claim about the original carries module + address, every mapping in code cites its address in a comment. The acceptance list is ticked item by item in REPORTS.md with the evidence (the test name, the command's output line).
 
-## 2. Current status (2026-10-28 cl, executor review)
+## 2. Current status (2026-10-28 cm, executor review)
 
-- **Local Git:** T57 (`7f9e605`), T52 F7 (`8f30605`) and T59 (`1974d22`) are integrated within their documented scope. T58 F4 `7b0085b` is reviewed and unmerged, pending the final F5. Nothing pushed or remotely checked; pre-existing untracked `AGENTS.md` left alone.
+- **Local Git:** T57 (`7f9e605`), T52 F7 (`8f30605`), T59 (`1974d22`) and T58 (`723029c`, with the open point `88070b1`) are integrated within their documented scope. Nothing pushed or remotely checked; pre-existing untracked `AGENTS.md` left alone.
 - **Versions on main:** state stream 114, PRNG timeline 2, command wire 1.
 - **Implemented:** C++ formats/assets/viewer and deterministic simulation through S14, scenario cities and production, market/workshop transport, decoded walk search and per-tile records including named-tile removal. The renderer still consumes scenario data rather than a live simulation game loop.
 - **LAN groundwork:** T36 setup, T37 generator spec, T38/T40 AI inventory and tick-entry RE, T39/T41 network ADR and budgets. No C++ networking, generator, AI behavior or playable LAN loop yet. Population implementation, float walking, ships/trade, combat, fire and win/loss remain unfinished.
-- **Next executor task:** T58 F5, the final validator round, on its existing branch without merging/rebasing main. After its review the orchestrator integrates T58; the executor queue is then empty until the orchestrator queues the next lane. ADRs 0002/0003 remain Proposed; T34 stage 2 and T-AI.4 are later. T31/T35 remain unreviewed branches. T30b.7 and then P1 remain separate orchestrator work.
+- **Next executor task:** P1 (population stage 1: the house payload, the `BGruppen.dat` group table and scenario import) on a new branch from local main; full C++ gates. ADRs 0002/0003 remain Proposed; T34 stage 2 and T-AI.4 are later. T31/T35 remain unreviewed branches. T30b.7 and then P1 remain separate orchestrator work.
 - **Host/gates:** Windows/MSVC, GCC/Clang and sanitizers in WSL. Canonical repo `E:\anno1503`, worktrees `E:\anno1503-worktrees`, read-only originals `E:\anno1503\game\app`. One heavy job at a time; round ba's local workflow continues. See round br for actual combined checks, rather than treating older branch reports as new runs.
 
 ## 3. Task queue
@@ -1338,8 +1355,103 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   4. Re-read decisive original instructions/table entries independently, update the concise chain and OQ-340, append REPORTS with exact base/head, itemized acceptance and next unread links, run `git diff --check`, commit and stop for review. No merge/push/TASKS edit or C++ gates.
 - **Acceptance:** both helper paths and receiver chains are traced with widths/cleanup; direct and nested effects are proved or bounded at concrete stops; cached-word interpretation follows return evidence; docs agree without treating unresolved mutation/lifetime paths as disproved.
 
-#### T58 — Shared-link serialization in the join oracle (OQ-320) · `F5 READY` (round cl)
-- **Current task — F5 (the final validator round; the orchestrator integrates T58 after its review):**
+#### P1 — Population stage 1: the house payload, the group table, scenario import · `READY` (round cm) · the main executor · branch `task/P1-house-payload` from local `main` at the round-cm board commit or later · worktree `E:\anno1503-worktrees\anno1503-P1` · new OQs OQ-450..459
+- **Why:** W6 is the LAN plan's critical path (`docs/plan/lan-endless.md` §5 W6.2, §6), and population is the first W6 stage. A house is an `Inert` payload today: the residents and stocks in the scenario files are dropped (`HouseRecordNotModelled`), and T26's three pure functions are tested but not applied. P1 gives the house its state and loads it. It adds no house tick (that is P2).
+- **Spec:** `docs/sim/state.md` §4.7c "Population (DRAFT, T32)", with the **P1 decisions** below, which override the draft where they differ. Evidence: `docs/re/population.md` §1 (the loader formulas), §11.2 (the house fields), §12.1 (the `BGruppen.dat` field map). Owner decisions of 2026-10-25: §4.7c owner questions 1 and 3.
+- **P1 decisions (round cm, orchestrator):**
+  1. **Tags.** `PayloadTag::House = 7`, because `Market = 6` exists (the draft's "next after `Mine = 5`" is stale). `TickKind::House` is appended (value 8), because `check_consistency` (`src/sim/src/types.cpp:457`) pairs every tick kind with its payload through `payload_for_tick` (`types.cpp:361`). `production_kind_for_tick` returns nullopt for it, as for `Market`. The class-table row becomes `{C::House, T::House, P::House, 2500}` (`types.cpp:640`).
+  2. **No house behaviour.** In `tick_building` (`src/sim/src/driver.cpp:217`), the `TickKind::House` case returns at once and touches nothing, `last` included, exactly like `TickKind::None` (D15). P2 fills it.
+  3. **Versions.** `kStateHashVersion` goes from 114 to 115 (the draft's "today 111" is stale). `kPrngTimelineVersion` stays 2, because P1 draws nothing.
+  4. **The save is exact.** `state.md` §9.1: one field list, and a field can never be saved and not hashed. So the rebuild's own save is the runtime form, and save then load gives the same state hash, a residents fraction included. The original's lossy record (integer residents, `E` not saved, the `s_j` bytes) is only **read**, on scenario import. P1 writes no original-format house record.
+     - Owner question 1 (catch-up after a load) concerns `last`, which nothing reads before P2. P2 decides how loading our own save reproduces it; open an OQ in the range for it.
+  5. **The reset on import is not applied.** `house_reset_applies` true means the original sets residents to the group's `Wohnmax` and draws once per forced need (`population.md` §13.1, `0x10077079`–`0x1007709c`). The loader has no draw source, and the place of that draw in the load-phase cursor order is unread.
+     - So P1 follows the `ComputerNameNotDrawn` precedent: it adds the warning kind `HouseResetNotApplied`, loads that record as stored, and adds no draw site.
+     - Shipped scenarios never enter that branch, so the corpus count must be 0 for every file.
+     - Open an OQ in the range for the draw's place.
+  6. **Widths.**
+     - `std::int32_t residents_64` and `std::uint32_t e`: the original's i16 and u16, widened because CLAUDE.md requires widening when data enters the engine. Comment the original widths.
+     - `std::vector<std::uint32_t> stock`: one entry per need of the house's group; T26's functions already return `u32`.
+     - `std::uint16_t last`, like every other payload.
+     - `mood_flags` is **omitted**: owner question 7's default, since nothing writes it yet.
+     - Record in an OQ in the range whether the original's i16/u16 wrap is observable. With shipped data it is not, because `Wohnmax` is small.
+  7. **The group table** is registry data: immutable, load-time, in the registry digest (`digest_registry`, `types.cpp:291`), never state.
+     - Parse it from `Data/BGruppen.dat` with the `formats::text` helpers (`section_entries`, `split_records`, `fields`, `to_int`; the use in `src/formats/tests/text_zei_test.cpp:130-146`), in `src/sim`.
+     - Per group, keep the fields §4.7c "Group table" lists, with the §1 loader formulas. Omit `Priority`, `BauFirst`, `BauLast`, `Hiscore` and `Wissen`.
+     - Add it the way the walk tables were added (`TypeRegistry::Builder::walk_tables`, the `build` overload with `tables`). Pass the parsed file at every call site that builds the original registry from the game directory: today `src/sim/tests/scenario_test.cpp:137`, `src/tools/sim_replay/main.cpp:358` and `src/sim/tests/transport_test.cpp:886`; grep `TypeRegistry::build(` for others.
+     - The table may be empty (synthetic registries); then every house has no stocks. A non-empty table must have exactly `SimConfig::house_groups` groups, or the build is refused with a clear error.
+  8. **The payload at creation** is the house constructor's state (`population.md` §11.2): `residents_64 = 0x140` (5·64), `e = 0x280` (5·128), every stock 0, `last` 0.
+     - The original sets `last` to the creation time through property `0x23` (`0x100733ac`). P2, the first reader of `last`, does that; P1 leaves it 0.
+     - `make_payload` and `payload_problem` (`src/sim/src/building.cpp:58`, `:108`) need the group's need count: pass it in, from `house_group(cfg, type.prodtype)` and the registry's table. `payload_problem` rejects a stock vector of another size.
+  9. **City side.** `BuildingIndex::house_counts` is unchanged. P1 adds no per-group resident totals on `City`: they come with their first reader (P3/P4), as derived caches with a `check_invariants` rule.
+  10. **G7 in P1** is the scenario and its create hash only, as `p1_g7_create`. The growth/decay asserts and the "decay omitted" mutation of §4.7c's test list belong to P2.
+- **Steps (in order; §1 item 7; each written into REPORTS before the next):**
+  1. **Set up:** `git -C E:\anno1503 worktree add E:/anno1503-worktrees/anno1503-P1 -b task/P1-house-payload main`, then `cmake --preset msvc` and `cmake --build --preset msvc` in the worktree.
+  2. **The group table (decision 7).**
+     - Write the parser and its tests:
+       - a synthetic text of two groups gives exact values;
+       - a missing field, a non-integer value and a table of the wrong length each fail with a clear error;
+       - the shipped `Data/BGruppen.dat` (through `anno::test::game_dir`; skip cleanly without it) gives 5 groups and 47 needs, plus the per-group values that `population.md` §12.1 states.
+     - Put the table on the registry and in its digest. Update every literal that pins the registry digest (`src/sim/tests/types_test.cpp`, around `:1557`) and the independent transcription in `tools/sim_stream.py`.
+     - Nothing from the file goes into the source or `fixtures/`.
+  3. **The payload (decisions 1, 2, 6, 8).**
+     - `struct House` in `building.hpp`; the `Payload` variant (`building.hpp:49`); `kPayloadTags` (`state_fields.hpp:676`); `fields()` with a `field_count` `static_assert`, visiting `u16 last, i32 residents_64, u32 e, seq<u32> stock`.
+     - `make_payload`, `payload_name` and `payload_problem`; the class-table row, `payload_for_tick` and `production_kind_for_tick`; the `tick_building` case.
+     - `tools/sim_stream.py`'s class table and version.
+     - Tests:
+       - the tag counts and values in `building_state_test.cpp:319-335`, extended with the House stream layout;
+       - the default payload equals the constructor values, with the stock sized by the group;
+       - `payload_problem` rejects a wrong stock size;
+       - 20 000 ticks leave a house payload unchanged (`last` included).
+  4. **Scenario import (decisions 4, 5).**
+     - In the house branch of `load_scenario` (`src/sim/src/scenario_formats.cpp:824-844`):
+       - Read the 8-byte header: `[1]` residents, `[2]` n, `[3]` version, then the `n` bytes `s_j` through `house_satisfaction`.
+       - If `house_reset_applies(group, r, Wohnmax(group − 1))` is true: warn `HouseResetNotApplied` once per record and load as stored.
+       - Set `residents_64 = r << 6` and `e = r << 7`.
+       - Set `stock[j] = house_need_stock(Menge_j, s_j, r)` for `j < min(n, group needs)`, and 0 above that (the constructor zeroes all 16 slots, `0x10077240`).
+       - Pass the payload to `World::create` (as the market branch does).
+     - Remove `HouseRecordNotModelled`; append `HouseResetNotApplied`, and update `all_warning_kinds` and the name switch.
+     - Tests:
+       - v2, v0 and v1 records;
+       - the reset predicate true (the warning appears, and the record is loaded as stored) and false (no warning);
+       - a record with `n` above and below the group's need count;
+       - save then load of a world with a house whose `residents_64` is not a multiple of 64 gives the same state hash and payload.
+  5. **G7 (decision 10).** Add `synthetic::g7_scenario` as §4.7c describes it: two small synthetic groups built in code, one pioneer house, the city store. Record `p1_g7_create`.
+  6. **Re-record and docs.**
+     - Bump `kStateHashVersion` to 115, with every assert that pins it (`sim_test.cpp:592`, `config_test.cpp:1467`).
+     - Re-record the goldens (`ANNO_UPDATE_GOLDEN=1`) and `fixtures/synthetic/sim/scenario_corpus.txt` with the game dir. In the corpus, `HouseRecordNotModelled` is gone and `HouseResetNotApplied` is 0 for every file.
+     - In `src/sim/tests/scenario_test.cpp`, assert that the residents of the created houses (`residents_64 >> 6`) sum to `resident_sum`, and that a loaded `single36` house has residents and non-zero stocks.
+     - Docs:
+       - an "as implemented (P1)" paragraph in `state.md` §4.7c, with decisions 1–10 and the stale draft numbers corrected;
+       - the house payload in §9.3's stream order;
+       - OQ-165's status;
+       - the new OQs;
+       - the W6 status line in `docs/plan/lan-endless.md`.
+  7. **Gates and mutations.**
+     - All of §1 item 4 and item 9: the MSVC build; `ctest` with and without `ANNO1503_GAME_DIR`; clang-format 23.1.3; the WSL GCC 13 `-O3 -Werror` and Clang builds of `sim` and `formats` with their tests, with and without the game dir. Also `python -I tools/sim_stream.py --check` and `python -I tools/lint_sim.py`.
+     - Mutation checks, each with its named test failing (list them in the report):
+       - `e = r << 6` on import;
+       - the stock index shifted by one (`s_{j+1}`);
+       - the reset warning never added;
+       - the House tick writes `last`;
+       - the group table left out of the registry digest;
+       - a non-empty group table of the wrong size accepted.
+  8. **Report and stop.**
+     - Append `## P1 — House payload, group table, scenario import — <date> — status: FINISHED` to REPORTS with the head, every gate's result, the mutation table, the corpus summary line and the acceptance item by item.
+     - Commit (one concern per commit) and stop. No merge, push or TASKS/AGENTS edits.
+- **Acceptance:**
+  - A loaded `single36` house has residents and stocks.
+  - `HouseRecordNotModelled` is gone and `HouseResetNotApplied` is 0 across the corpus.
+  - The created houses' residents sum to `resident_sum`.
+  - Save then load is exact.
+  - The House tick changes nothing.
+  - Goldens and corpus are re-recorded at version 115, with `p1_g7_create`.
+  - No city-store take, no draw, no `kPrngTimelineVersion` change.
+  - Every gate passes, and every listed mutation fails its test.
+  - Nothing from `game/` is in git.
+
+#### T58 — Shared-link serialization in the join oracle (OQ-320) · `MERGED` (round cm, `723029c`; branch head `8547413`)
+- **Review disposition (round cm):** F5 verified and T58 integrated as a squash of `aa022b9..8547413`. The seat-drop receive-channel open point that F5 reported is recorded in ADR 0003 §8.8 and OQ-320 (`88070b1`), not as another validator round. The instructions below are historical.
+- **Historical F5 instructions (reviewed and integrated in round cm):**
   - **Branch and scope:**
     - Continue `codex/T58-shared-link-serialization` in `E:\anno1503-worktrees\anno1503-T58` from `7b0085bbacc8e685a6bdd81794594d85ba2d964c`. Read this updated board on main; do not merge/rebase main into the task branch.
     - **Files:** `tools/join_activation.py`, `tools/test_join_activation.py`, ADR 0003 §8.8 (only the validator paragraph), OQ-373 only if a sentence becomes false, and appended REPORTS.
@@ -1554,14 +1666,14 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   5. Re-read decisive original instructions and table entries independently. Update the concise chain and OQ-340, append REPORTS with exact base/head, read ranges, itemized acceptance and remaining conditions; run `git diff --check`, commit and stop for review. No merge/push/TASKS edit or C++ gates.
 - **Acceptance:** returned-object provenance is proved or bounded at an exact stop; all three helper paths have argument/receiver/effect ledgers; direct and nested effects are separated from unresolved ones; no unsupported record-preservation, world-purity or live-index conclusion; docs and report agree.
 
-**Current executor order (round cl):** T58 F5 on its existing branch, committed and reported. Stop for review. Do not merge/rebase main into either branch. No merge, push, TASKS/AGENTS edits, ADR approval, T34 stage 2, T-AI.4 or production networking. The orchestrator handles review and integration.
+**Current executor order (round cm):** P1 on its new branch `task/P1-house-payload`, committed and reported. Stop for review. Do not merge main into the branch after it is created. No merge, push, TASKS/AGENTS edits, ADR approval, T34 stage 2, T-AI.4 or production networking. The orchestrator handles review and integration.
 
 **Order (round bo, superseded by round bq review/fix-ups above):**
 - **The main executor:** T33.5 stage 3 → T41 → T42.
 - **A second executor:** T40, then T-AI.3 (the 43 draws) when the orchestrator writes it.
 
 **Waiting for the owner:**
-- ADR 0003's design/default approval remains pending. T52 F7 supplies the bounded protocol oracle. T58 adds opt-in serialization; F1 published the matched 300/400/500 ms comparison and real fragment-loss coverage; F2 closed the early-arrival, retry-size and vanished-arrival holes; F3 tied the receiver-side outcome records to closure and staleness evidence and added the fragment payload rule; F4 justified the reassembly-overflow record that closure evidence relies on and stated the seat-drop and forgery boundaries; F5, the final round, must make a closure record bind its receive side. The retry timer is an owner choice (OQ-373), informed by that comparison. Jitter and a measured link (OQ-371), assumed-delivered asks/epoch lifetime and adoption of OQ-373 limits/policies remain open. Owner approval alone does not resolve technical gaps;
+- ADR 0003's design/default approval remains pending. T52 F7 supplies the bounded protocol oracle. T58 adds opt-in serialization; F1 published the matched 300/400/500 ms comparison and real fragment-loss coverage; F2 closed the early-arrival, retry-size and vanished-arrival holes; F3 tied the receiver-side outcome records to closure and staleness evidence and added the fragment payload rule; F4 justified the reassembly-overflow record that closure evidence relies on and stated the seat-drop and forgery boundaries; F5 made a closure record bind its receive side. T58 is merged (round cm, `723029c`); the seat-drop receive-channel path stays open in the checker (OQ-320). The retry timer is an owner choice (OQ-373), informed by that comparison. Jitter and a measured link (OQ-371), assumed-delivered asks/epoch lifetime and adoption of OQ-373 limits/policies remain open. Owner approval alone does not resolve technical gaps;
 - OQ-250, the UDP port;
 - the seven questions of `docs/sim/world-scaling.md` §15;
 - the feel questions of `docs/sim/rules-presets.md`.
@@ -2147,7 +2259,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   - **T32.2 — `BGruppen.dat` fields and the house tick (steps 4–5 below) · `DONE` (round bd: re-read — the downgrade target `id − id % 20 − 20`, else `− 19` (`0x1002ce0f..0x1002ce35`); the house tick `0x10076230` calls no city billing slot `+0x88`, it decays the house's own stocks by 127/128 (`0x1007628e..0x100762f8`); **so a house never takes goods from the city store itself: goods arrive by delivery (`0x10076610`) and the store is drawn by billing with `take = 1` from another caller, OQ-186** — T32.3's spec routes consumption that way; OQ-185 still open).** Branch `task/T32-2-house-tick`. Output: `population.md` §12 "The house tick as pseudo-code (T32.2)": which `BGruppen.dat` fields are read and where (the field map: field → `formats::text` name → reader address); the tick every 2 500 ticks in order — consumption from the city store (the formula with its units, 1 t = 256, the rounding), the stock decay, satisfaction and mood (−2 … +2), growth through `VermehrTab`, up- and downgrade (conditions, which building replaces which), and taxes every 2 000 ticks into the player's money — every PRNG draw with its site and condition; each rule D with its address, else open with the next address. Acceptance: the pseudo-code complete or every gap with its next address; the field map; the draw list.
   - **T32.3 — The scenario side and the spec draft (steps 6–8 below; `READY`, round bd; first finish OQ-186: the take is answered (round bd: the market stand, PRODTYPE 161, slot `+0xac` = `0x100702f0`, `take = 1`; chapels, churches, baths, theatres, libraries, pavilions, schools bill without taking); read the remaining path — the walker class behind house slot `+0x118`, who calls the stand's slot `+0xac`, and who calls the house's delivery slot `+0xc0` (`0x10076610`) — because the spec routes consumption city store → stand → walker → house); and test the **owner's rule** recorded in OQ-103 (2026-10-25: the stand is to houses what the market building is to producers — a road connection to a stand plus lying within the range of **any** stand): find the stand's range test and the road requirement in the code and state for each clause whether the code agrees, with addresses).** Branch `task/T32-3-population-spec`. Output: T26's three pure functions (`house_need_stock`, `house_satisfaction`, `house_reset_applies` in `src/sim`) checked against T32.1–T32.2 (read the code, do not change it; list every difference); the new `state.md` section "Population (DRAFT, T32)" (the house payload fields, the group table in the registry, the tick and its place in the city tick, the seams, the stream bump, a synthetic golden G7, the test list, stages P1… each with a proposed acceptance); owner questions for anything that may change the feel, each with the faithful default. Acceptance: the orchestrator can write P1 from the section alone.
   - **T32.4 — The stand → house path and the owner's market-stand rule (`READY`, round be; static RE and docs only; the parallel executor).** Branch `task/T32-4-stand-path` from local `main`. Read `population.md` §11–§13, `state.md` §4.7c, OQ-103 (the owner's rule of 2026-10-25), OQ-186, OQ-187. Steps: (1) **OQ-187, who calls the market stand's slot `+0xac` (`0x100702f0`):** sweep for virtual calls through slot `+0xac` whose receiver is a building of the stand's class (vtable `0x100c8fe0`, constructor `0x10070730`; check the receiver by its origin, not by the slot number alone — slot numbers repeat across classes, and `0x1005ac10` is a search callback, not a stand caller); name the caller and the object it runs on. (2) **The resident walker:** the house tick calls house slot `+0x118` (`population.md` §12, `0x100763e3`); read that slot to its end: what it spawns (figure type, job), where it sends it (which stand; how the stand is chosen — nearest, first in a list, a search with which layer), what it carries back, and who calls the house's delivery slot `+0xc0` (`0x10076610`) with the goods (`0x10057bd0` is named as the figure unload path; confirm). (3) **The range test and the road requirement for houses:** where the code decides that a house may be served by a stand — a radius around the stand (`HEAD` action radius `+0x65`, as for markets), the city's area, a walk search over roads (which walking layer) — each D with its address. (4) **The owner's rule (OQ-103, 2026-10-25)** clause by clause — (a) a road connection between stand and house is required; (b) the house lies within the range of **any** stand, not necessarily the one it is connected to by road — and the same two clauses for producers and market buildings (the market cart's area and road search, `state.md` §5.9 clauses 2 and 5, are decoded): for each, agrees / disagrees / undecided statically, with the addresses, and the exact situation in which code and rule would differ (that is the case for T30b.7's Wine check). (5) Docs: `population.md` §14 "From the stand to the house (T32.4)", OQ-187 and OQ-103 status lines, `state.md` §4.7c's P5 row with what was found, REPORTS T32.4. Acceptance: (1)–(4) each D with addresses or stopped with the next address; no `src/` change; commit on the branch, report the branch and commit.
-  - **P1 — The house payload, the registry groups, Load/Save (`READY after T33.4`, round be; `src/sim`, stream change; the main executor after T33.4).** Written from `state.md` §4.7c's P1 row, its test list and its stream bump (the next free `kStateHashVersion` after T33.4's 112). The orchestrator writes the full step list when T33.4 is merged. Owner decisions of 2026-10-25 (round be): question 1, the catch-up after a load, stays faithful (`last` not saved); question 3, the billed goods, are saved, as a `Rules` option `save_billed_goods` with default `true` (`false` = the original) — P4. The other five questions take their stated faithful defaults.
+  - **P1 — The house payload, the registry groups, Load/Save (superseded in round cm by the `#### P1` entry in the LAN lane, which is the binding text; was `READY after T33.4`, round be; `src/sim`, stream change; the main executor after T33.4).** Written from `state.md` §4.7c's P1 row, its test list and its stream bump (the next free `kStateHashVersion` after T33.4's 112). The orchestrator writes the full step list when T33.4 is merged. Owner decisions of 2026-10-25 (round be): question 1, the catch-up after a load, stays faithful (`last` not saved); question 3, the billed goods, are saved, as a `Rules` option `save_billed_goods` with default `true` (`false` = the original) — P4. The other five questions take their stated faithful defaults.
 - **The original step list (reference for the sub-tasks):**
 - **Why (unchanged):** a house is the `Inert` payload, nothing consumes, and the files' residents are dropped (T26: `single36` 388 houses, 2 283 residents). Population is the next subsystem in PLAN M3's order after transport, and T26's pure functions (`house_need_stock`, `house_satisfaction`, `house_reset_applies`) wait for it. The owner on OQ-165: "maybe both", settled from the original's files.
 - **Steps (in order; §1 item 7):**

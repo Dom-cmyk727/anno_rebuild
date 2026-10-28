@@ -5472,3 +5472,30 @@ Reviewed exact clean T58 F3 head `dd897b4c358883da59ada43914a2cc6b16e37290` (on 
 **Acceptance, item by item:** P8 rejected by its own named test with the specific xvi message, passing unmutated (yes); the handwritten negatives fail at `7b0085b` and are rejected now, the positives pass (yes); the real-refusal and all rows and sensitivity validator-clean with unchanged numbers (yes); ADR §8.8 states V8 and the ACK boundary and keeps the F4 sentences (yes); the `drop_peer`/`recv_state` finding is stated, with the open point (yes); no simulator, protocol, default or snapshot-file change (yes).
 
 **Open / not done:** a receive channel first created after a seat drop is open by the code (above); a `drop_seated` closure is still not re-derived by the link validators, and coordinated forgeries are out of scope (F4 sentences); the published `--link` rows still reach neither `arrive_refused` nor a lid-carrying `stale_epoch`; last-fragment sizes are an assumption; jitter, a measured LAN, the ask's loss and adoption of timer/queue values stay open (OQ-373). Stopping for review.
+
+## Orchestrator review and integration — round cm — 2026-10-28
+
+**Scope:** T58 F5, `85474134ba317c3a044b671c87efae29569cc26e` on `7b0085b`, reviewed from main `6b60e0e`, then integrated. No task-branch edits, push or executor dispatch. The pre-existing untracked AGENTS.md is preserved.
+
+**T58 F5 checks run:**
+- 215 join tests: OK (188.3 s), mutation table included.
+- Five expected `JOIN_RULES=F1` failures.
+- 64 snapshot tests: OK. Both snapshot files are identical to `3078e07`. `git diff --check 7b0085b 8547413` is clean, and the `ast` check passes.
+- `--sensitivity` and `--link 100M` / `--link 1M` (all rows): byte-identical to F4.
+- Failing first, run independently against the `7b0085b` oracle: the handwritten V8 test fails, and P8 passes its named test under the mutant.
+- `review_t58_f4.py`: P8 has 1 xvi error ("t=1051 arrive (duplicate) on H>J1 ch1 after its receive side was closed"); the baseline is clean.
+- `review_t58_f3.py`: P5 13 errors, P6 15, P7 2; both baselines clean. P5 and P6 grew because V8 also rejects the real arrivals that follow their forged closure records.
+- `review_t58_f2.py`: P1, P2 and P4 are caught (6/6/3). `review_t58_f1.py`: unchanged.
+- `closure_rows.py`: output identical to round cl.
+
+**Integration** (`723029c`, squash of `aa022b9..8547413`):
+- `tools/join_activation.py`, `tools/test_join_activation.py` and ADR 0003 are blob-identical to the branch.
+- `docs/open-questions.md` equals the branch plus main's T59 OQ-340 lines.
+- The six T58 report sections are appended unchanged.
+- On main: 215 join tests OK (200 s), 64 snapshot tests OK, and the five legacy failures.
+
+**Open point recorded** (`88070b1`): the F5 report found that `Sim.drop_peer` sets `dead` only on the channels that exist at the drop, while V8 treats a seat drop as closing the pair. ADR 0003 §8.8 and OQ-320 now state it. No scenario reaches it, and it is not proved unreachable. Under the round-cl policy this is a stated boundary, not an F6.
+
+**Not done:** no C++, live-link or original-runtime gates were needed or claimed. ADR 0003 stays Proposed.
+
+**Next lane (round cm board):** P1, population stage 1 (the `#### P1` entry in TASKS §3), written from `state.md` §4.7c with ten orchestrator decisions. The decisions correct the draft where it is stale (`PayloadTag::House` is 7, the stream version goes from 114 to 115) or self-contradictory: the own save is exact while the original's record is only imported, G7's growth asserts belong to P2, and the reset on import is warned, not drawn. The code anchors were mapped by a read-only subagent and spot-checked against the files: the class-table row, `kPayloadTags`, the loader's house branch, `payload_for_tick` / `check_consistency` and `tick_building`.

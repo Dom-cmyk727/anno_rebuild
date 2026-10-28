@@ -4,7 +4,22 @@
 
 **Round bp (2026-10-26, owner instruction):** for every task after the one an executor has in progress now, **subagents are allowed again where necessary and helpful**. §1 item 5 has the rules: the task stays the executor's, subagents' results are checked against the files before they enter a commit, one heavy job at a time on the PC, the orchestrator's review stays. §1 item 11 no longer forbids them inside a sub-task.
 
-Last update: 2026-10-27 ci — **T58 F1 and T59 F1 reviewed; both need a small F2 and stay unmerged.** Next executor tasks: **T58 F2** (three link-validator holes: early arrival, retry size, vanished arrivals), then **T59 F2** (four wording corrections, docs only). Continue each existing branch; do not merge/rebase main into either. ADRs remain Proposed; T34 stage 2 and T-AI.4 stay `LATER`. Nothing pushed.
+Last update: 2026-10-28 cj — **T58 F2 and T59 F2 reviewed; both stay unmerged.** Next executor tasks: **T58 F3** (the two receiver-side outcome records F2 added are self-certifying; a fragment payload rule), then **T59 F3** (one phrase, docs only). Continue each existing branch; do not merge/rebase main into either. ADRs remain Proposed; T34 stage 2 and T-AI.4 stay `LATER`. Nothing pushed.
+
+**Round cj (2026-10-28, orchestrator): T58 F2 / T59 F2 review.**
+- Baseline main `814d7c6104afd6c7307a84f90ce90cad62aab56e`. Exact clean heads: T58 F2 `138fddddc6d56cc0119a504f944159e079ea9d45` (on `dafd9ba`), T59 F2 `1c631af71fd6fba75016748656342ed49b73ceab` (on `ec6b283`). Neither merged. No push; the pre-existing untracked `AGENTS.md` is untouched. The orchestrator ran checks and probes and updated the board; it changed neither branch.
+- **T58 F2 verified.**
+  - 200 join tests pass (182.7 s), including the mutation table. The five `JOIN_RULES=F1` regressions fail as required. 64 snapshot tests pass; both snapshot files are identical to `3078e07`; `git diff --check` is clean.
+  - The round-ci reproducer (`E:\anno1503\cache\orch-ci\review_t58_f1.py`) now reports errors for N1 (12), N2 (12) and N3 (6), and both round-ch lines stay caught. `--sensitivity` is identical to round ci (all 18 lines).
+  - The F2 positive declared-delay test is not vacuous: its scenario labels 60 enqueues with the declared 40 ms.
+- **T58 F3 required.** Reproducer: `E:\anno1503\cache\orch-cj\review_t58_f2.py` (ignored; `.out` alongside; imports the T58 worktree; `python -I -B`). Its lines P1, P2 and P4 are V4, V5 and V6; at `138fddd` each shows `validators 0`.
+  - **V4, a refusal needs no closure.** F2's `arrive_refused` record counts as consumption of a link arrival, but nothing checks that the receive side was closed. A mutant in `Sim.arrive` that refuses every first `Snap-frag` arrival on a live receiver and writes `arrive_refused` passes every validator (6 records, input 2565).
+  - **V5, a stale record need not be stale.** The same with a `stale_epoch` record (with lid) for a current-epoch datagram: 6 records, every validator clean. `_check_epochs` (xi) checks `send`/`arrive`/`deliver`/`ack` but not `stale_epoch`, and xvi checks only the record's direction.
+  - **V6, fragment sizes have no anchor.** A mutant that shrinks every `Snap-frag` payload to 1 byte before its first record keeps all records consistent and passes every validator (egress first bytes 18026 instead of 27755). Every generator (`Sim.send`, `turn_sizes`, the snapshot stream in `next_datagram`) gives every non-last fragment exactly `cfg.payload_max`, which the validator can check from the records alone.
+  - **Coverage.** No `--link` row produces `arrive_refused` or a `stale_epoch` with a lid (`E:\anno1503\cache\orch-cj\rows_records.out`). The only real stale case is the F2 unit test with two asks (5 `arrive` and 2 `ack` stale records; validator-clean at `138fddd`, but the test asserts only that the lid is present). The real closed-receiver path is not reached by any scripted run.
+- **T59 F2 accepted in substance.** A fresh read of `AnnoWelt.dll` `0x100a3850..0x100a38b3` and `CompLogic.dll` `0x1003edf0..0x1003ee78` confirms the three calls, the compares at `0x100a385c` / `0x100a3882` / `0x100a389a`, the store source at `0x100a386d`, the vtable store at `0x100a385e` and the null-tested `lea [edi + 4]`.
+  - **One phrase remains (F3), and the round-ci board introduced it:** "`edi` is dereferenced at `0x1003ee14`". The instruction there is `mov eax, [ebx]`, with `ebx = edi + 0xb04` (`lea` at `0x1003ee0e`). `edi` at `0x1003ee6b` equals the entry `this` only if the calls `0x10059c6f` and `0x10056530` preserve it. That is the same callee-saved condition F2 rightly applied to `ebp` at `0x100a38a7`.
+- **Queue:** T58 F3, then T59 F3, each on its existing branch. No merge/rebase of main into either. Both are integration candidates after F3 is reviewed. ADRs remain Proposed; T34 stage 2, T-AI.4 and production networking stay later. No C++ or live-original run is needed or claimed.
 
 **Round ci (2026-10-27, orchestrator): T58 F1 / T59 F1 review.**
 - Baseline main `6f8d34d88e5254f0221524c9736e78244fa42599`. Exact clean heads: T58 F1 `dafd9baea49b6dc6a070200ab439f2933003d868` (on `aa022b9`), T59 F1 `ec6b28364f233db5f23bd558be8aa1171c9cc83a` (on `e9997f4`). Neither merged. No push; the pre-existing untracked `AGENTS.md` is untouched. The orchestrator ran checks and probes and updated the board; it changed neither branch.
@@ -682,13 +697,13 @@ Main executor (prompt handed over by the owner): T15 B1, then T11 stage 2a to th
 
 7. **Steps, not judgement calls (since round u; the executor is a simpler model).** A task section lists numbered steps with the files, the functions and the commands. Do the steps in order; do not add scope, do not refactor what a step does not name, do not change a default the owner has to decide (`rules` options, OQ decisions). **Allowed without asking (owner, 2026-10-24 w), when listed in the report:** tests for the code the step changed, and fixes of sentences (docs, comments) that would otherwise contradict that code. Anything else is a question. When a step is unclear, when a file or function it names does not exist, or when a measurement contradicts the step's premise: stop that step, write the question with what you found into REPORTS.md under the task, and continue with the next step that does not depend on it. Report numbers as measured, including the ones that miss the acceptance. Every claim about the original carries module + address, every mapping in code cites its address in a comment. The acceptance list is ticked item by item in REPORTS.md with the evidence (the test name, the command's output line).
 
-## 2. Current status (2026-10-27 ci, executor review)
+## 2. Current status (2026-10-28 cj, executor review)
 
-- **Local Git:** T57 (`7f9e605`) and T52 F7 (`8f30605`) remain integrated within their documented scope. T58 F1 `dafd9ba` and T59 F1 `ec6b283` are reviewed and unmerged, pending F2. Nothing pushed or remotely checked; pre-existing untracked `AGENTS.md` left alone.
+- **Local Git:** T57 (`7f9e605`) and T52 F7 (`8f30605`) remain integrated within their documented scope. T58 F2 `138fddd` and T59 F2 `1c631af` are reviewed and unmerged, pending F3. Nothing pushed or remotely checked; pre-existing untracked `AGENTS.md` left alone.
 - **Versions on main:** state stream 114, PRNG timeline 2, command wire 1.
 - **Implemented:** C++ formats/assets/viewer and deterministic simulation through S14, scenario cities and production, market/workshop transport, decoded walk search and per-tile records including named-tile removal. The renderer still consumes scenario data rather than a live simulation game loop.
 - **LAN groundwork:** T36 setup, T37 generator spec, T38/T40 AI inventory and tick-entry RE, T39/T41 network ADR and budgets. No C++ networking, generator, AI behavior or playable LAN loop yet. Population implementation, float walking, ships/trade, combat, fire and win/loss remain unfinished.
-- **Next executor tasks:** T58 F2, then docs-only T59 F2, each on its existing branch without merging/rebasing main. ADRs 0002/0003 remain Proposed; T34 stage 2 and T-AI.4 are later. T31/T35 remain unreviewed branches. T30b.7 and then P1 remain separate orchestrator work.
+- **Next executor tasks:** T58 F3, then docs-only T59 F3, each on its existing branch without merging/rebasing main. ADRs 0002/0003 remain Proposed; T34 stage 2 and T-AI.4 are later. T31/T35 remain unreviewed branches. T30b.7 and then P1 remain separate orchestrator work.
 - **Host/gates:** Windows/MSVC, GCC/Clang and sanitizers in WSL. Canonical repo `E:\anno1503`, worktrees `E:\anno1503-worktrees`, read-only originals `E:\anno1503\game\app`. One heavy job at a time; round ba's local workflow continues. See round br for actual combined checks, rather than treating older branch reports as new runs.
 
 ## 3. Task queue
@@ -1275,8 +1290,46 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   4. Re-read decisive original instructions/table entries independently, update the concise chain and OQ-340, append REPORTS with exact base/head, itemized acceptance and next unread links, run `git diff --check`, commit and stop for review. No merge/push/TASKS edit or C++ gates.
 - **Acceptance:** both helper paths and receiver chains are traced with widths/cleanup; direct and nested effects are proved or bounded at concrete stops; cached-word interpretation follows return evidence; docs agree without treating unresolved mutation/lifetime paths as disproved.
 
-#### T58 — Shared-link serialization in the join oracle (OQ-320) · `F2 READY` (round ci)
-- **Current task — F2:**
+#### T58 — Shared-link serialization in the join oracle (OQ-320) · `F3 READY` (round cj)
+- **Current task — F3:**
+  - **Branch and scope:**
+    - Continue `codex/T58-shared-link-serialization` in `E:\anno1503-worktrees\anno1503-T58` from `138fddddc6d56cc0119a504f944159e079ea9d45`. Read this updated board on main; do not merge/rebase main into the task branch.
+    - **Files:** `tools/join_activation.py`, `tools/test_join_activation.py`, ADR 0003 §8.8 (only the validator paragraph and the assumption named in step 4), OQ-373 only if a sentence becomes false, and appended REPORTS.
+    - Preserve defaults (`link_bps` 0, `resend_ms` 300), the un-serialized rows, both snapshot files and Proposed status. No new timer, pacing, jitter, socket or protocol change: only evidence records, the validators and tests.
+  - **Reproducer:** `E:\anno1503\cache\orch-cj\review_t58_f2.py` (read-only, never commit; `python -I -B E:\anno1503\cache\orch-cj\review_t58_f2.py`). Its lines P1, P2 and P4 are V4, V5 and V6. P3 only shows that the F2 declared-delay test is not vacuous; it needs no change.
+- **F3 steps:**
+  1. **Failing first.** Add V4, V5 and V6 as runtime mutants to `MUTANTS` (the reproducer's P1, P2 and P4 bodies), each with its own named test that asserts the specific message, plus one handwritten negative trace each in the simulator's real emission order. Show each mutant uncaught at `138fddd` before any fix, and save the output in the worktree's ignored `cache\`.
+  2. **V4, a refusal needs a closure.**
+     - An `arrive_refused` record for a receive side (`src`, `dst`, `ch`) is valid only if the log holds, before it and after the pair's last `epoch_bump`, a record that closes that receive side: a `drop_seated` of its non-host endpoint, or a `reasm_overflow` for the same (`src`, `dst`, `ch`).
+     - If the simulator sets a receive side dead on any other path, that path must write a record naming (`src`, `dst`, `ch`), and only these records count. List the closure records in the report.
+     - The F2 handwritten positive for `arrive_refused` has no closure record. Add one; the variant without it becomes a negative.
+  3. **V5, a stale record must be stale.**
+     - A `stale_epoch` record with a lid names `what` = `arrive` for a data transmission and `ack` for an ACK-only one.
+     - It carries the epoch of its own transmission (the `send` or `ack_send` record of that lid).
+     - That epoch differs from the pair's current epoch at the record's position in the log. Derive the current epoch from the `epoch_bump` records before it, as `Sim.reset_pair` computes it (the number of bumps of the pair, mod 65536).
+     - The F2 handwritten positive for `stale_epoch` has no epoch bump. Add one; the variant without it becomes a negative.
+     - Extend `test_a_stale_epoch_arrival_and_ack_record_the_lid` (the two-ask scenario) to assert that the run is validator-clean, in addition to the lid check.
+  4. **V6, the fragment payload rule.**
+     - Using the send record's `frag` / `nfrag`: every non-last fragment (`frag < nfrag - 1`) carries exactly `cfg.payload_max`, and no payload exceeds `cfg.payload_max`. Check the three generators (`Sim.send`, `turn_sizes`, the snapshot stream in `next_datagram`) and state in the report that each follows this rule.
+     - The size of a last fragment or a single-datagram message comes from the message model and is not checked. Say so in ADR §8.8 as an assumption.
+  5. **A real refusal.**
+     - Add one scripted link-mode scenario, as a test and not a new ADR row. A real closure (a seat drop at the grace, or a reassembly overflow through a smaller cap set in that test's `Cfg`) must be followed by at least one served link arrival on the closed receive side, so that `Sim.arrive` writes `arrive_refused` on its real path.
+     - Assert at least one such record and a validator-clean run.
+     - If no scenario reaches that path without a protocol change, stop this step, write a QUESTION with what you tried and found, and continue with step 6.
+  6. **Checks and report.**
+     - Run the full join suite; the five expected F1 legacy failures (`JOIN_RULES=F1 … RoundCbRegressions`, then unset the variable); the 64-test snapshot suite; the `ast` syntax check of both files; `git diff 3078e07 -- tools/snapshot_catchup.py tools/test_snapshot_catchup.py` (must be empty); `git diff --check`.
+     - Run `--sensitivity` and every `--link` row at both rates. Report whether any number changed; none should, since no record that feeds a number changes.
+     - Run both reproducers. In `review_t58_f2.py`, P1, P2 and P4 must now show validator errors and the baseline line must stay clean. In `E:\anno1503\cache\orch-ci\review_t58_f1.py`, the round-ch lines and N1–N3 must stay caught.
+     - Save the logs in ignored `cache\`.
+     - Append `## T58 F3 — …` to REPORTS with the exact head, the failing-first evidence, the mutant table rows for V4–V6, the closure records, the real-refusal scenario (or the QUESTION) and the acceptance item by item. Commit and stop for review.
+- **F3 acceptance:**
+  - V4, V5 and V6 are each rejected by their own named test with the specific message, and each test passes unmutated.
+  - The updated F2 positives carry their evidence and pass; the variants without it fail.
+  - The two-ask stale scenario and the real-refusal scenario are validator-clean, or the latter has a QUESTION with evidence.
+  - All real rows and sensitivity runs stay validator-clean with unchanged numbers.
+  - Suites, ADR and REPORTS agree.
+  - No protocol, default or snapshot-file change.
+- **Historical F2 instructions (reviewed in round cj; F3 above is current):**
   - **Branch and scope:**
     - Continue `codex/T58-shared-link-serialization` in `E:\anno1503-worktrees\anno1503-T58` from `dafd9baea49b6dc6a070200ab439f2933003d868`. Read this updated board on main; do not merge/rebase main into the task branch.
     - **Files:** `tools/join_activation.py`, `tools/test_join_activation.py`, ADR 0003 §8.8 (only where the validator text or the fragment-loss sentence changes), OQ-373 only if a sentence becomes false, and appended REPORTS.
@@ -1333,8 +1386,17 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   6. Run `python -I -B tools/test_join_activation.py -v`, then only `RoundCbRegressions` with `JOIN_RULES=F1` (all five must fail), restore/unset that environment variable, and run `python -I -B tools/test_snapshot_catchup.py -v` (64 pass). Check Python syntax, `git diff --check` and an empty diff for snapshot model/tests. Save verbose logs in ignored cache. Update current ADR/OQ summaries so earlier 73 ms or no-serialization statements are clearly historical where superseded; do not change ADR status or historical measurements. Append REPORTS with failing-first evidence, exact commands/results, scope/assumptions and acceptance item by item. Commit and stop T58 for review; independent T59 may then proceed.
 - **Acceptance:** one shared capacity per direction including all in-scope datagrams; finite explicit queue ownership and correct integer timing; independent validators catch each named violation; serialized rows are reproducible with no pause or hidden limit changes; legacy mode/defaults/snapshot files preserved, boundaries explicit, ADR Proposed. Jitter, real-network validation and adoption of OQ-373 policies remain open.
 
-#### T59 — Remaining type-12 word-2 target-object effects (OQ-340) · `F2 READY` after T58 F2 is reported (round ci)
-- **Current task — F2 (docs only, small):**
+#### T59 — Remaining type-12 word-2 target-object effects (OQ-340) · `F3 READY` after T58 F3 is reported (round cj)
+- **Current task — F3 (docs only, one phrase):**
+  - **Branch:** continue `codex/T59-ai-word2-target-effects` in `E:\anno1503-worktrees\anno1503-T59` from `1c631af71fd6fba75016748656342ed49b73ceab`. Read this board on main; do not merge/rebase main into the task branch.
+  - **Files:** the T59 subsection of `docs/re/complogic.md` §11 (item 1 only) and appended REPORTS.
+  - **Limits:** no new reads beyond the instructions named here; originals read-only; no bytes or listings committed.
+- **F3 steps:**
+  1. **Re-read** `CompLogic.dll` `0x1003ee0a..0x1003ee16` and `0x1003ee67..0x1003ee78`.
+  2. **Correct the phrase in §11 T59 item 1.** Replace "the null arm is unreachable here because `edi` is dereferenced at `0x1003ee14`" with this: a null AI would already fault at `0x1003ee14` (`mov eax, [ebx]`, with `ebx = edi + 0xb04` from `lea` at `0x1003ee0e`). The null arm at `0x1003ee76` is therefore not taken, provided the calls `0x10059c6f` and `0x10056530` preserve `edi` (callee-saved behaviour, not read). The round-ci board wording caused the imprecision; say so in the report. Keep the earlier REPORTS sections as written.
+  3. **Finish.** Append `## T59 F3 — …` to REPORTS: head, the re-read ranges, the corrected sentence, the acceptance. Run `git diff --check`, commit and stop for review.
+- **F3 acceptance:** the sentence names the instruction actually at `0x1003ee14` and the callee-saved condition; no other text changes; the F1/F2 history is kept.
+- **Historical F2 instructions (reviewed in round cj; F3 above is current):**
   - **Branch:** continue `codex/T59-ai-word2-target-effects` in `E:\anno1503-worktrees\anno1503-T59` from `ec6b28364f233db5f23bd558be8aa1171c9cc83a`. Read this board on main; do not merge/rebase main into the task branch.
   - **Files:** the T59 subsection of `docs/re/complogic.md` §11, OQ-340 only where the same wording appears, and appended REPORTS.
   - **Limits:** no new reads beyond the instructions named here; no new lane; originals read-only; no bytes or listings committed.
@@ -1368,14 +1430,14 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   5. Re-read decisive original instructions and table entries independently. Update the concise chain and OQ-340, append REPORTS with exact base/head, read ranges, itemized acceptance and remaining conditions; run `git diff --check`, commit and stop for review. No merge/push/TASKS edit or C++ gates.
 - **Acceptance:** returned-object provenance is proved or bounded at an exact stop; all three helper paths have argument/receiver/effect ledgers; direct and nested effects are separated from unresolved ones; no unsupported record-preservation, world-purity or live-index conclusion; docs and report agree.
 
-**Current executor order (round ci):** T58 F2, then T59 F2, each on its existing branch, separately committed and reported. Stop each for review. Do not merge/rebase main into either branch. No merge, push, TASKS/AGENTS edits, ADR approval, T34 stage 2, T-AI.4 or production networking. The orchestrator handles review and integration.
+**Current executor order (round cj):** T58 F3, then T59 F3, each on its existing branch, separately committed and reported. Stop each for review. Do not merge/rebase main into either branch. No merge, push, TASKS/AGENTS edits, ADR approval, T34 stage 2, T-AI.4 or production networking. The orchestrator handles review and integration.
 
 **Order (round bo, superseded by round bq review/fix-ups above):**
 - **The main executor:** T33.5 stage 3 → T41 → T42.
 - **A second executor:** T40, then T-AI.3 (the 43 draws) when the orchestrator writes it.
 
 **Waiting for the owner:**
-- ADR 0003's design/default approval remains pending. T52 F7 supplies the bounded protocol oracle. T58 adds opt-in serialization; F1 published the matched 300/400/500 ms comparison and real fragment-loss coverage, and its independent validator still needs F2 (early arrival, retry size, vanished arrivals). The retry timer is an owner choice (OQ-373), informed by that comparison. Jitter and a measured link (OQ-371), assumed-delivered asks/epoch lifetime and adoption of OQ-373 limits/policies remain open. Owner approval alone does not resolve technical gaps;
+- ADR 0003's design/default approval remains pending. T52 F7 supplies the bounded protocol oracle. T58 adds opt-in serialization; F1 published the matched 300/400/500 ms comparison and real fragment-loss coverage; F2 closed the early-arrival, retry-size and vanished-arrival holes, and F3 must prove its new receiver-side outcome records and the fragment payload rule. The retry timer is an owner choice (OQ-373), informed by that comparison. Jitter and a measured link (OQ-371), assumed-delivered asks/epoch lifetime and adoption of OQ-373 limits/policies remain open. Owner approval alone does not resolve technical gaps;
 - OQ-250, the UDP port;
 - the seven questions of `docs/sim/world-scaling.md` §15;
 - the feel questions of `docs/sim/rules-presets.md`.

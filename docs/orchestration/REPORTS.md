@@ -5109,3 +5109,24 @@ Reviewed exact clean T58 F1 head `dafd9baea49b6dc6a070200ab439f2933003d868` (on 
 - unread links that omit `0x10057830`, `0x100579e0` and the function of `0x100af311`.
 
 Original bytes and disassembly are not committed. No C++, live-link or original-runtime gates were needed or claimed.
+
+## Orchestrator review — round cj — 2026-10-28
+
+Reviewed exact clean T58 F2 head `138fddddc6d56cc0119a504f944159e079ea9d45` (on `dafd9ba`) and T59 F2 head `1c631af71fd6fba75016748656342ed49b73ceab` (on `ec6b283`) against main `814d7c6104afd6c7307a84f90ce90cad62aab56e`. Neither is integrated yet; both get an F3 in TASKS. No task-branch edits, merge, push or executor dispatch. The pre-existing untracked AGENTS.md is preserved.
+
+**T58 checks run:**
+- 200 join tests: OK (182.7 s), mutation table included.
+- Five expected `JOIN_RULES=F1` failures.
+- 64 snapshot tests: OK. Both snapshot files are identical to `3078e07`, and `git diff --check` is clean.
+- `--sensitivity` is identical to round ci (18 lines).
+- The round-ci reproducer reports errors for N1 (12), N2 (12) and N3 (6); the round-ch lines stay caught.
+
+**What the new probes show** (ignored `cache/orch-cj/review_t58_f2.py` and `.out`, `rows_records.py` / `.out`, `stale_scenario.py`):
+- **V4:** a live receiver that refuses every first `Snap-frag` arrival with an `arrive_refused` record passes every validator (6 records, input 2565). Nothing ties the refusal to a closure (`drop_seated`, `reasm_overflow`).
+- **V5:** the same with a `stale_epoch` record (with lid) for a current-epoch datagram passes every validator. Neither xi nor xvi checks that the recorded epoch is stale.
+- **V6:** every `Snap-frag` payload shrunk to 1 byte before its first record keeps all records consistent and passes (egress first bytes 18026 instead of 27755). All three generators give non-last fragments exactly `payload_max`, a rule the validator can check from the records alone.
+- **Coverage:** no `--link` row produces `arrive_refused` or a `stale_epoch` with a lid. The two-ask unit-test scenario does produce 5 `arrive` and 2 `ack` stale records and is validator-clean. The F2 declared-delay positive test labels 60 enqueues, so it is not vacuous.
+
+**T59:** fresh reads of `AnnoWelt.dll` `0x100a3850..0x100a38b3` and `CompLogic.dll` `0x1003edf0..0x1003ee78` confirm every F2 correction. One phrase remains: "`edi` is dereferenced at `0x1003ee14`" (wording from the round-ci board). That instruction is `mov eax, [ebx]` with `ebx = edi + 0xb04`, and `edi` at `0x1003ee6b` depends on the calls `0x10059c6f` and `0x10056530` preserving it.
+
+Original bytes and disassembly are not committed. No C++, live-link or original-runtime gates were needed or claimed.

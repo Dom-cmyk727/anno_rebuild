@@ -328,7 +328,17 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 
 **Historical status 2026-10-26 (round bj; superseded by round bq below):** **T33 is done** (T33.1–T33.4 merged locally, T33.4 as `acd45cd`; GitHub is suspended, so `main` is unpushed). The market cart and the workshop carrier find sources by the original's decoded walk rule, and every tile stores the original's walk code and mask (stream 112). Open: OQ-200 (water), OQ-170 (coast), OQ-201 (cleared footprint, narrowed), OQ-203..205 (tile-record bits). T33.5 stage 1 (the original's tile record, `transport.md` §3.4.17) merged as `d30d20b` (round bk); OQ-202 answered: growth leaves the walk record as placement wrote it. Live lane: T33.5 stage 2 (the tile layer as the original's record, the main executor); T30b.5–7 (the Wine validation, the orchestrator); P1 (population, from `state.md` §4.7c).
 
-**Orchestration (2026-10-27, round ci; current):** T58 F1 (`dafd9ba`) and T59 F1 (`ec6b283`) are reviewed and remain unmerged.
+**Orchestration (2026-10-28, round cj; current):** T58 F2 (`138fddd`) and T59 F2 (`1c631af`) are reviewed and remain unmerged.
+- **T58 F2** closes the three round-ci holes: a physical arrival floor and declared delays, payload identity across attempts and deliveries, and a recorded outcome for every served arrival. Verified: 200 join tests, 64 snapshot tests, the five expected legacy failures and unchanged sensitivity numbers.
+
+  F3 is still needed, for three reasons:
+  - the two new outcome records (`arrive_refused`, `stale_epoch` with a lid) are self-certifying, so a live receiver can discard arrivals with either and every validator stays clean;
+  - fragment payloads have no anchor;
+  - no scripted run reaches the real closed-receiver path.
+- **T59 F2** is correct; F3 fixes one phrase about `0x1003ee14` that came from the round-ci board.
+- **Next:** T58 F3, then T59 F3; both are integration candidates afterwards. Nothing pushed; ADRs remain Proposed; T34 stage 2, T-AI.4 and production networking stay later. No gameplay milestone is complete.
+
+**Historical orchestration (2026-10-27, round ci):** T58 F1 (`dafd9ba`) and T59 F1 (`ec6b283`) are reviewed and remain unmerged.
 - **T58 F1** fixes the round-ch findings:
   - the validator is order-independent with mandatory datagram identity;
   - the fragment-loss row really loses and recovers `Snap-frag` seq 4;

@@ -2088,13 +2088,41 @@ def _ack_event(lk, **kw):
     return e
 
 
+def _bump(t=150, a="H", b="P1", epoch=1):
+    """A new incarnation of the pair (Sim.reset_pair writes this record)."""
+    return ev("epoch_bump", t, a=a, b=b, epoch=epoch, why="ask")
+
+
+def _closed(kind="drop_seated", t=150, **kw):
+    """A record that closes a receive side: the seat drop of its non-host endpoint, or the reassembly overflow
+    of that (src, dst, channel)."""
+    if kind == "drop_seated":
+        return ev("drop_seated", t, peer=kw.get("peer", "P1"), why="grace")
+    return ev("reasm_overflow", t, src=kw.get("src", "H"), dst=kw.get("dst", "P1"), ch=kw.get("ch", 0), mid=("M", 1), held=4,
+              limit=4)
+
+
+def _refused(**kw):
+    e = ev("arrive_refused", 151, src="H", dst="P1", ch=0, seq=0, msg="Turn", lid=1, attempt=1, sid=1, epoch=0, size=16, frag=0,
+           nfrag=1, mid=None, why="closed")
+    e.update(kw)
+    return e
+
+
+def _stale(**kw):
+    e = ev("stale_epoch", 151, src="H", dst="P1", local="P1", what="arrive", epoch=0, lid=1)
+    e.update(kw)
+    return e
+
+
 class LinkValidatorsOnHandWrittenLogs(TraceCase):
     """xvi on logs written by hand, in the order in which the simulator emits them (the link records of a
     datagram come before its send record). Complete positive traces pass; each invalid one is rejected by xvi."""
 
     def _run_xvi(self, log, queue, end, delays):
         kw = {} if delays is None else {"delays": delays}
-        return [(c, m) for c, m in ja.validate(log, ja.Cfg(link_bps=100_000_000, link_queue_bytes=queue), end, **kw) if c == "xvi"]
+        return [(c, m) for c, m in ja.validate(log, ja.Cfg(link_bps=100_000_000, link_queue_bytes=queue), end, **kw)
+                if c in ("xvi", "xvii")]
 
     def x(self, log, queue=131072, end=0, delays=None):
         return sorted({c for c, _ in self._run_xvi(log, queue, end, delays)})
@@ -2266,26 +2294,60 @@ class LinkValidatorsOnHandWrittenLogs(TraceCase):
 
     def test_v3_each_recorded_outcome_consumes_the_arrival_exactly_once(self):
         d = _lk()
-        stale = ev("stale_epoch", 151, src="H", dst="P1", local="P1", what="arrive", epoch=0, lid=1)
-        refused = ev("arrive_refused", 151, src="H", dst="P1", ch=0, seq=0, msg="Turn", lid=1, attempt=1, sid=1, epoch=0,
-                     size=16, frag=0, nfrag=1, mid=None, why="closed")
-        for outcome in (_dv(d), stale, refused):
-            self.assertEqual(self.x(d + [outcome], end=200), [], outcome["kind"])
-        for pair in ((_dv(d), stale), (_dv(d), _dv(d, dup=True)), (stale, refused)):
-            self.assertTrue(self.says(d + list(pair), "more than one", end=200), pair[1]["kind"])
-        wrong = dict(stale, src="P1", dst="H")  # a stale record of the other direction is not this datagram's
-        self.assertTrue(self.says(d + [wrong], "endpoints", end=200), self.msgs(d + [wrong], end=200))
-        late = dict(stale, t=152)
-        self.assertTrue(self.says(d + [late], "callback", end=200), self.msgs(d + [late], end=200))
+        for outcome in ([_dv(d)], [_bump(), _stale()], [_closed(), _refused()]):
+            self.assertEqual(self.x(d + outcome, end=200), [], outcome[-1]["kind"])
+        ready = d + [_bump(), _closed()]  # an epoch change, then a closure: both outcomes are valid on their own
+        for pair in ((_dv(d), _stale()), (_dv(d), _dv(d, dup=True)), (_stale(), _refused())):
+            self.assertTrue(self.says(ready + list(pair), "more than one", end=200), pair[1]["kind"])
+        wrong = _stale(src="P1", dst="H")  # a stale record of the other direction is not this datagram's
+        self.assertTrue(self.says(d + [_bump(), wrong], "endpoints", end=200), self.msgs(d + [_bump(), wrong], end=200))
+        late = _stale(t=152)
+        self.assertTrue(self.says(d + [_bump(), late], "callback", end=200), self.msgs(d + [_bump(), late], end=200))
 
     def test_v3_an_ack_arrival_is_consumed_by_an_ack_or_a_stale_record(self):
         a = _ak(lid=9)
         self.assertTrue(self.says(a, "consumed by no recorded outcome", end=200), self.msgs(a, end=200))
         self.assertEqual(self.x(a + [_ack_event(a)], end=200), [])
-        stale = ev("stale_epoch", 151, src="H", dst="P1", local="H", what="ack", epoch=0, lid=9)
-        self.assertEqual(self.x(a + [stale], end=200), [])
-        self.assertTrue(self.says(a + [_ack_event(a), stale], "more than one", end=200), "twice")
+        stale = _stale(local="H", what="ack", lid=9)
+        self.assertEqual(self.x(a + [_bump(), stale], end=200), [])
+        self.assertTrue(self.says(a + [_bump(), _ack_event(a), stale], "more than one", end=200), "twice")
 
+    def test_v4_a_refusal_needs_a_closure_record_of_its_receive_side(self):
+        d = _lk()
+        self.assertTrue(self.says(d + [_refused()], "no closure record", end=200), self.msgs(d + [_refused()], end=200))
+        self.assertEqual(self.x(d + [_closed(), _refused()], end=200), [])  # the seat drop of the non-host endpoint
+        self.assertEqual(self.x(d + [_closed("reasm_overflow"), _refused()], end=200), [])  # the overflow of the same channel
+        for other in (_closed(peer="P2"), _closed("reasm_overflow", ch=1), _closed("reasm_overflow", src="P1", dst="H")):
+            self.assertTrue(self.says(d + [other, _refused()], "no closure record", end=200), other)
+        self.assertTrue(self.says(d + [_closed(), _bump(), _refused()], "no closure record", end=200), "closure before the bump")
+        self.assertTrue(self.says(d + [_refused(), _closed()], "no closure record", end=200), "closure after the refusal")
+        self.assertEqual(self.x(d + [_bump(), _closed(), _refused()], end=200), [], "closure after the bump")
+
+    def test_v5_a_stale_record_must_be_stale_and_the_transmissions_own(self):
+        d = _lk()
+        self.assertTrue(self.says(d + [_stale()], "is not stale", end=200), self.msgs(d + [_stale()], end=200))  # epoch 0 is current
+        self.assertEqual(self.x(d + [_bump(), _stale()], end=200), [])
+        self.assertTrue(self.says(d + [_bump(), _stale(what="ack")], "but its transmission is", end=200), "type")
+        self.assertTrue(self.says(d + [_bump(), _stale(epoch=3)], "its transmission carries epoch", end=200), "epoch")
+        a = _ak(lid=9)
+        self.assertTrue(self.says(a + [_bump(), _stale(local="H", what="arrive", lid=9)], "but its transmission is", end=200), "ACK")
+        self.assertTrue(self.says(a + [_stale(local="H", what="ack", lid=9)], "is not stale", end=200), "ACK, no bump")
+        wrapped = d + [_bump(epoch=e % 65536) for e in range(1, 65537)]  # the epoch is the count of bumps mod 65536
+        self.assertTrue(self.says(wrapped + [_stale()], "is not stale", end=200), "65536 bumps")
+        self.assertEqual(self.x(wrapped + [_bump(epoch=1), _stale()], end=200), [], "65537 bumps")
+
+    def test_v6_a_non_last_fragment_carries_the_full_payload(self):
+        def frag(size, i, n):
+            log = _lk(size=size)
+            log[-1] = dict(log[-1], frag=i, nfrag=n)
+            return log
+        self.assertEqual([m for m in self.msgs(frag(1200, 0, 3)) if "non-last" in m or "payload_max" in m], [])
+        self.assertTrue(self.says(frag(1199, 0, 3), "non-last fragment"), self.msgs(frag(1199, 0, 3)))
+        self.assertTrue(self.says(frag(1, 1, 3), "non-last fragment"), "middle fragment")
+        self.assertFalse(self.says(frag(100, 2, 3), "non-last fragment"), "the last fragment's size is the message model's")
+        self.assertFalse(self.says(frag(1, 0, 1), "non-last fragment"), "a single datagram is its own last fragment")
+        self.assertTrue(self.says(frag(1201, 2, 3), "exceeds payload_max"), "no payload exceeds the cap")
+        self.assertTrue(self.says(frag(1201, 0, 1), "exceeds payload_max"), "not even a single datagram")
 
 def _wrap_link_plan(fn):
     orig = ja.Sim.link_plan
@@ -2353,9 +2415,21 @@ class LinkValidation(TraceCase):
     def _run(self):
         return ja.one_join(lcfg(), losses=ja.lose("JoinGrant", "H>J1", (1,)), until=12000)
 
-    def _no_message(self, sim, needle):
-        hit = [m for c, m in validate_clean(sim) if c == "xvi" and needle in m]
-        self.check(sim, not hit, "xvi says %r" % hit[:2])
+    def _no_message(self, sim, needle, code="xvi"):
+        hit = [m for c, m in validate_clean(sim) if c == code and needle in m]
+        self.check(sim, not hit, "%s says %r" % (code, hit[:2]))
+
+    def _refusal_sim(self):
+        """A real closure: the snapshot may hold three fragments, so the fourth overflows the reassembly and closes the
+        receive side; datagrams already in flight are served on the closed side and the simulator refuses them."""
+        return ja.fragment_loss_sim(lcfg(fragment_max=3))
+
+    def _two_ask_sim(self):
+        sim = ja.Sim(lcfg(), delays={("Turn", "H>J1", 0, 1): 6000}, seated=1)
+        sim.add_join("J1", 0, 2)
+        sim.add_join("J1", 1000, 2)
+        sim.run(20000)
+        return sim
 
     def test_every_data_attempt_is_charged_its_wire_size(self):
         sim = self._run()
@@ -2413,12 +2487,39 @@ class LinkValidation(TraceCase):
         self.assertEqual([(e["lid"], e["attempt"], e["why"]) for e in refused], [(5, 1, "closed")])
 
     def test_a_stale_epoch_arrival_and_ack_record_the_lid(self):
-        sim = ja.Sim(lcfg(), delays={("Turn", "H>J1", 0, 1): 6000}, seated=1)
-        sim.add_join("J1", 0, 2)
-        sim.add_join("J1", 1000, 2)
-        sim.run(20000)
+        sim = self._two_ask_sim()
         stale = [e for e in sim.events if e["kind"] == "stale_epoch" and e["what"] in ("arrive", "ack")]
         self.assertTrue(stale and all(e.get("lid") is not None for e in stale), stale[:2])
+        self.assertEqual({e["what"] for e in stale}, {"arrive", "ack"})
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_v4_every_refusal_follows_a_closure_of_its_receive_side(self):
+        for sim in (ja.fragment_loss_sim(lcfg()), self._refusal_sim()):
+            self._no_message(sim, "no closure record")
+
+    def test_v5_every_stale_record_with_a_lid_is_stale(self):
+        for sim in (ja.fragment_loss_sim(lcfg()), self._two_ask_sim()):
+            self._no_message(sim, "is not stale")
+            self._no_message(sim, "but its transmission is")
+            self._no_message(sim, "its transmission carries epoch")
+
+    def test_v6_every_non_last_fragment_is_a_full_payload(self):
+        sim = ja.fragment_loss_sim(lcfg())
+        self.check(sim, [e for e in sim.events if e["kind"] == "send" and e["msg"] == "Snap-frag"], "no snapshot fragment")
+        self._no_message(sim, "non-last fragment", "xvii")
+        self._no_message(sim, "exceeds payload_max", "xvii")
+
+    def test_a_real_closure_is_followed_by_a_refusal_and_a_valid_run(self):
+        sim = self._refusal_sim()
+        over = [e for e in sim.events if e["kind"] == "reasm_overflow"]
+        refused = [e for e in sim.events if e["kind"] == "arrive_refused"]
+        self.check(sim, len(over) == 1 and refused, "overflow %r, refusals %r" % (over, refused))
+        o = over[0]
+        self.check(sim, all((e["src"], e["dst"], e["ch"]) == (o["src"], o["dst"], o["ch"]) and e["t"] >= o["t"] for e in refused),
+                   "a refusal is not on the closed receive side after the overflow: %r" % refused)
+        served = [e for e in sim.events if e["kind"] == "link_arrive" and e["lid"] in {r["lid"] for r in refused}]
+        self.check(sim, len(served) == len(refused), "every refusal consumes a served link arrival")
+        self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
 
 
 def _patch_negative_extra_delay():
@@ -2453,6 +2554,43 @@ def _patch_silent_snapshot_discard():
             return None
         return orig(self, src, dst, ch, d, epoch, lid, attempt)
     return mock.patch.object(ja.Sim, "arrive", arrive)
+
+
+def _patch_refuse_on_a_live_receiver():
+    """The first Snap-frag arrival is refused by a receiver that was never closed, with the F2 closed-receiver record."""
+    orig = ja.Sim.arrive
+
+    def arrive(self, src, dst, ch, d, epoch=None, lid=None, attempt=None):
+        if d["kind"] == "Snap-frag" and attempt == 1 and d["epoch"] == self.ep_of(dst, src):
+            self.ev("arrive_refused", src=src, dst=dst, ch=ch, seq=d["seq"], msg=d["kind"], lid=lid, attempt=attempt,
+                    sid=d.get("sid"), epoch=d.get("epoch"), size=d["size"], frag=d.get("frag", 0),
+                    nfrag=d.get("nfrag", 1), mid=d.get("mid"), why="closed")
+            return None
+        return orig(self, src, dst, ch, d, epoch, lid, attempt)
+    return mock.patch.object(ja.Sim, "arrive", arrive)
+
+
+def _patch_stale_record_for_a_current_epoch():
+    """The first Snap-frag arrival of the current epoch is dropped with a stale_epoch record that carries its lid."""
+    orig = ja.Sim.arrive
+
+    def arrive(self, src, dst, ch, d, epoch=None, lid=None, attempt=None):
+        if d["kind"] == "Snap-frag" and attempt == 1 and d["epoch"] == self.ep_of(dst, src):
+            self.ev("stale_epoch", src=src, dst=dst, local=dst, what="arrive", epoch=d["epoch"], lid=lid)
+            return None
+        return orig(self, src, dst, ch, d, epoch, lid, attempt)
+    return mock.patch.object(ja.Sim, "arrive", arrive)
+
+
+def _patch_one_byte_snapshot_fragments():
+    """Every snapshot fragment is shrunk to a 1-byte payload before its first record, so all records agree."""
+    orig = ja.Sim.transmit
+
+    def transmit(self, src, dst, ch, d):
+        if "sid" not in d and d["kind"] == "Snap-frag":
+            d["size"] = 1
+        return orig(self, src, dst, ch, d)
+    return mock.patch.object(ja.Sim, "transmit", transmit)
 
 
 class LinkRows(TraceCase):
@@ -2521,6 +2659,12 @@ MUTANTS.update({
         "LinkValidation.test_v2_every_attempt_of_a_sid_records_one_payload"]),
     "V3: the receiver silently discards served Snap-frag arrivals": (_patch_silent_snapshot_discard, [
         "LinkValidation.test_v3_every_served_arrival_has_a_recorded_outcome"]),
+    "V4: a live receiver refuses a Snap-frag with the closed-receiver record": (_patch_refuse_on_a_live_receiver, [
+        "LinkValidation.test_v4_every_refusal_follows_a_closure_of_its_receive_side"]),
+    "V5: a stale_epoch record for a datagram of the current epoch": (_patch_stale_record_for_a_current_epoch, [
+        "LinkValidation.test_v5_every_stale_record_with_a_lid_is_stale"]),
+    "V6: every snapshot fragment shrunk to a 1-byte payload": (_patch_one_byte_snapshot_fragments, [
+        "LinkValidation.test_v6_every_non_last_fragment_is_a_full_payload"]),
 })
 
 

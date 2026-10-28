@@ -1821,6 +1821,7 @@ def validate(events, cfg, end_t, oracle_lag=None, delays=None):
     out += _check_generations(events, cfg)
     out += _check_input_drop(events)
     out += _check_reassembly(events, cfg)
+    out += _check_fragment_sizes(events, cfg)
     if cfg.link_bps:
         out += _check_link(events, cfg, end_t, delays)
     return out
@@ -2194,7 +2195,15 @@ def _check_link(events, cfg, end_t=None, delays=None):
     payload size and one message identity, and a delivery carries the size and identity of its own
     transmission; (V3) with a horizon `end_t`, every served, non-lost link arrival whose callback is at
     or before it is consumed by exactly one recorded outcome: `arrive` (a duplicate included), `ack`,
-    `stale_epoch` or `arrive_refused`, each naming the lid; one after the horizon is a reservation."""
+    `stale_epoch` or `arrive_refused`, each naming the lid; one after the horizon is a reservation.
+
+    F3 (round cj): the two receiver-side records are no longer self-certifying. (V4) An
+    `arrive_refused` for (src, dst, ch) needs, before it and after the pair's last `epoch_bump`, a
+    record that closes that receive side: a `drop_seated` of the non-host endpoint or a
+    `reasm_overflow` of the same (src, dst, ch). (V5) A `stale_epoch` with a lid names `arrive` for a
+    data transmission and `ack` for an ACK-only one, carries the epoch of its own transmission, and
+    that epoch differs from the pair's current epoch, the number of `epoch_bump` records of the pair
+    before it, mod 65536 (as `Sim.reset_pair` computes it)."""
     out = []
     ns = NS_PER_MS
     delays = delays or {}
@@ -2205,8 +2214,19 @@ def _check_link(events, cfg, end_t=None, delays=None):
     tx, by_lid = {}, {}
     enq, start, fin, drop, arr, order = {}, {}, {}, {}, {}, []
     deliveries, acks, others = [], [], []
+    bumps, closed_peers, closed_recv = {}, set(), set()  # epoch_bump count per pair; closures since the pair's last bump
+    refusal_closed, stale_now = {}, {}
     for e in events:
         k = e["kind"]
+        if k == "epoch_bump":
+            pair = tuple(sorted((e["a"], e["b"])))
+            bumps[pair] = bumps.get(pair, 0) + 1
+            closed_peers -= set(pair)
+            closed_recv = {x for x in closed_recv if tuple(sorted(x[:2])) != pair}
+        elif k == "drop_seated":
+            closed_peers.add(e["peer"])
+        elif k == "reasm_overflow":
+            closed_recv.add((e["src"], e["dst"], e["ch"]))
         if k == "send" and e.get("sid") is not None and (e["src"] == "H" or e["dst"] == "H"):
             ident = ("d", e["sid"], e["attempt"])
             if ident in tx:
@@ -2227,10 +2247,14 @@ def _check_link(events, cfg, end_t=None, delays=None):
                 order.append(e["lid"])
         elif k in ("arrive", "arrive_refused") and e.get("src") is not None and (e["src"] == "H" or e["dst"] == "H"):
             deliveries.append(e)
+            if k == "arrive_refused":
+                peer = e["dst"] if e["src"] == "H" else e["src"]
+                refusal_closed[id(e)] = peer in closed_peers or (e["src"], e["dst"], e["ch"]) in closed_recv
         elif k == "ack":
             acks.append(e)
         elif k == "stale_epoch" and e.get("lid") is not None:
             others.append(e)
+            stale_now[id(e)] = bumps.get(tuple(sorted((e["src"], e["dst"]))), 0) % 65536
     # transmissions and their enqueue records
     claimed = {}
     for ident, t in tx.items():
@@ -2376,6 +2400,10 @@ def _check_link(events, cfg, end_t=None, delays=None):
 
     for e in deliveries:
         what = "a datagram arrival" if e["kind"] == "arrive" else "a closed-receiver refusal"
+        if e["kind"] == "arrive_refused" and not refusal_closed[id(e)]:
+            bad(e["t"], "lid %s is refused on %s>%s ch%d but no closure record precedes it (a drop_seated of the non-host "
+                "endpoint or a reasm_overflow of this channel, after the pair's last epoch_bump)" % (
+                    e.get("lid"), e["src"], e["dst"], e["ch"]))
         t = transmission(e, ("d", e["sid"], e.get("attempt")), what)
         if t is None:
             continue
@@ -2397,6 +2425,20 @@ def _check_link(events, cfg, end_t=None, delays=None):
             pair = (e["src"], e["dst"]) if e["what"] == "arrive" else (e["dst"], e["src"])
             if e["what"] not in ("arrive", "ack") or pair != (q["src"], q["dst"]):
                 bad(e["t"], "the stale-epoch record (%s) of lid %s names other endpoints than its datagram" % (e["what"], e["lid"]))
+        ident = claimed.get(e["lid"])
+        t = tx.get(ident)
+        if t is None:
+            continue
+        want_what = "arrive" if ident[0] == "d" else "ack"
+        if e["what"] != want_what:
+            bad(e["t"], "lid %s records a stale %r, but its transmission is %s" % (
+                e["lid"], e["what"], "a data datagram" if ident[0] == "d" else "an ACK-only datagram"))
+        if e["epoch"] != t["epoch"]:
+            bad(e["t"], "the stale-epoch record of lid %s carries epoch %s, its transmission carries epoch %s" % (
+                e["lid"], e["epoch"], t["epoch"]))
+        if e["epoch"] == stale_now[id(e)]:
+            bad(e["t"], "lid %s is not stale: epoch %s is the pair's current epoch (%d epoch_bump records before it, mod 65536)" % (
+                e["lid"], e["epoch"], stale_now[id(e)]))
     if end_t is not None:
         for lid, a in arr.items():
             if a["sched_ms"] <= end_t and consumed[lid] == 0:
@@ -2473,6 +2515,26 @@ def _check_tail(events, cfg):
             live[e["name"]] = e["S"]
         elif k == "attempt_end":
             live.pop(e["name"], None)
+    return out[:3]
+
+
+def _check_fragment_sizes(events, cfg):
+    """(xvii) The fragment payload rule, from the send records alone: every non-last fragment
+    (`frag < nfrag - 1`) carries exactly `cfg.payload_max` payload bytes and no payload exceeds it.
+    The size of a last fragment or of a single-datagram message comes from the message model and is
+    not checked (ADR 0003 §8.8, an assumption). `Sim.send`, `Sim.turn_sizes` and the snapshot stream
+    of `Sim.next_datagram` all produce `[payload_max] * (n - 1) + [last]`."""
+    out = []
+    for e in events:
+        if e["kind"] != "send" or e.get("size") is None:
+            continue
+        frag, nfrag, size = e.get("frag", 0), e.get("nfrag", 1), e["size"]
+        if size > cfg.payload_max:
+            out.append(("xvii", "t=%d %s>%s ch%d seq%s %s: payload of %d bytes exceeds payload_max %d" % (
+                e["t"], e["src"], e["dst"], e["ch"], e.get("seq"), e["msg"], size, cfg.payload_max)))
+        elif frag < nfrag - 1 and size != cfg.payload_max:
+            out.append(("xvii", "t=%d %s>%s ch%d seq%s %s: non-last fragment %d of %d carries %d payload bytes, payload_max is %d" % (
+                e["t"], e["src"], e["dst"], e["ch"], e.get("seq"), e["msg"], frag, nfrag, size, cfg.payload_max)))
     return out[:3]
 
 

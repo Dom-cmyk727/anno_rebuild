@@ -2222,7 +2222,14 @@ def _check_link(events, cfg, end_t=None, delays=None):
     `reasm_overflow` of the same (src, dst, ch). (V5) A `stale_epoch` with a lid names `arrive` for a
     data transmission and `ack` for an ACK-only one, carries the epoch of its own transmission, and
     that epoch differs from the pair's current epoch, the number of `epoch_bump` records of the pair
-    before it, mod 65536 (as `Sim.reset_pair` computes it)."""
+    before it, mod 65536 (as `Sim.reset_pair` computes it).
+
+    F5 (round cl): the converse of V4. (V8) After a closure record (a `drop_seated` of the non-host
+    endpoint: every channel, both directions; or a `reasm_overflow` of the same (src, dst, ch)) and
+    before the pair's next `epoch_bump`, no `arrive` record, a duplicate included, may name the closed
+    (src, dst, ch): `Sim.arrive` refuses it with `arrive_refused` after its stale check, and a stale
+    arrival stays a `stale_epoch`. `ack` records are outside V8 (`Sim.take_ack` has no closed-side
+    return)."""
     out = []
     ns = NS_PER_MS
     delays = delays or {}
@@ -2266,6 +2273,11 @@ def _check_link(events, cfg, end_t=None, delays=None):
                 order.append(e["lid"])
         elif k in ("arrive", "arrive_refused") and e.get("src") is not None and (e["src"] == "H" or e["dst"] == "H"):
             deliveries.append(e)
+            if k == "arrive" and ((e["dst"] if e["src"] == "H" else e["src"]) in closed_peers
+                                  or (e["src"], e["dst"], e["ch"]) in closed_recv):
+                bad(e["t"], "arrive%s on %s>%s ch%d after its receive side was closed (a drop_seated of the non-host endpoint "
+                    "or a reasm_overflow of this channel, no epoch_bump since): Sim.arrive refuses it with arrive_refused" % (
+                        " (duplicate)" if e.get("dup") else "", e["src"], e["dst"], e["ch"]))
             if k == "arrive_refused":
                 peer = e["dst"] if e["src"] == "H" else e["src"]
                 refusal_closed[id(e)] = peer in closed_peers or (e["src"], e["dst"], e["ch"]) in closed_recv

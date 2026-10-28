@@ -2381,6 +2381,24 @@ class LinkValidatorsOnHandWrittenLogs(TraceCase):
         self.assertTrue(self.says(d + [_refused(), _closed()], "no closure record", end=200), "closure after the refusal")
         self.assertEqual(self.x(d + [_bump(), _closed(), _refused()], end=200), [], "closure after the bump")
 
+    def test_v8_a_closed_receive_side_takes_no_arrival(self):
+        over = _closed("reasm_overflow")  # H>P1 ch0
+        d = _lk()  # a data datagram H>P1 ch0, epoch 0
+        needle = "after its receive side was closed"
+        self.assertTrue(self.says(d + [over, _dv(d)], needle, end=200), self.msgs(d + [over, _dv(d)], end=200))
+        self.assertTrue(self.says(d + [over, _dv(d, dup=True)], "(duplicate) on H>P1 ch0 " + needle, end=200), "duplicate")
+        up = _lk(src="P1", dst="H")  # P1>H ch0
+        self.assertTrue(self.says(up + [_closed(), _dv(up)], "on P1>H ch0 " + needle, end=200), "seat drop, other direction")
+        self.assertEqual(self.x(d + [_closed(), _refused()], end=200), [])  # a refusal is the closed side's outcome
+        # not closed: another channel, the reverse direction of an overflow, the epoch after the next bump
+        other = _lk(ch=1)
+        self.assertEqual(self.x(other + [over, _dv(other)], end=200), [], "H>P1 ch1 after the ch0 overflow")
+        self.assertEqual(self.x(up + [over, _dv(up)], end=200), [], "P1>H ch0 after the H>P1 ch0 overflow")
+        later = _lk(epoch=1)
+        self.assertEqual(self.x(later[:0] + [over, _bump()] + later + [_dv(later)], end=200), [], "after the next bump")
+        self.assertEqual(self.x(d + [_closed(peer="P2"), _dv(d)], end=200), [], "the seat drop of another peer")
+        self.assertEqual(self.x(d + [_dv(d)], end=200), [], "no closure")
+
     def test_v5_a_stale_record_must_be_stale_and_the_transmissions_own(self):
         d = _lk()
         self.assertTrue(self.says(d + [_stale()], "is not stale", end=200), self.msgs(d + [_stale()], end=200))  # epoch 0 is current
@@ -2567,6 +2585,11 @@ class LinkValidation(TraceCase):
         self._no_message(sim, "non-last fragment", "xvii")
         self._no_message(sim, "exceeds payload_max", "xvii")
 
+    def test_v8_an_overflowed_receive_side_takes_no_arrival(self):
+        sim = self._refusal_sim()  # a real overflow of H>J1 ch1, then a real refusal
+        self.check(sim, [e for e in sim.events if e["kind"] == "reasm_overflow"], "no overflow record")
+        self._no_message(sim, "after its receive side was closed")
+
     def test_v7_a_forged_overflow_record_is_not_a_closure(self):
         sim = self._refusal_sim()  # a real overflow (held 3, limit 3) closes the receive side
         self.check(sim, [e for e in sim.events if e["kind"] == "reasm_overflow"], "no overflow record")
@@ -2668,6 +2691,18 @@ def _patch_forged_overflow_then_refusals():
             return None
         return orig(self, src, dst, ch, d, epoch, lid, attempt)
     return mock.patch.object(ja.Sim, "arrive", arrive)
+
+
+def _patch_overflow_leaves_the_side_open():
+    """P8: the overflow is recorded and the buffer released, but the receive side is set open again."""
+    orig = ja.Sim.reassemble
+
+    def reassemble(self, src, dst, ch, c, d, seq):
+        ok = orig(self, src, dst, ch, c, d, seq)
+        if not ok:
+            c.dead = False
+        return ok
+    return mock.patch.object(ja.Sim, "reassemble", reassemble)
 
 
 def _patch_overflow_one_fragment_early():
@@ -2773,6 +2808,8 @@ MUTANTS.update({
         "LinkValidation.test_v7_a_forged_overflow_record_is_not_a_closure"]),
     "V7/P7: the reassembly overflows one fragment early": (_patch_overflow_one_fragment_early, [
         "LinkValidation.test_v7_an_overflow_exceeds_the_configured_cap_not_one_fragment_less"]),
+    "V8/P8: the overflow is recorded but the receive side stays open": (_patch_overflow_leaves_the_side_open, [
+        "LinkValidation.test_v8_an_overflowed_receive_side_takes_no_arrival"]),
 })
 
 

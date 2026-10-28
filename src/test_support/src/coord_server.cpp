@@ -479,7 +479,6 @@ struct SBudget {
     std::uint64_t id = 0;
     std::uint32_t cpu_budget = 0;
     std::uint32_t cpu_in_use = 0;
-    std::uint64_t next_hold = 1;
     std::uint64_t next_seq = 1;
     bool internal = false;
     /// Raised by every event that lowers the pending bytes (see the top).
@@ -515,8 +514,13 @@ struct Orphan {
 /// rewritten (compacted) from the live state.
 class Journal {
   public:
+    /// Largest hold id in any A or R line, over every budget. A successor
+    /// issues none at or below this (T10c F4, E1).
+    std::uint64_t max_hold_id() const noexcept { return max_hold_id_; }
+
     bool open(const std::filesystem::path& path, std::vector<Orphan>& orphans) {
         path_ = path;
+        max_hold_id_ = 0;
         std::error_code error;
         std::filesystem::create_directories(path.parent_path(), error);
         std::map<std::pair<std::uint64_t, std::uint64_t>, Orphan> holds;
@@ -541,6 +545,9 @@ class Journal {
                     kind = 'C';
                 } else if (std::sscanf(line, "D %llu %u %llu %llu", &b, &ns, &pid, &started) == 4) {
                     kind = 'D';
+                }
+                if ((kind == 'A' || kind == 'R') && h > max_hold_id_) {
+                    max_hold_id_ = h;
                 }
                 const Owner owner{ns, pid, started};
                 if (kind == 'A') {
@@ -650,6 +657,7 @@ class Journal {
     std::filesystem::path path_;
     std::FILE* file_ = nullptr;
     std::uint64_t appended_ = 0;
+    std::uint64_t max_hold_id_ = 0;
 };
 
 struct Server {
@@ -663,6 +671,11 @@ struct Server {
     /// unless a test sets another).
     std::uint64_t compat = kCompatVersion;
     std::uint64_t incarnation = 0;
+    /// Issued for every budget. Seeded above the largest A/R hold id in the
+    /// journal this process replayed, so a successor never reuses a predecessor's
+    /// id (T10c F4, E1). Uniqueness is per budget; one counter needs no map, and
+    /// a u64 cannot overflow in practice (a hold per nanosecond is ~584 years).
+    std::uint64_t next_hold = 1;
     bool exit_requested = false;
     std::chrono::steady_clock::time_point next_orphan_check{};
 };
@@ -995,7 +1008,7 @@ void pump(Server& server, std::uint64_t budget_id) {
             std::uint64_t hold_id = 0;
             if (decision == Decision::Admit) {
                 RemoteHold hold;
-                hold.id = budget->next_hold++;
+                hold.id = server.next_hold++;
                 hold.bytes = wait->bytes;
                 hold_id = hold.id;
                 // Written before the client hears of it: a successor must find
@@ -1549,6 +1562,7 @@ int run_budget_server(const BudgetServerOptions& options) {
         close_fd(listen_fd);
         return 4;
     }
+    server.next_hold = server.journal.max_hold_id() + 1;
     server.meters.start();
     // A test that starts its own coordinator waits for this line.
     std::printf("LISTENING %u build=%016llx compat=%llu incarnation=%016llx orphans=%zu\n",

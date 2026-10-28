@@ -52,10 +52,11 @@ constexpr std::uint32_t kMagic = 0x32434E41u;
 /// any change of the wire format or of the reservation, journal, residency or
 /// recovery semantics that an older peer would not reproduce. Do not bump it for
 /// provenance, diagnostics, test hooks or code that changes no semantics. It is
-/// 2 since F2 (the journal and the orphan fence); F3 changes no semantics, and an
-/// F2 peer refuses an F3 peer by build id, so mixing them is refused, not shared.
-/// Pinned by the test "F3 (D1, pin)".
-constexpr std::uint32_t kCompatVersion = 2;
+/// 3 since F4: a successor issues no hold id that appears in the journal it
+/// replayed (an A or R line), so a journaled promise survives two restarts. An
+/// older successor numbers a budget's holds from 1 and can reuse an id, losing
+/// the promise. Pinned by the test "F3 (D1, pin)".
+constexpr std::uint32_t kCompatVersion = 3;
 constexpr std::size_t kFrameBytes = 96;
 constexpr std::uint16_t kSharedPort = 47631;
 constexpr std::uint16_t kLocalPort = 47632;

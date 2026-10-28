@@ -36,6 +36,7 @@
 #include <anno/test/budget.hpp>
 #include <anno/test/parallel.hpp>
 
+#include "../src/coord_wire.hpp"
 #include "budget_proc_harness.hpp"
 #include "child_process.hpp"
 
@@ -76,7 +77,7 @@ TEST_CASE("F3 (D1): two compatible builds share one busy coordinator" *
     Child coord =
         start_coordinator(kPortAccept, journal, 0xa0a0a0a0a0a0a0a0ULL, std::nullopt, listening);
     CHECK(has(listening, "build=a0a0a0a0a0a0a0a0"));
-    CHECK(has(listening, " compat=2"));
+    CHECK(has(listening, " compat=3"));
     const auto budget_path = (f3_dir() / "a.budget").string();
     const Vars vars = client_vars(kPortAccept, "f3-a", "30");
 
@@ -122,23 +123,25 @@ TEST_CASE("F3 (D1): two compatible builds share one busy coordinator" *
 TEST_CASE("F3 (D1, incompatible): a busy coordinator of another version is waited for, then a "
           "bounded infrastructure diagnostic" *
           doctest::test_suite("budget")) {
-    // The coordinator speaks compatibility version 3 and holds a busy client of
-    // version 3. This binary speaks version 2. The requester must neither throw
-    // at once nor stop the holder, and with a 3 s admission bound it ends with a
-    // diagnostic that names the infrastructure blocker, both builds, both
-    // versions and "busy".
+    // The coordinator speaks the current compatibility version plus 1 and holds
+    // a busy client of that version. This binary speaks kCompatVersion. The
+    // requester must neither throw at once nor stop the holder, and with a 3 s
+    // admission bound it ends with a diagnostic that names the infrastructure
+    // blocker, both builds, both versions and "busy".
     const auto journal = f3_dir() / "b.journal";
     remove_file(journal);
     std::string listening;
-    Child coord = start_coordinator(kPortIncompat, journal, 0xb0b0b0b0b0b0b0b0ULL, 3u, listening);
-    CHECK(has(listening, " compat=3"));
+    const std::uint64_t foreign = anno::test::wire::kCompatVersion + 1;
+    Child coord =
+        start_coordinator(kPortIncompat, journal, 0xb0b0b0b0b0b0b0b0ULL, foreign, listening);
+    CHECK(has(listening, " compat=" + std::to_string(foreign)));
     const auto budget_path = (f3_dir() / "b.budget").string();
 
     std::string seen;
     Child holder;
     {
         Env env(client_vars(kPortIncompat, "f3-b", "30"));
-        Env version({{"ANNO_TEST_BUDGET_CLIENT_COMPAT", "3"}});
+        Env version({{"ANNO_TEST_BUDGET_CLIENT_COMPAT", std::to_string(foreign)}});
         holder = probe({"holder", budget_path, "50"});
     }
     const std::string ready = want(holder, "READY", 15000ms, &seen);
@@ -160,8 +163,8 @@ TEST_CASE("F3 (D1, incompatible): a busy coordinator of another version is waite
     CHECK(has(result, "infrastructure"));
     CHECK(has(result, "busy"));
     CHECK(has(result, "runs build b0b0b0b0b0b0b0b0"));
-    CHECK(has(result, "compatibility version 3"));
-    CHECK(has(result, "compatibility version 2"));
+    CHECK(has(result, "compatibility version " + std::to_string(foreign)));
+    CHECK(has(result, "compatibility version " + std::to_string(anno::test::wire::kCompatVersion)));
     CHECK_FALSE(has(result, "speaks another protocol"));
     CHECK(holder.running());
     CHECK(coord.running());
@@ -506,16 +509,16 @@ TEST_CASE("F3 (D1, silent): a coordinator that never answers ends at the admissi
 }
 
 TEST_CASE(
-    "F3 (D1, pin): the coordinator reports its compatibility version 2, separately from its build" *
+    "F3 (D1, pin): the coordinator reports its compatibility version 3, separately from its build" *
     doctest::test_suite("budget")) {
     // The compatibility version is pinned. A change of the wire format, or of the
     // reservation, journal, residency or recovery semantics, must change this
-    // number on purpose (wire::kCompatVersion; docs/perf/README.md, T10c F3).
+    // number on purpose (wire::kCompatVersion; docs/perf/README.md, T10c F4).
     const auto journal = f3_dir() / "pin.journal";
     remove_file(journal);
     std::string listening;
     Child coord = start_coordinator(kPortPin, journal, std::nullopt, std::nullopt, listening);
-    CHECK(has(listening, " compat=2"));
+    CHECK(has(listening, " compat=3"));
     CHECK(has(listening, " build="));
     CHECK(has(listening, " incarnation="));
 }

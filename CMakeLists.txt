@@ -68,18 +68,16 @@ if(ANNO_BUILD_TESTS)
   # test binary after each build), so `ctest -j` spreads the long corpus
   # cases over the cores instead of running each suite as one process.
   include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
-  # Heavy test cases (doctest suite "heavy": the corpus cases that render or
-  # parse whole scenes on ANNO_TEST_THREADS threads, up to ~1 GB per thread)
-  # take every CTest slot of the machine, so `ctest -j` runs each one alone.
-  # Three of them side by side plus the other jobs ran past the commit limit
-  # of a 32 GB PC (std::bad_alloc in random tests, T10/T10b); scheduling them
-  # apart removes the overload instead of reacting to it in parallel_indexed.
-  # The count follows the machine, not a literal; CTest caps it at -j.
-  include(ProcessorCount)
-  ProcessorCount(ANNO_HEAVY_TEST_PROCESSORS)
-  if(ANNO_HEAVY_TEST_PROCESSORS EQUAL 0)
-    set(ANNO_HEAVY_TEST_PROCESSORS 1)
-  endif()
+  # Heavy cases reserve host memory (docs/perf/README.md, T10c) instead of
+  # taking every CTest slot. Four is how many of these processes can sit
+  # loaded on the measured PC while one full-map render runs: about 0.95 GiB
+  # before the render, 6.17 GiB additional, 15.38 GiB free at the start of the
+  # one-worker run, and 4 GiB of headroom. The reservation still refuses a
+  # second full map that does not fit. Override with
+  # -DANNO_HEAVY_TEST_PROCESSORS=N. CTest caps the value at -j. GPU tests keep
+  # RESOURCE_LOCK gpu.
+  set(ANNO_HEAVY_TEST_PROCESSORS 4 CACHE STRING
+      "CTest slots one heavy test occupies")
   # anno_add_doctest(<target> [UBSAN_HALT] [LABELS ...] [PROPERTIES ...]):
   # registers the cases of a doctest executable as "<target>.<case name>".
   # UBSAN_HALT (asan preset only; for targets built with SANITIZE_NO_RECOVER)

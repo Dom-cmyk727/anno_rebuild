@@ -5745,3 +5745,122 @@ Pre-F1 legacy river, 47 assertions, one worker: 297.646 s, peak private 80444252
 - `58cd212` is a broken intermediate (CMake `TARGET was not created in this directory`). `c3a5389` is the configure that stages the coordinator. It was not amended.
 
 **Not done:** do not merge, do not push. `TASKS.md` and `AGENTS.md` were not edited. No ADR approval, no T34 stage 2, no T-AI.4, no P2.
+
+## T10c F2 — coherent admission, coordinator loss and replacement, the corpus path measured (2026-10-28, round cr)
+
+Worktree `E:\anno1503-worktrees\anno1503-T10c`, branch `codex/T10c-test-memory`, continued from `af8aa01fae68daf4d2e6afb0a6301ba1085bf7fc`. Final code head `c95f8191133998dcbf59f70b53660e63c9d5a9e8`, coordinator build `49fb6ac65eb9178a`; the report commit follows. No merge or rebase from main: `git merge-base HEAD 8011748` is `507e41a36bb2d47276133ab326779cdd6b455ffa` (P1's base). P1 `task/P1-house-payload` and `E:\anno1503-worktrees\anno1503-P1` are still `416993fa6a6f9dc821455df5d414cff5833ac7f0`. Results here are the combined P1 + T10c head, not P1 alone. Earlier sections are not rewritten. Review probes read from `E:\anno1503\cache\orch-cr`; F2 logs are in the worktree's `cache\f2\` (git-ignored).
+
+### Commits after `af8aa01`
+
+| Hash | Concern |
+| --- | --- |
+| `0f1df1ed4de9b8403503225cb2104de44751809c` | Failing regressions for C1–C3 (11 cases), portable child-process helper, probe commands |
+| `a1e1602909c686c5a35372f793a8a4657fb0e636` | C2: no nested session lock; liveness bound; dead session fails fast; `ANNO_TEST_ADMIT_WAIT_S` deadline; test port/spawn controls |
+| `3450eeed0c803c1fd7482e5088462f22fb1ce692` | C1: epoch-fresh readings measured by the coordinator; host and WSL domains; permanent vs temporary shortfall; wire 'ANC2'; client/server/wire split |
+| `b6e457bf7c01ca892bb45bf6bf9e0415277dea62` | C3: write-ahead promise journal, orphans fenced until owners are gone, build id handshake, coordinator identity in logs |
+| `62ad87d11241e6c92d02da825a5da3d71fc4bdb0` | The stale-residency case uses a probe owner (kills mutant M2) |
+| `ebcaa12d15ae5b6872c0d432739d8d80490dce28` | clang-format 23.1.3 only |
+| `72c0385981f3e8b75a468b34a84e0c6fe21db51f` | `ANNO_TEST_MEASURE_ITEMS` per-item peak; wall time, free and private bytes in memory log lines |
+| `231807807de14f4abf57d13257c9b75dd0784a61` | Corpus reservation from the corpus path's own measurement; catalog reserved once |
+| `c95f8191133998dcbf59f70b53660e63c9d5a9e8` | GCC 13 `-Wnull-dereference` in the hello's budget lookup (same behaviour) |
+| `31a8b71` | Docs only: `docs/perf/README.md` "T10c F2", CLAUDE.md memory paragraph |
+
+`git diff --check` was clean before each commit. `231807807` was amended once, seconds after creation and before any run: the first version (`040d3a1`) did not compile on MSVC (C4189 on lambda-local constants). No other commit was rewritten. `cache/`, `game/`, `TASKS.md` and `AGENTS.md` were not staged.
+
+### Fail-first and the fixes (step 1)
+
+`src/test_support/tests/budget_f2_test.cpp`; each coordinator case starts its own `anno_budget_coord` on its own port and journal (`ANNO_TEST_BUDGET_PORT`, `ANNO_TEST_BUDGET_SPAWN=0`) and stops only the processes it started. Injected counters only, no host-memory exhaustion. Fail-first run: tests and probe of `0f1df1e` against the `af8aa01` library, MSVC Release, `ANNO_TEST_F2_PORT=47632` (the pre-F2 coordinator listened only there), one case per process, 45 s limit (`cache\f2\failfirst\`):
+
+| Case | af8aa01 | final head |
+| --- | --- | --- |
+| C1 release that leaves its bytes allocated (review "stale") | 3 failed (admitted on the old reading of 100), then threw `resource deadlock would occur` and hung | pass |
+| C1 external pressure before a release | 2 failed (admitted on 60 with 30 free) | pass |
+| C1 stale residency of an allocated owner (review "capacity") | 5 failed (refused `exceeds capacity` at once) | pass |
+| C1 in-memory shortage behind live reservations | 3 failed (refused) | pass |
+| C1 guest request against a lower host reading | 1 failed (`claim=1` on the guest's 100 while the host had 20) | pass |
+| C2 coordinator killed with memory and CPU waiters and an admitted holder | 3 failed (waiters never returned) | pass |
+| C2 suspended coordinator | 3 failed (waiter never returned) | pass |
+| C3 replacement beside live promises (review "replacement") | 3 failed (`claim=1` beside the live 80; CPU admitted) | pass |
+| C3 coordinator of another build | 3 failed (used silently) | pass |
+| bounded in-memory wait | 2 failed (no bound) | pass |
+| bounded coordinator wait | 2 failed (no bound) | pass |
+
+`62ad87d` changed the stale-residency case after the fail-first run (owner in a probe process). That version was checked against mutant M2, which restores the af8aa01 rule, not re-run on af8aa01 itself. Two cases were added with the fixes: a request above the total is refused as over capacity even while others hold, and the process budget's coordinator measures the host itself. The earlier retained-memory, owner-death, cancellation and Windows/WSL cases are kept. F1's "unknown free memory" case now expects "not admitted, reason `free memory unknown`": a meter without a number waits for a reading (bounded) instead of failing. Injected budgets that expect `exceeds capacity` now pass a total (`BudgetHooks::total_bytes`).
+
+Named mutations, applied one at a time, rebuilt, then reverted (`cache\f2\mutants*`):
+
+| Mutant | Invariant | Case | Result |
+| --- | --- | --- | --- |
+| M1 | readings must belong to the current epoch | C1 stale release | caught (1 failed, then hung) |
+| M2 | a shortfall below the total waits (the af8aa01 refusal rule) | C1 stale residency, C1 in-memory | caught (5 and 3 failed); survived the first in-process version of the case, hence `62ad87d` |
+| M3 | a guest request is bounded by a host meter | C1 guest/host | caught |
+| M4 | the journal is replayed | C3 replacement | caught |
+| M5 | silence beyond liveness ends a wait | C2 suspended | caught |
+| M6 | another build is rejected | C3 build | caught |
+| M7 | no nested session lock | C2 loss | caught |
+| M8 | orphans of a gone owner are released | C3 replacement | caught |
+| M9 | the wait deadline is applied | bounded coordinator wait | caught |
+
+The unmutated cases pass after every revert. Test-support suite: Windows 49 cases / 340 assertions; WSL GCC quick build 46 / 305 (Windows-only cases not compiled).
+
+### C1–C4
+
+**C1, coherent current capacity.** The coordinator decides on readings it can trust (`coord_server.cpp`). Each event that lowers pending bytes starts a new epoch: a release, a client that leaves with holds, residency that became visible, a dropped orphan, and the periodic recheck. A reading counts only if it belongs to the current epoch, so a stale per-request sample can no longer authorize a grant. For the process budget the coordinator measures at decision time: `GlobalMemoryStatusEx` (min of available physical and commit) on Windows, and `/proc/meminfo` on Linux. From WSL it reads the VM's `/proc/meminfo` and the Windows host through a PowerShell meter process. A WSL request is bounded by both the VM and the host; a Windows request by the host. Test budgets ask their client meters for a reading of the current epoch and decide when every meter has answered. Holders are sampled for residency while requests wait. Released cached bytes stay in the free reading and are never credited. Over capacity means only a request above a domain's total (`total_memory_bytes`) minus the headroom. Every other shortfall waits, rechecks every period, logs a line every 30 s, and is refused `wait deadline` after `ANNO_TEST_ADMIT_WAIT_S` (default 1800 s). A domain that cannot be measured at all is refused; a missing reading waits. There is no timed admission and no blanket heavy-job lock.
+
+**C2, loss and non-response.** No helper that takes the session lock is called with the lock held. A blocking wait pings every recheck period. If nothing returns within `ANNO_TEST_BUDGET_LIVENESS_MS` (default 10 s), the wait ends with `coordinator not responding`; a dead connection ends it with `coordinator lost`. On a dead session a release returns at once and new requests are refused. In the loss case the memory and CPU waiters returned `ADMITTED 0 ... coordinator lost`, the holder's release took under 2000 ms, and its next claim was `CLAIM 0`. With the coordinator suspended, the waiter was refused within 6000 ms.
+
+**C3, replacement.** Every promise, memory or CPU, is appended to a journal and flushed before the client hears of it. A coordinator that takes the port replays the journal; open promises become orphans, fully pending and counted as used CPU. An orphan is dropped only when its owner (pid plus creation stamp, checked via OpenProcess, `/proc`, or the PowerShell meter for Windows owners from WSL) is gone; an owner that cannot be checked keeps its orphans. If the journal cannot be written, the promise is refused; if it cannot be opened, the coordinator does not start. The hello carries a build id (SHA-256 over the coordinator's sources, CMake `ANNO_COORD_BUILD`) and protocol 2, and another build is rejected. An idle coordinator of another build exits so the client's build can start. The WSL coordinator binary is `cache/coord/anno_budget_coord-<id>`. Every process using the process budget logs `coordinator build=... incarnation=... pid=... port=...`, and the coordinator prints build, incarnation and orphan count on its `LISTENING` line. Transparent crash recovery (re-registering live holds) is not implemented: a process whose coordinator died is refused for the rest of its life, and its holds stay fenced until it exits.
+
+**C4, the measured workload.** Audit of `render_corpus_test.cpp`:
+- The catalog is per `digest_lines` call. It is loaded once, after the first reservation, and stays for the rest of the call as retained memory. That memory shows in the free readings and is not credited to later items.
+- The only allocation before admission is the scenario file plus an island parse for the bounds (a few MB per worker, bounded by the thread count).
+- A scene whose final bounds outgrow the estimate is dropped and re-reserved while nothing is held.
+
+Measured on this path (`ANNO_TEST_MEASURE_ITEMS=1`, one worker, `docs/perf/README.md` "T10c F2"), Single_01 grows 4475035648 against 7684450048 reserved. Non-picture growth is at most 108085248 (legacy case) and 120647680 (digest case); pixels cost at most 28.08 bytes each above that; the catalog stays at about 743718912. New model: 256 MiB per item + 36 bytes/pixel + 1 GiB while the catalog is not loaded. Checked on `2318078`: legacy 40 items and digest 44 items, worst growth/reservation 0.763, 0 refusals. The headroom stays 4096 MiB. No storage reduction was needed, and no golden or scenario expectation changed.
+
+### Throughput (step 5)
+
+Head `2318078` (coordinator `bb12b56e5c8930cb`), legacy-river case, 47 assertions both runs, measurement on in both:
+
+| Run | Elapsed s | Overlap | Peak private | Min available physical |
+| --- | ---: | --- | ---: | ---: |
+| 1 worker | 266.369 | none (44 admissions) | 5226291200 | 13854380032 |
+| 4 budgeted workers | 186.351 | 42 of 44 admissions while another was open, at most 4 open, 0 refusals | 10401538048 | 9155538944 |
+
+That is 30.0 % less wall time. The earlier one-worker run on the same head waited 1212 s for memory an owner application (`FC27`, 11.46 GiB private) held: free fell to about 4.3 GB, the request waited with `pending=0 resident=0` and a line every 30 s, was neither admitted nor refused, and went on when memory returned. That 1479.8 s run is not used as the baseline. The `2318078` head versus the final head differs only in the null-check commit.
+
+### Gates
+
+| Gate | Head | Result |
+| --- | --- | --- |
+| `cmake --build --preset msvc` | `c95f819` | exit 0, no warnings |
+| with game, `ctest --preset msvc -j 16`, `ANNO_TEST_THREADS=16` | `c95f819` | 1080/1080, 484.98 s; 13282 admissions, 0 refusals, 0 deadlines, 648 progress lines; min available physical 10051698688; all 15 logging processes name coordinator `49fb6ac65eb9178a`, none another. Tree dirty only by the uncommitted perf note (docs), committed next as `31a8b71` |
+| with game, same | `2318078` | 1080/1080, 452.82 s; 13924 admissions, 0 refusals, 0 deadlines, 220 progress lines; min available physical 8009396224; 15 processes log coordinator `bb12b56e5c8930cb` |
+| without game, same | `c95f819` | 1080/1080, 52.29 s; not run (skipped): `anno_sim_replay_scenario_single_01`, `anno_sim_replay_scenario_endless_03_links` |
+| `tools/check_unix_warnings.sh` (GCC 13.3.0, Clang 18.1.3) | `c95f819` | clean: 171 files GCC and Clang with viewer and GPU, 9 Clang without GPU. On `2318078` GCC failed on `-Wnull-dereference`, fixed by `c95f819` |
+| clang-format 23.1.3 `--dry-run --Werror` over `src` | `c95f819` | 0 files |
+| `python -I tools/lint_sim.py` | `2318078` (no sim change since) | `lint_sim: ok` |
+| `python -I tools/sim_stream.py --check` | `2318078` | `goldens agree` |
+| `tools/agree.py` | — | not applicable: no `anno-dump` command changed |
+| WSL ASan/UBSan (GCC 13.3, Unix Makefiles, `ANNO_SANITIZE=ON`, RelWithDebInfo, no viewer/GPU, `$HOME/anno-t10c-asan`; logs `cache2san\`) | `c95f819` | budget suite 33 cases / 242 assertions (max RSS 36736 kB); omitted ground 69904 and cropped masks 57 assertions; `anno_sim_tests` without game 664 / 2660755 (1298232 kB), with game 664 / 2678179 (1430112 kB); no sanitizer report. The heavy render corpus was not run under ASan |
+
+### Acceptance (C1–C4)
+
+- **C1 stale readings:** met. The stale-release and external-pressure cases plus M1.
+- **C1 temporary vs permanent:** met. The stale-residency, in-memory and total cases plus M2.
+- **C1 host/WSL:** met. The guest/host case plus M3, and the internal-meter case in WSL (its total is Windows', not the VM's).
+- **C1 bounded diagnostic:** met. Deadline cases plus M9; real external pressure observed.
+- **C2:** met. Loss and suspension cases plus M5 and M7.
+- **C3:** met as fail-closed. The replacement case plus M4 and M8, the build case plus M6, and the coordinator build in the gate logs.
+- **C4:** met on this PC. The corpus path is measured and the model sits below the measured peaks with a stated margin; both heavy cases ran without refusal; the with-game gate passed on both heads.
+- **Throughput:** documented, 266.4 s vs 186.4 s.
+
+### Limits
+
+- Heavy render corpus not run under ASan (the build has no viewer or GPU; ASan multiplies memory).
+- Calibration covers this PC and this corpus only.
+- The PowerShell meter needs WSL interop; without it a WSL process budget is refused ("free memory unknown").
+- A coordinator whose orphans' owners cannot be checked stays alive.
+- The WSL coordinator is compiled from the worktree's sources under the client's configure-time id: sources edited after configure and before a rebuild would be labelled with the old id.
+
+**Not done:** no merge, no push. `TASKS.md` and `AGENTS.md` not edited. No ADR approval, P2, T34 stage 2 or T-AI.4.

@@ -21,6 +21,12 @@ namespace {
 constexpr std::array<int, 4> kDx = {-1, 1, 0, 0};
 constexpr std::array<int, 4> kDy = {0, 0, -1, 1};
 
+// A uint8_t promotes to int. Shifting that int and masking with 1U is a sign
+// conversion, and UBSan plus -Werror rejects it. The stored bits are 0..3.
+bool sea_face_bit(std::uint8_t face, unsigned bit) {
+    return ((static_cast<unsigned>(face) >> bit) & 1U) != 0;
+}
+
 /// A symmetric positive definite operator on a set of cells with up to four
 /// neighbours each: (A x)_i = diag_i x_i - sum_d g_id x_nb(i, d), diag_i = sum_d g_id +
 /// sink_i (sink: conductance to a ghost cell at potential 0, an outlet).
@@ -799,7 +805,7 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
         for (std::size_t k = 0; k < m; ++k) {
             const auto i = static_cast<std::size_t>(cells[k]);
             for (std::size_t d = 0; d < 4; ++d) {
-                if (((net.sea_face[i] >> d) & 1U) != 0) {
+                if (sea_face_bit(net.sea_face[i], static_cast<unsigned>(d))) {
                     sink[k] += net.K[i];
                     face_h += static_cast<double>(net.h[i]);
                     ++faces;
@@ -898,8 +904,9 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
                     return dist[static_cast<std::size_t>(local[static_cast<std::size_t>(j)])];
                 };
                 // A sea face continues the distance down to 0 at the sea.
-                const bool sea_m = ((net.sea_face[i] >> (axis * 2)) & 1U) != 0;
-                const bool sea_p = ((net.sea_face[i] >> (axis * 2 + 1)) & 1U) != 0;
+                const bool sea_m = sea_face_bit(net.sea_face[i], static_cast<unsigned>(axis) * 2U);
+                const bool sea_p =
+                    sea_face_bit(net.sea_face[i], static_cast<unsigned>(axis) * 2U + 1U);
                 const double here = dist[k];
                 double a = here, b = here, span = 0.0;
                 if (jm >= 0) {
@@ -1043,7 +1050,7 @@ RiverFlow RiverFlow::build(const RiverMask& mask, const RiverConfig& cfg) {
                         f[d] = (phi[k] - phi[lj]) * 2.0 * net.K[i] *
                                net.K[static_cast<std::size_t>(j)] /
                                (net.K[i] + net.K[static_cast<std::size_t>(j)]);
-                    } else if (((net.sea_face[i] >> d) & 1U) != 0) {
+                    } else if (sea_face_bit(net.sea_face[i], static_cast<unsigned>(d))) {
                         f[d] = phi[k] * net.K[i];
                         out_flux += f[d];
                     }

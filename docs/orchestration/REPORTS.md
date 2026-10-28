@@ -5126,3 +5126,18 @@ Nothing pushed; stopping for review.
 **Acceptance, item by item:** zero-store conditions name every intervening call (yes); class labels match the vtable evidence (yes); the Y conclusion is conditional on the X writer (yes); the unread links are complete (yes); F1 history kept (yes); no other text changed (`git diff` is 5 lines of the subsection). `git diff --check` clean.
 
 **Open (unchanged):** Y's class and slots `+0xdc` / `+0x4c`; writers of `[X + 0x14]`; callers of slot `+0x98` and the source of `[target + 0]` / `[target + 0x5c]`; the bodies of `0x10057670`, `0x10057830`, `0x100579e0`; the function containing `0x100af311`; the base relation between vtables `0x100cc92c` and `0x100ccdd8`; OQ-341 unchanged and outside scope. Stopping for review.
+
+
+## T59 F3 — Null-arm condition at 0x1003ee14 — 2026-10-28 — status: FINISHED (static RE/docs only)
+
+**Head:** continues `codex/T59-ai-word2-target-effects` from `1c631af71fd6fba75016748656342ed49b73ceab` (start check: clean, that head); the commit that carries this section is the new head. Main (`2496686`, round cj) was not merged or rebased in. Earlier T59 sections are kept as written. Only `docs/re/complogic.md` (§11 T59, item 1, one phrase) and this report changed; no original bytes or listings committed.
+
+**Difference between prompt and board:** none.
+
+**Where the imprecision came from:** the round-ci board wording ("the null arm is unreachable because `edi` is dereferenced at `0x1003ee14`"), which my F2 text took over for the optional nit. The instruction at `0x1003ee14` is `mov eax, [ebx]`, not a dereference of `edi`; and `edi` at `0x1003ee6b` equals the entry `this` only if the calls in between preserve it.
+
+**Re-read in this pass (`CompLogic.dll`):** `0x1003ee0a..0x1003ee16` (`mov edi, ecx` at `0x1003ee0a`; `xor ebp, ebp`; `lea ebx, [edi + 0xb04]` at `0x1003ee0e`; `mov eax, [ebx]` at `0x1003ee14`; `xor esi, esi` at `0x1003ee16`) and `0x1003ee67..0x1003ee78` (`mov eax, [esp + 0x24]`; `test edi, edi` at `0x1003ee6b`; `mov [esi], eax` at `0x1003ee6d`; `je 0x1003ee76` at `0x1003ee6f`; `lea eax, [edi + 4]` at `0x1003ee71`; `jmp 0x1003ee78`; `xor eax, eax` at `0x1003ee76`). Not read, as the board says: `0x10059c6f` and `0x10056530`.
+
+**Corrected sentence (item 1):** "a null AI would already fault at `0x1003ee14` (`mov eax, [ebx]`, with `ebx = edi + 0xb04` from the `lea` at `0x1003ee0e`), so the null arm at `0x1003ee76` is not taken, provided the calls `0x10059c6f` and `0x10056530` preserve `edi` (callee-saved behaviour, not read);" It replaces "the null arm is unreachable here because `edi` is dereferenced at `0x1003ee14`;". The rest of item 1 is unchanged.
+
+**Acceptance:** the sentence names the instruction actually at `0x1003ee14` and the callee-saved condition (yes); no other text changes (`git diff` is one line of `docs/re/complogic.md`) (yes); the F1/F2 history is kept (yes). `git diff --check` clean. Nothing pushed; stopping for review.

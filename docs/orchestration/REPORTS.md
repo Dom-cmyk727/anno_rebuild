@@ -5842,7 +5842,7 @@ That is 30.0 % less wall time. The earlier one-worker run on the same head waite
 | `python -I tools/lint_sim.py` | `2318078` (no sim change since) | `lint_sim: ok` |
 | `python -I tools/sim_stream.py --check` | `2318078` | `goldens agree` |
 | `tools/agree.py` | — | not applicable: no `anno-dump` command changed |
-| WSL ASan/UBSan (GCC 13.3, Unix Makefiles, `ANNO_SANITIZE=ON`, RelWithDebInfo, no viewer/GPU, `$HOME/anno-t10c-asan`; logs `cache2san\`) | `c95f819` | budget suite 33 cases / 242 assertions (max RSS 36736 kB); omitted ground 69904 and cropped masks 57 assertions; `anno_sim_tests` without game 664 / 2660755 (1298232 kB), with game 664 / 2678179 (1430112 kB); no sanitizer report. The heavy render corpus was not run under ASan |
+| WSL ASan/UBSan (GCC 13.3, Unix Makefiles, `ANNO_SANITIZE=ON`, RelWithDebInfo, no viewer/GPU, `$HOME/anno-t10c-asan`; logs `cache\f2\asan\`) | `c95f819` | budget suite 33 cases / 242 assertions (max RSS 36736 kB); omitted ground 69904 and cropped masks 57 assertions; `anno_sim_tests` without game 664 / 2660755 (1298232 kB), with game 664 / 2678179 (1430112 kB); no sanitizer report. The heavy render corpus was not run under ASan |
 
 ### Acceptance (C1–C4)
 

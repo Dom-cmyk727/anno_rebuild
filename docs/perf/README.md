@@ -776,3 +776,41 @@ T41's save sizes at the same age were 11 474 169, 20 349 454 and 12 906 633 byte
 | `03_1024_med_256` | 25 018 / 27 647 / 31 175 / 32 570 | 171 / 217 / 330 / 635 | 4 245 |
 
 The empty workload's slowest sample is `endless02` at 2 278 µs (438 turns/s). Encoded command bytes, the same on every scenario: empty 0, one `SetSpeed` 16, synthetic burst 76 commands and 1 216 bytes. The burst is over the 1 200-byte cap. It is not a play distribution. Packet overhead was labeled and not added. Detail, the empty-workload rows, and the labeled model result are in ADR 0003 §13.
+
+## T10c — one-worker render baseline (2026-10-28)
+
+Measured on the unchanged head `416993fa6a6f9dc821455df5d414cff5833ac7f0`, before the scheduler change. Host: AMD Ryzen 7 9800X3D, 16 logical processors, Windows, 33408942080 bytes physical RAM, commit limit 108272488448 bytes. Physical RAM is the binding limit; commit headroom stayed above 55 GiB. The sampler is `tools/sample_memory.ps1` at 1 Hz (available physical memory, available commit, process working set, private bytes, peak pagefile, thread count). It stops the diagnostic run below 2147483648 bytes of available physical memory or available commit. That threshold was not hit. The CSV logs stay in the worktree `cache\` and are not committed. Peak pagefile is `PeakPagefileUsage`. A 1 Hz private sample can miss a sub-second spike, so the high-water is the peak.
+
+### Legacy river, one internal worker
+
+`anno_render_tests --test-case="*legacy river shading*" --test-suite=heavy --no-colors`, `ANNO_TEST_THREADS=1`, game directory set. Result: 1 passed, 0 failed, 146 skipped, 47 assertions, exit 0. Sampled elapsed 297.646 s. The meta clock runs from 10:42:12.898 to 10:47:11.339 +01:00.
+
+| quantity | bytes |
+|---|---:|
+| free physical at start | 16507674624 |
+| minimum available physical | 8656285696 |
+| process peak private | 8044425216 |
+| maximum sampled private | 8044388352 |
+| minimum available commit | 59670302720 |
+| maximum commit charge | 48602185728 |
+
+The thread count was 4 during load and 1 while the later renders ran. The minimum of the private series is the process exiting, not a between-item floor. Stderr had no `[anno-test memory]` line: one worker never waited under the old harness.
+
+### Labeled full-map CPU renders
+
+`anno1503 --view <scenario> --group 2 --renderer cpu --png <cache file>`, one fresh process each. The PNG files were deleted after the run. Additional bytes are the peak private minus the maximum private in the first 1.5 s. Single_24 finishes inside that window, so its additional figure is only the pagefile high-water above the highest 1 Hz sample.
+
+| run | image | pre-render private | peak private | additional | bytes/pixel | elapsed s | min available physical |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Single_01 enhanced legacy | 16960×9170 | 991899648 | 7620612096 | 6628712448 | 42.622 | 38.891 | 9663873024 |
+| Single_01 original | 16960×9170 | 993218560 | 7620579328 | 6627360768 | 42.613 | 17.485 | 9676578816 |
+| Single_01 enhanced flow | 16960×9170 | 993366016 | 7620018176 | 6626652160 | 42.609 | 38.926 | 10433630208 |
+| Single_10 enhanced legacy | 17440×9131 | 1003626496 | 7608279040 | 6604652544 | 41.475 | 35.841 | 10673950720 |
+| Single_14 enhanced legacy | 14080×9291 | 892149760 | 6191976448 | 5299826688 | 40.513 | 27.690 | 13276516352 |
+| Single_24 enhanced legacy | 7200×2811 | 949936128 | 1268973568 | 319037440 | 15.763 | 5.170 | 16972197888 |
+
+Single_01 group 2 is 16960 × 9170 = 155523200 pixels. The scheduler's per-pixel rate is 43, the integer ceiling of the Single_01 enhanced-legacy ratio 42.622. `43 × 155523200 = 6687497600`, which is 58785152 bytes above that run's additional private. Original and flow on the same map matched the enhanced peak within a few megabytes, so the rate is not lowered for original water. The other maps were lower per pixel. A group-1 region on its own was not measured.
+
+The legacy-river process peak is 423813120 bytes above the fresh Single_01 `--png` peak. That gap is memory the harness already held (figuren volumes, Anlagen, Felder). The reservation is the additional render bytes. Free memory already excludes what is resident, so those bytes are not reserved again.
+
+Two full-map renders, about twice the 6628712448-byte additional, do not fit in the 16507674624 bytes free at the start of the one-worker run once 4 GiB of headroom is kept. The headroom default is 4 GiB because that run's minimum available physical memory was 8656285696 bytes: one large render did not need a lower headroom to be admitted.

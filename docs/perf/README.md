@@ -874,11 +874,12 @@ Budgeted overlap is 30.0 % less wall time than one worker. The largest pending s
 ### Memory used outside the budget
 
 During the first one-worker run on the committed head an owner application held 11.46 GiB private and free memory fell to about 4.3 GB. The first item (6843933440 bytes) waited 1212 s with `pending=0 resident=0 reason=waiting` and a line every 30 s, was not admitted on any older reading and not refused, and was admitted once free memory returned (15851536384). Its items then took 267.9 s. That run's 1479.8 s elapsed is that wait, not the render cost; the timing pair above was taken afterwards.
+
 ## T10c F3 — compatibility version and no inherited descriptors (2026-10-28)
 
 **Compatibility, not build id.** A test coordinator and its clients share one host budget when they speak the same compatibility version, `wire::kCompatVersion` (`src/test_support/src/coord_wire.hpp`), whatever their build ids. The build id (a hash of the coordinator's sources, `ANNO_COORD_BUILD`) is provenance: every gate logs it with the compatibility version and the incarnation (`[anno-test memory] coordinator build=… compat=… incarnation=…`).
 
-**When the version is bumped.** Bump `kCompatVersion`, and say why here, for any change of the wire format or of the reservation, journal, residency or recovery semantics that an older peer would not reproduce. Do not bump it for provenance, diagnostics, test hooks or code that changes no semantics. The value is 2 (since F2; F3 changes no semantics). A test pins it (`F3 (D1, pin)`).
+**When the version is bumped.** Bump `kCompatVersion`, and say why here, for any change of the wire format or of the reservation, journal, residency or recovery semantics that an older peer would not reproduce. Do not bump it for provenance, diagnostics, test hooks or code that changes no semantics. The value is 3 since F4: a successor issues no hold id that appears in the journal it replayed, and an older successor can reuse one and lose a promise across two restarts. A test pins it (`F3 (D1, pin)`).
 
 **What a mismatch does.**
 - Same version, another build: served; both reservations count against the one budget (`F3 (D1): two compatible builds share one busy coordinator`).
@@ -891,6 +892,7 @@ During the first one-worker run on the committed head an owner application held 
 
 **Silent is not foreign.** A connection that is accepted and answers no hello within `ANNO_TEST_BUDGET_LIVENESS_MS` is "not ready" and is retried within the admission bound. Only a reply that is not a coordinator's frame is "speaks another protocol".
 
+### F3 timing (not a speed claim)
 
 No render or simulation code changed in F3, so no speed-up is claimed. The legacy-river digest case (legacy river shading*, 4 workers, cache\f2\run_legacy.ps1) was timed twice on the F3 head to check that the coordinator change did not slow the test path:
 
@@ -899,3 +901,22 @@ No render or simulation code changed in F3, so no speed-up is claimed. The legac
 - The F2 baseline of 186.4 s was not reproduced on this host state. Render sources are unchanged since that baseline, so the gap is host variance, not a measured effect of F3.
 
 Both runs pass the case (47 assertions).
+
+## T10c F4 — unique hold ids, cancel of every waiter (2026-10-28)
+
+**E1, hold ids.** A successor issues no hold id that appears in any `A` or `R` line of the journal it replayed. One server-wide `u64` counter is seeded at `max_hold_id + 1` (`coord_server.cpp`). Uniqueness is required per budget; a single counter needs no per-budget map, and a `u64` will not overflow in a test run. The journal line format is unchanged.
+
+**Compatibility version 3.** `kCompatVersion` is 3 for that recovery rule: an older successor numbers a budget's holds from 1 and can reuse an id, losing a journaled promise across two restarts. Stale F2/F3 binaries are refused by version.
+
+**E2, cancel bound.** `Budget::session_for` reads `cancel_gen` before taking `connect_mu`. After the lock, if there is still no session and the generation changed, it returns `cancelled`. The wait ends within one connection attempt (at most `ANNO_TEST_BUDGET_LIVENESS_MS`) plus one pause (at most `ANNO_TEST_BUDGET_RECHECK_MS`). A `cancel()` issued before a thread enters `session_for` does not end that later wait (same rule as F3).
+
+**E4, interleaved A/B** of the 4-worker legacy-river digest case (`cache\f4\ab\run_legacy_ab.ps1`, ports 47851 / 47852). A is F2 `43cd10f` (scratch `cache\f4\ab\f2-src`, coordinator `a969992d481424ed` protocol=2). B is this F4 tree (coordinator `cee55b5e74257911` compat=3).
+
+| run | elapsed_s | exit | cases | assertions | still-waiting lines | wait notes | free_kb at start | coordinator |
+|---|---|---|---|---|---|---|---|---|
+| A1 | 223.734 | 0 | 1 / 1 | 47 / 47 | 3 | 3 × "for 30 s" | 16895944 | build=a969992d481424ed protocol=2 |
+| B1 | 205.784 | 0 | 1 / 1 | 47 / 47 | 3 | 3 × "for 30 s" | 17098608 | build=cee55b5e74257911 compat=3 |
+| A2 | 197.070 | 0 | 1 / 1 | 47 / 47 | 0 | none | 17241036 | build=a969992d481424ed protocol=2 |
+| B2 | 204.759 | 0 | 1 / 1 | 47 / 47 | 0 | none | 17260440 | build=cee55b5e74257911 compat=3 |
+
+B1 vs A1: 205.784 / 223.734 = −8.0 %. B2 vs A2: 204.759 / 197.070 = +3.9 %. The 5 % band required for "no throughput regression measured" is missed on B1. The four numbers are a QUESTION (logs in `cache\f4\ab\legacy-*`).

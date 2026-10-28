@@ -282,15 +282,13 @@ TEST_CASE("C1: external pressure after the request queued is seen when a release
 TEST_CASE("C1: a waiter behind an owner with a stale residency report waits, not refused" *
           doctest::test_suite("budget")) {
     // Review probe "capacity": the owner holds 80 and has allocated them
-    // (free 20), but its last residency report said 0. A 60-byte request is a
-    // temporary shortage: it fits once the owner finishes.
-    reset(100);
+    // (free 20), but its residency report says 0 and stays 0 (a probe process
+    // whose private bytes are not injected). A 60-byte request is a temporary
+    // shortage: it fits once the owner finishes.
+    reset(20);
     Scope scope("capacity", 2);
-    auto holder = anno::test::Budget::file(scope.path, both_hooks(), 0);
-    auto held = holder->reserve(80);
-    REQUIRE(held);
-    g_private = 80;
-    g_free = 20;
+    Child holder = probe({"holder", scope.path.string(), "80"});
+    REQUIRE(has(holder.line(10000ms), "READY 1"));
     auto waiter = anno::test::Budget::file(scope.path, both_hooks(true), 0);
     std::atomic<int> done{0};
     anno::test::Reservation got;
@@ -303,9 +301,10 @@ TEST_CASE("C1: a waiter behind an owner with a stale residency report waits, not
     CHECK(waited);
     CHECK(done.load() == 0);
     CHECK_FALSE(info.refused);
-    g_private = 0;
+    // The owner finishes: its bytes are freed and the reservation released.
     g_free = 100;
-    held.release();
+    holder.send("r\n");
+    CHECK(has(line_with(holder, "RELEASED", 5000ms), "RELEASED"));
     CHECK(eventually([&] { return done.load() != 0; }, 5000ms));
     if (done.load() == 0) {
         waiter->cancel();

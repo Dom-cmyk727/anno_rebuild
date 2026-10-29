@@ -45,6 +45,7 @@ The purpose is a shorter path to the first LAN game the group of five can play.
 - **In the handshake and the save:** the layout's version and digest replace the generator's version, parameters and seed (`lan-endless.md` §4). Savegames store the islands, as now.
 - **Measured before the map is final (PLAN §0.3):** the view frame at 4K and the sim tick on the 1431-tile map with five players' cities.
 - **The start:** MVP-A keeps checkpoint A's developer start (a warehouse placed in each start region). MVP-B uses the real start: a ship with its cargo in each start region (W6.1).
+- **Status (MAP.1, 2026-10-29):** the layout format, reader, dump and loader are in place, and `data/maps/lan5.txt` is a proposal (five rotations, one contested middle). The design waits for the owner (`§8` question 6).
 
 ## 4. Workstreams for the MVP
 

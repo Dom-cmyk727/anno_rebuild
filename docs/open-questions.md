@@ -2000,3 +2000,10 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What is known (D, AnnoWelt):** mood treats `[house+0x0c] & 0x30` as a forced −1/−2 (`population.md` §4.1). City events `0x1002ba80` (`this` = city) run every 12500 ticks (`[city+0xe]`). They call `0x1002b700` (picks a kind-`0x61` house) and `0x1002b840`. No immediate `0x10`/`0x20`/`0x30` store to `[reg+0x0c]` in `0x1002ba80`–`0x1002bc09` or in `0x1002b700`–`0x1002b7ed` / `0x1002b840`–`0x1002b882`. A module scan for those immediates into `+0x0c` was empty.
 - **Why:** P1's default is flags stay 0 (`state.md` §4.7c owner Q7). Who sets them decides whether P2 must model fire/plague/riot mood.
 - **How to resolve:** finish `0x1002b700` and `0x1002b840` for a house `+0x0c` write or a slot that writes it; then the fire path `0x10072a60`. Next address: those remaining ranges.
+
+## OQ-490: Kontor territory radius at game start (MAP.1, 2026-10-29)
+- **Status:** open. The developer start gives the whole start island to the city. The original's radius is unread.
+- **Area:** simulation / placement / cities.
+- **Question:** how far from a starting Kontor does the original claim tiles, and does that claim stop at the island edge?
+- **What is known:** nothing in the sim derives territory from a Kontor (`docs/sim/fixed-map.md`). Tiles get an owner only from `IslandSpec::owner_runs`. A player can build only on tiles their city owns (`footprint_owner_rule`, `placement.hpp`). The load-time building path does not read the coast flag (OQ-052). MAP.1 therefore writes one owner run over every tile of a seated start island so the developer start can build.
+- **How to resolve:** find the game-start claim that walks out from the Kontor (AnnoWelt, the city or island init after a warehouse is placed) and name the radius and the stop condition. Do not copy this into OQ-027 or OQ-052.

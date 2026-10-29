@@ -9,7 +9,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import multiprocessing
 import os
+import platform
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -33,6 +36,25 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), default=list).encode()).hexdigest()
 
 
+def file_hash(path):
+    with open(path, "rb") as source:
+        return hashlib.sha256(source.read()).hexdigest()
+
+
+def provenance():
+    here = os.path.dirname(os.path.abspath(__file__))
+    try:
+        head = subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=os.path.dirname(here), text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        head = None
+    return {
+        "code_head": head,
+        "source_hashes": {name: file_hash(os.path.join(here, name)) for name in
+                          ("join_activation.py", "join_jitter_study.py")},
+        "python": sys.version.split()[0], "platform": platform.platform(),
+    }
+
+
 def horizon_lag(sim):
     return max([sim.host.applied - peer.applied for peer in sim.seated] or [0])
 
@@ -44,8 +66,12 @@ def maximum_lag(sim):
     for event in sim.events:
         if event["kind"] == "seated":
             members.add(event["peer"])
+            applied.setdefault(event["peer"], 0)
         elif event["kind"] == "input_on":
             members.add(event["peer"])
+            applied[event["peer"]] = event["applied"]
+        elif event["kind"] == "input_off":
+            members.discard(event["peer"])
         elif event["kind"] == "drop_seated":
             members.discard(event["peer"])
         if event["kind"] == "apply":
@@ -53,6 +79,18 @@ def maximum_lag(sim):
             host = applied.get("H", 0)
             greatest = max(greatest, max([host - applied.get(name, 0) for name in members] or [0]))
     return greatest
+
+
+def peak_retained(sim):
+    held, peak_turns, peak_bytes = {}, 0, 0
+    for event in sim.events:
+        if event["kind"] == "retain":
+            held[event["turn"]] = event["bytes"]
+        elif event["kind"] == "release":
+            held.pop(event["turn"], None)
+        peak_turns = max(peak_turns, len(held))
+        peak_bytes = max(peak_bytes, sum(held.values()))
+    return peak_turns, peak_bytes
 
 
 def metrics(sim):
@@ -63,19 +101,24 @@ def metrics(sim):
             totals[key] += stat[key]
         peak_queue = max(peak_queue, stat["peak_bytes"])
     join = sim.host.joins.get("J1")
+    retained_turns, retained_bytes = peak_retained(sim)
     return {
         "outcome": ja.sens_outcome(sim), "completion_ms": getattr(sim.joiners.get("J1"), "active_ms", None),
         "restart_ms": getattr(join, "restart_ms", None), "restart_reason": getattr(join, "restart_reason", None),
-        "dropped": sorted(sim.dropped), "horizon_ms": sim.horizon, "pending_events": len(sim.q),
+        "dropped": sorted(sim.dropped), "horizon_ms": sim.horizon,
+        "pending_scheduler_events": len(sim.q),
+        "pending_network_callbacks": sum(1 for _, _, _, fn, _ in sim.q if fn.__name__ in ("arrive", "take_ack")),
+        "pending_wire_bytes": sum(link["occ"] for link in sim.links.values()),
         "first_bytes": totals["first_bytes"], "retry_bytes": totals["retry_bytes"], "ack_bytes": totals["ack_bytes"],
         "queue_rejects": totals["drop_queue"], "loss_drops": totals["drop_loss"], "peak_queue_bytes": peak_queue,
         "peak_reassembly_fragments": sim.peak_reasm_frags, "peak_reassembly_bytes": sim.peak_reasm_bytes,
-        "retained_turns": len(sim.host.log_turns), "max_seated_lag": maximum_lag(sim),
+        "retained_turns": len(sim.host.log_turns), "peak_retained_turns": retained_turns,
+        "peak_retained_bytes": retained_bytes, "max_seated_lag": maximum_lag(sim),
         "horizon_seated_lag": horizon_lag(sim), "validators": ja.validate_sim(sim),
     }
 
 
-def run(rate, timer, row, profile, script=()):
+def run(rate, timer, row, profile, script=(), diagnostic=None):
     lo, hi, seed, configured_script = PROFILES[profile]
     original = ja.link_cfg
     def config(selected_rate, **kw):
@@ -89,12 +132,14 @@ def run(rate, timer, row, profile, script=()):
     cfg = config(rate, resend_ms=timer)
     result = metrics(sim)
     return {
-        "kind": "primary" if not script else "diagnostic", "rate": rate, "resend_ms": timer,
+        "kind": "primary" if diagnostic is None else "diagnostic", "diagnostic": diagnostic, "status": "complete",
+        "rate": rate, "resend_ms": timer,
         "workload": row, "profile": profile, "config": {
             "rate_bps": cfg.link_bps, "queue_bytes": cfg.link_queue_bytes, "jitter_min_ms": lo,
             "jitter_max_ms": hi, "jitter_seed": seed, "jitter_script": tuple(script),
         }, "metrics": result,
-        "config_hash": digest((rate, timer, row, profile, tuple(script))),
+        "config_hash": digest((rate, timer, row, profile, tuple(script), cfg.link_bps, cfg.link_queue_bytes,
+                               cfg.one_way_ms, sim.horizon)),
         "result_hash": digest((sim.events, result)), "semantic_trace_hash": digest([
             {k: v for k, v in event.items() if k not in ("jitter_ms", "jitter_id", "jitter_source")}
             for event in sim.events]),
@@ -106,11 +151,47 @@ def rows(include_diagnostics=False):
         for timer in TIMERS:
             for workload in ROWS:
                 for profile in PROFILES:
-                    yield rate, timer, workload, profile, ()
+                    yield rate, timer, workload, profile, (), None
     if include_diagnostics:
         # Declared diagnostics: exact repeat and asymmetric script with a large selected delay.
-        yield "100M", 300, "one_fragment", "uniform25-seed6101", (("diagnostic-repeat",),)
-        yield "100M", 300, "one_fragment", "zero", ((('data', 'H', 'J1', 1, 1, 0, 1), 100),)
+        yield "100M", 300, "one_fragment", "uniform25-seed6101", (), "repeat"
+        yield "100M", 300, "one_fragment", "zero", ((('data', 'H', 'J1', 1, 1, 0, 1), 100),), "asymmetric-data-delay"
+
+
+def _worker(queue, args):
+    begun = time.monotonic()
+    try:
+        result = run(*args)
+        result["wall_seconds"] = round(time.monotonic() - begun, 3)
+        queue.put(("ok", result))
+    except BaseException as exc:
+        queue.put(("error", {"status": "error", "error": "%s: %s" % (type(exc).__name__, exc),
+                             "wall_seconds": round(time.monotonic() - begun, 3)}))
+
+
+def controlled_run(args, row_timeout):
+    """Run one owned simulation worker and reap only that child on expiry."""
+    queue = multiprocessing.Queue(1)
+    worker = multiprocessing.Process(target=_worker, args=(queue, args))
+    worker.start()
+    worker.join(row_timeout)
+    if worker.is_alive():
+        worker.terminate()
+        worker.join()
+        return {"status": "timeout", "wall_seconds": row_timeout}
+    if queue.empty():
+        return {"status": "error", "error": "worker exited without a result", "wall_seconds": row_timeout}
+    state, value = queue.get()
+    return value
+
+
+def expected_config(rate, timer, workload, profile, script=()):
+    lo, hi, seed, _ = PROFILES[profile]
+    cfg = ja.link_cfg(rate, resend_ms=timer, jitter_min_ms=lo, jitter_max_ms=hi, jitter_seed=seed,
+                      jitter_script=tuple(script))
+    horizon = 250000 if workload == "endless02" and rate == "100M" else (650000 if workload == "endless02" else 12000)
+    return digest((rate, timer, workload, profile, tuple(script), cfg.link_bps, cfg.link_queue_bytes,
+                   cfg.one_way_ms, horizon))
 
 
 def main(argv=None):
@@ -119,34 +200,57 @@ def main(argv=None):
     parser.add_argument("--diagnostics", action="store_true", help="append the two declared diagnostic rows")
     parser.add_argument("--validate", action="store_true", help="validate an existing JSONL file instead of running")
     parser.add_argument("--limit", type=int, help="run only this many rows for a smoke check; never study evidence")
+    parser.add_argument("--row-timeout", type=float, default=300, help="owned-worker wall limit (default: 300 s)")
+    parser.add_argument("--study-timeout", type=float, default=5400, help="aggregate wall limit (default: 5400 s)")
     args = parser.parse_args(argv)
     if args.validate:
         data = [json.loads(line) for line in open(args.output, encoding="utf-8") if line.strip()]
-        primary = [row for row in data if row["kind"] == "primary"]
+        if not data or data[0].get("kind") != "manifest" or len([x for x in data if x.get("kind") == "manifest"]) != 1:
+            raise SystemExit("invalid study: require exactly one leading manifest")
+        manifest, data = data[0], data[1:]
+        if manifest.get("provenance") != provenance() or not isinstance(manifest.get("run_id"), str):
+            raise SystemExit("invalid study: provenance or run identity does not match this source")
+        primary = [row for row in data if row.get("kind") == "primary"]
+        diagnostics = [row for row in data if row.get("kind") == "diagnostic"]
         expected = {(rate, timer, workload, profile) for rate in RATES for timer in TIMERS
                     for workload in ROWS for profile in PROFILES}
         actual = {(row.get("rate"), row.get("resend_ms"), row.get("workload"), row.get("profile")) for row in primary}
-        required = {"config", "config_hash", "result_hash", "semantic_trace_hash", "wall_seconds", "metrics"}
-        if (len(primary) != 72 or actual != expected or any(not required <= set(row) for row in data)
-                or any(row["metrics"].get("validators") for row in data)
-                or len({row["config_hash"] for row in primary}) != 72):
+        required = {"config", "config_hash", "result_hash", "semantic_trace_hash", "wall_seconds", "metrics", "status"}
+        allowed_diagnostics = {"repeat", "asymmetric-data-delay"}
+        if (len(primary) != 72 or actual != expected or len(diagnostics) > 12
+                or any(row.get("kind") not in ("primary", "diagnostic") for row in data)
+                or any(not required <= set(row) or row.get("status") != "complete" for row in data)
+                or any(not isinstance(row["wall_seconds"], (int, float)) or row["wall_seconds"] < 0 for row in data)
+                or any(not isinstance(row["metrics"].get("validators"), list) or row["metrics"]["validators"] for row in data)
+                or any(row.get("diagnostic") not in allowed_diagnostics for row in diagnostics)
+                or len({row["config_hash"] for row in primary}) != 72
+                or any(row["config_hash"] != expected_config(row["rate"], row["resend_ms"], row["workload"], row["profile"],
+                                                               tuple(row["config"].get("jitter_script", ()))) for row in data)):
             raise SystemExit("invalid study: require exactly the 72 distinct, validator-clean primary configurations")
-        print("valid: %d primary rows, %d diagnostics" % (len(primary), len(data) - len(primary)))
+        print("valid: %d primary rows, %d diagnostics" % (len(primary), len(diagnostics)))
         return 0
     started = time.monotonic()
     with open(args.output, "w", encoding="utf-8", newline="\n") as out:
-        for number, (rate, timer, workload, profile, script) in enumerate(rows(args.diagnostics), 1):
+        manifest = {"kind": "manifest", "run_id": digest((time.time_ns(), os.getpid())), "provenance": provenance(),
+                    "row_timeout_seconds": args.row_timeout, "study_timeout_seconds": args.study_timeout,
+                    "diagnostics": ["repeat", "asymmetric-data-delay"] if args.diagnostics else []}
+        out.write(json.dumps(manifest, sort_keys=True) + "\n")
+        out.flush()
+        for number, (rate, timer, workload, profile, script, diagnostic) in enumerate(rows(args.diagnostics), 1):
             if args.limit is not None and number > args.limit:
                 break
-            begun = time.monotonic()
-            result = run(rate, timer, workload, profile, script)
-            result["wall_seconds"] = round(time.monotonic() - begun, 3)
-            if result["wall_seconds"] > 300 or result["metrics"]["validators"]:
-                raise SystemExit("row %d failed bounds or validation: %r" % (number, result))
+            remaining = args.study_timeout - (time.monotonic() - started)
+            if remaining <= 0:
+                raise SystemExit("study exceeded aggregate wall bound before row %d" % number)
+            result = controlled_run((rate, timer, workload, profile, script, diagnostic), min(args.row_timeout, remaining))
+            result.update({"kind": "primary" if diagnostic is None else "diagnostic", "diagnostic": diagnostic,
+                           "rate": rate, "resend_ms": timer, "workload": workload, "profile": profile})
             out.write(json.dumps(result, sort_keys=True, default=list) + "\n")
             out.flush()
+            if result.get("status") != "complete" or result.get("metrics", {}).get("validators"):
+                raise SystemExit("row %d failed bounds or validation: %r" % (number, result))
             print("%02d %s/%d/%s/%s %.3fs" % (number, rate, timer, workload, profile, result["wall_seconds"]))
-    if time.monotonic() - started > 5400:
+    if time.monotonic() - started > args.study_timeout:
         raise SystemExit("study exceeded the 90 minute bound")
     return 0
 

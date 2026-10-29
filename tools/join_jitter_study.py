@@ -230,7 +230,8 @@ def main(argv=None):
     parser.add_argument("--study-timeout", type=float, default=5400, help="aggregate wall limit (default: 5400 s)")
     args = parser.parse_args(argv)
     if args.validate:
-        data = [json.loads(line) for line in open(args.output, encoding="utf-8") if line.strip()]
+        with open(args.output, encoding="utf-8") as handle:
+            data = [json.loads(line) for line in handle if line.strip()]
         if not data or data[0].get("kind") != "manifest" or len([x for x in data if x.get("kind") == "manifest"]) != 1:
             raise SystemExit("invalid study: require exactly one leading manifest")
         manifest, data = data[0], data[1:]
@@ -256,9 +257,19 @@ def main(argv=None):
                 or any(row["config_hash"] != expected_config(row["rate"], row["resend_ms"], row["workload"], row["profile"],
                                                                tuple(row["config"].get("jitter_script", ()))) for row in data)):
             raise SystemExit("invalid study: require exactly the 72 distinct, validator-clean primary configurations")
+        begun = time.monotonic()
+        study_bound = min(args.study_timeout, manifest["study_timeout_seconds"])
+        row_bound = min(args.row_timeout, manifest["row_timeout_seconds"])
         for row in data:
+            remaining = study_bound - (time.monotonic() - begun)
+            if remaining <= 0:
+                raise SystemExit("invalid study: validation exceeded the study timeout")
             script = tuple((tuple(x[0]), x[1]) for x in row["config"].get("jitter_script", ()))
-            replay = run(row["rate"], row["resend_ms"], row["workload"], row["profile"], script, row.get("diagnostic"))
+            replay = controlled_run(
+                (row["rate"], row["resend_ms"], row["workload"], row["profile"], script, row.get("diagnostic")),
+                min(row_bound, remaining))
+            if replay.get("status") != "complete":
+                raise SystemExit("invalid study: row replay %s" % replay.get("status"))
             if canon(row.get("metrics")) != canon(replay.get("metrics")):
                 raise SystemExit("invalid study: recorded metrics do not match the replay")
             if canon(row.get("config")) != canon(replay.get("config")):

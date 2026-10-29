@@ -216,7 +216,7 @@ class Cfg:
         if (not isinstance(self.jitter_min_ms, int) or isinstance(self.jitter_min_ms, bool)
                 or not isinstance(self.jitter_max_ms, int) or isinstance(self.jitter_max_ms, bool)
                 or self.jitter_min_ms < 0 or self.jitter_max_ms < self.jitter_min_ms):
-            problems.append("invalid jitter range [%d, %d]" % (self.jitter_min_ms, self.jitter_max_ms))
+            problems.append("invalid jitter range [%r, %r]" % (self.jitter_min_ms, self.jitter_max_ms))
         if not isinstance(self.jitter_seed, int) or isinstance(self.jitter_seed, bool) or self.jitter_seed < 0:
             problems.append("jitter_seed < 0")
         try:
@@ -423,7 +423,7 @@ class Sim:
         self.log("transport epoch of %s<>%s is now %d (%s)" % (a, b, e, why))
         self.ev("epoch_bump", a=a, b=b, epoch=e, why=why)
 
-    def stale(self, local, remote, epoch, what, lid=None):
+    def stale(self, local, remote, epoch, what, lid=None, tx_id=None):
         """True (and logged) when `epoch`, read from a packet or a timer at `local`, is not the epoch
         `local` currently holds for `remote`. The event keeps the direction of the datagram."""
         if epoch == self.ep_of(local, remote):
@@ -431,7 +431,8 @@ class Sim:
         self.log("stale-epoch %s at %s from %s (field %d, now %d)" % (
             what, local, remote, epoch, self.ep_of(local, remote)))
         src, dst = (remote, local) if what in ("arrive", "flush_ack_in") else (local, remote)
-        self.ev("stale_epoch", src=src, dst=dst, local=local, what=what, epoch=epoch, lid=lid)
+        self.ev("stale_epoch", src=src, dst=dst, local=local, what=what, epoch=epoch, lid=lid,
+                tx_id=tx_id)
         return True
 
     def srtt(self, a, b):
@@ -655,7 +656,7 @@ class Sim:
             arrive = link_arrival if self.cfg.link_bps else self.t + self.cfg.one_way_ms + delay + jitter_ms
             self.log("%s %s>%s ch%d seq%d %s -> arrives %d" % (
                 tag, src, dst, ch, d["seq"], d["kind"], arrive))
-            self.schedule(arrive, P_DELIVER, self.arrive, src, dst, ch, d, d["epoch"], lid, d["attempt"])
+            self.schedule(arrive, P_DELIVER, self.arrive, src, dst, ch, d, d["epoch"], lid, d["attempt"], jitter_id)
         if ch != 2 and not self.cfg.legacy:
             gap = self.cfg.resend_ms
             if self.is_seated_pair(src, dst) and d["attempt"] >= self.cfg.max_attempts:
@@ -730,8 +731,8 @@ class Sim:
         self.ev("drop_seated", peer=peer, why=why)
         self.host.drop_seat(peer)
 
-    def arrive(self, src, dst, ch, d, epoch=None, lid=None, attempt=None):
-        if self.stale(dst, src, d["epoch"], "arrive", lid):  # the field of the packet, not a simulator label
+    def arrive(self, src, dst, ch, d, epoch=None, lid=None, attempt=None, tx_id=None):
+        if self.stale(dst, src, d["epoch"], "arrive", lid, tx_id):  # the field of the packet, not a simulator label
             return
         c = self.recv_state(src, dst, ch)
         if c.dead:  # a closed receive side (drop, overflow) takes nothing more
@@ -911,11 +912,11 @@ class Sim:
         self.log("ack-only %s>%s ch%d #%d ack=%d bits=%x" % (dst, src, ch, idx, ack, bits))
         # the ACK-only datagram carries the acker's epoch in its wire field
         self.schedule(ack_arrival, P_ACK, self.take_ack, src, dst, ch, ack, bits,
-                      self.ep_of(dst, src), lid, idx)
+                      self.ep_of(dst, src), lid, idx, jitter_id)
 
-    def take_ack(self, src, dst, ch, ack, bits, epoch=None, lid=None, idx=None):
+    def take_ack(self, src, dst, ch, ack, bits, epoch=None, lid=None, idx=None, tx_id=None):
         """The sender src learns what dst received."""
-        if epoch is not None and self.stale(src, dst, epoch, "ack", lid):  # compared with src's own epoch
+        if epoch is not None and self.stale(src, dst, epoch, "ack", lid, tx_id):  # compared with src's own epoch
             return
         c = self.chan(src, dst, ch)
         named = {ack}
@@ -1874,6 +1875,14 @@ class Joiner(Peer):
 
 
 # ---- independent validators ---------------------------------------------------------------
+def _legacy_zero_jitter_evidence(events, cfg):
+    """True only for a wholly pre-T61 zero-jitter trace with no audit fields."""
+    if cfg.jitter_min_ms != 0 or cfg.jitter_max_ms != 0 or cfg.jitter_script:
+        return False
+    fields = ("jitter_ms", "jitter_id", "jitter_source")
+    return not any(any(field in event for field in fields) for event in events)
+
+
 def _check_jitter(events, cfg, end_t, delays=None):
     """(xviii) Independently derive each propagation sample and its callback time.
 
@@ -1888,11 +1897,10 @@ def _check_jitter(events, cfg, end_t, delays=None):
 
     # Old hand-written zero-jitter fixtures predate audit fields.  They remain valid only when
     # timing evidence is wholly absent; any supplied evidence is checked, even when its value is 0.
-    supplied = any(e["kind"] in ("send", "ack_send") and "jitter_ms" in e for e in events)
-    if not supplied and cfg.jitter_min_ms == cfg.jitter_max_ms == 0 and not cfg.jitter_script:
+    if _legacy_zero_jitter_evidence(events, cfg):
         return []
     finish, planned, by_lid = {}, {}, {}
-    data_out, ack_out = {}, {}
+    data_out, ack_out, stale_out = {}, {}, {}
     for e in events:
         if e["kind"] == "link_finish":
             finish.setdefault(e.get("lid"), []).append(e)
@@ -1904,6 +1912,8 @@ def _check_jitter(events, cfg, end_t, delays=None):
         elif e["kind"] == "ack":
             key = (e.get("dst"), e.get("src"), e.get("ch"), e.get("epoch"), e.get("idx"))
             ack_out.setdefault(key, []).append(e)
+        elif e["kind"] == "stale_epoch" and e.get("what") in ("arrive", "ack"):
+            stale_out.setdefault(tuple(e.get("tx_id", ())), []).append(e)
         if e.get("lid") is not None:
             by_lid.setdefault(e["lid"], []).append(e)
     for tx in (e for e in events if e["kind"] in ("send", "ack_send")):
@@ -1940,9 +1950,8 @@ def _check_jitter(events, cfg, end_t, delays=None):
             outcomes = data_out.get(outcome_key, [])
         else:
             outcomes = ack_out.get(outcome_key, [])
-        # Stale records intentionally lack mutable packet details.  Their immutable link id binds
-        # them to exactly one transmission in serialized mode.
-        outcomes += [e for e in by_lid.get(tx.get("lid"), ()) if e["kind"] == "stale_epoch"]
+        # Scheduling-time identity binds a stale packet in both modes, even after reset.
+        outcomes += stale_out.get(ident, [])
         at_time = [e for e in outcomes if e["t"] == want_t]
         if want_t <= end_t and len(at_time) != 1:
             bad(want_t, "served transmission %r has %d matching outcomes at its derived arrival" % (ident, len(at_time)))
@@ -2548,8 +2557,7 @@ def _check_link(events, cfg, end_t=None, delays=None):
                 bad(q["t"], "lid %s labels an extra delay of %d ms, which differs from the declared %d ms" % (
                     lid, q["extra_ms"], declared))
             # T61 audit fields are optional only for wholly legacy zero-jitter fixtures.
-            if t is not None and ("jitter_ms" in q or "jitter_id" in q
-                                  or cfg.jitter_min_ms != 0 or cfg.jitter_max_ms != 0 or cfg.jitter_script):
+            if t is not None and not _legacy_zero_jitter_evidence(events, cfg):
                 jitter_ident = (jitter_identity("data", t["src"], t["dst"], t["ch"], t["epoch"], t["seq"], t["attempt"])
                                if claimed[lid][0] == "d" else
                                jitter_identity("ack", t["src"], t["dst"], t["ch"], t["epoch"], t["idx"]))

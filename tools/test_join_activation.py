@@ -2815,6 +2815,15 @@ class JoinJitter(TraceCase):
             return [{k: v for k, v in e.items() if k not in ignored} for e in events]
         self.assertEqual(project(old.events), project(zero.events))
 
+    def test_mixed_zero_jitter_evidence_is_not_a_legacy_fixture(self):
+        sim = ja.one_join(cfg(link_bps=100_000_000, link_queue_bytes=131072), until=6000)
+        log = [dict(e) for e in sim.events]
+        enqueue = next(e for e in log if e["kind"] == "link_enqueue")
+        enqueue.pop("jitter_ms")
+        enqueue.pop("jitter_id")
+        codes = {code for code, _ in ja.validate(log, sim.cfg, sim.t, delays=sim.delays)}
+        self.assertTrue({"xvi", "xviii"} & codes, codes)
+
     def test_validator_rebuilds_arrival_and_rejects_a_consistent_forgery(self):
         sim = self._sim(True)
         clean = validate_clean(sim)

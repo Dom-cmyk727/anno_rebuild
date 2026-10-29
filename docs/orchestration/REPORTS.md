@@ -6781,3 +6781,156 @@ Asymmetric versus the zero primary (`100M` / 300 / `one_fragment` / `zero`): scr
 Retained outcomes, none retuned, validators empty on all 74 rows: 68 primary rows open input. The four `1M` / 300 / `endless02` rows restart for reason 4 (the host abandons the joiner's pair) at 5475, 5215, 11187 and 6031 ms, with 54, 42, 169 and 54 queue rejects. The zero-jitter cell matches the figure already in ADR 0003 §8.8. Jitter moves that restart; it does not remove it. `fragment_loss` keeps its two scripted loss drops. The large retry totals at `resend_ms` 300 and on `1M` / 400 / `endless02` stay in the file.
 
 Next: reconcile ADR 0003 §15 and OQ-371 with these results (Proposed stays Proposed, OQ-371 stays open), then reviewer pass 2 on that head and the closure draft.
+
+## T61 F2 closure — 2026-10-30 — status: IN PROGRESS (reviewer pass 2 pending)
+
+Worktree `E:\anno1503-worktrees\anno1503-T61` on `codex/T61-join-jitter`. Starting head `be08b7b88025b78083e1d6292c7330a29ceba70a`. Final tested source (last tool change) `3c5ecb6097e6485d191bc7a8b87be925b3a317e1`. Accepted study recorded at `eb6da4387ffb6af4859d93a57fc7a84f65656bd5` (`python` blobs identical to `3c5ecb6`). ADR/OQ reconciliation `0f1e984dff8a0b23f030042640462b2e2768eda9`. This section is the closure draft for reviewer pass 2; the report tip is the commit that adds it. No push, PR, TASKS/PLAN/AGENTS, merge or rebase. No other worktree was read or edited.
+
+### Commits since `be08b7b` (concern per commit)
+
+| commit | subject |
+| --- | --- |
+| `360ee14` | docs: record T61 F2 phase 0 baseline |
+| `a9c8281` | test(tools): T61 regressions for round dh H1-H4 and round dn N1-N4 |
+| `f3f79e3` | docs: record T61 F2 phase 1 |
+| `de6a48a` | fix(tools): hash committed jitter sources, not the working tree |
+| `5fcd8f2` | fix(tools): reject a study whose metrics or config disagree with the replay |
+| `6034f5f` | fix(tools): require the repeat and asymmetric diagnostics |
+| `622787a` | fix(tools): supervise jitter study validation replay |
+| `17699d7` | fix(tools): derive reassembly peaks from acquire events |
+| `448662d` | test(tools): close T61 fail-first file handles |
+| `367af75` | test(tools): add JM1-JM8 scheduler mutants and hash-seed gate |
+| `985b99e` | test(tools): catch jitter mutants JM1-JM8 and check fresh-process hashes |
+| `89f3008` | test(tools): lock zero-jitter rows to the 917efea projection |
+| `ea7624c` | docs: record T61 F2 phase 2 |
+| `cb29039` | docs: record T61 F2 phase 2 gates |
+| `69f8e34` | fix(tools): count owned reassembly fragments, not the logged held field |
+| `fb83654` | test(tools): close the first review's H1, baseline, and deadline gaps |
+| `bd8bd9c` | fix(tools): require full coverage of the 100 ms asymmetric script |
+| `83193c3` | test(tools): hash T61 provenance without requiring a CRLF tree |
+| `e34c9b1` | docs(orchestration): T61 F2 phase 3 reviewer pass-1 dispositions |
+| `3c5ecb6` | fix(tools): reject a study whose recorded duration exceeds the budget |
+| `eb6da43` | docs: record T61 F2 phase 3 reviewer rounds |
+| `775e8e8` | docs: record T61 F2 phase 4 study |
+| `0f1e984` | docs: reconcile T61 study with ADR 0003 and OQ-371 |
+
+`git diff --stat be08b7b..HEAD`: `docs/adr/0003-network-transport.md`, `docs/open-questions.md`, `docs/orchestration/REPORTS.md`, `tools/join_jitter_study.py`, `tools/test_join_activation.py`. Five of the six allowed files; `tools/join_activation.py` was already at the H1 conservation head before this continuation. `git diff --check be08b7b HEAD` is clean.
+
+### Suites (floor 222 join / 64 snapshot; none removed)
+
+| when | join | snapshot |
+| --- | --- | --- |
+| phase 0, `be08b7b` | 222 in 416.063 s, OK | 64 in 18.154 s, OK |
+| phase 2, `89f3008` | 262 in 297.907 s, OK | 64 in 19.131 s, OK |
+| after review-1 round 1, `fb83654` | 263 in 250.387 s, OK | 64 unchanged |
+| after N3 recorded-budget, `3c5ecb6` | **264** in 308.460 s, OK (`cache/t61-f2/dn/gates/join-3c5ecb6.err`) | 64 in 16.884 s, OK (`snapshot-3c5ecb6.err`) |
+
+### Fail-first then passing (§5)
+
+Fail-first on `be08b7b`/`a9c8281`: 30 tests, 9 failures (`cache/t61-f2/dn/fail-first/round-dn.stderr.txt`). H1/H4 on ignored `30964c2`: 9 tests, 7 failures (`h1-h4-on-30964c2.stderr.txt`). Passing re-run of those 30: OK in 5.041 s at `448662d`.
+
+| item | fail-first | pass |
+| --- | --- | --- |
+| H1a extra arrival | `'xviii' not found in {'xi'}` on `30964c2` | `assertEqual(..., {"xviii"})` |
+| H1b orphan sid | same | same |
+| H1c lost outcome | same | same |
+| H1d bool attempt | `ValueError not raised` | Cfg rejects |
+| H1e negative epoch | `ValueError not raised` | Cfg rejects |
+| H1f empty endpoint | `ValueError not raised` | Cfg rejects |
+| H2 edited metrics/config | validate exit 0 | `canon` mismatch |
+| H2 both diagnostics removed | validate exit 0 | required `{repeat, asymmetric-data-delay}` |
+| H2 invented hashes / NaN / 301 / non-ancestor / changed source | already rejected at `be08b7b` | still rejected |
+| H3 repeat hashes | already passed | still equal |
+| H3 100 ms script | already passed on `ee46458` | `script_hits == len(declared)` plus arrival test |
+| H4 `input_on` lag 2 | `0 != 2` on `30964c2` | `maximum_lag` 2 |
+| H4 loading joiner | already passed | seated lag 2 |
+| N1 working-tree hash | CRLF disk ≠ blob | blob SHA-256; disk inequality only if bytes differ |
+| N3 row deadline | validate succeeded in 0.05 s | `controlled_run` timeout, no leftover worker |
+| N3 recorded sum | missing until review-1 r2 | `3c5ecb6` rejects sum > study budget |
+| N6 reassembly | `-1 != 0` (trusted `held`) | `len(owned)`; lying `held=99` expects `(2, 150)` |
+
+### N1–N8
+
+**N1.** `committed_source_sha256` / `git cat-file blob <head>:tools/<name>`. Tests `test_n1_provenance_hashes_the_committed_blob`, `test_n1_crlf_and_lf_checkouts_validate_the_same_blob`. Commit `de6a48a`, CRLF-independence `83193c3`.
+
+**N2.** `--validate` compares `canon(metrics)` and `canon(config)` with the replay, then the hashes. H2 tampers fail. `5fcd8f2`.
+
+**N3.** Replay through `controlled_run` with `min(CLI, manifest)` row and study bounds. Short deadline reaps the worker. Recorded `wall_seconds` cannot exceed those bounds (`3c5ecb6`).
+
+**N4.** Diagnostics `{repeat, asymmetric-data-delay}` required regardless of the manifest. Repeat hashes equal the primary. Asymmetric script is `(["data","H","J1",1,0,0,1], 100)` and `script_hits == len(declared)` (`bd8bd9c`).
+
+**N5.** H1a–f. Conservation already in `join_activation.py` before `be08b7b` (`d0db15c`). Tests fail on `30964c2`, pass here. Control `validate == []`. Epoch-0 fixtures so H1a–c are not masked by `xi` (`fb83654`).
+
+**N6.** Peak retained turns/bytes from retain/release events. Reassembly from acquire/release using `len(owned)` (`17699d7`, `69f8e34`). Network callbacks distinct from scheduler events. Hand vectors in `RoundDnH4Metrics`.
+
+**N7.** (a) 264 join / 64 snapshot. (b) existing `MUTANTS` plus (c) JM1–JM8: `MutantTable` OK; each JM fails a named assertion (table below). (d) `test_n7d_fresh_processes_agree_under_different_hash_seeds`: two processes, `PYTHONHASHSEED` 1 and 2, identical `result_hash`/`semantic_trace_hash` for `100M`/300/`one_fragment`/`uniform25-seed6101`. That row in the study is `result_hash` `8f93f591d2b6daf88174dc8769a01145e41bf2cedc4a430c551413f073fe0f6f`, `semantic_trace_hash` `68221c55ccdc0efe4ceb6f38bed04caa65466e42427373e4e7aba09bc3a29d20`. (e) `test_n7e_zero_jitter_projection_matches_917efea` walks every `LINK_ROWS` rate and every `ROWS` name; `compare917.py` matched 6 SENS_ROWS × 2 rates. Unserialized rows drop the new `ack_send` audit record.
+
+**N8.** After N1–N7 and reviewer pass 1 (three rounds, last tool fix `3c5ecb6`):
+
+```
+python -I tools/join_jitter_study.py --diagnostics --output cache/t61-f2/dn/final/study.jsonl
+```
+
+Exit 0, 259.513 s, head `eb6da43`. Then `--validate` exit 0, 200.741 s, printed `valid: 72 primary rows, 2 diagnostics`. ADR 0003 §15 and OQ-371 reconciled in `0f1e984`. Proposed stays Proposed; OQ-371 stays open.
+
+### Mutants (JM1–JM8)
+
+| mutant | named test | assertion under the patch |
+| --- | --- | --- |
+| JM1 ignore ACK jitter | `test_jm1_ack_jitter_matches_the_independent_sample` | `0 != 15` |
+| JM2 reuse attempt-1 jitter | `test_jm2_retries_do_not_reuse_attempt_one_identity` | both identities `('data', 'H', 'J1', 1, 0, 0, 1)` |
+| JM3 omit epoch/channel | `test_jm3_identities_include_epoch_and_channel` | `5 != 7` |
+| JM4 zero un-serialized jitter | `test_jm4_unserialized_jitter_matches_the_independent_sample` | `0 != 15` |
+| JM5 floor serialized callback in `link_plan` | `test_jm5_serialized_callback_is_not_early` | `165 != 166` |
+| JM6 shift sample +1 | `test_jm6_a_live_sim_matches_the_independent_profile` | `16 != 15` |
+| JM7 swap attempt identities | `test_jm7_attempt_identities_are_not_swapped` | `2 != 1` |
+| JM8 erase in-horizon arrival | `test_jm8_each_in_horizon_send_has_an_outcome` | `(1, 1) not found in set()` |
+
+Unmutated those eight plus n7d: 9 tests OK (`cache/t61-f2/dn/gates/jm-unmutated.stderr.txt`). Named JM* because J1 is a joiner.
+
+### Final study
+
+Command and `--validate` as N8. Manifest `code_head` `eb6da43`, run id `d34d5ddf77410648a2b2ecf4ea2fb20ea239b047a99f6dc71cdc40717816390a`. Blob SHA-256: `join_activation.py` `80939b70f8ed86fc1ec6c30fac51d00a3aa678d643e4525e0d75298e4d1c3bda`, `join_jitter_study.py` `bb8ced2444b59bb3902d39c3552119d2ba7b1343291e11164a79aa25c801a262`. Recorded row-wall sum 247.976 s; max 22.420 s (`endless02`). Bounds 300 / 5400. 74 complete rows, empty validators.
+
+Repeat (`100M`/300/`one_fragment`/`uniform25-seed6101`) equals its primary hashes (see N7d). Asymmetric (`100M`/300/`one_fragment`/`zero`) script `(('data','H','J1',1,0,0,1), 100)`, `script_hits` 1; hashes differ from zero (`aac1e187…` vs `102669b7…`); input completion stays 2565 ms. 68 primaries open input. Four `1M`/300/`endless02` restarts (reason 4) at 5475, 5215, 11187, 6031 ms with 54, 42, 169, 54 queue rejects, retained. `fragment_loss` keeps two scripted drops. Nothing retuned.
+
+Wall times: phase 0 join 416 s; phase 2 join 298 s; phase 3 join 308 s; study 260 s; validate 201 s.
+
+### ADR 0003 §15 / OQ-371 (quoted)
+
+§15 **Verified, 2026-10-30, code head `eb6da43`.** `--validate` printed `valid: 72 primary rows, 2 diagnostics`. Provenance is `git show` SHA-256, not working-tree bytes. Repeat matches. Asymmetric is the 100 ms script. Four 1 Mbit/s `endless02` restarts at `resend_ms` 300 remain. Validators empty. Nothing retuned.
+
+§15 **Not established.** Not a LAN measurement. Profiles, bottleneck and sizes stay assumptions. `resend_ms` 300 and Proposed status unchanged. OQ-371 open.
+
+OQ-371 status remains **open**, narrowed by the validated synthetic matrix; how to resolve is still a measured `netsim` schedule and the owner's decision.
+
+### Reviewer pass 1
+
+Prompt verbatim: `cache/t61-f2/dn/review-1/prompt.md` (and `prompt-round2.md`). Three rounds, at most three as the brief allows.
+
+| round | head | subagent | findings file | disposition |
+| --- | --- | --- | --- | --- |
+| 1 | `ea7624c`/`cb29039` | `4eaf1170-fc15-45e8-b9f6-a389efdaac56` | `review-1/findings.md` | N6 `held` → `69f8e34`; N7e all rows → `fb83654`; H1 `xi` → `fb83654`; EOF blank removed; N8 deferred |
+| 2 | `fb83654` | `f0b5330a-654c-4e8a-b7d5-5dfdf8c24c6a` | `findings-round2.md` | items 1–4 CONFIRMED; recorded duration NOT MET → `3c5ecb6` |
+| 3 | `3c5ecb6` | `c8bbb7db-4bea-44bd-bdde-a8c85bd34649` | `findings-round3.md` | recorded-sum CONFIRMED |
+
+A parallel note at `e34c9b1` recorded the same pass from this session's first findings file, including `bd8bd9c` (100 ms coverage) and `83193c3` (N1 without requiring CRLF).
+
+### Reviewer pass 2
+
+Prompt verbatim: `cache/t61-f2/dn/review-2/prompt.md`. Findings and dispositions follow that pass.
+
+### Decisions and reasoning
+
+1. **N1 hashing basis.** SHA-256 of the committed blob (`git cat-file` / `git show`), not LF-normalised working bytes and not `hash-object` of the checkout. Evidence: every tool file on this host is CRLF on disk (`core.autocrlf=true`) while blobs are LF; hashing disk bytes made a genuine study fail `--validate` (phase 0, `di-final/study.jsonl`). Alternative (LF-normalise the working file) would accept an unsaved substitute that happens to normalise equal.
+2. **N2 binding.** Canonical JSON of `metrics` and `config` compared with the replay, then the hashes. Alternative: hash-only. Rejected because an edited `ack_bytes` with a matching hash rewrite would otherwise need a second independent check; `canon` catches the field first.
+3. **Replay supervision.** `controlled_run` with `min(CLI, manifest)` deadlines, plus a recorded-sum check before replay (`3c5ecb6`). Alternative: in-process replay. Rejected because a stalled worker would ignore the 300 s row bound.
+4. **JM names.** JM1–JM8, not J1–J8: J1 is a joiner id in the checker.
+5. **Fixture shape.** 2–3 row injectable study via `_fixture_matrix` / `inspect.getsource`, never the 72-row matrix in a unit test. Asymmetric coverage is `script_hits == len(declared)` in `--validate`; the 100 ms arrival delta vs zero is a separate unit sim, because a second zero-jitter sim inside `--validate` of 72 rows would not fit the 300 s remaining bound on a long row.
+6. **917efea extraction.** `git show` / `git cat-file`, not `git archive \| tar` (Windows tar checksum damage).
+
+### Questions for the morning
+
+1. Packet §4 said `join_jitter_study.py` is LF on disk. On this checkout all three tools are CRLF. Blob hashing is the N1 answer; confirm that is acceptable.
+2. Two executor sessions wrote this worktree overnight. Commits interleave; no reset or rebase. The study that `--validate` accepts is the `eb6da43` file, not the earlier `e34c9b1` file it overwrote.
+3. `move_agent_to_root` once checked `task/T33-1-walk-tables` out of this worktree; it was restored to `codex/T61-join-jitter` before edits. Not repeated.

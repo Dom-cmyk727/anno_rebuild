@@ -6991,3 +6991,55 @@ OQ-490. The developer start gives the whole start island to the city. The origin
 - OQ-490.
 - The two heavy render tests (`#286`, `#287`) were not admitted. Re-run them when free RAM after the 4096 MiB headroom can hold a 6.5 GiB reservation. They are not MAP.1 behaviour.
 - W4.1 is the next part of this lane and is not started in this report.
+
+## W4.1 — Play mode — 2026-10-29 — status: IN PROGRESS
+
+Branch `task/W4-1-play-mode`, worktree `E:\anno1503-worktrees\anno1503-W4-1`. Started at the MAP.1 report `328f267` via the spec commit `1b4d940`. Code commits: `7b390b0` feat(app): run a scenario from the view; `2c303f6` test(app): check play mode against the sim; `297ea67` fix(app): publish play snapshots portably. Tests below ran on `2c303f6` after the wall-clock mutation was reverted; the focused `play:*` tests and MSVC app-test build also passed on `297ea67`. This is a progress report, not the final task report.
+
+### What is in
+
+`anno1503 --play <file.sze>` loads the original-data registry, the scenario with its links, and a `World`. The scene uses the embedded islands and, for each link, the template `resolve_scenario_links` chose, at the link's position. `--view` still uses the stand-in rule. The sim runs on its own thread through `run_turn` at 10 game ms per step, 10 steps, 100 real ms per turn. The window reads an immutable snapshot (tick, game time, last turn cost, p95 over the last second, overrun) and does not wait. Pause stops the next turn. A slow turn is counted in `behind_ms` and is not replayed.
+
+Buildings are the world's, converted from world tiles to island-local tiles. A file building the sim also placed keeps its bytes. One the sim did not place is listed and not drawn. The split is the scenario loader's: an Anlagen id whose type has a list in the layout.
+
+The sim is linked into `anno_app_core` because the load and the tests do not need the window. Render is not given sim types. The bridge is `LinkTemplate` and `SceneBuilding`.
+
+`--speed` is 50, 100 (the default), or 200. That is `multiplayer_step_ms`: 5, 10, or 20 game ms per real step. The real turn stays 100 ms.
+
+### Tests
+
+`anno_app_tests --test-case=play:*` on `2c303f6` before the cost case was added: 6 cases, 292 assertions, passed. The cost case and the runner case were run again after that. `scene loading` (the existing `--view` case) passed, 9 assertions.
+
+- Islands: `Single_01.sze` and `00_1024_easyentry_01.sze` match the sim (slot, rectangle, template path). Not every `.sze` in the corpus.
+- Tick 0, ten `0200Single` files, CPU group 2. Two pictures fit under 48 MiB and were compared whole. The other eight are 77–607 MiB, so the test compared a 640×360 corner. Differing pixels sat inside the boxes of objects the sim did not place. GPU was not compared with CPU.
+- Three turns, and one turn with a 40 ms delay, hash-equal `run_turn` at a fixed 10 ms step. `Single_01.sze`.
+- A 1500 ms delay does not block `snapshot()` (under 50 ms, tick still 0).
+- Demolish of kontor 1302 on `00_1024_easyentry_01.sze` before the scene is built: the building is listed as not placed, and a 220×180 box around it differs from the scene that still has it.
+- Eight `run_n(1)` calls on `06_1024_heavy_256.sze`, Release MSVC: p50 0.224 ms, p95 0.276 ms, p99 0.276 ms, max 0.276 ms. Far under the 100 ms turn, so nothing fell behind.
+
+### Pictures
+
+Stills in `C:\Users\altin\Pictures\anno-review\W4-1\`, group 2, centred on world tile (586, 788).
+
+- `00_1024_easyentry_01.sze` at 1280×800 and 2560×1440: a forested northern coast, beach, rocks, one ship offshore. 16 linked islands came from the sim's templates.
+- `06_1024_heavy_256.sze` at both sizes: a larger sandy coast with a second island entering the wide frame. The sim left a list of building items undrawn (noted on stderr).
+- `Single_01.sze` at both sizes: a green cliff coast with a rock spire and a pond.
+- `Single_05.sze` and `Single_08.sze` at that same tile are open sea (0 islands in the frame). The camera is the easy-entry kontor, not a point on those missions.
+
+The live window was not left running, and frame time at 1920×1080 and 3840×2160 was not measured.
+
+### Mutation
+
+Setting the step from the delay (40 ms instead of 10) failed `play: runner turns match run_turn and ignore the wall clock`: hash `1713407370760721173` against `4624830660583126364`. Restored. Before the Anlagen-id classification, demolish left the file sprite in place: the building was not listed and the box matched. The island check requires the template path to contain the sim's template name, which the stand-in rule does not.
+
+### Decisions and reasoning
+
+- The snapshot is a `shared_ptr<const PlaySnapshot>`. The sim allocates and fills the next snapshot before locking, then swaps the pointer under a mutex that covers only that swap. The window copies the pointer and drops the lock before it reads or draws. It is not a `World`. MSVC 14.51 deprecates the old `shared_ptr` atomic free functions; `atomic<shared_ptr<T>>` is unavailable in this MSVC configuration, so the pointer is not published either way.
+- A matching file building keeps its item bytes so phase and draw order stay. The set of buildings is still the sim's.
+- `Building::x/y` are world tiles (`scenario_formats.cpp` adds the island origin). The scene wants island-local tiles, so the bridge subtracts `tiles.x0()` and `tiles.y0()`.
+- No new question in OQ-500..509. The unread Kontor territory radius stays OQ-490 from MAP.1.
+- Full `ctest` was not re-run. The two heavy render corpus tests still do not fit above the 4096 MiB headroom on this machine. Headroom was left at the default. `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh` was started serially for `297ea67`; this session did not receive its final GCC/Clang summary, so it is not claimed as a passing gate and must be rerun before OWNER-CHECK.
+
+### Owner check
+
+Not ready: finish the mandatory warning, full-suite, GPU comparison, frame-measurement and visual gates before the owner looks at `--play` and before W4.2.

@@ -148,7 +148,7 @@ is the layout's seed.
 | Kontor footprint not inside its island | `start seat N: the kontor footprint is outside island slot M` |
 | Kontor type missing from the registry | `kontor type <id> is not in the registry` |
 | Base file missing or `load_scenario` refuses it | `base: ...` |
-| Base has no player of kind 8 | `base: no human player` |
+| Base has no player of kind 8 or 11, and the layout sets no money | `base: no human player` |
 
 Islands are placed by `place_island_links` with a hand-built `LoadedScenario`
 and a `LinkResolution` whose every entry has a candidate (the value is not an
@@ -168,8 +168,10 @@ One player per seat, in seat order. Id is the seat index. Kind 8, volk 1
 (`scenario_formats.cpp` for a human HEAD). Colour is the seat's colour index,
 stored where `World::create` stores a scenario colour (`default_colour`,
 `scenario.cpp`). Name is the seat's name bytes. Money is the layout's `money`
-when the record is present, otherwise the first kind-8 player's HEAD money in
-the base scenario (file order).
+when the record is present, otherwise the first kind-8 or kind-11 player's
+HEAD money in the base scenario (file order). Both kinds are human
+(`docs/formats/sze.md`, players). The endless base used here has a kind-11
+human and no kind 8.
 
 The base scenario's player 31 is **not** copied. `SimConfig::neutral_player`
 (31) is an index the bankruptcy tick skips when that player exists
@@ -208,7 +210,7 @@ A mod registry passes another id.
 | Value | Source |
 |---|---|
 | Every `WorldSettings` field except the edge | The base scenario's SCENE HEAD, via `load_scenario` / `read_head` (`scenario_formats.cpp`). |
-| Default money | The base scenario's first kind-8 player's HEAD money (`read_player_head`, offset 4). |
+| Default money | The base scenario's first kind-8 or kind-11 player's HEAD money (`read_player_head`, offset 4). |
 | Island width, height, climate, terrain | The named template's INSEL5: climate is INFO[0], size is the head. |
 | Kontor type id 1302 | PRODTYPE 35 KONTOR (`synthetic.hpp`). |
 | Kind 8, volk 1 | A human player (`scenario_formats.cpp`). |

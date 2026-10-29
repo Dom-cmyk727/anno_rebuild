@@ -118,12 +118,14 @@ load_fixed_map(const formats::fixed_map::FixedMap& map, std::span<const sim::Sea
 
     std::optional<std::int64_t> human_money;
     for (const sim::ScenarioSpec::PlayerSpec& player : out.spec.players) {
-        if (player.kind == 8) {
+        // Kind 8 and kind 11 are both human (docs/formats/sze.md, players).
+        // 03_1024_med_256.sze has a kind-11 human and no kind 8.
+        if (player.kind == 8 || player.kind == 11) {
             human_money = player.money;
             break;
         }
     }
-    if (!human_money) {
+    if (!map.money && !human_money) {
         return std::string("base: no human player");
     }
 

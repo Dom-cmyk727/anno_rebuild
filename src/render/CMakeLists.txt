@@ -63,9 +63,9 @@ if(ANNO_HAVE_WGPU)
   anno_target_defaults(anno_render_gpu)
   if(ANNO_BUILD_TESTS)
     add_executable(anno_render_gpu_tests tests/main.cpp tests/gpu_test.cpp
-      tests/gpu_chunk_build_test.cpp)
-    target_link_libraries(anno_render_gpu_tests PRIVATE anno_render_gpu anno_test_support
-      doctest::doctest)
+      tests/gpu_chunk_build_test.cpp tests/play_gpu_test.cpp)
+    target_link_libraries(anno_render_gpu_tests PRIVATE anno_render_gpu anno_app_core
+      anno_test_support doctest::doctest)
     # Our own synthetic files (fixtures/synthetic): a scene without islands.
     target_compile_definitions(anno_render_gpu_tests PRIVATE
       ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")

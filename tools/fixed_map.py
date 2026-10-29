@@ -360,12 +360,336 @@ def dump_files(paths):
     return status
 
 
+def _game_dir(argv):
+    if '--game-dir' not in argv:
+        return None, argv
+    i = argv.index('--game-dir')
+    if i + 1 >= len(argv):
+        return None, argv
+    return argv[i + 1], argv[:i] + argv[i + 2:]
+
+
+def _templates(game):
+    """First-found is not used: the caller looks up the layout's key."""
+    import os
+    from pathlib import Path
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import insel
+    root = Path(game) / 'Scenes' / 'Islands'
+    found = {}
+    for path in root.rglob('*.scp'):
+        key = path.relative_to(root).as_posix().upper().replace('\\', '/')
+        found[key] = path
+    return found, insel
+
+
+def _kontor_footprint(game):
+    import os
+    import struct
+    from pathlib import Path
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import figuren
+    buf = (Path(game) / 'Anlagen.dat').read_bytes()
+    top = figuren.records(buf, 16, 16 + struct.unpack_from('<I', buf, 12)[0])
+    anl = next(p for n, p in top if n == 'ANLAGEN')
+    for _n, payload in figuren.records(anl, 0, len(anl)):
+        ent = figuren.entry(payload)
+        if ent['id'] == 1302:
+            head = next(rp for rn, rp in ent['records'] if rn == 'HEAD')
+            return head[0], head[1]
+    raise SystemExit('Anlagen.dat has no entry 1302')
+
+
+def _island_facts(path, insel):
+    isl = insel.islands(path.read_bytes())[0]
+    height = insel.grid(isl, 'HEIGHT', 1)
+    occupied = set()
+    for name in ('GELAENDE', 'FLUESSE', 'PROD2'):
+        for x, y, _bw, _bh, data in insel.blocks(isl, name):
+            for i in range(len(data) // 6):
+                item = data[i * 6:(i + 1) * 6]
+                occupied.add((x + item[4], y + item[5]))
+    info = next((rp for rn, rp in isl['records'] if rn == 'INFO'), b'')
+    climate = info[0] if info else None
+    return isl['width'], isl['height'], height, occupied, climate
+
+
+def _overlaps(a, b):
+    ax, ay, aw, ah = a[:4]
+    bx, by, bw, bh = b[:4]
+    return ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah
+
+
+def layout_problems(mp, game):
+    """What `check` refuses. Empty when the layout can be loaded and its
+    Kontore sit on a coast. The footprint is Anlagen entry 1302, HEAD bytes
+    0 and 1 (the original's, 4 x 4), not the synthetic registry's 2 x 2."""
+    problems = []
+    files, insel = _templates(game)
+    fw, fh = _kontor_footprint(game)
+    boxes = []
+    facts = {}
+    for island in mp['islands']:
+        path = files.get(island['key'])
+        if path is None:
+            problems.append(f"unknown template '{island['key']}'")
+            continue
+        if island['x'] % 8 or island['y'] % 8:
+            problems.append(f"island slot {island['slot']}: origin is not a multiple of 8")
+        try:
+            w, h, height, occupied, climate = _island_facts(path, insel)
+        except Exception as exc:
+            problems.append(f"template '{island['key']}': {exc}")
+            continue
+        facts[island['slot']] = (w, h, height, occupied, climate, path)
+        if island['x'] < 0 or island['y'] < 0 or island['x'] + w > mp['width'] or island['y'] + h > mp['height']:
+            problems.append(f"island slot {island['slot']}: outside the world")
+        box = (island['x'], island['y'], w, h, island['slot'])
+        for earlier in boxes:
+            if _overlaps(box, earlier):
+                problems.append(
+                    f"island slot {box[4]}: overlaps island slot {earlier[4]}")
+        boxes.append(box)
+    seats = [s['seat'] for s in mp['starts']]
+    if seats != list(range(len(seats))):
+        problems.append('start seats must be 0..N-1 without gaps')
+    for start in mp['starts']:
+        fact = facts.get(start['island'])
+        if fact is None:
+            problems.append(f"start seat {start['seat']}: island slot {start['island']} is not in the layout")
+            continue
+        w, h, height, occupied, _climate, _path = fact
+        x = start['x'] - next(i['x'] for i in mp['islands'] if i['slot'] == start['island'])
+        y = start['y'] - next(i['y'] for i in mp['islands'] if i['slot'] == start['island'])
+        if x < 0 or y < 0 or x + fw > w or y + fh > h:
+            problems.append(
+                f"start seat {start['seat']}: the kontor footprint is outside island slot {start['island']}")
+            continue
+        bad_land = False
+        for dy in range(fh):
+            for dx in range(fw):
+                tile = (x + dx, y + dy)
+                if height[(y + dy) * w + (x + dx)] < 16 or tile in occupied:
+                    bad_land = True
+        if bad_land:
+            problems.append(f"start seat {start['seat']}: the kontor is not on free land")
+            continue
+        water = False
+        for dy in range(fh):
+            for dx in range(fw):
+                for nx, ny in ((x + dx - 1, y + dy), (x + dx + 1, y + dy),
+                               (x + dx, y + dy - 1), (x + dx, y + dy + 1)):
+                    if nx < 0 or ny < 0 or nx >= w or ny >= h or height[ny * w + nx] < 16:
+                        water = True
+        if not water:
+            problems.append(f"start seat {start['seat']}: the kontor is not on the coast")
+    return problems
+
+
+def check_file(path, game):
+    data = open(path, 'rb').read()
+    mp, err = parse(data)
+    if err:
+        print(f'error: line {err[0]}: {err[1]}')
+        return 1
+    problems = layout_problems(mp, game)
+    for problem in problems:
+        print(problem)
+    if problems:
+        return 1
+    print(f'ok {path}: {len(mp["islands"])} islands, {len(mp["starts"])} starts, '
+          f'edge {mp["width"]}x{mp["height"]}')
+    return 0
+
+
+def _land_count(height, w, h):
+    return sum(1 for v in height if v >= 16)
+
+
+def fairness_text(mp, game):
+    files, insel = _templates(game)
+    centre = (mp['width'] / 2, mp['height'] / 2)
+    islands = []
+    for island in mp['islands']:
+        w, h, height, _occ, climate = _island_facts(files[island['key']], insel)
+        cx = island['x'] + w / 2
+        cy = island['y'] + h / 2
+        islands.append({**island, 'w': w, 'h': h, 'land': _land_count(height, w, h),
+                        'climate': climate, 'cx': cx, 'cy': cy,
+                        'size': w if w == h else None})
+    starts = []
+    for start in mp['starts']:
+        home = next(i for i in islands if i['slot'] == start['island'])
+        starts.append({**start, 'kx': start['x'] + 2, 'ky': start['y'] + 2, 'home': home})
+
+    def dist(ax, ay, bx, by):
+        return ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5
+
+    lines = ['raw materials: not applied (existing gap)',
+             'ores: not applied (existing gap)']
+    assigned = {s['seat']: [] for s in starts}
+    contested = []
+    for island in islands:
+        nearest = min(starts, key=lambda s: dist(island['cx'], island['cy'], s['kx'], s['ky']))
+        d_start = dist(island['cx'], island['cy'], nearest['kx'], nearest['ky'])
+        d_centre = dist(island['cx'], island['cy'], centre[0], centre[1])
+        if d_centre < d_start:
+            contested.append(island)
+        else:
+            assigned[nearest['seat']].append(island)
+    for start in starts:
+        group = assigned[start['seat']]
+        lines.append(f"region seat {start['seat']} kontor ({start['x']},{start['y']}) "
+                     f"to centre {dist(start['kx'], start['ky'], centre[0], centre[1]):.1f}")
+        rivals = [s for s in starts if s['seat'] != start['seat']]
+        rival = min(rivals, key=lambda s: dist(start['kx'], start['ky'], s['kx'], s['ky']))
+        lines.append(f"  nearest rival seat {rival['seat']} "
+                     f"distance {dist(start['kx'], start['ky'], rival['kx'], rival['ky']):.1f}")
+        counts = {}
+        for island in group:
+            key = (island['climate'], island['size'])
+            counts[key] = counts.get(key, 0) + island['land']
+        for key in sorted(counts, key=lambda k: (k[0] is None, k[0] or 0, k[1] or 0)):
+            lines.append(f"  land climate {key[0]} size {key[1]}: {counts[key]}")
+    lines.append(f"contested islands: {len(contested)}")
+    counts = {}
+    for island in contested:
+        key = (island['climate'], island['size'])
+        counts[key] = counts.get(key, 0) + island['land']
+    for key in sorted(counts, key=lambda k: (k[0] is None, k[0] or 0, k[1] or 0)):
+        lines.append(f"  land climate {key[0]} size {key[1]}: {counts[key]}")
+    return '\n'.join(lines) + '\n'
+
+
+def _png(width, height, rgb):
+    import struct
+    import zlib
+    def chunk(tag, data):
+        return (struct.pack('>I', len(data)) + tag + data +
+                struct.pack('>I', zlib.crc32(tag + data) & 0xFFFFFFFF))
+    raw = bytearray()
+    stride = width * 3
+    for y in range(height):
+        raw.append(0)
+        raw.extend(rgb[y * stride:(y + 1) * stride])
+    ihdr = struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr) +
+            chunk(b'IDAT', zlib.compress(bytes(raw), 9)) + chunk(b'IEND', b''))
+
+
+_CLIMATE_RGB = {
+    0: (210, 220, 230),
+    1: (130, 155, 145),
+    2: (50, 130, 60),
+    3: (170, 185, 70),
+    4: (20, 90, 45),
+    5: (185, 150, 80),
+    6: (200, 175, 120),
+}
+_DIGIT = {
+    '0': ('111', '101', '101', '101', '111'),
+    '1': ('010', '110', '010', '010', '111'),
+    '2': ('111', '001', '111', '100', '111'),
+    '3': ('111', '001', '111', '001', '111'),
+    '4': ('101', '101', '111', '001', '001'),
+    '5': ('111', '100', '111', '001', '111'),
+}
+
+
+def preview_file(path, game, out_path):
+    files, insel = _templates(game)
+    data = open(path, 'rb').read()
+    mp, err = parse(data)
+    if err:
+        print(f'error: line {err[0]}: {err[1]}')
+        return 1
+    fw, fh = _kontor_footprint(game)
+    legend = 220
+    width = mp['width'] + legend
+    height = mp['height']
+    rgb = bytearray((18, 48, 82) * width * height)  # sea
+
+    def put(x, y, colour):
+        if 0 <= x < width and 0 <= y < height:
+            i = (y * width + x) * 3
+            rgb[i:i + 3] = bytes(colour)
+
+    for island in mp['islands']:
+        w, h, grid, _occ, climate = _island_facts(files[island['key']], insel)
+        colour = _CLIMATE_RGB.get(climate, (255, 0, 255))
+        for ty in range(h):
+            for tx in range(w):
+                if grid[ty * w + tx] >= 16:
+                    put(island['x'] + tx, island['y'] + ty, colour)
+    cx, cy = mp['width'] // 2, mp['height'] // 2
+    for d in range(-6, 7):
+        put(cx + d, cy, (255, 255, 255))
+        put(cx, cy + d, (255, 255, 255))
+    for start in mp['starts']:
+        for dy in range(fh):
+            for dx in range(fw):
+                put(start['x'] + dx, start['y'] + dy, (220, 30, 30))
+        glyph = _DIGIT.get(str(start['seat']), _DIGIT['0'])
+        for gy, row in enumerate(glyph):
+            for gx, bit in enumerate(row):
+                if bit == '1':
+                    put(start['x'] + fw + 2 + gx, start['y'] + gy, (255, 255, 255))
+    names = ('polar', 'tundra', 'nord', 'praerie', 'dschungel', 'steppe', 'wueste')
+    for i, name in enumerate(names):
+        y0 = 20 + i * 28
+        colour = _CLIMATE_RGB[i]
+        for y in range(y0, y0 + 16):
+            for x in range(mp['width'] + 16, mp['width'] + 36):
+                put(x, y, colour)
+        # The name is not drawn; the swatch order is the climate number.
+    from pathlib import Path
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(out_path).write_bytes(_png(width, height, rgb))
+    print(out_path)
+    return 0
+
+
 def main(argv):
     sys.stdout.reconfigure(newline='\n')
-    if len(argv) < 2 or argv[1] != 'dump' or len(argv) < 3:
-        print('usage: fixed_map.py dump <file>...', file=sys.stderr)
+    if len(argv) < 2:
+        print('usage: fixed_map.py dump|check|preview|fairness ...', file=sys.stderr)
         return 2
-    return dump_files(argv[2:])
+    game, args = _game_dir(argv)
+    cmd = args[1]
+    if cmd == 'dump':
+        if len(args) < 3:
+            print('usage: fixed_map.py dump <file>...', file=sys.stderr)
+            return 2
+        return dump_files(args[2:])
+    if cmd == 'check':
+        if game is None or len(args) != 3:
+            print('usage: fixed_map.py check <file> --game-dir <dir>', file=sys.stderr)
+            return 2
+        return check_file(args[2], game)
+    if cmd == 'fairness':
+        if game is None or len(args) != 3:
+            print('usage: fixed_map.py fairness <file> --game-dir <dir>', file=sys.stderr)
+            return 2
+        data = open(args[2], 'rb').read()
+        mp, err = parse(data)
+        if err:
+            print(f'error: line {err[0]}: {err[1]}')
+            return 1
+        sys.stdout.write(fairness_text(mp, game))
+        return 0
+    if cmd == 'preview':
+        out = None
+        rest = args[2:]
+        if '--out' in rest:
+            i = rest.index('--out')
+            out = rest[i + 1]
+            rest = rest[:i] + rest[i + 2:]
+        if game is None or len(rest) != 1 or out is None:
+            print('usage: fixed_map.py preview <file> --game-dir <dir> --out <png>', file=sys.stderr)
+            return 2
+        return preview_file(rest[0], game, out)
+    print('usage: fixed_map.py dump|check|preview|fairness ...', file=sys.stderr)
+    return 2
 
 
 if __name__ == '__main__':

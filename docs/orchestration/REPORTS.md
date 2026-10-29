@@ -6519,3 +6519,83 @@ Restored sources, force-rebuilt (`coordinator build 74b3f0803cbd5520`). Unmutate
 6. **Game-dir wait-deadline is an external blocker.** Alternative: lower `ANNO_TEST_HEADROOM_MB` or kill pid 486. Forbidden by the packet. Evidence: `[anno-test memory] refuse ... reason=wait deadline` with headroom=4294967296, coordinator pid=486.
 
 No merge, no push, no TASKS/AGENTS edit, no Wine, no original files in git. Subagents: none.
+
+## T10c F6 — Bounded preparation and verified test artifacts — 2026-10-29 — status: BLOCKED (game-dir CTest wait-deadline)
+
+- Worktree: `E:\anno1503-worktrees\anno1503-T10c-F5`. Branch: `codex/T10c-f5-cold-cache`.
+- Verified start: `5dc055692503dfd37facd954bcf2500bd47e05e6`.
+- Tested code head (the tree the gates and mutants ran on): `c79ca37fbdd200df0fee897db4d13cadc4d321cd`.
+- Commits on that head: `c0259e1f8763f809f8420a7b9a94648eb0f18a41` (preparation), `258c0168e6e0ac9e4d8b686bfe7da2131603e930` (regressions), `c79ca37fbdd200df0fee897db4d13cadc4d321cd` (perf contract).
+- This report commit is the final HEAD. Its hash is the `git rev-parse HEAD` after this commit, not a hash written in advance.
+- Preflight: `E:\anno1503\cache\orch-de\preflight.ps1`, 21/21 PASS. Main `63af432f148f15ebd0e660778c4e199df0cad3a7`. This worktree was clean at `5dc055692503dfd37facd954bcf2500bd47e05e6`.
+- Headroom stayed 4096 MiB (`ANNO_TEST_HEADROOM_MB` default and the explicit gate value). Original goldens were not rewritten (`sim_stream.py --check`: goldens agree). Shared coordinator WSL pid 486 (`anno_budget_coord-dd1ac8fb40068285`, port 47631, build `dd1ac8fb40068285`) was not stopped.
+
+F5's report above stays as written. This section supersedes its claims that a non-empty file is a usable artifact, that a `LISTENING` substring is an identity, that a plain `g++ -O2` replacement is sanitizer coverage, and that the game-directory wait was an external shortage.
+
+### Acceptance
+
+| item | result |
+|---|---|
+| F6.1 one preparation deadline, fail closed, owned cleanup | **met** |
+| F6.2 verified artifact and exact LISTENING fields | **met** |
+| F6.3 private roots, cross-process publication, instrumented sanitizer artifact | **met** (`RESOURCE_LOCK wsl_coord` kept; no throughput claim) |
+| F6.4 retained F5 cases plus F6 negatives, mutants, live companion identity | **met** |
+| F6.5 gates | **open**: game-dir CTest. Every other required gate passed on this head. |
+| F6.6 this report | **met** as BLOCKED. Not FINISHED. |
+
+### Preparation and identity
+
+`prepare_host_coordinator()` holds one wall (default 120000 ms, `ANNO_TEST_COORD_PREPARE_DEADLINE_MS` 1..600000) across the lock, the compiler, validation, and reaping of processes that call spawned. The diagnostic tail is 8192 bytes. Paths are argv, not a shell string. Windows uses a job object; Linux uses a new process group. A timeout, lock failure, non-zero compiler exit, or failed validation is not success. Staging is removed on failure. Publish renames the previous file aside and restores it if the new name does not stick.
+
+Reuse requires `<binary>.identity` (`format=1`) to match build, compatibility 3, config, flags, and the sha256 of the bytes. The file must be ELF and contain the marker. Config `asan+ubsan` also requires `__asan_init` or `libasan` in the file. `LISTENING` is seven tokens. Port 147825 is not port 47825. Strict identity is preparation and the private coordinator tests. Runtime exact-build sharing is unchanged.
+
+Linux with no `ANNO_TEST_COORD_PREPARE_ROOT` adopts `module_directory()/anno_budget_coord` when the bytes match and writes a manifest (`compiler=cmake`) if one is missing. A byte mismatch, or a manifest that names different bytes, is left in place. Windows and a private root compile with this configuration's flags. `RESOURCE_LOCK wsl_coord` stays because F3 D2 still uses the canonical cache path.
+
+Coordinator build `7efe6bf52351eaee`, compatibility 3. MSVC config `none`, flags `-std=c++20 -O2 -pthread`. Canonical artifact `cache/coord/anno_budget_coord-7efe6bf52351eaee` sha256 `9aa0a8b0391c21b8affbc4f0edc0f5116f81e8dd441d3dc34ab03ddda53b4063`. Sanitizer config `asan+ubsan`, flags `-std=c++20 -O1 -g -pthread -fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer`. CMake binary manifest content `54467f6ee1cdfe54821d3bdb704542e09df0884a438e2ff4f2827f0184ad9334` (`compiler=cmake`). Private g++ artifact content `17d2b0e28ed93b829d009acbfdea28b33dfdc6c99f83fb39a352ab9cae653355`.
+
+### Regressions and mutants
+
+Windows restored suites after the final source: F6 exit 0, F5 exit 0, F4 exit 0 (`cache/f6/f6-restored.log`, `f5-restored.log`, `f4-restored.log`). Fail-first on the unfixed F5 source is `cache/f6/failfirst/`.
+
+Final-source mutants, each restored before the next (`cache/f6/mutants-final/`). All seven tests exited 1:
+
+| mutant | observed failure |
+|---|---|
+| a bypass prepare | F5 cold `REQUIRE(coord.ready)` false, `ok=true` and an empty binary |
+| b trust a non-empty file | F6 unusable `ok=true`, diagnostic does not contain `unusable` |
+| c any LISTENING line matches | F6 wrong identity accepts `LISTENING 147825` |
+| d ignore lock-creation failure | F6 lock creation `ok=true`, diagnostic does not contain `lock creation failed` |
+| e accept partial output | F6 partial `ok=true exit=1 diag=accepted partial output` |
+| f ignore the deadline | F6 hung compiler `finished=false`, `outer wall timeout` |
+| g remove only the meter-spawn closefrom | F4 N4 `meter_has` `1 == 0`; the leak stays at fd >= 256 |
+
+Restore rebuilt build `7efe6bf52351eaee`. Source hashes after restore matched the pre-mutant bytes.
+
+### Gates
+
+| gate | result |
+|---|---|
+| Full Release MSVC | exit 0, no error or warning lines. `cache/f6/gates/msvc-full-final2.log`. Build `7efe6bf52351eaee` config `none`. |
+| No-game CTest, cold private root `cache/f6/cold-ctest-final`, headroom 4096, `ANNO1503_GAME_DIR` unset | 1121/1121 passed, 93.50 s. `cache/f6/gates/ctest-nogame-final.log`. |
+| Game-dir CTest | **blocked**. See below. Not rerun. |
+| GCC 13.3.0 and Clang 18.1.3 | clean, 174 + 174 + 9 files. `cache/f6/gates/unix-warnings3.log`. |
+| clang-format 23.1.3 `--dry-run --Werror` on the changed C++ | exit 0. |
+| WSL ASan/UBSan budget suite, headroom 4096 | 74 passed, 0 failed, 14 skipped, 607 assertions. `cache/f6/gates/asan-budget4.log`. |
+| lint_sim | ok. |
+| `sim_stream.py --check` | goldens agree (`empty_registry` `57bf8db1367ab475`, `empty_world` `b19fa605834ad5ae`, and the rest of that run). |
+
+Sanitizer evidence: the private artifact is an ELF executable, config `asan+ubsan`, compiler `g++`, contains the marker and `__asan_init`. The F6 asan case passed its `/proc/<pid>/maps` check for `libasan`. The CMake binary beside the test was adopted, not replaced by an uninstrumented compile. `anno_budget_probe` was relinked to the same library; a probe left from 10:05 advertised a different client build and made the exact-build handover step aside in a loop.
+
+Game-dir gate, started 2026-10-29T12:38:43+01:00. Before the run: headroom 4096 MiB, free 11149 MiB, total 31861 MiB, pid 486 still on 47631 (`cache/f6/gates/capacity-before.txt`). The log (`cache/f6/gates/ctest-game.log`) records 1105 Passed and 4 Failed, with 82 `wait deadline` mentions, and stops at 1109/1121 with no ctest summary. The four failures are scenario corpus 20000 ticks (#764, 1805.27 s), legacy river shading (#308, 3600.48 s), river raster (#309, 1837.35 s), and scene digests (#307, 5400.58 s). Twelve tests did not finish. The run was stopped without killing pid 486. A wait with free memory still above the headroom and `resident=0` is not an external shortage. It is outside preparation scope. Admission policy was not changed.
+
+### Decisions and reasoning
+
+1. **One deadline around lock, compile, and reap.** A lock wait that ignores the injected deadline, or a destructor that joins a compiler, is not fail-closed. The hung-compiler and lock-held cases use short deadlines and an outer wall.
+2. **Validate bytes and the manifest, not a non-empty file.** A failed compile must not replace a verified artifact. The partial-output mutant sets success on a non-zero exit and the regression rejects it.
+3. **Parse LISTENING as seven fields.** The old substring match accepted port 147825 for 47825. The identity mutant restores that match and the regression rejects it.
+4. **Adopt a valid CMake binary; do not overwrite an invalid one.** A sanitizer build's `anno_budget_coord` had the marker and `__asan_init` and no manifest yet, so the first check refused it. Missing manifest plus matching bytes now writes `compiler=cmake`. A mismatch stays on disk. A private root still compiles, including the sanitizer flags.
+5. **Keep `RESOURCE_LOCK wsl_coord`.** F3 D2 still launches the canonical cache path. Private roots isolate the cold cases. That is not a throughput claim.
+6. **The test and the coordinator must share the config literal.** The macros were private to the library, so an ASan test compared `config=none` with a correct `config=asan+ubsan` line. They are public. A warning-check compile that does not pass the macros still gets the header defaults.
+7. **The game-dir wait stays an open gate.** Lowering headroom, killing pid 486, or rerunning without a changed condition is outside this task. The bounded log is the reproducer.
+
+No merge, no push, no TASKS/AGENTS/PLAN edit, no Wine, no original files in git.

@@ -6757,3 +6757,27 @@ Pass 1, round 3, head `3c5ecb6`, subagent `c8bbb7db-4bea-44bd-bdde-a8c85bd34649`
 Join suite after the round-1 fixes, at `fb83654`: Ran 263 tests in 250.387 s, OK. Log: `cache/t61-f2/dn/gates/join-suite-r2.stderr.txt`. Snapshot suite unchanged since phase 2 (64 OK). The budget fix is covered by the four-test re-run in `cache/t61-f2/dn/gates/n3-recorded-budget.stderr.txt` (OK).
 
 Next: the final study at the tool source of `3c5ecb6`, then `--validate`.
+
+## T61 F2 closure — progress, phase 4 — 2026-10-30 00:55 +01:00 — status: IN PROGRESS
+
+Final study, one job, headroom left at 4096 MiB (15342 MiB free at the start, 15391 MiB free before `--validate`).
+
+Command, from `E:\anno1503-worktrees\anno1503-T61`, at `eb6da4387ffb6af4859d93a57fc7a84f65656bd5` (Python blobs identical to `3c5ecb6`):
+
+`python -I tools/join_jitter_study.py --diagnostics --output cache/t61-f2/dn/final/study.jsonl`
+
+Exit 0 in 259.513 s (started 2026-10-30T00:44:38+01:00, ended 2026-10-30T00:49:01+01:00). Stdout is 74 completion lines. No stderr. Recorded row-wall sum 247.976 s; the slowest row is `endless02` at 22.420 s. Bounds stayed 300 s per row and 5400 s for the study. Manifest `code_head` is `eb6da43`. Content SHA-256 of the committed blobs: `join_activation.py` `80939b70f8ed86fc1ec6c30fac51d00a3aa678d643e4525e0d75298e4d1c3bda`, `join_jitter_study.py` `bb8ced2444b59bb3902d39c3552119d2ba7b1343291e11164a79aa25c801a262`. Run id `d34d5ddf77410648a2b2ecf4ea2fb20ea239b047a99f6dc71cdc40717816390a`. Logs: `cache/t61-f2/dn/final/cmdline.txt`, `study.stdout.txt`, `study.jsonl`.
+
+`--validate` on that file, same head, no Python change in between:
+
+`python -I tools/join_jitter_study.py --validate --output cache/t61-f2/dn/final/study.jsonl`
+
+Exit 0 in 200.741 s. The tool printed `valid: 72 primary rows, 2 diagnostics`. Log: `cache/t61-f2/dn/final/validate.stdout.txt`, `validate.exit.txt`.
+
+Repeat versus its primary (`100M` / 300 / `one_fragment` / `uniform25-seed6101`): one match. `result_hash` `8f93f591d2b6daf88174dc8769a01145e41bf2cedc4a430c551413f073fe0f6f` and `semantic_trace_hash` `68221c55ccdc0efe4ceb6f38bed04caa65466e42427373e4e7aba09bc3a29d20` are equal. Both outcomes are `input 2619 ms`.
+
+Asymmetric versus the zero primary (`100M` / 300 / `one_fragment` / `zero`): script is exactly `(('data','H','J1',1,0,0,1), 100)`, `script_hits` 1. `result_hash` and `semantic_trace_hash` differ (`aac1e187f87e0e6d68f9baecd69a7b0fe7a7c842c93de489a53d246b396b8dc8` versus `102669b7a5118a8b0bb195e4f4c714bccf5f3809c2b69b208918f6e92390dd1d`). Input completion stays 2565 ms on both rows. The 100 ms arrival shift of that transmission is the independent assertion in `test_h3_asymmetric_delay_is_the_scripted_100ms`; the study file does not store the event log.
+
+Retained outcomes, none retuned, validators empty on all 74 rows: 68 primary rows open input. The four `1M` / 300 / `endless02` rows restart for reason 4 (the host abandons the joiner's pair) at 5475, 5215, 11187 and 6031 ms, with 54, 42, 169 and 54 queue rejects. The zero-jitter cell matches the figure already in ADR 0003 §8.8. Jitter moves that restart; it does not remove it. `fragment_loss` keeps its two scripted loss drops. The large retry totals at `resend_ms` 300 and on `1M` / 400 / `endless02` stay in the file.
+
+Next: reconcile ADR 0003 §15 and OQ-371 with these results (Proposed stays Proposed, OQ-371 stays open), then reviewer pass 2 on that head and the closure draft.

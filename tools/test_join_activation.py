@@ -3115,10 +3115,12 @@ class JoinJitterN7Gates(unittest.TestCase):
 
         tools = os.path.dirname(os.path.abspath(__file__))
         try:
-            self.assertEqual(digest(archive, "link", "one_fragment", "100M"),
-                             digest(tools, "link", "one_fragment", "100M"))
-            self.assertEqual(digest(archive, "row", "expiry_and_restart", "-"),
-                             digest(tools, "row", "expiry_and_restart", "-"))
+            for name in sorted(ja.LINK_ROWS):
+                for rate in ("100M", "1M"):
+                    self.assertEqual(digest(archive, "link", name, rate),
+                                     digest(tools, "link", name, rate), "%s %s" % (name, rate))
+            for name in sorted(ja.ROWS):
+                self.assertEqual(digest(archive, "row", name, "-"), digest(tools, "row", name, "-"), name)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -3198,12 +3200,13 @@ def _jitter_codes(events, end_t=1000, cfg=None):
 
 def _served_send(lost=False):
     """One un-serialized data transmission whose derived arrival is t=150."""
-    ident = ("data", "H", "J1", 0, 1, 4, 1)
+    ident = ("data", "H", "J1", 0, 0, 4, 1)
     # JoinGrant, not a Turn: the retention checker only maps Turn sends, and this fixture
-    # is about transmission identity rather than the retained-turn log.
+    # is about transmission identity rather than the retained-turn log. Epoch 0 is the
+    # pair's epoch, so a matching arrival is a clean trace rather than only "no xviii".
     send = ev("send", 0, src="H", dst="J1", ch=0, seq=4, msg="JoinGrant", attempt=1, lost=lost,
-              sid=7, epoch=1, size=10, jitter_ms=0, jitter_id=ident, jitter_source="seed")
-    arrive = ev("arrive", 150, src="H", dst="J1", ch=0, seq=4, msg="JoinGrant", sid=7, epoch=1,
+              sid=7, epoch=0, size=10, jitter_ms=0, jitter_id=ident, jitter_source="seed")
+    arrive = ev("arrive", 150, src="H", dst="J1", ch=0, seq=4, msg="JoinGrant", sid=7, epoch=0,
                 attempt=1, dup=False)
     return ident, send, arrive
 
@@ -3213,17 +3216,17 @@ class RoundDnH1Conservation(unittest.TestCase):
 
     def test_h1_control_one_matching_arrival_is_accepted(self):
         _, send, arrive = _served_send()
-        self.assertNotIn("xviii", _jitter_codes([send, arrive]))
+        self.assertEqual(ja.validate([send, arrive], ja.Cfg(), 1000), [])
 
     def test_h1a_wrong_time_extra_arrival_is_rejected(self):
         _, send, arrive = _served_send()
-        extra = ev("arrive", 200, src="H", dst="J1", ch=0, seq=4, msg="JoinGrant", sid=7, epoch=1,
+        extra = ev("arrive", 200, src="H", dst="J1", ch=0, seq=4, msg="JoinGrant", sid=7, epoch=0,
                    attempt=1, dup=False)
         self.assertIn("xviii", _jitter_codes([send, arrive, extra]))
 
     def test_h1b_orphan_arrival_with_a_changed_sid_is_rejected(self):
         _, send, arrive = _served_send()
-        orphan = ev("arrive", 150, src="H", dst="J1", ch=0, seq=4, msg="JoinGrant", sid=99, epoch=1,
+        orphan = ev("arrive", 150, src="H", dst="J1", ch=0, seq=4, msg="JoinGrant", sid=99, epoch=0,
                     attempt=1, dup=False)
         self.assertIn("xviii", _jitter_codes([send, arrive, orphan]))
 
@@ -3300,10 +3303,30 @@ class RoundDnH4Metrics(unittest.TestCase):
         self.assertEqual(got["pending_wire_bytes"], sum(link["occ"] for link in sim.links.values()))
 
     def test_n6_reassembly_ownership_is_read_from_events(self):
-        sim = ja.one_join(ja.link_cfg("100M"), until=2000)
+        forged = _Events([
+            {"kind": "reasm_acquire", "src": "H", "dst": "J1", "ch": 1, "mid": 1, "frag": 0,
+             "size": 100, "held": 99},
+            {"kind": "reasm_acquire", "src": "H", "dst": "J1", "ch": 1, "mid": 1, "frag": 1,
+             "size": 50, "held": 99},
+        ])
+        self.assertEqual(jj.peak_reassembly(forged), (2, 150))
+        sim = ja.SENS_ROWS["fragment_loss"][0]("100M", 300)
         sim.peak_reasm_frags = -1
-        held = [event["held"] for event in sim.events if event["kind"] == "reasm_acquire"]
-        self.assertEqual(jj.metrics(sim)["peak_reassembly_fragments"], max(held or [0]))
+        sim.peak_reasm_bytes = -1
+        owned, peak_n, peak_b = {}, 0, 0
+        for event in sim.events:
+            if event["kind"] == "reasm_acquire":
+                owned[(event["src"], event["dst"], event["ch"], event["mid"], event["frag"])] = event["size"]
+                peak_n = max(peak_n, len(owned))
+                peak_b = max(peak_b, sum(owned.values()))
+            elif event["kind"] == "reasm_release":
+                for frag in event.get("frags", ()):
+                    index = frag[0] if isinstance(frag, (tuple, list)) else frag
+                    owned.pop((event["src"], event["dst"], event["ch"], event["mid"], index), None)
+        got = jj.metrics(sim)
+        self.assertGreater(peak_n, 0)
+        self.assertEqual(got["peak_reassembly_fragments"], peak_n)
+        self.assertEqual(got["peak_reassembly_bytes"], peak_b)
 
 
 def _manifest(diagnostics):
@@ -3560,6 +3583,12 @@ class RoundDnStudyEvidence(unittest.TestCase):
         self.assertIn("timeout", text)
         self.assertEqual([process for process in multiprocessing.active_children() if process.is_alive()], [])
 
+    def test_n3_validate_stops_when_the_study_budget_is_spent(self):
+        code, text = self._check(self.path, extra_args=("--study-timeout", "0"))
+        self.assertNotEqual(code, 0, text)
+        self.assertIn("study timeout", text)
+        self.assertEqual([process for process in multiprocessing.active_children() if process.is_alive()], [])
+
     def test_h3_repeat_matches_its_primary_projection(self):
         primary = _finished("uniform25-seed6101")
         repeat = _finished("uniform25-seed6101", (), "repeat")
@@ -3606,4 +3635,3 @@ def _drive_one_fragment(profile, script):
 if __name__ == "__main__":
     multiprocessing.freeze_support()
     unittest.main()
-

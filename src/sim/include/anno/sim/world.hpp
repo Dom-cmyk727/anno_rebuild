@@ -84,7 +84,11 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // House (tag 7: u16 last, i32 residents_64, u32 e, u64 count + u32 stock); the class table's
 // House row is tick House / payload House; the registry digest gains the group table
 // (u64 count, 0 when there is none). No PRNG site is drawn (the timeline stays 2).
-inline constexpr std::uint32_t kStateHashVersion = 115;
+// Stream at 116 (task P2.1): scenario import stores the reconstructed player mask in the
+// existing `Player::flags` word. The field list is unchanged. A scenario whose mask is not
+// the constructor default 1 creates a different state, the same kind of change as the
+// island-link import (stream 110). No PRNG site is drawn (the timeline stays 2).
+inline constexpr std::uint32_t kStateHashVersion = 116;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

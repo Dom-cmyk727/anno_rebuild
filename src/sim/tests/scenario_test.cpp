@@ -101,6 +101,30 @@ std::string counts_line(const std::string& name, const sim::ScenarioCounts& c,
     return o.str();
 }
 
+/// The reconstructed player masks of one created world (P2.1). Counted from the
+/// created players, overwriting the second determinism run rather than adding.
+struct MaskTally {
+    std::uint64_t heads = 0;
+    std::uint64_t high_nonzero = 0;
+    bool mismatch = false;
+    std::map<std::uint32_t, std::uint64_t> low, high, full;
+};
+
+void add_tally(MaskTally& a, const MaskTally& b) {
+    a.heads += b.heads;
+    a.high_nonzero += b.high_nonzero;
+    a.mismatch = a.mismatch || b.mismatch;
+    const auto add = [](std::map<std::uint32_t, std::uint64_t>& dst,
+                        const std::map<std::uint32_t, std::uint64_t>& src) {
+        for (const auto& [k, n] : src) {
+            dst[k] += n;
+        }
+    };
+    add(a.low, b.low);
+    add(a.high, b.high);
+    add(a.full, b.full);
+}
+
 struct FileResult {
     std::string name;
     std::string load_error, create_error, invariants, save_error;
@@ -116,6 +140,7 @@ struct FileResult {
     /// records' (`resident_sum`), and the houses with residents and a non-zero stock.
     std::uint64_t created_residents = 0, record_residents = 0, houses_with_stock = 0;
     std::uint64_t houses = 0;
+    MaskTally masks;
 };
 
 /// The residents and the stocked houses of a created world (the House payloads).
@@ -305,6 +330,24 @@ FileResult run_file(const fs::path& game, const fs::path& p,
         r.create_hash = world.state_hash();
         r.created_residents = r.houses_with_stock = 0;
         house_totals(world, r.created_residents, r.houses_with_stock);
+        r.masks = MaskTally{};
+        for (const sim::ScenarioSpec::PlayerSpec& ps : loaded_scenario.spec.players) {
+            const sim::Player* pl = world.players().find(ps.id);
+            if (!ps.flags.has_value() || pl == nullptr || pl->flags != *ps.flags) {
+                r.masks.mismatch = true;
+                continue;
+            }
+            const std::uint32_t full = pl->flags;
+            const std::uint32_t low = full & 0x7fffffu;
+            const std::uint32_t high = full & ~0x7fffffu;
+            ++r.masks.heads;
+            ++r.masks.full[full];
+            ++r.masks.low[low];
+            ++r.masks.high[high];
+            if (high != 0u) {
+                ++r.masks.high_nonzero;
+            }
+        }
         if (r.name.find("single36") != std::string::npos) {
             // The first loaded house with residents and a stock, for the report.
             bool shown = false;
@@ -490,6 +533,39 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
               << total_record_residents << ", residents of the created houses "
               << total_created_residents << ", HouseResetNotApplied "
               << totals[sim::ScenarioWarningKind::HouseResetNotApplied] << "\n";
+    MaskTally masks;
+    for (const FileResult& r : results) {
+        CHECK_FALSE(r.masks.mismatch);
+        add_tally(masks, r.masks);
+    }
+    const auto show = [](const char* kind, const std::map<std::uint32_t, std::uint64_t>& m) {
+        for (const auto& [v, n] : m) {
+            char hex[16];
+            std::snprintf(hex, sizeof hex, "%x", static_cast<unsigned>(v));
+            std::cout << "scenario corpus: mask " << kind << " 0x" << hex << " " << n << "\n";
+        }
+    };
+    std::cout << "scenario corpus: player masks heads=" << masks.heads
+              << " high_nonzero=" << masks.high_nonzero << "\n";
+    show("low", masks.low);
+    show("high", masks.high);
+    show("full", masks.full);
+    // T32.5 measured these on the same 50 files (population.md §15.4). The values
+    // are the created world's players, not the parser's spec alone.
+    const std::map<std::uint32_t, std::uint64_t> low_want = {
+        {1, 280},    {0x1f, 61}, {0xf, 7},      {7, 7},      {0x1ffff, 4}, {0x7ff, 3}, {0xffff, 3},
+        {0x3fff, 2}, {3, 2},     {0x7fffff, 1}, {0x7fff, 1}, {0x3ff, 1},   {0x3f, 1}};
+    const std::map<std::uint32_t, std::uint64_t> high_want = {
+        {0, 295}, {0x28000000u, 17}, {0x29000000u, 1}, {0x69000000u, 60}};
+    const std::map<std::uint32_t, std::uint64_t> full_want = {
+        {1, 263},      {0x28000001u, 17}, {0x6900001fu, 60}, {7, 7},      {0xf, 7},
+        {0x1ffff, 4},  {0x7ff, 3},        {0xffff, 3},       {0x3fff, 2}, {3, 2},
+        {0x7fffff, 1}, {0x7fff, 1},       {0x3ff, 1},        {0x3f, 1},   {0x2900001fu, 1}};
+    CHECK(masks.heads == 373);
+    CHECK(masks.high_nonzero == 78);
+    CHECK(masks.low == low_want);
+    CHECK(masks.high == high_want);
+    CHECK(masks.full == full_want);
     CHECK(total_record_residents == total_created_residents);
     CHECK(totals[sim::ScenarioWarningKind::HouseResetNotApplied] == 0);
     // T23: the cities' PROD/ENTRY records place buildings.

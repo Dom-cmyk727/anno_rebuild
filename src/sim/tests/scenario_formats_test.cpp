@@ -79,9 +79,10 @@ Buf head_bytes(std::uint32_t w = 300, std::uint32_t h = 200, std::uint8_t b0a = 
     return b;
 }
 
-/// A player HEAD (108 bytes): type, money, name, colour, flags at 0x4E.
+/// A player HEAD (108 bytes): type, money, name, colour, flags at 0x4E, the mask
+/// dword at 0x48 and the packed high-bit byte at 0x5c.
 Buf player_head(std::uint32_t kind, std::uint32_t money, std::string_view name, std::uint8_t colour,
-                std::uint16_t flags4e = 0) {
+                std::uint16_t flags4e = 0, std::uint32_t head48 = 0, std::uint8_t head5c = 0) {
     Buf b;
     put32(b, kind);
     put32(b, money);
@@ -93,6 +94,11 @@ Buf player_head(std::uint32_t kind, std::uint32_t money, std::string_view name, 
     b.push_back(0);
     put16(b, flags4e);
     b.resize(108, 0);
+    b[0x48] = static_cast<std::uint8_t>(head48);
+    b[0x49] = static_cast<std::uint8_t>(head48 >> 8);
+    b[0x4a] = static_cast<std::uint8_t>(head48 >> 16);
+    b[0x4b] = static_cast<std::uint8_t>(head48 >> 24);
+    b[0x5c] = head5c;
     return b;
 }
 
@@ -343,7 +349,8 @@ TEST_CASE("scenario player series") {
     CHECK(a.money == 25000);
     CHECK(a.name == std::vector<std::uint8_t>{'A', 'd', 'a'}); // up to the NUL
     CHECK(a.colour == 3);
-    CHECK(a.flags_a0 == 0xbf); // 0xff & 0xffbf
+    CHECK(a.flags_a0 == 0xbf);                         // 0xff & 0xffbf
+    CHECK(a.flags == std::optional<std::uint32_t>{0}); // HEAD+0x48 and +0x5c are stored 0
     CHECK(a.volk == 1);
     const auto& b = s.spec.players[1];
     CHECK(b.kind == 11);
@@ -371,6 +378,60 @@ TEST_CASE("scenario player series") {
     CHECK(warnings_of(s, Kind::UndecodedPeople) == 1);
     CHECK(s.spec.players[6].volk == 1);
     CHECK(warnings_of(s, Kind::ComputerNameNotDrawn) == 0); // the computer has a name
+}
+
+/// One imported player, then the world `create` built from that spec.
+sim::World world_from_head(std::uint32_t head48, std::uint8_t head5c) {
+    Buf kids = chunk("HEAD", head_bytes());
+    const Buf head = player_head(8, 1000, "A", 1, 0, head48, head5c);
+    append(kids, chunk("SPIELER", spieler(0, record("HEAD", head))));
+    const sim::LoadedScenario s = load(scene("ANNO", kids));
+    REQUIRE(s.spec.players.size() == 1);
+    REQUIRE(s.spec.players[0].flags.has_value());
+    auto made = sim::World::create(s.spec, registry());
+    REQUIRE_MESSAGE(made.ok(), (made.ok() ? std::string() : made.error()));
+    REQUIRE(made.value().players().slots[0].has_value());
+    CHECK(made.value().players().slots[0]->flags == *s.spec.players[0].flags);
+    return std::move(made).value();
+}
+
+TEST_CASE("scenario import restores the player mask on the created world") {
+    // AnnoWelt 0x1001d389–0x1001d3df. The assertions are the created player's flags.
+    CHECK(world_from_head(0, 0).players().slots[0]->flags == 0); // explicit zero, not default 1
+    CHECK(world_from_head(0xffffffffu, 0).players().slots[0]->flags == 0x7fffffu); // low 23 bits
+    CHECK(world_from_head(1, 0x01).players().slots[0]->flags == 1);                // packed bit 0
+    CHECK(world_from_head(1, 0x02).players().slots[0]->flags == 1);                // packed bit 1
+    CHECK(world_from_head(1, 0x40).players().slots[0]->flags == 1);                // packed bit 6
+    CHECK(world_from_head(1, 0x80).players().slots[0]->flags == 1);                // packed bit 7
+    CHECK(world_from_head(0, 0x08).players().slots[0]->flags == 0x01000000u);      // bit 3 → 24
+    CHECK(world_from_head(0, 0x04).players().slots[0]->flags == 0x08000000u);      // bit 2 → 27
+    CHECK(world_from_head(0, 0x10).players().slots[0]->flags == 0x20000000u);      // bit 4 → 29
+    CHECK(world_from_head(0, 0x20).players().slots[0]->flags == 0x40000000u);      // bit 5 → 30
+    CHECK(world_from_head(0x1f, 0x3c).players().slots[0]->flags == 0x6900001fu);   // all four
+
+    sim::ScenarioSpec omitted;
+    sim::ScenarioSpec::PlayerSpec ps;
+    ps.id = sim::PlayerId{0};
+    omitted.players.push_back(ps);
+    auto plain = sim::World::create(omitted, registry());
+    REQUIRE_MESSAGE(plain.ok(), (plain.ok() ? std::string() : plain.error()));
+    CHECK_FALSE(ps.flags.has_value());
+    CHECK(plain.value().players().slots[0]->flags == 1); // constructor default
+
+    ps.flags = 0;
+    sim::ScenarioSpec stored_zero;
+    stored_zero.players.push_back(ps);
+    auto zero = sim::World::create(stored_zero, registry());
+    REQUIRE_MESSAGE(zero.ok(), (zero.ok() ? std::string() : zero.error()));
+    CHECK(zero.value().players().slots[0]->flags == 0);
+
+    sim::World imported = world_from_head(0x1f, 0x3c);
+    const std::vector<std::uint8_t> saved = imported.save();
+    auto back = sim::World::load(saved, registry());
+    REQUIRE_MESSAGE(back.ok(), (back.ok() ? std::string() : back.error()));
+    CHECK(back.value().players().slots[0]->flags == 0x6900001fu);
+    CHECK(back.value().state_hash() == imported.state_hash());
+    CHECK(back.value().save() == saved);
 }
 
 TEST_CASE("scenario island with terrain, tile objects and a building") {

@@ -388,6 +388,11 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         p.volk = ps.volk;
         p.money = ps.money;
         p.flags_a0 = ps.flags_a0;
+        // The imported mask, including an explicit 0. Absent keeps make_player's
+        // default 1. Direct store: not SetProperty, and not the city-unlock OR.
+        if (ps.flags.has_value()) {
+            p.flags = *ps.flags;
+        }
         p.default_colour = ps.colour == 0xff ? kNoColour : static_cast<std::uint32_t>(ps.colour);
         p.name = ps.name;
         if (!ps.research.empty()) {

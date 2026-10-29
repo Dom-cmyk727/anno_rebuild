@@ -39,6 +39,10 @@ struct ScenarioSpec {
         std::uint32_t kind = 8, volk = 1;
         std::int64_t money = 10000;
         std::uint32_t flags_a0 = 0;
+        /// Reached-stage mask (player +0x90). Absent: `World::create` keeps
+        /// `Player::flags`' constructor default (1). A stored value, including 0,
+        /// is the file's (AnnoWelt `0x1001d389`–`0x1001d3df`).
+        std::optional<std::uint32_t> flags;
         /// The start colour; 0xff = none (becomes kNoColour).
         std::uint8_t colour = 0xff;
         std::vector<std::uint8_t> name;

@@ -6,6 +6,8 @@ The round-cy note is wrong in four places this document corrects. Both need endp
 
 Round dj S1: the below-64 correction is a signed compare. AnnoWelt `0x1007654b` is `cmp bp, 0x40` and `0x1007654f` is `jge`. Resident −1 falls through that correction. The earlier unsigned reading of the same branch is withdrawn.
 
+Round dj S2: the Ware name scan stops before id `0x60`. Ids `0x5b`…`0x5f` are not distinct matches, so they are labeled unreachable instead of used as file examples. The widened registry is not given an `n ≤ 255` or goods `≤ 0x5f` cap (PLAN §0.1). The 101/102 spawn rows name every intermediate, and the spawn boolean uses the same inputs in §2.1 and §2.3. A negative smoothing sum is outside the u32 `E` domain and is not stored as a signed field.
+
 ## 1. What the loader actually writes
 
 AnnoGame `BGruppen` parser, image base `0x10000000`. Group records are 6 × `0x118` bytes at object `+0x9c4`, cleared when `[BGRUPPE]` starts (`0x10013ef5`–`0x10013f06`, `0x1a4` dwords). The current group pointer is `[esp + 0x14]`. The need index lives at `[esp + 0x20]` and is set to `-1` when a `BGruppeNr` name selects a slot (`0x100140df`–`0x10014105`: slot × `0x118`, byte `+0` = slot, `+0x114` = goods table). That index is not the file cursor: the cursor is a different stack slot, saved around the key parse at `0x10013f4b` before `add esp, 0x10`.
@@ -14,7 +16,7 @@ AnnoGame `BGruppen` parser, image base `0x10000000`. Group records are 6 × `0x1
 
 ### 1.1 `+0xcc` is written while parsing `Ware` (`0x1001486b`–`0x100148a6`)
 
-On a goods-name match, `ebx` is the goods id (`0`…`0x5f`). `ecx` is the need index. The match path does `inc ecx`, stores the id at `[group + ecx*4 + 0x64]` (slot 0 on the first need), saves `ecx`, then `inc cl` and stores that byte at `[group + 2]`. So `n` is the low 8 bits of (slot + 1), written for every accepted `Ware`, including infrastructure.
+On a goods-name match, `ebx` is the candidate id. The scan starts at 0 and continues while `ebx < 0x60` (`inc ebx`, `cmp ebx, 0x60`, `jl` at `0x10014860`–`0x10014864`), so a match that enters this path has an id in `0`…`0x5f`. Id `0x60` is not tried. `ecx` is the need index. The match path does `inc ecx`, stores the id at `[group + ecx*4 + 0x64]` (slot 0 on the first need), saves `ecx`, then `inc cl` and stores that byte at `[group + 2]`. So `n` is the low 8 bits of (slot + 1), written for every accepted `Ware`, including infrastructure. That byte store is a fact about the original record, not an engine limit.
 
 `+0xcc` is then updated from that new `n` by the id alone. The post-pass never stores `+0xcc`.
 
@@ -25,6 +27,8 @@ On a goods-name match, `ebx` is the goods id (`0`…`0x5f`). `ecx` is the need i
 | `> 0x5a` | `+0xcc = n` only when `+0xcc` is still 0; otherwise unchanged |
 
 Force is not read here. A later `max` updates `+0xcd` only.
+
+The `> 0x5a` arm is not a shipped-name input. The scan calls slot `+0x48` with kind `0x20` (`0x10014817`–`0x10014822`). Dispatcher `0x100033c0` sends that kind to `0x10013be0` (the case at `0x1000346b` calls it at `0x10003477`). The lookup has a range for `0x4c`…`0x5a` and a later range that starts at `0x60`. Ids `0x5b`…`0x5f` fall through to the UNUSED literal (`0x10013ce2`, literal `0x100261e8`), which is also what id 0 returns. The scan keeps the first equal string (`0x1001485e`), so those ids are not a distinct match. What the arm would do if it were entered is still the third row above. It is not an example taken from a file.
 
 On the shipped file, consumer goods precede infrastructure and every infrastructure id is in `0x4c`…`0x5a`, so `+0xcc` ends as the index of the first infrastructure need. That is a data invariant, not the rule. Filtering "goods versus infra" or "forced versus not" does not reproduce the three rows above.
 
@@ -91,11 +95,10 @@ These are not shipped rows. They are the rule applied to invented need lists. `F
 | NAHRUNG, WIRTSHAUS `F`, LEDER `F` | 3 | 3 | 3 | The later consumer good rewrites `+0xcc` to 3, past the tavern. The tavern sits in the goods range. The infra loop is empty, so the special tavern add never runs; a forced tavern is only in the goods mean. |
 | WIRTSHAUS, WIRTSHAUS, and no ALKOHOL | 2 | 0 | 2 | `lookup[0x4c]` is slot 1. `lookup[ALKOHOL]` stays slot 0. |
 | ALKOHOL, then WIRTSHAUS | 2 | 1 | 2 | Alias skipped. `lookup[ALKOHOL]` stays the alcohol slot. |
-| One id `0x60`, then WIRTSHAUS | 2 | 1 | 2 | The high id writes `+0xcc` because it was still 0. It is not an infrastructure id and not a consumer id. |
-| NAHRUNG, then id `0x60` | 2 | 1 | 1 | The high id does not move `+0xcc` once it is non-zero. |
+| id `0x5b`, or id `0x60`, then WIRTSHAUS | — | — | — | **Unreachable abstract input.** `0x5b`…`0x5f` share the UNUSED literal with id 0, and the first match is id 0. `0x60` fails `cmp ebx, 0x60` / `jl` and never enters the match path. If the `> 0x5a` arm were entered with `+0xcc` still 0 it would copy `n`; if `+0xcc` were already non-zero it would leave it. That is the instruction (`0x1001488f`–`0x100148a0`), not a file row and not an engine cap. |
 | No needs | 0 | 0 | 0 | Sentinel fill is 96 zeros. Mood's slot-0 food divide is still reached if a house points at this record (`E ≠ 0`), and `Menge` is 0. |
 
-A scalable engine stores the need vector and runs this rule. It should reject `n > 255`, a goods id outside `0`…`0x5f`, or more needs than the house stock vector can hold, and say so. The original would wrap `n` to 8 bits and write past the 16 × 4-byte need area. Reproducing that wrap is not the proposal. Sixteen is the original record's slot count, not a new engine limit.
+A scalable engine stores the need vector and runs the same id comparisons. Original-format validation is this scan: a Ware name matches at most one id in `0`…`0x5f`, and `0x5b`…`0x5f` are not distinct matches. PLAN §0.1 keeps that as a fact about the original reader. The widened registry is not given a cap of `n ≤ 255` or goods `≤ 0x5f`; those counts are data. The original byte store of `n`, and a write past the 16-slot need area, stay properties of the original record. Reproducing that wrap is not the proposal. Sixteen is the original record's slot count, not a new engine limit.
 
 `parse_house_groups` (`house_groups.cpp`) keeps slot order, `Ware`, `Force`, `Menge`, `Wohnmax`, the four tables and the two flag bits. It skips every other key, including group `BauFirst`. It does not build `+0xcc`, `+0xcd`, the mask or the lookup. Those omissions are P2.2 dependencies. They are not unread original facts anymore: the assigned loader range has been read. The old OQ-472 deferral is closed here.
 
@@ -105,17 +108,17 @@ House tick `0x10076230`–`0x100765b9`. `this` = house (`esi = ecx` at `0x100762
 
 Widths below are the original's. The engine widens `residents_64` (i16 → i32), `E` (u16 → u32) and stocks (u16 → u32) on entry (P1 decision 6, OQ-452). Division is toward zero, including the MSVC bias-and-`sar` form used for `/64` and `/128`. A negative numerator truncates toward zero (`-65 / 64 = -1`, `-10 / 64 = 0`). The kernel proposed below uses that rounding on the widened values and reports the original 16-bit store as a separate labeled result. It does not wrap the widened fields.
 
-Supported domain for a defined result: `E ≥ 0`, every `Menge > 0` for a slot that is divided, every stock `≥ 0`, `BauFirst` in `0`…`31`. Outside that domain the original divides by zero, shifts by `cl & 31`, or indexes a 21-byte table at 21 or beyond. Those are labeled undefined. No fallback is invented.
+Supported domain for a defined widened result: `E ≥ 0`, the smoothing sum `≥ 0`, every `Menge > 0` for a slot that is divided, every stock `≥ 0`, `BauFirst` in `0`…`31`, and a mood in `−2`…`+2` before `VermehrTab` is indexed. Outside that domain the original divides by zero, shifts by `cl & 31`, or indexes past a table. Those are labeled undefined. A negative smoothing sum is the extra case: the original still stores the low 16 bits, and the widened u32 field has no result in this note. No fallback is invented, and `E` is not changed to a signed field.
 
 ### 2.1 Direct numerical steps, in order
 
 1. **Gate.** `diff = (u16)(tick − last)`. If `diff < 2500`, return. The other outputs are not evaluated. Else `last = (u16)(last + 2500)`. One step, not a loop, and not `last = tick`.
 2. **Mask.** House `+0x10` → city, city slot `+0x1c` = owner (`0x1008c680`), player `GetProperty` `0x21` copies `player +0x90` to dest+4 (`0x10020a6f`, T32.5 §15.1). The tick tests that dword.
-3. **`E`.** `E' = trunc(E·127/128) + trunc(residents_64/64)`, then the original stores the low 16 bits. The next original read zero-extends those bits, so a negative sum becomes a value above 32767. The widened result keeps the signed sum.
-4. **Needs** `j = 0`…`n-1`. Let `bit = BauFirst(goods[Ware(j)])`. If the mask has `1 << bit`, `stock[j] = trunc(stock[j]·127/128)` and `lowest = min(lowest, min(s_j, 160))` with `s_j = trunc(stock·1536 / (E·Menge))` using the **new** stock and the **new** `E`. A clear bit leaves that stock unchanged and out of `lowest`. `lowest` starts at `0x7fffffff`. Force is not consulted. `E·Menge = 0` is undefined.
-5. **Spawn condition, not a spawn.** If `lowest < 102` and the number of non-null pointers at house `+0x18`…`+0x24` is `<` type slot `+0xb8(0)`, the original draws the world PRNG (`0x10076397`) and calls house slot `+0x118` with job `0x35`. Without the walker count, the type maximum and the variant count, this predicate is **not evaluated**. It is not false, and it is not "would fire".
-6. **Mood** (§2.2), from the stocks and `E` after step 4.
-7. **Counters, then growth, then counters.** `sub(group, trunc(residents_64/64))`, then `residents_64 += VermehrTab[mood]` (i8, already in 1/64 units), then `add(group, trunc(new/64))`. The original add is a u16 `add` and wraps. The widened add does not. The city counter object is not stored yet (P1 decision 10). The kernel can return the two truncated integers and the new residents. It does not write a city.
+3. **`E`.** Old `E` is the zero-extended u16 at `+0x2e` (`0x10076275`). `sum = trunc(E·127/128) + trunc(residents_64/64)` (`0x10076288`–`0x100762a5`). The original stores the low 16 bits (`0x100762a9`). The next read zero-extends those bits, so a negative sum becomes a stored word above 32767. The widened field is u32. A negative sum does not fit in it, and this note does not store it as a signed `E`. A non-negative sum is the widened `E'`. The original u16 store is a separate labeled result. Which widened value to keep for a negative sum is OQ-452, left open.
+4. **Needs** `j = 0`…`n-1`. Let `bit = BauFirst(goods[Ware(j)])`. If the mask has `1 << bit`, `stock[j] = trunc(stock[j]·127/128)` and `lowest = min(lowest, min(s_j, 160))` with `s_j = trunc(stock·1536 / (E·Menge))` using the **new** stock and the **post-smoothing** `E`. That `E` is re-read from `+0x2e` at `0x10076305`; the multiply is `0x10076314` and the divide is `0x10076318`. A clear bit leaves that stock unchanged and out of `lowest`, and it skips the divide (`0x100762e4`). `n == 0` skips the loop (`0x100762b2`). `lowest` starts at `0x7fffffff`. Force is not consulted. A zero divisor (`E·Menge = 0`) is undefined. The needs loop has no `E == 0` return. Mood's `E == 0` return does not apply inside this loop.
+5. **Spawn condition, not a spawn.** After the loop, `lowest` is compared with 102 (`0x10076341`; `jge` skips the rest). When `lowest < 102`, the original counts non-null pointers at house `+0x18`…`+0x24` and compares that count with type slot `+0xb8(0)` (`0x10076353`, `0x1007636f`). The boolean is `lowest < 102` and `walker_count < type_max`. Variant count (type slot `+0xbc(0)`, read at `0x1007637a`) is not an input of the boolean. It is the divisor of the deferred spawn (`0x100763c4`). A missing variant count leaves the boolean computable and the spawn not evaluated; a zero variant count is an undefined division of that call, not a false boolean. Without the walker count or the type maximum, the boolean is **not evaluated**. It is not false, and it is not "would fire". The PRNG (`0x10076397`) and house slot `+0x118` with job `0x35` stay deferred. §2.3 uses these same two inputs for `spawn_condition`.
+6. **Mood** (§2.2), from the stocks and the post-smoothing `E`, and only when step 4 did not divide by zero. The call is at `0x100763ed`, after the loop. A full tick with post-smoothing `E == 0` and at least one matched need hits the undefined divide and does not reach mood. A full tick with `E == 0` and no matched need (or `n == 0`) does reach mood, which returns 0. That 0 is the mood function's result, not a stand-in for the skipped divide.
+7. **Counters, then growth, then counters.** `sub(group, trunc(residents_64/64))`, then the signed mood byte indexes `VermehrTab` at `group + 0x110 + mood` (`0x1007642c` when `mood ≥ 0`, `0x100764ec` when `mood < 0`). The five bytes are mood −2…+2 at `group + 0x10e`. A mood outside −2…+2 is an undefined read, labeled before the add, and it is not a growth amount. Shipped score bytes stay inside that range (§1.3). Then `residents_64 +=` that i8, then `add(group, trunc(new/64))`. The original add is a u16 `add` and wraps. The widened add does not. The city counter object is not stored yet (P1 decision 10). The kernel can return the two truncated integers and the new residents when the index is in range. It does not write a city.
 8. **Branch on the mood byte, signed.**
    - `mood ≥ 0` and `residents_64 > Wohnmax·64` (strict: equality does not enter): counter-correct by `trunc(residents/64) − Wohnmax`, set residents to `Wohnmax·64`, then `UpgradeCheck` (`0x10075dd0`). A true result calls city slot `+0x98`. Inputs still missing for that call: next group's forced needs and tables, queue count, kind block, materials `0x29`–`0x2d`. **Upgrade dispatch is not evaluated** without them. Crossing the cap is a number and can be returned on its own.
    - `mood < 0`: if `NoDowngrade` or flags `& 0x30`, floor = 64 and the removal arm is selected; else floor = `48 · Wohnmax(previous)` (`group − 0x50` at `0x10076527`, which is the previous record's `+0xc8`) and the downgrade arm is selected. The floor test is signed and strict: `movsx eax, bp` then `cmp eax, edx` / `jge` at `0x10076540`–`0x10076545`. Equality does not enter. On the downgrade arm only, the original then compares the same residents word as a signed i16 with 64 (`cmp bp, 0x40` / `jge` at `0x1007654b`–`0x1007654f`). A word `< 64`, including every negative i16, falls through: the counter add is `trunc(residents/64) − 64` (the truncation is the `movsx` value already in `eax`, bias-and-`sar` at `0x10076553`–`0x10076559`, then `sub eax, 0x40`) and residents is stored as 64 (`0x1007656a`), then city slot `+0x9c` is called. A signed word `≥ 64` skips that add and that store, and still calls. This is not an unsigned test of the low 16 bits: i16 −1 is below 64. The widened kernel uses the same signed `< 64` test on the widened integer. It does not reread those bits as an unsigned word, and it does not wrap the widened field to 16 bits before the test (OQ-452). On the removal arm the `jge` block is skipped (`0x10076549`) and the call is island slot `+0xcc(x, y, 0, 0, 0)`. The call is observed. That it removes the house stays **likely** (unchanged). Downgrade's type change, material move and PRNG variant are P3 effects and are **not evaluated** here. The floor test, the arm select, and the below-64 test are separate. None of them is inferred from the deferred call.
@@ -124,7 +127,7 @@ Supported domain for a defined result: `E ≥ 0`, every `Menge > 0` for a slot t
 
 ### 2.2 Mood
 
-`E` is read as u16. `E == 0` returns 0 immediately (`0x10075fde`–`0x10075fef`), before tables and before flags. Flags cannot override that 0.
+`E` is read as u16. `E == 0` returns 0 immediately (`0x10075fde`–`0x10075fef`), before tables, before any divide, and before flags. Flags cannot override that 0. This return belongs to the mood function. The needs loop in the full tick does not share it (§2.1 step 4).
 
 Otherwise, with the group pointer at house `+0x28`:
 
@@ -140,6 +143,8 @@ Otherwise, with the group pointer at house `+0x28`:
 
 The round-cy sentence "flags `& 0x30` force −1/−2" is only the all-non-negative path. Pioneers cannot get a negative goods score (Bedarf is 1…2). They can get a negative food or infra score. Every later group can get a negative score from any of the three tables.
 
+The value returned here is the `VermehrTab` index in §2.1 step 7. It is used only when it is in −2…+2. An out-of-range score (a table byte past the shipped −2…+2, or an average that leaves that range) is an undefined index, not a resident add. Shipped tables do not produce that index.
+
 ### 2.3 What a partial kernel may return
 
 Inputs that are enough, when the supported-domain constraints hold:
@@ -150,13 +155,15 @@ Inputs that are enough, when the supported-domain constraints hold:
 |---|---|---|
 | `acted` | gate result | — |
 | `last'` | the u16 sum on a taken gate; unchanged on a skip | — |
-| `e'`, `stock'`, `residents'` | gate taken; widened, no 16-bit wrap | gate skipped |
+| `e'` | gate taken and the smoothing sum `≥ 0`: that sum, no 16-bit wrap | gate skipped, or the sum is negative. A negative sum is not a signed `E`. The original u16 store is still the labeled column in §3.3 |
+| `stock'` | gate taken; widened, no 16-bit wrap | gate skipped |
+| `residents'` | gate taken and mood in −2…+2 | gate skipped, or mood outside the five-byte table |
 | `lowest` | gate taken; `0x7fffffff` if no bit matched | gate skipped |
-| `spawn_condition` | gate taken **and** walker count, type max supplied: the comparison only | either input missing. Not a spawn, no PRNG, no job |
-| `mood` | gate taken and `E'` defined | gate skipped, or a divided `Menge` is 0 |
-| `counter_sub`, `counter_add` | gate taken: the two truncated resident counts | gate skipped. Not a city write |
-| `cap_crossed` | `mood ≥ 0` and `residents' > Wohnmax·64` | gate skipped |
-| `below_floor`, `arm` (`downgrade` or `remove`) | `mood < 0` and previous `Wohnmax` known (or `NoDowngrade` / flags select the 64-floor) | gate skipped |
+| `spawn_condition` | gate taken **and** walker count and type max supplied: `lowest < 102` and `walker_count < type_max` | either of those two missing. Variant count is not an input of this boolean. Not a spawn, no PRNG, no job |
+| `mood` | gate taken, every needs-loop divide defined or none taken, and every mood divide has `Menge > 0`. Post-smoothing `E == 0` returns 0 when mood is entered | gate skipped, a needs-loop divisor was 0, or a mood divisor is 0 |
+| `counter_sub`, `counter_add` | gate taken and mood in −2…+2: the two truncated resident counts | gate skipped, or mood outside the five-byte table. Not a city write |
+| `cap_crossed` | `mood ≥ 0`, mood in −2…+2, and `residents' > Wohnmax·64` | gate skipped, or mood outside the table |
+| `below_floor`, `arm` (`downgrade` or `remove`) | `mood < 0`, mood in −2…+2, and previous `Wohnmax` known (or `NoDowngrade` / flags select the 64-floor) | gate skipped, or mood outside the table |
 | upgrade happened, downgrade happened, house removed, PRNG draws, city-store delta, type id, materials | never in this kernel | always deferred to P3 or P5 |
 
 A test that expects `upgrade == true` from this kernel is testing the wrong contract. The mutant that turns "not evaluated" into `true` fails the deferred vector in §3.
@@ -192,12 +199,11 @@ A signed 16-bit compare of the difference treats 65535 as −1 and skips the tic
 | bit set | 1 | on | 0 | 0 |
 | bit set | 127 | on | 126 | 126 |
 | bit set | 0 | on | 0 | 0 |
-| satisfaction 101 | 101 | on | `trunc(101·127/128) = 100` | 100, which is `< 102` |
-| satisfaction 102, measured **before** decay on a stock that decays to 102 | — | — | — | see next row |
-| raw `s` after decay = 102 | stock whose new value is 102 | on | 102 | 102, not `< 102` |
+| spawn boundary 101 | 102 | on | `trunc(102·127/128) = 101` | post-smoothing `E = 128` from old `E = 128` and `residents_64 = 64` (`trunc(128·127/128) + trunc(64/64) = 127 + 1`). `Menge = 12`, so `E·Menge = 1536` and `s = trunc(101·1536 / 1536) = 101`. Cap 160 leaves 101. `101 < 102`. Walker count 0, type max 1: `0 < 1`, so the boolean is true. Variant count is not an input. PRNG and job `0x35` stay not evaluated |
+| spawn boundary 102 | 103 | on | `trunc(103·127/128) = 102` | same `E`, `Menge`, residents and walker inputs. `s = trunc(102·1536 / 1536) = 102`. `102 < 102` is false, so the boolean is false. The original does not read the walkers on this side (`jge` at `0x10076346`). Supplying the same walker count and type max does not change the boolean |
 | raw 200 | 200 | on | `trunc(200·127/128) = 198` | `min(198, 160) = 160` |
 
-The 101/102 threshold is on `lowest` after the cap of 160, compared with 102 (`0x10076341`). 101 passes the spawn **condition** only when walker inputs exist (§2.3). 102 does not. Goods-mood cap of the same raw 200 is 128, not 160 (§3.4).
+The 101/102 threshold is on `lowest` after the cap of 160, compared with 102 (`0x10076341`). The two boundary rows use one need, the mask bit set, and the walker inputs of §2.1 step 5 (count 0, type max 1). 101 makes the boolean true. 102 makes it false before those walker inputs are read. Goods-mood cap of the same raw 200 is 128, not 160 (§3.4). The intermediates were recomputed with toward-zero division (`cache/t326-f1-corr/vectors.py`).
 
 Decay of a clear bit fails the "stock stays 128" row.
 
@@ -210,9 +216,9 @@ Decay of a clear bit fails the "stock stays 128" row.
 | 100 | 63 | `99 + 0 = 99` | 99 |
 | 128 | −10 | `127 + 0 = 127` | 127 |
 | 128 | −65 | `127 + (−1) = 126` | 126 |
-| 0 | −65 | −1 | 65535, and the next u16 read is 65535, not −1 |
+| 0 | −65 | sum `−1`, outside the u32 domain; not stored as a signed `E` | 65535, and the next u16 read is 65535 |
 
-Skipping the smooth leaves `E = 100` in the third row. That is the mutant.
+Skipping the smooth leaves `E = 100` in the third row. That is the mutant. The last row's register sum is −1 (`trunc(0·127/128) + trunc(−65/64)`). Storing that −1 as widened `E` would be a signed field. The original store is the low 16 bits, 65535, and the next read is 65535. The widened column stays blank for that row.
 
 Growth, after the counter subtract of the old truncation and before the add of the new one. `VermehrTab` values are the stored i8, not the file's decimals.
 
@@ -270,6 +276,7 @@ Table bytes are the scores `f`, `b`, `i` after indexing. `E ≠ 0` unless the ro
 | −1, 2, 5 | `0x10` | −1 |
 | −1, 2, 5 | `0x20` | −2 |
 | 1, −4, 2 | 0 | −4 |
+| out-of-range index, mood 3 | — | undefined `VermehrTab` read; not a resident add |
 
 The mutant that always returns `(f+b+i+1)/3` fails the −1, 5, 5 row (it yields 3). The mutant that returns −1 whenever bit `0x10` is set fails two rows: `E = 0` with flags `0x10` (yields −1 instead of 0), and scores −4, −4, 0 with flags `0x10` (yields −1 instead of the min −4). Scores −1, 2, 5 with flags `0x10` do not catch it, because the min is already −1.
 
@@ -316,6 +323,9 @@ Direct decay does not change a city-store quantity. A mutant that subtracts from
 | Always average the three scores | §3.5, scores −1, 5, 5 yield 3 instead of −1 |
 | Let bit `0x10` override `E = 0` | §3.5 first row |
 | Read `cmp bp, 64` as unsigned | §3.6 resident −1: the unsigned word 65535 skips the add; the signed path adds −64 and stores 64 |
+| Store a negative smoothing sum as signed `E` | §3.3 last row: the widened column is not −1; the original store is 65535 |
+| Require the variant count before `spawn_condition` | §3.2 boundary 101: walker count 0 and type max 1 already decide true; the variant count stays unread |
+| Index `VermehrTab` with mood 3 | §3.5 out-of-range row: the read is undefined, not an add |
 
 ### 3.8 Later tests, not written now
 
@@ -383,10 +393,12 @@ Still owned elsewhere, and not reopened: OQ-450 (owner, §4), OQ-451 (load-phase
 ## 7. Decisions and reasoning
 
 1. **Treat §1 as the endpoint rule, and retire the Force shortcut.** Alternative: keep "derive both ends from Force and the infra id range" and leave OQ-472 unread. Rejected. The parser writes `+0xcc` at `0x1001487e`–`0x100148a0` with no Force test. The post-pass writes `+0xcd` at `0x10014b33` before the Force test at `0x10014b39`. Evidence: those instructions, re-read, and the shipped table in §1.3 which has `+0xcd = n` for pioneers even though the infra mask is 0.
-2. **Withdraw would-fire outputs.** Alternative: keep the round-cy `HouseTickOut` flags for walker, upgrade, downgrade and remove. Rejected. Spawn needs walker count, type max and a PRNG draw (`0x10076397`). Upgrade needs `UpgradeCheck` inputs and then a store-changing call. The comparison `lowest < 102` and `residents > Wohnmax·64` can be numbers. Calling the missing ones "would fire" asserts a transition the inputs do not decide.
+2. **Withdraw would-fire outputs.** Alternative: keep the round-cy `HouseTickOut` flags for walker, upgrade, downgrade and remove. Rejected. The spawn boolean needs walker count and type max (`0x1007636f`). The PRNG (`0x10076397`) and the variant-count divisor (`0x100763c4`) belong to the deferred call, not to the boolean. Upgrade needs `UpgradeCheck` inputs and then a store-changing call. The comparison `lowest < 102` and `residents > Wohnmax·64` can be numbers. Calling the missing ones "would fire" asserts a transition the inputs do not decide.
 3. **Split mood overrides by the sign of the table bytes, and let `E == 0` win.** Alternative: leave "flags `& 0x30` force −1/−2". Rejected. `0x10075fe9` returns 0 before the flag tests. `0x100761b1` takes the min path when any score byte is negative, and that path tests only bit `0x20` (`0x100761fe`). Shipped Bedarf/Nahrung/Infra ranges include negatives (§1.3), so the path is not theoretical. Pioneers' Bedarf `(1, 2)` is the exception for goods only.
 4. **Keep OQ-450 open and recommend exact `last` without changing the default.** Alternative: treat owner question 1 as resetting own-save `last`. Rejected. Question 1 is the original load. P1 decision 4 and OQ-450 say the own-save choice is still open. Exact visit is what `fields(House)` does. Resetting it would change hashes and multi-peer checksums. The recommendation is to leave that code in place until the owner picks an option.
 5. **Do not claim Create's stamp is re-proved, and do not claim import `last = 0` equals every original import.** Alternative: repeat "Load leaves 0, so import matches". Load's non-write is re-checked (`0x10076e60`–`0x1007711b` has stores at `+0x2c` / `+0x2e` and none at `+0x0a`). Create still calls property `0x23` at `0x100246b2`. The copied value's frame slot was not counted (OQ-473). Our importer never stamps, so it matches the original only when that value is 0.
 6. **Widen the multiply, and label the 16-bit wrap.** Alternative: specify u32 intermediates, or make the kernel wrap like i16/u16. The u32 multiply of stock `2796203` changes `s` from 160 to 0 (§3.6). Original u16 cannot hold that stock. OQ-452 stays the owner's wrap question. The proposed numbers are the widened ones, with the original store written beside them.
 7. **Leave lookup and `IdSec` on the P5 side of the kernel boundary.** Alternative: require the full lookup before any mood test. Mood's tavern test is the ware id `0x4c` (`0x100760d9`), and the ranges are `+0xcc` / `+0xcd`. The alias changes `lookup[0x1d]`, which delivery reads. P2.2 should still compute the lookup in the same pass, because the pass is one function and splitting it would risk a second, drifted rule. The kernel does not take it as an input.
 8. **Treat the below-64 correction as signed, on the widened integer.** Alternative: keep the unsigned reading, where a negative word whose low 16 bits are `≥ 64` skips the add. Rejected. `0x1007654f` is `jge` after `cmp bp, 0x40`, and `eax` at the following `cdq` is the `movsx` of that word (`0x10076540`). Resident −1 adds −64 and is stored as 64 (§3.6). Wrapping the widened field to 16 bits before the test would reintroduce the original narrow width; OQ-452 still owns that choice, and this note does not take it.
+9. **Label `0x5b`…`0x5f` unreachable, and do not cap the registry at the scan.** Alternative: keep the id-`0x60` rows as synthetic file inputs, or reject `n > 255` and goods above `0x5f` in the engine. Rejected. The scan's `jl` stops at `0x60` (`0x10014861`–`0x10014864`). Lookup `0x10013be0` returns the UNUSED literal for `0x5b`…`0x5f`, and the first match of that literal is id 0. A guess that `0x5b` was a usable high-id example was checked against those two sites and dropped. PLAN §0.1: the original scan bound is format validation. It is not an engine limit.
+10. **Leave a negative smoothing sum out of the widened `E`.** Alternative: keep "the widened result keeps the signed sum" and report `E' = −1` for `E = 0`, residents −65. Rejected. Widened `E` is u32 (P1 decision 6). The original stores the low 16 bits and the next read zero-extends them to 65535 (`0x100762a9`, `0x10076305`). Storing −1 would be a silent signed state change. OQ-452 remains the owner's width choice. The needs-loop divide uses the post-smoothing word; mood's `E == 0` return (`0x10075fe9`) is not that divide.

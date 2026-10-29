@@ -232,8 +232,11 @@ class Cfg:
                     or (identity and identity[0] == "ack" and len(identity) != 6)
                     or not identity or identity[0] not in ("data", "ack")):
                 problems.append("invalid jitter_script entry %r" % ((identity, value),))
-            elif identity[0] == "data" and (not isinstance(identity[-1], int) or identity[-1] < 1):
-                problems.append("data jitter script attempt must be >= 1")
+            elif (not all(isinstance(x, str) and x for x in identity[1:3])
+                  or not isinstance(identity[3], int) or isinstance(identity[3], bool) or identity[3] < 0
+                  or not isinstance(identity[4], int) or isinstance(identity[4], bool) or identity[4] < 0
+                  or not isinstance(identity[-1], int) or isinstance(identity[-1], bool) or identity[-1] < 1):
+                problems.append("invalid jitter_script identity %r" % (identity,))
         if problems:
             raise ValueError("impossible join configuration: " + "; ".join(problems))
         return self
@@ -1933,6 +1936,8 @@ def _check_jitter(events, cfg, end_t, delays=None):
         if tx.get("jitter_ms") != want:
             bad(tx["t"], "transmission has jitter %r ms, expected %d ms for %r" % (tx.get("jitter_ms"), want, ident))
         if tx.get("lost"):
+            if (data_out if tx["kind"] == "send" else ack_out).get(outcome_key) or stale_out.get(ident):
+                bad(tx["t"], "lost transmission %r has a recorded outcome" % (ident,))
             continue
         if tx.get("lid") is None:
             want_t = tx["t"] + cfg.one_way_ms + declared + want
@@ -1955,6 +1960,18 @@ def _check_jitter(events, cfg, end_t, delays=None):
         at_time = [e for e in outcomes if e["t"] == want_t]
         if want_t <= end_t and len(at_time) != 1:
             bad(want_t, "served transmission %r has %d matching outcomes at its derived arrival" % (ident, len(at_time)))
+        if want_t <= end_t and len(outcomes) != 1:
+            bad(want_t, "served transmission %r has %d total outcomes" % (ident, len(outcomes)))
+    known_data = {(e["src"], e["dst"], e["ch"], e["epoch"], e["sid"], e["attempt"])
+                  for e in events if e["kind"] == "send"}
+    known_ack = {(e["src"], e["dst"], e["ch"], e["epoch"], e["idx"])
+                 for e in events if e["kind"] == "ack_send"}
+    for key, outcomes in data_out.items():
+        if key not in known_data:
+            bad(outcomes[0]["t"], "outcome names no data transmission %r" % (key,))
+    for key, outcomes in ack_out.items():
+        if key not in known_ack:
+            bad(outcomes[0]["t"], "outcome names no ACK transmission %r" % (key,))
     return out[:12]
 
 

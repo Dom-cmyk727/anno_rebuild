@@ -76,8 +76,8 @@ def maximum_lag(sim):
             members.discard(event["peer"])
         if event["kind"] == "apply":
             applied[event["peer"]] = event["turn"]
-            host = applied.get("H", 0)
-            greatest = max(greatest, max([host - applied.get(name, 0) for name in members] or [0]))
+        host = applied.get("H", 0)
+        greatest = max(greatest, max([host - applied.get(name, 0) for name in members] or [0]))
     return greatest
 
 

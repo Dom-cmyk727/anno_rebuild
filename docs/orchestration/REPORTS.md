@@ -6992,9 +6992,9 @@ OQ-490. The developer start gives the whole start island to the city. The origin
 - The two heavy render tests (`#286`, `#287`) were not admitted. Re-run them when free RAM after the 4096 MiB headroom can hold a 6.5 GiB reservation. They are not MAP.1 behaviour.
 - W4.1 is the next part of this lane and is not started in this report.
 
-## W4.1 — Play mode — 2026-10-29 — status: IN PROGRESS
+## W4.1 — Play mode — 2026-10-29 — status: OWNER-CHECK
 
-Branch `task/W4-1-play-mode`, worktree `E:\anno1503-worktrees\anno1503-W4-1`. Started at the MAP.1 report `328f267` via the spec commit `1b4d940`. Code commits: `7b390b0` feat(app): run a scenario from the view; `2c303f6` test(app): check play mode against the sim; `297ea67` fix(app): publish play snapshots portably. Tests below ran on `2c303f6` after the wall-clock mutation was reverted; the focused `play:*` tests and MSVC app-test build also passed on `297ea67`. This is a progress report, not the final task report.
+Branch `task/W4-1-play-mode`, worktree `E:\anno1503-worktrees\anno1503-W4-1`. Started at the MAP.1 report `328f267` via the spec commit `1b4d940`. Code commits: `7b390b0` feat(app): run a scenario from the view; `2c303f6` test(app): check play mode against the sim; `297ea67` fix(app): publish play snapshots portably; `f7ef40a` style: wrap the play usage line. The play tests below were re-run on the `297ea67` tree (7 cases, 300 assertions). The window timing below is that same binary. This report commit is the final head.
 
 ### What is in
 
@@ -7008,14 +7008,14 @@ The sim is linked into `anno_app_core` because the load and the tests do not nee
 
 ### Tests
 
-`anno_app_tests --test-case=play:*` on `2c303f6` before the cost case was added: 6 cases, 292 assertions, passed. The cost case and the runner case were run again after that. `scene loading` (the existing `--view` case) passed, 9 assertions.
+`anno_app_tests --test-case=play:*` after the publication change, Release MSVC: 7 cases, 300 assertions, passed. Log: `E:\anno1503-worktrees\anno1503-W4-1\cache\w41\play-tests.txt` (git-ignored). `scene loading` (the existing `--view` case) passed, 9 assertions, on the build before the pointer lock; that case does not start the runner.
 
 - Islands: `Single_01.sze` and `00_1024_easyentry_01.sze` match the sim (slot, rectangle, template path). Not every `.sze` in the corpus.
 - Tick 0, ten `0200Single` files, CPU group 2. Two pictures fit under 48 MiB and were compared whole. The other eight are 77–607 MiB, so the test compared a 640×360 corner. Differing pixels sat inside the boxes of objects the sim did not place. GPU was not compared with CPU.
 - Three turns, and one turn with a 40 ms delay, hash-equal `run_turn` at a fixed 10 ms step. `Single_01.sze`.
 - A 1500 ms delay does not block `snapshot()` (under 50 ms, tick still 0).
 - Demolish of kontor 1302 on `00_1024_easyentry_01.sze` before the scene is built: the building is listed as not placed, and a 220×180 box around it differs from the scene that still has it.
-- Eight `run_n(1)` calls on `06_1024_heavy_256.sze`, Release MSVC: p50 0.224 ms, p95 0.276 ms, p99 0.276 ms, max 0.276 ms. Far under the 100 ms turn, so nothing fell behind.
+- Eight `run_n(1)` calls on `06_1024_heavy_256.sze`, Release MSVC: p50 0.38 ms, p95 0.4272 ms, p99 0.4272 ms, max 0.4272 ms. Far under the 100 ms turn, so nothing fell behind.
 
 ### Pictures
 
@@ -7026,7 +7026,7 @@ Stills in `C:\Users\altin\Pictures\anno-review\W4-1\`, group 2, centred on world
 - `Single_01.sze` at both sizes: a green cliff coast with a rock spire and a pond.
 - `Single_05.sze` and `Single_08.sze` at that same tile are open sea (0 islands in the frame). The camera is the easy-entry kontor, not a point on those missions.
 
-The live window was not left running, and frame time at 1920×1080 and 3840×2160 was not measured.
+The live window was opened for about 8 seconds each, `00_1024_easyentry_01.sze`, group 2, GPU, `ANNO_VIEW_ZOOM_SCRIPT=100000,8` (no zoom during the run). The window is 1280×800. Adapter: NVIDIA GeForce RTX 4090 (Vulkan). After the first report, `--play` was 498–501 fps, window-thread busy average 0.3–0.4 ms, worst 0.6–3.6 ms, and the title moved from tick 2350 to tick 4300 (game 4700 ms to 8600 ms) across about 6 seconds, turn p95 0.3–0.4 ms. `--view` on the same file, sim not started, was 500–502 fps, busy average 0.3 ms, worst 0.7–0.9 ms. The sim thread does not show up in the frame time at this size. 1920×1080 and 3840×2160 were not measured: the window size is fixed, and `bench_frame` does not run the sim.
 
 ### Mutation
 
@@ -7038,8 +7038,10 @@ Setting the step from the delay (40 ms instead of 10) failed `play: runner turns
 - A matching file building keeps its item bytes so phase and draw order stay. The set of buildings is still the sim's.
 - `Building::x/y` are world tiles (`scenario_formats.cpp` adds the island origin). The scene wants island-local tiles, so the bridge subtracts `tiles.x0()` and `tiles.y0()`.
 - No new question in OQ-500..509. The unread Kontor territory radius stays OQ-490 from MAP.1.
-- Full `ctest` was not re-run. The two heavy render corpus tests still do not fit above the 4096 MiB headroom on this machine. Headroom was left at the default. `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh` was started serially for `297ea67`; this session did not receive its final GCC/Clang summary, so it is not claimed as a passing gate and must be rerun before OWNER-CHECK.
+- `tools/check_unix_warnings.sh` on the `297ea67` tree: GCC 13.3.0 clean (180 files, viewer and GPU on), Clang 18.1.3 clean (180 files, viewer and GPU on), Clang 18.1.3 clean (11 app files, viewer without GPU).
+- Full `ctest` was not re-run for this part. The two heavy render corpus tests still do not fit above the 4096 MiB headroom on this machine. Headroom was left at the default. The GPU compositor was not changed, so the GPU test suite was not re-run. The viewer named the adapter above.
+- Frame time at 1920×1080 and 3840×2160 with the sim running was not measured. The viewer window is 1280×800 logical (`viewer.cpp`). `bench_frame` can render those sizes and does not run the sim thread.
 
 ### Owner check
 
-Not ready: finish the mandatory warning, full-suite, GPU comparison, frame-measurement and visual gates before the owner looks at `--play` and before W4.2.
+Look at `--play` before W4.2. This lane stops here.

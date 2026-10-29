@@ -84,6 +84,15 @@ find_game_dir(const std::optional<std::filesystem::path>& explicit_dir,
 std::optional<std::filesystem::path> find_ci(const std::filesystem::path& base,
                                              const std::string& rel);
 
+/// One island the sim placed, drawn from `file` at world tile (`x`, `y`).
+/// `load_fixed_map` fills the same fields (slot, template path, position).
+/// A coordinate outside 0..65535 is refused: an island head stores u16.
+struct PlacedIsland {
+    std::uint32_t number = 0;
+    std::int32_t x = 0, y = 0;
+    std::filesystem::path file;
+};
+
 /// Loads `file` with every island at its world position and the scenario's
 /// ships and soldiers. With an empty `chosen`, INSELLNK links use the viewer's
 /// stand-in (OQ-028). A chosen template replaces that stand-in for the link
@@ -93,5 +102,13 @@ formats::Result<LoadedScene, std::string> load_scene(const std::filesystem::path
                                                      const std::filesystem::path& file,
                                                      std::span<const LinkTemplate> chosen = {},
                                                      const SceneObjects* objects = nullptr);
+
+/// The play seam for a placement list (a fixed map, or the same shape): each
+/// entry is one template at one position. No stand-in rule and no scenario
+/// file. `objects` is the same building replacement as `load_scene`.
+formats::Result<LoadedScene, std::string> load_placed_scene(const std::filesystem::path& dir,
+                                                            std::string name,
+                                                            std::span<const PlacedIsland> placed,
+                                                            const SceneObjects* objects = nullptr);
 
 } // namespace anno::app

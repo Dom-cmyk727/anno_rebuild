@@ -379,6 +379,11 @@ void apply_world_buildings(std::vector<insel::Island>& islands, LoadedScene& out
     }
 }
 
+Result<LoadedScene, std::string> complete_scene(const fs::path& dir, std::string name,
+                                                formats::Bytes unit_source, LoadedScene out,
+                                                std::vector<insel::Island> all,
+                                                const SceneObjects* objects);
+
 Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path& file,
                                             std::span<const LinkTemplate> chosen,
                                             const SceneObjects* objects) {
@@ -398,11 +403,6 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
     const auto file_bytes = load(file);
     if (!file_bytes) {
         return "cannot read " + to_utf8(file);
-    }
-    const auto felder_bytes = load(dir / "Textures" / "Felder.tex");
-    const auto anl_bytes = load(dir / "Anlagen.dat");
-    if (!felder_bytes || !anl_bytes) {
-        return std::string("cannot read Textures/Felder.tex or Anlagen.dat in the game directory");
     }
     auto islands = insel::islands(*file_bytes);
     if (!islands) {
@@ -481,8 +481,30 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
         out.notes.push_back(std::to_string(from_sim) +
                             " linked islands drawn from the templates the sim placed");
     }
+    // Copy the span before moving `out`: the bytes stay in the file buffer.
+    const formats::Bytes unit_source = *file_bytes;
+    return complete_scene(dir, to_utf8(file), unit_source, std::move(out), std::move(all), objects);
+}
+
+Result<LoadedScene, std::string> complete_scene(const fs::path& dir, std::string name,
+                                                formats::Bytes unit_source, LoadedScene out,
+                                                std::vector<insel::Island> all,
+                                                const SceneObjects* objects) {
     if (objects != nullptr && objects->is_building) {
         apply_world_buildings(all, out, *objects);
+    }
+    auto load = [&](const fs::path& p) -> std::optional<formats::Bytes> {
+        auto b = read_all(p);
+        if (!b) {
+            return std::nullopt;
+        }
+        out.buffers.push_back(std::move(*b));
+        return formats::Bytes(out.buffers.back());
+    };
+    const auto felder_bytes = load(dir / "Textures" / "Felder.tex");
+    const auto anl_bytes = load(dir / "Anlagen.dat");
+    if (!felder_bytes || !anl_bytes) {
+        return std::string("cannot read Textures/Felder.tex or Anlagen.dat in the game directory");
     }
     auto anlagen = formats::anlagen::AnlagenFile::parse(*anl_bytes);
     if (!anlagen) {
@@ -499,10 +521,10 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
     if (const auto c = render::water_colour(anlagen.value())) {
         textures.value().set_water(*c);
     }
-    out.scene =
-        std::make_unique<render::Scene>(to_utf8(file), std::move(all), std::move(textures).value(),
-                                        std::move(anlagen).value(), render::kHeightLift);
-    auto units = load_units(dir, *file_bytes, *out.scene, out.notes);
+    out.scene = std::make_unique<render::Scene>(std::move(name), std::move(all),
+                                                std::move(textures).value(),
+                                                std::move(anlagen).value(), render::kHeightLift);
+    auto units = load_units(dir, unit_source, *out.scene, out.notes);
     if (!units) {
         return units.error();
     }
@@ -511,6 +533,41 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
         return std::string("no islands");
     }
     return out;
+}
+
+Result<LoadedScene, std::string> load_placed_scene(const fs::path& dir, std::string name,
+                                                   std::span<const PlacedIsland> placed,
+                                                   const SceneObjects* objects) {
+    LoadedScene out;
+    std::vector<insel::Island> all;
+    all.reserve(placed.size());
+    out.island_sources.reserve(placed.size());
+    for (const PlacedIsland& item : placed) {
+        if (item.x < 0 || item.y < 0 || item.x > 65535 || item.y > 65535) {
+            return "placed island " + std::to_string(item.number) +
+                   ": position does not fit an island coordinate";
+        }
+        auto buf = read_all(item.file);
+        if (!buf) {
+            return "cannot read " + to_utf8(item.file);
+        }
+        out.buffers.push_back(std::move(*buf));
+        auto parsed = insel::islands(out.buffers.back());
+        if (!parsed || parsed.value().empty()) {
+            return std::string("island template without an island");
+        }
+        insel::Island island = parsed.value().front();
+        island.x = static_cast<std::uint16_t>(item.x);
+        island.y = static_cast<std::uint16_t>(item.y);
+        island.number = item.number;
+        all.push_back(std::move(island));
+        out.island_sources.push_back(to_utf8(item.file));
+    }
+    if (!placed.empty()) {
+        out.notes.push_back(std::to_string(placed.size()) +
+                            " linked islands drawn from the templates the sim placed");
+    }
+    return complete_scene(dir, std::move(name), {}, std::move(out), std::move(all), objects);
 }
 
 } // namespace anno::app

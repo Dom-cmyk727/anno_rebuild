@@ -4,6 +4,8 @@ T32.6 F1 (round di). This note replaces the round-cy audit at `cfd85ec59d38f986b
 
 The round-cy note is wrong in four places this document corrects. Both need endpoints are not post-pass products, and Force does not decide them. The proposed kernel must not return a "would fire" flag for a transition whose inputs it does not have. Mood overrides are not unconditional. A missing billing cross-reference does not make every callee store-free.
 
+Round dj S1: the below-64 correction is a signed compare. AnnoWelt `0x1007654b` is `cmp bp, 0x40` and `0x1007654f` is `jge`. Resident −1 falls through that correction. The earlier unsigned reading of the same branch is withdrawn.
+
 ## 1. What the loader actually writes
 
 AnnoGame `BGruppen` parser, image base `0x10000000`. Group records are 6 × `0x118` bytes at object `+0x9c4`, cleared when `[BGRUPPE]` starts (`0x10013ef5`–`0x10013f06`, `0x1a4` dwords). The current group pointer is `[esp + 0x14]`. The need index lives at `[esp + 0x20]` and is set to `-1` when a `BGruppeNr` name selects a slot (`0x100140df`–`0x10014105`: slot × `0x118`, byte `+0` = slot, `+0x114` = goods table). That index is not the file cursor: the cursor is a different stack slot, saved around the key parse at `0x10013f4b` before `add esp, 0x10`.
@@ -116,7 +118,7 @@ Supported domain for a defined result: `E ≥ 0`, every `Menge > 0` for a slot t
 7. **Counters, then growth, then counters.** `sub(group, trunc(residents_64/64))`, then `residents_64 += VermehrTab[mood]` (i8, already in 1/64 units), then `add(group, trunc(new/64))`. The original add is a u16 `add` and wraps. The widened add does not. The city counter object is not stored yet (P1 decision 10). The kernel can return the two truncated integers and the new residents. It does not write a city.
 8. **Branch on the mood byte, signed.**
    - `mood ≥ 0` and `residents_64 > Wohnmax·64` (strict: equality does not enter): counter-correct by `trunc(residents/64) − Wohnmax`, set residents to `Wohnmax·64`, then `UpgradeCheck` (`0x10075dd0`). A true result calls city slot `+0x98`. Inputs still missing for that call: next group's forced needs and tables, queue count, kind block, materials `0x29`–`0x2d`. **Upgrade dispatch is not evaluated** without them. Crossing the cap is a number and can be returned on its own.
-   - `mood < 0`: if `NoDowngrade` or flags `& 0x30`, floor = 64 and the removal arm is selected; else floor = `48 · Wohnmax(previous)` (`group − 0x50` at `0x10076527`, which is the previous record's `+0xc8`) and the downgrade arm is selected. If `residents_64 < floor` (strict), the arm runs. On the downgrade arm, if the **unsigned** 16-bit residents word is `< 64`, the original also `add(trunc(residents/64) − 64)` and sets residents to 64, then calls city slot `+0x9c`. A negative widened value whose low 16 bits are `≥ 64` skips that correction and still calls. On the removal arm the call is island slot `+0xcc(x, y, 0, 0, 0)`. The call is observed. That it removes the house stays **likely** (unchanged). Downgrade's type change, material move and PRNG variant are P3 effects and are **not evaluated** here.
+   - `mood < 0`: if `NoDowngrade` or flags `& 0x30`, floor = 64 and the removal arm is selected; else floor = `48 · Wohnmax(previous)` (`group − 0x50` at `0x10076527`, which is the previous record's `+0xc8`) and the downgrade arm is selected. The floor test is signed and strict: `movsx eax, bp` then `cmp eax, edx` / `jge` at `0x10076540`–`0x10076545`. Equality does not enter. On the downgrade arm only, the original then compares the same residents word as a signed i16 with 64 (`cmp bp, 0x40` / `jge` at `0x1007654b`–`0x1007654f`). A word `< 64`, including every negative i16, falls through: the counter add is `trunc(residents/64) − 64` (the truncation is the `movsx` value already in `eax`, bias-and-`sar` at `0x10076553`–`0x10076559`, then `sub eax, 0x40`) and residents is stored as 64 (`0x1007656a`), then city slot `+0x9c` is called. A signed word `≥ 64` skips that add and that store, and still calls. This is not an unsigned test of the low 16 bits: i16 −1 is below 64. The widened kernel uses the same signed `< 64` test on the widened integer. It does not reread those bits as an unsigned word, and it does not wrap the widened field to 16 bits before the test (OQ-452). On the removal arm the `jge` block is skipped (`0x10076549`) and the call is island slot `+0xcc(x, y, 0, 0, 0)`. The call is observed. That it removes the house stays **likely** (unchanged). Downgrade's type change, material move and PRNG variant are P3 effects and are **not evaluated** here. The floor test, the arm select, and the below-64 test are separate. None of them is inferred from the deferred call.
 
 `UpgradeCheck` and both city calls can change the city store (materials `0x29`–`0x2d` on upgrade, `population.md` §5). The tick body has no call to billing `0x1002dac0`. That only means decay, mood and growth do not take stock. It does not mean a taken upgrade is store-free. The kernel must not report "city store unchanged" for a result whose transition is still deferred.
 
@@ -280,11 +282,20 @@ The mutant that always returns `(f+b+i+1)/3` fails the −1, 5, 5 row (it yields
 | 512 | ≥ 0 | — | not above the cap; no clamp, upgrade not entered |
 | 513 | ≥ 0 | — | cap crossed; residents become 512; `trunc(513/64) − 8 = 0` so the counter correction is 0; upgrade **not evaluated** |
 | 576 | ≥ 0 | — | cap crossed; correction `9 − 8 = 1`; upgrade not evaluated |
-| 384 | < 0 | neither flag nor `NoDowngrade` | `384 < 384` is false; no arm |
-| 383 | < 0 | neither | below floor; arm = downgrade; effects not evaluated |
-| 63 | < 0 | `NoDowngrade` or flags `& 0x30` | floor 64; arm = remove; the "set residents to 64" correction is **not** this arm |
-| 50 | < 0 | neither, floor 384 | arm = downgrade, and the unsigned word `50 < 64`, so the original also adds `trunc(50/64) − 64 = −64` and sets residents to 64 before the call. Shipped `VermehrTab` cannot step from ≥ 384 to 50 (largest drop is 51). The instruction is real for a residents value that is already there, including a modded table. |
-| −1 | < 0 | neither, floor 384 | signed `< floor` is true, so the arm runs. The unsigned word is 65535, which is not `< 64`, so the set-to-64 correction does **not** run. Widened kernel: report that distinction, do not treat "negative" as "below 64" for this correction. |
+| 384 | < 0 | neither, floor 384 | `384 < 384` is false; arm not entered; the below-64 test is not reached |
+| 383 | < 0 | neither, floor 384 | arm = downgrade; signed `383 < 64` is false, so no correction and residents stay 383; the city call is observed and its effects are not evaluated |
+| −1 | < 0 | neither, floor 384 | arm = downgrade; signed `−1 < 64`, so the counter add is `trunc(−1/64) − 64 = −64` and residents become 64 before the call. Effects of the call are not evaluated |
+| 0 | < 0 | neither, floor 384 | arm = downgrade; signed `0 < 64`; add `−64`; residents become 64; call effects not evaluated |
+| 63 | < 0 | neither, floor 384 | arm = downgrade; signed `63 < 64`; add `trunc(63/64) − 64 = −64`; residents become 64; call effects not evaluated |
+| 64 | < 0 | neither, floor 384 | arm = downgrade; signed `64 < 64` is false, so no correction and residents stay 64; call effects not evaluated |
+| 65 | < 0 | neither, floor 384 | arm = downgrade; signed `65 < 64` is false; residents stay 65; call effects not evaluated |
+| −1 | < 0 | `NoDowngrade` or flags `& 0x30` | floor 64; signed `−1 < 64`, so the removal arm is entered; the set-to-64 block is not this arm |
+| 0 | < 0 | `NoDowngrade` or flags `& 0x30` | floor 64; removal arm; set-to-64 is not this arm |
+| 63 | < 0 | `NoDowngrade` or flags `& 0x30` | floor 64; removal arm; set-to-64 is not this arm |
+| 64 | < 0 | `NoDowngrade` or flags `& 0x30` | `64 < 64` is false; removal arm not entered |
+| 65 | < 0 | `NoDowngrade` or flags `& 0x30` | `65 < 64` is false; removal arm not entered |
+
+Shipped `VermehrTab` cannot step from a value at or above 384 to a value below 64 in one update (largest drop is 51). The below-64 block is still a real instruction for a residents value that is already there, including a modded table. The division above was checked with the same bias-and-`sar` the instruction uses (`cache/t326-f1-corr/vectors.py`). An unsigned reading of `cmp bp, 64` gets the −1 row wrong: it treats the word as 65535 and skips the add. The signed path adds −64 and stores 64.
 
 Widened multiply. `stock = 2796203`, `E = 128`, `Menge = 12`. True `stock·1536 = 4294967808`, `s = 2796203`, capped 160. The same multiply in u32 is 512, `s = 0`. Original u16 stocks cannot reach this (65535·1536 fits in 32 bits). The widened kernel's intermediate has to be wider than 32 bits. A u32-multiply mutant fails this row. This is a supported engine input and an impossible original u16 input; the vector says which.
 
@@ -304,6 +315,7 @@ Direct decay does not change a city-store quantity. A mutant that subtracts from
 | Derive `+0xcc` in the post-pass from Force | §1.4, WIRTSHAUS-then-NAHRUNG yields `+0xcc = 2` with no Force involved |
 | Always average the three scores | §3.5, scores −1, 5, 5 yield 3 instead of −1 |
 | Let bit `0x10` override `E = 0` | §3.5 first row |
+| Read `cmp bp, 64` as unsigned | §3.6 resident −1: the unsigned word 65535 skips the add; the signed path adds −64 and stores 64 |
 
 ### 3.8 Later tests, not written now
 
@@ -377,3 +389,4 @@ Still owned elsewhere, and not reopened: OQ-450 (owner, §4), OQ-451 (load-phase
 5. **Do not claim Create's stamp is re-proved, and do not claim import `last = 0` equals every original import.** Alternative: repeat "Load leaves 0, so import matches". Load's non-write is re-checked (`0x10076e60`–`0x1007711b` has stores at `+0x2c` / `+0x2e` and none at `+0x0a`). Create still calls property `0x23` at `0x100246b2`. The copied value's frame slot was not counted (OQ-473). Our importer never stamps, so it matches the original only when that value is 0.
 6. **Widen the multiply, and label the 16-bit wrap.** Alternative: specify u32 intermediates, or make the kernel wrap like i16/u16. The u32 multiply of stock `2796203` changes `s` from 160 to 0 (§3.6). Original u16 cannot hold that stock. OQ-452 stays the owner's wrap question. The proposed numbers are the widened ones, with the original store written beside them.
 7. **Leave lookup and `IdSec` on the P5 side of the kernel boundary.** Alternative: require the full lookup before any mood test. Mood's tavern test is the ware id `0x4c` (`0x100760d9`), and the ranges are `+0xcc` / `+0xcd`. The alias changes `lookup[0x1d]`, which delivery reads. P2.2 should still compute the lookup in the same pass, because the pass is one function and splitting it would risk a second, drifted rule. The kernel does not take it as an input.
+8. **Treat the below-64 correction as signed, on the widened integer.** Alternative: keep the unsigned reading, where a negative word whose low 16 bits are `≥ 64` skips the add. Rejected. `0x1007654f` is `jge` after `cmp bp, 0x40`, and `eax` at the following `cdq` is the `movsx` of that word (`0x10076540`). Resident −1 adds −64 and is stored as 64 (§3.6). Wrapping the widened field to 16 bits before the test would reintroduce the original narrow width; OQ-452 still owns that choice, and this note does not take it.

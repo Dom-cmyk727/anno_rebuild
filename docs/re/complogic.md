@@ -154,13 +154,26 @@ After the loop, if the second argument (the tick slot at entry `+0x8`, `[esp+0x1
 
 The maps below use each function's entry `esp` as zero. The manager's first stack argument is entry `+0x4`; after its four register pushes, `[esp+0x14]` is that same slot. The per-object call has quotient at entry `+0x4` and tick at entry `+0x8`; after its three pushes these are `[esp+0x10]` and `[esp+0x14]`. The helper has a pointer to the tick slot as argument 1 (entry `+0x4`) and the tick value as argument 2 (entry `+0x8`) after its four pushes. This distinguishes the manager running value from the per-object tick/remaining slot.
 
-**CompLogic manager `0x1003d880..0x1003d8d0`, post-list `0x1003e1c0..0x1003e2fb`.** The receiver is the manager and the post-list argument is the same tick. The dispatcher reads manager `+0x2c` and has eight table cases. Case 0 calls `0x1003e130`, which reads manager `+0x20`, calls its virtual `+0xa4`, then virtual `+8` and, for an in-range next index, virtual `+0xc` and the returned object's virtual `+0x48` and possibly `+0x40`; it directly writes manager `+0x30` and `+0x2c`. Cases 1–5 call, respectively, `0x1000cfb0`, `0x1000d5f0`, optional `0x1000d920`, optional `0x1000dc00` with the tick, and `0x1000e200`, all with `this = [manager+0x28]`, then directly write manager `+0x2c` to 7, 2, 3, 4 or 5. Cases 3 and 4 skip their helper when `[manager+0x28+0x1ca0] == 0x10`. Case 6 writes manager `+0x2c = 0`. Case 7 sets process-global byte `0x1006aeb0` if bit 0 is absent, then calls `0x1005a0d0` with `0x10002740`.
+**Indexed post-list dispatch.** The manager receiver is `this`; its first stack argument is the tick. `CompLogic.dll` `0x1003e1c0..0x1003e2a9` and Classic `0x1003b660..0x1003b749` read manager `+0x2c`, unsigned-compare it with 7, and index exactly eight LE dwords. The tables are `0x1003e2ac` and `0x1003b74c`, respectively; they map by index, not physical body order:
+
+| state | CompLogic target | Classic target | transition and condition |
+|---|---|---|---|
+| 0 | `0x1003e1d6` | `0x1003b676` | calls selector `0x1003e130` / `0x1003b5d0`; the caller advances to 1 only when AX is not `0xffff` |
+| 1 | `0x1003e227` | `0x1003b6c7` | calls `0x1000cfb0` / `0x1000b7d0`, then writes state 7 |
+| 2 | `0x1003e251` | `0x1003b6f1` | skips `0x1000d920` / `0x1000c140` when `[manager+0x28+0x1ca0] == 0x10`, then writes state 3 |
+| 3 | `0x1003e26d` | `0x1003b70d` | similarly skips `0x1000dc00` / `0x1000c420` when that field is `0x10`; otherwise passes the tick, then writes state 4 |
+| 4 | `0x1003e28e` | `0x1003b72e` | calls `0x1000e200` / `0x1000ca20`, then writes state 5 |
+| 5 | `0x1003e2a1` | `0x1003b741` | writes state 0 |
+| 6 | `0x1003e2a8` | `0x1003b748` | no direct state write; returns |
+| 7 | `0x1003e23a` | `0x1003b6da` | calls `0x1000d5f0` / `0x1000be10`; advances to 2 only when AL is nonzero, otherwise returns through the state-6/default body |
+
+Values above 7 take the same unsigned default return as state 6. The physical layout is 0, 1, 7, 2, 3, 4, 5, 6; it must not be used to number the states.
 
 The dispatcher has no direct world/command write in the inspected range and no direct world-PRNG call. This is bounded, not a blanket negative: the listed helpers, their virtual calls, and `0x1005a0d0` remain the transitive-effect boundary.
 
 **CompLogic returned value and helper.** `0x10003a20` passes the tick-slot address to `0x10003940` twice, dispatches kinds 0..8, and returns `[entry+0x4]` at `0x10003ad2`. `0x10003940` checks object `+0x1a89` and list head `+0x9a0`; when active it clears the pointed-to tick slot, sums record `+0x10` values, may update record links (`+4`), record `+0x2c`, and remove/free records through direct calls `0x10059820` and `0x10059a00`. It can return a record pointer or null, but never addresses the quotient slot. The manager therefore subtracts the unchanged quotient; the tick-slot accumulation is a separate loop-exit condition. The cleanup calls and nine kind targets remain unresolved for their own transitive effects.
 
-**CompLogicClassic manager `0x1003ad90..0x1003ade0`, post-list `0x1003b660..0x1003b79b`.** Receiver, argument map, list walk and direct manager effects have the same shape. The state-machine helper is `0x1003b5d0`, discovered from case 0, and uses Classic's manager `+0x20`, table `0x10066254`, and the same virtual slots. Cases 1–5 call Classic targets `0x1000b7d0`, `0x1000be10`, optional `0x1000c140`, optional `0x1000c420` with the tick, and `0x1000ca20`; case 7 updates global byte `0x10067e28` and calls `0x10056d1d` with `0x1000b110`. The direct `+0x2c` writes and case-3/4 guards match CompLogic. No direct world/PRNG write is read in the dispatcher range; the independent transitive boundary is the listed target set.
+The same indexed mapping is independently decoded for Classic above; only matching transitions and instruction effects, not a shape inference, are claimed.
 
 **CompLogicClassic returned value and helper.** `0x10002320` calls the actual Classic helper `0x10002240`, not the CompLogic address. It clears object byte `+0x1a14`, while the manager and helper gate on `+0x1a19`; this is a concrete variant difference. The helper otherwise has the same normalized argument map and writes through the tick pointer, including list/record updates and cleanup calls `0x10056480` and `0x10056bce`. `0x10002320` returns its unchanged first argument at `0x100023d2`; Classic therefore also subtracts the unchanged quotient, with the same unresolved kind-slot and cleanup-call boundaries.
 

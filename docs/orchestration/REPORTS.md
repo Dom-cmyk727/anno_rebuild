@@ -6521,3 +6521,77 @@ FINISHED means the assigned loader and mood reads are done and the calculation c
 5. **No build.** Docs only. `git diff --check` against `cfd85ec` is the whitespace check.
 
 Subagents: none. No merge, rebase, push, or edit of T61, P1, the completed T10c tree, T32.5, or T60.
+
+## T32.6 F1 corrections — 2026-10-29 — status: FINISHED
+
+Round dj S1 and S2, on the existing branch. Scope stayed the note and this section. No source, tests, goldens, shared OQ edit, build, game launch, or Wine. OQ-450 stays an owner choice.
+
+- Worktree: `E:\anno1503-worktrees\anno1503-T32-6`
+- Branch: `codex/T32-6-house-tick-inputs`
+- Start HEAD: `b821bbe292878cbda5711ee4f7d88b0f882fb60d`
+- Signed-correction commit: `1147a8e670588aef5b5297057173a635767a800d`
+- Domain and spawn-vector commit: `405359f746200dc0833850fa9524a11d06ff415a` (the note head these checks were written against)
+- Engine source: unchanged from the start tree. This section is the report commit that follows the note commits.
+- Scratch, gitignored: `cache/t326-f1-corr/` (disassembly and `vectors.py`). No original bytes in git.
+
+### S1 — signed below-64 correction
+
+AnnoWelt `0x1007653c` loads the residents word into `bp`. `0x10076540` sign-extends it. The floor test is `cmp` / `jge` at `0x10076543`–`0x10076545` (strict). The downgrade arm then does `cmp bp, 0x40` at `0x1007654b` and `jge` at `0x1007654f`. That `jge` is signed. The note at `b821bbe` treated the same compare as unsigned, so resident −1 (word `0xFFFF`) was described as skipping the correction. It falls through.
+
+The counter add uses the sign-extended value already in `eax` (`cdq` / bias / `sar` at `0x10076553`–`0x10076559`, then `sub eax, 0x40`). Residents is stored as 64 at `0x1007656a`, then city slot `+0x9c` is called. The removal arm skips that block at `0x10076549`. Call effects stay not evaluated.
+
+Independent check, downgrade arm, floor `48·8 = 384`, mood `< 0`, flags clear. Truncation is toward zero, matching the bias-and-`sar` (`vectors.py`).
+
+| Residents | `< floor` | `< 64` | Counter add | Stored |
+|---|---|---|---|---|
+| −1 | yes | yes | `trunc(−1/64) − 64 = −64` | 64 |
+| 0 | yes | yes | −64 | 64 |
+| 63 | yes | yes | −64 | 64 |
+| 64 | yes | no | none | 64 |
+| 65 | yes | no | none | 65 |
+| 383 | yes | no | none | 383 |
+| 384 | no; below-64 test not reached | — | none | 384 |
+
+Removal arm, floor 64: −1, 0 and 63 enter the arm and do not execute the set-to-64 block. 64 and 65 do not enter. The widened kernel uses the signed `< 64` test on the widened integer. It does not wrap that integer to 16 bits. OQ-452 is unchanged.
+
+### S2 — domain, scan bound, spawn rows
+
+Goods scan, AnnoGame `0x10014860`–`0x10014864`: `inc ebx`, `cmp ebx, 0x60`, `jl`. Id `0x60` never matches. The scan calls slot `+0x48` with kind `0x20` (`0x10014817`–`0x10014822`). Dispatcher `0x100033c0` sends kind `0x20` to `0x10013be0` (case `0x1000346b`, call `0x10003477`). That lookup's ranges cover `0x4c`…`0x5a` and start again at `0x60`. Ids `0x5b`…`0x5f` fall through to the UNUSED literal (`0x10013ce2`, pointer `0x100261e8`), which is also id 0's result. The first equal string wins (`0x1001485e`), so `0x5b`…`0x5f` are not a distinct Ware match. The old id-`0x60` rows are withdrawn. The `> 0x5a` arm stays described as an unreachable abstract input (`0x1001488f`–`0x100148a0`), not as a file example and not as an engine cap. `n ≤ 255` and goods `≤ 0x5f` are not proposed for the widened registry (PLAN §0.1). The loader derivation of `+0xcc` / `+0xcd` is unchanged: the parser writes `+0xcc` (`0x1001486b`–`0x100148a6`); Force does not extend `+0xcd`.
+
+Divisions. Smoothing (`0x10076288`–`0x100762a5`) has no zero divisor; the original stores the low 16 bits (`0x100762a9`). The needs-loop divisor is the post-smoothing word re-read at `0x10076305`, times `Menge` (`idiv` `0x10076318`). That loop has no `E == 0` return. Mood returns 0 on `E == 0` before any divide (`0x10075fde`–`0x10075fef`) and is called only at `0x100763ed`, after the loop. A negative smoothing sum (E 0, residents −65, sum −1) is outside the u32 domain. The original store is 65535 and the next read is 65535. The widened column does not keep −1.
+
+Spawn boolean, same inputs in §2.1 and §2.3: `lowest < 102` and `walker_count < type_max` (`0x10076341`, `0x1007636f`). Variant count is the deferred spawn's divisor (`0x100763c4`), not an input of the boolean. `VermehrTab` is indexed at `group + 0x110 + mood` (`0x1007642c`, `0x100764ec`) only for mood −2…+2. Mood 3 is an undefined read, not an add.
+
+101/102, one masked need, old `E = 128`, `residents_64 = 64`, `Menge = 12`, walker count 0, type max 1. Post-smoothing `E = trunc(128·127/128) + trunc(64/64) = 128`.
+
+| Pre-decay stock | After `·127/128` | `s` | Boolean |
+|---|---|---|---|
+| 102 | 101 | `trunc(101·1536 / 1536) = 101` | `101 < 102` and `0 < 1`: true. Variant count unread. PRNG and job not evaluated |
+| 103 | 102 | 102 | `102 < 102` is false. Walkers are not read (`jge` `0x10076346`). The same walker inputs do not change it |
+
+### Acceptance
+
+| Item | Status |
+|---|---|
+| §2.1, §3.6 and the unsigned mutant corrected for signed `jge` | **met** |
+| −1, 0, 63, 64, 65 and the floor/arm predicates checked independently of the calls | **met** (table above; `vectors.py`) |
+| `0x60` not used as a reachable example; `0x5b`…`0x5f` labeled unreachable | **met** |
+| No `n ≤ 255` or goods `≤ 0x5f` engine cap | **met** |
+| 101/102 intermediates, walker inputs, and the same predicate in §2.1 and §2.3 | **met** |
+| Negative sum kept out of widened `E`; OQ-452 not closed | **met** |
+| OQ-450 still an owner choice | **met** (unchanged) |
+| Only the note and this section | **met** |
+| `git diff --check` against `b821bbe` | recorded with this commit |
+
+FINISHED means these two corrections are in the note. It does not approve live P2.3. OQ-450, OQ-452, OQ-473 and the other named leftovers in the previous section stay open.
+
+### Decisions and reasoning
+
+1. **Replace the unsigned −1 row instead of adding a second interpretation.** Alternative: leave both readings in §3.6. Rejected. `0x1007654f` is one signed `jge`. The unsigned sentence contradicted it.
+2. **Apply signed `< 64` to the widened integer, and do not wrap it first.** Alternative: compare the low 16 bits as an unsigned word, or wrap to i16 before the test. The first is the bug. The second would import the original narrow width into widened state. OQ-452 still owns that policy. Evidence: `movsx` at `0x10076540` and `jge` at `0x1007654f`.
+3. **Label `0x5b`…`0x5f` unreachable instead of using them as the high-id example.** What would have been guessed: any id in `0x5b`…`0x5f` is a reachable substitute for `0x60` because the scan bound is `ebx < 0x60`. Checked AnnoGame `0x10014861`–`0x10014864`, dispatcher `0x100033c0` (kind `0x20` → `0x10013be0` at `0x10003477`), and lookup ranges `0x10013c65`–`0x10013ce2`. Those ids return the same UNUSED literal as id 0, and the first match wins. Options were a synthetic `0x5b` file row, or an explicit unreachable input. The second is what the instructions support.
+4. **Do not cap the engine registry at the scan.** Alternative: reject `n > 255` and goods above `0x5f`, as the previous paragraph proposed. Rejected. PLAN §0.1: that bound validates the original file. It is not a `const` limit of the widened registry.
+5. **Leave the negative smoothing sum out of u32 `E`.** Alternative: keep the widened result as −1. Rejected. P1 widened `E` as u32. The original store and the next zero-extending read are 65535 (`0x100762a9`, `0x10076305`). A signed store would be a new state change. OQ-452 remains the owner's choice.
+6. **One commit for the signed correction, one for the domain and the spawn rows, then this report.** The two corrections are different claims. The report names both heads.
+
+Subagents: none. No merge, rebase, push, or edit of TASKS, PLAN, or AGENTS. OQ-450 was not closed.

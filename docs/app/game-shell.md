@@ -87,6 +87,40 @@ Terrain and scenery come from the island files. Buildings come from the
 `--view` is unchanged. It still builds a scene once from the file and the
 stand-in rule.
 
+## Why the scene re-encodes PROD2
+
+The brief offered a render builder that takes object lists (Anlage id,
+rotation, height, island-local position) and places sprites without writing
+file records. This shell writes the world's buildings back into the island's
+`PROD2` records (`apply_world_buildings`), and `render::Scene` is constructed
+from those records the same way `--view` is.
+
+Tick 0 is one scene, built before the first turn. The existing scene path
+already draws `PROD2` items, and the play-versus-view checks compare that
+path with itself. A second builder would have to reproduce block layout,
+draw order, and the height byte, and the chunk cache would still be filled
+from the same sprites. Keeping the records avoids that second path for a
+picture that does not change during the run.
+
+Two alternatives were set aside. Passing the `World` into `render` would
+give the renderer sim types, which this contract forbids. An object-list
+builder in `render` is the brief's shape and remains the better seam once
+the picture changes after load; it is not required to draw the tick-0 scene.
+
+What that leaves for the later steps:
+
+- W4.2 draws figures per frame. Ships and soldiers are already
+  `Scene::units`, drawn after the island chunks (the GPU compositor draws
+  the ships itself). Updating that list each frame leaves the `PROD2`
+  records alone, so figures do not depend on this choice.
+- W4.3 has to get building changes into the chunk cache. `FrameRenderer`
+  keeps chunks in `cache_` until a new chunk is stored under the same key;
+  nothing invalidates a chunk when an island's objects change. Re-encoded
+  `PROD2` means a building change rewrites the record and then needs that
+  invalidation. An object-list builder would need the same invalidation,
+  fed by a list diff instead of a record rewrite. Tick 0 never changes a
+  building after the scene exists, so this gap is not exercised here.
+
 ## `--play`
 
 `anno1503 --play <file.sze> [--speed 50|100|200]` builds the type registry with

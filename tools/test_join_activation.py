@@ -3241,16 +3241,20 @@ class RoundDnStudyEvidence(unittest.TestCase):
     def test_h2_non_ancestor_head_is_rejected(self):
         path = os.path.join(self._dir, "ancestor.jsonl")
         head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=_repo_root(), text=True).strip()
-        body = open(self.path, encoding="utf-8").read().replace('"code_head": "%s"' % head, '"code_head": "%s"' % ("0" * 40), 1)
-        open(path, "w", encoding="utf-8", newline="\n").write(body)
+        with open(self.path, encoding="utf-8") as handle:
+            body = handle.read().replace('"code_head": "%s"' % head, '"code_head": "%s"' % ("0" * 40), 1)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(body)
         code, detail = self._check(path)
         self.assertNotEqual(code, 0, detail)
 
     def test_h2_changed_source_hash_is_rejected(self):
         path = os.path.join(self._dir, "source.jsonl")
-        body = open(self.path, encoding="utf-8").read()
+        with open(self.path, encoding="utf-8") as handle:
+            body = handle.read()
         current = _blob_sha256("join_activation.py")
-        open(path, "w", encoding="utf-8", newline="\n").write(body.replace(current, "a" * 64, 1))
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(body.replace(current, "a" * 64, 1))
         code, detail = self._check(path)
         self.assertNotEqual(code, 0, detail)
 
@@ -3258,7 +3262,8 @@ class RoundDnStudyEvidence(unittest.TestCase):
         recorded = jj.provenance()["source_hashes"]
         for name in ("join_activation.py", "join_jitter_study.py"):
             blob = _git_show("HEAD:tools/%s" % name)
-            raw = open(os.path.join(_repo_root(), "tools", name), "rb").read()
+            with open(os.path.join(_repo_root(), "tools", name), "rb") as handle:
+                raw = handle.read()
             self.assertNotEqual(raw, blob)
             self.assertEqual(recorded[name], hashlib.sha256(blob).hexdigest())
             self.assertNotEqual(recorded[name], hashlib.sha256(raw).hexdigest())
@@ -3269,26 +3274,30 @@ class RoundDnStudyEvidence(unittest.TestCase):
         blobs = {}
         for name in ("join_activation.py", "join_jitter_study.py"):
             blobs[name] = _git_show("HEAD:tools/%s" % name)
-            open(os.path.join(tmp, "tools", name), "wb").write(blobs[name])
+            with open(os.path.join(tmp, "tools", name), "wb") as handle:
+                handle.write(blobs[name])
         git = ["git", "-c", "user.name=t61", "-c", "user.email=t61@example.invalid", "-c", "core.autocrlf=false"]
         subprocess.check_call(["git", "init"], cwd=tmp)
         subprocess.check_call(git + ["add", "tools"], cwd=tmp)
         subprocess.check_call(git + ["commit", "-m", "lf blob"], cwd=tmp)
         probe = os.path.join(tmp, "tools", "_prov.py")
-        open(probe, "w", encoding="utf-8", newline="\n").write(
-            "import os, sys\n"
-            "sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n"
-            "import join_jitter_study as jj\n"
-            "print(jj.provenance()['source_hashes']['join_activation.py'])\n"
-            "print(jj.provenance()['source_hashes']['join_jitter_study.py'])\n")
+        with open(probe, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(
+                "import os, sys\n"
+                "sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n"
+                "import join_jitter_study as jj\n"
+                "print(jj.provenance()['source_hashes']['join_activation.py'])\n"
+                "print(jj.provenance()['source_hashes']['join_jitter_study.py'])\n")
 
         def recorded(mode):
             # git checkout -c core.autocrlf left this host's worktree as LF, so the two
             # encodings are written explicitly from the same committed blob.
             for name, blob in blobs.items():
                 data = blob if mode == "lf" else blob.replace(b"\n", b"\r\n")
-                open(os.path.join(tmp, "tools", name), "wb").write(data)
-            raw = open(os.path.join(tmp, "tools", "join_activation.py"), "rb").read()
+                with open(os.path.join(tmp, "tools", name), "wb") as handle:
+                    handle.write(data)
+            with open(os.path.join(tmp, "tools", "join_activation.py"), "rb") as handle:
+                raw = handle.read()
             if mode == "crlf":
                 self.assertIn(b"\r\n", raw)
                 self.assertNotEqual(raw, blobs["join_activation.py"])

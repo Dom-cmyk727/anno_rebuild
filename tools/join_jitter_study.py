@@ -37,6 +37,11 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), default=list).encode()).hexdigest()
 
 
+def canon(value):
+    """JSON form of a recorded or replayed object. Tuples become lists on disk."""
+    return json.loads(json.dumps(value, sort_keys=True, default=list))
+
+
 def committed_source_sha256(head, name):
     """SHA-256 of the committed blob. A CRLF or LF checkout hashes the same bytes."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -252,6 +257,10 @@ def main(argv=None):
         for row in data:
             script = tuple((tuple(x[0]), x[1]) for x in row["config"].get("jitter_script", ()))
             replay = run(row["rate"], row["resend_ms"], row["workload"], row["profile"], script, row.get("diagnostic"))
+            if canon(row.get("metrics")) != canon(replay.get("metrics")):
+                raise SystemExit("invalid study: recorded metrics do not match the replay")
+            if canon(row.get("config")) != canon(replay.get("config")):
+                raise SystemExit("invalid study: recorded config does not match the replay")
             if any(row.get(key) != replay.get(key) for key in ("result_hash", "semantic_trace_hash", "config_hash", "script_hits")):
                 raise SystemExit("invalid study: retained row evidence does not reproduce")
         asym = next((r for r in diagnostics if r.get("diagnostic") == "asymmetric-data-delay"), None)

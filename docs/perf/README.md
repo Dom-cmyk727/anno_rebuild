@@ -930,3 +930,9 @@ Host: Windows, Ryzen 9800X3D, RTX 4090. Code head `297ea67`. Not a `bench_frame`
 Eight `PlayRunner::run_n(1)` calls on `Scenes/0010SingleEndlos/06_1024_heavy_256.sze`, Release MSVC, one sample: p50 0.38 ms, p95 0.4272 ms, p99 0.4272 ms, max 0.4272 ms. That is the CPU time of one turn, not the 100 ms wall cadence.
 
 The window (`anno1503 --renderer gpu --group 2`, 1280×800, `00_1024_easyentry_01.sze`, about 8 seconds, adapter NVIDIA GeForce RTX 4090 (Vulkan)): after warmup, `--play` and `--view` both sit at about 0.3 ms average window-thread busy time and about 500 fps. `--play` reported turn p95 0.3–0.4 ms while the tick advanced in real time (tick 2350 to 4300 across about 6 seconds). 1920×1080 and 3840×2160 were not measured. The window size is fixed at 1280×800, and `bench_frame` does not run the sim thread.
+
+## W4.1 F1 — play turn cost over 3000 turns (2026-10-29)
+
+Host: Windows, Ryzen 9800X3D, RTX 4090. Release MSVC. Code head `6b95fcd`. Not a `bench_frame` run.
+
+Three thousand `PlayRunner::run_n(1)` calls on `Scenes/0010SingleEndlos/06_1024_heavy_256.sze` (`play: turn cost on the heavy endless scenario`). One sample: p50 0.2561 ms, p95 0.3114 ms, p99 0.3681 ms, max 0.6834 ms. Log: the test message in the F1 report. That is the CPU time of one turn, not the 100 ms wall cadence.

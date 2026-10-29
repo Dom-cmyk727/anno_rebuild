@@ -2396,6 +2396,7 @@ def _check_link(events, cfg, end_t=None, delays=None):
     out = []
     ns = NS_PER_MS
     delays = delays or {}
+    legacy_zero_evidence = _legacy_zero_jitter_evidence(events, cfg)
 
     def bad(t, text):
         out.append(("xvi", "t=%s %s" % (t, text)))
@@ -2557,7 +2558,7 @@ def _check_link(events, cfg, end_t=None, delays=None):
                 bad(q["t"], "lid %s labels an extra delay of %d ms, which differs from the declared %d ms" % (
                     lid, q["extra_ms"], declared))
             # T61 audit fields are optional only for wholly legacy zero-jitter fixtures.
-            if t is not None and not _legacy_zero_jitter_evidence(events, cfg):
+            if t is not None and not legacy_zero_evidence:
                 jitter_ident = (jitter_identity("data", t["src"], t["dst"], t["ch"], t["epoch"], t["seq"], t["attempt"])
                                if claimed[lid][0] == "d" else
                                jitter_identity("ack", t["src"], t["dst"], t["ch"], t["epoch"], t["idx"]))

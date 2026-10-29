@@ -7008,3 +7008,29 @@ OQ-490. The developer start gives the whole start island to the city. The origin
 - **Gates not closed here:** `#286` and `#287` (heavy render corpus) were refused by the memory coordinator in both of the executor's runs, at about 5.2 GiB available against a 6.5 GiB request. MAP.1 changes no render code. Owed by the next full gate run on main.
 - **Owner verdict on the layout:** "not a good map layout". Too artificial and symmetric. Direction: original-like, fair by measure. Measurement of the nine original endless maps: 16–28 islands per 1024², 19–46% rectangle coverage, all six climates, median nearest gap 16–32 tiles. lan5 has 21 islands on 1431² (23% coverage). Follow-up: MAP.2 (board, round dl).
 - **Process:** the report came after the owner had been told the task was done. A ctest from 19:40 was still running in the worktree during the review. See round dl's process notes.
+
+## Round dm — Review of W4.1 — 2026-10-29 — status: CHANGES REQUIRED (W4.1 F1); owner check passed
+
+- **Reviewed:** `task/W4-1-play-mode` at `5f466cd` (code `f7ef40a`), branched from `328f267`. Read in full: `play.cpp`, `play.hpp`, the loader changes, the play tests, and the report. **Not merged.**
+- **Owner check:** the owner ran `--play` on `00_1024_easyentry_01.sze` and found the picture good ("it looks good"). Their map feedback went to MAP.2.
+- **What holds:**
+  - the sim is loaded through MAP.1's registry loader;
+  - the islands are the ones the sim resolved;
+  - the buildings are the `World`'s, with world tiles converted to island-local ones;
+  - the snapshot is published under a pointer-only mutex (round dl's correction);
+  - `--view` keeps the stand-in rule;
+  - the unix warnings are clean (the executor's log);
+  - the window holds about 500 fps with the sim running.
+- **Measured by the orchestrator, F1.1:** `--play` on `00_1024_easyentry_01.sze`, two window titles exactly 20.0 s apart: `tick 1000, game 2000 ms` → `tick 10550, game 21100 ms`. That is 19.1 s of game time in 20.0 s of real time: 191 turns at about 104.7 ms instead of 100 ms, **about 4.5% slow**. Cause: `PlayRunner::loop` sleeps `turn − elapsed` relative to each turn's own start, in 10 ms `sleep_for` slices, so the overshoot (Windows timer granularity) accumulates and is never counted in `behind_ms`.
+- **Findings (W4.1 F1, all required):**
+  1. **The cadence holds its average.** Schedule turns at absolute deadlines (`t0 + k · mp_turn_real_ms`, `sleep_until`). When behind, run late turns back to back up to a stated bound (for example 5 turns, with the reason), then skip the schedule forward and add the skipped time to `behind_ms`. Make the clock and the sleep injectable in the runner, so a unit test proves deterministically that there is no cumulative drift and that the catch-up bound holds. Then repeat the orchestrator's title measurement over at least 60 s: game time / real time within 0.5% at 100%, and also at 50% and 200%.
+  2. **Test the thread, not only `run_n`.** The determinism test (c) runs `run_n` on the test thread, so `loop()` is untested. Add a case that starts the runner, lets it run at least 50 turns (with the injected clock from F1.1 the test stays fast), stops it, and compares the `World` hash with ≥ 50 direct `run_turn` calls. N ≥ 50 as the brief says (now 3).
+  3. **Test (a) as briefed:** every `.sze` of the scenario corpus, not two files, plus MAP.1's `data/maps/lan5.txt` through `load_fixed_map` (the seam the brief requires; it is missing).
+  4. **Test (b) over the whole picture.** Eight of the ten `0200Single` files compared only a 640×360 corner, which on these maps is mostly sea. Compare the whole picture chunk by chunk or in windows, so memory stays bounded, covering every island and every building. Keep the listed exceptions. Compare one play scene GPU vs CPU on the RTX 4090.
+  5. **No silent narrowing:** `apply_world_buildings` writes `b.type & 0x0FFF` and `island.number & 0xFFFF`. An id or slot that does not fit the record must be refused with a note, never truncated (CLAUDE.md, no hardcoded limits). Add a test with an out-of-range id.
+  6. **Record the design choice.** The play scene is built by re-encoding original-format PROD2 records in the app, not through a render builder from object lists as the brief proposed. Put it in `docs/app/game-shell.md` and in Decisions and reasoning: why, the alternatives, and what it means for W4.2/W4.3 (per-frame figures, building changes reaching the chunk cache). Keeping it is acceptable for tick 0 if it is justified.
+  7. **Mutations actually run**, with the failing assertion text. Mutation 2 (links from the stand-in rule) and mutation 3 (buildings from the file) were argued, not run. Mutation 4 (the window waits on a mutex held for the whole turn) is missing. Add F1.1's own: relative sleeping instead of deadlines must fail the drift test.
+  8. **Gates:** full `ctest` with and without `ANNO1503_GAME_DIR` (the heavy render corpus may be refused by the coordinator: report the numbers; not a pass); clang-format 23.1.3 over the changed files; the unix warnings again on the final head.
+  9. **Measurements and pictures:** turn cost over ≥ 3000 turns (now 8). Frame time at 1920×1080 and 3840×2160: resize or maximise the window (the owner's screenshot shows the window is resizable), or add a size option, and give sim running vs paused. Redo the stills of `Single_05`/`Single_08` centred on their own islands (the current ones are open sea because every still used the easy-entry Kontor tile), and look at each.
+- **Re-run by the orchestrator:** `anno_app_tests --test-case=play:*` at `f7ef40a` (MSVC Release): 7 cases, 300 assertions passed with `ANNO1503_GAME_DIR`; without it, the game-file cases print their skip message.
+- **Process:** good. The report was committed before stopping, and the snapshot correction was applied as asked.

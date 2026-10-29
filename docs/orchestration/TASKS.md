@@ -4,7 +4,17 @@
 
 **Round bp (2026-10-26, owner instruction):** for every task after the one an executor has in progress now, **subagents are allowed again where necessary and helpful**. §1 item 5 has the rules: the task stays the executor's, subagents' results are checked against the files before they enter a commit, resource-budgeted concurrency under round cp, the orchestrator's review stays. §1 item 11 no longer forbids them inside a sub-task.
 
-Last update: 2026-10-29 dl — **MAP.1 accepted and merged (6db51eb); the owner rejected the lan5 layout; MAP.2 (original-like map, fair by measure) planned; lane 3 continues with W4.1 from main.** Lanes 1 and 2 unchanged; F6 paused; no push.
+Last update: 2026-10-29 dm — **W4.1 reviewed: owner check passed, CHANGES REQUIRED (F1.1–F1.9) on lane 3; MAP.2 released to a new lane 4 with the owner's layout rule.** MAP.1 merged (6db51eb). Lanes 1 and 2 unchanged; F6 paused; GitLab `fuitable/open1503` (private) is the remote, pushed over SSH.
+
+**Round dm (2026-10-29, orchestrator): W4.1 review; MAP.2 released.**
+- **W4.1 `CHANGES REQUIRED — W4.1 F1`:**
+  - The owner ran `--play` and found it good, so the owner check is passed.
+  - The orchestrator's review at `5f466cd` (REPORTS "Round dm") requires F1.1–F1.9: the turn cadence drifts about 4.5% slow (measured: 19.1 s of game time in 20.0 s of real time; relative sleeps accumulate); the thread loop is untested; tests (a)/(b)/(c) are narrower than briefed (two files, a 640×360 corner, three turns); a silent 12-bit id narrowing; the design choice is unrecorded; three mutations were not run; the full gates and measurements are missing.
+  - Lane 3 continues on its branch from `5f466cd`.
+- **MAP.2 `ASSIGNED — lane 4`** (a new executor session): the five-player map by the owner's layout rule (block below), three candidates, the fairness rule in the spec and the tool, previews, OWNER-CHECK. Tools and data only. Branch `task/MAP-2-original-like` from the round-dm board commit, worktree `E:nno1503-worktreesnno1503-MAP-2`, OQ-515..524.
+  - The orchestrator measured the large templates: feasible clusters within ±10% land without suffixed templates exist.
+  - Equal land counts show that suffixed templates are probably the same shapes as plain ones, so shape distinctness must be proven from the height masks.
+- **Concurrency:** four lanes, each in its own worktree. Lane 3's new lan5 seam test loads `data/maps/lan5.txt` by path and must not depend on its content. MAP.2 leaves `lan5.txt` unchanged until the owner's pick.
 
 **Round dl (2026-10-29, orchestrator): MAP.1 review; the owner's map decision.**
 - **MAP.1 `DONE`:** code accepted at `1665f60`, report `328f267`, merged into main with `--no-ff` (6db51eb). The orchestrator re-ran these independently:
@@ -363,7 +373,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 - **Acceptance:** the facts checked; one registry loader with byte-identical existing results; the spec; reader, dump and Python reference agree; the loader builds a `World` from `lan5.txt` for 2–5 seats with the developer start; the preview and the fairness table exist; every refusal tested; no original bytes in git (`data/maps/lan5.txt` names templates only).
 - **Gates:** board §1 items 4, 9 and 12 in full (formats/sim_load/tools: MSVC, CTest with and without the game files, clang-format 23.1.3, GCC 13.3 and Clang 18 `-Werror` in WSL, `tools/agree.py`); mutations: drop the climate from the template (the climate test fails); skip the overlap check (the overlap refusal fails); hash the raw bytes instead of the canonical form (the CRLF/LF test fails). Commit by concern; report `## MAP.1 — The fixed map — <date> — status: ...` with Decisions and reasoning; then part B.
 
-#### MAP.2 — An original-like five-player map, fair by measure · `PLANNED` (round dl; not released) · `PARALLEL-OK` with W4.1 (tools and data only) · branch `task/MAP-2-original-like` from main at 6db51eb or later · new OQs OQ-515..524
+#### MAP.2 — An original-like five-player map, fair by measure · `ASSIGNED — lane 4` (round dm; a new executor session; planned in round dl) · `PARALLEL-OK` with W4.1 (tools and data only) · branch `task/MAP-2-original-like` from main at 6db51eb or later · new OQs OQ-515..524
 - **Why:** the owner rejected MAP.1's lan5, five rotated copies of one region around one contested island, as too artificial and symmetric (round dl, `lan-mvp.md` §3 and §8 question 6). Wanted: a map that looks and plays like an original endless map, scaled to 1431 tiles and five players, and fair by measure.
 - **Facts (orchestrator's measurement, 2026-10-29, `anno-sim-replay scenario <file> --ticks 0` over the nine `Scenes/0010SingleEndlos` files; re-measure with your own tool):**
   - The "256" maps (01, 03, 06; 1024²) have 27 islands: sizes 64×5, 80×10, 128×8, 256×4. Climates 0–5 are all present (3/3/5/4/7/5). Island rectangles cover 46% of the map. The median gap to the nearest island is 16–32 tiles; the minimum is 8.
@@ -386,7 +396,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   5. **Tests:** the lan5 test with the chosen layout (2–5 seats, five minutes, MSVC = GCC hash). Measure the sim tick on the chosen map with five cities (`lan-mvp.md` §3).
 - **Acceptance:** the targets measured and documented; the fairness rule and tolerances in the spec; the candidates pass it; the owner's pick committed; the gates of board §1 items 4, 9 and 12.
 
-#### W4.1 — Play mode: the sim runs in the app, the scene shows the sim's world · `ASSIGNED — lane 3 part B` (round dk; round dl: branch from main) · `PARALLEL-OK` with lanes 1 and 2 · branch `task/W4-1-play-mode` from MAP.1's report head `328f267` (an ancestor of main; started in round dk, continued in round dl) · worktree `E:\anno1503-worktrees\anno1503-W4-1` · new OQs OQ-500..509
+#### W4.1 — Play mode: the sim runs in the app, the scene shows the sim's world · `CHANGES REQUIRED — W4.1 F1` (round dm; owner check passed; findings F1.1–F1.9 in REPORTS "Round dm") · lane 3 (round dk; round dl: continued on its branch) · `PARALLEL-OK` with lanes 1 and 2 · branch `task/W4-1-play-mode` from MAP.1's report head `328f267` (an ancestor of main; started in round dk, continued in round dl) · worktree `E:\anno1503-worktrees\anno1503-W4-1` · new OQs OQ-500..509
 - **Why:** `lan-endless.md` W4 steps 1–2 and `lan-mvp.md` §4: MVP-A needs the app to run the deterministic sim at a fixed cadence and the renderer to show the sim's world. Stage 1 sets the split between static content (terrain, scenery: from the files) and dynamic content (buildings: from the sim) and the threading contract. Building changes after tick 0, figures and input are W4.2–W4.4.
 - **Facts this task builds on (orchestrator's read, 2026-10-29; re-check each):**
   - The app links only `anno_render` (`src/app/CMakeLists.txt:11`); modes: `--view` plus `--png`, window loop in `Viewer::run` (`viewer.cpp:438`); `Viewer` holds `const render::Scene&`.

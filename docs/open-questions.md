@@ -1971,3 +1971,17 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What is known (D, AnnoWelt):** unlock `0x10029610` uses the word at `city +0x10` as `last` and, after a pass, stores the current tick there (`0x10029908`). City constructor `0x1002f990`–`0x1002fada` does not store `+0x10`. `+0x618` is not saved; whether `+0x10` is saved was not found in the city save sweep for `0x618`.
 - **Why:** catch-up after load is "one unlock pass once `(u16)(tick − last) ≥ 2500`". If `last` is 0, a loaded game with tick ≥ 2500 runs that pass on the first city visit. A non-zero leftover stamp would delay it.
 - **How to resolve:** sweep stores of `city +0x10` (this-adjustment: city vtable `0x100c2f40`) in the constructor, the city reader `0x1002e170`, and the city save `0x1002ebb0`. Next address: those stores.
+
+## OQ-462: Who sets house flag bits 4/5 (`+0x0c & 0x30`) (T32.5 S9b, 2026-10-29)
+- **Status:** open.
+- **Area:** simulation / population / houses.
+- **What is known (D, AnnoWelt):** mood treats `[house+0x0c] & 0x30` as a forced −1/−2 (`population.md` §4.1). City events `0x1002ba80` (`this` = city) run every 12500 ticks (`[city+0xe]`). They call `0x1002b700` (picks a kind-`0x61` house) and `0x1002b840`. No immediate `0x10`/`0x20`/`0x30` store to `[reg+0x0c]` in `0x1002ba80`–`0x1002bc09` or in `0x1002b700`–`0x1002b7ed` / `0x1002b840`–`0x1002b882`. A module scan for those immediates into `+0x0c` was empty.
+- **Why:** P1's default is flags stay 0 (`state.md` §4.7c owner Q7). Who sets them decides whether P2 must model fire/plague/riot mood.
+- **How to resolve:** finish `0x1002b700` and `0x1002b840` for a house `+0x0c` write or a slot that writes it; then the fire path `0x10072a60`. Next address: those remaining ranges.
+
+## OQ-462: Who sets house flag bits 4/5 (`+0x0c & 0x30`) (T32.5 S9b, 2026-10-29)
+- **Status:** open.
+- **Area:** simulation / population / houses.
+- **What is known (D, AnnoWelt):** mood treats `[house+0x0c] & 0x30` as a forced −1/−2 (`population.md` §4.1). City events `0x1002ba80` (`this` = city) run every 12500 ticks (`[city+0xe]`). They call `0x1002b700` (picks a kind-`0x61` house) and `0x1002b840`. No immediate `0x10`/`0x20`/`0x30` store to `[reg+0x0c]` in `0x1002ba80`–`0x1002bc09` or in `0x1002b700`–`0x1002b7ed` / `0x1002b840`–`0x1002b882`. A module scan for those immediates into `+0x0c` was empty.
+- **Why:** P1's default is flags stay 0 (`state.md` §4.7c owner Q7). Who sets them decides whether P2 must model fire/plague/riot mood.
+- **How to resolve:** finish `0x1002b700` and `0x1002b840` for a house `+0x0c` write or a slot that writes it; then the fire path `0x10072a60`. Next address: those remaining ranges.

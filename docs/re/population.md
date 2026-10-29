@@ -702,13 +702,21 @@ A list walk `0x10023470` (`this` = list, `edi = ecx`) does call the element's sl
 
 **Not D** for a world-save dispatcher. Next address: in the player writer `0x1001e920` and the city writer `0x1002ec00`, a `call [reg+0x80]` whose `this` is a building with house vtable `0x100c9958` (this-adjustment: the vtable dword at `[this]`).
 
+### 15.8 House flag bits 4/5 (S9b)
+
+Range read: city events `0x1002ba80`–`0x1002bc09`; helpers `0x1002b700`–`0x1002b7ed` and `0x1002b840`–`0x1002b882`. A module scan for `or`/`and`/`xor`/`mov` of immediates `0x10` / `0x20` / `0x30` into `[reg+0x0c]` was empty.
+
+`0x1002ba80` (`this` = city, `esi = ecx`): period `(u16)(tick − [city+0xe]) < 0x30d4` (12500). It counts buildings of kinds `0x58` / `0x59` (GERICHT / GALGEN) through city `+0x144` slot `+0x30`, then calls `0x1002b700` and `0x1002b840`. `0x1002b700` (`this` = city, `ebx = ecx`) picks a house of kind `0x61` (slot `+0x24`) and then talks to island / UI slots (`+0xb4`, `+0xa4`, `+0xa0`); no store to a house `+0x0c` in the range read. `0x1002b840` starts with allocations only.
+
+**Not D** for who sets bits 4/5. Next address: the rest of `0x1002b700` and `0x1002b840` for a store or a slot that writes house `+0x0c`, and the fire path already noted at `0x10072a60` (`population.md` §8 / `production.md`).
+
 ## Open
 - T32.1 closed the house field layout; T32.2 closed the house-tick order, mood, upgrade/downgrade bodies, materials check and booking; T32.3 closed the `take = 1` class (MarketStall `+0xac`) and wrote the DRAFT (`state.md` §4.7c); T32.4 closed the stand → house path (job `0x35`, OQ-187) and the owner's house/stand clauses (OQ-103); **T32.5 closed the stage mask** (player `+0x90` / property `0x21` is saved state; city `+0x618` is derived). Still open below.
 - Who dispatches house Save slot `+0x80` on a world save (OQ-185, §15.7): world save has no `call [reg+0x80]`; the list walk `0x10023470` is the city **load** path. Next: player writer `0x1001e920` / city writer `0x1002ec00` for a house-`this` `+0x80`.
 - The `0x1001bda3` OR into `player +0x90`: property id of jump-table case `0x1001bcbd`, and what `eax` is (OQ-460). Next: the switch that indexes `0x1001be74`.
 - Constructor / load value of the unlock stamp `city +0x10` (OQ-461). Next: stores of `city +0x10` outside `0x10029610`.
 - Unit of the city store and of delivered amounts (is 256 = 1 t?); confirm with T1 and a savegame pair (M2.1).
-- Where house flags bits 4/5 (`+0x0c & 0x30`, forced mood −1/−2) are set: fire, plague, riot? (`0x1002ba80`.)
+- Where house flags bits 4/5 (`+0x0c & 0x30`, forced mood −1/−2) are set (OQ-462, §15.8): `0x1002ba80` picks a house but does not write `+0x0c` in the range read. Next: rest of `0x1002b700` / `0x1002b840`, and `0x10072a60`.
 - How infrastructure "goods" (`0x4c`–`0x5a`) reach the house stock: public buildings share the job `0x35` candidate mask (`0x01`); PublicService `+0xa4` for those ids is unread (OQ-102 Q3).
 - The third stack arg of stall `+0xac` (figure-type related at `0x100565e8`); take is hardcoded 1 regardless.
 - Group `BauFirst`/`BauLast`, `Wissen`, goods `BauLast`, `Hiscore`: readers not found yet.

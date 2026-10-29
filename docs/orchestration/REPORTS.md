@@ -5661,3 +5661,7 @@ S9 (OQ-185 and house flag bits 4/5) follows this commit.
 ### S9a — OQ-185 (house Save dispatcher)
 
 World save `0x100ae700`–`0x100ae7ea`: no `call [reg+0x80]`. `--reloc` `0x10077130` → `0x100c99d8` only. List walk `0x10023470` / `0x10023582` is city reader `0x100264a0` (load). **Not D.** Next: `0x1001e920` and `0x1002ec00` for a house-`this` `+0x80`. OQ-185 updated.
+
+### S9b — house flag bits 4/5
+
+City events `0x1002ba80` (`this` = city, period `[city+0xe]`, 12500) call `0x1002b700` / `0x1002b840`. `0x1002b700` picks a kind-`0x61` house; no `+0x0c` store in the range. Immediate scan of `0x10`/`0x20`/`0x30` into `+0x0c` empty. **Not D.** Next: rest of those helpers and `0x10072a60`. OQ-462 opened.

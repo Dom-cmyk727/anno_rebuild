@@ -6620,6 +6620,49 @@ Control and the loading-joiner case pass on that archive. The archive is `cache/
 
 Next: phase 2, N1 then N2, N3, N4, N6, each shown passing, then the N7 gates and JM1–JM8.
 
+## T61 F2 closure — progress, phase 2 — 2026-10-30 00:10 +01:00 — status: IN PROGRESS
+
+HEAD: `89f300845e61285d98002b23adb1c077fea0fe27`. Starting point `be08b7b`. Scope remains the six files (`git diff --stat be08b7b..HEAD`: study runner, join tests, REPORTS). No push, PR, TASKS/PLAN/AGENTS, first-lane or other-worktree edit.
+
+N1–N6, each with the failing test from phase 1 and the passing re-run `cache/t61-f2/dn/gates/round-dn-pass.err` (30 tests, 5.041 s, OK at `448662d` after N1–N6; still green in the 262-test suite at this head):
+
+| N | commit | passing evidence |
+| --- | --- | --- |
+| N1 | `de6a48a` hash committed blobs, not the working tree | `test_n1_provenance_hashes_the_committed_blob`, `test_n1_crlf_and_lf_checkouts_validate_the_same_blob` |
+| N2 | `5fcd8f2` compare recorded metrics and config with the replay (`canon`) | H2 edited `ack_bytes`, dropped metrics, edited rate, edited jitter now raise |
+| N3 | `622787a` `--validate` replays through `controlled_run` with `min(CLI, manifest)` bounds | `test_n3_validate_replay_obeys_the_row_deadline` (0.001 s → `timeout`); worker reap already passed |
+| N4 | `6034f5f` require `repeat` and `asymmetric-data-delay`; repeat hashes equal the primary; script is the emitted 100 ms identity | `test_h2_removing_both_diagnostics_is_rejected`; H3 behavioural tests |
+| N5 | already in `d0db15c`; tests in `a9c8281` | H1a–f pass here; fail on the ignored `30964c2` archive |
+| N6 | `17699d7` reassembly peaks from acquire/release events | `test_n6_reassembly_ownership_is_read_from_events`; H4 lag tests; peak retained hand vector; network vs scheduler |
+
+N7 gates, logs under `cache/t61-f2/dn/gates/`:
+
+| gate | result |
+| --- | --- |
+| (a) join suite at `367af75` | 261 tests, 242.423 s, OK |
+| (a) join suite at this head `89f3008` | **262 tests**, 297.907 s, OK (floor 222; none lost) |
+| (a) snapshot suite | 64 tests, 19.131 s, OK |
+| (b) existing MUTANTS + (c) JM1–JM8 | `MutantTable` 2 tests, 18.006 s, OK |
+| (d) PYTHONHASHSEED 1 vs 2 | `test_n7d_fresh_processes_agree_under_different_hash_seeds` OK |
+| (e) zero-jitter vs `917efea` | `compare917.py`: 6 SENS_ROWS × {100M,1M} match; `test_n7e_zero_jitter_projection_matches_917efea` OK |
+
+JM1–JM8 are scheduler patches (J1 is a joiner name). Mutant → named test:
+
+| mutant | named test |
+| --- | --- |
+| JM1 ignore ACK jitter | `JoinJitterMutantGates.test_jm1_ack_jitter_matches_the_independent_sample` |
+| JM2 reuse attempt-1 jitter | `test_jm2_retries_do_not_reuse_attempt_one_identity` |
+| JM3 omit epoch/channel | `test_jm3_identities_include_epoch_and_channel` |
+| JM4 zero un-serialized jitter | `test_jm4_unserialized_jitter_matches_the_independent_sample` |
+| JM5 round serialized arrival down | `test_jm5_serialized_callback_is_not_early` |
+| JM6 shift every sample +1 | `test_jm6_a_live_sim_matches_the_independent_profile` |
+| JM7 swap attempt identities | `test_jm7_attempt_identities_are_not_swapped` |
+| JM8 erase in-horizon arrival | `test_jm8_each_in_horizon_send_has_an_outcome` |
+
+`git diff --check be08b7b..HEAD` still reports a new blank line at EOF of the test file (noted in phase 1). Not a weakened assertion.
+
+Next: phase 3, reviewer pass 1 before the final study.
+
 ## T61 F2 closure — progress, phase 2 — 2026-10-30 00:09 +01:00 — status: IN PROGRESS
 
 HEAD of the tested code: `89f300845e61285d98002b23adb1c077fea0fe27` on `codex/T61-join-jitter`. This section is the phase 2 progress commit, and it does not change the tools. No reset.

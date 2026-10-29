@@ -113,7 +113,7 @@ def peak_reassembly(sim):
     for event in sim.events:
         if event["kind"] == "reasm_acquire":
             owned[(event["src"], event["dst"], event["ch"], event["mid"], event["frag"])] = event["size"]
-            peak_frags = max(peak_frags, event["held"])
+            peak_frags = max(peak_frags, len(owned))
             peak_bytes = max(peak_bytes, sum(owned.values()))
         elif event["kind"] == "reasm_release":
             for frag in event.get("frags", ()):

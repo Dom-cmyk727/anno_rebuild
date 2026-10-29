@@ -5683,3 +5683,10 @@ City events `0x1002ba80` (`this` = city, period `[city+0xe]`, 12500) call `0x100
 - Reconstructed high: `0` 295, `0x28000000` 17, `0x29000000` 1, `0x69000000` 60.
 - Full runtime: `1` 263, `0x28000001` 17, `0x6900001f` 60, `7` 7, `0xf` 7, `0x1ffff` 4, `0x7ff` 3, `0xffff` 3, `0x3fff` 2, `3` 2, `0x7fffff` 1, `0x7fff` 1, `0x3ff` 1, `0x3f` 1, `0x2900001f` 1. `low_field_equal_1=280` `full_restored_mask_equal_1=263` `nonzero_high_bits=78`.
 - `Player::flags` exists (`player.hpp` default 1; hashed). `PlayerHead::parse` does not read `+0x48`/`+0x5C`; `PlayerSpec` has no flags; `scenario_formats.cpp` sets `flags_a0` only. Supersedes T32.5 claims that shipped high bits are clear and that `flags = 1` matches 280 of 373 heads.
+
+### F1.2 — Guarded player write (in progress)
+
+- Commands: `python …\tools\disasm.py E:\anno1503\game\app\AnnoWelt.dll 0x100296a2 50` → `cache\t32-5-f1\unlock-cmp-jae.txt`; `python …\disasm.py … 0x100298e0 60` → `cache\t32-5-f1\unlock-or-setter.txt`.
+- `cmp ecx, eax` at `0x100296c0`: two operands. `ecx` = GetProperty dest+4 (`[esp+0x28]`) `& 0x7fffff`; `eax` = `[city+0x618]`. `this` = city (`edi`); player is `esi` = `[city+0x20]`. Four callee-saves on the `0xb4` frame (`edi` then `ebx`/`ebp`/`esi`); GetProperty's two stdcall pushes have returned.
+- `jae 0x100298fe` at `0x100296c2`: one rel32 operand, unsigned greater-or-equal (CF=0), displacement `0x236`. Target is after `or ebx, edx` (`0x100298ee`) and `call [eax+0x4c]` (`0x100298fb`). Taken path skips announcement and the player OR/setter. Fall-through does both, then both paths store `last = tick`.
+- Supersedes T32.5 "else skip to the OR". An unsigned integer compare is not a bit-subset test; the setter is not called on the skipped branch.

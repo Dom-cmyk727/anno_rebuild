@@ -6477,3 +6477,47 @@ FINISHED means the inventory is complete, not that P2 is ready. Blockers: OQ-450
 4. Reserved OQ-470..472 for Waren `BauFirst`, `HEAD` mask import, and `+0xcc`/`+0xcd` derivation. Did not edit `open-questions.md`.
 
 `git diff --check` clean. Subagents: none. P1 `416993fa`, T10c `5b10ed3`, T32.5 `1fc598eb` untouched.
+
+## T32.6 F1 — Derived inputs and calculation contract — 2026-10-29 — status: FINISHED
+
+This section supersedes the acceptance claims in the round-cy report above. That report's text stays as history. It is not the contract. In particular it is no longer accepted that both endpoints come from the post-pass, that Force derives them, that a partial kernel may return would-fire flags, or that OQ-472 is still an unread loader.
+
+- Worktree: `E:\anno1503-worktrees\anno1503-T32-6`
+- Branch: `codex/T32-6-house-tick-inputs`
+- Start HEAD: `cfd85ec59d38f986bf1f0bde7d2ddcc5e6e2db88` (round-cy report; source unchanged by round de and by this round)
+- Inspected engine source: that same tree. No `src/` edit. Stage-mask facts: `1fc598eb0b57f0d487fb50d315d7c4ad9c0d8af2` (`population.md` §15, including §15.7 OQ-185 and §15.8 OQ-462), read only.
+- Note commit (derivation, contract and vectors together, because the vectors cite the loader rule): `464a9fdc74c62ac7b084f2fecd14f68ef7d512b9`
+- Written: `docs/sim/house-tick-readiness.md` only, plus this section. Scratch under ignored `cache/t326-f1/` (`derive.py`, disassembly). No build, no game launch, no Wine, no P2 code, no shared OQ edit, no golden change.
+
+### Steps
+
+1. **Loader (F1.1).** AnnoGame parser `0x1001486b`–`0x100148a6` writes `n` at group `+2` and `+0xcc` from the goods id, with the need index starting at `-1` (`0x10014105`). Infrastructure ids `0x4c`…`0x5a` do not change `+0xcc`. Force is not read. Post-pass `0x10014afc`–`0x10014bd9`: sentinel `n` in 96 lookup bytes, `lookup[Ware]=j` (last duplicate wins), `+0xcd=j+1` for every id in `0x4c`…`0x5a` before the Force test, mask bit only if Force is set, WIRTSHAUS alias only while `lookup[0x1d]` is still `n`, one ascending `IdSec` copy, then `+0xcd = max(+0xcd, +0xcc)`. Shipped five groups are in the note §1.3 (pioneers: `n=6`, `cc=4`, `cd=6`, mask `0`, alcohol still aliases to the unforced tavern). Synthetic counterexamples are §1.4, including infra-before-goods and unforced infra that still extends `cd`. `parse_house_groups` still does not store these. OQ-472 is closed in the note.
+2. **Mood and tick (F1.2).** Re-read AnnoWelt `0x10075fd0`–`0x10076224` and `0x10076230`–`0x100765b9`. `E==0` returns 0 before flags. A negative score byte takes `min`, and only flag bit `0x20` forces −2 on that path. Bit `0x10` forces −1 only when all three scores are ≥ 0. Decay is the mask bit, not Force. Direct decay does not call billing `0x1002dac0`. Upgrade/downgrade calls can change the store; those outputs are not evaluated. The kernel does not say "would fire".
+3. **Lifecycle (F1.3).** Ctor `0x100734ca` writes 0. Create `0x1002469b`–`0x100246b2` calls property `0x23`; the setter stores buffer+4 at `+0x0a` (`0x100733ac`). The frame slot `[esp+0xe4]` was not push-counted (note OQ-473). Load `0x10076e60`–`0x1007711b` writes `+0x2c` and `+0x2e` and does not write `+0x0a`. Our import leaves `last` 0 and does not stamp, so it matches Create only when that stamp is already 0. Own-save visits `u16 last` (`state_fields.hpp`). OQ-450 stays open. Recommendation, not a new default: keep the exact field. City `+0x10` stores the tick (T32.5 §15.5, store `0x10029908`); house `last += 2500` is a different stamp.
+4. **Vectors (F1.4).** Gate 2499 skip / 2500 take / 65536 skip / last 64000 wraps to 964. `E` 100 with residents 63 becomes 99; `E` 0 with residents −65 is widened −1 and original u16 65535. Stocks 1/127/128 decay to 0/126/127. Caps 128 and 160, indices 0 and 20 at the ends, index 21 undefined. Tavern contributes to the goods mean and the infra min only when forced and inside the infra range. Mood rows cover `E==0`, both flag bits, and a negative score. Wohnmax equality does not clamp; 513 does. Floor 384 does not fire at 384. Widened stock 2796203 caps at 160; a u32 multiply yields 0. Mutants are mapped in the note §3.7. No tests or goldens were added.
+5. **Plan (F1.5).** P2.1 mask import, P2.2 `BauFirst` plus the §1 derivation, partial kernel as specified, live P2.3 not approved. `kStateHashVersion` unchanged.
+
+### Acceptance
+
+| Item | Status |
+|---|---|
+| `+0xcc` from the parser, `+0xcd` / mask / alias / substitution from the post-pass, Force does not extend `cd` | **met** (note §1) |
+| Shipped per-group summary and synthetic counterexamples | **met** (§1.3, §1.4) |
+| Mood/tick outputs are numbers or explicit not-evaluated | **met** (§2.3). Would-fire flags withdrawn |
+| Three lifecycle paths distinct; city stamp not reused; OQ-450 not closed | **met** (§4). Import `last=0` qualified by OQ-473 |
+| Numerical vectors with intermediates | **met** (§3) |
+| P2.1 / P2.2 / partial kernel / live P2.3 | **met** as a proposal. Live P2.3 blocked |
+| Only the two allowed files | **met** (this commit adds the report; the note commit is the other file) |
+| Original bytes absent from git | **met** |
+
+FINISHED means the assigned loader and mood reads are done and the calculation contract is decision-ready. It does not mean P2 may be implemented. Remaining blockers, each named: OQ-450 (owner), OQ-473 (Create stamp frame), OQ-460, OQ-461, OQ-462, OQ-185, OQ-451, OQ-452. OQ-470 and OQ-471 are implementation tasks, not unread formulas.
+
+### Decisions and reasoning
+
+1. **One note commit for derivation, contract and vectors.** Alternative: three note commits. Rejected because the vectors are false if they are committed against the old endpoint rule, and a derivation-only commit would still leave OQ-472 looking open. The report is its own commit.
+2. **Close OQ-472 in the note only.** Alternative: edit `docs/open-questions.md`. Forbidden by the two-file scope.
+3. **Recommend exact `last` and do not change code.** Evidence: `fields(House)` already visits it; P1 decision 4 leaves the choice open; resetting it changes the hash. No new default.
+4. **Do not re-prove Create's `now`.** The call and the setter are read. The stack slot is not. OQ-473 names the next read instead of repeating the old claim as new evidence.
+5. **No build.** Docs only. `git diff --check` against `cfd85ec` is the whitespace check.
+
+Subagents: none. No merge, rebase, push, or edit of T61, P1, the completed T10c tree, T32.5, or T60.

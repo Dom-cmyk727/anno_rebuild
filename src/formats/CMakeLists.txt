@@ -8,6 +8,7 @@ add_library(anno_formats
   src/colors.cpp
   src/figuren.cpp
   src/inc.cpp
+  src/fixed_map.cpp
   src/insel.cpp
   src/sze.cpp
   src/tagged.cpp
@@ -31,6 +32,7 @@ if(ANNO_BUILD_TESTS)
     tests/tex_corpus_test.cpp
     tests/figuren_corpus_test.cpp
     tests/figuren_test.cpp
+    tests/fixed_map_test.cpp
     tests/insel_corpus_test.cpp
     tests/sze_test.cpp
     tests/sze_corpus_test.cpp

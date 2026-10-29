@@ -25,6 +25,7 @@ if(ANNO_BUILD_TESTS)
                  tests/driver_classes_test.cpp tests/world_events_test.cpp tests/sweeps_test.cpp
                  tests/figure_removal_test.cpp tests/scenario_formats_test.cpp
                  tests/scenario_test.cpp tests/island_links_test.cpp
+                 tests/fixed_map_load_test.cpp
                  tests/scenario_links_test.cpp tests/transport_test.cpp tests/walk_cells_test.cpp tests/walk_search_test.cpp
                  tests/game_setup_test.cpp tests/house_test.cpp)
   # anno_sim_load: the scenario corpus case reads the island templates of the game

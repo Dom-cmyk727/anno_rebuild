@@ -238,6 +238,8 @@ def main(argv=None):
             raise SystemExit("invalid study: provenance or run identity does not match this source")
         primary = [row for row in data if row.get("kind") == "primary"]
         diagnostics = [row for row in data if row.get("kind") == "diagnostic"]
+        if {row.get("diagnostic") for row in diagnostics} != {"repeat", "asymmetric-data-delay"}:
+            raise SystemExit("invalid study: required diagnostics repeat and asymmetric-data-delay are absent")
         expected = {(rate, timer, workload, profile) for rate in RATES for timer in TIMERS
                     for workload in ROWS for profile in PROFILES}
         actual = {(row.get("rate"), row.get("resend_ms"), row.get("workload"), row.get("profile")) for row in primary}
@@ -263,8 +265,14 @@ def main(argv=None):
                 raise SystemExit("invalid study: recorded config does not match the replay")
             if any(row.get(key) != replay.get(key) for key in ("result_hash", "semantic_trace_hash", "config_hash", "script_hits")):
                 raise SystemExit("invalid study: retained row evidence does not reproduce")
-        asym = next((r for r in diagnostics if r.get("diagnostic") == "asymmetric-data-delay"), None)
-        if asym is not None and not asym.get("script_hits"):
+        repeat = next(row for row in diagnostics if row.get("diagnostic") == "repeat")
+        matches = [row for row in primary if (row["rate"], row["resend_ms"], row["workload"], row["profile"])
+                   == (repeat["rate"], repeat["resend_ms"], repeat["workload"], repeat["profile"])]
+        if len(matches) != 1 or any(repeat[key] != matches[0][key] for key in ("result_hash", "semantic_trace_hash")):
+            raise SystemExit("invalid study: repeat diagnostic does not match its primary row")
+        declared = [(["data", "H", "J1", 1, 0, 0, 1], 100)]
+        asym = next(row for row in diagnostics if row.get("diagnostic") == "asymmetric-data-delay")
+        if canon(asym["config"].get("jitter_script")) != canon(declared) or not asym.get("script_hits"):
             raise SystemExit("invalid study: asymmetric diagnostic did not hit its script")
         print("valid: %d primary rows, %d diagnostics" % (len(primary), len(diagnostics)))
         return 0

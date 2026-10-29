@@ -6579,3 +6579,43 @@ Baseline, one job at a time, free memory above the 4096 MiB headroom (12235 MiB,
 Floor: 222 join tests and 64 snapshot tests. None may disappear.
 
 Next: phase 1, the failing regressions for H1–H4 and N1–N4, including the short-deadline case, saved under `cache/t61-f2/dn/fail-first/`. H1 is also run against an ignored `30964c2` archive.
+
+## T61 F2 closure — progress, phase 1 — 2026-10-29 23:52 +01:00 — status: IN PROGRESS
+
+HEAD: `a9c828169992a56ea093f2786deeb3dec4a245f9` (`test(tools): T61 regressions for round dh H1-H4 and round dn N1-N4`). Continues from the phase 0 commit `360ee14b073535b6f24e7e214687bdf36d94bea3`, which is this task's own continuation of `be08b7b88025b78083e1d6292c7330a29ceba70a`. No reset.
+
+The regressions live in `tools/test_join_activation.py` only. Checker and study code are unchanged, so the defects below are still present. `git diff --check` reported one new blank line at EOF of the test file; that whitespace is removed with the first code fix.
+
+**QUESTION (does not stop the work):** packet section 4 said `tools/join_jitter_study.py` is LF on disk and therefore hashes the same as its blob. Measured on this checkout, all three of `join_activation.py`, `join_jitter_study.py`, and `test_join_activation.py` are CRLF on disk and LF in the git blob (`core.autocrlf=true`). Provenance will hash `git show <head>:tools/<name>` and never the working-tree bytes.
+
+Fail-first on this head, `python -I -B tools/test_join_activation.py -v RoundDnH1Conservation RoundDnH4Metrics RoundDnStudyEvidence`: exit 1, `Ran 30 tests in 4.422s, FAILED (failures=9)`. Log: `cache/t61-f2/dn/fail-first/round-dn.stderr.txt`.
+
+| test | assertion |
+| --- | --- |
+| `test_n6_reassembly_ownership_is_read_from_events` | `AssertionError: -1 != 0` (metrics trust `peak_reasm_frags`) |
+| `test_h2_edited_ack_bytes_are_rejected` | `AssertionError: 0 == 0` (validate accepts the row) |
+| `test_h2_edited_config_jitter_is_rejected` | `AssertionError: 0 == 0` |
+| `test_h2_edited_config_rate_is_rejected` | `AssertionError: 0 == 0` |
+| `test_h2_metrics_reduced_to_validators_are_rejected` | `AssertionError: 0 == 0` |
+| `test_h2_removing_both_diagnostics_is_rejected` | `AssertionError: 0 == 0` |
+| `test_n1_crlf_and_lf_checkouts_validate_the_same_blob` | CRLF provenance `673c1c1a…` differs from LF provenance `80939b70…` |
+| `test_n1_provenance_hashes_the_committed_blob` | working-tree hash `673c1c1a…` differs from the committed blob |
+| `test_n3_validate_replay_obeys_the_row_deadline` | `AssertionError: 0 == 0` (validate returns success inside the 0.05 s row deadline) |
+
+The other 21 tests in that run already pass on this head: the six H1 cases, both H4 lag cases, the peak-retained hand vector, the network-vs-scheduler split, the clean two-row fixture, invented result and trace hashes, NaN wall time, wall time 301, a non-ancestor head, a changed source hash, the short-deadline worker reap, and the repeat and asymmetric behavioural checks.
+
+The same H1 class and the two H4 lag tests, pointed at an ignored `git archive` of `30964c278202bb72a26f6a45541ba0e7173ec4a4`, exit 1: `Ran 9 tests in 0.002s, FAILED (failures=7)`. Log: `cache/t61-f2/dn/fail-first/h1-h4-on-30964c2.stderr.txt`.
+
+| test on `30964c2` | assertion |
+| --- | --- |
+| `test_h1a_wrong_time_extra_arrival_is_rejected` | `'xviii' not found in {'xi'}` |
+| `test_h1b_orphan_arrival_with_a_changed_sid_is_rejected` | `'xviii' not found in {'xi'}` |
+| `test_h1c_outcome_of_a_lost_transmission_is_rejected` | `'xviii' not found in {'xi'}` |
+| `test_h1d_boolean_attempt_script_is_rejected` | `ValueError not raised` |
+| `test_h1e_negative_epoch_script_is_rejected` | `ValueError not raised` |
+| `test_h1f_empty_endpoint_script_is_rejected` | `ValueError not raised` |
+| `test_h4_input_on_samples_maximum_lag_without_a_later_apply` | `0 != 2` |
+
+Control and the loading-joiner case pass on that archive. The archive is `cache/t61-f2/dn/old30964/` and is not committed.
+
+Next: phase 2, N1 then N2, N3, N4, N6, each shown passing, then the N7 gates and JM1–JM8.

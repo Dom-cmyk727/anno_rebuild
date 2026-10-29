@@ -922,3 +922,11 @@ Both runs pass the case (47 assertions).
 | B3 | 199.742 | 0 | 1 / 1 | 47 / 47 | 2 | 2 × "for 30 s" | no | 16973616 | build=cee55b5e74257911 compat=3 |
 
 B/A to three decimals: A1/B1 205.784 / 223.734 = 0.920; A2/B2 204.759 / 197.070 = 1.039; A3/B3 199.742 / 193.437 = 1.033. A1/B1 does not count (three `still waiting` lines in each run). A2/B2 counts (no wait, no other test). A3/B3 does not count (B3 logged two `still waiting` lines). Rule (one-sided): the F4 head may be at most 5 % slower than the F2 code in every counted pair, and a pair with a budget wait does not count, because its time measures the host's free memory. A3/B3 waited, so the verdict rests on A2/B2 alone. **No throughput regression measured:** at least one pair counts and every counted pair has B/A ≤ 1.050 (A2/B2 = 1.039). Logs in `cache\f4\ab\legacy-*`.
+
+## W4.1 — play turn cost (2026-10-29)
+
+Host: Windows, Ryzen 9800X3D, RTX 4090. Code head `297ea67`. Not a `bench_frame` run.
+
+Eight `PlayRunner::run_n(1)` calls on `Scenes/0010SingleEndlos/06_1024_heavy_256.sze`, Release MSVC, one sample: p50 0.38 ms, p95 0.4272 ms, p99 0.4272 ms, max 0.4272 ms. That is the CPU time of one turn, not the 100 ms wall cadence.
+
+The window (`anno1503 --renderer gpu --group 2`, 1280×800, `00_1024_easyentry_01.sze`, about 8 seconds, adapter NVIDIA GeForce RTX 4090 (Vulkan)): after warmup, `--play` and `--view` both sit at about 0.3 ms average window-thread busy time and about 500 fps. `--play` reported turn p95 0.3–0.4 ms while the tick advanced in real time (tick 2350 to 4300 across about 6 seconds). 1920×1080 and 3840×2160 were not measured. The window size is fixed at 1280×800, and `bench_frame` does not run the sim thread.

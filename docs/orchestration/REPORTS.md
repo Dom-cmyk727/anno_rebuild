@@ -6666,3 +6666,139 @@ Review extracts exact c79ca37 source/header blobs to ignored `cache/orch-di/src/
 4. Pin a comprehensive packet and explicit phase-switch preflight. Part 1 is unchanged T32.6 F1. Part 2 is F6 closure with tests before fixes and bounded resource diagnosis before a fresh full game gate; report unresolved evidence honestly. Exact tracked scopes stay as before. No merge/rebase/push/PR, owner/ADR policy choice, P2/T40 work or new feature.
 
 Only main PLAN/TASKS/REPORTS change; pre-existing untracked AGENTS.md is untouched. Packet and kickoff: `cache/orch-di/packet.md` / `executor-prompt-round-di.md`. Startup/phase-switch/second-lane preflights are generated from the committed board; their saved logs record the actual checks.
+
+## T32.5 — The stage mask — 2026-10-29 — status: FINISHED
+- Branch: `task/T32-5-stage-mask` at the report commit; worktree: `E:\anno1503-worktrees\anno1503-T32-5` from local `main` `dc265568a7f95ef29f07500f109e409231e06e2b`. No merge, no push, no amend.
+- Built: docs only. `docs/re/population.md` §15; `docs/sim/state.md` §4.7c "Stage mask (T32.5)" and the P2 row; OQ-460, OQ-461. Never `src/`, goldens, `fixtures/`, TASKS.md or AGENTS.md. No build, game run or Wine.
+- Gates: n.a. (static RE and docs). Preflight (section 0) was already recorded in the first session; not re-run.
+- Commits before this report: `b6e733181d5d872c22a1e025d47cdfdee36f6c9c` `re(annowelt): the stage mask, its writers and its save (T32.5)`; `9aa1964b3a6939057c741e965ee1ff28366a9983` `docs(sim): the stage mask DRAFT for P2 (T32.5)`; `9ffad47ef1585d285648f8e6877ac60d7d1f6759` `docs: T32.5 open questions`.
+- Board vs packet: `players.md` has no "World reader → player" section (file: `annoscene.md` §6 / `annowelt.md`, player slot `+0x54`). Packet path "city +0x10 → slot +0x1c" is house `+0x10` → city, then city slot `+0x1c` → player (`city +0x20`). City ctor store of `+0x618` is at `0x1002face`, past the packet window `0x1002f9b0`–`0x1002fa74`.
+- Time spent / subagents used: inline; no subagents.
+
+### Address ranges read (AnnoWelt.dll)
+
+| Range | What |
+|---|---|
+| `0x10076230`–`0x10076300` | house tick path to the mask |
+| `0x1008c680`–`0x1008c683` | city slot `+0x1c` |
+| `0x10020a00`–`0x10020c03` | player `GetProperty`; case `0x21` at `0x10020a6f` |
+| `0x10020c80`–`0x10020ecb` | player `SetProperty`; case `0x21` store at `0x10020ec3` |
+| `0x10021600`–`0x10021836` | player constructor; `+0x90 = 1` at `0x10021778` |
+| `0x1001d240`–`0x1001d3d5` | `SPIELER` / `HEAD` load of `+0x90` |
+| `0x1001e920`–`0x1001e9cd` | `HEAD` save of `+0x90` |
+| `0x1001bcbd`–`0x1001bdb4`, `0x1001be0d`–`0x1001be1f` | other setter; no case `0x21` dword store |
+| `0x10029610`–`0x10029914` | stage unlock |
+| `0x1002d2a0`–`0x1002d345` | per-new-stage library write |
+| `0x1002f990`–`0x1002fada` | city constructor; `+0x618 = 0` at `0x1002face` |
+| `0x1002f4e0`–`0x1002f50a` | city `GetProperty` case `0x21` |
+| `0x1002ebb0`–`0x1002f264` | city save; no `+0x618` |
+| `0x100ae700` (start) | world save; `SPIELER` per player as in `annowelt.md` |
+
+Sweeps: `xref.py 0x90 0x94` (274 hits; player-`this` listed in §15.2); `xref.py 0x618 0x61c` (7 hits, all city); `--reloc` of `0x10020a00` / `0x10020c80` in AnnoWelt (vtable slots only) and empty in AnnoGame / AnnoScene. P: 50 `.sze` parsed, 373 `HEAD` records; histogram in §15.4.
+
+### Decisions and reasoning
+
+1. The mask the house tick tests is `player +0x90` (property `0x21`, dest second dword). Path: house `+0x10` → city slot `+0x1c` → player `+0x48(0x21)`.
+2. That dword is **state**: constructor 1, saved in `HEAD +0x48` / `+0x5C`, loaded back. P2 reads existing `Player::flags`.
+3. City `+0x618` is **derived**: constructor 0, not saved, recomputed by `0x10029610`. The house tick does not read it.
+4. P2 can run before P4 on the loaded-or-default player mask. Unlock (city_pass `"stages"`) stays P4.
+5. `SetProperty` case `0x21` is `0x10020d51`, not the `0x1001be0d` setter (`+0x28d`). The extra OR at `0x1001bda3` is OQ-460.
+6. Announcement is UI (text ids via slot `+0xd0`) plus a sim write of `city +0x32c` (`0x1002d2a0`). No PRNG in `0x10029610` or `0x1002d2a0`.
+7. Packet skip rules: Part 1 FINISHED (not QUESTION), so Part 2 ran; Part 3 is independent and is this report.
+
+### S6 answer table
+
+| | player property `0x21` | city `+0x618` |
+|---|---|---|
+| object and offset | player `+0x90` | city `+0x618` |
+| width | u32 (tick tests the full dword; save uses low 23 bits) | u32, bits 0…30 |
+| initial | 1 | 0 |
+| writers | ctor `0x10021778`; `SetProperty` `0x10020ec3`; `HEAD` load `0x1001d39f`…; unlock `0x100298fb`; `0x1001bda3` (OQ-460) | ctor `0x1002face`; unlock `0x10029683` |
+| saved | yes, `SPIELER`/`HEAD +0x48` (`0x1001e99b` / `0x1001d397`) | no |
+| after shipped load | P: 280×1, 61×`0x1f`, and the rest a low-bit prefix (373 heads) | 0, then one unlock pass |
+| rebuild | state | derived |
+
+### Acceptance
+
+- Step 6's table: **D** per row; next addresses only for OQ-460 (`0x1001bda3` case id) and OQ-461 (`city +0x10` ctor/load).
+- DRAFT paragraph: present after "Tick and its place"; P2 row names the mask; enough for P2's stage-mask decision.
+- Every claim: module + address + range above. No disassembly text, no original bytes.
+- Report and commits; not merged.
+
+S9 (OQ-185 and house flag bits 4/5) follows this commit.
+
+### S9a — OQ-185 (house Save dispatcher)
+
+World save `0x100ae700`–`0x100ae7ea`: no `call [reg+0x80]`. `--reloc` `0x10077130` → `0x100c99d8` only. List walk `0x10023470` / `0x10023582` is city reader `0x100264a0` (load). **Not D.** Next: `0x1001e920` and `0x1002ec00` for a house-`this` `+0x80`. OQ-185 updated.
+
+### S9b — house flag bits 4/5
+
+City events `0x1002ba80` (`this` = city, period `[city+0xe]`, 12500) call `0x1002b700` / `0x1002b840`. `0x1002b700` picks a kind-`0x61` house; no `+0x0c` store in the range. Immediate scan of `0x10`/`0x20`/`0x30` into `+0x0c` empty. **Not D.** Next: rest of those helpers and `0x10072a60`. OQ-462 opened.
+
+## T32.5 F1 — Stage-mask corrections — 2026-10-29 — status: FINISHED
+- Branch: `task/T32-5-stage-mask` from parent `e232b02d743d623679b1ae92a2a6ae7083288f77`; worktree: `E:\anno1503-worktrees\anno1503-T32-5`. No merge, rebase, or push. P1 and T10c worktrees not touched (still `416993fa6a6f9dc821455df5d414cff5833ac7f0` / `5b10ed3ecb0f0c6446ca96a4d556f82a7b00aff1`, clean).
+- Preflight: OK (12 checks, 0 failed). Main `a62c15fdd5c48159683c0d9e98a0c2b3d7e9ce49`; T32.5 start head `e232b02d743d623679b1ae92a2a6ae7083288f77` on `task/T32-5-stage-mask` clean; P1 `416993fa6a6f9dc821455df5d414cff5833ac7f0` on `task/P1-house-payload` clean; T10c `5b10ed3ecb0f0c6446ca96a4d556f82a7b00aff1` on `codex/T10c-test-memory` clean.
+- Packet: `E:\anno1503\cache\orch-cx\packet.md` (board at `a62c15fdd5c4`). Binding excerpts win over packet prose and over the worktree's older round-cv board. PLAN §7 in this worktree is still round cv; that is noted, not re-read as live.
+- Files: `docs/re/population.md`, `docs/sim/state.md`, `docs/open-questions.md`, `docs/orchestration/REPORTS.md` only. `git diff --name-only e232b02 HEAD` is those four. `git diff --check e232b02 HEAD` clean.
+- Commits: `fcc57465c784168b830394b5c5fa39379f377b00` F1.1; `69aa5571df291713b89b5acb44bac81665872856` F1.2; `c8931f18d49675e511aa263609f4eaa8bfa576f6` F1.3; `5416fb1786fb08abd3a3e58cdbaaf7a959da74e9` F1.4; this report.
+- Historical T32.5 FINISHED section above is kept. Incorrect statements there (shipped high bits clear; `flags = 1` matches 280 heads; "else skip to the OR"; first-visit catch-up when tick ≥ 2500; duplicate OQ-462) are superseded here and in the current RE / DRAFT.
+
+### F1.1 — Full mask — MET
+
+- Commands: `python …\tools\disasm.py E:\anno1503\game\app\AnnoWelt.dll 0x1001d389 90` → `cache\t32-5-f1\loader-1d389.txt`; `python -X utf8 cache\t32-5-f1\hist_mask.py E:\anno1503\game\app` → `cache\t32-5-f1\hist_mask.txt`. Reconstruction uses the loader OR immediates, not the review probe's shifts; `shift_mismatch=0`.
+- Loader (AnnoWelt, `this` = player `ebp`): `HEAD+0x48` at `[esp+0x140]` (`HEAD` at `[esp+0xf8]`), `and 0x7fffff`, store `player+0x90`; `HEAD+0x5C` at `[esp+0x154]`; packed bits 3/2/4/5 OR bits 24/27/29/30 (`0x01000000` / `0x08000000` / `0x20000000` / `0x40000000`). Range `0x1001d389`–`0x1001d3df`.
+- 50 files / 373 heads / 0 short / `high_bits_in_low_field=0`.
+- Low field (`HEAD+0x48`): `1` 280, `0x1f` 61, `0xf` 7, `7` 7, `0x1ffff` 4, `0x7ff` 3, `0xffff` 3, `0x3fff` 2, `3` 2, `0x7fffff` 1, `0x7fff` 1, `0x3ff` 1, `0x3f` 1.
+- Packed (`HEAD+0x5C`): `0` 295, `0x14` 17, `0x1c` 1, `0x3c` 60.
+- Reconstructed high: `0` 295, `0x28000000` 17, `0x29000000` 1, `0x69000000` 60.
+- Full runtime: `1` 263, `0x28000001` 17, `0x6900001f` 60, `7` 7, `0xf` 7, `0x1ffff` 4, `0x7ff` 3, `0xffff` 3, `0x3fff` 2, `3` 2, `0x7fffff` 1, `0x7fff` 1, `0x3ff` 1, `0x3f` 1, `0x2900001f` 1. `low_field_equal_1=280` `full_restored_mask_equal_1=263` `nonzero_high_bits=78`.
+- `Player::flags` exists (`player.hpp` default 1; hashed). `PlayerHead::parse` does not read `+0x48`/`+0x5C`; `PlayerSpec` has no flags; `scenario_formats.cpp` sets `flags_a0` only. Supersedes T32.5 claims that shipped high bits are clear and that `flags = 1` matches 280 of 373 heads.
+
+### F1.2 — Guarded player write — MET
+
+- Commands: `python …\tools\disasm.py E:\anno1503\game\app\AnnoWelt.dll 0x100296a2 50` → `cache\t32-5-f1\unlock-cmp-jae.txt`; `python …\disasm.py … 0x100298e0 60` → `cache\t32-5-f1\unlock-or-setter.txt`.
+- `cmp ecx, eax` at `0x100296c0`: two operands. `ecx` = GetProperty dest+4 (`[esp+0x28]`) `& 0x7fffff`; `eax` = `[city+0x618]`. `this` = city (`edi`); player is `esi` = `[city+0x20]`. Four callee-saves on the `0xb4` frame (`edi` then `ebx`/`ebp`/`esi`); GetProperty's two stdcall pushes have returned.
+- `jae 0x100298fe` at `0x100296c2`: one rel32 operand, unsigned greater-or-equal (CF=0), displacement `0x236`. Target is after `or ebx, edx` (`0x100298ee`) and `call [eax+0x4c]` (`0x100298fb`). Taken path skips announcement and the player OR/setter. Fall-through does both, then both paths store `last = tick`.
+- Supersedes T32.5 "else skip to the OR". An unsigned integer compare is not a bit-subset test; the setter is not called on the skipped branch.
+
+### F1.3 — Modular city timing — MET
+
+- Commands: `python …\disasm.py … 0x10029610 40` → `cache\t32-5-f1\unlock-period.txt`; `python …\disasm.py … 0x10076230 50` → `cache\t32-5-f1\house-last-plus.txt`; word examples in `cache\t32-5-f1\hist_mask.txt`.
+- City: `mov ax, word [esp+4]`; `sub ax, [edi+0x10]`; `cmp ax, 0x9c4`; `jb 0x1002990d`. Gate `(u16)(tick − last) ≥ 2500`. After a taken pass, `last = tick` at `0x10029908`.
+- With `last = 0`: tick 2499 skip; **2500 run** (passing boundary); 65535 run; **65536 skip** (difference 0); 68035 skip; 68036 run (`(u16)68036 = 2500`).
+- House stamp is separate: `house +0x0a` does `add eax, 0x9c4` / store (`0x10076259`–`0x1007625e`). OQ-450 is that house question and is not decided. OQ-461 retained for constructor/load of `city +0x10`.
+- Supersedes T32.5 "a loaded scenario whose tick is already ≥ 2500 therefore catches up on that first city visit (≤ 500 ticks)".
+
+### F1.4 — One OQ-462 — MET
+
+- Duplicate identical `## OQ-462` block removed; one complete question kept. OQ-460, OQ-461, OQ-462 each appear once as headings. OQ-463..469 unused (range reserved, not required).
+- Cross-refs: `population.md` §15 Open names OQ-185, OQ-460, OQ-461, OQ-462 with next addresses; `state.md` names OQ-460 and OQ-461; S9a/OQ-185 and S9b/OQ-462 stay open.
+
+### Historical T32.5 statements this F1 supersedes
+
+- `population.md` §15.4 / §15.6 and DRAFT owner Q1–Q2: shipped high bits clear; `flags = 1` matches 280 of 373 heads. The 280 figure is the **low field** only. Full reconstructed mask equals 1 for 263 heads; 78 restore a non-zero high half.
+- `population.md` §15.5: "else skip to the OR". `jae 0x100298fe` skips the OR and the setter.
+- `population.md` §15.4 and DRAFT city-mask sentence: first-visit catch-up when tick ≥ 2500. Gate is `(u16)(tick − last) ≥ 2500`; tick 65536 last 0 does not run.
+- `open-questions.md`: second identical OQ-462 heading.
+
+### Acceptance
+
+- Full mask, guarded update and modular timing agree across the four current documents: **MET**.
+- No duplicate OQ-462; OQ-460..462 unique: **MET**.
+- Every original-file claim has module + address or corpus command: **MET** (ranges and `cache\t32-5-f1\`).
+- Allowed unresolved: S9a/OQ-185 (next `0x1001e920` / `0x1002ec00`); S9b/OQ-462 (next rest of `0x1002b700` / `0x1002b840`, `0x10072a60`); OQ-460 (switch on `0x1001be74`); OQ-461 (`city +0x10` ctor/load). OQ-450 not decided.
+- `git diff --check e232b02 HEAD` clean; diff limited to the four files: **MET**.
+
+### Decisions and reasoning
+
+1. **F1.1 reconstruction from loader immediates, not the review probe's shifts.** Alternatives: trust `check_stage_mask.py` as an oracle; invent a reconciliation if counts differed. Evidence: AnnoWelt `0x1001d389`–`0x1001d3d5` OR immediates `0x01000000`/`0x08000000`/`0x20000000`/`0x40000000`; independent `hist_mask.py` over 50 `.sze` / 373 heads; `shift_mismatch=0` and counts match the packet's expected high histogram. Why: packet forbids blindly trusting the probe.
+2. **Treat `Player::flags` as existing state whose scenario import is missing.** Alternatives: claim P2 can run before P4 on default 1; add a `src/` import (out of scope). Evidence: `Player::flags` default 1 in `state.md` / `player.hpp`; `PlayerHead::parse` stops at colour `+0x4C`; `PlayerSpec` has no flags; `scenario_formats.cpp` writes `flags_a0` only; 110 of 373 reconstructed full masks are not 1. Why: binding text "P2 can precede P4 only after its own inputs are supplied, not by assuming all masks are 1."
+3. **Record the `jae` as skipping both announcement and the player setter.** Alternatives: keep "skip to the OR" because an OR of a subset would be a no-op. Evidence: `cmp ecx, eax` (two operands) then `jae 0x100298fe` (unsigned ≥, target after `0x100298ee` / `0x100298fb`). Unsigned integer compare is not a bit-subset test (player 2, city 1 would skip yet an OR would set bit 0). Why: packet forbids inferring setter effects on the skipped branch.
+4. **Show tick 65536 last 0 as the modular counterexample and tick 2500 as the passing boundary.** Alternatives: keep "tick ≥ 2500 catches up". Evidence: `sub ax, [edi+0x10]`; `cmp ax, 0x9c4`; `jb` return. `(u16)(65536 − 0) = 0`. House `last += 2500` is `0x10076259`–`0x1007625e`, a different field. Why: packet F1.3; OQ-461 stays for the unread initial stamp; OQ-450 is not this stamp.
+5. **Delete the second OQ-462 rather than renumber.** Alternatives: keep both; move one to OQ-463. Evidence: the two blocks were byte-identical; OQ-463..469 were unused. Why: packet "one full OQ-462"; S9b may remain open.
+
+### Left open / questions
+
+None that block F1. Allowed open: OQ-185, OQ-460, OQ-461, OQ-462 as above. No next task.
+
+- Time spent / subagents used: inline; no subagents. No Wine, no build, no game run.

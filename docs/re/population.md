@@ -350,7 +350,7 @@ The house tick **does not** subtract from the city store (`city+0x334`). It deca
 # this = house; arg0 = tick
 if (u16)(tick − [house+0x0a]) < 0x9c4: return          # 2500
 [house+0x0a] += 0x9c4
-mask = player property 0x21, second dword               # city+0x10, slot +0x1c, then +0x48(0x21)
+mask = player property 0x21, second dword               # house+0x10 → city; city slot +0x1c → player; player +0x48(0x21) → +0x90 (§15.1)
 E = E·127/128 + trunc(residents_64 / 64)                # [+0x2e], [+0x2c]; both toward 0
 lowest = +∞
 for j in 0 .. n−1:                                      # n = [group+2]
@@ -592,11 +592,164 @@ pioneer houses in the Kontor's yellow range), objects read by `tools/orig/probe.
   is unmeasured. The city `+0x2f0`/`+0x18a` aggregate is read now; the per-house read is the fixture
   that decides it.
 
+## 15. The stage mask (T32.5)
+
+Static read of AnnoWelt.dll (GOG 2.0.0.5, image base `0x10000000`), 2026-10-29. Tools: `tools/disasm.py`, `tools/xref.py` (code sweep and `--reloc`). No `-I`, no game run, no Wine. Raw output is in the worktree's `cache/t32-5/` (git-ignored). Every field below is an absolute offset of its object. Tags as in [`tick-loop.md`](tick-loop.md).
+
+The packet path wording "city +0x10 → slot +0x1c → slot +0x48(0x21)" does not match the file. The measured path starts at the **house**: `house +0x10` is the city.
+
+`players.md` has no "World reader → player" section. The reader is world chunk reader `0x100ae270` (world slot `+0x78`) handing `SPIELER` to player slot `+0x54` = `0x1001d240` ([`annoscene.md`](annoscene.md) §6, [`annowelt.md`](annowelt.md)).
+
+### 15.1 The read in the house tick
+
+Range read: `0x10076230`–`0x10076300` (house slot `+0x8c` = `0x10076230`).
+
+| this | Because | Next |
+|---|---|---|
+| house | `esi = ecx` at `0x10076239`; the callee is house class slot `+0x8c` | `house +0x10` at `0x10076256` is the city (existing §4 / §12.2) |
+| city | `ecx` after that load; `call [edx + 0x1c]` at `0x10076264` | city vtable `0x100c2f40` slot `+0x1c` (dword at `0x100c2f5c`) = `0x1008c680` |
+| player | `0x1008c680` (`0x1008c680`–`0x1008c683`) returns `[this + 0x20]`; city constructor / `STADT2` attach store the owner at `city +0x20` (`0x1002f416`, complogic T54) | `call [edx + 0x48]` at `0x10076272` with property `0x21` and dest `lea [esp + 0x18]` |
+| player | player vtable `0x100c2238` slot `+0x48` (dword at `0x100c2280`) = `0x10020a00` (`GetProperty`) | case `0x21` |
+
+`GetProperty` (`0x10020a00`–`0x10020c03`): the property id is the first stack argument; it subtracts 9 and switches on `0…0x34` (byte table `0x10020c44`, jump table `0x10020c0c`). Case `0x21` is selector 8 → `0x10020a6f`. That case copies `[player + 0x90]` into `dest + 4` and returns 1.
+
+The tick then tests the **second dword** of that dest (`[esp + 0x1c]` at `0x100762d7`, which is `dest + 4`). The bit index is `BauFirst` of `goods[Ware(j)]` (goods record `+2`, §1): loaded at `0x100762d3` into `cl`. The test is a shift-and-AND: `edx = 1; shl edx, cl; test eax, edx` (`0x100762db`–`0x100762e2`). A clear bit skips decay for that need.
+
+`--reloc` of `0x10020a00`: `0x100c2280` only (the player getter slot). `--reloc` of the case body `0x10020a6f`: the jump-table dword at `0x10020c2c`.
+
+### 15.2 Writers of `player +0x90`
+
+Initial value (**D**, constructor `0x10021600`–`0x10021836`): `this = player` because `ebp = ecx` at `0x1002161a` and the vtable `0x100c2238` is stored at `0x10021758`. `eax = 1` at `0x10021762`; `[player + 0x90] = eax` at `0x10021778`. Same 1 as `players.md` ("flags dword 1").
+
+`SetProperty` (`0x10020c80`, player vtable `+0x4c`, dword at `0x100c2284`; `--reloc` of `0x10020c80`: that slot only). Same id map as the getter. Case `0x21` is `0x10020d51`–`0x10020ecb`. `this = player` (`esi = ecx`). It adjusts the incoming `dest + 4` from `player +0x96` / `+0x97` bits, then stores that dword at `[player + 0x90]` (`0x10020ec3`).
+
+The setter named in `players.md` at `0x1001be0d` is a **different** function (three stack arguments, `ret 0xc`). Jump table at `0x1001be74`. Case `0x1001be0d` stores the state byte at `player +0x28d`, not property `0x21`. There is **no** case in that table that writes property `0x21` as a dword. One nearby case (`0x1001bcbd`) can fall through to `0x1001bda3`, which ORs `1 << eax` into `player +0x90` when some object's slot `+0x64` is not `0x1f` (`0x1001bd0a`–`0x1001bdb4`; `edi` is the player). The case's property id and the meaning of `eax` are unread (OQ-460).
+
+Stage unlock OR (**D**, `0x100298e0`–`0x100298fb`, **guarded**): after the city mask is updated, getter property `0x21` on the owner (`0x100296a9`). `cmp ecx, eax` at `0x100296c0` has two operands: `ecx =` that dest+4 `& 0x7fffff`, `eax = [city + 0x618]`. `jae 0x100298fe` at `0x100296c2` (unsigned greater-or-equal, one rel32 operand, displacement `0x236`) skips both the announcement and the player write: the target is after `or ebx, edx` (`0x100298ee`) and `SetProperty` (`call [eax+0x4c]` at `0x100298fb`). Taken path does not call the setter. Fall-through: `ebx =` dest+4, `or ebx, [city + 0x618]`, then player slot `+0x4c` with property `0x21` (`0x100298f7`–`0x100298fb`). Live at the `cmp`: `edi` = city (`this`), `esi` = player (`city +0x20`); four callee-saves (`edi` then `ebx`/`ebp`/`esi`) on the `0xb4` frame; GetProperty's two stdcall pushes already returned. Both paths then store `last = tick` at `0x100298fe`–`0x10029908`.
+
+`SPIELER` / `HEAD` load (**D**, player slot `+0x54` = `0x1001d240`; `HEAD` `0x1001d2b9`–`0x1001d430`): `this = player` (`ebp`). `HEAD +0x48` is masked with `0x7fffff` and stored at `+0x90` (`0x1001d389`–`0x1001d39f`). `HEAD +0x5C` bits 3, 2, 4, 5 then OR bits 24, 27, 29, 30 (`0x1001d39c`–`0x1001d3d5`). Matches [`annoscene.md`](annoscene.md) §6.
+
+Code sweep `xref.py … 0x90 0x94` listed 274 hits (any class's `+0x90`). After this-adjustment, the **player** `+0x90` sites in that list are: constructor `0x10021778`; getter `0x10020a6f`; setter `0x10020ec3`; `HEAD` load `0x1001d39f` / `0x1001d3ac` / `0x1001d3b7` / `0x1001d3c6` / `0x1001d3d5`; `HEAD` save read `0x1001e977`; the OR at `0x1001bda5` / `0x1001bdb4`. AnnoGame.dll and AnnoScene.dll `--reloc` of `0x10020a00` and `0x10020c80` are empty; other modules reach the field through the player vtable.
+
+### 15.3 City mask `+0x618`
+
+Constructor (`0x1002f990`, `this = city` because `ebp = ecx` at `0x1002f992`; vtable `0x100c2f40` is installed later in the same function). `ebx = 0` at `0x1002f9d0`. `[city + 0x618] = ebx` at `0x1002face`. The packet's ctor window `0x1002f9b0`–`0x1002fa74` ends before that store; the store is the same constructor (file wins).
+
+Writers: that zero, and the unlock OR of bit `i` at `0x1002967f`–`0x10029683` (`this = city`, `edi = ecx` at `0x1002961c`).
+
+Readers (sweep `0x618`–`0x61c` in AnnoWelt, 7 hits, all city by this-adjustment): unlock test / load / store (`0x1002964f`, `0x10029679`, `0x10029683`, `0x100296b4`, `0x100298e4`); constructor `0x1002face`; city `GetProperty` case `0x21` at `0x1002f4f8` (`0x1002f4e0`–`0x1002f50a` returns `[city + 0x618]` in `dest + 4`). `city +0x61c` is a different field (owner-player bits, [`annowelt.md`](annowelt.md) (g)).
+
+The house tick does **not** appear in the `+0x618` sweep. It reads the **player** mask (§15.1).
+
+### 15.4 Saved or derived
+
+**Player `+0x90` is saved.** Player vtable slot `+0x58` = `0x1001e920` (dword at `0x100c2290`; matching writer of the `+0x54` reader). `HEAD` writer (`0x1001e920` start): `this = player` (`esi = ecx` at `0x1001e94a`). It copies `[player + 0x90] & 0x7fffff` to `HEAD +0x48` (`0x1001e977`–`0x1001e9a0`) and packs bits 24 / 27 / 29 / 30 into `HEAD +0x5C` (`0x1001e98b`–`0x1001e9cd`). World save `0x100ae700` writes one `SPIELER` per player ([`annowelt.md`](annowelt.md) "Save chunks, in order"); that block is the player's writer.
+
+Load is the `HEAD` reader in §15.2. Record: chunk `SPIELER`, record `HEAD`, offset `0x48`, width u32 (low 23 bits of the mask); `HEAD +0x5C` u8 for the four high bits.
+
+Shipped scenarios (P, `tools/sze.py` over every `.sze` under `game/app`; 50 parsed, 373 `HEAD` records of 108 bytes): every stored `HEAD +0x48` equals its low 23 bits (`high_bits_in_low_field = 0`). That field is not the runtime mask. Loader `0x1001d389`–`0x1001d3df` (`this` = player, `ebp`): `eax = HEAD+0x48 & 0x7fffff` stored at `player +0x90`; `cl = HEAD+0x5C`; `test cl, 8` ORs `0x01000000` (bit 24); `test cl, 4` ORs `0x08000000` (bit 27); `test cl, 0x10` ORs `0x20000000` (bit 29); `test cl, 0x20` ORs `0x40000000` (bit 30). HEAD buffer at `[esp+0xf8]`, so `+0x48` is `[esp+0x140]` and `+0x5C` is `[esp+0x154]`. Independent reconstruction of all 373 heads (`cache/t32-5-f1/hist_mask.py` on `E:\anno1503\game\app`; `shift_mismatch = 0` against those immediates):
+
+Low field (`HEAD +0x48`):
+
+| value | count |
+|---|---|
+| 1 | 280 |
+| `0x1f` | 61 |
+| `0xf` | 7 |
+| 7 | 7 |
+| `0x1ffff` | 4 |
+| `0x7ff` | 3 |
+| `0xffff` | 3 |
+| `0x3fff` | 2 |
+| 3 | 2 |
+| `0x7fffff` | 1 |
+| `0x7fff` | 1 |
+| `0x3ff` | 1 |
+| `0x3f` | 1 |
+
+Packed (`HEAD +0x5C`): `0` 295, `0x14` 17, `0x1c` 1, `0x3c` 60.
+
+Reconstructed high bits:
+
+| value | count |
+|---|---|
+| 0 | 295 |
+| `0x28000000` | 17 |
+| `0x29000000` | 1 |
+| `0x69000000` | 60 |
+
+Full runtime value `(low & 0x7fffff) | high`:
+
+| value | count |
+|---|---|
+| 1 | 263 |
+| `0x28000001` | 17 |
+| `0x6900001f` | 60 |
+| 7 | 7 |
+| `0xf` | 7 |
+| `0x1ffff` | 4 |
+| `0x7ff` | 3 |
+| `0xffff` | 3 |
+| `0x3fff` | 2 |
+| 3 | 2 |
+| `0x7fffff` | 1 |
+| `0x7fff` | 1 |
+| `0x3ff` | 1 |
+| `0x3f` | 1 |
+| `0x2900001f` | 1 |
+
+280 of 373 **low fields** are the constructor value 1 (bit 0 only). Only 263 of 373 **full reconstructed masks** are 1: the other 17 of those 280 have `HEAD +0x5C = 0x14` and restore to `0x28000001`. 78 of 373 restore a non-zero high half. The 61 low fields of `0x1f` all carry high bits (`0x2900001f` once, `0x6900001f` 60 times). The remaining low fields are a run of low bits (a pre-set stage prefix). The rebuild's `Player::flags` already exists (default 1); scenario import does not read `HEAD +0x48` / `+0x5C`, so a loaded scenario keeps that default until a later load path wires the reconstructed dword.
+
+**City `+0x618` is not saved.** Sweep of city save `0x1002ebb0`–`0x1002f264` has no `0x618`. The city reader `0x1002e170` (`HEAD` / `HEAD2` / …) is not in the `+0x618` xref list. After a load the city mask is the constructor 0, then an unlock pass that is actually taken recomputes it from the counters and `[BAUSTUFEN]`. The unlock's `last` is `city +0x10` (word). A pass that runs stores `last = tick` (`0x100298fe`–`0x10029908`), not `last += 2500`. That `last += 2500` rule is the **house** update (`house +0x0a` at `0x10076259`–`0x1007625e`); it is a different stamp and is not decided here (OQ-450 is house catch-up, not this). The constructor range `0x1002f990`–`0x1002fada` does not store `city +0x10` (OQ-461). The gate is modular: `(u16)(tick − last) ≥ 0x9c4` (2500). With `last = 0`, tick 2500 runs (`2500 ≥ 2500`); tick 65536 does not (`(u16)65536 = 0`). A 32-bit tick already ≥ 2500 is therefore not a first-visit guarantee. Order: city tick step c, after the building lists (§3). The player OR on a taken pass stays behind the §15.5 guard.
+
+### 15.5 Stage unlock `0x10029610`
+
+`this = city` (`edi = ecx` at `0x1002961c`). Range read: `0x10029610`–`0x10029914`, plus `0x1002d2a0`–`0x1002d345` for the per-new-stage helper.
+
+- **Period.** `mov ax, word [esp+4]` then `sub ax, word [edi+0x10]` (`0x10029610`–`0x1002961e`); `cmp ax, 0x9c4` (`0x10029622`); unsigned `jb` → return (`0x10029626`). Gate: `(u16)(tick − last) ≥ 2500`. Counterexample with `last = 0`: tick 65536 → difference 0, return. Passing boundary: tick 2500 → difference 2500, run. After the work, `[city + 0x10] = tick` (`0x10029908`), not `last += 2500`.
+- **Loop.** `ebx = i` from 0, `cmp 0x1f` / `jl` (`0x10029695`–`0x100296a0`): stages 0…30. Bit `ebp = 1 << i`. Skip if already set in `city +0x618` (`0x1002964f`). Else counter at `city +0x2ec` slot `+8` (`0x10029668`) with the `[BAUSTUFEN]` group byte (`[record + 0]`, `0x1002965f`); compare to `[record + 2]` (`0x10029671`). `eax ≥ count` → `or` bit `i` into `+0x618` (`0x1002967f`) and `[city + 0x18] = i` (byte) before `0x1002d2a0`. Record cursor `+ 4` per stage (`0x10029696`). The stages table is player slot `+0x6c` then that object's slot `+4` (`0x10029636`–`0x1002963d`; §1 slot 1 → stages).
+- **Low 23 bits.** After the loop, getter property `0x21` on the owner (`city +0x20`, `0x1002962f` / `0x100296a9`). `cmp ecx, eax` / `jae 0x100298fe` (`0x100296b0`–`0x100296c2`): unsigned `(player_mask & 0x7fffff) >= city +0x618` skips announcement **and** the player OR/setter (§15.2). Unsigned `(player_mask & 0x7fffff) < city +0x618` falls through to announcement and then `or` the city mask into the player via `SetProperty(0x21)`. The skip is not an idempotent OR: the compare is on the 23-bit integers, not a bit-subset test, and the setter is not called on the taken `jae`.
+- **Announcement.** Jump table `0x10029753` (index `goods − 0x4c`) pushes text ids `0xfb`…`0x107` and calls slot `+0xd0` of the object from city `+0x1c` slot `+0x18` (`0x100298d8`–`0x100298da`). That is UI. Sim-side: each newly set stage calls `0x1002d2a0`, which walks buildings whose output goods 0 is `0x56` (`BIBLIOTHEK`) and writes `city +0x32c` (`0x1002d33b`; [`annowelt.md`](annowelt.md) the `+0x320` sub-object). No world-PRNG slot `+0xb4` call in `0x10029610` or in `0x1002d2a0`. The UI callee at `+0xd0` was not read (next address: that slot's target on the island/world object).
+
+### 15.6 Answer table
+
+| | player property `0x21` | city `+0x618` |
+|---|---|---|
+| object and offset | player `+0x90` | city `+0x618` |
+| width | u32; house tick tests the full dword; unlock compares / saves the low 23 bits | u32; bits 0…30 |
+| initial | 1 (`0x10021778`) | 0 (`0x1002face`) |
+| writers | ctor; `SetProperty` `0x10020ec3`; `HEAD` load `0x1001d39f`…; unlock OR `0x100298ee`–`0x100298fb` only if unsigned `(player_mask & 0x7fffff) < city +0x618` (`jae` at `0x100296c2` skips it); side-path OR `0x1001bda3` (OQ-460) | ctor; unlock OR `0x10029683` |
+| saved | yes: `SPIELER` / `HEAD +0x48` u32 (`0x1001e99b` write, `0x1001d397` read); high bits via `HEAD +0x5C` | no (not in city save / load) |
+| after a shipped scenario | P: 373 heads, histograms in §15.4; low field 280×1, full reconstructed mask 263×1; 78 restore a non-zero high half | derived: 0, then an unlock pass when `(u16)(tick − last) ≥ 2500` (OQ-461 for `last`) |
+| rebuild | **state** (kept and saved) | **derived** (recomputed; T32.1 rule) |
+
+`HEAD +0x5C` bits land on `+0x90` bits 24, 27, 29, 30, which are also stage bits 24…30. 78 of 373 shipped heads restore a non-zero high half (§15.4). The house tick does not mask to 23 bits.
+
+### 15.7 House Save slot `+0x80` on a world save (S9a)
+
+Range read: world save `0x100ae700`–`0x100ae7ea`; `--reloc` of `0x10077130`; a module scan of `call [reg+0x80]`; list walk `0x10023470`–`0x10023588`; its callers `0x10026791`–`0x1002682b`; city reader `0x100264a0` (only reloc of that walk's parent).
+
+World save `0x100ae700` (`this` = world, `ebp = ecx` at `0x100ae715`) has **no** `call [reg+0x80]`. It writes chunks through slot `+0x74` and the helpers `0x100b4aa0` / `0x100b4b00` / `0x100b4bc0` (`annowelt.md` "Save chunks, in order", including `SPIELER` per player). `--reloc` of house Save `0x10077130` is still only the house vtable slot `0x100c99d8`.
+
+A list walk `0x10023470` (`this` = list, `edi = ecx`) does call the element's slot `+0x80` at `0x10023582` with `(writer, 0, dest)`. Every reloc of `0x10023470` is the city-reader entry loop `0x100264a0` (`0x1002eadb` → `0x100264a0`, lists at city `+0xf8` / `+0x78` / …). That is the **load / Create** path (`annowelt.md` (b)), not the world save. City save `0x1002ebb0`–`0x1002f264` is still without a `+0x80` call.
+
+**Not D** for a world-save dispatcher. Next address: in the player writer `0x1001e920` and the city writer `0x1002ec00`, a `call [reg+0x80]` whose `this` is a building with house vtable `0x100c9958` (this-adjustment: the vtable dword at `[this]`).
+
+### 15.8 House flag bits 4/5 (S9b)
+
+Range read: city events `0x1002ba80`–`0x1002bc09`; helpers `0x1002b700`–`0x1002b7ed` and `0x1002b840`–`0x1002b882`. A module scan for `or`/`and`/`xor`/`mov` of immediates `0x10` / `0x20` / `0x30` into `[reg+0x0c]` was empty.
+
+`0x1002ba80` (`this` = city, `esi = ecx`): period `(u16)(tick − [city+0xe]) < 0x30d4` (12500). It counts buildings of kinds `0x58` / `0x59` (GERICHT / GALGEN) through city `+0x144` slot `+0x30`, then calls `0x1002b700` and `0x1002b840`. `0x1002b700` (`this` = city, `ebx = ecx`) picks a house of kind `0x61` (slot `+0x24`) and then talks to island / UI slots (`+0xb4`, `+0xa4`, `+0xa0`); no store to a house `+0x0c` in the range read. `0x1002b840` starts with allocations only.
+
+**Not D** for who sets bits 4/5. Next address: the rest of `0x1002b700` and `0x1002b840` for a store or a slot that writes house `+0x0c`, and the fire path already noted at `0x10072a60` (`population.md` §8 / `production.md`).
+
 ## Open
-- T32.1 closed the house field layout; T32.2 closed the house-tick order, mood, upgrade/downgrade bodies, materials check and booking; T32.3 closed the `take = 1` class (MarketStall `+0xac`) and wrote the DRAFT (`state.md` §4.7c); T32.4 closed the stand → house path (job `0x35`, OQ-187) and the owner's house/stand clauses (OQ-103). Still open below.
-- Who dispatches house Save slot `+0x80` on a world save (virtual only; OQ-185, T32.2 re-check still reloc `0x100c99d8` only). Next: `call [reg+0x80]` in world save `0x100ae700` / the building-list walk.
+- T32.1 closed the house field layout; T32.2 closed the house-tick order, mood, upgrade/downgrade bodies, materials check and booking; T32.3 closed the `take = 1` class (MarketStall `+0xac`) and wrote the DRAFT (`state.md` §4.7c); T32.4 closed the stand → house path (job `0x35`, OQ-187) and the owner's house/stand clauses (OQ-103); **T32.5 closed the stage mask** (player `+0x90` / property `0x21` is saved state; city `+0x618` is derived). Still open below.
+- Who dispatches house Save slot `+0x80` on a world save (OQ-185, §15.7): world save has no `call [reg+0x80]`; the list walk `0x10023470` is the city **load** path. Next: player writer `0x1001e920` / city writer `0x1002ec00` for a house-`this` `+0x80`.
+- The `0x1001bda3` OR into `player +0x90`: property id of jump-table case `0x1001bcbd`, and what `eax` is (OQ-460). Next: the switch that indexes `0x1001be74`.
+- Constructor / load value of the unlock stamp `city +0x10` (OQ-461). Next: stores of `city +0x10` outside `0x10029610`.
 - Unit of the city store and of delivered amounts (is 256 = 1 t?); confirm with T1 and a savegame pair (M2.1).
-- Where house flags bits 4/5 (`+0x0c & 0x30`, forced mood −1/−2) are set: fire, plague, riot? (`0x1002ba80`.)
+- Where house flags bits 4/5 (`+0x0c & 0x30`, forced mood −1/−2) are set (OQ-462, §15.8): `0x1002ba80` picks a house but does not write `+0x0c` in the range read. Next: rest of `0x1002b700` / `0x1002b840`, and `0x10072a60`.
 - How infrastructure "goods" (`0x4c`–`0x5a`) reach the house stock: public buildings share the job `0x35` candidate mask (`0x01`); PublicService `+0xa4` for those ids is unread (OQ-102 Q3).
 - The third stack arg of stall `+0xac` (figure-type related at `0x100565e8`); take is hardcoded 1 regardless.
 - Group `BauFirst`/`BauLast`, `Wissen`, goods `BauLast`, `Hiscore`: readers not found yet.

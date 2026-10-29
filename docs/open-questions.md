@@ -1672,10 +1672,10 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** T30 steps 2 and 5, then T33; decide then whether a sim terrain field is still needed for the sea.
 
 ## OQ-185: Who calls house Save slot `+0x80` on a world save (new, T32.1 2026-10-25; OQ-165; T32.2 re-check)
-- **Status:** open. The Save body is D (`0x10077130`–`0x10077211`, `population.md` §11.2): 8-byte header (integer residents, need count, version 2) then `min(s_j, 160)` per need. Direct `.text` callers of `0x10077130` were not found; the only reloc is the vtable slot `0x100c9958+0x80` = `0x100c99d8`. City save `0x1002ebb0`–`0x1002f264` does not walk the house list into that slot. T32.2 re-checked: `xref.py --reloc 0x10077130` is still `0x100c99d8` only; a code sweep of `0x10077130` as a direct call is empty. World save `0x100ae700` was not walked (no direct call; the dispatcher is `call [reg+0x80]`).
+- **Status:** open, narrowed (T32.5 S9a, `population.md` §15.7). The Save body is D. World save `0x100ae700`–`0x100ae7ea` has no `call [reg+0x80]`. `--reloc` of `0x10077130` is still `0x100c99d8` only. The list walk `0x10023470` is the city load path (`0x100264a0`), not the save. Next: player writer `0x1001e920` / city writer `0x1002ec00`.
 - **Area:** simulation / save, population
 - **Why:** T32.1 needs the original's save channel to classify house residents and stocks as state. The record layout is enough for that classification; the dispatcher that actually invokes slot `+0x80` is not named.
-- **How to resolve:** a later save-path read: from world save `0x100ae700` / load `0x100ae270` (T21) follow the building-list walk that calls `[house+0]+0x80`. Next address: disasm sweep of `call [reg+0x80]` in `0x100ae700` and in any island/city building iterator (reloc of the vtable slot itself is empty because that *is* the slot).
+- **How to resolve:** T32.5 S9a (`population.md` §15.7) read world save `0x100ae700`–`0x100ae7ea`: no `call [reg+0x80]`. `--reloc` of `0x10077130` is still `0x100c99d8` only. The list walk `0x10023470` (`0x10023582` = element slot `+0x80`) is called only from city reader `0x100264a0` (load / Create). Next address: player writer `0x1001e920` and city writer `0x1002ec00` for a `call [reg+0x80]` whose `this` is a house (vtable `0x100c9958`).
 
 ## OQ-186: Who takes consumer goods from the city store (new, T32.2 2026-10-25)
 - **Status:** **answered** (T32.3, 2026-10-25, `population.md` §13). The `take = 1` wrapper is **MarketStall** building slot `+0xac` = `0x100702f0` (ctor `0x10070730`, vtable `0x100c8fe0`, reloc of the method = `0x100c908c` only). PublicService `+0xac` = `0x1006b520` and School `+0xac` = `0x10070120` bill with `take = 0`. House and Market `+0xac` are the 3-arg stub `0x100a3950`. Nothing moves store → house in one step: stall billing **takes** from `CityStock`; house stocks are filled by delivery `+0xc0` = `0x10076610` (job `0x35` step C `0x10057d70`; cart/carrier unload is `0x10057bd0`). The house tick still never takes. Who *calls* stall `+0xac` is OQ-187 (**answered** T32.4).
@@ -1979,3 +1979,24 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What we know:** the original keeps `residents * 64` as an i16 (`+0x2c`), `E` as a u16 (`+0x2e`) and the stocks as u16 (`+0x30 + 2j`); the rebuild widens them (`i32`, `u32`, `u32`) because CLAUDE.md requires widening when data enters the engine. With the shipped data they are not expected to reach the limits (the board's reading: `Wohnmax` is small; the P1 tests read 8, 15 and 28 residents for the first three groups). `residents * 64` fits an i16 up to 511 residents and `E = residents * 128` a u16 up to 511 residents; a modded `Wohnmax` above 511 would wrap in the original.
 - **What is open:** whether any shipped or modded input reaches the wrap, and whether the original's wrap (rather than the saturation or the widening) should be an option. The P1 corpus runs (3 283 houses, 43 162 residents, five simulated minutes each) raised no invariant failure; the wrap itself was not tested.
 - **How to resolve:** a Wine fixture with a house at a large `Wohnmax` (a modded `BGruppen.dat`), only if a mod needs it.
+
+## OQ-460: The extra OR into player `+0x90` at `0x1001bda3` (T32.5, 2026-10-29)
+- **Status:** open. T32.5 named the store; the case and the bit index are unread.
+- **Area:** simulation / population / players.
+- **What is known (D, AnnoWelt):** jump-table case `0x1001bcbd` (dword at `0x1001be74`) can reach `0x1001bda3`. `edi` is the player. `0x1001bd0a` calls some object's slot `+0x64`; if that return is not `0x1f`, `0x1001bda3`–`0x1001bdb4` does `[player + 0x90] |= (1 << eax)` with `eax` that return. This is not `SetProperty` case `0x21` (`0x10020d51`) and not the `0x1001be0d` state-byte case.
+- **Why:** `player +0x90` is the reached-stage mask P2 tests. An OR of an unknown bit would change decay. The house tick and the stage unlock do not take this path.
+- **How to resolve:** read the switch that indexes `0x1001be74` (function start before case `0x1001bcbd`); name the property id and the object of slot `+0x64`. Next address: that switch.
+
+## OQ-461: Constructor / load value of the stage-unlock stamp `city +0x10` (T32.5, 2026-10-29)
+- **Status:** open.
+- **Area:** simulation / population / cities.
+- **What is known (D, AnnoWelt):** unlock `0x10029610` uses the word at `city +0x10` as `last` and, after a pass, stores the current tick there (`0x10029908`). City constructor `0x1002f990`–`0x1002fada` does not store `+0x10`. `+0x618` is not saved; whether `+0x10` is saved was not found in the city save sweep for `0x618`.
+- **Why:** the gate is `(u16)(tick − last) ≥ 2500`, not `tick ≥ 2500`. With `last = 0`, tick 2500 runs and tick 65536 does not (difference 0). Constructor / load of `city +0x10` is unread, so first-visit catch-up after load is not guaranteed. A leftover non-zero stamp would change when the first pass runs. This stamp is not the house `last += 2500` at `house +0x0a`.
+- **How to resolve:** sweep stores of `city +0x10` (this-adjustment: city vtable `0x100c2f40`) in the constructor, the city reader `0x1002e170`, and the city save `0x1002ebb0`. Next address: those stores.
+
+## OQ-462: Who sets house flag bits 4/5 (`+0x0c & 0x30`) (T32.5 S9b, 2026-10-29)
+- **Status:** open.
+- **Area:** simulation / population / houses.
+- **What is known (D, AnnoWelt):** mood treats `[house+0x0c] & 0x30` as a forced −1/−2 (`population.md` §4.1). City events `0x1002ba80` (`this` = city) run every 12500 ticks (`[city+0xe]`). They call `0x1002b700` (picks a kind-`0x61` house) and `0x1002b840`. No immediate `0x10`/`0x20`/`0x30` store to `[reg+0x0c]` in `0x1002ba80`–`0x1002bc09` or in `0x1002b700`–`0x1002b7ed` / `0x1002b840`–`0x1002b882`. A module scan for those immediates into `+0x0c` was empty.
+- **Why:** P1's default is flags stay 0 (`state.md` §4.7c owner Q7). Who sets them decides whether P2 must model fire/plague/riot mood.
+- **How to resolve:** finish `0x1002b700` and `0x1002b840` for a house `+0x0c` write or a slot that writes it; then the fire path `0x10072a60`. Next address: those remaining ranges.

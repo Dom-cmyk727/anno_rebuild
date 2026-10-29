@@ -4,9 +4,12 @@
 // "Scene composition", "Island links"; docs/re/annoscene.md §3–5.
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -14,6 +17,15 @@
 #include <anno/render/scene.hpp>
 
 namespace anno::app {
+
+/// A file object the sim did not place. Coordinates are island-local; the
+/// origin is the island's world tile, so the world tile is origin + local.
+struct OmittedObject {
+    std::uint32_t island = 0;
+    std::uint16_t origin_x = 0, origin_y = 0;
+    std::uint16_t type = 0;
+    std::uint16_t x = 0, y = 0;
+};
 
 /// A scene and the file buffers its islands and Anlagen.dat refer to.
 struct LoadedScene {
@@ -24,6 +36,39 @@ struct LoadedScene {
     /// How many of scene->islands come from the file itself (the stand-ins
     /// for INSELLNK links follow).
     std::size_t file_islands = 0;
+    /// Parallel to scene->islands once the scene exists. Empty for an island
+    /// embedded in the scenario; the template path for a link.
+    std::vector<std::string> island_sources;
+    /// Building items that were in the files and not in the sim, so they were
+    /// left out of the scene (docs/app/game-shell.md). Empty for --view.
+    std::vector<OmittedObject> omitted;
+};
+
+/// One INSELLNK whose picture is a chosen template instead of the viewer's
+/// stand-in. `number` is the link head's u32 (the same value the scene island
+/// keeps).
+struct LinkTemplate {
+    std::uint32_t number = 0;
+    std::filesystem::path file;
+};
+
+/// A building the sim placed, in island-local tiles. `island` is the island
+/// table slot (`INSELLNK` number masked to 16 bits, or the embedded island's
+/// number). `height` is the height byte (`Building::byte0f`).
+struct SceneBuilding {
+    std::uint32_t island = 0;
+    std::uint16_t type = 0;
+    std::uint16_t x = 0, y = 0;
+    std::uint8_t rotation = 0;
+    std::uint8_t height = 0;
+};
+
+/// How --play replaces building sprites. Null for --view, which is unchanged.
+/// `is_building` is the scenario loader's classification (a type the layout
+/// names). `buildings` is the set the scene draws.
+struct SceneObjects {
+    std::function<bool(std::uint16_t anlage)> is_building;
+    std::span<const SceneBuilding> buildings;
 };
 
 /// The game directory: `explicit_dir`, else `env_dir` (the value of
@@ -39,9 +84,14 @@ find_game_dir(const std::optional<std::filesystem::path>& explicit_dir,
 std::optional<std::filesystem::path> find_ci(const std::filesystem::path& base,
                                              const std::string& rel);
 
-/// Loads `file` with every island at its world position (INSELLNK links as
-/// stand-ins, see load_scene's notes) and the scenario's ships and soldiers.
+/// Loads `file` with every island at its world position and the scenario's
+/// ships and soldiers. With an empty `chosen`, INSELLNK links use the viewer's
+/// stand-in (OQ-028). A chosen template replaces that stand-in for the link
+/// with the same `number`. With `objects`, building items are the sim's and
+/// file buildings the sim did not place are listed on `omitted`.
 formats::Result<LoadedScene, std::string> load_scene(const std::filesystem::path& dir,
-                                                     const std::filesystem::path& file);
+                                                     const std::filesystem::path& file,
+                                                     std::span<const LinkTemplate> chosen = {},
+                                                     const SceneObjects* objects = nullptr);
 
 } // namespace anno::app

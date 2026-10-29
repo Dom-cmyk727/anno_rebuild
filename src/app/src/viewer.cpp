@@ -269,9 +269,9 @@ class Viewer {
   public:
     Viewer(const render::Scene& scene, std::size_t group, std::size_t threads, Renderer renderer,
            render::RiverFlowMode river_flow, render::WaterStyle water, std::size_t lookahead_chunks,
-           ZoomOptions zoom)
+           ZoomOptions zoom, const ViewerHooks* hooks)
         : scene_(scene), group_(group), zoom_opt_(zoom), frames_(threads),
-          renderer_choice_(renderer), water_(water) {
+          renderer_choice_(renderer), water_(water), hooks_(hooks) {
         frames_.river_flow = river_flow;
         frames_.max_lookahead_chunks = lookahead_chunks;
         const auto b = *scene.bounds(group);
@@ -370,6 +370,7 @@ class Viewer {
     Clock::time_point clock_ = Clock::now();
     std::optional<Clock::duration> paused_at_;
     render::WaterStyle water_ = render::WaterStyle::Original;
+    const ViewerHooks* hooks_ = nullptr;
     bool running_ = true, dirty_ = true, drag_ = false;
     /// A zoom step waiting for the sea pattern of its group (only while the
     /// patterns are still being rendered after the start).
@@ -796,6 +797,9 @@ void Viewer::toggle_pause() {
         paused_at_ = Clock::now() - clock_;
     }
     dirty_ = true;
+    if (hooks_ != nullptr && hooks_->on_pause) {
+        hooks_->on_pause(paused_at_.has_value());
+    }
 }
 
 void Viewer::pan(double dx, double dy) {
@@ -934,6 +938,13 @@ void Viewer::update_title() {
 #else
     title += " — CPU";
 #endif
+    if (hooks_ != nullptr && hooks_->title) {
+        const std::string extra = hooks_->title();
+        if (!extra.empty()) {
+            title += " — ";
+            title += extra;
+        }
+    }
     if (fps_) {
         char buf[64];
         std::snprintf(buf, sizeof buf, " — %.0f fps (%.1f ms/frame)", fps_->first, fps_->second);
@@ -1200,6 +1211,12 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
                  wait_worst_ms_, gap_worst_ms_, chunks_ms_ / n, names[0], stages_[0] / n, names[1],
                  stages_[1] / n, names[2], stages_[2] / n, names[3], stages_[3] / n,
                  frames_.cached());
+    if (hooks_ != nullptr && hooks_->title) {
+        const std::string extra = hooks_->title();
+        if (!extra.empty()) {
+            std::fprintf(stderr, "  play: %s\n", extra.c_str());
+        }
+    }
     std::fprintf(stderr, "  steps of the worst frame (%.1f ms busy): %s\n", worst_ms_,
                  describe(worst_steps_, worst_ms_).c_str());
     if (chunks_received_ > 0) {
@@ -1219,13 +1236,13 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
 
 std::string run_viewer(const render::Scene& scene, std::size_t group, Renderer renderer,
                        render::RiverFlowMode river_flow, render::WaterStyle water,
-                       std::size_t lookahead_chunks, ZoomOptions zoom) {
+                       std::size_t lookahead_chunks, ZoomOptions zoom, const ViewerHooks* hooks) {
     if (!scene.bounds(group)) {
         return "no islands";
     }
     const std::size_t threads =
         (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);
-    Viewer v(scene, group, threads, renderer, river_flow, water, lookahead_chunks, zoom);
+    Viewer v(scene, group, threads, renderer, river_flow, water, lookahead_chunks, zoom, hooks);
     return v.run();
 }
 

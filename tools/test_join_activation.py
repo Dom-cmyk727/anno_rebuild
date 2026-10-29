@@ -2527,6 +2527,20 @@ def _patch_jm4_zero_unserialized_jitter():
     return mock.patch.object(ja, "jitter_delay", wrapped)
 
 
+def _patch_jm5_floor_serialized_arrival():
+    """Floor only inside the link plan. The validator keeps its own ceiling."""
+    original = ja.Sim.link_plan
+
+    def plan(self, *args, **kwargs):
+        ceiling = ja.arrival_ms
+        ja.arrival_ms = lambda ns: ns // ja.NS_PER_MS
+        try:
+            return original(self, *args, **kwargs)
+        finally:
+            ja.arrival_ms = ceiling
+    return mock.patch.object(ja.Sim, "link_plan", plan)
+
+
 def _patch_jm6_shift_every_sample():
     original = ja.jitter_delay
 
@@ -2996,6 +3010,8 @@ class JoinJitterMutantGates(TraceCase):
         retry = next(event for event in grants if event["attempt"] == 2)
         self.assertNotEqual(tuple(first["jitter_id"]), tuple(retry["jitter_id"]))
         self.assertEqual(tuple(retry["jitter_id"])[-1], 2)
+        spelled = ("data", retry["src"], retry["dst"], retry["ch"], retry["epoch"], retry["seq"], retry["attempt"])
+        self.assertEqual(retry["jitter_ms"], ja._expected_jitter(sim.cfg, spelled))
 
     def test_jm3_identities_include_epoch_and_channel(self):
         sim = self._sim(True)
@@ -3014,7 +3030,12 @@ class JoinJitterMutantGates(TraceCase):
 
     def test_jm5_serialized_callback_is_not_early(self):
         sim = self._sim(True)
-        self.assertEqual(validate_clean(sim), [])
+        arrivals = [event for event in sim.events if event["kind"] == "link_arrive"]
+        self.assertTrue(arrivals)
+        for event in arrivals:
+            # Independent of ja.arrival_ms, which a masked mutant could replace.
+            ceiling = -(-event["arrival_ns"] // ja.NS_PER_MS)
+            self.assertEqual(event["sched_ms"], ceiling)
 
     def test_jm6_a_live_sim_matches_the_independent_profile(self):
         sim = self._sim(True)
@@ -3111,7 +3132,7 @@ MUTANTS.update({
         "JoinJitterMutantGates.test_jm3_identities_include_epoch_and_channel"]),
     "JM4 force zero jitter on the un-serialized path": (_patch_jm4_zero_unserialized_jitter, [
         "JoinJitterMutantGates.test_jm4_unserialized_jitter_matches_the_independent_sample"]),
-    "JM5 round a sub-millisecond serialized arrival down": (_patch_round_the_arrival_down, [
+    "JM5 round a sub-millisecond serialized arrival down": (_patch_jm5_floor_serialized_arrival, [
         "JoinJitterMutantGates.test_jm5_serialized_callback_is_not_early"]),
     "JM6 forge logged jitter and arrival together": (_patch_jm6_shift_every_sample, [
         "JoinJitterMutantGates.test_jm6_a_live_sim_matches_the_independent_profile"]),

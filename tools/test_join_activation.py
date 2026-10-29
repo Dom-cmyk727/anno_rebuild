@@ -3086,6 +3086,42 @@ class JoinJitterN7Gates(unittest.TestCase):
 
         self.assertEqual(once(1), once(2))
 
+    def test_n7e_zero_jitter_projection_matches_917efea(self):
+        """Serialized rows keep ack_send. Unserialized rows gained that audit record after 917efea."""
+        tmp = tempfile.mkdtemp(prefix="t61-917-", dir=os.path.join(_repo_root(), "cache", "t61-f2", "dn"))
+        archive = os.path.join(tmp, "tools")
+        os.makedirs(archive)
+        blob = subprocess.check_output(["git", "show", "917efea:tools/join_activation.py"], cwd=_repo_root())
+        with open(os.path.join(archive, "join_activation.py"), "wb") as handle:
+            handle.write(blob)
+        script = (
+            "import hashlib, json, sys\n"
+            "sys.path.insert(0, sys.argv[1])\n"
+            "import join_activation as ja\n"
+            "kind, name, rate = sys.argv[2:]\n"
+            "sim = ja.LINK_ROWS[name](rate) if kind == 'link' else ja.ROWS[name](ja.Cfg())\n"
+            "ignored = {'jitter_ms', 'jitter_id', 'jitter_source', 'tx_id'}\n"
+            "events = [{k: v for k, v in e.items() if k not in ignored} for e in sim.events]\n"
+            "if kind == 'row':\n"
+            "    events = [e for e in events if e['kind'] != 'ack_send']\n"
+            "print(hashlib.sha256(json.dumps(events, sort_keys=True, default=list).encode()).hexdigest())\n"
+        )
+
+        def digest(path, kind, name, rate):
+            proc = subprocess.run([sys.executable, "-I", "-c", script, path, kind, name, rate],
+                                  cwd=_repo_root(), capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            return proc.stdout.strip()
+
+        tools = os.path.dirname(os.path.abspath(__file__))
+        try:
+            self.assertEqual(digest(archive, "link", "one_fragment", "100M"),
+                             digest(tools, "link", "one_fragment", "100M"))
+            self.assertEqual(digest(archive, "row", "expiry_and_restart", "-"),
+                             digest(tools, "row", "expiry_and_restart", "-"))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
 
 MUTANTS.update({
     "charge every retry one byte": (_patch_one_byte_retries, [

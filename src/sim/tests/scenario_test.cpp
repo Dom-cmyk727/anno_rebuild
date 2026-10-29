@@ -24,7 +24,6 @@
 
 #include <doctest/doctest.h>
 
-#include <anno/formats/anlagen.hpp>
 #include <anno/sim/building.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/production.hpp>
@@ -33,6 +32,7 @@
 #include <anno/sim/transport.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim/world.hpp>
+#include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/scenario_load.hpp>
 #include <anno/test/game_dir.hpp>
 #include <anno/test/parallel.hpp>
@@ -153,28 +153,13 @@ std::string version_line() {
 }
 
 std::shared_ptr<const sim::TypeRegistry> original_registry(const fs::path& game) {
-    const auto buf = anno::test::read_file(game / "Anlagen.dat");
-    auto file = anno::formats::anlagen::AnlagenFile::parse(buf);
-    REQUIRE(file);
-    // The figure types of FigurenHeader.dat (T24: the carts' speed, capacity, layer and
-    // load wait).
-    const auto fig_buf = anno::test::read_file(game / "FigurenHeader.dat");
-    auto figures = anno::formats::figuren::FigurenHeader::parse(fig_buf);
-    REQUIRE_MESSAGE(figures.ok(), (figures.ok() ? std::string() : figures.error()));
-    const auto walk_bytes = anno::test::read_file(game / "AnnoWelt.dll");
-    auto walk = anno::formats::annowelt::read_walk_tables(walk_bytes);
-    REQUIRE(walk);
-    // The population group table (P1): Data/BGruppen.dat, parsed against the goods table.
-    const auto goods = sim::original_goods();
-    auto groups =
-        sim::parse_house_groups(anno::test::read_file(game / "Data" / "BGruppen.dat"), goods);
-    REQUIRE_MESSAGE(groups.ok(), (groups.ok() ? std::string() : groups.error()));
-    auto r = sim::TypeRegistry::build(
-        file.value().entries, goods, sim::SimConfig{}, figures.value().entries,
-        std::make_shared<const anno::formats::annowelt::WalkTables>(std::move(walk).value()),
-        std::move(groups).value());
-    REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
-    return r.value();
+    // The shared loader (sim_load). FigurenHeader is required, as this helper's
+    // REQUIRE used to be: a bad file fails the test with the parser's text.
+    const anno::sim_load::OriginalRegistryLoad loaded =
+        anno::sim_load::load_original_registry(game, anno::sim_load::FigureEntries::Required);
+    REQUIRE_MESSAGE(loaded.error.empty(), loaded.error);
+    REQUIRE(loaded.types);
+    return loaded.types;
 }
 
 /// The stocks of a producing building: output, input and raw stocks (not `last`,

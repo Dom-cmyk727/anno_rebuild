@@ -53,14 +53,13 @@
 #include <variant>
 #include <vector>
 
-#include <anno/formats/anlagen.hpp>
-#include <anno/formats/annowelt.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/scenario_formats.hpp>
 #include <anno/sim/state_fields.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim/world.hpp>
+#include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/scenario_load.hpp>
 
 namespace {
@@ -326,52 +325,17 @@ std::shared_ptr<const sim::TypeRegistry> scenario_registry() {
         std::cout << "registry empty (ANNO1503_GAME_DIR not set)\n";
         return sim::TypeRegistry::empty();
     }
-    const std::filesystem::path p = std::filesystem::path(dir) / "Anlagen.dat";
-    std::ifstream in(p, std::ios::binary);
-    const std::vector<std::uint8_t> buf{std::istreambuf_iterator<char>(in), {}};
-    auto file = anno::formats::anlagen::AnlagenFile::parse(buf);
-    if (!file) {
-        std::cout << "registry empty (cannot read " << p.string() << ")\n";
+    // FigurenHeader stays optional, with the same note, then any later failure.
+    const anno::sim_load::OriginalRegistryLoad loaded = anno::sim_load::load_original_registry(
+        dir, anno::sim_load::FigureEntries::OptionalNote);
+    if (!loaded.figure_note.empty()) {
+        std::cout << loaded.figure_note << "\n";
+    }
+    if (!loaded.error.empty()) {
+        std::cout << "registry empty (" << loaded.error << ")\n";
         return sim::TypeRegistry::empty();
     }
-    // The figure types (T24): FigurenHeader.dat next to Anlagen.dat; without it the
-    // registry has none and no cart moves. The entries view `fbuf`, which therefore
-    // lives until the registry is built.
-    std::vector<anno::formats::figuren::Entry> figure_entries;
-    const std::filesystem::path fp = std::filesystem::path(dir) / "FigurenHeader.dat";
-    std::ifstream fin(fp, std::ios::binary);
-    const std::vector<std::uint8_t> fbuf{std::istreambuf_iterator<char>(fin), {}};
-    auto header = anno::formats::figuren::FigurenHeader::parse(fbuf);
-    if (header) {
-        figure_entries = std::move(header.value().entries);
-    } else {
-        std::cout << "no figure types (cannot read " << fp.string() << ")\n";
-    }
-    std::ifstream win(std::filesystem::path(dir) / "AnnoWelt.dll", std::ios::binary);
-    const std::vector<std::uint8_t> wbuf{std::istreambuf_iterator<char>(win), {}};
-    auto walk = anno::formats::annowelt::read_walk_tables(wbuf);
-    if (!walk) {
-        std::cout << "registry empty (AnnoWelt.dll: "
-                  << anno::formats::annowelt::error_message(walk.error()) << ")\n";
-        return sim::TypeRegistry::empty();
-    }
-    std::ifstream gin(std::filesystem::path(dir) / "Data" / "BGruppen.dat", std::ios::binary);
-    const std::vector<std::uint8_t> gbuf{std::istreambuf_iterator<char>(gin), {}};
-    const auto goods = sim::original_goods();
-    auto groups = sim::parse_house_groups(gbuf, goods);
-    if (!groups) {
-        std::cout << "registry empty (BGruppen.dat: " << groups.error() << ")\n";
-        return sim::TypeRegistry::empty();
-    }
-    auto r = sim::TypeRegistry::build(
-        file.value().entries, goods, sim::SimConfig{}, figure_entries,
-        std::make_shared<const anno::formats::annowelt::WalkTables>(std::move(walk).value()),
-        std::move(groups).value());
-    if (!r) {
-        std::cout << "registry empty (" << r.error() << ")\n";
-        return sim::TypeRegistry::empty();
-    }
-    return r.value();
+    return loaded.types;
 }
 
 /// The island templates of the game directory (ANNO1503_GAME_DIR/Scenes/Islands), or

@@ -34,7 +34,8 @@ if(ANNO_BUILD_TESTS)
                                                doctest::doctest)
   # The goldens (fixtures/synthetic/sim/goldens.txt, docs/sim/state.md §14.3).
   target_compile_definitions(anno_sim_tests PRIVATE
-    ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
+    ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
+    ANNO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
   anno_target_defaults(anno_sim_tests SANITIZE_NO_RECOVER)
   anno_stage_budget_coord(anno_sim_tests)
   # GCC 13 with -fsanitize=address treats a one-element initializer_list

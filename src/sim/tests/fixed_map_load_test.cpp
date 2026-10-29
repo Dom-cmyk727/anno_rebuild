@@ -1,4 +1,7 @@
 #include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <iterator>
 #include <span>
 #include <string>
 #include <vector>
@@ -10,6 +13,8 @@
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/world.hpp>
 #include <anno/sim_load/fixed_map.hpp>
+#include <anno/sim_load/original_registry.hpp>
+#include <anno/test/game_dir.hpp>
 
 namespace fm = anno::formats::fixed_map;
 namespace sl = anno::sim_load;
@@ -229,4 +234,78 @@ TEST_CASE("fixed map: the developer start can be turned off") {
         CHECK(island.cities.empty());
         CHECK(island.owner_runs.empty());
     }
+}
+
+TEST_CASE("fixed map: lan5 loads for two to five seats") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const sl::OriginalRegistryLoad registry =
+        sl::load_original_registry(*dir, sl::FigureEntries::Required);
+    REQUIRE_MESSAGE(registry.error.empty(), registry.error);
+    REQUIRE(registry.types);
+
+    const std::filesystem::path path =
+        std::filesystem::path(ANNO_SOURCE_DIR) / "data" / "maps" / "lan5.txt";
+    std::ifstream in(path, std::ios::binary);
+    REQUIRE(in);
+    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), {});
+    auto parsed = fm::parse(bytes);
+    REQUIRE(parsed);
+    const fm::FixedMap layout = std::move(parsed).value();
+
+    std::vector<anno::sim::Seat> seats;
+    for (std::uint32_t i = 0; i < 5; ++i) {
+        anno::sim::Seat seat;
+        seat.name = "P" + std::to_string(i);
+        seat.colour = i;
+        seats.push_back(std::move(seat));
+    }
+
+    std::uint64_t hash = 0;
+    for (std::size_t n = 2; n <= 5; ++n) {
+        auto loaded = sl::load_fixed_map(layout, std::span<const anno::sim::Seat>(seats.data(), n),
+                                         *dir, *registry.types, {});
+        if (!loaded) {
+            const std::string message = loaded.error();
+            REQUIRE_MESSAGE(false, message);
+        }
+        const anno::sim::ScenarioSpec& spec = loaded.value().spec;
+        CHECK(spec.settings.world_width == 1431);
+        CHECK(spec.settings.world_height == 1431);
+        REQUIRE(spec.players.size() == n);
+        CHECK(spec.players[0].money == 30000);
+        std::size_t cities = 0;
+        for (const auto& island : spec.islands) {
+            cities += island.cities.size();
+            if (!island.cities.empty()) {
+                CHECK(island.cities.size() == 1);
+                CHECK(island.cities[0].buildings.size() == 1);
+                CHECK(island.cities[0].buildings[0].type.v == 1302);
+            }
+        }
+        CHECK(cities == n);
+        auto world = anno::sim::World::create(spec, registry.types);
+        if (!world) {
+            const std::string message = world.error();
+            REQUIRE_MESSAGE(false, message);
+        }
+        CHECK(world.value().check_invariants().empty());
+        if (n != 5) {
+            continue;
+        }
+        auto second = anno::sim::World::create(spec, registry.types);
+        REQUIRE(second);
+        for (int step = 0; step < 3000; ++step) {
+            world.value().advance(100);
+            second.value().advance(100);
+        }
+        CHECK(world.value().check_invariants().empty());
+        CHECK(second.value().check_invariants().empty());
+        CHECK(world.value().state_hash() == second.value().state_hash());
+        hash = world.value().state_hash();
+    }
+    std::cout << "lan5 five-minute hash " << std::hex << hash << std::dec << '\n';
 }

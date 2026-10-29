@@ -6715,3 +6715,23 @@ Unmutated, those eight tests and the hash-seed test passed (`cache/t61-f2/dn/gat
 The §4 note remains a QUESTION: on this checkout `join_jitter_study.py` is CRLF on disk, like the other two tools, because `core.autocrlf=true`. Hashing the committed blob is what makes a CRLF checkout and an LF checkout agree.
 
 Next: reviewer pass 1, then the final study. The final study has not been started.
+
+## T61 F2 closure — progress, phase 3 — 2026-10-30 00:25 +01:00 — status: IN PROGRESS
+
+Reviewer pass 1: a fresh read-only subagent with only the packet, worktree, head `cb29039`, N1–N8, §5, and log paths. Findings: `cache/t61-f2/dn/review-1/findings.md`. Prompt: packet §8 verbatim plus those paths. It did not edit tracked files.
+
+Disposition (ranked findings):
+
+| # | finding | disposition |
+| --- | --- | --- |
+| 1 | N8 no final study | Accepted. Phase 4, after this section. |
+| 2 | H1a–c fixtures also fired `xi` | Already closed at review time (`epoch=0`, control `validate == []`, H1a–c `== {xviii}`). Re-run: 7 H1 tests OK. |
+| 3 | N7e only two 917efea rows | Already closed: `test_n7e` walks every `LINK_ROWS` rate and every `ROWS` name. `compare917.py` also matched all 6 SENS_ROWS × 2 rates. |
+| 4 | `peak_reassembly_fragments` trusted `held` | Already closed: `len(owned)` plus a lying-`held=99` vector expecting `(2, 150)`. |
+| 5 | `--validate` did not require 100 ms coverage | **Fixed** `bd8bd9c`: `script_hits == len(declared)` and the declared script is the 100 ms identity. Arrival delta vs zero stays in `test_h3_asymmetric_delay_is_the_scripted_100ms` (an extra zero-jitter sim inside `--validate` of 72 rows is out of the 300 s row bound). |
+| 6 | Some §5 tests already passed on the defective head | Recorded. H3 was fixed in `ee46458` before this continuation; invented hashes / NaN / 301 were already rejected at `be08b7b`. Tests still exist. |
+| 7 | N1 unit test required a CRLF working tree | **Fixed** `83193c3`: always require provenance == blob; disk≠blob only when this checkout is CRLF. |
+| 8 | blank line at EOF | **Fixed** in `83193c3` (`git diff --check` clean on the test file). |
+| 9 | six-file scope | Confirmed. No action. |
+
+Affected re-run after the two fix commits: 11 tests OK in 1.505 s (H1, N1, N6, H3, clean fixture). Next: join suite at this head, then the final study (N8). No round-2 of this reviewer pass: remaining NOT MET is N8 by design.

@@ -5597,3 +5597,63 @@ T10c F4 Part A (`codex/T10c-test-memory` at `1104a7d`, six commits on `94cf3cb`,
 3. T32.5, static RE of the player's reached-stage mask. P2's house tick gates decay on that mask, and its source is unread.
 
 Nothing merged or pushed.
+
+## T32.5 — The stage mask — 2026-10-29 — status: FINISHED
+- Branch: `task/T32-5-stage-mask` at the report commit; worktree: `E:\anno1503-worktrees\anno1503-T32-5` from local `main` `dc265568a7f95ef29f07500f109e409231e06e2b`. No merge, no push, no amend.
+- Built: docs only. `docs/re/population.md` §15; `docs/sim/state.md` §4.7c "Stage mask (T32.5)" and the P2 row; OQ-460, OQ-461. Never `src/`, goldens, `fixtures/`, TASKS.md or AGENTS.md. No build, game run or Wine.
+- Gates: n.a. (static RE and docs). Preflight (section 0) was already recorded in the first session; not re-run.
+- Commits before this report: `b6e733181d5d872c22a1e025d47cdfdee36f6c9c` `re(annowelt): the stage mask, its writers and its save (T32.5)`; `9aa1964b3a6939057c741e965ee1ff28366a9983` `docs(sim): the stage mask DRAFT for P2 (T32.5)`; `9ffad47ef1585d285648f8e6877ac60d7d1f6759` `docs: T32.5 open questions`.
+- Board vs packet: `players.md` has no "World reader → player" section (file: `annoscene.md` §6 / `annowelt.md`, player slot `+0x54`). Packet path "city +0x10 → slot +0x1c" is house `+0x10` → city, then city slot `+0x1c` → player (`city +0x20`). City ctor store of `+0x618` is at `0x1002face`, past the packet window `0x1002f9b0`–`0x1002fa74`.
+- Time spent / subagents used: inline; no subagents.
+
+### Address ranges read (AnnoWelt.dll)
+
+| Range | What |
+|---|---|
+| `0x10076230`–`0x10076300` | house tick path to the mask |
+| `0x1008c680`–`0x1008c683` | city slot `+0x1c` |
+| `0x10020a00`–`0x10020c03` | player `GetProperty`; case `0x21` at `0x10020a6f` |
+| `0x10020c80`–`0x10020ecb` | player `SetProperty`; case `0x21` store at `0x10020ec3` |
+| `0x10021600`–`0x10021836` | player constructor; `+0x90 = 1` at `0x10021778` |
+| `0x1001d240`–`0x1001d3d5` | `SPIELER` / `HEAD` load of `+0x90` |
+| `0x1001e920`–`0x1001e9cd` | `HEAD` save of `+0x90` |
+| `0x1001bcbd`–`0x1001bdb4`, `0x1001be0d`–`0x1001be1f` | other setter; no case `0x21` dword store |
+| `0x10029610`–`0x10029914` | stage unlock |
+| `0x1002d2a0`–`0x1002d345` | per-new-stage library write |
+| `0x1002f990`–`0x1002fada` | city constructor; `+0x618 = 0` at `0x1002face` |
+| `0x1002f4e0`–`0x1002f50a` | city `GetProperty` case `0x21` |
+| `0x1002ebb0`–`0x1002f264` | city save; no `+0x618` |
+| `0x100ae700` (start) | world save; `SPIELER` per player as in `annowelt.md` |
+
+Sweeps: `xref.py 0x90 0x94` (274 hits; player-`this` listed in §15.2); `xref.py 0x618 0x61c` (7 hits, all city); `--reloc` of `0x10020a00` / `0x10020c80` in AnnoWelt (vtable slots only) and empty in AnnoGame / AnnoScene. P: 50 `.sze` parsed, 373 `HEAD` records; histogram in §15.4.
+
+### Decisions and reasoning
+
+1. The mask the house tick tests is `player +0x90` (property `0x21`, dest second dword). Path: house `+0x10` → city slot `+0x1c` → player `+0x48(0x21)`.
+2. That dword is **state**: constructor 1, saved in `HEAD +0x48` / `+0x5C`, loaded back. P2 reads existing `Player::flags`.
+3. City `+0x618` is **derived**: constructor 0, not saved, recomputed by `0x10029610`. The house tick does not read it.
+4. P2 can run before P4 on the loaded-or-default player mask. Unlock (city_pass `"stages"`) stays P4.
+5. `SetProperty` case `0x21` is `0x10020d51`, not the `0x1001be0d` setter (`+0x28d`). The extra OR at `0x1001bda3` is OQ-460.
+6. Announcement is UI (text ids via slot `+0xd0`) plus a sim write of `city +0x32c` (`0x1002d2a0`). No PRNG in `0x10029610` or `0x1002d2a0`.
+7. Packet skip rules: Part 1 FINISHED (not QUESTION), so Part 2 ran; Part 3 is independent and is this report.
+
+### S6 answer table
+
+| | player property `0x21` | city `+0x618` |
+|---|---|---|
+| object and offset | player `+0x90` | city `+0x618` |
+| width | u32 (tick tests the full dword; save uses low 23 bits) | u32, bits 0…30 |
+| initial | 1 | 0 |
+| writers | ctor `0x10021778`; `SetProperty` `0x10020ec3`; `HEAD` load `0x1001d39f`…; unlock `0x100298fb`; `0x1001bda3` (OQ-460) | ctor `0x1002face`; unlock `0x10029683` |
+| saved | yes, `SPIELER`/`HEAD +0x48` (`0x1001e99b` / `0x1001d397`) | no |
+| after shipped load | P: 280×1, 61×`0x1f`, and the rest a low-bit prefix (373 heads) | 0, then one unlock pass |
+| rebuild | state | derived |
+
+### Acceptance
+
+- Step 6's table: **D** per row; next addresses only for OQ-460 (`0x1001bda3` case id) and OQ-461 (`city +0x10` ctor/load).
+- DRAFT paragraph: present after "Tick and its place"; P2 row names the mask; enough for P2's stage-mask decision.
+- Every claim: module + address + range above. No disassembly text, no original bytes.
+- Report and commits; not merged.
+
+S9 (OQ-185 and house flag bits 4/5) follows this commit.

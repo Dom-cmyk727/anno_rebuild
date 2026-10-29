@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import multiprocessing
 import os
 import platform
@@ -53,6 +54,25 @@ def provenance():
                           ("join_activation.py", "join_jitter_study.py")},
         "python": sys.version.split()[0], "platform": platform.platform(),
     }
+
+
+def recorded_provenance_valid(recorded):
+    """Accept the recorded source or a report-only descendant, never current-file substitution."""
+    head = recorded.get("code_head") if isinstance(recorded, dict) else None
+    if not isinstance(head, str) or not isinstance(recorded.get("source_hashes"), dict):
+        return False
+    here = os.path.dirname(os.path.abspath(__file__))
+    try:
+        if subprocess.run(("git", "merge-base", "--is-ancestor", head, "HEAD"), cwd=os.path.dirname(here)).returncode:
+            return False
+        for name, want in recorded["source_hashes"].items():
+            got = hashlib.sha256(subprocess.check_output(("git", "show", "%s:tools/%s" % (head, name)),
+                                                         cwd=os.path.dirname(here))).hexdigest()
+            if got != want:
+                return False
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    return True
 
 
 def horizon_lag(sim):
@@ -134,7 +154,8 @@ def run(rate, timer, row, profile, script=(), diagnostic=None):
     return {
         "kind": "primary" if diagnostic is None else "diagnostic", "diagnostic": diagnostic, "status": "complete",
         "rate": rate, "resend_ms": timer,
-        "workload": row, "profile": profile, "config": {
+        "workload": row, "profile": profile, "script_hits": sum(
+            e.get("jitter_source") == "script" for e in sim.events if e["kind"] in ("send", "ack_send")), "config": {
             "rate_bps": cfg.link_bps, "queue_bytes": cfg.link_queue_bytes, "jitter_min_ms": lo,
             "jitter_max_ms": hi, "jitter_seed": seed, "jitter_script": tuple(script),
         }, "metrics": result,
@@ -208,7 +229,7 @@ def main(argv=None):
         if not data or data[0].get("kind") != "manifest" or len([x for x in data if x.get("kind") == "manifest"]) != 1:
             raise SystemExit("invalid study: require exactly one leading manifest")
         manifest, data = data[0], data[1:]
-        if manifest.get("provenance") != provenance() or not isinstance(manifest.get("run_id"), str):
+        if not recorded_provenance_valid(manifest.get("provenance")) or not isinstance(manifest.get("run_id"), str):
             raise SystemExit("invalid study: provenance or run identity does not match this source")
         primary = [row for row in data if row.get("kind") == "primary"]
         diagnostics = [row for row in data if row.get("kind") == "diagnostic"]
@@ -217,16 +238,25 @@ def main(argv=None):
         actual = {(row.get("rate"), row.get("resend_ms"), row.get("workload"), row.get("profile")) for row in primary}
         required = {"config", "config_hash", "result_hash", "semantic_trace_hash", "wall_seconds", "metrics", "status"}
         allowed_diagnostics = {"repeat", "asymmetric-data-delay"}
-        if (len(primary) != 72 or actual != expected or len(diagnostics) > 12
+        if (len(primary) != 72 or actual != expected or len(diagnostics) != len(manifest.get("diagnostics", ()))
                 or any(row.get("kind") not in ("primary", "diagnostic") for row in data)
                 or any(not required <= set(row) or row.get("status") != "complete" for row in data)
-                or any(not isinstance(row["wall_seconds"], (int, float)) or row["wall_seconds"] < 0 for row in data)
+                or any(not isinstance(row["wall_seconds"], (int, float)) or not math.isfinite(row["wall_seconds"])
+                       or not 0 <= row["wall_seconds"] <= manifest["row_timeout_seconds"] for row in data)
                 or any(not isinstance(row["metrics"].get("validators"), list) or row["metrics"]["validators"] for row in data)
                 or any(row.get("diagnostic") not in allowed_diagnostics for row in diagnostics)
                 or len({row["config_hash"] for row in primary}) != 72
                 or any(row["config_hash"] != expected_config(row["rate"], row["resend_ms"], row["workload"], row["profile"],
                                                                tuple(row["config"].get("jitter_script", ()))) for row in data)):
             raise SystemExit("invalid study: require exactly the 72 distinct, validator-clean primary configurations")
+        for row in data:
+            script = tuple((tuple(x[0]), x[1]) for x in row["config"].get("jitter_script", ()))
+            replay = run(row["rate"], row["resend_ms"], row["workload"], row["profile"], script, row.get("diagnostic"))
+            if any(row.get(key) != replay.get(key) for key in ("result_hash", "semantic_trace_hash", "config_hash", "script_hits")):
+                raise SystemExit("invalid study: retained row evidence does not reproduce")
+        asym = next((r for r in diagnostics if r.get("diagnostic") == "asymmetric-data-delay"), None)
+        if asym is not None and not asym.get("script_hits"):
+            raise SystemExit("invalid study: asymmetric diagnostic did not hit its script")
         print("valid: %d primary rows, %d diagnostics" % (len(primary), len(diagnostics)))
         return 0
     started = time.monotonic()

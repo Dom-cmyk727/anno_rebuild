@@ -18,7 +18,9 @@
 namespace anno::app {
 
 inline constexpr const char* kUsage =
-    "usage: anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <n>] [--png "
+    "usage: anno1503 --view <file.sze|file.scp> | --play <file.sze> [--game-dir <dir>] [--speed "
+    "50|100|200] [--group "
+    "<n>] [--png "
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
     "[--river-flow legacy|flow] [--river-gain <x>] [--river-speed median|fastest] "
     "[--river-gap-patch <tiles>] [--renderer auto|gpu|cpu] [--lookahead-chunks <n>] "
@@ -101,6 +103,11 @@ struct ZoomOptions {
 
 struct Args {
     std::filesystem::path file;
+    /// --play: run the sim and build the scene from the islands it placed.
+    /// --view stays the file and the stand-in rule.
+    bool play = false;
+    /// Multiplayer rate: fixed real-time cadence, variable game ms per step.
+    unsigned play_speed = 100;
     std::optional<std::filesystem::path> game_dir;
     std::optional<std::size_t> group;
     std::optional<std::filesystem::path> png;

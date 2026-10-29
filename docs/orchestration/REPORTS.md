@@ -7058,3 +7058,177 @@ OQ-490. The developer start gives the whole start island to the city. The origin
   7. **N7, the remaining F2.4 gates:** the full join and snapshot suites; the existing mutant table, unmutated and mutated; the real J1–J8 behavioural mutants (each failing a named assertion); fresh-process determinism with different hash seeds; the zero-jitter baseline against `917efea` across the named rows and rates.
   8. **N8, F2.5 and the report:** after N1–N7, a fresh final study (72 + declared diagnostics, unchanged bounds, 4096 MiB headroom). The **tool's own `--validate` must print `valid`** on it at the final head. ADR 0003 experiment section and OQ-371 reconciled. Then the closure report with item-by-item proof, committed before stopping.
 - **Process:** a continuation must end with a report, even a partial one marked IN PROGRESS. Three commits and a full study without one cost a review cycle.
+
+## W4.1 — Play mode — 2026-10-29 — status: OWNER-CHECK
+
+Branch `task/W4-1-play-mode`, worktree `E:\anno1503-worktrees\anno1503-W4-1`. Started at the MAP.1 report `328f267` via the spec commit `1b4d940`. Code commits: `7b390b0` feat(app): run a scenario from the view; `2c303f6` test(app): check play mode against the sim; `297ea67` fix(app): publish play snapshots portably; `f7ef40a` style: wrap the play usage line. The play tests below were re-run on the `297ea67` tree (7 cases, 300 assertions). The window timing below is that same binary. This report commit is the final head.
+
+### What is in
+
+`anno1503 --play <file.sze>` loads the original-data registry, the scenario with its links, and a `World`. The scene uses the embedded islands and, for each link, the template `resolve_scenario_links` chose, at the link's position. `--view` still uses the stand-in rule. The sim runs on its own thread through `run_turn` at 10 game ms per step, 10 steps, 100 real ms per turn. The window reads an immutable snapshot (tick, game time, last turn cost, p95 over the last second, overrun) and does not wait. Pause stops the next turn. A slow turn is counted in `behind_ms` and is not replayed.
+
+Buildings are the world's, converted from world tiles to island-local tiles. A file building the sim also placed keeps its bytes. One the sim did not place is listed and not drawn. The split is the scenario loader's: an Anlagen id whose type has a list in the layout.
+
+The sim is linked into `anno_app_core` because the load and the tests do not need the window. Render is not given sim types. The bridge is `LinkTemplate` and `SceneBuilding`.
+
+`--speed` is 50, 100 (the default), or 200. That is `multiplayer_step_ms`: 5, 10, or 20 game ms per real step. The real turn stays 100 ms.
+
+### Tests
+
+`anno_app_tests --test-case=play:*` after the publication change, Release MSVC: 7 cases, 300 assertions, passed. Log: `E:\anno1503-worktrees\anno1503-W4-1\cache\w41\play-tests.txt` (git-ignored). `scene loading` (the existing `--view` case) passed, 9 assertions, on the build before the pointer lock; that case does not start the runner.
+
+- Islands: `Single_01.sze` and `00_1024_easyentry_01.sze` match the sim (slot, rectangle, template path). Not every `.sze` in the corpus.
+- Tick 0, ten `0200Single` files, CPU group 2. Two pictures fit under 48 MiB and were compared whole. The other eight are 77–607 MiB, so the test compared a 640×360 corner. Differing pixels sat inside the boxes of objects the sim did not place. GPU was not compared with CPU.
+- Three turns, and one turn with a 40 ms delay, hash-equal `run_turn` at a fixed 10 ms step. `Single_01.sze`.
+- A 1500 ms delay does not block `snapshot()` (under 50 ms, tick still 0).
+- Demolish of kontor 1302 on `00_1024_easyentry_01.sze` before the scene is built: the building is listed as not placed, and a 220×180 box around it differs from the scene that still has it.
+- Eight `run_n(1)` calls on `06_1024_heavy_256.sze`, Release MSVC: p50 0.38 ms, p95 0.4272 ms, p99 0.4272 ms, max 0.4272 ms. Far under the 100 ms turn, so nothing fell behind.
+
+### Pictures
+
+Stills in `C:\Users\altin\Pictures\anno-review\W4-1\`, group 2, centred on world tile (586, 788).
+
+- `00_1024_easyentry_01.sze` at 1280×800 and 2560×1440: a forested northern coast, beach, rocks, one ship offshore. 16 linked islands came from the sim's templates.
+- `06_1024_heavy_256.sze` at both sizes: a larger sandy coast with a second island entering the wide frame. The sim left a list of building items undrawn (noted on stderr).
+- `Single_01.sze` at both sizes: a green cliff coast with a rock spire and a pond.
+- `Single_05.sze` and `Single_08.sze` at that same tile are open sea (0 islands in the frame). The camera is the easy-entry kontor, not a point on those missions.
+
+The live window was opened for about 8 seconds each, `00_1024_easyentry_01.sze`, group 2, GPU, `ANNO_VIEW_ZOOM_SCRIPT=100000,8` (no zoom during the run). The window is 1280×800. Adapter: NVIDIA GeForce RTX 4090 (Vulkan). After the first report, `--play` was 498–501 fps, window-thread busy average 0.3–0.4 ms, worst 0.6–3.6 ms, and the title moved from tick 2350 to tick 4300 (game 4700 ms to 8600 ms) across about 6 seconds, turn p95 0.3–0.4 ms. `--view` on the same file, sim not started, was 500–502 fps, busy average 0.3 ms, worst 0.7–0.9 ms. The sim thread does not show up in the frame time at this size. 1920×1080 and 3840×2160 were not measured: the window size is fixed, and `bench_frame` does not run the sim.
+
+### Mutation
+
+Setting the step from the delay (40 ms instead of 10) failed `play: runner turns match run_turn and ignore the wall clock`: hash `1713407370760721173` against `4624830660583126364`. Restored. Before the Anlagen-id classification, demolish left the file sprite in place: the building was not listed and the box matched. The island check requires the template path to contain the sim's template name, which the stand-in rule does not.
+
+### Decisions and reasoning
+
+- The snapshot is a `shared_ptr<const PlaySnapshot>`. The sim allocates and fills the next snapshot before locking, then swaps the pointer under a mutex that covers only that swap. The window copies the pointer and drops the lock before it reads or draws. It is not a `World`. MSVC 14.51 deprecates the old `shared_ptr` atomic free functions; `atomic<shared_ptr<T>>` is unavailable in this MSVC configuration, so the pointer is not published either way.
+- A matching file building keeps its item bytes so phase and draw order stay. The set of buildings is still the sim's.
+- `Building::x/y` are world tiles (`scenario_formats.cpp` adds the island origin). The scene wants island-local tiles, so the bridge subtracts `tiles.x0()` and `tiles.y0()`.
+- No new question in OQ-500..509. The unread Kontor territory radius stays OQ-490 from MAP.1.
+- `tools/check_unix_warnings.sh` on the `297ea67` tree: GCC 13.3.0 clean (180 files, viewer and GPU on), Clang 18.1.3 clean (180 files, viewer and GPU on), Clang 18.1.3 clean (11 app files, viewer without GPU).
+- Full `ctest` was not re-run for this part. The two heavy render corpus tests still do not fit above the 4096 MiB headroom on this machine. Headroom was left at the default. The GPU compositor was not changed, so the GPU test suite was not re-run. The viewer named the adapter above.
+- Frame time at 1920×1080 and 3840×2160 with the sim running was not measured. The viewer window is 1280×800 logical (`viewer.cpp`). `bench_frame` can render those sizes and does not run the sim thread.
+
+### Owner check
+
+Look at `--play` before W4.2. This lane stops here.
+
+## W4.1 F1 — Play-mode corrections — 2026-10-29 — status: FINISHED
+
+Branch `task/W4-1-play-mode`, worktree `E:\anno1503-worktrees\anno1503-W4-1`. Started at `5f466cd`. Tested code head `f9db0bb` (the two commits after it are documentation). The commit that adds this section is the final head. `src/sim` was not changed. `kStateHashVersion` was not bumped. No golden was rewritten. `ANNO_TEST_HEADROOM_MB` stayed 4096 MiB.
+
+| finding | result | commits |
+| --- | --- | --- |
+| F1.1 cadence | absolute deadlines, injectable clock; window titles within 0.5% at 50/100/200 over about 65 s | `c6b9d65` |
+| F1.2 thread | `start`/`stop` for 50 turns matches 50 `run_turn` calls | `6fd197c` |
+| F1.3 islands | every scenario `.sze`, plus `lan5.txt` through the placed-template seam | `bdd7493`, `5833f5d` |
+| F1.4 picture | windows over every island and building of the ten `0200Single` files; one GPU scene on the RTX 4090 | `be0f396`, `eb923cb` |
+| F1.5 ids | an Anlagen id or island number that does not fit a PROD2 item is refused with a note | `9db9331`, `0e7eb0d` |
+| F1.6 design | why tick 0 re-encodes PROD2, and what that means for W4.2 and W4.3 | `f6510a1` |
+| F1.7 mutations | five mutations run and reverted; each failed the assertion below | none (reverted) |
+| F1.8 gates | full ctest with and without the game dir; clang-format 23.1.3; unix warnings clean | the tree at `f9db0bb` |
+| F1.9 measure | 3000 heavy turns; frame time at 1920×1080 and at the largest client the desktop will show, running and paused; stills recentred | `6b95fcd`, `cf35ab2`, `f9db0bb`, `06b7fb6` |
+
+### F1.1
+
+`PlayRunner` aims each turn at `t0 + k * mp_turn_real_ms` and sleeps with `sleep_until`, polled in `mp_step_real_ms` slices. A late streak runs back to back up to `catchup_turns` (default 5, `set_catchup_turns` before `start`). Past that bound the schedule skips to the first deadline strictly after now and adds the skipped slots to `behind_ms`. Pause shifts `t0` by the time spent paused. The clock is a `PlaySchedule`; production uses `steady_clock`.
+
+`play: absolute deadlines do not accumulate sleep overshoot` and `play: a hitch catches up five turns then skips` passed in the game-dir ctest. The unit clock adds 5 ms of overshoot to both `sleep_until` and `sleep_for`, so a relative sleep fails the lateness check (F1.7).
+
+Window titles on `00_1024_easyentry_01.sze`, group 2, GPU NVIDIA GeForce RTX 4090 (Vulkan), log `cache/w41/cadence-titles.txt`:
+
+| speed | real | game delta | ratio | relative error |
+| --- | --- | --- | --- | --- |
+| 50% | 65394.1 ms | 300 → 33050 (32750) | 0.500810 | 0.001619 |
+| 100% | 65433.4 ms | 600 → 66100 (65500) | 1.001017 | 0.001017 |
+| 200% | 65500.8 ms | 1200 → 132200 (131000) | 1.999976 | 0.000012 |
+
+All three are inside 0.5%.
+
+### F1.2
+
+`play: the sim thread matches run_turn` starts the thread on an empty world with the manual clock, runs 50 turns, and checks `World::state_hash` against 50 direct `run_turn` calls. Passed in both full ctest runs below.
+
+### F1.3
+
+`load_placed_scene` draws each template at the position the sim placed, with that island number. `play: islands are the ones the sim placed` walks every `Scenes/**/*.sze`: 50 scenarios, 5492 assertions, passed (`cache/w41/corpus-islands.txt`). `play: lan5 islands are the ones the sim placed` loads `data/maps/lan5.txt` with two seats and compares the scene with whatever the sim placed. It passed in the game-dir ctest. It does not assert an island count.
+
+### F1.4
+
+`play: tick 0 matches the viewer except objects the sim did not place`: 10 `0200Single` files, 1335 windows of 512², 282 buildings, 3478 assertions, passed (`cache/w41/windows.txt`). Differing pixels stay inside the boxes of objects the sim did not place. The 512 edge is a test memory bound (1 MiB of RGBA), not an engine limit.
+
+`play: GPU matches the CPU path on one scene`: adapter NVIDIA GeForce RTX 4090 (Vulkan), `Single_01` group 2 at 640×360, max channel delta 1, 9 assertions, passed (`cache/w41/play-gpu.txt`). The same case passed again inside the game-dir ctest.
+
+### F1.5
+
+`apply_world_buildings` records a note and does not mask when `type > 0x0FFF` or the island number is above `0xFFFF`. `SceneBuilding::type` is `uint32`. `play: an id that does not fit PROD2 is refused`: 16 assertions, passed (`cache/w41/id-fit.txt`). The original 16-bit link slot (`number & 0xFFFF` in the sim, AnnoScene `0x10008503`) is unchanged.
+
+`0e7eb0d` packs the PROD2 id in an unsigned value. Clang 18 rejected the earlier signed shift (`-Wsign-conversion` on `loader.cpp`).
+
+### F1.6
+
+`docs/app/game-shell.md`, section "Why the scene re-encodes PROD2". Tick 0 builds one scene before the first turn, and `--view` already draws PROD2, so the play checks compare that path with itself. A render builder from object lists would have to reproduce block layout, draw order, and the height byte, and the chunk cache would still be filled from the same sprites. Passing a `World` into render is not available: the renderer does not take sim types. W4.2 can update `Scene::units` per frame and leave PROD2 alone. W4.3 has to invalidate a cached chunk when an island's objects change; a re-encoded PROD2 record needs that invalidation, and an object-list builder would need the same invalidation from a list diff.
+
+### F1.7
+
+Each mutation was compiled, run, and restored with `git checkout`. Logs under `cache/w41/`.
+
+| mutation | failing assertion |
+| --- | --- |
+| (a) stand-in templates | `play: islands are the ones the sim placed`: `CHECK( noted )` is NOT correct, `CHECK( false )`, logged `0010SingleEndlos/00_1024_easyentry_01.sze`; and `CHECK( source.find(upper_copy(sim.template_key)) != npos )` is NOT correct, `CHECK( 18446744073709551615 != 18446744073709551615 )`, logged that file and `POLAR/PO_080X080_0003.SCP`. 5492 assertions, 238 failed. `mut-a.txt` |
+| (e) buildings left as the file | `play: demolish before the scene drops that building`: `REQUIRE( listed )` is NOT correct, `REQUIRE( false )`, logged `target island 2 type 1302 at 82,60 omitted 0`. `mut-e.txt` |
+| (d) mutex held across the turn | `play: a slow turn does not block a frame reading the snapshot`: `CHECK( waited.count() < 50 )` is NOT correct, `CHECK( 2248 < 50 )`. `mut-d.txt` |
+| relative `sleep_for` of a full period | `play: absolute deadlines do not accumulate sleep overshoot`: `CHECK( max_late <= kOvershootMs )` is NOT correct, `CHECK( 95 <= 5 )`, logged `speed 50/100/200 lateness 95 ms`. `mut-f11.txt` |
+| step taken from the wall clock | `play: runner turns match run_turn and ignore the wall clock`: `CHECK( runner.state_hash() == direct... )` `17968525580065530649 == 5422545201690403309`, and `CHECK( slow.state_hash() == plain... )` `16074433527828321764 == 4624830660583126364`. `mut-c.txt` |
+
+### F1.8
+
+clang-format 23.1.3 `--dry-run --Werror` on the six changed `.cpp`/`.hpp` files: exit 0. `git diff --check` against `5f466cd` was clean before this report.
+
+`tools/check_unix_warnings.sh` on the `f9db0bb` tree (the later commits do not change code), log `cache/w41/unix-warnings-final.txt`: GCC 13.3.0 clean, 181 files, viewer and GPU on; Clang 18.1.3 clean, 181 files, viewer and GPU on; Clang 18.1.3 clean, 11 files, viewer without GPU.
+
+Full `ctest --preset msvc -j 16` with `ANNO1503_GAME_DIR=E:\anno1503\game\app` and `ANNO_TEST_HEADROOM_MB=4096`. 1118 tests passed, 0 failed, 0 skipped. Real time 1265.09 sec. Label `heavy` 9645.98 sec*proc (10 tests), including the scene digests (`#286`, 1072.57 sec) and the legacy river shading (`#287`, 1115.66 sec). No `wait deadline`. Coordinator line from `cache/w41/ctest-gamedir/LastTest.log`: `coordinator build=dd1ac8fb40068285 compat=3 incarnation=b39bd7d8370aa353 pid=71227 port=47631`. An admit line in that log has `headroom=4294967296`. Console copy: `cache/w41/ctest-gamedir-output.log`.
+
+The same preset without `ANNO1503_GAME_DIR`, headroom still 4096, on the same binaries: 1116 passed, 2 skipped (`anno_sim_replay_scenario_single_01`, `anno_sim_replay_scenario_endless_03_links`), 0 failed. Real time 35.97 sec. Log: `cache/w41/ctest-nogame-final.log`. An earlier no-game run, before `0e7eb0d`, failed test 35 once because the WSL coordinator binary was not staged yet (`nohup: failed to run command ... No such file or directory`); the isolated rerun passed in 1.32 sec (`cache/w41/ctest-n4-rerun.txt`). The final no-game run passed that test in 1.08 sec.
+
+### F1.9
+
+Isolated `play: turn cost on the heavy endless scenario` on `06_1024_heavy_256.sze`, 3000 turns, Release MSVC, head `6b95fcd`: p50 0.2561 ms, p95 0.3114 ms, p99 0.3681 ms, max 0.6834 ms (`cache/w41/turns-3000.txt`). The same case inside the loaded game-dir ctest passed with p50 0.4396 ms, p95 0.6437 ms, p99 1.3104 ms, max 7.1946 ms (`ctest-gamedir/LastTest.log`). That run shared the machine with the heavy render corpus. Both are CPU time of one turn, not the 100 ms cadence. Recorded in `docs/perf/README.md`.
+
+Window meter on `00_1024_easyentry_01.sze`, group 2, GPU NVIDIA GeForce RTX 4090 (Vulkan), code head `f9db0bb`. Primary display 2560×1440, virtual screen 4480×1440, so a requested 3840×2160 client is 3840×1421. Logs `cache/w41/frames-meter.txt` and `cache/w41/frame-paused-3840.txt`.
+
+| state | client | meter | frame avg | worst | play line |
+| --- | --- | --- | --- | --- | --- |
+| running | 1920×1080 | 501.5 fps | 0.5 ms | 1.2 ms | tick advancing, p95 0.4 ms |
+| running | 3840×1421 | 501.4 fps | 0.6 ms | 1.1 ms | tick advancing, p95 0.5 ms |
+| paused | 1920×1080 | loop waiting | 0.7 ms | 13.4 ms, surface configure 12.3 | `paused`, p95 0.5 ms |
+| paused | 3840×1421 | loop waiting | 0.4 ms | 13.0 ms, surface configure 9.6 | `tick 2700, game 5400 ms, turn p95 0.3 ms, paused` |
+
+Pause stops the frame loop (`SDL_WaitEventTimeout`), so a paused interval has no steady fps. The averages are the frames of the event that woke the loop. Across a 5 s pause at 3840×1421 the tick stayed put; the wake-up had advanced 100 ticks (200 ms of game time). `f9db0bb` publishes the snapshot when pause begins, because a pause runs no turn and the title would otherwise stay on the last turn.
+
+Stills in `C:\Users\altin\Pictures\anno-review\W4-1`. The older `single05-*.png` and `single08-*.png` are open sea: they used the easy-entry kontor tile. The new ones are `--play --png --group 2 --renderer cpu --size 1280x800`, centred on an island of that file.
+
+- `Single_05-play-island.png` at `--at 256,256` (island 0). Log: 2 islands drawn, 5762 objects drawn, 925 invisible, 0 failed. The picture is a northern island: forest, a brown rocky ridge, sandy beaches, deep blue sea, and a small stone settlement with red roofs on the lower-left shore.
+- `Single_08-play-island.png` at `--at 176,80` (island 1). Log: 1 island drawn, 4852 objects drawn, 1604 invisible, 0 failed. The picture is one large island with a central grey rock peak, dense forest, a sandy shore, and deep blue sea.
+- `easy-1280.png` / `easy-2560.png`: forested northern coast, beach, shallows, rocks, a small boat.
+- `heavy-1280.png` / `heavy-2560.png`: a sandy coast with forest and rock; the wide frame includes a second headland.
+- `single-1280.png` and `single01-2560.png`: a forested coast with a rocky peak, sea filling the other half of the frame.
+
+Objects the sim had not placed were left undrawn; the stderr of those runs listed them.
+
+### Decisions and reasoning
+
+- Catch-up bound defaults to 5 turns (500 ms). That absorbs one hitch. An unbounded catch-up would grow a backlog; skipping on the first late slot would drop a hitch. `set_catchup_turns` is the configuration path.
+- `PlaySchedule` is a virtual interface so `PlayRunner`'s type stays stable for `main.cpp`. The poll slice is `Timing::mp_step_real_ms`. The test clock's overshoot applies to both sleeps, so a relative sleep fails F1.1's drift check. A `sleep_for` of the remaining time until the deadline would not, because that clock still wakes one overshoot after an absolute target.
+- Cadence and thread tests use `World::create(ScenarioSpec{}, TypeRegistry::empty())`. The thread test copies the world before the move and requires the hash to change.
+- The fixed-map seam is `load_placed_scene`, not an `.sze` stand-in for `lan5.txt`. `--view` keeps the stand-in rule. `complete_scene` is shared.
+- PROD2 re-encoding stays for tick 0. The object-list builder is the seam once the picture changes after load (W4.3). Figures stay on `Scene::units` (W4.2).
+- An id that does not fit a PROD2 item is refused in the app bridge. The sim's 16-bit slot mask is the original rule and was not changed.
+- The GPU comparison lives in `anno_render_gpu_tests` (`RESOURCE_LOCK gpu`) so `anno_app_tests` is not labelled gpu.
+- Entering pause publishes a snapshot. Otherwise the title, which reads the last snapshot, cannot say `paused`.
+
+### Left open
+
+- W4.2 and W4.3 are not started.
+- A 3840×2160 client cannot be shown on this desktop. The measured large client is 3840×1421.
+- This lane stops for review. No merge.

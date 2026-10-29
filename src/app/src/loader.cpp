@@ -5,6 +5,8 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <set>
+#include <tuple>
 
 #include <anno/app/cli.hpp>
 #include <anno/app/loader.hpp>
@@ -12,6 +14,7 @@
 #include <anno/assets/island.hpp>
 #include <anno/assets/unit.hpp>
 #include <anno/formats/anlagen.hpp>
+#include <anno/formats/chunk.hpp>
 #include <anno/formats/figuren.hpp>
 #include <anno/formats/insel.hpp>
 #include <anno/formats/sze.hpp>
@@ -233,7 +236,172 @@ std::optional<fs::path> find_ci(const fs::path& base, const std::string& rel) {
     return cur;
 }
 
-Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path& file) {
+/// Building items become the sim's set. A file building the sim also placed
+/// keeps its bytes (phase and draw order). One the sim did not place is listed
+/// and dropped. One the sim placed that the file lacks is appended.
+void apply_world_buildings(std::vector<insel::Island>& islands, LoadedScene& out,
+                           const SceneObjects& objects) {
+    using Key = std::tuple<std::uint32_t, std::uint32_t, std::uint16_t, std::uint16_t>;
+    std::set<Key> placed;
+    std::map<std::uint32_t, std::vector<SceneBuilding>> by_slot;
+    for (const SceneBuilding& b : objects.buildings) {
+        // PROD2 stores the Anlagen id in 12 bits (formats::insel masks with
+        // 0x0FFF). A wider id must not be truncated into that field.
+        if (b.type > 0x0FFF) {
+            out.notes.push_back("play: Anlagen id " + std::to_string(b.type) +
+                                " does not fit a PROD2 item");
+            continue;
+        }
+        placed.insert({b.island, b.type, b.x, b.y});
+        by_slot[b.island].push_back(b);
+    }
+    auto owned = [&](std::vector<std::uint8_t> payload) -> formats::Bytes {
+        out.buffers.push_back(std::move(payload));
+        return formats::Bytes(out.buffers.back().data(), out.buffers.back().size());
+    };
+    auto append_item = [](std::vector<std::uint8_t>& items, std::uint16_t local_x,
+                          std::uint16_t local_y, const SceneBuilding& b) {
+        const std::uint32_t packed = b.type | ((static_cast<std::uint32_t>(b.rotation) & 3u) << 14);
+        const auto id = static_cast<std::uint16_t>(packed);
+        const std::uint16_t state =
+            static_cast<std::uint16_t>(static_cast<std::uint16_t>(b.height) << 8);
+        items.push_back(static_cast<std::uint8_t>(id & 0xFF));
+        items.push_back(static_cast<std::uint8_t>(id >> 8));
+        items.push_back(static_cast<std::uint8_t>(state & 0xFF));
+        items.push_back(static_cast<std::uint8_t>(state >> 8));
+        items.push_back(static_cast<std::uint8_t>(local_x));
+        items.push_back(static_cast<std::uint8_t>(local_y));
+    };
+    for (insel::Island& island : islands) {
+        // The island head keeps a u32. The PROD2 match uses that number as the
+        // slot. The original table index is 16 bits (AnnoScene.dll 0x10008503);
+        // a wider number is refused instead of being masked down to a slot.
+        if (island.number > 0xFFFF) {
+            out.notes.push_back("play: island number " + std::to_string(island.number) +
+                                " does not fit a PROD2 item");
+            continue;
+        }
+        const std::uint32_t slot = island.number;
+        std::set<Key> drawn;
+        std::vector<SceneBuilding> pending = by_slot[slot];
+        for (formats::chunk::Chunk& rec : island.records) {
+            const std::string_view name = rec.name();
+            if (name != "GELAENDE" && name != "PROD2" && name != "FLUESSE") {
+                continue;
+            }
+            auto parsed = insel::Block::parse(rec.payload);
+            if (!parsed || parsed.value().data.size() % insel::kItemLen != 0) {
+                continue;
+            }
+            const insel::Block& block = parsed.value();
+            std::vector<std::uint8_t> items;
+            bool changed = false;
+            for (std::size_t o = 0; o < block.data.size(); o += insel::kItemLen) {
+                const insel::PlacedObject obj =
+                    insel::PlacedObject::parse(block.data.subspan(o, insel::kItemLen), block);
+                if (objects.is_building(obj.anlage)) {
+                    const Key key{slot, obj.anlage, obj.x, obj.y};
+                    if (placed.count(key) == 0) {
+                        changed = true;
+                        out.notes.push_back("play: island " + std::to_string(slot) + " object " +
+                                            std::to_string(obj.anlage) + " at " +
+                                            std::to_string(obj.x) + "," + std::to_string(obj.y) +
+                                            " was not placed by the sim, so it is not drawn");
+                        out.omitted.push_back(
+                            OmittedObject{slot, island.x, island.y, obj.anlage, obj.x, obj.y});
+                        continue;
+                    }
+                    drawn.insert(key);
+                }
+                items.insert(items.end(), block.data.begin() + static_cast<std::ptrdiff_t>(o),
+                             block.data.begin() + static_cast<std::ptrdiff_t>(o + insel::kItemLen));
+            }
+            if (name == "PROD2") {
+                std::vector<SceneBuilding> left;
+                for (const SceneBuilding& b : pending) {
+                    const Key key{slot, b.type, b.x, b.y};
+                    if (drawn.count(key) != 0) {
+                        continue;
+                    }
+                    const bool inside = b.x >= block.x && b.y >= block.y &&
+                                        b.x < static_cast<std::uint32_t>(block.x) + block.width &&
+                                        b.y < static_cast<std::uint32_t>(block.y) + block.height;
+                    if (!inside) {
+                        left.push_back(b);
+                        continue;
+                    }
+                    append_item(items, static_cast<std::uint16_t>(b.x - block.x),
+                                static_cast<std::uint16_t>(b.y - block.y), b);
+                    drawn.insert(key);
+                    changed = true;
+                }
+                pending = std::move(left);
+            }
+            if (!changed) {
+                continue;
+            }
+            const auto hdr = block.header_bytes();
+            std::vector<std::uint8_t> payload(hdr.begin(), hdr.end());
+            payload.insert(payload.end(), items.begin(), items.end());
+            rec.payload = owned(std::move(payload));
+        }
+        std::map<std::pair<std::uint16_t, std::uint16_t>, std::vector<SceneBuilding>> extra;
+        for (const SceneBuilding& b : pending) {
+            const Key key{slot, b.type, b.x, b.y};
+            if (drawn.count(key) != 0) {
+                continue;
+            }
+            const auto bx = static_cast<std::uint16_t>((b.x / insel::kBlock) * insel::kBlock);
+            const auto by = static_cast<std::uint16_t>((b.y / insel::kBlock) * insel::kBlock);
+            extra[{bx, by}].push_back(b);
+        }
+        const auto name = formats::chunk::name_field("PROD2");
+        if (!name) {
+            continue;
+        }
+        for (const auto& [origin, group] : extra) {
+            if (origin.first >= island.width || origin.second >= island.height) {
+                continue;
+            }
+            insel::Block block;
+            block.x = origin.first;
+            block.y = origin.second;
+            block.width = static_cast<std::uint8_t>(
+                std::min<std::uint32_t>(insel::kBlock, island.width - origin.first));
+            block.height = static_cast<std::uint8_t>(
+                std::min<std::uint32_t>(insel::kBlock, island.height - origin.second));
+            std::vector<std::uint8_t> items;
+            for (const SceneBuilding& b : group) {
+                if (b.x < block.x || b.y < block.y ||
+                    b.x >= static_cast<std::uint32_t>(block.x) + block.width ||
+                    b.y >= static_cast<std::uint32_t>(block.y) + block.height) {
+                    continue;
+                }
+                append_item(items, static_cast<std::uint16_t>(b.x - block.x),
+                            static_cast<std::uint16_t>(b.y - block.y), b);
+            }
+            if (items.empty()) {
+                continue;
+            }
+            const auto hdr = block.header_bytes();
+            std::vector<std::uint8_t> payload(hdr.begin(), hdr.end());
+            payload.insert(payload.end(), items.begin(), items.end());
+            formats::chunk::Chunk chunk;
+            chunk.name_field = *name;
+            chunk.payload = owned(std::move(payload));
+            island.records.push_back(std::move(chunk));
+        }
+    }
+}
+
+Result<LoadedScene, std::string> complete_scene(const fs::path& dir, std::string name,
+                                                formats::Bytes unit_source, LoadedScene out,
+                                                std::vector<insel::Island> all,
+                                                const SceneObjects* objects);
+
+Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path& file,
+                                            std::span<const LinkTemplate> chosen,
+                                            const SceneObjects* objects) {
     LoadedScene out;
     // Island and AnlagenFile spans point into these buffers. `load` returns a
     // span over a buffer's heap storage, which stays put when the outer
@@ -251,17 +419,13 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
     if (!file_bytes) {
         return "cannot read " + to_utf8(file);
     }
-    const auto felder_bytes = load(dir / "Textures" / "Felder.tex");
-    const auto anl_bytes = load(dir / "Anlagen.dat");
-    if (!felder_bytes || !anl_bytes) {
-        return std::string("cannot read Textures/Felder.tex or Anlagen.dat in the game directory");
-    }
     auto islands = insel::islands(*file_bytes);
     if (!islands) {
         return to_utf8(file) + ": " + islands.error();
     }
     std::vector<insel::Island> all = std::move(islands).value();
     out.file_islands = all.size();
+    out.island_sources.assign(all.size(), {});
     // Stand-in islands for INSELLNK records: a link names a placeholder
     // template (*_dummy.scp); the original replaces it at game start by a
     // random real template of the same climate and size, never a PIRAT one,
@@ -269,7 +433,13 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
     // 0x10009550; docs/re/annoscene.md §3–5). Without a game seed the viewer
     // picks deterministically from the same candidates: sorted by file name,
     // pick = island number mod count (OQ-028). Falls back to the dummy.
-    std::size_t linked = 0;
+    // --play passes the template the sim already chose and skips that rule.
+    std::map<std::uint32_t, const fs::path*> chosen_by_number;
+    for (const LinkTemplate& c : chosen) {
+        chosen_by_number.emplace(c.number, &c.file);
+    }
+    std::size_t stand_ins = 0;
+    std::size_t from_sim = 0;
     if (auto scenario = formats::sze::Scene::parse(*file_bytes)) {
         auto links = scenario.value().island_links();
         if (!links) {
@@ -277,18 +447,32 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
         }
         for (const auto& link : links.value()) {
             const std::string rel(link.path.begin(), link.path.end());
-            const auto dummy = find_ci(dir / "Scenes", rel);
-            if (!dummy) {
-                out.notes.push_back("island link " + std::to_string(link.number) + ": " + rel +
-                                    " not found, skipped");
-                continue;
-            }
-            auto buf = stand_in(*dummy, link.width, link.height, link.number);
-            if (!buf) {
-                buf = read_all(*dummy);
-            }
-            if (!buf) {
-                return "cannot read " + to_utf8(*dummy);
+            const auto chosen_file = chosen_by_number.find(link.number);
+            std::optional<std::vector<std::uint8_t>> buf;
+            std::string source;
+            if (chosen_file != chosen_by_number.end()) {
+                buf = read_all(*chosen_file->second);
+                if (!buf) {
+                    return "cannot read " + to_utf8(*chosen_file->second);
+                }
+                source = to_utf8(*chosen_file->second);
+                ++from_sim;
+            } else {
+                const auto dummy = find_ci(dir / "Scenes", rel);
+                if (!dummy) {
+                    out.notes.push_back("island link " + std::to_string(link.number) + ": " + rel +
+                                        " not found, skipped");
+                    continue;
+                }
+                buf = stand_in(*dummy, link.width, link.height, link.number);
+                if (!buf) {
+                    buf = read_all(*dummy);
+                }
+                if (!buf) {
+                    return "cannot read " + to_utf8(*dummy);
+                }
+                source = to_utf8(*dummy);
+                ++stand_ins;
             }
             out.buffers.push_back(std::move(*buf));
             auto li = insel::islands(out.buffers.back());
@@ -300,13 +484,42 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
             island.y = link.y;
             island.number = link.number;
             all.push_back(std::move(island));
-            ++linked;
+            out.island_sources.push_back(std::move(source));
         }
     }
-    if (linked > 0) {
-        out.notes.push_back(std::to_string(linked) +
+    if (stand_ins > 0) {
+        out.notes.push_back(std::to_string(stand_ins) +
                             " linked islands (INSELLNK) drawn as stand-ins: real templates of the "
                             "same climate and size (OQ-028)");
+    }
+    if (from_sim > 0) {
+        out.notes.push_back(std::to_string(from_sim) +
+                            " linked islands drawn from the templates the sim placed");
+    }
+    // Copy the span before moving `out`: the bytes stay in the file buffer.
+    const formats::Bytes unit_source = *file_bytes;
+    return complete_scene(dir, to_utf8(file), unit_source, std::move(out), std::move(all), objects);
+}
+
+Result<LoadedScene, std::string> complete_scene(const fs::path& dir, std::string name,
+                                                formats::Bytes unit_source, LoadedScene out,
+                                                std::vector<insel::Island> all,
+                                                const SceneObjects* objects) {
+    if (objects != nullptr && objects->is_building) {
+        apply_world_buildings(all, out, *objects);
+    }
+    auto load = [&](const fs::path& p) -> std::optional<formats::Bytes> {
+        auto b = read_all(p);
+        if (!b) {
+            return std::nullopt;
+        }
+        out.buffers.push_back(std::move(*b));
+        return formats::Bytes(out.buffers.back());
+    };
+    const auto felder_bytes = load(dir / "Textures" / "Felder.tex");
+    const auto anl_bytes = load(dir / "Anlagen.dat");
+    if (!felder_bytes || !anl_bytes) {
+        return std::string("cannot read Textures/Felder.tex or Anlagen.dat in the game directory");
     }
     auto anlagen = formats::anlagen::AnlagenFile::parse(*anl_bytes);
     if (!anlagen) {
@@ -323,10 +536,10 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
     if (const auto c = render::water_colour(anlagen.value())) {
         textures.value().set_water(*c);
     }
-    out.scene =
-        std::make_unique<render::Scene>(to_utf8(file), std::move(all), std::move(textures).value(),
-                                        std::move(anlagen).value(), render::kHeightLift);
-    auto units = load_units(dir, *file_bytes, *out.scene, out.notes);
+    out.scene = std::make_unique<render::Scene>(std::move(name), std::move(all),
+                                                std::move(textures).value(),
+                                                std::move(anlagen).value(), render::kHeightLift);
+    auto units = load_units(dir, unit_source, *out.scene, out.notes);
     if (!units) {
         return units.error();
     }
@@ -335,6 +548,41 @@ Result<LoadedScene, std::string> load_scene(const fs::path& dir, const fs::path&
         return std::string("no islands");
     }
     return out;
+}
+
+Result<LoadedScene, std::string> load_placed_scene(const fs::path& dir, std::string name,
+                                                   std::span<const PlacedIsland> placed,
+                                                   const SceneObjects* objects) {
+    LoadedScene out;
+    std::vector<insel::Island> all;
+    all.reserve(placed.size());
+    out.island_sources.reserve(placed.size());
+    for (const PlacedIsland& item : placed) {
+        if (item.x < 0 || item.y < 0 || item.x > 65535 || item.y > 65535) {
+            return "placed island " + std::to_string(item.number) +
+                   ": position does not fit an island coordinate";
+        }
+        auto buf = read_all(item.file);
+        if (!buf) {
+            return "cannot read " + to_utf8(item.file);
+        }
+        out.buffers.push_back(std::move(*buf));
+        auto parsed = insel::islands(out.buffers.back());
+        if (!parsed || parsed.value().empty()) {
+            return std::string("island template without an island");
+        }
+        insel::Island island = parsed.value().front();
+        island.x = static_cast<std::uint16_t>(item.x);
+        island.y = static_cast<std::uint16_t>(item.y);
+        island.number = item.number;
+        all.push_back(std::move(island));
+        out.island_sources.push_back(to_utf8(item.file));
+    }
+    if (!placed.empty()) {
+        out.notes.push_back(std::to_string(placed.size()) +
+                            " linked islands drawn from the templates the sim placed");
+    }
+    return complete_scene(dir, std::move(name), {}, std::move(out), std::move(all), objects);
 }
 
 } // namespace anno::app

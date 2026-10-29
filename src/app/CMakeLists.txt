@@ -4,11 +4,15 @@
 add_library(anno_app_core
   src/cli.cpp
   src/loader.cpp
+  src/play.cpp
   src/png.cpp
   src/still.cpp
 )
 target_include_directories(anno_app_core PUBLIC include)
-target_link_libraries(anno_app_core PUBLIC anno_render)
+# The play session is window-independent (tests, and --png at tick 0). The
+# window only reads the snapshot. Render is not given sim types; the bridge
+# is LinkTemplate and SceneBuilding in this library.
+target_link_libraries(anno_app_core PUBLIC anno_render anno_sim_load)
 target_compile_features(anno_app_core PUBLIC cxx_std_20)
 anno_target_defaults(anno_app_core)
 
@@ -31,8 +35,10 @@ if(ANNO_BUILD_VIEWER)
 endif()
 
 if(ANNO_BUILD_TESTS)
-  add_executable(anno_app_tests tests/main.cpp tests/app_test.cpp)
+  add_executable(anno_app_tests tests/main.cpp tests/app_test.cpp tests/play_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
+  target_compile_definitions(anno_app_tests PRIVATE
+    ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
   anno_target_defaults(anno_app_tests)
   anno_stage_budget_coord(anno_app_tests)
   anno_add_doctest(anno_app_tests)

@@ -922,3 +922,28 @@ Both runs pass the case (47 assertions).
 | B3 | 199.742 | 0 | 1 / 1 | 47 / 47 | 2 | 2 × "for 30 s" | no | 16973616 | build=cee55b5e74257911 compat=3 |
 
 B/A to three decimals: A1/B1 205.784 / 223.734 = 0.920; A2/B2 204.759 / 197.070 = 1.039; A3/B3 199.742 / 193.437 = 1.033. A1/B1 does not count (three `still waiting` lines in each run). A2/B2 counts (no wait, no other test). A3/B3 does not count (B3 logged two `still waiting` lines). Rule (one-sided): the F4 head may be at most 5 % slower than the F2 code in every counted pair, and a pair with a budget wait does not count, because its time measures the host's free memory. A3/B3 waited, so the verdict rests on A2/B2 alone. **No throughput regression measured:** at least one pair counts and every counted pair has B/A ≤ 1.050 (A2/B2 = 1.039). Logs in `cache\f4\ab\legacy-*`.
+
+## W4.1 — play turn cost (2026-10-29)
+
+Host: Windows, Ryzen 9800X3D, RTX 4090. Code head `297ea67`. Not a `bench_frame` run.
+
+Eight `PlayRunner::run_n(1)` calls on `Scenes/0010SingleEndlos/06_1024_heavy_256.sze`, Release MSVC, one sample: p50 0.38 ms, p95 0.4272 ms, p99 0.4272 ms, max 0.4272 ms. That is the CPU time of one turn, not the 100 ms wall cadence.
+
+The window (`anno1503 --renderer gpu --group 2`, 1280×800, `00_1024_easyentry_01.sze`, about 8 seconds, adapter NVIDIA GeForce RTX 4090 (Vulkan)): after warmup, `--play` and `--view` both sit at about 0.3 ms average window-thread busy time and about 500 fps. `--play` reported turn p95 0.3–0.4 ms while the tick advanced in real time (tick 2350 to 4300 across about 6 seconds). 1920×1080 and 3840×2160 were not measured. The window size is fixed at 1280×800, and `bench_frame` does not run the sim thread.
+
+## W4.1 F1 — play turn cost over 3000 turns (2026-10-29)
+
+Host: Windows, Ryzen 9800X3D, RTX 4090. Release MSVC. Code head `6b95fcd`. Not a `bench_frame` run.
+
+Three thousand `PlayRunner::run_n(1)` calls on `Scenes/0010SingleEndlos/06_1024_heavy_256.sze` (`play: turn cost on the heavy endless scenario`). One sample: p50 0.2561 ms, p95 0.3114 ms, p99 0.3681 ms, max 0.6834 ms. Log: the test message in the F1 report. That is the CPU time of one turn, not the 100 ms wall cadence.
+
+Window thread on the same host, code head `f9db0bb`, `--play` of `00_1024_easyentry_01.sze`, group 2, GPU NVIDIA GeForce RTX 4090 (Vulkan). The viewer's own 2 s meter (`cache/w41/frames-meter.txt`):
+
+| state | client | fps | frame avg | worst | turn p95 |
+| --- | --- | --- | --- | --- | --- |
+| running | 1920×1080 | 501.5 | 0.5 ms | 1.2 ms | 0.4 ms |
+| running | 3840×1421 | 501.4 | 0.6 ms | 1.1 ms | 0.5 ms |
+| paused | 1920×1080 | (loop waiting) | 0.7 ms | 13.4 ms, of which surface configure 12.3 | 0.5 ms |
+| paused | 3840×1421 | (loop waiting) | 0.4 ms | 13.0 ms, of which surface configure 9.6 | 0.3 ms |
+
+A requested 3840×2160 client is clamped to 3840×1421: the primary display is 2560×1440 and the virtual screen is 4480×1440. Pause stops the frame loop (`SDL_WaitEventTimeout`), so a paused interval has no steady fps; the averages above are the frames of the event that woke it, and the play line of that meter said `paused`. Across a 5 s pause at 3840×1421 the tick stayed put, then the wake-up line had advanced 100 ticks (200 ms of game time).

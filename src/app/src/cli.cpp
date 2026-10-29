@@ -71,9 +71,16 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
         }
         const std::string& a = args[i];
         const std::string& v = args[i + 1];
-        if (a == "--view") {
+        if (a == "--view" || a == "--play") {
             out.file = utf8_path(v);
+            out.play = a == "--play";
             have_file = true;
+        } else if (a == "--speed") {
+            const auto speed = number<unsigned>(v);
+            if (!speed || (*speed != 50 && *speed != 100 && *speed != 200)) {
+                return std::nullopt;
+            }
+            out.play_speed = *speed;
         } else if (a == "--game-dir") {
             out.game_dir = utf8_path(v);
         } else if (a == "--group") {

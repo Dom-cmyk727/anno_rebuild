@@ -1,6 +1,6 @@
 // anno1503: the rebuild's entry point; for now the M1.6 island viewer.
 //
-//   anno1503 --view <file.sze|file.scp> [--game-dir <dir>] [--group <0|1|2>]
+//   anno1503 --view <file.sze|file.scp> | --play <file.sze> [--game-dir <dir>] [--group <0|1|2>]
 //            [--png <out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]
 //                              [--zoom-factor <scale>] [--resample nearest|bilinear|box|area]]
 //            [--water original|enhanced] [--river-flow legacy|flow] [--river-gain <x>]
@@ -49,6 +49,7 @@
 
 #include <anno/app/cli.hpp>
 #include <anno/app/loader.hpp>
+#include <anno/app/play.hpp>
 #include <anno/app/png.hpp>
 #include <anno/app/still.hpp>
 #include <anno/render/iso.hpp>
@@ -165,7 +166,27 @@ int run(const std::vector<std::string>& raw) {
         std::fprintf(stderr, "%s: %s\n", name.c_str(), dir.error().c_str());
         return 1;
     }
-    auto loaded = anno::app::load_scene(dir.value(), args->file);
+    std::optional<anno::app::PlayLoad> play;
+    std::vector<anno::app::SceneBuilding> buildings;
+    anno::app::SceneObjects objects;
+    const anno::app::SceneObjects* objects_ptr = nullptr;
+    std::span<const anno::app::LinkTemplate> links;
+    if (args->play) {
+        auto opened = anno::app::load_play(dir.value(), args->file);
+        if (!opened) {
+            std::fprintf(stderr, "%s: %s\n", name.c_str(), opened.error().c_str());
+            return 1;
+        }
+        play = std::move(opened).value();
+        buildings = anno::app::play_buildings(play->world);
+        objects.is_building = [&](std::uint16_t id) {
+            return anno::app::anlage_is_building(play->world, id);
+        };
+        objects.buildings = buildings;
+        objects_ptr = &objects;
+        links = play->links;
+    }
+    auto loaded = anno::app::load_scene(dir.value(), args->file, links, objects_ptr);
     if (!loaded) {
         std::fprintf(stderr, "%s: %s\n", name.c_str(), loaded.error().c_str());
         return 1;
@@ -221,9 +242,22 @@ int run(const std::vector<std::string>& raw) {
             scene.set_levels(anno::render::ZoomLevels::with_derived(n));
         }
     }
+    std::unique_ptr<anno::app::PlayRunner> runner;
+    anno::app::ViewerHooks hooks;
+    const anno::app::ViewerHooks* hooks_ptr = nullptr;
+    if (play) {
+        runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
+        runner->start();
+        hooks.title = [&] { return runner->title_line(); };
+        hooks.on_pause = [&](bool paused) { runner->set_paused(paused); };
+        hooks_ptr = &hooks;
+    }
     const std::string err =
         anno::app::run_viewer(scene, args->group.value_or(2), args->renderer, args->river_flow,
-                              args->water, args->lookahead_chunks, args->zoom);
+                              args->water, args->lookahead_chunks, args->zoom, hooks_ptr);
+    if (runner) {
+        runner->stop();
+    }
     if (!err.empty()) {
         std::fprintf(stderr, "%s: %s\n", name.c_str(), err.c_str());
         return 1;

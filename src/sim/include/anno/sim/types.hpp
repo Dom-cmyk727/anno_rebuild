@@ -24,6 +24,7 @@
 #include <anno/formats/figuren.hpp>
 #include <anno/formats/result.hpp>
 #include <anno/sim/config.hpp>
+#include <anno/sim/house_groups.hpp>
 #include <anno/sim/ids.hpp>
 #include <anno/sim/production.hpp>
 
@@ -41,7 +42,10 @@ enum class TickKind : std::uint8_t {
     Mine,
     SmallFarm,
     /// The market and the Kontor (D 0x1006b6d0, T24): the cart send.
-    Market
+    Market,
+    /// The house (D 0x10076230): the population update is P2's; until then the tick
+    /// does nothing and touches nothing, `last` included, like TickKind::None.
+    House
 };
 
 /// The runtime class of a building by PRODTYPE (D: byte table 0x1002528c, jump
@@ -85,7 +89,9 @@ enum class PayloadTag : std::uint8_t {
     Farm = 3,
     SmallFarm = 4,
     Mine = 5,
-    Market = 6
+    Market = 6,
+    /// The residents and the stocks of a house (docs/sim/state.md §4.7c, P1).
+    House = 7
 };
 
 struct ClassInfo {
@@ -237,6 +243,11 @@ class TypeRegistry {
     /// in the header scope. `walk_mask` remains derived type input; T33.4 writes the
     /// separate immutable walk-table digest beside this registry digest.
     [[nodiscard]] std::uint64_t digest() const { return digest_; }
+    /// The population group table (Data/BGruppen.dat, docs/sim/state.md §4.7c): in
+    /// slot order, empty for a registry without one (synthetic registries, then every
+    /// house has no stocks); a non-empty table has exactly SimConfig::house_groups
+    /// groups. Immutable, part of digest().
+    [[nodiscard]] std::span<const HouseGroup> house_groups() const { return house_groups_; }
     /// Immutable side input; its separate digest is in the state/replay headers.
     [[nodiscard]] const std::shared_ptr<const formats::annowelt::WalkTables>& walk_tables() const {
         return walk_tables_;
@@ -249,7 +260,8 @@ class TypeRegistry {
     [[nodiscard]] static std::uint64_t digest_of(std::span<const BuildingType> types,
                                                  std::span<const GoodsInfo> goods,
                                                  std::span<const ClassInfo> classes,
-                                                 std::span<const FigureType> figures = {});
+                                                 std::span<const FigureType> figures = {},
+                                                 std::span<const HouseGroup> groups = {});
     /// Whether the registry fits a configuration (docs/sim/state.md §4.4, §9.6):
     /// the checks of build() that depend on `cfg` (the build cost goods lie in
     /// SimConfig::build_goods_first .. + build_goods_count, service masks fit
@@ -285,7 +297,8 @@ class TypeRegistry {
     static formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
     build(std::span<const formats::figuren::Entry> entries, std::vector<GoodsInfo> goods_in,
           const SimConfig& cfg, std::span<const formats::figuren::Entry> figure_entries,
-          std::shared_ptr<const formats::annowelt::WalkTables> tables = {});
+          std::shared_ptr<const formats::annowelt::WalkTables> tables = {},
+          std::vector<HouseGroup> groups = {});
 
     /// A registry without types (the original goods and class tables): what a
     /// default-constructed World holds. Shared, immutable.
@@ -300,12 +313,14 @@ class TypeRegistry {
     finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
            std::vector<ClassInfo> classes, const SimConfig& cfg,
            std::vector<FigureType> figures = {},
-           std::shared_ptr<const formats::annowelt::WalkTables> tables = {});
+           std::shared_ptr<const formats::annowelt::WalkTables> tables = {},
+           std::vector<HouseGroup> groups = {});
 
     std::vector<BuildingType> types_;      // ascending id; lookup by binary search
     std::vector<FigureType> figure_types_; // ascending id
     std::vector<GoodsInfo> goods_;
     std::vector<ClassInfo> classes_;
+    std::vector<HouseGroup> house_groups_;
     std::uint32_t max_footprint_ = 1;
     std::uint64_t digest_ = 0;
     std::shared_ptr<const formats::annowelt::WalkTables> walk_tables_;
@@ -350,6 +365,8 @@ class TypeRegistry::Builder {
   public:
     Builder();
     Builder& walk_tables(std::shared_ptr<const formats::annowelt::WalkTables> tables);
+    /// The group table (tests build two small groups in code).
+    Builder& house_groups(std::vector<HouseGroup> groups);
     Builder& goods(std::vector<GoodsInfo> table);
     Builder& classes(std::vector<ClassInfo> table);
     Builder& config(const SimConfig& cfg);
@@ -424,6 +441,7 @@ class TypeRegistry::Builder {
     std::vector<FigureType> figures_;
     std::vector<GoodsInfo> goods_;
     std::vector<ClassInfo> classes_;
+    std::vector<HouseGroup> house_groups_;
     SimConfig cfg_;
     std::string error_;
     std::shared_ptr<const formats::annowelt::WalkTables> walk_tables_;

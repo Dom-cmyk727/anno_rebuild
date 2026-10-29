@@ -40,7 +40,11 @@ sim::BuildingKey create_ok(sim::World& w, std::uint32_t island, std::uint32_t ci
 std::pair<std::uint16_t, std::uint16_t> last_and_time(const sim::Building& b) {
     return std::visit(
         [](const auto& p) {
-            return std::pair<std::uint16_t, std::uint16_t>{p.last, p.status.time};
+            if constexpr (requires { p.status; }) {
+                return std::pair<std::uint16_t, std::uint16_t>{p.last, p.status.time};
+            } else {
+                return std::pair<std::uint16_t, std::uint16_t>{p.last, 0}; // a house has no status
+            }
         },
         b.payload);
 }
@@ -79,8 +83,8 @@ TEST_CASE("create stamps last and the status time with the placement tick") {
     const std::vector<sim::TypeId> with_time = {k.weaver,     k.farm,         k.fur_trapper,
                                                 k.small_farm, k.bow_maker,    k.iron_mine,
                                                 k.gold_mine,  k.dual_workshop};
-    const std::vector<sim::TypeId> without_time = {k.pioneer_house, k.kontor, k.market_stall,
-                                                   k.church, k.barracks};
+    // The house keeps last = 0 (P1 decision 8; P2 writes the creation time).
+    const std::vector<sim::TypeId> without_time = {k.kontor, k.market_stall, k.church, k.barracks};
     int x = 101;
     for (const sim::TypeId t : with_time) {
         INFO("type " << t.v);
@@ -99,6 +103,8 @@ TEST_CASE("create stamps last and the status time with the placement tick") {
         CHECK(last == 0x2345);
         CHECK(time == 0);
     }
+    const sim::BuildingKey hk = create_ok(w, 0, 0, record(k.pioneer_house, 101, 107), 0x12345U);
+    CHECK(std::get<sim::House>(at_key(w, hk).payload).last == 0); // not stamped (decision 8)
     // Tick 0 (the loader) leaves them at 0, and 65535 + 1 wraps to 0.
     const auto zero = create_ok(w, 0, 0, record(k.weaver, 101, 105), 0);
     CHECK(last_and_time(at_key(w, zero)) == std::pair<std::uint16_t, std::uint16_t>{0, 0});
@@ -115,12 +121,12 @@ TEST_CASE("create builds the payload of the class and files it in the list of it
     struct Row {
         sim::TypeId type;
         std::size_t alternative; // Inert 0, Workshop 1, WeaponsWorkshop 2, Farm 3, SmallFarm 4,
-                                 // Mine 5, Market 6
+                                 // Mine 5, Market 6, House 7
         sim::ListId list;
     };
     const std::vector<Row> rows = {
         {k.weaver, 1, 4},    {k.farm, 3, 4},         {k.fur_trapper, 3, 4}, {k.small_farm, 4, 4},
-        {k.bow_maker, 2, 4}, {k.iron_mine, 5, 4},    {k.gold_mine, 5, 4},   {k.pioneer_house, 0, 3},
+        {k.bow_maker, 2, 4}, {k.iron_mine, 5, 4},    {k.gold_mine, 5, 4},   {k.pioneer_house, 7, 3},
         {k.kontor, 6, 5},    {k.market_stall, 0, 0}, {k.church, 0, 1},      {k.barracks, 0, 2},
     };
     int x = 101;

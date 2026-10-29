@@ -668,19 +668,29 @@ template <class A, Same<Market> S> void fields(A& a, S& s) {
     a.u32(s.carts_out);
 }
 
+static_assert(field_count<House>() == 4, "a House member needs a line in fields(House)");
+
+template <class A, Same<House> S> void fields(A& a, S& s) {
+    a.u16(s.last);
+    a.i32(s.residents_64);
+    a.u32(s.e);
+    ar::seq(a, s.stock, 4, [&](auto& x) { a.u32(x); });
+}
+
 static_assert(field_count<Building>() == 8, "a Building member needs a line in fields(Building)");
 
 /// The u8 tag of each Payload alternative in the stream: the PayloadTag values
-/// (Inert 0, Workshop 1, WeaponsWorkshop 2, Farm 3, SmallFarm 4, Mine 5, Market 6),
-/// append-only.
-inline constexpr std::array<std::uint8_t, 7> kPayloadTags = {
+/// (Inert 0, Workshop 1, WeaponsWorkshop 2, Farm 3, SmallFarm 4, Mine 5, Market 6,
+/// House 7), append-only.
+inline constexpr std::array<std::uint8_t, 8> kPayloadTags = {
     static_cast<std::uint8_t>(PayloadTag::Inert),
     static_cast<std::uint8_t>(PayloadTag::Workshop),
     static_cast<std::uint8_t>(PayloadTag::WeaponsWorkshop),
     static_cast<std::uint8_t>(PayloadTag::Farm),
     static_cast<std::uint8_t>(PayloadTag::SmallFarm),
     static_cast<std::uint8_t>(PayloadTag::Mine),
-    static_cast<std::uint8_t>(PayloadTag::Market)};
+    static_cast<std::uint8_t>(PayloadTag::Market),
+    static_cast<std::uint8_t>(PayloadTag::House)};
 
 template <class A, Same<Building> S> void fields(A& a, S& s) {
     a.u64(s.id.v);

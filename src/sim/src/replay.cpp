@@ -115,9 +115,8 @@ Recorder::Recorder(World& world) : world_(world) {
     log_.config_digest = world_.config().digest();
     log_.rules_digest = world_.rules().digest();
     log_.registry_digest = world_.types().digest();
-    log_.walk_tables_digest = world_.types().walk_tables()
-                                  ? walk_tables_digest(*world_.types().walk_tables())
-                                  : 0;
+    log_.walk_tables_digest =
+        world_.types().walk_tables() ? walk_tables_digest(*world_.types().walk_tables()) : 0;
     log_.seams_digest = seams_digest(world_.seams());
     log_.prng_timeline_version = kPrngTimelineVersion;
     log_.prng_timeline_missing = prng_timeline_missing();
@@ -389,9 +388,8 @@ formats::Result<ReplayOutcome, std::string> replay(World& world, const ReplayLog
     if (log.registry_digest != world.types().digest()) {
         return std::string("replay refused: type registry digest differs from the log's");
     }
-    const std::uint64_t walk_digest = world.types().walk_tables()
-                                          ? walk_tables_digest(*world.types().walk_tables())
-                                          : 0;
+    const std::uint64_t walk_digest =
+        world.types().walk_tables() ? walk_tables_digest(*world.types().walk_tables()) : 0;
     if (log.walk_tables_digest != walk_digest) {
         return std::string("replay refused: walk-table digest differs from the log's");
     }

@@ -694,7 +694,16 @@ TEST_CASE("figure counters and output stores by payload") {
     for (const std::uint32_t serial : {1U, 2U, 3U, 4U, 5U, 6U}) {
         sim::Payload& p = building(w, 0, serial).payload;
         CHECK_FALSE(sim::payload_blocked(p));
-        std::visit([](auto& a) { a.blocked = true; }, p);
+        if (std::holds_alternative<sim::House>(p)) {
+            continue; // a house has no blocked flag
+        }
+        std::visit(
+            [](auto& a) {
+                if constexpr (requires { a.blocked; }) {
+                    a.blocked = true;
+                }
+            },
+            p);
         CHECK(sim::payload_blocked(p));
     }
 }

@@ -118,6 +118,49 @@ formats::Result<SyntheticTypes, std::string> make_growth_types() {
     return s;
 }
 
+SimConfig population_config() {
+    SimConfig cfg;
+    cfg.house_groups = 2;
+    return cfg;
+}
+
+formats::Result<SyntheticTypes, std::string> make_population_types() {
+    auto base = make_synthetic_types();
+    if (!base) {
+        return base.error();
+    }
+    SyntheticTypes s = std::move(base).value();
+    const std::optional<GoodsId> food = s.registry->goods_by_name("NAHRUNG");
+    const std::optional<GoodsId> leather = s.registry->goods_by_name("LEDER");
+    const std::optional<GoodsId> cloth = s.registry->goods_by_name("STOFFE");
+    if (!food || !leather || !cloth) {
+        return std::string("make_population_types: the goods table lacks NAHRUNG, LEDER or STOFFE");
+    }
+    HouseGroup pioneers;
+    pioneers.number = 0;
+    pioneers.wohnmax = 8;
+    pioneers.no_downgrade = true;
+    pioneers.needs = {{*food, true, 41}, {*leather, true, 16}};
+    pioneers.vermehr = {-16, -9, 0, 12, 32};
+    HouseGroup settlers = pioneers;
+    settlers.number = 1;
+    settlers.no_downgrade = false;
+    settlers.needs.push_back({*cloth, true, 20});
+    TypeRegistry::Builder b;
+    b.config(population_config());
+    b.walk_tables(synthetic_walk_tables());
+    b.house_groups({pioneers, settlers});
+    for (const BuildingType& t : s.registry->types()) {
+        b.add(t);
+    }
+    auto built = b.build();
+    if (!built) {
+        return built.error();
+    }
+    s.registry = std::move(built.value());
+    return s;
+}
+
 WorldSettings synthetic_settings() {
     WorldSettings s;
     s.world_width = 512;
@@ -470,6 +513,30 @@ ScenarioSpec g6_scenario(const SyntheticTypes& types, std::uint32_t seed) {
                        building_at(types.carrier_weaver, 106, 114)};
     std::vector<std::uint32_t> stock(kOriginalWarehouseGoods, 0);
     stock[9] = 30 * kTon; // WOLLE
+    city0.stock = std::move(stock);
+    is.cities = {std::move(city0)};
+    spec.islands.push_back(std::move(is));
+    return spec;
+}
+
+ScenarioSpec g7_scenario(const SyntheticTypes& types, std::uint32_t seed) {
+    ScenarioSpec spec = empty_scenario(seed);
+    ScenarioSpec::PlayerSpec p;
+    p.id = PlayerId{0};
+    spec.players.push_back(p);
+    ScenarioSpec::IslandSpec is = plain_island(0, 100, 100, 40, 32);
+    is.owner_runs = {{0, 40U * 32U}};
+    ScenarioSpec::CitySpec city0 = plain_city(0, 0);
+    // 5 residents (the constructor's), food at s = 128: trunc(41 * 128 * 5 * 128 / 1536).
+    House house;
+    house.stock = {41U * 128U * 5U * 128U / 1536U, 0};
+    city0.buildings = {building_at(types.pioneer_house, 110, 110, Payload{house})};
+    std::vector<std::uint32_t> stock(kOriginalWarehouseGoods, 0);
+    for (std::size_t g = 0x29; g <= 0x2d && g < stock.size(); ++g) {
+        stock[g] = 20 * kTon; // the settler-house materials
+    }
+    stock[26] = 10 * kTon; // NAHRUNG
+    stock[27] = 5 * kTon;  // LEDER
     city0.stock = std::move(stock);
     is.cities = {std::move(city0)};
     spec.islands.push_back(std::move(is));

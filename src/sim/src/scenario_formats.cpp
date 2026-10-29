@@ -94,8 +94,8 @@ std::string_view warning_kind_name(ScenarioWarningKind kind) {
         return "StatisticsNotModelled";
     case ScenarioWarningKind::StatisticsHistoryNotModelled:
         return "StatisticsHistoryNotModelled";
-    case ScenarioWarningKind::HouseRecordNotModelled:
-        return "HouseRecordNotModelled";
+    case ScenarioWarningKind::HouseResetNotApplied:
+        return "HouseResetNotApplied";
     }
     return "?";
 }
@@ -131,7 +131,7 @@ std::vector<ScenarioWarningKind> all_warning_kinds() {
             ScenarioWarningKind::Head2FieldNotMapped,
             ScenarioWarningKind::StatisticsNotModelled,
             ScenarioWarningKind::StatisticsHistoryNotModelled,
-            ScenarioWarningKind::HouseRecordNotModelled};
+            ScenarioWarningKind::HouseResetNotApplied};
 }
 
 // ---- The house population reading and the VOLK name table (T26). Pure; declared in
@@ -822,14 +822,15 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
                 if (e.payload.size() > 4) {
                     const Bytes rec = e.payload.subspan(4);
                     if (type->cls == RuntimeClass::House) {
-                        // The house record (0x10076e60): residents, satisfaction bytes and the
-                        // reset rule. The sim has no house population state (Inert payload, no
-                        // BGruppen group data) and T26 adds none, so the record is consumed
-                        // (not UndecodedBuildingRecord) and its residents counted for the
-                        // economy diagnostic; the s_j -> stock formula and the reset rule are
-                        // the pure functions house_need_stock / house_satisfaction /
-                        // house_reset_applies, unit-tested but not applied (HouseRecordNotModelled,
-                        // OQ-165).
+                        // The house record (0x10076e60): [1] residents, [2] n, [3] version, then
+                        // the satisfaction bytes s_j (population.md §11.2). Create built the
+                        // constructor's state; Load writes residents << 6 and << 7 over it and
+                        // stock[j] = house_need_stock(Menge_j, s_j, residents) for the needs the
+                        // record names. A need beyond the record's n stays 0 (the constructor
+                        // zeroes every slot); a byte beyond the group's needs is dropped.
+                        const ClassInfo& cls = types.class_info(type->cls);
+                        Payload p = make_payload(*type, cls, config, types);
+                        House& house = std::get<House>(p);
                         const auto h = zero_filled<8>(rec);
                         const std::uint32_t residents = h[1]; // [1]
                         ++loaded.houses;
@@ -837,11 +838,31 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
                             ++loaded.houses_with_residents;
                         }
                         loaded.resident_sum += residents;
-                        warn.once(ScenarioWarningKind::HouseRecordNotModelled, "cities", "house",
-                                  ep, e.name, e.offset,
-                                  "a house's residents, stocks and the reset rule are not applied: "
-                                  "the sim has no house population state (OQ-165); the record is "
-                                  "read and consumed");
+                        house.residents_64 = static_cast<std::int32_t>(residents << 6);
+                        house.e = residents << 7;
+                        const auto group = house_group(config, type->prodtype);
+                        const auto groups = types.house_groups();
+                        if (group && *group < groups.size()) {
+                            const HouseGroup& hg = groups[*group];
+                            const std::uint32_t lower = *group > 0 ? groups[*group - 1].wohnmax : 0;
+                            if (house_reset_applies(*group, residents, lower)) {
+                                warn.add(ScenarioWarningKind::HouseResetNotApplied, ep, e.name,
+                                         e.offset,
+                                         "a house of group " + std::to_string(*group) + " with " +
+                                             std::to_string(residents) +
+                                             " residents is below half the lower group's Wohnmax: "
+                                             "the original sets Wohnmax and draws per forced need, "
+                                             "the record is loaded as stored (OQ-451)");
+                            }
+                            const std::vector<std::uint32_t> s_j = house_satisfaction(
+                                h[3], h[2], rec.size() > 8 ? rec.subspan(8) : formats::Bytes{});
+                            const std::size_t count = std::min(s_j.size(), hg.needs.size());
+                            for (std::size_t j = 0; j < count; ++j) {
+                                house.stock[j] =
+                                    house_need_stock(hg.needs[j].menge, s_j[j], residents);
+                            }
+                        }
+                        payload = std::move(p);
                     } else if (type->cls == RuntimeClass::Market ||
                                type->cls == RuntimeClass::MarketCombi) {
                         // The market record (0x1006be00): one nested KONTID u16 = the market's
@@ -862,7 +883,7 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
                                       "field (OQ-158); the record is consumed");
                     } else {
                         const ClassInfo& cls = types.class_info(type->cls);
-                        payload = make_payload(*type, cls, config);
+                        payload = make_payload(*type, cls, config, types);
                         if (auto* mine = std::get_if<Mine>(&*payload)) {
                             mine->deep = mine_is_deep(type->prod, type->research_id);
                         }
@@ -877,7 +898,8 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
                                          std::to_string(static_cast<int>(type->cls)) +
                                          " is not mapped: the make_* default stays");
                         }
-                        if (const std::string p = payload_problem(*payload, *type, cls, config);
+                        if (const std::string p =
+                                payload_problem(*payload, *type, cls, config, types);
                             !p.empty()) {
                             warn.add(ScenarioWarningKind::BuildingRefused, ep, e.name, e.offset,
                                      "building " + std::to_string(bi->id) + ": " + p);

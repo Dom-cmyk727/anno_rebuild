@@ -108,10 +108,12 @@ struct SourceChoice {
 /// Exactly one outcome counter is bumped per call that reaches the candidate stage.
 struct TransportStats {
     std::uint64_t no_candidate = 0; ///< (i) no building passed the filter
-    std::uint64_t unreached = 0;    ///< (ii-a) candidates, search completed but path empty (goal reached, no route built)
-    std::uint64_t no_goal_reached = 0; ///< (ii-b) search completed but no goal cell was visited at all
-    std::uint64_t low_score = 0;    ///< (iii) a goal was reached but no score beat the start
-    std::uint64_t found = 0;        ///< (iv) a source was chosen
+    std::uint64_t unreached =
+        0; ///< (ii-a) candidates, search completed but path empty (goal reached, no route built)
+    std::uint64_t no_goal_reached =
+        0;                       ///< (ii-b) search completed but no goal cell was visited at all
+    std::uint64_t low_score = 0; ///< (iii) a goal was reached but no score beat the start
+    std::uint64_t found = 0;     ///< (iv) a source was chosen
     /// (v) exact cells unavailable (the retained tile-only placement lost metadata).
     std::uint64_t incomplete = 0;
     // Historical T29 stand-in diagnostics. The decoded search no longer fills

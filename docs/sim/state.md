@@ -435,7 +435,7 @@ enum class RuntimeClass : std::uint8_t {   // by PRODTYPE (D: byte table 0x10025
     Inn, PublicService, Doctor, School, Castle, FireBrigade, House, Tower, CannonTower,
     Count_   // number of classes (not a class): the class table has this many entries (S3)
 };
-enum class PayloadTag : std::uint8_t { Inert = 0, Workshop = 1, WeaponsWorkshop = 2, Farm = 3, SmallFarm = 4, Mine = 5 };   // = the save tag of Building::payload; append-only
+enum class PayloadTag : std::uint8_t { Inert = 0, Workshop = 1, WeaponsWorkshop = 2, Farm = 3, SmallFarm = 4, Mine = 5, Market = 6, House = 7 };   // = the save tag of Building::payload; append-only
 struct ClassInfo {
     RuntimeClass cls = RuntimeClass::Plain;
     TickKind tick = TickKind::None;
@@ -715,11 +715,27 @@ P1 adds the `House` payload alternative at the end of the building variant (appe
 - G7 semantic asserts above (P1 subset: growth and decay only, no upgrade/tax until those stages).
 - Mutation: decay omitted → G7 stock assert fails; city store decremented in the house tick → G7 store assert fails.
 
+#### As implemented (P1, 2026-10-28; `house_groups.hpp`, `building.hpp`, `scenario_formats.cpp`)
+
+The decisions of the P1 board entry override the draft above where they differ:
+
+1. **Tags.** `PayloadTag::House = 7` (the draft's "next after `Mine = 5`" was stale: `Market = 6` exists) and `TickKind::House` (value 8, appended), paired in the class table: `{House, TickKind::House, PayloadTag::House, 2500}`. `production_kind_for_tick` returns nullopt for it, as for `Market`.
+2. **No behaviour.** `tick_building`'s `TickKind::House` case returns at once and touches nothing, `last` included, like `TickKind::None`. `create_building` does not stamp the house's `last` (the original's property `0x23` does; P2, the first reader of `last`, will).
+3. **Versions.** `kStateHashVersion` 114 → 115 (the draft's "today 111" was stale). `kPrngTimelineVersion` stays 2: P1 draws nothing.
+4. **The save is exact.** One field list (§9.1): our own save is the runtime form, so save then load gives the same state hash, a residents fraction (`residents_64` not a multiple of 64) and `E` included. The original's lossy record (integer residents, `E` not saved, the `s_j` bytes) is only **read**, on scenario import; no original-format house record is written. How loading our own save reproduces owner question 1's catch-up (`last`) is open: OQ-450.
+5. **The reset is not applied.** `house_reset_applies` true is detected and warned (`HouseResetNotApplied`, once per record) and the record is loaded as stored; no draw site is added (the `ComputerNameNotDrawn` precedent), because the loader has no draw source and the place of the draw in the load-phase order is unread: OQ-451. Shipped scenarios never enter the branch (corpus count 0 for every file).
+6. **Widths.** `struct House { u16 last; i32 residents_64; u32 e; vector<u32> stock; }`: the original's i16 and u16 (`+0x2c`, `+0x2e`, `+0x30 + 2j`) widened when the data enters the engine (CLAUDE.md), one stock entry per need of the house's group (the original has 16 u16 slots). `mood_flags` is omitted (owner question 7's default: nothing writes it yet). Whether the original's i16/u16 wrap is observable: OQ-452 (not with the shipped data).
+7. **The group table** is registry data (`TypeRegistry::house_groups()`): parsed from `Data/BGruppen.dat` by `parse_house_groups` (`formats::text`; the loader's integer formulas: `Menge = (h·4096 + 5000) / 10000`, `VermehrTab = sign(h)·(|h|·64 / 100)` for a value written with two decimals `h / 100`), in slot order, in the registry digest (`u64` count, then per group: slot u32, `NoUpgrade`, `NoDowngrade`, `Wohnmax` u16, the needs as count + (goods u32, forced bool, `Menge` u16), the three 21-byte score tables and the five `VermehrTab` bytes), and checked: a non-empty table has exactly `SimConfig::house_groups` groups (`TypeRegistry::build` and `validate_against`). The table may be empty (synthetic registries): then every house has no stocks. Kept per group: the fields listed above; omitted: `Priority`, `BauFirst`, `BauLast`, `Hiscore`, `Wissen`, and the derived tables whose first reader is P2 (the id → need slot lookup with its substitution pass, the ends of the goods and infrastructure needs, the forced-infrastructure bit set).
+8. **At creation** (`make_payload`): `residents_64 = 0x140`, `e = 0x280`, every stock 0, `last = 0`; the stock vector has the group's need count (`house_need_count`: `house_group(cfg, prodtype)` and the registry's table; 0 without a table). `payload_problem` rejects another size.
+9. **Import** (`load_scenario`, the house branch): header `[1]` residents, `[2]` n, `[3]` version, then the bytes through `house_satisfaction`; `residents_64 = r << 6`, `e = r << 7`, `stock[j] = house_need_stock(Menge_j, s_j, r)` for `j < min(n, group needs)`, 0 above. `HouseRecordNotModelled` is removed, `HouseResetNotApplied` appended. The corpus: 3283 houses, 43 162 residents in the records and in the created houses, `HouseResetNotApplied` 0 in all 50 files.
+10. **City side.** `BuildingIndex::house_counts` is unchanged and no per-group resident totals were added on `City`: they come with their first reader (P3/P4) as derived caches with a `check_invariants` rule.
+11. **G7 in P1** is `synthetic::g7_scenario` on `make_population_types()` (two groups written in code) and its create hash `p1_g7_create`; the growth, decay and the "decay omitted" mutation belong to P2. Tax level 1 of the draft's G7 has no state field yet (P4).
+
 #### Stages (proposed acceptance)
 
 | Stage | What | Acceptance |
 |---|---|---|
-| **P1** | `House` payload, registry groups, Load/Save, T26 functions applied, derived city totals, `TickKind::House` still a no-op (or the 2500 gate only, no decay). Stream bump, G7 create hash, corpus. | Orchestrator: a loaded `single36` house has residents and stocks; `HouseRecordNotModelled` absent; goldens/corpus re-recorded; no city-store take. |
+| **P1 (done 2026-10-28)** | `House` payload, registry groups, Load/Save, T26 functions applied, derived city totals, `TickKind::House` still a no-op (or the 2500 gate only, no decay). Stream bump, G7 create hash, corpus. | Orchestrator: a loaded `single36` house has residents and stocks; `HouseRecordNotModelled` absent; goldens/corpus re-recorded; no city-store take. |
 | **P2** | House tick: `E` smooth, stock decay, mood, `VermehrTab`, floors; no upgrade, no walker. | G7 residents and stocks match the §12.2 integer formulas for N updates; city store unchanged. |
 | **P3** | UpgradeCheck / Upgrade / Downgrade / `SetGroup`. | G7 upgrades when the next tables are > 0 and materials are in store; type id `+ 20`; house_counts move. |
 | **P4** | Booking city_pass (taxes into player money); stage mask optional. | G7 money matches `(sum(Preis+PreisLevel)·billed + 128) >> 8` after a forced billed vector. |
@@ -1848,13 +1864,15 @@ The `MonopolyTable` entries match `MONOPOL2`: 28 × {u32 time, player or −1}.
 
 **City**: `u32 number, u32 owner, u16 tick_stamp`, **CityStock** `{u32 capacity, count + u32 stock[]}`, goods settings (count; each `bool buy, u32 limit, i32 list_index`), build goods (count; each `u32 setting, u64 spent`), trade lists (count of lists; each count + `{u32 goods, u32 amount_88, u32 price}`), scope `index`: `u16 stamp`, `u64 list_count`, per list (scope `list`, ordinal = ListId): `i64 hint, u32 cursor, u64 slot_count`, per slot optional **Building** (scope `building`, ordinal = slot).
 
-**Building**: `u64 id, u32 type, i32 x, i32 y, u8 rotation, u8 byte0e, u8 byte0f, u8 payload_tag`, payload (tags: 0 Inert, 1 Workshop, 2 WeaponsWorkshop, 3 Farm, 4 SmallFarm, 5 Mine; append-only):
+**Building**: `u64 id, u32 type, i32 x, i32 y, u8 rotation, u8 byte0e, u8 byte0f, u8 payload_tag`, payload (tags: 0 Inert, 1 Workshop, 2 WeaponsWorkshop, 3 Farm, 4 SmallFarm, 5 Mine, 6 Market, 7 House; append-only):
 - `Inert`: `u16 last, bool blocked, bool suspended, Status`.
 - `Workshop`: `u16 last, bool switched_on, bool suspended, bool blocked`, `u32` vectors `out`, `in`, `activity`, `u32 carriers_out`, `Status`.
 - `WeaponsWorkshop`: `u16 last`, bools `line_on`, `bool suspended, bool blocked`, `u32` vectors `out`, `in`, `u16` vector `activity`, `u32 carriers_out`, `Status` (`unlocked` is derived).
 - `Farm`: `u16 last, bool switched_on, bool suspended, bool blocked, u32 out, u32 raw, u16 activity, u32 workers_out, Status`.
 - `SmallFarm`: `u16 last`, bools `line_on`, `bool suspended, bool blocked`, `u32` vectors `out`, `raw`, `u16` vector `activity`, `u32` vector `figures_out`, `Status`.
 - `Mine`: `u16 last, bool switched_on, bool deep, bool blocked, u32 out, u16 activity`, optional `u64 deposit`, `Status`.
+- `Market`: `u16 last, bool blocked, bool suspended, Status, u32 carts_out` (T24).
+- `House` (P1, stream 115): `u16 last, i32 residents_64, u32 e, u64 count` then `count × u32 stock` (one per need of the house's group; the runtime form: our save keeps the residents fraction and `E`).
 - `Status`: `u8 code, u8 icons, u16 time` (`shows_icons` is derived).
 `vector<bool>` fields are visited through a local `bool` per element; no proxy reference escapes the archive.
 

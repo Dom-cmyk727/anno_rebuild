@@ -974,8 +974,8 @@ TEST_CASE("G3 every production class through advance equals golden") {
     CHECK(*mine.deposit == 0);
     CHECK(deposits(w)[0].remaining == 0);
     CHECK(deposits(w)[1].remaining == 0);
-    // The pioneer house is inert: `last` untouched.
-    CHECK(std::get<sim::Inert>(building(w, 0, kHouse0).payload).last == 0);
+    // The pioneer house ticks as TickKind::House (P1): it does nothing, `last` untouched.
+    CHECK(std::get<sim::House>(building(w, 0, kHouse0).payload).last == 0);
     // One draw per small-farm step, and nothing else draws before tick 150 000: 199 steps in
     // 100 000 ticks (one gate per 500 ticks; the scheduler reaches the farm a little after
     // each gate opens, so the 200th falls after the end). Pinned like the goldens.

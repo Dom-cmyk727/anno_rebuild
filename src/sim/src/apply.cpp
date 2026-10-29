@@ -78,6 +78,7 @@ bool switch_line(Payload& payload, std::size_t index, bool on) {
         }
         bool operator()(Inert&) const { return false; }
         bool operator()(Market&) const { return false; }
+        bool operator()(House&) const { return false; }
     };
     return std::visit(Switch{index, on}, payload);
 }

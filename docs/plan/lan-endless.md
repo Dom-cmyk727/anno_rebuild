@@ -237,7 +237,7 @@ Each workstream has stages. A stage becomes one or more board tasks (`docs/orche
 ### W6. The sim systems a game needs (XL) — the critical path
 The current lane (T33.5, then P1) is part of this workstream. An endless game needs, in this order, each with the original's rules (RE first, as T33):
 1. **Ships and settling:** the start ship with its cargo, moving ships, founding a warehouse on a new island from the materials on board (by ship or by scout [H/Kontor_uebernehmen]), loading and unloading. RE: `docs/re/fire-and-ships.md` and `production.md` §ships.
-2. **Population, needs and taxes:** P1–P5 (`state.md` §4.7c), already specified.
+2. **Population, needs and taxes:** P1–P5 (`state.md` §4.7c), already specified. **Status 2026-10-28: P1 done** (the house payload, the `BGruppen.dat` group table in the registry, the scenario import applied, stream 115, G7 create hash `p1_g7_create`); the house tick (P2) is next.
 3. **Trade:** the city's buy/sell lists (already read, T26) and the Venetian trader.
 4. **Fire and disease:** a known desync cause in the original (ISS-033), so a priority for the hash tests.
 5. **Military and combat:** soldiers, warships, attack, taking over warehouses and market buildings [H/Kontor_uebernehmen].

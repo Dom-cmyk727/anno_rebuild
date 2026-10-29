@@ -474,7 +474,7 @@ std::string validate_cities(const Island& is, std::size_t slot, const SimConfig&
                            " is not in 1 .. next_serial (" + std::to_string(is.next_serial) + ")";
                 }
                 const std::string problem =
-                    payload_problem(b.payload, *ty, types.class_info(ty->cls), cfg);
+                    payload_problem(b.payload, *ty, types.class_info(ty->cls), cfg, types);
                 if (!problem.empty()) {
                     return bp + ".payload: " + problem;
                 }

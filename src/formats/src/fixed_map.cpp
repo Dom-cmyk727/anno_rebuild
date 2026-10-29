@@ -72,7 +72,8 @@ std::vector<Line> lines_of(Bytes bytes) {
 }
 
 bool ascii_line(std::string_view s) {
-    for (unsigned char c : s) {
+    for (char raw : s) {
+        const auto c = static_cast<unsigned char>(raw);
         if (c != '\t' && (c < 0x20 || c > 0x7e)) {
             return false;
         }
@@ -109,7 +110,8 @@ std::vector<std::string_view> fields_of(std::string_view s) {
 std::string normalise_key(std::string_view key) {
     std::string out;
     out.reserve(key.size());
-    for (unsigned char c : key) {
+    for (char raw : key) {
+        const auto c = static_cast<unsigned char>(raw);
         if (c == '\\') {
             out.push_back('/');
         } else if (c >= 'a' && c <= 'z') {
@@ -145,7 +147,8 @@ Result<T, Error> parse_int(std::string_view token, std::uint32_t line, std::stri
         return err(line, "field " + std::to_string(field) + " of '" + std::string(record) +
                              "' is not an integer");
     }
-    for (unsigned char c : digits) {
+    for (char raw : digits) {
+        const auto c = static_cast<unsigned char>(raw);
         if (c < '0' || c > '9') {
             return err(line, "field " + std::to_string(field) + " of '" + std::string(record) +
                                  "' is not an integer");

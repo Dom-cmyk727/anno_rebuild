@@ -248,7 +248,8 @@ TEST_CASE("fixed map: lan5 loads for two to five seats") {
     REQUIRE(registry.types);
 
     const std::filesystem::path path =
-        std::filesystem::path(ANNO_SOURCE_DIR) / "data" / "maps" / "lan5.txt";
+        std::filesystem::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" /
+        "lan5.txt";
     std::ifstream in(path, std::ios::binary);
     REQUIRE(in);
     const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), {});

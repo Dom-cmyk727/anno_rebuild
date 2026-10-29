@@ -3589,6 +3589,20 @@ class RoundDnStudyEvidence(unittest.TestCase):
         self.assertIn("study timeout", text)
         self.assertEqual([process for process in multiprocessing.active_children() if process.is_alive()], [])
 
+    def test_n3_recorded_duration_cannot_exceed_the_study_budget(self):
+        path = os.path.join(self._dir, "spent-budget.jsonl")
+        with open(self.path, encoding="utf-8") as handle:
+            lines = [json.loads(line) for line in handle if line.strip()]
+        for row in lines[1:]:
+            row["wall_seconds"] = 200
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            for row in lines:
+                handle.write(json.dumps(row, sort_keys=True) + "\n")
+        code, text = self._check(path, extra_args=("--study-timeout", "100"))
+        self.assertNotEqual(code, 0, text)
+        self.assertIn("study timeout", text)
+        self.assertEqual([process for process in multiprocessing.active_children() if process.is_alive()], [])
+
     def test_h3_repeat_matches_its_primary_projection(self):
         primary = _finished("uniform25-seed6101")
         repeat = _finished("uniform25-seed6101", (), "repeat")

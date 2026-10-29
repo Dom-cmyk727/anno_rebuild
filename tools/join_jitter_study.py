@@ -274,17 +274,21 @@ def main(argv=None):
                 or any(row["config_hash"] != expected_config(row["rate"], row["resend_ms"], row["workload"], row["profile"],
                                                                tuple(row["config"].get("jitter_script", ()))) for row in data)):
             raise SystemExit("invalid study: require exactly the 72 distinct, validator-clean primary configurations")
+        row_limit = min(args.row_timeout, manifest["row_timeout_seconds"])
+        study_limit = min(args.study_timeout, manifest["study_timeout_seconds"])
+        if any(row["wall_seconds"] > row_limit for row in data):
+            raise SystemExit("invalid study: a recorded row exceeds the row timeout")
+        if sum(row["wall_seconds"] for row in data) > study_limit:
+            raise SystemExit("invalid study: recorded rows exceed the study timeout")
         begun = time.monotonic()
-        study_bound = min(args.study_timeout, manifest["study_timeout_seconds"])
-        row_bound = min(args.row_timeout, manifest["row_timeout_seconds"])
         for row in data:
-            remaining = study_bound - (time.monotonic() - begun)
+            remaining = study_limit - (time.monotonic() - begun)
             if remaining <= 0:
                 raise SystemExit("invalid study: validation exceeded the study timeout")
             script = tuple((tuple(x[0]), x[1]) for x in row["config"].get("jitter_script", ()))
             replay = controlled_run(
                 (row["rate"], row["resend_ms"], row["workload"], row["profile"], script, row.get("diagnostic")),
-                min(row_bound, remaining))
+                min(row_limit, remaining))
             if replay.get("status") != "complete":
                 raise SystemExit("invalid study: row replay %s" % replay.get("status"))
             if canon(row.get("metrics")) != canon(replay.get("metrics")):

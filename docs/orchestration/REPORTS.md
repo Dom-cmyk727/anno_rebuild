@@ -5690,3 +5690,11 @@ City events `0x1002ba80` (`this` = city, period `[city+0xe]`, 12500) call `0x100
 - `cmp ecx, eax` at `0x100296c0`: two operands. `ecx` = GetProperty dest+4 (`[esp+0x28]`) `& 0x7fffff`; `eax` = `[city+0x618]`. `this` = city (`edi`); player is `esi` = `[city+0x20]`. Four callee-saves on the `0xb4` frame (`edi` then `ebx`/`ebp`/`esi`); GetProperty's two stdcall pushes have returned.
 - `jae 0x100298fe` at `0x100296c2`: one rel32 operand, unsigned greater-or-equal (CF=0), displacement `0x236`. Target is after `or ebx, edx` (`0x100298ee`) and `call [eax+0x4c]` (`0x100298fb`). Taken path skips announcement and the player OR/setter. Fall-through does both, then both paths store `last = tick`.
 - Supersedes T32.5 "else skip to the OR". An unsigned integer compare is not a bit-subset test; the setter is not called on the skipped branch.
+
+### F1.3 — Modular city timing (in progress)
+
+- Commands: `python …\disasm.py … 0x10029610 40` → `cache\t32-5-f1\unlock-period.txt`; `python …\disasm.py … 0x10076230 50` → `cache\t32-5-f1\house-last-plus.txt`; word examples in `cache\t32-5-f1\hist_mask.txt`.
+- City: `mov ax, word [esp+4]`; `sub ax, [edi+0x10]`; `cmp ax, 0x9c4`; `jb 0x1002990d`. Gate `(u16)(tick − last) ≥ 2500`. After a taken pass, `last = tick` at `0x10029908`.
+- With `last = 0`: tick 2499 skip; **2500 run** (passing boundary); 65535 run; **65536 skip** (difference 0); 68035 skip; 68036 run (`(u16)68036 = 2500`).
+- House stamp is separate: `house +0x0a` does `add eax, 0x9c4` / store (`0x10076259`–`0x1007625e`). OQ-450 is that house question and is not decided. OQ-461 retained for constructor/load of `city +0x10`.
+- Supersedes T32.5 "a loaded scenario whose tick is already ≥ 2500 therefore catches up on that first city visit (≤ 500 ticks)".

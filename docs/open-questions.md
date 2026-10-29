@@ -1969,7 +1969,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Status:** open.
 - **Area:** simulation / population / cities.
 - **What is known (D, AnnoWelt):** unlock `0x10029610` uses the word at `city +0x10` as `last` and, after a pass, stores the current tick there (`0x10029908`). City constructor `0x1002f990`–`0x1002fada` does not store `+0x10`. `+0x618` is not saved; whether `+0x10` is saved was not found in the city save sweep for `0x618`.
-- **Why:** catch-up after load is "one unlock pass once `(u16)(tick − last) ≥ 2500`". If `last` is 0, a loaded game with tick ≥ 2500 runs that pass on the first city visit. A non-zero leftover stamp would delay it.
+- **Why:** the gate is `(u16)(tick − last) ≥ 2500`, not `tick ≥ 2500`. With `last = 0`, tick 2500 runs and tick 65536 does not (difference 0). Constructor / load of `city +0x10` is unread, so first-visit catch-up after load is not guaranteed. A leftover non-zero stamp would change when the first pass runs. This stamp is not the house `last += 2500` at `house +0x0a`.
 - **How to resolve:** sweep stores of `city +0x10` (this-adjustment: city vtable `0x100c2f40`) in the constructor, the city reader `0x1002e170`, and the city save `0x1002ebb0`. Next address: those stores.
 
 ## OQ-462: Who sets house flag bits 4/5 (`+0x0c & 0x30`) (T32.5 S9b, 2026-10-29)

@@ -35,6 +35,15 @@ if(ANNO_BUILD_TESTS)
   target_compile_definitions(anno_sim_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
   anno_target_defaults(anno_sim_tests SANITIZE_NO_RECOVER)
+  anno_stage_budget_coord(anno_sim_tests)
+  # GCC 13 with -fsanitize=address treats a one-element initializer_list
+  # assignment as an out-of-bounds memmove (-Warray-bounds,
+  # -Wstringop-overread). The copy length is the list length. UBSan still
+  # checks these tests when they run. The warning gate without sanitizers
+  # does not report it.
+  if(ANNO_SANITIZE AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(anno_sim_tests PRIVATE -Wno-array-bounds -Wno-stringop-overread)
+  endif()
   anno_add_doctest(anno_sim_tests UBSAN_HALT)
 
   # tools/lint_sim.py: the mechanical part of the determinism rules (no

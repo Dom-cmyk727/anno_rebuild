@@ -34,6 +34,7 @@ if(ANNO_BUILD_TESTS)
   add_executable(anno_app_tests tests/main.cpp tests/app_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   anno_target_defaults(anno_app_tests)
+  anno_stage_budget_coord(anno_app_tests)
   anno_add_doctest(anno_app_tests)
   # Bad arguments print the usage. CTest's output match ignores the exit
   # code; app_test checks that parse_args rejects the input, and main maps a

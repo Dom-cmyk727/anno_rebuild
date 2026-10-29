@@ -57,6 +57,9 @@ std::optional<std::size_t> Canvas::index(int sx, int sy) const {
 }
 
 void Canvas::put(int sx, int sy, Px rgba) {
+    if (!store_pixels) {
+        return;
+    }
     if (const auto o = index(sx, sy)) {
         over(&pixels[*o], rgba.data());
     }
@@ -232,6 +235,12 @@ void draw_ground_grids(Canvas& canvas, std::size_t w, std::size_t hgt,
                 const std::size_t i = static_cast<std::size_t>(py - origin.second) * cw +
                                       static_cast<std::size_t>(px - origin.first);
                 probe->pos[i] = {x + s, y + tt};
+            }
+            // The colour is discarded with the canvas. The lookup is pure
+            // (GroundTextures::cell_pixel), so skipping it leaves the probe
+            // and every stored pixel unchanged.
+            if (!canvas.store_pixels) {
+                return {};
             }
             auto q = [](float v) {
                 return std::min(sat_cast<std::size_t>(v * static_cast<float>(n)), n - 1);

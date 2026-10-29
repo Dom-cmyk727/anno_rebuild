@@ -5559,6 +5559,673 @@ Reviewed exact clean T58 F3 head `dd897b4c358883da59ada43914a2cc6b16e37290` (on 
 
 **Not done:** do not merge, do not push. `TASKS.md` and `AGENTS.md` were not edited. No ADR approval, no T34 stage 2, no T-AI.4.
 
+## T10c — memory-budgeted tests (2026-10-28)
+
+Branch `codex/T10c-test-memory`, worktree `E:\anno1503-worktrees\anno1503-T10c`, from P1 `416993fa6a6f9dc821455df5d414cff5833ac7f0`. Not rebased onto main and not merged with main: `git merge-base HEAD 4959437cf9893e27275e6c46fb4d9b59c5a84848` is `507e41a36bb2d47276133ab326779cdd6b455ffa` (P1's base). P1's branch `task/P1-house-payload` and worktree `E:\anno1503-worktrees\anno1503-P1` are still `416993fa6a6f9dc821455df5d414cff5833ac7f0`. This report does not rewrite P1's section above.
+
+Hardware for every measurement below: AMD Ryzen 7 9800X3D, 16 logical processors, 33408942080 bytes physical RAM, commit limit 108272488448. Game dir `E:\anno1503\game\app`. Sampler `tools/sample_memory.ps1` (1 Hz, GlobalMemoryStatusEx plus process private bytes). Logs under this worktree's `cache\` (git-ignored).
+
+### Commits
+
+| Hash | Subject |
+| --- | --- |
+| `f08cbfacdc7fcec9f5c53c8e316cd85d1a978b56` | docs(perf): one-worker baseline and the sampler |
+| `47c8475aa080d4922c3c6c99a771d5dfa6a45707` | test(test): scheduler regressions (stub failed 13 of 14) |
+| `7db05a3962bf80aa276f11bb6f0af45c0994944d` | feat(test): reserve measured render memory before admission |
+| `f36ea828121e63a7a17b699368a8bfec46a009b5` | feat(test): heavy CTest slots follow the budget (`ANNO_HEAVY_TEST_PROCESSORS` 4) |
+| `594b9e27e481aa018568ba26f36f0c08ccaa879d` | fix(test): `windows.h` before `psapi.h` |
+| `7866b879eb99605953b5d861c79238db1ce62de2` | perf(render): drop full-size buffers the caller discards |
+| `39ba66097f0834f8d17c7c51dc513d2b0321628e` | fix(test): in-process mutex before the per-process file lock |
+| `677a4dfd2e7cd643a80b4f3e452ea5f413032ef1` | fix(test): a reservation counts as resident as the private total grows |
+| `0f803ee06a35635fac322abdf6e848c420b8f4d2` | fix(test): explicit unsigned cast in the budget-path hash |
+| `7311a125bc5b042580c47dd8a0ba4c4fbef5cbd4` | test(sim): name the house city before the walk (GCC 13 `-Wnull-dereference`) |
+
+The report commit follows `7311a12`. `git diff --check` was clean before each commit.
+
+### Original P1 results (historical, not re-run, not this head)
+
+From the P1 section above, head `416993fa`: with-game non-heavy **1032/1032**; with-game heavy killed at about 1.2 GB free after test 228 passed and test 229 (`legacy river shading`) started; without-game ctest and WSL GCC/Clang did not run.
+
+### Baseline (unchanged P1 sources, one worker)
+
+`ANNO_TEST_THREADS=1`, test `*legacy river shading*` / suite `heavy`, head in the log `416993fa6a6f9dc821455df5d414cff5833ac7f0`. 1 passed, 47 assertions. Sampled elapsed **297.646 s**. Peak private **8044425216**. Minimum available physical **8656285696** (start free 16507674624). Not killed. The unsafe eight-worker run was not repeated.
+
+Representative fresh-process `--png` group-2 renders, additional private = pagefile peak minus the max private in the first 1.5 s (`docs/perf/README.md`):
+
+| Run | Additional bytes | Bytes/pixel | Elapsed s |
+| --- | --- | --- | --- |
+| Single_01 enhanced legacy, 16960×9170 | 6628712448 | 42.622 | 38.891 |
+| Single_01 original | 6627360768 | 42.613 | 17.485 |
+| Single_01 enhanced flow | 6626652160 | 42.609 | 38.926 |
+| Single_10 enhanced legacy | 6604652544 | 41.475 | 35.841 |
+| Single_14 enhanced legacy | 5299826688 | 40.513 | 27.690 |
+| Single_24 enhanced legacy | 319037440 | 15.763 | 5.170 |
+
+The reservation rate is **43 bytes/pixel**, the integer ceiling of 42.622. `43 * 155523200 = 6687497600`, about 56 MiB above the measured Single_01 additional. Headroom default **4096 MiB**: the one-worker minimum available was 8.06 GiB, so 4 GiB was not crossed by one large render. Stop threshold **2048 MiB**.
+
+### After the buffer cut and the budget
+
+Same legacy-river case, buffer-reduced binary, one worker: 1 passed, 47 assertions, sampled elapsed **276.195 s**, peak private **5226586112**, minimum available physical **8691441664**. The same digests, about 2.62 GiB less peak private than the baseline.
+
+Four workers (`ANNO_TEST_THREADS=4`), head `677a4dfd2e7cd643a80b4f3e452ea5f413032ef1`: 1 passed, 47 assertions, sampled elapsed **246.1 s** (11:48:11 to 11:52:18 +01:00), peak private **6116012032**, minimum available physical **8590499840**. Stderr of that process (`cache/after-legacy-river-4worker.stderr.txt`): **40 admits, 40 ends, 22 waits, 0 refusals, at most 4 reservations open, 28 admits while another was still open.** A group-2 reservation (6571542080 bytes) and a group-1 region (61920000 bytes) were both admitted before either ended. Two group-2 maps of Single_01 (about 6.57 GiB each) plus 4 GiB headroom do not both fit in the free RAM this host had at the start (about 13 GiB); the second waits.
+
+Against the one-worker baseline: wall time 297.646 s → 246.1 s (**17% less**, 51.5 s). Peak private 8044425216 → 6116012032 on the overlapping run, and 5226586112 when one worker runs the reduced buffers. The overlapping run uses more peak than the one-worker reduced run because a second job is resident, and still less than the baseline.
+
+Two earlier four-worker attempts were stopped and kept, not repeated unchanged. The first sat for about 493 s at about 0.5 GiB private and 1.7 s of CPU, four threads in an executive wait: `LockFileEx` is per process, so a second thread locking the same handle never ran. The second admitted a large job and a small job together, then refused the next large job as `exceeds capacity` with `resident=0` while the estimate (a ceiling) was still fully pending after free memory had already fallen. Partial resident bytes fixed that. Neither attempt was a low-memory stop (the floor stayed above 2 GiB).
+
+### Combined-head gates
+
+CTest below is head `677a4df` (before the two warning-only commits). Those two commits do not change admission or digests: the hash cast is the conversion the compiler already did, and the house-walk edit only names the city the test already walked. That house test was rebuilt and passed (17 assertions). WSL was run again on `7311a12`.
+
+| Gate | Combined head | Original P1 |
+| --- | --- | --- |
+| With game, `ctest --preset msvc -j 16 -LE heavy`, `ANNO_TEST_THREADS=16` | **1049/1049**, 205.48 s, exit 0 | 1032/1032 (fewer tests; the budget cases did not exist) |
+| With game, `ctest -j 16 -L heavy` | **10/10**, real 357.41 s, proc-sum 3014.95 s, minimum available physical **7897989120** (7.36 GiB), not killed. Four heavy tests started together | Killed, no summary |
+| Without game dir, `-LE heavy` | **1049/1049**, exit 0 | Not run |
+| Without game dir, `-L heavy` | **10/10**, exit 0 | Not run |
+| WSL `tools/check_unix_warnings.sh` | GCC 13.3.0 and Clang 18.1.3 clean (viewer+GPU, and Clang without GPU), exit 0, on `7311a12` | Not run |
+| Budget suite | 16/16 after the resident fix and again after the hash cast | n/a |
+| `python -I tools/sim_stream.py --check` | `goldens agree`, exit 0 | Passed on P1 |
+| `python -I tools/lint_sim.py` | `lint_sim: ok`, exit 0 | Passed on P1 |
+| clang-format 23.1.3 `--dry-run --Werror` on the C++ this branch changed | exit 0 | P1's full-tree run is historical |
+| ASan/UBSan | Not run. The `asan` preset needs Ninja, which is not installed here | Not run |
+
+Mutation, not committed: `bytes > max_possible` flipped to `bytes < max_possible`. `a job larger than capacity is refused` failed (`info.refused` false, reason `waiting`). Reverted and the suite rebuilt.
+
+`ANNO_HEAVY_TEST_PROCESSORS` is 4. The GPU `RESOURCE_LOCK` is unchanged. `-j 16` is a slot ceiling; the shared budget file is what limits concurrent full-map renders.
+
+### Acceptance
+
+- Coverage and digests unchanged. Met. Legacy river 47 assertions on the baseline and on both after runs. With-game heavy 10/10 includes the digest cases. No golden or scenario file changed.
+- Measured peak supports the estimate and the headroom. Met on this PC. 43 bytes/pixel is the ceiling of the measured 42.622, and 4 GiB headroom sat under the one-worker minimum of 8.06 GiB free. After the buffer cut the process peak is lower, so the same ceiling is loose rather than tight.
+- No forced admission. Met. The timeout bypass is gone. A job that does not fit waits or is refused; the regressions cover both, and `wait_timeouts` stays 0.
+- Concurrent jobs inside the shared budget. Met. Four-worker stderr: 28 admits while another reservation was open, never more than 4, 22 waits, 0 refusals. Heavy CTest ran four labelled tests at once and stayed at or above 7.36 GiB free.
+- The memory trace survives a stop. Met. The sampler flushes every row. The deadlock and the refusal runs are in `cache/` and were not overwritten by the successful rerun (the refusal stderr/csv were copied first).
+- Gates reported against the head that ran them. Met, in the table above. The full CTest is `677a4df`. WSL and the two follow-up tests are `7311a12`.
+- Throughput comparison. Met. 297.646 s → 246.1 s on the same legacy-river workload. The buffer cut alone, still one worker, was 276.195 s.
+
+### Limitations
+
+- The pre-scene bound used for the reservation is slightly smaller than the rect that is rendered. On Single_01 the reservation was 6571542080 bytes (152826560 pixels) and the digest rect is 16960×9170 (155523200 pixels, 43 bytes each = 6687497600). The measured peak after the buffer cut is still under the smaller figure. The rate was not lowered, and it was not replaced with an unmeasured guess.
+- A group-1 full map was not measured. The group-1 task reserves `1600 * 900 * 43`. Other parallel callers still reserve the previous 1 GiB default. That default is now charged to the same budget, so they wait, but it is not a new measurement.
+- The ground probe is still the full rect (it is the result the water field reads). River sprites are still drawn into an island-sized canvas and then cropped. One box around every river sprite on the island can still be large when the sprites are far apart. Neither is a GPU change.
+- Two Single_01 group-2 renders do not both fit under the 4 GiB headroom on this 32 GB host. The second waits. That wait is the budget working.
+- 4 GiB headroom is justified by the measurement on this PC. The GitHub runner's RAM was not measured. A job that cannot fit even alone is refused with `exceeds capacity` instead of being force-started.
+- Linux/WSL uses the same Windows budget file when `/mnt/c/Users/$USER/AppData/Local` exists. That path was not given its own measurement in this session. The Windows file client and the two-thread same-handle case were tested.
+- ASan/UBSan were not run here (no Ninja). The CTest totals above were not repeated after `0f803ee` and `7311a12`.
+
+**Not done:** do not merge, do not push. `TASKS.md` and `AGENTS.md` were not edited. No ADR approval, no T34 stage 2, no T-AI.4, no P2.
+
+## T10c F1 — reservation accounting, cross-OS coordinator, estimates (2026-10-28)
+
+Worktree `E:\anno1503-worktrees\anno1503-T10c`, branch `codex/T10c-test-memory`. Continued from `d8c3461b9738b0955e191abdbca24ce59c740c84`. Head under test: `f2ded2141905d761245c0703a7be614c8cafc251`. Not rebased onto main and no merge from main: `git merge-base HEAD 4959437cf9893e27275e6c46fb4d9b59c5a84848` is still `507e41a36bb2d47276133ab326779cdd6b455ffa`. P1 `task/P1-house-payload` and `E:\anno1503-worktrees\anno1503-P1` are still `416993fa6a6f9dc821455df5d414cff5833ac7f0`. This section does not rewrite the P1 report or the pre-F1 T10c section above.
+
+### Commits after `d8c3461`
+
+| Hash | What it contains |
+| --- | --- |
+| `1478c6f9c2ff1d80a77393c3f58da20fdebf4c70` | Failing regressions: retained credit, unknown free, recheck, cancel, killed owner, live Windows owner seen from WSL |
+| `155e8bd73b2c69a99f5d91df4dfb0ad4ca74b841` | Retained private growth is not credited to a new unallocated reservation |
+| `b116fc5c4ac0b1785ed8ddd42b312f9c86796e4f` | One host coordinator for Windows and WSL; owner namespace; waiter recovery on disconnect |
+| `75fd2fc16a904811f87ae762b93627dc1e29b09b` | Reserve setup (530382848) and 46 bytes/pixel of the rectangle that is drawn |
+| `03f193d49feedafb2de31637379e48c554566825` | Synthetic equivalence: omitted ground pixels, cropped fall masks |
+| `4bce675c1f99113ef9d2f2b75ccad2f8ed5e1729` | WSL path helper compiles only on Windows |
+| `0b5e49efc2dd665c1df57a7bcfca5bd73abf1f44` | Probe executable helper compiles only on Windows |
+| `19e66bf6fec295eed64e065a646262b160fcc05a` | Unix warnings on the new budget sources |
+| `ef417450c4ca71dbd5a0e2dcb377cf1eae5de42b` | Sea-face shift is unsigned (UBSan) |
+| `ba345887cc6f5463a33e05971829f9ad9b74ad5b` | Synthetic island bytes outlive the scene |
+| `c8da2bc6e1b4efd23b5a73dcec8bad042d61e529` | GCC ASan false positive on `anno_sim_tests` suppressed |
+| `63d594b6dc4a1a62e99e47373c4add37fefe99f3` | Coordinator reply lookup does not keep a pointer across the wait |
+| `58cd212b06ce218bfa339038b3ac3c68139381c2` | Coordinator copy from the root directory (CMake rejected it) |
+| `c3a53895afa8025bdae94e24e54ff790b2aa1d8b` | Coordinator staged from each test's own directory |
+| `cba9e707032638dcb40079b4a6377a0c462784c9` | Drop a scene that blocked its own render reservation (still re-took setup) |
+| `6a30b91554505583ee37be49aff82263359b95a6` | One picture reservation before the scene exists |
+| `fba86b32e73878f2c42ba00800f4446a1c0170cc` | Scene catalogs load only after that reservation is held |
+| `f2ded2141905d761245c0703a7be614c8cafc251` | Figuren header buffer outlives the parsed header |
+
+`git diff --check` was clean before each of these commits. `cache/`, `game/`, `TASKS.md` and `AGENTS.md` were not staged.
+
+### R1–R5
+
+**R1.** `1478c6f` adds `retained private bytes are not credited to a new reservation` before `155e8bd` changes the accounting. A hold is resident only for the overlap of private growth and the free-memory drop. On release that resident part folds into the baseline. An empty hold list snaps the baseline to the current readings. Unknown private zeros residency. Unknown free refuses with `free memory unknown`. A timed recheck wakes waiters and does not admit until `decide` says admit.
+
+**R2.** Windows `LockFileEx` does not exclude a WSL `flock` on `/mnt/e`. The coordinator listens in WSL on `0.0.0.0:47631`; Windows connects to `127.0.0.1:47631`. Identity is the TCP connection, the OS namespace, the pid, and the process start stamp. `a live Windows owner is not reclaimed by a WSL client` is the regression. Foreign pids are not killed.
+
+**R3.** Client disconnect drops that client's holds and CPU tokens and re-evaluates waiters. A killed owner unblocks a memory waiter and a CPU waiter. Server loss is a refuse (`coordinator lost`), not an admission. `cancelling a waiter does not release the bytes it is waiting on`. No timeout path admits.
+
+**R4.** Setup is 530382848 bytes. The pixel rate is 46. Both are measured (`docs/perf/README.md`, T10c F1). Group 2 reserves `scene.bounds(2)` after the islands are placed; unit sprites can extend that union, and the scene is dropped and the real rectangle reserved while nothing is held. Group 1 reserves 1600×900. Catalog files (Felder, Anlagen, figure volumes) load after the reservation, once per process. Two Single_01 group-2 reservations (7684450048 each) plus 4 GiB headroom do not fit in the baseline start free of 16507674624.
+
+**R5.** ASan/UBSan used WSL GCC 13.3, Unix Makefiles, `ANNO_SANITIZE=ON`, RelWithDebInfo, viewer and GPU off, cmake 3.31.8 from `$HOME/cmake-lnx`, build `$HOME/anno-t10c-asan`. The heavy render corpus was not run under ASan (one Single_01 reservation is about 7.68e9 bytes before sanitizer overhead). `render_corpus_test.cpp` was rebuilt on this head and the two synthetic cases re-run.
+
+### Regression and deadlock evidence
+
+The retained-credit, foreign-owner, and killed-owner tests are `1478c6f`, parent `d8c3461`, and the accounting and coordinator fixes are the following commits. Windows budget suite after the coordinator pointer fix: 22 cases, 128 assertions. Linux ASan budget suite: 20 cases, 97 assertions (the two Windows-only cases are not compiled).
+
+Before the picture was reserved first, four heavy `anno_render_tests` processes sat on built scenes (working set about 512 MB, a few seconds of CPU) while setup reservations of 530382848 stacked and the picture was refused `exceeds capacity`. Sampler `cache/f1/ctest-with-game-mem2.csv`: 96 rows, minimum available physical 11776266240, maximum 13071216640. That run was killed. It is not a gate result. `cba9e70` dropped the scene and then took setup again, which still left the picture over capacity. `6a30b91` takes one reservation for setup plus the picture before `build_scene`.
+
+A following one-worker run then crashed: `legacy river shading` admitted a 596622848-byte region reservation and died with SIGSEGV. `FigurenHeader` views the file buffer, and that buffer was a temporary. `f2ded21` keeps `header_buf` in the catalog. The rerun (`cache/f1/legacy-1worker-2.log`, 26.81 s) did not crash. It threw `refused estimate=7560404608 reason=exceeds capacity available=6967738368` with pending 0 and resident 0.
+
+### Gates on `f2ded21`
+
+| Gate | Result |
+| --- | --- |
+| `cmake --build --preset msvc` | exit 0, `render_corpus_test.cpp` rebuilt |
+| with-game `ctest --preset msvc -j 16`, `ANNO_TEST_THREADS=16`, game dir `E:\anno1503\game\app` | 1061 passed, 6 failed, 1067 total, real 297.65 s. gpu 180.39 s·proc (89). heavy 2098.47 s·proc (10) |
+| without-game `ctest --preset msvc -j 16`, `ANNO_TEST_THREADS=16` | 1067 passed, real 55.97 s. 2 skipped not-run: `anno_sim_replay_scenario_single_01`, `anno_sim_replay_scenario_endless_03_links` |
+| clang-format 23.1.3 `--dry-run --Werror` over `src` | 0 files |
+| `tools/check_unix_warnings.sh` (WSL GCC 13.3.0, Clang 18.1.3) | clean (169 files with viewer and GPU, 9 without GPU) |
+| `python -I tools/lint_sim.py` | `lint_sim: ok` |
+| `python -I tools/sim_stream.py --check` | goldens agree |
+| ASan/UBSan budget suite | 20/20, 97 assertions, max RSS 25284 kB |
+| ASan/UBSan omitted ground / cropped masks, rebuilt on this head | 69904 and 57 assertions, both success |
+| ASan/UBSan `anno_sim_tests` without game dir | 664/664, 2660755 assertions, max RSS 1262516 kB |
+| ASan/UBSan `anno_sim_tests` with game dir | first run 662/664 (coordinator binary not beside `anno_sim_tests`); scenario-corpus rerun 3 passed, 661 skipped, 674 assertions, max RSS 1221212 kB. With that rerun the two failures are covered |
+
+The six with-game failures are all `exceeds capacity`, no digest mismatch:
+
+- `legacy river shading` — estimate 7855636288, available 1335762912, pending 5513011232, resident 442757120
+- `scene renders match the recorded digests` — estimate 7560404608, available 1206263776, pending 5955768352, resident 0
+- `scenario corpus: every .sze loads` — estimate 1073741824
+- `water field: empty cells hold on every island` — estimate 1073741824
+- `chunk draw lists replay` — estimate 1073741824
+- `render_chunk: the Cpu builder keeps the planes` — estimate 1073741824
+
+Sampler `cache/f1/ctest-with-game-mem4.csv` (313 rows, 1 Hz): minimum available physical 5099106304, maximum 13402222592. At the 7855636288 refusal, free physical was about 11.14e9 bytes (`available + headroom + pending`). `max_possible` (`free + resident - headroom`) was 7291521264, short of the estimate by 564115024 bytes. The run was not killed and was not repeated.
+
+Logs: `cache/f1/ctest-with-game-final.log`, `ctest-output-with-game-final.log`, `LastTest-with-game-final.log`, `ctest-without-game-final.log`, `warnings-final.txt`, `asan-render.txt`.
+
+### Pre-F1 and P1, left as they were
+
+Pre-F1 legacy river, 47 assertions, one worker: 297.646 s, peak private 8044425216 (about 7.49 GiB), minimum available physical 8656285696. After the buffer cut, one worker 276.195 s / 5226586112 (about 4.87 GiB). Four budgeted workers 246.1 s / 6116012032 (about 5.70 GiB), minimum available 8590499840. Combined CTest at `677a4df`: with and without game, non-heavy 1049/1049 and heavy 10/10. Original P1: with-game non-heavy 1032/1032; heavy killed at about 1.2 GB free after test 228. Those figures are not this head.
+
+### Limitations
+
+- On this PC during the final with-game run, one Single_01-sized reservation (7684450048, or the island-bounds estimate 7560404608 / 7855636288) plus 4 GiB headroom did not fit in free memory, so the heavy digest cases and three 1 GiB cases were refused. No digest was rewritten. The 8-worker overload was not repeated. ASan did not run the heavy render corpus.
+- If the detached coordinator process dies, a later client sees an empty server. The death test kills the holder, not the server.
+- `58cd212` is a broken intermediate (CMake `TARGET was not created in this directory`). `c3a5389` is the configure that stages the coordinator. It was not amended.
+
+**Not done:** do not merge, do not push. `TASKS.md` and `AGENTS.md` were not edited. No ADR approval, no T34 stage 2, no T-AI.4, no P2.
+
+## T10c F2 — coherent admission, coordinator loss and replacement, the corpus path measured (2026-10-28, round cr)
+
+Worktree `E:\anno1503-worktrees\anno1503-T10c`, branch `codex/T10c-test-memory`, continued from `af8aa01fae68daf4d2e6afb0a6301ba1085bf7fc`. Final code head `c95f8191133998dcbf59f70b53660e63c9d5a9e8`, coordinator build `49fb6ac65eb9178a`; the report commit follows. No merge or rebase from main: `git merge-base HEAD 8011748` is `507e41a36bb2d47276133ab326779cdd6b455ffa` (P1's base). P1 `task/P1-house-payload` and `E:\anno1503-worktrees\anno1503-P1` are still `416993fa6a6f9dc821455df5d414cff5833ac7f0`. Results here are the combined P1 + T10c head, not P1 alone. Earlier sections are not rewritten. Review probes read from `E:\anno1503\cache\orch-cr`; F2 logs are in the worktree's `cache\f2\` (git-ignored).
+
+### Commits after `af8aa01`
+
+| Hash | Concern |
+| --- | --- |
+| `0f1df1ed4de9b8403503225cb2104de44751809c` | Failing regressions for C1–C3 (11 cases), portable child-process helper, probe commands |
+| `a1e1602909c686c5a35372f793a8a4657fb0e636` | C2: no nested session lock; liveness bound; dead session fails fast; `ANNO_TEST_ADMIT_WAIT_S` deadline; test port/spawn controls |
+| `3450eeed0c803c1fd7482e5088462f22fb1ce692` | C1: epoch-fresh readings measured by the coordinator; host and WSL domains; permanent vs temporary shortfall; wire 'ANC2'; client/server/wire split |
+| `b6e457bf7c01ca892bb45bf6bf9e0415277dea62` | C3: write-ahead promise journal, orphans fenced until owners are gone, build id handshake, coordinator identity in logs |
+| `62ad87d11241e6c92d02da825a5da3d71fc4bdb0` | The stale-residency case uses a probe owner (kills mutant M2) |
+| `ebcaa12d15ae5b6872c0d432739d8d80490dce28` | clang-format 23.1.3 only |
+| `72c0385981f3e8b75a468b34a84e0c6fe21db51f` | `ANNO_TEST_MEASURE_ITEMS` per-item peak; wall time, free and private bytes in memory log lines |
+| `231807807de14f4abf57d13257c9b75dd0784a61` | Corpus reservation from the corpus path's own measurement; catalog reserved once |
+| `c95f8191133998dcbf59f70b53660e63c9d5a9e8` | GCC 13 `-Wnull-dereference` in the hello's budget lookup (same behaviour) |
+| `31a8b71` | Docs only: `docs/perf/README.md` "T10c F2", CLAUDE.md memory paragraph |
+
+`git diff --check` was clean before each commit. `231807807` was amended once, seconds after creation and before any run: the first version (`040d3a1`) did not compile on MSVC (C4189 on lambda-local constants). No other commit was rewritten. `cache/`, `game/`, `TASKS.md` and `AGENTS.md` were not staged.
+
+### Fail-first and the fixes (step 1)
+
+`src/test_support/tests/budget_f2_test.cpp`; each coordinator case starts its own `anno_budget_coord` on its own port and journal (`ANNO_TEST_BUDGET_PORT`, `ANNO_TEST_BUDGET_SPAWN=0`) and stops only the processes it started. Injected counters only, no host-memory exhaustion. Fail-first run: tests and probe of `0f1df1e` against the `af8aa01` library, MSVC Release, `ANNO_TEST_F2_PORT=47632` (the pre-F2 coordinator listened only there), one case per process, 45 s limit (`cache\f2\failfirst\`):
+
+| Case | af8aa01 | final head |
+| --- | --- | --- |
+| C1 release that leaves its bytes allocated (review "stale") | 3 failed (admitted on the old reading of 100), then threw `resource deadlock would occur` and hung | pass |
+| C1 external pressure before a release | 2 failed (admitted on 60 with 30 free) | pass |
+| C1 stale residency of an allocated owner (review "capacity") | 5 failed (refused `exceeds capacity` at once) | pass |
+| C1 in-memory shortage behind live reservations | 3 failed (refused) | pass |
+| C1 guest request against a lower host reading | 1 failed (`claim=1` on the guest's 100 while the host had 20) | pass |
+| C2 coordinator killed with memory and CPU waiters and an admitted holder | 3 failed (waiters never returned) | pass |
+| C2 suspended coordinator | 3 failed (waiter never returned) | pass |
+| C3 replacement beside live promises (review "replacement") | 3 failed (`claim=1` beside the live 80; CPU admitted) | pass |
+| C3 coordinator of another build | 3 failed (used silently) | pass |
+| bounded in-memory wait | 2 failed (no bound) | pass |
+| bounded coordinator wait | 2 failed (no bound) | pass |
+
+`62ad87d` changed the stale-residency case after the fail-first run (owner in a probe process). That version was checked against mutant M2, which restores the af8aa01 rule, not re-run on af8aa01 itself. Two cases were added with the fixes: a request above the total is refused as over capacity even while others hold, and the process budget's coordinator measures the host itself. The earlier retained-memory, owner-death, cancellation and Windows/WSL cases are kept. F1's "unknown free memory" case now expects "not admitted, reason `free memory unknown`": a meter without a number waits for a reading (bounded) instead of failing. Injected budgets that expect `exceeds capacity` now pass a total (`BudgetHooks::total_bytes`).
+
+Named mutations, applied one at a time, rebuilt, then reverted (`cache\f2\mutants*`):
+
+| Mutant | Invariant | Case | Result |
+| --- | --- | --- | --- |
+| M1 | readings must belong to the current epoch | C1 stale release | caught (1 failed, then hung) |
+| M2 | a shortfall below the total waits (the af8aa01 refusal rule) | C1 stale residency, C1 in-memory | caught (5 and 3 failed); survived the first in-process version of the case, hence `62ad87d` |
+| M3 | a guest request is bounded by a host meter | C1 guest/host | caught |
+| M4 | the journal is replayed | C3 replacement | caught |
+| M5 | silence beyond liveness ends a wait | C2 suspended | caught |
+| M6 | another build is rejected | C3 build | caught |
+| M7 | no nested session lock | C2 loss | caught |
+| M8 | orphans of a gone owner are released | C3 replacement | caught |
+| M9 | the wait deadline is applied | bounded coordinator wait | caught |
+
+The unmutated cases pass after every revert. Test-support suite: Windows 49 cases / 340 assertions; WSL GCC quick build 46 / 305 (Windows-only cases not compiled).
+
+### C1–C4
+
+**C1, coherent current capacity.** The coordinator decides on readings it can trust (`coord_server.cpp`). Each event that lowers pending bytes starts a new epoch: a release, a client that leaves with holds, residency that became visible, a dropped orphan, and the periodic recheck. A reading counts only if it belongs to the current epoch, so a stale per-request sample can no longer authorize a grant. For the process budget the coordinator measures at decision time: `GlobalMemoryStatusEx` (min of available physical and commit) on Windows, and `/proc/meminfo` on Linux. From WSL it reads the VM's `/proc/meminfo` and the Windows host through a PowerShell meter process. A WSL request is bounded by both the VM and the host; a Windows request by the host. Test budgets ask their client meters for a reading of the current epoch and decide when every meter has answered. Holders are sampled for residency while requests wait. Released cached bytes stay in the free reading and are never credited. Over capacity means only a request above a domain's total (`total_memory_bytes`) minus the headroom. Every other shortfall waits, rechecks every period, logs a line every 30 s, and is refused `wait deadline` after `ANNO_TEST_ADMIT_WAIT_S` (default 1800 s). A domain that cannot be measured at all is refused; a missing reading waits. There is no timed admission and no blanket heavy-job lock.
+
+**C2, loss and non-response.** No helper that takes the session lock is called with the lock held. A blocking wait pings every recheck period. If nothing returns within `ANNO_TEST_BUDGET_LIVENESS_MS` (default 10 s), the wait ends with `coordinator not responding`; a dead connection ends it with `coordinator lost`. On a dead session a release returns at once and new requests are refused. In the loss case the memory and CPU waiters returned `ADMITTED 0 ... coordinator lost`, the holder's release took under 2000 ms, and its next claim was `CLAIM 0`. With the coordinator suspended, the waiter was refused within 6000 ms.
+
+**C3, replacement.** Every promise, memory or CPU, is appended to a journal and flushed before the client hears of it. A coordinator that takes the port replays the journal; open promises become orphans, fully pending and counted as used CPU. An orphan is dropped only when its owner (pid plus creation stamp, checked via OpenProcess, `/proc`, or the PowerShell meter for Windows owners from WSL) is gone; an owner that cannot be checked keeps its orphans. If the journal cannot be written, the promise is refused; if it cannot be opened, the coordinator does not start. The hello carries a build id (SHA-256 over the coordinator's sources, CMake `ANNO_COORD_BUILD`) and protocol 2, and another build is rejected. An idle coordinator of another build exits so the client's build can start. The WSL coordinator binary is `cache/coord/anno_budget_coord-<id>`. Every process using the process budget logs `coordinator build=... incarnation=... pid=... port=...`, and the coordinator prints build, incarnation and orphan count on its `LISTENING` line. Transparent crash recovery (re-registering live holds) is not implemented: a process whose coordinator died is refused for the rest of its life, and its holds stay fenced until it exits.
+
+**C4, the measured workload.** Audit of `render_corpus_test.cpp`:
+- The catalog is per `digest_lines` call. It is loaded once, after the first reservation, and stays for the rest of the call as retained memory. That memory shows in the free readings and is not credited to later items.
+- The only allocation before admission is the scenario file plus an island parse for the bounds (a few MB per worker, bounded by the thread count).
+- A scene whose final bounds outgrow the estimate is dropped and re-reserved while nothing is held.
+
+Measured on this path (`ANNO_TEST_MEASURE_ITEMS=1`, one worker, `docs/perf/README.md` "T10c F2"), Single_01 grows 4475035648 against 7684450048 reserved. Non-picture growth is at most 108085248 (legacy case) and 120647680 (digest case); pixels cost at most 28.08 bytes each above that; the catalog stays at about 743718912. New model: 256 MiB per item + 36 bytes/pixel + 1 GiB while the catalog is not loaded. Checked on `2318078`: legacy 40 items and digest 44 items, worst growth/reservation 0.763, 0 refusals. The headroom stays 4096 MiB. No storage reduction was needed, and no golden or scenario expectation changed.
+
+### Throughput (step 5)
+
+Head `2318078` (coordinator `bb12b56e5c8930cb`), legacy-river case, 47 assertions both runs, measurement on in both:
+
+| Run | Elapsed s | Overlap | Peak private | Min available physical |
+| --- | ---: | --- | ---: | ---: |
+| 1 worker | 266.369 | none (44 admissions) | 5226291200 | 13854380032 |
+| 4 budgeted workers | 186.351 | 42 of 44 admissions while another was open, at most 4 open, 0 refusals | 10401538048 | 9155538944 |
+
+That is 30.0 % less wall time. The earlier one-worker run on the same head waited 1212 s for memory an owner application (`FC27`, 11.46 GiB private) held: free fell to about 4.3 GB, the request waited with `pending=0 resident=0` and a line every 30 s, was neither admitted nor refused, and went on when memory returned. That 1479.8 s run is not used as the baseline. The `2318078` head versus the final head differs only in the null-check commit.
+
+### Gates
+
+| Gate | Head | Result |
+| --- | --- | --- |
+| `cmake --build --preset msvc` | `c95f819` | exit 0, no warnings |
+| with game, `ctest --preset msvc -j 16`, `ANNO_TEST_THREADS=16` | `c95f819` | 1080/1080, 484.98 s; 13282 admissions, 0 refusals, 0 deadlines, 648 progress lines; min available physical 10051698688; all 15 logging processes name coordinator `49fb6ac65eb9178a`, none another. Tree dirty only by the uncommitted perf note (docs), committed next as `31a8b71` |
+| with game, same | `2318078` | 1080/1080, 452.82 s; 13924 admissions, 0 refusals, 0 deadlines, 220 progress lines; min available physical 8009396224; 15 processes log coordinator `bb12b56e5c8930cb` |
+| without game, same | `c95f819` | 1080/1080, 52.29 s; not run (skipped): `anno_sim_replay_scenario_single_01`, `anno_sim_replay_scenario_endless_03_links` |
+| `tools/check_unix_warnings.sh` (GCC 13.3.0, Clang 18.1.3) | `c95f819` | clean: 171 files GCC and Clang with viewer and GPU, 9 Clang without GPU. On `2318078` GCC failed on `-Wnull-dereference`, fixed by `c95f819` |
+| clang-format 23.1.3 `--dry-run --Werror` over `src` | `c95f819` | 0 files |
+| `python -I tools/lint_sim.py` | `2318078` (no sim change since) | `lint_sim: ok` |
+| `python -I tools/sim_stream.py --check` | `2318078` | `goldens agree` |
+| `tools/agree.py` | — | not applicable: no `anno-dump` command changed |
+| WSL ASan/UBSan (GCC 13.3, Unix Makefiles, `ANNO_SANITIZE=ON`, RelWithDebInfo, no viewer/GPU, `$HOME/anno-t10c-asan`; logs `cache\f2\asan\`) | `c95f819` | budget suite 33 cases / 242 assertions (max RSS 36736 kB); omitted ground 69904 and cropped masks 57 assertions; `anno_sim_tests` without game 664 / 2660755 (1298232 kB), with game 664 / 2678179 (1430112 kB); no sanitizer report. The heavy render corpus was not run under ASan |
+
+### Acceptance (C1–C4)
+
+- **C1 stale readings:** met. The stale-release and external-pressure cases plus M1.
+- **C1 temporary vs permanent:** met. The stale-residency, in-memory and total cases plus M2.
+- **C1 host/WSL:** met. The guest/host case plus M3, and the internal-meter case in WSL (its total is Windows', not the VM's).
+- **C1 bounded diagnostic:** met. Deadline cases plus M9; real external pressure observed.
+- **C2:** met. Loss and suspension cases plus M5 and M7.
+- **C3:** met as fail-closed. The replacement case plus M4 and M8, the build case plus M6, and the coordinator build in the gate logs.
+- **C4:** met on this PC. The corpus path is measured and the model sits below the measured peaks with a stated margin; both heavy cases ran without refusal; the with-game gate passed on both heads.
+- **Throughput:** documented, 266.4 s vs 186.4 s.
+
+### Limits
+
+- Heavy render corpus not run under ASan (the build has no viewer or GPU; ASan multiplies memory).
+- Calibration covers this PC and this corpus only.
+- The PowerShell meter needs WSL interop; without it a WSL process budget is refused ("free memory unknown").
+- A coordinator whose orphans' owners cannot be checked stays alive.
+- The WSL coordinator is compiled from the worktree's sources under the client's configure-time id: sources edited after configure and before a rebuild would be labelled with the old id.
+
+**Not done:** no merge, no push. `TASKS.md` and `AGENTS.md` not edited. No ADR approval, P2, T34 stage 2 or T-AI.4.
+
+## T10c F3 — Compatibility version, no inherited descriptors — 2026-10-28 — status: FINISHED (one defect found and recorded as open, not fixed)
+
+Worktree `E:\anno1503-worktrees\anno1503-T10c`, branch `codex/T10c-test-memory`, from `43cd10f086eb6907373608c054c7598385393605` (F2). Preflight: main checkout `e30777db6811f5d1fe08af05b2a79dfd53aa6e61` with only `?? AGENTS.md`; worktree clean; P1 `416993fa6a6f9dc821455df5d414cff5833ac7f0`. Binding text: the Round cs block, §1 item 12 and the F3 block of `docs/orchestration/TASKS.md`; the prompt file `cache/orch-cs/executor-prompt-round-cs.md` was read in full and agrees with the board.
+
+### Decisions and reasoning (written as made)
+
+1. **Fail-first build.** The c95f819 scratch copy is `cache\f3\failfirst-src`, made with `git archive` and overlaid with only the two new test files and one CMake line. Its coordinator build id is `a969992d481424ed`, not `49fb6ac65eb9178a` (the worktree's id at c95f819). The only difference is line endings from `git archive`; the sources are otherwise identical. That is D1 in miniature: identical code, a different build id. Alternative considered: `git worktree add` (rejected: it writes to the repository's worktree list; the archive stays in the ignored folder). Evidence: `cmake --preset msvc` output in the copy.
+2. **Test file.** New `src/test_support/tests/budget_f3_test.cpp`, registered next to `budget_f2_test.cpp` in `src/test_support/CMakeLists.txt`. Reason: the F2 file keeps its history; the F3 cases are black-box (real processes) and compile against c95f819, which the fail-first run needs.
+3. **Probe modes.** `anno_budget_probe` gained `reqwait` (a reservation on a worker thread that prints `WAITING`, takes `c` to cancel, and `RESULT`) and `silent` (a TCP listener that never accepts, so a connection completes in the backlog and no hello is answered). Every probe output path is wrapped in `EXCEPTION`. The existing modes print exactly what they printed before (the F2 cases depend on it).
+4. **Ports.** This file uses 47810–47818; F2 uses 47700–47760; the production ports are 47631/47632.
+5. **Honest limit of the fail-first run.** One test binary is one build. At c95f819 the holder and the requester are the same build as each other, and the coordinator's `--build-id` is the only way to make them differ. So the first observable failure of the requester-side cases (b) and (c) is the holder's refusal (the same D1 mismatch). The requester's own wait is never reached at c95f819. Recorded per case in the table below.
+6. **Compatibility version, not build id (D1).** `kProtocol` is renamed `kCompatVersion = 2` with a bump rule (only for wire format or reservation, journal, residency or recovery semantics an older peer would not reproduce). The build id stays a hash of the coordinator sources, now provenance only. Reason: every source edit changed it, so a busy coordinator refused a client of a sibling build with identical semantics. Evidence: fail-first case 01 (holder refused on build mismatch); `F3 (D1): two compatible builds share one busy coordinator` passes.
+7. **Exact build is an opt-in (D1).** `ANNO_TEST_BUDGET_EXACT_BUILD=1` sends hello flag `kFlagExactBuild` (4). Only then does the coordinator refuse another build (`kRejectBuild`), and the client re-checks the reply. Reason: a gate that must prove one binary can ask for it without changing the default for everyone.
+8. **Busy or incompatible requesters wait, then a bounded diagnostic (D1).** Retry with backoff from 50 ms, doubling up to the recheck period, bounded by `ANNO_TEST_ADMIT_WAIT_S`. The end reason names both builds, both versions, the busy count, "infrastructure blocker", and `wait deadline`; a cancel ends with `cancelled`. It never stops the busy peer and never opens a second budget. Tests: `F3 (D1, incompatible)`, `F3 (D1, exact build)`.
+9. **Handover: wording deviation from the board (flagged for the orchestrator).** The F3 text (c) says a successor starts when the coordinator has "no clients and no orphans". I implemented two rules. An idle coordinator (nothing held, no orphan, no other client) that refuses a client steps aside with `kRejectSteppingAside` and exits, and the next attempt starts its successor. A coordinator with open promises does not step aside. Its successor counts each journaled promise whose owner is alive as an orphan until that owner exits (`F3 (D1, crash handover)`, `F3 (D1, handover)`). So "a promise journaled and still open is still counted" holds across the handover, while "no orphans" is not a precondition for starting one. Please confirm this reading.
+10. **Silent is not foreign (D1).** A connection that answers nothing within `ANNO_TEST_BUDGET_LIVENESS_MS`, or closes during the hello, is "not ready": retried within the admission bound with a diagnostic. Only a reply that is not a coordinator's frame is "speaks another protocol". Fail-first cases 07 and 08 printed "closed the connection or speaks another protocol"; `F3 (D1, silent)` cases now pass.
+11. **No inherited descriptors (D2).** Linux: `SOCK_CLOEXEC` on sockets (`accept4`), `O_CLOEXEC` on pipes (`pipe2`), and every helper spawn closes descriptors 3 and up (`posix_spawn_file_actions_addclosefrom_np` on glibc 2.34 and later, an `addclose` loop from 3 to `min(sysconf, 4096)` otherwise). Windows: sockets from `WSASocketW(... WSA_FLAG_NO_HANDLE_INHERIT)`, accepted sockets with `SetHandleInformation(HANDLE_FLAG_INHERIT, 0)`, `CreateProcess` with `bInheritHandles = FALSE`. Evidence in `cache\f3\exp`: `fdexp.out.md` (glibc 2.39: a plain socket is inherited, `addclosefrom_np` closes it, `addclose` of an unopened descriptor returns 0); `windows-socket-inheritance.out` (`socket()` inheritable; `WSASocketW` with `NO_HANDLE_INHERIT` not inheritable; an accepted socket inheritable until cleared). Test criterion for the WSL meter child (`F3 (D2)`): the child's socket inodes must not intersect the coordinator's. Measured: shared 0, coordinator sockets 1 (`meter_fds.sh`: the child holds its own interop sockets, inodes 7803 to 7807, which is why "no socket at all" was the wrong criterion).
+12. **Layers checked one at a time (WSL).** N3 (no `SOCK_CLOEXEC`) and N4 (spawn closes nothing) are each masked by the other layer: with both off (N34) the shared inode appears (caught). N4b (client spawn closes nothing) is not observable: the client holds no descriptor without CLOEXEC, so it is defence in depth, not a separate behaviour.
+13. **Probe design fixes.** A listener that never accepts fills its backlog, so connects are refused and the diagnostic said "not listening"; `silent` now accepts and holds connections. A client compared the reply's version against the built-in constant instead of its request: now compares `request.compat`. A replacement relaunched in its own WSL session died with that session: relaunch and wait now run in one session.
+14. **C1 nit (bounded).** `C1: a release that leaves its bytes allocated` used a blocking reserve for the holder, which hung under mutant M1. The holder now uses `try_reserve` with `INFO` and `REQUIRE(held)`; the waiter state is shared and the wait after cancel is `eventually(5 s)`, detaching on timeout. M1 now fails at once with a message.
+15. **Test-only hooks (none set in production).** `ANNO_TEST_BUDGET_CLIENT_BUILD`, `ANNO_TEST_BUDGET_CLIENT_COMPAT`, `ANNO_TEST_BUDGET_EXACT_BUILD`, `ANNO_TEST_BUDGET_JOURNAL`, and `anno_budget_coord --compat-version N`.
+16. **The intermittent F1 failure was a bug in the test, not the product.** `live Windows owner is not reclaimed by a WSL client` read only the holder's first line. While the host's memory is full the holder prints `WAITING`, a legitimate wait, then `READY`. The test now reads until `READY` (60 s bound) and puts the first line in the message. Standalone pass: 11.9 s.
+17. **Full-run failure of 15 cases was a stale build, not a product regression.** The first full with-game CTest after the F3 changes failed 15 render and sim cases with "the test budget coordinator on port 47631 closed the connection or speaks another protocol". The render and sim executables dated 17:20; the test_support sources changed at 19:16–19:17. Those executables linked the old client, which the new coordinator refuses. I rebuilt everything and the gate script now builds first (`run_ctest_f3.ps1`). That failure is not a result of this change.
+18. **ASan failure in two F1 cases was a test assumption.** `a timed recheck does not admit until the budget fits` and `cancelling a waiter does not release the bytes it is waiting on` failed under WSL ASan with `first reservation refused: no test budget coordinator is listening on port 47632; the last start was less than 2 s ago`. A `try` never waits: on a cold coordinator the first call starts it and reports "not ready". The cases only passed when another process had warmed the coordinator, so they depended on order. Fixed with `await_coordinator` (up to 10 s, a 1-byte warm-up). Confirmed by running them alone under ASan (both pass) and the whole budget suite under ASan (42/42).
+19. **Formatting.** One line I added (`budget_f1_test.cpp:411`) failed clang-format 23.1.3; formatted, nothing else changed.
+
+### Gate results (head `43cd10f` plus the F3 working tree; nothing committed when measured)
+
+| Gate | Result |
+|---|---|
+| MSVC build, `cmake --build --preset msvc` | exit 0; final rebuild before the last run |
+| CTest with game files (`run_ctest_f3.ps1 -Mode game`, builds first) | 1089/1089, 528.2 s |
+| CTest without game files (`-Mode nogame`) | 1089/1089, 33.8 s |
+| `anno_test_support` group with game files after the last test edits | 58/58, 12.9 s |
+| WSL ASan/UBSan (`asan_build.sh`, `asan_run.sh`), budget suite | 42/42 cases, 354 assertions |
+| WSL ASan/UBSan, render `omitted ground` / `cropped fall` | pass |
+| WSL ASan/UBSan, sim with and without game files | 664/664 each |
+| `tools/check_unix_warnings.sh` (GCC 13.3 and Clang 18.1.3, `-Werror`) | 0 warnings; exit 0 (172 files each, plus 9 without GPU) |
+| clang-format 23.1.3 `--dry-run --Werror` over all changed C++ files | exit 0 after the one formatting fix (item 19) |
+| `python -I tools\lint_sim.py` | ok |
+| Legacy river, 4 workers (`cache\f2\run_legacy.ps1 -Threads 4`) | 216.9 s with about 90 s of budget wait; 205.4 s with no wait; the 186.4 s baseline was not reproduced. Render sources are unchanged in F3, so this is host variance, not a measured effect. No speed claim (see `docs/perf/README.md`, F3 section). |
+| Orchestrator probes rebuilt against F3 (`cache\f3\orch\orch_probes_f3.py`) | Probe E: a C5 client against a busy B0 coordinator (same version) gives `RESULT 1 reason=admitted`. run_holder: no listener on the port after the coordinator stops (none at 0 s and at 3 s). Both as expected. |
+
+### Fail-first (`c95f819` in `cache\f3\failfirst-src`, logs in `cache\f3\failfirst`)
+
+All nine cases fail for the defect they target. Case 02 cannot express an incompatible version at c95f819 (its `--compat-version` is unknown), and cases 03 to 05 stop at the holder's refusal because one binary cannot make the holder and the requester differ at c95f819 (item 5). Those limits are recorded, not hidden.
+
+| Case | Expected at c95f819 | Observed |
+|---|---|---|
+| 01 two compatible builds share | served | holder refused "runs build…" |
+| 02 incompatible version waited for | wait, then diagnostic | no LISTENING: `--compat-version` unknown |
+| 03 to 05 requester waits, cancel, exact build | wait / cancel / refuse | holder refused first (D1) |
+| 06 crash handover | journaled promise counted | shared inode 1 vs 0 expected; the gap client "speaks another protocol" |
+| 07, 08 silent listener | retried, then served / "not ready" | "closed the connection or speaks another protocol" |
+| 09 pin | `compat=2` in LISTENING | no compat field |
+
+### Mutation table (`cache\f3\mutants\summary.txt`, MSVC)
+
+Measured before the last test-only edits (items 16 to 19). The production sources have not changed since, but the table was not re-run. "Caught" counts the cases that failed under the mutant; N3, N4 and N4b are POSIX code, so on MSVC they were not evaluated (0 is not a result for them; see item 12 for WSL).
+
+| Mutant | Caught | Cases still passing | Note |
+|---|---|---|---|
+| M1 fresh, M3 host bound, M5 liveness, M7 nested lock, M9 deadline | 1 each | 0 | |
+| M2 temporary, M4 replay, M8 drain | 2 each | 0 | |
+| N1 compat by build | 2 | 0 | |
+| N2 exact opt-in ignored | 0 | 1 | Survived on MSVC: the client-side re-check masks it. N2b (both checks removed) caught. |
+| N3, N4, N4b | not evaluated on MSVC | | WSL: masked by the other layer; N34 caught (item 12) |
+| N5 silent is failure | 2 | 0 | |
+| N6 steps aside never | 1 | 1 | The crash case passes; the handover fails |
+| N7 cancel ignored while connecting, N8 wait without deadline, N9 busy is served | 1 each | 0 | |
+
+### Open items
+
+- **Defect found by reading, not reproduced: hold ids collide across a handover.** `coord_server.cpp` numbers holds per budget from 1 in each coordinator process (`next_hold = 1` at line 482, `hold.id = budget->next_hold++` at line 998). The journal replay keys holds by `(budget, hold id)`: an `A` line overwrites and an `R` line erases (lines 546 to 550). After a handover, a successor's new hold can take the same key as a predecessor's promise that is still open. The replay then drops one of them, and the orphan count after the next restart is wrong (the same effect when the successor's `R` removes the predecessor's entry). Proposed fix: seed the id counter above the largest id in the journal, or make ids unique across incarnations. It needs a fail-first case: predecessor orphan, successor hold, restart, and the count checked. Not done in F3; it is within (c) of F3 and should go next.
+- **Commits are by area, not by concern.** `coord.cpp` and `coord_server.cpp` each contain both D1 and D2 changes, and splitting them needs interactive staging, which this environment does not support. Commits: the test-support sources (D1 and D2 together), the test files and probes, and the docs.
+- **The mutation table is not re-run** after the last test-only edits (items 16 to 19).
+- **No performance claim** (item above and `docs/perf/README.md`).
+
+### Commits
+Listed in `git log` on `codex/T10c-test-memory`. Each commit ends with the attribution lines. No merge, no push, no PR; TASKS.md and AGENTS.md untouched; P1 (`416993fa`) untouched.
+
+## T10c F4 — unique hold ids, cancel of every waiter, observed layers — 2026-10-28 — status: QUESTION (A/B throughput; Part B not started)
+
+Worktree `E:\anno1503-worktrees\anno1503-T10c`, branch `codex/T10c-test-memory`. Start `94cf3cb0a09969339401f7bcd8f4a73e4cb62375`. P1 `task/P1-house-payload` stays at `416993fa6a6f9dc821455df5d414cff5833ac7f0`. Binding text: packet `cache/orch-cu/packet.md` (board at `348caa289a35`). No merge, push, rebase or TASKS/AGENTS edit.
+
+A mid-resume preflight (`tools/orch/preflight.py` with `--clean`) failed only the T10c-clean row, because this worktree already held unfinished F4 sources. The other eight rows passed (main `348caa289a35`, only `?? AGENTS.md`; P1 clean at `416993fa`). The owner resume was to continue that work, not discard it. Fail-first used a `git archive` of `94cf3cb` plus an overlay (`cache\f4\failfirst-src`), so the dirty tree did not contaminate the 94cf3cb baseline.
+
+### Heads
+
+| rev | subject |
+|---|---|
+| `94cf3cb0a09969339401f7bcd8f4a73e4cb62375` | start (F3 docs) |
+| `e4482a85853896e3b297b8569ba6c1b546ea6c3e` | refactor(test_support): share the F3 budget process harness |
+| `47ae9772b642ef57912b4002165347feca31a4d0` | fix(test_support): hold ids unique across coordinator incarnations (compat 3) |
+| `2fc77df33c846ae5878d4f3cab62daa5b2271cdc` | fix(test_support): one cancel ends every waiter of a budget |
+| `57d1241f65804dfe70f33e532172f039a1ad6af9` | test(test_support): observe each descriptor and exact-build layer on its own |
+| `6cdf628a7a18326024a71fa260c6644814194055` | docs(perf): T10c F4 hold-id uniqueness, cancel bound, A/B |
+| (this commit) | docs: report T10c F4 |
+
+Coordinator build of the gated tree: `cee55b5e74257911`, `compat=3`.
+
+### Decisions and reasoning
+
+1. **Harness header.** F3 helpers moved unchanged into `src/test_support/tests/budget_proc_harness.hpp` (unnamed namespace, one copy per TU). Alternative: duplicate them in the F4 file (rejected: two copies would drift). Evidence: commit `e4482a8` changes no F3 assertion; pin still said `compat=2` in that commit.
+2. **E1 id scheme (i).** One server-wide `u64` counter seeded at `journal.max_hold_id() + 1` (`coord_server.cpp`, `Server::next_hold`). Uniqueness is required per budget; a single counter needs no per-budget map; a `u64` will not overflow in a test run. Alternative (ii), a seed per budget at creation, was not taken.
+3. **E2 cancel-before-lock.** `Budget::session_for` loads `cancel_gen` before `connect_mu`. After the lock, if there is still no session and the generation changed, it returns `cancelled`. A `cancel()` issued before a thread enters `session_for` does not end that later wait (same rule as F3). Evidence: case 3; `budget.cpp`.
+4. **Journal CLOEXEC.** Case 5 listed the journal as a non-socket fd without `O_CLOEXEC`. `fopen_cloexec` uses glibc `"ae"`. Decision recorded as required when a non-socket lacks CLOEXEC while the meter is spawned.
+5. **N4b leak above 255.** The coordinator closes fds 3..255 at start (`run_budget_server`). A leak opened on a low fd is gone before the meter spawn and hides N4b. The probe now `fcntl(F_DUPFD, 256)`. Evidence: first N4b survivor, then `CHECK(coord_has==0)` under N4b.
+6. **WSL scripts via `sh`.** `wsl_script` runs `sh <script> [arg]`; the file does not need `+x`. The first N3 "catch" was `Permission denied` on `/tmp/.../wsl-0.sh`, an artefact, not CLOEXEC. After the fix, N3 fails `CHECK(all_sockets_cloexec)`.
+7. **`coord_wire.hpp` include path.** `check_unix_warnings.sh` only adds `-I src/*/include`. Quoted `"coord_wire.hpp"` from `tests/` does not find `src/test_support/src`. The tests and the probe include `"../src/coord_wire.hpp"` (relative to the source file). Alternative: edit the warning script (rejected: not named in F4). First unix-warning run failed those three files; second run is clean.
+8. **A/B verdict.** B1 is 8.0 % faster than A1 (outside the 5 % band); B2 is 3.9 % slower than A2 (inside). Not "no throughput regression measured". Packet: report the four numbers as a QUESTION and stop after Part A.
+9. **Part B.** Not started (B0: every A8 gate and the A6 verdict "no throughput regression measured").
+
+### A0, file wins over the packet's `94cf3cb` line numbers
+
+The packet's Journal / hello / `next_hold` lines were correct at `94cf3cb`. After `fopen_cloexec` and `max_hold_id`, `class Journal` is at `coord_server.cpp:528` (packet `:513`); `hold.id = server.next_hold++` is at `:1024` (packet `:998`); `server.next_hold` is seeded at `:1578`. Replay still keys by `(budget, hold id)`; an `A` sets and an `R` erases. `session_for` now reads `cancel_gen` *before* `connect_mu` (packet described the pre-fix order).
+
+### Fail-first (`94cf3cb` overlay in `cache\f4\failfirst-src`, logs in `cache\f4\failfirst`)
+
+| Case | Expected at `94cf3cb` | Observed first failure |
+|---|---|---|
+| 1 orphan reuse | `orphans=0`, `pending=0`, `claim=1` | `CHECK(has(c3_listen, "orphans=1"))` — C3 `orphans=0`, `try 90` `claim=1 pending=0` (`01-orphan-reuse.txt`). Targeted E1 collision, not a test artefact. |
+| 2 live hold | `pending=0`, `claim=1` | `CHECK(has(c3_listen, "orphans=1"))` — C3 `orphans=0`, `try 90` `claim=1 pending=0` (`02-live-hold.txt`). Targeted: C2's `R b 1` for P erased Q's `A b 1`. |
+| 3 cancel all | one `RESULT`, then nothing in 3 s | `CHECK(has(second, "RESULT"))` (`03-cancel-all.txt`). Targeted: second waiter still holds `connect_mu` wait. |
+| 4 raw hello | pass (layer exists) | PASS 1/1, 13 assertions (`04-rawhello.txt`). Fail evidence is A5 N2. |
+| 5 sockets CLOEXEC | pass (layer exists) | PASS 1/1, 4 assertions (`05-cloexec.txt`); journal listed without CLOEXEC (decision 4). Fail evidence is A5 N3. |
+| 6 meter leak hook | precondition fail | `REQUIRE(coord_has != "0")` (`06-meter-leak.txt`): hook absent at `94cf3cb`. |
+| 7 client leak | pass (layer exists) | MSVC overlay skipped (Windows MESSAGE, `coord.cpp` `bInheritHandles = FALSE`). Fail evidence is A5 N4b on WSL. |
+
+### Mutation table (A5, `cache\f4\mutants\summary-final.txt`)
+
+Unmutated MSVC: 51 passed / 0 failed / 14 skipped, 484 assertions. Unmutated WSL: 49 passed / 0 failed / 14 skipped, 471 assertions. Every named mutant `build_exit=0` and failed a named case. No survivors on the final run.
+
+| Mutant | Platform | First failing case / assertion |
+|---|---|---|
+| M1-fresh | MSVC | C1 leaves its bytes allocated — `REQUIRE(held)` `budget_f2_test.cpp:215` |
+| M2-temporary | MSVC | stale residency + shortage — `CHECK(done.load()==0)` `budget_f2_test.cpp:321` |
+| M3-host-bound | MSVC | guest request bounded — `CHECK(claim=0)` `budget_f2_test.cpp:382` |
+| M4-replay | MSVC | replacement + crash handover — `CHECK(claim=0)` `budget_f2_test.cpp:464` |
+| M5-liveness | MSVC | stops answering — `CHECK(ADMITTED 0)` `budget_f2_test.cpp:441` |
+| M7-nested-lock | MSVC | losing the coordinator — `CHECK(ADMITTED 0)` `budget_f2_test.cpp:412` |
+| M8-drain | MSVC | replacement + crash handover — `CHECK(ADMITTED 1)` `budget_f2_test.cpp:475` |
+| M9-deadline | MSVC | coordinator wait cannot be served — `CHECK(done!=0 by 6s)` `budget_f2_test.cpp:540` |
+| N1-compat-by-build | MSVC | two compatible + incompatible — `CHECK(READY 1)` `budget_f3_test.cpp:106` |
+| N2-exact-opt-in | MSVC | coordinator alone refuses — `CHECK(op=kStReject)` `budget_f4_test.cpp:342` |
+| N2b-exact | MSVC | exact-build requester — `REQUIRE(WAITING)` `budget_f3_test.cpp:205` |
+| N5-silent | MSVC | answers no hello + never answers — `REQUIRE(WAITING)` `budget_f3_test.cpp:475` |
+| N6-steps-aside | MSVC | drained busy coordinator — `REQUIRE(coord exits)` `budget_f3_test.cpp:253` |
+| N7-cancel-ignored | MSVC | exact-build requester — `REQUIRE(RESULT 0)` `budget_f3_test.cpp:209` |
+| N8-wait-no-deadline | MSVC | incompatible — `REQUIRE(RESULT 0)` `budget_f3_test.cpp:162` |
+| N9-busy-is-served | MSVC | incompatible — `REQUIRE(WAITING)` `budget_f3_test.cpp:159` |
+| M-E1 | MSVC | orphan survives + live hold — `CHECK(orphans=1)` `budget_f4_test.cpp:243` |
+| M-E2 | MSVC | one cancel ends every waiter — `CHECK(second RESULT)` `budget_f4_test.cpp:308` |
+| N3-cloexec | WSL | every socket — `CHECK(all_sockets_cloexec)` `budget_f4_test.cpp:431` |
+| N4-meter | WSL | coordinator leak fd — `CHECK(meter_has==0)` `budget_f4_test.cpp:480` |
+| N4b-client | WSL | client leak fd — `CHECK(coord_has==0)` `budget_f4_test.cpp:513` |
+| N34-both | WSL | F3 D2 — `CHECK(shared==0)` `budget_f3_test.cpp:392` |
+
+### Gate results (final sources; coordinator `cee55b5e74257911` / `compat=3` unless noted)
+
+| Gate | Result | coordinator build / compat (from the log) |
+|---|---|---|
+| `cmake --build --preset msvc` (via `cache\f4\run_ctest_f4.ps1`) | exit 0 | (build id `cee55b5e74257911` from CMake) |
+| CTest with game (`run_ctest_f4.ps1 -Mode game`) | **PASS** 1096/1096, 912.31 s real (F3 was 1089; +7 F4 cases) | `cee55b5e74257911` `compat=3` (`cache\f4\ctest-game\memory.log`) |
+| CTest without game (`-Mode nogame`) | **PASS** 1096/1096, 34.16 s; game cases skip cleanly | no `[anno-test memory] coordinator` line (no `memory.log`); same MSVC binaries as the game gate |
+| WSL ASan/UBSan budget suite (`asan_build.sh`, `asan_run.sh`) | **PASS** 49/49, 467 assertions; omitted-ground / cropped-fall pass; sim 664/664 with and without game | `cee55b5e74257911` `compat=3` (`cache\f4\asan\sim-game.txt`; ASan configure printed the same build id) |
+| `tools/check_unix_warnings.sh` | **PASS** after decision 7: GCC 13.3 and Clang 18.1.3, 173 files clean; Clang without GPU, 9 files clean | n/a (compile only) |
+| clang-format 23.1.3 `--dry-run --Werror` on every new/changed `.cpp`/`.hpp` | **PASS** | n/a |
+| `python -I tools/lint_sim.py` | **PASS** `lint_sim: ok` | n/a |
+| A5 mutation table | **PASS** no survivors | see table |
+| A6 A/B verdict | **QUESTION** (not "no throughput regression measured") | A: `a969992d481424ed` `protocol=2`; B: `cee55b5e74257911` `compat=3` |
+
+### E4 A/B (`cache\f4\ab\run_legacy_ab.ps1`, 4-worker legacy-river, ports 47851 / 47852)
+
+`ANNO_TEST_BUDGET_PORT` moves the shared port at F2 `43cd10f` (`coordinator_port` in `coord.cpp`, same as `:83-90` at `94cf3cb`).
+
+| run | elapsed_s | exit | cases / assertions | still-waiting lines | free_kb at start | coordinator |
+|---|---|---|---|---|---|---|
+| A1 | 223.734 | 0 | 1 / 47 | 3 (3 × "for 30 s") | 16895944 | `a969992d481424ed` `protocol=2` |
+| B1 | 205.784 | 0 | 1 / 47 | 3 (3 × "for 30 s") | 17098608 | `cee55b5e74257911` `compat=3` |
+| A2 | 197.070 | 0 | 1 / 47 | 0 | 17241036 | `a969992d481424ed` `protocol=2` |
+| B2 | 204.759 | 0 | 1 / 47 | 0 | 17260440 | `cee55b5e74257911` `compat=3` |
+
+B1 vs A1 = −8.0 % (outside the 5 % band). B2 vs A2 = +3.9 % (inside). **QUESTION.** Part B was not started.
+
+### Acceptance
+
+**D1** (F3, still required):
+- Different compatible builds share one busy coordinator — `F3 (D1): two compatible builds share one busy coordinator` (pin `compat=3`).
+- Build id is provenance only; hello decides by `kCompatVersion` — `coord_server.cpp` hello; `F3 (D1, pin)`.
+- Exact-build is opt-in `ANNO_TEST_BUDGET_EXACT_BUILD=1` / `kFlagExactBuild=4` — `F3 (D1, exact build)` and F4 case 4 (server alone).
+- Incompatible or exact-build requester waits, bounded infrastructure diagnostic, cancel → `cancelled` — `F3 (D1, incompatible)`, `F3 (D1, exact build)`.
+- Incarnation remains the lost-promise fence — LISTENING line still prints it.
+- Drain / crash handover still count a live journaled promise — `F3 (D1, handover)`, `F3 (D1, crash handover)`.
+
+**D2** (F3, still required):
+- Listening and accepted sockets are close-on-exec — F4 case 5 (`/proc/.../fdinfo` `O_CLOEXEC`).
+- Helper spawn closefrom (meter and client-start) — F4 cases 6 and 7; F3 D2 inode intersection.
+- Windows: `bInheritHandles = FALSE`, non-inheritable sockets — case 7 MESSAGE cites `coord.cpp`.
+- Accepted / no hello is "not ready", retried — `F3 (D1, silent)` (header now says silent accepts and holds).
+- After death the port is free; replacement and client never fail with "speaks another protocol" — `F3 (D2)`.
+
+**E1:**
+- Journaled promise survives two restarts, orphan kept — case 1.
+- Journaled promise survives two restarts, live hold kept — case 2.
+- `kCompatVersion = 3` with the recovery reason — `coord_wire.hpp`, perf note, `F3 (D1, pin)`.
+
+**E2:**
+- One cancel ends every waiter within one connection attempt plus one pause — case 3 (3 s margin).
+
+**F4 list:**
+- E1 both orders: yes (cases 1 and 2).
+- E2 cancel bound: yes (case 3).
+- Every step-4 mutant fails a named case; unmutated pass: yes (A5).
+- A/B no regression **or** numbers as QUESTION: **QUESTION** (table above).
+- Report has build/version per gate, item-by-item acceptance, two-worktree paragraph, F3 corrections: this section.
+- Every gate passes: A8 compile/test/format/lint/ASan/warnings pass; A6 is a QUESTION, not a failed command.
+- Part B: **not started**.
+
+### Two worktrees on one host budget
+
+Same compatibility version: one coordinator, every reservation counts against one host budget, and the logs name the build (`F3 (D1): two compatible builds share one busy coordinator`; every `[anno-test memory] coordinator build=… compat=…` line). A different version: the newcomer is refused while the coordinator is busy, waits with backoff, and takes over once the busy peer is idle (`F3 (D1, incompatible)`, `F3 (D1, exact build)`, drain / crash handover). F4's bump to 3 makes leftover F2/F3 coordinators the "different version" case, so they are refused by version rather than by an accidental id collision.
+
+### F3 corrections (written here; the F3 section is unchanged)
+
+- F3 report item 3 said `silent` never accepts. Item 13 already changed the probe to accept and hold. The probe header now says that.
+- F3 fail-first rows 04 / 05 / 06 were mislabelled. 04 is the drain handover, 05 the crash handover, 06 the D2 meter case.
+
+### Commits
+
+On `codex/T10c-test-memory`, one concern each, PowerShell here-string, `git diff --check` clean, attribution `Co-Authored-By: Cursor Grok 4.6`. Nothing under `game/`, `cache/`, `TASKS.md` or `AGENTS.md`. P1 untouched. No merge, no push.
+
+## T10c F4 continuation — A/B repeat and docs — 2026-10-29 — status: FINISHED
+
+Worktree `E:\anno1503-worktrees\anno1503-T10c`, branch `codex/T10c-test-memory`. Start `1104a7d0a9a2422b430afdc80b1579c2835a1eaa`. P1 `task/P1-house-payload` stays at `416993fa6a6f9dc821455df5d414cff5833ac7f0`. Binding text: packet `E:\anno1503\cache\orch-cv\packet.md` (board at `dc265568a7f9`). No merge, push, rebase or TASKS/AGENTS edit. No file under `src/`, `tools/`, `cmake/` or any `CMakeLists.txt` changed.
+
+### Heads
+
+| rev | subject |
+|---|---|
+| `1104a7d0a9a2422b430afdc80b1579c2835a1eaa` | start (F4 Part A report) |
+| `dd32d762225dc9f93ed94334827944b7b37a7372` | docs(perf): T10c F4 A/B repeat pair and the F4 test-only hooks |
+| (this commit) | docs: report T10c F4 continuation |
+
+### Decisions and reasoning
+
+1. **C0 facts match the packet.** `git log --oneline 94cf3cb..HEAD` lists the six named commits ending `1104a7d docs: report T10c F4`; `git status --short` was empty. `run_legacy_ab.ps1` takes `-Exe`, `-Port`, `-Tag` and writes `cache\f4\ab\legacy-<Tag>\` (`meta.txt`, `memory.log`, `waits.txt`, `coord.txt`) and stops the WSL coordinator of that port via `_stop_<port>.sh`. `run_ab_all.ps1` names A as `cache\f4\ab\f2-src\build\msvc\src\render\Release\anno_render_tests.exe`, B as `build\msvc\src\render\Release\anno_render_tests.exe`, and `Stop-WorktreeCoords` kills only Windows `anno_budget_coord*` whose Path contains `anno1503-T10c`. Both binaries existed. A1 `coord.txt`: `build=a969992d481424ed protocol=2`. B1: `build=cee55b5e74257911 compat=3`. Evidence: `cache\f4\cont\c0.txt`. Alternative: re-read the scripts from memory (rejected: packet C0 says read them).
+2. **C1.1 rebuild did not replace the B binary.** `cmake --build --preset msvc` exit 0. MSBuild listed the usual targets; it compiled `budget_probe.cpp`, `budget_f3_test.cpp` and `budget_f4_test.cpp`. The B `anno_render_tests.exe` stayed 2013696 bytes, last write 2026-10-28T21:23:39.9218331Z; `anno_budget_coord.exe` stayed 118272 bytes, last write 2026-10-28T21:23:39.5444816Z. Evidence: `cache\f4\cont\c1-build.txt`, `cache\f4\cont\c1-procs.txt`. Alternative: treat the listed `.vcxproj ->` lines as a new B (rejected: timestamps and length unchanged).
+3. **No coordinator or test to stop.** Windows `anno_budget_coord*`: none. WSL `pgrep -af anno_budget_coord`: none. `anno_*_tests` / `ctest`: none. Nothing was killed. Other-test-running: no. Evidence: `cache\f4\cont\c1-procs.txt`. Alternative: wait 30 minutes (rejected: nothing was running).
+4. **A3/B3 pair script.** Copied `run_ab_all.ps1` to `cache\f4\ab\run_ab_pair3.ps1`, same `$A`/`$B`/`$script`/`Stop-WorktreeCoords`, only `-Tag A3` then `-Tag B3`. Ran with no other build, test or subagent job. Evidence: `cache\f4\cont\c1-pair3.txt`.
+5. **Coordinator lines of the pair are the required builds.** A3: `build=a969992d481424ed incarnation=876fc359b0c386f4 protocol=2`. B3: `build=cee55b5e74257911 compat=3 incarnation=a067f12911061862`. The pair compares the same A/B binaries as A1–B2. Evidence: `cache\f4\ab\legacy-A3\coord.txt`, `legacy-B3\coord.txt`. Alternative: QUESTION and skip Part 2 (rejected: the lines match).
+6. **A3/B3 does not count; the verdict rests on A2/B2.** A pair counts only when neither run logged `still waiting` and no other test ran. A1/B1: three waits each, does not count. A2/B2: no waits, counts. A3: no waits; B3: two `still waiting … for 30 s` (free 13994565632 and 14088884224). Packet: if A3 or B3 waited, do not repeat; verdict rests on A2/B2. B/A to three decimals: 0.920, 1.039, 1.033. Rule: at least one counted pair and every counted pair B/A ≤ 1.050. A2/B2 = 1.039. **No throughput regression measured.** Evidence: `cache\f4\cont\c1-record.txt`, `cache\f4\ab\legacy-*\meta.txt`. Alternative: treat B3's 1.033 as a counted pair (rejected: a wait pair measures host free memory). Alternative: QUESTION because A1/B1 was mixed (rejected: one-sided rule and the wait rule, board Round cv).
+7. **Hook wording from the sources.** `ANNO_TEST_COORD_LEAK_FD`: POSIX `run_budget_server` (`coord_server.cpp:1549`, leak block `:1583-1588`) opens the path with `::open(…, O_RDONLY)` after the start-up close of descriptors 3..255 and does not close it (no `O_CLOEXEC`). `ANNO_TEST_PROBE_LEAK_FD`: POSIX `open_probe_leak` (`budget_probe.cpp:86-102`) opens the path the same way and `fcntl(F_DUPFD, 256)` so the coordinator's 3..255 close cannot hide the client-spawn closefrom. Cases `F4 (N4)` and `F4 (N4b)`. Alternative: copy the code comments only (rejected: packet C2 says read those blocks and describe exactly what they do).
+8. **"counted" is per pair.** The column is yes only for A2 and B2. A3 had no wait of its own; the pair does not count because B3 waited. Alternative: mark A3 yes (rejected: the packet defines when a pair counts).
+
+### Six-run A/B
+
+`cache\f4\ab\run_legacy_ab.ps1` and `run_ab_pair3.ps1`, 4-worker legacy-river, ports 47851 / 47852. Other test running: no.
+
+| run | elapsed_s | exit | cases | assertions | still-waiting | wait notes | counted | free_kb | coordinator line | other test |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A1 | 223.734 | 0 | 1 / 1 | 47 / 47 | 3 | 3 × "for 30 s" | no | 16895944 | `build=a969992d481424ed incarnation=63f8330520d1f259 protocol=2 pid=14085 port=47851` | no |
+| B1 | 205.784 | 0 | 1 / 1 | 47 / 47 | 3 | 3 × "for 30 s" | no | 17098608 | `build=cee55b5e74257911 compat=3 incarnation=a035c0aa98f5fdc5 pid=14102 port=47852` | no |
+| A2 | 197.070 | 0 | 1 / 1 | 47 / 47 | 0 | none | yes | 17241036 | `build=a969992d481424ed incarnation=329dedbb649679e9 protocol=2 pid=14123 port=47851` | no |
+| B2 | 204.759 | 0 | 1 / 1 | 47 / 47 | 0 | none | yes | 17260440 | `build=cee55b5e74257911 compat=3 incarnation=32d2e2b08be551fe pid=14144 port=47852` | no |
+| A3 | 193.437 | 0 | 1 / 1 | 47 / 47 | 0 | none | no | 16939468 | `build=a969992d481424ed incarnation=876fc359b0c386f4 protocol=2 pid=21008 port=47851` | no |
+| B3 | 199.742 | 0 | 1 / 1 | 47 / 47 | 2 | 2 × "for 30 s" | no | 16973616 | `build=cee55b5e74257911 compat=3 incarnation=a067f12911061862 pid=21029 port=47852` | no |
+
+Ratios B/A: A1/B1 0.920 (does not count); A2/B2 1.039 (counts); A3/B3 1.033 (does not count). **No throughput regression measured.** Part B may start.
+
+### C1 step 1 build (`cache\f4\cont\c1-build.txt`)
+
+`cmake --build --preset msvc` in this worktree: exit 0. Compiled `budget_probe.cpp`, `budget_f3_test.cpp`, `budget_f4_test.cpp`. MSBuild also listed the existing targets (SDL3-static, formats, assets, render, app, tests, tools) as `->` their outputs. B `anno_render_tests.exe` and `anno_budget_coord.exe` timestamps unchanged (see decision 2).
+
+### C1 steps 2–3 processes (`cache\f4\cont\c1-procs.txt`)
+
+```
+Get-Process anno_budget_coord*: (none)
+wsl -d Ubuntu -- pgrep -af anno_budget_coord: (none)
+Get-Process anno_*_tests, ctest: (none)
+```
+
+### `git diff --stat 1104a7d HEAD` after the perf-note commit
+
+```
+ docs/perf/README.md | 22 ++++++++++++----------
+ 1 file changed, 12 insertions(+), 10 deletions(-)
+```
+
+Only `docs/` files. Part A's gates at `1104a7d` stand for this head.
+
+### Commits
+
+On `codex/T10c-test-memory`, one concern each, PowerShell here-string, `git diff --check` clean, attribution `Co-Authored-By: Cursor Grok 4.6`. Nothing under `game/`, `cache/`, `TASKS.md` or `AGENTS.md`. P1 untouched. No merge, no push.
+
+## P1 — House payload, group table, scenario import — 2026-10-29 — status: FINISHED (validated on the combined head ef6121a7482de79f9faa3feb070ecd37642d01ad)
+
+Worktree `E:\anno1503-worktrees\anno1503-T10c`, branch `codex/T10c-test-memory`. P1 base `416993fa6a6f9dc821455df5d414cff5833ac7f0` (`task/P1-house-payload`, left untouched). Combined tested head: `ef6121a7482de79f9faa3feb070ecd37642d01ad` (P1 is an ancestor; Part 1 added only the two docs commits `dd32d76` and `ef6121a`). Binding text: packet `E:\anno1503\cache\orch-cv\packet.md`. The earlier P1 section in this file (2026-10-28, BLOCKED) is not rewritten.
+
+Results on the combined head are not attributed to P1 alone (round cp).
+
+### Decisions and reasoning
+
+1. **B0 starts.** Part 1's verdict is "no throughput regression measured" (A2/B2 = 1.039, the only counted pair). Alternative: skip Part 2 (rejected: the skip rule is only for a QUESTION).
+2. **Corpus summary from the committed file and the BLOCKED section.** Header `# kStateHashVersion=115 kPrngTimelineVersion=2`. Every row has `HouseResetNotApplied=0`. The printed summary line from the passing non-heavy P1 run is `scenario corpus: houses 3283, residents in the records 43162, residents of the created houses 43162, HouseResetNotApplied 0`. Evidence: `fixtures/synthetic/sim/scenario_corpus.txt`; REPORTS P1 2026-10-28. Alternative: re-run the corpus printer (rejected: the file is the committed oracle, and the unmutated sim suite includes the corpus case).
+3. **Linux builds use the F4 cmake and the warning-script compilers.** `g++-13` 13.3.0, Clang 18.1.3 from `~/clang18`, cmake `3.31.8` at `$HOME/cmake-lnx/...`, doctest from `build/msvc/_deps/doctest-src`, `-O3 -DNDEBUG` Release, `ANNO_WARNINGS_AS_ERRORS=ON`, viewer/GPU off. Evidence: `cache\f4\partb\linux_sim_formats.sh`, `linux_sim_formats.out.txt`. Alternative: compile-only like `check_unix_warnings.sh` (rejected: the packet asks for the test binaries and their case/assertion counts).
+4. **Clang assertion counts differ from GCC by 6.** GCC sim game 3173284, Clang 3173278; nogame 3155860 vs 3155854. Both 664/664 passed. Recorded as measured; not called host variance. Evidence: `cache\f4\partb\linux_run_tests.out.txt`.
+5. **Mutants 3 and 5 first replacements did not compile.** `if (false)` left `lower` unused (`warning C4189` as error). `ar::seq` of a temporary empty span is not an lvalue (`error C2664`). Second replacements: `HouseResetNotApplied` → `UnknownRecord` at the one `warn.add`; `digest_registry(..., groups)` → `digest_registry(..., {})` at `finish`. Both compile and fail their tests. First logs kept as `*-first.txt`. Alternative: report them as survivors (rejected: a failed build is not a test of the mutant).
+6. **Restored sources need a forced rebuild.** `shutil.copy2` put the original mtimes back; incremental MSVC kept mutant `.obj` files. The first unmutated run failed cases that matched leftovers of mutants 3–5. Deleted `types.obj`, `scenario_formats.obj`, `driver.obj`, rebuilt those three TUs, then 664/664 both ways. Evidence: `cache\f4\partb\unmutated\sim-game.txt` vs `sim-game-rebuilt.txt`. Alternative: treat the first failure as a real regression (rejected: sources were unmutated; the rebuild compiled the three files and the suite passed).
+
+### Gates
+
+| Gate | Result |
+|---|---|
+| Part A `cmake --build --preset msvc` | exit 0, on the combined head `1104a7d`, docs-only diff since (`git diff --stat 1104a7d HEAD` is `docs/orchestration/REPORTS.md` and `docs/perf/README.md`) |
+| Part A CTest with game | **1096/1096**, 912.31 s, coordinator `cee55b5e74257911` `compat=3`, on `1104a7d`, docs-only diff since |
+| Part A CTest without game | **1096/1096**, 34.16 s, same binaries, on `1104a7d`, docs-only diff since |
+| Part A clang-format 23.1.3 | **PASS**, on `1104a7d`, docs-only diff since |
+| Part A `python -I tools/lint_sim.py` | **PASS** `lint_sim: ok`, on `1104a7d`, docs-only diff since |
+| `python -I tools/sim_stream.py --check` | **PASS** `goldens agree` (`cache\f4\partb\sim_stream.txt`) |
+| WSL GCC 13.3 configure / build | **PASS** exit 0 / 0 (`cache\f4\partb\gcc-configure.txt`, `gcc-build.txt`) |
+| WSL GCC formats game / nogame | **PASS** 66/66, 20436260 / 1755 assertions (`linux_run_tests.out.txt`) |
+| WSL GCC sim game / nogame | **PASS** 664/664, 3173284 / 3155860 assertions |
+| WSL Clang 18.1.3 configure / build | **PASS** exit 0 / 0 (`clang-configure.txt`, `clang-build.txt`) |
+| WSL Clang formats game / nogame | **PASS** 66/66, 20436260 / 1755 assertions |
+| WSL Clang sim game / nogame | **PASS** 664/664, 3173278 / 3155854 assertions |
+| Unmutated MSVC `anno_sim_tests` game / nogame | **PASS** 664/664, 3173284 / 3155860 after the forced rebuild (`cache\f4\partb\unmutated\sim-*-rebuilt.txt`) |
+
+### B3 mutations (`cache\f4\mutants\p1\`)
+
+| # | Replacement (once) | Build | Named test | First failing assertion |
+|---|---|---|---|---|
+| 1 | `scenario_formats.cpp`: `house.e = residents << 7` → `<< 6` | 0 | `P1 import: a v2 house record*` | `CHECK( h.e == 10U * 128U )` 640 == 1280 |
+| 2 | `scenario_formats.cpp`: `s_j[j]` → `s_j[j + 1]` | 0 | `P1 import: a v2 house record*` | `CHECK( h.stock[0] == 4373 )` 2186 == 4373 |
+| 3 | `scenario_formats.cpp`: `HouseResetNotApplied` → `UnknownRecord` at the one `warn.add` | 0 | `P1 import: the reset predicate*` | `CHECK( warnings_of(fires, Kind::HouseResetNotApplied) == 2 )` 0 == 2 |
+| 4 | `driver.cpp`: `TickKind::House` writes `h->last = ctx.t` | 0 | `G7 (P1)*` | `CHECK( after.last == before.last )` 9965 == 0 |
+| 5 | `types.cpp`: `digest_registry(..., groups)` → `... , {}` | 0 | `registry digest: the group table*` | `CHECK( none.build().value()->digest() != d )` equal hashes |
+| 6 | `types.cpp`: size check `if (false && !groups.empty() && …)` | 0 | `registry: a non-empty group table*` | `REQUIRE_FALSE( r.ok() )` |
+
+No survivor. No test-file change. Full CTest was not re-run (packet: only if a test file changed).
+
+### Corpus summary
+
+`scenario corpus: houses 3283, residents in the records 43162, residents of the created houses 43162, HouseResetNotApplied 0`
+
+### Acceptance
+
+- A loaded `single36` house has residents and stocks. Met. `scenario corpus: every .sze loads, creates and runs five minutes` in the unmutated 664 (`cache\f4\partb\unmutated\sim-game-rebuilt.txt`); the corpus case `CHECK`s `record_residents > 0` and `houses_with_stock > 0` for `single36` (`src/sim/tests/scenario_test.cpp`).
+- `HouseRecordNotModelled` is gone and `HouseResetNotApplied` is 0 across the corpus. Met. No `HouseRecordNotModelled` under `src/`. Corpus file every row `HouseResetNotApplied=0`; unmutated suite includes `CHECK` of that total.
+- The created houses' residents sum to `resident_sum`. Met. Summary 43162 and 43162; `CHECK(total_record_residents == total_created_residents)` in the corpus case.
+- Save then load is exact. Met. Corpus `CHECK(r.save_identity)` and `P1 import: created houses sum to resident_sum, save then load is exact` in the 664.
+- The House tick changes nothing. Met. `TickKind::House` returns at once (`driver.cpp:239-241`); `G7 (P1): the created population world, and the House tick changes nothing` in the 664.
+- Goldens and corpus are re-recorded at version 115, with `p1_g7_create`. Met. `sim_stream.py --check` = `goldens agree`; corpus header 115/2; `p1_g7_create` in the goldens.
+- No city-store take, no draw, no `kPrngTimelineVersion` change. Met in the committed source; `kPrngTimelineVersion` is 2.
+- Every gate passes, and every listed mutation fails its test. Met. Table above.
+- Nothing from `game/` is in git. Met for this report commit: docs only.
+
+### Commits
+
+Report only on `codex/T10c-test-memory`. P1's branch stays at `416993fa`. No merge, no push, no TASKS/AGENTS edit.
+
 ## Orchestrator review — round cs — 2026-10-28
 
 **Scope:** T10c F2, `43cd10f086eb6907373608c054c7598385393605` (code `c95f819`) on `af8aa01`, stacked on unchanged P1 `416993fa`. Not merged. No task-branch edits, push or executor dispatch. The pre-existing untracked AGENTS.md is preserved. The full suites were not rerun, because the owner was using the PC. The executor's saved logs were inspected instead: with game 1080/1080, without game 1080/1080, GCC/Clang clean, and nine mutants caught (M2 after its case was strengthened; M1 by a hang).

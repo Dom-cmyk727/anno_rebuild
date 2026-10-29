@@ -776,3 +776,149 @@ T41's save sizes at the same age were 11 474 169, 20 349 454 and 12 906 633 byte
 | `03_1024_med_256` | 25 018 / 27 647 / 31 175 / 32 570 | 171 / 217 / 330 / 635 | 4 245 |
 
 The empty workload's slowest sample is `endless02` at 2 278 µs (438 turns/s). Encoded command bytes, the same on every scenario: empty 0, one `SetSpeed` 16, synthetic burst 76 commands and 1 216 bytes. The burst is over the 1 200-byte cap. It is not a play distribution. Packet overhead was labeled and not added. Detail, the empty-workload rows, and the labeled model result are in ADR 0003 §13.
+
+## T10c — one-worker render baseline (2026-10-28)
+
+Measured on the unchanged head `416993fa6a6f9dc821455df5d414cff5833ac7f0`, before the scheduler change. Host: AMD Ryzen 7 9800X3D, 16 logical processors, Windows, 33408942080 bytes physical RAM, commit limit 108272488448 bytes. Physical RAM is the binding limit; commit headroom stayed above 55 GiB. The sampler is `tools/sample_memory.ps1` at 1 Hz (available physical memory, available commit, process working set, private bytes, peak pagefile, thread count). It stops the diagnostic run below 2147483648 bytes of available physical memory or available commit. That threshold was not hit. The CSV logs stay in the worktree `cache\` and are not committed. Peak pagefile is `PeakPagefileUsage`. A 1 Hz private sample can miss a sub-second spike, so the high-water is the peak.
+
+### Legacy river, one internal worker
+
+`anno_render_tests --test-case="*legacy river shading*" --test-suite=heavy --no-colors`, `ANNO_TEST_THREADS=1`, game directory set. Result: 1 passed, 0 failed, 146 skipped, 47 assertions, exit 0. Sampled elapsed 297.646 s. The meta clock runs from 10:42:12.898 to 10:47:11.339 +01:00.
+
+| quantity | bytes |
+|---|---:|
+| free physical at start | 16507674624 |
+| minimum available physical | 8656285696 |
+| process peak private | 8044425216 |
+| maximum sampled private | 8044388352 |
+| minimum available commit | 59670302720 |
+| maximum commit charge | 48602185728 |
+
+The thread count was 4 during load and 1 while the later renders ran. The minimum of the private series is the process exiting, not a between-item floor. Stderr had no `[anno-test memory]` line: one worker never waited under the old harness.
+
+### Labeled full-map CPU renders
+
+`anno1503 --view <scenario> --group 2 --renderer cpu --png <cache file>`, one fresh process each. The PNG files were deleted after the run. Additional bytes are the peak private minus the maximum private in the first 1.5 s. Single_24 finishes inside that window, so its additional figure is only the pagefile high-water above the highest 1 Hz sample.
+
+| run | image | pre-render private | peak private | additional | bytes/pixel | elapsed s | min available physical |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Single_01 enhanced legacy | 16960×9170 | 991899648 | 7620612096 | 6628712448 | 42.622 | 38.891 | 9663873024 |
+| Single_01 original | 16960×9170 | 993218560 | 7620579328 | 6627360768 | 42.613 | 17.485 | 9676578816 |
+| Single_01 enhanced flow | 16960×9170 | 993366016 | 7620018176 | 6626652160 | 42.609 | 38.926 | 10433630208 |
+| Single_10 enhanced legacy | 17440×9131 | 1003626496 | 7608279040 | 6604652544 | 41.475 | 35.841 | 10673950720 |
+| Single_14 enhanced legacy | 14080×9291 | 892149760 | 6191976448 | 5299826688 | 40.513 | 27.690 | 13276516352 |
+| Single_24 enhanced legacy | 7200×2811 | 949936128 | 1268973568 | 319037440 | 15.763 | 5.170 | 16972197888 |
+
+Single_01 group 2 is 16960 × 9170 = 155523200 pixels. The scheduler's per-pixel rate is 43, the integer ceiling of the Single_01 enhanced-legacy ratio 42.622. `43 × 155523200 = 6687497600`, which is 58785152 bytes above that run's additional private. Original and flow on the same map matched the enhanced peak within a few megabytes, so the rate is not lowered for original water. The other maps were lower per pixel. A group-1 region on its own was not measured.
+
+The legacy-river process peak is 423813120 bytes above the fresh Single_01 `--png` peak. That gap is memory the harness already held (figuren volumes, Anlagen, Felder). The reservation is the additional render bytes. Free memory already excludes what is resident, so those bytes are not reserved again.
+
+Two full-map renders, about twice the 6628712448-byte additional, do not fit in the 16507674624 bytes free at the start of the one-worker run once 4 GiB of headroom is kept. The headroom default is 4 GiB because that run's minimum available physical memory was 8656285696 bytes: one large render did not need a lower headroom to be admitted.
+
+## T10c F1 — setup plus the drawn rectangle (2026-10-28)
+
+The per-pixel rate and the setup high water below replace the 43 bytes/pixel figure in the section above. They are the constants in `src/test_support/include/anno/test/budget.hpp` on head `f2ded2141905d761245c0703a7be614c8cafc251`. Sampler `tools/sample_memory.ps1` at 200 ms. Peak is `PeakPagefileUsage`. Viewer `build/msvc/src/app/Release/anno1503.exe`, one fresh process per run, CPU renderer, enhanced legacy water. CSVs stayed in the worktree `cache/`.
+
+| run | pixels | peak private | subtracted high water | additional | bytes/pixel |
+|---|---:|---:|---:|---:|---:|
+| Single_01 group 2, 16960×9170 | 155523200 | 7620632576 | 530382848 | 7090249728 | 45.590 |
+| Single_24 group 2, 7200×2811 | 20245320 | 1268985856 | 356696064 | 912289792 | 45.062 |
+
+`kCpuRenderBytesPerPixel` is 46, one byte above the higher ratio. `46 × 155523200 = 7154067200`. `kCpuRenderSetupBytes` is 530382848, the private peak of a 1600×900 group-1 view of Single_01 at tile 800,400. The full-map run's private peak at 0.729 s, before that image grew, was 529973248. Three other 1600×900 views peaked between 529661952 and 530006016. None of those region views raised a high water above the scene load by a separate full-image amount. The reservation is still setup plus 46 bytes for every pixel of the rectangle that is drawn.
+
+A Single_01 group-2 reservation is `530382848 + 7154067200 = 7684450048` bytes. Two of those plus the 4294967296-byte headroom are 19663867392 bytes, which is above the 16507674624 bytes free at the start of the one-worker baseline. The second job waits or is refused. It is not admitted beside the first.
+
+On this head a one-worker legacy-river run (`ANNO_TEST_THREADS=1`, 2026-10-28) was refused before the picture: estimate 7560404608, available 6967738368, pending 0, resident 0, reason `exceeds capacity`. Available physical at that decision was 11262695664 bytes. The same case on the pre-F1 head finished in 297.646 s at peak private 8044425216 (about 7.49 GiB). That comparison is a refusal against a completed run, because today's free memory was below estimate plus headroom. The combined with-game CTest on this head is in `docs/orchestration/REPORTS.md` (1061 passed, 6 failed, every failure `exceeds capacity`). Minimum available physical during that run was 5099106304; the maximum was 13402222592.
+
+## T10c F2 — the corpus path measured, coherent admission (2026-10-28)
+
+Head `231807807de14f4abf57d13257c9b75dd0784a61` (clean), coordinator build `bb12b56e5c8930cb`, MSVC Release, host as above (33408942080 bytes physical, commit limit 108272488448). Sampler `tools/sample_memory.ps1` at 1 Hz. `ANNO_TEST_MEASURE_ITEMS=1` samples the test process's private bytes every 5 ms and prints each item's reservation, its private bytes at admission and the peak while it ran; the highest 5 ms sample was within 20480 bytes of the process's `PeakPagefileUsage`. Logs in the worktree `cache/f2/` (not committed).
+
+### Admission
+
+The coordinator measures; clients only report (`src/test_support/src/coord_server.cpp`). A grant uses free memory read after the last event that lowered the pending bytes (a release, a client that left with holds, residency that became visible): each such event starts an epoch, and a reading of an older epoch does not count. The process budget is measured at decision time: `GlobalMemoryStatusEx` on Windows, `/proc/meminfo` on Linux, and from WSL both the VM and the Windows host through a PowerShell meter process. A WSL request is bounded by the VM and by the host, a Windows request by the host. Over capacity is only a request above a domain's total (physical memory and commit limit, or `MemTotal`) minus the headroom; any other shortfall waits, bounded by `ANNO_TEST_ADMIT_WAIT_S` (default 1800 s), with a progress line every 30 s. Every promise is journaled before the client hears of it; a replacement coordinator counts its predecessor's open promises as fully pending until their owners are gone.
+
+### The corpus path, one worker
+
+The 40 renders of `legacy river shading reproduces the previous enhanced digests` (5 scenarios × 4 renders × 2 river modes), measured first on the 46 bytes/pixel model (head `62ad87d` plus the measurement edit, 2026-10-28):
+
+| item | pixels | reserved (old model) | growth from admission |
+|---|---:|---:|---:|
+| Single_01 g2 | 155523200 | 7684450048 | 4475035648 |
+| Single_10 g2 | 159244640 | 7855636288 | 3842318336 |
+| Single_14 g2 | 130817280 | 6547977728 | 3097452544 |
+| Single_06 g2 | 32403280 | 2020933728 | 818515968 |
+| Single_24 g2 | 20239200 | 1461386048 | 508313600 |
+| any g1 region | 1440000 | 596622848 | at most 108085248 |
+
+The catalog (Felder, Anlagen, figure header and volumes) the first item loads stays at about 743718912 bytes for the rest of the call. Above the item's own scene, Single_01 is (4475035648 − 108085248) / 155523200 = 28.08 bytes per pixel; the fresh-viewer figure of 46 overstates this path by 1.6×. That run spent 387 of 662 s waiting for admission at about 12 GB free. The corpus test now reserves 256 MiB per item (2.4× the 108085248 maximum), 36 bytes per pixel (1.28× the 28.08 maximum) and 1 GiB more while the catalog is not loaded (1.44× its 743718912). The headroom stays 4096 MiB. Single_01 group 2 is now 5867270656 bytes (with the catalog 6941012480).
+
+Checked on the committed head, one worker, both heavy cases:
+
+| case | items | worst growth / reservation | largest non-picture growth | refusals | process peak private |
+|---|---:|---:|---:|---:|---:|
+| legacy river (47 assertions) | 40 | 0.763 (Single_01 g2) | 108085248 | 0 | 5226291200 |
+| scene digests (45 assertions) | 44 | 0.763 (Single_01 g2, 28.08 bytes/pixel) | 120647680 | 0 | 5223342080 |
+
+### Legacy river: one worker against budgeted overlap
+
+Same head, same 47 assertions, both runs with `ANNO_TEST_MEASURE_ITEMS=1`, free memory 17–19 GB at the start:
+
+| run | elapsed s | admissions | admitted while another was open | most open | refusals | peak private | min available physical |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `ANNO_TEST_THREADS=1` | 266.369 | 44 | 0 | 1 | 0 | 5226291200 | 13854380032 |
+| `ANNO_TEST_THREADS=4` | 186.351 | 44 | 42 | 4 | 0 | 10401538048 | 9155538944 |
+
+Budgeted overlap is 30.0 % less wall time than one worker. The largest pending sum at an admission in the overlapping run was 12322760448 bytes (other items' unallocated reservations), and available physical stayed 4.86 GB above the headroom. For the record, the pre-F1 one-worker baseline (P1 head `416993fa`, old buffers) was 297.646 s at peak private 8044425216; F1's four-worker 246.1 s was on the 46-byte model with different free memory and is not this head.
+
+### Memory used outside the budget
+
+During the first one-worker run on the committed head an owner application held 11.46 GiB private and free memory fell to about 4.3 GB. The first item (6843933440 bytes) waited 1212 s with `pending=0 resident=0 reason=waiting` and a line every 30 s, was not admitted on any older reading and not refused, and was admitted once free memory returned (15851536384). Its items then took 267.9 s. That run's 1479.8 s elapsed is that wait, not the render cost; the timing pair above was taken afterwards.
+
+## T10c F3 — compatibility version and no inherited descriptors (2026-10-28)
+
+**Compatibility, not build id.** A test coordinator and its clients share one host budget when they speak the same compatibility version, `wire::kCompatVersion` (`src/test_support/src/coord_wire.hpp`), whatever their build ids. The build id (a hash of the coordinator's sources, `ANNO_COORD_BUILD`) is provenance: every gate logs it with the compatibility version and the incarnation (`[anno-test memory] coordinator build=… compat=… incarnation=…`).
+
+**When the version is bumped.** Bump `kCompatVersion`, and say why here, for any change of the wire format or of the reservation, journal, residency or recovery semantics that an older peer would not reproduce. Do not bump it for provenance, diagnostics, test hooks or code that changes no semantics. The value is 3 since F4: a successor issues no hold id that appears in the journal it replayed, and an older successor can reuse one and lose a promise across two restarts. A test pins it (`F3 (D1, pin)`).
+
+**What a mismatch does.**
+- Same version, another build: served; both reservations count against the one budget (`F3 (D1): two compatible builds share one busy coordinator`).
+- Another version, or a gate that asks for the exact build (`ANNO_TEST_BUDGET_EXACT_BUILD=1`): refused while the coordinator is busy. The requester waits, retrying with backoff, bounded by `ANNO_TEST_ADMIT_WAIT_S`; it ends with `wait deadline` and an infrastructure diagnostic (both builds, both versions, "busy"), or with `cancelled`. It never stops the busy peer and never opens a second budget.
+- A coordinator that is idle when refused steps aside. The requester's next attempt finds nothing listening and starts its own coordinator on the same port: the handover. A promise journaled by the predecessor and still open (its owner alive) is counted by the successor as an orphan until the owner exits (`F3 (D1, crash handover)`).
+
+**Test-only hooks.** `ANNO_TEST_BUDGET_CLIENT_BUILD` (the build id a client sends), `ANNO_TEST_BUDGET_CLIENT_COMPAT` (the version a client sends), `ANNO_TEST_BUDGET_EXACT_BUILD=1` (the exact-build opt-in), `ANNO_TEST_BUDGET_JOURNAL` (the journal a coordinator this process starts uses), `anno_budget_coord --compat-version N`, `ANNO_TEST_COORD_LEAK_FD=<path>` (POSIX coordinator: at start, after it closes descriptors 3..255, opens the path without close-on-exec and keeps it open; case `F4 (N4)`), `ANNO_TEST_PROBE_LEAK_FD=<path>` (POSIX `anno_budget_probe`: opens the path without close-on-exec and moves it to descriptor 256 or above, so the coordinator's start-up close does not hide the client spawn's closefrom; case `F4 (N4b)`). Production runs set none of them.
+
+**No inherited descriptors (D2).** Linux: every coordinator socket is close-on-exec (`SOCK_CLOEXEC`, `accept4(…, SOCK_CLOEXEC)`), every pipe too, and every helper spawn closes everything above stdio (`posix_spawn_file_actions_addclosefrom_np` on glibc 2.34 and later, one `addclose` per descriptor elsewhere). Windows: the listener and client sockets are created `WSA_FLAG_NO_HANDLE_INHERIT`, accepted sockets have the inherit flag cleared, and the process creations use `bInheritHandles = FALSE`. Evidence in `cache\f3\exp`: Winsock sockets are inheritable by default; `addclosefrom_np` closes an inherited socket; `addclose` of an unopened descriptor succeeds.
+
+**Silent is not foreign.** A connection that is accepted and answers no hello within `ANNO_TEST_BUDGET_LIVENESS_MS` is "not ready" and is retried within the admission bound. Only a reply that is not a coordinator's frame is "speaks another protocol".
+
+### F3 timing (not a speed claim)
+
+No render or simulation code changed in F3, so no speed-up is claimed. The legacy-river digest case (legacy river shading*, 4 workers, cache\f2\run_legacy.ps1) was timed twice on the F3 head to check that the coordinator change did not slow the test path:
+
+- run A: 216.9 s, with three "still waiting" lines (about 90 s of budget wait; 16.7 GB free at the start, about 3.4 GB available against a 6 GB request while owner applications ran). Not comparable.
+- run B: 205.4 s, no budget wait.
+- The F2 baseline of 186.4 s was not reproduced on this host state. The interleaved A/B of T10c F4 (below) measured the F2 code and the F4 head side by side on one host state.
+
+Both runs pass the case (47 assertions).
+
+## T10c F4 — unique hold ids, cancel of every waiter (2026-10-28)
+
+**E1, hold ids.** A successor issues no hold id that appears in any `A` or `R` line of the journal it replayed. One server-wide `u64` counter is seeded at `max_hold_id + 1` (`coord_server.cpp`). Uniqueness is required per budget; a single counter needs no per-budget map, and a `u64` will not overflow in a test run. The journal line format is unchanged.
+
+**Compatibility version 3.** `kCompatVersion` is 3 for that recovery rule: an older successor numbers a budget's holds from 1 and can reuse an id, losing a journaled promise across two restarts. Stale F2/F3 binaries are refused by version.
+
+**E2, cancel bound.** `Budget::session_for` reads `cancel_gen` before taking `connect_mu`. After the lock, if there is still no session and the generation changed, it returns `cancelled`. The wait ends within one connection attempt (at most `ANNO_TEST_BUDGET_LIVENESS_MS`) plus one pause (at most `ANNO_TEST_BUDGET_RECHECK_MS`). A `cancel()` issued before a thread enters `session_for` does not end that later wait (same rule as F3).
+
+**E4, interleaved A/B** of the 4-worker legacy-river digest case (`cache\f4\ab\run_legacy_ab.ps1`, ports 47851 / 47852). A is F2 `43cd10f` (scratch `cache\f4\ab\f2-src`, coordinator `a969992d481424ed` protocol=2). B is this F4 tree (coordinator `cee55b5e74257911` compat=3).
+
+| run | elapsed_s | exit | cases | assertions | still-waiting lines | wait notes | counted | free_kb at start | coordinator |
+|---|---|---|---|---|---|---|---|---|---|
+| A1 | 223.734 | 0 | 1 / 1 | 47 / 47 | 3 | 3 × "for 30 s" | no | 16895944 | build=a969992d481424ed protocol=2 |
+| B1 | 205.784 | 0 | 1 / 1 | 47 / 47 | 3 | 3 × "for 30 s" | no | 17098608 | build=cee55b5e74257911 compat=3 |
+| A2 | 197.070 | 0 | 1 / 1 | 47 / 47 | 0 | none | yes | 17241036 | build=a969992d481424ed protocol=2 |
+| B2 | 204.759 | 0 | 1 / 1 | 47 / 47 | 0 | none | yes | 17260440 | build=cee55b5e74257911 compat=3 |
+| A3 | 193.437 | 0 | 1 / 1 | 47 / 47 | 0 | none | no | 16939468 | build=a969992d481424ed protocol=2 |
+| B3 | 199.742 | 0 | 1 / 1 | 47 / 47 | 2 | 2 × "for 30 s" | no | 16973616 | build=cee55b5e74257911 compat=3 |
+
+B/A to three decimals: A1/B1 205.784 / 223.734 = 0.920; A2/B2 204.759 / 197.070 = 1.039; A3/B3 199.742 / 193.437 = 1.033. A1/B1 does not count (three `still waiting` lines in each run). A2/B2 counts (no wait, no other test). A3/B3 does not count (B3 logged two `still waiting` lines). Rule (one-sided): the F4 head may be at most 5 % slower than the F2 code in every counted pair, and a pair with a budget wait does not count, because its time measures the host's free memory. A3/B3 waited, so the verdict rests on A2/B2 alone. **No throughput regression measured:** at least one pair counts and every counted pair has B/A ≤ 1.050 (A2/B2 = 1.039). Logs in `cache\f4\ab\legacy-*`.

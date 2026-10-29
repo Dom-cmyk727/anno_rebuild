@@ -23,5 +23,6 @@ if(ANNO_BUILD_TESTS)
   target_compile_definitions(anno_assets_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
   anno_target_defaults(anno_assets_tests)
+  anno_stage_budget_coord(anno_assets_tests)
   anno_add_doctest(anno_assets_tests)
 endif()

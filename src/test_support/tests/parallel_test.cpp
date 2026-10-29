@@ -39,13 +39,14 @@ anno::test::ParallelOptions quiet_options(std::size_t threads) {
     return o;
 }
 
-// A free-memory query that reports plenty once (the thread bound at the start
-// of parallel_indexed) and nothing after that, so every later wait check finds
-// memory short while the pool still has its full size.
-std::atomic<int> g_free_calls{0};
-std::optional<std::uint64_t> plenty_then_none() {
-    return g_free_calls++ == 0 ? std::optional<std::uint64_t>(64 * kGiB)
-                               : std::optional<std::uint64_t>(0);
+std::atomic<std::uint64_t> g_free{0};
+
+std::optional<std::uint64_t> injected_free() {
+    return g_free.load();
+}
+
+void publish_free() {
+    g_free = 4 * kGiB;
 }
 
 } // namespace
@@ -145,48 +146,72 @@ TEST_CASE("parallel_indexed: no retry when retries are off, at most `retries` re
     }
 }
 
-TEST_CASE("parallel_indexed: a worker waits for memory before an item and counts the wait") {
-    auto opt = quiet_options(4);
+TEST_CASE("parallel_indexed waits for a reservation and does not run the item first") {
+    g_free = 2 * kGiB;
+    anno::test::BudgetHooks hooks;
+    hooks.free_bytes = &injected_free;
+    hooks.on_wait = &publish_free;
+    auto budget = anno::test::Budget::memory(hooks, 0);
+    const auto blocker = budget->try_reserve(kGiB + kGiB / 2);
+    REQUIRE(blocker);
+    auto opt = quiet_options(2);
     opt.budget = kGiB;
-    opt.wait_polls = 2;
-    opt.free_memory = &plenty_then_none;
-    g_free_calls = 0;
+    opt.admission = budget;
+    std::atomic<int> calls{0};
     anno::test::ParallelStats stats;
     const auto out = anno::test::parallel_indexed(
-        64,
-        [](std::size_t i) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            return static_cast<int>(i);
+        1,
+        [&](std::size_t) {
+            ++calls;
+            return 7;
         },
         opt, &stats);
-    REQUIRE(out.size() == 64);
-    for (std::size_t i = 0; i < out.size(); ++i) {
-        CHECK(out[i] == static_cast<int>(i));
-    }
-    CHECK(stats.threads == 4);
-    CHECK(stats.waits >= 1); // memory never came back: the three helpers wait
-    CHECK(stats.wait_timeouts >= 1);
-    CHECK(stats.wait_timeouts <= stats.waits);
+    REQUIRE(out.size() == 1);
+    CHECK(out[0] == 7);
+    CHECK(calls.load() == 1);
+    CHECK(stats.waits >= 1);
+    CHECK(stats.wait_timeouts == 0);
 }
 
-TEST_CASE("parallel_indexed: no worker waits out its memory wait once every item is taken") {
+TEST_CASE("parallel_indexed refuses a job that cannot fit and does not run it") {
+    g_free = 10;
+    anno::test::BudgetHooks hooks;
+    hooks.free_bytes = &injected_free;
+    hooks.total_bytes = &injected_free; // 10 bytes is all there will ever be
+    auto budget = anno::test::Budget::memory(hooks, 0);
+    auto opt = quiet_options(2);
+    opt.budget = kGiB;
+    opt.admission = budget;
+    std::atomic<int> calls{0};
+    anno::test::ParallelStats stats;
+    CHECK_THROWS_AS(anno::test::parallel_indexed(
+                        1,
+                        [&](std::size_t) -> int {
+                            ++calls;
+                            return 1;
+                        },
+                        opt, &stats),
+                    std::runtime_error);
+    CHECK(calls.load() == 0);
+    CHECK(stats.wait_timeouts == 0);
+}
+
+TEST_CASE("parallel_indexed: a fitting reservation does not time out") {
+    g_free = 64 * kGiB;
+    anno::test::BudgetHooks hooks;
+    hooks.free_bytes = &injected_free;
+    auto budget = anno::test::Budget::memory(hooks, 0);
     auto opt = quiet_options(4);
     opt.budget = kGiB;
-    opt.poll = std::chrono::milliseconds(5);
-    opt.wait_polls = 2000; // 10 s if a worker waited to the end
-    opt.free_memory = &plenty_then_none;
-    g_free_calls = 0;
+    opt.admission = budget;
     anno::test::ParallelStats stats;
     const auto t0 = std::chrono::steady_clock::now();
     const auto out = anno::test::parallel_indexed(1, [](std::size_t) { return 7; }, opt, &stats);
     const auto elapsed = std::chrono::steady_clock::now() - t0;
     REQUIRE(out.size() == 1);
     CHECK(out[0] == 7);
-    CHECK(stats.threads == 1); // min(4 threads, 1 item)
-
-    // Two items on four threads: the helpers that find memory short see the
-    // items taken and leave instead of polling to the end.
-    g_free_calls = 0;
+    CHECK(stats.threads == 1);
+    CHECK(stats.wait_timeouts == 0);
     const auto t1 = std::chrono::steady_clock::now();
     const auto two = anno::test::parallel_indexed(
         2,

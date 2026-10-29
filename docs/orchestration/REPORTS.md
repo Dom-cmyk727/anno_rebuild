@@ -6559,3 +6559,23 @@ Starting checkpoint `d8b287ccdf3d0b2399c4cabdf0620d2b6645a2d8`; final tested cod
 The committed runner owns one child at a time, records a source-bound manifest and terminal row status, and enforces row/study wall limits while running. Final synthetic evidence is `cache/t61-f2/final-study.jsonl`, SHA-256 `5D81F880FD86C5998C3BCE0339509B92881CF2A4DCA5D092539CA2621F91888C`: 72 primary rows plus repeat/asymmetric diagnostics, independently validated as `valid: 72 primary rows, 2 diagnostics`. All retained validator lists are empty; restarts are retained as outcomes. This is not LAN evidence and adopts no timer.
 
 Decisions and reasoning: immutable callback identity was selected over reconstructing current channel state because epoch resets replace that state; whole-trace compatibility was selected over per-record exemption because partial evidence is contradictory. The F1 historical study remains superseded. Scope is only the six permitted files; `git diff --check` is clean. No merge, rebase, push, PR, policy change, C++/wire/state change or first-lane edit occurred.
+
+## T61 F2 closure — progress, phase 0 — 2026-10-29 23:42 +01:00 — status: IN PROGRESS
+
+Worktree head for the baseline: `be08b7b88025b78083e1d6292c7330a29ceba70a` on `codex/T61-join-jitter`. This section is the phase 0 commit. No checker or study code has been edited yet.
+
+Preflight, twice, 6/6 PASS. The first run saw main at `30205c833bd4683d138a038f17be037b3d16b97d`. The second, after the baseline and before this commit, saw main at `f4f29b4b66b17da344f1272bbd0f8d5f569be5d5` (a later descendant; the five lane-binding excerpts were unchanged). T61 was clean on `codex/T61-join-jitter` at `be08b7b` both times.
+
+A workspace-root move briefly checked this worktree out onto another branch. The branch ref `codex/T61-join-jitter` never moved: it stayed at `be08b7b`. The worktree was switched back onto that branch before any edit, and the two checkouts that move had detached were reattached, clean, at the commits they already had. No T61 file changed in that interval. That move will not be repeated.
+
+Baseline, one job at a time, free memory above the 4096 MiB headroom (12235 MiB, then 6758 MiB). Logs under `cache/t61-f2/dn/baseline/`:
+
+| command | exit | result |
+| --- | --- | --- |
+| `python -I -B tools/test_join_activation.py -v` | 0 | Ran 222 tests in 416.063s, OK. Verbose log is `test_join_activation.stderr.txt` (unittest writes `-v` there); stdout is empty. |
+| `python -I -B tools/test_snapshot_catchup.py -v` | 0 | Ran 64 tests in 18.154s, OK. |
+| `python -I tools/join_jitter_study.py --validate --output cache/t61-f2/di-final/study.jsonl` | 1 | `invalid study: provenance or run identity does not match this source` in 0.147s. The round-dn CRLF finding stands. The file was not rewritten. |
+
+Floor: 222 join tests and 64 snapshot tests. None may disappear.
+
+Next: phase 1, the failing regressions for H1–H4 and N1–N4, including the short-deadline case, saved under `cache/t61-f2/dn/fail-first/`. H1 is also run against an ignored `30964c2` archive.
